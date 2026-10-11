@@ -1,0 +1,662 @@
+{
+  "version": 1,
+  "character": "purupuru-slime-3d",
+  "visualCharacterId": "purupuru-slime-3d",
+  "runtimeType": "slime",
+  "direction": "w",
+  "motion": "attack",
+  "texture": "purupuru-slime-3d-attack-w.png",
+  "sha256": "e46b1482d86435c4c082eefc82bb6b98fd586a1a4adc6c33e468ab43c67a7178",
+  "textureWidth": 1536,
+  "textureHeight": 448,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 50,
+  "loop": false,
+  "durationMs": 960,
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 420
+    }
+  ],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 8,
+      "x": 1024,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 1152,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 1280,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 1408,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 18,
+      "x": 768,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 19,
+      "x": 896,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 20,
+      "x": 1024,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 21,
+      "x": 1152,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 22,
+      "x": 1280,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 23,
+      "x": 1408,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 24,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 25,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 26,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 27,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 28,
+      "x": 512,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 29,
+      "x": 640,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 30,
+      "x": 768,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 31,
+      "x": 896,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 32,
+      "x": 1024,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 33,
+      "x": 1152,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 34,
+      "x": 1280,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 35,
+      "x": 1408,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 36,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 37,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 38,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 39,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 40,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 41,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 42,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 43,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 44,
+      "x": 1024,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 45,
+      "x": 1152,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 46,
+      "x": 1280,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 47,
+      "x": 1408,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    }
+  ],
+  "status": "artist candidate for final game acceptance",
+  "rendering": "complete RGBA body frames; fixed screen-compass camera; no mirroring or layered eyes",
+  "hitFrame": 21,
+  "hitPolicy": "Game-owned single melee hit at420ms; visual full-body lunge only; no projectile or healing.",
+  "motionRevision": "slime-acting-v2"
+}

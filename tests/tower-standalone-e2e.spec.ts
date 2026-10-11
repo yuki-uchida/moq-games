@@ -28,6 +28,7 @@ test('keeps the SDK lazy and initializes packaged WASM before attempting transpo
     })
   })
   await page.goto(towerPath)
+  await page.locator('#title-new').click()
   await expect(page.locator('#offline-start')).toBeVisible()
   // Act / Assert
   expect(wasmResponses).toEqual([])

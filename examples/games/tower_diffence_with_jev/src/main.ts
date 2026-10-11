@@ -28,6 +28,9 @@ import { GroundTapInput } from './input/GroundTapInput'
 import { DEFENDER_FOOTPRINT, groundPlacementLabel } from './game/GroundPlacement'
 import { getPrimaryRelayUrl, DEFAULT_LOCAL_RELAY_A_URL } from '../../../../utils/relayPresets'
 import './style.css'
+import './ui/title-screen.css'
+import { titleScreenMarkup, titleSaveStatus } from './ui/TitleScreen'
+import './ui/games-home-link.css'
 import { GameEngine } from './game/GameEngine'
 import {
   CONFIG,
@@ -180,8 +183,8 @@ function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 1) {
     .join(' ')
   return `<svg viewBox="0 0 ${field.width} ${field.height}" aria-hidden="true"><rect width="${field.width}" height="${field.height}" fill="${field.theme.ground}"/><path d="${roads}" fill="none" stroke="${field.theme.edge}" stroke-width="84" stroke-linejoin="round"/><path d="${roads}" fill="none" stroke="${field.theme.road}" stroke-width="52" stroke-linejoin="round"/><circle cx="${entry.x}" cy="${entry.y}" r="38" fill="#c36351"/><circle cx="${base.x}" cy="${base.y}" r="45" fill="#f5e6ae"/></svg>`
 }
-$('app').innerHTML = `
-<header class="topbar"><a class="brand" hidden href="../../../index.html"><span class="brand-emblem" aria-hidden="true">${emblems.cleared}</span><span>MOSS <i>&</i> STEEL<small>十の戦いと、小さな王国</small></span></a><div class="tools"><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot" aria-hidden="true"></span><span id="settings-label">接続・AI</span></button></div></header>
+$('app').innerHTML = `${titleScreenMarkup(artBase)}
+<header class="topbar"><a class="games-home-link" href="../../../index.html" aria-label="MoQ Games ホームへ戻る"><span aria-hidden="true">←</span> MoQ Games</a><div class="tools"><button id="game-title-return" aria-label="保存してタイトルに戻る">Title</button><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot" aria-hidden="true"></span><span id="settings-label">接続・AI</span></button></div></header>
 <main class="game-layout" inert>
 <section class="battle-panel" aria-label="戦場">
 <div class="stage-label">Stage <span id="stage">01</span></div><span id="phase" class="sr-only" role="status"></span>
@@ -202,11 +205,11 @@ $('app').innerHTML = `
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">戦いの報酬で、新しい仲間と出会おう。雇用した仲間は次の遠征でも利用できます。強化とゴールドは今回の全10ステージ限定です。</p><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><div class="launch-intro"><span class="eyebrow">MOSS & STEEL · A LITTLE KINGDOM</span><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">小さな仲間と、<br>大きな王国を守ろう。</h1><p>仲間を配置して、全10ステージの遠征へ。<br>最初は${STARTING_GOLD}G。1体40Gで、最大10種類の仲間を配置。</p></div><div class="choice-heading"><h2>遠征先を選ぼう</h2><span>4つのフィールド</span></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">このフィールドで出発 →</button><button id="offline-start">接続なしで始める</button><button id="launch-settings" class="text-button" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><p id="battlefield-version-help" class="launch-note">新規遠征は${STARTING_GOLD}G・1体40G・各種類1体。分岐して合流する2経路の縦長マップ。新規遠征のJevには10秒ごとの支援魔法があります。保存した旧遠征は元の地形とルールで最後まで続けられます。</p><p class="launch-note">仲間をドラッグ → 地面で離す → 襲撃開始。準備中は移動無料。控えに戻すと40G返金され、再配置は40G。</p></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><span class="eyebrow">MOSS & STEEL · A LITTLE KINGDOM</span><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">小さな仲間と、<br>大きな王国を守ろう。</h1><p>仲間を配置して、全10ステージの遠征へ。<br>最初は${STARTING_GOLD}G。1体40Gで、最大10種類の仲間を配置。</p></div><div class="choice-heading"><h2>遠征先を選ぼう</h2><span>4つのフィールド</span></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">このフィールドで出発 →</button><button id="offline-start">接続なしで始める</button><button id="launch-settings" class="text-button" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><p id="battlefield-version-help" class="launch-note">新規遠征は${STARTING_GOLD}G・1体40G・各種類1体。分岐して合流する2経路の縦長マップ。新規遠征のJevには10秒ごとの支援魔法があります。保存した旧遠征は元の地形とルールで最後まで続けられます。</p><p class="launch-note">仲間をドラッグ → 地面で離す → 襲撃開始。準備中は移動無料。控えに戻すと40G返金され、再配置は40G。</p></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
-<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><small class="result-note">雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></dialog>`
+<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><button id="result-title-return" class="text-button">保存してタイトルに戻る</button><small class="result-note">雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></dialog>`
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
@@ -411,7 +414,48 @@ const fortificationConfirm = new PanelDialog(
 const gatePanel = new PanelDialog($<HTMLDialogElement>('gate-panel'), [$('gate-toggle')], $('gate-close'))
 const saveConfirm = new PanelDialog($<HTMLDialogElement>('save-confirm'), [$('save-reset')], $('save-confirm-cancel'))
 const launchDialog = $<HTMLDialogElement>('launch')
-launchDialog.addEventListener('cancel', (event) => event.preventDefault())
+const titleDialog = $<HTMLDialogElement>('title-screen')
+function openTitle() {
+  history.replaceState({ towerScreen: 'title' }, '', location.pathname + location.search)
+  launchDialog.close()
+  settingsPanel.close(false)
+  $('title-save-status').textContent = titleSaveStatus(!!pendingRun, loadedCampaign.issue, showLegacyMigration)
+  $<HTMLButtonElement>('title-continue').disabled = !pendingRun
+  if (!titleDialog.open) titleDialog.showModal()
+  $('title-new').focus({ preventScroll: true })
+}
+function returnToTitle() {
+  if (started) {
+    // Do not abandon an in-memory run when browser storage is unavailable.
+    if (!persist()) {
+      settings(true, $('game-title-return'))
+      return
+    }
+    battleClock?.stop()
+    engine.invalidateAI()
+    connection?.cancelPending()
+    location.replace(new URL('./index.html', location.href).href)
+  } else openTitle()
+}
+titleDialog.addEventListener('cancel', (event) => event.preventDefault())
+launchDialog.addEventListener('cancel', (event) => { event.preventDefault(); openTitle() })
+$('title-new').onclick = () => {
+  history.pushState({ towerScreen: 'new' }, '', '#new-game')
+  titleDialog.close()
+  launchDialog.showModal()
+  document.querySelector<HTMLButtonElement>('[data-field][aria-pressed="true"]')!.focus({ preventScroll: true })
+}
+$('title-continue').onclick = () => {
+  if (!pendingRun) return
+  history.pushState({ towerScreen: 'game' }, '', '#game')
+  titleDialog.close()
+  $('resume-run').click()
+  if (!started) { openTitle(); $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。' }
+}
+$('launch-title-return').onclick = returnToTitle
+$('game-title-return').onclick = returnToTitle
+$('result-title-return').onclick = returnToTitle
+window.addEventListener('popstate', returnToTitle)
 function paidRoster() {
   return engine.state.economyVersion === 2
 }
@@ -1163,6 +1207,7 @@ function updateStart() {
         : 'Jev を使うには MoQ に接続してください。ルール AI なら接続不要です'
 }
 function startFreshCampaign() {
+  history.replaceState({ towerScreen: 'game' }, '', '#game')
   const layoutRevision = newCampaignLayoutRevision(newLayoutBundle)
   if ((engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision) !== layoutRevision) {
     const fieldId = engine.state.fieldId,
@@ -1982,8 +2027,7 @@ updateField()
 // An active Jev cooldown hold survives an offline reload unless the user chooses RULE.
 if (pendingRun?.engine.state.cooldownHold) $<HTMLSelectElement>('mode').value = 'jev'
 configureAI()
-launchDialog.showModal()
-document.querySelector<HTMLButtonElement>('[data-field][aria-pressed="true"]')!.focus({ preventScroll: true })
+openTitle()
 function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true

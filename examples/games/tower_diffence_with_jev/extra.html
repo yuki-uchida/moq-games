@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>EXTRA · smart defence with jev</title>
+  </head>
+  <body>
+    <header class="extra-header">
+      <a href="./index.html">← Title</a><span>MoQ Games / smart defence with jev</span>
+    </header>
+    <main class="extra-layout">
+      <section class="extra-intro">
+        <p class="eyebrow">BEHIND THE LITTLE KINGDOM</p>
+        <h1>EXTRA</h1>
+        <p>3D sprite-sheet viewer</p>
+        <p class="extra-note">
+          3Dモデルから書き出したフレームを確認するためのビューアーです。ゲーム本編のリアルタイム3D描画とは別の表示です。
+        </p>
+      </section>
+      <section class="extra-controls" aria-label="Animation selection">
+        <label>Character<select id="viewer-role" disabled></select></label
+        ><label>Motion<select id="viewer-motion" disabled></select></label
+        ><label>Direction<select id="viewer-direction" disabled></select></label
+        ><label
+          >Zoom<select id="viewer-zoom">
+            <option value="1">1×</option>
+            <option value="2" selected>2×</option>
+            <option value="3">3×</option>
+          </select></label
+        ><label class="extra-check"><input id="viewer-sheet" type="checkbox" /> Full sheet</label>
+      </section>
+      <section class="extra-stage" aria-label="Sprite preview">
+        <canvas id="viewer-canvas" width="1" height="1" hidden></canvas>
+        <p id="viewer-status" role="status">3Dスプライトシートを確認中…</p>
+      </section>
+      <section class="extra-transport" aria-label="Playback">
+        <button id="viewer-previous" disabled aria-label="Previous frame">←</button
+        ><button id="viewer-play" disabled>Play</button
+        ><button id="viewer-next" disabled aria-label="Next frame">→</button
+        ><input
+          id="viewer-timeline"
+          type="range"
+          min="0"
+          max="1"
+          value="0"
+          step="1"
+          disabled
+          aria-label="Animation position"
+        /><output id="viewer-time">0 ms</output
+        ><label
+          >Speed<select id="viewer-speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select></label
+        >
+      </section>
+      <p class="extra-note">この画面は読み取り専用です。遠征の保存データは変更しません。</p>
+    </main>
+    <script type="module" src="./src/ui/ExtraViewer.ts"></script>
+  </body>
+</html>

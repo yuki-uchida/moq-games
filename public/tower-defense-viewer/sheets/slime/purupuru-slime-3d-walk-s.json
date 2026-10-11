@@ -1,0 +1,343 @@
+{
+  "version": 1,
+  "character": "purupuru-slime-3d",
+  "visualCharacterId": "purupuru-slime-3d",
+  "runtimeType": "slime",
+  "direction": "s",
+  "motion": "walk",
+  "texture": "purupuru-slime-3d-walk-s.png",
+  "sha256": "806f8aa45a3e1772fa5b4ada23cb1370ccfbabf102783e8f210109c037d16338",
+  "textureWidth": 1536,
+  "textureHeight": 224,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 24,
+  "loop": true,
+  "durationMs": 1000,
+  "events": [],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 8,
+      "x": 1024,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 1152,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 1280,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 1408,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 18,
+      "x": 768,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 19,
+      "x": 896,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 20,
+      "x": 1024,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 21,
+      "x": 1152,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 22,
+      "x": 1280,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 41,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 23,
+      "x": 1408,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 42,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    }
+  ],
+  "status": "artist candidate for final game acceptance",
+  "rendering": "complete RGBA body frames; fixed screen-compass camera; no mirroring or layered eyes",
+  "motionRevision": "slime-acting-v2"
+}

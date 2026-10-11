@@ -20,7 +20,9 @@
     "e2e:tower-debug": "playwright test --config playwright.tower-debug.config.ts",
     "test:core": "vitest run examples/games/tower_diffence_with_jev/tests/game.test.ts examples/games/tower_diffence_with_jev/tests/network.test.ts examples/games/tower_diffence_with_jev/tests/moq-channel.test.ts examples/games/tower_diffence_with_jev/tests/wire.test.ts examples/games/tower_diffence_with_jev/tests/build-assets.test.ts --maxWorkers=1",
     "test:tower-debug-assets": "vitest run --config vitest.tower-debug-assets.config.mts",
-    "sdk:setup": "node scripts/setup-sdk.mjs"
+    "sdk:setup": "node scripts/setup-sdk.mjs",
+    "test:landing": "node --test tests/landing-catalog.test.mjs",
+    "e2e:landing": "playwright test --config playwright.landing.config.ts"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",

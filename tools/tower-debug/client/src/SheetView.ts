@@ -10,11 +10,14 @@ export class SheetView {
   private imageOnly = false
   private zoom = 3
   private fullSheet = false
-  constructor(private readonly canvas: HTMLCanvasElement) {}
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly loadBytes: typeof verifiedBytes = verifiedBytes
+  ) {}
   async load(reference: AssetRef, clip: Clip | null, signal: AbortSignal): Promise<void> {
     if (this.disposed) throw new Error('Sheet viewer is disposed')
     const generation = ++this.generation
-    const bytes = await verifiedBytes(reference, signal)
+    const bytes = await this.loadBytes(reference, signal)
     const bitmap = await createImageBitmap(new Blob([bytes], { type: reference.mimeType }))
     if (signal.aborted || this.disposed || generation !== this.generation) {
       bitmap.close()
