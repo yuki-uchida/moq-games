@@ -1,3 +1,4 @@
+import { createBoardCamera, configureBoardCamera } from './BoardCamera'
 import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
 import { canInitiateDamage, healingAction, HEALING_ACTIONS, temporaryPaladinHeal } from '../game/HealingActions'
@@ -316,7 +317,7 @@ export class GameRenderer {
   private dragonSplashes = new DragonSplashVisual(this.scene)
   private fortifications: FortificationVisual
   private field = getField('meadow')
-  private camera = new THREE.OrthographicCamera(0, this.field.width, 0, this.field.height, -200, 200)
+  private camera = createBoardCamera(this.field)
   private units = new Map<number, UnitVisual>()
 
   private drawTiming = { frames: 0, firstMs: 0, lastMs: 0, maxMs: 0 }
@@ -1706,9 +1707,7 @@ export class GameRenderer {
     this.field = field
     const { width, height } = this.field
     this.renderer.setSize(width, height, false)
-    this.camera.right = width
-    this.camera.bottom = height
-    this.camera.updateProjectionMatrix()
+    configureBoardCamera(this.camera, this.field)
     this.renderer.domElement.setAttribute(
       'aria-label',
       version === 2

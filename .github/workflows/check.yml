@@ -29,7 +29,7 @@ jobs:
       - run: npm run lint
       - run: npm run test:core
       - name: Test title and real-model contracts
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests/battle-music.test.ts examples/games/tower_diffence_with_jev/tests/title-screen.test.ts examples/games/tower_diffence_with_jev/tests/model-rendering.test.ts examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts --maxWorkers=1
+        run: npx vitest run examples/games/tower_diffence_with_jev/tests/battle-music.test.ts examples/games/tower_diffence_with_jev/tests/title-screen.test.ts examples/games/tower_diffence_with_jev/tests/model-rendering.test.ts examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts examples/games/tower_diffence_with_jev/tests/compact-field.test.ts tests/board-camera-depth.test.ts --maxWorkers=1
       - run: node --test tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run build

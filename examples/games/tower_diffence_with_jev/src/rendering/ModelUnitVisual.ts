@@ -1,3 +1,4 @@
+import { MODEL_BOSS_SCALE, modelGroundDepth } from './BoardCamera'
 import * as THREE from 'three'
 import type { CombatAttack, Unit } from '../game/model'
 import { attackAssetElapsedMs } from '../game/AttackProfiles'
@@ -101,7 +102,7 @@ export class ModelUnitVisual {
     this.root.visible = false
   }
   setPosition(x: number, y: number): void {
-    this.root.matrix.setPosition(x, y, y / 10 + 4)
+    this.root.matrix.setPosition(x, y, modelGroundDepth(y))
     this.root.matrixWorldNeedsUpdate = true
   }
   prepare(motions: readonly ModelMotion[] = ['idle', 'walk', 'attack']): boolean {
@@ -151,7 +152,7 @@ export class ModelUnitVisual {
       : Math.max(0, Math.min(sampleTime, duration))
     const elevation = this.definition.viewElevation ?? Math.atan2(2, 5)
     this.turn.rotation.y = Math.atan2(pose.facingX * Math.sin(elevation), pose.facingY) + this.definition.yaw
-    this.turn.scale.setScalar(pose.boss ? 1.35 : 1)
+    this.turn.scale.setScalar(pose.boss ? MODEL_BOSS_SCALE : 1)
     instance.action.enabled = true
     instance.action.paused = false
     instance.mixer.setTime(seconds)
