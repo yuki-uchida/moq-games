@@ -1,0 +1,15 @@
+[marketplaces.i-have-adhd]
+source_type = "git"
+source = "https://github.com/ayghri/i-have-adhd.git"
+ref = "main"
+
+[marketplaces.ponytail]
+source_type = "git"
+source = "https://github.com/DietrichGebert/ponytail.git"
+ref = "main"
+
+[plugins."i-have-adhd@i-have-adhd"]
+enabled = true
+
+[plugins."ponytail@ponytail"]
+enabled = true
