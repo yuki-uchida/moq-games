@@ -38,7 +38,7 @@ The two real Wolf debug-asset checks are separately opt-in: set `TOWER_DEBUG_TES
 
 The optional bot is under `examples/games/tower_diffence_with_jev/bot`. Create a fresh Python 3.12 virtual environment and install `requirements.txt`. Copy `.env.example` to a local ignored `.env` only when configuring an authorized real service. Keys remain server-side. No credentials are included; starting the bot against a real Jev service may incur charges and is not part of routine tests.
 
-Review tooling uses an explicitly selected store outside the checkout. Real user state must never receive synthetic tests. No GitHub Pages deployment is configured.
+Review tooling uses an explicitly selected store outside the checkout. Real user state must never receive synthetic tests. GitHub Pages deploys the checked public build from `main`; local-only packs are not uploaded. The site root opens the game, and `THIRD-PARTY-NOTICES.txt` accompanies the distributed SDK and game.
 
 ## Saves and provenance
 

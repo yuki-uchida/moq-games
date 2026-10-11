@@ -21,5 +21,12 @@ export default defineConfig({
     }
   },
   preview: { host: '127.0.0.1', port: 4174, strictPort: true },
-  build: { rollupOptions: { input: { game: resolve(root, 'examples/games/tower_diffence_with_jev/index.html') } } }
+  build: {
+    rollupOptions: {
+      input: {
+        home: resolve(root, 'index.html'),
+        game: resolve(root, 'examples/games/tower_diffence_with_jev/index.html')
+      }
+    }
+  }
 })
