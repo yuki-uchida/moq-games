@@ -17,6 +17,7 @@ export async function openOfflineCampaign(page: Page, field: FieldId = 'meadow')
   await expect(page.locator('#launch')).toBeHidden()
   await expect(page.locator('#ai-mode')).toHaveText('RULE · OFFLINE')
   await expect(page.locator('#field-name')).toHaveText(FIELDS[field].name)
+  await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '3')
   await expect(page.locator('#field canvas').first()).toBeVisible()
 }
 

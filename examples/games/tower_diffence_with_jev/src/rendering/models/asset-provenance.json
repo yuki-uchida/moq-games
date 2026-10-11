@@ -328,5 +328,123 @@
       0.07999999821186066
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "soldier",
+    "file": "soldier-motion-v2-candidate.glb",
+    "sha256": "bbff0c6af838be60232bd0d4ad73b8a56aa2d9435321a3068cf0108e271b879b",
+    "archive": "soldier-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "639f562a39b0fa3a383670e2e5ce2a0508796f370c5d8d957cb36267f435e07c",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 2.75 times existing game displayScale60/91; scale remains provisional",
+    "groundAnchor": [
+      0.13500000536441803,
+      0,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "archer",
+    "file": "archer-attack-candidate.glb",
+    "sha256": "0b079ace8797f4466fbd7fdf05621da09d19cb28c9c380238c804f0bfccc93ee",
+    "archive": "archer-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "1e7fb7726299e1408de8e50981796806cfda2d5a09cfb99bc4787358f1c5919d",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.267241477966309",
+    "groundAnchor": [
+      0,
+      -0.9518839716911316,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "archer",
+    "file": "archer-idle-candidate.glb",
+    "sha256": "376e5168e3ce62871503cc2dd4aa9f4b698f1462172d31546ba6d0f39e07d652",
+    "archive": "archer-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "1e7fb7726299e1408de8e50981796806cfda2d5a09cfb99bc4787358f1c5919d",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.267241477966309",
+    "groundAnchor": [
+      0,
+      -0.9518839716911316,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "archer",
+    "file": "archer-walk-candidate.glb",
+    "sha256": "a7229b8188e44433748975b74bd4bb03580dfb3e654d04cf2bf0ade040a50ab7",
+    "archive": "archer-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "1e7fb7726299e1408de8e50981796806cfda2d5a09cfb99bc4787358f1c5919d",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.267241477966309",
+    "groundAnchor": [
+      0,
+      -0.9518839716911316,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "runner",
+    "file": "runner-idle-current.glb",
+    "sha256": "36e063338e0bf509bcd2f618b9031e7226567aeab26858502936ebcc9d34858b",
+    "sourceSceneSha256": "83e6039dcabc7740652095d3b348d1b248f1a766b1c4fbe128c1b1c0830083e1",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.88 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.05999999865889549,
+      -0.95166015625,
+      -0.20000000298023224
+    ],
+    "verification": "current source export; source numerical validation and runtime visual acceptance separate"
+  },
+  {
+    "role": "runner",
+    "file": "runner-walk-current.glb",
+    "sha256": "9609e67b922a84eee2db6b6fe7e9c8268022cefdd358e1cde83639ef9f0f75a6",
+    "sourceSceneSha256": "83e6039dcabc7740652095d3b348d1b248f1a766b1c4fbe128c1b1c0830083e1",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.88 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.05999999865889549,
+      -0.95166015625,
+      -0.20000000298023224
+    ],
+    "verification": "current source export; source numerical validation and runtime visual acceptance separate"
+  },
+  {
+    "role": "runner",
+    "file": "runner-attack-current.glb",
+    "sha256": "82bc1f3eecd16f7bb7f76b4bf12274d7bcfde2749dbd14b8e2c9c98ce5877949",
+    "sourceSceneSha256": "83bd1677fe8e5ca9dd39ab0f327c5704f006ce8fc4ddb54e8521b84fa9f59f28",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.88 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.05999999865889549,
+      -0.95166015625,
+      -0.20000000298023224
+    ],
+    "verification": "current source export; source numerical validation and runtime visual acceptance separate"
+  },
+  {
+    "role": "slime",
+    "file": "animated.glb",
+    "sha256": "6015b96c5178d7dcf226976183e2bf1ab0bf1953690c9841cfb37200d0f41c3d",
+    "archive": "current-animation-sources-and-slime-pilot.zip",
+    "archiveSha256": "c244cbaa38986e7f74a54e209d664246e9ab0100d53c0371f7294d5daae6dcc1",
+    "sourceFile": "slime-with-death-pilot.glb",
+    "basis": "glTF Y-up; source mesh and four authored clips unchanged",
+    "scaleDerivation": "Provisional gameplay scale30, measured groundY=-0.027695",
+    "groundAnchor": [
+      0,
+      -0.027695,
+      0
+    ],
+    "verification": "four clips source inspected; runtime visual acceptance pending"
   }
 ]

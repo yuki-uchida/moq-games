@@ -292,7 +292,7 @@ type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
   return checkpoint.version >= 4 ? (checkpoint.state as CampaignStateCheckpoint).battlefieldVersion : 1
 }
-function layoutRevision(checkpoint: DecodedCheckpoint): 1 | 2 {
+function layoutRevision(checkpoint: DecodedCheckpoint): 1 | 2 | 3 {
   return checkpoint.version >= 14 ? (checkpoint.state as CampaignStateCheckpoint).layoutRevision : 1
 }
 function checkpointField(checkpoint: DecodedCheckpoint) {
@@ -323,7 +323,10 @@ const epsilon = 1e-6,
   ]),
   revisionFields = [
     ...battlefieldFields,
-    ...Object.keys(WINDING_BRANCHES).map((id) => resolveBattlefield(FIELDS[id as FieldId], 2, 2))
+    ...Object.keys(WINDING_BRANCHES).flatMap((id) => [
+      resolveBattlefield(FIELDS[id as FieldId], 2, 2),
+      resolveBattlefield(FIELDS[id as FieldId], 2, 3)
+    ])
   ],
   coordinateBound =
     Math.max(...battlefieldFields.flatMap((field) => [field.width, field.height])) +
@@ -808,7 +811,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   const decodeCurrentState = object<CampaignStateCheckpoint>({
     ...stateSchema,
     battlefieldVersion: choice([1, 2]),
-    layoutRevision: version >= 14 ? choice([1, 2]) : () => 1,
+    layoutRevision: version >= 14 ? choice([1, 2, 3]) : () => 1,
     waveBossPolicy: choice([1, 2]),
     lastAction: nullable(decodeCurrentAction),
     requestedAction: nullable(decodeCurrentAction)
@@ -1102,7 +1105,7 @@ function decodeCheckpoint(value: unknown): DecodedCheckpoint {
     version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
-  const revision = version >= 14 ? choice([1, 2])(state.layoutRevision) : 1
+  const revision = version >= 14 ? choice([1, 2, 3])(state.layoutRevision) : 1
   requireCheckpoint(version >= 14 || state.layoutRevision === undefined || state.layoutRevision === 1)
   const rules = version >= 4 ? choice([1, 2])(state.battlefieldVersion) : 1
   resolveBattlefield(FIELDS[fieldId(state.fieldId)], rules, revision)
@@ -3014,8 +3017,8 @@ function validateInterceptionContext(checkpoint: DecodedCheckpoint): void {
     requireCheckpoint(unique(tankIds))
   }
   const legacyFields = battlefieldVersion(checkpoint) === 2 ? 10 : 9,
-    baseFields = legacyFields + (layoutRevision(checkpoint) === 2 ? 1 : 0)
-  if (layoutRevision(checkpoint) === 2) requireCheckpoint(fields[legacyFields] === 'layout2')
+    baseFields = legacyFields + (layoutRevision(checkpoint) > 1 ? 1 : 0)
+  if (layoutRevision(checkpoint) > 1) requireCheckpoint(fields[legacyFields] === `layout${layoutRevision(checkpoint)}`)
   requireCheckpoint(
     fields.length === baseFields ||
       (checkpoint.version >= 6 && s.economyVersion === 2 && fields.length === baseFields + 1)

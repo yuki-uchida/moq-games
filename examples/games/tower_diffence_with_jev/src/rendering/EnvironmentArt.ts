@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { environmentPackAvailable } from '../BuildAssets'
 import { getField, type FieldId, type LayoutRevision, type Point } from '../game/model'
 import { battlefieldGeometryIdentity, type ResolvedBattlefield } from '../game/BattlefieldRoutes'
 
@@ -141,6 +142,7 @@ async function loadEnvironmentBatch(
   signal: AbortSignal | undefined,
   layoutRevision: LayoutRevision
 ): Promise<EnvironmentArtBundle> {
+  if (!environmentPackAvailable) throw new Error('3D environment assets are not included in this build')
   if (layoutRevision !== 1 && layoutRevision !== 2) throw new Error('Invalid environment layout revision')
   const root = new URL('environment-3d-trial/', base)
   if (!['https:', 'http:'].includes(root.protocol) || root.username || root.password)
@@ -166,7 +168,7 @@ async function loadEnvironmentBatch(
       redirect: 'error',
       signal: controller.signal
     })
-    if (!response.ok) throw new Error(`Environment image request failed (${response.status})`)
+    if (!response.ok) throw new Error(`Environment asset request failed (${response.status}): ${file}`)
     const bytes = await response.arrayBuffer()
     if (bytes.byteLength > maximum) throw new Error('Environment image exceeds the supported size')
     return bytes

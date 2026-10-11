@@ -21,12 +21,12 @@ export class AssetStatusNotice {
     const text = !visible
       ? ''
       : status === 'error'
-        ? 'キャラクター画像を読み込めません。戦闘を停止しました。ページを再読み込みしてください。'
+        ? 'キャラクターを読み込めません。戦闘を停止しました。ページを再読み込みしてください。'
         : status === 'ready'
-          ? 'キャラクター画像の準備ができました'
+          ? 'キャラクターの準備ができました'
           : fighting
-            ? 'キャラクター画像を読み込み中… 戦闘は一時停止しています'
-            : 'キャラクター画像を読み込み中…'
+            ? 'キャラクターを読み込み中… 戦闘は一時停止しています'
+            : 'キャラクターを読み込み中…'
     if (this.element.textContent !== text) this.element.textContent = text
   }
 }

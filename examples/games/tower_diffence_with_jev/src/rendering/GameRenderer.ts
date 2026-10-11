@@ -292,6 +292,8 @@ export class GameRenderer {
   private renderer: THREE.WebGLRenderer
   private disposed = false
   private models?: ModelUnitLayer
+  private modelsActive = false
+  private modelSelected: AllyType = 'soldier'
   private commander?: CommanderVisual
   private commanderMode = false
   private commanderSupport: CommanderSupportVisual
@@ -317,6 +319,8 @@ export class GameRenderer {
   private camera = new THREE.OrthographicCamera(0, this.field.width, 0, this.field.height, -200, 200)
   private units = new Map<number, UnitVisual>()
 
+  private drawTiming = { frames: 0, firstMs: 0, lastMs: 0, maxMs: 0 }
+
   diagnostics() {
     const state = this.previousState
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
@@ -324,6 +328,7 @@ export class GameRenderer {
     )
     return {
       frame: this.frameNumber,
+      gpu: { ...this.drawTiming, programs: this.renderer.info.programs?.length ?? 0 },
       modelRendering: this.models?.diagnostics() ?? null,
       artSwitch: this.artSwitchStatus,
       soldierArt: this.models ? 'gltf-mesh' : this.unitTrials.soldier ? '3d-trial' : '2d',
@@ -506,11 +511,12 @@ export class GameRenderer {
     }
     this.indexTrialClips()
     this.clips = unitTrialClips(this.standardClips, this.unitTrials)
-    if (!this.models) this.corpses = new CorpseVisual(this.scene, {
-      clips: { ...this.standardClips, ...authored.deathClips },
-      unitTrials: this.unitTrials,
-      deathAnimations: authored.deathAnimations
-    })
+    if (!this.models)
+      this.corpses = new CorpseVisual(this.scene, {
+        clips: { ...this.standardClips, ...authored.deathClips },
+        unitTrials: this.unitTrials,
+        deathAnimations: authored.deathAnimations
+      })
     this.effectClips = authored.effectClips ?? {}
     const effectUrls = new Set(Object.values(this.effectClips))
     this.atlasCache =
@@ -519,6 +525,13 @@ export class GameRenderer {
         effectUrls.has(url) ? loadEffectWholeFrameAtlas(url, signal) : loadRuntimeWholeFrameAtlas(url, signal)
       )
     this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false })
+    if (this.models) {
+      this.renderer.debug.onShaderError = (gl, program) => {
+        this.assetErrors['model:shader'] =
+          `3D shader compilation failed: ${gl.getProgramInfoLog(program) ?? 'unknown driver error'}`
+        this.assetStatus = 'error'
+      }
+    }
     this.renderer.setSize(this.field.width, this.field.height, false)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     this.renderer.domElement.setAttribute(
@@ -794,7 +807,9 @@ export class GameRenderer {
   environmentStatus() {
     return {
       enabled: this.environmentEnabled,
-      active: !!this.environmentArt && environmentMatchesField(this.environmentArt, this.field),
+      active:
+        this.field.layoutRevision === 3 ||
+        (!!this.environmentArt && environmentMatchesField(this.environmentArt, this.field)),
       layoutRevision: this.field.layoutRevision,
       loading: this.environmentLoading,
       waitingForPreparation: !!this.pendingEnvironment,
@@ -852,6 +867,8 @@ export class GameRenderer {
   }
 
   private requestEnvironment(): Promise<void> {
+    // Compact terrain is drawn from its own geometry, never a revision-2 baked road.
+    if (this.field.layoutRevision === 3) return Promise.resolve()
     const request = new AbortController(),
       field = this.field.id,
       version = this.field.version,
@@ -1017,7 +1034,13 @@ export class GameRenderer {
   }
 
   private requireCurrentAtlases(s: Readonly<GameState>): boolean {
-    let ready = this.models ? this.models.ready(s, this.defenderPlacementPreview?.type) : true
+    let ready =
+      this.models && this.modelsActive
+        ? this.models.ready(
+            s,
+            this.defenderPlacementPreview?.type ?? (s.phase === 'preparation' ? this.modelSelected : undefined)
+          )
+        : true
     if (this.models) Object.assign(this.assetErrors, this.models.errors)
     for (const unit of this.models ? [] : s.units) {
       if (unit.hp <= 0) continue
@@ -1054,6 +1077,7 @@ export class GameRenderer {
     }
     if (s.phase === 'assault')
       for (const attack of s.attacks) {
+        if (this.models && attack.breath && s.time < attack.endsAt && !this.breathEffect()) ready = false
         if (
           !attack.projectile ||
           (attack.status !== 'windup' && attack.status !== 'released') ||
@@ -1312,8 +1336,12 @@ export class GameRenderer {
     let point = this.projectileLaunches.get(id)
     if (!point) {
       if (this.models) {
+        if (!attack.projectile && !attack.breath) return { x: attack.target.x, y: attack.target.y - 18 }
         point = this.models.emitter(attack)
-        if (point) { this.projectileLaunches.set(id, point); return point }
+        if (point) {
+          this.projectileLaunches.set(id, point)
+          return point
+        }
         this.assetErrors[`${attack.type}:emitter`] = 'Missing verified 3D projectile emitter'
         return { x: attack.origin.x, y: attack.origin.y - 16 }
       }
@@ -1406,7 +1434,8 @@ export class GameRenderer {
     if (s.phase !== 'assault') return
     for (const attack of s.attacks) {
       if (!ATTACK_PROFILES[attack.type]) continue
-      if (!temporaryPaladinHeal(attack) && this.clips[this.cueKey(attack)] && !this.cueAtlas(attack)) continue
+      if (!this.models && !temporaryPaladinHeal(attack) && this.clips[this.cueKey(attack)] && !this.cueAtlas(attack))
+        continue
       if (temporaryPaladinHeal(attack) && attack.status !== 'cancelled' && s.time < attack.endsAt) {
         const caster = s.units.find((unit) => unit.id === attack.attackerId && unit.hp > 0)
         if (caster) {
@@ -1433,14 +1462,16 @@ export class GameRenderer {
           elapsedMs < BREATH_TIMING.endMs - 1e-6
         ) {
           const trial = unitTrialFor(attack, this.unitTrials)
-          const origin = trial?.breathMouths
-            ? mouthAt(
-                attack.origin,
-                trial.breathMouths[attack.breath.direction],
-                elapsedMs,
-                bodyScale(attack) * trial.displayScale
-              )
-            : shape.origin
+          const origin = this.models
+            ? (this.models.emitter(attack, s.time) ?? shape.origin)
+            : trial?.breathMouths
+              ? mouthAt(
+                  attack.origin,
+                  trial.breathMouths[attack.breath.direction],
+                  elapsedMs,
+                  bodyScale(attack) * trial.displayScale
+                )
+              : shape.origin
           this.paintAtlasEffect(
             mesh,
             atlas,
@@ -1628,7 +1659,8 @@ export class GameRenderer {
 
   private prepareEntryArt(s: Readonly<GameState>, selected: AllyType): void {
     if (s.phase !== 'preparation') return
-    if (this.models) { this.models.ready(s, selected); return }
+    if (this.models && !this.modelsActive) return
+    this.models?.ready(s, selected)
     const path = fieldFor(s).path
     const direction = spriteDirection({ x: path[1].x - path[0].x, y: path[1].y - path[0].y })
     const rules = stageRules(s.stage, s.waveBossPolicy)
@@ -1638,13 +1670,13 @@ export class GameRenderer {
       { owner: 'player' as const, type: selected, direction: 's' as SpriteDirection },
       ...[...enemies].map((type) => ({ owner: 'ai' as const, type, direction }))
     ]
-    for (const unit of requests)
+    for (const unit of this.models ? [] : requests)
       for (const motion of ['idle', 'walk', 'attack'] as const) {
         const url = this.clips[authoredClipKey(unit, motion, unit.direction)]
         if (url) this.atlasCache.get(url, false)
       }
     for (const unit of requests) {
-      if (unit.owner === 'player' && unit.type === 'paladin') {
+      if (!this.models && unit.owner === 'player' && unit.type === 'paladin') {
         const heal = this.clips[authoredClipKey(unit, 'attack', unit.direction, 'heal')]
         if (heal) this.atlasCache.get(heal, false)
       }
@@ -1928,6 +1960,7 @@ export class GameRenderer {
     roadPlacementActive = false
   ): void {
     if (this.disposed) return
+    this.modelsActive = interactive
     this.frameNumber++
     const corpseIds = this.renderCorpses(s)
     this.atlasCache.beginFrame()
@@ -1948,6 +1981,7 @@ export class GameRenderer {
     if (!interactive || roadPlacementActive || this.sandbagPreview || this.fortifications.placementActive)
       this.setDefenderPlacementPreview(null)
     if (this.defenderPlacementPreview) selected = this.defenderPlacementPreview.type
+    this.modelSelected = selected
     this.requireCurrentAtlases(s)
     if (this.previousState && this.previousState !== s) {
       this.projectileLaunches.clear()
@@ -2083,10 +2117,17 @@ export class GameRenderer {
     for (const edge of this.movementEdges) edge.visible = this.movement.visible
     if (this.placementBody) this.placementBody.visible = false
     this.models?.setPreview(
-      previewVisible ? selected : undefined, preview ?? undefined,
-      preview ? entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision) : undefined
+      previewVisible ? selected : undefined,
+      preview ?? undefined,
+      preview ? entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision) : undefined,
+      placement?.valid ?? true
     )
-    if (!this.models && previewVisible && preview && (!anchor || preview.x !== anchor.homeX || preview.y !== anchor.homeY)) {
+    if (
+      !this.models &&
+      previewVisible &&
+      preview &&
+      (!anchor || preview.x !== anchor.homeX || preview.y !== anchor.homeY)
+    ) {
       const facing = entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision),
         direction = spriteDirection(facing)
       const atlas = this.approvedAtlas(
@@ -2145,7 +2186,7 @@ export class GameRenderer {
             ? `近接接触 · 半径 ${definition.range}（索敵 ${definition.range + definition.leash}）`
             : `攻撃・回復 · 半径 ${definition.range}`
     }
-    this.models?.render(s)
+    if (this.modelsActive) this.models?.render(s)
     const visualTime = performance.now() / 1000
     const active = new Set(s.units.map((unit) => unit.id))
     for (const [id, visual] of this.units)
@@ -2518,7 +2559,12 @@ export class GameRenderer {
         })
         label.style.top = `${Math.max(18, unit.y - 76 * bodyScale(unit))}px`
         if (visual.defenderHandle) {
-          visual.defenderHandle.hidden = !visible || !interactive || !['preparation', 'assault'].includes(s.phase) || roadPlacementActive || unit.hp <= 0
+          visual.defenderHandle.hidden =
+            !visible ||
+            !interactive ||
+            !['preparation', 'assault'].includes(s.phase) ||
+            roadPlacementActive ||
+            unit.hp <= 0
           visual.defenderHandle.style.left = `${unit.x - 36}px`
           visual.defenderHandle.style.top = `${unit.y - 72}px`
           visual.defenderHandle.style.width = '72px'
@@ -2529,16 +2575,32 @@ export class GameRenderer {
     this.fortifications.render(
       s,
       interactive,
-      new Set([...this.units].filter(([id, visual]) => visual.group.visible && (this.models ? this.models.visible(id) : visual.body.visible)).map(([id]) => id))
+      new Set(
+        [...this.units]
+          .filter(
+            ([id, visual]) => visual.group.visible && (this.models ? this.models.visible(id) : visual.body.visible)
+          )
+          .map(([id]) => id)
+      )
     )
     this.heavyImpacts.render(s)
     this.dragonSplashes.render(s)
     this.renderAttackEffects(s)
-    this.commander?.render(s, this.commanderMode)
+    if (interactive) this.commander?.render(s, this.commanderMode)
     this.commanderSupport.render(s, this.commanderMode)
     this.prepareEntryArt(s, selected)
     this.atlasCache.endFrame()
-    this.renderer.render(this.scene, this.camera)
+    // Title/launch dialogs cover the battlefield. Do not upload textures or compile
+    // its shaders before the player starts; this also keeps cold startup responsive.
+    if (interactive) {
+      const drawStarted = performance.now()
+      this.renderer.render(this.scene, this.camera)
+      const elapsed = performance.now() - drawStarted
+      if (!this.drawTiming.frames) this.drawTiming.firstMs = elapsed
+      this.drawTiming.frames++
+      this.drawTiming.lastMs = elapsed
+      this.drawTiming.maxMs = Math.max(this.drawTiming.maxMs, elapsed)
+    }
     this.lastRenderedSimulationTime = s.time
   }
 }

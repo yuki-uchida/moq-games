@@ -14,4 +14,4 @@ This authorization does not permit force-pushing, rewriting published history, d
 
 The pinned SDK is generated into `.generated/moqt-sdk` by the explicit first-time `node scripts/setup-sdk.mjs` step before `npm ci --ignore-scripts`. Normal development reuses that output; it must not rebuild Rust or depend on a sibling checkout. See `sdk/README.md` for setup and regeneration.
 
-Use headless browser verification. Source architecture: `docs/architecture.md`. Local-only migration provenance (not published): `migration/source-inventory.json`.
+Use headless browser verification. Local-only migration provenance (not published): `migration/source-inventory.json`.

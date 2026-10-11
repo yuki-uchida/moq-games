@@ -2747,3 +2747,14 @@ dialog::backdrop {
   font-style: normal;
   white-space: nowrap;
 }
+
+/* Revision 3 keeps the whole battlefield in view, including on resize. */
+#map-scroll[data-fit='true'] {
+  padding: 110px 12px 30px;
+  display: flex;
+  overflow: hidden;
+  cursor: default;
+}
+#map-scroll[data-fit='true'] #map-world {
+  flex: none;
+}

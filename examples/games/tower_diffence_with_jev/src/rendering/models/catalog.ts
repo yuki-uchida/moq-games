@@ -165,6 +165,36 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
       breath: source('dragon', 'dragon-motion-v2-candidate.glb', 'breath', [adapters.dragonMaterial, adapters.dragonSkinning]),
     }
   },
+  soldier: {
+    viewElevation: Math.atan2(2.12, 5),
+    scale: 128 / 2.75 * (60 / 91), origin: [0.13500000536441803, 0, 0], yaw: 0, walkDistance: 24,
+    provenance: 'soldier-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    clips: {
+      idle: source('soldier', 'soldier-motion-v2-candidate.glb', 'idle', [adapters.soldierMaterial, adapters.soldierSkinning]),
+      walk: source('soldier', 'soldier-motion-v2-candidate.glb', 'walk', [adapters.soldierMaterial, adapters.soldierSkinning]),
+      attack: source('soldier', 'soldier-motion-v2-candidate.glb', 'attack', [adapters.soldierMaterial, adapters.soldierSkinning]),
+    }
+  },
+  archer: {
+    scale: 128 / 4.267241477966309, origin: [0, -0.9518839716911316, 0], yaw: 0, walkDistance: 24,
+    provenance: 'archer-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    emitter: { node: 'Archer_Release_Emitter' },
+    clips: {
+      attack: source('archer', 'archer-attack-candidate.glb', 'attack', []),
+      idle: source('archer', 'archer-idle-candidate.glb', 'idle', [adapters.archerMaterial]),
+      walk: source('archer', 'archer-walk-candidate.glb', 'walk', []),
+    }
+  },
+  runner: {
+    scale: 128 / 3.88, origin: [-0.05999999865889549, -0.95166015625, -0.20000000298023224], yaw: 0,
+    walkDistance: 28, attackTimeScale: 640 / 480,
+    provenance: 'Current Runner authored export; 640 ms clip / 320 ms source contact, mapped to existing combat clock; visual review pending',
+    clips: {
+      idle: source('runner', 'runner-idle-current.glb', 'idle', [adapters.runnerMaterial]),
+      walk: source('runner', 'runner-walk-current.glb', 'walk', [adapters.runnerMaterial]),
+      attack: source('runner', 'runner-attack-current.glb', 'attack')
+    }
+  },
   slime: {
     scale: 30, origin: [0, -0.027695, 0], yaw: 0, walkDistance: 32,
     provenance: 'slime-with-death-pilot.glb; measured ground, provisional gameplay scale; visual review pending',
@@ -177,7 +207,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
 
 export function getUnitModelDefinition(type: UnitType): UnitModelDefinition | undefined { return UNIT_MODEL_CATALOG[type] }
 export const MODEL_AVAILABILITY = {
-  runner: 'Missing current animated candidate; no sprite or static-model fallback',
+  runner: 'Current 640 ms authored animation exported; mapped to existing 480 ms combat clock without changing balance',
   visualAcceptance: 'Pending runtime review for every candidate; source inspection is not visual acceptance',
   death: 'Only Slime supplies authored death. Other roles retain their last 3D pose during the game-owned fade.'
 } as const

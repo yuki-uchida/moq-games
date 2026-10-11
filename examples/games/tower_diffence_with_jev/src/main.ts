@@ -1,4 +1,5 @@
-import { audioPackAvailable, environmentPackAvailable } from './BuildAssets'
+import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
+import { soundStatusMessage } from './audio/SoundStatus'
 import { allRoadPaths } from './game/BattlefieldRoutes'
 import { FORTIFICATIONS } from './game/Fortifications'
 import {
@@ -15,6 +16,7 @@ import {
   roadItemPlacementLabel,
   roadItemStatus
 } from './fortification-ui'
+import { BattleMusic, loadMusicPreferences, saveMusicPreferences } from './audio/BattleMusic'
 import { SoundPlayer } from './audio/SoundPlayer'
 import { soundCatalog } from './audio/SoundCatalog'
 import { loadSoundPreferences, saveSoundPreferences } from './audio/SoundPreferences'
@@ -53,13 +55,10 @@ import {
 } from './game/model'
 import { RuleBasedAI, JevAI } from './ai/AIController'
 import { GameRenderer } from './rendering/GameRenderer'
+import { UNIT_MODEL_CATALOG } from './rendering/models/catalog'
 import type { ArtMode } from './rendering/BulkArtSwitch'
 import { AssetStatusNotice } from './rendering/AssetStatusNotice'
-import {
-  loadEnvironmentArtBundle,
-  newCampaignLayoutRevision,
-  type EnvironmentArtBundle
-} from './rendering/EnvironmentArt'
+import { loadEnvironmentArtBundle, type EnvironmentArtBundle } from './rendering/EnvironmentArt'
 import { environmentTrialFromURL } from './rendering/EnvironmentTrial'
 import { DecisionPanel } from './ui/DecisionPanel'
 import { commanderSupportPresentation } from './rendering/CommanderPresentation'
@@ -152,6 +151,9 @@ let battleClock: BattleClock | undefined,
   pendingSaveAction: 'new' | 'reset' | null = null
 const fieldIds = Object.keys(FIELDS) as FieldId[]
 const artBase = new URL('../../../tower-defense-art/', document.baseURI)
+// Build-only acceptance gate. Remove after the full real-mesh browser suite passes;
+// this is deliberately not a user-facing rendering mode or URL switch.
+const useModelRenderer = true
 const trialArts = unitTrialCatalog(artBase)
 let environmentTrialEnabled = environmentPackAvailable && environmentTrialFromURL(new URL(document.baseURI))
 let environmentTrialError: string | undefined
@@ -159,7 +161,10 @@ let environmentTrialRequest = 0
 let newLayoutBundle: EnvironmentArtBundle | undefined
 const newLayoutRequest = new AbortController()
 const trialEnabled = Object.fromEntries(
-  ALL_TRIAL_TYPES.map((type) => [type, new URL(document.baseURI).searchParams.get(`${type}-art`) === '3d'])
+  ALL_TRIAL_TYPES.map((type) => [
+    type,
+    !useModelRenderer && new URL(document.baseURI).searchParams.get(`${type}-art`) === '3d'
+  ])
 ) as Record<UnitTrialType, boolean>
 function displayPortrait(type: UnitType): string | undefined {
   return ALL_TRIAL_TYPES.some((role) => role === type) && trialEnabled[type as UnitTrialType]
@@ -174,7 +179,7 @@ const emblems = {
   defeat:
     '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 34C4 24 2 17 5 10c4-7 12-5 15 1 3-6 11-8 15-1 3 7 1 14-15 24Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>'
 }
-function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 1) {
+function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 3) {
   const field = getField(id, 2, layoutRevision),
     entry = field.entrance,
     base = field.gate
@@ -201,7 +206,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <section id="item-tray" class="floating-tray panel" aria-label="道の備え" hidden><div class="tray-heading"><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" title="土のうを配置">${fortificationIcon('sandbag')}<small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
 <section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
 </main>
-<dialog id="settings" class="panel settings" aria-labelledby="settings-title"><div class="dialog-heading"><div><span class="eyebrow">EXPEDITION SETTINGS</span><h2 id="settings-title">接続・AI・保存</h2></div><button id="settings-close" class="close-button" aria-label="設定を閉じる">×</button></div><p class="dialog-intro">敵の指揮官と、ブラウザー保存の設定です。</p><label for="mode">敵の指揮官</label><select id="mode" aria-describedby="mode-help"><option value="rule">ルール AI · 接続なしで遊ぶ</option><option value="jev" selected>Jev · MoQ に接続して遊ぶ</option></select><p id="clock-help" class="hint">別のタブを見ている間も、現在のステージの戦闘は続きます。勝敗が決まると停止し、次へは手動です。Jev の判断・API 利用料金も継続します。端末のスリープやブラウザーの凍結・破棄中は継続を保証できません。遅延の補完は最大2秒で、それを超えた時間は進めません。</p><p id="clock-status" class="notice" role="status" hidden></p><p id="mode-help" class="hint">ルール AI は接続不要。Jev は同じ Relay・Room で Pipecat bot を起動してください。</p><label for="history-mode">戦術履歴を判断に含める</label><select id="history-mode" aria-describedby="history-help"><option value="on" selected>ON · 直近20秒と短い戦績</option><option value="off">OFF · 現在の盤面のみ</option></select><p id="history-help" class="hint">同じ盤面のまま切り替えできます。変更は次の通常判断から適用。ONでも追加のJev呼び出しはしません。</p><div id="connection-fields" class="connection-fields"><span class="section-kicker">MOQ × PIPECAT × JEV</span><label for="relay">WebTransport relay</label><input id="relay" type="url" spellcheck="false" autocomplete="off"><label for="room">Room</label><input id="room" value="mossvale" spellcheck="false" autocomplete="off"><button id="connect" class="primary">MoQ に接続</button></div><p id="notice" class="notice" role="status" aria-live="polite">Jev は MoQ への接続が必要です。</p><section class="enemy-plan" aria-labelledby="enemy-plan-title"><h3 id="enemy-plan-title">敵の作戦</h3><p id="enemy-plan-status">準備中は敵の出撃判断を行いません。</p><p id="enemy-plan-reason" hidden></p><small id="enemy-plan-progress" hidden></small><p id="enemy-plan-reconsideration" hidden></p></section><section class="commander-support-tools" aria-labelledby="commander-support-title"><h3 id="commander-support-title">Jev の支援魔法</h3><p id="commander-support-status" role="status"></p><p id="commander-support-order" class="hint"></p><p class="hint">新規遠征の Jev モードで、戦闘開始10秒後から敵1体を支援。600msの詠唱後に回復、または5秒の加速・防御・攻撃強化。発動間隔10秒、重ね掛けなし。召喚とは別の判断で、通信失敗時には発動しません。</p><small>召喚と支援は各1秒に1回まで、合計最大2回のAPIリクエスト。支援の再使用待ち中は支援を問い合わせません。ルールAIと旧遠征には追加されません。</small></section><section class="environment-art-tools"><label for="art-mode">全体の描画 · 仲間・敵・環境</label><select id="art-mode" aria-describedby="art-mode-help art-mode-status"><option value="2d">すべて2D</option><option value="3d">すべて3D試用</option><option value="mixed" disabled>個別設定（2D・3D混在）</option></select><p id="art-mode-help" class="hint">仲間10種・敵10種・環境をまとめて切り替えます。読み込み中は今の表示を保ち、準備ができたら同時に反映します。初回画面・準備中のみ変更できます。旧地形の環境は2Dのままです。3Dの歩行は試作です。</p><p id="art-mode-status" class="hint" role="status" aria-live="polite"></p><button id="art-mode-cancel" hidden>切り替えを中止</button></section><section class="environment-art-tools"><label for="environment-art">環境の描画</label><select id="environment-art" aria-describedby="environment-art-help environment-art-status"><option value="2d">元の2D</option><option value="3d">3D試用</option></select><p id="environment-art-help" class="hint">戦う場所は平らなまま、起伏は外側の景観に配置します。道・配置・戦闘ルールは同じです。旧地形は元の2Dを使用します。初回画面・準備中に変更できます。</p><p id="environment-art-status" class="hint" role="status" aria-live="polite"></p></section><section class="trial-art-tools">${UNIT_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}の描画</label><select id="${type}-art" aria-describedby="soldier-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="soldier-art-help" class="hint">剣士・射手・盾騎士・魔法使い・霜の術師・花の癒やし手・槍の斥候・鷹の狩人・火薬の工兵・光の守護者を個別に切り替えます。能力・速度・命中時刻は同じです。光の守護者は近接範囲攻撃で戦います。3Dの歩行の接地と死亡演出は試作です。死亡アニメは未制作のため、倒れたときは最後の全身姿勢を保持します。歩調は暫定値のため足滑りが残ります。初回画面・準備中に変更できます。</p></section><section class="enemy-trial-art-tools"><h3>敵の描画</h3>${ENEMY_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}</label><select id="${type}-art" aria-describedby="enemy-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="enemy-art-help" class="hint">敵の全身画像を個別に切り替えます。能力・出現条件・ボス倍率は同じです。初回画面・準備中のみ変更できます。3D死亡アニメは未制作のため最後の全身姿勢を保持します。歩行の接地には足滑りが残ります。</p></section><section class="sound-tools" aria-labelledby="sound-title"><h3 id="sound-title">効果音 · 試用</h3><label class="sound-toggle"><input id="sound-enabled" type="checkbox" checked> 攻撃・減速の効果音を鳴らす</label><label for="sound-volume">音量 <output id="sound-volume-value">20%</output></label><input id="sound-volume" type="range" min="0" max="100" step="5" value="20"><p id="sound-status" class="hint" role="status"></p><button id="sound-retry" hidden>音声の読み込みを再試行</button><p class="hint">生成音の候補です。音色は調整中。最初の操作後に読み込み、準備できた音だけを鳴らします。再開時に過去の音は再生しません。</p></section><section class="save-tools" aria-labelledby="save-title"><h3 id="save-title">このブラウザーの保存</h3><p>5秒ごと・配置や購入・ステージ終了時に自動保存。再開には最初の画面で操作が必要です。</p><p id="save-state" role="status">未開始</p><button id="save-now">今の遠征を保存</button><button id="save-reset">保存データを初期化</button><small>雇用済みの仲間は新しい遠征でも利用可能。レベル・資金・装備・道のアイテム・門の強化は遠征ごとにリセットされます。同じゲームを複数タブで開くと、最後に保存した内容が使われます。</small></section><details class="ai-details"><summary>AI の判断を見る</summary><p id="last-action">待機</p><pre id="scores"></pre></details></dialog>
+<dialog id="settings" class="panel settings" aria-labelledby="settings-title"><div class="dialog-heading"><div><span class="eyebrow">EXPEDITION SETTINGS</span><h2 id="settings-title">接続・AI・保存</h2></div><button id="settings-close" class="close-button" aria-label="設定を閉じる">×</button></div><p class="dialog-intro">敵の指揮官と、ブラウザー保存の設定です。</p><label for="mode">敵の指揮官</label><select id="mode" aria-describedby="mode-help"><option value="rule">ルール AI · 接続なしで遊ぶ</option><option value="jev" selected>Jev · MoQ に接続して遊ぶ</option></select><p id="clock-help" class="hint">別のタブを見ている間も、現在のステージの戦闘は続きます。勝敗が決まると停止し、次へは手動です。Jev の判断・API 利用料金も継続します。端末のスリープやブラウザーの凍結・破棄中は継続を保証できません。遅延の補完は最大2秒で、それを超えた時間は進めません。</p><p id="clock-status" class="notice" role="status" hidden></p><p id="mode-help" class="hint">ルール AI は接続不要。Jev は同じ Relay・Room で Pipecat bot を起動してください。</p><label for="history-mode">戦術履歴を判断に含める</label><select id="history-mode" aria-describedby="history-help"><option value="on" selected>ON · 直近20秒と短い戦績</option><option value="off">OFF · 現在の盤面のみ</option></select><p id="history-help" class="hint">同じ盤面のまま切り替えできます。変更は次の通常判断から適用。ONでも追加のJev呼び出しはしません。</p><div id="connection-fields" class="connection-fields"><span class="section-kicker">MOQ × PIPECAT × JEV</span><label for="relay">WebTransport relay</label><input id="relay" type="url" spellcheck="false" autocomplete="off"><label for="room">Room</label><input id="room" value="mossvale" spellcheck="false" autocomplete="off"><button id="connect" class="primary">MoQ に接続</button></div><p id="notice" class="notice" role="status" aria-live="polite">Jev は MoQ への接続が必要です。</p><section class="enemy-plan" aria-labelledby="enemy-plan-title"><h3 id="enemy-plan-title">敵の作戦</h3><p id="enemy-plan-status">準備中は敵の出撃判断を行いません。</p><p id="enemy-plan-reason" hidden></p><small id="enemy-plan-progress" hidden></small><p id="enemy-plan-reconsideration" hidden></p></section><section class="commander-support-tools" aria-labelledby="commander-support-title"><h3 id="commander-support-title">Jev の支援魔法</h3><p id="commander-support-status" role="status"></p><p id="commander-support-order" class="hint"></p><p class="hint">新規遠征の Jev モードで、戦闘開始10秒後から敵1体を支援。600msの詠唱後に回復、または5秒の加速・防御・攻撃強化。発動間隔10秒、重ね掛けなし。召喚とは別の判断で、通信失敗時には発動しません。</p><small>召喚と支援は各1秒に1回まで、合計最大2回のAPIリクエスト。支援の再使用待ち中は支援を問い合わせません。ルールAIと旧遠征には追加されません。</small></section><section class="environment-art-tools"><label for="art-mode">全体の描画 · 仲間・敵・環境</label><select id="art-mode" aria-describedby="art-mode-help art-mode-status"><option value="2d">すべて2D</option><option value="3d">すべて3D試用</option><option value="mixed" disabled>個別設定（2D・3D混在）</option></select><p id="art-mode-help" class="hint">仲間10種・敵10種・環境をまとめて切り替えます。読み込み中は今の表示を保ち、準備ができたら同時に反映します。初回画面・準備中のみ変更できます。旧地形の環境は2Dのままです。3Dの歩行は試作です。</p><p id="art-mode-status" class="hint" role="status" aria-live="polite"></p><button id="art-mode-cancel" hidden>切り替えを中止</button></section><section class="environment-art-tools"><label for="environment-art">環境の描画</label><select id="environment-art" aria-describedby="environment-art-help environment-art-status"><option value="2d">元の2D</option><option value="3d">3D試用</option></select><p id="environment-art-help" class="hint">戦う場所は平らなまま、起伏は外側の景観に配置します。道・配置・戦闘ルールは同じです。旧地形は元の2Dを使用します。初回画面・準備中に変更できます。</p><p id="environment-art-status" class="hint" role="status" aria-live="polite"></p></section><section class="trial-art-tools" hidden inert>${UNIT_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}の描画</label><select id="${type}-art" aria-describedby="soldier-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="soldier-art-help" class="hint">剣士・射手・盾騎士・魔法使い・霜の術師・花の癒やし手・槍の斥候・鷹の狩人・火薬の工兵・光の守護者を個別に切り替えます。能力・速度・命中時刻は同じです。光の守護者は近接範囲攻撃で戦います。3Dの歩行の接地と死亡演出は試作です。死亡アニメは未制作のため、倒れたときは最後の全身姿勢を保持します。歩調は暫定値のため足滑りが残ります。初回画面・準備中に変更できます。</p></section><section class="enemy-trial-art-tools" hidden inert><h3>敵の描画</h3>${ENEMY_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}</label><select id="${type}-art" aria-describedby="enemy-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="enemy-art-help" class="hint">敵の全身画像を個別に切り替えます。能力・出現条件・ボス倍率は同じです。初回画面・準備中のみ変更できます。3D死亡アニメは未制作のため最後の全身姿勢を保持します。歩行の接地には足滑りが残ります。</p></section><section class="sound-tools" aria-labelledby="music-title"><h3 id="music-title">襲撃のBGM</h3><label class="sound-toggle"><input id="music-enabled" type="checkbox" checked> 襲撃中にBGMを鳴らす</label><label for="music-volume">BGM音量 <output id="music-volume-value">20%</output></label><input id="music-volume" type="range" min="0" max="100" step="5" value="20"><p id="music-status" class="hint" role="status">襲撃中だけ再生します。</p><p class="hint">ステージ1〜9は2曲から襲撃ごとにランダムで選択し、同じ曲をループ。ステージ10は最終ボス曲。準備中・結果画面では停止します。</p></section><section class="sound-tools" aria-labelledby="sound-title"><h3 id="sound-title">効果音 · 試用</h3><label class="sound-toggle"><input id="sound-enabled" type="checkbox" checked> 攻撃・減速の効果音を鳴らす</label><label for="sound-volume">音量 <output id="sound-volume-value">20%</output></label><input id="sound-volume" type="range" min="0" max="100" step="5" value="20"><p id="sound-status" class="hint" role="status"></p><button id="sound-retry" hidden>音声の読み込みを再試行</button><p class="hint">生成音の候補です。音色は調整中。最初の操作後に読み込み、準備できた音だけを鳴らします。再開時に過去の音は再生しません。</p></section><section class="save-tools" aria-labelledby="save-title"><h3 id="save-title">このブラウザーの保存</h3><p>5秒ごと・配置や購入・ステージ終了時に自動保存。再開には最初の画面で操作が必要です。</p><p id="save-state" role="status">未開始</p><button id="save-now">今の遠征を保存</button><button id="save-reset">保存データを初期化</button><small>雇用済みの仲間は新しい遠征でも利用可能。レベル・資金・装備・道のアイテム・門の強化は遠征ごとにリセットされます。同じゲームを複数タブで開くと、最後に保存した内容が使われます。</small></section><details class="ai-details"><summary>AI の判断を見る</summary><p id="last-action">待機</p><pre id="scores"></pre></details></dialog>
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">戦いの報酬で、新しい仲間と出会おう。雇用した仲間は次の遠征でも利用できます。強化とゴールドは今回の全10ステージ限定です。</p><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
@@ -213,6 +218,7 @@ ${fortificationDialogs}
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
+  models: useModelRenderer ? UNIT_MODEL_CATALOG : undefined,
   clips: { ...authoredRosterClips(artBase), ...dragonBreathBodyClips(artBase) },
   commanderBase: artBase,
   environmentTrial: environmentTrialEnabled,
@@ -241,7 +247,7 @@ if (environmentPackAvailable)
 Object.assign(window, {
   towerDefenseDiagnostics: () => ({
     ...renderer.diagnostics(),
-    newCampaignLayoutRevision: newCampaignLayoutRevision(newLayoutBundle)
+    newCampaignLayoutRevision: 3 as LayoutRevision
   })
 })
 for (const type of ALL_TRIAL_TYPES) $<HTMLSelectElement>(`${type}-art`).value = trialEnabled[type] ? '3d' : '2d'
@@ -258,7 +264,9 @@ function updateArtModeStatus() {
     mode = currentArtMode(),
     environment = renderer.environmentStatus(),
     environmentIncomplete = mode === '3d' && engine.state.battlefieldVersion === 2 && !environment.active
-  selector.disabled = started && !preparing()
+  const controls = environmentArtControls(environmentPackAvailable, started, preparing())
+  selector.disabled = controls.allArtDisabled
+  selector.querySelector<HTMLOptionElement>('option[value="3d"]')!.disabled = controls.threeDOptionDisabled
   selector.value = loading ? status.target! : mode
   $('art-mode-cancel').hidden = !loading
   label.dataset.status =
@@ -319,7 +327,15 @@ function updateEnvironmentArtStatus() {
     error = environmentTrialError ?? status.error,
     legacy = started && engine.state.battlefieldVersion !== 2,
     label = $('environment-art-status')
-  $<HTMLSelectElement>('environment-art').disabled = started && !preparing()
+  const selector = $<HTMLSelectElement>('environment-art'),
+    controls = environmentArtControls(environmentPackAvailable, started, preparing())
+  selector.disabled = controls.environmentDisabled
+  selector.querySelector<HTMLOptionElement>('option[value="3d"]')!.disabled = controls.threeDOptionDisabled
+  if (!environmentPackAvailable) {
+    label.dataset.status = 'unavailable'
+    label.textContent = 'この配布版は3D環境素材を含めていないため、元の2D環境を使用します。'
+    return
+  }
   label.dataset.status = !environmentTrialEnabled
     ? 'original'
     : error
@@ -356,11 +372,43 @@ assetStatus.hidden = true
 $('app').append(assetStatus)
 const assetNotice = new AssetStatusNotice(assetStatus)
 const decisionPanel = new DecisionPanel($('app'), (type) => displayPortrait(type))
+const musicPreferences = loadMusicPreferences()
+const battleMusic = new BattleMusic(
+  new Audio(new URL('../../../tower-defense-music/monster-assault.mp3', document.baseURI).href),
+  (status) => {
+    $('music-status').textContent = status
+  },
+  new URL('../../../tower-defense-music/final-boss.mp3', document.baseURI).href,
+  new URL('../../../tower-defense-music/monster-assault-2.mp3', document.baseURI).href
+)
+battleMusic.configure(musicPreferences)
+$<HTMLInputElement>('music-enabled').checked = musicPreferences.enabled
+$<HTMLInputElement>('music-volume').value = String(Math.round(musicPreferences.volume * 100))
+$('music-volume-value').textContent = `${Math.round(musicPreferences.volume * 100)}%`
+$<HTMLInputElement>('music-enabled').onchange = () => {
+  musicPreferences.enabled = $<HTMLInputElement>('music-enabled').checked
+  battleMusic.configure(musicPreferences)
+  battleMusic.unlock()
+  saveMusicPreferences(musicPreferences)
+}
+$<HTMLInputElement>('music-volume').oninput = () => {
+  musicPreferences.volume = Number($<HTMLInputElement>('music-volume').value) / 100
+  battleMusic.configure(musicPreferences)
+  $('music-volume-value').textContent = `${Math.round(musicPreferences.volume * 100)}%`
+  saveMusicPreferences(musicPreferences)
+}
+function syncBattleMusic() {
+  battleMusic.setBattle(
+    started && engine.state.phase === 'assault',
+    `${engine.state.seed}:${engine.state.fieldId}:${engine.state.stage}`,
+    engine.state.stage
+  )
+}
 const soundPreferences = loadSoundPreferences()
 const soundPlayer = new SoundPlayer(
   soundCatalog(new URL('../../../tower-defense-sfx/', document.baseURI)),
   (status) => {
-    $('sound-status').textContent = !status.enabled ? '効果音はミュート中' : status.message
+    $('sound-status').textContent = soundStatusMessage(status, audioPackAvailable)
     $('sound-retry').hidden = status.failed === 0 || !status.enabled
   }
 )
@@ -368,10 +416,10 @@ soundPlayer.setVolume(soundPreferences.volume)
 soundPlayer.setEnabled(soundPreferences.enabled && audioPackAvailable)
 $<HTMLInputElement>('sound-enabled').disabled = !audioPackAvailable
 $<HTMLInputElement>('sound-enabled').checked = soundPreferences.enabled && audioPackAvailable
-if (!audioPackAvailable) $('sound-status').textContent = 'この公開版には音声パックを含みません。'
 $<HTMLInputElement>('sound-volume').value = String(Math.round(soundPreferences.volume * 100))
 $('sound-volume-value').textContent = `${Math.round(soundPreferences.volume * 100)}%`
 const unlockSound = (event: Event) => {
+  if (event.isTrusted) battleMusic.unlock()
   if (event.isTrusted && soundPreferences.enabled) void soundPlayer.unlock()
 }
 document.addEventListener('pointerdown', unlockSound, { capture: true })
@@ -392,7 +440,10 @@ $('sound-retry').onclick = () => {
   void soundPlayer.unlock()
   soundPlayer.retryFailed()
 }
-Object.assign(window, { towerDefenseAudioDiagnostics: () => soundPlayer.diagnostics })
+Object.assign(window, {
+  towerDefenseMusicDiagnostics: () => battleMusic.diagnostics,
+  towerDefenseAudioDiagnostics: () => soundPlayer.diagnostics
+})
 const viewport = $('map-scroll')
 let mapScale = 1
 const settingsPanel = new PanelDialog(
@@ -416,6 +467,7 @@ const saveConfirm = new PanelDialog($<HTMLDialogElement>('save-confirm'), [$('sa
 const launchDialog = $<HTMLDialogElement>('launch')
 const titleDialog = $<HTMLDialogElement>('title-screen')
 function openTitle() {
+  battleMusic.setBattle(false)
   history.replaceState({ towerScreen: 'title' }, '', location.pathname + location.search)
   launchDialog.close()
   settingsPanel.close(false)
@@ -434,11 +486,15 @@ function returnToTitle() {
     battleClock?.stop()
     engine.invalidateAI()
     connection?.cancelPending()
+    battleMusic.setBattle(false)
     location.replace(new URL('./index.html', location.href).href)
   } else openTitle()
 }
 titleDialog.addEventListener('cancel', (event) => event.preventDefault())
-launchDialog.addEventListener('cancel', (event) => { event.preventDefault(); openTitle() })
+launchDialog.addEventListener('cancel', (event) => {
+  event.preventDefault()
+  openTitle()
+})
 $('title-new').onclick = () => {
   history.pushState({ towerScreen: 'new' }, '', '#new-game')
   titleDialog.close()
@@ -450,7 +506,10 @@ $('title-continue').onclick = () => {
   history.pushState({ towerScreen: 'game' }, '', '#game')
   titleDialog.close()
   $('resume-run').click()
-  if (!started) { openTitle(); $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。' }
+  if (!started) {
+    openTitle()
+    $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。'
+  }
 }
 $('launch-title-return').onclick = returnToTitle
 $('game-title-return').onclick = returnToTitle
@@ -492,7 +551,7 @@ function base() {
 }
 function updateFieldChoicePreviews() {
   if (started) return
-  const layoutRevision = newCampaignLayoutRevision(newLayoutBundle)
+  const layoutRevision: LayoutRevision = 3
   for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-field]'))) {
     const preview = card.querySelector('.field-art svg')
     if (preview) preview.outerHTML = mapPreview(card.dataset.field as FieldId, layoutRevision)
@@ -530,7 +589,20 @@ for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[dat
   }
 function resizeBattlefield() {
   const field = fieldFor(engine.state)
-  mapScale = Math.max(0.55, viewport.clientWidth / field.width)
+  const compact = field.layoutRevision === 3
+  mapScale = compact
+    ? Math.min((viewport.clientWidth - 24) / field.width, (viewport.clientHeight - 140) / field.height)
+    : Math.max(0.55, viewport.clientWidth / field.width)
+  viewport.dataset.fit = compact ? 'true' : 'false'
+  viewport.setAttribute(
+    'aria-label',
+    compact
+      ? '戦場全体。Shiftと矢印キーで配置位置を選び、Enterで配置・移動'
+      : '戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動'
+  )
+  $('map-world').style.margin = compact ? 'auto' : '0'
+  viewport.scrollLeft = compact ? 0 : viewport.scrollLeft
+  viewport.scrollTop = compact ? 0 : viewport.scrollTop
   $('field').style.transform = `scale(${mapScale})`
   $('map-world').style.width = `${field.width * mapScale}px`
   $('map-world').style.height = `${field.height * mapScale}px`
@@ -1190,7 +1262,7 @@ function updateStart() {
       ? 'Jev と保存した遠征を続ける'
       : '保存した遠征をルール AI で続ける'
   $('saved-run-note').textContent = pendingRun
-    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の遠征を保存しています。閉じていた間の時間は進みません。${pendingRun.progress.economyVersion === 2 ? ' 1体40G・個別強化の遠征です。' : ' この遠征は旧経済ルール（無料配置・ステージごとの上限・種類単位の強化）を維持します。'}${pendingRun.engine.state.battlefieldVersion === 1 ? ' この遠征は旧地形・旧戦闘ルールで継続します。分岐した新しい戦場は新規遠征から利用できます。' : ' 分岐した縦長マップの遠征を続けます。'}${pendingRun.progress.commanderSupportVersion === 1 ? ' Jevモードでは指揮官の支援魔法を利用します。' : ' この保存遠征には新しい指揮官支援を追加しません。'}${pendingRun.engine.state.waveBossPolicy === 1 && stageRules(pendingRun.engine.state.stage, 1).bossType !== stageRules(pendingRun.engine.state.stage, 2).bossType ? ' この進行中ステージのボス枠は保存時の構成を引き継ぎ、次のステージから新しい構成になります。' : ''}`
+    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の遠征を保存しています。閉じていた間の時間は進みません。${pendingRun.progress.economyVersion === 2 ? ' 1体40G・個別強化の遠征です。' : ' この遠征は旧経済ルール（無料配置・ステージごとの上限・種類単位の強化）を維持します。'}${pendingRun.engine.state.battlefieldVersion === 1 ? ' この遠征は旧地形・旧戦闘ルールで継続します。分岐した新しい戦場は新規遠征から利用できます。' : pendingRun.engine.state.layoutRevision === 3 ? ' 一画面に収まる蛇行マップの遠征を続けます。' : ' 分岐した縦長マップの遠征を続けます。'}${pendingRun.progress.commanderSupportVersion === 1 ? ' Jevモードでは指揮官の支援魔法を利用します。' : ' この保存遠征には新しい指揮官支援を追加しません。'}${pendingRun.engine.state.waveBossPolicy === 1 && stageRules(pendingRun.engine.state.stage, 1).bossType !== stageRules(pendingRun.engine.state.stage, 2).bossType ? ' この進行中ステージのボス枠は保存時の構成を引き継ぎ、次のステージから新しい構成になります。' : ''}`
     : loadedCampaign.issue && replaceStoredRun
       ? '保存した遠征を読み込めませんでした。元データは変更していません。新しく始めると置き換えます。'
       : showLegacyMigration
@@ -1208,7 +1280,7 @@ function updateStart() {
 }
 function startFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
-  const layoutRevision = newCampaignLayoutRevision(newLayoutBundle)
+  const layoutRevision: LayoutRevision = 3
   if ((engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision) !== layoutRevision) {
     const fieldId = engine.state.fieldId,
       historyEnabled = engine.state.historyEnabled
@@ -1225,6 +1297,7 @@ function startFreshCampaign() {
   showLegacyMigration = false
   pendingRun = null
   replaceStoredRun = false
+  battleMusic.resetSelection()
   started = true
   document.querySelector('.game-layout')!.removeAttribute('inert')
   settingsPanel.close(false)
@@ -1283,6 +1356,7 @@ $('resume-run').onclick = () => {
   viewport.focus({ preventScroll: true })
   persist()
   if (engine.state.phase === 'assault') battleClock?.start()
+  syncBattleMusic()
 }
 $('offline-start').onclick = () => {
   $<HTMLSelectElement>('mode').value = 'rule'
@@ -1824,6 +1898,7 @@ $('assault').onclick = () => {
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
+    syncBattleMusic()
     persist()
     removing = false
     upgradePanel.close(false)
@@ -1850,6 +1925,7 @@ $('next').onclick = () => {
   }
 }
 $('retry').onclick = () => {
+  battleMusic.resetSelection()
   battleClock?.stop()
   discardedClockMs = 0
   resumedAfterSuspension = false
@@ -1952,7 +2028,7 @@ function configureAI() {
 }
 $<HTMLSelectElement>('art-mode').onchange = () => {
   const mode = $<HTMLSelectElement>('art-mode').value
-  if ((started && !preparing()) || (mode !== '2d' && mode !== '3d')) {
+  if ((started && !preparing()) || (mode !== '2d' && mode !== '3d') || (mode === '3d' && !environmentPackAvailable)) {
     updateArtModeStatus()
     return
   }
@@ -1987,7 +2063,7 @@ for (const type of ALL_TRIAL_TYPES) {
 }
 $<HTMLSelectElement>('environment-art').onchange = () => {
   const selector = $<HTMLSelectElement>('environment-art')
-  if (started && !preparing()) {
+  if (!environmentPackAvailable || (started && !preparing())) {
     selector.value = environmentTrialEnabled ? '3d' : '2d'
     return
   }
@@ -2043,6 +2119,7 @@ function initializeClock() {
         engine.update(dt, (state) => renderer.assetsReady(state))
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
+        syncBattleMusic()
         persistOutcome()
         autosave()
         return engine.state.phase === 'assault'
@@ -2070,6 +2147,7 @@ function cancelFrame() {
   animationFrameId = 0
 }
 function visibilityChanged() {
+  battleMusic.setVisible(document.visibilityState !== 'hidden')
   if (document.visibilityState === 'hidden') {
     cancelPlacementGestures()
     persist()
@@ -2084,6 +2162,7 @@ function pageHidden(event: PageTransitionEvent) {
   cancelArtMode()
   persist()
   pageSuspended = true
+  battleMusic.setVisible(false)
   soundPlayer.setEnabled(false)
   cancelFrame()
   battleClock?.dispose()
@@ -2093,6 +2172,7 @@ function pageHidden(event: PageTransitionEvent) {
     newLayoutRequest.abort()
     newLayoutBundle?.dispose()
     newLayoutBundle = undefined
+    battleMusic.destroy()
     soundPlayer.destroy()
     document.removeEventListener('pointerdown', unlockSound, { capture: true })
     document.removeEventListener('keydown', unlockSound, { capture: true })
@@ -2158,6 +2238,18 @@ function updateDefenderPreview() {
 function frame(now: number) {
   animationFrameId = 0
   if (simulationDisposed || pageSuspended || document.visibilityState === 'hidden') return
+  // Menu screens have no running battlefield. Keep asynchronous settings feedback
+  // alive without rebuilding hidden world art, placement controls or battle UI.
+  if (!started) {
+    if (now - uiTick > 100) {
+      uiTick = now
+      commitArtMode()
+      updateEnvironmentArtStatus()
+      updateArtModeStatus()
+    }
+    requestFrame()
+    return
+  }
   persistOutcome()
   autosave()
   const state = engine.state,
@@ -2174,6 +2266,7 @@ function frame(now: number) {
   updateDefenderPreview()
   commitArtMode()
   renderer.setCommanderMode(engine.ai !== rule)
+  syncBattleMusic()
   soundPlayer.setBattle(state.battleId, state.stage)
   renderer.render(
     state,
@@ -2230,7 +2323,11 @@ function frame(now: number) {
     $('sandbag-place').setAttribute('aria-pressed', String(placingSandbag && movingSandbagId === undefined))
     $('sandbag-move').setAttribute('aria-pressed', String(placingSandbag && movingSandbagId !== undefined))
     $<HTMLButtonElement>('save-now').disabled = !started
-    $<HTMLButtonElement>('assault').disabled = !preparing() || !defenders || (engine.ai !== rule && !connected)
+    $<HTMLButtonElement>('assault').disabled =
+      !preparing() ||
+      !defenders ||
+      (engine.ai !== rule && !connected) ||
+      (useModelRenderer && renderer.assetStatus !== 'ready')
     $('assault').textContent = state.phase === 'assault' ? '⋯' : '▶'
     const assaultLabel =
       state.phase === 'assault'

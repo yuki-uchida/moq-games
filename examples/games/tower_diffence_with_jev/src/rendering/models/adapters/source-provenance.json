@@ -158,5 +158,29 @@
     "sourceArchive": "dragon-animated-glb-cloud-candidate.zip",
     "sourceArchiveSha256": "35a083e4289e41795b29e0616b7a89323c54b30d934b8ea2fc217bfad1ea509a",
     "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "soldier",
+    "file": "soldier-dq-skinning-adapter.js",
+    "sha256": "905f6f2e747d7c568b56b5629c841f8139ff696c026890e4571a6662022c3a7c",
+    "sourceArchive": "soldier-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "639f562a39b0fa3a383670e2e5ce2a0508796f370c5d8d957cb36267f435e07c",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "soldier",
+    "file": "soldier-material-adapter.js",
+    "sha256": "44bbbc0d34415e1dfa09cf96b16baa74a642fcfd48ca5940016eb48e4489f1a9",
+    "sourceArchive": "soldier-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "639f562a39b0fa3a383670e2e5ce2a0508796f370c5d8d957cb36267f435e07c",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "archer",
+    "file": "archer-material-adapter.js",
+    "sha256": "ffe520536eb64cf29ad58bcf7925d464c0b00a5b837bba3ef53652e4c205c68e",
+    "sourceArchive": "archer-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "1e7fb7726299e1408de8e50981796806cfda2d5a09cfb99bc4787358f1c5919d",
+    "modifications": "None; original JavaScript bytes preserved."
   }
 ]

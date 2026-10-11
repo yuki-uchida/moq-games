@@ -41,7 +41,7 @@ test('keeps the SDK lazy and initializes packaged WASM before attempting transpo
   await expect(page.locator('#notice')).toContainText('接続エラー')
 })
 
-test('plays the included 2D RuleAI game through a natural outcome without optional packs', async ({ page }) => {
+test('plays the included RuleAI game through a natural outcome without optional packs', async ({ page }) => {
   // Arrange
   const external: string[] = []
   await page.route('**/*', (route) => {
@@ -51,7 +51,7 @@ test('plays the included 2D RuleAI game through a natural outcome without option
     return route.abort()
   })
   await openOfflineCampaign(page)
-  await dragUnitToWorld(page, 'soldier', getField('meadow', 2).slots[0])
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 3).slots[0])
   // Act
   await page.locator('#assault').click()
   // Assert
@@ -59,4 +59,40 @@ test('plays the included 2D RuleAI game through a natural outcome without option
   await expect(page.locator('#time')).not.toHaveText('00:00')
   await expect(page.locator('#result')).toBeVisible({ timeout: 150000 })
   expect(external).toEqual([])
+})
+
+test('does not offer or fetch omitted environment art, including a stale 3D URL', async ({ page }) => {
+  const environmentRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/environment-3d-trial/')) environmentRequests.push(request.url())
+  })
+  await page.goto(`${towerPath}?environment-art=3d`)
+  await page.locator('#title-new').click()
+  await page.locator('#launch-settings').click()
+  await expect(page.locator('#environment-art')).toBeDisabled()
+  await expect(page.locator('#environment-art')).toHaveValue('2d')
+  await expect(page.locator('#environment-art-status')).toContainText('3D環境素材を含めていない')
+  await expect(page.locator('#art-mode option[value="3d"]')).toBeDisabled()
+  // A programmatic/stale selection must be guarded as well as the visible option.
+  await page.locator('#environment-art').evaluate((element: HTMLSelectElement) => {
+    element.value = '3d'
+    element.dispatchEvent(new Event('change'))
+  })
+  await expect(page.locator('#environment-art')).toHaveValue('2d')
+  await page.locator('#art-mode').evaluate((element: HTMLSelectElement) => {
+    element.value = '3d'
+    element.dispatchEvent(new Event('change'))
+  })
+  await expect(page.locator('#art-mode-status')).not.toContainText('切り替えられませんでした')
+  await page.locator('#settings-close').click()
+  await page.locator('#launch-settings').click()
+  await expect(page.locator('#environment-art')).toBeDisabled()
+  // Periodic status updates must not re-enable omitted art after reopening settings.
+  await page.waitForTimeout(1200)
+  await expect(page.locator('#environment-art')).toBeDisabled()
+  await expect(page.locator('#art-mode option[value="3d"]')).toBeDisabled()
+  await expect(page.locator('#environment-art option[value="3d"]')).toBeDisabled()
+  await expect(page.locator('#environment-art-status')).toHaveAttribute('data-status', 'unavailable')
+  await expect(page.locator('#environment-art-status')).toContainText('3D環境素材を含めていない')
+  expect(environmentRequests).toEqual([])
 })

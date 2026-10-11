@@ -1,0 +1,580 @@
+{
+  "schemaVersion": 1,
+  "status": "Accepted optimized runtime derivatives; source originals preserved locally",
+  "summary": {
+    "files": 30,
+    "bytes": 186209172
+  },
+  "models": [
+    {
+      "role": "archer",
+      "file": "archer/archer-attack-candidate.glb",
+      "sourceSha256": "0b079ace8797f4466fbd7fdf05621da09d19cb28c9c380238c804f0bfccc93ee",
+      "outputSha256": "c22a2d4ff76877d3bb378d8e6c879890b97f9dc41f2f013d6e9c801045f47b02",
+      "bytes": 5818344,
+      "vertices": 78740,
+      "triangles": 85495,
+      "sourceBytes": 15121108,
+      "sourceTriangles": 147649,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "archer",
+      "file": "archer/archer-idle-candidate.glb",
+      "sourceSha256": "376e5168e3ce62871503cc2dd4aa9f4b698f1462172d31546ba6d0f39e07d652",
+      "outputSha256": "8996e0d4c96a0d795008fcb4114d790c3b60e963da5779b561419cb0420da0cf",
+      "bytes": 7739000,
+      "vertices": 78007,
+      "triangles": 84355,
+      "sourceBytes": 16516472,
+      "sourceTriangles": 147551,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "archer",
+      "file": "archer/archer-walk-candidate.glb",
+      "sourceSha256": "a7229b8188e44433748975b74bd4bb03580dfb3e654d04cf2bf0ade040a50ab7",
+      "outputSha256": "e30285e779e0c9b74866bf5fc6f03d225abb94ee14e6e23cecdc670692a59811",
+      "bytes": 7896780,
+      "vertices": 78687,
+      "triangles": 85651,
+      "sourceBytes": 15943300,
+      "sourceTriangles": 147551,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "bat",
+      "file": "bat/bat-motion-v2-candidate.glb",
+      "sourceSha256": "eb3fc47854e361f736a39ea263553a476d2e7e8a185868166445e41d05e42dc6",
+      "outputSha256": "41a3c6807866f3f25f7754e0ec01f422914404145232b34b4e23f7e59f114215",
+      "bytes": 6427136,
+      "vertices": 45039,
+      "triangles": 50851,
+      "sourceBytes": 16413068,
+      "sourceTriangles": 177353,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "beetle",
+      "file": "beetle/beetle-motion-v2-candidate.glb",
+      "sourceSha256": "1dc5fada7e86afb9d71ac092792d096e57e2b8662bc0bd761ec47d4867571a38",
+      "outputSha256": "cc240394b94216a1f17bb42f8a593e3a6078612368c897350c7fa463dc4b7fa1",
+      "bytes": 5715216,
+      "vertices": 56295,
+      "triangles": 66881,
+      "sourceBytes": 15198164,
+      "sourceTriangles": 167088,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "brute",
+      "file": "brute/brute-motion-v2-candidate.glb",
+      "sourceSha256": "c4190762f067d72b4e50d7b07090c17460363baa786882fd3024e383ec7537fb",
+      "outputSha256": "7cc78d8f24d1c2dc94de569c692cbfed335e99127e8ff7b47b5ee96c7a199679",
+      "bytes": 9284760,
+      "vertices": 85483,
+      "triangles": 76387,
+      "sourceBytes": 18965272,
+      "sourceTriangles": 172778,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "cannon",
+      "file": "cannon/cannon-attack-candidate.glb",
+      "sourceSha256": "fa016fb61d439c51e1f08a3fd5ff1cd59f7a5c4dcd37d8d373274d9a46506e16",
+      "outputSha256": "84a387d6a9d9f0d8c0b91dae75b8d324fc46405c777495248cfd6525f3b0e7cb",
+      "bytes": 7548152,
+      "vertices": 79093,
+      "triangles": 90710,
+      "sourceBytes": 20743892,
+      "sourceTriangles": 182944,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "cannon",
+      "file": "cannon/cannon-idle-candidate.glb",
+      "sourceSha256": "0ddb0ae08464d3e455372bbfe60f8c3bd7ccf502ff218aceb70095c3cd73cfae",
+      "outputSha256": "f72ac1797aa38893a475a52430db10cb24b0f22e44f59d131813ebd4c5db799d",
+      "bytes": 6571232,
+      "vertices": 80191,
+      "triangles": 92520,
+      "sourceBytes": 18423072,
+      "sourceTriangles": 182944,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "cannon",
+      "file": "cannon/cannon-walk-candidate.glb",
+      "sourceSha256": "8a00353c35ad9f8dab3573db28d0eda5dcda234a32b8a8c8e35e01334380a43a",
+      "outputSha256": "dd436b2c5599d22a417a1aa8e728ae3a34d95d2dc0732deb2f1a0a7d91d3c453",
+      "bytes": 8480208,
+      "vertices": 80931,
+      "triangles": 93668,
+      "sourceBytes": 21215104,
+      "sourceTriangles": 182944,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "dragon",
+      "file": "dragon/dragon-motion-v2-candidate.glb",
+      "sourceSha256": "2c4d7b2e4d3693743a87b378c5349dd2df6f25fa268d27234d5e3541f4754d87",
+      "outputSha256": "679ef168d0779850f48ee72a96893be84240e5ff08a4393220c014df19f8958b",
+      "bytes": 7637260,
+      "vertices": 45015,
+      "triangles": 61549,
+      "sourceBytes": 16285340,
+      "sourceTriangles": 120833,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "frost",
+      "file": "frost/frost-motion-v2-candidate.glb",
+      "sourceSha256": "cb26d7b2a340f4cc47e58c5585806e6240633b9058756a42d543eae97cffeab8",
+      "outputSha256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+      "bytes": 4233976,
+      "vertices": 33692,
+      "triangles": 40028,
+      "sourceBytes": 15702240,
+      "sourceTriangles": 125707,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "goblin",
+      "file": "goblin/goblin-walk-smooth.glb",
+      "sourceSha256": "f5824833b770588b2539d0f9f6b6659e57305ebf5feaf41048b8e19098fdc380",
+      "outputSha256": "dd6cf1010e46f8226a4394c1899d8f1cb609fbcbeb37c2fada61303d9711688e",
+      "bytes": 3558096,
+      "vertices": 31241,
+      "triangles": 40393,
+      "sourceBytes": 13901984,
+      "sourceTriangles": 146608,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "healer",
+      "file": "healer/healer-motion-v2-candidate.glb",
+      "sourceSha256": "9fa56386f88824423723929b4e5c11a33171dfa4e651a4df8f501234e9506e2a",
+      "outputSha256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+      "bytes": 7636684,
+      "vertices": 63287,
+      "triangles": 70015,
+      "sourceBytes": 18746396,
+      "sourceTriangles": 153277,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "mage",
+      "file": "mage/mage-motion-v2-candidate.glb",
+      "sourceSha256": "9870c2db6267f15b5a1ae32000239155beb28d7daeaa667adea4278e7fd312fd",
+      "outputSha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+      "bytes": 4514208,
+      "vertices": 31468,
+      "triangles": 36050,
+      "sourceBytes": 16233468,
+      "sourceTriangles": 125560,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "ogre",
+      "file": "ogre/ogre-motion-arm-swing20.glb",
+      "sourceSha256": "ca2349cc7ed1fa943a201d6155bf8d0bb31fe317b9a42e62f2677002f8f8f418",
+      "outputSha256": "6834b2e3804545d1555a2b229ae262ec52424f5d61974428eff138dfbbda01f5",
+      "bytes": 8449812,
+      "vertices": 45736,
+      "triangles": 58605,
+      "sourceBytes": 19312180,
+      "sourceTriangles": 126169,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "paladin",
+      "file": "paladin/paladin-motion-v2-candidate.glb",
+      "sourceSha256": "1313b5b1aa2ed5f0e4ca857ff19d744a455130f6c1f05b769c8f5419ddd314e4",
+      "outputSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
+      "bytes": 8667324,
+      "vertices": 81657,
+      "triangles": 93100,
+      "sourceBytes": 22079544,
+      "sourceTriangles": 202431,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "ranger",
+      "file": "ranger/ranger-attack-candidate.glb",
+      "sourceSha256": "5d504d56f02bb153806069e1c5a60a454b2fdeabac66167e6a70f4e7b5be990b",
+      "outputSha256": "010903a8f4fe08861bc22e6cc208edf0a009d6b7a74116454f9cf36b98e8612d",
+      "bytes": 7980608,
+      "vertices": 70562,
+      "triangles": 78113,
+      "sourceBytes": 19185556,
+      "sourceTriangles": 153466,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "ranger",
+      "file": "ranger/ranger-idle-candidate.glb",
+      "sourceSha256": "aeeaeb5a3b79a48ff8c3fac2a62a99ec70c772fc640c3312044291f7e9a8d7df",
+      "outputSha256": "4d100e808368e19ad39167c1ceb69ba108e1b6af8defa9e922b3b8559b2c0c6b",
+      "bytes": 6850168,
+      "vertices": 70598,
+      "triangles": 78405,
+      "sourceBytes": 16585396,
+      "sourceTriangles": 153368,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "ranger",
+      "file": "ranger/ranger-walk-candidate.glb",
+      "sourceSha256": "2789c3c65204881d2f0c6ec74b5ff1021af45f4c0c96057a465e7199266ce831",
+      "outputSha256": "440e8eac02f49910fd12f96ba6e759b9a793eb35a436b6e8b72a3c6e821cbb2b",
+      "bytes": 8436364,
+      "vertices": 70726,
+      "triangles": 78607,
+      "sourceBytes": 18869228,
+      "sourceTriangles": 153368,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "runner",
+      "file": "runner/runner-attack-current.glb",
+      "sourceSha256": "82bc1f3eecd16f7bb7f76b4bf12274d7bcfde2749dbd14b8e2c9c98ce5877949",
+      "outputSha256": "6478c1e81f413b5223cbd04f2c46c03272f29e87c85dec27c390c67a3feaae16",
+      "bytes": 2149604,
+      "vertices": 28016,
+      "triangles": 33867,
+      "sourceBytes": 13101020,
+      "sourceTriangles": 140736,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "runner",
+      "file": "runner/runner-idle-current.glb",
+      "sourceSha256": "36e063338e0bf509bcd2f618b9031e7226567aeab26858502936ebcc9d34858b",
+      "outputSha256": "8e6f9956d210038b675805c78f5b1888fdfddfe870d2288ab24e675163cbfb4a",
+      "bytes": 3221612,
+      "vertices": 28471,
+      "triangles": 34549,
+      "sourceBytes": 14608412,
+      "sourceTriangles": 140736,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "runner",
+      "file": "runner/runner-walk-current.glb",
+      "sourceSha256": "9609e67b922a84eee2db6b6fe7e9c8268022cefdd358e1cde83639ef9f0f75a6",
+      "outputSha256": "e955577cfdd12d310b340dea1d1aa6a33d34a813d3e4a5e7ac285e0263dfa57c",
+      "bytes": 2954684,
+      "vertices": 28471,
+      "triangles": 34549,
+      "sourceBytes": 14340716,
+      "sourceTriangles": 140736,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "shaman",
+      "file": "shaman/shaman-motion-v2-candidate.glb",
+      "sourceSha256": "fbd07d25806a1526c2337d6f9c43bc8e0380d930bca9537809c312d7e1044c47",
+      "outputSha256": "40e07d88b1500028eeec6a29ff6a2b91ede9e8244395d7172f3a2f18f97d911a",
+      "bytes": 4588632,
+      "vertices": 45058,
+      "triangles": 49927,
+      "sourceBytes": 14477704,
+      "sourceTriangles": 150622,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "slime",
+      "file": "slime/animated.glb",
+      "sourceSha256": "6015b96c5178d7dcf226976183e2bf1ab0bf1953690c9841cfb37200d0f41c3d",
+      "outputSha256": "b5f06a8e4c86a9bf3036c9f58c5754e96465f6496290a45fabab3628c1655e7d",
+      "bytes": 1417456,
+      "vertices": 11729,
+      "triangles": 21852,
+      "sourceBytes": 2258556,
+      "sourceTriangles": 42156,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "soldier",
+      "file": "soldier/soldier-motion-v2-candidate.glb",
+      "sourceSha256": "bbff0c6af838be60232bd0d4ad73b8a56aa2d9435321a3068cf0108e271b879b",
+      "outputSha256": "c6f09a14c80e550d0bd132605271eca53abaf84ab03c65efad26b84402586825",
+      "bytes": 8013572,
+      "vertices": 42448,
+      "triangles": 61222,
+      "sourceBytes": 86565948,
+      "sourceTriangles": 638324,
+      "config": {
+        "ratio": 0.03,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "tank",
+      "file": "tank/tank-attack-candidate.glb",
+      "sourceSha256": "9283c6e53970fb54e17d64622e0ed691ac1a8318886134895b74466b9b58bed5",
+      "outputSha256": "99d17fd499b935e850621120b9e714fe39719b56bd891c998724172738e5b2db",
+      "bytes": 5081376,
+      "vertices": 55860,
+      "triangles": 83756,
+      "sourceBytes": 45535276,
+      "sourceTriangles": 865189,
+      "config": {
+        "ratio": 0.03,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.5
+      }
+    },
+    {
+      "role": "tank",
+      "file": "tank/tank-idle-candidate.glb",
+      "sourceSha256": "5841fce1c72a0353d85c5d98bcc4e32958acfef60299b0f2f002d01d5f13ad00",
+      "outputSha256": "0e2b317c5a57371984007b0fd286f799042f59516cfdb789be692ce2008fbf30",
+      "bytes": 5208068,
+      "vertices": 49205,
+      "triangles": 71688,
+      "sourceBytes": 46910704,
+      "sourceTriangles": 865189,
+      "config": {
+        "ratio": 0.03,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.5
+      }
+    },
+    {
+      "role": "tank",
+      "file": "tank/tank-walk-candidate.glb",
+      "sourceSha256": "3f93a8c5a7350f1ad6ddaaabc71a70511a75365de8433e08c1821166f069c4dd",
+      "outputSha256": "b2973c9813775011e7424312cc27b341ee84ed9c630bc1c1cb762acf2d42ffc4",
+      "bytes": 5074644,
+      "vertices": 55860,
+      "triangles": 83756,
+      "sourceBytes": 45523944,
+      "sourceTriangles": 865189,
+      "config": {
+        "ratio": 0.03,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.5
+      }
+    },
+    {
+      "role": "wolf",
+      "file": "wolf/wolf-walk-smooth.glb",
+      "sourceSha256": "0aeb14cfca8b8fc7061d7e0304fbb04e57aec3ceb99ca59dace977825f52e953",
+      "outputSha256": "1f09cff307266152e3ca9ceca61336cd60aa8d5c1d1e99a1b3546cbba7af447c",
+      "bytes": 9536580,
+      "vertices": 65507,
+      "triangles": 76111,
+      "sourceBytes": 20395400,
+      "sourceTriangles": 162920,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    },
+    {
+      "role": "wraith",
+      "file": "wraith/wraith-motion-v2-candidate.glb",
+      "sourceSha256": "c32165dba19770d0421a649b2f8c4a73da5ffab8752486052c5442c6b02274e3",
+      "outputSha256": "0c8883a98f9f4095f5044c10bc666dcd5acfddf3527aac01b9f91ed789a1c412",
+      "bytes": 5517616,
+      "vertices": 50935,
+      "triangles": 53754,
+      "sourceBytes": 14196492,
+      "sourceTriangles": 120518,
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      }
+    }
+  ]
+}

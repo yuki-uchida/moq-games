@@ -1,3 +1,6 @@
+import { installArcherMaterialAdapter } from './source/archer-material-adapter.js'
+import { installSoldierMaterialAdapter } from './source/soldier-material-adapter.js'
+import { installSoldierDQSkinningAdapter } from './source/soldier-dq-skinning-adapter.js'
 import * as THREE from 'three'
 import type { ModelAdapterFactory } from '../../ModelAssetCache'
 import type { SourceMaterialAdapter, SourceSkinningAdapter } from './types'
@@ -97,3 +100,11 @@ export const wolfMaterial: ModelAdapterFactory = (root, clip) => {
   const adapter = applyWolfLidMaterial(root, wolfLidConfig)
   return { update: seconds => adapter.sample(motion, seconds * 1000), dispose: () => adapter.dispose() }
 }
+
+export const soldierSkinning: ModelAdapterFactory = skinning(installSoldierDQSkinningAdapter)
+
+export const soldierMaterial: ModelAdapterFactory = material(installSoldierMaterialAdapter)
+
+export const archerMaterial: ModelAdapterFactory = material(installArcherMaterialAdapter)
+
+export { runnerMaterial } from './RunnerAdapters'

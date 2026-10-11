@@ -746,7 +746,7 @@ export class DefenderInterception {
       .sort()
       .join(';')
     const battleRules = state.battlefieldVersion === 2 ? `${context}:battlefield2` : context,
-      battlefield = state.layoutRevision === 2 ? `${battleRules}:layout2` : battleRules,
+      battlefield = state.layoutRevision > 1 ? `${battleRules}:layout${state.layoutRevision}` : battleRules,
       items = roadItems(state)
     const obstacles = items.length
       ? `${battlefield}:fortifications=${[...items]

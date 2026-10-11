@@ -328,7 +328,7 @@ function createSlots(field: ResolvedBattlefield): Field['slots'] {
         if (
           slot.x < 50 ||
           slot.x > field.width - 50 ||
-          slot.y < 50 ||
+          slot.y < (field.layoutRevision === 3 ? 94 : 50) ||
           slot.y > field.height - 50 ||
           distanceToRoadUnion(field, slot) < 52 ||
           slots.some((other) => distance(other, slot) < 90)
@@ -348,7 +348,7 @@ export function resolveBattlefield(
 ): ResolvedBattlefield {
   if (
     (version !== 1 && version !== 2) ||
-    (layoutRevision !== 1 && layoutRevision !== 2) ||
+    (layoutRevision !== 1 && layoutRevision !== 2 && layoutRevision !== 3) ||
     (version === 1 && layoutRevision !== 1)
   )
     throw new RangeError('Unsupported battlefield layout revision')
@@ -376,6 +376,46 @@ export function resolveBattlefield(
       entrance: legacyField.path[0],
       gate: legacyField.path[legacyField.path.length - 1]
     }
+  } else if (layoutRevision === 3) {
+    // One unambiguous serpentine road. Route IDs remain stable for AI/save contracts,
+    // but both choices traverse the same complete road, with no shortcut junction.
+    const shift = { meadow: 0, desert: 16, frost: -16, volcanic: 8 }[legacyField.id]
+    const entrance = { x: 80, y: 140 },
+      gate = { x: 1190, y: 790 }
+    const path = points([
+      [80, 140],
+      [1120 + shift, 140],
+      [1120 + shift, 290],
+      [160 + shift, 290],
+      [160 + shift, 440],
+      [1120 + shift, 440],
+      [1120 + shift, 590],
+      [160 + shift, 590],
+      [160 + shift, 740],
+      [1190, 740],
+      [1190, 790]
+    ])
+    const edges: RoadEdge[] = [{ id: 'serpentine', from: 'entrance', to: 'gate', points: path }]
+    const routes = buildRoadRoutes(edges, [
+      { id: 'left', label: '蛇行する道', edgeIds: ['serpentine'] },
+      { id: 'right', label: '蛇行する道', edgeIds: ['serpentine'] }
+    ])
+    field = {
+      ...legacyField,
+      version,
+      layoutRevision,
+      width: 1280,
+      height: 920,
+      path,
+      slots: [],
+      edges,
+      routes,
+      entrance,
+      gate,
+      surfaceAnchor: { edgeId: 'serpentine', startOffset: routes[0].length - 210, endOffset: routes[0].length - 70 }
+    }
+    field.slowSurface = routeSurface(field, 'left')
+    field.slots = createSlots(field)
   } else {
     const branch = layoutRevision === 1 ? BRANCHES[legacyField.id] : WINDING_BRANCHES[legacyField.id]
     if (!branch) throw new RangeError(`Unavailable winding layout: ${legacyField.id}`)
