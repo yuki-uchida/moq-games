@@ -1,3 +1,4 @@
+import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
 import { canInitiateDamage, healingAction, HEALING_ACTIONS, temporaryPaladinHeal } from '../game/HealingActions'
 import { BulkArtSwitch, type ArtMode, type ArtSwitchBody, type ArtSwitchStatus } from './BulkArtSwitch'
@@ -111,6 +112,7 @@ interface UnitVisual {
   defenderHandle?: HTMLButtonElement
 }
 export interface AuthoredAtlasOptions {
+  readonly models?: ModelRoster
   readonly deathAnimations?: Readonly<Record<string, CorpseDeathAnimation>>
   readonly environmentTrial?: boolean
   readonly environmentBase?: URL
@@ -289,6 +291,7 @@ function redeploymentEdgeGeometry(radius: number, dotted: boolean): THREE.RingGe
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer
   private disposed = false
+  private models?: ModelUnitLayer
   private commander?: CommanderVisual
   private commanderMode = false
   private commanderSupport: CommanderSupportVisual
@@ -321,8 +324,9 @@ export class GameRenderer {
     )
     return {
       frame: this.frameNumber,
+      modelRendering: this.models?.diagnostics() ?? null,
       artSwitch: this.artSwitchStatus,
-      soldierArt: this.unitTrials.soldier ? '3d-trial' : '2d',
+      soldierArt: this.models ? 'gltf-mesh' : this.unitTrials.soldier ? '3d-trial' : '2d',
       unitArt: Object.fromEntries(
         UNIT_TRIAL_TYPES.map((type) => [type, this.unitTrials[type] ? '3d-trial' : '2d'])
       ) as Record<AlliedTrialType, '3d-trial' | '2d'>,
@@ -395,7 +399,7 @@ export class GameRenderer {
           attackStatus:
             state?.attacks.find((attack) => attack.attackerId === id && attack.sequence === unit?.attackSequence)
               ?.status ?? null,
-          visible: body.visible,
+          visible: this.models ? this.models.visible(id) : body.visible,
           groupVisible: group.visible,
           drawnThisFrame: body.userData.drawnFrame === this.frameNumber,
           inFrustum: frustum.intersectsObject(body),
@@ -485,6 +489,13 @@ export class GameRenderer {
     private host: HTMLElement,
     authored: AuthoredAtlasOptions = {}
   ) {
+    if (authored.models) {
+      this.models = new ModelUnitLayer(this.scene, authored.models)
+      this.scene.add(new THREE.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
+      const light = new THREE.DirectionalLight(0xffe0ad, 3)
+      light.position.set(-120, -240, 100)
+      this.scene.add(light)
+    }
     this.environmentEnabled = authored.environmentTrial ?? false
     this.environmentBase = authored.environmentBase
     this.standardClips = authored.clips ?? {}
@@ -495,7 +506,7 @@ export class GameRenderer {
     }
     this.indexTrialClips()
     this.clips = unitTrialClips(this.standardClips, this.unitTrials)
-    this.corpses = new CorpseVisual(this.scene, {
+    if (!this.models) this.corpses = new CorpseVisual(this.scene, {
       clips: { ...this.standardClips, ...authored.deathClips },
       unitTrials: this.unitTrials,
       deathAnimations: authored.deathAnimations
@@ -648,6 +659,7 @@ export class GameRenderer {
     if (this.disposed) return
     this.disposed = true
     this.cancelArtSwitch()
+    this.models?.dispose()
     this.environmentRequest?.abort()
     this.environmentArt?.dispose()
     this.pendingEnvironment?.dispose()
@@ -699,7 +711,7 @@ export class GameRenderer {
     base: URL
   ): void {
     this.cancelArtSwitch()
-    if (this.disposed || state.phase !== 'preparation') return
+    if (this.models || this.disposed || state.phase !== 'preparation') return
     const effectUrls = new Set(Object.values(this.effectClips))
     this.bulkArtSwitch = new BulkArtSwitch({
       mode,
@@ -959,7 +971,7 @@ export class GameRenderer {
 
   setUnitTrial(type: UnitTrialType, art?: UnitTrialArt): void {
     this.cancelArtSwitch()
-    if (this.disposed || this.unitTrials[type] === art) return
+    if (this.models || this.disposed || this.unitTrials[type] === art) return
     const prefix = `${unitTrialOwner(type)}:${type}:`
     const urls = new Set(
       [...Object.entries(this.standardClips), ...Object.entries(this.clips), ...Object.entries(art?.clips ?? {})]
@@ -1005,8 +1017,9 @@ export class GameRenderer {
   }
 
   private requireCurrentAtlases(s: Readonly<GameState>): boolean {
-    let ready = true
-    for (const unit of s.units) {
+    let ready = this.models ? this.models.ready(s, this.defenderPlacementPreview?.type) : true
+    if (this.models) Object.assign(this.assetErrors, this.models.errors)
+    for (const unit of this.models ? [] : s.units) {
       if (unit.hp <= 0) continue
       const attack = s.attacks.find((value) => value.attackerId === unit.id && value.sequence === unit.attackSequence)
       const active = this.attackActive(s, unit, attack)
@@ -1060,14 +1073,14 @@ export class GameRenderer {
             (unit) => unit.id === attack.attackerId && unit.hp > 0 && unit.attackSequence === attack.sequence
           )
         ) {
-          if (this.clips[this.cueKey(attack)] && !this.cueAtlas(attack, true)) ready = false
+          if (!this.models && this.clips[this.cueKey(attack)] && !this.cueAtlas(attack, true)) ready = false
         }
       }
     const preview =
       s.phase === 'preparation' || (s.phase === 'assault' && this.defenderPlacementPreview?.battle)
         ? this.defenderPlacementPreview
         : null
-    if (preview) {
+    if (preview && !this.models) {
       const direction = spriteDirection(
         entranceFacing(s.fieldId, preview.placement.point, s.battlefieldVersion, s.layoutRevision)
       )
@@ -1285,6 +1298,7 @@ export class GameRenderer {
   }
 
   private cueAtlas(attack: Readonly<CombatAttack>, pin = false): WholeFrameAtlas | undefined {
+    if (this.models) return undefined
     const direction = spriteDirection(
       attack.aim ?? {
         x: attack.target.x - attack.origin.x,
@@ -1297,6 +1311,12 @@ export class GameRenderer {
   private cuePoint(attack: Readonly<CombatAttack>, id: string): Point {
     let point = this.projectileLaunches.get(id)
     if (!point) {
+      if (this.models) {
+        point = this.models.emitter(attack)
+        if (point) { this.projectileLaunches.set(id, point); return point }
+        this.assetErrors[`${attack.type}:emitter`] = 'Missing verified 3D projectile emitter'
+        return { x: attack.origin.x, y: attack.origin.y - 16 }
+      }
       const atlas = this.cueAtlas(attack)
       const contact = atlas && unitTrialFor(attack, this.unitTrials)?.impactOffsets?.[atlas.manifest.direction]
       const scale = bodyScale(attack) * unitTrialScale(attack, this.unitTrials)
@@ -1608,6 +1628,7 @@ export class GameRenderer {
 
   private prepareEntryArt(s: Readonly<GameState>, selected: AllyType): void {
     if (s.phase !== 'preparation') return
+    if (this.models) { this.models.ready(s, selected); return }
     const path = fieldFor(s).path
     const direction = spriteDirection({ x: path[1].x - path[0].x, y: path[1].y - path[0].y })
     const rules = stageRules(s.stage, s.waveBossPolicy)
@@ -2061,7 +2082,11 @@ export class GameRenderer {
     this.movementLabel.hidden = s.phase === 'assault'
     for (const edge of this.movementEdges) edge.visible = this.movement.visible
     if (this.placementBody) this.placementBody.visible = false
-    if (previewVisible && preview && (!anchor || preview.x !== anchor.homeX || preview.y !== anchor.homeY)) {
+    this.models?.setPreview(
+      previewVisible ? selected : undefined, preview ?? undefined,
+      preview ? entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision) : undefined
+    )
+    if (!this.models && previewVisible && preview && (!anchor || preview.x !== anchor.homeX || preview.y !== anchor.homeY)) {
       const facing = entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision),
         direction = spriteDirection(facing)
       const atlas = this.approvedAtlas(
@@ -2120,6 +2145,7 @@ export class GameRenderer {
             ? `近接接触 · 半径 ${definition.range}（索敵 ${definition.range + definition.leash}）`
             : `攻撃・回復 · 半径 ${definition.range}`
     }
+    this.models?.render(s)
     const visualTime = performance.now() / 1000
     const active = new Set(s.units.map((unit) => unit.id))
     for (const [id, visual] of this.units)
@@ -2263,7 +2289,7 @@ export class GameRenderer {
       visual.coldMist.material.opacity = 0.65 + Math.sin(s.time * 3 + unit.id) * 0.12
       visual.coldMist.position.y = Math.sin(s.time * 2 + unit.id) * 2
       visual.coldMist.scale.set(bodyScale(unit), -bodyScale(unit), 1)
-      const authored = this.authoredFrame(s, unit, visual, visualTime * 1000)
+      const authored = this.models ? undefined : this.authoredFrame(s, unit, visual, visualTime * 1000)
       if (authored && unit.hp > 0) visual.lastFrame = { atlas: authored.atlas, elapsedMs: authored.elapsedMs }
       const x = unit.x,
         y = unit.y - 24
@@ -2482,11 +2508,28 @@ export class GameRenderer {
         strike.position.set(directionX * 24, directionY * 24, 2)
         strike.scale.set(bossScale * (unit.type === 'paladin' ? 1.5 : 1.15), -bossScale, 1)
       }
+      if (this.models) {
+        body.visible = false
+        const visible = this.models.visible(unit.id)
+        updateDataset(label, {
+          artSource: visible ? 'gltf-mesh' : 'loading',
+          renderedMotion: this.models.motion(unit.id) ?? '',
+          healingAnimation: unit.type === 'paladin' && currentAttack?.kind === 'heal' ? 'neutral-held-3d-pose' : ''
+        })
+        label.style.top = `${Math.max(18, unit.y - 76 * bodyScale(unit))}px`
+        if (visual.defenderHandle) {
+          visual.defenderHandle.hidden = !visible || !interactive || !['preparation', 'assault'].includes(s.phase) || roadPlacementActive || unit.hp <= 0
+          visual.defenderHandle.style.left = `${unit.x - 36}px`
+          visual.defenderHandle.style.top = `${unit.y - 72}px`
+          visual.defenderHandle.style.width = '72px'
+          visual.defenderHandle.style.height = '80px'
+        }
+      }
     }
     this.fortifications.render(
       s,
       interactive,
-      new Set([...this.units].filter(([, visual]) => visual.group.visible && visual.body.visible).map(([id]) => id))
+      new Set([...this.units].filter(([id, visual]) => visual.group.visible && (this.models ? this.models.visible(id) : visual.body.visible)).map(([id]) => id))
     )
     this.heavyImpacts.render(s)
     this.dragonSplashes.render(s)

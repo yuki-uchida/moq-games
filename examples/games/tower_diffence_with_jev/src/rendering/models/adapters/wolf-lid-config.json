@@ -1,0 +1,868 @@
+{
+  "adapterId": "wolf-lid-color-v1",
+  "version": 1,
+  "required": true,
+  "failClosedOnMissingAdapterOrAttribute": true,
+  "nodeName": "Wolf_Original_Body",
+  "materialName": "Wolf_Blink_Surface",
+  "gltfAttribute": "_BLINK_REST",
+  "threeAttribute": "_blink_rest",
+  "restSpace": "Original Blender mesh-local coordinates, before skinning and morphing. Custom attribute components retain Blender X/Y/Z, unlike glTF POSITION conversion. Validate attribute values against source before adoption.",
+  "eyes": [
+    {
+      "centerX": 0.0925590484702222,
+      "radiusX": 0.08269134754375974
+    },
+    {
+      "centerX": 0.3643802695930572,
+      "radiusX": 0.07987800441739601
+    }
+  ],
+  "centerZ": 0.36866985013248454,
+  "radiusZ": 0.061834528923655846,
+  "regionYExclusive": [
+    -1.02,
+    -0.58
+  ],
+  "regionRadialFade": [
+    0.96,
+    1.02
+  ],
+  "activeMultiplier": 20,
+  "lidOffset": 0.025,
+  "boundarySoftness": 0.0008,
+  "creaseThicknessFade": [
+    0.0045,
+    0.009
+  ],
+  "creaseOuterUFade": [
+    0.9,
+    1.0
+  ],
+  "creaseLinearRGB": [
+    0.038,
+    0.004,
+    0.0024
+  ],
+  "skinColorCoefficientsRGB": [
+    [
+      [
+        0.48831688366314957,
+        -0.014757745257951344,
+        -0.0775776565855228,
+        0.035600675809031715,
+        0.14692043712448433,
+        0.09679036710660958
+      ],
+      [
+        -0.025349966738525864,
+        -0.052991329841270474,
+        0.00616483386259533,
+        0.15098508801616267,
+        0.19827763242025678,
+        0.1394728077973637
+      ],
+      [
+        -0.04708964329908363,
+        -0.043484105412529034,
+        0.016429333733748917,
+        0.11925308163427202,
+        0.15133248671905733,
+        0.10281767569434036
+      ]
+    ],
+    [
+      [
+        0.4684140977589684,
+        -0.01867753690233724,
+        -0.04198129903997513,
+        0.02829333934938596,
+        -0.10895678043472252,
+        0.10691954406104805
+      ],
+      [
+        -0.08041001030158874,
+        -0.009033750768182192,
+        0.043963272766541675,
+        0.13793696329970373,
+        -0.1402151151961467,
+        0.1734694055838249
+      ],
+      [
+        -0.09288006900214427,
+        -0.004355762334785157,
+        0.044767935913955136,
+        0.10957242075699011,
+        -0.10772964811206569,
+        0.1324319402981546
+      ]
+    ]
+  ],
+  "skinColorBasis": [
+    "1",
+    "u",
+    "v",
+    "u*u",
+    "u*v",
+    "v*v"
+  ],
+  "skinColorSideThresholdX": 0.225,
+  "coveredRoughness": 0.68,
+  "coveredNormalStrength": 0,
+  "tracks": {
+    "idle": [
+      {
+        "timeMs": 0,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 42,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 83,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 125,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 167,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 208,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 250,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 292,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 333,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 375,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 417,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 458,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 500,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 542,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 583,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 625,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 667,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 708,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 750,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 792,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 833,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 875,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 917,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 958,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1000,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1042,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1083,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1125,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1167,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1208,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1250,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1292,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1333,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1375,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1417,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1458,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1500,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1542,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1583,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1625,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1667,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1708,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1750,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1792,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1833,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1875,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1917,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1958,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2000,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2042,
+        "blink": 0.5,
+        "depthMorph": 0.875
+      },
+      {
+        "timeMs": 2083,
+        "blink": 1.0,
+        "depthMorph": 1.0
+      },
+      {
+        "timeMs": 2125,
+        "blink": 1.0,
+        "depthMorph": 1.0
+      },
+      {
+        "timeMs": 2167,
+        "blink": 0.4000000059604645,
+        "depthMorph": 0.7839999794960022
+      },
+      {
+        "timeMs": 2208,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2250,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2292,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2333,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2375,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2417,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2458,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2500,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2542,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2583,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2625,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2667,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2708,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2750,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2792,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2833,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2875,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2917,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 2958,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 3000,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      }
+    ],
+    "walk": [
+      {
+        "timeMs": 0,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 42,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 83,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 125,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 167,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 208,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 250,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 292,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 333,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 375,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 417,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 458,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 500,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 542,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 583,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 625,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 667,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 708,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 750,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 792,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 833,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 875,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 917,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 958,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      },
+      {
+        "timeMs": 1000,
+        "blink": 0.0,
+        "depthMorph": 0.0
+      }
+    ],
+    "attack": [
+      {
+        "timeMs": 0,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 15,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 30,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 45,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 60,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 75,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 90,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 105,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 120,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 135,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 150,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 165,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 180,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 195,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 210,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 225,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 240,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 255,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 270,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 285,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 300,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 315,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 330,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 345,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 360,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 375,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 390,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 405,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 420,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 435,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 450,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 465,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 480,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 495,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 510,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 525,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 540,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 555,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 570,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 585,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 600,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 615,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 630,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 645,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 660,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 675,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 690,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 705,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 720,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 735,
+        "blink": 0.0,
+        "depthMorph": 0
+      },
+      {
+        "timeMs": 750,
+        "blink": 0.0,
+        "depthMorph": 0
+      }
+    ]
+  },
+  "interpolation": "LINEAR on blink amount; morph follows GLB sampled depth values. Sprite stepping uses exact cumulative pose-start times.",
+  "sourceFormulaFile": "wolf-lid-color-v1.glsl",
+  "scope": "Modify the real mesh surface base color, roughness and tangent normal strength. Never apply a screen-space eye overlay or substitute another eye image."
+}

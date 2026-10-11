@@ -1,0 +1,332 @@
+[
+  {
+    "role": "tank",
+    "file": "tank-attack-candidate.glb",
+    "sha256": "9283c6e53970fb54e17d64622e0ed691ac1a8318886134895b74466b9b58bed5",
+    "archive": "tank-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "85aef3f24d229abe20482bffa68c7d0b2653c8e140490cb45e53509bdfc4b2b7",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.12 (source camera horizontal span)",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "tank",
+    "file": "tank-walk-candidate.glb",
+    "sha256": "3f93a8c5a7350f1ad6ddaaabc71a70511a75365de8433e08c1821166f069c4dd",
+    "archive": "tank-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "85aef3f24d229abe20482bffa68c7d0b2653c8e140490cb45e53509bdfc4b2b7",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.12 (source camera horizontal span)",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "tank",
+    "file": "tank-idle-candidate.glb",
+    "sha256": "5841fce1c72a0353d85c5d98bcc4e32958acfef60299b0f2f002d01d5f13ad00",
+    "archive": "tank-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "85aef3f24d229abe20482bffa68c7d0b2653c8e140490cb45e53509bdfc4b2b7",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.12 (source camera horizontal span)",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "mage",
+    "file": "mage-motion-v2-candidate.glb",
+    "sha256": "9870c2db6267f15b5a1ae32000239155beb28d7daeaa667adea4278e7fd312fd",
+    "archive": "mage-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "b1cdf8b2be7a7298d79f67f9f0a1ec540b1ab7b80e543689f845d9e4e6181927",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.55 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.14499999582767487,
+      -0.9520019888877869,
+      0.014999999664723873
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "frost",
+    "file": "frost-motion-v2-candidate.glb",
+    "sha256": "cb26d7b2a340f4cc47e58c5585806e6240633b9058756a42d543eae97cffeab8",
+    "archive": "frost-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "f2e31c221c19041a691eb73dad3f20ed14818c23b7ed117b98f6eb80cc96a3d7",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.4 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.11500000208616257,
+      -0.9508733153343201,
+      0.014999999664723873
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "healer",
+    "file": "healer-motion-v2-candidate.glb",
+    "sha256": "9fa56386f88824423723929b4e5c11a33171dfa4e651a4df8f501234e9506e2a",
+    "archive": "healer-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "1a07cc63b232bd139ec498eb2a20a9b8aa247223cd79847cc2a1fa044bd9ea00",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.24 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.17000000178813934,
+      -0.9452990293502808,
+      0.004999999888241291
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "ranger",
+    "file": "ranger-walk-candidate.glb",
+    "sha256": "2789c3c65204881d2f0c6ec74b5ff1021af45f4c0c96057a465e7199266ce831",
+    "archive": "ranger-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "b57f17821fb6fb711ba92bc23f5bf7732b4369f89a5821c5898803ef54c79e4f",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.6700000762939453 (source camera horizontal span)",
+    "groundAnchor": [
+      0.07999999821186066,
+      -0.9177075624465942,
+      -0.019999999552965164
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "ranger",
+    "file": "ranger-attack-candidate.glb",
+    "sha256": "5d504d56f02bb153806069e1c5a60a454b2fdeabac66167e6a70f4e7b5be990b",
+    "archive": "ranger-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "b57f17821fb6fb711ba92bc23f5bf7732b4369f89a5821c5898803ef54c79e4f",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.6700000762939453 (source camera horizontal span)",
+    "groundAnchor": [
+      0.07999999821186066,
+      -0.9177075624465942,
+      -0.019999999552965164
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "ranger",
+    "file": "ranger-idle-candidate.glb",
+    "sha256": "aeeaeb5a3b79a48ff8c3fac2a62a99ec70c772fc640c3312044291f7e9a8d7df",
+    "archive": "ranger-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "b57f17821fb6fb711ba92bc23f5bf7732b4369f89a5821c5898803ef54c79e4f",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.6700000762939453 (source camera horizontal span)",
+    "groundAnchor": [
+      0.07999999821186066,
+      -0.9177075624465942,
+      -0.019999999552965164
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "cannon",
+    "file": "cannon-idle-candidate.glb",
+    "sha256": "0ddb0ae08464d3e455372bbfe60f8c3bd7ccf502ff218aceb70095c3cd73cfae",
+    "archive": "cannon-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "8778483756922a7b5c925073bd3ee69090b28fbfbcff4d5639b52ac3bf75279a",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.94 (source camera horizontal span)",
+    "groundAnchor": [
+      0.005,
+      -0.9520441889762878,
+      -0.02
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "cannon",
+    "file": "cannon-walk-candidate.glb",
+    "sha256": "8a00353c35ad9f8dab3573db28d0eda5dcda234a32b8a8c8e35e01334380a43a",
+    "archive": "cannon-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "8778483756922a7b5c925073bd3ee69090b28fbfbcff4d5639b52ac3bf75279a",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.94 (source camera horizontal span)",
+    "groundAnchor": [
+      0.005,
+      -0.9520441889762878,
+      -0.02
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "cannon",
+    "file": "cannon-attack-candidate.glb",
+    "sha256": "fa016fb61d439c51e1f08a3fd5ff1cd59f7a5c4dcd37d8d373274d9a46506e16",
+    "archive": "cannon-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "8778483756922a7b5c925073bd3ee69090b28fbfbcff4d5639b52ac3bf75279a",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.94 (source camera horizontal span)",
+    "groundAnchor": [
+      0.005,
+      -0.9520441889762878,
+      -0.02
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "paladin",
+    "file": "paladin-motion-v2-candidate.glb",
+    "sha256": "1313b5b1aa2ed5f0e4ca857ff19d744a455130f6c1f05b769c8f5419ddd314e4",
+    "archive": "paladin-damage-only-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "45b6ff8a34d1a3b23aae3b508734680a020048e2cedb5661b4f4fbf70385f5af",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.02 (source camera horizontal span)",
+    "groundAnchor": [
+      0.014999999664723873,
+      -0.9522994756698608,
+      0.019999999552965164
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "goblin",
+    "file": "goblin-walk-smooth.glb",
+    "sha256": "f5824833b770588b2539d0f9f6b6659e57305ebf5feaf41048b8e19098fdc380",
+    "archive": "goblin-smooth-walk-candidate.zip",
+    "archiveSha256": "43059e42a269927d74839e942a72036bec18abdc60191f7d67b03fcb5dd36246",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.86 (source camera horizontal span)",
+    "groundAnchor": [
+      0,
+      -0.9520249962806702,
+      -0.02500000037252903
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "wolf",
+    "file": "wolf-walk-smooth.glb",
+    "sha256": "0aeb14cfca8b8fc7061d7e0304fbb04e57aec3ceb99ca59dace977825f52e953",
+    "archive": "wolf-walk-smooth-24-final.zip",
+    "archiveSha256": "4ab41142d1fe79354c9713b3dac79250071dfed595beb15d69a65025b11a3c41",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.24 (source camera horizontal span)",
+    "groundAnchor": [
+      0.15,
+      -0.8107264638,
+      -0.02
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "beetle",
+    "file": "beetle-motion-v2-candidate.glb",
+    "sha256": "1dc5fada7e86afb9d71ac092792d096e57e2b8662bc0bd761ec47d4867571a38",
+    "archive": "beetle-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "2177a6e269e4a1cc6336f5ad876a7fcc343ae1a88e98e17949ec90e109f129a5",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.4 (source camera horizontal span)",
+    "groundAnchor": [
+      0.0,
+      -0.5641158819198608,
+      -0.0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "shaman",
+    "file": "shaman-motion-v2-candidate.glb",
+    "sha256": "fbd07d25806a1526c2337d6f9c43bc8e0380d930bca9537809c312d7e1044c47",
+    "archive": "shaman-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "a00b44c4664afc76f2cd21ff1ec17dc38ce88923a8f0b8d5f65dcd3fb32e95bc",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.75 (source camera horizontal span)",
+    "groundAnchor": [
+      -0.10000000149011612,
+      -0.8902260065078735,
+      -0.0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "brute",
+    "file": "brute-motion-v2-candidate.glb",
+    "sha256": "c4190762f067d72b4e50d7b07090c17460363baa786882fd3024e383ec7537fb",
+    "archive": "brute-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "244b83fb5e71aa99b6fe9f84ed2ecccdd0935960e52698d7e826ee070c4efe27",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.4 (source camera horizontal span)",
+    "groundAnchor": [
+      0.0,
+      -0.8542622327804565,
+      -0.0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "bat",
+    "file": "bat-motion-v2-candidate.glb",
+    "sha256": "eb3fc47854e361f736a39ea263553a476d2e7e8a185868166445e41d05e42dc6",
+    "archive": "bat-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "6bba8eb2712b68771de5da7af72197f658525f1251b77b7248f57f232293f70c",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.7 (source camera horizontal span)",
+    "groundAnchor": [
+      0.0,
+      -1.0399999618530273,
+      -0.0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "wraith",
+    "file": "wraith-motion-v2-candidate.glb",
+    "sha256": "c32165dba19770d0421a649b2f8c4a73da5ffab8752486052c5442c6b02274e3",
+    "archive": "wraith-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "5713bcd29457101ba202e6fac7c6115aa24d692613defab360c238695aef585f",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 4.8 (source camera horizontal span)",
+    "groundAnchor": [
+      0.0,
+      -1.2300000190734863,
+      -0.0
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "ogre",
+    "file": "ogre-motion-arm-swing20.glb",
+    "sha256": "ca2349cc7ed1fa943a201d6155bf8d0bb31fe317b9a42e62f2677002f8f8f418",
+    "archive": "ogre-walk-clear-step-candidate.zip",
+    "archiveSha256": "999dfacc549992cd9f69a4545eefe38b5f6ba168df1d68079658339a50d1d3d2",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.55 (source camera horizontal span)",
+    "groundAnchor": [
+      0.04500000178813934,
+      -0.9521399736404419,
+      -0.2849999964237213
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "dragon",
+    "file": "dragon-motion-v2-candidate.glb",
+    "sha256": "2c4d7b2e4d3693743a87b378c5349dd2df6f25fa268d27234d5e3541f4754d87",
+    "archive": "dragon-animated-glb-cloud-candidate.zip",
+    "archiveSha256": "35a083e4289e41795b29e0616b7a89323c54b30d934b8ea2fc217bfad1ea509a",
+    "basis": "glTF Y-up; source rest attributes unchanged",
+    "scaleDerivation": "128 / 3.0 (source camera horizontal span)",
+    "groundAnchor": [
+      0.0,
+      -1.2400000095367432,
+      0.07999999821186066
+    ],
+    "verification": "source contract inspected; runtime visual acceptance pending"
+  }
+]

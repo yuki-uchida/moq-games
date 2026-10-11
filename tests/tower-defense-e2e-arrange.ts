@@ -10,6 +10,7 @@ export const towerPath = '/moq-games/examples/games/tower_diffence_with_jev/inde
 
 export async function openOfflineCampaign(page: Page, field: FieldId = 'meadow') {
   await page.goto(towerPath)
+  await page.locator('#title-new').click()
   await expect(page.locator('#launch')).toBeVisible()
   await page.locator(`[data-field="${field}"]`).click()
   await page.locator('#offline-start').click()

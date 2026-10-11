@@ -3,10 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta http-equiv="refresh" content="0;url=./examples/games/tower_diffence_with_jev/index.html" />
-    <title>Moss &amp; Steel · Tower Defense</title>
+    <meta name="description" content="MoQ Games — ブラウザで遊べるゲームサンプル。Tower Defense の世界へ。" />
+    <meta name="theme-color" content="#f5f3e9" />
+    <title>MoQ Games</title>
   </head>
   <body>
-    <a href="./examples/games/tower_diffence_with_jev/index.html">ゲームを開く</a>
+    <a class="skip-link" href="#main">ゲーム一覧へスキップ</a>
+    <header class="site-header">
+      <a class="site-brand" href="./" aria-label="MoQ Games ホーム"
+        ><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>MoQ <span>Games</span></a
+      >
+      <a class="header-link" href="#samples">ゲームを選ぶ <span aria-hidden="true">↙</span></a>
+    </header>
+    <main id="main">
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="section-kicker">A PLAYGROUND FOR REAL-TIME EXPERIENCES</p>
+          <h1 id="page-title">ひらく。遊ぶ。<br class="mobile-break" /><span>夢中になる。</span></h1>
+        </div>
+        <p class="intro-description">ブラウザから、そのままゲームの世界へ。<br />MoQ Games のプレイアブルサンプル。</p>
+      </section>
+      <div class="collection-heading">
+        <span>ゲームを選ぶ <span id="sample-count" class="count">01</span></span
+        ><span class="collection-note">PICK YOUR NEXT ADVENTURE</span>
+      </div>
+      <section id="samples" aria-label="プレイできるゲーム">
+        <article class="fallback">
+          <h2>smart defence with jev</h2>
+          <p>仲間を配置し、迫る敵を迎え撃つ。</p>
+          <a href="./examples/games/tower_diffence_with_jev/index.html">ゲームをプレイ</a>
+        </article>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span>MoQ Games</span>
+      <p>小さな実験から、遊びの可能性を。</p>
+      <span class="footer-label">BUILT TO PLAY.</span>
+    </footer>
+    <script type="module" src="./landing/main.js"></script>
   </body>
 </html>

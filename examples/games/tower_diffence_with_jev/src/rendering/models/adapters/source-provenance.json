@@ -1,0 +1,162 @@
+[
+  {
+    "role": "tank",
+    "file": "tank-dq-skinning-adapter.js",
+    "sha256": "bc3e5813608bbd2c934355d876c8cb87cfd56212e579e20299a8e942b14a3449",
+    "sourceArchive": "tank-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "85aef3f24d229abe20482bffa68c7d0b2653c8e140490cb45e53509bdfc4b2b7",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "tank",
+    "file": "tank-material-adapter.js",
+    "sha256": "71d15d6d431e48a8eb6893015e59d52b07b5bd2f98dbcde4d24bd534dcbb04ac",
+    "sourceArchive": "tank-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "85aef3f24d229abe20482bffa68c7d0b2653c8e140490cb45e53509bdfc4b2b7",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "mage",
+    "file": "mage-material-adapter.js",
+    "sha256": "c8be6343132999162938acb48bdc74e9203be36e9dd05d701b61279a82a35d76",
+    "sourceArchive": "mage-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "b1cdf8b2be7a7298d79f67f9f0a1ec540b1ab7b80e543689f845d9e4e6181927",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "frost",
+    "file": "frost-material-adapter.js",
+    "sha256": "9c902d21faebc14a314a7b4326aca97bc7c5a86ea77f17c6f0e88a846da649b9",
+    "sourceArchive": "frost-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "f2e31c221c19041a691eb73dad3f20ed14818c23b7ed117b98f6eb80cc96a3d7",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "healer",
+    "file": "healer-material-adapter.js",
+    "sha256": "3207f80112fdf6802c15b3e02107f4f7ef6f98db543507819701a6ce16236569",
+    "sourceArchive": "healer-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "1a07cc63b232bd139ec498eb2a20a9b8aa247223cd79847cc2a1fa044bd9ea00",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "ranger",
+    "file": "ranger-material-adapter.js",
+    "sha256": "50da38d058be0ae2d468c4da768f4a3e6aa6fd8b9088b4b2b64e19de61273cc5",
+    "sourceArchive": "ranger-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "b57f17821fb6fb711ba92bc23f5bf7732b4369f89a5821c5898803ef54c79e4f",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "ranger",
+    "file": "ranger-extra-skinning-adapter.js",
+    "sha256": "d99786ffb0296684c36b31993bec1c8cd4806746dbace667b5378921e0a1ab91",
+    "sourceArchive": "ranger-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "b57f17821fb6fb711ba92bc23f5bf7732b4369f89a5821c5898803ef54c79e4f",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "cannon",
+    "file": "cannon-extra-skinning-adapter.js",
+    "sha256": "3021067838f33323a6827e8587ba5e590cbaad17f1b3d81f4fcda49b8cfd94bd",
+    "sourceArchive": "cannon-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "8778483756922a7b5c925073bd3ee69090b28fbfbcff4d5639b52ac3bf75279a",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "cannon",
+    "file": "cannon-material-adapter.js",
+    "sha256": "fc80a8483b1668be8c8b1b3ade2f54f85eab048dee4ce5ac7c7bc04cc57c5c47",
+    "sourceArchive": "cannon-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "8778483756922a7b5c925073bd3ee69090b28fbfbcff4d5639b52ac3bf75279a",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "paladin",
+    "file": "paladin-material-adapter.js",
+    "sha256": "785168958fbbc3c8f8082d03b7f49fef244b9bcc0a2dcfb4b39b1aad6a664c37",
+    "sourceArchive": "paladin-damage-only-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "45b6ff8a34d1a3b23aae3b508734680a020048e2cedb5661b4f4fbf70385f5af",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "goblin",
+    "file": "goblin-material-adapter.js",
+    "sha256": "98874bbaba4711b66b08993334f7d984509f164648c2cd42d015bcf3b9197b30",
+    "sourceArchive": "goblin-smooth-walk-candidate.zip",
+    "sourceArchiveSha256": "43059e42a269927d74839e942a72036bec18abdc60191f7d67b03fcb5dd36246",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "beetle",
+    "file": "beetle-material-adapter.js",
+    "sha256": "8e473a3a5dfc46316b0fdf18c68e04e1f66daf231e8e6caf3a245e0cbe283da4",
+    "sourceArchive": "beetle-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "2177a6e269e4a1cc6336f5ad876a7fcc343ae1a88e98e17949ec90e109f129a5",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "shaman",
+    "file": "shaman-material-adapter.js",
+    "sha256": "73d51a3c2cced35a7ff011b1ee63cab909759b917872f65992216ede6853e65b",
+    "sourceArchive": "shaman-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "a00b44c4664afc76f2cd21ff1ec17dc38ce88923a8f0b8d5f65dcd3fb32e95bc",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "brute",
+    "file": "brute-material-adapter.js",
+    "sha256": "4e49712d83505bbab6ec91741f0024dcc51c3783a25c99d62b0116032c800661",
+    "sourceArchive": "brute-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "244b83fb5e71aa99b6fe9f84ed2ecccdd0935960e52698d7e826ee070c4efe27",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "bat",
+    "file": "bat-material-adapter.js",
+    "sha256": "047c3dbcf4660a687a386b379069a116a87147d65271108abb791bbd21c54d82",
+    "sourceArchive": "bat-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "6bba8eb2712b68771de5da7af72197f658525f1251b77b7248f57f232293f70c",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "wraith",
+    "file": "wraith-material-adapter.js",
+    "sha256": "de0d7a53a017e97b177dbfde2a1973af12c20595562f90f529781be167af45d5",
+    "sourceArchive": "wraith-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "5713bcd29457101ba202e6fac7c6115aa24d692613defab360c238695aef585f",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "ogre",
+    "file": "ogre-dq-skinning-adapter.js",
+    "sha256": "31914e28dd46110a2a89f753595faee66dfbcf4de1792ec46700c7b987bd8131",
+    "sourceArchive": "ogre-walk-clear-step-candidate.zip",
+    "sourceArchiveSha256": "999dfacc549992cd9f69a4545eefe38b5f6ba168df1d68079658339a50d1d3d2",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "ogre",
+    "file": "ogre-material-adapter.js",
+    "sha256": "49fa48ea7a43bae3ceabdea86df393ae5af67b637060399fbcf1093b02527ede",
+    "sourceArchive": "ogre-walk-clear-step-candidate.zip",
+    "sourceArchiveSha256": "999dfacc549992cd9f69a4545eefe38b5f6ba168df1d68079658339a50d1d3d2",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "dragon",
+    "file": "dragon-material-adapter.js",
+    "sha256": "aae04b2b52b349c7b933a939e662a07c73527378ace77a6e8445d30ded34c21a",
+    "sourceArchive": "dragon-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "35a083e4289e41795b29e0616b7a89323c54b30d934b8ea2fc217bfad1ea509a",
+    "modifications": "None; original JavaScript bytes preserved."
+  },
+  {
+    "role": "dragon",
+    "file": "dragon-dq-skinning-adapter.js",
+    "sha256": "1c866dfb3a5941c4eefbd53b28da75f682da5e30617bb9e29c3e7a4a73a0e5b4",
+    "sourceArchive": "dragon-animated-glb-cloud-candidate.zip",
+    "sourceArchiveSha256": "35a083e4289e41795b29e0616b7a89323c54b30d934b8ea2fc217bfad1ea509a",
+    "modifications": "None; original JavaScript bytes preserved."
+  }
+]

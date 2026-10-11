@@ -1,0 +1,145 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #f5f3e9;
+  background: #122c24;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+a {
+  color: #e1edb2;
+  text-decoration: none;
+}
+button,
+select,
+input {
+  font: inherit;
+}
+button,
+select {
+  border: 1px solid #67806a;
+  border-radius: 5px;
+  padding: 10px 14px;
+  background: #254336;
+  color: #f5f3e9;
+  min-height: 44px;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid #e1edb2;
+  outline-offset: 4px;
+}
+.extra-header {
+  padding: 24px 5vw;
+  border-bottom: 1px solid #3b5345;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 13px;
+}
+.extra-header span {
+  color: #9bad9d;
+}
+.extra-layout {
+  width: min(1100px, 90vw);
+  margin: 40px auto;
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #d8c180;
+}
+h1 {
+  font:
+    64px/1 Georgia,
+    serif;
+  margin: 18px 0;
+}
+.extra-intro > p {
+  max-width: 600px;
+}
+.extra-note {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #a9baa8;
+}
+.extra-controls,
+.extra-transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+  margin: 24px 0;
+}
+label {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  color: #b6c4ab;
+}
+.extra-check {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+}
+.extra-stage {
+  min-height: 360px;
+  border: 1px solid #58725a;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 32px;
+  background: radial-gradient(ellipse, #3c5842, #1b362b);
+}
+.extra-stage canvas {
+  max-width: none;
+  image-rendering: pixelated;
+}
+#viewer-status {
+  max-width: 560px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.9;
+}
+#viewer-timeline {
+  flex: 1;
+  min-width: 150px;
+  align-self: center;
+  accent-color: #e1edb2;
+}
+#viewer-time {
+  min-width: 90px;
+  align-self: center;
+  font: 12px monospace;
+}
+.extra-transport {
+  align-items: center;
+}
+@media (max-width: 600px) {
+  .extra-header span {
+    display: none;
+  }
+  .extra-stage {
+    min-height: 280px;
+    padding: 12px;
+  }
+  .extra-controls {
+    gap: 12px;
+  }
+  .extra-layout {
+    margin: 24px auto;
+  }
+}

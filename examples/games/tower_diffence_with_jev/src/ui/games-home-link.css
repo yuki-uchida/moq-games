@@ -1,0 +1,29 @@
+.games-home-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #aebd9166;
+  border-radius: 10px;
+  background: #203c32ed;
+  color: #f4f1da;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.games-home-link:hover {
+  background: #3b5843;
+}
+@media (max-width: 600px) {
+  .games-home-link {
+    font-size: 10px;
+    padding-inline: 9px;
+    gap: 4px;
+  }
+  .topbar {
+    gap: 6px;
+  }
+}
