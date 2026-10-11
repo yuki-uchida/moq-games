@@ -33,3 +33,8 @@ test('landing uses existing roster artwork and has no runtime game/audio imports
   assert.match(css, /prefers-reduced-motion/)
   assert.match(css, /focus-visible/)
 })
+
+test('play link has an explicit stable accessible name including the game title', async () => {
+  const js = await readFile(new URL('../landing/main.js', import.meta.url), 'utf8')
+  assert.ok(js.includes('aria-label="ゲームをプレイ: ${escape(sample.title)}"'))
+})

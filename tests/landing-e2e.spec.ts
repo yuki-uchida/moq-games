@@ -18,7 +18,7 @@ for (const viewport of [
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'smart defence with jev', exact: true })).toBeVisible()
     await expect(page.getByRole('article')).toHaveCount(1)
-    const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev' })
+    const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
     await expect(play).toHaveAttribute('href', './examples/games/tower_diffence_with_jev/index.html')
     await expect(play).toBeVisible()
     await expect
@@ -47,7 +47,7 @@ test('keyboard, reduced motion, and browser back preserve the catalog', async ({
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: 'ゲーム一覧へスキップ' })).toBeFocused()
   await page.keyboard.press('Enter')
-  const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev' })
+  const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
   await play.focus()
   expect(await play.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0s')
   await page.keyboard.press('Enter')

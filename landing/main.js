@@ -62,7 +62,7 @@ container.innerHTML = samples
     <h2 id="${escape(sample.id)}-title">${escape(sample.title)}</h2>
     <p class="game-description">${escape(sample.description)}</p>
     <ul class="tags">${sample.tags.map((tag) => `<li>${escape(tag)}</li>`).join('')}</ul>
-    <a class="play-button" href="${escape(sample.href)}"><span class="play-triangle" aria-hidden="true"></span>ゲームをプレイ<span class="button-arrow" aria-hidden="true">↗</span><span class="sr-only">: ${escape(sample.title)}</span></a>
+    <a class="play-button" href="${escape(sample.href)}" aria-label="ゲームをプレイ: ${escape(sample.title)}"><span class="play-triangle" aria-hidden="true"></span>ゲームをプレイ<span class="button-arrow" aria-hidden="true">↗</span><span class="sr-only">: ${escape(sample.title)}</span></a>
     <p class="play-note">インストール不要 · 音声の自動再生なし</p>
   </div>
   ${sample.art === 'tower-defense' ? battlefield() : ''}
