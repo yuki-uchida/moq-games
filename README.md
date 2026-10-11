@@ -52,7 +52,7 @@ To inspect the production build, run `npm run preview` and open the [preview gam
 
 - `npm test` runs the available game tests. The migration workstation also retains private asset/provenance regression tests.
 - For the included public-build browser suite, install Chromium with `npx playwright install chromium`, run `npm run build`, then run `npx playwright test --config playwright.pages.config.ts`. This starts and waits for its own preview server. The broader development suite uses `npm run e2e` with `npm run dev` in another terminal.
-- Public SDK smoke/default-2D checks use the included assets. The complete appearance/audio suite also needs the omitted local packs. The SDK smoke test initializes real WASM, then stops at a mocked WebTransport constructor; it makes no live Jev request.
+- Public SDK smoke/default-2D checks use the included assets. The complete appearance suite also needs the omitted local 3D packs; the approved sound effects are included. The SDK smoke test initializes real WASM, then stops at a mocked WebTransport constructor; it makes no live Jev request.
 - `npm run test:tower-debug` checks the debug tools with synthetic fixtures. Review tooling requires an explicitly selected store outside the checkout; never point synthetic tests at real user state.
 - The two real Wolf debug-asset checks are separate: set `TOWER_DEBUG_TEST_ASSETS` to the original read-only catalog/asset fixture, then run `npm run test:tower-debug-assets`.
 
@@ -110,7 +110,7 @@ See [architecture](docs/architecture.md) for the browser, bot and transport boun
 <details>
 <summary>Artwork, optional local packs and real-3D development</summary>
 
-The public checkout includes the original 2D runtime art and supports local Rule AI play. Redistribution evidence is confirmed for all 20 real-3D unit roles, including Soldier. Only the selected Slime model-review GLB and EXTRA frames are included in this revision. The other runtime packs remain local while optimization and browser acceptance checks are completed. Generated sound packs remain separate and omitted pending their own redistribution review. Missing optional packs must not be treated as successfully loaded assets.
+The public checkout includes the original 2D runtime art and supports local Rule AI play. Redistribution evidence is confirmed for all 20 real-3D unit roles, including Soldier. Only the selected Slime model-review GLB and EXTRA frames are included in this revision. The other runtime packs remain local while optimization and browser acceptance checks are completed. The approved 22 generated WAV sound effects are included, with 21 selected by the existing game. They start after user interaction and support mute, volume and load retries. BGM remains excluded. Missing optional packs must not be treated as successfully loaded assets.
 
 The migration workstation preserves the complete pack, original sources and unadopted candidates outside the public Git selection. To import an authorized unpacked pack:
 

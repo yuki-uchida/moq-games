@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test'
 // Verify the actual Pages output, not Vite's development-only module routes.
 export default defineConfig({
   testDir: './tests',
-  testMatch: /(?:(?:landing|tower-title|tower-standalone)-e2e|tower-model-review)\.spec\.ts/,
+  testMatch: /(?:(?:landing|tower-title|tower-standalone)-e2e|tower-model-review|tower-published-audio)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),

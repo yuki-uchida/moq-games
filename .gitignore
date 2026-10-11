@@ -27,7 +27,9 @@ sdk/wasm/
 
 migration/
 public/tower-defense-art/
-public/tower-defense-sfx/
+public/tower-defense-sfx/*
+!public/tower-defense-sfx/*.wav
+!public/tower-defense-sfx/README.md
 docs/tower-defense.md
 docs/architecture.md.local
 examples/games/tower_diffence_with_jev/provenance/
