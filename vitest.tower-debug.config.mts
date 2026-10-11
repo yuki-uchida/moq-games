@@ -8,7 +8,6 @@ export default defineConfig({
     include: ['tools/tower-debug/client/src/*.test.ts'],
     exclude: ['tools/tower-debug/client/src/Actual3DView.test.ts'],
     maxWorkers: 1,
-    minWorkers: 1,
     fileParallelism: false,
     pool: 'forks',
     environment: 'node'
