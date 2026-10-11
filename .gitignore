@@ -41,3 +41,12 @@ tools/tower-debug/prepare-assets.py
 tools/tower-debug/expand-assets.py
 tools/tower-debug/verify-expanded-store.py
 vendor/moq-games-moqt-client-0.1.0-migration.20261011.tgz
+
+.sdk-cache/
+.generated/
+sdk/source/
+sdk/THIRD-PARTY-LICENSES/
+sdk/LICENSE
+sdk-origin.json
+vendor/
+scripts/pack-sdk.mjs

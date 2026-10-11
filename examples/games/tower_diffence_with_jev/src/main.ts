@@ -1,3 +1,4 @@
+import { audioPackAvailable, environmentPackAvailable } from './BuildAssets'
 import { allRoadPaths } from './game/BattlefieldRoutes'
 import { FORTIFICATIONS } from './game/Fortifications'
 import {
@@ -149,7 +150,7 @@ let battleClock: BattleClock | undefined,
 const fieldIds = Object.keys(FIELDS) as FieldId[]
 const artBase = new URL('../../../tower-defense-art/', document.baseURI)
 const trialArts = unitTrialCatalog(artBase)
-let environmentTrialEnabled = environmentTrialFromURL(new URL(document.baseURI))
+let environmentTrialEnabled = environmentPackAvailable && environmentTrialFromURL(new URL(document.baseURI))
 let environmentTrialError: string | undefined
 let environmentTrialRequest = 0
 let newLayoutBundle: EnvironmentArtBundle | undefined
@@ -220,19 +221,20 @@ const renderer = new GameRenderer($('field'), {
 })
 // Keep the original campaign layout until every matching background is decoded and verified.
 // The retained bundle also supplies later field switches without another network dependency.
-void loadEnvironmentArtBundle(artBase, newLayoutRequest.signal, 2)
-  .then((bundle) => {
-    if (simulationDisposed) {
-      bundle.dispose()
-      return
-    }
-    newLayoutBundle = bundle
-    renderer.setEnvironmentBundle(bundle)
-    updateFieldChoicePreviews()
-  })
-  .catch(() => {
-    // Missing, incomplete, stale or failed artwork leaves all new campaigns on layout 1.
-  })
+if (environmentPackAvailable)
+  void loadEnvironmentArtBundle(artBase, newLayoutRequest.signal, 2)
+    .then((bundle) => {
+      if (simulationDisposed) {
+        bundle.dispose()
+        return
+      }
+      newLayoutBundle = bundle
+      renderer.setEnvironmentBundle(bundle)
+      updateFieldChoicePreviews()
+    })
+    .catch(() => {
+      // Missing, incomplete, stale or failed artwork leaves all new campaigns on layout 1.
+    })
 Object.assign(window, {
   towerDefenseDiagnostics: () => ({
     ...renderer.diagnostics(),
@@ -360,8 +362,10 @@ const soundPlayer = new SoundPlayer(
   }
 )
 soundPlayer.setVolume(soundPreferences.volume)
-soundPlayer.setEnabled(soundPreferences.enabled)
-$<HTMLInputElement>('sound-enabled').checked = soundPreferences.enabled
+soundPlayer.setEnabled(soundPreferences.enabled && audioPackAvailable)
+$<HTMLInputElement>('sound-enabled').disabled = !audioPackAvailable
+$<HTMLInputElement>('sound-enabled').checked = soundPreferences.enabled && audioPackAvailable
+if (!audioPackAvailable) $('sound-status').textContent = 'この公開版には音声パックを含みません。'
 $<HTMLInputElement>('sound-volume').value = String(Math.round(soundPreferences.volume * 100))
 $('sound-volume-value').textContent = `${Math.round(soundPreferences.volume * 100)}%`
 const unlockSound = (event: Event) => {

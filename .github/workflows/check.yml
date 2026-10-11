@@ -14,12 +14,22 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+      - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:core
       - run: npm run build
       - run: node scripts/prepare-pages.mjs
+      - run: test -s dist/THIRD-PARTY-NOTICES.txt && test -s .generated/moqt-sdk/provenance.json
       - uses: actions/configure-pages@v5
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - uses: actions/upload-pages-artifact@v4

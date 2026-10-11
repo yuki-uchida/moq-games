@@ -1,9 +1,18 @@
 import { defineConfig } from 'vite'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   base: '/moq-games/',
+  define: {
+    'import.meta.env.VITE_TOWER_ENVIRONMENT_AVAILABLE': JSON.stringify(
+      String(existsSync(resolve(root, 'public/tower-defense-art/environment-3d-trial/runtime-manifest.json')))
+    ),
+    'import.meta.env.VITE_TOWER_AUDIO_AVAILABLE': JSON.stringify(
+      String(existsSync(resolve(root, 'public/tower-defense-sfx/soldier_attack.wav')))
+    )
+  },
   optimizeDeps: { exclude: ['@moq-games/moqt-client'] },
   server: {
     host: '127.0.0.1',
@@ -16,6 +25,7 @@ export default defineConfig({
         '**/local-assets/**',
         '**/art-prototypes/**',
         '**/migration/**',
+        '**/.sdk-cache/**',
         '**/tools/tower-debug/.build/**'
       ]
     }

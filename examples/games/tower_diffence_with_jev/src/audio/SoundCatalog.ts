@@ -1,3 +1,4 @@
+import { audioPackAvailable } from '../BuildAssets'
 import type { SoundCatalogEntry } from './SoundPlayer'
 import { EFFECT_SOUND_BINDINGS, type EffectSoundKey } from '../game/CombatSoundEvents'
 
@@ -190,6 +191,7 @@ export function soundCatalog(
   base: URL,
   selectedEffects: Readonly<Partial<Record<EffectSoundKey, SelectedEffectSound | null>>> = UNSELECTED_EFFECT_SOUNDS
 ): SoundCatalogEntry[] {
+  if (!audioPackAvailable) return []
   return [
     ...entries.map(({ file, ...entry }) => ({ ...entry, url: new URL(file, base).href })),
     ...Object.entries(EFFECT_SOUND_BINDINGS).flatMap(([id, binding]) => {

@@ -1,3 +1,4 @@
+import { environmentPackAvailable } from './BuildAssets'
 import { FORTIFICATIONS, type RoadItemPlacement } from './game/Fortifications'
 import type { Equipment, RoadItem, RoadItemKind, UnitType } from './game/model'
 
@@ -16,7 +17,7 @@ const paths = {
 
 export function fortificationIcon(kind: keyof typeof paths): string {
   const fallback = `<svg class="fortification-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind]}</svg>`
-  if (kind !== 'sandbag' && kind !== 'spike' && kind !== 'mud') return fallback
+  if (!environmentPackAvailable || (kind !== 'sandbag' && kind !== 'spike' && kind !== 'mud')) return fallback
   const asset = kind === 'mud' ? 'mud' : `${kind}-intact-0`
   const src = `../../../tower-defense-art/environment-3d-trial/${asset}.png`
   return `<span class="item-model" aria-hidden="true">${fallback}<img data-item-art="${kind}" src="${src}" alt="" draggable="false" width="${kind === 'mud' ? 64 : 96}" height="${kind === 'mud' ? 48 : 96}"></span>`

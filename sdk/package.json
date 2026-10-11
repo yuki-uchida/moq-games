@@ -1,6 +1,6 @@
 {
   "name": "@moq-games/moqt-client",
-  "version": "0.1.0-migration.20261011.1",
+  "version": "0.1.0-source.94ddf4c",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -20,10 +20,9 @@
   "files": [
     "dist",
     "wasm",
-    "source",
     "LICENSE",
-    "README.md",
-    "THIRD-PARTY-LICENSES"
+    "THIRD-PARTY-NOTICES.txt",
+    "provenance.json"
   ],
   "sideEffects": [
     "./wasm/*.js"

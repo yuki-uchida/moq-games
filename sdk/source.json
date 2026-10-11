@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/yuki-uchida/moq-wasm",
+  "commit": "94ddf4cb54ac70360ca5a90e2fa4447b0c400639",
+  "cargoLockSha256": "a3c3b5a9fb585060ab5fe0e12857ef3d96e8d1ea802e005af20fcafe482fee71",
+  "rust": "1.96.0",
+  "wasmPack": "0.13.1",
+  "typescript": "5.9.3",
+  "wrapperSha256": {
+    "moqtClient.ts": "e06a7f6c721b6ed6bb74a2cb95a7117e7768e1e8fba2439583056a04c4291c95",
+    "subscriptionStateManager.ts": "75eac5267ada3f5418b61bd193e5efd0df1045e12ea7e03f9637bf8b25c422f3"
+  }
+}

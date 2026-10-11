@@ -1,12 +1,13 @@
 # moq-games
 
-Independent TypeScript/three.js tower-defense game, with an optional Python Jev bot and MoQ transport. The game owns simulation and runs with Rule AI without network transport. This repository does not require a sibling moq-wasm checkout or Rust for normal development.
+Independent TypeScript/three.js tower-defense game, with an optional Python Jev bot and MoQ transport. The game owns simulation and runs with Rule AI without network transport. The explicit first-time SDK setup fetches a pinned public moq-wasm commit and builds it with Rust. Normal game development reuses the generated SDK and does not need a sibling checkout.
 
 ## Install and run
 
-Use Node.js 24 and npm:
+Install Git, Node.js 24/npm and rustup. On a fresh clone:
 
 ```sh
+node scripts/setup-sdk.mjs
 npm ci --ignore-scripts
 npm run dev
 ```
@@ -34,7 +35,9 @@ The two real Wolf debug-asset checks are separately opt-in: set `TOWER_DEBUG_TES
 
 ## SDK and bot
 
-`vendor/` contains a fixed local `@moq-games/moqt-client` tarball, including the rebuilt WASM and existing browser wrapper. `package-lock.json` pins its integrity. No npm publication is required. See `sdk/README.md` and `sdk-origin.json` for regeneration and attribution. Preserve the Vite dependency-prebundle exclusion for this package.
+`sdk/source.json` pins the public upstream URL, full commit, Cargo.lock hash, wrapper hashes and build tool versions. `node scripts/setup-sdk.mjs` installs the pinned Rust target, obtains the pinned wasm-pack if needed, and prepares `.generated/moqt-sdk`. The same explicit setup runs in CI before `npm ci`; it is not an npm install lifecycle hook. Source/build caches and generated SDK files are ignored by Git. A verified unchanged SDK is reused; edited caches/output are rejected rather than reset. See [SDK setup](sdk/README.md).
+
+The game imports the stable `@moq-games/moqt-client` package API. A future published SDK can replace the local dependency without changing game imports. There is no npm publication or upstream Release creation in this setup. Preserve the Vite dependency-prebundle exclusion.
 
 The optional bot is under `examples/games/tower_diffence_with_jev/bot`. Create a fresh Python 3.12 virtual environment and install `requirements.txt`. Copy `.env.example` to a local ignored `.env` only when configuring an authorized real service. Keys remain server-side. No credentials are included; starting the bot against a real Jev service may incur charges and is not part of routine tests.
 
@@ -45,3 +48,5 @@ Review tooling uses an explicitly selected store outside the checkout. Real user
 Browser storage keys and save schemas are unchanged. A path change on the same origin preserves localStorage; a different scheme, host, or port requires an explicit save export/import plan. No existing browser storage was cleared by migration. The old checkout remains intact.
 
 Code is distributed under the retained upstream MIT license. SDK dependencies retain their own notices. This license does not grant rights to omitted artwork, recordings or audio.
+
+The trusted-project Codex configuration declares the approved i-have-adhd and Ponytail plugin sources. A different machine still needs its own installation and hook trust confirmation; machine-specific trust hashes and credentials are not committed.
