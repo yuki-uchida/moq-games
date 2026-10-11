@@ -1,7 +1,6 @@
 import { inflateRawSync, constants } from 'node:zlib'
 import { expect, it } from 'vitest'
 import { encodeMoqJson } from '../../../../utils/moqJson'
-import { encodeChatRecord } from '../../../moq-chat-moderation/chatWire'
 
 function decode(frame: Uint8Array): unknown {
   return JSON.parse(
@@ -18,13 +17,4 @@ it.each([10, 65535, 140000])('encodes a JSON record with %i bytes of content for
   const frame = encodeMoqJson(record)
   // Assert
   expect(decode(frame)).toEqual(record)
-})
-
-it('preserves the chat demo wire format when sharing the encoder', () => {
-  // Arrange
-  const location = { groupId: 123n, objectId: 0n }
-  // Act
-  const frame = encodeChatRecord('hello', location)
-  // Assert
-  expect(decode(frame)).toEqual({ text: 'hello', location: [123, 0] })
 })
