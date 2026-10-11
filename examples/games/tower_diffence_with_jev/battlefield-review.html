@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scripted offline battlefield review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+        overflow: auto;
+      }
+      header {
+        padding: 12px;
+        max-width: 1260px;
+      }
+      #review-controls {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0;
+        flex-wrap: wrap;
+      }
+      #review-controls select,
+      #review-controls button {
+        color: #173c33;
+        background: #fff5db;
+        padding: 6px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 1440px;
+      }
+      #field canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+      #status {
+        max-height: 84px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        font: 11px monospace;
+      }
+      #frame-label {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Scripted offline battlefield review: real GameEngine, GameRenderer, WebGL and authored PNGs.</b>
+      <div>
+        No Jev connection or live-session claims. Positions, HP, speed, cooldowns, deployment intervals, boss counters
+        and the next breath sequence are explicit fixture setup. All subsequent travel, targeting, damage and removal
+        run through GameEngine. Fresh in-memory saves only.
+      </div>
+      <div id="review-controls">
+        <label
+          >Field
+          <select id="review-field">
+            <option>meadow</option>
+            <option>desert</option>
+            <option>frost</option>
+            <option>volcanic</option>
+          </select></label
+        >
+        <label
+          >Case
+          <select id="review-case">
+            <option value="overview">Tall overview</option>
+            <option value="split">Fork travel</option>
+            <option value="merge">Merge travel</option>
+            <option value="shared">Shared bag</option>
+            <option value="exclusive">Exclusive bag</option>
+            <option value="formation">Delayed formation</option>
+            <option value="flight">Direct flight</option>
+            <option value="gate">Normal gate exit</option>
+            <option value="boss">Boss siege</option>
+            <option value="area">Enlarged area</option>
+            <option value="legacy">Legacy world</option>
+          </select></label
+        >
+        <button id="review-prepare">Prepare</button><button id="review-step">Advance 200 ms</button
+        ><button id="review-kill">Kill selected flight target</button>
+      </div>
+      <div id="frame-label">Choose a scripted case</div>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/BattlefieldReview.ts"></script>
+  </body>
+</html>

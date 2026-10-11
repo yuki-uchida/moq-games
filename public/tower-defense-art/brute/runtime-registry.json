@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "character": "crystal-stone-brute",
+  "runtimeType": "brute",
+  "visualCharacterId": "crystal-stone-brute",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "north-south-controlled-axis-parent-review-candidate",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-n.json",
+      "texture": "crystal-stone-brute-n.png",
+      "sha256": "d169edade0a1ebbc55924596b3b450ef997b85e47f885a7a69b02fae494e9aaf"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-n.json",
+      "texture": "crystal-stone-brute-n.png",
+      "sha256": "d169edade0a1ebbc55924596b3b450ef997b85e47f885a7a69b02fae494e9aaf"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-n.json",
+      "texture": "crystal-stone-brute-n.png",
+      "sha256": "d169edade0a1ebbc55924596b3b450ef997b85e47f885a7a69b02fae494e9aaf"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-ne.json",
+      "texture": "crystal-stone-brute-ne.png",
+      "sha256": "735a5247884a6b3912fdaedad2e4fffba19731b3cdb0281b1a8af2922e371fc3"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-ne.json",
+      "texture": "crystal-stone-brute-ne.png",
+      "sha256": "735a5247884a6b3912fdaedad2e4fffba19731b3cdb0281b1a8af2922e371fc3"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-ne.json",
+      "texture": "crystal-stone-brute-ne.png",
+      "sha256": "735a5247884a6b3912fdaedad2e4fffba19731b3cdb0281b1a8af2922e371fc3"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-e.json",
+      "texture": "crystal-stone-brute-e.png",
+      "sha256": "076ac47b31b361afef589990f5abf47d300e9a0ef9e7103dbb450035abdd6974"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-e.json",
+      "texture": "crystal-stone-brute-e.png",
+      "sha256": "076ac47b31b361afef589990f5abf47d300e9a0ef9e7103dbb450035abdd6974"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-e.json",
+      "texture": "crystal-stone-brute-e.png",
+      "sha256": "076ac47b31b361afef589990f5abf47d300e9a0ef9e7103dbb450035abdd6974"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-se.json",
+      "texture": "crystal-stone-brute-se.png",
+      "sha256": "240bbc9f64418bc6cf16aae73c21d2a479c1261e297a0d90351fee12325af7e0"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-se.json",
+      "texture": "crystal-stone-brute-se.png",
+      "sha256": "240bbc9f64418bc6cf16aae73c21d2a479c1261e297a0d90351fee12325af7e0"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-se.json",
+      "texture": "crystal-stone-brute-se.png",
+      "sha256": "240bbc9f64418bc6cf16aae73c21d2a479c1261e297a0d90351fee12325af7e0"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-s.json",
+      "texture": "crystal-stone-brute-s.png",
+      "sha256": "714d785fcd6a2267369798b370d11242ef8e8aa2cee964cf38fa44bea4a0516d"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-s.json",
+      "texture": "crystal-stone-brute-s.png",
+      "sha256": "714d785fcd6a2267369798b370d11242ef8e8aa2cee964cf38fa44bea4a0516d"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-s.json",
+      "texture": "crystal-stone-brute-s.png",
+      "sha256": "714d785fcd6a2267369798b370d11242ef8e8aa2cee964cf38fa44bea4a0516d"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-sw.json",
+      "texture": "crystal-stone-brute-sw.png",
+      "sha256": "f0c1c3d05f3cd0795e6252ca46a1f05af0323674771e452a0bafd041ed4cdfc3"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-sw.json",
+      "texture": "crystal-stone-brute-sw.png",
+      "sha256": "f0c1c3d05f3cd0795e6252ca46a1f05af0323674771e452a0bafd041ed4cdfc3"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-sw.json",
+      "texture": "crystal-stone-brute-sw.png",
+      "sha256": "f0c1c3d05f3cd0795e6252ca46a1f05af0323674771e452a0bafd041ed4cdfc3"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-w.json",
+      "texture": "crystal-stone-brute-w.png",
+      "sha256": "7ebefc4b60472a38e6275d2c147d76ca1d5178362e1b7b135eef69d1e6a49764"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-w.json",
+      "texture": "crystal-stone-brute-w.png",
+      "sha256": "7ebefc4b60472a38e6275d2c147d76ca1d5178362e1b7b135eef69d1e6a49764"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-w.json",
+      "texture": "crystal-stone-brute-w.png",
+      "sha256": "7ebefc4b60472a38e6275d2c147d76ca1d5178362e1b7b135eef69d1e6a49764"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "crystal-stone-brute-idle-nw.json",
+      "texture": "crystal-stone-brute-nw.png",
+      "sha256": "e02074c2580ad8e6ae5e15dc3f67353aa7410eb72d099805f125283d568e936a"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "crystal-stone-brute-walk-nw.json",
+      "texture": "crystal-stone-brute-nw.png",
+      "sha256": "e02074c2580ad8e6ae5e15dc3f67353aa7410eb72d099805f125283d568e936a"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "crystal-stone-brute-attack-nw.json",
+      "texture": "crystal-stone-brute-nw.png",
+      "sha256": "e02074c2580ad8e6ae5e15dc3f67353aa7410eb72d099805f125283d568e936a"
+    }
+  ],
+  "sources": [
+    {
+      "sourceTexture": "../master/crystal-stone-brute-n.png",
+      "sourceSHA256": "3083cde28bfb47380811b9b0db424d08d81082ef976b6baaf9a93e7a69ae83ca",
+      "runtimeTexture": "crystal-stone-brute-n.png",
+      "runtimeSHA256": "d169edade0a1ebbc55924596b3b450ef997b85e47f885a7a69b02fae494e9aaf",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-ne.png",
+      "sourceSHA256": "bde5379f1a4a1810a6c62da67f42850581aa89698c47c02627df4ec8c299d2ca",
+      "runtimeTexture": "crystal-stone-brute-ne.png",
+      "runtimeSHA256": "735a5247884a6b3912fdaedad2e4fffba19731b3cdb0281b1a8af2922e371fc3",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-e.png",
+      "sourceSHA256": "45a45570990b30678e6aa206384bc5de1d4fab19d183fb4bc6f920f835669981",
+      "runtimeTexture": "crystal-stone-brute-e.png",
+      "runtimeSHA256": "076ac47b31b361afef589990f5abf47d300e9a0ef9e7103dbb450035abdd6974",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-se.png",
+      "sourceSHA256": "7ad479ac1e0f58256989123fe9a4e4ba2946752927b92cc03862f7e962e8e2d2",
+      "runtimeTexture": "crystal-stone-brute-se.png",
+      "runtimeSHA256": "240bbc9f64418bc6cf16aae73c21d2a479c1261e297a0d90351fee12325af7e0",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-s.png",
+      "sourceSHA256": "8394a0f7f20474f00c3248ac8af431de9af55633c1ec8dd1488ea2a24cdb0e62",
+      "runtimeTexture": "crystal-stone-brute-s.png",
+      "runtimeSHA256": "714d785fcd6a2267369798b370d11242ef8e8aa2cee964cf38fa44bea4a0516d",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-sw.png",
+      "sourceSHA256": "bfe070729af510e69582d00aa8b622933bfe49fae2be5b6c1c6899715ad8db55",
+      "runtimeTexture": "crystal-stone-brute-sw.png",
+      "runtimeSHA256": "f0c1c3d05f3cd0795e6252ca46a1f05af0323674771e452a0bafd041ed4cdfc3",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-w.png",
+      "sourceSHA256": "a49f578d6f312ebec0a338ffc189cf8b803f1c9202e1e1b9d6955459fdc147fa",
+      "runtimeTexture": "crystal-stone-brute-w.png",
+      "runtimeSHA256": "7ebefc4b60472a38e6275d2c147d76ca1d5178362e1b7b135eef69d1e6a49764",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../master/crystal-stone-brute-nw.png",
+      "sourceSHA256": "ffa2f616960031fdce1625ef9d2358878da716569b044f6e78df788f495cdaf7",
+      "runtimeTexture": "crystal-stone-brute-nw.png",
+      "runtimeSHA256": "e02074c2580ad8e6ae5e15dc3f67353aa7410eb72d099805f125283d568e936a",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    }
+  ]
+}

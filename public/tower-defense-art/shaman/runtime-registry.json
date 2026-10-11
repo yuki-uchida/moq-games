@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "runtimeType": "shaman",
+  "visualCharacterId": "mushroom-mage",
+  "character": "mushroom-mage",
+  "displayName": "\u304d\u306e\u3053\u30e1\u30a4\u30b8",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "strong-redrawn-full-body-review",
+  "source": "Newly drawn complete poses; five independently camera-locked directions and three whole-frame mirrors. Exact current idle/walk banks and neutral bookends retained.",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-n.json",
+      "sha256": "42ed579580399c688058810e6b7739689aa9dc3b0098b9f35dc3f89eb06ccad2"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-n.json",
+      "sha256": "42ed579580399c688058810e6b7739689aa9dc3b0098b9f35dc3f89eb06ccad2"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-n.json",
+      "sha256": "42ed579580399c688058810e6b7739689aa9dc3b0098b9f35dc3f89eb06ccad2"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-ne.json",
+      "sha256": "242b80629045be6c4f2f43e812f27e0091ce18f93e0411b8d43be766ac60bb4b"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-ne.json",
+      "sha256": "242b80629045be6c4f2f43e812f27e0091ce18f93e0411b8d43be766ac60bb4b"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-ne.json",
+      "sha256": "242b80629045be6c4f2f43e812f27e0091ce18f93e0411b8d43be766ac60bb4b"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-e.json",
+      "sha256": "d52cf0317c25a431d1cb8bda1205a9331fdd43f8a68c1f1acf4a3b18c66e66dd"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-e.json",
+      "sha256": "d52cf0317c25a431d1cb8bda1205a9331fdd43f8a68c1f1acf4a3b18c66e66dd"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-e.json",
+      "sha256": "d52cf0317c25a431d1cb8bda1205a9331fdd43f8a68c1f1acf4a3b18c66e66dd"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-se.json",
+      "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-se.json",
+      "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-se.json",
+      "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-s.json",
+      "sha256": "baf4826d5d46fc6a0165e70e8fd17968db41371acec3066682fbe6a8eef1b647"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-s.json",
+      "sha256": "baf4826d5d46fc6a0165e70e8fd17968db41371acec3066682fbe6a8eef1b647"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-s.json",
+      "sha256": "baf4826d5d46fc6a0165e70e8fd17968db41371acec3066682fbe6a8eef1b647"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-sw.json",
+      "sha256": "5b5358123b4f32fbb20a91d471af50cfe1ee64e9a5afdbb1294cef28cda9de25"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-sw.json",
+      "sha256": "5b5358123b4f32fbb20a91d471af50cfe1ee64e9a5afdbb1294cef28cda9de25"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-sw.json",
+      "sha256": "5b5358123b4f32fbb20a91d471af50cfe1ee64e9a5afdbb1294cef28cda9de25"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-w.json",
+      "sha256": "bad64ca4f2bc6db61304d27dd98437f85d5c24e05d9c3a20ba88ba7e3f2c72ef"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-w.json",
+      "sha256": "bad64ca4f2bc6db61304d27dd98437f85d5c24e05d9c3a20ba88ba7e3f2c72ef"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-w.json",
+      "sha256": "bad64ca4f2bc6db61304d27dd98437f85d5c24e05d9c3a20ba88ba7e3f2c72ef"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "mushroom-mage-idle-nw.json",
+      "sha256": "06cd72cb7ff9ed66ce3594ff5b54b8337414ae59395c1b0896bb580fb2bca508"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "mushroom-mage-walk-nw.json",
+      "sha256": "06cd72cb7ff9ed66ce3594ff5b54b8337414ae59395c1b0896bb580fb2bca508"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "mushroom-mage-attack-nw.json",
+      "sha256": "06cd72cb7ff9ed66ce3594ff5b54b8337414ae59395c1b0896bb580fb2bca508"
+    }
+  ],
+  "layout": {
+    "columns": 8,
+    "rows": 9,
+    "idleRows": [
+      0,
+      1,
+      2
+    ],
+    "walkRows": [
+      3,
+      4,
+      5
+    ],
+    "attackRows": [
+      6,
+      7,
+      8
+    ]
+  },
+  "runtimeComposition": "One complete baked character frame, no live layers or crossfade",
+  "attackRevision": "strong-v2",
+  "pixelsPerWorldUnit": 1,
+  "derivationPolicy": "New full-body attack drawings reduced 3:1 Lanczos. Exact current runtime idle/walk and exact neutral bookends; no overlays or runtime rig.",
+  "sources": [
+    {
+      "filename": "mushroom-mage-n.png",
+      "sourceSHA256": "1ce7eb77e83a51705728ab71578ffdf94f00c573d4add42e8208c059240c0587",
+      "sha256": "42ed579580399c688058810e6b7739689aa9dc3b0098b9f35dc3f89eb06ccad2"
+    },
+    {
+      "filename": "mushroom-mage-ne.png",
+      "sourceSHA256": "dbc4bb18e12fdc028210a0160ceeae0dc97c27b59a0ce576b25419bfe1ba767b",
+      "sha256": "242b80629045be6c4f2f43e812f27e0091ce18f93e0411b8d43be766ac60bb4b"
+    },
+    {
+      "filename": "mushroom-mage-e.png",
+      "sourceSHA256": "99567f9fc171921560c23db9b79e0e8ba3c25e9248e61a41607cdeb9afeea3b0",
+      "sha256": "d52cf0317c25a431d1cb8bda1205a9331fdd43f8a68c1f1acf4a3b18c66e66dd"
+    },
+    {
+      "filename": "mushroom-mage-se.png",
+      "sourceSHA256": "31a7927b97c3d2336e3f99b424d39acf16e556d598e3dfbf708cd3591130370a",
+      "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443"
+    },
+    {
+      "filename": "mushroom-mage-s.png",
+      "sourceSHA256": "6b4c5ccb6351fb1c2d400365183d6e608daf07db9ba53ba5bd28c148e65112a7",
+      "sha256": "baf4826d5d46fc6a0165e70e8fd17968db41371acec3066682fbe6a8eef1b647"
+    },
+    {
+      "filename": "mushroom-mage-sw.png",
+      "sourceSHA256": "47012bff0a509cafa9cec597afe620eb675bdb2b49488ffbf920a02603d8d23c",
+      "sha256": "5b5358123b4f32fbb20a91d471af50cfe1ee64e9a5afdbb1294cef28cda9de25"
+    },
+    {
+      "filename": "mushroom-mage-w.png",
+      "sourceSHA256": "3074022b9b08f4d51858371932c0484425c91cd90c863c17531bf50493fb84e7",
+      "sha256": "bad64ca4f2bc6db61304d27dd98437f85d5c24e05d9c3a20ba88ba7e3f2c72ef"
+    },
+    {
+      "filename": "mushroom-mage-nw.png",
+      "sourceSHA256": "f584b8a64fa1f7e9df9f157cabb5b89bb8f4cab809825fb0557e8eb929fd8510",
+      "sha256": "06cd72cb7ff9ed66ce3594ff5b54b8337414ae59395c1b0896bb580fb2bca508"
+    }
+  ]
+}

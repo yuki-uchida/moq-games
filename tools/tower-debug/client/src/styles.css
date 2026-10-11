@@ -1,0 +1,441 @@
+:root {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: #e5edf0;
+  background: #141d23;
+  color-scheme: dark;
+  font-size: 15px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+select,
+input:not([type='range'], [type='checkbox']),
+textarea {
+  border: 1px solid #50616a;
+  border-radius: 9px;
+  background: #23333e;
+  color: inherit;
+  padding: 10px 13px;
+}
+button {
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+}
+button:hover {
+  background: #304855;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #f4c857;
+  outline-offset: 3px;
+}
+label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 26px;
+  border-bottom: 1px solid #34444d;
+}
+header > div {
+  margin-right: auto;
+}
+h1 {
+  margin: 4px 0;
+  font-size: 1.8rem;
+}
+h2 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+.eyebrow {
+  font-size: 0.68rem;
+  color: #a9c6d4;
+  letter-spacing: 0.2em;
+}
+.badge {
+  vertical-align: middle;
+  font-size: 0.7rem;
+  color: #f4cf78;
+  background: #3b3829;
+  padding: 6px 9px;
+  border-radius: 16px;
+}
+main {
+  padding: 18px 26px;
+  max-width: 1600px;
+  margin: auto;
+}
+.selection,
+.view-options {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.selection label:first-child {
+  flex: 1;
+}
+.selection select {
+  max-width: 100%;
+}
+nav {
+  display: flex;
+  gap: 7px;
+  margin: 18px 0 14px;
+  flex-wrap: wrap;
+}
+nav button[aria-selected='true'] {
+  background: #d5e6df;
+  color: #172922;
+  border-color: #d5e6df;
+  font-weight: 650;
+}
+.view-options {
+  font-size: 0.82rem;
+  color: #b6c9d3;
+  margin-bottom: 10px;
+}
+#representation-label {
+  margin-left: auto;
+}
+#stage {
+  height: min(58vh, 590px);
+  min-height: 300px;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  background-color: #19262e;
+  background-image:
+    linear-gradient(45deg, #26384144 25%, transparent 25%), linear-gradient(-45deg, #26384144 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #26384144 75%), linear-gradient(-45deg, transparent 75%, #26384144 75%);
+  background-size: 24px 24px;
+  background-position:
+    0 0,
+    0 12px,
+    12px -12px,
+    -12px 0;
+  border: 1px solid #425762;
+  border-radius: 14px;
+}
+#stage canvas {
+  display: block;
+  image-rendering: pixelated;
+  max-width: none;
+}
+#stage canvas.actual3d {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  image-rendering: auto;
+  touch-action: none;
+}
+#stage p {
+  max-width: 540px;
+  padding: 24px;
+  line-height: 1.7;
+}
+#load-status {
+  min-height: 20px;
+  color: #ecd69b;
+  font-size: 0.88rem;
+  margin: 9px 0;
+}
+.transport {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid #435560;
+  background: #1c2b35;
+  border-radius: 12px;
+  padding: 12px;
+}
+.transport input {
+  flex: 1;
+  min-width: 100px;
+}
+output {
+  min-width: 170px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.detail {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #aabdc7;
+  margin: 10px 0;
+}
+.preserve {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+dialog {
+  border: 1px solid #5a707a;
+  border-radius: 16px;
+  background: #1b2b34;
+  color: inherit;
+  max-width: 760px;
+  width: calc(100% - 28px);
+  max-height: 90vh;
+  padding: 22px;
+  box-shadow: 0 20px 70px #0009;
+}
+dialog::backdrop {
+  background: #070e15b8;
+}
+.dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.dialog-actions,
+.audio-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+dialog > label {
+  display: block;
+  margin: 14px 0;
+}
+dialog > label input,
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+}
+.candidate {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 0;
+  border-bottom: 1px solid #3c505c;
+}
+.candidate label {
+  align-items: flex-start;
+}
+.candidate small {
+  display: block;
+  color: #a9bdc7;
+  margin-top: 5px;
+}
+.warning {
+  color: #ffcc71 !important;
+}
+#ticket-result {
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  color: #aac9d7;
+}
+input[type='range'] {
+  accent-color: #e2c170;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: #e2c170;
+  width: 19px;
+  height: 19px;
+}
+#audio-status {
+  white-space: pre-wrap;
+  color: #d9c894;
+}
+@media (max-width: 600px) {
+  header {
+    padding: 15px 12px;
+    flex-wrap: wrap;
+  }
+  header > div {
+    width: 100%;
+  }
+  header button {
+    flex: 1;
+  }
+  main {
+    padding: 14px 12px;
+  }
+  .selection {
+    gap: 10px;
+  }
+  .selection label:first-child {
+    flex-basis: 100%;
+  }
+  .selection label:first-child select {
+    flex: 1;
+    min-width: 0;
+  }
+  .badge {
+    font-size: 0.65rem;
+  }
+  nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .view-options {
+    gap: 10px;
+  }
+  #representation-label {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  #stage {
+    height: 45vh;
+    min-height: 280px;
+  }
+  .transport {
+    gap: 7px;
+    padding: 9px;
+  }
+  .transport input {
+    order: 5;
+    flex-basis: 100%;
+  }
+  output {
+    min-width: 0;
+    margin-left: auto;
+    flex-basis: 100%;
+    text-align: left;
+  }
+  .candidate {
+    grid-template-columns: 1fr auto;
+  }
+  .candidate button:last-child {
+    grid-column: 2;
+  }
+  .candidate label {
+    grid-row: span 2;
+  }
+  .audio-controls label {
+    width: 100%;
+  }
+  dialog {
+    padding: 16px;
+  }
+  h1 {
+    font-size: 1.6rem;
+  }
+}
+/* Expanded catalogue stays in full-width overlays, with explicit text states. */
+#role-title {
+  text-transform: capitalize;
+}
+#audio-count {
+  font-size: 0.8rem;
+  font-weight: normal;
+}
+.candidate {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.candidate details {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.candidate[data-state='selected'] {
+  border-left: 4px solid #71dca4;
+}
+.candidate[data-state='excluded'] {
+  border-left: 4px solid #bf8899;
+}
+.candidate[data-state='held'] {
+  border-left: 4px solid #f7cf63;
+}
+.review-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+details {
+  margin-block: 0.6rem;
+}
+summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+[hidden] {
+  display: none !important;
+}
+button,
+select {
+  min-height: 44px;
+}
+:focus-visible {
+  outline: 3px solid #f7cf63;
+  outline-offset: 3px;
+}
+#regeneration-prompt {
+  width: 100%;
+}
+@media (max-width: 600px) {
+  header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .selection > label {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .selection select {
+    width: 100%;
+  }
+  .candidate > label:first-child {
+    flex-basis: 100%;
+  }
+  dialog {
+    width: calc(100vw - 16px);
+    max-width: none;
+    padding: 12px;
+  }
+  .dialog-head h2 {
+    font-size: 1rem;
+  }
+}
+.ticket-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-block: 0.5rem;
+}
+.ticket-result {
+  border-top: 1px solid #435066;
+  margin-block: 1rem;
+}
+.ticket-media {
+  display: block;
+  max-width: 100%;
+  max-height: 55vh;
+}
+#ticket-detail {
+  overflow-wrap: anywhere;
+}

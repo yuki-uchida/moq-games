@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "character": "leaf-squire",
+  "direction": "s",
+  "motion": "walk",
+  "texture": "leaf-squire-walk-s.png",
+  "sha256": "4452511ce6f917d27235cd4fdd92278544ba954b6b5c68c3742be88bdbd71961",
+  "textureWidth": 1024,
+  "textureHeight": 336,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 52,
+  "loop": true,
+  "durationMs": 461.53846153846155,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 20,
+      "x": 512,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 21,
+      "x": 640,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 22,
+      "x": 768,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 23,
+      "x": 896,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    }
+  ],
+  "strideWorldUnits": 24
+}

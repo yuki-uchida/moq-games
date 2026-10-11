@@ -1,0 +1,4 @@
+pipecat-ai[moq]==1.12.0
+moq-rs==0.4.7
+httpx>=0.28,<1
+python-dotenv>=1.0,<2

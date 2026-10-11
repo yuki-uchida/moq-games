@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "runtimeType": "ranger",
+  "visualCharacterId": "falcon-ranger",
+  "character": "falcon-ranger",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "motion": "death",
+  "status": "wholebody-death-art-review-candidate",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-n.json",
+      "sha256": "8573bb2d17f25738fb86eccd14886229d196d23e6676120c3a00ff18de50413d"
+    },
+    {
+      "direction": "ne",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-ne.json",
+      "sha256": "c846a77a12a161dea6a71448255fbe55f501408c5ee0070fc01bd7d41729a744"
+    },
+    {
+      "direction": "e",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-e.json",
+      "sha256": "04ebbbc48b54f0758d06d317e8985f1a43d3ca90ed9c9766efc6a06118be407f"
+    },
+    {
+      "direction": "se",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-se.json",
+      "sha256": "41d11a386323a9853d2ca5b3153449ff9362ade9d5ed59769111ecce752b7759"
+    },
+    {
+      "direction": "s",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-s.json",
+      "sha256": "48d8333dbee75a6b7079e336e98ea769eab319f05e7ed2f26272990460fabbf6"
+    },
+    {
+      "direction": "sw",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-sw.json",
+      "sha256": "81b275067fb3e928e445c53ac7ddf291e2effa86a7a1607f9d8109ace77f8062"
+    },
+    {
+      "direction": "w",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-w.json",
+      "sha256": "b1894e882d30ff29a07357869d0d6a5178dfb7889549057354b1769b673eba3a"
+    },
+    {
+      "direction": "nw",
+      "motion": "death",
+      "manifest": "falcon-ranger-death-nw.json",
+      "sha256": "dcf051c21c635f3499a677dc686e8ad1c00b5fa62b4849ddeb6ea8fb0ef85ef3"
+    }
+  ],
+  "sourceRegistrySHA256": "8a60de579de8d7ab01b18b600168684625a51f8002b997fe666469b93ab44899"
+}

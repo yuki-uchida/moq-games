@@ -1,0 +1,314 @@
+{
+  "version": 1,
+  "character": "potbelly-club-ogre",
+  "runtimeType": "ogre",
+  "direction": "sw",
+  "motion": "attack",
+  "texture": "potbelly-club-ogre-sw.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 1200,
+  "frames": [
+    {
+      "index": 0,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ready"
+    },
+    {
+      "index": 1,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "open-stance"
+    },
+    {
+      "index": 2,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "open-stance"
+    },
+    {
+      "index": 3,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "lower"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "coil"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "coil"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "coil"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "peak-load"
+    },
+    {
+      "index": 8,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "unwind"
+    },
+    {
+      "index": 9,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "accelerate"
+    },
+    {
+      "index": 10,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "horizontal-blow"
+    },
+    {
+      "index": 11,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "contact"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "follow-through"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "follow-through"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "catch-step"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "catch-step"
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "recover"
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "recover"
+    },
+    {
+      "index": 18,
+      "x": 768,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ready-recover"
+    },
+    {
+      "index": 19,
+      "x": 896,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ready"
+    }
+  ],
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 660
+    }
+  ],
+  "sha256": "449750ecabd933401830e29ca2efecb21571a4b4a4029dc62f6c55114eaba17d",
+  "status": "authored-whole-body",
+  "sourceProvenance": "../source-provenance.json"
+}

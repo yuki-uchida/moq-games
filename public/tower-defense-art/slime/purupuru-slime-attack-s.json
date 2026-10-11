@@ -1,0 +1,272 @@
+{
+  "version": 1,
+  "character": "purupuru-slime",
+  "direction": "s",
+  "motion": "attack",
+  "texture": "purupuru-slime-s.png",
+  "sha256": "63082d7e8e3083df65c5b90f95e8301af6446bc999e8e23f0e81db869b65dc81",
+  "textureWidth": 1024,
+  "textureHeight": 784,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 960,
+  "frames": [
+    {
+      "index": 0,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0,
+      "phaseName": "anticipation"
+    },
+    {
+      "index": 1,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.0625,
+      "phaseName": "anticipation"
+    },
+    {
+      "index": 2,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.125,
+      "phaseName": "anticipation"
+    },
+    {
+      "index": 3,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.1875,
+      "phaseName": "anticipation"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.25,
+      "phaseName": "launch"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.3125,
+      "phaseName": "launch"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.375,
+      "phaseName": "launch"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "impact-complete",
+      "phase": 0.4375,
+      "phaseName": "impact"
+    },
+    {
+      "index": 8,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "impact-complete",
+      "phase": 0.5,
+      "phaseName": "impact"
+    },
+    {
+      "index": 9,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.5625,
+      "phaseName": "rebound"
+    },
+    {
+      "index": 10,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.625,
+      "phaseName": "rebound"
+    },
+    {
+      "index": 11,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.6875,
+      "phaseName": "rebound"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.75,
+      "phaseName": "settle"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.8125,
+      "phaseName": "settle"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.875,
+      "phaseName": "settle"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete",
+      "phase": 0.9375,
+      "phaseName": "settle"
+    }
+  ],
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 420
+    }
+  ],
+  "status": "runtime-derivative-under-review"
+}

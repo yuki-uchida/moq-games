@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "character": "dragon-fireball-fx",
+  "runtimeType": "dragon",
+  "direction": "e",
+  "motion": "idle",
+  "texture": "dragon-fireball-fx.png",
+  "sha256": "6377bf2047ce8781840e6cdf29646967ab2527a523aee444c644c815093b3a0f",
+  "textureWidth": 512,
+  "textureHeight": 192,
+  "frameSize": {
+    "width": 128,
+    "height": 96,
+    "pivot": {
+      "x": 120,
+      "y": 48
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": true,
+  "durationMs": 480,
+  "events": [],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 96,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 96,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 96,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 96,
+      "width": 128,
+      "height": 96,
+      "durationMs": 60,
+      "pivot": {
+        "x": 120,
+        "y": 48
+      },
+      "headState": "effect"
+    }
+  ],
+  "effectType": "projectile",
+  "facingAxis": "+X",
+  "pivotMeaning": "collision-tip",
+  "nominalGeometry": {
+    "collisionTip": {
+      "x": 120,
+      "y": 48
+    },
+    "space": "unscaled-cell-pixels"
+  },
+  "sourceProvenance": "../source-provenance.json"
+}

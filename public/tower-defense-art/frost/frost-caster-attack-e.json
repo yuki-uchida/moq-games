@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "character": "frost-caster",
+  "direction": "e",
+  "motion": "attack",
+  "texture": "frost-caster-e.png",
+  "sha256": "aba36f0d2b574f95fa3585940caaef7c9aa41a30de040d2a8d7ec69f8be107f7",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 15.625,
+  "loop": false,
+  "durationMs": 768,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 416
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "Separate ice-shard FX. Game owns flight and authoritative release; every frame emitter follows its actual cyan crystal centre.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 48,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 85.2219,
+        "y": 60.0612
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 64,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 44.2154,
+        "y": 41.7637
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 32.4333,
+        "y": 47.8501
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 89.8546,
+        "y": 76.5682
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 72,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 93.7018,
+        "y": 57.4762
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 72,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 106.7561,
+        "y": 65.896
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 56,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 99.5351,
+        "y": 64.3919
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 48,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 82.0691,
+        "y": 65.3095
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 85.6228,
+        "y": 54.8449
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 72,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 83.9012,
+        "y": 56.8618
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 64,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 82.013,
+        "y": 55.4849
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 32,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 85.2219,
+        "y": 60.0612
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "attackRevision": "strong-v2-redrawn-whole-body"
+}

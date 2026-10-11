@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "character": "monster_commander",
+  "visualCharacterId": "monster_commander",
+  "presentationOnly": true,
+  "directionOrder": [
+    "e"
+  ],
+  "clips": [
+    {
+      "clip": "idle",
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "monster_commander-idle-e.json",
+      "sha256": "fb8a97acad9f91b618acf1639d4a92728fb912087a0183614156abfe45a17bff"
+    },
+    {
+      "clip": "order",
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "monster_commander-order-e.json",
+      "sha256": "5f8225d6d9e39260ea75b943ce4fe894c9e0137518a6cc6d2312eb382c31ff00"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "monster_commander-idle-e.png",
+      "sha256": "fb8a97acad9f91b618acf1639d4a92728fb912087a0183614156abfe45a17bff",
+      "width": 768,
+      "height": 448
+    },
+    {
+      "filename": "monster_commander-order-e.png",
+      "sha256": "5f8225d6d9e39260ea75b943ce4fe894c9e0137518a6cc6d2312eb382c31ff00",
+      "width": 512,
+      "height": 336
+    }
+  ]
+}

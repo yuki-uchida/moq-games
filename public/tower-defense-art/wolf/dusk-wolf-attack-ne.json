@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "character": "dusk-wolf",
+  "direction": "ne",
+  "motion": "attack",
+  "texture": "dusk-wolf-strong-attack-ne.png",
+  "sha256": "3473df42801893ebb1d6599f518e65eeb20fc01aaa74930e1ed13b392e2d2fb8",
+  "textureWidth": 512,
+  "textureHeight": 448,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 18.66666667,
+  "loop": false,
+  "durationMs": 750,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 40,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 35,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 35,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 40,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 55,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose"
+    }
+  ],
+  "rendering": "whole-character-frame-only",
+  "status": "strong-full-body-revision",
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 285
+    }
+  ],
+  "activeHitFrame": 5,
+  "activeHitTimeMs": 285,
+  "activeWindowMs": [
+    285,
+    355
+  ],
+  "attackSpeedHz": 1.1,
+  "attackIntervalMs": 909.090909090909
+}

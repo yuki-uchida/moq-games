@@ -1,0 +1,45 @@
+{
+  "name": "moq-games",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check vite.config.mjs package.json tsconfig.json sdk/source lib/moqt tools/tower-debug/server/StorePath.mjs",
+    "test": "vitest run examples/games/tower_diffence_with_jev/tests --maxWorkers=1 --minWorkers=1",
+    "test:tower": "npm test",
+    "e2e": "playwright test --config playwright.tower.config.ts",
+    "bot:tower": "cd examples/games/tower_diffence_with_jev/bot && .venv/bin/python app.py",
+    "debug:tower": "node tools/tower-debug/start-debug.mjs",
+    "test:tower-debug": "node --test --test-concurrency=1 tools/tower-debug/server/*.test.mjs && vitest run --config vitest.tower-debug.config.mts --maxWorkers=1 --minWorkers=1",
+    "typecheck:tower-debug": "tsc -p tools/tower-debug/tsconfig.json",
+    "build:tower-debug": "vite build --config vite.config.tower-debug.mjs",
+    "e2e:tower-debug": "playwright test --config playwright.tower-debug.config.ts",
+    "sdk:pack": "node scripts/pack-sdk.mjs",
+    "test:core": "vitest run examples/games/tower_diffence_with_jev/tests/game.test.ts examples/games/tower_diffence_with_jev/tests/network.test.ts examples/games/tower_diffence_with_jev/tests/moq-channel.test.ts examples/games/tower_diffence_with_jev/tests/wire.test.ts --maxWorkers=1 --minWorkers=1",
+    "test:tower-debug-assets": "vitest run --config vitest.tower-debug-assets.config.mts"
+  },
+  "dependencies": {
+    "@moq-games/moqt-client": "file:vendor/moq-games-moqt-client-0.1.0-migration.20261011.1.tgz",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.59.1",
+    "@types/node": "24.9.2",
+    "@types/three": "0.180.0",
+    "vite": "7.3.5",
+    "vitest": "3.2.7",
+    "typescript": "5.9.3",
+    "prettier": "3.5.3"
+  },
+  "overrides": {
+    "rollup": "^4.59.0",
+    "postcss": "^8.5.10",
+    "picomatch": "^4.0.4",
+    "@babel/core": "^7.29.6",
+    "esbuild": "^0.28.1"
+  }
+}

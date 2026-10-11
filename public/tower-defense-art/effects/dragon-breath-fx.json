@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "character": "dragon-breath-fx",
+  "runtimeType": "dragon",
+  "direction": "e",
+  "motion": "idle",
+  "texture": "dragon-breath-fx.png",
+  "sha256": "4a3f415bc6d5f953d066b7f8b7e321f69724dbfc69eb12bafb01c71c2a6e0bf1",
+  "textureWidth": 512,
+  "textureHeight": 224,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 8,
+      "y": 56
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": true,
+  "durationMs": 480,
+  "events": [],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 8,
+        "y": 56
+      },
+      "headState": "effect"
+    }
+  ],
+  "effectType": "sustained-breath",
+  "facingAxis": "+X",
+  "pivotMeaning": "mouth-origin",
+  "nominalGeometry": {
+    "mouthToTipLength": 111.667,
+    "terminalHalfWidth": 53.333,
+    "space": "unscaled-cell-pixels",
+    "measurement": "Maximum alpha48 envelope across8 frames at authored3\u00d7 density; flame curl can vary within this envelope."
+  },
+  "sourceProvenance": "../source-provenance.json"
+}

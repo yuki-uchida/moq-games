@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "projectile": "star-bolt",
+  "runtimeType": "mage",
+  "character": "fx-star-bolt",
+  "direction": "e",
+  "motion": "idle",
+  "events": [],
+  "texture": "star-bolt-runtime.png",
+  "sha256": "397cbb99139ec94974d24e7636c1c98029af890fc75a2c0b1e904f328daf2dc2",
+  "textureWidth": 192,
+  "textureHeight": 64,
+  "frameSize": {
+    "width": 48,
+    "height": 32,
+    "pivot": {
+      "x": 35,
+      "y": 16
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "sourceDirection": "+X",
+  "rotationPolicy": "Rotate whole frame about pivot to travel angle; game owns translation.",
+  "loop": true,
+  "durationMs": 520,
+  "fps": 15.384615384615385,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 1,
+      "x": 48,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 2,
+      "x": 96,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 3,
+      "x": 144,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 5,
+      "x": 48,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 6,
+      "x": 96,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 7,
+      "x": 144,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    }
+  ]
+}

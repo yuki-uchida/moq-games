@@ -1,0 +1,393 @@
+{
+  "version": 1,
+  "character": "crystal-stone-brute",
+  "runtimeType": "brute",
+  "direction": "nw",
+  "motion": "attack",
+  "texture": "crystal-stone-brute-nw.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 1200,
+  "frames": [
+    {
+      "index": 0,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 56.33333333333333,
+        "y": 75
+      }
+    },
+    {
+      "index": 1,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 57,
+        "y": 76.66666666666666
+      }
+    },
+    {
+      "index": 2,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 52,
+        "y": 70.33333333333333
+      }
+    },
+    {
+      "index": 3,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 49.33333333333333,
+        "y": 63.33333333333333
+      }
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 50,
+        "y": 22.666666666666664
+      }
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 55,
+        "y": 27
+      }
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 55,
+        "y": 20.666666666666664
+      }
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 46.666666666666664,
+        "y": 35.666666666666664
+      }
+    },
+    {
+      "index": 8,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 45.33333333333333,
+        "y": 34.666666666666664
+      }
+    },
+    {
+      "index": 9,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 28.666666666666664,
+        "y": 54.666666666666664
+      }
+    },
+    {
+      "index": 10,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "descending",
+      "emitter": {
+        "x": 35.33333333333333,
+        "y": 65.66666666666666
+      }
+    },
+    {
+      "index": 11,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 36.666666666666664,
+        "y": 89
+      }
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 36.666666666666664,
+        "y": 89
+      }
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 36.666666666666664,
+        "y": 89
+      }
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 50,
+        "y": 75.33333333333333
+      }
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 51.33333333333333,
+        "y": 73.33333333333333
+      }
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 51.666666666666664,
+        "y": 74.66666666666666
+      }
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 54.33333333333333,
+        "y": 75.33333333333333
+      }
+    },
+    {
+      "index": 18,
+      "x": 768,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 56.666666666666664,
+        "y": 75.66666666666666
+      }
+    },
+    {
+      "index": 19,
+      "x": 896,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-complete",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 56.33333333333333,
+        "y": 75
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 660
+    }
+  ],
+  "sha256": "e02074c2580ad8e6ae5e15dc3f67353aa7410eb72d099805f125283d568e936a",
+  "status": "runtime-derivative-under-review"
+}

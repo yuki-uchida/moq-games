@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "runtimeType": "archer",
+  "visualCharacterId": "forest-archer",
+  "character": "forest-archer",
+  "direction": "nw",
+  "motion": "death",
+  "texture": "forest-archer-death-nw.png",
+  "sha256": "cd8183bac561ab1476c09582758139a2546da18bd3ef1ee2e4197d7c3a51035a",
+  "textureWidth": 512,
+  "textureHeight": 336,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 12.5,
+  "loop": false,
+  "durationMs": 960,
+  "activePoseStartFrame": 1,
+  "events": [],
+  "terminalBehavior": "hold-final-frame-until-new-stage-or-retry",
+  "integrationStatus": "art-review-candidate",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "neutral",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "impact-recoil",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "recoil-peak",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "knees-buckle",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "knee-contact",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "balance-lost",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "forearm-contact",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "body-lands",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "settle-compress",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "cloth-rebound",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "settle-finish",
+      "headState": "hidden-whole-pose"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 140,
+      "pose": "fallen-hold",
+      "headState": "hidden-whole-pose"
+    }
+  ]
+}

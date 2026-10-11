@@ -1,0 +1,31 @@
+{
+  "name": "@moq-games/moqt-client",
+  "version": "0.1.0-migration.20261011.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/moqtClient.js",
+  "types": "./dist/moqtClient.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/moqtClient.d.ts",
+      "import": "./dist/moqtClient.js"
+    },
+    "./wasm": {
+      "types": "./wasm/moqt_client_wasm.d.ts",
+      "import": "./wasm/moqt_client_wasm.js"
+    },
+    "./wasm/moqt_client_wasm_bg.wasm": "./wasm/moqt_client_wasm_bg.wasm"
+  },
+  "files": [
+    "dist",
+    "wasm",
+    "source",
+    "LICENSE",
+    "README.md",
+    "THIRD-PARTY-LICENSES"
+  ],
+  "sideEffects": [
+    "./wasm/*.js"
+  ]
+}

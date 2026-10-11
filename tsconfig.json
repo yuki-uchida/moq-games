@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "lib": ["ESNext", "DOM", "WebWorker"],
+    "noEmit": true
+  },
+  "include": ["examples/games/tower_diffence_with_jev/src/**/*.ts", "utils/**/*.ts", "lib/**/*.ts"],
+  "exclude": ["node_modules", "**/art-prototypes/**"]
+}

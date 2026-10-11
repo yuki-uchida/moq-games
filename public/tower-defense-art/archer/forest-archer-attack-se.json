@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "character": "forest-archer",
+  "runtimeType": "archer",
+  "direction": "se",
+  "motion": "attack",
+  "texture": "forest-archer-se.png",
+  "sha256": "699d489490791631bbd21d40678666eb7134126e771236600910ca8077349f19",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 15,
+  "loop": false,
+  "durationMs": 800,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 433
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "Nocked arrow absent from frame6 active at433ms. Release emitter is prior full-draw tip. All other emitters follow the traced firing-line landmark in their actual complete pose.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 43,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 77.33333333333333,
+        "y": 80.0
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 82.33333333333333,
+        "y": 71.66666666666667
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 83.66666666666667,
+        "y": 71.66666666666667
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 88.33333333333333,
+        "y": 81.33333333333333
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 88.33333333333333,
+        "y": 80.33333333333333
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 88.02331189710611,
+        "y": 87.4922293676313
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 40,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 88.02331189710611,
+        "y": 87.4922293676313
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 85.33333333333333,
+        "y": 82.0
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 83.0,
+        "y": 74.0
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 80.66666666666667,
+        "y": 79.33333333333333
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 76.66666666666667,
+        "y": 83.33333333333333
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 47,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 77.33333333333333,
+        "y": 80.0
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "visualCharacterId": "forest-archer"
+}

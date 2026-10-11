@@ -1,0 +1,365 @@
+{
+  "version": 1,
+  "character": "monster_commander",
+  "visualCharacterId": "monster_commander",
+  "direction": "e",
+  "clip": "idle",
+  "motion": "idle",
+  "presentationOnly": true,
+  "texture": "monster_commander-idle-e.png",
+  "sha256": "fb8a97acad9f91b618acf1639d4a92728fb912087a0183614156abfe45a17bff",
+  "textureWidth": 768,
+  "textureHeight": 448,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 6.282722513089006,
+  "loop": true,
+  "durationMs": 3820,
+  "events": [],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 0
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 0
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 1
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 1
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 2
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 2
+    },
+    {
+      "index": 6,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 3
+    },
+    {
+      "index": 7,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 3
+    },
+    {
+      "index": 8,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 4
+    },
+    {
+      "index": 9,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 4
+    },
+    {
+      "index": 10,
+      "x": 512,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 5
+    },
+    {
+      "index": 11,
+      "x": 640,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 5
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "half",
+      "authoredPose": 6
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "closed",
+      "authoredPose": 7
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "closed",
+      "authoredPose": 7
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "half",
+      "authoredPose": 8
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 9
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 9
+    },
+    {
+      "index": 18,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 10
+    },
+    {
+      "index": 19,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 10
+    },
+    {
+      "index": 20,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 11
+    },
+    {
+      "index": 21,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 11
+    },
+    {
+      "index": 22,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 0
+    },
+    {
+      "index": 23,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open",
+      "authoredPose": 0
+    }
+  ]
+}

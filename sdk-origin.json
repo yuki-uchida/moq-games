@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/yuki-uchida/moq-wasm",
+  "sourceHead": "94ddf4cb54ac70360ca5a90e2fa4447b0c400639",
+  "sourceBranch": "codex/tower-defense-jev",
+  "sourceWasDirty": true,
+  "cargoLockSha256": "a3c3b5a9fb585060ab5fe0e12857ef3d96e8d1ea802e005af20fcafe482fee71",
+  "wasmSha256": "23ce54f445008e52029638cbc5a1bb3ad4d4923216af5e8c1ff5a2cc475a4593",
+  "build": "wasm-pack --target web, --locked, release, external target/output, private home and temporary paths remapped",
+  "wrapperSources": {
+    "moqtClient.ts": "82098c3a6a6c925b70ba72354265821b83f49e9a110b4009fe2285ab0d734234",
+    "subscriptionStateManager.ts": "8a677968a65acfb342140b4399a7c9b188a1f8ace6f381a6b63a61f77bd7cbc9"
+  }
+}

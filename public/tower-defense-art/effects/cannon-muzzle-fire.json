@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "character": "fx-cannon-muzzle-fire",
+  "direction": "e",
+  "motion": "idle",
+  "events": [],
+  "fps": 18.181818181818183,
+  "kind": "muzzle-effect",
+  "texture": "cannon-muzzle-fire.png",
+  "sha256": "8027c18b23776e74f0ab5c4b28a649b8985d46cabf4bffcc4af52d1bafbd31ea",
+  "orientation": "+X/right",
+  "pixelsPerWorldUnit": 1,
+  "textureWidth": 256,
+  "textureHeight": 48,
+  "frameSize": {
+    "width": 64,
+    "height": 48,
+    "pivot": {
+      "x": 8.0,
+      "y": 24.0
+    }
+  },
+  "pivotSpace": "unscaled-cell-pixels",
+  "loop": false,
+  "durationMs": 220,
+  "frames": [
+    {
+      "index": 0,
+      "headState": "effect",
+      "x": 0,
+      "y": 0,
+      "width": 64,
+      "height": 48,
+      "durationMs": 35,
+      "pivot": {
+        "x": 8.0,
+        "y": 24.0
+      }
+    },
+    {
+      "index": 1,
+      "headState": "effect",
+      "x": 64,
+      "y": 0,
+      "width": 64,
+      "height": 48,
+      "durationMs": 45,
+      "pivot": {
+        "x": 8.0,
+        "y": 24.0
+      }
+    },
+    {
+      "index": 2,
+      "headState": "effect",
+      "x": 128,
+      "y": 0,
+      "width": 64,
+      "height": 48,
+      "durationMs": 55,
+      "pivot": {
+        "x": 8.0,
+        "y": 24.0
+      }
+    },
+    {
+      "index": 3,
+      "headState": "effect",
+      "x": 192,
+      "y": 0,
+      "width": 64,
+      "height": 48,
+      "durationMs": 85,
+      "pivot": {
+        "x": 8.0,
+        "y": 24.0
+      }
+    }
+  ],
+  "pivotMeaning": "muzzle attachment origin",
+  "renderPolicy": "Standalone complete FX sprite; rotate around pivot to world heading. Never overlay on a character to form anatomy."
+}

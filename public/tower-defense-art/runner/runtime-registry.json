@@ -1,0 +1,237 @@
+{
+  "version": 1,
+  "runtimeType": "runner",
+  "character": "spear-scout",
+  "visualCharacterId": "spear-scout",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "attack-revision-v1",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-n.json",
+      "sha256": "e80eb25a45bf6f20458e7fd138cbe5e60ea46117f552d64f7284a81ac0719024"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-n.json",
+      "sha256": "e80eb25a45bf6f20458e7fd138cbe5e60ea46117f552d64f7284a81ac0719024"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-n.json",
+      "sha256": "e80eb25a45bf6f20458e7fd138cbe5e60ea46117f552d64f7284a81ac0719024"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-ne.json",
+      "sha256": "06519996e6b04e3aea6f31141eefe6f8948915d9b5710cc3e7bf58eda568bb35"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-ne.json",
+      "sha256": "06519996e6b04e3aea6f31141eefe6f8948915d9b5710cc3e7bf58eda568bb35"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-ne.json",
+      "sha256": "06519996e6b04e3aea6f31141eefe6f8948915d9b5710cc3e7bf58eda568bb35"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-e.json",
+      "sha256": "3c31debcafee7ac857844c0e18193049c836aa0d0a62703873d54ce04527a3e5"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-e.json",
+      "sha256": "3c31debcafee7ac857844c0e18193049c836aa0d0a62703873d54ce04527a3e5"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-e.json",
+      "sha256": "3c31debcafee7ac857844c0e18193049c836aa0d0a62703873d54ce04527a3e5"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-se.json",
+      "sha256": "a023686860fc06abd86f9d4da074c7dd935fd801095035b2b228e67f3ae748fc"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-se.json",
+      "sha256": "a023686860fc06abd86f9d4da074c7dd935fd801095035b2b228e67f3ae748fc"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-se.json",
+      "sha256": "a023686860fc06abd86f9d4da074c7dd935fd801095035b2b228e67f3ae748fc"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-s.json",
+      "sha256": "917950c8336b106667631d59a4275991c98e700f47bf078e5e1a14af0eedd762"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-s.json",
+      "sha256": "917950c8336b106667631d59a4275991c98e700f47bf078e5e1a14af0eedd762"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-s.json",
+      "sha256": "917950c8336b106667631d59a4275991c98e700f47bf078e5e1a14af0eedd762"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-sw.json",
+      "sha256": "965ed34de93084bf751e6f53957325f3e2edbff405d65a89de83c41abef752d2"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-sw.json",
+      "sha256": "965ed34de93084bf751e6f53957325f3e2edbff405d65a89de83c41abef752d2"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-sw.json",
+      "sha256": "965ed34de93084bf751e6f53957325f3e2edbff405d65a89de83c41abef752d2"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-w.json",
+      "sha256": "aec737d5e065e77a49a754f889ea1173ba3266967754a65fbd5a6f273fd2a36f"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-w.json",
+      "sha256": "aec737d5e065e77a49a754f889ea1173ba3266967754a65fbd5a6f273fd2a36f"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-w.json",
+      "sha256": "aec737d5e065e77a49a754f889ea1173ba3266967754a65fbd5a6f273fd2a36f"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "spear-scout-idle-nw.json",
+      "sha256": "99bc46b5f56d4a644aa60d5b8a332c872f34d2e06634312cebc7524d918456a9"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "spear-scout-walk-nw.json",
+      "sha256": "99bc46b5f56d4a644aa60d5b8a332c872f34d2e06634312cebc7524d918456a9"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "spear-scout-attack-nw.json",
+      "sha256": "99bc46b5f56d4a644aa60d5b8a332c872f34d2e06634312cebc7524d918456a9"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "spear-scout-e.png",
+      "sha256": "3c31debcafee7ac857844c0e18193049c836aa0d0a62703873d54ce04527a3e5",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "13eb4fe2638f5b9d7954938bf61f7de2e765e1c2fc1ab36bc75046957577cd72",
+      "sourceFilename": "spear-scout-e.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-n.png",
+      "sha256": "e80eb25a45bf6f20458e7fd138cbe5e60ea46117f552d64f7284a81ac0719024",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "f87d7628fde343b9dfc73c9c552ae79ac852ad0b4903c48909350ad4f88115d9",
+      "sourceFilename": "spear-scout-n.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-ne.png",
+      "sha256": "06519996e6b04e3aea6f31141eefe6f8948915d9b5710cc3e7bf58eda568bb35",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "16ff5d1ac9474f1ae899d338de6167d065111593a28ec944bbc28f6bea58bb44",
+      "sourceFilename": "spear-scout-ne.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-nw.png",
+      "sha256": "99bc46b5f56d4a644aa60d5b8a332c872f34d2e06634312cebc7524d918456a9",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "58bd2af49efb9162bbff751158fa6c35b3914dd6f4f5100bba69033c56e1f261",
+      "sourceFilename": "spear-scout-nw.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-s.png",
+      "sha256": "917950c8336b106667631d59a4275991c98e700f47bf078e5e1a14af0eedd762",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "19c6cd0e208e19191561d4bc39027b66e4549dc1d4d5d1c1eaf56f38d93f01be",
+      "sourceFilename": "spear-scout-s.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-se.png",
+      "sha256": "a023686860fc06abd86f9d4da074c7dd935fd801095035b2b228e67f3ae748fc",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "d05ecb8c9af10e7bef2cdc9303cc14edb2353b394784bfdd4b250a6194d5e9e7",
+      "sourceFilename": "spear-scout-se.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-sw.png",
+      "sha256": "965ed34de93084bf751e6f53957325f3e2edbff405d65a89de83c41abef752d2",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "5619c2e747c61422985c93d1b81ffcd3cdb1bd9cee25440ea5baf6b53fa2dc80",
+      "sourceFilename": "spear-scout-sw.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "spear-scout-w.png",
+      "sha256": "aec737d5e065e77a49a754f889ea1173ba3266967754a65fbd5a6f273fd2a36f",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "4383c5c730242bba6574ecc38bf9c7d88298ca486d6d615ab7c0fe40efea2694",
+      "sourceFilename": "spear-scout-w.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    }
+  ]
+}

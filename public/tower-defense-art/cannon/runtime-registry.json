@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "runtimeType": "cannon",
+  "visualCharacterId": "powder-engineer",
+  "character": "powder-engineer",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "authored-eight-direction-under-review",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-n.json",
+      "sha256": "bd08e33537133d163a3cc4e2d3e4a410f35e05f6750d503a18451016caa16998"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-n.json",
+      "sha256": "bd08e33537133d163a3cc4e2d3e4a410f35e05f6750d503a18451016caa16998"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-n.json",
+      "sha256": "bd08e33537133d163a3cc4e2d3e4a410f35e05f6750d503a18451016caa16998"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-ne.json",
+      "sha256": "a24e3abe66b2ebc96df144c7814e371ff7f39b41d77fb6ac87c34db07b11799c"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-ne.json",
+      "sha256": "a24e3abe66b2ebc96df144c7814e371ff7f39b41d77fb6ac87c34db07b11799c"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-ne.json",
+      "sha256": "a24e3abe66b2ebc96df144c7814e371ff7f39b41d77fb6ac87c34db07b11799c"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-e.json",
+      "sha256": "f2c363f65e379a1294f532a8c0426304a75ab3022d498dbb3b0b456b26f6fff3"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-e.json",
+      "sha256": "f2c363f65e379a1294f532a8c0426304a75ab3022d498dbb3b0b456b26f6fff3"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-e.json",
+      "sha256": "f2c363f65e379a1294f532a8c0426304a75ab3022d498dbb3b0b456b26f6fff3"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-se.json",
+      "sha256": "ef4cc3139447e98382b2e553e19d88024028d081c80793546825a58ead362510"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-se.json",
+      "sha256": "ef4cc3139447e98382b2e553e19d88024028d081c80793546825a58ead362510"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-se.json",
+      "sha256": "ef4cc3139447e98382b2e553e19d88024028d081c80793546825a58ead362510"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-s.json",
+      "sha256": "31fbb65bba9e2cb00edd1b807bf764573976f52ad74278f73a2118e9368fb02b"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-s.json",
+      "sha256": "31fbb65bba9e2cb00edd1b807bf764573976f52ad74278f73a2118e9368fb02b"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-s.json",
+      "sha256": "31fbb65bba9e2cb00edd1b807bf764573976f52ad74278f73a2118e9368fb02b"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-sw.json",
+      "sha256": "dd7fdf7814c996a776327041e7ffdc967a866cc07f404178edc78ace862946ac"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-sw.json",
+      "sha256": "dd7fdf7814c996a776327041e7ffdc967a866cc07f404178edc78ace862946ac"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-sw.json",
+      "sha256": "dd7fdf7814c996a776327041e7ffdc967a866cc07f404178edc78ace862946ac"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-w.json",
+      "sha256": "471c75b49aa7bd37db39fc969e300f5ca0ed7faa2ce71b1be59e4ef844107abd"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-w.json",
+      "sha256": "471c75b49aa7bd37db39fc969e300f5ca0ed7faa2ce71b1be59e4ef844107abd"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-w.json",
+      "sha256": "471c75b49aa7bd37db39fc969e300f5ca0ed7faa2ce71b1be59e4ef844107abd"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "powder-engineer-idle-nw.json",
+      "sha256": "809860d70091dfb6abbc70fc60885e5606ab08e693c6190a65b6045657ed6e54"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "powder-engineer-walk-nw.json",
+      "sha256": "809860d70091dfb6abbc70fc60885e5606ab08e693c6190a65b6045657ed6e54"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "powder-engineer-attack-nw.json",
+      "sha256": "809860d70091dfb6abbc70fc60885e5606ab08e693c6190a65b6045657ed6e54"
+    }
+  ],
+  "runtimeComposition": "One complete baked frame; no runtime pieces, overlays or crossfades.",
+  "sources": [
+    {
+      "sourceTexture": "powder-engineer-n.png",
+      "texture": "powder-engineer-n.png",
+      "sourceSHA256": "c744bc18c6c7b1dcd2e2359695c57e0da04a3117312666a2d17f571c2fb9a6cc",
+      "sha256": "bd08e33537133d163a3cc4e2d3e4a410f35e05f6750d503a18451016caa16998"
+    },
+    {
+      "sourceTexture": "powder-engineer-ne.png",
+      "texture": "powder-engineer-ne.png",
+      "sourceSHA256": "b81cb176fc94c11500ac82d7b505f18c1ba78b5ca3bc9db6fd503023c1e05912",
+      "sha256": "a24e3abe66b2ebc96df144c7814e371ff7f39b41d77fb6ac87c34db07b11799c"
+    },
+    {
+      "sourceTexture": "powder-engineer-e.png",
+      "texture": "powder-engineer-e.png",
+      "sourceSHA256": "6d6f9fcfaccea01078c63de86484e98b8b4568171d1e99310dfcdf5bbc2a2e93",
+      "sha256": "f2c363f65e379a1294f532a8c0426304a75ab3022d498dbb3b0b456b26f6fff3"
+    },
+    {
+      "sourceTexture": "powder-engineer-se.png",
+      "texture": "powder-engineer-se.png",
+      "sourceSHA256": "eef1f6d1ffc4e05efa0ca5f676b8c63c07f47e316ee03b8a9ce5f6ff1d0bc489",
+      "sha256": "ef4cc3139447e98382b2e553e19d88024028d081c80793546825a58ead362510"
+    },
+    {
+      "sourceTexture": "powder-engineer-s.png",
+      "texture": "powder-engineer-s.png",
+      "sourceSHA256": "3ff9d0e0354f50de84d5f040e9670a6a230e92a867b5c96599ac673fc60f20a9",
+      "sha256": "31fbb65bba9e2cb00edd1b807bf764573976f52ad74278f73a2118e9368fb02b"
+    },
+    {
+      "sourceTexture": "powder-engineer-sw.png",
+      "texture": "powder-engineer-sw.png",
+      "sourceSHA256": "98275f979fc64d7fd0027b3bc2410c22d6bde4850cdc81c85016fe2fe7ed7457",
+      "sha256": "dd7fdf7814c996a776327041e7ffdc967a866cc07f404178edc78ace862946ac"
+    },
+    {
+      "sourceTexture": "powder-engineer-w.png",
+      "texture": "powder-engineer-w.png",
+      "sourceSHA256": "ead9abe01100425a92982238b6780c47ea2351ae681785d4c666c260750913e2",
+      "sha256": "471c75b49aa7bd37db39fc969e300f5ca0ed7faa2ce71b1be59e4ef844107abd"
+    },
+    {
+      "sourceTexture": "powder-engineer-nw.png",
+      "texture": "powder-engineer-nw.png",
+      "sourceSHA256": "3c628ddeaa88cf43bc9e70ac832bb5f826d342f1efb2062047cff0eab59a462f",
+      "sha256": "809860d70091dfb6abbc70fc60885e5606ab08e693c6190a65b6045657ed6e54"
+    }
+  ]
+}

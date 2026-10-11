@@ -1,0 +1,241 @@
+{
+  "version": 1,
+  "character": "mushroom-mage",
+  "runtimeType": "shaman",
+  "visualCharacterId": "mushroom-mage",
+  "direction": "se",
+  "motion": "attack",
+  "texture": "mushroom-mage-se.png",
+  "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 12.5,
+  "loop": false,
+  "durationMs": 960,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 520
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "Separate spore-bolt FX. Game owns flight and authoritative release; every frame emitter follows its actual orange mushroom cap centre.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 91.7359,
+        "y": 59.0711
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 96.2522,
+        "y": 61.7473
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 100,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 91.8212,
+        "y": 62.8342
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 110,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 93.9348,
+        "y": 61.1978
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 101.2533,
+        "y": 57.229
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 108.8993,
+        "y": 57.6138
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 111.9049,
+        "y": 64.1539
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 55,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 97.964,
+        "y": 71.855
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 95.041,
+        "y": 58.8346
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 96.5582,
+        "y": 57.5225
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 94.6238,
+        "y": 56.9156
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 91.7359,
+        "y": 59.0711
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "attackRevision": "strong-v2-redrawn-whole-body"
+}

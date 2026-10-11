@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "character": "fx-arrow",
+  "direction": "e",
+  "motion": "idle",
+  "events": [],
+  "fps": 14.285714285714286,
+  "kind": "projectile",
+  "texture": "arrow.png",
+  "sha256": "94f9e5305edd5cc29eead75791ac8c6602be2556ec4f36116e4327c962f72a57",
+  "orientation": "+X/right",
+  "pixelsPerWorldUnit": 1,
+  "textureWidth": 128,
+  "textureHeight": 16,
+  "frameSize": {
+    "width": 32,
+    "height": 16,
+    "pivot": {
+      "x": 30.0,
+      "y": 8.0
+    }
+  },
+  "pivotSpace": "unscaled-cell-pixels",
+  "loop": true,
+  "durationMs": 280,
+  "frames": [
+    {
+      "index": 0,
+      "headState": "effect",
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 16,
+      "durationMs": 70,
+      "pivot": {
+        "x": 30.0,
+        "y": 8.0
+      }
+    },
+    {
+      "index": 1,
+      "headState": "effect",
+      "x": 32,
+      "y": 0,
+      "width": 32,
+      "height": 16,
+      "durationMs": 70,
+      "pivot": {
+        "x": 30.0,
+        "y": 8.0
+      }
+    },
+    {
+      "index": 2,
+      "headState": "effect",
+      "x": 64,
+      "y": 0,
+      "width": 32,
+      "height": 16,
+      "durationMs": 70,
+      "pivot": {
+        "x": 30.0,
+        "y": 8.0
+      }
+    },
+    {
+      "index": 3,
+      "headState": "effect",
+      "x": 96,
+      "y": 0,
+      "width": 32,
+      "height": 16,
+      "durationMs": 70,
+      "pivot": {
+        "x": 30.0,
+        "y": 8.0
+      }
+    }
+  ],
+  "pivotMeaning": "collision tip at forward edge",
+  "renderPolicy": "Standalone complete FX sprite; rotate around pivot to world heading. Never overlay on a character to form anatomy."
+}

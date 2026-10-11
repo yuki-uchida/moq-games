@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "character": "potbelly-club-ogre",
+  "runtimeType": "ogre",
+  "direction": "w",
+  "motion": "walk",
+  "texture": "potbelly-club-ogre-w.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 41.14285714285773,
+  "loop": true,
+  "durationMs": 486.1111111111042,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open"
+    }
+  ],
+  "sha256": "26f13371f920f2ce0bf43f983e31947a59438b4cc6e707ae7cf882ae13ac3338",
+  "status": "runtime-derivative-under-review",
+  "strideWorldUnits": 23.333333333333,
+  "preservedFromBaseline": "art-qa/roster/ogre/walk-v2/runtime/potbelly-club-ogre-walk-w.json"
+}

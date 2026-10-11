@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "runtimeType": "mage",
+  "visualCharacterId": "star-mage",
+  "character": "star-mage",
+  "displayName": "\u661f\u306e\u9b54\u6cd5\u4f7f\u3044",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "strong-redrawn-full-body-review",
+  "source": "Newly drawn complete poses; five independently camera-locked directions and three whole-frame mirrors. Exact current idle/walk banks and neutral bookends retained.",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "star-mage-idle-n.json",
+      "sha256": "18c62bdbdf097d56a0569daa1093842cd491d572f821819ee4a8475e25b3d57c"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "star-mage-walk-n.json",
+      "sha256": "18c62bdbdf097d56a0569daa1093842cd491d572f821819ee4a8475e25b3d57c"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "star-mage-attack-n.json",
+      "sha256": "18c62bdbdf097d56a0569daa1093842cd491d572f821819ee4a8475e25b3d57c"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "star-mage-idle-ne.json",
+      "sha256": "659bae9c71c168ae713784e76823b9d892e8d0d795c7d6f5d6e239a854034b98"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "star-mage-walk-ne.json",
+      "sha256": "659bae9c71c168ae713784e76823b9d892e8d0d795c7d6f5d6e239a854034b98"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "star-mage-attack-ne.json",
+      "sha256": "659bae9c71c168ae713784e76823b9d892e8d0d795c7d6f5d6e239a854034b98"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "star-mage-idle-e.json",
+      "sha256": "8144df532dce5e49ce4d19f78cc02a719e59ac68ddc3176ab599506bddf83b1b"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "star-mage-walk-e.json",
+      "sha256": "8144df532dce5e49ce4d19f78cc02a719e59ac68ddc3176ab599506bddf83b1b"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "star-mage-attack-e.json",
+      "sha256": "8144df532dce5e49ce4d19f78cc02a719e59ac68ddc3176ab599506bddf83b1b"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "star-mage-idle-se.json",
+      "sha256": "9b18d790e6f00dd4e835c0902e3b5bf8c360ab9b2b47dc14d49d9ef7bacf4302"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "star-mage-walk-se.json",
+      "sha256": "9b18d790e6f00dd4e835c0902e3b5bf8c360ab9b2b47dc14d49d9ef7bacf4302"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "star-mage-attack-se.json",
+      "sha256": "9b18d790e6f00dd4e835c0902e3b5bf8c360ab9b2b47dc14d49d9ef7bacf4302"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "star-mage-idle-s.json",
+      "sha256": "bec46b9f81ccee4ea7a2c1513b54f9a64cb8de7d9a644d38c64f9f80540d5c89"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "star-mage-walk-s.json",
+      "sha256": "bec46b9f81ccee4ea7a2c1513b54f9a64cb8de7d9a644d38c64f9f80540d5c89"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "star-mage-attack-s.json",
+      "sha256": "bec46b9f81ccee4ea7a2c1513b54f9a64cb8de7d9a644d38c64f9f80540d5c89"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "star-mage-idle-sw.json",
+      "sha256": "47c073eb7f548db211e3095f8dc669b5163882db3df0b526e604ab6ee3256f3e"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "star-mage-walk-sw.json",
+      "sha256": "47c073eb7f548db211e3095f8dc669b5163882db3df0b526e604ab6ee3256f3e"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "star-mage-attack-sw.json",
+      "sha256": "47c073eb7f548db211e3095f8dc669b5163882db3df0b526e604ab6ee3256f3e"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "star-mage-idle-w.json",
+      "sha256": "7f94800c471ea273825845361beeae2a85bc3ee093f7061fc194a76ebeb1e939"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "star-mage-walk-w.json",
+      "sha256": "7f94800c471ea273825845361beeae2a85bc3ee093f7061fc194a76ebeb1e939"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "star-mage-attack-w.json",
+      "sha256": "7f94800c471ea273825845361beeae2a85bc3ee093f7061fc194a76ebeb1e939"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "star-mage-idle-nw.json",
+      "sha256": "d48f7b5ea657515d120b95ddd35b9be25c1d88c923696bf0eceb1b0141ec545b"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "star-mage-walk-nw.json",
+      "sha256": "d48f7b5ea657515d120b95ddd35b9be25c1d88c923696bf0eceb1b0141ec545b"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "star-mage-attack-nw.json",
+      "sha256": "d48f7b5ea657515d120b95ddd35b9be25c1d88c923696bf0eceb1b0141ec545b"
+    }
+  ],
+  "layout": {
+    "columns": 8,
+    "rows": 9,
+    "idleRows": [
+      0,
+      1,
+      2
+    ],
+    "walkRows": [
+      3,
+      4,
+      5
+    ],
+    "attackRows": [
+      6,
+      7,
+      8
+    ]
+  },
+  "runtimeComposition": "One complete baked character frame, no live layers or crossfade",
+  "attackRevision": "strong-v2",
+  "pixelsPerWorldUnit": 1,
+  "derivationPolicy": "New full-body attack drawings reduced 3:1 Lanczos. Exact current runtime idle/walk and exact neutral bookends; no overlays or runtime rig.",
+  "sources": [
+    {
+      "filename": "star-mage-n.png",
+      "sourceSHA256": "4d545820b7949b125d0b76673265e59a28db9ae5c8baa58ce29d13153c1ebf6b",
+      "sha256": "18c62bdbdf097d56a0569daa1093842cd491d572f821819ee4a8475e25b3d57c"
+    },
+    {
+      "filename": "star-mage-ne.png",
+      "sourceSHA256": "dca9f42c5cdd8f965a492e062435611b3aeac2f332e215602fbb1b5560cd3cce",
+      "sha256": "659bae9c71c168ae713784e76823b9d892e8d0d795c7d6f5d6e239a854034b98"
+    },
+    {
+      "filename": "star-mage-e.png",
+      "sourceSHA256": "d7cb3f2b4b5569731639bd06435a00c6200364298f54d8c67eef61334b3a182c",
+      "sha256": "8144df532dce5e49ce4d19f78cc02a719e59ac68ddc3176ab599506bddf83b1b"
+    },
+    {
+      "filename": "star-mage-se.png",
+      "sourceSHA256": "9115c4101c0a391c27ffc628ec35f01c39933369f2c9f7f6765efcaad59c8c0f",
+      "sha256": "9b18d790e6f00dd4e835c0902e3b5bf8c360ab9b2b47dc14d49d9ef7bacf4302"
+    },
+    {
+      "filename": "star-mage-s.png",
+      "sourceSHA256": "24336920bd2e2faf5acab8189f3e09b00a6752eb3c7809e596e36c04b28ab4cb",
+      "sha256": "bec46b9f81ccee4ea7a2c1513b54f9a64cb8de7d9a644d38c64f9f80540d5c89"
+    },
+    {
+      "filename": "star-mage-sw.png",
+      "sourceSHA256": "17160dea21f7fc4d708f41e9e0d0bfba052373460986ac7a2061e1959eef1332",
+      "sha256": "47c073eb7f548db211e3095f8dc669b5163882db3df0b526e604ab6ee3256f3e"
+    },
+    {
+      "filename": "star-mage-w.png",
+      "sourceSHA256": "aa459731a83fe0b9a771f76eeb4660b7e66efd4504cb3dba571b1b62d845565c",
+      "sha256": "7f94800c471ea273825845361beeae2a85bc3ee093f7061fc194a76ebeb1e939"
+    },
+    {
+      "filename": "star-mage-nw.png",
+      "sourceSHA256": "057df3cf125cdcce68e165628e62a304dfbd163c11f908ef66c082f93e96dfd7",
+      "sha256": "d48f7b5ea657515d120b95ddd35b9be25c1d88c923696bf0eceb1b0141ec545b"
+    }
+  ]
+}

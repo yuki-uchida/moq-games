@@ -1,0 +1,364 @@
+{
+  "version": 1,
+  "character": "dusk-wolf",
+  "direction": "ne",
+  "motion": "walk",
+  "texture": "dusk-wolf-walk-v2-combined-ne.png",
+  "sha256": "652892022e40c2b6b7606114d47017f24372a4af85c59fb6e8f4741cfee284ae",
+  "textureWidth": 1024,
+  "textureHeight": 672,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 60,
+  "loop": true,
+  "durationMs": 300.0,
+  "frames": [
+    {
+      "index": 0,
+      "x": 512,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 1,
+      "x": 640,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 2,
+      "x": 768,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 3,
+      "x": 896,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 8,
+      "x": 512,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 9,
+      "x": 640,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 10,
+      "x": 768,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 11,
+      "x": 896,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-hidden"
+    }
+  ],
+  "rendering": "whole-character-frame-only",
+  "status": "walk-v2 five-pass reviewed candidate; parent activation pending",
+  "strideWorldUnits": 39,
+  "gait": {
+    "type": "running diagonal trot",
+    "cycleMs": 300,
+    "strideWorldUnits": 39,
+    "stanceFraction": 0.3333333333333333,
+    "contactFramesPerLeg": [
+      {
+        "runtimeMeasuredStrideWorldUnits": 39.3201877966948,
+        "runtimeMaxSlipWorldUnits": 0.7524531042935757,
+        "runtimeContactSweepWorldUnits": 13.081475451951132,
+        "leg": 0,
+        "contactFrames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "contactDurationMs": 100.0,
+        "measuredProjectedSweepMasterPx": 38.183766184073555,
+        "measuredProjectedContactSpeedWorldUnitsPerSecond": 129.29952570268287,
+        "inferredStrideWorldUnits": 38.78985771080486,
+        "maxContactSlipWorldUnits": 0.2810485835025373,
+        "contactVisibilityMinimum": 0.9534883720930233
+      },
+      {
+        "runtimeMeasuredStrideWorldUnits": 38.63833482912206,
+        "runtimeMaxSlipWorldUnits": 0.8431457505076321,
+        "runtimeContactSweepWorldUnits": 12.727922061357859,
+        "leg": 1,
+        "contactFrames": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "contactDurationMs": 100.0,
+        "measuredProjectedSweepMasterPx": 38.183766184073576,
+        "measuredProjectedContactSpeedWorldUnitsPerSecond": 129.29952570268293,
+        "inferredStrideWorldUnits": 38.78985771080488,
+        "maxContactSlipWorldUnits": 0.281048583502544,
+        "contactVisibilityMinimum": 1.0
+      },
+      {
+        "runtimeMeasuredStrideWorldUnits": 38.4110505065978,
+        "runtimeMaxSlipWorldUnits": 0.6795076808524176,
+        "runtimeContactSweepWorldUnits": 12.727922061357852,
+        "leg": 2,
+        "contactFrames": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "contactDurationMs": 100.0,
+        "measuredProjectedSweepMasterPx": 38.89087296526013,
+        "measuredProjectedContactSpeedWorldUnitsPerSecond": 130.5622163833733,
+        "inferredStrideWorldUnits": 39.168664915011995,
+        "maxContactSlipWorldUnits": 0.2418799052520176,
+        "contactVisibilityMinimum": 0.9642857142857143
+      },
+      {
+        "runtimeMeasuredStrideWorldUnits": 39.547472119219066,
+        "runtimeMaxSlipWorldUnits": 0.5330300006474147,
+        "runtimeContactSweepWorldUnits": 12.727922061357864,
+        "leg": 3,
+        "contactFrames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "contactDurationMs": 100.0,
+        "measuredProjectedSweepMasterPx": 38.8908729652601,
+        "measuredProjectedContactSpeedWorldUnitsPerSecond": 129.804601974959,
+        "inferredStrideWorldUnits": 38.9413805924877,
+        "maxContactSlipWorldUnits": 0.27673695770644074,
+        "contactVisibilityMinimum": 0.9795918367346939
+      }
+    ],
+    "worldToSpriteGroundProjection": "CONFIRMED orthographic: 1 world unit = 1 CSS pixel on both X and Y at runtime ppu1; DPR affects physical pixels only",
+    "groundSpeedWorldUnitsPerSecond": 130,
+    "sourcePixelsPerWorldUnit": 3,
+    "projectionVector": [
+      0.7071067811865476,
+      -0.7071067811865476
+    ]
+  },
+  "bodyCouplingRevision": "walk-body-v1",
+  "bodyArticulation": "Offline articulated source rig; complete baked frame, no body overlays or crossfades",
+  "groundContract": "Unchanged calibrated world foot targets; orthographic both axes; normalized diagonals"
+}

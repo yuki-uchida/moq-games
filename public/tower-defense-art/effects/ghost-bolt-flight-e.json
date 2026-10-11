@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "character": "ghost-bolt",
+  "visualCharacterId": "ghost-bolt",
+  "projectileType": "ghost-bolt",
+  "direction": "e",
+  "motion": "idle",
+  "texture": "ghost-bolt-flight-e.png",
+  "sha256": "4acd2ec638716c2e38db59a759c013b1f17e258dcee79b06eb4389e5b3b3424e",
+  "textureWidth": 512,
+  "textureHeight": 256,
+  "frameSize": {
+    "width": 128,
+    "height": 128,
+    "pivot": {
+      "x": 110.0,
+      "y": 64.0
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "pivotMeaning": "leading collision tip; image authored along +X/right",
+  "fps": 10,
+  "loop": true,
+  "durationMs": 800,
+  "events": [],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 128,
+      "width": 128,
+      "height": 128,
+      "pivot": {
+        "x": 110.0,
+        "y": 64.0
+      },
+      "durationMs": 100,
+      "headState": "projectile-no-head"
+    }
+  ],
+  "rendering": "whole-frame-only"
+}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tower assets · local review</title>
+  </head>
+  <body>
+    <header>
+      <div>
+        <span class="eyebrow" id="store-mode">LOCAL / ASSET REVIEW</span>
+        <h1><span id="role-title">Tower assets</span> <span class="badge">未採用の比較用</span></h1>
+      </div>
+      <button id="audio-open" disabled>♫ 音声候補</button><button id="ticket-open" disabled>✎ 素材フィードバック</button
+      ><button id="tickets-open" disabled>☷ チケット</button>
+    </header>
+    <main>
+      <div class="selection">
+        <label>ユニット<select id="role"></select></label>
+        <label>固定revision<select id="revision"></select></label
+        ><label
+          >動作<select id="motion">
+            <option value="idle">Idle</option>
+            <option value="walk">Walk</option>
+            <option value="attack">Attack</option>
+            <option value="breath">Breath</option>
+            <option value="death">Death</option>
+          </select></label
+        ><label
+          >方向<select id="direction">
+            <option>n</option>
+            <option>ne</option>
+            <option>e</option>
+            <option selected>se</option>
+            <option>s</option>
+            <option>sw</option>
+            <option>w</option>
+            <option>nw</option>
+          </select></label
+        >
+      </div>
+      <nav id="representations" aria-label="表示形式" role="tablist">
+        <button role="tab" data-kind="source2DImage" aria-selected="false">元の2D画像</button
+        ><button role="tab" data-kind="source2DSheet" aria-selected="false">元の2Dシート</button
+        ><button role="tab" data-kind="baked3DSheet" aria-selected="true">3D焼き込みシート</button
+        ><button role="tab" data-kind="actual3D" aria-selected="false">実3Dモデル</button>
+      </nav>
+      <div class="view-options">
+        <label
+          >描画<select id="interpolation">
+            <option value="source-clock">元フレーム時計</option>
+            <option value="continuous">連続補間（実3D）</option>
+          </select></label
+        ><label id="zoom-label"
+          >表示サイズ<select id="zoom">
+            <option value="1">1× ネイティブ</option>
+            <option value="2">2×</option>
+            <option value="3" selected>3×</option>
+          </select></label
+        ><label id="sheet-label"><input type="checkbox" id="whole-sheet" />シート全体</label
+        ><span id="representation-label"></span>
+      </div>
+      <section id="stage" aria-label="素材プレビュー">
+        <p>カタログを読み込んでいます…</p>
+      </section>
+      <p id="load-status" role="status" aria-live="polite"></p>
+      <section class="transport" aria-label="再生操作">
+        <button id="previous" aria-label="前のフレーム">|◀</button><button id="play" aria-label="再生">▶</button
+        ><button id="next" aria-label="次のフレーム">▶|</button
+        ><label
+          >速度<select id="speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+          </select></label
+        ><input id="timeline" type="range" min="0" max="1" step="1" value="0" aria-label="再生位置" /><output id="clock"
+          >0 ms</output
+        >
+      </section>
+      <p id="clock-detail" class="detail"></p>
+      <details>
+        <summary>素材とゲームprofile</summary>
+        <p id="role-note" class="detail"></p>
+      </details>
+      <p class="detail">この画面の試聴・再生はゲーム設定や採用状態を変更しません。</p>
+    </main>
+    <dialog id="audio-dialog">
+      <div class="dialog-head">
+        <h2>♫ 音声レビュー <small id="audio-count"></small></h2>
+        <button data-close="audio-dialog" aria-label="音声候補を閉じる">✕</button>
+      </div>
+      <p class="detail">判定はローカル保存。選択してもゲームへの組み込みは行いません。</p>
+      <div class="selection">
+        <label
+          >種類<select id="audio-category">
+            <option value="combat">戦闘 150</option>
+            <option value="ui">UI・進行 55</option>
+            <option value="bgm">フィールドBGM 20</option>
+          </select></label
+        >
+        <label>イベント<select id="audio-event"></select></label>
+        <label
+          >状態<select id="audio-review-filter">
+            <option value="all">すべて</option>
+            <option value="pending">未判定</option>
+            <option value="held">保留</option>
+            <option value="selected">選択</option>
+            <option value="excluded">除外</option>
+          </select></label
+        >
+      </div>
+      <div class="dialog-actions">
+        <button id="audio-ticket-open" disabled>✎ 選んだ音声のフィードバック</button
+        ><button id="audio-random">⤨ 選択済みから試聴</button><button id="audio-review-refresh">↻ 判定を更新</button
+        ><button id="audio-review-retry" hidden>保存状況を再確認</button>
+      </div>
+      <p id="audio-review-status" role="status" class="detail"></p>
+      <div id="audio-candidates"></div>
+      <div class="audio-controls">
+        <label><input id="sync-audio" type="checkbox" />現在の攻撃イベントに同期</label
+        ><label>SE音量<input id="volume" type="range" min="0" max="1" step="0.01" value="0.2" /></label
+        ><label><input type="checkbox" id="mute" />ミュート</label><button id="audio-stop">■ 停止</button>
+      </div>
+      <div id="bgm-controls" class="audio-controls" hidden>
+        <label>BGM音量<input id="bgm-volume" type="range" min="0" max="1" step="0.01" value="0.2" /></label
+        ><label><input id="bgm-mute" type="checkbox" />BGMミュート</label
+        ><label><input id="bgm-loop" type="checkbox" />加工BGMをループ試聴</label>
+      </div>
+      <p id="audio-status" role="status">再生ボタンで音声を有効にします</p>
+      <p class="detail">同期は現在選んだ1候補のみ。速度変更は音程を変えません。シーク・コマ送りは無音です。</p>
+      <details>
+        <summary>✎ 再生成を依頼</summary>
+        <label>音の説明<textarea id="regeneration-prompt" rows="3" maxlength="4000"></textarea></label
+        ><button id="regeneration-submit">この説明をキューに保存</button>
+        <p class="detail">保存のみ。自動生成・課金・外部API送信はありません。</p>
+        <div id="regeneration-list"></div>
+      </details>
+    </dialog>
+    <dialog id="ticket-dialog">
+      <div class="dialog-head">
+        <h2>フィードバック</h2>
+        <button data-close="ticket-dialog" aria-label="フィードバックを閉じる">✕</button>
+      </div>
+      <p id="ticket-context" class="detail preserve"></p>
+      <label>件名<input id="ticket-title" maxlength="160" /></label
+      ><label>内容<textarea id="ticket-text" maxlength="8000" rows="6"></textarea></label>
+      <div class="dialog-actions">
+        <button id="ticket-bind" hidden>現在の対象を確認して結び付ける</button
+        ><button id="ticket-submit">この内容を送信</button><button id="ticket-refresh">受領状況を確認</button
+        ><button id="ticket-new">新規下書き</button>
+      </div>
+      <p id="ticket-status" role="status" class="preserve">未送信</p>
+      <pre id="ticket-result"></pre>
+      <p class="detail">
+        保存先はこのコンピューターのローカルキューです。担当の受領記録が届くまで、受領や自動監視を確認済みとは表示しません。
+      </p>
+    </dialog>
+    <dialog id="ticket-list-dialog">
+      <div class="dialog-head">
+        <h2>☷ チケット</h2>
+        <button data-close="ticket-list-dialog" aria-label="チケット一覧を閉じる">✕</button>
+      </div>
+      <div class="selection">
+        <label
+          >状態<select id="ticket-list-filter">
+            <option value="">すべて</option>
+            <option value="unprocessed">未処理</option>
+            <option value="in_progress">対応中</option>
+            <option value="awaiting_review">確認待ち</option>
+            <option value="completed">完了</option>
+          </select></label
+        ><button id="ticket-list-refresh">↻ 更新</button><button id="ticket-list-more" hidden>次の50件</button>
+      </div>
+      <p id="ticket-list-status" role="status"></p>
+      <div id="ticket-list"></div>
+      <section id="ticket-detail" aria-label="チケット詳細"></section>
+      <p class="detail">確認は手動更新です。受領と完了は担当の記録に基づきます。</p>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

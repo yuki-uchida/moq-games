@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Enemy art trial review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+      }
+      header {
+        padding: 12px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 960px;
+      }
+      #field canvas {
+        display: block;
+      }
+      .unit-health,
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Ten enemy roles: real engine, renderer and PNG fixtures. Offline; no Jev calls.</b>
+      <div>
+        Scripted positions and defender cooldown; natural HP and enemy speed. Real boss fixtures use the configured
+        Stage 3/9 Ogre, Stage 5 Wolf, Stage 7 Beetle Stage 8 Brute or Stage 10 Dragon. The separate synthetic boss flag
+        is visual only. KO explicitly sets zero HP.
+      </div>
+      <div id="frame-label"></div>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/EnemyTrialReview.ts"></script>
+  </body>
+</html>

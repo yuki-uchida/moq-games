@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "runtimeType": "paladin",
+  "character": "sun-paladin",
+  "visualCharacterId": "sun-paladin",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "strong-full-body-attack-v2-candidate",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-n.json",
+      "sha256": "751b35c5674f35d21961dd37bc4bf5b24c8ef5e995e5b493d82b981af51c40a0"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-n.json",
+      "sha256": "751b35c5674f35d21961dd37bc4bf5b24c8ef5e995e5b493d82b981af51c40a0"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-n.json",
+      "sha256": "c6bd737263ae90be02b1d8489940ae2f8f2015b42e4c7ee4d86766e70997f0f9"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-ne.json",
+      "sha256": "29d43a8ff5b5ba43a5728e713f1b356d4064808c796b31ea12302fd16d61f185"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-ne.json",
+      "sha256": "29d43a8ff5b5ba43a5728e713f1b356d4064808c796b31ea12302fd16d61f185"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-ne.json",
+      "sha256": "c04a14b7422692c6a436115be5d4f375a3d6923ecbd8911e7075e56a7b50a802"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-e.json",
+      "sha256": "d14f2efb81ba26327df72b04210e341ecaf45aba52fc90b0147b58ce0164c70c"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-e.json",
+      "sha256": "d14f2efb81ba26327df72b04210e341ecaf45aba52fc90b0147b58ce0164c70c"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-e.json",
+      "sha256": "85e4e464f5dc5ee39b278aec5a7579931ad660571239ca63a00a2862dbc75494"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-se.json",
+      "sha256": "3a3aca818850caff592dccc6b79c14cd9cdaaf99554ac9118c35547c9e0af941"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-se.json",
+      "sha256": "3a3aca818850caff592dccc6b79c14cd9cdaaf99554ac9118c35547c9e0af941"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-se.json",
+      "sha256": "f4f859bc41178df9284ad04143baf333aff6da58e79f6e2105c3a7e527c8c8cf"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-s.json",
+      "sha256": "a5cc17faec3dfccadea14ccda99b0a13cbc13e1364c2ffef37b93da49489d5e6"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-s.json",
+      "sha256": "a5cc17faec3dfccadea14ccda99b0a13cbc13e1364c2ffef37b93da49489d5e6"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-s.json",
+      "sha256": "35c8d6b8f78765dd0d97dd87f0876a06835d561fe1dde8691df4c9766cec4d70"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-sw.json",
+      "sha256": "b0f19dc7bf0d20e040754a319c7b8b42f1b75afb7d7d62de273c48eaf0827135"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-sw.json",
+      "sha256": "b0f19dc7bf0d20e040754a319c7b8b42f1b75afb7d7d62de273c48eaf0827135"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-sw.json",
+      "sha256": "09444cdf41e70b975909c46737e645a659163007b00f23d07f339c622f9e3c90"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-w.json",
+      "sha256": "63a2de0f508820e32627d99c79b4aca8b679699f918e66c5214276f75931b2d4"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-w.json",
+      "sha256": "63a2de0f508820e32627d99c79b4aca8b679699f918e66c5214276f75931b2d4"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-w.json",
+      "sha256": "5bb759aed9d3b4ca4d2a535e549500dc626656b31049429ded619c24f77e960f"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "sun-paladin-idle-nw.json",
+      "sha256": "5153421b987f3a8a865ffbd1d87e1240f179b0f236ffa839409a64d4bf39be2b"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "sun-paladin-walk-nw.json",
+      "sha256": "5153421b987f3a8a865ffbd1d87e1240f179b0f236ffa839409a64d4bf39be2b"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "sun-paladin-attack-nw.json",
+      "sha256": "823884b1f08babe36325f68f750606c2f224d3195b137d8994d1817d734f7e7f"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "sun-paladin-attack-strong-e.png",
+      "sha256": "85e4e464f5dc5ee39b278aec5a7579931ad660571239ca63a00a2862dbc75494",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-e.png",
+      "sourceSHA256": "feaf68b0f77dcbd571ad79af014d88aa062c315b172010e04e0b1bb6f3e94f59",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-n.png",
+      "sha256": "c6bd737263ae90be02b1d8489940ae2f8f2015b42e4c7ee4d86766e70997f0f9",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-n.png",
+      "sourceSHA256": "7709c0e4ae03b518f1f9f2c799639003ee9a53af77a1d725705dd0b629a8c306",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-ne.png",
+      "sha256": "c04a14b7422692c6a436115be5d4f375a3d6923ecbd8911e7075e56a7b50a802",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-ne.png",
+      "sourceSHA256": "989ea1e8c9eea1fb64b9896d48efc8ac276c51d7909dd6c33cf81463a88b24b5",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-nw.png",
+      "sha256": "823884b1f08babe36325f68f750606c2f224d3195b137d8994d1817d734f7e7f",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-nw.png",
+      "sourceSHA256": "b172d37212baaf08e0d1dd99b1500731ebcd5757ed0a291fba0b9b78d385057e",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-s.png",
+      "sha256": "35c8d6b8f78765dd0d97dd87f0876a06835d561fe1dde8691df4c9766cec4d70",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-s.png",
+      "sourceSHA256": "a8c1f8fc5c545587be7be6bfcde53c138c2414cf64a5dd9c91e79e6d123746c1",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-se.png",
+      "sha256": "f4f859bc41178df9284ad04143baf333aff6da58e79f6e2105c3a7e527c8c8cf",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-se.png",
+      "sourceSHA256": "1ef28e7cd6475a432cda45aeec5e4e312b1afaefd419497f71ab35c373a9c93d",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-sw.png",
+      "sha256": "09444cdf41e70b975909c46737e645a659163007b00f23d07f339c622f9e3c90",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-sw.png",
+      "sourceSHA256": "dd559e76e9a6cb3c36e819bd7b643f1be47cdf9dd40dd9a0d1d1335e3d6c4ee7",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-attack-strong-w.png",
+      "sha256": "5bb759aed9d3b4ca4d2a535e549500dc626656b31049429ded619c24f77e960f",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "sun-paladin-attack-strong-w.png",
+      "sourceSHA256": "fa1a991bae6285394107984b196389c207072976531e35bd2bc1bf62424a9d2a",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-e.png",
+      "sha256": "d14f2efb81ba26327df72b04210e341ecaf45aba52fc90b0147b58ce0164c70c",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-e.png",
+      "sourceSHA256": "416457da8c0d639d2ab6c2e1e1f2f079570aa6e1cab8e48a6c7a091817d5c58e",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-n.png",
+      "sha256": "751b35c5674f35d21961dd37bc4bf5b24c8ef5e995e5b493d82b981af51c40a0",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-n.png",
+      "sourceSHA256": "f11fe46317b983a5930d16dec87a3c8dd974acc6afbdf16f3ce82e8e6e980419",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-ne.png",
+      "sha256": "29d43a8ff5b5ba43a5728e713f1b356d4064808c796b31ea12302fd16d61f185",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-ne.png",
+      "sourceSHA256": "67c983f25964e65f0df4bcda5c435b44fb468237eb26ea15a78a94a1d1e998b7",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-nw.png",
+      "sha256": "5153421b987f3a8a865ffbd1d87e1240f179b0f236ffa839409a64d4bf39be2b",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-nw.png",
+      "sourceSHA256": "f48b59214f24f4c8653265bfdb0418e5223c31a39e987427856bb886be727e7b",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-s.png",
+      "sha256": "a5cc17faec3dfccadea14ccda99b0a13cbc13e1364c2ffef37b93da49489d5e6",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-s.png",
+      "sourceSHA256": "6b917479f3bdab8327f5aa234c7b83e1dce0c338e5a3ddd68cf0905ddce99fed",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-se.png",
+      "sha256": "3a3aca818850caff592dccc6b79c14cd9cdaaf99554ac9118c35547c9e0af941",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-se.png",
+      "sourceSHA256": "5d335fe9e8a96882a995d6f8ed8c75fe678d5f1e7dce0074993c7c832e5a5979",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-sw.png",
+      "sha256": "b0f19dc7bf0d20e040754a319c7b8b42f1b75afb7d7d62de273c48eaf0827135",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-sw.png",
+      "sourceSHA256": "44065ff11b52a51a55dad511d0f29bd3d56bac11460c6be133ca3b5019fcb5f8",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    },
+    {
+      "filename": "sun-paladin-w.png",
+      "sha256": "63a2de0f508820e32627d99c79b4aca8b679699f918e66c5214276f75931b2d4",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "sun-paladin-w.png",
+      "sourceSHA256": "d173876acead328c7ad39b3f5c21ebb2b56d5e7a3f4c3cc3964213e415c32cdb",
+      "derivationPolicy": "Baseline idle/walk sheet bytes preserved; redrawn attack reduced 3:1 Lanczos except exact canonical runtime neutral bookends."
+    }
+  ]
+}

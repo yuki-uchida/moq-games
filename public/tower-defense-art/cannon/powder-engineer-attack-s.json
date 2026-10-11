@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "character": "powder-engineer",
+  "runtimeType": "cannon",
+  "visualCharacterId": "powder-engineer",
+  "direction": "s",
+  "motion": "attack",
+  "texture": "powder-engineer-s.png",
+  "sha256": "31fbb65bba9e2cb00edd1b807bf764573976f52ad74278f73a2118e9368fb02b",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 9.090909090909092,
+  "loop": false,
+  "durationMs": 1320,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 660
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "No baked muzzle flash or cannonball. Every emitter is the actual current muzzle center, including release frame6 at660ms.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 63.833333333333336,
+        "y": 76.5
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 100,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 64.16666666666667,
+        "y": 80.5
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 64.5,
+        "y": 84.66666666666667
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 61.333333333333336,
+        "y": 74.0
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 64.33333333333333,
+        "y": 76.83333333333333
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 62.166666666666664,
+        "y": 79.5
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 66.16666666666667,
+        "y": 71.33333333333333
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 59.333333333333336,
+        "y": 67.66666666666667
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 150,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 63.833333333333336,
+        "y": 79.16666666666667
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 140,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 65.66666666666667,
+        "y": 77.33333333333333
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 130,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 63.833333333333336,
+        "y": 77.5
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 63.833333333333336,
+        "y": 76.5
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review"
+}

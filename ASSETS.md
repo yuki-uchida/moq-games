@@ -1,0 +1,11 @@
+# Artwork and optional packs
+
+The public distribution includes the existing original 2D runtime roster, effects and commander artwork. The retained upstream art README identifies these as original assets created for this project, not copied Tiny Swords assets. Local production records identify built-in OpenAI image generation and offline assembly of original raster parts, including the Leaf Squire, Mage, Healer, Frost, Slime, Bat, Brute and Wraith records. Other roster records describe original generated character artwork and preserved derivatives. These are AI-generated assets, not represented as wholly human-drawn artwork.
+
+Publication basis: the project owner's explicit publication instruction, the original-source records, and OpenAI's output ownership terms (https://openai.com/policies/terms-of-use/, Content section). Those terms assign output rights as between the customer and OpenAI to the extent permitted by law; they do not guarantee copyright or third-party non-infringement. Pixel Frog's Tiny Swords was a visual reference, not an included third-party asset pack. Existing upstream license notices are retained; no separate third-party Tiny Swords license is claimed for these original derivatives.
+
+The 3D/Meshy runtime packs and their source models are not included in this initial public distribution. Meshy terms distinguish paid-output ownership from the free-plan CC BY 4.0 license (https://www.meshy.ai/terms-of-use). Generation-plan evidence and per-pack attribution have not been conclusively reconciled here. Original 3D files remain preserved locally and unchanged.
+
+Stable Audio-generated sound packs are also omitted. Their production notes specify a non-commercial demo and distinguish model terms from output ownership. They are not relabeled as commercially licensed. See https://stability.ai/community-license-agreement for the current terms; the original generation agreement must be matched before redistribution.
+
+The clean public game uses its existing 2D default and procedural battlefield fallback. Optional 3D and audio controls require the authorized local packs; without them, their existing load-error/rollback behavior applies. No procedural character replacement or different combat balance is introduced. All local assets, including optional packs and unadopted candidates, are retained outside the public selection.

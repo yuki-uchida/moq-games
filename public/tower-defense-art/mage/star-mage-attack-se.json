@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "character": "star-mage",
+  "direction": "se",
+  "motion": "attack",
+  "texture": "star-mage-se.png",
+  "sha256": "9b18d790e6f00dd4e835c0902e3b5bf8c360ab9b2b47dc14d49d9ef7bacf4302",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 12.5,
+  "loop": false,
+  "durationMs": 960,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 520
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "Separate star-bolt FX. Game owns flight and authoritative release; every frame emitter follows its actual purple staff core.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 87.0783,
+        "y": 58.9573
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 85.5001,
+        "y": 64.8661
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 100,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 88.9632,
+        "y": 73.0527
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 110,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 84.0009,
+        "y": 66.2032
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 91.5418,
+        "y": 60.577
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 90.256,
+        "y": 62.1936
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 96.1596,
+        "y": 64.7303
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 55,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 88.7866,
+        "y": 60.4161
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 87.4487,
+        "y": 60.7335
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 90,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 87.0522,
+        "y": 55.2242
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 85.7793,
+        "y": 57.7985
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 87.0783,
+        "y": 58.9573
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "attackRevision": "strong-v2-redrawn-whole-body"
+}

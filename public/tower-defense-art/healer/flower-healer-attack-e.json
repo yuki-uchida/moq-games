@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "character": "flower-healer",
+  "direction": "e",
+  "motion": "attack",
+  "texture": "flower-healer-e.png",
+  "sha256": "dbf6d9d7ac325a00d422b961fd863bb3ede4d0a59276bf246081f09a14b2ed19",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 12.5,
+  "loop": false,
+  "durationMs": 960,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 600
+    }
+  ],
+  "releaseFrame": 5,
+  "projectilePolicy": "Separate healing-wisp FX. Game owns flight and authoritative release; every frame emitter follows its actual flower centre.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 83.2232,
+        "y": 60.7851
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 100,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 89.3277,
+        "y": 64.629
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 150,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 90.497,
+        "y": 72.7074
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 170,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 84.9673,
+        "y": 67.449
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 95.8417,
+        "y": 54.7283
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 86.999,
+        "y": 42.0315
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 90.2751,
+        "y": 51.5823
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 55,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 87.0487,
+        "y": 50.2787
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 55,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 87.1363,
+        "y": 62.2089
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 40,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 86.8218,
+        "y": 68.4402
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 40,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "redrawn-whole-pose",
+      "emitter": {
+        "x": 85.93,
+        "y": 61.1394
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 20,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "canonical-ready",
+      "emitter": {
+        "x": 83.2232,
+        "y": 60.7851
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "attackRevision": "strong-v2-redrawn-whole-body"
+}

@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "character": "emberwing-baby-dragon",
+  "runtimeType": "dragon",
+  "displayName": "\u5c0f\u3055\u306a\u30c9\u30e9\u30b4\u30f3",
+  "visualCharacterId": "emberwing-baby-dragon",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "directions": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "attackCadenceMs": 1250,
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-n.json"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-n.json"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-n.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-ne.json"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-ne.json"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-ne.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-e.json"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-e.json"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-e.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-se.json"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-se.json"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-se.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-s.json"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-s.json"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-s.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-sw.json"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-sw.json"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-sw.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-w.json"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-w.json"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-w.json",
+      "attackVariant": "primary"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "emberwing-baby-dragon-idle-nw.json"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "emberwing-baby-dragon-walk-nw.json"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "emberwing-baby-dragon-attack-nw.json",
+      "attackVariant": "primary"
+    }
+  ],
+  "source": "Original idle/walk preserved exactly; newly imagegen-authored complete body attack poses for primary and breath, offline whole-frame extraction and registration only.",
+  "status": "full-body-primary-and-breath",
+  "effects": [
+    {
+      "effect": "fireball",
+      "manifest": "effects/dragon-fireball-fx.json"
+    },
+    {
+      "effect": "breath",
+      "manifest": "effects/dragon-breath-fx.json"
+    }
+  ],
+  "sourceRegistrySHA256": "800d143f1b78b5e44faf2620fde3d5173d7d9155909004b09f02938b7c5c9806",
+  "productionLayout": "Flattened manifest paths; clip JSON and PNG bytes unchanged"
+}

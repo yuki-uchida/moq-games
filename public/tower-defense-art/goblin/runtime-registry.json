@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "runtimeType": "goblin",
+  "character": "mischief-goblin",
+  "visualCharacterId": "mischief-goblin",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "body-coupled-walk-v1; latest idle and strong attack preserved",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-n.json",
+      "sha256": "f7c6f78a573f8b6a2eb7fc401ef096f149c7dd59322cb9b0fb684188882bec70"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-n.json",
+      "sha256": "f7c6f78a573f8b6a2eb7fc401ef096f149c7dd59322cb9b0fb684188882bec70"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-n.json",
+      "sha256": "3c8c4fb8f1861cf76bd40fd53034e07380e7aea2ffc495e02ff5949810ac8814"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-ne.json",
+      "sha256": "3f3ef40ba6ed5576d61f218429eae0f7621b34da2557af062271e0f35768ab05"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-ne.json",
+      "sha256": "3f3ef40ba6ed5576d61f218429eae0f7621b34da2557af062271e0f35768ab05"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-ne.json",
+      "sha256": "2127864e228b56f358e7b3522eb14e6b5e02c918165090b01ebeebd756a1e2b5"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-e.json",
+      "sha256": "b6560cdee7a7639bd0523c430b45f8465688939c7fcec616aa905e0f6cf176d3"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-e.json",
+      "sha256": "b6560cdee7a7639bd0523c430b45f8465688939c7fcec616aa905e0f6cf176d3"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-e.json",
+      "sha256": "a15e9516d5e2f209f5a599eda7420f9dfd2909d6399420a0b5a698c2d92882db"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-se.json",
+      "sha256": "e3cafed91c1b69221517136cee0755c373c14c92d704cfa0474febea94ae0031"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-se.json",
+      "sha256": "e3cafed91c1b69221517136cee0755c373c14c92d704cfa0474febea94ae0031"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-se.json",
+      "sha256": "7ccf90fe0dbab8d191c9507592a1feb55b4bdce15af450bcdff28eab24856960"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-s.json",
+      "sha256": "495f1e97c68b1678b4d26bc9c4fee9f5be3363f928dc4e7adfbe0cf549df321c"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-s.json",
+      "sha256": "495f1e97c68b1678b4d26bc9c4fee9f5be3363f928dc4e7adfbe0cf549df321c"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-s.json",
+      "sha256": "3e2bea6c4d1772e0eef378b36238d2fe52a21f7a89acc22e94c4992cbc468095"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-sw.json",
+      "sha256": "dcb45e483651f148279498ec19ab7777e92e3c6891fe0513b1a95a7cdfb16d62"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-sw.json",
+      "sha256": "dcb45e483651f148279498ec19ab7777e92e3c6891fe0513b1a95a7cdfb16d62"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-sw.json",
+      "sha256": "ee73996fc910cea650be9a2c2ea15ce2d9984686858ecd886b7b6c7a67223961"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-w.json",
+      "sha256": "294c6c33b7efb1a09594d45c7b487d166a3b210849ddff585afdd4a124fda20b"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-w.json",
+      "sha256": "294c6c33b7efb1a09594d45c7b487d166a3b210849ddff585afdd4a124fda20b"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-w.json",
+      "sha256": "0b7b4d4fc1fcdb9456a8f1d4c8668365cc494e90ecbd7f5b75842ed9bcfffce2"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "mischief-goblin-idle-nw.json",
+      "sha256": "ed74843d0b9e2efa1dc0043da05d39485cbf53dd069166f4149f21ea7466abd6"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "mischief-goblin-walk-nw.json",
+      "sha256": "ed74843d0b9e2efa1dc0043da05d39485cbf53dd069166f4149f21ea7466abd6"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "mischief-goblin-attack-nw.json",
+      "sha256": "bad9fc55412e9878b824636ef101023f73e38369616147b112ceb681f1d5c3fb"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "mischief-goblin-attack-strong-e.png",
+      "sha256": "a15e9516d5e2f209f5a599eda7420f9dfd2909d6399420a0b5a698c2d92882db",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-e.png",
+      "sourceSHA256": "c11328d41d5bd1d4851a3df641413734fdf139ec5962637c18caad20f7a4064b",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-n.png",
+      "sha256": "3c8c4fb8f1861cf76bd40fd53034e07380e7aea2ffc495e02ff5949810ac8814",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-n.png",
+      "sourceSHA256": "3a841b2ca83a8092a6cb6f4f269c4d71f1b154ff0035d819b95864a3bf81c1b9",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-ne.png",
+      "sha256": "2127864e228b56f358e7b3522eb14e6b5e02c918165090b01ebeebd756a1e2b5",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-ne.png",
+      "sourceSHA256": "2272c2399d0da57db0927ebe9873129436a1acaa9931beaf079dc43e26363c81",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-nw.png",
+      "sha256": "bad9fc55412e9878b824636ef101023f73e38369616147b112ceb681f1d5c3fb",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-nw.png",
+      "sourceSHA256": "75d6fda1965670160ebefcb48397bc0cc377871c041288fd6db50602b20b4577",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-s.png",
+      "sha256": "3e2bea6c4d1772e0eef378b36238d2fe52a21f7a89acc22e94c4992cbc468095",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-s.png",
+      "sourceSHA256": "a3afcd8b5f003b3676242a604f5e2f39e8e8aeefcc7c47e3e89878a706bb1caf",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-se.png",
+      "sha256": "7ccf90fe0dbab8d191c9507592a1feb55b4bdce15af450bcdff28eab24856960",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-se.png",
+      "sourceSHA256": "bd2423781b9d05878a52f9bf4110498951e15d084ea8923bdb36e40813e7e27b",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-sw.png",
+      "sha256": "ee73996fc910cea650be9a2c2ea15ce2d9984686858ecd886b7b6c7a67223961",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-sw.png",
+      "sourceSHA256": "4d2015e5a078afa401acd03216d785b8f074ce0764a8bfa54b93585a1766775a",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-attack-strong-w.png",
+      "sha256": "0b7b4d4fc1fcdb9456a8f1d4c8668365cc494e90ecbd7f5b75842ed9bcfffce2",
+      "width": 512,
+      "height": 336,
+      "sourceFilename": "mischief-goblin-attack-strong-w.png",
+      "sourceSHA256": "9678860787c4745a45421651ed6cf5e264467fd53ededc027b7c99bdcf7139f8",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-e.png",
+      "sha256": "b6560cdee7a7639bd0523c430b45f8465688939c7fcec616aa905e0f6cf176d3",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-e.png",
+      "sourceSHA256": "99157d60c4f5342df6e8f2992f23fe2d30a8201ba64ede06ba3cba953b167e7f",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-n.png",
+      "sha256": "f7c6f78a573f8b6a2eb7fc401ef096f149c7dd59322cb9b0fb684188882bec70",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-n.png",
+      "sourceSHA256": "2b5960323b2bccb28665dbbbbf1a395af6fe0fbf9e18621d5af859ad09324b8c",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-ne.png",
+      "sha256": "3f3ef40ba6ed5576d61f218429eae0f7621b34da2557af062271e0f35768ab05",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-ne.png",
+      "sourceSHA256": "c921fe29ba9c968595716a1b8522947a61f1ef98e3eec81b85561c1a83f1f8de",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-nw.png",
+      "sha256": "ed74843d0b9e2efa1dc0043da05d39485cbf53dd069166f4149f21ea7466abd6",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-nw.png",
+      "sourceSHA256": "685548d05231077fa26815a5e10f043bb2f94c5f917f6a8f8ee4a57d1f5828b4",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-s.png",
+      "sha256": "495f1e97c68b1678b4d26bc9c4fee9f5be3363f928dc4e7adfbe0cf549df321c",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-s.png",
+      "sourceSHA256": "1a93dd798c5c908f7c8c30b662231bb882797bf97c3b05e5407e6824bb626b8b",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-se.png",
+      "sha256": "e3cafed91c1b69221517136cee0755c373c14c92d704cfa0474febea94ae0031",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-se.png",
+      "sourceSHA256": "0e381b98120c0f53c8841b3e06fe97e7ad1b9699aefaa8e14887202c4026c946",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-sw.png",
+      "sha256": "dcb45e483651f148279498ec19ab7777e92e3c6891fe0513b1a95a7cdfb16d62",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-sw.png",
+      "sourceSHA256": "8528b427b28963835c2794babc86211a76b5024e470cdec182d5abe5ba412dfe",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    },
+    {
+      "filename": "mischief-goblin-w.png",
+      "sha256": "294c6c33b7efb1a09594d45c7b487d166a3b210849ddff585afdd4a124fda20b",
+      "width": 1024,
+      "height": 1008,
+      "sourceFilename": "mischief-goblin-w.png",
+      "sourceSHA256": "d4d65f84fa67a27391195306e4cde512f1d8b0b6de6f0b352547a60597faae72",
+      "derivationPolicy": "Only walk rectangles replaced with articulated source frames; every other source/runtime pixel preserved exactly from latest combined pack."
+    }
+  ]
+}

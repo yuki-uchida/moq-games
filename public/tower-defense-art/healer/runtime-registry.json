@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "runtimeType": "healer",
+  "visualCharacterId": "flower-healer",
+  "character": "flower-healer",
+  "displayName": "\u82b1\u306e\u7652\u3084\u3057\u624b",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "strong-redrawn-full-body-review",
+  "source": "Newly drawn complete poses; five independently camera-locked directions and three whole-frame mirrors. Exact current idle/walk banks and neutral bookends retained.",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-n.json",
+      "sha256": "7e8e20fb75439bb7e3dfe7976d8068a73706c267b8b736176a8a687f62073d11"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-n.json",
+      "sha256": "7e8e20fb75439bb7e3dfe7976d8068a73706c267b8b736176a8a687f62073d11"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-n.json",
+      "sha256": "7e8e20fb75439bb7e3dfe7976d8068a73706c267b8b736176a8a687f62073d11"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-ne.json",
+      "sha256": "56084e99e777a6bed8b0e00867e6dbb9b6540c5410c6959360505cd128a12e45"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-ne.json",
+      "sha256": "56084e99e777a6bed8b0e00867e6dbb9b6540c5410c6959360505cd128a12e45"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-ne.json",
+      "sha256": "56084e99e777a6bed8b0e00867e6dbb9b6540c5410c6959360505cd128a12e45"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-e.json",
+      "sha256": "dbf6d9d7ac325a00d422b961fd863bb3ede4d0a59276bf246081f09a14b2ed19"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-e.json",
+      "sha256": "dbf6d9d7ac325a00d422b961fd863bb3ede4d0a59276bf246081f09a14b2ed19"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-e.json",
+      "sha256": "dbf6d9d7ac325a00d422b961fd863bb3ede4d0a59276bf246081f09a14b2ed19"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-se.json",
+      "sha256": "c1030dee6d0a208bc6f8b0d4b1d2cf6dea4942dc7fc894171501d346427e50f2"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-se.json",
+      "sha256": "c1030dee6d0a208bc6f8b0d4b1d2cf6dea4942dc7fc894171501d346427e50f2"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-se.json",
+      "sha256": "c1030dee6d0a208bc6f8b0d4b1d2cf6dea4942dc7fc894171501d346427e50f2"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-s.json",
+      "sha256": "bd77982249249a2fec6f350e337766f581f1ead935bad241779e0f2e9989d0a8"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-s.json",
+      "sha256": "bd77982249249a2fec6f350e337766f581f1ead935bad241779e0f2e9989d0a8"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-s.json",
+      "sha256": "bd77982249249a2fec6f350e337766f581f1ead935bad241779e0f2e9989d0a8"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-sw.json",
+      "sha256": "36a959dd248b1ad281785727aa4d298236dba816d0df6892d42e1feb697b4f77"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-sw.json",
+      "sha256": "36a959dd248b1ad281785727aa4d298236dba816d0df6892d42e1feb697b4f77"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-sw.json",
+      "sha256": "36a959dd248b1ad281785727aa4d298236dba816d0df6892d42e1feb697b4f77"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-w.json",
+      "sha256": "ab33b0ae72a9730b999e5e9170c9943e4858302b8f6d731025ddc8ef7badc153"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-w.json",
+      "sha256": "ab33b0ae72a9730b999e5e9170c9943e4858302b8f6d731025ddc8ef7badc153"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-w.json",
+      "sha256": "ab33b0ae72a9730b999e5e9170c9943e4858302b8f6d731025ddc8ef7badc153"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "flower-healer-idle-nw.json",
+      "sha256": "c6f3a8cd20488fcce3f0cf0f35b9025e7a1c5430ce94c20c90b041ad7c8cea2f"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "flower-healer-walk-nw.json",
+      "sha256": "c6f3a8cd20488fcce3f0cf0f35b9025e7a1c5430ce94c20c90b041ad7c8cea2f"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "flower-healer-attack-nw.json",
+      "sha256": "c6f3a8cd20488fcce3f0cf0f35b9025e7a1c5430ce94c20c90b041ad7c8cea2f"
+    }
+  ],
+  "layout": {
+    "columns": 8,
+    "rows": 9,
+    "idleRows": [
+      0,
+      1,
+      2
+    ],
+    "walkRows": [
+      3,
+      4,
+      5
+    ],
+    "attackRows": [
+      6,
+      7,
+      8
+    ]
+  },
+  "runtimeComposition": "One complete baked character frame, no live layers or crossfade",
+  "attackRevision": "strong-v2",
+  "pixelsPerWorldUnit": 1,
+  "derivationPolicy": "New full-body attack drawings reduced 3:1 Lanczos. Exact current runtime idle/walk and exact neutral bookends; no overlays or runtime rig.",
+  "sources": [
+    {
+      "filename": "flower-healer-n.png",
+      "sourceSHA256": "ab55587aca981f954c1833b43e7ebaa5aa2b88a6e97f5142e43ce457f74d16a6",
+      "sha256": "7e8e20fb75439bb7e3dfe7976d8068a73706c267b8b736176a8a687f62073d11"
+    },
+    {
+      "filename": "flower-healer-ne.png",
+      "sourceSHA256": "8c639ab96bff67f8d13cfc4c40b39aad1c7f77ad0fd2a8b16d69f69c3001252c",
+      "sha256": "56084e99e777a6bed8b0e00867e6dbb9b6540c5410c6959360505cd128a12e45"
+    },
+    {
+      "filename": "flower-healer-e.png",
+      "sourceSHA256": "d8987b6dc40cb23a21ef2fcb54aa23645fc0de6d1da80d2eb319e83a847ddab7",
+      "sha256": "dbf6d9d7ac325a00d422b961fd863bb3ede4d0a59276bf246081f09a14b2ed19"
+    },
+    {
+      "filename": "flower-healer-se.png",
+      "sourceSHA256": "0e518bab1a1d16f040a56f995e9f4fdfb9a2371c85f7f12cb7d7d7ef30e66b38",
+      "sha256": "c1030dee6d0a208bc6f8b0d4b1d2cf6dea4942dc7fc894171501d346427e50f2"
+    },
+    {
+      "filename": "flower-healer-s.png",
+      "sourceSHA256": "04e221bea3b58180dc831fba0c44d2904d2f9772958a430e90e1cbc67580207d",
+      "sha256": "bd77982249249a2fec6f350e337766f581f1ead935bad241779e0f2e9989d0a8"
+    },
+    {
+      "filename": "flower-healer-sw.png",
+      "sourceSHA256": "1c1936caf20aa22a875d811c12d281774a1d3ec4fb61349ac04496e4461f97e9",
+      "sha256": "36a959dd248b1ad281785727aa4d298236dba816d0df6892d42e1feb697b4f77"
+    },
+    {
+      "filename": "flower-healer-w.png",
+      "sourceSHA256": "26312d52e8bc0aaaa4d5eecc8c3d75ff4e84b41695829b1aa3d0208f5e435fc3",
+      "sha256": "ab33b0ae72a9730b999e5e9170c9943e4858302b8f6d731025ddc8ef7badc153"
+    },
+    {
+      "filename": "flower-healer-nw.png",
+      "sourceSHA256": "bee6602ac823741cbafeaec5ff05993036ef26ea886534b88083e23ed88faa4e",
+      "sha256": "c6f3a8cd20488fcce3f0cf0f35b9025e7a1c5430ce94c20c90b041ad7c8cea2f"
+    }
+  ]
+}

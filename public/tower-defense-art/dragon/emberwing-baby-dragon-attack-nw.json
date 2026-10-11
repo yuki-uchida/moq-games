@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "character": "emberwing-baby-dragon",
+  "runtimeType": "dragon",
+  "direction": "nw",
+  "motion": "attack",
+  "texture": "emberwing-baby-dragon-nw.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 20.0,
+  "loop": false,
+  "durationMs": 1000,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 43.0,
+        "y": 48.333333
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "ready"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 42.852813,
+        "y": 48.030303
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 42.268397,
+        "y": 46.52814
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 41.60606,
+        "y": 46.943723
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 42.26407,
+        "y": 44.532467
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 35.926407,
+        "y": 45.52814
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 41.44156,
+        "y": 44.186147
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 40.17316,
+        "y": 41.683983
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 42.35498,
+        "y": 41.935063
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "inhale"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 36.16883,
+        "y": 42.757577
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "open"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 15.839827,
+        "y": 48.311687
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "release"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 37.65801,
+        "y": 41.064937
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recoil"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 39.51948,
+        "y": 45.43723
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recoil"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 38.17749,
+        "y": 45.935063
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 40.181817,
+        "y": 50.359307
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 41.935063,
+        "y": 47.43723
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 41.935063,
+        "y": 47.52381
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 41.588743,
+        "y": 47.281387
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 39.848483,
+        "y": 49.030303
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "recover"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "emitter": {
+        "x": 43.0,
+        "y": 48.333333
+      },
+      "mouthVisibility": "visible-jaw-aperture",
+      "phaseName": "ready"
+    }
+  ],
+  "events": [
+    {
+      "type": "release",
+      "atMs": 500
+    }
+  ],
+  "sha256": "fe64eba4b6cf92725df274ffe42df3c64eb920a440036d2efb34b1662acd9700",
+  "status": "authored-whole-body",
+  "attackVariant": "primary",
+  "sourceProvenance": "../source-provenance.json"
+}

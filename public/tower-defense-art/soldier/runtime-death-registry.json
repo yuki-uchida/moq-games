@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "runtimeType": "soldier",
+  "character": "leaf-squire",
+  "clips": [
+    {
+      "direction": "s",
+      "motion": "death",
+      "manifest": "leaf-squire-death-s.json",
+      "sha256": "7bb456cd5e4e91c4ce2fe3f635dc53520b5ba12ac977ec0eaaeaf8a4d769c2d9",
+      "manifestSha256": "60815f3522e3a1fbc1de0bda302f49dc0f84be42f23990c6654c208c6d0118b7"
+    },
+    {
+      "direction": "se",
+      "motion": "death",
+      "manifest": "leaf-squire-death-se.json",
+      "sha256": "ed42283dd1a0782af755d5d0747a3ab87834c86acd127466fdb893388c117418",
+      "manifestSha256": "7f51451e6279b7cc91abd646d71364246ccc6a3a87264b44124e519d36f2f010"
+    },
+    {
+      "direction": "e",
+      "motion": "death",
+      "manifest": "leaf-squire-death-e.json",
+      "sha256": "62e6695cff3d28fa455f7a682fb36e4f26f05ed09c7b0f0af57e40ecd3964c83",
+      "manifestSha256": "ca1ad7ff7a617838622418e48637a70c5bf80c09ec6e65df58ea836cb07ea2ad"
+    },
+    {
+      "direction": "ne",
+      "motion": "death",
+      "manifest": "leaf-squire-death-ne.json",
+      "sha256": "b74ba8f312fe112ddc65430d65244dc5496c6e503ecf56cf3d72c06dba9cca2a",
+      "manifestSha256": "e04a164624b441548ffb03f3e9192ee748e7a13a357a749ec732677c3c24b0e7"
+    },
+    {
+      "direction": "n",
+      "motion": "death",
+      "manifest": "leaf-squire-death-n.json",
+      "sha256": "fd0c4fc5de4a7327a9045ba3ca3fc6d5a26f6c9dcd95ecdc89fdf9ccf1e537f8",
+      "manifestSha256": "6e9b0608e555e7bb9951689d43cc60d33fb8a3d1759e460f859ea746987d2553"
+    },
+    {
+      "direction": "nw",
+      "motion": "death",
+      "manifest": "leaf-squire-death-nw.json",
+      "sha256": "fb0a781c668cb66ac4d4750674b5e2e004048a3ce7c8cec44c7a71832271b5a6",
+      "manifestSha256": "d9dedd99ed9a298d41d1bf26aa263060304f2e2b4936c80db212f63ec907386f"
+    },
+    {
+      "direction": "w",
+      "motion": "death",
+      "manifest": "leaf-squire-death-w.json",
+      "sha256": "a970ce86cc195275f69877710571a633da3be6054b3ae8c118b66eb7046fc954",
+      "manifestSha256": "8b91483bb18706477566ddd5d402f47248b3c638b1c22e135ca89de54b3e7402"
+    },
+    {
+      "direction": "sw",
+      "motion": "death",
+      "manifest": "leaf-squire-death-sw.json",
+      "sha256": "d96a13957c95fa86999925b0fb6618aa6579228c1eed0354bad7333b5abab509",
+      "manifestSha256": "0cbe9cf941da92e3ec89a34d684f3ac0f8bfba06d210e2c4c3bfb24dd7e03558"
+    }
+  ],
+  "sourceRegistrySHA256": "87d44f7c5f47e1cdf1c5ce6656dc36be0a8659b3a9cb9d64e160a9a495d49d18"
+}

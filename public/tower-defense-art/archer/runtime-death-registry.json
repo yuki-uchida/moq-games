@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "runtimeType": "archer",
+  "visualCharacterId": "forest-archer",
+  "character": "forest-archer",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "motion": "death",
+  "status": "wholebody-death-art-review-candidate",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "death",
+      "manifest": "forest-archer-death-n.json",
+      "sha256": "126cffba7b1731552440fa36ed5c0ad9bb0715cb3df9e1a7ee8900d6b726826e"
+    },
+    {
+      "direction": "ne",
+      "motion": "death",
+      "manifest": "forest-archer-death-ne.json",
+      "sha256": "94598ac767d467a914031ab8b0c5fcf9dffcbabec0187f95e5881922cd2f6f48"
+    },
+    {
+      "direction": "e",
+      "motion": "death",
+      "manifest": "forest-archer-death-e.json",
+      "sha256": "2988323a5e17ac1dc12c5fa9a2e57d2a5fefa8a0f0742e7991b70b21ab2a8652"
+    },
+    {
+      "direction": "se",
+      "motion": "death",
+      "manifest": "forest-archer-death-se.json",
+      "sha256": "7bd03ce5b0b0d5aba6dcee2e78499a3cd203c74277ac6055956eca5fac2388e2"
+    },
+    {
+      "direction": "s",
+      "motion": "death",
+      "manifest": "forest-archer-death-s.json",
+      "sha256": "5d099217e8edce842bc8cc8c6e13a329b64c0d36261ca3064532d45e7c3ced52"
+    },
+    {
+      "direction": "sw",
+      "motion": "death",
+      "manifest": "forest-archer-death-sw.json",
+      "sha256": "d3c4042ab595709d36dd5488268e269b6a3435cfdce5490bb2c0baae41604663"
+    },
+    {
+      "direction": "w",
+      "motion": "death",
+      "manifest": "forest-archer-death-w.json",
+      "sha256": "aff0220a019d64a5ed57b5695996c220e7840135e2debe8724a87367a53dcf29"
+    },
+    {
+      "direction": "nw",
+      "motion": "death",
+      "manifest": "forest-archer-death-nw.json",
+      "sha256": "cd8183bac561ab1476c09582758139a2546da18bd3ef1ee2e4197d7c3a51035a"
+    }
+  ],
+  "sourceRegistrySHA256": "f4d02367f4b10b06495249ae0735d5447f4548363f72bf0cd1568c7f1c9eb1e0"
+}

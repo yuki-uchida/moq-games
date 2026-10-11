@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "runtimeType": "ranger",
+  "visualCharacterId": "falcon-ranger",
+  "character": "falcon-ranger",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "neck-landmark-registration-review",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-n.json",
+      "sha256": "0e0d06f22a655e8096023e4ddd2d84d1562569d55286d96902ec2be2c7469e8f"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-n.json",
+      "sha256": "0e0d06f22a655e8096023e4ddd2d84d1562569d55286d96902ec2be2c7469e8f"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-n.json",
+      "sha256": "0e0d06f22a655e8096023e4ddd2d84d1562569d55286d96902ec2be2c7469e8f"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-ne.json",
+      "sha256": "5c8040144e3140ebe5d8ca64ed7875e1eab92961f93c29e767ff8b322e31078e"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-ne.json",
+      "sha256": "5c8040144e3140ebe5d8ca64ed7875e1eab92961f93c29e767ff8b322e31078e"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-ne.json",
+      "sha256": "5c8040144e3140ebe5d8ca64ed7875e1eab92961f93c29e767ff8b322e31078e"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-e.json",
+      "sha256": "33bb3711e3bcb2d026cc3478ab70c381613506e5ac31abc3c9bd6334cb94897e"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-e.json",
+      "sha256": "33bb3711e3bcb2d026cc3478ab70c381613506e5ac31abc3c9bd6334cb94897e"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-e.json",
+      "sha256": "33bb3711e3bcb2d026cc3478ab70c381613506e5ac31abc3c9bd6334cb94897e"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-se.json",
+      "sha256": "73448ca419cbe4467b2314a2e836416f2dcec2eb2a3dab9b7fdc76f71012585f"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-se.json",
+      "sha256": "73448ca419cbe4467b2314a2e836416f2dcec2eb2a3dab9b7fdc76f71012585f"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-se.json",
+      "sha256": "73448ca419cbe4467b2314a2e836416f2dcec2eb2a3dab9b7fdc76f71012585f"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-s.json",
+      "sha256": "4f6ebad7200f0ae925d2dbe30fbb8c28b47f3594db8f5b1d2a82889ec8d4e2e6"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-s.json",
+      "sha256": "4f6ebad7200f0ae925d2dbe30fbb8c28b47f3594db8f5b1d2a82889ec8d4e2e6"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-s.json",
+      "sha256": "4f6ebad7200f0ae925d2dbe30fbb8c28b47f3594db8f5b1d2a82889ec8d4e2e6"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-sw.json",
+      "sha256": "4dcd5b137bbe68384f79bb58a04dee36835097cda69d4ceac42363bbe5c91aff"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-sw.json",
+      "sha256": "4dcd5b137bbe68384f79bb58a04dee36835097cda69d4ceac42363bbe5c91aff"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-sw.json",
+      "sha256": "4dcd5b137bbe68384f79bb58a04dee36835097cda69d4ceac42363bbe5c91aff"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-w.json",
+      "sha256": "41b59060160d4d11ac64008e156449ec9bf3f93c0788adbffb4018d61b8d96b0"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-w.json",
+      "sha256": "41b59060160d4d11ac64008e156449ec9bf3f93c0788adbffb4018d61b8d96b0"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-w.json",
+      "sha256": "41b59060160d4d11ac64008e156449ec9bf3f93c0788adbffb4018d61b8d96b0"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "falcon-ranger-idle-nw.json",
+      "sha256": "5fe5775767ad4e13bd672b17fef097783084a27a84a277358d92fd8e8cfc4668"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "falcon-ranger-walk-nw.json",
+      "sha256": "5fe5775767ad4e13bd672b17fef097783084a27a84a277358d92fd8e8cfc4668"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "falcon-ranger-attack-nw.json",
+      "sha256": "5fe5775767ad4e13bd672b17fef097783084a27a84a277358d92fd8e8cfc4668"
+    }
+  ],
+  "runtimeComposition": "One complete baked frame; no runtime pieces, overlays or crossfades.",
+  "sources": [
+    {
+      "sourceTexture": "falcon-ranger-n.png",
+      "texture": "falcon-ranger-n.png",
+      "sourceSHA256": "8a57ab97031cf24e9cb7ab38110eb69210977ea420a59491114a6bbfc5453fcb",
+      "sha256": "0e0d06f22a655e8096023e4ddd2d84d1562569d55286d96902ec2be2c7469e8f"
+    },
+    {
+      "sourceTexture": "falcon-ranger-ne.png",
+      "texture": "falcon-ranger-ne.png",
+      "sourceSHA256": "a8e73f2878916ccccd02afaa489cc6f8bb485443f6e7f8a96e55e6c15e08506c",
+      "sha256": "5c8040144e3140ebe5d8ca64ed7875e1eab92961f93c29e767ff8b322e31078e"
+    },
+    {
+      "sourceTexture": "falcon-ranger-e.png",
+      "texture": "falcon-ranger-e.png",
+      "sourceSHA256": "0d1e668651a882454d50647fa3ac42145baef11c53c7ac71601444fb6beee445",
+      "sha256": "33bb3711e3bcb2d026cc3478ab70c381613506e5ac31abc3c9bd6334cb94897e"
+    },
+    {
+      "sourceTexture": "falcon-ranger-se.png",
+      "texture": "falcon-ranger-se.png",
+      "sourceSHA256": "1155e08cf6f353ae84f4545ac064ab22d6febbf6f65d1e19f8dceb334b921366",
+      "sha256": "73448ca419cbe4467b2314a2e836416f2dcec2eb2a3dab9b7fdc76f71012585f"
+    },
+    {
+      "sourceTexture": "falcon-ranger-s.png",
+      "texture": "falcon-ranger-s.png",
+      "sourceSHA256": "c25e4d10618526e6199920961b4d928c68cf65c69f4771370033da123c084185",
+      "sha256": "4f6ebad7200f0ae925d2dbe30fbb8c28b47f3594db8f5b1d2a82889ec8d4e2e6"
+    },
+    {
+      "sourceTexture": "falcon-ranger-sw.png",
+      "texture": "falcon-ranger-sw.png",
+      "sourceSHA256": "30ddca753b2ab88827645819a6328473bb188edbf19b2a6af24d396646a5b7c7",
+      "sha256": "4dcd5b137bbe68384f79bb58a04dee36835097cda69d4ceac42363bbe5c91aff"
+    },
+    {
+      "sourceTexture": "falcon-ranger-w.png",
+      "texture": "falcon-ranger-w.png",
+      "sourceSHA256": "40ff6120ee4d7f2425f37b90a1416e8f93c691c53b8a733ca65a04fe033836c4",
+      "sha256": "41b59060160d4d11ac64008e156449ec9bf3f93c0788adbffb4018d61b8d96b0"
+    },
+    {
+      "sourceTexture": "falcon-ranger-nw.png",
+      "texture": "falcon-ranger-nw.png",
+      "sourceSHA256": "3cf3829602905509a7f56e44a2f60b719a6b980e0fe2d05ec4a9d0cb428211b3",
+      "sha256": "5fe5775767ad4e13bd672b17fef097783084a27a84a277358d92fd8e8cfc4668"
+    }
+  ]
+}

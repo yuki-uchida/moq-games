@@ -1,0 +1,237 @@
+{
+  "version": 1,
+  "runtimeType": "tank",
+  "character": "shield-knight",
+  "visualCharacterId": "shield-knight",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "attack-revision-v1",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-n.json",
+      "sha256": "0fe6cac0d6863371b73807bc81af74249fbbcf7c6532ae82bcb94cc5cde1e4e0"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-n.json",
+      "sha256": "0fe6cac0d6863371b73807bc81af74249fbbcf7c6532ae82bcb94cc5cde1e4e0"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-n.json",
+      "sha256": "0fe6cac0d6863371b73807bc81af74249fbbcf7c6532ae82bcb94cc5cde1e4e0"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-ne.json",
+      "sha256": "e07046d3a3388477cd4940f9fe65c29b5cbad8bb22dbcd188f2f8c3fc1d93d9c"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-ne.json",
+      "sha256": "e07046d3a3388477cd4940f9fe65c29b5cbad8bb22dbcd188f2f8c3fc1d93d9c"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-ne.json",
+      "sha256": "e07046d3a3388477cd4940f9fe65c29b5cbad8bb22dbcd188f2f8c3fc1d93d9c"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-e.json",
+      "sha256": "9d2ee38cd26de87c29d7addb31676222ad9bca7953d6badc1cd763f6e70c7406"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-e.json",
+      "sha256": "9d2ee38cd26de87c29d7addb31676222ad9bca7953d6badc1cd763f6e70c7406"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-e.json",
+      "sha256": "9d2ee38cd26de87c29d7addb31676222ad9bca7953d6badc1cd763f6e70c7406"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-se.json",
+      "sha256": "5ef032d59f68b1a066c9ad5e3daeb1067fe9fa03899cb50268154531b31f0721"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-se.json",
+      "sha256": "5ef032d59f68b1a066c9ad5e3daeb1067fe9fa03899cb50268154531b31f0721"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-se.json",
+      "sha256": "5ef032d59f68b1a066c9ad5e3daeb1067fe9fa03899cb50268154531b31f0721"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-s.json",
+      "sha256": "23b0b149d0c2f64779af647240af72b2eaa3ed2ef5fc99dc5cb522ad6def882b"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-s.json",
+      "sha256": "23b0b149d0c2f64779af647240af72b2eaa3ed2ef5fc99dc5cb522ad6def882b"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-s.json",
+      "sha256": "23b0b149d0c2f64779af647240af72b2eaa3ed2ef5fc99dc5cb522ad6def882b"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-sw.json",
+      "sha256": "580bbc903b8e9ab622ecfb6b567a1ead515e625bb6def93ab95fd5c0d8dfd8e8"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-sw.json",
+      "sha256": "580bbc903b8e9ab622ecfb6b567a1ead515e625bb6def93ab95fd5c0d8dfd8e8"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-sw.json",
+      "sha256": "580bbc903b8e9ab622ecfb6b567a1ead515e625bb6def93ab95fd5c0d8dfd8e8"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-w.json",
+      "sha256": "d74b35e556201f758fee6defad23fde644db67b945120ada9b632ba17a8e5ace"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-w.json",
+      "sha256": "d74b35e556201f758fee6defad23fde644db67b945120ada9b632ba17a8e5ace"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-w.json",
+      "sha256": "d74b35e556201f758fee6defad23fde644db67b945120ada9b632ba17a8e5ace"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "shield-knight-idle-nw.json",
+      "sha256": "bb1b49868ff6d93d4e3e71b4009ef51f92bbc6616e679a182e957cc7aa42d94f"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "shield-knight-walk-nw.json",
+      "sha256": "bb1b49868ff6d93d4e3e71b4009ef51f92bbc6616e679a182e957cc7aa42d94f"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "shield-knight-attack-nw.json",
+      "sha256": "bb1b49868ff6d93d4e3e71b4009ef51f92bbc6616e679a182e957cc7aa42d94f"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "shield-knight-e.png",
+      "sha256": "9d2ee38cd26de87c29d7addb31676222ad9bca7953d6badc1cd763f6e70c7406",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "340e409644985a1aa91f19e221b314faada2a6fd64ea7f27d69a8aad2d8b476e",
+      "sourceFilename": "shield-knight-e.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-n.png",
+      "sha256": "0fe6cac0d6863371b73807bc81af74249fbbcf7c6532ae82bcb94cc5cde1e4e0",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "1be36e5bdc39da424a1f4096a325436f4daecc2c042ac46f8e5950b7c3c706a7",
+      "sourceFilename": "shield-knight-n.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-ne.png",
+      "sha256": "e07046d3a3388477cd4940f9fe65c29b5cbad8bb22dbcd188f2f8c3fc1d93d9c",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "0ff977199a85f6e353553f112b17e68fdbd76ca96bb42b9dc02aa5e81c57df9e",
+      "sourceFilename": "shield-knight-ne.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-nw.png",
+      "sha256": "bb1b49868ff6d93d4e3e71b4009ef51f92bbc6616e679a182e957cc7aa42d94f",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "935ca92e47be9080320bf708ea508ef722a6db48b3edc68f3798d6dce490efd8",
+      "sourceFilename": "shield-knight-nw.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-s.png",
+      "sha256": "23b0b149d0c2f64779af647240af72b2eaa3ed2ef5fc99dc5cb522ad6def882b",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "9ea26ea09a824222a031797837ceaa88ca0f4e99afb68095e89aea438d05b203",
+      "sourceFilename": "shield-knight-s.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-se.png",
+      "sha256": "5ef032d59f68b1a066c9ad5e3daeb1067fe9fa03899cb50268154531b31f0721",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "74c280cbcb5d78379b0827ab0b3ddf047bcd29e6af13382dc1611b52e9dd4472",
+      "sourceFilename": "shield-knight-se.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-sw.png",
+      "sha256": "580bbc903b8e9ab622ecfb6b567a1ead515e625bb6def93ab95fd5c0d8dfd8e8",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "ebe3fcaf0ebc999f102807225778467925d24b0a91b8b3b90a71f71e9c6deb3b",
+      "sourceFilename": "shield-knight-sw.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    },
+    {
+      "filename": "shield-knight-w.png",
+      "sha256": "d74b35e556201f758fee6defad23fde644db67b945120ada9b632ba17a8e5ace",
+      "width": 1024,
+      "height": 1008,
+      "sourceSHA256": "5537e11564b085834ee6e5de4bff6e38586cff81d3a9ed48e1ffa03b81abcdc1",
+      "sourceFilename": "shield-knight-w.png",
+      "derivationPolicy": "Idle/walk: exact published RGBA. Attack:3:1 Lanczos from final master; exact canonical runtime neutral first/last frames."
+    }
+  ]
+}

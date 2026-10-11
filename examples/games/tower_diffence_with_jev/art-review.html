@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Controlled ranged-art review</title>
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+      }
+      header {
+        padding: 12px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 960px;
+      }
+      #field canvas {
+        display: block;
+      }
+      .unit-health,
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview,
+      .sandbag-health {
+        display: none;
+      }
+      #status {
+        white-space: pre-wrap;
+      }
+      button {
+        margin: 4px;
+        padding: 8px;
+      }
+      #frame-label {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Controlled real-renderer review. Offline fixtures, not a natural battle.</b>
+      <div id="frame-label">Loading</div>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/RangedReview.ts"></script>
+  </body>
+</html>

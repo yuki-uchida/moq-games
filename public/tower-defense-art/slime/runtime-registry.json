@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "character": "purupuru-slime",
+  "runtimeType": "slime",
+  "visualCharacterId": "purupuru-slime",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "full-body-attack-review-candidate",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-n.json",
+      "texture": "purupuru-slime-n.png",
+      "sha256": "62153b408ac68976dcf6fd78a491b792fe2ecede9cf24c54c75ed5947dd2b76d"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-n.json",
+      "texture": "purupuru-slime-n.png",
+      "sha256": "62153b408ac68976dcf6fd78a491b792fe2ecede9cf24c54c75ed5947dd2b76d"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-n.json",
+      "texture": "purupuru-slime-n.png",
+      "sha256": "62153b408ac68976dcf6fd78a491b792fe2ecede9cf24c54c75ed5947dd2b76d"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-ne.json",
+      "texture": "purupuru-slime-ne.png",
+      "sha256": "01a845767ab6e5c1a1cceef27f89578b08397de62fccbf132dcf3399893b82fb"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-ne.json",
+      "texture": "purupuru-slime-ne.png",
+      "sha256": "01a845767ab6e5c1a1cceef27f89578b08397de62fccbf132dcf3399893b82fb"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-ne.json",
+      "texture": "purupuru-slime-ne.png",
+      "sha256": "01a845767ab6e5c1a1cceef27f89578b08397de62fccbf132dcf3399893b82fb"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-e.json",
+      "texture": "purupuru-slime-e.png",
+      "sha256": "f66272dd64553b061511a8184757cb9982cf9d831109e3bcb42195a835fb8b5d"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-e.json",
+      "texture": "purupuru-slime-e.png",
+      "sha256": "f66272dd64553b061511a8184757cb9982cf9d831109e3bcb42195a835fb8b5d"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-e.json",
+      "texture": "purupuru-slime-e.png",
+      "sha256": "f66272dd64553b061511a8184757cb9982cf9d831109e3bcb42195a835fb8b5d"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-se.json",
+      "texture": "purupuru-slime-se.png",
+      "sha256": "2b79bd62969f1421a230c62bf1e1fc4c2c9b20cf7fe7a05696d749a604c7f414"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-se.json",
+      "texture": "purupuru-slime-se.png",
+      "sha256": "2b79bd62969f1421a230c62bf1e1fc4c2c9b20cf7fe7a05696d749a604c7f414"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-se.json",
+      "texture": "purupuru-slime-se.png",
+      "sha256": "2b79bd62969f1421a230c62bf1e1fc4c2c9b20cf7fe7a05696d749a604c7f414"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-s.json",
+      "texture": "purupuru-slime-s.png",
+      "sha256": "63082d7e8e3083df65c5b90f95e8301af6446bc999e8e23f0e81db869b65dc81"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-s.json",
+      "texture": "purupuru-slime-s.png",
+      "sha256": "63082d7e8e3083df65c5b90f95e8301af6446bc999e8e23f0e81db869b65dc81"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-s.json",
+      "texture": "purupuru-slime-s.png",
+      "sha256": "63082d7e8e3083df65c5b90f95e8301af6446bc999e8e23f0e81db869b65dc81"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-sw.json",
+      "texture": "purupuru-slime-sw.png",
+      "sha256": "c13ebaf836fc14558ff9f64797cdf63ecd35680e0fa87688694c24d4ff58dec2"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-sw.json",
+      "texture": "purupuru-slime-sw.png",
+      "sha256": "c13ebaf836fc14558ff9f64797cdf63ecd35680e0fa87688694c24d4ff58dec2"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-sw.json",
+      "texture": "purupuru-slime-sw.png",
+      "sha256": "c13ebaf836fc14558ff9f64797cdf63ecd35680e0fa87688694c24d4ff58dec2"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-w.json",
+      "texture": "purupuru-slime-w.png",
+      "sha256": "b7f03b7c5fb73b448170aa49b0e67b34ce3b044b6c657e06ce8c9434618ea62c"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-w.json",
+      "texture": "purupuru-slime-w.png",
+      "sha256": "b7f03b7c5fb73b448170aa49b0e67b34ce3b044b6c657e06ce8c9434618ea62c"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-w.json",
+      "texture": "purupuru-slime-w.png",
+      "sha256": "b7f03b7c5fb73b448170aa49b0e67b34ce3b044b6c657e06ce8c9434618ea62c"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "purupuru-slime-idle-nw.json",
+      "texture": "purupuru-slime-nw.png",
+      "sha256": "1791868af9562ce933898311c4e7c238456bb3ad6c77acbda9dcc3c80d3a5103"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "purupuru-slime-walk-nw.json",
+      "texture": "purupuru-slime-nw.png",
+      "sha256": "1791868af9562ce933898311c4e7c238456bb3ad6c77acbda9dcc3c80d3a5103"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "purupuru-slime-attack-nw.json",
+      "texture": "purupuru-slime-nw.png",
+      "sha256": "1791868af9562ce933898311c4e7c238456bb3ad6c77acbda9dcc3c80d3a5103"
+    }
+  ],
+  "sources": [
+    {
+      "sourceTexture": "../atlases/purupuru-slime-n.png",
+      "sourceSHA256": "1552b9642712c2045c08e93a8ebc2c9118d880f387bc8ed5069377596f3d2b67",
+      "runtimeTexture": "purupuru-slime-n.png",
+      "runtimeSHA256": "62153b408ac68976dcf6fd78a491b792fe2ecede9cf24c54c75ed5947dd2b76d",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-ne.png",
+      "sourceSHA256": "45d4a2e3979939e04c745a33ebd6f577bed75c7f7b68d964236b9707c1c9d548",
+      "runtimeTexture": "purupuru-slime-ne.png",
+      "runtimeSHA256": "01a845767ab6e5c1a1cceef27f89578b08397de62fccbf132dcf3399893b82fb",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-e.png",
+      "sourceSHA256": "119d4d34ea67e312c29f15bba70a75e639d2e31363fbf784e8d42ac122a44593",
+      "runtimeTexture": "purupuru-slime-e.png",
+      "runtimeSHA256": "f66272dd64553b061511a8184757cb9982cf9d831109e3bcb42195a835fb8b5d",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-se.png",
+      "sourceSHA256": "774ee92ce81237f3823bd780126b7f93524c5c8d2faff58eaaeffb9b97d9f090",
+      "runtimeTexture": "purupuru-slime-se.png",
+      "runtimeSHA256": "2b79bd62969f1421a230c62bf1e1fc4c2c9b20cf7fe7a05696d749a604c7f414",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-s.png",
+      "sourceSHA256": "e599fb1b0ec6b3330f94323f024fc488ddaf894d159e0c6b9930505da14cc514",
+      "runtimeTexture": "purupuru-slime-s.png",
+      "runtimeSHA256": "63082d7e8e3083df65c5b90f95e8301af6446bc999e8e23f0e81db869b65dc81",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-sw.png",
+      "sourceSHA256": "3e07b1c3e2055b311d739479db6b65d8e26f0e25bbc14ea9679b870286b4df9f",
+      "runtimeTexture": "purupuru-slime-sw.png",
+      "runtimeSHA256": "c13ebaf836fc14558ff9f64797cdf63ecd35680e0fa87688694c24d4ff58dec2",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-w.png",
+      "sourceSHA256": "f7b355fec091eb6f5b4d628a99cc651031a253e70e0d73e7fa7358eba5a158ce",
+      "runtimeTexture": "purupuru-slime-w.png",
+      "runtimeSHA256": "b7f03b7c5fb73b448170aa49b0e67b34ce3b044b6c657e06ce8c9434618ea62c",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    },
+    {
+      "sourceTexture": "../atlases/purupuru-slime-nw.png",
+      "sourceSHA256": "f8cee329e4626d245b56d05e8b99755885e720b2c0842f5e8dcc3cb39fc8a845",
+      "runtimeTexture": "purupuru-slime-nw.png",
+      "runtimeSHA256": "1791868af9562ce933898311c4e7c238456bb3ad6c77acbda9dcc3c80d3a5103",
+      "derivationPolicy": "Frozen baseline idle/walk pixels; new attack frames resized from final full-character masters."
+    }
+  ]
+}

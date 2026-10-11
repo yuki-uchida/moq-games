@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Controlled presentation review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+      }
+      header {
+        padding: 12px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 960px;
+      }
+      #field canvas {
+        display: block;
+      }
+      .unit-health,
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+      #status {
+        max-height: 72px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        font: 11px monospace;
+      }
+      #frame-label {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Real GameEngine, GameRenderer and PNG review. Controlled offline fixtures; no live Jev calls.</b>
+      <div>
+        Positions, next breath sequence, zero HP, source-labelled responses and presentation time are explicit fixture
+        hooks.
+      </div>
+      <div id="frame-label">Loading</div>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/PresentationReview.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "character": "dusk-wolf",
+  "direction": "s",
+  "motion": "idle",
+  "texture": "dusk-wolf-walk-v2-combined-s.png",
+  "sha256": "02d696c5a804f871aac560776d5130f6462257b12517555b7aa42d3a48fd6472",
+  "textureWidth": 1024,
+  "textureHeight": 672,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 5.33333333,
+  "loop": true,
+  "durationMs": 2250,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "half"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "closed"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 65,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "half"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 210,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 240,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    }
+  ],
+  "rendering": "whole-character-frame-only",
+  "status": "walk-v2 five-pass reviewed candidate; parent activation pending"
+}

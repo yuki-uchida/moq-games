@@ -1,0 +1,393 @@
+{
+  "version": 1,
+  "character": "crystal-stone-brute",
+  "runtimeType": "brute",
+  "direction": "e",
+  "motion": "attack",
+  "texture": "crystal-stone-brute-e.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 1200,
+  "frames": [
+    {
+      "index": 0,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 71.66666666666666,
+        "y": 75
+      }
+    },
+    {
+      "index": 1,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 78.66666666666666,
+        "y": 75
+      }
+    },
+    {
+      "index": 2,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 82,
+        "y": 72.66666666666666
+      }
+    },
+    {
+      "index": 3,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 84.66666666666666,
+        "y": 61
+      }
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "gather",
+      "emitter": {
+        "x": 88.33333333333333,
+        "y": 50.666666666666664
+      }
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 71,
+        "y": 32
+      }
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 66,
+        "y": 28.666666666666664
+      }
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 65.66666666666666,
+        "y": 34
+      }
+    },
+    {
+      "index": 8,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 65,
+        "y": 32
+      }
+    },
+    {
+      "index": 9,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "overhead-load",
+      "emitter": {
+        "x": 80.33333333333333,
+        "y": 42
+      }
+    },
+    {
+      "index": 10,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "descending",
+      "emitter": {
+        "x": 83.66666666666666,
+        "y": 60
+      }
+    },
+    {
+      "index": 11,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 91.33333333333333,
+        "y": 94
+      }
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 91.33333333333333,
+        "y": 94
+      }
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "ground-slam",
+      "emitter": {
+        "x": 91.33333333333333,
+        "y": 94
+      }
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 82,
+        "y": 75.66666666666666
+      }
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 82,
+        "y": 75.66666666666666
+      }
+    },
+    {
+      "index": 16,
+      "x": 512,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 81.66666666666666,
+        "y": 76
+      }
+    },
+    {
+      "index": 17,
+      "x": 640,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 73,
+        "y": 76.66666666666666
+      }
+    },
+    {
+      "index": 18,
+      "x": 768,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 71.66666666666666,
+        "y": 75.66666666666666
+      }
+    },
+    {
+      "index": 19,
+      "x": 896,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "complete-authored",
+      "phaseName": "heavy-recover",
+      "emitter": {
+        "x": 71.66666666666666,
+        "y": 75
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 660
+    }
+  ],
+  "sha256": "076ac47b31b361afef589990f5abf47d300e9a0ef9e7103dbb450035abdd6974",
+  "status": "runtime-derivative-under-review"
+}

@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "runtimeType": "archer",
+  "visualCharacterId": "forest-archer",
+  "character": "forest-archer",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "authored-eight-direction-under-review",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-n.json",
+      "sha256": "c8af76dfccd27c38d22180799fb94ed889a828ec207881adb3855579207311e0"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-n.json",
+      "sha256": "c8af76dfccd27c38d22180799fb94ed889a828ec207881adb3855579207311e0"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-n.json",
+      "sha256": "c8af76dfccd27c38d22180799fb94ed889a828ec207881adb3855579207311e0"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-ne.json",
+      "sha256": "74bc1f9a1861cf2fdc7c50c0c71a8b72c3ea2b4ffb5fd6b826364cb762b11edb"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-ne.json",
+      "sha256": "74bc1f9a1861cf2fdc7c50c0c71a8b72c3ea2b4ffb5fd6b826364cb762b11edb"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-ne.json",
+      "sha256": "74bc1f9a1861cf2fdc7c50c0c71a8b72c3ea2b4ffb5fd6b826364cb762b11edb"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-e.json",
+      "sha256": "4eb4d68402ea6bbd23bc8dec5979fd16be74d36932047bd0469bb50f7a7c9d8d"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-e.json",
+      "sha256": "4eb4d68402ea6bbd23bc8dec5979fd16be74d36932047bd0469bb50f7a7c9d8d"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-e.json",
+      "sha256": "4eb4d68402ea6bbd23bc8dec5979fd16be74d36932047bd0469bb50f7a7c9d8d"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-se.json",
+      "sha256": "699d489490791631bbd21d40678666eb7134126e771236600910ca8077349f19"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-se.json",
+      "sha256": "699d489490791631bbd21d40678666eb7134126e771236600910ca8077349f19"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-se.json",
+      "sha256": "699d489490791631bbd21d40678666eb7134126e771236600910ca8077349f19"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-s.json",
+      "sha256": "5b04b1de178e9710c6d339c7efceaff61b930d44bd6ff5d98c416edbfd7188e3"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-s.json",
+      "sha256": "5b04b1de178e9710c6d339c7efceaff61b930d44bd6ff5d98c416edbfd7188e3"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-s.json",
+      "sha256": "5b04b1de178e9710c6d339c7efceaff61b930d44bd6ff5d98c416edbfd7188e3"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-sw.json",
+      "sha256": "2221e9611581120295d27f2beb108898846d79e559d9b7a4762fa8cbeed8bb5b"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-sw.json",
+      "sha256": "2221e9611581120295d27f2beb108898846d79e559d9b7a4762fa8cbeed8bb5b"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-sw.json",
+      "sha256": "2221e9611581120295d27f2beb108898846d79e559d9b7a4762fa8cbeed8bb5b"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-w.json",
+      "sha256": "9d5b40c11a14a9f5b46f07577d6a5eb818f56b4cf5906eb17b4d7d18a0047f8a"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-w.json",
+      "sha256": "9d5b40c11a14a9f5b46f07577d6a5eb818f56b4cf5906eb17b4d7d18a0047f8a"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-w.json",
+      "sha256": "9d5b40c11a14a9f5b46f07577d6a5eb818f56b4cf5906eb17b4d7d18a0047f8a"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "forest-archer-idle-nw.json",
+      "sha256": "8a26e0639ef2b5c0daeec766a82e6137b9f1989ab443116bc328573b6728f1d8"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "forest-archer-walk-nw.json",
+      "sha256": "8a26e0639ef2b5c0daeec766a82e6137b9f1989ab443116bc328573b6728f1d8"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "forest-archer-attack-nw.json",
+      "sha256": "8a26e0639ef2b5c0daeec766a82e6137b9f1989ab443116bc328573b6728f1d8"
+    }
+  ],
+  "source": "Independently authored full-body poses, canonical exact neutral bookends; exact preserved idle and walk",
+  "runtimeComposition": "One complete baked whole-character frame. No runtime pieces, overlays or crossfades.",
+  "sources": [
+    {
+      "sourceTexture": "forest-archer-n.png",
+      "texture": "forest-archer-n.png",
+      "sourceSHA256": "4eff4f6e2326c5b770fe75c6521b0b840c92700eacc47f2b17bdc4ca4354bc74",
+      "sha256": "c8af76dfccd27c38d22180799fb94ed889a828ec207881adb3855579207311e0",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-ne.png",
+      "texture": "forest-archer-ne.png",
+      "sourceSHA256": "f28df1ee4762b8fca7577533633c8dcbb32bba1c31bac7fdd6ef367df7aa02c8",
+      "sha256": "74bc1f9a1861cf2fdc7c50c0c71a8b72c3ea2b4ffb5fd6b826364cb762b11edb",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-e.png",
+      "texture": "forest-archer-e.png",
+      "sourceSHA256": "b2db72c8c9ec3649483e9d098d6096f1fc4ce7fe8b962dd7a9d7a31d80ae76fb",
+      "sha256": "4eb4d68402ea6bbd23bc8dec5979fd16be74d36932047bd0469bb50f7a7c9d8d",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-se.png",
+      "texture": "forest-archer-se.png",
+      "sourceSHA256": "5845521a2877e5267afdabc776f55d163462ea6084e566c852873fc74166ef18",
+      "sha256": "699d489490791631bbd21d40678666eb7134126e771236600910ca8077349f19",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-s.png",
+      "texture": "forest-archer-s.png",
+      "sourceSHA256": "547035b6bef8b30240db5f8e3c6e35b97d4afab5c9a743753f2d58488a621fe6",
+      "sha256": "5b04b1de178e9710c6d339c7efceaff61b930d44bd6ff5d98c416edbfd7188e3",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-sw.png",
+      "texture": "forest-archer-sw.png",
+      "sourceSHA256": "e89b778f55e91d1e3bbca68025728c8d777988083b7ff0a06b45e04ab3394bb8",
+      "sha256": "2221e9611581120295d27f2beb108898846d79e559d9b7a4762fa8cbeed8bb5b",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-w.png",
+      "texture": "forest-archer-w.png",
+      "sourceSHA256": "92e067b7f63ac368dfc10d5f2bf9341df9a49a77dd3d38252e1f600b94f5cefe",
+      "sha256": "9d5b40c11a14a9f5b46f07577d6a5eb818f56b4cf5906eb17b4d7d18a0047f8a",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    },
+    {
+      "sourceTexture": "forest-archer-nw.png",
+      "texture": "forest-archer-nw.png",
+      "sourceSHA256": "a2638aa643e4128f211ae714709d69413b9242d15ce4fa054640d3d868d2e08a",
+      "sha256": "8a26e0639ef2b5c0daeec766a82e6137b9f1989ab443116bc328573b6728f1d8",
+      "derivation": "Exact preserved runtime idle/walk; new master attack reduced3:1 Lanczos"
+    }
+  ]
+}

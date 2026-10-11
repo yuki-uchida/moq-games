@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "runtimeType": "frost",
+  "visualCharacterId": "frost-caster",
+  "character": "frost-caster",
+  "displayName": "\u971c\u306e\u8853\u5e2b",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "strong-redrawn-full-body-review",
+  "source": "Newly drawn complete poses; five independently camera-locked directions and three whole-frame mirrors. Exact current idle/walk banks and neutral bookends retained.",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-n.json",
+      "sha256": "d03ec77d1f0689317817667fdd4dce92047ec1e4c240b37a1783c01f3cc759c8"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-n.json",
+      "sha256": "d03ec77d1f0689317817667fdd4dce92047ec1e4c240b37a1783c01f3cc759c8"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-n.json",
+      "sha256": "d03ec77d1f0689317817667fdd4dce92047ec1e4c240b37a1783c01f3cc759c8"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-ne.json",
+      "sha256": "9335d8ce2461ce9bbfd4878a03bc09e5136530941b4d291a9f93697930b18d34"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-ne.json",
+      "sha256": "9335d8ce2461ce9bbfd4878a03bc09e5136530941b4d291a9f93697930b18d34"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-ne.json",
+      "sha256": "9335d8ce2461ce9bbfd4878a03bc09e5136530941b4d291a9f93697930b18d34"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-e.json",
+      "sha256": "aba36f0d2b574f95fa3585940caaef7c9aa41a30de040d2a8d7ec69f8be107f7"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-e.json",
+      "sha256": "aba36f0d2b574f95fa3585940caaef7c9aa41a30de040d2a8d7ec69f8be107f7"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-e.json",
+      "sha256": "aba36f0d2b574f95fa3585940caaef7c9aa41a30de040d2a8d7ec69f8be107f7"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-se.json",
+      "sha256": "645b9ea7b6cb47a8f71c80651614cd591f51755bcd2858a7d773b85a8f547b95"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-se.json",
+      "sha256": "645b9ea7b6cb47a8f71c80651614cd591f51755bcd2858a7d773b85a8f547b95"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-se.json",
+      "sha256": "645b9ea7b6cb47a8f71c80651614cd591f51755bcd2858a7d773b85a8f547b95"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-s.json",
+      "sha256": "bb006c95a2a3d7288a5ef75fe0d46b9b647ade4210997f74fbe3ea3c78a4f0d4"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-s.json",
+      "sha256": "bb006c95a2a3d7288a5ef75fe0d46b9b647ade4210997f74fbe3ea3c78a4f0d4"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-s.json",
+      "sha256": "bb006c95a2a3d7288a5ef75fe0d46b9b647ade4210997f74fbe3ea3c78a4f0d4"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-sw.json",
+      "sha256": "2b9ee1e020c44dc9113e3bb7b70d3c3efdd579d0eb281035fb8b8ad9d7fb0ad0"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-sw.json",
+      "sha256": "2b9ee1e020c44dc9113e3bb7b70d3c3efdd579d0eb281035fb8b8ad9d7fb0ad0"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-sw.json",
+      "sha256": "2b9ee1e020c44dc9113e3bb7b70d3c3efdd579d0eb281035fb8b8ad9d7fb0ad0"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-w.json",
+      "sha256": "6cd904c635ced40bcf8746586f075d814d56fb9d2812183f9a8573cbb396dd37"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-w.json",
+      "sha256": "6cd904c635ced40bcf8746586f075d814d56fb9d2812183f9a8573cbb396dd37"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-w.json",
+      "sha256": "6cd904c635ced40bcf8746586f075d814d56fb9d2812183f9a8573cbb396dd37"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "frost-caster-idle-nw.json",
+      "sha256": "39c7fd3dd66b8a6b56697458443299a2227abda22ed9908bccd95b67a408b16d"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "frost-caster-walk-nw.json",
+      "sha256": "39c7fd3dd66b8a6b56697458443299a2227abda22ed9908bccd95b67a408b16d"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "frost-caster-attack-nw.json",
+      "sha256": "39c7fd3dd66b8a6b56697458443299a2227abda22ed9908bccd95b67a408b16d"
+    }
+  ],
+  "layout": {
+    "columns": 8,
+    "rows": 9,
+    "idleRows": [
+      0,
+      1,
+      2
+    ],
+    "walkRows": [
+      3,
+      4,
+      5
+    ],
+    "attackRows": [
+      6,
+      7,
+      8
+    ]
+  },
+  "runtimeComposition": "One complete baked character frame, no live layers or crossfade",
+  "attackRevision": "strong-v2",
+  "pixelsPerWorldUnit": 1,
+  "derivationPolicy": "New full-body attack drawings reduced 3:1 Lanczos. Exact current runtime idle/walk and exact neutral bookends; no overlays or runtime rig.",
+  "sources": [
+    {
+      "filename": "frost-caster-n.png",
+      "sourceSHA256": "285485639667d2bcc0893c4c58465152200b829bcdad19986ecab62fe0f246f3",
+      "sha256": "d03ec77d1f0689317817667fdd4dce92047ec1e4c240b37a1783c01f3cc759c8"
+    },
+    {
+      "filename": "frost-caster-ne.png",
+      "sourceSHA256": "c8a9d3a09b86f6d51a715cfc48c197f13648cc775b3814216d752ffd902bb20b",
+      "sha256": "9335d8ce2461ce9bbfd4878a03bc09e5136530941b4d291a9f93697930b18d34"
+    },
+    {
+      "filename": "frost-caster-e.png",
+      "sourceSHA256": "c7b1adb67b2a68222d4a6ef145433c17467bee9d93a9343cc1731777e93877d6",
+      "sha256": "aba36f0d2b574f95fa3585940caaef7c9aa41a30de040d2a8d7ec69f8be107f7"
+    },
+    {
+      "filename": "frost-caster-se.png",
+      "sourceSHA256": "a44b9b573d1cf9ebd5613f6b78a0d39de4d1e0d0351a9a9ca7292a92c7fcc6d8",
+      "sha256": "645b9ea7b6cb47a8f71c80651614cd591f51755bcd2858a7d773b85a8f547b95"
+    },
+    {
+      "filename": "frost-caster-s.png",
+      "sourceSHA256": "b6535951a5418a2b1bd7f9eac3bff7b7d93231a5274e964d953a17a49da49e36",
+      "sha256": "bb006c95a2a3d7288a5ef75fe0d46b9b647ade4210997f74fbe3ea3c78a4f0d4"
+    },
+    {
+      "filename": "frost-caster-sw.png",
+      "sourceSHA256": "384285ecc6a1d71655e5af938badf651e0db2158a3cd130f76d1cfc4efe87bde",
+      "sha256": "2b9ee1e020c44dc9113e3bb7b70d3c3efdd579d0eb281035fb8b8ad9d7fb0ad0"
+    },
+    {
+      "filename": "frost-caster-w.png",
+      "sourceSHA256": "bb0c2f1975eccbab5891837cc0cd03301f550fd7d3fcc00e7c76e0838f5d5a4c",
+      "sha256": "6cd904c635ced40bcf8746586f075d814d56fb9d2812183f9a8573cbb396dd37"
+    },
+    {
+      "filename": "frost-caster-nw.png",
+      "sourceSHA256": "7873f76d394f9291e99814688d3c2a674059aa4607a36c5df716fb6ebf2a8532",
+      "sha256": "39c7fd3dd66b8a6b56697458443299a2227abda22ed9908bccd95b67a408b16d"
+    }
+  ]
+}

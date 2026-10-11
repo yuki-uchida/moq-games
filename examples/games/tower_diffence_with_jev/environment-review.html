@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scripted offline environment review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+        overflow: auto;
+      }
+      header {
+        padding: 12px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 1440px;
+      }
+      #field canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Scripted offline environment review</b>
+      <p>Real GameEngine and GameRenderer. Fresh in-memory saves only; no Jev connection.</p>
+      <p>
+        Compass road fragments and gate HP are scripted visual samples. Damage, charges and removals use engine
+        fixtures. This is not a campaign balance run.
+      </p>
+      <select id="review-theme">
+        <option>meadow</option>
+        <option>desert</option>
+        <option>frost</option>
+        <option>volcanic</option>
+      </select>
+      <button id="review-prepare">Prepare</button>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/EnvironmentReview.ts"></script>
+  </body>
+</html>

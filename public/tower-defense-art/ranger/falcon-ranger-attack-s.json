@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "character": "falcon-ranger",
+  "runtimeType": "ranger",
+  "visualCharacterId": "falcon-ranger",
+  "direction": "s",
+  "motion": "attack",
+  "texture": "falcon-ranger-s.png",
+  "sha256": "4f6ebad7200f0ae925d2dbe30fbb8c28b47f3594db8f5b1d2a82889ec8d4e2e6",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 10.0,
+  "loop": false,
+  "durationMs": 1200,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 750
+    }
+  ],
+  "releaseFrame": 6,
+  "projectilePolicy": "Held arrow absent at release frame6. Cue emitter is actual preceding visible nocked tip; other anchors follow actual pose firing line.",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 74.0,
+        "y": 71.0
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 110,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 79.33333333333333,
+        "y": 72.66666666666667
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 120,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 77.17283950617285,
+        "y": 72.98271604938272
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 130,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 71.77037037037037,
+        "y": 70.39999999999999
+      }
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 140,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 67.8929710990838,
+        "y": 81.04946761470161
+      }
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 180,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 67.8929710990838,
+        "y": 81.04946761470161
+      }
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 50,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 67.8929710990838,
+        "y": 81.04946761470161
+      }
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 68.0,
+        "y": 57.333333333333336
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 100,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 77.33333333333333,
+        "y": 78.66666666666667
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 80,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 75.66666666666667,
+        "y": 76.0
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 73.33333333333333,
+        "y": 83.33333333333333
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open",
+      "emitter": {
+        "x": 74.0,
+        "y": 71.0
+      }
+    }
+  ],
+  "status": "runtime-derivative-under-review"
+}

@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "character": "mist-wraith",
+  "direction": "e",
+  "motion": "walk",
+  "texture": "mist-wraith-e.png",
+  "textureWidth": 1024,
+  "textureHeight": 784,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 14.285714285714286,
+  "loop": true,
+  "durationMs": 1120,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 70,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "open-complete-character"
+    }
+  ],
+  "sha256": "a6c32f2dab9e72d914f35ccfe3a5807716cb23bbcce8eafc8de1a3c85372ede3"
+}

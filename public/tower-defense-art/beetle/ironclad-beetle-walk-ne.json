@@ -1,0 +1,401 @@
+{
+  "version": 1,
+  "character": "ironclad-beetle",
+  "direction": "ne",
+  "motion": "walk",
+  "texture": "ironclad-beetle-walk-v2-combined-ne.png",
+  "sha256": "fe57c0ce1a16975b0e135ca45b9f8654ed626e10024397f987773bc1c5cdd5ca",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 60,
+  "loop": true,
+  "durationMs": 300.0,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "durationMs": 16.666666666666668,
+      "headState": "rear-no-visible-eyes"
+    }
+  ],
+  "strideWorldUnits": 18,
+  "rendering": "whole-character-frame-only",
+  "gait": {
+    "type": "alternating tripod; six independently articulated limbs",
+    "cycleMs": 300,
+    "groundSpeedWorldUnitsPerSecond": 60,
+    "stanceFraction": 0.5,
+    "projectionVector": [
+      0.7071067811865476,
+      -0.7071067811865476
+    ],
+    "worldToSpriteGroundProjection": "confirmed equal X/Y; ppu3 master, ppu1 runtime",
+    "contactFramesPerLeg": [
+      {
+        "leg": 0,
+        "contactFrames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "measuredMasterStrideWorldUnits": 18.050507650652964,
+        "measuredRuntimeStrideWorldUnits": 16.46915975818123,
+        "maxMasterPoseSlipWorldUnits": 0.22876383367174868,
+        "maxRuntimePoseSlipWorldUnits": 0.9510760066866408,
+        "visibleContactSamples": 10,
+        "sampleCount": 10
+      },
+      {
+        "leg": 1,
+        "contactFrames": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          0
+        ],
+        "measuredMasterStrideWorldUnits": 17.844803859762326,
+        "measuredRuntimeStrideWorldUnits": 17.124840591645107,
+        "maxMasterPoseSlipWorldUnits": 0.3661022016693571,
+        "maxRuntimePoseSlipWorldUnits": 1.343145750507616,
+        "visibleContactSamples": 10,
+        "sampleCount": 10
+      },
+      {
+        "leg": 2,
+        "contactFrames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "measuredMasterStrideWorldUnits": 17.921942781346313,
+        "measuredRuntimeStrideWorldUnits": 16.23774299342927,
+        "maxMasterPoseSlipWorldUnits": 0.28750662113827413,
+        "maxRuntimePoseSlipWorldUnits": 1.6262413537579914,
+        "visibleContactSamples": 10,
+        "sampleCount": 10
+      },
+      {
+        "leg": 3,
+        "contactFrames": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          0
+        ],
+        "measuredMasterStrideWorldUnits": 17.977654224712538,
+        "measuredRuntimeStrideWorldUnits": 18.66761902332485,
+        "maxMasterPoseSlipWorldUnits": 0.3284637684003406,
+        "maxRuntimePoseSlipWorldUnits": 1.495158189685249,
+        "visibleContactSamples": 4,
+        "sampleCount": 10
+      },
+      {
+        "leg": 4,
+        "contactFrames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "measuredMasterStrideWorldUnits": 17.887658816197884,
+        "measuredRuntimeStrideWorldUnits": 17.85766034669299,
+        "maxMasterPoseSlipWorldUnits": 0.3284637684003406,
+        "maxRuntimePoseSlipWorldUnits": 1.455248778075915,
+        "visibleContactSamples": 4,
+        "sampleCount": 10
+      },
+      {
+        "leg": 5,
+        "contactFrames": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          0
+        ],
+        "measuredMasterStrideWorldUnits": 17.79337791203966,
+        "measuredRuntimeStrideWorldUnits": 17.009132209269133,
+        "maxMasterPoseSlipWorldUnits": 0.28750662113827413,
+        "maxRuntimePoseSlipWorldUnits": 0.8284271247461941,
+        "visibleContactSamples": 10,
+        "sampleCount": 10
+      }
+    ]
+  },
+  "status": "walk-v2 reviewed candidate; parent activation pending"
+}

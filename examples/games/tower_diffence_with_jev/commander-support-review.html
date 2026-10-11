@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scripted offline commander support review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+        overflow: auto;
+      }
+      header {
+        padding: 12px;
+        max-width: 1260px;
+      }
+      button,
+      select {
+        padding: 8px;
+        margin: 4px;
+        background: #fff5db;
+        color: #173c33;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 1440px;
+      }
+      #field canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .placement,
+      .placement-preview,
+      .placement-cursor {
+        display: none;
+      }
+      #status {
+        max-height: 70px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        font: 11px monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Scripted offline commander support review</b>
+      <p id="fixture"></p>
+      <select id="effect">
+        <option value="heal">Heal</option>
+        <option value="speed">Speed</option>
+        <option value="armor">Armor</option>
+        <option value="attack">Attack</option>
+      </select>
+      <button id="prepare">Prepare</button><button id="step">Advance 100 ms</button>
+      <p id="frame-label">Select a scripted case</p>
+      <div id="status">loading</div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/CommanderSupportReview.ts"></script>
+  </body>
+</html>

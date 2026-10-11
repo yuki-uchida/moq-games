@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "character": "mushroom-mage",
+  "runtimeType": "shaman",
+  "visualCharacterId": "mushroom-mage",
+  "direction": "se",
+  "motion": "walk",
+  "texture": "mushroom-mage-se.png",
+  "sha256": "eecdb3b93e300a0533c9aa1ff9c85019674d26cb0011090c40df7a45fb5b3443",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 87.99999999999999,
+  "loop": true,
+  "durationMs": 272.72727272727275,
+  "strideWorldUnits": 18,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 20,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 21,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 22,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    },
+    {
+      "index": 23,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 11.363636363636365,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "open"
+    }
+  ],
+  "status": "runtime-derivative-under-review"
+}

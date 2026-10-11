@@ -1,0 +1,405 @@
+{
+  "version": 1,
+  "runtimeType": "soldier",
+  "character": "leaf-squire",
+  "visualCharacterId": "leaf-squire",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "status": "north-neck-registration-correction-review",
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-n.json",
+      "sha256": "1e3cc83403b523aeeffe15c7dc3ce51c51d19e7697496b19e4e24ac417e6a929",
+      "texture": "leaf-squire-idle-n.png"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-n.json",
+      "sha256": "7eb7ae906c32579cb139d6e1900dc8181d14e0393a5bb268ba09b98490d6cf4c",
+      "texture": "leaf-squire-walk-n.png"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-n.json",
+      "sha256": "0aba3642d9d75b564e2095075bf6f7461e72051a46c4a0ad6fb100d084f5905e",
+      "texture": "leaf-squire-attack-n.png"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-ne.json",
+      "sha256": "5caec194f44727ce5405cbc95f9a70953ef0a2ee1d584004bee44a581d1907e1",
+      "texture": "leaf-squire-idle-ne.png"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-ne.json",
+      "sha256": "0c56cd2e00393df38617005fae545d7c5e7c68d9a3345b90747ed9dd8b893860",
+      "texture": "leaf-squire-walk-ne.png"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-ne.json",
+      "sha256": "079ceb35158b4f559c0dedabe7b6856e980514284da33bf7262b656536248edd",
+      "texture": "leaf-squire-attack-ne.png"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-e.json",
+      "sha256": "a2693707b9e84b97e89b8cd4081faabb2b4d732488723d6bdb46e9b8d1451ab2",
+      "texture": "leaf-squire-idle-e.png"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-e.json",
+      "sha256": "f86a8ec2988d867db50f435226865aa731d1d73369e6b3d9ca28f075c0c30467",
+      "texture": "leaf-squire-walk-e.png"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-e.json",
+      "sha256": "1603b487eece6962a703b5c177debc3ee427d9f8650f4d1f1ea58b972555db89",
+      "texture": "leaf-squire-attack-e.png"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-se.json",
+      "sha256": "720584f9833527a7cd4c0ebc298a637780203d1089c6413b26382daa587ced1c",
+      "texture": "leaf-squire-idle-se.png"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-se.json",
+      "sha256": "c0479c0ba2bc708f67ab5e0db0c67d851b961019a7b7ccdd17886da9859e46ab",
+      "texture": "leaf-squire-walk-se.png"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-se.json",
+      "sha256": "86c0f00b0b69ed1c0465296e533210bcda45b678a92bb20c73fcd7238b37046f",
+      "texture": "leaf-squire-attack-se.png"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-s.json",
+      "sha256": "ea8e81d788d8be9d16176846da46f02bf3b27b52779832e187d01c7dacc3ba81",
+      "texture": "leaf-squire-idle-s.png"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-s.json",
+      "sha256": "4452511ce6f917d27235cd4fdd92278544ba954b6b5c68c3742be88bdbd71961",
+      "texture": "leaf-squire-walk-s.png"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-s.json",
+      "sha256": "1d77c332eebf05a1ee99692ff00d7c9ee32c7b0d519bad26c4e82cdce6dd49cd",
+      "texture": "leaf-squire-attack-s.png"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-sw.json",
+      "sha256": "36d108d62cd10e00615e66ea57882c0efab27a6d1edae9d72633990bdd3e3a38",
+      "texture": "leaf-squire-idle-sw.png"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-sw.json",
+      "sha256": "73a3452e52b1c39f6a3a654d2d750a3c35d76ac8a9c3748ce68ed9943e34c976",
+      "texture": "leaf-squire-walk-sw.png"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-sw.json",
+      "sha256": "05830a5ba65f730141e76ffc575b300e3e2786dff2bc1bbfbd41b7cd80587304",
+      "texture": "leaf-squire-attack-sw.png"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-w.json",
+      "sha256": "63ccc5ae2f4250b81d1e31985703ea3f65531a5d80cfd96d197dc8e358aa9fed",
+      "texture": "leaf-squire-idle-w.png"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-w.json",
+      "sha256": "69d4b5ed21072962b0ec2e8df6e15afd7ebcc9b0a7aa4399e57aed59614fbd4c",
+      "texture": "leaf-squire-walk-w.png"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-w.json",
+      "sha256": "f4ff2f9008720151079dad3d940e1f3b445b3827662abfcd346a351d52c65aae",
+      "texture": "leaf-squire-attack-w.png"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "leaf-squire-idle-nw.json",
+      "sha256": "2baf083282fc1eddb136217c99b13d425e6e1a271fcfef7c512fcf8eb4bf1fe3",
+      "texture": "leaf-squire-idle-nw.png"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "leaf-squire-walk-nw.json",
+      "sha256": "7c4b33dc3e387d9510dd4e9828b1f22763e9456feb65a93c6c3d488acfa82993",
+      "texture": "leaf-squire-walk-nw.png"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "leaf-squire-attack-nw.json",
+      "sha256": "d001233aa6b6941ad26422091d6e0f59f67d183ed37860485463b94bed420b87",
+      "texture": "leaf-squire-attack-nw.png"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "leaf-squire-attack-e.png",
+      "sha256": "1603b487eece6962a703b5c177debc3ee427d9f8650f4d1f1ea58b972555db89",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "83a9fa8a05e92acfd47841b5230c96f03fc1bef422539cc6bbe7e34359f104a2",
+      "sourceFilename": "leaf-squire-attack-e.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-n.png",
+      "sha256": "0aba3642d9d75b564e2095075bf6f7461e72051a46c4a0ad6fb100d084f5905e",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "18e766aee360211e7ea2047a57d95cb18b2fd0317e16e2c98b44fc67b2cdeb66",
+      "sourceFilename": "leaf-squire-attack-n.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-ne.png",
+      "sha256": "079ceb35158b4f559c0dedabe7b6856e980514284da33bf7262b656536248edd",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "8ca5761dcc8cb7b46c5931844a191f4b7a2e9c4b8362cb25df6a24b62985ebcd",
+      "sourceFilename": "leaf-squire-attack-ne.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-nw.png",
+      "sha256": "d001233aa6b6941ad26422091d6e0f59f67d183ed37860485463b94bed420b87",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "4882c369628b755f87f92de35f6b43d7df0fc6213da2068cbb3e44c6eefc1488",
+      "sourceFilename": "leaf-squire-attack-nw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-s.png",
+      "sha256": "1d77c332eebf05a1ee99692ff00d7c9ee32c7b0d519bad26c4e82cdce6dd49cd",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "a59bee2c01e99dcb01636fdef27e6a19cc70aabbfcb29ee4bf940182b3866696",
+      "sourceFilename": "leaf-squire-attack-s.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-se.png",
+      "sha256": "86c0f00b0b69ed1c0465296e533210bcda45b678a92bb20c73fcd7238b37046f",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "06b96aae4122ddcada516d96bd4151daa47beabebc8e57c411b5778605644afb",
+      "sourceFilename": "leaf-squire-attack-se.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-sw.png",
+      "sha256": "05830a5ba65f730141e76ffc575b300e3e2786dff2bc1bbfbd41b7cd80587304",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "d36f780e00649d7d5df577fff32145d352b4f9df1171bf25fabc86758d0079ea",
+      "sourceFilename": "leaf-squire-attack-sw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-attack-w.png",
+      "sha256": "f4ff2f9008720151079dad3d940e1f3b445b3827662abfcd346a351d52c65aae",
+      "width": 512,
+      "height": 336,
+      "sourceSHA256": "1f9b1e54e209d8aecff57ac9120038c9dfa1bdca99008d89bbd322cd8b9fc3ce",
+      "sourceFilename": "leaf-squire-attack-w.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-e.png",
+      "sha256": "a2693707b9e84b97e89b8cd4081faabb2b4d732488723d6bdb46e9b8d1451ab2",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "86f1192bec6c9067de750b8fa2b16b4eac5556a0ef1074b33c4235dfd7afc8e6",
+      "sourceFilename": "leaf-squire-e.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-n.png",
+      "sha256": "1e3cc83403b523aeeffe15c7dc3ce51c51d19e7697496b19e4e24ac417e6a929",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "de072c041593073a5fd3b3e73177f3232db795e56c1ace5fc1cf093f4566688b",
+      "sourceFilename": "leaf-squire-idle-n.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-ne.png",
+      "sha256": "5caec194f44727ce5405cbc95f9a70953ef0a2ee1d584004bee44a581d1907e1",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "d188422a4567f4a5ed846363eea1766e9d9ab598c6e13546f16d6c4a61352b0b",
+      "sourceFilename": "leaf-squire-ne.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-nw.png",
+      "sha256": "2baf083282fc1eddb136217c99b13d425e6e1a271fcfef7c512fcf8eb4bf1fe3",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "5a6a61dbd5d0a91f635d13e2923e7b9ac9c48a8a53f53d149de5e289c72d8642",
+      "sourceFilename": "leaf-squire-nw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-s.png",
+      "sha256": "ea8e81d788d8be9d16176846da46f02bf3b27b52779832e187d01c7dacc3ba81",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "267842ac0789cefea41fffa96547123db9c903a38805503933f5923389364037",
+      "sourceFilename": "leaf-squire-idle-s.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-se.png",
+      "sha256": "720584f9833527a7cd4c0ebc298a637780203d1089c6413b26382daa587ced1c",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "487c313e6c47c3740ecdc29bf793a1016556cef0091bf2088741252de328c95a",
+      "sourceFilename": "leaf-squire-se.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-sw.png",
+      "sha256": "36d108d62cd10e00615e66ea57882c0efab27a6d1edae9d72633990bdd3e3a38",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "70e44b0e350993ce70a99177d28de3543b07be855e84c57ec07aa3c419bd9911",
+      "sourceFilename": "leaf-squire-sw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-idle-w.png",
+      "sha256": "63ccc5ae2f4250b81d1e31985703ea3f65531a5d80cfd96d197dc8e358aa9fed",
+      "width": 1024,
+      "height": 560,
+      "sourceSHA256": "5e0b70655998a0a4a2388e33a783d4b3edc1df30bcf0e5f3482a7ad5c6cb8f0c",
+      "sourceFilename": "leaf-squire-w.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-e.png",
+      "sha256": "f86a8ec2988d867db50f435226865aa731d1d73369e6b3d9ca28f075c0c30467",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "86f1192bec6c9067de750b8fa2b16b4eac5556a0ef1074b33c4235dfd7afc8e6",
+      "sourceFilename": "leaf-squire-e.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-n.png",
+      "sha256": "7eb7ae906c32579cb139d6e1900dc8181d14e0393a5bb268ba09b98490d6cf4c",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "8d26f91a7badcffad4074d2b9d1220c359b8914e89b7c5d3b453e44e5396269a",
+      "sourceFilename": "leaf-squire-walk-n.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-ne.png",
+      "sha256": "0c56cd2e00393df38617005fae545d7c5e7c68d9a3345b90747ed9dd8b893860",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "d188422a4567f4a5ed846363eea1766e9d9ab598c6e13546f16d6c4a61352b0b",
+      "sourceFilename": "leaf-squire-ne.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-nw.png",
+      "sha256": "7c4b33dc3e387d9510dd4e9828b1f22763e9456feb65a93c6c3d488acfa82993",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "5a6a61dbd5d0a91f635d13e2923e7b9ac9c48a8a53f53d149de5e289c72d8642",
+      "sourceFilename": "leaf-squire-nw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-s.png",
+      "sha256": "4452511ce6f917d27235cd4fdd92278544ba954b6b5c68c3742be88bdbd71961",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "4054c6dd8509d4dc204c0b24e085f9ac16919d763a8b6c77a74fdb0d1401fa26",
+      "sourceFilename": "leaf-squire-walk-s.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-se.png",
+      "sha256": "c0479c0ba2bc708f67ab5e0db0c67d851b961019a7b7ccdd17886da9859e46ab",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "487c313e6c47c3740ecdc29bf793a1016556cef0091bf2088741252de328c95a",
+      "sourceFilename": "leaf-squire-se.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-sw.png",
+      "sha256": "73a3452e52b1c39f6a3a654d2d750a3c35d76ac8a9c3748ce68ed9943e34c976",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "70e44b0e350993ce70a99177d28de3543b07be855e84c57ec07aa3c419bd9911",
+      "sourceFilename": "leaf-squire-sw.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    },
+    {
+      "filename": "leaf-squire-walk-w.png",
+      "sha256": "69d4b5ed21072962b0ec2e8df6e15afd7ebcc9b0a7aa4399e57aed59614fbd4c",
+      "width": 1024,
+      "height": 336,
+      "sourceSHA256": "5e0b70655998a0a4a2388e33a783d4b3edc1df30bcf0e5f3482a7ad5c6cb8f0c",
+      "sourceFilename": "leaf-squire-w.png",
+      "derivationPolicy": "North idle/walk: corrected torso center and shared neck transform baked as complete frames; calibrated gait unchanged. Other directions exact v1 RGBA, including corrected South. North attack bookends match corrected neutral."
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "version": 1,
+  "runtimeType": "wolf",
+  "character": "dusk-wolf",
+  "visualCharacterId": "dusk-wolf",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-n.json",
+      "sha256": "0aed9c0b6eed318b293006f064cc800e13e86c2395dd8e8352d858d65bba29b1"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-n.json",
+      "sha256": "0aed9c0b6eed318b293006f064cc800e13e86c2395dd8e8352d858d65bba29b1"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-n.json",
+      "sha256": "4c83c240169278b1f7a74785d11caa8c85466c6409adfdbd93f4ff1069d3b17a"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-ne.json",
+      "sha256": "652892022e40c2b6b7606114d47017f24372a4af85c59fb6e8f4741cfee284ae"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-ne.json",
+      "sha256": "652892022e40c2b6b7606114d47017f24372a4af85c59fb6e8f4741cfee284ae"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-ne.json",
+      "sha256": "3473df42801893ebb1d6599f518e65eeb20fc01aaa74930e1ed13b392e2d2fb8"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-e.json",
+      "sha256": "26322eb94c582b5a9444a4d52ed154c4033b94afd0a0030f8cabc727352cf40e"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-e.json",
+      "sha256": "26322eb94c582b5a9444a4d52ed154c4033b94afd0a0030f8cabc727352cf40e"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-e.json",
+      "sha256": "4b559c07affc4187e04e4b355e62071933920eaa0b664e5863f5fca7d09fb5ff"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-se.json",
+      "sha256": "33694225f5ed78e7ee0627c02aa6c61e77e92ed3c7a7823ca976da3f1e208ec8"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-se.json",
+      "sha256": "33694225f5ed78e7ee0627c02aa6c61e77e92ed3c7a7823ca976da3f1e208ec8"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-se.json",
+      "sha256": "0e1f627d38abd28c5ca8399c68ce0e10770f53e5e8017f756fe3e1f95731d672"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-s.json",
+      "sha256": "02d696c5a804f871aac560776d5130f6462257b12517555b7aa42d3a48fd6472"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-s.json",
+      "sha256": "02d696c5a804f871aac560776d5130f6462257b12517555b7aa42d3a48fd6472"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-s.json",
+      "sha256": "e28f09f3c0474536c24bf51b58770eb7be6dbe517b18933a1b2c1f6df5cee4bf"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-sw.json",
+      "sha256": "3e8613eeec9c8f4cb9430142a6c9f2cd4935ce5222541b12e8a513dbc50a5a8c"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-sw.json",
+      "sha256": "3e8613eeec9c8f4cb9430142a6c9f2cd4935ce5222541b12e8a513dbc50a5a8c"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-sw.json",
+      "sha256": "a9fa14fdc372d7381f83af6b2fe0b59a3ace1b0e0cfff28529fea2ecc333e22c"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-w.json",
+      "sha256": "0d0d14fafeb19fed5293ca6c48ae6a0422a7c080f3fb9e9a9bcc11d8fb238cf5"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-w.json",
+      "sha256": "0d0d14fafeb19fed5293ca6c48ae6a0422a7c080f3fb9e9a9bcc11d8fb238cf5"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-w.json",
+      "sha256": "45696624796834858823c3d571e3e954d7730c197e745923a0f6337e0639e6b2"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "dusk-wolf-idle-nw.json",
+      "sha256": "38b83bd955d4f57c1727de61c5bb0f1f63ed6f9129ab39f9a0647e9422726b06"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "dusk-wolf-walk-nw.json",
+      "sha256": "38b83bd955d4f57c1727de61c5bb0f1f63ed6f9129ab39f9a0647e9422726b06"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "dusk-wolf-attack-nw.json",
+      "sha256": "d96822186e069bed0eb16f27284a8318ffb96e6d5b829dd6438f85f74988781a"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "dusk-wolf-walk-v2-combined-n.png",
+      "sha256": "0aed9c0b6eed318b293006f064cc800e13e86c2395dd8e8352d858d65bba29b1",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-n.png",
+      "sha256": "4c83c240169278b1f7a74785d11caa8c85466c6409adfdbd93f4ff1069d3b17a",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-ne.png",
+      "sha256": "652892022e40c2b6b7606114d47017f24372a4af85c59fb6e8f4741cfee284ae",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-ne.png",
+      "sha256": "3473df42801893ebb1d6599f518e65eeb20fc01aaa74930e1ed13b392e2d2fb8",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-e.png",
+      "sha256": "26322eb94c582b5a9444a4d52ed154c4033b94afd0a0030f8cabc727352cf40e",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-e.png",
+      "sha256": "4b559c07affc4187e04e4b355e62071933920eaa0b664e5863f5fca7d09fb5ff",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-se.png",
+      "sha256": "33694225f5ed78e7ee0627c02aa6c61e77e92ed3c7a7823ca976da3f1e208ec8",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-se.png",
+      "sha256": "0e1f627d38abd28c5ca8399c68ce0e10770f53e5e8017f756fe3e1f95731d672",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-s.png",
+      "sha256": "02d696c5a804f871aac560776d5130f6462257b12517555b7aa42d3a48fd6472",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-s.png",
+      "sha256": "e28f09f3c0474536c24bf51b58770eb7be6dbe517b18933a1b2c1f6df5cee4bf",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-sw.png",
+      "sha256": "3e8613eeec9c8f4cb9430142a6c9f2cd4935ce5222541b12e8a513dbc50a5a8c",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-sw.png",
+      "sha256": "a9fa14fdc372d7381f83af6b2fe0b59a3ace1b0e0cfff28529fea2ecc333e22c",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-w.png",
+      "sha256": "0d0d14fafeb19fed5293ca6c48ae6a0422a7c080f3fb9e9a9bcc11d8fb238cf5",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-w.png",
+      "sha256": "45696624796834858823c3d571e3e954d7730c197e745923a0f6337e0639e6b2",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "dusk-wolf-walk-v2-combined-nw.png",
+      "sha256": "38b83bd955d4f57c1727de61c5bb0f1f63ed6f9129ab39f9a0647e9422726b06",
+      "width": 1024,
+      "height": 672
+    },
+    {
+      "filename": "dusk-wolf-strong-attack-nw.png",
+      "sha256": "d96822186e069bed0eb16f27284a8318ffb96e6d5b829dd6438f85f74988781a",
+      "width": 512,
+      "height": 448
+    }
+  ],
+  "status": "body-coupled-walk-v1; latest idle and strong attack preserved"
+}

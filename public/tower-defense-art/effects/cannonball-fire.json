@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "character": "fx-cannonball-fire",
+  "direction": "e",
+  "motion": "idle",
+  "events": [],
+  "fps": 16.666666666666668,
+  "kind": "projectile",
+  "texture": "cannonball-fire.png",
+  "sha256": "ffdc6cc564134dc5e6f4c2c86ea3a4de626707ad44da92b79f95b43a4e50956f",
+  "orientation": "+X/right",
+  "pixelsPerWorldUnit": 1,
+  "textureWidth": 256,
+  "textureHeight": 32,
+  "frameSize": {
+    "width": 64,
+    "height": 32,
+    "pivot": {
+      "x": 56.0,
+      "y": 16.0
+    }
+  },
+  "pivotSpace": "unscaled-cell-pixels",
+  "loop": true,
+  "durationMs": 240,
+  "frames": [
+    {
+      "index": 0,
+      "headState": "effect",
+      "x": 0,
+      "y": 0,
+      "width": 64,
+      "height": 32,
+      "durationMs": 60,
+      "pivot": {
+        "x": 56.0,
+        "y": 16.0
+      }
+    },
+    {
+      "index": 1,
+      "headState": "effect",
+      "x": 64,
+      "y": 0,
+      "width": 64,
+      "height": 32,
+      "durationMs": 60,
+      "pivot": {
+        "x": 56.0,
+        "y": 16.0
+      }
+    },
+    {
+      "index": 2,
+      "headState": "effect",
+      "x": 128,
+      "y": 0,
+      "width": 64,
+      "height": 32,
+      "durationMs": 60,
+      "pivot": {
+        "x": 56.0,
+        "y": 16.0
+      }
+    },
+    {
+      "index": 3,
+      "headState": "effect",
+      "x": 192,
+      "y": 0,
+      "width": 64,
+      "height": 32,
+      "durationMs": 60,
+      "pivot": {
+        "x": 56.0,
+        "y": 16.0
+      }
+    }
+  ],
+  "pivotMeaning": "collision tip at forward edge",
+  "renderPolicy": "Standalone complete FX sprite; rotate around pivot to world heading. Never overlay on a character to form anatomy."
+}

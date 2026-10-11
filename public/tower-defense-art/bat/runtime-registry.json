@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "runtimeType": "bat",
+  "character": "night-bat",
+  "visualCharacterId": "night-bat",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "night-bat-idle-n.json",
+      "sha256": "fa7cf59cce93a021d44a958fe119cfc0a0dbd32d0baa09b35024c8e1e35af00a"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "night-bat-walk-n.json",
+      "sha256": "fa7cf59cce93a021d44a958fe119cfc0a0dbd32d0baa09b35024c8e1e35af00a"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "night-bat-attack-n.json",
+      "sha256": "2f831be65fd9c4d558bb4c06d3fac6f6771c9295608bf8677e60e65f958b7cf9"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "night-bat-idle-ne.json",
+      "sha256": "fe0ae00076acaa084342929e8e9280887da3e6b38ac563020f21a6b148cb3686"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "night-bat-walk-ne.json",
+      "sha256": "fe0ae00076acaa084342929e8e9280887da3e6b38ac563020f21a6b148cb3686"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "night-bat-attack-ne.json",
+      "sha256": "e6ae5ad8048a47b3dbb953c811432d3ccf39b90ee0f58280a10b6df17dfeb782"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "night-bat-idle-e.json",
+      "sha256": "6815bf790f73b60f0dd95bdd02761a503467fcfa1fa71b26419c62f0128819f1"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "night-bat-walk-e.json",
+      "sha256": "6815bf790f73b60f0dd95bdd02761a503467fcfa1fa71b26419c62f0128819f1"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "night-bat-attack-e.json",
+      "sha256": "4fbf45410ac8876216c2d02c71a4cbc5b39b9855131533bf990511325dc0d8ad"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "night-bat-idle-se.json",
+      "sha256": "a2a1423439f7cfae434784a2463f2169c4719754eb406fde04fc949305e52662"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "night-bat-walk-se.json",
+      "sha256": "a2a1423439f7cfae434784a2463f2169c4719754eb406fde04fc949305e52662"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "night-bat-attack-se.json",
+      "sha256": "dac5b38f1652c251d8b7e34d1b767266101c1cc2d1fca29bbdd9b7689a7c1425"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "night-bat-idle-s.json",
+      "sha256": "8847c75503096df2f19c39fa38f0d1f4b9a7cfacbb81b5aec214f8aba3c27965"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "night-bat-walk-s.json",
+      "sha256": "8847c75503096df2f19c39fa38f0d1f4b9a7cfacbb81b5aec214f8aba3c27965"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "night-bat-attack-s.json",
+      "sha256": "662be247c96cb333bbc16c06d2dae7efc495f6dd0a368a9c4ed5acda455dd3ac"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "night-bat-idle-sw.json",
+      "sha256": "2be8185ea5708e2c1c86b3fe487510d19e6feedf6e479e8741c39fe49595df99"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "night-bat-walk-sw.json",
+      "sha256": "2be8185ea5708e2c1c86b3fe487510d19e6feedf6e479e8741c39fe49595df99"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "night-bat-attack-sw.json",
+      "sha256": "0cc830175b966752941177c5ec6bad43032741caa71513f2fb446972dc249a15"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "night-bat-idle-w.json",
+      "sha256": "185851e4d574644c1706aed7231c78c42d703d18edcd300c41c74fa00daf22b2"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "night-bat-walk-w.json",
+      "sha256": "185851e4d574644c1706aed7231c78c42d703d18edcd300c41c74fa00daf22b2"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "night-bat-attack-w.json",
+      "sha256": "3ec24623a34b64063245613baa13b6659749f5ab6259e01594c181284e473302"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "night-bat-idle-nw.json",
+      "sha256": "8bc26d1a2ac0be9fe09b70c83e1f73a9c6ca28dfa9b28b617b39c0b418c009cf"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "night-bat-walk-nw.json",
+      "sha256": "8bc26d1a2ac0be9fe09b70c83e1f73a9c6ca28dfa9b28b617b39c0b418c009cf"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "night-bat-attack-nw.json",
+      "sha256": "c557ab12c1be2958097b92e2f0429e558fcd76bbfff04809dda94999ef4a6c10"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "night-bat-n.png",
+      "sha256": "fa7cf59cce93a021d44a958fe119cfc0a0dbd32d0baa09b35024c8e1e35af00a",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-n.png",
+      "sha256": "2f831be65fd9c4d558bb4c06d3fac6f6771c9295608bf8677e60e65f958b7cf9",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-ne.png",
+      "sha256": "fe0ae00076acaa084342929e8e9280887da3e6b38ac563020f21a6b148cb3686",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-ne.png",
+      "sha256": "e6ae5ad8048a47b3dbb953c811432d3ccf39b90ee0f58280a10b6df17dfeb782",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-e.png",
+      "sha256": "6815bf790f73b60f0dd95bdd02761a503467fcfa1fa71b26419c62f0128819f1",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-e.png",
+      "sha256": "4fbf45410ac8876216c2d02c71a4cbc5b39b9855131533bf990511325dc0d8ad",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-se.png",
+      "sha256": "a2a1423439f7cfae434784a2463f2169c4719754eb406fde04fc949305e52662",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-se.png",
+      "sha256": "dac5b38f1652c251d8b7e34d1b767266101c1cc2d1fca29bbdd9b7689a7c1425",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-s.png",
+      "sha256": "8847c75503096df2f19c39fa38f0d1f4b9a7cfacbb81b5aec214f8aba3c27965",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-s.png",
+      "sha256": "662be247c96cb333bbc16c06d2dae7efc495f6dd0a368a9c4ed5acda455dd3ac",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-sw.png",
+      "sha256": "2be8185ea5708e2c1c86b3fe487510d19e6feedf6e479e8741c39fe49595df99",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-sw.png",
+      "sha256": "0cc830175b966752941177c5ec6bad43032741caa71513f2fb446972dc249a15",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-w.png",
+      "sha256": "185851e4d574644c1706aed7231c78c42d703d18edcd300c41c74fa00daf22b2",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-w.png",
+      "sha256": "3ec24623a34b64063245613baa13b6659749f5ab6259e01594c181284e473302",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "night-bat-nw.png",
+      "sha256": "8bc26d1a2ac0be9fe09b70c83e1f73a9c6ca28dfa9b28b617b39c0b418c009cf",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "night-bat-strong-attack-nw.png",
+      "sha256": "c557ab12c1be2958097b92e2f0429e558fcd76bbfff04809dda94999ef4a6c10",
+      "width": 512,
+      "height": 448
+    }
+  ]
+}

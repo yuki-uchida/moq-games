@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "character": "potbelly-club-ogre",
+  "runtimeType": "ogre",
+  "displayName": "\u304a\u306a\u304b\u30aa\u30fc\u30ac",
+  "visualCharacterId": "potbelly-club-ogre",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "directions": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "attackCadenceMs": 1538,
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-n.json"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-n.json"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-n.json"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-ne.json"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-ne.json"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-ne.json"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-e.json"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-e.json"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-e.json"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-se.json"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-se.json"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-se.json"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-s.json"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-s.json"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-s.json"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-sw.json"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-sw.json"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-sw.json"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-w.json"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-w.json"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-w.json"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "potbelly-club-ogre-idle-nw.json"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "potbelly-club-ogre-walk-nw.json"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "potbelly-club-ogre-attack-nw.json"
+    }
+  ],
+  "source": "Strong full-body attack pack with south-only integrated torso-arm correction. Original head, calibrated legs, seven other directions, attack interior and timings preserved.",
+  "status": "south-arm-source-corrected",
+  "walkCalibration": {
+    "strideWorldUnits": 23.333333333333,
+    "stanceFraction": 0.6,
+    "referenceSpeed": 48,
+    "referenceCycleMs": 486.1111111111042,
+    "frameCount": 20
+  },
+  "provenance": "source-provenance.json",
+  "canonicalStrideWorldUnits": 23.333333333333,
+  "sourceRegistrySHA256": "5c5f40d2be06267eddc0490e6d43199b897bbc828c2c143467c2ef2f75d90027"
+}

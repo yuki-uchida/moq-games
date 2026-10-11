@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "runtimeType": "wraith",
+  "character": "mist-wraith",
+  "visualCharacterId": "mist-wraith",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-n.json",
+      "sha256": "df901c741fa79eccdcf1c3d3cb97886806d58c1235481b0c4280585a3131e528"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-n.json",
+      "sha256": "df901c741fa79eccdcf1c3d3cb97886806d58c1235481b0c4280585a3131e528"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-n.json",
+      "sha256": "4ac0f25fec5c70fd38a2f5314d70cd9a2571bd59d59ca62534fa3c5e218610d4"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-ne.json",
+      "sha256": "a11833a54907d75d3278fb3cb230e019511dfcc1286e11e6600d6c5a608b0dd5"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-ne.json",
+      "sha256": "a11833a54907d75d3278fb3cb230e019511dfcc1286e11e6600d6c5a608b0dd5"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-ne.json",
+      "sha256": "ddd9fbc5b128c9c8d4b42882d3b02262df3f89263c1eeb10d6f68a4542fc79f1"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-e.json",
+      "sha256": "a6c32f2dab9e72d914f35ccfe3a5807716cb23bbcce8eafc8de1a3c85372ede3"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-e.json",
+      "sha256": "a6c32f2dab9e72d914f35ccfe3a5807716cb23bbcce8eafc8de1a3c85372ede3"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-e.json",
+      "sha256": "ff87af8d14e528083102a48e17d9bf9db7fc80247639b46da39ffbef09c5aef3"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-se.json",
+      "sha256": "654aeabec218211dfe3afa2ac7b9f5a32e3651c8deea350c519b0411c5dbfade"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-se.json",
+      "sha256": "654aeabec218211dfe3afa2ac7b9f5a32e3651c8deea350c519b0411c5dbfade"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-se.json",
+      "sha256": "95397329d29090738471830ac5265e68a7ea20aedec3071ea2f5f81335a5056c"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-s.json",
+      "sha256": "7dc85fe9cfeb8b1790712bc07461fa173ec5081f185bd42ea255619c5223008e"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-s.json",
+      "sha256": "7dc85fe9cfeb8b1790712bc07461fa173ec5081f185bd42ea255619c5223008e"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-s.json",
+      "sha256": "792b2a352fe22601c54f437f4c39e0eedafc47f07e2799aac8f80c3f0fea116d"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-sw.json",
+      "sha256": "1a6366dfd270617a37fdaee22ed782089c748c2bab36e4631812c053b0eaba31"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-sw.json",
+      "sha256": "1a6366dfd270617a37fdaee22ed782089c748c2bab36e4631812c053b0eaba31"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-sw.json",
+      "sha256": "edbd5fa3394e8e6da16ef5fb183f56e2ce355a87468f92210e3c88415ab69a5f"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-w.json",
+      "sha256": "ad68823d90d099a0bd1f13e8b57843401286ceb70205ba319047c0e69e9dc3cd"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-w.json",
+      "sha256": "ad68823d90d099a0bd1f13e8b57843401286ceb70205ba319047c0e69e9dc3cd"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-w.json",
+      "sha256": "3d52255042410893ae98d5d0552e457f587fc44ebc8d72522acd7f6a29dc931d"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "mist-wraith-idle-nw.json",
+      "sha256": "7e917b8018bc6c54be424f32b34192839cb8bdf7981992e3e4d8cf99ef7f0b9c"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "mist-wraith-walk-nw.json",
+      "sha256": "7e917b8018bc6c54be424f32b34192839cb8bdf7981992e3e4d8cf99ef7f0b9c"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "mist-wraith-attack-nw.json",
+      "sha256": "853f3b848870c68139213fdd21b8b7b57df604c5219abb74b62e26f2764dbff0"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "mist-wraith-n.png",
+      "sha256": "df901c741fa79eccdcf1c3d3cb97886806d58c1235481b0c4280585a3131e528",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-n.png",
+      "sha256": "4ac0f25fec5c70fd38a2f5314d70cd9a2571bd59d59ca62534fa3c5e218610d4",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-ne.png",
+      "sha256": "a11833a54907d75d3278fb3cb230e019511dfcc1286e11e6600d6c5a608b0dd5",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-ne.png",
+      "sha256": "ddd9fbc5b128c9c8d4b42882d3b02262df3f89263c1eeb10d6f68a4542fc79f1",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-e.png",
+      "sha256": "a6c32f2dab9e72d914f35ccfe3a5807716cb23bbcce8eafc8de1a3c85372ede3",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-e.png",
+      "sha256": "ff87af8d14e528083102a48e17d9bf9db7fc80247639b46da39ffbef09c5aef3",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-se.png",
+      "sha256": "654aeabec218211dfe3afa2ac7b9f5a32e3651c8deea350c519b0411c5dbfade",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-se.png",
+      "sha256": "95397329d29090738471830ac5265e68a7ea20aedec3071ea2f5f81335a5056c",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-s.png",
+      "sha256": "7dc85fe9cfeb8b1790712bc07461fa173ec5081f185bd42ea255619c5223008e",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-s.png",
+      "sha256": "792b2a352fe22601c54f437f4c39e0eedafc47f07e2799aac8f80c3f0fea116d",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-sw.png",
+      "sha256": "1a6366dfd270617a37fdaee22ed782089c748c2bab36e4631812c053b0eaba31",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-sw.png",
+      "sha256": "edbd5fa3394e8e6da16ef5fb183f56e2ce355a87468f92210e3c88415ab69a5f",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-w.png",
+      "sha256": "ad68823d90d099a0bd1f13e8b57843401286ceb70205ba319047c0e69e9dc3cd",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-w.png",
+      "sha256": "3d52255042410893ae98d5d0552e457f587fc44ebc8d72522acd7f6a29dc931d",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "mist-wraith-nw.png",
+      "sha256": "7e917b8018bc6c54be424f32b34192839cb8bdf7981992e3e4d8cf99ef7f0b9c",
+      "width": 1024,
+      "height": 784
+    },
+    {
+      "filename": "mist-wraith-strong-attack-nw.png",
+      "sha256": "853f3b848870c68139213fdd21b8b7b57df604c5219abb74b62e26f2764dbff0",
+      "width": 512,
+      "height": 448
+    }
+  ]
+}

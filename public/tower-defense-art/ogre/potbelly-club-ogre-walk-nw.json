@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "character": "potbelly-club-ogre",
+  "runtimeType": "ogre",
+  "direction": "nw",
+  "motion": "walk",
+  "texture": "potbelly-club-ogre-nw.png",
+  "textureWidth": 1024,
+  "textureHeight": 896,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 41.14285714285773,
+  "loop": true,
+  "durationMs": 486.1111111111042,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 24.30555555555521,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-no-visible-eyes"
+    }
+  ],
+  "sha256": "5de76a43a68527f002c3577c6cf897535fab18d0606e5e560e38149b988ae4f2",
+  "status": "runtime-derivative-under-review",
+  "strideWorldUnits": 23.333333333333,
+  "preservedFromBaseline": "art-qa/roster/ogre/walk-v2/runtime/potbelly-club-ogre-walk-nw.json"
+}

@@ -1,0 +1,304 @@
+{
+  "version": 1,
+  "character": "mist-wraith",
+  "direction": "ne",
+  "motion": "attack",
+  "texture": "mist-wraith-strong-attack-ne.png",
+  "textureWidth": 512,
+  "textureHeight": 448,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 960,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 74.522667,
+        "y": 67.203667
+      }
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 75.305,
+        "y": 63.508667
+      }
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 75.448667,
+        "y": 64.812
+      }
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 77.420667,
+        "y": 60.572333
+      }
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 79.492667,
+        "y": 60.251333
+      }
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 84.105,
+        "y": 58.386667
+      }
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 90.402333,
+        "y": 54.028667
+      }
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 93.045,
+        "y": 53.831667
+      }
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 89.285667,
+        "y": 55.8
+      }
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 86.227,
+        "y": 57.714667
+      }
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 79.171667,
+        "y": 60.845333
+      }
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 77.812333,
+        "y": 68.937667
+      }
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 75.441667,
+        "y": 66.112
+      }
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 75.742667,
+        "y": 65.620333
+      }
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 76.251333,
+        "y": 65.956667
+      }
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "headState": "rear-whole-pose",
+      "emitter": {
+        "x": 74.522667,
+        "y": 67.203667
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "release",
+      "atMs": 420
+    }
+  ],
+  "sha256": "ddd9fbc5b128c9c8d4b42882d3b02262df3f89263c1eeb10d6f68a4542fc79f1",
+  "status": "strong-full-body-revision"
+}

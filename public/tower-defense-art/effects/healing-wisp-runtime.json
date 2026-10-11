@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "projectile": "healing-wisp",
+  "runtimeType": "healer",
+  "character": "fx-healing-wisp",
+  "direction": "e",
+  "motion": "idle",
+  "events": [],
+  "texture": "healing-wisp-runtime.png",
+  "sha256": "3c3b478024c6f0affbfde6fe910113dd4f15d494bc53dde4b9feae32ce1f408c",
+  "textureWidth": 192,
+  "textureHeight": 64,
+  "frameSize": {
+    "width": 48,
+    "height": 32,
+    "pivot": {
+      "x": 35,
+      "y": 16
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "sourceDirection": "+X",
+  "rotationPolicy": "Rotate whole frame about pivot to travel angle; game owns translation.",
+  "loop": true,
+  "durationMs": 520,
+  "fps": 15.384615384615385,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 1,
+      "x": 48,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 2,
+      "x": 96,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 3,
+      "x": 144,
+      "y": 0,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 5,
+      "x": 48,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 6,
+      "x": 96,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    },
+    {
+      "index": 7,
+      "x": 144,
+      "y": 32,
+      "width": 48,
+      "height": 32,
+      "durationMs": 65,
+      "pivot": {
+        "x": 35,
+        "y": 16
+      },
+      "headState": "effect"
+    }
+  ]
+}

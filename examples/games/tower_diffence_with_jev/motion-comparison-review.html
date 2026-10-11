@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Wolf and Runner native motion review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+      }
+      header {
+        padding: 12px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      button,
+      select {
+        font: inherit;
+        padding: 8px;
+      }
+      #status {
+        padding: 0 12px 8px;
+      }
+      #viewport {
+        width: 100%;
+        height: 780px;
+        overflow: auto;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 1440px;
+      }
+      #field canvas {
+        display: block;
+        max-width: none !important;
+        width: 1280px !important;
+        image-rendering: pixelated;
+      }
+      .unit-health,
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+      #fixture {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Native motion review · Offline</strong
+      ><label
+        >Role
+        <select id="role">
+          <option value="wolf">Wolf</option>
+          <option value="wolf-boss">Wolf Stage 5 boss</option>
+          <option value="runner">Runner</option>
+        </select></label
+      ><label
+        >Action
+        <select id="action">
+          <option>attack</option>
+          <option>walk</option>
+          <option>idle</option>
+          <option>route</option>
+        </select></label
+      ><label
+        >Facing
+        <select id="direction">
+          <option>n</option>
+          <option>ne</option>
+          <option>e</option>
+          <option>se</option>
+          <option>s</option>
+          <option>sw</option>
+          <option>w</option>
+          <option>nw</option>
+        </select></label
+      ><button id="play">Replay 1×</button><button id="pause">Pause</button><span id="revision"></span>
+    </header>
+    <div id="status">loading</div>
+    <div id="viewport"><div id="field"></div></div>
+    <div id="fixture"></div>
+    <script type="module" src="./src/review/MotionComparisonReview.ts"></script>
+  </body>
+</html>

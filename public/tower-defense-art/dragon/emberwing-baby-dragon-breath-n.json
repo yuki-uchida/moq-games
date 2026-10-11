@@ -1,0 +1,418 @@
+{
+  "version": 1,
+  "character": "emberwing-baby-dragon",
+  "runtimeType": "dragon",
+  "direction": "n",
+  "motion": "attack",
+  "attackVariant": "breath",
+  "texture": "emberwing-baby-dragon-breath-n.png",
+  "sha256": "96a8e3685d73c3e3034cad02e6595ba8b1d306005c7718562086ad967b9bc41a",
+  "textureWidth": 512,
+  "textureHeight": 560,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 16.666666666666668,
+  "loop": false,
+  "durationMs": 1200,
+  "events": [
+    {
+      "type": "release",
+      "atMs": 480
+    }
+  ],
+  "emissionWindow": {
+    "startMs": 480,
+    "endMs": 960
+  },
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "ready",
+      "emitter": {
+        "x": 64.0,
+        "y": 41.0
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 62.21391,
+        "y": 39.633857
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 62.19029,
+        "y": 37.96719
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 62.452757,
+        "y": 36.300523
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 60.250657,
+        "y": 33.765093
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 59.799213,
+        "y": 35.175853
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "inhale",
+      "emitter": {
+        "x": 60.513123,
+        "y": 36.35433
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "peak-load",
+      "emitter": {
+        "x": 70.284777,
+        "y": 35.25328
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 72.295277,
+        "y": 33.997377
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 76.211287,
+        "y": 33.997377
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 79.985563,
+        "y": 36.33071
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 74.61155,
+        "y": 36.74147
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 12,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 72.641733,
+        "y": 35.664043
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 13,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 74.164043,
+        "y": 35.765093
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 14,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 75.34252,
+        "y": 34.74147
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 15,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "sustained-breath",
+      "emitter": {
+        "x": 79.985563,
+        "y": 36.664043
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "recover",
+      "emitter": {
+        "x": 59.80971,
+        "y": 37.091863
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "recover",
+      "emitter": {
+        "x": 61.422573,
+        "y": 35.65748
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "recover",
+      "emitter": {
+        "x": 60.68504,
+        "y": 37.937007
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 60,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "complete-authored",
+      "phaseName": "ready",
+      "emitter": {
+        "x": 64.0,
+        "y": 41.0
+      },
+      "mouthVisibility": "occluded-anatomical-projection"
+    }
+  ],
+  "sourceProvenance": "../source-provenance.json"
+}

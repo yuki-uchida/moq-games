@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scripted offline fortification review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      body {
+        margin: 0;
+        background: #173c33;
+        color: #fff5db;
+        font: 14px system-ui;
+        overflow: auto;
+      }
+      header {
+        padding: 12px;
+        max-width: 1260px;
+      }
+      #review-controls {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0;
+        flex-wrap: wrap;
+      }
+      #review-controls select,
+      #review-controls button {
+        color: #173c33;
+        background: #fff5db;
+        padding: 6px;
+      }
+      #field {
+        position: relative;
+        width: 1280px;
+        height: 1440px;
+      }
+      #field canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .placement,
+      .placement-preview,
+      .placement-cursor,
+      .sandbag-preview {
+        display: none;
+      }
+      #status {
+        max-height: 80px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        font: 11px monospace;
+      }
+      #frame-label {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Scripted offline fortification review: real GameEngine and GameRenderer.</b>
+      <div>
+        Authored whole-frame PNG characters with code-native fortification art. No Jev connection or live-session
+        claims. Fresh in-memory saves only.
+      </div>
+      <div>
+        Stage rewards, positions, speeds and cooldowns isolate each case. Fatal HP, the one-HP break sample, boss-window
+        counters, frost, and relocation/kill hooks are explicitly scripted. All subsequent damage, movement, sounds and
+        removal use the engine. These samples do not measure ten-stage balance.
+      </div>
+      <div id="review-controls">
+        <label
+          >Case
+          <select id="review-case">
+            <option value="gate">Gate cannon</option>
+            <option value="armor">Gate armor</option>
+            <option value="melee">Spike melee</option>
+            <option value="break">One-HP spike break</option>
+            <option value="ranged">Ranged immunity</option>
+            <option value="flying">Flying bypass</option>
+            <option value="shared">Shared branch spike</option>
+            <option value="exclusive">Exclusive branch spike</option>
+            <option value="mud">Mud waiting</option>
+            <option value="gear">Equipment</option>
+            <option value="legacy">Legacy economy</option>
+          </select></label
+        >
+        <label
+          >Gate level
+          <select id="review-level">
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+          </select></label
+        >
+        <button id="review-prepare">Prepare</button>
+        <button id="review-step" disabled>Advance 100 ms</button>
+        <button id="review-kill" disabled>Scripted gate target death</button>
+      </div>
+      <div id="frame-label">Choose a scripted case</div>
+      <div id="status"></div>
+    </header>
+    <div id="field"></div>
+    <script type="module" src="./src/review/FortificationReview.ts"></script>
+  </body>
+</html>

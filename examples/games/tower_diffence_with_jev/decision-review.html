@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Controlled Jev decision-card review</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <style>
+      .review-note {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        z-index: 12;
+        padding: 8px;
+        max-width: 65vw;
+        color: white;
+        background: #1b392ce8;
+        font-size: 11px;
+      }
+      #map-scroll {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+      }
+      #map-world,
+      #field {
+        width: 1280px;
+        height: 960px;
+      }
+      #field {
+        position: relative;
+        transform-origin: top left;
+      }
+      .review-controls {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <div class="review-note">
+        Scripted offline Choice replies → real GameEngine → decision cards. No live Jev request.
+        <div class="review-controls">
+          <button id="review-rule">Rule mode</button><button id="review-jev">Jev fixture mode</button>
+        </div>
+      </div>
+      <div id="map-scroll" tabindex="0">
+        <div id="map-world"><div id="field"></div></div>
+      </div>
+      <div class="stage-label">Stage <span id="stage">01</span></div>
+      <nav id="command-deck" class="field-controls" aria-label="仲間とアイテム">
+        <button id="deck-toggle" class="field-icon" aria-expanded="false" aria-controls="deck-body" aria-label="仲間">
+          <img src="../../../tower-defense-art/soldier-3d-trial/portrait.png" width="32" height="32" alt="" />
+        </button>
+      </nav>
+      <section id="deck-body" class="floating-tray" hidden aria-label="仲間">
+        <img src="../../../tower-defense-art/soldier-3d-trial/portrait.png" width="64" height="64" alt="小さな剣士" />
+      </section>
+    </main>
+    <script type="module" src="./src/review/DecisionReview.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "runtimeType": "soldier",
+  "visualCharacterId": "leaf-squire",
+  "character": "leaf-squire",
+  "direction": "ne",
+  "motion": "death",
+  "texture": "leaf-squire-death-ne.png",
+  "sha256": "b74ba8f312fe112ddc65430d65244dc5496c6e503ecf56cf3d72c06dba9cca2a",
+  "textureWidth": 512,
+  "textureHeight": 336,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 12.5,
+  "loop": false,
+  "durationMs": 960,
+  "activePoseStartFrame": 1,
+  "events": [],
+  "terminalBehavior": "hold-final-frame-until-new-stage-or-retry",
+  "integrationStatus": "art-approved-parser-validated-game-integration-pending",
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "neutral",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "impact-recoil",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "recoil-peak",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "knees-buckle",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 4,
+      "x": 0,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "knee-contact",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 5,
+      "x": 128,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "balance-lost",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 6,
+      "x": 256,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "forearm-contact",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 7,
+      "x": 384,
+      "y": 112,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "body-lands",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 60,
+      "pose": "settle-compress",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "cloth-rebound",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 80,
+      "pose": "settle-finish",
+      "headState": "occluded-whole-pose"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 224,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 140,
+      "pose": "fallen-hold",
+      "headState": "occluded-whole-pose"
+    }
+  ]
+}

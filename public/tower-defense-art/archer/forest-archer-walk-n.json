@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "character": "forest-archer",
+  "runtimeType": "archer",
+  "direction": "n",
+  "motion": "walk",
+  "texture": "forest-archer-n.png",
+  "sha256": "c8af76dfccd27c38d22180799fb94ed889a828ec207881adb3855579207311e0",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64.0,
+      "y": 94.0
+    }
+  },
+  "pixelsPerWorldUnit": 1.0,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 52,
+  "loop": true,
+  "durationMs": 461.53846153846155,
+  "strideWorldUnits": 24,
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 336,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 12,
+      "x": 512,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 13,
+      "x": 640,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 14,
+      "x": 768,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 15,
+      "x": 896,
+      "y": 448,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 16,
+      "x": 0,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 17,
+      "x": 128,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 18,
+      "x": 256,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 19,
+      "x": 384,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 20,
+      "x": 512,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 21,
+      "x": 640,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 22,
+      "x": 768,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    },
+    {
+      "index": 23,
+      "x": 896,
+      "y": 560,
+      "width": 128,
+      "height": 112,
+      "durationMs": 19.23076923076923,
+      "pivot": {
+        "x": 64.0,
+        "y": 94.0
+      },
+      "headState": "rear"
+    }
+  ],
+  "status": "runtime-derivative-under-review",
+  "visualCharacterId": "forest-archer"
+}

@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "runtimeType": "runner",
+  "character": "spear-scout",
+  "visualCharacterId": "spear-scout",
+  "direction": "nw",
+  "motion": "attack",
+  "texture": "spear-scout-nw.png",
+  "sha256": "99bc46b5f56d4a644aa60d5b8a332c872f34d2e06634312cebc7524d918456a9",
+  "textureWidth": 1024,
+  "textureHeight": 1008,
+  "frameSize": {
+    "width": 128,
+    "height": 112,
+    "pivot": {
+      "x": 64,
+      "y": 94
+    }
+  },
+  "pixelsPerWorldUnit": 1,
+  "pivotSpace": "unscaled-cell-pixels",
+  "fps": 25.0,
+  "loop": false,
+  "durationMs": 480,
+  "events": [
+    {
+      "type": "hit",
+      "atMs": 240
+    }
+  ],
+  "frames": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 1,
+      "x": 128,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 2,
+      "x": 256,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 3,
+      "x": 384,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 4,
+      "x": 512,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 5,
+      "x": 640,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 6,
+      "x": 768,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 7,
+      "x": 896,
+      "y": 672,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 8,
+      "x": 0,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 9,
+      "x": 128,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 10,
+      "x": 256,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    },
+    {
+      "index": 11,
+      "x": 384,
+      "y": 784,
+      "width": 128,
+      "height": 112,
+      "pivot": {
+        "x": 64,
+        "y": 94
+      },
+      "durationMs": 40,
+      "headState": "rear-whole-pose"
+    }
+  ]
+}

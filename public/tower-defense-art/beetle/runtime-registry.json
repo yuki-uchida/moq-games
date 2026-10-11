@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "runtimeType": "beetle",
+  "character": "ironclad-beetle",
+  "visualCharacterId": "ironclad-beetle",
+  "directionOrder": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "clips": [
+    {
+      "direction": "n",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-n.json",
+      "sha256": "29dedcdc7332157c35ba7ee7042862526748b06b97522b86a089808953a97948"
+    },
+    {
+      "direction": "n",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-n.json",
+      "sha256": "29dedcdc7332157c35ba7ee7042862526748b06b97522b86a089808953a97948"
+    },
+    {
+      "direction": "n",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-n.json",
+      "sha256": "45b1fb98ddb9ad9c2b9b871f82b57ed6c998e1f7741a43503a740b1a4461b1a7"
+    },
+    {
+      "direction": "ne",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-ne.json",
+      "sha256": "fe57c0ce1a16975b0e135ca45b9f8654ed626e10024397f987773bc1c5cdd5ca"
+    },
+    {
+      "direction": "ne",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-ne.json",
+      "sha256": "fe57c0ce1a16975b0e135ca45b9f8654ed626e10024397f987773bc1c5cdd5ca"
+    },
+    {
+      "direction": "ne",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-ne.json",
+      "sha256": "1d07278b4d049c5ebed78165ae90f14e7bc50c71ed10f0b974fc85804b91bd98"
+    },
+    {
+      "direction": "e",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-e.json",
+      "sha256": "0e9a28e1f4410f9ccc8fb3006246425d206a5179502d87d483b4faedf3010dc6"
+    },
+    {
+      "direction": "e",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-e.json",
+      "sha256": "0e9a28e1f4410f9ccc8fb3006246425d206a5179502d87d483b4faedf3010dc6"
+    },
+    {
+      "direction": "e",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-e.json",
+      "sha256": "c4e3fe67153620060f76503236cfc8becdc422d964036d2309850598b6e594a5"
+    },
+    {
+      "direction": "se",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-se.json",
+      "sha256": "acf1920c078a42e56df7d88865c9755c3543e9021a114213bb8729e11c9b819e"
+    },
+    {
+      "direction": "se",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-se.json",
+      "sha256": "acf1920c078a42e56df7d88865c9755c3543e9021a114213bb8729e11c9b819e"
+    },
+    {
+      "direction": "se",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-se.json",
+      "sha256": "a3066bec4f00db7a385f2227cfe35c2f515f95b47022fbef3c6f85373b7f0510"
+    },
+    {
+      "direction": "s",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-s.json",
+      "sha256": "da893dca30d62a82fbe76df430892458010a4b8a317b0580be6a9f850bd4c2c0"
+    },
+    {
+      "direction": "s",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-s.json",
+      "sha256": "da893dca30d62a82fbe76df430892458010a4b8a317b0580be6a9f850bd4c2c0"
+    },
+    {
+      "direction": "s",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-s.json",
+      "sha256": "f21608d72e7a9b1350e88cd73f85bb80661839732e1ee712b7428d650f5356cf"
+    },
+    {
+      "direction": "sw",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-sw.json",
+      "sha256": "c43d7a3578e223b840094ff7a612f14a43866515daf8f6a8d632854280441149"
+    },
+    {
+      "direction": "sw",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-sw.json",
+      "sha256": "c43d7a3578e223b840094ff7a612f14a43866515daf8f6a8d632854280441149"
+    },
+    {
+      "direction": "sw",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-sw.json",
+      "sha256": "0f2ea205092d43d4b0ca8248d9ab179fe0ad3eb5ebf5ef66fd8ccb44bd3c0d45"
+    },
+    {
+      "direction": "w",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-w.json",
+      "sha256": "5915552cc7d5de0e810057a221acb47b3c52c0500152f154a91f4d19a9636a15"
+    },
+    {
+      "direction": "w",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-w.json",
+      "sha256": "5915552cc7d5de0e810057a221acb47b3c52c0500152f154a91f4d19a9636a15"
+    },
+    {
+      "direction": "w",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-w.json",
+      "sha256": "4bf3c4ab02549acc205dede6ee275ac187cdffcc251200d1ead315e9233e41e3"
+    },
+    {
+      "direction": "nw",
+      "motion": "idle",
+      "manifest": "ironclad-beetle-idle-nw.json",
+      "sha256": "5326144bb45edafe6c7011474af6c30e83cd325c5872e1ce40bc790c297e5aca"
+    },
+    {
+      "direction": "nw",
+      "motion": "walk",
+      "manifest": "ironclad-beetle-walk-nw.json",
+      "sha256": "5326144bb45edafe6c7011474af6c30e83cd325c5872e1ce40bc790c297e5aca"
+    },
+    {
+      "direction": "nw",
+      "motion": "attack",
+      "manifest": "ironclad-beetle-attack-nw.json",
+      "sha256": "222b5c199f250e434ee74090e93044fca63a7807c7db0a52546a9c18244eb9d5"
+    }
+  ],
+  "sources": [
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-n.png",
+      "sha256": "29dedcdc7332157c35ba7ee7042862526748b06b97522b86a089808953a97948",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-n.png",
+      "sha256": "45b1fb98ddb9ad9c2b9b871f82b57ed6c998e1f7741a43503a740b1a4461b1a7",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-ne.png",
+      "sha256": "fe57c0ce1a16975b0e135ca45b9f8654ed626e10024397f987773bc1c5cdd5ca",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-ne.png",
+      "sha256": "1d07278b4d049c5ebed78165ae90f14e7bc50c71ed10f0b974fc85804b91bd98",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-e.png",
+      "sha256": "0e9a28e1f4410f9ccc8fb3006246425d206a5179502d87d483b4faedf3010dc6",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-e.png",
+      "sha256": "c4e3fe67153620060f76503236cfc8becdc422d964036d2309850598b6e594a5",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-se.png",
+      "sha256": "acf1920c078a42e56df7d88865c9755c3543e9021a114213bb8729e11c9b819e",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-se.png",
+      "sha256": "a3066bec4f00db7a385f2227cfe35c2f515f95b47022fbef3c6f85373b7f0510",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-s.png",
+      "sha256": "da893dca30d62a82fbe76df430892458010a4b8a317b0580be6a9f850bd4c2c0",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-s.png",
+      "sha256": "f21608d72e7a9b1350e88cd73f85bb80661839732e1ee712b7428d650f5356cf",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-sw.png",
+      "sha256": "c43d7a3578e223b840094ff7a612f14a43866515daf8f6a8d632854280441149",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-sw.png",
+      "sha256": "0f2ea205092d43d4b0ca8248d9ab179fe0ad3eb5ebf5ef66fd8ccb44bd3c0d45",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-w.png",
+      "sha256": "5915552cc7d5de0e810057a221acb47b3c52c0500152f154a91f4d19a9636a15",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-w.png",
+      "sha256": "4bf3c4ab02549acc205dede6ee275ac187cdffcc251200d1ead315e9233e41e3",
+      "width": 512,
+      "height": 448
+    },
+    {
+      "filename": "ironclad-beetle-walk-v2-combined-nw.png",
+      "sha256": "5326144bb45edafe6c7011474af6c30e83cd325c5872e1ce40bc790c297e5aca",
+      "width": 1024,
+      "height": 896
+    },
+    {
+      "filename": "ironclad-beetle-strong-attack-nw.png",
+      "sha256": "222b5c199f250e434ee74090e93044fca63a7807c7db0a52546a9c18244eb9d5",
+      "width": 512,
+      "height": 448
+    }
+  ]
+}
