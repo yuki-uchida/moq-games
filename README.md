@@ -76,9 +76,30 @@ The game imports the stable `@moq-games/moqt-client` API. A future published SDK
 
 The bot lives in [`examples/games/tower_diffence_with_jev/bot`](examples/games/tower_diffence_with_jev/bot).
 
-1. Create a fresh Python 3.12 virtual environment in that directory.
-2. Install its `requirements.txt` into that environment.
-3. Only when configuring an authorized real service, copy `.env.example` to a local, ignored `.env`.
+From the repository root, create the optional Python 3.12 environment:
+
+```sh
+python3.12 -m venv examples/games/tower_diffence_with_jev/bot/.venv
+examples/games/tower_diffence_with_jev/bot/.venv/bin/python -m pip install -r examples/games/tower_diffence_with_jev/bot/requirements.txt
+```
+
+Only when configuring an authorized real service, copy the bot's `.env.example` to a local, ignored `.env` and set `JEV_API_KEY` there (`TYPESAFE_API_KEY` is also accepted). Never put keys in browser settings, `VITE_` variables, or Git. With no key, the bot returns `not-configured` without requesting Jev.
+
+Start a compatible MoQ relay separately, then run:
+
+```sh
+npm run bot:tower -- --relay-url https://127.0.0.1:4433 --room mossvale
+```
+
+Select Jev mode in the game and use the same relay URL and room. The room is one non-empty namespace segment, without `/`. The browser publishes state to `anon/tower-jev/<room>/state`; Pipecat receives it, the server-side Jev adapters choose actions, and the bot publishes them to `anon/tower-jev/<room>/action`. TLS verification is enabled by default; use a relay certificate trusted by both clients. The existing `--insecure` option is restricted to intentional local development and is not needed for the tests below.
+
+Run the offline Python tests from the repository root:
+
+```sh
+examples/games/tower_diffence_with_jev/bot/.venv/bin/python -m unittest discover -s tests/bot -v
+```
+
+These tests use HTTP mocks and transport stubs, block socket connections, and never load `.env`. They verify adapter/bridge contracts and the blank credential example, not a live Pipecat/relay connection. They require `httpx` and Pydantic from the bot dependencies, but do not require Pipecat or `moq` to be installed.
 
 **Real Jev requests may incur charges.** They are not part of routine tests. Keep keys server-side; no credentials are included in the repository.
 
