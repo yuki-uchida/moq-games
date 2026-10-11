@@ -15,11 +15,27 @@ describe('title screen', () => {
     expect(html).toContain('href="../../../index.html"')
     expect(html).toContain('https://example.test/moq-games/tower-defense-art/soldier/portrait.png')
   })
+  it('keeps the title action-first without decorative explanations', () => {
+    const html = titleScreenMarkup(new URL('https://example.test/art/'))
+    for (const removed of [
+      'title-kicker',
+      'title-description',
+      'title-party-caption',
+      'title-footer',
+      'TACTICAL FANTASY'
+    ]) {
+      expect(html).not.toContain(removed)
+    }
+    expect(html).toContain('aria-labelledby="game-title"')
+    expect(html).toContain('aria-describedby="title-save-status"')
+    expect(html).toContain('id="title-save-status" class="title-save-status" role="status"')
+    expect(titleSaveStatus(true, null, false)).toBe('保存した遠征を再開できます。')
+  })
   it('explains missing, corrupt, unavailable and legacy saves honestly', () => {
-    expect(titleSaveStatus(false, null, false)).toContain('まだ保存した遠征がありません')
+    expect(titleSaveStatus(false, null, false)).toBe('保存した遠征はありません。')
     expect(titleSaveStatus(false, 'invalid-run', false)).toContain('元データは変更していません')
     expect(titleSaveStatus(false, 'storage-unavailable', false)).toContain('アクセスできません')
-    expect(titleSaveStatus(false, null, true)).toContain('以前に加入した仲間')
+    expect(titleSaveStatus(false, null, true)).toBe('New game に以前の仲間を引き継ぎます。')
     expect(titleSaveStatus(true, null, false)).toContain('再開できます')
   })
   it('reading the title leaves a corrupt save intact', () => {
