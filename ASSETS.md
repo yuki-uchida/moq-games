@@ -10,9 +10,9 @@ The owner approved publication of the 22 Stable Audio-generated WAV outputs in `
 
 The normal game uses the accepted real-mesh path for all 20 unit roles; see [the verification commands in README](README.md). It does not fall back to sprites or replacement characters when a model fails. Combat balance is unchanged. The original 2D source artwork, excluded optional packs and unadopted candidates remain preserved. Battle music is approved separately below; the approved Stable Audio SFX pack is included.
 
-## EXTRA: viewer-only rendered frames
+## Preserved Slime rendered frames
 
-`public/tower-defense-viewer/sheets/slime/` contains the approved melted-base Slime 3D-rendered frame derivatives: idle, walk, attack and death in eight directions (32 clips, 1,632 frames). These PNG/JSON bytes are copied unchanged from the `slime-melt-2d-runtime-candidate.zip` delivery, SHA-256 `c2a822364a6fcc5bd9d7fad859412f2f28b7ae9d2fc08e0c15a794656f6fdd77`. Source-art ownership and Meshy Pro generation terms were reconciled before inclusion. The rendered frames are available only through the read-only EXTRA viewer; they are not substituted for real-time game models. No source `.blend`, model `.glb`, credentials or production/debug-service data are included in this viewer asset directory. Death remains non-looping at 1,200 ms.
+`public/tower-defense-viewer/sheets/slime/` contains the approved melted-base Slime 3D-rendered frame derivatives: idle, walk, attack and death in eight directions (32 clips, 1,632 frames). These PNG/JSON bytes are copied unchanged from the `slime-melt-2d-runtime-candidate.zip` delivery, SHA-256 `c2a822364a6fcc5bd9d7fad859412f2f28b7ae9d2fc08e0c15a794656f6fdd77`. Source-art ownership and Meshy Pro generation terms were reconciled before inclusion. These previously approved rendered frames remain preserved, but neither EXTRA nor gameplay loads them. The read-only EXTRA viewer uses the same real-time GLBs and authored-animation adapters as gameplay. No source `.blend`, model `.glb`, credentials or production/debug-service data are included in this viewer asset directory. Death remains non-looping at 1,200 ms.
 
 ## Approved battle music
 

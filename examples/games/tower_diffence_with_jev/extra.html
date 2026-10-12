@@ -11,44 +11,40 @@
     </header>
     <main class="extra-layout">
       <section class="extra-intro">
-        <p class="eyebrow">BEHIND THE LITTLE KINGDOM</p>
         <h1>EXTRA</h1>
-        <p>3D sprite-sheet viewer</p>
-        <p class="extra-note">
-          3Dモデルから書き出したフレームを確認するためのビューアーです。ゲーム本編のリアルタイム3D描画とは別の表示です。
-        </p>
+        <p>3D model viewer</p>
+        <p class="extra-note">本編と同じ3Dモデルと動作を確認できます。</p>
       </section>
-      <section class="extra-controls" aria-label="Animation selection">
-        <label>Character<select id="viewer-role" disabled></select></label
-        ><label>Motion<select id="viewer-motion" disabled></select></label
-        ><label>Direction<select id="viewer-direction" disabled></select></label
-        ><label
-          >Zoom<select id="viewer-zoom">
-            <option value="1">1×</option>
-            <option value="2" selected>2×</option>
-            <option value="3">3×</option>
-          </select></label
-        ><label class="extra-check"><input id="viewer-sheet" type="checkbox" /> Full sheet</label>
+      <section class="extra-controls" aria-label="Model selection">
+        <label>Character<select id="viewer-role"></select></label>
+        <label>Motion<select id="viewer-motion"></select></label>
+        <button id="viewer-reset">Reset camera</button>
+        <button id="viewer-retry" hidden>Retry</button>
       </section>
-      <section class="extra-stage" aria-label="Sprite preview">
-        <canvas id="viewer-canvas" width="1" height="1" hidden></canvas>
-        <p id="viewer-status" role="status">3Dスプライトシートを確認中…</p>
+      <section class="extra-stage" aria-label="3D model preview">
+        <canvas
+          id="viewer-canvas"
+          tabindex="0"
+          aria-label="3D model. Drag to rotate, scroll or pinch to zoom. Arrow keys rotate; plus and minus zoom."
+        ></canvas>
+        <p id="viewer-status" role="status">3Dモデルを読み込み中…</p>
       </section>
+      <p class="extra-note">ドラッグで回転 · スクロール／ピンチで拡大 · 矢印キーで回転 · ＋／−で拡大縮小</p>
       <section class="extra-transport" aria-label="Playback">
-        <button id="viewer-previous" disabled aria-label="Previous frame">←</button
-        ><button id="viewer-play" disabled>Play</button
-        ><button id="viewer-next" disabled aria-label="Next frame">→</button
-        ><input
+        <button id="viewer-play" disabled>Play</button>
+        <button id="viewer-restart" disabled>Restart</button>
+        <input
           id="viewer-timeline"
           type="range"
           min="0"
           max="1"
           value="0"
-          step="1"
+          step="0.001"
           disabled
           aria-label="Animation position"
-        /><output id="viewer-time">0 ms</output
-        ><label
+        />
+        <output id="viewer-time">0.00 s</output>
+        <label
           >Speed<select id="viewer-speed">
             <option value="0.25">0.25×</option>
             <option value="0.5">0.5×</option>
@@ -57,7 +53,8 @@
           </select></label
         >
       </section>
-      <p class="extra-note">この画面は読み取り専用です。遠征の保存データは変更しません。</p>
+      <p id="viewer-missing" class="extra-note"></p>
+      <p class="extra-note">遠征の保存データは変更しません。</p>
     </main>
     <script type="module" src="./src/ui/ExtraViewer.ts"></script>
   </body>

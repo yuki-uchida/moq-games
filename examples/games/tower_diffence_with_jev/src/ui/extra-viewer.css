@@ -96,19 +96,30 @@ label {
   padding: 12px 0;
 }
 .extra-stage {
-  min-height: 360px;
+  height: clamp(300px, 52vh, 580px);
+  position: relative;
   border: 1px solid #58725a;
   display: grid;
   place-items: center;
-  overflow: auto;
-  padding: 32px;
+  overflow: hidden;
   background: radial-gradient(ellipse, #3c5842, #1b362b);
 }
 .extra-stage canvas {
-  max-width: none;
-  image-rendering: pixelated;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
 }
 #viewer-status {
+  position: absolute;
+  bottom: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  background: #122c24e6;
+  pointer-events: none;
   max-width: 560px;
   text-align: center;
   font-size: 14px;
@@ -133,8 +144,7 @@ label {
     display: none;
   }
   .extra-stage {
-    min-height: 280px;
-    padding: 12px;
+    height: 340px;
   }
   .extra-controls {
     gap: 12px;
@@ -142,4 +152,11 @@ label {
   .extra-layout {
     margin: 24px auto;
   }
+}
+
+[hidden] {
+  display: none !important;
+}
+.extra-stage canvas:active {
+  cursor: grabbing;
 }

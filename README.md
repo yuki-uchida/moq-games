@@ -9,7 +9,7 @@ Rule AI runs locally: no account, bot or live MoQ connection is needed to play. 
 1. Open the [public game](https://yuki-uchida.github.io/moq-games/examples/games/tower_diffence_with_jev/).
 2. Use Rule AI to play without configuring an external service.
 
-This revision includes the original 2D game, a sample gallery, a title screen with New game/Continue, a read-only EXTRA frame viewer and a dedicated Slime real-model review page. The full real-3D roster remains in development. These describe this revision; the live site changes only after the checked revision is deployed.
+This revision includes the real-time 3D game, a sample gallery, a title screen with New game/Continue, a read-only EXTRA model viewer and a dedicated Slime real-model review page. EXTRA exposes all twenty current roster models and their available authored motions through the same actor playback and skinning/material adapters as gameplay. Drag to orbit, scroll or pinch to zoom, and use Play/Pause, Restart, the timeline, speed and Reset camera controls. Arrow keys rotate the focused canvas; plus/minus zoom. Missing motions are not substituted. No game simulation, audio or campaign writes run in EXTRA. These describe this revision; the live site changes only after the checked revision is deployed.
 
 ## Run locally
 
