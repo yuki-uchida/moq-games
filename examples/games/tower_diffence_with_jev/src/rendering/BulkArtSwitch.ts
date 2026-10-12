@@ -96,14 +96,17 @@ export class BulkArtSwitch {
     this.clips = unitTrialClips(options.standardClips, this.trials)
     this.currentStatus = { target: options.mode, status: 'loading' }
     if (
-      (this.layoutRevision !== 1 && this.layoutRevision !== 2 && this.layoutRevision !== 3) ||
+      (this.layoutRevision !== 1 &&
+        this.layoutRevision !== 2 &&
+        this.layoutRevision !== 3 &&
+        this.layoutRevision !== 4) ||
       (this.layoutRevision > 1 && this.battlefieldVersion !== 2)
     ) {
       this.fail(new Error('Invalid battlefield layout revision'))
       return
     }
     const environment =
-      options.mode === '3d' && this.battlefieldVersion === 2 && this.layoutRevision !== 3
+      options.mode === '3d' && this.battlefieldVersion === 2 && this.layoutRevision < 3
         ? (options.loadEnvironment ?? loadEnvironmentArt)(
             options.base,
             this.fieldId,
@@ -150,7 +153,10 @@ export class BulkArtSwitch {
 
   compatible(state: Readonly<GameState>): boolean {
     return (
-      (this.layoutRevision === 1 || this.layoutRevision === 2 || this.layoutRevision === 3) &&
+      (this.layoutRevision === 1 ||
+        this.layoutRevision === 2 ||
+        this.layoutRevision === 3 ||
+        this.layoutRevision === 4) &&
       state === this.state &&
       state.phase === 'preparation' &&
       state.stage === this.stage &&

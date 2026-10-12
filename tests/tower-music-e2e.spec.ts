@@ -44,7 +44,7 @@ test('streams the original battle music only in assaults and preserves mute acro
       .digest('hex')
   ).toBe('4dbad1d5f22bbc273776480acbe9202443d21e07ed0dcd05771952f866b9900a')
   await openOfflineCampaign(page)
-  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 3).slots[0])
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
   expect(await diagnostics(page)).toMatchObject({ active: false, playing: false, volume: 0.2 })
   await page.locator('#assault').click()
   await expect.poll(async () => (await diagnostics(page)).status).toBe('襲撃のBGMを再生中')

@@ -179,10 +179,12 @@ const emblems = {
   defeat:
     '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 34C4 24 2 17 5 10c4-7 12-5 15 1 3-6 11-8 15-1 3 7 1 14-15 24Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>'
 }
-function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 3) {
+function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 4) {
   const field = getField(id, 2, layoutRevision),
     entry = field.entrance,
     base = field.gate
+  if (layoutRevision === 4)
+    return `<img src="${new URL(`${import.meta.env.BASE_URL}tower-defense-map/approved-meadow.png`, document.baseURI).href}" alt="草原の曲がり道" width="1280" height="920">`
   const roads = allRoadPaths(field)
     .map((path) => `M${path.map((point) => `${point.x},${point.y}`).join(' L')}`)
     .join(' ')
@@ -247,7 +249,7 @@ if (environmentPackAvailable)
 Object.assign(window, {
   towerDefenseDiagnostics: () => ({
     ...renderer.diagnostics(),
-    newCampaignLayoutRevision: 3 as LayoutRevision
+    newCampaignLayoutRevision: 4 as LayoutRevision
   })
 })
 for (const type of ALL_TRIAL_TYPES) $<HTMLSelectElement>(`${type}-art`).value = trialEnabled[type] ? '3d' : '2d'
@@ -551,7 +553,7 @@ function base() {
 }
 function updateFieldChoicePreviews() {
   if (started) return
-  const layoutRevision: LayoutRevision = 3
+  const layoutRevision: LayoutRevision = 4
   for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-field]'))) {
     const preview = card.querySelector('.field-art svg')
     if (preview) preview.outerHTML = mapPreview(card.dataset.field as FieldId, layoutRevision)
@@ -589,9 +591,9 @@ for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[dat
   }
 function resizeBattlefield() {
   const field = fieldFor(engine.state)
-  const compact = field.layoutRevision === 3
+  const compact = field.layoutRevision >= 3
   mapScale = compact
-    ? Math.min((viewport.clientWidth - 24) / field.width, (viewport.clientHeight - 140) / field.height)
+    ? Math.max(0.01, Math.min((viewport.clientWidth - 24) / field.width, (viewport.clientHeight - 140) / field.height))
     : Math.max(0.55, viewport.clientWidth / field.width)
   viewport.dataset.fit = compact ? 'true' : 'false'
   viewport.setAttribute(
@@ -1262,7 +1264,7 @@ function updateStart() {
       ? 'Jev と保存した遠征を続ける'
       : '保存した遠征をルール AI で続ける'
   $('saved-run-note').textContent = pendingRun
-    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の遠征を保存しています。閉じていた間の時間は進みません。${pendingRun.progress.economyVersion === 2 ? ' 1体40G・個別強化の遠征です。' : ' この遠征は旧経済ルール（無料配置・ステージごとの上限・種類単位の強化）を維持します。'}${pendingRun.engine.state.battlefieldVersion === 1 ? ' この遠征は旧地形・旧戦闘ルールで継続します。分岐した新しい戦場は新規遠征から利用できます。' : pendingRun.engine.state.layoutRevision === 3 ? ' 一画面に収まる蛇行マップの遠征を続けます。' : ' 分岐した縦長マップの遠征を続けます。'}${pendingRun.progress.commanderSupportVersion === 1 ? ' Jevモードでは指揮官の支援魔法を利用します。' : ' この保存遠征には新しい指揮官支援を追加しません。'}${pendingRun.engine.state.waveBossPolicy === 1 && stageRules(pendingRun.engine.state.stage, 1).bossType !== stageRules(pendingRun.engine.state.stage, 2).bossType ? ' この進行中ステージのボス枠は保存時の構成を引き継ぎ、次のステージから新しい構成になります。' : ''}`
+    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の遠征を保存しています。閉じていた間の時間は進みません。${pendingRun.progress.economyVersion === 2 ? ' 1体40G・個別強化の遠征です。' : ' この遠征は旧経済ルール（無料配置・ステージごとの上限・種類単位の強化）を維持します。'}${pendingRun.engine.state.battlefieldVersion === 1 ? ' この遠征は旧地形・旧戦闘ルールで継続します。分岐した新しい戦場は新規遠征から利用できます。' : pendingRun.engine.state.layoutRevision >= 3 ? ' 一画面に収まる蛇行マップの遠征を続けます。' : ' 分岐した縦長マップの遠征を続けます。'}${pendingRun.progress.commanderSupportVersion === 1 ? ' Jevモードでは指揮官の支援魔法を利用します。' : ' この保存遠征には新しい指揮官支援を追加しません。'}${pendingRun.engine.state.waveBossPolicy === 1 && stageRules(pendingRun.engine.state.stage, 1).bossType !== stageRules(pendingRun.engine.state.stage, 2).bossType ? ' この進行中ステージのボス枠は保存時の構成を引き継ぎ、次のステージから新しい構成になります。' : ''}`
     : loadedCampaign.issue && replaceStoredRun
       ? '保存した遠征を読み込めませんでした。元データは変更していません。新しく始めると置き換えます。'
       : showLegacyMigration
@@ -1280,7 +1282,7 @@ function updateStart() {
 }
 function startFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
-  const layoutRevision: LayoutRevision = 3
+  const layoutRevision: LayoutRevision = 4
   if ((engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision) !== layoutRevision) {
     const fieldId = engine.state.fieldId,
       historyEnabled = engine.state.historyEnabled

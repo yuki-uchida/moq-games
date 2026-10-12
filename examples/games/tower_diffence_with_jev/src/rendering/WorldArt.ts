@@ -1085,6 +1085,13 @@ export function createFieldArt(
   canvas.height = field.height
   const c = canvas.getContext('2d')!
   c.imageSmoothingEnabled = true
+  if (ground && layoutRevision === 4) {
+    c.drawImage(ground, 0, 0, field.width, field.height)
+    // Preserve the existing slow-terrain mechanic and its visible label over
+    // the approved art, without repainting props or duplicating its buildings.
+    slowRoadSurface(c, field, colors)
+    return canvas
+  }
   terrain(c, field, colors, random)
   road(c, field, colors, random)
   if (ground && version === 2) c.drawImage(ground, 0, 0, field.width, field.height)

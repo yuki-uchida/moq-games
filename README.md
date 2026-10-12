@@ -137,6 +137,12 @@ The trusted-project Codex configuration declares the approved [i-have-adhd](http
 
 </details>
 
+### Compact approved map
+
+New campaigns use layout revision 4: a 1280×920, single-viewport grass field matching the approved cave-to-castle image. Grass beside the road and inside bends supports free deployment; decorative round pads are optional visual landmarks. Defenders cannot be placed on the road. Existing saved campaigns retain revisions 1–3. Checkpoint v16 adds revision 4 and upgrades valid v15 checkpoints without changing their map or unit positions; v15 cannot contain revision 4. The rounded road is about 4,604 world units (about 72 seconds at the Slime's unmodified base speed), versus roughly 5,600 for revision 3. Both existing AI route IDs traverse the same full path, without shortcut junctions.
+
+Map checks: `npm test` includes approved-image checksum, road-to-pixel alignment, free placement, full-route enemy travel, and old/new checkpoint continuation. Run `npx playwright test --config playwright.compact-field.config.ts` for desktop/mobile viewport-fit and actual-mesh placement checks, alongside `npx playwright test --config playwright.real3d-game.config.ts`. Browser checks require the local Vite server and runtime assets. The compact-map suite covers 1440×900, 1280×720, 390×844, 844×390, and 320×568 viewports.
+
 ## License
 
 Code is distributed under the retained upstream [MIT license](LICENSE). SDK dependencies retain their own notices. This license does not grant rights to omitted artwork, recordings or audio; see [ASSETS.md](ASSETS.md).

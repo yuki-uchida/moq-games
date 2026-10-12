@@ -38,7 +38,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   await expect
     .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().assetStatus), { timeout: 90000 })
     .toBe('ready')
-  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 3).slots[0])
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
   await expect(page.locator('.unit-health[data-owner="player"]')).toHaveAttribute('data-art-source', 'gltf-mesh')
   await expect(page.locator('.defender-handle').first()).toBeVisible()
   const diagnostic = await page.evaluate(() => (window as any).towerDefenseDiagnostics())

@@ -1,3 +1,4 @@
+import { approvedMazePath } from './ApprovedMazeLayout'
 import { WINDING_BRANCHES } from './WindingLayouts'
 import type { BattlefieldVersion, LayoutRevision, Field, FieldId, Point, RouteId, SlowSurface } from './model'
 
@@ -328,7 +329,7 @@ function createSlots(field: ResolvedBattlefield): Field['slots'] {
         if (
           slot.x < 50 ||
           slot.x > field.width - 50 ||
-          slot.y < (field.layoutRevision === 3 ? 94 : 50) ||
+          slot.y < (field.layoutRevision >= 3 ? 94 : 50) ||
           slot.y > field.height - 50 ||
           distanceToRoadUnion(field, slot) < 52 ||
           slots.some((other) => distance(other, slot) < 90)
@@ -348,7 +349,7 @@ export function resolveBattlefield(
 ): ResolvedBattlefield {
   if (
     (version !== 1 && version !== 2) ||
-    (layoutRevision !== 1 && layoutRevision !== 2 && layoutRevision !== 3) ||
+    (layoutRevision !== 1 && layoutRevision !== 2 && layoutRevision !== 3 && layoutRevision !== 4) ||
     (version === 1 && layoutRevision !== 1)
   )
     throw new RangeError('Unsupported battlefield layout revision')
@@ -376,6 +377,29 @@ export function resolveBattlefield(
       entrance: legacyField.path[0],
       gate: legacyField.path[legacyField.path.length - 1]
     }
+  } else if (layoutRevision === 4) {
+    const path = approvedMazePath(),
+      edges: RoadEdge[] = [{ id: 'approved-maze', from: 'entrance', to: 'gate', points: path }],
+      routes = buildRoadRoutes(edges, [
+        { id: 'left', label: '草原の曲がり道', edgeIds: ['approved-maze'] },
+        { id: 'right', label: '草原の曲がり道', edgeIds: ['approved-maze'] }
+      ])
+    field = {
+      ...legacyField,
+      version,
+      layoutRevision,
+      width: 1280,
+      height: 920,
+      path,
+      slots: [],
+      edges,
+      routes,
+      entrance: path[0],
+      gate: path[path.length - 1],
+      surfaceAnchor: { edgeId: 'approved-maze', startOffset: routes[0].length - 210, endOffset: routes[0].length - 70 }
+    }
+    field.slowSurface = routeSurface(field, 'left')
+    field.slots = createSlots(field)
   } else if (layoutRevision === 3) {
     // One unambiguous serpentine road. Route IDs remain stable for AI/save contracts,
     // but both choices traverse the same complete road, with no shortcut junction.

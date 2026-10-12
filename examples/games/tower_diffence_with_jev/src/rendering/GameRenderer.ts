@@ -63,6 +63,7 @@ import type { SpriteMotion, SpriteDirection } from './UnitSprites'
 import { AnimationTimer, attackPose, hitPose } from './CombatMotion'
 import { AttackPlayback } from './AttackPlayback'
 import { ATTACK_PROFILES, attackTimeScale, attackAssetElapsedMs, ENEMY_ACTION_TIME_SCALE } from '../game/AttackProfiles'
+import { approvedMazeArt, loadApprovedMazeArt } from './ApprovedMazeArt'
 import { createBaseArt, createFieldArt, createSandbagArt } from './WorldArt'
 import { RuntimeAtlasCache } from './RuntimeAtlasCache'
 import {
@@ -345,7 +346,8 @@ export class GameRenderer {
         version: this.field.version,
         layoutRevision: this.field.layoutRevision,
         width: this.field.width,
-        height: this.field.height
+        height: this.field.height,
+        backgroundSource: this.background?.material.map?.name
       },
       phase: state?.phase,
       environment: this.environmentStatus(),
@@ -434,6 +436,8 @@ export class GameRenderer {
   private attackEffects = new Map<string, PixelMesh>()
   private projectileLaunches = new Map<string, Point>()
   private textures = new Map<string, THREE.CanvasTexture>()
+  private approvedMapLoading = false
+  private approvedMapError?: string
   private background?: PixelMesh
   private environmentEnabled = false
   private environmentLoading = false
@@ -809,12 +813,14 @@ export class GameRenderer {
     return {
       enabled: this.environmentEnabled,
       active:
-        this.field.layoutRevision === 3 ||
+        (this.field.layoutRevision === 4
+          ? this.background?.material.map?.name.startsWith('approved-map:field:') === true
+          : this.field.layoutRevision === 3) ||
         (!!this.environmentArt && environmentMatchesField(this.environmentArt, this.field)),
       layoutRevision: this.field.layoutRevision,
-      loading: this.environmentLoading,
+      loading: this.environmentLoading || (this.field.layoutRevision === 4 && this.approvedMapLoading),
       waitingForPreparation: !!this.pendingEnvironment,
-      error: this.environmentError
+      error: this.field.layoutRevision === 4 ? this.approvedMapError : this.environmentError
     }
   }
 
@@ -869,7 +875,7 @@ export class GameRenderer {
 
   private requestEnvironment(): Promise<void> {
     // Compact terrain is drawn from its own geometry, never a revision-2 baked road.
-    if (this.field.layoutRevision === 3) return Promise.resolve()
+    if (this.field.layoutRevision >= 3) return Promise.resolve()
     const request = new AbortController(),
       field = this.field.id,
       version = this.field.version,
@@ -918,10 +924,27 @@ export class GameRenderer {
       this.background.material.map?.dispose()
       this.background.material.dispose()
     }
-    const texture = this.texture(createFieldArt(id, false, version, this.environmentArt?.field, layoutRevision))
-    texture.name = this.environmentArt
-      ? `environment:field:${id}:${version}:${layoutRevision}`
-      : `field:${id}:${version}:${layoutRevision}`
+    const mazeArt = layoutRevision === 4 ? approvedMazeArt() : undefined
+    if (layoutRevision === 4 && !mazeArt && !this.approvedMapLoading && !this.approvedMapError) {
+      this.approvedMapLoading = true
+      void loadApprovedMazeArt()
+        .then(() => {
+          this.approvedMapLoading = false
+          if (!this.disposed && this.field.layoutRevision === 4) this.refreshBackground()
+        })
+        .catch((error: unknown) => {
+          this.approvedMapLoading = false
+          this.approvedMapError = error instanceof Error ? error.message : 'Approved map could not load'
+        })
+    }
+    const texture = this.texture(
+      createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
+    )
+    texture.name = mazeArt
+      ? `approved-map:field:${id}:${version}:${layoutRevision}`
+      : this.environmentArt
+        ? `environment:field:${id}:${version}:${layoutRevision}`
+        : `field:${id}:${version}:${layoutRevision}`
     this.background = new THREE.Mesh(
       new THREE.PlaneGeometry(width, height),
       new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
@@ -1710,9 +1733,11 @@ export class GameRenderer {
     configureBoardCamera(this.camera, this.field)
     this.renderer.domElement.setAttribute(
       'aria-label',
-      version === 2
-        ? '侵入口から二つに分かれ、王国の門へ合流する縦長の戦場。道の外の地面に仲間を配置できます。'
-        : '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
+      layoutRevision >= 3
+        ? '一画面の曲がりくねった一本道。道の横や曲がり角の内側の草地に仲間を自由に配置できます。'
+        : version === 2
+          ? '侵入口から二つに分かれ、王国の門へ合流する縦長の戦場。道の外の地面に仲間を配置できます。'
+          : '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
     )
     this.setSandbagPreview(null)
     this.setRoadItemPreview(null)
@@ -1741,6 +1766,9 @@ export class GameRenderer {
   }
 
   private renderBase(s: Readonly<GameState>): void {
+    // Revision 4 already contains the approved castle; avoid a second sprite castle.
+    this.baseVisual!.visible =
+      this.field.layoutRevision !== 4 || !this.background?.material.map?.name.startsWith('approved-map:field:')
     const ratio = s.playerBaseHp / CONFIG.baseHp,
       tier = ratio < 0.34 ? 0 : ratio < 0.67 ? 1 : 2
     if (this.previousBaseHp !== undefined && s.playerBaseHp < this.previousBaseHp) this.baseHitAt = s.time

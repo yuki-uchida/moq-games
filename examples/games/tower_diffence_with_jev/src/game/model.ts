@@ -157,7 +157,7 @@ export const FORMATIONS = {
 >
 export type FormationId = keyof typeof FORMATIONS
 export type BattlefieldVersion = 1 | 2
-export type LayoutRevision = 1 | 2 | 3
+export type LayoutRevision = 1 | 2 | 3 | 4
 export type RouteId = 'left' | 'right'
 export const ROUTE_IDS: readonly RouteId[] = ['left', 'right']
 export type AIAction =

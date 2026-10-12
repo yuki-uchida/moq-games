@@ -28,7 +28,8 @@ const fields = Object.keys(FIELDS).flatMap((id) => [
   getField(id as keyof typeof FIELDS, 1, 1),
   getField(id as keyof typeof FIELDS, 2, 1),
   getField(id as keyof typeof FIELDS, 2, 2),
-  getField(id as keyof typeof FIELDS, 2, 3)
+  getField(id as keyof typeof FIELDS, 2, 3),
+  getField(id as keyof typeof FIELDS, 2, 4)
 ])
 
 it('updates field-derived depth while preserving the board XY projection on all retained layouts', () => {

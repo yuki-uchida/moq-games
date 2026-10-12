@@ -114,7 +114,7 @@ import {
   type Decoder
 } from './CheckpointCodec'
 
-export const CAMPAIGN_CHECKPOINT_VERSION = 15
+export const CAMPAIGN_CHECKPOINT_VERSION = 16
 export const CHECKPOINT_LIMITS = {
   simulationSeconds: 24 * 60 * 60,
   maximumId: 0xffffffff,
@@ -210,7 +210,7 @@ export type CampaignStateCheckpoint = Pick<
 > & { corpses: CheckpointCorpse[] }
 
 export interface CampaignCheckpoint {
-  version: 15
+  version: 16
   profile: ProfileData
   progress: RunProgressData
   rewardedThroughStage: number
@@ -272,6 +272,9 @@ interface VersionThirteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 've
 interface VersionFourteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
   version: 14
 }
+interface VersionFifteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
+  version: 15
+}
 type DecodedCheckpoint =
   | LegacyCampaignCheckpoint
   | VersionTwoCampaignCheckpoint
@@ -287,12 +290,13 @@ type DecodedCheckpoint =
   | VersionTwelveCampaignCheckpoint
   | VersionThirteenCampaignCheckpoint
   | VersionFourteenCampaignCheckpoint
+  | VersionFifteenCampaignCheckpoint
   | CampaignCheckpoint
 type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
   return checkpoint.version >= 4 ? (checkpoint.state as CampaignStateCheckpoint).battlefieldVersion : 1
 }
-function layoutRevision(checkpoint: DecodedCheckpoint): 1 | 2 | 3 {
+function layoutRevision(checkpoint: DecodedCheckpoint): 1 | 2 | 3 | 4 {
   return checkpoint.version >= 14 ? (checkpoint.state as CampaignStateCheckpoint).layoutRevision : 1
 }
 function checkpointField(checkpoint: DecodedCheckpoint) {
@@ -325,7 +329,8 @@ const epsilon = 1e-6,
     ...battlefieldFields,
     ...Object.keys(WINDING_BRANCHES).flatMap((id) => [
       resolveBattlefield(FIELDS[id as FieldId], 2, 2),
-      resolveBattlefield(FIELDS[id as FieldId], 2, 3)
+      resolveBattlefield(FIELDS[id as FieldId], 2, 3),
+      resolveBattlefield(FIELDS[id as FieldId], 2, 4)
     ])
   ],
   coordinateBound =
@@ -811,7 +816,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   const decodeCurrentState = object<CampaignStateCheckpoint>({
     ...stateSchema,
     battlefieldVersion: choice([1, 2]),
-    layoutRevision: version >= 14 ? choice([1, 2, 3]) : () => 1,
+    layoutRevision: version >= 16 ? choice([1, 2, 3, 4]) : version >= 14 ? choice([1, 2, 3]) : () => 1,
     waveBossPolicy: choice([1, 2]),
     lastAction: nullable(decodeCurrentAction),
     requestedAction: nullable(decodeCurrentAction)
@@ -1081,7 +1086,13 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       version: choice([14]),
       state: decodeCurrentState
     })
-  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([15]), state: decodeCurrentState })
+  if (version === 15)
+    return object<VersionFifteenCampaignCheckpoint>({
+      ...checkpointSchema,
+      version: choice([15]),
+      state: decodeCurrentState
+    })
+  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([16]), state: decodeCurrentState })
 }
 const checkpointDecoders = {
   1: createCheckpointDecoder(1),
@@ -1098,14 +1109,20 @@ const checkpointDecoders = {
   12: createCheckpointDecoder(12),
   13: createCheckpointDecoder(13),
   14: createCheckpointDecoder(14),
-  15: createCheckpointDecoder(15)
+  15: createCheckpointDecoder(15),
+  16: createCheckpointDecoder(16)
 }
 function decodeCheckpoint(value: unknown): DecodedCheckpoint {
   const input = record(value),
-    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])(input.version),
+    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
-  const revision = version >= 14 ? choice([1, 2, 3])(state.layoutRevision) : 1
+  const revision =
+    version >= 16
+      ? choice([1, 2, 3, 4])(state.layoutRevision)
+      : version >= 14
+        ? choice([1, 2, 3])(state.layoutRevision)
+        : 1
   requireCheckpoint(version >= 14 || state.layoutRevision === undefined || state.layoutRevision === 1)
   const rules = version >= 4 ? choice([1, 2])(state.battlefieldVersion) : 1
   resolveBattlefield(FIELDS[fieldId(state.fieldId)], rules, revision)
@@ -1196,9 +1213,9 @@ export function validateCampaignCheckpoint(
     migrateHealthBalance(normalized)
     removePaladinHealing(normalized)
     const migrated = normalized.version === 2 ? migrateGenericWaitCheckpoint(normalized) : normalized,
-      current = checkpointDecoders[15]({
+      current = checkpointDecoders[16]({
         ...migrated,
-        version: 15,
+        version: 16,
         state: {
           ...migrated.state,
           battlefieldVersion: battlefieldVersion(migrated),
@@ -1213,7 +1230,7 @@ export function validateCampaignCheckpoint(
             : {})
         }
       })
-    requireCheckpoint(current.version === 15)
+    requireCheckpoint(current.version === 16)
     validateCheckpointSemantics(current, progress, current.profile)
     return current
   } catch {
@@ -1703,6 +1720,7 @@ function normalizeSandbagHealth(
     | VersionTwelveCampaignCheckpoint
     | VersionThirteenCampaignCheckpoint
     | VersionFourteenCampaignCheckpoint
+    | VersionFifteenCampaignCheckpoint
     | CampaignCheckpoint
 ): void {
   const bags = checkpoint.state.sandbags.filter((bag) => bag.maxHp !== ROAD_EFFECTS.sandbag.hp)

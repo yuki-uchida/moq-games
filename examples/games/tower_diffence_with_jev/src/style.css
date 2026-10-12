@@ -962,8 +962,10 @@ dialog::backdrop {
   width: 88px;
   flex: none;
 }
-.field-card svg {
+.field-card svg,
+.field-card .field-art img {
   width: 100%;
+  height: auto;
   display: block;
   border-radius: 7px;
   border: 1px solid #8e9d7170;
@@ -1427,7 +1429,8 @@ dialog::backdrop {
     width: 100%;
     margin-bottom: 8px;
   }
-  .field-card svg {
+  .field-card svg,
+  .field-card .field-art img {
     width: 100%;
     max-height: 85px;
     background: #e6e7ce;
@@ -2748,7 +2751,7 @@ dialog::backdrop {
   white-space: nowrap;
 }
 
-/* Revision 3 keeps the whole battlefield in view, including on resize. */
+/* Compact revisions keep the whole battlefield in view, including on resize. */
 #map-scroll[data-fit='true'] {
   padding: 110px 12px 30px;
   display: flex;

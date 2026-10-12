@@ -51,7 +51,7 @@ test('plays the included RuleAI game through a natural outcome without optional 
     return route.abort()
   })
   await openOfflineCampaign(page)
-  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 3).slots[0])
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
   // Act
   await page.locator('#assault').click()
   // Assert

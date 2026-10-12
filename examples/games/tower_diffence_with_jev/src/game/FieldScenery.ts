@@ -26,6 +26,12 @@ export function fieldScenery(
     key = `${id}:${version}:${layoutRevision}`,
     cached = cache.get(key)
   if (cached) return cached
+  // Revision 4 uses the painted perimeter and a fully open grass interior.
+  // Do not introduce invisible randomly generated blockers over that artwork.
+  if (layoutRevision === 4) {
+    cache.set(key, [])
+    return []
+  }
   const items: SceneryItem[] = []
   let seed = 547 + Object.keys(FIELDS).indexOf(id) * 997
   const random = () => {
