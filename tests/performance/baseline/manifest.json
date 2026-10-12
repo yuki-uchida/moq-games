@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "3e4c3758f940ffe7b16769480f4fa5d1065f0616",
+  "sha256": {
+    "TankRoadblock.ts": "4ea495a39c86905bd5e1292d499560ea9446a80a120d389cdf09b3e3ba684ee0",
+    "Interception.ts": "4729c6849482e293d3c66d9d123693d78963bcc123d64d97501a1b18c266fab6",
+    "EnemyTravel.ts": "35535fdef8de0118bc8d871b9d89927ed40e40d3b10d447c24466f9f42a2f547",
+    "BattlefieldRoutes.ts": "4a8ab808b29f5d2d6143d8e63a91817d19a05af634c8759ca1e793f060ea493d"
+  }
+}

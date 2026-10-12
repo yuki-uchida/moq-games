@@ -90,7 +90,7 @@ describe('approved irregular maze revision 4', () => {
       expect(board.path.some((p) => p.x > 640 && p.x < 680 && p.y < 120)).toBe(true)
       expect(board.path.some((p) => p.x > 1100 && p.y > 380 && p.y < 500)).toBe(true)
     })
-    it(`${id} accepts free placements alongside roads and inside bends, beyond decorative pads`, () => {
+    it(`${id} accepts free placements on roads, alongside roads and inside bends, beyond decorative pads`, () => {
       const engine = new GameEngine(idle, freshSave(), id, 42, () => 0, undefined, 2, 4)
       engine.state.phase = 'preparation'
       engine.state.stage = 4
@@ -104,8 +104,9 @@ describe('approved irregular maze revision 4', () => {
         expect(engine.place('soldier', point)).toBe(true)
       }
       const roadPoint = pointOnPath(getField(id, 2, 4).path, 1000)
-      expect(previewGroundPlacement(engine.state, 'soldier', roadPoint).reason).toBe('road')
-      expect(engine.place('soldier', roadPoint)).toBe(false)
+      engine.state.stage = 5
+      expect(previewGroundPlacement(engine.state, 'soldier', roadPoint).valid).toBe(true)
+      expect(engine.place('soldier', roadPoint)).toBe(true)
       expect(fieldScenery(id, 2, 4).every((p) => p.x <= 62 || p.x >= 1218 || p.y <= 62 || p.y >= 858)).toBe(true)
     })
   }

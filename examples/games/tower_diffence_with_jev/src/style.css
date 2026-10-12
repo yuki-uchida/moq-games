@@ -2753,11 +2753,36 @@ dialog::backdrop {
 
 /* Compact revisions keep the whole battlefield in view, including on resize. */
 #map-scroll[data-fit='true'] {
-  padding: 110px 12px 30px;
+  padding: 72px 12px 16px;
   display: flex;
   overflow: hidden;
   cursor: default;
 }
 #map-scroll[data-fit='true'] #map-world {
   flex: none;
+}
+
+/* Widen the scenery without stretching real actors or their readable labels. */
+#field > canvas {
+  image-rendering: auto;
+}
+#field .unit-health {
+  transform: translate(-50%, -100%) scaleX(var(--field-aspect-inverse, 1));
+}
+#field .base-health,
+#field .sandbag-health {
+  transform: translateX(-50%) scaleX(var(--field-aspect-inverse, 1));
+}
+#field .sandbag-preview {
+  transform: translateX(-50%) scaleX(var(--field-aspect-inverse, 1));
+}
+#field .range-preview {
+  transform: scaleX(var(--field-aspect-inverse, 1));
+  transform-origin: left top;
+}
+
+@media (max-width: 420px) {
+  .map-heading {
+    top: calc(max(8px, env(safe-area-inset-top)) + 48px);
+  }
 }

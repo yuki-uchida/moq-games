@@ -1,4 +1,5 @@
-import { isAirborneEnemy, routePathFor, type GameState, type Point, type Unit } from './model'
+import { RoadGeometryCache, roadCoordinateKey, roadPathRevision } from './RoadGeometryCache'
+import { fieldFor, isAirborneEnemy, routePathFor, type GameState, type Point, type Unit } from './model'
 
 // The current Tank body (18px) must intersect the actual 48px-wide road.
 // This is local route geometry, never a wall across a branch or a home-position flag.
@@ -13,8 +14,19 @@ export interface NextTankRoadblock extends TankRoadblock {
   stopProgress: number
 }
 
-/** Exact swept circle/polyline intervals, including bends and repeated crossings. */
+const circleCache = new RoadGeometryCache<{ start: number; end: number }[]>(128)
 function circleIntervals(path: readonly Point[], center: Point, radius: number): { start: number; end: number }[] {
+  return circleCache.get(path, roadCoordinateKey(center.x, center.y, radius), () =>
+    computeCircleIntervals(path, center, radius)
+  )
+}
+
+/** Exact swept circle/polyline intervals, including bends and repeated crossings. */
+function computeCircleIntervals(
+  path: readonly Point[],
+  center: Point,
+  radius: number
+): { start: number; end: number }[] {
   const intervals: { start: number; end: number }[] = []
   let accumulated = 0
   for (let index = 1; index < path.length; index++) {
@@ -84,7 +96,64 @@ function roadblockCandidates(state: Readonly<GameState>, enemy: Readonly<Unit>):
     .sort((a, b) => a.stopProgress - b.stopProgress || a.tank.id - b.tank.id || a.start - b.start)
 }
 
+// Forecast substeps repeatedly ask about the same real-unit snapshot. Cache only
+// exact restraint inputs, rather than time or a frame number: sequential movement,
+// damage, removal, placement and route/layout changes invalidate immediately.
+const restraintKeys = ['id', 'owner', 'type', 'hp', 'x', 'y', 'progress', 'attackRange', 'routeId'] as const
+const restraintCache = new WeakMap<
+  readonly Unit[],
+  {
+    field: ReturnType<typeof fieldFor>
+    inputs: unknown[][]
+    paths: object[]
+    routeIds: (string | undefined)[]
+    assignments: Map<number, number>
+  }
+>()
+function currentTankRestraints(state: Readonly<GameState>): Map<number, number> {
+  if (
+    !state.units.some(
+      (unit) =>
+        unit.owner === 'player' &&
+        unit.type === 'tank' &&
+        unit.hp > 0 &&
+        Number.isFinite(unit.x) &&
+        Number.isFinite(unit.y)
+    )
+  )
+    return new Map()
+  const field = fieldFor(state)
+  const paths = field.routes.map((route) => roadPathRevision(route.path))
+  const cached = restraintCache.get(state.units)
+  if (
+    cached?.field === field &&
+    field.routes.every((route, index) => route.id === cached.routeIds[index]) &&
+    paths.length === cached.paths.length &&
+    paths.every((path, index) => path === cached.paths[index]) &&
+    state.units.length === cached.inputs.length &&
+    state.units.every((unit, index) =>
+      restraintKeys.every((key, part) => Object.is(unit[key], cached.inputs[index][part]))
+    )
+  )
+    return cached.assignments
+  const assignments = computeTankRestraints(state)
+  const inputs = state.units.map((unit) => restraintKeys.map((key) => unit[key]))
+  restraintCache.set(state.units, {
+    field,
+    inputs,
+    paths,
+    routeIds: field.routes.map((route) => route.id),
+    assignments
+  })
+  return assignments
+}
+
 export function tankRestraints(state: Readonly<GameState>): Map<number, number> {
+  // A caller can modify the returned map without corrupting later decisions.
+  return new Map(currentTankRestraints(state))
+}
+
+function computeTankRestraints(state: Readonly<GameState>): Map<number, number> {
   const pairs = state.units
     .flatMap((enemy) =>
       roadblockCandidates(state, enemy).map((block) => ({
@@ -113,11 +182,12 @@ export function tankRestraints(state: Readonly<GameState>): Map<number, number> 
 }
 
 export function nextTankRoadblock(state: Readonly<GameState>, enemy: Readonly<Unit>): NextTankRoadblock | undefined {
-  const assignments = tankRestraints(state)
+  const assignments = currentTankRestraints(state)
+  if (!assignments.size) return undefined
   return roadblockCandidates(state, enemy).find((block) => assignments.get(block.tank.id) === enemy.id)
 }
 
 export function tankAvailableToEnemy(state: Readonly<GameState>, tank: Readonly<Unit>, enemy: Readonly<Unit>): boolean {
-  const restrained = tankRestraints(state).get(tank.id)
+  const restrained = currentTankRestraints(state).get(tank.id)
   return restrained === undefined || restrained === enemy.id
 }

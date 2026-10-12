@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { GAME_MODEL_PRESENTATION_SCALE } from './BattlefieldPresentation'
 
 // Catalog actors use a 128-world-unit authored presentation span. Reserve two
 // spans about the pivot for animated weapons/wings and a full 1.35× boss. The
@@ -10,7 +11,7 @@ export const MODEL_GROUND_DEPTH_OFFSET = 4
 export const modelGroundDepth = (y: number): number => y / 10 + MODEL_GROUND_DEPTH_OFFSET
 
 export function configureBoardCamera(camera: THREE.OrthographicCamera, field: { width: number; height: number }): void {
-  const animatedRadius = MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE
+  const animatedRadius = MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE
   camera.left = 0
   camera.right = field.width
   camera.top = 0

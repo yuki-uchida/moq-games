@@ -1,5 +1,6 @@
 import { approvedMazePath } from './ApprovedMazeLayout'
 import { WINDING_BRANCHES } from './WindingLayouts'
+import { RoadGeometryCache, roadCoordinateKey } from './RoadGeometryCache'
 import type { BattlefieldVersion, LayoutRevision, Field, FieldId, Point, RouteId, SlowSurface } from './model'
 
 export type { BattlefieldVersion, RouteId } from './model'
@@ -69,7 +70,16 @@ function pointAt(path: readonly Point[], progress: number): Point {
   return { ...path[path.length - 1] }
 }
 
-function project(path: readonly Point[], point: Point): Point & { progress: number; distance: number } {
+type PathProjection = Point & { progress: number; distance: number }
+const roadProjections = new RoadGeometryCache<PathProjection>()
+
+function project(path: readonly Point[], point: Point): PathProjection {
+  // Forecast subticks repeatedly query the same sandbag/defender coordinates.
+  // Copy results so a caller cannot change geometry cached for a later query.
+  return { ...roadProjections.get(path, roadCoordinateKey(point.x, point.y), () => projectUncached(path, point)) }
+}
+
+function projectUncached(path: readonly Point[], point: Point): PathProjection {
   let closest = { ...path[0], progress: 0, distance: Infinity },
     accumulated = 0
   for (let index = 1; index < path.length; index++) {

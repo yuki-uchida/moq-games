@@ -24,10 +24,12 @@ export async function openOfflineCampaign(page: Page, field: FieldId = 'meadow')
 export async function pointOnVisibleMap(page: Page, point: Point) {
   await page.locator('#map-scroll').evaluate((element, p) => {
     const field = document.getElementById('field')!
-    const scale = field.getBoundingClientRect().width / Number(field.dataset.worldWidth ?? 1280)
+    const bounds = field.getBoundingClientRect()
+    const scaleX = bounds.width / Number(field.dataset.worldWidth ?? 1280)
+    const scaleY = bounds.height / Number(field.dataset.worldHeight ?? 960)
     element.scrollTo({
-      left: p.x * scale - element.clientWidth / 2,
-      top: p.y * scale - element.clientHeight / 2,
+      left: p.x * scaleX - element.clientWidth / 2,
+      top: p.y * scaleY - element.clientHeight / 2,
       behavior: 'instant'
     })
   }, point)

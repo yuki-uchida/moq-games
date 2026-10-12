@@ -23,6 +23,7 @@ import {
   DEFINITIONS
 } from '../examples/games/tower_diffence_with_jev/src/game/model'
 import { attackContact } from '../examples/games/tower_diffence_with_jev/src/game/CombatContact'
+import { GAME_MODEL_PRESENTATION_SCALE } from '../examples/games/tower_diffence_with_jev/src/rendering/BattlefieldPresentation'
 
 const fields = Object.keys(FIELDS).flatMap((id) => [
   getField(id as keyof typeof FIELDS, 1, 1),
@@ -46,8 +47,8 @@ it('updates field-derived depth while preserving the board XY projection on all 
       expect(projected.x).toBe(old.x)
       expect(projected.y).toBe(old.y)
       for (const z of [
-        modelGroundDepth(y) - MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE,
-        modelGroundDepth(y) + MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE
+        modelGroundDepth(y) - MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE,
+        modelGroundDepth(y) + MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE
       ]) {
         const depth = new THREE.Vector3(0, 0, z).project(camera).z
         expect(depth).toBeGreaterThanOrEqual(-1 - 1e-12)
@@ -75,6 +76,7 @@ it('contains every runtime roster motion at role-appropriate scale on legacy and
   try {
     for (const [role, definition] of Object.entries(UNIT_MODEL_CATALOG)) {
       const visual = new ModelUnitVisual(definition, cache)
+      visual.setPresentation(GAME_MODEL_PRESENTATION_SCALE, 1.4)
       const scene = new THREE.Scene()
       scene.add(visual.root)
       const boss = (ENEMY_TYPES as readonly string[]).includes(role)
@@ -114,7 +116,7 @@ it('contains every runtime roster motion at role-appropriate scale on legacy and
                 minZ = Math.min(minZ, point.z - modelGroundDepth(0))
                 maxZ = Math.max(maxZ, point.z - modelGroundDepth(0))
                 point.z -= modelGroundDepth(0)
-                radius = Math.max(radius, point.length() / scale)
+                radius = Math.max(radius, point.length() / (scale * GAME_MODEL_PRESENTATION_SCALE))
                 vertices++
               }
             })

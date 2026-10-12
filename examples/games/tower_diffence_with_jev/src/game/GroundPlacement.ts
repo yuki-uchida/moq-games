@@ -2,7 +2,6 @@ import { roadItems } from './Fortifications'
 import {
   ALLY_TYPES,
   DEFINITIONS,
-  CONFIG,
   fieldFor,
   ROAD_EFFECTS,
   distanceToPath,
@@ -24,7 +23,6 @@ export interface GroundPlacement {
     | 'base'
     | 'entry'
     | 'obstacle'
-    | 'road'
     | 'overlap'
     | 'sandbag'
     | 'capacity'
@@ -73,28 +71,26 @@ export function previewGroundPlacement(
                 point.y > entry.y - 75 - DEFENDER_FOOTPRINT &&
                 point.y < entry.y + 18 + DEFENDER_FOOTPRINT
               ? 'entry'
-              : state.layoutRevision === 4 && roadDistance < CONFIG.roadWidth / 2 + DEFENDER_FOOTPRINT
-                ? 'road'
-                : overlapsScenery(field.id, point, DEFENDER_FOOTPRINT, state.battlefieldVersion, state.layoutRevision)
-                  ? 'obstacle'
-                  : defenders.some(
-                        (unit) =>
-                          Math.hypot(unit.homeX - point.x, unit.homeY - point.y) < DEFENDER_FOOTPRINT * 2 ||
-                          (!!unit.battleRelocation?.destination &&
-                            Math.hypot(
-                              unit.battleRelocation.destination.x - point.x,
-                              unit.battleRelocation.destination.y - point.y
-                            ) <
-                              DEFENDER_FOOTPRINT * 2)
+              : overlapsScenery(field.id, point, DEFENDER_FOOTPRINT, state.battlefieldVersion, state.layoutRevision)
+                ? 'obstacle'
+                : defenders.some(
+                      (unit) =>
+                        Math.hypot(unit.homeX - point.x, unit.homeY - point.y) < DEFENDER_FOOTPRINT * 2 ||
+                        (!!unit.battleRelocation?.destination &&
+                          Math.hypot(
+                            unit.battleRelocation.destination.x - point.x,
+                            unit.battleRelocation.destination.y - point.y
+                          ) <
+                            DEFENDER_FOOTPRINT * 2)
+                    )
+                  ? 'overlap'
+                  : [...state.sandbags, ...roadItems(state)].some(
+                        (bag) => Math.hypot(bag.x - point.x, bag.y - point.y) < ROAD_EFFECTS.sandbag.defenderClearance
                       )
-                    ? 'overlap'
-                    : [...state.sandbags, ...roadItems(state)].some(
-                          (bag) => Math.hypot(bag.x - point.x, bag.y - point.y) < ROAD_EFFECTS.sandbag.defenderClearance
-                        )
-                      ? 'sandbag'
-                      : state.economyVersion !== 2 && defenders.length >= state.stage
-                        ? 'capacity'
-                        : null
+                    ? 'sandbag'
+                    : state.economyVersion !== 2 && defenders.length >= state.stage
+                      ? 'capacity'
+                      : null
   return { point, valid: reason === null, reason, reachesRoad: roadDistance <= definition.range + definition.leash }
 }
 export function groundPlacementLabel(result: GroundPlacement): string {
@@ -102,7 +98,6 @@ export function groundPlacementLabel(result: GroundPlacement): string {
     phase: '仲間は準備中だけ配置できます。',
     'invalid-point': '戦場の地面を選んでください。',
     outside: '戦場の端から少し離してください。',
-    road: '道を空けて、道の横や曲がり角の内側の草地に配置してください。',
     base: '王国の門から離してください。',
     entry: '敵の入口から離してください。',
     obstacle: '木・岩などの障害物から離してください。',

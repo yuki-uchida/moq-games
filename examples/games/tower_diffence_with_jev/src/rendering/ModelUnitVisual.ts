@@ -60,6 +60,7 @@ export class ModelUnitVisual {
   private leases = new Map<string, { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }>()
   private active?: { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }
   private disposed = false
+  private presentationAspect = 1
   private lastMotion?: ModelMotion
   private lastSample = 0
   private lastPose?: ModelPose
@@ -103,6 +104,31 @@ export class ModelUnitVisual {
   }
   setPosition(x: number, y: number): void {
     this.root.matrix.setPosition(x, y, modelGroundDepth(y))
+    this.root.matrixWorldNeedsUpdate = true
+  }
+  /** Counter the wider board presentation so meshes keep their authored proportions. */
+  setPresentation(scale: number, aspect: number): void {
+    this.presentationAspect = aspect
+    const tilt = this.definition.viewElevation ?? Math.atan2(2, 5)
+    const position = new THREE.Vector3().setFromMatrixPosition(this.root.matrix)
+    this.root.matrix.set(
+      scale / aspect,
+      0,
+      0,
+      position.x,
+      0,
+      -Math.cos(tilt) * scale,
+      Math.sin(tilt) * scale,
+      position.y,
+      0,
+      Math.sin(tilt) * scale,
+      Math.cos(tilt) * scale,
+      position.z,
+      0,
+      0,
+      0,
+      1
+    )
     this.root.matrixWorldNeedsUpdate = true
   }
   prepare(motions: readonly ModelMotion[] = ['idle', 'walk', 'attack']): boolean {
@@ -151,7 +177,8 @@ export class ModelUnitVisual {
       ? ((sampleTime % duration) + duration) % duration
       : Math.max(0, Math.min(sampleTime, duration))
     const elevation = this.definition.viewElevation ?? Math.atan2(2, 5)
-    this.turn.rotation.y = Math.atan2(pose.facingX * Math.sin(elevation), pose.facingY) + this.definition.yaw
+    this.turn.rotation.y =
+      Math.atan2(pose.facingX * this.presentationAspect * Math.sin(elevation), pose.facingY) + this.definition.yaw
     this.turn.scale.setScalar(pose.boss ? MODEL_BOSS_SCALE : 1)
     instance.action.enabled = true
     instance.action.paused = false

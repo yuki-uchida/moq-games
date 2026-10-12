@@ -20,11 +20,20 @@ export class ModelUnitLayer {
   private previousState?: Readonly<GameState>
   private previousStage?: number
   private previousField?: string
+  private presentationScale = 1
+  private presentationAspect = 1
   constructor(
     private readonly scene: THREE.Scene,
     readonly roster: ModelRoster,
     readonly cache = new ModelAssetCache()
   ) {}
+
+  setPresentation(scale: number, aspect: number): void {
+    this.presentationScale = scale
+    this.presentationAspect = aspect
+    for (const actor of this.actors.values()) actor.visual.setPresentation(scale, aspect)
+    this.preview?.visual.setPresentation(scale, aspect)
+  }
 
   private request(type: UnitType, motions: readonly ModelMotion[]): boolean {
     const definition = this.roster[type]
@@ -100,6 +109,7 @@ export class ModelUnitLayer {
           continue
         }
         const visual = new ModelUnitVisual(definition, this.cache)
+        visual.setPresentation(this.presentationScale, this.presentationAspect)
         this.scene.add(visual.root)
         actor = { type: unit.type, visual, last: { ...unit } }
         this.actors.set(unit.id, actor)
@@ -176,6 +186,7 @@ export class ModelUnitLayer {
       const definition = this.roster[type]
       if (!definition) return
       const visual = new ModelUnitVisual(definition, this.cache)
+      visual.setPresentation(this.presentationScale, this.presentationAspect)
       this.scene.add(visual.root)
       this.preview = { type, visual }
     }
@@ -207,6 +218,7 @@ export class ModelUnitLayer {
     // A restored/in-flight projectile can outlive its caster. Sample an ephemeral
     // real rig at the recorded origin rather than losing the shot or using a sprite.
     const visual = actor?.visual ?? new ModelUnitVisual(definition, this.cache)
+    visual.setPresentation(this.presentationScale, this.presentationAspect)
     try {
       visual.setPosition(attack.origin.x, attack.origin.y)
       const point = visual.emitterAt({
@@ -236,6 +248,7 @@ export class ModelUnitLayer {
   diagnostics() {
     return {
       renderer: 'gltf-mesh',
+      presentation: { scale: this.presentationScale, aspect: this.presentationAspect },
       errors: { ...this.errors },
       cache: this.cache.diagnostics(),
       units: [...this.actors].map(([id, actor]) => ({ id, type: actor.type, ...actor.visual.diagnostics() }))

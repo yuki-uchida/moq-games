@@ -295,6 +295,8 @@ export class GameRenderer {
   private disposed = false
   private models?: ModelUnitLayer
   private modelsActive = false
+  private modelPresentationScale = 1
+  private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
   private commander?: CommanderVisual
   private commanderMode = false
@@ -325,6 +327,11 @@ export class GameRenderer {
 
   diagnostics() {
     const state = this.previousState
+    const bounds = this.host.getBoundingClientRect()
+    const screenPoint = (point: { x: number; y: number }) => ({
+      x: bounds.left + (point.x / this.field.width) * bounds.width,
+      y: bounds.top + (point.y / this.field.height) * bounds.height
+    })
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
       new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
     )
@@ -348,6 +355,26 @@ export class GameRenderer {
         width: this.field.width,
         height: this.field.height,
         backgroundSource: this.background?.material.map?.name
+      },
+      displayGeometry: {
+        backingWidth: this.renderer.domElement.width,
+        backingHeight: this.renderer.domElement.height,
+        scaleX: bounds.width / this.field.width,
+        scaleY: bounds.height / this.field.height,
+        range: {
+          visible: this.range.visible,
+          ground: { x: this.range.position.x, y: this.range.position.y },
+          screen: screenPoint(this.range.position),
+          radiusX: (this.range.scale.x * bounds.width) / this.field.width,
+          radiusY: (this.range.scale.y * bounds.height) / this.field.height
+        },
+        effects: [...this.attackEffects]
+          .filter(([, mesh]) => mesh.visible)
+          .map(([id, mesh]) => ({
+            id,
+            ground: { x: mesh.position.x, y: mesh.position.y },
+            screen: screenPoint(mesh.position)
+          }))
       },
       phase: state?.phase,
       environment: this.environmentStatus(),
@@ -1734,7 +1761,7 @@ export class GameRenderer {
     this.renderer.domElement.setAttribute(
       'aria-label',
       layoutRevision >= 3
-        ? '一画面の曲がりくねった一本道。道の横や曲がり角の内側の草地に仲間を自由に配置できます。'
+        ? '一画面の曲がりくねった一本道。道や草地に仲間を自由に配置できます。'
         : version === 2
           ? '侵入口から二つに分かれ、王国の門へ合流する縦長の戦場。道の外の地面に仲間を配置できます。'
           : '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
@@ -1789,6 +1816,12 @@ export class GameRenderer {
     const shake = s.phase === 'assault' && age >= 0 && age < 0.18 ? Math.sin(age * 90) * 2.5 * (1 - age / 0.18) : 0
     const base = fieldFor(s).gate
     this.baseVisual!.position.set(base.x + shake, base.y - 56, base.y / 10 - 1)
+  }
+  setPresentation(scale: number, aspect: number): void {
+    if (this.modelPresentationScale === scale && this.modelPresentationAspect === aspect) return
+    this.modelPresentationScale = scale
+    this.modelPresentationAspect = aspect
+    this.models?.setPresentation(scale, aspect)
   }
   worldPointAt(clientX: number, clientY: number): Point | null {
     const bounds = this.host.getBoundingClientRect(),
@@ -2584,7 +2617,7 @@ export class GameRenderer {
           renderedMotion: this.models.motion(unit.id) ?? '',
           healingAnimation: unit.type === 'paladin' && currentAttack?.kind === 'heal' ? 'neutral-held-3d-pose' : ''
         })
-        label.style.top = `${Math.max(18, unit.y - 76 * bodyScale(unit))}px`
+        label.style.top = `${Math.max(18, unit.y - 76 * bodyScale(unit) * this.modelPresentationScale)}px`
         if (visual.defenderHandle) {
           visual.defenderHandle.hidden =
             !visible ||
@@ -2592,10 +2625,11 @@ export class GameRenderer {
             !['preparation', 'assault'].includes(s.phase) ||
             roadPlacementActive ||
             unit.hp <= 0
-          visual.defenderHandle.style.left = `${unit.x - 36}px`
-          visual.defenderHandle.style.top = `${unit.y - 72}px`
-          visual.defenderHandle.style.width = '72px'
-          visual.defenderHandle.style.height = '80px'
+          const width = (72 * this.modelPresentationScale) / this.modelPresentationAspect
+          visual.defenderHandle.style.left = `${unit.x - width / 2}px`
+          visual.defenderHandle.style.top = `${unit.y - 72 * this.modelPresentationScale}px`
+          visual.defenderHandle.style.width = `${width}px`
+          visual.defenderHandle.style.height = `${80 * this.modelPresentationScale}px`
         }
       }
     }

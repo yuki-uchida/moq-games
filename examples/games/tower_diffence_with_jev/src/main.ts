@@ -55,6 +55,7 @@ import {
 } from './game/model'
 import { RuleBasedAI, JevAI } from './ai/AIController'
 import { GameRenderer } from './rendering/GameRenderer'
+import { battlefieldPresentation } from './rendering/BattlefieldPresentation'
 import { UNIT_MODEL_CATALOG } from './rendering/models/catalog'
 import type { ArtMode } from './rendering/BulkArtSwitch'
 import { AssetStatusNotice } from './rendering/AssetStatusNotice'
@@ -448,6 +449,7 @@ Object.assign(window, {
 })
 const viewport = $('map-scroll')
 let mapScale = 1
+let mapScaleX = 1
 const settingsPanel = new PanelDialog(
   $<HTMLDialogElement>('settings'),
   [$('settings-toggle'), $('launch-settings')],
@@ -536,7 +538,7 @@ function announce(message: string) {
 }
 function panTo(x: number, y: number) {
   viewport.scrollTo({
-    left: x * mapScale - viewport.clientWidth / 2,
+    left: x * mapScaleX - viewport.clientWidth / 2,
     top: y * mapScale - viewport.clientHeight / 2,
     behavior: 'smooth'
   })
@@ -592,9 +594,11 @@ for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[dat
 function resizeBattlefield() {
   const field = fieldFor(engine.state)
   const compact = field.layoutRevision >= 3
-  mapScale = compact
-    ? Math.max(0.01, Math.min((viewport.clientWidth - 24) / field.width, (viewport.clientHeight - 140) / field.height))
-    : Math.max(0.55, viewport.clientWidth / field.width)
+  const presentation = battlefieldPresentation({ width: viewport.clientWidth, height: viewport.clientHeight }, field)
+  mapScale = presentation.scaleY
+  mapScaleX = presentation.scaleX
+  renderer.setPresentation(presentation.modelScale, presentation.aspectExpansion)
+  $('field').style.setProperty('--field-aspect-inverse', String(1 / presentation.aspectExpansion))
   viewport.dataset.fit = compact ? 'true' : 'false'
   viewport.setAttribute(
     'aria-label',
@@ -605,8 +609,8 @@ function resizeBattlefield() {
   $('map-world').style.margin = compact ? 'auto' : '0'
   viewport.scrollLeft = compact ? 0 : viewport.scrollLeft
   viewport.scrollTop = compact ? 0 : viewport.scrollTop
-  $('field').style.transform = `scale(${mapScale})`
-  $('map-world').style.width = `${field.width * mapScale}px`
+  $('field').style.transform = `scale(${mapScaleX}, ${mapScale})`
+  $('map-world').style.width = `${field.width * mapScaleX}px`
   $('map-world').style.height = `${field.height * mapScale}px`
 }
 const battlefieldResize = new ResizeObserver(resizeBattlefield)
@@ -1156,8 +1160,14 @@ window.addEventListener('keydown', (event) => {
   if (preparing() && placingRoadItem && event.shiftKey && pans[event.key]) {
     event.preventDefault()
     keyboardPoint ??= {
-      x: (viewport.scrollLeft + viewport.clientWidth / 2) / mapScale,
-      y: (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
+      x:
+        viewport.dataset.fit === 'true'
+          ? fieldFor(engine.state).width / 2
+          : (viewport.scrollLeft + viewport.clientWidth / 2) / mapScaleX,
+      y:
+        viewport.dataset.fit === 'true'
+          ? fieldFor(engine.state).height / 2
+          : (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
     }
     const [dx, dy] = pans[event.key],
       field = fieldFor(engine.state)
@@ -1173,8 +1183,14 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault()
     placeRoadItem(
       keyboardPoint ?? {
-        x: (viewport.scrollLeft + viewport.clientWidth / 2) / mapScale,
-        y: (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
+        x:
+          viewport.dataset.fit === 'true'
+            ? fieldFor(engine.state).width / 2
+            : (viewport.scrollLeft + viewport.clientWidth / 2) / mapScaleX,
+        y:
+          viewport.dataset.fit === 'true'
+            ? fieldFor(engine.state).height / 2
+            : (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
       }
     )
     return
@@ -1190,8 +1206,14 @@ window.addEventListener('keydown', (event) => {
   ) {
     event.preventDefault()
     keyboardPoint ??= {
-      x: (viewport.scrollLeft + viewport.clientWidth / 2) / mapScale,
-      y: (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
+      x:
+        viewport.dataset.fit === 'true'
+          ? fieldFor(engine.state).width / 2
+          : (viewport.scrollLeft + viewport.clientWidth / 2) / mapScaleX,
+      y:
+        viewport.dataset.fit === 'true'
+          ? fieldFor(engine.state).height / 2
+          : (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
     }
     const [dx, dy] = pans[event.key],
       divisor = assaulting() ? 40 : 10
@@ -1217,8 +1239,14 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault()
     placeOrMove(
       keyboardPoint ?? {
-        x: (viewport.scrollLeft + viewport.clientWidth / 2) / mapScale,
-        y: (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
+        x:
+          viewport.dataset.fit === 'true'
+            ? fieldFor(engine.state).width / 2
+            : (viewport.scrollLeft + viewport.clientWidth / 2) / mapScaleX,
+        y:
+          viewport.dataset.fit === 'true'
+            ? fieldFor(engine.state).height / 2
+            : (viewport.scrollTop + viewport.clientHeight / 2) / mapScale
       }
     )
     return

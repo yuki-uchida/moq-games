@@ -3,10 +3,16 @@ export interface MusicPreferences {
   enabled: boolean
   volume: number
 }
+// Scale playback only: persisted volume remains the user's slider preference.
+const MUSIC_OUTPUT_GAIN = 0.8
+const DEFAULT_MUSIC_VOLUME = 0.2
+function musicOutputVolume(volume: number): number {
+  return Math.max(0, Math.min(1, volume)) * MUSIC_OUTPUT_GAIN
+}
 export const MUSIC_SELECTION_KEY = 'tower-defense-music-selection-v1'
 export const MUSIC_PREFERENCES_KEY = 'tower-defense-music-v1'
 export function loadMusicPreferences(): MusicPreferences {
-  const defaults = { enabled: true, volume: 0.2 }
+  const defaults = { enabled: true, volume: DEFAULT_MUSIC_VOLUME }
   try {
     const value = JSON.parse(globalThis.localStorage?.getItem(MUSIC_PREFERENCES_KEY) ?? 'null')
     return value &&
@@ -56,7 +62,7 @@ export class BattleMusic {
     this.normalSource = media.src
     media.preload = 'none'
     media.loop = true
-    media.volume = 0.2
+    media.volume = musicOutputVolume(DEFAULT_MUSIC_VOLUME)
   }
   get diagnostics() {
     return {
@@ -70,7 +76,7 @@ export class BattleMusic {
     }
   }
   configure(preferences: MusicPreferences): void {
-    this.media.volume = Math.max(0, Math.min(1, preferences.volume))
+    this.media.volume = musicOutputVolume(preferences.volume)
     const changed = this.enabled !== preferences.enabled
     this.enabled = preferences.enabled
     if (changed) this.reconcile()
