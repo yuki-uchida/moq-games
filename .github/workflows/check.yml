@@ -29,9 +29,11 @@ jobs:
       - run: npm run lint
       - run: npm run test:core
       - name: Test title and real-model contracts
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests/battle-music.test.ts examples/games/tower_diffence_with_jev/tests/title-screen.test.ts examples/games/tower_diffence_with_jev/tests/model-rendering.test.ts examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts examples/games/tower_diffence_with_jev/tests/compact-field.test.ts examples/games/tower_diffence_with_jev/tests/road-placement.test.ts examples/games/tower_diffence_with_jev/tests/road-geometry-cache.test.ts examples/games/tower_diffence_with_jev/tests/battlefield-presentation.test.ts tests/board-camera-depth.test.ts --maxWorkers=1
+        run: npx vitest run examples/games/tower_diffence_with_jev/tests/battle-music.test.ts examples/games/tower_diffence_with_jev/tests/title-screen.test.ts examples/games/tower_diffence_with_jev/tests/model-rendering.test.ts examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts examples/games/tower_diffence_with_jev/tests/compact-field.test.ts examples/games/tower_diffence_with_jev/tests/road-placement.test.ts examples/games/tower_diffence_with_jev/tests/road-geometry-cache.test.ts examples/games/tower_diffence_with_jev/tests/forecast-query-snapshot.test.ts examples/games/tower_diffence_with_jev/tests/battlefield-presentation.test.ts tests/board-camera-depth.test.ts --maxWorkers=1
       - run: node --test tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs
       - run: npm audit --omit=dev --audit-level=high
+      - name: Verify exact forecast equivalence
+        run: node scripts/validate-forecast-performance.mjs
       - run: npm run build
       - run: node scripts/prepare-pages.mjs
       - run: test -s dist/THIRD-PARTY-NOTICES.txt && test -s .generated/moqt-sdk/provenance.json

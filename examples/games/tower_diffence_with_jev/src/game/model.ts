@@ -1,3 +1,4 @@
+import { exactSegmentMetrics, type RoadGeometrySnapshot } from './RoadGeometryCache'
 import { observeDeploymentCombat, observeTankRoadblock } from './DeploymentCombatObservation'
 import { canInitiateDamage, observeHealing } from './HealingActions'
 import {
@@ -541,15 +542,16 @@ export interface Field {
     foliage: string
   }
 }
-export function pathLength(path: readonly Point[]): number {
-  return path.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - path[i].x, p.y - path[i].y), 0)
+export function pathLength(path: readonly Point[], snapshot?: RoadGeometrySnapshot): number {
+  return exactSegmentMetrics(path, snapshot).total
 }
-export function pointOnPath(path: readonly Point[], distance: number): Point {
+export function pointOnPath(path: readonly Point[], distance: number, snapshot?: RoadGeometrySnapshot): Point {
+  const lengths = exactSegmentMetrics(path, snapshot).lengths
   let remaining = Math.max(0, distance)
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1],
       b = path[i],
-      length = Math.hypot(b.x - a.x, b.y - a.y)
+      length = lengths[i - 1]
     if (remaining <= length)
       return { x: a.x + ((b.x - a.x) * remaining) / length, y: a.y + ((b.y - a.y) * remaining) / length }
     remaining -= length

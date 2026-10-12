@@ -1,3 +1,4 @@
+import type { ForecastQueryContext } from './ForecastQueryContext'
 import { goblinPursuitTarget } from './GoblinTarget'
 import { nextTankRoadblock } from './TankRoadblock'
 import { effectiveMovementSpeed } from './CommanderSupport'
@@ -46,13 +47,13 @@ export function enemyRecoveryUntil(state: Readonly<GameState>, enemy: Unit): num
   )
 }
 
-export function routeSandbags(state: Readonly<GameState>, enemy: Unit): Sandbag[] {
+export function routeSandbags(state: Readonly<GameState>, enemy: Unit, query?: ForecastQueryContext): Sandbag[] {
   if (enemy.owner !== 'ai' || isAirborneEnemy(enemy.type)) return []
   const field = fieldFor(state)
   return allBarriers(state)
     .flatMap((bag) => {
       if (bag.hp <= 0) return []
-      const projection = physicalProjectionOnRoute(field, enemy.routeId, bag)
+      const projection = physicalProjectionOnRoute(field, enemy.routeId, bag, query?.roads)
       if (projection.distance > ROAD_EFFECTS.sandbag.radius + 1e-9) return []
       return [{ ...bag, progress: projection.progress }]
     })
@@ -60,35 +61,41 @@ export function routeSandbags(state: Readonly<GameState>, enemy: Unit): Sandbag[
     .sort((a, b) => a.progress - b.progress || a.id - b.id)
 }
 
-function barrierStop(state: Readonly<GameState>, enemy: Unit, barrier: Sandbag): number {
+function barrierStop(state: Readonly<GameState>, enemy: Unit, barrier: Sandbag, query?: ForecastQueryContext): number {
   const path = routePathFor(state, enemy.routeId)
   let before = Math.max(enemy.progress, barrier.progress - sandbagStandOff(enemy)),
     contact = barrier.progress
-  if (attackContact({ ...enemy, ...pointOnPath(path, before) }, barrier, enemy.attackRange, 'sandbag').inRange)
+  if (
+    attackContact({ ...enemy, ...pointOnPath(path, before, query?.roads) }, barrier, enemy.attackRange, 'sandbag')
+      .inRange
+  )
     return before
   for (let sample = 0; sample < 32; sample++) {
     const middle = (before + contact) / 2
-    if (attackContact({ ...enemy, ...pointOnPath(path, middle) }, barrier, enemy.attackRange, 'sandbag').inRange)
+    if (
+      attackContact({ ...enemy, ...pointOnPath(path, middle, query?.roads) }, barrier, enemy.attackRange, 'sandbag')
+        .inRange
+    )
       contact = middle
     else before = middle
   }
   return contact
 }
 
-export function nextRoadObstruction(state: Readonly<GameState>, enemy: Unit) {
+export function nextRoadObstruction(state: Readonly<GameState>, enemy: Unit, query?: ForecastQueryContext) {
   if (enemy.owner !== 'ai' || isAirborneEnemy(enemy.type)) return undefined
   const barrier =
     state.battlefieldVersion === 2
-      ? routeSandbags(state, enemy)[0]
+      ? routeSandbags(state, enemy, query)[0]
       : allBarriers(state)
           .filter((bag) => bag.hp > 0 && bag.progress + 1e-9 >= enemy.progress)
           .sort((a, b) => a.progress - b.progress || a.id - b.id)[0]
   const barrierProgress = barrier
     ? state.battlefieldVersion === 2
-      ? barrierStop(state, enemy, barrier)
+      ? barrierStop(state, enemy, barrier, query)
       : Math.max(enemy.progress, barrier.progress - sandbagStandOff(enemy))
     : Infinity
-  const tank = nextTankRoadblock(state, enemy)
+  const tank = nextTankRoadblock(state, enemy, query)
   // Sandbags win exact ties. Otherwise only the physically nearest obstruction wins.
   if (tank && tank.stopProgress < barrierProgress - 1e-9)
     return { kind: 'tank' as const, tank: tank.tank, stopProgress: tank.stopProgress }
@@ -100,7 +107,8 @@ export function advanceEnemyTravel(
   enemy: Unit,
   dt: number,
   pauseUntil = enemyRecoveryUntil(state, enemy),
-  mudGeometry?: MudTravelGeometry
+  mudGeometry?: MudTravelGeometry,
+  query?: ForecastQueryContext
 ): EnemyTravelResult {
   const field = fieldFor(state),
     path = routePathFor(state, enemy.routeId),
@@ -122,7 +130,7 @@ export function advanceEnemyTravel(
       let returnDestination: Point | undefined
       if (!target) flight.phase = 'return'
       if (flight.phase === 'return') {
-        returnDestination = pointOnPath(path, flight.returnProgress)
+        returnDestination = pointOnPath(path, flight.returnProgress, query?.roads)
         point = moveToward(point, returnDestination, speed * dt)
       } else if (target) {
         const distance = Math.hypot(target.x - point.x, target.y - point.y),
@@ -141,55 +149,70 @@ export function advanceEnemyTravel(
         flight = undefined
       }
     } else if (
-      goblinPursuitTarget(state, enemy) &&
-      attackContact(enemy, goblinPursuitTarget(state, enemy)!, enemy.attackRange).inRange
+      goblinPursuitTarget(state, enemy, query) &&
+      attackContact(enemy, goblinPursuitTarget(state, enemy, query)!, enemy.attackRange).inRange
     ) {
       point = { x: enemy.x, y: enemy.y }
     } else {
-      const obstruction = nextRoadObstruction(state, enemy),
-        limit = Math.min(pathLength(path), obstruction?.stopProgress ?? Infinity),
+      const obstruction = nextRoadObstruction(state, enemy, query),
+        limit = Math.min(pathLength(path, query?.roads), obstruction?.stopProgress ?? Infinity),
         usesMud =
           !airborne &&
           state.economyVersion === 2 &&
           (roadItems(state).some((item) => item.kind === 'mud') || (enemy.mudSlowUntil ?? 0) > state.time - dt)
-      if (usesMud) mud = advanceMudTravel(state, enemy, dt, limit, routeSurface(field, enemy.routeId), mudGeometry)
+      if (usesMud)
+        mud = advanceMudTravel(state, enemy, dt, limit, routeSurface(field, enemy.routeId, query?.roads), mudGeometry)
       let nextProgress = Math.min(
         limit,
         mud?.progress ??
-          advanceRoadProgress(progress, speed, dt, airborne ? undefined : routeSurface(field, enemy.routeId))
+          advanceRoadProgress(
+            progress,
+            speed,
+            dt,
+            airborne ? undefined : routeSurface(field, enemy.routeId, query?.roads)
+          )
       )
-      if (attackContact({ ...enemy, ...pointOnPath(path, nextProgress) }, base, enemy.attackRange, 'base').inRange) {
-        let before = progress,
-          contact = nextProgress
-        for (let sample = 0; sample < 32; sample++) {
-          const middle = (before + contact) / 2
-          if (attackContact({ ...enemy, ...pointOnPath(path, middle) }, base, enemy.attackRange, 'base').inRange)
-            contact = middle
-          else before = middle
-        }
-        nextProgress = contact
-      }
-      const pursuit = goblinPursuitTarget(state, enemy)
       if (
-        pursuit &&
-        attackContact({ ...enemy, ...pointOnPath(path, nextProgress) }, pursuit, enemy.attackRange).inRange
+        attackContact({ ...enemy, ...pointOnPath(path, nextProgress, query?.roads) }, base, enemy.attackRange, 'base')
+          .inRange
       ) {
         let before = progress,
           contact = nextProgress
         for (let sample = 0; sample < 32; sample++) {
           const middle = (before + contact) / 2
-          if (attackContact({ ...enemy, ...pointOnPath(path, middle) }, pursuit, enemy.attackRange).inRange)
+          if (
+            attackContact({ ...enemy, ...pointOnPath(path, middle, query?.roads) }, base, enemy.attackRange, 'base')
+              .inRange
+          )
+            contact = middle
+          else before = middle
+        }
+        nextProgress = contact
+      }
+      const pursuit = goblinPursuitTarget(state, enemy, query)
+      if (
+        pursuit &&
+        attackContact({ ...enemy, ...pointOnPath(path, nextProgress, query?.roads) }, pursuit, enemy.attackRange)
+          .inRange
+      ) {
+        let before = progress,
+          contact = nextProgress
+        for (let sample = 0; sample < 32; sample++) {
+          const middle = (before + contact) / 2
+          if (
+            attackContact({ ...enemy, ...pointOnPath(path, middle, query?.roads) }, pursuit, enemy.attackRange).inRange
+          )
             contact = middle
           else before = middle
         }
         nextProgress = contact
       }
       progress = nextProgress
-      point = pointOnPath(path, progress)
+      point = pointOnPath(path, progress, query?.roads)
     }
   }
   if (!mud && !airborne && state.economyVersion === 2 && roadItems(state).some((item) => item.kind === 'mud'))
-    mud = advanceMudTravel(state, enemy, dt, progress, routeSurface(field, enemy.routeId), mudGeometry)
+    mud = advanceMudTravel(state, enemy, dt, progress, routeSurface(field, enemy.routeId, query?.roads), mudGeometry)
   const facingX = point.x - enemy.x,
     facingY = point.y - enemy.y,
     moving = Math.hypot(facingX, facingY) > 0.001

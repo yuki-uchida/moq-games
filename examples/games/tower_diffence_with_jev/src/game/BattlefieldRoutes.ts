@@ -1,6 +1,11 @@
 import { approvedMazePath } from './ApprovedMazeLayout'
 import { WINDING_BRANCHES } from './WindingLayouts'
-import { RoadGeometryCache, roadCoordinateKey } from './RoadGeometryCache'
+import {
+  RoadGeometryCache,
+  roadCoordinateKey,
+  exactSegmentMetrics,
+  type RoadGeometrySnapshot
+} from './RoadGeometryCache'
 import type { BattlefieldVersion, LayoutRevision, Field, FieldId, Point, RouteId, SlowSurface } from './model'
 
 export type { BattlefieldVersion, RouteId } from './model'
@@ -51,16 +56,17 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y)
 }
 
-function lengthOf(path: readonly Point[]): number {
-  return path.slice(1).reduce((length, point, index) => length + distance(path[index], point), 0)
+function lengthOf(path: readonly Point[], snapshot?: RoadGeometrySnapshot): number {
+  return exactSegmentMetrics(path, snapshot).total
 }
 
 function pointAt(path: readonly Point[], progress: number): Point {
+  const lengths = exactSegmentMetrics(path).lengths
   let remaining = Math.max(0, progress)
   for (let index = 1; index < path.length; index++) {
     const start = path[index - 1],
       end = path[index],
-      length = distance(start, end)
+      length = lengths[index - 1]
     if (remaining <= length) {
       const fraction = length ? remaining / length : 0
       return { x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction }
@@ -73,10 +79,12 @@ function pointAt(path: readonly Point[], progress: number): Point {
 type PathProjection = Point & { progress: number; distance: number }
 const roadProjections = new RoadGeometryCache<PathProjection>()
 
-function project(path: readonly Point[], point: Point): PathProjection {
+function project(path: readonly Point[], point: Point, snapshot?: RoadGeometrySnapshot): PathProjection {
   // Forecast subticks repeatedly query the same sandbag/defender coordinates.
   // Copy results so a caller cannot change geometry cached for a later query.
-  return { ...roadProjections.get(path, roadCoordinateKey(point.x, point.y), () => projectUncached(path, point)) }
+  return {
+    ...roadProjections.get(path, roadCoordinateKey(point.x, point.y), () => projectUncached(path, point), snapshot)
+  }
 }
 
 function projectUncached(path: readonly Point[], point: Point): PathProjection {
@@ -512,12 +520,13 @@ export function distanceToRoadUnion(field: ResolvedBattlefield, point: Point): n
 export function edgeOffsetToRouteProgress(
   field: ResolvedBattlefield,
   routeId: RouteId | undefined,
-  anchor: RoadAnchor
+  anchor: RoadAnchor,
+  snapshot?: RoadGeometrySnapshot
 ): number | null {
   let accumulated = 0
   for (const id of routeFor(field, routeId).edgeIds) {
     const edge = field.edges.find((edge) => edge.id === id)!,
-      length = lengthOf(edge.points)
+      length = lengthOf(edge.points, snapshot)
     if (id === anchor.edgeId) {
       return Number.isFinite(anchor.offset) && anchor.offset >= 0 && anchor.offset <= length
         ? accumulated + anchor.offset
@@ -569,15 +578,34 @@ export function nearestRoadEdge(field: ResolvedBattlefield, point: Point): RoadP
   return nearest!
 }
 
-export function physicalProjectionOnRoute(field: ResolvedBattlefield, routeId: RouteId | undefined, point: Point) {
-  return project(routeFor(field, routeId).path, point)
+export function physicalProjectionOnRoute(
+  field: ResolvedBattlefield,
+  routeId: RouteId | undefined,
+  point: Point,
+  snapshot?: RoadGeometrySnapshot
+) {
+  return project(routeFor(field, routeId).path, point, snapshot)
 }
 
-export function routeSurface(field: ResolvedBattlefield, routeId?: RouteId): SlowSurface {
+export function routeSurface(
+  field: ResolvedBattlefield,
+  routeId?: RouteId,
+  snapshot?: RoadGeometrySnapshot
+): SlowSurface {
   if (!field.surfaceAnchor) return field.slowSurface
   const anchor = field.surfaceAnchor,
-    startProgress = edgeOffsetToRouteProgress(field, routeId, { edgeId: anchor.edgeId, offset: anchor.startOffset }),
-    endProgress = edgeOffsetToRouteProgress(field, routeId, { edgeId: anchor.edgeId, offset: anchor.endOffset })
+    startProgress = edgeOffsetToRouteProgress(
+      field,
+      routeId,
+      { edgeId: anchor.edgeId, offset: anchor.startOffset },
+      snapshot
+    ),
+    endProgress = edgeOffsetToRouteProgress(
+      field,
+      routeId,
+      { edgeId: anchor.edgeId, offset: anchor.endOffset },
+      snapshot
+    )
   if (startProgress === null || endProgress === null) throw new Error('Slow surface is outside its road route')
   return { ...field.slowSurface, startProgress, endProgress }
 }

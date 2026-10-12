@@ -39,3 +39,27 @@ node scripts/validate-interception-performance.mjs -t 'campaign checkpoint'
 Baseline fixture hashes must remain unchanged. Update their manifest only when
 intentionally establishing a new baseline; never format or rewrite the pinned
 source files merely to satisfy formatting tools.
+
+## Additional scoped forecast optimization
+
+Run `node scripts/validate-forecast-performance.mjs` to compare the new explicit
+call-local forecast context against the SHA-256-pinned first-performance-fix
+release candidate in `forecast-baseline/`. The comparison uses separate source
+module instances, unchanged fixed simulation steps, exact full-state/forecast
+comparisons, road/unit mutation cases, paid spike/mud cohorts and save/restore.
+The first optimization's original baseline and script remain unchanged.
+
+Road contexts live only within one synchronous forecast. Every new forecast
+captures road content revisions; ordinary game queries still validate mutable
+paths. Normal forecasts may capture real-unit tank assignments because the
+prediction moves a separate clone. Paid forecasts never capture assignments:
+their cohort clones, health, arrays and obstacles mutate during substeps.
+Contexts must never cross await/callback boundaries or be stored in game state,
+checkpoint data or interception result caches. No ambient context is installed,
+so nested queries and exceptions need no global cleanup. Weak revision caches
+retain at most one current path revision, and scoped references end with the call.
+Segment totals and interpolation retain the original arithmetic operation order;
+there is no prefix-distance/binary-search numerical change.
+
+CPU timings from this harness exclude browser rendering and network/real-time
+AI. They establish CPU reduction and equivalence, not 60-FPS browser acceptance.

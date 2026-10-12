@@ -1,0 +1,12 @@
+{
+  "source": "first-performance-fix release candidate, public main 3e4c375 plus previously approved fixes",
+  "sha256": {
+    "RoadGeometryCache.ts": "f8775a12cd24ae5699ee07d676cdeecccb6bce61ed744d44b6b10c7accd256a0",
+    "model.ts": "bc202d395547a0749dd88236364ea881a3efb5f50352422627957ed50625b9cc",
+    "BattlefieldRoutes.ts": "286db35b2589ff46e4acd61cc2be71bf873dd730c12d55835dfe980a2dba66f1",
+    "TankRoadblock.ts": "5de8c8e3a59fe8cb90625d97883b3ecaa2ba522adf36cc522e4811e94c3f7190",
+    "GoblinTarget.ts": "43e76578f3cf0920e56176e955e9ac0918d365b61e4c18c752d375cecbdc3ae4",
+    "EnemyTravel.ts": "35535fdef8de0118bc8d871b9d89927ed40e40d3b10d447c24466f9f42a2f547",
+    "Interception.ts": "4729c6849482e293d3c66d9d123693d78963bcc123d64d97501a1b18c266fab6"
+  }
+}

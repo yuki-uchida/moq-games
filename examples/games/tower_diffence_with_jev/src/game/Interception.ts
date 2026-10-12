@@ -1,3 +1,5 @@
+import { RoadGeometrySnapshot } from './RoadGeometryCache'
+import type { ForecastQueryContext } from './ForecastQueryContext'
 import { goblinPursuitTarget } from './GoblinTarget'
 import { nextTankRoadblock, tankRestraints } from './TankRoadblock'
 import { canInitiateDamage } from './HealingActions'
@@ -199,9 +201,13 @@ function barrierHits(state: Readonly<GameState>, barrier: Sandbag, excludedEnemy
   return hits.sort((a, b) => a.at - b.at)
 }
 
-function forecastLegacyEnemy(state: Readonly<GameState>, enemy: Unit): EnemyForecastPoint[] {
+function forecastLegacyEnemy(
+  state: Readonly<GameState>,
+  enemy: Unit,
+  query: ForecastQueryContext
+): EnemyForecastPoint[] {
   const field = FIELDS[state.fieldId],
-    total = pathLength(field.path),
+    total = pathLength(field.path, query.roads),
     base = field.path[field.path.length - 1],
     airborne = isAirborneEnemy(enemy.type),
     profile = ATTACK_PROFILES[enemy.type],
@@ -213,13 +219,13 @@ function forecastLegacyEnemy(state: Readonly<GameState>, enemy: Unit): EnemyFore
     pauseUntil = activeRecoveryUntil(state, enemy),
     readyAt = state.time + Math.max(0, enemy.attackCooldown),
     time = state.time
-  const samples: EnemyForecastPoint[] = [{ ...pointOnPath(field.path, progress), progress, at: time }]
+  const samples: EnemyForecastPoint[] = [{ ...pointOnPath(field.path, progress, query.roads), progress, at: time }]
   for (let sample = 1; sample <= Math.round(INTERCEPTION.horizon / INTERCEPTION.sampleSeconds); sample++) {
     const until = state.time + sample * INTERCEPTION.sampleSeconds
     for (let event = 0; event < 32 && time < until - EPSILON; event++) {
       for (const bag of barriers)
         while (bag.hits.length && bag.hits[0].at <= time + EPSILON) bag.hp -= bag.hits.shift()!.power
-      const current = pointOnPath(field.path, progress)
+      const current = pointOnPath(field.path, progress, query.roads)
       if (attackContact({ ...enemy, ...current }, base, enemy.attackRange, 'base').inRange) {
         time = until
         break
@@ -248,7 +254,7 @@ function forecastLegacyEnemy(state: Readonly<GameState>, enemy: Unit): EnemyFore
       if (buff) next = Math.min(next, buff.expiresAt)
       if (pauseUntil <= time + EPSILON && !atBarrier) {
         const speed = effectiveSpeed(enemy, time) * (time + EPSILON < enemy.slowUntil ? enemy.slowFactor : 1),
-          tank = nextTankRoadblock(state, { ...enemy, ...current, progress }),
+          tank = nextTankRoadblock(state, { ...enemy, ...current, progress }, query),
           stop = Math.min(
             barrier ? Math.max(progress, barrier.progress - sandbagStandOff(enemy)) : total,
             tank?.stopProgress ?? Infinity
@@ -259,14 +265,24 @@ function forecastLegacyEnemy(state: Readonly<GameState>, enemy: Unit): EnemyFore
           advanceRoadProgress(progress, speed, next - time, airborne ? undefined : field.slowSurface)
         )
         if (
-          attackContact({ ...enemy, ...pointOnPath(field.path, nextProgress) }, base, enemy.attackRange, 'base').inRange
+          attackContact(
+            { ...enemy, ...pointOnPath(field.path, nextProgress, query.roads) },
+            base,
+            enemy.attackRange,
+            'base'
+          ).inRange
         ) {
           let before = progress,
             contact = nextProgress
           for (let iteration = 0; iteration < 24; iteration++) {
             const middle = (before + contact) / 2
             if (
-              attackContact({ ...enemy, ...pointOnPath(field.path, middle) }, base, enemy.attackRange, 'base').inRange
+              attackContact(
+                { ...enemy, ...pointOnPath(field.path, middle, query.roads) },
+                base,
+                enemy.attackRange,
+                'base'
+              ).inRange
             )
               contact = middle
             else before = middle
@@ -278,7 +294,7 @@ function forecastLegacyEnemy(state: Readonly<GameState>, enemy: Unit): EnemyFore
       time = next
     }
     time = until
-    samples.push({ ...pointOnPath(field.path, progress), progress, at: until })
+    samples.push({ ...pointOnPath(field.path, progress, query.roads), progress, at: until })
   }
   return samples
 }
@@ -293,7 +309,23 @@ interface ForecastBarrierAttack {
   released: boolean
 }
 
+/** Fresh per synchronous call; no context is retained by forecast samples. */
+function createForecastQuery(state: Readonly<GameState>, captureRestraints: boolean): ForecastQueryContext {
+  const field = fieldFor(state)
+  const roads = new RoadGeometrySnapshot([
+    field.path,
+    ...field.routes.map((route) => route.path),
+    ...field.edges.map((edge) => edge.points)
+  ])
+  return {
+    roads,
+    ...(captureRestraints ? { restraints: { units: state.units, field, assignments: tankRestraints(state) } } : {})
+  }
+}
+
 function forecastPaidEnemies(state: Readonly<GameState>): Map<number, EnemyForecastPoint[]> {
+  // Cloned units, barrier HP and mud occupants change: capture roads only.
+  const query = createForecastQuery(state, false)
   const mudGeometry: MudTravelGeometry = new Map()
   const moving = state.units
       .filter((unit) => unit.owner === 'ai' && unit.hp > 0)
@@ -343,13 +375,13 @@ function forecastPaidEnemies(state: Readonly<GameState>): Map<number, EnemyForec
         applyEnemyTravel(
           forecastState,
           unit,
-          advanceEnemyTravel(forecastState, unit, dt, clocks.get(unit.id)!.pauseUntil, mudGeometry)
+          advanceEnemyTravel(forecastState, unit, dt, clocks.get(unit.id)!.pauseUntil, mudGeometry, query)
         )
       }
       for (const unit of moving) {
         if (unit.hp <= 0 || unit.gateExit) continue
         const clock = clocks.get(unit.id)!,
-          obstruction = nextRoadObstruction(forecastState, unit),
+          obstruction = nextRoadObstruction(forecastState, unit, query),
           barrier = obstruction?.kind === 'sandbag' ? obstruction.barrier : undefined
         if (
           !barrier ||
@@ -424,7 +456,9 @@ function forecastPaidEnemies(state: Readonly<GameState>): Map<number, EnemyForec
 
 export function forecastEnemy(state: Readonly<GameState>, enemy: Unit): EnemyForecastPoint[] {
   if (roadItems(state).length) return forecastPaidEnemies(state).get(enemy.id) ?? []
-  if (state.battlefieldVersion !== 2 && !(enemy.mudSlowUntil ?? 0)) return forecastLegacyEnemy(state, enemy)
+  // Only the moving clone changes; real state.units remains read-only here.
+  const query = createForecastQuery(state, true)
+  if (state.battlefieldVersion !== 2 && !(enemy.mudSlowUntil ?? 0)) return forecastLegacyEnemy(state, enemy, query)
   const moving = { ...enemy, flight: enemy.flight ? { ...enemy.flight } : undefined },
     barriers = state.sandbags.map((bag) => ({ ...bag, hits: barrierHits(state, bag, enemy.id) })),
     fortifications = state.fortifications ? structuredClone(state.fortifications) : undefined,
@@ -447,8 +481,12 @@ export function forecastEnemy(state: Readonly<GameState>, enemy: Unit): EnemyFor
         sandbags: barriers,
         ...(fortifications ? { fortifications } : {})
       }
-      applyEnemyTravel(forecastState, moving, advanceEnemyTravel(forecastState, moving, dt, pauseUntil))
-      const obstruction = nextRoadObstruction(forecastState, moving),
+      applyEnemyTravel(
+        forecastState,
+        moving,
+        advanceEnemyTravel(forecastState, moving, dt, pauseUntil, undefined, query)
+      )
+      const obstruction = nextRoadObstruction(forecastState, moving, query),
         barrier = obstruction?.kind === 'sandbag' ? obstruction.barrier : undefined
       if (
         barrier &&

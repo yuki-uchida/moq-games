@@ -13,7 +13,9 @@ function sameCoordinate(a: number, b: number): boolean {
 }
 
 /** An exact content revision, including in-place point and array mutations. */
-export function roadPathRevision(path: readonly Point[]): object {
+export function roadPathRevision(path: readonly Point[], snapshot?: RoadGeometrySnapshot): object {
+  const captured = snapshot?.revisionFor(path)
+  if (captured) return captured
   const previous = pathRevisions.get(path)
   if (previous && previous.coordinates.length === path.length * 2) {
     let unchanged = true
@@ -50,8 +52,8 @@ export class RoadGeometryCache<T> {
     if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new RangeError('Invalid road geometry cache limit')
   }
 
-  get(path: readonly Point[], key: string, compute: () => T): T {
-    const revision = roadPathRevision(path)
+  get(path: readonly Point[], key: string, compute: () => T, snapshot?: RoadGeometrySnapshot): T {
+    const revision = roadPathRevision(path, snapshot)
     let entries = this.queries.get(revision)
     if (!entries) {
       entries = new Map<string, T>()
@@ -64,4 +66,48 @@ export class RoadGeometryCache<T> {
     entries.set(key, value)
     return value
   }
+}
+
+/**
+ * Call-local road identity capture. Only use while the captured roads remain
+ * unchanged during one synchronous forecast. Never store in game state, save,
+ * interception caches, or across await/callback boundaries. Each new forecast
+ * captures fresh content revisions, including equal-length in-place edits.
+ * There is no ambient/global scope, so exceptions and nested forecasts cannot
+ * leak an active snapshot. Uncaptured paths retain normal mutation validation.
+ */
+export class RoadGeometrySnapshot {
+  private readonly revisions: ReadonlyMap<readonly Point[], object>
+
+  constructor(paths: readonly (readonly Point[])[]) {
+    this.revisions = new Map(paths.map((path) => [path, roadPathRevision(path)]))
+  }
+
+  revisionFor(path: readonly Point[]): object | undefined {
+    return this.revisions.get(path)
+  }
+}
+
+interface SegmentMetrics {
+  readonly lengths: readonly number[]
+  readonly total: number
+}
+const segmentMetrics = new WeakMap<object, SegmentMetrics>()
+
+/** Keep the original hypot, addition, and interpolation subtraction order. */
+export function exactSegmentMetrics(path: readonly Point[], snapshot?: RoadGeometrySnapshot): SegmentMetrics {
+  const revision = roadPathRevision(path, snapshot)
+  let metrics = segmentMetrics.get(revision)
+  if (!metrics) {
+    const lengths: number[] = []
+    let total = 0
+    for (let index = 1; index < path.length; index++) {
+      const length = Math.hypot(path[index].x - path[index - 1].x, path[index].y - path[index - 1].y)
+      lengths.push(length)
+      total += length
+    }
+    metrics = { lengths, total }
+    segmentMetrics.set(revision, metrics)
+  }
+  return metrics
 }
