@@ -27,6 +27,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   const titleGpu = await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu)
   expect(titleGpu.frames).toBe(0)
   expect(titleGpu.programs).toBe(0)
+  expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelEnvironment.generations)).toBe(0)
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().frame)).toBe(0)
   await page.locator('#title-new').click()
   await page.locator('#launch-settings').click()
@@ -46,6 +47,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     diagnostic.modelRendering.units.some((unit: any) => unit.type === 'soldier' && unit.meshes > 0 && unit.visible)
   ).toBe(true)
   expect(models.length).toBeGreaterThan(0)
+  expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.25, generations: 1 })
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
   expect(diagnostic.gpu.programs).toBeGreaterThan(0)
   expect(diagnostic.modelRendering.cache.entries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
@@ -64,9 +66,35 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().simulationTime))
     .toBeGreaterThan(1)
   const after = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
+  expect(after.modelEnvironment).toEqual({ ready: true, intensity: 0.25, generations: 1 })
   expect(after.modelRendering.errors).toEqual({})
   expect(after.assetErrors).toEqual({})
   expect(bodySheets).toEqual([])
   expect(failures).toEqual([])
   await page.screenshot({ path: test.info().outputPath('normal-game-real3d.png') })
+})
+
+test('EXTRA shares the weak model IBL once across model switches and releases it on pagehide', async ({ page }) => {
+  const failures: string[] = []
+  const environmentRequests: string[] = []
+  page.on('pageerror', (error) => failures.push(error.message))
+  page.on('request', (request) => {
+    if (/\.(hdr|exr)(\?|$)|RoomEnvironment/.test(request.url())) environmentRequests.push(request.url())
+  })
+  await page.goto('/moq-games/examples/games/tower_diffence_with_jev/extra.html')
+  for (const role of ['tank', 'ogre', 'mage']) {
+    await page.locator('#viewer-role').selectOption(role)
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__extraViewerDiagnostics?.().state), { timeout: 90000 })
+      .toBe('ready')
+    expect(await page.evaluate(() => (window as any).__extraViewerDiagnostics().modelEnvironment)).toEqual({
+      ready: true,
+      intensity: 0.25,
+      generations: 1
+    })
+  }
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  expect(await page.evaluate(() => (window as any).__extraViewerDiagnostics().modelEnvironment.ready)).toBe(false)
+  expect(failures).toEqual([])
+  expect(environmentRequests).toEqual([])
 })

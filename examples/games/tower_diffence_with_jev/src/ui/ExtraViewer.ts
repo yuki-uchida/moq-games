@@ -1,3 +1,4 @@
+import { ModelEnvironmentLighting } from '../rendering/ModelEnvironmentLighting'
 import './extra-viewer.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -33,6 +34,7 @@ function mount() {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   const scene = new THREE.Scene()
+  const modelEnvironment = new ModelEnvironmentLighting(scene)
   scene.add(session.root)
   scene.add(new THREE.HemisphereLight(0xffffff, 0x52785e, 2.5))
   const key = new THREE.DirectionalLight(0xfff4db, 3)
@@ -196,6 +198,7 @@ function mount() {
     if (session.state === 'ready' && !fitted) fitCamera()
     updateUI()
     controls.update()
+    modelEnvironment.ensure(renderer)
     renderer.render(scene, camera)
     renderCount++
     frameRequest = requestAnimationFrame(frame)
@@ -211,6 +214,7 @@ function mount() {
       distance: camera.position.distanceTo(controls.target)
     },
     renderer: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles },
+    modelEnvironment: modelEnvironment.diagnostics(),
     disposed
   })
   Object.assign(window, { __extraViewerDiagnostics: diagnostics })
@@ -223,6 +227,7 @@ function mount() {
     controls.dispose()
     session.dispose()
     scene.clear()
+    modelEnvironment.dispose()
     renderer.dispose()
   }
 }

@@ -337,6 +337,11 @@ export function installOgreMaterialAdapter(root) {
   for (const [, original] of targets) {
     if (clones.has(original)) continue;
     const material = original.clone();
+    // Blender uses the authored albedo map directly for this surface. Its
+    // exported COLOR_0 is not wired into that shader; GLTFLoader otherwise
+    // multiplies it into the texture a second time, darkening/reddening the torso.
+    // Keep vertex colors on the separate, untextured rebuilt-arm skin material.
+    if (material.map) material.vertexColors = false;
     material.onBeforeCompile = shader => {
       for (const marker of ['#include <begin_vertex>']) {
         if (!shader.vertexShader.includes(marker)) throw new Error('Unsupported Three vertex shader: ' + marker);

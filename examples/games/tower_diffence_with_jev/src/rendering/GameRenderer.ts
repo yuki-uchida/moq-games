@@ -1,3 +1,4 @@
+import { ModelEnvironmentLighting } from './ModelEnvironmentLighting'
 import { createBoardCamera, configureBoardCamera } from './BoardCamera'
 import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
@@ -291,6 +292,7 @@ function redeploymentEdgeGeometry(radius: number, dotted: boolean): THREE.RingGe
   return geometry
 }
 export class GameRenderer {
+  private modelEnvironment?: ModelEnvironmentLighting
   private renderer: THREE.WebGLRenderer
   private disposed = false
   private models?: ModelUnitLayer
@@ -338,6 +340,7 @@ export class GameRenderer {
     return {
       frame: this.frameNumber,
       gpu: { ...this.drawTiming, programs: this.renderer.info.programs?.length ?? 0 },
+      modelEnvironment: this.modelEnvironment?.diagnostics(),
       modelRendering: this.models?.diagnostics() ?? null,
       artSwitch: this.artSwitchStatus,
       soldierArt: this.models ? 'gltf-mesh' : this.unitTrials.soldier ? '3d-trial' : '2d',
@@ -528,6 +531,7 @@ export class GameRenderer {
   ) {
     if (authored.models) {
       this.models = new ModelUnitLayer(this.scene, authored.models)
+      this.modelEnvironment = new ModelEnvironmentLighting(this.scene)
       this.scene.add(new THREE.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
       const light = new THREE.DirectionalLight(0xffe0ad, 3)
       light.position.set(-120, -240, 100)
@@ -735,6 +739,7 @@ export class GameRenderer {
     this.sandbagVisuals.clear()
     this.sandbagPreviewLabel.remove()
     this.renderer.domElement.remove()
+    this.modelEnvironment?.dispose()
     this.renderer.dispose()
     this.scene.clear()
     this.units.clear()
@@ -2655,6 +2660,7 @@ export class GameRenderer {
     // its shaders before the player starts; this also keeps cold startup responsive.
     if (interactive) {
       const drawStarted = performance.now()
+      this.modelEnvironment?.ensure(this.renderer)
       this.renderer.render(this.scene, this.camera)
       const elapsed = performance.now() - drawStarted
       if (!this.drawTiming.frames) this.drawTiming.firstMs = elapsed
