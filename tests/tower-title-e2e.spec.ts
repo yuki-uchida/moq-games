@@ -86,8 +86,13 @@ const diagnostics = (page: import('@playwright/test').Page) =>
 const expectModel = async (page: import('@playwright/test').Page, role: string, motion: string) => {
   await expect
     .poll(async () => {
-      const value = await diagnostics(page)
-      return [value.state, value.role, value.motion, value.actor?.renderer, value.actor?.visible]
+      // Module scripts can finish after a navigation on a busy software-WebGL runner.
+      // Poll registration and readiness together within the existing timeout.
+      const value = await page.evaluate(() => {
+        const read = (window as unknown as { __extraViewerDiagnostics?: () => any }).__extraViewerDiagnostics
+        return typeof read === 'function' ? read() : undefined
+      })
+      return [value?.state, value?.role, value?.motion, value?.actor?.renderer, value?.actor?.visible]
     })
     .toEqual(['ready', role, motion, 'gltf-mesh', true])
   const value = await diagnostics(page)
@@ -175,11 +180,14 @@ test('EXTRA orbits, zooms, resets, pauses and uses non-looping authored death', 
 })
 
 test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaking the old clock', async ({ page }) => {
+  const initializationErrors: string[] = []
+  page.on('pageerror', (error) => initializationErrors.push(error.message))
   await page.goto(towerPath)
   await page.evaluate(() => localStorage.setItem('tower-jev-v3', '{preserve-me'))
   for (let i = 0; i < 3; i++) {
     await page.locator('#title-extra').click()
     await expectModel(page, 'soldier', 'idle')
+    expect(initializationErrors).toEqual([])
     await page.locator('#viewer-role').selectOption('dragon')
     await page.locator('#viewer-role').selectOption('ranger')
     await page.locator('#viewer-role').selectOption('slime')
@@ -199,6 +207,7 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
     else await page.getByRole('link', { name: '← Title' }).click()
     await expect(page.locator('#title-screen')).toBeVisible()
     expect(await rawSave(page)).toBe('{preserve-me')
+    expect(initializationErrors).toEqual([])
   }
 })
 
