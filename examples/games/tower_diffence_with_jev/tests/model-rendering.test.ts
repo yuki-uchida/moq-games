@@ -6,6 +6,7 @@ import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
 import { ModelUnitVisual, unitModelPose, type UnitModelDefinition } from '../src/rendering/ModelUnitVisual'
 import { installOgreDQSkinningAdapter } from '../src/rendering/models/adapters/runtime/ogre-dq-skinning-adapter.js'
 import { installOgreDQSkinningAdapter as installReferenceOgreDQ } from '../src/rendering/models/adapters/source/ogre-dq-skinning-adapter.js'
+import { reuseSkinnedBoundsMatrices } from '../src/rendering/SkinnedBounds'
 import { ModelUnitLayer } from '../src/rendering/ModelUnitLayer'
 import { ATTACK_PROFILES } from '../src/game/AttackProfiles'
 import type { Unit, CombatAttack, GameState } from '../src/game/model'
@@ -581,5 +582,110 @@ describe('external dedicated special clip', () => {
     lease.release()
     cache.dispose()
     fetcher.mockRestore()
+  })
+})
+
+
+describe('first posed skinned bounds matrix reuse', () => {
+  function mesh(normalized = false) {
+    const geometry = new THREE.BufferGeometry()
+    const positions: number[] = [], indices: number[] = [], weights: number[] = []
+    for (let i = 0; i < 256; i++) {
+      positions.push(Math.sin(i) * 3, Math.cos(i * .7), (i % 13) / 7)
+      indices.push(0, 1, 2, 3)
+      weights.push(...(normalized ? [64, 64, 64, 63] : [.25, .25, .25, .25]))
+    }
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(indices, 4))
+    geometry.setAttribute('skinWeight', normalized
+      ? new THREE.Uint8BufferAttribute(weights, 4, true)
+      : new THREE.Float32BufferAttribute(weights, 4))
+    const bones = Array.from({ length: 4 }, () => new THREE.Bone())
+    const root = new THREE.Group(), value = new THREE.SkinnedMesh(geometry, new THREE.MeshBasicMaterial())
+    root.add(...bones, value)
+    root.updateMatrixWorld(true)
+    value.bind(new THREE.Skeleton(bones))
+    return { value, bones, root }
+  }
+  function reference(value: THREE.SkinnedMesh) {
+    value.boundingSphere = null
+    THREE.SkinnedMesh.prototype.computeBoundingSphere.call(value)
+    return value.boundingSphere!.clone()
+  }
+  function equal(value: THREE.SkinnedMesh, expected: THREE.Sphere) {
+    value.boundingSphere = null
+    value.computeBoundingSphere()
+    expect(value.boundingSphere!.center.toArray()).toEqual(expected.center.toArray())
+    expect(value.boundingSphere!.radius).toBe(expected.radius)
+  }
+  for (const normalized of [false, true]) {
+    for (const relative of [undefined, false, true]) {
+      it(`keeps exact spheres across changed poses/binds/inverses, normalized=${normalized}, morph=${relative}`, () => {
+        const { value, bones, root } = mesh(normalized)
+        if (relative !== undefined) {
+          value.geometry.morphAttributes.position = [new THREE.Float32BufferAttribute(
+            Array.from({length: 256 * 3}, (_, i) => Math.sin(i * .3) * .1), 3)]
+          value.geometry.morphTargetsRelative = relative
+          value.updateMorphTargets()
+          value.morphTargetInfluences![0] = .37
+        }
+        reuseSkinnedBoundsMatrices(value)
+        expect(value.boundingSphere).toBeNull()
+        for (let pose = 0; pose < 16; pose++) {
+          for (const [index, bone] of bones.entries()) {
+            bone.position.set(Math.sin(pose + index), index / 10, pose / 25)
+            bone.rotation.set(pose / 31, index / 8, pose / 23)
+          }
+          value.bindMatrix.makeTranslation(pose / 10, .2, -.3)
+          value.bindMatrixInverse.copy(value.bindMatrix).invert()
+          value.skeleton.boneInverses[1].makeRotationY(pose / 41)
+          root.updateMatrixWorld(true)
+          equal(value, reference(value))
+        }
+      })
+    }
+  }
+  it('computes each used bone product once per call, never across poses or using Float32 boneMatrices', () => {
+    const { value, bones, root } = mesh()
+    const multiply = vi.spyOn(THREE.Matrix4.prototype, 'multiplyMatrices')
+    reference(value)
+    expect(multiply).toHaveBeenCalledTimes(256 * 4)
+    multiply.mockClear()
+    reuseSkinnedBoundsMatrices(value)
+    value.computeBoundingSphere()
+    expect(multiply).toHaveBeenCalledTimes(4)
+    multiply.mockRestore()
+    bones[0].position.x = 1.0000000001
+    root.updateMatrixWorld(true)
+    equal(value, reference(value))
+    value.geometry.dispose()
+  })
+  for (const custom of ['vertex', 'transform', 'attribute', 'interleaved', 'half'] as const) {
+    it(`preserves exact native semantics for ${custom}`, () => {
+      const { value } = mesh()
+      if (custom === 'vertex') value.getVertexPosition = function (i, v) {
+        return THREE.SkinnedMesh.prototype.getVertexPosition.call(this, i, v).addScalar(.3)
+      }
+      if (custom === 'transform') value.applyBoneTransform = function(i, v) {
+        return THREE.SkinnedMesh.prototype.applyBoneTransform.call(this, i, v).addScalar(.2)
+      }
+      if (custom === 'attribute') value.geometry.attributes.position.getX = i => Math.sin(i) * 4
+      if (custom === 'interleaved') {
+        const array = value.geometry.attributes.position.array
+        value.geometry.setAttribute('position', new THREE.InterleavedBufferAttribute(
+          new THREE.InterleavedBuffer(new Float32Array(array), 3), 3, 0))
+      }
+      if (custom === 'half') value.geometry.setAttribute('position', new THREE.Float16BufferAttribute(
+        new Uint16Array(256 * 3).fill(0x3800), 3))
+      const expected = reference(value)
+      reuseSkinnedBoundsMatrices(value)
+      equal(value, expected)
+    })
+  }
+  it('does not replace a custom bounds implementation', () => {
+    const { value } = mesh()
+    const custom = value.computeBoundingSphere = vi.fn()
+    reuseSkinnedBoundsMatrices(value)
+    expect(value.computeBoundingSphere).toBe(custom)
   })
 })

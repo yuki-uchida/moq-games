@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { reuseSkinnedBoundsMatrices } from './SkinnedBounds'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { clone } from 'three/addons/utils/SkeletonUtils.js'
 
@@ -200,7 +201,10 @@ export class ModelAssetCache {
     const materials = new Set<THREE.Material>()
     const skeletons = new Set<THREE.Skeleton>()
     scene.traverse((object) => {
-      if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton)
+      if (object instanceof THREE.SkinnedMesh) {
+        skeletons.add(object.skeleton)
+        reuseSkinnedBoundsMatrices(object)
+      }
       if (!(object instanceof THREE.Mesh)) return
       object.frustumCulled = false // Imported bounds often describe only the rest pose.
       const own = (material: THREE.Material) => {
