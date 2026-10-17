@@ -53,7 +53,7 @@ describe('EXTRA shared real model playback', () => {
   })
 
   it('lists all twenty roles and only authored motions, including special actions', () => {
-    expect(viewerRoles()).toHaveLength(20)
+    expect(viewerRoles()).toHaveLength(23)
     for (const role of viewerRoles()) {
       expect(viewerRoleLabel(role)).toBeTruthy()
       expect(viewerMotions(UNIT_MODEL_CATALOG[role]!)).toContain('idle')

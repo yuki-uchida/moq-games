@@ -37,6 +37,8 @@ export const DEFAULTS = Object.freeze({
   minTriangles: 1000,
   normalWeight: 0.2
 })
+export const validModelRole = (role) => typeof role === 'string' && /^[a-z][A-Za-z0-9]*$/.test(role)
+
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const clone = (value) => JSON.parse(JSON.stringify(value))
 const align4 = (n) => (n + 3) & ~3
@@ -594,7 +596,7 @@ async function main() {
           .map((d) => d.name)
           .sort()
       : requestedRoles.split(',')
-  if (roles.some((role) => !/^[a-z]+$/.test(role))) throw Error('Invalid role')
+  if (roles.some((role) => !validModelRole(role))) throw Error('Invalid role')
   const config = {
     ...DEFAULTS,
     ...(value('--ratio') ? { ratio: Number(value('--ratio')) } : {}),

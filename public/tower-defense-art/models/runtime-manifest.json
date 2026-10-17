@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "status": "Accepted optimized runtime derivatives; source originals preserved locally",
+  "status": "Existing 30 accepted optimized derivatives; three source-identical new Blender GLBs pending runtime visual acceptance",
   "summary": {
-    "files": 30,
-    "bytes": 186209172
+    "files": 33,
+    "bytes": 221167272
   },
   "models": [
     {
@@ -178,6 +178,34 @@
       }
     },
     {
+      "role": "clockworkPatchling",
+      "file": "clockworkPatchling/clockwork-patchling-animated.glb",
+      "sourceSha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
+      "outputSha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
+      "bytes": 11753912,
+      "vertices": 53541,
+      "triangles": 74253,
+      "sourceBytes": 11753912,
+      "sourceTriangles": 74253,
+      "config": null,
+      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
+      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
+    },
+    {
+      "role": "crystalSentinel",
+      "file": "crystalSentinel/crystal-sentinel.glb",
+      "sourceSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
+      "outputSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
+      "bytes": 12337800,
+      "vertices": 63634,
+      "triangles": 74000,
+      "sourceBytes": 12337800,
+      "sourceTriangles": 74000,
+      "config": null,
+      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
+      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
+    },
+    {
       "role": "dragon",
       "file": "dragon/dragon-motion-v2-candidate.glb",
       "sourceSha256": "2c4d7b2e4d3693743a87b378c5349dd2df6f25fa268d27234d5e3541f4754d87",
@@ -252,6 +280,20 @@
         "minTriangles": 1000,
         "normalWeight": 0.2
       }
+    },
+    {
+      "role": "koboldLancer",
+      "file": "koboldLancer/amber-kobold-lancer.glb",
+      "sourceSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
+      "outputSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
+      "bytes": 10866388,
+      "vertices": 57612,
+      "triangles": 74998,
+      "sourceBytes": 10866388,
+      "sourceTriangles": 74998,
+      "config": null,
+      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
+      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
     },
     {
       "role": "mage",

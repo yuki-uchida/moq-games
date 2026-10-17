@@ -12,6 +12,33 @@ const source = (role: UnitType, file: string, clip: string, hooks: readonly Mode
 })
 
 export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefinition>>> = {
+  crystalSentinel: {
+    scale: 40, origin: [0, 0, 0], yaw: 0, walkDistance: 24,
+    provenance: 'crystal-sentinel.glb; verified cloud-rigged GLB; runtime visual review pending',
+    clips: {
+      idle: source('crystalSentinel', 'crystal-sentinel.glb', 'idle'),
+      walk: source('crystalSentinel', 'crystal-sentinel.glb', 'walk'),
+      attack: source('crystalSentinel', 'crystal-sentinel.glb', 'attack')
+    }
+  },
+  koboldLancer: {
+    scale: 32, origin: [0, 0, 0], yaw: 0, walkDistance: 32,
+    provenance: 'amber-kobold-lancer.glb; verified cloud-rigged GLB; runtime visual review pending',
+    clips: {
+      idle: source('koboldLancer', 'amber-kobold-lancer.glb', 'idle'),
+      walk: source('koboldLancer', 'amber-kobold-lancer.glb', 'walk'),
+      attack: source('koboldLancer', 'amber-kobold-lancer.glb', 'attack')
+    }
+  },
+  clockworkPatchling: {
+    scale: 29, origin: [0, 0, 0], yaw: 0, walkDistance: 22,
+    provenance: 'clockwork-patchling-animated.glb; verified cloud-rigged GLB; runtime visual review pending',
+    clips: {
+      idle: source('clockworkPatchling', 'clockwork-patchling-animated.glb', 'idle'),
+      walk: source('clockworkPatchling', 'clockwork-patchling-animated.glb', 'walk'),
+      attack: source('clockworkPatchling', 'clockwork-patchling-animated.glb', 'attack')
+    }
+  },
   tank: {
     scale: 128 / 3.12, origin: [0, 0, 0], yaw: 0,
     walkDistance: 20, provenance: 'tank-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',

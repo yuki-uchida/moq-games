@@ -446,5 +446,128 @@
       0
     ],
     "verification": "four clips source inspected; runtime visual acceptance pending"
+  },
+  {
+    "role": "crystalSentinel",
+    "file": "crystal-sentinel.glb",
+    "sha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
+    "bytes": 12337800,
+    "source": "User-provided Meshy Pro output from original user-provided concept image; cloud Blender rigging and animation derivative",
+    "basis": "+Z front; +Y up; authored height 2; source rig and clips unchanged",
+    "scaleDerivation": "40 gameplay pixels per source unit",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "clips": {
+      "attack": {
+        "start": 0,
+        "duration": 1.5,
+        "loop": false
+      },
+      "idle": {
+        "start": 0,
+        "duration": 3,
+        "loop": true
+      },
+      "walk": {
+        "start": 0,
+        "duration": 1.6,
+        "loop": true
+      }
+    },
+    "attackCueSeconds": 0.8666666667,
+    "verification": "Cloud Blender exported-GLB reimport QA passed. Runtime/game camera review remains pending.",
+    "originalSha256": "61c8f2ef907042d1d6eea4503a525cf1ef94f0a3bdb1e0cba996e721cadd64b3",
+    "conceptSha256": "acceffd4d5b8a14ddb45cd49dcdf300356a8151da50ba5245cf7ba82dd096563",
+    "rights": "Rights supplied by user; no independent license grant verified. Runtime visual acceptance pending.",
+    "portrait": {
+      "file": "crystalSentinel/portrait.png",
+      "sha256": "acceffd4d5b8a14ddb45cd49dcdf300356a8151da50ba5245cf7ba82dd096563",
+      "source": "Original user-provided concept image, source-identical UI portrait; not gameplay sprite art"
+    }
+  },
+  {
+    "role": "koboldLancer",
+    "file": "amber-kobold-lancer.glb",
+    "sha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
+    "bytes": 10866388,
+    "source": "User-provided Meshy Pro output from original user-provided concept image; cloud Blender rigging and animation derivative",
+    "basis": "+Z front; +Y up; authored height 2; source rig and clips unchanged",
+    "scaleDerivation": "32 gameplay pixels per source unit",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "clips": {
+      "idle": {
+        "start": 0,
+        "duration": 2,
+        "loop": true
+      },
+      "walk": {
+        "start": 0,
+        "duration": 1,
+        "loop": true
+      },
+      "attack": {
+        "start": 0,
+        "duration": 1.2,
+        "loop": false
+      }
+    },
+    "attackCueSeconds": 0.6333333333333333,
+    "verification": "Cloud Blender exported-GLB reimport QA passed. Runtime/game camera review remains pending.",
+    "originalSha256": "04989215c6cf29e2050dd424bf0ce385067e7fa9cdf41365295ebfcf88308450",
+    "conceptSha256": "9747772d34ac998f4f17e74aae37658dd027aff30bdd885e1ff358530a6dd363",
+    "rights": "Rights supplied by user; no independent license grant verified. Runtime visual acceptance pending.",
+    "portrait": {
+      "file": "koboldLancer/portrait.png",
+      "sha256": "9747772d34ac998f4f17e74aae37658dd027aff30bdd885e1ff358530a6dd363",
+      "source": "Original user-provided concept image, source-identical UI portrait; not gameplay sprite art"
+    }
+  },
+  {
+    "role": "clockworkPatchling",
+    "file": "clockwork-patchling-animated.glb",
+    "sha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
+    "bytes": 11753912,
+    "source": "User-provided Meshy Pro output from original user-provided concept image; cloud Blender rigging and animation derivative",
+    "basis": "+Z front; +Y up; authored height 2; source rig and clips unchanged",
+    "scaleDerivation": "29 gameplay pixels per source unit",
+    "groundAnchor": [
+      0,
+      0,
+      0
+    ],
+    "clips": {
+      "idle": {
+        "start": 0,
+        "duration": 2,
+        "loop": true
+      },
+      "walk": {
+        "start": 0,
+        "duration": 1,
+        "loop": true
+      },
+      "attack": {
+        "start": 0,
+        "duration": 1.2,
+        "loop": false
+      }
+    },
+    "attackCueSeconds": 0.8,
+    "verification": "Cloud Blender exported-GLB reimport QA passed. Runtime/game camera review remains pending.",
+    "originalSha256": "ff9dc0455670048ce7c28a03fb853bc21f148f27b2cec49324a91b837e18af1b",
+    "conceptSha256": "45395b573358436ab8ddcaa28828b73c81065b0985d53d56b0db6b888781245d",
+    "rights": "Rights supplied by user; no independent license grant verified. Runtime visual acceptance pending.",
+    "portrait": {
+      "file": "clockworkPatchling/portrait.png",
+      "sha256": "45395b573358436ab8ddcaa28828b73c81065b0985d53d56b0db6b888781245d",
+      "source": "Original user-provided concept image, source-identical UI portrait; not gameplay sprite art"
+    }
   }
 ]

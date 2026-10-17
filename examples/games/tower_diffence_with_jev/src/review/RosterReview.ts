@@ -1,9 +1,15 @@
 import { unitTrialsFromURL } from '../rendering/UnitArtTrial'
 import type { Mesh, MeshBasicMaterial, Scene } from 'three'
 import { GameEngine } from '../game/GameEngine'
-import { DEFINITIONS, type UnitType } from '../game/model'
+import { DEFINITIONS } from '../game/model'
 import { GameRenderer } from '../rendering/GameRenderer'
-import { AUTHORED_ROSTER, DIRECTIONS, MOTIONS, authoredRosterClips } from '../rendering/AuthoredRoster'
+import {
+  AUTHORED_ROSTER,
+  DIRECTIONS,
+  MOTIONS,
+  authoredRosterClips,
+  type AuthoredSpriteRole
+} from '../rendering/AuthoredRoster'
 import type { SpriteDirection } from '../rendering/UnitSprites'
 
 const base = new URL('../../../tower-defense-art/', document.baseURI)
@@ -20,7 +26,7 @@ async function prepare(direction: SpriteDirection, motion: (typeof MOTIONS)[numb
   engine.place('soldier', 0)
   const template = engine.state.units[0]
   const angle = ((DIRECTIONS.indexOf(direction) - 2) * Math.PI) / 4
-  engine.state.units = (Object.keys(AUTHORED_ROSTER) as UnitType[]).map((type, index) => ({
+  engine.state.units = (Object.keys(AUTHORED_ROSTER) as AuthoredSpriteRole[]).map((type, index) => ({
     ...template,
     ...DEFINITIONS[type],
     id: index + 1,

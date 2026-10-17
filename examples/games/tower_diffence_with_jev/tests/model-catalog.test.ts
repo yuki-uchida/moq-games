@@ -23,8 +23,8 @@ const fixtures = Object.entries(UNIT_MODEL_CATALOG).filter(([role]) => selectedR
 const assetPath = (url: string) => resolve(assetRoot, url.split(/models(?:-optimized)?\//)[1])
 const hasModels = existsSync(resolve(assetRoot, 'tank/tank-idle-candidate.glb'))
 
-it('keeps all twenty animated models and special motions explicit', () => {
-  expect(Object.keys(UNIT_MODEL_CATALOG)).toHaveLength(20)
+it('keeps all twenty-three animated models and special motions explicit', () => {
+  expect(Object.keys(UNIT_MODEL_CATALOG)).toHaveLength(23)
   expect(UNIT_MODEL_CATALOG.runner?.clips.attack?.clip).toBe('attack')
   expect(UNIT_MODEL_CATALOG.runner?.attackTimeScale).toBeCloseTo(640 / 480)
   expect(UNIT_MODEL_CATALOG.healer?.clips.heal?.clip).toBe('heal')

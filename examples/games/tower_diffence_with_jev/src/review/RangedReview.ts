@@ -7,7 +7,7 @@ import type { CombatSoundEvent } from '../game/CombatSoundEvents'
 import { CONFIG, type UnitType } from '../game/model'
 import { ATTACK_PROFILES } from '../game/AttackProfiles'
 import { GameRenderer, spriteDirection } from '../rendering/GameRenderer'
-import { AUTHORED_ROSTER, DIRECTIONS, authoredRosterClips } from '../rendering/AuthoredRoster'
+import { authoredRole, DIRECTIONS, authoredRosterClips } from '../rendering/AuthoredRoster'
 import { authoredEffectClips } from '../rendering/AuthoredEffects'
 import { RuntimeAtlasCache } from '../rendering/RuntimeAtlasCache'
 import {
@@ -71,7 +71,9 @@ async function prepare(
   capturedSounds = []
   host.replaceChildren()
   const loaded = new Map<string, WholeFrameAtlas>()
-  const owner = AUTHORED_ROSTER[role].owner
+  const spriteRole = authoredRole(role)
+  if (!spriteRole) throw new Error('Review role has no authored sprite')
+  const owner = spriteRole.owner
   const frameKey = `${owner}:${role}:attack:${direction}`
   const effectKey = `${role}:${role === 'healer' ? 'heal' : 'projectile'}`
   const { engine, actor, target, attack } = createRangedReviewScene(role, direction, options)

@@ -1,6 +1,7 @@
 import { goblinPursuitTarget } from './GoblinTarget'
 import { tankAvailableToEnemy } from './TankRoadblock'
 import { attackDamageType, incomingDamage } from './DamageRules'
+import { regenerationAmount } from './Regeneration'
 import { healingAction, committedHealAmount, canInitiateDamage } from './HealingActions'
 import {
   COMMANDER_SUPPORT,
@@ -948,6 +949,7 @@ export class GameEngine {
       attackSequence: 0,
       attackStartedAt: 0,
       hitAnimation: 0,
+      ...(type === 'clockworkPatchling' ? { lastDamagedAt: this.state.time } : {}),
       attackTargetX: p.x,
       attackTargetY: p.y,
       moving: false,
@@ -2362,8 +2364,10 @@ export class GameEngine {
           if (outcome) outcome.defenderDamage += (effectiveDamage * contribution.amount) / amount
         }
       }
-      const nextHp = Math.max(0, Math.min(u.maxHp, u.hp + (healing.get(u.id) ?? 0) - amount))
-      let appliedHealing = nextHp - Math.max(0, Math.min(u.maxHp, u.hp - amount))
+      if (amount > 0 && u.type === 'clockworkPatchling') u.lastDamagedAt = s.time
+      const afterDamage = Math.max(0, Math.min(u.maxHp, u.hp + (healing.get(u.id) ?? 0) - amount))
+      const nextHp = Math.min(u.maxHp, afterDamage + (afterDamage > 0 ? regenerationAmount(u, s.time, dt) : 0))
+      let appliedHealing = afterDamage - Math.max(0, Math.min(u.maxHp, u.hp - amount))
       for (const attack of healingCues) {
         if (attack.healing?.targetId !== u.id) continue
         const contribution = Math.min(appliedHealing, committedHealAmount(attack))

@@ -14,8 +14,14 @@ ENEMY_COMBAT = {
     'wolf': (0, .750, 'contact'), 'beetle': (.3, .960, 'contact'),
     'shaman': (0, .960, 'projectile'), 'brute': (0, 1.200, 'area-contact'),
     'bat': (0, .600, 'contact'), 'wraith': (.15, .960, 'projectile'),
+    'crystalSentinel': (0, 1.500, 'contact'),
+    'koboldLancer': (0, 1.200, 'contact'),
+    'clockworkPatchling': (0, 1.200, 'contact'),
     'ogre': (0, 1.200, 'area-contact'), 'dragon': (0, 1.000, 'projectile-and-breath'),
 }
+# Authored contact cues; runtime applies its enemy action time scale separately.
+ENEMY_CONTACT_CUES = {'crystalSentinel': .8666666667, 'koboldLancer': .6333333333,
+                      'clockworkPatchling': .8}
 AIRBORNE = frozenset(('bat', 'wraith', 'dragon'))
 
 

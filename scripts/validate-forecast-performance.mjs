@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { alignForecastReferenceCatalog } from './forecast-reference-catalog.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const work = resolve(root, '.build/forecast-validation')
@@ -17,6 +18,14 @@ for (const [name, sha256] of Object.entries(manifest.sha256)) {
     throw new Error(`Baseline fixture changed: ${name}`)
   writeFileSync(resolve(work, 'baseline/src/game', name), contents)
 }
+const referenceModel = resolve(work, 'baseline/src/game/model.ts')
+writeFileSync(
+  referenceModel,
+  alignForecastReferenceCatalog(
+    readFileSync(referenceModel, 'utf8'),
+    readFileSync(resolve(root, 'examples/games/tower_diffence_with_jev/src/game/model.ts'), 'utf8')
+  )
+)
 cpSync(resolve(root, 'tests/performance/forecast-equivalence.template.ts'), resolve(work, 'equivalence.test.ts'))
 writeFileSync(
   resolve(work, 'vitest.config.mts'),

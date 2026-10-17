@@ -224,13 +224,13 @@ describe('road movement and combat', () => {
   })
 })
 describe('enemy director rules', () => {
-  it('gradually unlocks ten enemies and reserves bosses for occasional final deployments', () => {
+  it('gradually unlocks thirteen enemies and reserves bosses for occasional final deployments', () => {
     // Arrange
     const { engine } = campaign(3)
     engine.startAssault()
     // Act / Assert
     expect(stageRules(1).enemyTypes).toEqual(['slime', 'goblin', 'shaman'])
-    expect(stageRules(10).enemyTypes).toHaveLength(10)
+    expect(stageRules(10).enemyTypes).toHaveLength(13)
     expect(engine.applyAIAction({ type: 'spawn', unitType: 'dragon' })).toBe(false)
     expect(engine.applyAIAction({ type: 'spawn', unitType: 'ogre', boss: true })).toBe(false)
     engine.state.enemiesSpawned = stageRules(3).enemyCount - 1
@@ -458,13 +458,13 @@ describe('fields and progression', () => {
     for (const slot of field.slots) expect(distanceToPath(field.path, slot)).toBeGreaterThanOrEqual(52)
     expect(new Set(field.slots.map((s) => s.id)).size).toBe(field.slots.length)
   })
-  it('has ten distinct roles per side and separates stage unlocks from earned purchases', () => {
+  it('has ten ally and thirteen enemy roles and separates stage unlocks from earned purchases', () => {
     // Arrange
     const save = freshSave()
     // Act / Assert
     expect(ALLY_TYPES).toHaveLength(10)
-    expect(ENEMY_TYPES).toHaveLength(10)
-    expect(new Set(Object.values(DEFINITIONS).map((v) => v.name)).size).toBe(20)
+    expect(ENEMY_TYPES).toHaveLength(13)
+    expect(new Set(Object.values(DEFINITIONS).map((v) => v.name)).size).toBe(23)
     expect(availableAllies(save, 2)).toContain('runner')
     expect(availableAllies(save, 10)).not.toContain('mage')
     expect(purchase(save, 'mage')).toBe(false)

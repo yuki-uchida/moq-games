@@ -159,8 +159,19 @@ test('EXTRA exposes every runtime role/action and never requests sheets, audio o
   const roles = await page
     .locator('#viewer-role option')
     .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
-  expect(roles).toHaveLength(20)
-  expect(roles).toEqual(expect.arrayContaining(['soldier', 'slime', 'dragon', 'runner', 'healer']))
+  expect(roles).toHaveLength(23)
+  expect(roles).toEqual(
+    expect.arrayContaining([
+      'soldier',
+      'slime',
+      'dragon',
+      'runner',
+      'healer',
+      'crystalSentinel',
+      'koboldLancer',
+      'clockworkPatchling'
+    ])
+  )
   for (const role of roles) {
     await page.locator('#viewer-role').selectOption(role)
     const actions = await page

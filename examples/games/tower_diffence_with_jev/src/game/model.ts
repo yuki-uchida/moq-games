@@ -36,11 +36,25 @@ export const ENEMY_TYPES = [
   'bat',
   'wraith',
   'ogre',
-  'dragon'
+  'dragon',
+  'crystalSentinel',
+  'koboldLancer',
+  'clockworkPatchling'
 ] as const
 export type AllyType = (typeof ALLY_TYPES)[number]
 export type EnemyType = (typeof ENEMY_TYPES)[number]
-export const ENEMY_MELEE_TYPES: readonly EnemyType[] = ['slime', 'goblin', 'wolf', 'beetle', 'brute', 'bat', 'ogre']
+export const ENEMY_MELEE_TYPES: readonly EnemyType[] = [
+  'slime',
+  'goblin',
+  'wolf',
+  'beetle',
+  'brute',
+  'bat',
+  'ogre',
+  'crystalSentinel',
+  'koboldLancer',
+  'clockworkPatchling'
+]
 export function isEnemyMelee(type: UnitType): boolean {
   return ENEMY_MELEE_TYPES.includes(type as EnemyType)
 }
@@ -433,6 +447,27 @@ function definition(
   }
 }
 export const DEFINITIONS: Record<UnitType, UnitDefinition> = {
+  crystalSentinel: definition('水晶の番兵', '魔法30%減・物理20%増の近接構造体', 170, 10, 56, 48, 0.7, '#9c8cc7', {
+    cost: 3,
+    cooldown: 6,
+    unlockStage: 4
+  }),
+  koboldLancer: definition('琥珀の槍コボルト', '長い槍で正面の敵を迎撃', 112, 11, 84, 80, 0.8, '#d79c47', {
+    cost: 2,
+    cooldown: 4,
+    unlockStage: 2
+  }),
+  clockworkPatchling: definition(
+    '時計仕掛けのパッチリング',
+    '被弾から2秒後に毎秒4HPを自己回復',
+    155,
+    7,
+    62,
+    44,
+    0.7,
+    '#b38455',
+    { cost: 3, cooldown: 5, unlockStage: 4 }
+  ),
   soldier: definition('小さな剣士', '近距離の連撃', 210, 34, 0, 66, 1.4, '#75b6d5', { leash: 96 }),
   archer: definition('森の射手', '長射程の単体攻撃', 130, 25, 0, 205, 1.1, '#8fb85b'),
   runner: definition('槍の斥候', '素早い槍の迎撃', 165, 25, 0, 78, 1.8, '#f0be72', {
@@ -889,6 +924,8 @@ export interface Unit {
   attackSequence: number
   attackStartedAt: number
   hitAnimation: number
+  /** Simulation timestamp, present only on self-regenerating patchlings. */
+  lastDamagedAt?: number
   attackTargetX: number
   attackTargetY: number
   moving: boolean

@@ -82,19 +82,12 @@ test('EXTRA shares the weak model IBL once across model switches and releases it
     if (/\.(hdr|exr)(\?|$)/.test(request.url())) environmentRequests.push(request.url())
   })
   await page.goto('/moq-games/examples/games/tower_diffence_with_jev/extra.html')
-  for (const role of [
-    'soldier',
-    'archer',
-    'runner',
-    'tank',
-    'mage',
-    'healer',
-    'frost',
-    'ranger',
-    'cannon',
-    'paladin',
-    'ogre'
-  ]) {
+  const roles = await page
+    .locator('#viewer-role option')
+    .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
+  expect(roles).toHaveLength(23)
+  expect(roles).toEqual(expect.arrayContaining(['crystalSentinel', 'koboldLancer', 'clockworkPatchling']))
+  for (const role of roles) {
     await page.locator('#viewer-role').selectOption(role)
     await expect
       .poll(() => page.evaluate(() => (window as any).__extraViewerDiagnostics?.().state), { timeout: 90000 })
@@ -104,9 +97,84 @@ test('EXTRA shares the weak model IBL once across model switches and releases it
       intensity: 0.25,
       generations: 1
     })
+    const motions = await page
+      .locator('#viewer-motion option')
+      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
+    expect(motions).toEqual(expect.arrayContaining(['idle', 'walk', role === 'healer' ? 'heal' : 'attack']))
+    for (const motion of motions) {
+      await page.locator('#viewer-motion').selectOption(motion)
+      await expect.poll(() => page.evaluate(() => (window as any).__extraViewerDiagnostics().state)).toBe('ready')
+      await page.locator('#viewer-timeline').evaluate((element) => {
+        const input = element as HTMLInputElement
+        input.value = String(Number(input.max) / 2)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      const diagnostic = await page.evaluate(() => (window as any).__extraViewerDiagnostics())
+      expect(diagnostic.role).toBe(role)
+      expect(diagnostic.motion).toBe(motion)
+      expect(diagnostic.actor.meshes).toBeGreaterThan(0)
+      expect(diagnostic.actor.triangles).toBeGreaterThan(100)
+      await page.locator('#viewer-canvas').focus()
+      await page.keyboard.press('ArrowRight')
+    }
   }
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
   expect(await page.evaluate(() => (window as any).__extraViewerDiagnostics().modelEnvironment.ready)).toBe(false)
   expect(failures).toEqual([])
   expect(environmentRequests).toEqual([])
 })
+
+for (const role of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'] as const) {
+  test(`normal game restores and renders a saved ${role} encounter`, async ({ page }) => {
+    const { GameEngine } = await import('../examples/games/tower_diffence_with_jev/src/game/GameEngine')
+    const { freshSave } = await import('../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem')
+    const { stageRules } = await import('../examples/games/tower_diffence_with_jev/src/game/model')
+    const { saveCampaignCheckpoint } = await import(
+      '../examples/games/tower_diffence_with_jev/src/progression/CampaignStorage'
+    )
+    const { validateCampaignCheckpoint } = await import(
+      '../examples/games/tower_diffence_with_jev/src/game/CampaignCheckpoint'
+    )
+    const save = freshSave()
+    save.highestStage = 3
+    const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
+    engine.state.stage = engine.state.stageSummary.stage = 4
+    engine.state.previousStageSummary = {
+      ...engine.state.stageSummary,
+      stage: 3,
+      spawned: stageRules(3).enemyCount,
+      resolved: stageRules(3).enemyCount
+    }
+    ;(engine as any).history.reset(engine.state)
+    expect(engine.place('soldier', getField('meadow', 2, 4).slots.at(-1)!)).toBe(true)
+    expect(engine.startAssault()).toBe(true)
+    expect(engine.applyAIAction({ type: 'spawn', unitType: role, routeId: 'left' })).toBe(true)
+    let stored = ''
+    expect(
+      saveCampaignCheckpoint(save, engine.exportCheckpoint(), validateCampaignCheckpoint, {
+        setItem: (_key, value) => {
+          stored = value
+        }
+      })
+    ).toBe(true)
+    const failures: string[] = []
+    page.on('pageerror', (error) => failures.push(error.message))
+    await page.goto(towerPath)
+    await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), stored)
+    await page.reload()
+    await expect(page.locator('#title-continue')).toBeEnabled()
+    await page.locator('#title-continue').click()
+    await expect
+      .poll(
+        () =>
+          page.evaluate((type) => {
+            const units = (window as any).towerDefenseDiagnostics().modelRendering.units
+            return units.some((unit: any) => unit.type === type && unit.visible && unit.meshes > 0)
+          }, role),
+        { timeout: 90000 }
+      )
+      .toBe(true)
+    await page.screenshot({ path: test.info().outputPath(`${role}-normal-game.png`) })
+    expect(failures).toEqual([])
+  })
+}

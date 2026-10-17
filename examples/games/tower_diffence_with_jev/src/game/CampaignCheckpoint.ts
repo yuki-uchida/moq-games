@@ -60,6 +60,7 @@ import { HEALING_ACTIONS, HEALER_WEAPON_HEAL_AMOUNT, healingAction } from './Hea
 import { FORTIFICATIONS, freshFortifications, gateMuzzle, previewRoadItemPlacement } from './Fortifications'
 import { DEPLOYMENT_COST, REDEPLOY_RADIUS, STARTING_GOLD } from './DefenderRoster'
 import {
+  HISTORICAL_ENEMY_TYPES,
   LEGACY_PLAN_LIFETIME,
   LEGACY_CHECKPOINT_HEAL_AMOUNT,
   LEGACY_STARTING_GOLD,
@@ -114,7 +115,7 @@ import {
   type Decoder
 } from './CheckpointCodec'
 
-export const CAMPAIGN_CHECKPOINT_VERSION = 16
+export const CAMPAIGN_CHECKPOINT_VERSION = 17
 export const CHECKPOINT_LIMITS = {
   simulationSeconds: 24 * 60 * 60,
   maximumId: 0xffffffff,
@@ -210,7 +211,7 @@ export type CampaignStateCheckpoint = Pick<
 > & { corpses: CheckpointCorpse[] }
 
 export interface CampaignCheckpoint {
-  version: 16
+  version: 17
   profile: ProfileData
   progress: RunProgressData
   rewardedThroughStage: number
@@ -275,6 +276,9 @@ interface VersionFourteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 've
 interface VersionFifteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
   version: 15
 }
+interface VersionSixteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
+  version: 16
+}
 type DecodedCheckpoint =
   | LegacyCampaignCheckpoint
   | VersionTwoCampaignCheckpoint
@@ -291,6 +295,7 @@ type DecodedCheckpoint =
   | VersionThirteenCampaignCheckpoint
   | VersionFourteenCampaignCheckpoint
   | VersionFifteenCampaignCheckpoint
+  | VersionSixteenCampaignCheckpoint
   | CampaignCheckpoint
 type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
@@ -344,8 +349,6 @@ const epsilon = 1e-6,
   stage = number(1, CONFIG.stages, true),
   count = number(0, maximumEnemies, true),
   fieldId = choice(Object.keys(FIELDS) as FieldId[]),
-  unitType = choice([...ALLY_TYPES, ...ENEMY_TYPES]),
-  enemyType = choice(ENEMY_TYPES),
   owner = choice(['player', 'ai']),
   vector = object<Point>({
     x: number(-maximumSpeed * 2, maximumSpeed * 2),
@@ -378,7 +381,13 @@ function checkpointBounds(version: CheckpointVersion) {
 function checkpointRules(checkpoint: DecodedCheckpoint) {
   return checkpoint.version === 1
     ? legacyCheckpointRules(checkpoint.state.stage)
-    : stageRules(checkpoint.state.stage, checkpoint.state.waveBossPolicy)
+    : {
+        ...stageRules(checkpoint.state.stage, checkpoint.state.waveBossPolicy),
+        enemyTypes: stageRules(checkpoint.state.stage, checkpoint.state.waveBossPolicy).enemyTypes.filter(
+          (type) =>
+            checkpoint.version >= 17 || HISTORICAL_ENEMY_TYPES.includes(type as (typeof HISTORICAL_ENEMY_TYPES)[number])
+        )
+      }
 }
 function checkpointStats(
   checkpoint: DecodedCheckpoint,
@@ -453,6 +462,9 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   const { coordinateBound, maximumPath, routeWaypoints } = checkpointGeometryBounds(version),
     coordinate = number(-coordinateBound, coordinateBound * 2),
     point = object<Point>({ x: coordinate, y: coordinate })
+  const enemyCatalog: readonly EnemyType[] = version >= 17 ? ENEMY_TYPES : HISTORICAL_ENEMY_TYPES
+  const enemyType = choice(enemyCatalog),
+    unitType = choice([...ALLY_TYPES, ...enemyCatalog])
   const bounds = checkpointBounds(version),
     maximumCooldown = bounds.cooldown,
     maximumPower = bounds.power,
@@ -513,6 +525,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     retryAt: deadline
   })
   const decodeUnit = object<Unit>({
+    lastDamagedAt: version >= 17 ? optional(time) : absent,
     supportBuff: version >= 7 ? optional(decodeSupportBuff) : absent,
     equipment: version >= 6 ? optional(choice(['weapon', 'armor'])) : absent,
     mudSlowUntil: version >= 6 ? optional(deadline) : absent,
@@ -692,8 +705,9 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   })
   const decodeCooldowns: Decoder<GameState['cooldowns']> = (value) => {
     const input = record(value)
+    for (const type of ENEMY_TYPES) if (!enemyCatalog.includes(type)) requireCheckpoint(input[type] === undefined)
     return Object.fromEntries(
-      ENEMY_TYPES.map((type) => [type, number(0, maximumCooldown)(input[type])])
+      enemyCatalog.map((type) => [type, number(0, maximumCooldown)(input[type])])
     ) as GameState['cooldowns']
   }
   const roadAnchorSchema = {
@@ -883,7 +897,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     y: coordinate,
     amount: optional(damage),
     sourceId: optional(version >= 6 ? sequence : id),
-    sourceType: optional(version >= 6 ? choice([...ALLY_TYPES, ...ENEMY_TYPES, 'gate', 'spike']) : unitType),
+    sourceType: optional(version >= 6 ? choice([...ALLY_TYPES, ...enemyCatalog, 'gate', 'spike']) : unitType),
     victimIds: optional(array(id, CHECKPOINT_LIMITS.historyVictims))
   })
   const legacyDefault =
@@ -892,7 +906,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       requireCheckpoint(value === undefined)
       return structuredClone(fallback)
     }
-  const historySourceType = choice([...ALLY_TYPES, ...ENEMY_TYPES, 'gate', 'spike'] as const)
+  const historySourceType = choice([...ALLY_TYPES, ...enemyCatalog, 'gate', 'spike'] as const)
   const decodeHistorySource = object<HistorySource>({
     sourceId: sequence,
     sourceType: historySourceType,
@@ -944,7 +958,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     tick: version >= 13 ? nullable(number(0, BREATH_TIMING.tickCount - 1, true)) : legacyDefault(null),
     legacyUnknown: version >= 13 ? boolean : legacyDefault(true),
     sourceId: version >= 6 ? sequence : id,
-    sourceType: version >= 6 ? choice([...ALLY_TYPES, ...ENEMY_TYPES, 'gate', 'spike']) : unitType,
+    sourceType: version >= 6 ? choice([...ALLY_TYPES, ...enemyCatalog, 'gate', 'spike']) : unitType,
     damage,
     onDefeatStep: boolean,
     area: boolean
@@ -1092,7 +1106,13 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       version: choice([15]),
       state: decodeCurrentState
     })
-  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([16]), state: decodeCurrentState })
+  if (version === 16)
+    return object<VersionSixteenCampaignCheckpoint>({
+      ...checkpointSchema,
+      version: choice([16]),
+      state: decodeCurrentState
+    })
+  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([17]), state: decodeCurrentState })
 }
 const checkpointDecoders = {
   1: createCheckpointDecoder(1),
@@ -1110,11 +1130,12 @@ const checkpointDecoders = {
   13: createCheckpointDecoder(13),
   14: createCheckpointDecoder(14),
   15: createCheckpointDecoder(15),
-  16: createCheckpointDecoder(16)
+  16: createCheckpointDecoder(16),
+  17: createCheckpointDecoder(17)
 }
 function decodeCheckpoint(value: unknown): DecodedCheckpoint {
   const input = record(value),
-    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])(input.version),
+    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
   const revision =
@@ -1213,11 +1234,12 @@ export function validateCampaignCheckpoint(
     migrateHealthBalance(normalized)
     removePaladinHealing(normalized)
     const migrated = normalized.version === 2 ? migrateGenericWaitCheckpoint(normalized) : normalized,
-      current = checkpointDecoders[16]({
+      current = checkpointDecoders[17]({
         ...migrated,
-        version: 16,
+        version: 17,
         state: {
           ...migrated.state,
+          cooldowns: Object.fromEntries(ENEMY_TYPES.map((type) => [type, migrated.state.cooldowns[type] ?? 0])),
           battlefieldVersion: battlefieldVersion(migrated),
           layoutRevision: layoutRevision(migrated),
           units: migrated.state.units.map((unit) =>
@@ -1230,7 +1252,7 @@ export function validateCampaignCheckpoint(
             : {})
         }
       })
-    requireCheckpoint(current.version === 16)
+    requireCheckpoint(current.version === 17)
     validateCheckpointSemantics(current, progress, current.profile)
     return current
   } catch {
@@ -1597,7 +1619,7 @@ function migrateLegacyCheckpoint(checkpoint: LegacyCampaignCheckpoint): VersionT
     attack.range = stats.range
   }
   if (s.stage === 1) {
-    for (const type of ENEMY_TYPES) {
+    for (const type of HISTORICAL_ENEMY_TYPES) {
       const pending = s.pendingSpawns.find((member) => member.unitType === type)
       s.cooldowns[type] = pending
         ? pending.spawnAt - s.time + deploymentCooldown(type, s.stage)
@@ -1721,6 +1743,7 @@ function normalizeSandbagHealth(
     | VersionThirteenCampaignCheckpoint
     | VersionFourteenCampaignCheckpoint
     | VersionFifteenCampaignCheckpoint
+    | VersionSixteenCampaignCheckpoint
     | CampaignCheckpoint
 ): void {
   const bags = checkpoint.state.sandbags.filter((bag) => bag.maxHp !== ROAD_EFFECTS.sandbag.hp)
@@ -2057,6 +2080,14 @@ function validateUnits(checkpoint: DecodedCheckpoint): void {
   const placementState = { ...checkpointValidationState(checkpoint), phase: 'preparation' as const }
   for (const unit of [...s.units, ...reserves]) {
     const reserved = reserves.includes(unit)
+    if (unit.lastDamagedAt !== undefined)
+      requireCheckpoint(
+        checkpoint.version >= 17 &&
+          unit.owner === 'ai' &&
+          unit.type === 'clockworkPatchling' &&
+          unit.lastDamagedAt <= s.time
+      )
+    if (unit.type === 'clockworkPatchling') requireCheckpoint(unit.lastDamagedAt !== undefined)
     requireCheckpoint(
       unit.equipment === undefined || (checkpoint.version >= 6 && paidRoster && unit.owner === 'player')
     )

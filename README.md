@@ -110,7 +110,7 @@ The browser owns rendering and simulation; the optional Python bot owns external
 <details>
 <summary>Artwork, optional local packs and real-3D development</summary>
 
-The public checkout includes the original 2D runtime art and supports local Rule AI play. Redistribution evidence is confirmed for all 20 real-3D unit roles, including Soldier. The accepted optimized 20-role runtime uses real meshes by default; see the verification commands below. The approved 22 Stable Audio-generated WAV sound effects and three owner-approved Suno battle recordings are included separately. Missing optional packs must not be treated as successfully loaded assets.
+The public checkout includes the original 2D runtime art and supports local Rule AI play. The original 20 real-3D roles retain their recorded redistribution evidence. Three owner-supplied enemy derivatives extend the runtime to 23 roles, using real meshes by default; see the verification commands below. The approved 22 Stable Audio-generated WAV sound effects and three owner-approved Suno battle recordings are included separately. Missing optional packs must not be treated as successfully loaded assets.
 
 The migration workstation preserves the complete pack, original sources and unadopted candidates outside the public Git selection. To import an authorized unpacked pack:
 
@@ -122,7 +122,7 @@ No placeholder characters replace accepted art. See [asset scope and provenance]
 
 For real-3D verification, start `npm run dev`, then run `npx playwright test --config playwright.models.config.ts` and `npx playwright test --config playwright.real3d-game.config.ts`. The first suite captures all 20 roles and a bounded 48-actor load sample. Build with `npm run build`; run `npx playwright test --config playwright.pages.config.ts` against its preview. Run the fresh normal build and relevant browser checks before publication.
 
-Models load lazily for the formation and upcoming wave. The selected runtime pack is 177.58 MiB; initial meadow readiness uses 16.76 MiB of GLBs. CPU tests do not establish GPU or performance acceptance. The original models remain outside the public tree; source-versus-derivative checks are explicitly optional when those local originals are absent.
+Models load lazily for the formation and upcoming wave. The selected runtime pack is 210.92 MiB; initial meadow readiness uses 16.76 MiB of GLBs. CPU tests do not establish GPU or performance acceptance. The original models remain outside the public tree; source-versus-derivative checks are explicitly optional when those local originals are absent.
 
 </details>
 
@@ -150,3 +150,17 @@ Compact fields now use a smaller HUD reserve and can widen their scenery by up t
 Code is distributed under the retained upstream [MIT license](LICENSE). SDK dependencies retain their own notices. This license does not grant rights to omitted artwork, recordings or audio; see [ASSETS.md](ASSETS.md).
 
 Road placement regression checks: `npm test` covers road/grass previews, engine deployment, repositioning and battle relocation, checkpoint continuation, protected clearances, and shield roadblock travel/forecast agreement. Run `npx playwright test --config playwright.road-placement.config.ts` against the local Vite server for actual mouse/touch deployment, repositioning and saved continuation at 2048×1173, 1440×900 and 390×844.
+
+## New enemy roster and save version 17
+
+The enemy roster has 13 roles; the ally roster remains 10. New roles participate in the existing per-field weighted director and stage-gated legal action catalog:
+
+- `koboldLancer`: stage 2, 112 HP, 11 attack, speed 84, melee reach 80, attack speed 0.8, cost 2, cooldown 4. It remains grounded and does not inherit Goblin backline pursuit.
+- `crystalSentinel`: stage 4, 170 HP, 10 attack, speed 56, reach 48, attack speed 0.7, cost 3, cooldown 6. Magic damage is multiplied by 0.7; melee, arrows and physical damage by 1.2, with no general armor or splash.
+- `clockworkPatchling`: stage 4, 155 HP, 7 attack, speed 62, reach 44, attack speed 0.7, cost 3, cooldown 5. It regenerates 4 HP per simulation second only after two seconds without actual damage, clamps at max HP and never resurrects or heals allies.
+
+These base values use the existing stage scaling. All three use actual skinned GLBs and source-image UI portraits, with no gameplay sprite-sheet substitute. Their Blender attack duration/contact cues are 1500/866.6667 ms, 1200/633.3333 ms and 1200/800 ms respectively. The existing enemy 0.8 simulation time scale samples the authored clips at the corresponding contact, and idle/walk loop. Death uses the existing held-pose/fade policy.
+
+Campaign checkpoints now write version 17 and preserve the patchling quiet-period timer in simulation time. Versions 14–16 keep their historical ten-enemy catalogs during decoding, then gain zero-valued new cooldown entries during migration. Version 15 retains layouts 1–3; versions 16 and 17 retain layouts 1–4. Closed-tab wall time grants no healing. The exact forecast comparison aligns only declarative catalogs in its disposable reference copy; hashed historical arithmetic fixtures remain unchanged.
+
+The new source bytes and CPU/Blender checks are recorded in ASSETS.md and the model provenance manifests. Runtime visual/GPU acceptance is a separate required check.

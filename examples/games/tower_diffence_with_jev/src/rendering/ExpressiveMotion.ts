@@ -12,7 +12,7 @@ interface MotionProfile {
   ranged?: true
 }
 
-const PROFILES: Record<UnitType, MotionProfile> = {
+const PROFILES: Partial<Record<UnitType, MotionProfile>> = {
   soldier: { stride: 3, bob: 2.5, lean: 0.1, lunge: 13, recoil: 3, lift: 1, squash: 0.025 },
   runner: { stride: 4, bob: 3, lean: 0.12, lunge: 16, recoil: 4, lift: 2, squash: 0.025 },
   tank: { stride: 1.5, bob: 1.5, lean: 0.06, lunge: 7, recoil: 2, lift: 0, squash: 0.035 },
@@ -55,6 +55,7 @@ export function expressiveMotion(input: {
     squash = 0,
     dust = 0,
     trail = 0
+  if (!profile) return { forward, lift, sway, lean, scaleX: 1, scaleY: 1, dust, trail }
   if (input.motion === 'walk' && input.durationMs > 0) {
     const phase = ((input.elapsedMs % input.durationMs) / input.durationMs) * Math.PI * 2
     sway = Math.sin(phase) * profile.stride

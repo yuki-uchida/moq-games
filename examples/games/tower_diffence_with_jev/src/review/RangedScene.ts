@@ -10,7 +10,7 @@ import {
   type UnitType
 } from '../game/model'
 import { freshSave } from '../progression/UpgradeSystem'
-import { AUTHORED_ROSTER } from '../rendering/AuthoredRoster'
+import { authoredRole } from '../rendering/AuthoredRoster'
 import type { SpriteDirection } from '../rendering/UnitSprites'
 
 export function createRangedReviewScene(
@@ -18,7 +18,9 @@ export function createRangedReviewScene(
   direction: SpriteDirection,
   options: { distance?: number; roadProgress?: number; opponent?: EnemyType; actorMissingHp?: number } = {}
 ) {
-  const owner = AUTHORED_ROSTER[role].owner
+  const spriteRole = authoredRole(role)
+  if (!spriteRole) throw new Error('Review role has no authored sprite')
+  const owner = spriteRole.owner
   const save = freshSave()
   save.purchased = ALLY_TYPES.filter((type) => DEFINITIONS[type].purchaseCost > 0)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0)

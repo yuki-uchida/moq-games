@@ -1,7 +1,6 @@
 import {
   CONFIG,
   DEFINITIONS,
-  ENEMY_TYPES,
   isEnemyMelee,
   stageRules,
   type AllyType,
@@ -10,6 +9,20 @@ import {
   type EnemyType,
   type Unit
 } from './model'
+
+export const HISTORICAL_ENEMY_TYPES = [
+  'slime',
+  'goblin',
+  'wolf',
+  'beetle',
+  'shaman',
+  'brute',
+  'bat',
+  'wraith',
+  'ogre',
+  'dragon'
+] as const
+type HistoricalEnemyType = (typeof HISTORICAL_ENEMY_TYPES)[number]
 
 export type LegacyCheckpointAction =
   | { type: 'spawn'; unitType: EnemyType; boss?: boolean }
@@ -89,7 +102,7 @@ export function versionEightCheckpointCombatStats(
   }
 }
 
-const unlockStages: Record<EnemyType, number> = {
+const unlockStages: Record<HistoricalEnemyType, number> = {
   slime: 1,
   goblin: 1,
   wolf: 2,
@@ -130,7 +143,7 @@ export function isLegacyCheckpointAction(value: unknown, version: 1 | 2): value 
       Object.hasOwn(knownFormations, action.formationId)) ||
     (action.type === 'spawn' &&
       Object.keys(action).every((key) => ['type', 'unitType', 'boss'].includes(key)) &&
-      ENEMY_TYPES.includes(action.unitType as EnemyType) &&
+      HISTORICAL_ENEMY_TYPES.includes(action.unitType as HistoricalEnemyType) &&
       (action.boss === undefined || typeof action.boss === 'boolean'))
   )
 }
@@ -140,7 +153,7 @@ export function legacyCheckpointActionFromKey(key: string, version: 1 | 2): Lega
   const knownFormations = version === 1 ? formations : versionTwoFormations
   for (const formationId of Object.keys(knownFormations))
     if (key === `formation:${formationId}`) return { type: 'formation', formationId } as LegacyCheckpointAction
-  for (const unitType of ENEMY_TYPES)
+  for (const unitType of HISTORICAL_ENEMY_TYPES)
     for (const boss of [false, true])
       if (key === `spawn:${unitType}:${boss ? 1 : 0}`) return { type: 'spawn', unitType, boss }
   return null
@@ -155,7 +168,7 @@ export function legacyCheckpointRules(stage: number) {
     strength: 1 + (level - 1) * 0.09,
     spawnInterval: Math.max(1, 2.8 - level * 0.14),
     reward: 65 + level * 15,
-    enemyTypes: ENEMY_TYPES.filter((type) => unlockStages[type] <= level),
+    enemyTypes: HISTORICAL_ENEMY_TYPES.filter((type) => unlockStages[type] <= level),
     spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),
     bossType
   }
@@ -192,7 +205,7 @@ export function isVersionThreeCheckpointAction(value: unknown): value is AIActio
       Object.hasOwn(versionTwoFormations, action.formationId)) ||
     (Object.keys(action).every((key) => ['type', 'unitType', 'boss'].includes(key)) &&
       (action.type === 'spawn' || action.type === 'wait') &&
-      ENEMY_TYPES.includes(action.unitType as EnemyType) &&
+      HISTORICAL_ENEMY_TYPES.includes(action.unitType as HistoricalEnemyType) &&
       (action.boss === undefined || typeof action.boss === 'boolean'))
   )
 }

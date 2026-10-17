@@ -8,6 +8,9 @@ export interface AttackProfile {
 }
 
 export const ATTACK_PROFILES: Record<UnitType, AttackProfile> = {
+  crystalSentinel: { durationMs: 1500, cue: 'hit', cueMs: (26 / 30) * 1000, flightMs: 0 },
+  koboldLancer: { durationMs: 1200, cue: 'hit', cueMs: (19 / 30) * 1000, flightMs: 0 },
+  clockworkPatchling: { durationMs: 1200, cue: 'hit', cueMs: 800, flightMs: 0 },
   soldier: { durationMs: 600, cue: 'hit', cueMs: 315, flightMs: 0 },
   archer: { durationMs: 800, cue: 'release', cueMs: 433, flightMs: 220 },
   slime: { durationMs: 960, cue: 'hit', cueMs: 420, flightMs: 0 },

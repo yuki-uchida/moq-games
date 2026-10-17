@@ -9,7 +9,7 @@ import {
 } from './UnitArtTrial'
 import * as THREE from 'three'
 import type { Corpse, GameState, Unit } from '../game/model'
-import { AUTHORED_ROSTER } from './AuthoredRoster'
+import { authoredRole } from './AuthoredRoster'
 import { AUTHORED_DEATH_ROLES, deathEntryOffset } from './DeathArt'
 import { RuntimeAtlasCache } from './RuntimeAtlasCache'
 import type { SpriteDirection } from './UnitSprites'
@@ -214,7 +214,9 @@ export class CorpseVisual {
         handled.add(corpse.id)
         continue
       }
-      const deathCharacter = unitTrialFor(corpse, this.unitTrials)?.character ?? AUTHORED_ROSTER[corpse.type].character
+      const spriteRole = authoredRole(corpse.type)
+      if (!spriteRole) continue
+      const deathCharacter = unitTrialFor(corpse, this.unitTrials)?.character ?? spriteRole.character
       const death = this.options.deathAnimations?.[deathCharacter]
       if (death) {
         handled.add(corpse.id)
@@ -293,7 +295,7 @@ export class CorpseVisual {
         view.group.visible = !!view.body.material.map
         continue
       }
-      if (corpse.owner === 'ai' && AUTHORED_ROSTER[corpse.type].owner === 'ai') {
+      if (corpse.owner === 'ai' && spriteRole.owner === 'ai') {
         handled.add(corpse.id)
         let view = this.views.get(corpse.key)
         let ageMs = Math.max(0, (state.time - corpse.diedAt) * 1000)
@@ -314,7 +316,7 @@ export class CorpseVisual {
           this.views.set(corpse.key, view)
           const lastFrame = changedContext ? undefined : options.lastFrames?.get(corpse.id)
           const trial = unitTrialFor(corpse, this.unitTrials)
-          const character = trial?.character ?? AUTHORED_ROSTER[corpse.type].character
+          const character = trial?.character ?? spriteRole.character
           if (
             lastFrame?.atlas.manifest.character === character &&
             ['idle', 'walk', 'attack'].includes(lastFrame.atlas.manifest.motion)
@@ -342,8 +344,7 @@ export class CorpseVisual {
           view.group.userData.presentation = `${corpse.type}-3d-trial-held-pose`
           view.body.material.opacity = 0.55
           if (lastFrame && isTrialFrame(lastFrame.atlas, trial)) this.holdTrialFrame(view, lastFrame, url, trial, false)
-        } else if (lastFrame?.atlas.manifest.character === AUTHORED_ROSTER[corpse.type].character)
-          this.capture(view, lastFrame, url)
+        } else if (lastFrame?.atlas.manifest.character === spriteRole.character) this.capture(view, lastFrame, url)
       }
       if (!view.fallen) {
         if (trial) this.updateTrialView(view, corpse, url, direction)
@@ -375,6 +376,8 @@ export class CorpseVisual {
   }
 
   private updateEnemyView(view: CorpseView, corpse: Corpse, ageMs: number, waitingAtlases: Set<string>): void {
+    const spriteRole = authoredRole(corpse.type)
+    if (!spriteRole) return
     if (!view.snapshot) {
       const direction = facingDirection(corpse)
       const trial = unitTrialFor(corpse, this.unitTrials)
@@ -386,7 +389,7 @@ export class CorpseVisual {
         if (error) this.assetErrors[url] = error
         if (atlas) {
           if (
-            atlas.manifest.character !== (trial?.character ?? AUTHORED_ROSTER[corpse.type].character) ||
+            atlas.manifest.character !== (trial?.character ?? spriteRole.character) ||
             atlas.manifest.direction !== direction ||
             atlas.manifest.motion !== 'idle' ||
             atlas.manifest.events.length !== 0
@@ -429,7 +432,7 @@ export class CorpseVisual {
     const trial = unitTrialFor(unit, this.unitTrials)
     if (trial) return trial.idleClips[direction]
     if (!AUTHORED_DEATH_ROLES.some((role) => role === unit.type)) return undefined
-    if (AUTHORED_ROSTER[unit.type].owner !== unit.owner) return undefined
+    if (authoredRole(unit.type)?.owner !== unit.owner) return undefined
     return this.options.clips[`${unit.owner}:${unit.type}:death:${direction}`]
   }
 
@@ -446,7 +449,7 @@ export class CorpseVisual {
       !isCorpseFrameSize(atlas) ||
       (trial
         ? !isTrialFrame(atlas, trial) || manifest.motion !== 'idle'
-        : manifest.character !== AUTHORED_ROSTER[unit.type].character ||
+        : manifest.character !== authoredRole(unit.type)?.character ||
           manifest.motion !== 'death' ||
           manifest.loop ||
           manifest.activePoseStartFrame !== 1 ||

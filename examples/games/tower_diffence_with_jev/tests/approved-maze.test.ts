@@ -4,6 +4,7 @@ import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
 import { approvedMazeSourcePath, APPROVED_MAZE_SOURCE_SIZE } from '../src/game/ApprovedMazeLayout'
 import { getField, pathLength, pointOnPath, type FieldId } from '../src/game/model'
+import { CAMPAIGN_CHECKPOINT_VERSION } from '../src/game/CampaignCheckpoint'
 import { GameEngine } from '../src/game/GameEngine'
 import { freshSave } from '../src/progression/UpgradeSystem'
 import { previewGroundPlacement } from '../src/game/GroundPlacement'
@@ -120,15 +121,20 @@ describe('approved irregular maze revision 4', () => {
       expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime', routeId: 'right' })).toBe(true)
       for (let tick = 0; tick < 30; tick++) engine.update(1 / 60)
       const checkpoint = engine.exportCheckpoint()!
-      expect(checkpoint.version).toBe(16)
+      expect(checkpoint.version).toBe(CAMPAIGN_CHECKPOINT_VERSION)
       const restored = GameEngine.fromCheckpoint(checkpoint, idle, save, () => 0)!
       expect(restored).not.toBeNull()
       expect(restored.state.layoutRevision).toBe(revision)
       expect(restored.state.units).toEqual(engine.state.units)
       expect(getField('meadow', 2, restored.state.layoutRevision)).toEqual(getField('meadow', 2, revision))
       if (revision < 4) {
-        const legacy = structuredClone(checkpoint) as unknown as { version: number }
+        const legacy = structuredClone(checkpoint) as unknown as {
+          version: number
+          state: { cooldowns: Record<string, number> }
+        }
         legacy.version = 15
+        for (const type of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'])
+          delete legacy.state.cooldowns[type]
         const old = GameEngine.fromCheckpoint(legacy, idle, save, () => 0)!
         expect(old).not.toBeNull()
         expect(old.state.layoutRevision).toBe(revision)

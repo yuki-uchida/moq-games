@@ -23,6 +23,13 @@ export const AUTHORED_ROSTER = {
   dragon: { owner: 'ai', character: 'emberwing-baby-dragon' }
 } as const
 
+export type AuthoredSpriteRole = keyof typeof AUTHORED_ROSTER
+
+/** Real-3D-only roles deliberately have no authored sprite entry. */
+export function authoredRole(type: UnitType): (typeof AUTHORED_ROSTER)[AuthoredSpriteRole] | undefined {
+  return Object.hasOwn(AUTHORED_ROSTER, type) ? AUTHORED_ROSTER[type as AuthoredSpriteRole] : undefined
+}
+
 export const DIRECTIONS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const
 export const MOTIONS = ['idle', 'walk', 'attack'] as const
 
@@ -39,6 +46,15 @@ export function authoredRosterClips(base: URL): Readonly<Record<string, string>>
   )
 }
 
+// Original concept images are UI portraits only; they do not add sprite clips.
+export const MODEL_ONLY_PORTRAITS = {
+  crystalSentinel: 'crystalSentinel/portrait.png',
+  koboldLancer: 'koboldLancer/portrait.png',
+  clockworkPatchling: 'clockworkPatchling/portrait.png'
+} as const
+
 export function authoredPortrait(type: UnitType, base: URL): string | undefined {
+  if (Object.hasOwn(MODEL_ONLY_PORTRAITS, type))
+    return new URL(MODEL_ONLY_PORTRAITS[type as keyof typeof MODEL_ONLY_PORTRAITS], base).href
   return Object.hasOwn(AUTHORED_ROSTER, type) ? new URL(`${type}/portrait.png`, base).href : undefined
 }

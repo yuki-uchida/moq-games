@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CAMPAIGN_CHECKPOINT_VERSION } from '../src/game/CampaignCheckpoint'
 import { GameEngine } from '../src/game/GameEngine'
 import { previewGroundPlacement, groundPlacementLabel } from '../src/game/GroundPlacement'
 import { clearInterceptionStep, forecastEnemy } from '../src/game/Interception'
@@ -33,7 +34,7 @@ describe('road defender placement regression', () => {
         expect(engine.previewPlacement('soldier', point).valid).toBe(true)
         expect(engine.place('soldier', point)).toBe(true)
         const checkpoint = engine.exportCheckpoint()!
-        expect(checkpoint.version).toBe(16)
+        expect(checkpoint.version).toBe(CAMPAIGN_CHECKPOINT_VERSION)
         const restored = GameEngine.fromCheckpoint(checkpoint, idle, save, () => 0)!
         expect(restored).not.toBeNull()
         expect(restored.state.units).toEqual(engine.state.units)

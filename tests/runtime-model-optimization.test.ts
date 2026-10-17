@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
+  validModelRole,
   optimizeGlb,
   readGlb,
   accessorArray,
@@ -362,4 +363,11 @@ describe.skipIf(!assets.length)('authored animation CPU deformation samples', ()
         })
       }
     }, 120000)
+})
+
+it('permits exact camel-case game IDs without permitting paths in model optimization roles', () => {
+  for (const role of ['tank', 'crystalSentinel', 'koboldLancer', 'clockworkPatchling'])
+    expect(validModelRole(role)).toBe(true)
+  for (const role of ['../tank', 'tank/attack', 'Tank', '', 'tank.glb', 'tank_1'])
+    expect(validModelRole(role)).toBe(false)
 })
