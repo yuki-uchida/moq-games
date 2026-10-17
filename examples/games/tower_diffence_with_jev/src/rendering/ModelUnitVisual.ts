@@ -160,12 +160,16 @@ export class ModelUnitVisual {
       action.play()
       instance = { lease, mixer, action }
       this.leases.set(key, instance)
-      this.normalized.add(lease.scene)
       this.applyAppearance(lease.scene)
     }
     if (this.active !== instance) {
-      if (this.active) this.active.lease.scene.visible = false
+      if (this.active) {
+        this.active.lease.scene.visible = false
+        // Invisible descendants still receive Three.js world-matrix updates.
+        this.active.lease.scene.removeFromParent()
+      }
       this.active = instance
+      this.normalized.add(instance.lease.scene)
       instance.lease.scene.visible = true
     }
     const duration = instance.lease.clip.duration

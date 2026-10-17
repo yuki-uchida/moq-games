@@ -240,6 +240,64 @@ describe('real mesh asset ownership', () => {
     visual.dispose()
     cache.dispose()
   })
+  it('retains detached motion rigs without updating them and restores exact poses and emitters on reuse', async () => {
+    const source = fixture()
+    const bone = new THREE.Bone()
+    bone.name = 'emitter'
+    source.scene.children[0].add(bone)
+    for (const clip of source.animations)
+      clip.tracks.push(new THREE.NumberKeyframeTrack('emitter.position[y]', [0, 1], [0, 3]))
+    const load = vi.fn(async () => source)
+    const cache = new ModelAssetCache(load)
+    cache.request('/model.glb')
+    await settle()
+    const acquire = vi.spyOn(cache, 'acquire')
+    const spec = { ...definition(), emitter: { node: 'emitter', local: [1, 2, 3] as const } }
+    const visual = new ModelUnitVisual(spec, cache)
+    const scene = new THREE.Scene()
+    scene.add(visual.root)
+    visual.setPosition(123, 234)
+    visual.setPresentation(1.2, 1.4)
+    const pose = { seconds: 0.35, loop: true, facingX: 1, facingY: -1, boss: true }
+    for (const motion of ['idle', 'walk', 'attack'] as const) visual.sample({ ...pose, motion })
+    const leases = acquire.mock.results.map((result) => result.value!)
+    const updates = leases.map((lease) => ({
+      explicit: vi.spyOn(lease.scene, 'updateWorldMatrix'),
+      render: vi.spyOn(lease.scene, 'updateMatrixWorld'),
+      release: vi.spyOn(lease, 'release')
+    }))
+    // Each previously used rig must be reusable without reacquisition or a changed world pose.
+    for (const motion of ['walk', 'idle', 'attack', 'idle'] as const) {
+      for (const update of updates) { update.explicit.mockClear(); update.render.mockClear() }
+      visual.sample({ ...pose, motion })
+      scene.updateMatrixWorld(true)
+      const index = ['idle', 'walk', 'attack'].indexOf(motion)
+      for (let i = 0; i < leases.length; i++) {
+        expect(updates[i].explicit.mock.calls.length).toBe(i === index ? 1 : 0)
+        expect(updates[i].render.mock.calls.length).toBe(i === index ? 1 : 0)
+        expect(leases[i].scene.parent !== null).toBe(i === index)
+      }
+      const reference = new ModelUnitVisual(spec, cache)
+      reference.setPosition(123, 234)
+      reference.setPresentation(1.2, 1.4)
+      reference.sample({ ...pose, motion })
+      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements)
+        .toEqual(reference.root.getObjectByName('emitter')!.matrixWorld.elements)
+      expect(visual.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false }))
+        .toEqual(reference.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false }))
+      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements)
+        .toEqual(reference.root.getObjectByName('emitter')!.matrixWorld.elements)
+      reference.dispose()
+    }
+    expect(visual.diagnostics().rigs).toBe(3)
+    expect(load).toHaveBeenCalledTimes(1)
+    // Only the independent reference actors acquired extra leases.
+    expect(acquire).toHaveBeenCalledTimes(10)
+    visual.dispose()
+    for (const update of updates) expect(update.release).toHaveBeenCalledTimes(1)
+    expect(scene.children).toHaveLength(0)
+    cache.dispose()
+  })
   it('preserves current Runner combat timing while mapping its latest 640/320 source clock', async () => {
     expect(ATTACK_PROFILES.runner).toMatchObject({ durationMs: 480, cueMs: 240 })
     const cache = new ModelAssetCache(async () => fixture())
