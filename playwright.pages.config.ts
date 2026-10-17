@@ -5,7 +5,8 @@ export default defineConfig({
   testDir: './tests',
   testMatch:
     /(?:(?:landing|tower-title|tower-standalone|tower-music)-e2e|tower-model-review|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement)\.spec\.ts/,
-  fullyParallel: false,
+  // Shard independent page fixtures at test granularity; each runner still uses one worker.
+  fullyParallel: true,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
@@ -20,8 +21,9 @@ export default defineConfig({
     // Software WebGL makes the actual mesh review reproducible on hosted runners.
     launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader'] },
     viewport: { width: 1440, height: 1000 },
-    screenshot: 'on',
-    trace: 'on'
+    screenshot: 'only-on-failure',
+    // Record the first attempt and retain failures, including with retries: 0.
+    trace: 'retain-on-failure'
   },
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1 --port 4174 --strictPort',
