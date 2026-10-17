@@ -142,7 +142,7 @@ describe('new grounded enemies with call-local forecast snapshots', () => {
     enemy.lastDamagedAt = engine.state.time
     checkFreshReads(engine, enemy)
     const checkpoint = engine.exportCheckpoint()!
-    expect(checkpoint.version).toBe(17)
+    expect(checkpoint.version).toBe(18)
     const restored = GameEngine.fromCheckpoint(JSON.parse(JSON.stringify(checkpoint)), idle, save, () => 0)!
     expect(restored).not.toBeNull()
     const resumed = restored.state.units.find((unit) => unit.id === enemy.id)!

@@ -129,9 +129,11 @@ export function effectiveAttack(unit: Readonly<Unit>, time: number): number {
   return unit.attack * (activeSupportBuff(unit, time)?.effect === 'attack' ? COMMANDER_SUPPORT.attackMultiplier : 1)
 }
 export function effectiveSpeed(unit: Readonly<Unit>, time: number): number {
+  if ((unit.specialRootUntil ?? 0) > time) return 0
   return unit.speed * (activeSupportBuff(unit, time)?.effect === 'speed' ? COMMANDER_SUPPORT.speedMultiplier : 1)
 }
 export function effectiveMovementSpeed(unit: Readonly<Unit>, time: number, dt: number): number {
+  if ((unit.specialRootUntil ?? 0) > time) return 0
   const buff = unit.supportBuff
   if (buff?.effect !== 'speed' || dt <= 0) return effectiveSpeed(unit, time)
   const activeSeconds = Math.max(0, Math.min(time, buff.expiresAt) - Math.max(time - dt, buff.startedAt))

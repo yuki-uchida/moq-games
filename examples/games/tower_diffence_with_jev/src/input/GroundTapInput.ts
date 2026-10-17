@@ -2,6 +2,7 @@ import type { Point } from '../game/model'
 
 interface GroundTapControls {
   enabled: () => boolean
+  acceptTarget?: (target: EventTarget | null) => boolean
   pointAt: (x: number, y: number) => Point | null
   preview: (point: Point | null) => void
   place: (point: Point) => void
@@ -19,7 +20,12 @@ export class GroundTapInput {
         this.cancel()
         return
       }
-      if (!this.controls.enabled() || event.button !== 0 || !(event.target instanceof HTMLCanvasElement)) return
+      if (
+        !this.controls.enabled() ||
+        event.button !== 0 ||
+        (!(event.target instanceof HTMLCanvasElement) && !this.controls.acceptTarget?.(event.target))
+      )
+        return
       this.gesture = { pointer: event.pointerId, x: event.clientX, y: event.clientY, dragged: false }
       this.controls.preview(this.controls.pointAt(event.clientX, event.clientY))
     })
@@ -27,7 +33,8 @@ export class GroundTapInput {
       if (!this.controls.enabled()) return this.cancel()
       const gesture = this.gesture
       if (gesture && gesture.pointer !== event.pointerId) return
-      if (!gesture && !(event.target instanceof HTMLCanvasElement)) return
+      if (!gesture && !(event.target instanceof HTMLCanvasElement) && !this.controls.acceptTarget?.(event.target))
+        return
       if (gesture && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) >= 6) gesture.dragged = true
       if (gesture?.dragged) this.controls.preview(null)
       else if (gesture || event.pointerType !== 'touch')

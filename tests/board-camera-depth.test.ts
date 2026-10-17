@@ -70,7 +70,10 @@ it('contains every runtime roster motion at role-appropriate scale on legacy and
       const bytes = readFileSync('public/tower-defense-art/models/' + url.split('/models/')[1])
       return loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
     },
-    512 * 1024 * 1024
+    512 * 1024 * 1024,
+    2,
+    async (url) =>
+      JSON.parse(readFileSync('public/tower-defense-art/effects/special/motions/' + url.split('/').at(-1), 'utf8'))
   )
   const point = new THREE.Vector3()
   try {
@@ -83,8 +86,8 @@ it('contains every runtime roster motion at role-appropriate scale on legacy and
       const scale = boss ? MODEL_BOSS_SCALE : 1
       try {
         for (const [motion, spec] of Object.entries(definition.clips)) {
-          cache.request(spec.url)
-          while (['queued', 'loading'].includes(cache.request(spec.url)))
+          cache.requestSource(spec)
+          while (['queued', 'loading'].includes(cache.requestSource(spec)))
             await new Promise((resolve) => setTimeout(resolve, 0))
           expect(cache.error(spec.url), `${role}/${motion} public asset`).toBeUndefined()
           for (const cycle of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1]) {

@@ -1,3 +1,5 @@
+import { SpecialAbilityVisual } from './SpecialAbilityVisual'
+import { SPECIALS } from '../game/SpecialAbilities'
 import { ModelEnvironmentLighting } from './ModelEnvironmentLighting'
 import { createBoardCamera, configureBoardCamera } from './BoardCamera'
 import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
@@ -390,6 +392,7 @@ export class GameRenderer {
       assetErrors: { ...this.assetErrors },
       fortifications: this.fortifications.diagnostics(),
       commander: this.commander?.diagnostics() ?? null,
+      specialAbilities: this.specialAbilities.diagnostics(),
       commanderSupport: this.commanderSupport.diagnostics(),
       cache: { residentBytes: this.atlasCache.residentBytes, inFlight: this.atlasCache.inFlight },
       placementPreview: this.displayedPlacementPreview
@@ -529,6 +532,10 @@ export class GameRenderer {
     marker: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>
   }[] = []
   private healthLabels = new Map<number, { element: HTMLDivElement; hp: number }>()
+  private specialAbilities = new SpecialAbilityVisual(this.scene)
+  specialAbilityStatus(type: AllyType) { return this.specialAbilities.ready(type) ? 'ready' : this.specialAbilities.failed(type) ? 'error' : 'loading' }
+  preloadSpecialAbilities(base: URL) { return this.specialAbilities.preload(base) }
+  setSpecialPreview(aim: { id: number; point: Point } | null) { this.specialAbilities.setPreview(aim) }
   constructor(
     private host: HTMLElement,
     authored: AuthoredAtlasOptions = {}
@@ -721,6 +728,7 @@ export class GameRenderer {
     this.pendingEnvironment?.dispose()
     this.atlasCache.dispose()
     this.commander?.dispose()
+    this.specialAbilities.dispose()
     this.commanderSupport.dispose()
     this.corpses?.dispose()
     this.dragonSplashes.dispose()
@@ -2064,8 +2072,8 @@ export class GameRenderer {
       visual.label.style.top = `${Math.min(this.field.height - 10, barrier.y + 30)}px`
       visual.button.style.left = `${barrier.x}px`
       visual.button.style.top = `${barrier.y}px`
-      visual.button.hidden = !interactive || s.phase !== 'preparation'
-      visual.button.disabled = s.phase !== 'preparation'
+      visual.button.hidden = !interactive || !['preparation', 'assault'].includes(s.phase)
+      visual.button.disabled = !['preparation', 'assault'].includes(s.phase)
       visual.button.setAttribute('aria-pressed', String(this.selectedSandbagId === barrier.id))
       visual.button.setAttribute('aria-label', `土のう ${Math.ceil(barrier.hp)} / ${barrier.maxHp} HP を選択`)
     }
@@ -2461,7 +2469,7 @@ export class GameRenderer {
         label.title = DEFINITIONS[unit.type].name
         label.innerHTML =
           '<span></span><i><b></b></i>' +
-          (unit.owner === 'player' ? '<em class="battle-relocation-status" hidden></em>' : '')
+          (unit.owner === 'player' ? '<em class="battle-relocation-status" hidden></em><em class="battle-special-status" hidden></em>' : '')
         this.host.append(label)
         this.healthLabels.set(unit.id, { element: label, hp: -1 })
         this.scene.add(group)
@@ -2511,6 +2519,13 @@ export class GameRenderer {
                 ? 'walk'
                 : 'idle'
       })
+      const specialBadge = label.querySelector<HTMLElement>('.battle-special-status')
+      if (specialBadge) {
+        const remaining = Math.ceil(unit.specialCooldown ?? 0)
+        specialBadge.hidden = s.phase !== 'assault' || unit.hp <= 0 || remaining === 0
+        const text = `✦ ${remaining}`
+        if (specialBadge.textContent !== text) specialBadge.textContent = text
+      }
       const relocationBadge = label.querySelector<HTMLElement>('.battle-relocation-status')
       if (relocationBadge) {
         const remaining =
@@ -2526,7 +2541,7 @@ export class GameRenderer {
           visual.defenderHandle.setAttribute(
             'aria-label',
             s.phase === 'assault'
-              ? `${DEFINITIONS[unit.type].name} · ${relocationBadge.title}`
+              ? `${DEFINITIONS[unit.type].name} · ${SPECIALS[unit.type as AllyType].name} ${Math.ceil(unit.specialCooldown ?? 0)}秒 · ${relocationBadge.title}`
               : `${DEFINITIONS[unit.type].name}を選択または移動`
           )
       }
@@ -2736,6 +2751,7 @@ export class GameRenderer {
     this.dragonSplashes.render(s)
     this.renderAttackEffects(s)
     if (interactive) this.commander?.render(s, this.commanderMode)
+    this.specialAbilities.render(s)
     this.commanderSupport.render(s, this.commanderMode)
     this.prepareEntryArt(s, selected)
     this.atlasCache.endFrame()

@@ -890,6 +890,11 @@ export function attackSplash(
 export const TANK_GUARD = { moveSpeed: 32, returnDelay: 1.5 } as const
 
 export interface Unit {
+  specialCast?: Point & { startedAt: number }
+  specialSequence?: number
+  specialCooldown?: number
+  specialRootUntil?: number
+  specialStunUntil?: number
   supportBuff?: SupportBuff
   equipment?: Equipment
   mudSlowUntil?: number
@@ -992,6 +997,7 @@ export interface CombatAttack {
   boss?: boolean
 }
 export interface GameState {
+  specialEffects?: import('./SpecialAbilities').SpecialEffect[]
   cooldownHold?: CooldownHold
   commanderSupportVersion?: 1
   commanderSupport?: CommanderSupportState

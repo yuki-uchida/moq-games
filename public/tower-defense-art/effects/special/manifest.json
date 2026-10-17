@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "blender": "4.3.2",
+  "source_commit": "97e0b6f01bd55c7734eeed5d39fbc85719b7031b",
+  "effects": [
+    {
+      "role": "soldier",
+      "file": "soldier-ultimate.glb",
+      "material": "soldier_ultimate_emissive",
+      "triangles": 228,
+      "vertices": 684,
+      "kind": "burst",
+      "sha256": "0e56358ffcfe370af59f95bf1f9fa212cceff40b1498382fb460f36bf05f9abf",
+      "bytes": 18860
+    },
+    {
+      "role": "archer",
+      "file": "archer-ultimate.glb",
+      "material": "archer_ultimate_emissive",
+      "triangles": 141,
+      "vertices": 423,
+      "kind": "burst",
+      "sha256": "332e42e93cd9f4d5ea03dfab46160f22a6ce37cb71cf0904c52b1d6e7df0de3c",
+      "bytes": 12072
+    },
+    {
+      "role": "runner",
+      "file": "runner-ultimate.glb",
+      "material": "runner_ultimate_emissive",
+      "triangles": 131,
+      "vertices": 393,
+      "kind": "burst",
+      "sha256": "361890c66a8606f23630cb101467c81070d590b7e4746d249ec856f5c4f345ff",
+      "bytes": 11292
+    },
+    {
+      "role": "tank",
+      "file": "tank-ultimate.glb",
+      "material": "tank_ultimate_emissive",
+      "triangles": 416,
+      "vertices": 1248,
+      "kind": "burst",
+      "sha256": "c59401b365a688082897791d22f7508980290e91cde589fa448de4f18ba6c37e",
+      "bytes": 33524
+    },
+    {
+      "role": "mage",
+      "file": "mage-ultimate.glb",
+      "material": "mage_ultimate_emissive",
+      "triangles": 296,
+      "vertices": 888,
+      "kind": "burst",
+      "sha256": "cfe26699c6ae58b6840fb9b7408cdabf4fe2e432c4b0860ed2161d8e3b866cc2",
+      "bytes": 24156
+    },
+    {
+      "role": "healer",
+      "file": "healer-ultimate.glb",
+      "material": "healer_ultimate_emissive",
+      "triangles": 300,
+      "vertices": 900,
+      "kind": "field",
+      "sha256": "609583f7c1792661a141706f3dc3db77f708946fd6e90a8647b61837f730e401",
+      "bytes": 24476
+    },
+    {
+      "role": "frost",
+      "file": "frost-ultimate.glb",
+      "material": "frost_ultimate_emissive",
+      "triangles": 168,
+      "vertices": 504,
+      "kind": "field",
+      "sha256": "529c4af8fe908690a150b2f95dd4a18860a64a749316d4dee2ab6c1877adb1da",
+      "bytes": 14172
+    },
+    {
+      "role": "ranger",
+      "file": "ranger-ultimate.glb",
+      "material": "ranger_ultimate_emissive",
+      "triangles": 192,
+      "vertices": 576,
+      "kind": "field",
+      "sha256": "d4967b0bcb8c738cbd71e1c0c4a7830d165ad3fffb95260bef12a81e85551f3c",
+      "bytes": 16048
+    },
+    {
+      "role": "cannon",
+      "file": "cannon-ultimate.glb",
+      "material": "cannon_ultimate_emissive",
+      "triangles": 296,
+      "vertices": 888,
+      "kind": "burst",
+      "sha256": "7c120928460d182381861c2b7ee2597aa2e507d354ed6f858e96ed0b3996c46b",
+      "bytes": 24164
+    },
+    {
+      "role": "paladin",
+      "file": "paladin-ultimate.glb",
+      "material": "paladin_ultimate_emissive",
+      "triangles": 228,
+      "vertices": 684,
+      "kind": "burst",
+      "sha256": "e931461b132faa1ae28b6b7ba270b44467004f73a890412ca4f1242a0385ac21",
+      "bytes": 18856
+    }
+  ],
+  "source_archive_sha256": "9a1f9b488529cc8b7c1ddd3b3e68e1e2c91d0576d92ff3e91fdf796c3cfb692d",
+  "runtime_files": {
+    "soldier": "soldier.glb",
+    "archer": "archer.glb",
+    "runner": "runner.glb",
+    "tank": "tank.glb",
+    "mage": "mage.glb",
+    "healer": "healer.glb",
+    "frost": "frost.glb",
+    "ranger": "ranger.glb",
+    "cannon": "cannon.glb",
+    "paladin": "paladin.glb"
+  }
+}

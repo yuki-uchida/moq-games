@@ -157,6 +157,7 @@ function enemyFingerprint(state: Readonly<GameState>, enemy: Unit): string {
   }
   if (state.economyVersion === 2 && (enemy.mudSlowUntil ?? 0) > 0) values.push(enemy.mudSlowUntil)
   if (paidBarriers(state).length) values.push(`hp=${enemy.hp}`)
+  if ((enemy.specialRootUntil ?? 0) > 0) values.push(`root=${enemy.specialRootUntil}`)
   if (state.commanderSupportVersion === 1 && enemy.supportBuff)
     values.push(
       `support=${enemy.supportBuff.effect},${enemy.supportBuff.sequence},${enemy.supportBuff.startedAt},${enemy.supportBuff.expiresAt}`
@@ -249,6 +250,7 @@ function forecastLegacyEnemy(
         if (bag.hp > 0 && bag.hits.length && bag.hits[0].at > time + EPSILON) next = Math.min(next, bag.hits[0].at)
       if (pauseUntil > time + EPSILON) next = Math.min(next, pauseUntil)
       else if (atBarrier && readyAt > time + EPSILON) next = Math.min(next, readyAt)
+      if ((enemy.specialRootUntil ?? 0) > time + EPSILON) next = Math.min(next, enemy.specialRootUntil!)
       if (enemy.slowUntil > time + EPSILON) next = Math.min(next, enemy.slowUntil)
       const buff = activeSupportBuff(enemy, time)
       if (buff) next = Math.min(next, buff.expiresAt)

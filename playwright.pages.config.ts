@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './tests',
   testMatch:
-    /(?:(?:landing|tower-title|tower-standalone|tower-music)-e2e|tower-model-review|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement)\.spec\.ts/,
+    /(?:(?:landing|tower-title|tower-standalone|tower-special-abilities|tower-music)-e2e|tower-model-review|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement)\.spec\.ts/,
   // Shard independent page fixtures at test granularity; each runner still uses one worker.
   fullyParallel: true,
   workers: 1,

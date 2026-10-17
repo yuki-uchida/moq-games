@@ -1,3 +1,4 @@
+import { MAX_SPECIAL_ROOT_DURATION, SPECIALS } from './SpecialAbilities'
 import { attackDamageType } from './DamageRules'
 import { WINDING_BRANCHES } from './WindingLayouts'
 import {
@@ -115,7 +116,7 @@ import {
   type Decoder
 } from './CheckpointCodec'
 
-export const CAMPAIGN_CHECKPOINT_VERSION = 17
+export const CAMPAIGN_CHECKPOINT_VERSION = 18
 export const CHECKPOINT_LIMITS = {
   simulationSeconds: 24 * 60 * 60,
   maximumId: 0xffffffff,
@@ -173,6 +174,7 @@ export interface CampaignRuntimeCheckpoint {
 type CheckpointCorpse = Omit<Corpse, 'key'>
 export type CampaignStateCheckpoint = Pick<
   GameState,
+  | 'specialEffects'
   | 'commanderSupportVersion'
   | 'commanderSupport'
   | 'battlefieldVersion'
@@ -211,7 +213,7 @@ export type CampaignStateCheckpoint = Pick<
 > & { corpses: CheckpointCorpse[] }
 
 export interface CampaignCheckpoint {
-  version: 17
+  version: 18
   profile: ProfileData
   progress: RunProgressData
   rewardedThroughStage: number
@@ -279,6 +281,9 @@ interface VersionFifteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'ver
 interface VersionSixteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
   version: 16
 }
+interface VersionSeventeenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
+  version: 17
+}
 type DecodedCheckpoint =
   | LegacyCampaignCheckpoint
   | VersionTwoCampaignCheckpoint
@@ -296,6 +301,7 @@ type DecodedCheckpoint =
   | VersionFourteenCampaignCheckpoint
   | VersionFifteenCampaignCheckpoint
   | VersionSixteenCampaignCheckpoint
+  | VersionSeventeenCampaignCheckpoint
   | CampaignCheckpoint
 type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
@@ -569,6 +575,11 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     attackRange: number(0, coordinateBound),
     attackSpeed: number(0.01, 10),
     attackCooldown: number(0, 30),
+    specialCast: version >= 18 ? optional(object({ startedAt: time, x: coordinate, y: coordinate })) : absent,
+    specialSequence: version >= 18 ? optional(sequence) : absent,
+    specialCooldown: version >= 18 ? optional(number(0, 60)) : absent,
+    specialRootUntil: version >= 18 ? optional(deadline) : absent,
+    specialStunUntil: version >= 18 ? optional(deadline) : absent,
     healCooldown:
       version >= 12
         ? optional(number(0, Math.max(...Object.values(HEALING_ACTIONS).map((action) => action.interval))))
@@ -772,6 +783,26 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   })
   const stateSchema = {
     commanderSupportVersion: version >= 7 ? optional(choice([1])) : absent,
+    specialEffects:
+      version >= 18
+        ? optional(
+            array(
+              object({
+                id: string(80),
+                sourceId: id,
+                type: choice(ALLY_TYPES),
+                x: coordinate,
+                y: coordinate,
+                startedAt: time,
+                releaseAt: deadline,
+                endsAt: deadline,
+                power: number(0, maximumPower * 6),
+                applied: boolean
+              }),
+              32
+            )
+          )
+        : absent,
     commanderSupport: version >= 7 ? optional(decodeSupport) : absent,
     fortifications: version >= 6 ? optional(decodeFortifications) : absent,
     economyVersion: optional(choice([2])),
@@ -1112,7 +1143,13 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       version: choice([16]),
       state: decodeCurrentState
     })
-  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([17]), state: decodeCurrentState })
+  if (version === 17)
+    return object<VersionSeventeenCampaignCheckpoint>({
+      ...checkpointSchema,
+      version: choice([17]),
+      state: decodeCurrentState
+    })
+  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([18]), state: decodeCurrentState })
 }
 const checkpointDecoders = {
   1: createCheckpointDecoder(1),
@@ -1131,11 +1168,12 @@ const checkpointDecoders = {
   14: createCheckpointDecoder(14),
   15: createCheckpointDecoder(15),
   16: createCheckpointDecoder(16),
-  17: createCheckpointDecoder(17)
+  17: createCheckpointDecoder(17),
+  18: createCheckpointDecoder(18)
 }
 function decodeCheckpoint(value: unknown): DecodedCheckpoint {
   const input = record(value),
-    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])(input.version),
+    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
   const revision =
@@ -1234,9 +1272,9 @@ export function validateCampaignCheckpoint(
     migrateHealthBalance(normalized)
     removePaladinHealing(normalized)
     const migrated = normalized.version === 2 ? migrateGenericWaitCheckpoint(normalized) : normalized,
-      current = checkpointDecoders[17]({
+      current = checkpointDecoders[18]({
         ...migrated,
-        version: 17,
+        version: 18,
         state: {
           ...migrated.state,
           cooldowns: Object.fromEntries(ENEMY_TYPES.map((type) => [type, migrated.state.cooldowns[type] ?? 0])),
@@ -1252,7 +1290,7 @@ export function validateCampaignCheckpoint(
             : {})
         }
       })
-    requireCheckpoint(current.version === 17)
+    requireCheckpoint(current.version === 18)
     validateCheckpointSemantics(current, progress, current.profile)
     return current
   } catch {
@@ -1744,6 +1782,7 @@ function normalizeSandbagHealth(
     | VersionFourteenCampaignCheckpoint
     | VersionFifteenCampaignCheckpoint
     | VersionSixteenCampaignCheckpoint
+    | VersionSeventeenCampaignCheckpoint
     | CampaignCheckpoint
 ): void {
   const bags = checkpoint.state.sandbags.filter((bag) => bag.maxHp !== ROAD_EFFECTS.sandbag.hp)
@@ -2078,7 +2117,52 @@ function validateUnits(checkpoint: DecodedCheckpoint): void {
     reserves = s.reserveUnits ?? []
   requireCheckpoint(unique(s.units.filter((unit) => unit.owner === 'player').map((unit) => unit.slotId!)))
   const placementState = { ...checkpointValidationState(checkpoint), phase: 'preparation' as const }
+  requireCheckpoint(unique((s.specialEffects ?? []).map((effect) => effect.id)))
+  for (const effect of s.specialEffects ?? []) {
+    const spec = SPECIALS[effect.type],
+      source = [...s.units, ...reserves].find((unit) => unit.id === effect.sourceId)
+    requireCheckpoint(source?.owner === 'player' && source.type === effect.type && effect.sourceId <= runtime.id)
+    const identity = /^special:([1-9][0-9]*):([1-9][0-9]*):([0-2])$/.exec(effect.id)
+    requireCheckpoint(
+      identity &&
+        Number(identity[1]) === effect.sourceId &&
+        Number(identity[2]) === source!.specialSequence &&
+        Number(identity[3]) < spec.impacts.length
+    )
+    requireCheckpoint(
+      s.phase === 'assault' && near(effect.releaseAt - effect.startedAt, spec.impacts[Number(identity![3])])
+    )
+
+    requireCheckpoint(effect.x >= 0 && effect.y >= 0 && effect.x <= field.width && effect.y <= field.height)
+    requireCheckpoint(effect.applied || effect.releaseAt >= s.time - epsilon)
+    requireCheckpoint(
+      checkpoint.version >= 18 &&
+        effect.startedAt <= s.time &&
+        effect.endsAt > s.time &&
+        near(effect.endsAt - effect.releaseAt, spec.duration) &&
+        spec.impacts.some((impact) => near(effect.releaseAt - effect.startedAt, impact))
+    )
+  }
   for (const unit of [...s.units, ...reserves]) {
+    requireCheckpoint(
+      unit.specialCast === undefined ||
+        (checkpoint.version >= 18 &&
+          unit.owner === 'player' &&
+          unit.specialCast.startedAt <= s.time &&
+          s.time < unit.specialCast.startedAt + SPECIALS[unit.type as AllyType].motionDuration)
+    )
+    requireCheckpoint(unit.specialSequence === undefined || (checkpoint.version >= 18 && unit.owner === 'player'))
+    requireCheckpoint(unit.specialCooldown === undefined || (checkpoint.version >= 18 && unit.owner === 'player'))
+    requireCheckpoint(
+      unit.specialRootUntil === undefined ||
+        (checkpoint.version >= 18 &&
+          unit.owner === 'ai' &&
+          unit.specialRootUntil <= s.time + MAX_SPECIAL_ROOT_DURATION + epsilon)
+    )
+    requireCheckpoint(
+      unit.specialStunUntil === undefined ||
+        (checkpoint.version >= 18 && unit.owner === 'ai' && unit.specialStunUntil <= (unit.specialRootUntil ?? 0))
+    )
     const reserved = reserves.includes(unit)
     if (unit.lastDamagedAt !== undefined)
       requireCheckpoint(
@@ -2633,31 +2717,48 @@ function validateEnemyHistory(checkpoint: DecodedCheckpoint): void {
       receipt.legacyUnknown || (receipt.victimType !== null && receipt.attackId !== null && receipt.attackId.length > 0)
     )
     if (receipt.attackId !== null) {
-      const pattern =
-        receipt.sourceKind === 'turret'
-          ? /^gate:([1-9][0-9]*)$/
-          : receipt.sourceKind === 'trap'
-            ? new RegExp(`^spike:${receipt.sourceId}:([1-9][0-9]*):([1-9][0-9]*)$`)
-            : new RegExp(`^${receipt.sourceId}:([1-9][0-9]*)$`)
-      const match = pattern.exec(receipt.attackId)
-      requireCheckpoint(
-        match && match.slice(1).every((value) => Number.isSafeInteger(Number(value)) && Number(value) <= maximumId)
-      )
-      // An extant source bounds its accepted sequence. Dead/expired sources have
-      // no reconstructible sequence, so retain their captured identity unchanged.
-      if (receipt.sourceKind === 'turret') {
-        requireCheckpoint(Number(match[1]) <= (state.fortifications?.gate.sequence ?? 0))
+      const special = /^special:([1-9][0-9]*):([1-9][0-9]*):([0-2])$/.exec(receipt.attackId)
+      if (special) {
+        requireCheckpoint(
+          checkpoint.version >= 18 &&
+            receipt.sourceKind === 'unit' &&
+            ALLY_TYPES.includes(receipt.sourceType as AllyType)
+        )
+        requireCheckpoint(
+          Number(special[1]) === receipt.sourceId &&
+            Number.isSafeInteger(Number(special[2])) &&
+            Number(special[2]) <= maximumId
+        )
+        requireCheckpoint(Number(special[3]) < SPECIALS[receipt.sourceType as AllyType].impacts.length)
+        const actor = [...state.units, ...(state.reserveUnits ?? [])].find((unit) => unit.id === receipt.sourceId)
+        if (actor) requireCheckpoint(Number(special[2]) <= (actor.specialSequence ?? 0))
       } else {
-        const actorId = receipt.sourceKind === 'trap' ? Number(match[1]) : receipt.sourceId
-        const attackSequence = Number(match[receipt.sourceKind === 'trap' ? 2 : 1])
-        if (receipt.sourceKind === 'trap') requireCheckpoint(actorId === receipt.victimId)
-        const actor = [...state.units, ...(state.reserveUnits ?? [])].find((unit) => unit.id === actorId)
-        if (actor) requireCheckpoint(attackSequence <= actor.attackSequence)
-        const accepted = state.attacks.find((attack) => attack.id === `${actorId}:${attackSequence}`)
-        if (accepted) {
-          requireCheckpoint(accepted.attackerId === actorId && accepted.sequence === attackSequence)
-          if (receipt.sourceKind === 'unit')
-            requireCheckpoint(accepted.type === receipt.sourceType && accepted.kind !== 'heal')
+        const pattern =
+          receipt.sourceKind === 'turret'
+            ? /^gate:([1-9][0-9]*)$/
+            : receipt.sourceKind === 'trap'
+              ? new RegExp(`^spike:${receipt.sourceId}:([1-9][0-9]*):([1-9][0-9]*)$`)
+              : new RegExp(`^${receipt.sourceId}:([1-9][0-9]*)$`)
+        const match = pattern.exec(receipt.attackId)
+        requireCheckpoint(
+          match && match.slice(1).every((value) => Number.isSafeInteger(Number(value)) && Number(value) <= maximumId)
+        )
+        // An extant source bounds its accepted sequence. Dead/expired sources have
+        // no reconstructible sequence, so retain their captured identity unchanged.
+        if (receipt.sourceKind === 'turret') {
+          requireCheckpoint(Number(match[1]) <= (state.fortifications?.gate.sequence ?? 0))
+        } else {
+          const actorId = receipt.sourceKind === 'trap' ? Number(match[1]) : receipt.sourceId
+          const attackSequence = Number(match[receipt.sourceKind === 'trap' ? 2 : 1])
+          if (receipt.sourceKind === 'trap') requireCheckpoint(actorId === receipt.victimId)
+          const actor = [...state.units, ...(state.reserveUnits ?? [])].find((unit) => unit.id === actorId)
+          if (actor) requireCheckpoint(attackSequence <= actor.attackSequence)
+          const accepted = state.attacks.find((attack) => attack.id === `${actorId}:${attackSequence}`)
+          if (accepted) {
+            requireCheckpoint(accepted.attackerId === actorId && accepted.sequence === attackSequence)
+            if (receipt.sourceKind === 'unit')
+              requireCheckpoint(accepted.type === receipt.sourceType && accepted.kind !== 'heal')
+          }
         }
       }
     }
@@ -3120,7 +3221,8 @@ function validateInterceptionFingerprint(checkpoint: DecodedCheckpoint, unitId: 
     paidFeatures = checkpoint.version >= 6 && s.economyVersion === 2
   requireCheckpoint(
     fields.length >= baseFields &&
-      fields.length <= baseFields + (paidFeatures ? 2 : 0) + (supportFeatures ? 1 : 0) &&
+      fields.length <=
+        baseFields + (paidFeatures ? 2 : 0) + (supportFeatures ? 1 : 0) + (checkpoint.version >= 18 ? 1 : 0) &&
       runtime.deploymentByUnit.some((entry) => entry.unitId === unitId)
   )
   const speed = checkpointNumericText(fields[0], number(0, maximumSpeed)),
@@ -3162,6 +3264,14 @@ function validateInterceptionFingerprint(checkpoint: DecodedCheckpoint, unitId: 
     supportBuffEvidence(checkpoint, unitId, buff, effect)
     if (effect === 'speed') supportedSpeed *= COMMANDER_SUPPORT.speedMultiplier
   }
+  if (extras.at(-1)?.startsWith('root=')) {
+    requireCheckpoint(checkpoint.version >= 18)
+    const rootUntil = checkpointNumericText(extras.pop()!.slice(5), deadline)
+    requireCheckpoint(
+      rootUntil <= s.time + MAX_SPECIAL_ROOT_DURATION + epsilon && (!unit || rootUntil <= (unit.specialRootUntil ?? 0))
+    )
+  }
+
   if (extras.at(-1)?.startsWith('hp=')) {
     spikeHp = checkpointNumericText(extras.pop()!.slice(3), number(Number.MIN_VALUE, unit?.maxHp ?? bounds.hp))
     const contextItems =

@@ -268,7 +268,10 @@ describe('real mesh asset ownership', () => {
     }))
     // Each previously used rig must be reusable without reacquisition or a changed world pose.
     for (const motion of ['walk', 'idle', 'attack', 'idle'] as const) {
-      for (const update of updates) { update.explicit.mockClear(); update.render.mockClear() }
+      for (const update of updates) {
+        update.explicit.mockClear()
+        update.render.mockClear()
+      }
       visual.sample({ ...pose, motion })
       scene.updateMatrixWorld(true)
       const index = ['idle', 'walk', 'attack'].indexOf(motion)
@@ -281,12 +284,15 @@ describe('real mesh asset ownership', () => {
       reference.setPosition(123, 234)
       reference.setPresentation(1.2, 1.4)
       reference.sample({ ...pose, motion })
-      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements)
-        .toEqual(reference.root.getObjectByName('emitter')!.matrixWorld.elements)
-      expect(visual.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false }))
-        .toEqual(reference.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false }))
-      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements)
-        .toEqual(reference.root.getObjectByName('emitter')!.matrixWorld.elements)
+      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements).toEqual(
+        reference.root.getObjectByName('emitter')!.matrixWorld.elements
+      )
+      expect(visual.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false })).toEqual(
+        reference.emitterAt({ ...pose, motion: 'attack', seconds: 0.8, loop: false })
+      )
+      expect(visual.root.getObjectByName('emitter')!.matrixWorld.elements).toEqual(
+        reference.root.getObjectByName('emitter')!.matrixWorld.elements
+      )
       reference.dispose()
     }
     expect(visual.diagnostics().rigs).toBe(3)
@@ -536,5 +542,44 @@ describe('detached action preparation', () => {
     expect(() => visual.sample({ ...idle, motion: 'walk' })).toThrow('invalid action rig')
     visual.dispose()
     cache.dispose()
+  })
+})
+
+it('keeps the aimed facing through the special recovery instead of snapping to the prior idle direction', () => {
+  const engine = new GameEngine({ decide: async () => null })
+  engine.place('soldier', 0)
+  engine.startAssault()
+  const unit = engine.state.units[0]
+  expect(engine.castSpecial(unit.id, { x: unit.x + 40, y: unit.y })).toBe(true)
+  const casting = unitModelPose(unit, 0),
+    recovered = unitModelPose(unit, 2)
+  expect(casting.motion).toBe('special')
+  expect(recovered.motion).toBe('idle')
+  expect([casting.facingX, casting.facingY]).toEqual([1, 0])
+  expect([recovered.facingX, recovered.facingY]).toEqual([1, 0])
+})
+
+describe('external dedicated special clip', () => {
+  it('plays a JSON clip on the cached idle model without duplicating model downloads', async () => {
+    const model = fixture(),
+      load = vi.fn(async () => model),
+      cache = new ModelAssetCache(load)
+    const clip = new THREE.AnimationClip('ultimate_soldier', 1.2, [
+      new THREE.NumberKeyframeTrack('body.position[x]', [0, 0.45, 1.2], [0, 3, 0])
+    ])
+    const fetcher = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, json: async () => THREE.AnimationClip.toJSON(clip) } as Response)
+    const special = { url: '/model.glb', clip: 'ultimate_soldier', clipUrl: '/special.json' }
+    expect(cache.requestSource(special)).not.toBe('ready')
+    await settle()
+    expect(cache.requestSource(special)).toBe('ready')
+    const lease = cache.acquire(special)!
+    expect(lease.clip.name).toBe('ultimate_soldier')
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    lease.release()
+    cache.dispose()
+    fetcher.mockRestore()
   })
 })

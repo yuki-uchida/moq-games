@@ -1,10 +1,11 @@
 import { MODEL_BOSS_SCALE, modelGroundDepth } from './BoardCamera'
 import * as THREE from 'three'
 import type { CombatAttack, Unit } from '../game/model'
+import { specialMotionActive } from '../game/SpecialAbilities'
 import { attackAssetElapsedMs } from '../game/AttackProfiles'
 import { ModelAssetCache, type ModelLease, type ModelSource } from './ModelAssetCache'
 
-export type ModelMotion = 'idle' | 'walk' | 'attack' | 'heal' | 'breath' | 'death'
+export type ModelMotion = 'idle' | 'walk' | 'attack' | 'heal' | 'breath' | 'death' | 'special'
 export interface UnitModelDefinition {
   /** Measured against the accepted imported bind pose, shared across motion rigs. */
   readonly scale: number
@@ -29,22 +30,25 @@ export interface ModelPose {
 
 /** Animation sampling is simulation-owned: tab freezes, pause and save resume cannot drift hits. */
 export function unitModelPose(unit: Unit, time: number, action?: CombatAttack): ModelPose {
-  const active = action && action.status !== 'cancelled' && time < action.endsAt
+  const special = specialMotionActive(unit, time)
+  const active = !special && action && action.status !== 'cancelled' && time < action.endsAt
   const motion: ModelMotion =
     unit.hp <= 0
       ? 'death'
-      : active
-        ? action.variant === 'breath' || !!action.breath
-          ? 'breath'
-          : action.kind === 'heal' || unit.type === 'healer'
-            ? 'heal'
-            : 'attack'
-        : unit.moving
-          ? 'walk'
-          : 'idle'
+      : special
+        ? 'special'
+        : active
+          ? action.variant === 'breath' || !!action.breath
+            ? 'breath'
+            : action.kind === 'heal' || unit.type === 'healer'
+              ? 'heal'
+              : 'attack'
+          : unit.moving
+            ? 'walk'
+            : 'idle'
   return {
     motion,
-    seconds: active ? attackAssetElapsedMs(action, time) / 1000 : time,
+    seconds: special ? time - unit.specialCast!.startedAt : active ? attackAssetElapsedMs(action, time) / 1000 : time,
     loop: motion === 'idle' || motion === 'walk',
     facingX: active ? (action.aim?.x ?? unit.facingX) : unit.facingX,
     facingY: active ? (action.aim?.y ?? unit.facingY) : unit.facingY,
@@ -141,12 +145,12 @@ export class ModelUnitVisual {
         ready = false
         continue
       }
-      if (this.cache.request(spec.url) !== 'ready') ready = false
+      if (this.cache.requestSource(spec) !== 'ready') ready = false
     }
     return ready
   }
   private instance(spec: ModelSource) {
-    const key = `${spec.url}#${spec.clip}`
+    const key = `${spec.url}#${spec.clipUrl ?? spec.clip}`
     let instance = this.leases.get(key)
     if (!instance) {
       const lease = this.cache.acquire(spec)
@@ -165,10 +169,10 @@ export class ModelUnitVisual {
   /** Build one already-needed action rig without sampling or attaching it to the board. */
   prepareNextMotion(compile: (scene: THREE.Object3D) => Promise<unknown>): Promise<void> | undefined {
     if (this.disposed || this.preparing) return
-    for (const motion of ['walk', 'attack', 'heal', 'breath'] as const) {
+    for (const motion of ['walk', 'attack', 'heal', 'breath', 'special'] as const) {
       const spec = this.definition.clips[motion]
       if (!spec) continue
-      const key = `${spec.url}#${spec.clip}`
+      const key = `${spec.url}#${spec.clipUrl ?? spec.clip}`
       if (this.leases.has(key) || this.preparationFailures.has(key)) continue
       let instance
       try {

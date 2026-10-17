@@ -1,4 +1,4 @@
-import type { UnitType } from '../../game/model'
+import { ALLY_TYPES, type UnitType } from '../../game/model'
 import type { UnitModelDefinition } from '../ModelUnitVisual'
 import type { ModelAdapterFactory, ModelSource } from '../ModelAssetCache'
 import * as adapters from './adapters'
@@ -230,6 +230,11 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
       attack: source('slime', 'animated.glb', 'attack'), death: source('slime', 'animated.glb', 'death')
     }
   }
+}
+
+for (const role of ALLY_TYPES) {
+  const definition = UNIT_MODEL_CATALOG[role]!
+  Object.assign(definition.clips, { special: { ...definition.clips.idle!, clip: `ultimate_${role}`, clipUrl: `${import.meta.env.BASE_URL}tower-defense-art/effects/special/motions/${role}.ultimate.json` } })
 }
 
 export function getUnitModelDefinition(type: UnitType): UnitModelDefinition | undefined { return UNIT_MODEL_CATALOG[type] }

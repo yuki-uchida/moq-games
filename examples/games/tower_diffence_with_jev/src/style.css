@@ -2737,6 +2737,7 @@ dialog::backdrop {
   border-radius: 7px;
 }
 
+.battle-special-status,
 .battle-relocation-status {
   position: absolute;
   left: calc(100% + 4px);
@@ -2785,4 +2786,10 @@ dialog::backdrop {
   .map-heading {
     top: calc(max(8px, env(safe-area-inset-top)) + 48px);
   }
+}
+
+.battle-special-status {
+  top: 19px;
+  border-color: #edda9d;
+  color: #fff1b0;
 }

@@ -50,6 +50,7 @@ export class DefenderMoveInput {
       const enabled = this.controls.enabled(gesture.id)
       const recall = gesture.dragged && this.controls.reserveAt?.(event.clientX, event.clientY)
       this.cancel()
+      this.suppressClick = true
       if (!enabled) return
       if (recall) this.controls.recall?.(gesture.id)
       else if (gesture.dragged && point) this.controls.move(gesture.id, point)

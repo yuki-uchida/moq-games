@@ -1,3 +1,4 @@
+import { castSpecial, advanceSpecials, specialMotionActive } from './SpecialAbilities'
 import { goblinPursuitTarget } from './GoblinTarget'
 import { tankAvailableToEnemy } from './TankRoadblock'
 import { attackDamageType, incomingDamage } from './DamageRules'
@@ -142,6 +143,7 @@ import {
   type BreathMouthTracks
 } from './BreathGeometry'
 export class GameEngine {
+  castSpecial(id: number, point: Point): boolean { return castSpecial(this.state, id, point) }
   readonly state: GameState
   private history = new TacticalHistory()
   private combatSounds: CombatSoundEvent[] = []
@@ -273,6 +275,7 @@ export class GameEngine {
             lastAction: s.lastAction,
             requestedAction: s.requestedAction,
             decisionTime: s.decisionTime,
+            ...(s.specialEffects ? { specialEffects: structuredClone(s.specialEffects) } : {}),
             ...(s.cooldownHold ? { cooldownHold: structuredClone(s.cooldownHold) } : {}),
             historyEnabled: s.historyEnabled,
             corpses: s.corpses.map(({ key: _key, ...corpse }) => corpse)
@@ -871,6 +874,8 @@ export class GameEngine {
     this.deploymentByUnit.clear()
     this.lastDeploymentAt = -Infinity
     s.attacks = []
+    delete s.specialEffects
+    for (const unit of retainedDefenders(s)) delete unit.specialCast
     if (s.fortifications) {
       s.fortifications.gate.shots = []
       s.fortifications.gate.sequence = 0
@@ -1148,7 +1153,11 @@ export class GameEngine {
     const now = this.now()
     this.updateCommanderSupport(now)
     this.updatePlan()
-    if (s.phase !== 'assault') return
+    if (s.phase !== 'assault') {
+      for (const unit of retainedDefenders(s)) delete unit.specialCast
+      delete s.specialEffects
+      return
+    }
     if (s.cooldownHold?.phase === 'cooling') {
       this.publishObservation(now)
       return
@@ -1864,7 +1873,7 @@ export class GameEngine {
       u.attackAnimation = Math.max(0, u.attackAnimation - dt)
       u.hitAnimation = Math.max(0, u.hitAnimation - dt)
       u.moving = false
-      if (u.hp <= 0) continue
+      if (u.hp <= 0 || (u.specialRootUntil ?? 0) > s.time || specialMotionActive(u, s.time)) continue
       const previousX = u.x,
         previousY = u.y,
         previousProgress = u.progress
@@ -1953,7 +1962,7 @@ export class GameEngine {
     for (const attack of s.attacks) {
       if (attack.status !== 'windup') continue
       const attacker = s.units.find((unit) => unit.id === attack.attackerId)
-      if (!attacker || attacker.hp <= 0) attack.status = 'cancelled'
+      if (!attacker || attacker.hp <= 0 || (attacker.specialStunUntil ?? 0) > s.time) attack.status = 'cancelled'
       else if (
         attacker.owner === 'ai' &&
         !attack.base &&
@@ -1969,6 +1978,8 @@ export class GameEngine {
     for (const u of s.units) {
       if (
         u.hp <= 0 ||
+        (u.specialStunUntil ?? 0) > s.time ||
+        specialMotionActive(u, s.time) ||
         u.battleRelocation?.destination ||
         (healingAction(u) && s.attacks.some((action) => action.attackerId === u.id && s.time + 1e-9 < action.endsAt)) ||
         (s.battlefieldVersion === 2 && u.gateExit) ||
@@ -2351,6 +2362,7 @@ export class GameEngine {
       attack.status = hit ? 'hit' : 'missed'
       if (hit && !attack.projectile) this.emitCombatSound(attack, 'hit', attack.impactAt)
     }
+    advanceSpecials(s, dt, damage, healing, historyContributions)
     this.advanceGateShots(damage, historyContributions)
     const defeatedThisStep: Unit[] = []
     for (const u of s.units) {

@@ -54,14 +54,24 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     diagnostic.modelRendering.units.some((unit: any) => unit.type === 'soldier' && unit.meshes > 0 && unit.visible)
   ).toBe(true)
   // Preparation uses the placed actor's real motion rigs while its idle pose stays visible.
-  await expect.poll(() => page.evaluate(() => {
-    const unit = (window as any).towerDefenseDiagnostics().modelRendering.units.find((unit: any) => unit.type === 'soldier')
-    return unit?.rigs
-  })).toBe(3)
-  expect(await page.evaluate(() => {
-    const unit = (window as any).towerDefenseDiagnostics().modelRendering.units.find((unit: any) => unit.type === 'soldier')
-    return { visible: unit.visible, motion: unit.motion, seconds: unit.seconds }
-  })).toEqual({ visible: true, motion: 'idle', seconds: 0 })
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const unit = (window as any)
+          .towerDefenseDiagnostics()
+          .modelRendering.units.find((unit: any) => unit.type === 'soldier')
+        return unit?.rigs
+      })
+    )
+    .toBe(4)
+  expect(
+    await page.evaluate(() => {
+      const unit = (window as any)
+        .towerDefenseDiagnostics()
+        .modelRendering.units.find((unit: any) => unit.type === 'soldier')
+      return { visible: unit.visible, motion: unit.motion, seconds: unit.seconds }
+    })
+  ).toEqual({ visible: true, motion: 'idle', seconds: 0 })
   expect(models.length).toBeGreaterThan(0)
   expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.5, generations: 1 })
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
@@ -69,7 +79,13 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   const loadedEntries = diagnostic.modelRendering.cache.entries.filter((entry: any) => entry.state === 'ready')
   expect(loadedEntries.length).toBeGreaterThan(0)
   expect(loadedEntries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
-  expect(models.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
+  expect(
+    models.every(
+      (url) =>
+        /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url) ||
+        /\/effects\/special\/(soldier|archer|runner|tank|mage|healer|frost|ranger|cannon|paladin)\.glb$/.test(url)
+    )
+  ).toBe(true)
   expect(bodySheets).toEqual([])
   await page.locator('#game-title-return').click()
   await expect(page.locator('#title-screen')).toBeVisible()
@@ -268,6 +284,12 @@ test('prepares summonable models before a drag and draws a committed unit on the
   ).toBe(true)
   for (const url of requested) expect(requests.filter((value) => value === url)).toHaveLength(1)
   expect(new Set(requests).size).toBe(requests.length)
-  expect(requests.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
+  expect(
+    requests.every(
+      (url) =>
+        /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url) ||
+        /\/effects\/special\/(soldier|archer|runner|tank|mage|healer|frost|ranger|cannon|paladin)\.glb$/.test(url)
+    )
+  ).toBe(true)
   await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
 })

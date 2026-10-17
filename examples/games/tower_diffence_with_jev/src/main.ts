@@ -1,3 +1,4 @@
+import { SPECIALS, specialReady } from './game/SpecialAbilities'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
 import { allRoadPaths } from './game/BattlefieldRoutes'
@@ -129,6 +130,9 @@ let keyboardUnitPicked = false
 let activeTray: 'unit' | 'item' | null = null
 let contextOpener: HTMLElement | null = null
 let heldDefenderId: number | null = null
+let specialAimId: number | null = null
+let specialAimPoint: Point | null = null
+let specialTargetClick = false
 let selectedDefenderId: number | null = null,
   movingDefenderId: number | null = null
 let selectedSandbagId: number | null = null,
@@ -208,7 +212,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 </nav><p id="control-tooltip" role="tooltip" hidden></p>
 <section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
 <section id="item-tray" class="floating-tray panel" aria-label="道の備え" hidden><div class="tray-heading"><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" title="土のうを配置">${fortificationIcon('sandbag')}<small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
-<section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
+<section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-special" aria-label="必殺技" title="必殺技" hidden>✦</button><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
 </main>
 <dialog id="settings" class="panel settings" aria-labelledby="settings-title"><div class="dialog-heading"><div><span class="eyebrow">EXPEDITION SETTINGS</span><h2 id="settings-title">接続・AI・保存</h2></div><button id="settings-close" class="close-button" aria-label="設定を閉じる">×</button></div><p class="dialog-intro">敵の指揮官と、ブラウザー保存の設定です。</p><label for="mode">敵の指揮官</label><select id="mode" aria-describedby="mode-help"><option value="rule">ルール AI · 接続なしで遊ぶ</option><option value="jev" selected>Jev · MoQ に接続して遊ぶ</option></select><p id="clock-help" class="hint">別のタブを見ている間も、現在のステージの戦闘は続きます。勝敗が決まると停止し、次へは手動です。Jev の判断・API 利用料金も継続します。端末のスリープやブラウザーの凍結・破棄中は継続を保証できません。遅延の補完は最大2秒で、それを超えた時間は進めません。</p><p id="clock-status" class="notice" role="status" hidden></p><p id="mode-help" class="hint">ルール AI は接続不要。Jev は同じ Relay・Room で Pipecat bot を起動してください。</p><label for="history-mode">戦術履歴を判断に含める</label><select id="history-mode" aria-describedby="history-help"><option value="on" selected>ON · 直近20秒と短い戦績</option><option value="off">OFF · 現在の盤面のみ</option></select><p id="history-help" class="hint">同じ盤面のまま切り替えできます。変更は次の通常判断から適用。ONでも追加のJev呼び出しはしません。</p><div id="connection-fields" class="connection-fields"><span class="section-kicker">MOQ × PIPECAT × JEV</span><label for="relay">WebTransport relay</label><input id="relay" type="url" spellcheck="false" autocomplete="off"><label for="room">Room</label><input id="room" value="mossvale" spellcheck="false" autocomplete="off"><button id="connect" class="primary">MoQ に接続</button></div><p id="notice" class="notice" role="status" aria-live="polite">Jev は MoQ への接続が必要です。</p><section class="enemy-plan" aria-labelledby="enemy-plan-title"><h3 id="enemy-plan-title">敵の作戦</h3><p id="enemy-plan-status">準備中は敵の出撃判断を行いません。</p><p id="enemy-plan-reason" hidden></p><small id="enemy-plan-progress" hidden></small><p id="enemy-plan-reconsideration" hidden></p></section><section class="commander-support-tools" aria-labelledby="commander-support-title"><h3 id="commander-support-title">Jev の支援魔法</h3><p id="commander-support-status" role="status"></p><p id="commander-support-order" class="hint"></p><p class="hint">新規遠征の Jev モードで、戦闘開始10秒後から敵1体を支援。600msの詠唱後に回復、または5秒の加速・防御・攻撃強化。発動間隔10秒、重ね掛けなし。召喚とは別の判断で、通信失敗時には発動しません。</p><small>召喚と支援は各1秒に1回まで、合計最大2回のAPIリクエスト。支援の再使用待ち中は支援を問い合わせません。ルールAIと旧遠征には追加されません。</small></section><section class="environment-art-tools"><label for="art-mode">全体の描画 · 仲間・敵・環境</label><select id="art-mode" aria-describedby="art-mode-help art-mode-status"><option value="2d">すべて2D</option><option value="3d">すべて3D試用</option><option value="mixed" disabled>個別設定（2D・3D混在）</option></select><p id="art-mode-help" class="hint">仲間10種・敵10種・環境をまとめて切り替えます。読み込み中は今の表示を保ち、準備ができたら同時に反映します。初回画面・準備中のみ変更できます。旧地形の環境は2Dのままです。3Dの歩行は試作です。</p><p id="art-mode-status" class="hint" role="status" aria-live="polite"></p><button id="art-mode-cancel" hidden>切り替えを中止</button></section><section class="environment-art-tools"><label for="environment-art">環境の描画</label><select id="environment-art" aria-describedby="environment-art-help environment-art-status"><option value="2d">元の2D</option><option value="3d">3D試用</option></select><p id="environment-art-help" class="hint">戦う場所は平らなまま、起伏は外側の景観に配置します。道・配置・戦闘ルールは同じです。旧地形は元の2Dを使用します。初回画面・準備中に変更できます。</p><p id="environment-art-status" class="hint" role="status" aria-live="polite"></p></section><section class="trial-art-tools" hidden inert>${UNIT_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}の描画</label><select id="${type}-art" aria-describedby="soldier-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="soldier-art-help" class="hint">剣士・射手・盾騎士・魔法使い・霜の術師・花の癒やし手・槍の斥候・鷹の狩人・火薬の工兵・光の守護者を個別に切り替えます。能力・速度・命中時刻は同じです。光の守護者は近接範囲攻撃で戦います。3Dの歩行の接地と死亡演出は試作です。死亡アニメは未制作のため、倒れたときは最後の全身姿勢を保持します。歩調は暫定値のため足滑りが残ります。初回画面・準備中に変更できます。</p></section><section class="enemy-trial-art-tools" hidden inert><h3>敵の描画</h3>${ENEMY_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}</label><select id="${type}-art" aria-describedby="enemy-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="enemy-art-help" class="hint">敵の全身画像を個別に切り替えます。能力・出現条件・ボス倍率は同じです。初回画面・準備中のみ変更できます。3D死亡アニメは未制作のため最後の全身姿勢を保持します。歩行の接地には足滑りが残ります。</p></section><section class="sound-tools" aria-labelledby="music-title"><h3 id="music-title">襲撃のBGM</h3><label class="sound-toggle"><input id="music-enabled" type="checkbox" checked> 襲撃中にBGMを鳴らす</label><label for="music-volume">BGM音量 <output id="music-volume-value">20%</output></label><input id="music-volume" type="range" min="0" max="100" step="5" value="20"><p id="music-status" class="hint" role="status">襲撃中だけ再生します。</p><p class="hint">ステージ1〜9は2曲から襲撃ごとにランダムで選択し、同じ曲をループ。ステージ10は最終ボス曲。準備中・結果画面では停止します。</p></section><section class="sound-tools" aria-labelledby="sound-title"><h3 id="sound-title">効果音 · 試用</h3><label class="sound-toggle"><input id="sound-enabled" type="checkbox" checked> 攻撃・減速の効果音を鳴らす</label><label for="sound-volume">音量 <output id="sound-volume-value">20%</output></label><input id="sound-volume" type="range" min="0" max="100" step="5" value="20"><p id="sound-status" class="hint" role="status"></p><button id="sound-retry" hidden>音声の読み込みを再試行</button><p class="hint">生成音の候補です。音色は調整中。最初の操作後に読み込み、準備できた音だけを鳴らします。再開時に過去の音は再生しません。</p></section><section class="save-tools" aria-labelledby="save-title"><h3 id="save-title">このブラウザーの保存</h3><p>5秒ごと・配置や購入・ステージ終了時に自動保存。再開には最初の画面で操作が必要です。</p><p id="save-state" role="status">未開始</p><button id="save-now">今の遠征を保存</button><button id="save-reset">保存データを初期化</button><small>雇用済みの仲間は新しい遠征でも利用可能。レベル・資金・装備・道のアイテム・門の強化は遠征ごとにリセットされます。同じゲームを複数タブで開くと、最後に保存した内容が使われます。</small></section><details class="ai-details"><summary>AI の判断を見る</summary><p id="last-action">待機</p><pre id="scores"></pre></details></dialog>
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
@@ -543,6 +547,7 @@ function panTo(x: number, y: number) {
   })
 }
 function entrance() {
+  if (started) void renderer.preloadSpecialAbilities(artBase)
   const field = fieldFor(engine.state),
     entry = field.slots[0] ?? field.entrance
   panTo(entry.x, entry.y)
@@ -775,19 +780,20 @@ const drag = new UnitDrag({
 })
 const defenderMoveInput = new DefenderMoveInput($('field'), {
   enabled: (id) =>
-    ((preparing() && paidRoster()) || (assaulting() && engine.canRelocateDefender(id))) &&
+    ((preparing() && paidRoster()) || assaulting()) &&
+    specialAimId === null &&
     !removing &&
     !placingSandbag &&
     !placingRoadItem &&
     !document.querySelector('dialog[open]') &&
     !!engine.state.units.find((unit) => unit.id === id && unit.owner === 'player' && unit.hp > 0),
   select: (id) => selectDefender(id, false),
-  activate: selectDefender,
+  activate: (id) => { selectDefender(id); if (assaulting()) beginSpecial(id) },
   pointAt: (x, y) => (document.elementFromPoint(x, y)?.closest('#field') ? renderer.worldPointAt(x, y) : null),
   preview: (_id, point) => {
     dropTarget = point
   },
-  move: moveDefender,
+  move: (id, point) => { if (!assaulting() || engine.canRelocateDefender(id)) moveDefender(id, point) },
   reserveAt: (x, y) => preparing() && !!document.elementFromPoint(x, y)?.closest('#deck-toggle'),
   recall: recallDefender,
   held: (id, overReserve) => {
@@ -809,6 +815,9 @@ function stopSandbagPlacement() {
   viewport.classList.remove('placing-sandbag')
 }
 function cancelPlacementGestures() {
+  specialAimId = null
+  specialTargetClick = false
+  renderer.setSpecialPreview(null)
   defenderMoveInput.cancel()
   drag.cancel()
   mapPan.cancel()
@@ -818,6 +827,8 @@ function cancelPlacementGestures() {
   keyboardUnitPicked = false
 }
 function clearPlacementModes() {
+  specialAimId = null
+  renderer.setSpecialPreview(null)
   cancelPlacementGestures()
   stopSandbagPlacement()
   stopRoadItemPlacement()
@@ -897,6 +908,49 @@ function placeRoadItem(point: Point) {
   announce(
     `${roadItemNames[kind]}を${moving ? '残り耐久を保って無料で移動' : `${FORTIFICATIONS[kind].cost}Gで配置`}しました。次のステージへ引き継ぎます。`
   )
+}
+function beginSpecial(id: number) {
+  const unit = engine.state.units.find((unit) => unit.id === id)
+  if (!unit) return
+  if (!specialReady(engine.state, id)) {
+    announce(`✦ ${Math.ceil(unit.specialCooldown ?? 0)}秒`)
+    return
+  }
+  const assetStatus = renderer.specialAbilityStatus(unit.type as AllyType)
+  if (assetStatus !== 'ready') { announce(assetStatus === 'error' ? '必殺技素材を読み込めません。再読み込みしてください。' : '必殺技の3D素材を読込中'); return }
+  specialAimId = id
+  specialAimPoint = { x: unit.x, y: unit.y }
+  viewport.focus({ preventScroll: true })
+  renderer.setSpecialPreview({ id, point: { x: unit.x, y: unit.y } })
+  $('unit-special').textContent = '×'
+  $('unit-special').setAttribute('aria-label', '必殺技をキャンセル')
+  $('unit-action-hint').textContent = '矢印で範囲を指定、Enterで発動、Escで取消。'
+  announce(`${SPECIALS[unit.type as AllyType].name} · 範囲を指定 · Escで取消`)
+}
+function fireSpecial(point: Point) {
+  if (specialAimId === null || !engine.castSpecial(specialAimId, point)) return
+  specialAimId = null
+  renderer.setSpecialPreview(null)
+  persist()
+  updateSelectionContext()
+}
+const specialInput = new GroundTapInput(viewport, {
+  acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),
+  enabled: () => specialAimId !== null && assaulting() && !document.querySelector('dialog[open]'),
+  pointAt: (x, y) => renderer.worldPointAt(x, y),
+  preview: (point) => {
+    if (point) specialAimPoint = point
+    renderer.setSpecialPreview(specialAimId !== null && point ? { id: specialAimId, point } : null)
+  },
+  place: (point) => {
+    const aiming = specialAimId
+    fireSpecial(point)
+    specialTargetClick = aiming !== null && specialAimId === null
+  }
+})
+$('unit-special').onclick = () => {
+  if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
+  else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
 }
 const roadItemInput = new GroundTapInput(viewport, {
   enabled: () => !!placingRoadItem && preparing() && paidRoster() && !document.querySelector('dialog[open]'),
@@ -1058,13 +1112,28 @@ for (const type of ALLY_TYPES) {
   drag.bind(card, type)
 }
 $('field').onclick = (event) => {
+  if (specialTargetClick) { specialTargetClick = false; event.preventDefault(); return }
   if (defenderMoveInput.consumeClick()) {
     event.preventDefault()
     return
   }
+  const bagButton = (event.target as HTMLElement).closest<HTMLButtonElement>('.sandbag-handle')
+  if (bagButton) {
+    event.stopPropagation()
+    clearPlacementModes()
+    selectedSandbagId = Number(bagButton.dataset.sandbag)
+    renderer.setSandbagSelection(selectedSandbagId)
+    openContext(bagButton)
+    announce('土のうを選択しました。移動は残りHPを保ちます。損傷した土のうの撤去は在庫に戻りません。')
+    return
+  }
   if (assaulting()) {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-unit-id]')
-    if (button) selectDefender(Number(button.dataset.unitId))
+    if (button) {
+      const id = Number(button.dataset.unitId)
+      selectDefender(id)
+      beginSpecial(id)
+    }
     return
   }
   if (!preparing() || placingSandbag || placingRoadItem) return
@@ -1090,16 +1159,6 @@ $('field').onclick = (event) => {
     const id = Number(unitButton.dataset.unitId)
     if (removing) recallDefender(id)
     else selectDefender(id)
-    return
-  }
-  const bagButton = (event.target as HTMLElement).closest<HTMLButtonElement>('.sandbag-handle')
-  if (bagButton) {
-    event.stopPropagation()
-    clearPlacementModes()
-    selectedSandbagId = Number(bagButton.dataset.sandbag)
-    renderer.setSandbagSelection(selectedSandbagId)
-    openContext(bagButton)
-    announce('土のうを選択しました。移動は残りHPを保ちます。損傷した土のうの撤去は在庫に戻りません。')
     return
   }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('.placement')
@@ -1146,6 +1205,15 @@ window.addEventListener('keydown', (event) => {
     if (!$('selection-context').hidden) closeContext()
     else clearPlacementModes()
     closeTrays(true)
+    return
+  }
+  if (specialAimId !== null && specialAimPoint && assaulting() && viewport.contains(event.target as Node)) {
+    const steps: Record<string, Point> = { ArrowLeft: { x: -4, y: 0 }, ArrowRight: { x: 4, y: 0 }, ArrowUp: { x: 0, y: -4 }, ArrowDown: { x: 0, y: 4 } }
+    if (steps[event.key]) {
+      event.preventDefault()
+      specialAimPoint = { x: specialAimPoint.x + steps[event.key].x, y: specialAimPoint.y + steps[event.key].y }
+      renderer.setSpecialPreview({ id: specialAimId, point: specialAimPoint })
+    } else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fireSpecial(specialAimPoint) }
     return
   }
   if (/^[0-9]$/.test(event.key) && preparing()) pickKeyboardUnit(ALLY_TYPES[(Number(event.key) + 9) % 10])
@@ -1403,7 +1471,7 @@ function updateSelectionContext() {
     bag = engine.state.sandbags.find((bag) => bag.id === selectedSandbagId),
     item = engine.state.fortifications?.items.find((item) => item.id === selectedRoadItemId)
   const visible =
-    (preparing() || (assaulting() && !!unit && unit.slotId !== undefined)) &&
+    (preparing() || (assaulting() && (!!bag || (!!unit && unit.slotId !== undefined)))) &&
     !placingSandbag &&
     !placingRoadItem &&
     ((!!unit && unit.hp > 0) || !!bag || !!item)
@@ -1414,6 +1482,12 @@ function updateSelectionContext() {
   for (const action of ['upgrade', 'move', 'recall'])
     $<HTMLButtonElement>(`unit-${action}`).disabled = !visible || !unit
   if (!visible) return
+  $('unit-special').hidden = !unit || !assaulting()
+  if (unit && assaulting()) {
+    const spec = SPECIALS[unit.type as AllyType], cooldown = Math.ceil(unit.specialCooldown ?? 0)
+    $('unit-special').textContent = specialAimId === unit.id ? '×' : `${spec.icon}${cooldown ? ` ${cooldown}` : ''}`
+    $('unit-special').setAttribute('aria-label', `${spec.name}${cooldown ? ` · ${cooldown}秒` : ''}`)
+  }
   $('defender-actions').hidden = !unit
   $('sandbag-actions').hidden = !bag
   $('road-item-actions').hidden = !item
@@ -1504,7 +1578,7 @@ function updateSelectionContext() {
     $('unit-action-name').textContent = '土のう'
     $('unit-action-status').textContent = `HP ${Math.ceil(bag.hp)} / ${bag.maxHp}`
     $('unit-action-hint').textContent =
-      bag.hp === bag.maxHp
+      assaulting() ? '戦闘中は耐久を確認できます。移動と撤去は準備中。' : bag.hp === bag.maxHp
         ? '移動はHPを保ちます。無傷のまま撤去すると在庫へ戻ります。'
         : '移動はHPを保ちます。撤去すると失われ、在庫には戻りません。'
   } else if (item) {
@@ -2223,6 +2297,7 @@ function pageShown(event: PageTransitionEvent) {
 }
 let uiTick = 0
 function updateDefenderPreview() {
+  if (specialAimId !== null) { renderer.setDefenderPlacementPreview(null); return }
   if (
     (!(paidRoster() && preparing()) && !assaulting()) ||
     placingSandbag ||
@@ -2294,6 +2369,7 @@ function frame(now: number) {
     stopRoadItemPlacement()
     movingDefenderId = null
   }
+  if (specialAimId !== null && !specialReady(state, specialAimId)) { specialAimId = null; renderer.setSpecialPreview(null) }
   updateDefenderPreview()
   commitArtMode()
   renderer.setCommanderMode(engine.ai !== rule)
@@ -2301,7 +2377,7 @@ function frame(now: number) {
   soundPlayer.setBattle(state.battleId, state.stage)
   renderer.render(
     state,
-    placingSandbag || placingRoadItem || document.querySelector('dialog[open]') ? null : (dropTarget ?? selectedSlot),
+    specialAimId !== null || placingSandbag || placingRoadItem || document.querySelector('dialog[open]') ? null : (dropTarget ?? selectedSlot),
     started,
     selected,
     !!placingSandbag || !!placingRoadItem

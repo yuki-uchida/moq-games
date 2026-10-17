@@ -52,7 +52,7 @@ export class ModelUnitLayer {
         ready = false
         continue
       }
-      const status = this.cache.request(spec.url)
+      const status = this.cache.requestSource(spec)
       if (status !== 'ready') ready = false
       if (status === 'error') this.errors[spec.url] = this.cache.error(spec.url) ?? 'Model load failed'
     }
@@ -99,6 +99,7 @@ export class ModelUnitLayer {
     }
     for (const type of types) {
       const motions: ModelMotion[] = ['idle', 'walk', type === 'healer' ? 'heal' : 'attack']
+      if (this.roster[type]?.clips.special) motions.push('special')
       if (type === 'dragon') motions.push('breath')
       if (this.roster[type]?.clips.death) motions.push('death')
       for (const motion of motions) {
@@ -154,6 +155,7 @@ export class ModelUnitLayer {
         (action) => action.attackerId === unit.id && action.sequence === unit.attackSequence
       )
       let pose = unitModelPose(unit, state.time, action)
+      if (pose.motion === 'special' && state.phase !== 'assault') pose = { ...pose, motion: 'idle', seconds: 0, loop: true }
       if (unit.type === 'paladin' && pose.motion === 'heal' && !actor.visual.definition.clips.heal) {
         // Existing temporary Paladin healing has no dedicated authored animation.
         // Keep an explicitly neutral pose instead of showing a damaging sword swing.

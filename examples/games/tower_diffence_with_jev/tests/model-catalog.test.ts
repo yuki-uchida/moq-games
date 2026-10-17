@@ -94,11 +94,11 @@ describe.skipIf(!hasModels && !derivativeMode)(
           const bytes = readFileSync(local)
           return loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
         }
-        const cache = new ModelAssetCache(load, 1024 * 1024 * 512)
+        const cache = new ModelAssetCache(load, 1024 * 1024 * 512, 2, async (url) => JSON.parse(readFileSync(resolve('public/tower-defense-art/effects/special/motions', url.split('/').at(-1)!), 'utf8')))
         try {
           for (const spec of Object.values(definition.clips)) {
-            cache.request(spec.url)
-            while (cache.request(spec.url) === 'loading' || cache.request(spec.url) === 'queued')
+            cache.requestSource(spec)
+            while (cache.requestSource(spec) === 'loading' || cache.requestSource(spec) === 'queued')
               await new Promise((resolve) => setTimeout(resolve, 0))
             expect(cache.error(spec.url)).toBeUndefined()
             const lease = cache.acquire(spec)!
@@ -166,7 +166,7 @@ describe.skipIf(!hasModels && !derivativeMode)(
               }
             })
             expect(meshes).toBeGreaterThan(0)
-            if ((role === 'ranger' || role === 'cannon') && spec.clip !== 'idle')
+            if ((role === 'ranger' || role === 'cannon') && spec.clip !== 'idle' && !spec.clipUrl)
               expect(totalFifthInfluences).toBeGreaterThan(0)
             mixer.stopAllAction()
             mixer.uncacheRoot(lease.scene)

@@ -11,6 +11,7 @@ export type ModelAdapterFactory = (scene: THREE.Object3D, clip: THREE.AnimationC
 export interface ModelSource {
   readonly url: string
   readonly clip: string
+  readonly clipUrl?: string
   readonly adapters?: readonly ModelAdapterFactory[]
 }
 export interface ModelLease {
@@ -81,6 +82,7 @@ function disposeSource(source: GLTF): void {
 /** Lazy, bounded shared geometry/textures; each actor owns its skeleton and materials. */
 export class ModelAssetCache {
   private entries = new Map<string, Entry>()
+  private clips = new Map<string, { state: 'loading' | 'ready' | 'error'; clip?: THREE.AnimationClip }>()
   private inflight = 0
   private clock = 0
   private disposed = false
@@ -88,7 +90,12 @@ export class ModelAssetCache {
   constructor(
     private readonly load: (url: string) => Promise<GLTF> = (url) => new GLTFLoader().loadAsync(url),
     readonly budgetBytes = 192 * 1024 * 1024,
-    private readonly concurrency = 2
+    private readonly concurrency = 2,
+    private readonly loadClip: (url: string) => Promise<unknown> = async (url) => {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`Clip HTTP ${response.status}`)
+      return response.json()
+    }
   ) {}
 
   request(url: string): 'queued' | 'loading' | 'ready' | 'error' {
@@ -101,6 +108,34 @@ export class ModelAssetCache {
     entry.touched = ++this.clock
     this.pump()
     return entry.state
+  }
+  requestSource(spec: ModelSource): 'queued' | 'loading' | 'ready' | 'error' {
+    const model = this.request(spec.url)
+    if (!spec.clipUrl || model === 'error') return model
+    let entry = this.clips.get(spec.clipUrl)
+    if (!entry) {
+      entry = { state: 'loading' }
+      this.clips.set(spec.clipUrl, entry)
+      const pending = entry
+      void this.loadClip(spec.clipUrl)
+        .then((json) => {
+          if (this.disposed) return
+          const clip = THREE.AnimationClip.parse(json as Parameters<typeof THREE.AnimationClip.parse>[0])
+          if (
+            clip.name !== spec.clip ||
+            clip.duration <= 0 ||
+            !clip.tracks.length ||
+            clip.tracks.some((track) => track.name.endsWith('.scale'))
+          )
+            throw new Error('Invalid special clip')
+          pending.clip = clip
+          pending.state = 'ready'
+        })
+        .catch(() => {
+          pending.state = 'error'
+        })
+    }
+    return entry.state === 'ready' ? model : entry.state
   }
   private pump(): void {
     if (this.disposed) return
@@ -145,11 +180,22 @@ export class ModelAssetCache {
     }
   }
   acquire(spec: ModelSource): ModelLease | undefined {
-    if (this.request(spec.url) !== 'ready') return undefined
+    if (this.requestSource(spec) !== 'ready') return undefined
     const entry = this.entries.get(spec.url)!
     const source = entry.source!
-    const clip = source.animations.find((clip) => clip.name === spec.clip)
+    const clip = spec.clipUrl
+      ? this.clips.get(spec.clipUrl)?.clip
+      : source.animations.find((clip) => clip.name === spec.clip)
     if (!clip) throw new Error(`Missing authored ${spec.clip} clip in ${spec.url}`)
+    if (
+      spec.clipUrl &&
+      !(clip as THREE.AnimationClip & { userData?: { blinkAmountSamples?: unknown } }).userData?.blinkAmountSamples
+    ) {
+      const idle = source.animations.find((value) => value.name === 'idle') as
+        | (THREE.AnimationClip & { userData?: unknown })
+        | undefined
+      if (idle?.userData) Object.assign(clip, { userData: structuredClone(idle.userData) })
+    }
     const scene = clone(source.scene)
     const materials = new Set<THREE.Material>()
     const skeletons = new Set<THREE.Skeleton>()
@@ -238,6 +284,7 @@ export class ModelAssetCache {
   }
   dispose(): void {
     this.disposed = true
+    this.clips.clear()
     for (const entry of this.entries.values()) if (entry.source) disposeSource(entry.source)
     this.entries.clear()
     this.requiredUrls.clear()

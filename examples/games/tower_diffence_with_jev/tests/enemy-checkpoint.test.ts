@@ -54,7 +54,7 @@ describe('v17 enemy checkpoint compatibility', () => {
         for (let tick = 0; tick < 30; tick++) engine.update(1 / 60)
         const checkpoint = engine.exportCheckpoint()!
         expect(checkpoint).not.toBeNull()
-        expect(checkpoint.version).toBe(17)
+        expect(checkpoint.version).toBe(18)
         const restored = GameEngine.fromCheckpoint(JSON.parse(JSON.stringify(checkpoint)), idle, save, () => 0)!
         expect(restored).not.toBeNull()
         expect(restored.state.units).toEqual(engine.state.units)
@@ -100,7 +100,7 @@ describe('v17 enemy checkpoint compatibility', () => {
     it(`migrates v${version} historical cooldown keys`, () => {
       const migrated = validate(historical(version))!
       expect(migrated).not.toBeNull()
-      expect(migrated.version).toBe(17)
+      expect(migrated.version).toBe(18)
       expect(Object.keys(migrated.state.cooldowns)).toEqual([...ENEMY_TYPES])
       for (const type of additions) expect(migrated.state.cooldowns[type]).toBe(0)
     })
