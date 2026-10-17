@@ -62,6 +62,23 @@ describe('special effect resource ownership', () => {
       visual.render(state)
       expect(visual.diagnostics().active).toBe(1)
       expect(scene.children).toHaveLength(4)
+      if (index === 0) {
+        const previous = scene.children[3] as THREE.Group
+        const previousMaterial = (previous.children[0] as THREE.Mesh).material as THREE.Material
+        const dispose = vi.spyOn(previousMaterial, 'dispose')
+        visual.render({
+          ...state,
+          battleId: state.battleId + 1,
+          specialEffects: state.specialEffects.map((effect) => ({ ...effect, type: 'archer' as const }))
+        })
+        expect(previous.parent).toBeNull()
+        expect(dispose).toHaveBeenCalledTimes(1)
+        expect(((scene.children[3] as THREE.Group).children[0] as THREE.Mesh).geometry).toBe(
+          (sources[1].children[0] as THREE.Mesh).geometry
+        )
+        expect(visual.diagnostics().active).toBe(1)
+      }
+
       state.specialEffects = []
       visual.render(state)
       expect(visual.diagnostics().active).toBe(0)

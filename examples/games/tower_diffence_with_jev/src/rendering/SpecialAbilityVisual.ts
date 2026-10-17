@@ -102,7 +102,7 @@ export class SpecialAbilityVisual {
       state.phase === 'assault'
         ? (state.specialEffects ?? []).filter((effect) => state.time >= effect.releaseAt).slice(-16)
         : []
-    const ids = new Set(effects.map((effect) => effect.id))
+    const ids = new Set(effects.map((effect) => `${state.battleId}:${effect.id}`))
     for (const [id, group] of this.active)
       if (!ids.has(id)) {
         this.release(group)
@@ -111,7 +111,8 @@ export class SpecialAbilityVisual {
     for (const effect of effects) {
       const source = this.sources.get(effect.type)
       if (!source) continue
-      let group = this.active.get(effect.id)
+      const key = `${state.battleId}:${effect.id}`
+      let group = this.active.get(key)
       if (!group) {
         group = source.clone(true)
         group.matrixAutoUpdate = false
@@ -125,7 +126,7 @@ export class SpecialAbilityVisual {
           object.renderOrder = 50
         })
         this.scene.add(group)
-        this.active.set(effect.id, group)
+        this.active.set(key, group)
       }
       const progress = THREE.MathUtils.clamp((state.time - effect.releaseAt) / (effect.endsAt - effect.releaseAt), 0, 1)
       const radius = SPECIALS[effect.type].radius

@@ -928,9 +928,13 @@ function beginSpecial(id: number) {
   announce(`${SPECIALS[unit.type as AllyType].name} · 範囲を指定 · Escで取消`)
 }
 function fireSpecial(point: Point) {
-  if (specialAimId === null || !engine.castSpecial(specialAimId, point)) return
-  specialAimId = null
-  renderer.setSpecialPreview(null)
+  if (specialAimId === null) return
+  if (!engine.castSpecial(specialAimId, point)) {
+    renderer.setSpecialPreview({ id: specialAimId, point })
+    announce('指定できません')
+    return
+  }
+  clearPlacementModes()
   persist()
   updateSelectionContext()
 }
@@ -1018,7 +1022,7 @@ document.addEventListener('pointerdown', (event) => {
   const target = event.target as HTMLElement
   if (target.closest('.floating-tray, .field-controls, dialog')) return
   closeTrays()
-  if (!target.closest('[data-unit-id]') && !target.closest('.sandbag-handle') && !target.closest('.road-item-handle')) {
+  if (specialAimId === null && !target.closest('[data-unit-id]') && !target.closest('.sandbag-handle') && !target.closest('.road-item-handle')) {
     $('selection-context').hidden = true
     selectedDefenderId = null
     selectedSandbagId = null
@@ -1486,7 +1490,7 @@ function updateSelectionContext() {
   if (unit && assaulting()) {
     const spec = SPECIALS[unit.type as AllyType], cooldown = Math.ceil(unit.specialCooldown ?? 0)
     $('unit-special').textContent = specialAimId === unit.id ? '×' : `${spec.icon}${cooldown ? ` ${cooldown}` : ''}`
-    $('unit-special').setAttribute('aria-label', `${spec.name}${cooldown ? ` · ${cooldown}秒` : ''}`)
+    $('unit-special').setAttribute('aria-label', specialAimId === unit.id ? '必殺技をキャンセル' : `${spec.name}${cooldown ? ` · ${cooldown}秒` : ''}`)
   }
   $('defender-actions').hidden = !unit
   $('sandbag-actions').hidden = !bag
