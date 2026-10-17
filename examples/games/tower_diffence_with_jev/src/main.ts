@@ -679,7 +679,7 @@ function deploy(type: AllyType, target: Placement) {
   if (!preparing()) return
   const active = paidRoster() && deployedType(type)
   if (active) return
-  if (!rosterEligible(type)) return
+  if (!rosterEligible(type) || !renderer.defenderReady(type)) return
   if (engine.place(type, 'slotId' in target ? target.slotId : target)) {
     closeTrays()
     keyboardUnitPicked = false
@@ -732,14 +732,14 @@ function placeOrMove(point: Point) {
   else if (keyboardUnitPicked) deploy(selected, point)
 }
 function select(type: AllyType) {
-  if (!rosterEligible(type)) return
+  if (!rosterEligible(type) || !renderer.defenderReady(type)) return
   clearPlacementModes()
   selected = type
   selectedSlot = null
   updateSelectionContext()
 }
 function pickKeyboardUnit(type: AllyType) {
-  if (!rosterEligible(type)) return
+  if (!rosterEligible(type) || !renderer.defenderReady(type)) return
   select(type)
   keyboardUnitPicked = true
   closeTrays()
@@ -756,7 +756,7 @@ function placementPreview(type: AllyType, point: Point) {
     : engine.previewPlacement(type, point)
 }
 const drag = new UnitDrag({
-  canDeploy: (type) => rosterEligible(type) && !document.querySelector('dialog[open]'),
+  canDeploy: (type) => rosterEligible(type) && renderer.defenderReady(type) && !document.querySelector('dialog[open]'),
   select,
   targetAt: (x, y) => (document.elementFromPoint(x, y)?.closest('#field') ? renderer.worldPointAt(x, y) : null),
   deploy,
@@ -1812,7 +1812,7 @@ function updateRosterControls() {
       eligible = rosterEligible(type),
       level = unit ? defenderLevel(unit, save) : paidRoster() ? 1 : save.unitLevels[type]
     card.hidden = !eligible
-    card.disabled = !eligible
+    card.disabled = !eligible || !renderer.defenderReady(type)
     if (eligible) availableCount++
     card.dataset.rosterState = unit?.slotId === undefined && unit ? 'reserve' : unit ? 'deployed' : 'available'
     card.classList.toggle('selected', keyboardUnitPicked && selected === type)
@@ -2200,6 +2200,7 @@ function pageHidden(event: PageTransitionEvent) {
   battleClock = undefined
   if (!event.persisted) {
     simulationDisposed = true
+    renderer.dispose()
     newLayoutRequest.abort()
     newLayoutBundle?.dispose()
     newLayoutBundle = undefined
@@ -2305,6 +2306,7 @@ function frame(now: number) {
     selected,
     !!placingSandbag || !!placingRoadItem
   )
+  if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)
   assetNotice.update(renderer.assetStatus, performance.now(), state.phase === 'assault')
   $('app').dataset.simulationTime = String(state.time)

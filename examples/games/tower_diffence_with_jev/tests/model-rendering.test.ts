@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import * as THREE from 'three'
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
+import { GameEngine } from '../src/game/GameEngine'
 import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
 import { ModelUnitVisual, unitModelPose, type UnitModelDefinition } from '../src/rendering/ModelUnitVisual'
 import { ModelUnitLayer } from '../src/rendering/ModelUnitLayer'
@@ -32,6 +33,74 @@ function definition(url = '/model.glb'): UnitModelDefinition {
 }
 
 describe('real mesh asset ownership', () => {
+  it('keeps loaded clips and live rigs across stage 1→2 and releases session assets on disposal', async () => {
+    const load = vi.fn(async () => {
+      const source = fixture()
+      const mesh = source.scene.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>
+      // Count a large decoded texture without allocating its pixels in the CPU fixture.
+      mesh.material.map = new THREE.Texture({ width: 8192, height: 8192 })
+      return source
+    })
+    const cache = new ModelAssetCache(load, Infinity)
+    const scene = new THREE.Scene()
+    const layer = new ModelUnitLayer(scene, { soldier: definition() }, cache)
+    const engine = new GameEngine({ decide: async () => null })
+    engine.place('soldier', 0)
+    expect(layer.prepareDefender('soldier')).toBe(false)
+    await settle()
+    expect(layer.prepareDefender('soldier')).toBe(true)
+    layer.render(engine.state)
+    const rigs = [...scene.children]
+    cache.request('/past-wave.glb')
+    await settle()
+    const entries = cache.diagnostics().entries
+    engine.state.phase = 'cleared'
+    expect(engine.nextStage()).toBe(true)
+    layer.render(engine.state)
+    cache.setRequiredUrls([])
+    cache.evict()
+    expect(scene.children).toEqual(rigs)
+    expect(layer.visible(engine.state.units[0].id)).toBe(true)
+    expect(cache.residentBytes).toBeGreaterThan(192 * 1024 * 1024)
+    expect(cache.diagnostics().entries).toEqual(entries)
+    expect(load).toHaveBeenCalledTimes(2)
+    const geometry = (scene.children[0].getObjectByName('body') as THREE.Mesh).geometry
+    const dispose = vi.spyOn(geometry, 'dispose')
+    layer.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(cache.diagnostics().entries).toEqual([])
+  })
+
+  it('drops previous-stage corpses while reusing and resetting revived defenders', async () => {
+    const cache = new ModelAssetCache(async () => fixture(), Infinity)
+    const scene = new THREE.Scene()
+    const layer = new ModelUnitLayer(scene, { soldier: definition() }, cache)
+    cache.request('/model.glb')
+    await settle()
+    const engine = new GameEngine({ decide: async () => null })
+    engine.place('soldier', 0)
+    engine.state.units.push({ ...engine.state.units[0], id: 2, owner: 'ai' })
+    layer.render(engine.state)
+    const survivor = scene.children[0],
+      corpse = scene.children[1]
+    engine.state.time = 10
+    for (const unit of engine.state.units) unit.hp = 0
+    layer.render(engine.state)
+    engine.state.phase = 'cleared'
+    engine.nextStage()
+    layer.render(engine.state)
+    expect(scene.children).toContain(survivor)
+    expect(scene.children).not.toContain(corpse)
+    expect(layer.visible(engine.state.units[0].id)).toBe(true)
+    engine.state.time = 2
+    engine.state.units[0].hp = 0
+    layer.render(engine.state)
+    engine.state.time = 3.3
+    layer.render(engine.state)
+    expect(layer.visible(engine.state.units[0].id)).toBe(false)
+    layer.dispose()
+  })
+
   it('keeps upcoming motion clips ready above the soft budget and evicts after the wave releases them', async () => {
     const cache = new ModelAssetCache(async () => fixture(), 1)
     cache.setRequiredUrls(['/idle.glb', '/attack.glb'])

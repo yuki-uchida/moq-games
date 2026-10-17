@@ -297,6 +297,8 @@ export class GameRenderer {
   private disposed = false
   private models?: ModelUnitLayer
   private modelsActive = false
+  private preparedDefenders = new Set<AllyType>()
+  private compilingDefenders = new Set<AllyType>()
   private modelPresentationScale = 1
   private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
@@ -1077,6 +1079,32 @@ export class GameRenderer {
 
   setCommanderMode(enabled: boolean): void {
     this.commanderMode = enabled
+  }
+
+  defenderReady(type: AllyType): boolean {
+    return !this.models || this.preparedDefenders.has(type)
+  }
+
+  prepareDefenders(types: readonly AllyType[]): void {
+    if (!this.models || !this.modelsActive || this.disposed) return
+    const pending = types.filter(
+      (type) =>
+        !this.preparedDefenders.has(type) && !this.compilingDefenders.has(type) && this.models!.prepareDefender(type)
+    )
+    if (!pending.length) return
+    for (const type of pending) this.compilingDefenders.add(type)
+    // Compile and upload before enabling a drag, so a committed unit has a drawable rig.
+    void this.renderer
+      .compileAsync(this.scene, this.camera)
+      .then(() => {
+        if (this.disposed) return
+        this.renderer.render(this.scene, this.camera)
+        this.models?.finishDefenderPreparation(pending)
+        for (const type of pending) this.preparedDefenders.add(type)
+      })
+      .catch((error) => {
+        this.assetErrors.defenderPreparation = String(error)
+      })
   }
 
   assetStatus: 'ready' | 'loading' | 'error' = 'loading'

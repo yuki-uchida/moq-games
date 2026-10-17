@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { towerPath, dragUnitToWorld } from './tower-defense-e2e-arrange'
+import {
+  towerPath,
+  dragUnitToWorld,
+  openOfflineCampaign,
+  selectFieldUnit,
+  pointOnVisibleMap
+} from './tower-defense-e2e-arrange'
 import { getField } from '../examples/games/tower_diffence_with_jev/src/game/model'
 
 test('normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation', async ({
@@ -51,7 +57,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
   expect(diagnostic.gpu.programs).toBeGreaterThan(0)
   expect(diagnostic.modelRendering.cache.entries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
-  expect(models.every((url) => /\/(soldier|slime|goblin|shaman)\//.test(url))).toBe(true)
+  expect(models.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
   expect(bodySheets).toEqual([])
   await page.locator('#game-title-return').click()
   await expect(page.locator('#title-screen')).toBeVisible()
@@ -178,3 +184,68 @@ for (const role of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'] as 
     expect(failures).toEqual([])
   })
 }
+
+test('prepares summonable models before a drag and draws a committed unit on the first frame', async ({ page }) => {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().endsWith('.glb')) requests.push(request.url())
+  })
+  await page.route('**/archer/*.glb', async (route) => {
+    await held
+    await route.continue()
+  })
+  await openOfflineCampaign(page)
+  await page.locator('#deck-toggle').click()
+  await expect(page.locator('#unit-archer')).toBeVisible()
+  await expect(page.locator('#unit-archer')).toBeDisabled()
+  const gold = await page.locator('#gold').textContent()
+  const target = await pointOnVisibleMap(page, getField('meadow', 2, 4).slots[0])
+  const card = await page.locator('#unit-archer').boundingBox()
+  expect(card).not.toBeNull()
+  await page.mouse.move(card!.x + card!.width / 2, card!.y + card!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(target.x, target.y, { steps: 3 })
+  await page.mouse.up()
+  await expect(page.locator('.unit-health[data-owner="player"]')).toHaveCount(0)
+  expect(await page.locator('#gold').textContent()).toBe(gold)
+  release()
+  await expect(page.locator('#unit-archer')).toBeEnabled({ timeout: 90000 })
+  const requested = requests.filter((url) => url.includes('/archer/'))
+  await page.evaluate(() => {
+    const probe = { frames: [] as boolean[], done: false }
+    ;(window as any).__placementProbe = probe
+    const sample = () => {
+      const units = (window as any).towerDefenseDiagnostics().modelRendering.units
+      if (units.length) {
+        probe.frames.push(units.every((unit: any) => unit.visible && unit.meshes > 0))
+        if (probe.frames.length >= 5) {
+          probe.done = true
+          return
+        }
+      }
+      requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  await dragUnitToWorld(page, 'archer', getField('meadow', 2, 4).slots[0])
+  await expect.poll(() => page.evaluate(() => (window as any).__placementProbe.done)).toBe(true)
+  expect(await page.evaluate(() => (window as any).__placementProbe.frames)).toEqual([true, true, true, true, true])
+  expect(requests.filter((url) => url.includes('/archer/'))).toEqual(requested)
+  await selectFieldUnit(page, 'archer')
+  await page.locator('#unit-recall').click()
+  await dragUnitToWorld(page, 'archer', getField('meadow', 2, 4).slots[1])
+  expect(
+    await page.evaluate(() =>
+      (window as any)
+        .towerDefenseDiagnostics()
+        .modelRendering.units.every((unit: any) => unit.visible && unit.meshes > 0)
+    )
+  ).toBe(true)
+  expect(requests.filter((url) => url.includes('/archer/'))).toEqual(requested)
+  expect(requests.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
+  await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
+})

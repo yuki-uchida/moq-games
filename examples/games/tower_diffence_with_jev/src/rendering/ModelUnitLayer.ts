@@ -16,6 +16,7 @@ interface Actor {
 export class ModelUnitLayer {
   readonly errors: Record<string, string> = {}
   private actors = new Map<number, Actor>()
+  private prepared = new Map<UnitType, ModelUnitVisual>()
   private preview?: { type: UnitType; visual: ModelUnitVisual }
   private previousState?: Readonly<GameState>
   private previousStage?: number
@@ -25,7 +26,8 @@ export class ModelUnitLayer {
   constructor(
     private readonly scene: THREE.Scene,
     readonly roster: ModelRoster,
-    readonly cache = new ModelAssetCache()
+    // Retain decoded campaign assets until disposal; stage changes must not reload old clips.
+    readonly cache = new ModelAssetCache(undefined, Infinity)
   ) {}
 
   setPresentation(scale: number, aspect: number): void {
@@ -33,6 +35,7 @@ export class ModelUnitLayer {
     this.presentationAspect = aspect
     for (const actor of this.actors.values()) actor.visual.setPresentation(scale, aspect)
     this.preview?.visual.setPresentation(scale, aspect)
+    for (const visual of this.prepared.values()) visual.setPresentation(scale, aspect)
   }
 
   private request(type: UnitType, motions: readonly ModelMotion[]): boolean {
@@ -54,6 +57,27 @@ export class ModelUnitLayer {
       if (status === 'error') this.errors[spec.url] = this.cache.error(spec.url) ?? 'Model load failed'
     }
     return ready
+  }
+  /** Prepare only summonable defenders; keep their first rig off board for GPU warmup. */
+  prepareDefender(type: UnitType): boolean {
+    const motions: ModelMotion[] = ['idle', 'walk', type === 'healer' ? 'heal' : 'attack']
+    if (this.roster[type]?.clips.death) motions.push('death')
+    if (!this.request(type, motions)) return false
+    if (!this.prepared.has(type)) {
+      const visual = new ModelUnitVisual(this.roster[type]!, this.cache)
+      visual.setPresentation(this.presentationScale, this.presentationAspect)
+      visual.setPosition(-10000, -10000)
+      visual.sample({ motion: 'idle', seconds: 0, loop: true, facingX: 0, facingY: 1, boss: false })
+      this.scene.add(visual.root)
+      this.prepared.set(type, visual)
+    }
+    return true
+  }
+  finishDefenderPreparation(types: readonly UnitType[]): void {
+    for (const type of types) {
+      const visual = this.prepared.get(type)
+      if (visual) visual.root.visible = false
+    }
   }
   /** Prefetch only the current formation, selected defender and upcoming wave. */
   ready(state: Readonly<GameState>, selected?: UnitType): boolean {
@@ -84,11 +108,17 @@ export class ModelUnitLayer {
     return ready && !Object.keys(this.errors).length
   }
   render(state: Readonly<GameState>): void {
-    if (
-      this.previousState &&
-      (this.previousState !== state || this.previousStage !== state.stage || this.previousField !== state.fieldId)
-    )
-      this.clearActors()
+    if (this.previousState && (this.previousState !== state || this.previousField !== state.fieldId)) this.clearActors()
+    if (this.previousStage !== undefined && this.previousStage !== state.stage) {
+      const survivors = new Set(state.units.filter((unit) => unit.hp > 0).map((unit) => unit.id))
+      for (const [id, actor] of this.actors) {
+        if (survivors.has(id)) delete actor.deadAt
+        else {
+          actor.visual.dispose()
+          this.actors.delete(id)
+        }
+      }
+    }
     this.previousState = state
     this.previousStage = state.stage
     this.previousField = state.fieldId
@@ -261,6 +291,8 @@ export class ModelUnitLayer {
   dispose(): void {
     this.clearActors()
     this.preview?.visual.dispose()
+    for (const visual of this.prepared.values()) visual.dispose()
+    this.prepared.clear()
     this.cache.dispose()
   }
 }
