@@ -333,23 +333,15 @@ test('resumed assault prepares the first soldier death fade before its visible f
   })
   const { GameEngine } = await import('../examples/games/tower_diffence_with_jev/src/game/GameEngine')
   const { freshSave } = await import('../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem')
-  const { ALLY_TYPES, stageRules } = await import('../examples/games/tower_diffence_with_jev/src/game/model')
   const save = freshSave()
-  save.highestStage = 9
-  save.gold = 400
-  save.purchased = ['mage', 'healer', 'frost', 'ranger', 'cannon', 'paladin']
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
-  engine.state.stage = engine.state.stageSummary.stage = 10
-  engine.state.previousStageSummary = {
-    ...engine.state.stageSummary,
-    stage: 9,
-    spawned: stageRules(9).enemyCount,
-    resolved: stageRules(9).enemyCount
-  }
-  engine.history.reset(engine.state)
-  for (const type of ALLY_TYPES)
-    expect(getField('meadow', 2, 4).slots.some((slot) => engine.place(type, slot))).toBe(true)
+  expect(engine.place('soldier', getField('meadow', 2, 4).slots[0])).toBe(true)
+  // Isolate the same cold held-pose fade with a small real assault checkpoint.
+  // The ten-actor profiling scenario stays separate from this public regression.
+  engine.state.units[0].hp = 1
   expect(engine.startAssault()).toBe(true)
+  expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime', routeId: 'left' })).toBe(true)
+  engine.update(0.05)
   const checkpoint = engine.exportCheckpoint()!
   const raw = JSON.stringify({
     version: 3,
