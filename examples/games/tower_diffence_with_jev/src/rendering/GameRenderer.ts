@@ -1112,6 +1112,19 @@ export class GameRenderer {
         if (this.disposed) return
         this.models?.setDefenderPreparationVisible(pending, true)
         this.renderer.render(this.scene, this.camera)
+        this.models?.setDefenderPreparationVisible(pending, false)
+        // Preview transparency has its own shader variants; compile before accepting a drag.
+        this.models?.setDefenderPreparationOpacity(pending, 0.55)
+        this.models?.setDefenderPreparationVisible(pending, true)
+        try {
+          return this.renderer.compileAsync(this.scene, this.camera)
+        } finally {
+          this.models?.setDefenderPreparationVisible(pending, false)
+        }
+      })
+      .then(() => {
+        if (this.disposed) return
+        this.models?.setDefenderPreparationOpacity(pending, 1)
         for (const type of pending) {
           this.preparedDefenders.add(type)
           delete this.assetErrors[`defenderPreparation:${type}`]
@@ -1123,6 +1136,7 @@ export class GameRenderer {
         for (const type of pending) this.assetErrors[`defenderPreparation:${type}`] = String(error)
       })
       .finally(() => {
+        this.models?.setDefenderPreparationOpacity(pending, 1)
         this.models?.setDefenderPreparationVisible(pending, false)
         for (const type of pending) this.compilingDefenders.delete(type)
       })

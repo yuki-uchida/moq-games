@@ -81,6 +81,9 @@ export class ModelUnitLayer {
       }
     }
   }
+  setDefenderPreparationOpacity(types: readonly UnitType[], opacity: number): void {
+    for (const type of types) this.prepared.get(type)?.setAppearance(opacity)
+  }
   /** Prefetch only the current formation, selected defender and upcoming wave. */
   ready(state: Readonly<GameState>, selected?: UnitType): boolean {
     let ready = true

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import {
   towerPath,
   dragUnitToWorld,
+  beginUnitDragToWorld,
   openOfflineCampaign,
   selectFieldUnit,
   pointOnVisibleMap
@@ -234,7 +235,14 @@ test('prepares summonable models before a drag and draws a committed unit on the
     }
     requestAnimationFrame(sample)
   })
-  await dragUnitToWorld(page, 'archer', getField('meadow', 2, 4).slots[0])
+  for (const type of ['soldier', 'archer', 'runner', 'tank']) await expect(page.locator(`#unit-${type}`)).toBeEnabled()
+  const programs = await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu.programs)
+  await beginUnitDragToWorld(page, 'archer', getField('meadow', 2, 4).slots[0])
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  )
+  expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu.programs)).toBe(programs)
+  await page.mouse.up()
   await expect.poll(() => page.evaluate(() => (window as any).__placementProbe.done)).toBe(true)
   expect(await page.evaluate(() => (window as any).__placementProbe.frames)).toEqual([true, true, true, true, true])
   for (const url of requested) expect(requests.filter((value) => value === url)).toHaveLength(1)
