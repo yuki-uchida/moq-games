@@ -135,12 +135,20 @@ test('proportional real models, picking, HP text and preview rings reflow withou
     await expect(page.locator('#selection-context')).toBeVisible()
     await page.locator('#selection-close').click()
     await beginFieldUnitDragToWorld(page, 'soldier', point)
-    const range = await page.evaluate(() => (window as any).towerDefenseDiagnostics().displayGeometry.range)
-    expect(range.visible).toBe(true)
-    expect(range.radiusX).toBeCloseTo(range.radiusY, 5)
-    const fieldBounds = (await page.locator('#field').boundingBox())!
-    expect(range.screen.x).toBeCloseTo(fieldBounds.x + point.x * diagnostic.displayGeometry.scaleX, 0)
-    expect(range.screen.y).toBeCloseTo(fieldBounds.y + point.y * diagnostic.displayGeometry.scaleY, 0)
+    await expect
+      .poll(() =>
+        page.evaluate((point) => {
+          const range = (window as any).towerDefenseDiagnostics().displayGeometry.range
+          const field = document.getElementById('field')!.getBoundingClientRect()
+          return [
+            range.visible,
+            Math.abs(range.radiusX - range.radiusY) < 0.000005,
+            Math.abs(range.screen.x - field.x - (point.x * field.width) / 1280) < 0.5,
+            Math.abs(range.screen.y - field.y - (point.y * field.height) / 920) < 0.5
+          ]
+        }, point)
+      )
+      .toEqual([true, true, true, true])
     await page.screenshot({
       path: test.info().outputPath(`proportional-placement-${viewport.width}x${viewport.height}.png`)
     })
