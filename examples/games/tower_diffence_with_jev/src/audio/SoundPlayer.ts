@@ -139,7 +139,9 @@ export class SoundPlayer {
 
   unlock(): Promise<void> {
     if (this.isDestroyed) return Promise.resolve()
-    if (this.resumePending) return this.resumePending
+    // A resume attempted before mobile activation may remain pending indefinitely.
+    // A later trusted gesture must still call resume synchronously.
+    if (this.resumePending && this.context?.state === 'running') return this.resumePending
     try {
       if (!this.context) {
         const AudioContextClass = globalThis.AudioContext
@@ -160,7 +162,7 @@ export class SoundPlayer {
       this.unavailable = false
       this.contextError = ''
       const resumed = this.context.state === 'running' ? Promise.resolve() : this.context.resume()
-      this.resumePending = resumed
+      const pending = resumed
         .then(() => {
           if (this.isDestroyed) return
           for (const asset of this.assets.values()) this.ensureLoad(asset)
@@ -169,10 +171,11 @@ export class SoundPlayer {
           if (!this.isDestroyed) this.contextError = '音声を開始できません。操作して再試行してください。'
         })
         .finally(() => {
-          this.resumePending = null
+          if (this.resumePending === pending) this.resumePending = null
           this.publishStatus()
         })
-      return this.resumePending
+      this.resumePending = pending
+      return pending
     } catch {
       this.unavailable = true
       this.publishStatus()

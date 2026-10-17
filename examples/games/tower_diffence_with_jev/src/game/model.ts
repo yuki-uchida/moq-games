@@ -1472,7 +1472,8 @@ export function serializeStateForAI(s: Readonly<GameState>) {
       ...(s.economyVersion === 2 && u.owner === 'ai' && (u.mudSlowUntil ?? 0) > s.time
         ? { mudSlowRemaining: Math.round(((u.mudSlowUntil ?? 0) - s.time) * 100) / 100 }
         : {}),
-      hp: Math.round(u.hp),
+      // Preserve living sub-1 HP and match the exact battlefield flight target HP.
+      hp: u.hp,
       combat: observeDeploymentCombat(s, u),
       ...(roadblockTank ? { roadblockTank } : {}),
       attack: canInitiateDamage(u) ? effectiveAttack(u, s.time) : 0,

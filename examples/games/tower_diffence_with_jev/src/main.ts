@@ -18,6 +18,7 @@ import {
 } from './fortification-ui'
 import { BattleMusic, loadMusicPreferences, saveMusicPreferences } from './audio/BattleMusic'
 import { SoundPlayer } from './audio/SoundPlayer'
+import { bindAudioUnlock } from './audio/AudioUnlock'
 import { soundCatalog } from './audio/SoundCatalog'
 import { loadSoundPreferences, saveSoundPreferences } from './audio/SoundPreferences'
 import { validateCampaignCheckpoint } from './game/CampaignCheckpoint'
@@ -421,12 +422,10 @@ $<HTMLInputElement>('sound-enabled').disabled = !audioPackAvailable
 $<HTMLInputElement>('sound-enabled').checked = soundPreferences.enabled && audioPackAvailable
 $<HTMLInputElement>('sound-volume').value = String(Math.round(soundPreferences.volume * 100))
 $('sound-volume-value').textContent = `${Math.round(soundPreferences.volume * 100)}%`
-const unlockSound = (event: Event) => {
-  if (event.isTrusted) battleMusic.unlock()
-  if (event.isTrusted && soundPreferences.enabled) void soundPlayer.unlock()
-}
-document.addEventListener('pointerdown', unlockSound, { capture: true })
-document.addEventListener('keydown', unlockSound, { capture: true })
+const unbindAudioUnlock = bindAudioUnlock(document, () => {
+  battleMusic.unlock()
+  if (soundPreferences.enabled) void soundPlayer.unlock()
+})
 $<HTMLInputElement>('sound-enabled').onchange = () => {
   soundPreferences.enabled = $<HTMLInputElement>('sound-enabled').checked
   soundPlayer.setEnabled(soundPreferences.enabled)
@@ -483,7 +482,7 @@ function openTitle() {
 function returnToTitle() {
   if (started) {
     // Do not abandon an in-memory run when browser storage is unavailable.
-    if (!persist()) {
+    if (!persist(true)) {
       settings(true, $('game-title-return'))
       return
     }
@@ -1717,13 +1716,15 @@ function setSaveFeedback(saved: boolean, message?: string) {
         message ?? '保存の更新に失敗しました。再読み込みすると以前の遠征に戻る場合があります。'
   }
 }
-function persist(): boolean {
+function persist(force = false): boolean {
   if (!started) return false
   const snapshot = engine.exportCheckpoint()
   const serialized = snapshot ? JSON.stringify(snapshot) : ''
-  if (serialized && serialized === lastSavedCheckpoint) {
+  // Explicit saves must write even when another tab replaced our cached checkpoint.
+  // Keep unchanged autosaves quiet so idle tabs do not overwrite each other.
+  if (!force && serialized && serialized === lastSavedCheckpoint) {
     lastCheckpointAt = performance.now()
-    setSaveFeedback(true)
+    // No write occurred: do not clear an error from a failed explicit save.
     return true
   }
   const saved = !!snapshot && saveCampaignCheckpoint(save, snapshot, validateCampaignCheckpoint)
@@ -1735,7 +1736,7 @@ function persist(): boolean {
 function autosave() {
   if (started && performance.now() - lastCheckpointAt >= 5000) persist()
 }
-$('save-now').onclick = () => persist()
+$('save-now').onclick = () => persist(true)
 $('save-reset').onclick = () => {
   pendingSaveAction = 'reset'
   $('save-confirm-title').textContent = '保存データを初期化しますか？'
@@ -2204,8 +2205,7 @@ function pageHidden(event: PageTransitionEvent) {
     newLayoutBundle = undefined
     battleMusic.destroy()
     soundPlayer.destroy()
-    document.removeEventListener('pointerdown', unlockSound, { capture: true })
-    document.removeEventListener('keydown', unlockSound, { capture: true })
+    unbindAudioUnlock()
     document.removeEventListener('visibilitychange', visibilityChanged)
     window.removeEventListener('pagehide', pageHidden)
     window.removeEventListener('pageshow', pageShown)

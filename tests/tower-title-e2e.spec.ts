@@ -65,6 +65,53 @@ test('corrupt save is explained and preserved until confirmed replacement', asyn
   expect(await rawSave(page)).not.toBe('{corrupt')
 })
 
+test('explicit Save and Title restore this tab after another tab replaces an unchanged checkpoint', async ({
+  page,
+  context
+}) => {
+  await page.goto(towerPath)
+  await page.locator('#title-new').click()
+  await page.locator('[data-field="meadow"]').click()
+  await page.locator('#offline-start').click()
+  await expect(page.locator('#launch')).toBeHidden()
+  const savedA = await rawSave(page)
+  expect(savedA).not.toBeNull()
+
+  const other = await context.newPage()
+  try {
+    await other.goto(towerPath)
+    await other.locator('#title-new').click()
+    await other.locator('[data-field="desert"]').click()
+    await other.locator('#offline-start').click()
+    await expect(other.locator('#save-confirm')).toBeVisible()
+    await other.locator('#save-confirm-accept').click()
+    await expect(other.locator('#launch')).toBeHidden()
+    const savedB = await rawSave(other)
+    expect(savedB).not.toBeNull()
+    expect(savedB).not.toBe(savedA)
+    expect(await rawSave(page)).toBe(savedB)
+
+    await page.locator('#settings-toggle').click()
+    await page.locator('#save-now').click()
+    await expect(page.locator('#save-state')).toContainText('保存しました')
+    expect(await rawSave(page)).toBe(savedA)
+
+    // Restore B once more while A is unchanged, so Title must also bypass the cache.
+    await other.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw!), savedB)
+    expect(await rawSave(page)).toBe(savedB)
+    await page.locator('#settings-close').click()
+    await page.locator('#game-title-return').click()
+    await expect(page.locator('#title-screen')).toBeVisible()
+    expect(await rawSave(page)).toBe(savedA)
+    await page.locator('#title-continue').click()
+    await expect(page.locator('#title-screen')).toBeHidden()
+    await expect(page.locator('#field-name')).toHaveText(FIELDS.meadow.name)
+    expect(await rawSave(page)).toBe(savedA)
+  } finally {
+    await other.close()
+  }
+})
+
 test('EXTRA is read-only and returns to title including browser back', async ({ page }) => {
   await page.goto(towerPath)
   await page.locator('#title-extra').click()
@@ -172,7 +219,9 @@ test('EXTRA orbits, zooms, resets, pauses and uses non-looping authored death', 
   await expectModel(page, 'slime', 'death')
   await page.locator('#viewer-speed').selectOption('2')
   await page.locator('#viewer-play').click()
-  await expect(page.locator('#viewer-play')).toHaveText('Play', { timeout: 5000 })
+  await expect(page.locator('#viewer-play')).toHaveText('Play', {
+    timeout: 5000
+  })
   const ended = await diagnostics(page)
   expect(ended.seconds).toBeCloseTo(ended.duration)
   await page.locator('#viewer-restart').click()
