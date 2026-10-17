@@ -63,6 +63,7 @@ export class ModelUnitVisual {
   private normalized = new THREE.Group()
   private leases = new Map<string, { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }>()
   private preparationFailures = new Set<string>()
+  private fadePrepared = new WeakSet<ModelLease>()
   private preparing?: { lease: ModelLease }
   private active?: { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }
   private disposed = false
@@ -166,10 +167,36 @@ export class ModelUnitVisual {
     }
     return instance
   }
-  /** Build one already-needed action rig without sampling or attaching it to the board. */
-  prepareNextMotion(compile: (scene: THREE.Object3D) => Promise<unknown>): Promise<void> | undefined {
+  /** Prepare one existing fade or needed action rig without sampling a different pose. */
+  prepareNextMotion(
+    compile: (scene: THREE.Object3D) => Promise<unknown>,
+    prepareFade?: (scene: THREE.Object3D) => Promise<unknown>
+  ): Promise<void> | undefined {
     if (this.disposed || this.preparing) return
-    for (const motion of ['walk', 'attack', 'heal', 'breath', 'special'] as const) {
+    if (prepareFade) {
+      for (const { lease } of this.leases.values()) {
+        if (this.fadePrepared.has(lease)) continue
+        this.fadePrepared.add(lease)
+        this.preparing = { lease }
+        return Promise.resolve()
+          .then(() => {
+            if (!this.disposed) return prepareFade(lease.scene)
+          })
+          .then(() => undefined)
+          .finally(() => {
+            if (this.disposed) lease.release()
+            this.preparing = undefined
+          })
+      }
+    }
+    for (const motion of [
+      'walk',
+      'attack',
+      'heal',
+      'breath',
+      'special',
+      ...(prepareFade ? ['death' as const] : [])
+    ] as const) {
       const spec = this.definition.clips[motion]
       if (!spec) continue
       const key = `${spec.url}#${spec.clipUrl ?? spec.clip}`

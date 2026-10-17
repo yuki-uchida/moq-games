@@ -293,3 +293,83 @@ test('prepares summonable models before a drag and draws a committed unit on the
   ).toBe(true)
   await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
 })
+
+test('resumed assault prepares the first soldier death fade before its visible frame', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as any
+    w.__deathFadeProbe = { links: [], fades: [] }
+    const sources = new WeakMap<WebGLShader, string>(),
+      soldier = new WeakSet<WebGLProgram>()
+    const uniforms = new WeakMap<WebGLUniformLocation, { program: WebGLProgram; name: string }>()
+    const proto = WebGL2RenderingContext.prototype as any
+    const source = proto.shaderSource,
+      attach = proto.attachShader,
+      link = proto.linkProgram
+    const location = proto.getUniformLocation,
+      scalar = proto.uniform1f
+    proto.shaderSource = function (shader: WebGLShader, text: string) {
+      sources.set(shader, text)
+      return source.call(this, shader, text)
+    }
+    proto.attachShader = function (program: WebGLProgram, shader: WebGLShader) {
+      if (sources.get(shader)?.includes('soldierRestPosition')) soldier.add(program)
+      return attach.call(this, program, shader)
+    }
+    proto.linkProgram = function (program: WebGLProgram) {
+      if (soldier.has(program)) w.__deathFadeProbe.links.push(performance.now())
+      return link.call(this, program)
+    }
+    proto.getUniformLocation = function (program: WebGLProgram, name: string) {
+      const result = location.call(this, program, name)
+      if (result) uniforms.set(result, { program, name })
+      return result
+    }
+    proto.uniform1f = function (location: WebGLUniformLocation, value: number) {
+      const uniform = uniforms.get(location)
+      if (uniform?.name === 'opacity' && soldier.has(uniform.program) && value > 0 && value < 1)
+        w.__deathFadeProbe.fades.push({ time: performance.now(), opacity: value })
+      return scalar.call(this, location, value)
+    }
+  })
+  const { GameEngine } = await import('../examples/games/tower_diffence_with_jev/src/game/GameEngine')
+  const { freshSave } = await import('../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem')
+  const { ALLY_TYPES, stageRules } = await import('../examples/games/tower_diffence_with_jev/src/game/model')
+  const save = freshSave()
+  save.highestStage = 9
+  save.gold = 400
+  save.purchased = ['mage', 'healer', 'frost', 'ranger', 'cannon', 'paladin']
+  const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
+  engine.state.stage = engine.state.stageSummary.stage = 10
+  engine.state.previousStageSummary = {
+    ...engine.state.stageSummary,
+    stage: 9,
+    spawned: stageRules(9).enemyCount,
+    resolved: stageRules(9).enemyCount
+  }
+  engine.history.reset(engine.state)
+  for (const type of ALLY_TYPES)
+    expect(getField('meadow', 2, 4).slots.some((slot) => engine.place(type, slot))).toBe(true)
+  expect(engine.startAssault()).toBe(true)
+  const checkpoint = engine.exportCheckpoint()!
+  const raw = JSON.stringify({
+    version: 3,
+    profile: checkpoint.profile,
+    run: { version: 1, progress: checkpoint.progress, engine: checkpoint }
+  })
+  await page.goto(towerPath)
+  await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), raw)
+  await page.reload()
+  await page.locator('#title-continue').click()
+  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__deathFadeProbe.fades.length), { timeout: 120000 })
+    .toBeGreaterThan(2)
+  const probe = await page.evaluate(() => (window as any).__deathFadeProbe)
+  expect(probe.links.length).toBeGreaterThan(0)
+  // Timing-independent gate: the driver's link work must precede visible fade submission.
+  // A generous gap accommodates slow CI machines without asserting a hardware frame budget.
+  expect(Math.max(...probe.links)).toBeLessThan(probe.fades[0].time - 100)
+  expect(probe.fades[0].opacity).toBeGreaterThan(0)
+  expect(probe.fades[0].opacity).toBeLessThan(1)
+  await page.screenshot({ path: test.info().outputPath('resumed-first-death-fade.png') })
+})

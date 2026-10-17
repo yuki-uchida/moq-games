@@ -689,3 +689,52 @@ describe('first posed skinned bounds matrix reuse', () => {
     expect(value.computeBoundingSphere).toBe(custom)
   })
 })
+
+it('prepares an existing actor fade without acquiring another rig, retains it during disposal and does not retry failures', async () => {
+  const cache = new ModelAssetCache(async () => fixture())
+  cache.request('/model.glb')
+  await settle()
+  const visual = new ModelUnitVisual(definition(), cache)
+  visual.sample({ motion: 'idle', seconds: 0.3, loop: true, facingX: 0, facingY: 1, boss: false })
+  const acquire = vi.spyOn(cache, 'acquire')
+  const compile = vi.fn(async () => {})
+  let finish!: () => void
+  const fade = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  const pending = visual.prepareNextMotion(compile, fade)
+  await settle()
+  expect(acquire).not.toHaveBeenCalled()
+  expect(compile).not.toHaveBeenCalled()
+  expect(fade).toHaveBeenCalledTimes(1)
+  expect(visual.diagnostics()).toMatchObject({ visible: true, motion: 'idle', rigs: 1 })
+  expect(visual.diagnostics().seconds).toBeCloseTo(0.3)
+  expect(visual.prepareNextMotion(compile, fade)).toBeUndefined()
+  visual.dispose()
+  expect(cache.diagnostics().entries[0].references).toBe(1)
+  finish()
+  await pending
+  expect(cache.diagnostics().entries[0].references).toBe(0)
+  cache.dispose()
+})
+
+it('keeps a rejected fade usable without retrying it every frame or downloading another model', async () => {
+  const cache = new ModelAssetCache(async () => fixture())
+  cache.request('/model.glb')
+  await settle()
+  const visual = new ModelUnitVisual({ ...definition(), clips: { idle: definition().clips.idle } }, cache)
+  const idle = { motion: 'idle' as const, seconds: 0.3, loop: true, facingX: 0, facingY: 1, boss: false }
+  visual.sample(idle)
+  const fade = vi.fn(async () => {
+    throw Error('driver unavailable')
+  })
+  await expect(visual.prepareNextMotion(async () => {}, fade)).rejects.toThrow('driver unavailable')
+  expect(visual.prepareNextMotion(async () => {}, fade)).toBeUndefined()
+  expect(fade).toHaveBeenCalledTimes(1)
+  expect(visual.sample(idle)).toBe(true)
+  visual.dispose()
+  cache.dispose()
+})

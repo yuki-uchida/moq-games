@@ -213,11 +213,14 @@ export class ModelUnitLayer {
     }
     this.cache.evict()
   }
-  /** At most one detached action rig per frame; never prepare unused roster entries. */
-  prepareNextMotion(compile: (scene: THREE.Object3D) => Promise<unknown>): Promise<void> | undefined {
+  /** At most one actor preparation job per frame; never prepare unused roster entries. */
+  prepareNextMotion(
+    compile: (scene: THREE.Object3D) => Promise<unknown>,
+    prepareFade?: (scene: THREE.Object3D) => Promise<unknown>
+  ): Promise<void> | undefined {
     for (const actor of this.actors.values()) {
       if (actor.last.hp <= 0 || actor.deadAt !== undefined) continue
-      const pending = actor.visual.prepareNextMotion(compile)
+      const pending = actor.visual.prepareNextMotion(compile, prepareFade)
       if (pending) return pending
     }
   }

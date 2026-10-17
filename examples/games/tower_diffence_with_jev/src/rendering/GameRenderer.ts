@@ -1,3 +1,4 @@
+import { prepareFadePrograms } from './FadePrograms'
 import { SpecialAbilityVisual } from './SpecialAbilityVisual'
 import { SPECIALS } from '../game/SpecialAbilities'
 import { ModelEnvironmentLighting } from './ModelEnvironmentLighting'
@@ -1155,8 +1156,9 @@ export class GameRenderer {
   private prepareActorMotion(): void {
     if (this.disposed || !this.modelsActive || this.motionPreparation || this.compilingDefenders.size) return
     try {
-      const pending = this.models?.prepareNextMotion((root) =>
-        this.renderer.compileAsync(root, this.camera, this.scene)
+      const pending = this.models?.prepareNextMotion(
+        (root) => this.renderer.compileAsync(root, this.camera, this.scene),
+        (root) => prepareFadePrograms(this.renderer, root, this.camera, this.scene)
       )
       if (pending) {
         // Failure leaves the same lease available for the normal draw path.
