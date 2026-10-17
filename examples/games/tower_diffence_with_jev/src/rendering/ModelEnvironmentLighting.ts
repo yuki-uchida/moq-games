@@ -7,7 +7,10 @@ export class ModelEnvironmentLighting {
   private disposed = false
   private generations = 0
 
-  constructor(private readonly scene: THREE.Scene) {}
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly intensity = 0.25
+  ) {}
 
   /** Lazy so the title screen retains its zero-render/zero-program startup. */
   ensure(renderer: THREE.WebGLRenderer): void {
@@ -17,7 +20,7 @@ export class ModelEnvironmentLighting {
     try {
       this.target = generator.fromScene(room, 0.04)
       this.scene.environment = this.target.texture
-      this.scene.environmentIntensity = 0.25
+      this.scene.environmentIntensity = this.intensity
       this.generations++
     } finally {
       room.dispose()

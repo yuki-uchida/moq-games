@@ -531,7 +531,8 @@ export class GameRenderer {
   ) {
     if (authored.models) {
       this.models = new ModelUnitLayer(this.scene, authored.models)
-      this.modelEnvironment = new ModelEnvironmentLighting(this.scene)
+      // The board has one key light; stronger IBL keeps shaded cloth and metal readable.
+      this.modelEnvironment = new ModelEnvironmentLighting(this.scene, 0.5)
       this.scene.add(new THREE.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
       const light = new THREE.DirectionalLight(0xffe0ad, 3)
       light.position.set(-120, -240, 100)

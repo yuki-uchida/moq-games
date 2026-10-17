@@ -47,7 +47,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     diagnostic.modelRendering.units.some((unit: any) => unit.type === 'soldier' && unit.meshes > 0 && unit.visible)
   ).toBe(true)
   expect(models.length).toBeGreaterThan(0)
-  expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.25, generations: 1 })
+  expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.5, generations: 1 })
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
   expect(diagnostic.gpu.programs).toBeGreaterThan(0)
   expect(diagnostic.modelRendering.cache.entries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
@@ -66,7 +66,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().simulationTime))
     .toBeGreaterThan(1)
   const after = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
-  expect(after.modelEnvironment).toEqual({ ready: true, intensity: 0.25, generations: 1 })
+  expect(after.modelEnvironment).toEqual({ ready: true, intensity: 0.5, generations: 1 })
   expect(after.modelRendering.errors).toEqual({})
   expect(after.assetErrors).toEqual({})
   expect(bodySheets).toEqual([])
@@ -79,10 +79,22 @@ test('EXTRA shares the weak model IBL once across model switches and releases it
   const environmentRequests: string[] = []
   page.on('pageerror', (error) => failures.push(error.message))
   page.on('request', (request) => {
-    if (/\.(hdr|exr)(\?|$)|RoomEnvironment/.test(request.url())) environmentRequests.push(request.url())
+    if (/\.(hdr|exr)(\?|$)/.test(request.url())) environmentRequests.push(request.url())
   })
   await page.goto('/moq-games/examples/games/tower_diffence_with_jev/extra.html')
-  for (const role of ['tank', 'ogre', 'mage']) {
+  for (const role of [
+    'soldier',
+    'archer',
+    'runner',
+    'tank',
+    'mage',
+    'healer',
+    'frost',
+    'ranger',
+    'cannon',
+    'paladin',
+    'ogre'
+  ]) {
     await page.locator('#viewer-role').selectOption(role)
     await expect
       .poll(() => page.evaluate(() => (window as any).__extraViewerDiagnostics?.().state), { timeout: 90000 })
