@@ -42,7 +42,7 @@ export function installTankDQSkinningAdapter(root, {THREE} = {}) {
  const meshes=[];root.traverse(o=>{if(o.isSkinnedMesh)meshes.push(o);});
  const authoredMeshes = new Set(meshes.map(mesh => mesh.parent?.name === 'Tank_Original_Weighted' ? mesh.parent : mesh));
  if(authoredMeshes.size!==1 || !meshes.length)throw Error('Tank DQ requires all original authored mesh nodes, including material-split primitives');
- const palettes=new Map(),bindings=[];let disposed=false;
+ const palettes=new Map(),bindings=[];let disposed=false; const scratchA=new Float64Array(16),scratchB=new Float64Array(16);
  for(const mesh of meshes){
   if(mesh.castShadow && !THREE)throw Error('Tank DQ shadow casters require {THREE} for depth/distance materials');
   const sk=mesh.skeleton,n=sk.bones.length;
@@ -80,5 +80,26 @@ objectTangent=tankDQRotate(tankQR,objectTangent);
   mesh.material=adapted;mesh.frustumCulled=false;
   bindings.push({mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled});
  }
- return {update(){if(disposed)throw Error('Tank DQ disposed');root.updateMatrixWorld(true);const skeletons=new Set(meshes.map(m=>m.skeleton));for(const sk of skeletons)sk.update();for(const [mesh,p] of palettes){const sk=mesh.skeleton;for(let b=0;b<sk.bones.length;b++){const local=tankMultiplyMatrices(tankMultiplyMatrices(mesh.bindMatrixInverse.elements,sk.boneMatrices.subarray(b*16,b*16+16)),mesh.bindMatrix.elements);const [r,d]=tankMatrixToDualQuaternion(local);p.real.value.set(r,b*4);p.dual.value.set(d,b*4);}}},dispose(){if(disposed)return;for(const {mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled} of bindings){if(mesh.material===adapted)mesh.material=original;if(mesh.customDepthMaterial===adaptedDepth)mesh.customDepthMaterial=depth;if(mesh.customDistanceMaterial===adaptedDistance)mesh.customDistanceMaterial=distance;mesh.frustumCulled=frustumCulled;for(const m of [...(Array.isArray(adapted)?adapted:[adapted]),adaptedDepth,adaptedDistance])m?.dispose();}disposed=true;}};
+ return {update(){if(disposed)throw Error('Tank DQ disposed');root.updateMatrixWorld(true);const skeletons=new Set(meshes.map(m=>m.skeleton));for(const sk of skeletons)sk.update();for(const [mesh,p] of palettes){const sk=mesh.skeleton;for(let b=0;b<sk.bones.length;b++){multiplyInto(mesh.bindMatrixInverse.elements,sk.boneMatrices,b*16,scratchA);multiplyInto(scratchA,mesh.bindMatrix.elements,0,scratchB);writeDQ(scratchB,p.real.value,p.dual.value,b*4);}}},dispose(){if(disposed)return;for(const {mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled} of bindings){if(mesh.material===adapted)mesh.material=original;if(mesh.customDepthMaterial===adaptedDepth)mesh.customDepthMaterial=depth;if(mesh.customDistanceMaterial===adaptedDistance)mesh.customDistanceMaterial=distance;mesh.frustumCulled=frustumCulled;for(const m of [...(Array.isArray(adapted)?adapted:[adapted]),adaptedDepth,adaptedDistance])m?.dispose();}disposed=true;}};
 }
+
+function writeDQ(e, real, dual, offset) {
+  if(e.length!==16||!finiteMatrix(e))throw Error('Tank skin matrix must be finite');
+  const a=e[0],b=e[4],c=e[8],d=e[1],f=e[5],g=e[9],h=e[2],i=e[6],j=e[10];
+  for(let x=0;x<3;x++)for(let y=0;y<3;y++){
+   let dot=0;for(let k=0;k<3;k++)dot+=e[x*4+k]*e[y*4+k];
+   if(Math.abs(dot-(x===y?1:0))>1e-4)throw Error('Tank DQ requires rigid skin matrices');
+  }
+  if(a*(f*j-g*i)-b*(d*j-g*h)+c*(d*i-f*h)<0)throw Error('Tank DQ rejects reflections');
+  let x,y,z,w,s;const tr=a+f+j;
+  if(tr>0){s=2*Math.sqrt(tr+1);w=s/4;x=(i-g)/s;y=(c-h)/s;z=(d-b)/s;}
+  else if(a>f&&a>j){s=2*Math.sqrt(1+a-f-j);w=(i-g)/s;x=s/4;y=(b+d)/s;z=(c+h)/s;}
+  else if(f>j){s=2*Math.sqrt(1+f-a-j);w=(c-h)/s;x=(b+d)/s;y=s/4;z=(g+i)/s;}
+  else{s=2*Math.sqrt(1+j-a-f);w=(d-b)/s;x=(c+h)/s;y=(g+i)/s;z=s/4;}
+  const n=Math.hypot(x,y,z,w);x/=n;y/=n;z/=n;w/=n;
+  const tx=e[12],ty=e[13],tz=e[14];
+  real[offset]=x;real[offset+1]=y;real[offset+2]=z;real[offset+3]=w;
+  dual[offset]=(tx*w+ty*z-tz*y)/2;dual[offset+1]=(-tx*z+ty*w+tz*x)/2;dual[offset+2]=(tx*y-ty*x+tz*w)/2;dual[offset+3]=(-tx*x-ty*y-tz*z)/2;
+}
+function finiteMatrix(e){for(let i=0;i<16;i++)if(!Number.isFinite(e[i]))return false;return true;}
+function multiplyInto(a,b,offset,out){out.fill(0);for(let c=0;c<4;c++)for(let r=0;r<4;r++)for(let k=0;k<4;k++)out[c*4+r]+=a[k*4+r]*b[offset+c*4+k];}
