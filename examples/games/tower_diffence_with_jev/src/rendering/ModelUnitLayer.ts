@@ -60,9 +60,7 @@ export class ModelUnitLayer {
   }
   /** Prepare only summonable defenders; keep their first rig off board for GPU warmup. */
   prepareDefender(type: UnitType): boolean {
-    const motions: ModelMotion[] = ['idle', 'walk', type === 'healer' ? 'heal' : 'attack']
-    if (this.roster[type]?.clips.death) motions.push('death')
-    if (!this.request(type, motions)) return false
+    if (!this.request(type, ['idle'])) return false
     if (!this.prepared.has(type)) {
       const visual = new ModelUnitVisual(this.roster[type]!, this.cache)
       visual.setPresentation(this.presentationScale, this.presentationAspect)
@@ -73,10 +71,14 @@ export class ModelUnitLayer {
     }
     return true
   }
-  finishDefenderPreparation(types: readonly UnitType[]): void {
+  setDefenderPreparationVisible(types: readonly UnitType[], visible: boolean): void {
     for (const type of types) {
       const visual = this.prepared.get(type)
-      if (visual) visual.root.visible = false
+      if (visual) {
+        visual.root.visible = visible
+        if (visible) this.scene.add(visual.root)
+        else visual.root.removeFromParent()
+      }
     }
   }
   /** Prefetch only the current formation, selected defender and upcoming wave. */
@@ -291,6 +293,7 @@ export class ModelUnitLayer {
   dispose(): void {
     this.clearActors()
     this.preview?.visual.dispose()
+    this.preview = undefined
     for (const visual of this.prepared.values()) visual.dispose()
     this.prepared.clear()
     this.cache.dispose()

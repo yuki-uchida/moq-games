@@ -4,6 +4,8 @@ import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { GameEngine } from '../src/game/GameEngine'
 import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
 import { ModelUnitVisual, unitModelPose, type UnitModelDefinition } from '../src/rendering/ModelUnitVisual'
+import { installOgreDQSkinningAdapter } from '../src/rendering/models/adapters/runtime/ogre-dq-skinning-adapter.js'
+import { installOgreDQSkinningAdapter as installReferenceOgreDQ } from '../src/rendering/models/adapters/source/ogre-dq-skinning-adapter.js'
 import { ModelUnitLayer } from '../src/rendering/ModelUnitLayer'
 import { ATTACK_PROFILES } from '../src/game/AttackProfiles'
 import type { Unit, CombatAttack, GameState } from '../src/game/model'
@@ -33,6 +35,30 @@ function definition(url = '/model.glb'): UnitModelDefinition {
 }
 
 describe('real mesh asset ownership', () => {
+  it('warms only idle until selection requires the remaining motion sources', async () => {
+    const load = vi.fn(async (_url: string) => fixture())
+    const cache = new ModelAssetCache(load)
+    const spec = {
+      ...definition(),
+      clips: {
+        idle: { url: '/idle.glb', clip: 'idle' },
+        walk: { url: '/walk.glb', clip: 'walk' },
+        attack: { url: '/attack.glb', clip: 'attack' }
+      }
+    }
+    const layer = new ModelUnitLayer(new THREE.Scene(), { soldier: spec }, cache)
+    expect(layer.prepareDefender('soldier')).toBe(false)
+    await settle()
+    expect(layer.prepareDefender('soldier')).toBe(true)
+    expect(load.mock.calls.map(([url]) => url)).toEqual(['/idle.glb'])
+    const state = { units: [], attacks: [], phase: 'assault', stage: 1, time: 0 } as unknown as GameState
+    expect(layer.ready(state, 'soldier')).toBe(false)
+    await settle()
+    expect(layer.ready(state, 'soldier')).toBe(true)
+    expect(load.mock.calls.map(([url]) => url)).toEqual(['/idle.glb', '/walk.glb', '/attack.glb'])
+    layer.dispose()
+  })
+
   it('keeps loaded clips and live rigs across stage 1→2 and releases session assets on disposal', async () => {
     const load = vi.fn(async () => {
       const source = fixture()
@@ -49,6 +75,8 @@ describe('real mesh asset ownership', () => {
     expect(layer.prepareDefender('soldier')).toBe(false)
     await settle()
     expect(layer.prepareDefender('soldier')).toBe(true)
+    layer.setDefenderPreparationVisible(['soldier'], false)
+    expect(scene.children).toHaveLength(0)
     layer.render(engine.state)
     const rigs = [...scene.children]
     cache.request('/past-wave.glb')
@@ -193,6 +221,7 @@ describe('real mesh asset ownership', () => {
     expect(visual.sample({ motion: 'idle', seconds: 0.5, loop: true, facingX: 0, facingY: 1, boss: false })).toBe(true)
     expect(visual.diagnostics()).toMatchObject({ renderer: 'gltf-mesh', meshes: 1, triangles: 12, seconds: 0.5 })
     visual.dispose()
+    expect(visual.diagnostics()).toMatchObject({ visible: false, meshes: 0, rigs: 0 })
     cache.dispose()
     expect(order).toEqual(['material', 'skinning', 'dispose:skinning', 'dispose:material'])
   })
@@ -251,3 +280,90 @@ describe('real mesh asset ownership', () => {
     )
   })
 })
+
+function ogreRigFixture(rigCount: number) {
+  const root = new THREE.Group()
+  const bones: THREE.Bone[][] = []
+  const meshes: THREE.SkinnedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[] = []
+  for (let n = 0; n < rigCount; n++) {
+    const rig = Array.from({ length: 16 }, () => new THREE.Bone())
+    rig.forEach((bone, i) => {
+      bone.position.y = i ? 0.1 : 0
+      if (i) rig[i - 1].add(bone)
+    })
+    root.add(rig[0])
+    bones.push(rig)
+  }
+  root.updateMatrixWorld(true)
+  for (let i = 0; i < 27; i++) {
+    const geometry = new THREE.BoxGeometry(),
+      count = geometry.attributes.position.count
+    const weights = new Float32Array(count * 4),
+      indices = new Uint16Array(count * 4)
+    for (let v = 0; v < count; v++) {
+      weights[v * 4] = 0.75
+      weights[v * 4 + 1] = 0.25
+      indices[v * 4 + 1] = 1
+    }
+    geometry.setAttribute('skinWeight', new THREE.BufferAttribute(weights, 4))
+    geometry.setAttribute('skinIndex', new THREE.BufferAttribute(indices, 4))
+    const mesh = new THREE.SkinnedMesh(geometry, new THREE.MeshStandardMaterial())
+    mesh.bind(new THREE.Skeleton(bones[i % rigCount]), new THREE.Matrix4())
+    root.add(mesh)
+    meshes.push(mesh)
+  }
+  return { root, bones, meshes }
+}
+function ogrePalettes(fixture: ReturnType<typeof ogreRigFixture>) {
+  return fixture.meshes.map((mesh) => {
+    const shader = {
+      uniforms: {},
+      vertexShader:
+        '#include <skinning_pars_vertex>\n#include <skinbase_vertex>\n#include <skinnormal_vertex>\n#include <skinning_vertex>'
+    } as any
+    mesh.material.onBeforeCompile(shader, undefined as any)
+    return shader
+  })
+}
+
+for (const rigCount of [1, 2]) {
+  it(`shares Ogre palettes across equal binds with ${rigCount} rig(s), preserving original shader and float values`, () => {
+    const baseline = ogreRigFixture(rigCount),
+      candidate = ogreRigFixture(rigCount)
+    const reference = installReferenceOgreDQ(baseline.root, { THREE })
+    const optimized = installOgreDQSkinningAdapter(candidate.root, { THREE })
+    const before = ogrePalettes(baseline),
+      after = ogrePalettes(candidate)
+    const oldUpdates = baseline.meshes.map((mesh) => vi.spyOn(mesh.skeleton, 'update'))
+    const newUpdates = candidate.meshes.map((mesh) => vi.spyOn(mesh.skeleton, 'update'))
+    const compare = () => {
+      reference.update!()
+      optimized.update!()
+      for (let i = 0; i < before.length; i++) {
+        expect(after[i].vertexShader).toBe(before[i].vertexShader)
+        for (const key of ['ogreDQReal', 'ogreDQDual'])
+          expect(Array.from(after[i].uniforms[key].value)).toEqual(Array.from(before[i].uniforms[key].value))
+      }
+    }
+    for (let facing = 0; facing < 8; facing++) {
+      for (const time of [0, 0.17, 0.33, 0.5, 0.7, 0.9, 1, 1.2]) {
+        for (const fixture of [baseline, candidate]) {
+          fixture.root.rotation.z = (facing * Math.PI) / 4
+          fixture.bones.forEach((rig, n) => {
+            rig[4].rotation.x = time * (n + 1) * 0.2
+          })
+        }
+        compare()
+      }
+    }
+    expect(oldUpdates.reduce((n, spy) => n + spy.mock.calls.length, 0)).toBe(64 * 27)
+    expect(newUpdates.reduce((n, spy) => n + spy.mock.calls.length, 0)).toBe(64 * rigCount)
+    for (const fixture of [baseline, candidate]) fixture.meshes[2].position.x = 3
+    compare()
+    for (const fixture of [baseline, candidate])
+      fixture.meshes[1].skeleton.boneInverses[0] = new THREE.Matrix4().makeTranslation(0.25, 0, 0)
+    compare()
+    reference.dispose()
+    optimized.dispose()
+  })
+}

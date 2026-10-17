@@ -56,7 +56,9 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.5, generations: 1 })
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
   expect(diagnostic.gpu.programs).toBeGreaterThan(0)
-  expect(diagnostic.modelRendering.cache.entries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
+  const loadedEntries = diagnostic.modelRendering.cache.entries.filter((entry: any) => entry.state === 'ready')
+  expect(loadedEntries.length).toBeGreaterThan(0)
+  expect(loadedEntries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
   expect(models.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
   expect(bodySheets).toEqual([])
   await page.locator('#game-title-return').click()
@@ -215,6 +217,7 @@ test('prepares summonable models before a drag and draws a committed unit on the
   release()
   await expect(page.locator('#unit-archer')).toBeEnabled({ timeout: 90000 })
   const requested = requests.filter((url) => url.includes('/archer/'))
+  expect(requested).toHaveLength(1)
   await page.evaluate(() => {
     const probe = { frames: [] as boolean[], done: false }
     ;(window as any).__placementProbe = probe
@@ -234,7 +237,8 @@ test('prepares summonable models before a drag and draws a committed unit on the
   await dragUnitToWorld(page, 'archer', getField('meadow', 2, 4).slots[0])
   await expect.poll(() => page.evaluate(() => (window as any).__placementProbe.done)).toBe(true)
   expect(await page.evaluate(() => (window as any).__placementProbe.frames)).toEqual([true, true, true, true, true])
-  expect(requests.filter((url) => url.includes('/archer/'))).toEqual(requested)
+  for (const url of requested) expect(requests.filter((value) => value === url)).toHaveLength(1)
+  expect(new Set(requests).size).toBe(requests.length)
   await selectFieldUnit(page, 'archer')
   await page.locator('#unit-recall').click()
   await dragUnitToWorld(page, 'archer', getField('meadow', 2, 4).slots[1])
@@ -245,7 +249,8 @@ test('prepares summonable models before a drag and draws a committed unit on the
         .modelRendering.units.every((unit: any) => unit.visible && unit.meshes > 0)
     )
   ).toBe(true)
-  expect(requests.filter((url) => url.includes('/archer/'))).toEqual(requested)
+  for (const url of requested) expect(requests.filter((value) => value === url)).toHaveLength(1)
+  expect(new Set(requests).size).toBe(requests.length)
   expect(requests.every((url) => /\/(soldier|archer|runner|tank|slime|goblin|shaman)\//.test(url))).toBe(true)
   await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
 })

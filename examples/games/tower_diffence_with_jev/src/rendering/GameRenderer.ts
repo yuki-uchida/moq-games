@@ -299,6 +299,7 @@ export class GameRenderer {
   private modelsActive = false
   private preparedDefenders = new Set<AllyType>()
   private compilingDefenders = new Set<AllyType>()
+  private defenderRetryAt = 0
   private modelPresentationScale = 1
   private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
@@ -710,6 +711,8 @@ export class GameRenderer {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.preparedDefenders.clear()
+    this.compilingDefenders.clear()
     this.cancelArtSwitch()
     this.models?.dispose()
     this.environmentRequest?.abort()
@@ -1086,24 +1089,42 @@ export class GameRenderer {
   }
 
   prepareDefenders(types: readonly AllyType[]): void {
-    if (!this.models || !this.modelsActive || this.disposed) return
+    if (!this.models || !this.modelsActive || this.disposed || performance.now() < this.defenderRetryAt) return
     const pending = types.filter(
       (type) =>
         !this.preparedDefenders.has(type) && !this.compilingDefenders.has(type) && this.models!.prepareDefender(type)
     )
     if (!pending.length) return
     for (const type of pending) this.compilingDefenders.add(type)
-    // Compile and upload before enabling a drag, so a committed unit has a drawable rig.
-    void this.renderer
-      .compileAsync(this.scene, this.camera)
+    this.models.setDefenderPreparationVisible(pending, false)
+    // Keep pending shaders out of normal draws; warm once before enabling a drag.
+    void Promise.resolve()
       .then(() => {
         if (this.disposed) return
+        this.models?.setDefenderPreparationVisible(pending, true)
+        try {
+          return this.renderer.compileAsync(this.scene, this.camera)
+        } finally {
+          this.models?.setDefenderPreparationVisible(pending, false)
+        }
+      })
+      .then(() => {
+        if (this.disposed) return
+        this.models?.setDefenderPreparationVisible(pending, true)
         this.renderer.render(this.scene, this.camera)
-        this.models?.finishDefenderPreparation(pending)
-        for (const type of pending) this.preparedDefenders.add(type)
+        for (const type of pending) {
+          this.preparedDefenders.add(type)
+          delete this.assetErrors[`defenderPreparation:${type}`]
+        }
       })
       .catch((error) => {
-        this.assetErrors.defenderPreparation = String(error)
+        if (this.disposed) return
+        this.defenderRetryAt = performance.now() + 1000
+        for (const type of pending) this.assetErrors[`defenderPreparation:${type}`] = String(error)
+      })
+      .finally(() => {
+        this.models?.setDefenderPreparationVisible(pending, false)
+        for (const type of pending) this.compilingDefenders.delete(type)
       })
   }
 

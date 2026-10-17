@@ -80,5 +80,34 @@ objectTangent=ogreDQRotate(ogreQR,objectTangent);
   mesh.material=adapted;mesh.frustumCulled=false;
   bindings.push({mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled});
  }
- return {update(){if(disposed)throw Error('Ogre DQ disposed');root.updateMatrixWorld(true);const skeletons=new Set(meshes.map(m=>m.skeleton));for(const sk of skeletons)sk.update();for(const [mesh,p] of palettes){const sk=mesh.skeleton;for(let b=0;b<sk.bones.length;b++){const local=ogreMultiplyMatrices(ogreMultiplyMatrices(mesh.bindMatrixInverse.elements,sk.boneMatrices.subarray(b*16,b*16+16)),mesh.bindMatrix.elements);const [r,d]=ogreMatrixToDualQuaternion(local);p.real.value.set(r,b*4);p.dual.value.set(d,b*4);}}},dispose(){if(disposed)return;for(const {mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled} of bindings){if(mesh.material===adapted)mesh.material=original;if(mesh.customDepthMaterial===adaptedDepth)mesh.customDepthMaterial=depth;if(mesh.customDistanceMaterial===adaptedDistance)mesh.customDistanceMaterial=distance;mesh.frustumCulled=frustumCulled;for(const m of [...(Array.isArray(adapted)?adapted:[adapted]),adaptedDepth,adaptedDistance])m?.dispose();}disposed=true;}};
+ // GLTFLoader/SkeletonUtils make one Skeleton object per primitive, even
+ // when the bones and inverse bind pose are shared. Keep uniform storage per
+ // mesh, but evaluate each equal rig/bind palette only once per sample.
+ const sameRig=(a,b)=>a===b||(a.bones.length===b.bones.length&&a.boneInverses.length===b.boneInverses.length&&a.bones.every((bone,i)=>bone===b.bones[i])&&a.boneInverses.every((inverse,i)=>inverse.equals(b.boneInverses[i])));
+ const rigs=[];
+ for(const entry of palettes){
+  const [mesh]=entry,sk=mesh.skeleton;
+  let rig=rigs.find(r=>sameRig(r.skeleton,sk));
+  if(!rig){rig={skeleton:sk,entries:[],sampled:[]};rigs.push(rig);}
+  rig.entries.push(entry);
+ }
+ return {update(){
+  if(disposed)throw Error('Ogre DQ disposed');
+  root.updateMatrixWorld(true);
+  for(const rig of rigs){
+   rig.skeleton.update();rig.sampled.length=0;
+   for(const [mesh,p] of rig.entries){
+    // Bind transforms can change with world placement: compare on every sample.
+    const compatible=sameRig(rig.skeleton,mesh.skeleton);
+    const sk=compatible?rig.skeleton:mesh.skeleton;if(!compatible)sk.update();
+    const previous=compatible&&rig.sampled.find(([other])=>other.bindMatrix.equals(mesh.bindMatrix)&&other.bindMatrixInverse.equals(mesh.bindMatrixInverse));
+    if(previous){p.real.value.set(previous[1].real.value);p.dual.value.set(previous[1].dual.value);continue;}
+    for(let b=0;b<sk.bones.length;b++){
+     const local=ogreMultiplyMatrices(ogreMultiplyMatrices(mesh.bindMatrixInverse.elements,sk.boneMatrices.subarray(b*16,b*16+16)),mesh.bindMatrix.elements);
+     const [real,dual]=ogreMatrixToDualQuaternion(local);p.real.value.set(real,b*4);p.dual.value.set(dual,b*4);
+    }
+    if(compatible)rig.sampled.push([mesh,p]);
+   }
+  }
+},dispose(){if(disposed)return;for(const {mesh,original,adapted,depth,distance,adaptedDepth,adaptedDistance,frustumCulled} of bindings){if(mesh.material===adapted)mesh.material=original;if(mesh.customDepthMaterial===adaptedDepth)mesh.customDepthMaterial=depth;if(mesh.customDistanceMaterial===adaptedDistance)mesh.customDistanceMaterial=distance;mesh.frustumCulled=frustumCulled;for(const m of [...(Array.isArray(adapted)?adapted:[adapted]),adaptedDepth,adaptedDistance])m?.dispose();}disposed=true;}};
 }

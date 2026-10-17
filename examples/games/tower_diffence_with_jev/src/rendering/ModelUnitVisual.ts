@@ -265,6 +265,8 @@ export class ModelUnitVisual {
       lease.release()
     }
     this.leases.clear()
+    this.active = undefined
+    this.root.visible = false
     this.materialBases.clear()
     this.root.removeFromParent()
   }
