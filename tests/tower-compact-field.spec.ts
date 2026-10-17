@@ -3,6 +3,7 @@ import {
   openOfflineCampaign,
   dragUnitToWorld,
   beginUnitDragToWorld,
+  beginFieldUnitDragToWorld,
   selectFieldUnit
 } from './tower-defense-e2e-arrange'
 import { getField, DEFINITIONS } from '../examples/games/tower_diffence_with_jev/src/game/model'
@@ -59,7 +60,8 @@ for (const viewport of [
     expect(mapState.modelRendering.presentation.scale).toBe(1.18)
     expect(mapState.displayGeometry.backingWidth).toBe(1280 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
     expect(mapState.displayGeometry.backingHeight).toBe(920 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
-    if (viewport.width === 2048) expect(geometry.right - geometry.left).toBeGreaterThan(2000)
+    expect((geometry.right - geometry.left) / (geometry.bottom - geometry.top)).toBeCloseTo(1280 / 920, 5)
+    expect(mapState.modelRendering.presentation.aspect).toBe(1)
     if (viewport.width > 800) {
       await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
       await expect(page.locator('.defender-handle').first()).toBeVisible()
@@ -80,7 +82,7 @@ for (const viewport of [
   })
 }
 
-test('wider real models, picking, HP text and preview rings reflow without moving saved ground positions', async ({
+test('proportional real models, picking, HP text and preview rings reflow without moving saved ground positions', async ({
   page
 }) => {
   await page.setViewportSize({ width: 2048, height: 1173 })
@@ -91,6 +93,8 @@ test('wider real models, picking, HP text and preview rings reflow without movin
   expect(preview.placementPreview.point.x).toBeCloseTo(point.x, 0)
   expect(preview.placementPreview.point.y).toBeCloseTo(point.y, 0)
   expect(preview.displayGeometry.range.visible).toBe(true)
+  expect(preview.displayGeometry.scaleX).toBeCloseTo(preview.displayGeometry.scaleY, 5)
+  expect(preview.displayGeometry.range.radiusX).toBeCloseTo(preview.displayGeometry.range.radiusY, 5)
   expect(preview.displayGeometry.range.radiusX).toBeCloseTo(DEFINITIONS.soldier.range * preview.displayGeometry.scaleX)
   expect(preview.displayGeometry.range.radiusY).toBeCloseTo(DEFINITIONS.soldier.range * preview.displayGeometry.scaleY)
   await page.screenshot({ path: test.info().outputPath('expanded-field-placement-range.png') })
@@ -130,6 +134,19 @@ test('wider real models, picking, HP text and preview rings reflow without movin
     await selectFieldUnit(page, 'soldier')
     await expect(page.locator('#selection-context')).toBeVisible()
     await page.locator('#selection-close').click()
+    await beginFieldUnitDragToWorld(page, 'soldier', point)
+    const range = await page.evaluate(() => (window as any).towerDefenseDiagnostics().displayGeometry.range)
+    expect(range.visible).toBe(true)
+    expect(range.radiusX).toBeCloseTo(range.radiusY, 5)
+    const fieldBounds = (await page.locator('#field').boundingBox())!
+    expect(range.screen.x).toBeCloseTo(fieldBounds.x + point.x * diagnostic.displayGeometry.scaleX, 0)
+    expect(range.screen.y).toBeCloseTo(fieldBounds.y + point.y * diagnostic.displayGeometry.scaleY, 0)
+    await page.screenshot({
+      path: test.info().outputPath(`proportional-placement-${viewport.width}x${viewport.height}.png`)
+    })
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBe(rawSave)
   }
   await page.screenshot({ path: test.info().outputPath('expanded-field-real-models.png') })
 })

@@ -1,6 +1,6 @@
 /** Presentation only: routes, combat distances and saved positions stay in world units. */
 export const BATTLEFIELD_INSETS = { top: 72, bottom: 16, sides: 12 } as const
-export const MAX_FIELD_ASPECT_EXPANSION = 1.4
+export const MAX_FIELD_ASPECT_EXPANSION = 1
 export const GAME_MODEL_PRESENTATION_SCALE = 1.18
 
 export function battlefieldPresentation(

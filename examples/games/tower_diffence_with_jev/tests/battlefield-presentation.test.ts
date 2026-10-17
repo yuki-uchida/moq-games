@@ -26,7 +26,8 @@ describe('responsive presentation without changing world geometry', () => {
       const fit = battlefieldPresentation(viewport, field)
       expect(fit.scaleX * field.width).toBeLessThanOrEqual(viewport.width - 24 + 1e-9)
       expect(fit.scaleY * field.height).toBeLessThanOrEqual(viewport.height - 88 + 1e-9)
-      expect(fit.aspectExpansion).toBeGreaterThanOrEqual(1)
+      expect(fit.scaleX).toBe(fit.scaleY)
+      expect(fit.aspectExpansion).toBe(1)
       expect(fit.aspectExpansion).toBeLessThanOrEqual(MAX_FIELD_ASPECT_EXPANSION + 1e-9)
       expect(fit.modelScale).toBe(GAME_MODEL_PRESENTATION_SCALE)
       const previous = Math.min((viewport.width - 24) / field.width, (viewport.height - 140) / field.height)
@@ -34,9 +35,9 @@ describe('responsive presentation without changing world geometry', () => {
       expect(fit.scaleY).toBeGreaterThanOrEqual(previous)
     })
   }
-  it('fills the side bands in the supplied screenshot while retaining HUD and stage space', () => {
+  it('preserves map proportions while retaining HUD and stage space', () => {
     const fit = battlefieldPresentation({ width: 2048, height: 1173 }, field)
-    expect(fit.scaleX * field.width).toBeCloseTo(2024)
+    expect(fit.scaleX * field.width).toBeCloseTo((1280 * 1085) / 920)
     expect(fit.scaleY * field.height).toBeCloseTo(1085)
     expect(BATTLEFIELD_INSETS).toEqual({ top: 72, bottom: 16, sides: 12 })
   })
