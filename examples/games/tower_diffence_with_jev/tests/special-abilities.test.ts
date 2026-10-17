@@ -159,6 +159,30 @@ describe('individual special abilities', () => {
       expect(restored.state.specialEffects).toEqual(engine.state.specialEffects)
       expect(restored.state.units).toEqual(engine.state.units)
     })
+  it('preserves a completed normal hit when casting during its recovery', () => {
+    const save = freshSave()
+    save.purchased.push('frost')
+    const engine = new GameEngine(idle, save, 'meadow', 42, () => 0)
+    expect(engine.place('frost', FIELDS.meadow.slots[0].id)).toBe(true)
+    engine.startAssault()
+    const unit = engine.state.units[0]
+    expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime' })).toBe(true)
+    for (
+      let tick = 0;
+      tick < 600 && !engine.state.attacks.some((action) => action.attackerId === unit.id && action.status === 'hit');
+      tick++
+    )
+      engine.update(1 / 60)
+    const hit = engine.state.attacks.find((action) => action.attackerId === unit.id && action.status === 'hit')!
+    expect(hit).toBeDefined()
+    expect(hit.endsAt).toBeGreaterThan(engine.state.time)
+    expect(engine.exportCheckpoint()).not.toBeNull()
+    expect(engine.castSpecial(unit.id, unit)).toBe(true)
+    expect(hit.status).toBe('hit')
+    const checkpoint = engine.exportCheckpoint()
+    expect(checkpoint).not.toBeNull()
+    expect(GameEngine.fromCheckpoint(checkpoint!, idle, save, () => 0)).not.toBeNull()
+  })
   it('retains the remaining cooldown when the stage clock resets', () => {
     const { engine } = fixture()
     engine.startAssault()

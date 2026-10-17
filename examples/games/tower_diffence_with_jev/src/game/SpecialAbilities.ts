@@ -186,7 +186,8 @@ export function castSpecial(state: GameState, id: number, point: Point): boolean
   unit.specialSequence = (unit.specialSequence ?? 0) + 1
   unit.specialCast = { startedAt: state.time, x: point.x, y: point.y }
   for (const attack of state.attacks)
-    if (attack.attackerId === id && attack.endsAt > state.time) attack.status = 'cancelled'
+    if (attack.attackerId === id && (attack.status === 'windup' || attack.status === 'released'))
+      attack.status = 'cancelled'
   unit.moving = false
   const distance = Math.hypot(point.x - unit.x, point.y - unit.y)
   if (distance > 1e-9) {
