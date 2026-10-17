@@ -10,6 +10,8 @@ import * as tankSource from './fixtures/tank-dq-97e0b6f.mjs'
 import * as dragonSource from '../src/rendering/models/adapters/source/dragon-dq-skinning-adapter.js'
 import * as soldierRuntime from '../src/rendering/models/adapters/runtime/soldier-dq-skinning-adapter.js'
 import * as tankRuntime from '../src/rendering/models/adapters/runtime/tank-dq-skinning-adapter.js'
+import { installOgreDQSkinningAdapter as ogreReference } from '../src/rendering/models/adapters/source/ogre-dq-skinning-adapter.js'
+import { installOgreDQSkinningAdapter as ogreRuntime } from '../src/rendering/models/adapters/runtime/ogre-dq-skinning-adapter.js'
 import * as dragonRuntime from '../src/rendering/models/adapters/runtime/dragon-dq-skinning-adapter.js'
 
 const cases = [
@@ -241,5 +243,83 @@ describe('runtime DQ scratch reuse preserves authored output', () => {
         b.dispose()
       }
     })
+  }
+})
+
+function skinFixture(type: string, mode: string, bad?: string) {
+  const root = new THREE.Group(),
+    bones = Array.from({ length: type === 'tank' ? 12 : 16 }, () => new THREE.Bone())
+  root.add(...bones)
+  for (let i = 0; i < (type === 'tank' ? 1 : 27); i++) {
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3))
+    let weights: THREE.BufferAttribute | THREE.InterleavedBufferAttribute = new THREE.Float32BufferAttribute(
+        [0.5, 0.5, 0, 0],
+        4
+      ),
+      indices: THREE.BufferAttribute | THREE.InterleavedBufferAttribute = new THREE.Uint16BufferAttribute(
+        [0, 1, 0, 0],
+        4
+      )
+    if (mode === 'normalized') weights = new THREE.Uint8BufferAttribute([128, 127, 0, 0], 4, true)
+    if (mode === 'normalized-index') indices = new THREE.Uint8BufferAttribute([0, 255, 0, 0], 4, true)
+    if (mode === 'half') weights = new THREE.Float16BufferAttribute(new Uint16Array([0x3800, 0x3800, 0, 0]), 4)
+    if (mode === 'interleaved') {
+      const data = new THREE.InterleavedBuffer(new Float32Array([0, 1, 0, 0, 0.5, 0.5, 0, 0]), 8)
+      weights = new THREE.InterleavedBufferAttribute(data, 4, 4)
+      indices = new THREE.InterleavedBufferAttribute(data, 4, 0)
+    }
+    if (mode === 'custom-weight-x') weights.getX = () => 0.25
+    if (mode === 'custom-weight-y') weights.getY = () => 0.25
+    if (mode === 'custom-index') indices.getX = () => 99
+    if (mode === 'custom-decoder') {
+      weights.array[0] = NaN
+      weights.getX = () => 0.5
+    }
+    if (bad === 'negative') weights.setX(0, -1)
+    if (bad === 'nan') weights.setX(0, NaN)
+    if (bad === 'sum') weights.setX(0, 0.2)
+    if (bad === 'fraction-index') indices = new THREE.Float32BufferAttribute([0, 0.5, 0, 0], 4)
+    if (bad === 'range-index') indices.setY(0, 99)
+    geo.setAttribute('skinWeight', weights)
+    geo.setAttribute('skinIndex', indices)
+    const mesh = new THREE.SkinnedMesh(geo, new THREE.MeshStandardMaterial())
+    mesh.bind(new THREE.Skeleton(bones))
+    root.add(mesh)
+  }
+  return root
+}
+
+describe('skin validation preserves decoded attribute semantics', () => {
+  for (const role of ['tank', 'ogre']) {
+    for (const mode of [
+      'plain',
+      'normalized',
+      'normalized-index',
+      'half',
+      'interleaved',
+      'custom-weight-x',
+      'custom-weight-y',
+      'custom-index',
+      'custom-decoder'
+    ]) {
+      for (const bad of [undefined, 'negative', 'nan', 'sum', 'fraction-index', 'range-index']) {
+        it(`${role} ${mode} ${bad ?? 'valid'}`, () => {
+          const reference = role === 'tank' ? tankSource.installTankDQSkinningAdapter : ogreReference
+          const runtime = role === 'tank' ? tankRuntime.installTankDQSkinningAdapter : ogreRuntime
+          const outcome = (install: typeof reference) => {
+            try {
+              const adapter = install(skinFixture(role, mode, bad), { THREE })
+              adapter.update()
+              adapter.dispose()
+              return 'accepted'
+            } catch (error) {
+              return (error as Error).message
+            }
+          }
+          expect(outcome(runtime)).toBe(outcome(reference))
+        })
+      }
+    }
   }
 })

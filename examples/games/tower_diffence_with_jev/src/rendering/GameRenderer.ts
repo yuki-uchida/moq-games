@@ -300,6 +300,7 @@ export class GameRenderer {
   private preparedDefenders = new Set<AllyType>()
   private compilingDefenders = new Set<AllyType>()
   private defenderRetryAt = 0
+  private motionPreparation?: Promise<void>
   private modelPresentationScale = 1
   private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
@@ -746,7 +747,8 @@ export class GameRenderer {
     this.sandbagPreviewLabel.remove()
     this.renderer.domElement.remove()
     this.modelEnvironment?.dispose()
-    this.renderer.dispose()
+    if (this.motionPreparation) void this.motionPreparation.finally(() => this.renderer.dispose())
+    else this.renderer.dispose()
     this.scene.clear()
     this.units.clear()
     this.attackEffects.clear()
@@ -1140,6 +1142,23 @@ export class GameRenderer {
         this.models?.setDefenderPreparationVisible(pending, false)
         for (const type of pending) this.compilingDefenders.delete(type)
       })
+  }
+
+  private prepareActorMotion(): void {
+    if (this.disposed || !this.modelsActive || this.motionPreparation || this.compilingDefenders.size) return
+    try {
+      const pending = this.models?.prepareNextMotion((root) =>
+        this.renderer.compileAsync(root, this.camera, this.scene)
+      )
+      if (pending) {
+        // Failure leaves the same lease available for the normal draw path.
+        this.motionPreparation = pending.catch(() => undefined).finally(() => {
+          this.motionPreparation = undefined
+        })
+      }
+    } catch {
+      // Background preparation must not prevent the current pose from rendering.
+    }
   }
 
   assetStatus: 'ready' | 'loading' | 'error' = 'loading'
@@ -2732,6 +2751,7 @@ export class GameRenderer {
       this.drawTiming.lastMs = elapsed
       this.drawTiming.maxMs = Math.max(this.drawTiming.maxMs, elapsed)
     }
+    if (interactive) this.prepareActorMotion()
     this.lastRenderedSimulationTime = s.time
   }
 }

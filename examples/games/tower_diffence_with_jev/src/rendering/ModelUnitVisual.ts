@@ -58,6 +58,8 @@ export class ModelUnitVisual {
   private turn = new THREE.Group()
   private normalized = new THREE.Group()
   private leases = new Map<string, { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }>()
+  private preparationFailures = new Set<string>()
+  private preparing?: { lease: ModelLease }
   private active?: { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }
   private disposed = false
   private presentationAspect = 1
@@ -143,16 +145,12 @@ export class ModelUnitVisual {
     }
     return ready
   }
-  sample(pose: ModelPose): boolean {
-    if (this.disposed) return false
-    const spec = this.definition.clips[pose.motion]
-    if (!spec)
-      throw new Error(`Missing required ${pose.motion} model; refusing a different animation or sprite fallback`)
+  private instance(spec: ModelSource) {
     const key = `${spec.url}#${spec.clip}`
     let instance = this.leases.get(key)
     if (!instance) {
       const lease = this.cache.acquire(spec)
-      if (!lease) return false
+      if (!lease) return undefined
       const mixer = new THREE.AnimationMixer(lease.scene)
       const action = mixer.clipAction(lease.clip)
       action.setLoop(THREE.LoopOnce, 1)
@@ -162,6 +160,44 @@ export class ModelUnitVisual {
       this.leases.set(key, instance)
       this.applyAppearance(lease.scene)
     }
+    return instance
+  }
+  /** Build one already-needed action rig without sampling or attaching it to the board. */
+  prepareNextMotion(compile: (scene: THREE.Object3D) => Promise<unknown>): Promise<void> | undefined {
+    if (this.disposed || this.preparing) return
+    for (const motion of ['walk', 'attack', 'heal', 'breath'] as const) {
+      const spec = this.definition.clips[motion]
+      if (!spec) continue
+      const key = `${spec.url}#${spec.clip}`
+      if (this.leases.has(key) || this.preparationFailures.has(key)) continue
+      let instance
+      try {
+        instance = this.instance(spec)
+      } catch {
+        this.preparationFailures.add(key)
+        continue
+      }
+      if (!instance) continue
+      const done = Promise.resolve()
+        .then(() => {
+          if (!this.disposed) return compile(instance.lease.scene)
+        })
+        .then(() => undefined)
+        .finally(() => {
+          if (this.disposed) instance.lease.release()
+          this.preparing = undefined
+        })
+      this.preparing = { lease: instance.lease }
+      return done
+    }
+  }
+  sample(pose: ModelPose): boolean {
+    if (this.disposed) return false
+    const spec = this.definition.clips[pose.motion]
+    if (!spec)
+      throw new Error(`Missing required ${pose.motion} model; refusing a different animation or sprite fallback`)
+    const instance = this.instance(spec)
+    if (!instance) return false
     if (this.active !== instance) {
       if (this.active) {
         this.active.lease.scene.visible = false
@@ -266,12 +302,13 @@ export class ModelUnitVisual {
     for (const { mixer, lease } of this.leases.values()) {
       mixer.stopAllAction()
       mixer.uncacheRoot(lease.scene)
-      lease.release()
+      if (lease !== this.preparing?.lease) lease.release()
     }
     this.leases.clear()
     this.active = undefined
     this.root.visible = false
     this.materialBases.clear()
+    this.preparationFailures.clear()
     this.root.removeFromParent()
   }
 }

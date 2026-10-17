@@ -49,7 +49,9 @@ export function installTankDQSkinningAdapter(root, {THREE} = {}) {
   if(![12,14].includes(n))throw Error('Tank DQ expects accepted 12- or 14-bone skeleton');
   const weights=mesh.geometry.getAttribute('skinWeight'),indices=mesh.geometry.getAttribute('skinIndex');
   if(!weights||!indices||weights.itemSize!==4||indices.itemSize!==4)throw Error('Tank skin attributes missing');
-  for(let v=0;v<weights.count;v++){let sum=0,nonzero=0;for(let k=0;k<4;k++){const w=weights[['getX','getY','getZ','getW'][k]](v),b=indices[['getX','getY','getZ','getW'][k]](v);if(!Number.isFinite(w)||w<0||!Number.isInteger(b)||b<0||b>=n)throw Error('Invalid Tank skin weights');sum+=w;if(w>0)nonzero++;}if(Math.abs(sum-1)>1e-5||nonzero>4)throw Error('Tank requires normalized original up-to-four-influence weights');}
+  const getters=THREE?.BufferAttribute?.prototype,components=['getX','getY','getZ','getW'];
+  const raw=a=>getters&&!a.normalized&&components.every(k=>a[k]===getters[k])?a.array:null,weightArray=raw(weights),indexArray=raw(indices);
+  for(let v=0;v<weights.count;v++){let sum=0,nonzero=0;for(let k=0;k<4;k++){const w=weightArray?weightArray[v*4+k]:weights[['getX','getY','getZ','getW'][k]](v),b=indexArray?indexArray[v*4+k]:indices[['getX','getY','getZ','getW'][k]](v);if(!Number.isFinite(w)||w<0||!Number.isInteger(b)||b<0||b>=n)throw Error('Invalid Tank skin weights');sum+=w;if(w>0)nonzero++;}if(Math.abs(sum-1)>1e-5||nonzero>4)throw Error('Tank requires normalized original up-to-four-influence weights');}
   if(!mesh.bindMatrix?.elements||!mesh.bindMatrixInverse?.elements)throw Error('Tank bind matrices missing');
   palettes.set(mesh,{real:{value:new Float32Array(n*4)},dual:{value:new Float32Array(n*4)}});
  }

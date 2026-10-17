@@ -211,6 +211,14 @@ export class ModelUnitLayer {
     }
     this.cache.evict()
   }
+  /** At most one detached action rig per frame; never prepare unused roster entries. */
+  prepareNextMotion(compile: (scene: THREE.Object3D) => Promise<unknown>): Promise<void> | undefined {
+    for (const actor of this.actors.values()) {
+      if (actor.last.hp <= 0 || actor.deadAt !== undefined) continue
+      const pending = actor.visual.prepareNextMotion(compile)
+      if (pending) return pending
+    }
+  }
   setPreview(type?: UnitType, point?: Point, facing?: Point, valid = true): void {
     if (!type || !point || !facing) {
       if (this.preview) this.preview.visual.root.visible = false

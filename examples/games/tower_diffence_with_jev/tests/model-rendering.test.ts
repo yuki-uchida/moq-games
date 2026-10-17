@@ -425,3 +425,116 @@ for (const rigCount of [1, 2]) {
     optimized.dispose()
   })
 }
+
+describe('detached action preparation', () => {
+  const idle = { motion: 'idle' as const, seconds: 0.3, loop: true, facingX: 0, facingY: 1, boss: false }
+  async function actor() {
+    const cache = new ModelAssetCache(async () => fixture())
+    cache.request('/model.glb')
+    await settle()
+    const visual = new ModelUnitVisual(definition(), cache)
+    visual.sample(idle)
+    return { cache, visual }
+  }
+  it('prepares one action at a time without sampling, changing the active pose or attaching a hidden rig', async () => {
+    const { cache, visual } = await actor()
+    const before = visual.diagnostics()
+    const active = visual.root.getObjectByName('body')!
+    const parent = active.parent
+    const update = vi.spyOn(visual.root, 'updateWorldMatrix')
+    const acquire = vi.spyOn(cache, 'acquire')
+    let finish!: () => void
+    const compile = vi.fn((scene: THREE.Object3D) => {
+      expect(scene.parent).toBeNull()
+      expect((scene.getObjectByName('body') as THREE.Mesh).position.x).toBe(0)
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    const pending = visual.prepareNextMotion(compile)!
+    await settle()
+    expect(visual.prepareNextMotion(compile)).toBeUndefined()
+    expect(visual.diagnostics()).toEqual({ ...before, rigs: 2 })
+    expect(active.parent).toBe(parent)
+    expect(visual.root.getObjectByName('body')).toBe(active)
+    expect(update).not.toHaveBeenCalled()
+    finish()
+    await pending
+    expect(visual.sample({ ...idle, motion: 'walk' })).toBe(true)
+    expect(acquire).toHaveBeenCalledTimes(1)
+    await visual.prepareNextMotion(async () => {})
+    expect(acquire).toHaveBeenCalledTimes(2)
+    expect(visual.prepareNextMotion(async () => {})).toBeUndefined()
+    visual.sample({ ...idle, motion: 'attack', loop: false })
+    visual.sample({ ...idle, motion: 'walk' })
+    expect(acquire).toHaveBeenCalledTimes(2)
+    visual.dispose()
+    cache.dispose()
+  })
+  it('skips compilation if disposed before submission', async () => {
+    const { cache, visual } = await actor()
+    const compile = vi.fn(async () => {})
+    const pending = visual.prepareNextMotion(compile)
+    visual.dispose()
+    await pending
+    expect(compile).not.toHaveBeenCalled()
+    expect(cache.diagnostics().entries[0].references).toBe(0)
+    cache.dispose()
+  })
+  it('retains only the compiling lease through disposal, then releases it exactly once', async () => {
+    const { cache, visual } = await actor()
+    let finish!: () => void
+    let material!: THREE.Material
+    let dispose!: ReturnType<typeof vi.spyOn>
+    const pending = visual.prepareNextMotion((scene) => {
+      material = (scene.getObjectByName('body') as THREE.Mesh).material as THREE.Material
+      dispose = vi.spyOn(material, 'dispose')
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    })
+    await settle()
+    visual.dispose()
+    visual.dispose()
+    expect(dispose).not.toHaveBeenCalled()
+    expect(cache.diagnostics().entries[0].references).toBe(1)
+    finish()
+    await pending
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(cache.diagnostics().entries[0].references).toBe(0)
+    expect(visual.sample(idle)).toBe(false)
+    cache.dispose()
+  })
+  it('keeps the same lease usable after compilation rejection', async () => {
+    const { cache, visual } = await actor()
+    const acquire = vi.spyOn(cache, 'acquire')
+    await expect(
+      visual.prepareNextMotion(async () => {
+        throw Error('shader unavailable')
+      })
+    ).rejects.toThrow('shader unavailable')
+    expect(visual.sample({ ...idle, motion: 'walk' })).toBe(true)
+    expect(acquire).toHaveBeenCalledTimes(1)
+    visual.dispose()
+    cache.dispose()
+  })
+  it('does not retry a broken adapter every background frame', async () => {
+    const cache = new ModelAssetCache(async () => fixture())
+    cache.request('/model.glb')
+    await settle()
+    const install = vi.fn(() => {
+      throw Error('invalid action rig')
+    })
+    const spec = definition()
+    const visual = new ModelUnitVisual(
+      { ...spec, clips: { idle: spec.clips.idle, walk: { ...spec.clips.walk!, adapters: [install] } } },
+      cache
+    )
+    visual.sample(idle)
+    for (let i = 0; i < 10; i++) visual.prepareNextMotion(async () => {})
+    expect(install).toHaveBeenCalledTimes(1)
+    expect(() => visual.sample({ ...idle, motion: 'walk' })).toThrow('invalid action rig')
+    visual.dispose()
+    cache.dispose()
+  })
+})

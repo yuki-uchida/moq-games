@@ -49,7 +49,9 @@ export function installOgreDQSkinningAdapter(root, {THREE} = {}) {
   if(n!==16)throw Error('Ogre DQ expects original 16-bone skeleton');
   const weights=mesh.geometry.getAttribute('skinWeight'),indices=mesh.geometry.getAttribute('skinIndex');
   if(!weights||!indices||weights.itemSize!==4||indices.itemSize!==4)throw Error('Ogre skin attributes missing');
-  for(let v=0;v<weights.count;v++){let sum=0,nonzero=0;for(let k=0;k<4;k++){const w=weights[['getX','getY','getZ','getW'][k]](v),b=indices[['getX','getY','getZ','getW'][k]](v);if(!Number.isFinite(w)||w<0||!Number.isInteger(b)||b<0||b>=n)throw Error('Invalid Ogre skin weights');sum+=w;if(w>0)nonzero++;}if(Math.abs(sum-1)>1e-5||nonzero>2)throw Error('Ogre requires normalized original two-influence weights');}
+  const getters=THREE?.BufferAttribute?.prototype,components=['getX','getY','getZ','getW'];
+  const raw=a=>getters&&!a.normalized&&components.every(k=>a[k]===getters[k])?a.array:null,weightArray=raw(weights),indexArray=raw(indices);
+  for(let v=0;v<weights.count;v++){let sum=0,nonzero=0;for(let k=0;k<4;k++){const w=weightArray?weightArray[v*4+k]:weights[['getX','getY','getZ','getW'][k]](v),b=indexArray?indexArray[v*4+k]:indices[['getX','getY','getZ','getW'][k]](v);if(!Number.isFinite(w)||w<0||!Number.isInteger(b)||b<0||b>=n)throw Error('Invalid Ogre skin weights');sum+=w;if(w>0)nonzero++;}if(Math.abs(sum-1)>1e-5||nonzero>2)throw Error('Ogre requires normalized original two-influence weights');}
   if(!mesh.bindMatrix?.elements||!mesh.bindMatrixInverse?.elements)throw Error('Ogre bind matrices missing');
   palettes.set(mesh,{real:{value:new Float32Array(n*4)},dual:{value:new Float32Array(n*4)}});
  }

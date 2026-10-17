@@ -156,3 +156,35 @@ describe('first transparent preview preparation', () => {
     expect(subject.models.setDefenderPreparationOpacity).toHaveBeenLastCalledWith(['soldier'], 1)
   })
 })
+
+
+describe('background action scheduling', () => {
+  it('keeps one compilation in flight and uses the battlefield lighting without drawing the warm rig', async () => {
+    let finish!: () => void
+    const subject = fixture(vi.fn(() => new Promise<void>(resolve => { finish = resolve })))
+    const root = {}
+    subject.models.prepareNextMotion = vi.fn((compile: any) => compile(root))
+    subject.prepareActorMotion()
+    subject.prepareActorMotion()
+    expect(subject.models.prepareNextMotion).toHaveBeenCalledTimes(1)
+    expect(subject.renderer.compileAsync).toHaveBeenCalledWith(root, subject.camera, subject.scene)
+    expect(subject.renderer.render).not.toHaveBeenCalled()
+    subject.disposed = true
+    finish()
+    await settle()
+    expect(subject.motionPreparation).toBeUndefined()
+  })
+  it('allows normal drawing after a failed background compile and waits for foreground defender preparation', async () => {
+    const subject = fixture(vi.fn().mockRejectedValue(new Error('background failure')))
+    subject.models.prepareNextMotion = vi.fn((compile: any) => compile({}))
+    subject.compilingDefenders.add('soldier')
+    subject.prepareActorMotion()
+    expect(subject.models.prepareNextMotion).not.toHaveBeenCalled()
+    subject.compilingDefenders.clear()
+    subject.prepareActorMotion()
+    await settle()
+    expect(subject.motionPreparation).toBeUndefined()
+    expect(subject.assetErrors).toEqual({})
+    expect(subject.defenderReady('soldier')).toBe(false)
+  })
+})
