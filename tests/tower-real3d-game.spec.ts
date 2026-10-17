@@ -295,9 +295,49 @@ test('prepares summonable models before a drag and draws a committed unit on the
 })
 
 test('resumed assault prepares the first soldier death fade before its visible frame', async ({ page }) => {
+  // Keep the real clock-worker protocol, but release one 20ms pulse per rendered
+  // frame. A software GPU may otherwise catch up 2s and skip the entire .45s fade.
+  await page.route('**/assets/worker-*.js', async (route) => {
+    const response = await route.fetch()
+    const clock = `(() => {
+      let now = performance.timeOrigin + performance.now(), serial = 0;
+      const timers = new Map();
+      Object.defineProperty(performance, 'now', { value: () => now - performance.timeOrigin });
+      self.setTimeout = (callback, delay = 0) => {
+        const id = ++serial; timers.set(id, { callback, due: now + delay }); return id;
+      };
+      self.clearTimeout = id => timers.delete(id);
+      self.addEventListener('message', event => {
+        const message = event.data;
+        if (message.__fadeClockStart !== undefined) now = message.__fadeClockStart;
+        if (message.__fadeClockAdvance === undefined) return;
+        event.stopImmediatePropagation();
+        now += message.__fadeClockAdvance;
+        for (const [id, timer] of [...timers]) if (timer.due <= now + 1e-6) {
+          timers.delete(id); timer.callback();
+        }
+        self.postMessage({ __fadeClockAdvanced: message.token });
+      });
+    })();`
+    await route.fulfill({ response, body: clock + '\n' + (await response.text()) })
+  })
+
   await page.addInitScript(() => {
     const w = window as any
     w.__deathFadeProbe = { links: [], fades: [] }
+    const NativeWorker = window.Worker
+    window.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options)
+        if (/\/assets\/worker-[^/]+\.js$/.test(String(url))) w.__deathFadeClock = this
+      }
+      postMessage(message: any, transfer: Transferable[] = []) {
+        if (message?.type === 'start')
+          message = { ...message, __fadeClockStart: performance.timeOrigin + performance.now() }
+        super.postMessage(message, transfer)
+      }
+    }
+
     const sources = new WeakMap<WebGLShader, string>(),
       soldier = new WeakSet<WebGLProgram>()
     const uniforms = new WeakMap<WebGLUniformLocation, { program: WebGLProgram; name: string }>()
@@ -352,11 +392,37 @@ test('resumed assault prepares the first soldier death fade before its visible f
   await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), raw)
   await page.reload()
   await page.locator('#title-continue').click()
-  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
-  await expect
-    .poll(() => page.evaluate(() => (window as any).__deathFadeProbe.fades.length), { timeout: 120000 })
-    .toBeGreaterThan(2)
+  const deadline = Date.now() + 120000
+  let frames = 0
+  while (Date.now() < deadline) {
+    await page.evaluate(async (token) => {
+      const worker = (window as any).__deathFadeClock as Worker | undefined
+      if (worker)
+        await new Promise<void>((resolve) => {
+          const completed = (event: MessageEvent) => {
+            if (event.data.__fadeClockAdvanced !== token) return
+            worker.removeEventListener('message', completed)
+            resolve()
+          }
+          worker.addEventListener('message', completed)
+          worker.postMessage({ __fadeClockAdvance: 20, token })
+        })
+      // The tick is acknowledged after the unchanged BattleClock consumed it.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    }, frames++)
+    if (await page.evaluate(() => (window as any).__deathFadeProbe.fades.length > 2)) break
+  }
   const probe = await page.evaluate(() => (window as any).__deathFadeProbe)
+  const diagnostic = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
+  await test.info().attach('death-fade-probe.json', {
+    body: JSON.stringify({ probe, frames, diagnostic }, null, 2),
+    contentType: 'application/json'
+  })
+  expect(
+    probe.fades.length,
+    JSON.stringify({ frames, phase: diagnostic.phase, time: diagnostic.simulationTime, links: probe.links.length })
+  ).toBeGreaterThan(2)
+  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
   expect(probe.links.length).toBeGreaterThan(0)
   // Timing-independent gate: the driver's link work must precede visible fade submission.
   // A generous gap accommodates slow CI machines without asserting a hardware frame budget.
