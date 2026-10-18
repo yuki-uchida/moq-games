@@ -56,16 +56,24 @@ export function unitModelPose(unit: Unit, time: number, action?: CombatAttack): 
   }
 }
 
+interface MotionInstance {
+  lease: ModelLease
+  mixer: THREE.AnimationMixer
+  action: THREE.AnimationAction
+  firstPose?: ModelPose
+  exactBounds?: boolean
+}
+
 /** True polygonal actor, never a billboard or a render-to-texture sprite. */
 export class ModelUnitVisual {
   readonly root = new THREE.Group()
   private turn = new THREE.Group()
   private normalized = new THREE.Group()
-  private leases = new Map<string, { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }>()
+  private leases = new Map<string, MotionInstance>()
   private preparationFailures = new Set<string>()
   private fadePrepared = new WeakSet<ModelLease>()
   private preparing?: { lease: ModelLease }
-  private active?: { lease: ModelLease; mixer: THREE.AnimationMixer; action: THREE.AnimationAction }
+  private active?: MotionInstance
   private disposed = false
   private presentationAspect = 1
   private lastMotion?: ModelMotion
@@ -260,7 +268,33 @@ export class ModelUnitVisual {
     this.lastMotion = pose.motion
     this.lastSample = seconds
     this.lastPose = pose
+    instance.firstPose ??= { ...pose }
+    if (this.appearance.opacity < 1 && !instance.exactBounds) this.computeInitialBounds(instance)
     return true
+  }
+  /** Opaque draws can use the shared anchor; preserve the original first-pose
+   * transparent ordering before a fade. Run one rig per background preparation job.
+   */
+  prepareInitialBounds(): boolean {
+    for (const instance of this.leases.values()) if (instance.firstPose && !instance.exactBounds) {
+      this.computeInitialBounds(instance)
+      return true
+    }
+    return false
+  }
+  private computeInitialBounds(instance: MotionInstance): void {
+    if (!instance.firstPose || instance.exactBounds) return
+    instance.exactBounds = true
+    const previous = this.lastPose
+    this.sample(instance.firstPose)
+    this.root.updateMatrixWorld(true)
+    instance.lease.scene.traverse((object) => {
+      if (object instanceof THREE.SkinnedMesh) object.computeBoundingSphere()
+    })
+    if (previous) this.sample(previous)
+  }
+  rememberInitialBounds(motion: ModelMotion): void {
+    if (this.active) this.cache.rememberInitialBounds(this.definition.clips[motion]!, this.active.lease.scene)
   }
   emitterAt(pose: ModelPose): THREE.Vector3 | undefined {
     const contract = this.definition.emitter
@@ -281,6 +315,7 @@ export class ModelUnitVisual {
     if (this.appearance.opacity === opacity && this.appearance.tint.getHex() === tint) return
     this.appearance.opacity = opacity
     this.appearance.tint.setHex(tint)
+    if (opacity < 1) for (const instance of this.leases.values()) this.computeInitialBounds(instance)
     for (const { lease } of this.leases.values()) this.applyAppearance(lease.scene)
   }
   private applyAppearance(scene: THREE.Object3D): void {

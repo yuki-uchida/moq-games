@@ -80,20 +80,41 @@ function disposeSource(source: GLTF): void {
   }
 }
 
+/** A stalled transfer/decoder must release its queue slot; late results still have an owner. */
+export async function loadModelWithTimeout(load: () => Promise<GLTF>, abort?: () => void): Promise<GLTF> {
+  let expired = false
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { expired = true; abort?.(); reject(new Error('Model load timed out')) }, 60_000)
+  })
+  try {
+    return await Promise.race([load().then((source) => {
+      if (expired) { disposeSource(source); throw new Error('Expired model load') }
+      return source
+    }), timeout])
+  } finally { clearTimeout(timer!) }
+}
+
+export function loadGLTF(url: string): Promise<GLTF> {
+  const manager = new THREE.LoadingManager()
+  return loadModelWithTimeout(() => new GLTFLoader(manager).loadAsync(url), () => manager.abort())
+}
+
 /** Lazy, bounded shared geometry/textures; each actor owns its skeleton and materials. */
 export class ModelAssetCache {
   private entries = new Map<string, Entry>()
   private clips = new Map<string, { state: 'loading' | 'ready' | 'error'; clip?: THREE.AnimationClip }>()
+  private initialBounds = new Map<string, (THREE.Sphere | null)[]>()
   private inflight = 0
   private clock = 0
   private disposed = false
   private requiredUrls = new Set<string>()
   constructor(
-    private readonly load: (url: string) => Promise<GLTF> = (url) => new GLTFLoader().loadAsync(url),
+    private readonly load?: (url: string) => Promise<GLTF>,
     readonly budgetBytes = 192 * 1024 * 1024,
     private readonly concurrency = 2,
     private readonly loadClip: (url: string) => Promise<unknown> = async (url) => {
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: AbortSignal.timeout(60_000) })
       if (!response.ok) throw new Error(`Clip HTTP ${response.status}`)
       return response.json()
     }
@@ -146,7 +167,7 @@ export class ModelAssetCache {
       entry.state = 'loading'
       entry.startedAt = performance.now()
       this.inflight++
-      void this.load(url)
+      void (this.load ? loadModelWithTimeout(() => this.load!(url)) : loadGLTF(url))
         .then((source) => {
           if (this.disposed || this.entries.get(url) !== entry) {
             disposeSource(source)
@@ -200,10 +221,14 @@ export class ModelAssetCache {
     const scene = clone(source.scene)
     const materials = new Set<THREE.Material>()
     const skeletons = new Set<THREE.Skeleton>()
+    let meshIndex = 0
+    const bounds = this.initialBounds.get(`${spec.url}#${spec.clipUrl ?? spec.clip}`)
     scene.traverse((object) => {
       if (object instanceof THREE.SkinnedMesh) {
         skeletons.add(object.skeleton)
         reuseSkinnedBoundsMatrices(object)
+        if (bounds?.[meshIndex]) object.boundingSphere = bounds[meshIndex]!.clone()
+        meshIndex++
       }
       if (!(object instanceof THREE.Mesh)) return
       object.frustumCulled = false // Imported bounds often describe only the rest pose.
@@ -240,6 +265,20 @@ export class ModelAssetCache {
         this.evict()
       }
     }
+  }
+  /** With frustum culling disabled, this sphere is only a stable depth-sort anchor.
+   * Reuse the prepared first pose instead of scanning every vertex on each new actor.
+   */
+  rememberInitialBounds(spec: ModelSource, root: THREE.Object3D): void {
+    const bounds: (THREE.Sphere | null)[] = []
+    root.traverse((object) => {
+      if (object instanceof THREE.SkinnedMesh) bounds.push(object.boundingSphere?.clone() ?? null)
+    })
+    this.initialBounds.set(`${spec.url}#${spec.clipUrl ?? spec.clip}`, bounds)
+  }
+  retryFailed(): void {
+    for (const [url, entry] of this.entries) if (entry.state === 'error') this.entries.delete(url)
+    for (const [url, entry] of this.clips) if (entry.state === 'error') this.clips.delete(url)
   }
   error(url: string): string | undefined {
     return this.entries.get(url)?.error
@@ -289,6 +328,7 @@ export class ModelAssetCache {
   dispose(): void {
     this.disposed = true
     this.clips.clear()
+    this.initialBounds.clear()
     for (const entry of this.entries.values()) if (entry.source) disposeSource(entry.source)
     this.entries.clear()
     this.requiredUrls.clear()

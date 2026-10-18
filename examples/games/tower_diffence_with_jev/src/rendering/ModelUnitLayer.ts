@@ -30,6 +30,17 @@ export class ModelUnitLayer {
     readonly cache = new ModelAssetCache(undefined, Infinity)
   ) {}
 
+  private campaignVisuals = new Map<UnitType, ModelUnitVisual>()
+  campaignVisual(type: UnitType): ModelUnitVisual {
+    let visual = this.campaignVisuals.get(type)
+    if (!visual) {
+      visual = new ModelUnitVisual(this.roster[type]!, this.cache)
+      visual.setPresentation(this.presentationScale, this.presentationAspect)
+      visual.setPosition(-10000, -10000)
+      this.campaignVisuals.set(type, visual)
+    }
+    return visual
+  }
   setPresentation(scale: number, aspect: number): void {
     this.presentationScale = scale
     this.presentationAspect = aspect
@@ -220,6 +231,7 @@ export class ModelUnitLayer {
   ): Promise<void> | undefined {
     for (const actor of this.actors.values()) {
       if (actor.last.hp <= 0 || actor.deadAt !== undefined) continue
+      if (actor.visual.prepareInitialBounds()) return Promise.resolve()
       const pending = actor.visual.prepareNextMotion(compile, prepareFade)
       if (pending) return pending
     }
@@ -312,6 +324,8 @@ export class ModelUnitLayer {
     this.preview = undefined
     for (const visual of this.prepared.values()) visual.dispose()
     this.prepared.clear()
+    for (const visual of this.campaignVisuals.values()) visual.dispose()
+    this.campaignVisuals.clear()
     this.cache.dispose()
   }
 }

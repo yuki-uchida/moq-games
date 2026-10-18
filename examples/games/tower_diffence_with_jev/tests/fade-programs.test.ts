@@ -94,6 +94,17 @@ describe('lease-owned death fade shader preparation', () => {
       expect(f.material.side).toBe(THREE.DoubleSide)
     }
   )
+  it('does not register programs after loading is cancelled or the page leaves', async () => {
+    const f = fixture(), request = new AbortController()
+    let finish!: () => void
+    const compile = vi.fn(() => new Set<THREE.Material>())
+    const pending = prepareFadePrograms({ compileAsync: () => new Promise<void>(resolve => { finish = resolve }), compile }, f.root, f.camera, f.scene, request.signal)
+    request.abort(new Error('page left'))
+    finish()
+    await expect(pending).rejects.toThrow('page left')
+    expect(compile).not.toHaveBeenCalled()
+    expect(f.material.transparent).toBe(false)
+  })
   it('preserves a real fade or tint that begins while the driver is compiling', async () => {
     const f = fixture()
     let finish!: () => void

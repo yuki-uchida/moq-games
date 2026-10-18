@@ -1,5 +1,5 @@
+import { loadGLTF } from './ModelAssetCache'
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { ALLY_TYPES, type AllyType, type GameState, type Point } from '../game/model'
 import { SPECIALS, specialReady } from '../game/SpecialAbilities'
 
@@ -54,14 +54,18 @@ export class SpecialAbilityVisual {
     scene.add(this.preview, this.reach, this.invalid)
   }
   preload(base: URL): Promise<void> {
+    if (this.errors.length) {
+      this.errors = []
+      this.loading = undefined
+    }
     return (this.loading ??= this.load(base))
   }
   private async load(base: URL): Promise<void> {
-    const loader = new GLTFLoader()
     await Promise.all(
       ALLY_TYPES.map(async (type) => {
+        if (this.sources.has(type)) return
         try {
-          const gltf = await loader.loadAsync(new URL(`effects/special/${type}.glb`, base).href)
+          const gltf = await loadGLTF(new URL(`effects/special/${type}.glb`, base).href)
           if (this.disposed) this.release(gltf.scene, true)
           else this.sources.set(type, gltf.scene)
         } catch {
@@ -69,6 +73,22 @@ export class SpecialAbilityVisual {
         }
       })
     )
+  }
+  async prepare(draw: (root: THREE.Object3D) => Promise<void>): Promise<void> {
+    if (this.sources.size !== ALLY_TYPES.length || this.errors.length) throw new Error('必殺技の素材を読み込めませんでした。')
+    for (const source of this.sources.values()) {
+      source.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          material.transparent = true
+          material.depthWrite = false
+          material.toneMapped = false
+          material.depthTest = false
+        }
+        object.frustumCulled = false
+      })
+      await draw(source)
+    }
   }
   setPreview(aim: { id: number; point: Point } | null): void {
     this.aim = aim

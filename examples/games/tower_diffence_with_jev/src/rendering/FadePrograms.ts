@@ -8,7 +8,8 @@ export async function prepareFadePrograms(
   renderer: Pick<THREE.WebGLRenderer, 'compileAsync' | 'compile'>,
   root: THREE.Object3D,
   camera: THREE.Camera,
-  scene: THREE.Scene
+  scene: THREE.Scene,
+  signal?: AbortSignal
 ): Promise<void> {
   const proxies = new THREE.Group()
   const temporary = new Set<THREE.Material>()
@@ -46,6 +47,7 @@ export async function prepareFadePrograms(
     })
     // Separate materials make compileAsync wait for BOTH sides, not just currentProgram.
     await renderer.compileAsync(proxies, camera, scene)
+    signal?.throwIfAborted()
     for (const { mesh, original } of pairs) mesh.material = original
     // A death or tint update may have happened while compilation was pending.
     for (const material of originals.keys())

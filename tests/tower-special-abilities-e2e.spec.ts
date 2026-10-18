@@ -25,6 +25,7 @@ async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true) 
   await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), raw)
   await page.reload()
   await page.locator('#title-continue').click()
+  if (!waitEffects) return { unit, bag: engine.state.sandbags[0], bagPoint }
   await expect(page.locator('.defender-handle')).toBeVisible()
   await page.locator('#assault').click()
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
@@ -141,14 +142,19 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
     expect(restored.units[0].specialSequence).toBe(1)
   })
 
-test('a failed authored effect cannot spend cooldown on an invisible cast', async ({ page }) => {
-  await page.route('**/effects/special/soldier.glb', (route) => route.abort())
-  const { unit } = await seed(page, 'soldier', false)
-  await expect
-    .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.errors))
-    .toContain('soldier')
-  await pointOnVisibleMap(page, unit)
-  await page.locator(`.defender-handle[data-unit-id="${unit.id}"]`).click()
-  await expect(page.locator('#feedback')).toContainText('必殺技素材を読み込めません')
+test('a failed authored effect blocks preparation without spending cooldown and can retry', async ({ page }) => {
+  let failed = true
+  await page.route('**/effects/special/soldier.glb', (route) => failed ? route.abort() : route.continue())
+  await seed(page, 'soldier', false)
+  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 90_000 })
+  expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
+  expect(await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)).toBe(true)
+  expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
+  expect((await stored(page)).state.time).toBe(0)
+  await expect(page.locator('.defender-handle')).toHaveCount(0)
+  failed = false
+  await page.locator('#campaign-loading-retry').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('.defender-handle')).toBeVisible()
   expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
 })

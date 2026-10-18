@@ -1,3 +1,5 @@
+import { preparationPause, preparationWait, preparationGpu } from './CampaignPreparation'
+import type { ModelMotion } from './ModelUnitVisual'
 import { prepareFadePrograms } from './FadePrograms'
 import { SpecialAbilityVisual } from './SpecialAbilityVisual'
 import { SPECIALS } from '../game/SpecialAbilities'
@@ -43,6 +45,8 @@ import { previewGroundPlacement, groundPlacementLabel, type GroundPlacement } fr
 import * as THREE from 'three'
 import {
   entranceFacing,
+  ALLY_TYPES,
+  type UnitType,
   ANIMATION,
   CONFIG,
   DEFINITIONS,
@@ -300,6 +304,140 @@ export class GameRenderer {
   private disposed = false
   private models?: ModelUnitLayer
   private modelsActive = false
+  private campaignJobs = new Set<string>()
+  private campaignPreparing = false
+  private campaignContext = 0
+  private campaignEffect?: PixelMesh
+  campaignPrepared = false
+  onContextLost?: () => void
+  onContextRestored?: () => void
+  async prepareCampaign(base: URL, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
+    if (this.campaignPrepared) return
+    if (this.campaignPreparing) throw new Error('準備は既に実行中です。')
+    this.campaignPreparing = true
+    const generation = this.campaignContext
+    const check = () => {
+      signal.throwIfAborted()
+      if (this.disposed || this.renderer.getContext().isContextLost() || generation !== this.campaignContext)
+        throw new Error('描画コンテキストが失われました。復旧後に再試行してください。')
+      const failure = this.assetErrors['model:shader'] ?? this.assetErrors['model:gpu']
+      if (failure) throw new Error(failure)
+    }
+    const jobs = Object.entries(this.models?.roster ?? {}).flatMap(([type, definition]) =>
+      Object.entries(definition.clips).map(([motion, source]) => ({ type: type as UnitType, motion: motion as ModelMotion, source }))
+    )
+    const effects = this.models ? [undefined, ...new Set(Object.values(this.effectClips))] : []
+    const total = jobs.length * 2 + effects.length + 1
+    let done = 0
+    progress(done, total)
+    this.models?.cache.retryFailed()
+    if (this.models) for (const key of Object.keys(this.models.errors)) delete this.models.errors[key]
+    const draw = async (root: THREE.Object3D) => {
+      check()
+      root.visible = true
+      try {
+        await preparationWait(this.renderer.compileAsync(root, this.camera, this.scene), signal)
+        check()
+        const previous = this.renderer.getRenderTarget()
+        this.scene.add(root)
+        try {
+          this.renderer.setRenderTarget(null)
+          this.renderer.render(this.scene, this.camera)
+          check()
+        } finally { this.renderer.setRenderTarget(previous) }
+      } finally { root.visible = false; root.removeFromParent() }
+    }
+    try {
+      check()
+      this.modelEnvironment?.ensure(this.renderer)
+      // Request all sources together; the shared cache limits model decoding concurrency.
+      for (const job of jobs) this.models!.cache.requestSource(job.source)
+      for (const job of jobs) {
+        const start = performance.now()
+        while (true) {
+          check()
+          const status = this.models!.cache.requestSource(job.source)
+          if (status === 'ready') break
+          if (status === 'error' || performance.now() - start > 90_000)
+            throw new Error(`素材を読み込めませんでした: ${job.type} / ${job.motion}`)
+          await preparationPause(signal)
+        }
+        progress(++done, total)
+      }
+      for (const job of jobs) {
+        check()
+        const key = `${job.type}:${job.motion}`
+        if (!this.campaignJobs.has(key)) {
+          const visual = this.models!.campaignVisual(job.type)
+          if (!visual.sample({ motion: job.motion, seconds: 0, loop: false, facingX: 0, facingY: 1, boss: false }))
+            throw new Error(`姿勢を準備できませんでした: ${key}`)
+          await draw(visual.root)
+          visual.rememberInitialBounds(job.motion)
+          visual.root.visible = true
+          try { await preparationWait(prepareFadePrograms(this.renderer, visual.root, this.camera, this.scene, signal), signal) }
+          finally { visual.root.visible = false }
+          visual.setAppearance(0.5)
+          try { await draw(visual.root) }
+          finally { visual.setAppearance(1) }
+          check()
+          this.campaignJobs.add(key)
+        }
+        progress(++done, total)
+        await preparationPause(signal)
+      }
+      for (const url of effects) {
+        check()
+        let atlas: WholeFrameAtlas | undefined
+        if (url) {
+          if (this.atlasCache.error(url)) {
+            this.atlasCache.invalidate([url])
+            delete this.assetErrors[url]
+          }
+          const start = performance.now()
+          while (!(atlas = this.atlasCache.get(url, false))) {
+            check()
+            const error = this.atlasCache.error(url)
+            if (error) throw new Error(error)
+            if (performance.now() - start > 60_000) {
+              this.atlasCache.invalidate([url])
+              throw new Error('攻撃エフェクトの読み込みがタイムアウトしました。')
+            }
+            await preparationPause(signal)
+          }
+        }
+        // One retained quad holds both procedural and textured effect programs.
+        const mesh = this.campaignEffect ??= new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+        mesh.frustumCulled = false
+        mesh.position.set(-10000, -10000, 0)
+        mesh.material.map = atlas?.sample(0).texture ?? null
+        mesh.material.needsUpdate = true
+        await draw(mesh)
+        progress(++done, total)
+        await preparationPause(signal)
+      }
+      if (this.models && this.effectClips['dragon:breath'] && !this.breathEffect())
+        throw new Error('ブレスエフェクトの形式を確認できませんでした。')
+      await preparationWait(this.specialAbilities.preload(base), signal)
+      await this.specialAbilities.prepare(async (root) => {
+        const position = root.position.clone()
+        root.position.set(-10000, -10000, 0)
+        try { await draw(root) }
+        finally { root.position.copy(position) }
+        await preparationPause(signal)
+      })
+      try { await preparationGpu(this.renderer.getContext(), signal) }
+      catch (error) {
+        if (!signal.aborted && !this.disposed && generation === this.campaignContext)
+          this.assetErrors['model:gpu'] = String(error)
+        throw error
+      }
+      check()
+      for (const type of ALLY_TYPES) this.preparedDefenders.add(type)
+      this.campaignPrepared = true
+      progress(++done, total)
+    } finally { this.campaignPreparing = false }
+  }
   private preparedDefenders = new Set<AllyType>()
   private compilingDefenders = new Set<AllyType>()
   private defenderRetryAt = 0
@@ -349,6 +487,7 @@ export class GameRenderer {
       gpu: { ...this.drawTiming, programs: this.renderer.info.programs?.length ?? 0 },
       modelEnvironment: this.modelEnvironment?.diagnostics(),
       modelRendering: this.models?.diagnostics() ?? null,
+      campaignPreparation: { ready: this.campaignPrepared, completed: this.campaignJobs.size },
       artSwitch: this.artSwitchStatus,
       soldierArt: this.models ? 'gltf-mesh' : this.unitTrials.soldier ? '3d-trial' : '2d',
       unitArt: Object.fromEntries(
@@ -587,6 +726,17 @@ export class GameRenderer {
       'aria-label',
       '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
     )
+    this.renderer.domElement.addEventListener('webglcontextlost', () => {
+      this.campaignPrepared = false
+      this.campaignContext++
+      delete this.assetErrors['model:shader']
+      delete this.assetErrors['model:gpu']
+      this.modelEnvironment?.invalidate()
+      this.campaignJobs.clear()
+      this.preparedDefenders.clear()
+      this.onContextLost?.()
+    })
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => this.onContextRestored?.())
     host.append(this.renderer.domElement)
     this.fortifications = new FortificationVisual(this.scene, host)
     this.commanderSupport = new CommanderSupportVisual(this.scene, host)
@@ -724,6 +874,10 @@ export class GameRenderer {
     this.compilingDefenders.clear()
     this.cancelArtSwitch()
     this.models?.dispose()
+    this.campaignEffect?.removeFromParent()
+    this.campaignEffect?.geometry.dispose()
+    this.campaignEffect?.material.dispose()
+    this.campaignEffect = undefined
     this.environmentRequest?.abort()
     this.environmentArt?.dispose()
     this.pendingEnvironment?.dispose()
@@ -1154,7 +1308,7 @@ export class GameRenderer {
   }
 
   private prepareActorMotion(): void {
-    if (this.disposed || !this.modelsActive || this.motionPreparation || this.compilingDefenders.size) return
+    if (this.campaignPreparing || this.disposed || !this.modelsActive || this.motionPreparation || this.compilingDefenders.size) return
     try {
       const pending = this.models?.prepareNextMotion(
         (root) => this.renderer.compileAsync(root, this.camera, this.scene),

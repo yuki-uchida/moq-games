@@ -28,6 +28,12 @@ export class ModelEnvironmentLighting {
     }
   }
 
+  invalidate(): void {
+    this.target?.dispose()
+    this.target = undefined
+    this.scene.environment = null
+  }
+
   diagnostics() {
     return { ready: !!this.target, intensity: this.scene.environmentIntensity, generations: this.generations }
   }

@@ -738,3 +738,53 @@ it('keeps a rejected fade usable without retrying it every frame or downloading 
   visual.dispose()
   cache.dispose()
 })
+
+describe('campaign preparation cache', () => {
+  it('shares only copied first-pose sort bounds for the matching source/clip', async () => {
+    const source = fixture()
+    source.scene.clear()
+    const mesh = new THREE.SkinnedMesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())
+    mesh.name = 'body'
+    const count = mesh.geometry.attributes.position.count
+    mesh.geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(count * 4), 4))
+    const weights = new Float32Array(count * 4)
+    for (let i = 0; i < count; i++) weights[i * 4] = 1
+    mesh.geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weights, 4))
+    const bone = new THREE.Bone()
+    mesh.add(bone)
+    mesh.bind(new THREE.Skeleton([bone]))
+    source.scene.add(mesh)
+    const cache = new ModelAssetCache(async () => source)
+    const spec = { url: '/model.glb', clip: 'idle' }
+    cache.requestSource(spec)
+    await settle()
+    const prepared = cache.acquire(spec)!
+    const preparedMesh = prepared.scene.getObjectByName('body') as THREE.SkinnedMesh
+    preparedMesh.computeBoundingSphere()
+    cache.rememberInitialBounds(spec, prepared.scene)
+    const actor = cache.acquire(spec)!
+    const actorMesh = actor.scene.getObjectByName('body') as THREE.SkinnedMesh
+    expect(actorMesh.boundingSphere).toEqual(preparedMesh.boundingSphere)
+    expect(actorMesh.boundingSphere).not.toBe(preparedMesh.boundingSphere)
+    expect(actorMesh.frustumCulled).toBe(false)
+    const attack = cache.acquire({ ...spec, clip: 'attack' })!
+    expect((attack.scene.getObjectByName('body') as THREE.SkinnedMesh).boundingSphere).toBeNull()
+    prepared.release(); actor.release(); attack.release(); cache.dispose()
+  })
+  it('times out a stalled decoder and retries without blocking the concurrency slots', async () => {
+    vi.useFakeTimers()
+    try {
+      const load = vi.fn().mockImplementationOnce(() => new Promise(() => {})).mockImplementation(async () => fixture())
+      const cache = new ModelAssetCache(load)
+      cache.request('/stalled.glb')
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(cache.request('/stalled.glb')).toBe('error')
+      cache.retryFailed()
+      cache.request('/stalled.glb')
+      await settle()
+      expect(cache.request('/stalled.glb')).toBe('ready')
+      expect(cache.diagnostics().inflight).toBe(0)
+      cache.dispose()
+    } finally { vi.useRealTimers() }
+  })
+})

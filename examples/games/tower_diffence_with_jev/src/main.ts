@@ -107,7 +107,7 @@ import { MapPan } from './input/MapPan'
 import { SandbagInput, sandbagPlacementLabel } from './input/SandbagInput'
 import { enemyStrategyPresentation } from './input/EnemyStrategy'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
-const loadedCampaign = loadCampaignSave(validateCampaignCheckpoint)
+let loadedCampaign = loadCampaignSave(validateCampaignCheckpoint)
 let pendingRun = loadedCampaign.run
 let showLegacyMigration = loadedCampaign.source === 'legacy'
 let replaceStoredRun = !!pendingRun || !!loadedCampaign.issue
@@ -222,6 +222,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
+<dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><h2 id="campaign-loading-title">キャラクターを準備中</h2><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
 <dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><button id="result-title-return" class="text-button">保存してタイトルに戻る</button><small class="result-note">雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></dialog>`
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
@@ -483,7 +484,26 @@ function openTitle() {
   if (!titleDialog.open) titleDialog.showModal()
   $('title-new').focus({ preventScroll: true })
 }
+function resetTitleCampaign() {
+  loadedCampaign = loadCampaignSave(validateCampaignCheckpoint)
+  pendingRun = loadedCampaign.run
+  replaceStoredRun = !!pendingRun || !!loadedCampaign.issue
+  replaceProgress(freshRunFromProfile(loadedCampaign.profile, 2, 1))
+  engine = new GameEngine(engine.ai, save, undefined, undefined, undefined, DRAGON_BREATH_MOUTHS, 2, 1)
+  started = rewarded = outcomeSaved = false
+  clearPlacementModes()
+  document.querySelector('.game-layout')!.setAttribute('inert', '')
+  $<HTMLDialogElement>('result').close()
+  updateField()
+  updateStart()
+  openTitle()
+}
+
 function returnToTitle() {
+  campaignPreparation?.abort()
+  campaignPreparation = undefined
+  campaignAction = undefined
+  campaignLoading.close()
   if (started) {
     // Do not abandon an in-memory run when browser storage is unavailable.
     if (!persist(true)) {
@@ -494,7 +514,7 @@ function returnToTitle() {
     engine.invalidateAI()
     connection?.cancelPending()
     battleMusic.setBattle(false)
-    location.replace(new URL('./index.html', location.href).href)
+    resetTitleCampaign()
   } else openTitle()
 }
 titleDialog.addEventListener('cancel', (event) => event.preventDefault())
@@ -513,10 +533,6 @@ $('title-continue').onclick = () => {
   history.pushState({ towerScreen: 'game' }, '', '#game')
   titleDialog.close()
   $('resume-run').click()
-  if (!started) {
-    openTitle()
-    $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。'
-  }
 }
 $('launch-title-return').onclick = returnToTitle
 $('game-title-return').onclick = returnToTitle
@@ -531,10 +547,10 @@ function replaceProgress(next: typeof save) {
   Object.assign(save, next)
 }
 function preparing() {
-  return started && engine.state.phase === 'preparation'
+  return started && !campaignLoading.open && engine.state.phase === 'preparation'
 }
 function assaulting() {
-  return started && engine.state.phase === 'assault'
+  return started && !campaignLoading.open && engine.state.phase === 'assault'
 }
 function announce(message: string) {
   $('feedback').textContent = message
@@ -547,7 +563,6 @@ function panTo(x: number, y: number) {
   })
 }
 function entrance() {
-  if (started) void renderer.preloadSpecialAbilities(artBase)
   const field = fieldFor(engine.state),
     entry = field.slots[0] ?? field.entrance
   panTo(entry.x, entry.y)
@@ -1379,7 +1394,66 @@ function updateStart() {
         ? 'Jev · MoQ 接続済み。Pipecat botの起動も確認してください'
         : 'Jev を使うには MoQ に接続してください。ルール AI なら接続不要です'
 }
-function startFreshCampaign() {
+const campaignLoading = $<HTMLDialogElement>('campaign-loading')
+let campaignPreparation: AbortController | undefined
+let campaignAction: (() => void) | undefined
+function cancelCampaignPreparation() {
+  campaignPreparation?.abort()
+  campaignPreparation = undefined
+  campaignAction = undefined
+  campaignLoading.close()
+  if (started) returnToTitle()
+  else openTitle()
+}
+$('campaign-loading-cancel').onclick = cancelCampaignPreparation
+campaignLoading.addEventListener('cancel', (event) => { event.preventDefault(); cancelCampaignPreparation() })
+$('campaign-loading-retry').onclick = () => { if (campaignAction) void prepareCampaign(campaignAction) }
+async function prepareCampaign(action: () => void) {
+  if (campaignPreparation) return
+  if (renderer.campaignPrepared) { action(); return }
+  const request = new AbortController()
+  campaignPreparation = request
+  campaignAction = action
+  $('campaign-loading-retry').hidden = true
+  if (!campaignLoading.open) campaignLoading.showModal()
+  $('campaign-loading-cancel').focus({ preventScroll: true })
+  try {
+    await renderer.prepareCampaign(artBase, request.signal, (done, total) => {
+      const bar = $<HTMLProgressElement>('campaign-loading-progress')
+      bar.max = total
+      bar.value = done
+      $('campaign-loading-status').textContent = `${done} / ${total}`
+    })
+    request.signal.throwIfAborted()
+    campaignLoading.close()
+    campaignAction = undefined
+    action()
+  } catch (error) {
+    if (!request.signal.aborted) {
+      $('campaign-loading-status').textContent = `準備できませんでした。${error instanceof Error ? error.message : String(error)}`
+      $('campaign-loading-retry').hidden = false
+    }
+  } finally { if (campaignPreparation === request) campaignPreparation = undefined }
+}
+renderer.onContextLost = () => {
+  campaignPreparation?.abort()
+  battleClock?.stop()
+  if (started || campaignLoading.open) {
+    document.querySelector('.game-layout')!.setAttribute('inert', '')
+    $('campaign-loading-retry').hidden = false
+    if (!campaignLoading.open) campaignLoading.showModal()
+    $('campaign-loading-status').textContent = '描画の復旧を待っています。タイトルへ戻ることもできます。'
+  }
+}
+renderer.onContextRestored = () => {
+  if (started) void prepareCampaign(() => {
+    document.querySelector('.game-layout')!.removeAttribute('inert')
+    if (engine.state.phase === 'assault') battleClock?.start()
+  })
+  else if (campaignAction) void prepareCampaign(campaignAction)
+}
+function startFreshCampaign() { void prepareCampaign(commitFreshCampaign) }
+function commitFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
   const layoutRevision: LayoutRevision = 4
   if ((engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision) !== layoutRevision) {
@@ -1418,7 +1492,8 @@ $('start').onclick = () => {
     saveConfirm.open($('start'))
   } else startFreshCampaign()
 }
-$('resume-run').onclick = () => {
+$('resume-run').onclick = () => { void prepareCampaign(resumeRun) }
+function resumeRun() {
   if (!pendingRun) return
   if (engine.ai !== rule && !connected && !pendingRun.engine.state.cooldownHold) {
     $<HTMLSelectElement>('mode').value = 'rule'
@@ -1429,7 +1504,8 @@ $('resume-run').onclick = () => {
   const restored = GameEngine.fromCheckpoint(pendingRun.engine, engine.ai, save, undefined, DRAGON_BREATH_MOUTHS)
   if (!restored) {
     replaceProgress(previous)
-    $('saved-run-note').textContent = 'この遠征は再開できません。元の保存は変更していません。'
+    openTitle()
+    $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。'
     return
   }
   battleClock?.stop()
@@ -2224,7 +2300,7 @@ function initializeClock() {
   try {
     battleClock = createBattleClock({
       step: (dt) => {
-        if (!started || engine.state.phase !== 'assault') return false
+        if (!started || !renderer.campaignPrepared || engine.state.phase !== 'assault') return false
         engine.update(dt, (state) => renderer.assetsReady(state))
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
@@ -2278,6 +2354,7 @@ function pageHidden(event: PageTransitionEvent) {
   battleClock = undefined
   if (!event.persisted) {
     simulationDisposed = true
+    campaignPreparation?.abort()
     renderer.dispose()
     newLayoutRequest.abort()
     newLayoutBundle?.dispose()

@@ -101,6 +101,9 @@ describe('UI checkpoint persistence', () => {
     let navigated = false
     let settingsOpened = false
     Object.assign(state.context, {
+      campaignPreparation: undefined,
+      campaignAction: undefined,
+      campaignLoading: { close() {} },
       settings: () => {
         settingsOpened = true
       },
