@@ -36,13 +36,14 @@ export function saveMusicPreferences(value: MusicPreferences): void {
 
 type MusicMedia = Pick<
   HTMLAudioElement,
-  'loop' | 'preload' | 'volume' | 'currentTime' | 'play' | 'pause' | 'src' | 'load'
+  'loop' | 'preload' | 'volume' | 'currentTime' | 'play' | 'pause' | 'paused' | 'src' | 'load'
 >
 export class BattleMusic {
   private active = false
   private enabled = true
   private unlocked = false
-  private visible = true
+  private suspended = false
+  private playPending = false
   private playing = false
   private destroyed = false
   private battle = ''
@@ -70,7 +71,8 @@ export class BattleMusic {
       track: this.track,
       selection: this.selection,
       enabled: this.enabled,
-      playing: this.playing,
+      playing: this.playing && !this.media.paused,
+      position: this.media.currentTime,
       volume: this.media.volume,
       status: this.status
     }
@@ -133,8 +135,13 @@ export class BattleMusic {
     this.reconcile()
   }
   setVisible(visible: boolean): void {
-    if (this.visible === visible) return
-    this.visible = visible
+    // Ordinary tab switches keep streaming. A browser interruption is recovered
+    // on return or the next trusted gesture, using the same element and position.
+    if (visible) this.reconcile()
+  }
+  setSuspended(suspended: boolean): void {
+    if (this.suspended === suspended) return
+    this.suspended = suspended
     this.reconcile()
   }
   destroy(): void {
@@ -146,6 +153,7 @@ export class BattleMusic {
   private stop(reset: boolean): void {
     ++this.attempt
     this.playing = false
+    this.playPending = false
     this.media.pause()
     if (reset) {
       try {
@@ -161,27 +169,33 @@ export class BattleMusic {
   }
   private reconcile(): void {
     if (this.destroyed) return
-    if (!this.active || !this.enabled || !this.visible || !this.unlocked) {
+    if (!this.active || !this.enabled || this.suspended || !this.unlocked) {
       this.stop(!this.active)
       this.report(!this.enabled ? 'BGMはミュート中' : '襲撃中だけ再生します。')
       return
     }
-    if (this.playing) return
+    if (this.playing && (this.playPending || !this.media.paused)) return
     this.playing = true
+    this.playPending = true
     const attempt = ++this.attempt
     try {
       void this.media
         .play()
         .then(() => {
-          if (attempt === this.attempt) this.report('襲撃のBGMを再生中')
+          if (attempt === this.attempt) {
+            this.playPending = false
+            this.report('襲撃のBGMを再生中')
+          }
         })
         .catch(() => {
           if (attempt !== this.attempt) return
           this.playing = false
+          this.playPending = false
           this.report('BGMを再生できませんでした。次の操作で再試行します。')
         })
     } catch {
       this.playing = false
+      this.playPending = false
       this.report('BGMを再生できませんでした。次の操作で再試行します。')
     }
   }

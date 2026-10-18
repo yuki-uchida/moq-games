@@ -73,3 +73,81 @@ test('streams the original battle music only in assaults and preserves mute acro
   await page.goto(towerPath.replace('index.html', 'extra.html'))
   expect(await page.evaluate(() => 'towerDefenseMusicDiagnostics' in window)).toBe(false)
 })
+
+test('visibility notifications keep BGM streaming; interrupted playback resumes in place on a natural gesture', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as any
+    w.__musicProbe = { plays: 0, pauses: 0, blocked: false, media: null }
+    const play = HTMLMediaElement.prototype.play, pause = HTMLMediaElement.prototype.pause
+    HTMLMediaElement.prototype.play = function () {
+      if (this.src.includes('/tower-defense-music/')) {
+        w.__musicProbe.media = this
+        w.__musicProbe.plays++
+        if (w.__musicProbe.blocked) {
+          w.__musicProbe.blocked = false
+          return Promise.reject(new DOMException('autoplay denied', 'NotAllowedError'))
+        }
+      }
+      return play.call(this)
+    }
+    HTMLMediaElement.prototype.pause = function () {
+      if (this.src.includes('/tower-defense-music/')) w.__musicProbe.pauses++
+      return pause.call(this)
+    }
+  })
+  await openOfflineCampaign(page)
+  expect(await page.evaluate(() => (window as any).__musicProbe.plays)).toBe(0)
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
+  await page.locator('#assault').click()
+  await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
+  const initial = await page.evaluate(() => {
+    const p = (window as any).__musicProbe
+    return { plays: p.plays, pauses: p.pauses, position: p.media.currentTime }
+  })
+  await page.evaluate(() => {
+    for (let i = 0; i < 10; i++) for (const state of ['hidden', 'visible']) {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    delete (document as any).visibilityState
+  })
+  expect(await page.evaluate(() => {
+    const p = (window as any).__musicProbe
+    return { plays: p.plays, pauses: p.pauses, playing: !p.media.paused }
+  })).toEqual({ plays: initial.plays, pauses: initial.pauses, playing: true })
+  expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(initial.position)
+  await page.evaluate(() => {
+    const p = (window as any).__musicProbe
+    p.media.pause()
+    p.blocked = true
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect.poll(async () => (await diagnostics(page)).status).toContain('次の操作')
+  const interrupted = await page.evaluate(() => (window as any).__musicProbe.media.currentTime)
+  await page.locator('#settings-toggle').click()
+  await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
+  expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(interrupted)
+  await page.locator('#music-enabled').uncheck()
+  const mutedPlays = await page.evaluate(() => (window as any).__musicProbe.plays)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    delete (document as any).visibilityState
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(await page.evaluate(() => (window as any).__musicProbe.plays)).toBe(mutedPlays)
+  expect(await diagnostics(page)).toMatchObject({ enabled: false, playing: false })
+  await page.locator('#music-enabled').check()
+  await page.locator('#settings-close').click()
+  for (let i = 0; i < 3; i++) {
+    const position = await page.evaluate(() => (window as any).__musicProbe.media.currentTime)
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })))
+    expect(await diagnostics(page)).toMatchObject({ playing: false })
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })))
+    await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
+    expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(position)
+  }
+  await page.locator('#game-title-return').click()
+  await expect(page.locator('#title-screen')).toBeVisible()
+  expect(await diagnostics(page)).toMatchObject({ active: false, playing: false })
+})

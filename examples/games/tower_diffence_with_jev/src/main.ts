@@ -407,6 +407,7 @@ $<HTMLInputElement>('music-volume').oninput = () => {
   saveMusicPreferences(musicPreferences)
 }
 function syncBattleMusic() {
+  battleMusic.setSuspended(pageSuspended || campaignLoading.open)
   battleMusic.setBattle(
     started && engine.state.phase === 'assault',
     `${engine.state.seed}:${engine.state.fieldId}:${engine.state.stage}`,
@@ -2347,7 +2348,7 @@ function pageHidden(event: PageTransitionEvent) {
   cancelArtMode()
   persist()
   pageSuspended = true
-  battleMusic.setVisible(false)
+  battleMusic.setSuspended(true)
   soundPlayer.setEnabled(false)
   cancelFrame()
   battleClock?.dispose()
@@ -2370,6 +2371,7 @@ function pageHidden(event: PageTransitionEvent) {
 function pageShown(event: PageTransitionEvent) {
   if (!event.persisted || !pageSuspended || simulationDisposed) return
   pageSuspended = false
+  battleMusic.setSuspended(campaignLoading.open)
   soundPlayer.setEnabled(soundPreferences.enabled)
   resumedAfterSuspension = true
   initializeClock()

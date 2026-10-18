@@ -13,8 +13,9 @@ function setup(play = vi.fn(() => Promise.resolve())) {
     volume: 1,
     currentTime: 13,
     src: 'battle.mp3',
-    play,
-    pause: vi.fn(),
+    paused: true,
+    play: vi.fn(() => { media.paused = false; return play() }),
+    pause: vi.fn(() => { media.paused = true }),
     load: vi.fn()
   }
   const music = new BattleMusic(media, undefined, 'boss.mp3')
@@ -38,7 +39,7 @@ describe('battle-only streamed music', () => {
     expect(media.currentTime).toBe(0)
     expect(music.diagnostics.playing).toBe(false)
   })
-  it('supports muted and hidden states independently of SFX, and resets a new battle', () => {
+  it('supports mute and page suspension independently of SFX, keeps tab playback, and resets a new battle', () => {
     const { music, media } = setup()
     music.setBattle(true, 'run:1')
     expect(media.play).not.toHaveBeenCalled()
@@ -47,8 +48,12 @@ describe('battle-only streamed music', () => {
     expect(music.diagnostics.playing).toBe(false)
     music.configure({ enabled: true, volume: 0.1 })
     music.setVisible(false)
-    expect(music.diagnostics.playing).toBe(false)
+    expect(music.diagnostics.playing).toBe(true)
     music.setVisible(true)
+    expect(music.diagnostics.playing).toBe(true)
+    music.setSuspended(true)
+    expect(music.diagnostics.playing).toBe(false)
+    music.setSuspended(false)
     media.currentTime = 42
     music.setBattle(true, 'run:2')
     expect(media.currentTime).toBe(0)
@@ -201,5 +206,48 @@ describe('battle-only streamed music', () => {
     expect(loadMusicPreferences()).toEqual({ enabled: false, volume: 0.35 })
     saveMusicPreferences({ enabled: false, volume: 0.35 })
     expect(setItem).toHaveBeenCalledWith(MUSIC_PREFERENCES_KEY, '{"enabled":false,"volume":0.35}')
+  })
+})
+
+
+describe('music tab interruptions', () => {
+  it('keeps one stream and position across repeated tab switches and resumes a browser pause', async () => {
+    const { music, media } = setup()
+    music.unlock(); music.setBattle(true, 'same')
+    await Promise.resolve()
+    media.currentTime = 42
+    const pauses = media.pause.mock.calls.length
+    for (let i = 0; i < 10; i++) { music.setVisible(false); music.setVisible(true) }
+    expect(media.play).toHaveBeenCalledTimes(1)
+    expect(media.pause).toHaveBeenCalledTimes(pauses)
+    expect(media.currentTime).toBe(42)
+    media.paused = true
+    expect(music.diagnostics.playing).toBe(false)
+    music.setVisible(true)
+    await Promise.resolve()
+    expect(media.play).toHaveBeenCalledTimes(2)
+    expect(media.currentTime).toBe(42)
+    music.configure({ enabled: false, volume: .2 })
+    music.setVisible(false); music.setVisible(true); music.unlock()
+    expect(media.play).toHaveBeenCalledTimes(2)
+    expect(media.currentTime).toBe(42)
+  })
+  it('waits for a natural gesture after interrupted resume is denied, without duplicate pending playback', async () => {
+    const play = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied')).mockResolvedValue(undefined)
+    const { music, media } = setup(play)
+    music.unlock(); music.setBattle(true, 'same')
+    await Promise.resolve()
+    media.currentTime = 17; media.paused = true
+    music.setVisible(true)
+    music.unlock(); music.unlock()
+    expect(play).toHaveBeenCalledTimes(2)
+    await Promise.resolve(); await Promise.resolve()
+    expect(music.diagnostics.playing).toBe(false)
+    music.setBattle(true, 'same')
+    expect(play).toHaveBeenCalledTimes(2)
+    music.unlock()
+    await Promise.resolve()
+    expect(play).toHaveBeenCalledTimes(3)
+    expect(media.currentTime).toBe(17)
   })
 })
