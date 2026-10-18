@@ -63,10 +63,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      # Keep both reports when a shard fails. One WebGL worker per independent runner.
+      # Keep every report when a shard fails. One WebGL worker per independent runner.
+      # Cold software-GPU starts prepare the full roster, so use small independent shards.
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -92,7 +93,7 @@ jobs:
       - name: Install Chromium for public-build browser tests
         run: npx playwright install --with-deps chromium
       - name: Test the Pages build in Chromium
-        run: npx playwright test --config playwright.pages.config.ts --shard=${{ matrix.shard }}/2
+        run: npx playwright test --config playwright.pages.config.ts --shard=${{ matrix.shard }}/8
       - name: Upload shard report and failure evidence
         if: always()
         uses: actions/upload-artifact@v4

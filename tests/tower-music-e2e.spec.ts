@@ -59,6 +59,7 @@ test('streams the original battle music only in assaults and preserves mute acro
   expect(await diagnostics(page)).toMatchObject({ active: false, enabled: false, playing: false, volume: 0.35 * 0.8 })
   await page.reload()
   await page.locator('#title-continue').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect.poll(async () => (await diagnostics(page)).active).toBe(true)
   expect(await diagnostics(page)).toMatchObject({ enabled: false, playing: false, selection })
   await page.locator('#settings-toggle').click()
@@ -99,7 +100,9 @@ test('visibility notifications keep BGM streaming; interrupted playback resumes 
   expect(await page.evaluate(() => (window as any).__musicProbe.plays)).toBe(0)
   await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
   await page.locator('#assault').click()
-  await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
+  await expect.poll(async () => (await diagnostics(page)).status).toBe('襲撃のBGMを再生中')
+  await page.evaluate(() => { (window as any).__musicProbe.media.currentTime = 7 })
+  await expect.poll(() => page.evaluate(() => (window as any).__musicProbe.media.seeking)).toBe(false)
   const initial = await page.evaluate(() => {
     const p = (window as any).__musicProbe
     return { plays: p.plays, pauses: p.pauses, position: p.media.currentTime }

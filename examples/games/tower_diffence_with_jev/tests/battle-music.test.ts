@@ -251,3 +251,21 @@ describe('music tab interruptions', () => {
     expect(media.currentTime).toBe(17)
   })
 })
+
+it('resumes a browser pause before its old play promise settles, without duplicate live playback', async () => {
+  let finish!: () => void
+  const play = vi.fn().mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve })).mockResolvedValue(undefined)
+  const { music, media } = setup(play)
+  music.unlock(); music.setBattle(true, 'same')
+  media.currentTime = 37
+  media.paused = true
+  music.setVisible(true)
+  music.setVisible(true)
+  music.unlock()
+  expect(play).toHaveBeenCalledTimes(2)
+  await Promise.resolve()
+  finish()
+  await Promise.resolve()
+  expect(music.diagnostics.playing).toBe(true)
+  expect(media.currentTime).toBe(37)
+})

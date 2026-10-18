@@ -61,6 +61,7 @@ for (const viewport of [
       await expect(page.locator('#title-continue')).toBeEnabled()
       await page.reload()
       await page.locator('#title-continue').click()
+      await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
       await expect(unit).toHaveCount(1)
       await expect.poll(async () => Number(await unit.getAttribute('data-home-x'))).toBeCloseTo(destination.x, 0)
       await expect.poll(async () => Number(await unit.getAttribute('data-home-y'))).toBeCloseTo(destination.y, 0)

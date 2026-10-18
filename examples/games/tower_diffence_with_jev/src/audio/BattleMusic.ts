@@ -137,7 +137,13 @@ export class BattleMusic {
   setVisible(visible: boolean): void {
     // Ordinary tab switches keep streaming. A browser interruption is recovered
     // on return or the next trusted gesture, using the same element and position.
-    if (visible) this.reconcile()
+    if (!visible) return
+    // The pause may reject the old play promise only after visibility returns.
+    if (this.playPending && this.media.paused) {
+      this.playPending = false
+      this.playing = false
+    }
+    this.reconcile()
   }
   setSuspended(suspended: boolean): void {
     if (this.suspended === suspended) return

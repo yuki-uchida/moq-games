@@ -43,6 +43,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   await page.locator('#settings-close').click()
   await page.locator('[data-field="meadow"]').click()
   await page.locator('#offline-start').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect
     .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().assetStatus), { timeout: 90000 })
     .toBe('ready')
@@ -87,6 +88,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.reload()
   await page.locator('#title-continue').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('.unit-health[data-owner="player"]')).toHaveAttribute('data-art-source', 'gltf-mesh', {
     timeout: 90000
   })
@@ -194,6 +196,7 @@ for (const role of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'] as 
     await page.reload()
     await expect(page.locator('#title-continue')).toBeEnabled()
     await page.locator('#title-continue').click()
+    await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
     await expect
       .poll(
         () =>
@@ -232,7 +235,7 @@ test('prepares summonable models before a drag and draws a committed unit on the
   await expect(page.locator('.unit-health[data-owner="player"]')).toHaveCount(0)
   expect(await page.locator('#gold').textContent()).toBe(gold)
   release()
-  await expect(page.locator('#launch')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('#launch')).toBeHidden({ timeout: 180_000 })
   await page.locator('#deck-toggle').click()
   await expect(page.locator('#unit-archer')).toBeEnabled()
   const requested = requests.filter((url) => url.includes('/archer/'))
@@ -384,6 +387,7 @@ test('resumed assault prepares the first soldier death fade before its visible f
   await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), raw)
   await page.reload()
   await page.locator('#title-continue').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const deadline = Date.now() + 120000
   let frames = 0
   while (Date.now() < deadline) {
@@ -436,7 +440,7 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   await page.locator('#title-new').click()
   await page.locator('#offline-start').click()
   await expect(page.locator('#campaign-loading')).toBeVisible()
-  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()
   expect(await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)).toBe(true)
   await page.locator('#campaign-loading-cancel').click()
@@ -445,7 +449,7 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   fail = false
   await page.locator('#title-new').click()
   await page.locator('#start').click()
-  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#launch')).toBeHidden()
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(true)
 })
@@ -454,12 +458,13 @@ test('same-session Title, Continue and New game retain the completed campaign pr
   const requests: string[] = []
   page.on('request', (request) => { if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url()) })
   await openOfflineCampaign(page)
-  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const loaded = requests.length
   const before = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
   await page.locator('#game-title-return').click()
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.locator('#title-continue').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#title-screen')).toBeHidden()
   await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '4')
   await page.locator('#game-title-return').click()
@@ -485,7 +490,7 @@ test('restored WebGL context prepares GPU resources again without re-fetching mo
     setTimeout(() => extension.restoreContext(), 300)
   })
   await expect(page.locator('#campaign-loading')).toBeVisible()
-  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const diagnostics = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
   expect(diagnostics.campaignPreparation.ready).toBe(true)
   expect(diagnostics.modelEnvironment.generations).toBe(generations + 1)
@@ -498,11 +503,11 @@ test('a missing normal attack effect cannot finish preparation and retries witho
   await page.goto(towerPath)
   await page.locator('#title-new').click()
   await page.locator('#offline-start').click()
-  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()
   failed = false
   await page.locator('#campaign-loading-retry').click()
-  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 90_000 })
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(true)
 })

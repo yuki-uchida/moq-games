@@ -10,7 +10,8 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
-  timeout: 180_000,
+  // Include full cold GPU preparation and explicit save/reload scenarios.
+  timeout: 360_000,
   expect: { timeout: 15_000 },
   outputDir: 'test-results/pages',
   reporter: [['list'], ['html', { outputFolder: 'playwright-report/pages', open: 'never' }]],
