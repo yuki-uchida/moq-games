@@ -36,6 +36,14 @@ async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true) 
       .toBe(10)
   return { unit, bag: engine.state.sandbags[0], bagPoint }
 }
+async function liveSpecialTarget(page: Page, id: number) {
+  const point = await page.evaluate((id) => {
+    const unit = (window as any).towerDefenseDiagnostics().units.find((unit: any) => unit.id === id)
+    if (!unit?.groundPosition) throw new Error(`Missing live defender ${id}`)
+    return unit.groundPosition as { x: number; y: number }
+  }, id)
+  return pointOnVisibleMap(page, { x: point.x + 60, y: point.y })
+}
 async function stored(page: Page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine)
 }
@@ -88,9 +96,12 @@ for (const mobile of [false, true])
 
     if (mobile) await handle.tap()
     else await handle.click()
-    const target = await pointOnVisibleMap(page, { x: unit.x + 85, y: unit.y })
-    await page.mouse.move(target.x, target.y)
+    const preview = await liveSpecialTarget(page, unit.id)
+    await page.mouse.move(preview.x, preview.y)
     await page.screenshot({ path: info.outputPath(`special-preview-${mobile}.png`) })
+    // Combat keeps running during a software-GPU screenshot. Aim from the live actor,
+    // rather than the original placement or a point captured before the screenshot.
+    const target = await liveSpecialTarget(page, unit.id)
     if (mobile) await page.touchscreen.tap(target.x, target.y)
     else await page.mouse.click(target.x, target.y)
     expect((await stored(page)).state.units[0].specialCooldown).toBeGreaterThan(59)
