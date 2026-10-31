@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { towerModelSidecars } from './scripts/tower-model-sidecars.mjs'
 import { towerViewerCatalogPlugin } from './scripts/tower-viewer-catalog.mjs'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -6,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   base: '/moq-games/',
-  plugins: [towerViewerCatalogPlugin(root)],
+  plugins: [towerViewerCatalogPlugin(root), towerModelSidecars(root)],
   define: {
     'import.meta.env.VITE_TOWER_ENVIRONMENT_AVAILABLE': JSON.stringify(
       String(existsSync(resolve(root, 'public/tower-defense-art/environment-3d-trial/runtime-manifest.json')))

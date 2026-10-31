@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import runtimeManifest from '../../../../../public/tower-defense-art/models/runtime-manifest.json'
 import { reuseSkinnedBoundsMatrices } from './SkinnedBounds'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { clone } from 'three/addons/utils/SkeletonUtils.js'
@@ -85,19 +86,101 @@ export async function loadModelWithTimeout(load: () => Promise<GLTF>, abort?: ()
   let expired = false
   let timer: ReturnType<typeof setTimeout>
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => { expired = true; abort?.(); reject(new Error('Model load timed out')) }, 60_000)
+    timer = setTimeout(() => {
+      expired = true
+      abort?.()
+      reject(new Error('Model load timed out'))
+    }, 60_000)
   })
   try {
-    return await Promise.race([load().then((source) => {
-      if (expired) { disposeSource(source); throw new Error('Expired model load') }
-      return source
-    }), timeout])
-  } finally { clearTimeout(timer!) }
+    return await Promise.race([
+      load().then((source) => {
+        if (expired) {
+          disposeSource(source)
+          throw new Error('Expired model load')
+        }
+        return source
+      }),
+      timeout
+    ])
+  } finally {
+    clearTimeout(timer!)
+  }
 }
 
+const sidecarModels = new Map(
+  runtimeManifest.models.map((model) => [model.file, { size: model.bytes, hash: model.outputSha256 }])
+)
+
+/** Use compressed build artifacts when supported; original URLs remain the fallback. */
 export function loadGLTF(url: string): Promise<GLTF> {
   const manager = new THREE.LoadingManager()
-  return loadModelWithTimeout(() => new GLTFLoader(manager).loadAsync(url), () => manager.abort())
+  const controller = new AbortController()
+  const loader = new GLTFLoader(manager)
+  return loadModelWithTimeout(
+    async () => {
+      const parsed = new URL(url, globalThis.location?.href ?? 'http://localhost/')
+      const marker = '/tower-defense-art/models/'
+      const index = parsed.pathname.lastIndexOf(marker)
+      const model = index < 0 ? undefined : sidecarModels.get(parsed.pathname.slice(index + marker.length))
+      if (import.meta.env.PROD && model !== undefined && typeof DecompressionStream !== 'undefined') {
+        try {
+          const sidecar = new URL(parsed.href)
+          sidecar.pathname += `.${model.hash}.gz.bin`
+          const response = await fetch(sidecar, { signal: controller.signal })
+          if (!response.ok || !response.body) throw new Error('Model sidecar unavailable')
+          // Fetch may already have decoded Content-Encoding, or a host may have
+          // encoded the sidecar itself. Inspect the bytes rather than the header.
+          const reader = response.body.getReader()
+          const prefix: Uint8Array<ArrayBuffer>[] = []
+          let prefixSize = 0
+          while (prefixSize < 2) {
+            const chunk = await reader.read()
+            if (chunk.done) break
+            prefix.push(chunk.value)
+            prefixSize += chunk.value.byteLength
+          }
+          const first = prefix.flatMap((chunk) => Array.from(chunk.subarray(0, 2))).slice(0, 2)
+          const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
+            async pull(sink) {
+              if (prefix.length) sink.enqueue(prefix.shift()!)
+              else {
+                const chunk = await reader.read()
+                if (chunk.done) sink.close()
+                else sink.enqueue(chunk.value)
+              }
+            },
+            cancel(reason) {
+              return reader.cancel(reason)
+            }
+          })
+          const decoded =
+            first[0] === 0x1f && first[1] === 0x8b ? stream.pipeThrough(new DecompressionStream('gzip')) : stream
+          let received = 0
+          const bounded = decoded.pipeThrough(
+            new TransformStream<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>({
+              transform(chunk, sink) {
+                received += chunk.byteLength
+                if (received > model.size) throw new Error('Model sidecar exceeds expected size')
+                sink.enqueue(chunk)
+              }
+            })
+          )
+          const bytes = await new Response(bounded).arrayBuffer()
+          if (bytes.byteLength !== model.size) throw new Error('Model sidecar size mismatch')
+          return await loader.parseAsync(bytes, new URL('.', parsed).href)
+        } catch (error) {
+          if (controller.signal.aborted) throw error
+          // A missing, corrupt, or unsupported sidecar must not prevent use of the original.
+        }
+      }
+      return loader.loadAsync(url)
+    },
+    () => {
+      controller.abort()
+      manager.abort()
+    }
+  )
 }
 
 /** Lazy, bounded shared geometry/textures; each actor owns its skeleton and materials. */

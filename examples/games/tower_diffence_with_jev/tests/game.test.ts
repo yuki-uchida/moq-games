@@ -651,7 +651,7 @@ it('keeps the boss on its archetype cooldown after a regular ogre deployment', (
   engine.state.enemiesSpawned = stageRules(9).enemyCount - 2
   expect(engine.applyAIAction({ type: 'spawn', unitType: 'ogre' })).toBe(true)
   // Act
-  advance(engine, 2)
+  advance(engine, stageRules(9).spawnInterval + CONFIG.step)
   const duringCooldown = getLegalAIActions(engine.state)
   advance(engine, 6.1)
   // Assert

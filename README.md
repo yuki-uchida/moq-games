@@ -49,6 +49,8 @@ npm run build
 
 To inspect the production build, run `npm run preview` and open the [preview game](http://127.0.0.1:4174/moq-games/examples/games/tower_diffence_with_jev/index.html).
 
+The production build also generates gzip sidecars for the runtime roster from the verified model manifest. Supported browsers stream-decompress these files before preparing every model; the original GLBs remain in the build for unsupported browsers and recovery. Sidecar names include the source hash so updated models use new cache keys. Keeping both formats increases the current build by about 118 MB.
+
 <details>
 <summary>More tests: browser, debug tools and optional assets</summary>
 

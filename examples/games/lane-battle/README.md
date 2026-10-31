@@ -6,7 +6,7 @@ Independent local single-player lane strategy example. Both forts and the whole 
 | ---------- | ---------: | ---------: | -------------: | ----------: | ---------------------------------------------------- |
 | 芽吹きの道 |       1000 |        100 |           13/s |          10 | Mostly guards, slower waves and weaker enemies       |
 | 弓影の峠   |       1700 |        100 |           13/s |          14 | Archer-heavy defense; wolves close the gap           |
-| 黄昏の奔流 |       2300 |        130 |           15/s |          20 | Early wolf pressure; defensive burst and kill income |
+| 黄昏の奔流 |       2600 |        100 |           13/s |          20 | Early wolf pressure; defensive burst and kill income |
 
 From the repository root:
 

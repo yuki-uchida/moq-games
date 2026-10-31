@@ -829,13 +829,14 @@ const WAVE_BOSSES: Record<WaveBossPolicy, Partial<Record<number, EnemyType>>> = 
   2: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
 }
 export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2) {
+  // Preserve saved-wave counts/stats/budgets; space stronger late enemies rather than stacking them.
   const level = Math.max(1, Math.min(CONFIG.stages, stage)),
     enemyCount = 3 + level * 2,
     bossType = WAVE_BOSSES[waveBossPolicy][level] ?? null
   return {
     enemyCount,
     strength: 1 + (level - 1) * 0.1,
-    spawnInterval: Math.max(1, 2.8 - level * 0.14),
+    spawnInterval: level <= 5 ? 2.8 - level * 0.14 : 2.1 + (level - 5) * 0.38,
     reward: 65 + level * 15,
     enemyTypes: ENEMY_TYPES.filter((t) => DEFINITIONS[t].unlockStage <= level),
     spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),

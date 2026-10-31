@@ -17,7 +17,7 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     failures: string[] = []
   page.on('request', (request) => {
     const url = request.url()
-    if (url.endsWith('.glb')) models.push(url)
+    if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(url)) models.push(url)
     // Jev's decorative commander is not one of the 20 simulated/model-catalog unit roles.
     // Allow only its exact presentation atlas; every gameplay body sheet remains forbidden.
     const commanderPresentation = /\/commander\/monster_commander-idle-e\.(json|png)(?:\?.*)?$/.test(url)
@@ -223,9 +223,9 @@ test('prepares summonable models before a drag and draws a committed unit on the
   })
   const requests: string[] = []
   page.on('request', (request) => {
-    if (request.url().endsWith('.glb')) requests.push(request.url())
+    if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(request.url())) requests.push(request.url())
   })
-  await page.route('**/archer/*.glb', async (route) => {
+  await page.route('**/archer/*.glb*', async (route) => {
     await held
     await route.continue()
   })
@@ -467,7 +467,7 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   page
 }) => {
   let fail = true
-  await page.route('**/models/crystalSentinel/*.glb', async (route) => {
+  await page.route('**/models/crystalSentinel/*.glb*', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     if (fail) await route.fulfill({ status: 503, body: 'retry' })
     else await route.continue()
@@ -495,7 +495,7 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
 test('same-session Title, Continue and New game retain the completed campaign preparation', async ({ page }) => {
   const requests: string[] = []
   page.on('request', (request) => {
-    if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url())
+    if (/\.(glb(?:\.[a-f0-9]{64}\.gz\.bin)?|ultimate\.json)$/.test(request.url())) requests.push(request.url())
   })
   await openOfflineCampaign(page)
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
@@ -521,7 +521,7 @@ test('same-session Title, Continue and New game retain the completed campaign pr
 test('restored WebGL context prepares GPU resources again without re-fetching model sources', async ({ page }) => {
   const requests: string[] = []
   page.on('request', (request) => {
-    if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url())
+    if (/\.(glb(?:\.[a-f0-9]{64}\.gz\.bin)?|ultimate\.json)$/.test(request.url())) requests.push(request.url())
   })
   await openOfflineCampaign(page)
   const loaded = requests.length
