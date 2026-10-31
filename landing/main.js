@@ -52,6 +52,15 @@ function battlefield() {
   </div>`
 }
 
+function gamePreview(art) {
+  const units = art === 'ember-grid' ? ['mage', 'soldier', 'goblin'] : ['soldier', 'archer', 'wolf']
+  return `<div class="game-preview ${escape(art)}" aria-hidden="true">
+    <div class="preview-board"></div>
+    ${units.map((unit, index) => `<img src="${artRoot}${unit}/portrait.png" alt="" class="preview-unit preview-unit-${index}" width="112" height="124" loading="lazy" decoding="async" />`).join('')}
+    <span class="preview-label">${art === 'ember-grid' ? 'PLAN YOUR NEXT MOVE' : 'DEFEND · SUMMON · ADVANCE'}</span>
+  </div>`
+}
+
 const container = document.querySelector('#samples')
 container.innerHTML = samples
   .map(
@@ -65,7 +74,7 @@ container.innerHTML = samples
     <a class="play-button" href="${escape(sample.href)}" aria-label="ゲームをプレイ: ${escape(sample.title)}"><span class="play-triangle" aria-hidden="true"></span>ゲームをプレイ<span class="button-arrow" aria-hidden="true">↗</span><span class="sr-only">: ${escape(sample.title)}</span></a>
     <p class="play-note">インストール不要 · 音声の自動再生なし</p>
   </div>
-  ${sample.art === 'tower-defense' ? battlefield() : ''}
+  ${sample.art === 'tower-defense' ? battlefield() : gamePreview(sample.art)}
   <div class="feature-bottom"><span>${escape(sample.category)} <span class="bottom-divider">/</span> ${escape(sample.title)}</span><span>MoQ Games <span aria-hidden="true">✳</span></span></div>
 </article>`
   )

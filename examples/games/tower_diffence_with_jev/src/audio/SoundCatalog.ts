@@ -185,15 +185,32 @@ export const UNSELECTED_EFFECT_SOUNDS: Readonly<Record<EffectSoundKey, null>> = 
   support_armor: null,
   support_attack: null,
   mud_slow_apply: null,
-  terrain_slow_enter: null
+  terrain_slow_enter: null,
+  ui_place: null, ui_upgrade: null, ui_assault: null, ui_special: null, ui_win: null, ui_lose: null
+}
+const selectedDefaults: Readonly<Record<EffectSoundKey, SelectedEffectSound>> = {
+  healer_heal: { file: 'healer_attack.wav', sha256: '6f475aa5a3a70d39815aebb6503508f4692f42a05aba57ee22f118b9a0e79e52', durationSeconds: 0.6179818594104308 },
+  support_heal: { file: 'healer_attack.wav', sha256: '6f475aa5a3a70d39815aebb6503508f4692f42a05aba57ee22f118b9a0e79e52', durationSeconds: 0.6179818594104308 },
+  support_speed: entries[6], support_armor: entries[3], support_attack: entries[4],
+  mud_slow_apply: entries[9], terrain_slow_enter: entries[12],
+  ui_place: entries[12], ui_upgrade: entries[8], ui_assault: entries[14],
+  ui_special: entries[4], ui_win: entries[8], ui_lose: entries[14]
 }
 export function soundCatalog(
   base: URL,
-  selectedEffects: Readonly<Partial<Record<EffectSoundKey, SelectedEffectSound | null>>> = UNSELECTED_EFFECT_SOUNDS
+  selectedEffects: Readonly<Partial<Record<EffectSoundKey, SelectedEffectSound | null>>> = selectedDefaults
 ): SoundCatalogEntry[] {
   if (!audioPackAvailable) return []
   return [
     ...entries.map(({ file, ...entry }) => ({ ...entry, url: new URL(file, base).href })),
+    ...([
+      { unitType: 'crystalSentinel', sound: entries[20] },
+      { unitType: 'koboldLancer', sound: entries[10] },
+      { unitType: 'clockworkPatchling', sound: entries[12] }
+    ] as const).map(({ unitType, sound }) => ({
+      id: `${unitType}_attack`, unitType, kind: 'hit' as const,
+      url: new URL(sound.file, base).href, sha256: sound.sha256, durationSeconds: sound.durationSeconds
+    })),
     ...Object.entries(EFFECT_SOUND_BINDINGS).flatMap(([id, binding]) => {
       const selected = selectedEffects[id as EffectSoundKey]
       return selected

@@ -140,6 +140,7 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
       .toBe(true)
     await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
     await page.locator('#settings-toggle').click()
+    await page.locator('[data-settings-tab=save]').click()
     await page.locator('#save-now').click()
     const saved = (await stored(page)).state
     expect(saved.units[0].specialCooldown).toBeGreaterThan(0)
@@ -157,11 +158,13 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
 
 test('a failed authored effect blocks preparation without spending cooldown and can retry', async ({ page }) => {
   let failed = true
-  await page.route('**/effects/special/soldier.glb', (route) => failed ? route.abort() : route.continue())
+  await page.route('**/effects/special/soldier.glb', (route) => (failed ? route.abort() : route.continue()))
   await seed(page, 'soldier', false)
   await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
-  expect(await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)).toBe(true)
+  expect(
+    await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)
+  ).toBe(true)
   expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
   expect((await stored(page)).state.time).toBe(0)
   await expect(page.locator('.defender-handle')).toHaveCount(0)

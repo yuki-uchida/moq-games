@@ -23,7 +23,7 @@ import { bindAudioUnlock } from './audio/AudioUnlock'
 import { soundCatalog } from './audio/SoundCatalog'
 import { loadSoundPreferences, saveSoundPreferences } from './audio/SoundPreferences'
 import { validateCampaignCheckpoint } from './game/CampaignCheckpoint'
-import { loadCampaignSave, saveCampaignCheckpoint, saveProfileWithoutRun } from './progression/CampaignStorage'
+import { loadCampaignSave, preserveCampaignBeforeRuleResume, saveCampaignCheckpoint, saveProfileWithoutRun } from './progression/CampaignStorage'
 import { authoredDeathClips } from './rendering/DeathArt'
 import { DRAGON_BREATH_MOUTHS, dragonBreathBodyClips } from './rendering/DragonBreathArt'
 import { createBattleClock, type BattleClock } from './clock/BattleClock'
@@ -197,11 +197,11 @@ function mapPreview(id: FieldId, layoutRevision: LayoutRevision = 4) {
   return `<svg viewBox="0 0 ${field.width} ${field.height}" aria-hidden="true"><rect width="${field.width}" height="${field.height}" fill="${field.theme.ground}"/><path d="${roads}" fill="none" stroke="${field.theme.edge}" stroke-width="84" stroke-linejoin="round"/><path d="${roads}" fill="none" stroke="${field.theme.road}" stroke-width="52" stroke-linejoin="round"/><circle cx="${entry.x}" cy="${entry.y}" r="38" fill="#c36351"/><circle cx="${base.x}" cy="${base.y}" r="45" fill="#f5e6ae"/></svg>`
 }
 $('app').innerHTML = `${titleScreenMarkup(artBase)}
-<header class="topbar"><a class="games-home-link" href="../../../index.html" aria-label="MoQ Games ホームへ戻る"><span aria-hidden="true">←</span> MoQ Games</a><div class="tools"><button id="game-title-return" aria-label="保存してタイトルに戻る">Title</button><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot" aria-hidden="true"></span><span id="settings-label">接続・AI</span></button></div></header>
+<header class="topbar"><a class="games-home-link" href="../../../index.html" aria-label="MoQ Games ホームへ戻る"><span aria-hidden="true">←</span> MoQ Games</a><div class="tools"><button id="game-title-return" class="unused-navigation" tabindex="-1" aria-label="保存してタイトルに戻る">Title</button><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot jev-ui" aria-hidden="true"></span><span id="settings-label">設定</span></button></div></header>
 <main class="game-layout" inert>
 <section class="battle-panel" aria-label="戦場">
 <div class="stage-label">Stage <span id="stage">01</span></div><span id="phase" class="sr-only" role="status"></span>
-<div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><span class="map-help">地図をドラッグ・スクロールして移動</span></div>
+<div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><span class="sr-only">地図をドラッグ・スクロールして移動</span></div>
 <div class="map-shell"><div id="map-scroll" tabindex="0" aria-label="戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動"><div id="map-world"><div id="field"><div id="base-health" class="base-health"><progress id="player-bar" max="${CONFIG.baseHp}" value="${CONFIG.baseHp}" aria-label="拠点の残り体力" aria-describedby="player-hp"></progress><span id="player-hp" class="sr-only">100 / 100</span></div></div></div></div></div>
 <p id="feedback" class="sr-only" role="status" aria-live="polite">4つのフィールドから遠征先を選ぼう。</p>
 </section>
@@ -210,20 +210,20 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <button id="items-toggle" class="field-icon" aria-expanded="false" aria-controls="item-tray" aria-label="道の備え" title="道の備え">${fortificationIcon('sandbag')}</button>
 <button id="assault" class="field-icon primary" aria-label="襲撃開始" title="襲撃開始" disabled>▶</button>
 </nav><p id="control-tooltip" role="tooltip" hidden></p>
-<section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
+<section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
 <section id="item-tray" class="floating-tray panel" aria-label="道の備え" hidden><div class="tray-heading"><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" title="土のうを配置">${fortificationIcon('sandbag')}<small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
 <section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-special" aria-label="必殺技" title="必殺技" hidden>✦</button><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
 </main>
-<dialog id="settings" class="panel settings" aria-labelledby="settings-title"><div class="dialog-heading"><div><span class="eyebrow">EXPEDITION SETTINGS</span><h2 id="settings-title">接続・AI・保存</h2></div><button id="settings-close" class="close-button" aria-label="設定を閉じる">×</button></div><p class="dialog-intro">敵の指揮官と、ブラウザー保存の設定です。</p><label for="mode">敵の指揮官</label><select id="mode" aria-describedby="mode-help"><option value="rule">ルール AI · 接続なしで遊ぶ</option><option value="jev" selected>Jev · MoQ に接続して遊ぶ</option></select><p id="clock-help" class="hint">別のタブを見ている間も、現在のステージの戦闘は続きます。勝敗が決まると停止し、次へは手動です。Jev の判断・API 利用料金も継続します。端末のスリープやブラウザーの凍結・破棄中は継続を保証できません。遅延の補完は最大2秒で、それを超えた時間は進めません。</p><p id="clock-status" class="notice" role="status" hidden></p><p id="mode-help" class="hint">ルール AI は接続不要。Jev は同じ Relay・Room で Pipecat bot を起動してください。</p><label for="history-mode">戦術履歴を判断に含める</label><select id="history-mode" aria-describedby="history-help"><option value="on" selected>ON · 直近20秒と短い戦績</option><option value="off">OFF · 現在の盤面のみ</option></select><p id="history-help" class="hint">同じ盤面のまま切り替えできます。変更は次の通常判断から適用。ONでも追加のJev呼び出しはしません。</p><div id="connection-fields" class="connection-fields"><span class="section-kicker">MOQ × PIPECAT × JEV</span><label for="relay">WebTransport relay</label><input id="relay" type="url" spellcheck="false" autocomplete="off"><label for="room">Room</label><input id="room" value="mossvale" spellcheck="false" autocomplete="off"><button id="connect" class="primary">MoQ に接続</button></div><p id="notice" class="notice" role="status" aria-live="polite">Jev は MoQ への接続が必要です。</p><section class="enemy-plan" aria-labelledby="enemy-plan-title"><h3 id="enemy-plan-title">敵の作戦</h3><p id="enemy-plan-status">準備中は敵の出撃判断を行いません。</p><p id="enemy-plan-reason" hidden></p><small id="enemy-plan-progress" hidden></small><p id="enemy-plan-reconsideration" hidden></p></section><section class="commander-support-tools" aria-labelledby="commander-support-title"><h3 id="commander-support-title">Jev の支援魔法</h3><p id="commander-support-status" role="status"></p><p id="commander-support-order" class="hint"></p><p class="hint">新規遠征の Jev モードで、戦闘開始10秒後から敵1体を支援。600msの詠唱後に回復、または5秒の加速・防御・攻撃強化。発動間隔10秒、重ね掛けなし。召喚とは別の判断で、通信失敗時には発動しません。</p><small>召喚と支援は各1秒に1回まで、合計最大2回のAPIリクエスト。支援の再使用待ち中は支援を問い合わせません。ルールAIと旧遠征には追加されません。</small></section><section class="environment-art-tools"><label for="art-mode">全体の描画 · 仲間・敵・環境</label><select id="art-mode" aria-describedby="art-mode-help art-mode-status"><option value="2d">すべて2D</option><option value="3d">すべて3D試用</option><option value="mixed" disabled>個別設定（2D・3D混在）</option></select><p id="art-mode-help" class="hint">仲間10種・敵10種・環境をまとめて切り替えます。読み込み中は今の表示を保ち、準備ができたら同時に反映します。初回画面・準備中のみ変更できます。旧地形の環境は2Dのままです。3Dの歩行は試作です。</p><p id="art-mode-status" class="hint" role="status" aria-live="polite"></p><button id="art-mode-cancel" hidden>切り替えを中止</button></section><section class="environment-art-tools"><label for="environment-art">環境の描画</label><select id="environment-art" aria-describedby="environment-art-help environment-art-status"><option value="2d">元の2D</option><option value="3d">3D試用</option></select><p id="environment-art-help" class="hint">戦う場所は平らなまま、起伏は外側の景観に配置します。道・配置・戦闘ルールは同じです。旧地形は元の2Dを使用します。初回画面・準備中に変更できます。</p><p id="environment-art-status" class="hint" role="status" aria-live="polite"></p></section><section class="trial-art-tools" hidden inert>${UNIT_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}の描画</label><select id="${type}-art" aria-describedby="soldier-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="soldier-art-help" class="hint">剣士・射手・盾騎士・魔法使い・霜の術師・花の癒やし手・槍の斥候・鷹の狩人・火薬の工兵・光の守護者を個別に切り替えます。能力・速度・命中時刻は同じです。光の守護者は近接範囲攻撃で戦います。3Dの歩行の接地と死亡演出は試作です。死亡アニメは未制作のため、倒れたときは最後の全身姿勢を保持します。歩調は暫定値のため足滑りが残ります。初回画面・準備中に変更できます。</p></section><section class="enemy-trial-art-tools" hidden inert><h3>敵の描画</h3>${ENEMY_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}</label><select id="${type}-art" aria-describedby="enemy-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="enemy-art-help" class="hint">敵の全身画像を個別に切り替えます。能力・出現条件・ボス倍率は同じです。初回画面・準備中のみ変更できます。3D死亡アニメは未制作のため最後の全身姿勢を保持します。歩行の接地には足滑りが残ります。</p></section><section class="sound-tools" aria-labelledby="music-title"><h3 id="music-title">襲撃のBGM</h3><label class="sound-toggle"><input id="music-enabled" type="checkbox" checked> 襲撃中にBGMを鳴らす</label><label for="music-volume">BGM音量 <output id="music-volume-value">20%</output></label><input id="music-volume" type="range" min="0" max="100" step="5" value="20"><p id="music-status" class="hint" role="status">襲撃中だけ再生します。</p><p class="hint">ステージ1〜9は2曲から襲撃ごとにランダムで選択し、同じ曲をループ。ステージ10は最終ボス曲。準備中・結果画面では停止します。</p></section><section class="sound-tools" aria-labelledby="sound-title"><h3 id="sound-title">効果音 · 試用</h3><label class="sound-toggle"><input id="sound-enabled" type="checkbox" checked> 攻撃・減速の効果音を鳴らす</label><label for="sound-volume">音量 <output id="sound-volume-value">20%</output></label><input id="sound-volume" type="range" min="0" max="100" step="5" value="20"><p id="sound-status" class="hint" role="status"></p><button id="sound-retry" hidden>音声の読み込みを再試行</button><p class="hint">生成音の候補です。音色は調整中。最初の操作後に読み込み、準備できた音だけを鳴らします。再開時に過去の音は再生しません。</p></section><section class="save-tools" aria-labelledby="save-title"><h3 id="save-title">このブラウザーの保存</h3><p>5秒ごと・配置や購入・ステージ終了時に自動保存。再開には最初の画面で操作が必要です。</p><p id="save-state" role="status">未開始</p><button id="save-now">今の遠征を保存</button><button id="save-reset">保存データを初期化</button><small>雇用済みの仲間は新しい遠征でも利用可能。レベル・資金・装備・道のアイテム・門の強化は遠征ごとにリセットされます。同じゲームを複数タブで開くと、最後に保存した内容が使われます。</small></section><details class="ai-details"><summary>AI の判断を見る</summary><p id="last-action">待機</p><pre id="scores"></pre></details></dialog>
+<dialog id="settings" class="panel settings" aria-labelledby="settings-title"><div class="dialog-heading"><div><span class="eyebrow">EXPEDITION SETTINGS</span><h2 id="settings-title">設定</h2></div><button id="settings-close" class="close-button" aria-label="設定を閉じる">×</button></div><div class="jev-ui" inert><label for="mode">敵の指揮官</label><select id="mode" aria-describedby="mode-help"><option value="rule">ルール AI · 接続なしで遊ぶ</option><option value="jev" selected>Jev · MoQ に接続して遊ぶ</option></select></div><nav class="settings-pages" aria-label="設定の項目"><button type="button" data-settings-tab="game" aria-pressed="true">ゲーム</button><button type="button" data-settings-tab="music" aria-pressed="false">BGM</button><button type="button" data-settings-tab="sound" aria-pressed="false">効果音</button><button type="button" data-settings-tab="save" aria-pressed="false">保存</button></nav><section data-settings-page="game"><p class="hint">別タブでも戦闘は続きます。</p><details class="ui-help"><summary>戦闘時間の詳細</summary><p id="clock-help" class="hint">別のタブを見ている間も、現在のステージの戦闘は続きます。勝敗が決まると停止し、次へは手動です。端末のスリープやブラウザーの凍結・破棄中は継続を保証できません。遅延の補完は最大2秒で、それを超えた時間は進めません。</p></details><p id="clock-status" class="notice" role="status" hidden></p></section><div class="jev-ui" inert><p id="mode-help" class="hint">ルール AI は接続不要。Jev は同じ Relay・Room で Pipecat bot を起動してください。</p><label for="history-mode">戦術履歴を判断に含める</label><select id="history-mode" aria-describedby="history-help"><option value="on" selected>ON · 直近20秒と短い戦績</option><option value="off">OFF · 現在の盤面のみ</option></select><p id="history-help" class="hint">同じ盤面のまま切り替えできます。変更は次の通常判断から適用。ONでも追加のJev呼び出しはしません。</p><div id="connection-fields" class="connection-fields"><span class="section-kicker">MOQ × PIPECAT × JEV</span><label for="relay">WebTransport relay</label><input id="relay" type="url" spellcheck="false" autocomplete="off"><label for="room">Room</label><input id="room" value="mossvale" spellcheck="false" autocomplete="off"><button id="connect" class="primary">MoQ に接続</button></div><p id="notice" class="notice" role="status" aria-live="polite">Jev は MoQ への接続が必要です。</p><section class="enemy-plan" aria-labelledby="enemy-plan-title"><h3 id="enemy-plan-title">敵の作戦</h3><p id="enemy-plan-status">準備中は敵の出撃判断を行いません。</p><p id="enemy-plan-reason" hidden></p><small id="enemy-plan-progress" hidden></small><p id="enemy-plan-reconsideration" hidden></p></section><section class="commander-support-tools" aria-labelledby="commander-support-title"><h3 id="commander-support-title">Jev の支援魔法</h3><p id="commander-support-status" role="status"></p><p id="commander-support-order" class="hint"></p><details class="ui-help"><summary>支援魔法の詳細</summary><p class="hint">新規遠征の Jev モードで、戦闘開始10秒後から敵1体を支援。600msの詠唱後に回復、または5秒の加速・防御・攻撃強化。発動間隔10秒、重ね掛けなし。召喚とは別の判断で、通信失敗時には発動しません。</p><small>召喚と支援は各1秒に1回まで、合計最大2回のAPIリクエスト。支援の再使用待ち中は支援を問い合わせません。ルールAIと旧遠征には追加されません。</small></details></section></div><section class="environment-art-tools"><label for="art-mode">全体の描画 · 仲間・敵・環境</label><select id="art-mode" aria-describedby="art-mode-help art-mode-status"><option value="2d">すべて2D</option><option value="3d">すべて3D試用</option><option value="mixed" disabled>個別設定（2D・3D混在）</option></select><p id="art-mode-help" class="hint">仲間10種・敵10種・環境をまとめて切り替えます。読み込み中は今の表示を保ち、準備ができたら同時に反映します。初回画面・準備中のみ変更できます。旧地形の環境は2Dのままです。3Dの歩行は試作です。</p><p id="art-mode-status" class="hint" role="status" aria-live="polite"></p><button id="art-mode-cancel" hidden>切り替えを中止</button></section><section class="environment-art-tools"><label for="environment-art">環境の描画</label><select id="environment-art" aria-describedby="environment-art-help environment-art-status"><option value="2d">元の2D</option><option value="3d">3D試用</option></select><p id="environment-art-help" class="hint">戦う場所は平らなまま、起伏は外側の景観に配置します。道・配置・戦闘ルールは同じです。旧地形は元の2Dを使用します。初回画面・準備中に変更できます。</p><p id="environment-art-status" class="hint" role="status" aria-live="polite"></p></section><section class="trial-art-tools" hidden inert>${UNIT_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}の描画</label><select id="${type}-art" aria-describedby="soldier-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="soldier-art-help" class="hint">剣士・射手・盾騎士・魔法使い・霜の術師・花の癒やし手・槍の斥候・鷹の狩人・火薬の工兵・光の守護者を個別に切り替えます。能力・速度・命中時刻は同じです。光の守護者は近接範囲攻撃で戦います。3Dの歩行の接地と死亡演出は試作です。死亡アニメは未制作のため、倒れたときは最後の全身姿勢を保持します。歩調は暫定値のため足滑りが残ります。初回画面・準備中に変更できます。</p></section><section class="enemy-trial-art-tools" hidden inert><h3>敵の描画</h3>${ENEMY_TRIAL_TYPES.map((type) => `<label for="${type}-art">${DEFINITIONS[type].name}</label><select id="${type}-art" aria-describedby="enemy-art-help"><option value="2d">2D 原画</option><option value="3d">3D 試用</option></select>`).join('')}<p id="enemy-art-help" class="hint">敵の全身画像を個別に切り替えます。能力・出現条件・ボス倍率は同じです。初回画面・準備中のみ変更できます。3D死亡アニメは未制作のため最後の全身姿勢を保持します。歩行の接地には足滑りが残ります。</p></section><section class="sound-tools" data-settings-page="music" aria-labelledby="music-title" hidden><h3 id="music-title">襲撃のBGM</h3><label class="sound-toggle"><input id="music-enabled" type="checkbox" checked> 襲撃中にBGMを鳴らす</label><label for="music-volume">BGM音量 <output id="music-volume-value">20%</output></label><input id="music-volume" type="range" min="0" max="100" step="5" value="20"><p id="music-status" class="hint" role="status">襲撃中だけ再生します。</p></section><section class="sound-tools" data-settings-page="sound" aria-labelledby="sound-title" hidden><h3 id="sound-title">効果音 · 試用</h3><label class="sound-toggle"><input id="sound-enabled" type="checkbox" checked> 攻撃・減速の効果音を鳴らす</label><label for="sound-volume">音量 <output id="sound-volume-value">20%</output></label><input id="sound-volume" type="range" min="0" max="100" step="5" value="20"><p id="sound-status" class="hint" role="status"></p><button id="sound-retry" hidden>音声の読み込みを再試行</button><p class="hint">音色は調整中です。</p></section><section class="save-tools" data-settings-page="save" aria-labelledby="save-title" hidden><h3 id="save-title">このブラウザーの保存</h3><p>自動保存 · 5秒ごと</p><p id="save-state" role="status">未開始</p><button id="save-now">今の遠征を保存</button><button id="save-reset">保存データを初期化</button><details class="ui-help"><summary>保存の詳細</summary><small>雇用済みの仲間は新しい遠征でも利用可能。レベル・資金・装備・道のアイテム・門の強化は遠征ごとにリセットされます。同じゲームを複数タブで開くと、最後に保存した内容が使われます。</small></details></section><details class="ai-details jev-ui"><summary>AI の判断を見る</summary><p id="last-action">待機</p><pre id="scores"></pre></details></dialog>
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
-<dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">戦いの報酬で、新しい仲間と出会おう。雇用した仲間は次の遠征でも利用できます。強化とゴールドは今回の全10ステージ限定です。</p><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
-<button id="connection-warning" class="connection-warning panel" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><span class="eyebrow">MOSS & STEEL · A LITTLE KINGDOM</span><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">小さな仲間と、<br>大きな王国を守ろう。</h1><p>仲間を配置して、全10ステージの遠征へ。<br>最初は${STARTING_GOLD}G。1体40Gで、最大10種類の仲間を配置。</p></div><div class="choice-heading"><h2>遠征先を選ぼう</h2><span>4つのフィールド</span></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">このフィールドで出発 →</button><button id="offline-start">接続なしで始める</button><button id="launch-settings" class="text-button" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><p id="battlefield-version-help" class="launch-note">新規遠征は${STARTING_GOLD}G・1体40G・各種類1体。分岐して合流する2経路の縦長マップ。新規遠征のJevには10秒ごとの支援魔法があります。保存した旧遠征は元の地形とルールで最後まで続けられます。</p><p class="launch-note">仲間をドラッグ → 地面で離す → 襲撃開始。準備中は移動無料。控えに戻すと40G返金され、再配置は40G。</p></div></dialog>
+<dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
+<button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">遠征先を選ぼう</h1></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">このフィールドで出発 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">新規遠征は${STARTING_GOLD}G・1体40G・各種類1体。分岐して合流する2経路の縦長マップ。保存した旧遠征は元の地形とルールで最後まで続けられます。</p><p class="launch-note">仲間をドラッグ → 地面で離す → 襲撃開始。準備中は移動無料。控えに戻すと40G返金され、再配置は40G。</p></details></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
 <dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><h2 id="campaign-loading-title">キャラクターを準備中</h2><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
-<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><button id="result-title-return" class="text-button">保存してタイトルに戻る</button><small class="result-note">雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></dialog>`
+<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次の遠征への引き継ぎ</summary><small>雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></details></dialog>`
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
@@ -458,7 +458,7 @@ let mapScaleX = 1
 const settingsPanel = new PanelDialog(
   $<HTMLDialogElement>('settings'),
   [$('settings-toggle'), $('launch-settings')],
-  $('mode')
+  $('settings-close')
 )
 const upgradePanel = new PanelDialog($<HTMLDialogElement>('upgrade-panel'), [$('upgrade')], $('upgrade-close'))
 const sandbagConfirm = new PanelDialog(
@@ -471,6 +471,14 @@ const fortificationConfirm = new PanelDialog(
   [$('road-item-remove'), $('equipment-weapon'), $('equipment-armor')],
   $('fortification-confirm-cancel')
 )
+for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-gate-tab]'))) {
+  tab.onclick = () => {
+    for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-gate-tab]')))
+      button.setAttribute('aria-pressed', String(button === tab))
+    for (const page of Array.from(document.querySelectorAll<HTMLElement>('[data-gate-page]')))
+      page.hidden = page.dataset.gatePage !== tab.dataset.gateTab
+  }
+}
 const gatePanel = new PanelDialog($<HTMLDialogElement>('gate-panel'), [$('gate-toggle')], $('gate-close'))
 const saveConfirm = new PanelDialog($<HTMLDialogElement>('save-confirm'), [$('save-reset')], $('save-confirm-cancel'))
 const launchDialog = $<HTMLDialogElement>('launch')
@@ -481,6 +489,7 @@ function openTitle() {
   launchDialog.close()
   settingsPanel.close(false)
   $('title-save-status').textContent = titleSaveStatus(!!pendingRun, loadedCampaign.issue, showLegacyMigration)
+  $('title-save-status').classList.toggle('sr-only', !loadedCampaign.issue && !showLegacyMigration)
   $<HTMLButtonElement>('title-continue').disabled = !pendingRun
   if (!titleDialog.open) titleDialog.showModal()
   $('title-new').focus({ preventScroll: true })
@@ -662,7 +671,7 @@ function toggleTray(tray: 'unit' | 'item') {
   updateRosterControls()
   const first =
     Array.from($(`${tray}-tray`).querySelectorAll<HTMLButtonElement>(tray === 'unit' ? '.unit' : '.item-tool')).find(
-      (button) => !button.disabled && !button.hidden
+      (button) => !button.disabled && !button.hidden && !button.classList.contains('page-away')
     ) ?? $(`${tray}-tray-close`)
   first.focus({ preventScroll: true })
 }
@@ -702,6 +711,7 @@ function deploy(type: AllyType, target: Placement) {
   if (active) return
   if (!rosterEligible(type) || !renderer.defenderReady(type)) return
   if (engine.place(type, 'slotId' in target ? target.slotId : target)) {
+    soundPlayer.playCue('ui_place')
     closeTrays()
     keyboardUnitPicked = false
     persist()
@@ -740,6 +750,7 @@ function moveDefender(id: number, point: Point) {
       ? engine.place(unit.type as AllyType, point)
       : engine.moveDefender(id, point)
   if (!changed) return
+  soundPlayer.playCue('ui_place')
   persist()
   selectDefender(id, false)
   announce(
@@ -875,6 +886,7 @@ const sandbagInput = new SandbagInput(viewport, {
     const moving = movingSandbagId !== undefined,
       result = engine.placeSandbag(point, movingSandbagId)
     if (result.valid) {
+      soundPlayer.playCue('ui_place')
       persist()
       selectedSandbagId = movingSandbagId ?? engine.state.sandbags.at(-1)!.id
       renderer.setSandbagSelection(selectedSandbagId)
@@ -915,6 +927,7 @@ function placeRoadItem(point: Point) {
     announce(label)
     return
   }
+  soundPlayer.playCue('ui_place')
   selectedRoadItemId = movingRoadItemId ?? engine.state.fortifications!.items.at(-1)!.id
   stopRoadItemPlacement()
   renderer.setRoadItemSelection(selectedRoadItemId)
@@ -950,6 +963,7 @@ function fireSpecial(point: Point) {
     announce('指定できません')
     return
   }
+  soundPlayer.playCue('ui_special')
   clearPlacementModes()
   persist()
   updateSelectionContext()
@@ -1363,6 +1377,14 @@ function settings(open: boolean, opener?: HTMLElement) {
 }
 $('settings-toggle').onclick = () => settings(!settingsPanel.isOpen, $('settings-toggle'))
 $('settings-close').onclick = () => settings(false)
+for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-settings-tab]'))) {
+  tab.onclick = () => {
+    for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-settings-tab]')))
+      button.setAttribute('aria-pressed', String(button === tab))
+    for (const page of Array.from(document.querySelectorAll<HTMLElement>('[data-settings-page]')))
+      page.hidden = page.dataset.settingsPage !== tab.dataset.settingsTab
+  }
+}
 $('launch-settings').onclick = () => settings(true, $('launch-settings'))
 $('connection-warning').onclick = () => settings(true, $('connection-warning'))
 function updateStart() {
@@ -1374,26 +1396,18 @@ function updateStart() {
   $('offline-start').hidden = offline
   $('resume-run').hidden = !pendingRun
   $<HTMLButtonElement>('resume-run').disabled = !pendingRun
-  $('resume-run').textContent =
-    !offline && (connected || pendingRun?.engine.state.cooldownHold)
-      ? 'Jev と保存した遠征を続ける'
-      : '保存した遠征をルール AI で続ける'
+  $('resume-run').textContent = '保存した遠征を続ける'
   $('saved-run-note').textContent = pendingRun
-    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の遠征を保存しています。閉じていた間の時間は進みません。${pendingRun.progress.economyVersion === 2 ? ' 1体40G・個別強化の遠征です。' : ' この遠征は旧経済ルール（無料配置・ステージごとの上限・種類単位の強化）を維持します。'}${pendingRun.engine.state.battlefieldVersion === 1 ? ' この遠征は旧地形・旧戦闘ルールで継続します。分岐した新しい戦場は新規遠征から利用できます。' : pendingRun.engine.state.layoutRevision >= 3 ? ' 一画面に収まる蛇行マップの遠征を続けます。' : ' 分岐した縦長マップの遠征を続けます。'}${pendingRun.progress.commanderSupportVersion === 1 ? ' Jevモードでは指揮官の支援魔法を利用します。' : ' この保存遠征には新しい指揮官支援を追加しません。'}${pendingRun.engine.state.waveBossPolicy === 1 && stageRules(pendingRun.engine.state.stage, 1).bossType !== stageRules(pendingRun.engine.state.stage, 2).bossType ? ' この進行中ステージのボス枠は保存時の構成を引き継ぎ、次のステージから新しい構成になります。' : ''}`
+    ? `${FIELDS[pendingRun.engine.state.fieldId].name} · Stage ${String(pendingRun.engine.state.stage).padStart(2, '0')} の保存データ`
     : loadedCampaign.issue && replaceStoredRun
-      ? '保存した遠征を読み込めませんでした。元データは変更していません。新しく始めると置き換えます。'
+      ? '保存データを読み込めません。新しく始めると置き換えます。'
       : showLegacyMigration
-        ? `以前に加入した仲間を引き継ぎました。旧版は遠征を保存していないため、Lv.1・${STARTING_GOLD}Gから出発します。`
-        : '雇用済みの仲間と遠征を、このブラウザーに保存します。'
+        ? '以前の仲間を引き継ぎます。'
+        : ''
   $('start').textContent = offline ? 'このフィールドで出発 →' : 'Jev と遠征に出発 →'
   $('launch-status').dataset.status = ready ? 'ready' : 'pending'
   $<HTMLButtonElement>('start').disabled = !ready
-  $('launch-status').textContent =
-    engine.ai === rule
-      ? 'ルール AI · 接続不要ですぐに遊べます'
-      : connected
-        ? 'Jev · MoQ 接続済み。Pipecat botの起動も確認してください'
-        : 'Jev を使うには MoQ に接続してください。ルール AI なら接続不要です'
+  $('launch-status').textContent = ''
 }
 const campaignLoading = $<HTMLDialogElement>('campaign-loading')
 let campaignPreparation: AbortController | undefined
@@ -1496,6 +1510,12 @@ $('start').onclick = () => {
 $('resume-run').onclick = () => { void prepareCampaign(resumeRun) }
 function resumeRun() {
   if (!pendingRun) return
+  if (!preserveCampaignBeforeRuleResume()) {
+    openTitle()
+    $('title-save-status').textContent = '保存データを保全できないため再開できません。ブラウザーの保存領域を確認してください。'
+    $('title-save-status').classList.remove('sr-only')
+    return
+  }
   if (engine.ai !== rule && !connected && !pendingRun.engine.state.cooldownHold) {
     $<HTMLSelectElement>('mode').value = 'rule'
     configureAI()
@@ -1507,6 +1527,7 @@ function resumeRun() {
     replaceProgress(previous)
     openTitle()
     $('title-save-status').textContent = 'この遠征は再開できません。元の保存は変更していません。'
+    $('title-save-status').classList.remove('sr-only')
     return
   }
   battleClock?.stop()
@@ -1799,6 +1820,7 @@ for (const event of ['cancel', 'close']) $('gate-panel').addEventListener(event,
 for (const kind of ['cannon', 'armor'] as const)
   $(`gate-${kind}-upgrade`).onclick = () => {
     if (!gatePanel.isOpen || !preparing() || !paidRoster() || !engine.upgradeGate(kind)) return
+    soundPlayer.playCue('ui_upgrade')
     gatePanel.close()
     renderer.setGateSelected(false)
     persist()
@@ -1828,6 +1850,7 @@ $('unit-recall').onclick = () => {
 }
 $('unit-upgrade').onclick = () => {
   if (!preparing() || selectedDefenderId === null || !engine.upgradeDefender(selectedDefenderId)) return
+  soundPlayer.playCue('ui_upgrade')
   persist()
   updateSelectionContext()
   announce('選択中の仲間を強化しました。残りHPの割合を保ち、回復はしません。')
@@ -1862,8 +1885,8 @@ function setSaveFeedback(saved: boolean, message?: string) {
       ? `Stage ${String(engine.state.stage).padStart(2, '0')} を保存しました`
       : '保存できませんでした。現在のゲームは続けられます。ブラウザーのストレージ設定を確認してください。')
   $('settings-toggle').dataset.saveState = saved ? 'saved' : 'error'
-  $('settings-label').textContent = saved ? '接続・AI' : '接続・AI · 保存エラー'
-  $('settings-toggle').title = saved ? '接続・AI・保存の設定' : $('save-state').textContent!
+  $('settings-label').textContent = saved ? '設定' : '設定 · 保存エラー'
+  $('settings-toggle').title = saved ? '設定' : $('save-state').textContent!
   if (!saved) {
     announce($('save-state').textContent!)
     if (launchDialog.open)
@@ -1954,6 +1977,30 @@ $('save-confirm-accept').onclick = () => {
   }
 }
 
+let unitPage = 0
+function updateUnitPages() {
+  const cards = Array.from($('unit-tray').querySelectorAll<HTMLButtonElement>('.unit')).filter((card) => !card.hidden)
+  const pageCount = Math.max(1, Math.ceil(cards.length / 4))
+  unitPage = Math.min(unitPage, pageCount - 1)
+  for (const card of Array.from($('unit-tray').querySelectorAll<HTMLButtonElement>('.unit'))) {
+    const index = cards.indexOf(card)
+    card.classList.toggle('page-away', index >= 0 && Math.floor(index / 4) !== unitPage)
+  }
+  for (const id of ['unit-prev', 'unit-next', 'unit-page']) $(id).hidden = pageCount === 1
+  $<HTMLButtonElement>('unit-prev').disabled = unitPage === 0
+  $<HTMLButtonElement>('unit-next').disabled = unitPage === pageCount - 1
+  $('unit-page').textContent = `${unitPage + 1} / ${pageCount}`
+}
+for (const [id, delta] of [['unit-prev', -1], ['unit-next', 1]] as const) {
+  $(id).onclick = () => {
+    unitPage += delta
+    updateUnitPages()
+    if ($<HTMLButtonElement>(id).disabled)
+      (Array.from($('unit-tray').querySelectorAll<HTMLButtonElement>('.unit')).find(
+        (card) => !card.hidden && !card.disabled && !card.classList.contains('page-away')
+      ) ?? $<HTMLButtonElement>('unit-tray-close')).focus({ preventScroll: true })
+  }
+}
 function updateRosterControls() {
   const defenders = engine.state.units.filter((unit) => unit.owner === 'player').length
   const reserveCount = engine.state.reserveUnits?.length ?? 0
@@ -1977,6 +2024,7 @@ function updateRosterControls() {
     card.title = label
     $(`level-${type}`).textContent = `↑${level} · ◈${paidRoster() ? DEPLOYMENT_COST : 0}`
   }
+  updateUnitPages()
   const tooltip =
     heldDefenderId !== null
       ? '控えに戻す · 40 G返金'
@@ -2003,6 +2051,7 @@ $('scout').onclick = () => {
   if (!preparing() || dialog.open || document.querySelector('dialog[open]')) return
   const type = scout(save, Math.random, engine.state)
   if (!type) return
+  soundPlayer.playCue('ui_upgrade')
   clearPlacementModes()
   closeTrays()
   $('scout-name').textContent = DEFINITIONS[type].name
@@ -2024,6 +2073,22 @@ $('scout-result').addEventListener('cancel', (event) => {
   event.preventDefault()
   closeScoutResult()
 })
+let shopPage = 0
+function updateShopPage() {
+  const rows = Array.from($('upgrades').querySelectorAll<HTMLElement>('.upgrade-row'))
+  shopPage = Math.max(0, Math.min(shopPage, rows.length - 1))
+  rows.forEach((row, index) => { row.hidden = index !== shopPage })
+  $('shop-page').textContent = rows.length ? `${shopPage + 1} / ${rows.length}` : '0 / 0'
+  $<HTMLButtonElement>('shop-prev').disabled = shopPage === 0
+  $<HTMLButtonElement>('shop-next').disabled = shopPage >= rows.length - 1
+}
+for (const [id, delta] of [['shop-prev', -1], ['shop-next', 1]] as const) {
+  $(id).onclick = () => {
+    shopPage += delta
+    updateShopPage()
+    if ($<HTMLButtonElement>(id).disabled) $('upgrade-close').focus({ preventScroll: true })
+  }
+}
 function showUpgrades(focusType?: AllyType) {
   $('shop-gold').textContent = `${save.gold} G`
   $('gold').textContent = `${save.gold} G`
@@ -2049,6 +2114,7 @@ function showUpgrades(focusType?: AllyType) {
     button.disabled = !preparing() || !Number.isFinite(cost) || save.gold < cost
     button.onclick = () => {
       if (!preparing() || !upgrade(save, type, engine.state.stage)) return
+      soundPlayer.playCue('ui_upgrade')
       engine.refreshDefenders()
       persist()
       showUpgrades(type)
@@ -2057,6 +2123,11 @@ function showUpgrades(focusType?: AllyType) {
     row.append(portrait, button)
     $('upgrades').append(row)
   }
+  if (focusType) {
+    const rows = Array.from($('upgrades').querySelectorAll<HTMLElement>('.upgrade-row'))
+    shopPage = Math.max(0, rows.findIndex((row) => row.id === `shop-${focusType}`))
+  }
+  updateShopPage()
   if (focusType) $(`shop-${focusType}`).focus({ preventScroll: true })
 }
 $('upgrade').onclick = () => {
@@ -2081,6 +2152,7 @@ $('assault').onclick = () => {
   }
   clearPlacementModes()
   if (engine.startAssault()) {
+    soundPlayer.playCue('ui_assault')
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
@@ -2286,13 +2358,14 @@ $<HTMLSelectElement>('history-mode').onchange = () => {
   persist()
 }
 updateField()
-// An active Jev cooldown hold survives an offline reload unless the user chooses RULE.
-if (pendingRun?.engine.state.cooldownHold) $<HTMLSelectElement>('mode').value = 'jev'
+// The UI currently starts in rule mode; checkpoint data is not altered until resumed.
+$<HTMLSelectElement>('mode').value = 'rule'
 configureAI()
 openTitle()
 function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true
+  soundPlayer.playCue(engine.state.result === 'win' ? 'ui_win' : 'ui_lose')
   battleClock?.stop()
   connection?.cancelPending()
   persist()
@@ -2575,12 +2648,12 @@ function frame(now: number) {
         ? `STAGE ${state.stage} 防衛成功！`
         : '王国の門が破られました'
     $('reward').textContent = finished
-      ? `${FIELDS[state.fieldId].name}を守り抜きました。+${wave.reward} G。雇った仲間は次の遠征でも利用でき、レベルは1に戻ります。`
+      ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? paidRoster()
-          ? `+${wave.reward} G。次の準備で配置中・控えの仲間と拠点が全回復します。配置は1体40G、各種類1体まで。`
-          : `+${wave.reward} G。次は合計${state.stage + 1}体まで配置できます。倒れた仲間も次の準備で復活。仲間と拠点は全回復。`
-        : `到達ステージ ${state.stage} / 10。曲がり角を射程に入れ、仲間の雇用と強化で再挑戦しよう。`
+          ? '次の準備で仲間と拠点が全回復します。'
+          : `次は最大${state.stage + 1}体。仲間と拠点が全回復します。`
+        : `到達ステージ ${state.stage} / 10`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)

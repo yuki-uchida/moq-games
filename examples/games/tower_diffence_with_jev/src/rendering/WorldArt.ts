@@ -264,7 +264,7 @@ function roadShoulders(c: Context, field: ResolvedBattlefield, colors: Palette) 
   }
 }
 
-function road(c: Context, field: ResolvedBattlefield, colors: Palette, random: Random) {
+function road(c: Context, field: ResolvedBattlefield, colors: Palette, random: Random, density = 1) {
   c.lineJoin = c.lineCap = 'round'
   traceFieldRoad(c, field)
   c.strokeStyle = colors.dark
@@ -298,7 +298,7 @@ function road(c: Context, field: ResolvedBattlefield, colors: Palette, random: R
   c.lineWidth = 62
   c.stroke()
   roadShoulders(c, field, colors)
-  for (let i = 0; i < 6500 * (field.height / 960); i++) {
+  for (let i = 0; i < 6500 * density * (field.height / 960); i++) {
     const point = { x: random() * field.width, y: random() * field.height }
     const distance = roadDistance(field, point)
     if (distance > 29) continue
@@ -1086,7 +1086,32 @@ export function createFieldArt(
   const c = canvas.getContext('2d')!
   c.imageSmoothingEnabled = true
   if (ground && layoutRevision === 4) {
+    // Revision 4 shares one traced illustration; grade it once when the field
+    // texture is created so each biome remains recognizable without moving roads.
+    const biomeFilter: Record<FieldId, string> = {
+      meadow: 'none',
+      desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
+      frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
+      volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
+    }
+    c.filter = biomeFilter[fieldId]
     c.drawImage(ground, 0, 0, field.width, field.height)
+    c.filter = 'none'
+    // Add small biome cues only along the painted perimeter. They are visual
+    // accents, not new obstacles, and stay away from the entrance and gate.
+    if (fieldId !== 'meadow') {
+      for (const y of [170, 345, 520, 695]) {
+        for (const x of [22, field.width - 22]) {
+          c.save()
+          c.translate(x, y)
+          c.scale(0.36, 0.36)
+          if (fieldId === 'desert') cactus(c, colors, random)
+          else if (fieldId === 'frost') tree(c, colors, true, random() * 8)
+          else rock(c, colors, true, false, random)
+          c.restore()
+        }
+      }
+    }
     // Preserve the existing slow-terrain mechanic and its visible label over
     // the approved art, without repainting props or duplicating its buildings.
     slowRoadSurface(c, field, colors)
@@ -1174,6 +1199,99 @@ export function createSandbagArt(): HTMLCanvasElement {
       [-6, 3]
     ])
       c.fillRect(gx, gy, 1, 1)
+    c.restore()
+  }
+  return canvas
+}
+
+/** Draw a responsive, undistorted biome around the same projected route. */
+export function createProjectedFieldArt(
+  fieldId: FieldId,
+  aspect: number,
+  ground?: CanvasImageSource
+): HTMLCanvasElement {
+  const field = getField(fieldId, 2, 4)
+  const colors = PALETTES[fieldId]
+  const random = seededRandom(fieldId)
+  const width = Math.max(1, Math.round(field.width * aspect))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = field.height
+  const c = canvas.getContext('2d')!
+  const projected = { ...field, width }
+  terrain(c, projected, colors, random)
+  if (ground) {
+    // Reuse a road-free grass patch from the approved art at its natural
+    // proportions; mirroring avoids seams after the field is projected.
+    const tile = document.createElement('canvas')
+    tile.width = tile.height = 128
+    const t = tile.getContext('2d')!
+    const biomeFilter: Record<FieldId, string> = {
+      meadow: 'none',
+      desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
+      frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
+      volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
+    }
+    t.filter = biomeFilter[fieldId]
+    for (let row = 0; row < 2; row++)
+      for (let col = 0; col < 2; col++) {
+        t.save()
+        t.translate((col + (col ? 1 : 0)) * 64, (row + (row ? 1 : 0)) * 64)
+        t.scale(col ? -1 : 1, row ? -1 : 1)
+        t.drawImage(ground, 652, 868, 48, 48, 0, 0, 64, 64)
+        t.restore()
+      }
+    const pattern = c.createPattern(tile, 'repeat')
+    if (pattern) {
+      c.fillStyle = pattern
+      c.fillRect(0, 0, width, field.height)
+    }
+  }
+  // Low-growing accents do not affect legal placement or occlude units.
+  for (let i = 0; i < 240; i++) {
+    const point = { x: 45 + random() * (field.width - 90), y: 80 + random() * (field.height - 150) }
+    if (distanceToRoadUnion(field, point) < 55) continue
+    c.save()
+    c.translate(point.x * aspect, point.y)
+    c.scale(0.32, 0.32)
+    groundSprig(c, colors, fieldId, random)
+    c.restore()
+  }
+  // Strokes follow the same affine projection as game positions and picking.
+  c.save()
+  c.scale(aspect, 1)
+  road(c, field, colors, random, 0.15)
+  slowRoadSurface(c, field, colors)
+  c.restore()
+  // Perimeter ornaments are decorative only; no invisible collision is added.
+  for (let y = 70; y < field.height - 45; y += 72) {
+    for (const x of [15, width - 15]) {
+      if (
+        Math.hypot(x - field.entrance.x * aspect, y - field.entrance.y) < 85 ||
+        Math.hypot(x - field.gate.x * aspect, y - field.gate.y) < 95
+      )
+        continue
+      c.save()
+      c.translate(x, y + random() * 12)
+      const size = 0.35 + random() * 0.2
+      c.scale(size, size)
+      if (fieldId === 'desert') cactus(c, colors, random)
+      else if (fieldId === 'volcanic') rock(c, colors, true, false, random)
+      else tree(c, colors, fieldId === 'frost', random() * 8)
+      c.restore()
+    }
+  }
+  for (const [point, base] of [
+    [field.entrance, false],
+    [field.gate, true]
+  ] as const) {
+    c.save()
+    c.translate(
+      Math.max(25, Math.min(width - 25, point.x * aspect)),
+      Math.max(50, Math.min(field.height - 20, point.y))
+    )
+    c.scale(0.48, 0.48)
+    gate(c, { x: 0, y: 0 }, colors, base, fieldId === 'frost')
     c.restore()
   }
   return canvas

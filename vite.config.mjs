@@ -37,6 +37,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         home: resolve(root, 'index.html'),
+        emberGrid: resolve(root, 'examples/games/ember-grid/index.html'),
+        laneBattle: resolve(root, 'examples/games/lane-battle/index.html'),
         game: resolve(root, 'examples/games/tower_diffence_with_jev/index.html'),
         modelReview: resolve(root, 'examples/games/tower_diffence_with_jev/model-review.html'),
         extra: resolve(root, 'examples/games/tower_diffence_with_jev/extra.html')

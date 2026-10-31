@@ -638,3 +638,68 @@ h2 {
     font-size: 37px;
   }
 }
+
+/* Compact static previews reuse the games' existing portraits. */
+.game-preview {
+  position: absolute;
+  width: 48%;
+  height: 72%;
+  top: 10%;
+  right: 3%;
+  display: grid;
+  place-items: center;
+}
+.preview-board {
+  position: absolute;
+  width: 78%;
+  height: 56%;
+  transform: rotate(-8deg);
+  border: 2px solid #d7d9a46b;
+  border-radius: 24px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 19%, #e8e5b72b 19% 20%),
+    repeating-linear-gradient(0deg, #607b4e 0 24%, #e8e5b72b 24% 25%);
+  box-shadow:
+    0 22px 0 #172f28,
+    0 32px 35px #0d241f80;
+}
+.lane-battle .preview-board {
+  height: 34%;
+  transform: rotate(-5deg);
+  background: linear-gradient(#637f4b 0 29%, #d5bc80 29% 70%, #536f42 70%);
+}
+.preview-unit {
+  position: absolute;
+  width: 25%;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 6px #10231b88);
+}
+.preview-unit-0 {
+  left: 16%;
+  top: 35%;
+}
+.preview-unit-1 {
+  left: 38%;
+  top: 20%;
+}
+.preview-unit-2 {
+  left: 64%;
+  top: 38%;
+}
+.preview-label {
+  position: absolute;
+  bottom: 8%;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #e3e5c3;
+}
+@media (max-width: 700px) {
+  .game-preview {
+    width: 90%;
+    height: 330px;
+    top: auto;
+    right: 5%;
+    bottom: 54px;
+  }
+}

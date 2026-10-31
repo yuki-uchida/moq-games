@@ -26,7 +26,7 @@ for (const viewport of [
     const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
     expect(mapState.newCampaignLayoutRevision).toBe(4)
     expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
-    expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4')
+    expect(mapState.battlefield.backgroundSource).toMatch(/^approved-map:field:meadow:2:4(?::projected)?$/)
     expect(mapState.environment.error).toBeUndefined()
     const geometry = await page.evaluate(() => {
       const map = document.getElementById('map-scroll')!
@@ -57,11 +57,14 @@ for (const viewport of [
     // The source image's complete portal/castle edges remain inside the field.
     expect(geometry.top).toBeGreaterThanOrEqual(72 - 1)
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.height - 16 + 1)
-    expect(mapState.modelRendering.presentation.scale).toBe(1.18)
+    expect(mapState.modelRendering.presentation.scale).toBe(1.5)
     expect(mapState.displayGeometry.backingWidth).toBe(1280 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
     expect(mapState.displayGeometry.backingHeight).toBe(920 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
-    expect((geometry.right - geometry.left) / (geometry.bottom - geometry.top)).toBeCloseTo(1280 / 920, 5)
-    expect(mapState.modelRendering.presentation.aspect).toBe(1)
+    expect(geometry.right - geometry.left).toBeCloseTo(viewport.width - 24, 0)
+    expect(geometry.bottom - geometry.top).toBeCloseTo(viewport.height - 88, 0)
+    expect(mapState.modelRendering.presentation.aspect).toBeCloseTo(
+      mapState.displayGeometry.scaleX / mapState.displayGeometry.scaleY
+    )
     if (viewport.width > 800) {
       await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
       await expect(page.locator('.defender-handle').first()).toBeVisible()
@@ -78,7 +81,8 @@ for (const viewport of [
         expect(overlaps, `${heading} overlaps ${control}`).toBe(false)
       }
     }
-    for (const selector of ['#assault', '#game-title-return']) await expect(page.locator(selector)).toBeVisible()
+    await expect(page.locator('#assault')).toBeVisible()
+    await expect(page.locator('#game-title-return')).toBeHidden()
   })
 }
 
@@ -93,8 +97,6 @@ test('proportional real models, picking, HP text and preview rings reflow withou
   expect(preview.placementPreview.point.x).toBeCloseTo(point.x, 0)
   expect(preview.placementPreview.point.y).toBeCloseTo(point.y, 0)
   expect(preview.displayGeometry.range.visible).toBe(true)
-  expect(preview.displayGeometry.scaleX).toBeCloseTo(preview.displayGeometry.scaleY, 5)
-  expect(preview.displayGeometry.range.radiusX).toBeCloseTo(preview.displayGeometry.range.radiusY, 5)
   expect(preview.displayGeometry.range.radiusX).toBeCloseTo(DEFINITIONS.soldier.range * preview.displayGeometry.scaleX)
   expect(preview.displayGeometry.range.radiusY).toBeCloseTo(DEFINITIONS.soldier.range * preview.displayGeometry.scaleY)
   await page.screenshot({ path: test.info().outputPath('expanded-field-placement-range.png') })
@@ -138,11 +140,13 @@ test('proportional real models, picking, HP text and preview rings reflow withou
     await expect
       .poll(() =>
         page.evaluate((point) => {
-          const range = (window as any).towerDefenseDiagnostics().displayGeometry.range
+          const value = (window as any).towerDefenseDiagnostics()
+          const range = value.displayGeometry.range
           const field = document.getElementById('field')!.getBoundingClientRect()
           return [
             range.visible,
-            Math.abs(range.radiusX - range.radiusY) < 0.000005,
+            Math.abs(range.radiusX / value.displayGeometry.scaleX - range.radiusY / value.displayGeometry.scaleY) <
+              0.000005,
             Math.abs(range.screen.x - field.x - (point.x * field.width) / 1280) < 0.5,
             Math.abs(range.screen.y - field.y - (point.y * field.height) / 920) < 0.5
           ]

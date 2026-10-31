@@ -81,7 +81,10 @@ export class BattleMusic {
     this.media.volume = musicOutputVolume(preferences.volume)
     const changed = this.enabled !== preferences.enabled
     this.enabled = preferences.enabled
-    if (changed) this.reconcile()
+    if (changed) {
+      if (this.enabled && this.battle) this.media.preload = 'auto'
+      this.reconcile()
+    }
   }
   /** Call synchronously from a trusted user gesture. Failed autoplay is retried only on another gesture or state change. */
   unlock(): void {
@@ -120,7 +123,7 @@ export class BattleMusic {
   setBattle(active: boolean, battle = '', stage = 1): void {
     const track = stage === 10 ? 'boss' : 'normal'
     if (this.destroyed || (this.active === active && this.battle === battle && this.track === track)) return
-    if (active && track === 'normal') this.chooseNormal(battle)
+    if (battle && track === 'normal') this.chooseNormal(battle)
     const source = track === 'boss' ? this.bossSource : this.selection === 0 ? this.normalSource : this.alternateSource
     const switched = this.media.src !== source
     const newBattle = this.battle !== battle
@@ -128,10 +131,9 @@ export class BattleMusic {
     this.active = active
     this.track = track
     if (!active || newBattle || switched) this.stop(true)
-    if (switched) {
-      this.media.src = source
-      this.media.load()
-    }
+    if (switched) this.media.src = source
+    if (battle && this.enabled) this.media.preload = 'auto'
+    if (switched) this.media.load()
     this.reconcile()
   }
   setVisible(visible: boolean): void {

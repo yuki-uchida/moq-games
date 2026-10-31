@@ -2,7 +2,8 @@ import {
   soundEventKey,
   type CombatSoundEvent,
   type CombatSoundKind,
-  type SoundUnitType
+  type SoundUnitType,
+  type EffectSoundKey
 } from '../game/CombatSoundEvents'
 
 export interface SoundCatalogEntry {
@@ -69,6 +70,7 @@ export class SoundPlayer {
   private readonly requests = new Set<AbortController>()
   private readonly voices = new Set<SoundVoice>()
   private readonly recentEvents = new Set<string>()
+  private readonly lastCueTime = new Map<string, number>()
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -203,6 +205,7 @@ export class SoundPlayer {
     if (this.isDestroyed || (this.currentBattle?.battleId === battleId && this.currentBattle.stage === stage)) return
     this.stopVoices()
     this.recentEvents.clear()
+    this.lastCueTime.clear()
     this.currentBattle =
       Number.isSafeInteger(battleId) && Number.isSafeInteger(stage) && stage > 0 ? { battleId, stage } : null
   }
@@ -239,8 +242,24 @@ export class SoundPlayer {
         this.dropped++
         continue
       }
-      this.play(asset)
+      this.playCueAsset(soundEventKey(event)!, asset)
     }
+  }
+
+  playCue(key: EffectSoundKey): void {
+    if (this.isDestroyed || !this.isEnabled || this.gainVolume === 0 || this.context?.state !== 'running') return
+    const asset = this.cues.get(key)
+    if (!asset?.buffer || asset.state !== 'ready') return
+    this.playCueAsset(key, asset)
+  }
+
+  private playCueAsset(key: string, asset: SoundAsset): void {
+    const now = this.context?.currentTime
+    if (now === undefined) return
+    const last = this.lastCueTime.get(key)
+    if (last !== undefined && now - last < 0.12) { this.dropped++; return }
+    this.lastCueTime.set(key, now)
+    this.play(asset)
   }
 
   retryFailed(): void {

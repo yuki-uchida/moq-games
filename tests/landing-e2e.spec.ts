@@ -17,7 +17,15 @@ for (const viewport of [
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'smart defence with jev', exact: true })).toBeVisible()
-    await expect(page.getByRole('article')).toHaveCount(1)
+    await expect(page.getByRole('article')).toHaveCount(3)
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: 燈の境界' })).toHaveAttribute(
+      'href',
+      './examples/games/ember-grid/index.html'
+    )
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: 芽吹きの境界' })).toHaveAttribute(
+      'href',
+      './examples/games/lane-battle/index.html'
+    )
     const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
     await expect(play).toHaveAttribute('href', './examples/games/tower_diffence_with_jev/index.html')
     await expect(play).toBeVisible()
@@ -65,5 +73,42 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
     'href',
     './examples/games/tower_diffence_with_jev/index.html'
   )
+  await expect(page.getByRole('link', { name: '燈の境界をプレイ' })).toHaveAttribute(
+    'href',
+    './examples/games/ember-grid/index.html'
+  )
+  await expect(page.getByRole('link', { name: '芽吹きの境界をプレイ' })).toHaveAttribute(
+    'href',
+    './examples/games/lane-battle/index.html'
+  )
   await context.close()
+})
+
+for (const [title, path] of [
+  ['燈の境界', 'ember-grid'],
+  ['芽吹きの境界', 'lane-battle']
+]) {
+  test(`opens ${title} from the catalog`, async ({ page }) => {
+    await page.goto(root)
+    await page.getByRole('link', { name: `ゲームをプレイ: ${title}` }).click()
+    await expect(page).toHaveURL(new RegExp(`/examples/games/${path}/index\\.html$`))
+    await expect(page.locator('body')).not.toBeEmpty()
+  })
+}
+
+test('starts Lane Battle through the catalog with its runtime assets', async ({ page }) => {
+  const errors: string[] = []
+  const failed: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('response', (response) => {
+    if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`)
+  })
+  await page.goto(root)
+  await page.getByRole('link', { name: 'ゲームをプレイ: 芽吹きの境界' }).click()
+  await page.getByRole('button', { name: '進軍開始' }).click()
+  await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+  await expect(page.locator('#field canvas')).toBeVisible()
+  await expect(page.locator('#clock')).not.toHaveText('00:00')
+  expect(errors).toEqual([])
+  expect(failed).toEqual([])
 })

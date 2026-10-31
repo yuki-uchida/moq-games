@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  /><title>芽吹きの境界 | Lane Battle</title
+  ><link rel="stylesheet" href="./style.css" />
+  <body>
+    <main>
+      <header>
+        <div>
+          <small>LANE BATTLE</small>
+          <h1>芽吹きの境界</h1>
+        </div>
+        <div class="wallet">✦ <strong id="gold">0</strong><small id="rate"></small></div>
+        <button id="sound" aria-label="音を切り替え" aria-pressed="false">♪</button
+        ><button id="help" aria-label="遊び方">?</button><button id="pause" aria-label="一時停止">Ⅱ</button>
+      </header>
+      <section id="field">
+        <canvas aria-label="左の森の砦から右の水晶砦へ進む戦場"></canvas>
+        <div class="bases">
+          <span>森の砦 <b id="home"></b></span><span id="clock"></span><span>水晶砦 <b id="enemy"></b></span>
+        </div>
+        <div id="notice" role="status"></div>
+      </section>
+      <footer>
+        <div id="tray"></div>
+        <div class="utilities">
+          <button id="upgrade">✦ 生産強化 <b></b></button><button id="burst">☄ 砦の衝撃 <b>準備完了</b></button>
+        </div>
+      </footer>
+      <dialog>
+        <h2 id="title"></h2>
+        <p id="message"></p>
+        <div id="stages" aria-label="ステージ選択"></div>
+        <button id="next" hidden>次のステージ →</button><button id="close">進軍開始</button
+        ><button id="restart">↻ もう一度</button>
+      </dialog>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

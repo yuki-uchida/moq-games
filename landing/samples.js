@@ -9,5 +9,25 @@ export const samples = [
     category: 'STRATEGY',
     tags: ['タワーディフェンス', 'ブラウザでプレイ'],
     art: 'tower-defense'
+  },
+  {
+    id: 'ember-grid',
+    title: '燈の境界',
+    subtitle: 'EMBER GRID',
+    description: '仲間を動かし、地形を読み、敵を迎え撃つ。小さな盤面のターン制戦術。',
+    href: './examples/games/ember-grid/index.html',
+    category: 'TACTICS',
+    tags: ['ターン制', 'ブラウザでプレイ'],
+    art: 'ember-grid'
+  },
+  {
+    id: 'lane-battle',
+    title: '芽吹きの境界',
+    subtitle: 'LANE BATTLE',
+    description: '仲間を送り、砦を守りながら敵陣へ。3つの戦場を進む拠点攻防戦。',
+    href: './examples/games/lane-battle/index.html',
+    category: 'STRATEGY',
+    tags: ['拠点攻防', 'ブラウザでプレイ'],
+    art: 'lane-battle'
   }
 ]

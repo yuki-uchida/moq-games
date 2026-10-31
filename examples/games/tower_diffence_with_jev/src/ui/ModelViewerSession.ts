@@ -33,7 +33,7 @@ export class ModelViewerSession {
     this.role = role
     this.motion = motion
     this.seconds = this.duration = 0
-    this.paused = true
+    this.paused = false
     this.error = ''
     this.definition = UNIT_MODEL_CATALOG[role]
     if (!this.definition?.clips[motion]) {

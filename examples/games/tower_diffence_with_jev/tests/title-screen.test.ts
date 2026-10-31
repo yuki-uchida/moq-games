@@ -13,7 +13,7 @@ describe('title screen', () => {
     for (const text of ['New game', 'Continue', 'EXTRA']) expect(html).toContain(`>${text}</span>`)
     expect(html).toContain('href="./extra.html"')
     expect(html).toContain('href="../../../index.html"')
-    expect(html).toContain('https://example.test/moq-games/tower-defense-art/soldier/portrait.png')
+    expect(html).toContain('https://example.test/moq-games/tower-defense-art/title/soldier.png')
   })
   it('keeps the title action-first without decorative explanations', () => {
     const html = titleScreenMarkup(new URL('https://example.test/art/'))

@@ -50,11 +50,12 @@ test('streams the original battle music only in assaults and preserves mute acro
   await expect.poll(async () => (await diagnostics(page)).status).toBe('襲撃のBGMを再生中')
   const selection = ((await diagnostics(page)) as unknown as { selection: number }).selection
   await page.locator('#settings-toggle').click()
+  await page.locator('[data-settings-tab=music]').click()
   await page.locator('#music-enabled').uncheck()
   expect(await diagnostics(page)).toMatchObject({ active: true, enabled: false, playing: false })
   await page.locator('#music-volume').fill('35')
   await page.locator('#settings-close').click()
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
   expect(await diagnostics(page)).toMatchObject({ active: false, enabled: false, playing: false, volume: 0.35 * 0.8 })
   await page.reload()
@@ -63,6 +64,7 @@ test('streams the original battle music only in assaults and preserves mute acro
   await expect.poll(async () => (await diagnostics(page)).active).toBe(true)
   expect(await diagnostics(page)).toMatchObject({ enabled: false, playing: false, selection })
   await page.locator('#settings-toggle').click()
+  await page.locator('[data-settings-tab=music]').click()
   await page.locator('#music-enabled').check()
   await expect.poll(async () => (await diagnostics(page)).status).toBe('襲撃のBGMを再生中')
   await page.locator('#music-volume').fill('100')
@@ -75,11 +77,14 @@ test('streams the original battle music only in assaults and preserves mute acro
   expect(await page.evaluate(() => 'towerDefenseMusicDiagnostics' in window)).toBe(false)
 })
 
-test('visibility notifications keep BGM streaming; interrupted playback resumes in place on a natural gesture', async ({ page }) => {
+test('visibility notifications keep BGM streaming; interrupted playback resumes in place on a natural gesture', async ({
+  page
+}) => {
   await page.addInitScript(() => {
     const w = window as any
     w.__musicProbe = { plays: 0, pauses: 0, blocked: false, media: null }
-    const play = HTMLMediaElement.prototype.play, pause = HTMLMediaElement.prototype.pause
+    const play = HTMLMediaElement.prototype.play,
+      pause = HTMLMediaElement.prototype.pause
     HTMLMediaElement.prototype.play = function () {
       if (this.src.includes('/tower-defense-music/')) {
         w.__musicProbe.media = this
@@ -101,24 +106,31 @@ test('visibility notifications keep BGM streaming; interrupted playback resumes 
   await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
   await page.locator('#assault').click()
   await expect.poll(async () => (await diagnostics(page)).status).toBe('襲撃のBGMを再生中')
-  await page.evaluate(() => { (window as any).__musicProbe.media.currentTime = 7 })
+  await page.evaluate(() => {
+    ;(window as any).__musicProbe.media.currentTime = 7
+  })
   await expect.poll(() => page.evaluate(() => (window as any).__musicProbe.media.seeking)).toBe(false)
   const initial = await page.evaluate(() => {
     const p = (window as any).__musicProbe
     return { plays: p.plays, pauses: p.pauses, position: p.media.currentTime }
   })
   await page.evaluate(() => {
-    for (let i = 0; i < 10; i++) for (const state of ['hidden', 'visible']) {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
-      document.dispatchEvent(new Event('visibilitychange'))
-    }
+    for (let i = 0; i < 10; i++)
+      for (const state of ['hidden', 'visible']) {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: state })
+        document.dispatchEvent(new Event('visibilitychange'))
+      }
     delete (document as any).visibilityState
   })
-  expect(await page.evaluate(() => {
-    const p = (window as any).__musicProbe
-    return { plays: p.plays, pauses: p.pauses, playing: !p.media.paused }
-  })).toEqual({ plays: initial.plays, pauses: initial.pauses, playing: true })
-  expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(initial.position)
+  expect(
+    await page.evaluate(() => {
+      const p = (window as any).__musicProbe
+      return { plays: p.plays, pauses: p.pauses, playing: !p.media.paused }
+    })
+  ).toEqual({ plays: initial.plays, pauses: initial.pauses, playing: true })
+  expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(
+    initial.position
+  )
   await page.evaluate(() => {
     const p = (window as any).__musicProbe
     p.media.pause()
@@ -128,6 +140,7 @@ test('visibility notifications keep BGM streaming; interrupted playback resumes 
   await expect.poll(async () => (await diagnostics(page)).status).toContain('次の操作')
   const interrupted = await page.evaluate(() => (window as any).__musicProbe.media.currentTime)
   await page.locator('#settings-toggle').click()
+  await page.locator('[data-settings-tab=music]').click()
   await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
   expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(interrupted)
   await page.locator('#music-enabled').uncheck()
@@ -150,7 +163,7 @@ test('visibility notifications keep BGM streaming; interrupted playback resumes 
     await expect.poll(async () => (await diagnostics(page)).playing).toBe(true)
     expect(await page.evaluate(() => (window as any).__musicProbe.media.currentTime)).toBeGreaterThanOrEqual(position)
   }
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
   expect(await diagnostics(page)).toMatchObject({ active: false, playing: false })
 })

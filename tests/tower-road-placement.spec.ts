@@ -57,9 +57,8 @@ for (const viewport of [
         await expect.poll(async () => Number(await unit.getAttribute('data-home-x'))).toBeCloseTo(site.x, 0)
         await expect.poll(async () => Number(await unit.getAttribute('data-home-y'))).toBeCloseTo(site.y, 0)
       }
-      await page.locator('#game-title-return').click()
-      await expect(page.locator('#title-continue')).toBeEnabled()
       await page.reload()
+      await expect(page.locator('#title-continue')).toBeEnabled()
       await page.locator('#title-continue').click()
       await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
       await expect(unit).toHaveCount(1)

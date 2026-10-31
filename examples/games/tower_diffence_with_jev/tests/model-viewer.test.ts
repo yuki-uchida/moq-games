@@ -68,15 +68,14 @@ describe('EXTRA shared real model playback', () => {
     const session = new ModelViewerSession(() => new ModelAssetCache(async () => fixture()))
     session.select('slime', 'idle')
     await ready(session)
-    expect(session.paused).toBe(true)
+    expect(session.paused).toBe(false)
     session.tick(0.1)
-    expect(session.seconds).toBe(0)
-    session.toggle()
+    expect(session.seconds).toBeCloseTo(0.1)
     for (let i = 0; i < 15; i++) session.tick(0.1)
-    expect(session.seconds).toBeCloseTo(0.5)
+    expect(session.seconds).toBeCloseTo(0.6)
     session.pause()
     session.tick(0.1)
-    expect(session.seconds).toBeCloseTo(0.5)
+    expect(session.seconds).toBeCloseTo(0.6)
     session.seek(0.75)
     expect(session.diagnostics().actor?.seconds).toBeCloseTo(0.75)
     session.seek(Number.NaN)
@@ -84,7 +83,6 @@ describe('EXTRA shared real model playback', () => {
     session.select('slime', 'death')
     await ready(session)
     session.speed = 2
-    session.toggle()
     for (let i = 0; i < 10; i++) session.tick(0.1)
     expect(session.seconds).toBe(1)
     expect(session.paused).toBe(true)
@@ -119,6 +117,28 @@ describe('EXTRA shared real model playback', () => {
     for (const cache of caches) {
       expect(cache.dispose).toHaveBeenCalledTimes(1)
       expect(cache.diagnostics().entries).toEqual([])
+    }
+    session.dispose()
+  })
+  it('starts each selection and advances the actual animated pose after switches', async () => {
+    const session = new ModelViewerSession(() => new ModelAssetCache(async () => fixture()))
+    for (const [role, motion] of [
+      ['slime', 'idle'],
+      ['slime', 'walk'],
+      ['crystalSentinel', 'attack'],
+      ['slime', 'idle']
+    ] as const) {
+      session.select(role, motion)
+      await ready(session)
+      expect(session.paused).toBe(false)
+      const scene = session.root.getObjectByProperty('type', 'Mesh')!.parent!
+      const before = scene.position.x
+      session.tick(0.1)
+      expect(scene.position.x).not.toBeCloseTo(before)
+      session.pause()
+      const paused = scene.position.x
+      session.tick(0.1)
+      expect(scene.position.x).toBeCloseTo(paused)
     }
     session.dispose()
   })

@@ -37,12 +37,12 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelEnvironment.generations)).toBe(0)
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().frame)).toBe(0)
   await page.locator('#title-new').click()
-  await page.locator('#launch-settings').click()
+  await page.locator('#launch-settings').evaluate((button: HTMLButtonElement) => button.click())
   await expect(page.locator('.trial-art-tools')).toBeHidden()
   await expect(page.locator('.enemy-trial-art-tools')).toBeHidden()
   await page.locator('#settings-close').click()
   await page.locator('[data-field="meadow"]').click()
-  await page.locator('#offline-start').click()
+  await page.locator('#start').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect
     .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().assetStatus), { timeout: 90000 })
@@ -80,11 +80,15 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   const loadedEntries = diagnostic.modelRendering.cache.entries.filter((entry: any) => entry.state === 'ready')
   expect(loadedEntries.length).toBeGreaterThan(0)
   expect(loadedEntries.every((entry: any) => entry.loadMs >= 0)).toBe(true)
-  expect(models.every((url) => /\/effects\/special\//.test(url) || Object.keys(DEFINITIONS).some((type) => url.includes(`/${type}/`)))).toBe(true)
+  expect(
+    models.every(
+      (url) => /\/effects\/special\//.test(url) || Object.keys(DEFINITIONS).some((type) => url.includes(`/${type}/`))
+    )
+  ).toBe(true)
   expect(diagnostic.campaignPreparation.ready).toBe(true)
   expect(diagnostic.campaignPreparation.completed).toBe(81)
   expect(bodySheets).toEqual([])
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.reload()
   await page.locator('#title-continue').click()
@@ -227,7 +231,7 @@ test('prepares summonable models before a drag and draws a committed unit on the
   })
   await page.goto(towerPath)
   await page.locator('#title-new').click()
-  await page.locator('#offline-start').click()
+  await page.locator('#start').click()
   await expect(page.locator('#campaign-loading')).toBeVisible()
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
   const gold = await page.locator('#gold').textContent()
@@ -280,7 +284,11 @@ test('prepares summonable models before a drag and draws a committed unit on the
   ).toBe(true)
   for (const url of requested) expect(requests.filter((value) => value === url)).toHaveLength(1)
   expect(new Set(requests).size).toBe(requests.length)
-  expect(requests.every((url) => /\/effects\/special\//.test(url) || Object.keys(DEFINITIONS).some((type) => url.includes(`/${type}/`)))).toBe(true)
+  expect(
+    requests.every(
+      (url) => /\/effects\/special\//.test(url) || Object.keys(DEFINITIONS).some((type) => url.includes(`/${type}/`))
+    )
+  ).toBe(true)
   await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
 })
 
@@ -361,7 +369,13 @@ test('resumed assault retains the allied final death pose without fading or inte
     }
     proto.uniform1f = function (location: WebGLUniformLocation, value: number) {
       const uniform = uniforms.get(location)
-      if (w.__deathFadePlayback && uniform?.name === 'opacity' && soldier.has(uniform.program) && value > 0 && value < 1)
+      if (
+        w.__deathFadePlayback &&
+        uniform?.name === 'opacity' &&
+        soldier.has(uniform.program) &&
+        value > 0 &&
+        value < 1
+      )
         w.__deathFadeProbe.fades.push({ time: performance.now(), opacity: value })
       return scalar.call(this, location, value)
     }
@@ -388,8 +402,10 @@ test('resumed assault retains the allied final death pose without fading or inte
   await page.reload()
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+  await expect(page.locator('.unit-health.player')).toBeVisible()
   const deadline = Date.now() + 120000
-  let frames = 0, diedAt: number | undefined
+  let frames = 0,
+    diedAt: number | undefined
   while (Date.now() < deadline) {
     await page.evaluate(async (token) => {
       const worker = (window as any).__deathFadeClock as Worker | undefined
@@ -425,17 +441,31 @@ test('resumed assault retains the allied final death pose without fading or inte
   expect(probe.prepared).toBe(true)
   expect(Math.max(...probe.links)).toBeLessThanOrEqual(probe.readyAt)
   await expect(page.locator('.defender-handle')).toBeHidden()
+  await expect(page.locator('.unit-health.player')).toBeHidden()
   await page.screenshot({ path: test.info().outputPath('retained-allied-death-pose.png') })
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const restored = await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelRendering.units)
   expect(restored.filter((unit: any) => unit.type === 'soldier')).toHaveLength(1)
-  expect(restored.find((unit: any) => unit.type === 'soldier')).toMatchObject({ visible: true, motion: 'death', opacity: 1 })
-
+  expect(restored.find((unit: any) => unit.type === 'soldier')).toMatchObject({
+    visible: true,
+    motion: 'death',
+    opacity: 1
+  })
+  await expect(page.locator('.unit-health.player')).toBeHidden()
+  await page.goBack()
+  await page.locator('#title-new').click()
+  await page.locator('#start').click()
+  await page.locator('#save-confirm-accept').click()
+  await expect(page.locator('#launch')).toBeHidden()
+  await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
+  await expect(page.locator('.unit-health.player')).toBeVisible()
 })
 
-test('campaign preparation gates interaction, recovers missing assets, and cancels without saving', async ({ page }) => {
+test('campaign preparation gates interaction, recovers missing assets, and cancels without saving', async ({
+  page
+}) => {
   let fail = true
   await page.route('**/models/crystalSentinel/*.glb', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -444,11 +474,13 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   })
   await page.goto(towerPath)
   await page.locator('#title-new').click()
-  await page.locator('#offline-start').click()
+  await page.locator('#start').click()
   await expect(page.locator('#campaign-loading')).toBeVisible()
   await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()
-  expect(await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)).toBe(true)
+  expect(
+    await page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.value < bar.max)
+  ).toBe(true)
   await page.locator('#campaign-loading-cancel').click()
   await expect(page.locator('#title-screen')).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()
@@ -462,18 +494,20 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
 
 test('same-session Title, Continue and New game retain the completed campaign preparation', async ({ page }) => {
   const requests: string[] = []
-  page.on('request', (request) => { if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url()) })
+  page.on('request', (request) => {
+    if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url())
+  })
   await openOfflineCampaign(page)
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const loaded = requests.length
   const before = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#title-screen')).toBeHidden()
   await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '4')
-  await page.locator('#game-title-return').click()
+  await page.goBack()
   await page.locator('#title-new').click()
   await page.locator('#start').click()
   await page.locator('#save-confirm-accept').click()
@@ -486,15 +520,20 @@ test('same-session Title, Continue and New game retain the completed campaign pr
 
 test('restored WebGL context prepares GPU resources again without re-fetching model sources', async ({ page }) => {
   const requests: string[] = []
-  page.on('request', (request) => { if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url()) })
+  page.on('request', (request) => {
+    if (/\.(glb|ultimate\.json)$/.test(request.url())) requests.push(request.url())
+  })
   await openOfflineCampaign(page)
   const loaded = requests.length
   const generations = await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelEnvironment.generations)
-  await page.locator('#field canvas').first().evaluate((canvas: HTMLCanvasElement) => {
-    const extension = canvas.getContext('webgl2')!.getExtension('WEBGL_lose_context')!
-    extension.loseContext()
-    setTimeout(() => extension.restoreContext(), 300)
-  })
+  await page
+    .locator('#field canvas')
+    .first()
+    .evaluate((canvas: HTMLCanvasElement) => {
+      const extension = canvas.getContext('webgl2')!.getExtension('WEBGL_lose_context')!
+      extension.loseContext()
+      setTimeout(() => extension.restoreContext(), 300)
+    })
   await expect(page.locator('#campaign-loading')).toBeVisible()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const diagnostics = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
@@ -503,12 +542,16 @@ test('restored WebGL context prepares GPU resources again without re-fetching mo
   expect(requests.length).toBe(loaded)
 })
 
-test('a missing normal attack effect cannot finish preparation and retries without replacing the save', async ({ page }) => {
+test('a missing normal attack effect cannot finish preparation and retries without replacing the save', async ({
+  page
+}) => {
   let failed = true
-  await page.route('**/effects/arrow.png', (route) => failed ? route.fulfill({ status: 503, body: 'retry' }) : route.continue())
+  await page.route('**/effects/arrow.png', (route) =>
+    failed ? route.fulfill({ status: 503, body: 'retry' }) : route.continue()
+  )
   await page.goto(towerPath)
   await page.locator('#title-new').click()
-  await page.locator('#offline-start').click()
+  await page.locator('#start').click()
   await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()

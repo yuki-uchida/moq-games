@@ -11,6 +11,8 @@ Rule AI runs locally: no account, bot or live MoQ connection is needed to play. 
 
 This revision includes the real-time 3D game, a sample gallery, a title screen with New game/Continue, a read-only EXTRA model viewer and a dedicated Slime real-model review page. EXTRA exposes all twenty current roster models and their available authored motions through the same actor playback and skinning/material adapters as gameplay. Drag to orbit, scroll or pinch to zoom, and use Play/Pause, Restart, the timeline, speed and Reset camera controls. Arrow keys rotate the focused canvas; plus/minus zoom. Missing motions are not substituted. No game simulation, audio or campaign writes run in EXTRA. These describe this revision; the live site changes only after the checked revision is deployed.
 
+The gallery also includes **燈の境界 / Ember Grid**, a turn-based tactical game, and **芽吹きの境界 / Lane Battle**, a three-stage lane strategy game. Both run locally in the browser without a game server. See their respective [Ember Grid](examples/games/ember-grid/README.md) and [Lane Battle](examples/games/lane-battle/README.md) instructions.
+
 ## Run locally
 
 **Prerequisites:** Git, Node.js 24/npm and rustup. The first SDK setup needs network access and Rust build tools; later development reuses its output.

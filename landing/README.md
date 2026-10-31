@@ -2,10 +2,9 @@
 
 The site root is a lightweight catalog. `samples.js` is the list of published,
 playable samples; add a metadata entry when another actual game is ready. Keep
-existing deep links stable. The current sample points to the original Tower
-Defense entrypoint and uses the title `smart defence with jev`.
+existing deep links stable. The catalog includes Tower Defense, Ember Grid and Lane Battle; all three have root-build entries and non-JavaScript fallback links.
 
-`main.js` renders accessible sample sections. The current feature uses original
+`main.js` renders accessible sample sections. The previews use original
 roster portraits from `public/tower-defense-art/` over a static SVG battlefield
 illustration. It is promotional artwork, not a live game or a gameplay screenshot.
 No asset bytes are modified. See the root `ASSETS.md` for the artwork provenance.

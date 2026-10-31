@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "status": "Existing 30 accepted optimized derivatives; three source-identical new Blender GLBs pending runtime visual acceptance",
+  "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three source-identical new Blender GLBs pending runtime visual acceptance",
   "summary": {
     "files": 33,
-    "bytes": 221167272
+    "bytes": 221624388
   },
   "models": [
     {
@@ -105,8 +105,8 @@
       "role": "brute",
       "file": "brute/brute-motion-v2-candidate.glb",
       "sourceSha256": "c4190762f067d72b4e50d7b07090c17460363baa786882fd3024e383ec7537fb",
-      "outputSha256": "7cc78d8f24d1c2dc94de569c692cbfed335e99127e8ff7b47b5ee96c7a199679",
-      "bytes": 9284760,
+      "outputSha256": "430eaae56165fdf26671a937782dce2c7f5a473824d41ecb2025a679ef018950",
+      "bytes": 9741932,
       "vertices": 85483,
       "triangles": 76387,
       "sourceBytes": 18965272,
@@ -118,6 +118,10 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "postOptimization": {
+        "basisSha256": "7cc78d8f24d1c2dc94de569c692cbfed335e99127e8ff7b47b5ee96c7a199679",
+        "change": "Neutral rock albedo warmed while green crystals are retained; color texture encoded losslessly as PNG; geometry, skin and animation buffer views unchanged"
       }
     },
     {
@@ -489,8 +493,8 @@
       "role": "slime",
       "file": "slime/animated.glb",
       "sourceSha256": "6015b96c5178d7dcf226976183e2bf1ab0bf1953690c9841cfb37200d0f41c3d",
-      "outputSha256": "b5f06a8e4c86a9bf3036c9f58c5754e96465f6496290a45fabab3628c1655e7d",
-      "bytes": 1417456,
+      "outputSha256": "e0463abecc979a60a9bde4c15afd978f40115e192cfa7dd7d4cc41ef5b8ee285",
+      "bytes": 1417400,
       "vertices": 11729,
       "triangles": 21852,
       "sourceBytes": 2258556,
@@ -502,6 +506,10 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "postOptimization": {
+        "basisSha256": "b5f06a8e4c86a9bf3036c9f58c5754e96465f6496290a45fabab3628c1655e7d",
+        "change": "Aqua jelly body material base color and roughness tuned; geometry, skin, animation and GLB binary chunk unchanged from basis"
       }
     },
     {

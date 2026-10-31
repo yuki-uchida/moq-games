@@ -1,3 +1,4 @@
+import { BattlefieldBackdrop } from './BattlefieldBackdrop'
 import { preparationPause, preparationWait, preparationGpu } from './CampaignPreparation'
 import type { ModelMotion } from './ModelUnitVisual'
 import { prepareFadePrograms } from './FadePrograms'
@@ -72,7 +73,7 @@ import { AnimationTimer, attackPose, hitPose } from './CombatMotion'
 import { AttackPlayback } from './AttackPlayback'
 import { ATTACK_PROFILES, attackTimeScale, attackAssetElapsedMs, ENEMY_ACTION_TIME_SCALE } from '../game/AttackProfiles'
 import { approvedMazeArt, loadApprovedMazeArt } from './ApprovedMazeArt'
-import { createBaseArt, createFieldArt, createSandbagArt } from './WorldArt'
+import { createBaseArt, createFieldArt, createProjectedFieldArt, createSandbagArt } from './WorldArt'
 import { RuntimeAtlasCache } from './RuntimeAtlasCache'
 import {
   authoredEmitter,
@@ -352,6 +353,7 @@ export class GameRenderer {
       this.modelEnvironment?.ensure(this.renderer)
       // Request all sources together; the shared cache limits model decoding concurrency.
       for (const job of jobs) this.models!.cache.requestSource(job.source)
+      // Warm each available motion while the remaining queued sources continue loading.
       for (const job of jobs) {
         const start = performance.now()
         while (true) {
@@ -363,8 +365,6 @@ export class GameRenderer {
           await preparationPause(signal)
         }
         progress(++done, total)
-      }
-      for (const job of jobs) {
         check()
         const key = `${job.type}:${job.motion}`
         if (!this.campaignJobs.has(key)) {
@@ -442,6 +442,7 @@ export class GameRenderer {
   private compilingDefenders = new Set<AllyType>()
   private defenderRetryAt = 0
   private motionPreparation?: Promise<void>
+  private backdrop?: BattlefieldBackdrop
   private modelPresentationScale = 1
   private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
@@ -680,6 +681,8 @@ export class GameRenderer {
     private host: HTMLElement,
     authored: AuthoredAtlasOptions = {}
   ) {
+    const viewport = host.closest<HTMLElement>('#map-scroll')
+    if (viewport) this.backdrop = new BattlefieldBackdrop(viewport)
     if (authored.models) {
       this.models = new ModelUnitLayer(this.scene, authored.models)
       // The board has one key light; stronger IBL keeps shaded cloth and metal readable.
@@ -908,6 +911,7 @@ export class GameRenderer {
     }
     this.sandbagVisuals.clear()
     this.sandbagPreviewLabel.remove()
+    this.backdrop?.dispose()
     this.renderer.domElement.remove()
     this.modelEnvironment?.dispose()
     if (this.motionPreparation) void this.motionPreparation.finally(() => this.renderer.dispose())
@@ -1140,11 +1144,14 @@ export class GameRenderer {
           this.approvedMapError = error instanceof Error ? error.message : 'Approved map could not load'
         })
     }
-    const texture = this.texture(
-      createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
-    )
+    const projected = layoutRevision === 4 && (this.modelPresentationAspect < 0.72 || this.modelPresentationAspect > 1.45)
+    const fieldArt = projected
+      ? createProjectedFieldArt(id, this.modelPresentationAspect, mazeArt)
+      : createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
+    this.backdrop?.setSource(layoutRevision === 4 && mazeArt ? fieldArt : undefined)
+    const texture = this.texture(fieldArt)
     texture.name = mazeArt
-      ? `approved-map:field:${id}:${version}:${layoutRevision}`
+      ? `approved-map:field:${id}:${version}:${layoutRevision}${projected ? ":projected" : ""}`
       : this.environmentArt
         ? `environment:field:${id}:${version}:${layoutRevision}`
         : `field:${id}:${version}:${layoutRevision}`
@@ -2074,6 +2081,7 @@ export class GameRenderer {
     this.modelPresentationScale = scale
     this.modelPresentationAspect = aspect
     this.models?.setPresentation(scale, aspect)
+    if (this.fieldId && this.field.layoutRevision === 4) this.refreshBackground()
   }
   worldPointAt(clientX: number, clientY: number): Point | null {
     const bounds = this.host.getBoundingClientRect(),
@@ -2632,7 +2640,7 @@ export class GameRenderer {
         this.units.set(unit.id, visual)
       }
       visual.group.visible = !corpseIds.has(unit.id)
-      this.healthLabels.get(unit.id)!.element.hidden = corpseIds.has(unit.id)
+      this.healthLabels.get(unit.id)!.element.hidden = corpseIds.has(unit.id) || unit.hp <= 0
       if (visual.defenderHandle)
         visual.defenderHandle.hidden =
           !interactive || !['preparation', 'assault'].includes(s.phase) || roadPlacementActive || unit.hp <= 0

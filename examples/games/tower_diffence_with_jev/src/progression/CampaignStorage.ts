@@ -167,3 +167,24 @@ function isBoundedJson(value: unknown): boolean {
   }
   return visit(value, 0)
 }
+
+/** Preserve the original checkpoint before temporarily resuming it with another controller. */
+export function preserveCampaignBeforeRuleResume(storage?: Pick<Storage, 'getItem' | 'setItem'>): boolean {
+  try {
+    const target = storage ?? globalThis.localStorage
+    const raw = target.getItem(CAMPAIGN_SAVE_KEY)
+    if (raw === null) return false
+    for (let index = 0; index < 100; index++) {
+      const key = `${CAMPAIGN_SAVE_KEY}-preserved-${index}`
+      const existing = target.getItem(key)
+      if (existing === raw) return true
+      if (existing === null) {
+        target.setItem(key, raw)
+        return target.getItem(key) === raw
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
+}

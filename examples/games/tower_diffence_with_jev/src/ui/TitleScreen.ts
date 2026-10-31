@@ -9,14 +9,14 @@ export function titleSaveStatus(hasRun: boolean, issue: CampaignLoadIssue, legac
 }
 
 export function titleScreenMarkup(artBase: URL): string {
-  const portrait = (type: string) => new URL(`${type}/portrait.png`, artBase).href
+  const portrait = (type: string) => new URL(`title/${type}.png`, artBase).href
   return `<dialog id="title-screen" class="title-screen" aria-labelledby="game-title">
     <div class="title-atmosphere" aria-hidden="true"><span class="title-orbit"></span><span class="title-hill title-hill-back"></span><span class="title-hill title-hill-front"></span></div>
-    <header class="title-topline"><a href="../../../index.html">← MoQ Games</a></header>
+    <header class="title-topline"><a href="../../../index.html" aria-label="MoQ Games ホームへ戻る" title="MoQ Games ホームへ戻る">← <span class="sr-only">MoQ Games</span></a></header>
     <div class="title-content">
       <h1 id="game-title">smart defence<br><span>with jev</span></h1>
       <nav class="title-menu" aria-label="Main menu">
-        <button id="title-new" class="title-menu-primary"><span>New game</span><span aria-hidden="true">↗</span></button>
+        <button id="title-new" class="title-menu-primary"><span>New game</span><span aria-hidden="true">▶</span></button>
         <button id="title-continue" aria-describedby="title-save-status"><span>Continue</span><span aria-hidden="true">→</span></button>
         <a id="title-extra" href="./extra.html"><span>EXTRA</span><span aria-hidden="true">＋</span></a>
       </nav><p id="title-save-status" class="title-save-status" role="status"></p>

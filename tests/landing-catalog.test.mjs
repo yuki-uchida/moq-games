@@ -4,9 +4,10 @@ import { readFile, access } from 'node:fs/promises'
 import { samples } from '../landing/samples.js'
 
 test('catalog exposes only real, unique, playable samples with local entrypoints', async () => {
-  assert.equal(samples.length, 1)
+  assert.equal(samples.length, 3)
   assert.equal(samples[0].title, 'smart defence with jev')
   assert.equal(new Set(samples.map((sample) => sample.id)).size, samples.length)
+  assert.equal(new Set(samples.map((sample) => sample.href)).size, samples.length)
   for (const sample of samples) {
     assert.ok(sample.description && sample.category && sample.tags.length)
     assert.match(sample.href, /^\.\/examples\//)
@@ -18,7 +19,7 @@ test('home is no longer a redirect and preserves a non-JavaScript play link', as
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8')
   assert.match(html, /<title>MoQ Games<\/title>/)
   assert.doesNotMatch(html, /http-equiv="refresh"/i)
-  assert.ok(html.includes(samples[0].href))
+  for (const sample of samples) assert.ok(html.includes(sample.href))
   assert.match(html, /class="skip-link"/)
 })
 

@@ -7,7 +7,13 @@ export const EFFECT_SOUND_BINDINGS = {
   support_armor: { unitType: 'commander', kind: 'support_armor_apply' },
   support_attack: { unitType: 'commander', kind: 'support_attack_apply' },
   mud_slow_apply: { unitType: 'environment', kind: 'mud_slow_apply' },
-  terrain_slow_enter: { unitType: 'environment', kind: 'terrain_slow_enter' }
+  terrain_slow_enter: { unitType: 'environment', kind: 'terrain_slow_enter' },
+  ui_place: { unitType: 'environment', kind: 'ui_place' },
+  ui_upgrade: { unitType: 'environment', kind: 'ui_upgrade' },
+  ui_assault: { unitType: 'environment', kind: 'ui_assault' },
+  ui_special: { unitType: 'environment', kind: 'ui_special' },
+  ui_win: { unitType: 'environment', kind: 'ui_win' },
+  ui_lose: { unitType: 'environment', kind: 'ui_lose' }
 } as const
 export type EffectSoundKey = keyof typeof EFFECT_SOUND_BINDINGS
 export type SoundUnitType = UnitType | 'commander' | 'environment'
