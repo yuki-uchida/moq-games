@@ -65,9 +65,15 @@ for (const stage of [0, 1, 2])
       }
       await page.getByRole('button', { name: '音を有効にする', exact: true }).click()
       await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0)
-      const soundRequests: string[] = []
-      page.on('request', (r) => {
-        if (r.url().includes('tower-defense-sfx/')) soundRequests.push(r.url())
+      await page.evaluate(() => {
+        ;(window as any).emberSoundPlays = 0
+        document.addEventListener(
+          'play',
+          (event) => {
+            if ((event.target as HTMLAudioElement).dataset.emberVoice) (window as any).emberSoundPlays++
+          },
+          true
+        )
       })
       const g = createGame(stage)
       const cell = (x: number, y: number) => page.locator('.cell').nth(y * 7 + x)
@@ -105,7 +111,7 @@ for (const stage of [0, 1, 2])
       expect(g.phase).toBe('won')
       await expect(page.locator('#result')).toContainText(stage === 2 ? '遠征達成' : '霧が晴れた')
       expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)
-      expect(soundRequests.length).toBeGreaterThan(0)
+      expect(await page.evaluate(() => (window as any).emberSoundPlays)).toBeGreaterThan(0)
       await page.screenshot({ path: `test-results/ember-win-${stage + 1}-${width}.png` })
       await page.locator('#next').click()
       await expect(page.locator('#mission')).toContainText(missions[(stage + 1) % 3].name)

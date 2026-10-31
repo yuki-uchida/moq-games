@@ -52,6 +52,7 @@ export function route(game: Game, before: Unit[], from: Unit, to: Point): Point[
 
 export class BattleAnimation {
   private clips = new Map<string, Promise<Clip>>()
+  private images = new Map<string, Promise<HTMLImageElement>>()
   private nodes = new Set<HTMLElement>()
   private hidden = new Set<HTMLElement>()
   private version = 0
@@ -70,20 +71,67 @@ export class BattleAnimation {
   }
   private async clip(role: string, motion: string, facing: string) {
     const id = `${role}/${characters[role]}-${motion}-${facing}`
-    if (!this.clips.has(id))
-      this.clips.set(
-        id,
-        (async () => {
-          const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-art/${id}.json`)
-          if (!response.ok) throw new Error(`Animation ${response.status}: ${id}`)
-          const clip: Clip = await response.json()
-          const image = new Image()
-          image.src = `${import.meta.env.BASE_URL}tower-defense-art/${role}/${clip.texture}`
-          await image.decode()
-          return clip
-        })()
-      )
+    if (!this.clips.has(id)) {
+      const pending = (async () => {
+        const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-art/${id}.json`, {
+          signal: AbortSignal.timeout(15000)
+        })
+        if (!response.ok) throw new Error(`Animation ${response.status}: ${id}`)
+        const clip: Clip = await response.json()
+        const url = `${import.meta.env.BASE_URL}tower-defense-art/${role}/${clip.texture}`
+        if (!this.images.has(url)) {
+          const loading = (async () => {
+            const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
+            if (!response.ok) throw new Error(`Texture ${response.status}: ${url}`)
+            const objectURL = URL.createObjectURL(await response.blob())
+            const image = new Image()
+            image.src = objectURL
+            try {
+              await image.decode()
+              return image
+            } catch (error) {
+              URL.revokeObjectURL(objectURL)
+              throw error
+            }
+          })()
+          this.images.set(url, loading)
+          void loading.catch(() => this.images.delete(url))
+        }
+        await this.images.get(url)!
+        return clip
+      })()
+      this.clips.set(id, pending)
+      void pending.catch(() => this.clips.delete(id))
+    }
     return this.clips.get(id)!
+  }
+  /** Bound transfers and decode work; retain decoded images across missions/replay. */
+  async prepare(progress: (done: number, total: number) => void) {
+    const tasks = Object.keys(characters).flatMap((role) =>
+      ['idle', 'walk', 'attack'].flatMap((motion) =>
+        ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].map((facing) => () => this.clip(role, motion, facing))
+      )
+    )
+    let next = 0,
+      done = 0
+    const failures: unknown[] = []
+    await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        while (next < tasks.length) {
+          const task = tasks[next++]
+          try {
+            await task()
+          } catch (error) {
+            failures.push(error)
+          }
+          progress(++done, tasks.length)
+        }
+      })
+    )
+    if (failures.length) throw new Error(`${failures.length} animation assets unavailable`)
+  }
+  private texture(role: string, clip: Clip) {
+    return this.images.get(`${import.meta.env.BASE_URL}tower-defense-art/${role}/${clip.texture}`)!
   }
   private cell(p: Point) {
     return this.board.children[p.y * size + p.x] as HTMLElement
@@ -124,7 +172,10 @@ export class BattleAnimation {
     const clip = await this.clip(u.role, motion, facing)
     if (token !== this.version) return
     const portrait = node.querySelector<HTMLElement>('.portrait')!
-    portrait.style.backgroundImage = `url('${import.meta.env.BASE_URL}tower-defense-art/${u.role}/${clip.texture}')`
+    const image = await this.texture(u.role, clip)
+    const first = clip.frames[0]
+    portrait.style.backgroundPosition = `-${first.x}px -${first.y}px`
+    portrait.style.backgroundImage = `url('${image.src}')`
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
     const duration = reduced ? 80 : motion === 'walk' ? 220 : clip.durationMs
     const event = clip.events?.find((e) => e.type === 'hit' || e.type === 'release')?.atMs ?? clip.durationMs * 0.5
@@ -201,9 +252,20 @@ export class BattleAnimation {
     const path = route(game, before, from, acting)
     const moved = from.x !== acting.x || from.y !== acting.y
     if (!moved && !target) return
-    this.hide(from)
-    const actor = this.actor(acting, from)
     try {
+      // Never hide the source while a missing/failed asset is still loading.
+      await Promise.all([
+        ...path.slice(1).map((point, i) => this.clip(acting.role, 'walk', direction(path[i], point))),
+        ...(target
+          ? [
+              this.clip(target.role, 'idle', direction(target, acting)),
+              this.clip(acting.role, 'attack', direction(acting, target))
+            ]
+          : [])
+      ])
+      if (token !== this.version) return
+      this.hide(from)
+      const actor = this.actor(acting, from)
       if (moved) {
         this.cue('healer')
         for (let i = 1; i < path.length && token === this.version; i++) {
@@ -219,7 +281,7 @@ export class BattleAnimation {
         // Victim retains the complete accepted source cell; recoil never deforms anatomy.
         const idle = await this.clip(target.role, 'idle', direction(target, acting))
         const p = victim.querySelector<HTMLElement>('.portrait')!
-        p.style.backgroundImage = `url('${import.meta.env.BASE_URL}tower-defense-art/${target.role}/${idle.texture}')`
+        p.style.backgroundImage = `url('${(await this.texture(target.role, idle)).src}')`
         p.style.backgroundPosition = `-${idle.frames[0].x}px -${idle.frames[0].y}px`
         let impact: Promise<void> = Promise.resolve()
         await this.play(actor, acting, 'attack', direction(acting, target), token, undefined, () => {

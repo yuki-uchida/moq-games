@@ -18,6 +18,7 @@ import './style.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, snapshot } from './animation'
 let busy = false
+let ready = false
 let game = createGame(),
   selected: string | undefined,
   generation = 0
@@ -59,7 +60,7 @@ function render() {
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map()
   cells.forEach((cell, i) => {
-    cell.disabled = busy
+    cell.disabled = busy || !ready
     const x = i % size,
       y = Math.floor(i / size),
       k = key(x, y),
@@ -82,11 +83,12 @@ function render() {
     ? `${unit.name}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
     : '燈守を選択'
   document.querySelector('#log')!.textContent = game.log
-  ;(document.querySelector('#wait') as HTMLButtonElement).disabled = !unit || unit.done || game.phase !== 'ally'
-  ;(document.querySelector('#end') as HTMLButtonElement).disabled = game.phase !== 'ally'
+  ;(document.querySelector('#wait') as HTMLButtonElement).disabled =
+    !ready || !unit || unit.done || game.phase !== 'ally'
+  ;(document.querySelector('#end') as HTMLButtonElement).disabled = !ready || game.phase !== 'ally'
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
   potion.textContent = `✚ ${game.potions}`
-  potion.disabled = !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
+  potion.disabled = !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
   document.querySelector('#mission')!.textContent = `⚑ ${missions[game.stage].name}`
   const result = document.querySelector<HTMLDivElement>('#result')!
   result.hidden = game.phase !== 'won' && game.phase !== 'lost'
@@ -102,7 +104,7 @@ function render() {
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
 }
 async function choose(x: number, y: number) {
-  if (busy) return
+  if (busy || !ready) return
   if (game.phase !== 'ally') return
   const target = game.units.find((u) => u.hp > 0 && u.x === x && u.y === y),
     unit = game.units.find((u) => u.id === selected)
@@ -134,7 +136,7 @@ async function choose(x: number, y: number) {
   render()
 }
 async function end() {
-  if (busy || !beginEnemy(game)) return
+  if (busy || !ready || !beginEnemy(game)) return
   selected = undefined
   const token = generation
   render()
@@ -216,3 +218,32 @@ const dialog = document.querySelector('dialog')!
 document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())
 document.querySelector('#close')!.addEventListener('click', () => dialog.close())
 render()
+
+// Keep the complete field visible; only battle actions wait for decoded assets.
+const preparation = document.createElement('div')
+preparation.className = 'preparation'
+preparation.innerHTML = '<span role="status" aria-live="polite"></span><button hidden>再試行</button>'
+document.querySelector('.field')!.append(preparation)
+const retry = preparation.querySelector('button')!
+retry.onclick = () => void prepareBattle()
+async function prepareBattle() {
+  retry.hidden = true
+  const status = preparation.querySelector('span')!
+  status.textContent = '戦闘の準備中…'
+  try {
+    const results = await Promise.allSettled([
+      animation.prepare((done, total) => {
+        status.textContent = `戦闘の準備 ${Math.round((done / total) * 100)}%`
+      }),
+      audio.prepare()
+    ])
+    if (results.some((result) => result.status === 'rejected')) throw new Error('Preparation failed')
+    ready = true
+    preparation.remove()
+    render()
+  } catch {
+    status.textContent = '素材を読み込めませんでした。接続を確認して再試行してください'
+    retry.hidden = false
+  }
+}
+void prepareBattle()

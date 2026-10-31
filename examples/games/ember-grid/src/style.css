@@ -513,3 +513,26 @@ fieldset label {
   opacity: 1;
   cursor: wait;
 }
+
+.preparation {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-direction: column;
+  padding: 1rem;
+  background: #121d25dd;
+  color: #fff;
+  text-align: center;
+}
+.preparation [hidden] {
+  display: none;
+}
+
+.preparation button {
+  min-height: 44px;
+  min-width: 88px;
+}

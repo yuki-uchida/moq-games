@@ -137,11 +137,17 @@ test('restart cancels player motion and reduced motion keeps controls usable', a
   await expect(page.locator('.motion-actor')).toHaveCount(0)
 })
 
-test('missing animation texture preserves legal result and unlocks input', async ({ page }) => {
-  await page.route('**/tower-defense-art/soldier/*walk*.json', (route) =>
-    route.fulfill({ status: 404, body: 'missing' })
+test('missing animation texture holds preparation and retries without stranding input', async ({ page }) => {
+  let fail = true
+  await page.route('**/tower-defense-art/soldier/leaf-squire-walk-e.png', (route) =>
+    fail ? route.fulfill({ status: 404, body: 'missing' }) : route.continue()
   )
   await page.goto('./')
+  await expect(page.locator('.preparation button')).toBeVisible()
+  await expect(page.getByRole('button', { name: /1,4 燈守/ })).toBeDisabled()
+  fail = false
+  await page.locator('.preparation button').click()
+  await expect(page.locator('.preparation')).toHaveCount(0)
   await page.getByRole('button', { name: /1,4 燈守/ }).click()
   await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
   await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
