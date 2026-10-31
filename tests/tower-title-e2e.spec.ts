@@ -309,12 +309,12 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
 })
 
 test('EXTRA reports a failed model and Retry loads the same action without sprite fallback', async ({ page }) => {
-  await page.route('**/models/soldier/*.glb', (route) => route.abort())
+  await page.route('**/models/soldier/*.glb*', (route) => route.abort())
   await page.goto(extraPath)
   await expect(page.locator('#viewer-status')).toContainText('読み込めません')
   await expect(page.locator('#viewer-retry')).toBeVisible()
   await expect(page.locator('#viewer-play')).toBeDisabled()
-  await page.unroute('**/models/soldier/*.glb')
+  await page.unroute('**/models/soldier/*.glb*')
   await page.locator('#viewer-retry').click()
   await expectModel(page, 'soldier', 'idle')
   await expect(page.locator('#viewer-play')).toBeEnabled()
@@ -365,7 +365,7 @@ test('EXTRA ignores a late failed load after selecting a different model', async
   const hold = new Promise<void>((resolve) => {
     release = resolve
   })
-  await page.route('**/models/soldier/*.glb', async (route) => {
+  await page.route('**/models/soldier/*.glb*', async (route) => {
     await hold
     await route.abort()
   })
