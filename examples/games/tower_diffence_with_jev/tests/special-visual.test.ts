@@ -93,3 +93,62 @@ describe('special effect resource ownership', () => {
     load.mockRestore()
   })
 })
+
+it('draws every released effect after campaign warmup hides its source template', async () => {
+  const sources = ALLY_TYPES.map(() => {
+    const scene = new THREE.Group()
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial()))
+    return scene
+  })
+  let next = 0
+  const load = vi
+    .spyOn(GLTFLoader.prototype, 'loadAsync')
+    .mockImplementation(async () => ({ scene: sources[next++] }) as any)
+  const scene = new THREE.Scene(),
+    visual = new SpecialAbilityVisual(scene)
+  try {
+    await visual.preload(new URL('https://example.test/'))
+    // The shared campaign draw hides and detaches its temporary root afterwards.
+    await visual.prepare(async (root) => {
+      root.visible = false
+      root.removeFromParent()
+    })
+    for (const type of ALLY_TYPES) {
+      const state = initialState(),
+        releaseAt = SPECIALS[type].release
+      state.phase = 'assault'
+      state.specialEffects = [
+        {
+          id: type,
+          sourceId: 1,
+          type,
+          x: 300,
+          y: 300,
+          startedAt: 0,
+          releaseAt,
+          endsAt: releaseAt + SPECIALS[type].duration,
+          power: 10,
+          applied: false
+        }
+      ]
+      state.time = releaseAt - 0.02
+      visual.render(state)
+      expect(visual.diagnostics().active).toBe(0)
+      state.time = releaseAt + 0.1
+      visual.render(state)
+      const instance = scene.children[3] as THREE.Group
+      expect(instance.visible, `${type} must be visible after warmup`).toBe(true)
+      expect(instance.parent).toBe(scene)
+      expect((instance.children[0] as THREE.Mesh).material).not.toBe(
+        (sources[ALLY_TYPES.indexOf(type)].children[0] as THREE.Mesh).material
+      )
+      expect(((instance.children[0] as THREE.Mesh).material as THREE.Material).opacity).toBeGreaterThan(0)
+      expect(instance.position.toArray().slice(0, 2)).toEqual([300, 300])
+      visual.render({ ...state, specialEffects: [] })
+      expect(visual.diagnostics().active).toBe(0)
+    }
+  } finally {
+    visual.dispose()
+    load.mockRestore()
+  }
+})

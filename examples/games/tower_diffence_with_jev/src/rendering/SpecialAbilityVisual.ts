@@ -135,6 +135,7 @@ export class SpecialAbilityVisual {
       let group = this.active.get(key)
       if (!group) {
         group = source.clone(true)
+        group.visible = true // Campaign warmup hides the cached template after drawing.
         group.matrixAutoUpdate = false
         group.traverse((object) => {
           if (!(object instanceof THREE.Mesh)) return
