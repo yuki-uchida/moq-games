@@ -299,6 +299,15 @@ function redeploymentEdgeGeometry(radius: number, dotted: boolean): THREE.RingGe
   if (dotted) geometry.setIndex(Array.from(geometry.index!.array).filter((_, index) => Math.floor(index / 6) % 2 === 0))
   return geometry
 }
+export type CampaignPreparationState = Pick<GameState, 'stage' | 'waveBossPolicy' | 'units' | 'pendingSpawns'>
+
+/** Include every legal random deployment, its boss, and any restored in-flight units. */
+export function campaignRequiredTypes(state: CampaignPreparationState): Set<UnitType> {
+  const wave = stageRules(state.stage, state.waveBossPolicy)
+  const types = new Set<UnitType>([...ALLY_TYPES, ...wave.enemyTypes, ...state.units.map((unit) => unit.type), ...state.pendingSpawns.map((spawn) => spawn.unitType)])
+  if (wave.bossType) types.add(wave.bossType)
+  return types
+}
 export class GameRenderer {
   private modelEnvironment?: ModelEnvironmentLighting
   private renderer: THREE.WebGLRenderer
@@ -312,9 +321,12 @@ export class GameRenderer {
   campaignPrepared = false
   onContextLost?: () => void
   onContextRestored?: () => void
-  async prepareCampaign(base: URL, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
-    if (this.campaignPrepared) return
+  async prepareCampaign(base: URL, state: CampaignPreparationState, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
+    const types = campaignRequiredTypes(state)
+    if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) return
     if (this.campaignPreparing) throw new Error('準備は既に実行中です。')
+    // A new stage is not ready until its GPU fence and shared effects also succeed.
+    this.campaignPrepared = false
     this.campaignPreparing = true
     const generation = this.campaignContext
     const check = () => {
@@ -324,7 +336,7 @@ export class GameRenderer {
       const failure = this.assetErrors['model:shader'] ?? this.assetErrors['model:gpu']
       if (failure) throw new Error(failure)
     }
-    const jobs = Object.entries(this.models?.roster ?? {}).flatMap(([type, definition]) =>
+    const jobs = Object.entries(this.models?.roster ?? {}).filter(([type]) => types.has(type as UnitType)).flatMap(([type, definition]) =>
       Object.entries(definition.clips).map(([motion, source]) => ({ type: type as UnitType, motion: motion as ModelMotion, source }))
     )
     const effects = this.models ? [undefined, ...new Set(Object.values(this.effectClips))] : []

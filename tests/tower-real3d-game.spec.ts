@@ -7,7 +7,7 @@ import {
   selectFieldUnit,
   pointOnVisibleMap
 } from './tower-defense-e2e-arrange'
-import { getField, DEFINITIONS } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { getField, DEFINITIONS, ENEMY_TYPES, stageRules } from '../examples/games/tower_diffence_with_jev/src/game/model'
 
 test('normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation', async ({
   page
@@ -74,6 +74,11 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     })
   ).toEqual({ visible: true, motion: 'idle', seconds: 0 })
   expect(models.length).toBeGreaterThan(0)
+  const firstWave = stageRules(1)
+  for (const type of ENEMY_TYPES) {
+    const requested = models.some((url) => url.includes(`/models/${type}/`))
+    expect(requested, `stage one ${type}`).toBe(firstWave.enemyTypes.includes(type) || firstWave.bossType === type)
+  }
   expect(diagnostic.modelEnvironment).toEqual({ ready: true, intensity: 0.5, generations: 1 })
   expect(diagnostic.gpu.frames).toBeGreaterThan(0)
   expect(diagnostic.gpu.programs).toBeGreaterThan(0)
@@ -86,7 +91,8 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
     )
   ).toBe(true)
   expect(diagnostic.campaignPreparation.ready).toBe(true)
-  expect(diagnostic.campaignPreparation.completed).toBe(81)
+  expect(diagnostic.campaignPreparation.completed).toBeGreaterThan(0)
+  expect(diagnostic.campaignPreparation.completed).toBeLessThan(81)
   expect(bodySheets).toEqual([])
   await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
@@ -193,14 +199,19 @@ for (const role of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'] as 
         }
       })
     ).toBe(true)
-    const failures: string[] = []
+    const failures: string[] = [], modelRequests: string[] = []
     page.on('pageerror', (error) => failures.push(error.message))
+    page.on('request', (request) => { if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(request.url())) modelRequests.push(request.url()) })
     await page.goto(towerPath)
     await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), stored)
     await page.reload()
     await expect(page.locator('#title-continue')).toBeEnabled()
     await page.locator('#title-continue').click()
     await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+    for (const type of ENEMY_TYPES) {
+      expect(modelRequests.some((url) => url.includes(`/models/${type}/`)), `stage 4 ${type}`)
+        .toBe(stageRules(4).enemyTypes.includes(type) || stageRules(4).bossType === type)
+    }
     await expect
       .poll(
         () =>
@@ -467,7 +478,7 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   page
 }) => {
   let fail = true
-  await page.route('**/models/crystalSentinel/*.glb*', async (route) => {
+  await page.route('**/models/soldier/*.glb*', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     if (fail) await route.fulfill({ status: 503, body: 'retry' })
     else await route.continue()
@@ -484,9 +495,11 @@ test('campaign preparation gates interaction, recovers missing assets, and cance
   await page.locator('#campaign-loading-cancel').click()
   await expect(page.locator('#title-screen')).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBeNull()
-  fail = false
   await page.locator('#title-new').click()
   await page.locator('#start').click()
+  await expect(page.locator('#campaign-loading-retry')).toBeVisible({ timeout: 180_000 })
+  fail = false
+  await page.locator('#campaign-loading-retry').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#launch')).toBeHidden()
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(true)
@@ -559,4 +572,100 @@ test('a missing normal attack effect cannot finish preparation and retries witho
   await page.locator('#campaign-loading-retry').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(true)
+})
+
+
+test('advancing prepares the next stage before releasing the result screen', async ({ page, browser }) => {
+  const { GameEngine } = await import('../examples/games/tower_diffence_with_jev/src/game/GameEngine')
+  const { freshSave } = await import('../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem')
+  const { saveCampaignCheckpoint } = await import('../examples/games/tower_diffence_with_jev/src/progression/CampaignStorage')
+  const { validateCampaignCheckpoint } = await import('../examples/games/tower_diffence_with_jev/src/game/CampaignCheckpoint')
+  const save = freshSave()
+  const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
+  expect(engine.place('soldier', getField('meadow', 2, 4).slots[0])).toBe(true)
+  expect(engine.startAssault()).toBe(true)
+  for (let i = 0; i < 12000 && engine.state.phase === 'assault'; i++) {
+    if (i % 180 === 0) engine.applyAIAction({ type: 'spawn', unitType: 'slime', routeId: 'left' })
+    engine.update(1 / 60)
+  }
+  expect(engine.state.phase).toBe('cleared')
+  let stored = ''
+  expect(saveCampaignCheckpoint(save, engine.exportCheckpoint(), validateCampaignCheckpoint, {
+    setItem: (_key, value) => { stored = value }
+  })).toBe(true)
+  const models: string[] = []
+  page.on('request', (request) => { if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(request.url())) models.push(request.url()) })
+  await page.goto(towerPath)
+  await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), stored)
+  await page.reload()
+  await page.locator('#title-continue').click()
+  await expect(page.locator('#result')).toBeVisible({ timeout: 180_000 })
+  for (const type of ENEMY_TYPES) {
+    expect(models.some((url) => url.includes(`/models/${type}/`)), `stage 1 ${type}`)
+      .toBe(stageRules(1).enemyTypes.includes(type) || stageRules(1).bossType === type)
+  }
+  await page.locator('#next').click()
+  await expect(page.locator('#result')).toBeHidden({ timeout: 180_000 })
+  for (const type of ENEMY_TYPES) {
+    expect(models.some((url) => url.includes(`/models/${type}/`)), `stage 2 ${type}`)
+      .toBe(stageRules(2).enemyTypes.includes(type) || stageRules(2).bossType === type)
+  }
+  const stageTwoSave = await page.evaluate(() => localStorage.getItem('tower-jev-v3'))
+  expect(stageTwoSave).toBeTruthy()
+  const other = await browser.newContext()
+  try {
+    const second = await other.newPage()
+    const secondModels: string[] = []
+    second.on('request', (request) => { if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(request.url())) secondModels.push(request.url()) })
+    await second.goto(towerPath)
+    await expect(second.locator('#title-continue')).toBeDisabled()
+    await second.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw!), stageTwoSave)
+    await second.reload()
+    await second.locator('#title-continue').click()
+    await expect(second.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+    await expect(second.locator('#title-screen')).toBeHidden()
+    for (const type of ENEMY_TYPES) {
+      expect(secondModels.some((url) => url.includes(`/models/${type}/`)), `new profile stage 2 ${type}`)
+        .toBe(stageRules(2).enemyTypes.includes(type) || stageRules(2).bossType === type)
+    }
+  } finally { await other.close() }
+})
+
+test('stage three Continue prepares its early boss and every eligible random enemy', async ({ page }) => {
+  const { GameEngine } = await import('../examples/games/tower_diffence_with_jev/src/game/GameEngine')
+  const { freshSave } = await import('../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem')
+  const { saveCampaignCheckpoint } = await import('../examples/games/tower_diffence_with_jev/src/progression/CampaignStorage')
+  const { validateCampaignCheckpoint } = await import('../examples/games/tower_diffence_with_jev/src/game/CampaignCheckpoint')
+  const save = freshSave()
+  const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
+  expect(engine.place('soldier', getField('meadow', 2, 4).slots[0])).toBe(true)
+  for (let stage = 1; stage <= 2; stage++) {
+    if (stage === 2) expect(engine.place('archer', getField('meadow', 2, 4).slots[1])).toBe(true)
+    expect(engine.startAssault()).toBe(true)
+    for (let i = 0; i < 18000 && engine.state.phase === 'assault'; i++) {
+      if (i % 180 === 0) engine.applyAIAction({ type: 'spawn', unitType: 'slime', routeId: 'left' })
+      engine.update(1 / 60)
+    }
+    expect(engine.state.phase).toBe('cleared')
+    expect(engine.nextStage()).toBe(true)
+  }
+  let stored = ''
+  expect(saveCampaignCheckpoint(save, engine.exportCheckpoint(), validateCampaignCheckpoint, {
+    setItem: (_key, value) => { stored = value }
+  })).toBe(true)
+  const models: string[] = []
+  page.on('request', (request) => { if (/\.glb(?:\.[a-f0-9]{64}\.gz\.bin)?$/.test(request.url())) models.push(request.url()) })
+  await page.goto(towerPath)
+  await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), stored)
+  await page.reload()
+  await page.locator('#title-continue').click()
+  await expect(page.locator('#title-screen')).toBeHidden({ timeout: 180_000 })
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+  const wave = stageRules(3)
+  expect(wave.bossType).toBe('ogre')
+  expect(wave.enemyTypes).not.toContain('ogre')
+  for (const type of ENEMY_TYPES) {
+    expect(models.some((url) => url.includes(`/models/${type}/`)), `stage 3 ${type}`)
+      .toBe(wave.enemyTypes.includes(type) || wave.bossType === type)
+  }
 })

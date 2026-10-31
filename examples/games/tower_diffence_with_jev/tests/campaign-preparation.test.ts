@@ -1,8 +1,11 @@
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { loadGLTF } from '../src/rendering/ModelAssetCache'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { GameRenderer } from '../src/rendering/GameRenderer'
+import { GameRenderer, campaignRequiredTypes } from '../src/rendering/GameRenderer'
+import { ALLY_TYPES, ENEMY_TYPES, stageRules } from '../src/game/model'
 import { preparationPause, preparationWait, preparationGpu } from '../src/rendering/CampaignPreparation'
+
+const stage = { stage: 1, waveBossPolicy: 2 as const, units: [], pendingSpawns: [] }
 
 function gpu() {
   return { isContextLost: () => false, fenceSync: vi.fn(() => ({})), flush: vi.fn(),
@@ -29,7 +32,7 @@ describe('campaign loading completion', () => {
       specialAbilities: { preload: vi.fn(async () => {}), prepare: vi.fn(() => effect) }
     })
     const progress = vi.fn()
-    const pending = subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, progress)
+    const pending = subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, progress)
     await Promise.resolve()
     await Promise.resolve()
     await Promise.resolve()
@@ -39,7 +42,7 @@ describe('campaign loading completion', () => {
     await pending
     expect(subject.campaignPrepared).toBe(true)
     expect(progress).toHaveBeenLastCalledWith(1, 1)
-    await subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, progress)
+    await subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, progress)
     expect(subject.specialAbilities.prepare).toHaveBeenCalledTimes(1)
   })
   it('does not count a failed asset as complete and permits retry', async () => {
@@ -58,11 +61,11 @@ describe('campaign loading completion', () => {
     })
     const progress = vi.fn()
     await expect(
-      subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, progress)
+      subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, progress)
     ).rejects.toThrow('missing')
     expect(subject.campaignPrepared).toBe(false)
     expect(progress).toHaveBeenLastCalledWith(0, 1)
-    await subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, progress)
+    await subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, progress)
     expect(subject.campaignPrepared).toBe(true)
   })
   it('cancels waits and yields, with a finite timeout for a stuck operation', async () => {
@@ -104,7 +107,7 @@ it('does not clear a failed cached shader and falsely report a successful retry'
     specialAbilities: { preload: async () => {}, prepare: async () => {} }
   })
   for (let attempt = 0; attempt < 2; attempt++) {
-    await expect(subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, () => {})).rejects.toThrow('driver rejected shader')
+    await expect(subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, () => {})).rejects.toThrow('driver rejected shader')
     expect(subject.campaignPrepared).toBe(false)
   }
 })
@@ -131,7 +134,37 @@ it('does not accept a consumed GPU upload error on Retry without a restored cont
     specialAbilities: { preload: async () => {}, prepare: async () => {} }
   })
   for (let attempt = 0; attempt < 2; attempt++) {
-    await expect(subject.prepareCampaign(new URL('https://example.test/'), new AbortController().signal, () => {})).rejects.toThrow('GPU')
+    await expect(subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, () => {})).rejects.toThrow('GPU')
+    expect(subject.campaignPrepared).toBe(false)
+  }
+})
+
+
+it('prepares exactly the allies and legal stage enemies, including bosses and restored deployments', () => {
+  for (const waveBossPolicy of [1, 2] as const) {
+    for (let level = 1; level <= 10; level++) {
+      const wave = stageRules(level, waveBossPolicy)
+      const actual = campaignRequiredTypes({ ...stage, stage: level, waveBossPolicy })
+      expect(actual).toEqual(new Set([...ALLY_TYPES, ...wave.enemyTypes, ...(wave.bossType ? [wave.bossType] : [])]))
+      for (const type of ENEMY_TYPES.filter((type) => !wave.enemyTypes.includes(type) && type !== wave.bossType))
+        expect(actual.has(type)).toBe(false)
+    }
+  }
+  const restored = campaignRequiredTypes({ ...stage, units: [{ type: 'dragon' }] as never, pendingSpawns: [{ unitType: 'ogre' }] as never })
+  expect(restored.has('dragon')).toBe(true)
+  expect(restored.has('ogre')).toBe(true)
+})
+
+it('does not reuse a previously ready stage after a later stage preparation fails', async () => {
+  const subject = Object.assign(Object.create(GameRenderer.prototype), {
+    assetErrors: { 'model:shader': 'driver rejected shader' }, campaignPrepared: true,
+    campaignPreparing: false, campaignContext: 0, campaignJobs: new Set(), preparedDefenders: new Set(),
+    effectClips: {}, models: { roster: { slime: { clips: { idle: { url: 'slime.glb' } } } }, cache: { retryFailed() {} }, errors: {} },
+    renderer: { getContext: () => gpu() },
+    specialAbilities: { preload: async () => {}, prepare: async () => {} }
+  })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(subject.prepareCampaign(new URL('https://example.test/'), stage, new AbortController().signal, () => {})).rejects.toThrow('driver rejected shader')
     expect(subject.campaignPrepared).toBe(false)
   }
 })

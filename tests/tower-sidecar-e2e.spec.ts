@@ -32,7 +32,7 @@ test('without DecompressionStream models use the original URLs directly', async 
   await page.locator('#start').click()
   await expect(page.locator('#launch')).toBeHidden({ timeout: 180_000 })
   expect(compressed).toHaveLength(0)
-  expect(originals).toHaveLength(33)
+  expect(originals).toHaveLength(23)
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(true)
 })
 

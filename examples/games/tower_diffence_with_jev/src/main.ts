@@ -1412,6 +1412,7 @@ function updateStart() {
 const campaignLoading = $<HTMLDialogElement>('campaign-loading')
 let campaignPreparation: AbortController | undefined
 let campaignAction: (() => void) | undefined
+let campaignState: Pick<typeof engine.state, 'stage' | 'waveBossPolicy' | 'units' | 'pendingSpawns'> | undefined
 function cancelCampaignPreparation() {
   campaignPreparation?.abort()
   campaignPreparation = undefined
@@ -1422,18 +1423,18 @@ function cancelCampaignPreparation() {
 }
 $('campaign-loading-cancel').onclick = cancelCampaignPreparation
 campaignLoading.addEventListener('cancel', (event) => { event.preventDefault(); cancelCampaignPreparation() })
-$('campaign-loading-retry').onclick = () => { if (campaignAction) void prepareCampaign(campaignAction) }
-async function prepareCampaign(action: () => void) {
+$('campaign-loading-retry').onclick = () => { if (campaignAction && campaignState) void prepareCampaign(campaignAction, campaignState) }
+async function prepareCampaign(action: () => void, state: NonNullable<typeof campaignState> = engine.state) {
   if (campaignPreparation) return
-  if (renderer.campaignPrepared) { action(); return }
   const request = new AbortController()
   campaignPreparation = request
   campaignAction = action
+  campaignState = state
   $('campaign-loading-retry').hidden = true
   if (!campaignLoading.open) campaignLoading.showModal()
   $('campaign-loading-cancel').focus({ preventScroll: true })
   try {
-    await renderer.prepareCampaign(artBase, request.signal, (done, total) => {
+    await renderer.prepareCampaign(artBase, state, request.signal, (done, total) => {
       const bar = $<HTMLProgressElement>('campaign-loading-progress')
       bar.max = total
       bar.value = done
@@ -1465,9 +1466,9 @@ renderer.onContextRestored = () => {
     document.querySelector('.game-layout')!.removeAttribute('inert')
     if (engine.state.phase === 'assault') battleClock?.start()
   })
-  else if (campaignAction) void prepareCampaign(campaignAction)
+  else if (campaignAction && campaignState) void prepareCampaign(campaignAction, campaignState)
 }
-function startFreshCampaign() { void prepareCampaign(commitFreshCampaign) }
+function startFreshCampaign() { void prepareCampaign(commitFreshCampaign, { ...engine.state, stage: 1, waveBossPolicy: 2, units: [], pendingSpawns: [] }) }
 function commitFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
   const layoutRevision: LayoutRevision = 4
@@ -1507,7 +1508,7 @@ $('start').onclick = () => {
     saveConfirm.open($('start'))
   } else startFreshCampaign()
 }
-$('resume-run').onclick = () => { void prepareCampaign(resumeRun) }
+$('resume-run').onclick = () => { if (pendingRun) void prepareCampaign(resumeRun, pendingRun.engine.state) }
 function resumeRun() {
   if (!pendingRun) return
   if (!preserveCampaignBeforeRuleResume()) {
@@ -2164,6 +2165,9 @@ $('assault').onclick = () => {
   }
 }
 $('next').onclick = () => {
+  void prepareCampaign(commitNextStage, { ...engine.state, stage: engine.state.stage + 1, waveBossPolicy: 2, units: [], pendingSpawns: [] })
+}
+function commitNextStage() {
   battleClock?.stop()
   connection?.cancelPending()
   if (engine.nextStage()) {
