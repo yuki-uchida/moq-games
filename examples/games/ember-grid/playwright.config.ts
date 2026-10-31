@@ -3,17 +3,17 @@ export default defineConfig({
   testDir: './tests',
   testMatch: '*.spec.ts',
   workers: 1,
-  timeout: 60000,
+  timeout: 120000,
   use: {
-    baseURL: 'http://127.0.0.1:5186/moq-games/examples/games/ember-grid/',
+    baseURL: 'http://127.0.0.1:5187/moq-games/examples/games/ember-grid/',
     headless: true,
     hasTouch: true,
     channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome'
   },
   webServer: {
-    command: 'npx vite --host 127.0.0.1 --port 5186',
+    command: 'npx vite --host 127.0.0.1 --port 5187',
     cwd: process.cwd(),
-    url: 'http://127.0.0.1:5186/moq-games/',
+    url: 'http://127.0.0.1:5187/moq-games/',
     reuseExistingServer: true
   }
 })

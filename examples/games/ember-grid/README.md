@@ -18,9 +18,9 @@ Defeat all enemies to win; lose all allies to lose. There is no turn limit. Repl
 
 ## Assets and sound
 
-Unmodified first complete 128×112 cells of the already distributed Leaf Squire, Forest Archer, Star Mage, Mischief Goblin and Dusk Wolf textures are referenced directly from `public/tower-defense-art/`. These are static portraits, not altered animation. No original is overwritten or copied into a new public asset scope. See the repository [asset rights and provenance](../../../ASSETS.md) and [license](../../../LICENSE). Local-only originals and candidates remain untouched.
+Unmodified first complete 128×112 cells of the already distributed Leaf Squire, Forest Archer, Star Mage, Mischief Goblin and Dusk Wolf textures are referenced directly from `public/tower-defense-art/`. Resting portraits retain these complete cells. Movement and combat reuse the existing eight-direction idle/walk/attack JSON manifests and textures without changing asset bytes. The presentation follows manifest frame durations and hit/release events; logical combat rules remain synchronous and unchanged. Walks follow four-neighbour legal paths (220 ms per tile), attacks keep their recorded timing, and arrows/spells travel for 240 ms after release before the target reacts. Whole-cell recoil, rising HP-loss numbers and a 550 ms death fade preserve anatomy. Reduced-motion mode shortens presentation and reactions. Restart/mission selection cancels an in-flight presentation; temporary overlays never intercept input. No original is overwritten or copied into a new public asset scope. See the repository [asset rights and provenance](../../../ASSETS.md) and [license](../../../LICENSE). Local-only originals and candidates remain untouched.
 
-Sound is off until the player explicitly enables ♫. The existing owner-approved `tower-defense-music/monster-assault.mp3` loops at 14% volume. Existing `tower-defense-sfx/{soldier,archer,mage,goblin,wolf}_attack.wav` recordings accompany combat; `healer_attack.wav` provides quiet movement/recovery feedback. Voices are bounded to four. Music stops at victory/defeat, pauses while hidden, and resumes only during an active battle. Muting stops all voices. No generation, transcoding or new sound publication occurs. See [music provenance](../../../public/tower-defense-music/README.md) and [WAV provenance](../../../public/tower-defense-sfx/README.md). Subjective listening quality is separate from browser playback/decoding checks.
+Sound is off until the player explicitly enables ♫. The existing owner-approved `tower-defense-music/monster-assault.mp3` loops at 14% volume. Existing `tower-defense-sfx/{soldier,archer,mage,goblin,wolf}_attack.wav` recordings accompany combat at the existing hit/release event; `healer_attack.wav` provides quiet movement/recovery feedback. Voices are bounded to four. Music stops at victory/defeat, stops all voices while hidden, and resumes only during an active battle. Muting stops all voices. No generation, transcoding or new sound publication occurs. See [music provenance](../../../public/tower-defense-music/README.md) and [WAV provenance](../../../public/tower-defense-sfx/README.md). Subjective listening quality is separate from browser playback/decoding checks.
 
 ## Verification
 
@@ -31,9 +31,11 @@ npm run typecheck
 npx tsc --noEmit -p examples/games/ember-grid/tsconfig.json
 npm run lint
 npx prettier --check examples/games/ember-grid
-npx vitest run examples/games/ember-grid/tests/game.test.ts --maxWorkers=1
+npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1
 npm run build
 npx playwright test --config examples/games/ember-grid/playwright.config.ts
 ```
 
-Playwright starts only its own Vite server on 127.0.0.1:5186 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission. Screenshots are written to ignored `test-results/ember-*.png`.
+Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission. Additional presentation tests record native-size desktop/mobile video and verify arrow flight before impact, mute, autoplay rejection/retry, silent reload and browser decoding/nonzero waveforms for every reused sound. Visibility-handler tests synthesize the visibility event; they do not prove OS background lifecycle behavior. Browser audio tests do not establish subjective listening quality.
+
+Screenshots are written to ignored `test-results/ember-*.png`.

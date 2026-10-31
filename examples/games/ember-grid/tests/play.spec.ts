@@ -30,7 +30,7 @@ for (const viewport of [
       if (await page.locator('#result').isVisible()) break
       await page.getByRole('button', { name: '▶ ターン終了' }).click()
       await expect(page.getByRole('button', { name: '▶ ターン終了' }))
-        .toBeEnabled({ timeout: 5000 })
+        .toBeEnabled({ timeout: 15000 })
         .catch(async () => {
           await expect(page.locator('#result')).toBeVisible()
         })
@@ -99,7 +99,7 @@ for (const stage of [0, 1, 2])
           beginEnemy(g)
           g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
           beginAlly(g)
-          await expect(page.locator('#turn')).toContainText(`味方 · ${g.turn}`)
+          await expect(page.locator('#turn')).toContainText(`味方 · ${g.turn}`, { timeout: 15000 })
         }
       }
       expect(g.phase).toBe('won')

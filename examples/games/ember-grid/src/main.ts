@@ -16,6 +16,8 @@ import {
 } from './game'
 import './style.css'
 import { ExpeditionAudio } from './audio'
+import { BattleAnimation, snapshot } from './animation'
+let busy = false
 let game = createGame(),
   selected: string | undefined,
   generation = 0
@@ -26,6 +28,7 @@ const audio = new ExpeditionAudio((message) => {
   document.querySelector('#log')!.textContent = message
 })
 const board = document.querySelector<HTMLDivElement>('#board')!
+const animation = new BattleAnimation(board, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 for (let y = 0; y < size; y++)
   for (let x = 0; x < size; x++) {
@@ -35,6 +38,11 @@ for (let y = 0; y < size; y++)
     board.append(cell)
     cells.push(cell)
   }
+function lockPresentation() {
+  busy = true
+  cells.forEach((cell) => (cell.disabled = true))
+  document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
+}
 const art: Record<string, [string, string]> = {
   soldier: ['soldier', 'leaf-squire-idle-s'],
   archer: ['archer', 'forest-archer-s'],
@@ -51,6 +59,7 @@ function render() {
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map()
   cells.forEach((cell, i) => {
+    cell.disabled = busy
     const x = i % size,
       y = Math.floor(i / size),
       k = key(x, y),
@@ -92,7 +101,8 @@ function render() {
   next.textContent = game.stage === 2 ? '最初から遠征 ↻' : '次の任務 ▶'
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
 }
-function choose(x: number, y: number) {
+async function choose(x: number, y: number) {
+  if (busy) return
   if (game.phase !== 'ally') return
   const target = game.units.find((u) => u.hp > 0 && u.x === x && u.y === y),
     unit = game.units.find((u) => u.id === selected)
@@ -105,25 +115,38 @@ function choose(x: number, y: number) {
           ? '魔法：装甲を無視 · 射程 2'
           : '剣：ゴブリンに +1 · 射程 1'
   } else if (unit) {
+    const before = snapshot(game)
+    let changed = false
     if (target) {
-      if (attack(game, unit, target)) audio.cue(unit.role)
+      if (attack(game, unit, target)) changed = true
       else game.log = `${target.name} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
-    } else if (move(game, unit, x, y)) audio.cue('healer')
+    } else if (move(game, unit, x, y)) changed = true
     else game.log = 'そのマスには移動できません'
+    if (changed) {
+      const token = generation
+      lockPresentation()
+      await animation.present(game, before, unit)
+      if (token !== generation) return
+      busy = false
+    }
   } else if (target)
     game.log = `${target.name} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
   render()
 }
 async function end() {
-  if (!beginEnemy(game)) return
+  if (busy || !beginEnemy(game)) return
   selected = undefined
   const token = generation
   render()
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
     await new Promise((r) => setTimeout(r, 450))
     if (token !== generation) return
+    const before = snapshot(game)
     enemyStep(game, u)
-    if (game.log.includes('→')) audio.cue(u.role)
+    lockPresentation()
+    await animation.present(game, before, u)
+    if (token !== generation) return
+    busy = false
     render()
     if (game.phase !== 'enemy') return
   }
@@ -133,7 +156,7 @@ async function end() {
 document.querySelector('#end')!.addEventListener('click', () => void end())
 document.querySelector('#wait')!.addEventListener('click', () => {
   const u = game.units.find((u) => u.id === selected)
-  if (u && game.phase === 'ally') {
+  if (!busy && u && game.phase === 'ally') {
     u.done = true
     game.log = `${u.name} 待機`
     selected = undefined
@@ -142,6 +165,8 @@ document.querySelector('#wait')!.addEventListener('click', () => {
 })
 document.querySelector('#restart')!.addEventListener('click', () => {
   generation++
+  animation.cancel()
+  busy = false
   game = createGame(game.stage, game.formation)
   audio.start()
   selected = undefined
@@ -149,7 +174,7 @@ document.querySelector('#restart')!.addEventListener('click', () => {
 })
 document.querySelector('#recover')!.addEventListener('click', () => {
   const u = game.units.find((u) => u.id === selected)
-  if (u && recover(game, u)) {
+  if (!busy && u && recover(game, u)) {
     audio.cue('healer')
     render()
   }
@@ -163,6 +188,8 @@ document.querySelector('#sound')!.addEventListener('click', () => {
 })
 function startMission(stage: number) {
   generation++
+  animation.cancel()
+  busy = false
   selected = undefined
   const formation = document.querySelector<HTMLInputElement>('input[name="formation"]:checked')!.value as
     | 'balanced'

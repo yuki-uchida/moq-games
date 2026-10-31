@@ -11,7 +11,7 @@ export class ExpeditionAudio {
     this.music.dataset.emberMusic = 'true'
     document.body.append(this.music)
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.music.pause()
+      if (document.hidden) this.stop()
       else if (this.enabled) this.start()
     })
     window.addEventListener('pagehide', () => this.stop())
@@ -26,7 +26,7 @@ export class ExpeditionAudio {
     if (this.battle === active) return
     this.battle = active
     if (active) this.start()
-    else this.music.pause()
+    else this.stop()
   }
   start() {
     if (this.enabled && this.battle && !document.hidden)
@@ -36,17 +36,25 @@ export class ExpeditionAudio {
   }
   stop() {
     this.music.pause()
-    this.voices.forEach((v) => v.pause())
+    this.voices.forEach((v) => {
+      v.pause()
+      v.remove()
+    })
     this.voices = []
   }
   cue(role = 'healer') {
     if (!this.enabled || document.hidden) return
     this.voices = this.voices.filter((v) => !v.ended && !v.paused)
     if (this.voices.length >= 4) {
-      this.voices.shift()!.pause()
+      const oldest = this.voices.shift()!
+      oldest.pause()
+      oldest.remove()
     }
     const file = ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer'].includes(role) ? role : 'soldier'
     const voice = new Audio(`${import.meta.env.BASE_URL}tower-defense-sfx/${file}_attack.wav`)
+    voice.dataset.emberVoice = 'true'
+    document.body.append(voice)
+    voice.addEventListener('ended', () => voice.remove(), { once: true })
     voice.volume = role === 'healer' ? 0.15 : 0.32
     this.voices.push(voice)
     void voice.play().catch(() => this.report('効果音を読み込めませんでした'))
