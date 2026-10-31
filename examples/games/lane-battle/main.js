@@ -1,5 +1,6 @@
 import { animationFrame, spriteRect, walkPose } from './animation.js'
 import { BattleAudio } from './audio.js'
+import { BattleClock } from './clock.js'
 import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst, step } from './simulation.js'
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
@@ -19,20 +20,25 @@ async function load(t, motion, dir) {
 }
 let state = createGame(),
   paused = true,
-  last = 0,
   shown = false
+const clock = new BattleClock()
 const audio = new BattleAudio()
 let muted = false
 const heard = new WeakSet()
 const heardImpacts = new WeakSet()
 const fallen = []
+let reconciling = false
+let catchupScheduled = false
 function tone(kind) {
-  audio.effect(kind)
+  if (!document.hidden && !reconciling) audio.effect(kind)
 }
 function syncAudio() {
   audio.setRunning(!paused && !document.hidden)
 }
-document.addEventListener('visibilitychange', syncAudio)
+document.addEventListener('visibilitychange', () => {
+  tick(performance.now())
+  syncAudio()
+})
 document.addEventListener('pointerdown', () => audio.unlock(), { once: true })
 document.addEventListener('keydown', () => audio.unlock(), { once: true })
 $('sound').onclick = () => {
@@ -45,10 +51,10 @@ $('sound').onclick = () => {
   if (!muted) tone('summon')
 }
 function deploy(i) {
-  if (!paused && summon(state, i)) tone('summon')
+  if (!paused && !clock.pending && summon(state, i)) tone('summon')
 }
 function invest() {
-  if (!paused && upgrade(state)) tone('upgrade')
+  if (!paused && !clock.pending && upgrade(state)) tone('upgrade')
 }
 function start(stage) {
   state = createGame(stage)
@@ -57,6 +63,7 @@ function start(stage) {
   audio.beat = 0
   document.querySelector('dialog').close()
   paused = false
+  clock.reset(performance.now())
   tone('summon')
 }
 let records = {}
@@ -95,6 +102,7 @@ const buttons = TYPES.map((t, i) => {
 })
 function modal(title, message, ending = false) {
   paused = true
+  clock.reset(performance.now())
   syncAudio()
   $('title').textContent = title
   $('message').textContent = message
@@ -110,17 +118,22 @@ function modal(title, message, ending = false) {
 $('close').onclick = () => {
   document.querySelector('dialog').close()
   paused = false
+  clock.reset(performance.now())
 }
 $('restart').onclick = () => {
   start(state.stage)
 }
 $('help').onclick = () =>
+  !clock.pending &&
   modal(
     '森の砦を守ろう',
     '兵のアイコンを押すと左の砦から出撃します。衛兵で受け止め、射手で援護、狼で突破。✦は自動で増加し、生産強化で増加速度が上がります。砦の衝撃は戦場の左半分を守ります。右の水晶砦を壊せば勝利。キー1〜3で召喚、Uで強化、Spaceで一時停止。'
   )
 $('pause').onclick = () => {
+  tick(performance.now())
+  if (document.querySelector('dialog').open || clock.pending) return
   paused = !paused
+  clock.reset(performance.now())
   syncAudio()
   $('pause').textContent = paused ? '▶' : 'Ⅱ'
 }
@@ -128,10 +141,10 @@ $('upgrade').onclick = () => {
   invest()
 }
 $('burst').onclick = () => {
-  if (!paused && burst(state)) tone('burst')
+  if (!paused && !clock.pending && burst(state)) tone('burst')
 }
 window.addEventListener('keydown', (e) => {
-  if (document.querySelector('dialog').open) return
+  if (document.querySelector('dialog').open || clock.pending) return
   if (e.code === 'Space') {
     e.preventDefault()
     $('pause').click()
@@ -329,12 +342,16 @@ function draw() {
   $('burst').querySelector('b').textContent = state.burst > 0 ? `${Math.ceil(state.burst)} 秒` : '準備完了'
   $('pause').textContent = paused ? '▶' : 'Ⅱ'
 }
-function frame(now) {
-  const dt = Math.min((now - last) / 1000, 0.05)
-  last = now
+function tick(now) {
+  reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
+  const previous = state.units.map((u) => ({ ...u }))
+  const elapsed = clock.advance(
+    now,
+    !paused && !state.result,
+    (dt) => step(state, dt),
+    () => !!state.result
+  )
   if (!paused) {
-    const previous = state.units.map((u) => ({ ...u }))
-    step(state, dt)
     for (const u of previous) if (!state.units.some((v) => v.id === u.id)) fallen.push({ ...u, at: state.time })
     while (fallen.length && state.time - fallen[0].at > 0.42) fallen.shift()
     let impact = false,
@@ -366,7 +383,7 @@ function frame(now) {
   }
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
-  draw()
+  if (!document.hidden) draw()
   if (state.result && !shown) {
     shown = true
     if (state.result === 'victory') {
@@ -383,8 +400,26 @@ function frame(now) {
     )
     tone(state.result)
   }
+  reconciling = false
+  if (elapsed.pending && !state.result) {
+    $('notice').textContent = '中断中の戦況を計算しています…'
+    if (!catchupScheduled) {
+      catchupScheduled = true
+      setTimeout(() => {
+        catchupScheduled = false
+        tick(performance.now())
+      }, 0)
+    }
+  }
+}
+function frame(now) {
+  tick(now)
   requestAnimationFrame(frame)
 }
+// Browsers may throttle or suspend this timer; the same clock reconciles on return.
+setInterval(() => {
+  if (document.hidden) tick(performance.now())
+}, 250)
 Promise.all(TYPES.flatMap((t) => ['walk', 'attack', 'idle'].flatMap((m) => ['e', 'w'].map((d) => load(t, m, d)))))
   .then(() => {
     buttons.forEach((b, i) => sprite(b.querySelector('canvas').getContext('2d'), TYPES[i], 'idle', 1, 0, 64, 106, 150))

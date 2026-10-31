@@ -15,6 +15,7 @@ npx vite --config examples/games/lane-battle/vite.config.mjs
 # http://127.0.0.1:5193/examples/games/lane-battle/
 node --test examples/games/lane-battle/*.test.mjs
 node examples/games/lane-battle/browser-check.mjs
+LANE_URL=http://127.0.0.1:5193/examples/games/lane-battle/ node examples/games/lane-battle/background-check.mjs
 node examples/games/lane-battle/campaign-check.mjs
 node examples/games/lane-battle/failure-check.mjs
 node examples/games/lane-battle/playthrough.mjs
@@ -39,7 +40,7 @@ The root landing page links to this example, and `npm run build` includes its en
 
 Root typecheck, lint, 560 tower tests, and build pass in the isolated working copy. Fourteen lane tests include the six simulation tests plus audio lifecycle, attack-contact timing, per-frame original alpha-foot grounding and four projectile timing/lifecycle checks. The six simulation tests cover atomic summon costs/cooldowns, production investment, unattended defeat, three-stage victories and 300 repeated input attempts. Desktop 1280×800, portrait 390×844 and landscape 844×390 are checked for no overflow, summon, pause, help and browser errors. `campaign-check.mjs` plays all stages through real buttons, verifies next-stage navigation, records and the mute gate by observing oscillator creation. `audio-browser-check.mjs` additionally verifies no pre-gesture oscillators, continuing BGM, cancellation on pause, resume, mute and unmute in real Chrome. Audio event generation and envelopes are checked; subjective listening is not claimed.
 
-Visual review corrected nonuniform sprite scaling and enlarged card imagery. Original walk directions, ranged stance, melee contact, full-body frames and wolf arrival were inspected across five combat captures at 18/21/24/27/30 seconds in the initial scenario. Existing sheets remain unchanged. Follow-up checks also cover natural defeat/retry, insufficient funds and cooldown spam, exact frozen income/timer/field image during pause, resume, and restored summon controls after help.
+Visual review corrected nonuniform sprite scaling and enlarged card imagery. Original walk directions, ranged stance, melee contact, full-body frames and wolf arrival were inspected across five combat captures at 18/21/24/27/bounded batches in the initial scenario. Existing sheets remain unchanged. Follow-up checks also cover natural defeat/retry, insufficient funds and cooldown spam, exact frozen income/timer/field image during pause, resume, and restored summon controls after help.
 
 Animation follow-up browser victories on the unchanged baseline balance (stage 1 / 2 / 3): PC 58 / 92 / 67 seconds; portrait 58 / 92 / 83; landscape 58 / 91 / 66. All three viewports passed next-stage, final return, records, mute and error checks. Natural unattended defeat occurred at 59 seconds, followed by clean replay and a successful summon.
 
@@ -48,3 +49,9 @@ The animation follow-up recorded five 4-second, 10fps actual rendered playbacks 
 The synchronization follow-up re-recorded and played all five combat clips. A separate deterministic, real-renderer fixture captures 60fps arrow flight and verifies death/arrival/impact-sound timestamps on PC and both mobile orientations: release 0.016s, death and impact sound both 0.144s (the first frame after 120ms). Pending arrows freeze during pause and resolve after resume. `projectile-browser-check.mjs` reproduces these fixtures without changing runtime stage settings.
 
 `audio-capture-check.mjs` records the actual Chrome Web Audio graph sent to the speakers into local WebM/WAV files, without microphone or OS loopback. A zero-valued capture-only source keeps the recorder clock advancing during silence. Recorded BGM RMS/peak: 0.00427/0.02176; effect mix: 0.00669/0.06080; muted: 0/0. All clips have zero samples at or beyond full scale. This verifies generated audio and headroom, not physical speaker output or subjective listening. `LANE_AUDIO_DIR` and `FFMPEG_BIN` override recording defaults.
+
+## Background progression
+
+An active battle continues through a shared monotonic clock, using a 250ms background timer when the browser permits it. On return, missed time is simulated in steps of at most 50ms, preserving combat rules, the 999 resource limit and terminal results. Each callback processes at most 30 seconds of simulation and schedules another batch until it catches up or the battle ends; battle inputs are blocked while reconciliation is pending. Explicit pause, help and results never accrue simulation debt, and starting/replaying a stage resets the clock. Hidden and reconciled combat produces no catch-up sounds.
+
+Browsers and operating systems can throttle, freeze or discard background pages. Immediate background execution is therefore best effort; discarded pages cannot restore an unsaved battle. Long foreground stalls are reconciled in the same bounded batches. Separate tabs keep independent games. The automated background check covers skipped callbacks, explicit pause and eventual result after a long suspension, plus a real Chrome page freeze/resume and a headless tab switch; headless Chrome may keep both tabs visible, so that switch alone does not prove OS background suspension.
