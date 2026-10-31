@@ -12,6 +12,8 @@ The catalog loads animated polygonal GLBs directly. It never selects sprites or 
 - Tank, Archer, Ranger, Cannon, and Runner motion variants retain their separate source rigs. Soldier retains its shared 16-joint source rig. Ranger/Cannon require their original fifth-influence custom attributes for walk and attack. Their attack scenes intentionally have no blink surface.
 - Healer exposes `heal`, never `attack`. Paladin's candidate is damage-only. Dragon retains `breath` as a separate clip. Only Slime currently supplies an authored `death` clip. Runner retains its current 640 ms source attack / 320 ms visual contact and an explicit 640/480 sampling ratio against the unchanged game combat clock.
 
+Allies without a GLB death clip use a renderer-owned, non-looping side-fall AnimationClip around their existing rig, then retain its final pose at full opacity. The rig and held weapon remain intact. Continue can reconstruct a dead ally from its idle rig; a witnessed death retains its current rig pose. Stage revival resets the fall, and reset/disposal releases the actor. Enemy death/fade behavior remains unchanged.
+
 ## Coordinates and clocks
 
 Source Blender XYZ anchors become glTF `[x,z,-y]`. Scale derives from the source orthographic horizontal span: 128 source-cell pixels divided by that span. This is a source-contract mapping, not a claim of final visual acceptance. Slime's scale is explicitly provisional. Facing uses inverse screen projection: yaw = atan2(screenX × sin(viewElevation), screenY), so native +Z projects along the game aim even diagonally. World movement and walk travel come from the existing game overrides; authoring frame rate never schedules combat.

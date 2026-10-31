@@ -241,5 +241,5 @@ export function getUnitModelDefinition(type: UnitType): UnitModelDefinition | un
 export const MODEL_AVAILABILITY = {
   runner: 'Current 640 ms authored animation exported; mapped to existing 480 ms combat clock without changing balance',
   visualAcceptance: 'Pending runtime review for every candidate; source inspection is not visual acceptance',
-  death: 'Only Slime supplies authored death. Other roles retain their last 3D pose during the game-owned fade.'
+  death: 'Only Slime supplies an authored GLB death clip. Allies without one use a rig-wide side fall and hold; other enemies retain the existing fade.'
 } as const

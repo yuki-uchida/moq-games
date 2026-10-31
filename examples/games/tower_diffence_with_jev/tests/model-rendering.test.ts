@@ -126,7 +126,67 @@ describe('real mesh asset ownership', () => {
     layer.render(engine.state)
     engine.state.time = 3.3
     layer.render(engine.state)
-    expect(layer.visible(engine.state.units[0].id)).toBe(false)
+    expect(layer.visible(engine.state.units[0].id)).toBe(true)
+    expect(layer.motion(engine.state.units[0].id)).toBe('death')
+    layer.dispose()
+  })
+
+  it('retains allied terminal poses, expires only enemies, and reuses one rig across repeated deaths', async () => {
+    const cache = new ModelAssetCache(async () => fixture(), Infinity)
+    const scene = new THREE.Scene(), spec = definition()
+    delete (spec.clips as any).death
+    const layer = new ModelUnitLayer(scene, { soldier: spec }, cache)
+    cache.request('/model.glb'); await settle()
+    const engine = new GameEngine({ decide: async () => null })
+    engine.place('soldier', 0)
+    const ally = engine.state.units[0]
+    engine.state.units.push({ ...ally, id: 2, owner: 'ai' })
+    layer.render(engine.state)
+    const root = scene.children[0], fall = root.children[0].children[0]
+    for (let cycle = 0; cycle < 10; cycle++) {
+      ally.hp = 0; engine.state.units.filter(u => u.owner === 'ai').forEach(u => u.hp = 0)
+      layer.render(engine.state)
+      engine.state.time += 0.4; layer.render(engine.state)
+      expect(fall.rotation.z).toBeLessThan(-0.4)
+      engine.state.time += 2; layer.render(engine.state)
+      expect(layer.visible(ally.id)).toBe(true)
+      expect(layer.visible(2)).toBe(false)
+      expect(fall.rotation.z).toBeCloseTo(-Math.PI / 2)
+      expect(layer.motion(ally.id)).toBe('death')
+      expect(scene.children).toEqual([root])
+      const materials: THREE.Material[] = []
+      root.traverse(o => { if (o instanceof THREE.Mesh) materials.push(o.material as THREE.Material) })
+      expect(materials.every(m => m.opacity === 1)).toBe(true)
+      ally.hp = ally.maxHp; layer.render(engine.state)
+      expect(fall.rotation.z).toBe(0)
+      expect(layer.motion(ally.id)).toBe('idle')
+      expect(scene.children).toEqual([root])
+    }
+    ally.hp = 0; layer.render(engine.state)
+    engine.state.time += 3; layer.render(engine.state)
+    const reset = { ...engine.state }; layer.render(reset)
+    expect(scene.children).toHaveLength(1)
+    expect(scene.children[0]).not.toBe(root)
+    reset.units = []; layer.render(reset)
+    expect(scene.children).toHaveLength(0)
+    layer.dispose()
+    expect(cache.diagnostics().entries).toEqual([])
+  })
+
+  it('restores an already-dead ally and clamps an authored death to its final pose', async () => {
+    const cache = new ModelAssetCache(async () => fixture(), Infinity)
+    const scene = new THREE.Scene(), layer = new ModelUnitLayer(scene, { soldier: definition() }, cache)
+    cache.request('/model.glb'); await settle()
+    const engine = new GameEngine({ decide: async () => null })
+    engine.place('soldier', 0)
+    const unit = engine.state.units[0]; unit.hp = 0
+    layer.render(engine.state)
+    engine.state.time = 20; layer.render(engine.state)
+    expect(layer.visible(unit.id)).toBe(true)
+    expect(layer.motion(unit.id)).toBe('death')
+    expect(layer.diagnostics().units[0].seconds).toBe(1)
+    engine.state.time = 30; layer.render(engine.state)
+    expect(layer.diagnostics().units[0].seconds).toBe(1)
     layer.dispose()
   })
 

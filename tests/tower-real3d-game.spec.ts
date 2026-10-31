@@ -284,9 +284,9 @@ test('prepares summonable models before a drag and draws a committed unit on the
   await page.screenshot({ path: test.info().outputPath('first-visible-placement.png') })
 })
 
-test('resumed assault prepares the first soldier death fade before its visible frame', async ({ page }) => {
+test('resumed assault retains the allied final death pose without fading or interaction', async ({ page }) => {
   // Keep the real clock-worker protocol, but release one 20ms pulse per rendered
-  // frame. A software GPU may otherwise catch up 2s and skip the entire .45s fade.
+  // frame. A software GPU must not skip the fall before we inspect its final pose.
   await page.route('**/assets/worker-*.js', async (route) => {
     const response = await route.fetch()
     const clock = `(() => {
@@ -371,7 +371,7 @@ test('resumed assault prepares the first soldier death fade before its visible f
   const save = freshSave()
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
   expect(engine.place('soldier', getField('meadow', 2, 4).slots[0])).toBe(true)
-  // Isolate the same cold held-pose fade with a small real assault checkpoint.
+  // Use a real low-health defender and an actual enemy hit after Continue.
   // The ten-actor profiling scenario stays separate from this public regression.
   engine.state.units[0].hp = 1
   expect(engine.startAssault()).toBe(true)
@@ -389,7 +389,7 @@ test('resumed assault prepares the first soldier death fade before its visible f
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   const deadline = Date.now() + 120000
-  let frames = 0
+  let frames = 0, diedAt: number | undefined
   while (Date.now() < deadline) {
     await page.evaluate(async (token) => {
       const worker = (window as any).__deathFadeClock as Worker | undefined
@@ -406,7 +406,10 @@ test('resumed assault prepares the first soldier death fade before its visible f
       // The tick is acknowledged after the unchanged BattleClock consumed it.
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     }, frames++)
-    if (await page.evaluate(() => (window as any).__deathFadeProbe.fades.length > 2)) break
+    const state = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
+    const ally = state.modelRendering.units.find((unit: any) => unit.type === 'soldier')
+    if (ally?.motion === 'death') diedAt ??= state.simulationTime
+    if (diedAt !== undefined && state.simulationTime - diedAt >= 2) break
   }
   const probe = await page.evaluate(() => (window as any).__deathFadeProbe)
   const diagnostic = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
@@ -414,19 +417,22 @@ test('resumed assault prepares the first soldier death fade before its visible f
     body: JSON.stringify({ probe, frames, diagnostic }, null, 2),
     contentType: 'application/json'
   })
-  expect(
-    probe.fades.length,
-    JSON.stringify({ frames, phase: diagnostic.phase, time: diagnostic.simulationTime, links: probe.links.length })
-  ).toBeGreaterThan(2)
-  await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
-  expect(probe.links.length).toBeGreaterThan(0)
-  // Completion is causal: links finish before the resumed clock starts, then the real fade draws.
+  const ally = diagnostic.modelRendering.units.find((unit: any) => unit.type === 'soldier')
+  expect(diedAt).toBeDefined()
+  expect(diagnostic.simulationTime - diedAt!).toBeGreaterThanOrEqual(2)
+  expect(ally).toMatchObject({ visible: true, motion: 'death', opacity: 1, seconds: 0.82 })
+  expect(probe.fades).toEqual([])
   expect(probe.prepared).toBe(true)
   expect(Math.max(...probe.links)).toBeLessThanOrEqual(probe.readyAt)
-  expect(probe.readyAt).toBeLessThan(probe.fades[0].time)
-  expect(probe.fades[0].opacity).toBeGreaterThan(0)
-  expect(probe.fades[0].opacity).toBeLessThan(1)
-  await page.screenshot({ path: test.info().outputPath('resumed-first-death-fade.png') })
+  await expect(page.locator('.defender-handle')).toBeHidden()
+  await page.screenshot({ path: test.info().outputPath('retained-allied-death-pose.png') })
+  await page.locator('#game-title-return').click()
+  await page.locator('#title-continue').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+  const restored = await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelRendering.units)
+  expect(restored.filter((unit: any) => unit.type === 'soldier')).toHaveLength(1)
+  expect(restored.find((unit: any) => unit.type === 'soldier')).toMatchObject({ visible: true, motion: 'death', opacity: 1 })
+
 })
 
 test('campaign preparation gates interaction, recovers missing assets, and cancels without saving', async ({ page }) => {

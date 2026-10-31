@@ -69,6 +69,9 @@ export class ModelUnitVisual {
   readonly root = new THREE.Group()
   private turn = new THREE.Group()
   private normalized = new THREE.Group()
+  private fall = new THREE.Group()
+  private fallMixer?: THREE.AnimationMixer
+  private fallAction?: THREE.AnimationAction
   private leases = new Map<string, MotionInstance>()
   private preparationFailures = new Set<string>()
   private fadePrepared = new WeakSet<ModelLease>()
@@ -112,7 +115,8 @@ export class ModelUnitVisual {
       1
     )
     this.root.add(this.turn)
-    this.turn.add(this.normalized)
+    this.turn.add(this.fall)
+    this.fall.add(this.normalized)
     this.normalized.scale.setScalar(definition.scale)
     this.normalized.position.fromArray(definition.origin).multiplyScalar(-definition.scale)
     this.root.visible = false
@@ -232,6 +236,7 @@ export class ModelUnitVisual {
   }
   sample(pose: ModelPose): boolean {
     if (this.disposed) return false
+    this.fallAction?.stop()
     const spec = this.definition.clips[pose.motion]
     if (!spec)
       throw new Error(`Missing required ${pose.motion} model; refusing a different animation or sprite fallback`)
@@ -270,6 +275,27 @@ export class ModelUnitVisual {
     this.lastPose = pose
     instance.firstPose ??= { ...pose }
     if (this.appearance.opacity < 1 && !instance.exactBounds) this.computeInitialBounds(instance)
+    return true
+  }
+  /** A rig-wide side fall preserves the exact held anatomy/weapon for roles without a death clip. */
+  sampleAllyDeath(seconds: number, facing: Pick<ModelPose, 'facingX' | 'facingY' | 'boss'>): boolean {
+    if (this.disposed) return false
+    if (!this.active && !this.sample({ ...facing, motion: 'idle', seconds: 0, loop: false })) return false
+    if (!this.fallMixer) {
+      this.fallMixer = new THREE.AnimationMixer(this.fall)
+      const clip = new THREE.AnimationClip('ally-side-fall', 0.82, [
+        new THREE.NumberKeyframeTrack('.rotation[z]',
+          [0, 0.12, 0.32, 0.62, 0.72, 0.82], [0, 0.06, -0.4, -Math.PI / 2, -1.5, -Math.PI / 2])
+      ])
+      this.fallAction = this.fallMixer.clipAction(clip).setLoop(THREE.LoopOnce, 1)
+      this.fallAction.clampWhenFinished = true
+    }
+    this.fallAction!.reset().play()
+    this.fallMixer.setTime(Math.max(0, Math.min(seconds, 0.82)))
+    this.lastMotion = 'death'
+    this.lastSample = Math.max(0, Math.min(seconds, 0.82))
+    this.root.visible = true
+    this.root.updateWorldMatrix(true, true)
     return true
   }
   /** Opaque draws can use the shared anchor; preserve the original first-pose
@@ -357,6 +383,7 @@ export class ModelUnitVisual {
       visible: this.root.visible,
       motion: this.lastMotion,
       seconds: this.lastSample,
+      opacity: this.appearance.opacity,
       meshes,
       triangles,
       rigs: this.leases.size
@@ -370,6 +397,8 @@ export class ModelUnitVisual {
       mixer.uncacheRoot(lease.scene)
       if (lease !== this.preparing?.lease) lease.release()
     }
+    this.fallMixer?.stopAllAction()
+    this.fallMixer?.uncacheRoot(this.fall)
     this.leases.clear()
     this.active = undefined
     this.root.visible = false

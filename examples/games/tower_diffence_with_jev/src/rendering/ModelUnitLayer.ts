@@ -141,8 +141,8 @@ export class ModelUnitLayer {
     this.previousField = state.fieldId
     const living = new Set<number>()
     for (const unit of state.units) {
-      if (unit.hp <= 0) continue
-      living.add(unit.id)
+      if (unit.hp <= 0 && unit.owner !== 'player') continue
+      if (unit.hp > 0) living.add(unit.id)
       let actor = this.actors.get(unit.id)
       if (actor?.type !== unit.type) {
         actor?.visual.dispose()
@@ -162,6 +162,11 @@ export class ModelUnitLayer {
         this.actors.set(unit.id, actor)
       }
       actor.last = { ...unit }
+      if (unit.hp <= 0) {
+        actor.visual.setPosition(unit.x, unit.y)
+        continue
+      }
+      delete actor.deadAt
       const action = state.attacks.find(
         (action) => action.attackerId === unit.id && action.sequence === unit.attackSequence
       )
@@ -189,7 +194,7 @@ export class ModelUnitLayer {
       if (living.has(id)) continue
       const corpse = state.corpses?.find((corpse) => corpse.id === id)
       const deadUnit = state.units.find((unit) => unit.id === id && unit.hp <= 0)
-      if (!corpse && !deadUnit && actor.deadAt === undefined) {
+      if ((!corpse && !deadUnit && actor.deadAt === undefined) || (actor.last.owner === 'player' && !deadUnit)) {
         actor.visual.dispose()
         this.actors.delete(id)
         continue
@@ -197,8 +202,7 @@ export class ModelUnitLayer {
       actor.deadAt ??= corpse?.diedAt ?? state.time
       const elapsed = Math.max(0, state.time - actor.deadAt)
       const hasDeath = !!actor.visual.definition.clips.death
-      // Roles without an authored death deliberately retain their last real 3D pose.
-      // This is the existing held-pose corpse policy, never an invented death clip.
+      // Enemy roles without an authored death retain their last pose during the existing fade.
       if (hasDeath) {
         try {
           actor.visual.sample({
@@ -212,6 +216,11 @@ export class ModelUnitLayer {
         } catch (error) {
           this.errors[`${actor.type}:death`] = String(error)
         }
+      }
+      if (actor.last.owner === 'player') {
+        if (!hasDeath) actor.visual.sampleAllyDeath(elapsed, actor.last)
+        actor.visual.setAppearance(1)
+        continue
       }
       const hold = hasDeath ? 1.2 : 0.45
       actor.visual.setAppearance(
@@ -272,7 +281,8 @@ export class ModelUnitLayer {
     return this.actors.get(id)?.visual.motion
   }
   emitter(attack: Readonly<CombatAttack>, at = attack.releaseAt): Point | undefined {
-    const actor = this.actors.get(attack.attackerId)
+    const candidate = this.actors.get(attack.attackerId)
+    const actor = candidate?.deadAt === undefined ? candidate : undefined
     const definition = this.roster[attack.type]
     if (!definition) return undefined
     // A restored/in-flight projectile can outlive its caster. Sample an ephemeral
