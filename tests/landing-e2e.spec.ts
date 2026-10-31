@@ -6,7 +6,8 @@ const game = '/moq-games/examples/games/tower_diffence_with_jev/index.html'
 for (const viewport of [
   { width: 1440, height: 1050 },
   { width: 390, height: 844 },
-  { width: 320, height: 740 }
+  { width: 320, height: 568 },
+  { width: 844, height: 390 }
 ]) {
   test(`catalog loads without game runtime at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
@@ -41,6 +42,8 @@ for (const viewport of [
       )
       .toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true)
+    for (const link of await page.locator('.play-button').all()) await expect(link).toBeInViewport({ ratio: 1 })
     expect(
       requests.filter((url) => /\.wasm(?:\?|$)|GameRenderer|JevConnection|\.glb(?:\?|$)|\.wav(?:\?|$)/.test(url))
     ).toEqual([])
@@ -111,4 +114,13 @@ test('starts Lane Battle through the catalog with its runtime assets', async ({ 
   await expect(page.locator('#clock')).not.toHaveText('00:00')
   expect(errors).toEqual([])
   expect(failed).toEqual([])
+})
+
+test('all three cards are reachable in tab order', async ({ page }) => {
+  await page.goto(root)
+  await page.getByRole('link', { name: 'MoQ Games ホーム' }).focus()
+  for (const title of ['smart defence with jev', '燈の境界', '芽吹きの境界']) {
+    await page.keyboard.press('Tab')
+    await expect(page.getByRole('link', { name: `ゲームをプレイ: ${title}`, exact: true })).toBeFocused()
+  }
 })

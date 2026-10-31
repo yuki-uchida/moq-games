@@ -11,6 +11,7 @@ export default defineConfig({
     baseURL: process.env.TOWER_E2E_BASE_URL ?? 'http://127.0.0.1:5174',
     browserName: 'chromium',
     headless: true,
+    launchOptions: { executablePath: process.env.TOWER_CHROMIUM_PATH || undefined },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure'
   }

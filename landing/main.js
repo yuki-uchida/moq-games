@@ -19,7 +19,7 @@ function battlefield() {
     ['goblin', 'goblin', 82, 62]
   ]
   return `<div class="battlefield" aria-hidden="true">
-    <div class="scene-halo"></div><span class="scene-coordinate">ARTWORK PREVIEW / 01</span>
+    <div class="scene-halo"></div>
     <svg class="terrain" viewBox="0 0 800 700" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="land" x1="250" y1="150" x2="640" y2="600" gradientUnits="userSpaceOnUse"><stop stop-color="#a9b679"/><stop offset="1" stop-color="#627949"/></linearGradient>
@@ -48,7 +48,6 @@ function battlefield() {
       <g fill="#bcc49b"><path d="m218 391 16-7 12 9-15 10Z"/><path d="m552 317 13-6 14 9-13 7Z"/><path d="m578 469 18-8 12 10-14 8Z"/></g>
     </svg>
     ${units.map(([unit, name, left, top]) => `<img class="scene-unit ${name}" src="${artRoot}${unit}/portrait.png" alt="" width="112" height="124" style="--x:${left}%;--y:${top}%" decoding="async" draggable="false"/>`).join('')}
-    <div class="scene-caption"><span class="caption-line"></span>仲間と、王国を守り抜こう。</div>
   </div>`
 }
 
@@ -57,27 +56,17 @@ function gamePreview(art) {
   return `<div class="game-preview ${escape(art)}" aria-hidden="true">
     <div class="preview-board"></div>
     ${units.map((unit, index) => `<img src="${artRoot}${unit}/portrait.png" alt="" class="preview-unit preview-unit-${index}" width="112" height="124" loading="lazy" decoding="async" />`).join('')}
-    <span class="preview-label">${art === 'ember-grid' ? 'PLAN YOUR NEXT MOVE' : 'DEFEND · SUMMON · ADVANCE'}</span>
   </div>`
 }
 
 const container = document.querySelector('#samples')
 container.innerHTML = samples
   .map(
-    (sample, index) => `<article class="game-feature" aria-labelledby="${escape(sample.id)}-title">
-  <div class="feature-copy">
-    <div class="eyebrow"><span class="status-dot"></span> PLAYABLE SAMPLE <span class="sample-number">${String(index + 1).padStart(2, '0')}</span></div>
-    <p class="game-wordmark">${escape(sample.subtitle)}</p>
-    <h2 id="${escape(sample.id)}-title">${escape(sample.title)}</h2>
-    <p class="game-description">${escape(sample.description)}</p>
-    <ul class="tags">${sample.tags.map((tag) => `<li>${escape(tag)}</li>`).join('')}</ul>
-    <a class="play-button" href="${escape(sample.href)}" aria-label="ゲームをプレイ: ${escape(sample.title)}"><span class="play-triangle" aria-hidden="true"></span>ゲームをプレイ<span class="button-arrow" aria-hidden="true">↗</span><span class="sr-only">: ${escape(sample.title)}</span></a>
-    <p class="play-note">インストール不要 · 音声の自動再生なし</p>
-  </div>
-  ${sample.art === 'tower-defense' ? battlefield() : gamePreview(sample.art)}
-  <div class="feature-bottom"><span>${escape(sample.category)} <span class="bottom-divider">/</span> ${escape(sample.title)}</span><span>MoQ Games <span aria-hidden="true">✳</span></span></div>
+    (sample) => `<article class="game-feature" aria-labelledby="${escape(sample.id)}-title">
+  <a class="play-button" href="${escape(sample.href)}" aria-label="ゲームをプレイ: ${escape(sample.title)}">
+    ${sample.art === 'tower-defense' ? battlefield() : gamePreview(sample.art)}
+    <div class="card-label"><h2 id="${escape(sample.id)}-title">${escape(sample.title)}</h2><span class="play-icon" aria-hidden="true">▶</span></div>
+  </a>
 </article>`
   )
   .join('')
-
-document.querySelector('#sample-count').textContent = String(samples.length).padStart(2, '0')
