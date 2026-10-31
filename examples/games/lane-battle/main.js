@@ -1,3 +1,5 @@
+import { animationFrame, spriteRect, walkPose } from './animation.js'
+import { BattleAudio } from './audio.js'
 import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst, step } from './simulation.js'
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
@@ -19,39 +21,25 @@ let state = createGame(),
   paused = true,
   last = 0,
   shown = false
-let audio,
-  muted = false,
-  lastSound = -1
+const audio = new BattleAudio()
+let muted = false
+const heard = new WeakSet()
+const heardImpacts = new WeakSet()
+const fallen = []
 function tone(kind) {
-  if (muted) return
-  try {
-    audio ||= new AudioContext()
-    if (audio.state === 'suspended') audio.resume()
-    const osc = audio.createOscillator(),
-      gain = audio.createGain()
-    const notes = {
-      summon: [520, 780],
-      upgrade: [660, 990],
-      burst: [120, 45],
-      hit: [180, 80],
-      victory: [660, 1320],
-      defeat: [220, 70]
-    }
-    const [a, b] = notes[kind]
-    osc.type = kind === 'burst' ? 'sawtooth' : 'sine'
-    osc.frequency.setValueAtTime(a, audio.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(b, audio.currentTime + 0.14)
-    gain.gain.setValueAtTime(0.035, audio.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.18)
-    osc.connect(gain).connect(audio.destination)
-    osc.start()
-    osc.stop(audio.currentTime + 0.2)
-  } catch {
-    /* Audio may be unavailable; gameplay continues. */
-  }
+  audio.effect(kind)
 }
+function syncAudio() {
+  audio.setRunning(!paused && !document.hidden)
+}
+document.addEventListener('visibilitychange', syncAudio)
+document.addEventListener('pointerdown', () => audio.unlock(), { once: true })
+document.addEventListener('keydown', () => audio.unlock(), { once: true })
 $('sound').onclick = () => {
   muted = !muted
+  audio.muted = muted
+  if (!muted) audio.unlock()
+  syncAudio()
   $('sound').textContent = muted ? '♪̸' : '♪'
   $('sound').setAttribute('aria-pressed', String(muted))
   if (!muted) tone('summon')
@@ -65,7 +53,8 @@ function invest() {
 function start(stage) {
   state = createGame(stage)
   shown = false
-  lastSound = -1
+  fallen.length = 0
+  audio.beat = 0
   document.querySelector('dialog').close()
   paused = false
   tone('summon')
@@ -106,6 +95,7 @@ const buttons = TYPES.map((t, i) => {
 })
 function modal(title, message, ending = false) {
   paused = true
+  syncAudio()
   $('title').textContent = title
   $('message').textContent = message
   $('close').hidden = ending
@@ -131,6 +121,7 @@ $('help').onclick = () =>
   )
 $('pause').onclick = () => {
   paused = !paused
+  syncAudio()
   $('pause').textContent = paused ? '▶' : 'Ⅱ'
 }
 $('upgrade').onclick = () => {
@@ -150,21 +141,23 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'u') invest()
   }
 })
-function sprite(context, t, motion, side, phase, x, y, size, aspect = 1) {
+function sprite(context, t, motion, side, phase, x, y, size, aspect = 1, walkDistance = 0) {
   const a = assets.get(`${t.role}-${motion}-${side === 1 ? 'e' : 'w'}`)
   if (!a) return
-  const f = a.meta.frames[Math.floor(phase * a.meta.fps) % a.meta.frames.length]
-  context.drawImage(
-    a.img,
-    f.x,
-    f.y,
-    f.width,
-    f.height,
-    x - size / 2,
-    y - size * 0.84 * aspect,
-    size,
-    size * 0.875 * aspect
-  )
+  const frame = animationFrame(a.meta, motion, phase, t.period, walkDistance, size)
+  const f = a.meta.frames[frame]
+  if (motion === 'walk' && a.meta.strideWorldUnits) {
+    const pose = walkPose(a.meta, walkDistance, size, side, t.role)
+    context.save()
+    context.translate(x, y)
+    context.scale(1, aspect)
+    context.rotate(pose.angle)
+    context.scale(1, pose.height)
+    context.drawImage(a.img, f.x, f.y, f.width, f.height, ...spriteRect(f, 0, 0, size))
+    context.restore()
+  } else {
+    context.drawImage(a.img, f.x, f.y, f.width, f.height, ...spriteRect(f, x, y, size, aspect))
+  }
 }
 function draw() {
   const rect = canvas.getBoundingClientRect()
@@ -223,13 +216,31 @@ function draw() {
     ctx.fill()
   }
   const scale = rect.width < 500 ? 155 : 120
+  for (const ghost of fallen) {
+    const age = state.time - ghost.at
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, 1 - age / 0.42)
+    const aspect = rect.width / 1000 / (rect.height / 450)
+    sprite(
+      ctx,
+      ghost,
+      ghost.motion,
+      ghost.side,
+      ghost.phase,
+      ghost.x - ghost.side * age * 20,
+      361 + (ghost.id % 3) * 8 + age * 26 * aspect,
+      scale,
+      aspect
+    )
+    ctx.restore()
+  }
   for (const u of [...state.units].sort((a, b) => a.id - b.id)) {
     const y = 361 + (u.id % 3) * 8
     ctx.fillStyle = u.side === 1 ? '#2c9b9755' : '#9c455755'
     ctx.beginPath()
     ctx.ellipse(u.x, y + 2, 22, 6, 0, 0, 7)
     ctx.fill()
-    sprite(ctx, u, u.motion, u.side, u.phase, u.x, y, scale, rect.width / 1000 / (rect.height / 450))
+    sprite(ctx, u, u.motion, u.side, u.phase, u.x, y, scale, rect.width / 1000 / (rect.height / 450), u.walkDistance)
     ctx.fillStyle = '#203c43'
     ctx.fillRect(u.x - 18, y - (scale * 0.56 * (rect.width / 1000)) / (rect.height / 450), 36, 4)
     ctx.fillStyle = u.side === 1 ? '#8de8cf' : '#ffac91'
@@ -247,12 +258,52 @@ function draw() {
     if (e.blast) {
       ctx.arc(e.x, 350, (0.6 - e.life) * 430, 0, 7)
     } else if (e.ranged) {
-      ctx.moveTo(e.from, 310)
-      ctx.lineTo(e.x, 330)
+      const source = e.source
+      const atlas = source && assets.get(`${source.role}-attack-${source.side === 1 ? 'e' : 'w'}`)
+      const release = atlas?.meta.frames[Math.max(0, (atlas.meta.releaseFrame ?? 1) - 1)]
+      const emitter = release?.emitter || { x: source?.side === 1 ? 100 : 28, y: 65 }
+      const aspect = rect.width / 1000 / (rect.height / 450)
+      const y = 361 + ((source?.id || 0) % 3) * 8
+      const fromX = e.from + (emitter.x / 128 - 0.5) * scale
+      const fromY = y + (-94 / 128 + emitter.y / 128) * scale * aspect
+      const targetY = e.targetY ?? fromY
+      const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
+      const x = fromX + (e.x - fromX) * progress
+      const yArrow = fromY + (targetY - fromY) * progress
+      if (progress < 1) {
+        const angle = Math.atan2(targetY - fromY, e.x - fromX)
+        ctx.save()
+        ctx.translate(x, yArrow)
+        ctx.rotate(angle)
+        ctx.strokeStyle = '#57412b'
+        ctx.lineWidth = 2
+        ctx.moveTo(-17, 0)
+        ctx.lineTo(2, 0)
+        ctx.moveTo(-2, -3)
+        ctx.lineTo(3, 0)
+        ctx.lineTo(-2, 3)
+        ctx.moveTo(-14, -3)
+        ctx.lineTo(-11, 0)
+        ctx.lineTo(-14, 3)
+        ctx.stroke()
+        ctx.restore()
+        ctx.beginPath()
+      } else if (e.arrived && !e.missed) {
+        ctx.globalAlpha = Math.min(1, e.life / 0.08)
+        ctx.moveTo(e.x - 5, targetY - 5)
+        ctx.lineTo(e.x + 5, targetY + 5)
+        ctx.moveTo(e.x + 5, targetY - 5)
+        ctx.lineTo(e.x - 5, targetY + 5)
+      }
     } else {
-      ctx.arc(e.x, 332, 12 + e.life * 30, 0, 7)
+      ctx.globalAlpha = Math.min(1, e.life / 0.1)
+      const aspect = rect.width / 1000 / (rect.height / 450)
+      const y = e.targetY ?? 361 - 30 * aspect
+      ctx.moveTo(e.x - 9 * e.side, y - 8 * aspect)
+      ctx.lineTo(e.x + 7 * e.side, y + 8 * aspect)
     }
     ctx.stroke()
+    ctx.globalAlpha = 1
   }
   document.querySelector('header small').textContent = `${state.stage + 1}/3 · ${STAGES[state.stage].name}`
   $('gold').textContent = Math.floor(state.gold)
@@ -282,16 +333,42 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05)
   last = now
   if (!paused) {
+    const previous = state.units.map((u) => ({ ...u }))
     step(state, dt)
-    if (state.effects.some((e) => !e.blast) && state.time - lastSound > 0.22) {
-      tone('hit')
-      lastSound = state.time
-    }
+    for (const u of previous) if (!state.units.some((v) => v.id === u.id)) fallen.push({ ...u, at: state.time })
+    while (fallen.length && state.time - fallen[0].at > 0.42) fallen.shift()
+    let impact = false,
+      shot = false
+    for (const effect of state.effects)
+      if (!heard.has(effect)) {
+        heard.add(effect)
+        if (effect.ranged) {
+          effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+          const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
+          if (target) {
+            const rect = canvas.getBoundingClientRect()
+            const aspect = rect.width / 1000 / (rect.height / 450)
+            effect.targetY = 361 + (target.id % 3) * 8 - 35 * aspect
+          }
+        }
+        if (!effect.blast) {
+          impact ||= !effect.ranged
+          shot ||= effect.ranged
+        }
+      }
+    for (const effect of state.effects)
+      if (effect.ranged && effect.arrived && !effect.missed && !heardImpacts.has(effect)) {
+        heardImpacts.add(effect)
+        impact = true
+      }
+    if (impact) tone('hit')
+    if (shot) tone('shot')
   }
+  if (audio.running !== (!paused && !document.hidden)) syncAudio()
+  audio.tick()
   draw()
   if (state.result && !shown) {
     shown = true
-    tone(state.result)
     if (state.result === 'victory') {
       records[state.stage] = Math.min(records[state.stage] ?? Infinity, Math.floor(state.time))
       try {
@@ -304,12 +381,13 @@ function frame(now) {
       `${Math.floor(state.time)}秒 · ${state.kills}体撃退。${state.result === 'victory' ? (state.stage === 2 ? '全3ステージ踏破！別の編成でもう一度挑戦しよう。' : '次の道が開かれました。次のステージへ進もう。') : '衛兵で前線を守り、生産強化と射手の援護を試そう。'}`,
       true
     )
+    tone(state.result)
   }
   requestAnimationFrame(frame)
 }
 Promise.all(TYPES.flatMap((t) => ['walk', 'attack', 'idle'].flatMap((m) => ['e', 'w'].map((d) => load(t, m, d)))))
   .then(() => {
-    buttons.forEach((b, i) => sprite(b.querySelector('canvas').getContext('2d'), TYPES[i], 'idle', 1, 0, 64, 145, 240))
+    buttons.forEach((b, i) => sprite(b.querySelector('canvas').getContext('2d'), TYPES[i], 'idle', 1, 0, 64, 106, 150))
     modal(
       '芽吹きの境界',
       '森の軍勢を率いて、水晶砦へ。衛兵は盾、射手は遠距離、狼は突破役。資源を生産強化に投資するか、援軍に使うか。あなたの采配で道を開こう。'

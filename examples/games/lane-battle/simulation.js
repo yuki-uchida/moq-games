@@ -92,6 +92,7 @@ export function createGame(stage = 0) {
     enemy: STAGES[stage].enemy,
     units: [],
     effects: [],
+    projectiles: [],
     cooldowns: [0, 0, 0],
     burst: 0,
     spawn: 3,
@@ -122,6 +123,7 @@ export function summon(s, type, side = 1) {
     maxHp: t.hp * (side === -1 ? STAGES[s.stage].power + Math.min(s.time / 350, 0.4) : 1),
     attack: 0,
     phase: 0,
+    walkDistance: 0,
     motion: 'walk'
   })
   return true
@@ -150,6 +152,20 @@ export function step(s, dt) {
   s.gold = Math.min(999, s.gold + income(s) * dt)
   s.cooldowns = s.cooldowns.map((c) => Math.max(0, c - dt))
   s.burst = Math.max(0, s.burst - dt)
+  // Released arrows keep their original recipient even if the shooter dies.
+  s.projectiles = s.projectiles.filter((p) => {
+    const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
+    if (target) p.effect.x = target.x
+    if (s.time < p.at) return true
+    p.effect.arrived = true
+    p.effect.missed = p.targetId !== null && !target
+    if (target) target.hp -= p.damage
+    else if (p.targetId === null) {
+      if (p.side === 1) s.enemy = Math.max(0, s.enemy - p.damage)
+      else s.home = Math.max(0, s.home - p.damage)
+    }
+    return false
+  })
   s.spawn -= dt
   if (s.spawn <= 0) {
     const stage = STAGES[s.stage]
@@ -170,14 +186,28 @@ export function step(s, dt) {
       if (u.attack <= 0) {
         u.attack = u.period
         u.phase = 0
-        if (target) target.hp -= u.damage
+        const effect = {
+          x: target?.x ?? baseX,
+          life: 0.22,
+          side: u.side,
+          ranged: u.range > 80,
+          from: u.x,
+          sourceId: u.id,
+          targetId: target?.id ?? null,
+          releasedAt: s.time
+        }
+        s.effects.push(effect)
+        if (effect.ranged) {
+          s.projectiles.push({ targetId: effect.targetId, side: u.side, damage: u.damage, at: s.time + 0.12, effect })
+        } else if (target) target.hp -= u.damage
         else if (u.side === 1) s.enemy = Math.max(0, s.enemy - u.damage)
         else s.home = Math.max(0, s.home - u.damage)
-        s.effects.push({ x: target?.x ?? baseX, life: 0.22, side: u.side, ranged: u.range > 80, from: u.x })
       }
     } else {
       u.motion = 'walk'
-      u.x += u.speed * dt * u.side
+      const distanceWalked = u.speed * dt
+      u.x += distanceWalked * u.side
+      u.walkDistance += distanceWalked
     }
   }
   s.units = s.units.filter((u) => {
