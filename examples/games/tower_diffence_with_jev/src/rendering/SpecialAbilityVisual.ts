@@ -2,6 +2,7 @@ import { loadGLTF } from './ModelAssetCache'
 import * as THREE from 'three'
 import { ALLY_TYPES, type AllyType, type GameState, type Point } from '../game/model'
 import { SPECIALS, specialReady } from '../game/SpecialAbilities'
+import { specialVfxMotion } from './SpecialVfxMotion'
 
 const WORLD_UP = new THREE.Vector3(0, 0, 1)
 
@@ -75,7 +76,8 @@ export class SpecialAbilityVisual {
     )
   }
   async prepare(draw: (root: THREE.Object3D) => Promise<void>): Promise<void> {
-    if (this.sources.size !== ALLY_TYPES.length || this.errors.length) throw new Error('必殺技の素材を読み込めませんでした。')
+    if (this.sources.size !== ALLY_TYPES.length || this.errors.length)
+      throw new Error('必殺技の素材を読み込めませんでした。')
     for (const source of this.sources.values()) {
       source.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return
@@ -120,7 +122,9 @@ export class SpecialAbilityVisual {
     }
     const effects =
       state.phase === 'assault'
-        ? (state.specialEffects ?? []).filter((effect) => state.time >= effect.releaseAt).slice(-16)
+        ? (state.specialEffects ?? [])
+            .filter((effect) => state.time >= effect.releaseAt && state.time < effect.endsAt)
+            .slice(-16)
         : []
     const ids = new Set(effects.map((effect) => `${state.battleId}:${effect.id}`))
     for (const [id, group] of this.active)
@@ -149,27 +153,27 @@ export class SpecialAbilityVisual {
         this.scene.add(group)
         this.active.set(key, group)
       }
-      const progress = THREE.MathUtils.clamp((state.time - effect.releaseAt) / (effect.endsAt - effect.releaseAt), 0, 1)
+      const motion = specialVfxMotion(effect.type, state.time - effect.releaseAt, effect.endsAt - effect.releaseAt)
       const radius = SPECIALS[effect.type].radius
-      const field = ['healer', 'frost', 'ranger'].includes(effect.type)
+      // Bound the combined opacity of nearby casts so stacked fields keep units readable.
+      const overlaps = effects.filter(
+        (other) => Math.hypot(other.x - effect.x, other.y - effect.y) < (radius + SPECIALS[other.type].radius) * 0.6
+      ).length
       const scale = radius
       group.position.set(effect.x, effect.y, 1)
       // GLB XZ ground / Y up -> board XY ground / Z up.
       group.rotation.set(Math.PI / 2, 0, 0)
-      group.rotateOnWorldAxis(WORLD_UP, field ? state.time * 0.15 : progress * 0.6)
+      group.rotateOnWorldAxis(WORLD_UP, motion.rotation)
       group.scale.setScalar(scale)
-      if (effect.type === 'archer') group.position.z += radius * 0.35 * (1 - progress)
-      if (effect.type === 'paladin') group.scale.y *= Math.min(1, progress * 5)
-      if (effect.type === 'mage') group.position.z += radius * progress * 0.1
+      group.position.z += radius * motion.lift
+      group.scale.y *= motion.height
       group.updateMatrix()
       // Project real height upward on the board while retaining the exact XY ground circle.
       for (const column of [0, 4, 8]) group.matrix.elements[column + 1] -= 0.65 * group.matrix.elements[column + 2]
 
       group.traverse((object) => {
         if (object instanceof THREE.Mesh)
-          (object.material as THREE.Material).opacity = field
-            ? (0.38 + 0.1 * Math.sin(state.time * 3)) * Math.min(1, (1 - progress) * 5)
-            : Math.min(1, (1 - progress) * 2) * 0.8
+          (object.material as THREE.Material).opacity = motion.opacity / Math.max(1, overlaps)
       })
     }
   }

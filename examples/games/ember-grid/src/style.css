@@ -435,13 +435,16 @@ fieldset label {
   0%,
   40% {
     filter: brightness(2);
-    margin-left: 5px;
+    margin-left: var(--impact-x, 5px);
+    margin-top: var(--impact-y, 0px);
   }
   65% {
-    margin-left: -3px;
+    margin-left: calc(var(--impact-x, 5px) * -0.4);
+    margin-top: calc(var(--impact-y, 0px) * -0.4);
   }
   100% {
     margin-left: 0;
+    margin-top: 0;
   }
 }
 @keyframes fall-away {
@@ -535,4 +538,32 @@ fieldset label {
 .preparation button {
   min-height: 44px;
   min-width: 88px;
+}
+
+/* Shared original pixel VFX: the complete character cell remains untouched. */
+.combat-contact {
+  position: absolute;
+  left: -16px;
+  top: -48px;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+  animation: contact-pixels 160ms steps(8, end) forwards;
+}
+@keyframes contact-pixels {
+  from {
+    background-position: 0 0;
+    opacity: 1;
+  }
+  to {
+    background-position: -256px 0;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .combat-contact {
+    animation-duration: 80ms !important;
+  }
 }

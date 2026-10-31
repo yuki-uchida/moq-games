@@ -12,6 +12,12 @@ function fixture(): GLTF {
   const scene = new THREE.Group()
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())
   scene.add(mesh)
+  // Minimal role torso nodes keep this playback-clock fixture compatible with directed rigs.
+  for (const name of ['gel', 'chest', 'head']) {
+    const bone = new THREE.Bone()
+    bone.name = name
+    scene.add(bone)
+  }
   return {
     scene,
     scenes: [scene],

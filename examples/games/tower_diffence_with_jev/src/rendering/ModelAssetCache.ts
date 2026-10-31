@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { directMotionClip } from './DirectedMotion'
+import type { UnitType } from '../game/model'
 import runtimeManifest from '../../../../../public/tower-defense-art/models/runtime-manifest.json'
 import { reuseSkinnedBoundsMatrices } from './SkinnedBounds'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
@@ -13,6 +15,7 @@ export type ModelAdapterFactory = (scene: THREE.Object3D, clip: THREE.AnimationC
 export interface ModelSource {
   readonly url: string
   readonly clip: string
+  readonly motionRole?: UnitType
   readonly clipUrl?: string
   readonly adapters?: readonly ModelAdapterFactory[]
 }
@@ -288,7 +291,7 @@ export class ModelAssetCache {
     if (this.requestSource(spec) !== 'ready') return undefined
     const entry = this.entries.get(spec.url)!
     const source = entry.source!
-    const clip = spec.clipUrl
+    let clip = spec.clipUrl
       ? this.clips.get(spec.clipUrl)?.clip
       : source.animations.find((clip) => clip.name === spec.clip)
     if (!clip) throw new Error(`Missing authored ${spec.clip} clip in ${spec.url}`)
@@ -302,6 +305,7 @@ export class ModelAssetCache {
       if (idle?.userData) Object.assign(clip, { userData: structuredClone(idle.userData) })
     }
     const scene = clone(source.scene)
+    if (spec.motionRole && !spec.clipUrl) clip = directMotionClip(scene, clip, spec.motionRole)
     const materials = new Set<THREE.Material>()
     const skeletons = new Set<THREE.Skeleton>()
     let meshIndex = 0

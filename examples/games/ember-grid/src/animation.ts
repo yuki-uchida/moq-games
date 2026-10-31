@@ -1,3 +1,4 @@
+import { showContact } from './ImpactPresentation'
 import { key, size, type Game, type Unit } from './game'
 
 type Point = { x: number; y: number }
@@ -14,6 +15,9 @@ const characters: Record<string, string> = {
   goblin: 'mischief-goblin',
   wolf: 'dusk-wolf'
 }
+// Preserve the accepted 220 ms/tile and one authored cycle/cell. The experimental
+// distance-clock made tiny source strides shuffle rapidly; stretching the move
+// to fit them delayed tactical input. New foot planting requires new sprite art.
 export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
 export function direction(a: Point, b: Point) {
   return `${b.y < a.y ? 'n' : b.y > a.y ? 's' : ''}${b.x < a.x ? 'w' : b.x > a.x ? 'e' : ''}` || 's'
@@ -56,7 +60,6 @@ export class BattleAnimation {
   private nodes = new Set<HTMLElement>()
   private hidden = new Set<HTMLElement>()
   private version = 0
-  private facing = new Map<string, string>()
   constructor(
     private board: HTMLElement,
     private cue: (role: string) => void
@@ -67,7 +70,6 @@ export class BattleAnimation {
     this.nodes.clear()
     this.hidden.forEach((n) => (n.style.visibility = ''))
     this.hidden.clear()
-    this.facing.clear()
   }
   private async clip(role: string, motion: string, facing: string) {
     const id = `${role}/${characters[role]}-${motion}-${facing}`
@@ -270,7 +272,6 @@ export class BattleAnimation {
         this.cue('healer')
         for (let i = 1; i < path.length && token === this.version; i++) {
           const facing = direction(path[i - 1], path[i])
-          this.facing.set(acting.id, facing)
           await this.play(actor, acting, 'walk', facing, token, [path[i - 1], path[i]])
         }
       }
@@ -278,18 +279,24 @@ export class BattleAnimation {
         this.hide(target)
         const victim = this.actor(target, target)
         const old = before.find((u) => u.id === target.id)!
+        const length = Math.hypot(target.x - acting.x, target.y - acting.y) || 1
+        victim.style.setProperty('--impact-x', `${((target.x - acting.x) / length) * 7}px`)
+        victim.style.setProperty('--impact-y', `${((target.y - acting.y) / length) * 7}px`)
         // Victim retains the complete accepted source cell; recoil never deforms anatomy.
         const idle = await this.clip(target.role, 'idle', direction(target, acting))
         const p = victim.querySelector<HTMLElement>('.portrait')!
         p.style.backgroundImage = `url('${(await this.texture(target.role, idle)).src}')`
         p.style.backgroundPosition = `-${idle.frames[0].x}px -${idle.frames[0].y}px`
         let impact: Promise<void> = Promise.resolve()
+        let impactedAt: number | undefined
         await this.play(actor, acting, 'attack', direction(acting, target), token, undefined, () => {
           this.cue(acting.role)
           impact = (async () => {
             if ((acting.role === 'archer' || acting.role === 'mage') && !(await this.projectile(acting, target, token)))
               return
             if (token !== this.version) return
+            impactedAt = performance.now()
+            showContact(victim, acting.role, Math.atan2(target.y - acting.y, target.x - acting.x))
             victim.classList.add(target.hp === 0 ? 'motion-death' : 'motion-hit')
             const number = document.createElement('span')
             number.className = 'damage-number'
@@ -298,7 +305,12 @@ export class BattleAnimation {
           })()
         })
         await impact
-        if (token === this.version) await new Promise((r) => setTimeout(r, 550))
+        // Finish the actual reaction instead of adding a second fixed 550 ms pause
+        // after an attack clip whose recovery already contains most/all of it.
+        if (token === this.version && impactedAt !== undefined) {
+          const remaining = (target.hp === 0 ? 550 : 300) - (performance.now() - impactedAt)
+          if (remaining > 0) await new Promise((r) => setTimeout(r, remaining))
+        }
       }
     } catch (error) {
       // Failed art decoding must never strand input or change the tactical result.

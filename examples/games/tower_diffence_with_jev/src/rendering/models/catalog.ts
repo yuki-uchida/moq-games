@@ -8,7 +8,7 @@ import * as adapters from './adapters'
 // These are inspected candidates. Runtime visual acceptance is tracked separately.
 const base = `${import.meta.env.BASE_URL}tower-defense-art/models/`
 const source = (role: UnitType, file: string, clip: string, hooks: readonly ModelAdapterFactory[] = []): ModelSource => ({
-  url: `${base}${role}/${file}`, clip, adapters: hooks
+  url: `${base}${role}/${file}`, clip, motionRole: role, adapters: hooks
 })
 
 export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefinition>>> = {

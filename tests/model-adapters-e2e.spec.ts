@@ -22,7 +22,10 @@ const ROLES = [
   'bat',
   'wraith',
   'ogre',
-  'dragon'
+  'dragon',
+  'crystalSentinel',
+  'koboldLancer',
+  'clockworkPatchling'
 ] as const
 
 const browserLogs = new WeakMap<Page, string[]>()
@@ -113,7 +116,7 @@ async function startReview(page: Page, width: number, height: number) {
       async function load(source: any, label: string) {
         status(`loading ${label}: ${source.url}`)
         const start = performance.now()
-        while (cache.request(source.url) !== 'ready') {
+        while (cache.requestSource(source) !== 'ready') {
           if (cache.error(source.url)) throw new Error(`${label}: ${cache.error(source.url)}`)
           if (performance.now() - start > 60_000) throw new Error(`${label}: model loading timeout`)
           await new Promise((resolve) => setTimeout(resolve, 20))

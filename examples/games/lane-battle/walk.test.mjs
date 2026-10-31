@@ -26,13 +26,10 @@ test('walk distance follows movement and stays fixed while attacking', () => {
   assert.equal(unit.walkDistance, distance)
 })
 
-test('weight shift is smooth across the seam and mirrors by direction', () => {
+test('whole source cells keep authored anatomy and foot contact in both directions', () => {
   const meta = { frameSize: { width: 128 }, strideWorldUnits: 24 }
-  const pose = (distance, side = 1) => walkPose(meta, distance, 128, side, 'soldier')
-  const first = pose(0)
-  const last = pose(24)
-  assert.ok(Math.abs(first.angle - last.angle) < 1e-12)
-  assert.ok(Math.abs(first.height - last.height) < 1e-12)
-  assert.ok(pose(6).height < first.height)
-  assert.equal(pose(6).angle, -pose(6, -1).angle)
+  for (const role of ['soldier', 'archer', 'wolf'])
+    for (const side of [-1, 1])
+      for (const distance of [0, 6, 12, 18, 24])
+        assert.deepEqual(walkPose(meta, distance, 128, side, role), { angle: 0, height: 1 })
 })

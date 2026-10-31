@@ -30,10 +30,8 @@ export function spriteRect(frame, x, groundY, size, aspect = 1) {
   ]
 }
 
-// Keep the authored ground pivot fixed while the whole body shifts weight.
-export function walkPose(meta, distance, size, side, role) {
-  const stride = (meta.strideWorldUnits * size) / (meta.frameSize?.width ?? 128)
-  const wave = Math.sin((2 * Math.PI * distance) / stride)
-  const amplitude = role === 'wolf' ? 0.025 : 0.055
-  return { angle: side * amplitude * wave, height: 1 - (role === 'wolf' ? 0.015 : 0.035) * wave * wave }
+// Whole authored cells already contain the weight transfer and wolf leap.
+// Rotating/scaling this rectangle a second time lifted planted paws and shortened legs.
+export function walkPose() {
+  return { angle: 0, height: 1 }
 }

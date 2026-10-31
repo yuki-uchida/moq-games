@@ -1,3 +1,4 @@
+import { impactCanvas, impactFrame, impactDuration } from '../shared/ImpactArt.ts'
 import { animationFrame, spriteRect, walkPose } from './animation.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
@@ -5,6 +6,18 @@ import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst,
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
   ctx = canvas.getContext('2d')
+/** Screen-space contact only; the simulation owns recipient, arrival and damage. */
+function drawContact(effect, y, age, aspect, style) {
+  const frame = impactFrame(age, true, style)
+  if (frame === null) return
+  ctx.save()
+  ctx.globalAlpha = 1 - (age / impactDuration(style)) ** 2
+  ctx.translate(effect.x, y)
+  ctx.scale(effect.side || 1, aspect)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(impactCanvas(style, frame), -16, -16, 32, 32)
+  ctx.restore()
+}
 const assets = new Map()
 const base = new URL(import.meta.env.BASE_URL, location.origin)
 async function load(t, motion, dir) {
@@ -302,18 +315,12 @@ function draw() {
         ctx.restore()
         ctx.beginPath()
       } else if (e.arrived && !e.missed) {
-        ctx.globalAlpha = Math.min(1, e.life / 0.08)
-        ctx.moveTo(e.x - 5, targetY - 5)
-        ctx.lineTo(e.x + 5, targetY + 5)
-        ctx.moveTo(e.x + 5, targetY - 5)
-        ctx.lineTo(e.x - 5, targetY + 5)
+        drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect, 'pierce')
       }
     } else {
-      ctx.globalAlpha = Math.min(1, e.life / 0.1)
       const aspect = rect.width / 1000 / (rect.height / 450)
       const y = e.targetY ?? 361 - 30 * aspect
-      ctx.moveTo(e.x - 9 * e.side, y - 8 * aspect)
-      ctx.lineTo(e.x + 7 * e.side, y + 8 * aspect)
+      drawContact(e, y, state.time - e.releasedAt, aspect, 'cut')
     }
     ctx.stroke()
     ctx.globalAlpha = 1

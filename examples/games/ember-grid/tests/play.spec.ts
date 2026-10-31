@@ -130,6 +130,19 @@ test('restart cancels an in-flight enemy turn', async ({ page }) => {
   expect(await page.locator('.selected').count()).toBe(0)
 })
 
+for (const width of [1280, 390])
+  test(`two-cell walk stays visible through its full presentation ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await page.goto('./')
+    await page.getByRole('button', { name: /1,4 燈守/ }).tap()
+    const started = Date.now()
+    await page.getByRole('button', { name: /3,4 平地 移動可能/ }).tap()
+    await expect(page.locator('.motion-actor .portrait')).toBeVisible()
+    await expect(page.locator('.motion-actor')).toHaveCount(0)
+    expect(Date.now() - started).toBeGreaterThan(350)
+    await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
+  })
+
 test('guard formation and mission selection are available without leaving the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('./')

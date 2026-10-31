@@ -3,6 +3,7 @@ import { preparationPause, preparationWait, preparationGpu } from './CampaignPre
 import type { ModelMotion } from './ModelUnitVisual'
 import { prepareFadePrograms } from './FadePrograms'
 import { SpecialAbilityVisual } from './SpecialAbilityVisual'
+import { ImpactVfx, impactFrame, impactStyle, impactDuration } from './ImpactVfx'
 import { SPECIALS } from '../game/SpecialAbilities'
 import { ModelEnvironmentLighting } from './ModelEnvironmentLighting'
 import { createBoardCamera, configureBoardCamera } from './BoardCamera'
@@ -626,6 +627,7 @@ export class GameRenderer {
   private attackEffects = new Map<string, PixelMesh>()
   private projectileLaunches = new Map<string, Point>()
   private textures = new Map<string, THREE.CanvasTexture>()
+  private impactVfx = new ImpactVfx()
   private approvedMapLoading = false
   private approvedMapError?: string
   private background?: PixelMesh
@@ -899,6 +901,7 @@ export class GameRenderer {
     this.atlasCache.dispose()
     this.commander?.dispose()
     this.specialAbilities.dispose()
+    this.impactVfx.dispose()
     this.commanderSupport.dispose()
     this.corpses?.dispose()
     this.dragonSplashes.dispose()
@@ -1935,21 +1938,26 @@ export class GameRenderer {
             }
             continue
           }
-          if (impactAge >= 0.12) continue
+          const style = impactStyle(attack.type, effect.healing)
+          const duration = impactDuration(style)
+          const frame = impactFrame(impactAge, effect.hit, style)
+          if (frame === null) continue
           if (mesh.geometry.parameters.width !== 32 || mesh.geometry.parameters.height !== 32) {
             mesh.geometry.dispose()
             mesh.geometry = new THREE.PlaneGeometry(32, 32)
           }
           mesh.visible = true
-          mesh.material.map = this.textures.get(effect.healing ? 'heal' : 'hit')!
-          mesh.material.opacity = 1 - impactAge / 0.12
+          mesh.material.map = this.impactVfx.texture(style, frame)
+          mesh.material.color.setHex(0xffffff)
+          mesh.material.opacity = 1 - (impactAge / duration) ** 2
           const point =
             !attack.projectile && !effect.healing && unitTrialFor(attack, this.unitTrials)?.impactOffsets
               ? this.cuePoint(attack, effect.id)
               : target
           mesh.position.set(point.x, point.y, point.y / 10 + 4)
-          mesh.rotation.z = 0
-          const scale = 0.7 + impactAge / 0.12
+          const aim = attack.aim ?? { x: target.x - attack.origin.x, y: target.y - attack.origin.y }
+          mesh.rotation.z = effect.healing ? 0 : Math.atan2(aim.y, aim.x)
+          const scale = effect.healing ? 1 : 1.05
           mesh.scale.set(scale, -scale, 1)
         }
       }
