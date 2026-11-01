@@ -1,15 +1,16 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import { resolve, relative, isAbsolute } from 'node:path'
 import { createRequire } from 'node:module'
 import { readGlb } from './optimize-tower-models.mjs'
+import { verifyModelSidecar } from './verify-model-sidecar.mjs'
 const { MeshoptEncoder } = createRequire(import.meta.url)('meshoptimizer')
 
 const EXT = 'EXT_meshopt_compression'
 const SIZE = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }
 const WIDTH = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 }
-/** Mantissa bits kept per vertex semantic (absolute error ≤ range / 2^bits). Everything else stays exact:
+/** Mantissa bits kept per vertex semantic (error bounded by the shared component exponent). Everything else stays exact:
  * skinning adapters verify weight sums to 1e-5 and rigid skin matrices to 1e-4, so skin weights, animation
  * tracks and inverse bind matrices are never filtered. */
 const BITS = {
@@ -185,6 +186,7 @@ export function towerModelSidecars(root) {
       const sourceDir = resolve(root, 'public/tower-defense-art/models')
       const targetDir = resolve(outDir, 'tower-defense-art/models')
       const manifest = JSON.parse(await readFile(resolve(sourceDir, 'runtime-manifest.json'), 'utf8'))
+      const models = []
       for (const model of manifest.models) {
         const source = resolve(sourceDir, model.file)
         const rel = relative(sourceDir, source)
@@ -193,11 +195,23 @@ export function towerModelSidecars(root) {
         const bytes = await readFile(source)
         if (bytes.length !== model.bytes || createHash('sha256').update(bytes).digest('hex') !== model.outputSha256)
           throw new Error(`Model sidecar source mismatch: ${rel}`)
-        await writeFile(
-          resolve(targetDir, `${rel}.${model.outputSha256}.gz.bin`),
-          gzipSync(await compressGlb(bytes, model.outputSha256), { level: 6, mtime: 0 })
-        )
+        const derivative = await compressGlb(bytes, model.outputSha256)
+        const verification = await verifyModelSidecar(bytes, derivative)
+        const compressed = gzipSync(derivative, { level: 6, mtime: 0 })
+        await writeFile(resolve(targetDir, `${rel}.${model.outputSha256}.gz.bin`), compressed)
+        models.push({
+          file: model.file,
+          sourceSha256: model.outputSha256,
+          sha256: createHash('sha256').update(derivative).digest('hex'),
+          bytes: derivative.length,
+          verification
+        })
       }
+      await mkdir(resolve(root, '.build'), { recursive: true })
+      await writeFile(
+        resolve(root, '.build/model-sidecar-digests.json'),
+        JSON.stringify({ version: 1, models }, null, 2)
+      )
     }
   }
 }

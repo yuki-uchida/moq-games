@@ -6,8 +6,10 @@ import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { createRequire } from 'node:module'
-import { towerModelSidecars } from '../scripts/tower-model-sidecars.mjs'
-import { quadGlb, QUAD_POSITIONS, QUAD_INDICES } from './glb-fixture.mjs'
+import { towerModelSidecars, compressGlb } from '../scripts/tower-model-sidecars.mjs'
+import { verifyModelSidecar } from '../scripts/verify-model-sidecar.mjs'
+import { readGlb } from '../scripts/optimize-tower-models.mjs'
+import { quadGlb, animatedQuadGlb, packGlb, QUAD_POSITIONS, QUAD_INDICES } from './glb-fixture.mjs'
 const { MeshoptDecoder } = createRequire(import.meta.url)('meshoptimizer')
 
 test('build sidecars are deterministic, decode to the source mesh, and reject changed sources', async () => {
@@ -35,6 +37,9 @@ test('build sidecars are deterministic, decode to the source mesh, and reject ch
     await plugin.closeBundle()
     const first = await readFile(resolve(dest, sidecar))
     const glb = gunzipSync(first)
+    const digests = JSON.parse(await readFile(resolve(root, '.build/model-sidecar-digests.json'), 'utf8'))
+    assert.equal(digests.models[0].sha256, createHash('sha256').update(glb).digest('hex'))
+    assert.equal(digests.models[0].bytes, glb.length)
     assert.equal(glb.readUInt32LE(8), glb.length)
     const json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString())
     const bin = glb.subarray(28 + glb.readUInt32LE(12))
@@ -81,4 +86,38 @@ test('build sidecars are deterministic, decode to the source mesh, and reject ch
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('validates quantized geometry but exact animation, weights, rigs, winding and images', async () => {
+  const original = animatedQuadGlb()
+  const sha = createHash('sha256').update(original).digest('hex')
+  const result = await verifyModelSidecar(original, await compressGlb(original, sha))
+  assert.ok(result.maxError.POSITION > 0, 'fixture must actually exercise lossy precision')
+  for (const [name, change] of [
+    ['animation', ({ json, bin }) => bin.writeFloatLE(4, json.bufferViews[json.accessors[6].bufferView].byteOffset)],
+    ['weights', ({ json, bin }) => bin.writeFloatLE(0.7, json.bufferViews[json.accessors[3].bufferView].byteOffset)],
+    ['normals', ({ json, bin }) => bin.writeFloatLE(-1, json.bufferViews[json.accessors[1].bufferView].byteOffset)],
+    ['bind matrix', ({ json, bin }) => bin.writeFloatLE(3, json.bufferViews[json.accessors[7].bufferView].byteOffset)],
+    [
+      'winding',
+      ({ json, bin }) => {
+        const offset = json.bufferViews[json.accessors[4].bufferView].byteOffset
+        bin.writeUInt16LE(2, offset + 2)
+        bin.writeUInt16LE(1, offset + 4)
+      }
+    ],
+    ['image', ({ json, bin }) => (bin[json.bufferViews[json.images[0].bufferView].byteOffset] ^= 1)],
+    ['rig', ({ json }) => (json.nodes[2].name = 'wrong bone')]
+  ]) {
+    const changed = readGlb(Buffer.from(original))
+    change(changed)
+    const corrupt = await compressGlb(packGlb(changed.json, changed.bin), sha)
+    await assert.rejects(verifyModelSidecar(original, corrupt), undefined, `${name} corruption must fail`)
+  }
+})
+
+test('rejects a vertex reorder that changes a shared animation accessor', async () => {
+  const source = animatedQuadGlb({ sharedAnimationPositions: true })
+  const derived = await compressGlb(source, createHash('sha256').update(source).digest('hex'))
+  await assert.rejects(verifyModelSidecar(source, derived), /animation\/bind data must remain exact/)
 })

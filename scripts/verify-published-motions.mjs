@@ -4,7 +4,9 @@ import { gunzipSync } from 'node:zlib'
 import { pathToFileURL } from 'node:url'
 
 /** Verify the actual deployed bytes, including the hash-addressed sidecars used by the game. */
-export async function verifyPublishedMotions(base, audit) {
+export async function verifyPublishedMotions(base, audit, expectedSidecars) {
+  if (expectedSidecars?.version !== 1 || !Array.isArray(expectedSidecars.models))
+    throw Error('A verified build sidecar digest manifest is required')
   base = new URL(base.endsWith('/') ? base : `${base}/`)
   async function get(path) {
     const url = new URL(path, base)
@@ -15,17 +17,25 @@ export async function verifyPublishedMotions(base, audit) {
   const manifest = await (
     await get(`tower-defense-art/models/runtime-manifest.json?verify=${process.env.GITHUB_SHA ?? Date.now()}`)
   ).json()
+  for (const [role, expected] of Object.entries(audit.units)) {
+    const file = `${role}/${expected.file}`
+    const record = manifest.models.find((model) => model.role === role && model.file === file)
+    if (record?.outputSha256 !== expected.outputSha256)
+      throw Error(`${role}: deployed manifest hash is stale or incorrect`)
+    if (expectedSidecars.models.find((model) => model.file === file)?.sourceSha256 !== expected.outputSha256)
+      throw Error(`${role}: missing verified build sidecar digest`)
+  }
   const assets = await Promise.all(
-    Object.entries(audit.units).map(async ([role, expected]) => {
-      const file = `${role}/${expected.file}`
-      const record = manifest.models.find((model) => model.role === role && model.file === file)
-      if (record?.outputSha256 !== expected.outputSha256)
-        throw Error(`${role}: deployed manifest hash is stale or incorrect`)
-      const path = `tower-defense-art/models/${file}.${expected.outputSha256}.gz.bin`
+    expectedSidecars.models.map(async (trusted) => {
+      const file = trusted.file
+      const record = manifest.models.find((model) => model.file === file)
+      if (record?.outputSha256 !== trusted.sourceSha256 || !/^[a-f0-9]{64}$/.test(trusted.sha256))
+        throw Error(`${file}: deployed manifest hash or verified build digest is incorrect`)
+      const path = `tower-defense-art/models/${file}.${trusted.sourceSha256}.gz.bin`
       const response = await get(path)
       let bytes = Buffer.from(await response.arrayBuffer())
       const transferBytes = bytes.length
-      // gunzip verifies the CRC; the GLB header and the build stamp tie the intact derivative to its source.
+      // The expected digest comes from the verified CI artifact, never the deployed manifest or stamp.
       if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes)
       const sha256 = createHash('sha256').update(bytes).digest('hex')
       let source
@@ -35,9 +45,9 @@ export async function verifyPublishedMotions(base, audit) {
       } catch {
         source = undefined
       }
-      if (source !== expected.outputSha256 || bytes.length > expected.bytes)
-        throw Error(`${role}: deployed GLB bytes do not match the verified asset`)
-      return { role, url: new URL(path, base).href, bytes: bytes.length, transferBytes, sha256 }
+      if (source !== trusted.sourceSha256 || bytes.length !== trusted.bytes || sha256 !== trusted.sha256)
+        throw Error(`${file}: deployed GLB bytes do not match the verified asset`)
+      return { role: record.role, file, url: new URL(path, base).href, bytes: bytes.length, transferBytes, sha256 }
     })
   )
   const pages = await Promise.all(
@@ -56,12 +66,15 @@ export async function verifyPublishedMotions(base, audit) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const base = process.argv[2]
-  if (!base) throw Error('Usage: node scripts/verify-published-motions.mjs <Pages base URL>')
+  const digestPath = process.argv[3]
+  if (!base || !digestPath)
+    throw Error('Usage: node scripts/verify-published-motions.mjs <Pages base URL> <verified sidecar digests>')
+  const expectedSidecars = JSON.parse(await readFile(digestPath, 'utf8'))
   const audit = JSON.parse(await readFile(new URL('../docs/animation-repair-audit.json', import.meta.url), 'utf8'))
   // Pages/CDN propagation can briefly serve an old manifest or 404 after deploy succeeds.
   for (let attempt = 1; ; attempt++) {
     try {
-      console.log(JSON.stringify(await verifyPublishedMotions(base, audit), null, 2))
+      console.log(JSON.stringify(await verifyPublishedMotions(base, audit, expectedSidecars), null, 2))
       break
     } catch (error) {
       if (attempt === 12) throw error

@@ -35,6 +35,13 @@ jobs:
       - run: node scripts/prepare-pages.mjs
       - run: node --test tests/pages-output.test.mjs
       - run: test -s dist/THIRD-PARTY-NOTICES.txt && test -s .generated/moqt-sdk/provenance.json
+      - name: Preserve verified model sidecar digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-sidecar-digests-${{ github.sha }}
+          path: .build/model-sidecar-digests.json
+          include-hidden-files: true
+          if-no-files-found: error
       # Transfer the exact prepared output, rather than rebuilding per browser runner.
       - name: Upload verified SDK for browser runners
         uses: actions/upload-artifact@v4
@@ -187,10 +194,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Restore verified model sidecar digests
+        uses: actions/download-artifact@v4
+        with:
+          name: model-sidecar-digests-${{ github.sha }}
+          path: .verified-model-sidecars
       - id: deployment
         uses: actions/deploy-pages@v4
       - name: Verify published motion assets and pages
-        run: node scripts/verify-published-motions.mjs '${{ steps.deployment.outputs.page_url }}'
+        run: node scripts/verify-published-motions.mjs '${{ steps.deployment.outputs.page_url }}' .verified-model-sidecars/model-sidecar-digests.json
 
       - name: Verify published refined motion overlays
         run: node scripts/verify-published-refined-motions.mjs '${{ steps.deployment.outputs.page_url }}'
