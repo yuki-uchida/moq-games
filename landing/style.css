@@ -98,6 +98,27 @@ h1 {
 .play-button:hover {
   box-shadow: 0 0 0 3px #9aab70;
 }
+.game-feature {
+  transition: translate 160ms ease-out;
+}
+@media (hover: hover) {
+  .game-feature:hover {
+    translate: 0 -4px;
+  }
+  .play-button:hover .play-icon {
+    background: #f4ffc8;
+    scale: 1.08;
+  }
+}
+.play-icon {
+  transition:
+    background 120ms,
+    scale 120ms;
+}
+.game-feature:active {
+  translate: 0 -1px;
+  scale: 0.985;
+}
 a:focus-visible {
   outline: 4px solid #b75c11;
   outline-offset: 5px;

@@ -11,6 +11,8 @@ illustration; Rabbiters uses an original static rabbit illustration. These are
 promotional artwork, not live games or gameplay screenshots.
 No asset bytes are modified. See the root `ASSETS.md` for the artwork provenance.
 The landing imports no renderer, game state, network client, audio, or WASM.
+Cards lift on hover and press in on tap. A Speculation Rules block prefetches a
+game page after a short hover (supporting browsers only; it does not prerender).
 
 Check with `npm run test:landing`. With the development server running, use
 `npm run e2e:landing` for desktop/mobile layout, image loading, keyboard, reduced
