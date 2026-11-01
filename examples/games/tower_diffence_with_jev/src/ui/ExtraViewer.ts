@@ -128,7 +128,8 @@ function mount() {
     motion.value = available.includes(previous as ModelMotion) ? previous : (available[0] ?? '')
     motion.disabled = !available.length
     const missing = []
-    if (!definition?.clips.death) missing.push('death は未収録')
+    if (!available.includes('death')) missing.push('death は未収録（本編ではフェード）')
+    else if (!definition?.clips.death) missing.push('death は本編と同じ横倒れ動作')
     if (role.value === 'healer') missing.push('回復動作は heal')
     element('missing').textContent = missing.join(' · ')
     selectMotion()

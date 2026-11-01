@@ -19,6 +19,7 @@ for (const viewport of [
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'smart defence with jev', exact: true })).toBeVisible()
     await expect(page.getByRole('article')).toHaveCount(3)
+    await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: 燈の境界' })).toHaveAttribute(
       'href',
       './examples/games/ember-grid/index.html'
@@ -119,6 +120,8 @@ test('starts Lane Battle through the catalog with its runtime assets', async ({ 
 test('all three cards are reachable in tab order', async ({ page }) => {
   await page.goto(root)
   await page.getByRole('link', { name: 'MoQ Games ホーム' }).focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeFocused()
   for (const title of ['smart defence with jev', '燈の境界', '芽吹きの境界']) {
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: `ゲームをプレイ: ${title}`, exact: true })).toBeFocused()

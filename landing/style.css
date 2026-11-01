@@ -26,6 +26,16 @@ main {
   align-items: center;
   border-bottom: 1px solid #d8ddd0;
 }
+.viewer-link {
+  margin-left: auto;
+  padding: 12px 0 12px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+.site-header {
+  gap: 12px;
+}
 .site-brand {
   display: flex;
   align-items: center;
@@ -219,7 +229,7 @@ h2 {
     height: 64px;
   }
   .site-brand {
-    font-size: 22px;
+    font-size: 18px;
   }
   h1 {
     margin: 18px 0 14px;
@@ -255,6 +265,15 @@ h2 {
   }
 }
 @media (max-width: 370px) {
+  .site-brand {
+    font-size: 16px;
+    gap: 6px;
+  }
+  .viewer-link {
+    font-size: 12px;
+    padding-left: 0;
+    white-space: nowrap;
+  }
   .battlefield,
   .game-preview {
     width: 42%;

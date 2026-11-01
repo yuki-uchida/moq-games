@@ -10,8 +10,9 @@ describe('title screen', () => {
   it('has the exact menu and preserves project-relative routes', () => {
     const html = titleScreenMarkup(new URL('https://example.test/moq-games/tower-defense-art/'))
     expect(html).toContain('smart defence<br><span>with jev</span>')
-    for (const text of ['New game', 'Continue', 'EXTRA']) expect(html).toContain(`>${text}</span>`)
-    expect(html).toContain('href="./extra.html"')
+    for (const text of ['New game', 'Continue']) expect(html).toContain(`>${text}</span>`)
+    expect(html).not.toContain('extra.html')
+    expect(html).not.toContain('EXTRA')
     expect(html).toContain('href="../../../index.html"')
     expect(html).toContain('https://example.test/moq-games/tower-defense-art/title/soldier.png')
   })

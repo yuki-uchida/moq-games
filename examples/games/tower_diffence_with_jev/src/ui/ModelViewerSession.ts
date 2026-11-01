@@ -2,13 +2,15 @@ import * as THREE from 'three'
 import { ModelAssetCache } from '../rendering/ModelAssetCache'
 import { ModelUnitVisual, type ModelMotion, type UnitModelDefinition } from '../rendering/ModelUnitVisual'
 import { UNIT_MODEL_CATALOG } from '../rendering/models/catalog'
-import { DEFINITIONS, type UnitType } from '../game/model'
+import { ALLY_TYPES, DEFINITIONS, type UnitType } from '../game/model'
 
 const motionOrder: readonly ModelMotion[] = ['idle', 'walk', 'attack', 'heal', 'breath', 'death']
 export const viewerRoles = () => Object.keys(UNIT_MODEL_CATALOG) as UnitType[]
 export const viewerRoleLabel = (role: UnitType) => DEFINITIONS[role].name
+const hasAllyFall = (definition: UnitModelDefinition) =>
+  ALLY_TYPES.some((role) => UNIT_MODEL_CATALOG[role] === definition)
 export const viewerMotions = (definition: UnitModelDefinition): ModelMotion[] =>
-  motionOrder.filter((motion) => !!definition.clips[motion])
+  motionOrder.filter((motion) => !!definition.clips[motion] || (motion === 'death' && hasAllyFall(definition)))
 
 /** Uses the game's actor and adapters. Only the preview clock and camera are independent. */
 export class ModelViewerSession {
@@ -36,7 +38,7 @@ export class ModelViewerSession {
     this.paused = false
     this.error = ''
     this.definition = UNIT_MODEL_CATALOG[role]
-    if (!this.definition?.clips[motion]) {
+    if (!this.definition || !viewerMotions(this.definition).includes(motion)) {
       this.state = 'error'
       this.error = 'この動作の3Dモデルはありません。'
       return
@@ -50,13 +52,13 @@ export class ModelViewerSession {
     this.root.matrixWorldNeedsUpdate = true
     this.root.add(this.visual.root)
     this.state = 'loading'
-    this.visual.prepare([motion])
+    this.visual.prepare([this.allyFall ? 'idle' : motion])
   }
 
   tick(delta: number): void {
     if (!this.visual || !this.cache || !this.definition || !this.motion || this.disposed) return
     if (this.state === 'loading') {
-      const source = this.definition.clips[this.motion]!
+      const source = this.definition.clips[this.allyFall ? 'idle' : this.motion]!
       const state = this.cache.request(source.url)
       if (state === 'error') {
         this.state = 'error'
@@ -67,7 +69,9 @@ export class ModelViewerSession {
       try {
         const lease = this.cache.acquire(source)
         if (!lease) return
-        this.duration = lease.clip.duration / (this.motion === 'attack' ? (this.definition.attackTimeScale ?? 1) : 1)
+        this.duration = this.allyFall
+          ? 0.82
+          : lease.clip.duration / (this.motion === 'attack' ? (this.definition.attackTimeScale ?? 1) : 1)
         lease.release()
         if (!Number.isFinite(this.duration) || this.duration <= 0) throw new Error('Invalid animation duration')
         this.state = 'ready'
@@ -86,14 +90,17 @@ export class ModelViewerSession {
       }
     }
     try {
-      this.visual.sample({
-        motion: this.motion,
-        seconds: this.seconds,
-        loop: this.loop,
-        facingX: 0,
-        facingY: 1,
-        boss: false
-      })
+      if (this.allyFall) {
+        this.visual.sampleAllyDeath(this.seconds, { facingX: 0, facingY: 1, boss: false })
+      } else
+        this.visual.sample({
+          motion: this.motion,
+          seconds: this.seconds,
+          loop: this.loop,
+          facingX: 0,
+          facingY: 1,
+          boss: false
+        })
     } catch (error) {
       this.fail(error)
     }
@@ -104,8 +111,11 @@ export class ModelViewerSession {
     this.error = `3Dモデルを再生できませんでした。${error instanceof Error ? error.message : ''}`
     if (this.visual) this.visual.root.visible = false
   }
+  private get allyFall(): boolean {
+    return this.motion === 'death' && !!this.definition && !this.definition.clips.death && hasAllyFall(this.definition)
+  }
   get loop(): boolean {
-    return this.motion === 'idle' || this.motion === 'walk'
+    return !!this.motion && this.motion !== 'death'
   }
   toggle(): void {
     if (this.state !== 'ready') return
