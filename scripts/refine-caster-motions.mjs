@@ -67,7 +67,7 @@ for (const role of ['mage', 'frost', 'healer']) {
     }
     scene.updateMatrixWorld(true)
   }
-  function ik(first, second, tip, target, orientation) {
+  function ik(first, second, tip, target, orientation, keepRestSide = false) {
     const a = nodes.get(first),
       b = nodes.get(second),
       c = nodes.get(tip),
@@ -82,9 +82,16 @@ for (const role of ['mage', 'frost', 'healer']) {
       dist = Math.min(dir.length(), l1 + l2 - 0.0001)
     dir.normalize()
     target.copy(start).addScaledVector(dir, dist)
-    const pole = rb.wp.clone().sub(ra.wp)
+    const pole = rb.wp.clone().sub(ra.wp),
+      // Legs: near-straight rest knees (mage) project to a pole that crosses zero as the
+      // pelvis moves; keep the knee on its rest bend side instead of snapping to reverse.
+      side = pole.clone().projectOnPlane(rc.wp.clone().sub(ra.wp).normalize())
     pole.addScaledVector(dir, -pole.dot(dir))
-    if (pole.length() < 0.00001) pole.set(0, 0, 1)
+    if (keepRestSide && pole.dot(side) < 0) pole.negate()
+    if (pole.length() < 0.00001) {
+      if (keepRestSide) pole.copy(side).addScaledVector(dir, -side.dot(dir))
+      else pole.set(0, 0, 1)
+    }
     pole.normalize()
     const along = (l1 * l1 + dist * dist - l2 * l2) / (2 * dist),
       knee = start
@@ -248,7 +255,7 @@ for (const role of ['mage', 'frost', 'healer']) {
           target.z += phase < 0.5 ? 0.055 * (1 - 2 * u) : -0.055 * Math.cos(Math.PI * u)
           target.y += phase < 0.5 ? 0 : 0.025 * Math.sin(Math.PI * u) ** 2
         }
-        ik(`thigh.${side}`, `shin.${side}`, `foot.${side}`, target, foot.wq)
+        ik(`thigh.${side}`, `shin.${side}`, `foot.${side}`, target, foot.wq, true)
       }
       if (isWalk || isFrostAttack) {
         const delta = pelvis.position.clone().sub(V(clock.v.read(i)))

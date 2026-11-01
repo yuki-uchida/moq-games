@@ -56,3 +56,9 @@ The fix preserves the attack's authored pelvis rotation and translates the rigid
 Compared over 28 walk and 52 attack samples, attack maximum source-relative grip position error decreased from 0.197123752 to 0.00000001835 model units; orientation error decreased from 0.075361739 to 0.00000004215 radians. The regression test also covers the final sample, and now runs in CI. The four caster tests retain the geometry/bind/foot invariants in addition to the new grip check. The old published candidate and generator are preserved under `local-assets/caster-grip-followup/`.
 
 Follow-up visual evidence uses the regenerated native/source comparison, full action sequence and eight facings under `.generated/caster-review/`, plus real viewer/game evidence under `test-results/caster-runtime/`. The packed Blender copies are regenerated from the corrected GLBs. These checks concern the newly corrected grip as well as the previously stabilized boots; they do not claim physical-device or large-roster FPS coverage.
+
+## Mage attack knee flip
+
+The Mage rig's rest knee sits slightly behind its hip-ankle line (about 18° of bend, toward bone -Z). The leg IK projected that rest offset off the current hip-to-ankle direction. As the spell moved the pelvis forward, that projected pole crossed zero at 0.488 s and 0.741 s. Between those times every leg key flipped by 54-115°, and the boot cuff deformed into a reverse-knee spike. Leg IK now keeps the knee on its rest bend side. If the projected pole degenerates, it falls back to the rest bend direction. Arm IK keeps the previous pole.
+
+Frost and Healer outputs are byte-identical. Only the Mage attack thigh/shin/foot rotation channels changed: maximum adjacent-key step went from 115° to 0.72°. Staff, arm, pelvis, clocks and the 520 ms release are byte-equal. A regression test checks adjacent-key steps and the knee side for every attack key.

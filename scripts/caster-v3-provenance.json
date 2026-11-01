@@ -4,7 +4,7 @@
     "input": "public/tower-defense-art/models/mage/mage-motion-v2-candidate.glb",
     "output": "public/tower-defense-art/models/mage/mage-spell-v3.glb",
     "sourceSHA256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
-    "outputSHA256": "9d8b0e2868243440662d42eee0aae3b96d3364487b714f8ca7c10c296f3f2f83",
+    "outputSHA256": "167bb9d47d520cd3f23b68b6a92db530de3bcbb79962befb57b5f9ecbbeee5de",
     "bytesBefore": 4514208,
     "bytesAfter": 4514208,
     "weightsChanged": 0,

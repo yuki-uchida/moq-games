@@ -358,3 +358,26 @@ describe('repaired short-limb motion geometry', () => {
     })
   }
 })
+
+it('Paladin runtime GLB carries the head-sliver repair without other changes', () => {
+  const sliver = JSON.parse(
+      readFileSync(
+        resolve('examples/games/tower_diffence_with_jev/src/rendering/models/paladin-head-sliver-provenance.json'),
+        'utf8'
+      )
+    ),
+    bytes = readFileSync(resolve('public/tower-defense-art/models/paladin/paladin-motion-v2-candidate.glb')),
+    manifest = JSON.parse(readFileSync(resolve('public/tower-defense-art/models/runtime-manifest.json'), 'utf8'))
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(sliver.outputSha256)
+  expect(
+    manifest.models.find((m: { file: string }) => m.file === 'paladin/paladin-motion-v2-candidate.glb').outputSha256
+  ).toBe(sliver.outputSha256)
+  const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString()),
+    accessor = json.accessors[json.meshes[1].primitives[0].indices],
+    view = json.bufferViews[accessor.bufferView],
+    base = 28 + bytes.readUInt32LE(12) + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0)
+  for (const t of sliver.degenerateTriangles) {
+    const first = bytes.readUInt16LE(base + t * 6)
+    expect([bytes.readUInt16LE(base + t * 6 + 2), bytes.readUInt16LE(base + t * 6 + 4)]).toEqual([first, first])
+  }
+})

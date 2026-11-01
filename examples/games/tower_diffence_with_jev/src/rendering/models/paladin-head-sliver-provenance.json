@@ -1,0 +1,15 @@
+{
+  "role": "paladin",
+  "file": "paladin-motion-v2-candidate.glb",
+  "generator": "scripts/repair-paladin-head-sliver.mjs",
+  "inputSha256": "3a64f163df6700f14ca1b87d0caad40cb4000a984793a2c58b02907990b60ced",
+  "outputSha256": "d7b70c995b0065443b4c8902b0881c7729773bbc9683d17adfa664dcfdfca162",
+  "bytes": 8852488,
+  "mesh": "glTF mesh 1 (Paladin_Head_Original) primitive 0",
+  "degenerateTriangles": [
+    42507, 42508, 42510, 42512, 42513, 42516, 42517, 42519, 42520, 42521, 42522, 42523, 42524, 42525, 42526, 42527,
+    42528, 42529, 42530, 42531, 42532, 42533, 42534, 42535, 42536, 42537, 42538, 42539, 42540, 42541, 42542, 42543,
+    42544, 42545, 42546, 42547, 42548, 42549, 42550, 42551, 42552, 42553, 42554, 42555, 42556, 42557, 42558
+  ],
+  "preserved": "all bytes except those triangles’ second and third indices"
+}

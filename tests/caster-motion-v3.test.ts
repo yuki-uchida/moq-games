@@ -128,3 +128,55 @@ it('Frost preserves the authored hand-to-staff grip after pelvis stabilization',
   }
   console.log('Frost grip maximum source-relative errors:', measured)
 })
+
+it('Mage attack knees stay on their rest bend side without key flips', () => {
+  const g = readGlb(fs.readFileSync(records.find((r: any) => r.role === 'mage').output))
+  const objects = g.json.nodes.map((n: any) => {
+    const o = new Object3D()
+    o.name = n.name
+    o.position.fromArray(n.translation ?? [0, 0, 0])
+    o.quaternion.fromArray(n.rotation ?? [0, 0, 0, 1])
+    o.scale.fromArray(n.scale ?? [1, 1, 1])
+    return o
+  })
+  g.json.nodes.forEach((n: any, i: number) => n.children?.forEach((k: number) => objects[i].add(objects[k])))
+  const root = new Object3D()
+  objects.filter((o: any) => !o.parent).forEach((o: any) => root.add(o))
+  root.updateMatrixWorld(true)
+  const W = (name: string) => objects.find((o: any) => o.name === name).getWorldPosition(new Vector3())
+  const bend = (s: string) => {
+    const hip = W(`thigh.${s}`),
+      knee = W(`shin.${s}`).sub(hip),
+      dir = W(`foot.${s}`).sub(hip).normalize()
+    return knee.addScaledVector(dir, -knee.dot(dir))
+  }
+  const rest = { L: bend('L'), R: bend('R') }
+  const clip = g.json.animations.find((c: any) => c.name === 'attack')
+  const channels = clip.channels
+    .filter((c: any) => c.target.path !== 'weights')
+    .map((c: any) => {
+      const s = clip.samplers[c.sampler],
+        data = accessorArray(g, s.output),
+        count = accessorArray(g, s.input).length
+      return { o: objects[c.target.node], path: c.target.path, data, count, width: data.length / count }
+    })
+  const legs = channels.filter((c: any) => c.path === 'rotation' && /^(thigh|shin|foot)\.[LR]$/.test(c.o.name))
+  for (const c of legs)
+    for (let k = 1; k < c.count; k++) {
+      const p = new Quaternion().fromArray(c.data, (k - 1) * 4),
+        q = new Quaternion().fromArray(c.data, k * 4)
+      expect((p.angleTo(q) * 180) / Math.PI, `${c.o.name} key ${k}`).toBeLessThan(10)
+    }
+  const count = Math.max(...channels.map((c: any) => c.count))
+  for (let i = 0; i < count; i++) {
+    for (const c of channels) {
+      const k = Math.min(i, c.count - 1),
+        vals = c.data.slice(k * c.width, (k + 1) * c.width)
+      if (c.path === 'translation') c.o.position.fromArray(vals)
+      if (c.path === 'rotation') c.o.quaternion.fromArray(vals)
+      if (c.path === 'scale') c.o.scale.fromArray(vals)
+    }
+    root.updateMatrixWorld(true)
+    for (const s of ['L', 'R'] as const) expect(bend(s).dot(rest[s]), `knee.${s} key ${i}`).toBeGreaterThan(0)
+  }
+})

@@ -347,7 +347,7 @@
       "role": "paladin",
       "file": "paladin/paladin-motion-v2-candidate.glb",
       "sourceSha256": "1313b5b1aa2ed5f0e4ca857ff19d744a455130f6c1f05b769c8f5419ddd314e4",
-      "outputSha256": "3a64f163df6700f14ca1b87d0caad40cb4000a984793a2c58b02907990b60ced",
+      "outputSha256": "d7b70c995b0065443b4c8902b0881c7729773bbc9683d17adfa664dcfdfca162",
       "bytes": 8852488,
       "vertices": 81657,
       "triangles": 93100,
@@ -366,6 +366,11 @@
         "inputSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
         "script": "scripts/repair-roster-motion.mjs",
         "preserved": "rest geometry, weights, bind matrices, hierarchy, materials, idle and combat clocks"
+      },
+      "headSliverRepair": {
+        "inputSha256": "3a64f163df6700f14ca1b87d0caad40cb4000a984793a2c58b02907990b60ced",
+        "script": "scripts/repair-paladin-head-sliver.mjs",
+        "provenance": "examples/games/tower_diffence_with_jev/src/rendering/models/paladin-head-sliver-provenance.json"
       }
     },
     {
@@ -654,7 +659,7 @@
       "role": "mage",
       "file": "mage/mage-spell-v3.glb",
       "sourceSha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
-      "outputSha256": "9d8b0e2868243440662d42eee0aae3b96d3364487b714f8ca7c10c296f3f2f83",
+      "outputSha256": "167bb9d47d520cd3f23b68b6a92db530de3bcbb79962befb57b5f9ecbbeee5de",
       "bytes": 4514208,
       "vertices": 31468,
       "triangles": 36050,
