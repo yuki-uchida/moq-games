@@ -381,6 +381,7 @@ describe('Rabbiters seasons campaign', () => {
         })
         game.step(1 / 60)
       }
+      console.info(`forest cautious seed ${seed}: ${(game.state.time / 60).toFixed(1)} min`)
       expect(game.state.phase).toBe('won')
       expect(game.state.kits.some((kit) => kit.status === 'safe')).toBe(true)
       expect(game.state.time).toBeGreaterThan(22 * 60)
