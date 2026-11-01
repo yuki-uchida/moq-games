@@ -33,5 +33,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const base = process.argv[2]
   if (!base) throw Error('Usage: node scripts/verify-published-refined-motions.mjs <Pages base URL>')
   const entries = JSON.parse(await readFile(new URL('./refined-motions-manifest.json', import.meta.url), 'utf8'))
-  console.log(JSON.stringify(await verifyPublishedRefinedMotions(base, entries), null, 2))
+  for (let attempt = 1; ; attempt++) {
+    try {
+      console.log(JSON.stringify(await verifyPublishedRefinedMotions(base, entries), null, 2))
+      break
+    } catch (error) {
+      if (attempt === 12) throw error
+      console.error(`Overlay publication verification ${attempt}/12: ${error.message}`)
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+    }
+  }
 }
