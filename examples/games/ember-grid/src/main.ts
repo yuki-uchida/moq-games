@@ -10,6 +10,7 @@ import {
   distance,
   enemyStep,
   finished,
+  lost,
   missions,
   recover,
   key,
@@ -20,7 +21,7 @@ import {
   type Roster,
   type Unit
 } from './game'
-import { chapterReport, clearProgress, presentProgress } from './progress'
+import { chapterReport, clearProgress, presentFarewell, presentProgress } from './progress'
 import './style.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
@@ -32,15 +33,26 @@ const seed = new URLSearchParams(location.search).get('seed')
 const rng = () => (seed === null ? Math.random : seeded(Number(seed)))
 /** Roster each mission starts from: index 0 is the fresh party, later ones are saved on victory. */
 let checkpoints: (Roster | undefined)[] = []
-const newGame = (stage: number, formation: 'balanced' | 'guard') =>
-  createGame(stage, formation, checkpoints[stage], rng())
+/** Deployed allies (and those lost earlier) for a mission start or the mission list. */
+const sortie = (stage: number) => {
+  const away = lost(checkpoints[stage]).map((u) => u.name)
+  const names = createGame(stage, 'balanced', checkpoints[stage])
+    .units.filter((u) => u.side === 'ally')
+    .map((u) => `${u.name} Lv${u.level}`)
+  return `出撃 ${names.join('・')}${away.length ? `<span class="lost"> · 離脱 ${away.join('・')}</span>` : ''}`
+}
+const newGame = (stage: number, formation: 'balanced' | 'guard') => {
+  const g = createGame(stage, formation, checkpoints[stage], rng())
+  g.log = `${sortie(stage).replace(/<[^>]+>/g, '')} · ${g.log}`
+  return g
+}
 let game = newGame(0, 'balanced'),
   selected: string | undefined,
   inspected: string | undefined,
   hovered: string | undefined,
   generation = 0
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true">♫</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青く光るマスへ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲。敵に触れるとその敵の移動範囲（くすんだ青）と攻撃範囲（赤）を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>木立（針葉樹のマス）：受けるダメージ −2。岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復し、レベルと能力は次の任務へ持ち越します。攻撃・撃破・回復で EXP を得て、100 でレベルアップ（兵種ごとの成長率で HP・攻撃・防御が上昇）。防御はその分だけ被ダメージを減らします。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のレベルで始まり、未到達なら Lv 1 です。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true">♫</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青く光るマスへ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲。敵に触れるとその敵の移動範囲（くすんだ青）と攻撃範囲（赤）を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>木立（針葉樹のマス）：受けるダメージ −2。岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復し、レベルと能力は次の任務へ持ち越します。<b>ロスト</b>：任務に勝利すると、その任務中に倒れた味方は遠征から離脱し、以後の任務に出撃できません。敗北・↻ 再挑戦・⚑ 任務選択ではその任務の開始時から始まるので、その挑戦中に倒れた仲間は戻ります。生存 1 人でも次の任務に挑めます。厳しければ ⚑ で以前の任務（到達時のメンバー）からやり直すか、遠征達成後の「最初から遠征」で全員が復帰します。攻撃・撃破・回復で EXP を得て、100 でレベルアップ（兵種ごとの成長率で HP・攻撃・防御が上昇）。防御はその分だけ被ダメージを減らします。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -152,7 +164,7 @@ function render() {
       ? game.stage === 2
         ? '✦ 遠征達成！ 三つの燈がともった'
         : '✦ 霧が晴れた！'
-      : '燈は消えた… ↻ で再挑戦'
+      : '燈は消えた… ↻ で再挑戦（倒れた仲間も戻ります）'
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
   next.textContent = game.stage === 2 ? '最初から遠征 ↻' : '次の任務 ▶'
@@ -218,11 +230,18 @@ async function end() {
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
     await pause(280)
     if (token !== generation) return
-    const before = snapshot(game)
+    const before = snapshot(game),
+      standing = game.units.filter((a) => a.side === 'ally' && a.hp > 0)
     enemyStep(game, u)
     lockPresentation()
     await animation.present(game, before, u)
     if (token !== generation) return
+    const fallen = standing.find((a) => a.hp <= 0)
+    if (fallen) {
+      render()
+      await presentFarewell(field, fallen, portrait(fallen))
+      if (token !== generation) return
+    }
     busy = false
     render()
     if (game.phase !== 'enemy') return
@@ -288,7 +307,7 @@ function listMissions() {
     .map((m, i) => {
       const saved = checkpoints[i]
       const levels = saved ? Object.values(saved).map((u) => u.level) : [1, 1, 1]
-      return `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small></button>`
+      return `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
     })
     .join('')
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(

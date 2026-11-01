@@ -22,19 +22,24 @@ The 7×7 field is drawn as an oblique 2.5D board: the DOM grid of tile buttons i
 
 Terrain and atmosphere are procedural CSS/SVG only: a turbulence-noise ground texture, one lantern light map sliced across tiles, bevelled tile seams, an earth slab with lit/shaded faces, conifer groves and faceted rocks with ember cracks and contact shadows, and drifting embers (disabled with reduced motion). No image asset is added.
 
-## Growth and carry-over
+## Growth, carry-over and loss
 
 Allies start at Lv 1 and gain EXP whenever their action lands: 10 per hit, plus a defeat bonus of 20, both scaled by the level gap (hit `max(1, 10 + 2·gap)`, defeat bonus `max(5, 20 + 5·gap)`, gap = enemy level − ally level) and 10 per recovery potion. Enemies are Lv 1–2 in the first mission, Lv 3–4 in the second and Lv 5–6 in the third, so later fights pay more. Every 100 EXP is a level up: HP (max and current), attack and defense each rise by one with a per-role chance (sword 80/45/45 %, bow 60/55/25 %, magic 50/65/20 %); if nothing rises, the role’s best-growth stat rises instead. Defense lowers all incoming damage (minimum one). Allies gain nothing while defending and enemies never gain EXP. Rolls use an injectable random source; append `?seed=N` to reproduce them.
 
 After each action the acting ally’s EXP gauge fills; a level up follows with a window in which each raised stat lights with +1 in turn (synthesized Web Audio chime when sound is enabled, no new asset). Both overlays briefly hold input and never intercept pointer events.
 
-Victory shows a chapter report: turns, defeats, survivors, remaining potions and, for each ally, level (▲ gained), EXP, EXP earned, HP/attack/defense and defeats. The MVP has the most defeats, then the most damage dealt.
+Victory shows a chapter report: turns, defeats, survivors, remaining potions and, for each ally, level (▲ gained), EXP, EXP earned, HP/attack/defense and defeats. The MVP has the most defeats, then the most damage dealt; a surviving ally is always preferred over a fallen one.
 
-Level, EXP and stats carry into the next mission; HP is fully restored and potions reset to two. Fallen allies return with whatever they had earned. Each mission starts from a recorded party:
+Level, EXP and stats carry into the next mission; HP is fully restored and potions reset to two.
+
+Fallen allies are lost (FE-style). When an ally falls, a short farewell window shows their last words and “○○は倒れた…”. If the mission is then won, every ally who fell in it leaves the expedition for good: the chapter report shows them greyed out as 離脱 with no EXP earned, and they are left out of the next mission’s record and do not deploy. The start log and the ⚑ list show each mission’s deployed members (出撃) and lost ones (離脱). A single survivor can still start the next mission alone.
+
+Each mission starts from a recorded party:
 
 - Mission 1 always starts from the fresh Lv 1 party.
 - Advancing from a victory records the grown party as the next mission’s start.
-- ↻ replay and ⚑ selection start the mission from its record, discarding EXP earned in the abandoned attempt; a mission not yet reached starts from the fresh Lv 1 party. The selection list shows each start level.
+- Defeat, ↻ replay and ⚑ selection start the mission from its record, discarding EXP earned and undoing losses in the abandoned attempt (like an FE reset); a mission not yet reached starts from the fresh Lv 1 party. The selection list shows each start level and its members.
+- If a lost ally is needed, ⚑ an earlier mission whose record still includes them; that also replaces the later records once you advance again.
 - Completing the third mission and choosing “最初から遠征” clears all records for a new expedition. Records are kept for the page session only.
 
 Later missions add one HP to every enemy, which carried growth offsets; the fresh Lv 1 party can still clear every mission directly.
@@ -67,8 +72,8 @@ node examples/games/ember-grid/background-check.mjs
 
 The Playwright config starts its own server (default port 5187) and does not reuse an existing one. Set `E2E_PORT` when that port is busy, or `E2E_REUSE_SERVER=1` to test an already running dev server.
 
-Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, attack/enemy range display, ally pass-through, automatic turn end, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission, EXP amounts, seeded growth rolls, MVP choice and carry-over. A seeded expedition test checks the chapter report against the Node mirror, captures a level-up window, advances with carried levels and verifies mission records on replay. Additional presentation tests record native-size desktop/mobile video and verify arrow flight before impact, default-on music from the first gesture, mute persistence, autoplay rejection/retry, silent reload and browser decoding/nonzero waveforms for every reused sound. Visibility tests synthesize a hidden document with frozen `requestAnimationFrame`/Web Animations and verify player and enemy turns still complete and music keeps playing; they do not prove OS background lifecycle behavior. Browser audio tests do not establish subjective listening quality.
+Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, attack/enemy range display, ally pass-through, automatic turn end, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission, EXP amounts, seeded growth rolls, MVP choice, carry-over, permanent loss on victory, loss undone by the mission record and a lone survivor starting the next mission. A loss E2E lets Rio fall in a won first mission, then checks the farewell, the 離脱 report entry, a two-ally second mission (also after ↻) and Rio’s return via ⚑ mission 1. A seeded expedition test checks the chapter report against the Node mirror, captures a level-up window, advances with carried levels and verifies mission records on replay. Additional presentation tests record native-size desktop/mobile video and verify arrow flight before impact, default-on music from the first gesture, mute persistence, autoplay rejection/retry, silent reload and browser decoding/nonzero waveforms for every reused sound. Visibility tests synthesize a hidden document with frozen `requestAnimationFrame`/Web Animations and verify player and enemy turns still complete and music keeps playing; they do not prove OS background lifecycle behavior. Browser audio tests do not establish subjective listening quality.
 
-Screenshots, including `ember-range-*.png` and `ember-enemy-range-1280.png`, are written to ignored `test-results/ember-*.png`.
+Screenshots, including `ember-range-*.png`, `ember-enemy-range-1280.png`, `ember-farewell-1280.png`, `ember-lost-chapter-1280.png` and `ember-lost-missions-1280.png`, are written to ignored `test-results/ember-*.png`.
 
 Background callback verification additionally skips one minute of callbacks during an enemy sequence, then confirms return to the next ally turn, and restarts during another pending sequence to verify cancellation. The turn-based game does not accrue elapsed-time turns: only the already requested finite enemy sequence may finish. Rendering can wait for browser/OS resume; the generation token prevents an old encounter from changing a restarted mission.

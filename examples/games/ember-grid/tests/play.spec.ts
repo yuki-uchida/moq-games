@@ -59,14 +59,20 @@ import {
   type Game
 } from '../src/game'
 /** Mirrors the reproducible policy in the browser and in Node; ?seed keeps growth rolls in lockstep. */
-async function playMission(page: Page, g: Game) {
+/** `idle` only waits each turn; `heal` false skips potions (used to force a loss). */
+async function playMission(page: Page, g: Game, idle?: string, heal = true) {
   const cell = (x: number, y: number) => page.locator('.cell').nth(y * 7 + x)
   for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
     for (const u of g.units
       .filter((u) => u.side === 'ally' && u.hp > 0)
       .sort((a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role))) {
       await cell(u.x, u.y).click()
-      if (u.hp <= u.max - 7 && g.potions > 0) {
+      if (u.id === idle) {
+        await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+        u.done = true
+        continue
+      }
+      if (heal && u.hp <= u.max - 7 && g.potions > 0) {
         await page.getByRole('button', { name: '回復薬', exact: true }).click()
         recover(g, u)
         continue
@@ -242,4 +248,42 @@ test('chapter report, level up and carried growth across the expedition', async 
   await expect(page.locator('#selection')).toContainText(
     `風読みネリ Lv${third.units[1].level} EXP ${third.units[1].exp}`
   )
+})
+
+test('an ally who falls in a won mission leaves the expedition until its record is replayed', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('./?seed=7')
+  const farewell = page
+    .locator('.farewell')
+    .waitFor({ timeout: 110000 })
+    .then(async () => {
+      await expect(page.locator('.farewell')).toContainText('燈守リオは倒れた…')
+      await page.screenshot({ path: 'test-results/ember-farewell-1280.png' })
+    })
+  // Neri only waits and nobody heals, so Rio falls; Neri and Mina still win.
+  const first = createGame(0, 'balanced', undefined, seeded(7))
+  await playMission(page, first, 'b', false)
+  await farewell
+  expect(first.units[0].hp).toBe(0)
+  const report = page.locator('#report')
+  await expect(report).toBeVisible()
+  const rio = report.locator('li', { hasText: '燈守リオ' })
+  await expect(rio).toHaveClass(/fallen/)
+  await expect(rio).toContainText('離脱')
+  await expect(rio).toContainText('獲得EXPなし')
+  await expect(report.locator('.mvp')).not.toContainText('燈守リオ')
+  await page.screenshot({ path: 'test-results/ember-lost-chapter-1280.png' })
+  await page.locator('#next').click()
+  await expect(page.locator('#count')).toHaveText('◆ 2 / ▼ 4')
+  await expect(page.locator('#log')).toContainText('離脱 燈守リオ')
+  await expect(page.getByRole('button', { name: /燈守リオ/ })).toHaveCount(0)
+  // Replay keeps the mission record (Rio stays lost); an earlier mission brings Rio back.
+  await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+  await expect(page.locator('#count')).toHaveText('◆ 2 / ▼ 4')
+  await page.getByRole('button', { name: '任務と編成' }).click()
+  await expect(page.locator('[data-stage="1"]')).toContainText('離脱 燈守リオ')
+  await expect(page.locator('[data-stage="0"]')).toContainText('出撃 燈守リオ')
+  await page.screenshot({ path: 'test-results/ember-lost-missions-1280.png' })
+  await page.locator('[data-stage="0"]').click()
+  await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 3')
 })

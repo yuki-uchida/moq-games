@@ -25,7 +25,7 @@ export type Unit = {
 export type Gains = { max: number; power: number; def: number }
 /** Latest ally EXP change, consumed by the presentation layer. */
 export type Progress = { id: string; from: number; to: number; level: number; gains?: Gains }
-/** Persistent ally growth carried between missions (max HP excludes the guard bonus). */
+/** Persistent ally growth carried between missions (max HP excludes the guard bonus); a missing ally is lost. */
 export type Roster = Record<string, Pick<Unit, 'level' | 'exp' | 'max' | 'power' | 'def'>>
 export type Formation = 'balanced' | 'guard'
 export type Game = {
@@ -116,19 +116,31 @@ export function grant(game: Game, unit: Unit, amount: number) {
   unit.def += gains.def
   game.progress.gains = gains
 }
+/** Last words shown when an ally falls (FE-style permanent loss). */
+export const farewell: Record<string, string> = {
+  soldier: '「すまない…燈を、頼む…」',
+  archer: '「風が…止んだ…」',
+  mage: '「星が…見えない…」'
+}
+/** Survivors only: an ally who fell in a won mission leaves the expedition for good. */
 export function carry(game: Game): Roster {
   return Object.fromEntries(
     game.units
-      .filter((u) => u.side === 'ally')
+      .filter((u) => u.side === 'ally' && u.hp > 0)
       .map((u) => [
         u.id,
         { level: u.level, exp: u.exp, max: u.max - (game.formation === 'guard' ? 4 : 0), power: u.power, def: u.def }
       ])
   )
 }
-/** Most defeats, then most damage dealt. */
+/** Most defeats, then most damage dealt; survivors are preferred over fallen allies. */
 export const mvp = (game: Game) =>
-  game.units.filter((u) => u.side === 'ally').sort((a, b) => b.kills - a.kills || b.dealt - a.dealt)[0]
+  game.units
+    .filter((u) => u.side === 'ally')
+    .sort((a, b) => Number(b.hp > 0) - Number(a.hp > 0) || b.kills - a.kills || b.dealt - a.dealt)[0]
+/** Allies of the fresh party absent from a recorded roster (lost in an earlier victory). */
+export const lost = (roster?: Roster) =>
+  roster ? createGame().units.filter((u) => u.side === 'ally' && !roster[u.id]) : []
 export function createGame(
   stage = 0,
   formation: Formation = 'balanced',
@@ -204,6 +216,8 @@ export function createGame(
   }
   // Higher-level packs are slightly sturdier; carried growth offsets this.
   for (const u of game.units) if (u.side === 'enemy' && stage > 0) u.hp = u.max += 1
+  // Allies missing from a recorded roster were lost and do not deploy.
+  if (roster) game.units = game.units.filter((u) => u.side !== 'ally' || roster[u.id])
   for (const u of game.units) {
     const saved = roster?.[u.id]
     if (saved) Object.assign(u, saved, { hp: saved.max, startLevel: saved.level })
@@ -358,7 +372,7 @@ export function attack(game: Game, unit: Unit, target: Unit): boolean {
   target.hp = Math.max(0, target.hp - hit)
   unit.done = true
   if (target.hp === 0) unit.kills++
-  game.log = `${unit.name} → ${target.name} −${hit}${target.hp === 0 ? ' 撃破' : ''}`
+  game.log = `${unit.name} → ${target.name} −${hit}${target.hp === 0 ? (target.side === 'ally' ? ` · ${target.name}は倒れた…` : ' 撃破') : ''}`
   grant(game, unit, expFor(unit, target, target.hp === 0))
   settle(game)
   return true
