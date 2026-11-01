@@ -39,5 +39,15 @@ export const samples = [
     category: 'ACTION',
     tags: ['アクション', '協力プレイ'],
     art: 'rabbiters'
+  },
+  {
+    id: 'life-survivors',
+    title: 'Life Survivors',
+    subtitle: 'LIFE SURVIVAL',
+    description: '赤ちゃんから始まる30分の人生。隠れた才能を見極め、人生の手札で押し寄せる困難を退ける。',
+    href: './examples/games/life-survivors/index.html',
+    category: 'ACTION',
+    tags: ['サバイバー系', '協力プレイ'],
+    art: 'life-survivors'
   }
 ]

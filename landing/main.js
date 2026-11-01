@@ -58,6 +58,33 @@ function gamePreview(art) {
       <img class="rabbit-art" src="${rabbitersTeam}" alt="" width="800" height="1000" loading="lazy" decoding="async" draggable="false" />
     </div>`
   }
+  if (art === 'life-survivors') {
+    const trouble = (x, y, r, fill, label) =>
+      `<g transform="translate(${x} ${y})"><circle r="${r}" fill="${fill}" opacity=".85"/><text y="4" font-size="${Math.round(r * 0.62)}" text-anchor="middle" fill="#fff" font-weight="700">${label}</text></g>`
+    return `<div class="game-preview life-survivors" aria-hidden="true">
+      <svg class="life-art" viewBox="0 0 220 260" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <rect width="220" height="260" fill="#2c2438"/>
+        <path d="M0 50h220M0 130h220M0 210h220M30 0v260M110 0v260M190 0v260" stroke="#3d3350" stroke-width="2"/>
+        <circle cx="110" cy="130" r="64" fill="#a46be022" stroke="#a46be088" stroke-dasharray="6 6"/>
+        <path d="M150 168a46 46 0 0 0 6-38" fill="none" stroke="#e0704f" stroke-width="5" stroke-linecap="round" opacity=".6"/>
+        ${trouble(52, 44, 18, '#e0b93f', '出費')}
+        ${trouble(168, 52, 17, '#b98ae6', '悪口')}
+        ${trouble(176, 214, 18, '#5fc2c9', '受験')}
+        ${trouble(44, 206, 17, '#7bc47f', '病気')}
+        ${trouble(112, 236, 15, '#6d8fd6', '仕事')}
+        ${trouble(112, 30, 14, '#e0704f', '上司')}
+        <g transform="translate(156 124)"><circle r="12" fill="#e0704f"/><path d="M-6-9l-3-6 6 3M6-9l3-6-6 3" stroke="#e0704f" stroke-width="3"/><circle cx="-4" cy="-1" r="2" fill="#fff"/><circle cx="4" cy="-1" r="2" fill="#fff"/></g>
+        <g transform="translate(110 130)">
+          <circle r="22" fill="#ffd9b0" stroke="#ffd166" stroke-width="4"/>
+          <path d="M-6-20q6-8 10 0" fill="none" stroke="#8a5a3c" stroke-width="3"/>
+          <circle cx="-7" cy="-2" r="2.6" fill="#3b2412"/><circle cx="7" cy="-2" r="2.6" fill="#3b2412"/>
+          <path d="M-5 8q5 5 10 0" fill="none" stroke="#3b2412" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+        <g fill="#69b7ff"><path d="M64 96l4 6-4 6-4-6z"/><path d="M150 176l4 6-4 6-4-6z"/><path d="M80 180l4 6-4 6-4-6z"/></g>
+        <text x="166" y="96" font-size="14" font-weight="800" fill="#ffcf4d">25!</text>
+      </svg>
+    </div>`
+  }
   if (art === 'lane-battle') {
     const poop = (
       x,

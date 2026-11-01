@@ -18,7 +18,7 @@ for (const viewport of [
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'キャッスルナイツ', exact: true })).toBeVisible()
-    await expect(page.getByRole('article')).toHaveCount(4)
+    await expect(page.getByRole('article')).toHaveCount(5)
     await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: デスガイヤ' })).toHaveAttribute(
       'href',
@@ -100,7 +100,8 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
 
 for (const [title, path] of [
   ['デスガイヤ', 'ember-grid'],
-  ['うんこ大惨事', 'lane-battle']
+  ['うんこ大惨事', 'lane-battle'],
+  ['Life Survivors', 'life-survivors']
 ]) {
   test(`opens ${title} from the catalog`, async ({ page }) => {
     await page.goto(root)
