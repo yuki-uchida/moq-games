@@ -7,8 +7,9 @@ have root-build entries and non-JavaScript fallback links.
 
 `main.js` renders accessible sample sections. The previews use original
 roster portraits from `public/tower-defense-art/` over a static SVG battlefield
-illustration; Rabbiters uses an original static rabbit illustration. These are
-promotional artwork, not live games or gameplay screenshots.
+illustration. Rabbiters uses `rabbiters-team.jpg`, an in-game capture of five
+collared rabbits rendered by the game's own code (HUD hidden). These are static
+images, not live games.
 No asset bytes are modified. See the root `ASSETS.md` for the artwork provenance.
 The landing imports no renderer, game state, network client, audio, or WASM.
 Cards lift on hover and press in on tap. A Speculation Rules block prefetches a

@@ -1,5 +1,6 @@
 import './style.css'
 import { samples } from './samples.js'
+import rabbitersTeam from './rabbiters-team.jpg'
 
 const artRoot = `${import.meta.env.BASE_URL}tower-defense-art/`
 const escape = (value) =>
@@ -54,21 +55,7 @@ function battlefield() {
 function gamePreview(art) {
   if (art === 'rabbiters') {
     return `<div class="game-preview rabbiters" aria-hidden="true">
-      <svg class="rabbit-art" viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="245" cy="55" r="31" fill="#eadba9" opacity=".8"/>
-        <path d="M0 175 Q80 125 158 169 Q235 121 320 168 V220 H0Z" fill="#315444"/>
-        <path d="M0 200 Q60 156 132 190 Q220 151 320 189 V220 H0Z" fill="#203d31"/>
-        <g fill="#f3e8d8" stroke="#514447" stroke-width="3">
-          <ellipse cx="145" cy="83" rx="11" ry="42" transform="rotate(-15 145 83)"/>
-          <ellipse cx="174" cy="79" rx="11" ry="43" transform="rotate(9 174 79)"/>
-          <ellipse cx="156" cy="170" rx="55" ry="32"/>
-          <circle cx="174" cy="127" r="32"/>
-          <ellipse cx="125" cy="192" rx="22" ry="10"/><ellipse cx="187" cy="192" rx="22" ry="10"/>
-        </g>
-        <circle cx="185" cy="122" r="4" fill="#293632"/><circle cx="186" cy="121" r="1" fill="white"/>
-        <ellipse cx="203" cy="139" rx="6" ry="4" fill="#cd9394"/>
-        <path d="M45 220 Q52 180 60 174 Q58 199 67 220 M250 220 Q264 174 273 165 Q270 198 282 220" fill="#74935c"/>
-      </svg>
+      <img class="rabbit-art" src="${rabbitersTeam}" alt="" width="800" height="1000" loading="lazy" decoding="async" draggable="false" />
     </div>`
   }
   const units = art === 'ember-grid' ? ['mage', 'soldier', 'goblin'] : ['soldier', 'archer', 'wolf']
