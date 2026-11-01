@@ -68,26 +68,25 @@
           <div id="condition" class="condition">草むらで身を隠そう</div>
         </div>
         <div class="objective-card">
-          <div class="eyebrow">A LITTLE LIFE <span>✧</span></div>
           <h2 id="objective-title">食べて、大きくなろう</h2>
-          <p id="objective-text">食べものを探して、命をつなごう。</p>
           <div class="objective-progress"><i id="growth-bar"></i></div>
           <div class="objective-foot">
-            <span id="objective-progress">成長 0%</span><span id="nest-count">巣を探そう</span>
+            <span id="objective-progress">成長 0%</span>
+            <span id="food-progress"
+              ><span class="food-icon" aria-hidden="true">✿</span><span class="sr-only">食べた数</span>
+              <b id="food-count">0 / 6</b></span
+            >
+            <span id="nest-count">残る巣 3</span>
           </div>
         </div>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
-        <div class="key-guide" aria-hidden="true">
-          <span><kbd>W A S D</kbd> 移動</span><span><kbd>SPACE</kbd> ジャンプ</span
-          ><span><kbd>SHIFT</kbd> ダッシュ</span><span><kbd>C</kbd> かくれる</span><span><kbd>E</kbd> アクション</span>
-        </div>
         <div id="touch-controls" class="touch-controls">
           <div id="joystick" class="joystick" aria-label="移動スティック"><div id="joystick-knob"></div></div>
           <div class="touch-buttons">
             <button id="touch-crouch" type="button" aria-label="身を隠す">隠</button>
             <button id="touch-sprint" type="button" aria-label="ダッシュ">走</button>
             <button id="touch-jump" class="touch-large" type="button" aria-label="ジャンプ">跳</button>
-            <button id="touch-interact" class="touch-large primary" type="button" aria-label="食べる・卵を壊す">
+            <button id="touch-interact" class="touch-large primary" type="button" aria-label="巣を壊す・仲間を助ける">
               E
             </button>
           </div>

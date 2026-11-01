@@ -299,7 +299,7 @@ function draw() {
       ? 'アイコンで召喚 → 右の砦を攻略'
       : state.time < 18
         ? '✦ 生産を強化すると援軍が増える'
-        : `${state.stage + 1}/3 · ${STAGES[state.stage].name} · 撃退 ${state.kills}`
+        : `撃退 ${state.kills}`
   buttons.forEach((b, i) => {
     b.disabled = paused || state.gold < TYPES[i].cost || state.cooldowns[i] > 0
     b.querySelector('b').textContent =

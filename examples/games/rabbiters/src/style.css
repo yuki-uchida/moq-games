@@ -423,20 +423,11 @@ input:focus-visible {
   left: 34px;
   bottom: 74px;
   width: 270px;
-  padding: 17px;
-}
-.objective-card .eyebrow {
-  justify-content: space-between;
+  padding: 14px 16px;
 }
 .objective-card h2 {
   font-size: 15px;
-  margin: 9px 0 5px;
-}
-.objective-card p {
-  font-size: 10px;
-  line-height: 1.6;
-  color: #cad9c6;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
 }
 .objective-progress {
   height: 4px;
@@ -450,33 +441,16 @@ input:focus-visible {
 }
 .objective-foot {
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
   margin-top: 8px;
   color: #d7e4ce;
   font-size: 10px;
 }
-.key-guide {
-  position: absolute;
-  right: 30px;
-  bottom: 28px;
-  display: flex;
-  gap: 13px;
-  font-size: 10px;
-  color: #fff;
-  text-shadow: 0 1px 8px #071c14;
+#objective-progress {
+  margin-right: auto;
 }
-.key-guide span {
-  white-space: nowrap;
-}
-kbd {
-  font:
-    700 9px 'DM Sans',
-    sans-serif;
-  border: 1px solid #ffffff80;
-  border-radius: 3px;
-  padding: 4px 5px;
-  margin-right: 3px;
-  background: #19362bb3;
+#food-progress b {
+  margin-left: 4px;
 }
 .interaction-hint {
   position: absolute;
@@ -648,12 +622,7 @@ kbd {
   }
   .objective-card h2 {
     font-size: 12px;
-  }
-  .objective-card p {
-    font-size: 9px;
-  }
-  .key-guide {
-    display: none;
+    margin-bottom: 8px;
   }
   .touch-controls {
     position: absolute;
