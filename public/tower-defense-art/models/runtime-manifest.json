@@ -3,7 +3,7 @@
   "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three source-identical new Blender GLBs pending runtime visual acceptance",
   "summary": {
     "files": 36,
-    "bytes": 238676488
+    "bytes": 240876152
   },
   "models": [
     {
@@ -105,8 +105,8 @@
       "role": "brute",
       "file": "brute/brute-motion-v2-candidate.glb",
       "sourceSha256": "c4190762f067d72b4e50d7b07090c17460363baa786882fd3024e383ec7537fb",
-      "outputSha256": "430eaae56165fdf26671a937782dce2c7f5a473824d41ecb2025a679ef018950",
-      "bytes": 9741932,
+      "outputSha256": "fd9c2622a1d366e4281f1edac8aed7e55feff262437ce04a455cfda611f9e022",
+      "bytes": 9930572,
       "vertices": 85483,
       "triangles": 76387,
       "sourceBytes": 18965272,
@@ -122,7 +122,10 @@
       "postOptimization": {
         "basisSha256": "7cc78d8f24d1c2dc94de569c692cbfed335e99127e8ff7b47b5ee96c7a199679",
         "change": "Neutral rock albedo warmed while green crystals are retained; color texture encoded losslessly as PNG; geometry, skin and animation buffer views unchanged"
-      }
+      },
+      "drawCalls": 46,
+      "motionRevision": "proximal-v1",
+      "motionSourceSha256": "430eaae56165fdf26671a937782dce2c7f5a473824d41ecb2025a679ef018950"
     },
     {
       "role": "cannon",
@@ -328,10 +331,10 @@
       "role": "ogre",
       "file": "ogre/ogre-motion-arm-swing20.glb",
       "sourceSha256": "ca2349cc7ed1fa943a201d6155bf8d0bb31fe317b9a42e62f2677002f8f8f418",
-      "outputSha256": "6834b2e3804545d1555a2b229ae262ec52424f5d61974428eff138dfbbda01f5",
-      "bytes": 8449812,
+      "outputSha256": "39f7c9c4ee72c17550917adc76ae1c02d44d2a0e41b2b2585efe665253c22c8f",
+      "bytes": 8784576,
       "vertices": 45736,
-      "triangles": 58605,
+      "triangles": 55968,
       "sourceBytes": 19312180,
       "sourceTriangles": 126169,
       "config": {
@@ -341,7 +344,10 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
-      }
+      },
+      "drawCalls": 31,
+      "motionRevision": "arm-remnant-v1",
+      "motionSourceSha256": "6834b2e3804545d1555a2b229ae262ec52424f5d61974428eff138dfbbda01f5"
     },
     {
       "role": "paladin",
@@ -616,8 +622,8 @@
       "role": "wolf",
       "file": "wolf/wolf-walk-smooth.glb",
       "sourceSha256": "0aeb14cfca8b8fc7061d7e0304fbb04e57aec3ceb99ca59dace977825f52e953",
-      "outputSha256": "1f09cff307266152e3ca9ceca61336cd60aa8d5c1d1e99a1b3546cbba7af447c",
-      "bytes": 9536580,
+      "outputSha256": "99c787573e7c06855c44ce30e131c31b32dc7e7135b276d4976a78041e8892e3",
+      "bytes": 11212840,
       "vertices": 65507,
       "triangles": 76111,
       "sourceBytes": 20395400,
@@ -629,7 +635,10 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
-      }
+      },
+      "drawCalls": 7,
+      "motionRevision": "proximal-v1",
+      "motionSourceSha256": "1f09cff307266152e3ca9ceca61336cd60aa8d5c1d1e99a1b3546cbba7af447c"
     },
     {
       "role": "wraith",

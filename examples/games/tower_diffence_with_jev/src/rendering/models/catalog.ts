@@ -118,7 +118,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   wolf: {
     scale: 128 / 4.24, origin: [0.15, -0.8107264638, -0.02], yaw: 0,
-    walkDistance: 44, provenance: 'wolf-walk-smooth-24-final.zip; source-preserved candidate, visual review pending',
+    walkDistance: (0.60 / 0.45) * (128 / 4.24), provenance: 'wolf proximal gait v1; preserved source, extended shoulder/hip weights and stable leg planes',
     clips: {
       idle: source('wolf', 'wolf-walk-smooth.glb', 'idle', [adapters.wolfMaterial]),
       walk: source('wolf', 'wolf-walk-smooth.glb', 'walk', [adapters.wolfMaterial]),
@@ -146,7 +146,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   brute: {
     scale: 128 / 3.4, origin: [0.0, -0.8542622327804565, -0.0], yaw: 0,
-    walkDistance: 40, provenance: 'brute-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (0.30 / 0.54) * (128 / 3.4), provenance: 'brute proximal motion v1; rigid rock weights retained, stable knee planes and shoulder-driven slam',
     clips: {
       idle: source('brute', 'brute-motion-v2-candidate.glb', 'idle', [adapters.bruteMaterial]),
       walk: source('brute', 'brute-motion-v2-candidate.glb', 'walk', [adapters.bruteMaterial]),

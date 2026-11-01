@@ -76,6 +76,9 @@ export function directMotionClip(
   // A second torso pass would invalidate the authored IK/contact solution.
   if ((source as THREE.AnimationClip & { userData?: { motionRepair?: unknown } }).userData?.motionRepair) return source
   if (!['idle', 'walk', 'attack', 'heal', 'breath'].includes(source.name)) return source
+  // These authored clips already solve shoulder/hip weight transfer and foot contacts.
+  const authored = source as THREE.AnimationClip & { userData?: { proximalMotionVersion?: number } }
+  if ((role === 'wolf' || role === 'brute') && authored.userData?.proximalMotionVersion === 1) return source
   const prior = cache.get(source)?.get(role)
   if (prior) return prior
   const profile = MOTION_DIRECTION[role]
