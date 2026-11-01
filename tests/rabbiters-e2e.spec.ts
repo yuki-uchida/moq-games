@@ -1,5 +1,157 @@
 import { expect, test } from '@playwright/test'
 
+for (const legacy of ['before-food-kinds', 'before-stealth']) {
+  test(`a guest moves with a ${legacy} host snapshot`, async ({ page }) => {
+    await page.addInitScript((version) => {
+      ;(window as unknown as { rabbitersLegacyHost: string }).rabbitersLegacyHost = version
+    }, legacy)
+    await page.route('**/src/network.ts*', (route) =>
+      route.fulfill({
+        contentType: 'text/javascript',
+        body: `
+          import { Game } from '/src/game.ts';
+          export const MAX_PLAYERS = 16;
+          export class CooperativeNetwork {
+            constructor(options) { this.options = options; this.playerId = options.playerId; }
+            async start() {
+              this.game = new Game();
+              this.game.addPlayer('host', 'Host');
+              this.game.addPlayer(this.playerId, 'Guest');
+              this.timer = setInterval(() => {
+                this.game.step(0.1);
+                const state = structuredClone(this.game.state);
+                delete state.droppings;
+                for (const player of state.players) delete player.bath;
+                for (const predator of state.predators) { delete predator.suspicion; predator.state = 'alert'; }
+                if (window.rabbitersLegacyHost === 'before-food-kinds')
+                  for (const food of state.foods) delete food.kind;
+                this.options.onSnapshot(state);
+              }, 100);
+              this.options.onStatus('ready', 'Connected');
+            }
+            async sendInput(input) { this.game.setInput(this.playerId, input); }
+            async stop() { clearInterval(this.timer); }
+          }
+        `
+      })
+    )
+    await page.route('**/src/main.ts*', async (route) => {
+      const response = await route.fetch()
+      await route.fulfill({
+        response,
+        body: `${await response.text()}
+window.rabbitersLegacyState = () => {
+  const player = snapshot?.players.find((entry) => entry.id === localId);
+  const actor = scene.actors.get('player:' + localId);
+  return player && actor ? { confirmed: player.x, shown: actor.root.position.x,
+    bath: player.bath, predator: snapshot.predators[0].state, suspicion: snapshot.predators[0].suspicion,
+    kind: snapshot.foods[0].kind, droppings: snapshot.droppings.length } : null;
+};
+window.rabbitersInvalidSnapshots = () => {
+  const invalid = [
+    { ...snapshot, players: [{ ...snapshot.players[0], bath: null }] },
+    { ...snapshot, predators: [{ ...snapshot.predators[0], suspicion: 2 }] },
+    { ...snapshot, foods: [{ ...snapshot.foods[0], kind: null }] },
+    { ...snapshot, droppings: null },
+    { ...snapshot, predators: [{ ...snapshot.predators[0], state: 'invalid', stealthState: 'search' }] },
+    { ...snapshot, predators: [{ ...snapshot.predators[0], state: 'patrol', stealthState: 'invalid' }] }
+  ];
+  return invalid.map((state) => Boolean(readSnapshot(state)));
+};`
+      })
+    })
+    await page.goto('/')
+    await page.locator('#room').fill('legacy-test')
+    await page.locator('#join').click()
+    const state = () =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            rabbitersLegacyState: () => {
+              confirmed: number
+              shown: number
+              bath: number
+              predator: string
+              suspicion: number
+              kind: string
+              droppings: number
+            } | null
+          }
+        ).rabbitersLegacyState()
+      )
+    await expect.poll(state, { timeout: 5000 }).not.toBeNull()
+    await page.keyboard.down('KeyD')
+    await expect.poll(async () => (await state())?.confirmed).toBeGreaterThan(-36)
+    await page.keyboard.up('KeyD')
+    const current = await state()
+    expect(current!.shown).toBeGreaterThan(-36.5)
+    expect(current).toMatchObject({ bath: 0, predator: 'search', suspicion: 0, droppings: 0 })
+    if (legacy === 'before-food-kinds') expect(current!.kind).toBe('carrot')
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { rabbitersInvalidSnapshots: () => boolean[] }).rabbitersInvalidSnapshots()
+      )
+    ).toEqual([false, false, false, false, false, false])
+  })
+}
+
+test('host predator updates remain readable by older guests', async ({ page }) => {
+  await page.route('**/src/network.ts*', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `
+        export const MAX_PLAYERS = 16;
+        export class CooperativeNetwork {
+          constructor(options) { this.options = options; this.playerId = options.playerId; }
+          async start() { this.options.onStatus('ready', 'Connected'); }
+          async broadcastSnapshot(state) { window.rabbitersWireSnapshot = structuredClone(state); }
+          async stop() {}
+        }
+      `
+    })
+  )
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersSetPredator = (state) => { game.state.predators[0].state = state; game.step = () => {}; };
+window.rabbitersWirePredator = () => {
+  const state = window.rabbitersWireSnapshot;
+  return state ? { wire: state.predators[0].state, behavior: readSnapshot(state)?.predators[0].state,
+    legacyAccepts: state.predators.every((predator) => ['patrol', 'alert', 'chase'].includes(predator.state)),
+    currentAccepts: state.predators.every((predator) => ['patrol', 'search', 'suspicious', 'chase'].includes(predator.state)) } : null;
+};`
+    })
+  })
+  await page.goto('/')
+  await page.locator('#room').fill('legacy-test')
+  await page.locator('#host').click()
+  await expect(page.locator('#hud')).toBeVisible()
+  for (const behavior of ['search', 'suspicious']) {
+    await page.evaluate(
+      (value) => (window as unknown as { rabbitersSetPredator: (value: string) => void }).rabbitersSetPredator(value),
+      behavior
+    )
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (
+            window as unknown as {
+              rabbitersWirePredator: () => {
+                wire: string
+                behavior: string
+                legacyAccepts: boolean
+                currentAccepts: boolean
+              } | null
+            }
+          ).rabbitersWirePredator()
+        )
+      )
+      .toEqual({ wire: 'patrol', behavior, legacyAccepts: true, currentAccepts: true })
+  }
+})
+
 test('a guest moves smoothly before delayed host snapshots arrive', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL })
   const network = `
@@ -43,6 +195,24 @@ window.rabbitersPosition = () => {
   const player = snapshot?.players.find((entry) => entry.id === localId);
   return actor && player ? { shown: actor.root.position.x, confirmed: player.x,
     moving: actor.moving, leg: actor.limbs[0].rotation.x } : null;
+};
+window.rabbitersSuspectGuest = () => {
+  const step = game.step.bind(game);
+  game.step = (seconds) => {
+    step(seconds);
+    const guest = game.state.players.find((player) => player.id !== localId);
+    if (guest && game.state.predators[0]) Object.assign(game.state.predators[0],
+      { state: 'suspicious', suspicion: 0.6, targetId: guest.id });
+  };
+};
+window.rabbitersPredatorCue = () => {
+  const predator = snapshot?.predators[0];
+  const marker = scene.actors.get('predator:' + predator?.id)?.marker;
+  return predator ? { state: predator.state,
+    marker: marker?.symbol.visible ? [...scene.textures].find(([, texture]) => texture === marker.symbol.material.map)?.[0] : null,
+    meter: marker?.meter.visible && marker?.fill.visible,
+    overlay: alertOverlay.classList.contains('suspected'),
+    condition: document.querySelector('#condition')?.textContent } : null;
 };
 window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
     })
@@ -104,6 +274,32 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
     expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
   }
   await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-36.5)
+  await host.evaluate(() => (window as unknown as { rabbitersSuspectGuest: () => void }).rabbitersSuspectGuest())
+  await expect
+    .poll(
+      () =>
+        guest.evaluate(() =>
+          (
+            window as unknown as {
+              rabbitersPredatorCue: () => {
+                state: string
+                marker: string | null
+                meter: boolean
+                overlay: boolean
+                condition: string
+              } | null
+            }
+          ).rabbitersPredatorCue()
+        ),
+      { timeout: 10_000 }
+    )
+    .toEqual({
+      state: 'suspicious',
+      marker: '?#e0a020',
+      meter: true,
+      overlay: true,
+      condition: '怪しまれている… 今のうちに隠れよう'
+    })
   await context.close()
 })
 

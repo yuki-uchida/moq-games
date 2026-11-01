@@ -146,6 +146,43 @@ function validSnapshot(value: unknown): value is GameState {
   )
 }
 
+function readSnapshot(value: unknown): GameState | undefined {
+  if (
+    !record(value) ||
+    !Array.isArray(value.players) ||
+    value.players.length > MAX_PLAYERS ||
+    !Array.isArray(value.predators) ||
+    value.predators.length > 12 ||
+    !Array.isArray(value.foods) ||
+    value.foods.length > 32
+  )
+    return undefined
+  const state = {
+    ...value,
+    players: value.players.map((player: unknown) =>
+      record(player) && player.bath === undefined ? { ...player, bath: 0 } : player
+    ),
+    predators: value.predators.map((predator: unknown) => {
+      if (!record(predator)) return predator
+      const behavior =
+        predator.stealthState === undefined
+          ? predator.state === 'alert'
+            ? 'search'
+            : predator.state
+          : predator.state === 'patrol' &&
+              (predator.stealthState === 'search' || predator.stealthState === 'suspicious')
+            ? predator.stealthState
+            : undefined
+      return { ...predator, state: behavior, suspicion: predator.suspicion === undefined ? 0 : predator.suspicion }
+    }),
+    foods: value.foods.map((food: unknown) =>
+      record(food) && food.kind === undefined ? { ...food, kind: 'carrot' } : food
+    ),
+    droppings: value.droppings === undefined ? [] : value.droppings
+  }
+  return validSnapshot(state) ? state : undefined
+}
+
 function showError(message: string) {
   error.textContent = message
   if (started) connection.textContent = message
@@ -204,7 +241,8 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
           game?.setInput(id, input as Input)
         },
         onSnapshot: (state) => {
-          if (attempt === generation && validSnapshot(state)) snapshot = state
+          const received = attempt === generation ? readSnapshot(state) : undefined
+          if (received) snapshot = received
         },
         onPresence: (ids) => {
           if (attempt !== generation || nextRole !== 'host' || !game) return
@@ -415,7 +453,15 @@ function frame(now: number) {
     const current = network
     const operation =
       role === 'host' && game
-        ? current.broadcastSnapshot({ ...game.state, inputAcks: Object.fromEntries(remoteInputAcks) })
+        ? current.broadcastSnapshot({
+            ...game.state,
+            predators: game.state.predators.map((predator) =>
+              predator.state === 'search' || predator.state === 'suspicious'
+                ? { ...predator, state: 'patrol', stealthState: predator.state }
+                : predator
+            ),
+            inputAcks: Object.fromEntries(remoteInputAcks)
+          })
         : current.sendInput({ ...input, sentAt: now })
     if (role === 'guest') inputInFlight = current
     void operation
