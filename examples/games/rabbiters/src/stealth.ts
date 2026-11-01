@@ -12,7 +12,175 @@ export interface Terrain {
   sightLine(from: Point, to: Point): number
 }
 
-export type PredatorKind = 'fox' | 'wolf' | 'hawk' | 'snake' | 'crocodile'
+export type PredatorKind =
+  | 'fox'
+  | 'wolf'
+  | 'hawk'
+  | 'snake'
+  | 'crocodile'
+  | 'human'
+  | 'child'
+  | 'cat'
+  | 'dog'
+  | 'rat'
+  | 'crow'
+
+/**
+ * Per-kind traits. `sight` m of clear view; `eye` height of the eyes above the feet (flyers use their own y);
+ * `chase` speed; `body` radius; `height` the clearance an overhang needs for it to walk under; `smell` scales
+ * the sniff radius (0: ignores droppings); `peek`: sees a rabbit under an overhang from within 4 m;
+ * `catch`: 'bite' drains health, 'grab' picks the rabbit up (stage script `caught`); `range` home range.
+ */
+export const KINDS: Record<
+  PredatorKind,
+  {
+    sight: number
+    eye: number
+    chase: number
+    body: number
+    height: number
+    smell: number
+    peek: boolean
+    flies: boolean
+    catch: 'bite' | 'grab'
+    range: number
+  }
+> = {
+  fox: {
+    sight: 13,
+    eye: 0.8,
+    chase: 4.3,
+    body: 0.6,
+    height: 1,
+    smell: 1,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 30
+  },
+  wolf: {
+    sight: 13,
+    eye: 0.8,
+    chase: 7.2,
+    body: 0.75,
+    height: 1.3,
+    smell: 1,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 38
+  },
+  hawk: {
+    sight: 18,
+    eye: 0,
+    chase: 8,
+    body: 0,
+    height: 0,
+    smell: 0,
+    peek: false,
+    flies: true,
+    catch: 'bite',
+    range: 45
+  },
+  snake: {
+    sight: 7,
+    eye: 0.8,
+    chase: 4.3,
+    body: 0.25,
+    height: 0.3,
+    smell: 1,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 20
+  },
+  crocodile: {
+    sight: 13,
+    eye: 0.8,
+    chase: 4.3,
+    body: 0.8,
+    height: 0.8,
+    smell: 0,
+    peek: false,
+    flies: false,
+    catch: 'bite',
+    range: 40
+  },
+  human: {
+    sight: 15,
+    eye: 5.6,
+    chase: 6,
+    body: 0.7,
+    height: 6,
+    smell: 0,
+    peek: false,
+    flies: false,
+    catch: 'grab',
+    range: 40
+  },
+  child: {
+    sight: 12,
+    eye: 3.9,
+    chase: 6.4,
+    body: 0.5,
+    height: 4.2,
+    smell: 0,
+    peek: false,
+    flies: false,
+    catch: 'grab',
+    range: 30
+  },
+  cat: {
+    sight: 11,
+    eye: 0.9,
+    chase: 7,
+    body: 0.4,
+    height: 1,
+    smell: 0.6,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 25
+  },
+  dog: {
+    sight: 12,
+    eye: 1.3,
+    chase: 7.4,
+    body: 0.55,
+    height: 1.5,
+    smell: 1.8,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 30
+  },
+  rat: {
+    sight: 6,
+    eye: 0.3,
+    chase: 5,
+    body: 0.2,
+    height: 0.4,
+    smell: 1.6,
+    peek: true,
+    flies: false,
+    catch: 'bite',
+    range: 18
+  },
+  crow: {
+    sight: 16,
+    eye: 0,
+    chase: 7,
+    body: 0,
+    height: 0,
+    smell: 0,
+    peek: false,
+    flies: true,
+    catch: 'bite',
+    range: 40
+  }
+}
+export const PREDATOR_KINDS = Object.keys(KINDS) as PredatorKind[]
+export const flies = (kind: string) => KINDS[kind as PredatorKind]?.flies === true
 export type PredatorState = 'patrol' | 'search' | 'suspicious' | 'chase'
 
 export interface PredatorBody extends Point {
@@ -59,7 +227,10 @@ export interface Mind {
 }
 
 export const STEALTH = {
-  sightRange: { fox: 13, wolf: 13, hawk: 18, snake: 7, crocodile: 13 } as Record<PredatorKind, number>,
+  sightRange: Object.fromEntries(PREDATOR_KINDS.map((kind) => [kind, KINDS[kind].sight])) as Record<
+    PredatorKind,
+    number
+  >,
   /** Within this share of the effective range a rabbit is spotted at once. */
   closeFraction: 0.4,
   /** Between the effective range and this multiple, a predator only notices something and comes to look. */
@@ -86,9 +257,8 @@ export const STEALTH = {
   bathSeconds: 2
 } as const
 
-const chaseSpeed: Record<PredatorKind, number> = { fox: 4.3, wolf: 7.2, hawk: 8, snake: 4.3, crocodile: 4.3 }
 const limits = (kind: PredatorKind) =>
-  kind === 'hawk'
+  flies(kind)
     ? { turn: 2.4, accel: 7, climb: 2.5, dive: 5, vAccel: 6 }
     : { turn: kind === 'snake' ? 4 : 5, accel: 12, climb: 0, dive: 0, vAccel: 0 }
 export const HAWK_ALTITUDE = { patrol: 5, suspicious: 5.5, search: 6.5 } as const
@@ -139,19 +309,20 @@ export function sightZone(range: number, reach: number, facing: number, chasing:
 export const scentStrength = (dropping: Dropping, time: number) =>
   clamp(1 - (time - dropping.t) / STEALTH.scentLifetime, 0, 1)
 
-/** Freshest unsniffed dropping a predator can smell from here. */
+/** Freshest unsniffed dropping a predator can smell from here (`nose` scales the sniff radius). */
 export function sniff(
   from: Point,
   droppings: readonly Dropping[],
   time: number,
-  ignore: ReadonlySet<string>
+  ignore: ReadonlySet<string>,
+  nose = 1
 ): Dropping | undefined {
   let best: Dropping | undefined
   for (const dropping of droppings)
     if (
       !ignore.has(dropping.id) &&
       scentStrength(dropping, time) > 0 &&
-      distance(from, dropping) < STEALTH.sniffRadius &&
+      distance(from, dropping) < STEALTH.sniffRadius * nose &&
       (!best || dropping.t > best.t)
     )
       best = dropping
@@ -222,7 +393,7 @@ function steer(
   body.x += Math.sin(body.angle) * mind.speed * dt
   body.z += Math.cos(body.angle) * mind.speed * dt
   const ground = terrain.heightAt(body.x, body.z)
-  if (body.kind !== 'hawk') {
+  if (!flies(body.kind)) {
     body.y = ground
     return
   }
@@ -243,6 +414,8 @@ export function updatePredator(
     scents: ReadonlyMap<string, Scent>
     terrain: Terrain
     random: () => number
+    /** Heading and speed while patrolling a route; otherwise the predator wanders. */
+    patrol?: { heading: number; speed: number }
   }
 ): Target | undefined {
   const { dt, time } = context
@@ -277,8 +450,8 @@ export function updatePredator(
       mind.lastKnown = { x: best.target.x, z: best.target.z }
       mind.linger = STEALTH.searchSeconds
       mind.trail = null
-    } else if (!mind.trail && mind.bored <= 0 && body.kind !== 'hawk' && body.kind !== 'crocodile') {
-      const found = sniff(body, context.droppings, time, mind.sniffed)
+    } else if (!mind.trail && mind.bored <= 0 && KINDS[body.kind].smell > 0) {
+      const found = sniff(body, context.droppings, time, mind.sniffed, KINDS[body.kind].smell)
       if (found) {
         body.state = 'search'
         mind.trail = found.id
@@ -301,13 +474,13 @@ export function updatePredator(
     for (const id of mind.sniffed) if (!live.has(id)) mind.sniffed.delete(id)
   }
 
-  const hawk = body.kind === 'hawk'
+  const hawk = flies(body.kind)
   const chased = body.state === 'chase' ? targets.find((target) => target.id === body.targetId) : undefined
   const goal = { heading: body.angle + dt * 0.28, speed: 1.5, altitude: HAWK_ALTITUDE.patrol as number }
   if (chased) {
     const range = distance(body, chased)
     goal.heading = heading(body, chased)
-    goal.speed = hawk ? Math.min(chaseSpeed.hawk, 2 + range * 1.5) : chaseSpeed[body.kind]
+    goal.speed = hawk ? Math.min(KINDS[body.kind].chase, 2 + range * 1.5) : KINDS[body.kind].chase
     goal.altitude = chased.y + 0.5 + clamp((range - 1.5) * 0.4, 0, 5)
   } else if (body.state === 'suspicious' && mind.lastKnown) {
     goal.heading = heading(body, mind.lastKnown)
@@ -335,6 +508,9 @@ export function updatePredator(
       mind.giveUp = mind.lastKnown
       mind.lastKnown = null
     }
+  } else if (context.patrol) {
+    goal.heading = context.patrol.heading
+    goal.speed = context.patrol.speed
   } else if (mind.bored > 0 && mind.giveUp) {
     goal.heading = heading(mind.giveUp, body)
   }

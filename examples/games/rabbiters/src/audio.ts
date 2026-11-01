@@ -12,6 +12,7 @@ type Observation = {
   nests: Set<string>
   predators: Map<string, string>
   chapter: number
+  stage: number
   bedding: number
   kitsLost: number
 }
@@ -84,6 +85,7 @@ export class RabbitersAudio {
       nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id)),
       predators: new Map(state.predators.map((predator) => [predator.id, predator.state])),
       chapter: state.chapter,
+      stage: state.stage ?? 3,
       bedding: state.bedding,
       kitsLost: state.kits.filter((kit) => kit.status === 'lost').length
     }
@@ -120,7 +122,7 @@ export class RabbitersAudio {
       this.tone(494, 0.12, 'triangle', 0, 520, 0.07)
       this.tone(587, 0.22, 'triangle', 0.11, 659, 0.07)
     }
-    if (next.chapter > previous.chapter) this.chime([392, 523, 659, 784, 1047])
+    if (next.chapter > previous.chapter || next.stage > previous.stage) this.chime([392, 523, 659, 784, 1047])
     else if (next.bedding > previous.bedding) this.chime([587, 784])
     if (next.kitsLost > previous.kitsLost) this.chime([440, 330, 220], 'triangle')
     if (!player || previous.playerId !== localPlayerId) return

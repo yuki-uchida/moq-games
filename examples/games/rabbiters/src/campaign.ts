@@ -1,7 +1,8 @@
 // Four-season campaign layered on the core survival rules: grow (spring), carry bedding to the
 // home burrow (summer), carry and give birth (autumn), then lead the kits across the stream to the
 // Big Oak hollow (winter). A day/night cycle changes how far predators can see.
-import { MAX_PREDATORS, SHELTERS, SPAWN, heightAt } from './map'
+import { heightAt } from './map'
+import { MAX_PREDATORS, SHELTERS, SPAWN } from './stages/forest/map'
 
 export interface Straw {
   id: string

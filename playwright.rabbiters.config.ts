@@ -5,7 +5,7 @@ const port = Number(process.env.E2E_PORT || 5193)
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: 'rabbiters-e2e.spec.ts',
+  testMatch: 'rabbiters-*.spec.ts',
   workers: 1,
   timeout: 30_000,
   use: {

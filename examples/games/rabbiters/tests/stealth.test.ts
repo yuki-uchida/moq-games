@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { GuestView } from '../src/guest-view'
 import { Game, mapTerrain, type Input, type Predator } from '../src/game'
-import { FORDS, GRASS, SAND_PATCHES, TREES, heightAt, lineOfSight } from '../src/map'
+import { GRASS, TREES, heightAt, lineOfSight } from '../src/map'
+import { FORDS, SAND_PATCHES } from '../src/stages/forest/map'
 import {
   HAWK_ALTITUDE,
   STEALTH,

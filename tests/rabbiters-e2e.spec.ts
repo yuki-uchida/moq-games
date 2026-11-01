@@ -220,7 +220,7 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
   })
   const host = await context.newPage()
   const guest = await context.newPage()
-  await host.goto('/')
+  await host.goto('/?chapter=4')
   await host.locator('#room').fill('latency-test')
   await host.locator('#host').click()
   await guest.goto('/')
@@ -308,7 +308,7 @@ test('desktop: starts a solo game and collects food by moving', async ({ page })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await expect(page.locator('#relay')).toHaveValue('https://relay.moqt.research.skyway.io')
   await expect(page.locator('#world canvas')).toBeVisible()
   await page.locator('#solo').click()
@@ -345,7 +345,7 @@ window.rabbitersObserve = () => {
     })
   })
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   type Observation = {
     x: number
@@ -460,7 +460,7 @@ window.rabbitersTestAccelerate = () => {
     rabbitersFastForward: boolean
   }
   const state = () => page.evaluate(() => (window as unknown as Hooks).rabbitersTestState())
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   await expect(page.locator('#objective-title')).toContainText('春｜')
   await expect(page.locator('#chapter-banner')).toBeVisible()
@@ -559,7 +559,7 @@ test('a finished game shows its result even without a local player', async ({ pa
 window.rabbitersFinishWithoutPlayer = () => { game.state.players = []; game.state.phase = 'won'; };`
     })
   })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   await page.evaluate(() =>
     (window as unknown as { rabbitersFinishWithoutPlayer: () => void }).rabbitersFinishWithoutPlayer()
@@ -575,7 +575,7 @@ for (const viewport of [
   test(`touch controls fit ${viewport.width}×${viewport.height}`, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true })
     const page = await context.newPage()
-    await page.goto('/')
+    await page.goto('/?chapter=4')
     await page.locator('#solo').click()
     await expect(page.locator('#joystick')).toBeVisible()
     await expect(page.locator('#touch-jump')).toBeVisible()
@@ -626,7 +626,7 @@ test('loads the release SDK WebAssembly before attempting a relay connection', a
         signature = body.subarray(0, 4).toString('hex')
       })
   })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#relay').fill('https://127.0.0.1:9')
   await page.locator('#room').fill('test-room')
   await page.locator('#host').click()
@@ -666,7 +666,7 @@ test('relay disconnection pauses the session and offers a way back', async ({ pa
       `
     })
   )
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#relay').fill('https://relay.test')
   await page.locator('#room').fill('test-room')
   await page.locator('#host').click()
@@ -696,7 +696,7 @@ test('desktop: pointer lock rotates the view without holding a button', async ({
       document.dispatchEvent(new Event('pointerlockchange'))
     }
   })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   await expect(page.locator('#look-hint')).toContainText('クリックで視点操作')
   const yaw = () => page.evaluate(() => (window as unknown as { __yaw: () => number }).__yaw())
@@ -748,7 +748,7 @@ window.rabbitersStealth = {
     })
   })
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   type Reading = {
     state: string
@@ -844,7 +844,7 @@ window.rabbitersTour = {
   await page.setViewportSize({ width: 960, height: 600 })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   await expect(page.locator('#minimap')).toBeVisible()
   type Info = {
@@ -991,7 +991,7 @@ window.rabbitersTurnTeam = () => game.state.players.forEach((player) => { player
 window.rabbitersSpreadTeammates = () => game.state.players.slice(1).forEach((mate, index) => { mate.z += 30 + 8 * index; });`
     })
   })
-  await page.goto('/')
+  await page.goto('/?chapter=4')
   await page.locator('#solo').click()
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#player-color')).toHaveCSS('background-color', 'rgb(232, 69, 90)')

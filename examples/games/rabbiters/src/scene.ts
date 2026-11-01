@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import {
   CAVES,
+  FOREST,
+  NPCS,
   SPAWN,
   TUNNEL_DEPTH,
   blockersNear,
@@ -11,13 +13,18 @@ import {
   heightAt,
   isUnderground,
   logOver,
-  logTop
+  logTop,
+  overhangAt,
+  setStage,
+  vehiclesAt
 } from './map'
-import { WorldView } from './world'
 import { buildFood, isFoodKind, type FoodKind } from './food'
-import { STEALTH } from './stealth'
+import { STEALTH, flies } from './stealth'
 import { playerColor } from './game'
-import { BURROW, CAMPAIGN, HAVEN, nightAmount } from './campaign'
+import { BURROW, CAMPAIGN, HAVEN } from './campaign'
+import { STAGES } from './stages'
+import { talkLine, type Bark, type Scenery } from './story'
+import { buildCar, buildItem, buildModel, type Actor, type ModelOptions } from './models'
 
 export interface RabbitersSceneState {
   time: number
@@ -61,24 +68,38 @@ export interface RabbitersSceneState {
   bedding?: number
   straws?: { id: string; x: number; y: number; z: number; active: boolean }[]
   kits?: { id: string; x: number; y: number; z: number; angle: number; hidden: boolean; status: string }[]
+  stage?: number
+  step?: number
+  items?: { id: string; kind: string; x: number; y: number; z: number; active: boolean }[]
+  talk?: { id: string; at: number } | null
 }
 
-type Actor = {
-  root: THREE.Group
-  body: THREE.Group
-  limbs: THREE.Group[]
-  ears: THREE.Group[]
-  tail?: THREE.Group
-  belly?: THREE.Mesh
-  dust?: THREE.Mesh
-  marker?: { symbol: THREE.Sprite; meter: THREE.Sprite; fill: THREE.Sprite }
-  lastState?: string
-  alertAt: number
-  pack?: THREE.Group
-  kind: string
-  x: number
-  z: number
-  moving: number
+/** Default enemy barks when a predator turns suspicious or gives chase; stages override by id or kind. */
+const BARKS: Record<string, Bark> = {
+  human: { suspicious: 'ん？', chase: 'あっ、ウサギ！', search: 'どこ行った？' },
+  child: { suspicious: 'あれ？', chase: 'まてー！', search: 'どこー？' },
+  cat: { suspicious: 'ニャ？', chase: 'フーッ！' },
+  dog: { suspicious: 'クン？', chase: 'ワン！ワン！' },
+  rat: { suspicious: 'チ？', chase: 'チュー！' },
+  crow: { suspicious: 'カァ？', chase: 'カァー！' }
+}
+const PALETTE = {
+  shirt: ['#5b7fb0', '#c0504d', '#6a9a5b', '#d9a441', '#8a6bb8', '#e7e2d6'],
+  pants: ['#3c4250', '#5a4632', '#2f3a4f', '#6b6b6b'],
+  hair: ['#2e2420', '#5a3a22', '#1b1b1b', '#8a6a4a'],
+  fur: ['#d59a52', '#5a5a5a', '#e8e2d6', '#2b2b2b', '#b07a4a']
+}
+/** Stable per-id look for people and animals, so the same predator looks the same on every client. */
+function variant(id: string): ModelOptions {
+  let hash = 0
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  const pick = <T>(list: T[], salt: number) => list[(hash >>> salt) % list.length]
+  return {
+    color: pick(PALETTE.shirt, 0),
+    pants: pick(PALETTE.pants, 3),
+    hair: pick(PALETTE.hair, 6),
+    long: !!(hash & 512)
+  }
 }
 
 const UP = new THREE.Vector3(0, 1, 0)
@@ -100,7 +121,10 @@ export class RabbitersScene {
     collar: new THREE.TorusGeometry(0.31, 0.075, 8, 28)
   }
   private readonly target = new THREE.Vector3(SPAWN.x, 0, SPAWN.z)
-  private readonly world: WorldView
+  private scenery?: Scenery
+  private stage = -1
+  private readonly vehicles = new Map<string, THREE.Group>()
+  private readonly beacons: THREE.Group[] = []
   private readonly sun = new THREE.DirectionalLight('#ffe8bc', 3.2)
   private readonly lantern = new THREE.PointLight('#ffd9a0', 0, 9, 1.4)
   private readonly propGeometry = {
@@ -128,11 +152,10 @@ export class RabbitersScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.25
-    this.renderer.domElement.setAttribute('aria-label', 'Rabbiters woodland and desert playing field')
+    this.renderer.domElement.setAttribute('aria-label', 'Rabbiters playing field')
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;'
     container.appendChild(this.renderer.domElement)
     this.scene.background = new THREE.Color('#b8d9d2')
-    // The field is 288 × 200 m: fog hides the far edge while hills and landmarks stay readable.
     this.scene.fog = new THREE.Fog('#b8d9d2', 50, 230)
     this.scene.add(this.sky)
     const sun = this.sun
@@ -141,7 +164,6 @@ export class RabbitersScene {
     Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 })
     sun.shadow.normalBias = 0.05
     this.scene.add(sun, sun.target, this.lantern)
-    this.world = new WorldView(this.scene)
     this.camera.position.set(SPAWN.x, 3.6, SPAWN.z + 8)
     // Winter destination: flowers around the Big Oak hollow; the ring glows once the kits are born.
     this.haven.position.set(HAVEN.x, heightAt(HAVEN.x, HAVEN.z), HAVEN.z)
@@ -245,8 +267,11 @@ export class RabbitersScene {
     return bundle
   }
 
-  /** White rabbit wearing a collar and bell in the player's colour, so teammates can tell each other apart. */
-  private rabbit(color: string): Actor {
+  /**
+   * White rabbit wearing a collar and bell in the player's colour, so teammates can tell each other apart.
+   * `wild` makes a brown, collarless wild rabbit (the forest elder).
+   */
+  private rabbit(color: string, wild = false): Actor {
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
@@ -259,10 +284,11 @@ export class RabbitersScene {
       x: NaN,
       z: NaN,
       moving: 0,
-      alertAt: -Infinity
+      alertAt: -Infinity,
+      top: 1.9
     }
-    const fur = this.smooth('#f4ece0')
-    const cream = this.smooth('#fffaf2')
+    const fur = this.smooth(wild ? '#9a7656' : '#f4ece0')
+    const cream = this.smooth(wild ? '#e3d2b4' : '#fffaf2')
     const pink = this.smooth('#f1a3aa', 0.7)
     this.part(body, fur, [0, 0.6, -0.04], [0.46, 0.45, 0.56])
     this.part(body, cream, [0, 0.66, 0.24], [0.33, 0.36, 0.3])
@@ -318,6 +344,10 @@ export class RabbitersScene {
       actor.ears.push(ear)
     }
     this.part(head, this.smooth('#e9848f', 0.55), [0, -0.035, 0.335], [0.05, 0.035, 0.035])
+    if (wild) {
+      this.scene.add(root)
+      return actor
+    }
     const collar = new THREE.Mesh(this.rabbitGeometry.collar, this.smooth(color, 0.6))
     collar.position.set(0, 0.9, 0.34)
     collar.rotation.x = Math.PI / 2 - 0.5
@@ -358,8 +388,15 @@ export class RabbitersScene {
     return mesh
   }
 
-  private character(kind: string, tint = '#ffffff'): Actor {
+  private character(kind: string, tint = '#ffffff', id = '', marked = true): Actor {
     if (kind === 'rabbit') return this.rabbit(tint)
+    if (kind === 'wildRabbit') return this.rabbit(tint, true)
+    const model = buildModel(kind, kind === 'cat' || kind === 'dog' ? { color: variant(id).hair } : variant(id))
+    if (model) {
+      if (marked) this.addMarker(model)
+      this.scene.add(model.root)
+      return model
+    }
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
@@ -372,7 +409,8 @@ export class RabbitersScene {
       x: NaN,
       z: NaN,
       moving: 0,
-      alertAt: -Infinity
+      alertAt: -Infinity,
+      top: kind === 'snake' ? 1.4 : 2.3
     }
     const color =
       (
@@ -462,23 +500,83 @@ export class RabbitersScene {
         0.055,
         0.06
       )
-    if (kind !== 'rabbit') {
-      const sprite = (texture: THREE.Texture | null, color: string) => {
-        const material = new THREE.SpriteMaterial({ map: texture, color, transparent: true, depthTest: false })
-        const result = new THREE.Sprite(material)
-        result.renderOrder = 10
-        result.visible = false
-        root.add(result)
-        return result
-      }
-      actor.marker = {
-        symbol: sprite(this.markerTexture('?', '#e0a020'), '#ffffff'),
-        meter: sprite(null, '#3b3326'),
-        fill: sprite(null, '#f2b531')
-      }
-    }
+    this.addMarker(actor)
     this.scene.add(root)
     return actor
+  }
+
+  /** "?" / "!" sprites and the suspicion meter over a predator. */
+  private addMarker(actor: Actor) {
+    const sprite = (texture: THREE.Texture | null, color: string) => {
+      const material = new THREE.SpriteMaterial({ map: texture, color, transparent: true, depthTest: false })
+      const result = new THREE.Sprite(material)
+      result.renderOrder = 10
+      result.visible = false
+      actor.root.add(result)
+      return result
+    }
+    actor.marker = {
+      symbol: sprite(this.markerTexture('?', '#e0a020'), '#ffffff'),
+      meter: sprite(null, '#3b3326'),
+      fill: sprite(null, '#f2b531')
+    }
+  }
+
+  /** Speech-bubble texture with a line of text, drawn once per text. */
+  private speechTexture(text: string): { texture: THREE.Texture; aspect: number } {
+    const key = `speech:${text}`
+    const cached = this.textures.get(key)
+    const width = Math.min(1024, 48 + [...text].length * 34)
+    if (cached) return { texture: cached, aspect: width / 96 }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = 96
+    const draw = canvas.getContext('2d')
+    if (draw) {
+      draw.fillStyle = '#fffdf6'
+      draw.strokeStyle = '#3b3326'
+      draw.lineWidth = 5
+      draw.beginPath()
+      draw.roundRect(4, 4, width - 8, 68, 22)
+      draw.moveTo(width / 2 - 12, 70)
+      draw.lineTo(width / 2, 92)
+      draw.lineTo(width / 2 + 12, 70)
+      draw.fill()
+      draw.stroke()
+      draw.fillRect(width / 2 - 10, 66, 20, 6)
+      draw.fillStyle = '#2b2620'
+      draw.font = 'bold 32px system-ui, sans-serif'
+      draw.textAlign = 'center'
+      draw.textBaseline = 'middle'
+      draw.fillText(text, width / 2, 40, width - 24)
+    }
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    this.textures.set(key, texture)
+    return { texture, aspect: width / 96 }
+  }
+
+  /** Shows `text` in a bubble over the actor, or hides the bubble. */
+  private speak(actor: Actor, text: string | undefined) {
+    if (!text) {
+      if (actor.bubble) actor.bubble.visible = false
+      return
+    }
+    if (!actor.bubble) {
+      actor.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }))
+      actor.bubble.renderOrder = 11
+      actor.root.add(actor.bubble)
+    }
+    const { texture, aspect } = this.speechTexture(text)
+    if (actor.bubble.material.map !== texture) {
+      // Only on a new line: flagging the material every frame would re-validate its shader each frame.
+      actor.bubble.material.map = texture
+      actor.bubble.material.needsUpdate = true
+    }
+    const height = Math.max(0.55, actor.top * 0.22)
+    actor.bubble.scale.set(height * aspect, height, 1)
+    actor.bubble.position.set(0, actor.top + height * 0.9 + (actor.marker?.symbol.visible ? 1.1 : 0), 0)
+    actor.bubble.visible = true
   }
 
   /** "?" / "!" speech-bubble texture drawn once per symbol. */
@@ -568,12 +666,11 @@ export class RabbitersScene {
   private animate(actor: Actor, time: number, moving: number, downed: boolean, airborne: boolean, bath = 0): void {
     const cycle = time * (actor.kind === 'rabbit' ? 11 : 8)
     const jumping = actor.kind === 'rabbit' && airborne && !downed
-    actor.body.position.y =
-      actor.kind === 'hawk'
-        ? 0.2 + Math.sin(time * 3) * 0.15
-        : jumping
-          ? 0
-          : Math.abs(Math.sin(cycle)) * moving * (actor.kind === 'rabbit' ? 0.18 : 0.06)
+    actor.body.position.y = flies(actor.kind)
+      ? 0.2 + Math.sin(time * 3) * 0.15
+      : jumping
+        ? 0
+        : Math.abs(Math.sin(cycle)) * moving * (actor.kind === 'rabbit' ? 0.18 : 0.06)
     actor.body.rotation.z = downed ? Math.PI / 2 : bath > 0 && bath < 1 ? Math.sin(time * 18) * 0.45 : 0
     if (actor.dust) {
       actor.dust.visible = bath > 0 && !downed
@@ -581,7 +678,7 @@ export class RabbitersScene {
     }
     actor.body.rotation.x = jumping ? -0.22 : actor.kind === 'rabbit' ? Math.sin(cycle) * moving * 0.1 : 0
     actor.limbs.forEach((limb, index) => {
-      if (actor.kind === 'hawk') limb.rotation.z = Math.sin(time * 7) * 0.55 * (index === 0 ? -1 : 1)
+      if (flies(actor.kind)) limb.rotation.z = Math.sin(time * 7) * 0.55 * (index === 0 ? -1 : 1)
       else if (actor.kind === 'snake') limb.rotation.y = Math.sin(time * 5 - index * 0.65) * 0.24
       else if (jumping) limb.rotation.x = index % 2 === 0 ? 0.85 : -0.65
       else limb.rotation.x = Math.sin(cycle + (index === 0 || index === 3 ? 0 : Math.PI)) * moving * 0.55
@@ -630,8 +727,75 @@ export class RabbitersScene {
     return item
   }
 
+  /** Builds the stage's scenery, lighting and friendly NPCs (the map is already switched to it). */
+  private enterStage(stage: number) {
+    this.stage = stage
+    this.scenery?.dispose()
+    const def = STAGES[stage]
+    this.scenery = def.scenery(this.scene)
+    const { look } = def
+    const fog = this.scene.fog as THREE.Fog
+    fog.near = look.fog[0]
+    fog.far = look.fog[1]
+    this.camera.far = Math.max(240, look.fog[1] + 20)
+    this.camera.updateProjectionMatrix()
+    this.day.set(look.sky)
+    this.night.set(look.nightSky ?? look.sky)
+    this.sky.color.set(look.hemi[0])
+    this.sky.groundColor.set(look.hemi[1])
+    this.sun.color.set(look.sun[0])
+    for (const [key, actor] of this.actors)
+      if (key.startsWith('npc:')) {
+        this.release(actor.root)
+        this.actors.delete(key)
+      }
+    for (const npc of NPCS) {
+      const actor = this.character(npc.kind, '#ffffff', npc.id, false)
+      actor.root.position.set(npc.x, heightAt(npc.x, npc.z), npc.z)
+      actor.root.rotation.y = npc.angle
+      this.actors.set(`npc:${npc.id}`, actor)
+    }
+    for (const car of this.vehicles.values()) this.release(car)
+    this.vehicles.clear()
+    // Forest-only campaign props.
+    this.haven.visible = this.beddingPile.visible = stage === FOREST
+    this.target.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z)
+    this.camera.position.set(SPAWN.x, this.target.y + 3.6, SPAWN.z + 8)
+  }
+
+  /** Ring-and-diamond beacons over the stage script's markers (where to go, whom to talk to). */
+  private updateBeacons(state: RabbitersSceneState) {
+    const markers = STAGES[this.stage].script.markers?.(state as never) ?? []
+    markers.forEach((marker, index) => {
+      let beacon = this.beacons[index]
+      if (!beacon) {
+        beacon = new THREE.Group()
+        const ring = this.mesh(beacon, new THREE.RingGeometry(0.9, 1.15, 32), '#ffe9a8')
+        ring.rotation.x = -Math.PI / 2
+        ring.material = this.smooth('#ffe9a8', 0.5, true)
+        ring.castShadow = false
+        const gem = this.mesh(beacon, new THREE.OctahedronGeometry(0.35), '#ffd25a')
+        gem.material = this.smooth('#ffd25a', 0.4, true)
+        gem.castShadow = false
+        this.scene.add(beacon)
+        this.beacons.push(beacon)
+      }
+      const lift = marker.kind === 'npc' ? 2.6 : 1.4
+      beacon.position.set(marker.x, heightAt(marker.x, marker.z) + 0.06, marker.z)
+      beacon.children[1].position.y = lift + Math.sin(this.clock * 2.4 + index) * 0.2
+      beacon.children[1].rotation.y = this.clock * 1.5
+      beacon.children[0].visible = marker.kind === 'goal'
+      beacon.visible = true
+    })
+    for (let index = markers.length; index < this.beacons.length; index++) this.beacons[index].visible = false
+  }
+
   render(state: RabbitersSceneState, localPlayerId: string, dt: number): void {
     if (this.disposed) return
+    const stage = state.stage ?? FOREST
+    setStage(stage) // the host's game and a guest's snapshot already chose it; keeps preview and play in step
+    if (stage !== this.stage) this.enterStage(stage)
+    const def = STAGES[stage]
     const elapsed = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 0.1)) : 0
     this.clock += elapsed
     // Guests get rolling droppings at ~10 Hz, so they glide between snapshots.
@@ -650,6 +814,15 @@ export class RabbitersScene {
         tint: undefined,
         key: `predator:${predator.id}`
       })),
+      ...NPCS.map((npc) => ({
+        ...npc,
+        y: heightAt(npc.x, npc.z),
+        hidden: false,
+        downed: false,
+        pregnant: false,
+        tint: undefined,
+        key: `npc:${npc.id}`
+      })),
       ...(state.kits ?? [])
         .filter((kit) => kit.status !== 'lost')
         .map((kit) => ({
@@ -664,7 +837,7 @@ export class RabbitersScene {
       liveActors.add(entity.key)
       let actor = this.actors.get(entity.key)
       if (!actor) {
-        actor = this.character(entity.kind, entity.tint)
+        actor = this.character(entity.kind, entity.tint, entity.id)
         this.actors.set(entity.key, actor)
       }
       const distance = Math.hypot(entity.x - actor.x, entity.z - actor.z)
@@ -677,7 +850,19 @@ export class RabbitersScene {
       // Far creatures are lost in the fog anyway; skipping them keeps draw calls flat on the big map.
       actor.root.visible = Math.hypot(entity.x - this.target.x, entity.z - this.target.z) < 120
       if (actor.belly) actor.belly.visible = entity.pregnant === true
-      if (actor.pack) actor.pack.visible = 'carrying' in entity && !!entity.carrying
+      const carrying = 'carrying' in entity ? (entity.carrying ?? null) : null
+      if (actor.pack) actor.pack.visible = !!carrying && carrying.startsWith('straw-')
+      if (actor.carried?.id !== (carrying?.startsWith('straw-') ? null : carrying)) {
+        actor.carried?.object.removeFromParent()
+        actor.carried = undefined
+        const item = carrying && state.items?.find((entry) => entry.id === carrying)
+        if (item) {
+          const object = def.itemModel?.(item.kind) ?? buildItem(item.kind)
+          object.position.set(0, 0.62, 0.72)
+          actor.body.add(object)
+          actor.carried = { id: item.id, object }
+        }
+      }
       this.animate(
         actor,
         state.time,
@@ -686,8 +871,28 @@ export class RabbitersScene {
         entity.y - floorAt(entity.x, entity.y, entity.z) > 0.06,
         'bath' in entity ? (entity.bath ?? 0) : 0
       )
-      if ('suspicion' in entity)
-        this.updateMarker(actor, entity.state, entity.suspicion ?? 0, entity.kind === 'snake' ? 1.4 : 2.3)
+      if (entity.key.startsWith('predator:')) {
+        const { state: mood, suspicion } = entity as unknown as { state: string; suspicion?: number }
+        // Client-only barks on a change of mind; they never cross the relay.
+        if (mood !== actor.lastState && actor.lastState !== undefined) {
+          const text = (def.barks?.[entity.id] ?? def.barks?.[entity.kind] ?? BARKS[entity.kind])?.[mood as keyof Bark]
+          if (text) actor.bark = { text, until: this.clock + 1.8 }
+        }
+        this.updateMarker(actor, mood, suspicion ?? 0, actor.top)
+      }
+      if (entity.key.startsWith('npc:'))
+        actor.root.rotation.y = entity.angle + Math.sin(state.time * 0.7 + entity.x) * 0.25
+    }
+    // Speech: the conversation's current speaker, else any fresh bark.
+    const line = talkLine(def.conversations, state.talk, state.time)
+    const speaker =
+      line &&
+      (line.who === 'rabbit'
+        ? this.actors.get(`player:${localPlayerId}`)
+        : (this.actors.get(`npc:${line.who}`) ?? this.actors.get(`predator:${line.who}`)))
+    for (const actor of this.actors.values()) {
+      const bark = actor.bark && actor.bark.until > this.clock ? actor.bark.text : undefined
+      this.speak(actor, line && actor === speaker ? line.text : bark)
     }
     for (const [key, actor] of this.actors)
       if (!liveActors.has(key)) {
@@ -719,9 +924,41 @@ export class RabbitersScene {
     this.beddingPile.children.forEach((bundle, index) => (bundle.visible = index < (state.bedding ?? 0)))
     this.havenRing.visible = state.chapter === 3
     if (this.havenRing.visible) this.havenRing.scale.setScalar(1 + Math.sin(state.time * 2.5) * 0.03)
-    const dark = nightAmount(state.time)
-    this.sun.intensity = 3.2 * (1 - 0.8 * dark)
-    this.sky.intensity = 2.5 * (1 - 0.7 * dark)
+    const liveCars = new Set<string>()
+    for (const vehicle of vehiclesAt(state.time)) {
+      liveCars.add(vehicle.id)
+      let car = this.vehicles.get(vehicle.id)
+      if (!car) {
+        car = buildCar(vehicle.color, vehicle.length, vehicle.width, vehicle.height)
+        this.scene.add(car)
+        this.vehicles.set(vehicle.id, car)
+      }
+      car.position.set(vehicle.x, heightAt(vehicle.x, vehicle.z), vehicle.z)
+      car.rotation.y = vehicle.angle
+    }
+    for (const [id, car] of this.vehicles)
+      if (!liveCars.has(id)) {
+        this.release(car)
+        this.vehicles.delete(id)
+      }
+    for (const entry of state.items ?? []) {
+      const key = `item:${entry.id}`
+      liveItems.add(key)
+      let item = this.items.get(key)
+      if (!item) {
+        item = new THREE.Group()
+        item.add(def.itemModel?.(entry.kind) ?? buildItem(entry.kind))
+        this.scene.add(item)
+        this.items.set(key, item)
+      }
+      item.visible = entry.active
+      item.position.set(entry.x, entry.y + Math.sin(state.time * 2 + entry.x) * 0.035, entry.z)
+    }
+    this.updateBeacons(state)
+    const { look } = def
+    const dark = look.night?.(state) ?? 0
+    this.sun.intensity = look.sun[1] * (1 - 0.8 * dark)
+    this.sky.intensity = look.hemi[2] * (1 - 0.7 * dark)
     ;(this.scene.background as THREE.Color).lerpColors(this.day, this.night, dark)
     ;(this.scene.fog as THREE.Fog).color.lerpColors(this.day, this.night, dark)
     for (const [key, item] of this.items)
@@ -803,9 +1040,14 @@ export class RabbitersScene {
     }
     this.sun.position.set(this.target.x - 18, this.target.y + 35, this.target.z + 12)
     this.sun.target.position.copy(this.target)
-    this.lantern.intensity = underground || cave ? 2.2 : 0
+    this.lantern.intensity = underground || cave || look.dark ? 2.2 : 0
     this.lantern.position.copy(this.target).add(new THREE.Vector3(0, 1.1, 0))
-    this.world.update(state.time, underground, underLog)
+    const roof = local && !underground ? overhangAt(local.x, local.z) : undefined
+    this.scenery?.update(state, {
+      underground,
+      underLog,
+      under: roof && local && local.y - heightAt(local.x, local.z) < roof.bottom ? roof : undefined
+    })
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -913,7 +1155,7 @@ export class RabbitersScene {
     this.materials.clear()
     this.actors.clear()
     this.items.clear()
-    this.world.dispose()
+    this.scenery?.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
     this.scene.clear()

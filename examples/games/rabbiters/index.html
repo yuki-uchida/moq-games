@@ -86,6 +86,13 @@
           </figcaption>
         </figure>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
+        <div id="subtitle" class="subtitle" hidden>
+          <b id="subtitle-name"></b><span id="subtitle-text"></span>
+        </div>
+        <div id="title-card" class="title-card" aria-hidden="true" hidden>
+          <p id="title-card-chapter">第1章</p>
+          <h2 id="title-card-title"></h2>
+        </div>
         <div id="chapter-banner" class="chapter-banner" aria-hidden="true" hidden>
           <span id="chapter-season" class="chapter-season">春</span>
           <p id="chapter-title">CHAPTER 1 · 芽吹き</p>
@@ -112,10 +119,14 @@
           <div class="story-rule">
             <span class="rule-icon">✦</span>
             <p>
-              春に育ち、夏に巣をつくり、秋に命を宿し、<br /><strong>冬に子ウサギを新しい野原へ導いたらクリア。</strong
-              ><br />四つの季節をめぐる、約30分のものがたり。
+              ケージを抜け出し、町と水の道をこえて森へ。<br /><strong
+                >森で四つの季節を生き、子ウサギを新しい野原へ導いたらクリア。</strong
+              ><br />四つの章をめぐる、約2時間のものがたり。
             </p>
           </div>
+          <label id="chapter-pick" class="chapter-pick" hidden
+            ><span>はじめる章</span><select id="chapter-select"></select
+          ></label>
           <button id="solo" class="button button-primary" type="button"><span>ひとりではじめる</span><b>↗</b></button>
           <div class="divider"><span></span> OR PLAY TOGETHER <span></span></div>
           <div class="multiplayer-fields">

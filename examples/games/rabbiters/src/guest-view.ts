@@ -1,5 +1,5 @@
 import { moveRabbit, type GameState, type Input, type Movement, type Player } from './game'
-import { WORLD } from './map'
+import { WORLD, setGates } from './map'
 
 export interface InputAck {
   sentAt: number
@@ -22,6 +22,7 @@ export class GuestView {
   private history: Sample[] = []
   private correction = { x: 0, y: 0, z: 0 }
   private remotes = new Map<string, Pose>()
+  private stage = -1
 
   private sampleAt(time: number): Pose | undefined {
     const first = this.history[0]
@@ -97,7 +98,10 @@ export class GuestView {
     }
     this.visualTime = Math.max(this.visualTime, state.time, Math.min(this.visualTime + elapsed, state.time + 0.25))
     const player = state.players.find((entry) => entry.id === localId)
-    if (!player || !this.local || this.localId !== localId) {
+    setGates(state.open ?? 0) // predict against the gates the host has open
+    const newStage = state.stage !== this.stage
+    this.stage = state.stage
+    if (!player || !this.local || this.localId !== localId || newStage) {
       this.localId = localId
       this.local = player ? pose(player) : undefined
       this.movement = { velocity: 0, jumpHeld: false }

@@ -4,12 +4,9 @@ import {
   CAVES,
   DEEP_WATER,
   FOODS,
-  FORDS,
   LOGS,
   NESTS,
-  PLATEAU,
   PREDATOR_STARTS,
-  STREAM,
   TERRAIN,
   TUNNEL_EDGES,
   TUNNEL_NODES,
@@ -24,6 +21,7 @@ import {
   tunnelNearest,
   waterDepth
 } from '../src/map'
+import { FORDS, PLATEAU, STREAM } from '../src/stages/forest/map'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const solo = () => {

@@ -98,81 +98,105 @@
 
 既存の288×200の森と四季キャンペーンをそのまま使う。到着時に長老ウサギのヨモギが巣穴のそばで迎え、春の目標を話す。冬に子ウサギが大樫のうろに着いたらエピローグ（家・町・水の道・森をふりかえる語り）を表示してゲームクリア。
 
-## 4. エンジン契約（基盤フェーズで実装）
+## 4. エンジン契約（基盤フェーズで実装済み）
 
-既存の仕組み（地形の高さ・視線・カバー・フン・ステルスAI・ゲスト予測）は全ステージで共有し、**各章は主にデータとスクリプトで作る**。
+既存の仕組み（地形の高さ・視線・カバー・フン・ステルスAI・ゲスト予測）は全ステージで共有し、**各章は主にデータとスクリプトで作る**。以下は実装したとおりの契約。
 
 ### ステージ切り替え
 
-- `GameState.stage`（0 家、1 町、2 水の道、3 森）。
-- `src/map.ts` は「現在のステージの地図」を問い合わせる汎用エンジンになる。既存の名前（`WORLD`、`FOODS`、`TREES`、`heightAt`、`inGrass` など）はそのままエクスポートし、データ配列は `export let` のライブバインディング、関数は現在の地図を読む。`setStage(index)` で切り替える（各地図は初回利用時に一度だけ生成）。ホットパス（`heightAt`、`lineOfSight`、`canEnter`）を遅くしない。
-- 森の地図データと生成は `src/stages/forest/` へ移し、**森の挙動はビット単位で変えない**（既存の森のテストは import 先の変更以外そのまま通ること）。
-- 地図の格子間隔 `cell` はステージごと（森は1、屋内は0.25程度まで細かくできる）。セル数は1ステージ25万以下。
-- 壁・建物・家具の固体（跳び乗れる面を含む）は**高さマップに焼き込む**。既存の登坂・崖・視線・カメラの当たり判定がそのまま効く。描画は各ステージのシーナリーが箱などの形で重ねる。
+- `GameState.stage`（0 家、1 町、2 水の道、3 森 = `FOREST`）。`new Game(seed, terrain, stage)` の `stage` を省略すると森（既存テストのため）。ゲーム画面の新規開始は第1章（家）。
+- `src/map.ts` は「現在のステージの地図」を問い合わせる汎用エンジン。既存の名前（`WORLD`、`SPAWN`、`TERRAIN`、`FOODS`、`TREES`、`GRASS` など）は `export let` のライブバインディング、関数（`heightAt`、`lineOfSight`、`inGrass` …）は現在の地図を読む。`setStage(index)` で切り替え（同じ番号なら何もしない）、各地図は `stageMap(index)` の初回呼び出しで一度だけ生成。`Game.step` は毎回自分の `stage` に切り替えるので、別ステージのゲームが同じプロセスにあっても混ざらない。
+- 地図の生成関数は `src/stages/<章>/map.ts` の `buildMap(): StageMap` で、`map.ts` の `BUILDERS` に章の順で登録済み（`StageDef.map()` ではなくこちらにしたのは、`map.ts` ↔ 各章の地図の import 循環を避けるため）。**章の `map.ts` は `../kit` と型だけを import する**（`../../map` の値を import すると循環する）。
+- 森の地図と生成は `src/stages/forest/map.ts`。森の挙動はビット単位で同じ（地形・配置のハッシュと4分間のシミュレーション結果が移設前と一致、既存テストは import 先の変更だけで通過）。
+- 格子間隔 `cell` はステージごと（森 1、仮の家と水の道 0.5）。セル数は1ステージ25万以下。`heightAt` と `lineOfSight`（1セルごとに標本）は `cell` に従う。
+- 壁・家具・建物の固体は高さマップに焼き込む（`kit.grid(world, cell).raise(rect, h)` / `.set(rect, h)`）。**深い水のすぐ横に急斜面を作らない**（立てない斜面で深い水に滑り落ちようとして動けなくなる。水路の岸はゆるい斜面にするか、柵などの固体で囲う）。
 
-### 新しい地図要素（`StageMap` に追加）
+### 新しい地図要素（`StageMap`）
 
-- `overhangs`：下をくぐれる長方形の覆い（テーブル、ソファやベッドの下、停車中の車、ベンチ、社の床下、自販機）。`bottom`（床からの下面の高さ）より背の高い生き物は入れない（ウサギは立って1.3、しゃがんで0.8）。中にいるウサギのカバーは `under`：人間と鳥からは見えず、猫・犬・ネズミには4以内で見える。
-- `gates`：開け閉めする線分（ケージの扉、猫ドア、水門の通路）。閉じていると通れない。開閉は `GameState.open`（ビットマスク）でホストが同期。
-- `npcs`：味方NPCの静的配置（`id`、`kind`、`x`、`z`、`angle`）。会話のきっかけになる。
-- `lanes`：車の走る経路（点列、ループ、速度、車ごとのオフセット、車の大きさと色）。**車の位置は `state.time` だけで決まる関数**（`vehiclesAt(time)`）で、スナップショットに載せない。ホストが当たり判定（地上のウサギが車体に重なると倒れる）、全員が同じ式で描く。
-- `zones`：明るさ（街灯・月明かり・懐中電灯の円錐は人間側の属性）、地域名、ステージ固有のトリガー範囲。
-- 既存の `GRASS`・`BUSHES`・`LOGS`・`SHELTERS`・`CAVES`・トンネル・`FOODS`・`NESTS`（森のみ）・`PREDATOR_STARTS` は全ステージで使える（見た目は各ステージのシーナリーが決める。例：家の `BUSHES` はカーテンや洗濯かご、町のトンネルは排水管）。
+- `overhangs`：`Rect & { bottom }`（床からの下面の高さ）。入れるのは `bottom` 以上の高さで収まる生き物だけ（ウサギは立って `RABBIT_STAND` 1.3、しゃがんで `RABBIT_CROUCH` 0.8、敵は種類表の `height`）。すでに下にいれば中で動ける。下でのジャンプは天井で止まる。中のウサギのカバーは `under`：人間・子ども・鳥からは見えず、`peek` の種類（キツネ・オオカミ・ヘビ・猫・犬・ネズミ）は4以内で見える。
+- `gates`：線分 `{ax, az, bx, bz}`。i 番目のゲートは `GameState.open` のビット i が立つと開く。閉じたゲートは全員の移動を止める（横切る・押し込む両方）。ゲストの予測も同じビットで動く。
+- `npcs`：`{ id, kind, x, z, angle }`。シーンが models.ts のモデルで描き、首を少し振る。そばでEを押すとスクリプトの `interact` へ。`npcNear(x, z, reach)` で探せる。
+- `lanes`：`{ points, loop?, speed, cars: [{ offset, color }], length?, width?, height? }`（既定 16×6.5×5.5）。**`vehiclesAt(time)` は時刻だけの純関数**で、スナップショットに載らない。ホストは地上のウサギが車体に重なると倒す（`downed`、一撃）。全員が同じ式で描く。
+- `zones`：`Rect & { id?, name?, light? }`。`light` は見つかりやすさの倍率（重なると積、街灯 1.3、暗がり 0.6）。`name` はミニマップ下の地域名（`zonesAt`・`inZone(id, x, z)`・`lightAt`）。トリガーは `inZone('exit', x, z)` のように `id` で判定する。
+- 既存の `grass`・`bushes`・`logs`・`shelters`・`caves`・トンネル・`foods`・`nests`（森のみ）・`predatorStarts` は全ステージで使える。`sand(x, z)`（砂浴び）と `region(x, z)`（地域名の既定）は任意。
 
 ### 敵と生き物
 
-- `PredatorKind` に `human`、`child`、`cat`、`dog`、`rat`、`crow` を追加（`crow` はタカと同じ飛び方）。種類ごとに視認距離・目の高さ・追跡速度・体の半径・におい（犬とネズミは強い）・捕まえ方（`bite` は体力を減らす、`grab` は人間が捕まえる）・入れる場所（覆いの `bottom` と体の高さ）を表で持つ。
-- `PREDATOR_STARTS` と動的追加に `route`（巡回する点列。点ごとに `wait` 秒）と `leash`（鎖つき：犬小屋からの最大距離）を持てる。ルートがある敵は巡回中にルートをたどる（見つけたら追い、見失ったら探してからルートに戻る）。
-- `game.noise(x, z, radius)`：音のした地点へ、範囲内の追跡中でない敵が探しに来る（かじる音、陽動、屋内のダッシュの足音）。
-- `grab` の敵がウサギに触れると、ステージスクリプトの `caught` が呼ばれる（既定：そのウサギを今のチェックポイントへ戻し、運搬物を元に戻し、敵は巡回へ）。
-- 人間はステージスクリプトから `game.spawnPredator(...)`・`game.removePredator(id)`・ルートの差し替えでスケジュールどおり出入りする。名前つきの人間は固定ID（`mom` など）を使う。
+- `PredatorKind` に `human`、`child`、`cat`、`dog`、`rat`、`crow` を追加。種類ごとの値は `stealth.ts` の `KINDS`（`sight` 視認距離、`eye` 目の高さ、`chase` 追跡速度、`body` 半径、`height` 覆いに入るのに必要な高さ、`smell` 嗅ぐ半径の倍率（0なら嗅がない、犬1.8・ネズミ1.6）、`peek`、`flies`、`catch: 'bite' | 'grab'`、`range` 縄張り）。カラスはタカと同じ飛び方。人間と子どもは `grab`、他は `bite`。人間は低い覆い・巣穴などの避難所に入れない。
+- `predatorStarts` と `game.spawnPredator(kind, x, z, { id?, route?, leash? })` に `route`（`{x, z, wait?}[]`）と `leash`（出現地点からの鎖の長さ）。ルートのある敵は巡回中にルートをたどり（巡回速度は追跡の4割、点ごとに `wait` 秒止まる）、見つけたら追い、見失ったら探してからルートに戻る。`game.setRoute(id, route)` で差し替え、`game.removePredator(id)` で退場。ルートと鎖はホストだけが持ち、送信時に外す。
+- `game.noise(x, z, radius)`：範囲内の追跡中でない敵が音の地点を探しに来る。
+- `grab` の敵がウサギに触れると `script.caught(game, player, predator)`。無ければ `game.sendBack(player, predator)`：そのウサギを `game.respawn`（`script.respawn(state)`、既定はスポーン）へ戻し、運搬物を元の場所に戻し、その敵と追っていた敵を巡回へ。
 
 ### 物語・会話
 
-- `GameState.step`（章内の目標番号）、`GameState.flags`（章ごとのビットフラグ）、`GameState.items`（章で運ぶもの：`id`、`kind`、位置、`active`。運搬は既存の `player.carrying` を共用）、`GameState.talk`（`{ id, at }` または `null`：会話IDと開始時刻）。
-- 会話は各ステージの静的な表 `CONVERSATIONS: Record<string, Line[]>`（`Line = { who, text }`、`who` はNPC ID・敵ID・`narrator`・`rabbit`）。クライアントは `state.time - talk.at` から今のセリフを求めて表示するので、スナップショットはIDと時刻だけ。ホストは `game.say(id)` で会話を順番待ちに積む。
-- 表示：画面下部の字幕（話し手の名前＋セリフ）と、話し手の頭上の吹き出し。`narrator` は字幕のみ。
-- 敵のひとこと（「ん？」「あっ、ウサギ！」「ニャ？」「ワン！」「チュー！」など）は、クライアントが敵の状態変化を見て出す吹き出し。同期しない。ステージごとに上書きできる（家族は「モチ？」「モチー！」）。
-- NPCのそばでEを押すと会話（ステージスクリプトが内容を決める）。
+- `GameState` に `stage`・`step`（章内の目標番号）・`flags`（章ごとのビット）・`open`（ゲート）・`items`（`{ id, kind, x, y, z, active }`）・`talk`（`{ id, at }` か `null`）。アイテムは巣材と同じく触れると拾い（`player.carrying` を共用。遅く・見つかりやすくなる）、噛まれる・捕まる・退出すると元の位置に戻る。届け先の判定と受け渡しはスクリプトが行う。
+- 会話は各章の `CONVERSATIONS: Record<string, Line[]>`（`Line = { who, text }`、`who` はNPC ID・敵ID・`rabbit`（自分のウサギ）・`narrator`）。1行の表示時間は `1.6 + 文字数 × 0.12` 秒（`lineSeconds`）。クライアントは `talkLine(conversations, talk, time)` で今のセリフを求める。ホストの `game.say(id)` は話し中なら順番待ちに積む（`game.quiet` で空きを確認）。
+- 表示：画面上部の字幕（話し手の名前＋セリフ。名前は `StageDef.names`、既定は `rabbit` = モチ）と話し手の頭上の吹き出し。`narrator` は字幕のみ。
+- 敵のひとことはクライアントだけの吹き出し（状態が `suspicious`・`chase`・`search` に変わった時）。既定は scene.ts の `BARKS`、`StageDef.barks` で敵IDか種類ごとに上書き（例：家の `mom` は「モチ？」「モチー！」）。
+- Eを押している間、ホストは毎ティック `script.interact(game, player, held = true, pressed)` を呼ぶ（`pressed` は押した最初のティックだけ真）。`true` を返すと巣の破壊・仲間の救助より優先。NPCのそばでは「E で話す（名前）」のヒントが出る。
 
 ### ステージ定義とスクリプト
 
-`src/stages/index.ts` の `STAGES` に4章を並べる。各章は少なくとも次を持つ：
+`src/stages/index.ts` の `STAGES` に4章を並べる。型は `src/story.ts`。
 
 ```ts
 interface StageDef {
   id: 'house' | 'town' | 'waterway' | 'forest'
-  title: string // 例：ケージの外へ
-  map(): StageMap // 初回だけ生成
+  title: string // 例：知らない町（章番号は index + 1）
   script: StageScript
   conversations: Record<string, Line[]>
-  look: StageLook // 空・霧・光・屋内/暗さ、時間帯（夜の度合い）の関数
-  scenery(scene: THREE.Scene): Scenery // 静的な見た目（森は既存の WorldView）。update(state) と dispose()
+  names: Record<string, string> // 話し手の表示名
+  look: StageLook
+  scenery(scene: THREE.Scene): Scenery // update(state, view) と dispose()
+  barks?: Record<string, Bark> // 敵ID・種類ごとのひとこと
+  itemModel?(kind: string): THREE.Object3D // items の見た目（既定は小包）
 }
 interface StageScript {
-  start(game: Game): void // ステージ開始時（ホスト）
-  tick(game: Game, dt: number): void // ホストのみ：目標・スケジュール・会話
+  start(game: Game): void // ステージ開始時（ホスト）。新規開始と nextStage で呼ばれ、再挑戦では呼ばれない
+  tick(game: Game, dt: number): void // ホストのみ、1/60秒ごと
   interact?(game: Game, player: Player, held: boolean, pressed: boolean): boolean
   caught?(game: Game, player: Player, predator: Predator): void
-  objective(state: GameState, player: Player): { title: string; progress: number; label: string; hint?: string } // 純関数、ゲストでも動く
-  markers?(state: GameState): { x: number; z: number; kind: string }[] // ミニマップと3Dの目標マーカー
+  respawn?(state: GameState): Point // 捕まったウサギを戻す位置（今のチェックポイント）
+  objective(state: GameState, player: Player): { title: string; progress: number; label: string; hint?: string } // 純関数
+  markers?(state: GameState): { x: number; z: number; kind: 'goal' | 'npc' | 'item' }[] // ミニマップと3Dの目印
+}
+interface StageLook {
+  sky: string
+  nightSky?: string
+  fog: [near, far]
+  hemi: [sky, ground, intensity]
+  sun: [color, intensity]
+  night?(state): number // 0..1（スナップショットの値だけで決める）
+  dark?: boolean // 自分のウサギの周りに淡い光
+  indoor?: boolean
 }
 ```
 
-- 章のクリアは `game.nextStage()`：ステージ番号を進め、地図を切り替え、食べもの・敵・アイテム・フンをその章の初期状態にし、全員を新しいスポーンへ。クライアントは `stage` の変化で地図・シーナリー・ミニマップを作り直し、章のタイトルカード（「第2章　知らない町」）を出す。
-- チェックポイント：`stage`・`step`・`chapter` が進むたびにホストが状態を保存し、敗北時に「チェックポイントからやり直す」。
-- 続きから：到達した章を `localStorage`（`rabbiters.reached`）に記録し、タイトルで「第N章から」を選べる（ソロとホスト）。
-- スナップショットに `stage`・`step`・`flags`・`open`・`items`・`talk` を載せる。`stage` のない古いホストのスナップショットは森（3）として扱う。食べものの0/1文字列は、そのスナップショットの `stage` の `FOODS` で復元する（ゲストは復元の前に地図を切り替える）。
+- **スクリプトは状態を持たない**：進行は `step`・`flags`・`open`・`items` に置く（チェックポイント・再挑戦・ゲストが見られるのは状態だけ）。数秒の長押しの進み具合のような一時的な値だけはスクリプト内に置いてよい（仮の水の道のバルブ）。
+- 章のクリアは `game.nextStage()`：ステージ番号を進め、地図を切り替え、食べもの・敵・アイテム・フン・会話を初期化し、全員を新しいスポーンへ（体力は満タン、成長と季節の値は章ごとにやり直し、スコアは引き継ぎ）、新しい章の `start` を呼ぶ。クライアントは `stage` の変化でシーナリー・光・NPC・ミニマップを作り直し、タイトルカード（「第2章　知らない町」）を出す。森の季節バナーはタイトルカードが消えてから出る。
+- チェックポイント：`progress(state) = stage×10⁶ + chapter×10³ + step` が増えるたびにホストが状態を保存し、敗北時に「第N章のチェックポイントからやり直す」（森は「夏からやり直す」など従来どおり）。`retryState` と `Game.resume(state)` で再開する。
+- 続きから：到達した章を `localStorage` の `rabbiters.reached`（0〜3）に記録し、タイトルの「はじめる章」で選べる（ソロとホスト）。`?chapter=N`（1〜4）でその章を選んだ状態でタイトルが開く。
+- スナップショットに `stage`・`step`・`flags`・`open`・`items`・`talk` を載せる。`stage` のない古いホストのスナップショット（食べもののリスト形式も含む）は森として扱う。`unpackSnapshot` はスナップショットの `stage` に地図を切り替えてから食べものを復元し、検証に落ちたら元の地図に戻す。位置の範囲はそのステージの `WORLD`、敵の種類は `PREDATOR_KINDS` で検証する。
 
 ### 描画とモデル
 
-- `src/models.ts`：新しい生き物の手続きモデル（既存のウサギや捕食者と同じく three.js の基本形状の組み合わせ、`Actor` 互換で既存のアニメーションが効く）。人間（大人・子ども、服の色や髪型の違い、懐中電灯）、猫（毛色）、犬（大きさと毛色、リード）、ネズミ、カラス、ハト、インコ、タヌキ、ヒキガエル、カメ、茶色の野ウサギ、車（色違い）。モデリングは最後に統括側でブラッシュアップする。
-- 各章のシーナリー（`src/stages/<章>/scenery.ts`）：床・壁・家具・建物・道路・水路など。高さマップの固体と見た目を一致させる。インスタンス化とマージでドローコールを抑える（森のスポーン地点で約140が目安）。
-- 光：章ごとのプリセット（屋内の暖かい光、夕方の町、暗い下水道とプレイヤーのまわりの淡い光、朝の公園）。
+- `src/models.ts` の `buildModel(kind, options)`：`human`（服・ズボン・髪の色、長い髪、懐中電灯の光の円錐）、`child`、`cat`、`dog`（`size`・色・リード）、`rat`、`crow`、`pigeon`、`parakeet`、`tanuki`、`toad`、`turtle`。茶色の野ウサギ `wildRabbit` は scene.ts のウサギを茶色にしたもの。`buildCar(color)`、`buildItem(kind)`。どれも `Actor`（`limbs`・`ears`・`tail`）を返すので既存の歩き・羽ばたきアニメーションが効く。敵の色は ID から決まる（全員同じ見た目）。モデリングの仕上げは統括側。
+- 各章のシーナリーは `src/stages/scenery-kit.ts` の `buildScenery(scene, { colorAt, boxes, water, update })` で、高さマップそのままの地面（壁・家具が段として見える）・色ごとに1メッシュへまとめた箱・水面を作れる。`update(state, view)` の `view.under` は自分が下にいる覆い（家具を半透明にする等に使う）。
+- 光は `StageLook`。森は従来の昼夜（`nightAmount`）、町は `step` で夕方→夜、水の道は `dark`。
+
+### 章の作り方（並行作業の担当者向け）
+
+- **自分の持ち物**：`src/stages/<house|town|waterway>/` の中身すべて（`index.ts` の `StageDef`、`map.ts` の `buildMap`、`script.ts`、`conversations.ts`、`scenery.ts`、必要なら追加ファイル）、`examples/games/rabbiters/tests/<章>.test.ts`、`tests/rabbiters-<章>-e2e.spec.ts`（`playwright.rabbiters.config.ts` は `rabbiters-*.spec.ts` を拾う）、README のその章の節。今の中身は仮の最小マップなので丸ごと置き換えてよい（`id` と `STAGES` の順番は変えない）。
+- **共有ファイル**（`game.ts`・`map.ts`・`scene.ts`・`main.ts`・`models.ts`・`story.ts`・`index.html`・`style.css`）は原則変更しない。足りない機能は小さく足し、そのことを報告する。
+- **API**：地図は `StageMap`（上記）＋ `kit.grid`。スクリプトから `game.state`、`game.say(id)`・`game.quiet`、`game.spawnPredator`・`game.removePredator`・`game.setRoute`、`game.noise`、`game.sendBack`、`game.respawn`、`game.nextStage()`。地図の問い合わせは `../../map` の `inZone`・`zonesAt`・`npcNear`・`ZONES`・`NPCS`・`heightAt` など。
+- **テストだけ実行**：`npx vitest run examples/games/rabbiters/tests/<章>.test.ts`、`E2E_PORT=5394 npx playwright test --config playwright.rabbiters.config.ts tests/rabbiters-<章>-e2e.spec.ts`（別のワークツリーと重ならないポートで）。
+- **章から直接始める**：ブラウザは `http://127.0.0.1:5193/?chapter=1`（家）〜`?chapter=4`（森）、または `localStorage.setItem('rabbiters.reached', '3')` で全章をタイトルから選べる。ユニットテストは `new Game(seed, undefined, stage)`。E2E は `main.ts` の末尾にフックを足す既存の方法（`tests/rabbiters-story-e2e.spec.ts` の `storyTest`）が使える。
+- **ボット**：`tests/bot.ts` の `steer(from, goal, spacing)`・`reachable`・`field`（`canEnter` の格子経路。細かい地図は `spacing` 0.5 など）、`CautiousBot(game, id, { spacing })`（見つかったら近くの隠れ場所でしゃがんで待つ、車の前では待つ）。所要時間テストはこれで書く（6章の基準）。
+- **注意**：既定のホストは第1章で始まり、旧版互換のE2E（`host predator updates remain readable by older guests`）は開始直後の `predators[0]` を使うので、家の開始時に敵を最低1人置く。森の挙動を変える変更は既存の森のテストで確かめる。
 
 ## 5. 作業分担
 
-1. **基盤**（1人）：上の「エンジン契約」すべて、森の移設、`src/models.ts` の基本モデル、字幕・タイトルカード・続きから、仮の第1〜3章（小さな部屋や通りに出口が一つあるだけの最小マップ）で4章が最後までつながること、共通テスト用ボット（`tests/bot.ts`：格子の経路探索と「見つかったら隠れる」慎重な行動）。
+1. **基盤**（1人、済み）：上の「エンジン契約」すべて、森の移設、`src/models.ts` の基本モデル、字幕・タイトルカード・続きから、仮の第1〜3章（小さな部屋や通りに出口が一つあるだけの最小マップ）で4章が最後までつながること、共通テスト用ボット（`tests/bot.ts`：格子の経路探索と「見つかったら隠れる」慎重な行動）。
 2. **第1章・第2章・第3章**（各1人、並行）：それぞれ `src/stages/<章>/` の地図・スクリプト・会話・シーナリー、その章のテストとE2E（`tests/rabbiters-<章>-e2e.spec.ts`）、READMEのその章の節。**共有ファイル（`game.ts`・`map.ts`・`scene.ts`・`main.ts`・`models.ts`・`index.html`・`style.css`）の変更は最小限**にし、必要ならその章の機能として小さく足す（並行作業のマージを楽にするため）。
 3. **第4章の仕上げとモデリングのブラッシュアップ**：統括側。
 

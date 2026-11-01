@@ -1,37 +1,56 @@
 import { FOOD_KINDS, type FoodKind } from './food'
 import { BURROW, CAMPAIGN, createStraws, moveKits, nightVision, spawnKits, type Kit, type Straw } from './campaign'
+import { CROCODILE_POOLS } from './stages/forest/map'
 import {
-  CROCODILE_POOLS,
   DEEP_WATER,
   FOODS,
+  FOREST,
+  GATES,
+  LANES,
   NESTS,
+  OVERHANGS,
   PREDATOR_STARTS,
   SPAWN,
+  STAGE_COUNT,
   TUNNEL_DEPTH,
   WATER_LEVEL,
   WORLD,
   caveAt,
   caveWallBlocks,
   clampToTunnel,
+  gateBlocks,
   heightAt,
   hitsBlocker,
   inBush,
   inGrass,
   inShelter,
   isUnderground,
+  lightAt,
   lineOfSight,
   logOver,
   logTop,
   onSand,
+  overhangAt,
+  setGates,
+  setStage,
   slopeAt,
   treesNear,
   tunnelExitNear,
+  underWheels,
+  vehiclesAt,
   waterDepth,
-  type PredatorKind
+  type Circle,
+  type Point,
+  type PredatorKind,
+  type Waypoint
 } from './map'
+import { STAGES } from './stages'
+import { talkSeconds, type StageScript } from './story'
 import {
   HAWK_ALTITUDE,
+  KINDS,
   STEALTH,
+  flies,
   newMind,
   rollDropping,
   segmentDistance,
@@ -82,7 +101,18 @@ export interface Player {
   carrying: string | null
 }
 
-export type Predator = PredatorBody
+/** Host-side extras ride along on the predator: a patrol `route` and a chain (`leash`) around a post. */
+export type Predator = PredatorBody & { route?: Waypoint[]; leash?: Circle }
+
+/** A thing a chapter has the rabbits carry (niboshi, a collar tag). Picked up on contact; dropped back in place. */
+export interface Item {
+  id: string
+  kind: string
+  x: number
+  y: number
+  z: number
+  active: boolean
+}
 
 export interface Food {
   id: string
@@ -112,6 +142,17 @@ export interface GameState {
   bedding: number
   straws: Straw[]
   kits: Kit[]
+  /** Story chapter index into STAGES: 0 house, 1 town, 2 waterway, 3 forest. */
+  stage: number
+  /** Objective number within the stage. */
+  step: number
+  /** Stage-defined bit flags. */
+  flags: number
+  /** Open gates, bit i = GATES[i]. */
+  open: number
+  items: Item[]
+  /** Conversation being spoken and the game time it began; clients derive the current line. */
+  talk: { id: string; at: number } | null
 }
 
 /** Snapshot sent through the relay: food and nest positions come from the shared map. */
@@ -123,17 +164,19 @@ export interface Movement {
 }
 
 /** Where a rabbit is hiding. Each predator sees through a different subset of these. */
-export type Cover = 'tunnel' | 'shelter' | 'cave' | 'log' | 'bush' | 'canopy' | 'grass' | 'water' | 'open'
+export type Cover = 'tunnel' | 'shelter' | 'cave' | 'under' | 'log' | 'bush' | 'canopy' | 'grass' | 'water' | 'open'
 type Kind = PredatorKind | 'rabbit'
 type Body = { x: number; y: number; z: number }
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
+/** Kinds the forest nests hatch. */
 const kinds: PredatorKind[] = ['fox', 'wolf', 'hawk', 'snake', 'crocodile']
-const BODY: Record<Kind, number> = { rabbit: 0.3, fox: 0.6, wolf: 0.75, hawk: 0, snake: 0.25, crocodile: 0.8 }
-/** Home range: a patrolling predator that strays further turns back toward where it started or hatched. */
-const LEASH: Record<PredatorKind, number> = { fox: 30, wolf: 38, hawk: 45, snake: 20, crocodile: 40 }
+const RABBIT_BODY = 0.3
 const MAX_CLIMB = 0.95 // rise per metre a walker can climb; steeper ground needs a jump or is a cliff
 const MAX_STAND = 1.5 // nothing can rest on steeper ground: cliff faces are not ladders
+/** Rabbit heights: standing, and crouched (low sofas and parked cars need a crouch). */
+export const RABBIT_STAND = 1.3
+export const RABBIT_CROUCH = 0.8
 const SPRINT_NOISE = 1.3 // sprinting thumps: predators notice the rabbit from further away
 const distance = (first: { x: number; z: number }, second: { x: number; z: number }) =>
   Math.hypot(first.x - second.x, first.z - second.z)
@@ -149,7 +192,12 @@ export const mapTerrain: Terrain = {
   sightLine(from, to) {
     const eye = from as typeof from & { y?: number; kind?: string }
     const body = to as typeof to & { y?: number }
-    const eyeY = eye.y === undefined ? heightAt(eye.x, eye.z) + 0.8 : eye.kind === 'hawk' ? eye.y : eye.y + 0.8
+    const eyeY =
+      eye.y === undefined
+        ? heightAt(eye.x, eye.z) + 0.8
+        : flies(eye.kind ?? '')
+          ? eye.y
+          : eye.y + (KINDS[eye.kind as PredatorKind]?.eye ?? 0.8)
     const bodyY = (body.y ?? heightAt(body.x, body.z)) + 0.4
     if (!lineOfSight(eye.x, eyeY, eye.z, body.x, bodyY, body.z)) return 0
     for (const tree of treesNear(body.x, body.z, 3))
@@ -200,19 +248,28 @@ export function playerColor(player: Pick<Player, 'id' | 'color'>): string {
   return PLAYER_COLORS[hash % PLAYER_COLORS.length]
 }
 
-/** Whether a creature standing at `body` may step to (x, z). Rabbits may duck under logs. */
+/** Whether a creature standing at `body` may step to (x, z). Rabbits may duck under logs and low furniture. */
 export function canEnter(kind: Kind, body: Body, x: number, z: number, grounded: boolean, crouch: boolean): boolean {
   if (x < WORLD.minX + 1 || x > WORLD.maxX - 1 || z < WORLD.minZ + 1 || z > WORLD.maxZ - 1) return false
-  if (kind === 'hawk') return true
+  if (kind !== 'rabbit' && flies(kind)) return true
   const ground = heightAt(x, z)
   if (kind === 'crocodile') return WATER_LEVEL - ground > 0.15
   if (WATER_LEVEL - ground > DEEP_WATER) return false
   const rise = ground - body.y
   if (grounded ? rise > MAX_CLIMB * Math.hypot(x - body.x, z - body.z) + 0.02 : rise > 0.05) return false
-  const radius = BODY[kind]
+  const radius = kind === 'rabbit' ? RABBIT_BODY : KINDS[kind].body
   if (hitsBlocker(x, z, radius) || caveWallBlocks(x, z, radius)) return false
+  if (GATES.length && gateBlocks(body.x, body.z, x, z, radius)) return false
   if (kind !== 'rabbit' && kind !== 'snake' && inShelter(x, z, radius) && !inShelter(body.x, body.z, radius))
     return false
+  if (OVERHANGS.length) {
+    // Only bodies that fit under the roof may walk in; one already underneath may move about.
+    const roof = overhangAt(x, z, radius)
+    if (roof && roof !== overhangAt(body.x, body.z, radius)) {
+      const clearance = kind === 'rabbit' ? (crouch && grounded ? RABBIT_CROUCH : RABBIT_STAND) : KINDS[kind].height
+      if (clearance > roof.bottom) return false
+    }
+  }
   const log = logOver(x, z, radius)
   if (!log || kind === 'snake' || logOver(body.x, body.z, radius)) return true
   return kind === 'rabbit' && ((crouch && grounded) || body.y > logTop(log))
@@ -288,6 +345,14 @@ export function moveRabbit(
     player.y = Math.max(ground, player.y + velocity * dt)
     if (player.y === ground) velocity = 0
   }
+  if (OVERHANGS.length) {
+    // A roof overhead stops a jump short.
+    const roof = overhangAt(player.x, player.z)
+    if (roof && player.y > ground + Math.max(0, roof.bottom - RABBIT_STAND)) {
+      player.y = ground + Math.max(0, roof.bottom - RABBIT_STAND)
+      velocity = Math.min(velocity, 0)
+    }
+  }
   if (input.crouch && player.y === ground && tunnelExitNear(player.x, player.z, 1)) {
     player.y = ground - TUNNEL_DEPTH
     velocity = 0
@@ -299,6 +364,10 @@ export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover
   if (isUnderground(x, y, z)) return 'tunnel'
   if (inShelter(x, z)) return 'shelter'
   if (caveAt(x, z)) return 'cave'
+  if (OVERHANGS.length) {
+    const roof = overhangAt(x, z)
+    if (roof && y - heightAt(x, z) < roof.bottom) return 'under'
+  }
   if (y - heightAt(x, z) > 0.6) return 'open'
   if (crouch && logOver(x, z)) return 'log'
   if (inBush(x, z)) return crouch ? 'bush' : 'canopy'
@@ -310,15 +379,17 @@ export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover
 /** Whether this predator can perceive a rabbit in this cover at all (before range, angle and sight lines). */
 function exposed(predator: Predator, player: { x: number; z: number }, cover: Cover): boolean {
   if (cover === 'open') return true
-  if (cover === 'canopy') return predator.kind !== 'hawk'
+  if (cover === 'canopy') return !flies(predator.kind)
   if (cover === 'water') return predator.kind === 'crocodile'
+  // Under furniture or a car: people and birds miss the rabbit; cats, dogs and rats spot it up close.
+  if (cover === 'under') return KINDS[predator.kind].peek && distance(predator, player) < 4
   if (cover !== 'cave') return false
   const cave = caveAt(player.x, player.z)
-  return predator.kind !== 'hawk' && caveAt(predator.x, predator.z) === cave && distance(predator, player) < 4
+  return !flies(predator.kind) && caveAt(predator.x, predator.z) === cave && distance(predator, player) < 4
 }
 
 const predatorHeight = (kind: PredatorKind, x: number, z: number) =>
-  kind === 'hawk' ? heightAt(x, z) + HAWK_ALTITUDE.patrol : kind === 'crocodile' ? WATER_LEVEL - 0.3 : heightAt(x, z)
+  flies(kind) ? heightAt(x, z) + HAWK_ALTITUDE.patrol : kind === 'crocodile' ? WATER_LEVEL - 0.3 : heightAt(x, z)
 const pick = ({ x, y, z }: Body) => ({ x, y, z })
 const foodState = (index: number, active: boolean): Food => ({
   id: `food-${index}`,
@@ -348,10 +419,16 @@ export function packSnapshot<T extends GameState>(state: T): Omit<T, 'foods' | '
   )
 }
 
-/** Restores map-derived food and nest data; the caller still validates the remaining fields. */
+/**
+ * Restores map-derived food and nest data for the snapshot's stage (switching the active map to it; snapshots
+ * from hosts before story mode are the forest). The caller still validates the remaining fields.
+ */
 export function unpackSnapshot(value: unknown): GameState | undefined {
   if (!value || typeof value !== 'object') return undefined
   const wire = value as Partial<WireState>
+  const stage = wire.stage === undefined ? FOREST : wire.stage
+  if (!Number.isInteger(stage) || stage < 0 || stage >= STAGE_COUNT) return undefined
+  setStage(stage)
   const foods = wire.foods
   const nests = wire.nests
   if (typeof foods !== 'string' || foods.length !== FOODS.length || /[^01]/.test(foods)) return undefined
@@ -363,21 +440,30 @@ export function unpackSnapshot(value: unknown): GameState | undefined {
     return undefined
   return {
     ...(wire as WireState),
+    stage,
     foods: FOODS.map((_, index) => foodState(index, foods[index] === '1')),
     nests: nests.map((health, index) => nestState(index, health))
   }
 }
 
+/** Checkpoint order: a later stage, season or objective step is further along. */
+export const progress = (state: Pick<GameState, 'stage' | 'chapter' | 'step'>) =>
+  state.stage * 1e6 + state.chapter * 1e3 + state.step
+
 /**
- * State for retrying a lost run from the start of its season. The clock keeps running forward (so audio
- * and guest views never see time rewind), rabbits are back on their feet, and bedding already in the
- * den stays there: only a bundle that was in someone's mouth returns to the field.
+ * State for retrying a lost run from its last checkpoint (stage, season or objective). The clock keeps running
+ * forward (so audio and guest views never see time rewind), rabbits are back on their feet, and bedding already
+ * in the den stays there: only a bundle that was in someone's mouth returns to the field.
  */
 export function retryState(checkpoint: GameState, current: GameState): GameState {
-  const state: GameState = { ...structuredClone(checkpoint), time: current.time }
+  const state: GameState = { ...structuredClone(checkpoint), time: current.time, talk: null }
+  state.items = state.items.map((item) => ({
+    ...item,
+    active: item.active || state.players.some((player) => player.carrying === item.id)
+  }))
   for (const player of state.players)
     Object.assign(player, { health: 100, hunger: Math.max(player.hunger, 60), downed: false, carrying: null })
-  if (state.chapter === 1) {
+  if (state.stage === FOREST && state.chapter === 1) {
     state.bedding = current.bedding
     state.straws = current.straws.map((straw) => ({
       ...straw,
@@ -391,11 +477,14 @@ export class Game {
   state: GameState
   private inputs = new Map<string, Input>()
   private movements = new Map<string, Movement>()
-  private cover = new Map<string, { crouch: boolean; inGrass: boolean; cover: Cover; sprinting: boolean }>()
+  private cover = new Map<
+    string,
+    { crouch: boolean; inGrass: boolean; cover: Cover; sprinting: boolean; light: number }
+  >()
   private foodReady = new Map<string, number>()
   private homes = new Map<string, { x: number; z: number }>()
   private spawnIn = RULES.predatorSpawnSeconds
-  private predatorSequence = PREDATOR_STARTS.length
+  private predatorSequence = 0
   private seed: number
   private minds = new Map<string, Mind>()
   private scents = new Map<string, Scent>()
@@ -406,36 +495,236 @@ export class Game {
   private droppingSequence = 0
   /** Recent footsteps per rabbit, oldest first; kits follow these. */
   private trails = new Map<string, { x: number; z: number }[]>()
+  /** Route progress per predator: the waypoint it is heading for and the wait left there. */
+  private legs = new Map<string, { index: number; wait: number }>()
+  private talkQueue: string[] = []
+  /** Rabbits holding E, for rising-edge detection. */
+  private holding = new Set<string>()
 
+  /** A new game at `stage` (default the forest, chapter 4), running that stage's `start`. */
   constructor(
     seed = 1,
-    private readonly terrain: Terrain = mapTerrain
+    private readonly terrain: Terrain = mapTerrain,
+    stage = FOREST
   ) {
     this.seed = Number.isFinite(seed) ? seed >>> 0 : 1
     this.state = {
       time: 0,
       players: [],
-      foods: FOODS.map((_, index) => foodState(index, true)),
-      nests: NESTS.map((_, index) => nestState(index, 100)),
-      predators: PREDATOR_STARTS.map(({ kind, x, z }, index) => ({
-        id: `predator-${index}`,
-        kind,
-        x,
-        y: predatorHeight(kind, x, z),
-        z,
-        angle: index * 1.7,
-        state: 'patrol',
-        targetId: null,
-        suspicion: 0
-      })),
+      foods: [],
+      nests: [],
+      predators: [],
       droppings: [],
       delivered: 0,
       goal: 24,
       phase: 'playing',
       chapter: 0,
       bedding: 0,
-      straws: createStraws(),
-      kits: []
+      straws: [],
+      kits: [],
+      stage,
+      step: 0,
+      flags: 0,
+      open: 0,
+      items: [],
+      talk: null
+    }
+    this.enterStage(stage)
+  }
+
+  /** Continues from a saved state (a checkpoint) without re-running the stage's `start`. */
+  static resume(state: GameState, seed = 1): Game {
+    const game = new Game(seed, mapTerrain, state.stage)
+    game.talkQueue = []
+    game.state = state
+    return game
+  }
+
+  get script(): StageScript {
+    return STAGES[this.state.stage].script
+  }
+
+  private get forest() {
+    return this.state.stage === FOREST
+  }
+
+  /** Where a caught rabbit is put back: the stage's current checkpoint. */
+  get respawn(): Point {
+    return this.script.respawn?.(this.state) ?? SPAWN
+  }
+
+  private enterStage(stage: number) {
+    setStage(stage)
+    setGates(0)
+    const state = this.state
+    for (const map of [
+      this.cover,
+      this.foodReady,
+      this.homes,
+      this.minds,
+      this.scents,
+      this.rolls,
+      this.trails,
+      this.legs
+    ])
+      map.clear()
+    this.movements.clear()
+    this.wet.clear()
+    this.talkQueue = []
+    this.spawnIn = RULES.predatorSpawnSeconds
+    this.predatorSequence = PREDATOR_STARTS.length
+    Object.assign(state, {
+      foods: FOODS.map((_, index) => foodState(index, true)),
+      nests: NESTS.map((_, index) => nestState(index, 100)),
+      predators: PREDATOR_STARTS.map((start, index) =>
+        this.predatorAt(start.kind, start.x, start.z, start.id ?? `predator-${index}`, index * 1.7, start)
+      ),
+      droppings: [],
+      chapter: 0,
+      bedding: 0,
+      straws: stage === FOREST ? createStraws() : [],
+      kits: [],
+      stage,
+      step: 0,
+      flags: 0,
+      open: 0,
+      items: [],
+      talk: null
+    })
+    for (const player of state.players) {
+      // Each chapter starts fresh: grown-up timers and the seasons restart, the journey's score carries on.
+      Object.assign(player, {
+        x: SPAWN.x,
+        y: heightAt(SPAWN.x, SPAWN.z),
+        z: SPAWN.z,
+        health: 100,
+        hunger: Math.max(player.hunger, 60),
+        hidden: true,
+        downed: false,
+        age: 0,
+        foodEaten: 0,
+        growth: 0,
+        pregnant: false,
+        pregnancy: 0,
+        bath: 0,
+        carrying: null
+      })
+    }
+    this.script.start(this)
+  }
+
+  /** Clears the chapter: on to the next stage's map, with every rabbit at its spawn. */
+  nextStage() {
+    if (this.state.stage < STAGE_COUNT - 1) this.enterStage(this.state.stage + 1)
+  }
+
+  private predatorAt(
+    kind: PredatorKind,
+    x: number,
+    z: number,
+    id: string,
+    angle: number,
+    options: { route?: Waypoint[]; leash?: number } = {}
+  ): Predator {
+    const predator: Predator = {
+      id,
+      kind,
+      x,
+      y: predatorHeight(kind, x, z),
+      z,
+      angle,
+      state: 'patrol',
+      targetId: null,
+      suspicion: 0
+    }
+    if (options.route?.length) predator.route = options.route
+    if (options.leash) predator.leash = { x, z, r: options.leash }
+    return predator
+  }
+
+  /** Adds a predator (a family member coming home, a dog on a walk). An existing id is returned as is. */
+  spawnPredator(
+    kind: PredatorKind,
+    x: number,
+    z: number,
+    options: { id?: string; route?: Waypoint[]; leash?: number } = {}
+  ): Predator {
+    const existing = options.id && this.state.predators.find((predator) => predator.id === options.id)
+    if (existing) return existing
+    const predator = this.predatorAt(
+      kind,
+      x,
+      z,
+      options.id ?? `predator-${this.predatorSequence++}`,
+      this.random() * Math.PI * 2,
+      options
+    )
+    this.state.predators.push(predator)
+    return predator
+  }
+
+  removePredator(id: string) {
+    this.state.predators = this.state.predators.filter((predator) => predator.id !== id)
+    this.minds.delete(id)
+    this.homes.delete(id)
+    this.legs.delete(id)
+  }
+
+  /** Replaces a predator's patrol route (or clears it with undefined); it starts from the first waypoint. */
+  setRoute(id: string, route: Waypoint[] | undefined) {
+    const predator = this.state.predators.find((entry) => entry.id === id)
+    if (!predator) return
+    if (route?.length) predator.route = route
+    else delete predator.route
+    this.legs.delete(id)
+  }
+
+  /** A sound at (x, z): every predator within `radius` that is not already chasing comes to look. */
+  noise(x: number, z: number, radius: number) {
+    for (const predator of this.state.predators) {
+      if (predator.state === 'chase' || distance(predator, { x, z }) > radius) continue
+      predator.state = 'search'
+      predator.targetId = null
+      Object.assign(this.mind(predator.id), {
+        lastKnown: { x, z },
+        linger: STEALTH.searchSeconds,
+        trail: null,
+        bored: 0
+      })
+    }
+  }
+
+  /** Queues a conversation from the stage's CONVERSATIONS; it starts as soon as the current one ends. */
+  say(id: string) {
+    if (!this.state.talk) this.state.talk = { id, at: this.state.time }
+    else this.talkQueue.push(id)
+  }
+
+  /** True while no conversation is playing or queued. */
+  get quiet() {
+    return !this.state.talk && !this.talkQueue.length
+  }
+
+  /**
+   * The default for a grabbing predator: the rabbit is carried back to the checkpoint (`respawn`), whatever it
+   * held returns to its place, and the predator goes back to its rounds.
+   */
+  sendBack(player: Player, predator?: Predator) {
+    this.dropStraw(player)
+    const at = this.respawn
+    Object.assign(player, { x: at.x, y: heightAt(at.x, at.z), z: at.z })
+    this.movements.set(player.id, { velocity: 0, jumpHeld: false })
+    this.trails.delete(player.id)
+    for (const hunter of this.state.predators) {
+      if (hunter.targetId !== player.id && hunter !== predator) continue
+      Object.assign(hunter, { state: 'patrol', targetId: null, suspicion: 0 })
+      Object.assign(this.mind(hunter.id), {
+        lastKnown: null,
+        trail: null,
+        linger: 0,
+        bored: STEALTH.boredSeconds,
+        giveUp: null
+      })
     }
   }
 
@@ -519,10 +808,12 @@ export class Game {
     this.chains.set(player.id, (this.chains.get(player.id) ?? 0) + 1)
   }
 
-  /** A dropped bundle returns to where it was found. */
+  /** Whatever the rabbit carries (a straw bundle or a chapter item) returns to where it was found. */
   private dropStraw(player: Player) {
-    const straw = this.state.straws.find((entry) => entry.id === player.carrying)
-    if (straw) straw.active = true
+    const carried =
+      this.state.straws.find((entry) => entry.id === player.carrying) ??
+      this.state.items.find((entry) => entry.id === player.carrying)
+    if (carried) carried.active = true
     player.carrying = null
   }
 
@@ -536,6 +827,7 @@ export class Game {
     this.dropIn.delete(id)
     this.wet.delete(id)
     this.cover.delete(id)
+    this.holding.delete(id)
     for (const predator of this.state.predators) {
       if (predator.targetId === id) {
         predator.targetId = null
@@ -564,6 +856,7 @@ export class Game {
 
   step(dt: number) {
     if (typeof dt !== 'number' || !Number.isFinite(dt) || dt <= 0 || this.state.phase !== 'playing') return
+    setStage(this.state.stage) // several games may share one process (tests); each steps on its own map
     let remaining = Math.min(dt, 0.25)
     while (remaining > 1e-9 && this.state.phase === 'playing') {
       const delta = Math.min(remaining, 1 / 60)
@@ -572,12 +865,36 @@ export class Game {
     }
   }
 
+  /** Steering toward the next waypoint of a patrol route, pausing `wait` seconds at each. */
+  private routeLeg(predator: Predator, dt: number) {
+    const route = predator.route
+    if (!route?.length) return undefined
+    let leg = this.legs.get(predator.id)
+    if (!leg) this.legs.set(predator.id, (leg = { index: 0, wait: -1 }))
+    const point = route[leg.index % route.length]
+    if (distance(predator, point) > 1.2)
+      return {
+        heading: Math.atan2(point.x - predator.x, point.z - predator.z),
+        speed: KINDS[predator.kind].chase * 0.4
+      }
+    if (predator.state === 'patrol') {
+      if (leg.wait < 0) leg.wait = point.wait ?? 0
+      leg.wait -= dt
+      if (leg.wait <= 0) Object.assign(leg, { index: (leg.index + 1) % route.length, wait: -1 })
+    }
+    return { heading: predator.angle, speed: 0 }
+  }
+
   private tick(dt: number) {
     const state = this.state
+    const forest = this.forest
+    const stage = state.stage
     state.time += dt
+    setGates(state.open)
     for (const food of state.foods) {
       if (!food.active && state.time >= (this.foodReady.get(food.id) ?? Infinity)) food.active = true
     }
+    const vehicles = LANES.length ? vehiclesAt(state.time) : undefined
     for (const player of state.players) {
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? idle
@@ -599,7 +916,8 @@ export class Game {
         crouch: input.crouch,
         inGrass: inGrass(player.x, player.z) || cover === 'canopy',
         cover,
-        sprinting
+        sprinting,
+        light: lightAt(player.x, player.z)
       })
       // Wading through water or finishing a dust bath starts a new scent chain.
       const wet = cover !== 'tunnel' && waterDepth(player.x, player.z) > 0.05
@@ -625,6 +943,9 @@ export class Game {
       if (player.hunger === 0) player.health = Math.max(0, player.health - 5 * dt)
       else if (home || player.hunger >= RULES.wellFed)
         player.health = Math.min(100, player.health + dt * (home ? RULES.burrowHeal : RULES.fedHeal))
+      // A car knocks down a rabbit on the road; one ducking in a drain or under a roof is safe.
+      if (vehicles && cover !== 'tunnel' && player.y - ground < 0.5)
+        for (const vehicle of vehicles) if (underWheels(vehicle, player.x, player.z, RABBIT_BODY)) player.health = 0
       if (player.health === 0) {
         player.downed = true
         this.dropStraw(player)
@@ -640,21 +961,31 @@ export class Game {
         player.foodEaten += 1
         state.delivered += 1
       }
-      if (state.chapter === 1 && !player.carrying && cover !== 'tunnel' && player.y - ground < 1) {
+      if (forest && state.chapter === 1 && !player.carrying && cover !== 'tunnel' && player.y - ground < 1) {
         const straw = state.straws.find((entry) => entry.active && distance(player, entry) < 1.3)
         if (straw) {
           straw.active = false
           player.carrying = straw.id
         }
       }
-      if (player.carrying && distance(player, BURROW) < 4) {
+      if (state.items.length && !player.carrying && cover !== 'tunnel' && player.y - ground < 1) {
+        const item = state.items.find(
+          (entry) => entry.active && distance(player, entry) < 1.3 && Math.abs(player.y - entry.y) < 1.2
+        )
+        if (item) {
+          item.active = false
+          player.carrying = item.id
+        }
+      }
+      if (forest && player.carrying && distance(player, BURROW) < 4) {
         player.carrying = null
         state.bedding += 1
         if (state.bedding >= CAMPAIGN.beddingGoal) state.chapter = 2
       }
       player.growth = Math.min(1, player.age / RULES.adultAge, player.foodEaten / RULES.requiredFood)
-      if (state.chapter === 0 && player.growth === 1) state.chapter = 1
+      if (forest && state.chapter === 0 && player.growth === 1) state.chapter = 1
       if (
+        forest &&
         state.chapter === 2 &&
         !player.pregnant &&
         player.growth === 1 &&
@@ -671,14 +1002,19 @@ export class Game {
           state.kits = spawnKits(player.x, player.z)
         }
       }
-      if (input.interact && cover !== 'tunnel' && player.y - ground < 1) {
+      const pressed = input.interact && !this.holding.has(player.id)
+      if (input.interact) this.holding.add(player.id)
+      else this.holding.delete(player.id)
+      const handled = input.interact && this.script.interact?.(this, player, true, pressed) === true
+      if (state.stage !== stage) return // the script cleared the chapter; the new stage starts fresh next tick
+      if (!handled && input.interact && cover !== 'tunnel' && player.y - ground < 1) {
         for (const nest of state.nests) {
           if (!nest.active || distance(player, nest) > 2.5) continue
           nest.health = Math.max(0, nest.health - dt * 70)
           nest.active = nest.health > 0
         }
       }
-      if (input.interact) {
+      if (!handled && input.interact) {
         for (const teammate of state.players) {
           if (!teammate.downed || distance(player, teammate) > 2 || Math.abs(player.y - teammate.y) > 1.5) continue
           teammate.downed = false
@@ -742,10 +1078,16 @@ export class Game {
       visibility: 0
     }))
     const sated = new Set<Predator>()
-    for (const predator of state.predators) {
-      const night = nightVision(predator.kind, state.time)
+    for (const predator of [...state.predators]) {
+      const night = forest ? nightVision(predator.kind, state.time) : 1
       awake.forEach((player, index) => {
-        const seen = this.cover.get(player.id) ?? { crouch: false, inGrass: false, cover: 'open', sprinting: false }
+        const seen = this.cover.get(player.id) ?? {
+          crouch: false,
+          inGrass: false,
+          cover: 'open',
+          sprinting: false,
+          light: 1
+        }
         targets[index].visibility = exposed(predator, player, seen.cover)
           ? visibility(
               { hidden: false, crouch: seen.crouch, inGrass: seen.inGrass },
@@ -753,7 +1095,8 @@ export class Game {
             ) *
             (seen.sprinting ? SPRINT_NOISE : 1) *
             (player.carrying ? CAMPAIGN.carryDetection : 1) *
-            night
+            night *
+            seen.light
           : 0
       })
       kits.forEach((kit, index) => {
@@ -773,7 +1116,8 @@ export class Game {
         droppings: smellable,
         scents: this.scents,
         terrain: this.terrain,
-        random: () => this.random()
+        random: () => this.random(),
+        patrol: predator.route ? this.routeLeg(predator, dt) : undefined
       })
       // The stealth brain steers freely; the map then decides how far that step actually gets.
       const flight = predator.y
@@ -782,11 +1126,18 @@ export class Game {
       Object.assign(predator, before)
       const moved = move(predator.kind, predator, stepX, stepZ, true, false)
       if (!moved && !chased && (stepX || stepZ)) predator.angle += 1.2 // turn away from cliffs, logs and rocks
-      predator.y = predator.kind === 'hawk' ? flight : predatorHeight(predator.kind, predator.x, predator.z)
-      if (predator.state === 'patrol' && distance(predator, home) > LEASH[predator.kind])
+      predator.y = flies(predator.kind) ? flight : predatorHeight(predator.kind, predator.x, predator.z)
+      if (predator.state === 'patrol' && !predator.route && distance(predator, home) > KINDS[predator.kind].range)
         predator.angle = Math.atan2(home.x - predator.x, home.z - predator.z)
+      if (predator.leash) {
+        // A chained dog lunges only as far as its chain.
+        const { x, z, r } = predator.leash
+        const reach = distance(predator, predator.leash)
+        if (reach > r)
+          Object.assign(predator, { x: x + ((predator.x - x) * r) / reach, z: z + ((predator.z - z) * r) / reach })
+      }
       // Hunters that reach the home burrow give up there and turn back.
-      if (distance(predator, BURROW) < CAMPAIGN.denRadius && predator.kind !== 'hawk') {
+      if (forest && distance(predator, BURROW) < CAMPAIGN.denRadius && predator.kind !== 'hawk') {
         Object.assign(predator, { state: 'patrol', targetId: null, suspicion: 0 })
         predator.angle = Math.atan2(predator.x - BURROW.x, predator.z - BURROW.z)
         Object.assign(this.mind(predator.id), { trail: null, lastKnown: null, linger: 0 })
@@ -800,6 +1151,11 @@ export class Game {
           // A predator that catches a kit carries it off and leaves the field.
           target.status = 'lost'
           sated.add(predator)
+        } else if (KINDS[predator.kind].catch === 'grab') {
+          // People pick the rabbit up: the stage decides where it ends up.
+          if (this.script.caught) this.script.caught(this, target, predator)
+          else this.sendBack(target, predator)
+          if (state.stage !== stage) return
         } else {
           target.health = Math.max(0, target.health - 24 * dt)
           if (target.carrying) this.dropStraw(target)
@@ -808,32 +1164,42 @@ export class Game {
       }
     }
     if (sated.size) state.predators = state.predators.filter((predator) => !sated.has(predator))
-    const activeNests = state.nests.filter((nest) => nest.active)
-    this.spawnIn -= (dt * activeNests.length * 3) / state.nests.length
-    if (this.spawnIn <= 0 && activeNests.length && state.predators.length < CAMPAIGN.predatorCap[state.chapter]) {
-      const nest = activeNests[Math.floor(this.random() * activeNests.length)]
-      const kind = kinds[Math.floor(this.random() * kinds.length)]
-      const at =
-        kind === 'crocodile'
-          ? CROCODILE_POOLS.reduce((best, pool) => (distance(pool, nest) < distance(best, nest) ? pool : best))
-          : nest
-      const id = `predator-${this.predatorSequence++}`
-      this.homes.set(id, { x: at.x, z: at.z })
-      state.predators.push({
-        id,
-        kind,
-        x: at.x,
-        y: predatorHeight(kind, at.x, at.z),
-        z: at.z,
-        angle: this.random() * Math.PI * 2,
-        state: 'patrol',
-        targetId: null,
-        suspicion: 0
-      })
-      this.spawnIn = RULES.predatorSpawnSeconds
+    if (forest) {
+      const activeNests = state.nests.filter((nest) => nest.active)
+      this.spawnIn -= (dt * activeNests.length * 3) / state.nests.length
+      if (this.spawnIn <= 0 && activeNests.length && state.predators.length < CAMPAIGN.predatorCap[state.chapter]) {
+        const nest = activeNests[Math.floor(this.random() * activeNests.length)]
+        const kind = kinds[Math.floor(this.random() * kinds.length)]
+        const at =
+          kind === 'crocodile'
+            ? CROCODILE_POOLS.reduce((best, pool) => (distance(pool, nest) < distance(best, nest) ? pool : best))
+            : nest
+        const id = `predator-${this.predatorSequence++}`
+        this.homes.set(id, { x: at.x, z: at.z })
+        state.predators.push({
+          id,
+          kind,
+          x: at.x,
+          y: predatorHeight(kind, at.x, at.z),
+          z: at.z,
+          angle: this.random() * Math.PI * 2,
+          state: 'patrol',
+          targetId: null,
+          suspicion: 0
+        })
+        this.spawnIn = RULES.predatorSpawnSeconds
+      }
     }
+    if (state.talk && state.time - state.talk.at >= talkSeconds(STAGES[state.stage].conversations, state.talk.id)) {
+      const next = this.talkQueue.shift()
+      state.talk = next === undefined ? null : { id: next, at: state.time }
+    }
+    this.script.tick(this, dt)
+    if (state.stage !== stage) return
+    setGates(state.open)
     const waiting = state.kits.some(roaming)
-    if (state.chapter === 3 && !waiting) state.phase = state.kits.some((kit) => kit.status === 'safe') ? 'won' : 'lost'
+    if (forest && state.chapter === 3 && !waiting)
+      state.phase = state.kits.some((kit) => kit.status === 'safe') ? 'won' : 'lost'
     else if (state.players.length && state.players.every((player) => player.downed)) state.phase = 'lost'
   }
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { Game, RULES, canEnter, retryState, type Input } from '../src/game'
+import { Game, RULES, retryState, type Input } from '../src/game'
 import { GRASS, MAX_PREDATORS, heightAt } from '../src/map'
 import { BURROW, CAMPAIGN, HAVEN, STRAW_SPOTS, alongTrail, nightAmount, nightVision, spawnKits } from '../src/campaign'
+import { reachable, steer } from './bot'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const advance = (game: Game, seconds: number) => {
@@ -38,63 +39,10 @@ const fox = (x: number, z: number) => ({
   suspicion: 0
 })
 
-type Cell = [number, number]
-const NEIGHBORS: Cell[] = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-  [1, 1],
-  [1, -1],
-  [-1, 1],
-  [-1, -1]
-]
-const key = (x: number, z: number) => `${x},${z}`
-const walkable = (fromX: number, fromZ: number, toX: number, toZ: number) =>
-  canEnter('rabbit', { x: fromX, y: heightAt(fromX, fromZ), z: fromZ }, toX, toZ, true, false)
-/** Steps-to-goal over a 1 m grid, built backwards from the goal. */
-function field(goal: { x: number; z: number }) {
-  const start: Cell = [Math.round(goal.x), Math.round(goal.z)]
-  const steps = new Map([[key(...start), 0]])
-  const queue = [start]
-  for (let index = 0; index < queue.length; index++) {
-    const [x, z] = queue[index]
-    for (const [dx, dz] of NEIGHBORS) {
-      const [nx, nz] = [x + dx, z + dz]
-      if (steps.has(key(nx, nz)) || !walkable(nx, nz, x, z)) continue
-      steps.set(key(nx, nz), steps.get(key(x, z))! + 1)
-      queue.push([nx, nz])
-    }
-  }
-  return steps
-}
-const fields = new Map<string, Map<string, number>>()
-/** Direction toward the goal along walkable ground. */
-function steer(from: { x: number; z: number }, goal: { x: number; z: number }) {
-  const id = key(Math.round(goal.x), Math.round(goal.z))
-  let steps = fields.get(id)
-  if (!steps) fields.set(id, (steps = field(goal)))
-  const [cx, cz] = [Math.round(from.x), Math.round(from.z)]
-  let best: Cell | undefined
-  let bestSteps = steps.get(key(cx, cz)) ?? Infinity
-  for (const [dx, dz] of NEIGHBORS) {
-    const next = steps.get(key(cx + dx, cz + dz))
-    if (next !== undefined && next < bestSteps && walkable(cx, cz, cx + dx, cz + dz))
-      [best, bestSteps] = [[cx + dx, cz + dz], next]
-  }
-  const left = Math.hypot(goal.x - from.x, goal.z - from.z)
-  const aim = left < 1.5 || !best ? goal : { x: best[0], z: best[1] }
-  const dx = aim.x - from.x
-  const dz = aim.z - from.z
-  const length = Math.hypot(dx, dz)
-  return { moveX: length > 0.05 ? dx / length : 0, moveZ: length > 0.05 ? dz / length : 0, left }
-}
-
 describe('Rabbiters seasons campaign', () => {
   it('places every bundle and the haven on ground reachable from the den', () => {
-    const home = field(BURROW)
-    for (const [x, z] of STRAW_SPOTS) expect(home.has(key(x, z)), `straw ${x},${z}`).toBe(true)
-    expect(home.has(key(HAVEN.x, HAVEN.z))).toBe(true)
+    for (const [x, z] of STRAW_SPOTS) expect(reachable({ x, z }, BURROW), `straw ${x},${z}`).toBe(true)
+    expect(reachable(HAVEN, BURROW)).toBe(true)
   })
 
   it('opens summer once a rabbit is grown, then autumn once the bedding is home', () => {

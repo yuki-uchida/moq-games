@@ -3,24 +3,42 @@ import {
   Game,
   RULES,
   coverAt,
+  mapTerrain,
   packSnapshot,
   playerColor,
+  progress,
   retryState,
   unpackSnapshot,
   type Cover,
   type GameState,
   type Input
 } from './game'
-import { STEALTH } from './stealth'
+import { PREDATOR_KINDS, STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
 import { isFoodKind } from './food'
-import { FOODS, MAX_PREDATORS, SAND_PATCHES, WORLD, inBush, isUnderground, regionName, tunnelExitNear } from './map'
+import {
+  FOODS,
+  FOREST,
+  MAX_PREDATORS,
+  STAGE_COUNT,
+  WORLD,
+  activeStage,
+  inBush,
+  isUnderground,
+  npcNear,
+  regionName,
+  setStage,
+  tunnelExitNear
+} from './map'
+import { SAND_PATCHES } from './stages/forest/map'
 import { Minimap } from './minimap'
-import { CAMPAIGN, CHAPTERS, createStraws, nightAmount } from './campaign'
+import { CHAPTERS, createStraws, nightAmount } from './campaign'
+import { STAGES, speakerName } from './stages'
+import { talkLine } from './story'
 
 function element<T extends HTMLElement>(selector: string): T {
   const result = document.querySelector<T>(selector)
@@ -45,6 +63,12 @@ const soundToggle = element<HTMLButtonElement>('#sound-toggle')
 const relay = element<HTMLInputElement>('#relay')
 const room = element<HTMLInputElement>('#room')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
+const chapterPick = element<HTMLElement>('#chapter-pick')
+const chapterSelect = element<HTMLSelectElement>('#chapter-select')
+const subtitle = element<HTMLElement>('#subtitle')
+const titleCard = element<HTMLElement>('#title-card')
+// Once faded, the card stops delaying season banners (see style.css).
+titleCard.addEventListener('animationend', () => titleCard.classList.remove('show'))
 const keys = new Set<string>()
 const remoteInputAt = new Map<string, number>()
 const remoteInputAcks = new Map<string, InputAck>()
@@ -69,11 +93,45 @@ let generation = 0
 let soundEnabled = true
 let chasers = new Set<string>()
 let shownChapter = -1
-/** Snapshot taken as each new season begins, so a lost run can resume there instead of from spring. */
+let shownStage = -1
+/** Snapshot taken whenever the stage, season or objective advances, so a lost run resumes there. */
 let checkpoint: GameState | undefined
 
 const preview = new Game()
 preview.addPlayer('preview', '旅するウサギ')
+
+// "Continue": the furthest chapter reached on this browser. `?chapter=N` (1–4) preselects one for testing.
+const REACHED_KEY = 'rabbiters.reached'
+function readReached() {
+  try {
+    const value = Number(localStorage.getItem(REACHED_KEY))
+    return Number.isInteger(value) && value > 0 ? Math.min(value, STAGE_COUNT - 1) : 0
+  } catch {
+    return 0
+  }
+}
+function markReached(stage: number) {
+  try {
+    if (stage > readReached()) localStorage.setItem(REACHED_KEY, String(stage))
+  } catch {
+    /* storage unavailable: no continue option */
+  }
+}
+function fillChapters() {
+  const asked = Number(new URLSearchParams(location.search).get('chapter')) - 1
+  const reached = Math.max(readReached(), Number.isInteger(asked) && asked >= 0 && asked < STAGE_COUNT ? asked : 0)
+  chapterSelect.replaceChildren(
+    ...STAGES.slice(0, reached + 1).map((stage, index) => {
+      const option = document.createElement('option')
+      option.value = String(index)
+      option.textContent = index ? `続きから：第${index + 1}章　${stage.title}` : `はじめから：第1章　${stage.title}`
+      return option
+    })
+  )
+  chapterSelect.value = String(asked >= 0 && asked <= reached ? asked : reached)
+  chapterPick.hidden = reached === 0
+}
+fillChapters()
 
 function clearInput() {
   keys.clear()
@@ -102,6 +160,7 @@ const numeric = (value: unknown, min: number, max: number): value is number =>
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 const label = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 128
+const integer = (value: unknown, max: number) => Number.isInteger(value) && numeric(value, 0, max)
 const position = (value: Record<string, unknown>) =>
   label(value.id) &&
   numeric(value.x, WORLD.minX - 2, WORLD.maxX + 2) &&
@@ -130,7 +189,14 @@ function validSnapshot(value: unknown): value is GameState {
     !Array.isArray(value.straws) ||
     value.straws.length > 16 ||
     !Array.isArray(value.kits) ||
-    value.kits.length > 8
+    value.kits.length > 8 ||
+    !integer(value.stage, STAGE_COUNT - 1) ||
+    !integer(value.step, 1000) ||
+    !integer(value.flags, 2 ** 31 - 1) ||
+    !integer(value.open, 2 ** 31 - 1) ||
+    !Array.isArray(value.items) ||
+    value.items.length > 32 ||
+    !(value.talk === null || (record(value.talk) && label(value.talk.id) && numeric(value.talk.at, 0, 1e8)))
   )
     return false
   return (
@@ -155,6 +221,9 @@ function validSnapshot(value: unknown): value is GameState {
         (player.carrying === null || label(player.carrying))
     ) &&
     value.straws.every((straw: unknown) => record(straw) && position(straw) && typeof straw.active === 'boolean') &&
+    value.items.every(
+      (item: unknown) => record(item) && position(item) && label(item.kind) && typeof item.active === 'boolean'
+    ) &&
     value.kits.every(
       (kit: unknown) =>
         record(kit) &&
@@ -167,7 +236,7 @@ function validSnapshot(value: unknown): value is GameState {
       (predator: unknown) =>
         record(predator) &&
         position(predator) &&
-        ['fox', 'wolf', 'hawk', 'snake', 'crocodile'].includes(String(predator.kind)) &&
+        (PREDATOR_KINDS as string[]).includes(String(predator.kind)) &&
         ['patrol', 'search', 'suspicious', 'chase'].includes(String(predator.state)) &&
         numeric(predator.angle, -1e8, 1e8) &&
         numeric(predator.suspicion, 0, 1) &&
@@ -187,7 +256,21 @@ function validSnapshot(value: unknown): value is GameState {
 }
 
 function readSnapshot(packed: unknown): GameState | undefined {
-  // Current hosts pack food and nests against the shared map; full lists are only accepted for this same map.
+  // Unpacking switches to the snapshot's stage map; a rejected snapshot must not leave it switched.
+  const stage = activeStage()
+  const state = parseSnapshot(packed)
+  if (!state) setStage(stage)
+  return state
+}
+
+function parseSnapshot(packed: unknown): GameState | undefined {
+  // Current hosts pack food and nests against the stage map; full lists are only accepted for the same map.
+  if (record(packed) && typeof packed.foods !== 'string') {
+    // Full lists (very old hosts) carry no stage: the forest.
+    const stage = packed.stage === undefined ? FOREST : packed.stage
+    if (!integer(stage, STAGE_COUNT - 1)) return undefined
+    setStage(stage as number)
+  }
   const value = record(packed) && typeof packed.foods === 'string' ? unpackSnapshot(packed) : packed
   if (
     !record(value) ||
@@ -231,7 +314,14 @@ function readSnapshot(packed: unknown): GameState | undefined {
     chapter: value.chapter === undefined ? 0 : value.chapter,
     bedding: value.bedding === undefined ? 0 : value.bedding,
     straws: value.straws === undefined ? createStraws() : value.straws,
-    kits: value.kits === undefined ? [] : value.kits
+    kits: value.kits === undefined ? [] : value.kits,
+    // Hosts before story mode play the forest with no story state.
+    stage: value.stage === undefined ? FOREST : value.stage,
+    step: value.step === undefined ? 0 : value.step,
+    flags: value.flags === undefined ? 0 : value.flags,
+    open: value.open === undefined ? 0 : value.open,
+    items: value.items === undefined ? [] : value.items,
+    talk: value.talk === undefined ? null : value.talk
   }
   return validSnapshot(state) ? state : undefined
 }
@@ -275,7 +365,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
   remoteInputAcks.clear()
   inputInFlight = undefined
   checkpoint = undefined
-  game = nextRole === 'guest' ? undefined : new Game()
+  game = nextRole === 'guest' ? undefined : new Game(1, mapTerrain, Number(chapterSelect.value) || 0)
   guestView = nextRole === 'guest' ? new GuestView() : undefined
   game?.addPlayer(localId, 'あなた')
   snapshot = game?.state
@@ -345,6 +435,11 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     updateLookHint()
     startPanel.hidden = true
     shownChapter = -1
+    shownStage = -1
+    if (game) {
+      checkpoint = structuredClone(game.state)
+      markReached(game.state.stage)
+    }
     hud.hidden = false
     leave.hidden = false
     result.hidden = true
@@ -385,6 +480,9 @@ async function returnToTitle() {
   inputInFlight = undefined
   hud.hidden = true
   element<HTMLElement>('#chapter-banner').hidden = true
+  titleCard.hidden = true
+  subtitle.hidden = true
+  fillChapters()
   result.hidden = true
   help.hidden = true
   leave.hidden = true
@@ -407,26 +505,44 @@ const COVER_NAMES: Record<Cover, string> = {
   canopy: '茂みの中',
   grass: '背の高い草むら',
   water: '浅瀬の葦',
+  under: '物の下',
   open: '物かげ'
 }
 
+/** Restarts a CSS entrance animation on an overlay. */
+function replay(overlay: HTMLElement) {
+  overlay.hidden = false
+  overlay.classList.remove('show')
+  void overlay.offsetWidth
+  overlay.classList.add('show')
+}
+
 function updateHud(state: GameState) {
+  const forest = state.stage === FOREST
   if (state.phase !== 'playing' && result.hidden) {
     const won = state.phase === 'won'
     const safe = state.kits.filter((kit) => kit.status === 'safe').length
     const minutes = Math.floor(state.time / 60)
-    const record = `${CHAPTERS[state.chapter].season}まで · ${minutes}分${String(Math.floor(state.time % 60)).padStart(2, '0')}秒`
+    const where = forest ? `${CHAPTERS[state.chapter].season}まで` : `第${state.stage + 1}章`
+    const record = `${where} · ${minutes}分${String(Math.floor(state.time % 60)).padStart(2, '0')}秒`
+    // The journey's epilogue closes the winning run.
+    const epilogue = (STAGES[FOREST].conversations.epilogue ?? []).map((line) => line.text).join('')
     element<HTMLElement>('#result-title').textContent = won ? '新しい命が生まれました' : 'また、森で会おう'
     element<HTMLElement>('#result-text').textContent = won
-      ? `${safe}羽の子ウサギが新しい野原にたどり着きました。小さな命を、みんなでつなぎました。（${record}）`
-      : state.chapter === 3 &&
+      ? `${safe}羽の子ウサギが新しい野原にたどり着きました。小さな命を、みんなでつなぎました。${epilogue}（${record}）`
+      : forest &&
+          state.chapter === 3 &&
           !state.kits.some((kit) => kit.status === 'safe' || kit.status === 'follow' || kit.status === 'wait')
         ? `子ウサギたちを守りきれませんでした。草むらでしゃがみ、ゆっくり導いてあげよう。（${record}）`
         : `ウサギたちは力尽きてしまいました。食べものと隠れ場所を探して、もう一度。（${record}）`
     result.hidden = false
     restart.textContent = 'もう一度あそぶ'
     retry.hidden = won || !game || !checkpoint
-    if (checkpoint) retry.textContent = `${CHAPTERS[checkpoint.chapter].season}からやり直す`
+    if (checkpoint)
+      retry.textContent =
+        checkpoint.stage === FOREST
+          ? `${CHAPTERS[checkpoint.chapter].season}からやり直す`
+          : `第${checkpoint.stage + 1}章のチェックポイントからやり直す`
     restart.className = `button ${retry.hidden ? 'button-primary' : 'button-outline'}`
     clearInput()
     element<HTMLElement>('#announcements').textContent = won ? 'ゲームクリア' : 'ゲームオーバー'
@@ -478,57 +594,34 @@ function updateHud(state: GameState) {
             : '足あとに気をつけて'
   element<HTMLElement>('#area-name').textContent = regionName(player.x, player.y, player.z)
   minimap.draw(state, localId, yaw)
-  const pregnant = state.players.find((entry) => entry.pregnant && !entry.downed)
-  const chapter = CHAPTERS[state.chapter]
-  const safe = state.kits.filter((kit) => kit.status === 'safe').length
-  const alive = state.kits.filter((kit) => kit.status !== 'lost').length
-  const who = (entry: { id: string; name: string }) => (entry.id === localId ? 'あなた' : entry.name)
-  // Short goal + one bar; situational guidance goes to the contextual hint below.
-  const [goal, progress, progressLabel] =
-    state.chapter === 0
-      ? [chapter.goal, player.growth, `成長 ${Math.round(player.growth * 100)}%`]
-      : state.chapter === 1
-        ? [chapter.goal, state.bedding / CAMPAIGN.beddingGoal, `巣材 ${state.bedding} / ${CAMPAIGN.beddingGoal}`]
-        : state.chapter === 2
-          ? pregnant
-            ? [
-                pregnant.hunger <= 0 ? '空腹で出産が止まっています' : '新しい命を守ろう',
-                pregnant.pregnancy,
-                `${who(pregnant)} · 出産まで ${Math.round(pregnant.pregnancy * 100)}%`
-              ]
-            : [chapter.goal, 0, `おなか ${RULES.pregnancyNutrition}以上で妊娠`]
-          : [chapter.goal, safe / CAMPAIGN.kitCount, `到着 ${safe} / ${alive}羽`]
-  element<HTMLElement>('#objective-title').textContent = `${chapter.season}｜${goal}`
-  element<HTMLElement>('#food-progress').hidden = state.chapter !== 0
+  const objective = STAGES[state.stage].script.objective(state, player)
+  element<HTMLElement>('#objective-title').textContent = objective.title
+  element<HTMLElement>('#food-progress').hidden = !forest || state.chapter !== 0
   element<HTMLElement>('#food-count').textContent =
     `${Math.min(player.foodEaten, RULES.requiredFood)} / ${RULES.requiredFood}`
-  element<HTMLElement>('#growth-bar').style.width = `${progress * 100}%`
-  element<HTMLElement>('#objective-progress').textContent = progressLabel
-  if (state.chapter !== shownChapter) {
+  element<HTMLElement>('#growth-bar').style.width = `${Math.max(0, Math.min(1, objective.progress)) * 100}%`
+  element<HTMLElement>('#objective-progress').textContent = objective.label
+  if (forest && state.chapter !== shownChapter) {
     const first = shownChapter < 0
     shownChapter = state.chapter
+    const chapter = CHAPTERS[state.chapter]
     element<HTMLElement>('#chapter-season').textContent = chapter.season
     element<HTMLElement>('#chapter-title').textContent = `CHAPTER ${state.chapter + 1} · ${chapter.title}`
     element<HTMLElement>('#chapter-goal').textContent = chapter.goal
-    const banner = element<HTMLElement>('#chapter-banner')
-    banner.hidden = false
-    banner.classList.remove('show')
-    void banner.offsetWidth
-    banner.classList.add('show')
+    replay(element<HTMLElement>('#chapter-banner'))
     if (!first)
       element<HTMLElement>('#announcements').textContent = `${chapter.season}「${chapter.title}」${chapter.goal}`
   }
-  element<HTMLElement>('#nest-count').textContent =
-    `${nightAmount(state.time) > 0.5 ? '☾ 夜' : '☀ 昼'} · 残る巣 ${state.nests.filter((nest) => nest.active).length}`
+  element<HTMLElement>('#nest-count').textContent = forest
+    ? `${nightAmount(state.time) > 0.5 ? '☾ 夜' : '☀ 昼'} · 残る巣 ${state.nests.filter((nest) => nest.active).length}`
+    : `第${state.stage + 1}章　${STAGES[state.stage].title}`
   const nearNest = state.nests.find((nest) => nest.active && Math.hypot(nest.x - player.x, nest.z - player.z) < 2.5)
   const nearFriend = state.players.find(
     (friend) => friend.downed && friend.id !== localId && Math.hypot(friend.x - player.x, friend.z - player.z) < 2
   )
-  const sandPit = SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
+  const sandPit = forest && SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
   const hole = !player.downed && tunnelExitNear(player.x, player.z, underground ? 1.3 : 1.6)
-  const straggling = state.kits.some(
-    (kit) => kit.status === 'wait' && Math.hypot(kit.x - player.x, kit.z - player.z) < 14
-  )
+  const friend = !player.downed && !underground && npcNear(player.x, player.z, 2.5)
   element<HTMLElement>('#hint').textContent = nearFriend
     ? 'E を押して仲間を助ける'
     : nearNest
@@ -537,28 +630,41 @@ function updateHud(state: GameState) {
         ? underground
           ? 'SPACE で地上に出る'
           : 'C で穴にもぐる'
-        : straggling
-          ? '子ウサギが待っています。そばに戻ろう'
-          : player.carrying
-            ? '巣材を巣穴へ（遅く、見つかりやすい）'
-            : state.chapter === 1 && state.straws.some((straw) => straw.active) && !state.bedding
-              ? '大人になった。野原の巣材を巣穴へ運ぼう'
-              : state.chapter === 3 && !safe
-                ? '子ウサギは歩くより遅い。小川を渡って大樫のうろへ'
-                : player.bath >= 1
-                  ? '砂浴びでにおいを消した'
-                  : player.bath > 0
-                    ? `砂浴び中… ${Math.round(player.bath * 100)}%`
-                    : sandPit
-                      ? 'C を長押しして砂浴び（においを消す）'
-                      : ''
+        : friend && !state.talk
+          ? `E で話す（${speakerName(state.stage, friend.id)}）`
+          : (objective.hint ??
+            (player.bath >= 1
+              ? '砂浴びでにおいを消した'
+              : player.bath > 0
+                ? `砂浴び中… ${Math.round(player.bath * 100)}%`
+                : sandPit
+                  ? 'C を長押しして砂浴び（においを消す）'
+                  : ''))
+}
+
+/** Chapter title card and the conversation subtitle; shown to everyone, with or without a rabbit. */
+function updateStory(state: GameState) {
+  if (state.stage !== shownStage) {
+    shownStage = state.stage
+    element<HTMLElement>('#title-card-chapter').textContent = `第${state.stage + 1}章`
+    element<HTMLElement>('#title-card-title').textContent = STAGES[state.stage].title
+    replay(titleCard)
+    element<HTMLElement>('#announcements').textContent = `第${state.stage + 1}章　${STAGES[state.stage].title}`
+    if (role !== 'guest') markReached(state.stage)
+  }
+  const line = talkLine(STAGES[state.stage].conversations, state.talk, state.time)
+  subtitle.hidden = !line
+  if (line) {
+    const name = speakerName(state.stage, line.who)
+    element<HTMLElement>('#subtitle-name').textContent = name
+    element<HTMLElement>('#subtitle-name').hidden = !name
+    element<HTMLElement>('#subtitle-text').textContent = line.text
+  }
 }
 
 function retrySeason() {
   if (!game || !checkpoint) return
-  const next = new Game()
-  next.state = retryState(checkpoint, game.state)
-  game = next
+  game = Game.resume(retryState(checkpoint, game.state))
   snapshot = game.state
   shownChapter = -1
   result.hidden = true
@@ -578,7 +684,7 @@ function frame(now: number) {
       }
     }
     game.step(dt)
-    if (game.state.phase === 'playing' && game.state.chapter > (checkpoint?.chapter ?? 0))
+    if (game.state.phase === 'playing' && (!checkpoint || progress(game.state) > progress(checkpoint)))
       checkpoint = structuredClone(game.state)
     snapshot = game.state
   }
@@ -603,7 +709,8 @@ function frame(now: number) {
         ? current.broadcastSnapshot(
             packSnapshot({
               ...game.state,
-              predators: game.state.predators.map((predator) =>
+              // Routes and chains are host-only; guests just see where everyone is.
+              predators: game.state.predators.map(({ route: _route, leash: _leash, ...predator }) =>
                 predator.state === 'search' || predator.state === 'suspicious'
                   ? { ...predator, state: 'patrol', stealthState: predator.state }
                   : predator
@@ -629,6 +736,7 @@ function frame(now: number) {
   if (started && !connectionLost && snapshot) audio.update(snapshot, localId)
   if (started && now - hudAt > 100) {
     hudAt = now
+    updateStory(current)
     updateHud(current)
   }
   requestAnimationFrame(frame)
