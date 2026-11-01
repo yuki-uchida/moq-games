@@ -27,10 +27,11 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   page.on('pageerror', (error) => failures.push(error.message))
   await page.goto(`${towerPath}?soldier-art=2d&slime-art=2d`)
   await expect(page.locator('#title-screen')).toBeVisible()
+  // The title prefetches the likely campaign's model downloads; GPU preparation must still wait for 出撃.
+  await expect.poll(() => models.length).toBeGreaterThan(0)
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   )
-  expect(models).toEqual([])
   const titleGpu = await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu)
   expect(titleGpu.frames).toBe(0)
   expect(titleGpu.programs).toBe(0)
