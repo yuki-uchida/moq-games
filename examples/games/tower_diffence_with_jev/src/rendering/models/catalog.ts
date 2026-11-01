@@ -11,6 +11,11 @@ const source = (role: UnitType, file: string, clip: string, hooks: readonly Mode
   url: `${base}${role}/${file}`, clip, motionRole: role, adapters: hooks
 })
 
+// Versioned animation-only overlays retain the original cached geometry and rigs.
+const refined = (role: UnitType, file: string, clip: string, hooks: readonly ModelAdapterFactory[] = []): ModelSource => ({
+  ...source(role, file, clip, hooks), clipUrl: `${base}motions/${role}-${clip}-v2.json`
+})
+
 export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefinition>>> = {
   crystalSentinel: {
     scale: 40, origin: [0, 0, 0], yaw: 0, walkDistance: 24,
@@ -18,7 +23,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     clips: {
       idle: source('crystalSentinel', 'crystal-sentinel.glb', 'idle'),
       walk: source('crystalSentinel', 'crystal-sentinel.glb', 'walk'),
-      attack: source('crystalSentinel', 'crystal-sentinel.glb', 'attack')
+      attack: refined('crystalSentinel', 'crystal-sentinel.glb', 'attack')
     }
   },
   koboldLancer: {
@@ -27,7 +32,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     clips: {
       idle: source('koboldLancer', 'amber-kobold-lancer.glb', 'idle'),
       walk: source('koboldLancer', 'amber-kobold-lancer.glb', 'walk'),
-      attack: source('koboldLancer', 'amber-kobold-lancer.glb', 'attack')
+      attack: refined('koboldLancer', 'amber-kobold-lancer.glb', 'attack')
     }
   },
   clockworkPatchling: {
@@ -41,10 +46,10 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   tank: {
     scale: 128 / 3.12, origin: [0, 0, 0], yaw: 0,
-    walkDistance: 20, provenance: 'tank-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 20 * .58, provenance: 'tank-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
-      attack: source('tank', 'tank-attack-candidate.glb', 'attack', [adapters.tankMaterial, adapters.tankSkinning]),
-      walk: source('tank', 'tank-walk-candidate.glb', 'walk', [adapters.tankMaterial, adapters.tankSkinning]),
+      attack: refined('tank', 'tank-attack-candidate.glb', 'attack', [adapters.tankMaterial, adapters.tankSkinning]),
+      walk: refined('tank', 'tank-walk-candidate.glb', 'walk', [adapters.tankMaterial, adapters.tankSkinning]),
       idle: source('tank', 'tank-idle-candidate.glb', 'idle', [adapters.tankMaterial, adapters.tankSkinning]),
     }
   },
@@ -209,7 +214,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     clips: {
       attack: source('archer', 'archer-attack-candidate.glb', 'attack', []),
       idle: source('archer', 'archer-idle-candidate.glb', 'idle', [adapters.archerMaterial]),
-      walk: source('archer', 'archer-walk-candidate.glb', 'walk', []),
+      walk: refined('archer', 'archer-walk-candidate.glb', 'walk', []),
     }
   },
   runner: {
@@ -218,7 +223,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     provenance: 'Current Runner authored export; 640 ms clip / 320 ms source contact, mapped to existing combat clock; visual review pending',
     clips: {
       idle: source('runner', 'runner-idle-current.glb', 'idle', [adapters.runnerMaterial]),
-      walk: source('runner', 'runner-walk-current.glb', 'walk', [adapters.runnerMaterial]),
+      walk: refined('runner', 'runner-walk-current.glb', 'walk', [adapters.runnerMaterial]),
       attack: source('runner', 'runner-attack-current.glb', 'attack')
     }
   },

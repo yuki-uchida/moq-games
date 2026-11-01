@@ -96,17 +96,23 @@ for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
     // Geometry, rigs and animation are parsed unchanged; no GPU acceptance claim.
     loader.register(() => ({ name: 'CPU_NO_TEXTURE_IO', loadTexture: () => Promise.resolve(new THREE.Texture()) }))
     let loads = 0
-    const cache = new ModelAssetCache(async () => {
-      loads++
-      const gltf = await loader.parseAsync(
-        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-        ''
-      )
-      expect(gltf.animations.map((clip) => clip.name).sort()).toEqual(['attack', 'idle', 'walk'])
-      for (const clip of gltf.animations)
-        expect(clip.duration).toBeCloseTo(contract[clip.name as 'idle' | 'walk' | 'attack'], 5)
-      return gltf
-    })
+    const cache = new ModelAssetCache(
+      async (url) => {
+        loads++
+        const runtimeBytes = readFileSync(`public/${url.split('/moq-games/').at(-1)!.replace(/^\//, '')}`)
+        const gltf = await loader.parseAsync(
+          runtimeBytes.buffer.slice(runtimeBytes.byteOffset, runtimeBytes.byteOffset + runtimeBytes.byteLength),
+          ''
+        )
+        expect(gltf.animations.map((clip) => clip.name).sort()).toEqual(['attack', 'idle', 'walk'])
+        for (const clip of gltf.animations)
+          expect(clip.duration).toBeCloseTo(contract[clip.name as 'idle' | 'walk' | 'attack'], 5)
+        return gltf
+      },
+      undefined,
+      undefined,
+      async (url) => JSON.parse(readFileSync(`public/${url.split('/moq-games/').at(-1)!.replace(/^\//, '')}`, 'utf8'))
+    )
     const visual = new ModelUnitVisual(definition, cache)
     const scene = new THREE.Scene()
     scene.add(visual.root)
@@ -115,6 +121,7 @@ for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
     cache.request(url)
     while (['queued', 'loading'].includes(cache.request(url))) await new Promise((resolve) => setTimeout(resolve, 0))
     expect(cache.error(url)).toBeUndefined()
+    while (!visual.prepare(['idle', 'walk', 'attack'])) await new Promise((resolve) => setTimeout(resolve, 0))
     visual.setPresentation(GAME_MODEL_PRESENTATION_SCALE, 1.4)
     const point = new THREE.Vector3()
     try {
@@ -148,7 +155,7 @@ for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
           expect(maxDepth).toBeLessThan(1)
           expect(radius).toBeLessThan(MODEL_DEPTH_RADIUS)
         }
-      expect(loads).toBe(1)
+      expect(loads).toBe(new Set(Object.values(definition.clips).map((spec) => spec.url)).size)
       // The layer intentionally never asks the visual for an absent death clip.
       const deathScene = new THREE.Scene()
       const layer = new ModelUnitLayer(deathScene, { [role]: definition }, cache)
