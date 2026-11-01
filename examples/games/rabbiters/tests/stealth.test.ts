@@ -214,6 +214,35 @@ describe('dropping trails', () => {
     expect(body.state).not.toBe('chase')
   })
 
+  it('gives up on a rabbit hiding in grass that keeps dropping, instead of circling it forever', () => {
+    const body: PredatorBody = {
+      id: 'fox',
+      kind: 'fox',
+      x: 3,
+      y: 0,
+      z: 0,
+      angle: 0,
+      state: 'patrol',
+      targetId: null,
+      suspicion: 0
+    }
+    const mind = newMind()
+    const droppings: Dropping[] = []
+    const owners = new Map<string, Scent>()
+    let lingering = 0
+    for (let frame = 0; frame < 60 * 120; frame++) {
+      const time = frame / 60
+      if (frame % (60 * 8) === 0) {
+        droppings.push({ id: `d${frame}`, x: 0, y: 0, z: 0, t: time })
+        owners.set(`d${frame}`, { owner: 'r', chain: 0 })
+      }
+      updatePredator(body, mind, [], { dt: 1 / 60, time, droppings, scents: owners, terrain: flat, random: () => 0.99 })
+      if (time > 60 && Math.hypot(body.x, body.z) < 6) lingering += 1 / 60
+    }
+    expect(mind.sniffed.size).toBeGreaterThan(0)
+    expect(lingering).toBeLessThan(10)
+  })
+
   it('loses the trail at a gap, another rabbit, or stale scent', () => {
     const owners = scents([
       ['a', 'r', 0],

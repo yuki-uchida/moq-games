@@ -53,6 +53,9 @@ export interface Mind {
   linger: number
   trail: string | null
   sniffed: Set<string>
+  /** Seconds left walking away from `giveUp` with the nose off, so a spot it gave up on can't hold it forever. */
+  bored: number
+  giveUp: Point | null
 }
 
 export const STEALTH = {
@@ -71,6 +74,7 @@ export const STEALTH = {
   suspicionSeconds: 1.6,
   suspicionDecay: 0.35,
   searchSeconds: 4.5,
+  boredSeconds: 12,
   droppingInterval: [5, 12] as const,
   maxDroppings: 32,
   droppingExpiry: 90,
@@ -102,7 +106,16 @@ export function segmentDistance(point: Point, from: Point, to: Point): number {
   return Math.hypot(from.x + dx * t - point.x, from.z + dz * t - point.z)
 }
 
-export const newMind = (): Mind => ({ speed: 0, climb: 0, lastKnown: null, linger: 0, trail: null, sniffed: new Set() })
+export const newMind = (): Mind => ({
+  speed: 0,
+  climb: 0,
+  lastKnown: null,
+  linger: 0,
+  trail: null,
+  sniffed: new Set(),
+  bored: 0,
+  giveUp: null
+})
 
 export function visibility(rabbit: { hidden: boolean; crouch: boolean; inGrass: boolean }, sightLine: number): number {
   if (rabbit.hidden) return 0
@@ -264,7 +277,7 @@ export function updatePredator(
       mind.lastKnown = { x: best.target.x, z: best.target.z }
       mind.linger = STEALTH.searchSeconds
       mind.trail = null
-    } else if (!mind.trail && body.kind !== 'hawk' && body.kind !== 'crocodile') {
+    } else if (!mind.trail && mind.bored <= 0 && body.kind !== 'hawk' && body.kind !== 'crocodile') {
       const found = sniff(body, context.droppings, time, mind.sniffed)
       if (found) {
         body.state = 'search'
@@ -303,7 +316,8 @@ export function updatePredator(
   } else if (body.state === 'search') {
     const point = trail ?? mind.lastKnown
     goal.altitude = HAWK_ALTITUDE.search
-    const near = !point || distance(body, point) < (hawk ? 4 : 1.5)
+    // A trail point counts as reached at 1.2, so stop short of that only when there's no trail to finish.
+    const near = !point || distance(body, point) < (hawk ? 4 : trail ? 1 : 1.5)
     if (!near) {
       // Meander toward the point instead of beelining.
       goal.heading = heading(body, point!) + Math.sin(time * 1.3 + body.x * 0.1) * 0.5
@@ -317,11 +331,16 @@ export function updatePredator(
     mind.linger -= dt * (near ? 1 : 0.2)
     if (!trail && mind.linger <= 0) {
       body.state = 'patrol'
+      mind.bored = STEALTH.boredSeconds
+      mind.giveUp = mind.lastKnown
       mind.lastKnown = null
     }
+  } else if (mind.bored > 0 && mind.giveUp) {
+    goal.heading = heading(mind.giveUp, body)
   }
   // Cruising heights follow the ground so hawks glide over hills instead of into them.
   if (!chased) goal.altitude += context.terrain.heightAt(body.x, body.z)
+  mind.bored = Math.max(0, mind.bored - dt)
   steer(body, mind, goal, context.terrain, dt)
   return chased
 }
