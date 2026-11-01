@@ -184,16 +184,16 @@
     {
       "role": "clockworkPatchling",
       "file": "clockworkPatchling/clockwork-patchling-animated.glb",
-      "sourceSha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
-      "outputSha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
-      "bytes": 11753912,
+      "sourceSha256": "38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5",
+      "outputSha256": "38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5",
+      "bytes": 11763100,
       "vertices": 53541,
       "triangles": 74253,
-      "sourceBytes": 11753912,
+      "sourceBytes": 11763100,
       "sourceTriangles": 74253,
       "config": null,
-      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
-      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
+      "processing": "Blender spring-punch attack; original geometry, skin, textures, idle and walk preserved",
+      "acceptance": "Three runtime 8-direction frame capture; see docs/patchling-attack-review.md"
     },
     {
       "role": "crystalSentinel",
