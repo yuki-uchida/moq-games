@@ -158,16 +158,13 @@ footer {
   background: linear-gradient(#284b50e6, #1c343ae6);
 }
 .portrait {
-  height: 76px;
+  height: 92px;
   width: auto;
 }
 button b {
   font-size: 13px;
   display: block;
   color: #ffe08c;
-}
-button span {
-  font-size: 12px;
 }
 .utilities {
   display: flex;
@@ -178,6 +175,36 @@ button span {
 .utilities button {
   flex: 1;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+.utilities i {
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  color: #ffe08c;
+}
+#tray button,
+#burst {
+  overflow: hidden;
+}
+/* Recharge shade: --cd is the remaining share of the cooldown (1 → 0). */
+#tray button::after,
+#burst::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: calc(var(--cd, 0) * 100%);
+  background: #061c24d9;
+  pointer-events: none;
+}
+/* Lighter dimming than other buttons so the recharge shade's edge stays readable. */
+#tray button:disabled,
+#burst:disabled {
+  opacity: 0.7;
 }
 dialog {
   max-width: 420px;
@@ -244,10 +271,7 @@ dialog h2 {
     font-size: 11px;
   }
   .portrait {
-    height: 48px;
-  }
-  button span {
-    font-size: 11px;
+    height: 64px;
   }
   #notice {
     font-size: 11px;
@@ -266,7 +290,7 @@ dialog h2 {
     min-height: 0;
   }
   .portrait {
-    height: 44px;
+    height: 56px;
   }
   .utilities {
     width: 150px;

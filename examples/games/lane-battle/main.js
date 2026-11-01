@@ -3,7 +3,18 @@ import { LaneModels } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
 import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
-import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst, step } from './simulation.js'
+import {
+  STAGES,
+  income,
+  TYPES,
+  createGame,
+  summon,
+  upgrade,
+  upgradeCost,
+  burst,
+  step,
+  BURST_COOLDOWN
+} from './simulation.js'
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
   ctx = canvas.getContext('2d')
@@ -108,8 +119,9 @@ $('next').onclick = () => start((state.stage + 1) % STAGES.length)
 const buttons = TYPES.map((t, i) => {
   const b = document.createElement('button')
   b.setAttribute('aria-label', `${t.name}を召喚 ${t.cost}`)
+  b.title = t.name
   b.dataset.sfx = 'none'
-  b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><span>${t.name}</span><b>${t.cost} ✦</b>`
+  b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><b>${t.cost} ✦</b>`
   b.onclick = () => {
     deploy(i)
   }
@@ -300,7 +312,7 @@ function draw() {
     ctx.globalAlpha = 1
   }
   $('gold').textContent = Math.floor(state.gold)
-  $('rate').textContent = `+${income(state)}/秒 · Lv.${state.level}`
+  $('rate').textContent = `+${income(state)}/s · Lv.${state.level}`
   $('home').textContent = `${state.home} / 1400`
   $('enemy').textContent = `${state.enemy} / ${STAGES[state.stage].enemy}`
   $('clock').textContent = `${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}`
@@ -308,13 +320,14 @@ function draw() {
   $('notice').classList.toggle('paused', paused)
   buttons.forEach((b, i) => {
     b.disabled = paused || state.gold < TYPES[i].cost || state.cooldowns[i] > 0
-    b.querySelector('b').textContent =
-      state.cooldowns[i] > 0 ? `${state.cooldowns[i].toFixed(1)} 秒` : `${TYPES[i].cost} ✦`
+    // Recharge shade: the remaining share of the cooldown darkens the card from the top.
+    b.style.setProperty('--cd', state.cooldowns[i] / TYPES[i].cooldown)
   })
   $('upgrade').disabled = paused || state.level >= 5 || state.gold < upgradeCost(state)
   $('upgrade').querySelector('b').textContent = state.level >= 5 ? 'MAX' : `${upgradeCost(state)} ✦`
   $('burst').disabled = paused || state.burst > 0
-  $('burst').querySelector('b').textContent = state.burst > 0 ? `${Math.ceil(state.burst)} 秒` : ''
+  $('burst').style.setProperty('--cd', state.burst / BURST_COOLDOWN)
+  $('burst').querySelector('b').textContent = state.burst > 0 ? String(Math.ceil(state.burst)) : ''
 }
 function tick(now) {
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)

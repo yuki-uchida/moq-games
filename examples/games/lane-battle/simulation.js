@@ -135,9 +135,10 @@ export function upgrade(s) {
   s.level++
   return true
 }
+export const BURST_COOLDOWN = 24
 export function burst(s) {
   if (s.result || s.burst > 0) return false
-  s.burst = 24
+  s.burst = BURST_COOLDOWN
   for (const u of s.units)
     if (u.side === -1 && u.x < 490) {
       u.hp -= 115
