@@ -112,6 +112,15 @@ header button {
 .legal .terrain {
   color: #a9f4ff;
 }
+.reach {
+  background: #6b3a3a !important;
+}
+.reach.odd {
+  background: #643536 !important;
+}
+.enemy-move {
+  background: #4a4f6e !important;
+}
 .portrait {
   position: absolute;
   width: 128px;

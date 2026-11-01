@@ -1,11 +1,14 @@
 import {
+  allyTurnOver,
   attack,
+  attackRange,
   beginAlly,
   beginEnemy,
   createGame,
   damage,
   distance,
   enemyStep,
+  finished,
   missions,
   recover,
   key,
@@ -21,9 +24,11 @@ let busy = false
 let ready = false
 let game = createGame(),
   selected: string | undefined,
+  inspected: string | undefined,
+  hovered: string | undefined,
   generation = 0
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を有効にする" aria-pressed="false">♫×</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青い ◇ へ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。</p><p>♣ 木立：受けるダメージ −2。◆ 岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復します。✓ は選択した味方の待機。▶ で敵のターン。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を有効にする" aria-pressed="false">♫×</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青い ◇ へ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲、敵に触れるとその敵の範囲を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>♣ 木立：受けるダメージ −2。◆ 岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復します。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -36,6 +41,7 @@ for (let y = 0; y < size; y++)
     const cell = document.createElement('button')
     cell.className = 'cell'
     cell.onclick = () => choose(x, y)
+    cell.onpointerenter = cell.onfocus = () => hover(x, y)
     board.append(cell)
     cells.push(cell)
   }
@@ -56,9 +62,23 @@ function portrait(u: Unit) {
   const [folder, file] = art[u.role]
   return `<span class="portrait" style="background-image:url('${import.meta.env.BASE_URL}tower-defense-art/${folder}/${file}.png')"></span>`
 }
+board.onpointerleave = () => hover(-1, -1)
+/** Preview an enemy's move and strike range while it is hovered or focused. */
+function hover(x: number, y: number) {
+  const id = game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.x === x && u.y === y)?.id
+  if (id === hovered) return
+  hovered = id
+  if (!busy) render()
+}
 function render() {
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
-    legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map()
+    legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map(),
+    foe =
+      !unit && game.phase === 'ally'
+        ? game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.id === (hovered ?? inspected))
+        : undefined,
+    foeMove = foe ? reachable(game, foe) : new Map(),
+    reach = unit ? attackRange(game, unit) : foe ? attackRange(game, foe) : new Set<string>()
   cells.forEach((cell, i) => {
     cell.disabled = busy || !ready
     const x = i % size,
@@ -66,13 +86,13 @@ function render() {
       k = key(x, y),
       u = game.units.find((u) => u.x === x && u.y === y && u.hp > 0),
       canAttack = unit && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range
-    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${u?.side ?? ''} ${u?.done ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''}`
+    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''}`
     cell.innerHTML = u
-      ? `${portrait(u)}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}</span>${u.armor ? '<span class="armor">⬡</span>' : ''}${u.done ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}`
+      ? `${portrait(u)}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}</span>${u.armor ? '<span class="armor">⬡</span>' : ''}${finished(game, u) ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}`
       : `<span class="terrain">${game.rocks.has(k) ? '◆' : game.groves.has(k) ? '♣' : legal.has(k) ? '◇' : ''}</span>`
     cell.setAttribute(
       'aria-label',
-      `${x + 1},${y + 1} ${u ? `${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? '岩' : game.groves.has(k) ? '木立' : '平地'}${legal.has(k) && !u ? ' 移動可能' : ''}`
+      `${x + 1},${y + 1} ${u ? `${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? '岩' : game.groves.has(k) ? '木立' : '平地'}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}`
     )
   })
   document.querySelector('#turn')!.textContent =
@@ -131,13 +151,22 @@ async function choose(x: number, y: number) {
       if (token !== generation) return
       busy = false
     }
-  } else if (target)
+  } else if (target) {
+    inspected = target.id
     game.log = `${target.name} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
+  } else inspected = undefined
+  afterAction()
+}
+/** Hand over to the enemy once every living ally is spent (after the last presentation). */
+function afterAction() {
   render()
+  if (!allyTurnOver(game)) return
+  game.log = '全員行動終了 · 敵のターンへ'
+  void end()
 }
 async function end() {
   if (busy || !ready || !beginEnemy(game)) return
-  selected = undefined
+  selected = inspected = undefined
   const token = generation
   render()
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
@@ -162,7 +191,7 @@ document.querySelector('#wait')!.addEventListener('click', () => {
     u.done = true
     game.log = `${u.name} 待機`
     selected = undefined
-    render()
+    afterAction()
   }
 })
 document.querySelector('#restart')!.addEventListener('click', () => {
@@ -171,14 +200,14 @@ document.querySelector('#restart')!.addEventListener('click', () => {
   busy = false
   game = createGame(game.stage, game.formation)
   audio.start()
-  selected = undefined
+  selected = inspected = undefined
   render()
 })
 document.querySelector('#recover')!.addEventListener('click', () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && recover(game, u)) {
     audio.cue('healer')
-    render()
+    afterAction()
   }
 })
 document.querySelector('#sound')!.addEventListener('click', () => {
@@ -192,7 +221,7 @@ function startMission(stage: number) {
   generation++
   animation.cancel()
   busy = false
-  selected = undefined
+  selected = inspected = undefined
   const formation = document.querySelector<HTMLInputElement>('input[name="formation"]:checked')!.value as
     | 'balanced'
     | 'guard'

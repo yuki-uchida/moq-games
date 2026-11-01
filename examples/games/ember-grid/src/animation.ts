@@ -1,5 +1,5 @@
 import { showContact } from './ImpactPresentation'
-import { key, size, type Game, type Unit } from './game'
+import { path, size, type Game, type Unit } from './game'
 
 type Point = { x: number; y: number }
 type Clip = {
@@ -22,36 +22,9 @@ export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
 export function direction(a: Point, b: Point) {
   return `${b.y < a.y ? 'n' : b.y > a.y ? 's' : ''}${b.x < a.x ? 'w' : b.x > a.x ? 'e' : ''}` || 's'
 }
-/** Follow the same four-neighbour occupancy rules as reachable; never glide through rocks. */
+/** Walk the same legal path as movement rules: through same-side units, never through rocks or foes. */
 export function route(game: Game, before: Unit[], from: Unit, to: Point): Point[] {
-  const queue: Point[][] = [[from]],
-    seen = new Set([key(from.x, from.y)])
-  for (const path of queue) {
-    const last = path[path.length - 1]
-    if (last.x === to.x && last.y === to.y) return path
-    for (const [dx, dy] of [
-      [1, 0],
-      [0, 1],
-      [-1, 0],
-      [0, -1]
-    ]) {
-      const p = { x: last.x + dx, y: last.y + dy },
-        k = key(p.x, p.y)
-      if (
-        p.x < 0 ||
-        p.y < 0 ||
-        p.x >= size ||
-        p.y >= size ||
-        seen.has(k) ||
-        game.rocks.has(k) ||
-        before.some((u) => u.hp > 0 && u.id !== from.id && u.x === p.x && u.y === p.y)
-      )
-        continue
-      seen.add(k)
-      queue.push([...path, p])
-    }
-  }
-  return [from]
+  return path({ rocks: game.rocks, units: before }, from, to)
 }
 
 export class BattleAnimation {

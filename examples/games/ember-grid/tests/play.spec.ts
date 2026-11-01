@@ -43,6 +43,7 @@ for (const viewport of [
   })
 
 import {
+  allyTurnOver,
   attack,
   beginAlly,
   beginEnemy,
@@ -101,7 +102,8 @@ for (const stage of [0, 1, 2])
           if (g.phase === 'won') break
         }
         if (g.phase === 'ally') {
-          await page.getByRole('button', { name: '▶ ターン終了' }).click()
+          // The page hands over by itself once every ally is spent.
+          if (!allyTurnOver(g)) await page.getByRole('button', { name: '▶ ターン終了' }).click()
           beginEnemy(g)
           g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
           beginAlly(g)
@@ -154,3 +156,31 @@ test('guard formation and mission selection are available without leaving the sc
   await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 4')
   await page.screenshot({ path: 'test-results/ember-guard-390.png' })
 })
+
+for (const width of [1280, 390])
+  test(`attack range, enemy preview, ally pass-through and automatic turn end ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await page.goto('./')
+    await page.getByRole('button', { name: /1,4 燈守/ }).tap()
+    await expect(page.locator('.cell.legal').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^5,4 平地 攻撃範囲/ })).toBeVisible()
+    expect(await page.locator('.cell.legal.reach').count()).toBe(0)
+    await page.screenshot({ path: `test-results/ember-range-${width}.png` })
+    await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+    if (width === 1280) {
+      await page.getByRole('button', { name: /6,3 灰牙/ }).hover()
+      await expect(page.locator('.cell.enemy-move').first()).toBeVisible()
+      await expect(page.locator('.cell.reach').first()).toBeVisible()
+      await page.screenshot({ path: `test-results/ember-enemy-range-${width}.png` })
+    }
+    // Neri walks through Rio and Mina to (1,6), passing their cells.
+    await page.getByRole('button', { name: /1,3 風読み/ }).tap()
+    await page.getByRole('button', { name: /1,6 平地 移動可能/ }).tap()
+    await expect(page.getByRole('button', { name: /1,6 風読み/ })).toBeVisible()
+    await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+    await expect(page.locator('#turn')).toContainText('味方 · 1')
+    await page.getByRole('button', { name: /1,5 星織/ }).tap()
+    await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+    await expect(page.locator('#turn')).toContainText('敵')
+    await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 15000 })
+  })

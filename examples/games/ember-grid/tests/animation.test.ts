@@ -27,6 +27,7 @@ describe('accepted complete-cell animation contracts', () => {
       expect(g.rocks.has(`${p.x},${p.y}`)).toBe(false)
       expect(g.units.some((other) => other.id !== u.id && other.x === p.x && other.y === p.y)).toBe(false)
     })
+    expect(route(g, g.units, g.units[1], { x: 0, y: 5 })).toHaveLength(4)
   })
   for (const role of ['soldier', 'archer', 'mage', 'goblin', 'wolf'])
     it(`${role}: all runtime frames and contact events fit existing textures`, () => {
