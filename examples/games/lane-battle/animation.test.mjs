@@ -1,17 +1,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ATTACK_PROFILES } from '../tower_diffence_with_jev/src/game/AttackProfiles.ts'
-import { attackSeconds } from './animation.js'
+import { pose } from './animation.js'
 import { TYPES } from './simulation.js'
 
-test('3D attack clip shows its authored contact on the simulation hit, then winds up into the next one', () => {
+test('attack lunge peaks on the simulation hit, then winds up into the next one', () => {
   for (const t of TYPES) {
-    const { cueMs, durationMs } = ATTACK_PROFILES[t.role]
-    assert.ok(durationMs / 1000 <= t.period, t.role)
-    assert.equal(attackSeconds(t.role, 0, t.period), cueMs / 1000)
-    assert.ok(attackSeconds(t.role, t.period * 0.999, t.period) < cueMs / 1000)
-    assert.ok(attackSeconds(t.role, t.period * 0.999, t.period) > 0)
-    for (let phase = 0; phase < t.period; phase += 0.01)
-      assert.ok(attackSeconds(t.role, phase, t.period) <= durationMs / 1000)
+    const hit = pose('attack', 0, t.period, 0)
+    for (let phase = 0.01; phase < t.period; phase += 0.01)
+      assert.ok(pose('attack', phase, t.period, 0).shift < hit.shift, `${t.name} ${phase}`)
+    assert.ok(pose('attack', t.period * 0.999, t.period, 0).shift < 0, 'leans back before striking')
   }
+})
+
+test('walking hops with distance and stands still while attacking', () => {
+  assert.equal(pose('walk', 0, 1, 0).hop, 0)
+  assert.ok(pose('walk', 0, 1, 12).hop > 0)
+  assert.equal(pose('attack', 0.5, 1, 12).hop, 0)
 })

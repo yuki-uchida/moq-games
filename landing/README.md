@@ -7,7 +7,7 @@ have root-build entries and non-JavaScript fallback links.
 
 `main.js` renders accessible sample sections. The previews use original
 roster portraits from `public/tower-defense-art/` over a static SVG battlefield
-illustration. Rabbiters uses `rabbiters-team.jpg`, an in-game capture of five
+illustration. Lane Battle uses an original inline SVG poop illustration. Rabbiters uses `rabbiters-team.jpg`, an in-game capture of five
 collared rabbits rendered by the game's own code (HUD hidden). These are static
 images, not live games.
 No asset bytes are modified. See the root `ASSETS.md` for the artwork provenance.

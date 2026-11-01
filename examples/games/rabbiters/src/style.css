@@ -110,6 +110,10 @@ input:focus-visible {
   letter-spacing: -1.2px;
   text-shadow: 0 2px 15px #17352d;
 }
+.wordmark span {
+  word-break: keep-all;
+  line-height: 1.15;
+}
 .wordmark small {
   display: block;
   font-size: 8px;

@@ -1,4 +1,3 @@
-import { impactCanvas, impactFrame, impactDuration } from '../shared/ImpactArt.ts'
 import { LaneModels } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
@@ -18,16 +17,24 @@ import {
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
   ctx = canvas.getContext('2d')
-/** Screen-space contact only; the simulation owns recipient, arrival and damage. */
-function drawContact(effect, y, age, aspect, style) {
-  const frame = impactFrame(age, true, style)
-  if (frame === null) return
+const SPLAT_SECONDS = 0.22
+/** Screen-space splash only; the simulation owns recipient, arrival and damage. Poop hits splat brown, foam hits splash blue. */
+function drawContact(effect, y, age, aspect) {
+  if (age < 0 || age > SPLAT_SECONDS) return
+  const t = age / SPLAT_SECONDS
   ctx.save()
-  ctx.globalAlpha = 1 - (age / impactDuration(style)) ** 2
+  ctx.globalAlpha = 1 - t * t
   ctx.translate(effect.x, y)
   ctx.scale(effect.side || 1, aspect)
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(impactCanvas(style, frame), -16, -16, 32, 32)
+  ctx.fillStyle = effect.side === -1 ? '#bfe6ff' : '#7a4722'
+  ctx.beginPath()
+  ctx.arc(0, 0, 9 * (1 - t) + 3, 0, 7)
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.4
+    ctx.moveTo(Math.cos(a) * 30 * t, Math.sin(a) * 22 * t)
+    ctx.arc(Math.cos(a) * 30 * t, Math.sin(a) * 22 * t, 4.5 * (1 - t) + 1, 0, 7)
+  }
+  ctx.fill()
   ctx.restore()
 }
 const models = new LaneModels()
@@ -121,7 +128,7 @@ const buttons = TYPES.map((t, i) => {
   b.setAttribute('aria-label', `${t.name}を召喚 ${t.cost}`)
   b.title = t.name
   b.dataset.sfx = 'none'
-  b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><b>${t.cost} ✦</b>`
+  b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><b>${t.cost} 💩</b>`
   b.onclick = () => {
     deploy(i)
   }
@@ -179,6 +186,91 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'u') invest()
   }
 })
+/** The player's fort: a giant swirl with a flag on top. */
+function drawPoopTower(x) {
+  ctx.fillStyle = '#3a241444'
+  ctx.beginPath()
+  ctx.ellipse(x, 372, 60, 12, 0, 0, 7)
+  ctx.fill()
+  for (const [y, rx, ry] of [
+    [340, 52, 30],
+    [298, 40, 24],
+    [263, 28, 19],
+    [237, 15, 13]
+  ]) {
+    ctx.fillStyle = '#6e3f1e'
+    ctx.beginPath()
+    ctx.ellipse(x, y, rx, ry, 0, 0, 7)
+    ctx.fill()
+    ctx.fillStyle = '#9a6136'
+    ctx.beginPath()
+    ctx.ellipse(x - rx * 0.3, y - ry * 0.35, rx * 0.45, ry * 0.3, 0, 0, 7)
+    ctx.fill()
+  }
+  for (const dx of [-13, 13]) {
+    ctx.fillStyle = '#fffaf0'
+    ctx.beginPath()
+    ctx.ellipse(x + dx, 293, 7, 8, 0, 0, 7)
+    ctx.fill()
+    ctx.fillStyle = '#2a170a'
+    ctx.beginPath()
+    ctx.ellipse(x + dx + 2, 295, 3.5, 4.5, 0, 0, 7)
+    ctx.fill()
+  }
+  ctx.strokeStyle = '#2a170a'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(x, 312, 11, 0.2, Math.PI - 0.2)
+  ctx.stroke()
+  ctx.fillStyle = '#4b2810'
+  ctx.fillRect(x - 1, 180, 3, 48)
+  ctx.fillStyle = '#ffd166'
+  ctx.beginPath()
+  ctx.moveTo(x + 2, 180)
+  ctx.lineTo(x + 36, 192)
+  ctx.lineTo(x + 2, 204)
+  ctx.fill()
+}
+/** The enemy fort: a western toilet the size of a castle, guarded by foam. */
+function drawToiletCastle(x) {
+  ctx.fillStyle = '#23364444'
+  ctx.beginPath()
+  ctx.ellipse(x, 372, 62, 12, 0, 0, 7)
+  ctx.fill()
+  ctx.fillStyle = '#e6eef2'
+  ctx.beginPath()
+  ctx.roundRect(x - 8, 224, 50, 92, 8)
+  ctx.fill()
+  ctx.fillStyle = '#cfdbe1'
+  ctx.fillRect(x - 12, 218, 58, 12)
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(x - 50, 300)
+  ctx.lineTo(x + 30, 300)
+  ctx.quadraticCurveTo(x + 32, 340, x + 8, 350)
+  ctx.lineTo(x + 14, 366)
+  ctx.lineTo(x - 26, 366)
+  ctx.lineTo(x - 20, 350)
+  ctx.quadraticCurveTo(x - 50, 340, x - 50, 300)
+  ctx.fill()
+  ctx.fillStyle = '#bcd0da'
+  ctx.beginPath()
+  ctx.ellipse(x - 10, 300, 42, 9, 0, 0, 7)
+  ctx.fill()
+  ctx.fillStyle = '#7fc4ec'
+  ctx.beginPath()
+  ctx.ellipse(x - 10, 301, 30, 5, 0, 0, 7)
+  ctx.fill()
+  ctx.fillStyle = '#9fb6c2'
+  ctx.fillRect(x + 22, 238, 14, 5)
+  ctx.fillStyle = '#4c9ad0'
+  ctx.fillRect(x + 16, 180, 3, 40)
+  ctx.beginPath()
+  ctx.moveTo(x + 15, 180)
+  ctx.lineTo(x - 18, 192)
+  ctx.lineTo(x + 15, 204)
+  ctx.fill()
+}
 function draw() {
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
@@ -187,53 +279,67 @@ function draw() {
     canvas.height = Math.round(rect.height * dpr)
   }
   ctx.setTransform(canvas.width / 1000, 0, 0, canvas.height / 450, 0, 0)
-  const sky = ctx.createLinearGradient(0, 0, 0, 450)
-  sky.addColorStop(0, STAGES[state.stage].color)
-  sky.addColorStop(0.63, '#e6dab0')
-  sky.addColorStop(1, '#507e62')
-  ctx.fillStyle = sky
-  ctx.fillRect(0, 0, 1000, 450)
-  for (let i = 0; i < 12; i++) {
-    ctx.fillStyle = i % 2 ? '#46796f66' : '#6b938366'
+  // A tiled restroom: wall, floor and a toilet-paper road unrolled between the two forts.
+  ctx.fillStyle = STAGES[state.stage].color
+  ctx.fillRect(0, 0, 1000, 320)
+  ctx.strokeStyle = '#ffffff66'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  for (let x = 0; x <= 1000; x += 50) ctx.rect(x, -2, 50, 322)
+  for (let y = 20; y < 320; y += 50) ctx.rect(-2, y, 1004, 50)
+  ctx.stroke()
+  for (let i = 0; i < 4; i++) {
+    const x = 170 + i * 180
+    ctx.fillStyle = '#00000014'
     ctx.beginPath()
-    ctx.moveTo(i * 110 - 80, 310)
-    ctx.lineTo(i * 110 + 30, 110 + (i % 3) * 30)
-    ctx.lineTo(i * 110 + 160, 310)
+    ctx.roundRect(x, 140, 120, 180, [14, 14, 0, 0])
+    ctx.fill()
+    ctx.fillStyle = '#ffffff55'
+    ctx.beginPath()
+    ctx.arc(x + 100, 235, 5, 0, 7)
     ctx.fill()
   }
-  ctx.fillStyle = '#6d8962'
-  ctx.fillRect(0, 320, 1000, 130)
-  ctx.fillStyle = '#c5b48a'
+  ctx.fillStyle = '#ffffff40'
+  for (let i = 0; i < 9; i++) {
+    ctx.beginPath()
+    ctx.arc(((i * 137 + state.time * 9) % 1040) - 20, 120 - ((i * 53 + state.time * 14) % 110), 4 + (i % 3) * 3, 0, 7)
+    ctx.fill()
+  }
+  ctx.fillStyle = '#8f7f6a'
+  ctx.fillRect(0, 312, 1000, 10)
+  for (let x = 0; x < 1000; x += 60)
+    for (let y = 322; y < 450; y += 32) {
+      ctx.fillStyle = (x / 60 + (y - 322) / 32) % 2 ? '#d9cfbd' : '#b9ac96'
+      ctx.fillRect(x, y, 60, 32)
+    }
+  ctx.fillStyle = '#fbf8ee'
   ctx.beginPath()
   ctx.moveTo(0, 355)
   ctx.quadraticCurveTo(500, 320, 1000, 355)
   ctx.lineTo(1000, 425)
   ctx.quadraticCurveTo(500, 385, 0, 425)
   ctx.fill()
-  for (const [x, color, hp, max] of [
-    [55, '#244f49', state.home, 1400],
-    [945, '#605177', state.enemy, STAGES[state.stage].enemy]
+  ctx.strokeStyle = '#cfc7b4'
+  ctx.setLineDash([3, 5])
+  ctx.beginPath()
+  for (let x = 70; x < 1000; x += 70) {
+    const top = 355 - (70 * x * (1000 - x)) / 1e6,
+      bottom = 425 - (80 * x * (1000 - x)) / 1e6
+    ctx.moveTo(x, top + 3)
+    ctx.lineTo(x, bottom - 3)
+  }
+  ctx.stroke()
+  ctx.setLineDash([])
+  drawPoopTower(55)
+  drawToiletCastle(945)
+  for (const [x, hp, max] of [
+    [55, state.home, 1400],
+    [945, state.enemy, STAGES[state.stage].enemy]
   ]) {
-    ctx.fillStyle = '#23433c44'
-    ctx.beginPath()
-    ctx.ellipse(x, 372, 57, 12, 0, 0, 7)
-    ctx.fill()
-    ctx.fillStyle = color
-    ctx.fillRect(x - 33, 247, 66, 117)
-    for (let i = -1; i <= 1; i++) ctx.fillRect(x + i * 23 - 9, 230, 18, 35)
-    ctx.fillStyle = '#e2c575'
-    ctx.fillRect(x - 10, 315, 20, 49)
-    ctx.fillStyle = '#173b3d'
+    ctx.fillStyle = '#3a2414'
     ctx.fillRect(x - 39, 211, 78, 8)
-    ctx.fillStyle = '#f6d37f'
+    ctx.fillStyle = '#ffd166'
     ctx.fillRect(x - 39, 211, (78 * hp) / max, 8)
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.moveTo(x, 230)
-    ctx.lineTo(x, 173)
-    ctx.lineTo(x + 38, 188)
-    ctx.lineTo(x, 202)
-    ctx.fill()
   }
   const scale = rect.width < 500 ? 155 : 120
   const aspect = rect.width / 1000 / (rect.height / 450)
@@ -245,7 +351,7 @@ function draw() {
   const units = [...state.units].sort((a, b) => a.id - b.id)
   for (const u of units) {
     const y = 361 + (u.id % 3) * 8
-    ctx.fillStyle = u.side === 1 ? '#2c9b9755' : '#9c455755'
+    ctx.fillStyle = u.side === 1 ? '#5a361a55' : '#4c9ad055'
     ctx.beginPath()
     ctx.ellipse(u.x, y + 2, 22, 6, 0, 0, 7)
     ctx.fill()
@@ -257,9 +363,9 @@ function draw() {
   ctx.restore()
   for (const u of units) {
     const y = 361 + (u.id % 3) * 8
-    ctx.fillStyle = '#203c43'
+    ctx.fillStyle = '#3a2414'
     ctx.fillRect(u.x - 18, y - (scale * 0.8 * (rect.width / 1000)) / (rect.height / 450), 36, 4)
-    ctx.fillStyle = u.side === 1 ? '#8de8cf' : '#ffac91'
+    ctx.fillStyle = u.side === 1 ? '#ffd166' : '#7fd1ff'
     ctx.fillRect(
       u.x - 18,
       y - (scale * 0.8 * (rect.width / 1000)) / (rect.height / 450),
@@ -268,48 +374,55 @@ function draw() {
     )
   }
   for (const e of state.effects) {
-    ctx.strokeStyle = e.side === 1 ? '#ffeb9b' : '#ef9275'
-    ctx.lineWidth = e.blast ? 8 : 3
-    ctx.beginPath()
     if (e.blast) {
-      ctx.arc(e.x, 350, (0.6 - e.life) * 430, 0, 7)
+      // The big fart: a green cloud billowing out over the left half.
+      const t = 1 - e.life / 0.6
+      ctx.save()
+      ctx.globalAlpha = 0.55 * (1 - t)
+      ctx.fillStyle = '#9ccf5a'
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2
+        ctx.beginPath()
+        ctx.ellipse(
+          e.x + Math.cos(a) * 230 * t,
+          350 + Math.sin(a) * 60 * t,
+          40 + 50 * t,
+          (40 + 50 * t) * aspect,
+          0,
+          0,
+          7
+        )
+        ctx.fill()
+      }
+      ctx.restore()
     } else if (e.ranged) {
       const source = e.source
-      const emitter = { x: source?.side === 1 ? 100 : 28, y: 65 }
       const y = 361 + ((source?.id || 0) % 3) * 8
-      const fromX = e.from + (emitter.x / 128 - 0.5) * scale
-      const fromY = y + (-94 / 128 + emitter.y / 128) * scale * aspect
+      const fromX = e.from + (source?.side === -1 ? -0.2 : 0.2) * scale
+      const fromY = y - 0.24 * scale * aspect
       const targetY = e.targetY ?? fromY
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
-      const x = fromX + (e.x - fromX) * progress
-      const yArrow = fromY + (targetY - fromY) * progress
       if (progress < 1) {
-        const angle = Math.atan2(targetY - fromY, e.x - fromX)
+        // A thrown pellet (poop side) or soap bubble (foam side), lobbed in a small arc.
+        const x = fromX + (e.x - fromX) * progress
+        const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
         ctx.save()
-        ctx.translate(x, yArrow)
-        ctx.rotate(angle)
-        ctx.strokeStyle = '#57412b'
-        ctx.lineWidth = 2
-        ctx.moveTo(-17, 0)
-        ctx.lineTo(2, 0)
-        ctx.moveTo(-2, -3)
-        ctx.lineTo(3, 0)
-        ctx.lineTo(-2, 3)
-        ctx.moveTo(-14, -3)
-        ctx.lineTo(-11, 0)
-        ctx.lineTo(-14, 3)
+        ctx.translate(x, yShot)
+        ctx.scale(1, aspect)
+        ctx.beginPath()
+        ctx.arc(0, 0, 6, 0, 7)
+        ctx.fillStyle = e.side === -1 ? '#e9f7ffcc' : '#6b3c1c'
+        ctx.fill()
+        ctx.strokeStyle = e.side === -1 ? '#4c9ad0' : '#3d200c'
+        ctx.lineWidth = 1.5
         ctx.stroke()
         ctx.restore()
-        ctx.beginPath()
       } else if (e.arrived && !e.missed) {
-        drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect, 'pierce')
+        drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect)
       }
     } else {
-      const y = e.targetY ?? 361 - 30 * aspect
-      drawContact(e, y, state.time - e.releasedAt, aspect, 'cut')
+      drawContact(e, e.targetY ?? 361 - 30 * aspect, state.time - e.releasedAt, aspect)
     }
-    ctx.stroke()
-    ctx.globalAlpha = 1
   }
   $('gold').textContent = Math.floor(state.gold)
   $('rate').textContent = `+${income(state)}/s · Lv.${state.level}`
@@ -324,7 +437,7 @@ function draw() {
     b.style.setProperty('--cd', state.cooldowns[i] / TYPES[i].cooldown)
   })
   $('upgrade').disabled = paused || state.level >= 5 || state.gold < upgradeCost(state)
-  $('upgrade').querySelector('b').textContent = state.level >= 5 ? 'MAX' : `${upgradeCost(state)} ✦`
+  $('upgrade').querySelector('b').textContent = state.level >= 5 ? 'MAX' : `${upgradeCost(state)} 💩`
   $('burst').disabled = paused || state.burst > 0
   $('burst').style.setProperty('--cd', state.burst / BURST_COOLDOWN)
   $('burst').querySelector('b').textContent = state.burst > 0 ? String(Math.ceil(state.burst)) : ''
@@ -381,8 +494,8 @@ function tick(now) {
       document.querySelectorAll('#stages button').forEach((b, i) => (b.textContent = stageLabel(i)))
     }
     modal(
-      state.result === 'victory' ? '境界を取り戻した！' : '森の砦が陥落',
-      `${Math.floor(state.time)}秒 · ${state.kills}体撃退。${state.result === 'victory' ? (state.stage === 2 ? '全3ステージ踏破！別の編成でもう一度挑戦しよう。' : '次の道が開かれました。次のステージへ進もう。') : '衛兵で前線を守り、生産強化と射手の援護を試そう。'}`,
+      state.result === 'victory' ? '便器城、大惨事！' : 'うんこ塔が流された…',
+      `${Math.floor(state.time)}秒 · ${state.kills}体撃退。${state.result === 'victory' ? (state.stage === 2 ? '全3ステージ踏破！別の編成でもう一度挑戦しよう。' : '次のトイレが待っている。次のステージへ進もう。') : 'カチカチうんこで前線を守り、腸活とコロコロうんこの援護を試そう。'}`,
       true
     )
     tone(state.result)
@@ -407,17 +520,9 @@ function frame(now) {
 setInterval(() => {
   if (document.hidden) tick(performance.now())
 }, 250)
-models
-  .load(TYPES.map((t) => t.role))
-  .then(() => {
-    buttons.forEach((b, i) => models.portrait(TYPES[i].role, b.querySelector('canvas')))
-    modal(
-      '芽吹きの境界',
-      '森の軍勢を率いて、水晶砦へ。衛兵は盾、射手は遠距離、狼は突破役。資源を生産強化に投資するか、援軍に使うか。あなたの采配で道を開こう。'
-    )
-    requestAnimationFrame(frame)
-  })
-  .catch((e) => {
-    $('notice').textContent = '素材を読み込めません。ページを再読み込みしてください。'
-    console.error(e)
-  })
+buttons.forEach((b, i) => models.portrait(TYPES[i].role, b.querySelector('canvas')))
+modal(
+  'うんこ大惨事',
+  'うんこ軍団を率いて、泡の兵団が守る便器城へ。カチカチうんこは盾、コロコロうんこは遠距離、ゲリラうんこは突撃役。資源を腸活に投資するか、援軍に使うか。便器城を大惨事にしてやろう。'
+)
+requestAnimationFrame(frame)

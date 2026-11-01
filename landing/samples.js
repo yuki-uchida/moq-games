@@ -2,7 +2,7 @@
 export const samples = [
   {
     id: 'tower-defense',
-    title: 'smart defence with jev',
+    title: 'キャッスルナイツ',
     subtitle: 'TOWER DEFENSE',
     description: '仲間を配置し、迫る敵を迎え撃つ。小さな王国を守り抜く、タワーディフェンス。',
     href: './examples/games/tower_diffence_with_jev/index.html',
@@ -12,8 +12,8 @@ export const samples = [
   },
   {
     id: 'ember-grid',
-    title: '燈の境界',
-    subtitle: 'EMBER GRID',
+    title: 'デスガイヤ',
+    subtitle: 'TACTICAL RPG',
     description: '仲間を動かし、地形を読み、敵を迎え撃つ。小さな盤面のターン制戦術。',
     href: './examples/games/ember-grid/index.html',
     category: 'TACTICS',
@@ -22,7 +22,7 @@ export const samples = [
   },
   {
     id: 'lane-battle',
-    title: '芽吹きの境界',
+    title: 'うんこ大惨事',
     subtitle: 'LANE BATTLE',
     description: '仲間を送り、砦を守りながら敵陣へ。3つの戦場を進む拠点攻防戦。',
     href: './examples/games/lane-battle/index.html',
@@ -32,7 +32,7 @@ export const samples = [
   },
   {
     id: 'rabbiters',
-    title: 'Rabbiters',
+    title: 'ウサギ・イヤ・ラビット',
     subtitle: 'COOPERATIVE SURVIVAL',
     description: 'ウサギになり、食べて隠れて仲間と生きのびる協力サバイバル。',
     href: './examples/games/rabbiters/index.html',

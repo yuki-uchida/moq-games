@@ -20,7 +20,7 @@ await Promise.all(
     })
     await page.clock.install()
     await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
-    await page.getByRole('button', { name: '進軍開始' }).click()
+    await page.getByRole('button', { name: 'ブリッと出撃' }).click()
     for (let stage = 0; stage < 3; stage++) {
       let won = false
       for (let i = 0; i < 150; i++) {
@@ -45,7 +45,7 @@ await Promise.all(
         })
         await page.clock.runFor(1000)
         if (await page.locator('dialog').evaluate((d) => d.open)) {
-          assert.equal(await page.locator('#title').textContent(), '境界を取り戻した！', `${name} stage ${stage + 1}`)
+          assert.equal(await page.locator('#title').textContent(), '便器城、大惨事！', `${name} stage ${stage + 1}`)
           console.log(name, stage + 1, await page.locator('#message').textContent())
           won = true
           break
@@ -65,7 +65,7 @@ await Promise.all(
     await page.getByRole('button', { name: '最初のステージへ ↻' }).click()
     await page.getByRole('button', { name: '音を切り替え' }).click()
     const count = await page.evaluate(() => window.soundCount)
-    await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+    await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
     await page.clock.runFor(2000)
     assert.equal(await page.evaluate(() => window.soundCount), count, 'mute suppresses all oscillator creation')
     assert.deepEqual(errors, [])

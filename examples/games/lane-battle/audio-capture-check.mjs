@@ -38,7 +38,7 @@ await page.addInitScript(() => {
   }
 })
 await page.goto(process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/')
-await page.getByRole('button', { name: '進軍開始' }).click()
+await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 await page.waitForFunction(() => window.captureContext?.state === 'running')
 const results = {}
 for (const kind of ['bgm', 'effects', 'muted']) {
@@ -48,7 +48,7 @@ for (const kind of ['bgm', 'effects', 'muted']) {
   }
   await page.evaluate(() => window.startCapture())
   if (kind === 'effects') {
-    await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+    await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
     await page.locator('#burst').click()
   }
   await page.waitForTimeout(1800)

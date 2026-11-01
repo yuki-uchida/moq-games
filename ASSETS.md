@@ -1,5 +1,9 @@
 # Artwork and optional packs
 
+## うんこ大惨事 (Lane Battle) runtime
+
+Lane Battle builds its poop army, foam garrison, forts and restroom backdrop from three.js geometry and 2D canvas drawing in the game code, and synthesizes its sound with Web Audio. The catalog's poop illustration is original inline SVG. It loads no image or model files.
+
 ## Rabbiters runtime
 
 Rabbiters creates its 3D characters and scenery from geometry in the game code and synthesizes its music and effects with Web Audio. The catalog image `landing/rabbiters-team.jpg` is a screenshot of five rabbits rendered by that game code, with the HUD hidden; it contains no third-party material. The concept and motion references in `examples/games/rabbiters/art-source/` remain source-only and are not included in the Pages build.

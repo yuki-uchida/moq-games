@@ -1,4 +1,4 @@
-# 燈の境界 / Ember Grid
+# デスガイヤ (Ember Grid)
 
 Independent, local, single-player tactical example: three lantern wardens cross three frontiers to disperse the ash pack. No network or SDK initialization is required. Open `/moq-games/examples/games/ember-grid/` after `npm run dev`. The root Vite build includes this separate HTML entry; the gallery is managed separately.
 

@@ -9,7 +9,7 @@ for (const [name, width, height] of [
   const page = await browser.newPage({ viewport: { width, height } })
   await page.clock.install()
   await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
-  await page.getByRole('button', { name: '進軍開始' }).click()
+  await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.evaluate(() => {
     for (let i = 0; i < 100; i++)
       for (const key of ['3', '1', '2']) window.dispatchEvent(new KeyboardEvent('keydown', { key }))
@@ -43,7 +43,7 @@ for (const [name, width, height] of [
   assert.notDeepEqual(await snapshot(), frozen, 'resume advances')
   await page.clock.runFor(100)
   const before = Number(await page.locator('#gold').textContent())
-  await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+  await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
   await page.clock.runFor(50)
   assert.ok(Number(await page.locator('#gold').textContent()) < before, 'resume restores summon controls')
   assert.equal(
@@ -58,12 +58,12 @@ for (const [name, width, height] of [
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 await page.clock.install()
 await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
-await page.getByRole('button', { name: '進軍開始' }).click()
+await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 let lost = false
 for (let i = 0; i < 35; i++) {
   await page.clock.runFor(10000)
   if (await page.locator('dialog').evaluate((d) => d.open)) {
-    assert.equal(await page.locator('#title').textContent(), '森の砦が陥落')
+    assert.equal(await page.locator('#title').textContent(), 'うんこ塔が流された…')
     lost = true
     console.log('Natural defeat:', await page.locator('#message').textContent())
     await page.screenshot({ path: '/tmp/lane-natural-defeat.png' })
@@ -77,7 +77,7 @@ assert.equal(await page.locator('#home').textContent(), '1400 / 1400')
 assert.equal(await page.locator('#enemy').textContent(), '1000 / 1000')
 assert.equal(await page.locator('#clock').textContent(), '0:00')
 assert.ok(Number(await page.locator('#gold').textContent()) <= 102)
-await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
 await page.clock.runFor(50)
 assert.ok(
   Number(await page.locator('#gold').textContent()) >= 65 && Number(await page.locator('#gold').textContent()) <= 68

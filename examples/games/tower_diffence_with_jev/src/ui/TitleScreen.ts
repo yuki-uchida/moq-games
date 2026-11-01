@@ -14,7 +14,7 @@ export function titleScreenMarkup(artBase: URL): string {
     <div class="title-atmosphere" aria-hidden="true"><span class="title-orbit"></span><span class="title-hill title-hill-back"></span><span class="title-hill title-hill-front"></span></div>
     <header class="title-topline"><a href="../../../index.html" aria-label="MoQ Games ホームへ戻る" title="MoQ Games ホームへ戻る">← <span class="sr-only">MoQ Games</span></a></header>
     <div class="title-content">
-      <h1 id="game-title">smart defence<br><span>with jev</span></h1>
+      <h1 id="game-title">キャッスル<br><span>ナイツ</span></h1>
       <nav class="title-menu" aria-label="Main menu">
         <button id="title-new" class="title-menu-primary" data-sfx="confirm"><span>New game</span><span aria-hidden="true">▶</span></button>
         <button id="title-continue" aria-describedby="title-save-status"><span>Continue</span><span aria-hidden="true">→</span></button>

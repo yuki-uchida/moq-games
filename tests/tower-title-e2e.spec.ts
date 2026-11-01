@@ -7,7 +7,7 @@ const rawSave = (page: import('@playwright/test').Page) => page.evaluate(() => l
 test('title has exact menu, no-save explanation, New game and back', async ({ page }) => {
   await page.goto(towerPath)
   await expect(page.locator('#title-screen')).toBeVisible()
-  await expect(page.locator('#game-title')).toHaveText(/smart defence\s*with jev/)
+  await expect(page.locator('#game-title')).toHaveText(/キャッスル\s*ナイツ/)
   await expect(page.locator('.title-menu')).toContainText('New game')
   await expect(page.locator('#title-continue')).toBeDisabled()
   await expect(page.locator('#title-save-status')).toContainText('保存した遠征はありません')

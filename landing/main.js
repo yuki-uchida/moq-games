@@ -58,7 +58,34 @@ function gamePreview(art) {
       <img class="rabbit-art" src="${rabbitersTeam}" alt="" width="800" height="1000" loading="lazy" decoding="async" draggable="false" />
     </div>`
   }
-  const units = art === 'ember-grid' ? ['mage', 'soldier', 'goblin'] : ['soldier', 'archer', 'wolf']
+  if (art === 'lane-battle') {
+    const poop = (
+      x,
+      y,
+      k,
+      body,
+      smile
+    ) => `<g transform="translate(${x} ${y}) scale(${k})" stroke="#3b2412" stroke-width="2.5">
+          <path d="M0-74c-4 8-14 10-14 18 0 4 2 6 4 7-14 2-24 10-24 20 0 4 1 7 4 9-17 3-30 11-30 22 0 9 12 16 60 16s60-7 60-16c0-11-13-19-30-22 3-2 4-5 4-9 0-10-10-18-24-20 2-1 4-3 4-7 0-9-10-12-14-18Z" fill="${body}"/>
+          <circle cx="-11" cy="-30" r="7" fill="#fff"/><circle cx="11" cy="-30" r="7" fill="#fff"/>
+          <circle cx="-9" cy="-29" r="3" fill="#2a170a" stroke="none"/><circle cx="13" cy="-29" r="3" fill="#2a170a" stroke="none"/>
+          <path d="M-9-14q9 ${smile} 18 0" fill="none"/>
+        </g>`
+    return `<div class="game-preview lane-battle" aria-hidden="true">
+      <svg class="poop-art" viewBox="0 0 220 260" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 0h220v170H0z" fill="#9fd3d8"/>
+        <path d="M0 40h220M0 80h220M0 120h220M0 160h220M40 0v170M80 0v170M120 0v170M160 0v170M200 0v170" stroke="#fff" stroke-opacity=".5"/>
+        <path d="M0 170h220v90H0z" fill="#d9cfbd"/>
+        <path d="M0 196Q110 178 220 196v40Q110 220 0 240z" fill="#fbf8ee"/>
+        <g fill="#9ccf5a" opacity=".55"><circle cx="18" cy="170" r="20"/><circle cx="36" cy="152" r="14"/></g>
+        ${poop(44, 226, 0.52, '#7a4722', 9)}
+        ${poop(96, 218, 0.4, '#8a5229', 9)}
+        ${poop(150, 220, 0.42, '#e9f5fb', -6)}
+        <g fill="#fff" stroke="#9fb6c2" stroke-width="2"><rect x="192" y="118" width="26" height="52" rx="5"/><path d="M178 162h40q0 24-16 30l4 14h-22l4-14q-10-8-10-30z"/></g>
+      </svg>
+    </div>`
+  }
+  const units = ['mage', 'soldier', 'goblin']
   return `<div class="game-preview ${escape(art)}" aria-hidden="true">
     <div class="preview-board"></div>
     ${units.map((unit, index) => `<img src="${artRoot}${unit}/portrait.png" alt="" class="preview-unit preview-unit-${index}" width="112" height="124" loading="lazy" decoding="async" />`).join('')}

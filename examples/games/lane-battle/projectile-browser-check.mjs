@@ -31,7 +31,7 @@ const audio = (await fs.readFile(new URL('./audio.js', import.meta.url), 'utf8')
 // 3D model loading polls on timers; advance the paused fake clock until the title dialog opens.
 async function begin(page) {
   while (!(await page.locator('dialog[open]').count())) await page.clock.runFor(50)
-  await page.getByRole('button', { name: '進軍開始' }).click()
+  await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 }
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 for (const [name, width, height] of [
