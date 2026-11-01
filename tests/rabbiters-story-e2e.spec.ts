@@ -14,6 +14,7 @@ window.storyTest = {
   place(x, z) { Object.assign(game.state.players[0], { x, z, y: storyMap.heightAt(x, z) }); },
   calm() { game.state.predators = []; },
   step(n) { game.state.step = n; },
+  patch(values) { Object.assign(game.state, values); },
   npc: (id) => storyMap.NPCS.find((npc) => npc.id === id),
   zone(id) { const zone = storyMap.ZONES.find((entry) => entry.id === id); return { x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2 }; },
   calls: () => scene.renderer.info.render.calls,
@@ -37,7 +38,10 @@ async function talkTo(page: Page, id: string, step: number) {
 async function leaveBy(page: Page, stage: number, title: string) {
   const exit = await hooks<{ x: number; z: number }>(page, "zone('exit')")
   await hooks(page, `place(${exit.x}, ${exit.z})`)
-  await expect.poll(async () => (await hooks<{ stage: number }>(page, 'state()')).stage).toBe(stage)
+  // Chapter 1 ends after its closing line, a few seconds after the rabbits squeeze through.
+  await expect
+    .poll(async () => (await hooks<{ stage: number }>(page, 'state()')).stage, { timeout: 20_000 })
+    .toBe(stage)
   await expect(page.locator('#title-card-chapter')).toHaveText(`第${stage + 1}章`)
   await expect(page.locator('#title-card-title')).toHaveText(title)
   await expect(page.locator('#title-card')).toBeVisible()
@@ -53,16 +57,14 @@ test('story: chapters 1 → 4 chain through objectives, dialogue and title cards
   await expect(page.locator('#chapter-pick')).toBeHidden()
   await page.locator('#solo').click()
 
-  // Chapter 1 (placeholder house): talk to Pisuke, then out of the door.
+  // Chapter 1 (house): its own spec covers the objectives; here, fast-forward to the dug fence gap and leave.
   await expect(page.locator('#title-card-title')).toHaveText('ケージの外へ')
   await expect(page.locator('#objective-title')).toContainText('第1章｜')
-  await expect(page.locator('#subtitle-text')).toContainText('ケージの外')
+  await expect(page.locator('#subtitle-text')).toContainText('ひなたの家')
   await page.screenshot({ path: testInfo.outputPath('chapter-1.png') })
   expect(await hooks<number>(page, 'calls()')).toBeLessThan(400)
   await hooks(page, 'calm()')
-  await talkTo(page, 'pisuke', 1)
-  await expect(page.locator('#subtitle-name')).toHaveText('インコのピーすけ')
-  await expect(page.locator('#subtitle-text')).toContainText('モリ')
+  await hooks(page, 'patch({ step: 5, open: 11, talk: null })')
   await leaveBy(page, 1, '知らない町')
 
   // Chapter 2 (town; rabbiters-town-e2e.spec.ts plays its goals): skip to the gnawed-open drain and go in.

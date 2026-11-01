@@ -31,6 +31,7 @@ import {
 import { STAGES } from '../src/stages'
 import { talkLine, talkSeconds } from '../src/story'
 import { CautiousBot, idle, steer } from './bot'
+import { HouseBot } from './house-bot'
 
 const HOUSE = 0
 const TOWN = 1
@@ -108,25 +109,26 @@ describe('Rabbiters story stages', () => {
 
   it('lets rabbits under furniture that people cannot follow, and hides them there', () => {
     setStage(HOUSE)
-    const table = OVERHANGS[0] // bottom 2.5: a rabbit walks in standing
-    const sofa = OVERHANGS[1] // bottom 1.0: crouch to get in
-    const outside = { x: table.minX - 1, y: 0, z: (table.minZ + table.maxZ) / 2 }
+    const table = OVERHANGS.find((roof) => roof.bottom > 2)! // the dining table: a rabbit walks in standing
+    const sofa = OVERHANGS.find((roof) => roof.bottom < 1)! // the sofa: crouch to get in
+    const middle = { x: (table.minX + table.maxX) / 2, z: (table.minZ + table.maxZ) / 2 }
+    const outside = { x: table.minX - 1, y: 0, z: middle.z }
     expect(canEnter('rabbit', outside, table.minX + 0.2, outside.z, true, false)).toBe(true)
     expect(canEnter('human', outside, table.minX + 0.2, outside.z, true, false)).toBe(false)
     expect(canEnter('cat', outside, table.minX + 0.2, outside.z, true, false)).toBe(true)
     const beside = { x: sofa.minX - 1, y: 0, z: (sofa.minZ + sofa.maxZ) / 2 }
     expect(canEnter('rabbit', beside, sofa.minX + 0.1, beside.z, true, false)).toBe(false)
     expect(canEnter('rabbit', beside, sofa.minX + 0.1, beside.z, true, true)).toBe(true)
-    expect(coverAt(0, 0, 0.5, false)).toBe('under')
+    expect(coverAt(middle.x, 0, middle.z, false)).toBe('under')
 
     // A person looking straight at a rabbit under the table does not see it; a cat close by does.
     const { game, player } = solo(HOUSE)
-    place(player, 0, 0.5)
-    game.state.predators = [hunter('human', -6, 0.5, { angle: Math.PI / 2 })]
+    place(player, middle.x, middle.z)
+    game.state.predators = [hunter('human', middle.x - 6, middle.z, { angle: Math.PI / 2 })]
     advance(game, 1)
     expect(game.state.predators[0].suspicion).toBe(0)
-    place(player, 0, 0.5)
-    game.state.predators = [hunter('cat', -2.5, 0.5, { angle: Math.PI / 2 })]
+    place(player, middle.x, middle.z)
+    game.state.predators = [hunter('cat', middle.x - 2.5, middle.z, { angle: Math.PI / 2 })]
     game.step(1 / 60)
     expect(game.state.predators[0].targetId).toBe(player.id)
   })
@@ -159,7 +161,12 @@ describe('Rabbiters story stages', () => {
   it('walks a patrol route, pausing at waypoints, and comes to look at a noise', () => {
     const { game } = solo(HOUSE)
     game.state.players[0].x = -100 // out of everyone's way
-    const mom = game.state.predators.find((predator) => predator.id === 'mom')!
+    // A walker of our own (the family's schedules are driven by the chapter script).
+    const route = [
+      { x: -34, z: 14, wait: 6 },
+      { x: -34, z: -3 }
+    ]
+    const mom = game.spawnPredator('human', route[0].x, route[0].z, { id: 'walker', route })
     const [first, second] = mom.route!
     advance(game, (first.wait ?? 0) + 0.5) // still waiting at the first waypoint
     expect(Math.hypot(mom.x - first.x, mom.z - first.z)).toBeLessThan(1.3)
@@ -194,38 +201,43 @@ describe('Rabbiters story stages', () => {
     const { game } = solo(HOUSE)
     const conversations = STAGES[HOUSE].conversations
     expect(game.state.talk?.id).toBe('intro')
-    game.say('pisuke')
+    game.say('pisuke_first')
     expect(game.state.talk?.id).toBe('intro')
     const start = game.state.talk!.at
     expect(talkLine(conversations, game.state.talk, start + 0.1)).toEqual(conversations.intro[0])
     advance(game, talkSeconds(conversations, 'intro') + 0.05)
-    expect(game.state.talk?.id).toBe('pisuke')
+    expect(game.state.talk?.id).toBe('pisuke_first')
     const at = game.state.talk!.at
     expect(talkLine(conversations, game.state.talk, at + 0.1)?.who).toBe('pisuke')
-    expect(talkLine(conversations, game.state.talk, at + talkSeconds(conversations, 'pisuke') - 0.1)?.who).toBe(
+    expect(talkLine(conversations, game.state.talk, at + talkSeconds(conversations, 'pisuke_first') - 0.1)?.who).toBe(
       'pisuke'
     )
     expect(talkLine(conversations, { id: 'constructor', at: 0 }, 1)).toBeUndefined()
-    advance(game, talkSeconds(conversations, 'pisuke') + 0.05)
+    advance(game, talkSeconds(conversations, 'pisuke_first') + 0.05)
     expect(game.state.talk).toBeNull()
   })
 
   it('detects a fresh E press for talking and keeps checkpoints in story order', () => {
     const { game, player } = solo(HOUSE)
-    const pisuke = NPCS.find((npc) => npc.id === 'pisuke')!
-    place(player, pisuke.x + 1.5, pisuke.z)
+    const tama = NPCS.find((npc) => npc.id === 'tama')!
+    place(player, tama.x + 1.5, tama.z)
     game.state.predators = []
+    advance(game, talkSeconds(STAGES[HOUSE].conversations, 'intro') + 0.1)
+    game.state.step = 2
     const before = structuredClone(game.state)
     game.setInput(player.id, { ...idle, interact: true })
     game.step(1 / 60)
-    expect(game.state.step).toBe(1)
+    expect(game.state.talk?.id).toBe('tama_first')
+    game.setInput(player.id, idle)
+    advance(game, talkSeconds(STAGES[HOUSE].conversations, 'tama_first') + 0.1)
+    expect(game.state.step).toBe(3)
     expect(progress(game.state)).toBeGreaterThan(progress(before))
     // Retrying from the earlier checkpoint puts any carried item back and keeps the clock running.
     before.items = [{ id: 'tag', kind: 'tag', x: 1, y: 0, z: 1, active: false }]
     before.players[0].carrying = 'tag'
     game.state.time = 500
     const retry: GameState = retryState(before, game.state)
-    expect(retry).toMatchObject({ time: 500, step: 0, talk: null })
+    expect(retry).toMatchObject({ time: 500, step: 2, talk: null })
     expect(retry.items[0].active).toBe(true)
     expect(retry.players[0].carrying).toBeNull()
     expect(Game.resume(retry).state).toBe(retry)
@@ -270,9 +282,15 @@ describe('Rabbiters story stages', () => {
   it('plays the placeholder chapters 1 → 3 into the forest with the path-finding bot', () => {
     const { game, player } = solo(HOUSE, 5)
     const bot = new CautiousBot(game, player.id, { spacing: 0.5 })
+    const house = new HouseBot(game, player.id) // chapter 1 needs crouching, hopping and holding E
     let pulse = false
-    for (let frame = 0; frame < 60 * 60 * 6 && game.state.stage < FOREST; frame++) {
+    for (let frame = 0; frame < 60 * 60 * 16 && game.state.stage < FOREST; frame++) {
       game.state.predators = [] // threat-free route; the cautious policy is exercised elsewhere
+      if (game.state.stage === HOUSE) {
+        game.setInput(player.id, house.input())
+        game.step(1 / 60)
+        continue
+      }
       // Chapters 2 and 3 need jumps, tunnels, timed holds and road crossings: their full bot runs live in
       // town.test.ts and waterway.test.ts.
       if (game.state.stage === TOWN || game.state.stage === WATERWAY) game.nextStage()
@@ -287,13 +305,17 @@ describe('Rabbiters story stages', () => {
     }
     expect(game.state.stage).toBe(FOREST)
     expect(player.downed).toBe(false)
-  }, 60_000)
+  }, 120_000)
 
   it('keeps a cautious bot hidden while a hunter looks for it', () => {
     const { game, player } = solo(HOUSE)
     const bot = new CautiousBot(game, player.id, { spacing: 0.5 })
-    place(player, -6, 0.5)
-    game.state.predators = [hunter('human', -12, 0.5, { state: 'suspicious', targetId: player.id, suspicion: 0.5 })]
+    const table = OVERHANGS.find((roof) => roof.bottom > 2)!
+    const z = (table.minZ + table.maxZ) / 2
+    place(player, table.minX - 2, z)
+    game.state.predators = [
+      hunter('human', table.minX - 8, z, { state: 'suspicious', targetId: player.id, suspicion: 0.5 })
+    ]
     let hidden = false
     for (let frame = 0; frame < 60 * 6; frame++) {
       const { left: _left, ...input } = bot.input({ x: 15, z: 0 })
