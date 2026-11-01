@@ -1,0 +1,68 @@
+[
+  {
+    "role": "archer",
+    "motion": "walk",
+    "source": "archer-walk-candidate.glb",
+    "sourceSha256": "e30285e779e0c9b74866bf5fc6f03d225abb94ee14e6e23cecdc670692a59811",
+    "clip": "archer-walk-v2.json",
+    "duration": 1,
+    "tracks": 52,
+    "bytes": 330817,
+    "sha256": "7a9fc4dc69ccae673a19456a92e2cd67eed588c21e3d99e111ac3379a81bad66"
+  },
+  {
+    "role": "runner",
+    "motion": "walk",
+    "source": "runner-walk-current.glb",
+    "sourceSha256": "e955577cfdd12d310b340dea1d1aa6a33d34a813d3e4a5e7ac285e0263dfa57c",
+    "clip": "runner-walk-v2.json",
+    "duration": 1,
+    "tracks": 37,
+    "bytes": 251471,
+    "sha256": "67dbb12c52e4a5378ca9ec925d2fcc3c48d87502d3dd409f2091962f0ea675ed"
+  },
+  {
+    "role": "tank",
+    "motion": "walk",
+    "source": "tank-walk-candidate.glb",
+    "sourceSha256": "b2973c9813775011e7424312cc27b341ee84ed9c630bc1c1cb762acf2d42ffc4",
+    "clip": "tank-walk-v2.json",
+    "duration": 0.625,
+    "tracks": 30,
+    "bytes": 217971,
+    "sha256": "07444b8ca701d5a4242868f9b4eafd0e0fd40cc3471742608d58ea3cefecfaa8"
+  },
+  {
+    "role": "tank",
+    "motion": "attack",
+    "source": "tank-attack-candidate.glb",
+    "sourceSha256": "99d17fd499b935e850621120b9e714fe39719b56bd891c998724172738e5b2db",
+    "clip": "tank-attack-v2.json",
+    "duration": 0.8640000224113464,
+    "tracks": 30,
+    "bytes": 33209,
+    "sha256": "8c62dd2585d06547f7eb3f0609e85138897151e21d3512b61bb669ea8701ab35"
+  },
+  {
+    "role": "crystalSentinel",
+    "motion": "attack",
+    "source": "crystal-sentinel.glb",
+    "sourceSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
+    "clip": "crystalSentinel-attack-v2.json",
+    "duration": 1.5,
+    "tracks": 34,
+    "bytes": 66112,
+    "sha256": "836153d7e400c4ba280384d3d0a4fe1fe1f7bb18a1baebbbd6733bea643316c6"
+  },
+  {
+    "role": "koboldLancer",
+    "motion": "attack",
+    "source": "amber-kobold-lancer.glb",
+    "sourceSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
+    "clip": "koboldLancer-attack-v2.json",
+    "duration": 1.2000000476837158,
+    "tracks": 42,
+    "bytes": 48518,
+    "sha256": "86f1a806b398bb750459955d37ba5503340aa7fc017fd7206a48ff378515a1ab"
+  }
+]

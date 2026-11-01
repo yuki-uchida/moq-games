@@ -1,0 +1,32 @@
+[
+  {
+    "role": "archer",
+    "input": "archer-walk-candidate.glb",
+    "output": "archer-walk-natural-v2.glb",
+    "pelvis": 0.282,
+    "ankle": 0.025,
+    "stride": 0.095,
+    "lift": 0.034,
+    "bob": 0.004,
+    "sourceSha256": "e30285e779e0c9b74866bf5fc6f03d225abb94ee14e6e23cecdc670692a59811",
+    "outputSha256": "fd46d4350b9fe4ee878ac3ee9d58ba7916f8fac54dfa210961252a296955ac4b",
+    "duration": 1,
+    "bytes": 7896780,
+    "policy": "Geometry, weights, inverse bind matrices, node rest transforms, clip duration, sample times and upper-body keys preserved; independent bow controls translated with pelvis."
+  },
+  {
+    "role": "runner",
+    "input": "runner-walk-current.glb",
+    "output": "runner-walk-natural-v2.glb",
+    "pelvis": 0.478,
+    "ankle": 0.055,
+    "stride": 0.085,
+    "lift": 0.048,
+    "bob": 0.004,
+    "sourceSha256": "e955577cfdd12d310b340dea1d1aa6a33d34a813d3e4a5e7ac285e0263dfa57c",
+    "outputSha256": "677e5766054b7e9ec12616e8ba6cde414095d54a98558029ebb19d6e2f3aeb31",
+    "duration": 1,
+    "bytes": 2954684,
+    "policy": "Geometry, weights, inverse bind matrices, node rest transforms, clip duration, sample times and upper-body keys preserved; independent bow controls translated with pelvis."
+  }
+]

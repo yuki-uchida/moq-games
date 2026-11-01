@@ -95,9 +95,7 @@ describe.skipIf(!hasModels && !derivativeMode)(
           return loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
         }
         const cache = new ModelAssetCache(load, 1024 * 1024 * 512, 2, async (url) =>
-          JSON.parse(
-            readFileSync(resolve('public/tower-defense-art/effects/special/motions', url.split('/').at(-1)!), 'utf8')
-          )
+          JSON.parse(readFileSync(resolve('public', url.split('/moq-games/').at(-1)!.replace(/^\//, '')), 'utf8'))
         )
         try {
           for (const spec of Object.values(definition.clips)) {

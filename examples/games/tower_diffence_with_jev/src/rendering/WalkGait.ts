@@ -67,6 +67,9 @@ export function walkGaitClip(
   groundY: number
 ): THREE.AnimationClip {
   if (source.name !== 'walk') return source
+  // Proximal v1 walks (wolf, brute) already solve contacts for their catalog stride.
+  if ((source as THREE.AnimationClip & { userData?: { proximalMotionVersion?: number } }).userData?.proximalMotionVersion)
+    return source
   const key = `${travel}:${groundY}`
   const prior = cache.get(source)?.get(key)
   if (prior) return prior

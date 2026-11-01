@@ -137,7 +137,15 @@ describe('EXTRA shared real model playback', () => {
     session.dispose()
   })
   it('starts each selection and advances the actual animated pose after switches', async () => {
-    const session = new ModelViewerSession(() => new ModelAssetCache(async () => fixture()))
+    const session = new ModelViewerSession(
+      () =>
+        new ModelAssetCache(
+          async () => fixture(),
+          undefined,
+          undefined,
+          async () => THREE.AnimationClip.toJSON(fixture().animations[2])
+        )
+    )
     for (const [role, motion] of [
       ['slime', 'idle'],
       ['slime', 'walk'],
@@ -222,11 +230,17 @@ describe('EXTRA shared real model playback', () => {
       }))
       const session = new ModelViewerSession(
         () =>
-          new ModelAssetCache(async (url) => {
-            const path = resolve('public/tower-defense-art/models', url.split('/models/')[1])
-            const bytes = readFileSync(path)
-            return loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
-          })
+          new ModelAssetCache(
+            async (url) => {
+              const path = resolve('public/tower-defense-art/models', url.split('/models/')[1])
+              const bytes = readFileSync(path)
+              return loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
+            },
+            undefined,
+            undefined,
+            async (url) =>
+              JSON.parse(readFileSync(resolve('public', url.split('/moq-games/').at(-1)!.replace(/^\//, '')), 'utf8'))
+          )
       )
       try {
         for (const motion of viewerMotions(UNIT_MODEL_CATALOG[role]!)) {

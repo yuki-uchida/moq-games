@@ -1,0 +1,38 @@
+[
+  {
+    "role": "crystalSentinel",
+    "motion": "attack",
+    "source": "crystal-sentinel.glb",
+    "output": "crystal-sentinel-combat-v2.glb",
+    "duration": 1.5,
+    "cue": 0.8666666666666667,
+    "sourceSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
+    "outputSha256": "5b7ac0962cae9741d6a2857c7e5671998fded0aacac4503cff7b451820109884",
+    "samples": 181,
+    "geometry": "Original binary geometry, weights, inverse binds and rest transforms preserved; only attack animation replaced."
+  },
+  {
+    "role": "koboldLancer",
+    "motion": "attack",
+    "source": "amber-kobold-lancer.glb",
+    "output": "amber-kobold-lancer-combat-v2.glb",
+    "duration": 1.2,
+    "cue": 0.6333333333333333,
+    "sourceSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
+    "outputSha256": "090e2b665dd852e4e61c89a4f58c6ec24318bfd4464802b2686fbd5a6003044a",
+    "samples": 145,
+    "geometry": "Original binary geometry, weights, inverse binds and rest transforms preserved; only attack animation replaced."
+  },
+  {
+    "role": "tank",
+    "motion": "attack",
+    "source": "tank-attack-candidate.glb",
+    "output": "tank-attack-candidate-combat-v2.glb",
+    "duration": 0.864,
+    "cue": 0.468,
+    "sourceSha256": "99d17fd499b935e850621120b9e714fe39719b56bd891c998724172738e5b2db",
+    "outputSha256": "7a58d1c3fb39baa1bb0750f5f44a8dc60e79a8719498545ba0e91be284ad0f79",
+    "samples": 105,
+    "geometry": "Original binary geometry, weights, inverse binds and rest transforms preserved; only attack animation replaced."
+  }
+]

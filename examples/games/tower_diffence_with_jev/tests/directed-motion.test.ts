@@ -88,22 +88,16 @@ function worstTurn(scene: THREE.Object3D, clip: THREE.AnimationClip, node: strin
 }
 
 describe('source key flips', () => {
-  it('re-keys the Brute fist flips across the forearm chain', async () => {
+  it('leaves the re-authored Brute attack continuous and untouched', async () => {
+    // Proximal motion v1 rebuilt the Brute attack; its former fist flips are gone at the source.
     const { scene, clip } = await model('brute', 'brute-motion-v2-candidate.glb')
-    const source = clip('attack'),
-      repaired = repairKeyFlips(scene, source)
+    const source = clip('attack')
     for (const [from, to] of [
       [0.35, 0.41],
       [0.59, 0.63]
-    ]) {
-      expect(worstTurn(scene, source, 'handL', from, to)).toBeGreaterThan(20)
-      expect(worstTurn(scene, repaired, 'handL', from, to)).toBeLessThan(10)
-      expect(worstTurn(scene, repaired, 'handR', from, to)).toBeLessThan(10)
-    }
-    expect(repairKeyFlips(scene, source)).toBe(repaired)
-    expect((repaired as any).userData.keyFlipRepairs.map((r: { track: string }) => r.track).sort()).toEqual(
-      [...['foreL', 'foreR', 'handL', 'handR'].flatMap((n) => [`${n}.quaternion`, `${n}.quaternion`])].sort()
-    )
+    ])
+      for (const hand of ['handL', 'handR']) expect(worstTurn(scene, source, hand, from, to)).toBeLessThan(10)
+    expect(repairKeyFlips(scene, source)).toBe(source)
   })
   it('turns the Runner elbows continuously while each hand stays on the spear', async () => {
     const { scene, clip } = await model('runner', 'runner-attack-current.glb')

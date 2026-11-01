@@ -1,0 +1,9 @@
+{
+  "source": "public/tower-defense-art/models/tank/tank-walk-candidate.glb",
+  "output": "tank-walk-clearance-v2.glb",
+  "duration": 0.625,
+  "samples": 193,
+  "legAmplitude": 0.58,
+  "shieldGripOffset": [0.085, 0.065, 0.075],
+  "policy": "Original rig, geometry, weights, bind poses and grip preserved. Shorter stride and raised/outward shield arm."
+}

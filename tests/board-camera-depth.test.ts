@@ -72,8 +72,7 @@ it('contains every runtime roster motion at role-appropriate scale on legacy and
     },
     512 * 1024 * 1024,
     2,
-    async (url) =>
-      JSON.parse(readFileSync('public/tower-defense-art/effects/special/motions/' + url.split('/').at(-1), 'utf8'))
+    async (url) => JSON.parse(readFileSync('public/' + url.split('/moq-games/').at(-1)!.replace(/^\//, ''), 'utf8'))
   )
   const point = new THREE.Vector3()
   try {
