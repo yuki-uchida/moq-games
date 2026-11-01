@@ -1,6 +1,6 @@
 // Story-mode contracts shared by the engine and the chapter folders under src/stages/.
 import type * as THREE from 'three'
-import type { Game, GameState, Player, Predator } from './game'
+import type { Cover, Game, GameState, Player, Predator } from './game'
 import type { Overhang, Point } from './map'
 
 /** One subtitle. `who`: an NPC id, a predator id, 'rabbit' (the local player) or 'narrator' (subtitle only). */
@@ -77,6 +77,8 @@ export interface StageDef {
   conversations: Record<string, Line[]>
   /** Speaker names for subtitles, by NPC/predator id. */
   names: Record<string, string>
+  /** What this chapter's hiding places are called in the HUD (a shelter is a cage here, a shrine floor there). */
+  coverNames?: Partial<Record<Cover, string>>
   look: StageLook
   /** Static scenery for this stage, added to `scene`; built when the stage becomes active. */
   scenery(scene: THREE.Scene): Scenery

@@ -582,6 +582,7 @@ function updateHud(state: GameState) {
   alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
   chasers = hunting
   const underground = isUnderground(player.x, player.y, player.z)
+  const coverName = (cover: Cover) => STAGES[state.stage].coverNames?.[cover] ?? COVER_NAMES[cover]
   const nearTrunk = !underground && treesNear(player.x, player.z, 1.5).length > 0
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
@@ -592,13 +593,16 @@ function updateHud(state: GameState) {
       : suspected
         ? '怪しまれている… 今のうちに隠れよう'
         : player.hidden
-          ? `身を隠しています（${COVER_NAMES[coverAt(player.x, player.y, player.z, true)]}）`
+          ? `身を隠しています（${coverName(coverAt(player.x, player.y, player.z, true))}）`
           : inBush(player.x, player.z)
             ? '茂みの中：空からは見えない'
             : nearTrunk
               ? '木の陰：幹を敵とのあいだにはさもう'
               : '足あとに気をつけて'
-  element<HTMLElement>('#area-name').textContent = regionName(player.x, player.y, player.z)
+  element<HTMLElement>('#area-name').textContent =
+    underground && STAGES[state.stage].coverNames?.tunnel
+      ? coverName('tunnel')
+      : regionName(player.x, player.y, player.z)
   minimap.draw(state, localId, yaw)
   const objective = STAGES[state.stage].script.objective(state, player)
   element<HTMLElement>('#objective-title').textContent = objective.title

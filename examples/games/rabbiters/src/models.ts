@@ -553,8 +553,40 @@ function dog(options: ModelOptions): Actor {
   return actor
 }
 
+/** Golden hamster (くるみ, the pet-shop NPC): a round ball of fur, white face and belly, no long tail. */
+function hamster(): Actor {
+  const actor = rig('rat', 0.9)
+  const { body, limbs, ears } = actor
+  const coat = '#e0a24f'
+  const cream = '#fbf3e4'
+  part(body, 'sphere', coat, [0, 0.36, -0.04], [0.34, 0.32, 0.4])
+  part(body, 'sphere', cream, [0, 0.3, 0.1], [0.27, 0.24, 0.3])
+  const head = group(body, [0, 0.52, 0.28])
+  part(head, 'sphere', coat, [0, 0, 0], [0.26, 0.23, 0.24])
+  part(head, 'sphere', cream, [0, -0.06, 0.12], [0.2, 0.15, 0.15])
+  for (const side of [-1, 1]) part(head, 'sphere', cream, [side * 0.15, -0.05, 0.08], [0.12, 0.11, 0.11]) // cheek pouches
+  part(head, 'sphere', '#e98f9a', [0, -0.01, 0.25], [0.035, 0.028, 0.025])
+  eyes(head, 0.06, 0.18, 0.11, 0.04, '#120a08')
+  for (const side of [-1, 1]) {
+    const ear = group(head, [side * 0.15, 0.18, -0.04])
+    part(ear, 'cylinder', coat, [0, 0.04, 0], [0.075, 0.02, 0.075], [Math.PI / 2, 0, 0])
+    part(ear, 'cylinder', '#f2b2b6', [0, 0.04, 0.012], [0.05, 0.02, 0.05], [Math.PI / 2, 0, 0])
+    ears.push(ear)
+  }
+  for (const side of [-1, 1])
+    for (const end of [-1, 1]) {
+      const leg = group(body, [side * 0.17, 0.12, end * 0.18])
+      part(leg, 'sphere', '#f2b2b6', [0, -0.08, 0.03], [0.06, 0.03, 0.08])
+      limbs.push(leg)
+    }
+  actor.tail = group(body, [0, 0.3, -0.42])
+  part(actor.tail, 'sphere', coat, [0, 0, 0], [0.05, 0.04, 0.05])
+  return actor
+}
+
 /** Rat: about 0.8 long, low and quick, round ears and a long bare tail. */
 function rat(options: ModelOptions): Actor {
+  if (options.id === 'kurumi') return hamster()
   const coat = ['#6d6460', '#5a524e', '#7d7066'][hashOf(options.id ?? '') % 3]
   const actor = rig('rat', 0.8)
   const { body, limbs, ears } = actor

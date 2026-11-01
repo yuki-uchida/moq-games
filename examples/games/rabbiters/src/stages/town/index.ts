@@ -24,6 +24,14 @@ const town: StageDef = {
   script,
   conversations: CONVERSATIONS,
   names: NAMES,
+  coverNames: {
+    shelter: '神社の床下',
+    bush: '物かげの奥',
+    canopy: '植え込みの中',
+    grass: '草むら',
+    under: '車や台の下',
+    tunnel: '排水管の中'
+  },
   look: LOOK,
   scenery,
   barks: {
