@@ -39,6 +39,40 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
     await page.goto(towerPath)
     await page.evaluate((raw) => localStorage.setItem('tower-jev-v3', raw), stored)
     await page.reload()
+    // Observe completed render frames in the page, independently of slow driver
+    // screenshots. Capture the canvas synchronously in that same attack frame.
+    await page.evaluate((role) => {
+      const w = window as any
+      const review = (w.__proximalFrameReview = {
+        motions: [] as string[],
+        samples: [] as any[],
+        captures: {} as any,
+        errors: {}
+      })
+      let lastFrame = -1
+      function observe() {
+        const d = w.towerDefenseDiagnostics?.()
+        const loading = document.querySelector<HTMLDialogElement>('#campaign-loading')?.open
+        const title = document.querySelector<HTMLDialogElement>('#title-screen')?.open
+        if (d?.gpu.frames > 0 && d.gpu.frames !== lastFrame && !loading && !title) {
+          lastFrame = d.gpu.frames
+          Object.assign(review.errors, d.modelRendering.errors)
+          for (const u of d.modelRendering.units) {
+            if (u.type !== role || !u.visible || u.meshes <= 0) continue
+            if (!review.motions.includes(u.motion)) review.motions.push(u.motion)
+            const sample = { frame: lastFrame, simulationTime: d.simulationTime, motion: u.motion, seconds: u.seconds }
+            if (review.samples.length < 1200) review.samples.push(sample)
+            const capturePhase = u.motion === 'walk' || (u.motion === 'attack' && u.seconds >= 0.2 && u.seconds <= 0.9)
+            if (capturePhase && !review.captures[u.motion]) {
+              const canvas = document.querySelector<HTMLCanvasElement>('#field canvas')
+              if (canvas) review.captures[u.motion] = { ...sample, png: canvas.toDataURL('image/png') }
+            }
+          }
+        }
+        requestAnimationFrame(observe)
+      }
+      requestAnimationFrame(observe)
+    }, role)
     await expect(page.locator('#title-continue')).toBeEnabled()
     await page.locator('#title-continue').click()
     await expect
@@ -55,30 +89,48 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
       )
       .toBe(true)
     await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 300000 })
-    const observed = new Set<string>()
-    let attackFrames = 0
-    for (let i = 0; i < (role === 'wolf' ? 12 : 300); i++) {
-      const d = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
-      for (const u of d.modelRendering.units) {
-        if (u.type !== role || !u.visible || u.meshes <= 0) continue
-        observed.add(u.motion)
-        if (u.motion === 'attack' && attackFrames < 4) {
-          await page.screenshot({ path: info.outputPath(`${role}-attack-${attackFrames++}.png`) })
-        }
+    // Regression coverage: let the driver wait across an entire attack window.
+    // The in-page observer must retain the actual rendered attack and its PNG.
+    if (role !== 'wolf') await page.waitForTimeout(8000)
+    await expect
+      .poll(
+        () =>
+          page.evaluate((role) => {
+            const r = (window as any).__proximalFrameReview
+            return Boolean(r.captures.walk && (role === 'wolf' || r.captures.attack))
+          }, role),
+        { timeout: 60000, intervals: [100] }
+      )
+      .toBe(true)
+    const review = await page.evaluate(() => (window as any).__proximalFrameReview)
+    expect(review.errors).toEqual({})
+    for (const motion of role === 'wolf' ? ['walk'] : ['walk', 'attack']) {
+      const capture = review.captures[motion]
+      expect(capture.frame).toBeGreaterThan(0)
+      if (motion === 'attack') {
+        expect(capture.seconds).toBeGreaterThanOrEqual(0.2)
+        expect(capture.seconds).toBeLessThanOrEqual(0.9)
       }
-      expect(d.modelRendering.errors).toEqual({})
-      if (i === 0 || i === 4 || i === 11) await page.screenshot({ path: info.outputPath(`${role}-game-${i}.png`) })
-      if (role !== 'wolf' && observed.has('walk') && attackFrames >= 1) break
-      await page.waitForTimeout(100)
+      const bytes = Buffer.from(capture.png.split(',')[1], 'base64')
+      expect(bytes.byteLength).toBeGreaterThan(10000)
+      const path = info.outputPath(`${role}-${motion}-rendered.png`)
+      await writeFile(path, bytes)
+      await info.attach(`${role}-${motion}-rendered`, { path, contentType: 'image/png' })
     }
+    await info.attach('rendered-motion-samples', {
+      body: JSON.stringify(review.samples),
+      contentType: 'application/json'
+    })
     await info.attach('game-diagnostics', {
       body: JSON.stringify(await page.evaluate(() => (window as any).towerDefenseDiagnostics())),
       contentType: 'application/json'
     })
-    expect(observed.has('walk'), `${role}: observed ${[...observed].join(',')}`).toBe(true)
-    if (role !== 'wolf') expect(observed.has('attack'), `${role}: attack was actually played`).toBe(true)
+    expect(review.motions, `${role}: rendered walk`).toContain('walk')
+    if (role !== 'wolf') expect(review.motions, `${role}: attack was actually rendered`).toContain('attack')
     expect(errors).toEqual([])
-    await info.attach('observed-motions', { body: JSON.stringify([...observed]), contentType: 'application/json' })
+    await info.attach('observed-motions', { body: JSON.stringify(review.motions), contentType: 'application/json' })
+    // Full-page evidence is useful, but must not block motion observation.
+    await page.screenshot({ path: info.outputPath(`${role}-game-final.png`) })
   })
 }
 
