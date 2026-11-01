@@ -26,7 +26,7 @@ for (const viewport of [
     const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
     expect(mapState.newCampaignLayoutRevision).toBe(4)
     expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
-    expect(mapState.battlefield.backgroundSource).toMatch(/^approved-map:field:meadow:2:4(?::projected)?$/)
+    expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4:projected')
     expect(mapState.environment.error).toBeUndefined()
     const geometry = await page.evaluate(() => {
       const map = document.getElementById('map-scroll')!
@@ -83,8 +83,48 @@ for (const viewport of [
     }
     await expect(page.locator('#assault')).toBeVisible()
     await expect(page.locator('#game-title-return')).toBeHidden()
+    await page.screenshot({ path: test.info().outputPath(`field-${viewport.width}x${viewport.height}.png`) })
   })
 }
+
+test('recomposed roads retain equal horizontal and vertical widths at every screen aspect', async ({ page }) => {
+  await page.goto('/moq-games/')
+  const widths = await page.evaluate(async () => {
+    // Exercise the actual canvas texture, including source-image patches and edging.
+    const { createProjectedFieldArt } = await import(
+      '/moq-games/examples/games/tower_diffence_with_jev/src/rendering/WorldArt.ts'
+    )
+    const source = new Image()
+    source.src = '/moq-games/tower-defense-map/approved-meadow.png'
+    await source.decode()
+    return [0.35, 1, 1.25, 1.4, 1.95].map((aspect) => {
+      const canvas = createProjectedFieldArt('meadow', aspect, source)
+      const c = canvas.getContext('2d')!
+      const crossSection = (x: number, y: number, vertical: boolean) => {
+        let width = 0
+        for (let d = -40; d <= 40; d++) {
+          const [r, g, b] = c.getImageData(
+            Math.round(x + (vertical ? 0 : d)),
+            Math.round(y + (vertical ? d : 0)),
+            1,
+            1
+          ).data
+          if (r > 180 && g > 140 && b < 195 && r > g + 8 && g > b + 15) width++
+        }
+        return width
+      }
+      return {
+        aspect,
+        horizontal: crossSection(((350 * 1280) / 1478) * aspect, (128 * 920) / 1064, true),
+        vertical: crossSection(((530 * 1280) / 1478) * aspect, (200 * 920) / 1064, false)
+      }
+    })
+  })
+  for (const { aspect, horizontal, vertical } of widths) {
+    expect(horizontal, `horizontal road at ${aspect}`).toBeCloseTo(40 * Math.min(1, aspect), -1)
+    expect(Math.abs(horizontal - vertical), `road widths at ${aspect}`).toBeLessThanOrEqual(3)
+  }
+})
 
 test('proportional real models, picking, HP text and preview rings reflow without moving saved ground positions', async ({
   page

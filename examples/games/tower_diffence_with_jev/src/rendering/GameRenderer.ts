@@ -1159,7 +1159,7 @@ export class GameRenderer {
           this.approvedMapError = error instanceof Error ? error.message : 'Approved map could not load'
         })
     }
-    const projected = layoutRevision === 4 && (this.modelPresentationAspect < 0.72 || this.modelPresentationAspect > 1.45)
+    const projected = layoutRevision === 4
     const fieldArt = projected
       ? createProjectedFieldArt(id, this.modelPresentationAspect, mazeArt)
       : createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
