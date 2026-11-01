@@ -197,6 +197,10 @@ h2 {
 .rabbiters {
   background: radial-gradient(ellipse at 65% 25%, #92a985, #345847 70%);
 }
+.life-art {
+  width: 100%;
+  height: 100%;
+}
 .poop-art {
   width: 100%;
   height: 100%;

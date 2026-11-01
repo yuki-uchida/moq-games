@@ -8,11 +8,12 @@
   <body>
     <main>
       <header>
+        <div id="stage-name"></div>
         <div class="wallet">💩 <strong id="gold">0</strong><small id="rate"></small></div>
         <button id="sound" data-sfx="none" aria-label="音を切り替え" aria-pressed="false">♪</button>
       </header>
       <section id="field">
-        <canvas aria-label="左のうんこ塔から右の便器城へ進む戦場"></canvas>
+        <canvas aria-label="右のうんこ塔から左の便器城へ進む戦場"></canvas>
         <span id="clock"></span>
         <p class="sr-only">うんこ塔 <span id="home"></span> 便器城 <span id="enemy"></span></p>
         <div id="notice" role="status"></div>
@@ -28,12 +29,22 @@
         </div>
       </footer>
       <dialog>
-        <h2 id="title"></h2>
-        <p id="message"></p>
-        <div id="stages" aria-label="ステージ選択"></div>
-        <button id="next" data-sfx="confirm" hidden>次のステージ →</button
-        ><button id="close" data-sfx="confirm">ブリッと出撃</button
-        ><button id="restart" data-sfx="confirm">↻ もう一度</button>
+        <div class="sheet">
+          <h2 id="title"></h2>
+          <p id="message"></p>
+          <ul id="report"></ul>
+          <h3>ステージ <small id="progress"></small></h3>
+          <div id="stages" aria-label="ステージ選択"></div>
+          <p id="stage-info"></p>
+          <h3>編成 <small id="slots"></small> <small>タップで出し入れ・並び順が召喚ボタン順</small></h3>
+          <div id="roster" aria-label="編成"></div>
+          <section id="shop-section">
+            <h3>うんこ購入 <small id="coins"></small></h3>
+            <div id="shop" aria-label="うんこ購入"></div>
+          </section>
+          <button id="erase" class="link" data-sfx="select">セーブデータを消す</button>
+        </div>
+        <div class="actions"><button id="close" data-sfx="confirm">ブリッと出撃</button></div>
       </dialog>
     </main>
     <script type="module" src="./main.js"></script>

@@ -17,7 +17,8 @@ export class BattleClock {
     this.pending += seconds
     let remaining = Math.min(this.pending, 30)
     while (remaining > 1e-9 && !finished()) {
-      const dt = Math.min(remaining, 0.05)
+      // Snap float residue (0.04999…) to a full step so batching never shifts a simulation frame.
+      const dt = remaining > 0.05 - 1e-9 ? 0.05 : remaining
       update(dt)
       remaining -= dt
       this.pending -= dt

@@ -2,7 +2,7 @@
 
 ## うんこ大惨事 (Lane Battle) runtime
 
-Lane Battle builds its poop army, foam garrison, forts and restroom backdrop from three.js geometry and 2D canvas drawing in the game code, and synthesizes its sound with Web Audio. The catalog's poop illustration is original inline SVG. It loads no image or model files.
+Lane Battle builds its poop army, special units, cleanup-crew enemies, forts and restroom backdrop from three.js geometry and 2D canvas drawing in the game code, and synthesizes its sound with Web Audio. The catalog's poop illustration is original inline SVG. It loads no image or model files.
 
 ## Rabbiters runtime
 

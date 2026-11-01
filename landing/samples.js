@@ -24,7 +24,7 @@ export const samples = [
     id: 'lane-battle',
     title: 'うんこ大惨事',
     subtitle: 'LANE BATTLE',
-    description: '仲間を送り、砦を守りながら敵陣へ。3つの戦場を進む拠点攻防戦。',
+    description: 'うんこ軍団を編成・育成し、掃除係や便器、薬が守る敵陣へ。全30ステージの拠点攻防戦。',
     href: './examples/games/lane-battle/index.html',
     category: 'STRATEGY',
     tags: ['拠点攻防', 'ブラウザでプレイ'],
@@ -39,5 +39,15 @@ export const samples = [
     category: 'ACTION',
     tags: ['アクション', '協力プレイ'],
     art: 'rabbiters'
+  },
+  {
+    id: 'life-survivors',
+    title: 'Life Survivors',
+    subtitle: 'LIFE SURVIVAL',
+    description: '赤ちゃんから始まる30分の人生。隠れた才能を見極め、人生の手札で押し寄せる困難を退ける。',
+    href: './examples/games/life-survivors/index.html',
+    category: 'ACTION',
+    tags: ['サバイバー系', '協力プレイ'],
+    art: 'life-survivors'
   }
 ]

@@ -17,6 +17,8 @@ export interface CooperativeNetworkOptions {
   room: string
   role: 'host' | 'guest'
   playerId?: string
+  /** Namespace label; lets other games reuse this relay protocol without sharing rooms. */
+  app?: string
   onInput: (playerId: string, input: unknown) => void
   onSnapshot: (state: unknown) => void
   onPresence: (playerIds: readonly string[]) => void
@@ -60,9 +62,10 @@ export class CooperativeNetwork {
     const relay = new URL(options.relayUrl)
     if (relay.protocol !== 'https:' || relay.username || relay.password || relay.search || relay.hash)
       throw new Error('Use an HTTPS relay URL without credentials, query or fragment')
-    if (!identifier.test(options.room) || !identifier.test(this.playerId)) throw new Error('Invalid room/player ID')
+    if (!identifier.test(options.room) || !identifier.test(this.playerId) || !identifier.test(options.app ?? 'x'))
+      throw new Error('Invalid room/player ID')
     if (this.playerId === 'host') throw new Error('Reserved player ID')
-    this.prefix = ['anon', 'rabbiters-v1', options.room]
+    this.prefix = ['anon', options.app ?? 'rabbiters-v1', options.room]
     this.publishing = [...this.prefix, options.role === 'host' ? 'host' : this.playerId]
     this.players.add(this.playerId)
   }

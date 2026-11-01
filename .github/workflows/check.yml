@@ -72,7 +72,7 @@ jobs:
       - run: npm run lint
       # Run every unit suite so new test files cannot silently fall outside CI.
       - name: Unit tests
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests examples/games/ember-grid/tests/*.test.ts tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts --maxWorkers=1
+        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/ember-grid/tests/*.test.ts tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts --maxWorkers=1
       - name: Node contract tests
         run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs tests/tower-model-sidecars.test.mjs examples/games/lane-battle/*.test.mjs
       - run: npm run typecheck:tower-debug

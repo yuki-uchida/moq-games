@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d1626" />
+    <meta
+      name="description"
+      content="赤ちゃんから始まる30分の人生。隠れた才能を見極め、人生の手札で押し寄せる困難を退けよう。"
+    />
+    <title>Life Survivors — 人生サバイバー</title>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="world" aria-label="Life Survivorsのフィールド"></canvas>
+
+      <section id="hud" class="hud" aria-label="人生の状態" hidden>
+        <div class="xp-bar" aria-label="経験値"><i id="xp-fill"></i><span id="level">Lv 1</span></div>
+        <div class="hud-top">
+          <div class="life-card">
+            <div class="age"><b id="age">0</b><span>歳</span> <small id="stage">乳児期</small></div>
+            <div class="clock" aria-label="経過時間"><span id="clock">00:00</span><small>/ 30:00</small></div>
+            <div class="life-line" aria-hidden="true"><i id="life-progress"></i></div>
+          </div>
+          <div class="mind-card">
+            <span>精神力</span>
+            <div class="meter"><i id="hp-fill"></i></div>
+            <b id="hp-value">100</b>
+          </div>
+          <div class="kills" aria-label="乗り越えた数">🗡 <b id="kills">0</b></div>
+          <div class="top-actions">
+            <span id="connection" class="connection">ひとりで</span>
+            <button id="help-open" class="icon-button" type="button" aria-label="遊び方を表示">?</button>
+            <button id="leave" class="icon-button" type="button" aria-label="タイトルに戻る">↩</button>
+          </div>
+        </div>
+        <div class="hand" aria-label="人生の手札">
+          <div id="weapons" class="slots"></div>
+          <div id="passives" class="slots passives"></div>
+        </div>
+        <ul id="team" class="team" aria-label="仲間"></ul>
+        <div id="feed" class="feed" aria-live="polite"></div>
+      </section>
+
+      <section id="levelup" class="levelup" aria-labelledby="levelup-title" hidden>
+        <p class="overline">TURNING POINT</p>
+        <h2 id="levelup-title">人生の転機</h2>
+        <p id="levelup-note" class="levelup-note"></p>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="start-panel" class="start-panel" aria-labelledby="start-title">
+        <div class="start-inner">
+          <p class="overline">A 30-MINUTE LIFE</p>
+          <h1 id="start-title">Life Survivors<small>人生サバイバー</small></h1>
+          <p class="intro">
+            あなたは赤ちゃんとして生まれる。親は選べない。才能は見えない。<br />
+            押し寄せる出費・悪口・受験・病気を退け、<strong>30分の人生を生き抜こう。</strong>
+          </p>
+          <ul class="rules">
+            <li><b>👶</b>全員が赤ちゃんから。親はランダムに決まる（親ガチャ）</li>
+            <li><b>🔮</b>才能は隠れている。手応えから自分の向き不向きを見極めよう</li>
+            <li><b>🃏</b>友人・勉強・仕事・恋愛・投資…人生の手札を組み、性格で進化</li>
+            <li><b>💀</b>30:00、死神が迎えに来たら大往生（クリア）</li>
+          </ul>
+          <button id="solo" class="button button-primary" type="button">ひとりで生まれる</button>
+          <div class="divider"><span></span> みんなで生きる <span></span></div>
+          <div class="multiplayer-fields">
+            <label for="relay">MoQ Relay URL</label>
+            <input
+              id="relay"
+              type="url"
+              value="https://relay.moqt.research.skyway.io"
+              autocomplete="url"
+              spellcheck="false"
+            />
+            <label for="room">ルーム名</label>
+            <input
+              id="room"
+              type="text"
+              placeholder="例：family-123"
+              maxlength="48"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div class="button-row">
+              <button id="host" class="button button-outline" type="button">ルームを作る</button>
+              <button id="join" class="button button-outline" type="button">ルームに参加</button>
+            </div>
+            <p class="fine-print">
+              同じRelayとルーム名で最大8人まで。ルーム名は認証ではありません。信頼できるRelayを使ってください。
+            </p>
+          </div>
+          <p id="start-error" class="error" role="alert"></p>
+          <a class="home-link" href="../../../index.html">← ゲーム一覧</a>
+        </div>
+      </section>
+
+      <section id="help" class="dialog-backdrop" aria-labelledby="help-title" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+          <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
+          <h2 id="help-title">生き抜くために</h2>
+          <ul class="help-list">
+            <li><strong>移動だけ。</strong>手札は自動で困難を攻撃します。WASD／矢印キー、スマホは画面をドラッグ。</li>
+            <li>
+              <strong>経験値（◆）を集めて転機を迎える。</strong
+              >3枚から1枚選び、手札を増やす・強化する（1〜3キー）。経験値はチーム共通、選択は各自です。
+            </li>
+            <li>
+              <strong>特攻。</strong
+              >手札ごとに得意な相手がいます。モンスターペアレントは人間、お金持ちは出費、勉強は試験に強い。黄色い「!」の数字が特攻です。
+            </li>
+            <li>
+              <strong>才能は見えない。</strong
+              >同じ手札でも人によって威力がまるで違います。数字の大きさと「手応え」から見極めて。
+            </li>
+            <li>
+              <strong>進化。</strong>手札をLv8にし、相性のよい性格を持つと進化します（例：投資＋がめつい＝複利の魔法）。
+            </li>
+            <li><strong>心が折れても。</strong>仲間がそばに立つと立ち直ります。全員折れたら人生終了。</li>
+          </ul>
+          <button id="help-done" class="button button-primary" type="button">わかった</button>
+        </div>
+      </section>
+
+      <section id="result" class="dialog-backdrop" aria-labelledby="result-title" hidden>
+        <div class="dialog result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
+          <p class="overline">人生のふりかえり</p>
+          <div id="result-symbol" class="result-symbol">💀</div>
+          <h2 id="result-title"></h2>
+          <p id="result-text"></p>
+          <div id="result-build" class="result-build"></div>
+          <button id="restart" class="button button-primary" type="button">もう一度生まれる</button>
+        </div>
+      </section>
+      <div id="announcements" class="sr-only" aria-live="assertive"></div>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

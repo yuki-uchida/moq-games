@@ -28,7 +28,10 @@
     "dev:rabbiters": "vite --config vite.config.rabbiters.mjs",
     "build:rabbiters": "vite build --config vite.config.rabbiters.mjs",
     "test:rabbiters": "vitest run examples/games/rabbiters/tests --maxWorkers=1",
-    "e2e:rabbiters": "playwright test --config playwright.rabbiters.config.ts"
+    "e2e:rabbiters": "playwright test --config playwright.rabbiters.config.ts",
+    "dev:life-survivors": "vite --config vite.config.life-survivors.mjs",
+    "test:life-survivors": "vitest run examples/games/life-survivors/tests --maxWorkers=1",
+    "e2e:life-survivors": "playwright test --config playwright.life-survivors.config.ts"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",
