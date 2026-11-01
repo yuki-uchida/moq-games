@@ -45,7 +45,9 @@ export function saveProgress(save: SaveData, storage?: Pick<Storage, 'setItem'>)
 export const SCOUT_COST = 80
 export const SCOUT_ALLIES: readonly AllyType[] = ['mage', 'healer', 'frost', 'ranger', 'cannon', 'paladin']
 export function availableAllies(s: SaveData, _stage: number): AllyType[] {
-  return ALLY_TYPES.filter((type) => !SCOUT_ALLIES.includes(type) || s.purchased.includes(type))
+  return ALLY_TYPES.filter(
+    (type) => (!SCOUT_ALLIES.includes(type) || s.purchased.includes(type)) && (!s.formation || s.formation.includes(type))
+  )
 }
 export function scoutCandidates(s: Pick<SaveData, 'purchased'>): AllyType[] {
   return SCOUT_ALLIES.filter((type) => !s.purchased.includes(type))

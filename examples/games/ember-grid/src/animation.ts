@@ -18,6 +18,19 @@ const characters: Record<string, string> = {
 // Preserve the accepted 220 ms/tile and one authored cycle/cell. The experimental
 // distance-clock made tiny source strides shuffle rapidly; stretching the move
 // to fit them delayed tactical input. New foot planting requires new sprite art.
+/** Waits ms, but resolves at once while/when the tab is hidden so turns never stall on throttled timers. */
+export function pause(ms: number) {
+  return new Promise<void>((resolve) => {
+    if (document.hidden) return resolve()
+    const done = () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    document.addEventListener('visibilitychange', done)
+  })
+}
 export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
 /** Nominal floor squash (style.css --tilt, 0.6–0.78). Facings for grid steps are identical across that range. */
 export const TILT = 0.6
@@ -174,9 +187,18 @@ export class BattleAnimation {
     let hit = false
     await new Promise<void>((resolve) => {
       const start = performance.now()
+      let done = false
+      // rAF stops in hidden tabs; jump to the final frame so turns keep advancing.
+      const skip = () => document.hidden && frame(start + duration)
+      const finish = () => {
+        done = true
+        document.removeEventListener('visibilitychange', skip)
+        resolve()
+      }
       const frame = (now: number) => {
+        if (done) return
         if (token !== this.version) {
-          resolve()
+          finish()
           return
         }
         const elapsed = Math.min(now - start, duration)
@@ -199,9 +221,11 @@ export class BattleAnimation {
           contact?.()
         }
         if (elapsed < duration) requestAnimationFrame(frame)
-        else resolve()
+        else finish()
       }
-      requestAnimationFrame(frame)
+      document.addEventListener('visibilitychange', skip)
+      if (document.hidden) frame(start + duration)
+      else requestAnimationFrame(frame)
     })
   }
   private async projectile(from: Unit, to: Unit, token: number) {
@@ -223,15 +247,18 @@ export class BattleAnimation {
     arrow.style.top = `${y}px`
     const angle = Math.atan2(dy, dx)
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-    await arrow
+    const duration = reduced ? 80 : 240
+    const flight = arrow
       .animate(
         [
           { transform: `rotate(${angle}rad)` },
           { transform: `translate(${dx - (dx / length) * tip}px, ${dy - (dy / length) * tip}px) rotate(${angle}rad)` }
         ],
-        { duration: reduced ? 80 : 240, easing: 'linear', fill: 'forwards' }
+        { duration, easing: 'linear', fill: 'forwards' }
       )
       .finished.catch(() => {})
+    // The animation timeline may freeze while hidden; pause() releases it.
+    await Promise.race([flight, pause(duration)])
     arrow.remove()
     this.nodes.delete(arrow)
     return token === this.version
@@ -299,7 +326,7 @@ export class BattleAnimation {
         // after an attack clip whose recovery already contains most/all of it.
         if (token === this.version && impactedAt !== undefined) {
           const remaining = (target.hp === 0 ? 550 : 300) - (performance.now() - impactedAt)
-          if (remaining > 0) await new Promise((r) => setTimeout(r, remaining))
+          if (remaining > 0) await pause(remaining)
         }
       }
     } catch (error) {

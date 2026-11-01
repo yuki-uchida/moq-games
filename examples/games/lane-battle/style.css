@@ -86,6 +86,7 @@ canvas {
   left: 14px;
   right: 14px;
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   font-size: 13px;
   text-shadow: 0 2px 3px #092b2c;
@@ -131,9 +132,8 @@ footer {
   background: linear-gradient(#284b50, #1c343a);
 }
 .portrait {
-  height: 57px;
-  width: 64px;
-  object-fit: contain;
+  height: 76px;
+  width: auto;
 }
 button b {
   font-size: 13px;
@@ -258,7 +258,7 @@ dialog h2 {
     min-height: 0;
   }
   .portrait {
-    height: 36px;
+    height: 44px;
   }
   .utilities {
     width: 150px;

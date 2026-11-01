@@ -11,9 +11,10 @@ for (const width of [1280, 390])
     const music = page.locator('audio[data-ember-music]')
     await expect(music).toHaveJSProperty('paused', true)
     expect(await music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBe(0)
-    await page.locator('#sound').tap()
-    await expect.poll(() => music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0.1)
+    await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
+    // Default-on music starts with the first gesture (autoplay policy).
     await page.getByRole('button', { name: /1,3 風読み/ }).tap()
+    await expect.poll(() => music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0.1)
     await page.getByRole('button', { name: /3,3 平地 移動可能/ }).tap()
     await expect(page.getByRole('button', { name: /3,3 風読み/ })).toBeEnabled()
     await page.evaluate(() => {
@@ -75,10 +76,11 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
       return Promise.reject(new DOMException('Blocked for autoplay test', 'NotAllowedError'))
     }
   })
-  await page.locator('#sound').click()
+  await page.locator('#count').click()
   await expect(page.locator('#log')).toContainText('音を再生できません')
   await page.locator('#sound').click()
   await page.locator('#sound').click()
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0)
   const decoded = await page.evaluate(async () => {
     const context = new AudioContext()
@@ -106,20 +108,45 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
     expect(sample.rms).toBeGreaterThan(0.001)
   }
   console.log(JSON.stringify({ audioDecode: decoded }))
-  // Exercise the exact visibility handler; this is synthetic visibility, not an OS background assertion.
+  // Synthetic visibility: music keeps playing while hidden (not an OS background assertion).
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true })
     document.dispatchEvent(new Event('visibilitychange'))
   })
+  await page.waitForTimeout(300)
+  await expect(page.locator('audio')).toHaveJSProperty('paused', false)
+  // Reload: still on, but silent until a gesture; a mute choice persists.
+  await page.reload()
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('audio')).toHaveJSProperty('paused', true)
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
-    document.dispatchEvent(new Event('visibilitychange'))
-  })
-  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => !a.paused)).toBe(true)
+  await page.locator('#sound').click()
+  await expect(page.locator('audio')).toHaveJSProperty('paused', true)
   await page.reload()
   await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false')
+  await page.locator('#count').click()
+  await page.waitForTimeout(300)
   await expect(page.locator('audio')).toHaveJSProperty('paused', true)
+})
+
+test('hidden tab keeps player and enemy turns advancing without animation frames', async ({ page }) => {
+  await page.goto('./')
+  await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 30000 })
+  // Emulate a background tab: hidden, and rAF/Web Animations never progress.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    window.requestAnimationFrame = () => 0
+    Element.prototype.animate = function () {
+      return { finished: new Promise(() => {}) } as unknown as Animation
+    }
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.getByRole('button', { name: /1,3 風読み/ }).click()
+  await page.getByRole('button', { name: /3,3 平地 移動可能/ }).click()
+  await page.getByRole('button', { name: /6,3 灰牙/ }).click()
+  await expect(page.getByRole('button', { name: /6,3 灰牙 HP 2/ })).toBeVisible()
+  await page.locator('#end').click()
+  await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 5000 })
+  await expect(page.locator('.motion-actor')).toHaveCount(0)
 })
 
 test('restart cancels player motion and reduced motion keeps controls usable', async ({ page }) => {

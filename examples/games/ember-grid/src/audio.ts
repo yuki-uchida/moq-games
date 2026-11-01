@@ -1,6 +1,14 @@
 /** Reuses only owner-approved public recordings; never creates or modifies assets. */
+const storageKey = 'ember-grid:sound'
+function storedEnabled() {
+  try {
+    return localStorage.getItem(storageKey) !== 'off'
+  } catch {
+    return true
+  }
+}
 export class ExpeditionAudio {
-  enabled = false
+  enabled = storedEnabled()
   private battle = true
   readonly music = new Audio(`${import.meta.env.BASE_URL}tower-defense-music/monster-assault.mp3`)
   private sounds = new Map<string, string>()
@@ -12,14 +20,19 @@ export class ExpeditionAudio {
     this.music.preload = 'none'
     this.music.dataset.emberMusic = 'true'
     document.body.append(this.music)
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.stop()
-      else if (this.enabled) this.start()
-    })
+    // Music is on by default; autoplay policy allows it from the first user gesture.
+    const unlock = () => {
+      removeEventListener('pointerdown', unlock, true)
+      removeEventListener('keydown', unlock, true)
+      this.start()
+    }
+    addEventListener('pointerdown', unlock, true)
+    addEventListener('keydown', unlock, true)
+    // The battle keeps running while hidden, so music and voices keep playing too.
     window.addEventListener('pagehide', () => this.stop())
   }
   async prepare() {
-    // Small, existing action cues only; music stays opt-in and streams separately.
+    // Small, existing action cues only; music streams separately.
     for (const role of ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer']) {
       if (this.sounds.has(role)) continue
       const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-sfx/${role}_attack.wav`, {
@@ -54,6 +67,11 @@ export class ExpeditionAudio {
   }
   toggle() {
     this.enabled = !this.enabled
+    try {
+      localStorage.setItem(storageKey, this.enabled ? 'on' : 'off')
+    } catch {
+      // Preference just won't persist.
+    }
     if (this.enabled) this.start()
     else this.stop()
     return this.enabled
@@ -65,7 +83,7 @@ export class ExpeditionAudio {
     else this.stop()
   }
   start() {
-    if (this.enabled && this.battle && !document.hidden)
+    if (this.enabled && this.battle && this.music.paused)
       void this.music.play().catch((error: Error) => {
         if (error.name !== 'AbortError') this.report('音を再生できません。♫ を再度押してください')
       })
@@ -79,7 +97,7 @@ export class ExpeditionAudio {
     this.voices = []
   }
   cue(role = 'healer') {
-    if (!this.enabled || document.hidden) return
+    if (!this.enabled) return
     this.voices = this.voices.filter((v) => !v.ended && !v.paused)
     if (this.voices.length >= 4) {
       const oldest = this.voices.shift()!

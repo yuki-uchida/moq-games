@@ -352,15 +352,18 @@ function updateHud(state: GameState) {
           : '足あとに気をつけて'
   const pregnant = state.players.find((entry) => entry.pregnant && !entry.downed)
   const progress = pregnant ? pregnant.pregnancy : player.growth
-  element<HTMLElement>('#objective-title').textContent = pregnant ? '新しい命を守ろう' : '食べて、大きくなろう'
-  element<HTMLElement>('#objective-text').textContent = pregnant
-    ? pregnant.hunger <= 0
-      ? `${pregnant.id === localId ? 'あなた' : pregnant.name}は空腹で出産が進みません。食べものを探そう。`
-      : `${pregnant.id === localId ? 'あなた' : pregnant.name}は妊娠中。食べながら出産まで生きのびよう。`
-    : `食事 ${Math.min(player.foodEaten, RULES.requiredFood)} / ${RULES.requiredFood} · 時間と食事で成長します`
+  element<HTMLElement>('#objective-title').textContent = !pregnant
+    ? '食べて、大きくなろう'
+    : pregnant.hunger <= 0
+      ? '空腹で出産が止まっています'
+      : '新しい命を守ろう'
+  element<HTMLElement>('#food-progress').hidden = !!pregnant
+  element<HTMLElement>('#food-count').textContent =
+    `${Math.min(player.foodEaten, RULES.requiredFood)} / ${RULES.requiredFood}`
   element<HTMLElement>('#growth-bar').style.width = `${progress * 100}%`
-  element<HTMLElement>('#objective-progress').textContent =
-    `${pregnant ? '出産まで' : '成長'} ${Math.round(progress * 100)}%`
+  element<HTMLElement>('#objective-progress').textContent = pregnant
+    ? `${pregnant.id === localId ? 'あなた' : pregnant.name} · 出産まで ${Math.round(progress * 100)}%`
+    : `成長 ${Math.round(progress * 100)}%`
   element<HTMLElement>('#nest-count').textContent = `残る巣 ${state.nests.filter((nest) => nest.active).length}`
   const nearNest = state.nests.find((nest) => nest.active && Math.hypot(nest.x - player.x, nest.z - player.z) < 2.5)
   const nearFriend = state.players.find(

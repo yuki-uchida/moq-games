@@ -840,6 +840,33 @@ export class GameEngine {
     this.state.decisionStatus = '判断待ち'
     return true
   }
+  /** Stage select: open an untouched stage-1 preparation directly at `stage`, as if earlier stages were cleared. */
+  startAtStage(stage: number): boolean {
+    const s = this.state
+    if (
+      !Number.isInteger(stage) ||
+      stage < 1 ||
+      stage > CONFIG.stages ||
+      s.phase !== 'preparation' ||
+      s.stage !== 1 ||
+      retainedDefenders(s).length > 0 ||
+      s.sandbags.length > 0
+    )
+      return false
+    s.stage = stage
+    s.stageSummary.stage = stage
+    s.sandbagStock = stage
+    // Neutral record of the skipped clear (maxProgress 0.5 adds no AI bias); checkpoints require one past stage 1.
+    const cleared = stageRules(stage - 1).enemyCount
+    s.previousStageSummary =
+      stage > 1
+        ? { stage: stage - 1, spawned: cleared, resolved: cleared, maxProgress: 0.5, baseDamage: 0, defenderDamage: 0 }
+        : null
+    this.save.highestStage = Math.max(1, stage - 1)
+    this.history.reset(s)
+    this.refreshHistory()
+    return true
+  }
   nextStage(): boolean {
     const s = this.state
     if (s.phase !== 'cleared' || s.stage >= CONFIG.stages) return false

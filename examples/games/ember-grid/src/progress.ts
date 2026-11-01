@@ -1,6 +1,8 @@
+import { pause } from './animation'
 import { expPerLevel, missions, mvp, type Game, type Progress, type Unit } from './game'
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// Time-based and skipped while hidden, so a background tab never stalls on the overlay.
+const wait = pause
 const stats = [
   ['max', 'HP'],
   ['power', '攻撃'],
