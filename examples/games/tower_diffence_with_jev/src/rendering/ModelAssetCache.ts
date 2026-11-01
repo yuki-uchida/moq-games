@@ -75,6 +75,148 @@ function residentSize(scene: THREE.Object3D): number {
     }, 0)
   )
 }
+/** Copy of `attribute` with `extra` vertices appended, each duplicating the listed source vertex. */
+function appendVertices(attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, extra: number[]) {
+  const source = attribute instanceof THREE.InterleavedBufferAttribute ? attribute.data.array : attribute.array,
+    size = attribute.itemSize,
+    array = new (source.constructor as new (length: number) => typeof source)((attribute.count + extra.length) * size),
+    result = new THREE.BufferAttribute(array, size, attribute.normalized)
+  for (let v = 0; v < attribute.count; v++)
+    for (let k = 0; k < size; k++) result.setComponent(v, k, attribute.getComponent(v, k))
+  extra.forEach((from, i) => {
+    for (let k = 0; k < size; k++) result.setComponent(attribute.count + i, k, attribute.getComponent(from, k))
+  })
+  return result
+}
+
+/** Some exports join the two lower legs: Archer's soles are welded by triangles, Frost's boot cuffs and
+ * Mage's and Tank's shins by thin strips. Whenever the legs part, those stretch into a slab or spikes.
+ * Once per loaded source, give every triangle that spans both lower legs its own copy of the
+ * minority-side vertices, skinned to the mirrored bones of its majority side; a triangle with no
+ * majority collapses. Index count is unchanged.
+ */
+export function separateFeet(scene: THREE.Object3D): { resided: number; split: number; collapsed: number } {
+  let resided = 0,
+    split = 0,
+    collapsed = 0
+  scene.traverse((mesh) => {
+    if (!(mesh instanceof THREE.SkinnedMesh) || !mesh.geometry.index) return
+    const geometry = mesh.geometry,
+      { skinIndex, skinWeight } = geometry.attributes
+    if (!skinIndex || !skinWeight) return
+    const bones = mesh.skeleton.bones,
+      mirror = new Map<number, number>()
+    bones.forEach((bone, i) => {
+      if (!/L$/.test(bone.name)) return
+      const j = bones.findIndex((other) => other.name === bone.name.slice(0, -1) + 'R')
+      if (j >= 0) mirror.set(i, j).set(j, i)
+    })
+    // 1 = mostly left lower leg (shin, foot, paw, toe), 2 = mostly right, 0 = anything else.
+    // Thighs are excluded: crotch and skirt geometry legitimately joins them.
+    const side = new Uint8Array(skinIndex.count)
+    for (let v = 0; v < skinIndex.count; v++) {
+      let left = 0,
+        right = 0
+      for (let k = 0; k < 4; k++) {
+        const name = bones[skinIndex.getComponent(v, k)]?.name ?? ''
+        if (!/^(shin|foot|toe|paw)/.test(name)) continue
+        if (name.endsWith('L')) left += skinWeight.getComponent(v, k)
+        else if (name.endsWith('R')) right += skinWeight.getComponent(v, k)
+      }
+      side[v] = left > 0.6 ? 1 : right > 0.6 ? 2 : 0
+    }
+    const index = geometry.index!,
+      count = skinIndex.count,
+      extra: number[] = [],
+      copies = new Map<number, number>()
+    // Stray pieces skinned to the other leg (Frost's inner toe and heel caps): a small same-side island
+    // whose only mesh contact is the opposite lower leg belongs to that leg. Vertices are welded across
+    // UV seams by position.
+    const position = geometry.attributes.position,
+      weld = new Map<string, number>(),
+      canonical = new Int32Array(count)
+    for (let v = 0; v < count; v++) {
+      const key = `${position.getX(v).toFixed(5)},${position.getY(v).toFixed(5)},${position.getZ(v).toFixed(5)}`
+      canonical[v] = weld.get(key) ?? (weld.set(key, v), v)
+    }
+    const neighbours = new Map<number, Set<number>>()
+    for (let f = 0; f < index.count; f += 3)
+      for (let c = 0; c < 3; c++) {
+        const a = canonical[index.getX(f + c)],
+          b = canonical[index.getX(f + ((c + 1) % 3))]
+        if (!side[a] && !side[b]) continue
+        ;(neighbours.get(a) ?? neighbours.set(a, new Set()).get(a)!).add(b)
+        ;(neighbours.get(b) ?? neighbours.set(b, new Set()).get(b)!).add(a)
+      }
+    const island = new Map<number, number[]>(),
+      islands: { side: number; members: number[]; other: boolean; neutral: boolean }[] = []
+    for (const start of neighbours.keys()) {
+      if (!side[start] || island.has(start)) continue
+      const piece = { side: side[start], members: [start], other: false, neutral: false }
+      island.set(start, piece.members)
+      for (let i = 0; i < piece.members.length; i++)
+        for (const n of neighbours.get(piece.members[i])!) {
+          if (side[n] === piece.side) {
+            if (!island.has(n)) island.set(n, piece.members), piece.members.push(n)
+          } else if (side[n]) piece.other = true
+          else piece.neutral = true
+        }
+      islands.push(piece)
+    }
+    const largest = [0, 0, 0]
+    for (const piece of islands) largest[piece.side] = Math.max(largest[piece.side], piece.members.length)
+    const flipped = new Set<number>()
+    for (const piece of islands)
+      if (piece.other && !piece.neutral && piece.members.length < 0.25 * largest[piece.side])
+        for (const v of piece.members) flipped.add(v)
+    for (let v = 0; v < count; v++) {
+      if (!flipped.has(canonical[v])) continue
+      side[v] = 3 - side[v]
+      for (let k = 0; k < 4; k++)
+        skinIndex.setComponent(v, k, mirror.get(skinIndex.getComponent(v, k)) ?? skinIndex.getComponent(v, k))
+      resided++
+    }
+    if (flipped.size) skinIndex.needsUpdate = true
+    for (let f = 0; f < index.count; f += 3) {
+      const corners = [index.getX(f), index.getX(f + 1), index.getX(f + 2)],
+        left = corners.filter((v) => side[v] === 1).length,
+        right = corners.filter((v) => side[v] === 2).length
+      if (!left || !right) continue
+      if (left === right) {
+        index.setX(f + 1, corners[0])
+        index.setX(f + 2, corners[0])
+        collapsed++
+        continue
+      }
+      const minority = left > right ? 2 : 1
+      corners.forEach((v, c) => {
+        if (side[v] !== minority) return
+        const key = v * 4 + minority
+        let copy = copies.get(key)
+        if (copy === undefined) copies.set(key, (copy = count + extra.push(v) - 1))
+        index.setX(f + c, copy)
+      })
+      split++
+    }
+    if (!extra.length) {
+      if (collapsed) index.needsUpdate = true
+      return
+    }
+    for (const name of Object.keys(geometry.attributes))
+      geometry.setAttribute(name, appendVertices(geometry.attributes[name], extra))
+    for (const name of Object.keys(geometry.morphAttributes))
+      geometry.morphAttributes[name] = geometry.morphAttributes[name].map((a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) =>
+        appendVertices(a, extra)
+      )
+    const skin = geometry.attributes.skinIndex
+    for (let v = count; v < skin.count; v++)
+      for (let k = 0; k < 4; k++) skin.setComponent(v, k, mirror.get(skin.getComponent(v, k)) ?? skin.getComponent(v, k))
+    const indices =
+      count + extra.length > 65535 && !(index.array instanceof Uint32Array) ? Uint32Array.from(index.array) : index.array
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  })
+  return { resided, split, collapsed }
+}
 function disposeSource(source: GLTF): void {
   const { geometries, materials, textures } = resources(source.scene)
   for (const geometry of geometries) geometry.dispose()
@@ -274,6 +416,7 @@ export class ModelAssetCache {
             const authored = source.parser?.json.animations?.[index]
             if (authored?.extras) Object.assign(clip, { userData: structuredClone(authored.extras) })
           }
+          separateFeet(source.scene)
           entry.source = source
           entry.bytes = residentSize(source.scene)
           entry.state = 'ready'
