@@ -64,15 +64,13 @@ header button {
 .field {
   min-height: 0;
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   position: relative;
   /* Board and billboards size from the field: cq units below. */
   container-type: size;
   overflow: hidden;
   border-radius: 14px;
-  --unit-scale: 1.05;
   --tilt: 0.6;
   --board: min(100cqw / 1.46, (100cqh - 76px) / (1.4142 * var(--tilt) + 0.08));
   --tile: calc(var(--board) * 1.4142 / 7);
@@ -111,7 +109,10 @@ header button {
       50px -77px;
   }
 }
-#board {
+/* Floor (tile buttons) below the 3D layer, status tags above it: same projected grid. */
+#board,
+#marks {
+  grid-area: 1 / 1;
   position: relative;
   z-index: 1;
   display: grid;
@@ -122,7 +123,25 @@ header button {
   flex: none;
   /* Orthographic 2.5D floor: rotate, then squash. .stand applies the exact inverse. */
   transform: translateY(calc(var(--tile) * 0.32)) scale(1, var(--tilt)) rotate(-45deg);
+}
+#board {
   background: #1f2a22;
+}
+#marks {
+  z-index: 3;
+  pointer-events: none;
+}
+#marks > span {
+  position: relative;
+}
+/* Three.js layer: units, groves, rocks, rings and projectiles. Input passes through to the tiles. */
+.stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 /* Earth slab: lower-left (lit) and lower-right (shaded) faces extruded straight down on screen. */
 #board::before,
@@ -237,54 +256,11 @@ header button {
   pointer-events: none;
   transform: rotate(45deg) scale(1, calc(1 / var(--tilt)));
 }
-.prop {
-  position: absolute;
-  width: calc(var(--tile) * 1.04);
-  left: calc(var(--tile) * -0.52);
-  bottom: calc(var(--tile) * -0.312);
-  overflow: visible;
-}
-.rock .prop {
-  width: calc(var(--tile) * 0.96);
-  left: calc(var(--tile) * -0.48);
-  bottom: calc(var(--tile) * -0.29);
-}
-/* Contact shadow / side ring under a standing unit. */
-.foot {
-  position: absolute;
-  width: calc(var(--tile) * 0.62);
-  height: calc(var(--tile) * 0.62 * var(--tilt));
-  left: calc(var(--tile) * -0.31);
-  top: calc(var(--tile) * -0.186);
-  border-radius: 50%;
-  background: radial-gradient(closest-side, #000000a0, #0000 100%);
-  box-shadow: 0 0 0 2px var(--ring, #0000);
-}
-.ally .foot {
-  --ring: #82d1edb0;
-}
-.enemy .foot {
-  --ring: #e0957bb0;
-}
-.selected .foot {
-  --ring: #ffdf7d;
-}
-.portrait {
-  position: absolute;
-  width: 128px;
-  height: 112px;
-  left: 50%;
-  top: 50%;
-  /* Feet (≈y 95 of the 112 px cell) land on the tile centre. */
-  transform: translate(-50%, calc(-56px - 37px * var(--unit-scale))) scale(var(--unit-scale));
-  background-repeat: no-repeat;
-  pointer-events: none;
-}
 /* Status row floats above the head so nearer props and units never cover it. */
 .tag {
   position: absolute;
   left: 0;
-  top: calc(-58px * var(--unit-scale) - 18px);
+  top: calc(var(--tile) * -0.62 * var(--figure, 1) - 14px);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -302,9 +278,6 @@ header button {
 .enemy .badge {
   color: #ffc0aa;
   background: #422525ed;
-}
-.done .portrait {
-  opacity: 0.5;
 }
 .check {
   color: #fff;
@@ -391,7 +364,6 @@ dialog button {
     gap: 6px;
   }
   .field {
-    --unit-scale: 0.7;
     /* Steeper view keeps diamonds tall enough to tap on narrow portrait screens. */
     --tilt: 0.78;
   }
@@ -429,9 +401,6 @@ dialog button {
     grid-column: 2;
     grid-row: 3;
     align-self: end;
-  }
-  .field {
-    --unit-scale: 0.78;
   }
 }
 #mission {
@@ -546,21 +515,19 @@ fieldset label {
   }
 }
 
-/* Inside the board: depth z-index is set per step; overlays never consume pointer or touch input. */
-.motion-actor {
+/* Overlays anchored at projected 3D points; overlays never consume pointer or touch input. */
+.fx {
   position: absolute;
+  z-index: 4;
   width: 0;
   height: 0;
   pointer-events: none;
-  transform: rotate(45deg) scale(1, calc(1 / var(--tilt)));
-}
-.motion-actor .portrait {
-  opacity: 1;
 }
 .damage-number {
   position: absolute;
-  left: -24px;
-  top: calc(-75px * var(--unit-scale) - 30px);
+  left: -35px;
+  top: -24px;
+  text-align: center;
   width: 70px;
   color: #fff2be;
   font-weight: 900;
@@ -570,41 +537,7 @@ fieldset label {
     1px 0 #601b11;
   animation: damage-rise 650ms ease-out both;
 }
-.motion-hit .portrait {
-  animation: impact 300ms ease-out both;
-}
-.motion-death .portrait {
-  animation: fall-away 550ms ease-in both;
-}
-@keyframes impact {
-  0%,
-  40% {
-    filter: brightness(2);
-    margin-left: var(--impact-x, 5px);
-    margin-top: var(--impact-y, 0px);
-  }
-  65% {
-    margin-left: calc(var(--impact-x, 5px) * -0.4);
-    margin-top: calc(var(--impact-y, 0px) * -0.4);
-  }
-  100% {
-    margin-left: 0;
-    margin-top: 0;
-  }
-}
-@keyframes fall-away {
-  0% {
-    filter: brightness(2);
-  }
-  35% {
-    opacity: 0.8;
-    margin-top: 4px;
-  }
-  100% {
-    opacity: 0;
-    margin-top: 18px;
-  }
-}
+
 @keyframes damage-rise {
   0% {
     opacity: 0;
@@ -627,39 +560,9 @@ fieldset label {
   .cell.target {
     animation: none;
   }
-  .motion-hit .portrait,
-  .motion-death .portrait,
   .damage-number {
     animation-duration: 80ms;
   }
-}
-.projectile {
-  position: absolute;
-  width: 28px;
-  height: 3px;
-  background: #fff2bd;
-  border: 1px solid #503117;
-  box-shadow: 0 0 2px #000;
-  transform-origin: center;
-  z-index: 4;
-  pointer-events: none;
-}
-.arrow::after {
-  content: '';
-  position: absolute;
-  right: -6px;
-  top: -4px;
-  border-left: 9px solid #fff2bd;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-}
-.spell {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #dcbeff;
-  border-color: #fff;
-  box-shadow: 0 0 12px #c58fff;
 }
 .cell:disabled {
   opacity: 1;
@@ -689,11 +592,11 @@ fieldset label {
   min-width: 88px;
 }
 
-/* Shared original pixel VFX: the complete character cell remains untouched. */
+/* Shared original pixel VFX at the struck unit's chest. */
 .combat-contact {
   position: absolute;
   left: -16px;
-  top: calc(-40px * var(--unit-scale) - 16px);
+  top: -16px;
   width: 32px;
   height: 32px;
   pointer-events: none;
@@ -966,12 +869,9 @@ fieldset label {
   animation: panel-in 180ms ease-out;
 }
 .farewell .portrait {
-  position: relative;
   flex: none;
-  left: auto;
-  top: auto;
-  transform: none;
-  zoom: 0.5;
+  width: 64px;
+  height: 56px;
   filter: grayscale(1);
 }
 .farewell p {
@@ -984,14 +884,11 @@ fieldset label {
 #missions .lost {
   color: #b9a39a;
 }
-/* The complete 128×112 source cell, halved. */
+/* Idle pose rendered from the unit's 3D model. */
 .chapter-units .portrait {
-  position: relative;
   flex: none;
-  left: auto;
-  top: auto;
-  transform: none;
-  zoom: 0.5;
+  width: 64px;
+  height: 56px;
 }
 .chapter-units li > div {
   flex: 1;

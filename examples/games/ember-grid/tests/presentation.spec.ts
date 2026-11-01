@@ -1,4 +1,11 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+/** Units still in a presentation track on the 3D stage (idle units are excluded). */
+const tracks = (page: Page) =>
+  page.evaluate(async () => {
+    const stage = (document.querySelector('.stage') as HTMLCanvasElement & { stage?: import('../src/stage').Stage })
+      .stage
+    return stage!.diagnostics().filter((a) => a.track !== 'idle')
+  })
 test.use({ video: { mode: 'on', size: { width: 1280, height: 900 } } })
 for (const width of [1280, 390])
   test(`arrow release, travel, impact and audio ${width}`, async ({ page }) => {
@@ -24,7 +31,7 @@ for (const width of [1280, 390])
       const sample = () => {
         samples.push({
           time: performance.now() - start,
-          arrow: !!document.querySelector('.projectile.arrow'),
+          arrow: !!document.querySelector('.stage[data-projectile~="arrow"]'),
           damage: !!document.querySelector('.damage-number')
         })
         if (performance.now() - start < 1800) requestAnimationFrame(sample)
@@ -32,7 +39,9 @@ for (const width of [1280, 390])
       requestAnimationFrame(sample)
     })
     await Promise.all([
-      page.waitForFunction(() => !!document.querySelector('.projectile.arrow'), undefined, { polling: 'raf' }),
+      page.waitForFunction(() => !!document.querySelector('.stage[data-projectile~="arrow"]'), undefined, {
+        polling: 'raf'
+      }),
       page.getByRole('button', { name: /6,3 灰牙/ }).tap()
     ])
     await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
@@ -60,9 +69,12 @@ for (const width of [1280, 390])
       .first()
       .tap()
     await page.getByRole('button', { name: /灰牙 HP 2/ }).tap()
-    await page.waitForFunction(() => !!document.querySelector('.motion-death .portrait'), undefined, { polling: 'raf' })
+    await page.waitForFunction(() => !!document.querySelector('.stage[data-motion~="death"]'), undefined, {
+      polling: 'raf'
+    })
     await page.screenshot({ path: `test-results/ember-death-${width}.png` })
-    await expect(page.locator('.motion-actor')).toHaveCount(0)
+    await expect(page.locator('.stage')).toHaveAttribute('data-motion', '')
+    await expect(page.locator('.fx')).toHaveCount(0)
     expect(warnings).toEqual([])
   })
 
@@ -146,7 +158,8 @@ test('hidden tab keeps player and enemy turns advancing without animation frames
   await expect(page.getByRole('button', { name: /6,3 灰牙 HP 2/ })).toBeVisible()
   await page.locator('#end').click()
   await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 5000 })
-  await expect(page.locator('.motion-actor')).toHaveCount(0)
+  await expect(page.locator('.fx')).toHaveCount(0)
+  expect(await tracks(page)).toEqual([])
 })
 
 test('restart cancels player motion and reduced motion keeps controls usable', async ({ page }) => {
@@ -156,17 +169,17 @@ test('restart cancels player motion and reduced motion keeps controls usable', a
   await page.locator('#restart').click()
   await page.waitForTimeout(1000)
   await expect(page.getByRole('button', { name: /1,4 燈守リオ HP 16/ })).toBeEnabled()
-  await expect(page.locator('.motion-actor')).toHaveCount(0)
+  expect(await tracks(page)).toEqual([])
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByRole('button', { name: /1,4 燈守/ }).click()
   await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
   await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
-  await expect(page.locator('.motion-actor')).toHaveCount(0)
+  expect(await tracks(page)).toEqual([])
 })
 
-test('missing animation texture holds preparation and retries without stranding input', async ({ page }) => {
+test('missing 3D model holds preparation and retries without stranding input', async ({ page }) => {
   let fail = true
-  await page.route('**/tower-defense-art/soldier/leaf-squire-walk-e.png', (route) =>
+  await page.route('**/tower-defense-art/models/wolf/wolf-walk-smooth.glb', (route) =>
     fail ? route.fulfill({ status: 404, body: 'missing' }) : route.continue()
   )
   await page.goto('./')
@@ -179,5 +192,5 @@ test('missing animation texture holds preparation and retries without stranding 
   await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
   await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
   await expect(page.locator('#end')).toBeEnabled()
-  await expect(page.locator('.motion-actor')).toHaveCount(0)
+  expect(await tracks(page)).toEqual([])
 })
