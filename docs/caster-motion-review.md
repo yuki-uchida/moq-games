@@ -31,14 +31,14 @@ Local evidence is under `.generated/caster-review/`, `.generated/caster-review-b
 1. **Native acting:** phase strips at the game catalog scale and 2x scale. Inspected the preserved Mage/Healer source atlases and the original GLB baseline. The first Healer gesture hid the flower behind hair; changed it to raise, then open laterally. Strengthened pelvis/chest/head after native review showed too little body effort.
 2. **Timing:** explicit sequential frames at 0, 160, 320, 420, 520, 600, 720, 840 and 960 ms, covering gathering, each release clock, hold and recovery. Native source comparison uses the source JSON frame durations on the same clock and facing. Frost's action ends at 768 ms; later diagnostic samples are outside its gameplay action interval.
 3. **Continuity:** front/side/back views plus actual EXTRA playback. Inspected grips, torso/head joins, boot shape and skirt hem. The source-independent IK tests sample the lower-body transforms across the clips and verify planted spell ankles, boot orientation and unchanged bind/mesh attributes.
-4. **Directions and walking:** eight facings at release; walking at quarter/three-quarter phase on green and light backgrounds, and sequential walk samples. EXTRA tests select idle/walk/spell, play at 1x, scrub and rotate with real controls. No full-body sheet is substituted for the models.
+4. **Directions and walking:** eight facings at release; walking at quarter/three-quarter phase on green and light backgrounds, and sequential walk samples. EXTRA tests select idle/walk/spell, play at 1x, scrub and rotate with real controls through eight camera views. The isolated grid uses the eight exact game facings. No full-body sheet is substituted for the models.
 5. **Actual game:** restored a valid paid-roster campaign, observed actual Mage/Frost attacks, Frost slow status, and Healer healing a wounded Mage. Captured 16 frames and diagnostics over approximately 1–8 seconds of live simulation. The Healer appeared in `heal` at 5.167 s (asset 150 ms) and 5.633 s (asset 617 ms), then returned to idle. Inspected the corresponding game frames.
 
 Actual temporal inspection uses sequential PNG frames with the associated sample clocks/diagnostics. Initial Playwright video recording failed at context teardown because the local ffmpeg helper could not spawn; the final suite uses sequential PNG evidence and passes without video. Early review screenshots with incorrect visualization scaling were rejected and rerendered.
 
 ## Validation and cost
 
-- `npm run typecheck`, `npm run lint`, `npm test`: 39 files / 579 tests passed before integration.
+- `npm run typecheck`, `npm run lint`, `npm test`: 39 files / 579 tests passed before integration; 580 tests passed after integrating the concurrent viewer update.
 - `tests/caster-motion-v3.test.ts`: 3 passed. Also ran the model catalog/rendering suites (68 combined tests at that stage).
 - `playwright.casters.config.ts`: 4 passed: three complete EXTRA role reviews and the real game formation/heal check.
 - `npm run build` and `node scripts/prepare-pages.mjs`: passed. Existing large-bundle warning remains.

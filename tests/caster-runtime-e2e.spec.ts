@@ -7,7 +7,7 @@ import { validateCampaignCheckpoint } from '../examples/games/tower_diffence_wit
 import { getField } from '../examples/games/tower_diffence_with_jev/src/game/model'
 const roles = ['mage', 'frost', 'healer'] as const
 for (const role of roles)
-  test(`EXTRA ${role} playback and eight directions`, async ({ page }, info) => {
+  test(`EXTRA ${role} playback and eight camera views`, async ({ page }, info) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await page.goto('/moq-games/examples/games/tower_diffence_with_jev/extra.html')
@@ -30,7 +30,7 @@ for (const role of roles)
           el.dispatchEvent(new Event('input', { bubbles: true }))
         })
         await page.locator('#viewer-canvas').focus()
-        await page.keyboard.press('ArrowRight')
+        for (let step = 0; step < 7; step++) await page.keyboard.press('ArrowRight')
         await page.screenshot({ path: info.outputPath(`${motion}-direction-${direction}.png`) })
       }
       fs.writeFileSync(info.outputPath(`${motion}-playback.json`), JSON.stringify(samples, null, 2))
