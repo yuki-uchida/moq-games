@@ -236,7 +236,7 @@ for (const role of ['mage', 'frost', 'healer']) {
       if (isFrostAttack) {
         pelvis.position.copy(rpelvis.p)
         pelvis.position.y -= 0.008 * Math.sin((t / duration) * Math.PI) ** 2
-        pelvis.quaternion.identity()
+        // Keep the authored pelvis rotation so upper-body and rigid staff agree.
       }
       scene.updateMatrixWorld(true)
       for (const side of ['L', 'R']) {
@@ -250,7 +250,7 @@ for (const role of ['mage', 'frost', 'healer']) {
         }
         ik(`thigh.${side}`, `shin.${side}`, `foot.${side}`, target, foot.wq)
       }
-      if (isWalk) {
+      if (isWalk || isFrostAttack) {
         const delta = pelvis.position.clone().sub(V(clock.v.read(i)))
         staff.position.add(delta)
       }
@@ -264,7 +264,7 @@ for (const role of ['mage', 'frost', 'healer']) {
             'thigh.R',
             'shin.R',
             'foot.R',
-            ...(isWalk ? ['Staff_Rigid_Control'] : [])
+            ...(isWalk || isFrostAttack ? ['Staff_Rigid_Control'] : [])
           ]
       for (const name of changed) {
         const o = nodes.get(name)

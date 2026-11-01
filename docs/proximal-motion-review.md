@@ -62,3 +62,5 @@ The native model remains a short-limbed stylized animal/rock creature. Four-legg
 - CI now runs the 9 motion/preservation tests and includes the 3 game fixtures in the existing Pages browser shards. Existing checks and deployment gates remain enabled.
 
 The original protective stash was retained. Integration also preserves the separate caster, patchling, ranger, paladin, goblin and viewer changes. Source and generated assets in this commit are limited to this repair scope. GitHub Actions and deployment results are reported separately after push.
+
+The final merge retains `fd6aced` Frost staff-grip stabilization and `ddf05fe` unused-cache removal. Both the caster contract CI step and this repair's contract step remain enabled. After that merge, the affected real WebGL checks were repeated for Frost, Wolf, Brute and Ogre: 4 passed.
