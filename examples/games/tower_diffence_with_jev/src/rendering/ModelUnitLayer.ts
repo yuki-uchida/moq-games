@@ -10,6 +10,7 @@ interface Actor {
   visual: ModelUnitVisual
   last: Unit
   deadAt?: number
+  stride?: { travelled: number; cycle: number }
 }
 
 /** Owns mesh lifetimes independently of the simulation's short corpse retention. */
@@ -178,8 +179,14 @@ export class ModelUnitLayer {
         pose = { ...pose, motion: 'idle', seconds: 0, loop: false }
       }
       if (pose.motion === 'walk') {
-        // Distance-driven stride remains synchronized when frost changes movement speed.
-        pose = { ...pose, cycle: unit.travelled / actor.visual.definition.walkDistance }
+        // Distance-driven stride remains synchronized when frost changes movement speed. The
+        // per-heading screen rate is integrated, so turning never jumps the stride phase.
+        const rate =
+          actor.visual.walkRate(pose.facingX, pose.facingY, pose.boss) / actor.visual.definition.walkDistance
+        const step = unit.travelled - (actor.stride?.travelled ?? Infinity)
+        const cycle = step >= 0 ? actor.stride!.cycle + step * rate : unit.travelled * rate
+        actor.stride = { travelled: unit.travelled, cycle }
+        pose = { ...pose, cycle }
       }
       actor.visual.setPosition(unit.x, unit.y)
       actor.visual.setAppearance(1, unit.hitAnimation > 0 ? 0xffc3b8 : 0xffffff)

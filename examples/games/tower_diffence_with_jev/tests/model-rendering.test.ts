@@ -852,3 +852,39 @@ describe('campaign preparation cache', () => {
     } finally { vi.useRealTimers() }
   })
 })
+
+describe('screen-planted walk timing', () => {
+  it('retimes the stride so a planted foot keeps pace with the body on screen', async () => {
+    const cache = new ModelAssetCache(async () => fixture())
+    const visual = new ModelUnitVisual(definition(), cache)
+    const aspect = 1.16
+    visual.setPresentation(1.5, aspect)
+    visual.prepare(['walk'])
+    await settle()
+    for (const [facingX, facingY] of [
+      [1, 0],
+      [-1, 0],
+      [0.8, 0.6],
+      [0.6, -0.8],
+      [0, 1]
+    ]) {
+      expect(visual.sample({ motion: 'walk', seconds: 0, cycle: 0, loop: true, facingX, facingY, boss: false })).toBe(true)
+      visual.root.updateMatrixWorld(true)
+      // One catalog pixel along the native forward axis, through the real root and heading transforms.
+      const turn = visual.root.children[0]
+      const forward = new THREE.Vector3(0, 0, 1)
+        .applyMatrix4(turn.matrixWorld)
+        .sub(new THREE.Vector3().setFromMatrixPosition(turn.matrixWorld))
+      // The orthographic board camera stretches world x by the aspect expansion.
+      const foot = Math.hypot(forward.x * aspect, forward.y)
+      const body = Math.hypot(facingX * aspect, facingY)
+      const rate = visual.walkRate(facingX, facingY, false)
+      const planted = body / foot
+      expect(rate).toBeCloseTo(Math.max(0.6, Math.min(1.35, planted)), 6)
+      // Horizontal and shallow diagonal headings are fully planted; steep camera-facing walks hit the cap.
+      if (Math.abs(facingX) >= 0.8) expect(rate).toBeCloseTo(planted, 6)
+      else expect(rate).toBe(1.35)
+    }
+    visual.dispose()
+  })
+})

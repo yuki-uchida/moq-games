@@ -112,6 +112,7 @@ export class ModelUnitVisual {
   private preparing?: { lease: ModelLease }
   private active?: MotionInstance
   private disposed = false
+  private presentationScale = 1
   private presentationAspect = 1
   private lastMotion?: ModelMotion
   private lastSample = 0
@@ -159,8 +160,29 @@ export class ModelUnitVisual {
     this.root.matrix.setPosition(x, y, modelGroundDepth(y))
     this.root.matrixWorldNeedsUpdate = true
   }
+  /** Native +Z projects along the game aim, also on a horizontally widened board. */
+  private headingYaw(facingX: number, facingY: number): number {
+    const elevation = this.definition.viewElevation ?? Math.atan2(2, 5)
+    return Math.atan2(facingX * this.presentationAspect * Math.sin(elevation), facingY)
+  }
+  /** Walk cycles per distance unit, relative to 1 / walkDistance. walkDistance plants the stride
+   * in model pixels, but the board is drawn flat and widened while the tilted model is scaled and
+   * foreshortened toward the camera; this retimes the stride so the planted foot keeps pace with
+   * the body on screen. The cap keeps camera-facing walks from turning frantic.
+   */
+  walkRate(facingX: number, facingY: number, boss: boolean): number {
+    const elevation = this.definition.viewElevation ?? Math.atan2(2, 5),
+      yaw = this.headingYaw(facingX, facingY),
+      body = Math.hypot(facingX * this.presentationAspect, facingY) / (Math.hypot(facingX, facingY) || 1),
+      foot =
+        this.presentationScale *
+        (boss ? MODEL_BOSS_SCALE : 1) *
+        Math.hypot(Math.sin(yaw), Math.sin(elevation) * Math.cos(yaw))
+    return Math.max(0.6, Math.min(1.35, body / foot))
+  }
   /** Counter the wider board presentation so meshes keep their authored proportions. */
   setPresentation(scale: number, aspect: number): void {
+    this.presentationScale = scale
     this.presentationAspect = aspect
     const tilt = this.definition.viewElevation ?? Math.atan2(2, 5)
     const position = new THREE.Vector3().setFromMatrixPosition(this.root.matrix)
@@ -314,9 +336,7 @@ export class ModelUnitVisual {
     const seconds = pose.loop
       ? ((sampleTime % duration) + duration) % duration
       : Math.max(0, Math.min(sampleTime, duration))
-    const elevation = this.definition.viewElevation ?? Math.atan2(2, 5)
-    this.turn.rotation.y =
-      Math.atan2(pose.facingX * this.presentationAspect * Math.sin(elevation), pose.facingY) + this.definition.yaw
+    this.turn.rotation.y = this.headingYaw(pose.facingX, pose.facingY) + this.definition.yaw
     this.turn.scale.setScalar(pose.boss ? MODEL_BOSS_SCALE : 1)
     instance.action.enabled = true
     instance.action.paused = false
