@@ -114,7 +114,7 @@ export class GuestView {
       let remaining = elapsed
       while (remaining > 1e-9) {
         const delta = Math.min(remaining, 1 / 60)
-        const moving = { ...this.local, pregnant: player.pregnant }
+        const moving = { ...this.local, pregnant: player.pregnant, carrying: player.carrying }
         moveRabbit(moving, input, delta, this.movement)
         Object.assign(this.local, pose(moving))
         remaining -= delta
@@ -150,7 +150,12 @@ export class GuestView {
       active.add(key)
       return { ...entry, ...this.smooth(key, entry, elapsed) }
     })
+    const kits = state.kits.map((entry) => {
+      const key = `kit:${entry.id}`
+      active.add(key)
+      return { ...entry, ...this.smooth(key, entry, elapsed) }
+    })
     for (const key of this.remotes.keys()) if (!active.has(key)) this.remotes.delete(key)
-    return { ...state, time: this.visualTime, players, predators }
+    return { ...state, time: this.visualTime, players, predators, kits }
   }
 }

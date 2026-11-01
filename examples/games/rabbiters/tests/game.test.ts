@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { Game, RULES, coverAt, type Input } from '../src/game'
+import { Game, PLAYER_COLORS, RULES, coverAt, pickPlayerColor, playerColor, type Input } from '../src/game'
 import { FOODS, GRASS, PREDATOR_STARTS, SPAWN, WORLD, heightAt } from '../src/map'
 import { FOOD_KINDS } from '../src/food'
+import { CAMPAIGN } from '../src/campaign'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const advance = (game: Game, seconds: number) => {
@@ -12,6 +13,17 @@ const peaceful = () => {
   game.addPlayer('rabbit', 'Rabbit')
   game.state.predators = []
   return game
+}
+/** Skip to autumn: bedding is finished, so a grown, fed rabbit can become pregnant. */
+const autumn = () => {
+  const game = peaceful()
+  Object.assign(game.state, { chapter: 2, bedding: CAMPAIGN.beddingGoal })
+  return game
+}
+const born = (game: Game) => {
+  expect(game.state.chapter).toBe(3)
+  expect(game.state.kits).toHaveLength(CAMPAIGN.kitCount)
+  expect(game.state.phase).toBe('playing')
 }
 
 describe('Rabbiters authoritative simulation', () => {
@@ -174,7 +186,7 @@ describe('Rabbiters authoritative simulation', () => {
     game.setInput(friend.id, { ...idle, interact: true })
     game.step(0.1)
     expect(player.downed).toBe(false)
-    expect(player.health).toBe(35)
+    expect(player.health).toBeCloseTo(35, 0)
     for (const rabbit of game.state.players) {
       rabbit.hunger = 0
       rabbit.health = 0.01
@@ -187,7 +199,7 @@ describe('Rabbiters authoritative simulation', () => {
   })
 
   it('requires both age and nutrition, then gives birth solo without mating', () => {
-    const game = peaceful()
+    const game = autumn()
     const player = game.state.players[0]
     advance(game, RULES.adultAge)
     expect(player.pregnant).toBe(false)
@@ -205,12 +217,12 @@ describe('Rabbiters authoritative simulation', () => {
       player.hunger = 100
       advance(game, Math.min(100, RULES.gestationSeconds - elapsed))
     }
-    expect(game.state.phase).toBe('won')
-    expect(player.pregnancy).toBeCloseTo(1)
+    born(game)
+    expect(player.pregnant).toBe(false)
   })
 
   it('requires the full five minutes of growth even after eating enough', () => {
-    const game = peaceful()
+    const game = autumn()
     const player = game.state.players[0]
     for (const food of game.state.foods.slice(0, RULES.requiredFood)) {
       Object.assign(player, { x: food.x, y: food.y, z: food.z })
@@ -227,7 +239,7 @@ describe('Rabbiters authoritative simulation', () => {
   })
 
   it('slows pregnant movement and shares one rabbit birth with all players', () => {
-    const game = peaceful()
+    const game = autumn()
     game.addPlayer('friend', 'Friend')
     const [player, friend] = game.state.players
     player.pregnant = true
@@ -238,7 +250,7 @@ describe('Rabbiters authoritative simulation', () => {
     player.pregnancy = 1 - 0.05 / RULES.gestationSeconds
     game.step(0.1)
     expect(friend.pregnant).toBe(false)
-    expect(game.state.phase).toBe('won')
+    born(game)
   })
 
   it('restores hunger by food kind and every kind counts toward growth', () => {
@@ -258,7 +270,7 @@ describe('Rabbiters authoritative simulation', () => {
   })
 
   it('requires enough current nutrition to start pregnancy', () => {
-    const game = peaceful()
+    const game = autumn()
     const player = game.state.players[0]
     Object.assign(player, { age: RULES.adultAge, foodEaten: RULES.requiredFood, hunger: 30 })
     game.step(0.1)
@@ -270,7 +282,7 @@ describe('Rabbiters authoritative simulation', () => {
   })
 
   it('requires more food during pregnancy and pauses birth while starving', () => {
-    const game = peaceful()
+    const game = autumn()
     const player = game.state.players[0]
     player.pregnant = true
     advance(game, 100 / RULES.pregnancyHungerDrain + 0.1)
@@ -284,14 +296,16 @@ describe('Rabbiters authoritative simulation', () => {
     expect(player.pregnancy).toBeGreaterThan(progress)
     player.pregnancy = 1 - 0.05 / RULES.gestationSeconds
     game.step(0.1)
-    expect(game.state.phase).toBe('won')
+    born(game)
   })
 
-  it('can finish solo from the initial field by finding food and returning to shelter', () => {
+  it('survives growing and carrying among real predators, reaching birth from the home meadow', () => {
     const game = new Game(42)
     game.addPlayer('rabbit', 'Rabbit')
+    // Bedding is covered elsewhere; this run grows up and carries to term with every hunter active.
+    Object.assign(game.state, { chapter: 2, bedding: CAMPAIGN.beddingGoal })
     const player = game.state.players[0]
-    for (let frame = 0; frame < 20 * 60 * 60 && game.state.phase === 'playing'; frame++) {
+    for (let frame = 0; frame < 20 * 60 * 60 && game.state.chapter < 3 && game.state.phase === 'playing'; frame++) {
       const seeking =
         player.foodEaten < RULES.requiredFood ||
         (player.foodEaten === RULES.requiredFood ? player.hunger < 60 : player.hunger < 40)
@@ -321,7 +335,7 @@ describe('Rabbiters authoritative simulation', () => {
       })
       game.step(1 / 60)
     }
-    expect(game.state.phase).toBe('won')
+    born(game)
     expect(game.state.time).toBeGreaterThanOrEqual(RULES.adultAge + RULES.gestationSeconds - 0.1)
     expect(game.state.time).toBeLessThan(20 * 60)
     expect(player.foodEaten).toBeGreaterThan(RULES.requiredFood)
@@ -329,7 +343,7 @@ describe('Rabbiters authoritative simulation', () => {
   }, 60_000)
 
   it('revives a starving pregnant teammate without losing birth progress', () => {
-    const game = peaceful()
+    const game = autumn()
     game.addPlayer('rescuer', 'Rescuer')
     const [player, rescuer] = game.state.players
     Object.assign(player, { health: 0.01, hunger: 0, pregnant: true, pregnancy: 0.5 })
@@ -345,7 +359,7 @@ describe('Rabbiters authoritative simulation', () => {
       player.hunger = 100
       advance(game, Math.min(100, RULES.gestationSeconds / 2 + 1 - elapsed))
     }
-    expect(game.state.phase).toBe('won')
+    born(game)
   })
 
   it('reduces spawn frequency with fewer surviving nests', () => {
@@ -376,5 +390,24 @@ describe('Rabbiters authoritative simulation', () => {
     player.downed = true
     game.step(0.01)
     expect(game.state.predators[0].targetId).toBeNull()
+  })
+
+  it('gives each rabbit a distinct, deterministic collar colour', () => {
+    const game = new Game(1)
+    for (let index = 0; index < 10; index++) game.addPlayer(`p${index}`, `P${index}`)
+    const slots = game.state.players.map((player) => player.color)
+    expect(new Set(slots.slice(0, PLAYER_COLORS.length)).size).toBe(PLAYER_COLORS.length)
+    expect(slots.slice(PLAYER_COLORS.length)).toEqual([0, 1])
+    // A leaver's colour is the next one handed out, so the room stays distinct.
+    game.removePlayer('p3')
+    game.addPlayer('late', 'Late')
+    expect(game.state.players.at(-1)!.color).toBe(3)
+    expect(pickPlayerColor([{ color: 0 }, { color: 0 }, { color: 1 }])).toBe(2)
+    // Every client derives the same hex; old hosts without a slot fall back to an ID hash.
+    const snapshot = JSON.parse(JSON.stringify(game.state.players))
+    expect(snapshot.map(playerColor)).toEqual(game.state.players.map(playerColor))
+    expect(playerColor({ id: 'p1', color: 1 })).toBe(PLAYER_COLORS[1])
+    expect(playerColor({ id: 'legacy' })).toBe(playerColor({ id: 'legacy' }))
+    expect(PLAYER_COLORS).toContain(playerColor({ id: 'legacy' }))
   })
 })

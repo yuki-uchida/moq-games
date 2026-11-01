@@ -17,22 +17,22 @@ for (const viewport of [
     page.on('request', (request) => requests.push(request.url()))
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
-    await expect(page.getByRole('heading', { name: 'smart defence with jev', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'キャッスルナイツ', exact: true })).toBeVisible()
     await expect(page.getByRole('article')).toHaveCount(4)
     await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
-    await expect(page.getByRole('link', { name: 'ゲームをプレイ: 燈の境界' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: デスガイヤ' })).toHaveAttribute(
       'href',
       './examples/games/ember-grid/index.html'
     )
-    await expect(page.getByRole('link', { name: 'ゲームをプレイ: 芽吹きの境界' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: うんこ大惨事' })).toHaveAttribute(
       'href',
       './examples/games/lane-battle/index.html'
     )
-    await expect(page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' })).toHaveAttribute(
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: ウサギ・イヤ・ラビット' })).toHaveAttribute(
       'href',
       './examples/games/rabbiters/index.html'
     )
-    const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
+    const play = page.getByRole('link', { name: 'ゲームをプレイ: キャッスルナイツ', exact: true })
     await expect(play).toHaveAttribute('href', './examples/games/tower_diffence_with_jev/index.html')
     await expect(play).toBeVisible()
     await expect
@@ -65,7 +65,7 @@ test('keyboard, reduced motion, and browser back preserve the catalog', async ({
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: 'ゲーム一覧へスキップ' })).toBeFocused()
   await page.keyboard.press('Enter')
-  const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
+  const play = page.getByRole('link', { name: 'ゲームをプレイ: キャッスルナイツ', exact: true })
   await play.focus()
   expect(await play.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0s')
   await page.keyboard.press('Enter')
@@ -83,15 +83,15 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
     'href',
     './examples/games/tower_diffence_with_jev/index.html'
   )
-  await expect(page.getByRole('link', { name: '燈の境界をプレイ' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'デスガイヤをプレイ' })).toHaveAttribute(
     'href',
     './examples/games/ember-grid/index.html'
   )
-  await expect(page.getByRole('link', { name: '芽吹きの境界をプレイ' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'うんこ大惨事をプレイ' })).toHaveAttribute(
     'href',
     './examples/games/lane-battle/index.html'
   )
-  await expect(page.getByRole('link', { name: 'Rabbitersをプレイ' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'ウサギ・イヤ・ラビットをプレイ' })).toHaveAttribute(
     'href',
     './examples/games/rabbiters/index.html'
   )
@@ -99,8 +99,8 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
 })
 
 for (const [title, path] of [
-  ['燈の境界', 'ember-grid'],
-  ['芽吹きの境界', 'lane-battle']
+  ['デスガイヤ', 'ember-grid'],
+  ['うんこ大惨事', 'lane-battle']
 ]) {
   test(`opens ${title} from the catalog`, async ({ page }) => {
     await page.goto(root)
@@ -118,9 +118,9 @@ test('starts Lane Battle through the catalog with its runtime assets', async ({ 
     if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`)
   })
   await page.goto(root)
-  await page.getByRole('link', { name: 'ゲームをプレイ: 芽吹きの境界' }).click()
-  await page.getByRole('button', { name: '進軍開始' }).click()
-  await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
+  await page.getByRole('link', { name: 'ゲームをプレイ: うんこ大惨事' }).click()
+  await page.getByRole('button', { name: 'ブリッと出撃' }).click()
+  await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
   await expect(page.locator('#field canvas')).toBeVisible()
   await expect(page.locator('#clock')).not.toHaveText('00:00')
   expect(errors).toEqual([])
@@ -135,7 +135,7 @@ test('starts Rabbiters through the catalog', async ({ page }) => {
     if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`)
   })
   await page.goto(root)
-  await page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' }).click()
+  await page.getByRole('link', { name: 'ゲームをプレイ: ウサギ・イヤ・ラビット' }).click()
   await expect(page).toHaveURL(/\/examples\/games\/rabbiters\/index\.html$/)
   await expect(page.locator('#world canvas')).toBeVisible()
   await page.getByRole('button', { name: 'ひとりではじめる' }).click()
@@ -156,7 +156,7 @@ test('loads the Rabbiters MoQ WASM through the catalog', async ({ page }) => {
     Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: blockedTransport })
   })
   await page.goto(root)
-  await page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' }).click()
+  await page.getByRole('link', { name: 'ゲームをプレイ: ウサギ・イヤ・ラビット' }).click()
   await page.locator('#room').fill('offline-test')
   const wasm = page.waitForResponse((response) => /moqt_bg.*\.wasm(?:\?|$)/.test(response.url()))
   await page.getByRole('button', { name: 'ルームを作る' }).click()
@@ -171,7 +171,7 @@ test('all four cards are reachable in tab order', async ({ page }) => {
   await page.getByRole('link', { name: 'MoQ Games ホーム' }).focus()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeFocused()
-  for (const title of ['smart defence with jev', '燈の境界', '芽吹きの境界', 'Rabbiters']) {
+  for (const title of ['キャッスルナイツ', 'デスガイヤ', 'うんこ大惨事', 'ウサギ・イヤ・ラビット']) {
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: `ゲームをプレイ: ${title}`, exact: true })).toBeFocused()
   }

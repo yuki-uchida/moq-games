@@ -626,14 +626,15 @@ export function caveWallBlocks(x: number, z: number, radius: number): boolean {
   return false
 }
 
-/** Nearest point on the tunnel network's centreline. */
+/** Nearest point on the tunnel network's centreline, with that corridor's unit direction. */
 export function tunnelNearest(x: number, z: number) {
-  let best = { x, z, d: Infinity }
+  let best = { x, z, d: Infinity, ux: 1, uz: 0 }
   for (const [first, second] of TUNNEL_EDGES) {
     const a = TUNNEL_NODES[first]
     const b = TUNNEL_NODES[second]
     const hit = segment(x, z, a.x, a.z, b.x, b.z)
-    if (hit.d < best.d) best = hit
+    const span = length(b.x - a.x, b.z - a.z)
+    if (hit.d < best.d) best = { ...hit, ux: (b.x - a.x) / span, uz: (b.z - a.z) / span }
   }
   return best
 }

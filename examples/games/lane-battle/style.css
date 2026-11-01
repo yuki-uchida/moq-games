@@ -3,10 +3,12 @@
 }
 body {
   margin: 0;
-  background: #0d2027;
-  color: #f4f0d9;
+  background: #2b1a0e;
+  color: #fff6e5;
   font:
-    16px system-ui,
+    16px 'Hiragino Maru Gothic ProN',
+    'Arial Rounded MT Bold',
+    system-ui,
     sans-serif;
   overflow: hidden;
 }
@@ -31,19 +33,19 @@ header {
   height: var(--head);
 }
 .wallet {
-  background: #18383bd9;
-  border-radius: 12px;
+  background: #3b2412d9;
+  border-radius: 18px;
   padding: 5px 12px;
 }
 small {
   font-size: 11px;
   letter-spacing: 2px;
-  color: #b6d3c5;
+  color: #f2cf9b;
 }
 .wallet {
   margin-left: auto;
   font-size: 26px;
-  color: #ffe08c;
+  color: #ffd166;
 }
 .wallet small {
   display: block;
@@ -53,9 +55,9 @@ small {
 button {
   font: inherit;
   color: inherit;
-  background: #203b43;
-  border: 1px solid #4e6b6c;
-  border-radius: 12px;
+  background: #5a361a;
+  border: 1px solid #a8703f;
+  border-radius: 18px;
   min-height: 48px;
   cursor: pointer;
   touch-action: manipulation;
@@ -73,7 +75,7 @@ button:active:not(:disabled) {
   scale: 0.96;
 }
 button:focus-visible {
-  outline: 3px solid #ffe08c;
+  outline: 3px solid #ffd166;
   outline-offset: 2px;
 }
 button:disabled {
@@ -89,7 +91,7 @@ header button {
   inset: 0;
   overflow: hidden;
   /* Matches the canvas ground, so the field continues under the tray. */
-  background: #6d8962;
+  background: #b9ac96;
 }
 canvas {
   width: 100%;
@@ -105,7 +107,7 @@ canvas {
   top: calc(var(--gap) + var(--head) / 2);
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #18383bd9;
+  background: #3b2412d9;
   border-radius: 8px;
   padding: 7px;
   font-size: 13px;
@@ -124,7 +126,7 @@ canvas {
   left: 0;
   right: 0;
   text-align: center;
-  color: #284447;
+  color: #3b2412;
   font-size: 13px;
   font-weight: 700;
   pointer-events: none;
@@ -155,19 +157,16 @@ footer {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  background: linear-gradient(#284b50e6, #1c343ae6);
+  background: linear-gradient(#8a5229e6, #4b2810e6);
 }
 .portrait {
-  height: 76px;
+  height: 92px;
   width: auto;
 }
 button b {
   font-size: 13px;
   display: block;
-  color: #ffe08c;
-}
-button span {
-  font-size: 12px;
+  color: #ffd166;
 }
 .utilities {
   display: flex;
@@ -178,19 +177,49 @@ button span {
 .utilities button {
   flex: 1;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+.utilities i {
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  color: #ffd166;
+}
+#tray button,
+#burst {
+  overflow: hidden;
+}
+/* Recharge shade: --cd is the remaining share of the cooldown (1 → 0). */
+#tray button::after,
+#burst::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: calc(var(--cd, 0) * 100%);
+  background: #1e0f05d9;
+  pointer-events: none;
+}
+/* Lighter dimming than other buttons so the recharge shade's edge stays readable. */
+#tray button:disabled,
+#burst:disabled {
+  opacity: 0.7;
 }
 dialog {
   max-width: 420px;
   width: calc(100% - 32px);
-  border: 1px solid #5f8983;
+  border: 1px solid #c98a4b;
   border-radius: 20px;
-  background: #17363c;
-  color: #f4f0d9;
+  background: #4b2810;
+  color: #fff6e5;
   padding: 28px;
   box-shadow: 0 20px 80px #0008;
 }
 dialog::backdrop {
-  background: #061c24aa;
+  background: #1e0f05aa;
 }
 dialog p {
   line-height: 1.8;
@@ -202,7 +231,7 @@ dialog button {
 }
 dialog h2 {
   margin: 0;
-  color: #ffe08c;
+  color: #ffd166;
 }
 @media (max-width: 600px) {
   main {
@@ -244,10 +273,7 @@ dialog h2 {
     font-size: 11px;
   }
   .portrait {
-    height: 48px;
-  }
-  button span {
-    font-size: 11px;
+    height: 64px;
   }
   #notice {
     font-size: 11px;
@@ -266,7 +292,7 @@ dialog h2 {
     min-height: 0;
   }
   .portrait {
-    height: 44px;
+    height: 56px;
   }
   .utilities {
     width: 150px;
@@ -289,11 +315,11 @@ dialog h2 {
   min-width: 0;
 }
 #stages button[aria-pressed='true'] {
-  border: 2px solid #ffe08c;
-  background: #355456;
+  border: 2px solid #ffd166;
+  background: #7a4722;
 }
 #next {
-  background: #466657;
+  background: #3f8f4a;
 }
 dialog {
   max-height: calc(100dvh - 16px);

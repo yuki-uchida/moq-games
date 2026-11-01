@@ -51,20 +51,20 @@ export class BattleAudio {
     const notes = {
       summon: [520, 780],
       upgrade: [660, 990],
-      burst: [120, 45],
+      burst: [95, 38],
       hit: [180, 80],
       shot: [900, 320],
       victory: [660, 1320],
       defeat: [220, 70]
     }
     const [a, b] = notes[kind]
-    this.note(a, kind === 'burst' ? 0.35 : 0.18, 0.035, kind === 'burst' ? 'triangle' : 'sine', undefined, b)
+    this.note(a, kind === 'burst' ? 0.35 : 0.18, 0.035, kind === 'burst' ? 'sawtooth' : 'sine', undefined, b)
   }
   tick() {
     const c = this.context
     if (!this.running || this.muted || !c || c.state !== 'running') return
     if (!this.nextBeat || this.nextBeat < c.currentTime - 0.2) this.nextBeat = c.currentTime
-    // A quiet original 16-step forest motif, bass on the downbeats.
+    // A quiet original 16-step march motif, bass on the downbeats.
     if (this.nextBeat < c.currentTime + 0.08) {
       const melody = [64, 67, 71, 74, 71, 67, 62, 67, 60, 64, 67, 72, 69, 67, 62, 59]
       this.note(440 * 2 ** ((melody[this.beat % 16] - 69) / 12), 0.38, 0.009, 'triangle', this.nextBeat)

@@ -1,9 +1,9 @@
 import { FOOD_KINDS, type FoodKind } from './food'
+import { BURROW, CAMPAIGN, createStraws, moveKits, nightVision, spawnKits, type Kit, type Straw } from './campaign'
 import {
   CROCODILE_POOLS,
   DEEP_WATER,
   FOODS,
-  MAX_PREDATORS,
   NESTS,
   PREDATOR_STARTS,
   SPAWN,
@@ -76,6 +76,10 @@ export interface Player {
   pregnancy: number
   /** Dust-bath progress 0..1 while crouching still on sand. */
   bath: number
+  /** Index into PLAYER_COLORS, picked by the host on join. Older hosts omit it. */
+  color?: number
+  /** Id of the straw bundle this rabbit is carrying in its mouth. */
+  carrying: string | null
 }
 
 export type Predator = PredatorBody
@@ -103,6 +107,11 @@ export interface GameState {
   delivered: number
   goal: number
   phase: 'playing' | 'won' | 'lost'
+  /** 0 spring (grow), 1 summer (bedding), 2 autumn (pregnancy), 3 winter (lead the kits). */
+  chapter: number
+  bedding: number
+  straws: Straw[]
+  kits: Kit[]
 }
 
 /** Snapshot sent through the relay: food and nest positions come from the shared map. */
@@ -159,8 +168,37 @@ export const RULES = {
   sprintHungerDrain: 0.08,
   pregnancySpeed: 0.65,
   foodRespawnSeconds: 210,
-  predatorSpawnSeconds: 120
+  predatorSpawnSeconds: 120,
+  wellFed: 60,
+  fedHeal: 0.3,
+  burrowHeal: 4
 } as const
+
+/** Collar colours: distinct hues that read on grass, sand and the minimap. */
+export const PLAYER_COLORS = [
+  '#e8455a',
+  '#2f7fe0',
+  '#f2b417',
+  '#8a4fd8',
+  '#17b3a3',
+  '#f07a2a',
+  '#e85fb0',
+  '#24306e'
+] as const
+
+/** Lowest palette slot not worn by anyone already in the room; wraps to the least-worn once all are taken. */
+export function pickPlayerColor(players: readonly Pick<Player, 'color'>[]): number {
+  const worn = PLAYER_COLORS.map((_, slot) => players.filter((player) => player.color === slot).length)
+  return worn.indexOf(Math.min(...worn))
+}
+
+/** Same colour on every client: the host-synced slot, or an ID hash for snapshots from older hosts. */
+export function playerColor(player: Pick<Player, 'id' | 'color'>): string {
+  if (Number.isInteger(player.color)) return PLAYER_COLORS[player.color! % PLAYER_COLORS.length]
+  let hash = 0
+  for (const char of player.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return PLAYER_COLORS[hash % PLAYER_COLORS.length]
+}
 
 /** Whether a creature standing at `body` may step to (x, z). Rabbits may duck under logs. */
 export function canEnter(kind: Kind, body: Body, x: number, z: number, grounded: boolean, crouch: boolean): boolean {
@@ -197,7 +235,7 @@ function move(kind: Kind, body: Body, dx: number, dz: number, grounded: boolean,
  * jumps, wading, ducking under logs, and diving into / popping out of mole tunnels.
  */
 export function moveRabbit(
-  player: Pick<Player, 'x' | 'y' | 'z' | 'angle' | 'pregnant'>,
+  player: Pick<Player, 'x' | 'y' | 'z' | 'angle' | 'pregnant'> & { carrying?: string | null },
   input: Input,
   dt: number,
   movement: Movement
@@ -210,7 +248,7 @@ export function moveRabbit(
   const directionX = moveX / length
   const directionZ = moveZ / length
   if (moveX || moveZ) player.angle = Math.atan2(moveX, moveZ)
-  const pace = player.pregnant ? RULES.pregnancySpeed : 1
+  const pace = (player.pregnant ? RULES.pregnancySpeed : 1) * (player.carrying ? CAMPAIGN.carrySpeed : 1)
   if (isUnderground(player.x, player.y, player.z)) {
     // Mole tunnels: a fixed crawl along the corridors; jump at an exit hole to pop back out.
     const next = clampToTunnel(player.x + directionX * 4.2 * pace * dt, player.z + directionZ * 4.2 * pace * dt, 0.3)
@@ -229,7 +267,10 @@ export function moveRabbit(
   const grounded = player.y <= heightAt(player.x, player.z) + 1e-6
   const sliding = grounded && slopeAt(player.x, player.z) > MAX_STAND
   const speed =
-    (input.crouch ? 2.6 : input.sprint ? 9 : 5.2) * (waterDepth(player.x, player.z) > 0.05 ? 0.55 : 1) * pace
+    // A bundle held in the mouth rules out dashing.
+    (input.crouch ? 2.6 : input.sprint && !player.carrying ? 9 : 5.2) *
+    (waterDepth(player.x, player.z) > 0.05 ? 0.55 : 1) *
+    pace
   if (sliding) {
     const downX = heightAt(player.x - 0.5, player.z) - heightAt(player.x + 0.5, player.z)
     const downZ = heightAt(player.x, player.z - 0.5) - heightAt(player.x, player.z + 0.5)
@@ -267,7 +308,7 @@ export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover
 }
 
 /** Whether this predator can perceive a rabbit in this cover at all (before range, angle and sight lines). */
-function exposed(predator: Predator, player: Player, cover: Cover): boolean {
+function exposed(predator: Predator, player: { x: number; z: number }, cover: Cover): boolean {
   if (cover === 'open') return true
   if (cover === 'canopy') return predator.kind !== 'hawk'
   if (cover === 'water') return predator.kind === 'crocodile'
@@ -327,6 +368,25 @@ export function unpackSnapshot(value: unknown): GameState | undefined {
   }
 }
 
+/**
+ * State for retrying a lost run from the start of its season. The clock keeps running forward (so audio
+ * and guest views never see time rewind), rabbits are back on their feet, and bedding already in the
+ * den stays there: only a bundle that was in someone's mouth returns to the field.
+ */
+export function retryState(checkpoint: GameState, current: GameState): GameState {
+  const state: GameState = { ...structuredClone(checkpoint), time: current.time }
+  for (const player of state.players)
+    Object.assign(player, { health: 100, hunger: Math.max(player.hunger, 60), downed: false, carrying: null })
+  if (state.chapter === 1) {
+    state.bedding = current.bedding
+    state.straws = current.straws.map((straw) => ({
+      ...straw,
+      active: straw.active || current.players.some((player) => player.carrying === straw.id)
+    }))
+  }
+  return state
+}
+
 export class Game {
   state: GameState
   private inputs = new Map<string, Input>()
@@ -344,6 +404,8 @@ export class Game {
   private chains = new Map<string, number>()
   private wet = new Set<string>()
   private droppingSequence = 0
+  /** Recent footsteps per rabbit, oldest first; kits follow these. */
+  private trails = new Map<string, { x: number; z: number }[]>()
 
   constructor(
     seed = 1,
@@ -369,7 +431,11 @@ export class Game {
       droppings: [],
       delivered: 0,
       goal: 24,
-      phase: 'playing'
+      phase: 'playing',
+      chapter: 0,
+      bedding: 0,
+      straws: createStraws(),
+      kits: []
     }
   }
 
@@ -405,7 +471,9 @@ export class Game {
       growth: 0,
       pregnant: false,
       pregnancy: 0,
-      bath: 0
+      bath: 0,
+      color: pickPlayerColor(this.state.players),
+      carrying: null
     })
     this.dropIn.set(id, this.nextDropping())
   }
@@ -451,7 +519,17 @@ export class Game {
     this.chains.set(player.id, (this.chains.get(player.id) ?? 0) + 1)
   }
 
+  /** A dropped bundle returns to where it was found. */
+  private dropStraw(player: Player) {
+    const straw = this.state.straws.find((entry) => entry.id === player.carrying)
+    if (straw) straw.active = true
+    player.carrying = null
+  }
+
   removePlayer(id: string) {
+    const leaving = this.state.players.find((player) => player.id === id)
+    if (leaving) this.dropStraw(leaving)
+    this.trails.delete(id)
     this.state.players = this.state.players.filter((player) => player.id !== id)
     this.inputs.delete(id)
     this.movements.delete(id)
@@ -506,6 +584,13 @@ export class Game {
       let movement = this.movements.get(player.id)
       if (!movement) this.movements.set(player.id, (movement = { velocity: 0, jumpHeld: false }))
       moveRabbit(player, input, dt, movement)
+      let trail = this.trails.get(player.id)
+      if (!trail) this.trails.set(player.id, (trail = []))
+      const last = trail[trail.length - 1]
+      if (!last || distance(last, player) > 0.5) {
+        trail.push({ x: player.x, z: player.z })
+        if (trail.length > 40) trail.shift()
+      }
       const cover = coverAt(player.x, player.y, player.z, input.crouch)
       const ground = heightAt(player.x, player.z)
       const sprinting = input.sprint && !input.crouch && (input.moveX !== 0 || input.moveZ !== 0)
@@ -526,7 +611,8 @@ export class Game {
         player.bath = Math.min(1, player.bath + dt / STEALTH.bathSeconds)
       } else player.bath = 0
       const dropIn = (this.dropIn.get(player.id) ?? 0) - dt
-      if (dropIn <= 0) this.drop(player, sprinting)
+      // Rabbits keep the den clean, so resting at home leaves no scent for hunters to follow.
+      if (dropIn <= 0 && !inShelter(player.x, player.z)) this.drop(player, sprinting)
       this.dropIn.set(player.id, dropIn <= 0 ? this.nextDropping() : dropIn)
       player.hunger = Math.max(
         0,
@@ -535,9 +621,13 @@ export class Game {
             ((player.pregnant ? RULES.pregnancyHungerDrain : RULES.hungerDrain) +
               (sprinting ? RULES.sprintHungerDrain : 0))
       )
+      const home = cover === 'shelter'
       if (player.hunger === 0) player.health = Math.max(0, player.health - 5 * dt)
+      else if (home || player.hunger >= RULES.wellFed)
+        player.health = Math.min(100, player.health + dt * (home ? RULES.burrowHeal : RULES.fedHeal))
       if (player.health === 0) {
         player.downed = true
+        this.dropStraw(player)
         continue
       }
       player.age += dt
@@ -550,11 +640,36 @@ export class Game {
         player.foodEaten += 1
         state.delivered += 1
       }
+      if (state.chapter === 1 && !player.carrying && cover !== 'tunnel' && player.y - ground < 1) {
+        const straw = state.straws.find((entry) => entry.active && distance(player, entry) < 1.3)
+        if (straw) {
+          straw.active = false
+          player.carrying = straw.id
+        }
+      }
+      if (player.carrying && distance(player, BURROW) < 4) {
+        player.carrying = null
+        state.bedding += 1
+        if (state.bedding >= CAMPAIGN.beddingGoal) state.chapter = 2
+      }
       player.growth = Math.min(1, player.age / RULES.adultAge, player.foodEaten / RULES.requiredFood)
-      if (!player.pregnant && player.growth === 1 && player.hunger >= RULES.pregnancyNutrition) player.pregnant = true
+      if (state.chapter === 0 && player.growth === 1) state.chapter = 1
+      if (
+        state.chapter === 2 &&
+        !player.pregnant &&
+        player.growth === 1 &&
+        player.hunger >= RULES.pregnancyNutrition &&
+        !state.players.some((other) => other.pregnant)
+      )
+        player.pregnant = true
       if (player.pregnant && player.hunger > 0) {
         player.pregnancy = Math.min(1, player.pregnancy + dt / RULES.gestationSeconds)
-        if (player.pregnancy >= 1 - 1e-9) player.pregnancy = 1
+        if (player.pregnancy >= 1 - 1e-9) {
+          player.pregnant = false
+          player.pregnancy = 0
+          state.chapter = 3
+          state.kits = spawnKits(player.x, player.z)
+        }
       }
       if (input.interact && cover !== 'tunnel' && player.y - ground < 1) {
         for (const nest of state.nests) {
@@ -596,23 +711,58 @@ export class Game {
     }
     // Surface predators cannot smell pellets left down in the tunnels.
     const smellable = state.droppings.filter((dropping) => !isUnderground(dropping.x, dropping.y, dropping.z))
+    const crouching = (id: string) => (this.inputs.get(id) ?? idle).crouch
+    const kitCover = new Map<string, Cover>()
+    moveKits(
+      state.kits,
+      state.players,
+      this.trails,
+      dt,
+      (kit) => (waterDepth(kit.x, kit.z) > 0.05 ? 0.55 : 1),
+      (kit, dx, dz) => {
+        const body = { x: kit.x, y: heightAt(kit.x, kit.z), z: kit.z }
+        // Kits squeeze under logs; if a step is blocked they wait for the trail to lead around.
+        if (move('rabbit', body, dx, dz, true, true)) Object.assign(kit, { x: body.x, z: body.z })
+      },
+      (kit, leader) => {
+        // Kits freeze in cover when their parent crouches; in the den they are always hidden.
+        const cover = coverAt(kit.x, kit.y, kit.z, !leader || crouching(leader.id))
+        kitCover.set(kit.id, cover)
+        return cover !== 'open' && cover !== 'canopy'
+      }
+    )
+    const roaming = (kit: Kit) => kit.status === 'follow' || kit.status === 'wait'
     const awake = state.players.filter((player) => !player.downed)
-    const targets: Target[] = awake.map((player) => ({
-      id: player.id,
-      x: player.x,
-      y: player.y,
-      z: player.z,
+    const kits = state.kits.filter(roaming)
+    const targets: Target[] = [...awake, ...kits].map((prey) => ({
+      id: prey.id,
+      x: prey.x,
+      y: prey.y,
+      z: prey.z,
       visibility: 0
     }))
+    const sated = new Set<Predator>()
     for (const predator of state.predators) {
+      const night = nightVision(predator.kind, state.time)
       awake.forEach((player, index) => {
         const seen = this.cover.get(player.id) ?? { crouch: false, inGrass: false, cover: 'open', sprinting: false }
         targets[index].visibility = exposed(predator, player, seen.cover)
           ? visibility(
               { hidden: false, crouch: seen.crouch, inGrass: seen.inGrass },
               this.terrain.sightLine(predator, player)
-            ) * (seen.sprinting ? SPRINT_NOISE : 1)
+            ) *
+            (seen.sprinting ? SPRINT_NOISE : 1) *
+            (player.carrying ? CAMPAIGN.carryDetection : 1) *
+            night
           : 0
+      })
+      kits.forEach((kit, index) => {
+        // Small kits are harder to spot; one caught earlier this tick is already gone.
+        const cover = kitCover.get(kit.id) ?? 'open'
+        targets[awake.length + index].visibility =
+          roaming(kit) && exposed(predator, kit, cover)
+            ? CAMPAIGN.kitDetection * this.terrain.sightLine(predator, kit) * night
+            : 0
       })
       let home = this.homes.get(predator.id)
       if (!home) this.homes.set(predator.id, (home = { x: predator.x, z: predator.z }))
@@ -635,15 +785,32 @@ export class Game {
       predator.y = predator.kind === 'hawk' ? flight : predatorHeight(predator.kind, predator.x, predator.z)
       if (predator.state === 'patrol' && distance(predator, home) > LEASH[predator.kind])
         predator.angle = Math.atan2(home.x - predator.x, home.z - predator.z)
-      const target = chased && state.players.find((player) => player.id === chased.id)
+      // Hunters that reach the home burrow give up there and turn back.
+      if (distance(predator, BURROW) < CAMPAIGN.denRadius && predator.kind !== 'hawk') {
+        Object.assign(predator, { state: 'patrol', targetId: null, suspicion: 0 })
+        predator.angle = Math.atan2(predator.x - BURROW.x, predator.z - BURROW.z)
+        Object.assign(this.mind(predator.id), { trail: null, lastKnown: null, linger: 0 })
+      }
+      const target =
+        chased &&
+        (state.players.find((player) => player.id === chased.id) ??
+          state.kits.find((kit) => kit.id === chased.id && roaming(kit)))
       if (target && distance(predator, target) < 1.3 && Math.abs(predator.y - target.y) < 1.5) {
-        target.health = Math.max(0, target.health - 24 * dt)
-        if (target.health === 0) target.downed = true
+        if ('status' in target) {
+          // A predator that catches a kit carries it off and leaves the field.
+          target.status = 'lost'
+          sated.add(predator)
+        } else {
+          target.health = Math.max(0, target.health - 24 * dt)
+          if (target.carrying) this.dropStraw(target)
+          if (target.health === 0) target.downed = true
+        }
       }
     }
+    if (sated.size) state.predators = state.predators.filter((predator) => !sated.has(predator))
     const activeNests = state.nests.filter((nest) => nest.active)
     this.spawnIn -= (dt * activeNests.length * 3) / state.nests.length
-    if (this.spawnIn <= 0 && activeNests.length && state.predators.length < MAX_PREDATORS) {
+    if (this.spawnIn <= 0 && activeNests.length && state.predators.length < CAMPAIGN.predatorCap[state.chapter]) {
       const nest = activeNests[Math.floor(this.random() * activeNests.length)]
       const kind = kinds[Math.floor(this.random() * kinds.length)]
       const at =
@@ -665,7 +832,8 @@ export class Game {
       })
       this.spawnIn = RULES.predatorSpawnSeconds
     }
-    if (state.players.some((player) => !player.downed && player.pregnancy === 1)) state.phase = 'won'
+    const waiting = state.kits.some(roaming)
+    if (state.chapter === 3 && !waiting) state.phase = state.kits.some((kit) => kit.status === 'safe') ? 'won' : 'lost'
     else if (state.players.length && state.players.every((player) => player.downed)) state.phase = 'lost'
   }
 }

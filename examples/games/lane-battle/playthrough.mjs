@@ -6,7 +6,7 @@ const page = await browser.newPage({
 })
 await page.clock.install()
 await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
-await page.getByRole('button', { name: '進軍開始' }).click()
+await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 let finished = false
 for (let i = 0; i < 90; i++) {
   await page.evaluate(() => {

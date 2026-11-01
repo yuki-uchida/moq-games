@@ -27,17 +27,24 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   page.on('pageerror', (error) => failures.push(error.message))
   await page.goto(`${towerPath}?soldier-art=2d&slime-art=2d`)
   await expect(page.locator('#title-screen')).toBeVisible()
-  // The title prefetches the likely campaign's model downloads; GPU preparation must still wait for 出撃.
-  await expect.poll(() => models.length).toBeGreaterThan(0)
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   )
+  expect(models).toEqual([])
   const titleGpu = await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu)
   expect(titleGpu.frames).toBe(0)
   expect(titleGpu.programs).toBe(0)
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().modelEnvironment.generations)).toBe(0)
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().frame)).toBe(0)
   await page.locator('#title-new').click()
+  await expect(page.locator('#launch')).toBeVisible()
+  // Launch downloads the likely campaign; GPU preparation must still wait for Start.
+  await expect.poll(() => models.length).toBeGreaterThan(0)
+  expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics())).toMatchObject({
+    gpu: { frames: 0, programs: 0 },
+    modelEnvironment: { generations: 0 },
+    frame: 0
+  })
   await page.locator('#launch-settings').evaluate((button: HTMLButtonElement) => button.click())
   await expect(page.locator('.trial-art-tools')).toBeHidden()
   await expect(page.locator('.enemy-trial-art-tools')).toBeHidden()

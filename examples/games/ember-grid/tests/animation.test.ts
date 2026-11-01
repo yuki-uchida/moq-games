@@ -1,23 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { depth, facing, route } from '../src/animation'
+import { execFileSync } from 'node:child_process'
+import { statSync } from 'node:fs'
+import { depth, route } from '../src/animation'
+import { ROLES } from '../src/stage'
+import { UNIT_MODEL_CATALOG } from '../../tower_diffence_with_jev/src/rendering/models/catalog'
+import { ATTACK_PROFILES } from '../../tower_diffence_with_jev/src/game/AttackProfiles'
 import { createGame } from '../src/game'
-describe('accepted complete-cell animation contracts', () => {
-  it('faces the projected screen direction with all eight real directions', () => {
-    // Grid +x runs up-right and +y down-right on the 45°-rotated floor.
-    expect(
-      [
-        [1, 0],
-        [1, 1],
-        [0, 1],
-        [-1, 1],
-        [-1, 0],
-        [-1, -1],
-        [0, -1],
-        [1, -1]
-      ].map(([x, y]) => facing({ x: 0, y: 0 }, { x, y }))
-    ).toEqual(['ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'n'])
-  })
+describe('3D presentation contracts', () => {
   it('orders cells back to front', () => {
     expect(depth({ x: 6, y: 0 })).toBe(0)
     expect(depth({ x: 0, y: 6 })).toBe(12)
@@ -36,22 +25,19 @@ describe('accepted complete-cell animation contracts', () => {
     })
     expect(route(g, g.units, g.units[1], { x: 0, y: 5 })).toHaveLength(4)
   })
-  for (const role of ['soldier', 'archer', 'mage', 'goblin', 'wolf'])
-    it(`${role}: all runtime frames and contact events fit existing textures`, () => {
-      const root = `public/tower-defense-art/${role}/`
-      const registry = JSON.parse(readFileSync(`${root}runtime-registry.json`, 'utf8'))
-      expect(registry.clips).toHaveLength(24)
-      for (const entry of registry.clips) {
-        const clip = JSON.parse(readFileSync(root + entry.manifest, 'utf8'))
-        expect(clip.frames.length).toBeGreaterThan(1)
-        for (const f of clip.frames) {
-          expect(f.width).toBe(128)
-          expect(f.height).toBe(112)
-          expect(f.x + f.width).toBeLessThanOrEqual(clip.textureWidth)
-          expect(f.y + f.height).toBeLessThanOrEqual(clip.textureHeight)
-        }
-        if (entry.motion === 'attack')
-          expect(clip.events.some((e: { atMs: number }) => e.atMs > 0 && e.atMs < clip.durationMs)).toBe(true)
+  it('every role has tracked idle/walk/attack glTF sources and a contact inside its attack clip', () => {
+    const tracked = execFileSync('git', ['ls-files', 'public/tower-defense-art/models'], { encoding: 'utf8' })
+    for (const role of ROLES) {
+      const definition = UNIT_MODEL_CATALOG[role]!
+      for (const motion of ['idle', 'walk', 'attack'] as const) {
+        const source = definition.clips[motion]!
+        const file = source.url.slice(source.url.indexOf('tower-defense-art/'))
+        expect(tracked).toContain(`public/${file}`)
+        expect(statSync(`public/${file}`).size).toBeGreaterThan(100_000)
       }
-    })
+      const { cueMs, durationMs } = ATTACK_PROFILES[role]
+      expect(cueMs).toBeGreaterThan(0)
+      expect(cueMs).toBeLessThan(durationMs)
+    }
+  })
 })

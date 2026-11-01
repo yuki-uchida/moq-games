@@ -1,4 +1,5 @@
-import type { GameState } from './game'
+import { playerColor, type GameState } from './game'
+import { HAVEN } from './campaign'
 import {
   CAVES,
   LANDMARKS,
@@ -110,8 +111,33 @@ export class Minimap {
       for (const food of state.foods)
         if (food.active && Math.hypot(food.x - local.x, food.z - local.z) < SMELL_RANGE)
           this.dot(context, ...at(food.x, food.z), 1.8, '#f39a3c')
-    for (const player of state.players)
-      if (player.id !== localId) this.dot(context, ...at(player.x, player.z), 3, player.downed ? '#e06b5b' : '#ffffff')
+    // Seasons: bedding to fetch in summer; the haven and the kits in winter.
+    if (state.chapter === 1)
+      for (const straw of state.straws)
+        if (straw.active) {
+          const [sx, sy] = at(straw.x, straw.z)
+          context.fillStyle = '#e8cf7a'
+          context.strokeStyle = '#5a4320'
+          context.lineWidth = 1
+          context.fillRect(sx - 3, sy - 3, 6, 6)
+          context.strokeRect(sx - 3, sy - 3, 6, 6)
+        }
+    if (state.chapter === 3) {
+      const [vx, vy] = at(HAVEN.x, HAVEN.z)
+      context.strokeStyle = '#ffe9a8'
+      context.lineWidth = 2
+      context.beginPath()
+      context.arc(vx, vy, 7, 0, Math.PI * 2)
+      context.stroke()
+      for (const kit of state.kits) if (kit.status !== 'lost') this.dot(context, ...at(kit.x, kit.z), 2, '#fff3d6')
+    }
+    // Teammates wear their collar colour; a downed one gets a red ring.
+    for (const player of state.players) {
+      if (player.id === localId) continue
+      const [x, y] = at(player.x, player.z)
+      this.dot(context, x, y, 4.2, player.downed ? '#e06b5b' : '#ffffff')
+      this.dot(context, x, y, 3, playerColor(player))
+    }
     if (!local) return
     const [px, py] = at(local.x, local.z)
     // View cone (camera looks along −yaw) and the rabbit's heading arrow.
@@ -123,9 +149,10 @@ export class Minimap {
     context.save()
     context.translate(px, py)
     context.rotate(-local.angle + Math.PI)
-    context.fillStyle = '#ffd84a'
-    context.strokeStyle = '#3a2a10'
-    context.lineWidth = 1.2
+    // Your own marker stays the arrow, filled with your collar colour.
+    context.fillStyle = playerColor(local)
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 1.5
     context.beginPath()
     context.moveTo(0, -6)
     context.lineTo(4.5, 5)

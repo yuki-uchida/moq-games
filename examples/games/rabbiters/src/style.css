@@ -110,6 +110,10 @@ input:focus-visible {
   letter-spacing: -1.2px;
   text-shadow: 0 2px 15px #17352d;
 }
+.wordmark span {
+  word-break: keep-all;
+  line-height: 1.15;
+}
 .wordmark small {
   display: block;
   font-size: 8px;
@@ -156,6 +160,11 @@ input:focus-visible {
   border-radius: 50%;
   background: #b2db95;
   box-shadow: 0 0 10px #a5dc9a;
+}
+#player-color {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #fffaf0;
 }
 .icon-button,
 .close {
@@ -809,4 +818,58 @@ input:focus-visible {
 /* Immediate press feedback; `scale` composes with any transform. */
 button:active:not(:disabled) {
   scale: 0.96;
+}
+.chapter-banner {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  pointer-events: none;
+  text-align: center;
+  text-shadow: 0 2px 14px #0b201acc;
+  opacity: 0;
+}
+.chapter-banner.show {
+  animation: chapter-banner 5s ease forwards;
+}
+.chapter-season {
+  font-size: 54px;
+  line-height: 1;
+  font-weight: 700;
+}
+.chapter-banner p {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+}
+.chapter-banner h2 {
+  margin: 0;
+  font-size: 22px;
+}
+@keyframes chapter-banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  12%,
+  75% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chapter-banner.show {
+    animation-duration: 0.01s;
+    animation-delay: 4s;
+    opacity: 1;
+  }
+}
+.result-dialog .button + .button {
+  margin-top: 10px;
 }

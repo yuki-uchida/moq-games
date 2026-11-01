@@ -1,9 +1,7 @@
 export const TYPES = [
   {
-    name: '葉の衛兵',
-    icon: '🛡',
+    name: 'カチカチうんこ',
     role: 'soldier',
-    file: 'leaf-squire',
     cost: 35,
     hp: 180,
     damage: 22,
@@ -13,10 +11,8 @@ export const TYPES = [
     cooldown: 2.5
   },
   {
-    name: '森の射手',
-    icon: '🏹',
+    name: 'コロコロうんこ',
     role: 'archer',
-    file: 'forest-archer',
     cost: 65,
     hp: 85,
     damage: 29,
@@ -26,10 +22,8 @@ export const TYPES = [
     cooldown: 4
   },
   {
-    name: '黄昏の狼',
-    icon: '🐾',
+    name: 'ゲリラうんこ',
     role: 'wolf',
-    file: 'dusk-wolf',
     cost: 95,
     hp: 240,
     damage: 35,
@@ -41,8 +35,8 @@ export const TYPES = [
 ]
 export const STAGES = [
   {
-    name: '芽吹きの道',
-    hint: '短い初戦 · 衛兵で守り射手で突破',
+    name: '公園のトイレ',
+    hint: '短い初戦 · カチカチで守りコロコロで突破',
     enemy: 1000,
     gold: 100,
     income: 9,
@@ -51,11 +45,11 @@ export const STAGES = [
     reward: 10,
     power: 0.85,
     pattern: [0, 0, 1, 0],
-    color: '#97bdbb'
+    color: '#9fd3d8'
   },
   {
-    name: '弓影の峠',
-    hint: '射手の防衛線 · 狼で距離を詰めよう',
+    name: '駅ナカトイレ',
+    hint: '泡の射手の防衛線 · ゲリラうんこで距離を詰めよう',
     enemy: 1700,
     gold: 100,
     income: 9,
@@ -64,11 +58,11 @@ export const STAGES = [
     reward: 14,
     power: 1,
     pattern: [0, 1, 1, 0, 2],
-    color: '#acb8cd'
+    color: '#c4bde6'
   },
   {
-    name: '黄昏の奔流',
-    hint: '狼の急襲 · 複合編成と生産強化、砦の衝撃が鍵',
+    name: '黄金の便器城',
+    hint: '泡の急襲 · 複合編成と腸活、大放屁が鍵',
     enemy: 2600,
     gold: 100,
     income: 9,
@@ -77,7 +71,7 @@ export const STAGES = [
     reward: 20,
     power: 1.05,
     pattern: [2, 0, 1, 2, 1],
-    color: '#c6a8b0'
+    color: '#e8cf86'
   }
 ]
 export const income = (s) => STAGES[s.stage].income + s.level * 4
@@ -135,9 +129,10 @@ export function upgrade(s) {
   s.level++
   return true
 }
+export const BURST_COOLDOWN = 24
 export function burst(s) {
   if (s.result || s.burst > 0) return false
-  s.burst = 24
+  s.burst = BURST_COOLDOWN
   for (const u of s.units)
     if (u.side === -1 && u.x < 490) {
       u.hp -= 115

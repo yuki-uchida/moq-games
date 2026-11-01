@@ -277,6 +277,8 @@ describe('dropping trails', () => {
     game.addPlayer('rabbit', 'Rabbit')
     game.state.predators = []
     const rabbit = game.state.players[0]
+    // Outside the den: rabbits leave no droppings at home.
+    Object.assign(rabbit, { x: 0, z: -20 })
     const internal = game as unknown as { scents: Map<string, Scent> }
     const times: number[] = []
     ticks(game, 60, () => {

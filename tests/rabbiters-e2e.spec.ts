@@ -409,7 +409,7 @@ window.rabbitersObserve = () => {
   expect(new Set(grounded.map((frame) => frame.legs[0])).size).toBeGreaterThan(1)
 })
 
-test('solo: collects food, becomes pregnant and survives to birth', async ({ page }) => {
+test('solo: grows, carries bedding, gives birth and leads the kits through four seasons', async ({ page }) => {
   test.setTimeout(75_000)
   await page.route('**/src/main.ts*', async (route) => {
     const response = await route.fetch()
@@ -418,6 +418,12 @@ test('solo: collects food, becomes pregnant and survives to birth', async ({ pag
       response,
       body: `${source}
 window.rabbitersTestState = () => JSON.parse(JSON.stringify(game?.state ?? null));
+import { heightAt as testHeight } from '/src/map.ts';
+window.rabbitersTestPlace = (x, z, patch = {}) => Object.assign(game.state.players[0], { x, z, y: testHeight(x, z) }, patch);
+window.rabbitersTestPatch = (patch) => Object.assign(game.state, patch);
+window.rabbitersTestKitsTo = (x, z) => game.state.kits.forEach((kit) => Object.assign(kit, { x, z, y: testHeight(x, z) }));
+window.rabbitersTestActors = () => [...scene.actors.keys()];
+window.rabbitersTestPile = () => scene.beddingPile.children.filter((bundle) => bundle.visible).length;
 window.rabbitersTestAccelerate = () => {
   const step = game.step.bind(game);
   game.step = (dt) => {
@@ -432,49 +438,59 @@ window.rabbitersTestAccelerate = () => {
     let time = performance.now()
     window.requestAnimationFrame = (callback) => requestFrame(() => callback((time += 100)))
   })
+  type State = {
+    phase: string
+    chapter: number
+    bedding: number
+    time: number
+    players: { x: number; z: number; foodEaten: number; hunger: number; carrying: string | null }[]
+    foods: { x: number; y: number; z: number; active: boolean }[]
+    straws: { id: string; x: number; z: number; active: boolean }[]
+    kits: { status: string }[]
+    predators: { x: number; z: number }[]
+  }
+  type Hooks = {
+    rabbitersTestState: () => State
+    rabbitersTestPlace: (x: number, z: number, patch?: object) => void
+    rabbitersTestPatch: (patch: object) => void
+    rabbitersTestKitsTo: (x: number, z: number) => void
+    rabbitersTestActors: () => string[]
+    rabbitersTestPile: () => number
+    rabbitersTestAccelerate: () => void
+    rabbitersFastForward: boolean
+  }
+  const state = () => page.evaluate(() => (window as unknown as Hooks).rabbitersTestState())
   await page.goto('/')
   await page.locator('#solo').click()
+  await expect(page.locator('#objective-title')).toContainText('春｜')
+  await expect(page.locator('#chapter-banner')).toBeVisible()
+  // Spring: a keyboard-driven bot eats nearby food, then rests in the burrow while growing fast-forwards.
   await page.evaluate(() => {
-    type State = {
-      phase: string
-      players: { x: number; z: number; foodEaten: number; hunger: number }[]
-      foods: { x: number; y: number; z: number; active: boolean }[]
-      predators: { x: number; z: number }[]
-    }
-    const testWindow = window as unknown as {
-      rabbitersTestState: () => State
-      rabbitersTestAccelerate: () => void
-      rabbitersFastForward: boolean
-    }
-    const read = testWindow.rabbitersTestState
-    testWindow.rabbitersTestAccelerate()
+    const hooks = window as unknown as Hooks
+    hooks.rabbitersTestAccelerate()
     const pressed = new Set<string>()
     const tick = () => {
-      const state = read()
-      if (!state || state.phase !== 'playing') return
+      const state = hooks.rabbitersTestState()
+      if (!state || state.chapter > 0) {
+        hooks.rabbitersFastForward = false
+        for (const key of pressed) window.dispatchEvent(new KeyboardEvent('keyup', { code: key }))
+        return
+      }
       const player = state.players[0]
       const foods = state.foods.filter((food) => food.active && food.y === 0 && Math.hypot(food.x + 118, food.z) < 18)
       const distance = (point: { x: number; z: number }) => Math.hypot(point.x - player.x, point.z - player.z)
       const target =
-        (player.foodEaten < 6 || (player.foodEaten === 6 ? player.hunger < 60 : player.hunger < 40)) && foods.length
+        player.foodEaten < 6 && foods.length
           ? foods.sort((first, second) => distance(first) - distance(second))[0]
           : { x: -118, z: 0 }
       const dx = target.x - player.x
       const dz = target.z - player.z
-      const threatened = state.predators.some(
-        (predator) => Math.hypot(predator.x - player.x, predator.z - player.z) < 5
-      )
-      const inGrass = [
-        [-114, -7],
-        [-105, -12]
-      ].some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 3.1)
       const desired = new Set([
         ...(dx > 0.6 ? ['KeyD'] : dx < -0.6 ? ['KeyA'] : []),
         ...(dz > 0.6 ? ['KeyS'] : dz < -0.6 ? ['KeyW'] : []),
-        ...(distance(target) > 5 ? ['ShiftLeft'] : []),
-        ...(threatened && inGrass ? ['KeyC'] : [])
+        ...(distance(target) > 5 ? ['ShiftLeft'] : [])
       ])
-      testWindow.rabbitersFastForward = target.x === -118 && Math.abs(dx) < 0.6 && Math.abs(dz) < 0.6
+      hooks.rabbitersFastForward = target.x === -118 && Math.abs(dx) < 0.6 && Math.abs(dz) < 0.6
       for (const key of new Set([...pressed, ...desired])) {
         if (pressed.has(key) !== desired.has(key))
           window.dispatchEvent(new KeyboardEvent(desired.has(key) ? 'keydown' : 'keyup', { code: key }))
@@ -485,15 +501,52 @@ window.rabbitersTestAccelerate = () => {
     }
     requestAnimationFrame(tick)
   })
-  await expect(page.locator('#result')).toBeVisible({ timeout: 60_000 })
-  await expect(page.locator('#result-title')).toHaveText('新しい命が生まれました')
-  const finalState = await page.evaluate(() =>
-    (
-      window as unknown as { rabbitersTestState: () => { time: number; players: { foodEaten: number }[] } }
-    ).rabbitersTestState()
+  // Summer: bedding is picked up on contact and counted when brought home.
+  await expect(page.locator('#objective-title')).toContainText('夏｜', { timeout: 45_000 })
+  await expect(page.locator('#chapter-season')).toHaveText('夏')
+  expect((await state()).players[0].foodEaten).toBeGreaterThanOrEqual(6)
+  // The scripted part runs without predators: a hit would (correctly) knock the bundle loose.
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPatch({ predators: [] }))
+  const straw = (await state()).straws[0]
+  await page.evaluate(
+    ([x, z]) => (window as unknown as Hooks).rabbitersTestPlace(x, z, { hunger: 100 }),
+    [straw.x, straw.z]
   )
-  expect(finalState.players[0].foodEaten).toBeGreaterThan(6)
-  expect(finalState.time).toBeGreaterThanOrEqual(899)
+  await expect(page.locator('#hint')).toContainText('巣材を巣穴へ')
+  expect((await state()).players[0].carrying).toBe(straw.id)
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-118, 0))
+  await expect(page.locator('#objective-progress')).toHaveText('巣材 1 / 6')
+  expect(await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPile())).toBe(1)
+  // Losing mid-campaign offers a retry from the start of the current season.
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-122, -16, { health: 0.01, hunger: 0 }))
+  await expect(page.locator('#retry-season')).toHaveText('夏からやり直す')
+  await page.locator('#retry-season').click()
+  await expect(page.locator('#result')).toBeHidden()
+  await expect(page.locator('#objective-title')).toContainText('夏｜')
+  expect((await state()).players[0].health).toBe(100)
+  // Autumn: finishing the bedding lets a fed adult conceive; birth starts winter with kits on the field.
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPatch({ bedding: 6, chapter: 2 }))
+  await expect(page.locator('#chapter-season')).toHaveText('秋')
+  await expect(page.locator('#objective-progress')).toContainText('出産まで')
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-118, 0, { pregnancy: 0.9999 }))
+  await expect(page.locator('#chapter-season')).toHaveText('冬')
+  await expect(page.locator('#objective-progress')).toHaveText('到着 0 / 3羽')
+  expect(
+    (await page.evaluate(() => (window as unknown as Hooks).rabbitersTestActors())).filter((key) =>
+      key.startsWith('kit:')
+    )
+  ).toHaveLength(3)
+  // Winter: kits that reach the haven win the campaign.
+  await page.evaluate(() => {
+    const hooks = window as unknown as Hooks
+    // The Big Oak hollow across the stream.
+    hooks.rabbitersTestPlace(0, -8)
+    hooks.rabbitersTestKitsTo(1, -8)
+  })
+  await expect(page.locator('#result')).toBeVisible()
+  await expect(page.locator('#result-title')).toHaveText('新しい命が生まれました')
+  await expect(page.locator('#result-text')).toContainText('3羽の子ウサギ')
+  expect((await state()).kits.every((kit) => kit.status === 'safe')).toBe(true)
 })
 
 test('a finished game shows its result even without a local player', async ({ page }) => {
@@ -712,7 +765,8 @@ window.rabbitersStealth = {
   const run = <T>(expression: string) => page.evaluate<T>(`window.rabbitersStealth.${expression}`)
   const read = (id = 'fox') => run<Reading>(`read(${JSON.stringify(id)})`)
 
-  // Real droppings appear from the simulation itself.
+  // Real droppings appear from the simulation itself (outside the den, which rabbits keep clean).
+  await run(`stage(${JSON.stringify([{ id: 'predator-0', kind: 'fox', x: 40, z: -30 }])})`)
   await run('advance(13)')
   expect((await read('predator-0'))?.droppings ?? 0).toBeGreaterThan(0)
 
@@ -876,6 +930,12 @@ window.rabbitersTour = {
   expect(tunnel.camera.y).toBeLessThan(tunnel.camera.ground - 0.4)
   expect(tunnel.area).toBe('モグラのトンネル')
   expect(tunnel.condition).toContain('モグラのトンネル')
+  expect(Math.hypot(tunnel.camera.x - tunnel.x, tunnel.camera.z - tunnel.z)).toBeGreaterThan(1.5)
+  // Looking across the narrow corridor must not fold the camera into the rabbit or the tunnel wall.
+  await tour((t, ...[look]) => t.look(look), Math.atan2(entry.x - junction.x, entry.z - junction.z) + Math.PI / 2)
+  await settle()
+  const across = await tour((t) => t.info())
+  expect(Math.hypot(across.camera.x - across.x, across.camera.z - across.z)).toBeGreaterThan(1.5)
 
   // Crawl in under a fallen log from its cut end while a wolf prowls nearby.
   const log = LOGS[0]
@@ -906,4 +966,56 @@ window.rabbitersTour = {
   await visit(12, 50, Math.PI)
   await shoot('11-fallen-log-forest')
   expect(errors).toEqual([])
+})
+
+test('teammates wear distinct collar colours in the scene, HUD and minimap', async ({ page }, testInfo) => {
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    await route.fulfill({
+      response,
+      body: `${source}
+window.rabbitersAddTeammates = (count) => {
+  game.state.predators = [];
+  const local = game.state.players[0];
+  for (let index = 0; index < count; index++) {
+    game.addPlayer('mate' + index, '仲間 ' + index);
+    const mate = game.state.players.at(-1);
+    const side = index % 2 ? 1 : -1;
+    Object.assign(mate, { x: local.x + side * (1.4 + Math.floor(index / 2) * 1.4), z: local.z + 0.4, hidden: false });
+  }
+  game.step = () => {};
+  return game.state.players.map((player) => player.color);
+};
+window.rabbitersTurnTeam = () => game.state.players.forEach((player) => { player.angle = Math.PI; });
+window.rabbitersSpreadTeammates = () => game.state.players.slice(1).forEach((mate, index) => { mate.z += 30 + 8 * index; });`
+    })
+  })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#player-color')).toHaveCSS('background-color', 'rgb(232, 69, 90)')
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: testInfo.outputPath('solo-collar.png') })
+  const colors = await page.evaluate(() =>
+    (window as unknown as { rabbitersAddTeammates: (count: number) => number[] }).rabbitersAddTeammates(4)
+  )
+  expect(colors).toEqual([0, 1, 2, 3, 4])
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: testInfo.outputPath('team-collars.png') })
+  await page.evaluate(() => (window as unknown as { rabbitersTurnTeam: () => void }).rabbitersTurnTeam())
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: testInfo.outputPath('team-collars-back.png') })
+  await page.evaluate(() => (window as unknown as { rabbitersSpreadTeammates: () => void }).rabbitersSpreadTeammates())
+  await page.waitForTimeout(300)
+  // Each teammate's minimap dot is painted in its own collar colour.
+  const dots = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('#minimap')!
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    const found = new Set<string>()
+    for (let index = 0; index < data.length; index += 4)
+      found.add(`${data[index]},${data[index + 1]},${data[index + 2]}`)
+    return ['47,127,224', '242,180,23', '138,79,216', '23,179,163'].filter((rgb) => found.has(rgb))
+  })
+  expect(dots).toHaveLength(4)
 })

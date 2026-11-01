@@ -22,6 +22,7 @@ import {
   grant,
   healExp,
   mvp,
+  lost,
   rollGrowth,
   seeded
 } from '../src/game'
@@ -261,5 +262,43 @@ describe('Ember Grid growth', () => {
     g.units[2].kills = 2
     g.units[2].dealt = 9
     expect(mvp(g).id).toBe('c')
+  })
+  it('a victory makes fallen allies leave the expedition; the mission record undoes losses on defeat or replay', () => {
+    const g = createGame(0, 'guard')
+    g.units[2].hp = 0
+    g.units[2].kills = 5
+    g.units.filter((u) => u.side === 'enemy').forEach((u) => (u.hp = 0))
+    const roster = carry(g)
+    expect(Object.keys(roster)).toEqual(['a', 'b'])
+    // A fallen ally is not the MVP even with the most defeats.
+    expect(mvp(g).id).not.toBe('c')
+    expect(lost(roster).map((u) => u.id)).toEqual(['c'])
+    expect(lost(undefined)).toEqual([])
+    const next = createGame(1, 'guard', roster)
+    expect(next.units.filter((u) => u.side === 'ally').map((u) => u.id)).toEqual(['a', 'b'])
+    expect(next.units.filter((u) => u.side === 'enemy')).toHaveLength(4)
+    // Losing (or replaying) restarts from the same record, so a loss inside the attempt is undone.
+    next.units[1].hp = 0
+    expect(createGame(1, 'guard', roster).units.filter((u) => u.side === 'ally')).toHaveLength(2)
+  })
+  it('a lone survivor can start and act in the next mission', () => {
+    const g = createGame(0)
+    g.units[1].hp = g.units[2].hp = 0
+    const next = createGame(1, 'balanced', carry(g)),
+      [solo] = next.units.filter((u) => u.side === 'ally')
+    expect(solo.id).toBe('a')
+    expect(next.phase).toBe('ally')
+    expect(reachable(next, solo).size).toBeGreaterThan(1)
+    solo.done = true
+    expect(allyTurnOver(next)).toBe(true)
+  })
+  it('logs a farewell when an enemy fells an ally', () => {
+    const g = createGame(0),
+      ally = g.units[2],
+      wolf = g.units[3]
+    beginEnemy(g)
+    Object.assign(ally, { x: 4, y: 2, hp: 1 })
+    attack(g, wolf, ally)
+    expect(g.log).toContain('星織ミナは倒れた…')
   })
 })

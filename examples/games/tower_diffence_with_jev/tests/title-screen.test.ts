@@ -9,7 +9,7 @@ import { freshProfile, freshRunFromProfile } from '../src/progression/UpgradeSys
 describe('title screen', () => {
   it('has the exact menu and preserves project-relative routes', () => {
     const html = titleScreenMarkup(new URL('https://example.test/moq-games/tower-defense-art/'))
-    expect(html).toContain('smart defence<br><span>with jev</span>')
+    expect(html).toContain('キャッスル<br><span>ナイツ</span>')
     for (const text of ['New game', 'Continue']) expect(html).toContain(`>${text}</span>`)
     expect(html).not.toContain('extra.html')
     expect(html).not.toContain('EXTRA')

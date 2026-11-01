@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#142d27" />
     <meta name="description" content="小さなウサギたちの、命をつなぐ協力サバイバル。" />
-    <title>Rabbiters — 小さな命のものがたり</title>
+    <title>ウサギ・イヤ・ラビット — 小さな命のものがたり</title>
   </head>
   <body>
     <main id="app">
-      <div id="world" aria-label="Rabbitersの3Dフィールド"></div>
+      <div id="world" aria-label="ウサギ・イヤ・ラビットの3Dフィールド"></div>
       <div class="scene-shade" aria-hidden="true"></div>
       <div id="alert-overlay" class="alert-overlay" aria-hidden="true"></div>
 
@@ -22,7 +22,7 @@
             <circle cx="29" cy="29" r="1.5" />
             <path d="m22 34 2 2 2-2" />
           </svg>
-          <span>Rabbiters<small>THE LITTLE WILD</small></span>
+          <span>ウサギ・イヤ・ラビット<small>THE LITTLE WILD</small></span>
         </a>
         <div class="top-actions">
           <div id="connection" class="connection"><i></i><span>ひとりでプレイ</span></div>
@@ -54,7 +54,7 @@
 
       <section id="hud" class="hud" aria-label="プレイヤーの状態" hidden>
         <div class="hud-card vitals">
-          <div class="eyebrow"><span class="status-dot"></span> YOUR RABBIT <span id="player-name"></span></div>
+          <div class="eyebrow"><span id="player-color" class="status-dot" title="あなたの首輪の色"></span> YOUR RABBIT <span id="player-name"></span></div>
           <div class="meter-row">
             <span class="meter-icon heart" aria-hidden="true">♥</span><span>体力</span>
             <div class="meter"><i id="health-bar"></i></div>
@@ -86,6 +86,11 @@
           </figcaption>
         </figure>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
+        <div id="chapter-banner" class="chapter-banner" aria-hidden="true" hidden>
+          <span id="chapter-season" class="chapter-season">春</span>
+          <p id="chapter-title">CHAPTER 1 · 芽吹き</p>
+          <h2 id="chapter-goal">食べて、大きくなろう</h2>
+        </div>
         <div id="touch-controls" class="touch-controls">
           <div id="joystick" class="joystick" aria-label="移動スティック"><div id="joystick-knob"></div></div>
           <div class="touch-buttons">
@@ -107,8 +112,8 @@
           <div class="story-rule">
             <span class="rule-icon">✦</span>
             <p>
-              ごはんを食べて成長し、<strong>新しい命が生まれたらクリア。</strong
-              ><br />妊娠中は足が遅くなるので、みんなで守ろう。
+              春に育ち、夏に巣をつくり、秋に命を宿し、<br /><strong>冬に子ウサギを新しい野原へ導いたらクリア。</strong
+              ><br />四つの季節をめぐる、約30分のものがたり。
             </p>
           </div>
           <button id="solo" class="button button-primary" type="button"><span>ひとりではじめる</span><b>↗</b></button>
@@ -180,6 +185,27 @@
             <p>
               <b>05</b
               ><span
+                ><strong>巣をととのえる。</strong
+                >大人になると、野原の巣材を拾えます。巣穴まで運ぶと出産の準備が進みます。くわえている間はダッシュできず、見つかりやすく、攻撃されると落とします。</span
+              >
+            </p>
+            <p>
+              <b>05</b
+              ><span
+                ><strong>子ウサギを導く。</strong
+                >生まれた子ウサギは近くのウサギについてきますが、歩くより遅い。しゃがむと草むらで一緒に隠れます。川の向こう、北東の花畑まで連れていこう。</span
+              >
+            </p>
+            <p>
+              <b>06</b
+              ><span
+                ><strong>昼と夜。</strong
+                >夜はタカが眠るかわりに、キツネやオオカミが遠くまで見通します。巣穴には敵が入ってこられず、休むと体力が回復します。</span
+              >
+            </p>
+            <p>
+              <b>07</b
+              ><span
                 ><strong>仲間と助け合う。</strong>卵や巣を壊して敵の復活を抑えたり、囮になって仲間を逃がそう。</span
               >
             </p>
@@ -198,7 +224,8 @@
           <div class="result-symbol">✿</div>
           <h2 id="result-title"></h2>
           <p id="result-text"></p>
-          <button id="restart" class="button button-primary" type="button">もう一度あそぶ</button>
+          <button id="retry-season" class="button button-primary" type="button" hidden>この季節からやり直す</button>
+          <button id="restart" class="button button-outline" type="button">もう一度あそぶ</button>
         </div>
       </section>
       <div id="announcements" class="sr-only" aria-live="polite"></div>
