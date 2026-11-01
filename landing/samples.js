@@ -29,5 +29,15 @@ export const samples = [
     category: 'STRATEGY',
     tags: ['拠点攻防', 'ブラウザでプレイ'],
     art: 'lane-battle'
+  },
+  {
+    id: 'rabbiters',
+    title: 'Rabbiters',
+    subtitle: 'COOPERATIVE SURVIVAL',
+    description: 'ウサギになり、食べて隠れて仲間と生きのびる協力サバイバル。',
+    href: './examples/games/rabbiters/index.html',
+    category: 'ACTION',
+    tags: ['アクション', '協力プレイ'],
+    art: 'rabbiters'
   }
 ]

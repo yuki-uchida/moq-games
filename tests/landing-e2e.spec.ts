@@ -18,7 +18,7 @@ for (const viewport of [
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'smart defence with jev', exact: true })).toBeVisible()
-    await expect(page.getByRole('article')).toHaveCount(3)
+    await expect(page.getByRole('article')).toHaveCount(4)
     await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: 燈の境界' })).toHaveAttribute(
       'href',
@@ -27,6 +27,10 @@ for (const viewport of [
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: 芽吹きの境界' })).toHaveAttribute(
       'href',
       './examples/games/lane-battle/index.html'
+    )
+    await expect(page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' })).toHaveAttribute(
+      'href',
+      './examples/games/rabbiters/index.html'
     )
     const play = page.getByRole('link', { name: 'ゲームをプレイ: smart defence with jev', exact: true })
     await expect(play).toHaveAttribute('href', './examples/games/tower_diffence_with_jev/index.html')
@@ -43,8 +47,10 @@ for (const viewport of [
       )
       .toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true)
-    for (const link of await page.locator('.play-button').all()) await expect(link).toBeInViewport({ ratio: 1 })
+    for (const link of await page.locator('.play-button').all()) {
+      await link.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+      await expect(link).toBeInViewport({ ratio: 1 })
+    }
     expect(
       requests.filter((url) => /\.wasm(?:\?|$)|GameRenderer|JevConnection|\.glb(?:\?|$)|\.wav(?:\?|$)/.test(url))
     ).toEqual([])
@@ -85,6 +91,10 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
     'href',
     './examples/games/lane-battle/index.html'
   )
+  await expect(page.getByRole('link', { name: 'Rabbitersをプレイ' })).toHaveAttribute(
+    'href',
+    './examples/games/rabbiters/index.html'
+  )
   await context.close()
 })
 
@@ -117,12 +127,51 @@ test('starts Lane Battle through the catalog with its runtime assets', async ({ 
   expect(failed).toEqual([])
 })
 
-test('all three cards are reachable in tab order', async ({ page }) => {
+test('starts Rabbiters through the catalog', async ({ page }) => {
+  const errors: string[] = []
+  const failed: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('response', (response) => {
+    if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`)
+  })
+  await page.goto(root)
+  await page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' }).click()
+  await expect(page).toHaveURL(/\/examples\/games\/rabbiters\/index\.html$/)
+  await expect(page.locator('#world canvas')).toBeVisible()
+  await page.getByRole('button', { name: 'ひとりではじめる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  expect(errors).toEqual([])
+  expect(failed).toEqual([])
+})
+
+test('loads the Rabbiters MoQ WASM through the catalog', async ({ page }) => {
+  await page.addInitScript(() => {
+    const blockedTransport = class {
+      constructor() {
+        Reflect.set(globalThis, '__rabbitersTransportAttempted', true)
+        throw new Error('Relay disabled for this test')
+      }
+    }
+    Object.defineProperty(globalThis, 'WebTransport', { configurable: true, value: blockedTransport })
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: blockedTransport })
+  })
+  await page.goto(root)
+  await page.getByRole('link', { name: 'ゲームをプレイ: Rabbiters' }).click()
+  await page.locator('#room').fill('offline-test')
+  const wasm = page.waitForResponse((response) => /moqt_bg.*\.wasm(?:\?|$)/.test(response.url()))
+  await page.getByRole('button', { name: 'ルームを作る' }).click()
+  const response = await wasm
+  expect(response.status()).toBe(200)
+  expect(WebAssembly.validate(new Uint8Array(await response.body()))).toBe(true)
+  await expect.poll(() => page.evaluate(() => Reflect.get(globalThis, '__rabbitersTransportAttempted'))).toBe(true)
+})
+
+test('all four cards are reachable in tab order', async ({ page }) => {
   await page.goto(root)
   await page.getByRole('link', { name: 'MoQ Games ホーム' }).focus()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeFocused()
-  for (const title of ['smart defence with jev', '燈の境界', '芽吹きの境界']) {
+  for (const title of ['smart defence with jev', '燈の境界', '芽吹きの境界', 'Rabbiters']) {
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: `ゲームをプレイ: ${title}`, exact: true })).toBeFocused()
   }

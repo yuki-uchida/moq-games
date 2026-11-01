@@ -4,7 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 import { samples } from '../landing/samples.js'
 
 test('catalog exposes only real, unique, playable samples with local entrypoints', async () => {
-  assert.equal(samples.length, 3)
+  assert.equal(samples.length, 4)
   assert.equal(samples[0].title, 'smart defence with jev')
   assert.equal(new Set(samples.map((sample) => sample.id)).size, samples.length)
   assert.equal(new Set(samples.map((sample) => sample.href)).size, samples.length)
@@ -23,7 +23,7 @@ test('home is no longer a redirect and preserves a non-JavaScript play link', as
   assert.match(html, /class="skip-link"/)
 })
 
-test('landing uses existing roster artwork and has no runtime game/audio imports', async () => {
+test('landing uses static artwork and has no runtime game/audio imports', async () => {
   const js = await readFile(new URL('../landing/main.js', import.meta.url), 'utf8')
   assert.doesNotMatch(js, /from ['"](?:three|.*GameRenderer|.*SoundPlayer|@moq-games)/)
   assert.doesNotMatch(js, /requestAnimationFrame|setInterval|\.play\(/)
