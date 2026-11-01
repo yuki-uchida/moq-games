@@ -24,6 +24,7 @@ import { chapterReport, clearProgress, presentProgress } from './progress'
 import './style.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
+import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
@@ -215,7 +216,7 @@ async function end() {
   const token = generation
   render()
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
-    await pause(450)
+    await pause(280)
     if (token !== generation) return
     const before = snapshot(game)
     enemyStep(game, u)
@@ -228,6 +229,7 @@ async function end() {
   }
   beginAlly(game)
   render()
+  playSharedUiSound('turn', uiVolume())
 }
 document.querySelector('#end')!.addEventListener('click', () => void end())
 document.querySelector('#wait')!.addEventListener('click', () => {
@@ -312,6 +314,12 @@ const dialog = document.querySelector('dialog')!
 document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())
 document.querySelector('#close')!.addEventListener('click', () => dialog.close())
 render()
+
+// Light synthesized UI feedback that follows the ♫ toggle.
+const uiVolume = () => (audio.enabled && !document.hidden ? 1 : 0)
+cells.forEach((cell) => (cell.dataset.sfx = 'select'))
+bindUiSounds(app, (kind) => playSharedUiSound(kind, uiVolume()), 'button:not(.cell)')
+warmUpAudio()
 
 // Keep the complete field visible; only battle actions wait for decoded assets.
 const preparation = document.createElement('div')
