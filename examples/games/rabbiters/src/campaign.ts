@@ -2,7 +2,7 @@
 // home burrow (summer), carry and give birth (autumn), then lead the kits across the stream to the
 // Big Oak hollow (winter). A day/night cycle changes how far predators can see.
 import { heightAt } from './map'
-import { MAX_PREDATORS, SHELTERS, SPAWN } from './stages/forest/map'
+import { MAX_PREDATORS, SHELTERS } from './stages/forest/map'
 
 export interface Straw {
   id: string
@@ -41,13 +41,16 @@ export const CAMPAIGN = {
   kitFollowRange: 7,
   /** Hunters the nests can field per season: the wild grows more dangerous as the year turns. */
   predatorCap: [0.7, 0.8, 0.9, 1].map((share) => Math.round(MAX_PREDATORS * share)),
-  /** Hunters reaching this close to the home burrow give up the hunt and turn back. */
-  denRadius: 6,
+  /** Hunters reaching this close to the burrow mound give up the hunt and turn back. */
+  denRadius: 3.5,
+  /** Bedding counts as delivered within this distance of the burrow mound (its mouth). */
+  deliverRadius: 3,
   dayLength: 300,
   nightStart: 200
 } as const
 
-export const BURROW: Point = { x: SPAWN.x, z: SPAWN.z }
+/** The home burrow: inside the earth mound north of the spawn. */
+export const BURROW: Point = { x: SHELTERS[0].x, z: SHELTERS[0].z }
 /** Winter destination: the hollow under the Big Oak, beyond the stream. Predators cannot enter shelters. */
 export const HAVEN = { x: SHELTERS[1].x, z: SHELTERS[1].z, radius: 4 } as const
 

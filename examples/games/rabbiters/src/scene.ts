@@ -19,6 +19,7 @@ import {
   vehiclesAt
 } from './map'
 import { buildFood, isFoodKind, type FoodKind } from './food'
+import { SEE_THROUGH } from './see-through'
 import { STEALTH, flies } from './stealth'
 import { playerColor } from './game'
 import { BURROW, CAMPAIGN, HAVEN } from './campaign'
@@ -190,8 +191,8 @@ export class RabbitersScene {
       flower.scale.set(0.16, 0.1, 0.16)
       this.haven.add(flower)
     }
-    // Bedding pile at the burrow mouth grows with each delivered bundle.
-    this.beddingPile.position.set(BURROW.x, heightAt(BURROW.x, BURROW.z - 1.2), BURROW.z - 1.2)
+    // Bedding pile beside the burrow mouth (the mound opens to the south) grows with each delivered bundle.
+    this.beddingPile.position.set(BURROW.x + 1.8, heightAt(BURROW.x + 1.8, BURROW.z + 2.6), BURROW.z + 2.6)
     this.scene.add(this.beddingPile)
     for (let index = 0; index < CAMPAIGN.beddingGoal; index++) {
       const bundle = this.straw(this.beddingPile)
@@ -1019,7 +1020,7 @@ export class RabbitersScene {
     let reach = pivot.clone()
     for (const swing of underground ? [0, Math.PI] : [0, 0.5, -0.5, 1, -1]) {
       const swung = desired.clone().sub(pivot).applyAxisAngle(UP, swing).add(pivot)
-      const candidate = this.boom(pivot, swung, underground, cave, underLog)
+      const candidate = this.boom(pivot, swung, underground, cave)
       if (candidate.distanceTo(pivot) > reach.distanceTo(pivot)) reach = candidate
       if (reach.distanceTo(pivot) >= full * 0.7) break
     }
@@ -1048,6 +1049,9 @@ export class RabbitersScene {
       underLog,
       under: roof && local && local.y - heightAt(local.x, local.z) < roof.bottom ? roof : undefined
     })
+    // Cut a see-through cone from the camera to the rabbit (not in tunnels and caves, which frame it themselves).
+    SEE_THROUGH.radius.value = local && !underground && !cave ? 1.5 : 0
+    SEE_THROUGH.focus.value = { x: this.target.x, y: this.target.y + 0.7, z: this.target.z }
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -1056,8 +1060,7 @@ export class RabbitersScene {
     focus: THREE.Vector3,
     desired: THREE.Vector3,
     underground: boolean,
-    cave: (typeof CAVES)[number] | undefined,
-    underLog: boolean
+    cave: (typeof CAVES)[number] | undefined
   ) {
     const step = desired.clone().sub(focus)
     const steps = Math.ceil(step.length() / 0.2)
@@ -1065,26 +1068,27 @@ export class RabbitersScene {
     const reach = focus.clone()
     for (let index = 1; index <= steps; index++) {
       probe.copy(focus).addScaledVector(step, index / steps)
-      if (this.blocksCamera(probe, underground, cave, underLog)) break
+      if (this.blocksCamera(probe, underground, cave)) break
       reach.copy(probe)
     }
     return reach
   }
 
-  private blocksCamera(
-    point: THREE.Vector3,
-    underground: boolean,
-    cave: (typeof CAVES)[number] | undefined,
-    underLog: boolean
-  ) {
+  private blocksCamera(point: THREE.Vector3, underground: boolean, cave: (typeof CAVES)[number] | undefined) {
     if (underground) {
       const inside = clampToTunnel(point.x, point.z, 0.35)
       const floor = heightAt(point.x, point.z) - TUNNEL_DEPTH
       return inside.x !== point.x || inside.z !== point.z || point.y < floor + 0.25 || point.y > floor + 1.45
     }
     if (point.y < heightAt(point.x, point.z) + 0.35) return true
+    // Trees don't push the camera around (they turn see-through instead); big rocks still do.
     for (const blocker of blockersNear(point.x, point.z))
-      if (point.y < blocker.top && Math.hypot(point.x - blocker.x, point.z - blocker.z) < blocker.r + 0.3) return true
+      if (
+        blocker.kind === 'rock' &&
+        point.y < blocker.top &&
+        Math.hypot(point.x - blocker.x, point.z - blocker.z) < blocker.r + 0.3
+      )
+        return true
     if (cave)
       return Math.hypot(point.x - cave.x, point.z - cave.z) > cave.r - 1 || point.y > cave.floor + cave.roof - 0.8
     for (const dome of CAVES)
@@ -1093,8 +1097,8 @@ export class RabbitersScene {
         point.y < dome.floor + dome.roof + 0.5
       )
         return true
-    const log = underLog ? undefined : logOver(point.x, point.z, 0.25)
-    return !!log && point.y > log.bottom - 0.2 && point.y < logTop(log) + 0.25
+    // Fallen logs, like trees, turn see-through instead of pushing the camera in.
+    return false
   }
 
   /** Final guard after smoothing so the camera never sits inside the ground or outside a tunnel/cave. */

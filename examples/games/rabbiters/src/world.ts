@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { cutAway } from './see-through'
 import {
   BUSHES,
   CAVES,
@@ -81,7 +82,9 @@ export class WorldView {
         ? this.fading(key.slice(4))
         : key === 'dome'
           ? this.material('#857a6c', THREE.DoubleSide)
-          : this.material(key)
+          : key === 'burrow'
+            ? this.material('#7d5b3c', THREE.DoubleSide)
+            : this.material(key)
       const mesh = new THREE.Mesh(geometry, material)
       mesh.castShadow = mesh.receiveShadow = true
       this.root.add(mesh)
@@ -101,6 +104,8 @@ export class WorldView {
     let material = this.materials.get(key)
     if (!material) {
       material = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, side })
+      // Scenery between the camera and the rabbit turns see-through; tunnel walls (back faces) stay solid.
+      if (side !== THREE.BackSide) cutAway(material)
       this.materials.set(key, material)
     }
     return material
@@ -108,7 +113,9 @@ export class WorldView {
 
   /** Log parts fade out while the local rabbit hides underneath, so the camera can still see it. */
   private fading(color: string) {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, transparent: true })
+    const material = cutAway(
+      new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, transparent: true })
+    )
     this.materials.set(`log:${color}`, material)
     this.logMaterials.push(material)
     return material
@@ -358,7 +365,7 @@ export class WorldView {
         #endif`
       )
     }
-    this.materials.set('grass', grass)
+    this.materials.set('grass', cutAway(grass))
     this.instanced(UNIT.blade, grass, blades, bladeColors, false)
 
     // Short tufts and wildflowers scattered over dry, gentle ground.
@@ -612,26 +619,50 @@ export class WorldView {
           )
       }
     }
-    // Home burrow (spawn shelter).
-    const home = { x: SPAWN.x, y: 0, z: SPAWN.z - 3 }
-    this.part('#9ba66c', UNIT.sphere, { x: home.x, y: home.y, z: home.z - 0.65 }, { x: 3, y: 1.65, z: 2.4 })
-    this.part('#463e35', UNIT.sphere, { x: home.x, y: home.y + 0.52, z: home.z + 1.35 }, { x: 1.1, y: 0.8, z: 0.12 })
-    this.part('#bca579', new THREE.TorusGeometry(1.08, 0.16, 6, 18, Math.PI), {
+    // Home burrow: a bare-earth mound with a grassy cap and a dark mouth facing south, so it reads as a den rather
+    // than one more clump of grass. Rabbits inside are hidden; the mound is double-sided so the see-through
+    // cut-out shows its earthen inside instead of the sky.
+    const home = { x: SHELTERS[0].x, y: heightAt(SHELTERS[0].x, SHELTERS[0].z), z: SHELTERS[0].z }
+    this.part('burrow', UNIT.sphere, { x: home.x, y: home.y - 0.25, z: home.z }, { x: 2.7, y: 1.75, z: 2.5 })
+    this.part('#7f9a55', UNIT.sphere, { x: home.x, y: home.y + 1.05, z: home.z - 0.35 }, { x: 2.1, y: 0.5, z: 1.8 })
+    this.part('#4a3727', UNIT.disc, { x: home.x, y: home.y + 0.04, z: home.z + 0.2 }, { x: 2.2, y: 1, z: 2.1 }) // den floor
+    for (let tuft = 0; tuft < 4; tuft++)
+      this.part(
+        '#6c8b47',
+        UNIT.cone,
+        { x: home.x - 1.1 + tuft * 0.7, y: home.y + 1.3, z: home.z - 0.6 + (tuft % 2) * 0.5 },
+        { x: 0.22, y: 0.55, z: 0.22 }
+      )
+    this.part('#1d150e', UNIT.sphere, { x: home.x, y: home.y + 0.5, z: home.z + 2.3 }, { x: 0.95, y: 0.8, z: 0.32 })
+    this.part('#a37d52', new THREE.TorusGeometry(1.0, 0.2, 6, 18, Math.PI), {
       x: home.x,
-      y: home.y + 0.45,
-      z: home.z + 1.5
+      y: home.y + 0.42,
+      z: home.z + 2.42
     })
+    this.part('#a37d52', UNIT.sphere, { x: home.x, y: home.y + 0.02, z: home.z + 3.5 }, { x: 1.8, y: 0.07, z: 1.3 })
+    for (const [dx, dz, size] of [
+      [-2.3, 2.2, 0.28],
+      [2.4, 1.6, 0.34],
+      [-1.6, 3.9, 0.2],
+      [2.0, -1.9, 0.3]
+    ])
+      this.part(
+        '#9a9285',
+        UNIT.rock,
+        { x: home.x + dx, y: home.y + size * 0.4, z: home.z + dz },
+        { x: size, y: size * 0.8, z: size }
+      )
     for (const side of [-1, 1]) {
       this.part(
         '#82634a',
         UNIT.cylinder,
-        { x: home.x + side * 1.8, y: home.y, z: home.z + 1.4 },
+        { x: home.x + side * 1.9, y: home.y, z: home.z + 2.7 },
         { x: 0.07, y: 2, z: 0.07 }
       )
       this.part(
         '#f3cd72',
         UNIT.sphere,
-        { x: home.x + side * 1.8, y: home.y + 1.8, z: home.z + 1.4 },
+        { x: home.x + side * 1.9, y: home.y + 1.8, z: home.z + 2.7 },
         { x: 0.22, y: 0.3, z: 0.22 }
       )
     }

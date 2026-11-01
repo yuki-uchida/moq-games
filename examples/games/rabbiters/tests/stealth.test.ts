@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GuestView } from '../src/guest-view'
 import { Game, mapTerrain, type Input, type Predator } from '../src/game'
-import { GRASS, TREES, heightAt, lineOfSight } from '../src/map'
+import { GRASS, TREES, heightAt, lineOfSight, treesNear } from '../src/map'
 import { FORDS, SAND_PATCHES } from '../src/stages/forest/map'
 import {
   HAWK_ALTITUDE,
@@ -109,8 +109,27 @@ describe('graded detection', () => {
         heightAt(tree.x, tree.z + 1) + 0.4,
         tree.z + 1
       )
-    const trunk = TREES.find((tree) => tree.r < 0.4 && tree.z > 40 && clear(tree))!
-    expect(mapTerrain.sightLine({ x: trunk.x, z: trunk.z - 8 }, { x: trunk.x, z: trunk.z + 1 })).toBe(STEALTH.treeCover)
+    const lone = (tree: { x: number; z: number }) =>
+      treesNear(tree.x, tree.z, 4).length === 1 && clear(tree) && clear({ x: tree.x, z: tree.z + 1.5 })
+    const trunk = TREES.find((tree) => tree.r < 0.4 && tree.z > 40 && lone(tree))!
+    // Pressed right behind the trunk the rabbit is nearly hidden; a couple of metres back it is half hidden.
+    expect(mapTerrain.sightLine({ x: trunk.x, z: trunk.z - 8 }, { x: trunk.x, z: trunk.z + 1 })).toBe(
+      STEALTH.trunkCover
+    )
+    expect(mapTerrain.sightLine({ x: trunk.x, z: trunk.z - 8 }, { x: trunk.x, z: trunk.z + 2.5 })).toBe(
+      STEALTH.treeCover
+    )
+    // Seen from the side, the trunk is not in the way.
+    const side = { x: trunk.x - 6, z: trunk.z + 1 }
+    const open = lineOfSight(
+      side.x,
+      heightAt(side.x, side.z) + 0.8,
+      side.z,
+      trunk.x,
+      heightAt(trunk.x, trunk.z + 1) + 0.4,
+      trunk.z + 1
+    )
+    expect(mapTerrain.sightLine(side, { x: trunk.x, z: trunk.z + 1 })).toBe(open ? 1 : 0)
     const [x, z] = OPEN
     const tree = { x, z }
     const terrain: Terrain = {
@@ -137,6 +156,38 @@ describe('graded detection', () => {
     game.step(1 / 60)
     // 8 m away is "?" in the open, but behind the trunk it only draws a distant search.
     expect(game.state.predators[0].state).toBe('search')
+  })
+})
+
+describe('trees slow a chase', () => {
+  it('a hunter weaving past a trunk falls behind one running in the open', () => {
+    const distanceRun = (x: number, z: number) => {
+      const game = new Game(5)
+      game.addPlayer('rabbit', 'Rabbit')
+      Object.assign(game.state.players[0], { x, z: z + 6, y: heightAt(x, z + 6) })
+      game.state.foods = []
+      game.state.predators = [
+        { id: 'p', kind: 'fox', x, y: heightAt(x, z), z, angle: 0, state: 'chase', targetId: 'rabbit', suspicion: 1 }
+      ]
+      for (let tick = 0; tick < 18; tick++) game.step(1 / 60)
+      return Math.hypot(game.state.predators[0].x - x, game.state.predators[0].z - z)
+    }
+    const trunk = TREES.find(
+      (tree) =>
+        tree.r < 0.4 &&
+        tree.z > 40 &&
+        treesNear(tree.x, tree.z, 6).length === 1 &&
+        lineOfSight(
+          tree.x + 1.2,
+          heightAt(tree.x + 1.2, tree.z) + 0.8,
+          tree.z,
+          tree.x + 1.2,
+          heightAt(tree.x + 1.2, tree.z + 6) + 0.4,
+          tree.z + 6
+        )
+    )!
+    const [x, z] = OPEN
+    expect(distanceRun(trunk.x + 1.2, trunk.z)).toBeLessThan(distanceRun(x, z) * 0.75)
   })
 })
 

@@ -241,6 +241,10 @@ export const STEALTH = {
   crouch: 0.6,
   grass: 0.7,
   treeCover: 0.45,
+  /** Pressed against a trunk that stands between rabbit and hunter: the rabbit is nearly out of sight. */
+  trunkCover: 0.2,
+  /** Hunters chasing through trees (a trunk within reach) must weave and slow to this share of their speed. */
+  thicketSlow: 0.6,
   /** Seconds to fill the meter at the inner edge of the "?" band; the outer edge takes about three times longer. */
   suspicionSeconds: 1.6,
   suspicionDecay: 0.35,

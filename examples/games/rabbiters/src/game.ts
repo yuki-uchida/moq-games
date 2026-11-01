@@ -200,9 +200,13 @@ export const mapTerrain: Terrain = {
           : eye.y + (KINDS[eye.kind as PredatorKind]?.eye ?? 0.8)
     const bodyY = (body.y ?? heightAt(body.x, body.z)) + 0.4
     if (!lineOfSight(eye.x, eyeY, eye.z, body.x, bodyY, body.z)) return 0
+    // Trunks in the way hide part of the rabbit; pressed right behind one it is nearly invisible, and each
+    // further trunk in the line hides more.
+    let seen = 1
     for (const tree of treesNear(body.x, body.z, 3))
-      if (segmentDistance(tree, eye, body) < 0.8 && distance(tree, eye) > 0.8) return STEALTH.treeCover
-    return 1
+      if (segmentDistance(tree, eye, body) < 0.8 && distance(tree, eye) > 0.8)
+        seen *= distance(tree, body) < 1.5 ? STEALTH.trunkCover : STEALTH.treeCover
+    return Math.max(seen, 0.1)
   }
 }
 
@@ -977,7 +981,7 @@ export class Game {
           player.carrying = item.id
         }
       }
-      if (forest && player.carrying && distance(player, BURROW) < 4) {
+      if (forest && player.carrying && distance(player, BURROW) < CAMPAIGN.deliverRadius) {
         player.carrying = null
         state.bedding += 1
         if (state.bedding >= CAMPAIGN.beddingGoal) state.chapter = 2
@@ -1121,8 +1125,11 @@ export class Game {
       })
       // The stealth brain steers freely; the map then decides how far that step actually gets.
       const flight = predator.y
-      const stepX = predator.x - before.x
-      const stepZ = predator.z - before.z
+      // A ground hunter chasing through trees has to weave around the trunks a rabbit darts between.
+      const weave =
+        chased && !flies(predator.kind) && treesNear(before.x, before.z, 1.6).length ? STEALTH.thicketSlow : 1
+      const stepX = (predator.x - before.x) * weave
+      const stepZ = (predator.z - before.z) * weave
       Object.assign(predator, before)
       const moved = move(predator.kind, predator, stepX, stepZ, true, false)
       if (!moved && !chased && (stepX || stepZ)) predator.angle += 1.2 // turn away from cliffs, logs and rocks

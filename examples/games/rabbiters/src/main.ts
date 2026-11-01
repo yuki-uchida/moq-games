@@ -32,6 +32,7 @@ import {
   npcNear,
   regionName,
   setStage,
+  treesNear,
   tunnelExitNear
 } from './map'
 import { SAND_PATCHES } from './stages/forest/map'
@@ -498,7 +499,7 @@ async function returnToTitle() {
 const minimap = new Minimap(element<HTMLCanvasElement>('#minimap'))
 const COVER_NAMES: Record<Cover, string> = {
   tunnel: 'モグラのトンネル',
-  shelter: '巣穴・木のうろ',
+  shelter: '巣穴・木のうろの中',
   cave: '洞窟の暗がり',
   log: '倒木の下',
   bush: '茂みの奥',
@@ -581,17 +582,22 @@ function updateHud(state: GameState) {
   alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
   chasers = hunting
   const underground = isUnderground(player.x, player.y, player.z)
+  const nearTrunk = !underground && treesNear(player.x, player.z, 1.5).length > 0
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
     : hunting.size
-      ? '見つかった！ 茂みや穴に逃げこもう'
+      ? nearTrunk
+        ? '見つかった！ 木のあいだを抜ければ追っ手が遅れる'
+        : '見つかった！ 茂みや穴に逃げこもう'
       : suspected
         ? '怪しまれている… 今のうちに隠れよう'
         : player.hidden
           ? `身を隠しています（${COVER_NAMES[coverAt(player.x, player.y, player.z, true)]}）`
           : inBush(player.x, player.z)
             ? '茂みの中：空からは見えない'
-            : '足あとに気をつけて'
+            : nearTrunk
+              ? '木の陰：幹を敵とのあいだにはさもう'
+              : '足あとに気をつけて'
   element<HTMLElement>('#area-name').textContent = regionName(player.x, player.y, player.z)
   minimap.draw(state, localId, yaw)
   const objective = STAGES[state.stage].script.objective(state, player)

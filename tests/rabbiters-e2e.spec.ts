@@ -482,7 +482,7 @@ window.rabbitersTestAccelerate = () => {
       const target =
         player.foodEaten < 6 && foods.length
           ? foods.sort((first, second) => distance(first) - distance(second))[0]
-          : { x: -118, z: 0 }
+          : { x: -118, z: -3.4 } // inside the burrow mound
       const dx = target.x - player.x
       const dz = target.z - player.z
       const desired = new Set([
@@ -514,7 +514,7 @@ window.rabbitersTestAccelerate = () => {
   )
   await expect(page.locator('#hint')).toContainText('巣材を巣穴へ')
   expect((await state()).players[0].carrying).toBe(straw.id)
-  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-118, 0))
+  await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-118, -1))
   await expect(page.locator('#objective-progress')).toHaveText('巣材 1 / 6')
   expect(await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPile())).toBe(1)
   // Losing mid-campaign offers a retry from the start of the current season.

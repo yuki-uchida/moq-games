@@ -208,6 +208,7 @@ describe('Rabbiters seasons campaign', () => {
   it('heals quickly in the den and slowly when well fed', () => {
     const game = peaceful()
     const player = game.state.players[0]
+    place(player, BURROW.x, BURROW.z)
     player.health = 50
     advance(game, 1)
     expect(player.health).toBeCloseTo(50 + RULES.burrowHeal, 1)
@@ -223,8 +224,9 @@ describe('Rabbiters seasons campaign', () => {
   it('makes hunters give up at the den and leaves no droppings there', () => {
     const game = peaceful()
     const player = game.state.players[0]
+    place(player, BURROW.x, BURROW.z)
     game.state.predators = [
-      { ...fox(BURROW.x + 5, BURROW.z), id: 'wolf', kind: 'wolf', state: 'chase', targetId: player.id, suspicion: 1 }
+      { ...fox(BURROW.x + 3, BURROW.z), id: 'wolf', kind: 'wolf', state: 'chase', targetId: player.id, suspicion: 1 }
     ]
     game.step(1 / 60)
     expect(game.state.predators[0].state).toBe('patrol')

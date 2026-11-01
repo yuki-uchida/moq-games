@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Game, PLAYER_COLORS, RULES, coverAt, pickPlayerColor, playerColor, type Input } from '../src/game'
 import { FOODS, GRASS, PREDATOR_STARTS, SPAWN, WORLD, heightAt } from '../src/map'
 import { FOOD_KINDS } from '../src/food'
-import { CAMPAIGN } from '../src/campaign'
+import { BURROW, CAMPAIGN } from '../src/campaign'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const advance = (game: Game, seconds: number) => {
@@ -310,7 +310,7 @@ describe('Rabbiters authoritative simulation', () => {
         player.foodEaten < RULES.requiredFood ||
         (player.foodEaten === RULES.requiredFood ? player.hunger < 60 : player.hunger < 40)
       const foods = game.state.foods.filter(
-        (food) => food.active && food.y === 0 && Math.hypot(food.x - SPAWN.x, food.z - SPAWN.z) < 18
+        (food) => food.active && food.y === 0 && Math.hypot(food.x - BURROW.x, food.z - BURROW.z) < 18
       )
       const target =
         seeking && foods.length
@@ -318,7 +318,7 @@ describe('Rabbiters authoritative simulation', () => {
               const distance = (food: { x: number; z: number }) => Math.hypot(food.x - player.x, food.z - player.z)
               return distance(first) - distance(second)
             })[0]
-          : SPAWN
+          : BURROW // rest inside the burrow mound between meals
       const dx = target.x - player.x
       const dz = target.z - player.z
       const distance = Math.hypot(dx, dz)

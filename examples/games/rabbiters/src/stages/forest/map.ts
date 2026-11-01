@@ -215,8 +215,12 @@ export const SAND_PATCHES: readonly (readonly [number, number])[] = [
 const onSand = (x: number, z: number) =>
   waterDepth(x, z) < 0 && (x > 56 || SAND_PATCHES.some(([sx, sz]) => length(x - sx, z - sz) < 2.4))
 
+/** The meadow kept clear around home; scattered trees, rocks, bushes and grass stay out of it. */
+const HOME_CLEARING: Circle = { x: SPAWN.x, z: SPAWN.z, r: 4 }
 export const SHELTERS: readonly Circle[] = [
-  { x: SPAWN.x, z: SPAWN.z, r: 4 }, // home burrow
+  // Home burrow: only inside the earth mound north of the spawn. The meadow around it is open ground, so
+  // hiding near home means crouching in its tall grass or under a fallen log like anywhere else.
+  { x: SPAWN.x, z: SPAWN.z - 3.4, r: 1.5 },
   { x: 0, z: -8, r: 2.2 }, // hollow at the foot of the Big Oak
   { x: 26, z: 60, r: 1.8 }, // hollow root of an old forest tree
   { x: -32, z: 76, r: 1.8 }
@@ -267,7 +271,10 @@ export const LOGS: readonly Log[] = [
   [22, 70, 14, 76],
   [-44, 50, -40, 61],
   [-16, 18, -6, 22],
-  [-68, -10, -70, 1]
+  [-68, -10, -70, 1],
+  // Home meadow: the first places to learn ducking under a log, beside its tall grass.
+  [-125, 9, -118, 13],
+  [-107, -23, -100, -26]
 ].map(([ax, az, bx, bz]) => logAt(ax, az, bx, bz))
 
 const MEADOW_FOODS: readonly FoodKind[] = ['clover', 'dandelion', 'clover', 'carrot', 'dandelion', 'cabbage']
@@ -442,7 +449,8 @@ function open(x: number, z: number, pad: number, solid: boolean): boolean {
   if (solid && length(x - SPAWN.x, z - SPAWN.z) < 26) return false
   for (const cave of CAVES) if (length(x - cave.x, z - cave.z) < cave.r + 2 + pad) return false
   for (const node of TUNNEL_NODES) if (node.exit && length(x - node.x, z - node.z) < 2.5 + pad) return false
-  for (const shelter of SHELTERS) if (length(x - shelter.x, z - shelter.z) < shelter.r + 2 + pad) return false
+  for (const shelter of [HOME_CLEARING, ...SHELTERS.slice(1)])
+    if (length(x - shelter.x, z - shelter.z) < shelter.r + 2 + pad) return false
   for (const garden of RING_GARDENS) if (length(x - garden.x, z - garden.z) < garden.r + 2.5 + pad) return false
   for (const [sx, sz] of SAND_PATCHES) if (length(x - sx, z - sz) < 3.4 + pad) return false
   if (!solid) return true
