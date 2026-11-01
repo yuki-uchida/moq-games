@@ -18,7 +18,6 @@ export function titleScreenMarkup(artBase: URL): string {
       <nav class="title-menu" aria-label="Main menu">
         <button id="title-new" class="title-menu-primary"><span>New game</span><span aria-hidden="true">▶</span></button>
         <button id="title-continue" aria-describedby="title-save-status"><span>Continue</span><span aria-hidden="true">→</span></button>
-        <a id="title-extra" href="./extra.html"><span>EXTRA</span><span aria-hidden="true">＋</span></a>
       </nav><p id="title-save-status" class="title-save-status" role="status"></p>
     </div>
     <div class="title-party" aria-hidden="true"><div class="title-party-halo"></div><img class="title-character title-archer" src="${portrait('archer')}" alt=""><img class="title-character title-soldier" src="${portrait('soldier')}" alt=""><img class="title-character title-mage" src="${portrait('mage')}" alt=""></div>

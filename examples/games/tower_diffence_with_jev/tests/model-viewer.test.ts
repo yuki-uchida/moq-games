@@ -58,17 +58,17 @@ describe('EXTRA shared real model playback', () => {
     expect(session).not.toContain('AnimationMixer')
   })
 
-  it('lists all twenty roles and only authored motions, including special actions', () => {
+  it('lists all runtime roles and motions, including gameplay ally falls', () => {
     expect(viewerRoles()).toHaveLength(23)
     for (const role of viewerRoles()) {
       expect(viewerRoleLabel(role)).toBeTruthy()
       expect(viewerMotions(UNIT_MODEL_CATALOG[role]!)).toContain('idle')
       expect(viewerMotions(UNIT_MODEL_CATALOG[role]!)).toContain('walk')
     }
-    expect(viewerMotions(UNIT_MODEL_CATALOG.healer!)).toEqual(['idle', 'walk', 'heal'])
+    expect(viewerMotions(UNIT_MODEL_CATALOG.healer!)).toEqual(['idle', 'walk', 'heal', 'death'])
     expect(viewerMotions(UNIT_MODEL_CATALOG.dragon!)).toContain('breath')
     expect(viewerMotions(UNIT_MODEL_CATALOG.slime!)).toContain('death')
-    expect(viewerMotions(UNIT_MODEL_CATALOG.tank!)).not.toContain('death')
+    expect(viewerMotions(UNIT_MODEL_CATALOG.tank!)).toContain('death')
   })
   it('pauses, scrubs, loops idle/walk, clamps death and restarts without game simulation', async () => {
     const session = new ModelViewerSession(() => new ModelAssetCache(async () => fixture()))
@@ -102,6 +102,16 @@ describe('EXTRA shared real model playback', () => {
     expect(session.root.children).toHaveLength(0)
     expect(session.state).toBe('disposed')
   })
+  it('loops attacks beyond multiple clip durations', async () => {
+    const session = new ModelViewerSession(() => new ModelAssetCache(async () => fixture()))
+    session.select('slime', 'attack')
+    await ready(session)
+    for (let i = 0; i < 26; i++) session.tick(0.1)
+    expect(session.seconds).toBeCloseTo(0.6)
+    expect(session.paused).toBe(false)
+    expect(session.diagnostics().actor?.motion).toBe('attack')
+    session.dispose()
+  })
   it('releases each selected actor/cache and rejects missing actions without fallbacks', async () => {
     const caches: ModelAssetCache[] = []
     const session = new ModelViewerSession(() => {
@@ -116,7 +126,7 @@ describe('EXTRA shared real model playback', () => {
       expect(session.root.children).toHaveLength(1)
       expect(session.diagnostics().cache?.entries.reduce((sum, e) => sum + e.references, 0)).toBe(1)
     }
-    session.select('tank', 'death')
+    session.select('goblin', 'death')
     expect(session.state).toBe('error')
     expect(session.root.children).toHaveLength(0)
     expect(session.error).toContain('ありません')
@@ -237,6 +247,16 @@ describe('EXTRA shared real model playback', () => {
             const bounds = new THREE.Box3().setFromObject(session.root)
             expect(bounds.isEmpty()).toBe(false)
             expect(bounds.min.toArray().every(Number.isFinite)).toBe(true)
+          }
+          session.seek(session.duration * 0.99)
+          session.toggle()
+          session.tick(0.1)
+          if (motion === 'death') {
+            expect(session.paused).toBe(true)
+            expect(session.seconds).toBe(session.duration)
+          } else {
+            expect(session.paused).toBe(false)
+            expect(session.seconds).toBeLessThan(session.duration * 0.99)
           }
         }
       } finally {

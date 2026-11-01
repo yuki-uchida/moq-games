@@ -115,19 +115,25 @@ test('explicit Save and Title restore this tab after another tab replaces an unc
   }
 })
 
-test('EXTRA is read-only and returns to title including browser back', async ({ page }) => {
-  await page.goto(towerPath)
-  await page.locator('#title-extra').click()
+test('viewer opens from catalog and returns without changing a saved campaign', async ({ page }) => {
+  await page.goto('/moq-games/')
+  await page.evaluate(() => localStorage.setItem('tower-jev-v3', '{preserved'))
+  await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
   await expect(page).toHaveURL(/extra\.html$/)
-  await expect(page.locator('h1')).toHaveText('EXTRA')
-  expect(await rawSave(page)).toBeNull()
+  await expect(page).toHaveTitle('3Dモデルビューワー · MoQ Games')
+  await expectModel(page, 'soldier', 'idle')
+  expect(await rawSave(page)).toBe('{preserved')
   await page.reload()
-  await expect(page.locator('#viewer-status')).toHaveText(/3D|読み込めません|検証/)
-  await page.getByRole('link', { name: '← Title' }).click()
-  await expect(page.locator('#title-screen')).toBeVisible()
-  await page.locator('#title-extra').click()
+  await expectModel(page, 'soldier', 'idle')
+  await page.getByRole('link', { name: '← ゲーム一覧' }).click()
+  await expect(page).toHaveTitle('MoQ Games')
+  await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
   await page.goBack()
+  await expect(page).toHaveTitle('MoQ Games')
+  expect(await rawSave(page)).toBe('{preserved')
+  await page.goto(towerPath)
   await expect(page.locator('#title-screen')).toBeVisible()
+  await expect(page.locator('a[href*="extra.html"], #title-extra')).toHaveCount(0)
 })
 
 const extraPath = towerPath.replace('index.html', 'extra.html')
@@ -180,10 +186,10 @@ test('EXTRA exposes every runtime role/action and never requests sheets, audio o
     const actions = await page
       .locator('#viewer-motion option')
       .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
-    if (role === 'healer') expect(actions).toEqual(['idle', 'walk', 'heal'])
+    if (role === 'healer') expect(actions).toEqual(['idle', 'walk', 'heal', 'death'])
     if (role === 'dragon') expect(actions).toContain('breath')
     if (role === 'slime') expect(actions).toContain('death')
-    else expect(actions).not.toContain('death')
+    if (role === 'soldier') expect(actions).toContain('death')
     for (const action of actions) {
       await page.locator('#viewer-motion').selectOption(action)
       await expectModel(page, role, action)
@@ -279,10 +285,10 @@ test('EXTRA plays after model and motion switches and repeated playback', async 
 test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaking the old clock', async ({ page }) => {
   const initializationErrors: string[] = []
   page.on('pageerror', (error) => initializationErrors.push(error.message))
-  await page.goto(towerPath)
+  await page.goto('/moq-games/')
   await page.evaluate(() => localStorage.setItem('tower-jev-v3', '{preserve-me'))
   for (let i = 0; i < 3; i++) {
-    await page.locator('#title-extra').click()
+    await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
     await expectModel(page, 'soldier', 'idle')
     expect(initializationErrors).toEqual([])
     await page.locator('#viewer-role').selectOption('dragon')
@@ -301,8 +307,8 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
     await expectModel(page, 'soldier', 'idle')
     expect(await rawSave(page)).toBe('{preserve-me')
     if (i % 2) await page.goBack()
-    else await page.getByRole('link', { name: '← Title' }).click()
-    await expect(page.locator('#title-screen')).toBeVisible()
+    else await page.getByRole('link', { name: '← ゲーム一覧' }).click()
+    await expect(page).toHaveTitle('MoQ Games')
     expect(await rawSave(page)).toBe('{preserve-me')
     expect(initializationErrors).toEqual([])
   }
@@ -377,4 +383,22 @@ test('EXTRA ignores a late failed load after selecting a different model', async
   await page.waitForTimeout(200)
   await expectModel(page, 'slime', 'idle')
   await expect(page.locator('#viewer-retry')).toBeHidden()
+})
+
+test('viewer loops attack and shows the same held ally death as gameplay', async ({ page }) => {
+  await page.goto(extraPath)
+  await page.locator('#viewer-motion').selectOption('attack')
+  await expectModel(page, 'soldier', 'attack')
+  await page.locator('#viewer-speed').selectOption('2')
+  const duration = (await diagnostics(page)).duration
+  await page.waitForTimeout(duration * 1500 + 500)
+  expect((await diagnostics(page)).paused).toBe(false)
+  await expect(page.locator('#viewer-play')).toHaveText('Pause')
+  await page.locator('#viewer-motion').selectOption('death')
+  await expectModel(page, 'soldier', 'death')
+  await expect(page.locator('#viewer-play')).toHaveText('Play')
+  const death = await diagnostics(page)
+  expect(death.seconds).toBe(0.82)
+  expect(death.actor.visible).toBe(true)
+  await page.screenshot({ path: 'test-results/viewer-ally-death.png' })
 })

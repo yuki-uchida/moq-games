@@ -39,3 +39,13 @@ test('play link has an explicit stable accessible name including the game title'
   const js = await readFile(new URL('../landing/main.js', import.meta.url), 'utf8')
   assert.ok(js.includes('aria-label="ゲームをプレイ: ${escape(sample.title)}"'))
 })
+
+test('viewer is linked from the catalog with a return to the catalog', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+  assert.match(html, /href="\.\/examples\/games\/tower_diffence_with_jev\/extra\.html">3Dモデルビューワー/)
+  const viewer = await readFile(
+    new URL('../examples/games/tower_diffence_with_jev/extra.html', import.meta.url),
+    'utf8'
+  )
+  assert.match(viewer, /href="\.\.\/\.\.\/\.\.\/index\.html">← ゲーム一覧/)
+})
