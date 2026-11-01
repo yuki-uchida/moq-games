@@ -4,6 +4,7 @@ import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
+import { isFoodKind } from './food'
 
 function element<T extends HTMLElement>(selector: string): T {
   const result = document.querySelector<T>(selector)
@@ -125,7 +126,9 @@ function validSnapshot(value: unknown): value is GameState {
         numeric(predator.angle, -1e8, 1e8) &&
         (predator.targetId === null || label(predator.targetId))
     ) &&
-    value.foods.every((food: unknown) => record(food) && position(food) && typeof food.active === 'boolean') &&
+    value.foods.every(
+      (food: unknown) => record(food) && position(food) && isFoodKind(food.kind) && typeof food.active === 'boolean'
+    ) &&
     value.nests.every(
       (nest: unknown) =>
         record(nest) && position(nest) && typeof nest.active === 'boolean' && numeric(nest.health, 0, 100)

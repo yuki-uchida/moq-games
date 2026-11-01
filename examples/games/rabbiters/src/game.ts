@@ -1,3 +1,5 @@
+import { FOOD_KINDS, type FoodKind } from './food'
+
 export interface Input {
   moveX: number
   moveZ: number
@@ -39,13 +41,14 @@ export interface Predator {
 
 export interface Food {
   id: string
+  kind: FoodKind
   x: number
   y: number
   z: number
   active: boolean
 }
 
-export interface Nest extends Food {
+export interface Nest extends Omit<Food, 'kind'> {
   health: number
 }
 
@@ -134,20 +137,22 @@ export class Game {
 
   constructor(seed = 1) {
     this.seed = Number.isFinite(seed) ? seed >>> 0 : 1
-    const foods: Food[] = [
-      [-33, 0, -3],
-      [-28, 0, -8],
-      [-24, 0, -12],
-      [-12, 0, 7],
-      [-4, 0, -14],
-      [12, 0, 20],
-      [27, 0, -20],
-      [30, 0, -23],
-      [-18, 2.2, -18],
-      [7, 2.2, -8],
-      [22, 2.2, 19],
-      [32, 0, 4]
-    ].map(([x, y, z], index) => ({ id: `food-${index}`, x, y, z, active: true }))
+    const foods: Food[] = (
+      [
+        [-33, 0, -3, 'clover'],
+        [-28, 0, -8, 'dandelion'],
+        [-24, 0, -12, 'clover'],
+        [-12, 0, 7, 'carrot'],
+        [-4, 0, -14, 'berry'],
+        [12, 0, 20, 'cabbage'],
+        [27, 0, -20, 'berry'],
+        [30, 0, -23, 'dandelion'],
+        [-18, 2.2, -18, 'apple'],
+        [7, 2.2, -8, 'apple'],
+        [22, 2.2, 19, 'apple'],
+        [32, 0, 4, 'carrot']
+      ] as const
+    ).map(([x, y, z, kind], index) => ({ id: `food-${index}`, kind, x, y, z, active: true }))
     this.state = {
       time: 0,
       players: [],
@@ -287,7 +292,7 @@ export class Game {
         if (!food.active || distance(player, food) > 1.15 || Math.abs(player.y - food.y) > 0.8) continue
         food.active = false
         this.foodReady.set(food.id, state.time + RULES.foodRespawnSeconds)
-        player.hunger = Math.min(100, player.hunger + 28)
+        player.hunger = Math.min(100, player.hunger + FOOD_KINDS[food.kind].nutrition)
         player.score += 1
         player.foodEaten += 1
         state.delivered += 1

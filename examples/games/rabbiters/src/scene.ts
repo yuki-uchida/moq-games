@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GRASS_PATCHES } from './game'
+import { buildFood, isFoodKind, type FoodKind } from './food'
 
 export interface RabbitersSceneState {
   time: number
@@ -21,7 +22,7 @@ export interface RabbitersSceneState {
     foodEaten?: number
   }[]
   predators: { id: string; kind: string; x: number; y: number; z: number; angle: number; state: string }[]
-  foods: { id: string; x: number; y: number; z: number; active: boolean }[]
+  foods: { id: string; kind?: FoodKind; x: number; y: number; z: number; active: boolean }[]
   nests: { id: string; x: number; y: number; z: number; health: number; active: boolean }[]
   delivered: number
   goal: number
@@ -413,7 +414,7 @@ export class RabbitersScene {
     if (actor.tail) actor.tail.rotation.y = jumping ? 0 : Math.sin(time * 5) * 0.2
   }
 
-  private item(key: string, nest: boolean): THREE.Group {
+  private item(key: string, nest: boolean, kind: FoodKind = 'carrot'): THREE.Group {
     let item = this.items.get(key)
     if (item) return item
     item = new THREE.Group()
@@ -423,12 +424,10 @@ export class RabbitersScene {
       for (let index = 0; index < 3; index++)
         this.oval(item, '#f9e6bb', (index - 1) * 0.3, 0.35, (index % 2) * 0.22, 0.19, 0.28, 0.19)
     } else {
-      const carrot = this.mesh(item, new THREE.ConeGeometry(0.2, 0.65, 7), '#ef9648', 0, 0.43, 0)
-      carrot.rotation.z = Math.PI + 0.25
-      for (let index = 0; index < 3; index++) {
-        const leaf = this.oval(item, '#4e8d53', (index - 1) * 0.12, 0.87, 0, 0.07, 0.25, 0.08)
-        leaf.rotation.z = (index - 1) * 0.5
-      }
+      item = buildFood(kind)
+      this.scene.add(item)
+      this.items.set(key, item)
+      return item
     }
     const halo = this.mesh(
       item,
@@ -483,7 +482,7 @@ export class RabbitersScene {
     for (const food of state.foods) {
       const key = `food:${food.id}`
       liveItems.add(key)
-      const item = this.item(key, false)
+      const item = this.item(key, false, isFoodKind(food.kind) ? food.kind : 'carrot')
       item.visible = food.active
       item.position.set(food.x, food.y + Math.sin(state.time * 2 + food.x) * 0.035, food.z)
     }
