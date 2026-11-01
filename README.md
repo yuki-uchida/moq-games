@@ -13,6 +13,10 @@ This revision includes the real-time 3D game, a sample gallery, a title screen w
 
 The gallery also includes **燈の境界 / Ember Grid**, a turn-based tactical game, and **芽吹きの境界 / Lane Battle**, a three-stage lane strategy game. Both run locally in the browser without a game server. See their respective [Ember Grid](examples/games/ember-grid/README.md) and [Lane Battle](examples/games/lane-battle/README.md) instructions.
 
+### Stage select
+
+The tower-defense game is played stage by stage. Clearing a stage pays coins (its stage reward) and unlocks the next stage; cleared stages can be replayed for more coins. On the stage select screen, spend coins to recruit allies and choose a formation of up to five ally types for the next battle. Each stage is an independent battle that starts with that stage's battle gold, with deployment still costing 40 G per unit. Coins, cleared stages, recruits and the formation are stored in `tower-jev-stages-v1`; the in-battle checkpoint format is unchanged.
+
 ## Run locally
 
 **Prerequisites:** Git, Node.js 24/npm and rustup. The first SDK setup needs network access and Rust build tools; later development reuses its output.

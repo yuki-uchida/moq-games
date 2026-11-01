@@ -941,6 +941,75 @@ dialog::backdrop {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.coin-purse b {
+  color: #9a6b12;
+  font-size: 14px;
+}
+.stage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 8px;
+}
+.stage-card,
+.formation-card {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  background: #f0f0df;
+  border-radius: 12px;
+  min-width: 0;
+}
+.stage-card small {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: #80886b;
+}
+.stage-card b {
+  font-size: 18px;
+  color: #3a573e;
+}
+.stage-card em,
+.formation-card small {
+  font-style: normal;
+  font-size: 10px;
+  color: #737a62;
+}
+.stage-card[data-cleared='true'] em {
+  color: #3f7a45;
+}
+.stage-card[aria-pressed='true'],
+.formation-card[aria-pressed='true'] {
+  border-color: #c5a056;
+  box-shadow: 0 0 0 2px #d8b36555;
+  background: #fff0ca;
+}
+.stage-card:disabled,
+.formation-card:disabled {
+  opacity: 0.5;
+}
+.formation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+}
+.formation-card img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+.formation-card b {
+  font-size: 11px;
+  color: #3a573e;
+  text-align: center;
+}
+.formation-card[data-state='recruit'] img {
+  filter: grayscale(1) brightness(0.8);
+}
+.formation-card[data-state='recruit'] small {
+  color: #9a6b12;
+  font-weight: 700;
+}
 .field-card {
   display: flex;
   align-items: center;

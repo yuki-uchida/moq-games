@@ -604,6 +604,12 @@ test('advancing prepares the next stage before releasing the result screen', asy
     expect(models.some((url) => url.includes(`/models/${type}/`)), `stage 1 ${type}`)
       .toBe(stageRules(1).enemyTypes.includes(type) || stageRules(1).bossType === type)
   }
+  // Stage select: a won stage pays its coin reward once and unlocks the next stage.
+  await expect(page.locator('#result-gold')).toHaveText(`+${stageRules(1).reward} コイン`)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('tower-jev-stages-v1')!))).toMatchObject({
+    coins: stageRules(1).reward,
+    cleared: 1
+  })
   await page.locator('#next').click()
   await expect(page.locator('#result')).toBeHidden({ timeout: 180_000 })
   for (const type of ENEMY_TYPES) {

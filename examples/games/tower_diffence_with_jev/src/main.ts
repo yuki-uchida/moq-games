@@ -102,6 +102,20 @@ import {
   retainedDefenders
 } from './game/DefenderRoster'
 import { showOutcomeDialog } from './input/OutcomeDialog'
+import {
+  FORMATION_SLOTS,
+  STAGE_PROGRESS_KEY,
+  awardStageClear,
+  freshStageProgress,
+  loadStageProgress,
+  owned,
+  recruit,
+  saveStageProgress,
+  stageReward,
+  stageStartGold,
+  stageUnlocked,
+  toggleFormation
+} from './progression/StageProgress'
 import { PanelDialog } from './input/PanelDialog'
 import { MapPan } from './input/MapPan'
 import { SandbagInput, sandbagPlacementLabel } from './input/SandbagInput'
@@ -113,6 +127,9 @@ let showLegacyMigration = loadedCampaign.source === 'legacy'
 let replaceStoredRun = !!pendingRun || !!loadedCampaign.issue
 const save = freshRunFromProfile(loadedCampaign.profile, 2, 1),
   rule = new RuleBasedAI()
+let stageProgress = loadStageProgress(loadedCampaign.profile.purchased),
+  selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1),
+  lastStageReward = 0
 let engine = new GameEngine(rule, save, undefined, undefined, undefined, DRAGON_BREATH_MOUTHS, 2, 1),
   selected: AllyType = 'soldier'
 let connection: JevConnection | undefined,
@@ -210,7 +227,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <button id="items-toggle" class="field-icon" aria-expanded="false" aria-controls="item-tray" aria-label="道の備え" title="道の備え">${fortificationIcon('sandbag')}</button>
 <button id="assault" class="field-icon primary" aria-label="襲撃開始" title="襲撃開始" disabled>▶</button>
 </nav><p id="control-tooltip" role="tooltip" hidden></p>
-<section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
+<section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" hidden aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
 <section id="item-tray" class="floating-tray panel" aria-label="道の備え" hidden><div class="tray-heading"><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" title="土のうを配置">${fortificationIcon('sandbag')}<small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
 <section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-special" aria-label="必殺技" title="必殺技" hidden>✦</button><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
 </main>
@@ -218,12 +235,12 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">遠征先を選ぼう</h1></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">このフィールドで出発 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">新規遠征は${STARTING_GOLD}G・1体40G・各種類1体。2経路が合流します。旧遠征は保存時の地形・ルールで続きます。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><em></em></button>`).join('')}</div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
 <dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><h2 id="campaign-loading-title">キャラクターを準備中</h2><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
-<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージの準備へ →</button><button id="retry" class="primary">フィールドを選んで再出発</button><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次の遠征への引き継ぎ</summary><small>雇用した仲間は引き継ぎ、次の遠征は全員Lv.1・${STARTING_GOLD}Gから。装備・道のアイテム・門の強化はリセット。</small></details></dialog>`
+<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージへ →</button><button id="retry" class="primary">ステージ選択へ</button><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
@@ -535,6 +552,7 @@ launchDialog.addEventListener('cancel', (event) => {
 $('title-new').onclick = () => {
   history.pushState({ towerScreen: 'new' }, '', '#new-game')
   titleDialog.close()
+  renderStageSelect()
   launchDialog.showModal()
   document.querySelector<HTMLButtonElement>('[data-field][aria-pressed="true"]')!.focus({ preventScroll: true })
 }
@@ -1404,7 +1422,7 @@ function updateStart() {
       : showLegacyMigration
         ? '以前の仲間を引き継ぎます。'
         : ''
-  $('start').textContent = offline ? 'このフィールドで出発 →' : 'Jev と遠征に出発 →'
+  $('start').textContent = offline ? `ステージ${selectedStage}に出撃 →` : `Jev とステージ${selectedStage}に出撃 →`
   $('launch-status').dataset.status = ready ? 'ready' : 'pending'
   $<HTMLButtonElement>('start').disabled = !ready
   $('launch-status').textContent = ''
@@ -1468,16 +1486,22 @@ renderer.onContextRestored = () => {
   })
   else if (campaignAction && campaignState) void prepareCampaign(campaignAction, campaignState)
 }
-function startFreshCampaign() { void prepareCampaign(commitFreshCampaign, { ...engine.state, stage: 1, waveBossPolicy: 2, units: [], pendingSpawns: [] }) }
+function startFreshCampaign() { void prepareCampaign(commitFreshCampaign, { ...engine.state, stage: selectedStage, waveBossPolicy: 2, units: [], pendingSpawns: [] }) }
 function commitFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
   const layoutRevision: LayoutRevision = 4
-  if ((engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision) !== layoutRevision) {
+  // Every stage is an independent battle: fresh engine, stage gold and the chosen formation.
+  {
     const fieldId = engine.state.fieldId,
       historyEnabled = engine.state.historyEnabled
+    battleClock?.stop()
     engine.invalidateAI()
     connection?.cancelPending()
+    replaceProgress(freshRunFromProfile({ version: 1, purchased: [...stageProgress.recruited] }, 2, 1))
+    save.gold = stageStartGold(selectedStage)
+    save.formation = [...stageProgress.formation]
     engine = new GameEngine(engine.ai, save, undefined, undefined, undefined, DRAGON_BREATH_MOUTHS, 2, layoutRevision)
+    engine.startAtStage(selectedStage)
     engine.setHistoryEnabled(historyEnabled)
     engine.selectField(fieldId)
     renderer.cancelArtSwitch()
@@ -1485,6 +1509,12 @@ function commitFreshCampaign() {
     renderer.render(engine.state, null, false, selected)
     updateField()
   }
+  rewarded = outcomeSaved = false
+  selectedSlot = null
+  lastSavedCheckpoint = ''
+  discardedClockMs = 0
+  resumedAfterSuspension = false
+  $<HTMLDialogElement>('result').close()
   showLegacyMigration = false
   pendingRun = null
   replaceStoredRun = false
@@ -1495,7 +1525,7 @@ function commitFreshCampaign() {
   launchDialog.close()
   entrance()
   viewport.focus({ preventScroll: true })
-  announce(`${STARTING_GOLD}Gから出発。仲間をドラッグして配置。1体40G。`)
+  announce(`ステージ${engine.state.stage}・${save.gold}Gから出発。仲間をドラッグして配置。1体40G。`)
   persist()
 }
 $('start').onclick = () => {
@@ -1508,6 +1538,58 @@ $('start').onclick = () => {
     saveConfirm.open($('start'))
   } else startFreshCampaign()
 }
+function renderStageSelect() {
+  if (!stageUnlocked(stageProgress, selectedStage)) selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1)
+  $('stage-coins').textContent = String(stageProgress.coins)
+  for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-stage]'))) {
+    const stage = Number(card.dataset.stage),
+      open = stageUnlocked(stageProgress, stage),
+      cleared = stage <= stageProgress.cleared
+    card.disabled = !open
+    card.dataset.cleared = String(cleared)
+    card.setAttribute('aria-pressed', String(stage === selectedStage))
+    card.querySelector('em')!.textContent = open ? `${cleared ? '✓ ' : ''}+${stageReward(stage)}` : '🔒'
+    card.setAttribute('aria-label', `ステージ${stage}${open ? `・クリア報酬 ${stageReward(stage)} コイン${cleared ? '・クリア済み' : ''}` : '・未解放'}`)
+  }
+  updateStart()
+  const have = owned(stageProgress)
+  $('formation-count').textContent = `${stageProgress.formation.length} / ${FORMATION_SLOTS}`
+  for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-ally]'))) {
+    const type = card.dataset.ally as AllyType,
+      mine = have.includes(type),
+      inFormation = stageProgress.formation.includes(type),
+      cost = DEFINITIONS[type].purchaseCost
+    card.dataset.state = inFormation ? 'formation' : mine ? 'owned' : 'recruit'
+    card.setAttribute('aria-pressed', String(inFormation))
+    card.disabled = mine
+      ? inFormation
+        ? stageProgress.formation.length === 1
+        : stageProgress.formation.length >= FORMATION_SLOTS
+      : stageProgress.coins < cost
+    card.querySelector('small')!.textContent = mine ? (inFormation ? '編成中' : '控え') : `招集 ${cost} コイン`
+    card.setAttribute(
+      'aria-label',
+      `${DEFINITIONS[type].name}・${mine ? (inFormation ? '編成中、選ぶと外す' : '控え、選ぶと編成') : `${cost} コインで招集`}`
+    )
+  }
+}
+for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-stage]')))
+  card.onclick = () => {
+    selectedStage = Number(card.dataset.stage)
+    renderStageSelect()
+  }
+for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-ally]')))
+  card.onclick = () => {
+    const type = card.dataset.ally as AllyType
+    const changed = owned(stageProgress).includes(type)
+      ? toggleFormation(stageProgress, type)
+      : recruit(stageProgress, type) && (toggleFormation(stageProgress, type) || true)
+    if (!changed) return
+    saveStageProgress(stageProgress)
+    renderStageSelect()
+    announce(`${DEFINITIONS[type].name}: ${card.querySelector('small')!.textContent}`)
+  }
+renderStageSelect()
 $('resume-run').onclick = () => { if (pendingRun) void prepareCampaign(resumeRun, pendingRun.engine.state) }
 function resumeRun() {
   if (!pendingRun) return
@@ -1535,6 +1617,12 @@ function resumeRun() {
   engine.invalidateAI()
   connection?.cancelPending()
   engine = restored
+  save.formation = [...new Set([...stageProgress.formation, ...retainedDefenders(engine.state).map((unit) => unit.type as AllyType)])]
+  // A battle won before the stage select existed still unlocks its next stage (once: cleared then covers it).
+  if (engine.state.result === 'win' && engine.state.stage > stageProgress.cleared) {
+    lastStageReward = awardStageClear(stageProgress, engine.state.stage)
+    saveStageProgress(stageProgress)
+  }
   showLegacyMigration = false
   pendingRun = null
   replaceStoredRun = false
@@ -1920,7 +2008,7 @@ $('save-reset').onclick = () => {
   pendingSaveAction = 'reset'
   $('save-confirm-title').textContent = '保存データを初期化しますか？'
   $('save-confirm-detail').textContent =
-    '雇用済みの仲間と保存中・進行中の遠征をすべて失います。この操作は取り消せません。接続設定やほかのアプリのデータは変更しません。'
+    'コイン・クリア状況・招集した仲間・編成と、保存中・進行中の戦闘をすべて失います。この操作は取り消せません。接続設定やほかのアプリのデータは変更しません。'
   saveConfirm.open($('save-reset'))
 }
 $('save-confirm-cancel').onclick = () => {
@@ -1949,6 +2037,14 @@ $('save-confirm-accept').onclick = () => {
     } catch {
       legacyCleared = false
     }
+    try {
+      localStorage.removeItem(STAGE_PROGRESS_KEY)
+    } catch {
+      legacyCleared = false
+    }
+    stageProgress = freshStageProgress()
+    selectedStage = 1
+    renderStageSelect()
     showLegacyMigration = false
     lastSavedCheckpoint = ''
     battleClock?.stop()
@@ -2165,26 +2261,9 @@ $('assault').onclick = () => {
   }
 }
 $('next').onclick = () => {
-  void prepareCampaign(commitNextStage, { ...engine.state, stage: engine.state.stage + 1, waveBossPolicy: 2, units: [], pendingSpawns: [] })
-}
-function commitNextStage() {
-  battleClock?.stop()
-  connection?.cancelPending()
-  if (engine.nextStage()) {
-    clearPlacementModes()
-    rewarded = false
-    outcomeSaved = false
-    selectedSlot = null
-    $<HTMLDialogElement>('result').close()
-    announce(
-      paidRoster()
-        ? `ステージ${engine.state.stage}へ。配置中・控えの仲間と拠点が全回復しました。配置40G・各種類1体、移動は無料です。`
-        : `ステージ${engine.state.stage}は合計${engine.state.stage}体まで配置できます。倒れた仲間も復活し、仲間と拠点は全回復しました。`
-    )
-    entrance()
-    viewport.focus({ preventScroll: true })
-    persist()
-  }
+  if (!stageUnlocked(stageProgress, engine.state.stage + 1)) return
+  selectedStage = engine.state.stage + 1
+  startFreshCampaign()
 }
 $('retry').onclick = () => {
   battleMusic.resetSelection()
@@ -2215,6 +2294,7 @@ $('retry').onclick = () => {
   settingsPanel.close(false)
   upgradePanel.close(false)
   sandbagConfirm.close(false)
+  renderStageSelect()
   launchDialog.showModal()
   updateField()
   updateStart()
@@ -2369,6 +2449,10 @@ openTitle()
 function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true
+  if (engine.state.result === 'win') {
+    lastStageReward = awardStageClear(stageProgress, engine.state.stage)
+    saveStageProgress(stageProgress)
+  }
   soundPlayer.playCue(engine.state.result === 'win' ? 'ui_win' : 'ui_lose')
   battleClock?.stop()
   connection?.cancelPending()
@@ -2654,10 +2738,8 @@ function frame(now: number) {
     $('reward').textContent = finished
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
-        ? paidRoster()
-          ? '次の準備で仲間と拠点が全回復します。'
-          : `次は最大${state.stage + 1}体。仲間と拠点が全回復します。`
-        : `到達ステージ ${state.stage} / 10`
+        ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
+        : 'ステージ選択で編成を見直して再挑戦しよう。'
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
@@ -2671,8 +2753,8 @@ function frame(now: number) {
         ? 'A LITTLE VICTORY'
         : 'ANOTHER ADVENTURE AWAITS'
     $('result-stage').textContent = `${FIELDS[state.fieldId].name} · STAGE ${String(state.stage).padStart(2, '0')}`
-    $('result-gold').textContent = won ? `+${wave.reward} G` : `所持 ${save.gold} G`
-    $('retry').textContent = finished ? '新しい遠征へ →' : 'フィールドを選んで再出発'
+    $('result-gold').textContent = won ? `+${lastStageReward || stageReward(state.stage)} コイン` : `所持 ${stageProgress.coins} コイン`
+    $('retry').textContent = 'ステージ選択へ'
     showOutcomeDialog($<HTMLDialogElement>('result'), state.phase)
   }
   requestFrame()

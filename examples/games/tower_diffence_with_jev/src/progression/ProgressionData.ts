@@ -23,6 +23,8 @@ export interface SaveData {
   unitLevels: Record<AllyType, number>
   purchased: AllyType[]
   highestStage: number
+  /** Stage-select formation; in-memory only, never part of a stored checkpoint. */
+  formation?: AllyType[]
 }
 
 export const LEGACY_SAVE_KEY = 'tower-jev-v2'
