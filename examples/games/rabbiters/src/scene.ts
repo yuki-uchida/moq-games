@@ -19,7 +19,7 @@ import {
   vehiclesAt
 } from './map'
 import { buildFood, isFoodKind, type FoodKind } from './food'
-import { SEE_THROUGH } from './see-through'
+import { SEE_THROUGH, cutAway } from './see-through'
 import { STEALTH, flies } from './stealth'
 import { playerColor } from './game'
 import { BURROW, CAMPAIGN, HAVEN } from './campaign'
@@ -734,7 +734,17 @@ export class RabbitersScene {
     this.stage = stage
     this.scenery?.dispose()
     const def = STAGES[stage]
+    const existing = new Set(this.scene.children)
     this.scenery = def.scenery(this.scene)
+    // Every chapter's solid scenery turns see-through between the camera and the rabbit (water and tunnel
+    // walls stay as they are).
+    for (const child of this.scene.children)
+      if (!existing.has(child))
+        child.traverse((node) => {
+          const mesh = node as THREE.Mesh
+          for (const entry of mesh.isMesh ? [mesh.material].flat() : [])
+            if (!entry.transparent && entry.side !== THREE.BackSide) cutAway(entry)
+        })
     const { look } = def
     const fog = this.scene.fog as THREE.Fog
     fog.near = look.fog[0]
@@ -1015,7 +1025,13 @@ export class RabbitersScene {
     }
     const desired = new THREE.Vector3(pivot.x + backX * distance, this.target.y + height, pivot.z + backZ * distance)
     if (underground) desired.y = heightAt(desired.x, desired.z) - TUNNEL_DEPTH + height
-    else desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
+    // Rise over the forest's hills behind the rabbit. In built chapters the tall ground is walls: there the boom
+    // stops in front of them (see-through cuts what is left in the way) instead of looking down from their tops.
+    else
+      desired.y = Math.max(
+        desired.y,
+        Math.min(heightAt(desired.x, desired.z) + 1, this.stage === FOREST ? Infinity : this.target.y + 5.5)
+      )
     // If a trunk, rock or tunnel end blocks the boom, swing it around the rabbit before giving up.
     const full = desired.distanceTo(pivot)
     let reach = pivot.clone()
