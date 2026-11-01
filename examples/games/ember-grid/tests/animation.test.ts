@@ -1,21 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { direction, route } from '../src/animation'
+import { depth, facing, route } from '../src/animation'
 import { createGame } from '../src/game'
 describe('accepted complete-cell animation contracts', () => {
-  it('uses eight real directions without mirroring upward attacks', () => {
+  it('faces the projected screen direction with all eight real directions', () => {
+    // Grid +x runs up-right and +y down-right on the 45°-rotated floor.
     expect(
       [
-        [0, -1],
-        [1, -1],
         [1, 0],
         [1, 1],
         [0, 1],
         [-1, 1],
         [-1, 0],
-        [-1, -1]
-      ].map(([x, y]) => direction({ x: 0, y: 0 }, { x, y }))
-    ).toEqual(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'])
+        [-1, -1],
+        [0, -1],
+        [1, -1]
+      ].map(([x, y]) => facing({ x: 0, y: 0 }, { x, y }))
+    ).toEqual(['ne', 'e', 'se', 's', 'sw', 'w', 'nw', 'n'])
+  })
+  it('orders cells back to front', () => {
+    expect(depth({ x: 6, y: 0 })).toBe(0)
+    expect(depth({ x: 0, y: 6 })).toBe(12)
+    expect(depth({ x: 2, y: 3 })).toBeLessThan(depth({ x: 2, y: 4 }))
+    expect(depth({ x: 2, y: 3 })).toBeLessThan(depth({ x: 1, y: 3 }))
   })
   it('walks around occupied cells and rocks using reachable geometry', () => {
     const g = createGame(),

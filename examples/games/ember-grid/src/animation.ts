@@ -19,8 +19,17 @@ const characters: Record<string, string> = {
 // distance-clock made tiny source strides shuffle rapidly; stretching the move
 // to fit them delayed tactical input. New foot planting requires new sprite art.
 export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
-export function direction(a: Point, b: Point) {
-  return `${b.y < a.y ? 'n' : b.y > a.y ? 's' : ''}${b.x < a.x ? 'w' : b.x > a.x ? 'e' : ''}` || 's'
+/** Nominal floor squash (style.css --tilt, 0.6–0.78). Facings for grid steps are identical across that range. */
+export const TILT = 0.6
+/** Back-to-front order: the far corner is (size-1, 0), the near corner (0, size-1). */
+export const depth = (p: Point) => p.y - p.x + size - 1
+/** Sprite facing for the projected screen vector, not the grid vector. */
+export function facing(a: Point, b: Point) {
+  const dx = b.x - a.x,
+    dy = b.y - a.y
+  if (!dx && !dy) return 's'
+  const step = Math.round(Math.atan2((dy - dx) * TILT, dx + dy) / (Math.PI / 4))
+  return ['e', 'se', 's', 'sw', 'w', 'nw', 'n', 'ne'][(step + 8) % 8]
 }
 /** Walk the same legal path as movement rules: through same-side units, never through rocks or foes. */
 export function route(game: Game, before: Unit[], from: Unit, to: Point): Point[] {
@@ -112,28 +121,35 @@ export class BattleAnimation {
     return this.board.children[p.y * size + p.x] as HTMLElement
   }
   private hide(p: Point) {
-    const n = this.cell(p).querySelector<HTMLElement>('.portrait')
-    if (n) {
-      n.style.visibility = 'hidden'
-      this.hidden.add(n)
-    }
+    this.cell(p)
+      .querySelectorAll<HTMLElement>('.portrait, .foot')
+      .forEach((n) => {
+        n.style.visibility = 'hidden'
+        this.hidden.add(n)
+      })
+  }
+  /** Projected cell centre in field coordinates; the bounding box of a transformed diamond shares its centre. */
+  private center(p: Point) {
+    const r = this.cell(p).getBoundingClientRect(),
+      field = this.board.parentElement!.getBoundingClientRect()
+    return { x: r.left - field.left + r.width / 2, y: r.top - field.top + r.height / 2, width: r.width }
   }
   private actor(u: Unit, p: Point) {
     const node = document.createElement('span')
-    node.className = 'motion-actor'
+    node.className = `motion-actor ${u.side}`
     node.setAttribute('aria-hidden', 'true')
-    node.innerHTML = '<span class="portrait"></span>'
-    this.board.parentElement!.append(node)
+    node.innerHTML = '<span class="foot"></span><span class="portrait"></span>'
+    // Inside the projected board so depth interleaves with props and units in front.
+    this.board.append(node)
     this.nodes.add(node)
     this.place(node, p)
     return node
   }
   private place(node: HTMLElement, p: Point) {
-    const field = this.board.parentElement!.getBoundingClientRect()
-    const first = this.cell({ x: 0, y: 0 }).getBoundingClientRect()
-    const cell = this.cell({ x: 1, y: 1 }).getBoundingClientRect()
-    node.style.left = `${first.left - field.left + first.width / 2 + p.x * (cell.left - first.left)}px`
-    node.style.top = `${first.top - field.top + first.height / 2 + p.y * (cell.top - first.top)}px`
+    node.style.left = `${((p.x + 0.5) * 100) / size}%`
+    node.style.top = `${((p.y + 0.5) * 100) / size}%`
+    // Cells use 2·depth+1: stay above every cell up to the step's nearer end, below the rest.
+    node.style.zIndex = String(2 * Math.ceil(depth(p)) + 2)
   }
   private async play(
     node: HTMLElement,
@@ -194,15 +210,15 @@ export class BattleAnimation {
     arrow.setAttribute('aria-hidden', 'true')
     this.board.parentElement!.append(arrow)
     this.nodes.add(arrow)
-    const source = this.cell(from).getBoundingClientRect()
-    const target = this.cell(to).getBoundingClientRect()
-    const field = this.board.parentElement!.getBoundingClientRect()
-    const dx = target.left - source.left,
-      dy = target.top - source.top
+    const source = this.center(from),
+      target = this.center(to)
+    const dx = target.x - source.x,
+      dy = target.y - source.y
     const length = Math.hypot(dx, dy)
-    const tip = Math.min(source.width * 0.24, length * 0.25)
-    const x = source.left - field.left + source.width / 2 + (dx / length) * tip
-    const y = source.top - field.top + source.height / 2 - source.height * 0.23 + (dy / length) * tip
+    const tip = Math.min(source.width * 0.12, length * 0.25)
+    // Released at chest height of a standing billboard, not the floor.
+    const x = source.x + (dx / length) * tip
+    const y = source.y - source.width * 0.38 + (dy / length) * tip
     arrow.style.left = `${x}px`
     arrow.style.top = `${y}px`
     const angle = Math.atan2(dy, dx)
@@ -230,11 +246,11 @@ export class BattleAnimation {
     try {
       // Never hide the source while a missing/failed asset is still loading.
       await Promise.all([
-        ...path.slice(1).map((point, i) => this.clip(acting.role, 'walk', direction(path[i], point))),
+        ...path.slice(1).map((point, i) => this.clip(acting.role, 'walk', facing(path[i], point))),
         ...(target
           ? [
-              this.clip(target.role, 'idle', direction(target, acting)),
-              this.clip(acting.role, 'attack', direction(acting, target))
+              this.clip(target.role, 'idle', facing(target, acting)),
+              this.clip(acting.role, 'attack', facing(acting, target))
             ]
           : [])
       ])
@@ -244,32 +260,33 @@ export class BattleAnimation {
       if (moved) {
         this.cue('healer')
         for (let i = 1; i < path.length && token === this.version; i++) {
-          const facing = direction(path[i - 1], path[i])
-          await this.play(actor, acting, 'walk', facing, token, [path[i - 1], path[i]])
+          await this.play(actor, acting, 'walk', facing(path[i - 1], path[i]), token, [path[i - 1], path[i]])
         }
       }
       if (target && token === this.version) {
         this.hide(target)
         const victim = this.actor(target, target)
         const old = before.find((u) => u.id === target.id)!
-        const length = Math.hypot(target.x - acting.x, target.y - acting.y) || 1
-        victim.style.setProperty('--impact-x', `${((target.x - acting.x) / length) * 7}px`)
-        victim.style.setProperty('--impact-y', `${((target.y - acting.y) / length) * 7}px`)
+        const a = this.center(acting),
+          b = this.center(target)
+        const angle = Math.atan2(b.y - a.y, b.x - a.x)
+        victim.style.setProperty('--impact-x', `${Math.cos(angle) * 7}px`)
+        victim.style.setProperty('--impact-y', `${Math.sin(angle) * 7}px`)
         // Victim retains the complete accepted source cell; recoil never deforms anatomy.
-        const idle = await this.clip(target.role, 'idle', direction(target, acting))
+        const idle = await this.clip(target.role, 'idle', facing(target, acting))
         const p = victim.querySelector<HTMLElement>('.portrait')!
         p.style.backgroundImage = `url('${(await this.texture(target.role, idle)).src}')`
         p.style.backgroundPosition = `-${idle.frames[0].x}px -${idle.frames[0].y}px`
         let impact: Promise<void> = Promise.resolve()
         let impactedAt: number | undefined
-        await this.play(actor, acting, 'attack', direction(acting, target), token, undefined, () => {
+        await this.play(actor, acting, 'attack', facing(acting, target), token, undefined, () => {
           this.cue(acting.role)
           impact = (async () => {
             if ((acting.role === 'archer' || acting.role === 'mage') && !(await this.projectile(acting, target, token)))
               return
             if (token !== this.version) return
             impactedAt = performance.now()
-            showContact(victim, acting.role, Math.atan2(target.y - acting.y, target.x - acting.x))
+            showContact(victim, acting.role, angle)
             victim.classList.add(target.hp === 0 ? 'motion-death' : 'motion-hit')
             const number = document.createElement('span')
             number.className = 'damage-number'
