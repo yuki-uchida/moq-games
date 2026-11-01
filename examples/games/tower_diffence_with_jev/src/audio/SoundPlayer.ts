@@ -5,6 +5,7 @@ import {
   type SoundUnitType,
   type EffectSoundKey
 } from '../game/CombatSoundEvents'
+import { playUiSound, type UiSound } from '../../../shared/UiSound'
 
 export interface SoundCatalogEntry {
   id: string
@@ -82,6 +83,7 @@ export class SoundPlayer {
   private unavailable = false
   private contextError = ''
   private lastPublished = ''
+  private lastPlayAt = -Infinity
 
   constructor(
     catalog: readonly SoundCatalogEntry[],
@@ -253,6 +255,14 @@ export class SoundPlayer {
     this.playCueAsset(key, asset)
   }
 
+  /** Synthesized button feedback through the same on/off and volume; yields to a cue for the same input. */
+  playUi(kind: UiSound): void {
+    const context = this.context
+    if (this.isDestroyed || !this.isEnabled || !context || context.currentTime - this.lastPlayAt < 0.03) return
+    // Master gain is the user volume (default 20%); scale so the default lands near the other games.
+    playUiSound(kind, context, this.master ?? undefined, 4)
+  }
+
   private playCueAsset(key: string, asset: SoundAsset): void {
     const now = this.context?.currentTime
     if (now === undefined) return
@@ -381,6 +391,7 @@ export class SoundPlayer {
       source.onended = () => this.removeVoice(playingVoice, false)
       this.updateVoiceGains()
       source.start(context.currentTime)
+      this.lastPlayAt = context.currentTime
       this.played++
     } catch {
       if (voice) this.removeVoice(voice, true)
