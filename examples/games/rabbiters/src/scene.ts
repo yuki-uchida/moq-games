@@ -17,6 +17,7 @@ import { WorldView } from './world'
 import { buildFood, isFoodKind, type FoodKind } from './food'
 import { STEALTH } from './stealth'
 import { playerColor } from './game'
+import { BURROW, CAMPAIGN, HAVEN, nightAmount } from './campaign'
 
 export interface RabbitersSceneState {
   time: number
@@ -38,6 +39,7 @@ export interface RabbitersSceneState {
     age?: number
     foodEaten?: number
     bath?: number
+    carrying?: string | null
   }[]
   predators: {
     id: string
@@ -55,6 +57,10 @@ export interface RabbitersSceneState {
   delivered: number
   goal: number
   phase: string
+  chapter?: number
+  bedding?: number
+  straws?: { id: string; x: number; y: number; z: number; active: boolean }[]
+  kits?: { id: string; x: number; y: number; z: number; angle: number; hidden: boolean; status: string }[]
 }
 
 type Actor = {
@@ -68,6 +74,7 @@ type Actor = {
   marker?: { symbol: THREE.Sprite; meter: THREE.Sprite; fill: THREE.Sprite }
   lastState?: string
   alertAt: number
+  pack?: THREE.Group
   kind: string
   x: number
   z: number
@@ -96,10 +103,20 @@ export class RabbitersScene {
   private readonly world: WorldView
   private readonly sun = new THREE.DirectionalLight('#ffe8bc', 3.2)
   private readonly lantern = new THREE.PointLight('#ffd9a0', 0, 9, 1.4)
+  private readonly propGeometry = {
+    stalk: new THREE.CylinderGeometry(0.06, 0.06, 0.7, 5),
+    band: new THREE.TorusGeometry(0.13, 0.03, 4, 10)
+  }
   private readonly droppings = new Map<string, THREE.Group>()
   private readonly pellet = new THREE.SphereGeometry(0.075, 8, 6)
   private readonly textures = new Map<string, THREE.Texture>()
   private clock = 0
+  private readonly sky = new THREE.HemisphereLight('#e8f7f2', '#726442', 2.5)
+  private readonly day = new THREE.Color('#b8d9d2')
+  private readonly night = new THREE.Color('#1c2a40')
+  private readonly haven = new THREE.Group()
+  private readonly havenRing: THREE.Mesh
+  private readonly beddingPile = new THREE.Group()
   private yaw = 0
   private disposed = false
 
@@ -117,7 +134,7 @@ export class RabbitersScene {
     this.scene.background = new THREE.Color('#b8d9d2')
     // The field is 288 × 200 m: fog hides the far edge while hills and landmarks stay readable.
     this.scene.fog = new THREE.Fog('#b8d9d2', 50, 230)
-    this.scene.add(new THREE.HemisphereLight('#e8f7f2', '#726442', 2.5))
+    this.scene.add(this.sky)
     const sun = this.sun
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
@@ -126,6 +143,40 @@ export class RabbitersScene {
     this.scene.add(sun, sun.target, this.lantern)
     this.world = new WorldView(this.scene)
     this.camera.position.set(SPAWN.x, 3.6, SPAWN.z + 8)
+    // Winter destination: flowers around the Big Oak hollow; the ring glows once the kits are born.
+    this.haven.position.set(HAVEN.x, heightAt(HAVEN.x, HAVEN.z), HAVEN.z)
+    this.scene.add(this.haven)
+    this.havenRing = this.mesh(
+      this.haven,
+      new THREE.RingGeometry(HAVEN.radius - 0.25, HAVEN.radius, 48),
+      '#ffe9a8',
+      0,
+      0.05,
+      0
+    )
+    this.havenRing.rotation.x = -Math.PI / 2
+    this.havenRing.material = this.smooth('#ffe9a8', 0.5, true)
+    this.havenRing.castShadow = false
+    for (let index = 0; index < 18; index++) {
+      const angle = index * 2.399
+      const radius = Math.sqrt((index * 0.618) % 1) * (HAVEN.radius - 0.4)
+      const flower = new THREE.Mesh(
+        this.rabbitGeometry.small,
+        this.material(['#f6c1d0', '#fff3b0', '#c9b8f2', '#ffffff'][index % 4])
+      )
+      flower.position.set(Math.cos(angle) * radius, 0.25, Math.sin(angle) * radius)
+      flower.scale.set(0.16, 0.1, 0.16)
+      this.haven.add(flower)
+    }
+    // Bedding pile at the burrow mouth grows with each delivered bundle.
+    this.beddingPile.position.set(BURROW.x, heightAt(BURROW.x, BURROW.z - 1.2), BURROW.z - 1.2)
+    this.scene.add(this.beddingPile)
+    for (let index = 0; index < CAMPAIGN.beddingGoal; index++) {
+      const bundle = this.straw(this.beddingPile)
+      bundle.position.set((index % 3) * 0.55 - 0.55, Math.floor(index / 3) * 0.25, (index % 2) * 0.3)
+      bundle.rotation.y = index * 1.1
+      bundle.visible = false
+    }
     this.resize()
   }
 
@@ -174,6 +225,24 @@ export class RabbitersScene {
     mesh.receiveShadow = true
     parent.add(mesh)
     return mesh
+  }
+
+  /** A bundle of dry grass tied with a band. */
+  private straw(parent: THREE.Object3D): THREE.Group {
+    const bundle = new THREE.Group()
+    parent.add(bundle)
+    // Shared geometry, no shadows: bundles appear on the field, the burrow pile and every rabbit's back.
+    for (let stalk = 0; stalk < 3; stalk++) {
+      const piece = new THREE.Mesh(this.propGeometry.stalk, this.material(stalk % 2 ? '#e8cf7a' : '#d6b45d'))
+      piece.position.set(0, 0.1 + (stalk === 2 ? 0.08 : 0), (stalk - 1) * 0.07)
+      piece.rotation.z = Math.PI / 2 + (stalk - 1) * 0.08
+      bundle.add(piece)
+    }
+    const band = new THREE.Mesh(this.propGeometry.band, this.material('#9b6b3d'))
+    band.position.y = 0.12
+    band.rotation.y = Math.PI / 2
+    bundle.add(band)
+    return bundle
   }
 
   /** White rabbit wearing a collar and bell in the player's colour, so teammates can tell each other apart. */
@@ -256,6 +325,10 @@ export class RabbitersScene {
     body.add(collar)
     this.part(body, this.smooth(color, 0.25), [0, 0.75, 0.69], [0.095, 0.095, 0.095])
     this.part(body, this.smooth('#fff4c8', 0.3, true), [0.028, 0.78, 0.765], [0.026, 0.026, 0.014])
+    actor.pack = this.straw(body)
+    actor.pack.position.set(0, 0.82, 0.66)
+    actor.pack.scale.setScalar(1.4)
+    actor.pack.visible = false
     this.scene.add(root)
     return actor
   }
@@ -519,10 +592,19 @@ export class RabbitersScene {
     if (actor.tail) actor.tail.rotation.y = jumping ? 0 : Math.sin(time * 5) * 0.2
   }
 
-  private item(key: string, nest: boolean, kind: FoodKind = 'carrot'): THREE.Group {
+  private item(key: string, nest: boolean | 'straw', kind: FoodKind = 'carrot'): THREE.Group {
     let item = this.items.get(key)
     if (item) return item
     item = new THREE.Group()
+    if (nest === 'straw') {
+      this.straw(item)
+      const halo = this.mesh(item, new THREE.RingGeometry(0.5, 0.56, 28), '#f3d599', 0, 0.045, 0)
+      halo.rotation.x = -Math.PI / 2
+      halo.castShadow = false
+      this.scene.add(item)
+      this.items.set(key, item)
+      return item
+    }
     if (nest) {
       const rim = this.mesh(item, new THREE.TorusGeometry(0.65, 0.18, 6, 16), '#a57c4f', 0, 0.22, 0)
       rim.rotation.x = Math.PI / 2
@@ -567,7 +649,17 @@ export class RabbitersScene {
         pregnant: false,
         tint: undefined,
         key: `predator:${predator.id}`
-      }))
+      })),
+      ...(state.kits ?? [])
+        .filter((kit) => kit.status !== 'lost')
+        .map((kit) => ({
+          ...kit,
+          kind: 'rabbit',
+          tint: '#ffffff',
+          downed: false,
+          pregnant: false,
+          key: `kit:${kit.id}`
+        }))
     ]) {
       liveActors.add(entity.key)
       let actor = this.actors.get(entity.key)
@@ -581,10 +673,11 @@ export class RabbitersScene {
       actor.z = entity.z
       actor.root.position.set(entity.x, entity.y, entity.z)
       actor.root.rotation.y = entity.angle
-      actor.root.scale.setScalar(entity.hidden ? 0.8 : 1)
+      actor.root.scale.setScalar((entity.hidden ? 0.8 : 1) * (entity.key.startsWith('kit:') ? 0.5 : 1))
       // Far creatures are lost in the fog anyway; skipping them keeps draw calls flat on the big map.
       actor.root.visible = Math.hypot(entity.x - this.target.x, entity.z - this.target.z) < 120
       if (actor.belly) actor.belly.visible = entity.pregnant === true
+      if (actor.pack) actor.pack.visible = 'carrying' in entity && !!entity.carrying
       this.animate(
         actor,
         state.time,
@@ -616,6 +709,21 @@ export class RabbitersScene {
       item.visible = nest.active && Math.hypot(nest.x - this.target.x, nest.z - this.target.z) < 130
       item.position.set(nest.x, nest.y, nest.z)
     }
+    for (const straw of state.straws ?? []) {
+      const key = `straw:${straw.id}`
+      liveItems.add(key)
+      const item = this.item(key, 'straw')
+      item.visible = straw.active
+      item.position.set(straw.x, straw.y + Math.sin(state.time * 2 + straw.z) * 0.035, straw.z)
+    }
+    this.beddingPile.children.forEach((bundle, index) => (bundle.visible = index < (state.bedding ?? 0)))
+    this.havenRing.visible = state.chapter === 3
+    if (this.havenRing.visible) this.havenRing.scale.setScalar(1 + Math.sin(state.time * 2.5) * 0.03)
+    const dark = nightAmount(state.time)
+    this.sun.intensity = 3.2 * (1 - 0.8 * dark)
+    this.sky.intensity = 2.5 * (1 - 0.7 * dark)
+    ;(this.scene.background as THREE.Color).lerpColors(this.day, this.night, dark)
+    ;(this.scene.fog as THREE.Fog).color.lerpColors(this.day, this.night, dark)
     for (const [key, item] of this.items)
       if (!liveItems.has(key)) {
         this.release(item)
@@ -796,6 +904,7 @@ export class RabbitersScene {
     this.scene.traverse((object) => {
       if (object instanceof THREE.Sprite) object.material.dispose()
     })
+    Object.values(this.propGeometry).forEach((geometry) => geometry.dispose())
     this.materials.forEach((material) => material.dispose())
     this.scene.traverse((object) => {
       if (object instanceof THREE.DirectionalLight) object.shadow.dispose()

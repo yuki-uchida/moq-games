@@ -148,6 +148,23 @@ describe('Rabbiters audio', () => {
     audio.stop()
   })
 
+  it('marks bedding deliveries, new seasons and lost kits once each', () => {
+    const { audio, game, context } = setup()
+    game.state.bedding = 1
+    game.state.time = 1
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(2)
+    Object.assign(game.state, { time: 2, bedding: 6, chapter: 2 })
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(7)
+    game.state.kits = [{ id: 'kit-0', x: 0, y: 0, z: 0, angle: 0, hidden: false, status: 'lost' }]
+    game.state.time = 3
+    audio.update(game.state, 'local')
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(10)
+    audio.stop()
+  })
+
   it('tolerates missing, throwing and rejected audio support', async () => {
     vi.stubGlobal('AudioContext', undefined)
     const audio = new RabbitersAudio()
