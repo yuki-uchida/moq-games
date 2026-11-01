@@ -142,23 +142,27 @@ describe('real mesh asset ownership', () => {
     const ally = engine.state.units[0]
     engine.state.units.push({ ...ally, id: 2, owner: 'ai' })
     layer.render(engine.state)
-    const root = scene.children[0], fall = root.children[0].children[0]
+    const root = scene.children[0], turn = root.children[0], fall = turn.children[0]
+    // Body up axis in root (screen-aligned) space: tips toward screen right and rests on the ground.
+    const up = () => new THREE.Vector3(0, 1, 0).applyQuaternion(turn.quaternion.clone().multiply(fall.quaternion))
     for (let cycle = 0; cycle < 10; cycle++) {
       ally.hp = 0; engine.state.units.filter(u => u.owner === 'ai').forEach(u => u.hp = 0)
       layer.render(engine.state)
       engine.state.time += 0.4; layer.render(engine.state)
-      expect(fall.rotation.z).toBeLessThan(-0.4)
+      expect(up().x).toBeGreaterThan(0.3)
       engine.state.time += 2; layer.render(engine.state)
       expect(layer.visible(ally.id)).toBe(true)
       expect(layer.visible(2)).toBe(false)
-      expect(fall.rotation.z).toBeCloseTo(-Math.PI / 2)
+      expect(up().x).toBeGreaterThan(0.99)
+      expect(fall.position.y).toBeGreaterThan(0)
       expect(layer.motion(ally.id)).toBe('death')
       expect(scene.children).toEqual([root])
       const materials: THREE.Material[] = []
       root.traverse(o => { if (o instanceof THREE.Mesh) materials.push(o.material as THREE.Material) })
       expect(materials.every(m => m.opacity === 1)).toBe(true)
       ally.hp = ally.maxHp; layer.render(engine.state)
-      expect(fall.rotation.z).toBe(0)
+      expect(fall.quaternion.equals(new THREE.Quaternion())).toBe(true)
+      expect(fall.position.y).toBe(0)
       expect(layer.motion(ally.id)).toBe('idle')
       expect(scene.children).toEqual([root])
     }

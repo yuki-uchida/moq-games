@@ -184,7 +184,7 @@ export class ModelUnitLayer {
       actor.visual.setPosition(unit.x, unit.y)
       actor.visual.setAppearance(1, unit.hitAnimation > 0 ? 0xffc3b8 : 0xffffff)
       try {
-        actor.visual.sample(pose)
+        actor.visual.sample({ ...pose, time: state.time })
       } catch (error) {
         this.errors[`${unit.type}:${pose.motion}`] = String(error)
         actor.visual.root.visible = false
@@ -211,7 +211,8 @@ export class ModelUnitLayer {
             loop: false,
             facingX: actor.last.facingX,
             facingY: actor.last.facingY,
-            boss: actor.last.boss
+            boss: actor.last.boss,
+            time: state.time
           })
         } catch (error) {
           this.errors[`${actor.type}:death`] = String(error)
