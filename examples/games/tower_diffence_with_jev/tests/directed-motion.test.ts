@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import * as THREE from 'three'
-import { directMotionClip, directedPose, MOTION_DIRECTION } from '../src/rendering/DirectedMotion'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { directMotionClip, directedPose, MOTION_DIRECTION, repairKeyFlips } from '../src/rendering/DirectedMotion'
 import { ATTACK_PROFILES } from '../src/game/AttackProfiles'
 import type { UnitType } from '../src/game/model'
 
@@ -29,6 +32,157 @@ function rig() {
   Object.assign(clip, { userData: { blinkAmountSamples: [{ frame: 0 }, { frame: 1 }] } })
   return { scene, chest, head, foot, tool, clip }
 }
+/** Authored rig, geometry and clips of a runtime GLB; textures are irrelevant in Node. */
+async function model(role: string, file: string) {
+  const original = readFileSync(resolve('public/tower-defense-art/models', role, file))
+  const jsonLength = original.readUInt32LE(12)
+  const json = JSON.parse(original.subarray(20, 20 + jsonLength).toString())
+  json.materials = json.materials?.map((material: { name?: string }) => ({ name: material.name }))
+  delete json.images
+  delete json.textures
+  delete json.samplers
+  const text = Buffer.from(JSON.stringify(json))
+  const padded = Buffer.concat([text, Buffer.alloc((4 - (text.length % 4)) % 4, 32)])
+  const binary = original.subarray(20 + jsonLength)
+  const bytes = Buffer.alloc(20 + padded.length + binary.length)
+  original.copy(bytes, 0, 0, 12)
+  bytes.writeUInt32LE(bytes.length, 8)
+  bytes.writeUInt32LE(padded.length, 12)
+  bytes.writeUInt32LE(0x4e4f534a, 16)
+  padded.copy(bytes, 20)
+  binary.copy(bytes, 20 + padded.length)
+  const gltf = await new GLTFLoader().parseAsync(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+    ''
+  )
+  const clip = (name: string) => gltf.animations.find((c) => c.name === name)!
+  return { scene: gltf.scene, clip }
+}
+/** Sample a clip on its rig the way the game does (one clamped action per clip). */
+function sampler(scene: THREE.Object3D, clip: THREE.AnimationClip) {
+  const mixer = new THREE.AnimationMixer(scene),
+    action = mixer.clipAction(clip)
+  action.setLoop(THREE.LoopOnce, 1)
+  action.clampWhenFinished = true
+  action.play()
+  return (t: number) => {
+    action.enabled = true
+    action.paused = false
+    mixer.setTime(t)
+    scene.updateWorldMatrix(true, true)
+  }
+}
+/** Largest world-rotation change of a node between consecutive 1 ms samples, in degrees. */
+function worstTurn(scene: THREE.Object3D, clip: THREE.AnimationClip, node: string, from: number, to: number) {
+  const at = sampler(scene, clip),
+    object = scene.getObjectByName(node)!
+  let previous: THREE.Quaternion | undefined,
+    worst = 0
+  for (let t = from; t <= to; t += 0.001) {
+    at(t)
+    const q = object.getWorldQuaternion(new THREE.Quaternion())
+    if (previous) worst = Math.max(worst, (q.angleTo(previous) * 180) / Math.PI)
+    previous = q
+  }
+  return worst
+}
+
+describe('source key flips', () => {
+  it('re-keys the Brute fist flips across the forearm chain', async () => {
+    const { scene, clip } = await model('brute', 'brute-motion-v2-candidate.glb')
+    const source = clip('attack'),
+      repaired = repairKeyFlips(scene, source)
+    for (const [from, to] of [
+      [0.35, 0.41],
+      [0.59, 0.63]
+    ]) {
+      expect(worstTurn(scene, source, 'handL', from, to)).toBeGreaterThan(20)
+      expect(worstTurn(scene, repaired, 'handL', from, to)).toBeLessThan(10)
+      expect(worstTurn(scene, repaired, 'handR', from, to)).toBeLessThan(10)
+    }
+    expect(repairKeyFlips(scene, source)).toBe(repaired)
+    expect((repaired as any).userData.keyFlipRepairs.map((r: { track: string }) => r.track).sort()).toEqual(
+      [...['foreL', 'foreR', 'handL', 'handR'].flatMap((n) => [`${n}.quaternion`, `${n}.quaternion`])].sort()
+    )
+  })
+  it('turns the Runner elbows continuously while each hand stays on the spear', async () => {
+    const { scene, clip } = await model('runner', 'runner-attack-current.glb')
+    const source = clip('attack'),
+      repaired = directMotionClip(scene, source, 'runner')
+    const spear = scene.getObjectByName('Spear_Rigid_Control')!
+    const grip = (c: THREE.AnimationClip, hand: string, t: number) => {
+      sampler(scene, c)(t)
+      const inverse = spear.matrixWorld.clone().invert()
+      return {
+        at: scene.getObjectByName(hand)!.getWorldPosition(new THREE.Vector3()).applyMatrix4(inverse),
+        turn: spear
+          .getWorldQuaternion(new THREE.Quaternion())
+          .invert()
+          .multiply(scene.getObjectByName(hand)!.getWorldQuaternion(new THREE.Quaternion()))
+      }
+    }
+    for (const [side, from, to] of [
+      ['L', 0.29, 0.33],
+      // The Runner swings fore.R on purpose right after 0.508 s; the flip and return end before it.
+      ['R', 0.44, 0.508]
+    ] as const) {
+      expect(worstTurn(scene, source, `fore${side}`, from, to)).toBeGreaterThan(20)
+      expect(worstTurn(scene, repaired, `fore${side}`, from, to)).toBeLessThan(10)
+      for (let t = from; t <= to; t += 0.004) {
+        const before = grip(source, `hand${side}`, t),
+          after = grip(repaired, `hand${side}`, t)
+        expect(after.at.distanceTo(before.at)).toBeLessThan(1e-3)
+        expect(after.turn.angleTo(before.turn)).toBeLessThan(0.02)
+      }
+    }
+  })
+  it('keeps fast authored motion and clean clips untouched', async () => {
+    const wolf = await model('wolf', 'wolf-walk-smooth.glb')
+    // The paw landing turns 160 deg in ~15 ms, but as a smooth authored swing.
+    for (const name of ['idle', 'walk', 'attack'])
+      expect(repairKeyFlips(wolf.scene, wolf.clip(name))).toBe(wolf.clip(name))
+    const archer = await model('archer', 'archer-attack-candidate.glb')
+    expect(repairKeyFlips(archer.scene, archer.clip('attack'))).toBe(archer.clip('attack'))
+    const runner = await model('runner', 'runner-walk-current.glb')
+    expect(repairKeyFlips(runner.scene, runner.clip('walk'))).toBe(runner.clip('walk'))
+  })
+})
+
+describe('directed attack continuity', () => {
+  it('fades the Wolf torso pose instead of dropping it where the source paw leg straightens', async () => {
+    const { scene, clip } = await model('wolf', 'wolf-walk-smooth.glb')
+    const source = clip('attack'),
+      directed = directMotionClip(scene, source, 'wolf')
+    // Source chest turns ~0.1 deg/ms here; the reach limit used to pop the added pose off and back in 4 ms.
+    expect(worstTurn(scene, directed, 'chest', 0.4, 0.45)).toBeLessThan(
+      worstTurn(scene, source, 'chest', 0.4, 0.45) + 0.3
+    )
+  })
+  it('keeps the Soldier sword tip on, not under, the ground through the cut', async () => {
+    const { scene, clip } = await model('soldier', 'soldier-motion-v2-candidate.glb')
+    const source = clip('attack'),
+      directed = directMotionClip(scene, source, 'soldier')
+    const sword: THREE.Mesh[] = []
+    scene.getObjectByName('Sword_Rigid_Separated')!.traverse((o) => o instanceof THREE.Mesh && sword.push(o))
+    const lowest = (c: THREE.AnimationClip) => {
+      const at = sampler(scene, c),
+        point = new THREE.Vector3()
+      let low = Infinity
+      for (let t = 0.26; t <= 0.42; t += 0.005) {
+        at(t)
+        for (const mesh of sword)
+          for (let i = 0; i < mesh.geometry.attributes.position.count; i++)
+            low = Math.min(low, mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld).y)
+      }
+      return low
+    }
+    // Feet rest on y = 0; the source tip alone dips ~4 px under it.
+    expect(lowest(source)).toBeLessThan(-0.05)
+    expect(lowest(directed)).toBeGreaterThan(-0.002)
+    expect(directed.tracks.map((t) => t.name)).toContain('swordL.quaternion')
+  })
+})
+
 describe('directed rig motion', () => {
   it('has a distinct, finite role recipe for every runtime unit and neutral endpoints', () => {
     expect(Object.keys(MOTION_DIRECTION)).toHaveLength(23)
@@ -40,9 +194,19 @@ describe('directed rig motion', () => {
       }
       if (ATTACK_PROFILES[role].cue === 'release') {
         const cue = ATTACK_PROFILES[role].cueMs / 1000
-        expect(directedPose(role, 'attack', cue, duration)).toEqual({ pitch: 0, yaw: 0 })
+        expect(directedPose(role, 'attack', cue, duration)).toEqual({ pitch: 0, yaw: 0, drop: 0 })
       }
     }
+  })
+  it('accents attacks that relied on VFX after (never at) the release cue, without touching loops', () => {
+    const pose = (role: UnitType, t: number) => directedPose(role, 'attack', t, ATTACK_PROFILES[role].durationMs / 1000)
+    expect(pose('cannon', 0.66)).toEqual({ pitch: 0, yaw: 0, drop: 0 })
+    expect(pose('cannon', 0.72).pitch).toBeLessThan(-0.35) // recoil
+    expect(pose('cannon', 0.45).pitch).toBeGreaterThan(0.15) // leans into the shot
+    expect(pose('wraith', 0.48).pitch).toBeGreaterThan(0.2) // follow-through
+    expect(pose('beetle', 0.42)).toMatchObject({ pitch: expect.closeTo(0.24 * 0.65, 5), drop: 0.15 })
+    for (const role of ['cannon', 'wraith', 'beetle'] as const)
+      expect(directedPose(role, 'walk', 0.125, 1).pitch).toBeCloseTo(MOTION_DIRECTION[role].pitch * 0.22)
   })
   it('changes acting while preserving source bytes, clip clock, feet, rigid grip, and source extras', () => {
     const { scene, clip, chest, tool, foot } = rig(),
