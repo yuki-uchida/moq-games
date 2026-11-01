@@ -13,6 +13,7 @@ window.storyTest = {
   state: () => JSON.parse(JSON.stringify(game.state)),
   place(x, z) { Object.assign(game.state.players[0], { x, z, y: storyMap.heightAt(x, z) }); },
   calm() { game.state.predators = []; },
+  step(n) { game.state.step = n; },
   npc: (id) => storyMap.NPCS.find((npc) => npc.id === id),
   zone(id) { const zone = storyMap.ZONES.find((entry) => entry.id === id); return { x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2 }; },
   calls: () => scene.renderer.info.render.calls
@@ -70,15 +71,14 @@ test('story: chapters 1 → 4 chain through objectives, dialogue and title cards
   await talkTo(page, 'poppo', 1)
   await leaveBy(page, 2, '水の道')
 
-  // Chapter 3 (placeholder waterway): hold E at the valve to open the floodgate, talk to Genji, leave.
+  // Chapter 3 (the waterway; its own walk-through is rabbiters-waterway-e2e.spec.ts): talk to Gama, then skip
+  // ahead to the last step and leave through the fence hole.
   await hooks(page, 'calm()')
-  const valve = await hooks<{ x: number; z: number }>(page, "zone('valve')")
-  await hooks(page, `place(${valve.x}, ${valve.z})`)
-  await page.keyboard.down('KeyE')
-  await expect.poll(async () => (await hooks<{ open: number }>(page, 'state()')).open, { timeout: 30_000 }).toBe(1)
-  await page.keyboard.up('KeyE')
   await page.screenshot({ path: testInfo.outputPath('chapter-3.png') })
-  await talkTo(page, 'genji', 2)
+  await expect(page.locator('#subtitle')).toBeHidden({ timeout: 15_000 })
+  await talkTo(page, 'gama', 0)
+  await expect(page.locator('#subtitle-name')).toHaveText('ヒキガエルのガマ先生', { timeout: 15_000 })
+  await hooks(page, 'step(10)')
   await leaveBy(page, 3, '森へ')
 
   // Chapter 4: the forest seasons campaign, greeted by the elder rabbit.

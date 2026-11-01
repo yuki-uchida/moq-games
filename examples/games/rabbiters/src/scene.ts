@@ -392,7 +392,8 @@ export class RabbitersScene {
   private character(kind: string, tint = '#ffffff', id = '', marked = true): Actor {
     if (kind === 'rabbit') return this.rabbit(tint)
     if (kind === 'wildRabbit') return this.rabbit(tint, true)
-    const model = buildModel(kind, { ...variant(id), id })
+    // Ids pick named looks and extras: a `worker` carries a torch, a `walkdog-*` wears a lead.
+    const model = buildModel(kind, { ...variant(id), id, flashlight: id === 'worker', leash: id.startsWith('walkdog') })
     if (model) {
       if (marked) this.addMarker(model)
       this.scene.add(model.root)
