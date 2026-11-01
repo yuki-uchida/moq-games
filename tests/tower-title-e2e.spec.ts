@@ -402,3 +402,17 @@ test('viewer loops attack and shows the same held ally death as gameplay', async
   expect(death.actor.visible).toBe(true)
   await page.screenshot({ path: 'test-results/viewer-ally-death.png' })
 })
+
+test('campaign models are not fetched on the title but start downloading on the launch screen', async ({ page }) => {
+  const modelRequests: string[] = []
+  page.on('request', (request) => {
+    if (/\.(glb|gltf)(\?|$)/.test(request.url())) modelRequests.push(request.url())
+  })
+  await page.goto(towerPath)
+  await expect(page.locator('#title-screen')).toBeVisible()
+  await page.waitForTimeout(1500)
+  expect(modelRequests).toEqual([])
+  await page.locator('#title-new').click()
+  await expect(page.locator('#launch')).toBeVisible()
+  await expect.poll(() => modelRequests.length, { timeout: 15_000 }).toBeGreaterThan(0)
+})

@@ -513,7 +513,12 @@ function openTitle() {
   $<HTMLButtonElement>('title-continue').disabled = !pendingRun
   if (!titleDialog.open) titleDialog.showModal()
   $('title-new').focus({ preventScroll: true })
-  setTimeout(prefetchLikelyCampaign, 300)
+}
+/** Open the 出撃 screen and start downloading the likely battle while it is read.
+ * Not done on the title, so leaving from there fetches nothing. */
+function showLaunch() {
+  launchDialog.showModal()
+  setTimeout(() => launchDialog.open && prefetchLikelyCampaign(), 300)
 }
 /** Download the likely battle while menus are read, so 出撃 only waits for GPU warm-up. */
 function prefetchLikelyCampaign() {
@@ -563,7 +568,7 @@ $('title-new').onclick = () => {
   history.pushState({ towerScreen: 'new' }, '', '#new-game')
   titleDialog.close()
   renderStageSelect()
-  launchDialog.showModal()
+  showLaunch()
   document.querySelector<HTMLButtonElement>('[data-field][aria-pressed="true"]')!.focus({ preventScroll: true })
 }
 $('title-continue').onclick = () => {
@@ -2074,7 +2079,7 @@ $('save-confirm-accept').onclick = () => {
     upgradePanel.close(false)
     $<HTMLDialogElement>('result').close()
     document.querySelector('.game-layout')!.setAttribute('inert', '')
-    if (!launchDialog.open) launchDialog.showModal()
+    if (!launchDialog.open) showLaunch()
     updateField()
     updateStart()
     document.querySelector<HTMLButtonElement>('[data-field][aria-pressed="true"]')!.focus({ preventScroll: true })
@@ -2306,7 +2311,7 @@ $('retry').onclick = () => {
   upgradePanel.close(false)
   sandbagConfirm.close(false)
   renderStageSelect()
-  launchDialog.showModal()
+  showLaunch()
   updateField()
   updateStart()
   setSaveFeedback(
