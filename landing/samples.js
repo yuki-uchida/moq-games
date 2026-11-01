@@ -24,7 +24,7 @@ export const samples = [
     id: 'lane-battle',
     title: 'うんこ大惨事',
     subtitle: 'LANE BATTLE',
-    description: '仲間を送り、砦を守りながら敵陣へ。3つの戦場を進む拠点攻防戦。',
+    description: 'うんこ軍団を編成・育成し、掃除係や便器、薬が守る敵陣へ。全30ステージの拠点攻防戦。',
     href: './examples/games/lane-battle/index.html',
     category: 'STRATEGY',
     tags: ['拠点攻防', 'ブラウザでプレイ'],
