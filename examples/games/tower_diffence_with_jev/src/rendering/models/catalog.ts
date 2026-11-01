@@ -51,31 +51,31 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   mage: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6569931349408655, 0.3104449969859895, -0.12662202592852762] },
     scale: 128 / 3.55, origin: [-0.14499999582767487, -0.9520019888877869, 0.014999999664723873], yaw: 0,
-    walkDistance: 20, provenance: 'mage-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 20, provenance: 'mage spell v3; preserved v2 geometry/materials, grip-pivot casting and planted-foot IK',
     clips: {
-      idle: source('mage', 'mage-motion-v2-candidate.glb', 'idle', [adapters.mageMaterial]),
-      walk: source('mage', 'mage-motion-v2-candidate.glb', 'walk', [adapters.mageMaterial]),
-      attack: source('mage', 'mage-motion-v2-candidate.glb', 'attack', [adapters.mageMaterial]),
+      idle: source('mage', 'mage-spell-v3.glb', 'idle', [adapters.mageMaterial]),
+      walk: source('mage', 'mage-spell-v3.glb', 'walk', [adapters.mageMaterial]),
+      attack: source('mage', 'mage-spell-v3.glb', 'attack', [adapters.mageMaterial]),
     }
   },
   frost: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6610382795333862, 0.3700866103172302, 0.284916490316391] },
     scale: 128 / 3.4, origin: [-0.11500000208616257, -0.9508733153343201, 0.014999999664723873], yaw: 0,
-    walkDistance: 18, provenance: 'frost-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 18, provenance: 'frost stable feet v3; preserved v2 geometry/materials, constant-length lower-body IK',
     clips: {
-      idle: source('frost', 'frost-motion-v2-candidate.glb', 'idle', [adapters.frostMaterial]),
-      walk: source('frost', 'frost-motion-v2-candidate.glb', 'walk', [adapters.frostMaterial]),
-      attack: source('frost', 'frost-motion-v2-candidate.glb', 'attack', [adapters.frostMaterial]),
+      idle: source('frost', 'frost-stable-feet-v3.glb', 'idle', [adapters.frostMaterial]),
+      walk: source('frost', 'frost-stable-feet-v3.glb', 'walk', [adapters.frostMaterial]),
+      attack: source('frost', 'frost-stable-feet-v3.glb', 'attack', [adapters.frostMaterial]),
     }
   },
   healer: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6100544929504395, 0.15758058428764343, 0.06462452560663223] },
     scale: 128 / 4.24, origin: [-0.17000000178813934, -0.9452990293502808, 0.004999999888241291], yaw: 0,
-    walkDistance: 18, provenance: 'healer-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 18, provenance: 'healer v3; preserved v2 mesh/materials, pelvis-bound garment and offering gesture',
     clips: {
-      idle: source('healer', 'healer-motion-v2-candidate.glb', 'idle', [adapters.healerMaterial]),
-      walk: source('healer', 'healer-motion-v2-candidate.glb', 'walk', [adapters.healerMaterial]),
-      heal: source('healer', 'healer-motion-v2-candidate.glb', 'heal', [adapters.healerMaterial]),
+      idle: source('healer', 'healer-heal-garment-v3.glb', 'idle', [adapters.healerMaterial]),
+      walk: source('healer', 'healer-heal-garment-v3.glb', 'walk', [adapters.healerMaterial]),
+      heal: source('healer', 'healer-heal-garment-v3.glb', 'heal', [adapters.healerMaterial]),
     }
   },
   ranger: {

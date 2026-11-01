@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three source-identical new Blender GLBs pending runtime visual acceptance",
   "summary": {
-    "files": 33,
-    "bytes": 222291620
+    "files": 36,
+    "bytes": 238676488
   },
   "models": [
     {
@@ -649,6 +649,42 @@
         "minTriangles": 1000,
         "normalWeight": 0.2
       }
+    },
+    {
+      "role": "mage",
+      "file": "mage/mage-spell-v3.glb",
+      "sourceSha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+      "outputSha256": "9d8b0e2868243440662d42eee0aae3b96d3364487b714f8ca7c10c296f3f2f83",
+      "bytes": 4514208,
+      "vertices": 31468,
+      "triangles": 36050,
+      "sourceBytes": 4514208,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
+    },
+    {
+      "role": "frost",
+      "file": "frost/frost-stable-feet-v3.glb",
+      "sourceSha256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+      "outputSha256": "bda5bc5a8080775696161f6ebacacfc2faa2221535434b8642ac65bd95241076",
+      "bytes": 4233976,
+      "vertices": 33692,
+      "triangles": 40028,
+      "sourceBytes": 4233976,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
+    },
+    {
+      "role": "healer",
+      "file": "healer/healer-heal-garment-v3.glb",
+      "sourceSha256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+      "outputSha256": "11818e1165683e95e9f268edc79442e5ff25c972aa12bafef4d87f2ba346cfdc",
+      "bytes": 7636684,
+      "vertices": 63287,
+      "triangles": 70015,
+      "sourceBytes": 7636684,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
     }
   ]
 }
