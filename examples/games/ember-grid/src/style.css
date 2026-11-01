@@ -716,3 +716,265 @@ fieldset label {
     animation-duration: 80ms !important;
   }
 }
+
+/* Growth overlays: above the board, never intercepting input. */
+.exp-gauge,
+.level-up {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  color: #fff7df;
+  background: linear-gradient(#1d3a4cf5, #10222ef5);
+  border: 2px solid #e8d08e;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 2px #0b1820,
+    0 10px 30px #000a;
+  font-weight: bold;
+}
+.exp-gauge {
+  bottom: 6%;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  width: min(92%, 380px);
+  animation: panel-in 140ms ease-out;
+}
+.exp-gauge span {
+  flex: 1;
+  white-space: nowrap;
+}
+.exp-gauge b {
+  color: #ffd76a;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.exp-gauge i,
+.exp-line i {
+  display: inline-block;
+  height: 10px;
+  background: #0a141a;
+  border: 1px solid #8a7a4c;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.exp-gauge i {
+  flex: 2;
+}
+.exp-gauge em,
+.exp-line em {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f7c84a, #fff3a8);
+  box-shadow: 0 0 8px #ffe17a;
+  transition: width 500ms ease-out;
+}
+.exp-gauge output {
+  min-width: 2.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.level-up {
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(80%, 280px);
+  padding: 10px 16px 14px;
+  animation: panel-in 180ms ease-out;
+}
+.level-up h3 {
+  margin: 0;
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #ffe27a;
+  text-shadow:
+    0 0 10px #ffb53a,
+    0 2px 0 #6b3a10;
+}
+.level-up p {
+  margin: 4px 0 8px;
+  text-align: center;
+  font-size: 14px;
+}
+.level-up dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.level-up dl div {
+  display: grid;
+  grid-template-columns: 1fr 3ch 3ch;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #ffffff0d;
+}
+.level-up dt,
+.level-up dd {
+  margin: 0;
+}
+.level-up dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.level-up dl span {
+  color: #ffe27a;
+  text-align: right;
+}
+.level-up dl .up {
+  background: #ffd76a33;
+  box-shadow: inset 0 0 0 1px #ffe27a;
+  animation: stat-up 320ms ease-out;
+}
+.level-up dl .up span {
+  animation: plus-pop 320ms ease-out;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+@keyframes stat-up {
+  from {
+    background: #fff6c8;
+  }
+}
+@keyframes plus-pop {
+  from {
+    scale: 2;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exp-gauge,
+  .exp-gauge em,
+  .level-up,
+  .level-up dl .up,
+  .level-up dl .up span {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Chapter clear report. */
+#result.chapter {
+  inset: 2%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding: 14px;
+  font-weight: normal;
+}
+#result.chapter[hidden] {
+  display: none;
+}
+#result.chapter #outcome {
+  margin: 0;
+  text-align: center;
+  font-weight: bold;
+}
+#report header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid #dfcb8b66;
+  padding-bottom: 6px;
+}
+#report header small {
+  color: #ffd76a;
+  letter-spacing: 3px;
+  font-weight: bold;
+}
+.chapter-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 8px 0;
+}
+.chapter-stats div {
+  background: #ffffff0d;
+  border-radius: 6px;
+  padding: 4px;
+  text-align: center;
+}
+.chapter-stats dt {
+  font-size: 11px;
+  color: #b9cbc4;
+}
+.chapter-stats dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+}
+.chapter-units {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.chapter-units li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  background: #ffffff08;
+  font-size: 13px;
+}
+.chapter-units li.mvp {
+  border-color: #ffd76a;
+  box-shadow: inset 0 0 12px #ffd76a33;
+}
+.chapter-units li.fallen {
+  opacity: 0.6;
+}
+/* The complete 128×112 source cell, halved. */
+.chapter-units .portrait {
+  position: relative;
+  flex: none;
+  left: auto;
+  top: auto;
+  transform: none;
+  zoom: 0.5;
+}
+.chapter-units li > div {
+  flex: 1;
+  min-width: 0;
+}
+.chapter-units p {
+  margin: 1px 0;
+}
+.chapter-units mark {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #ffd76a;
+  color: #3a2508;
+  font-size: 11px;
+  font-weight: bold;
+}
+.chapter-units ins {
+  margin-left: 4px;
+  color: #ffe27a;
+  text-decoration: none;
+}
+.exp-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.exp-line i {
+  width: 60px;
+  height: 6px;
+}
+#missions .roster {
+  color: #ffd76a;
+}

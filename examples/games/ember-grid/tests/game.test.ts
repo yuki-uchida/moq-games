@@ -16,7 +16,14 @@ import {
   path,
   reachable,
   rocks,
-  recover
+  recover,
+  carry,
+  expFor,
+  grant,
+  healExp,
+  mvp,
+  rollGrowth,
+  seeded
 } from '../src/game'
 describe('Ember Grid rules', () => {
   it('healing consumes a shared charge and action, and formations trade speed for health', () => {
@@ -170,4 +177,88 @@ describe('Ember Grid rules', () => {
         }
         expect(g.phase).toBe('won')
       })
+})
+describe('Ember Grid growth', () => {
+  it('awards hit, defeat and recovery EXP scaled by level gap', () => {
+    const g = createGame(),
+      u = g.units[0],
+      e = g.units[4]
+    expect(expFor(u, e, false)).toBe(10)
+    expect(expFor(u, e, true)).toBe(30)
+    e.level = 4
+    expect(expFor(u, e, false)).toBe(16)
+    expect(expFor(u, e, true)).toBe(51)
+    u.level = 10
+    expect(expFor(u, e, false)).toBe(1)
+    expect(expFor(u, e, true)).toBe(6)
+    const h = createGame(),
+      a = h.units[0],
+      goblin = h.units[4]
+    a.x = 4
+    a.y = 4
+    expect(attack(h, a, goblin)).toBe(true)
+    expect(a.exp).toBe(10)
+    expect(h.progress).toEqual({ id: 'a', from: 0, to: 10, level: 1 })
+    goblin.hp = 1
+    a.done = false
+    attack(h, a, goblin)
+    expect(a.exp).toBe(40)
+    expect(a.kills).toBe(1)
+    expect(a.gained).toBe(40)
+    a.hp = 2
+    a.done = false
+    recover(h, a)
+    expect(a.exp).toBe(40 + healExp)
+    expect(h.units[3].exp).toBe(0)
+  })
+  it('levels up at 100 EXP with deterministic seeded growth rolls', () => {
+    const roll = (seed: number) => {
+      const g = createGame(0, 'balanced', undefined, seeded(seed)),
+        u = g.units[2]
+      u.exp = 95
+      grant(g, u, 12)
+      return { level: u.level, exp: u.exp, max: u.max, hp: u.hp, power: u.power, def: u.def, gains: g.progress!.gains }
+    }
+    expect(roll(7)).toEqual(roll(7))
+    const r = roll(7)
+    expect(r.level).toBe(2)
+    expect(r.exp).toBe(7)
+    expect(r.max - 10 + r.power - 7 + r.def).toBe(r.gains!.max + r.gains!.power + r.gains!.def)
+    expect(r.hp).toBe(r.max)
+    expect(rollGrowth('mage', () => 0)).toEqual({ max: 1, power: 1, def: 1 })
+    expect(rollGrowth('mage', () => 0.99)).toEqual({ max: 0, power: 1, def: 0 })
+    expect(rollGrowth('soldier', () => 0.99)).toEqual({ max: 1, power: 0, def: 0 })
+    const rng = seeded(42)
+    const ups = { max: 0, power: 0, def: 0 }
+    for (let i = 0; i < 2000; i++) {
+      const gains = rollGrowth('soldier', rng)
+      ups.max += gains.max
+      ups.def += gains.def
+    }
+    expect(ups.max / 2000).toBeGreaterThan(0.75)
+    expect(ups.def / 2000).toBeGreaterThan(0.4)
+  })
+  it('carries level and stats into the next mission at full HP, without stacking the guard bonus', () => {
+    const g = createGame(0, 'guard'),
+      u = g.units[0]
+    Object.assign(u, { level: 3, exp: 45, max: 23, hp: 2, power: 8, def: 2, kills: 4, gained: 90 })
+    const roster = carry(g)
+    expect(roster.a).toEqual({ level: 3, exp: 45, max: 19, power: 8, def: 2 })
+    const next = createGame(1, 'guard', roster),
+      a = next.units[0]
+    expect([a.level, a.exp, a.max, a.hp, a.power, a.def]).toEqual([3, 45, 23, 23, 8, 2])
+    expect([a.kills, a.gained, a.startLevel]).toEqual([0, 0, 3])
+    expect(createGame(1, 'balanced', roster).units[0].max).toBe(19)
+    expect(next.potions).toBe(2)
+    const enemy = next.units[3]
+    a.def = 3
+    expect(damage(enemy, a, next)).toBe(enemy.power - 3)
+  })
+  it('names the MVP by defeats, then damage', () => {
+    const g = createGame()
+    g.units[1].kills = 2
+    g.units[2].kills = 2
+    g.units[2].dealt = 9
+    expect(mvp(g).id).toBe('c')
+  })
 })

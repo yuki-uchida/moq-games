@@ -13,7 +13,20 @@ export type Unit = {
   moved: boolean
   done: boolean
   armor?: number
+  level: number
+  exp: number
+  def: number
+  /** Mission tallies for the chapter report. */
+  startLevel: number
+  gained: number
+  kills: number
+  dealt: number
 }
+export type Gains = { max: number; power: number; def: number }
+/** Latest ally EXP change, consumed by the presentation layer. */
+export type Progress = { id: string; from: number; to: number; level: number; gains?: Gains }
+/** Persistent ally growth carried between missions (max HP excludes the guard bonus). */
+export type Roster = Record<string, Pick<Unit, 'level' | 'exp' | 'max' | 'power' | 'def'>>
 export type Formation = 'balanced' | 'guard'
 export type Game = {
   units: Unit[]
@@ -25,6 +38,8 @@ export type Game = {
   potions: number
   rocks: Set<string>
   groves: Set<string>
+  rng: () => number
+  progress?: Progress
 }
 export const size = 7
 export const rocks = new Set(['3,1', '3,2', '3,4', '3,5'])
@@ -52,7 +67,74 @@ export const missions = [
     groves: ['1,1', '1,5', '4,1', '4,5', '3,4']
   }
 ]
-export function createGame(stage = 0, formation: Formation = 'balanced'): Game {
+/** Per-role chance for each stat to rise by one on level up. */
+export const growth: Record<string, Gains> = {
+  soldier: { max: 0.8, power: 0.45, def: 0.45 },
+  archer: { max: 0.6, power: 0.55, def: 0.25 },
+  mage: { max: 0.5, power: 0.65, def: 0.2 }
+}
+export const expPerLevel = 100
+/** FE-style: base 10 per hit, scaled by the level gap; defeating adds a larger bonus. */
+export function expFor(unit: Unit, target: Unit, defeated: boolean): number {
+  const gap = target.level - unit.level
+  return Math.max(1, 10 + gap * 2) + (defeated ? Math.max(5, 20 + gap * 5) : 0)
+}
+export const healExp = 10
+/** Seedable PRNG (mulberry32) so growth rolls are reproducible. */
+export function seeded(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+/** Roll each stat against its growth rate; an empty level up raises the role's best stat. */
+export function rollGrowth(role: string, rng: () => number): Gains {
+  const rates = growth[role]
+  const gains = { max: 0, power: 0, def: 0 }
+  for (const stat of ['max', 'power', 'def'] as const) gains[stat] = rng() < rates[stat] ? 1 : 0
+  if (!gains.max && !gains.power && !gains.def) {
+    const best = (['max', 'power', 'def'] as const).reduce((a, b) => (rates[b] > rates[a] ? b : a))
+    gains[best] = 1
+  }
+  return gains
+}
+export function grant(game: Game, unit: Unit, amount: number) {
+  if (unit.side !== 'ally') return
+  const from = unit.exp
+  unit.exp += amount
+  unit.gained += amount
+  game.progress = { id: unit.id, from, to: unit.exp, level: unit.level }
+  if (unit.exp < expPerLevel) return
+  unit.exp -= expPerLevel
+  unit.level++
+  const gains = rollGrowth(unit.role, game.rng)
+  unit.max += gains.max
+  unit.hp += gains.max
+  unit.power += gains.power
+  unit.def += gains.def
+  game.progress.gains = gains
+}
+export function carry(game: Game): Roster {
+  return Object.fromEntries(
+    game.units
+      .filter((u) => u.side === 'ally')
+      .map((u) => [
+        u.id,
+        { level: u.level, exp: u.exp, max: u.max - (game.formation === 'guard' ? 4 : 0), power: u.power, def: u.def }
+      ])
+  )
+}
+/** Most defeats, then most damage dealt. */
+export const mvp = (game: Game) =>
+  game.units.filter((u) => u.side === 'ally').sort((a, b) => b.kills - a.kills || b.dealt - a.dealt)[0]
+export function createGame(
+  stage = 0,
+  formation: Formation = 'balanced',
+  roster?: Roster,
+  rng: () => number = Math.random
+): Game {
   stage = Math.max(0, Math.min(2, stage))
   const unit = (
     id: string,
@@ -64,14 +146,37 @@ export function createGame(stage = 0, formation: Formation = 'balanced'): Game {
     hp: number,
     power: number,
     range: number,
-    move = 3
-  ): Unit => ({ id, name, role, side, x, y, hp, max: hp, power, range, move, moved: false, done: false })
+    move = 3,
+    level = 1
+  ): Unit => ({
+    id,
+    name,
+    role,
+    side,
+    x,
+    y,
+    hp,
+    max: hp,
+    power,
+    range,
+    move,
+    moved: false,
+    done: false,
+    level,
+    exp: 0,
+    def: 0,
+    startLevel: level,
+    gained: 0,
+    kills: 0,
+    dealt: 0
+  })
   const game: Game = {
     stage,
     formation,
     potions: 2,
     rocks: new Set(missions[stage].rocks),
     groves: new Set(missions[stage].groves),
+    rng,
     turn: 1,
     phase: 'ally',
     log: '味方を選択 → 青いマスへ移動 → 敵を攻撃',
@@ -79,16 +184,16 @@ export function createGame(stage = 0, formation: Formation = 'balanced'): Game {
       unit('a', '燈守リオ', 'soldier', 'ally', 0, 3, 16, 6, 1),
       unit('b', '風読みネリ', 'archer', 'ally', 0, 2, 11, 5, 3),
       unit('c', '星織ミナ', 'mage', 'ally', 0, 4, 10, 7, 2),
-      unit('d', '灰牙', 'wolf', 'enemy', 5, 2, 10, 4, 1, 3),
-      unit('e', '煤の斥候', 'goblin', 'enemy', 5, 4, 10, 4, 1),
-      { ...unit('f', '霧番', 'goblin', 'enemy', 6, 3, 14, 5, 1), armor: 2 }
+      unit('d', '灰牙', 'wolf', 'enemy', 5, 2, 10, 4, 1, 3, 1 + stage * 2),
+      unit('e', '煤の斥候', 'goblin', 'enemy', 5, 4, 10, 4, 1, 3, 1 + stage * 2),
+      { ...unit('f', '霧番', 'goblin', 'enemy', 6, 3, 14, 5, 1, 3, 2 + stage * 2), armor: 2 }
     ]
   }
-  if (stage === 1) game.units.push(unit('g', '風牙', 'wolf', 'enemy', 6, 1, 11, 4, 1))
+  if (stage === 1) game.units.push(unit('g', '風牙', 'wolf', 'enemy', 6, 1, 11, 4, 1, 3, 3))
   if (stage === 2) {
     game.units.push(
-      unit('g', '風牙', 'wolf', 'enemy', 5, 0, 8, 3, 1),
-      unit('h', '灰の射手', 'archer', 'enemy', 6, 6, 8, 3, 2)
+      unit('g', '風牙', 'wolf', 'enemy', 5, 0, 8, 3, 1, 3, 5),
+      unit('h', '灰の射手', 'archer', 'enemy', 6, 6, 8, 3, 2, 3, 6)
     )
     game.units[3].power = 3
     game.units[4].power = 3
@@ -96,6 +201,12 @@ export function createGame(stage = 0, formation: Formation = 'balanced'): Game {
     game.units[4].y = 5
     game.units[5].x = 6
     game.units[5].y = 3
+  }
+  // Higher-level packs are slightly sturdier; carried growth offsets this.
+  for (const u of game.units) if (u.side === 'enemy' && stage > 0) u.hp = u.max += 1
+  for (const u of game.units) {
+    const saved = roster?.[u.id]
+    if (saved) Object.assign(u, saved, { hp: saved.max, startLevel: saved.level })
   }
   if (formation === 'guard')
     game.units
@@ -192,7 +303,7 @@ export function damage(attacker: Unit, target: Unit, game?: Game): number {
   const armor = attacker.role === 'mage' ? 0 : (target.armor ?? 0)
   return Math.max(
     1,
-    attacker.power + advantage - armor - ((game?.groves ?? groves).has(key(target.x, target.y)) ? 2 : 0)
+    attacker.power + advantage - armor - target.def - ((game?.groves ?? groves).has(key(target.x, target.y)) ? 2 : 0)
   )
 }
 export function recover(game: Game, unit: Unit): boolean {
@@ -210,6 +321,7 @@ export function recover(game: Game, unit: Unit): boolean {
   unit.done = true
   game.potions--
   game.log = `${unit.name} 回復 +${amount} · 残り薬 ${game.potions}`
+  grant(game, unit, healExp)
   return true
 }
 export function settle(game: Game) {
@@ -242,9 +354,12 @@ export function attack(game: Game, unit: Unit, target: Unit): boolean {
   )
     return false
   const hit = damage(unit, target, game)
+  unit.dealt += Math.min(hit, target.hp)
   target.hp = Math.max(0, target.hp - hit)
   unit.done = true
+  if (target.hp === 0) unit.kills++
   game.log = `${unit.name} → ${target.name} −${hit}${target.hp === 0 ? ' 撃破' : ''}`
+  grant(game, unit, expFor(unit, target, target.hp === 0))
   settle(game)
   return true
 }

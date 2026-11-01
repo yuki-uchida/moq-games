@@ -4,6 +4,7 @@ import {
   attackRange,
   beginAlly,
   beginEnemy,
+  carry,
   createGame,
   damage,
   distance,
@@ -14,26 +15,37 @@ import {
   key,
   move,
   reachable,
+  seeded,
   size,
+  type Roster,
   type Unit
 } from './game'
+import { chapterReport, clearProgress, presentProgress } from './progress'
 import './style.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, snapshot } from './animation'
 let busy = false
 let ready = false
-let game = createGame(),
+// ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
+const seed = new URLSearchParams(location.search).get('seed')
+const rng = () => (seed === null ? Math.random : seeded(Number(seed)))
+/** Roster each mission starts from: index 0 is the fresh party, later ones are saved on victory. */
+let checkpoints: (Roster | undefined)[] = []
+const newGame = (stage: number, formation: 'balanced' | 'guard') =>
+  createGame(stage, formation, checkpoints[stage], rng())
+let game = newGame(0, 'balanced'),
   selected: string | undefined,
   inspected: string | undefined,
   hovered: string | undefined,
   generation = 0
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を有効にする" aria-pressed="false">♫×</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青く光るマスへ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲。敵に触れるとその敵の移動範囲（くすんだ青）と攻撃範囲（赤）を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>木立（針葉樹のマス）：受けるダメージ −2。岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復します。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>EMBER GRID · TACTICAL EXAMPLE</small><h1>燈の境界</h1></div><button id="sound" aria-label="音を有効にする" aria-pressed="false">♫×</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青く光るマスへ移動。赤い敵を選ぶと攻撃。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲。敵に触れるとその敵の移動範囲（くすんだ青）と攻撃範囲（赤）を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>木立（針葉樹のマス）：受けるダメージ −2。岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復し、レベルと能力は次の任務へ持ち越します。攻撃・撃破・回復で EXP を得て、100 でレベルアップ（兵種ごとの成長率で HP・攻撃・防御が上昇）。防御はその分だけ被ダメージを減らします。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab でマスを選び Enter。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のレベルで始まり、未到達なら Lv 1 です。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
 })
 const board = document.querySelector<HTMLDivElement>('#board')!
+const field = document.querySelector<HTMLDivElement>('.field')!
 const animation = new BattleAnimation(board, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 for (let y = 0; y < size; y++)
@@ -118,18 +130,22 @@ function render() {
   document.querySelector('#count')!.textContent =
     `◆ ${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length} / ▼ ${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}`
   document.querySelector('#selection')!.textContent = unit
-    ? `${unit.name}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
+    ? `${unit.name} Lv${unit.level} EXP ${unit.exp}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　⛨ ${unit.def}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
     : '燈守を選択'
   document.querySelector('#log')!.textContent = game.log
   ;(document.querySelector('#wait') as HTMLButtonElement).disabled =
-    !ready || !unit || unit.done || game.phase !== 'ally'
-  ;(document.querySelector('#end') as HTMLButtonElement).disabled = !ready || game.phase !== 'ally'
+    busy || !ready || !unit || unit.done || game.phase !== 'ally'
+  ;(document.querySelector('#end') as HTMLButtonElement).disabled = busy || !ready || game.phase !== 'ally'
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
   potion.textContent = `✚ ${game.potions}`
-  potion.disabled = !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
+  potion.disabled =
+    busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
   document.querySelector('#mission')!.textContent = `⚑ ${missions[game.stage].name}`
   const result = document.querySelector<HTMLDivElement>('#result')!
-  result.hidden = game.phase !== 'won' && game.phase !== 'lost'
+  // Wait for the final EXP presentation before revealing the chapter report.
+  result.hidden = busy || (game.phase !== 'won' && game.phase !== 'lost')
+  result.classList.toggle('chapter', game.phase === 'won')
+  document.querySelector('#report')!.innerHTML = game.phase === 'won' ? chapterReport(game, portrait) : ''
   document.querySelector('#outcome')!.textContent =
     game.phase === 'won'
       ? game.stage === 2
@@ -159,7 +175,8 @@ async function choose(x: number, y: number) {
     let changed = false
     if (target) {
       if (attack(game, unit, target)) changed = true
-      else game.log = `${target.name} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
+      else
+        game.log = `${target.name} Lv${target.level} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
     } else if (move(game, unit, x, y)) changed = true
     else game.log = 'そのマスには移動できません'
     if (changed) {
@@ -167,11 +184,12 @@ async function choose(x: number, y: number) {
       lockPresentation()
       await animation.present(game, before, unit)
       if (token !== generation) return
+      if (!(await showProgress(token))) return
       busy = false
     }
   } else if (target) {
     inspected = target.id
-    game.log = `${target.name} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
+    game.log = `${target.name} Lv${target.level} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
   } else inspected = undefined
   afterAction()
 }
@@ -181,6 +199,15 @@ function afterAction() {
   if (!allyTurnOver(game)) return
   game.log = '全員行動終了 · 敵のターンへ'
   void end()
+}
+/** Presents the acting ally's EXP gain; false if a restart superseded it. */
+async function showProgress(token: number) {
+  const progress = game.progress
+  game.progress = undefined
+  if (!progress) return true
+  render()
+  await presentProgress(field, game.units.find((u) => u.id === progress.id)!, progress, audio.enabled)
+  return token === generation
 }
 async function end() {
   if (busy || !ready || !beginEnemy(game)) return
@@ -215,16 +242,20 @@ document.querySelector('#wait')!.addEventListener('click', () => {
 document.querySelector('#restart')!.addEventListener('click', () => {
   generation++
   animation.cancel()
+  clearProgress(field)
   busy = false
-  game = createGame(game.stage, game.formation)
+  game = newGame(game.stage, game.formation)
   audio.start()
   selected = inspected = undefined
   render()
 })
-document.querySelector('#recover')!.addEventListener('click', () => {
+document.querySelector('#recover')!.addEventListener('click', async () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && recover(game, u)) {
     audio.cue('healer')
+    lockPresentation()
+    if (!(await showProgress(generation))) return
+    busy = false
     afterAction()
   }
 })
@@ -238,29 +269,44 @@ document.querySelector('#sound')!.addEventListener('click', () => {
 function startMission(stage: number) {
   generation++
   animation.cancel()
+  clearProgress(field)
   busy = false
   selected = inspected = undefined
   const formation = document.querySelector<HTMLInputElement>('input[name="formation"]:checked')!.value as
     | 'balanced'
     | 'guard'
-  game = createGame(stage, formation)
+  game = newGame(stage, formation)
   render()
   audio.start()
 }
 const expedition = document.querySelector<HTMLDialogElement>('#expedition')!
-document.querySelector('#missions')!.innerHTML = missions
-  .map((m, i) => `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small></button>`)
-  .join('')
-document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
-  (button) =>
-    (button.onclick = () => {
-      startMission(Number(button.dataset.stage))
-      expedition.close()
+function listMissions() {
+  document.querySelector('#missions')!.innerHTML = missions
+    .map((m, i) => {
+      const saved = checkpoints[i]
+      const levels = saved ? Object.values(saved).map((u) => u.level) : [1, 1, 1]
+      return `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small></button>`
     })
-)
-document.querySelector('#mission')!.addEventListener('click', () => expedition.showModal())
+    .join('')
+  document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        startMission(Number(button.dataset.stage))
+        expedition.close()
+      })
+  )
+}
+document.querySelector('#mission')!.addEventListener('click', () => {
+  listMissions()
+  expedition.showModal()
+})
 document.querySelector('#cancel-mission')!.addEventListener('click', () => expedition.close())
-document.querySelector('#next')!.addEventListener('click', () => startMission((game.stage + 1) % 3))
+document.querySelector('#next')!.addEventListener('click', () => {
+  // Victory saves the grown party for the next mission; finishing the expedition starts a fresh one.
+  if (game.stage === 2) checkpoints = []
+  else checkpoints[game.stage + 1] = carry(game)
+  startMission((game.stage + 1) % 3)
+})
 const dialog = document.querySelector('dialog')!
 document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())
 document.querySelector('#close')!.addEventListener('click', () => dialog.close())

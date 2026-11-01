@@ -8,7 +8,7 @@ Independent, local, single-player tactical example: three lantern wardens cross 
 - **風抜けの水路**: offset barriers and two approaches, four enemies.
 - **灰の環城**: an open central route with flanking cover, five enemies including a ranged ash scout.
 
-Each mission is independently selectable through ⚑. Victory offers the next mission, and the third victory completes the expedition. Allies and supplies fully reset between missions. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. Both formations retain the sword, bow and mage roles.
+Each mission is independently selectable through ⚑. Victory opens a chapter-clear report and offers the next mission; the third victory completes the expedition. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. Both formations retain the sword, bow and mage roles.
 
 Select an ally, then a glowing tile to move; select an outlined enemy to attack. Red squares show where the selected ally could strike after any legal move (or from its current square once it has moved). Hovering, focusing or selecting an enemy without an ally selected shows that enemy's movement (muted blue) and strike range (red). Each unit moves once and attacks once per turn. Attacking, waiting or healing ends its action. A unit that has moved, has no enemy in range and cannot usefully heal (full HP or no potions) also counts as finished. Once every living ally is finished, the enemy turn begins automatically after the last action's presentation; End Turn remains available to pass earlier. Range uses Manhattan distance (including through rocks); there are no counterattacks. Groves reduce incoming damage by two, to a minimum of one. Units may walk through squares held by their own side but must stop on an empty square; rocks and opposing units block movement. Enemies follow the same rule, crossing each other but not allies. Walk animations follow the same path.
 
@@ -21,6 +21,23 @@ Defeat all enemies to win; lose all allies to lose. There is no turn limit. Repl
 The 7×7 field is drawn as an oblique 2.5D board: the DOM grid of tile buttons is rotated −45° and squashed (`--tilt` 0.6, 0.78 on narrow portrait screens so tiles stay tappable). Each tile's `.stand` layer applies the exact inverse transform, so unit sprites, HP tags and terrain props stand upright as billboards. Tiles carry `z-index` 2·depth+1 (far corner `(7,1)` first, near corner `(1,7)` last); walking actors live inside the board and take the depth of each step's nearer end, so nearer trees, rocks and units overlap them correctly. Clicks and keyboard focus remain on the projected tile buttons; overlays never take pointer input. Sprites face the projected screen direction of each step or attack.
 
 Terrain and atmosphere are procedural CSS/SVG only: a turbulence-noise ground texture, one lantern light map sliced across tiles, bevelled tile seams, an earth slab with lit/shaded faces, conifer groves and faceted rocks with ember cracks and contact shadows, and drifting embers (disabled with reduced motion). No image asset is added.
+
+## Growth and carry-over
+
+Allies start at Lv 1 and gain EXP whenever their action lands: 10 per hit, plus a defeat bonus of 20, both scaled by the level gap (hit `max(1, 10 + 2·gap)`, defeat bonus `max(5, 20 + 5·gap)`, gap = enemy level − ally level) and 10 per recovery potion. Enemies are Lv 1–2 in the first mission, Lv 3–4 in the second and Lv 5–6 in the third, so later fights pay more. Every 100 EXP is a level up: HP (max and current), attack and defense each rise by one with a per-role chance (sword 80/45/45 %, bow 60/55/25 %, magic 50/65/20 %); if nothing rises, the role’s best-growth stat rises instead. Defense lowers all incoming damage (minimum one). Allies gain nothing while defending and enemies never gain EXP. Rolls use an injectable random source; append `?seed=N` to reproduce them.
+
+After each action the acting ally’s EXP gauge fills; a level up follows with a window in which each raised stat lights with +1 in turn (synthesized Web Audio chime when sound is enabled, no new asset). Both overlays briefly hold input and never intercept pointer events.
+
+Victory shows a chapter report: turns, defeats, survivors, remaining potions and, for each ally, level (▲ gained), EXP, EXP earned, HP/attack/defense and defeats. The MVP has the most defeats, then the most damage dealt.
+
+Level, EXP and stats carry into the next mission; HP is fully restored and potions reset to two. Fallen allies return with whatever they had earned. Each mission starts from a recorded party:
+
+- Mission 1 always starts from the fresh Lv 1 party.
+- Advancing from a victory records the grown party as the next mission’s start.
+- ↻ replay and ⚑ selection start the mission from its record, discarding EXP earned in the abandoned attempt; a mission not yet reached starts from the fresh Lv 1 party. The selection list shows each start level.
+- Completing the third mission and choosing “最初から遠征” clears all records for a new expedition. Records are kept for the page session only.
+
+Later missions add one HP to every enemy, which carried growth offsets; the fresh Lv 1 party can still clear every mission directly.
 
 ## Assets and sound
 
@@ -48,7 +65,7 @@ npx playwright test --config examples/games/ember-grid/playwright.config.ts
 node examples/games/ember-grid/background-check.mjs
 ```
 
-Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, attack/enemy range display, ally pass-through, automatic turn end, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission. Additional presentation tests record native-size desktop/mobile video and verify arrow flight before impact, mute, autoplay rejection/retry, silent reload and browser decoding/nonzero waveforms for every reused sound. Visibility-handler tests synthesize the visibility event; they do not prove OS background lifecycle behavior. Browser audio tests do not establish subjective listening quality.
+Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to installed headless Chrome. Set `PLAYWRIGHT_CHANNEL=chromium` for a Playwright-managed browser. Tests cover desktop, portrait and landscape mobile movement, attack/enemy range display, ally pass-through, automatic turn end, wait, enemy AI, defeat, replay and overflow. Desktop and portrait mobile additionally play all three missions to victory with healing and enabled BGM/SFX, advance missions, and replay. Rule tests verify both formations can complete every mission, EXP amounts, seeded growth rolls, MVP choice and carry-over. A seeded expedition test checks the chapter report against the Node mirror, captures a level-up window, advances with carried levels and verifies mission records on replay. Additional presentation tests record native-size desktop/mobile video and verify arrow flight before impact, mute, autoplay rejection/retry, silent reload and browser decoding/nonzero waveforms for every reused sound. Visibility-handler tests synthesize the visibility event; they do not prove OS background lifecycle behavior. Browser audio tests do not establish subjective listening quality.
 
 Screenshots, including `ember-range-*.png` and `ember-enemy-range-1280.png`, are written to ignored `test-results/ember-*.png`.
 
