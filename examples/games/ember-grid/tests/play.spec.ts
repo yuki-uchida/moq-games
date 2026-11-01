@@ -102,7 +102,9 @@ for (const stage of [0, 1, 2])
         await page.getByRole('button', { name: '任務と編成' }).click()
         await page.locator(`[data-stage="${stage}"]`).click()
       }
-      await page.getByRole('button', { name: '音を有効にする', exact: true }).click()
+      // Music is on by default and starts with the first gesture.
+      await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
+      await page.locator('#count').click()
       await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0)
       await page.evaluate(() => {
         ;(window as any).emberSoundPlays = 0
