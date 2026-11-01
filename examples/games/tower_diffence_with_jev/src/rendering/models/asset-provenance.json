@@ -532,10 +532,10 @@
   {
     "role": "clockworkPatchling",
     "file": "clockwork-patchling-animated.glb",
-    "sha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
-    "bytes": 11753912,
+    "sha256": "38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5",
+    "bytes": 11763100,
     "source": "User-provided Meshy Pro output from original user-provided concept image; cloud Blender rigging and animation derivative",
-    "basis": "+Z front; +Y up; authored height 2; source rig and clips unchanged",
+    "basis": "+Z front; +Y up; authored height 2; original mesh/skin/idle/walk preserved; Blender 5.2 spring-punch attack",
     "scaleDerivation": "29 gameplay pixels per source unit",
     "groundAnchor": [
       0,
@@ -560,7 +560,7 @@
       }
     },
     "attackCueSeconds": 0.8,
-    "verification": "Cloud Blender exported-GLB reimport QA passed. Runtime/game camera review remains pending.",
+    "verification": "Local Blender-authored paired gauntlet spring punch; runtime QA evidence in docs/patchling-attack-review.md",
     "originalSha256": "ff9dc0455670048ce7c28a03fb853bc21f148f27b2cec49324a91b837e18af1b",
     "conceptSha256": "45395b573358436ab8ddcaa28828b73c81065b0985d53d56b0db6b888781245d",
     "rights": "Rights supplied by user; no independent license grant verified. Runtime visual acceptance pending.",
@@ -568,6 +568,13 @@
       "file": "clockworkPatchling/portrait.png",
       "sha256": "45395b573358436ab8ddcaa28828b73c81065b0985d53d56b0db6b888781245d",
       "source": "Original user-provided concept image, source-identical UI portrait; not gameplay sprite art"
+    },
+    "attackRevision": {
+      "originalRuntimeSha256": "7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98",
+      "generator": "scripts/author-patchling-attack.py",
+      "merge": "scripts/merge-patchling-attack.mjs",
+      "fps": 30,
+      "contactFrame": 24
     }
   },
   {

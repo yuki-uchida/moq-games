@@ -39,7 +39,7 @@ const expected = {
   },
   clockworkPatchling: {
     file: 'clockwork-patchling-animated.glb',
-    sha: '7b1a6f0d941d9a44eb4cb4bd15d83d8a8b44f2ffa353d6e8c95b7f1c44b03d98',
+    sha: '38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5',
     scale: 29,
     walkDistance: 22,
     idle: 2,
