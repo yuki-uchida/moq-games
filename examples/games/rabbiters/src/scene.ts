@@ -392,7 +392,7 @@ export class RabbitersScene {
   private character(kind: string, tint = '#ffffff', id = '', marked = true): Actor {
     if (kind === 'rabbit') return this.rabbit(tint)
     if (kind === 'wildRabbit') return this.rabbit(tint, true)
-    const model = buildModel(kind, kind === 'cat' || kind === 'dog' ? { color: variant(id).hair } : variant(id))
+    const model = buildModel(kind, { ...variant(id), id })
     if (model) {
       if (marked) this.addMarker(model)
       this.scene.add(model.root)
