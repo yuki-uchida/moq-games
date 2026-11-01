@@ -146,6 +146,9 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
     expect(saved.units[0].specialCooldown).toBeGreaterThan(0)
     expect(saved.units[0].specialCooldown).toBeCloseTo(cast.units[0].specialCooldown - (saved.time - cast.time), 5)
     if (['healer', 'frost', 'ranger'].includes(type)) expect(saved.specialEffects.length).toBeGreaterThan(0)
+    // Every role's checkpoint round trip is covered by special-abilities.test.ts; one cold
+    // reload proves the browser restore path for an active field without repeating it per role.
+    if (type !== 'healer') return
     await page.reload()
     await page.locator('#title-continue').click()
     await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })

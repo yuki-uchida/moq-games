@@ -9,84 +9,109 @@ import {
 } from './tower-defense-e2e-arrange'
 import { getField, DEFINITIONS } from '../examples/games/tower_diffence_with_jev/src/game/model'
 
-for (const viewport of [
-  { width: 2048, height: 1173 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 720 },
-  { width: 390, height: 844 },
-  { width: 844, height: 390 },
-  { width: 320, height: 568 }
-]) {
-  test(`compact battlefield fits ${viewport.width}×${viewport.height} without scrolling`, async ({ page }) => {
-    await page.setViewportSize(viewport)
-    await openOfflineCampaign(page)
-    await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '4')
-    await expect
-      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().environment.active))
-      .toBe(true)
-    const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
-    expect(mapState.newCampaignLayoutRevision).toBe(4)
-    expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
-    expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4:projected')
-    expect(mapState.environment.error).toBeUndefined()
-    const geometry = await page.evaluate(() => {
-      const map = document.getElementById('map-scroll')!
-      const field = document.getElementById('field')!.getBoundingClientRect()
-      return {
-        width: innerWidth,
-        height: innerHeight,
-        left: field.left,
-        top: field.top,
-        right: field.right,
-        bottom: field.bottom,
-        scrollWidth: map.scrollWidth,
-        scrollHeight: map.scrollHeight,
-        clientWidth: map.clientWidth,
-        clientHeight: map.clientHeight,
-        documentWidth: document.documentElement.scrollWidth,
-        documentHeight: document.documentElement.scrollHeight
+// One cold campaign preparation, opened at the most constrained viewport and then
+// resized through the rest; each cold start costs ~40s on software WebGL runners.
+test('compact battlefield fits every supported viewport without scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 })
+  await openOfflineCampaign(page)
+  await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '4')
+  let deployed = false
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+    { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
+    { width: 2048, height: 1173 }
+  ])
+    await test.step(`${viewport.width}×${viewport.height}`, async () => {
+      await page.setViewportSize(viewport)
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const state = (window as any).towerDefenseDiagnostics()
+            const field = document.getElementById('field')!.getBoundingClientRect()
+            return (
+              state.environment.active &&
+              // The projected background is rebuilt asynchronously after each resize.
+              state.battlefield.backgroundSource === 'approved-map:field:meadow:2:4:projected' &&
+              Math.abs(field.right - field.left - (innerWidth - 24)) < 1 &&
+              Math.abs(
+                state.modelRendering.presentation.aspect - state.displayGeometry.scaleX / state.displayGeometry.scaleY
+              ) < 0.00001
+            )
+          })
+        )
+        .toBe(true)
+      const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
+      expect(mapState.newCampaignLayoutRevision).toBe(4)
+      expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
+      expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4:projected')
+      expect(mapState.environment.error).toBeUndefined()
+      const geometry = await page.evaluate(() => {
+        const map = document.getElementById('map-scroll')!
+        const field = document.getElementById('field')!.getBoundingClientRect()
+        return {
+          width: innerWidth,
+          height: innerHeight,
+          left: field.left,
+          top: field.top,
+          right: field.right,
+          bottom: field.bottom,
+          scrollWidth: map.scrollWidth,
+          scrollHeight: map.scrollHeight,
+          clientWidth: map.clientWidth,
+          clientHeight: map.clientHeight,
+          documentWidth: document.documentElement.scrollWidth,
+          documentHeight: document.documentElement.scrollHeight
+        }
+      })
+      expect(geometry.left).toBeGreaterThanOrEqual(-1)
+      expect(geometry.top).toBeGreaterThanOrEqual(-1)
+      expect(geometry.right).toBeLessThanOrEqual(geometry.width + 1)
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.height + 1)
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1)
+      expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight + 1)
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.width)
+      expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.height)
+      // The source image's complete portal/castle edges remain inside the field.
+      expect(geometry.top).toBeGreaterThanOrEqual(72 - 1)
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.height - 16 + 1)
+      expect(mapState.modelRendering.presentation.scale).toBe(1.5)
+      expect(mapState.displayGeometry.backingWidth).toBe(
+        1280 * Math.min(await page.evaluate(() => devicePixelRatio), 2)
+      )
+      expect(mapState.displayGeometry.backingHeight).toBe(
+        920 * Math.min(await page.evaluate(() => devicePixelRatio), 2)
+      )
+      expect(geometry.right - geometry.left).toBeCloseTo(viewport.width - 24, 0)
+      expect(geometry.bottom - geometry.top).toBeCloseTo(viewport.height - 88, 0)
+      expect(mapState.modelRendering.presentation.aspect).toBeCloseTo(
+        mapState.displayGeometry.scaleX / mapState.displayGeometry.scaleY
+      )
+      // Deployment is limited to one defender; place it at the first wide viewport.
+      if (viewport.width > 800 && !deployed) {
+        await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
+        deployed = true
       }
+      if (deployed) await expect(page.locator('.defender-handle').first()).toBeVisible()
+      for (const heading of ['#field-name', '#time']) {
+        const label = (await page.locator(heading).boundingBox())!
+        for (const control of ['.topbar', '#assault']) {
+          const button = (await page.locator(control).boundingBox())!
+          const overlaps =
+            label.x < button.x + button.width &&
+            label.x + label.width > button.x &&
+            label.y < button.y + button.height &&
+            label.y + label.height > button.y
+          expect(overlaps, `${heading} overlaps ${control}`).toBe(false)
+        }
+      }
+      await expect(page.locator('#assault')).toBeVisible()
+      await expect(page.locator('#game-title-return')).toBeHidden()
+      await page.screenshot({ path: test.info().outputPath(`field-${viewport.width}x${viewport.height}.png`) })
     })
-    expect(geometry.left).toBeGreaterThanOrEqual(-1)
-    expect(geometry.top).toBeGreaterThanOrEqual(-1)
-    expect(geometry.right).toBeLessThanOrEqual(geometry.width + 1)
-    expect(geometry.bottom).toBeLessThanOrEqual(geometry.height + 1)
-    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1)
-    expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight + 1)
-    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.width)
-    expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.height)
-    // The source image's complete portal/castle edges remain inside the field.
-    expect(geometry.top).toBeGreaterThanOrEqual(72 - 1)
-    expect(geometry.bottom).toBeLessThanOrEqual(geometry.height - 16 + 1)
-    expect(mapState.modelRendering.presentation.scale).toBe(1.5)
-    expect(mapState.displayGeometry.backingWidth).toBe(1280 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
-    expect(mapState.displayGeometry.backingHeight).toBe(920 * Math.min(await page.evaluate(() => devicePixelRatio), 2))
-    expect(geometry.right - geometry.left).toBeCloseTo(viewport.width - 24, 0)
-    expect(geometry.bottom - geometry.top).toBeCloseTo(viewport.height - 88, 0)
-    expect(mapState.modelRendering.presentation.aspect).toBeCloseTo(
-      mapState.displayGeometry.scaleX / mapState.displayGeometry.scaleY
-    )
-    if (viewport.width > 800) {
-      await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
-      await expect(page.locator('.defender-handle').first()).toBeVisible()
-    }
-    for (const heading of ['#field-name', '#time']) {
-      const label = (await page.locator(heading).boundingBox())!
-      for (const control of ['.topbar', '#assault']) {
-        const button = (await page.locator(control).boundingBox())!
-        const overlaps =
-          label.x < button.x + button.width &&
-          label.x + label.width > button.x &&
-          label.y < button.y + button.height &&
-          label.y + label.height > button.y
-        expect(overlaps, `${heading} overlaps ${control}`).toBe(false)
-      }
-    }
-    await expect(page.locator('#assault')).toBeVisible()
-    await expect(page.locator('#game-title-return')).toBeHidden()
-    await page.screenshot({ path: test.info().outputPath(`field-${viewport.width}x${viewport.height}.png`) })
-  })
-}
+})
 
 test('recomposed roads retain equal horizontal and vertical widths at every screen aspect', async ({ page }) => {
   await openOfflineCampaign(page)

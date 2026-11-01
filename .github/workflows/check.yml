@@ -27,27 +27,13 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run test:core
-      - run: npm run test:rabbiters
-      - name: Test title and real-model contracts
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests/special-abilities.test.ts examples/games/tower_diffence_with_jev/tests/special-visual.test.ts examples/games/tower_diffence_with_jev/tests/battle-music.test.ts examples/games/tower_diffence_with_jev/tests/title-screen.test.ts examples/games/tower_diffence_with_jev/tests/model-rendering.test.ts examples/games/tower_diffence_with_jev/tests/fade-programs.test.ts examples/games/tower_diffence_with_jev/tests/defender-preparation.test.ts examples/games/tower_diffence_with_jev/tests/campaign-preparation.test.ts examples/games/tower_diffence_with_jev/tests/dq-scratch.test.ts examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts examples/games/tower_diffence_with_jev/tests/model-environment-lighting.test.ts examples/games/tower_diffence_with_jev/tests/ogre-material-color.test.ts examples/games/tower_diffence_with_jev/tests/persist.test.ts examples/games/tower_diffence_with_jev/tests/audio-mobile-unlock.test.ts examples/games/tower_diffence_with_jev/tests/sound-status.test.ts examples/games/tower_diffence_with_jev/tests/compact-field.test.ts examples/games/tower_diffence_with_jev/tests/road-placement.test.ts examples/games/tower_diffence_with_jev/tests/road-geometry-cache.test.ts examples/games/tower_diffence_with_jev/tests/forecast-query-snapshot.test.ts examples/games/tower_diffence_with_jev/tests/battlefield-presentation.test.ts tests/board-camera-depth.test.ts examples/games/tower_diffence_with_jev/tests/enemy-checkpoint.test.ts examples/games/tower_diffence_with_jev/tests/new-enemies.test.ts examples/games/tower_diffence_with_jev/tests/new-enemy-forecast-snapshot.test.ts examples/games/tower_diffence_with_jev/tests/new-enemy-models.test.ts examples/games/tower_diffence_with_jev/tests/refined-motions.test.ts examples/games/tower_diffence_with_jev/tests/approved-maze.test.ts examples/games/tower_diffence_with_jev/tests/model-viewer.test.ts tests/runtime-model-optimization.test.ts examples/games/tower_diffence_with_jev/tests/battle-clock.test.ts --maxWorkers=1
-      - name: Verify proximal motion and source preservation
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests/proximal-motion.test.ts examples/games/tower_diffence_with_jev/tests/animation-repair-preservation.test.ts --maxWorkers=1
-      - name: Test deployed motion byte verification
-        run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs
-      - name: Verify caster geometry, planted feet and staff grip
-        run: npx vitest run tests/caster-motion-v3.test.ts --maxWorkers=1
-      - run: node --test tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install offline bot test dependencies
-        run: python -m pip install httpx==0.28.1 pydantic==2.13.4
-      - name: Test offline bot and serialized HP contracts
-        run: python -m unittest discover -s tests/bot -v
-      - run: npm audit --omit=dev --audit-level=high
-      - name: Verify exact forecast equivalence
-        run: node scripts/validate-forecast-performance.mjs
+      # Run every unit suite so new test files cannot silently fall outside CI.
+      - name: Unit tests
+        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts --maxWorkers=1
+      - name: Node contract tests
+        run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs tests/tower-model-sidecars.test.mjs
+      - run: npm run typecheck:tower-debug
+      - run: npm run test:tower-debug
       - run: npm run build
       - run: node scripts/prepare-pages.mjs
       - run: node --test tests/pages-output.test.mjs
@@ -66,6 +52,36 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+  slow-checks:
+    # Independent of the Pages artifact, so these run beside check instead of delaying the browser shards.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+      - run: node scripts/setup-sdk.mjs
+      - run: npm ci --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Verify exact forecast equivalence
+        run: node scripts/validate-forecast-performance.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline bot test dependencies
+        run: python -m pip install httpx==0.28.1 pydantic==2.13.4
+      - name: Test offline bot and serialized HP contracts
+        run: python -m unittest discover -s tests/bot -v
   browser:
     needs: check
     runs-on: ubuntu-latest
@@ -98,10 +114,26 @@ jobs:
           mkdir -p dist
           tar -xf .pages-artifact/artifact.tar -C dist
           test -s dist/THIRD-PARTY-NOTICES.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chromium for public-build browser tests
         run: npx playwright install --with-deps chromium
+      # Playwright's --shard splits the ordered list into contiguous blocks, which groups
+      # each spec's slow cold-start tests together. Deal tests round-robin instead.
+      - name: Select this shard's tests
+        run: |
+          npx playwright test --config playwright.pages.config.ts --list |
+            grep ' › ' | awk 'NR % 8 == ${{ matrix.shard }} % 8' |
+            sed -E 's/^ +//; s/:[0-9]+:[0-9]+ › / › /' > shard-tests.txt
+          cat shard-tests.txt
+          test -s shard-tests.txt
       - name: Test the Pages build in Chromium
-        run: npx playwright test --config playwright.pages.config.ts --shard=${{ matrix.shard }}/8
+        run: npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt
+      - name: Test Rabbiters in Chromium
+        if: matrix.shard == 1
+        run: npx playwright test --config playwright.rabbiters.config.ts
       - name: Upload shard report and failure evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -114,7 +146,7 @@ jobs:
           retention-days: 14
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [check, browser]
+    needs: [check, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
