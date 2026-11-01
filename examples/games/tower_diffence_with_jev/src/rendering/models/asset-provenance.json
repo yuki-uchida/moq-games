@@ -233,9 +233,9 @@
     "basis": "glTF Y-up; source rest attributes unchanged",
     "scaleDerivation": "128 / 4.4 (source camera horizontal span)",
     "groundAnchor": [
-      0.0,
+      0,
       -0.5641158819198608,
-      -0.0
+      0
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
   },
@@ -250,7 +250,7 @@
     "groundAnchor": [
       -0.10000000149011612,
       -0.8902260065078735,
-      -0.0
+      0
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
   },
@@ -263,9 +263,9 @@
     "basis": "glTF Y-up; source rest attributes unchanged",
     "scaleDerivation": "128 / 3.4 (source camera horizontal span)",
     "groundAnchor": [
-      0.0,
+      0,
       -0.8542622327804565,
-      -0.0
+      0
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
   },
@@ -278,9 +278,9 @@
     "basis": "glTF Y-up; source rest attributes unchanged",
     "scaleDerivation": "128 / 3.7 (source camera horizontal span)",
     "groundAnchor": [
-      0.0,
+      0,
       -1.0399999618530273,
-      -0.0
+      0
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
   },
@@ -293,9 +293,9 @@
     "basis": "glTF Y-up; source rest attributes unchanged",
     "scaleDerivation": "128 / 4.8 (source camera horizontal span)",
     "groundAnchor": [
-      0.0,
+      0,
       -1.2300000190734863,
-      -0.0
+      0
     ],
     "verification": "source contract inspected; runtime visual acceptance pending"
   },
@@ -323,7 +323,7 @@
     "basis": "glTF Y-up; source rest attributes unchanged",
     "scaleDerivation": "128 / 3.0 (source camera horizontal span)",
     "groundAnchor": [
-      0.0,
+      0,
       -1.2400000095367432,
       0.07999999821186066
     ],
@@ -569,5 +569,32 @@
       "sha256": "45395b573358436ab8ddcaa28828b73c81065b0985d53d56b0db6b888781245d",
       "source": "Original user-provided concept image, source-identical UI portrait; not gameplay sprite art"
     }
+  },
+  {
+    "role": "mage",
+    "file": "mage-spell-v3.glb",
+    "sha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+    "archive": "public/tower-defense-art/models/mage/mage-motion-v2-candidate.glb",
+    "archiveSha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+    "basis": "glTF Y-up; derivative of preserved runtime v2",
+    "verification": "8-direction runtime/EXTRA review; docs/caster-motion-review.md"
+  },
+  {
+    "role": "frost",
+    "file": "frost-stable-feet-v3.glb",
+    "sha256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+    "archive": "public/tower-defense-art/models/frost/frost-motion-v2-candidate.glb",
+    "archiveSha256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+    "basis": "glTF Y-up; derivative of preserved runtime v2",
+    "verification": "8-direction runtime/EXTRA review; docs/caster-motion-review.md"
+  },
+  {
+    "role": "healer",
+    "file": "healer-heal-garment-v3.glb",
+    "sha256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+    "archive": "public/tower-defense-art/models/healer/healer-motion-v2-candidate.glb",
+    "archiveSha256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+    "basis": "glTF Y-up; derivative of preserved runtime v2",
+    "verification": "8-direction runtime/EXTRA review; docs/caster-motion-review.md"
   }
 ]
