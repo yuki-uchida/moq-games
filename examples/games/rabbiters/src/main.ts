@@ -1,5 +1,15 @@
 import './style.css'
-import { Game, RULES, coverAt, packSnapshot, unpackSnapshot, type Cover, type GameState, type Input } from './game'
+import {
+  Game,
+  RULES,
+  coverAt,
+  packSnapshot,
+  playerColor,
+  unpackSnapshot,
+  type Cover,
+  type GameState,
+  type Input
+} from './game'
 import { STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
@@ -125,6 +135,7 @@ function validSnapshot(value: unknown): value is GameState {
         numeric(player.growth, 0, 1) &&
         numeric(player.pregnancy, 0, 1) &&
         numeric(player.bath, 0, 1) &&
+        (player.color === undefined || (Number.isInteger(player.color) && numeric(player.color, 0, 63))) &&
         typeof player.hidden === 'boolean' &&
         typeof player.downed === 'boolean' &&
         typeof player.pregnant === 'boolean'
@@ -376,6 +387,9 @@ function updateHud(state: GameState) {
     return
   }
   element<HTMLElement>('#player-name').textContent = player.name
+  const collar = element<HTMLElement>('#player-color')
+  collar.style.background = playerColor(player)
+  collar.style.boxShadow = `0 0 10px ${playerColor(player)}`
   for (const [name, value] of [
     ['health', player.health],
     ['hunger', player.hunger]

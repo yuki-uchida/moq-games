@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Game, RULES, coverAt, type Input } from '../src/game'
+import { Game, PLAYER_COLORS, RULES, coverAt, pickPlayerColor, playerColor, type Input } from '../src/game'
 import { FOODS, GRASS, PREDATOR_STARTS, SPAWN, WORLD, heightAt } from '../src/map'
 import { FOOD_KINDS } from '../src/food'
 
@@ -376,5 +376,24 @@ describe('Rabbiters authoritative simulation', () => {
     player.downed = true
     game.step(0.01)
     expect(game.state.predators[0].targetId).toBeNull()
+  })
+
+  it('gives each rabbit a distinct, deterministic collar colour', () => {
+    const game = new Game(1)
+    for (let index = 0; index < 10; index++) game.addPlayer(`p${index}`, `P${index}`)
+    const slots = game.state.players.map((player) => player.color)
+    expect(new Set(slots.slice(0, PLAYER_COLORS.length)).size).toBe(PLAYER_COLORS.length)
+    expect(slots.slice(PLAYER_COLORS.length)).toEqual([0, 1])
+    // A leaver's colour is the next one handed out, so the room stays distinct.
+    game.removePlayer('p3')
+    game.addPlayer('late', 'Late')
+    expect(game.state.players.at(-1)!.color).toBe(3)
+    expect(pickPlayerColor([{ color: 0 }, { color: 0 }, { color: 1 }])).toBe(2)
+    // Every client derives the same hex; old hosts without a slot fall back to an ID hash.
+    const snapshot = JSON.parse(JSON.stringify(game.state.players))
+    expect(snapshot.map(playerColor)).toEqual(game.state.players.map(playerColor))
+    expect(playerColor({ id: 'p1', color: 1 })).toBe(PLAYER_COLORS[1])
+    expect(playerColor({ id: 'legacy' })).toBe(playerColor({ id: 'legacy' }))
+    expect(PLAYER_COLORS).toContain(playerColor({ id: 'legacy' }))
   })
 })

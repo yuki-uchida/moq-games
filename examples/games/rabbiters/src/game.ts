@@ -76,6 +76,8 @@ export interface Player {
   pregnancy: number
   /** Dust-bath progress 0..1 while crouching still on sand. */
   bath: number
+  /** Index into PLAYER_COLORS, picked by the host on join. Older hosts omit it. */
+  color?: number
 }
 
 export type Predator = PredatorBody
@@ -161,6 +163,32 @@ export const RULES = {
   foodRespawnSeconds: 210,
   predatorSpawnSeconds: 120
 } as const
+
+/** Collar colours: distinct hues that read on grass, sand and the minimap. */
+export const PLAYER_COLORS = [
+  '#e8455a',
+  '#2f7fe0',
+  '#f2b417',
+  '#8a4fd8',
+  '#17b3a3',
+  '#f07a2a',
+  '#e85fb0',
+  '#24306e'
+] as const
+
+/** Lowest palette slot not worn by anyone already in the room; wraps to the least-worn once all are taken. */
+export function pickPlayerColor(players: readonly Pick<Player, 'color'>[]): number {
+  const worn = PLAYER_COLORS.map((_, slot) => players.filter((player) => player.color === slot).length)
+  return worn.indexOf(Math.min(...worn))
+}
+
+/** Same colour on every client: the host-synced slot, or an ID hash for snapshots from older hosts. */
+export function playerColor(player: Pick<Player, 'id' | 'color'>): string {
+  if (Number.isInteger(player.color)) return PLAYER_COLORS[player.color! % PLAYER_COLORS.length]
+  let hash = 0
+  for (const char of player.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return PLAYER_COLORS[hash % PLAYER_COLORS.length]
+}
 
 /** Whether a creature standing at `body` may step to (x, z). Rabbits may duck under logs. */
 export function canEnter(kind: Kind, body: Body, x: number, z: number, grounded: boolean, crouch: boolean): boolean {
@@ -405,7 +433,8 @@ export class Game {
       growth: 0,
       pregnant: false,
       pregnancy: 0,
-      bath: 0
+      bath: 0,
+      color: pickPlayerColor(this.state.players)
     })
     this.dropIn.set(id, this.nextDropping())
   }

@@ -907,3 +907,55 @@ window.rabbitersTour = {
   await shoot('11-fallen-log-forest')
   expect(errors).toEqual([])
 })
+
+test('teammates wear distinct collar colours in the scene, HUD and minimap', async ({ page }, testInfo) => {
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    await route.fulfill({
+      response,
+      body: `${source}
+window.rabbitersAddTeammates = (count) => {
+  game.state.predators = [];
+  const local = game.state.players[0];
+  for (let index = 0; index < count; index++) {
+    game.addPlayer('mate' + index, '仲間 ' + index);
+    const mate = game.state.players.at(-1);
+    const side = index % 2 ? 1 : -1;
+    Object.assign(mate, { x: local.x + side * (1.4 + Math.floor(index / 2) * 1.4), z: local.z + 0.4, hidden: false });
+  }
+  game.step = () => {};
+  return game.state.players.map((player) => player.color);
+};
+window.rabbitersTurnTeam = () => game.state.players.forEach((player) => { player.angle = Math.PI; });
+window.rabbitersSpreadTeammates = () => game.state.players.slice(1).forEach((mate, index) => { mate.z += 30 + 8 * index; });`
+    })
+  })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#player-color')).toHaveCSS('background-color', 'rgb(232, 69, 90)')
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: testInfo.outputPath('solo-collar.png') })
+  const colors = await page.evaluate(() =>
+    (window as unknown as { rabbitersAddTeammates: (count: number) => number[] }).rabbitersAddTeammates(4)
+  )
+  expect(colors).toEqual([0, 1, 2, 3, 4])
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: testInfo.outputPath('team-collars.png') })
+  await page.evaluate(() => (window as unknown as { rabbitersTurnTeam: () => void }).rabbitersTurnTeam())
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: testInfo.outputPath('team-collars-back.png') })
+  await page.evaluate(() => (window as unknown as { rabbitersSpreadTeammates: () => void }).rabbitersSpreadTeammates())
+  await page.waitForTimeout(300)
+  // Each teammate's minimap dot is painted in its own collar colour.
+  const dots = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('#minimap')!
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    const found = new Set<string>()
+    for (let index = 0; index < data.length; index += 4)
+      found.add(`${data[index]},${data[index + 1]},${data[index + 2]}`)
+    return ['47,127,224', '242,180,23', '138,79,216', '23,179,163'].filter((rgb) => found.has(rgb))
+  })
+  expect(dots).toHaveLength(4)
+})

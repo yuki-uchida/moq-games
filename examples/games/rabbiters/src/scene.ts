@@ -15,12 +15,14 @@ import {
 import { WorldView } from './world'
 import { buildFood, isFoodKind, type FoodKind } from './food'
 import { STEALTH } from './stealth'
+import { playerColor } from './game'
 
 export interface RabbitersSceneState {
   time: number
   players: {
     id: string
     name: string
+    color?: number
     x: number
     y: number
     z: number
@@ -86,7 +88,8 @@ export class RabbitersScene {
     large: new THREE.SphereGeometry(1, 24, 16),
     medium: new THREE.SphereGeometry(1, 14, 10),
     small: new THREE.SphereGeometry(1, 8, 6),
-    arm: new THREE.CapsuleGeometry(0.075, 0.2, 4, 10)
+    arm: new THREE.CapsuleGeometry(0.075, 0.2, 4, 10),
+    collar: new THREE.TorusGeometry(0.31, 0.075, 8, 28)
   }
   private readonly target = new THREE.Vector3(SPAWN.x, 0, SPAWN.z)
   private readonly world: WorldView
@@ -172,7 +175,8 @@ export class RabbitersScene {
     return mesh
   }
 
-  private rabbit(): Actor {
+  /** White rabbit wearing a collar and bell in the player's colour, so teammates can tell each other apart. */
+  private rabbit(color: string): Actor {
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
@@ -244,6 +248,13 @@ export class RabbitersScene {
       actor.ears.push(ear)
     }
     this.part(head, this.smooth('#e9848f', 0.55), [0, -0.035, 0.335], [0.05, 0.035, 0.035])
+    const collar = new THREE.Mesh(this.rabbitGeometry.collar, this.smooth(color, 0.6))
+    collar.position.set(0, 0.9, 0.34)
+    collar.rotation.x = Math.PI / 2 - 0.5
+    collar.castShadow = true
+    body.add(collar)
+    this.part(body, this.smooth(color, 0.25), [0, 0.75, 0.69], [0.095, 0.095, 0.095])
+    this.part(body, this.smooth('#fff4c8', 0.3, true), [0.028, 0.78, 0.765], [0.026, 0.026, 0.014])
     this.scene.add(root)
     return actor
   }
@@ -273,8 +284,8 @@ export class RabbitersScene {
     return mesh
   }
 
-  private character(kind: string): Actor {
-    if (kind === 'rabbit') return this.rabbit()
+  private character(kind: string, tint = '#ffffff'): Actor {
+    if (kind === 'rabbit') return this.rabbit(tint)
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
@@ -544,19 +555,23 @@ export class RabbitersScene {
     const follow = 1 - Math.exp(-elapsed * 12)
     const liveActors = new Set<string>()
     for (const entity of [
-      ...state.players.map((player) => ({ ...player, kind: 'rabbit', key: `player:${player.id}` })),
+      ...state.players.map((player) => {
+        const tint = playerColor(player)
+        return { ...player, kind: 'rabbit', tint, key: `player:${player.id}` }
+      }),
       ...state.predators.map((predator) => ({
         ...predator,
         hidden: false,
         downed: false,
         pregnant: false,
+        tint: undefined,
         key: `predator:${predator.id}`
       }))
     ]) {
       liveActors.add(entity.key)
       let actor = this.actors.get(entity.key)
       if (!actor) {
-        actor = this.character(entity.kind)
+        actor = this.character(entity.kind, entity.tint)
         this.actors.set(entity.key, actor)
       }
       const distance = Math.hypot(entity.x - actor.x, entity.z - actor.z)

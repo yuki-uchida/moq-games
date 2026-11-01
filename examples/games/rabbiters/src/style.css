@@ -157,6 +157,11 @@ input:focus-visible {
   background: #b2db95;
   box-shadow: 0 0 10px #a5dc9a;
 }
+#player-color {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #fffaf0;
+}
 .icon-button,
 .close {
   display: grid;
