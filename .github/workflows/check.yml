@@ -50,6 +50,7 @@ jobs:
         run: node scripts/validate-forecast-performance.mjs
       - run: npm run build
       - run: node scripts/prepare-pages.mjs
+      - run: node --test tests/pages-output.test.mjs
       - run: test -s dist/THIRD-PARTY-NOTICES.txt && test -s .generated/moqt-sdk/provenance.json
       # Transfer the exact prepared output, rather than rebuilding per browser runner.
       - name: Upload verified SDK for browser runners

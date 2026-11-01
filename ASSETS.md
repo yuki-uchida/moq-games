@@ -1,5 +1,9 @@
 # Artwork and optional packs
 
+## Rabbiters runtime
+
+Rabbiters creates its 3D characters and scenery from geometry in the game code and synthesizes its music and effects with Web Audio. The catalog's rabbit illustration is original inline SVG. The concept and motion references in `examples/games/rabbiters/art-source/` remain source-only and are not included in the Pages build.
+
 The public distribution includes the existing original 2D runtime roster, effects and commander artwork. The retained upstream art README identifies these as original assets created for this project, not copied Tiny Swords assets. Local production records identify built-in OpenAI image generation and offline assembly of original raster parts, including the Leaf Squire, Mage, Healer, Frost, Slime, Bat, Brute and Wraith records. Other roster records describe original generated character artwork and preserved derivatives. These are AI-generated assets, not represented as wholly human-drawn artwork.
 
 Publication basis: the project owner's explicit publication instruction, the original-source records, and OpenAI's output ownership terms (https://openai.com/policies/terms-of-use/, Content section). Those terms assign output rights as between the customer and OpenAI to the extent permitted by law; they do not guarantee copyright or third-party non-infringement. Pixel Frog's Tiny Swords was a visual reference, not an included third-party asset pack. Existing upstream license notices are retained; no separate third-party Tiny Swords license is claimed for these original derivatives.
