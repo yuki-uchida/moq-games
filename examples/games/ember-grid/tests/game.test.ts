@@ -156,7 +156,8 @@ describe('Ember Grid rules', () => {
   for (const stage of [0, 1, 2])
     for (const formation of ['balanced', 'guard'] as const)
       it(`mission ${stage + 1} is winnable with ${formation}`, () => {
-        const g = createGame(stage, formation)
+        // Match the browser playthrough fixture; random growth changes this policy's outcome.
+        const g = createGame(stage, formation, undefined, seeded(7))
         for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
           for (const u of g.units
             .filter((u) => u.side === 'ally' && u.hp > 0)
