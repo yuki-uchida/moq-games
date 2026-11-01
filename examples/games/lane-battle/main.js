@@ -2,6 +2,7 @@ import { impactCanvas, impactFrame, impactDuration } from '../shared/ImpactArt.t
 import { LaneModels } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
+import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
 import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst, step } from './simulation.js'
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('canvas'),
@@ -42,6 +43,12 @@ document.addEventListener('visibilitychange', () => {
 })
 document.addEventListener('pointerdown', () => audio.unlock(), { once: true })
 document.addEventListener('keydown', () => audio.unlock(), { once: true })
+bindUiSounds(document, (kind) => !muted && !document.hidden && playUiSound(kind, audio.context))
+warmUpAudio()
+/** A short pop on the control that just acted; the sound already confirms it. */
+const calm = matchMedia('(prefers-reduced-motion: reduce)')
+const pop = (button) =>
+  calm.matches || button.animate([{ scale: 1.08 }, { scale: 1 }], { duration: 160, easing: 'ease-out' })
 $('sound').onclick = () => {
   muted = !muted
   audio.muted = muted
@@ -52,10 +59,16 @@ $('sound').onclick = () => {
   if (!muted) tone('summon')
 }
 function deploy(i) {
-  if (!paused && !clock.pending && summon(state, i)) tone('summon')
+  if (!paused && !clock.pending && summon(state, i)) {
+    tone('summon')
+    pop(buttons[i])
+  }
 }
 function invest() {
-  if (!paused && !clock.pending && upgrade(state)) tone('upgrade')
+  if (!paused && !clock.pending && upgrade(state)) {
+    tone('upgrade')
+    pop($('upgrade'))
+  }
 }
 function start(stage) {
   state = createGame(stage)
@@ -79,6 +92,7 @@ function stageLabel(i) {
 }
 STAGES.forEach((stage, i) => {
   const b = document.createElement('button')
+  b.dataset.sfx = 'select'
   b.textContent = stageLabel(i)
   b.onclick = () => {
     state = createGame(i)
@@ -94,6 +108,7 @@ $('next').onclick = () => start((state.stage + 1) % STAGES.length)
 const buttons = TYPES.map((t, i) => {
   const b = document.createElement('button')
   b.setAttribute('aria-label', `${t.name}を召喚 ${t.cost}`)
+  b.dataset.sfx = 'none'
   b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><span>${t.name}</span><b>${t.cost} ✦</b>`
   b.onclick = () => {
     deploy(i)
@@ -142,7 +157,10 @@ $('upgrade').onclick = () => {
   invest()
 }
 $('burst').onclick = () => {
-  if (!paused && !clock.pending && burst(state)) tone('burst')
+  if (!paused && !clock.pending && burst(state)) {
+    tone('burst')
+    pop($('burst'))
+  }
 }
 window.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog').open || clock.pending) return

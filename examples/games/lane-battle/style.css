@@ -53,6 +53,18 @@ button {
   min-height: 48px;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    filter 120ms,
+    scale 80ms;
+}
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    filter: brightness(1.18);
+  }
+}
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+  scale: 0.96;
 }
 button:focus-visible {
   outline: 3px solid #ffe08c;
