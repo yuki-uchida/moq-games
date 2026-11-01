@@ -28,6 +28,11 @@ const audio = (await fs.readFile(new URL('./audio.js', import.meta.url), 'utf8')
   '  effect(kind) {',
   '  effect(kind) {\n    (window.soundTrace ||= []).push({kind,time:performance.now()/1000});'
 )
+// 3D model loading polls on timers; advance the paused fake clock until the title dialog opens.
+async function begin(page) {
+  while (!(await page.locator('dialog[open]').count())) await page.clock.runFor(50)
+  await page.getByRole('button', { name: '進軍開始' }).click()
+}
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 for (const [name, width, height] of [
   ['pc', 1280, 800],
@@ -46,7 +51,7 @@ for (const [name, width, height] of [
     route.fulfill({ contentType: 'application/javascript', body: audio })
   )
   await page.goto(url)
-  await page.getByRole('button', { name: '進軍開始' }).click()
+  await begin(page)
   for (let i = 0; i < 60; i++) {
     await page.clock.runFor(17)
     await page
@@ -79,7 +84,7 @@ for (const [name, width, height] of [
     `${root}/${name}.webm`
   ])
   await page.reload()
-  await page.getByRole('button', { name: '進軍開始' }).click()
+  await begin(page)
   await page.clock.runFor(50)
   await page.getByRole('button', { name: '一時停止', exact: true }).click()
   const frozen = await page.evaluate(() => window.syncTrace.at(-1))
