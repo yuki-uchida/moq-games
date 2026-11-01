@@ -388,7 +388,8 @@ function frame(now: number) {
   }
   const current = snapshot ?? preview.state
   if (!started) preview.state.time = now / 1000
-  const visual = started && !connectionLost && guestView ? guestView.render(current, localId, input, dt, now) : current
+  const visual =
+    started && !connectionLost && guestView && snapshot ? guestView.render(snapshot, localId, input, dt, now) : current
   scene.render(visual, started ? localId : 'preview', dt)
   if (started && !connectionLost && snapshot) audio.update(snapshot, localId)
   if (started && now - hudAt > 100) {

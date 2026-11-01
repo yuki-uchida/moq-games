@@ -19,7 +19,9 @@ test('a guest moves smoothly before delayed host snapshots arrive', async ({ bro
           } else if (data.type === 'input' && this.options.role === 'host') {
             setTimeout(() => this.options.onInput(data.playerId, data.input), 300);
           } else if (data.type === 'snapshot' && this.options.role === 'guest') {
-            setTimeout(() => this.options.onSnapshot(data.state), 300);
+            setTimeout(() => {
+              if (!window.rabbitersHoldSnapshots) this.options.onSnapshot(data.state);
+            }, 300);
           }
         };
         this.options.onStatus(this.options.role === 'host' ? 'ready' : 'waiting-for-host', 'Connected');
@@ -39,8 +41,10 @@ test('a guest moves smoothly before delayed host snapshots arrive', async ({ bro
 window.rabbitersPosition = () => {
   const actor = scene.actors.get('player:' + localId);
   const player = snapshot?.players.find((entry) => entry.id === localId);
-  return actor && player ? { shown: actor.root.position.x, confirmed: player.x } : null;
-};`
+  return actor && player ? { shown: actor.root.position.x, confirmed: player.x,
+    moving: actor.moving, leg: actor.limbs[0].rotation.x } : null;
+};
+window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
     })
   })
   const host = await context.newPage()
@@ -49,20 +53,37 @@ window.rabbitersPosition = () => {
   await host.locator('#room').fill('latency-test')
   await host.locator('#host').click()
   await guest.goto('/')
+  await guest.evaluate(() => {
+    ;(window as unknown as { rabbitersHoldSnapshots: boolean }).rabbitersHoldSnapshots = true
+  })
   await guest.locator('#room').fill('latency-test')
   await guest.locator('#join').click()
+  await guest.evaluate(async () => {
+    const hooks = window as unknown as {
+      rabbitersSetPreviewTime: (time: number) => void
+      rabbitersHoldSnapshots: boolean
+    }
+    hooks.rabbitersSetPreviewTime(120)
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    hooks.rabbitersHoldSnapshots = false
+  })
   const position = () =>
     guest.evaluate(() =>
       (
-        window as unknown as { rabbitersPosition: () => { shown: number; confirmed: number } | null }
+        window as unknown as {
+          rabbitersPosition: () => { shown: number; confirmed: number; moving: number; leg: number } | null
+        }
       ).rabbitersPosition()
     )
   await expect.poll(position, { timeout: 15_000 }).not.toBeNull()
   await guest.keyboard.down('KeyD')
   const samples = await guest.evaluate(async () => {
-    const read = (window as unknown as { rabbitersPosition: () => { shown: number; confirmed: number } | null })
-      .rabbitersPosition
-    const positions: { shown: number; confirmed: number }[] = []
+    const read = (
+      window as unknown as {
+        rabbitersPosition: () => { shown: number; confirmed: number; moving: number; leg: number } | null
+      }
+    ).rabbitersPosition
+    const positions: { shown: number; confirmed: number; moving: number; leg: number }[] = []
     const end = performance.now() + 1200
     while (performance.now() < end) {
       await new Promise(requestAnimationFrame)
@@ -75,6 +96,9 @@ window.rabbitersPosition = () => {
   expect(samples.length).toBeGreaterThan(5)
   expect(samples.some((sample) => sample.shown > sample.confirmed + 0.1)).toBe(true)
   expect(samples.at(-1)!.shown).toBeGreaterThan(samples[0].shown + 0.5)
+  const walking = samples.filter((sample) => sample.moving > 0.8).map((sample) => sample.leg)
+  expect(walking.length).toBeGreaterThan(5)
+  expect(Math.max(...walking) - Math.min(...walking)).toBeGreaterThan(0.3)
   for (let index = 1; index < samples.length; index++) {
     expect(samples[index].shown - samples[index - 1].shown).toBeGreaterThan(-0.1)
     expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
