@@ -12,20 +12,17 @@ for (const [name, width, height] of [
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.evaluate(() => {
     for (let i = 0; i < 100; i++)
-      for (const key of ['3', '1', '2']) window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+      for (const key of ['2', '1', '3']) window.dispatchEvent(new KeyboardEvent('keydown', { key }))
   })
   await page.clock.runFor(50)
-  assert.ok(
-    Number(await page.locator('#gold').textContent()) >= 5 && Number(await page.locator('#gold').textContent()) <= 7,
-    'only one 95-cost wolf despite 300 attempts'
-  )
+  assert.ok(Number(await page.locator('#gold').textContent()) <= 2, 'one of each card despite 300 attempts')
   await page.clock.runFor(6000)
   await page.evaluate(() => {
     for (let i = 0; i < 100; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
   })
   await page.clock.runFor(50)
   const gold = Number(await page.locator('#gold').textContent())
-  assert.ok(gold >= 48 && gold <= 53, `cooldown charges once: ${gold}`)
+  assert.ok(gold >= 42 && gold <= 48, `cooldown charges once: ${gold}`)
   await page.keyboard.press('Space')
   await page.clock.runFor(50)
   const snapshot = () =>
@@ -71,10 +68,11 @@ for (let i = 0; i < 35; i++) {
   }
 }
 assert.ok(lost)
-await page.getByRole('button', { name: '↻ もう一度' }).click()
+assert.match(await page.locator('#report').textContent(), /EXP/)
+await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 await page.clock.runFor(50)
 assert.equal(await page.locator('#home').textContent(), '1400 / 1400')
-assert.equal(await page.locator('#enemy').textContent(), '1000 / 1000')
+assert.equal(await page.locator('#enemy').textContent(), '16000 / 16000')
 assert.equal(await page.locator('#clock').textContent(), '0:00')
 assert.ok(Number(await page.locator('#gold').textContent()) <= 102)
 await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()

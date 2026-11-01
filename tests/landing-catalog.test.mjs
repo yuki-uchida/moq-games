@@ -4,7 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 import { samples } from '../landing/samples.js'
 
 test('catalog exposes only real, unique, playable samples with local entrypoints', async () => {
-  assert.equal(samples.length, 4)
+  assert.equal(samples.length, 5)
   assert.equal(samples[0].title, 'キャッスルナイツ')
   assert.equal(new Set(samples.map((sample) => sample.id)).size, samples.length)
   assert.equal(new Set(samples.map((sample) => sample.href)).size, samples.length)

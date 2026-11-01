@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pose } from './animation.js'
-import { TYPES } from './simulation.js'
+import { POOPS, SPECIALS, ENEMIES } from './simulation.js'
 
 test('attack lunge peaks on the simulation hit, then winds up into the next one', () => {
-  for (const t of TYPES) {
+  for (const t of [...POOPS, ...SPECIALS, ...ENEMIES]) {
     const hit = pose('attack', 0, t.period, 0)
     for (let phase = 0.01; phase < t.period; phase += 0.01)
       assert.ok(pose('attack', phase, t.period, 0).shift < hit.shift, `${t.name} ${phase}`)

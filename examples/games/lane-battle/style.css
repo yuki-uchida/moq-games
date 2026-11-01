@@ -208,31 +208,6 @@ button b {
 #burst:disabled {
   opacity: 0.7;
 }
-dialog {
-  max-width: 420px;
-  width: calc(100% - 32px);
-  border: 1px solid #c98a4b;
-  border-radius: 20px;
-  background: #4b2810;
-  color: #fff6e5;
-  padding: 28px;
-  box-shadow: 0 20px 80px #0008;
-}
-dialog::backdrop {
-  background: #1e0f05aa;
-}
-dialog p {
-  line-height: 1.8;
-  font-size: 14px;
-}
-dialog button {
-  width: 100%;
-  margin-top: 10px;
-}
-dialog h2 {
-  margin: 0;
-  color: #ffd166;
-}
 @media (max-width: 600px) {
   main {
     --gap: 8px;
@@ -303,28 +278,6 @@ dialog h2 {
     min-height: 40px;
   }
 }
-#stages {
-  display: flex;
-  gap: 6px;
-  margin: 10px 0;
-}
-#stages button {
-  font-size: 11px;
-  flex: 1;
-  padding: 5px;
-  min-width: 0;
-}
-#stages button[aria-pressed='true'] {
-  border: 2px solid #ffd166;
-  background: #7a4722;
-}
-#next {
-  background: #3f8f4a;
-}
-dialog {
-  max-height: calc(100dvh - 16px);
-  padding: 22px;
-}
 header #sound {
   width: 40px;
 }
@@ -349,25 +302,239 @@ button[hidden] {
     font-size: 10px;
   }
 }
-@media (max-height: 480px) {
-  dialog {
-    width: 540px;
-    max-width: calc(100vw - 32px);
-    padding: 16px;
+#stage-name {
+  background: #3b2412d9;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #ffd166;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+#tray button small {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+#tray button.special {
+  background: linear-gradient(#4f6b8f, #24324a);
+  border-color: #8fb3e0;
+}
+/* 作戦室: a scrolling sheet with the launch button pinned below it. */
+dialog {
+  width: min(860px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  border: 1px solid #c98a4b;
+  border-radius: 20px;
+  background: #4b2810;
+  color: #fff6e5;
+  padding: 0;
+  box-shadow: 0 20px 80px #0008;
+}
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+dialog::backdrop {
+  background: #1e0f05aa;
+}
+.sheet {
+  overflow-y: auto;
+  padding: 20px 22px 8px;
+  min-height: 0;
+}
+.actions {
+  padding: 10px 22px 16px;
+  border-top: 1px solid #7a4722;
+}
+.actions button {
+  width: 100%;
+  background: #3f8f4a;
+  font-weight: bold;
+  font-size: 18px;
+}
+dialog h2 {
+  margin: 0;
+  color: #ffd166;
+}
+dialog h3 {
+  margin: 16px 0 6px;
+  font-size: 15px;
+  color: #ffd166;
+}
+dialog h3 small {
+  margin-left: 6px;
+  letter-spacing: 0;
+}
+dialog p {
+  line-height: 1.7;
+  font-size: 14px;
+  margin: 8px 0;
+}
+#report {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+#report:empty {
+  display: none;
+}
+#report li {
+  background: #3b2412;
+  border-radius: 10px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#report img {
+  height: 44px;
+}
+#stages {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 4px;
+}
+#stages button {
+  min-height: 34px;
+  padding: 0;
+  font-size: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--area) 35%, #5a361a);
+}
+#stages button[aria-pressed='true'] {
+  outline: 3px solid #ffd166;
+  outline-offset: 1px;
+}
+#stage-info {
+  font-size: 12px;
+  color: #f2cf9b;
+}
+#roster,
+#shop {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px;
+}
+button.unit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 2px;
+  text-align: left;
+  border-radius: 12px;
+  min-height: 64px;
+}
+button.unit.special {
+  background: #2f3f56;
+  border-color: #6d8fbb;
+}
+button.unit[aria-pressed='true'] {
+  outline: 3px solid #ffd166;
+  outline-offset: -2px;
+}
+button.unit img {
+  height: 56px;
+  flex: none;
+}
+button.unit span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+  flex: 1;
+}
+button.unit small {
+  font-size: 11px;
+  color: #f2cf9b;
+  letter-spacing: 0;
+}
+button.unit em {
+  font-style: normal;
+  font-size: 10px;
+  color: #bfe6ff;
+}
+/* EXP to the next level. */
+button.unit i {
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  background: linear-gradient(90deg, #ffd166 calc(var(--x) * 100%), #2a170a 0);
+  border-radius: 2px;
+}
+.slot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: #ffd166;
+  color: #3b2412;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+#shop-section[hidden] {
+  display: none;
+}
+button.link {
+  background: none;
+  border: none;
+  min-height: 32px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #c9a07a;
+  text-decoration: underline;
+}
+@media (max-width: 600px) {
+  #stages {
+    grid-template-columns: repeat(10, 1fr);
   }
+  .sheet {
+    padding: 16px 14px 6px;
+  }
+  .actions {
+    padding: 8px 14px 12px;
+  }
+  #roster,
+  #shop {
+    grid-template-columns: 1fr 1fr;
+  }
+  button.unit img {
+    height: 40px;
+  }
+  button.unit span {
+    font-size: 11px;
+  }
+  button.unit small {
+    font-size: 10px;
+  }
+  #tray button small {
+    top: 2px;
+    left: 4px;
+  }
+}
+@media (max-height: 480px) {
   dialog p {
-    margin: 8px 0;
     font-size: 12px;
     line-height: 1.4;
   }
   dialog h2 {
-    font-size: 20px;
+    font-size: 18px;
   }
-  dialog button {
-    min-height: 36px;
-    margin-top: 5px;
-  }
-  #stages {
-    margin: 4px 0;
+  .actions button {
+    min-height: 40px;
   }
 }

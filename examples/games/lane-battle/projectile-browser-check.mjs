@@ -12,11 +12,11 @@ const fixture =
     .replace('export function createGame(', 'function fixtureBase(')
     .replace('export function step(', 'function stepBase(') +
   `
-export function createGame(stage=0) {
- const s=fixtureBase(stage);s.spawn=999;s.gold=100;
+export function createGame(stage=0,deck,seed) {
+ const s=fixtureBase(stage,deck,seed);s.spawn=999;s.gold=100;
  summon(s,1);summon(s,0,-1);
- s.units[0].x=400;s.units[1].x=500;s.units[1].speed=0;
- s.units[1].hp=s.units[1].maxHp=s.units[0].damage;
+ s.units[0].x=500;s.units[1].x=400;s.units[1].speed=0;
+ s.units[1].hp=s.units[1].maxHp=s.units[0].atk;
  return s;
 }
 export function step(s,dt) {

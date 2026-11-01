@@ -268,18 +268,46 @@ test('EXTRA plays after model and motion switches and repeated playback', async 
     await expect(page.locator('#viewer-play')).toHaveText('Pause')
     await page.locator('#viewer-play').click()
     await page.locator('#viewer-restart').click()
-    await page.waitForTimeout(100)
+    const resetFrame = (await diagnostics(page)).renderCount
+    await expect.poll(async () => (await diagnostics(page)).renderCount).toBeGreaterThan(resetFrame)
     const before = await page.locator('#viewer-canvas').screenshot()
     await page.locator('#viewer-play').click()
-    await expect.poll(async () => (await diagnostics(page)).seconds).toBeGreaterThan(0.35)
+    await expect
+      .poll(async () => (await diagnostics(page)).seconds, { intervals: [100, 200, 300] })
+      .toBeGreaterThan(0.35)
+    // A delayed pause can wrap a looping clip back to its identical first pose.
+    // Observe actual rendered motion while playback is running, not a wall-clock deadline.
+    await expect
+      .poll(async () => (await page.locator('#viewer-canvas').screenshot()).equals(before), {
+        intervals: [100, 200, 300]
+      })
+      .toBe(false)
     await page.locator('#viewer-play').click()
-    await page.waitForTimeout(100)
-    const after = await page.locator('#viewer-canvas').screenshot()
-    expect(after.equals(before)).toBe(false)
     await page.locator('#viewer-play').click()
     const resumed = (await diagnostics(page)).seconds
-    await expect.poll(async () => (await diagnostics(page)).seconds).not.toBe(resumed)
+    await expect.poll(async () => (await diagnostics(page)).seconds, { intervals: [100, 200, 300] }).not.toBe(resumed)
   }
+})
+
+test('EXTRA loop boundary repeats the start pose while the interior visibly moves', async ({ page }) => {
+  await page.goto(extraPath)
+  await page.addStyleTag({ content: '#viewer-canvas { width: 300px !important; height: 200px !important }' })
+  await page.locator('#viewer-role').selectOption('slime')
+  await page.locator('#viewer-motion').selectOption('walk')
+  await expectModel(page, 'slime', 'walk')
+  const frameAt = async (phase: number) => {
+    const count = await page.locator('#viewer-timeline').evaluate((node, fraction) => {
+      const timeline = node as HTMLInputElement
+      timeline.value = String(Number(timeline.max) * fraction)
+      timeline.dispatchEvent(new Event('input', { bubbles: true }))
+      return (window as any).__extraViewerDiagnostics().renderCount
+    }, phase)
+    await expect.poll(async () => (await diagnostics(page)).renderCount).toBeGreaterThan(count)
+    return page.locator('#viewer-canvas').screenshot()
+  }
+  const start = await frameAt(0)
+  expect((await frameAt(1)).equals(start)).toBe(true)
+  expect((await frameAt(0.4)).equals(start)).toBe(false)
 })
 
 test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaking the old clock', async ({ page }) => {

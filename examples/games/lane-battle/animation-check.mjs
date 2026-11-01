@@ -20,8 +20,8 @@ for (const [pass, width, height, start] of [
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   const deploy = () =>
     page.evaluate(() => {
-      const i = (window.reviewNext || 0) % 3
-      const b = document.querySelectorAll('#tray button')[i]
+      const cards = document.querySelectorAll('#tray button')
+      const b = cards[(window.reviewNext || 0) % cards.length]
       if (!b.disabled) {
         b.click()
         window.reviewNext = (window.reviewNext || 0) + 1
