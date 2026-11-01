@@ -8,7 +8,7 @@ export class ExpeditionAudio {
   private voices: HTMLAudioElement[] = []
   constructor(private report: (message: string) => void) {
     this.music.loop = true
-    this.music.volume = 0.14
+    this.music.volume = 0.07
     this.music.preload = 'none'
     this.music.dataset.emberMusic = 'true'
     document.body.append(this.music)
