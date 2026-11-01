@@ -15,7 +15,8 @@ window.storyTest = {
   calm() { game.state.predators = []; },
   npc: (id) => storyMap.NPCS.find((npc) => npc.id === id),
   zone(id) { const zone = storyMap.ZONES.find((entry) => entry.id === id); return { x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2 }; },
-  calls: () => scene.renderer.info.render.calls
+  calls: () => scene.renderer.info.render.calls,
+  skipTo(step, open) { Object.assign(game.state, { step, open }); }
 };`
     })
   })
@@ -63,11 +64,11 @@ test('story: chapters 1 → 4 chain through objectives, dialogue and title cards
   await expect(page.locator('#subtitle-text')).toContainText('モリ')
   await leaveBy(page, 1, '知らない町')
 
-  // Chapter 2 (placeholder town): ask Poppo the way, reach the drain.
+  // Chapter 2 (town; rabbiters-town-e2e.spec.ts plays its goals): skip to the gnawed-open drain and go in.
   await hooks(page, 'calm()')
   await expect(page.locator('#objective-title')).toContainText('第2章｜')
   await page.screenshot({ path: testInfo.outputPath('chapter-2.png') })
-  await talkTo(page, 'poppo', 1)
+  await hooks(page, 'skipTo(11, 1)')
   await leaveBy(page, 2, '水の道')
 
   // Chapter 3 (placeholder waterway): hold E at the valve to open the floodgate, talk to Genji, leave.

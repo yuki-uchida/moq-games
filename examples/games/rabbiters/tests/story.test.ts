@@ -273,6 +273,7 @@ describe('Rabbiters story stages', () => {
     let pulse = false
     for (let frame = 0; frame < 60 * 60 * 6 && game.state.stage < FOREST; frame++) {
       game.state.predators = [] // threat-free route; the cautious policy is exercised elsewhere
+      if (game.state.stage === TOWN) game.nextStage() // chapter 2 has its own full run in town.test.ts
       const marker = STAGES[game.state.stage].script.markers?.(game.state)[0]
       if (!marker) break
       const input = bot.input(marker)
