@@ -876,6 +876,12 @@ window.rabbitersTour = {
   expect(tunnel.camera.y).toBeLessThan(tunnel.camera.ground - 0.4)
   expect(tunnel.area).toBe('モグラのトンネル')
   expect(tunnel.condition).toContain('モグラのトンネル')
+  expect(Math.hypot(tunnel.camera.x - tunnel.x, tunnel.camera.z - tunnel.z)).toBeGreaterThan(1.5)
+  // Looking across the narrow corridor must not fold the camera into the rabbit or the tunnel wall.
+  await tour((t, ...[look]) => t.look(look), Math.atan2(entry.x - junction.x, entry.z - junction.z) + Math.PI / 2)
+  await settle()
+  const across = await tour((t) => t.info())
+  expect(Math.hypot(across.camera.x - across.x, across.camera.z - across.z)).toBeGreaterThan(1.5)
 
   // Crawl in under a fallen log from its cut end while a wolf prowls nearby.
   const log = LOGS[0]

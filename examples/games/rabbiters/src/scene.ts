@@ -6,6 +6,7 @@ import {
   blockersNear,
   caveAt,
   clampToTunnel,
+  tunnelNearest,
   floorAt,
   heightAt,
   isUnderground,
@@ -653,20 +654,29 @@ export class RabbitersScene {
     const distance = underground ? 2.6 : cave ? 5 : narrow ? 8.5 : 7.5
     const height = underground ? 0.8 : cave ? 2 : narrow ? 4 : 3.4
     const focus = this.target.clone().add(new THREE.Vector3(0, underground ? 0.55 : 1, 0))
-    const desired = new THREE.Vector3(
-      this.target.x + Math.sin(this.yaw) * distance,
-      this.target.y + height,
-      this.target.z + Math.cos(this.yaw) * distance
-    )
-    if (!underground) desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
+    // The boom pivots on the rabbit; underground it runs down the corridor's centreline instead, since a free
+    // orbit (or a rabbit brushing the wall) would start the boom inside the earth and collapse it.
+    const pivot = focus.clone()
+    let backX = Math.sin(this.yaw)
+    let backZ = Math.cos(this.yaw)
+    if (underground) {
+      const lane = tunnelNearest(this.target.x, this.target.z)
+      const side = lane.ux * backX + lane.uz * backZ < 0 ? -1 : 1
+      pivot.set(lane.x, focus.y, lane.z)
+      backX = lane.ux * side
+      backZ = lane.uz * side
+    }
+    const desired = new THREE.Vector3(pivot.x + backX * distance, this.target.y + height, pivot.z + backZ * distance)
+    if (underground) desired.y = heightAt(desired.x, desired.z) - TUNNEL_DEPTH + height
+    else desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
     // If a trunk, rock or tunnel end blocks the boom, swing it around the rabbit before giving up.
-    const full = desired.distanceTo(focus)
-    let reach = focus.clone()
+    const full = desired.distanceTo(pivot)
+    let reach = pivot.clone()
     for (const swing of underground ? [0, Math.PI] : [0, 0.5, -0.5, 1, -1]) {
-      const swung = desired.clone().sub(focus).applyAxisAngle(UP, swing).add(focus)
-      const candidate = this.boom(focus, swung, underground, cave, underLog)
-      if (candidate.distanceTo(focus) > reach.distanceTo(focus)) reach = candidate
-      if (reach.distanceTo(focus) >= full * 0.7) break
+      const swung = desired.clone().sub(pivot).applyAxisAngle(UP, swing).add(pivot)
+      const candidate = this.boom(pivot, swung, underground, cave, underLog)
+      if (candidate.distanceTo(pivot) > reach.distanceTo(pivot)) reach = candidate
+      if (reach.distanceTo(pivot) >= full * 0.7) break
     }
     if (reach.distanceTo(focus) < 1.2 && !underground && !cave) reach = desired // a thin post; look through it
     this.camera.position.lerp(reach, smoothing)
