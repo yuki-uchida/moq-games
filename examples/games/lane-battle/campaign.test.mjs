@@ -106,13 +106,23 @@ test('save data round-trips and survives corruption', () => {
   assert.equal(load(storage).roster.length, 2)
 })
 
-test('a reference player clears all 30 stages in about two hours of battles', () => {
-  for (const seed of [3, 11]) {
-    const { c, time, battles } = playCampaign(rng(seed))
+test('a human-paced player clears all 30 stages in about two hours', () => {
+  // One tap per second, random ready card, partial 腸活, late 大放屁, plus MENU_SECONDS in the 作戦室 per battle.
+  const minutes = [3, 11, 29, 42, 77, 101].map((seed) => {
+    const { c, time } = playCampaign(rng(seed), { casual: true })
     assert.equal(c.cleared, STAGES.length, `seed ${seed}`)
-    assert.ok(time / 60 > 80 && time / 60 < 150, `seed ${seed}: ${(time / 60).toFixed(1)} min over ${battles} battles`)
     assert.equal(c.roster.filter((e) => typeOf(e.key).special).length, STAGES.length, 'a special joined per stage')
-  }
+    assert.ok(time / 60 > 90 && time / 60 < 150, `seed ${seed}: ${(time / 60).toFixed(1)} min`)
+    return time / 60
+  })
+  const mean = minutes.reduce((a, b) => a + b) / minutes.length
+  assert.ok(mean > 105 && mean < 135, `mean ${mean.toFixed(1)} min`)
+})
+
+test('a greedy player also finishes the campaign', () => {
+  const { c, time } = playCampaign(rng(11))
+  assert.equal(c.cleared, STAGES.length)
+  assert.ok(time / 60 > 80 && time / 60 < 150, `${(time / 60).toFixed(1)} min`)
 })
 
 test('growth matters: an unleveled starter army cannot take the final stage', () => {

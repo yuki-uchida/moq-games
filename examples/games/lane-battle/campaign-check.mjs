@@ -73,7 +73,7 @@ await Promise.all(
       await page.locator('#tray button').evaluateAll((b) => b.map((x) => x.getAttribute('aria-label'))),
       ['カチカチうんこを召喚 35', 'コロコロうんこを召喚 65', 'ゲリラうんこを召喚 95']
     )
-    assert.match(await page.locator('#enemy').textContent(), /4330/)
+    assert.match(await page.locator('#enemy').textContent(), /16800/)
     assert.ok((await page.evaluate(() => window.soundCount)) > 0, 'sound synthesis triggered')
     await page.getByRole('button', { name: '音を切り替え' }).click()
     const count = await page.evaluate(() => window.soundCount)

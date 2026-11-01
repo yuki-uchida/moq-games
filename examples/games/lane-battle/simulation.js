@@ -308,16 +308,16 @@ const AREAS = [
   {
     name: '黄金の便器城',
     color: '#e8cf86',
-    base: [3, 4, 5, 6],
-    extra: [0, 7, 1, 5, 6, 7],
+    base: [0, 3, 4, 5],
+    extra: [6, 7, 1, 5, 6, 7],
     stages: ['城門', '泡の堀', '水洗回廊', 'ウォシュレット塔', '玉座の間', '黄金の便器'],
     hint: '全勢力が集う最終決戦。編成と育成のすべてをぶつけよう'
   }
 ]
-const ENEMY_HP = (i) => 4000 + 330 * i
+const ENEMY_HP = (i) => 16000 + 800 * i
 const INTERVAL = (i) => 5 - 0.05 * i
 const FLOOR = (i) => Math.max(1.8, 3.4 - 0.05 * i)
-const POWER = (i) => 0.9 + 0.085 * i
+const POWER = (i) => 0.9 + 0.07 * i
 export const STAGES = AREAS.flatMap((area, a) =>
   area.stages.map((sub, pos) => {
     const i = a * 6 + pos
@@ -473,7 +473,10 @@ function land(s, src, target, damage) {
     if (src.knock) v.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, v.x + src.knock * dirOf(src)))
   }
 }
-export const TURRET = { range: 240, period: 2.2, damage: 40 }
+/** Global marching pace: lane battles are meant to last two to three minutes. */
+export const WALK_PACE = 0.84
+export const RUSHES = 4
+export const TURRET = { range: 260, period: 1.8, damage: 55 }
 /** The enemy fort fires its ウォシュレット砲 at the closest poop, and sends a 大掃除 rush at 2/3 and 1/3 HP. */
 function fortDefense(s, dt) {
   const stage = STAGES[s.stage]
@@ -503,9 +506,9 @@ function fortDefense(s, dt) {
       effect
     })
   }
-  while (s.rushes < 2 && s.enemy <= (stage.enemy * (2 - s.rushes)) / 3) {
+  while (s.rushes < RUSHES && s.enemy <= (stage.enemy * (RUSHES - s.rushes)) / (RUSHES + 1)) {
     s.rushes++
-    const size = 3 + s.rushes + Math.floor(s.stage / 10)
+    const size = 3 + s.rushes
     for (let k = 0; k < size; k++) {
       summon(s, stage.pattern[(s.enemySpawned + k * 2) % stage.pattern.length], -1)
       s.units.at(-1).x -= k * 14
@@ -571,7 +574,7 @@ export function step(s, dt) {
       }
     } else {
       u.motion = 'walk'
-      const distanceWalked = u.speed * (s.time < u.slowUntil ? 0.5 : 1) * dt
+      const distanceWalked = u.speed * WALK_PACE * (s.time < u.slowUntil ? 0.5 : 1) * dt
       u.x += distanceWalked * dir
       u.walkDistance += distanceWalked
     }

@@ -61,7 +61,7 @@ test('fort victory/defeat waits for impact and terminal state cannot apply more 
   for (const side of [1, -1]) {
     const s = createGame()
     s.spawn = 999
-    s.rushes = 2
+    s.rushes = 99
     summon(s, side === 1 ? 1 : 2, side)
     const archer = s.units[0]
     archer.x = side === 1 ? 100 : 900
