@@ -6,6 +6,7 @@
 // Geometries and materials are shared and never disposed per actor.
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 export type Actor = {
   root: THREE.Group
@@ -778,7 +779,40 @@ function bird(kind: string, look: BirdLook, flyer: boolean): Actor {
   return actor
 }
 
-export function buildModel(kind: string, options: ModelOptions = {}): Actor | undefined {
+/**
+ * Merges the parts of each rigid group (the body, every limb, ear and tail joint) that share a material into one
+ * mesh, so a person costs about a dozen draw calls instead of forty-odd. Joints stay separate so they still move.
+ */
+function compact<T extends THREE.Object3D>(root: T): T {
+  root.traverse((node) => {
+    const byMaterial = new Map<THREE.Material, THREE.Mesh[]>()
+    for (const child of node.children) {
+      const mesh = child as THREE.Mesh
+      if (!mesh.isMesh || mesh.children.length || Array.isArray(mesh.material) || mesh.material === BEAM) continue
+      const list = byMaterial.get(mesh.material)
+      if (list) list.push(mesh)
+      else byMaterial.set(mesh.material, [mesh])
+    }
+    for (const [shared, meshes] of byMaterial) {
+      if (meshes.length < 2) continue
+      const parts = meshes.map((mesh) => {
+        mesh.updateMatrix()
+        const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
+        return geometry.applyMatrix4(mesh.matrix)
+      })
+      const merged = new THREE.Mesh(mergeGeometries(parts), shared)
+      parts.forEach((part) => part.dispose())
+      merged.castShadow = meshes.some((mesh) => mesh.castShadow)
+      merged.receiveShadow = true
+      merged.userData.owned = true // per-actor geometry: released with the actor
+      for (const mesh of meshes) node.remove(mesh)
+      node.add(merged)
+    }
+  })
+  return root
+}
+
+function buildRig(kind: string, options: ModelOptions = {}): Actor | undefined {
   switch (kind) {
     case 'human':
     case 'child':
@@ -853,6 +887,12 @@ export function buildModel(kind: string, options: ModelOptions = {}): Actor | un
   }
 }
 
+export function buildModel(kind: string, options: ModelOptions = {}): Actor | undefined {
+  const actor = buildRig(kind, options)
+  if (actor) compact(actor.root)
+  return actor
+}
+
 /** Car facing +z, `length` × `width` × `height` (game scale 16 × 6.5 × 5.5), sitting 0.9 above the road. */
 export function buildCar(color: string, length = 16, width = 6.5, height = 5.5): THREE.Group {
   const car = new THREE.Group()
@@ -900,7 +940,7 @@ export function buildCar(color: string, length = 16, width = 6.5, height = 5.5):
   }
   for (const side of [-1, 1])
     part(car, 'box', paint, [side * width * 0.52, deck + lower + 0.5, length * 0.12], [0.5, 0.45, 0.7]) // mirrors
-  return car
+  return compact(car)
 }
 
 /** Default model for a chapter item: a small parcel on a ring. */

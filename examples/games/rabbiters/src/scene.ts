@@ -947,6 +947,8 @@ export class RabbitersScene {
       }
       car.position.set(vehicle.x, heightAt(vehicle.x, vehicle.z), vehicle.z)
       car.rotation.y = vehicle.angle
+      // Like far creatures, far cars are lost in the fog: skip drawing them.
+      car.visible = Math.hypot(vehicle.x - this.target.x, vehicle.z - this.target.z) < 130
     }
     for (const [id, car] of this.vehicles)
       if (!liveCars.has(id)) {
@@ -1151,7 +1153,8 @@ export class RabbitersScene {
 
   private release(root: THREE.Object3D): void {
     root.traverse((object) => {
-      if (object instanceof THREE.Mesh && this.geometries.delete(object.geometry)) object.geometry.dispose()
+      if (object instanceof THREE.Mesh && (this.geometries.delete(object.geometry) || object.userData.owned))
+        object.geometry.dispose()
       if (object instanceof THREE.Sprite) object.material.dispose()
     })
     root.removeFromParent()

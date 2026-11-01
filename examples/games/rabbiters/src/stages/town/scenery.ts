@@ -158,12 +158,7 @@ function props(): { boxes: Box[]; lit: Box[] } {
   for (const z of [-4.5, 4.5]) box(66, 0, z, 1, 9, 1, '#d9472a')
   box(66, 8.2, 0, 1.2, 0.8, 13, '#2a2420')
   box(66, 6.6, 0, 0.8, 0.6, 11, '#d9472a')
-  for (const z of [-5, 5]) {
-    box(74, 0, z, 1.6, 0.9, 1.6, '#8a8478')
-    box(74, 0.9, z, 1.1, 1.3, 1.2, '#9a948a')
-    box(82, 0, z * 0.8, 0.8, 2, 0.8, '#9a948a')
-    box(82, 2, z * 0.8, 1.3, 1, 1.3, '#a8a296')
-  }
+  for (const z of [-5, 5]) box(74, 0, z, 1.6, 0.9, 1.6, '#8a8478') // guardian pedestals (statues: shrineRounds)
   const hall = SHRINE_FLOOR
   const [hx, hz] = [(hall.minX + hall.maxX) / 2, (hall.minZ + hall.maxZ) / 2]
   for (const x of [hall.minX + 0.3, hx, hall.maxX - 0.3])
@@ -173,12 +168,7 @@ function props(): { boxes: Box[]; lit: Box[] } {
   box(hx, 6.6, hz, hall.maxX - hall.minX + 4, 0.8, hall.maxZ - hall.minZ + 5, '#3a3a40')
   box(hx, 7.4, hz, hall.maxX - hall.minX, 1.4, hall.maxZ - hall.minZ + 2, '#3a3a40')
   box(90, 0, 0, 2, 1.4, 2.4, '#7a4a2a')
-  // Grove trees: trunk and two crowns.
-  for (const tree of map.trees) {
-    box(tree.x, 0, tree.z, 0.9, tree.top - 4, 0.9, '#6a4a32')
-    box(tree.x, tree.top - 6, tree.z, 5.5, 3.5, 5.5, '#3f6a3a', tree.x)
-    box(tree.x, tree.top - 3, tree.z, 3.8, 3, 3.8, '#4a7a40', tree.z)
-  }
+  // Grove trees, guardian dogs and stone lanterns are rounded shapes: see shrineRounds.
   for (const bush of map.bushes)
     if (bush.x > 62 && bush.x < 120) box(bush.x, 0, bush.z, bush.r * 1.8, bush.r, bush.r * 1.8, '#4f7a3f', bush.x)
   // Embankment: town-side fence, guard rails on the levee road, the drain's concrete mouth.
@@ -250,6 +240,95 @@ const unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
 const boxGeometry = (entry: Box) =>
   unitBox.clone().scale(entry.w, entry.h, entry.d).translate(entry.x, entry.y, entry.z)
 
+/**
+ * The shrine's rounded pieces, merged into one mesh per colour: two seated guardian dogs (komainu) facing the
+ * approach, stone lanterns and the grove's trees (trunk under lumpy crowns, like the forest's).
+ */
+function shrineRounds(trees: readonly { x: number; z: number; top: number }[]): THREE.Group {
+  const byColor = new Map<string, THREE.BufferGeometry[]>()
+  const unit = {
+    sphere: new THREE.SphereGeometry(1, 12, 9),
+    lump: new THREE.IcosahedronGeometry(1, 1),
+    cylinder: new THREE.CylinderGeometry(1, 1, 1, 12),
+    cone: new THREE.ConeGeometry(1, 1, 4),
+    torus: new THREE.TorusGeometry(1, 0.35, 8, 16)
+  }
+  const add = (
+    color: string,
+    shape: keyof typeof unit,
+    [x, y, z]: number[],
+    [sx, sy, sz]: number[],
+    [rx, ry, rz]: number[] = [0, 0, 0],
+    frame?: THREE.Matrix4
+  ) => {
+    const matrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(x, y, z),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
+      new THREE.Vector3(sx, sy, sz)
+    )
+    if (frame) matrix.premultiply(frame)
+    const geometry = unit[shape].toNonIndexed().applyMatrix4(matrix)
+    const list = byColor.get(color)
+    if (list) list.push(geometry)
+    else byColor.set(color, [geometry])
+  }
+  const stone = '#a8a296'
+  const shade = '#8f897e'
+  for (const side of [-1, 1]) {
+    // Seated on the pedestal (top 0.9), facing the torii to the west (−x), heads turned slightly to the path.
+    const frame = new THREE.Matrix4().compose(
+      new THREE.Vector3(74, 0.9, side * 5),
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2 - side * 0.35),
+      new THREE.Vector3(1, 1, 1)
+    )
+    add(stone, 'sphere', [0, 0.7, -0.1], [0.5, 0.65, 0.6], [0, 0, 0], frame) // body
+    add(stone, 'sphere', [0, 0.85, 0.3], [0.42, 0.55, 0.36], [0, 0, 0], frame) // chest
+    for (const leg of [-1, 1]) {
+      add(stone, 'cylinder', [leg * 0.22, 0.35, 0.42], [0.12, 0.7, 0.12], [0, 0, 0], frame) // front legs
+      add(stone, 'sphere', [leg * 0.22, 0.05, 0.5], [0.16, 0.1, 0.2], [0, 0, 0], frame)
+      add(stone, 'sphere', [leg * 0.32, 0.3, -0.35], [0.22, 0.28, 0.32], [0, 0, 0], frame) // haunches
+    }
+    add(shade, 'torus', [0, 1.45, 0.25], [0.42, 0.42, 0.42], [Math.PI / 2 - 0.3, 0, 0], frame) // curly mane
+    add(stone, 'sphere', [0, 1.55, 0.35], [0.4, 0.38, 0.38], [0, 0, 0], frame) // head
+    add(stone, 'sphere', [0, 1.45, 0.68], [0.24, 0.18, 0.18], [0, 0, 0], frame) // muzzle
+    add('#3a3632', 'sphere', [0, 1.5, 0.84], [0.06, 0.05, 0.04], [0, 0, 0], frame) // nose
+    for (const eye of [-1, 1]) {
+      add('#3a3632', 'sphere', [eye * 0.16, 1.66, 0.66], [0.06, 0.07, 0.04], [0, 0, 0], frame)
+      add(shade, 'sphere', [eye * 0.3, 1.78, 0.25], [0.12, 0.16, 0.08], [0, 0, eye * 0.4], frame) // ears
+    }
+    for (let curl = 0; curl < 3; curl++)
+      add(shade, 'sphere', [0, 1.0 + curl * 0.22, -0.65 - curl * 0.05], [0.2, 0.18, 0.18], [0, 0, 0], frame) // tail
+  }
+  for (const z of [-4, 4]) {
+    // Stone lanterns: base, post, fire box with a warm window, a wide roof and a knob.
+    add(shade, 'cylinder', [82, 0.2, z], [0.55, 0.4, 0.55])
+    add(stone, 'cylinder', [82, 1.2, z], [0.22, 1.6, 0.22])
+    add(stone, 'cylinder', [82, 2.1, z], [0.6, 0.2, 0.6])
+    add(stone, 'cylinder', [82, 2.55, z], [0.45, 0.7, 0.45])
+    add('#f2c66a', 'cylinder', [82, 2.55, z], [0.46, 0.3, 0.2])
+    add(stone, 'cone', [82, 3.2, z], [0.95, 0.6, 0.95], [0, Math.PI / 4, 0])
+    add(stone, 'sphere', [82, 3.6, z], [0.16, 0.2, 0.16])
+  }
+  for (const tree of trees) {
+    add('#6a4a32', 'cylinder', [tree.x, (tree.top - 3) / 2, tree.z], [0.45, tree.top - 3, 0.45])
+    add('#3f6a3a', 'lump', [tree.x, tree.top - 3.5, tree.z], [3, 2.2, 3], [0, tree.x, 0])
+    add('#4a7a40', 'lump', [tree.x + 0.8, tree.top - 1.6, tree.z - 0.5], [2.2, 1.8, 2.2], [0, tree.z, 0])
+    add('#557f45', 'lump', [tree.x - 1, tree.top - 2.2, tree.z + 0.8], [1.8, 1.5, 1.8], [0, tree.x + tree.z, 0])
+  }
+  const group = new THREE.Group()
+  for (const [color, parts] of byColor) {
+    const mesh = new THREE.Mesh(
+      mergeGeometries(parts),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true })
+    )
+    parts.forEach((part) => part.dispose())
+    mesh.castShadow = mesh.receiveShadow = true
+    group.add(mesh)
+  }
+  Object.values(unit).forEach((geometry) => geometry.dispose())
+  return group
+}
+
 export function scenery(scene: THREE.Scene): Scenery {
   const { boxes, lit } = props()
   // Night layers, all driven by LOOK.night.
@@ -320,12 +399,21 @@ export function scenery(scene: THREE.Scene): Scenery {
   whole.removeFromParent()
   whole.geometry.dispose()
   view.root.add(ground)
-  view.root.add(windows, pools, beams, grate)
+  const rounds = shrineRounds(buildMap().trees)
+  view.root.add(windows, pools, beams, grate, rounds)
   return {
     update: view.update,
     dispose() {
-      for (const object of [windows, pools, beams, grate, ...(ground.children as THREE.Mesh[])])
+      for (const object of [
+        windows,
+        pools,
+        beams,
+        grate,
+        ...(ground.children as THREE.Mesh[]),
+        ...(rounds.children as THREE.Mesh[])
+      ])
         object.geometry.dispose()
+      for (const mesh of rounds.children as THREE.Mesh[]) (mesh.material as THREE.Material).dispose()
       for (const material of [glow, poolMaterial, beamMaterial, grate.material]) material.dispose()
       view.dispose()
     }

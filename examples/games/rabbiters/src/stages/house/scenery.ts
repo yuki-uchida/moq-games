@@ -85,17 +85,28 @@ export function scenery(scene: THREE.Scene): Scenery {
       0,
       0.06
     )
-  for (const patch of GRASS_PATCHES) {
+  // Leafy clumps along each bed, flowering (pink, yellow, white) in the flower beds and with round cabbages in
+  // the vegetable patch (the bed nearest the house's west end).
+  for (const [bed, patch] of GRASS_PATCHES.entries()) {
     const count = Math.ceil(Math.hypot(patch.bx - patch.ax, patch.bz - patch.az) / 0.9)
     for (let index = 0; index <= count; index++) {
       const t = index / Math.max(1, count)
-      kit.add(
-        statics,
-        'cone',
-        index % 3 ? '#5f9e45' : '#e58fb0',
-        [patch.ax + (patch.bx - patch.ax) * t, 0.6, patch.az + (patch.bz - patch.az) * t],
-        [patch.r * 0.7, 1.2, patch.r * 0.7]
-      )
+      const x = patch.ax + (patch.bx - patch.ax) * t + Math.sin(index * 2.3 + bed) * patch.r * 0.25
+      const z = patch.az + (patch.bz - patch.az) * t + Math.cos(index * 1.7 + bed) * patch.r * 0.25
+      const size = patch.r * (0.55 + 0.15 * Math.sin(index * 3.1 + bed))
+      kit.add(statics, 'sphere', index % 2 ? '#5f9e45' : '#4f8a3c', [x, size * 0.55, z], [size, size * 0.85, size])
+      if (bed <= 1) kit.add(statics, 'sphere', '#a9cf7a', [x, size * 1.2, z], [size * 0.5, size * 0.45, size * 0.5])
+      else
+        for (let petal = 0; petal < 3; petal++) {
+          const angle = petal * 2.1 + index
+          kit.add(
+            statics,
+            'sphere',
+            ['#e58fb0', '#f2d14b', '#ffffff'][(index + petal + bed) % 3],
+            [x + Math.cos(angle) * size * 0.55, size * 1.25, z + Math.sin(angle) * size * 0.55],
+            [0.28, 0.2, 0.28]
+          )
+        }
     }
   }
 
