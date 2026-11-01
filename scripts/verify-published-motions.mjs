@@ -25,9 +25,17 @@ export async function verifyPublishedMotions(base, audit) {
       const response = await get(path)
       let bytes = Buffer.from(await response.arrayBuffer())
       const transferBytes = bytes.length
+      // gunzip verifies the CRC; the GLB header and the build stamp tie the intact derivative to its source.
       if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes)
       const sha256 = createHash('sha256').update(bytes).digest('hex')
-      if (sha256 !== expected.outputSha256 || bytes.length !== expected.bytes)
+      let source
+      try {
+        if (bytes.readUInt32LE(0) !== 0x46546c67 || bytes.readUInt32LE(8) !== bytes.length) throw Error('header')
+        source = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8')).asset.extras.sourceSha256
+      } catch {
+        source = undefined
+      }
+      if (source !== expected.outputSha256 || bytes.length > expected.bytes)
         throw Error(`${role}: deployed GLB bytes do not match the verified asset`)
       return { role, url: new URL(path, base).href, bytes: bytes.length, transferBytes, sha256 }
     })

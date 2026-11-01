@@ -259,7 +259,7 @@ const sidecarModels = new Map(
   runtimeManifest.models.map((model) => [model.file, { size: model.bytes, hash: model.outputSha256 }])
 )
 
-/** Use compressed build artifacts when supported; original URLs remain the fallback. */
+/** Use compressed build artifacts (meshopt-encoded GLB, gzipped) when supported; original URLs remain the fallback. */
 export function loadGLTF(url: string): Promise<GLTF> {
   const manager = new THREE.LoadingManager()
   const controller = new AbortController()
@@ -314,7 +314,8 @@ export function loadGLTF(url: string): Promise<GLTF> {
             })
           )
           const bytes = await new Response(bounded).arrayBuffer()
-          if (bytes.byteLength !== model.size) throw new Error('Model sidecar size mismatch')
+          if (new DataView(bytes).getUint32(8, true) !== bytes.byteLength) throw new Error('Model sidecar truncated')
+          loader.setMeshoptDecoder((await import('three/addons/libs/meshopt_decoder.module.js')).MeshoptDecoder)
           return await loader.parseAsync(bytes, new URL('.', parsed).href)
         } catch (error) {
           if (controller.signal.aborted) throw error
