@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import { GRASS_PATCHES } from './game'
+import { FIELD_PROPS, GRASS_PATCHES, SAND_PATCHES } from './game'
+import { buildFood, isFoodKind, type FoodKind } from './food'
+import { STEALTH } from './stealth'
 
 export interface RabbitersSceneState {
   time: number
@@ -19,9 +21,20 @@ export interface RabbitersSceneState {
     pregnancy?: number
     age?: number
     foodEaten?: number
+    bath?: number
   }[]
-  predators: { id: string; kind: string; x: number; y: number; z: number; angle: number; state: string }[]
-  foods: { id: string; x: number; y: number; z: number; active: boolean }[]
+  predators: {
+    id: string
+    kind: string
+    x: number
+    y: number
+    z: number
+    angle: number
+    state: string
+    suspicion?: number
+  }[]
+  droppings?: { id: string; x: number; y: number; z: number; t: number }[]
+  foods: { id: string; kind?: FoodKind; x: number; y: number; z: number; active: boolean }[]
   nests: { id: string; x: number; y: number; z: number; health: number; active: boolean }[]
   delivered: number
   goal: number
@@ -35,6 +48,10 @@ type Actor = {
   ears: THREE.Group[]
   tail?: THREE.Group
   belly?: THREE.Mesh
+  dust?: THREE.Mesh
+  marker?: { symbol: THREE.Sprite; meter: THREE.Sprite; fill: THREE.Sprite }
+  lastState?: string
+  alertAt: number
   kind: string
   x: number
   z: number
@@ -49,11 +66,22 @@ export class RabbitersScene {
   private readonly items = new Map<string, THREE.Group>()
   private readonly geometries = new Set<THREE.BufferGeometry>()
   private readonly materials = new Map<string, THREE.MeshStandardMaterial>()
+  // Shared by every rabbit; never released per actor, only in dispose().
+  private readonly rabbitGeometry = {
+    large: new THREE.SphereGeometry(1, 24, 16),
+    medium: new THREE.SphereGeometry(1, 14, 10),
+    small: new THREE.SphereGeometry(1, 8, 6),
+    arm: new THREE.CapsuleGeometry(0.075, 0.2, 4, 10)
+  }
   private readonly target = new THREE.Vector3(-37, 0, 0)
   private readonly cameraObstacles: THREE.Object3D[] = []
   private readonly cameraRay = new THREE.Raycaster()
   private readonly water: THREE.Mesh
   private readonly reeds: THREE.Group[] = []
+  private readonly droppings = new Map<string, THREE.Group>()
+  private readonly pellet = new THREE.SphereGeometry(0.075, 8, 6)
+  private readonly textures = new Map<string, THREE.Texture>()
+  private clock = 0
   private yaw = 0
   private disposed = false
 
@@ -119,6 +147,112 @@ export class RabbitersScene {
     return material
   }
 
+  private smooth(color: string, roughness = 0.92, emissive = false): THREE.MeshStandardMaterial {
+    const key = `smooth:${color}:${roughness}:${emissive}`
+    let material = this.materials.get(key)
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({ color, roughness, emissive: emissive ? color : '#000000' })
+      this.materials.set(key, material)
+    }
+    return material
+  }
+
+  private part(
+    parent: THREE.Object3D,
+    material: THREE.Material,
+    [x, y, z]: number[],
+    [width, height, depth]: number[],
+    arm = false
+  ): THREE.Mesh {
+    // Tessellation and shadow casting scale with part size to keep software/low-end GPUs at full frame rate.
+    const size = Math.max(width, height, depth)
+    const { large, medium, small } = this.rabbitGeometry
+    const geometry = arm ? this.rabbitGeometry.arm : size >= 0.15 ? large : size >= 0.06 ? medium : small
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(x, y, z)
+    mesh.scale.set(width, height, depth)
+    mesh.castShadow = arm || size >= 0.15
+    mesh.receiveShadow = true
+    parent.add(mesh)
+    return mesh
+  }
+
+  private rabbit(): Actor {
+    const root = new THREE.Group()
+    const body = new THREE.Group()
+    root.add(body)
+    const actor: Actor = {
+      root,
+      body,
+      limbs: [],
+      ears: [],
+      kind: 'rabbit',
+      x: NaN,
+      z: NaN,
+      moving: 0,
+      alertAt: -Infinity
+    }
+    const fur = this.smooth('#f4ece0')
+    const cream = this.smooth('#fffaf2')
+    const pink = this.smooth('#f1a3aa', 0.7)
+    this.part(body, fur, [0, 0.6, -0.04], [0.46, 0.45, 0.56])
+    this.part(body, cream, [0, 0.66, 0.24], [0.33, 0.36, 0.3])
+    actor.belly = this.part(body, cream, [0, 0.5, 0.2], [0.4, 0.34, 0.42])
+    actor.belly.visible = false
+    actor.dust = this.oval(root, '#e8d2a0', 0, 0.15, 0, 0.9, 0.25, 0.9)
+    actor.dust.material = this.material('#e8d2a0', 0.55, true)
+    actor.dust.castShadow = false
+    actor.dust.visible = false
+    // Limb order is fixed by animate(): back/front per side, indices 0 and 3 in phase.
+    for (const side of [-1, 1])
+      for (const end of [-1, 1]) {
+        const leg = new THREE.Group()
+        body.add(leg)
+        if (end < 0) {
+          leg.position.set(side * 0.3, 0.45, -0.22)
+          this.part(leg, fur, [0, -0.06, -0.02], [0.18, 0.26, 0.28])
+          this.part(leg, fur, [0, -0.37, 0.12], [0.1, 0.075, 0.24])
+        } else {
+          leg.position.set(side * 0.16, 0.5, 0.3)
+          this.part(leg, fur, [0, -0.2, 0], [1, 1, 1], true)
+          this.part(leg, fur, [0, -0.43, 0.04], [0.085, 0.065, 0.11])
+        }
+        actor.limbs.push(leg)
+      }
+    const tail = new THREE.Group()
+    tail.position.set(0, 0.62, -0.58)
+    body.add(tail)
+    this.part(tail, cream, [0, 0, -0.05], [0.15, 0.15, 0.14])
+    for (let puff = 0; puff < 4; puff++) {
+      const angle = (puff / 4) * Math.PI * 2
+      this.part(tail, cream, [Math.cos(angle) * 0.09, Math.sin(angle) * 0.09, -0.08], [0.09, 0.09, 0.09])
+    }
+    actor.tail = tail
+    const head = new THREE.Group()
+    head.position.set(0, 1.08, 0.42)
+    body.add(head)
+    this.part(head, fur, [0, 0, 0], [0.37, 0.33, 0.35])
+    this.part(head, cream, [0, -0.13, 0.2], [0.2, 0.13, 0.16])
+    for (const side of [-1, 1]) {
+      this.part(head, cream, [side * 0.085, -0.1, 0.27], [0.11, 0.09, 0.09])
+      this.part(head, this.smooth('#f6b8bb', 0.95), [side * 0.25, -0.1, 0.19], [0.07, 0.04, 0.03]).rotation.y =
+        side * 0.9
+      this.part(head, this.smooth('#1d2629', 0.22), [side * 0.225, 0.045, 0.265], [0.07, 0.08, 0.055])
+      const white = this.smooth('#ffffff', 0.5, true)
+      this.part(head, white, [side * 0.235 - 0.012, 0.075, 0.31], [0.022, 0.024, 0.012])
+      const ear = new THREE.Group()
+      ear.position.set(side * 0.13, 1.33, 0.36)
+      ear.rotation.z = -side * 0.2
+      body.add(ear)
+      this.part(ear, fur, [0, 0.38, 0], [0.11, 0.42, 0.055])
+      this.part(ear, pink, [0, 0.37, 0.035], [0.065, 0.32, 0.025])
+      actor.ears.push(ear)
+    }
+    this.part(head, this.smooth('#e9848f', 0.55), [0, -0.035, 0.335], [0.05, 0.035, 0.035])
+    this.scene.add(root)
+    return actor
+  }
+
   private mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0): THREE.Mesh {
     this.geometries.add(geometry)
     const mesh = new THREE.Mesh(geometry, this.material(color))
@@ -152,11 +286,9 @@ export class RabbitersScene {
     const desert = this.mesh(this.scene, new THREE.PlaneGeometry(43, 64), '#e4c58c', 23.5, -0.012, 0)
     desert.rotation.x = -Math.PI / 2
     this.mesh(this.scene, new THREE.BoxGeometry(90, 1.8, 64), '#9a8861', 0, -0.95, 0)
-    for (let index = 0; index < 110; index++) {
-      const x = -44 + this.random(index + 10) * 88
-      const z = -31 + this.random(index + 310) * 62
-      if (Math.abs(z - 10) < 3 || Math.hypot(x + 37, z) < 5 || Math.hypot(x - 27, z + 20) < 6) continue
-      if (x < 0 && (Math.abs(x) > 40 || Math.abs(z) > 27 || index % 4 === 0)) {
+    for (const { index, x, z, skip, tree: isTree } of FIELD_PROPS) {
+      if (skip) continue
+      if (isTree) {
         const tree = new THREE.Group()
         tree.position.set(x, 0, z)
         this.scene.add(tree)
@@ -224,6 +356,19 @@ export class RabbitersScene {
         this.reeds.push(reed)
       }
     }
+    for (const [x, z] of SAND_PATCHES) {
+      const pit = this.mesh(this.scene, new THREE.CircleGeometry(2.4, 32), '#e2c48e', x, 0.024, z)
+      pit.rotation.x = -Math.PI / 2
+      for (let index = 0; index < 6; index++)
+        this.mesh(
+          this.scene,
+          new THREE.DodecahedronGeometry(0.08 + this.random(index + x) * 0.08),
+          '#c9a874',
+          x + Math.cos(index * 1.7) * 2.1,
+          0.05,
+          z + Math.sin(index * 1.7) * 2.1
+        )
+    }
     const burrow = new THREE.Group()
     burrow.position.set(-37, 0, -3)
     this.scene.add(burrow)
@@ -261,14 +406,24 @@ export class RabbitersScene {
   }
 
   private character(kind: string): Actor {
+    if (kind === 'rabbit') return this.rabbit()
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
-    const actor: Actor = { root, body, limbs: [], ears: [], kind, x: NaN, z: NaN, moving: 0 }
+    const actor: Actor = {
+      root,
+      body,
+      limbs: [],
+      ears: [],
+      kind,
+      x: NaN,
+      z: NaN,
+      moving: 0,
+      alertAt: -Infinity
+    }
     const color =
       (
         {
-          rabbit: '#f2e9d7',
           fox: '#d77a3e',
           wolf: '#7f94a4',
           hawk: '#987052',
@@ -287,20 +442,7 @@ export class RabbitersScene {
         parent = joint
       }
     } else {
-      this.oval(
-        body,
-        color,
-        0,
-        kind === 'hawk' ? 0.6 : 0.65,
-        0,
-        kind === 'rabbit' ? 0.45 : 0.52,
-        kind === 'crocodile' ? 0.3 : 0.5,
-        kind === 'rabbit' ? 0.6 : 0.95
-      )
-      if (kind === 'rabbit') {
-        actor.belly = this.oval(body, '#ead8cc', 0, 0.57, 0.35, 0.39, 0.35, 0.4)
-        actor.belly.visible = false
-      }
+      this.oval(body, color, 0, kind === 'hawk' ? 0.6 : 0.65, 0, 0.52, kind === 'crocodile' ? 0.3 : 0.5, 0.95)
       if (kind === 'hawk') {
         for (const side of [-1, 1]) {
           const wing = new THREE.Group()
@@ -323,7 +465,7 @@ export class RabbitersScene {
         for (const side of [-1, 1])
           for (const end of [-1, 1]) {
             const leg = new THREE.Group()
-            leg.position.set(side * 0.34, 0.48, end * (kind === 'rabbit' ? 0.3 : 0.55))
+            leg.position.set(side * 0.34, 0.48, end * 0.55)
             body.add(leg)
             this.oval(leg, color, 0, -0.2, 0.08, 0.16, 0.28, 0.23)
             actor.limbs.push(leg)
@@ -332,43 +474,24 @@ export class RabbitersScene {
       const tail = new THREE.Group()
       tail.position.set(0, 0.6, -0.6)
       body.add(tail)
-      this.oval(
-        tail,
-        kind === 'fox' || kind === 'rabbit' ? '#f4e8d1' : color,
-        0,
-        0,
-        kind === 'rabbit' ? -0.05 : -0.5,
-        kind === 'rabbit' ? 0.23 : 0.25,
-        0.23,
-        kind === 'rabbit' ? 0.24 : 0.8
-      )
+      this.oval(tail, kind === 'fox' ? '#f4e8d1' : color, 0, 0, -0.5, 0.25, 0.23, 0.8)
       actor.tail = tail
     }
-    const headHeight =
-      kind === 'rabbit' ? 1.1 : kind === 'hawk' ? 1 : kind === 'snake' ? 0.27 : kind === 'crocodile' ? 0.45 : 0.95
-    const headZ = kind === 'snake' ? 0.2 : kind === 'rabbit' ? 0.45 : 0.75
+    const headHeight = kind === 'hawk' ? 1 : kind === 'snake' ? 0.27 : kind === 'crocodile' ? 0.45 : 0.95
+    const headZ = kind === 'snake' ? 0.2 : 0.75
     this.oval(body, color, 0, headHeight, headZ, 0.36, 0.35, 0.39)
     if (kind === 'crocodile') this.oval(body, '#99ab76', 0, headHeight - 0.1, 1.2, 0.33, 0.18, 0.65)
     if (kind === 'fox' || kind === 'wolf') this.oval(body, '#e6ddc6', 0, headHeight - 0.12, 1.04, 0.23, 0.19, 0.36)
     for (const side of [-1, 1]) {
       this.oval(body, '#23353b', side * 0.23, headHeight + 0.08, headZ + 0.27, 0.065, 0.08, 0.045)
       this.oval(body, '#ffffff', side * 0.23 - 0.012, headHeight + 0.105, headZ + 0.31, 0.018, 0.023, 0.012)
-      if (['rabbit', 'fox', 'wolf'].includes(kind)) {
+      if (kind === 'fox' || kind === 'wolf') {
         const ear = new THREE.Group()
         ear.position.set(side * 0.2, headHeight + 0.23, headZ - 0.05)
         ear.rotation.z = -side * 0.18
         body.add(ear)
-        this.oval(ear, color, 0, kind === 'rabbit' ? 0.38 : 0.2, 0, 0.13, kind === 'rabbit' ? 0.48 : 0.25, 0.12)
-        this.oval(
-          ear,
-          '#d89d9b',
-          0,
-          kind === 'rabbit' ? 0.4 : 0.21,
-          0.09,
-          0.065,
-          kind === 'rabbit' ? 0.32 : 0.13,
-          0.035
-        )
+        this.oval(ear, color, 0, 0.2, 0, 0.13, 0.25, 0.12)
+        this.oval(ear, '#d89d9b', 0, 0.21, 0.09, 0.065, 0.13, 0.035)
         actor.ears.push(ear)
       }
     }
@@ -378,7 +501,7 @@ export class RabbitersScene {
     } else
       this.oval(
         body,
-        kind === 'rabbit' ? '#d58e90' : '#344342',
+        '#344342',
         0,
         headHeight - 0.05,
         kind === 'fox' || kind === 'wolf' ? 1.35 : headZ + 0.36,
@@ -386,11 +509,110 @@ export class RabbitersScene {
         0.055,
         0.06
       )
+    if (kind !== 'rabbit') {
+      const sprite = (texture: THREE.Texture | null, color: string) => {
+        const material = new THREE.SpriteMaterial({ map: texture, color, transparent: true, depthTest: false })
+        const result = new THREE.Sprite(material)
+        result.renderOrder = 10
+        result.visible = false
+        root.add(result)
+        return result
+      }
+      actor.marker = {
+        symbol: sprite(this.markerTexture('?', '#e0a020'), '#ffffff'),
+        meter: sprite(null, '#3b3326'),
+        fill: sprite(null, '#f2b531')
+      }
+    }
     this.scene.add(root)
     return actor
   }
 
-  private animate(actor: Actor, time: number, moving: number, downed: boolean, airborne: boolean): void {
+  /** "?" / "!" speech-bubble texture drawn once per symbol. */
+  private markerTexture(symbol: string, color: string): THREE.Texture {
+    const key = `${symbol}${color}`
+    let texture = this.textures.get(key)
+    if (texture) return texture
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 128
+    const draw = canvas.getContext('2d')
+    if (draw) {
+      draw.fillStyle = '#fffaf0'
+      draw.strokeStyle = color
+      draw.lineWidth = 9
+      draw.beginPath()
+      draw.arc(64, 56, 44, 0, Math.PI * 2)
+      draw.moveTo(50, 94)
+      draw.lineTo(64, 122)
+      draw.lineTo(78, 94)
+      draw.fill()
+      draw.stroke()
+      draw.beginPath()
+      draw.arc(64, 56, 39, 0, Math.PI * 2)
+      draw.fill()
+      draw.fillStyle = color
+      draw.font = 'bold 70px system-ui, sans-serif'
+      draw.textAlign = 'center'
+      draw.textBaseline = 'middle'
+      draw.fillText(symbol, 64, 60)
+    }
+    texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    this.textures.set(key, texture)
+    return texture
+  }
+
+  /** Pops "!" when spotting, shows "?" with a meter while suspicious and a faint "?" while searching. */
+  private updateMarker(actor: Actor, state: string, suspicion: number, height: number): void {
+    const marker = actor.marker
+    if (!marker) return
+    if (state === 'chase' && actor.lastState !== 'chase') actor.alertAt = this.clock
+    actor.lastState = state
+    const since = this.clock - actor.alertAt
+    const material = marker.symbol.material
+    let scale = 0
+    if (state === 'chase') {
+      material.map = this.markerTexture('!', '#d8342c')
+      scale = since < 0.15 ? 0.3 + (since / 0.15) * 1.3 : since < 0.4 ? 1.6 - ((since - 0.15) / 0.25) * 0.5 : 1.1
+      if (since > 1.6) scale = 0.8
+      material.opacity = 1
+    } else if (state === 'suspicious' || state === 'search') {
+      const active = state === 'suspicious'
+      material.map = this.markerTexture('?', active ? '#e0a020' : '#8a8f98')
+      scale = active ? 0.75 + suspicion * 0.4 : 0.55
+      material.opacity = active ? 0.7 + suspicion * 0.3 : 0.6
+    }
+    marker.symbol.visible = scale > 0
+    marker.symbol.scale.set(scale, scale, 1)
+    marker.symbol.position.set(0, height + scale * 0.4, 0)
+    const showMeter = state !== 'chase' && suspicion > 0.01
+    marker.meter.visible = marker.fill.visible = showMeter
+    marker.meter.scale.set(0.95, 0.12, 1)
+    marker.meter.position.set(0, height - 0.2, 0)
+    marker.fill.scale.set(0.85 * suspicion, 0.07, 1)
+    marker.fill.position.set(0, height - 0.2, 0)
+  }
+
+  private dropping(id: string): THREE.Group {
+    let group = this.droppings.get(id)
+    if (group) return group
+    group = new THREE.Group()
+    for (const [x, z] of [
+      [0, 0],
+      [0.11, 0.05],
+      [-0.04, 0.12]
+    ]) {
+      const pellet = new THREE.Mesh(this.pellet, this.material('#5a3a22'))
+      pellet.position.set(x, 0.07, z)
+      pellet.castShadow = true
+      group.add(pellet)
+    }
+    this.scene.add(group)
+    this.droppings.set(id, group)
+    return group
+  }
+
+  private animate(actor: Actor, time: number, moving: number, downed: boolean, airborne: boolean, bath = 0): void {
     const cycle = time * (actor.kind === 'rabbit' ? 11 : 8)
     const jumping = actor.kind === 'rabbit' && airborne && !downed
     actor.body.position.y =
@@ -399,7 +621,11 @@ export class RabbitersScene {
         : jumping
           ? 0
           : Math.abs(Math.sin(cycle)) * moving * (actor.kind === 'rabbit' ? 0.18 : 0.06)
-    actor.body.rotation.z = downed ? Math.PI / 2 : 0
+    actor.body.rotation.z = downed ? Math.PI / 2 : bath > 0 && bath < 1 ? Math.sin(time * 18) * 0.45 : 0
+    if (actor.dust) {
+      actor.dust.visible = bath > 0 && !downed
+      actor.dust.scale.set(0.6 + bath * 0.5 + Math.sin(time * 9) * 0.08, 0.2, 0.6 + bath * 0.5)
+    }
     actor.body.rotation.x = jumping ? -0.22 : actor.kind === 'rabbit' ? Math.sin(cycle) * moving * 0.1 : 0
     actor.limbs.forEach((limb, index) => {
       if (actor.kind === 'hawk') limb.rotation.z = Math.sin(time * 7) * 0.55 * (index === 0 ? -1 : 1)
@@ -413,7 +639,7 @@ export class RabbitersScene {
     if (actor.tail) actor.tail.rotation.y = jumping ? 0 : Math.sin(time * 5) * 0.2
   }
 
-  private item(key: string, nest: boolean): THREE.Group {
+  private item(key: string, nest: boolean, kind: FoodKind = 'carrot'): THREE.Group {
     let item = this.items.get(key)
     if (item) return item
     item = new THREE.Group()
@@ -423,12 +649,10 @@ export class RabbitersScene {
       for (let index = 0; index < 3; index++)
         this.oval(item, '#f9e6bb', (index - 1) * 0.3, 0.35, (index % 2) * 0.22, 0.19, 0.28, 0.19)
     } else {
-      const carrot = this.mesh(item, new THREE.ConeGeometry(0.2, 0.65, 7), '#ef9648', 0, 0.43, 0)
-      carrot.rotation.z = Math.PI + 0.25
-      for (let index = 0; index < 3; index++) {
-        const leaf = this.oval(item, '#4e8d53', (index - 1) * 0.12, 0.87, 0, 0.07, 0.25, 0.08)
-        leaf.rotation.z = (index - 1) * 0.5
-      }
+      item = buildFood(kind)
+      this.scene.add(item)
+      this.items.set(key, item)
+      return item
     }
     const halo = this.mesh(
       item,
@@ -447,6 +671,9 @@ export class RabbitersScene {
   render(state: RabbitersSceneState, localPlayerId: string, dt: number): void {
     if (this.disposed) return
     const elapsed = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 0.1)) : 0
+    this.clock += elapsed
+    // Guests get rolling droppings at ~10 Hz, so they glide between snapshots.
+    const follow = 1 - Math.exp(-elapsed * 12)
     const liveActors = new Set<string>()
     for (const entity of [
       ...state.players.map((player) => ({ ...player, kind: 'rabbit', key: `player:${player.id}` })),
@@ -472,7 +699,16 @@ export class RabbitersScene {
       actor.root.rotation.y = entity.angle
       actor.root.scale.setScalar(entity.hidden ? 0.8 : 1)
       if (actor.belly) actor.belly.visible = entity.pregnant === true
-      this.animate(actor, state.time, actor.moving, entity.downed, entity.y > 0.06)
+      this.animate(
+        actor,
+        state.time,
+        actor.moving,
+        entity.downed,
+        entity.y > 0.06,
+        'bath' in entity ? (entity.bath ?? 0) : 0
+      )
+      if ('suspicion' in entity)
+        this.updateMarker(actor, entity.state, entity.suspicion ?? 0, entity.kind === 'snake' ? 1.4 : 2.3)
     }
     for (const [key, actor] of this.actors)
       if (!liveActors.has(key)) {
@@ -483,7 +719,7 @@ export class RabbitersScene {
     for (const food of state.foods) {
       const key = `food:${food.id}`
       liveItems.add(key)
-      const item = this.item(key, false)
+      const item = this.item(key, false, isFoodKind(food.kind) ? food.kind : 'carrot')
       item.visible = food.active
       item.position.set(food.x, food.y + Math.sin(state.time * 2 + food.x) * 0.035, food.z)
     }
@@ -498,6 +734,28 @@ export class RabbitersScene {
       if (!liveItems.has(key)) {
         this.release(item)
         this.items.delete(key)
+      }
+    const liveDroppings = new Set<string>()
+    for (const dropping of state.droppings ?? []) {
+      liveDroppings.add(dropping.id)
+      const group = this.dropping(dropping.id)
+      const fresh = group.userData.placed !== true
+      const dx = fresh ? 0 : (dropping.x - group.position.x) * follow
+      const dz = fresh ? 0 : (dropping.z - group.position.z) * follow
+      if (fresh) group.position.set(dropping.x, dropping.y, dropping.z)
+      else group.position.set(group.position.x + dx, dropping.y, group.position.z + dz)
+      group.userData.placed = true
+      // Roll the pellets with their motion, and fade them as the scent goes stale.
+      group.rotation.x += dz / 0.075
+      group.rotation.z -= dx / 0.075
+      const age = Math.min(3, Math.floor(((state.time - dropping.t) / STEALTH.scentLifetime) * 3))
+      const material = this.material(['#5a3a22', '#6e4f35', '#8a7254', '#a89a80'][age])
+      for (const pellet of group.children) (pellet as THREE.Mesh).material = material
+    }
+    for (const [id, group] of this.droppings)
+      if (!liveDroppings.has(id)) {
+        group.removeFromParent()
+        this.droppings.delete(id)
       }
     const local = state.players.find((player) => player.id === localPlayerId) || state.players[0]
     const smoothing = 1 - Math.exp(-elapsed * 7)
@@ -540,6 +798,7 @@ export class RabbitersScene {
   private release(root: THREE.Object3D): void {
     root.traverse((object) => {
       if (object instanceof THREE.Mesh && this.geometries.delete(object.geometry)) object.geometry.dispose()
+      if (object instanceof THREE.Sprite) object.material.dispose()
     })
     root.removeFromParent()
   }
@@ -548,6 +807,12 @@ export class RabbitersScene {
     if (this.disposed) return
     this.disposed = true
     this.geometries.forEach((geometry) => geometry.dispose())
+    Object.values(this.rabbitGeometry).forEach((geometry) => geometry.dispose())
+    this.pellet.dispose()
+    this.textures.forEach((texture) => texture.dispose())
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Sprite) object.material.dispose()
+    })
     this.materials.forEach((material) => material.dispose())
     this.scene.traverse((object) => {
       if (object instanceof THREE.DirectionalLight) object.shadow.dispose()

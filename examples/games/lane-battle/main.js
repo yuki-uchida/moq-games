@@ -1,5 +1,5 @@
 import { impactCanvas, impactFrame, impactDuration } from '../shared/ImpactArt.ts'
-import { animationFrame, spriteRect, walkPose } from './animation.js'
+import { LaneModels } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
 import { STAGES, income, TYPES, createGame, summon, upgrade, upgradeCost, burst, step } from './simulation.js'
@@ -18,19 +18,7 @@ function drawContact(effect, y, age, aspect, style) {
   ctx.drawImage(impactCanvas(style, frame), -16, -16, 32, 32)
   ctx.restore()
 }
-const assets = new Map()
-const base = new URL(import.meta.env.BASE_URL, location.origin)
-async function load(t, motion, dir) {
-  const url = new URL(`tower-defense-art/${t.role}/${t.file}-${motion}-${dir}.json`, base)
-  const meta = await fetch(url).then((r) => {
-    if (!r.ok) throw Error(url)
-    return r.json()
-  })
-  const img = new Image()
-  img.src = new URL(meta.texture, url).href
-  await img.decode()
-  assets.set(`${t.role}-${motion}-${dir}`, { meta, img })
-}
+const models = new LaneModels()
 let state = createGame(),
   paused = true,
   shown = false
@@ -167,24 +155,6 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'u') invest()
   }
 })
-function sprite(context, t, motion, side, phase, x, y, size, aspect = 1, walkDistance = 0) {
-  const a = assets.get(`${t.role}-${motion}-${side === 1 ? 'e' : 'w'}`)
-  if (!a) return
-  const frame = animationFrame(a.meta, motion, phase, t.period, walkDistance, size)
-  const f = a.meta.frames[frame]
-  if (motion === 'walk' && a.meta.strideWorldUnits) {
-    const pose = walkPose(a.meta, walkDistance, size, side, t.role)
-    context.save()
-    context.translate(x, y)
-    context.scale(1, aspect)
-    context.rotate(pose.angle)
-    context.scale(1, pose.height)
-    context.drawImage(a.img, f.x, f.y, f.width, f.height, ...spriteRect(f, 0, 0, size))
-    context.restore()
-  } else {
-    context.drawImage(a.img, f.x, f.y, f.width, f.height, ...spriteRect(f, x, y, size, aspect))
-  }
-}
 function draw() {
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
@@ -242,37 +212,33 @@ function draw() {
     ctx.fill()
   }
   const scale = rect.width < 500 ? 155 : 120
+  const aspect = rect.width / 1000 / (rect.height / 450)
+  models.setPresentation(scale, aspect)
   for (const ghost of fallen) {
     const age = state.time - ghost.at
-    ctx.save()
-    ctx.globalAlpha = Math.max(0, 1 - age / 0.42)
-    const aspect = rect.width / 1000 / (rect.height / 450)
-    sprite(
-      ctx,
-      ghost,
-      ghost.motion,
-      ghost.side,
-      ghost.phase,
-      ghost.x - ghost.side * age * 20,
-      361 + (ghost.id % 3) * 8 + age * 26 * aspect,
-      scale,
-      aspect
-    )
-    ctx.restore()
+    models.fallen(ghost, ghost.x - ghost.side * age * 20, 361 + (ghost.id % 3) * 8, age, 1 - age / 0.42)
   }
-  for (const u of [...state.units].sort((a, b) => a.id - b.id)) {
+  const units = [...state.units].sort((a, b) => a.id - b.id)
+  for (const u of units) {
     const y = 361 + (u.id % 3) * 8
     ctx.fillStyle = u.side === 1 ? '#2c9b9755' : '#9c455755'
     ctx.beginPath()
     ctx.ellipse(u.x, y + 2, 22, 6, 0, 0, 7)
     ctx.fill()
-    sprite(ctx, u, u.motion, u.side, u.phase, u.x, y, scale, rect.width / 1000 / (rect.height / 450), u.walkDistance)
+    models.unit(u, u.x, y, state.time)
+  }
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
+  ctx.restore()
+  for (const u of units) {
+    const y = 361 + (u.id % 3) * 8
     ctx.fillStyle = '#203c43'
-    ctx.fillRect(u.x - 18, y - (scale * 0.56 * (rect.width / 1000)) / (rect.height / 450), 36, 4)
+    ctx.fillRect(u.x - 18, y - (scale * 0.8 * (rect.width / 1000)) / (rect.height / 450), 36, 4)
     ctx.fillStyle = u.side === 1 ? '#8de8cf' : '#ffac91'
     ctx.fillRect(
       u.x - 18,
-      y - (scale * 0.56 * (rect.width / 1000)) / (rect.height / 450),
+      y - (scale * 0.8 * (rect.width / 1000)) / (rect.height / 450),
       36 * Math.max(0, u.hp / u.maxHp),
       4
     )
@@ -285,10 +251,7 @@ function draw() {
       ctx.arc(e.x, 350, (0.6 - e.life) * 430, 0, 7)
     } else if (e.ranged) {
       const source = e.source
-      const atlas = source && assets.get(`${source.role}-attack-${source.side === 1 ? 'e' : 'w'}`)
-      const release = atlas?.meta.frames[Math.max(0, (atlas.meta.releaseFrame ?? 1) - 1)]
-      const emitter = release?.emitter || { x: source?.side === 1 ? 100 : 28, y: 65 }
-      const aspect = rect.width / 1000 / (rect.height / 450)
+      const emitter = { x: source?.side === 1 ? 100 : 28, y: 65 }
       const y = 361 + ((source?.id || 0) % 3) * 8
       const fromX = e.from + (emitter.x / 128 - 0.5) * scale
       const fromY = y + (-94 / 128 + emitter.y / 128) * scale * aspect
@@ -318,7 +281,6 @@ function draw() {
         drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect, 'pierce')
       }
     } else {
-      const aspect = rect.width / 1000 / (rect.height / 450)
       const y = e.targetY ?? 361 - 30 * aspect
       drawContact(e, y, state.time - e.releasedAt, aspect, 'cut')
     }
@@ -427,9 +389,10 @@ function frame(now) {
 setInterval(() => {
   if (document.hidden) tick(performance.now())
 }, 250)
-Promise.all(TYPES.flatMap((t) => ['walk', 'attack', 'idle'].flatMap((m) => ['e', 'w'].map((d) => load(t, m, d)))))
+models
+  .load(TYPES.map((t) => t.role))
   .then(() => {
-    buttons.forEach((b, i) => sprite(b.querySelector('canvas').getContext('2d'), TYPES[i], 'idle', 1, 0, 64, 106, 150))
+    buttons.forEach((b, i) => models.portrait(TYPES[i].role, b.querySelector('canvas')))
     modal(
       '芽吹きの境界',
       '森の軍勢を率いて、水晶砦へ。衛兵は盾、射手は遠距離、狼は突破役。資源を生産強化に投資するか、援軍に使うか。あなたの采配で道を開こう。'

@@ -68,49 +68,206 @@ header button {
   align-items: center;
   justify-content: center;
   position: relative;
+  /* Board and billboards size from the field: cq units below. */
+  container-type: size;
+  overflow: hidden;
+  border-radius: 14px;
+  --unit-scale: 1.05;
+  --tilt: 0.6;
+  --board: min(100cqw / 1.46, (100cqh - 76px) / (1.4142 * var(--tilt) + 0.08));
+  --tile: calc(var(--board) * 1.4142 / 7);
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.1 -.42'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)'/%3E%3C/svg%3E");
+  background:
+    radial-gradient(ellipse 46% 30% at 50% 60%, #ff9a4a1f, transparent 70%),
+    radial-gradient(ellipse 52% 26% at 50% 72%, #00000080, transparent 75%),
+    radial-gradient(ellipse 90% 70% at 50% 35%, #1d2f36, #0d171e 70%, #091117);
+}
+/* Drifting embers behind the board; seamless because each layer moves by exactly its tile height. */
+.field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle, #ffc07a 0 1.4px, transparent 2.4px),
+    radial-gradient(circle, #ff8a3d 0 1px, transparent 2px), radial-gradient(circle, #ffd9a0 0 0.8px, transparent 1.8px);
+  background-size:
+    173px 211px,
+    241px 163px,
+    131px 197px;
+  background-position:
+    13px 40px,
+    90px 10px,
+    50px 120px;
+  animation: embers 16s linear infinite;
+}
+@keyframes embers {
+  to {
+    background-position:
+      13px -171px,
+      90px -153px,
+      50px -77px;
+  }
 }
 #board {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(7, 1fr);
-  width: min(100%, calc(100dvh - 224px));
+  width: var(--board);
   aspect-ratio: 1;
-  border: 3px solid #9f946c;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 12px 35px #0008;
+  flex: none;
+  /* Orthographic 2.5D floor: rotate, then squash. .stand applies the exact inverse. */
+  transform: translateY(calc(var(--tile) * 0.32)) scale(1, var(--tilt)) rotate(-45deg);
+  background: #1f2a22;
+}
+/* Earth slab: lower-left (lit) and lower-right (shaded) faces extruded straight down on screen. */
+#board::before,
+#board::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+#board::before {
+  right: 100%;
+  top: 0;
+  width: 5%;
+  height: 100%;
+  transform-origin: 100% 0;
+  transform: skewY(-45deg);
+  background: var(--noise), linear-gradient(90deg, #120d0b, #3f2d21 45%, #6a4d33 86%, #6f8a52 92%, #8fb06a);
+}
+#board::after {
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 5%;
+  transform-origin: 0 0;
+  transform: skewX(-45deg);
+  background: var(--noise), linear-gradient(0deg, #0b0807, #281c15 45%, #45331f 86%, #4b5f38 92%, #5f7a48);
 }
 .cell {
   position: relative;
   min-width: 0;
   min-height: 0;
   padding: 0;
-  border: 1px solid #ffffff12;
-  background: #446252;
-  overflow: hidden;
+  border: 0;
+  overflow: visible;
+  /* Noise + one board-wide light map sliced per cell (lantern glow on the ally flank, ash at the far edge). */
+  background:
+    var(--noise) calc(var(--x) * -31px) calc(var(--y) * -47px) / 96px,
+    radial-gradient(circle at 16% 64%, #ffb86a5c, #ff9a4a1c 30%, transparent 52%) calc(var(--x) * 100% / 6)
+      calc(var(--y) * 100% / 6) / 700% 700%,
+    radial-gradient(circle at 30% 70%, transparent 38%, #0b111866 100%) calc(var(--x) * 100% / 6)
+      calc(var(--y) * 100% / 6) / 700% 700%,
+    linear-gradient(135deg, #ffffff10, transparent 60%),
+    #4f6c49;
 }
 .cell.odd {
-  background: #3d594b;
+  background-color: #48653f;
 }
 .cell.grove {
-  background: #244d3b;
+  background-color: #2e4a33;
 }
 .cell.rock {
-  background: #45505a;
+  background-color: #5b5a4f;
 }
-.terrain {
-  font-size: clamp(16px, 3vw, 28px);
-  color: #9caf9a;
+/* Tile seams and bevel; light from the far-left. */
+.cell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 1px 1px 0 #e9f3c41f,
+    inset -1px -1px 0 #0000004d;
 }
-.rock .terrain {
-  color: #899394;
+.cell.legal {
+  box-shadow:
+    inset 0 0 0 2px #8beaf9,
+    inset 0 0 calc(var(--tile) * 0.3) #4fd2ffaa;
+  background-color: #3d6b70;
 }
-.legal {
-  box-shadow: inset 0 0 0 3px #6acfe2 !important;
-  background: #355e6b !important;
+.cell.selected {
+  box-shadow:
+    inset 0 0 0 3px #ffdf7d,
+    inset 0 0 calc(var(--tile) * 0.3) #ffcf5c88;
 }
-.legal .terrain {
-  color: #a9f4ff;
+.cell.target {
+  box-shadow:
+    inset 0 0 0 3px #ff8a76,
+    inset 0 0 calc(var(--tile) * 0.35) #ff5a40aa;
+  animation: target-pulse 1.1s ease-in-out infinite alternate;
+}
+@keyframes target-pulse {
+  to {
+    filter: brightness(1.18);
+  }
+}
+/* Range previews tint the textured floor (base colour + seam edge) so terrain, light and the
+   legal/selected/target outlines stay visible; strike range wins over a move tint. */
+.cell.enemy-move {
+  background-color: #4a5170;
+}
+.cell.enemy-move::before {
+  box-shadow:
+    inset 0 0 0 1px #9aa6d866,
+    inset 0 0 calc(var(--tile) * 0.25) #39406a88;
+}
+.cell.reach {
+  background-color: #7a3c36;
+}
+.cell.reach.odd {
+  background-color: #713533;
+}
+.cell.reach::before {
+  box-shadow:
+    inset 0 0 0 1px #ff8a7680,
+    inset 0 0 calc(var(--tile) * 0.25) #ff5a4055;
+}
+.stand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transform: rotate(45deg) scale(1, calc(1 / var(--tilt)));
+}
+.prop {
+  position: absolute;
+  width: calc(var(--tile) * 1.04);
+  left: calc(var(--tile) * -0.52);
+  bottom: calc(var(--tile) * -0.312);
+  overflow: visible;
+}
+.rock .prop {
+  width: calc(var(--tile) * 0.96);
+  left: calc(var(--tile) * -0.48);
+  bottom: calc(var(--tile) * -0.29);
+}
+/* Contact shadow / side ring under a standing unit. */
+.foot {
+  position: absolute;
+  width: calc(var(--tile) * 0.62);
+  height: calc(var(--tile) * 0.62 * var(--tilt));
+  left: calc(var(--tile) * -0.31);
+  top: calc(var(--tile) * -0.186);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #000000a0, #0000 100%);
+  box-shadow: 0 0 0 2px var(--ring, #0000);
+}
+.ally .foot {
+  --ring: #82d1edb0;
+}
+.enemy .foot {
+  --ring: #e0957bb0;
+}
+.selected .foot {
+  --ring: #ffdf7d;
 }
 .portrait {
   position: absolute;
@@ -118,26 +275,24 @@ header button {
   height: 112px;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -65%) scale(1.05);
+  /* Feet (≈y 95 of the 112 px cell) land on the tile centre. */
+  transform: translate(-50%, calc(-56px - 37px * var(--unit-scale))) scale(var(--unit-scale));
   background-repeat: no-repeat;
   pointer-events: none;
 }
-.ally {
-  box-shadow: inset 0 0 0 2px #82d1ed;
-}
-.enemy {
-  box-shadow: inset 0 0 0 2px #e0957b;
-}
-.selected {
-  box-shadow: inset 0 0 0 4px #ffdf7d !important;
-}
-.target {
-  box-shadow: inset 0 0 0 4px #ff8a76 !important;
+/* Status row floats above the head so nearer props and units never cover it. */
+.tag {
+  position: absolute;
+  left: 0;
+  top: calc(-58px * var(--unit-scale) - 18px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
 }
 .badge {
-  position: absolute;
-  bottom: 2px;
-  left: 2px;
+  box-shadow: 0 1px 3px #000a;
   padding: 1px 4px;
   background: #132d3ce8;
   border-radius: 4px;
@@ -152,15 +307,11 @@ header button {
   opacity: 0.5;
 }
 .check {
-  position: absolute;
-  right: 3px;
-  top: 1px;
   color: #fff;
+  text-shadow: 0 1px 2px #000;
 }
 .hit {
-  position: absolute;
-  right: 2px;
-  top: 1px;
+  box-shadow: 0 1px 4px #000c;
   background: #8e352b;
   color: white;
   padding: 2px;
@@ -239,8 +390,10 @@ dialog button {
     padding: 8px;
     gap: 6px;
   }
-  .portrait {
-    transform: translate(-50%, -65%) scale(0.7);
+  .field {
+    --unit-scale: 0.7;
+    /* Steeper view keeps diamonds tall enough to tap on narrow portrait screens. */
+    --tilt: 0.78;
   }
   h1 {
     font-size: 21px;
@@ -251,9 +404,6 @@ dialog button {
   }
   .console {
     padding: 8px;
-  }
-  #board {
-    width: min(100%, calc(100dvh - 212px));
   }
 }
 @media (max-height: 500px) and (min-width: 600px) {
@@ -275,16 +425,13 @@ dialog button {
     grid-column: 1;
     grid-row: 1/4;
   }
-  #board {
-    width: min(100%, calc(100dvh - 24px));
-  }
   .console {
     grid-column: 2;
     grid-row: 3;
     align-self: end;
   }
-  .portrait {
-    transform: translate(-50%, -65%) scale(0.78);
+  .field {
+    --unit-scale: 0.78;
   }
 }
 #mission {
@@ -319,9 +466,7 @@ dialog button {
   margin: 0 0 12px;
 }
 .armor {
-  position: absolute;
-  right: 2px;
-  top: 1px;
+  text-shadow: 0 1px 2px #000;
   color: #e9ce86;
   font-size: 18px;
 }
@@ -401,13 +546,13 @@ fieldset label {
   }
 }
 
-/* Above cells, below dialogs/results; overlays never consume pointer or touch input. */
+/* Inside the board: depth z-index is set per step; overlays never consume pointer or touch input. */
 .motion-actor {
   position: absolute;
   width: 0;
   height: 0;
   pointer-events: none;
-  z-index: 3;
+  transform: rotate(45deg) scale(1, calc(1 / var(--tilt)));
 }
 .motion-actor .portrait {
   opacity: 1;
@@ -415,7 +560,7 @@ fieldset label {
 .damage-number {
   position: absolute;
   left: -24px;
-  top: -26px;
+  top: calc(-75px * var(--unit-scale) - 30px);
   width: 70px;
   color: #fff2be;
   font-weight: 900;
@@ -478,6 +623,10 @@ fieldset label {
   z-index: 4;
 }
 @media (prefers-reduced-motion: reduce) {
+  .field::before,
+  .cell.target {
+    animation: none;
+  }
   .motion-hit .portrait,
   .motion-death .portrait,
   .damage-number {
@@ -544,7 +693,7 @@ fieldset label {
 .combat-contact {
   position: absolute;
   left: -16px;
-  top: -48px;
+  top: calc(-40px * var(--unit-scale) - 16px);
   width: 32px;
   height: 32px;
   pointer-events: none;
@@ -566,4 +715,266 @@ fieldset label {
   .combat-contact {
     animation-duration: 80ms !important;
   }
+}
+
+/* Growth overlays: above the board, never intercepting input. */
+.exp-gauge,
+.level-up {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  color: #fff7df;
+  background: linear-gradient(#1d3a4cf5, #10222ef5);
+  border: 2px solid #e8d08e;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 2px #0b1820,
+    0 10px 30px #000a;
+  font-weight: bold;
+}
+.exp-gauge {
+  bottom: 6%;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  width: min(92%, 380px);
+  animation: panel-in 140ms ease-out;
+}
+.exp-gauge span {
+  flex: 1;
+  white-space: nowrap;
+}
+.exp-gauge b {
+  color: #ffd76a;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.exp-gauge i,
+.exp-line i {
+  display: inline-block;
+  height: 10px;
+  background: #0a141a;
+  border: 1px solid #8a7a4c;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.exp-gauge i {
+  flex: 2;
+}
+.exp-gauge em,
+.exp-line em {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #f7c84a, #fff3a8);
+  box-shadow: 0 0 8px #ffe17a;
+  transition: width 500ms ease-out;
+}
+.exp-gauge output {
+  min-width: 2.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.level-up {
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(80%, 280px);
+  padding: 10px 16px 14px;
+  animation: panel-in 180ms ease-out;
+}
+.level-up h3 {
+  margin: 0;
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #ffe27a;
+  text-shadow:
+    0 0 10px #ffb53a,
+    0 2px 0 #6b3a10;
+}
+.level-up p {
+  margin: 4px 0 8px;
+  text-align: center;
+  font-size: 14px;
+}
+.level-up dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.level-up dl div {
+  display: grid;
+  grid-template-columns: 1fr 3ch 3ch;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #ffffff0d;
+}
+.level-up dt,
+.level-up dd {
+  margin: 0;
+}
+.level-up dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.level-up dl span {
+  color: #ffe27a;
+  text-align: right;
+}
+.level-up dl .up {
+  background: #ffd76a33;
+  box-shadow: inset 0 0 0 1px #ffe27a;
+  animation: stat-up 320ms ease-out;
+}
+.level-up dl .up span {
+  animation: plus-pop 320ms ease-out;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+@keyframes stat-up {
+  from {
+    background: #fff6c8;
+  }
+}
+@keyframes plus-pop {
+  from {
+    scale: 2;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exp-gauge,
+  .exp-gauge em,
+  .level-up,
+  .level-up dl .up,
+  .level-up dl .up span {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Chapter clear report. */
+#result.chapter {
+  inset: 2%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  padding: 14px;
+  font-weight: normal;
+}
+#result.chapter[hidden] {
+  display: none;
+}
+#result.chapter #outcome {
+  margin: 0;
+  text-align: center;
+  font-weight: bold;
+}
+#report header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid #dfcb8b66;
+  padding-bottom: 6px;
+}
+#report header small {
+  color: #ffd76a;
+  letter-spacing: 3px;
+  font-weight: bold;
+}
+.chapter-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 8px 0;
+}
+.chapter-stats div {
+  background: #ffffff0d;
+  border-radius: 6px;
+  padding: 4px;
+  text-align: center;
+}
+.chapter-stats dt {
+  font-size: 11px;
+  color: #b9cbc4;
+}
+.chapter-stats dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+}
+.chapter-units {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.chapter-units li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #ffffff1f;
+  border-radius: 8px;
+  background: #ffffff08;
+  font-size: 13px;
+}
+.chapter-units li.mvp {
+  border-color: #ffd76a;
+  box-shadow: inset 0 0 12px #ffd76a33;
+}
+.chapter-units li.fallen {
+  opacity: 0.6;
+}
+/* The complete 128×112 source cell, halved. */
+.chapter-units .portrait {
+  position: relative;
+  flex: none;
+  left: auto;
+  top: auto;
+  transform: none;
+  zoom: 0.5;
+}
+.chapter-units li > div {
+  flex: 1;
+  min-width: 0;
+}
+.chapter-units p {
+  margin: 1px 0;
+}
+.chapter-units mark {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #ffd76a;
+  color: #3a2508;
+  font-size: 11px;
+  font-weight: bold;
+}
+.chapter-units ins {
+  margin-left: 4px;
+  color: #ffe27a;
+  text-decoration: none;
+}
+.exp-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.exp-line i {
+  width: 60px;
+  height: 6px;
+}
+#missions .roster {
+  color: #ffd76a;
 }

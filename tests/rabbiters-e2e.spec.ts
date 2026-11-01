@@ -1,5 +1,112 @@
 import { expect, test } from '@playwright/test'
 
+test('a guest moves smoothly before delayed host snapshots arrive', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL })
+  const network = `
+    export const MAX_PLAYERS = 16;
+    export class CooperativeNetwork {
+      constructor(options) { this.options = options; this.playerId = options.playerId; }
+      async start() {
+        this.channel = new BroadcastChannel('rabbiters-latency-' + this.options.room);
+        this.channel.onmessage = ({ data }) => {
+          if (data.type === 'hello' && this.options.role === 'host') {
+            const players = [this.playerId, data.playerId];
+            this.options.onPresence(players);
+            this.channel.postMessage({ type: 'presence', players });
+          } else if (data.type === 'presence' && this.options.role === 'guest') {
+            this.options.onPresence(data.players);
+            this.options.onStatus('ready', 'Connected');
+          } else if (data.type === 'input' && this.options.role === 'host') {
+            setTimeout(() => this.options.onInput(data.playerId, data.input), 300);
+          } else if (data.type === 'snapshot' && this.options.role === 'guest') {
+            setTimeout(() => {
+              if (!window.rabbitersHoldSnapshots) this.options.onSnapshot(data.state);
+            }, 300);
+          }
+        };
+        this.options.onStatus(this.options.role === 'host' ? 'ready' : 'waiting-for-host', 'Connected');
+        if (this.options.role === 'guest') this.channel.postMessage({ type: 'hello', playerId: this.playerId });
+      }
+      async sendInput(input) { this.channel.postMessage({ type: 'input', playerId: this.playerId, input }); }
+      async broadcastSnapshot(state) { this.channel.postMessage({ type: 'snapshot', state }); }
+      async stop() { this.channel.close(); }
+    }
+  `
+  await context.route('**/src/network.ts*', (route) => route.fulfill({ contentType: 'text/javascript', body: network }))
+  await context.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersPosition = () => {
+  const actor = scene.actors.get('player:' + localId);
+  const player = snapshot?.players.find((entry) => entry.id === localId);
+  return actor && player ? { shown: actor.root.position.x, confirmed: player.x,
+    moving: actor.moving, leg: actor.limbs[0].rotation.x } : null;
+};
+window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
+    })
+  })
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  await host.goto('/')
+  await host.locator('#room').fill('latency-test')
+  await host.locator('#host').click()
+  await guest.goto('/')
+  await guest.evaluate(() => {
+    ;(window as unknown as { rabbitersHoldSnapshots: boolean }).rabbitersHoldSnapshots = true
+  })
+  await guest.locator('#room').fill('latency-test')
+  await guest.locator('#join').click()
+  await guest.evaluate(async () => {
+    const hooks = window as unknown as {
+      rabbitersSetPreviewTime: (time: number) => void
+      rabbitersHoldSnapshots: boolean
+    }
+    hooks.rabbitersSetPreviewTime(120)
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    hooks.rabbitersHoldSnapshots = false
+  })
+  const position = () =>
+    guest.evaluate(() =>
+      (
+        window as unknown as {
+          rabbitersPosition: () => { shown: number; confirmed: number; moving: number; leg: number } | null
+        }
+      ).rabbitersPosition()
+    )
+  await expect.poll(position, { timeout: 15_000 }).not.toBeNull()
+  await guest.keyboard.down('KeyD')
+  const samples = await guest.evaluate(async () => {
+    const read = (
+      window as unknown as {
+        rabbitersPosition: () => { shown: number; confirmed: number; moving: number; leg: number } | null
+      }
+    ).rabbitersPosition
+    const positions: { shown: number; confirmed: number; moving: number; leg: number }[] = []
+    const end = performance.now() + 1200
+    while (performance.now() < end) {
+      await new Promise(requestAnimationFrame)
+      const current = read()
+      if (current) positions.push(current)
+    }
+    return positions
+  })
+  await guest.keyboard.up('KeyD')
+  expect(samples.length).toBeGreaterThan(5)
+  expect(samples.some((sample) => sample.shown > sample.confirmed + 0.1)).toBe(true)
+  expect(samples.at(-1)!.shown).toBeGreaterThan(samples[0].shown + 0.5)
+  const walking = samples.filter((sample) => sample.moving > 0.8).map((sample) => sample.leg)
+  expect(walking.length).toBeGreaterThan(5)
+  expect(Math.max(...walking) - Math.min(...walking)).toBeGreaterThan(0.3)
+  for (let index = 1; index < samples.length; index++) {
+    expect(samples[index].shown - samples[index - 1].shown).toBeGreaterThan(-0.1)
+    expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
+  }
+  await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-36.5)
+  await context.close()
+})
+
 test('desktop: starts a solo game and collects food by moving', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -309,4 +416,132 @@ test('relay disconnection pauses the session and offers a way back', async ({ pa
   await expect(page.locator('#result-text')).not.toContainText('Network is not ready')
   await page.locator('#restart').click()
   await expect(page.locator('#start-panel')).toBeVisible()
+})
+
+test('desktop: pointer lock rotates the view without holding a button', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__yaw = () => yaw` })
+  })
+  await page.addInitScript(() => {
+    let lockedEl: Element | null = null
+    Object.defineProperty(document, 'pointerLockElement', { get: () => lockedEl })
+    Element.prototype.requestPointerLock = function () {
+      lockedEl = this
+      document.dispatchEvent(new Event('pointerlockchange'))
+    }
+  })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  await expect(page.locator('#look-hint')).toContainText('クリックで視点操作')
+  const yaw = () => page.evaluate(() => (window as unknown as { __yaw: () => number }).__yaw())
+  const before = await yaw()
+  await page.mouse.click(700, 450)
+  await expect(page.locator('#look-hint')).toContainText('視点操作中')
+  // movementX is dispatched by the real browser; synthesize it since headless mouse moves lack it.
+  await page.evaluate(() =>
+    document
+      .querySelector('#world')!
+      .dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', movementX: 100 } as PointerEventInit))
+  )
+  await expect.poll(yaw).not.toBeCloseTo(before, 1)
+})
+
+test('stealth: "?" then "!" cues, alert vignette and droppings', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    await route.fulfill({
+      response,
+      body: `${source}
+window.rabbitersStealth = {
+  stage(predators) {
+    const player = game.state.players[0];
+    Object.assign(player, { x: -28, z: 2, y: 0 });
+    game.state.predators = predators.map((entry) => ({ y: 0, angle: 0, state: 'patrol', targetId: null, suspicion: 0, ...entry }));
+  },
+  move(id, values) { Object.assign(game.state.predators.find((entry) => entry.id === id), values); },
+  drop(entries) { game.state.droppings.push(...entries); },
+  advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
+  freeze() { this.step = game.step.bind(game); game.step = () => {}; },
+  spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -28, z: -1, state: 'chase', targetId: localId, suspicion: 1 }); },
+  read(id) {
+    const predator = game.state.predators.find((entry) => entry.id === id);
+    const actor = scene.actors.get('predator:' + id);
+    const symbol = actor?.marker?.symbol;
+    return predator && {
+      state: predator.state, suspicion: predator.suspicion, y: predator.y, renderedY: actor.root.position.y,
+      marker: symbol?.visible ? [...scene.textures].find(([, texture]) => texture === symbol.material.map)?.[0] : null,
+      meter: actor.marker.fill.visible, overlay: alertOverlay.className,
+      droppings: game.state.droppings.length, renderedDroppings: scene.droppings.size, alarm: audio.lastAlarm
+    };
+  }
+};`
+    })
+  })
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  type Reading = {
+    state: string
+    suspicion: number
+    y: number
+    renderedY: number
+    marker: string | null
+    meter: boolean
+    overlay: string
+    droppings: number
+    renderedDroppings: number
+    alarm: number
+  }
+  const run = <T>(expression: string) => page.evaluate<T>(`window.rabbitersStealth.${expression}`)
+  const read = (id = 'fox') => run<Reading>(`read(${JSON.stringify(id)})`)
+
+  // Real droppings appear from the simulation itself.
+  await run('advance(13)')
+  expect((await read('predator-0'))?.droppings ?? 0).toBeGreaterThan(0)
+
+  await run(
+    `stage(${JSON.stringify([
+      { id: 'fox', kind: 'fox', x: -28, z: -6.5 },
+      { id: 'hawk', kind: 'hawk', x: -40, y: 5, z: -25 }
+    ])})`
+  )
+  // Step the simulation in-page so the meter does not depend on the frame rate.
+  await run('freeze()')
+  await run('advance(0.8)')
+  let reading = await read()
+  expect(reading.state).toBe('suspicious')
+  expect(reading.suspicion).toBeGreaterThan(0.3)
+  expect(reading.suspicion).toBeLessThan(1)
+  const pellets = [0, 1, 2, 3].map((index) => ({
+    id: `poo-test-${index}`,
+    x: -27.2 + index * 0.5,
+    y: 0,
+    z: 3.2 - index * 1.6,
+    t: 0
+  }))
+  await run(`drop(${JSON.stringify(pellets)})`)
+  await expect.poll(async () => (await read()).marker).toBe('?#e0a020')
+  reading = await read()
+  expect(reading.meter).toBe(true)
+  expect(reading.overlay).toContain('suspected')
+  await expect(page.locator('#condition')).toContainText('怪しまれている')
+  expect(reading.renderedDroppings).toBeGreaterThanOrEqual(4)
+  await page.screenshot({ path: testInfo.outputPath('stealth-question.png') })
+
+  await run("spot('fox')")
+  await expect.poll(async () => (await read()).marker).toBe('!#d8342c')
+  reading = await read()
+  expect(reading.overlay).toContain('spotted')
+  expect(reading.alarm).toBeGreaterThan(-1)
+  await expect(page.locator('#condition')).toContainText('見つかった')
+  await page.waitForTimeout(150)
+  await page.screenshot({ path: testInfo.outputPath('stealth-spotted.png') })
+
+  expect(errors).toEqual([])
 })

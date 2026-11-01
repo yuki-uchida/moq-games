@@ -12,7 +12,8 @@ interface Leg {
   upper: THREE.Object3D
   lower: THREE.Object3D
   foot: THREE.Object3D
-  followers: THREE.Object3D[]
+  /** Independent skin helpers and the leg bone whose solved motion each one follows. */
+  followers: [THREE.Object3D, THREE.Object3D][]
   /** Rigid skinned points of the leg (thigh, shin, foot) in their own bone spaces. */
   skin: [THREE.Object3D, THREE.Vector3[]][]
   pole: THREE.Vector3
@@ -85,9 +86,12 @@ export function walkGaitClip(
         : scene.getObjectByName(`shin${side}`)
     const upper = lower?.parent
     if (!lower || !(upper instanceof THREE.Bone)) return
-    const followers: THREE.Object3D[] = []
+    const followers: Leg['followers'] = []
     scene.traverse((node) => {
-      if (node.name.startsWith('skin_bind_toe_') && node.name.endsWith(side)) followers.push(node)
+      if (!node.name.startsWith('skin_bind_') || !node.name.endsWith(side)) return
+      // Ranger/Cannon toe influences follow the foot; Archer's thigh/shin segment helpers follow their bone.
+      const segment = node.name.slice('skin_bind_'.length, node.name.length - side.length)
+      followers.push([node, segment === 'thigh' ? upper : segment === 'shin' ? lower : foot])
     })
     legs.push({
       upper,
@@ -166,8 +170,9 @@ export function walkGaitClip(
     leg.pole.normalize()
   }
 
-  const outputs = [...new Set(legs.flatMap((l) => [l.upper, l.lower, l.foot, ...l.followers]))]
-  const moved = new Set(legs.flatMap((l) => (l.foot.parent === l.lower ? l.followers : [l.foot, ...l.followers])))
+  const helpers = (l: Leg) => l.followers.map(([node]) => node)
+  const outputs = [...new Set(legs.flatMap((l) => [l.upper, l.lower, l.foot, ...helpers(l)]))]
+  const moved = new Set(legs.flatMap((l) => (l.foot.parent === l.lower ? helpers(l) : [l.foot, ...helpers(l)])))
   let samples = new Map<THREE.Object3D, { q: number[]; p: number[] }>()
   const target = new THREE.Vector3(),
     knee = new THREE.Vector3(),
@@ -248,7 +253,8 @@ export function walkGaitClip(
       scene.updateWorldMatrix(true, true)
       for (const leg of legs) {
         const s = leg.authored[i]
-        const before = leg.foot.matrixWorld.clone()
+        const drivers = [leg.upper, leg.lower, leg.foot],
+          before = drivers.map((bone) => bone.matrixWorld.clone())
         target.copy(s.c)
         target.z = s.a.z + leg.center + (s.c.z - s.a.z - leg.center) * leg.k
         solve(leg, s)
@@ -275,9 +281,9 @@ export function walkGaitClip(
         leg.foot.getWorldPosition(point)
         solved[legs.indexOf(leg)].push(point.z)
         audit.groundLift = Math.max(audit.groundLift, point.y - s.c.y)
-        // Independent toe skin helpers keep their authored relation to the foot.
-        delta.multiplyMatrices(leg.foot.matrixWorld, before.invert())
-        for (const node of leg.followers) {
+        // Independent skin helpers keep their authored relation to the bone they follow.
+        for (const [node, bone] of leg.followers) {
+          delta.multiplyMatrices(bone.matrixWorld, before[drivers.indexOf(bone)].clone().invert())
           node.updateWorldMatrix(true, false)
           matrix
             .multiplyMatrices(delta, node.matrixWorld)

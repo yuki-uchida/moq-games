@@ -11,6 +11,7 @@
     <main id="app">
       <div id="world" aria-label="Rabbitersの3Dフィールド"></div>
       <div class="scene-shade" aria-hidden="true"></div>
+      <div id="alert-overlay" class="alert-overlay" aria-hidden="true"></div>
 
       <header class="topbar">
         <a class="wordmark" href="../../../index.html" aria-label="MoQ Games ホームへ">
@@ -48,6 +49,8 @@
           <button id="help-open" class="icon-button" type="button" aria-label="遊び方を表示">?</button>
         </div>
       </header>
+
+      <p id="look-hint" class="look-hint" hidden></p>
 
       <section id="hud" class="hud" aria-label="プレイヤーの状態" hidden>
         <div class="hud-card vitals">
@@ -152,25 +155,33 @@
               <b>02</b
               ><span
                 ><strong>見つからないように。</strong
-                >草むらや水路、洞窟で身を隠そう。Cでしゃがむとさらに見つかりにくくなります。</span
+                >草むらや水路、洞窟で身を隠そう。Cでしゃがむとさらに見つかりにくくなります。敵の頭上に「？」が出たら怪しまれています。すぐ隠れればやり過ごせますが、「！」は見つかった合図です。</span
               >
             </p>
             <p>
               <b>03</b
+              ><span
+                ><strong>においを消す。</strong
+                >ときどき落とすフンをたどって敵が追ってきます。水路を渡るか、砂地でCを長押しして砂浴びすると足どりが途切れやすくなります。</span
+              >
+            </p>
+            <p>
+              <b>04</b
               ><span
                 ><strong>いのちを守る。</strong
                 >大人になると妊娠し、足が遅くなります。妊娠中は空腹が早く進み、食べないと出産も進みません。</span
               >
             </p>
             <p>
-              <b>04</b
+              <b>05</b
               ><span
                 ><strong>仲間と助け合う。</strong>卵や巣を壊して敵の復活を抑えたり、囮になって仲間を逃がそう。</span
               >
             </p>
           </div>
           <p class="help-controls">
-            WASD / 矢印：移動　SPACE：ジャンプ　SHIFT：走る　C：しゃがむ　E：巣を壊す・仲間を助ける　ドラッグ：視点変更
+            WASD /
+            矢印：移動　SPACE：ジャンプ　SHIFT：走る　C：しゃがむ（砂地で長押し：砂浴び）　E：巣を壊す・仲間を助ける　マウス移動／ドラッグ：視点変更（Escで解除）
           </p>
           <button id="help-done" class="button button-primary" type="button">わかった</button>
         </div>

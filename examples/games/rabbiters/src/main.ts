@@ -1,8 +1,11 @@
 import './style.css'
-import { Game, RULES, type GameState, type Input } from './game'
+import { Game, RULES, SAND_PATCHES, type GameState, type Input } from './game'
+import { STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
+import { GuestView, type InputAck } from './guest-view'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
+import { isFoodKind } from './food'
 
 function element<T extends HTMLElement>(selector: string): T {
   const result = document.querySelector<T>(selector)
@@ -18,6 +21,7 @@ const startPanel = element<HTMLElement>('#start-panel')
 const help = element<HTMLElement>('#help')
 const result = element<HTMLElement>('#result')
 const error = element<HTMLElement>('#start-error')
+const alertOverlay = element<HTMLElement>('#alert-overlay')
 const connection = element<HTMLElement>('#connection span')
 const leave = element<HTMLButtonElement>('#leave')
 const restart = element<HTMLButtonElement>('#restart')
@@ -27,6 +31,7 @@ const room = element<HTMLInputElement>('#room')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
 const keys = new Set<string>()
 const remoteInputAt = new Map<string, number>()
+const remoteInputAcks = new Map<string, InputAck>()
 const touch = { x: 0, z: 0, jump: false, sprint: false, crouch: false, interact: false }
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 
@@ -35,14 +40,18 @@ let game: Game | undefined
 let network: CooperativeNetwork | undefined
 let role: 'solo' | 'host' | 'guest' | undefined
 let snapshot: GameState | undefined
+let guestView: GuestView | undefined
 let yaw = 0
 let lastTime = performance.now()
 let sentAt = 0
+let sentInput: Input = idle
+let inputInFlight: CooperativeNetwork | undefined
 let hudAt = 0
 let started = false
 let connectionLost = false
 let generation = 0
 let soundEnabled = true
+let chasers = new Set<string>()
 
 const preview = new Game()
 preview.addPlayer('preview', '旅するウサギ')
@@ -89,6 +98,8 @@ function validSnapshot(value: unknown): value is GameState {
     value.foods.length > 32 ||
     !Array.isArray(value.nests) ||
     value.nests.length > 16 ||
+    !Array.isArray(value.droppings) ||
+    value.droppings.length > STEALTH.maxDroppings ||
     !numeric(value.delivered, 0, 1e8) ||
     !numeric(value.goal, 0, 1e8)
   )
@@ -107,6 +118,7 @@ function validSnapshot(value: unknown): value is GameState {
         numeric(player.score, 0, 1e8) &&
         numeric(player.growth, 0, 1) &&
         numeric(player.pregnancy, 0, 1) &&
+        numeric(player.bath, 0, 1) &&
         typeof player.hidden === 'boolean' &&
         typeof player.downed === 'boolean' &&
         typeof player.pregnant === 'boolean'
@@ -116,11 +128,17 @@ function validSnapshot(value: unknown): value is GameState {
         record(predator) &&
         position(predator) &&
         ['fox', 'wolf', 'hawk', 'snake', 'crocodile'].includes(String(predator.kind)) &&
-        ['patrol', 'alert', 'chase'].includes(String(predator.state)) &&
+        ['patrol', 'search', 'suspicious', 'chase'].includes(String(predator.state)) &&
         numeric(predator.angle, -1e8, 1e8) &&
+        numeric(predator.suspicion, 0, 1) &&
         (predator.targetId === null || label(predator.targetId))
     ) &&
-    value.foods.every((food: unknown) => record(food) && position(food) && typeof food.active === 'boolean') &&
+    value.foods.every(
+      (food: unknown) => record(food) && position(food) && isFoodKind(food.kind) && typeof food.active === 'boolean'
+    ) &&
+    value.droppings.every(
+      (dropping: unknown) => record(dropping) && position(dropping) && numeric(dropping.t, 0, 1e8)
+    ) &&
     value.nests.every(
       (nest: unknown) =>
         record(nest) && position(nest) && typeof nest.active === 'boolean' && numeric(nest.health, 0, 100)
@@ -161,7 +179,11 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
   buttons.forEach((button) => (button.disabled = true))
   localId = crypto.randomUUID()
   role = nextRole
+  remoteInputAt.clear()
+  remoteInputAcks.clear()
+  inputInFlight = undefined
   game = nextRole === 'guest' ? undefined : new Game()
+  guestView = nextRole === 'guest' ? new GuestView() : undefined
   game?.addPlayer(localId, 'あなた')
   snapshot = game?.state
   try {
@@ -176,6 +198,9 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
         onInput: (id, input) => {
           if (attempt !== generation) return
           remoteInputAt.set(id, performance.now())
+          if (game && record(input) && numeric(input.sentAt, 0, Number.MAX_SAFE_INTEGER))
+            remoteInputAcks.set(id, { sentAt: input.sentAt, gameTime: game.state.time })
+          else remoteInputAcks.delete(id)
           game?.setInput(id, input as Input)
         },
         onSnapshot: (state) => {
@@ -190,6 +215,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
             if (player.id !== localId && !ids.includes(player.id)) {
               game.removePlayer(player.id)
               remoteInputAt.delete(player.id)
+              remoteInputAcks.delete(player.id)
             }
           }
         },
@@ -222,11 +248,13 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     clearInput()
     connectionLost = false
     started = true
+    updateLookHint()
     startPanel.hidden = true
     hud.hidden = false
     leave.hidden = false
     result.hidden = true
     sentAt = 0
+    sentInput = idle
   } catch (cause) {
     if (attempt !== generation) return
     const failed = network
@@ -245,15 +273,19 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
 async function returnToTitle() {
   ++generation
   started = false
+  updateLookHint()
   connectionLost = false
   audio.stop()
   clearInput()
   remoteInputAt.clear()
+  remoteInputAcks.clear()
   const current = network
   network = undefined
   role = undefined
   game = undefined
   snapshot = undefined
+  guestView = undefined
+  inputInFlight = undefined
   hud.hidden = true
   result.hidden = true
   help.hidden = true
@@ -262,6 +294,8 @@ async function returnToTitle() {
   buttons.forEach((button) => (button.disabled = false))
   error.textContent = ''
   sessionStatus('ひとりでプレイ')
+  chasers = new Set()
+  alertOverlay.className = 'alert-overlay'
   await current?.stop()
 }
 
@@ -290,14 +324,32 @@ function updateHud(state: GameState) {
     element<HTMLElement>(`#${name}-bar`).style.width = `${value}%`
     element<HTMLElement>(`#${name}-value`).textContent = String(Math.ceil(value))
   }
-  const chased = state.predators.some((predator) => predator.targetId === player.id && predator.state === 'chase')
+  const hunting = new Set(
+    state.predators
+      .filter((predator) => predator.targetId === player.id && predator.state === 'chase')
+      .map((predator) => predator.id)
+  )
+  const suspected = state.predators.some(
+    (predator) => predator.targetId === player.id && predator.state === 'suspicious'
+  )
+  if ([...hunting].some((id) => !chasers.has(id))) {
+    // Restart the flash for every new pursuer.
+    alertOverlay.classList.remove('spotted')
+    void alertOverlay.offsetWidth
+    alertOverlay.classList.add('spotted')
+    element<HTMLElement>('#announcements').textContent = '見つかった！'
+  } else if (!hunting.size) alertOverlay.classList.remove('spotted')
+  alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
+  chasers = hunting
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
-    : chased
+    : hunting.size
       ? '見つかった！ 草むらに逃げよう'
-      : player.hidden
-        ? '身を隠しています'
-        : '足あとに気をつけて'
+      : suspected
+        ? '怪しまれている… 今のうちに隠れよう'
+        : player.hidden
+          ? '身を隠しています'
+          : '足あとに気をつけて'
   const pregnant = state.players.find((entry) => entry.pregnant && !entry.downed)
   const progress = pregnant ? pregnant.pregnancy : player.growth
   element<HTMLElement>('#objective-title').textContent = pregnant ? '新しい命を守ろう' : '食べて、大きくなろう'
@@ -314,18 +366,26 @@ function updateHud(state: GameState) {
   const nearFriend = state.players.find(
     (friend) => friend.downed && friend.id !== localId && Math.hypot(friend.x - player.x, friend.z - player.z) < 2
   )
+  const sandPit = SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
   element<HTMLElement>('#hint').textContent = nearFriend
     ? 'E を押して仲間を助ける'
     : nearNest
       ? 'E を長押しして卵を壊す'
-      : ''
+      : player.bath >= 1
+        ? '砂浴びでにおいを消した'
+        : player.bath > 0
+          ? `砂浴び中… ${Math.round(player.bath * 100)}%`
+          : sandPit
+            ? 'C を長押しして砂浴び（においを消す）'
+            : ''
 }
 
 function frame(now: number) {
   const dt = Math.min(Math.max((now - lastTime) / 1000, 0), 0.1)
   lastTime = now
+  const input = controls()
   if (started && game && !connectionLost) {
-    game.setInput(localId, controls())
+    game.setInput(localId, input)
     if (role === 'host') {
       for (const player of game.state.players) {
         if (player.id !== localId && now - (remoteInputAt.get(player.id) ?? 0) > 500) game.setInput(player.id, idle)
@@ -334,17 +394,40 @@ function frame(now: number) {
     game.step(dt)
     snapshot = game.state
   }
-  if (started && network && now - sentAt >= 100) {
+  const inputChanged =
+    Math.abs(input.moveX - sentInput.moveX) > 0.1 ||
+    Math.abs(input.moveZ - sentInput.moveZ) > 0.1 ||
+    input.jump !== sentInput.jump ||
+    input.sprint !== sentInput.sprint ||
+    input.crouch !== sentInput.crouch ||
+    input.interact !== sentInput.interact
+  if (
+    started &&
+    network &&
+    (role !== 'guest' || inputInFlight !== network) &&
+    (now - sentAt >= 100 || (role === 'guest' && inputChanged && now - sentAt >= 25))
+  ) {
     sentAt = now
+    sentInput = input
     const current = network
-    const operation = role === 'host' && game ? current.broadcastSnapshot(game.state) : current.sendInput(controls())
-    void operation.catch((cause: unknown) =>
-      disconnect(`通信エラー: ${cause instanceof Error ? cause.message : String(cause)}`, current)
-    )
+    const operation =
+      role === 'host' && game
+        ? current.broadcastSnapshot({ ...game.state, inputAcks: Object.fromEntries(remoteInputAcks) })
+        : current.sendInput({ ...input, sentAt: now })
+    if (role === 'guest') inputInFlight = current
+    void operation
+      .catch((cause: unknown) =>
+        disconnect(`通信エラー: ${cause instanceof Error ? cause.message : String(cause)}`, current)
+      )
+      .finally(() => {
+        if (inputInFlight === current) inputInFlight = undefined
+      })
   }
   const current = snapshot ?? preview.state
   if (!started) preview.state.time = now / 1000
-  scene.render(current, started ? localId : 'preview', dt)
+  const visual =
+    started && !connectionLost && guestView && snapshot ? guestView.render(snapshot, localId, input, dt, now) : current
+  scene.render(visual, started ? localId : 'preview', dt)
   if (started && !connectionLost && snapshot) audio.update(snapshot, localId)
   if (started && now - hudAt > 100) {
     hudAt = now
@@ -414,16 +497,41 @@ window.addEventListener('pagehide', () => {
 })
 
 let drag: { id: number; x: number } | undefined
+const lookHint = element<HTMLElement>('#look-hint')
+const canLock = matchMedia('(pointer: fine)').matches && typeof world.requestPointerLock === 'function'
+const locked = () => document.pointerLockElement === world
+const rotate = (dx: number) => {
+  const delta = dx * -0.006
+  yaw += delta
+  scene.orbit(delta)
+}
+function updateLookHint() {
+  lookHint.hidden = !canLock || !started
+  lookHint.textContent = locked() ? 'マウスで視点操作中 / Escで解除' : 'クリックで視点操作 / Escで解除'
+}
+document.addEventListener('pointerlockchange', updateLookHint)
+document.addEventListener('pointerlockerror', updateLookHint)
 world.addEventListener('pointerdown', (event) => {
   if (!started || (event.pointerType === 'mouse' && event.button !== 0)) return
   drag = { id: event.pointerId, x: event.clientX }
   world.setPointerCapture(event.pointerId)
+  // Pointer lock for mouse only; on refusal the drag above keeps working.
+  if (canLock && event.pointerType === 'mouse' && !locked()) {
+    try {
+      void Promise.resolve(world.requestPointerLock()).catch(() => undefined)
+    } catch {
+      /* drag fallback */
+    }
+  }
+  updateLookHint()
 })
 world.addEventListener('pointermove', (event) => {
+  if (locked()) {
+    if (event.pointerType === 'mouse') rotate(event.movementX)
+    return
+  }
   if (!drag || drag.id !== event.pointerId) return
-  const delta = (event.clientX - drag.x) * -0.006
-  yaw += delta
-  scene.orbit(delta)
+  rotate(event.clientX - drag.x)
   drag.x = event.clientX
 })
 for (const type of ['pointerup', 'pointercancel'] as const)

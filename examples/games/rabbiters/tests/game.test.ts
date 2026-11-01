@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Game, GRASS_PATCHES, RULES, type Input } from '../src/game'
+import { FOOD_KINDS } from '../src/food'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const advance = (game: Game, seconds: number) => {
@@ -234,6 +235,22 @@ describe('Rabbiters authoritative simulation', () => {
     game.step(0.1)
     expect(friend.pregnant).toBe(false)
     expect(game.state.phase).toBe('won')
+  })
+
+  it('restores hunger by food kind and every kind counts toward growth', () => {
+    for (const [kind, { nutrition }] of Object.entries(FOOD_KINDS)) {
+      const game = peaceful()
+      const player = game.state.players[0]
+      const food =
+        game.state.foods.find((item) => item.kind === kind && item.y === 0) ??
+        game.state.foods.find((item) => item.kind === kind)!
+      Object.assign(player, { hunger: 10, x: food.x, y: food.y, z: food.z })
+      game.step(1 / 60)
+      expect(food.active).toBe(false)
+      expect(player.hunger).toBeCloseTo(10 + nutrition - RULES.hungerDrain / 60, 5)
+      expect(player.foodEaten).toBe(1)
+    }
+    expect(new Set(new Game(1).state.foods.map((food) => food.kind)).size).toBe(Object.keys(FOOD_KINDS).length)
   })
 
   it('requires enough current nutrition to start pregnancy', () => {
