@@ -9,6 +9,7 @@ type Observation = {
   pregnant: boolean
   phase: GameState['phase']
   nests: Set<string>
+  predators: Map<string, string>
 }
 
 export class RabbitersAudio {
@@ -19,6 +20,8 @@ export class RabbitersAudio {
   private muted = false
   private previous: Observation | null = null
   private lastHit = -Infinity
+  private lastAlarm = -Infinity
+  private lastQuery = -Infinity
   private beat = 0
 
   start(): void {
@@ -52,6 +55,8 @@ export class RabbitersAudio {
     this.master = null
     this.previous = null
     this.lastHit = -Infinity
+    this.lastAlarm = -Infinity
+    this.lastQuery = -Infinity
     this.beat = 0
   }
 
@@ -72,7 +77,8 @@ export class RabbitersAudio {
       foodEaten: player?.foodEaten ?? 0,
       pregnant: player?.pregnant ?? false,
       phase: state.phase,
-      nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id))
+      nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id)),
+      predators: new Map(state.predators.map((predator) => [predator.id, predator.state]))
     }
     const previous = this.previous
     this.previous = next
@@ -82,6 +88,31 @@ export class RabbitersAudio {
     }
     if (next.phase !== 'playing') return
     if ([...previous.nests].some((id) => !next.nests.has(id))) this.chime([180, 110, 65], 'sawtooth')
+    // Any rabbit being spotted is a team-wide cue; "?" only sounds for suspicion aimed at you.
+    const changed = (predator: GameState['predators'][number]) => {
+      const before = previous.predators.get(predator.id)
+      return before !== undefined && before !== predator.state
+    }
+    if (
+      state.predators.some((predator) => predator.state === 'chase' && changed(predator)) &&
+      state.time - this.lastAlarm >= 1.5
+    ) {
+      this.lastAlarm = state.time
+      this.alarm()
+    } else if (
+      state.predators.some(
+        (predator) =>
+          predator.state === 'suspicious' &&
+          predator.targetId === localPlayerId &&
+          changed(predator) &&
+          previous.predators.get(predator.id) !== 'chase'
+      ) &&
+      state.time - this.lastQuery >= 2
+    ) {
+      this.lastQuery = state.time
+      this.tone(494, 0.12, 'triangle', 0, 520, 0.07)
+      this.tone(587, 0.22, 'triangle', 0.11, 659, 0.07)
+    }
     if (!player || previous.playerId !== localPlayerId) return
     if (previous.y <= 0 && next.y > 0) this.tone(330, 0.14, 'sine', 0, 660)
     if (next.foodEaten > previous.foodEaten) this.chime([880, 1175])
@@ -110,11 +141,26 @@ export class RabbitersAudio {
     if (step % 4 === 0) this.tone([131, 147, 110, 98][step / 4], 0.45, 'triangle')
   }
 
+  /** Original "spotted" sting: a low thump, two rising square blips and a ringing tail. */
+  private alarm(): void {
+    this.tone(110, 0.22, 'triangle', 0, 55, 0.2)
+    this.tone(740, 0.07, 'square', 0, 760, 0.06)
+    this.tone(1480, 0.09, 'square', 0.07, 1500, 0.06)
+    this.tone(1976, 0.45, 'sine', 0.07, 1900, 0.08)
+  }
+
   private chime(notes: number[], type: OscillatorType = 'sine'): void {
     notes.forEach((frequency, index) => this.tone(frequency, 0.16, type, index * 0.09))
   }
 
-  private tone(frequency: number, duration: number, type: OscillatorType, delay = 0, end = frequency): void {
+  private tone(
+    frequency: number,
+    duration: number,
+    type: OscillatorType,
+    delay = 0,
+    end = frequency,
+    peak = 0.15
+  ): void {
     const context = this.context
     if (!context || !this.master || this.muted || context.state !== 'running') return
     try {
@@ -125,7 +171,7 @@ export class RabbitersAudio {
       oscillator.frequency.setValueAtTime(frequency, start)
       oscillator.frequency.exponentialRampToValueAtTime(end, start + duration)
       envelope.gain.setValueAtTime(0, start)
-      envelope.gain.linearRampToValueAtTime(0.15, start + 0.01)
+      envelope.gain.linearRampToValueAtTime(peak, start + 0.01)
       envelope.gain.exponentialRampToValueAtTime(0.001, start + duration)
       oscillator.connect(envelope)
       envelope.connect(this.master)

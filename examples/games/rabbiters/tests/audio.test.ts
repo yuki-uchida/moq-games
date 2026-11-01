@@ -115,6 +115,39 @@ describe('Rabbiters audio', () => {
     audio.stop()
   })
 
+  it('plays a team-wide sting when any rabbit is spotted and a soft "?" only for local suspicion', () => {
+    const { audio, game, context } = setup()
+    game.addPlayer('friend', 'Friend')
+    const [first, second] = game.state.predators
+    const at = (time: number) => {
+      game.state.time = time
+      audio.update(JSON.parse(JSON.stringify(game.state)), 'local')
+    }
+    Object.assign(first, { state: 'suspicious', targetId: 'friend' })
+    at(1)
+    expect(context.voices).toHaveLength(0)
+    Object.assign(first, { state: 'suspicious', targetId: 'local' })
+    first.state = 'patrol'
+    at(1.1)
+    first.state = 'suspicious'
+    at(1.2)
+    expect(context.voices).toHaveLength(2)
+    Object.assign(second, { state: 'chase', targetId: 'friend' })
+    at(1.3)
+    expect(context.voices).toHaveLength(6)
+    expect(context.voices.some((voice) => voice.type === 'square')).toBe(true)
+    first.state = 'chase'
+    at(1.4)
+    expect(context.voices).toHaveLength(6)
+    audio.setMuted(true)
+    Object.assign(first, { state: 'patrol' })
+    at(5)
+    first.state = 'chase'
+    at(5.1)
+    expect(context.voices).toHaveLength(6)
+    audio.stop()
+  })
+
   it('tolerates missing, throwing and rejected audio support', async () => {
     vi.stubGlobal('AudioContext', undefined)
     const audio = new RabbitersAudio()

@@ -1,5 +1,6 @@
 import './style.css'
-import { Game, RULES, type GameState, type Input } from './game'
+import { Game, RULES, SAND_PATCHES, type GameState, type Input } from './game'
+import { STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
@@ -20,6 +21,7 @@ const startPanel = element<HTMLElement>('#start-panel')
 const help = element<HTMLElement>('#help')
 const result = element<HTMLElement>('#result')
 const error = element<HTMLElement>('#start-error')
+const alertOverlay = element<HTMLElement>('#alert-overlay')
 const connection = element<HTMLElement>('#connection span')
 const leave = element<HTMLButtonElement>('#leave')
 const restart = element<HTMLButtonElement>('#restart')
@@ -49,6 +51,7 @@ let started = false
 let connectionLost = false
 let generation = 0
 let soundEnabled = true
+let chasers = new Set<string>()
 
 const preview = new Game()
 preview.addPlayer('preview', '旅するウサギ')
@@ -95,6 +98,8 @@ function validSnapshot(value: unknown): value is GameState {
     value.foods.length > 32 ||
     !Array.isArray(value.nests) ||
     value.nests.length > 16 ||
+    !Array.isArray(value.droppings) ||
+    value.droppings.length > STEALTH.maxDroppings ||
     !numeric(value.delivered, 0, 1e8) ||
     !numeric(value.goal, 0, 1e8)
   )
@@ -113,6 +118,7 @@ function validSnapshot(value: unknown): value is GameState {
         numeric(player.score, 0, 1e8) &&
         numeric(player.growth, 0, 1) &&
         numeric(player.pregnancy, 0, 1) &&
+        numeric(player.bath, 0, 1) &&
         typeof player.hidden === 'boolean' &&
         typeof player.downed === 'boolean' &&
         typeof player.pregnant === 'boolean'
@@ -122,12 +128,16 @@ function validSnapshot(value: unknown): value is GameState {
         record(predator) &&
         position(predator) &&
         ['fox', 'wolf', 'hawk', 'snake', 'crocodile'].includes(String(predator.kind)) &&
-        ['patrol', 'alert', 'chase'].includes(String(predator.state)) &&
+        ['patrol', 'search', 'suspicious', 'chase'].includes(String(predator.state)) &&
         numeric(predator.angle, -1e8, 1e8) &&
+        numeric(predator.suspicion, 0, 1) &&
         (predator.targetId === null || label(predator.targetId))
     ) &&
     value.foods.every(
       (food: unknown) => record(food) && position(food) && isFoodKind(food.kind) && typeof food.active === 'boolean'
+    ) &&
+    value.droppings.every(
+      (dropping: unknown) => record(dropping) && position(dropping) && numeric(dropping.t, 0, 1e8)
     ) &&
     value.nests.every(
       (nest: unknown) =>
@@ -284,6 +294,8 @@ async function returnToTitle() {
   buttons.forEach((button) => (button.disabled = false))
   error.textContent = ''
   sessionStatus('ひとりでプレイ')
+  chasers = new Set()
+  alertOverlay.className = 'alert-overlay'
   await current?.stop()
 }
 
@@ -312,14 +324,32 @@ function updateHud(state: GameState) {
     element<HTMLElement>(`#${name}-bar`).style.width = `${value}%`
     element<HTMLElement>(`#${name}-value`).textContent = String(Math.ceil(value))
   }
-  const chased = state.predators.some((predator) => predator.targetId === player.id && predator.state === 'chase')
+  const hunting = new Set(
+    state.predators
+      .filter((predator) => predator.targetId === player.id && predator.state === 'chase')
+      .map((predator) => predator.id)
+  )
+  const suspected = state.predators.some(
+    (predator) => predator.targetId === player.id && predator.state === 'suspicious'
+  )
+  if ([...hunting].some((id) => !chasers.has(id))) {
+    // Restart the flash for every new pursuer.
+    alertOverlay.classList.remove('spotted')
+    void alertOverlay.offsetWidth
+    alertOverlay.classList.add('spotted')
+    element<HTMLElement>('#announcements').textContent = '見つかった！'
+  } else if (!hunting.size) alertOverlay.classList.remove('spotted')
+  alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
+  chasers = hunting
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
-    : chased
+    : hunting.size
       ? '見つかった！ 草むらに逃げよう'
-      : player.hidden
-        ? '身を隠しています'
-        : '足あとに気をつけて'
+      : suspected
+        ? '怪しまれている… 今のうちに隠れよう'
+        : player.hidden
+          ? '身を隠しています'
+          : '足あとに気をつけて'
   const pregnant = state.players.find((entry) => entry.pregnant && !entry.downed)
   const progress = pregnant ? pregnant.pregnancy : player.growth
   element<HTMLElement>('#objective-title').textContent = pregnant ? '新しい命を守ろう' : '食べて、大きくなろう'
@@ -336,11 +366,18 @@ function updateHud(state: GameState) {
   const nearFriend = state.players.find(
     (friend) => friend.downed && friend.id !== localId && Math.hypot(friend.x - player.x, friend.z - player.z) < 2
   )
+  const sandPit = SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
   element<HTMLElement>('#hint').textContent = nearFriend
     ? 'E を押して仲間を助ける'
     : nearNest
       ? 'E を長押しして卵を壊す'
-      : ''
+      : player.bath >= 1
+        ? '砂浴びでにおいを消した'
+        : player.bath > 0
+          ? `砂浴び中… ${Math.round(player.bath * 100)}%`
+          : sandPit
+            ? 'C を長押しして砂浴び（においを消す）'
+            : ''
 }
 
 function frame(now: number) {

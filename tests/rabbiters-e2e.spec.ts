@@ -447,3 +447,101 @@ test('desktop: pointer lock rotates the view without holding a button', async ({
   )
   await expect.poll(yaw).not.toBeCloseTo(before, 1)
 })
+
+test('stealth: "?" then "!" cues, alert vignette and droppings', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    const source = await response.text()
+    await route.fulfill({
+      response,
+      body: `${source}
+window.rabbitersStealth = {
+  stage(predators) {
+    const player = game.state.players[0];
+    Object.assign(player, { x: -28, z: 2, y: 0 });
+    game.state.predators = predators.map((entry) => ({ y: 0, angle: 0, state: 'patrol', targetId: null, suspicion: 0, ...entry }));
+  },
+  move(id, values) { Object.assign(game.state.predators.find((entry) => entry.id === id), values); },
+  drop(entries) { game.state.droppings.push(...entries); },
+  advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
+  freeze() { this.step = game.step.bind(game); game.step = () => {}; },
+  spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -28, z: -1, state: 'chase', targetId: localId, suspicion: 1 }); },
+  read(id) {
+    const predator = game.state.predators.find((entry) => entry.id === id);
+    const actor = scene.actors.get('predator:' + id);
+    const symbol = actor?.marker?.symbol;
+    return predator && {
+      state: predator.state, suspicion: predator.suspicion, y: predator.y, renderedY: actor.root.position.y,
+      marker: symbol?.visible ? [...scene.textures].find(([, texture]) => texture === symbol.material.map)?.[0] : null,
+      meter: actor.marker.fill.visible, overlay: alertOverlay.className,
+      droppings: game.state.droppings.length, renderedDroppings: scene.droppings.size, alarm: audio.lastAlarm
+    };
+  }
+};`
+    })
+  })
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  type Reading = {
+    state: string
+    suspicion: number
+    y: number
+    renderedY: number
+    marker: string | null
+    meter: boolean
+    overlay: string
+    droppings: number
+    renderedDroppings: number
+    alarm: number
+  }
+  const run = <T>(expression: string) => page.evaluate<T>(`window.rabbitersStealth.${expression}`)
+  const read = (id = 'fox') => run<Reading>(`read(${JSON.stringify(id)})`)
+
+  // Real droppings appear from the simulation itself.
+  await run('advance(13)')
+  expect((await read('predator-0'))?.droppings ?? 0).toBeGreaterThan(0)
+
+  await run(
+    `stage(${JSON.stringify([
+      { id: 'fox', kind: 'fox', x: -28, z: -6.5 },
+      { id: 'hawk', kind: 'hawk', x: -40, y: 5, z: -25 }
+    ])})`
+  )
+  // Step the simulation in-page so the meter does not depend on the frame rate.
+  await run('freeze()')
+  await run('advance(0.8)')
+  let reading = await read()
+  expect(reading.state).toBe('suspicious')
+  expect(reading.suspicion).toBeGreaterThan(0.3)
+  expect(reading.suspicion).toBeLessThan(1)
+  const pellets = [0, 1, 2, 3].map((index) => ({
+    id: `poo-test-${index}`,
+    x: -27.2 + index * 0.5,
+    y: 0,
+    z: 3.2 - index * 1.6,
+    t: 0
+  }))
+  await run(`drop(${JSON.stringify(pellets)})`)
+  await expect.poll(async () => (await read()).marker).toBe('?#e0a020')
+  reading = await read()
+  expect(reading.meter).toBe(true)
+  expect(reading.overlay).toContain('suspected')
+  await expect(page.locator('#condition')).toContainText('怪しまれている')
+  expect(reading.renderedDroppings).toBeGreaterThanOrEqual(4)
+  await page.screenshot({ path: testInfo.outputPath('stealth-question.png') })
+
+  await run("spot('fox')")
+  await expect.poll(async () => (await read()).marker).toBe('!#d8342c')
+  reading = await read()
+  expect(reading.overlay).toContain('spotted')
+  expect(reading.alarm).toBeGreaterThan(-1)
+  await expect(page.locator('#condition')).toContainText('見つかった')
+  await page.waitForTimeout(150)
+  await page.screenshot({ path: testInfo.outputPath('stealth-spotted.png') })
+
+  expect(errors).toEqual([])
+})

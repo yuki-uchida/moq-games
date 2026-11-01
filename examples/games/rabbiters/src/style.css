@@ -39,6 +39,38 @@ input:focus-visible {
   position: absolute;
   inset: 0;
 }
+.alert-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(ellipse at center, transparent 55%, rgb(232 176 64 / 0.32) 100%);
+}
+.alert-overlay.suspected {
+  opacity: 1;
+}
+.alert-overlay.spotted {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, transparent 45%, rgb(214 44 40 / 0.55) 100%);
+  animation: spotted-flash 0.9s ease-out;
+}
+@keyframes spotted-flash {
+  0% {
+    background-color: rgb(255 240 220 / 0.55);
+  }
+  25% {
+    background-color: rgb(214 44 40 / 0.18);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alert-overlay.spotted {
+    animation: none;
+  }
+}
 #world canvas {
   display: block;
   width: 100%;
