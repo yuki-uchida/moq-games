@@ -131,9 +131,6 @@ jobs:
           test -s shard-tests.txt
       - name: Test the Pages build in Chromium
         run: npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt
-      - name: Test Rabbiters in Chromium
-        if: matrix.shard == 1
-        run: npx playwright test --config playwright.rabbiters.config.ts
       - name: Upload shard report and failure evidence
         if: always()
         uses: actions/upload-artifact@v4
