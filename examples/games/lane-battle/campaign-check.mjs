@@ -69,7 +69,6 @@ await Promise.all(
     await page.clock.runFor(2000)
     assert.equal(await page.evaluate(() => window.soundCount), count, 'mute suppresses all oscillator creation')
     assert.deepEqual(errors, [])
-    await page.getByRole('button', { name: '遊び方' }).click()
     assert.ok((await page.locator('#stages').textContent()).includes('★'), 'stage record appears')
     await page.close()
   })

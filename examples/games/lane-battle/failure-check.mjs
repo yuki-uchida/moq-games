@@ -26,7 +26,7 @@ for (const [name, width, height] of [
   await page.clock.runFor(50)
   const gold = Number(await page.locator('#gold').textContent())
   assert.ok(gold >= 48 && gold <= 53, `cooldown charges once: ${gold}`)
-  await page.getByRole('button', { name: '一時停止', exact: true }).click()
+  await page.keyboard.press('Space')
   await page.clock.runFor(50)
   const snapshot = () =>
     page.evaluate(() => ({
@@ -38,23 +38,21 @@ for (const [name, width, height] of [
   const frozen = await snapshot()
   await page.clock.runFor(10000)
   assert.deepEqual(await snapshot(), frozen, 'pause freezes income, timer, enemy movement, poses and HP')
-  await page.getByRole('button', { name: '一時停止', exact: true }).click()
+  await page.keyboard.press('Space')
   await page.clock.runFor(1200)
   assert.notDeepEqual(await snapshot(), frozen, 'resume advances')
-  await page.getByRole('button', { name: '遊び方' }).click()
-  await page.getByRole('button', { name: '進軍開始' }).click()
   await page.clock.runFor(100)
   const before = Number(await page.locator('#gold').textContent())
   await page.getByRole('button', { name: '葉の衛兵を召喚 35', exact: true }).click()
   await page.clock.runFor(50)
-  assert.ok(Number(await page.locator('#gold').textContent()) < before, 'help restores summon controls')
+  assert.ok(Number(await page.locator('#gold').textContent()) < before, 'resume restores summon controls')
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight
     ),
     false
   )
-  console.log(name, 'spam/cooldown/pause/resume/help/no-scroll PASS')
+  console.log(name, 'spam/cooldown/pause/resume/no-scroll PASS')
   await page.close()
 }
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })

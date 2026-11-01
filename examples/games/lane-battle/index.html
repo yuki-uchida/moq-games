@@ -8,26 +8,20 @@
   <body>
     <main>
       <header>
-        <div class="title">
-          <small>LANE BATTLE</small>
-          <h1>芽吹きの境界</h1>
-        </div>
         <div class="wallet">✦ <strong id="gold">0</strong><small id="rate"></small></div>
-        <button id="sound" data-sfx="none" aria-label="音を切り替え" aria-pressed="false">♪</button
-        ><button id="help" aria-label="遊び方">?</button><button id="pause" aria-label="一時停止">Ⅱ</button>
+        <button id="sound" data-sfx="none" aria-label="音を切り替え" aria-pressed="false">♪</button>
       </header>
       <section id="field">
         <canvas aria-label="左の森の砦から右の水晶砦へ進む戦場"></canvas>
-        <div class="bases">
-          <span>森の砦 <b id="home"></b></span><span id="clock"></span><span>水晶砦 <b id="enemy"></b></span>
-        </div>
+        <span id="clock"></span>
+        <p class="sr-only">森の砦 <span id="home"></span> 水晶砦 <span id="enemy"></span></p>
         <div id="notice" role="status"></div>
       </section>
       <footer>
         <div id="tray"></div>
         <div class="utilities">
           <button id="upgrade" data-sfx="none">✦ 生産強化 <b></b></button
-          ><button id="burst" data-sfx="none">☄ 砦の衝撃 <b>準備完了</b></button>
+          ><button id="burst" data-sfx="none">☄ 砦の衝撃 <b></b></button>
         </div>
       </footer>
       <dialog>

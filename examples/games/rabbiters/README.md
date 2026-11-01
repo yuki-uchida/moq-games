@@ -98,6 +98,8 @@ npm run e2e:rabbiters
 npm run build:rabbiters
 ```
 
+E2Eは毎回専用のサーバー（既定5193）を起動し、既存サーバーは再利用しません。ポートが使用中なら`E2E_PORT=5393 npm run e2e:rabbiters`のように変更します。起動中の開発サーバーで試す場合だけ`E2E_REUSE_SERVER=1`を付けます。
+
 ブラウザテストにはPlaywrightのChromiumが必要です。既存のChromiumを使う場合は`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`を指定できます。独立ビルドの出力先は`dist/rabbiters/`です。通常のPagesビルドにも含まれ、ゲーム一覧から開けます。
 
 Rabbitersは公式リリース`moq-wasm@0.1.0`を`package-lock.json`の整合性ハッシュ付きで使用します。Pagesのライセンス通知には、このリリースのソースとロックファイルから調べた依存関係を旧SDKとは別に記載しています。依存一覧は余分なビルド依存も含む概算で、バイナリ内の構成を個別に検証したものではありません。ゲーム内の3Dモデルは自作で、対応する原画とモーション資料は`art-source/`に保管し、Pagesには含めません。
