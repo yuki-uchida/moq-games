@@ -26,6 +26,8 @@ export interface ModelPose {
   readonly facingX: number
   readonly facingY: number
   readonly boss: boolean
+  /** Simulation seconds; enables a short crossfade when the clip changes. Omitted by previews and tests. */
+  readonly time?: number
 }
 
 /** Animation sampling is simulation-owned: tab freezes, pause and save resume cannot drift hits. */
@@ -56,6 +58,13 @@ export function unitModelPose(unit: Unit, time: number, action?: CombatAttack): 
   }
 }
 
+/** Short enough to finish long before the earliest attack cue. */
+export const MODEL_CROSSFADE_SECONDS = 0.12
+const ALLY_FALL_SECONDS = 0.82
+type NodePose = [THREE.Vector3, THREE.Quaternion, THREE.Vector3]
+/** live: may start a fade; restore: re-applies an existing fade; exact: authored pose only. */
+type SampleMode = 'live' | 'restore' | 'exact'
+
 interface MotionInstance {
   lease: ModelLease
   mixer: THREE.AnimationMixer
@@ -64,14 +73,39 @@ interface MotionInstance {
   exactBounds?: boolean
 }
 
+/** Copy every named node's local transform; motion rigs share node names across GLB files. */
+function snapshot(scene: THREE.Object3D): Map<string, NodePose> {
+  const pose = new Map<string, NodePose>()
+  scene.traverse((node) => {
+    if (node.name) pose.set(node.name, [node.position.clone(), node.quaternion.clone(), node.scale.clone()])
+  })
+  return pose
+}
+const blendRotation = new THREE.Quaternion()
+const vertex = new THREE.Vector3()
+const rootInverse = new THREE.Matrix4()
+const axisX = new THREE.Vector3(1, 0, 0)
+const axisZ = new THREE.Vector3(0, 0, 1)
+const smooth = (value: number) => {
+  const t = Math.max(0, Math.min(1, value))
+  return t * t * (3 - 2 * t)
+}
+
 /** True polygonal actor, never a billboard or a render-to-texture sprite. */
 export class ModelUnitVisual {
   readonly root = new THREE.Group()
   private turn = new THREE.Group()
   private normalized = new THREE.Group()
   private fall = new THREE.Group()
-  private fallMixer?: THREE.AnimationMixer
-  private fallAction?: THREE.AnimationAction
+  private fallLift?: number
+  private fade?: {
+    from: Map<string, NodePose>
+    to: MotionInstance
+    start: number
+    /** Mixer-written values under the blend; the mixer skips unchanged writes, so these are restored before resampling. */
+    authored: Map<THREE.Object3D, NodePose>
+  }
+  private lastTime?: number
   private leases = new Map<string, MotionInstance>()
   private preparationFailures = new Set<string>()
   private fadePrepared = new WeakSet<ModelLease>()
@@ -235,14 +269,34 @@ export class ModelUnitVisual {
     }
   }
   sample(pose: ModelPose): boolean {
+    return this.apply(pose, 'live')
+  }
+  private apply(pose: ModelPose, mode: SampleMode): boolean {
     if (this.disposed) return false
-    this.fallAction?.stop()
+    this.fall.position.set(0, 0, 0)
+    this.fall.quaternion.identity()
+    this.fall.scale.set(1, 1, 1)
+    this.fallLift = undefined
+    const live = mode === 'live'
+    // Simulation time only: absent or rewound time (preview, reset, restore) never blends.
+    const forward = pose.time !== undefined && this.lastTime !== undefined && pose.time >= this.lastTime
     const spec = this.definition.clips[pose.motion]
     if (!spec)
       throw new Error(`Missing required ${pose.motion} model; refusing a different animation or sprite fallback`)
     const instance = this.instance(spec)
     if (!instance) return false
-    if (this.active !== instance) {
+    const switching = this.active !== instance
+    // Snapshot the visible (possibly blended) outgoing pose before restoring authored values.
+    const from = live && forward && switching && this.active ? snapshot(this.active.lease.scene) : undefined
+    if (this.fade) for (const [node, [p, q, s]] of this.fade.authored) {
+      node.position.copy(p)
+      node.quaternion.copy(q)
+      node.scale.copy(s)
+    }
+    this.fade?.authored.clear()
+    if (live && (!forward || switching))
+      this.fade = from && { from, to: instance, start: this.lastTime!, authored: new Map() }
+    if (switching) {
       if (this.active) {
         this.active.lease.scene.visible = false
         // Invisible descendants still receive Three.js world-matrix updates.
@@ -267,33 +321,79 @@ export class ModelUnitVisual {
     instance.action.enabled = true
     instance.action.paused = false
     instance.mixer.setTime(seconds)
+    if (mode !== 'exact') this.blend(instance, pose.time, live)
     this.root.updateWorldMatrix(true, true)
     for (const adapter of instance.lease.adapters) adapter.update(seconds)
     this.root.visible = true
     this.lastMotion = pose.motion
     this.lastSample = seconds
     this.lastPose = pose
+    if (live) this.lastTime = pose.time
     instance.firstPose ??= { ...pose }
     if (this.appearance.opacity < 1 && !instance.exactBounds) this.computeInitialBounds(instance)
     return true
   }
-  /** A rig-wide side fall preserves the exact held anatomy/weapon for roles without a death clip. */
+  /** Blend the incoming clip from the outgoing visible pose, bones and rigid controls alike. */
+  private blend(instance: MotionInstance, time: number | undefined, live: boolean): void {
+    const fade = this.fade
+    if (!fade || fade.to !== instance || time === undefined) return
+    const weight = (time - fade.start) / MODEL_CROSSFADE_SECONDS
+    if (weight >= 1 || weight < 0) {
+      if (live) this.fade = undefined
+      return
+    }
+    instance.lease.scene.traverse((node) => {
+      const from = fade.from.get(node.name)
+      if (!from) return
+      fade.authored.set(node, [node.position.clone(), node.quaternion.clone(), node.scale.clone()])
+      node.position.lerpVectors(from[0], node.position, weight)
+      blendRotation.copy(node.quaternion)
+      node.quaternion.copy(from[1]).slerp(blendRotation, weight)
+      node.scale.lerpVectors(from[2], node.scale, weight)
+    })
+  }
+  /** A rig-wide collapse preserves the exact held anatomy/weapon for roles without a death clip:
+   * buckle and pitch forward, topple toward screen right about the outer foot edge, rest on the ground, settle.
+   */
   sampleAllyDeath(seconds: number, facing: Pick<ModelPose, 'facingX' | 'facingY' | 'boss'>): boolean {
     if (this.disposed) return false
     if (!this.active && !this.sample({ ...facing, motion: 'idle', seconds: 0, loop: false })) return false
-    if (!this.fallMixer) {
-      this.fallMixer = new THREE.AnimationMixer(this.fall)
-      const clip = new THREE.AnimationClip('ally-side-fall', 0.82, [
-        new THREE.NumberKeyframeTrack('.rotation[z]',
-          [0, 0.12, 0.32, 0.62, 0.72, 0.82], [0, 0.06, -0.4, -Math.PI / 2, -1.5, -Math.PI / 2])
-      ])
-      this.fallAction = this.fallMixer.clipAction(clip).setLoop(THREE.LoopOnce, 1)
-      this.fallAction.clampWhenFinished = true
+    const t = Math.max(0, Math.min(seconds, ALLY_FALL_SECONDS))
+    if (this.fallLift === undefined) {
+      // Standing extent toward the fall side, measured once per death on the held pose.
+      this.fall.position.set(0, 0, 0)
+      this.fall.quaternion.identity()
+      this.fall.scale.set(1, 1, 1)
+      this.root.updateWorldMatrix(true, true)
+      rootInverse.copy(this.root.matrixWorld).invert()
+      let lift = 0
+      this.active!.lease.scene.traverse((object) => {
+        if (!(object instanceof THREE.Mesh) || !object.visible) return
+        const count = object.geometry.getAttribute('position')?.count ?? 0
+        for (let i = 0; i < count; i += 3) {
+          object.getVertexPosition(i, vertex).applyMatrix4(object.matrixWorld).applyMatrix4(rootInverse)
+          if (vertex.x > lift) lift = vertex.x
+        }
+      })
+      this.fallLift = lift
     }
-    this.fallAction!.reset().play()
-    this.fallMixer.setTime(Math.max(0, Math.min(seconds, 0.82)))
+    const buckle = smooth(t / 0.16) * (1 - smooth((t - 0.2) / 0.3))
+    const topple = smooth((t - 0.12) / 0.5) ** 1.6
+    const settle = t > 0.6 ? Math.sin((Math.PI * (t - 0.6)) / 0.22) * (1 - (t - 0.6) / 0.22) : 0
+    const roll = -(Math.PI / 2) * topple + 0.1 * settle
+    const pitch = 0.2 * smooth(t / 0.16) - 0.12 * topple
+    // Roll about the screen-facing axis (root space), pitch about the actor's own side axis.
+    blendRotation.setFromAxisAngle(axisZ, roll)
+    this.fall.quaternion
+      .copy(this.turn.quaternion)
+      .invert()
+      .multiply(blendRotation)
+      .multiply(this.turn.quaternion)
+      .multiply(blendRotation.setFromAxisAngle(axisX, pitch))
+    this.fall.position.set(0, (this.fallLift * Math.sin(-roll)) / this.turn.scale.y, 0)
+    this.fall.scale.set(1, 1 - 0.08 * buckle, 1)
     this.lastMotion = 'death'
-    this.lastSample = Math.max(0, Math.min(seconds, 0.82))
+    this.lastSample = t
     this.root.visible = true
     this.root.updateWorldMatrix(true, true)
     return true
@@ -312,12 +412,12 @@ export class ModelUnitVisual {
     if (!instance.firstPose || instance.exactBounds) return
     instance.exactBounds = true
     const previous = this.lastPose
-    this.sample(instance.firstPose)
+    this.apply(instance.firstPose, 'exact')
     this.root.updateMatrixWorld(true)
     instance.lease.scene.traverse((object) => {
       if (object instanceof THREE.SkinnedMesh) object.computeBoundingSphere()
     })
-    if (previous) this.sample(previous)
+    if (previous) this.apply(previous, 'restore')
   }
   rememberInitialBounds(motion: ModelMotion): void {
     if (this.active) this.cache.rememberInitialBounds(this.definition.clips[motion]!, this.active.lease.scene)
@@ -326,12 +426,12 @@ export class ModelUnitVisual {
     const contract = this.definition.emitter
     if (!contract) return undefined
     const previous = this.lastPose
-    if (!this.sample(pose)) return undefined
+    if (!this.apply(pose, 'exact')) return undefined
     const node =
       this.active?.lease.scene.getObjectByName(contract.node) ??
       this.active?.lease.scene.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(contract.node))
     const point = node?.localToWorld(new THREE.Vector3(...(contract.local ?? [0, 0, 0])))
-    if (previous) this.sample(previous)
+    if (previous) this.apply(previous, 'restore')
     return point
   }
   get motion(): ModelMotion | undefined {
@@ -397,8 +497,7 @@ export class ModelUnitVisual {
       mixer.uncacheRoot(lease.scene)
       if (lease !== this.preparing?.lease) lease.release()
     }
-    this.fallMixer?.stopAllAction()
-    this.fallMixer?.uncacheRoot(this.fall)
+    this.fade = undefined
     this.leases.clear()
     this.active = undefined
     this.root.visible = false
