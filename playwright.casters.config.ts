@@ -13,5 +13,5 @@ export default defineConfig({
     viewport: { width: 1440, height: 1000 },
     screenshot: 'only-on-failure'
   },
-  outputDir: 'test-results/caster-runtime'
+  outputDir: process.env.CASTER_E2E_OUTPUT ?? 'test-results/caster-runtime'
 })
