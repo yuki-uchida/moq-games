@@ -2,8 +2,14 @@ name: Checks and Pages
 on: [push, pull_request]
 permissions:
   contents: read
+# A newer push to the same ref supersedes the running checks; Pages still publishes only a fully passing run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  check:
+  build:
+    # Only the prepared Pages output and SDK gate the browser shards, so produce them first and
+    # run the typecheck, lint and unit suites beside them instead of ahead of them.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -25,15 +31,6 @@ jobs:
           key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
-      - run: npm run typecheck
-      - run: npm run lint
-      # Run every unit suite so new test files cannot silently fall outside CI.
-      - name: Unit tests
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests examples/games/ember-grid/tests/*.test.ts tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts --maxWorkers=1
-      - name: Node contract tests
-        run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs tests/tower-model-sidecars.test.mjs examples/games/lane-battle/*.test.mjs
-      - run: npm run typecheck:tower-debug
-      - run: npm run test:tower-debug
       - run: npm run build
       - run: node scripts/prepare-pages.mjs
       - run: node --test tests/pages-output.test.mjs
@@ -52,8 +49,37 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+      - run: node scripts/setup-sdk.mjs
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      # Run every unit suite so new test files cannot silently fall outside CI.
+      # Files run in parallel workers; the Rabbiters campaign simulations alone take over a minute serially.
+      - name: Unit tests
+        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests examples/games/ember-grid/tests/*.test.ts tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts
+      - name: Node contract tests
+        run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs tests/tower-model-sidecars.test.mjs examples/games/lane-battle/*.test.mjs
+      - run: npm run typecheck:tower-debug
+      - run: npm run test:tower-debug
   slow-checks:
-    # Independent of the Pages artifact, so these run beside check instead of delaying the browser shards.
+    # Independent of the Pages artifact, so these run beside build instead of delaying the browser shards.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -83,15 +109,16 @@ jobs:
       - name: Test offline bot and serialized HP contracts
         run: python -m unittest discover -s tests/bot -v
   browser:
-    needs: check
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       # Keep every report when a shard fails. One WebGL worker per independent runner.
-      # Cold software-GPU starts prepare the full roster, so use small independent shards.
+      # Cold software-GPU starts prepare the full roster, so use small independent shards:
+      # the longest single test runs about 3.5 minutes and the whole suite about 52 minutes.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -125,7 +152,7 @@ jobs:
       - name: Select this shard's tests
         run: |
           npx playwright test --config playwright.pages.config.ts --list |
-            grep ' › ' | awk 'NR % 8 == ${{ matrix.shard }} % 8' |
+            grep ' › ' | awk 'NR % ${{ strategy.job-total }} == ${{ matrix.shard }} % ${{ strategy.job-total }}' |
             sed -E 's/^ +//; s/:[0-9]+:[0-9]+ › / › /' > shard-tests.txt
           cat shard-tests.txt
           test -s shard-tests.txt
@@ -143,7 +170,7 @@ jobs:
           retention-days: 14
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [check, slow-checks, browser]
+    needs: [build, check, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
