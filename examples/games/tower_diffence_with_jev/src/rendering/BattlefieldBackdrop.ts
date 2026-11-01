@@ -45,15 +45,16 @@ export class BattlefieldBackdrop {
     scenery.width = width
     scenery.height = height
     const paint = scenery.getContext('2d')!
-    const tileWidth = Math.max(1, 960 * scale)
-    const tileHeight = Math.max(1, 90 * scale)
+    const stripHeight = Math.max(1, Math.round(source.height * 0.05))
+    const tileWidth = Math.max(1, source.width * scale)
+    const tileHeight = Math.max(1, stripHeight * scale)
     for (let row = 0; row * tileHeight < height; row++) {
       const shift = ((row * 0.381966) % 1) * tileWidth
       for (let x = -tileWidth + shift; x < width; x += tileWidth) {
         paint.save()
         paint.translate(x + (row % 2 ? tileWidth : 0), row * tileHeight)
         paint.scale(row % 2 ? -1 : 1, 1)
-        paint.drawImage(source, 0, 830, 960, 90, 0, 0, tileWidth, tileHeight)
+        paint.drawImage(source, 0, source.height - stripHeight, source.width, stripHeight, 0, 0, tileWidth, tileHeight)
         paint.restore()
       }
     }

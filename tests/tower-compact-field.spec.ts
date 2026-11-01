@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import sharp from 'sharp'
 import {
   openOfflineCampaign,
   dragUnitToWorld,
@@ -26,7 +27,7 @@ for (const viewport of [
     const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
     expect(mapState.newCampaignLayoutRevision).toBe(4)
     expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
-    expect(mapState.battlefield.backgroundSource).toMatch(/^approved-map:field:meadow:2:4(?::projected)?$/)
+    expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4:projected')
     expect(mapState.environment.error).toBeUndefined()
     const geometry = await page.evaluate(() => {
       const map = document.getElementById('map-scroll')!
@@ -83,8 +84,52 @@ for (const viewport of [
     }
     await expect(page.locator('#assault')).toBeVisible()
     await expect(page.locator('#game-title-return')).toBeHidden()
+    await page.screenshot({ path: test.info().outputPath(`field-${viewport.width}x${viewport.height}.png`) })
   })
 }
+
+test('recomposed roads retain equal horizontal and vertical widths at every screen aspect', async ({ page }) => {
+  await openOfflineCampaign(page)
+  for (const targetAspect of [0.35, 1, 1.25, 1.4, 1.95]) {
+    // Keep the field 920 CSS pixels high so the published WebGL output is sampled
+    // at texture resolution, including source-image patches, edging and projection.
+    await page.setViewportSize({ width: Math.round(1280 * targetAspect) + 24, height: 1008 })
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const state = (window as any).towerDefenseDiagnostics()
+          return (
+            state.battlefield.backgroundSource === 'approved-map:field:meadow:2:4:projected' &&
+            Math.abs(state.modelRendering.presentation.aspect - (innerWidth - 24) / 1280) < 0.00001
+          )
+        })
+      )
+      .toBe(true)
+    const canvas = page.locator('#field canvas').first()
+    const { data, info } = await sharp(
+      await canvas.screenshot({ scale: 'css', path: test.info().outputPath(`roads-${targetAspect}.png`) })
+    )
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const aspect = info.width / info.height / (1280 / 920)
+    expect(info.height).toBe(920)
+    const crossSection = (x: number, y: number, vertical: boolean) => {
+      let width = 0
+      for (let d = -40; d <= 40; d++) {
+        const offset =
+          (Math.round(y + (vertical ? d : 0)) * info.width + Math.round(x + (vertical ? 0 : d))) * info.channels
+        const [r, g, b] = data.subarray(offset, offset + 3)
+        if (r > 180 && g > 140 && b < 195 && r > g + 8 && g > b + 15) width++
+      }
+      return width
+    }
+    const horizontal = crossSection(((350 * 1280) / 1478) * aspect, (128 * 920) / 1064, true)
+    const vertical = crossSection(((530 * 1280) / 1478) * aspect, (200 * 920) / 1064, false)
+    expect(horizontal, `horizontal road at ${aspect}`).toBeCloseTo(40 * Math.min(1, aspect), -1)
+    expect(Math.abs(horizontal - vertical), `road widths at ${aspect}`).toBeLessThanOrEqual(3)
+  }
+})
 
 test('proportional real models, picking, HP text and preview rings reflow without moving saved ground positions', async ({
   page

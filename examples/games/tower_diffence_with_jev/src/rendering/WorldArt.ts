@@ -3,6 +3,7 @@ import {
   distanceToPath,
   FIELDS,
   getField,
+  pathLength,
   pointOnPath,
   type BattlefieldVersion,
   type LayoutRevision,
@@ -619,15 +620,20 @@ function scenery(c: Context, field: ResolvedBattlefield, colors: Palette, random
   }
 }
 
-function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette) {
+function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette, aspect = 1, scale = 1) {
   const surface = field.slowSurface,
     random = seededRandom(field.id)
+  const sample = (progress: number) => {
+    const p = pointOnPath(field.path, progress)
+    return { x: (p.x * aspect) / scale, y: p.y / scale }
+  }
   const points: Point[] = []
   for (let progress = surface.startProgress; progress < surface.endProgress; progress += 5)
-    points.push(pointOnPath(field.path, progress))
-  points.push(pointOnPath(field.path, surface.endProgress))
+    points.push(sample(progress))
+  points.push(sample(surface.endProgress))
   const fill = { mud: '#806345', 'soft-sand': '#b88a54', slush: '#7f9fa7', ash: '#48414d' }[surface.kind]
   c.save()
+  c.scale(scale, scale)
   c.lineJoin = 'round'
   c.lineCap = 'butt'
   c.globalAlpha = 0.62
@@ -635,7 +641,7 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
     right: number[][] = []
   for (const [index, p] of points.entries()) {
     const progress = Math.min(surface.endProgress, surface.startProgress + index * 5)
-    const q = pointOnPath(field.path, progress + 1)
+    const q = sample(progress + 1)
     const length = Math.hypot(q.x - p.x, q.y - p.y)
     const nx = -(q.y - p.y) / length,
       ny = (q.x - p.x) / length
@@ -647,8 +653,8 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
   for (let i = 0; i < 54; i++) {
     const progress =
       surface.startProgress + 8 + random() * Math.max(1, surface.endProgress - surface.startProgress - 16)
-    const p = pointOnPath(field.path, progress),
-      q = pointOnPath(field.path, progress + 1)
+    const p = sample(progress),
+      q = sample(progress + 1)
     const length = Math.hypot(q.x - p.x, q.y - p.y),
       offset = (random() - 0.5) * 30
     const x = p.x - ((q.y - p.y) / length) * offset,
@@ -660,8 +666,8 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
   c.strokeStyle = colors.accent
   c.lineWidth = 1.5
   for (const progress of [surface.startProgress, surface.endProgress]) {
-    const p = pointOnPath(field.path, progress),
-      q = pointOnPath(field.path, progress + 1)
+    const p = sample(progress),
+      q = sample(progress + 1)
     const length = Math.hypot(q.x - p.x, q.y - p.y),
       nx = -(q.y - p.y) / length,
       ny = (q.x - p.x) / length
@@ -670,7 +676,7 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
     c.lineTo(p.x + nx * 22, p.y + ny * 22)
     c.stroke()
   }
-  const center = pointOnPath(field.path, (surface.startProgress + surface.endProgress) / 2)
+  const center = sample((surface.startProgress + surface.endProgress) / 2)
   c.globalAlpha = 1
   c.fillStyle = '#3b4e43df'
   c.beginPath()
@@ -1204,95 +1210,179 @@ export function createSandbagArt(): HTMLCanvasElement {
   return canvas
 }
 
-/** Draw a responsive, undistorted biome around the same projected route. */
+/** Recompose the illustration in display coordinates; only road positions change shape. */
 export function createProjectedFieldArt(
   fieldId: FieldId,
   aspect: number,
   ground?: CanvasImageSource
 ): HTMLCanvasElement {
   const field = getField(fieldId, 2, 4)
-  const colors = PALETTES[fieldId]
-  const random = seededRandom(fieldId)
-  const width = Math.max(1, Math.round(field.width * aspect))
+  if (!ground) return createFieldArt(fieldId, false, 2, undefined, 4)
   const canvas = document.createElement('canvas')
-  canvas.width = width
+  canvas.width = Math.max(1, Math.round(field.width * aspect))
   canvas.height = field.height
   const c = canvas.getContext('2d')!
-  const projected = { ...field, width }
-  terrain(c, projected, colors, random)
-  if (ground) {
-    // Reuse a road-free grass patch from the approved art at its natural
-    // proportions; mirroring avoids seams after the field is projected.
+  const random = seededRandom(fieldId)
+  const size = Math.min(1, aspect)
+  const sourceScale = (field.height / 1064) * size
+  const path = field.path.map(({ x, y }) => ({ x: x * aspect, y }))
+
+  // Mirror road-free source patches so the texture joins without stretched blades of grass.
+  function pattern(x: number, y: number, width: number, height: number, scale: number) {
     const tile = document.createElement('canvas')
-    tile.width = tile.height = 128
+    const w = Math.max(1, Math.round(width * scale)),
+      h = Math.max(1, Math.round(height * scale))
+    tile.width = w * 2
+    tile.height = h * 2
     const t = tile.getContext('2d')!
-    const biomeFilter: Record<FieldId, string> = {
-      meadow: 'none',
-      desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
-      frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
-      volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
-    }
-    t.filter = biomeFilter[fieldId]
     for (let row = 0; row < 2; row++)
       for (let col = 0; col < 2; col++) {
         t.save()
-        t.translate((col + (col ? 1 : 0)) * 64, (row + (row ? 1 : 0)) * 64)
+        t.translate(col * w * 2, row * h * 2)
         t.scale(col ? -1 : 1, row ? -1 : 1)
-        t.drawImage(ground, 652, 868, 48, 48, 0, 0, 64, 64)
+        t.drawImage(ground!, x, y, width, height, 0, 0, w, h)
         t.restore()
       }
-    const pattern = c.createPattern(tile, 'repeat')
-    if (pattern) {
-      c.fillStyle = pattern
-      c.fillRect(0, 0, width, field.height)
+    return c.createPattern(tile, 'repeat')!
+  }
+  c.fillStyle = pattern(500, 550, 90, 80, sourceScale)
+  c.fillRect(0, 0, canvas.width, canvas.height)
+
+  // Crop and feather only the grass fringe; trees, flowers and masonry keep their source proportions.
+  function patch(x: number, y: number, width: number, height: number, feather = 10) {
+    const tile = document.createElement('canvas')
+    tile.width = width
+    tile.height = height
+    const t = tile.getContext('2d')!
+    t.drawImage(ground!, x, y, width, height, 0, 0, width, height)
+    t.globalCompositeOperation = 'destination-in'
+    for (const [dx, dy] of [
+      [width, 0],
+      [0, height]
+    ]) {
+      const gradient = t.createLinearGradient(0, 0, dx, dy)
+      const edge = Math.min(0.45, feather / (dx || dy))
+      gradient.addColorStop(0, 'transparent')
+      gradient.addColorStop(edge, '#000')
+      gradient.addColorStop(1 - edge, '#000')
+      gradient.addColorStop(1, 'transparent')
+      t.fillStyle = gradient
+      t.fillRect(0, 0, width, height)
     }
+    return tile
   }
-  // Low-growing accents do not affect legal placement or occlude units.
-  for (let i = 0; i < 240; i++) {
-    const point = { x: 45 + random() * (field.width - 90), y: 80 + random() * (field.height - 150) }
-    if (distanceToRoadUnion(field, point) < 55) continue
-    c.save()
-    c.translate(point.x * aspect, point.y)
-    c.scale(0.32, 0.32)
-    groundSprig(c, colors, fieldId, random)
-    c.restore()
-  }
-  // Strokes follow the same affine projection as game positions and picking.
-  c.save()
-  c.scale(aspect, 1)
-  road(c, field, colors, random, 0.15)
-  slowRoadSurface(c, field, colors)
-  c.restore()
-  // Perimeter ornaments are decorative only; no invisible collision is added.
-  for (let y = 70; y < field.height - 45; y += 72) {
-    for (const x of [15, width - 15]) {
-      if (
-        Math.hypot(x - field.entrance.x * aspect, y - field.entrance.y) < 85 ||
-        Math.hypot(x - field.gate.x * aspect, y - field.gate.y) < 95
-      )
-        continue
+  const grass = patch(900, 235, 100, 70, 18)
+  for (let y = 0; y < field.height; y += 55 * sourceScale)
+    for (let x = 0; x < canvas.width; x += 75 * sourceScale) {
       c.save()
-      c.translate(x, y + random() * 12)
-      const size = 0.35 + random() * 0.2
-      c.scale(size, size)
-      if (fieldId === 'desert') cactus(c, colors, random)
-      else if (fieldId === 'volcanic') rock(c, colors, true, false, random)
-      else tree(c, colors, fieldId === 'frost', random() * 8)
+      c.translate(x + random() * 30 * sourceScale, y + random() * 30 * sourceScale)
+      c.rotate(random() * Math.PI * 2)
+      c.drawImage(grass, -50 * sourceScale, -35 * sourceScale, 100 * sourceScale, 70 * sourceScale)
+      c.restore()
+    }
+  const flowers = [patch(275, 320, 85, 85, 16), patch(545, 420, 85, 60, 14), patch(1000, 780, 85, 85, 16)]
+  for (let i = 0; i < 95; i++) {
+    const p = { x: 110 + random() * (field.width - 220), y: 95 + random() * (field.height - 180) }
+    if (distanceToRoadUnion(field, p) < 65) continue
+    const tile = flowers[i % flowers.length]
+    c.drawImage(
+      tile,
+      p.x * aspect - (tile.width * sourceScale) / 2,
+      p.y - (tile.height * sourceScale) / 2,
+      tile.width * sourceScale,
+      tile.height * sourceScale
+    )
+  }
+
+  // Constant-width strokes and evenly spaced stones replace the affine-scaled painted road.
+  c.lineJoin = c.lineCap = 'round'
+  traceRoad(c, path)
+  for (const [width, color] of [
+    [49, '#52733270'],
+    [45, '#8e794e'],
+    [41, '#ffcf82']
+  ] as const) {
+    c.strokeStyle = color
+    c.lineWidth = width * size
+    c.stroke()
+  }
+  c.strokeStyle = pattern(270, 113, 180, 24, sourceScale)
+  c.lineWidth = 38 * size
+  c.stroke()
+  const length = pathLength(path)
+  for (let d = 0; d < length; d += 7 * size) {
+    const p = pointOnPath(path, d),
+      q = pointOnPath(path, Math.min(length, d + 1))
+    const angle = Math.atan2(q.y - p.y, q.x - p.x)
+    for (const side of [-1, 1]) {
+      const stone = { x: p.x - Math.sin(angle) * 21.5 * size * side, y: p.y + Math.cos(angle) * 21.5 * size * side }
+      if (distanceToPath(path, stone) < 20 * size) continue
+      c.save()
+      c.translate(stone.x, stone.y)
+      c.rotate(angle)
+      ellipse(c, 0, size, 3.2 * size, 2.2 * size, '#6b693f')
+      ellipse(c, 0, 0, (2.6 + random() * 0.6) * size, 1.7 * size, d % 3 < 1 ? '#e6dfb4' : '#cfcda6')
       c.restore()
     }
   }
-  for (const [point, base] of [
-    [field.entrance, false],
-    [field.gate, true]
-  ] as const) {
-    c.save()
-    c.translate(
-      Math.max(25, Math.min(width - 25, point.x * aspect)),
-      Math.max(50, Math.min(field.height - 20, point.y))
+  const top = patch(290, 0, 850, 95, 8),
+    bottom = patch(0, 1005, 1050, 59, 8)
+  for (const [tile, y] of [
+    [top, 0],
+    [bottom, field.height - bottom.height * sourceScale]
+  ] as const)
+    for (let x = -20 * sourceScale; x < canvas.width; x += (tile.width - 20) * sourceScale)
+      c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
+  const left = patch(0, 420, 135, 500, 8),
+    right = patch(1375, 120, 103, 610, 8)
+  for (const [tile, x] of [
+    [left, 0],
+    [right, canvas.width - right.width * sourceScale]
+  ] as const)
+    for (let y = 30 * sourceScale; y < field.height; y += (tile.height - 20) * sourceScale)
+      c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
+
+  for (const [x, y, width, height] of [
+    [628, 153, 100, 85],
+    [993, 276, 99, 82],
+    [438, 711, 115, 85],
+    [1256, 663, 110, 87]
+  ]) {
+    const tile = patch(x, y, width, height)
+    const px = ((x + width / 2) * field.width) / 1478,
+      py = ((y + height / 2) * field.height) / 1064
+    c.drawImage(
+      tile,
+      px * aspect - (width * sourceScale) / 2,
+      py - (height * sourceScale) / 2,
+      width * sourceScale,
+      height * sourceScale
     )
-    c.scale(0.48, 0.48)
-    gate(c, { x: 0, y: 0 }, colors, base, fieldId === 'frost')
-    c.restore()
+  }
+  // Landmark crops are anchored to the traced entrance and castle, including after rotation.
+  for (const [x, y, width, height, anchor, pivotX, pivotY] of [
+    [0, 0, 280, 155, field.entrance, 104, 68],
+    [1235, 740, 243, 240, field.gate, 125, 200]
+  ] as const) {
+    const tile = patch(x, y, width, height, 8)
+    c.drawImage(
+      tile,
+      anchor.x * aspect - pivotX * sourceScale,
+      anchor.y - pivotY * sourceScale,
+      width * sourceScale,
+      height * sourceScale
+    )
+  }
+  slowRoadSurface(c, field, PALETTES[fieldId], aspect, size)
+  if (fieldId !== 'meadow') {
+    const filter = {
+      desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
+      frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
+      volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
+    }[fieldId]
+    c.filter = filter
+    c.drawImage(canvas, 0, 0)
+    c.filter = 'none'
   }
   return canvas
 }

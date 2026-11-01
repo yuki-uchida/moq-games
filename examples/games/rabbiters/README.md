@@ -1,0 +1,33 @@
+# Rabbiters
+
+ウサギになって食料を探し、捕食者から逃れながら、誰か一羽の出産を目指す協力サバイバルゲームの試作です。ホストがゲームを計算し、MoQ Relayは入力と状態を中継します。ホストがいなくなった場合の引き継ぎはありません。
+
+## 起動
+
+Node.js 24とnpmを用意し、リポジトリ直下で実行します。初回は既存ゲーム用SDKのセットアップと、Rabbiters用`moq-wasm`のリリースtarballを含む依存関係のインストールが必要です。
+
+```sh
+node scripts/setup-sdk.mjs
+npm ci --ignore-scripts
+npm run dev:rabbiters
+```
+
+`http://127.0.0.1:5193/`を開きます。ソロならRelayは不要です。協力プレイでは参加者が同じHTTPSのMoQ Relay URLとルーム名を入力し、一人が「ルームを作る」、残りが「ルームに参加」を選びます。Relayの初期値は`https://relay.moqt.research.skyway.io`です。RelayはMoQのnamespace watch・announce・publish・subscribeをサポートし、`anon/rabbiters-v1/<room>`を使用できる必要があります。WebTransportを使えるブラウザと、ブラウザが信頼するRelayのTLS証明書が必要です。ルーム名やプレイヤーIDは認証ではないため、信頼できるRelayと参加者で利用してください。
+
+別の端末から参加する場合は、ゲーム自体も各端末からアクセスできるHTTPSの配信先に配置してください。`127.0.0.1`は開いている端末自身を指します。
+
+PCはWASD／矢印で移動、Spaceでジャンプ、Shiftでダッシュ、Cでしゃがむ、E長押しで巣の破壊または仲間の救助、フィールドをドラッグしてTPS視点を回転します。タッチ操作は画面のスティックとボタンを使い、フィールドのドラッグで視点を回転できます。画面上部の♪ボタンでBGMと効果音を切り替えられます。
+
+食べものに近づくと自動で食べます。6回以上食べ、約5分の成長と十分な栄養を得ると妊娠し、さらに約10分生きのびると出産します。妊娠中は移動が遅く、空腹が早く進みます。空腹が尽きると体力が減り出産も進まないため、妊娠中にも食料が必要です。草むらや水路、洞窟でしゃがむと敵から隠れられます。巣の卵を壊すと敵の追加出現が減り、すべて壊すと止まります。誰か一羽が出産できれば全員の勝利です。
+
+## 検証とビルド
+
+```sh
+npm run test:rabbiters
+npm run e2e:rabbiters
+npm run build:rabbiters
+```
+
+ブラウザテストにはPlaywrightのChromiumが必要です。既存のChromiumを使う場合は`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`を指定できます。独立ビルドの出力先は`dist/rabbiters/`です。既存のPages公開カタログには追加していません。
+
+Rabbitersは公式リリース`moq-wasm@0.1.0`を`package-lock.json`の整合性ハッシュ付きで使用します。ゲーム内の3Dモデルは自作で、対応する原画とモーション資料は`art-source/`に保管しています。SDK tarballにはライセンス文書が含まれていないため、再配布前に上流のライセンスと必要な表示を確認してください。

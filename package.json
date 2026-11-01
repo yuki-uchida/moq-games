@@ -24,10 +24,15 @@
     "test:landing": "node --test tests/landing-catalog.test.mjs",
     "e2e:landing": "playwright test --config playwright.landing.config.ts",
     "optimize:tower-models": "node scripts/optimize-tower-models.mjs --roles all",
-    "test:runtime-models": "vitest run tests/runtime-model-optimization.test.ts --maxWorkers=1"
+    "test:runtime-models": "vitest run tests/runtime-model-optimization.test.ts --maxWorkers=1",
+    "dev:rabbiters": "vite --config vite.config.rabbiters.mjs",
+    "build:rabbiters": "vite build --config vite.config.rabbiters.mjs",
+    "test:rabbiters": "vitest run examples/games/rabbiters/tests --maxWorkers=1",
+    "e2e:rabbiters": "playwright test --config playwright.rabbiters.config.ts"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",
+    "moq-wasm": "https://github.com/nttcom/moq-wasm/releases/download/sdk-v0.1.0/moq-wasm-0.1.0.tgz",
     "three": "0.180.0"
   },
   "devDependencies": {
