@@ -1,6 +1,6 @@
 import type { StageDef } from '../../story'
-import { CONVERSATIONS, NAMES } from './conversations'
-import { LOOK, scenery } from './scenery'
+import { BARKS, CONVERSATIONS, NAMES } from './conversations'
+import { LOOK, itemModel, scenery } from './scenery'
 import { script } from './script'
 
 const waterway: StageDef = {
@@ -10,6 +10,8 @@ const waterway: StageDef = {
   conversations: CONVERSATIONS,
   names: NAMES,
   look: LOOK,
-  scenery
+  scenery,
+  barks: BARKS,
+  itemModel
 }
 export default waterway
