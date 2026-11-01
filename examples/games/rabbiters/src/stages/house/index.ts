@@ -1,5 +1,6 @@
 import type { StageDef } from '../../story'
-import { CONVERSATIONS, NAMES } from './conversations'
+import { BARKS, CONVERSATIONS, NAMES } from './conversations'
+import { itemModel } from './props'
 import { LOOK, scenery } from './scenery'
 import { script } from './script'
 
@@ -11,6 +12,7 @@ const house: StageDef = {
   names: NAMES,
   look: LOOK,
   scenery,
-  barks: { mom: { suspicious: 'モチ？', chase: 'モチー！' } }
+  barks: BARKS,
+  itemModel
 }
 export default house
