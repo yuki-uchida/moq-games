@@ -50,6 +50,13 @@ export class RabbitersScene {
   private readonly items = new Map<string, THREE.Group>()
   private readonly geometries = new Set<THREE.BufferGeometry>()
   private readonly materials = new Map<string, THREE.MeshStandardMaterial>()
+  // Shared by every rabbit; never released per actor, only in dispose().
+  private readonly rabbitGeometry = {
+    large: new THREE.SphereGeometry(1, 24, 16),
+    medium: new THREE.SphereGeometry(1, 14, 10),
+    small: new THREE.SphereGeometry(1, 8, 6),
+    arm: new THREE.CapsuleGeometry(0.075, 0.2, 4, 10)
+  }
   private readonly target = new THREE.Vector3(-37, 0, 0)
   private readonly cameraObstacles: THREE.Object3D[] = []
   private readonly cameraRay = new THREE.Raycaster()
@@ -118,6 +125,98 @@ export class RabbitersScene {
       this.materials.set(key, material)
     }
     return material
+  }
+
+  private smooth(color: string, roughness = 0.92, emissive = false): THREE.MeshStandardMaterial {
+    const key = `smooth:${color}:${roughness}:${emissive}`
+    let material = this.materials.get(key)
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({ color, roughness, emissive: emissive ? color : '#000000' })
+      this.materials.set(key, material)
+    }
+    return material
+  }
+
+  private part(
+    parent: THREE.Object3D,
+    material: THREE.Material,
+    [x, y, z]: number[],
+    [width, height, depth]: number[],
+    arm = false
+  ): THREE.Mesh {
+    // Tessellation and shadow casting scale with part size to keep software/low-end GPUs at full frame rate.
+    const size = Math.max(width, height, depth)
+    const { large, medium, small } = this.rabbitGeometry
+    const geometry = arm ? this.rabbitGeometry.arm : size >= 0.15 ? large : size >= 0.06 ? medium : small
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(x, y, z)
+    mesh.scale.set(width, height, depth)
+    mesh.castShadow = arm || size >= 0.15
+    mesh.receiveShadow = true
+    parent.add(mesh)
+    return mesh
+  }
+
+  private rabbit(): Actor {
+    const root = new THREE.Group()
+    const body = new THREE.Group()
+    root.add(body)
+    const actor: Actor = { root, body, limbs: [], ears: [], kind: 'rabbit', x: NaN, z: NaN, moving: 0 }
+    const fur = this.smooth('#f4ece0')
+    const cream = this.smooth('#fffaf2')
+    const pink = this.smooth('#f1a3aa', 0.7)
+    this.part(body, fur, [0, 0.6, -0.04], [0.46, 0.45, 0.56])
+    this.part(body, cream, [0, 0.66, 0.24], [0.33, 0.36, 0.3])
+    actor.belly = this.part(body, cream, [0, 0.5, 0.2], [0.4, 0.34, 0.42])
+    actor.belly.visible = false
+    // Limb order is fixed by animate(): back/front per side, indices 0 and 3 in phase.
+    for (const side of [-1, 1])
+      for (const end of [-1, 1]) {
+        const leg = new THREE.Group()
+        body.add(leg)
+        if (end < 0) {
+          leg.position.set(side * 0.3, 0.45, -0.22)
+          this.part(leg, fur, [0, -0.06, -0.02], [0.18, 0.26, 0.28])
+          this.part(leg, fur, [0, -0.37, 0.12], [0.1, 0.075, 0.24])
+        } else {
+          leg.position.set(side * 0.16, 0.5, 0.3)
+          this.part(leg, fur, [0, -0.2, 0], [1, 1, 1], true)
+          this.part(leg, fur, [0, -0.43, 0.04], [0.085, 0.065, 0.11])
+        }
+        actor.limbs.push(leg)
+      }
+    const tail = new THREE.Group()
+    tail.position.set(0, 0.62, -0.58)
+    body.add(tail)
+    this.part(tail, cream, [0, 0, -0.05], [0.15, 0.15, 0.14])
+    for (let puff = 0; puff < 4; puff++) {
+      const angle = (puff / 4) * Math.PI * 2
+      this.part(tail, cream, [Math.cos(angle) * 0.09, Math.sin(angle) * 0.09, -0.08], [0.09, 0.09, 0.09])
+    }
+    actor.tail = tail
+    const head = new THREE.Group()
+    head.position.set(0, 1.08, 0.42)
+    body.add(head)
+    this.part(head, fur, [0, 0, 0], [0.37, 0.33, 0.35])
+    this.part(head, cream, [0, -0.13, 0.2], [0.2, 0.13, 0.16])
+    for (const side of [-1, 1]) {
+      this.part(head, cream, [side * 0.085, -0.1, 0.27], [0.11, 0.09, 0.09])
+      this.part(head, this.smooth('#f6b8bb', 0.95), [side * 0.25, -0.1, 0.19], [0.07, 0.04, 0.03]).rotation.y =
+        side * 0.9
+      this.part(head, this.smooth('#1d2629', 0.22), [side * 0.225, 0.045, 0.265], [0.07, 0.08, 0.055])
+      const white = this.smooth('#ffffff', 0.5, true)
+      this.part(head, white, [side * 0.235 - 0.012, 0.075, 0.31], [0.022, 0.024, 0.012])
+      const ear = new THREE.Group()
+      ear.position.set(side * 0.13, 1.33, 0.36)
+      ear.rotation.z = -side * 0.2
+      body.add(ear)
+      this.part(ear, fur, [0, 0.38, 0], [0.11, 0.42, 0.055])
+      this.part(ear, pink, [0, 0.37, 0.035], [0.065, 0.32, 0.025])
+      actor.ears.push(ear)
+    }
+    this.part(head, this.smooth('#e9848f', 0.55), [0, -0.035, 0.335], [0.05, 0.035, 0.035])
+    this.scene.add(root)
+    return actor
   }
 
   private mesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, color: string, x = 0, y = 0, z = 0): THREE.Mesh {
@@ -262,6 +361,7 @@ export class RabbitersScene {
   }
 
   private character(kind: string): Actor {
+    if (kind === 'rabbit') return this.rabbit()
     const root = new THREE.Group()
     const body = new THREE.Group()
     root.add(body)
@@ -269,7 +369,6 @@ export class RabbitersScene {
     const color =
       (
         {
-          rabbit: '#f2e9d7',
           fox: '#d77a3e',
           wolf: '#7f94a4',
           hawk: '#987052',
@@ -288,20 +387,7 @@ export class RabbitersScene {
         parent = joint
       }
     } else {
-      this.oval(
-        body,
-        color,
-        0,
-        kind === 'hawk' ? 0.6 : 0.65,
-        0,
-        kind === 'rabbit' ? 0.45 : 0.52,
-        kind === 'crocodile' ? 0.3 : 0.5,
-        kind === 'rabbit' ? 0.6 : 0.95
-      )
-      if (kind === 'rabbit') {
-        actor.belly = this.oval(body, '#ead8cc', 0, 0.57, 0.35, 0.39, 0.35, 0.4)
-        actor.belly.visible = false
-      }
+      this.oval(body, color, 0, kind === 'hawk' ? 0.6 : 0.65, 0, 0.52, kind === 'crocodile' ? 0.3 : 0.5, 0.95)
       if (kind === 'hawk') {
         for (const side of [-1, 1]) {
           const wing = new THREE.Group()
@@ -324,7 +410,7 @@ export class RabbitersScene {
         for (const side of [-1, 1])
           for (const end of [-1, 1]) {
             const leg = new THREE.Group()
-            leg.position.set(side * 0.34, 0.48, end * (kind === 'rabbit' ? 0.3 : 0.55))
+            leg.position.set(side * 0.34, 0.48, end * 0.55)
             body.add(leg)
             this.oval(leg, color, 0, -0.2, 0.08, 0.16, 0.28, 0.23)
             actor.limbs.push(leg)
@@ -333,43 +419,24 @@ export class RabbitersScene {
       const tail = new THREE.Group()
       tail.position.set(0, 0.6, -0.6)
       body.add(tail)
-      this.oval(
-        tail,
-        kind === 'fox' || kind === 'rabbit' ? '#f4e8d1' : color,
-        0,
-        0,
-        kind === 'rabbit' ? -0.05 : -0.5,
-        kind === 'rabbit' ? 0.23 : 0.25,
-        0.23,
-        kind === 'rabbit' ? 0.24 : 0.8
-      )
+      this.oval(tail, kind === 'fox' ? '#f4e8d1' : color, 0, 0, -0.5, 0.25, 0.23, 0.8)
       actor.tail = tail
     }
-    const headHeight =
-      kind === 'rabbit' ? 1.1 : kind === 'hawk' ? 1 : kind === 'snake' ? 0.27 : kind === 'crocodile' ? 0.45 : 0.95
-    const headZ = kind === 'snake' ? 0.2 : kind === 'rabbit' ? 0.45 : 0.75
+    const headHeight = kind === 'hawk' ? 1 : kind === 'snake' ? 0.27 : kind === 'crocodile' ? 0.45 : 0.95
+    const headZ = kind === 'snake' ? 0.2 : 0.75
     this.oval(body, color, 0, headHeight, headZ, 0.36, 0.35, 0.39)
     if (kind === 'crocodile') this.oval(body, '#99ab76', 0, headHeight - 0.1, 1.2, 0.33, 0.18, 0.65)
     if (kind === 'fox' || kind === 'wolf') this.oval(body, '#e6ddc6', 0, headHeight - 0.12, 1.04, 0.23, 0.19, 0.36)
     for (const side of [-1, 1]) {
       this.oval(body, '#23353b', side * 0.23, headHeight + 0.08, headZ + 0.27, 0.065, 0.08, 0.045)
       this.oval(body, '#ffffff', side * 0.23 - 0.012, headHeight + 0.105, headZ + 0.31, 0.018, 0.023, 0.012)
-      if (['rabbit', 'fox', 'wolf'].includes(kind)) {
+      if (kind === 'fox' || kind === 'wolf') {
         const ear = new THREE.Group()
         ear.position.set(side * 0.2, headHeight + 0.23, headZ - 0.05)
         ear.rotation.z = -side * 0.18
         body.add(ear)
-        this.oval(ear, color, 0, kind === 'rabbit' ? 0.38 : 0.2, 0, 0.13, kind === 'rabbit' ? 0.48 : 0.25, 0.12)
-        this.oval(
-          ear,
-          '#d89d9b',
-          0,
-          kind === 'rabbit' ? 0.4 : 0.21,
-          0.09,
-          0.065,
-          kind === 'rabbit' ? 0.32 : 0.13,
-          0.035
-        )
+        this.oval(ear, color, 0, 0.2, 0, 0.13, 0.25, 0.12)
+        this.oval(ear, '#d89d9b', 0, 0.21, 0.09, 0.065, 0.13, 0.035)
         actor.ears.push(ear)
       }
     }
@@ -379,7 +446,7 @@ export class RabbitersScene {
     } else
       this.oval(
         body,
-        kind === 'rabbit' ? '#d58e90' : '#344342',
+        '#344342',
         0,
         headHeight - 0.05,
         kind === 'fox' || kind === 'wolf' ? 1.35 : headZ + 0.36,
@@ -547,6 +614,7 @@ export class RabbitersScene {
     if (this.disposed) return
     this.disposed = true
     this.geometries.forEach((geometry) => geometry.dispose())
+    Object.values(this.rabbitGeometry).forEach((geometry) => geometry.dispose())
     this.materials.forEach((material) => material.dispose())
     this.scene.traverse((object) => {
       if (object instanceof THREE.DirectionalLight) object.shadow.dispose()
