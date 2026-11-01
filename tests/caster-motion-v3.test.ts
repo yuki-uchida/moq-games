@@ -66,3 +66,65 @@ describe('caster derivatives preserve source data and joint continuity', () => {
       }
     })
 })
+
+it('Frost preserves the authored hand-to-staff grip after pelvis stabilization', () => {
+  const record = records.find((r: any) => r.role === 'frost')
+  const original = readGlb(fs.readFileSync(record.input)),
+    candidate = readGlb(fs.readFileSync(record.output))
+  function pose(g: any, motion: string, index: number) {
+    const objects = g.json.nodes.map((n: any) => {
+      const o = new Object3D()
+      o.name = n.name
+      o.position.fromArray(n.translation ?? [0, 0, 0])
+      o.quaternion.fromArray(n.rotation ?? [0, 0, 0, 1])
+      o.scale.fromArray(n.scale ?? [1, 1, 1])
+      return o
+    })
+    g.json.nodes.forEach((n: any, i: number) => n.children?.forEach((k: number) => objects[i].add(objects[k])))
+    const root = new Object3D()
+    objects.filter((o: any) => !o.parent).forEach((o: any) => root.add(o))
+    const clip = g.json.animations.find((c: any) => c.name === motion)
+    for (const c of clip.channels) {
+      if (c.target.path === 'weights') continue
+      const s = clip.samplers[c.sampler],
+        t = accessorArray(g, s.input),
+        v = accessorArray(g, s.output),
+        width = v.length / t.length,
+        k = t.length === 2 ? 0 : index,
+        values = v.slice(k * width, (k + 1) * width),
+        o = objects[c.target.node]
+      if (c.target.path === 'translation') o.position.fromArray(values)
+      if (c.target.path === 'rotation') o.quaternion.fromArray(values)
+      if (c.target.path === 'scale') o.scale.fromArray(values)
+    }
+    root.updateMatrixWorld(true)
+    const hand = objects.find((o: any) => o.name === 'hand.L'),
+      staff = objects.find((o: any) => o.name === 'Staff_Rigid_Control')
+    return {
+      position: staff.worldToLocal(hand.getWorldPosition(new Vector3())),
+      rotation: staff
+        .getWorldQuaternion(new Quaternion())
+        .invert()
+        .multiply(hand.getWorldQuaternion(new Quaternion()))
+        .normalize()
+    }
+  }
+  const measured: Record<string, { position: number; angle: number }> = {}
+  for (const motion of ['walk', 'attack']) {
+    const clip = original.json.animations.find((c: any) => c.name === motion)
+    const count = original.json.accessors[clip.samplers[0].input].count
+    const samples = new Set([...Array.from({ length: Math.ceil(count / 7) }, (_, i) => i * 7), count - 1])
+    measured[motion] = { position: 0, angle: 0 }
+    for (const i of samples) {
+      const before = pose(original, motion, i),
+        after = pose(candidate, motion, i)
+      const distance = after.position.distanceTo(before.position),
+        angle = after.rotation.angleTo(before.rotation)
+      measured[motion].position = Math.max(measured[motion].position, distance)
+      measured[motion].angle = Math.max(measured[motion].angle, angle)
+      expect(distance, `${motion} grip position sample ${i}`).toBeLessThan(0.0005)
+      expect(angle, `${motion} grip rotation sample ${i}`).toBeLessThan(0.0005)
+    }
+  }
+  console.log('Frost grip maximum source-relative errors:', measured)
+})

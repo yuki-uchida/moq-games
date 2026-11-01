@@ -46,3 +46,13 @@ Actual temporal inspection uses sequential PNG frames with the associated sample
 - All three motions of each role share the new URL, avoiding a second copy of the same model in the active roster cache. The original files remain preserved and available.
 
 Limits: Chromium on this Mac was used locally; no physical mobile-device review or maximum-unit performance benchmark was performed. 2D source silhouettes are references, not pixel-identical conversion targets. Effects remain game-owned; their lifetime/logic was not redesigned. Public CI/Pages status is reported with the delivered commit rather than asserted by this source document.
+
+## Frost grip follow-up after reconnect
+
+The first post-interruption command had not written its test or modified the clean worktree. The reconstructed source-relative grip check then reproduced an attack regression: stabilizing the pelvis changed the hand hierarchy, while the independent staff retained its original world translation. Walk already applied this correction and did not regress.
+
+The fix preserves the attack's authored pelvis rotation and translates the rigid staff by the exact pelvis-position correction. This keeps the accepted upper-body acting, wrist orientation and staff grip together, while the lower-body IK keeps the ankles planted. Shared playback code and gameplay clocks remain unchanged.
+
+Compared over 28 walk and 52 attack samples, attack maximum source-relative grip position error decreased from 0.197123752 to 0.00000001835 model units; orientation error decreased from 0.075361739 to 0.00000004215 radians. The regression test also covers the final sample, and now runs in CI. The four caster tests retain the geometry/bind/foot invariants in addition to the new grip check. The old published candidate and generator are preserved under `local-assets/caster-grip-followup/`.
+
+Follow-up visual evidence uses the regenerated native/source comparison, full action sequence and eight facings under `.generated/caster-review/`, plus real viewer/game evidence under `test-results/caster-runtime/`. The packed Blender copies are regenerated from the corrected GLBs. These checks concern the newly corrected grip as well as the previously stabilized boots; they do not claim physical-device or large-roster FPS coverage.
