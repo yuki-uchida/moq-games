@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { directMotionClip } from './DirectedMotion'
+import { walkGaitClip } from './WalkGait'
+import { getUnitModelDefinition } from './models/catalog'
 import type { UnitType } from '../game/model'
 import runtimeManifest from '../../../../../public/tower-defense-art/models/runtime-manifest.json'
 import { reuseSkinnedBoundsMatrices } from './SkinnedBounds'
@@ -306,6 +308,10 @@ export class ModelAssetCache {
     }
     const scene = clone(source.scene)
     if (spec.motionRole && !spec.clipUrl) clip = directMotionClip(scene, clip, spec.motionRole)
+    const walker = spec.motionRole && clip.name === 'walk' ? getUnitModelDefinition(spec.motionRole) : undefined
+    // Airborne and hopping roles have no planted stance to match.
+    if (walker && !['bat', 'wraith', 'dragon', 'slime'].includes(spec.motionRole!))
+      clip = walkGaitClip(scene, clip, walker.walkDistance / walker.scale, walker.origin[1])
     const materials = new Set<THREE.Material>()
     const skeletons = new Set<THREE.Skeleton>()
     let meshIndex = 0

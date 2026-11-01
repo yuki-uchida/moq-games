@@ -13,7 +13,7 @@ const source = (role: UnitType, file: string, clip: string, hooks: readonly Mode
 
 export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefinition>>> = {
   crystalSentinel: {
-    scale: 40, origin: [0, 0, 0], yaw: 0, walkDistance: 24,
+    scale: 40, origin: [0, 0, 0], yaw: 0, walkDistance: 32,
     provenance: 'crystal-sentinel.glb; verified cloud-rigged GLB; runtime visual review pending',
     clips: {
       idle: source('crystalSentinel', 'crystal-sentinel.glb', 'idle'),
@@ -22,7 +22,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     }
   },
   koboldLancer: {
-    scale: 32, origin: [0, 0, 0], yaw: 0, walkDistance: 32,
+    scale: 32, origin: [0, 0, 0], yaw: 0, walkDistance: 28,
     provenance: 'amber-kobold-lancer.glb; verified cloud-rigged GLB; runtime visual review pending',
     clips: {
       idle: source('koboldLancer', 'amber-kobold-lancer.glb', 'idle'),
@@ -41,7 +41,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   tank: {
     scale: 128 / 3.12, origin: [0, 0, 0], yaw: 0,
-    walkDistance: 20, provenance: 'tank-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 18, provenance: 'tank-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       attack: source('tank', 'tank-attack-candidate.glb', 'attack', [adapters.tankMaterial, adapters.tankSkinning]),
       walk: source('tank', 'tank-walk-candidate.glb', 'walk', [adapters.tankMaterial, adapters.tankSkinning]),
@@ -51,7 +51,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   mage: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6569931349408655, 0.3104449969859895, -0.12662202592852762] },
     scale: 128 / 3.55, origin: [-0.14499999582767487, -0.9520019888877869, 0.014999999664723873], yaw: 0,
-    walkDistance: 20, provenance: 'mage spell v3; preserved v2 geometry/materials, grip-pivot casting and planted-foot IK',
+    walkDistance: 23, provenance: 'mage spell v3; preserved v2 geometry/materials, grip-pivot casting and planted-foot IK',
     clips: {
       idle: source('mage', 'mage-spell-v3.glb', 'idle', [adapters.mageMaterial]),
       walk: source('mage', 'mage-spell-v3.glb', 'walk', [adapters.mageMaterial]),
@@ -61,7 +61,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   frost: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6610382795333862, 0.3700866103172302, 0.284916490316391] },
     scale: 128 / 3.4, origin: [-0.11500000208616257, -0.9508733153343201, 0.014999999664723873], yaw: 0,
-    walkDistance: 18, provenance: 'frost stable feet v3; preserved v2 geometry/materials, constant-length lower-body IK',
+    walkDistance: 21, provenance: 'frost stable feet v3; preserved v2 geometry/materials, constant-length lower-body IK',
     clips: {
       idle: source('frost', 'frost-stable-feet-v3.glb', 'idle', [adapters.frostMaterial]),
       walk: source('frost', 'frost-stable-feet-v3.glb', 'walk', [adapters.frostMaterial]),
@@ -71,7 +71,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   healer: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6100544929504395, 0.15758058428764343, 0.06462452560663223] },
     scale: 128 / 4.24, origin: [-0.17000000178813934, -0.9452990293502808, 0.004999999888241291], yaw: 0,
-    walkDistance: 18, provenance: 'healer v3; preserved v2 mesh/materials, pelvis-bound garment and offering gesture',
+    walkDistance: 20, provenance: 'healer v3; preserved v2 mesh/materials, pelvis-bound garment and offering gesture',
     clips: {
       idle: source('healer', 'healer-heal-garment-v3.glb', 'idle', [adapters.healerMaterial]),
       walk: source('healer', 'healer-heal-garment-v3.glb', 'walk', [adapters.healerMaterial]),
@@ -81,7 +81,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   ranger: {
     emitter: { node: 'Ranger_Release_Emitter' },
     scale: 128 / 3.6700000762939453, origin: [0.07999999821186066, -0.9177075624465942, -0.019999999552965164], yaw: 0,
-    walkDistance: (128 / 3.6700000762939453) * 0.26, provenance: 'motion repair v1; ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 19, provenance: 'motion repair v1; ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       walk: source('ranger', 'ranger-walk-candidate.glb', 'walk', [adapters.rangerMaterial, adapters.rangerSkinning]),
       attack: source('ranger', 'ranger-attack-candidate.glb', 'attack', [adapters.rangerSkinning]),
@@ -91,7 +91,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   cannon: {
     emitter: { node: 'Cannon_Socket_Muzzle' },
     scale: 128 / 3.94, origin: [0.005, -0.9520441889762878, -0.02], yaw: 0,
-    walkDistance: 24, provenance: 'cannon-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 20, provenance: 'cannon-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('cannon', 'cannon-idle-candidate.glb', 'idle', [adapters.cannonMaterial]),
       walk: source('cannon', 'cannon-walk-candidate.glb', 'walk', [adapters.cannonMaterial, adapters.cannonSkinning]),
@@ -100,7 +100,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   paladin: {
     scale: 128 / 3.02, origin: [0.014999999664723873, -0.9522994756698608, 0.019999999552965164], yaw: 0,
-    walkDistance: (128 / 3.02) * 0.34, provenance: 'motion repair v1; paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 24, provenance: 'motion repair v1; paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       attack: source('paladin', 'paladin-motion-v2-candidate.glb', 'attack', [adapters.paladinMaterial]),
       walk: source('paladin', 'paladin-motion-v2-candidate.glb', 'walk', [adapters.paladinMaterial]),
@@ -109,7 +109,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   goblin: {
     scale: 128 / 3.86, origin: [0, -0.9520249962806702, -0.02500000037252903], yaw: 0,
-    walkDistance: (128 / 3.86) * 0.42, provenance: 'motion repair v1; goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 24, provenance: 'motion repair v1; goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('goblin', 'goblin-walk-smooth.glb', 'idle', [adapters.goblinMaterial]),
       walk: source('goblin', 'goblin-walk-smooth.glb', 'walk', [adapters.goblinMaterial]),
@@ -127,7 +127,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   beetle: {
     scale: 128 / 4.4, origin: [0.0, -0.5641158819198608, -0.0], yaw: 0,
-    walkDistance: 40, provenance: 'beetle-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 30, provenance: 'beetle-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('beetle', 'beetle-motion-v2-candidate.glb', 'idle', [adapters.beetleMaterial]),
       walk: source('beetle', 'beetle-motion-v2-candidate.glb', 'walk', [adapters.beetleMaterial]),
@@ -137,7 +137,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   shaman: {
     emitter: { node: 'Shaman_Staff_Rigid_Control', local: [0.8206073641777039, 0.29405713081359863, -0.2551731467247009] },
     scale: 128 / 3.75, origin: [-0.10000000149011612, -0.8902260065078735, -0.0], yaw: 0,
-    walkDistance: 30, provenance: 'shaman-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 20, provenance: 'shaman-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('shaman', 'shaman-motion-v2-candidate.glb', 'idle', [adapters.shamanMaterial]),
       walk: source('shaman', 'shaman-motion-v2-candidate.glb', 'walk', [adapters.shamanMaterial]),
@@ -146,7 +146,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   brute: {
     scale: 128 / 3.4, origin: [0.0, -0.8542622327804565, -0.0], yaw: 0,
-    walkDistance: 40, provenance: 'brute-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 30, provenance: 'brute-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('brute', 'brute-motion-v2-candidate.glb', 'idle', [adapters.bruteMaterial]),
       walk: source('brute', 'brute-motion-v2-candidate.glb', 'walk', [adapters.bruteMaterial]),
@@ -174,7 +174,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   ogre: {
     scale: 128 / 3.55, origin: [0.04500000178813934, -0.9521399736404419, -0.2849999964237213], yaw: 0,
-    walkDistance: 40, provenance: 'ogre-walk-clear-step-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 32, provenance: 'ogre-walk-clear-step-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('ogre', 'ogre-motion-arm-swing20.glb', 'idle', [adapters.ogreMaterial, adapters.ogreSkinning]),
       walk: source('ogre', 'ogre-motion-arm-swing20.glb', 'walk', [adapters.ogreMaterial, adapters.ogreSkinning]),
@@ -194,7 +194,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   soldier: {
     viewElevation: Math.atan2(2.12, 5),
-    scale: 128 / 2.75 * (60 / 91), origin: [0.13500000536441803, 0, 0], yaw: 0, walkDistance: 24,
+    scale: 128 / 2.75 * (60 / 91), origin: [0.13500000536441803, 0, 0], yaw: 0, walkDistance: 23,
     provenance: 'soldier-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('soldier', 'soldier-motion-v2-candidate.glb', 'idle', [adapters.soldierMaterial, adapters.soldierSkinning]),
@@ -203,7 +203,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
     }
   },
   archer: {
-    scale: 128 / 4.267241477966309, origin: [0, -0.9518839716911316, 0], yaw: 0, walkDistance: 24,
+    scale: 128 / 4.267241477966309, origin: [0, -0.9518839716911316, 0], yaw: 0, walkDistance: 23,
     provenance: 'archer-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     emitter: { node: 'Archer_Release_Emitter' },
     clips: {

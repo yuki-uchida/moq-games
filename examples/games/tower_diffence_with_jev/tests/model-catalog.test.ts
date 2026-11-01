@@ -340,7 +340,8 @@ describe('repaired short-limb motion geometry', () => {
           ;['footL', 'footR', 'handL', 'handR'].forEach((name, i) =>
             expect(point(name).distanceTo(first[i])).toBeLessThan(1e-5)
           )
-          const travel = UNIT_MODEL_CATALOG[role]!.walkDistance / UNIT_MODEL_CATALOG[role]!.scale
+          // Authored repair travel; the runtime gait pass rescales it to walkDistance.
+          const travel = { ranger: 0.26, paladin: 0.34, goblin: 0.42 }[role]
           sample(0.05)
           const contact = point('footL').z + travel * 0.05
           for (const t of [0.15, 0.3, 0.45, 0.6]) {
