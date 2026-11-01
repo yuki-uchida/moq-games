@@ -20,12 +20,10 @@ for (const [name, width, height] of [
     ),
     false
   )
-  await page.getByRole('button', { name: '一時停止', exact: true }).click()
+  await page.keyboard.press('Space')
   await page.screenshot({ path: `/tmp/lane-${name}.png` })
   assert.deepEqual(errors, [])
-  await page.getByRole('button', { name: '遊び方' }).click()
-  await page.getByRole('button', { name: '進軍開始' }).click()
   await page.close()
-  console.log(name, 'summon/pause/help/no-scroll PASS')
+  console.log(name, 'summon/pause/no-scroll PASS')
 }
 await browser.close()

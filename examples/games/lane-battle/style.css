@@ -10,7 +10,7 @@ body {
     sans-serif;
   overflow: hidden;
 }
-/* The battlefield fills the screen; the title bar and summon tray float over it. */
+/* The battlefield fills the screen; resources and the summon tray float over it. */
 main {
   position: relative;
   height: 100dvh;
@@ -30,15 +30,10 @@ header {
   gap: 12px;
   height: var(--head);
 }
-.title,
 .wallet {
   background: #18383bd9;
   border-radius: 12px;
   padding: 5px 12px;
-}
-h1 {
-  font-size: 24px;
-  margin: 0;
 }
 small {
   font-size: 11px;
@@ -105,29 +100,27 @@ canvas {
 #field > canvas {
   height: min(100%, calc((100% - var(--gap) - var(--tray)) / 0.88));
 }
-.bases {
+#clock {
   position: absolute;
-  top: var(--hud-top);
-  left: 14px;
-  right: 14px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  font-size: 13px;
-  text-shadow: 0 2px 3px #092b2c;
-}
-.bases span {
+  top: calc(var(--gap) + var(--head) / 2);
+  left: 50%;
+  transform: translate(-50%, -50%);
   background: #18383bd9;
   border-radius: 8px;
   padding: 7px;
+  font-size: 13px;
 }
-.bases b {
-  display: block;
-  color: #ffe08c;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 #notice {
   position: absolute;
-  top: calc(var(--hud-top) + 53px);
+  top: var(--hud-top);
   left: 0;
   right: 0;
   text-align: center;
@@ -135,6 +128,9 @@ canvas {
   font-size: 13px;
   font-weight: 700;
   pointer-events: none;
+}
+#notice.paused {
+  font-size: 44px;
 }
 footer {
   position: absolute;
@@ -217,15 +213,8 @@ dialog h2 {
   header {
     gap: 6px;
   }
-  .title,
   .wallet {
     padding: 4px 8px;
-  }
-  h1 {
-    font-size: 18px;
-  }
-  header small {
-    font-size: 9px;
   }
   header button {
     width: 40px;
@@ -250,13 +239,9 @@ dialog h2 {
   .utilities button {
     font-size: 12px;
   }
-  .bases {
-    left: 7px;
-    right: 7px;
-    font-size: 10px;
-  }
-  .bases span {
+  #clock {
     padding: 5px;
+    font-size: 11px;
   }
   .portrait {
     height: 48px;
@@ -265,7 +250,6 @@ dialog h2 {
     font-size: 11px;
   }
   #notice {
-    top: calc(var(--hud-top) + 44px);
     font-size: 11px;
   }
 }
@@ -274,12 +258,6 @@ dialog h2 {
     --gap: 6px;
     --head: 42px;
     --tray: 92px;
-  }
-  h1 {
-    font-size: 17px;
-  }
-  header small {
-    display: none;
   }
   footer {
     flex-direction: row;
@@ -297,9 +275,6 @@ dialog h2 {
   }
   .utilities button {
     min-height: 40px;
-  }
-  #notice {
-    top: calc(var(--hud-top) + 36px);
   }
 }
 #stages {
@@ -343,9 +318,6 @@ button[hidden] {
   }
   .wallet {
     font-size: 19px;
-  }
-  h1 {
-    font-size: 16px;
   }
   .wallet small {
     font-size: 10px;

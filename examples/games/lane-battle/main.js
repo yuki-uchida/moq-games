@@ -139,19 +139,13 @@ $('close').onclick = () => {
 $('restart').onclick = () => {
   start(state.stage)
 }
-$('help').onclick = () =>
-  !clock.pending &&
-  modal(
-    '森の砦を守ろう',
-    '兵のアイコンを押すと左の砦から出撃します。衛兵で受け止め、射手で援護、狼で突破。✦は自動で増加し、生産強化で増加速度が上がります。砦の衝撃は戦場の左半分を守ります。右の水晶砦を壊せば勝利。キー1〜3で召喚、Uで強化、Spaceで一時停止。'
-  )
-$('pause').onclick = () => {
+/** Keyboard-only pause (Space); the battlefield has no pause button. */
+function togglePause() {
   tick(performance.now())
   if (document.querySelector('dialog').open || clock.pending) return
   paused = !paused
   clock.reset(performance.now())
   syncAudio()
-  $('pause').textContent = paused ? '▶' : 'Ⅱ'
 }
 $('upgrade').onclick = () => {
   invest()
@@ -166,7 +160,7 @@ window.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog').open || clock.pending) return
   if (e.code === 'Space') {
     e.preventDefault()
-    $('pause').click()
+    togglePause()
   }
   if (!paused) {
     if (['1', '2', '3'].includes(e.key)) deploy(Number(e.key) - 1)
@@ -305,19 +299,13 @@ function draw() {
     ctx.stroke()
     ctx.globalAlpha = 1
   }
-  document.querySelector('header small').textContent = `${state.stage + 1}/3 · ${STAGES[state.stage].name}`
   $('gold').textContent = Math.floor(state.gold)
   $('rate').textContent = `+${income(state)}/秒 · Lv.${state.level}`
   $('home').textContent = `${state.home} / 1400`
   $('enemy').textContent = `${state.enemy} / ${STAGES[state.stage].enemy}`
   $('clock').textContent = `${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}`
-  $('notice').textContent = paused
-    ? '一時停止中'
-    : state.time < 8
-      ? 'アイコンで召喚 → 右の砦を攻略'
-      : state.time < 18
-        ? '✦ 生産を強化すると援軍が増える'
-        : `撃退 ${state.kills}`
+  $('notice').textContent = paused ? 'Ⅱ' : ''
+  $('notice').classList.toggle('paused', paused)
   buttons.forEach((b, i) => {
     b.disabled = paused || state.gold < TYPES[i].cost || state.cooldowns[i] > 0
     b.querySelector('b').textContent =
@@ -326,8 +314,7 @@ function draw() {
   $('upgrade').disabled = paused || state.level >= 5 || state.gold < upgradeCost(state)
   $('upgrade').querySelector('b').textContent = state.level >= 5 ? 'MAX' : `${upgradeCost(state)} ✦`
   $('burst').disabled = paused || state.burst > 0
-  $('burst').querySelector('b').textContent = state.burst > 0 ? `${Math.ceil(state.burst)} 秒` : '準備完了'
-  $('pause').textContent = paused ? '▶' : 'Ⅱ'
+  $('burst').querySelector('b').textContent = state.burst > 0 ? `${Math.ceil(state.burst)} 秒` : ''
 }
 function tick(now) {
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
