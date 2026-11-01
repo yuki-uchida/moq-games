@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#142d27" />
+    <meta name="description" content="小さなウサギたちの、命をつなぐ協力サバイバル。" />
+    <title>Rabbiters — 小さな命のものがたり</title>
+  </head>
+  <body>
+    <main id="app">
+      <div id="world" aria-label="Rabbitersの3Dフィールド"></div>
+      <div class="scene-shade" aria-hidden="true"></div>
+
+      <header class="topbar">
+        <a class="wordmark" href="../../../index.html" aria-label="MoQ Games ホームへ">
+          <svg class="rabbit-mark" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M14 21C10 11 11 4 14 4s6 7 8 15M26 19c2-8 5-15 8-15s4 7 0 17" />
+            <path d="M9 29c0-8 6-12 15-12s15 4 15 12-6 14-15 14S9 37 9 29Z" />
+            <circle cx="19" cy="29" r="1.5" />
+            <circle cx="29" cy="29" r="1.5" />
+            <path d="m22 34 2 2 2-2" />
+          </svg>
+          <span>Rabbiters<small>THE LITTLE WILD</small></span>
+        </a>
+        <div class="top-actions">
+          <div id="connection" class="connection"><i></i><span>ひとりでプレイ</span></div>
+          <button
+            id="sound-toggle"
+            class="icon-button"
+            type="button"
+            aria-label="サウンド"
+            aria-pressed="true"
+            title="サウンドをオフ"
+          >
+            ♪
+          </button>
+          <button
+            id="leave"
+            class="icon-button"
+            type="button"
+            aria-label="タイトルに戻る"
+            title="タイトルに戻る"
+            hidden
+          >
+            ↩
+          </button>
+          <button id="help-open" class="icon-button" type="button" aria-label="遊び方を表示">?</button>
+        </div>
+      </header>
+
+      <section id="hud" class="hud" aria-label="プレイヤーの状態" hidden>
+        <div class="hud-card vitals">
+          <div class="eyebrow"><span class="status-dot"></span> YOUR RABBIT <span id="player-name"></span></div>
+          <div class="meter-row">
+            <span class="meter-icon heart" aria-hidden="true">♥</span><span>体力</span>
+            <div class="meter"><i id="health-bar"></i></div>
+            <b id="health-value">100</b>
+          </div>
+          <div class="meter-row">
+            <span class="meter-icon food-icon" aria-hidden="true">✿</span><span>おなか</span>
+            <div class="meter hunger"><i id="hunger-bar"></i></div>
+            <b id="hunger-value">100</b>
+          </div>
+          <div id="condition" class="condition">草むらで身を隠そう</div>
+        </div>
+        <div class="objective-card">
+          <div class="eyebrow">A LITTLE LIFE <span>✧</span></div>
+          <h2 id="objective-title">食べて、大きくなろう</h2>
+          <p id="objective-text">食べものを探して、命をつなごう。</p>
+          <div class="objective-progress"><i id="growth-bar"></i></div>
+          <div class="objective-foot">
+            <span id="objective-progress">成長 0%</span><span id="nest-count">巣を探そう</span>
+          </div>
+        </div>
+        <div id="hint" class="interaction-hint" aria-live="polite"></div>
+        <div class="key-guide" aria-hidden="true">
+          <span><kbd>W A S D</kbd> 移動</span><span><kbd>SPACE</kbd> ジャンプ</span
+          ><span><kbd>SHIFT</kbd> ダッシュ</span><span><kbd>C</kbd> かくれる</span><span><kbd>E</kbd> アクション</span>
+        </div>
+        <div id="touch-controls" class="touch-controls">
+          <div id="joystick" class="joystick" aria-label="移動スティック"><div id="joystick-knob"></div></div>
+          <div class="touch-buttons">
+            <button id="touch-crouch" type="button" aria-label="身を隠す">隠</button>
+            <button id="touch-sprint" type="button" aria-label="ダッシュ">走</button>
+            <button id="touch-jump" class="touch-large" type="button" aria-label="ジャンプ">跳</button>
+            <button id="touch-interact" class="touch-large primary" type="button" aria-label="食べる・卵を壊す">
+              E
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="start-panel" class="start-panel" aria-labelledby="start-title">
+        <div class="start-inner">
+          <p class="overline"><span></span> A COOPERATIVE SURVIVAL STORY</p>
+          <h1 id="start-title">小さな命を、<br /><em>つないでゆく。</em></h1>
+          <p class="intro">ここは、うつくしくも危険な野生の世界。<br />食べて、隠れて、仲間と生きのびよう。</p>
+          <div class="story-rule">
+            <span class="rule-icon">✦</span>
+            <p>
+              ごはんを食べて成長し、<strong>新しい命が生まれたらクリア。</strong
+              ><br />妊娠中は足が遅くなるので、みんなで守ろう。
+            </p>
+          </div>
+          <button id="solo" class="button button-primary" type="button"><span>ひとりではじめる</span><b>↗</b></button>
+          <div class="divider"><span></span> OR PLAY TOGETHER <span></span></div>
+          <div class="multiplayer-fields">
+            <label for="relay">MoQ Relay URL</label>
+            <input
+              id="relay"
+              type="url"
+              value="https://relay.moqt.research.skyway.io"
+              autocomplete="url"
+              spellcheck="false"
+            />
+            <label for="room">ルーム名</label>
+            <input
+              id="room"
+              type="text"
+              placeholder="例：forest-123"
+              maxlength="48"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div class="button-row">
+              <button id="host" class="button button-outline" type="button">ルームを作る</button
+              ><button id="join" class="button button-outline" type="button">ルームに参加</button>
+            </div>
+            <p class="fine-print">
+              同じRelayとルーム名で集合します。ルーム名は認証ではありません。信頼できるRelayを使用してください。
+            </p>
+          </div>
+          <p id="start-error" class="error" role="alert"></p>
+        </div>
+      </section>
+
+      <section id="help" class="dialog-backdrop" aria-labelledby="help-title" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+          <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
+          <p class="overline">FIELD NOTES</p>
+          <h2 id="help-title">生きのびるために</h2>
+          <div class="help-list">
+            <p>
+              <b>01</b
+              ><span
+                ><strong>食べて、成長する。</strong
+                >食べものに近づくと自動で食べます。おなかが空きすぎると体力が減ります。</span
+              >
+            </p>
+            <p>
+              <b>02</b
+              ><span
+                ><strong>見つからないように。</strong
+                >草むらや水路、洞窟で身を隠そう。Cでしゃがむとさらに見つかりにくくなります。</span
+              >
+            </p>
+            <p>
+              <b>03</b
+              ><span
+                ><strong>いのちを守る。</strong
+                >大人になると妊娠し、足が遅くなります。妊娠中は空腹が早く進み、食べないと出産も進みません。</span
+              >
+            </p>
+            <p>
+              <b>04</b
+              ><span
+                ><strong>仲間と助け合う。</strong>卵や巣を壊して敵の復活を抑えたり、囮になって仲間を逃がそう。</span
+              >
+            </p>
+          </div>
+          <p class="help-controls">
+            WASD / 矢印：移動　SPACE：ジャンプ　SHIFT：走る　C：しゃがむ　E：巣を壊す・仲間を助ける　ドラッグ：視点変更
+          </p>
+          <button id="help-done" class="button button-primary" type="button">わかった</button>
+        </div>
+      </section>
+
+      <section id="result" class="dialog-backdrop" aria-labelledby="result-title" hidden>
+        <div class="dialog result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
+          <p class="overline">THE LITTLE WILD</p>
+          <div class="result-symbol">✿</div>
+          <h2 id="result-title"></h2>
+          <p id="result-text"></p>
+          <button id="restart" class="button button-primary" type="button">もう一度あそぶ</button>
+        </div>
+      </section>
+      <div id="announcements" class="sr-only" aria-live="polite"></div>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -16,7 +16,7 @@ export default defineConfig({
       String(existsSync(resolve(root, 'public/tower-defense-sfx/soldier_attack.wav')))
     )
   },
-  optimizeDeps: { exclude: ['@moq-games/moqt-client'] },
+  optimizeDeps: { exclude: ['@moq-games/moqt-client', 'moq-wasm'] },
   server: {
     host: '127.0.0.1',
     port: 5174,

@@ -12,6 +12,11 @@
     "lib": ["ESNext", "DOM", "WebWorker"],
     "noEmit": true
   },
-  "include": ["examples/games/tower_diffence_with_jev/src/**/*.ts", "utils/**/*.ts", "lib/**/*.ts"],
+  "include": [
+    "examples/games/tower_diffence_with_jev/src/**/*.ts",
+    "examples/games/rabbiters/src/**/*.ts",
+    "utils/**/*.ts",
+    "lib/**/*.ts"
+  ],
   "exclude": ["node_modules", "**/art-prototypes/**"]
 }
