@@ -322,6 +322,15 @@ export class GameRenderer {
   campaignPrepared = false
   onContextLost?: () => void
   onContextRestored?: () => void
+  /** Starts model/effect downloads early; GPU warm-up still happens only in prepareCampaign. */
+  prefetchCampaign(base: URL, state: CampaignPreparationState): void {
+    if (this.disposed || !this.models) return
+    const types = campaignRequiredTypes(state)
+    for (const [type, definition] of Object.entries(this.models.roster))
+      if (types.has(type as UnitType)) for (const source of Object.values(definition.clips)) this.models.cache.requestSource(source)
+    for (const url of new Set(Object.values(this.effectClips))) this.atlasCache.get(url, false)
+    void this.specialAbilities.preload(base).catch(() => {})
+  }
   async prepareCampaign(base: URL, state: CampaignPreparationState, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
     const types = campaignRequiredTypes(state)
     if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) return

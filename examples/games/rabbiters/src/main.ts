@@ -3,6 +3,7 @@ import { Game, RULES, SAND_PATCHES, type GameState, type Input } from './game'
 import { STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
+import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
 import { isFoodKind } from './food'
@@ -508,6 +509,10 @@ for (const selector of ['#help-close', '#help-done'])
     help.hidden = true
     element<HTMLButtonElement>('#help-open').focus()
   })
+// Menu feedback only; held touch controls stay silent. Follows the ♪ toggle.
+document.querySelectorAll<HTMLElement>('.touch-buttons button').forEach((button) => (button.dataset.sfx = 'none'))
+bindUiSounds(document, (kind) => playSharedUiSound(kind, soundEnabled ? 1 : 0), 'button:not(.touch-buttons *)')
+warmUpAudio()
 
 const allowedKeys = new Set([
   'KeyW',

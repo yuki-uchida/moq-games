@@ -978,3 +978,8 @@ fieldset label {
 #missions .roster {
   color: #ffd76a;
 }
+
+/* Immediate press feedback; `scale` composes with any transform. */
+button:active:not(:disabled) {
+  scale: 0.96;
+}

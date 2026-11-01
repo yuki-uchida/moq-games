@@ -10,20 +10,31 @@ body {
     sans-serif;
   overflow: hidden;
 }
+/* The battlefield fills the screen; the title bar and summon tray float over it. */
 main {
+  position: relative;
   height: 100dvh;
-  max-width: 1400px;
-  margin: auto;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  gap: 10px;
+  --gap: 12px;
+  --head: 66px;
+  --tray: 128px;
+  --hud-top: calc(var(--gap) + var(--head) + 8px);
 }
 header {
+  position: absolute;
+  z-index: 1;
+  top: var(--gap);
+  left: var(--gap);
+  right: var(--gap);
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 66px;
+  height: var(--head);
+}
+.title,
+.wallet {
+  background: #18383bd9;
+  border-radius: 12px;
+  padding: 5px 12px;
 }
 h1 {
   font-size: 24px;
@@ -53,6 +64,18 @@ button {
   min-height: 48px;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    filter 120ms,
+    scale 80ms;
+}
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    filter: brightness(1.18);
+  }
+}
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+  scale: 0.96;
 }
 button:focus-visible {
   outline: 3px solid #ffe08c;
@@ -67,22 +90,24 @@ header button {
   font-weight: bold;
 }
 #field {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  border: 1px solid #567771;
-  border-radius: 20px;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
-  background: #adc7b1;
+  /* Matches the canvas ground, so the field continues under the tray. */
+  background: #6d8962;
 }
 canvas {
   width: 100%;
   height: 100%;
   display: block;
 }
+/* World y≈396 of 450 meets the tray top: units and their shadows stay above it, the road runs beneath. */
+#field > canvas {
+  height: min(100%, calc((100% - var(--gap) - var(--tray)) / 0.88));
+}
 .bases {
   position: absolute;
-  top: 12px;
+  top: var(--hud-top);
   left: 14px;
   right: 14px;
   display: flex;
@@ -102,7 +127,7 @@ canvas {
 }
 #notice {
   position: absolute;
-  top: 65px;
+  top: calc(var(--hud-top) + 53px);
   left: 0;
   right: 0;
   text-align: center;
@@ -112,9 +137,14 @@ canvas {
   pointer-events: none;
 }
 footer {
+  position: absolute;
+  z-index: 1;
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--gap);
   display: flex;
   gap: 12px;
-  height: 128px;
+  height: var(--tray);
 }
 #tray {
   display: flex;
@@ -129,7 +159,7 @@ footer {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  background: linear-gradient(#284b50, #1c343a);
+  background: linear-gradient(#284b50e6, #1c343ae6);
 }
 .portrait {
   height: 76px;
@@ -180,12 +210,16 @@ dialog h2 {
 }
 @media (max-width: 600px) {
   main {
-    padding: 8px;
-    gap: 8px;
+    --gap: 8px;
+    --head: 58px;
+    --tray: 178px;
   }
   header {
-    height: 58px;
     gap: 6px;
+  }
+  .title,
+  .wallet {
+    padding: 4px 8px;
   }
   h1 {
     font-size: 18px;
@@ -201,7 +235,6 @@ dialog h2 {
     font-size: 22px;
   }
   footer {
-    height: 178px;
     flex-direction: column;
     gap: 7px;
   }
@@ -220,7 +253,6 @@ dialog h2 {
   .bases {
     left: 7px;
     right: 7px;
-    top: 8px;
     font-size: 10px;
   }
   .bases span {
@@ -233,16 +265,15 @@ dialog h2 {
     font-size: 11px;
   }
   #notice {
+    top: calc(var(--hud-top) + 44px);
     font-size: 11px;
   }
 }
 @media (max-height: 480px) {
   main {
-    padding: 6px;
-    gap: 4px;
-  }
-  header {
-    height: 42px;
+    --gap: 6px;
+    --head: 42px;
+    --tray: 92px;
   }
   h1 {
     font-size: 17px;
@@ -251,7 +282,6 @@ dialog h2 {
     display: none;
   }
   footer {
-    height: 92px;
     flex-direction: row;
   }
   #tray {
@@ -269,7 +299,7 @@ dialog h2 {
     min-height: 40px;
   }
   #notice {
-    top: 45px;
+    top: calc(var(--hud-top) + 36px);
   }
 }
 #stages {

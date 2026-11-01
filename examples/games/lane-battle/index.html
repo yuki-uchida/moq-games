@@ -8,12 +8,12 @@
   <body>
     <main>
       <header>
-        <div>
+        <div class="title">
           <small>LANE BATTLE</small>
           <h1>芽吹きの境界</h1>
         </div>
         <div class="wallet">✦ <strong id="gold">0</strong><small id="rate"></small></div>
-        <button id="sound" aria-label="音を切り替え" aria-pressed="false">♪</button
+        <button id="sound" data-sfx="none" aria-label="音を切り替え" aria-pressed="false">♪</button
         ><button id="help" aria-label="遊び方">?</button><button id="pause" aria-label="一時停止">Ⅱ</button>
       </header>
       <section id="field">
@@ -26,15 +26,17 @@
       <footer>
         <div id="tray"></div>
         <div class="utilities">
-          <button id="upgrade">✦ 生産強化 <b></b></button><button id="burst">☄ 砦の衝撃 <b>準備完了</b></button>
+          <button id="upgrade" data-sfx="none">✦ 生産強化 <b></b></button
+          ><button id="burst" data-sfx="none">☄ 砦の衝撃 <b>準備完了</b></button>
         </div>
       </footer>
       <dialog>
         <h2 id="title"></h2>
         <p id="message"></p>
         <div id="stages" aria-label="ステージ選択"></div>
-        <button id="next" hidden>次のステージ →</button><button id="close">進軍開始</button
-        ><button id="restart">↻ もう一度</button>
+        <button id="next" data-sfx="confirm" hidden>次のステージ →</button
+        ><button id="close" data-sfx="confirm">進軍開始</button
+        ><button id="restart" data-sfx="confirm">↻ もう一度</button>
       </dialog>
     </main>
     <script type="module" src="./main.js"></script>

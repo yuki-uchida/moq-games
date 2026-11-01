@@ -38,7 +38,8 @@ button {
   transition:
     background 120ms,
     border-color 120ms,
-    box-shadow 120ms;
+    box-shadow 120ms,
+    scale 80ms;
 }
 button:hover:not(:disabled) {
   background: #e9eddb;
@@ -46,6 +47,8 @@ button:hover:not(:disabled) {
 }
 button:active:not(:disabled) {
   background: #dbe4cb;
+  /* `scale` composes with layout transforms, so positioned buttons keep their place. */
+  scale: 0.97;
 }
 button:disabled {
   cursor: not-allowed;
