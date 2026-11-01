@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GuestView } from '../src/guest-view'
-import { FIELD_PROPS, Game, GRASS_PATCHES, SAND_PATCHES, fieldTerrain, type Input, type Predator } from '../src/game'
+import { Game, mapTerrain, type Input, type Predator } from '../src/game'
+import { FORDS, GRASS, SAND_PATCHES, TREES, heightAt, lineOfSight } from '../src/map'
 import {
   HAWK_ALTITUDE,
   STEALTH,
@@ -23,19 +24,21 @@ const ticks = (game: Game, seconds: number, each?: () => void) => {
     each?.()
   }
 }
-/** One rabbit at (x, z) and one predator `range` metres south of it, facing it. */
-const standoff = (range: number, kind: Predator['kind'] = 'fox', at: readonly [number, number] = [2.5, -12]) => {
+/** An open, flat spot in the home meadow with a clear view 30 m to the north. */
+const OPEN: readonly [number, number] = [-125, 8]
+/** One rabbit at (x, z) and one predator `range` metres north of it, facing it. */
+const standoff = (range: number, kind: Predator['kind'] = 'fox', at: readonly [number, number] = OPEN) => {
   const game = new Game(3)
   game.addPlayer('rabbit', 'Rabbit')
   const rabbit = game.state.players[0]
-  Object.assign(rabbit, { x: at[0], z: at[1] })
+  Object.assign(rabbit, { x: at[0], z: at[1], y: heightAt(at[0], at[1]) })
   game.state.foods = []
   game.state.nests.forEach((nest) => (nest.active = false))
   const predator: Predator = {
     id: 'p',
     kind,
     x: at[0],
-    y: kind === 'hawk' ? 5 : 0,
+    y: heightAt(at[0], at[1] - range) + (kind === 'hawk' ? 5 : 0),
     z: at[1] - range,
     angle: 0,
     state: 'patrol',
@@ -73,7 +76,7 @@ describe('graded detection', () => {
     expect(predator.suspicion).toBeGreaterThan(0)
     expect(predator.suspicion).toBeLessThan(1)
     expect(Math.abs(predator.angle)).toBeLessThan(0.6)
-    expect(predator.z).toBeGreaterThan(-30)
+    expect(predator.z).toBeGreaterThan(OPEN[1] - 10 - 8)
     let spottedAt = Infinity
     ticks(game, 4, () => {
       if (predator.state === 'chase' && spottedAt === Infinity) spottedAt = game.state.time
@@ -87,7 +90,7 @@ describe('graded detection', () => {
     ticks(game, 1)
     expect(predator.state).toBe('search')
     expect(predator.suspicion).toBe(0)
-    expect(predator.z).toBeGreaterThan(-29)
+    expect(predator.z).toBeGreaterThan(OPEN[1] - 17)
     const crouched = standoff(10)
     crouched.game.setInput('rabbit', { ...idle, crouch: true })
     crouched.game.step(1 / 60)
@@ -95,21 +98,40 @@ describe('graded detection', () => {
   })
 
   it('treats a nearby tree trunk between eye and rabbit as partial cover', () => {
-    const trunk = FIELD_PROPS.find((prop) => prop.tree)!
-    expect(fieldTerrain.sightLine({ x: trunk.x, z: trunk.z - 8 }, { x: trunk.x, z: trunk.z + 1 })).toBe(
-      STEALTH.treeCover
-    )
-    const tree = { x: -10, z: 0 }
+    // A forest tree with open ground around it: the terrain alone would leave the rabbit in plain view.
+    const clear = (tree: { x: number; z: number }) =>
+      lineOfSight(
+        tree.x,
+        heightAt(tree.x, tree.z - 8) + 0.8,
+        tree.z - 8,
+        tree.x,
+        heightAt(tree.x, tree.z + 1) + 0.4,
+        tree.z + 1
+      )
+    const trunk = TREES.find((tree) => tree.r < 0.4 && tree.z > 40 && clear(tree))!
+    expect(mapTerrain.sightLine({ x: trunk.x, z: trunk.z - 8 }, { x: trunk.x, z: trunk.z + 1 })).toBe(STEALTH.treeCover)
+    const [x, z] = OPEN
+    const tree = { x, z }
     const terrain: Terrain = {
-      heightAt: () => 0,
+      heightAt,
       sightLine: (from, to) => (Math.abs(to.x - tree.x) < 1 && from.z < tree.z && to.z > tree.z ? 0.45 : 1)
     }
     const game = new Game(3, terrain)
     game.addPlayer('rabbit', 'Rabbit')
-    Object.assign(game.state.players[0], { x: tree.x, z: 1 })
+    Object.assign(game.state.players[0], { x, z: z + 1, y: heightAt(x, z + 1) })
     game.state.foods = []
     game.state.predators = [
-      { id: 'p', kind: 'fox', x: tree.x, y: 0, z: -7, angle: 0, state: 'patrol', targetId: null, suspicion: 0 }
+      {
+        id: 'p',
+        kind: 'fox',
+        x,
+        y: heightAt(x, z - 7),
+        z: z - 7,
+        angle: 0,
+        state: 'patrol',
+        targetId: null,
+        suspicion: 0
+      }
     ]
     game.step(1 / 60)
     // 8 m away is "?" in the open, but behind the trunk it only draws a distant search.
@@ -119,8 +141,10 @@ describe('graded detection', () => {
 
 describe('suspicion falls away when the rabbit hides in time', () => {
   it('decays without spotting, checks the last sighting, then gives up', () => {
-    const [x, z] = GRASS_PATCHES[0]
+    const { ax: x, az: z } = GRASS[0]
     const { game, rabbit, predator } = standoff(8, 'fox', [x, z])
+    // Droppings have their own tests; fresh pellets beside the hidden rabbit would re-arm the search here.
+    ;(game as unknown as { dropIn: Map<string, number> }).dropIn.set(rabbit.id, Infinity)
     ticks(game, 0.6)
     expect(predator.state).toBe('suspicious')
     const peak = predator.suspicion
@@ -237,11 +261,12 @@ describe('dropping trails', () => {
     expect(new Set(gaps.map((gap) => gap.toFixed(1))).size).toBeGreaterThan(2)
     const chainOfLast = () => internal.scents.get(game.state.droppings.at(-1)!.id)!.chain
     const before = chainOfLast()
-    Object.assign(rabbit, { x: -20, z: 10 })
+    const ford = FORDS[1]
+    Object.assign(rabbit, { x: ford.x, z: ford.z, y: heightAt(ford.x, ford.z) })
     ticks(game, 13)
     expect(chainOfLast()).toBe(before + 1)
     const [sx, sz] = SAND_PATCHES[0]
-    Object.assign(rabbit, { x: sx, z: sz })
+    Object.assign(rabbit, { x: sx, z: sz, y: heightAt(sx, sz) })
     game.setInput('rabbit', { ...idle, crouch: true })
     ticks(game, STEALTH.bathSeconds - 0.2)
     expect(rabbit.bath).toBeGreaterThan(0.8)
@@ -273,11 +298,12 @@ describe('dropping trails', () => {
     game.addPlayer('rabbit', 'Rabbit')
     game.state.predators = []
     const rabbit = game.state.players[0]
-    rabbit.x = -30
+    const [startX, laneZ] = [-128, 12]
+    Object.assign(rabbit, { x: startX, z: laneZ, y: heightAt(startX, laneZ) })
     const placed: { x: number; z: number; drop: Dropping }[] = []
     game.setInput('rabbit', { ...idle, moveX: 1, sprint: true })
     ticks(game, 12, () => {
-      rabbit.x = Math.min(rabbit.x, -10)
+      rabbit.x = Math.min(rabbit.x, startX + 20)
       const last = game.state.droppings.at(-1)
       if (last && !placed.some((entry) => entry.drop.id === last.id))
         placed.push({ x: rabbit.x, z: rabbit.z, drop: last })
@@ -289,7 +315,7 @@ describe('dropping trails', () => {
 
 describe('flying predator motion', () => {
   it('never teleports in height or position when its prey dives into grass', () => {
-    const [x, z] = GRASS_PATCHES[3]
+    const { ax: x, az: z } = GRASS[3]
     const { game, predator, rabbit } = standoff(4, 'hawk', [x, z])
     let previous = { ...predator }
     let maxClimb = 0

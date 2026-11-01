@@ -1,4 +1,5 @@
 import { moveRabbit, type GameState, type Input, type Movement, type Player } from './game'
+import { WORLD } from './map'
 
 export interface InputAck {
   sentAt: number
@@ -119,9 +120,9 @@ export class GuestView {
         remaining -= delta
       }
       const amount = 1 - Math.exp(-8 * elapsed)
-      const dx = clamp(this.local.x + this.correction.x * amount, -45, 45) - this.local.x
-      const dy = Math.max(0, this.local.y + this.correction.y * amount) - this.local.y
-      const dz = clamp(this.local.z + this.correction.z * amount, -32, 32) - this.local.z
+      const dx = clamp(this.local.x + this.correction.x * amount, WORLD.minX, WORLD.maxX) - this.local.x
+      const dy = this.correction.y * amount // moveRabbit keeps the rabbit on the terrain or tunnel floor
+      const dz = clamp(this.local.z + this.correction.z * amount, WORLD.minZ, WORLD.maxZ) - this.local.z
       this.local.x += dx
       this.local.y += dy
       this.local.z += dz

@@ -79,6 +79,12 @@
             <span id="nest-count">残る巣 3</span>
           </div>
         </div>
+        <figure class="map-card">
+          <canvas id="minimap" role="img" aria-label="周辺の地図（上が北）"></canvas>
+          <figcaption>
+            <span class="compass" aria-hidden="true">N ↑</span><span id="area-name">ふるさとの草原</span>
+          </figcaption>
+        </figure>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
         <div id="touch-controls" class="touch-controls">
           <div id="joystick" class="joystick" aria-label="移動スティック"><div id="joystick-knob"></div></div>
@@ -154,7 +160,7 @@
               <b>02</b
               ><span
                 ><strong>見つからないように。</strong
-                >草むらや水路、洞窟で身を隠そう。Cでしゃがむとさらに見つかりにくくなります。敵の頭上に「？」が出たら怪しまれています。すぐ隠れればやり過ごせますが、「！」は見つかった合図です。</span
+                >草むら・茂み・倒木の下・洞窟に隠れよう。穴の上でCを押すとモグラのトンネルへ、出口の下でSPACEで地上へ。丘や窪地の陰も敵の目をさえぎります。敵の頭上に「？」が出たら怪しまれています。すぐ隠れればやり過ごせますが、「！」は見つかった合図です。</span
               >
             </p>
             <p>
@@ -180,7 +186,7 @@
           </div>
           <p class="help-controls">
             WASD /
-            矢印：移動　SPACE：ジャンプ　SHIFT：走る　C：しゃがむ（砂地で長押し：砂浴び）　E：巣を壊す・仲間を助ける　マウス移動／ドラッグ：視点変更（Escで解除）
+            矢印：移動　SPACE：ジャンプ／穴から出る　SHIFT：走る　C：しゃがむ／穴にもぐる（砂地で長押し：砂浴び）　E：巣を壊す・仲間を助ける　マウス移動／ドラッグ：視点変更（Escで解除）
           </p>
           <button id="help-done" class="button button-primary" type="button">わかった</button>
         </div>

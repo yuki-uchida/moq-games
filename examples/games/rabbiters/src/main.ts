@@ -1,5 +1,5 @@
 import './style.css'
-import { Game, RULES, SAND_PATCHES, type GameState, type Input } from './game'
+import { Game, RULES, coverAt, packSnapshot, unpackSnapshot, type Cover, type GameState, type Input } from './game'
 import { STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
 import { GuestView, type InputAck } from './guest-view'
@@ -7,6 +7,8 @@ import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSou
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
 import { isFoodKind } from './food'
+import { FOODS, MAX_PREDATORS, SAND_PATCHES, WORLD, inBush, isUnderground, regionName, tunnelExitNear } from './map'
+import { Minimap } from './minimap'
 
 function element<T extends HTMLElement>(selector: string): T {
   const result = document.querySelector<T>(selector)
@@ -85,7 +87,10 @@ const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 const label = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 128
 const position = (value: Record<string, unknown>) =>
-  label(value.id) && numeric(value.x, -50, 50) && numeric(value.y, -1, 20) && numeric(value.z, -40, 40)
+  label(value.id) &&
+  numeric(value.x, WORLD.minX - 2, WORLD.maxX + 2) &&
+  numeric(value.y, -20, 80) &&
+  numeric(value.z, WORLD.minZ - 2, WORLD.maxZ + 2)
 
 function validSnapshot(value: unknown): value is GameState {
   if (!record(value) || !numeric(value.time, 0, 1e8) || !['playing', 'won', 'lost'].includes(String(value.phase)))
@@ -94,9 +99,9 @@ function validSnapshot(value: unknown): value is GameState {
     !Array.isArray(value.players) ||
     value.players.length > MAX_PLAYERS ||
     !Array.isArray(value.predators) ||
-    value.predators.length > 12 ||
+    value.predators.length > MAX_PREDATORS ||
     !Array.isArray(value.foods) ||
-    value.foods.length > 32 ||
+    value.foods.length > 128 ||
     !Array.isArray(value.nests) ||
     value.nests.length > 16 ||
     !Array.isArray(value.droppings) ||
@@ -147,15 +152,17 @@ function validSnapshot(value: unknown): value is GameState {
   )
 }
 
-function readSnapshot(value: unknown): GameState | undefined {
+function readSnapshot(packed: unknown): GameState | undefined {
+  // Current hosts pack food and nests against the shared map; full lists are only accepted for this same map.
+  const value = record(packed) && typeof packed.foods === 'string' ? unpackSnapshot(packed) : packed
   if (
     !record(value) ||
     !Array.isArray(value.players) ||
     value.players.length > MAX_PLAYERS ||
     !Array.isArray(value.predators) ||
-    value.predators.length > 12 ||
+    value.predators.length > MAX_PREDATORS ||
     !Array.isArray(value.foods) ||
-    value.foods.length > 32
+    value.foods.length !== FOODS.length
   )
     return undefined
   const state = {
@@ -338,6 +345,19 @@ async function returnToTitle() {
   await current?.stop()
 }
 
+const minimap = new Minimap(element<HTMLCanvasElement>('#minimap'))
+const COVER_NAMES: Record<Cover, string> = {
+  tunnel: 'モグラのトンネル',
+  shelter: '巣穴・木のうろ',
+  cave: '洞窟の暗がり',
+  log: '倒木の下',
+  bush: '茂みの奥',
+  canopy: '茂みの中',
+  grass: '背の高い草むら',
+  water: '浅瀬の葦',
+  open: '物かげ'
+}
+
 function updateHud(state: GameState) {
   if (state.phase !== 'playing' && result.hidden) {
     const won = state.phase === 'won'
@@ -380,15 +400,20 @@ function updateHud(state: GameState) {
   } else if (!hunting.size) alertOverlay.classList.remove('spotted')
   alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
   chasers = hunting
+  const underground = isUnderground(player.x, player.y, player.z)
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
     : hunting.size
-      ? '見つかった！ 草むらに逃げよう'
+      ? '見つかった！ 茂みや穴に逃げこもう'
       : suspected
         ? '怪しまれている… 今のうちに隠れよう'
         : player.hidden
-          ? '身を隠しています'
-          : '足あとに気をつけて'
+          ? `身を隠しています（${COVER_NAMES[coverAt(player.x, player.y, player.z, true)]}）`
+          : inBush(player.x, player.z)
+            ? '茂みの中：空からは見えない'
+            : '足あとに気をつけて'
+  element<HTMLElement>('#area-name').textContent = regionName(player.x, player.y, player.z)
+  minimap.draw(state, localId, yaw)
   const pregnant = state.players.find((entry) => entry.pregnant && !entry.downed)
   const progress = pregnant ? pregnant.pregnancy : player.growth
   element<HTMLElement>('#objective-title').textContent = !pregnant
@@ -409,17 +434,22 @@ function updateHud(state: GameState) {
     (friend) => friend.downed && friend.id !== localId && Math.hypot(friend.x - player.x, friend.z - player.z) < 2
   )
   const sandPit = SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
+  const hole = !player.downed && tunnelExitNear(player.x, player.z, underground ? 1.3 : 1.6)
   element<HTMLElement>('#hint').textContent = nearFriend
     ? 'E を押して仲間を助ける'
     : nearNest
       ? 'E を長押しして卵を壊す'
-      : player.bath >= 1
-        ? '砂浴びでにおいを消した'
-        : player.bath > 0
-          ? `砂浴び中… ${Math.round(player.bath * 100)}%`
-          : sandPit
-            ? 'C を長押しして砂浴び（においを消す）'
-            : ''
+      : hole
+        ? underground
+          ? 'SPACE で地上に出る'
+          : 'C で穴にもぐる'
+        : player.bath >= 1
+          ? '砂浴びでにおいを消した'
+          : player.bath > 0
+            ? `砂浴び中… ${Math.round(player.bath * 100)}%`
+            : sandPit
+              ? 'C を長押しして砂浴び（においを消す）'
+              : ''
 }
 
 function frame(now: number) {
@@ -454,15 +484,17 @@ function frame(now: number) {
     const current = network
     const operation =
       role === 'host' && game
-        ? current.broadcastSnapshot({
-            ...game.state,
-            predators: game.state.predators.map((predator) =>
-              predator.state === 'search' || predator.state === 'suspicious'
-                ? { ...predator, state: 'patrol', stealthState: predator.state }
-                : predator
-            ),
-            inputAcks: Object.fromEntries(remoteInputAcks)
-          })
+        ? current.broadcastSnapshot(
+            packSnapshot({
+              ...game.state,
+              predators: game.state.predators.map((predator) =>
+                predator.state === 'search' || predator.state === 'suspicious'
+                  ? { ...predator, state: 'patrol', stealthState: predator.state }
+                  : predator
+              ),
+              inputAcks: Object.fromEntries(remoteInputAcks)
+            })
+          )
         : current.sendInput({ ...input, sentAt: now })
     if (role === 'guest') inputInFlight = current
     void operation

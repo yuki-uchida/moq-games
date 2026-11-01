@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { CAVES, LOGS, TUNNEL_NODES } from '../examples/games/rabbiters/src/map'
 
 for (const legacy of ['before-food-kinds', 'before-stealth']) {
   test(`a guest moves with a ${legacy} host snapshot`, async ({ page }) => {
@@ -81,10 +82,10 @@ window.rabbitersInvalidSnapshots = () => {
       )
     await expect.poll(state, { timeout: 5000 }).not.toBeNull()
     await page.keyboard.down('KeyD')
-    await expect.poll(async () => (await state())?.confirmed).toBeGreaterThan(-36)
+    await expect.poll(async () => (await state())?.confirmed).toBeGreaterThan(-117)
     await page.keyboard.up('KeyD')
     const current = await state()
-    expect(current!.shown).toBeGreaterThan(-36.5)
+    expect(current!.shown).toBeGreaterThan(-117.5)
     expect(current).toMatchObject({ bath: 0, predator: 'search', suspicion: 0, droppings: 0 })
     if (legacy === 'before-food-kinds') expect(current!.kind).toBe('carrot')
     expect(
@@ -273,7 +274,7 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
     expect(samples[index].shown - samples[index - 1].shown).toBeGreaterThan(-0.1)
     expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
   }
-  await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-36.5)
+  await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-117.5)
   await host.evaluate(() => (window as unknown as { rabbitersSuspectGuest: () => void }).rabbitersSuspectGuest())
   await expect
     .poll(
@@ -452,20 +453,20 @@ window.rabbitersTestAccelerate = () => {
       const state = read()
       if (!state || state.phase !== 'playing') return
       const player = state.players[0]
-      const foods = state.foods.filter((food) => food.active && food.y === 0 && Math.hypot(food.x + 37, food.z) < 18)
+      const foods = state.foods.filter((food) => food.active && food.y === 0 && Math.hypot(food.x + 118, food.z) < 18)
       const distance = (point: { x: number; z: number }) => Math.hypot(point.x - player.x, point.z - player.z)
       const target =
         (player.foodEaten < 6 || (player.foodEaten === 6 ? player.hunger < 60 : player.hunger < 40)) && foods.length
           ? foods.sort((first, second) => distance(first) - distance(second))[0]
-          : { x: -37, z: 0 }
+          : { x: -118, z: 0 }
       const dx = target.x - player.x
       const dz = target.z - player.z
       const threatened = state.predators.some(
         (predator) => Math.hypot(predator.x - player.x, predator.z - player.z) < 5
       )
       const inGrass = [
-        [-33, -7],
-        [-24, -12]
+        [-114, -7],
+        [-105, -12]
       ].some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 3.1)
       const desired = new Set([
         ...(dx > 0.6 ? ['KeyD'] : dx < -0.6 ? ['KeyA'] : []),
@@ -473,7 +474,7 @@ window.rabbitersTestAccelerate = () => {
         ...(distance(target) > 5 ? ['ShiftLeft'] : []),
         ...(threatened && inGrass ? ['KeyC'] : [])
       ])
-      testWindow.rabbitersFastForward = target.x === -37 && Math.abs(dx) < 0.6 && Math.abs(dz) < 0.6
+      testWindow.rabbitersFastForward = target.x === -118 && Math.abs(dx) < 0.6 && Math.abs(dz) < 0.6
       for (const key of new Set([...pressed, ...desired])) {
         if (pressed.has(key) !== desired.has(key))
           window.dispatchEvent(new KeyboardEvent(desired.has(key) ? 'keydown' : 'keyup', { code: key }))
@@ -518,7 +519,7 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 844, height: 390 }
 ]) {
-  test(`touch controls fit ${viewport.width}×${viewport.height}`, async ({ browser }) => {
+  test(`touch controls fit ${viewport.width}×${viewport.height}`, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true })
     const page = await context.newPage()
     await page.goto('/')
@@ -533,6 +534,21 @@ for (const viewport of [
       expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
       expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
     }
+    // The minimap shares the screen with the vitals card and touch controls without covering them.
+    const box = async (selector: string) => (await page.locator(selector).boundingBox())!
+    const map = await box('.map-card')
+    expect(map.x).toBeGreaterThanOrEqual(0)
+    expect(map.x + map.width).toBeLessThanOrEqual(viewport.width)
+    for (const selector of ['.vitals', '#joystick', '.touch-buttons']) {
+      const other = await box(selector)
+      const apart =
+        map.x + map.width <= other.x ||
+        other.x + other.width <= map.x ||
+        map.y + map.height <= other.y ||
+        other.y + other.height <= map.y
+      expect(apart, `${selector} overlaps the minimap`).toBe(true)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`hud-${viewport.width}x${viewport.height}.png`) })
     const joystick = (await page.locator('#joystick').boundingBox())!
     const center = { x: joystick.x + joystick.width / 2, y: joystick.y + joystick.height / 2 }
     const client = await context.newCDPSession(page)
@@ -656,22 +672,22 @@ test('stealth: "?" then "!" cues, alert vignette and droppings', async ({ page }
 window.rabbitersStealth = {
   stage(predators) {
     const player = game.state.players[0];
-    Object.assign(player, { x: -28, z: 2, y: 0 });
+    Object.assign(player, { x: -125, z: 8, y: 0 });
     game.state.predators = predators.map((entry) => ({ y: 0, angle: 0, state: 'patrol', targetId: null, suspicion: 0, ...entry }));
   },
   move(id, values) { Object.assign(game.state.predators.find((entry) => entry.id === id), values); },
   drop(entries) { game.state.droppings.push(...entries); },
   advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
   freeze() { this.step = game.step.bind(game); game.step = () => {}; },
-  spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -28, z: -1, state: 'chase', targetId: localId, suspicion: 1 }); },
+  spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -125, z: 5, state: 'chase', targetId: localId, suspicion: 1 }); },
   read(id) {
     const predator = game.state.predators.find((entry) => entry.id === id);
     const actor = scene.actors.get('predator:' + id);
     const symbol = actor?.marker?.symbol;
     return predator && {
-      state: predator.state, suspicion: predator.suspicion, y: predator.y, renderedY: actor.root.position.y,
+      state: predator.state, suspicion: predator.suspicion, y: predator.y, renderedY: actor?.root.position.y,
       marker: symbol?.visible ? [...scene.textures].find(([, texture]) => texture === symbol.material.map)?.[0] : null,
-      meter: actor.marker.fill.visible, overlay: alertOverlay.className,
+      meter: actor?.marker.fill.visible ?? false, overlay: alertOverlay.className,
       droppings: game.state.droppings.length, renderedDroppings: scene.droppings.size, alarm: audio.lastAlarm
     };
   }
@@ -702,8 +718,8 @@ window.rabbitersStealth = {
 
   await run(
     `stage(${JSON.stringify([
-      { id: 'fox', kind: 'fox', x: -28, z: -6.5 },
-      { id: 'hawk', kind: 'hawk', x: -40, y: 5, z: -25 }
+      { id: 'fox', kind: 'fox', x: -125, z: -0.5 },
+      { id: 'hawk', kind: 'hawk', x: -137, y: 5, z: -19 }
     ])})`
   )
   // Step the simulation in-page so the meter does not depend on the frame rate.
@@ -715,28 +731,179 @@ window.rabbitersStealth = {
   expect(reading.suspicion).toBeLessThan(1)
   const pellets = [0, 1, 2, 3].map((index) => ({
     id: `poo-test-${index}`,
-    x: -27.2 + index * 0.5,
+    x: -124.2 + index * 0.5,
     y: 0,
-    z: 3.2 - index * 1.6,
+    z: 9.2 - index * 1.6,
     t: 0
   }))
   await run(`drop(${JSON.stringify(pellets)})`)
+  // Markers follow the next rendered frame and the overlay the next HUD tick, so wait for them.
   await expect.poll(async () => (await read()).marker).toBe('?#e0a020')
-  reading = await read()
-  expect(reading.meter).toBe(true)
-  expect(reading.overlay).toContain('suspected')
+  await expect.poll(async () => (await read()).meter).toBe(true)
+  await expect.poll(async () => (await read()).overlay).toContain('suspected')
   await expect(page.locator('#condition')).toContainText('怪しまれている')
-  expect(reading.renderedDroppings).toBeGreaterThanOrEqual(4)
+  await expect.poll(async () => (await read()).renderedDroppings).toBeGreaterThanOrEqual(4)
   await page.screenshot({ path: testInfo.outputPath('stealth-question.png') })
 
   await run("spot('fox')")
   await expect.poll(async () => (await read()).marker).toBe('!#d8342c')
-  reading = await read()
-  expect(reading.overlay).toContain('spotted')
-  expect(reading.alarm).toBeGreaterThan(-1)
+  await expect.poll(async () => (await read()).overlay).toContain('spotted')
+  await expect.poll(async () => (await read()).alarm).toBeGreaterThan(-1)
   await expect(page.locator('#condition')).toContainText('見つかった')
   await page.waitForTimeout(150)
   await page.screenshot({ path: testInfo.outputPath('stealth-spotted.png') })
 
+  expect(errors).toEqual([])
+})
+
+test('map tour: terrain, tunnels, logs and caves stay readable and cheap to draw', async ({ page }, testInfo) => {
+  test.setTimeout(420_000) // software WebGL in CI renders the whole field at a few frames per second
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+const tourMap = await import('./map.ts');
+window.rabbitersTour = {
+  map: tourMap,
+  teleport(x, z, crouchHeight = 0) {
+    const player = game.state.players.find((entry) => entry.id === localId);
+    Object.assign(player, { x, z, y: tourMap.heightAt(x, z) + crouchHeight, health: 100, hunger: 100 });
+  },
+  look(radians) { const delta = radians - yaw; yaw = radians; scene.orbit(delta); },
+  predators(list) { game.state.predators = list.map((entry, index) => ({ id: 'tour-' + index, y: tourMap.heightAt(entry.x, entry.z) + (entry.kind === 'hawk' ? 6 : 0), angle: 0, state: 'patrol', targetId: null, suspicion: 0, ...entry })); },
+  info() {
+    const player = game.state.players.find((entry) => entry.id === localId);
+    const camera = scene.camera.position;
+    return {
+      x: player.x, y: player.y, z: player.z, hidden: player.hidden,
+      underground: tourMap.isUnderground(player.x, player.y, player.z),
+      camera: { x: camera.x, y: camera.y, z: camera.z, ground: tourMap.heightAt(camera.x, camera.z) },
+      calls: scene.renderer.info.render.calls,
+      condition: document.querySelector('#condition').textContent,
+      area: document.querySelector('#area-name').textContent
+    };
+  }
+};`
+    })
+  })
+  await page.setViewportSize({ width: 960, height: 600 })
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.locator('#solo').click()
+  await expect(page.locator('#minimap')).toBeVisible()
+  type Info = {
+    x: number
+    y: number
+    z: number
+    hidden: boolean
+    underground: boolean
+    camera: { x: number; y: number; z: number; ground: number }
+    calls: number
+    condition: string
+    area: string
+  }
+  type Tour = {
+    teleport: (x: number, z: number, lift?: number) => void
+    look: (radians: number) => void
+    predators: (list: { kind: string; x: number; z: number }[]) => void
+    info: () => Info
+  }
+  const tour = <T>(run: (tour: Tour, ...args: number[]) => T, ...args: number[]) =>
+    page.evaluate(
+      ([source, values]) =>
+        new Function('tour', '...args', `return (${source})(tour, ...args)`)(
+          (window as unknown as { rabbitersTour: Tour }).rabbitersTour,
+          ...values
+        ),
+      [run.toString(), args] as const
+    ) as Promise<T>
+  // Camera smoothing advances with frame time (capped at 0.1 s), so wait for enough frames and enough time.
+  const settle = (frames = 8, ms = 1500) =>
+    page.evaluate(
+      ([count, wait]) =>
+        new Promise<void>((resolve) => {
+          const until = performance.now() + wait
+          const tick = () => (--count <= 0 && performance.now() >= until ? resolve() : requestAnimationFrame(tick))
+          requestAnimationFrame(tick)
+        }),
+      [frames, ms]
+    )
+  const visit = async (x: number, z: number, yaw: number) => {
+    await tour((t, ...[px, pz, look]) => (t.teleport(px, pz), t.look(look)), x, z, yaw)
+    await settle()
+  }
+  const shoot = async (name: string) => {
+    await page.screenshot({ path: testInfo.outputPath(`${name}.png`) })
+    const info = await tour((t) => t.info())
+    if (!info.underground) expect(info.camera.y).toBeGreaterThan(info.camera.ground + 0.2)
+    expect(info.calls).toBeLessThan(400)
+    return info
+  }
+  await tour((t) => t.predators([]))
+
+  await visit(-118, 0, -Math.PI / 2)
+  const meadow = await shoot('01-home-meadow')
+  expect(meadow.area).toBe('ふるさとの草原')
+
+  await visit(0, 7, 0)
+  expect((await shoot('02-big-oak-hill')).y).toBeGreaterThan(2)
+
+  await visit(-8, -36, 0)
+  await shoot('03-terraces-and-cliffs')
+
+  await visit(2, -64, Math.PI)
+  expect((await shoot('04-plateau-lookout')).y).toBeGreaterThan(8)
+
+  await visit(-66, 19, -Math.PI / 2)
+  await shoot('05-stream-ford')
+
+  // The simulation is capped at 0.1 s per rendered frame, so hold keys until something happens.
+  const holdUntil = async (keys: string[], done: (info: Info) => boolean) => {
+    for (const key of keys) await page.keyboard.down(key)
+    await expect.poll(async () => done(await tour((t) => t.info())), { timeout: 90_000 }).toBe(true)
+    for (const key of keys) await page.keyboard.up(key)
+    await settle()
+  }
+
+  // Dive into the meadow warren and crawl toward the junction under the stream.
+  const [entry, , junction] = TUNNEL_NODES
+  await visit(entry.x, entry.z, Math.atan2(entry.x - junction.x, entry.z - junction.z))
+  await holdUntil(['KeyC'], (info) => info.underground)
+  await holdUntil(['KeyW'], (info) => Math.hypot(info.x - entry.x, info.z - entry.z) > 5)
+  const tunnel = await shoot('06-mole-tunnel')
+  expect(tunnel.camera.y).toBeLessThan(tunnel.camera.ground - 0.4)
+  expect(tunnel.area).toBe('モグラのトンネル')
+  expect(tunnel.condition).toContain('モグラのトンネル')
+
+  // Crawl in under a fallen log from its cut end while a wolf prowls nearby.
+  const log = LOGS[0]
+  const length = Math.hypot(log.bx - log.ax, log.bz - log.az)
+  const along = { x: (log.bx - log.ax) / length, z: (log.bz - log.az) / length }
+  await tour((t) => t.predators([{ kind: 'wolf', x: -2, z: 50 }]))
+  await visit(log.bx + along.x * 2.6, log.bz + along.z * 2.6, Math.atan2(along.x, along.z))
+  await page.keyboard.down('KeyC')
+  await holdUntil(['KeyW'], (info) => Math.hypot(info.x - log.bx, info.z - log.bz) > 3)
+  const under = await shoot('07-under-fallen-log')
+  await page.keyboard.up('KeyC')
+  expect(under.hidden).toBe(true)
+  expect(under.condition).toContain('倒木の下')
+
+  const cave = CAVES[0]
+  await tour((t) => t.predators([{ kind: 'fox', x: 112, z: -12 }]))
+  await visit(cave.x - 16, cave.z, -Math.PI / 2)
+  await shoot('08-cave-entrance')
+  await visit(cave.x - 4, cave.z, -Math.PI / 2)
+  const inside = await shoot('09-inside-cave')
+  expect(inside.hidden).toBe(true)
+  expect(inside.area).toBe(cave.name)
+  expect(inside.condition).toContain('洞窟の暗がり')
+
+  await tour((t) => t.predators([]))
+  await visit(96, 26, -Math.PI / 2)
+  await shoot('10-red-rock-spire')
+  await visit(12, 50, Math.PI)
+  await shoot('11-fallen-log-forest')
   expect(errors).toEqual([])
 })

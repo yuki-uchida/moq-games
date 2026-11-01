@@ -1,5 +1,36 @@
 import { FOOD_KINDS, type FoodKind } from './food'
 import {
+  CROCODILE_POOLS,
+  DEEP_WATER,
+  FOODS,
+  MAX_PREDATORS,
+  NESTS,
+  PREDATOR_STARTS,
+  SPAWN,
+  TUNNEL_DEPTH,
+  WATER_LEVEL,
+  WORLD,
+  caveAt,
+  caveWallBlocks,
+  clampToTunnel,
+  heightAt,
+  hitsBlocker,
+  inBush,
+  inGrass,
+  inShelter,
+  isUnderground,
+  lineOfSight,
+  logOver,
+  logTop,
+  onSand,
+  slopeAt,
+  treesNear,
+  tunnelExitNear,
+  waterDepth,
+  type PredatorKind
+} from './map'
+import {
+  HAWK_ALTITUDE,
   STEALTH,
   newMind,
   rollDropping,
@@ -74,61 +105,49 @@ export interface GameState {
   phase: 'playing' | 'won' | 'lost'
 }
 
+/** Snapshot sent through the relay: food and nest positions come from the shared map. */
+export type WireState = Omit<GameState, 'foods' | 'nests'> & { foods: string; nests: number[] }
+
 export interface Movement {
   velocity: number
   jumpHeld: boolean
 }
 
+/** Where a rabbit is hiding. Each predator sees through a different subset of these. */
+export type Cover = 'tunnel' | 'shelter' | 'cave' | 'log' | 'bush' | 'canopy' | 'grass' | 'water' | 'open'
+type Kind = PredatorKind | 'rabbit'
+type Body = { x: number; y: number; z: number }
+
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
-export const GRASS_PATCHES = [
-  [-33, -7],
-  [-24, -12],
-  [-22, 3],
-  [-17, -22],
-  [-12, 7],
-  [-4, -14],
-  [-1, 21],
-  [7, -7],
-  [12, 20],
-  [19, -5],
-  [25, 20]
-] as const
-/** Small sand pits for dust baths in the woods; the desert east of x=3 is sand too. */
-export const SAND_PATCHES = [
-  [-29, 17],
-  [-15, -3],
-  [-7, 27]
-] as const
-const fieldNoise = (seed: number) => {
-  const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453
-  return value - Math.floor(value)
-}
-/** Deterministic trees and rocks shared by the renderer and the predators' sight lines. */
-export const FIELD_PROPS = Array.from({ length: 110 }, (_, index) => {
-  const x = -44 + fieldNoise(index + 10) * 88
-  const z = -31 + fieldNoise(index + 310) * 62
-  const skip = Math.abs(z - 10) < 3 || Math.hypot(x + 37, z) < 5 || Math.hypot(x - 27, z + 20) < 6
-  return { index, x, z, skip, tree: !skip && x < 0 && (Math.abs(x) > 40 || Math.abs(z) > 27 || index % 4 === 0) }
-})
-const trees = FIELD_PROPS.filter((prop) => prop.tree)
-/** Flat field; a tree trunk between eye and rabbit (rabbit within 3 m of it) leaves it partly hidden. */
-export const fieldTerrain: Terrain = {
-  heightAt: () => 0,
-  sightLine: (from, to) =>
-    trees.some((tree) => Math.hypot(tree.x - to.x, tree.z - to.z) < 3 && segmentDistance(tree, from, to) < 0.8)
-      ? STEALTH.treeCover
-      : 1
-}
-const kinds: Predator['kind'][] = ['fox', 'wolf', 'hawk', 'snake', 'crocodile']
+const kinds: PredatorKind[] = ['fox', 'wolf', 'hawk', 'snake', 'crocodile']
+const BODY: Record<Kind, number> = { rabbit: 0.3, fox: 0.6, wolf: 0.75, hawk: 0, snake: 0.25, crocodile: 0.8 }
+/** Home range: a patrolling predator that strays further turns back toward where it started or hatched. */
+const LEASH: Record<PredatorKind, number> = { fox: 30, wolf: 38, hawk: 45, snake: 20, crocodile: 40 }
+const MAX_CLIMB = 0.95 // rise per metre a walker can climb; steeper ground needs a jump or is a cliff
+const MAX_STAND = 1.5 // nothing can rest on steeper ground: cliff faces are not ladders
+const SPRINT_NOISE = 1.3 // sprinting thumps: predators notice the rabbit from further away
 const distance = (first: { x: number; z: number }, second: { x: number; z: number }) =>
   Math.hypot(first.x - second.x, first.z - second.z)
-const water = (z: number) => Math.abs(z - 10) < 2.5
-const cave = (player: Player) => player.x > 23 && player.z < -15
-const shelter = (player: Player) => Math.hypot(player.x + 37, player.z) < 4
-export const onSand = (point: { x: number; z: number }) =>
-  point.x > 3 || SAND_PATCHES.some(([x, z]) => Math.hypot(point.x - x, point.z - z) < 2.4)
 const round = (value: number) => Math.round(value * 100) / 100
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+/**
+ * The shared map as the predators perceive it: terrain, tall rocks and cave walls block sight; a tree trunk
+ * close to the rabbit and in the way leaves it partly hidden. Bodies may carry `y` (and `kind` for hawks).
+ */
+export const mapTerrain: Terrain = {
+  heightAt,
+  sightLine(from, to) {
+    const eye = from as typeof from & { y?: number; kind?: string }
+    const body = to as typeof to & { y?: number }
+    const eyeY = eye.y === undefined ? heightAt(eye.x, eye.z) + 0.8 : eye.kind === 'hawk' ? eye.y : eye.y + 0.8
+    const bodyY = (body.y ?? heightAt(body.x, body.z)) + 0.4
+    if (!lineOfSight(eye.x, eyeY, eye.z, body.x, bodyY, body.z)) return 0
+    for (const tree of treesNear(body.x, body.z, 3))
+      if (segmentDistance(tree, eye, body) < 0.8 && distance(tree, eye) > 0.8) return STEALTH.treeCover
+    return 1
+  }
+}
 
 export const RULES = {
   adultAge: 300,
@@ -143,37 +162,180 @@ export const RULES = {
   predatorSpawnSeconds: 120
 } as const
 
+/** Whether a creature standing at `body` may step to (x, z). Rabbits may duck under logs. */
+export function canEnter(kind: Kind, body: Body, x: number, z: number, grounded: boolean, crouch: boolean): boolean {
+  if (x < WORLD.minX + 1 || x > WORLD.maxX - 1 || z < WORLD.minZ + 1 || z > WORLD.maxZ - 1) return false
+  if (kind === 'hawk') return true
+  const ground = heightAt(x, z)
+  if (kind === 'crocodile') return WATER_LEVEL - ground > 0.15
+  if (WATER_LEVEL - ground > DEEP_WATER) return false
+  const rise = ground - body.y
+  if (grounded ? rise > MAX_CLIMB * Math.hypot(x - body.x, z - body.z) + 0.02 : rise > 0.05) return false
+  const radius = BODY[kind]
+  if (hitsBlocker(x, z, radius) || caveWallBlocks(x, z, radius)) return false
+  if (kind !== 'rabbit' && kind !== 'snake' && inShelter(x, z, radius) && !inShelter(body.x, body.z, radius))
+    return false
+  const log = logOver(x, z, radius)
+  if (!log || kind === 'snake' || logOver(body.x, body.z, radius)) return true
+  return kind === 'rabbit' && ((crouch && grounded) || body.y > logTop(log))
+}
+
+/** Steps a body, sliding along whichever axis is still open when the full step is blocked. */
+function move(kind: Kind, body: Body, dx: number, dz: number, grounded: boolean, crouch: boolean): boolean {
+  if (!dx && !dz) return false
+  if (canEnter(kind, body, body.x + dx, body.z + dz, grounded, crouch)) {
+    body.x += dx
+    body.z += dz
+  } else if (dx && dz && canEnter(kind, body, body.x + dx, body.z, grounded, crouch)) body.x += dx
+  else if (dx && dz && canEnter(kind, body, body.x, body.z + dz, grounded, crouch)) body.z += dz
+  else return false
+  return true
+}
+
+/**
+ * Rabbit movement shared by the host simulation and guest-side prediction: terrain and slopes,
+ * jumps, wading, ducking under logs, and diving into / popping out of mole tunnels.
+ */
 export function moveRabbit(
   player: Pick<Player, 'x' | 'y' | 'z' | 'angle' | 'pregnant'>,
   input: Input,
   dt: number,
   movement: Movement
 ) {
+  const jumpPressed = input.jump && !movement.jumpHeld
+  movement.jumpHeld = input.jump
   const moveX = clamp(input.moveX, -1, 1)
   const moveZ = clamp(input.moveZ, -1, 1)
   const length = Math.max(1, Math.hypot(moveX, moveZ))
-  const speed =
-    (input.crouch ? 2.6 : input.sprint ? 9 : 5.2) *
-    (water(player.z) ? 0.55 : 1) *
-    (player.pregnant ? RULES.pregnancySpeed : 1)
-  player.x = clamp(player.x + (moveX / length) * speed * dt, -45, 45)
-  player.z = clamp(player.z + (moveZ / length) * speed * dt, -32, 32)
+  const directionX = moveX / length
+  const directionZ = moveZ / length
   if (moveX || moveZ) player.angle = Math.atan2(moveX, moveZ)
-  if (input.jump && !movement.jumpHeld && player.y === 0) movement.velocity = 10
-  movement.jumpHeld = input.jump
-  movement.velocity -= 18 * dt
-  player.y = Math.max(0, player.y + movement.velocity * dt)
-  if (player.y === 0) movement.velocity = 0
+  const pace = player.pregnant ? RULES.pregnancySpeed : 1
+  if (isUnderground(player.x, player.y, player.z)) {
+    // Mole tunnels: a fixed crawl along the corridors; jump at an exit hole to pop back out.
+    const next = clampToTunnel(player.x + directionX * 4.2 * pace * dt, player.z + directionZ * 4.2 * pace * dt, 0.3)
+    player.x = next.x
+    player.z = next.z
+    player.y = heightAt(next.x, next.z) - TUNNEL_DEPTH
+    const exit = jumpPressed ? tunnelExitNear(player.x, player.z, 1.3) : undefined
+    if (exit) {
+      player.x = exit.x
+      player.z = exit.z
+      player.y = heightAt(exit.x, exit.z)
+    }
+    movement.velocity = exit ? 6 : 0
+    return
+  }
+  const grounded = player.y <= heightAt(player.x, player.z) + 1e-6
+  const sliding = grounded && slopeAt(player.x, player.z) > MAX_STAND
+  const speed =
+    (input.crouch ? 2.6 : input.sprint ? 9 : 5.2) * (waterDepth(player.x, player.z) > 0.05 ? 0.55 : 1) * pace
+  if (sliding) {
+    const downX = heightAt(player.x - 0.5, player.z) - heightAt(player.x + 0.5, player.z)
+    const downZ = heightAt(player.x, player.z - 0.5) - heightAt(player.x, player.z + 0.5)
+    const length = Math.hypot(downX, downZ)
+    move('rabbit', player, (downX / length) * 6 * dt, (downZ / length) * 6 * dt, true, input.crouch)
+  } else move('rabbit', player, directionX * speed * dt, directionZ * speed * dt, grounded, input.crouch)
+  const ground = heightAt(player.x, player.z)
+  let velocity = movement.velocity
+  if (grounded && jumpPressed && !sliding) velocity = 10
+  if (grounded && velocity <= 0 && ground >= player.y - (speed * dt * 1.5 + 0.05)) {
+    player.y = ground // follow slopes downhill instead of hopping off every bump
+    velocity = 0
+  } else {
+    velocity -= 18 * dt
+    player.y = Math.max(ground, player.y + velocity * dt)
+    if (player.y === ground) velocity = 0
+  }
+  if (input.crouch && player.y === ground && tunnelExitNear(player.x, player.z, 1)) {
+    player.y = ground - TUNNEL_DEPTH
+    velocity = 0
+  }
+  movement.velocity = velocity
+}
+
+export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover {
+  if (isUnderground(x, y, z)) return 'tunnel'
+  if (inShelter(x, z)) return 'shelter'
+  if (caveAt(x, z)) return 'cave'
+  if (y - heightAt(x, z) > 0.6) return 'open'
+  if (crouch && logOver(x, z)) return 'log'
+  if (inBush(x, z)) return crouch ? 'bush' : 'canopy'
+  if (crouch && inGrass(x, z)) return 'grass'
+  if (crouch && waterDepth(x, z) > 0.05) return 'water'
+  return 'open'
+}
+
+/** Whether this predator can perceive a rabbit in this cover at all (before range, angle and sight lines). */
+function exposed(predator: Predator, player: Player, cover: Cover): boolean {
+  if (cover === 'open') return true
+  if (cover === 'canopy') return predator.kind !== 'hawk'
+  if (cover === 'water') return predator.kind === 'crocodile'
+  if (cover !== 'cave') return false
+  const cave = caveAt(player.x, player.z)
+  return predator.kind !== 'hawk' && caveAt(predator.x, predator.z) === cave && distance(predator, player) < 4
+}
+
+const predatorHeight = (kind: PredatorKind, x: number, z: number) =>
+  kind === 'hawk' ? heightAt(x, z) + HAWK_ALTITUDE.patrol : kind === 'crocodile' ? WATER_LEVEL - 0.3 : heightAt(x, z)
+const pick = ({ x, y, z }: Body) => ({ x, y, z })
+const foodState = (index: number, active: boolean): Food => ({
+  id: `food-${index}`,
+  kind: FOODS[index].kind,
+  ...pick(FOODS[index]),
+  active
+})
+const nestState = (index: number, health: number): Nest => ({
+  id: `nest-${index}`,
+  x: NESTS[index].x,
+  y: heightAt(NESTS[index].x, NESTS[index].z),
+  z: NESTS[index].z,
+  health,
+  active: health > 0
+})
+
+export function packSnapshot<T extends GameState>(state: T): Omit<T, 'foods' | 'nests'> & WireState {
+  const wire = {
+    ...state,
+    foods: state.foods.map((food) => (food.active ? '1' : '0')).join(''),
+    nests: state.nests.map((nest) => nest.health)
+  }
+  return JSON.parse(
+    JSON.stringify(wire, (_key, value: unknown) =>
+      typeof value === 'number' ? Math.round(value * 1000) / 1000 : value
+    )
+  )
+}
+
+/** Restores map-derived food and nest data; the caller still validates the remaining fields. */
+export function unpackSnapshot(value: unknown): GameState | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const wire = value as Partial<WireState>
+  const foods = wire.foods
+  const nests = wire.nests
+  if (typeof foods !== 'string' || foods.length !== FOODS.length || /[^01]/.test(foods)) return undefined
+  if (
+    !Array.isArray(nests) ||
+    nests.length !== NESTS.length ||
+    !nests.every((health) => typeof health === 'number' && health >= 0 && health <= 100)
+  )
+    return undefined
+  return {
+    ...(wire as WireState),
+    foods: FOODS.map((_, index) => foodState(index, foods[index] === '1')),
+    nests: nests.map((health, index) => nestState(index, health))
+  }
 }
 
 export class Game {
   state: GameState
   private inputs = new Map<string, Input>()
   private movements = new Map<string, Movement>()
-  private cover = new Map<string, { crouch: boolean; inGrass: boolean }>()
+  private cover = new Map<string, { crouch: boolean; inGrass: boolean; cover: Cover; sprinting: boolean }>()
   private foodReady = new Map<string, number>()
+  private homes = new Map<string, { x: number; z: number }>()
   private spawnIn = RULES.predatorSpawnSeconds
-  private predatorSequence = 5
+  private predatorSequence = PREDATOR_STARTS.length
   private seed: number
   private minds = new Map<string, Mind>()
   private scents = new Map<string, Scent>()
@@ -185,41 +347,21 @@ export class Game {
 
   constructor(
     seed = 1,
-    private readonly terrain: Terrain = fieldTerrain
+    private readonly terrain: Terrain = mapTerrain
   ) {
     this.seed = Number.isFinite(seed) ? seed >>> 0 : 1
-    const foods: Food[] = (
-      [
-        [-33, 0, -3, 'clover'],
-        [-28, 0, -8, 'dandelion'],
-        [-24, 0, -12, 'clover'],
-        [-12, 0, 7, 'carrot'],
-        [-4, 0, -14, 'berry'],
-        [12, 0, 20, 'cabbage'],
-        [27, 0, -20, 'berry'],
-        [30, 0, -23, 'dandelion'],
-        [-18, 2.2, -18, 'apple'],
-        [7, 2.2, -8, 'apple'],
-        [22, 2.2, 19, 'apple'],
-        [32, 0, 4, 'carrot']
-      ] as const
-    ).map(([x, y, z, kind], index) => ({ id: `food-${index}`, kind, x, y, z, active: true }))
     this.state = {
       time: 0,
       players: [],
-      foods,
-      nests: [
-        [-10, -23],
-        [21, 23],
-        [34, -14]
-      ].map(([x, z], index) => ({ id: `nest-${index}`, x, y: 0, z, health: 100, active: true })),
-      predators: kinds.map((kind, index) => ({
+      foods: FOODS.map((_, index) => foodState(index, true)),
+      nests: NESTS.map((_, index) => nestState(index, 100)),
+      predators: PREDATOR_STARTS.map(({ kind, x, z }, index) => ({
         id: `predator-${index}`,
         kind,
-        x: index === 0 ? -17 : 10 + index * 5,
-        y: kind === 'hawk' ? 5 : 0,
-        z: kind === 'crocodile' ? 10 : -25 + index * 11,
-        angle: 0,
+        x,
+        y: predatorHeight(kind, x, z),
+        z,
+        angle: index * 1.7,
         state: 'patrol',
         targetId: null,
         suspicion: 0
@@ -249,9 +391,9 @@ export class Game {
     this.state.players.push({
       id,
       name: name.slice(0, 40),
-      x: -37,
-      y: 0,
-      z: 0,
+      x: SPAWN.x,
+      y: heightAt(SPAWN.x, SPAWN.z),
+      z: SPAWN.z,
       angle: 0,
       hunger: 100,
       health: 100,
@@ -279,11 +421,12 @@ export class Game {
     return mind
   }
 
-  /** Drops a pellet; jumping or sprinting sends it rolling along the rabbit's heading. */
+  /** Drops a pellet; jumping or sprinting sends it rolling along the rabbit's heading. Tunnel pellets stay put. */
   private drop(player: Player, sprinting: boolean) {
     const state = this.state
     const id = `poo-${this.droppingSequence++}`
-    const push = player.y > 0.05 ? 2 : sprinting ? 3 : 0
+    const underground = isUnderground(player.x, player.y, player.z)
+    const push = player.y - heightAt(player.x, player.z) > 0.05 ? 2 : sprinting ? 3 : 0
     const direction = player.angle + (this.random() - 0.5) * 0.8
     const roll: Roll = {
       x: player.x,
@@ -293,9 +436,15 @@ export class Game {
       vy: 0,
       vz: Math.cos(direction) * push * (0.8 + this.random() * 0.4)
     }
-    state.droppings.push({ id, x: round(roll.x), y: round(roll.y), z: round(roll.z), t: round(state.time) })
+    state.droppings.push({
+      id,
+      x: round(roll.x),
+      y: round(underground ? player.y : roll.y),
+      z: round(roll.z),
+      t: round(state.time)
+    })
     this.scents.set(id, { owner: player.id, chain: this.chains.get(player.id) ?? 0 })
-    this.rolls.set(id, roll)
+    if (!underground) this.rolls.set(id, roll)
   }
 
   private breakScent(player: Player) {
@@ -355,26 +504,29 @@ export class Game {
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? idle
       let movement = this.movements.get(player.id)
-      if (!movement) {
-        movement = { velocity: 0, jumpHeld: false }
-        this.movements.set(player.id, movement)
-      }
+      if (!movement) this.movements.set(player.id, (movement = { velocity: 0, jumpHeld: false }))
       moveRabbit(player, input, dt, movement)
-      const inGrass = GRASS_PATCHES.some(([x, z]) => Math.hypot(player.x - x, player.z - z) < 3.2)
-      player.hidden =
-        shelter(player) || (player.y < 0.6 && input.crouch && (inGrass || water(player.z) || cave(player)))
-      this.cover.set(player.id, { crouch: input.crouch, inGrass })
-      const sprinting = input.sprint && !input.crouch && (input.moveX || input.moveZ)
+      const cover = coverAt(player.x, player.y, player.z, input.crouch)
+      const ground = heightAt(player.x, player.z)
+      const sprinting = input.sprint && !input.crouch && (input.moveX !== 0 || input.moveZ !== 0)
+      player.hidden = cover !== 'open' && cover !== 'canopy'
+      this.cover.set(player.id, {
+        crouch: input.crouch,
+        inGrass: inGrass(player.x, player.z) || cover === 'canopy',
+        cover,
+        sprinting
+      })
       // Wading through water or finishing a dust bath starts a new scent chain.
-      if (water(player.z) && !this.wet.has(player.id)) this.breakScent(player)
-      if (water(player.z)) this.wet.add(player.id)
+      const wet = cover !== 'tunnel' && waterDepth(player.x, player.z) > 0.05
+      if (wet && !this.wet.has(player.id)) this.breakScent(player)
+      if (wet) this.wet.add(player.id)
       else this.wet.delete(player.id)
-      if (input.crouch && !input.moveX && !input.moveZ && player.y === 0 && onSand(player)) {
+      if (input.crouch && !input.moveX && !input.moveZ && player.y === ground && onSand(player.x, player.z)) {
         if (player.bath < 1 && player.bath + dt / STEALTH.bathSeconds >= 1) this.breakScent(player)
         player.bath = Math.min(1, player.bath + dt / STEALTH.bathSeconds)
       } else player.bath = 0
       const dropIn = (this.dropIn.get(player.id) ?? 0) - dt
-      if (dropIn <= 0) this.drop(player, Boolean(sprinting))
+      if (dropIn <= 0) this.drop(player, sprinting)
       this.dropIn.set(player.id, dropIn <= 0 ? this.nextDropping() : dropIn)
       player.hunger = Math.max(
         0,
@@ -404,14 +556,16 @@ export class Game {
         player.pregnancy = Math.min(1, player.pregnancy + dt / RULES.gestationSeconds)
         if (player.pregnancy >= 1 - 1e-9) player.pregnancy = 1
       }
-      if (input.interact && player.y < 1) {
+      if (input.interact && cover !== 'tunnel' && player.y - ground < 1) {
         for (const nest of state.nests) {
           if (!nest.active || distance(player, nest) > 2.5) continue
           nest.health = Math.max(0, nest.health - dt * 70)
           nest.active = nest.health > 0
         }
+      }
+      if (input.interact) {
         for (const teammate of state.players) {
-          if (!teammate.downed || distance(player, teammate) > 2) continue
+          if (!teammate.downed || distance(player, teammate) > 2 || Math.abs(player.y - teammate.y) > 1.5) continue
           teammate.downed = false
           teammate.health = 35
           teammate.hunger = 35
@@ -423,8 +577,8 @@ export class Game {
       const roll = this.rolls.get(dropping.id)
       if (!roll) continue
       const moving = rollDropping(roll, this.terrain, dt)
-      roll.x = clamp(roll.x, -45, 45)
-      roll.z = clamp(roll.z, -32, 32)
+      roll.x = clamp(roll.x, WORLD.minX, WORLD.maxX)
+      roll.z = clamp(roll.z, WORLD.minZ, WORLD.maxZ)
       Object.assign(dropping, { x: round(roll.x), y: round(roll.y), z: round(roll.z) })
       if (!moving) this.rolls.delete(dropping.id)
     }
@@ -440,31 +594,47 @@ export class Game {
           this.rolls.delete(id)
         }
     }
-    const targets: Target[] = state.players
-      .filter((player) => !player.downed)
-      .map((player) => ({ id: player.id, x: player.x, y: player.y, z: player.z, visibility: 0 }))
+    // Surface predators cannot smell pellets left down in the tunnels.
+    const smellable = state.droppings.filter((dropping) => !isUnderground(dropping.x, dropping.y, dropping.z))
+    const awake = state.players.filter((player) => !player.downed)
+    const targets: Target[] = awake.map((player) => ({
+      id: player.id,
+      x: player.x,
+      y: player.y,
+      z: player.z,
+      visibility: 0
+    }))
     for (const predator of state.predators) {
-      for (const target of targets) {
-        const player = state.players.find((entry) => entry.id === target.id)!
-        target.visibility = visibility(
-          { hidden: player.hidden, ...(this.cover.get(player.id) ?? { crouch: false, inGrass: false }) },
-          this.terrain.sightLine(predator, player)
-        )
-      }
+      awake.forEach((player, index) => {
+        const seen = this.cover.get(player.id) ?? { crouch: false, inGrass: false, cover: 'open', sprinting: false }
+        targets[index].visibility = exposed(predator, player, seen.cover)
+          ? visibility(
+              { hidden: false, crouch: seen.crouch, inGrass: seen.inGrass },
+              this.terrain.sightLine(predator, player)
+            ) * (seen.sprinting ? SPRINT_NOISE : 1)
+          : 0
+      })
+      let home = this.homes.get(predator.id)
+      if (!home) this.homes.set(predator.id, (home = { x: predator.x, z: predator.z }))
+      const before = { x: predator.x, y: predator.y, z: predator.z }
       const chased = updatePredator(predator, this.mind(predator.id), targets, {
         dt,
         time: state.time,
-        droppings: state.droppings,
+        droppings: smellable,
         scents: this.scents,
         terrain: this.terrain,
         random: () => this.random()
       })
-      predator.x = clamp(predator.x, -45, 45)
-      predator.z = clamp(
-        predator.z,
-        predator.kind === 'crocodile' ? 7.5 : -32,
-        predator.kind === 'crocodile' ? 12.5 : 32
-      )
+      // The stealth brain steers freely; the map then decides how far that step actually gets.
+      const flight = predator.y
+      const stepX = predator.x - before.x
+      const stepZ = predator.z - before.z
+      Object.assign(predator, before)
+      const moved = move(predator.kind, predator, stepX, stepZ, true, false)
+      if (!moved && !chased && (stepX || stepZ)) predator.angle += 1.2 // turn away from cliffs, logs and rocks
+      predator.y = predator.kind === 'hawk' ? flight : predatorHeight(predator.kind, predator.x, predator.z)
+      if (predator.state === 'patrol' && distance(predator, home) > LEASH[predator.kind])
+        predator.angle = Math.atan2(home.x - predator.x, home.z - predator.z)
       const target = chased && state.players.find((player) => player.id === chased.id)
       if (target && distance(predator, target) < 1.3 && Math.abs(predator.y - target.y) < 1.5) {
         target.health = Math.max(0, target.health - 24 * dt)
@@ -472,16 +642,22 @@ export class Game {
       }
     }
     const activeNests = state.nests.filter((nest) => nest.active)
-    this.spawnIn -= (dt * activeNests.length) / 3
-    if (this.spawnIn <= 0 && activeNests.length && state.predators.length < 12) {
+    this.spawnIn -= (dt * activeNests.length * 3) / state.nests.length
+    if (this.spawnIn <= 0 && activeNests.length && state.predators.length < MAX_PREDATORS) {
       const nest = activeNests[Math.floor(this.random() * activeNests.length)]
       const kind = kinds[Math.floor(this.random() * kinds.length)]
+      const at =
+        kind === 'crocodile'
+          ? CROCODILE_POOLS.reduce((best, pool) => (distance(pool, nest) < distance(best, nest) ? pool : best))
+          : nest
+      const id = `predator-${this.predatorSequence++}`
+      this.homes.set(id, { x: at.x, z: at.z })
       state.predators.push({
-        id: `predator-${this.predatorSequence++}`,
+        id,
         kind,
-        x: nest.x,
-        y: kind === 'hawk' ? 5 : 0,
-        z: kind === 'crocodile' ? 10 : nest.z,
+        x: at.x,
+        y: predatorHeight(kind, at.x, at.z),
+        z: at.z,
         angle: this.random() * Math.PI * 2,
         state: 'patrol',
         targetId: null,

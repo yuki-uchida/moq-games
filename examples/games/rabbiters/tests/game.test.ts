@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { Game, GRASS_PATCHES, RULES, type Input } from '../src/game'
+import { Game, RULES, coverAt, type Input } from '../src/game'
+import { FOODS, GRASS, PREDATOR_STARTS, SPAWN, WORLD, heightAt } from '../src/map'
 import { FOOD_KINDS } from '../src/food'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
@@ -23,7 +24,7 @@ describe('Rabbiters authoritative simulation', () => {
     expect(JSON.parse(JSON.stringify(first.state))).toEqual(first.state)
     first.state.foods[0].active = false
     expect(second.state.foods[0].active).toBe(true)
-    expect(first.state.predators).toHaveLength(6)
+    expect(first.state.predators).toHaveLength(PREDATOR_STARTS.length + 3)
   })
 
   it('validates identity and untrusted input, copies input, and clamps dt', () => {
@@ -38,12 +39,12 @@ describe('Rabbiters authoritative simulation', () => {
     expect(game.state.time).toBe(0)
     game.step(100)
     expect(game.state.time).toBeCloseTo(0.25)
-    expect(game.state.players[0].x).toBe(-37)
+    expect(game.state.players[0].x).toBe(SPAWN.x)
     const input = { ...idle, moveX: 1 }
     game.setInput('rabbit', input)
     input.moveX = -1
     game.step(0.1)
-    expect(game.state.players[0].x).toBeGreaterThan(-37)
+    expect(game.state.players[0].x).toBeGreaterThan(SPAWN.x)
   })
 
   it('normalizes movement, respects bounds and makes sprint faster', () => {
@@ -51,27 +52,29 @@ describe('Rabbiters authoritative simulation', () => {
     const player = game.state.players[0]
     game.setInput(player.id, { ...idle, moveX: 10, moveZ: 10 })
     game.step(0.1)
-    expect(Math.hypot(player.x + 37, player.z)).toBeCloseTo(0.52)
-    player.x = 44.9
-    player.z = 31.9
+    expect(Math.hypot(player.x - SPAWN.x, player.z - SPAWN.z)).toBeCloseTo(0.52)
+    game.setInput(player.id, { ...idle, moveX: -1, sprint: true })
+    const before = player.x
+    game.step(0.1)
+    expect(before - player.x).toBeCloseTo(0.9)
+    Object.assign(player, { x: WORLD.maxX - 1.5, z: 0, y: heightAt(WORLD.maxX - 1.5, 0) + 3 })
     game.setInput(player.id, { ...idle, moveX: 1, moveZ: 1, sprint: true })
-    game.step(0.25)
-    expect(player.x).toBe(45)
-    expect(player.z).toBe(32)
+    advance(game, 2)
+    expect(player.x).toBeLessThanOrEqual(WORLD.maxX - 1)
+    expect(player.y).toBeCloseTo(heightAt(player.x, player.z))
   })
 
   it('requires a jump for elevated food and does not auto-repeat held jumps', () => {
     const game = peaceful()
     const player = game.state.players[0]
-    const food = game.state.foods.find((food) => food.y > 0)!
-    player.x = food.x
-    player.z = food.z
+    const food = game.state.foods[FOODS.findIndex((spot) => spot.place === 'raised')]
+    Object.assign(player, { x: food.x, z: food.z, y: heightAt(food.x, food.z) })
     game.step(0.1)
     expect(food.active).toBe(true)
     game.setInput(player.id, { ...idle, jump: true })
     advance(game, 2)
     expect(food.active).toBe(false)
-    expect(player.y).toBe(0)
+    expect(player.y).toBe(heightAt(food.x, food.z))
     expect(game.state.delivered).toBe(1)
   })
 
@@ -87,33 +90,32 @@ describe('Rabbiters authoritative simulation', () => {
     game.step(0.1)
     expect(player.hunger).toBeGreaterThan(60)
     expect(player.score).toBe(1)
-    player.x = -37
-    player.z = 0
+    Object.assign(player, { x: SPAWN.x, z: SPAWN.z })
     advance(game, RULES.foodRespawnSeconds - 1)
     expect(food.active).toBe(false)
     advance(game, 2)
     expect(food.active).toBe(true)
   })
 
-  it('hides in grass, water and caves and targets the nearest vulnerable rabbit', () => {
+  it('hides in grass, shallow water and caves and targets the nearest vulnerable rabbit', () => {
     const game = new Game()
     game.addPlayer('hidden', 'Hidden')
     game.addPlayer('visible', 'Visible')
     const [hidden, visible] = game.state.players
-    Object.assign(hidden, { x: -24, z: -12 })
-    Object.assign(visible, { x: -21, z: -10 })
+    Object.assign(hidden, { x: -105, y: 0, z: -12 })
+    Object.assign(visible, { x: -102, y: 0, z: -10 })
     game.setInput(hidden.id, { ...idle, crouch: true })
     game.state.predators = [
-      { id: 'fox', kind: 'fox', x: -24, y: 0, z: -7, angle: Math.PI, state: 'patrol', targetId: null }
+      { id: 'fox', kind: 'fox', x: -105, y: 0, z: -7, angle: Math.PI, state: 'patrol', targetId: null }
     ]
     game.step(0.01)
     expect(hidden.hidden).toBe(true)
     expect(game.state.predators[0].targetId).toBe('visible')
     for (const [x, z] of [
-      [5, 10],
-      [27, -20]
+      [-55, 19],
+      [96, -12]
     ]) {
-      Object.assign(hidden, { x, z })
+      Object.assign(hidden, { x, z, y: heightAt(x, z) })
       game.step(0.01)
       expect(hidden.hidden).toBe(true)
     }
@@ -129,16 +131,19 @@ describe('Rabbiters authoritative simulation', () => {
     game.state.predators = [{ id: 'fox', kind: 'fox', x: 0, y: 0, z: 0, angle: 0, state: 'chase', targetId: player.id }]
     const predator = game.state.predators[0]
     game.setInput(player.id, { ...idle, crouch: true })
-    for (const [x, z] of GRASS_PATCHES) {
-      Object.assign(player, { x, z, y: 0, health: 100 })
-      Object.assign(predator, { x, z, state: 'chase', targetId: player.id })
+    for (const patch of GRASS) {
+      const x = (patch.ax + patch.bx) / 2
+      const z = (patch.az + patch.bz) / 2
+      Object.assign(player, { x, z, y: heightAt(x, z), health: 100 })
+      Object.assign(predator, { x, z, y: heightAt(x, z), state: 'chase', targetId: player.id })
       game.step(0.1)
       expect(player.hidden).toBe(true)
       expect(player.health).toBe(100)
       expect(predator.targetId).toBeNull()
     }
     game.setInput(player.id, idle)
-    Object.assign(predator, { x: player.x, z: player.z, state: 'chase' })
+    Object.assign(player, { x: -105, z: -12, y: 0 })
+    Object.assign(predator, { x: player.x, z: player.z, y: 0, state: 'chase' })
     game.step(0.1)
     expect(player.hidden).toBe(false)
     expect(player.health).toBeLessThan(100)
@@ -151,8 +156,7 @@ describe('Rabbiters authoritative simulation', () => {
     advance(game, 2)
     expect(game.state.nests.every((nest) => nest.health === 100)).toBe(true)
     for (const nest of game.state.nests) {
-      player.x = nest.x
-      player.z = nest.z
+      Object.assign(player, { x: nest.x, y: nest.y, z: nest.z })
       advance(game, 2)
       expect(nest.active).toBe(false)
       expect(nest.health).toBe(0)
@@ -196,7 +200,7 @@ describe('Rabbiters authoritative simulation', () => {
     expect(player.pregnant).toBe(true)
     expect(player.pregnancy).toBeGreaterThan(0)
     expect(game.state.phase).toBe('playing')
-    Object.assign(player, { x: -37, z: 0 })
+    Object.assign(player, { x: SPAWN.x, y: 0, z: SPAWN.z })
     for (let elapsed = 0; elapsed < RULES.gestationSeconds; elapsed += 100) {
       player.hunger = 100
       advance(game, Math.min(100, RULES.gestationSeconds - elapsed))
@@ -214,7 +218,7 @@ describe('Rabbiters authoritative simulation', () => {
     }
     expect(player.age).toBeCloseTo(RULES.requiredFood / 10)
     expect(player.pregnant).toBe(false)
-    Object.assign(player, { x: -37, z: 0 })
+    Object.assign(player, { x: SPAWN.x, y: 0, z: SPAWN.z })
     advance(game, RULES.adultAge - player.age - 1)
     expect(player.pregnant).toBe(false)
     player.hunger = 100
@@ -292,7 +296,7 @@ describe('Rabbiters authoritative simulation', () => {
         player.foodEaten < RULES.requiredFood ||
         (player.foodEaten === RULES.requiredFood ? player.hunger < 60 : player.hunger < 40)
       const foods = game.state.foods.filter(
-        (food) => food.active && food.y === 0 && Math.hypot(food.x + 37, food.z) < 18
+        (food) => food.active && food.y === 0 && Math.hypot(food.x - SPAWN.x, food.z - SPAWN.z) < 18
       )
       const target =
         seeking && foods.length
@@ -300,14 +304,14 @@ describe('Rabbiters authoritative simulation', () => {
               const distance = (food: { x: number; z: number }) => Math.hypot(food.x - player.x, food.z - player.z)
               return distance(first) - distance(second)
             })[0]
-          : { x: -37, z: 0 }
+          : SPAWN
       const dx = target.x - player.x
       const dz = target.z - player.z
       const distance = Math.hypot(dx, dz)
       const threatened = game.state.predators.some(
         (predator) => Math.hypot(predator.x - player.x, predator.z - player.z) < 5
       )
-      const inGrass = GRASS_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 3.1)
+      const inGrass = GRASS.some((patch) => Math.hypot(patch.ax - player.x, patch.az - player.z) < patch.r - 0.1)
       game.setInput(player.id, {
         ...idle,
         moveX: distance > 0.7 ? dx / distance : 0,
@@ -321,8 +325,8 @@ describe('Rabbiters authoritative simulation', () => {
     expect(game.state.time).toBeGreaterThanOrEqual(RULES.adultAge + RULES.gestationSeconds - 0.1)
     expect(game.state.time).toBeLessThan(20 * 60)
     expect(player.foodEaten).toBeGreaterThan(RULES.requiredFood)
-    expect(game.state.predators.length).toBeGreaterThan(5)
-  })
+    expect(game.state.predators.length).toBeGreaterThan(PREDATOR_STARTS.length)
+  }, 60_000)
 
   it('revives a starving pregnant teammate without losing birth progress', () => {
     const game = peaceful()
@@ -347,22 +351,22 @@ describe('Rabbiters authoritative simulation', () => {
   it('reduces spawn frequency with fewer surviving nests', () => {
     const full = new Game(7)
     const reduced = new Game(7)
-    reduced.state.nests[0].active = false
-    reduced.state.nests[1].active = false
+    for (const nest of reduced.state.nests.slice(2)) nest.active = false
     advance(full, RULES.predatorSpawnSeconds * 1.8)
     advance(reduced, RULES.predatorSpawnSeconds * 1.8)
-    expect(full.state.predators).toHaveLength(6)
-    expect(reduced.state.predators).toHaveLength(5)
+    expect(full.state.predators).toHaveLength(PREDATOR_STARTS.length + 5)
+    expect(reduced.state.predators).toHaveLength(PREDATOR_STARTS.length + 1)
     advance(reduced, RULES.predatorSpawnSeconds * 1.3)
-    expect(reduced.state.predators).toHaveLength(6)
+    expect(reduced.state.predators).toHaveLength(PREDATOR_STARTS.length + 2)
   })
 
   it('damages nearby rabbits, ignores downed targets and lets high jumps evade ground predators', () => {
     const game = new Game()
     game.addPlayer('rabbit', 'Rabbit')
     const player = game.state.players[0]
-    Object.assign(player, { x: 0, z: 0, y: 2 })
-    game.state.predators = [{ id: 'fox', kind: 'fox', x: 0, y: 0, z: 0, angle: 0, state: 'chase', targetId: null }]
+    Object.assign(player, { x: -110, z: 10, y: 2 })
+    expect(coverAt(-110, 0, 10, false)).toBe('open')
+    game.state.predators = [{ id: 'fox', kind: 'fox', x: -110, y: 0, z: 10, angle: 0, state: 'chase', targetId: null }]
     game.step(0.01)
     expect(player.health).toBe(100)
     player.y = 0

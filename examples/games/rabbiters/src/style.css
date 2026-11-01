@@ -452,6 +452,36 @@ input:focus-visible {
 #food-progress b {
   margin-left: 4px;
 }
+.map-card {
+  position: absolute;
+  top: 100px;
+  right: 34px;
+  width: 216px;
+  margin: 0;
+  padding: 8px;
+  background: #102d26d9;
+  border: 1px solid #ffffff38;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #10291f38;
+}
+.map-card canvas {
+  display: block;
+  width: 100%;
+  border-radius: 5px;
+  image-rendering: pixelated;
+}
+.map-card figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #d7e4ce;
+}
+.map-card .compass {
+  font-weight: 700;
+  color: #f3d599;
+}
 .interaction-hint {
   position: absolute;
   left: 50%;
@@ -614,6 +644,15 @@ input:focus-visible {
     width: 190px;
     padding: 11px;
   }
+  .map-card {
+    top: 70px;
+    right: 12px;
+    width: 128px;
+    padding: 5px;
+  }
+  .map-card figcaption {
+    font-size: 8px;
+  }
   .objective-card {
     left: 12px;
     bottom: 160px;
@@ -721,6 +760,10 @@ input:focus-visible {
   }
   .vitals {
     top: 58px;
+  }
+  .map-card {
+    top: 58px;
+    width: 112px;
   }
   .objective-card {
     bottom: 16px;

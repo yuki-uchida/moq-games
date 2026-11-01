@@ -1,5 +1,18 @@
 import * as THREE from 'three'
-import { FIELD_PROPS, GRASS_PATCHES, SAND_PATCHES } from './game'
+import {
+  CAVES,
+  SPAWN,
+  TUNNEL_DEPTH,
+  blockersNear,
+  caveAt,
+  clampToTunnel,
+  floorAt,
+  heightAt,
+  isUnderground,
+  logOver,
+  logTop
+} from './map'
+import { WorldView } from './world'
 import { buildFood, isFoodKind, type FoodKind } from './food'
 import { STEALTH } from './stealth'
 
@@ -58,9 +71,11 @@ type Actor = {
   moving: number
 }
 
+const UP = new THREE.Vector3(0, 1, 0)
+
 export class RabbitersScene {
   private readonly scene = new THREE.Scene()
-  private readonly camera = new THREE.PerspectiveCamera(48, 1, 0.1, 180)
+  private readonly camera = new THREE.PerspectiveCamera(48, 1, 0.1, 240)
   private readonly renderer: THREE.WebGLRenderer
   private readonly actors = new Map<string, Actor>()
   private readonly items = new Map<string, THREE.Group>()
@@ -73,11 +88,10 @@ export class RabbitersScene {
     small: new THREE.SphereGeometry(1, 8, 6),
     arm: new THREE.CapsuleGeometry(0.075, 0.2, 4, 10)
   }
-  private readonly target = new THREE.Vector3(-37, 0, 0)
-  private readonly cameraObstacles: THREE.Object3D[] = []
-  private readonly cameraRay = new THREE.Raycaster()
-  private readonly water: THREE.Mesh
-  private readonly reeds: THREE.Group[] = []
+  private readonly target = new THREE.Vector3(SPAWN.x, 0, SPAWN.z)
+  private readonly world: WorldView
+  private readonly sun = new THREE.DirectionalLight('#ffe8bc', 3.2)
+  private readonly lantern = new THREE.PointLight('#ffd9a0', 0, 9, 1.4)
   private readonly droppings = new Map<string, THREE.Group>()
   private readonly pellet = new THREE.SphereGeometry(0.075, 8, 6)
   private readonly textures = new Map<string, THREE.Texture>()
@@ -97,37 +111,18 @@ export class RabbitersScene {
     this.renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;'
     container.appendChild(this.renderer.domElement)
     this.scene.background = new THREE.Color('#b8d9d2')
-    this.scene.fog = new THREE.Fog('#b8d9d2', 48, 115)
+    // The field is 288 × 200 m: fog hides the far edge while hills and landmarks stay readable.
+    this.scene.fog = new THREE.Fog('#b8d9d2', 50, 230)
     this.scene.add(new THREE.HemisphereLight('#e8f7f2', '#726442', 2.5))
-    const sun = new THREE.DirectionalLight('#ffe8bc', 3.2)
-    sun.position.set(-18, 35, 12)
+    const sun = this.sun
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
-    Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 45, bottom: -45, near: 1, far: 100 })
+    Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 120 })
     sun.shadow.normalBias = 0.05
-    this.scene.add(sun)
-    this.landscape()
-    this.water = this.mesh(this.scene, new THREE.PlaneGeometry(90, 3.8), '#6eb9ba', 0, 0.035, 10)
-    this.water.rotation.x = -Math.PI / 2
-    this.water.material = this.material('#6eb9ba', 0.45, true)
-    for (let index = 0; index < 35; index++) {
-      const ripple = this.mesh(
-        this.scene,
-        new THREE.BoxGeometry(0.6 + this.random(index) * 1.2, 0.012, 0.04),
-        '#d5ece0',
-        -44 + index * 2.6,
-        0.06,
-        8.6 + this.random(index + 70) * 2.8
-      )
-      ripple.castShadow = false
-    }
-    this.camera.position.set(-37, 3.6, 8)
+    this.scene.add(sun, sun.target, this.lantern)
+    this.world = new WorldView(this.scene)
+    this.camera.position.set(SPAWN.x, 3.6, SPAWN.z + 8)
     this.resize()
-  }
-
-  private random(seed: number): number {
-    const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453
-    return value - Math.floor(value)
   }
 
   private material(color: string, opacity = 1, transparent = false): THREE.MeshStandardMaterial {
@@ -276,133 +271,6 @@ export class RabbitersScene {
     const mesh = this.mesh(parent, new THREE.SphereGeometry(1, 12, 8), color, x, y, z)
     mesh.scale.set(width, height, depth)
     return mesh
-  }
-
-  private landscape(): void {
-    const backdrop = this.mesh(this.scene, new THREE.PlaneGeometry(400, 400), '#83a172', 0, -0.06, 0)
-    backdrop.rotation.x = -Math.PI / 2
-    const ground = this.mesh(this.scene, new THREE.PlaneGeometry(90, 64), '#91ac69', 0, -0.025, 0)
-    ground.rotation.x = -Math.PI / 2
-    const desert = this.mesh(this.scene, new THREE.PlaneGeometry(43, 64), '#e4c58c', 23.5, -0.012, 0)
-    desert.rotation.x = -Math.PI / 2
-    this.mesh(this.scene, new THREE.BoxGeometry(90, 1.8, 64), '#9a8861', 0, -0.95, 0)
-    for (const { index, x, z, skip, tree: isTree } of FIELD_PROPS) {
-      if (skip) continue
-      if (isTree) {
-        const tree = new THREE.Group()
-        tree.position.set(x, 0, z)
-        this.scene.add(tree)
-        this.cameraObstacles.push(tree)
-        const height = 3.5 + this.random(index + 800) * 2
-        this.mesh(tree, new THREE.CylinderGeometry(0.18, 0.35, height, 7), '#80664b', 0, height / 2, 0)
-        for (let crown = 0; crown < 3; crown++)
-          this.oval(
-            tree,
-            ['#527f59', '#6c9861', '#82a76b'][crown],
-            (crown - 1) * 0.8,
-            height + crown * 0.35,
-            (crown % 2) * 0.5,
-            1.7,
-            1.6,
-            1.5
-          )
-      } else {
-        const rock = this.mesh(
-          this.scene,
-          new THREE.DodecahedronGeometry(0.2 + this.random(index + 81) * 0.35),
-          x > 2 ? '#c3a778' : '#a3ac91',
-          x,
-          0.12,
-          z
-        )
-        rock.scale.y = 0.6
-      }
-      for (let tuft = 0; tuft < 3; tuft++) {
-        const stem = this.mesh(
-          this.scene,
-          new THREE.ConeGeometry(0.08, 0.35, 3),
-          x < 2 ? '#789852' : '#bba369',
-          x + tuft * 0.16,
-          0.15,
-          z + 0.6
-        )
-        stem.rotation.z = (tuft - 1) * 0.3
-      }
-      if (x < 0 && index % 3 === 0) {
-        this.oval(this.scene, '#e8c59d', x + 0.7, 0.35, z, 0.22, 0.12, 0.22)
-        this.mesh(this.scene, new THREE.CylinderGeometry(0.04, 0.06, 0.3, 6), '#eee0ba', x + 0.7, 0.15, z)
-      }
-    }
-    for (const [x, z] of GRASS_PATCHES) {
-      const patch = this.mesh(this.scene, new THREE.CircleGeometry(3.2, 40), '#698747', x, 0.02, z)
-      patch.rotation.x = -Math.PI / 2
-      for (let index = 0; index < 26; index++) {
-        const angle = index * 2.399
-        const radius = Math.sqrt(this.random(index + x)) * 2.9
-        const reed = new THREE.Group()
-        reed.position.set(x + Math.cos(angle) * radius, 0, z + Math.sin(angle) * radius)
-        this.scene.add(reed)
-        for (let blade = 0; blade < 3; blade++) {
-          const leaf = this.mesh(
-            reed,
-            new THREE.ConeGeometry(0.09, 0.85 + this.random(index) * 0.4, 3),
-            ['#749a51', '#93b966', '#b6c979'][blade],
-            blade * 0.09,
-            0.45,
-            0
-          )
-          leaf.rotation.z = (blade - 1) * 0.3
-        }
-        this.reeds.push(reed)
-      }
-    }
-    for (const [x, z] of SAND_PATCHES) {
-      const pit = this.mesh(this.scene, new THREE.CircleGeometry(2.4, 32), '#e2c48e', x, 0.024, z)
-      pit.rotation.x = -Math.PI / 2
-      for (let index = 0; index < 6; index++)
-        this.mesh(
-          this.scene,
-          new THREE.DodecahedronGeometry(0.08 + this.random(index + x) * 0.08),
-          '#c9a874',
-          x + Math.cos(index * 1.7) * 2.1,
-          0.05,
-          z + Math.sin(index * 1.7) * 2.1
-        )
-    }
-    const burrow = new THREE.Group()
-    burrow.position.set(-37, 0, -3)
-    this.scene.add(burrow)
-    this.cameraObstacles.push(burrow)
-    this.oval(burrow, '#9ba66c', 0, 0, -0.65, 3, 1.65, 2.4)
-    this.oval(burrow, '#463e35', 0, 0.52, 1.35, 1.1, 0.8, 0.12)
-    const arch = this.mesh(burrow, new THREE.TorusGeometry(1.08, 0.16, 6, 18, Math.PI), '#bca579', 0, 0.45, 1.5)
-    arch.rotation.z = 0
-    for (const side of [-1, 1]) {
-      this.mesh(burrow, new THREE.CylinderGeometry(0.06, 0.08, 2, 6), '#82634a', side * 1.8, 1, 1.4)
-      this.oval(burrow, '#f3cd72', side * 1.8, 1.8, 1.4, 0.22, 0.3, 0.22)
-    }
-    const cave = new THREE.Group()
-    cave.position.set(27, 0, -20)
-    this.scene.add(cave)
-    this.cameraObstacles.push(cave)
-    this.oval(cave, '#514e50', 0, 1.2, -0.6, 3.8, 2.8, 1.7)
-    this.oval(cave, '#292d36', 0, 1.1, 1.08, 1.85, 1.55, 0.08)
-    for (let index = 0; index < 9; index++) {
-      const angle = (index / 8) * Math.PI
-      const rock = this.mesh(
-        cave,
-        new THREE.DodecahedronGeometry(0.9),
-        '#9a9180',
-        Math.cos(angle) * 2.5,
-        Math.sin(angle) * 2.8,
-        1
-      )
-      rock.rotation.z = angle
-    }
-    for (let index = 0; index < 8; index++) {
-      const crystal = this.mesh(cave, new THREE.ConeGeometry(0.16, 0.8, 5), '#a7ccbf', -2.3 + index * 0.66, 0.3, 1.8)
-      crystal.rotation.z = (this.random(index) - 0.5) * 0.8
-    }
   }
 
   private character(kind: string): Actor {
@@ -698,13 +566,15 @@ export class RabbitersScene {
       actor.root.position.set(entity.x, entity.y, entity.z)
       actor.root.rotation.y = entity.angle
       actor.root.scale.setScalar(entity.hidden ? 0.8 : 1)
+      // Far creatures are lost in the fog anyway; skipping them keeps draw calls flat on the big map.
+      actor.root.visible = Math.hypot(entity.x - this.target.x, entity.z - this.target.z) < 120
       if (actor.belly) actor.belly.visible = entity.pregnant === true
       this.animate(
         actor,
         state.time,
         actor.moving,
         entity.downed,
-        entity.y > 0.06,
+        entity.y - floorAt(entity.x, entity.y, entity.z) > 0.06,
         'bath' in entity ? (entity.bath ?? 0) : 0
       )
       if ('suspicion' in entity)
@@ -720,14 +590,14 @@ export class RabbitersScene {
       const key = `food:${food.id}`
       liveItems.add(key)
       const item = this.item(key, false, isFoodKind(food.kind) ? food.kind : 'carrot')
-      item.visible = food.active
+      item.visible = food.active && Math.hypot(food.x - this.target.x, food.z - this.target.z) < 110
       item.position.set(food.x, food.y + Math.sin(state.time * 2 + food.x) * 0.035, food.z)
     }
     for (const nest of state.nests) {
       const key = `nest:${nest.id}`
       liveItems.add(key)
       const item = this.item(key, true)
-      item.visible = nest.active
+      item.visible = nest.active && Math.hypot(nest.x - this.target.x, nest.z - this.target.z) < 130
       item.position.set(nest.x, nest.y, nest.z)
     }
     for (const [key, item] of this.items)
@@ -759,27 +629,115 @@ export class RabbitersScene {
       }
     const local = state.players.find((player) => player.id === localPlayerId) || state.players[0]
     const smoothing = 1 - Math.exp(-elapsed * 7)
-    if (local) this.target.lerp(new THREE.Vector3(local.x, Math.max(0, local.y), local.z), smoothing)
+    if (local) this.target.lerp(new THREE.Vector3(local.x, local.y, local.z), smoothing)
+    const underground = !!local && isUnderground(local.x, local.y, local.z)
+    const cave = local && !underground ? caveAt(local.x, local.z) : undefined
+    const log = local && !underground ? logOver(local.x, local.z) : undefined
+    const underLog = !!log && !!local && local.y < logTop(log)
     const narrow = this.camera.aspect < 0.8
-    const distance = narrow ? 8.5 : 7.5
+    const distance = underground ? 2.6 : cave ? 5 : narrow ? 8.5 : 7.5
+    const height = underground ? 0.8 : cave ? 2 : narrow ? 4 : 3.4
+    const focus = this.target.clone().add(new THREE.Vector3(0, underground ? 0.55 : 1, 0))
     const desired = new THREE.Vector3(
       this.target.x + Math.sin(this.yaw) * distance,
-      this.target.y + (narrow ? 4 : 3.4),
+      this.target.y + height,
       this.target.z + Math.cos(this.yaw) * distance
     )
-    const focus = this.target.clone().add(new THREE.Vector3(0, 1, 0))
-    const ray = desired.clone().sub(focus)
-    this.cameraRay.set(focus, ray.clone().normalize())
-    this.cameraRay.far = ray.length()
-    const obstruction = this.cameraRay.intersectObjects(this.cameraObstacles, true)[0]
-    if (obstruction) desired.copy(focus).addScaledVector(ray.normalize(), Math.max(1.5, obstruction.distance - 0.35))
-    this.camera.position.lerp(desired, smoothing)
-    this.camera.lookAt(focus)
-    this.reeds.forEach((reed, index) => {
-      reed.rotation.z = Math.sin(state.time * 1.5 + index) * 0.07
-    })
-    this.water.position.y = 0.035 + Math.sin(state.time * 1.3) * 0.008
+    if (!underground) desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
+    // If a trunk, rock or tunnel end blocks the boom, swing it around the rabbit before giving up.
+    const full = desired.distanceTo(focus)
+    let reach = focus.clone()
+    for (const swing of underground ? [0, Math.PI] : [0, 0.5, -0.5, 1, -1]) {
+      const swung = desired.clone().sub(focus).applyAxisAngle(UP, swing).add(focus)
+      const candidate = this.boom(focus, swung, underground, cave, underLog)
+      if (candidate.distanceTo(focus) > reach.distanceTo(focus)) reach = candidate
+      if (reach.distanceTo(focus) >= full * 0.7) break
+    }
+    if (reach.distanceTo(focus) < 1.2 && !underground && !cave) reach = desired // a thin post; look through it
+    this.camera.position.lerp(reach, smoothing)
+    this.keepCameraClear(this.camera.position, underground, cave)
+    if (underground || cave) this.camera.lookAt(focus)
+    else {
+      // Aim a little past the rabbit so the horizon, and landmarks for finding the way, stay in frame.
+      const ahead = focus.clone().sub(this.camera.position).setY(0)
+      if (ahead.lengthSq() > 0.01) ahead.setLength(6)
+      this.camera.lookAt(
+        focus
+          .clone()
+          .add(ahead)
+          .add(new THREE.Vector3(0, 0.4, 0))
+      )
+    }
+    this.sun.position.set(this.target.x - 18, this.target.y + 35, this.target.z + 12)
+    this.sun.target.position.copy(this.target)
+    this.lantern.intensity = underground || cave ? 2.2 : 0
+    this.lantern.position.copy(this.target).add(new THREE.Vector3(0, 1.1, 0))
+    this.world.update(state.time, underground, underLog)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Walks the camera boom out from the rabbit and stops before terrain, rocks, cave or tunnel walls. */
+  private boom(
+    focus: THREE.Vector3,
+    desired: THREE.Vector3,
+    underground: boolean,
+    cave: (typeof CAVES)[number] | undefined,
+    underLog: boolean
+  ) {
+    const step = desired.clone().sub(focus)
+    const steps = Math.ceil(step.length() / 0.2)
+    const probe = focus.clone()
+    const reach = focus.clone()
+    for (let index = 1; index <= steps; index++) {
+      probe.copy(focus).addScaledVector(step, index / steps)
+      if (this.blocksCamera(probe, underground, cave, underLog)) break
+      reach.copy(probe)
+    }
+    return reach
+  }
+
+  private blocksCamera(
+    point: THREE.Vector3,
+    underground: boolean,
+    cave: (typeof CAVES)[number] | undefined,
+    underLog: boolean
+  ) {
+    if (underground) {
+      const inside = clampToTunnel(point.x, point.z, 0.35)
+      const floor = heightAt(point.x, point.z) - TUNNEL_DEPTH
+      return inside.x !== point.x || inside.z !== point.z || point.y < floor + 0.25 || point.y > floor + 1.45
+    }
+    if (point.y < heightAt(point.x, point.z) + 0.35) return true
+    for (const blocker of blockersNear(point.x, point.z))
+      if (point.y < blocker.top && Math.hypot(point.x - blocker.x, point.z - blocker.z) < blocker.r + 0.3) return true
+    if (cave)
+      return Math.hypot(point.x - cave.x, point.z - cave.z) > cave.r - 1 || point.y > cave.floor + cave.roof - 0.8
+    for (const dome of CAVES)
+      if (
+        Math.hypot(point.x - dome.x, point.z - dome.z) < dome.r + dome.wall + 0.4 &&
+        point.y < dome.floor + dome.roof + 0.5
+      )
+        return true
+    const log = underLog ? undefined : logOver(point.x, point.z, 0.25)
+    return !!log && point.y > log.bottom - 0.2 && point.y < logTop(log) + 0.25
+  }
+
+  /** Final guard after smoothing so the camera never sits inside the ground or outside a tunnel/cave. */
+  private keepCameraClear(point: THREE.Vector3, underground: boolean, cave: (typeof CAVES)[number] | undefined) {
+    if (underground) {
+      const inside = clampToTunnel(point.x, point.z, 0.35)
+      const floor = heightAt(inside.x, inside.z) - TUNNEL_DEPTH
+      point.set(inside.x, Math.min(Math.max(point.y, floor + 0.25), floor + 1.45), inside.z)
+      return
+    }
+    point.y = Math.max(point.y, heightAt(point.x, point.z) + 0.3)
+    if (!cave) return
+    const dx = point.x - cave.x
+    const dz = point.z - cave.z
+    const limit = cave.r - 1
+    const length = Math.hypot(dx, dz)
+    if (length > limit) point.set(cave.x + (dx / length) * limit, point.y, cave.z + (dz / length) * limit)
+    point.y = Math.min(point.y, cave.floor + cave.roof - 0.8)
   }
 
   orbit(deltaRadians: number): void {
@@ -821,6 +779,7 @@ export class RabbitersScene {
     this.materials.clear()
     this.actors.clear()
     this.items.clear()
+    this.world.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
     this.scene.clear()

@@ -320,6 +320,8 @@ export function updatePredator(
       mind.lastKnown = null
     }
   }
+  // Cruising heights follow the ground so hawks glide over hills instead of into them.
+  if (!chased) goal.altitude += context.terrain.heightAt(body.x, body.z)
   steer(body, mind, goal, context.terrain, dt)
   return chased
 }

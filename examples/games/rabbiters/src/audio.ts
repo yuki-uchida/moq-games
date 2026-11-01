@@ -1,4 +1,5 @@
 import type { GameState } from './game'
+import { floorAt } from './map'
 
 type Observation = {
   time: number
@@ -72,7 +73,7 @@ export class RabbitersAudio {
     const next: Observation = {
       time: state.time,
       playerId: localPlayerId,
-      y: player?.y ?? 0,
+      y: player ? player.y - floorAt(player.x, player.y, player.z) : 0, // height above ground or tunnel floor
       health: player?.health ?? 0,
       foodEaten: player?.foodEaten ?? 0,
       pregnant: player?.pregnant ?? false,
@@ -114,7 +115,7 @@ export class RabbitersAudio {
       this.tone(587, 0.22, 'triangle', 0.11, 659, 0.07)
     }
     if (!player || previous.playerId !== localPlayerId) return
-    if (previous.y <= 0 && next.y > 0) this.tone(330, 0.14, 'sine', 0, 660)
+    if (previous.y <= 0.01 && next.y > 0.05) this.tone(330, 0.14, 'sine', 0, 660)
     if (next.foodEaten > previous.foodEaten) this.chime([880, 1175])
     if (next.health < previous.health && state.time - this.lastHit >= 0.6) {
       this.lastHit = state.time

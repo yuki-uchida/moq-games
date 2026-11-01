@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Game, type GameState, type Input } from '../src/game'
 import { GuestView, type InputAck } from '../src/guest-view'
+import { SPAWN } from '../src/map'
 
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 const copy = (state: GameState) => structuredClone(state)
@@ -21,13 +22,13 @@ describe('guest rendering', () => {
     view.render(state, 'guest', idle, 0, 0)
     const rendered = view.render(state, 'guest', { ...idle, moveX: 1 }, 1 / 60, 1000 / 60)
     expect(rendered.players[0].x).toBeGreaterThan(state.players[0].x)
-    expect(state.players[0].x).toBe(-37)
-    expect(game.state.players[0].x).toBe(-37)
+    expect(state.players[0].x).toBe(SPAWN.x)
+    expect(game.state.players[0].x).toBe(SPAWN.x)
   })
 
   it('uses the same movement and jump rules as the host', () => {
     const game = gameWithGuest()
-    Object.assign(game.state.players[0], { x: 0, z: 10, pregnant: true })
+    Object.assign(game.state.players[0], { x: SPAWN.x + 8, z: 10, pregnant: true })
     const state = copy(game.state)
     const view = new GuestView()
     const input = { ...idle, moveX: 1, sprint: true, jump: true }
@@ -70,7 +71,7 @@ describe('guest rendering', () => {
       while (snapshots.length && snapshots[0].at <= now) snapshot = snapshots.shift()!.state
       positions.push(view.render(snapshot, 'guest', input, 1 / 60, now).players[0].x)
     }
-    expect(positions[15]).toBeGreaterThan(-37)
+    expect(positions[15]).toBeGreaterThan(SPAWN.x)
     for (let frame = 30; frame < 115; frame++) {
       expect(positions[frame] - positions[frame - 1]).toBeGreaterThan(0)
       expect(positions[frame] - positions[frame - 1]).toBeLessThan(0.2)
