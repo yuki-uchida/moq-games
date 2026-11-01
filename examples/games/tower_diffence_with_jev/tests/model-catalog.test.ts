@@ -279,3 +279,80 @@ describe.skipIf(!hasModels && !derivativeMode)(
     }
   }
 )
+
+// Real exported rigs: regress the shortened hip joints, backwards knees and
+// moving sole planes reported on these three units. Texture I/O is irrelevant
+// to these geometric assertions; visual acceptance is recorded separately.
+describe('repaired short-limb motion geometry', () => {
+  for (const role of ['ranger', 'paladin', 'goblin'] as const) {
+    it(`${role}: keeps segment lengths, contact planes and loop seams through actual GLTFLoader playback`, async () => {
+      const loader = new GLTFLoader()
+      loader.register(() => ({ name: 'REPAIR_TEXTURE_STUB', loadTexture: () => Promise.resolve(new THREE.Texture()) }))
+      for (const motion of ['walk', 'attack'] as const) {
+        const spec = UNIT_MODEL_CATALOG[role]!.clips[motion]!
+        const bytes = readFileSync(assetPath(spec.url))
+        const gltf = await loader.parseAsync(
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+          ''
+        )
+        const clip = gltf.animations.find((c) => c.name === motion)!
+        const index = gltf.animations.indexOf(clip)
+        const extras = gltf.parser.json.animations[index].extras
+        expect(extras.motionRepair.maxUnreachableTarget).toBeLessThan(1e-5)
+        expect(clip.duration).toBeCloseTo(motion === 'walk' ? 1 : ATTACK_PROFILES[role].durationMs / 1000)
+        gltf.scene.updateMatrixWorld(true)
+        const get = (name: string) => gltf.scene.getObjectByName(name)!
+        const point = (name: string) => get(name).getWorldPosition(new THREE.Vector3())
+        const lengths = ['foreL', 'handL', 'foreR', 'handR', 'shinL', 'footL', 'shinR', 'footR'].map(
+          (name) => [name, get(name).position.length()] as const
+        )
+        const ground = { L: point('footL').y, R: point('footR').y }
+        const sole = {
+          L: get('footL').getWorldQuaternion(new THREE.Quaternion()).normalize(),
+          R: get('footR').getWorldQuaternion(new THREE.Quaternion()).normalize()
+        }
+        const mixer = new THREE.AnimationMixer(gltf.scene),
+          action = mixer.clipAction(clip)
+        action.setLoop(THREE.LoopOnce, 1)
+        action.clampWhenFinished = true
+        action.play()
+        const sample = (t: number) => {
+          action.enabled = true
+          action.paused = false
+          mixer.setTime(t)
+          gltf.scene.updateMatrixWorld(true)
+        }
+        sample(0)
+        const first = ['footL', 'footR', 'handL', 'handR'].map(point)
+        for (let i = 0; i <= 120; i++) {
+          sample((clip.duration * i) / 120)
+          for (const [name, length] of lengths) expect(get(name).position.length()).toBeCloseTo(length, 5)
+          for (const side of ['L', 'R'] as const) {
+            expect(point(`foot${side}`).y).toBeGreaterThanOrEqual(ground[side] - 3e-5)
+            expect(
+              get(`foot${side}`).getWorldQuaternion(new THREE.Quaternion()).normalize().angleTo(sole[side])
+            ).toBeLessThan(1e-5)
+          }
+        }
+        if (motion === 'walk') {
+          ;['footL', 'footR', 'handL', 'handR'].forEach((name, i) =>
+            expect(point(name).distanceTo(first[i])).toBeLessThan(1e-5)
+          )
+          const travel = UNIT_MODEL_CATALOG[role]!.walkDistance / UNIT_MODEL_CATALOG[role]!.scale
+          sample(0.05)
+          const contact = point('footL').z + travel * 0.05
+          for (const t of [0.15, 0.3, 0.45, 0.6]) {
+            sample(t)
+            expect(point('footL').z + travel * t).toBeCloseTo(contact, 4)
+          }
+        }
+        if (role === 'ranger' && motion === 'attack') {
+          sample(0.75)
+          const direction = point('Ranger_Release_Emitter').sub(point('Ranger_Release_Nock'))
+          expect(direction.length()).toBeCloseTo(0.7, 5)
+          expect(direction.normalize().distanceTo(new THREE.Vector3(0, 0, 1))).toBeLessThan(1e-5)
+        }
+      }
+    })
+  }
+})

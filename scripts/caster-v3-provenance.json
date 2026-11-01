@@ -1,0 +1,41 @@
+[
+  {
+    "role": "mage",
+    "input": "public/tower-defense-art/models/mage/mage-motion-v2-candidate.glb",
+    "output": "public/tower-defense-art/models/mage/mage-spell-v3.glb",
+    "sourceSHA256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+    "outputSHA256": "9d8b0e2868243440662d42eee0aae3b96d3364487b714f8ca7c10c296f3f2f83",
+    "bytesBefore": 4514208,
+    "bytesAfter": 4514208,
+    "weightsChanged": 0,
+    "clocks": "mage 960/520ms; frost 768/416ms; healer 960/600ms; walk 1s",
+    "preserved": "Original files, geometry, textures, materials, morphs, inverse binds, rest nodes, clip names, durations and sample time bytes",
+    "method": "constant-length two-bone IK; staff pivots at the actual left-hand grip"
+  },
+  {
+    "role": "frost",
+    "input": "public/tower-defense-art/models/frost/frost-motion-v2-candidate.glb",
+    "output": "public/tower-defense-art/models/frost/frost-stable-feet-v3.glb",
+    "sourceSHA256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+    "outputSHA256": "5f3e2bbd934ceeb1cfb355d08930ca787129ba9360b3c6d84dc15e26a98bb848",
+    "bytesBefore": 4233976,
+    "bytesAfter": 4233976,
+    "weightsChanged": 0,
+    "clocks": "mage 960/520ms; frost 768/416ms; healer 960/600ms; walk 1s",
+    "preserved": "Original files, geometry, textures, materials, morphs, inverse binds, rest nodes, clip names, durations and sample time bytes",
+    "method": "constant-length two-bone IK; staff pivots at the actual left-hand grip"
+  },
+  {
+    "role": "healer",
+    "input": "public/tower-defense-art/models/healer/healer-motion-v2-candidate.glb",
+    "output": "public/tower-defense-art/models/healer/healer-heal-garment-v3.glb",
+    "sourceSHA256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+    "outputSHA256": "11818e1165683e95e9f268edc79442e5ff25c972aa12bafef4d87f2ba346cfdc",
+    "bytesBefore": 7636684,
+    "bytesAfter": 7636684,
+    "weightsChanged": 1703,
+    "clocks": "mage 960/520ms; frost 768/416ms; healer 960/600ms; walk 1s",
+    "preserved": "Original files, geometry, textures, materials, morphs, inverse binds, rest nodes, clip names, durations and sample time bytes",
+    "method": "constant-length two-bone IK; staff pivots at the actual left-hand grip"
+  }
+]

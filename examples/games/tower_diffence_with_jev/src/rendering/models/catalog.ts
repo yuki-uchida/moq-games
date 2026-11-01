@@ -56,37 +56,37 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   mage: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6569931349408655, 0.3104449969859895, -0.12662202592852762] },
     scale: 128 / 3.55, origin: [-0.14499999582767487, -0.9520019888877869, 0.014999999664723873], yaw: 0,
-    walkDistance: 20, provenance: 'mage-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 20, provenance: 'mage spell v3; preserved v2 geometry/materials, grip-pivot casting and planted-foot IK',
     clips: {
-      idle: source('mage', 'mage-motion-v2-candidate.glb', 'idle', [adapters.mageMaterial]),
-      walk: source('mage', 'mage-motion-v2-candidate.glb', 'walk', [adapters.mageMaterial]),
-      attack: source('mage', 'mage-motion-v2-candidate.glb', 'attack', [adapters.mageMaterial]),
+      idle: source('mage', 'mage-spell-v3.glb', 'idle', [adapters.mageMaterial]),
+      walk: source('mage', 'mage-spell-v3.glb', 'walk', [adapters.mageMaterial]),
+      attack: source('mage', 'mage-spell-v3.glb', 'attack', [adapters.mageMaterial]),
     }
   },
   frost: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6610382795333862, 0.3700866103172302, 0.284916490316391] },
     scale: 128 / 3.4, origin: [-0.11500000208616257, -0.9508733153343201, 0.014999999664723873], yaw: 0,
-    walkDistance: 18, provenance: 'frost-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 18, provenance: 'frost stable feet v3; preserved v2 geometry/materials, constant-length lower-body IK',
     clips: {
-      idle: source('frost', 'frost-motion-v2-candidate.glb', 'idle', [adapters.frostMaterial]),
-      walk: source('frost', 'frost-motion-v2-candidate.glb', 'walk', [adapters.frostMaterial]),
-      attack: source('frost', 'frost-motion-v2-candidate.glb', 'attack', [adapters.frostMaterial]),
+      idle: source('frost', 'frost-stable-feet-v3.glb', 'idle', [adapters.frostMaterial]),
+      walk: source('frost', 'frost-stable-feet-v3.glb', 'walk', [adapters.frostMaterial]),
+      attack: source('frost', 'frost-stable-feet-v3.glb', 'attack', [adapters.frostMaterial]),
     }
   },
   healer: {
     emitter: { node: 'Staff_Rigid_Control', local: [0.6100544929504395, 0.15758058428764343, 0.06462452560663223] },
     scale: 128 / 4.24, origin: [-0.17000000178813934, -0.9452990293502808, 0.004999999888241291], yaw: 0,
-    walkDistance: 18, provenance: 'healer-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: 18, provenance: 'healer v3; preserved v2 mesh/materials, pelvis-bound garment and offering gesture',
     clips: {
-      idle: source('healer', 'healer-motion-v2-candidate.glb', 'idle', [adapters.healerMaterial]),
-      walk: source('healer', 'healer-motion-v2-candidate.glb', 'walk', [adapters.healerMaterial]),
-      heal: source('healer', 'healer-motion-v2-candidate.glb', 'heal', [adapters.healerMaterial]),
+      idle: source('healer', 'healer-heal-garment-v3.glb', 'idle', [adapters.healerMaterial]),
+      walk: source('healer', 'healer-heal-garment-v3.glb', 'walk', [adapters.healerMaterial]),
+      heal: source('healer', 'healer-heal-garment-v3.glb', 'heal', [adapters.healerMaterial]),
     }
   },
   ranger: {
     emitter: { node: 'Ranger_Release_Emitter' },
     scale: 128 / 3.6700000762939453, origin: [0.07999999821186066, -0.9177075624465942, -0.019999999552965164], yaw: 0,
-    walkDistance: 26, provenance: 'ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.6700000762939453) * 0.26, provenance: 'motion repair v1; ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       walk: source('ranger', 'ranger-walk-candidate.glb', 'walk', [adapters.rangerMaterial, adapters.rangerSkinning]),
       attack: source('ranger', 'ranger-attack-candidate.glb', 'attack', [adapters.rangerSkinning]),
@@ -105,7 +105,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   paladin: {
     scale: 128 / 3.02, origin: [0.014999999664723873, -0.9522994756698608, 0.019999999552965164], yaw: 0,
-    walkDistance: 24, provenance: 'paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.02) * 0.34, provenance: 'motion repair v1; paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       attack: source('paladin', 'paladin-motion-v2-candidate.glb', 'attack', [adapters.paladinMaterial]),
       walk: source('paladin', 'paladin-motion-v2-candidate.glb', 'walk', [adapters.paladinMaterial]),
@@ -114,7 +114,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   goblin: {
     scale: 128 / 3.86, origin: [0, -0.9520249962806702, -0.02500000037252903], yaw: 0,
-    walkDistance: 32, provenance: 'goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.86) * 0.42, provenance: 'motion repair v1; goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('goblin', 'goblin-walk-smooth.glb', 'idle', [adapters.goblinMaterial]),
       walk: source('goblin', 'goblin-walk-smooth.glb', 'walk', [adapters.goblinMaterial]),
@@ -123,7 +123,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   wolf: {
     scale: 128 / 4.24, origin: [0.15, -0.8107264638, -0.02], yaw: 0,
-    walkDistance: 44, provenance: 'wolf-walk-smooth-24-final.zip; source-preserved candidate, visual review pending',
+    walkDistance: (0.60 / 0.45) * (128 / 4.24), provenance: 'wolf proximal gait v1; preserved source, extended shoulder/hip weights and stable leg planes',
     clips: {
       idle: source('wolf', 'wolf-walk-smooth.glb', 'idle', [adapters.wolfMaterial]),
       walk: source('wolf', 'wolf-walk-smooth.glb', 'walk', [adapters.wolfMaterial]),
@@ -151,7 +151,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   brute: {
     scale: 128 / 3.4, origin: [0.0, -0.8542622327804565, -0.0], yaw: 0,
-    walkDistance: 40, provenance: 'brute-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (0.30 / 0.54) * (128 / 3.4), provenance: 'brute proximal motion v1; rigid rock weights retained, stable knee planes and shoulder-driven slam',
     clips: {
       idle: source('brute', 'brute-motion-v2-candidate.glb', 'idle', [adapters.bruteMaterial]),
       walk: source('brute', 'brute-motion-v2-candidate.glb', 'walk', [adapters.bruteMaterial]),

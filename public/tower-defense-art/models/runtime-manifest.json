@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three source-identical new Blender GLBs pending runtime visual acceptance",
   "summary": {
-    "files": 33,
-    "bytes": 221624388
+    "files": 36,
+    "bytes": 240876152
   },
   "models": [
     {
@@ -105,8 +105,8 @@
       "role": "brute",
       "file": "brute/brute-motion-v2-candidate.glb",
       "sourceSha256": "c4190762f067d72b4e50d7b07090c17460363baa786882fd3024e383ec7537fb",
-      "outputSha256": "430eaae56165fdf26671a937782dce2c7f5a473824d41ecb2025a679ef018950",
-      "bytes": 9741932,
+      "outputSha256": "fd9c2622a1d366e4281f1edac8aed7e55feff262437ce04a455cfda611f9e022",
+      "bytes": 9930572,
       "vertices": 85483,
       "triangles": 76387,
       "sourceBytes": 18965272,
@@ -122,7 +122,10 @@
       "postOptimization": {
         "basisSha256": "7cc78d8f24d1c2dc94de569c692cbfed335e99127e8ff7b47b5ee96c7a199679",
         "change": "Neutral rock albedo warmed while green crystals are retained; color texture encoded losslessly as PNG; geometry, skin and animation buffer views unchanged"
-      }
+      },
+      "drawCalls": 46,
+      "motionRevision": "proximal-v1",
+      "motionSourceSha256": "430eaae56165fdf26671a937782dce2c7f5a473824d41ecb2025a679ef018950"
     },
     {
       "role": "cannon",
@@ -251,8 +254,8 @@
       "role": "goblin",
       "file": "goblin/goblin-walk-smooth.glb",
       "sourceSha256": "f5824833b770588b2539d0f9f6b6659e57305ebf5feaf41048b8e19098fdc380",
-      "outputSha256": "dd6cf1010e46f8226a4394c1899d8f1cb609fbcbeb37c2fada61303d9711688e",
-      "bytes": 3558096,
+      "outputSha256": "c94350f4d3a67ef25cafefac24207ab080b05c8491b2a8845501246cf435437c",
+      "bytes": 3741408,
       "vertices": 31241,
       "triangles": 40393,
       "sourceBytes": 13901984,
@@ -264,6 +267,12 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "motionRepair": {
+        "revision": 1,
+        "inputSha256": "dd6cf1010e46f8226a4394c1899d8f1cb609fbcbeb37c2fada61303d9711688e",
+        "script": "scripts/repair-roster-motion.mjs",
+        "preserved": "rest geometry, weights, bind matrices, hierarchy, materials, idle and combat clocks"
       }
     },
     {
@@ -322,10 +331,10 @@
       "role": "ogre",
       "file": "ogre/ogre-motion-arm-swing20.glb",
       "sourceSha256": "ca2349cc7ed1fa943a201d6155bf8d0bb31fe317b9a42e62f2677002f8f8f418",
-      "outputSha256": "6834b2e3804545d1555a2b229ae262ec52424f5d61974428eff138dfbbda01f5",
-      "bytes": 8449812,
+      "outputSha256": "39f7c9c4ee72c17550917adc76ae1c02d44d2a0e41b2b2585efe665253c22c8f",
+      "bytes": 8784576,
       "vertices": 45736,
-      "triangles": 58605,
+      "triangles": 55968,
       "sourceBytes": 19312180,
       "sourceTriangles": 126169,
       "config": {
@@ -335,14 +344,17 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
-      }
+      },
+      "drawCalls": 31,
+      "motionRevision": "arm-remnant-v1",
+      "motionSourceSha256": "6834b2e3804545d1555a2b229ae262ec52424f5d61974428eff138dfbbda01f5"
     },
     {
       "role": "paladin",
       "file": "paladin/paladin-motion-v2-candidate.glb",
       "sourceSha256": "1313b5b1aa2ed5f0e4ca857ff19d744a455130f6c1f05b769c8f5419ddd314e4",
-      "outputSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
-      "bytes": 8667324,
+      "outputSha256": "3a64f163df6700f14ca1b87d0caad40cb4000a984793a2c58b02907990b60ced",
+      "bytes": 8852488,
       "vertices": 81657,
       "triangles": 93100,
       "sourceBytes": 22079544,
@@ -354,14 +366,20 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "motionRepair": {
+        "revision": 1,
+        "inputSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
+        "script": "scripts/repair-roster-motion.mjs",
+        "preserved": "rest geometry, weights, bind matrices, hierarchy, materials, idle and combat clocks"
       }
     },
     {
       "role": "ranger",
       "file": "ranger/ranger-attack-candidate.glb",
       "sourceSha256": "5d504d56f02bb153806069e1c5a60a454b2fdeabac66167e6a70f4e7b5be990b",
-      "outputSha256": "010903a8f4fe08861bc22e6cc208edf0a009d6b7a74116454f9cf36b98e8612d",
-      "bytes": 7980608,
+      "outputSha256": "cfebe87fcc2adf7d458f42c569fbe0aedad0e6f9e6590acc51e49f39a667a5f6",
+      "bytes": 8146052,
       "vertices": 70562,
       "triangles": 78113,
       "sourceBytes": 19185556,
@@ -373,6 +391,12 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "motionRepair": {
+        "revision": 1,
+        "inputSha256": "010903a8f4fe08861bc22e6cc208edf0a009d6b7a74116454f9cf36b98e8612d",
+        "script": "scripts/repair-roster-motion.mjs",
+        "preserved": "rest geometry, weights, bind matrices, hierarchy, materials, idle and combat clocks"
       }
     },
     {
@@ -398,8 +422,8 @@
       "role": "ranger",
       "file": "ranger/ranger-walk-candidate.glb",
       "sourceSha256": "2789c3c65204881d2f0c6ec74b5ff1021af45f4c0c96057a465e7199266ce831",
-      "outputSha256": "440e8eac02f49910fd12f96ba6e759b9a793eb35a436b6e8b72a3c6e821cbb2b",
-      "bytes": 8436364,
+      "outputSha256": "180edaa07f35d0532ebe91f004a036bb0dc4b073a53c6894aae882c78e0bd04a",
+      "bytes": 8560488,
       "vertices": 70726,
       "triangles": 78607,
       "sourceBytes": 18869228,
@@ -411,6 +435,12 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
+      },
+      "motionRepair": {
+        "revision": 1,
+        "inputSha256": "440e8eac02f49910fd12f96ba6e759b9a793eb35a436b6e8b72a3c6e821cbb2b",
+        "script": "scripts/repair-roster-motion.mjs",
+        "preserved": "rest geometry, weights, bind matrices, hierarchy, materials, idle and combat clocks"
       }
     },
     {
@@ -592,8 +622,8 @@
       "role": "wolf",
       "file": "wolf/wolf-walk-smooth.glb",
       "sourceSha256": "0aeb14cfca8b8fc7061d7e0304fbb04e57aec3ceb99ca59dace977825f52e953",
-      "outputSha256": "1f09cff307266152e3ca9ceca61336cd60aa8d5c1d1e99a1b3546cbba7af447c",
-      "bytes": 9536580,
+      "outputSha256": "99c787573e7c06855c44ce30e131c31b32dc7e7135b276d4976a78041e8892e3",
+      "bytes": 11212840,
       "vertices": 65507,
       "triangles": 76111,
       "sourceBytes": 20395400,
@@ -605,7 +635,10 @@
         "textureQuality": 90,
         "minTriangles": 1000,
         "normalWeight": 0.2
-      }
+      },
+      "drawCalls": 7,
+      "motionRevision": "proximal-v1",
+      "motionSourceSha256": "1f09cff307266152e3ca9ceca61336cd60aa8d5c1d1e99a1b3546cbba7af447c"
     },
     {
       "role": "wraith",
@@ -625,6 +658,42 @@
         "minTriangles": 1000,
         "normalWeight": 0.2
       }
+    },
+    {
+      "role": "mage",
+      "file": "mage/mage-spell-v3.glb",
+      "sourceSha256": "2e317c866a40eca499cc7689d05e22ff061891b27329f45b0ec911c085e803f6",
+      "outputSha256": "9d8b0e2868243440662d42eee0aae3b96d3364487b714f8ca7c10c296f3f2f83",
+      "bytes": 4514208,
+      "vertices": 31468,
+      "triangles": 36050,
+      "sourceBytes": 4514208,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
+    },
+    {
+      "role": "frost",
+      "file": "frost/frost-stable-feet-v3.glb",
+      "sourceSha256": "d7ccd831b1cd680b3045cad0a9e5b05450d7ffe988a32a2f3b45352a382598ec",
+      "outputSha256": "5f3e2bbd934ceeb1cfb355d08930ca787129ba9360b3c6d84dc15e26a98bb848",
+      "bytes": 4233976,
+      "vertices": 33692,
+      "triangles": 40028,
+      "sourceBytes": 4233976,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
+    },
+    {
+      "role": "healer",
+      "file": "healer/healer-heal-garment-v3.glb",
+      "sourceSha256": "d40dfdb56bb286c039376f76d5dca3ff50b0855037e312a713762210a8c38222",
+      "outputSha256": "11818e1165683e95e9f268edc79442e5ff25c972aa12bafef4d87f2ba346cfdc",
+      "bytes": 7636684,
+      "vertices": 63287,
+      "triangles": 70015,
+      "sourceBytes": 7636684,
+      "method": "Animation derivative; original geometry/materials and bind matrices retained; healer garment joint reassignment",
+      "provenance": "scripts/caster-v3-provenance.json"
     }
   ]
 }

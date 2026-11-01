@@ -56,3 +56,9 @@ The agent inspected extracted ordered frames, not every encoded video frame or a
 - Playwright's bundled ffmpeg failed at context shutdown (`spawn Unknown system error -88`). The E2E config disables that recorder. The separate browser MediaRecorder captures actual playback without that dependency.
 
 Source Blender scenes and full subjective video acceptance are not claimed by passing numerical tests.
+
+## Integration verification
+
+Merged main through `72d1324`, retaining the caster, Ranger/Paladin/Goblin, Wolf/Brute/Ogre, Patchling and viewer changes. Conflicts in the CI list and the test-only clip loader retain both sets of checks and the overlay-aware path lookup. No shared playback implementation was changed by this repair.
+
+After integration: typecheck, lint, 598 unit tests, four caster contracts, four normal-game E2E cases, build and Pages preparation passed. The runtime optimization suite passed five tests and skipped four checks requiring preserved original inputs; those skips are not passing source comparisons. The existing/new publication-verifier tests passed, and the six overlay files were fetched from local HTTP and matched byte hashes. The deployment workflow additionally checks the six live overlay files and their source GLB identities after Pages deployment.
