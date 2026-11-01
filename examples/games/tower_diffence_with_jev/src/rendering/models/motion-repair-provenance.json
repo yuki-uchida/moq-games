@@ -1,0 +1,68 @@
+{
+  "revision": 1,
+  "sourceCommit": "ceaca18",
+  "generator": "scripts/repair-roster-motion.mjs",
+  "fps": 120,
+  "records": [
+    {
+      "role": "ranger",
+      "file": "ranger-walk-candidate.glb",
+      "inputSha256": "440e8eac02f49910fd12f96ba6e759b9a793eb35a436b6e8b72a3c6e821cbb2b",
+      "outputSha256": "180edaa07f35d0532ebe91f004a036bb0dc4b073a53c6894aae882c78e0bd04a",
+      "inputBytes": 8436364,
+      "outputBytes": 8560488,
+      "maxUnreachableTarget": 0,
+      "reachLimits": {
+        "thigh.L": 0,
+        "thigh.R": 0,
+        "upper.L": 0,
+        "upper.R": 0
+      }
+    },
+    {
+      "role": "ranger",
+      "file": "ranger-attack-candidate.glb",
+      "inputSha256": "010903a8f4fe08861bc22e6cc208edf0a009d6b7a74116454f9cf36b98e8612d",
+      "outputSha256": "cfebe87fcc2adf7d458f42c569fbe0aedad0e6f9e6590acc51e49f39a667a5f6",
+      "inputBytes": 7980608,
+      "outputBytes": 8146052,
+      "maxUnreachableTarget": 0,
+      "reachLimits": {
+        "thigh.L": 0,
+        "thigh.R": 0,
+        "upper.L": 0,
+        "upper.R": 0
+      }
+    },
+    {
+      "role": "paladin",
+      "file": "paladin-motion-v2-candidate.glb",
+      "inputSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
+      "outputSha256": "3a64f163df6700f14ca1b87d0caad40cb4000a984793a2c58b02907990b60ced",
+      "inputBytes": 8667324,
+      "outputBytes": 8852488,
+      "maxUnreachableTarget": 0,
+      "reachLimits": {
+        "thigh.L": 0,
+        "thigh.R": 0,
+        "upper.L": 0,
+        "upper.R": 0
+      }
+    },
+    {
+      "role": "goblin",
+      "file": "goblin-walk-smooth.glb",
+      "inputSha256": "dd6cf1010e46f8226a4394c1899d8f1cb609fbcbeb37c2fada61303d9711688e",
+      "outputSha256": "c94350f4d3a67ef25cafefac24207ab080b05c8491b2a8845501246cf435437c",
+      "inputBytes": 3558096,
+      "outputBytes": 3741408,
+      "maxUnreachableTarget": 0,
+      "reachLimits": {
+        "thigh.L": 0,
+        "thigh.R": 0,
+        "upper.L": 0,
+        "upper.R": 0
+      }
+    }
+  ]
+}
