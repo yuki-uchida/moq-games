@@ -747,3 +747,17 @@ kbd {
     bottom: 20px;
   }
 }
+
+.look-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #102d26b3;
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+}

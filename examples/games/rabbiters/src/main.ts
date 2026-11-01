@@ -235,6 +235,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     clearInput()
     connectionLost = false
     started = true
+    updateLookHint()
     startPanel.hidden = true
     hud.hidden = false
     leave.hidden = false
@@ -259,6 +260,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
 async function returnToTitle() {
   ++generation
   started = false
+  updateLookHint()
   connectionLost = false
   audio.stop()
   clearInput()
@@ -454,16 +456,41 @@ window.addEventListener('pagehide', () => {
 })
 
 let drag: { id: number; x: number } | undefined
+const lookHint = element<HTMLElement>('#look-hint')
+const canLock = matchMedia('(pointer: fine)').matches && typeof world.requestPointerLock === 'function'
+const locked = () => document.pointerLockElement === world
+const rotate = (dx: number) => {
+  const delta = dx * -0.006
+  yaw += delta
+  scene.orbit(delta)
+}
+function updateLookHint() {
+  lookHint.hidden = !canLock || !started
+  lookHint.textContent = locked() ? 'マウスで視点操作中 / Escで解除' : 'クリックで視点操作 / Escで解除'
+}
+document.addEventListener('pointerlockchange', updateLookHint)
+document.addEventListener('pointerlockerror', updateLookHint)
 world.addEventListener('pointerdown', (event) => {
   if (!started || (event.pointerType === 'mouse' && event.button !== 0)) return
   drag = { id: event.pointerId, x: event.clientX }
   world.setPointerCapture(event.pointerId)
+  // Pointer lock for mouse only; on refusal the drag above keeps working.
+  if (canLock && event.pointerType === 'mouse' && !locked()) {
+    try {
+      void Promise.resolve(world.requestPointerLock()).catch(() => undefined)
+    } catch {
+      /* drag fallback */
+    }
+  }
+  updateLookHint()
 })
 world.addEventListener('pointermove', (event) => {
+  if (locked()) {
+    if (event.pointerType === 'mouse') rotate(event.movementX)
+    return
+  }
   if (!drag || drag.id !== event.pointerId) return
-  const delta = (event.clientX - drag.x) * -0.006
-  yaw += delta
-  scene.orbit(delta)
+  rotate(event.clientX - drag.x)
   drag.x = event.clientX
 })
 for (const type of ['pointerup', 'pointercancel'] as const)

@@ -393,3 +393,33 @@ test('relay disconnection pauses the session and offers a way back', async ({ pa
   await page.locator('#restart').click()
   await expect(page.locator('#start-panel')).toBeVisible()
 })
+
+test('desktop: pointer lock rotates the view without holding a button', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__yaw = () => yaw` })
+  })
+  await page.addInitScript(() => {
+    let lockedEl: Element | null = null
+    Object.defineProperty(document, 'pointerLockElement', { get: () => lockedEl })
+    Element.prototype.requestPointerLock = function () {
+      lockedEl = this
+      document.dispatchEvent(new Event('pointerlockchange'))
+    }
+  })
+  await page.goto('/')
+  await page.locator('#solo').click()
+  await expect(page.locator('#look-hint')).toContainText('クリックで視点操作')
+  const yaw = () => page.evaluate(() => (window as unknown as { __yaw: () => number }).__yaw())
+  const before = await yaw()
+  await page.mouse.click(700, 450)
+  await expect(page.locator('#look-hint')).toContainText('視点操作中')
+  // movementX is dispatched by the real browser; synthesize it since headless mouse moves lack it.
+  await page.evaluate(() =>
+    document
+      .querySelector('#world')!
+      .dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', movementX: 100 } as PointerEventInit))
+  )
+  await expect.poll(yaw).not.toBeCloseTo(before, 1)
+})
