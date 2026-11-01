@@ -189,7 +189,7 @@
       "impacts": [
         0.85
       ],
-      "recoveryStart": 1.0,
+      "recoveryStart": 1,
       "loop": false,
       "fps": 60,
       "tracks": 34,
@@ -324,7 +324,7 @@
       "file": "paladin.ultimate.json",
       "source": "paladin/paladin-motion-v2-candidate.glb",
       "sourceSha256": "312a82d369b72d948dd6a70cbfccb080eeff577483c7115a43f9d064955f8caa",
-      "duration": 2.0,
+      "duration": 2,
       "windup": 0.95,
       "impacts": [
         0.95
@@ -362,12 +362,36 @@
     "archer.ultimate.json": "671602b0eaeb0d3d9825bdc7e8616bc254c012dbf001363f3a0d018327134f63",
     "cannon.ultimate.json": "2260646f0a6bfe2212cdb065cf62daa0982609b9e471d0c82f62dad5ae11d0da",
     "frost.ultimate.json": "6273f84b02c9782449cfe38158ae5b8f23ab6f969f9912569c89e055daffaaa8",
-    "healer.ultimate.json": "bf434c29c0cd2cabad7005e9345ba2ebf825342a0c120e902d5c448b52a3a419",
+    "healer.ultimate.json": "53224012af749b6473bec33849c3343134ce700c88ad36a6cbfd1a50af585a58",
     "mage.ultimate.json": "cefb18ba331775a72ed88c1d15eeb94fc7f384009d7696a05d9bf76a504adfec",
     "paladin.ultimate.json": "e5cd2d136f6e9c9059bd0ce5dbe46fd0b0a873a86af7e78d4a6eb55a5cddeda5",
-    "ranger.ultimate.json": "f34c5a184aecb66cd44315fb65d56cd47a5279f928a4014db0beb6601722a453",
+    "ranger.ultimate.json": "11c5a79008398c602e2d39af3977c9e651e0dc36117c734c10f7cb16524bd1d2",
     "runner.ultimate.json": "4291017be773d4376d1c5b03851982688f391e06b41fdaa50ae020b4bb3fbf99",
     "soldier.ultimate.json": "7dc2f5f67db3b6ffb680fcfd8a33c73a81bce69a229797adff7660bcd5cb2aa7",
     "tank.ultimate.json": "f2471024ee9761dd68460711a50a36c48f29a671be094accb2dea6146cea2f00"
+  },
+  "refinements": {
+    "script": "scripts/refine-special-motions.mjs",
+    "inputCommit": "ddf05fe",
+    "roles": {
+      "ranger": {
+        "note": "chest forward pitch x0.55 (62->34 deg), head counter-pitch 0.7x chest so face and bow stay readable",
+        "inputSha256": "f34c5a184aecb66cd44315fb65d56cd47a5279f928a4014db0beb6601722a453",
+        "outputSha256": "11c5a79008398c602e2d39af3977c9e651e0dc36117c734c10f7cb16524bd1d2",
+        "model": "ranger/ranger-idle-candidate.glb",
+        "modelSha256": "4d100e808368e19ad39167c1ceb69ba108e1b6af8defa9e922b3b8559b2c0c6b",
+        "maxGripDriftModelUnits": 0.00109,
+        "endQuaternionDeviationRad": 0.000674
+      },
+      "healer": {
+        "note": "gather bow chest x1.4 with head counter-pitch 0.3x; staff arm raised outward 0.6 rad and free hand raised in front 0.9 rad, following each arm envelope",
+        "inputSha256": "bf434c29c0cd2cabad7005e9345ba2ebf825342a0c120e902d5c448b52a3a419",
+        "outputSha256": "53224012af749b6473bec33849c3343134ce700c88ad36a6cbfd1a50af585a58",
+        "model": "healer/healer-heal-garment-v3.glb",
+        "modelSha256": "11818e1165683e95e9f268edc79442e5ff25c972aa12bafef4d87f2ba346cfdc",
+        "maxGripDriftModelUnits": 0.000218,
+        "endQuaternionDeviationRad": 0.000756
+      }
+    }
   }
 }
