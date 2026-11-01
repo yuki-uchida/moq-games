@@ -72,6 +72,9 @@ export function directMotionClip(
   source: THREE.AnimationClip,
   role: UnitType
 ): THREE.AnimationClip {
+  // These actions already coordinate torso, planted feet and rigid grips.
+  // A second torso pass would invalidate the authored IK/contact solution.
+  if ((source as THREE.AnimationClip & { userData?: { motionRepair?: unknown } }).userData?.motionRepair) return source
   if (!['idle', 'walk', 'attack', 'heal', 'breath'].includes(source.name)) return source
   const prior = cache.get(source)?.get(role)
   if (prior) return prior

@@ -81,7 +81,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   ranger: {
     emitter: { node: 'Ranger_Release_Emitter' },
     scale: 128 / 3.6700000762939453, origin: [0.07999999821186066, -0.9177075624465942, -0.019999999552965164], yaw: 0,
-    walkDistance: 26, provenance: 'ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.6700000762939453) * 0.26, provenance: 'motion repair v1; ranger-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       walk: source('ranger', 'ranger-walk-candidate.glb', 'walk', [adapters.rangerMaterial, adapters.rangerSkinning]),
       attack: source('ranger', 'ranger-attack-candidate.glb', 'attack', [adapters.rangerSkinning]),
@@ -100,7 +100,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   paladin: {
     scale: 128 / 3.02, origin: [0.014999999664723873, -0.9522994756698608, 0.019999999552965164], yaw: 0,
-    walkDistance: 24, provenance: 'paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.02) * 0.34, provenance: 'motion repair v1; paladin-damage-only-animated-glb-cloud-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       attack: source('paladin', 'paladin-motion-v2-candidate.glb', 'attack', [adapters.paladinMaterial]),
       walk: source('paladin', 'paladin-motion-v2-candidate.glb', 'walk', [adapters.paladinMaterial]),
@@ -109,7 +109,7 @@ export const UNIT_MODEL_CATALOG: Readonly<Partial<Record<UnitType, UnitModelDefi
   },
   goblin: {
     scale: 128 / 3.86, origin: [0, -0.9520249962806702, -0.02500000037252903], yaw: 0,
-    walkDistance: 32, provenance: 'goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
+    walkDistance: (128 / 3.86) * 0.42, provenance: 'motion repair v1; goblin-smooth-walk-candidate.zip; source-preserved candidate, visual review pending',
     clips: {
       idle: source('goblin', 'goblin-walk-smooth.glb', 'idle', [adapters.goblinMaterial]),
       walk: source('goblin', 'goblin-walk-smooth.glb', 'walk', [adapters.goblinMaterial]),
