@@ -60,6 +60,11 @@ export interface GameState {
   phase: 'playing' | 'won' | 'lost'
 }
 
+export interface Movement {
+  velocity: number
+  jumpHeld: boolean
+}
+
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 export const GRASS_PATCHES = [
   [-33, -7],
@@ -95,11 +100,33 @@ export const RULES = {
   predatorSpawnSeconds: 120
 } as const
 
+export function moveRabbit(
+  player: Pick<Player, 'x' | 'y' | 'z' | 'angle' | 'pregnant'>,
+  input: Input,
+  dt: number,
+  movement: Movement
+) {
+  const moveX = clamp(input.moveX, -1, 1)
+  const moveZ = clamp(input.moveZ, -1, 1)
+  const length = Math.max(1, Math.hypot(moveX, moveZ))
+  const speed =
+    (input.crouch ? 2.6 : input.sprint ? 9 : 5.2) *
+    (water(player.z) ? 0.55 : 1) *
+    (player.pregnant ? RULES.pregnancySpeed : 1)
+  player.x = clamp(player.x + (moveX / length) * speed * dt, -45, 45)
+  player.z = clamp(player.z + (moveZ / length) * speed * dt, -32, 32)
+  if (moveX || moveZ) player.angle = Math.atan2(moveX, moveZ)
+  if (input.jump && !movement.jumpHeld && player.y === 0) movement.velocity = 10
+  movement.jumpHeld = input.jump
+  movement.velocity -= 18 * dt
+  player.y = Math.max(0, player.y + movement.velocity * dt)
+  if (player.y === 0) movement.velocity = 0
+}
+
 export class Game {
   state: GameState
   private inputs = new Map<string, Input>()
-  private velocities = new Map<string, number>()
-  private jumpHeld = new Set<string>()
+  private movements = new Map<string, Movement>()
   private foodReady = new Map<string, number>()
   private spawnIn = RULES.predatorSpawnSeconds
   private predatorSequence = 5
@@ -184,8 +211,7 @@ export class Game {
   removePlayer(id: string) {
     this.state.players = this.state.players.filter((player) => player.id !== id)
     this.inputs.delete(id)
-    this.velocities.delete(id)
-    this.jumpHeld.delete(id)
+    this.movements.delete(id)
     for (const predator of this.state.predators) {
       if (predator.targetId === id) {
         predator.targetId = null
@@ -230,21 +256,12 @@ export class Game {
     for (const player of state.players) {
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? idle
-      const length = Math.max(1, Math.hypot(input.moveX, input.moveZ))
-      const speed =
-        (input.crouch ? 2.6 : input.sprint ? 9 : 5.2) *
-        (water(player.z) ? 0.55 : 1) *
-        (player.pregnant ? RULES.pregnancySpeed : 1)
-      player.x = clamp(player.x + (input.moveX / length) * speed * dt, -45, 45)
-      player.z = clamp(player.z + (input.moveZ / length) * speed * dt, -32, 32)
-      if (input.moveX || input.moveZ) player.angle = Math.atan2(input.moveX, input.moveZ)
-      let velocity = this.velocities.get(player.id) ?? 0
-      if (input.jump && !this.jumpHeld.has(player.id) && player.y === 0) velocity = 10
-      if (input.jump) this.jumpHeld.add(player.id)
-      else this.jumpHeld.delete(player.id)
-      velocity -= 18 * dt
-      player.y = Math.max(0, player.y + velocity * dt)
-      this.velocities.set(player.id, player.y === 0 ? 0 : velocity)
+      let movement = this.movements.get(player.id)
+      if (!movement) {
+        movement = { velocity: 0, jumpHeld: false }
+        this.movements.set(player.id, movement)
+      }
+      moveRabbit(player, input, dt, movement)
       player.hidden =
         shelter(player) ||
         (player.y < 0.6 &&

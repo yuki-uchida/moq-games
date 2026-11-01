@@ -1,5 +1,88 @@
 import { expect, test } from '@playwright/test'
 
+test('a guest moves smoothly before delayed host snapshots arrive', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL })
+  const network = `
+    export const MAX_PLAYERS = 16;
+    export class CooperativeNetwork {
+      constructor(options) { this.options = options; this.playerId = options.playerId; }
+      async start() {
+        this.channel = new BroadcastChannel('rabbiters-latency-' + this.options.room);
+        this.channel.onmessage = ({ data }) => {
+          if (data.type === 'hello' && this.options.role === 'host') {
+            const players = [this.playerId, data.playerId];
+            this.options.onPresence(players);
+            this.channel.postMessage({ type: 'presence', players });
+          } else if (data.type === 'presence' && this.options.role === 'guest') {
+            this.options.onPresence(data.players);
+            this.options.onStatus('ready', 'Connected');
+          } else if (data.type === 'input' && this.options.role === 'host') {
+            setTimeout(() => this.options.onInput(data.playerId, data.input), 300);
+          } else if (data.type === 'snapshot' && this.options.role === 'guest') {
+            setTimeout(() => this.options.onSnapshot(data.state), 300);
+          }
+        };
+        this.options.onStatus(this.options.role === 'host' ? 'ready' : 'waiting-for-host', 'Connected');
+        if (this.options.role === 'guest') this.channel.postMessage({ type: 'hello', playerId: this.playerId });
+      }
+      async sendInput(input) { this.channel.postMessage({ type: 'input', playerId: this.playerId, input }); }
+      async broadcastSnapshot(state) { this.channel.postMessage({ type: 'snapshot', state }); }
+      async stop() { this.channel.close(); }
+    }
+  `
+  await context.route('**/src/network.ts*', (route) => route.fulfill({ contentType: 'text/javascript', body: network }))
+  await context.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersPosition = () => {
+  const actor = scene.actors.get('player:' + localId);
+  const player = snapshot?.players.find((entry) => entry.id === localId);
+  return actor && player ? { shown: actor.root.position.x, confirmed: player.x } : null;
+};`
+    })
+  })
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  await host.goto('/')
+  await host.locator('#room').fill('latency-test')
+  await host.locator('#host').click()
+  await guest.goto('/')
+  await guest.locator('#room').fill('latency-test')
+  await guest.locator('#join').click()
+  const position = () =>
+    guest.evaluate(() =>
+      (
+        window as unknown as { rabbitersPosition: () => { shown: number; confirmed: number } | null }
+      ).rabbitersPosition()
+    )
+  await expect.poll(position, { timeout: 15_000 }).not.toBeNull()
+  await guest.keyboard.down('KeyD')
+  const samples = await guest.evaluate(async () => {
+    const read = (window as unknown as { rabbitersPosition: () => { shown: number; confirmed: number } | null })
+      .rabbitersPosition
+    const positions: { shown: number; confirmed: number }[] = []
+    const end = performance.now() + 1200
+    while (performance.now() < end) {
+      await new Promise(requestAnimationFrame)
+      const current = read()
+      if (current) positions.push(current)
+    }
+    return positions
+  })
+  await guest.keyboard.up('KeyD')
+  expect(samples.length).toBeGreaterThan(5)
+  expect(samples.some((sample) => sample.shown > sample.confirmed + 0.1)).toBe(true)
+  expect(samples.at(-1)!.shown).toBeGreaterThan(samples[0].shown + 0.5)
+  for (let index = 1; index < samples.length; index++) {
+    expect(samples[index].shown - samples[index - 1].shown).toBeGreaterThan(-0.1)
+    expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
+  }
+  await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-36.5)
+  await context.close()
+})
+
 test('desktop: starts a solo game and collects food by moving', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

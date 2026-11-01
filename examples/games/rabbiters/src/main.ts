@@ -1,6 +1,7 @@
 import './style.css'
 import { Game, RULES, type GameState, type Input } from './game'
 import { RabbitersAudio } from './audio'
+import { GuestView, type InputAck } from './guest-view'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
 
@@ -27,6 +28,7 @@ const room = element<HTMLInputElement>('#room')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
 const keys = new Set<string>()
 const remoteInputAt = new Map<string, number>()
+const remoteInputAcks = new Map<string, InputAck>()
 const touch = { x: 0, z: 0, jump: false, sprint: false, crouch: false, interact: false }
 const idle: Input = { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false }
 
@@ -35,9 +37,12 @@ let game: Game | undefined
 let network: CooperativeNetwork | undefined
 let role: 'solo' | 'host' | 'guest' | undefined
 let snapshot: GameState | undefined
+let guestView: GuestView | undefined
 let yaw = 0
 let lastTime = performance.now()
 let sentAt = 0
+let sentInput: Input = idle
+let inputInFlight: CooperativeNetwork | undefined
 let hudAt = 0
 let started = false
 let connectionLost = false
@@ -161,7 +166,11 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
   buttons.forEach((button) => (button.disabled = true))
   localId = crypto.randomUUID()
   role = nextRole
+  remoteInputAt.clear()
+  remoteInputAcks.clear()
+  inputInFlight = undefined
   game = nextRole === 'guest' ? undefined : new Game()
+  guestView = nextRole === 'guest' ? new GuestView() : undefined
   game?.addPlayer(localId, 'あなた')
   snapshot = game?.state
   try {
@@ -176,6 +185,9 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
         onInput: (id, input) => {
           if (attempt !== generation) return
           remoteInputAt.set(id, performance.now())
+          if (game && record(input) && numeric(input.sentAt, 0, Number.MAX_SAFE_INTEGER))
+            remoteInputAcks.set(id, { sentAt: input.sentAt, gameTime: game.state.time })
+          else remoteInputAcks.delete(id)
           game?.setInput(id, input as Input)
         },
         onSnapshot: (state) => {
@@ -190,6 +202,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
             if (player.id !== localId && !ids.includes(player.id)) {
               game.removePlayer(player.id)
               remoteInputAt.delete(player.id)
+              remoteInputAcks.delete(player.id)
             }
           }
         },
@@ -227,6 +240,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     leave.hidden = false
     result.hidden = true
     sentAt = 0
+    sentInput = idle
   } catch (cause) {
     if (attempt !== generation) return
     const failed = network
@@ -249,11 +263,14 @@ async function returnToTitle() {
   audio.stop()
   clearInput()
   remoteInputAt.clear()
+  remoteInputAcks.clear()
   const current = network
   network = undefined
   role = undefined
   game = undefined
   snapshot = undefined
+  guestView = undefined
+  inputInFlight = undefined
   hud.hidden = true
   result.hidden = true
   help.hidden = true
@@ -324,8 +341,9 @@ function updateHud(state: GameState) {
 function frame(now: number) {
   const dt = Math.min(Math.max((now - lastTime) / 1000, 0), 0.1)
   lastTime = now
+  const input = controls()
   if (started && game && !connectionLost) {
-    game.setInput(localId, controls())
+    game.setInput(localId, input)
     if (role === 'host') {
       for (const player of game.state.players) {
         if (player.id !== localId && now - (remoteInputAt.get(player.id) ?? 0) > 500) game.setInput(player.id, idle)
@@ -334,17 +352,39 @@ function frame(now: number) {
     game.step(dt)
     snapshot = game.state
   }
-  if (started && network && now - sentAt >= 100) {
+  const inputChanged =
+    Math.abs(input.moveX - sentInput.moveX) > 0.1 ||
+    Math.abs(input.moveZ - sentInput.moveZ) > 0.1 ||
+    input.jump !== sentInput.jump ||
+    input.sprint !== sentInput.sprint ||
+    input.crouch !== sentInput.crouch ||
+    input.interact !== sentInput.interact
+  if (
+    started &&
+    network &&
+    (role !== 'guest' || inputInFlight !== network) &&
+    (now - sentAt >= 100 || (role === 'guest' && inputChanged && now - sentAt >= 25))
+  ) {
     sentAt = now
+    sentInput = input
     const current = network
-    const operation = role === 'host' && game ? current.broadcastSnapshot(game.state) : current.sendInput(controls())
-    void operation.catch((cause: unknown) =>
-      disconnect(`通信エラー: ${cause instanceof Error ? cause.message : String(cause)}`, current)
-    )
+    const operation =
+      role === 'host' && game
+        ? current.broadcastSnapshot({ ...game.state, inputAcks: Object.fromEntries(remoteInputAcks) })
+        : current.sendInput({ ...input, sentAt: now })
+    if (role === 'guest') inputInFlight = current
+    void operation
+      .catch((cause: unknown) =>
+        disconnect(`通信エラー: ${cause instanceof Error ? cause.message : String(cause)}`, current)
+      )
+      .finally(() => {
+        if (inputInFlight === current) inputInFlight = undefined
+      })
   }
   const current = snapshot ?? preview.state
   if (!started) preview.state.time = now / 1000
-  scene.render(current, started ? localId : 'preview', dt)
+  const visual = started && !connectionLost && guestView ? guestView.render(current, localId, input, dt, now) : current
+  scene.render(visual, started ? localId : 'preview', dt)
   if (started && !connectionLost && snapshot) audio.update(snapshot, localId)
   if (started && now - hudAt > 100) {
     hudAt = now
