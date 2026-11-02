@@ -82,9 +82,42 @@ export const HURT_VFX = {
     ctx.lineTo(x + 9, y - 46 * aspect)
     ctx.stroke()
   },
-  sake: emptyEffect,
-  jiro: emptyEffect,
-  yakiniku: emptyEffect,
+  sake: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.38) return
+    ctx.globalAlpha = 1 - age / 0.38
+    ctx.strokeStyle = '#e1f8ff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x - unit.side * 13, y - (55 + age * 30) * aspect, 3 + age * 5, 0, Math.PI * 2)
+    ctx.stroke()
+  },
+  jiro: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.5) return
+    ctx.globalAlpha = 1 - age / 0.5
+    ctx.strokeStyle = '#f5f3d3'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(x - unit.side * (12 + age * 30), y - (45 - age * 50) * aspect)
+    ctx.lineTo(x - unit.side * (17 + age * 30), y - (51 - age * 50) * aspect)
+    ctx.stroke()
+  },
+  yakiniku: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.4) return
+    ctx.globalAlpha = 1 - age / 0.4
+    ctx.fillStyle = '#ffad36'
+    for (let index = 0; index < 4; index++) {
+      const angle = (index / 3) * Math.PI
+      ctx.beginPath()
+      ctx.arc(
+        x + Math.cos(angle) * (13 + age * 40),
+        y - (32 + Math.sin(angle) * (12 + age * 40)) * aspect,
+        2,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+  },
   garlic: emptyEffect,
   curry: emptyEffect,
   milk: emptyEffect,
@@ -221,9 +254,34 @@ export const DEATH_VFX = {
     ctx.font = 'bold 11px sans-serif'
     ctx.fillText('z', x + 22 + age * 9, y - (37 + age * 25) * aspect)
   },
-  sake: emptyEffect,
-  jiro: emptyEffect,
-  yakiniku: emptyEffect,
+  sake: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age < 0.3 || age > 1.3) return
+    ctx.globalAlpha = Math.min(0.7, (age - 0.3) * 3, (1.3 - age) * 3)
+    ctx.fillStyle = '#dcf6f5'
+    ctx.beginPath()
+    ctx.ellipse(x + unit.side * 20, y, Math.min(30, (age - 0.3) * 65), 5 * aspect, 0, 0, Math.PI * 2)
+    ctx.fill()
+  },
+  jiro: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age < 0.45 || age > 1.4) return
+    ctx.globalAlpha = Math.min(1, (age - 0.45) * 5, (1.4 - age) * 4)
+    ctx.fillStyle = '#d5e5a4'
+    for (let index = 0; index < 5; index++) {
+      ctx.beginPath()
+      ctx.ellipse(x + (index - 2) * 10, y + ((index % 2) - 0.5) * 5 * aspect, 5, 2 * aspect, 0.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  yakiniku: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 1.1) return
+    ctx.globalAlpha = Math.min(0.55, (1.1 - age) * 0.8)
+    ctx.fillStyle = '#f1f1ed'
+    for (let index = 0; index < 3; index++) {
+      ctx.beginPath()
+      ctx.arc(x + Math.sin(age * 5 + index) * 5, y - (35 + age * 35 + index * 8) * aspect, 3 + age * 4, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   garlic: emptyEffect,
   curry: emptyEffect,
   milk: emptyEffect,
