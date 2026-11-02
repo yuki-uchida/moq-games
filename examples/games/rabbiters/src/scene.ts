@@ -1034,17 +1034,27 @@ export class RabbitersScene {
         desired.y,
         Math.min(heightAt(desired.x, desired.z) + 1, this.stage === FOREST ? Infinity : this.target.y + 5.5)
       )
-    // If a trunk, rock or tunnel end blocks the boom, swing it around the rabbit before giving up.
+    // If a trunk, rock or tunnel end blocks the boom, swing it around the rabbit before giving up. Between walls
+    // the boom keeps to the player's yaw: swinging there flips between sides of a corner from frame to frame.
+    const walled = this.stage !== FOREST || underground || !!cave
     const full = desired.distanceTo(pivot)
     let reach = pivot.clone()
-    for (const swing of underground ? [0, Math.PI] : [0, 0.5, -0.5, 1, -1]) {
+    for (const swing of underground ? [0, Math.PI] : walled && !cave ? [0] : [0, 0.5, -0.5, 1, -1]) {
       const swung = desired.clone().sub(pivot).applyAxisAngle(UP, swing).add(pivot)
       const candidate = this.boom(pivot, swung, underground, cave)
       if (candidate.distanceTo(pivot) > reach.distanceTo(pivot)) reach = candidate
       if (reach.distanceTo(pivot) >= full * 0.7) break
     }
-    if (reach.distanceTo(focus) < 1.2 && !underground && !cave) reach = desired // a thin post; look through it
+    if (walled && !underground && !cave && reach.distanceTo(pivot) < full * 0.7) {
+      // Hemmed in by walls: look down from above the rabbit instead of pressing against them.
+      const above = new THREE.Vector3(pivot.x + backX * 1.5, this.target.y + 5.5, pivot.z + backZ * 1.5)
+      const overhead = this.boom(pivot, above, underground, cave)
+      if (overhead.distanceTo(pivot) > reach.distanceTo(pivot)) reach = overhead
+    }
+    if (reach.distanceTo(focus) < 1.2 && !walled) reach = desired // a thin post; look through it
     this.camera.position.lerp(reach, smoothing)
+    // Between walls, the smoothed path must not cut through one (it would pop onto the wall's top).
+    if (walled) this.camera.position.copy(this.boom(pivot, this.camera.position, underground, cave))
     this.keepCameraClear(this.camera.position, underground, cave)
     if (underground || cave) this.camera.lookAt(focus)
     else {
