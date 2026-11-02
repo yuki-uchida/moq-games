@@ -44,7 +44,7 @@ import {
   writeSave,
   type Difficulty
 } from './save'
-import { openSettings, sfxVolume } from './settings'
+import { openSettings, reducedMotion, sfxVolume } from './settings'
 import { showTitle } from './title'
 let busy = false
 let ready = false
@@ -126,6 +126,25 @@ app.insertAdjacentHTML(
 )
 field.style.setProperty('--grid-size', String(size))
 const stage = new Stage(field, board)
+const contextNotice = document.createElement('div')
+contextNotice.className = 'context-notice'
+contextNotice.setAttribute('role', 'status')
+contextNotice.textContent = '画面を復旧しています…'
+contextNotice.hidden = true
+document.body.append(contextNotice)
+field.addEventListener('stage-context', (event) => {
+  const restored = (event as CustomEvent<boolean>).detail
+  contextNotice.hidden = restored
+  document.querySelector<HTMLElement>('#app main')!.inert = !restored || !playing
+  if (restored) render()
+})
+function transition() {
+  if (reducedMotion() || document.hidden) return
+  const overlay = document.createElement('div')
+  overlay.className = 'screen-transition'
+  document.body.append(overlay)
+  void pause(350).then(() => overlay.remove())
+}
 const story = new StoryFlow(
   field,
   (role) => stage.portrait(role),
@@ -410,6 +429,7 @@ function render() {
     `⚑ ${missions[game.stage].name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}`
   const result = document.querySelector<HTMLDivElement>('#result')!
   // Wait for the final EXP presentation before revealing the chapter report.
+  const wasHidden = result.hidden
   result.hidden = busy || (game.phase !== 'won' && game.phase !== 'lost')
   result.classList.toggle('chapter', game.phase === 'won')
   document.querySelector('#report')!.innerHTML =
@@ -424,6 +444,8 @@ function render() {
   next.hidden = game.phase !== 'won'
   next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
+  if (playing && wasHidden && !result.hidden)
+    audio.jingle(game.phase === 'lost' ? 'defeat' : game.stage === missions.length - 1 ? 'final' : 'victory')
 }
 async function choose(x: number, y: number) {
   if (busy || !ready) return
@@ -635,6 +657,7 @@ showSound(audio.enabled)
 document.querySelector('#sound')!.addEventListener('click', () => showSound(audio.toggle()))
 function startMission(stage: number) {
   if (!unlocked(save, stage)) return
+  transition()
   generation++
   story.cancel()
   animation.cancel()
@@ -752,11 +775,14 @@ const titleProgress = showTitle(saved, {
     save = freshSave(difficulty)
     checkpoints = save.checkpoints
     playing = true
+    audio.setTitle(false)
     startMission(0)
   },
   continue: (stage) => {
     playing = true
+    audio.setTitle(false)
     if (stage === undefined && save.suspend) {
+      transition()
       pendingOpening = undefined
       generation++
       game = restoreGame(save.suspend)

@@ -21,6 +21,7 @@ for (const viewport of [
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await enterBattle(page)
+    if (viewport.width === 390) await page.getByRole('button', { name: '音を無効にする' }).click()
     // The prologue and chapter opening finish (skipped by the hook) before the board takes input.
     await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
     await expect(page.getByRole('button', { name: /2,5 燈守/ })).toBeVisible()
@@ -49,6 +50,8 @@ for (const viewport of [
         })
     }
     await expect(page.locator('#result')).toContainText('燈は消えた')
+    if (viewport.width === 390) await expect(page.locator('[data-ember-music]')).not.toHaveAttribute('data-jingle')
+    else await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'defeat')
     await page.getByRole('button', { name: '再プレイ', exact: true }).click()
     await expect(page.locator('#turn')).toContainText('味方 · 1')
     await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 3')
@@ -234,6 +237,7 @@ for (const stage of [0, 1, 2])
       await expect(page.locator('body')).toHaveAttribute('data-story-victory', 'yes')
       await expect(page.locator('.exp-gauge, .level-up')).toHaveCount(0)
       await expect(page.locator('#result')).toContainText('霧が晴れた')
+      await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'victory')
       expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)
       expect(await page.evaluate(() => (window as any).emberSoundPlays)).toBeGreaterThan(0)
       await page.screenshot({ path: `test-results/ember-win-${stage + 1}-${width}.png` })

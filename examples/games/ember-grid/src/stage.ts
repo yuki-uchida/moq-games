@@ -112,6 +112,17 @@ export class Stage {
     this.canvas.className = 'stage'
     this.canvas.setAttribute('aria-hidden', 'true')
     this.canvas.dataset.motion = ''
+    this.canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault()
+      this.field.dispatchEvent(new CustomEvent('stage-context', { detail: false }))
+    })
+    this.canvas.addEventListener('webglcontextrestored', () => {
+      this.terrainKey = ''
+      this.release()
+      this.resize()
+      this.draw(true)
+      this.field.dispatchEvent(new CustomEvent('stage-context', { detail: true }))
+    })
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     this.renderer.setClearColor(0, 0)
