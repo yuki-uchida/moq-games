@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { plan } from './strategy'
+import { enterBattle } from './shell-helper'
 import {
   allyTurnOver,
   attack,
@@ -16,7 +17,7 @@ import {
 for (const width of [1280, 390]) {
   test(`story presentation ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto('./?seed=7')
+    await enterBattle(page, './?seed=7')
     const scene = page.getByRole('dialog', { name: '物語' })
     await expect(scene).toBeVisible({ timeout: 60000 })
     await expect(page.locator('.cell').first()).toBeDisabled()
@@ -56,7 +57,7 @@ for (const width of [1280, 390]) {
 }
 
 test('chapter one outro precedes the report', async ({ page }) => {
-  await page.goto('./?seed=7')
+  await enterBattle(page, './?seed=7')
   const scene = page.getByRole('dialog', { name: '物語' })
   await expect(scene).toBeVisible({ timeout: 60000 })
   await page.keyboard.press('Escape')
@@ -84,12 +85,16 @@ test('chapter one outro precedes the report', async ({ page }) => {
       }
       if (target) {
         await cell(target.x, target.y).click()
+        await page.getByRole('button', { name: '攻撃', exact: true }).click()
         attack(game, unit, target)
       }
       if (game.phase === 'won') break
     }
     if (game.phase === 'ally') {
-      if (!allyTurnOver(game)) await page.getByRole('button', { name: '▶ ターン終了' }).click()
+      await expect(page.getByRole('button', { name: '▶ ターン終了' })).toBeEnabled({ timeout: 30000 })
+      // The page hands over by itself once every ally is spent, unless the last move can still be undone.
+      if (!allyTurnOver(game) || (await page.locator('#undo').isEnabled()))
+        await page.getByRole('button', { name: '▶ ターン終了' }).click()
       beginEnemy(game)
       game.units.filter((unit) => unit.side === 'enemy').forEach((unit) => enemyStep(game, unit))
       beginAlly(game)

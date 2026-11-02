@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { enterBattle } from './shell-helper'
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     setInterval(
@@ -20,11 +21,11 @@ test('cold preparation, retry and retained mission assets', async ({ page }) => 
       await route.fulfill({ status: 503, body: 'temporary failure' })
     } else await route.continue()
   })
-  await page.goto('./')
+  await enterBattle(page, './', true)
   await expect(page.locator('.preparation button')).toBeVisible({ timeout: 60000 })
   await expect(page.locator('.cell').first()).toBeDisabled()
   // Only the five roles' models (and the archer's refined walk clip) are requested; no sprite sheets.
-  expect(art.every((url) => /\/tower-defense-art\/models\//.test(url))).toBe(true)
+  expect(art.every((url) => /\/tower-defense-art\/(models|title)\//.test(url))).toBe(true)
   const completed = art.length
   fail = false
   await page.locator('.preparation button').click()
@@ -39,7 +40,7 @@ test('cold preparation, retry and retained mission assets', async ({ page }) => 
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.locator('[data-stage="2"]').click()
   await expect(page.getByRole('button', { name: /灰の射手/ })).toBeVisible()
-  expect(art.length).toBe(prepared)
+  expect(art.slice(prepared).every((url) => /\/models\/(healer|slime|bat)\//.test(url))).toBe(true)
 })
 
 for (const cacheDisabled of [true, false])
@@ -50,7 +51,7 @@ for (const cacheDisabled of [true, false])
     await cdp.send('Network.enable')
     await cdp.send('Network.setCacheDisabled', { cacheDisabled })
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.goto('./')
+    await enterBattle(page)
     await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 60000 })
     const result = await page.evaluate(async () => {
       const stage = (document.querySelector('.stage') as HTMLCanvasElement & { stage?: import('../src/stage').Stage })
@@ -119,7 +120,7 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
     downloadThroughput: 5 * 1024 * 1024,
     uploadThroughput: 1024 * 1024
   })
-  await page.goto('./')
+  await enterBattle(page)
   await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 90000 })
   const requests: string[] = []
   page.on('request', (request) => {
@@ -148,6 +149,7 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
         }
         requestAnimationFrame(frame)
         document.querySelector<HTMLButtonElement>('.cell[aria-label^="7,4 灰牙"]')!.click()
+        document.querySelector<HTMLButtonElement>('#confirm')!.click()
       })
     })
     expect(samples.some((s) => s.active === 2)).toBe(true)

@@ -70,13 +70,16 @@ export function expFor(unit: Unit, target: Unit, defeated: boolean): number {
 }
 export const healExp = 10
 /** Seedable PRNG (mulberry32) so growth rolls are reproducible. */
-export function seeded(seed: number): () => number {
-  return () => {
+export function seeded(seed: number): (() => number) & { state: number } {
+  const random = () => {
     seed = (seed + 0x6d2b79f5) | 0
+    random.state = seed
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+  random.state = seed | 0
+  return random
 }
 /** Roll each stat against its growth rate; an empty level up raises the role's best stat. */
 export function rollGrowth(role: string, rng: () => number): Gains {

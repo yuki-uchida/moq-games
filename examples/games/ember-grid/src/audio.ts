@@ -1,5 +1,6 @@
 /** Reuses only owner-approved public recordings; never creates or modifies assets. */
 const storageKey = 'ember-grid:sound'
+import { bgmVolume, sfxVolume } from './settings'
 function storedEnabled() {
   try {
     return localStorage.getItem(storageKey) !== 'off'
@@ -31,9 +32,9 @@ export class ExpeditionAudio {
     // The battle keeps running while hidden, so music and voices keep playing too.
     window.addEventListener('pagehide', () => this.stop())
   }
-  async prepare() {
-    // Small, existing action cues only; music streams separately.
-    for (const role of ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer']) {
+  async prepare(roles: string[]) {
+    // Small, existing action cues only; music streams separately. The healer cue doubles as quiet potion feedback.
+    for (const role of new Set([...roles, 'healer'])) {
       if (this.sounds.has(role)) continue
       const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-sfx/${role}_attack.wav`, {
         signal: AbortSignal.timeout(15000)
@@ -65,6 +66,13 @@ export class ExpeditionAudio {
       }
     }
   }
+  setMusic(name: string) {
+    const source = `${import.meta.env.BASE_URL}tower-defense-music/${name}.mp3`
+    if (this.music.getAttribute('src') === source) return
+    this.music.pause()
+    this.music.src = source
+    this.start()
+  }
   toggle() {
     this.enabled = !this.enabled
     try {
@@ -75,6 +83,12 @@ export class ExpeditionAudio {
     if (this.enabled) this.start()
     else this.stop()
     return this.enabled
+  }
+  applySettings() {
+    this.music.volume = 0.07 * bgmVolume()
+    this.voices.forEach((voice) => {
+      voice.volume = Number(voice.dataset.baseVolume) * sfxVolume()
+    })
   }
   setBattle(active: boolean) {
     if (this.battle === active) return
@@ -104,14 +118,15 @@ export class ExpeditionAudio {
       oldest.pause()
       oldest.remove()
     }
-    const file = ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer'].includes(role) ? role : 'soldier'
+    const file = role
     const prepared = this.preparedVoices.get(file)
     const voice = prepared && (prepared.paused || prepared.ended) ? prepared : new Audio(this.sounds.get(file))
     voice.currentTime = 0
     voice.dataset.emberVoice = 'true'
     document.body.append(voice)
     voice.addEventListener('ended', () => voice.remove(), { once: true })
-    voice.volume = role === 'healer' ? 0.15 : 0.32
+    voice.dataset.baseVolume = String(role === 'healer' ? 0.15 : 0.32)
+    voice.volume = Number(voice.dataset.baseVolume) * sfxVolume()
     this.voices.push(voice)
     void voice.play().catch(() => this.report('効果音を読み込めませんでした'))
   }

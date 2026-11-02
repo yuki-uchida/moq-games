@@ -5,11 +5,12 @@ import { ModelEnvironmentLighting } from '../../tower_diffence_with_jev/src/rend
 import { UNIT_MODEL_CATALOG } from '../../tower_diffence_with_jev/src/rendering/models/catalog'
 import type { UnitType } from '../../tower_diffence_with_jev/src/game/model'
 import { finished, size, type Game, type Unit } from './game'
+import { reducedMotion } from './settings'
 
 export type Point = { x: number; y: number }
 export type Track =
   | { motion: 'walk'; start: number; ms: number; from: Point; to: Point; cycle: number }
-  | { motion: 'attack'; start: number; ms: number; clipMs: number }
+  | { motion: 'attack' | 'heal'; start: number; ms: number; clipMs: number }
   | { motion: 'hit' | 'death'; start: number; ms: number; push: Point }
 type Actor = {
   id: string
@@ -22,23 +23,30 @@ type Actor = {
   phase: number
   track?: Track
   dim: boolean
+  boss: boolean
 }
 
 export const ROLES = ['soldier', 'archer', 'mage', 'goblin', 'wolf'] as const
-const MOTIONS = ['idle', 'walk', 'attack'] as const
+export const chapterRoles = (game: Game) => [...new Set(game.units.map((unit) => unit.role))]
 /** Model gameplay pixels (≈128 per figure) → tiles. */
 const MODEL_SIZE = 2.3 / 128
 const FALL_SECONDS = 0.82
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const definitions = new Map<string, UnitModelDefinition>()
 /** Upright in the board's own Y-up world (the catalog tilts models into a flat 2D board view), and only
  * the motions this game plays, so background rig preparation never requests other clips. */
 function definition(role: string) {
-  if (!ROLES.includes(role as (typeof ROLES)[number])) role = role === 'healer' ? 'mage' : 'goblin'
   let value = definitions.get(role)
   if (!value) {
     const { clips, ...base } = UNIT_MODEL_CATALOG[role as UnitType]!
-    value = { ...base, viewElevation: Math.PI / 2, clips: { idle: clips.idle, walk: clips.walk, attack: clips.attack } }
+    value = {
+      ...base,
+      viewElevation: Math.PI / 2,
+      clips: {
+        idle: clips.idle,
+        walk: clips.walk,
+        ...(role === 'healer' ? { heal: clips.heal } : { attack: clips.attack })
+      }
+    }
     definitions.set(role, value)
   }
   return value
@@ -143,7 +151,8 @@ export class Stage {
     const figure = Math.min(1.35, Math.max(1, 60 / tile))
     if (figure !== this.figure) {
       this.figure = figure
-      for (const actor of this.actors.values()) actor.visual.setPresentation(MODEL_SIZE * figure, 1)
+      for (const actor of this.actors.values())
+        actor.visual.setPresentation(MODEL_SIZE * figure * (actor.boss ? 1.25 : 1), 1)
     }
     this.field.style.setProperty('--figure', String(figure))
     this.renderer.setSize(field.width, field.height)
@@ -167,9 +176,9 @@ export class Stage {
   }
 
   /** Required sources for every role: resolves once decoded, rejects if any failed (retry re-requests only those). */
-  load(progress: (done: number, total: number) => void) {
+  load(roles: string[], progress: (done: number, total: number) => void) {
     this.cache.retryFailed()
-    const specs = ROLES.flatMap((role) => MOTIONS.map((motion) => definition(role).clips[motion]!))
+    const specs = roles.flatMap((role) => Object.values(definition(role).clips).filter((clip) => clip !== undefined))
     return new Promise<void>((resolve, reject) => {
       const poll = () => {
         const states = specs.map((spec) => this.cache.requestSource(spec))
@@ -212,7 +221,7 @@ export class Stage {
     }
     if (!actor) {
       const visual = new ModelUnitVisual(definition(u.role), this.cache)
-      visual.setPresentation(MODEL_SIZE * this.figure, 1)
+      visual.setPresentation(MODEL_SIZE * this.figure * (u.boss ? 1.25 : 1), 1)
       const shadow = new THREE.Mesh(this.shared.plane, this.shared.shadow)
       shadow.scale.setScalar(0.62)
       const ring = new THREE.Mesh(this.shared.ring, this.shared.rings[u.side])
@@ -228,7 +237,8 @@ export class Stage {
         at: { x: u.x, y: u.y },
         facing: rest(u),
         phase: Math.random() * 4,
-        dim: false
+        dim: false,
+        boss: !!u.boss
       }
       this.actors.set(u.id, actor)
       void this.warm(visual)
@@ -256,6 +266,10 @@ export class Stage {
       if (u.hp <= 0) continue
       alive.add(u.id)
       const actor = this.actor(u)
+      if (actor.boss !== !!u.boss) {
+        actor.boss = !!u.boss
+        actor.visual.setPresentation(MODEL_SIZE * this.figure * (actor.boss ? 1.25 : 1), 1)
+      }
       actor.ring.material = u.id === selected ? this.shared.rings.selected : this.shared.rings[u.side]
       actor.dim = finished(game, u)
       if (!actor.track) {
@@ -318,8 +332,8 @@ export class Stage {
       if (track?.motion === 'walk') {
         at = { x: track.from.x + (track.to.x - track.from.x) * t, y: track.from.y + (track.to.y - track.from.y) * t }
         actor.visual.sample({ ...pose, motion: 'walk', seconds: 0, cycle: track.cycle + t, loop: true })
-      } else if (track?.motion === 'attack') {
-        actor.visual.sample({ ...pose, motion: 'attack', seconds: (t * track.clipMs) / 1000, loop: false })
+      } else if (track?.motion === 'attack' || track?.motion === 'heal') {
+        actor.visual.sample({ ...pose, motion: track.motion, seconds: (t * track.clipMs) / 1000, loop: false })
       } else if (track?.motion === 'death') {
         actor.visual.sampleAllyDeath(t * FALL_SECONDS, pose)
         opacity = 1 - t * t
@@ -355,8 +369,8 @@ export class Stage {
   }
 
   /** Arrow or spell flying from `from` to `to` over ms (positions are time-based; rAF only renders). */
-  shoot(kind: 'arrow' | 'spell', from: THREE.Vector3, to: THREE.Vector3, ms: number) {
-    const object = kind === 'arrow' ? Props.arrow() : Props.spell()
+  shoot(kind: 'arrow' | 'spell' | 'fireball', from: THREE.Vector3, to: THREE.Vector3, ms: number) {
+    const object = kind === 'arrow' ? Props.arrow() : Props.spell(kind === 'fireball')
     object.name = kind
     const start = performance.now()
     object.userData.update = (now: number) => {
@@ -365,7 +379,7 @@ export class Stage {
       // A shallow arc for arrows; spells fly straight.
       if (kind === 'arrow') object.position.y += Math.sin(Math.PI * t) * 0.12 * from.distanceTo(to)
       object.lookAt(to)
-      if (kind === 'spell') object.rotation.z = now / 90
+      if (kind !== 'arrow') object.rotation.z = now / 90
     }
     object.userData.update(start)
     this.scene.add(object)
@@ -382,7 +396,7 @@ export class Stage {
     let url = this.portraits.get(role)
     if (url) return url
     const camera = new THREE.OrthographicCamera(-0.62, 0.62, 1.0, -0.08, -50, 50)
-    camera.position.copy(this.camera.position)
+    camera.position.set(-0.8 / Math.SQRT2, 0.6, 0.8 / Math.SQRT2).multiplyScalar(20)
     camera.lookAt(0, 0, 0)
     const scene = new THREE.Scene()
     scene.environment = this.scene.environment
@@ -427,7 +441,7 @@ const Props = (() => {
     trunk: flat(0x3a2618),
     needles: [flat(0x2f5f3d), flat(0x3f7a4b), flat(0x58925a)],
     bush: [flat(0x24452f), flat(0x3d6e45)],
-    rock: [flat(0x66544b), flat(0x495d65)],
+    rock: [flat(0x66544b), flat(0x495d65), flat(0x65615d), flat(0x4c6961), flat(0x88847b), flat(0x302a30)],
     ruin: flat(0x65615d),
     ruinTop: flat(0x817971),
     moss: flat(0x6d7d5a),
@@ -441,7 +455,8 @@ const Props = (() => {
       opacity: 0.45,
       blending: THREE.AdditiveBlending,
       depthWrite: false
-    })
+    }),
+    fire: new THREE.MeshBasicMaterial({ color: 0xff6b19 })
   }
   const g = {
     trunk: new THREE.CylinderGeometry(0.025, 0.035, 0.14, 6).translate(0, 0.07, 0),
@@ -522,6 +537,22 @@ const Props = (() => {
         group.add(new THREE.Mesh(g.wall, m.ruin), top)
         return group
       }
+      if (stage >= 3) {
+        const mesh = new THREE.Mesh(g.rock, m.rock[stage])
+        mesh.scale.set(stage === 4 ? 0.8 : 1.4, stage === 4 ? 1.7 : 1, stage === 4 ? 0.8 : 1.4)
+        group.add(mesh)
+        if (stage === 3) {
+          const reeds = new THREE.Mesh(g.wallTop, m.moss)
+          reeds.scale.set(0.2, 1.1, 0.2)
+          reeds.position.x = 0.3
+          group.add(reeds)
+        } else if (stage === 5) {
+          const ruin = new THREE.Mesh(g.wallTop, m.rock[stage])
+          ruin.rotation.z = 0.35
+          group.add(ruin)
+        }
+        return group
+      }
       const mesh = new THREE.Mesh(g.rock, m.rock[stage])
       group.scale.setScalar(1.6)
       // The crack faces the camera (toward −X, +Z).
@@ -535,9 +566,9 @@ const Props = (() => {
       group.add(new THREE.Mesh(g.shaft, m.shaft), new THREE.Mesh(g.tip, m.tip))
       return group
     },
-    spell() {
+    spell(fire = false) {
       const group = new THREE.Group()
-      group.add(new THREE.Mesh(g.orb, m.spell), new THREE.Mesh(g.halo, m.glow))
+      group.add(new THREE.Mesh(g.orb, fire ? m.fire : m.spell), new THREE.Mesh(g.halo, m.glow))
       return group
     }
   }
