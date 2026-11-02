@@ -8,6 +8,10 @@ import {
 import { playUiSound, type UiSound } from '../../../shared/UiSound'
 import { createFeelPlayer, type FeelSound } from './FeelSounds'
 
+/** Synthesized cues measured 6-15 dB (RMS) above the shipped attack clips at the same master
+ * gain; -6 dB keeps frequent kill/coin/heavy-hit cues level with the combat sounds. */
+const FEEL_BUS_GAIN = 0.5
+
 export interface SoundCatalogEntry {
   id: string
   unitType: SoundUnitType
@@ -77,6 +81,7 @@ export class SoundPlayer {
   private readonly lastCueTime = new Map<string, number>()
   private readonly playFeelSound = createFeelPlayer()
   private readonly feelPlayed: Partial<Record<FeelSound, number>> = {}
+  private feelBus: GainNode | null = null
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -273,7 +278,12 @@ export class SoundPlayer {
   playFeel(kind: FeelSound, param?: number): void {
     const context = this.context
     if (this.isDestroyed || !this.isEnabled || this.gainVolume === 0 || !context || !this.master) return
-    if (this.playFeelSound(kind, context, this.master, param)) this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
+    if (!this.feelBus || this.feelBus.context !== context) {
+      this.feelBus = context.createGain()
+      this.feelBus.gain.value = FEEL_BUS_GAIN
+      this.feelBus.connect(this.master)
+    }
+    if (this.playFeelSound(kind, context, this.feelBus, param)) this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
   }
 
   private playCueAsset(key: string, asset: SoundAsset): void {
