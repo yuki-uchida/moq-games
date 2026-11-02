@@ -2,7 +2,8 @@ const sections = [
   [
     '☝ 操作',
     '味方を選び、青いマスへ移動。敵を選び、予測を確認して攻撃します。↶ 戻すで移動を取り消せます。✓ 待機、▶ ターン終了。敵フェイズは⏩で早送り。',
-    'Tab で盤面へ、矢印でマス移動、Enter / Space で選択、Escape で取消。'
+    'Tab で盤面へ、矢印でマス移動、Enter / Space で選択、Escape で取消。',
+    'タッチでは長押しでユニット詳細。マスが小さいときは ⊞ をオンにすると、タップしたマスと周囲を大きなボタンから選べます。'
   ],
   [
     '⚔ ルール',
@@ -28,7 +29,7 @@ const sections = [
 
 export function setupHelp(dialog: HTMLDialogElement) {
   document.body.append(dialog)
-  dialog.innerHTML = `<h2 id="help-title">遊び方</h2><div role="tablist" aria-label="遊び方の項目">${sections.map(([label], index) => `<button role="tab" id="help-tab-${index}" aria-controls="help-panel-${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('')}</div>${sections.map(([, first, second], index) => `<section role="tabpanel" id="help-panel-${index}" aria-labelledby="help-tab-${index}" ${index ? 'hidden' : ''}><p>${first}</p><p>${second}</p></section>`).join('')}<button id="help-close">戻る</button>`
+  dialog.innerHTML = `<h2 id="help-title">遊び方</h2><div role="tablist" aria-label="遊び方の項目">${sections.map(([label], index) => `<button role="tab" id="help-tab-${index}" aria-controls="help-panel-${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('')}</div>${sections.map(([, ...paragraphs], index) => `<section role="tabpanel" id="help-panel-${index}" aria-labelledby="help-tab-${index}" ${index ? 'hidden' : ''}>${paragraphs.map((text) => `<p>${text}</p>`).join('')}</section>`).join('')}<button id="help-close">戻る</button>`
   const tabs = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[role=tab]'))
   const panels = Array.from(dialog.querySelectorAll<HTMLElement>('[role=tabpanel]'))
   function select(index: number) {
