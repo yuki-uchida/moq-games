@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { acceptDiscard, enterBattle } from './shell-helper'
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     setInterval(
@@ -189,6 +189,7 @@ test('restart cancels player motion and reduced motion keeps controls usable', a
   await page.getByRole('button', { name: /2,5 燈守/ }).click()
   await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
   await page.locator('#restart').click()
+  await acceptDiscard(page)
   await page.waitForTimeout(1000)
   await expect(page.getByRole('button', { name: /2,5 燈守リオ HP 16/ })).toBeEnabled()
   expect(await tracks(page)).toEqual([])

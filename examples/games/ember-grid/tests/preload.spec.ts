@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { acceptDiscard, enterBattle } from './shell-helper'
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     setInterval(
@@ -37,6 +37,7 @@ test('cold preparation, retry and retained mission assets', async ({ page }) => 
   await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
   await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeVisible()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+  await acceptDiscard(page)
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.locator('[data-stage="2"]').click()
   await expect(page.getByRole('button', { name: /灰の射手/ })).toBeVisible()
@@ -127,7 +128,10 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
     if (/tower-defense-(art|sfx)/.test(request.url())) requests.push(request.url())
   })
   for (let repeat = 0; repeat < 2; repeat++) {
-    if (repeat) await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+    if (repeat) {
+      await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+      await acceptDiscard(page)
+    }
     await page.getByRole('button', { name: /2,4 風読み/ }).click()
     await page.getByRole('button', { name: /4,4 平地 移動可能/ }).click()
     await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeEnabled()

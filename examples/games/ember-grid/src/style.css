@@ -1045,6 +1045,12 @@ fieldset label {
     animation: none;
   }
 }
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
 #fast,
 #detail-button {
   min-width: 44px;
