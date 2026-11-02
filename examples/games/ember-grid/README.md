@@ -2,6 +2,14 @@
 
 Independent, local, single-player tactical example: lantern wardens cross six frontiers to disperse the ash pack. No network or SDK initialization is required. Open `/moq-games/examples/games/ember-grid/` after `npm run dev`. The root Vite build includes this separate HTML entry; the gallery is managed separately.
 
+## Story presentation
+
+The prologue, chapter title cards, introductions and victory scenes use the characters' runtime names and rendered 3D portraits. Lines belonging to fallen allies are omitted; the ending remembers fallen allies by their runtime names. Tap or press Enter/Space to complete and advance a line; the skip button or Escape closes the scene. Reduced motion disables type-on and title animation. `setStoryEnabled` in `src/dialogue.ts` is the integration point for a future setting. Credits identify the repository's owner-provided models and music and generated sound effects; they do not imply additional asset rights.
+
+The script covers six planned chapters, including Luka's chapter-four introduction and the final dragon encounter. This checkout still implements only three battles: chapter-four onward, the epilogue and credits are intentionally unreachable until the six-chapter campaign is merged. The six-chapter integration must retain the start and victory hooks and populate the current roster with Luka. The story roster remembers runtime names during this browser session and restores its chapter-start history on replay.
+
+Story checks: `npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1` and `E2E_PORT=5271 npx playwright test --config examples/games/ember-grid/playwright.config.ts`. Story screenshots are saved under `test-results/story-*.png`.
+
 ## Expedition
 
 - **峡谷の燈**: a long rock spine has a one-square central pass and longer flanks around its northern and southern ends. Near-side groves shelter the approach; a wolf and scout screen the pass, with an armored watchman behind them.

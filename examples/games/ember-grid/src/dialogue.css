@@ -1,0 +1,117 @@
+.story-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: end;
+  background: #0006;
+  outline: none;
+}
+.story-box {
+  width: 100%;
+  min-height: 128px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #142631ed;
+  border: 2px solid #bba56b;
+  border-radius: 12px;
+}
+.story-box img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  flex: none;
+}
+.story-copy {
+  flex: 1;
+  min-width: 0;
+}
+.story-copy strong {
+  color: #f4d68b;
+}
+.story-copy p {
+  margin: 8px 0;
+  font-size: clamp(15px, 2.5vw, 19px);
+  line-height: 1.5;
+}
+.story-box button {
+  align-self: start;
+  padding: 8px;
+}
+.story-title {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  background: #101e27dc;
+  pointer-events: none;
+  animation: story-fade 1.6s both;
+}
+.story-credits {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  background: #101e27f5;
+  text-align: center;
+}
+.story-credits div {
+  animation: story-roll 16s linear both;
+  padding: 3rem 1rem 1rem;
+}
+.story-credits p {
+  margin: 1.5em 0;
+}
+.story-credits button {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+}
+@keyframes story-roll {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+.story-title strong {
+  font-size: clamp(24px, 5vw, 40px);
+}
+@keyframes story-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+}
+@media (max-height: 500px) {
+  .story-box {
+    min-height: 80px;
+    padding: 5px;
+  }
+  .story-box img {
+    width: 65px;
+    height: 65px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-credits {
+    overflow-y: auto;
+  }
+  .story-credits div {
+    animation: none;
+  }
+  .story-title {
+    animation: none;
+  }
+}

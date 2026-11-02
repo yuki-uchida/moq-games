@@ -1,4 +1,12 @@
 import { test, expect } from '@playwright/test'
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    setInterval(
+      () => document.querySelector<HTMLButtonElement>('.story-overlay button, .story-credits button')?.click(),
+      100
+    )
+  })
+})
 
 test('cold preparation, retry and retained mission assets', async ({ page }) => {
   const cdp = await page.context().newCDPSession(page)

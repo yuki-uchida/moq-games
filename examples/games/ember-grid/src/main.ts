@@ -28,6 +28,7 @@ import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
 import { Stage } from './stage'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
+import { StoryFlow } from './dialogue'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
@@ -66,6 +67,17 @@ const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
 field.style.setProperty('--grid-size', String(size))
 const stage = new Stage(field, board)
+const story = new StoryFlow(
+  field,
+  (role) => stage.portrait(role),
+  () => game,
+  () => generation,
+  lockPresentation,
+  () => {
+    busy = false
+    render()
+  }
+)
 const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 // Status tags float above the 3D layer on a second projected grid, nearer cells on top.
@@ -193,6 +205,8 @@ async function choose(x: number, y: number) {
       await animation.present(game, before, unit)
       if (token !== generation) return
       if (!(await showProgress(token))) return
+      await story.victory(token)
+      if (token !== generation) return
       busy = false
     }
   } else if (target) {
@@ -261,6 +275,7 @@ document.querySelector('#wait')!.addEventListener('click', () => {
 })
 document.querySelector('#restart')!.addEventListener('click', () => {
   generation++
+  story.cancel()
   animation.cancel()
   clearProgress(field)
   busy = false
@@ -268,6 +283,7 @@ document.querySelector('#restart')!.addEventListener('click', () => {
   audio.start()
   selected = inspected = undefined
   render()
+  if (ready) void story.start(false)
 })
 document.querySelector('#recover')!.addEventListener('click', async () => {
   const u = game.units.find((u) => u.id === selected)
@@ -289,6 +305,7 @@ showSound(audio.enabled)
 document.querySelector('#sound')!.addEventListener('click', () => showSound(audio.toggle()))
 function startMission(stage: number) {
   generation++
+  story.cancel()
   animation.cancel()
   clearProgress(field)
   busy = false
@@ -299,6 +316,7 @@ function startMission(stage: number) {
   game = newGame(stage, formation)
   render()
   audio.start()
+  if (ready) void story.start(stage === 0 && checkpoints.length === 0)
 }
 const expedition = document.querySelector<HTMLDialogElement>('#expedition')!
 function listMissions() {
@@ -314,8 +332,8 @@ function listMissions() {
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
     (button) =>
       (button.onclick = () => {
-        startMission(Number(button.dataset.stage))
         expedition.close()
+        startMission(Number(button.dataset.stage))
       })
   )
 }
@@ -363,6 +381,7 @@ async function prepareBattle() {
     ready = true
     preparation.remove()
     render()
+    void story.start(game.stage === 0 && checkpoints.length === 0)
   } catch {
     status.textContent = '素材を読み込めませんでした。接続を確認して再試行してください'
     retry.hidden = false
