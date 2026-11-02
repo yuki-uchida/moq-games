@@ -616,6 +616,59 @@ function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
   ctx.restore()
+  for (const ghost of fallen) {
+    const age = state.time - ghost.at
+    if (!ghost.flushed || age < 0 || age >= 0.8) continue
+    ctx.save()
+    ctx.translate(ghost.x, laneY(ghost))
+    ctx.scale(1, aspect)
+    ctx.globalAlpha = 1 - age / 0.8
+    ctx.strokeStyle = '#a6eaff'
+    ctx.lineWidth = 3
+    for (let ring = 0; ring < 3; ring++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        0,
+        -ring * 4,
+        10 + ring * 8 + age * 10,
+        3 + ring * 2,
+        0,
+        age * 7 + ring,
+        age * 7 + ring + Math.PI * 1.7
+      )
+      ctx.stroke()
+    }
+    ctx.beginPath()
+    for (let point = 0; point <= 36; point++) {
+      const angle = point * 0.5 + age * 8
+      const radius = 2 + point * 0.55
+      if (!point) ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.3)
+      else ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.3 - point * age * 1.5)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+  for (const unit of units) {
+    const age = state.time - (unit.control?.end ?? 0)
+    if (unit.control?.kind !== 'launch' || age < 0 || age >= 0.3) continue
+    ctx.save()
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = unit.side === 1 ? '#bb8a50' : '#79aabd'
+    for (let index = 0; index < (calm.matches ? 3 : 6); index++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        drawX(unit) + (index - 2.5) * (5 + age * 25),
+        laneY(unit) - age * 8,
+        5 + age * 10,
+        (3 + age * 7) * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+    ctx.restore()
+  }
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
   for (const u of units) {
@@ -763,6 +816,7 @@ function finish() {
 }
 function tick(now) {
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
+  const previousUnits = [...state.units]
   const previous = state.units.map((u) => ({ ...u }))
   const elapsed = clock.advance(
     now,
@@ -771,8 +825,10 @@ function tick(now) {
     () => !!state.result
   )
   if (!paused) {
-    for (const u of previous) if (!state.units.some((v) => v.id === u.id)) fallen.push({ ...u, at: state.time })
-    while (fallen.length && state.time - fallen[0].at > KO_SECONDS) fallen.shift()
+    for (const u of previous)
+      if (!state.units.some((v) => v.id === u.id))
+        fallen.push({ ...u, flushed: previousUnits.find((unit) => unit.id === u.id)?.flushed, at: state.time })
+    while (fallen.length && state.time - fallen[0].at > (fallen[0].flushed ? 0.8 : KO_SECONDS)) fallen.shift()
     let impact = false,
       shot = false
     for (const effect of state.effects)

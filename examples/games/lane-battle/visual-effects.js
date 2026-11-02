@@ -115,27 +115,75 @@ export function drawStatus(ctx, unit, x, y, top, time, aspect, reduced) {
     ctx.fill()
     ctx.stroke()
   }
-  if (active(unit.vuln, time) || active(unit.weak, time)) {
-    ctx.strokeStyle = active(unit.vuln, time) ? '#eaffc5' : '#fff2f3'
-    ctx.lineWidth = 2
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath()
-      ctx.moveTo(i * 12, -bodyHeight * 0.65)
-      ctx.quadraticCurveTo(i * 12 + 4, -bodyHeight * 0.45, i * 12, -bodyHeight * 0.3)
-      ctx.stroke()
-    }
-  }
   const count = reduced ? 2 : 4
   for (let i = 0; i < count; i++) {
     const angle = time * 3 + (i * Math.PI * 2) / count
     const px = Math.cos(angle) * 20
     const py = -bodyHeight * 0.65 + Math.sin(angle) * 10 * aspect
-    if (control === 'stun' || active(unit.rally, time) || active(unit.poison?.[0], time)) {
-      ctx.fillStyle = control === 'stun' ? '#fff' : active(unit.poison?.[0], time) ? '#bd73de' : '#ffe278'
+    if (control === 'stun' && i < (reduced ? 2 : 3)) {
+      const pillAngle = time * 3 + (i * Math.PI * 2) / (reduced ? 2 : 3)
+      ctx.save()
+      ctx.translate(Math.cos(pillAngle) * 20, -bodyHeight - 29 + Math.sin(pillAngle) * 4)
+      ctx.rotate(pillAngle)
+      ctx.fillStyle = '#fff'
       ctx.beginPath()
-      ctx.arc(px, py, control === 'stun' ? 3 : 2, 0, Math.PI * 2)
+      ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    if (active(unit.rally, time)) {
+      ctx.fillStyle = '#ffe278'
+      ctx.beginPath()
+      ctx.arc(px, py, 2, 0, Math.PI * 2)
       ctx.fill()
     }
+    if (unit.poison?.some((poison) => active(poison, time))) {
+      ctx.strokeStyle = '#d992f1'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc((i - (count - 1) / 2) * 12, -((time * 22 + i * 13) % bodyHeight), 3 + (i % 2), 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    if (active(unit.vuln, time)) {
+      ctx.fillStyle = '#d8ed75'
+      ctx.beginPath()
+      ctx.ellipse(
+        (i - (count - 1) / 2) * 10,
+        -bodyHeight * 0.65 + ((time * 20 + i * 9) % 25),
+        2.5,
+        5,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+    if (active(unit.weak, time)) {
+      ctx.strokeStyle = '#ffb0ca'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo((i - 1.5) * 9, -bodyHeight * 0.35)
+      ctx.bezierCurveTo(
+        (i - 1.5) * 9 - 6,
+        -bodyHeight * 0.5,
+        (i - 1.5) * 9 + 6,
+        -bodyHeight * 0.55,
+        (i - 1.5) * 9,
+        -bodyHeight * 0.7
+      )
+      ctx.stroke()
+    }
+  }
+  if (active(unit.weak, time)) {
+    ctx.strokeStyle = '#ff9fc0'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(23, -bodyHeight * 0.65)
+    ctx.lineTo(23, -bodyHeight * 0.35)
+    ctx.lineTo(18, -bodyHeight * 0.43)
+    ctx.moveTo(23, -bodyHeight * 0.35)
+    ctx.lineTo(28, -bodyHeight * 0.43)
+    ctx.stroke()
   }
   if (active(unit.burn, time)) {
     ctx.fillStyle = '#ff9d36bb'
@@ -164,22 +212,60 @@ export function drawStatus(ctx, unit, x, y, top, time, aspect, reduced) {
       ctx.stroke()
     }
   }
-  if (active(unit.drowsy, time) || control === 'confuse' || active(unit.curry, time) || active(unit.rally, time)) {
-    ctx.font = 'bold 16px sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillStyle = active(unit.curry, time)
-      ? '#f34835'
-      : control === 'confuse'
-        ? '#e34d45'
-        : active(unit.rally, time)
-          ? '#edbd38'
-          : '#52559a'
-    ctx.fillText(
-      active(unit.curry, time) ? '♨' : control === 'confuse' ? '◎' : active(unit.rally, time) ? '♛' : 'Z',
-      0,
-      -bodyHeight - 8
-    )
+  ctx.save()
+  ctx.translate(0, -bodyHeight - 30 * aspect)
+  if (active(unit.curry, time)) {
+    const remaining = Math.max(0, unit.curry.end - time)
+    const pulse = 1 + 0.16 * Math.sin(12 * Math.log(remaining + 0.15))
+    ctx.save()
+    ctx.translate(-13, 0)
+    ctx.scale(pulse, pulse)
+    ctx.fillStyle = '#f34835'
+    ctx.beginPath()
+    ctx.moveTo(-7, -5)
+    ctx.bezierCurveTo(5, -9, 10, -2, 3, 5)
+    ctx.quadraticCurveTo(-2, 10, -7, 8)
+    ctx.quadraticCurveTo(0, 4, -7, -5)
+    ctx.fill()
+    ctx.strokeStyle = '#70b341'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(-6, -4)
+    ctx.lineTo(-9, -9)
+    ctx.stroke()
+    ctx.restore()
   }
+  if (control === 'confuse') {
+    ctx.strokeStyle = '#ed5148'
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    for (let i = 0; i <= 24; i++) {
+      const angle = i * 0.5 + time * 3
+      const radius = i * 0.35
+      if (!i) ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius)
+      else ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius)
+    }
+    ctx.stroke()
+  }
+  if (active(unit.rally, time)) {
+    ctx.fillStyle = '#ffd65d'
+    ctx.beginPath()
+    ctx.moveTo(8, 5)
+    ctx.lineTo(6, -7)
+    ctx.lineTo(12, -2)
+    ctx.lineTo(16, -9)
+    ctx.lineTo(20, -2)
+    ctx.lineTo(26, -7)
+    ctx.lineTo(24, 5)
+    ctx.closePath()
+    ctx.fill()
+  }
+  if (active(unit.drowsy, time)) {
+    ctx.font = 'bold 16px sans-serif'
+    ctx.fillStyle = '#52559a'
+    ctx.fillText('Z', 24, -8)
+  }
+  ctx.restore()
   ctx.restore()
   ctx.save()
   ctx.translate(x, top - 9 * aspect)
@@ -287,6 +373,124 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   ctx.fillStyle = color
   ctx.lineWidth = 3
   ctx.lineCap = 'round'
+
+  if (effect.attackerKey === 'yoshiki' && age >= 0 && age < 0.22) {
+    const startX = muzzle?.x ?? effect.from
+    const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
+    const endY = ((effect.targetY ?? floor - 30) - floor) / aspect
+    ctx.globalAlpha = Math.min(1, (0.22 - age) / 0.08)
+    ctx.strokeStyle = '#4cb6ed'
+    ctx.lineWidth = 10
+    line(startX, startY, effect.x, endY)
+    ctx.strokeStyle = '#efffff'
+    ctx.lineWidth = 5
+    line(startX, startY, effect.x, endY)
+  }
+
+  if (effect.attackerKey === 'korokoro' && effect.arrived && !effect.missed && effect.victims?.length) {
+    const first = effect.victims[0]
+    const second = effect.victims[1]
+    const start = effect.victimOrigins?.find((unit) => unit.id === first.id)?.x ?? effect.primaryX
+    const target = units.find((unit) => unit.id === second?.id)
+    const end = target?.x ?? start + dir * 30
+    const duration = second ? second.at - first.at : 0.35
+    const elapsed = time - first.at
+    if (elapsed >= 0 && elapsed < duration) {
+      const t = Math.min(1, elapsed / duration)
+      const firstUnit = units.find((unit) => unit.id === first.id)
+      const ground = ((firstUnit ? laneY(firstUnit) : floor) - floor) / aspect
+      const destination = target ? (laneY(target) - floor) / aspect : ground
+      ctx.globalAlpha = second ? 1 : 1 - t
+      ctx.fillStyle = '#804319'
+      ctx.strokeStyle = '#f1c17b'
+      ctx.lineWidth = 2
+      ellipse(start + (end - start) * t, ground + (destination - ground) * t - 5 - Math.sin(t * Math.PI) * 8, 6, 6)
+    }
+  }
+
+  const plus = (x, y, t) => {
+    ctx.globalAlpha = Math.min(1, (1 - t) * 3)
+    ctx.strokeStyle = '#f0fff2'
+    ctx.lineWidth = 5
+    line(x - 5, y - t * 30, x + 5, y - t * 30)
+    line(x, y - 5 - t * 30, x, y + 5 - t * 30)
+    ctx.strokeStyle = '#35bf59'
+    ctx.lineWidth = 3
+    line(x - 5, y - t * 30, x + 5, y - t * 30)
+    line(x, y - 5 - t * 30, x, y + 5 - t * 30)
+  }
+  for (const healed of effect.healed ?? []) {
+    const t = (time - healed.at) / 0.55
+    if (t < 0 || t >= 1) continue
+    const unit = units.find((candidate) => candidate.id === healed.id) ?? healed
+    const y = (laneY(unit) - floor) / aspect
+    plus(unit.x, y - 65, t)
+    ctx.globalAlpha = 1 - t
+    ctx.strokeStyle = '#ff9dcc'
+    ctx.lineWidth = 2.5
+    for (let index = 0; index < count; index++) {
+      const x = unit.x + (index - (count - 1) / 2) * 8
+      const sy = y - 75 + ((t * 50 + index * 13) % 55)
+      line(x - 3, sy, x + 3, sy)
+      line(x, sy - 3, x, sy + 3)
+    }
+  }
+  if (effect.attackerKey === 'ramen' && !effect.missed) {
+    const t = (time - (effect.victims?.[0]?.at ?? effect.releasedAt + 0.12)) / 0.5
+    if (t >= 0 && t < 1) {
+      const source = units.find((unit) => unit.id === effect.sourceId) ?? effect.source
+      const victim = units.find((unit) => unit.id === effect.targetId)
+      const sx = source?.x ?? effect.from
+      const sy = source ? (laneY(source) - floor) / aspect - 40 : -40
+      const vy = victim ? (laneY(victim) - floor) / aspect - 30 : -30
+      plus(sx, sy - 25, t)
+      ctx.fillStyle = '#ffd552'
+      ctx.strokeStyle = '#fff4bb'
+      ctx.lineWidth = 1.5
+      for (let index = 0; index < (reduced ? 2 : 4); index++) {
+        const p = Math.max(0, Math.min(1, t * 1.5 - index * 0.12))
+        ellipse(effect.primaryX + (sx - effect.primaryX) * p, vy + (sy - vy) * p - Math.sin(p * Math.PI) * 18, 3, 4)
+      }
+    }
+  }
+  for (const collision of effect.collisions ?? []) {
+    const t = (time - collision.at) / 0.3
+    if (t < 0 || t >= 1) continue
+    const unit = units.find((candidate) => candidate.id === collision.id)
+    const y = unit ? (laneY(unit) - floor) / aspect - 25 : -25
+    ctx.globalAlpha = 1 - t
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 3
+    for (let index = 0; index < count; index++) {
+      const angle = (index * Math.PI * 2) / count
+      line(
+        collision.x + Math.cos(angle) * 7,
+        y + Math.sin(angle) * 7,
+        collision.x + Math.cos(angle) * (18 + t * 12),
+        y + Math.sin(angle) * (18 + t * 12)
+      )
+    }
+  }
+  if (effect.attackerKey === 'daiou' && age >= 0 && age < 0.5) {
+    ctx.globalAlpha = Math.min(1, (0.5 - age) / 0.12)
+    ctx.strokeStyle = '#ffe16d'
+    ctx.lineWidth = 5
+    ctx.beginPath()
+    ctx.ellipse(effect.from, 0, Math.max(1, 140 * Math.min(1, age / 0.38)), 5 + age * 22, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  if (effect.explosion && age >= 0 && age < 0.22) {
+    const t = age / 0.22
+    const y = ((effect.targetY ?? floor - 30) - floor) / aspect
+    ctx.globalAlpha = 1 - t * 0.65
+    for (let index = 0; index < count; index++) {
+      const angle = (index * Math.PI * 2) / count
+      ctx.fillStyle = index % 2 ? '#ff3d19' : '#ffae24'
+      ellipse(effect.x + Math.cos(angle) * 26 * t, y + Math.sin(angle) * 26 * t, 15 + 8 * t, 15 + 8 * t)
+      ctx.fillStyle = '#554a49'
+      ellipse(effect.x + Math.cos(angle) * 32 * t, y - 25 - t * 20 + Math.sin(angle) * 12, 5 + 7 * t, 5 + 7 * t)
+    }
+  }
 
   if (age >= 0 && age < 0.22 && ['cone', 'pierce'].includes(effect.areaKind)) {
     const startX = muzzle?.x ?? effect.from

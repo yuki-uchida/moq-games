@@ -604,7 +604,7 @@ function damageUnit(s, src, target, damage, kind = null, indirect = false) {
   if (src.uid) (target.hitters ||= new Set()).add(src.uid)
   return dealt
 }
-function applyHit(s, src, target, damage, crit, primary = false, charged = false) {
+function applyHit(s, src, target, damage, crit, primary = false, charged = false, effect = null) {
   if (target.hp <= 0) return
   if (primary && charged) damage *= src.ambushMultiplier
   const dealt = damageUnit(s, src, target, damage)
@@ -663,20 +663,21 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
         (other.x - target.x) * dirOf(src) > 0 &&
         Math.abs(other.x - target.x) <= src.collision
       ) {
+        if (effect) (effect.collisions ||= []).push({ id: other.id, x: other.x, at: s.time })
         damageUnit(s, src, other, damage * src.collisionDamage)
         move(s, other, src.collisionPush * dirOf(src))
       }
     }
   }
 }
-function land(s, src, target, damage, crit = false, primary = true, charged = false) {
+function land(s, src, target, damage, crit = false, primary = true, charged = false, effect = null) {
   if (!target) {
     if (primary && charged) damage *= src.ambushMultiplier
     if (src.side === 1) s.enemy = Math.max(0, s.enemy - damage)
     else s.home = Math.max(0, s.home - damage)
     return
   }
-  applyHit(s, src, target, damage, crit, primary, charged)
+  applyHit(s, src, target, damage, crit, primary, charged, effect)
 }
 function placeZone(s, src, x) {
   if (!src.zone) return
@@ -704,8 +705,10 @@ function impact(s, shot, target) {
     placeZone(s, src, x)
     if (target && src.heal)
       for (const ally of s.units) {
-        if (ally.side === src.side && ally.hp > 0 && Math.abs(ally.x - x) <= src.radius)
+        if (ally.side === src.side && ally.hp > 0 && Math.abs(ally.x - x) <= src.radius) {
+          ;(effect.healed ||= []).push({ id: ally.id, x: ally.x, side: ally.side, at: s.time })
           ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * src.heal)
+        }
       }
   }
   if (!target) return land(s, src, null, damage, crit, shot.primary, shot.charged)
@@ -714,10 +717,10 @@ function impact(s, shot, target) {
       (unit) => unit.side === target.side && unit.hp > 0 && Math.abs(unit.x - x) <= src.radius
     )) {
       effect.victims.push({ id: victim.id, at: s.time })
-      land(s, src, victim, damage, crit, victim === target)
+      land(s, src, victim, damage, crit, victim === target, false, effect)
     }
   } else {
-    land(s, src, target, damage, crit, shot.primary, shot.charged)
+    land(s, src, target, damage, crit, shot.primary, shot.charged, effect)
   }
   if (shot.primary && src.areaKind === 'bounce') {
     const next = s.units
@@ -737,7 +740,7 @@ function attack(s, src, target, baseX, crit, damage) {
   const effect = {
     x: target?.x ?? baseX,
     primaryX: target?.x ?? baseX,
-    life: 0.22,
+    life: ['korokoro', 'ramen', 'seichou', 'milk', 'daiou'].includes(src.key) ? 0.7 : 0.22,
     side: src.side,
     ranged: src.range > 80,
     crit,
@@ -883,7 +886,7 @@ export function step(s, dt) {
   s.projectiles = []
   for (const p of pending) {
     const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
-    if (target) p.effect.x = target.x
+    if (target && !p.explosion) p.effect.x = target.x
     if (s.time < p.at) {
       s.projectiles.push(p)
       continue
@@ -902,6 +905,7 @@ export function step(s, dt) {
           sourceId: p.src.id,
           targetId: target.id,
           attackerKey: p.src.key,
+          explosion: true,
           areaKind: 'circle',
           victims: []
         }

@@ -48,6 +48,9 @@ test('bounce chooses the nearest further victim and waits for arrival', () => {
   step(game, 0.12)
   assert.equal(victims[0].hp, 10000 - source.atk)
   assert.equal(victims[1].hp, 10000)
+  const effect = game.effects.find((entry) => entry.attackerKey === 'korokoro')
+  assert.equal(effect.victims[1].id, victims[1].id)
+  assert.equal(effect.victims[1].at, game.time + 0.15)
   step(game, 0.15)
   assert.equal(victims[1].hp, 10000 - source.atk * 0.6)
   assert.equal(victims[2].hp, 10000)
@@ -212,8 +215,12 @@ test('poison stacks independently and curry refresh delays its explosion', () =>
   const hp = curry.victims[1].hp
   step(curry.game, 1.01)
   assert.equal(curry.victims[1].hp, hp)
-  step(curry.game, 0.5)
+  step(curry.game, 0.48)
+  step(curry.game, 0.02)
   assert.equal(curry.victims[1].hp, hp - curry.source.atk * 0.5)
+  const explosion = curry.game.effects.find((effect) => effect.explosion)
+  assert.equal(explosion.x, curry.victims[0].x)
+  assert.equal(explosion.primaryX, curry.victims[0].x)
 })
 
 test('execute uses a lower threshold for heavy victims', () => {
@@ -247,6 +254,9 @@ test('milk collision damages and pushes the next foe', () => {
   step(game, 0.01)
   assert.equal(victims[1].hp, 10000 - source.atk * 0.5)
   assert.equal(victims[1].x, 423)
+  assert.deepEqual(game.effects.find((entry) => entry.attackerKey === 'milk').collisions, [
+    { id: victims[1].id, x: 435, at: game.time }
+  ])
 })
 
 test('fort receives primary damage only; an impact zone can still be created', () => {
@@ -297,6 +307,9 @@ test('healing circle caps allies, and wet floor slides heavy units half distance
   step(wounded.game, 0.01)
   step(wounded.game, 0.12)
   assert.equal(wounded.source.hp, wounded.source.maxHp * (0.5 + 0.0625))
+  assert.deepEqual(wounded.game.effects.find((entry) => entry.attackerKey === 'seichou').healed, [
+    { id: wounded.source.id, x: wounded.source.x, side: wounded.source.side, at: wounded.game.time }
+  ])
   heal.source.hp = heal.source.maxHp - 1
   heal.source.x = 430
   heal.victims[0].x = 450
