@@ -1982,6 +1982,10 @@ const MODELS = {
   mop: {
     koSeconds: 1,
     tempo: [0.45, 0.04],
+    striker: 'mopTip',
+    reacts: ['armB', 'bun'],
+    parts: [],
+    react: { jolt: 0.4 },
     size: 1,
     moves: {
       lunge: 0.14,
@@ -1999,11 +2003,13 @@ const MODELS = {
     build(k) {
       person(k, '#7b5aa6')
       k.add(GEO.hemi, '#d04a8a', [0, 0.8, -0.01], [0.188, 0.17, 0.188], undefined, { skin: 'head' })
-      k.add(GEO.sphere, '#d04a8a', [0, 0.84, -0.18], 0.05, undefined, { skin: 'head' })
+      k.bone('bun', 'head', [0, 0.84, -0.18])
+      k.add(GEO.sphere, '#d04a8a', [0, 0.84, -0.18], 0.05, undefined, { bone: 'bun' })
       k.add(GEO.rbox, '#f39ac4', [0, 0.42, 0.14], [0.26, 0.3, 0.025], [0.08, 0, 0], { skin: 'spine' })
       const grip = [-0.23, 0.35, 0.06]
       const along = shaft(k, 'armB', grip, [0.25, 0.97, 0], 0.32, 0.26)
       const head = along(-0.3)
+      k.bone('mopTip', 'armB', head)
       k.add(GEO.rbox, '#8a8a8a', head, [0.12, 0.04, 0.06], undefined, { bone: 'armB' })
       for (let i = 0; i < 5; i++)
         k.add(
@@ -2018,11 +2024,30 @@ const MODELS = {
         )
     },
     act(b, a) {
-      b.armB.rotation.z += beat(a, -0.75, 1.0, 0.35)
-      b.armF.rotation.z += beat(a, -0.6, 0.9)
-      b.hips.rotation.y += beat(a, -0.4, 0.25)
+      b.armB.rotation.z += arc(a, -1.0, 1.05, 0.15)
+      b.armF.rotation.z += arc(a, -0.55, 1.0, 0.15)
+      b.hips.rotation.z += beat(a, 0.18, -0.18)
+      b.hips.rotation.y += beat(a, -0.5, 0.3)
       b.legF.rotation.z += beat(a, 0.05, 0.4)
       b.legB.rotation.z += beat(a, -0.1, -0.3)
+    },
+    hurt(b, h, c) {
+      b.armB.rotation.z += 1.9 * h.jolt * (1 - c.a.hit)
+      b.armF.rotation.z += 0.45 * h.jolt
+      b.bun.rotation.z += 0.3 * h.jolt + 0.25 * h.wobble
+      b.hips.position.x -= 0.06 * h.jolt
+    },
+    ko(b, k) {
+      const sit = Math.min(1, k.age / 0.32)
+      const fall = Math.min(1, Math.max(0, (k.age - 0.28) / 0.3))
+      b.hips.position.y -= 0.16 * sit
+      b.hips.rotation.z -= 0.3 * fall
+      b.legF.rotation.z += 0.9 * sit
+      b.legB.rotation.z -= 0.8 * sit
+      b.spine.rotation.z -= 0.7 * fall
+      b.chest.rotation.z -= 0.4 * fall
+      b.head.rotation.z -= 0.3 * fall
+      b.armB.rotation.z += 0.4 * sit
     }
   },
   yogurt: {
@@ -2139,10 +2164,14 @@ const MODELS = {
   washiki: {
     koSeconds: 1.05,
     tempo: [0.48, 0.05],
+    striker: 'hood',
+    reacts: ['water', 'pipe'],
+    parts: [],
+    react: { jolt: 0.35 },
     size: 1.2,
     moves: {
-      lunge: 0.16,
-      back: 0.06,
+      lunge: 0.3,
+      back: 0.13,
       rear: -0.14,
       lean: 0.16,
       squash: 0.1,
@@ -2159,9 +2188,15 @@ const MODELS = {
       // A long porcelain basin with a rolled rim; the hooded front (金隠し) carries the face.
       k.add(GEO.tub, '#f4f7f8', [-0.06, 0, 0], [0.5, 0.15, 0.28])
       k.add(GEO.ring, '#ffffff', [-0.06, 0.15, 0], [0.49, 0.27, 0.32], [Math.PI / 2, 0, 0])
-      k.add(GEO.sphere, '#a7d8ef', [-0.1, 0.152, 0], [0.38, 0.012, 0.19], undefined, { line: false })
-      k.add(GEO.sphere, '#cfeefc', [-0.18, 0.158, 0.05], [0.12, 0.006, 0.05], undefined, { glow: true, alpha: 0.7 })
-      k.add(GEO.hood, '#ffffff', [0.26, 0.1, 0], [0.22, 0.36, 0.27], undefined, { skin: 'chest' })
+      k.bone('water', 'hips', [-0.1, 0.152, 0])
+      k.add(GEO.sphere, '#a7d8ef', [-0.1, 0.152, 0], [0.38, 0.012, 0.19], undefined, { bone: 'water', line: false })
+      k.add(GEO.sphere, '#cfeefc', [-0.18, 0.158, 0.05], [0.12, 0.006, 0.05], undefined, {
+        bone: 'water',
+        glow: true,
+        alpha: 0.7
+      })
+      k.bone('hood', 'chest', [0.26, 0.1, 0])
+      k.add(GEO.hood, '#ffffff', [0.26, 0.1, 0], [0.22, 0.36, 0.27], undefined, { bone: 'hood' })
       k.bone('pipe', 'hips', [-0.5, 0.12, -0.12])
       k.add(GEO.cyl, '#a9b4bb', [-0.5, 0.42, -0.12], [0.032, 0.6, 0.032], undefined, { bone: 'pipe' })
       k.add(GEO.rbox, '#cfd8de', [-0.5, 0.73, -0.12], [0.1, 0.07, 0.1], undefined, { bone: 'pipe' })
@@ -2176,17 +2211,34 @@ const MODELS = {
       k.face({ bone: 'chest', x: 0.3, y: 0.27, z: 0.23, spread: 0.072, size: 0.78, mood: 'angry' })
     },
     act(b, a, c) {
-      b.pipe.rotation.z +=
-        0.06 * Math.sin(c.t * 9) + beat(a, 0.2, -0.3, 0.25) + (c.ko >= 0 ? 1.1 * Math.min(1, c.ko / 0.35) : 0)
+      b.water.position.x += beat(a, -0.08, 0.08, -0.04)
+      b.water.rotation.z += beat(a, 0.1, -0.12, 0.08)
+      b.pipe.rotation.z += 0.06 * Math.sin(c.t * 9) + beat(a, 0.2, -0.3, 0.25)
       const s = Math.max(a.smear, a.hit * (1 - a.recoil * 0.5))
       show(b.splash, s > 0.05)
       b.splash.scale.setScalar(0.3 + s)
       b.splash.position.y += 0.08 * a.hit
+    },
+    hurt(b, h) {
+      b.water.position.y += 0.06 * h.jolt
+      b.water.rotation.z += 0.2 * h.jolt + 0.16 * h.wobble
+      b.pipe.rotation.z += 0.2 * h.jolt + 0.25 * h.wobble
+    },
+    ko(b, k, c) {
+      const fall = Math.min(1, Math.max(0, (k.age - 0.16) / 0.72))
+      b.hips.rotation.y += fall * 0.8
+      b.pipe.rotation.z += fall * 1.15
+      b.water.rotation.y += k.age * 5
+      c.actor.sink(fall * 0.24)
     }
   },
   yoshiki: {
     koSeconds: 1.05,
     tempo: [0.5, 0.05],
+    striker: 'muzzle',
+    reacts: ['lid', 'tank'],
+    parts: [],
+    react: { jolt: 0.35 },
     size: 1.1,
     moves: {
       lunge: -0.14,
@@ -2205,24 +2257,26 @@ const MODELS = {
     build(k) {
       k.chain = [0.2, 0.42, 0.62]
       // Side-on so it reads as a toilet: the bowl reaches toward the foe (+X), the tank stands behind.
-      k.add(GEO.pedestal, '#fbfcfd', [0.06, 0, 0], [1.3, 1, 0.95])
-      k.add(GEO.ring, '#eef1f3', [0.1, 0.42, 0], [0.36, 0.26, 0.42], [Math.PI / 2, 0, 0])
-      k.add(GEO.sphere, '#a7d8ef', [0.12, 0.415, 0], [0.26, 0.01, 0.18], undefined, { line: false })
-      k.add(GEO.rbox, '#fbfcfd', [-0.36, 0.66, 0], [0.28, 0.46, 0.44])
-      k.add(GEO.rbox, '#e9edf0', [-0.36, 0.9, 0], [0.32, 0.05, 0.48])
-      k.add(GEO.rbox, '#b9c3ca', [-0.24, 0.84, 0.21], [0.07, 0.025, 0.035], [0, 0, -0.3])
-      k.add(GEO.rbox, '#dfe6ea', [0.06, 0.46, 0.27], [0.12, 0.08, 0.04])
+      k.add(GEO.pedestal, '#fbfcfd', [0.06, 0, 0], [1.3, 1, 0.95], undefined, { skin: 'hips' })
+      k.add(GEO.ring, '#eef1f3', [0.1, 0.42, 0], [0.36, 0.26, 0.42], [Math.PI / 2, 0, 0], { skin: 'hips' })
+      k.add(GEO.sphere, '#a7d8ef', [0.12, 0.415, 0], [0.26, 0.01, 0.18], undefined, { skin: 'hips', line: false })
+      k.bone('tank', 'hips', [-0.36, 0.43, 0])
+      k.add(GEO.rbox, '#fbfcfd', [-0.36, 0.66, 0], [0.28, 0.46, 0.44], undefined, { bone: 'tank' })
+      k.add(GEO.rbox, '#e9edf0', [-0.36, 0.9, 0], [0.32, 0.05, 0.48], undefined, { bone: 'tank' })
+      k.add(GEO.rbox, '#b9c3ca', [-0.24, 0.84, 0.21], [0.07, 0.025, 0.035], [0, 0, -0.3], { bone: 'tank' })
+      k.add(GEO.rbox, '#dfe6ea', [0.06, 0.46, 0.27], [0.12, 0.08, 0.04], undefined, { skin: 'hips' })
       for (const [x, c] of [
         [0.03, '#5ab8ff'],
         [0.09, '#ff7a7a']
       ])
-        k.add(GEO.ball, c, [x, 0.47, 0.292], 0.016, undefined, { glow: true })
-      k.bone('lid', 'chest', [-0.17, 0.44, 0])
+        k.add(GEO.ball, c, [x, 0.47, 0.292], 0.016, undefined, { skin: 'hips', glow: true })
+      k.bone('lid', 'hips', [-0.17, 0.44, 0])
       k.add(GEO.rcyl, '#f4f6f7', [-0.18, 0.64, -0.02], [0.2, 0.035, 0.24], [0, 0, Math.PI / 2 + 0.12, 'YXZ'], {
         bone: 'lid'
       })
       k.bone('nozzle', 'hips', [0.2, 0.43, 0])
-      k.add(GEO.cyl, '#c4ccd3', [0.28, 0.44, 0], [0.022, 0.16, 0.022], ALONG(), { bone: 'nozzle' })
+      k.bone('nozzleStem', 'hips', [0.2, 0.43, 0])
+      k.add(GEO.cyl, '#c4ccd3', [0.28, 0.44, 0], [0.022, 0.16, 0.022], ALONG(), { bone: 'nozzleStem' })
       k.add(GEO.sphere, '#9aa6ae', [0.36, 0.44, 0], 0.03, undefined, { bone: 'nozzle' })
       k.bone('jet', 'nozzle', [0.36, 0.44, 0])
       k.add(GEO.cone, '#9fd8ff', [0.6, 0.47, 0.06], [0.08, 0.42, 0.06], ALONG(Math.PI + 0.1), {
@@ -2234,16 +2288,26 @@ const MODELS = {
         [0.7, 0.56]
       ])
         k.add(GEO.drop, '#cdeeff', [x, y, 0.08], [0.03, 0.05, 0.03], undefined, { bone: 'jet', glow: true })
-      k.bone('muzzle', 'nozzle', [0.42, 0.45, 0.02])
-      k.face({ bone: 'chest', x: -0.37, y: 0.65, z: 0.23, spread: 0.08, size: 0.85, mood: 'angry' })
+      k.bone('muzzle', 'nozzle', [0.36, 0.44, 0])
+      k.face({ bone: 'tank', x: -0.37, y: 0.65, z: 0.23, spread: 0.08, size: 0.85, mood: 'angry' })
     },
     act(b, a) {
-      b.lid.rotation.z += beat(a, 0.4, -0.55, 0.2)
-      b.nozzle.position.x += beat(a, -0.02, 0.14)
-      b.nozzle.scale.setScalar(1 + beat(a, -0.1, 0.45))
+      b.lid.rotation.z += beat(a, 0.4, 0.2, -0.15)
+      b.nozzle.position.x += beat(a, -0.3, 0.28)
+      b.nozzleStem.scale.x += 1.8 * a.hit
       const jet = Math.max(a.smear, a.hit * (1 - a.recoil * 0.4))
       show(b.jet, jet > 0.05)
       b.jet.scale.setScalar(0.3 + jet)
+    },
+    hurt(b, h, c) {
+      b.lid.rotation.z -= 1.2 * h.jolt * (1 - c.a.hit)
+      b.tank.rotation.z += 0.18 * h.jolt + 0.18 * h.wobble
+    },
+    ko(b, k) {
+      const fall = Math.min(1, k.age / 0.45)
+      b.hips.rotation.z += 1.15 * fall
+      b.hips.position.y += 0.12 * fall
+      b.lid.rotation.z -= 1.2 * fall
     }
   },
   seichou: {

@@ -231,9 +231,40 @@ export const HURT_VFX = {
       ctx.fill()
     }
   },
-  washiki: emptyEffect,
-  mop: emptyEffect,
-  yoshiki: emptyEffect,
+  washiki(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.35) return
+    ctx.globalAlpha = 1 - age / 0.35
+    ctx.fillStyle = '#b7edff'
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        x + (i - 1.5) * (8 + age * 24),
+        y - (22 + age * 25 - i * 3) * aspect,
+        3,
+        4 * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+  },
+  mop(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.22) return
+    ctx.globalAlpha = 1 - age / 0.22
+    ctx.strokeStyle = '#e5f9ff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x + unit.side * 8, y - 32 * aspect, 10 + age * 15, -1.1, 1.1)
+    ctx.stroke()
+  },
+  yoshiki(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.3 || Math.floor(age * 18) % 2) return
+    ctx.fillStyle = '#ff5151'
+    ctx.beginPath()
+    ctx.arc(x + unit.side * 4, y - 30 * aspect, 3, 0, Math.PI * 2)
+    ctx.fill()
+  },
   seichou: emptyEffect,
   geridome: emptyEffect
 }
@@ -535,9 +566,39 @@ export const DEATH_VFX = {
       }
     }
   },
-  washiki: emptyEffect,
-  mop: emptyEffect,
-  yoshiki: emptyEffect,
+  washiki(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age > 1.2) return
+    ctx.globalAlpha = Math.min(0.75, age * 5, (1.2 - age) * 3)
+    ctx.strokeStyle = '#8fdcff'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.ellipse(x, y - 4 * aspect, 12 + age * 18, (3 + age * 3) * aspect, age * 2, 0, Math.PI * 1.7)
+    ctx.stroke()
+  },
+  mop(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age < 0.2 || age > 0.9) return
+    ctx.globalAlpha = Math.min(1, (age - 0.2) * 5, (0.9 - age) * 4)
+    ctx.fillStyle = '#a9e7ff'
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.ellipse(x + (i - 1) * (9 + age * 8), y - (40 + i * 5 - age * 25) * aspect, 2.5, 4 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  yoshiki(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age < 0.15 || age > 1.3) return
+    const spread = Math.min(1, (age - 0.15) / 0.45)
+    ctx.globalAlpha = 0.65 * Math.min(1, (1.3 - age) / 0.3)
+    ctx.fillStyle = '#a9e6ff'
+    ctx.beginPath()
+    ctx.ellipse(x + unit.side * 8 * spread, y, 24 * spread, 6 * aspect * spread, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#effcff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.ellipse(x, y - 2 * aspect, 12 * spread, 3 * aspect * spread, age * 2, 0, Math.PI * 1.7)
+    ctx.stroke()
+  },
   seichou: emptyEffect,
   geridome: emptyEffect
 }
