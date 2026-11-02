@@ -38,6 +38,7 @@ await page.addInitScript(() => {
   }
 })
 await page.goto(process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/')
+await page.getByRole('button', { name: 'ステージ選択へ' }).click()
 await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 await page.waitForFunction(() => window.captureContext?.state === 'running')
 const results = {}

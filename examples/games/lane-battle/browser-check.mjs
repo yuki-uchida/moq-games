@@ -10,6 +10,7 @@ for (const [name, width, height] of [
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
   await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
+  await page.getByRole('button', { name: 'ステージ選択へ' }).click()
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
   await page.waitForTimeout(3000)

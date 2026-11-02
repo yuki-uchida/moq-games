@@ -33,9 +33,6 @@
           <h2 id="title"></h2>
           <p id="message"></p>
           <ul id="report"></ul>
-          <h3>ステージ <small id="progress"></small></h3>
-          <div id="stages" aria-label="ステージ選択"></div>
-          <p id="stage-info"></p>
           <h3>編成 <small id="slots"></small> <small>タップで出し入れ・並び順が召喚ボタン順</small></h3>
           <div id="roster" aria-label="編成"></div>
           <section id="shop-section">
@@ -44,8 +41,22 @@
           </section>
           <button id="erase" class="link" data-sfx="select">セーブデータを消す</button>
         </div>
-        <div class="actions"><button id="close" data-sfx="confirm" autofocus>ブリッと出撃</button></div>
+        <div class="actions"><button id="close" data-sfx="confirm" autofocus>ステージ選択へ</button></div>
       </dialog>
+      <section id="map" hidden aria-label="ステージ選択">
+        <div class="map-bar">
+          <h2>ステージ選択</h2>
+          <small id="progress"></small>
+          <span id="map-coins"></span>
+          <button id="hq" data-sfx="select">編成・購入</button>
+        </div>
+        <div id="world"><div id="stages"></div></div>
+        <div class="map-panel">
+          <img id="boss" alt="" />
+          <div id="stage-info"></div>
+          <button id="go" data-sfx="confirm">ブリッと出撃</button>
+        </div>
+      </section>
     </main>
     <script type="module" src="./main.js"></script>
   </body>

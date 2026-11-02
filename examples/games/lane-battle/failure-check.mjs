@@ -9,6 +9,7 @@ for (const [name, width, height] of [
   const page = await browser.newPage({ viewport: { width, height } })
   await page.clock.install()
   await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
+  await page.getByRole('button', { name: 'ステージ選択へ' }).click()
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.evaluate(() => {
     for (let i = 0; i < 100; i++)
@@ -55,6 +56,7 @@ for (const [name, width, height] of [
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 await page.clock.install()
 await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
+await page.getByRole('button', { name: 'ステージ選択へ' }).click()
 await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 let lost = false
 for (let i = 0; i < 35; i++) {
@@ -69,6 +71,7 @@ for (let i = 0; i < 35; i++) {
 }
 assert.ok(lost)
 assert.match(await page.locator('#report').textContent(), /EXP/)
+await page.getByRole('button', { name: 'ステージ選択へ' }).click()
 await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 await page.clock.runFor(50)
 assert.equal(await page.locator('#home').textContent(), '1400 / 1400')

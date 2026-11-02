@@ -120,6 +120,7 @@ test('starts Lane Battle through the catalog with its runtime assets', async ({ 
   })
   await page.goto(root)
   await page.getByRole('link', { name: 'ゲームをプレイ: うんこ大惨事' }).click()
+  await page.getByRole('button', { name: 'ステージ選択へ' }).click()
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.getByRole('button', { name: 'カチカチうんこを召喚 35', exact: true }).click()
   await expect(page.locator('#field canvas')).toBeVisible()

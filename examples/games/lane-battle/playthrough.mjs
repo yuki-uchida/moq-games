@@ -6,6 +6,7 @@ const page = await browser.newPage({
 })
 await page.clock.install()
 await page.goto('http://127.0.0.1:5193/examples/games/lane-battle/')
+await page.getByRole('button', { name: 'ステージ選択へ' }).click()
 await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 let finished = false
 for (let i = 0; i < 90; i++) {
@@ -22,6 +23,7 @@ for (let i = 0; i < 90; i++) {
     finished = true
     console.log('Outcome:', await page.locator('#title').textContent(), await page.locator('#message').textContent())
     await page.screenshot({ path: '/tmp/lane-result.png' })
+    await page.getByRole('button', { name: 'ステージ選択へ' }).click()
     await page.getByRole('button', { name: 'ブリッと出撃' }).click()
     assert.match(await page.locator('#home').textContent(), /^(\d+) \/ \1$/)
     break

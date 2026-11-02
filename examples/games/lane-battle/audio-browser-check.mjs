@@ -23,6 +23,7 @@ await page.addInitScript(() => {
 })
 await page.goto(process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/')
 assert.equal(await page.evaluate(() => window.audioProof.created), 0, 'no autoplay')
+await page.getByRole('button', { name: 'ステージ選択へ' }).click()
 await page.getByRole('button', { name: 'ブリッと出撃' }).click()
 await page.waitForTimeout(900)
 const playing = await page.evaluate(() => ({ ...window.audioProof }))

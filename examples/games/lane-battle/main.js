@@ -124,51 +124,120 @@ function start(stage) {
   buildTray()
   $('stage-name').textContent = `${stage + 1}. ${STAGES[stage].sub}`
   dialog.close()
+  $('map').hidden = true
   paused = false
   clock.reset(performance.now())
   tone('summon')
 }
-$('close').onclick = () => start(selected)
 
-// ── 作戦室 (between battles): stages, formation, shop ──
-const enemyNames = (stage) => [...new Set(stage.pattern)].map((i) => ENEMIES[i].name).join('・')
+// ── ステージ選択: a world map of reached stages, each with its boss standing on it ──
+const enemyKinds = (stage) => [...new Set(stage.pattern)].map((i) => ENEMIES[i])
+/** The newest enemy of the stage; each restroom's last stage is guarded by its strongest one. */
+const bossOf = (i) => {
+  const ids = STAGES[i].pattern
+  return ENEMIES[i % 6 === 5 ? ids.reduce((a, b) => (ENEMIES[b].hp > ENEMIES[a].hp ? b : a)) : ids.at(-1)]
+}
+const mapX = (i) => 110 + i * 150
+const mapY = (i) => 54 + 15 * Math.sin(i * 1.25)
+function el(tag, className, html = '') {
+  const e = document.createElement(tag)
+  e.className = className
+  e.innerHTML = html
+  return e
+}
 function renderStages() {
   $('progress').textContent = `${campaign.cleared} / ${STAGES.length} クリア`
-  // Battle-map style: only reached stages are shown, plus one sealed "？" ahead of the frontier.
-  const open = STAGES.slice(0, campaign.cleared + 1).map((stage, i) => {
-    const b = document.createElement('button')
-    const best = campaign.records[i]
-    b.dataset.sfx = 'select'
-    b.dataset.area = stage.area
-    b.style.setProperty('--area', stage.color)
-    b.innerHTML = `<b>${i + 1}${Number.isFinite(best) ? '★' : ''}</b><small>${stage.sub}</small>`
-    b.setAttribute('aria-label', `ステージ${i + 1} ${stage.sub}`)
-    b.setAttribute('aria-pressed', String(i === selected))
-    b.onclick = () => {
-      selected = i
-      renderStages()
-    }
-    return b
-  })
-  const next = campaign.cleared + 1 < STAGES.length ? document.createElement('span') : null
-  if (next) {
-    next.className = 'sealed'
-    next.textContent = '？'
-    next.setAttribute('aria-label', '未解放のステージ')
+  $('map-coins').textContent = `🧻 ${campaign.coins}`
+  // Reached stages plus one silhouetted stage ahead; the rest of the world stays hidden.
+  const count = Math.min(campaign.cleared + 2, STAGES.length)
+  const width = mapX(count - 1) + 110
+  const parts = []
+  for (let a = 0; a * 6 < count; a++) {
+    const from = a * 6,
+      to = Math.min(from + 5, count - 1)
+    const band = el('div', 'band', `<span>${STAGES[from].name.replace(/ \d+$/, '')}</span>`)
+    band.style.cssText = `left:${mapX(from) - 72}px;width:${mapX(to) - mapX(from) + 144}px;--area:${STAGES[from].color}`
+    parts.push(band)
   }
-  $('stages').replaceChildren(...open, ...(next ? [next] : []))
-  // After the dialog lays out, centre the selected node on the road.
-  requestAnimationFrame(() => {
-    const road = $('stages'),
-      node = road.querySelector('[aria-pressed="true"]')
-    if (node) road.scrollLeft = node.offsetLeft - (road.clientWidth - node.offsetWidth) / 2
-  })
+  const points = Array.from({ length: count }, (_, i) => `${mapX(i)},${mapY(i)}`).join(' ')
+  const trail = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  trail.setAttribute('class', 'trail')
+  trail.setAttribute('viewBox', `0 0 ${width} 100`)
+  trail.setAttribute('preserveAspectRatio', 'none')
+  trail.setAttribute('aria-hidden', 'true')
+  trail.innerHTML = `<polyline points="${points}" /><polyline points="${points}" />`
+  parts.push(trail)
+  for (let i = 0; i < count; i++) {
+    const boss = bossOf(i),
+      cleared = i < campaign.cleared,
+      sealed = i > campaign.cleared,
+      king = i % 6 === 5
+    const node = el(
+      sealed ? 'span' : 'button',
+      `stage${cleared ? ' cleared' : ''}${sealed ? ' sealed' : ''}${king ? ' king' : ''}${i === campaign.cleared ? ' next' : ''}`,
+      `<img alt="" src="${models.portraitURL(boss.key)}">` +
+        `<b>${king ? '<i aria-hidden="true">👑</i>' : ''}${sealed ? '？' : `${i + 1}${Number.isFinite(campaign.records[i]) ? '★' : ''}`}</b>` +
+        `<small>${sealed ? '？？？' : STAGES[i].sub}</small>`
+    )
+    node.style.cssText = `left:${mapX(i)}px;top:${mapY(i)}%;--area:${STAGES[i].color}`
+    if (sealed) node.setAttribute('aria-label', '未解放のステージ')
+    else {
+      node.dataset.sfx = 'select'
+      node.setAttribute(
+        'aria-label',
+        `ステージ${i + 1} ${STAGES[i].sub} ボス ${boss.name}${cleared ? ' クリア済み' : ''}`
+      )
+      node.setAttribute('aria-pressed', String(i === selected))
+      node.onclick = () => {
+        selected = i
+        renderStages()
+      }
+    }
+    parts.push(node)
+  }
+  $('stages').style.width = `${width}px`
+  $('stages').replaceChildren(...parts)
   const stage = STAGES[selected],
-    best = campaign.records[selected]
-  $('stage-info').textContent =
-    `${stage.name}「${stage.sub}」 敵: ${enemyNames(stage)}${Number.isFinite(best) ? ` · ベスト${best}秒` : ''} — ${stage.hint}`
-  $('close').textContent = 'ブリッと出撃'
+    best = campaign.records[selected],
+    boss = bossOf(selected)
+  $('boss').src = models.portraitURL(boss.key)
+  $('stage-info').innerHTML =
+    `<strong>${selected + 1}. ${stage.sub}</strong><small>${stage.name}${Number.isFinite(best) ? ` · ベスト${best}秒` : ''}</small>` +
+    `<span class="foes">ボス ${boss.name} ・ 敵 ${enemyKinds(stage)
+      .map((t) => `<img alt="${t.name}" title="${t.name}" src="${models.portraitURL(t.key)}">`)
+      .join('')}</span><small>${stage.hint}</small>`
 }
+function showMap() {
+  dialog.close()
+  renderStages()
+  $('map').hidden = false
+  const world = $('world')
+  world.scrollLeft = mapX(selected) - world.clientWidth / 2
+  $('go').focus()
+}
+$('close').onclick = showMap
+dialog.oncancel = (e) => {
+  e.preventDefault()
+  showMap()
+}
+$('go').onclick = () => start(selected)
+$('hq').onclick = () => {
+  $('map').hidden = true
+  $('report').replaceChildren()
+  modal('作戦室', '編成を整えて、うんこを買い足そう。')
+}
+// Mouse wheels scroll the map sideways.
+$('world').addEventListener(
+  'wheel',
+  (e) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+    $('world').scrollLeft += e.deltaY
+    e.preventDefault()
+  },
+  { passive: false }
+)
+
+// ── 作戦室 (between battles): formation, shop ──
 const statLine = (e) => `HP${e.hp} 攻${e.atk} 速${e.spd}`
 function renderRoster() {
   $('slots').textContent = `${campaign.loadout.length} / ${SLOTS}`
@@ -221,7 +290,6 @@ function renderShop() {
   $('shop-section').hidden = !items.length
 }
 function renderHQ() {
-  renderStages()
   renderRoster()
   renderShop()
 }
@@ -275,7 +343,7 @@ function modal(title, message) {
 /** Keyboard-only pause (Space); the battlefield has no pause button. */
 function togglePause() {
   tick(performance.now())
-  if (dialog.open || clock.pending) return
+  if (dialog.open || !$('map').hidden || clock.pending) return
   paused = !paused
   clock.reset(performance.now())
   syncAudio()
@@ -290,7 +358,7 @@ $('burst').onclick = () => {
   }
 }
 window.addEventListener('keydown', (e) => {
-  if (dialog.open || clock.pending) return
+  if (dialog.open || !$('map').hidden || clock.pending) return
   if (e.code === 'Space') {
     e.preventDefault()
     togglePause()

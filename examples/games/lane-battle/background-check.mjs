@@ -10,6 +10,7 @@ try {
   page.on('pageerror', (e) => errors.push(String(e)))
   await page.clock.install({ time: new Date(0) })
   await page.goto(process.env.LANE_URL || 'http://127.0.0.1:5293/examples/games/lane-battle/')
+  await page.getByRole('button', { name: 'ステージ選択へ' }).click()
   await page.getByRole('button', { name: 'ブリッと出撃' }).click()
   await page.clock.runFor(1000)
   await page.evaluate(() => {
@@ -39,6 +40,7 @@ try {
   await page.close()
   const real = await browser.newPage()
   await real.goto(process.env.LANE_URL || 'http://127.0.0.1:5293/examples/games/lane-battle/')
+  await real.getByRole('button', { name: 'ステージ選択へ' }).click()
   await real.getByRole('button', { name: 'ブリッと出撃' }).click()
   const other = await browser.newPage()
   await other.goto('about:blank')

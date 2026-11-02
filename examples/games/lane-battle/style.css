@@ -399,65 +399,226 @@ dialog p {
 #report img {
   height: 44px;
 }
-#stages {
-  position: relative;
+/* ── ステージ選択: full-screen world map ── */
+#map {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 50% 120%, #6b4220 0, transparent 60%),
+    repeating-conic-gradient(#3d2512 0 25%, #452a15 0 50%) 0 0 / 56px 56px;
+}
+#map[hidden] {
+  display: none;
+}
+.map-bar {
   display: flex;
   align-items: center;
-  gap: 22px;
-  overflow-x: auto;
-  padding: 10px 12px 12px;
-  border-radius: 12px;
-  background: #3a1e0b;
-  scroll-snap-type: x proximity;
+  gap: 12px;
+  padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+  background: #2b1a0ee6;
+  border-bottom: 2px solid #7a4722;
 }
-#stages > * {
+.map-bar h2 {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 20px;
+  color: #ffd166;
+}
+#map-coins {
+  margin-left: auto;
+  white-space: nowrap;
+  color: #ffd166;
+}
+.map-bar button {
+  white-space: nowrap;
+  min-height: 44px;
+  padding: 0 16px;
+}
+#world {
   position: relative;
-  flex: none;
-  scroll-snap-align: center;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
 }
-/* dotted road between nodes */
-#stages > * + *::before {
-  content: '';
+#stages {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+}
+/* Each restroom is a tinted region with its signboard. */
+.band {
   position: absolute;
-  right: 100%;
-  top: 50%;
-  width: 22px;
-  border-top: 3px dotted #c98a4b;
+  top: 8px;
+  bottom: 8px;
+  border-radius: 32px;
+  background: color-mix(in srgb, var(--area) 28%, transparent);
+  border: 2px solid color-mix(in srgb, var(--area) 55%, transparent);
 }
-#stages button {
-  display: grid;
-  place-items: center;
-  width: 86px;
-  min-height: 58px;
-  padding: 4px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--area) 35%, #5a361a);
-}
-#stages button b {
-  font-size: 16px;
-}
-#stages button small {
-  font-size: 10px;
-  line-height: 1.2;
-}
-#stages .sealed {
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: 2px dashed #a06a3c;
-  color: #a06a3c;
-  font-size: 24px;
+.band span {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  padding: 3px 12px;
+  border-radius: 10px;
+  background: #fff6e5;
+  color: #3b2412;
+  font-size: 13px;
   font-weight: bold;
+  box-shadow: 0 3px 0 #0005;
 }
-#stages button[aria-pressed='true'] {
-  outline: 3px solid #ffd166;
-  outline-offset: 1px;
+.trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.trail polyline {
+  fill: none;
+  stroke: #2a170a;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.trail polyline + polyline {
+  stroke: #b07a45;
+  stroke-width: 5;
+  stroke-dasharray: 2 12;
+}
+/* A stage: its boss standing on a numbered pedestal, anchored at the pedestal centre. */
+.stage {
+  --boss: clamp(56px, 14dvh, 112px);
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 128px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  translate: -50% calc(-1 * var(--boss) - 16px);
+}
+.stage img {
+  position: relative;
+  height: var(--boss);
+  filter: drop-shadow(0 4px 2px #0006);
+}
+.stage.king {
+  --boss: clamp(64px, 17dvh, 136px);
+}
+.stage b i {
+  font-style: normal;
+  font-size: 14px;
+  margin-right: 2px;
+}
+.stage b {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 30px;
+  margin-top: -14px;
+  padding: 0 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--area) 70%, #5a361a);
+  border: 2px solid #2a170a;
+  color: #2a170a;
+  font-size: 15px;
+  box-shadow: 0 4px 0 #2a170a;
+}
+.stage small {
+  margin-top: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #2b1a0ecc;
+  color: #fff6e5;
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 1.3;
+  max-width: 120px;
+}
+.stage.cleared img {
+  filter: grayscale(0.85) brightness(0.8) drop-shadow(0 4px 2px #0006);
+}
+.stage.next img {
+  animation: boss-bob 1.1s ease-in-out infinite alternate;
+}
+@keyframes boss-bob {
+  to {
+    translate: 0 -6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage.next img {
+    animation: none;
+  }
+}
+.stage[aria-pressed='true'] b {
+  background: #ffd166;
+  outline: 3px solid #fff6e5;
+  outline-offset: 2px;
+}
+.stage.sealed img {
+  filter: brightness(0) opacity(0.45);
+}
+.stage.sealed b {
+  background: #3b2412;
+  border-style: dashed;
+  border-color: #a06a3c;
+  color: #a06a3c;
+  box-shadow: none;
+}
+.map-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px max(14px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
+  background: #2b1a0ef0;
+  border-top: 2px solid #7a4722;
+}
+#boss {
+  height: 64px;
+  flex: none;
 }
 #stage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+#stage-info strong {
+  color: #ffd166;
+  font-size: 17px;
+}
+#stage-info small {
+  letter-spacing: 0;
+}
+.foes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   font-size: 12px;
-  color: #f2cf9b;
+}
+.foes img {
+  height: 30px;
+}
+#go {
+  flex: none;
+  min-width: 180px;
+  padding: 0 20px;
+  background: #3f8f4a;
+  font-weight: bold;
+  font-size: 18px;
 }
 #roster,
 #shop {
@@ -539,6 +700,12 @@ button.link {
   text-decoration: underline;
 }
 @media (max-width: 600px) {
+  .map-panel {
+    flex-wrap: wrap;
+  }
+  #go {
+    width: 100%;
+  }
   .sheet {
     padding: 16px 14px 6px;
   }
@@ -573,5 +740,31 @@ button.link {
   }
   .actions button {
     min-height: 40px;
+  }
+}
+@media (max-height: 480px) {
+  .map-bar {
+    padding-block: 4px;
+  }
+  .map-bar h2 {
+    font-size: 16px;
+  }
+  #boss {
+    height: 44px;
+  }
+  #stage-info small:last-child {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .map-bar {
+    gap: 8px;
+  }
+  .map-bar h2 {
+    font-size: 17px;
+  }
+  .map-bar small {
+    letter-spacing: 0;
+    white-space: nowrap;
   }
 }
