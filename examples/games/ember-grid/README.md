@@ -26,7 +26,7 @@ The floor and atmosphere remain procedural CSS/SVG: a turbulence-noise ground te
 
 Allies start at Lv 1 and gain EXP whenever their action lands: 10 per hit, plus a defeat bonus of 20, both scaled by the level gap (hit `max(1, 10 + 2·gap)`, defeat bonus `max(5, 20 + 5·gap)`, gap = enemy level − ally level) and 10 per recovery potion. Enemies are Lv 1–2 in the first mission, Lv 3–4 in the second and Lv 5–6 in the third, so later fights pay more. Every 100 EXP is a level up: HP (max and current), attack and defense each rise by one with a per-role chance (sword 80/45/45 %, bow 60/55/25 %, magic 50/65/20 %); if nothing rises, the role’s best-growth stat rises instead. Defense lowers all incoming damage (minimum one). Allies gain nothing while defending and enemies never gain EXP. Rolls use an injectable random source; append `?seed=N` to reproduce them.
 
-After each action the acting ally’s EXP gauge fills; a level up follows with a window in which each raised stat lights with +1 in turn (synthesized Web Audio chime when sound is enabled, no new asset). Both overlays briefly hold input and never intercept pointer events.
+After each action the acting ally’s EXP gauge fills; a level up follows with a window in which each raised stat lights with +1 in turn (synthesized Web Audio chime when sound is enabled, no new asset). The gauge alone never holds input; a level-up window briefly does. Neither intercepts pointer events.
 
 Victory shows a chapter report: turns, defeats, survivors, remaining potions and, for each ally, level (▲ gained), EXP, EXP earned, HP/attack/defense and defeats. The MVP has the most defeats, then the most damage dealt; a surviving ally is always preferred over a fallen one.
 

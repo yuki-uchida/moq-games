@@ -51,9 +51,10 @@ export async function presentProgress(field: HTMLElement, unit: Unit, progress: 
     await wait(450)
   }
   if (!progress.gains) {
-    await fill(progress.to)
-    await wait(250)
-    gauge.remove()
+    // A plain EXP gain plays out without holding input; only a level up is worth the wait.
+    void fill(progress.to)
+      .then(() => wait(250))
+      .then(() => gauge.remove())
     return
   }
   await fill(expPerLevel)
