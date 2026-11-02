@@ -8,6 +8,7 @@ import {
   damage,
   distance,
   enemyStep,
+  enemyActionPositions,
   finished,
   lost,
   missions,
@@ -30,7 +31,7 @@ import './shell.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
 import { Stage, chapterRoles } from './stage'
-import { dangerZone, forecast } from './tactics'
+import { dangerZone, enemyThreat, forecast } from './tactics'
 import { campaign } from './campaign'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import { StoryFlow, setStoryEnabled } from './dialogue'
@@ -461,8 +462,12 @@ function render() {
       !unit && game.phase === 'ally'
         ? game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.id === (hovered ?? inspected))
         : undefined,
-    foeMove = foe ? reachable(game, foe) : new Map(),
-    reach = unit ? attackRange(game, unit) : foe ? attackRange(game, foe) : new Set<string>(),
+    foeMove = foe ? enemyActionPositions(game, foe) : new Map(),
+    reach = unit
+      ? attackRange(game, unit)
+      : foe
+        ? new Set([...enemyThreat(game, foe)].filter((cell) => !foeMove.has(cell) || cell === key(foe.x, foe.y)))
+        : new Set<string>(),
     threatened = danger ? dangerZone(game) : new Set<string>()
   cells.forEach((cell, i) => {
     cell.disabled = busy || !ready
@@ -554,7 +559,7 @@ async function choose(x: number, y: number) {
     undo = undefined
     const token = generation
     lockPresentation()
-    await animation.present(game, beforeHeal, unit)
+    await animation.present(game, beforeHeal, unit, { kind: 'heal', target })
     if (token !== generation) return
     if (!(await showProgress(token))) return
     busy = false
@@ -608,7 +613,7 @@ async function choose(x: number, y: number) {
     if (changed) {
       const token = generation
       lockPresentation()
-      await animation.present(game, before, unit)
+      await animation.present(game, before, unit, target ? { kind: 'attack', target } : undefined)
       if (token !== generation) return
       if (!(await showProgress(token))) return
       if (unit.done) undo = undefined
@@ -664,9 +669,9 @@ async function end() {
     if (token !== generation) return
     const before = snapshot(game),
       standing = game.units.filter((a) => a.side === 'ally' && a.hp > 0)
-    enemyStep(game, u)
+    const target = enemyStep(game, u)
     lockPresentation()
-    await animation.present(game, before, u, fast ? 3 : 1)
+    await animation.present(game, before, u, target ? { kind: 'attack', target } : undefined, fast ? 3 : 1)
     if (token !== generation) return
     const fallen = standing.find((a) => a.hp <= 0)
     if (fallen) {

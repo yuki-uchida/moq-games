@@ -1,8 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { createGame, damage, key } from '../src/game'
-import { dangerZone, forecast } from '../src/tactics'
+import { createGame, damage, key, enemyActionPositions, size } from '../src/game'
+import { dangerZone, enemyThreat, forecast } from '../src/tactics'
 
 describe('tactical previews', () => {
+  it('uses the same enemy positions for individual and danger displays', () => {
+    for (const ai of ['charge', 'guard', 'hold'] as const) {
+      const game = createGame(5, 'balanced')
+      const enemy = game.units.find((unit) => unit.ai === 'hold')!
+      enemy.ai = ai
+      game.units = game.units.filter((unit) => unit.side === 'ally' || unit === enemy)
+      const positions = enemyActionPositions(game, enemy)
+      expect(positions.size > 1).toBe(ai !== 'hold')
+      const expected = new Set<string>()
+      for (const position of positions.keys()) {
+        const [x, y] = position.split(',').map(Number)
+        for (let row = 0; row < size; row++)
+          for (let column = 0; column < size; column++)
+            if (Math.abs(x - column) + Math.abs(y - row) <= enemy.range) expected.add(key(column, row))
+      }
+      expect(dangerZone(game)).toEqual(expected)
+      expect(enemyThreat(game, enemy)).toEqual(dangerZone(game))
+    }
+  })
   it('matches combat damage and displays relevant modifiers', () => {
     const game = createGame(0, 'balanced')
     const attacker = game.units.find((unit) => unit.role === 'archer')!

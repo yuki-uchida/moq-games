@@ -96,6 +96,8 @@ Sound is on by default (♫); because of browser autoplay policy, music starts a
 
 ## Verification
 
+Enemy range previews and the danger overlay use the same possible action positions: holding enemies project only from their current cell. Guard enemies are shown conservatively with their full movement reach even before alert, because they may become alerted during the enemy phase; an unalerted guard that does not alert remains stationary. Attack and healing presentation use the action's explicit target, so level-up HP growth is not presented as a hit or heal.
+
 Run from the repository root:
 
 ```sh

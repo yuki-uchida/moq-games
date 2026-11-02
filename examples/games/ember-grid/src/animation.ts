@@ -20,6 +20,14 @@ export function pause(ms: number) {
   })
 }
 export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
+type Action = { kind: 'attack' | 'heal'; target: Unit }
+export function actionChange(before: Unit[], action: Action) {
+  const old = before.find((unit) => unit.id === action.target.id)!
+  return {
+    target: action.target,
+    amount: action.kind === 'attack' ? old.hp - action.target.hp : action.target.hp - old.hp
+  }
+}
 /** Back-to-front order: the far corner is (size-1, 0), the near corner (0, size-1). */
 export const depth = (p: Point) => p.y - p.x + size - 1
 /** Walk the same legal path as movement rules: through same-side units, never through rocks or foes. */
@@ -67,12 +75,12 @@ export class BattleAnimation {
     this.nodes.add(node)
     return node
   }
-  async present(game: Game, before: Unit[], acting: Unit, speed = 1) {
+  async present(game: Game, before: Unit[], acting: Unit, action?: Action, speed = 1) {
     const token = this.version,
       live = () => token === this.version
     const from = before.find((u) => u.id === acting.id)!
-    // A heal raises HP, an attack lowers it.
-    const target = game.units.find((u) => u.hp !== before.find((old) => old.id === u.id)!.hp)
+    const change = action && actionChange(before, action),
+      target = change?.target
     const path = route(game, before, from, acting)
     const moved = from.x !== acting.x || from.y !== acting.y
     const reduced = reducedMotion()
@@ -98,7 +106,6 @@ export class BattleAnimation {
       }
       const victim = target && this.stage.get(target.id)
       if (target && victim && live()) {
-        const old = before.find((u) => u.id === target.id)!
         actor.facing = unit(target.x - acting.x, target.y - acting.y)
         victim.facing = unit(acting.x - target.x, acting.y - target.y)
         const chest = (p: Point) => world(p, 0.42 * this.stage.figure)
@@ -106,7 +113,7 @@ export class BattleAnimation {
         const ms = (reduced ? 80 : profile.durationMs) / speed
         const started = performance.now()
         actor.track = {
-          motion: acting.heal ? 'heal' : 'attack',
+          motion: action!.kind === 'heal' ? 'heal' : 'attack',
           start: started,
           ms: ms * battleSpeed(),
           clipMs: profile.durationMs
@@ -114,10 +121,10 @@ export class BattleAnimation {
         await pause((profile.cueMs / profile.durationMs) * ms)
         if (!live()) return
         this.cue(acting.role)
-        if (acting.heal) {
+        if (action!.kind === 'heal') {
           const effect = this.overlay(chest(target))
           effect.classList.add('healing-effect')
-          effect.textContent = `✚ +${target.hp - old.hp}`
+          effect.textContent = `✚ +${change!.amount}`
           // pause() scales by the battle speed itself, so convert the remaining real time back.
           await pause(Math.max(600 / speed, (started + ms * battleSpeed() - performance.now()) / battleSpeed()))
           return
@@ -144,7 +151,7 @@ export class BattleAnimation {
         showContact(this.overlay(chest(target)), acting.role, Math.atan2(b.y - a.y, b.x - a.x))
         const number = document.createElement('span')
         number.className = 'damage-number'
-        number.textContent = `−${old.hp - target.hp}${target.hp === 0 ? ' ✦' : ''}`
+        number.textContent = `−${change!.amount}${target.hp === 0 ? ' ✦' : ''}`
         this.overlay(world(target, 0.5 * this.stage.figure)).append(number)
         // Finish both the attack clip's recovery and the victim's reaction.
         const now = performance.now()

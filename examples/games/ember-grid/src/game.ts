@@ -298,6 +298,9 @@ export function attackRange(game: Game, unit: Unit): Set<string> {
   for (const u of game.units) if (u.hp > 0 && u.side === unit.side) result.delete(key(u.x, u.y))
   return result
 }
+export function enemyActionPositions(game: Game, enemy: Unit): Map<string, number> {
+  return enemy.ai === 'hold' ? new Map([[key(enemy.x, enemy.y), 0]]) : reachable(game, enemy)
+}
 export function healRange(game: Game, unit: Unit): Set<string> {
   const result = new Set<string>()
   if (!unit.heal || unit.done || unit.hp <= 0) return result
@@ -451,9 +454,7 @@ export function enemyStep(game: Game, unit: Unit) {
   )
     unit.alerted = true
   const options = (
-    unit.ai === 'hold' || (unit.ai === 'guard' && !unit.alerted)
-      ? [key(unit.x, unit.y)]
-      : [...reachable(game, unit).keys()]
+    unit.ai === 'guard' && !unit.alerted ? [key(unit.x, unit.y)] : [...enemyActionPositions(game, unit).keys()]
   ).map((k) => {
     const [x, y] = k.split(',').map(Number)
     return { x, y }
@@ -489,6 +490,7 @@ export function enemyStep(game: Game, unit: Unit) {
   if (target) attack(game, unit, target)
   else game.log = `${unit.name} 接近`
   unit.done = true
+  return target
 }
 export function beginEnemy(game: Game) {
   if (game.phase !== 'ally') return false
