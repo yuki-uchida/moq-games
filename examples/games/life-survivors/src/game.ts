@@ -99,6 +99,8 @@ export interface Player {
   choices: string[]
   choiceSeq: number
   pending: number
+  /** 蒸発済み's free birth hand is still waiting to be dealt (consumed by the first offer). */
+  birthPick?: boolean
   hurt: number
   /** Seconds of grace after an enemy bullet hit. */
   invuln: number
@@ -479,7 +481,8 @@ export class Game {
       passives: [],
       choices: [],
       choiceSeq: 0,
-      pending: 0,
+      pending: parent === 'p_gone' ? 1 : 0,
+      birthPick: parent === 'p_gone',
       hurt: 0,
       invuln: 0,
       hurtFx: 0,
@@ -2053,7 +2056,12 @@ export class Game {
   }
 
   private offer(player: Player) {
-    const pool = this.options(player)
+    // 蒸発済み's first hand (自立): only the talents of early childhood, whatever the age.
+    const birth = player.birthPick === true
+    player.birthPick = false
+    const pool = birth
+      ? TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => `w:${def.id}`)
+      : this.options(player)
     const hand: string[] = []
     // 運がいい sometimes deals a fourth card.
     const size = 3 + (this.rng() < passiveLevel(player, 'p_lucky') * 0.1 ? 1 : 0)

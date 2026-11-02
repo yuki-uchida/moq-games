@@ -141,6 +141,26 @@
 .bhud-coins .bhud-num {
   min-width: 3ch;
 }
+.bhud-pause {
+  pointer-events: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid #779173;
+  border-radius: 12px;
+  background: #44644e;
+  color: #f9f4db;
+}
+.bhud-pause[hidden] {
+  display: none;
+}
+.bhud-pause svg {
+  width: 18px;
+  height: 18px;
+}
 .bhud-speed {
   pointer-events: auto;
   display: inline-flex;
