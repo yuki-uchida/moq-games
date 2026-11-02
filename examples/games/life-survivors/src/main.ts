@@ -3,19 +3,40 @@ import { getPrimaryRelayUrl } from '../../../../utils/relayPresets'
 import { CooperativeNetwork } from '../../rabbiters/src/network'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import {
+  ENEMIES,
   ENEMY_BY_ID,
+  EVENTS,
   MAX_WEAPON_LEVEL,
   PASSIVE_BY_ID,
   RUN_SECONDS,
+  STAGES,
   TALENT_CATEGORIES,
+  TALENT_NAMES,
   TAG_NAMES,
   TALENT_WEAPONS,
+  WEAPONS,
   WEAPON_BY_ID,
   ageAt,
   stageAt,
   type TalentCategory
 } from './data'
 import { GIFTED, Game, POOR, choiceText, type Input, type Player } from './game'
+import { LifeAudio } from './audio'
+import { FX } from './fx'
+import {
+  BANNER_MS,
+  BannerQueue,
+  FxTracker,
+  STAGE_LINES,
+  choiceRarity,
+  consumeFx,
+  findBoss,
+  heartbeatLevel,
+  phaseCue,
+  type Banner,
+  type FxEv,
+  type Rarity
+} from './hud'
 import { deathKind } from './art/deaths'
 import { choiceIcon, iconImg } from './art/icons'
 import { sheet } from './art/index'
@@ -47,7 +68,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v1'
+const APP = 'life-survivors-v2'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -59,6 +80,13 @@ function deathDelayMs(player: ViewPlayer | undefined, time: number) {
   const anim = deaths[deathKind(tag, ageAt(time), body)] ?? deaths.collapse
   return Math.min(5000, (duration(anim) + 1) * 1000)
 }
+
+const audio = new LifeAudio()
+const tracker = new FxTracker()
+const banners = new BannerQueue()
+let prevPhase: string | undefined
+let beatShown = 0
+const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
 let role: 'solo' | 'host' | 'guest' | undefined
 let game: Game | undefined
@@ -106,7 +134,144 @@ function showStartError(message: string) {
   startError.textContent = message
 }
 
+const bannerLayer = element<HTMLElement>('#banner')
+let bannerEl: HTMLElement | undefined
+
+function unmountBanner() {
+  bannerEl?.remove()
+  bannerEl = undefined
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, content?: string) {
+  const node = document.createElement(tag)
+  node.className = className
+  if (content !== undefined) node.textContent = content
+  return node
+}
+
+function mountBanner(banner: Banner) {
+  const node = el('div', `banner banner-${banner.kind}`)
+  node.style.setProperty('--dur', `${banner.duration}ms`)
+  if (banner.kind === 'warning') {
+    node.append(el('i', 'stripes top'), el('b', 'banner-title', banner.title), el('i', 'stripes bottom'))
+    if (banner.sub) node.append(el('p', 'banner-sub', banner.sub))
+    pulse(element('#edge-pulse'), 'alert', banner.duration + 300)
+  } else if (banner.kind === 'evolve' && banner.art) {
+    const from = el('span', 'evo-icon from')
+    from.append(iconImg(banner.art.id, banner.art.from))
+    const to = el('span', 'evo-icon to')
+    to.append(iconImg(banner.art.id, banner.art.to, true))
+    const text = el('div', 'evo-text')
+    text.append(el('b', 'banner-title', banner.title), el('p', 'banner-sub', banner.sub ?? ''))
+    node.append(el('i', 'flash'), from, el('span', 'evo-arrow', '▶'), to, text)
+  } else {
+    if (banner.meta) node.append(el('small', 'banner-meta', banner.meta))
+    node.append(el('b', 'banner-title', banner.title))
+    if (banner.sub) node.append(el('p', 'banner-sub', `${banner.emoji ? `${banner.emoji} ` : ''}${banner.sub}`))
+    if (banner.kind === 'chest' || banner.kind === 'bossKill') node.prepend(el('i', 'rays'))
+  }
+  bannerEl = node
+  bannerLayer.replaceChildren(node)
+}
+
+/** Translates an fx event into a cinematic banner. Log-backed lines (elite, evolve text) stay in the feed. */
+function bannerFor(e: FxEv, localIndex: number, now: number) {
+  const push = (banner: Omit<Banner, 'duration'>) => banners.push({ ...banner, duration: BANNER_MS[banner.kind] }, now)
+  const announce = (text: string) => (element('#announcements').textContent = text)
+  switch (e.type) {
+    case FX.BOSS_SPAWN: {
+      const def = ENEMIES[e.a]
+      if (def) push({ kind: 'warning', title: 'WARNING', sub: `人生イベント：${def.name}` })
+      break
+    }
+    case FX.BOSS_KILL: {
+      const def = ENEMIES[e.a]
+      if (def) push({ kind: 'bossKill', title: `${def.name}を乗り越えた！`, sub: '転機が訪れる' })
+      break
+    }
+    case FX.STAGE: {
+      const stage = STAGES[e.a]
+      if (!stage) break
+      push({ kind: 'stage', meta: `${stage.age}歳`, title: stage.name, sub: STAGE_LINES[e.a] ?? '', emoji: stage.icon })
+      announce(`${stage.name}、${stage.age}歳`)
+      break
+    }
+    case FX.SWARM: {
+      const event = EVENTS[e.a]
+      if (event) push({ kind: 'swarm', title: event.text })
+      break
+    }
+    case FX.CHEST:
+      if (e.b === localIndex) {
+        push({ kind: 'chest', title: e.a >= 3 ? '転機 ×3！' : '転機！' })
+        announce(e.a >= 3 ? '転機が3回分' : '転機')
+      }
+      break
+    case FX.EVOLVE: {
+      const def = WEAPONS[e.a]
+      if (e.b === localIndex && def?.evolve)
+        push({
+          kind: 'evolve',
+          title: '進化！',
+          sub: `${def.name} → ${def.evolve.name}`,
+          art: { id: def.id, from: def.name, to: def.evolve.name }
+        })
+      break
+    }
+  }
+}
+
+function updateBossBar(current: View) {
+  const boss = findBoss(current.enemies)
+  const fill = element('#boss-fill')
+  const trail = element('#boss-trail')
+  if (boss) {
+    window.clearTimeout(bossHideTimer)
+    bossBar.classList.remove('defeated')
+    if (bossBar.hidden || bossShown?.id !== boss.id) {
+      bossShown = { id: boss.id, hp: boss.hp, at: 0 }
+      element('#boss-name').textContent = boss.name
+      bossBar.hidden = false
+      trail.style.transition = 'none'
+      fill.style.width = trail.style.width = `${boss.hp}%`
+      void trail.offsetWidth
+      trail.style.transition = ''
+      pulse(bossBar, 'enter', 700)
+    } else if (boss.hp !== bossShown.hp) {
+      if (bossShown.hp - boss.hp >= 4) pulse(bossBar, 'shake', 320)
+      bossShown.hp = boss.hp
+      fill.style.width = `${boss.hp}%`
+      trail.style.width = `${boss.hp}%`
+    }
+    element('#boss-extra').textContent = boss.count > 1 ? `ほか${boss.count - 1}体` : ''
+  } else if (bossShown) {
+    bossShown = undefined
+    fill.style.width = trail.style.width = '0%'
+    pulse(bossBar, 'defeated', 900)
+    bossHideTimer = window.setTimeout(() => (bossBar.hidden = true), 900)
+  }
+}
+
+/** Everything that remembers the previous game's HUD / audio state. */
+function resetFeel() {
+  tracker.reset()
+  banners.clear()
+  unmountBanner()
+  prevPhase = undefined
+  beatShown = 0
+  audio.setHeartbeat(0)
+  prev.xp = -1
+  prev.level = 0
+  prev.kills = -1
+  prev.hp = -1
+  prev.hand.clear()
+  handKey = ''
+  bossShown = undefined
+  bossBar.hidden = true
+}
+
 async function start(next: 'solo' | 'host' | 'guest') {
+  audio.unlock()
   const attempt = ++generation
   startError.textContent = ''
   buttons.forEach((button) => (button.disabled = true))
@@ -122,6 +287,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
   resultShown = false
   lostAt = 0
   wonAt = 0
+  resetFeel()
   try {
     if (next !== 'solo') {
       if (!room.value.trim()) throw new Error('ルーム名を入力してください。')
@@ -179,6 +345,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
     result.hidden = true
     keys.clear()
     canvas.focus()
+    audio.play('start')
   } catch (cause) {
     if (attempt !== generation) return
     const failed = network
@@ -214,6 +381,8 @@ async function returnToTitle() {
   levelup.hidden = true
   result.hidden = true
   help.hidden = true
+  resetFeel()
+  audio.dispose()
   startPanel.hidden = false
   buttons.forEach((button) => (button.disabled = false))
   setStatus('ひとりで')
@@ -223,6 +392,7 @@ async function returnToTitle() {
 function choose(index: number) {
   const player = me()
   if (!player || index >= player.choices.length) return
+  audio.play('cardPick')
   pick = { index, seq: player.choiceSeq }
   if (game) game.setInput(localId, input())
   levelup.hidden = true
@@ -243,22 +413,27 @@ function renderChoices(player: ViewPlayer | undefined) {
     weapons: player.weapons.map(([id, lv]) => ({ id, lv })),
     passives: player.passives.map(([id, lv]) => ({ id, lv }))
   }
+  const count = player.choices.length
   element<HTMLElement>('#levelup-note').textContent =
     role === 'solo'
-      ? '時間は止まっています。1〜3キーでも選べます。'
-      : '時間は流れ続けています（選択中は足が遅くなる）。1〜3キーでも選べます。'
+      ? `時間は止まっています。1〜${count}キーでも選べます。`
+      : `時間は流れ続けています（選択中は足が遅くなる）。1〜${count}キーでも選べます。`
+  cards.dataset.count = String(count)
+  audio.play('cardOpen')
   cards.replaceChildren(
     ...player.choices.map((choice, index) => {
       const info = choiceText(owner as unknown as Player, choice)
+      const rarity = choiceRarity(player.weapons, player.passives, choice)
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = 'card'
+      button.className = `card rarity-${rarity}`
+      button.style.setProperty('--i', String(index))
       const icon = document.createElement('span')
       icon.className = 'icon'
-      icon.append(iconImg(choiceIcon(choice), info.name))
+      icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
       const name = document.createElement('strong')
       name.textContent = info.name
-      if (info.tag) {
+      if (info.tag && rarity !== 'new') {
         const tag = document.createElement('em')
         tag.textContent = info.tag
         name.append(tag)
@@ -268,12 +443,27 @@ function renderChoices(player: ViewPlayer | undefined) {
       const hint = document.createElement('kbd')
       hint.textContent = String(index + 1)
       button.append(icon, name, text, hint)
-      button.addEventListener('click', () => choose(index))
+      const ribbonText = RIBBONS[rarity]
+      if (ribbonText) {
+        const ribbon = document.createElement('i')
+        ribbon.className = 'ribbon'
+        ribbon.textContent = ribbonText
+        button.append(ribbon)
+      }
+      button.addEventListener('click', (event) => {
+        event.stopPropagation() // the card has its own cue; no generic tap on top
+        choose(index)
+      })
+      button.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') audio.play('cardHover')
+      })
       return button
     })
   )
   ;(cards.firstElementChild as HTMLButtonElement | null)?.focus({ preventScroll: true })
 }
+
+const RIBBONS: Partial<Record<Rarity, string>> = { new: 'NEW', evolve: '進化！' }
 
 function slot(icon: string, level: number, className: string, title: string) {
   const item = document.createElement('div')
@@ -287,6 +477,23 @@ function slot(icon: string, level: number, className: string, title: string) {
 }
 
 let handKey = ''
+const prev = { xp: -1, level: 0, kills: -1, hp: -1, hand: new Map<string, string>() }
+const bossBar = element<HTMLElement>('#boss-bar')
+let bossShown: { id: number; hp: number; at: number } | undefined
+let bossHideTimer: number | undefined
+const pulseTimers = new WeakMap<Element, Record<string, number>>()
+
+/** Restarts a one-shot CSS animation class. */
+function pulse(target: Element, name: string, ms: number) {
+  const timers = pulseTimers.get(target) ?? {}
+  pulseTimers.set(target, timers)
+  window.clearTimeout(timers[name])
+  target.classList.remove(name)
+  void (target as HTMLElement).offsetWidth
+  target.classList.add(name)
+  timers[name] = window.setTimeout(() => target.classList.remove(name), ms)
+}
+
 function updateHud(current: View) {
   const player = current.players.find((p) => p.id === localId)
   const time = Math.min(current.time, RUN_SECONDS)
@@ -298,33 +505,50 @@ function updateHud(current: View) {
   element('#life-progress').style.width = `${(time / RUN_SECONDS) * 100}%`
   element('#level').textContent = `Lv ${current.level}`
   element('#xp-fill').style.width = `${Math.min(100, (current.xp / current.xpNext) * 100)}%`
+  const xpBar = element('.xp-bar')
+  if (prev.level && current.level > prev.level) pulse(xpBar, 'levelflash', 700)
+  else if (prev.xp >= 0 && current.xp > prev.xp) pulse(xpBar, 'gain', 500)
+  prev.xp = current.xp
+  prev.level = current.level
   element('#kills').textContent = String(current.kills)
+  if (prev.kills >= 0 && current.kills > prev.kills) pulse(element('.kills'), 'bump', 160)
+  prev.kills = current.kills
   if (player) {
-    element('#hp-fill').style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`
+    const hpPercent = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`
+    element('#hp-fill').style.width = hpPercent
+    element('#hp-trail').style.width = hpPercent
+    if (prev.hp >= 0 && player.hp < prev.hp - 0.5) pulse(element('.mind-card'), 'hurt', 360)
+    prev.hp = player.hp
     element('#hp-value').textContent = player.downed ? '折' : String(Math.max(0, Math.ceil(player.hp)))
     element('.mind-card').classList.toggle('low', player.hp / player.maxHp < 0.3)
     const key = JSON.stringify([player.weapons.map((w) => w.slice(0, 2)), player.passives])
     if (key !== handKey) {
       handKey = key
       const owner = { passives: player.passives.map(([id, lv]) => ({ id, lv })) }
+      const before = new Map(prev.hand)
+      prev.hand.clear()
+      const mark = (item: HTMLElement, id: string, state: string) => {
+        prev.hand.set(id, state)
+        if (before.get(id) !== state) item.classList.add('pop')
+        return item
+      }
       element('#weapons').replaceChildren(
         ...player.weapons.map(([id, lv]) => {
           const def = WEAPON_BY_ID.get(id)!
           const evolved = Boolean(
             def.evolve && lv >= MAX_WEAPON_LEVEL && owner.passives.some((p) => p.id === def.evolve!.passive)
           )
-          return slot(
-            def.id,
-            lv,
-            def.parent ? 'parent' : evolved ? 'evolved' : '',
-            evolved ? def.evolve!.name : def.name
+          return mark(
+            slot(def.id, lv, def.parent ? 'parent' : evolved ? 'evolved' : '', evolved ? def.evolve!.name : def.name),
+            id,
+            `${lv}:${evolved}`
           )
         })
       )
       element('#passives').replaceChildren(
         ...player.passives.map(([id, lv]) => {
           const def = PASSIVE_BY_ID.get(id)!
-          return slot(def.id, lv, 'passive', def.name)
+          return mark(slot(def.id, lv, 'passive', def.name), id, String(lv))
         })
       )
     }
@@ -368,11 +592,10 @@ function updateHud(current: View) {
     const cause = killer ? `とどめ：${killer.name}（${TAG_NAMES[killer.tag]}）。` : ''
     showResult(
       won ? `大往生 — 享年${age}歳` : `心が折れた — 享年${age}歳`,
-      won
-        ? `死神が迎えに来た。30分の人生を生き抜いた。Lv ${current.level}・乗り越えた困難 ${current.kills}`
-        : `${stageAt(current.time).name}で力尽きた。${cause}Lv ${current.level}・乗り越えた困難 ${current.kills}`,
+      won ? '死神が迎えに来た。30分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
       won ? '🌅' : '💔',
-      player ? reflection(player) : []
+      player ? reflection(player) : [],
+      { level: current.level, kills: current.kills }
     )
   }
 }
@@ -397,26 +620,97 @@ function reflection(player: ViewPlayer) {
     add(`${def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`, '', id)
   }
   if (player.talents) {
-    const talent = Object.fromEntries(TALENT_WEAPONS.map((def) => [def.category, def]))
     for (const category of TALENT_CATEGORIES as TalentCategory[]) {
       const value = player.talents[category]
-      const def = talent[category]
-      if (value === GIFTED) add(`才能：${def.name}`, '🌟 天賦の才', 'gifted', def.id)
-      else if (value === POOR) add(`才能：${def.name}`, '✖ 不向き', 'poor', def.id)
+      const icon = TALENT_WEAPONS.find((def) => def.category === category)?.id
+      const label = `才能：${TALENT_NAMES[category]}`
+      if (value === GIFTED) add(label, '🌟 天賦の才', 'gifted flip', icon)
+      else if (value === POOR) add(label, '✖ 不向き', 'poor flip', icon)
     }
   }
   return rows
 }
 
-function showResult(title: string, text: string, symbol: string, rows: HTMLElement[]) {
+function countUp(target: HTMLElement, to: number, delay: number, ms: number) {
+  target.textContent = reduced ? String(to) : '0'
+  if (reduced) return
+  const begin = performance.now() + delay
+  const step = (now: number) => {
+    if (result.hidden) return
+    const t = Math.min(1, Math.max(0, (now - begin) / ms))
+    target.textContent = String(Math.round(to * (1 - (1 - t) ** 3)))
+    if (t < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
+function showResult(
+  title: string,
+  text: string,
+  symbol: string,
+  rows: HTMLElement[],
+  stats?: { level: number; kills: number }
+) {
   resultShown = true
   levelup.hidden = true
+  audio.setHeartbeat(0)
   element('#result-title').textContent = title
   element('#result-text').textContent = text
   element('#result-symbol').textContent = symbol
+  rows.forEach((row, index) => row.style.setProperty('--i', String(index)))
   element('#result-build').replaceChildren(...rows)
+  element('#result-stats').hidden = !stats
+  if (stats) {
+    countUp(element('#result-level'), stats.level, 300, 900)
+    countUp(element('#result-kills'), stats.kills, 450, 1200)
+  }
   result.hidden = false
   element<HTMLButtonElement>('#restart').focus()
+}
+
+/** Sounds, banners, boss bar and heartbeat from one view — the same path for solo, host and guest. */
+function feel(current: View, now: number) {
+  const index = current.players.findIndex((p) => p.id === localId)
+  const self = current.players[index]
+  if (!resultShown) {
+    const events = consumeFx(
+      current.fx,
+      tracker,
+      {
+        localIndex: index,
+        x: self?.x ?? 0,
+        y: self?.y ?? 0,
+        evolved: (id) => {
+          const def = WEAPON_BY_ID.get(id)
+          const owned = self?.weapons.find((w) => w[0] === id)
+          return Boolean(
+            def?.evolve &&
+              owned &&
+              owned[1] >= MAX_WEAPON_LEVEL &&
+              self.passives.some((p) => p[0] === def.evolve!.passive)
+          )
+        }
+      },
+      audio
+    )
+    for (const e of events) bannerFor(e, index, now)
+  }
+  const cue = phaseCue(prevPhase, current.phase)
+  prevPhase = current.phase
+  if (cue) audio.play(cue)
+  const beat =
+    self && !resultShown
+      ? heartbeatLevel(self.hp, self.maxHp, !self.downed, current.phase === 'playing' || current.phase === 'reaper')
+      : 0
+  const rounded = Math.round(beat * 50) / 50
+  if (rounded !== beatShown) {
+    beatShown = rounded
+    audio.setHeartbeat(rounded)
+  }
+  const step = banners.update(now)
+  if (step.hide || step.show) unmountBanner()
+  if (step.show) mountBanner(step.show)
+  updateBossBar(current)
 }
 
 function frame(now: number) {
@@ -444,6 +738,7 @@ function frame(now: number) {
   }
   if (view) renderer.draw(view, localId, dt, role === 'guest')
   else renderer.draw(attract.view(now), 'attract', dt, false)
+  if (started && view) feel(view, now)
   if (started && view) {
     renderChoices(resultShown ? undefined : player)
     if (now - hudAt > 100) {
@@ -489,12 +784,49 @@ for (const selector of ['#help-close', '#help-done'])
   element(selector).addEventListener('click', () => {
     help.hidden = true
   })
-bindUiSounds(document, (kind) => playSharedUiSound(kind, 1), 'button')
+// Shared UI cues follow the game's mute / volume; level-up cards have their own cues.
+bindUiSounds(document, (kind) => playSharedUiSound(kind, audio.muted ? 0 : audio.volume), 'button:not(.card)')
 warmUpAudio()
+
+const muteButtons = ['#mute', '#mute-title'].map((selector) => element<HTMLButtonElement>(selector))
+const volume = element<HTMLInputElement>('#volume')
+function syncSound() {
+  for (const button of muteButtons) {
+    button.textContent = audio.muted ? '🔇' : '🔊'
+    button.setAttribute('aria-pressed', String(audio.muted))
+    button.title = audio.muted ? '効果音：オフ（Mキー）' : '効果音：オン（Mキー）'
+  }
+  volume.value = String(Math.round(audio.volume * 100))
+}
+function toggleMute() {
+  audio.unlock()
+  audio.setMuted(!audio.muted)
+  if (audio.muted) audio.setHeartbeat(0)
+  else beatShown = 0
+  syncSound()
+}
+for (const button of muteButtons) button.addEventListener('click', toggleMute)
+volume.addEventListener('input', () => {
+  audio.setVolume(Number(volume.value) / 100)
+  if (audio.muted && audio.volume > 0) audio.setMuted(false)
+  syncSound()
+})
+volume.addEventListener('change', () => {
+  audio.unlock()
+  audio.play('gem')
+})
+syncSound()
+// Browsers only start audio from a gesture: any first press unlocks it.
+for (const type of ['pointerdown', 'keydown'] as const)
+  window.addEventListener(type, () => audio.unlock(), { capture: true, passive: true })
 
 const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape') help.hidden = true
+  if (event.code === 'KeyM' && started && !event.repeat && !(event.target instanceof HTMLInputElement)) {
+    toggleMute()
+    return
+  }
   if (!started || !help.hidden) return
   if (/^Digit[1-4]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
@@ -507,7 +839,10 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('keyup', (event) => keys.delete(event.code))
 window.addEventListener('blur', () => keys.clear())
 window.addEventListener('resize', () => renderer.resize())
-window.addEventListener('pagehide', () => void network?.stop())
+window.addEventListener('pagehide', () => {
+  audio.dispose()
+  void network?.stop()
+})
 canvas.addEventListener('pointerdown', (event) => {
   if (!started) return
   drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0 }

@@ -11,6 +11,8 @@ export interface ResultView {
   bounty: number
   /** Number of enemies defeated, or null when unknown (resumed checkpoint). */
   kills: number | null
+  /** Special moves cast this battle (0 shows "必殺技 0回"). */
+  specials: number
   hp: number
   maxHp: number
   seconds: number
@@ -33,12 +35,14 @@ const SWORD =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 11-11M14 4h6v6M5 19l-1.5 1.5M8 16l-3 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 const HEART =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C5 15.5 3 12 3 8.8A4.8 4.8 0 0 1 12 6.6 4.8 4.8 0 0 1 21 8.8C21 12 19 15.5 12 21Z" fill="currentColor"/></svg>'
+const SPARK =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5 14.6 9.4 22.5 12l-7.900 2.600L12 22.500 9.400 14.600 1.500 12l7.900-2.600Z" fill="currentColor"/></svg>'
 const CLOCK =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
 
 /** The whole #result dialog; ids are relied on by main.ts and the e2e specs. */
 export const resultMarkup = (icon: string): string =>
-  `<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-confetti" class="result-confetti" aria-hidden="true"></div><div class="result-main"><div id="result-icon" class="result-icon" aria-hidden="true">${icon}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div id="result-stars" class="result-stars" role="img" aria-label="">${STAR.repeat(3).replaceAll('<svg', '<svg class="rs"')}</div><p id="result-hint" class="result-hint"></p><div class="result-tags"><span id="result-new" class="result-tag new" hidden></span><span id="result-best" class="result-tag best" hidden>ベスト更新!</span></div></div><div class="result-side"><ul class="result-lines"><li id="result-line-clear" data-line>${COIN}<span>クリア報酬</span><b id="result-clear-gold"></b></li><li id="result-line-bounty" data-line>${SWORD}<span>撃破ボーナス</span><b id="result-bounty"></b></li></ul><div class="result-summary" data-line><span id="result-stage"></span><b id="result-gold"></b></div><ul class="result-chips" data-line><li id="chip-kills">${SWORD}<span></span></li><li id="chip-hp">${HEART}<span></span></li><li id="chip-time">${CLOCK}<span></span></li></ul><p id="reward" data-line></p><div class="result-actions"><button id="next" class="primary">次のステージへ →</button><button id="retry-stage">もう一度</button><button id="retry" class="text-button">ステージ選択へ</button></div></div><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
+  `<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-confetti" class="result-confetti" aria-hidden="true"></div><div class="result-main"><div id="result-icon" class="result-icon" aria-hidden="true">${icon}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div id="result-stars" class="result-stars" role="img" aria-label="">${STAR.repeat(3).replaceAll('<svg', '<svg class="rs"')}</div><p id="result-hint" class="result-hint"></p><div class="result-tags"><span id="result-new" class="result-tag new" hidden></span><span id="result-best" class="result-tag best" hidden>ベスト更新!</span></div></div><div class="result-side"><ul class="result-lines"><li id="result-line-clear" data-line>${COIN}<span>クリア報酬</span><b id="result-clear-gold"></b></li><li id="result-line-bounty" data-line>${SWORD}<span>撃破ボーナス</span><b id="result-bounty"></b></li></ul><div class="result-summary" data-line><span id="result-stage"></span><b id="result-gold"></b></div><ul class="result-chips" data-line><li id="chip-kills">${SWORD}<span></span></li><li id="chip-specials">${SPARK}<span></span></li><li id="chip-hp">${HEART}<span></span></li><li id="chip-time">${CLOCK}<span></span></li></ul><p id="reward" data-line></p><div class="result-actions"><button id="next" class="primary">次のステージへ →</button><button id="retry-stage">もう一度</button><button id="retry" class="text-button">ステージ選択へ</button></div></div><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
 
 const TIPS = [
   '盾の騎士を道の上に置くと敵を足止めできる',
@@ -113,6 +117,7 @@ export function createResultCard(dialog: HTMLElement, play: (kind: FeelSound, pa
     $('result-bounty').textContent = coins(v.bounty)
     $('chip-kills').hidden = v.kills === null
     $('chip-kills').querySelector('span')!.textContent = `撃破 ${v.kills ?? 0}体`
+    $('chip-specials').querySelector('span')!.textContent = `必殺技 ${v.specials}回`
     $('chip-hp').querySelector('span')!.textContent = `拠点 HP ${Math.ceil(v.hp)}/${v.maxHp}`
     $('chip-time').querySelector('span')!.textContent = `タイム ${formatClock(v.seconds)}`
     $('result-gold').textContent = coins(v.instant ? total : 0)

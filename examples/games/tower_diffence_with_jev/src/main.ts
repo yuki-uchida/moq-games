@@ -2,6 +2,7 @@ import { SPECIALS, specialReady } from './game/SpecialAbilities'
 import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
 import { SkillBar } from './ui/SkillBar'
 import { SkillCutIn } from './ui/SkillCutIn'
+import { nextFreezeUntil } from './ui/SpecialFeel'
 import './ui/skill-bar.css'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
@@ -518,6 +519,13 @@ const battleFeedback = new BattleFeedback({
   shakeTarget: document.querySelector<HTMLElement>('.map-shell')!,
   baseLabel: $('base-health'),
   coinTarget: () => battleHud.coinElement,
+  // Band between the HUD and the skill bar where big readouts may sit.
+  safeArea: () => ({
+    left: 8,
+    right: innerWidth - 8,
+    top: battleHud.root.hidden ? 8 : battleHud.root.getBoundingClientRect().bottom + 6,
+    bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
+  }),
   play: (kind, param) => soundPlayer.playFeel(kind, param),
   announce: (message) => announce(message)
 })
@@ -1044,13 +1052,19 @@ function fireSpecial(point: Point) {
     announce('指定できません')
     return
   }
-  playCastFeedback(engine.state.units.find((unit) => unit.id === specialAimId)!.type as AllyType)
+  playCastFeedback(engine.state.units.find((unit) => unit.id === specialAimId)!.type as AllyType, point)
   clearPlacementModes()
   persist()
   updateSelectionContext()
 }
-function playCastFeedback(type: AllyType) {
-  skillCutIn.play({ portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type })
+// Real time until which the simulation is stopped for the cast cut-in (see initializeClock).
+let freezeUntil = 0
+function playCastFeedback(type: AllyType, point: Point) {
+  skillCutIn.play(
+    { portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type },
+    { point, radius: SPECIALS[type].radius }
+  )
+  freezeUntil = nextFreezeUntil(performance.now(), freezeUntil)
   soundPlayer.playCue('ui_special')
   soundPlayer.playFeel('cutin')
 }
@@ -1072,7 +1086,7 @@ $('unit-special').onclick = () => {
   if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
   else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
 }
-const skillCutIn = new SkillCutIn($('app'))
+const skillCutIn = new SkillCutIn($('app'), $('field'))
 const skillBar = new SkillBar(document.querySelector<HTMLElement>('.game-layout')!, {
   portrait: displayPortrait,
   onActivate: activateSkill
@@ -1087,7 +1101,7 @@ function castBestSpecial(id: number, accept: (score: number, point: Point, type:
   const unit = engine.state.units.find((u) => u.id === id),
     target = unit && bestSpecialTarget(engine.state, id)
   if (!unit || !target || !accept(target.score, target.point, unit.type as AllyType) || !engine.castSpecial(id, target.point)) return false
-  playCastFeedback(unit.type as AllyType)
+  playCastFeedback(unit.type as AllyType, target.point)
   announce(`${SPECIALS[unit.type as AllyType].name} 発動`)
   clearPlacementModes()
   persist()
@@ -1104,6 +1118,8 @@ function activateSkill(id: number, manual: boolean) {
     // Nothing worth hitting: say so on the button instead of opening the aim panel over the field.
     // Long-press / Shift+click still aims by hand.
     skillBar.hint(id, unit.type === 'healer' ? '回復が必要な仲間がいません' : '射程内に敵がいません')
+    const button = skillBar.buttonFor(id)
+    if (button) coach.noteNoTarget(button)
     announce(`${SPECIALS[unit.type as AllyType].name}: 対象なし · 長押しで手動照準`)
     return
   }
@@ -1603,7 +1619,7 @@ function fillLoadingScreen(state: NonNullable<typeof campaignState>) {
       img.src = displayPortrait(type) ?? ''
       img.alt = ''
       img.draggable = false
-      img.style.animationDelay = `${i * -0.35}s`
+      img.style.animationDelay = `${i * 0.08}s`
       return img
     })
   )
@@ -2667,6 +2683,11 @@ function initializeClock() {
     battleClock = createBattleClock({
       step: (dt) => {
         if (!started || !renderer.campaignPrepared || engine.state.phase !== 'assault') return false
+        // Cast time-stop: the clock keeps running but its steps are dropped, so no time catches up afterwards.
+        if (performance.now() < freezeUntil) {
+          persistOutcome()
+          return true
+        }
         // Speed x2 runs two simulation steps per clock step; animation reads simulation time, so it stays in sync.
         for (let i = 0; i < battleHud.speed && engine.state.phase === 'assault'; i++)
           engine.update(dt, (state) => renderer.assetsReady(state))
@@ -2989,6 +3010,7 @@ function frame(now: number) {
       reward: won ? stageReward(state.stage) : 0,
       bounty: lastBounty,
       kills: lastKills,
+      specials: state.units.reduce((sum, u) => sum + (u.owner === 'player' ? (u.specialSequence ?? 0) : 0), 0),
       hp: state.playerBaseHp,
       maxHp: CONFIG.baseHp,
       seconds: state.time,

@@ -1,5 +1,6 @@
 import { C, R } from './palette'
 import { KEY, Raster, ball, part, shadeEdges, type Ramp } from './raster'
+import { arsenalFx, arsenalIcons, arsenalSheets } from './arsenal'
 import { WINGS, WING_KEY, pencil } from './enemies'
 import type { Anim, Sheet } from './sheet'
 
@@ -528,6 +529,7 @@ export const PENCIL_DIRS = 16
 export function weaponSheets(): Record<string, () => Sheet> {
   const four = (make: (f: number) => Raster, fps: number) => loop([0, 1, 2, 3].map(make), fps)
   return {
+    ...arsenalSheets(),
     'weapon:p_edu': () => ({ fly: four(book, 10) }),
     'weapon:p_free': () => ({ fly: four(balloon, 4) }),
     'weapon:p_over': () => ({ fly: loop([0, 1].map(shield), 3) }),
@@ -557,7 +559,8 @@ export function weaponSheets(): Record<string, () => Sheet> {
       bolt: loop([0, 1].map(bolt), 12),
       burst: loop([0, 1, 2].map(burst), 12),
       bills: loop([bills()], 1),
-      coins: loop([0, 1, 2].map(coins), 10)
+      coins: loop([0, 1, 2].map(coins), 10),
+      ...arsenalFx()
     }),
     items: () => ({
       gem1: four((f) => gem(f, R.sky), 5),
@@ -611,7 +614,8 @@ export function weaponSheets(): Record<string, () => Sheet> {
         }),
         meal: icon(onigiri(28)),
         coin: coin(32),
-        ...Object.fromEntries(Object.entries(PASSIVE_ICONS).map(([id, make]) => [id, make()]))
+        ...Object.fromEntries(Object.entries(PASSIVE_ICONS).map(([id, make]) => [id, make()])),
+        ...arsenalIcons()
       }
       return Object.fromEntries(Object.entries(icons).map(([id, r]) => [id, loop([r], 1)]))
     }

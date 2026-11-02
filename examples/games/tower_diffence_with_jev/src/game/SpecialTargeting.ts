@@ -60,3 +60,14 @@ export const AUTO_HOLD_SECONDS = 6
 export function autoShouldCast(type: AllyType, score: number, bossInArea: boolean, readyForSeconds: number): boolean {
   return type === 'healer' || score >= 2 || (score >= 1 && (bossInArea || readyForSeconds >= AUTO_HOLD_SECONDS))
 }
+
+/** Plain head count inside the circle (the auto-aim score weighs a boss as 3; the button shows real units). */
+export function specialTargetCount(state: Readonly<GameState>, type: AllyType, point: Point): number {
+  const heal = type === 'healer'
+  return state.units.filter(
+    (u) =>
+      u.hp > 0 &&
+      Math.hypot(u.x - point.x, u.y - point.y) <= SPECIALS[type].radius &&
+      (heal ? u.owner === 'player' : u.owner === 'ai' && canTargetUnit({ owner: 'player', type }, u, state.battlefieldVersion))
+  ).length
+}

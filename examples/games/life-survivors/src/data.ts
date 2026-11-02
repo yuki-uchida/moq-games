@@ -93,9 +93,31 @@ export type Behavior =
   | 'rain'
   | 'whip'
   | 'flail'
+  | 'chain'
+  | 'pet'
+  | 'slam'
+  | 'beam'
+  | 'barrage'
+  | 'boomerang'
+  | 'nova'
+  | 'sweep'
+  | 'mine'
+  | 'dice'
+  | 'trail'
+  | 'fan'
   | 'none'
 
 export type TalentCategory = 'friend' | 'sports' | 'study' | 'work' | 'love' | 'hobby' | 'invest' | 'beauty'
+export const TALENT_NAMES: Record<TalentCategory, string> = {
+  friend: '友人',
+  sports: 'スポーツ',
+  study: '勉強',
+  work: '仕事',
+  love: '恋愛',
+  hobby: '娯楽',
+  invest: '投資',
+  beauty: '美容'
+}
 export const TALENT_CATEGORIES: TalentCategory[] = [
   'friend',
   'sports',
@@ -428,11 +450,236 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     minAge: 20,
     desc: '相場の稲妻が敵を撃つ。持っているほど威力が複利で伸びる。お金に特攻。',
     evolve: { passive: 'p_greedy', name: '複利の魔法' }
+  }),
+  weapon({
+    id: 'w_sns',
+    name: 'SNS',
+    icon: '📱',
+    color: '#4cc9f0',
+    behavior: 'chain',
+    category: 'friend',
+    damage: 11,
+    cooldown: 1.5,
+    amount: 1,
+    area: 14,
+    duration: 0.25,
+    pierce: Infinity,
+    strong: ['insult', 'people'],
+    minAge: 12,
+    desc: '投稿が次々に伝染し、敵から敵へ飛び移る。悪口・人間関係に特攻。',
+    evolve: { passive: 'p_savvy', name: 'バズの連鎖' }
+  }),
+  weapon({
+    id: 'w_pet',
+    name: 'ペット',
+    icon: '🐕',
+    color: '#f2a65a',
+    behavior: 'pet',
+    category: 'friend',
+    damage: 7,
+    cooldown: 5,
+    amount: 1,
+    area: 12,
+    speed: 260,
+    duration: 5.5,
+    pierce: Infinity,
+    strong: ['insult', 'child'],
+    minAge: 3,
+    desc: '愛犬が敵に噛みついてくれる。手が空けば飼い主のそばへ。悪口・子育てに特攻。',
+    evolve: { passive: 'p_optimist', name: '忠犬' }
+  }),
+  weapon({
+    id: 'w_muscle',
+    name: '筋トレ',
+    icon: '💪',
+    color: '#59b56a',
+    behavior: 'slam',
+    category: 'sports',
+    damage: 24,
+    cooldown: 2.6,
+    amount: 1,
+    area: 110,
+    duration: 0.4,
+    pierce: Infinity,
+    knockback: 420,
+    strong: ['sports', 'accident'],
+    minAge: 12,
+    desc: '足もとを叩きつけて衝撃波。近くの敵をまとめて吹き飛ばす。スポーツ・事故に特攻。',
+    evolve: { passive: 'p_stubborn', name: '鋼の肉体' }
+  }),
+  weapon({
+    id: 'w_reading',
+    name: '読書',
+    icon: '📖',
+    color: '#8fb8de',
+    behavior: 'beam',
+    category: 'study',
+    damage: 11,
+    cooldown: 2,
+    amount: 1,
+    area: 340,
+    duration: 0.6,
+    pierce: Infinity,
+    strong: ['class', 'exam'],
+    minAge: 6,
+    desc: '知識の光線が向いた方向を貫く。授業・試験に特攻。',
+    evolve: { passive: 'p_curious', name: '博覧強記' }
+  }),
+  weapon({
+    id: 'w_overtime',
+    name: '残業',
+    icon: '🖇️',
+    color: '#6d8fd6',
+    behavior: 'barrage',
+    category: 'work',
+    damage: 6,
+    cooldown: 2.3,
+    amount: 1,
+    area: 8,
+    speed: 640,
+    duration: 1.1,
+    pierce: 1,
+    strong: ['work', 'class'],
+    minAge: 22,
+    desc: 'ホチキスの針を連射する。終わらない仕事・授業に特攻。',
+    evolve: { passive: 'p_clever', name: '社畜の鑑' }
+  }),
+  weapon({
+    id: 'w_ring',
+    name: '結婚指輪',
+    icon: '💍',
+    color: '#ffd166',
+    behavior: 'boomerang',
+    category: 'love',
+    damage: 14,
+    cooldown: 2,
+    amount: 1,
+    area: 17,
+    speed: 560,
+    duration: 2.4,
+    pierce: Infinity,
+    strong: ['love', 'money'],
+    minAge: 22,
+    desc: '投げた指輪は必ずあなたの元へ戻ってくる。恋愛・お金に特攻。',
+    evolve: { passive: 'p_kind', name: '銀婚式' }
+  }),
+  weapon({
+    id: 'w_karaoke',
+    name: 'カラオケ',
+    icon: '🎤',
+    color: '#ef7fae',
+    behavior: 'nova',
+    category: 'hobby',
+    damage: 16,
+    cooldown: 2.7,
+    amount: 1,
+    area: 170,
+    duration: 0.7,
+    pierce: Infinity,
+    knockback: 60,
+    strong: ['work', 'insult'],
+    minAge: 12,
+    desc: '歌声が輪になって広がる。仕事・悪口に特攻。',
+    evolve: { passive: 'p_hot', name: '魂のシャウト' }
+  }),
+  weapon({
+    id: 'w_travel',
+    name: '旅行',
+    icon: '✈️',
+    color: '#5fc2c9',
+    behavior: 'sweep',
+    category: 'hobby',
+    damage: 13,
+    cooldown: 2.2,
+    amount: 1,
+    area: 16,
+    speed: 520,
+    duration: 2.7,
+    pierce: Infinity,
+    strong: ['work', 'sickness'],
+    minAge: 18,
+    desc: '紙飛行機が画面を横切って飛んでいく。仕事・病気に特攻。',
+    evolve: { passive: 'p_curious', name: '世界一周' }
+  }),
+  weapon({
+    id: 'w_savings',
+    name: '貯金',
+    icon: '🐷',
+    color: '#f29cc0',
+    behavior: 'mine',
+    category: 'invest',
+    damage: 32,
+    cooldown: 2.4,
+    amount: 1,
+    area: 90,
+    duration: 8,
+    pierce: Infinity,
+    strong: ['money', 'accident'],
+    minAge: 6,
+    desc: '置いた貯金箱に敵が触れると弾けて大爆発。お金・事故に特攻。',
+    evolve: { passive: 'p_bold', name: '老後の蓄え' }
+  }),
+  weapon({
+    id: 'w_gamble',
+    name: 'ギャンブル',
+    icon: '🎲',
+    color: '#e0b93f',
+    behavior: 'dice',
+    category: 'invest',
+    damage: 11,
+    cooldown: 1.5,
+    amount: 1,
+    area: 12,
+    speed: 380,
+    duration: 1.5,
+    pierce: 1,
+    strong: ['money'],
+    minAge: 20,
+    desc: 'サイコロを投げる。出目しだいで威力は0.3倍から5倍、6は必ず会心。お金に特攻。',
+    evolve: { passive: 'p_lucky', name: '大穴的中' }
+  }),
+  weapon({
+    id: 'w_perfume',
+    name: '香水',
+    icon: '🌸',
+    color: '#b98ae6',
+    behavior: 'trail',
+    category: 'beauty',
+    damage: 6,
+    cooldown: 0.35,
+    amount: 1,
+    area: 34,
+    duration: 2,
+    pierce: Infinity,
+    strong: ['love', 'people'],
+    minAge: 15,
+    desc: '歩いた跡に香りの雲が残り、入った敵を酔わせる。恋愛・人間関係に特攻。',
+    evolve: { passive: 'p_savvy', name: '魅惑のフェロモン' }
+  }),
+  weapon({
+    id: 'w_cooking',
+    name: '料理',
+    icon: '🍳',
+    color: '#e0704f',
+    behavior: 'fan',
+    category: 'love',
+    damage: 8,
+    cooldown: 1.4,
+    amount: 1,
+    area: 11,
+    speed: 420,
+    duration: 0.55,
+    pierce: 1,
+    strong: ['sickness', 'child'],
+    minAge: 10,
+    desc: '手料理を扇状にふるまう。病気・子育てに特攻。',
+    evolve: { passive: 'p_healthy', name: 'おふくろの味' }
   })
 ]
 
 export const WEAPONS: WeaponDef[] = [...PARENTS, ...TALENT_WEAPONS]
 export const WEAPON_BY_ID = new Map(WEAPONS.map((def) => [def.id, def]))
+export const WEAPON_INDEX = new Map(WEAPONS.map((def, index) => [def.id, index]))
 
 export interface PassiveDef {
   id: string
@@ -449,7 +696,11 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'p_greedy', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%・投資 +15%' },
   { id: 'p_bold', name: '図太い', icon: '🐘', desc: '精神力の最大値 +20' },
   { id: 'p_optimist', name: '楽天家', icon: '🌈', desc: '精神力の自然回復 +0.4/秒' },
-  { id: 'p_healthy', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' }
+  { id: 'p_healthy', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' },
+  { id: 'p_lucky', name: '運がいい', icon: '🍀', desc: '会心率 +5%・転機の札が増えることも' },
+  { id: 'p_clever', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）' },
+  { id: 'p_curious', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
+  { id: 'p_savvy', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' }
 ]
 export const PASSIVE_BY_ID = new Map(PASSIVES.map((def) => [def.id, def]))
 
@@ -466,7 +717,35 @@ export const LEVEL_TEXT = [
   '威力 +40%・数 +1'
 ]
 
-export type EnemyBehavior = 'chase' | 'dash' | 'boss'
+export type EnemyBehavior =
+  | 'chase'
+  | 'dash'
+  | 'boss'
+  | 'swarm'
+  | 'charger'
+  | 'shooter'
+  | 'tank'
+  | 'splitter'
+  | 'circler'
+  | 'blink'
+  | 'ghost'
+
+/** Boss attack patterns. */
+export type BossPattern = 'ring' | 'spiral' | 'summon' | 'charge'
+
+/** What a shooter throws (bullet = a BULLET_KINDS name). */
+export interface EnemyShot {
+  bullet: string
+  speed: number
+  damage: number
+  cooldown: number
+  /** Bullets per volley (default 1). */
+  count?: number
+  /** Total arc of the volley in radians (default 0.5). */
+  spread?: number
+  /** Fire `count` bullets in a full ring instead of an aimed fan. */
+  ring?: boolean
+}
 
 export interface EnemyDef {
   id: string
@@ -479,6 +758,19 @@ export interface EnemyDef {
   radius: number
   xp: number
   behavior: EnemyBehavior
+  /** Dash speed of chargers and of a boss's charge pattern. */
+  dash?: number
+  /** Splitters: what they break into on death. */
+  child?: string
+  children?: number
+  /** Shooters. */
+  shot?: EnemyShot
+  /** Bosses: attack patterns, alternating by cooldown. */
+  patterns?: BossPattern[]
+  /** Bosses: what the `summon` pattern calls. */
+  minion?: string
+  /** Only ever appears as a child or a minion, never from the age pools. */
+  minor?: boolean
 }
 
 const enemy = (
@@ -491,8 +783,9 @@ const enemy = (
   damage: number,
   radius: number,
   xp: number,
-  behavior: EnemyBehavior = 'chase'
-): EnemyDef => ({ id, name, icon, tag, hp, speed, damage, radius, xp, behavior })
+  behavior: EnemyBehavior = 'chase',
+  extra: Partial<EnemyDef> = {}
+): EnemyDef => ({ id, name, icon, tag, hp, speed, damage, radius, xp, behavior, ...extra })
 
 export const ENEMIES: EnemyDef[] = [
   enemy('germ', '風邪', '🦠', 'sickness', 6, 42, 4, 12, 1),
@@ -513,20 +806,108 @@ export const ENEMIES: EnemyDef[] = [
   enemy('illness', '病気', '🤒', 'sickness', 120, 34, 14, 22, 6),
   enemy('loan', 'ローン', '🏦', 'money', 105, 44, 14, 22, 6),
   // Life events: one-off bosses that drop a 転機 (turning point).
-  enemy('b_hs', '高校受験', '📝', 'exam', 900, 52, 18, 34, 40, 'boss'),
-  enemy('b_univ', '大学受験', '🎓', 'exam', 2600, 54, 22, 38, 60, 'boss'),
-  enemy('b_shukatsu', '就職活動', '👔', 'work', 5200, 56, 26, 38, 80, 'boss'),
-  enemy('b_wedding', '結婚式の出費', '💒', 'money', 8500, 52, 28, 40, 100, 'boss'),
-  enemy('b_mortgage', '住宅ローン', '🏠', 'money', 15000, 50, 32, 44, 130, 'boss'),
-  enemy('b_rebel', '反抗期', '😡', 'child', 21000, 64, 34, 40, 160, 'boss'),
-  enemy('b_layoff', 'リストラ', '📉', 'work', 30000, 56, 38, 44, 200, 'boss'),
-  enemy('b_illness', '大病', '🏥', 'sickness', 42000, 46, 42, 48, 260, 'boss')
+  enemy('b_hs', '高校受験', '📝', 'exam', 900, 52, 18, 34, 40, 'boss', { patterns: ['ring'] }),
+  enemy('b_univ', '大学受験', '🎓', 'exam', 2600, 54, 22, 38, 60, 'boss', { patterns: ['spiral'] }),
+  enemy('b_shukatsu', '就職活動', '👔', 'work', 5200, 56, 26, 38, 80, 'boss', { patterns: ['summon'], minion: 'job' }),
+  enemy('b_wedding', '結婚式の出費', '💒', 'money', 8500, 52, 28, 40, 100, 'boss', { patterns: ['ring'] }),
+  enemy('b_mortgage', '住宅ローン', '🏠', 'money', 15000, 50, 32, 44, 130, 'boss', {
+    patterns: ['summon'],
+    minion: 'expense'
+  }),
+  enemy('b_rebel', '反抗期', '😡', 'child', 21000, 64, 34, 40, 160, 'boss', { patterns: ['charge'], dash: 390 }),
+  enemy('b_layoff', 'リストラ', '📉', 'work', 30000, 56, 38, 44, 200, 'boss', {
+    patterns: ['spiral', 'summon'],
+    minion: 'deadline'
+  }),
+  enemy('b_illness', '大病', '🏥', 'sickness', 42000, 46, 42, 48, 260, 'boss', {
+    patterns: ['ring', 'summon'],
+    minion: 'germ'
+  }),
+  // Everyday troubles with their own way of moving (appended: ids are snapshot indices).
+  enemy('mosquito', '蚊', '🦟', 'sickness', 3, 110, 3, 10, 1, 'swarm'),
+  enemy('vaccine', '注射', '💉', 'sickness', 14, 60, 8, 13, 2, 'charger', { dash: 340 }),
+  enemy('dog', '野良犬', '🐕', 'accident', 22, 95, 9, 15, 2, 'charger', { dash: 380 }),
+  enemy('pepper', 'ピーマン', '🫑', 'class', 18, 50, 6, 15, 2, 'shooter', {
+    shot: { bullet: 'seed', speed: 170, damage: 4, cooldown: 3 }
+  }),
+  enemy('homework', '宿題', '📚', 'class', 30, 40, 7, 17, 3, 'splitter', { child: 'worksheet', children: 3 }),
+  enemy('worksheet', 'プリント', '📃', 'class', 6, 105, 4, 11, 1, 'chase', { minor: true }),
+  enemy('dodgeball', 'ドッジボール', '🔴', 'sports', 24, 52, 7, 15, 2, 'shooter', {
+    shot: { bullet: 'ball', speed: 200, damage: 5, cooldown: 2.8 }
+  }),
+  enemy('pimple', 'ニキビ', '🔴', 'sickness', 10, 70, 5, 12, 1, 'swarm'),
+  enemy('crush', '片思い', '💔', 'love', 34, 90, 9, 15, 3, 'circler'),
+  enemy('senpai', '先輩', '🧑‍🎓', 'people', 140, 34, 13, 20, 6, 'tank'),
+  enemy('drinking', '飲み会', '🍺', 'people', 46, 60, 10, 17, 4, 'shooter', {
+    shot: { bullet: 'beer', speed: 160, damage: 4, cooldown: 3.6, count: 3, spread: 0.55 }
+  }),
+  enemy('scholarship', '奨学金', '🎓', 'money', 160, 32, 13, 21, 7, 'tank'),
+  enemy('deadline', '締め切り', '⏰', 'work', 44, 70, 12, 16, 4, 'charger', { dash: 420 }),
+  enemy('meeting', '会議', '🗂️', 'work', 220, 30, 14, 22, 8, 'tank'),
+  enemy('spam', '迷惑メール', '📧', 'work', 12, 120, 5, 11, 1, 'swarm'),
+  enemy('powerhara', 'パワハラ', '🗯️', 'insult', 70, 48, 13, 18, 5, 'shooter', {
+    shot: { bullet: 'shout', speed: 150, damage: 6, cooldown: 3.2, count: 3, spread: 0.7 }
+  }),
+  enemy('train', '満員電車', '🚃', 'accident', 60, 340, 26, 22, 3, 'dash'),
+  enemy('tax', '税金', '🧾', 'money', 90, 46, 12, 18, 5, 'splitter', { child: 'coin', children: 4 }),
+  enemy('coin', '小銭', '🪙', 'money', 10, 110, 5, 10, 1, 'chase', { minor: true }),
+  enemy('nightcry', '夜泣き', '🍼', 'child', 60, 56, 11, 15, 4, 'shooter', {
+    shot: { bullet: 'wail', speed: 115, damage: 5, cooldown: 3.8, count: 8, ring: true }
+  }),
+  enemy('backpain', '腰痛', '⚡', 'sickness', 260, 30, 16, 22, 9, 'tank'),
+  enemy('scam', '詐欺電話', '☎️', 'money', 80, 60, 12, 17, 5, 'blink'),
+  enemy('forget', '物忘れ', '❓', 'sickness', 70, 64, 12, 16, 5, 'blink'),
+  enemy('loneliness', '孤独', '🌑', 'people', 120, 44, 14, 19, 6, 'ghost'),
+  // New life events.
+  enemy('b_vaccine', '予防接種の日', '💉', 'sickness', 420, 50, 14, 32, 25, 'boss', {
+    patterns: ['charge'],
+    dash: 330
+  }),
+  enemy('b_heartbreak', '失恋', '💔', 'love', 4200, 54, 22, 38, 70, 'boss', {
+    patterns: ['ring', 'charge'],
+    dash: 360
+  }),
+  enemy('b_tax', '確定申告', '🧾', 'money', 7000, 50, 26, 40, 90, 'boss', {
+    patterns: ['summon', 'ring'],
+    minion: 'coin'
+  }),
+  enemy('b_care', '親の介護', '🧓', 'people', 36000, 46, 40, 44, 240, 'boss', {
+    patterns: ['summon', 'spiral'],
+    minion: 'loneliness'
+  })
 ]
 export const ENEMY_BY_ID = new Map(ENEMIES.map((def) => [def.id, def]))
 export const ENEMY_INDEX = new Map(ENEMIES.map((def, index) => [def.id, index]))
 
+/** Enemy bullet sprite names (sheet `bullets`); the index is what snapshots carry. */
+export const BULLET_KINDS = [
+  'seed',
+  'ball',
+  'beer',
+  'shout',
+  'wail',
+  'b_hs',
+  'b_univ',
+  'b_shukatsu',
+  'b_wedding',
+  'b_mortgage',
+  'b_rebel',
+  'b_layoff',
+  'b_illness',
+  'b_vaccine',
+  'b_heartbreak',
+  'b_tax',
+  'b_care'
+] as const
+export const BULLET_INDEX = new Map<string, number>(BULLET_KINDS.map((name, index) => [name, index]))
+
+/** Item kinds as carried in snapshots (index). */
+export const ITEM_KINDS = ['meal', 'chest', 'magnet'] as const
+
+type PoolEntry = [string, number]
+
 /** Who the world throws at you, by age. Weights are relative. */
-export const POOLS: { untilAge: number; enemies: [string, number][] }[] = [
+const BASE_POOLS: { untilAge: number; enemies: PoolEntry[] }[] = [
   {
     untilAge: 3,
     enemies: [
@@ -631,22 +1012,85 @@ export const POOLS: { untilAge: number; enemies: [string, number][] }[] = [
   }
 ]
 
-/** Scripted life events (seconds into the run). */
-export const EVENTS: { at: number; boss?: string; swarm?: string; count?: number; text: string }[] = [
-  { at: 150, swarm: 'insult', count: 30, text: 'クラスで悪口が広まった！' },
-  { at: 300, boss: 'b_hs', text: '高校受験がやってきた！' },
-  { at: 450, boss: 'b_univ', text: '大学受験がやってきた！' },
-  { at: 570, swarm: 'car', count: 10, text: '免許を取った。事故に注意！' },
-  { at: 630, boss: 'b_shukatsu', text: '就職活動が始まった！' },
-  { at: 840, boss: 'b_wedding', text: '結婚式の請求書が届いた！' },
-  { at: 960, swarm: 'gossip', count: 50, text: 'SNSで炎上した！' },
-  { at: 1050, boss: 'b_mortgage', text: '住宅ローンを組んだ！' },
-  { at: 1230, boss: 'b_rebel', text: '子供が反抗期に入った！' },
-  { at: 1380, swarm: 'kid', count: 40, text: '子供の友だちが大集合！' },
-  { at: 1440, boss: 'b_layoff', text: 'リストラの噂…！' },
-  { at: 1620, boss: 'b_illness', text: '大きな病気が見つかった！' },
-  { at: 1740, swarm: 'illness', count: 60, text: '最後の試練。あと少し…！' }
+/** [enemy, from age, to age (a band ends at or before it), weight]: where each newcomer lives. */
+const NEW_SPAWNS: [string, number, number, number][] = [
+  ['mosquito', 0, 12, 0.9],
+  ['mosquito', 65, 999, 0.9],
+  ['vaccine', 0, 6, 1.1],
+  ['dog', 3, 12, 1],
+  ['pepper', 3, 12, 0.7],
+  ['homework', 6, 18, 1],
+  ['dodgeball', 6, 15, 0.7],
+  ['pimple', 12, 23, 0.9],
+  ['crush', 12, 35, 1],
+  ['senpai', 12, 23, 0.5],
+  ['drinking', 18, 35, 0.6],
+  ['scholarship', 18, 50, 0.6],
+  ['deadline', 23, 65, 1],
+  ['meeting', 23, 65, 0.6],
+  ['spam', 23, 65, 0.8],
+  ['powerhara', 23, 65, 0.5],
+  ['train', 23, 65, 0.25],
+  ['tax', 23, 999, 0.8],
+  ['nightcry', 30, 50, 0.6],
+  ['backpain', 45, 999, 0.5],
+  ['scam', 60, 999, 0.8],
+  ['forget', 60, 999, 0.8],
+  ['loneliness', 60, 999, 0.8]
 ]
+const POOL_BANDS = [0, 3, 6, 12, 15, 18, 23, 30, 35, 45, 50, 60, 65]
+
+export const POOLS: { untilAge: number; enemies: PoolEntry[] }[] = POOL_BANDS.map((from, i) => {
+  const untilAge = i + 1 < POOL_BANDS.length ? POOL_BANDS[i + 1] : 999
+  const base = BASE_POOLS.find((entry) => from < entry.untilAge)!
+  const added = NEW_SPAWNS.filter(([, lo, hi]) => lo <= from && untilAge <= hi).map(([id, , , w]): PoolEntry => [id, w])
+  return { untilAge, enemies: [...base.enemies, ...added] }
+})
+
+export type Formation = 'ring' | 'wall' | 'cluster'
+
+export interface LifeEvent {
+  at: number
+  boss?: string
+  swarm?: string
+  count?: number
+  formation?: Formation
+  text: string
+}
+
+/** Scripted life events (seconds into the run), sorted by time. */
+export const EVENTS: LifeEvent[] = (
+  [
+    { at: 60, swarm: 'mosquito', count: 24, formation: 'wall', text: '夏が来た。蚊の大群！' },
+    { at: 100, boss: 'b_vaccine', text: '予防接種の日がやってきた！' },
+    { at: 150, swarm: 'insult', count: 30, text: 'クラスで悪口が広まった！' },
+    { at: 220, swarm: 'homework', count: 14, text: '夏休みの宿題が山積み！' },
+    { at: 300, boss: 'b_hs', text: '高校受験がやってきた！' },
+    { at: 380, swarm: 'pimple', count: 40, text: '思春期。ニキビが大量発生！' },
+    { at: 450, boss: 'b_univ', text: '大学受験がやってきた！' },
+    { at: 500, swarm: 'drinking', count: 18, formation: 'cluster', text: '新歓コンパの季節！' },
+    { at: 525, boss: 'b_heartbreak', text: '失恋した…！' },
+    { at: 570, swarm: 'car', count: 10, text: '免許を取った。事故に注意！' },
+    { at: 630, boss: 'b_shukatsu', text: '就職活動が始まった！' },
+    { at: 690, swarm: 'spam', count: 60, formation: 'wall', text: '迷惑メールが殺到！' },
+    { at: 735, boss: 'b_tax', text: '確定申告の締め切りだ！' },
+    { at: 800, swarm: 'deadline', count: 20, text: '繁忙期。締め切りが迫る！' },
+    { at: 840, boss: 'b_wedding', text: '結婚式の請求書が届いた！' },
+    { at: 960, swarm: 'gossip', count: 50, text: 'SNSで炎上した！' },
+    { at: 1050, boss: 'b_mortgage', text: '住宅ローンを組んだ！' },
+    { at: 1110, swarm: 'nightcry', count: 18, formation: 'cluster', text: '赤ちゃんが生まれた！夜泣きの日々…' },
+    { at: 1170, swarm: 'meeting', count: 10, text: '会議、会議、また会議…' },
+    { at: 1230, boss: 'b_rebel', text: '子供が反抗期に入った！' },
+    { at: 1300, swarm: 'backpain', count: 12, text: '腰をやってしまった…' },
+    { at: 1380, swarm: 'kid', count: 40, text: '子供の友だちが大集合！' },
+    { at: 1440, boss: 'b_layoff', text: 'リストラの噂…！' },
+    { at: 1530, boss: 'b_care', text: '親の介護が始まった…' },
+    { at: 1580, swarm: 'scam', count: 20, text: 'オレオレ詐欺の電話が鳴る！' },
+    { at: 1620, boss: 'b_illness', text: '大きな病気が見つかった！' },
+    { at: 1680, swarm: 'forget', count: 30, text: '物忘れがひどくなってきた…' },
+    { at: 1740, swarm: 'illness', count: 60, text: '最後の試練。あと少し…！' }
+  ] as LifeEvent[]
+).sort((a, b) => a.at - b.at)
 
 export const PLAYER_COLORS = ['#ffd166', '#06d6a0', '#ef476f', '#4cc9f0', '#f78c6b', '#b388eb', '#90be6d', '#f9c74f']
 export const MAX_GAME_PLAYERS = 8

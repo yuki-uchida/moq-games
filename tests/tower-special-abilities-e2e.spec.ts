@@ -105,8 +105,11 @@ for (const mobile of [false, true])
     if (mobile) await page.touchscreen.tap(target.x, target.y)
     else await page.mouse.click(target.x, target.y)
     expect((await stored(page)).state.units[0].specialCooldown).toBeGreaterThan(59)
+    // A cast stops time for the cut-in first, so the short burst window starts later: sample finely.
     await expect
-      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active))
+      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active), {
+        intervals: [50]
+      })
       .toBe(1)
     await page.screenshot({ path: info.outputPath(`special-burst-${mobile}.png`) })
     await expect
@@ -136,7 +139,9 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
     expect(cast.units[0].specialCooldown).toBeGreaterThan(59)
     await expect(page.locator('.unit-health.player')).toHaveAttribute('data-rendered-motion', 'special')
     await expect
-      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active > 0))
+      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active > 0), {
+        intervals: [50]
+      })
       .toBe(true)
     // Save before the screenshot: a software-GPU capture can outlast a short field (ranger: 5.7 s),
     // and the checkpoint below must be taken while the field is still active.
