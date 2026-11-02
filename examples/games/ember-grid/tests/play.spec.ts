@@ -1,6 +1,6 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { acceptDiscard, enterBattle } from './shell-helper'
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     setInterval(() => {
@@ -53,6 +53,7 @@ for (const viewport of [
     if (viewport.width === 390) await expect(page.locator('[data-ember-music]')).not.toHaveAttribute('data-jingle')
     else await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'defeat')
     await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+    await acceptDiscard(page)
     await expect(page.locator('#turn')).toContainText('味方 · 1')
     await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 3')
     expect(errors).toEqual([])
@@ -254,6 +255,7 @@ test('restart cancels an in-flight enemy turn', async ({ page }) => {
   await enterBattle(page)
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+  await acceptDiscard(page)
   await page.waitForTimeout(1600)
   await expect(page.locator('#turn')).toContainText('味方 · 1')
   await expect(page.getByRole('button', { name: /2,5 燈守リオ HP 16/ })).toBeVisible()

@@ -94,6 +94,8 @@ let danger = dangerZoneDefault()
 let pending: string | undefined
 let undo: { id: string; x: number; y: number } | undefined
 let focusCell = 0
+let restoreBoardFocus = false
+let focusParking: HTMLElement | null = null
 let fast = false
 let forecastTrigger: HTMLElement | null = null
 let bannerVersion = 0
@@ -291,9 +293,16 @@ function positionTags() {
 }
 new ResizeObserver(() => requestAnimationFrame(positionTags)).observe(field)
 function lockPresentation() {
+  restoreBoardFocus ||= Boolean(
+    document.activeElement?.closest('#board, nav, #forecast') || document.activeElement === document.body
+  )
   busy = true
   cells.forEach((cell) => (cell.disabled = true))
   document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
+  if (restoreBoardFocus && document.activeElement === document.body && !document.querySelector('dialog[open]')) {
+    focusParking = document.querySelector<HTMLButtonElement>('#restart')!
+    focusParking.focus()
+  }
 }
 /** Chapter-report portrait: an idle pose rendered from the unit's own 3D model. */
 const portrait = (u: Unit) => `<img class="portrait" alt="" src="${ready ? stage.portrait(u.role) : ''}">`
@@ -368,6 +377,7 @@ async function phaseBanner(phase: 'ally' | 'enemy', token: number) {
 }
 board.onpointerleave = () => hover(-1, -1)
 function cancelForecast(restore = true) {
+  if (!restore && document.activeElement?.closest('#forecast')) restoreBoardFocus = true
   pending = undefined
   document.querySelector<HTMLElement>('#forecast')!.hidden = true
   if (restore) forecastTrigger?.focus()
@@ -425,6 +435,7 @@ function hover(x: number, y: number) {
   if (!busy) render()
 }
 function render() {
+  const focusedControl = document.activeElement as HTMLElement | null
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
@@ -516,6 +527,29 @@ function render() {
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
   next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
+  if (focusedControl !== document.body && document.activeElement === document.body) restoreBoardFocus = true
+  if (
+    restoreBoardFocus &&
+    !busy &&
+    ready &&
+    !document.querySelector('dialog[open]') &&
+    (document.activeElement === document.body || document.activeElement === focusParking)
+  ) {
+    const ally = game.units.find((candidate) => candidate.id === selected && candidate.hp > 0)
+    if (ally && game.phase === 'ally') {
+      cells[focusCell].tabIndex = -1
+      focusCell = ally.y * size + ally.x
+    }
+    const target =
+      game.phase === 'ally'
+        ? cells[focusCell]
+        : game.phase === 'won'
+          ? next
+          : document.querySelector<HTMLButtonElement>(game.phase === 'enemy' ? '#fast' : '#restart')!
+    restoreBoardFocus = false
+    focusParking = null
+    target.focus()
+  }
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
   if (playing && wasHidden && !result.hidden)
     audio.jingle(game.phase === 'lost' ? 'defeat' : game.stage === missions.length - 1 ? 'final' : 'victory')
@@ -711,21 +745,55 @@ document.querySelector('#wait')!.addEventListener('click', () => {
     afterAction()
   }
 })
-document.querySelector('#restart')!.addEventListener('click', () => {
-  generation++
-  story.cancel()
-  animation.cancel()
-  clearProgress(field)
-  busy = false
-  game = newGame(game.stage, game.formation)
-  audio.start()
-  selected = inspected = undefined
-  undo = undefined
-  cancelForecast(false)
-  render()
-  // A retry replays the (skippable) chapter opening, then the phase banner.
-  if (ready) void openChapter(false)
-})
+function hasProgress() {
+  const initial = createGame(game.stage, game.formation, checkpoints[game.stage])
+  return (
+    game.turn !== 1 ||
+    game.phase !== 'ally' ||
+    game.potions !== initial.potions ||
+    JSON.stringify(game.units) !== JSON.stringify(initial.units)
+  )
+}
+function confirmDiscard(action: () => void) {
+  if (!hasProgress()) return action()
+  const dialog = document.createElement('dialog')
+  dialog.className = 'shell-dialog'
+  dialog.setAttribute('aria-labelledby', 'discard-title')
+  dialog.innerHTML =
+    '<h2 id="discard-title">⚠ 戦闘の進行を破棄しますか？</h2><p>現在の戦闘と中断記録が失われます。</p><button type="button" data-cancel>✕ 戻る</button><button type="button" data-confirm>↻ 破棄して続ける</button>'
+  document.body.append(dialog)
+  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick = () => dialog.close()
+  dialog.querySelector<HTMLButtonElement>('[data-confirm]')!.onclick = () => {
+    dialog.close()
+    action()
+  }
+  dialog.onkeydown = (event) => {
+    if (event.key !== 'Tab') return
+    event.preventDefault()
+    const next = document.activeElement?.hasAttribute('data-cancel') ? '[data-confirm]' : '[data-cancel]'
+    dialog.querySelector<HTMLButtonElement>(next)!.focus()
+  }
+  dialog.onclose = () => dialog.remove()
+  dialog.showModal()
+  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.focus()
+}
+document.querySelector('#restart')!.addEventListener('click', () =>
+  confirmDiscard(() => {
+    generation++
+    story.cancel()
+    animation.cancel()
+    clearProgress(field)
+    busy = false
+    game = newGame(game.stage, game.formation)
+    audio.start()
+    selected = inspected = undefined
+    undo = undefined
+    cancelForecast(false)
+    render()
+    // A retry replays the (skippable) chapter opening, then the phase banner.
+    if (ready) void openChapter(false)
+  })
+)
 document.querySelector('#recover')!.addEventListener('click', async () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && recover(game, u)) {
@@ -790,8 +858,10 @@ function listMissions() {
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
     (button) =>
       (button.onclick = () => {
-        expedition.close()
-        startMission(Number(button.dataset.stage))
+        confirmDiscard(() => {
+          expedition.close()
+          startMission(Number(button.dataset.stage))
+        })
       })
   )
 }

@@ -115,3 +115,6 @@
     animation: none;
   }
 }
+.reduce-motion .story-credits {
+  overflow-y: auto;
+}

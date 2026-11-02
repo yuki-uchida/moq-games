@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { acceptDiscard, enterBattle } from './shell-helper'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -86,6 +86,7 @@ for (const [width, height] of [
     for (const chapter of [3, 4, 5]) {
       await page.getByRole('button', { name: '任務と編成' }).click()
       await page.locator(`[data-stage="${chapter}"]`).click()
+      await acceptDiscard(page)
       await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
       await expect(page.locator('.story-overlay, .story-credits')).toHaveCount(0)
       await expect(page.locator('#phase-banner')).toBeHidden()

@@ -1,5 +1,10 @@
 import type { Dialog, Page } from '@playwright/test'
 
+export async function acceptDiscard(page: Page) {
+  const button = page.getByRole('button', { name: '↻ 破棄して続ける' })
+  if (await button.isVisible()) await button.click()
+}
+
 export async function enterBattle(page: Page, url = './', unlocked = false) {
   await page.addInitScript(() => localStorage.setItem('ember-grid:tutorial-complete:v1', '1'))
   if (unlocked) {
