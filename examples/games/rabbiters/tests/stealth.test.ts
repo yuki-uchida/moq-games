@@ -434,7 +434,10 @@ describe('guest rendering of a flying predator', () => {
     const { game, predator } = standoff(30, 'hawk')
     game.state.droppings.push({ id: 'poo-x', x: 1, y: 0, z: 1, t: 0 })
     const view = new GuestView()
-    const snapshot = () => JSON.parse(JSON.stringify(game.state)) as typeof game.state
+    const snapshot = () => {
+      game.state.time += 1 / 60 // each snapshot is a later host frame
+      return JSON.parse(JSON.stringify(game.state)) as typeof game.state
+    }
     view.render(snapshot(), 'rabbit', idle, 1 / 60, 0)
     Object.assign(predator, { y: 0.5, state: 'suspicious', suspicion: 0.4 })
     const heights: number[] = []

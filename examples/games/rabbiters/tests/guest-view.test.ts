@@ -95,6 +95,28 @@ describe('guest rendering', () => {
     expect(result.players[0].x).toBeGreaterThan(arrived.players[0].x)
   })
 
+  it('moves other actors at an even pace between unevenly arriving snapshots', () => {
+    const game = gameWithGuest()
+    game.addPlayer('friend', 'Friend')
+    const view = new GuestView()
+    const positions: number[] = []
+    let snapshot = copy(game.state)
+    const pending: { at: number; state: GameState }[] = []
+    for (let frame = 0; frame <= 180; frame++) {
+      const now = (frame * 1000) / 60
+      game.state.time = frame / 60
+      game.state.players[1].x = 2 * game.state.time // 2 units per second
+      if (frame % 6 === 0) pending.push({ at: now + 80 + ((frame / 6) % 3) * 25, state: copy(game.state) })
+      while (pending.length && pending[0].at <= now) snapshot = pending.shift()!.state
+      positions.push(view.render(snapshot, 'guest', idle, frame ? 1 / 60 : 0, now).players[1].x)
+    }
+    for (let frame = 60; frame <= 180; frame++) {
+      const step = positions[frame] - positions[frame - 1]
+      expect(step).toBeGreaterThan(0.02)
+      expect(step).toBeLessThan(0.05)
+    }
+  })
+
   it('smooths other actors and stops predicting after a disconnect or defeat', () => {
     const game = gameWithGuest()
     game.addPlayer('friend', 'Friend')
@@ -102,9 +124,11 @@ describe('guest rendering', () => {
     const first = copy(game.state)
     view.render(first, 'guest', idle, 0, 0)
     const second = copy(first)
+    second.time += 0.3
     second.players[1].x += 1
     second.players[1].angle = Math.PI
-    const smoothed = view.render(second, 'guest', idle, 1 / 60, 100)
+    view.render(second, 'guest', idle, 0.1, 100)
+    const smoothed = view.render(second, 'guest', idle, 0.1, 200) // drawn a little behind the newest snapshot
     expect(smoothed.players[1].x).toBeGreaterThan(first.players[1].x)
     expect(smoothed.players[1].x).toBeLessThan(second.players[1].x)
     expect(second.players[1].x).toBe(first.players[1].x + 1)

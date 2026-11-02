@@ -8,6 +8,11 @@ export interface InputAck {
 
 type Pose = Pick<Player, 'x' | 'y' | 'z' | 'angle'>
 type Sample = Pose & { time: number }
+/** Host snapshot poses of everyone but the local rabbit, keyed `kind:id`, at host game time. */
+type Frame = { time: number; poses: Map<string, Pose> }
+
+/** Remote actors are drawn this far behind the newest snapshot so there is always a later one to move toward. */
+const INTERPOLATION_DELAY = 0.15
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const pose = (actor: Pose): Pose => ({ x: actor.x, y: actor.y, z: actor.z, angle: actor.angle })
@@ -21,7 +26,8 @@ export class GuestView {
   private movement: Movement = { velocity: 0, jumpHeld: false }
   private history: Sample[] = []
   private correction = { x: 0, y: 0, z: 0 }
-  private remotes = new Map<string, Pose>()
+  private frames: Frame[] = []
+  private remoteTime = 0
   private stage = -1
 
   private sampleAt(time: number): Pose | undefined {
@@ -74,19 +80,43 @@ export class GuestView {
     this.correction = { x: dx * scale, y: sample ? dy : 0, z: dz * scale }
   }
 
-  private smooth(key: string, target: Pose, elapsed: number): Pose {
-    let current = this.remotes.get(key)
-    if (!current || Math.hypot(target.x - current.x, target.y - current.y, target.z - current.z) > 8) {
-      current = pose(target)
-      this.remotes.set(key, current)
-      return current
+  /** Records a snapshot's remote poses and advances the playback clock that trails it. */
+  private advanceRemotes(state: GameState, localId: string, changed: boolean, elapsed: number) {
+    if (changed) {
+      const poses = new Map<string, Pose>()
+      for (const entry of state.players) if (entry.id !== localId) poses.set(`player:${entry.id}`, pose(entry))
+      for (const entry of state.predators) poses.set(`predator:${entry.id}`, pose(entry))
+      for (const entry of state.kits) poses.set(`kit:${entry.id}`, pose(entry))
+      const last = this.frames[this.frames.length - 1]
+      if (last && state.time < last.time) this.frames = [] // a new stage or a resumed game restarts the clock
+      if (last && state.time === last.time) this.frames[this.frames.length - 1] = { time: state.time, poses }
+      else this.frames.push({ time: state.time, poses })
     }
-    const amount = 1 - Math.exp(-14 * elapsed)
-    current.x += (target.x - current.x) * amount
-    current.y += (target.y - current.y) * amount
-    current.z += (target.z - current.z) * amount
-    current.angle += Math.atan2(Math.sin(target.angle - current.angle), Math.cos(target.angle - current.angle)) * amount
-    return current
+    const newest = this.frames[this.frames.length - 1]
+    if (!newest) return
+    const target = newest.time - INTERPOLATION_DELAY
+    this.remoteTime += elapsed
+    // Ease the clock toward the target so uneven snapshot arrival bends playback speed slightly instead of jerking it.
+    if (this.frames.length === 1 || Math.abs(target - this.remoteTime) > 0.5) this.remoteTime = target
+    else this.remoteTime += (target - this.remoteTime) * (1 - Math.exp(-2 * elapsed))
+    this.remoteTime = Math.min(this.remoteTime, newest.time)
+    while (this.frames.length > 2 && this.frames[1].time <= this.remoteTime) this.frames.shift()
+  }
+
+  private remote(key: string, latest: Pose): Pose {
+    const before = this.frames[0]
+    const after = this.frames.find((frame) => frame.time >= this.remoteTime) ?? this.frames[this.frames.length - 1]
+    const from = before?.poses.get(key)
+    const to = after?.poses.get(key)
+    if (!from || !to || before.time >= after.time) return pose(to ?? latest)
+    if (Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) > 8) return pose(to) // teleported: don't slide
+    const amount = clamp((this.remoteTime - before.time) / (after.time - before.time), 0, 1)
+    return {
+      x: from.x + (to.x - from.x) * amount,
+      y: from.y + (to.y - from.y) * amount,
+      z: from.z + (to.z - from.z) * amount,
+      angle: from.angle + Math.atan2(Math.sin(to.angle - from.angle), Math.cos(to.angle - from.angle)) * amount
+    }
   }
 
   render(state: GameState, localId: string, input: Input, dt: number, now: number): GameState {
@@ -142,24 +172,14 @@ export class GuestView {
       while (this.history.length && this.history[0].time < now - 5000) this.history.shift()
     }
 
-    const active = new Set<string>()
-    const players = state.players.map((entry) => {
-      if (entry.id === localId && this.local) return { ...entry, ...this.local }
-      const key = `player:${entry.id}`
-      active.add(key)
-      return { ...entry, ...this.smooth(key, entry, elapsed) }
-    })
-    const predators = state.predators.map((entry) => {
-      const key = `predator:${entry.id}`
-      active.add(key)
-      return { ...entry, ...this.smooth(key, entry, elapsed) }
-    })
-    const kits = state.kits.map((entry) => {
-      const key = `kit:${entry.id}`
-      active.add(key)
-      return { ...entry, ...this.smooth(key, entry, elapsed) }
-    })
-    for (const key of this.remotes.keys()) if (!active.has(key)) this.remotes.delete(key)
+    this.advanceRemotes(state, localId, changed, elapsed)
+    const players = state.players.map((entry) =>
+      entry.id === localId && this.local
+        ? { ...entry, ...this.local }
+        : { ...entry, ...this.remote(`player:${entry.id}`, entry) }
+    )
+    const predators = state.predators.map((entry) => ({ ...entry, ...this.remote(`predator:${entry.id}`, entry) }))
+    const kits = state.kits.map((entry) => ({ ...entry, ...this.remote(`kit:${entry.id}`, entry) }))
     return { ...state, time: this.visualTime, players, predators, kits }
   }
 }
