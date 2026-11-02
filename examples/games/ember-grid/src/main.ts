@@ -261,7 +261,8 @@ document
 // Status tags float above the 3D layer on a second projected grid, nearer cells on top.
 const marks: HTMLSpanElement[] = []
 let longPress: ReturnType<typeof setTimeout> | undefined
-let suppressClick = false
+let suppressClick = false,
+  touchTap = false
 let touchStart: { x: number; y: number } | undefined
 for (let y = 0; y < size; y++)
   for (let x = 0; x < size; x++) {
@@ -274,12 +275,8 @@ for (let y = 0; y < size; y++)
         suppressClick = false
         return
       }
-      if (
-        event instanceof PointerEvent &&
-        event.pointerType === 'touch' &&
-        touchAssist.getAttribute('aria-pressed') === 'true'
-      )
-        chooseNearby(x, y)
+      // pointerdown carries the input type everywhere; keyboard activation (detail 0) bypasses the chooser.
+      if (touchTap && event.detail > 0 && touchAssist.getAttribute('aria-pressed') === 'true') chooseNearby(x, y)
       else void choose(x, y)
     }
     cell.oncontextmenu = (event) => {
@@ -290,6 +287,7 @@ for (let y = 0; y < size; y++)
       }
     }
     cell.onpointerdown = (event) => {
+      touchTap = event.pointerType === 'touch'
       if (event.pointerType !== 'touch') return
       suppressClick = false
       touchStart = { x: event.clientX, y: event.clientY }
@@ -993,11 +991,13 @@ const titleProgress = showTitle(saved, {
       startMission(stage ?? save.furthest)
     }
   },
-  ending: () => {
-    generation++
+  ending: async () => {
+    const token = ++generation
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
     game.phase = 'won'
-    void story.victory(generation).then(() => location.reload())
+    // Portraits render from the loaded models; the title no longer preloads them.
+    await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
+    if (token === generation) void story.victory(token).then(() => location.reload())
   },
   settings,
   help: openHelp
@@ -1005,7 +1005,7 @@ const titleProgress = showTitle(saved, {
 if (!stageAvailable) {
   const title = document.querySelector<HTMLElement>('.title-screen')!
   const buttons = title.querySelectorAll<HTMLButtonElement>(
-    '[data-action=new], [data-action=continue], [data-action=chapters]'
+    '[data-action=new], [data-action=continue], [data-action=chapters], [data-action=ending]'
   )
   buttons.forEach((button) => (button.disabled = true))
   titleProgress('WebGLを利用できません。ブラウザの設定やハードウェアアクセラレーションを確認してください。')
