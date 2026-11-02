@@ -194,7 +194,12 @@ function univ(i: number, t: number) {
   // Eyes glow on the mint spine; the bookmark tongue hangs from the gap below.
   const eyeY = 102 + bob - 14 - 12 - 13 + 4
   part(r, (l) => {
-    l.stamp(['cccc.........cccc', '.cwcc.......ccwc.', '..ccc.......ccc..'], 46, eyeY, { c: C.glow, w: C.white })
+    l.stamp(
+      ['cccccc.......cccccc', '.cwwccc.....cccwwc.', '..cwccc.....cccwc..', '...ccc.......ccc...'],
+      45,
+      eyeY - 1,
+      { c: C.glow, w: C.white }
+    )
     const tongue = Math.round(Math.sin(t * 2) * 2)
     l.poly(
       [60, eyeY + 9, 66, eyeY + 9, 66 + tongue, eyeY + 20, 63 + tongue, eyeY + 17, 60 + tongue, eyeY + 20],
@@ -480,14 +485,46 @@ function rebel(i: number, t: number) {
   const r = new Raster(S, S)
   const step = [0, 2, 4, 2, 0, -1][i]
   const HOOD = R.orange
-  // Dark aura wisps and the うざい text.
+  // An angry scribble cloud, 💢 vein marks and a big うざい.
+  part(
+    r,
+    (l) => {
+      for (let k = 0; k < 40; k++) {
+        const a = k * 0.55 + t
+        const rad = 6 + (k % 5)
+        l.set(24 + Math.cos(a) * rad * 1.6 + (k % 7), 48 + Math.sin(a) * rad, R.purple[2])
+      }
+    },
+    false
+  )
+  part(
+    r,
+    (l) => {
+      const vein = (vx: number, vy: number) => {
+        for (const [dx, dy] of [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1]
+        ]) {
+          l.line(vx + dx * 2, vy + dy * 4, vx + dx * 4, vy + dy * 2, R.red[1])
+          l.line(vx + dx * 2, vy + dy * 5, vx + dx * 5, vy + dy * 2, R.red[1])
+        }
+      }
+      vein(96, 20 + (i % 2))
+      vein(30, 26 - (i % 2))
+    },
+    false
+  )
   part(r, (l) => {
-    for (let k = 0; k < 7; k++) {
-      const a = (k / 7) * Math.PI * 2 + t * 0.5
-      l.ellipse(64 + Math.cos(a) * 46, 64 + Math.sin(a) * 40, 4, 6, R.purple[3])
+    const big = (ch: string) =>
+      GLYPH[ch].flatMap((row) => [[...row].map((c) => c + c).join(''), [...row].map((c) => c + c).join('')])
+    let x = 4
+    for (const ch of 'うざい') {
+      l.stamp(big(ch), x, 2 + Math.round(Math.sin(t) * 2), { K: R.purple[0] })
+      x += 16
     }
   })
-  part(r, (l) => text(l, 'うざい', 8, 14 + Math.round(Math.sin(t) * 2), R.purple[1]))
   // Legs stomping (jeans, sneakers).
   for (const [x, k] of [
     [50, 0],
@@ -549,13 +586,13 @@ const EXEC_HEAD: HeadSpec = {
   h: 23,
   hairAt: [-1, -1],
   hair: [
-    '....jjjjjjjjjjjj......',
-    '..jjHHHHHHaaaHHHjj....',
-    '.jHHHaaHHHHHHHHHHHj...',
+    '...jjjjjjjjjjjj.......',
+    '.jjHaHHHaHHHaHHjj.....',
+    'jHHHHaHHHaHHHaHHHj....',
+    'jHHHHHaHHHaHHHaHHHj...',
     'jHHHHHHHHHHHHHHHHHHj..',
-    'jHHHHHHHHHHHHHHHHHHHj.',
-    'jHHHJ............JHHj.',
-    'jHJ................Jj.',
+    'jHHJJ.............Jj..',
+    'jHJ..................',
     'jj....................'
   ],
   key: DARK_HAIR,
@@ -566,6 +603,13 @@ const EXEC_HEAD: HeadSpec = {
   nose: [12, 14],
   ear: [0, 10],
   extra: (l, x, y) => {
+    // Glinting glasses over shadowed eyes, a thin cold smile.
+    l.stamp(['ssssss..sssss'], x + 4, y + 8, { s: R.skin[3] })
+    l.stamp(['gggggg.ggggg', 'g....ggg...g', 'gggggg.ggggg'], x + 4, y + 9, { g: R.metal[0] })
+    l.set(x + 5, y + 10, C.white)
+    l.set(x + 6, y + 10, C.white)
+    l.set(x + 13, y + 10, C.white)
+    l.stamp(['m.....m', '.mmmmm.'], x + 7, y + 17, { m: R.skin[3] })
     // Hollow cheeks and a hard jaw.
     for (const [dx, dy] of [
       [3, 14],
@@ -619,14 +663,18 @@ function layoff(i: number, t: number) {
     const pivot = { x: 84, y: 68 }
     for (const s of [-1, 1]) {
       const a = (s * (4 + snip)) / 40
-      const tip = { x: pivot.x + Math.cos(a) * 40, y: pivot.y + Math.sin(a) * 40 - 6 }
-      l.thick(pivot.x, pivot.y, tip.x, tip.y, 3, R.metal[1])
+      const tip = { x: pivot.x + Math.cos(a) * 46, y: pivot.y + Math.sin(a) * 46 - 6 }
+      l.thick(pivot.x, pivot.y, tip.x, tip.y, 4, R.metal[1])
       l.line(pivot.x, pivot.y - 1, tip.x, tip.y - 1, R.metal[0])
       const h = { x: pivot.x - Math.cos(a) * 10, y: pivot.y - Math.sin(a) * 10 + s * 4 }
       l.ellipse(h.x, h.y, 5, 4, R.navy[0])
       l.ellipse(h.x, h.y, 3, 2, 0)
     }
     l.rect(pivot.x - 1, pivot.y - 1, 3, 3, R.metal[2])
+    // A cold glint travelling along the blade.
+    const gx = pivot.x + 12 + (i % 3) * 10
+    l.line(gx - 3, pivot.y - 3, gx + 3, pivot.y - 3, C.white)
+    l.line(gx, pivot.y - 6, gx, pivot.y, C.white)
   })
   part(r, (l) => {
     l.thick(56, 46, 76, 64, 6, BLACK[1])
@@ -638,8 +686,9 @@ function layoff(i: number, t: number) {
       const p = (i + k * 2) % 6
       const x = 14 + k * 34 + p * 2
       const y = 92 - p * 9 + k * 6
-      l.poly([x, y, x + 10, y - 2, x + 11, y + 4, x + 1, y + 6], R.pink[1])
-      l.line(x + 2, y + 2, x + 8, y + 1, R.pink[2])
+      // Red 解雇 notices.
+      l.poly([x, y, x + 12, y - 2, x + 13, y + 6, x + 1, y + 8], R.red[1])
+      l.stamp(['www.w.w', 'w.w.www', 'www.w.w'], x + 3, y + 2, { w: C.white })
     })
   return r
 }
@@ -723,7 +772,23 @@ function bigIllness(i: number, t: number) {
 }
 
 export const bossSheets: Record<string, () => Sheet> = {
-  reaper: () => six(reaper, 5),
+  reaper: () => ({
+    ...six(reaper, 5),
+    // A slow bow: the hood, skull and arm lower toward the soul; the robe below stays.
+    bow: {
+      frames: [0, 2, 4, 6, 7, 7, 7].map((b, i) => {
+        const r = reaper(i % 6, 0)
+        const out = new Raster(S, S)
+        out.blit(r)
+        for (let y = 0; y < 56; y++) for (let x = 0; x < S; x++) out.set(x, y, 0)
+        const top = new Raster(S, S)
+        for (let y = 0; y < 56; y++) for (let x = 0; x < S; x++) top.set(x, y, r.get(x, y))
+        return out.blit(top, Math.round(b / 2), b)
+      }),
+      fps: 6,
+      loop: false
+    }
+  }),
   'enemy:b_univ': () => six(univ),
   'enemy:b_shukatsu': () => six(shukatsu),
   'enemy:b_wedding': () => six(wedding, 6),

@@ -49,34 +49,23 @@ const still = (frame: Raster) => ({ frames: [frame], fps: 1, loop: true })
 // Tiles. Each takes the tile coordinate and a variant (0..n) picked by hash.
 
 const TILES: Record<string, (tx: number, ty: number, v: number) => Raster> = {
-  // 幼児期: playground sand with pebbles and patches of grass.
+  // 幼児期: playground sand with pebbles and the odd footprint trail (grass patches are scattered features).
   playground: (_tx, _ty, v) => {
     const r = base(R.sand)
     scatter(r, 3 + v, 60, [R.sand[2], R.sand[0]], [1, 2])
-    if (v === 1)
-      for (const [x, y] of [
-        [14, 20],
-        [40, 44],
-        [50, 12]
-      ]) {
-        r.rect(x, y, 3, 2, R.gravel[1])
-        r.set(x, y, R.gravel[0])
-      }
-    if (v === 2) {
-      // A grass patch with ragged tufts: lit blades on top, darker roots below.
-      r.ellipse(32, 34, 17, 10, R.grass[1])
-      for (let a = 0; a < Math.PI * 2; a += 0.22) {
-        const x = 32 + Math.cos(a) * 17
-        const y = 34 + Math.sin(a) * 10
-        r.line(x, y, x + Math.cos(a) * 2, y + Math.sin(a) * 2 - 2, R.grass[1])
-      }
-      for (let k = 0; k < 22; k++) {
-        const x = 18 + ((k * 7) % 28)
-        const y = 27 + ((k * 5) % 14)
-        r.set(x, y, R.grass[0])
-        r.set(x, y + 1, R.grass[2])
-      }
+    for (const [x, y] of [
+      [14, 20],
+      [40, 44],
+      [50, 12]
+    ].slice(0, v + 1)) {
+      r.rect(x, y, 3, 2, R.gravel[1])
+      r.set(x, y, R.gravel[0])
     }
+    if (v === 2)
+      for (let k = 0; k < 4; k++) {
+        r.ellipse(12 + k * 11, 30 + (k % 2) * 5, 1.6, 2.4, R.sand[2])
+        r.set(12 + k * 11, 28 + (k % 2) * 5, R.sand[2])
+      }
     return r
   },
   // 中学生: gym floor boards, staggered joints, a painted court line every sixth row.
@@ -93,8 +82,8 @@ const TILES: Record<string, (tx: number, ty: number, v: number) => Raster> = {
     if (v === 2) r.ellipse(30, 40, 5, 2, W[2])
     return r
   },
-  // 高校生: dusk sidewalk pavers with joints; a tactile strip every seventh row; a cracked paver now and then.
-  sidewalk: (_tx, ty, v) => {
+  // 高校生: dusk sidewalk pavers with joints (tactile paving runs are scattered features).
+  sidewalk: (_tx, _ty, v) => {
     const P = R.paving
     const r = base(P)
     const rand = rng(17 + v)
@@ -104,8 +93,6 @@ const TILES: Record<string, (tx: number, ty: number, v: number) => Raster> = {
         r.rect(x, y + 15, 16, 1, P[2])
         r.rect(x + 15, y, 1, 16, P[2])
       }
-    if (((ty % 7) + 7) % 7 === 0)
-      for (let y = 16; y < 48; y += 4) for (let x = 1; x < T; x += 4) r.rect(x, y + 1, 2, 2, R.yellow[2])
     if (v === 2) r.line(20, 18, 27, 29, P[2])
     return r
   },
@@ -116,58 +103,39 @@ const TILES: Record<string, (tx: number, ty: number, v: number) => Raster> = {
     const rand = rng(41 + v)
     for (let y = 0; y < T; y += 8)
       for (let x = (y / 8) % 2 ? -8 : 0; x < T; x += 16) {
-        const tone = rand()
-        if (tone < 0.25) r.rect(x + 1, y + 1, 14, 6, B[2])
-        else if (tone > 0.85) r.rect(x + 1, y + 1, 14, 6, B[0])
+        const t = rand()
+        if (t < 0.25) r.rect(x + 1, y + 1, 14, 6, B[2])
+        else if (t > 0.85) r.rect(x + 1, y + 1, 14, 6, B[0])
         r.rect(x, y + 7, 16, 1, R.paving[1])
         r.rect(x + 15, y, 1, 8, R.paving[1])
       }
     if (v === 2) r.rect(33, 17, 5, 3, R.paving[1])
     return r
   },
-  // 働き盛り: suburban asphalt; a dashed centre line every fifth row; a manhole now and then.
+  // 働き盛り: suburban asphalt with a dashed centre line every fifth row (manholes are rare features).
   street: (tx, ty, v) => {
     const A = R.asphalt
     const r = base(A)
-    scatter(r, 23 + (v % 2), 90, [A[2], A[0]], [1, 2])
+    scatter(r, 23 + v, 90, [A[2], A[0]], [1, 2])
     if (((ty % 5) + 5) % 5 === 0) for (let x = 0; x < 32; x++) r.rect(((tx & 1) * 32 + x) % T, 30, 1, 3, R.paper[2])
-    if (v === 2) {
-      r.ellipse(32, 32, 11, 9, R.metal[2])
-      r.ellipse(32, 32, 9, 7, R.metal[3])
-      for (let k = -6; k <= 6; k += 3) r.line(32 + k, 26, 32 + k, 38, R.metal[2])
-    }
     return r
   },
-  // 中年: a mown fairway in stripes; bunkers and divots.
+  // 中年: a mown fairway in stripes (bunkers are rare features), the odd divot.
   golf: (_tx, _ty, v) => {
     const G = R.grass
     const r = base(G)
     for (let x = 0; x < T; x++) if (Math.floor(x / 16) % 2) r.rect(x, 0, 1, T, G[0])
-    scatter(r, 31, 30, [G[2]], [1, 1])
-    if (v === 2) {
-      r.ellipse(32, 34, 20, 12, G[2])
-      r.ellipse(32, 35, 18, 10, R.sand[0])
-      r.ellipse(30, 33, 12, 6, R.sand[1])
-    }
+    scatter(r, 31 + v, 30, [G[2]], [1, 1])
     if (v === 1) r.rect(18, 40, 4, 2, R.dirt[1])
     return r
   },
-  // 老後: raked garden gravel with stepping stones.
+  // 老後: gravel raked into gentle 砂紋 waves (stepping-stone paths, rake rings and moss are features).
   garden: (_tx, _ty, v) => {
     const G = R.gravel
     const r = base(G)
-    scatter(r, 61 + v, 260, [G[0], G[2]], [1, 1])
-    if (v === 1)
-      for (let k = 0; k < 4; k++)
-        for (let a = 0; a < Math.PI * 2; a += 0.04)
-          r.set(32 + Math.cos(a) * (10 + k * 4), 32 + Math.sin(a) * (7 + k * 3), G[2])
-    if (v >= 1) {
-      // A flat stepping stone: shadow below, grey body, a lit upper face.
-      r.ellipse(33, 35, 12, 7, G[2])
-      r.ellipse(32, 33, 12, 7, R.metal[2])
-      r.ellipse(31, 32, 10, 5, R.metal[1])
-      r.ellipse(33, 34, 7, 3, R.metal[2])
-    }
+    scatter(r, 61 + v, 200, [G[0], G[2]], [1, 1])
+    for (let y = 2; y < T; y += 6)
+      for (let x = 0; x < T; x++) r.set(x, y + Math.round(Math.sin((x / T) * Math.PI * 2) * 1.2), G[2])
     return r
   },
   // 寝たきり: care-room linoleum in large quiet squares with flecks; scuffs and wheel tracks.
@@ -184,6 +152,151 @@ const TILES: Record<string, (tx: number, ty: number, v: number) => Raster> = {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Rare features: placed in world space on a jittered cell layout (no visible lattice), each drawn into
+// whichever tiles it overlaps, so they cross tile edges seamlessly and never repeat on a grid.
+
+interface Shape {
+  kind: string
+  x: number
+  y: number
+  s: number
+}
+
+const FEATURES: Record<
+  string,
+  { cell: number; prob: number; make: (rand: () => number, x: number, y: number) => Shape[] }
+> = {
+  street: { cell: 10, prob: 0.6, make: (_r, x, y) => [{ kind: 'manhole', x, y, s: 1 }] },
+  golf: { cell: 6, prob: 0.55, make: (r, x, y) => [{ kind: 'bunker', x, y, s: 0.7 + r() * 0.6 }] },
+  playground: {
+    cell: 3,
+    prob: 0.7,
+    make: (r, x, y) =>
+      Array.from({ length: 1 + Math.floor(r() * 3) }, (_, k) => ({
+        kind: 'tuft',
+        x: x + k * 14 * (r() - 0.3),
+        y: y + k * 9 * (r() - 0.5),
+        s: 0.6 + r() * 0.6
+      }))
+  },
+  sidewalk: {
+    cell: 7,
+    prob: 0.55,
+    make: (r, x, y) => {
+      const n = 3 + Math.floor(r() * 3)
+      const gx = Math.floor(x / 16) * 16
+      const gy = Math.floor(y / 16) * 16
+      return Array.from({ length: n }, (_, k) => ({
+        kind: k === 0 || k === n - 1 ? 'dots' : 'bars',
+        x: gx + k * 16,
+        y: gy,
+        s: 1
+      }))
+    }
+  },
+  garden: {
+    cell: 6,
+    prob: 0.75,
+    make: (r, x, y) => {
+      // A short meandering path of stepping stones, sometimes a raked ring around one, and moss.
+      const out: Shape[] = []
+      let a = r() * Math.PI * 2
+      let px = x
+      let py = y
+      const n = 4 + Math.floor(r() * 3)
+      for (let k = 0; k < n; k++) {
+        out.push({ kind: 'stone', x: px, y: py, s: 0.8 + r() * 0.4 })
+        a += (r() - 0.5) * 0.9
+        px += Math.cos(a) * 24
+        py += Math.sin(a) * 16
+      }
+      if (r() < 0.4) out.unshift({ kind: 'ring', x: out[1].x, y: out[1].y, s: 1 })
+      out.unshift({ kind: 'moss', x: x + (r() - 0.5) * 60, y: y + (r() - 0.5) * 50, s: 0.7 + r() * 0.6 })
+      return out
+    }
+  }
+}
+
+const cellHash = (ground: string, cx: number, cy: number) =>
+  (Math.imul(cx, 2654435761) ^ Math.imul(cy, 40503) ^ (ground.length * 977 + ground.charCodeAt(0) * 131)) >>> 0
+
+function shapesFor(ground: string, tx: number, ty: number) {
+  const f = FEATURES[ground]
+  if (!f) return []
+  const span = f.cell * T
+  const out: Shape[] = []
+  const ccx = Math.floor((tx * T) / span)
+  const ccy = Math.floor((ty * T) / span)
+  for (let cy = ccy - 1; cy <= ccy + 1; cy++)
+    for (let cx = ccx - 1; cx <= ccx + 1; cx++) {
+      const rand = rng(cellHash(ground, cx, cy))
+      if (rand() > f.prob) continue
+      const shapes = f.make(rand, cx * span + 40 + rand() * (span - 80), cy * span + 40 + rand() * (span - 80))
+      for (const s of shapes)
+        if (s.x > tx * T - 40 && s.x < tx * T + T + 40 && s.y > ty * T - 40 && s.y < ty * T + T + 40) out.push(s)
+    }
+  return out
+}
+
+function drawShape(r: Raster, s: Shape, x: number, y: number) {
+  const k = s.s
+  switch (s.kind) {
+    case 'manhole':
+      r.ellipse(x, y + 1, 12, 9, R.asphalt[2])
+      r.ellipse(x, y, 11, 8, R.metal[2])
+      r.ellipse(x, y, 9, 6.5, R.metal[3])
+      for (let d = -6; d <= 6; d += 3) r.line(x + d, y - 5, x + d, y + 5, R.metal[2])
+      r.line(x - 8, y, x + 8, y, R.metal[2])
+      break
+    case 'bunker':
+      r.ellipse(x, y + 1, 20 * k, 12 * k, R.grass[2])
+      r.ellipse(x, y, 18 * k, 10 * k, R.sand[0])
+      r.ellipse(x - 2 * k, y - 2 * k, 12 * k, 6 * k, R.sand[1])
+      for (let i = -2; i <= 2; i++) r.line(x - 10 * k, y + i * 3 * k, x + 8 * k, y + i * 3 * k - 1, R.sand[2])
+      break
+    case 'tuft':
+      // Crisp clover and grass tufts: lit blade tips, mid blades, dark roots, a tiny flower or two.
+      for (let i = 0; i < 9 * k; i++) {
+        const bx = Math.round(x + Math.cos(i * 2.4) * 9 * k)
+        const by = Math.round(y + Math.sin(i * 2.4) * 5 * k)
+        r.set(bx, by, R.grass[2])
+        r.set(bx - 1, by - 1, R.grass[1])
+        r.set(bx + 1, by - 1, R.grass[1])
+        r.set(bx, by - 2, R.grass[0])
+        if (i % 4 === 1) r.stamp(['.c.', 'ccc', '.c.'], bx + 2, by - 1, { c: R.grass[1] })
+      }
+      r.set(Math.round(x + 3 * k), Math.round(y - 2), C.white)
+      r.set(Math.round(x - 5 * k), Math.round(y + 1), R.yellow[1])
+      break
+    case 'dots':
+    case 'bars':
+      // Tactile paving: clean yellow tiles with raised dots (stop) or bars (go).
+      r.rect(x + 1, y + 1, 14, 14, R.yellow[2])
+      r.rect(x + 1, y + 1, 14, 1, R.yellow[1])
+      for (let i = 0; i < 3; i++)
+        if (s.kind === 'dots') for (let j = 0; j < 3; j++) r.rect(x + 3 + i * 4, y + 3 + j * 4, 2, 2, R.yellow[1])
+        else r.rect(x + 3 + i * 4, y + 3, 2, 10, R.yellow[1])
+      break
+    case 'stone':
+      r.ellipse(x + 1, y + 2, 9 * k, 6 * k, R.gravel[2])
+      r.ellipse(x, y, 9 * k, 6 * k, R.metal[2])
+      r.ellipse(x - 1, y - 1, 7 * k, 4 * k, R.metal[1])
+      r.ellipse(x + 1, y + 2, 5 * k, 2 * k, R.metal[2])
+      break
+    case 'ring':
+      for (const rad of [13, 17, 21])
+        for (let a = 0; a < Math.PI * 2; a += 0.03)
+          r.set(x + Math.cos(a) * rad, y + Math.sin(a) * rad * 0.66, R.gravel[2])
+      break
+    case 'moss':
+      r.ellipse(x, y, 8 * k, 5 * k, R.grass[2])
+      r.ellipse(x - 1, y - 1, 6 * k, 3 * k, R.grass[1])
+      for (let i = 0; i < 6; i++) r.set(x - 5 + i * 2, y - 2 + (i % 2), R.grass[0])
+      break
+  }
+}
+
 export const MAP_GROUNDS: Record<string, string> = {
   幼児期: 'playground',
   中学生: 'gym',
@@ -196,13 +309,25 @@ export const MAP_GROUNDS: Record<string, string> = {
 }
 
 const cache = new Map<string, Raster>()
+const featured = new Map<string, Raster>()
 export function mapTile(ground: string, tx: number, ty: number, h: number) {
   const v = h % 7 < 4 ? 0 : h % 7 < 6 ? 1 : 2
-  // Row/column-dependent features (court lines, centre lines, tactile strips, checkers) join the cache key.
-  const key = `${ground}:${v}:${((ty % 35) + 35) % 35}:${tx & 1}`
+  // Row/column-dependent features (court lines, centre lines, checkers) join the cache key.
+  const key = `${ground}:${v}:${((ty % 30) + 30) % 30}:${tx & 1}`
   let t = cache.get(key)
   if (!t) cache.set(key, (t = TILES[ground](tx, ty, v)))
-  return t
+  const shapes = shapesFor(ground, tx, ty)
+  if (!shapes.length) return t
+  const fkey = `${key}@${tx},${ty}`
+  let f = featured.get(fkey)
+  if (!f) {
+    // ponytail: unbounded per-position cache trimmed wholesale; an LRU if long sessions ever stutter.
+    if (featured.size > 400) featured.clear()
+    f = t.clone()
+    for (const s of shapes) drawShape(f, s, s.x - tx * T, s.y - ty * T)
+    featured.set(fkey, f)
+  }
+  return f
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -326,11 +451,18 @@ const P: Record<string, Record<string, () => Raster>> = {
   sidewalk: {
     headphones: () =>
       prop(64, 64, (l) => {
-        for (let a = Math.PI; a < Math.PI * 2; a += 0.04)
-          l.rect(32 + Math.cos(a) * 10, 52 + Math.sin(a) * 7, 2, 2, R.hair[2])
-        l.ellipse(21, 52, 3.5, 3, R.hair[2])
-        l.ellipse(43, 52, 3.5, 3, R.hair[2])
-        l.set(43, 51, R.red[1])
+        // A red-and-black over-ear pair lying on the pavement: band, sliders, cushioned cups, a cord.
+        for (let a = Math.PI * 1.05; a < Math.PI * 1.95; a += 0.03) {
+          l.rect(32 + Math.cos(a) * 12, 50 + Math.sin(a) * 11, 3, 2, R.hair[2])
+          l.set(32 + Math.cos(a) * 12, 49 + Math.sin(a) * 11, R.hair[1])
+        }
+        for (const x of [18, 46]) {
+          l.rect(x - 1, 41, 3, 5, R.metal[1])
+          ball(l, x, 50, 5, 5.5, R.red, false)
+          l.ellipse(x + (x < 32 ? 1 : -1), 50, 2.5, 3.5, R.hair[2])
+        }
+        l.line(46, 55, 52, 57, R.hair[2])
+        l.line(52, 57, 60, 55, R.hair[2])
       }),
     postbox: () =>
       prop(

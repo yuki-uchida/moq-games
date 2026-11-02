@@ -750,6 +750,10 @@ export interface BedPose {
   face: Face
   /** Trailing dust/motion lines 0..3 (0 = none). */
   dust: number
+  /** Nobody in the bed (he has crumbled away). */
+  empty?: boolean
+  /** Bedside heart monitor: beat phase 0..3, 9 = flatline, undefined = no monitor. */
+  monitor?: number
 }
 
 const BLANKET = R.mint
@@ -785,6 +789,20 @@ export function bed(b: BedPose) {
       },
       false
     )
+  // Bedside heart monitor at the foot end.
+  if (b.monitor !== undefined)
+    part(r, (l) => {
+      l.rect(1, 26, 2, 24, R.metal[2])
+      l.rect(0, 15, 12, 10, R.hair[2])
+      l.rect(1, 16, 10, 8, R.hair[3])
+      const flat = b.monitor === 9
+      for (let x = 2; x < 10; x++) {
+        const spike = !flat && x === 2 + (((b.monitor ?? 0) * 2) % 8)
+        l.set(x, spike ? 17 : 20, R.green[0])
+        if (spike) l.line(x, 17, x + 1, 22, R.green[0])
+      }
+      l.set(10, 16, flat ? R.red[1] : R.green[1])
+    })
   // IV stand behind the headboard; the bag swings a beat after the pole.
   const top = { x: 61 + b.sway, y: 4 }
   part(r, (l) => {
@@ -826,43 +844,45 @@ export function bed(b: BedPose) {
     l.ellipse(49, 27 + y, 4.5, 6.5, R.paper[1])
     l.ellipse(48, 26 + y, 2.5, 4, R.paper[0])
   })
-  // The IV line runs behind him down to his hand.
-  part(
-    r,
-    (l) => {
-      const bx = top.x - 6 + b.bagLag
-      l.line(bx + 2, top.y + 10, bx - 1, top.y + 18, R.paper[2])
-      l.line(bx - 1, top.y + 18, 36, 36 + y - b.breath, R.paper[2])
-    },
-    false
-  )
-  // Pajama shoulders, then the head on the pillow.
-  part(r, (l) => {
-    l.poly([37, 41 + y, 39, 32 + y - b.breath, 47, 30 + y - b.breath, 50, 38 + y], PAJAMA[1])
-    planes(l, PAJAMA, PAJAMA[1], 1, 2)
-    l.rect(42, 31 + y - b.breath, 3, 2, R.paper[1])
-  })
-  drawHead(r, ELDER_HEAD, 37, 14 + y + b.head, b.face)
-  // Blanket over chest, knees and feet (rounded bumps); it ripples as the bed rolls.
-  part(r, (l) => {
-    const w = (i: number) => (b.ripple >= 0 ? ((i + b.ripple) % 3 === 0 ? -1 : (i + b.ripple) % 3 === 1 ? 1 : 0) : 0)
-    l.rect(8, 38 + y, 39, 6, BLANKET[1])
-    l.ellipse(14, 38 + y + w(0), 5, 3.5, BLANKET[1])
-    l.ellipse(27, 37.5 + y + w(1), 6.5, 3.5, BLANKET[1])
-    l.ellipse(40, 36 + y - b.breath + w(2) * 0.5, 7, 3, BLANKET[1])
-    shadeEdges(l, BLANKET, 1, true)
-    l.rect(35, 34 + y - b.breath, 11, 2, R.paper[1])
-    l.rect(35, 34 + y - b.breath, 11, 1, R.paper[0])
-    l.line(19, 39 + y, 21, 41 + y, BLANKET[2])
-    l.line(33, 39 + y, 34, 41 + y, BLANKET[2])
-  })
-  // A thin hand rests on the blanket, the IV line taped to it.
-  part(r, (l) => {
-    const hy = 36 + y - b.breath
-    l.rect(33, hy, 4, 2, SKIN[1])
-    l.rect(33, hy + 1, 4, 1, SKIN[2])
-    l.set(35, hy, R.paper[0])
-  })
+  if (!b.empty) {
+    // The IV line runs behind him down to his hand.
+    part(
+      r,
+      (l) => {
+        const bx = top.x - 6 + b.bagLag
+        l.line(bx + 2, top.y + 10, bx - 1, top.y + 18, R.paper[2])
+        l.line(bx - 1, top.y + 18, 36, 36 + y - b.breath, R.paper[2])
+      },
+      false
+    )
+    // Pajama shoulders, then the head on the pillow.
+    part(r, (l) => {
+      l.poly([37, 41 + y, 39, 32 + y - b.breath, 47, 30 + y - b.breath, 50, 38 + y], PAJAMA[1])
+      planes(l, PAJAMA, PAJAMA[1], 1, 2)
+      l.rect(42, 31 + y - b.breath, 3, 2, R.paper[1])
+    })
+    drawHead(r, ELDER_HEAD, 37, 14 + y + b.head, b.face)
+    // Blanket over chest, knees and feet (rounded bumps); it ripples as the bed rolls.
+    part(r, (l) => {
+      const w = (i: number) => (b.ripple >= 0 ? ((i + b.ripple) % 3 === 0 ? -1 : (i + b.ripple) % 3 === 1 ? 1 : 0) : 0)
+      l.rect(8, 38 + y, 39, 6, BLANKET[1])
+      l.ellipse(14, 38 + y + w(0), 5, 3.5, BLANKET[1])
+      l.ellipse(27, 37.5 + y + w(1), 6.5, 3.5, BLANKET[1])
+      l.ellipse(40, 36 + y - b.breath + w(2) * 0.5, 7, 3, BLANKET[1])
+      shadeEdges(l, BLANKET, 1, true)
+      l.rect(35, 34 + y - b.breath, 11, 2, R.paper[1])
+      l.rect(35, 34 + y - b.breath, 11, 1, R.paper[0])
+      l.line(19, 39 + y, 21, 41 + y, BLANKET[2])
+      l.line(33, 39 + y, 34, 41 + y, BLANKET[2])
+    })
+    // A thin hand rests on the blanket, the IV line taped to it.
+    part(r, (l) => {
+      const hy = 36 + y - b.breath
+      l.rect(33, hy, 4, 2, SKIN[1])
+      l.rect(33, hy + 1, 4, 1, SKIN[2])
+      l.set(35, hy, R.paper[0])
+    })
+  }
   // Side rail in front, and the headboard.
   part(r, (l) => {
     l.rect(15, 38 + y, 18, 1, R.metal[0])

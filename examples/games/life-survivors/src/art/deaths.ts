@@ -1,23 +1,24 @@
-import { C, R, dimTable } from './palette'
+import { C, R, dimTable, toneTable } from './palette'
 import { Raster, ball, part, remap } from './raster'
-
-const DIM = [dimTable(0.62), dimTable(0.38)]
-import { ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid } from './player'
+import { car } from './enemies'
+import { ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid, type BedPose } from './player'
 import { STAGE_BODIES, STAGE_PAINTERS } from './people'
-import { dust, lying, pose, type Body, type Pose } from './rig'
+import { GROUND, dust, flatBody, headBox, lying, pose, sitting, type Body, type Pose } from './rig'
 import type { Anim, Sheet } from './sheet'
 
 /**
- * Death animations, chosen by the Tag of the enemy that dealt the final blow. Each works on a body
- * (its spec + painter), so later stages only need their body to get every death. Falls are authored
- * poses (no whole-body rotation), darkening uses palette steps (no dither), and fades are per-frame
- * renderer alpha. Frames never contain the soul: the renderer (and the review GIFs) float it in with `soulAt`.
+ * Death animations, chosen by the Tag of the enemy that dealt the final blow. Each death is built once as
+ * a pose sequence plus props on the rig, so it renders for every upright body (幼児期 → 老後); the baby and
+ * the bed have their own variants. Cartoon and non-graphic throughout. Falls are authored poses, darkening
+ * and draining use palette remaps (no dither), fades are renderer alpha, and the frames never contain the
+ * soul: the renderer floats it in with `soulAt`, using the anim's `soul` type.
  */
 
 interface Kit {
   body: Body
   paint: (p: Pose) => Raster
 }
+type Extra = Pick<Anim, 'alpha' | 'lift' | 'soul'>
 
 /** Keeps every death frame on the baseline (a deep kneel never sinks below the floor). */
 function settle(r: Raster) {
@@ -25,15 +26,40 @@ function settle(r: Raster) {
   r.map((c, _x, y) => ((maxY = Math.max(maxY, y)), c))
   return maxY > 58 ? new Raster(r.w, r.h).blit(r, 0, 58 - maxY) : r
 }
-const once = (frames: Raster[], fps: number, alpha?: number[]): Anim => ({
+const once = (frames: Raster[], fps: number, extra: Extra = {}): Anim => ({
   frames: frames.map(settle),
   fps,
   loop: false,
-  alpha
+  ...extra
 })
+const fadeOut = (n: number, tail: number[]) => [...Array(n - tail.length).fill(1), ...tail]
 
+// Palette remaps: uniform dimming, colour draining to grey, stone, white ash, a flushed face.
 const INKS = new Set([C.inkCool, C.inkWarm, C.inkGreen])
-/** Darkens the whole figure uniformly in clean palette steps (1–2), then 3 = a flat silhouette with its outline. */
+const DIM = [dimTable(0.62), dimTable(0.38)]
+const MUTED = toneTable([
+  R.paper[1],
+  R.paper[2],
+  R.metal[1],
+  R.metal[2],
+  R.purple[2],
+  R.hair[2],
+  R.skin[2],
+  R.brown[2],
+  C.inkCool
+])
+const GREY = toneTable([R.metal[0], R.metal[1], R.metal[2], R.metal[3], C.inkCool])
+const STONE = toneTable([R.paving[0], R.paving[1], R.paving[2], R.metal[2], R.metal[3], C.inkCool])
+const WHITE = toneTable([C.white, R.paper[1], R.paper[2], R.paper[3]], 70)
+const FLUSH = (() => {
+  const t: number[] = Array.from({ length: 256 }, (_, i) => i)
+  t[R.skin[0]] = R.skin[1]
+  t[R.skin[1]] = R.orange[0]
+  t[R.skin[2]] = R.orange[1]
+  t[R.skin[3]] = R.orange[2]
+  return t
+})()
+const tone = (r: Raster, table: readonly number[]) => r.clone().map((c) => table[c])
 function darken(r: Raster, steps: number) {
   if (steps >= 3) return r.map((c) => (INKS.has(c) ? C.inkCool : R.hair[3]))
   return remap(r, DIM[steps - 1])
@@ -44,138 +70,156 @@ const over = (base: Raster, draw: (l: Raster) => void, outline = true) => {
   part(r, draw, outline)
   return r
 }
-
-/** ズーン: gloom lines beside the head and a small dark cloud above it. */
-function gloom(r: Raster, x: number, y: number, cloud: boolean) {
-  // Three clean vertical "ズーン" strokes beside the head.
-  part(r, (l) => {
-    for (let i = 0; i < 3; i++) l.rect(x + i * 3, y + i, 1, 7 - i, R.purple[2])
-  })
-  if (cloud)
-    part(r, (l) => {
-      ball(l, 28, 3.5, 4.5, 3.2, R.purple, false)
-      ball(l, 34, 3, 4, 3, R.purple, false)
-      ball(l, 38, 3.5, 3.5, 2, R.purple, false)
-    })
+const under = (base: Raster, draw: (l: Raster) => void) => {
+  const r = new Raster(base.w, base.h)
+  part(r, draw)
+  return r.blit(base)
 }
 
-/** The rope comes down from darkness: its top fades through palette steps into near-black. */
-function rope(r: Raster, x: number, end: number, sway = 0) {
-  const top = new Raster(r.w, r.h)
-  part(top, (l) => {
-    for (let y = 0; y <= end - 6; y++) {
-      const px = Math.round(x + (sway * y) / Math.max(1, end))
-      const [a, b] =
-        y < 5
-          ? [R.hair[3], R.hair[3]]
-          : y < 10
-            ? [R.brown[3], R.brown[3]]
-            : y < 15
-              ? [R.brown[2], R.brown[3]]
-              : [R.brown[1], R.brown[2]]
-      l.set(px, y, b)
-      l.set(px + 1, y, a)
-    }
-    l.ellipse(x + sway + 0.5, end - 3, 3, 3.5, R.brown[1])
-    l.ellipse(x + sway + 0.5, end - 3, 1.6, 2.2, 0)
-  })
-  return top.blit(r)
-}
-
-const knot = (r: Raster, x: number, y: number) =>
-  over(r, (l) => {
-    l.rect(x - 2, y, 5, 1, R.brown[1])
-    l.set(x + 2, y - 1, R.brown[2])
-  })
-
-/** 首吊り (人間関係, adults only). Restrained: gloom, a noose from the dark, silhouette, lifted, a slow pendulum, fade. */
-function hang(k: Kit) {
-  const b = k.body
-  const neck = b.hip - b.torsoH + 1
-  const P = (q: Partial<Pose>) => k.paint(pose({ item: false, face: 'down', headBob: 1, head: [0, 1], ...q }))
-  const gx = 11
-  const frames: Raster[] = []
-  const head = P({})
-  frames.push(head)
-  const sad = P({ tear: true })
-  gloom(sad, gx, 10, false)
-  frames.push(sad)
-  const cloud = P({ tear: true })
-  gloom(cloud, gx, 10, true)
-  frames.push(cloud)
-  for (const end of [10, 17, neck]) {
-    const r = rope(P({}), 33, end)
-    frames.push(end === neck ? knot(r, 33, neck + 1) : r)
+/** Shared pose shortcuts for a kit. */
+function kitTools(k: Kit) {
+  const P = (q: Partial<Pose> = {}) => k.paint(pose({ item: false, ...q }))
+  const H = (q: Partial<Pose> = {}) => headBox(k.body, pose({ item: false, ...q }))
+  /** A flushed red face for the pose that painted `r`. */
+  const red = (r: Raster, q: Partial<Pose> = {}) => {
+    const h = H(q)
+    return r.map((c, x, y) => (y <= h.y + h.h + 1 && x >= h.x - 2 && x <= h.x + h.w + 2 ? FLUSH[c] : c))
   }
-  for (const steps of [1, 2, 3]) frames.push(knot(rope(darken(P({ face: 'none' }), steps), 33, neck), 33, neck + 1))
-  const hung = (lift: number, sway: number) =>
-    knot(
-      rope(darken(P({ face: 'none', y: -lift, x: sway, front: [0, 0], back: [0, 0] }), 3), 33, neck - lift, sway),
-      33 + sway,
-      neck - lift + 1
-    )
-  frames.push(hung(4, 0), hung(8, 0))
-  // An eased pendulum: about ±4px at the feet.
-  const sway = [2, 4, 3, 0, -3, -4, -2, 0]
-  for (const s of sway) frames.push(hung(8, s))
-  return once(frames, 8, [...frames.slice(0, -3).map(() => 1), 0.65, 0.35, 0])
+  const shoulderY = (q: Partial<Pose>) => k.body.hip + (q.kneel ?? 0) - k.body.torsoH + 2
+  return { P, H, red, shoulderY }
 }
 
-/** The stumble → buckle → reach → fall → impact → settle sequence every humanoid shares. */
-function fall(k: Kit, base: Partial<Pose>, o: { thin?: number; ground?: (r: Raster) => void } = {}) {
-  const P = (q: Partial<Pose>) => k.paint(pose({ item: false, ...base, ...q }))
-  const g = (r: Raster) => (o.ground ? withGround(r, o.ground) : r)
+/** stumble → buckle → reach → fall → impact (squash + dust) → settle. */
+function fall(k: Kit, base: Partial<Pose>, o: { thin?: number; ground?: (l: Raster) => void } = {}) {
+  const { P } = kitTools(k)
+  const g = (r: Raster) => (o.ground ? under(r, o.ground) : r)
   const lie = (q: Parameters<typeof lying>[1]) => g(lying(k.body, { thin: o.thin, face: 'dead', ...q }))
   const impact = lie({ squash: 1, reach: 1.2 })
   dust(impact, 6, 56, 3)
-  dust(impact, 50, 56, 3)
+  dust(impact, 52, 56, 3)
   const settled = lie({ reach: 1 })
   const settling = settled.clone()
   dust(settling, 5, 56, 2)
   return [
-    P({ lean: 2, front: [4, 0], back: [-3, 1], handN: [-4, 8], handF: [5, 7], face: 'pain' }),
-    P({ kneel: 3, lean: 3, front: [-1, 0], back: [-4, 0], handN: [2, 9], handF: [3, 9], face: 'down' }),
-    P({ kneel: 5, lean: 6, front: [-4, 0], back: [-6, 0], handN: [7, 6], handF: [8, 5], face: 'pain' }),
-    P({ kneel: 6, lean: 9, front: [-6, 0], back: [-7, 0], handN: [10, 3], handF: [11, 2], face: 'dead' }),
+    P({ ...base, lean: 2, front: [4, 0], back: [-3, 1], handN: [-4, 8], handF: [5, 7], face: base.face ?? 'pain' }),
+    P({
+      ...base,
+      kneel: 3,
+      lean: 3,
+      front: [-1, 0],
+      back: [-4, 0],
+      handN: [2, 9],
+      handF: [3, 9],
+      face: base.face ?? 'down'
+    }),
+    P({
+      ...base,
+      kneel: 5,
+      lean: 6,
+      front: [-4, 0],
+      back: [-6, 0],
+      handN: [7, 6],
+      handF: [8, 5],
+      face: base.face ?? 'pain'
+    }),
+    P({ ...base, kneel: 6, lean: 9, front: [-6, 0], back: [-7, 0], handN: [10, 3], handF: [11, 2], face: 'dead' }),
     impact,
     settling,
     settled
   ]
 }
 
-function withGround(r: Raster, ground: (r: Raster) => void) {
-  const under = new Raster(r.w, r.h)
-  ground(under)
-  return under.blit(r)
+// ---------------------------------------------------------------------------------------------
+// Small hand-drawn props and effects.
+
+const GLYPHS: Record<string, string[]> = {
+  '?': ['.KKK.', 'K...K', '...K.', '..K..', '..K..', '.....', '..K..'],
+  '!': ['KK', 'KK', 'KK', 'KK', '..', 'KK'],
+  不: ['KKKKKKK', '...KK..', '..K.K..', '.K..KK.', 'K...K.K', '....K..', '....K..'],
+  合: ['...K...', '..K.K..', '.K...K.', 'K.KKK.K', '.......', '.KKKKK.', '.K...K.', '.KKKKK.'],
+  格: ['.K..K..', 'KKK.KKK', '.K.K..K', 'KK..KK.', 'K.KK..K', '.K.KKKK', '.K.K..K', '.K.KKKK'],
+  グ: ['.K..K.K', '.KKKK..', 'K...K..', '...K...', '..K....', 'KK.....'],
+  ゥ: ['....', '..K.', 'KKKK', 'K..K', '..K.', '.K..'],
+  '〜': ['.....', '.....', '.K...', 'K.K.K', '...K.', '.....']
+}
+function write(l: Raster, text: string, x: number, y: number, c: number) {
+  for (const ch of text) {
+    l.stamp(GLYPHS[ch], x, y, { K: c })
+    x += GLYPHS[ch][0].length + 1
+  }
 }
 
-function collapse(k: Kit, ground?: (r: Raster) => void) {
-  const frames = [
-    k.paint(pose({ item: false, face: 'pain', lean: -2, squash: 1, bob: 1, handN: [-4, 8], handF: [4, 8] })),
-    ...fall(k, {}, { ground })
-  ]
-  const last = frames[frames.length - 1]
-  return once([...frames, last, last, last, last], 10)
+/** ズーン: three clean vertical strokes. */
+const gloom = (l: Raster, x: number, y: number) => {
+  for (let i = 0; i < 3; i++) l.rect(x + i * 3, y + i, 1, 7 - i, R.purple[2])
 }
-
-/** 「グゥ〜」 in a little speech bubble. */
-const GUU = [
-  '.K..K.K.......' + '.....',
-  '.KKKK.....K...' + '.....',
-  'K...K...KKKK..' + '.K...',
-  '...K....K..K..' + 'K.K.K',
-  '..K.......K...' + '...K.',
-  'KK.......K....' + '.....'
-]
-
-function bubble(r: Raster, x: number, y: number) {
-  part(r, (l) => {
-    l.rect(x, y, 21, 9, R.paper[0])
-    l.rect(x + 1, y - 1, 19, 11, R.paper[0])
-    l.poly([x + 2, y + 9, x + 6, y + 9, x + 1, y + 13], R.paper[0])
-  })
-  part(r, (l) => l.stamp(GUU, x + 2, y + 1, { K: C.inkCool }), false)
+function cloud(l: Raster, cx: number, y: number, size: number, dark = true) {
+  const ramp = dark ? R.metal : R.paper
+  ball(l, cx - 6 * size, y + 1, 5 * size, 3 * size, [ramp[1], ramp[2], ramp[3], ramp[3], ramp[4]], false)
+  ball(l, cx + 1, y - 1, 6 * size, 4 * size, [ramp[1], ramp[2], ramp[3], ramp[3], ramp[4]], false)
+  ball(l, cx + 7 * size, y + 1, 4 * size, 3 * size, [ramp[1], ramp[2], ramp[3], ramp[3], ramp[4]], false)
 }
+function rain(l: Raster, cx: number, top: number, phase: number) {
+  for (let k = 0; k < 6; k++) {
+    const x = cx - 9 + k * 4
+    const y = top + ((phase * 5 + k * 7) % Math.max(6, GROUND - 4 - top))
+    l.rect(x, y, 1, 3, R.sky[1])
+  }
+}
+const puff = (l: Raster, x: number, y: number, s: number, c = R.paper[1]) => {
+  l.ellipse(x, y, s, s * 0.8, c)
+  l.ellipse(x + s * 0.8, y - s * 0.4, s * 0.7, s * 0.6, c)
+}
+function bubbleDart(l: Raster, x: number, y: number, dir: 1 | -1) {
+  l.ellipse(x, y, 4, 3, R.purple[1])
+  l.poly([x + dir * 3, y - 1, x + dir * 7, y, x + dir * 3, y + 1], R.purple[2])
+  l.rect(x - 2, y - 1, 4, 1, R.purple[3])
+  l.rect(x - 2, y + 1, 3, 1, R.purple[3])
+}
+function heart(l: Raster, cx: number, y: number, state: number) {
+  const s = ['.rr.rr.', 'rRRrRRr', 'rRRRRRr', '.rRRRr.', '..rRr..', '...r...']
+  if (state === 0 || state === 1) l.stamp(s, cx - 3, y, { r: R.red[2], R: R.red[1] })
+  if (state === 1) l.line(cx, y + 1, cx - 1, y + 3, C.white)
+  if (state === 2) {
+    l.stamp(
+      s.map((row) => row.slice(0, 4)),
+      cx - 5,
+      y + 1,
+      { r: R.red[2], R: R.red[1] }
+    )
+    l.stamp(
+      s.map((row) => row.slice(3)),
+      cx + 1,
+      y,
+      { r: R.red[2], R: R.red[1] }
+    )
+  }
+  if (state >= 3)
+    for (const [dx, dy] of [
+      [-6, 6],
+      [-1, 9],
+      [4, 7],
+      [7, 11]
+    ])
+      l.rect(cx + dx, y + dy + (state - 3) * 4, 2, 2, R.red[1])
+}
+function paperStack(l: Raster, x: number, h: number) {
+  if (h <= 0) return
+  l.rect(x, GROUND - 1 - h, 12, h, R.paper[1])
+  for (let y = GROUND - 1 - h + 2; y < GROUND - 1; y += 2) l.rect(x, y, 12, 1, R.paper[2])
+  l.rect(x, GROUND - 1 - h, 12, 1, R.paper[0])
+}
+function miniKid(l: Raster, x: number, y: number, shirt: number, hair: number) {
+  l.rect(x - 2, y + 4, 5, 4, shirt)
+  l.rect(x - 2, y + 8, 2, 2, R.navy[1])
+  l.rect(x + 1, y + 8, 2, 2, R.navy[1])
+  l.ellipse(x + 0.5, y + 1.5, 3.5, 3.5, R.skin[1])
+  l.rect(x - 2, y - 2, 6, 2, hair)
+  l.set(x + 1, y + 2, C.inkCool)
+  l.set(x + 3, y + 2, C.inkCool)
+}
+const KID_COLOURS = [R.orange[1], R.mint[1], R.pink[1], R.yellow[1], R.sky[1], R.green[1]]
+const KID_HAIR = [R.hair[2], R.brown[1], R.hair[2], R.brown[2], R.hair[2], R.brown[1]]
 
 function bowl(l: Raster) {
   l.rect(52, 52, 9, 4, R.paper[1])
@@ -184,126 +228,1089 @@ function bowl(l: Raster) {
   l.rect(53, 52, 7, 1, R.paper[3])
   l.rect(52, 54, 9, 1, R.navy[1])
   l.line(47, 57, 58, 50, R.brown[1])
-  l.line(48, 57, 59, 50, R.brown[2])
 }
-
 function fly(r: Raster, x: number, y: number, up: boolean) {
   r.rect(x, y, 2, 1, C.inkCool)
   r.set(x, up ? y - 1 : y + 1, R.paper[2])
   r.set(x + 1, up ? y - 1 : y + 1, R.paper[2])
 }
+function rubble(l: Raster, size: number) {
+  for (const [x, y, w, h] of [
+    [20, 50, 10, 7],
+    [30, 47, 12, 10],
+    [41, 51, 8, 6],
+    [26, 44, 8, 6],
+    [35, 42, 7, 6]
+  ])
+    if (size > 0) {
+      l.rect(x, y, w, h, R.paving[1])
+      l.rect(x, y, w, 1, R.paving[0])
+      l.rect(x + w - 1, y, 1, h, R.paving[2])
+    }
+  for (const [x, y] of [
+    [14, 55],
+    [50, 55],
+    [17, 52]
+  ])
+    l.rect(x, y, 3, 2, R.paving[2])
+}
+function cracks(l: Raster, cx: number, top: number, n: number) {
+  const lines = [
+    [cx, top + 4, cx - 3, top + 12],
+    [cx - 3, top + 12, cx + 1, top + 20],
+    [cx + 2, top + 22, cx - 2, top + 32],
+    [cx - 6, top + 26, cx + 4, top + 36]
+  ]
+  for (const [x0, y0, x1, y1] of lines.slice(0, n)) l.line(x0, y0, x1, y1, C.inkCool)
+}
 
-/** 餓死 (お金): グゥ〜, a hand on the stomach, sweat, the body thinning, knees give out, the fall, flies. Cartoon, not gruesome. */
-function starve(k: Kit) {
-  const P = (q: Partial<Pose>) => withGround(k.paint(pose({ item: false, ...q })), (l) => part(l, bowl))
-  const sweat = (r: Raster) => over(r, (l) => l.stamp(['.c', 'cc', 'cc'], 42, 10, { c: R.mint[0] }))
-  const growl = (r: Raster) => {
-    bubble(r, 40, 2)
+// ---------------------------------------------------------------------------------------------
+// The per-tag deaths for upright bodies.
+
+/** 人間関係, adults: 首吊り. Readable but restrained: hemp rope from above, silhouette, lifted, a gentle sway. */
+function hang(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H({ headBob: 1, head: [0, 1] })
+  const x0 = Math.round(head.cx)
+  // Just below the drooped chin, on the collar.
+  const neck = Math.round(head.y + head.h) + 1
+  const sad = (q: Partial<Pose> = {}) => P({ face: 'down', headBob: 1, head: [0, 1], ...q })
+  /** The rope hangs from above in light hemp; at the neck it reads as a light loop. */
+  const roped = (body: Raster, end: number, sway = 0, noose = false) => {
+    const r = new Raster(body.w, body.h)
+    part(r, (l) => {
+      for (let y = 0; y <= end - 4; y++) {
+        const px = Math.round(x0 + (sway * y) / Math.max(1, end))
+        l.set(px, y, y < 3 ? R.brown[2] : R.brown[0])
+        l.set(px + 1, y, y < 3 ? R.brown[2] : R.yellow[2])
+      }
+      if (!noose) {
+        l.ellipse(x0 + sway + 0.5, end - 1, 3, 3.5, R.brown[0])
+        l.ellipse(x0 + sway + 0.5, end - 1, 1.6, 2.2, 0)
+      }
+    })
+    r.blit(body)
+    if (noose)
+      part(r, (l) => {
+        // A light collar band with the knot at the side.
+        l.rect(x0 + sway - 4, end, 9, 1, R.brown[0])
+        l.rect(x0 + sway + 4, end - 2, 2, 2, R.brown[0])
+      })
     return r
   }
+  const frames: Raster[] = []
+  const lift: number[] = []
+  const push = (r: Raster, l = 0) => (frames.push(r), lift.push(l))
+  push(sad())
+  push(over(sad({ tear: true }), (l) => gloom(l, head.x - 10, head.y + 2)))
+  push(
+    over(sad({ tear: true }), (l) => {
+      gloom(l, head.x - 10, head.y + 2)
+      cloud(l, head.cx, Math.max(4, head.y - 5), 0.7)
+    })
+  )
+  for (const end of [8, 16]) push(roped(sad(), end))
+  push(roped(sad(), neck, 0, true))
+  for (const steps of [1, 2, 3]) push(roped(darken(sad({ face: 'none' }), steps), neck, 0, true))
+  // Limp: arms hang, head tilts, feet dangle 10–12px above the floor (the shadow stays below).
+  const hung = (up: number, sway: number) =>
+    roped(
+      darken(
+        sad({
+          face: 'none',
+          y: -up,
+          x: sway,
+          head: [1, 2],
+          handN: [1, 12],
+          handF: [-1, 12],
+          front: [0, 0],
+          back: [1, 0]
+        }),
+        3
+      ),
+      neck - up,
+      sway,
+      true
+    )
+  push(hung(5, 0), 5)
+  push(hung(11, 0), 11)
+  for (const s of [2, 3, 2, 0, -2, -3, -2, 0]) push(hung(11, s), 11)
+  return once(frames, 8, { alpha: fadeOut(frames.length, [0.66, 0.33, 0]), lift })
+}
+
+/** 人間関係, minors: ひとりぼっち — sits hugging their knees under a rain cloud of their own; colour drains; fade. */
+function alone(k: Kit) {
+  const { P, H } = kitTools(k)
+  const sit = sitting(k.body, { hug: true })
+  const half: Partial<Pose> = {
+    kneel: Math.round((sit.kneel ?? 0) / 2),
+    face: 'down',
+    front: [3, 0],
+    back: [5, 0],
+    lean: 2,
+    handN: [2, 8],
+    handF: [3, 8]
+  }
+  const head = H(sit)
+  const top = Math.max(5, head.y - 6)
+  const rained = (base: Raster, i: number, size = 1) =>
+    over(base, (l) => {
+      cloud(l, head.cx, top, size)
+      if (size >= 1) rain(l, head.cx, top + 4, i)
+    })
+  const frames = [P({ face: 'down' }), P(half), P(sit), P({ ...sit, tear: true })]
+  frames.push(
+    over(P(sit), (l) => cloud(l, head.cx, top, 0.5)),
+    over(P(sit), (l) => cloud(l, head.cx, top, 0.8))
+  )
+  for (let i = 0; i < 4; i++) frames.push(rained(P({ ...sit, tear: i % 2 === 0 }), i))
+  frames.push(rained(tone(P(sit), MUTED), 4), rained(tone(P(sit), GREY), 5))
+  for (let i = 0; i < 6; i++) frames.push(rained(tone(P(sit), GREY), 6 + i))
+  return once(frames, 8, { alpha: fadeOut(frames.length, [0.75, 0.5, 0.25, 0]) })
+}
+
+/** お金: 餓死 — グゥ〜, hand on the stomach, sweat, the body thinning, knees give out, the fall, flies. */
+function starve(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H()
+  const withBowl = (r: Raster) => under(r, bowl)
+  const bubble = (r: Raster) =>
+    over(r, (l) => {
+      const x = Math.min(42, Math.round(head.x + head.w - 4))
+      const y = Math.max(1, head.y - 11)
+      l.rect(x, y, 21, 9, R.paper[0])
+      l.poly([x + 2, y + 9, x + 6, y + 9, x + 1, y + 12], R.paper[0])
+      write(l, 'グゥ〜', x + 2, y + 1, C.inkCool)
+    })
+  const sweat = (r: Raster) =>
+    over(r, (l) => l.stamp(['.c', 'cc', 'cc'], Math.min(60, head.x + head.w), head.y + 2, { c: R.mint[0] }))
   const belly: Partial<Pose> = { handN: [7, 6], handF: [-2, 7] }
   const frames = [
-    P({ face: 'open' }),
-    growl(P({ ...belly, face: 'down', bob: 1 })),
-    sweat(growl(P({ ...belly, face: 'down', lean: -1, thin: 0.25 }))),
-    sweat(P({ ...belly, face: 'down', lean: 1, thin: 0.5 })),
-    growl(P({ ...belly, face: 'pain', lean: -1, thin: 0.75 })),
-    sweat(P({ ...belly, face: 'down', lean: 1, thin: 1 })),
-    P({ ...belly, face: 'down', thin: 1, kneel: 2, lean: 1 }),
-    ...fall(k, { thin: 1 }, { thin: 1, ground: (l) => part(l, bowl) })
+    withBowl(P({ face: 'open' })),
+    withBowl(bubble(P({ ...belly, face: 'down', bob: 1 }))),
+    withBowl(sweat(bubble(P({ ...belly, face: 'down', lean: -1, thin: 0.25 })))),
+    withBowl(sweat(P({ ...belly, face: 'down', lean: 1, thin: 0.5 }))),
+    withBowl(bubble(P({ ...belly, face: 'pain', lean: -1, thin: 0.75 }))),
+    withBowl(sweat(P({ ...belly, face: 'down', lean: 1, thin: 1 }))),
+    withBowl(P({ ...belly, face: 'down', thin: 1, kneel: 2, lean: 1 })),
+    ...fall(k, { thin: 1 }, { thin: 1, ground: bowl })
   ]
   const lyingFrame = frames[frames.length - 1]
   for (let i = 0; i < 4; i++) {
     const r = lyingFrame.clone()
     const a = i * 1.4
-    fly(r, Math.round(30 + Math.cos(a) * 10), Math.round(40 + Math.sin(a) * 3), i % 2 === 0)
-    if (i > 0) fly(r, Math.round(30 - Math.cos(a) * 8), Math.round(37 - Math.sin(a) * 2), i % 2 === 1)
+    fly(r, Math.round(30 + Math.cos(a) * 10), Math.round(42 + Math.sin(a) * 3), i % 2 === 0)
+    if (i > 0) fly(r, Math.round(30 - Math.cos(a) * 8), Math.round(39 - Math.sin(a) * 2), i % 2 === 1)
     frames.push(r)
   }
   return once(frames, 8)
 }
 
-const KITS: Record<string, Kit> = {
-  adult: { body: ADULT, paint: adult },
-  kid: { body: KID, paint: kid },
-  elder: { body: ELDER, paint: elder }
+/** 事故: 轢かれる — a car streaks across, the body spins up in clean quarter turns, lands paper-thin, peels. */
+function runover(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H()
+  const withCar = (r: Raster, x: number, i: number) => {
+    const out = r.clone().blit(car(i % 4), x, 0)
+    part(
+      out,
+      (l) => {
+        for (const y of [36, 42, 48]) l.rect(Math.max(0, x - 10), y, 8, 1, R.paper[2])
+      },
+      false
+    )
+    return out
+  }
+  const spin = (turns: number, up: number) => {
+    let r = P({ face: 'pain', handN: [-5, -2], handF: [5, -2], front: [3, 2], back: [-3, 2] })
+    for (let t = 0; t < turns; t++) r = r.rot90(1)
+    const out = new Raster(64, 64).blit(r, 0, -up)
+    part(
+      out,
+      (l) => {
+        // Smear arcs around the spin.
+        for (let a = 0; a < Math.PI; a += 0.15)
+          l.set(32 + Math.cos(a + turns) * 22, 30 - up + Math.sin(a + turns) * 16, R.paper[2])
+      },
+      false
+    )
+    return out
+  }
+  const flat = (o: Parameters<typeof flatBody>[1]) => flatBody(k.body, o)
+  const landed = flat({})
+  dust(landed, 8, 56, 3)
+  dust(landed, 56, 56, 3)
+  const frames = [
+    over(P({ face: 'open' }), (l) => write(l, '!', Math.round(head.x + head.w), Math.max(1, head.y - 4), R.red[1])),
+    withCar(P({ face: 'pain', lean: -1 }), -46, 0),
+    over(withCar(P({ face: 'pain', lean: -2, squash: 1 }), -22, 1), (l) => {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4)
+        l.line(30 + Math.cos(a) * 3, 40 + Math.sin(a) * 3, 30 + Math.cos(a) * 7, 40 + Math.sin(a) * 7, R.yellow[0])
+    }),
+    withCar(spin(1, 16), 8, 2),
+    withCar(spin(2, 22), 36, 3),
+    spin(3, 16),
+    spin(4, 6),
+    landed,
+    flat({ tracks: true }),
+    flat({ tracks: true }),
+    flat({ tracks: true }),
+    flat({ tracks: true, peel: 1 }),
+    flat({ tracks: true, peel: 2 }),
+    flat({ tracks: true, peel: 2 }),
+    flat({ tracks: true, peel: 2 }),
+    flat({ tracks: true, peel: 2 })
+  ]
+  return once(frames, 10, { lift: [0, 0, 0, 16, 22, 16, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0] })
 }
 
-const repeat = <T>(n: number, f: (i: number) => T) => Array.from({ length: n }, (_, i) => f(i))
+/** 病気: 病死 — the face reddens, a thermometer pops out, coughing, sways, falls back; a ghost rises. */
+function illness(k: Kit) {
+  const { P, H, red } = kitTools(k)
+  const sick = (q: Partial<Pose>, o: { thermo?: boolean; cough?: number } = {}) => {
+    const r = red(P(q), q)
+    const m = H(q).mouth
+    return over(r, (l) => {
+      if (o.thermo) {
+        l.line(m.x + 1, m.y, m.x + 7, m.y - 2, C.white)
+        l.rect(m.x + 7, m.y - 3, 2, 2, R.red[1])
+      }
+      if (o.cough) puff(l, m.x + 6 + o.cough * 2, m.y + 1, 1.5 + o.cough, R.paper[1])
+    })
+  }
+  const down = fall(k, { face: 'dead' })
+  const frames = [
+    P({ face: 'open' }),
+    sick({ face: 'down' }),
+    sick({ face: 'down' }, { thermo: true }),
+    sick({ face: 'pain', lean: -1 }, { thermo: true, cough: 1 }),
+    sick({ face: 'pain', squash: 1, bob: 1 }, { thermo: true, cough: 2 }),
+    sick({ face: 'down', lean: 2 }, { thermo: true }),
+    sick({ face: 'spiral', lean: -2 }, { thermo: true }),
+    sick({ face: 'spiral', kneel: 3, lean: -1 }),
+    sick({ face: 'dead', kneel: 5, lean: -3 }),
+    ...down.slice(4)
+  ]
+  const last = frames[frames.length - 1]
+  return once([...frames, last, last, last], 8, { soul: 'ghost' })
+}
 
-export const deathSheets: Record<string, () => Sheet> = {
-  'death:adult': () => ({ hang: hang(KITS.adult), starve: starve(KITS.adult), collapse: collapse(KITS.adult) }),
-  'death:kid': () => ({ collapse: collapse(KITS.kid) }),
-  ...Object.fromEntries(
-    Object.keys(STAGE_BODIES).map((id) => [
-      `death:${id}`,
-      () => ({ collapse: collapse({ body: STAGE_BODIES[id], paint: STAGE_PAINTERS[id] }) })
-    ])
-  ),
-  'death:elder': () => ({
-    collapse: collapse(KITS.elder)
-  }),
-  'death:baby': () => {
-    const frames = [
+/** 悪口: 心が砕ける — word-bubbles fly in and stick like darts, the body turns to stone, cracks, crumbles. */
+function shatter(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H()
+  const ty = head.y + head.h + 4
+  const stuck = [
+    [20, ty, 1],
+    [44, ty + 3, -1],
+    [22, ty + 9, 1],
+    [43, ty + 11, -1]
+  ] as const
+  const darts = (base: Raster, n: number, flying: number) =>
+    over(base, (l) => {
+      for (const [x, y, d] of stuck.slice(0, n)) bubbleDart(l, x, y, d)
+      if (flying) {
+        bubbleDart(l, 4 + flying * 4, ty + 2, 1)
+        bubbleDart(l, 60 - flying * 4, ty + 8, -1)
+      }
+    })
+  const stone = (n: number) =>
+    over(
+      tone(darts(P({ face: 'pain', lean: -1 }), 4, 0), STONE),
+      (l) => cracks(l, Math.round(head.cx), head.y, n),
+      false
+    )
+  const pile = (s: number) =>
+    over(new Raster(64, 64), (l) => {
+      rubble(l, 1)
+      if (s) puff(l, 32, 44, 2 + s * 2, R.paper[2])
+    })
+  return once(
+    [
+      P({ face: 'open' }),
+      darts(P({ face: 'pain' }), 0, 1),
+      darts(P({ face: 'pain' }), 0, 3),
+      darts(P({ face: 'pain', lean: -1 }), 2, 1),
+      darts(P({ face: 'pain', lean: -1 }), 2, 3),
+      darts(P({ face: 'pain', lean: -1, squash: 1 }), 4, 0),
+      tone(darts(P({ face: 'pain', lean: -1 }), 4, 0), MUTED),
+      stone(0),
+      stone(2),
+      stone(4),
+      pile(3),
+      pile(2),
+      pile(1),
+      pile(0),
+      pile(0),
+      pile(0)
+    ],
+    9
+  )
+}
+
+/** 仕事: 過労死 — paper stacks rise around them, frantic typing, eye bags darken, slumps onto the pile, buried. */
+function overwork(k: Kit) {
+  const { P, shoulderY } = kitTools(k)
+  const sit = sitting(k.body)
+  const typing = (q: Partial<Pose> = {}) => ({
+    ...sit,
+    handN: [7, 2] as [number, number],
+    handF: [9, 1] as [number, number],
+    face: 'down' as const,
+    lean: 2,
+    ...q
+  })
+  const sy = shoulderY(sit) + 3
+  const stacks = (r: Raster, n: number, smear = false) =>
+    over(r, (l) => {
+      paperStack(l, 4, n * 4)
+      paperStack(l, 48, n * 5)
+      if (n > 3) paperStack(l, 16, (n - 3) * 4)
+      if (smear) for (let k2 = 0; k2 < 3; k2++) l.rect(38 + k2, sy + k2 * 2, 8, 1, R.paper[2])
+    })
+  const mound = (sheet: number) =>
+    over(stacks(P({ ...sit, lean: 9, kneel: (sit.kneel ?? 0) + 1, face: 'dead', head: [2, 3] }), 6), (l) => {
+      for (const [x, y, w] of [
+        [16, 44, 14],
+        [26, 40, 16],
+        [34, 46, 14],
+        [22, 50, 18],
+        [30, 36, 12]
+      ]) {
+        l.rect(x, y, w, 7, R.paper[1])
+        l.rect(x, y, w, 1, R.paper[0])
+        l.rect(x + 2, y + 3, w - 4, 1, R.paper[2])
+      }
+      if (sheet >= 0) {
+        const fx = 40 - sheet * 3
+        const fy = 6 + sheet * 7
+        l.poly([fx, fy, fx + 8, fy - 2 + (sheet % 2) * 3, fx + 9, fy + 4, fx + 1, fy + 6], R.paper[0])
+      }
+    })
+  return once(
+    [
+      P({ face: 'open' }),
+      stacks(P(typing()), 1),
+      stacks(P(typing({ handN: [8, 1] })), 2, true),
+      stacks(P(typing({ thin: 0.6 })), 3, true),
+      stacks(P(typing({ thin: 1, handN: [8, 1] })), 4, true),
+      stacks(P(typing({ thin: 1 })), 5, true),
+      stacks(P(typing({ thin: 1, face: 'dead', lean: 5, head: [1, 3] })), 6),
+      stacks(P({ ...sit, lean: 9, kneel: (sit.kneel ?? 0) + 1, face: 'dead', head: [2, 3], thin: 1 }), 6),
+      mound(-1),
+      mound(0),
+      mound(1),
+      mound(2),
+      mound(3),
+      mound(4),
+      mound(5),
+      mound(5)
+    ],
+    9
+  )
+}
+
+/** 恋愛: 失恋 — the heart above the head cracks and shatters, an orz kneel, white ash that blows away. */
+function heartbreak(k: Kit) {
+  const { P, H, shoulderY } = kitTools(k)
+  const head = H()
+  const hy = Math.max(1, head.y - 9)
+  const orz: Partial<Pose> = {
+    kneel: 6,
+    lean: 9,
+    front: [-6, 0],
+    back: [-7, 0],
+    face: 'down',
+    handN: [9, GROUND - 3 - shoulderY({ kneel: 6 })],
+    handF: [10, GROUND - 3 - shoulderY({ kneel: 6 })]
+  }
+  const withHeart = (q: Partial<Pose>, state: number) => over(P(q), (l) => heart(l, Math.round(head.cx), hy, state))
+  const ash = tone(P(orz), WHITE)
+  const blow = (cut: number) => {
+    const r = ash.clone().map((c, x) => (x > cut ? 0 : c))
+    part(
+      r,
+      (l) => {
+        for (let p = 0; p < 7; p++) l.rect(cut + 4 + p * 4 + (p % 3), 30 + ((p * 7) % 20), 2, 1, R.paper[1])
+      },
+      false
+    )
+    return r
+  }
+  return once(
+    [
+      withHeart({ face: 'open' }, 0),
+      withHeart({ face: 'open', bob: 1 }, 0),
+      withHeart({ face: 'down' }, 1),
+      withHeart({ face: 'pain' }, 2),
+      withHeart({ face: 'pain' }, 3),
+      withHeart({ face: 'down', kneel: 3, lean: 3 }, 4),
+      P(orz),
+      P(orz),
+      tone(P(orz), MUTED),
+      ash,
+      ash,
+      blow(50),
+      blow(40),
+      blow(30),
+      blow(20),
+      blow(8),
+      blow(-4)
+    ],
+    9
+  )
+}
+
+/** 子育て: 育児疲れ — mini kids and toys dogpile from both sides; one arm sticks out and goes limp. */
+function dogpile(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H()
+  const kidsAt = (l: Raster, spots: number[][]) =>
+    spots.forEach(([x, y], i) => miniKid(l, x, y, KID_COLOURS[i % 6], KID_HAIR[i % 6]))
+  const pile = (bounce: number, arm: 'up' | 'limp') =>
+    over(new Raster(64, 64), (l) => {
+      if (arm === 'up') {
+        l.thick(36, 40, 39, 20, 4, k.body.sleeve[1])
+        l.ellipse(39.5, 18.5, 2.4, 2.4, R.skin[1])
+      } else {
+        l.thick(36, 40, 39, 30, 4, k.body.sleeve[1])
+        l.thick(39, 30, 44, 33, 3, k.body.sleeve[1])
+        l.ellipse(45, 34, 2.2, 2.2, R.skin[1])
+      }
+      kidsAt(l, [
+        [16, 46 - bounce],
+        [26, 44],
+        [36, 46 - (bounce ? 0 : 1)],
+        [46, 46],
+        [21, 37 - bounce],
+        [31, 35],
+        [41, 37 - bounce],
+        [27, 27 + bounce]
+      ])
+      box(l, 50, 52, 6, 5, R.red)
+      ball(l, 12, 54, 3, 3, R.yellow, false)
+    })
+  return once(
+    [
+      P({ face: 'open' }),
+      over(P({ face: 'pain' }), (l) =>
+        kidsAt(l, [
+          [4, 46],
+          [58, 46]
+        ])
+      ),
+      over(P({ face: 'pain', lean: -1 }), (l) =>
+        kidsAt(l, [
+          [12, 44],
+          [52, 44],
+          [6, 46]
+        ])
+      ),
+      over(P({ face: 'pain', kneel: 2, squash: 1 }), (l) =>
+        kidsAt(l, [
+          [24, head.y + 6],
+          [40, head.y + 8],
+          [14, 46],
+          [50, 46]
+        ])
+      ),
+      over(P({ face: 'pain', kneel: 4, lean: 2 }), (l) =>
+        kidsAt(l, [
+          [22, head.y + 8],
+          [40, head.y + 10],
+          [30, head.y + 2],
+          [14, 46],
+          [50, 46],
+          [32, 46]
+        ])
+      ),
+      pile(0, 'up'),
+      pile(1, 'up'),
+      pile(0, 'up'),
+      pile(1, 'up'),
+      pile(0, 'limp'),
+      pile(0, 'limp'),
+      pile(0, 'limp'),
+      pile(0, 'limp'),
+      pile(0, 'limp')
+    ],
+    9
+  )
+}
+
+/** 試験: 燃え尽き — a 不合格 stamp slams down, they sit slumped, colour drains to white, ash wisps rise. */
+function burnout(k: Kit) {
+  const { P, H } = kitTools(k)
+  const head = H()
+  const sx = Math.round(head.cx) - 8
+  const stamp = (r: Raster, y: number, impact = false) =>
+    over(r, (l) => {
+      l.rect(sx + 5, y - 10, 6, 10, R.brown[1])
+      l.ellipse(sx + 8, y - 11, 5, 2.5, R.brown[1])
+      l.rect(sx, y, 16, 6, R.red[2])
+      l.rect(sx, y, 16, 1, R.red[1])
+      if (impact) for (const d of [-1, 1]) l.line(sx + 8 + d * 10, y + 6, sx + 8 + d * 15, y + 10, R.yellow[0])
+    })
+  const verdict = (r: Raster) =>
+    over(r, (l) => {
+      l.rect(5, 2, 33, 12, R.paper[0])
+      l.rect(5, 2, 33, 1, R.red[1])
+      l.rect(5, 13, 33, 1, R.red[1])
+      write(l, '不合格', 7, 4, R.red[1])
+    })
+  const slump = sitting(k.body, { slump: 3 })
+  const wisps = (r: Raster, i: number) =>
+    over(
+      r,
+      (l) => {
+        for (let w = 0; w < 3; w++) {
+          const y = 30 - ((i * 4 + w * 9) % 26)
+          l.line(24 + w * 8, y, 25 + w * 8 + (i % 2), y - 4, R.paper[2])
+        }
+      },
+      false
+    )
+  return once(
+    [
+      P({ face: 'open' }),
+      stamp(P({ face: 'open' }), Math.max(10, head.y - 14)),
+      stamp(P({ face: 'pain' }), Math.max(10, head.y - 6)),
+      stamp(P({ face: 'pain', squash: 2, kneel: 2 }), head.y + 2, true),
+      verdict(P({ face: 'spiral', kneel: 1 })),
+      verdict(P(slump)),
+      verdict(P(slump)),
+      tone(P(slump), MUTED),
+      tone(P(slump), WHITE),
+      wisps(tone(P(slump), WHITE), 0),
+      wisps(tone(P(slump), WHITE), 1),
+      wisps(tone(P(slump), WHITE), 2),
+      wisps(tone(P(slump), WHITE), 3),
+      wisps(tone(P(slump), WHITE), 4)
+    ],
+    8
+  )
+}
+
+/** スポーツ: 熱中症 — sun rays and shimmer, sweat spray, spiral eyes, staggers, falls face down, steam, a puddle. */
+function heatstroke(k: Kit) {
+  const { P, H, red } = kitTools(k)
+  const head = H()
+  const sun = (r: Raster, i: number, sweat = 0) =>
+    over(
+      r,
+      (l) => {
+        for (let a = 0.1; a < 1.5; a += 0.28)
+          l.line(
+            Math.cos(a) * 6,
+            Math.sin(a) * 6,
+            Math.cos(a) * (14 + (i % 2) * 2),
+            Math.sin(a) * (14 + (i % 2) * 2),
+            R.yellow[1]
+          )
+        l.ellipse(0, 0, 5, 5, R.yellow[0])
+        for (let x = 6; x < 60; x += 9) l.line(x, 52 + ((x + i) % 3), x + 3, 52 + ((x + i + 1) % 3), R.paper[2])
+        for (let s = 0; s < sweat; s++)
+          l.stamp(['.c', 'cc'], head.x + head.w - 2 + s * 4, head.y + 2 + ((s * 5 + i) % 6), { c: R.mint[0] })
+      },
+      false
+    )
+  const down = fall(k, { face: 'spiral' })
+  const lyingFrame = down[down.length - 1]
+  const steam = (i: number) =>
+    over(
+      under(lyingFrame, (l) => l.ellipse(34, 57, 16, 2, R.mint[1])),
+      (l) => {
+        for (let w = 0; w < 3; w++) puff(l, 22 + w * 10 + (i % 2), 40 - ((i * 3 + w * 4) % 12), 1.5, R.paper[1])
+      }
+    )
+  return once(
+    [
+      sun(P({ face: 'open' }), 0),
+      sun(P({ face: 'down' }), 1, 1),
+      sun(P({ face: 'pain' }), 2, 3),
+      sun(red(P({ face: 'spiral' }), { face: 'spiral' }), 3, 3),
+      sun(red(P({ face: 'spiral', lean: -2, x: -1 }), { face: 'spiral', lean: -2, x: -1 }), 4, 2),
+      sun(red(P({ face: 'spiral', lean: 2, x: 1 }), { face: 'spiral', lean: 2, x: 1 }), 5, 2),
+      ...down,
+      steam(0),
+      steam(1),
+      steam(2),
+      steam(3)
+    ],
+    9
+  )
+}
+
+/** 授業: 知恵熱 — ？ marks pile up, the head reddens, steam from the ears, smoke like an overheated engine. */
+function overheat(k: Kit) {
+  const { P, H, red } = kitTools(k)
+  const head = H()
+  const qs = (r: Raster, n: number) =>
+    over(r, (l) => {
+      for (let q = 0; q < n; q++)
+        write(
+          l,
+          '?',
+          Math.round(head.cx) - 9 + q * 6,
+          Math.max(0, head.y - 9 - (q % 2) * 2),
+          q === 1 ? R.yellow[1] : C.white
+        )
+    })
+  const hot = (q: Partial<Pose>, steamy: number, smoke: number) =>
+    over(red(P(q), q), (l) => {
+      const h = H(q)
+      if (steamy) {
+        puff(l, h.x - 2, h.y + 8 - steamy, 1.5 + steamy * 0.5, R.paper[1])
+        puff(l, h.x + h.w + 2, h.y + 8 - steamy, 1.5 + steamy * 0.5, R.paper[1])
+      }
+      for (let s = 0; s < smoke; s++) puff(l, h.cx - 4 + s * 5, Math.max(3, h.y - 4 - s * 4), 2 + s * 0.5, R.metal[2])
+    })
+  const down = fall(k, { face: 'spiral' })
+  const lyingFrame = down[down.length - 1]
+  const smoking = (i: number) => over(lyingFrame, (l) => puff(l, 44 + (i % 2), 40 - i * 3, 2 + i * 0.4, R.metal[2]))
+  return once(
+    [
+      P({ face: 'open' }),
+      qs(P({ face: 'open' }), 1),
+      qs(P({ face: 'down' }), 2),
+      qs(P({ face: 'pain' }), 3),
+      qs(red(P({ face: 'pain' }), {}), 3),
+      hot({ face: 'pain' }, 1, 0),
+      hot({ face: 'spiral' }, 2, 1),
+      hot({ face: 'spiral', bob: 1 }, 3, 2),
+      ...down.slice(1),
+      smoking(0),
+      smoking(1),
+      smoking(2),
+      smoking(3)
+    ],
+    9
+  )
+}
+
+/** Generic collapse for any humanoid body (killers without their own death). */
+function collapse(k: Kit) {
+  const frames = [
+    k.paint(pose({ item: false, face: 'pain', lean: -2, squash: 1, bob: 1, handN: [-4, 8], handF: [4, 8] })),
+    ...fall(k, {})
+  ]
+  const last = frames[frames.length - 1]
+  return once([...frames, last, last, last, last, last, last], 10)
+}
+
+/** Oblique toy box used in the dogpile. */
+function box(r: Raster, x: number, y: number, w: number, h: number, ramp: readonly number[]) {
+  r.rect(x, y, w, h, ramp[1])
+  r.rect(x, y, w, 1, ramp[0])
+  r.rect(x + w - 1, y, 1, h, ramp[2])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Special bodies: the baby and the bed.
+
+function babyDeaths(): Sheet {
+  const pelted = (n: number, flying: number, face: 'pain' | 'open' = 'pain', sink = 0) =>
+    over(baby(crawl({ face, tilt: 1, sink })), (l) => {
+      for (const [x, y, d] of [
+        [24, 40, 1],
+        [46, 44, -1],
+        [30, 34, 1]
+      ].slice(0, n))
+        bubbleDart(l, x, y, d as 1 | -1)
+      if (flying) {
+        bubbleDart(l, 2 + flying * 5, 36, 1)
+        bubbleDart(l, 62 - flying * 5, 42, -1)
+      }
+    })
+  const crying = (i: number, sink: number) =>
+    over(
+      baby(crawl({ face: 'pain', tilt: 2, sink })),
+      (l) => {
+        l.rect(37, 44 + (i % 2), 1, 4, R.sky[1])
+        l.rect(46, 44 + ((i + 1) % 2), 1, 4, R.sky[1])
+      },
+      false
+    )
+  const sneeze = (q: Parameters<typeof crawl>[0], p: number) =>
+    over(baby(crawl(q)), (l) => {
+      if (p) {
+        puff(l, 54 + p, 46, 1.2 + p * 0.6, R.paper[1])
+        l.rect(52 + p * 2, 42, 2, 2, R.mint[0])
+      }
+    })
+  const asleep = baby(crawl({ face: 'calm', sink: 1, hands: [4, 0, 4, 0], lag: 1 }))
+  const illness = once(
+    [
+      baby(crawl({ face: 'open' })),
+      sneeze({ face: 'blink', tilt: 2 }, 0),
+      sneeze({ face: 'pain', tilt: -1 }, 2),
+      sneeze({ face: 'down' }, 1),
+      sneeze({ face: 'pain', tilt: 1 }, 2),
+      baby(crawl({ face: 'down', bob: 1 })),
+      baby(crawl({ face: 'down', sink: 0.35 })),
+      baby(crawl({ face: 'calm', sink: 0.7 })),
+      asleep,
+      asleep,
+      asleep,
+      asleep,
+      asleep,
+      asleep
+    ],
+    8,
+    { soul: 'ghost' }
+  )
+  const shatterAnim = once(
+    [
+      baby(crawl({ face: 'open' })),
+      pelted(0, 1, 'open'),
+      pelted(0, 3),
+      pelted(1, 1),
+      pelted(2, 3),
+      pelted(3, 0),
+      crying(0, 0),
+      crying(1, 0),
+      crying(2, 0.3),
+      crying(3, 0.6),
+      crying(4, 1),
+      crying(5, 1),
+      crying(6, 1),
+      crying(7, 1),
+      crying(8, 1),
+      crying(9, 1)
+    ],
+    8,
+    { alpha: fadeOut(16, [0.75, 0.5, 0.25, 0]) }
+  )
+  const flat = baby(crawl({ hands: [5, 0, 5, 0], bob: 1, lag: 1, face: 'dead', sink: 1 }))
+  const thud = flat.clone()
+  dust(thud, 55, 56, 2.5)
+  dust(thud, 10, 56, 2)
+  const collapseAnim = once(
+    [
       baby(crawl({ bob: 1, face: 'pain', tilt: 2 })),
       baby(crawl({ face: 'pain', tilt: 1, hands: [2, 0, 2, 0] })),
-      ...repeat(3, (i) =>
-        baby(crawl({ hands: [2 + i, 0, 2 + i, 0], bob: 1, lag: 1, face: 'down', sink: (i + 1) / 3 }))
-      ),
-      baby(crawl({ hands: [5, 0, 5, 0], bob: 1, lag: 1, face: 'dead', sink: 1 }))
-    ]
-    const flat = frames[frames.length - 1]
-    const thud = flat.clone()
-    dust(thud, 55, 56, 2.5)
-    dust(thud, 10, 56, 2)
-    return { collapse: once([...frames.slice(0, -1), thud, flat, flat, flat, flat, flat, flat], 10) }
-  },
-  'death:bed': () => ({
-    collapse: once(
-      [
-        bed(bedPose({ hop: [1, 0], breath: 2, sway: -1, bagLag: 1, face: 'pain', head: -1 })),
-        bed(bedPose({ breath: 1, bagLag: -1, face: 'pain' })),
-        bed(bedPose({ breath: 1, face: 'down', head: 1 })),
-        ...repeat(9, (i) => bed(bedPose({ breath: 0, face: i < 2 ? 'calm' : 'dead', head: 1 })))
-      ],
-      8
-    )
-  }),
-  soul: () => ({ float: { frames: [0, 1, 2, 3].map(soul), fps: 6, loop: true } })
+      ...[1, 2, 3].map((i) => baby(crawl({ hands: [2 + i, 0, 2 + i, 0], bob: 1, lag: 1, face: 'down', sink: i / 3 }))),
+      thud,
+      ...Array(8).fill(flat)
+    ],
+    10
+  )
+  return { collapse: collapseAnim, illness, shatter: shatterAnim }
 }
 
-/** A small calm soul: a pale wisp with closed eyes and a flickering tail (16×16, pivot bottom centre). */
-function soul(f: number) {
+function bedDeaths(): Sheet {
+  const B = (p: Partial<BedPose>) => bed(bedPose({ breath: 0, ...p }))
+  const flat = (face: BedPose['face'], head = 1) => B({ monitor: 9, face, head })
+  const illness = once(
+    [
+      B({ monitor: 0, breath: 2, face: 'pain' }),
+      B({ monitor: 1, breath: 1, face: 'pain' }),
+      B({ monitor: 2, breath: 2, face: 'down' }),
+      B({ monitor: 3, breath: 1, face: 'down' }),
+      B({ monitor: 0, breath: 0, face: 'calm' }),
+      B({ monitor: 2, face: 'calm' }),
+      ...Array(8).fill(flat('dead'))
+    ],
+    6,
+    { soul: 'ghost' }
+  )
+  const flatline = once(
+    [
+      B({ monitor: 0, breath: 2, face: 'pain' }),
+      B({ monitor: 2, face: 'down' }),
+      B({ monitor: 1, face: 'calm' }),
+      ...Array(10).fill(flat('dead'))
+    ],
+    6
+  )
+  const tray = (r: Raster) =>
+    over(r, (l) => {
+      l.rect(10, 32, 12, 2, R.brown[1])
+      l.rect(11, 29, 9, 3, R.paper[1])
+      l.rect(12, 29, 7, 1, R.paper[3])
+    })
+  const starveFrames = [
+    tray(B({ face: 'down', breath: 1 })),
+    tray(B({ face: 'down', breath: 2 })),
+    tray(B({ face: 'pain', breath: 1 })),
+    tray(B({ face: 'down' })),
+    tray(B({ face: 'calm', head: 1 })),
+    tray(B({ face: 'dead', head: 1 }))
+  ]
+  for (let i = 0; i < 8; i++) {
+    const r = tray(B({ face: 'dead', head: 1 }))
+    fly(r, Math.round(30 + Math.cos(i * 1.3) * 10), Math.round(26 + Math.sin(i * 1.3) * 3), i % 2 === 0)
+    if (i > 1) fly(r, Math.round(26 - Math.cos(i * 1.3) * 8), Math.round(22 + Math.sin(i * 1.3) * 2), i % 2 === 1)
+    starveFrames.push(r)
+  }
+  const bubbles = (r: Raster, n: number) =>
+    over(r, (l) => {
+      for (const [x, y, d] of [
+        [20, 34, 1],
+        [30, 32, -1],
+        [14, 36, 1],
+        [40, 30, -1],
+        [25, 28, 1]
+      ].slice(0, n))
+        bubbleDart(l, x, y, d as 1 | -1)
+    })
+  const crumbled = (dusty: number) =>
+    over(B({ empty: true }), (l) => {
+      for (const [x, y, w, h] of [
+        [16, 34, 10, 5],
+        [26, 32, 12, 7],
+        [38, 30, 9, 9],
+        [44, 26, 7, 6]
+      ]) {
+        l.rect(x, y, w, h, R.paving[1])
+        l.rect(x, y, w, 1, R.paving[0])
+      }
+      if (dusty) puff(l, 34, 24, 2 + dusty * 2, R.paper[2])
+    })
+  const shatterAnim = once(
+    [
+      bubbles(B({ face: 'pain' }), 1),
+      bubbles(B({ face: 'pain' }), 2),
+      bubbles(B({ face: 'pain' }), 3),
+      bubbles(B({ face: 'down' }), 5),
+      tone(bubbles(B({ face: 'down' }), 5), MUTED),
+      tone(bubbles(B({ face: 'down' }), 5), STONE),
+      over(tone(bubbles(B({ face: 'down' }), 5), STONE), (l) => cracks(l, 46, 14, 3), false),
+      crumbled(3),
+      crumbled(2),
+      crumbled(1),
+      crumbled(0),
+      crumbled(0),
+      crumbled(0),
+      crumbled(0)
+    ],
+    8
+  )
+  const hit = (x: number, i: number) =>
+    B({ face: 'pain', spin: i })
+      .clone()
+      .blit(car(i % 4).flipX(), x, 0)
+  // Overturned: the bed lands upside down (he has been thrown clear), its casters spinning in the air.
+  const tipped = (i: number) => {
+    const r = B({ empty: true, spin: i }).rot90(1).rot90(1)
+    let top = 64
+    r.map((c, _x, y) => ((top = Math.min(top, y)), c))
+    let bottom = 0
+    r.map((c, _x, y) => ((bottom = Math.max(bottom, y)), c))
+    return new Raster(64, 64).blit(r, 0, 58 - bottom)
+  }
+  const runoverAnim = once(
+    [
+      B({ face: 'open' }),
+      hit(46, 0),
+      hit(30, 1),
+      hit(20, 2),
+      over(hit(22, 3), (l) => dust(l, 50, 54, 4)),
+      tipped(0),
+      tipped(1),
+      tipped(2),
+      tipped(3),
+      tipped(0),
+      tipped(1),
+      tipped(2),
+      tipped(3),
+      tipped(0)
+    ],
+    10
+  )
+  const webbed = (n: number, d: number) => {
+    const r = tone(
+      B({ face: n > 1 ? 'dead' : 'down', head: Math.min(2, n) }),
+      d > 1 ? DIM[1] : d ? DIM[0] : Array.from({ length: 256 }, (_, i) => i)
+    )
+    part(
+      r,
+      (l) => {
+        if (n > 0) {
+          for (let a = 0; a < Math.PI / 2; a += 0.3)
+            l.line(59, 26, 59 - Math.cos(a) * 8, 26 + Math.sin(a) * 8, R.paper[2])
+          for (const rr of [3, 6])
+            for (let a = 0; a < Math.PI / 2; a += 0.15) l.set(59 - Math.cos(a) * rr, 26 + Math.sin(a) * rr, R.paper[2])
+        }
+        for (let s = 0; s < n * 4; s++) l.set(12 + ((s * 11) % 34), 35 + ((s * 7) % 6), R.paper[3])
+        if (n > 2)
+          for (let a = 0; a < Math.PI / 2; a += 0.3)
+            l.line(5, 32, 5 + Math.cos(a) * 6, 32 + Math.sin(a) * 6, R.paper[2])
+      },
+      false
+    )
+    return r
+  }
+  const lonely = once(
+    [
+      webbed(0, 0),
+      webbed(0, 1),
+      webbed(1, 1),
+      webbed(1, 2),
+      webbed(2, 2),
+      webbed(3, 2),
+      webbed(3, 2),
+      webbed(4, 2),
+      webbed(5, 2),
+      webbed(5, 2),
+      webbed(6, 2),
+      webbed(6, 2),
+      webbed(6, 2),
+      webbed(6, 2)
+    ],
+    6
+  )
+  // 大往生: a peaceful smile while the reaper arrives; then the haloed soul rises (rendered by soulAt).
+  const glow = (i: number) =>
+    over(
+      B({ face: 'smile', head: -1 }),
+      (l) => {
+        for (const [x, y] of [
+          [38, 10],
+          [56, 16],
+          [34, 22],
+          [52, 4]
+        ])
+          if ((x + y + i) % 3 !== 0) {
+            l.set(x, y, R.yellow[0])
+            l.set(x - 1, y, R.yellow[1])
+            l.set(x + 1, y, R.yellow[1])
+            l.set(x, y - 1, R.yellow[1])
+            l.set(x, y + 1, R.yellow[1])
+          }
+      },
+      false
+    )
+  const won = once([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(glow), 6, { soul: 'halo' })
+  return {
+    collapse: flatline,
+    illness,
+    starve: once(starveFrames, 6),
+    shatter: shatterAnim,
+    runover: runoverAnim,
+    lonely,
+    won
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+const ADULT_AGE = new Set(['college', 'adult', 'prime', 'middle', 'elder'])
+const UPRIGHT: Record<string, Kit> = {
+  kid: { body: KID, paint: kid },
+  adult: { body: ADULT, paint: adult },
+  elder: { body: ELDER, paint: elder },
+  ...Object.fromEntries(
+    Object.keys(STAGE_BODIES).map((id) => [id, { body: STAGE_BODIES[id], paint: STAGE_PAINTERS[id] }])
+  )
+}
+
+function uprightDeaths(id: string): Sheet {
+  const k = UPRIGHT[id]
+  return {
+    collapse: collapse(k),
+    ...(ADULT_AGE.has(id) ? { hang: hang(k) } : { alone: alone(k) }),
+    starve: starve(k),
+    runover: runover(k),
+    illness: illness(k),
+    shatter: shatter(k),
+    overwork: overwork(k),
+    heartbreak: heartbreak(k),
+    dogpile: dogpile(k),
+    burnout: burnout(k),
+    heatstroke: heatstroke(k),
+    overheat: overheat(k)
+  }
+}
+
+export const deathSheets: Record<string, () => Sheet> = {
+  ...Object.fromEntries(Object.keys(UPRIGHT).map((id) => [`death:${id}`, () => uprightDeaths(id)])),
+  'death:baby': babyDeaths,
+  'death:bed': bedDeaths,
+  soul: () => ({
+    float: { frames: [0, 1, 2, 3].map((f) => soul(f, 'soul')), fps: 6, loop: true },
+    ghost: { frames: [0, 1, 2, 3].map((f) => soul(f, 'ghost')), fps: 6, loop: true },
+    halo: { frames: [0, 1, 2, 3].map((f) => soul(f, 'halo')), fps: 6, loop: true }
+  })
+}
+
+/** A small calm soul (16×16, pivot bottom centre); the ghost wears a 天冠 headband; the halo soul sparkles. */
+function soul(f: number, kind: 'soul' | 'ghost' | 'halo') {
   const r = new Raster(16, 16)
+  const tail = [
+    [5, 4],
+    [6, 3],
+    [7, 2],
+    [6, 3]
+  ][f]
   part(r, (l) => {
+    if (kind === 'ghost') {
+      ball(l, 8, 6, 4.5, 4.5, [C.white, C.white, R.paper[1], R.paper[2], R.paper[4]], false)
+      l.poly([4, 7, 12, 7, 11, 13, 9 - (f % 2), 15, 7, 13 + (f % 2), 5, 15, 4, 11], C.white)
+      l.poly([6, 3, 10, 3, 8, 0], R.paper[1])
+      l.rect(5, 8, 2, 1, R.mint[3])
+      l.rect(9, 8, 2, 1, R.mint[3])
+      l.line(12, 9, 14, 11, R.paper[2])
+      l.line(4, 9, 2, 11, R.paper[2])
+      return
+    }
     ball(l, 8, 9, 4.5, 4.5, [C.white, C.white, C.glow, R.mint[1], R.mint[3]], true)
-    const tail = [
-      [5, 4],
-      [6, 3],
-      [7, 2],
-      [6, 3]
-    ][f]
-    l.thick(8, 7, tail[0] + 1, tail[1], 2.2, C.white)
-    l.set(tail[0], tail[1] - 1, C.glow)
+    l.thick(8, 7, tail[0] + 1, tail[1] + (kind === 'halo' ? 2 : 0), 2.2, C.white)
     l.set(6, 10, R.mint[3])
     l.set(7, 10, R.mint[3])
     l.set(9, 10, R.mint[3])
     l.set(10, 10, R.mint[3])
   })
+  if (kind === 'halo')
+    part(
+      r,
+      (l) => {
+        for (let a = 0; a < Math.PI * 2; a += 0.2) l.set(8 + Math.cos(a) * 4, 2 + Math.sin(a) * 1.2, R.yellow[0])
+        l.set(1 + f * 3, 6 + (f % 2) * 4, R.yellow[0])
+        l.set(14 - f * 2, 12 - (f % 2) * 5, R.yellow[1])
+      },
+      false
+    )
   return r
 }
 
-/** Which death plays: the killer's Tag picks it; 首吊り is adults-only (minors fall back for now). */
+const TAG_DEATH: Record<string, string> = {
+  money: 'starve',
+  accident: 'runover',
+  sickness: 'illness',
+  insult: 'shatter',
+  work: 'overwork',
+  love: 'heartbreak',
+  child: 'dogpile',
+  exam: 'burnout',
+  sports: 'heatstroke',
+  class: 'overheat'
+}
+const BED_DEATH: Record<string, string> = {
+  sickness: 'illness',
+  money: 'starve',
+  insult: 'shatter',
+  accident: 'runover',
+  people: 'lonely'
+}
+
+/** Which death plays: the killer's Tag picks it. 首吊り is adults-only; minors get ひとりぼっち instead. */
 export function deathKind(tag: string | undefined, age: number, body: string) {
-  if (body === 'adult' && tag === 'people' && age >= 18) return 'hang'
-  if (body === 'adult' && tag === 'money') return 'starve'
-  return 'collapse'
+  if (!tag) return 'collapse'
+  if (body === 'baby') return tag === 'sickness' ? 'illness' : tag === 'insult' ? 'shatter' : 'collapse'
+  if (body === 'bed') return BED_DEATH[tag] ?? 'collapse'
+  if (tag === 'people') return age >= 18 ? 'hang' : 'alone'
+  return TAG_DEATH[tag] ?? 'collapse'
 }
 
 /** Where the soul is at `t` seconds after death began (relative to the pivot), or undefined before it appears. */
-export function soulAt(t: number, animSeconds: number) {
-  const start = animSeconds * 0.8
+export function soulAt(t: number, animSeconds: number, kind: Anim['soul'] = 'soul') {
+  const start = kind === 'halo' ? 0.3 : animSeconds * 0.8
   if (t < start) return undefined
-  const rise = Math.min(1, (t - start) / 0.9)
-  return { dy: -16 - rise * 18 + Math.sin((t - start) * 2.6) * 2 * rise, alpha: Math.min(1, (t - start) * 3) }
+  const rise = Math.min(1, (t - start) / (kind === 'halo' ? 1.6 : 0.9))
+  return {
+    dx: kind === 'halo' ? rise * 44 : 0,
+    dy: (kind === 'halo' ? -24 - rise * 28 : -16 - rise * 18) + Math.sin((t - start) * 2.6) * 2 * rise,
+    alpha: Math.min(1, (t - start) * 3)
+  }
 }

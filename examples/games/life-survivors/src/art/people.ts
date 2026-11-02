@@ -686,6 +686,14 @@ const GOSSIP: Body = {
     key: { p: R.purple[1], P: R.purple[2] },
     hairAt: [-1, -3],
     extra: (l, x, y, face) => {
+      // Tight perm curls: a bumpy silhouette of lit little balls over the crown and sides.
+      for (let a = Math.PI * 0.95; a <= Math.PI * 2.05; a += 0.32) {
+        const cx = x + 9.5 + Math.cos(a) * 11
+        const cy = y + 7 + Math.sin(a) * 9.5
+        l.ellipse(cx, cy, 2.6, 2.6, R.purple[1])
+        l.set(Math.round(cx) - 1, Math.round(cy) - 1, R.purple[0])
+        l.set(Math.round(cx) + 1, Math.round(cy) + 1, R.purple[2])
+      }
       if (face === 'none') return
       // Side-eye: pupils slid toward the facing side.
       l.stamp(['ww', 'wK'], x + 6, y + 10)

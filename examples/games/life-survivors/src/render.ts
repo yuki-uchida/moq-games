@@ -3,7 +3,7 @@ import { deathKind, soulAt } from './art/deaths'
 import { NO_FLIP, sheet } from './art/index'
 import type { Raster } from './art/raster'
 import { duration, frameAt } from './art/sheet'
-import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propAt } from './art/world'
+import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propsAt } from './art/world'
 import { ENEMIES, ENEMY_BY_ID, WEAPONS, ageAt, stageAt, type Stage } from './data'
 import { VIEW_HALF } from './game'
 import { STRIDE, type View, type ViewPlayer } from './view'
@@ -58,6 +58,8 @@ export class Renderer {
   private camera = { x: 0, y: 0 }
   /** Renderer clock: animations keep breathing even while the game is paused. */
   private clock = 0
+  private wonAt?: number
+  private halo?: { x: number; y: number; t: number; alpha: number }
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
@@ -213,13 +215,13 @@ export class Renderer {
         cy * PROP_CELL < this.camera.y + halfH + 128;
         cy++
       ) {
-        const prop = propAt(key, cx, cy)
-        if (!prop) continue
-        const frame = props[prop.name].frames[0]
-        const foot = footprint(frame)
-        if (foot.rx && !FLAT_PROPS.has(prop.name))
-          this.shadow(prop.x - frame.w / 2 + foot.cx, prop.y - frame.h + 6 + foot.y + 1, foot.rx, 0.2 * alpha, 0.2)
-        this.art(frame, prop.x, prop.y, frame.w / 2, frame.h - 6, false, alpha)
+        for (const prop of propsAt(key, cx, cy)) {
+          const frame = props[prop.name].frames[0]
+          const foot = footprint(frame)
+          if (foot.rx && !FLAT_PROPS.has(prop.name))
+            this.shadow(prop.x - frame.w / 2 + foot.cx, prop.y - frame.h + 6 + foot.y + 1, foot.rx, 0.2 * alpha, 0.2)
+          this.art(frame, prop.x, prop.y, frame.w / 2, frame.h - 6, false, alpha)
+        }
       }
   }
 
@@ -272,7 +274,13 @@ export class Renderer {
     }
   }
 
-  private player(player: ViewPlayer, pos: { x: number; y: number }, local: boolean, time: number) {
+  private player(
+    player: ViewPlayer,
+    pos: { x: number; y: number },
+    local: boolean,
+    time: number,
+    phase: View['phase']
+  ) {
     const ctx = this.ctx
     const feet = pos.y + 16
     const stage = stageAt(time)
@@ -291,23 +299,37 @@ export class Renderer {
     ctx.beginPath()
     ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
     ctx.stroke()
-    this.shadow(pos.x, feet, 13)
     const flip = player.fx < 0
-    if (player.downed) {
+    // 大往生: a peaceful smile while the reaper comes, then the haloed soul rises beside it.
+    const ending = body === 'bed' && !player.downed && (phase === 'reaper' || phase === 'won')
+    if (phase !== 'won') this.wonAt = undefined
+    else if (this.wonAt === undefined) this.wonAt = this.clock
+    if (ending) {
+      const won = sheet('death:bed').won
+      const t = this.wonAt === undefined ? 0 : this.clock - this.wonAt
+      this.shadow(pos.x, feet, 13)
+      this.art(won.frames[this.wonAt === undefined ? 0 : frameAt(won, t)], pos.x, feet, 32, 58, flip)
+      const soul = this.wonAt === undefined ? undefined : soulAt(t, duration(won), 'halo')
+      // Drawn after the reaper (in front of it), so the soul is seen rising to meet it.
+      if (soul) this.halo = { x: pos.x + soul.dx, y: feet + soul.dy, t, alpha: soul.alpha }
+      this.world()
+    } else if (player.downed) {
       let death = this.deaths.get(player.id)
       if (!death) {
         const tag = player.killer ? ENEMY_BY_ID.get(player.killer)?.tag : undefined
         death = { at: this.clock, body, kind: deathKind(tag, ageAt(time), body) }
         this.deaths.set(player.id, death)
       }
-      const anim = sheet(`death:${death.body}`)[death.kind]
+      const anim = sheet(`death:${death.body}`)[death.kind] ?? sheet(`death:${death.body}`).collapse
       const t = this.clock - death.at
       const index = frameAt(anim, t)
+      // A lifted body leaves its shadow on the floor, smaller.
+      this.shadow(pos.x, feet, 13 * (1 - (anim.lift?.[index] ?? 0) / 40))
       this.art(anim.frames[index], pos.x, feet, 32, 58, flip, anim.alpha?.[index] ?? 1)
-      const soul = soulAt(t, duration(anim))
+      const soul = soulAt(t, duration(anim), anim.soul)
       if (soul) {
-        const float = sheet('soul').float
-        this.art(float.frames[frameAt(float, t)], pos.x, feet + soul.dy, 8, 16, false, soul.alpha)
+        const kind = sheet('soul')[anim.soul === 'ghost' ? 'ghost' : 'float']
+        this.art(kind.frames[frameAt(kind, t)], pos.x, feet + soul.dy, 8, 16, false, soul.alpha)
       }
       this.world()
       ctx.strokeStyle = '#ffffff'
@@ -317,6 +339,7 @@ export class Renderer {
       ctx.stroke()
     } else {
       this.deaths.delete(player.id)
+      this.shadow(pos.x, feet, 13)
       const art = sheet(`player:${body}`)
       const anim = player.hurt ? art.hurt : m.speed > 25 ? art.walk : art.idle
       this.art(
@@ -330,6 +353,8 @@ export class Renderer {
       this.world()
     }
     this.blit(this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color), pos.x, feet - 64)
+    // Downed players show only the revive ring, not an empty bar.
+    if (player.downed) return
     const w = 40
     ctx.fillStyle = 'rgba(0,0,0,.6)'
     ctx.fillRect(pos.x - w / 2, feet + 8, w, 5)
@@ -428,7 +453,7 @@ export class Renderer {
 
     for (const player of view.players) {
       const pos = positions.get(player.id)!
-      sorted.push({ y: pos.y + 16, draw: () => this.player(player, pos, player.id === localId, view.time) })
+      sorted.push({ y: pos.y + 16, draw: () => this.player(player, pos, player.id === localId, view.time, view.phase) })
     }
     sorted.sort((a, b) => a.y - b.y)
     for (const item of sorted) item.draw()
@@ -525,12 +550,26 @@ export class Renderer {
     }
 
     if (view.reaper) {
-      const [x, y] = view.reaper
+      // Drawn a step to the side of where it hovers so the old man's face stays visible beside it.
+      const x = view.reaper[0] + 30
+      const y = view.reaper[1]
       const target = view.players[0] ? positions.get(view.players[0].id)! : { x, y }
       this.shadow(x, y + 66, 26, 0.18)
-      this.art(sheet('reaper').move.frames[frameAt(sheet('reaper').move, this.clock)], x, y + 60, 64, 120, target.x < x)
+      // On 大往生 the reaper bows to the departing soul.
+      const r = sheet('reaper')
+      const frame =
+        this.wonAt === undefined
+          ? r.move.frames[frameAt(r.move, this.clock)]
+          : r.bow.frames[frameAt(r.bow, this.clock - this.wonAt)]
+      this.art(frame, x, y + 60, 64, 120, target.x < x)
       this.world()
       this.blit(this.label('死神', 18, '#e6d6ff'), x, y + 76)
+    }
+    if (this.halo) {
+      const halo = sheet('soul').halo
+      this.art(halo.frames[frameAt(halo, this.halo.t)], this.halo.x, this.halo.y, 8, 16, false, this.halo.alpha)
+      this.world()
+      this.halo = undefined
     }
 
     const p = view.popups

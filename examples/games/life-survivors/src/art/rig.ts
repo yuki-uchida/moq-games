@@ -1,4 +1,4 @@
-import { DARKER, R } from './palette'
+import { C, DARKER, R } from './palette'
 import { KEY, Raster, part, remap, shadeEdges, type Ramp } from './raster'
 
 /** Every character frame is 64×64 with the feet on this row and centred on x = 32. */
@@ -7,7 +7,7 @@ export const GROUND = 58
 export const CX = 32
 export const SKIN = R.skin
 
-export type Face = 'open' | 'blink' | 'pain' | 'calm' | 'down' | 'dead' | 'angry' | 'none'
+export type Face = 'open' | 'blink' | 'pain' | 'calm' | 'down' | 'dead' | 'angry' | 'spiral' | 'smile' | 'none'
 
 /** A pose for the 3/4-view humanoid rig. Limbs are drawn in place with pixel primitives — never rotated bitmaps. */
 export interface Pose {
@@ -143,7 +143,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['..', '.K', 'K.'],
       down: ['..', 'wK', 'KK'],
       dead: ['..', 'KK', '..'],
-      angry: ['K.', 'KK', 'KK']
+      angry: ['K.', 'KK', 'KK'],
+      spiral: ['KKK', 'K.K', 'KK.'],
+      smile: ['..', 'K.K', '...']
     },
     far: {
       open: ['K', 'K', 'K'],
@@ -152,7 +154,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['K.', '.K', '..'],
       down: ['.', 'K', 'K'],
       dead: ['.', 'K', '.'],
-      angry: ['.K', 'KK', 'KK']
+      angry: ['.K', 'KK', 'KK'],
+      spiral: ['KK', '.K', 'KK'],
+      smile: ['..', 'K.K']
     }
   },
   kid: {
@@ -163,7 +167,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['...', '.K.', 'K.K', '...'],
       down: ['...', 'KKK', 'wKK', '.ee'],
       dead: ['...', '...', 'KKK', '...'],
-      angry: ['KK.', 'wKK', 'KKK', '.ee']
+      angry: ['KK.', 'wKK', 'KKK', '.ee'],
+      spiral: ['KKK', 'K.K', 'K.K', 'KK.'],
+      smile: ['...', '.K.', 'K.K', '...']
     },
     far: {
       open: ['KK', 'wK', 'KK', 'e.'],
@@ -172,7 +178,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['..', 'K.', '.K', '..'],
       down: ['..', 'KK', 'wK', 'e.'],
       dead: ['..', '..', 'KK', '..'],
-      angry: ['.K', 'wK', 'KK', 'e.']
+      angry: ['.K', 'wK', 'KK', 'e.'],
+      spiral: ['KK', '.K', 'KK', '..'],
+      smile: ['..', '.K', 'K.', '..']
     }
   },
   elder: {
@@ -183,7 +191,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['..', '33', 'KK'],
       down: ['33', '3K', 'KK'],
       dead: ['..', '33', 'KK'],
-      angry: ['3.', 'wK', 'KK']
+      angry: ['3.', 'wK', 'KK'],
+      spiral: ['KKK', 'K.K', 'KK.'],
+      smile: ['..', 'K.K', '...']
     },
     far: {
       open: ['3', 'K', 'K'],
@@ -192,7 +202,9 @@ const EYES: Record<HeadSpec['eyes'], { near: Record<string, string[]>; far: Reco
       calm: ['.', '3', 'K'],
       down: ['3', 'K', 'K'],
       dead: ['.', '3', 'K'],
-      angry: ['3', 'K', 'K']
+      angry: ['3', 'K', 'K'],
+      spiral: ['KK', '.K', 'KK'],
+      smile: ['..', 'K.K']
     }
   }
 }
@@ -211,6 +223,8 @@ const MOUTHS: Record<Face, string[]> = {
   down: ['.m.', 'm.m'],
   dead: ['mm'],
   angry: ['KKKK', 'wwKw', 'KKKK'],
+  spiral: ['.KK.', 'K..K', '.KK.'],
+  smile: ['m..m', '.mm.'],
   none: []
 }
 
@@ -248,7 +262,8 @@ export function drawHead(r: Raster, h: HeadSpec, x: number, y: number, face: Fac
       const far = E.far[face] ?? E.far.open
       l.stamp(near, x + h.near[0], y + h.near[1], FEATURE_KEY)
       l.stamp(far, x + h.far[0], y + h.far[1], FEATURE_KEY)
-      const brows = BROWS[face === 'angry' ? 'angry' : face === 'pain' || face === 'down' ? 'sad' : 'flat']
+      const brows =
+        BROWS[face === 'angry' ? 'angry' : face === 'pain' || face === 'down' || face === 'spiral' ? 'sad' : 'flat']
       const bk = { b: h.brows ?? R.hair[3] }
       const by = face === 'pain' || face === 'down' || face === 'angry' ? 3 : 2
       l.stamp(brows.near, x + h.near[0] - 1, y + h.near[1] - by, bk)
@@ -555,5 +570,68 @@ export function lying(b: Body, o: { squash?: number; face?: Face; reach?: number
   const h = b.lie.head
   part(r, (l) => l.stamp(h.grid, x1 - 1, g + 1 - h.grid.length, { ...KEY, ...h.key }))
   b.lie.beside?.(r)
+  return r
+}
+
+/** Where a body's head box sits for a pose (for effects drawn around the head). */
+export function headBox(b: Body, p: Pose) {
+  const top = b.hip + p.y + p.headBob + p.kneel - b.torsoH + p.squash
+  const x = CX + p.x + b.headAt[0] + p.lean + p.head[0]
+  const y = top + b.headAt[1] + p.head[1]
+  return {
+    x,
+    y,
+    w: b.head.w,
+    h: b.head.h,
+    cx: x + b.head.w / 2,
+    mouth: { x: x + b.head.mouth[0], y: y + b.head.mouth[1] }
+  }
+}
+
+/** Sitting on the floor: hips down, knees up, feet forward; `hug` brings both hands to the knees. */
+export function sitting(b: Body, o: { hug?: boolean; slump?: number; face?: Face } = {}): Partial<Pose> {
+  const kneel = GROUND - 7 - b.hip
+  const shoulderY = b.hip + kneel - b.torsoH + 2
+  const kneeY = GROUND - 5 - b.thigh
+  const reach: [number, number] = o.hug ? [7, kneeY - shoulderY + 1] : [3, GROUND - 3 - shoulderY]
+  return {
+    kneel,
+    front: [b.thigh + 1, 0],
+    back: [b.thigh + 3, 0],
+    handN: o.hug ? reach : [reach[0] - 1, reach[1]],
+    handF: o.hug ? [reach[0] - 6, reach[1]] : [reach[0] + 1, reach[1]],
+    lean: (o.hug ? 3 : 1) + (o.slump ?? 0),
+    head: [o.hug ? 1 : 0, (o.slump ?? 0) > 1 ? 2 : o.hug ? 2 : 0],
+    face: o.face ?? 'down',
+    item: false
+  }
+}
+
+/** A body flattened paper-thin on the floor (its own drawing, not a scaled squash), toward +x: head end. */
+export function flatBody(b: Body, o: { tracks?: boolean; peel?: number } = {}) {
+  const r = new Raster(SIZE, SIZE)
+  const y = GROUND - 4
+  part(r, (l) => {
+    l.rect(8, y + 1, 8, 2, b.pants[2])
+    l.rect(16, y, 14, 3, b.pants[1])
+    l.rect(30, y - 1, 14, 4, b.lie.coat[1])
+    l.rect(30, y - 1, 14, 1, b.lie.coat[0])
+    l.rect(24, y - 3, 3, 2, SKIN[1])
+    l.rect(40, y - 3, 3, 2, SKIN[1])
+    l.ellipse(51, y + 1, 7, 2.6, SKIN[1])
+    l.ellipse(54, y + 1, 4, 2.6, b.lie.head.key.H ?? R.hair[2])
+    l.set(48, y, C.inkCool)
+    l.set(48, y + 2, C.inkCool)
+    if (o.tracks)
+      for (let x = 12; x < 56; x += 6) {
+        l.rect(x, y - 1, 3, 5, R.hair[3])
+        l.paint(x + 3, y, R.hair[2])
+      }
+    if (o.peel) {
+      // The feet end peels up like a sticker.
+      l.rect(8, y + 1, 8, 2, 0)
+      l.poly([8, y + 2 - o.peel * 3, 16, y, 16, y + 3], b.pants[0])
+    }
+  })
   return r
 }

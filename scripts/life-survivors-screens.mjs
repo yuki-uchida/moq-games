@@ -17,8 +17,9 @@ const outRoot = resolve(root, '.build/life-survivors-art')
 const port = Number(process.env.E2E_PORT || 5294)
 const FFMPEG = process.env.FFMPEG || '/opt/homebrew/bin/ffmpeg'
 const args = process.argv.slice(2)
-const doScreens = !args.some((a) => a === 'playback') || args.includes('screens')
-const doPlayback = !args.some((a) => a === 'screens') || args.includes('playback')
+const doScreens = !args.some((a) => a === 'playback' || a === 'deaths') || args.includes('screens')
+const doPlayback = !args.some((a) => a === 'screens' || a === 'deaths') || args.includes('playback')
+const doDeaths = !args.some((a) => a === 'screens' || a === 'playback') || args.includes('deaths')
 const dsfs = args
   .find((a) => a.startsWith('dsf='))
   ?.slice(4)
@@ -54,6 +55,33 @@ const DEATHS = [
   ['hang', 25, 'boss'],
   ['starve', 25, 'expense'],
   ...STAGES.map(([name, age]) => [`collapse-${name}`, age, 'germ'])
+]
+// Phase 3: the killer's Tag picks the death. One killer per Tag, then the special bodies.
+const TAG_KILLER = {
+  people: 'boss',
+  money: 'expense',
+  accident: 'car',
+  sickness: 'germ',
+  insult: 'insult',
+  work: 'job',
+  love: 'girlfriend',
+  child: 'kid',
+  exam: 'exam',
+  sports: 'club',
+  class: 'lesson'
+}
+const TAG_DEATHS = [
+  ...Object.entries(TAG_KILLER).map(([tag, killer]) => [`社会人-${tag}`, 25, killer]),
+  ['小学生-people-alone', 8, 'bully'],
+  ['乳児期-sickness', 1, 'germ'],
+  ['乳児期-insult', 1, 'insult'],
+  ['老後-people-hang', 70, 'boss'],
+  ['寝たきり-sickness', 77, 'germ'],
+  ['寝たきり-money', 77, 'expense'],
+  ['寝たきり-insult', 77, 'insult'],
+  ['寝たきり-accident', 77, 'car'],
+  ['寝たきり-people', 77, 'boss'],
+  ['寝たきり-other', 77, 'job']
 ]
 
 const server = await createServer({
@@ -144,6 +172,10 @@ if (doScreens) {
     await page.waitForTimeout(1600)
     await shot(`boss-${boss}`)
   }
+  // Polished enemies up close (資格試験, 噂話, 交通事故).
+  await scene(page, 25, ['cert', 'gossip', 'car', 'cert'], Infinity, 0.45)
+  await page.waitForTimeout(1200)
+  await shot('enemies-polish')
   for (const [name, age, killer] of DEATHS.slice(0, 2).concat([DEATHS.find((d) => d[0] === 'collapse-小学生')])) {
     await start(page)
     await scene(page, age, [], 0.01)
@@ -348,6 +380,61 @@ if (doPlayback)
       strip(path, at('reaper-result'), { from: marks.arrive + 5.4, seconds: 0.5, fps: 2, w: 640, h: 420, dsf, cols: 1 })
     }
   }
+
+if (doDeaths) {
+  const dir = resolve(outRoot, 'playback/deaths')
+  rmSync(dir, { recursive: true, force: true })
+  mkdirSync(dir, { recursive: true })
+  const at = (name) => resolve(dir, name)
+  for (const [name, age, killer] of TAG_DEATHS) {
+    const { path, marks } = await clip(1, dir, `death-${name}`, async (page, mark) => {
+      await start(page)
+      await scene(page, age, [], 0.01)
+      await page.waitForTimeout(1600)
+      await kill(page, killer)
+      mark('down')
+      await page.waitForTimeout(6600)
+    })
+    strip(path, at(`death-${name}`), { from: marks.down, seconds: 5, fps: 12, w: 220, h: 160, dsf: 1, dy: -30 })
+    strip(path, at(`death-${name}-result`), {
+      from: marks.down + 6.2,
+      seconds: 0.25,
+      fps: 4,
+      w: 800,
+      h: 480,
+      dsf: 1,
+      cols: 1
+    })
+  }
+  // 大往生: the reaper arrives, the old man smiles, the haloed soul rises, the reaper bows, then the result.
+  const { path, marks } = await clip(1, dir, 'ending-daioujou', async (page, mark) => {
+    await start(page)
+    await scene(page, 79, ['illness', 'germ'])
+    await page.waitForTimeout(800)
+    await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
+    mark('arrive')
+    await page.waitForTimeout(9000)
+  })
+  strip(path, at('ending-daioujou'), {
+    from: marks.arrive,
+    seconds: 7.5,
+    fps: 8,
+    w: 360,
+    h: 260,
+    dsf: 1,
+    cols: 10,
+    dy: -40
+  })
+  strip(path, at('ending-daioujou-result'), {
+    from: marks.arrive + 8.6,
+    seconds: 0.25,
+    fps: 4,
+    w: 800,
+    h: 520,
+    dsf: 1,
+    cols: 1
+  })
+}
 
 await browser.close()
 await server.close()

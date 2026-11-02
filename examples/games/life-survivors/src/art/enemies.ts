@@ -586,7 +586,7 @@ function insult(i: number, t: number) {
 }
 
 /** 交通事故: a compact car in 3/4 with angry headlight eyes and a grille mouth, bouncing, exhaust and speed lines. */
-function car(i: number) {
+export function car(i: number) {
   const r = new Raster(64, 64)
   const b = i % 2
   part(
@@ -615,14 +615,22 @@ function car(i: number) {
     shadeEdges(l, R.metal, 2, true)
     l.poly([19, 34 + b, 24, 27 + b, 31, 27 + b, 31, 34 + b], R.navy[2])
     l.poly([33, 34 + b, 33, 27 + b, 41, 27 + b, 46, 34 + b], R.navy[2])
-    l.line(24, 28 + b, 22, 31 + b, R.navy[0])
-    l.line(35, 28 + b, 34, 31 + b, R.navy[0])
+    // Angry eyes on the windshield, brows slammed down.
+    for (const ex of [26, 38]) {
+      l.rect(ex - 2, 29 + b, 5, 4, C.white)
+      l.rect(ex, 30 + b, 2, 3, C.inkCool)
+      l.line(ex - 3, 27 + b + (ex < 30 ? 0 : 2), ex + 3, 27 + b + (ex < 30 ? 2 : 0), C.inkCool)
+    }
     l.rect(8, 42 + b, 3, 3, R.red[1])
     // Angry headlight eyes and a toothy grille on the front.
     l.rect(51, 39 + b, 6, 4, R.yellow[0])
     l.poly([50, 38 + b, 58, 40 + b, 58, 41 + b, 50, 39 + b], R.metal[3])
-    l.rect(50, 44 + b, 8, 4, C.inkCool)
-    for (let x = 51; x < 58; x += 2) l.rect(x, 44 + b, 1, 4, R.metal[0])
+    // A toothy bumper grin.
+    l.rect(49, 44 + b, 9, 5, C.inkCool)
+    for (let x = 50; x < 58; x += 2) {
+      l.poly([x, 44 + b, x + 2, 44 + b, x + 1, 46 + b], C.white)
+      l.poly([x, 49 + b, x + 2, 49 + b, x + 1, 47 + b], C.white)
+    }
     l.rect(8, 48 + b, 50, 1, R.metal[2])
   })
   return r
@@ -692,26 +700,41 @@ function exam(i: number) {
   return r
 }
 
-/** 資格試験: a rolled certificate scroll with a teal ribbon and red seal, wearing glasses, hopping. */
+/** 資格試験: an unmistakable certificate scroll — rolled spiral ends, paper grain, glasses on the unrolled face,
+ * a ribbon bow with a red wax seal — hopping. */
 function cert(i: number) {
   const r = new Raster(64, 64)
   const hop = [0, 3, 6, 3, 0, -1][i]
   const sq = hop < 0 ? 2 : 0
+  const y = 14 - hop + sq
+  const h = 32 - sq
+  const roll = (l: Raster, ry: number) => {
+    l.rect(17, ry, 30, 7, R.paper[1])
+    l.rect(17, ry, 30, 2, R.paper[0])
+    l.rect(17, ry + 5, 30, 2, R.paper[2])
+    // Spiral end caps on both sides.
+    for (const ex of [17, 46]) {
+      l.ellipse(ex + 0.5, ry + 3.5, 2.5, 3.5, R.paper[1])
+      l.ellipse(ex + 0.5, ry + 3.5, 1.6, 2.4, R.paper[3])
+      l.ellipse(ex + 0.5, ry + 3.5, 0.8, 1.2, R.paper[1])
+    }
+  }
   part(r, (l) => {
-    const y = 18 - hop + sq
-    const h = 36 - sq
-    l.rect(24, y, 16, h, R.paper[1])
-    l.ellipse(32, y, 8, 3, R.paper[2])
-    l.ellipse(32, y + h, 8, 3, R.paper[1])
-    shadeEdges(l, R.paper, 3, true)
-    l.ellipse(32, y, 5, 1.5, R.paper[3])
-    // Ribbon with a bow, a red seal, glasses over angry eyes.
-    l.rect(24, y + 20, 16, 3, R.mint[1])
-    l.stamp(['mm.mm', '.mmm.', 'm.m.m'], 30, y + 19, { m: R.mint[2] })
-    l.ellipse(36, y + 29, 3, 3, R.red[1])
-    l.set(35, y + 28, R.red[0])
-    l.stamp(['KKKK.KKKK', 'K.wKKK.wK', 'KKKK.KKKK'], 27, y + 8, KEY)
-    l.stamp(['KK.KK'], 29, y + 15, KEY)
+    l.rect(20, y + 4, 24, h - 4, R.paper[0])
+    for (let k = 0; k < 6; k++) l.rect(22 + ((k * 7) % 18), y + 10 + k * 4, 3 + (k % 3), 1, R.paper[1])
+    l.rect(42, y + 4, 2, h - 4, R.paper[2])
+    l.stamp(['KKKK.KKKK', 'K.wKKK.wK', 'KKKK.KKKK'], 27, y + 10, KEY)
+    l.stamp(['.KKK.', 'K...K'], 29, y + 15, KEY)
+    for (let k = 0; k < 3; k++) l.rect(24, y + 21 + k * 3, 16 - k * 3, 1, R.paper[3])
+  })
+  part(r, (l) => roll(l, y))
+  part(r, (l) => roll(l, y + h))
+  part(r, (l) => {
+    l.stamp(['mm...mm', 'mmm.mmm', '.mmmmm.', 'mmm.mmm', 'mm...mm'], 28, y + h + 1, { m: R.mint[1] })
+    l.line(31, y + h + 6, 28, y + h + 11, R.mint[2])
+    l.line(33, y + h + 6, 36, y + h + 11, R.mint[2])
+    ball(l, 32, y + h + 4, 3, 3, R.red, false)
+    l.set(31, y + h + 3, R.red[0])
   })
   return r
 }

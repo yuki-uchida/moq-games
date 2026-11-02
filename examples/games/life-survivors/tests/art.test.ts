@@ -36,14 +36,13 @@ describe('pixel art', () => {
       expect(s.move.frames.length).toBeLessThanOrEqual(6)
       expect(s.flash.frames).toHaveLength(s.move.frames.length)
     }
-    expect(Object.keys(built['death:adult']).sort()).toEqual(['collapse', 'hang', 'starve'])
     for (const [id, sheet] of Object.entries(built)) {
       if (id.startsWith('tiles:') || id.startsWith('props:')) continue
       const size = big(id) ? 128 : id === 'soul' ? 16 : 64
       for (const anim of Object.values(sheet)) {
         if (id.startsWith('death:')) {
           expect(anim.frames.length).toBeGreaterThanOrEqual(12)
-          expect(anim.frames.length).toBeLessThanOrEqual(20)
+          expect(anim.frames.length).toBeLessThanOrEqual(24)
           expect(anim.loop).toBe(false)
           // Fades are renderer alpha per frame, never dithered pixels.
           if (anim.alpha) expect(anim.alpha).toHaveLength(anim.frames.length)
@@ -120,13 +119,32 @@ describe('bodies and deaths', () => {
     expect(STAGES.map(bodyFor)).toEqual(BODIES)
   })
 
-  test('the killer’s tag picks the death; 首吊り is never shown for minors', () => {
+  test('every Tag × life stage resolves to a real death animation; minors never get 首吊り', () => {
+    const tags = [undefined, ...Object.keys(TAG_NAMES)]
+    for (const stage of STAGES) {
+      const body = bodyFor(stage)
+      // Every age the stage covers (up to the next stage).
+      const next = STAGES[STAGES.indexOf(stage) + 1]?.age ?? 81
+      for (let age = stage.age; age < next; age++)
+        for (const tag of tags) {
+          const kind = deathKind(tag, age, body)
+          expect([stage.name, age, tag, Boolean(built[`death:${body}`][kind])]).toEqual([stage.name, age, tag, true])
+          if (age < 18) expect(kind).not.toBe('hang')
+        }
+    }
     expect(deathKind(ENEMY_BY_ID.get('boss')!.tag, 25, 'adult')).toBe('hang')
-    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 17, 'adult')).toBe('collapse')
-    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 9, 'kid')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 17, 'high')).toBe('alone')
+    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 9, 'kid')).toBe('alone')
     expect(deathKind(ENEMY_BY_ID.get('expense')!.tag, 30, 'adult')).toBe('starve')
-    expect(deathKind(ENEMY_BY_ID.get('germ')!.tag, 30, 'adult')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('car')!.tag, 40, 'prime')).toBe('runover')
+    expect(deathKind(ENEMY_BY_ID.get('germ')!.tag, 1, 'baby')).toBe('illness')
+    expect(deathKind(ENEMY_BY_ID.get('kid')!.tag, 1, 'baby')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('boss')!.tag, 78, 'bed')).toBe('lonely')
     expect(deathKind(undefined, 30, 'adult')).toBe('collapse')
-    expect(TAG_NAMES.people).toBe('人間関係')
+    // The 大往生 ending and the ghost/halo souls exist.
+    expect(built['death:bed'].won.soul).toBe('halo')
+    expect(built['death:adult'].illness.soul).toBe('ghost')
+    expect(built.soul.ghost.frames).toHaveLength(4)
+    expect(built.reaper.bow.frames.length).toBeGreaterThan(3)
   })
 })

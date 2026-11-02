@@ -465,13 +465,16 @@ export const PROP_NAMES: Record<string, string[]> = {
 
 /** Which prop (if any) decorates a 192-unit cell; props never block movement. */
 export const PROP_CELL = 192
-export function propAt(ground: string, cx: number, cy: number) {
+/** The props (if any) decorating a 192-unit cell: two cells in three get one, often with a small cluster. */
+export function propsAt(ground: string, cx: number, cy: number) {
   const h = tileHash(cx * 31 + 7, cy * 17 + 3)
-  if (h % 3) return undefined
+  if (h % 3 === 2) return []
   const names = PROP_NAMES[ground]
-  return {
-    name: names[(h >>> 3) % names.length],
-    x: cx * PROP_CELL + 40 + ((h >>> 6) % 112),
-    y: cy * PROP_CELL + 60 + ((h >>> 12) % 100)
-  }
+  const x = cx * PROP_CELL + 40 + ((h >>> 6) % 112)
+  const y = cy * PROP_CELL + 60 + ((h >>> 12) % 100)
+  const out = [{ name: names[(h >>> 3) % names.length], x, y }]
+  const extra = (h >>> 18) % 5
+  for (let k = 0; k < (extra > 2 ? extra - 2 : 0); k++)
+    out.push({ name: names[(h >>> (21 + k * 2)) % names.length], x: x + (k ? -34 : 38), y: y + (k ? 18 : 10) })
+  return out
 }

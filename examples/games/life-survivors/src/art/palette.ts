@@ -120,3 +120,18 @@ export function dimTable(k: number): number[] {
     return best
   })
 }
+
+const lum = (i: number) => {
+  const [r, g, b] = rgb(i)
+  return 0.3 * r + 0.59 * g + 0.11 * b
+}
+/** Maps every colour to the member of `targets` with the closest brightness (colour draining, stone, ash). */
+export function toneTable(targets: readonly number[], lift = 0): number[] {
+  return PALETTE.map((_, i) => {
+    if (i === 0) return 0
+    const l = Math.min(255, lum(i) + lift)
+    let best = targets[0]
+    for (const t of targets) if (Math.abs(lum(t) - l) < Math.abs(lum(best) - l)) best = t
+    return best
+  })
+}

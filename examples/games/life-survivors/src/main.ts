@@ -15,7 +15,10 @@ import {
   type TalentCategory
 } from './data'
 import { GIFTED, Game, POOR, choiceText, type Input, type Player } from './game'
-import { Renderer } from './render'
+import { deathKind } from './art/deaths'
+import { sheet } from './art/index'
+import { duration } from './art/sheet'
+import { Renderer, bodyFor } from './render'
 import { readView, toView, type View, type ViewPlayer } from './view'
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -42,8 +45,17 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
 const APP = 'life-survivors-v1'
-/** A lost life lets the last death animation (and the rising soul) play before the result dialog. */
-const DEATH_DELAY_MS = 4200
+/** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
+const WON_DELAY_MS = 3000
+
+/** A lost life lets the local player's death animation play out: the dialog follows ~1 s after its last frame. */
+function deathDelayMs(player: ViewPlayer | undefined, time: number) {
+  const body = bodyFor(stageAt(time))
+  const tag = player?.killer ? ENEMY_BY_ID.get(player.killer)?.tag : undefined
+  const deaths = sheet(`death:${body}`)
+  const anim = deaths[deathKind(tag, ageAt(time), body)] ?? deaths.collapse
+  return Math.min(5000, (duration(anim) + 1) * 1000)
+}
 
 let role: 'solo' | 'host' | 'guest' | undefined
 let game: Game | undefined
@@ -58,6 +70,7 @@ let hudAt = 0
 let shownChoices = ''
 let resultShown = false
 let lostAt = 0
+let wonAt = 0
 let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
@@ -105,6 +118,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
   shownChoices = ''
   resultShown = false
   lostAt = 0
+  wonAt = 0
   try {
     if (next !== 'solo') {
       if (!relay.value.trim() || !room.value.trim()) throw new Error('Relay URLとルーム名を入力してください。')
@@ -340,7 +354,10 @@ function updateHud(current: View) {
     while (feed.children.length > 4) feed.lastElementChild?.remove()
   }
   if (current.phase === 'lost' && !lostAt) lostAt = performance.now()
-  const settled = current.phase === 'won' || (current.phase === 'lost' && performance.now() - lostAt >= DEATH_DELAY_MS)
+  if (current.phase === 'won' && !wonAt) wonAt = performance.now()
+  const settled =
+    (current.phase === 'won' && performance.now() - wonAt >= WON_DELAY_MS) ||
+    (current.phase === 'lost' && performance.now() - lostAt >= deathDelayMs(player, current.time))
   if (settled && !resultShown) {
     const age = ageAt(current.time)
     const won = current.phase === 'won'

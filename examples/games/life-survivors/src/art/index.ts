@@ -4,7 +4,7 @@ import { deathSheets } from './deaths'
 import { peopleSheets } from './people'
 import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
 import type { Sheet } from './sheet'
-import { PROP_NAMES, TILE, groundTile, propAt, propSheet, tileSheet } from './world'
+import { PROP_NAMES, TILE, groundTile, propSheet, propsAt, tileSheet } from './world'
 
 /** Enemy sheets get a white hit-flash twin of every frame. */
 const withFlash = (make: () => Sheet) => () => {
@@ -50,13 +50,20 @@ export function sheet(id: string): Sheet {
 
 /** The stage ground each sheet is reviewed on. */
 const REVIEW_GROUND: Record<string, string> = {
+  'player:toddler': 'playground',
+  'player:junior': 'gym',
+  'player:high': 'sidewalk',
+  'player:college': 'campus',
+  'player:prime': 'street',
+  'player:middle': 'golf',
+  'player:elder': 'garden',
+  'player:bed': 'ward',
   'player:baby': 'nursery',
   'player:kid': 'school',
   'player:adult': 'office',
   'death:adult': 'office',
   'death:kid': 'school',
   'death:baby': 'nursery',
-  'player:elder': 'office',
   'death:elder': 'office',
   'enemy:germ': 'nursery',
   'enemy:bully': 'school',
@@ -105,19 +112,19 @@ export const mockups = () =>
     }[] = []
     for (let cy = 1; cy < 6; cy++)
       for (let cx = 2; cx < 8; cx++) {
-        const prop = propAt(ground, cx, cy)
-        if (!prop) continue
-        const frame = propSheet(ground)[prop.name].frames[0]
-        items.push({
-          sheet: `props:${ground}`,
-          anim: prop.name,
-          frame: 0,
-          x: prop.x - ox,
-          y: prop.y - oy,
-          px: frame.w / 2,
-          py: frame.h - 6,
-          layer: 0
-        })
+        for (const prop of propsAt(ground, cx, cy)) {
+          const frame = propSheet(ground)[prop.name].frames[0]
+          items.push({
+            sheet: `props:${ground}`,
+            anim: prop.name,
+            frame: 0,
+            x: prop.x - ox,
+            y: prop.y - oy,
+            px: frame.w / 2,
+            py: frame.h - 6,
+            layer: 0
+          })
+        }
       }
     items.push({ sheet: player, anim: 'walk', frame: 1, x: 320, y: 200, px: 32, py: 58, shadow: 11, layer: 1 })
     const spots = [
@@ -149,5 +156,5 @@ export { groundTile }
 export { FLAT_PROPS } from './world'
 /** Sprites carrying lettering (¥, 至急, 0点 …) never mirror. */
 export const NO_FLIP = new Set(['expense', 'job', 'b_hs', 'b_shukatsu', 'b_mortgage', 'b_rebel'])
-export { soulAt } from './deaths'
+export { deathKind, soulAt } from './deaths'
 export { PALETTE_RGBA } from './palette'

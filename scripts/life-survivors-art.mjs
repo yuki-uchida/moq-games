@@ -152,10 +152,19 @@ function exportGif(id, name, anim, bg) {
     if (bg) fillGround(img, bg, 0, 0, img.w, img.h, SCALE)
     drawRaster(img, anim.frames[index], 0, 0, SCALE, false, anim.alpha?.[index] ?? 1)
     // Deaths: the renderer floats the soul in over the spot; show the same here.
-    const soul = death && art.soulAt(t / anim.fps, duration(anim))
+    const soul = death && art.soulAt(t / anim.fps, duration(anim), anim.soul)
     if (soul) {
-      const frame = art.sheet('soul').float.frames[Math.floor(t / 2) % 4]
-      drawRaster(img, frame, (32 - 8) * SCALE, Math.round(58 + soul.dy - 16) * SCALE, SCALE, false, soul.alpha)
+      const kind = anim.soul === 'ghost' ? 'ghost' : anim.soul === 'halo' ? 'halo' : 'float'
+      const frame = art.sheet('soul')[kind].frames[Math.floor(t / 2) % 4]
+      drawRaster(
+        img,
+        frame,
+        Math.round(32 + soul.dx - 8) * SCALE,
+        Math.round(58 + soul.dy - 16) * SCALE,
+        SCALE,
+        false,
+        soul.alpha
+      )
     }
     return sharp(Buffer.from(img.data), { raw: { width: img.w, height: img.h, channels: 4 } })
       .png()
@@ -214,6 +223,94 @@ async function gallery(file, entries, ground, scale = SCALE) {
     drawRaster(img, frame, 8 + i * small, 8 + rows * (ch + 30), 1)
   })
   return save(file, img, labels)
+}
+
+// Deaths: one sheet per kind with a row per body, and the matrix of every Tag × body's held final frame.
+const BODY_ORDER = ['baby', 'toddler', 'kid', 'junior', 'high', 'college', 'adult', 'prime', 'middle', 'elder', 'bed']
+const STAGE_AGE = {
+  baby: 1,
+  toddler: 4,
+  kid: 8,
+  junior: 13,
+  high: 16,
+  college: 20,
+  adult: 25,
+  prime: 40,
+  middle: 55,
+  elder: 70,
+  bed: 77
+}
+const TAGS = [
+  undefined,
+  'people',
+  'money',
+  'accident',
+  'sickness',
+  'insult',
+  'work',
+  'love',
+  'child',
+  'exam',
+  'sports',
+  'class'
+]
+if (pick('deathtags')) {
+  const kinds = new Set()
+  for (const b of BODY_ORDER) for (const k of Object.keys(art.sheet(`death:${b}`))) kinds.add(k)
+  for (const kind of kinds) {
+    const rows = BODY_ORDER.filter((b) => art.sheet(`death:${b}`)[kind])
+    const per = 12
+    const cw = 64 * 2 + 2
+    const lines = rows.map((b) => Math.ceil(art.sheet(`death:${b}`)[kind].frames.length / per))
+    const img = canvas(8 + per * cw, 8 + lines.reduce((sum, n) => sum + n * cw + 18, 0))
+    const labels = []
+    let y = 8
+    rows.forEach((b, i) => {
+      const anim = art.sheet(`death:${b}`)[kind]
+      labels.push([
+        `${b} · ${kind} · ${anim.frames.length}f @ ${anim.fps}fps${anim.soul ? ` · ${anim.soul}` : ''}`,
+        8,
+        y,
+        13
+      ])
+      y += 18
+      anim.frames.forEach((frame, f) => {
+        const x = 8 + (f % per) * cw
+        const yy = y + Math.floor(f / per) * cw
+        fillGround(img, art.groundFor(`player:${b}`) ?? 'office', x, yy, 128, 128, 2)
+        drawRaster(img, frame, x, yy, 2, false, anim.alpha?.[f] ?? 1)
+      })
+      y += lines[i] * cw
+    })
+    written.push(await save(`deathtag_${kind}.png`, img, labels))
+  }
+  // Matrix: rows = bodies, columns = the killer's Tag (first column: no tag).
+  const cw = 64 * 2 + 4
+  const img = canvas(8 + TAGS.length * cw, 26 + BODY_ORDER.length * cw)
+  const labels = TAGS.map((t, i) => [t ?? '(none)', 8 + i * cw, 4, 12])
+  BODY_ORDER.forEach((b, r) =>
+    TAGS.forEach((tag, c) => {
+      const deaths = art.sheet(`death:${b}`)
+      const kind = art.deathKind(tag, STAGE_AGE[b], b)
+      const anim = deaths[kind]
+      const x = 8 + c * cw
+      const y = 22 + r * cw
+      fillGround(img, art.groundFor(`player:${b}`) ?? 'office', x, y, 128, 128, 2)
+      const last = anim.frames.length - 1
+      drawRaster(img, anim.frames[last], x, y, 2, false, Math.max(0.25, anim.alpha?.[last] ?? 1))
+      const soul = art.soulAt(duration(anim) + 2, duration(anim), anim.soul)
+      const sk = anim.soul === 'ghost' ? 'ghost' : anim.soul === 'halo' ? 'halo' : 'float'
+      drawRaster(
+        img,
+        art.sheet('soul')[sk].frames[0],
+        x + Math.round(32 + soul.dx - 8) * 2,
+        y + Math.round(58 + soul.dy - 16) * 2,
+        2
+      )
+      if (c === 0) labels.push([b, x + 2, y + 2, 11])
+    })
+  )
+  written.push(await save('deaths_matrix.png', img, labels))
 }
 
 if (pick('lineup')) {

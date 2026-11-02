@@ -8,6 +8,10 @@ export interface Anim {
   hold?: number[]
   /** Per-frame opacity applied by the renderer (sprites themselves stay 0/255). */
   alpha?: number[]
+  /** Per-frame lift off the floor in px (the renderer shrinks the ground shadow). */
+  lift?: number[]
+  /** What rises at the end of a death: a soul, a Japanese ghost (病死) or a haloed soul (大往生). */
+  soul?: 'soul' | 'ghost' | 'halo'
 }
 
 export type Sheet = Record<string, Anim>
