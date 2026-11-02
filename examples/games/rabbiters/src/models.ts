@@ -52,8 +52,11 @@ export type ModelOptions = {
 
 type V3 = [number, number, number]
 
+/** Car cabins' windscreen and rear-window slopes, as fractions of the cabin length. */
+const CABINS = { sedan: [0.3, 0.22], van: [0.12, 0.03] } as const
 const GEOMETRY = {
   sphere: new THREE.SphereGeometry(1, 16, 12),
+  medium: new THREE.SphereGeometry(1, 12, 8),
   small: new THREE.SphereGeometry(1, 8, 6),
   box: new RoundedBoxGeometry(1, 1, 1, 2, 0.18),
   sharp: new THREE.BoxGeometry(1, 1, 1),
@@ -63,7 +66,21 @@ const GEOMETRY = {
   ear: new THREE.ConeGeometry(1, 1, 4),
   capsule: new THREE.CapsuleGeometry(1, 1, 4, 10),
   torus: new THREE.TorusGeometry(1, 0.3, 8, 20),
-  wheel: new THREE.CylinderGeometry(1, 1, 1, 16).rotateZ(Math.PI / 2)
+  wheel: new THREE.CylinderGeometry(1, 1, 1, 16).rotateZ(Math.PI / 2),
+  sedan: cabin(...CABINS.sedan),
+  van: cabin(...CABINS.van)
+}
+/** Unit car cabin (base at y = 0, front toward +z): a side-profile trapezoid with sloped windscreen and rear glass. */
+function cabin(front: number, rear: number) {
+  const profile = [
+    [-0.5, 0],
+    [0.5, 0],
+    [0.5 - front, 1],
+    [-0.5 + rear, 1]
+  ].map(([z, y]) => new THREE.Vector2(z, y))
+  return new THREE.ExtrudeGeometry(new THREE.Shape(profile), { depth: 1, bevelEnabled: false })
+    .translate(0, 0, -0.5)
+    .rotateY(-Math.PI / 2)
 }
 const materials = new Map<string, THREE.Material>()
 const BEAM = new THREE.MeshBasicMaterial({ color: '#fff3c0', transparent: true, opacity: 0.16, depthWrite: false })
@@ -86,6 +103,14 @@ function material(color: string, { glow = 0, metal = 0, rough = 0.85 }: Finish =
   return found
 }
 
+/** Tessellation drops with size: software renderers and low-end GPUs pay for every triangle in a crowd. */
+function geometryFor(shape: keyof typeof GEOMETRY, size: number) {
+  if (shape === 'sphere') return size < 0.12 ? GEOMETRY.small : size < 0.3 ? GEOMETRY.medium : GEOMETRY.sphere
+  // Rounded corners this small do not show; a sharp box has 12 triangles instead of 300.
+  if (shape === 'box' && size < 0.2) return GEOMETRY.sharp
+  return GEOMETRY[shape]
+}
+
 /** A shared unit shape placed, scaled and rotated under `parent`; small parts skip shadows. */
 function part(
   parent: THREE.Object3D,
@@ -96,8 +121,7 @@ function part(
   [rx, ry, rz]: V3 = [0, 0, 0]
 ) {
   const size = Math.max(sx, sy, sz)
-  const geometry = shape === 'sphere' && size < 0.12 ? GEOMETRY.small : GEOMETRY[shape]
-  const mesh = new THREE.Mesh(geometry, typeof color === 'string' ? material(color) : color)
+  const mesh = new THREE.Mesh(geometryFor(shape, size), typeof color === 'string' ? material(color) : color)
   mesh.position.set(x, y, z)
   mesh.scale.set(sx, sy, sz)
   mesh.rotation.set(rx, ry, rz)
@@ -230,8 +254,17 @@ function person(kind: 'human' | 'child', options: ModelOptions): Actor {
   const { body, limbs } = actor
   for (const side of [-1, 1]) {
     const thigh = group(body, [side * 0.3 * width, hip, 0])
-    part(thigh, 'capsule', look.skirt ? skin : bottom, [0, -leg * 0.47, 0], [0.24 * width, leg * 0.62, 0.24 * width])
-    if (look.skirt && !child) part(thigh, 'capsule', '#3b3b44', [0, -leg * 0.62, 0], [0.245, leg * 0.3, 0.245])
+    // The leg runs from inside the hip box into the shoe; longer, its tip swung out below the shoe when walking.
+    const shoe = -leg + 0.12
+    part(
+      thigh,
+      'capsule',
+      look.skirt ? skin : bottom,
+      [0, (0.35 + shoe) / 2, 0],
+      [0.24 * width, (0.35 - shoe) / 3, 0.24 * width]
+    )
+    if (look.skirt && !child)
+      part(thigh, 'cylinder', '#3b3b44', [0, (shoe + 0.08 - leg * 0.45) / 2, 0], [0.26, leg * 0.55 - 0.2, 0.26])
     part(thigh, 'box', shoes, [0, -leg + 0.12, 0.16], [0.42 * width, 0.28, 0.78 * width])
     part(thigh, 'box', '#efe9df', [0, -leg + 0.02, 0.16], [0.44 * width, 0.07, 0.8 * width])
     limbs.push(thigh)
@@ -239,9 +272,17 @@ function person(kind: 'human' | 'child', options: ModelOptions): Actor {
   part(body, 'box', bottom, [0, hip + 0.05, 0], [1.08 * width, 0.6, 0.7 * width])
   if (look.skirt)
     part(body, 'frustum', bottom, [0, hip - (child ? 0.3 : 0.45), 0], [0.78 * width, child ? 0.8 : 1.15, 0.62 * width])
-  part(body, 'capsule', top, [0, hip + torso * 0.52, 0], [0.56 * width, torso * 0.55, 0.38 * width])
-  part(body, 'box', top, [0, shoulder - 0.16, 0], [1.2 * width, 0.46, 0.7 * width])
-  if (look.vest) part(body, 'box', look.vest, [0, hip + torso * 0.55, 0], [1.16 * width, torso * 0.7, 0.8 * width])
+  // Shirt from inside the hip box (any lower and it shows between the legs) up under the chin, with a rounded
+  // yoke out to the arms.
+  part(
+    body,
+    'capsule',
+    top,
+    [0, hip + (torso * 0.98 - 0.2) / 2, 0],
+    [0.56 * width, (torso * 0.98 + 0.2) / 3, 0.38 * width]
+  )
+  part(body, 'sphere', top, [0, shoulder - 0.1, 0], [0.66 * width, 0.26, 0.34 * width])
+  if (look.vest) part(body, 'capsule', look.vest, [0, hip + torso * 0.55, 0], [0.6 * width, torso * 0.2, 0.42 * width])
   if (look.apron) {
     part(body, 'box', look.apron, [0, hip + torso * 0.3, 0.36 * width], [0.82 * width, torso * 0.85, 0.08])
     part(body, 'box', look.apron, [0, hip + torso * 0.78, 0.37 * width], [0.42 * width, 0.36, 0.06])
@@ -254,7 +295,14 @@ function person(kind: 'human' | 'child', options: ModelOptions): Actor {
     const arm = group(body, [side * 0.62 * width, shoulder - 0.08, 0])
     arm.rotation.z = side * 0.06
     part(arm, 'sphere', top, [0, -0.12, 0], [0.19 * width, 0.24, 0.2 * width])
-    part(arm, 'capsule', top, [0, -torso * 0.3, 0], [0.15 * width, torso * 0.32, 0.15 * width])
+    // Upper arm from the shoulder ball (not above it) down into the forearm.
+    part(
+      arm,
+      'capsule',
+      top,
+      [0, -(torso * 0.65 + 0.02) / 2, 0],
+      [0.15 * width, (torso * 0.65 - 0.02) / 3, 0.15 * width]
+    )
     part(arm, 'capsule', skin, [0, -torso * 0.72, 0.02], [0.13 * width, torso * 0.2, 0.13 * width])
     part(arm, 'sphere', skin, [0, -torso * 0.92, 0.04], [0.17 * width, 0.2, 0.15 * width])
     if (options.flashlight && side > 0) {
@@ -307,9 +355,12 @@ function person(kind: 'human' | 'child', options: ModelOptions): Actor {
       )
   }
   const style = look.hat ? 'short' : (look.hairStyle ?? 'short')
+  const capped = style === 'cap' || !!look.hat
   if (style !== 'bald') {
     part(body, 'sphere', hair, [0, headY + headR * 0.22, -headR * 0.06], [headR * 0.98, headR * 0.86, headR])
-    part(body, 'sphere', hair, [0, headY + headR * 0.55, headR * 0.45], [headR * 0.8, headR * 0.32, headR * 0.5])
+    // Under a cap the fringe would poke through its front.
+    if (!capped)
+      part(body, 'sphere', hair, [0, headY + headR * 0.55, headR * 0.45], [headR * 0.8, headR * 0.32, headR * 0.5])
   }
   if (style === 'bob' || style === 'long' || style === 'pigtails')
     part(
@@ -338,9 +389,10 @@ function person(kind: 'human' | 'child', options: ModelOptions): Actor {
         [headR * 0.14, headR * 0.14, headR * 0.14]
       )
     }
-  if (style === 'cap' || look.hat) {
+  if (capped) {
+    // Just big enough to hold the hair's crown, which otherwise shows through in patches.
     const cap = look.hat ?? '#2d5c8a'
-    part(body, 'sphere', cap, [0, headY + headR * 0.45, -headR * 0.04], [headR * 1.02, headR * 0.62, headR * 1.04])
+    part(body, 'sphere', cap, [0, headY + headR * 0.45, -headR * 0.04], [headR * 1.04, headR * 0.66, headR * 1.06])
     part(body, 'box', cap, [0, headY + headR * 0.5, headR * 0.98], [headR * 1.3, headR * 0.08, headR * 0.7])
   }
   return actor
@@ -364,9 +416,10 @@ function quadruped(actor: Actor, spec: Frame) {
     [0, bodyY - spec.shoulder * 0.08, half * 0.38],
     [spec.shoulder * 0.36, spec.shoulder * 0.34, half * 0.42]
   )
+  const hip = bodyY - spec.shoulder * 0.08
   for (const side of [-1, 1])
     for (const end of [-1, 1]) {
-      const leg = group(body, [side * spec.shoulder * 0.24, bodyY - spec.shoulder * 0.08, end * half * 0.56])
+      const leg = group(body, [side * spec.shoulder * 0.24, hip, end * half * 0.56])
       const thick = spec.shoulder * (end < 0 ? 0.13 : 0.11)
       if (end < 0)
         part(
@@ -376,12 +429,15 @@ function quadruped(actor: Actor, spec: Frame) {
           [0, -legLength * 0.1, -thick * 0.2],
           [thick * 1.3, legLength * 0.36, thick * 1.6]
         )
-      part(leg, 'capsule', spec.legColor ?? spec.coat, [0, -legLength * 0.55, 0], [thick, legLength * 0.55, thick])
+      // The paw rests on the ground and the leg ends inside it (any longer and it shows below the paw as a cuff).
+      const paw = thick * 0.75 - hip
+      const top = legLength * 0.17
+      part(leg, 'capsule', spec.legColor ?? spec.coat, [0, (top + paw) / 2, 0], [thick, (top - paw) / 3, thick])
       part(
         leg,
         'sphere',
         spec.paws ?? spec.legColor ?? spec.coat,
-        [0, -legLength * 1.02, thick * 0.5],
+        [0, paw, thick * 0.5],
         [thick * 1.25, thick * 0.75, thick * 1.6]
       )
       limbs.push(leg)
@@ -416,8 +472,12 @@ function cat(options: ModelOptions): Actor {
   const { bodyY, half, headY, headZ } = quadruped(actor, { length: 1.8, shoulder: 1, coat, belly, paws: belly })
   const { body, ears } = actor
   if (look.stripes)
-    for (let index = 0; index < 4; index++)
-      part(body, 'sphere', look.stripes, [0, bodyY + 0.06, -half * 0.55 + index * 0.32], [0.43, 0.33, 0.07])
+    for (let index = 0; index < 4; index++) {
+      // Bands just proud of the torso where they sit (it narrows toward both ends), showing on the back and flanks.
+      const z = -half * 0.55 + index * 0.32
+      const fit = Math.sqrt(1 - (z / (half * 0.82)) ** 2) * 1.02
+      part(body, 'sphere', look.stripes, [0, bodyY + 0.015, z], [0.42 * fit, 0.36 * fit, 0.07])
+    }
   look.patches?.forEach((color, index) =>
     part(body, 'sphere', color, [(index % 2 ? 1 : -1) * 0.22, bodyY + 0.1, -0.3 + index * 0.35], [0.26, 0.24, 0.32])
   )
@@ -811,9 +871,260 @@ function bird(kind: string, look: BirdLook, flyer: boolean): Actor {
   return actor
 }
 
+// ------------------------------------------------------------------ forest predators
+
+/** Coloured iris with a round or slit pupil and a catch-light, facing +z: the wild animals' eyes. */
+function wildEyes(parent: THREE.Object3D, [x, y, z]: V3, size: number, iris: string, slit = false) {
+  for (const side of [-1, 1]) {
+    part(parent, 'sphere', material(iris, { rough: 0.2 }), [side * x, y, z], [size, size * 0.9, size * 0.6])
+    part(
+      parent,
+      'sphere',
+      '#141012',
+      [side * x, y, z + size * 0.5],
+      slit ? [size * 0.22, size * 0.8, size * 0.15] : [size * 0.5, size * 0.55, size * 0.15]
+    )
+    part(
+      parent,
+      'sphere',
+      material('#ffffff', { glow: 0.4, rough: 0.3 }),
+      [side * x - size * 0.3, y + size * 0.35, z + size * 0.55],
+      [size * 0.2, size * 0.2, size * 0.1]
+    )
+  }
+}
+
+/** Red fox: slim, long pointed snout, big black-backed ears, dark socks and a bushy white-tipped tail. */
+function fox(): Actor {
+  const coat = '#d9773a'
+  const cream = '#f6ead8'
+  const dark = '#3a2a25'
+  const actor = rig('fox', 2)
+  const { bodyY, half, headY, headZ } = quadruped(actor, {
+    length: 1.9,
+    shoulder: 0.95,
+    coat,
+    belly: cream,
+    paws: dark
+  })
+  const { body, ears, limbs } = actor
+  // Black stockings on the lower legs (limbs alternate back, front).
+  limbs.forEach((leg, index) => {
+    const thick = index % 2 ? 0.11 : 0.13
+    part(leg, 'capsule', dark, [0, -0.48, 0], [thick, 0.12, thick])
+  })
+  part(body, 'sphere', coat, [0, headY - 0.2, headZ - 0.24], [0.23, 0.28, 0.25])
+  part(body, 'sphere', cream, [0, headY - 0.33, headZ - 0.1], [0.18, 0.2, 0.14])
+  const head = group(body, [0, headY, headZ])
+  part(head, 'sphere', coat, [0, 0, 0], [0.29, 0.25, 0.27])
+  for (const side of [-1, 1]) part(head, 'sphere', cream, [side * 0.15, -0.1, 0.07], [0.15, 0.11, 0.14])
+  part(head, 'cone', coat, [0, -0.03, 0.31], [0.12, 0.36, 0.1], [Math.PI / 2, 0, 0])
+  part(head, 'cone', cream, [0, -0.08, 0.29], [0.1, 0.32, 0.07], [Math.PI / 2, 0, 0])
+  part(head, 'sphere', '#1d1d1f', [0, -0.03, 0.48], [0.045, 0.04, 0.04])
+  wildEyes(head, [0.12, 0.05, 0.21], 0.06, '#e3a43a', true)
+  for (const side of [-1, 1]) {
+    const ear = group(head, [side * 0.15, 0.18, -0.04])
+    ear.rotation.z = -side * 0.22
+    part(ear, 'ear', dark, [0, 0.16, -0.015], [0.15, 0.36, 0.07], [0, Math.PI / 4, 0])
+    part(ear, 'ear', coat, [0, 0.14, 0.01], [0.13, 0.31, 0.06], [0, Math.PI / 4, 0])
+    part(ear, 'ear', cream, [0, 0.11, 0.035], [0.08, 0.2, 0.03], [0, Math.PI / 4, 0])
+    ears.push(ear)
+  }
+  const tail = group(body, [0, bodyY + 0.08, -half * 0.8])
+  part(tail, 'sphere', coat, [0, -0.06, -0.34], [0.17, 0.17, 0.42], [0.3, 0, 0])
+  part(tail, 'sphere', coat, [0, -0.2, -0.64], [0.23, 0.23, 0.42], [0.3, 0, 0])
+  part(tail, 'sphere', cream, [0, -0.3, -0.96], [0.16, 0.16, 0.22], [0.3, 0, 0])
+  actor.tail = tail
+  return actor
+}
+
+/** Grey wolf: big and rangy, a shaggy ruff, dark saddle, long muzzle under a heavy brow, yellow eyes. */
+function wolf(options: ModelOptions): Actor {
+  const coat = ['#7f93a8', '#8b97a1', '#73808f'][hashOf(options.id ?? '') % 3]
+  const light = '#dfe3e8'
+  const saddle = '#4d5a68'
+  const actor = rig('wolf', 2.6)
+  const { bodyY, half, headY, headZ } = quadruped(actor, { length: 2.3, shoulder: 1.3, coat, belly: light })
+  const { body, ears } = actor
+  part(body, 'sphere', saddle, [0, bodyY + 0.2, -0.2], [0.4, 0.3, 0.8])
+  part(body, 'sphere', coat, [0, bodyY + 0.12, half * 0.5], [0.49, 0.49, 0.43])
+  part(body, 'sphere', light, [0, bodyY + 0.02, half * 0.74], [0.36, 0.42, 0.3])
+  part(body, 'sphere', coat, [0, headY - 0.24, headZ - 0.3], [0.32, 0.36, 0.34])
+  const head = group(body, [0, headY, headZ])
+  part(head, 'sphere', coat, [0, 0, 0], [0.35, 0.3, 0.33])
+  for (const side of [-1, 1]) part(head, 'sphere', light, [side * 0.22, -0.12, 0.02], [0.19, 0.16, 0.18])
+  part(head, 'frustum', coat, [0, -0.06, 0.36], [0.15, 0.46, 0.12], [Math.PI / 2, 0, 0])
+  part(head, 'frustum', light, [0, -0.13, 0.34], [0.13, 0.42, 0.07], [Math.PI / 2, 0, 0])
+  part(head, 'sphere', '#1b1b1d', [0, -0.02, 0.58], [0.065, 0.05, 0.05])
+  wildEyes(head, [0.13, 0.07, 0.24], 0.06, '#e8c13c')
+  for (const side of [-1, 1]) {
+    part(head, 'box', saddle, [side * 0.13, 0.13, 0.25], [0.15, 0.04, 0.08], [0, 0, side * 0.3])
+    const ear = group(head, [side * 0.19, 0.2, -0.08])
+    ear.rotation.z = -side * 0.12
+    part(ear, 'ear', coat, [0, 0.13, 0], [0.13, 0.28, 0.07], [0, Math.PI / 4, 0])
+    part(ear, 'ear', light, [0, 0.11, 0.03], [0.07, 0.17, 0.03], [0, Math.PI / 4, 0])
+    ears.push(ear)
+  }
+  const tail = group(body, [0, bodyY + 0.12, -half * 0.84])
+  part(tail, 'sphere', coat, [0, -0.18, -0.3], [0.17, 0.17, 0.44], [-0.75, 0, 0])
+  part(tail, 'sphere', coat, [0, -0.42, -0.5], [0.21, 0.21, 0.38], [-0.85, 0, 0])
+  part(tail, 'sphere', saddle, [0, -0.64, -0.64], [0.14, 0.14, 0.2], [-0.85, 0, 0])
+  actor.tail = tail
+  return actor
+}
+
+/** Red-tailed hawk in flight: broad wings with dark fingered primaries, pale breast, rufous tail, hooked beak. */
+function hawk(): Actor {
+  const brown = '#986449'
+  const dark = '#553828'
+  const cream = '#f1e6cf'
+  const gold = '#e9b93c'
+  const actor = rig('hawk', 1.9)
+  const { body, limbs } = actor
+  part(body, 'sphere', brown, [0, 0.62, 0], [0.28, 0.27, 0.62])
+  part(body, 'sphere', cream, [0, 0.53, 0.16], [0.235, 0.21, 0.44])
+  const head = group(body, [0, 0.8, 0.52])
+  part(head, 'sphere', brown, [0, 0, 0], [0.19, 0.18, 0.23])
+  part(head, 'sphere', cream, [0, -0.09, 0.07], [0.16, 0.11, 0.16])
+  part(head, 'sphere', gold, [0, 0, 0.2], [0.075, 0.06, 0.06])
+  part(head, 'cone', '#3b3534', [0, -0.03, 0.27], [0.06, 0.15, 0.05], [Math.PI / 2 + 0.6, 0, 0])
+  wildEyes(head, [0.12, 0.04, 0.15], 0.05, '#e9a53c')
+  for (const side of [-1, 1]) {
+    part(head, 'box', dark, [side * 0.12, 0.09, 0.15], [0.11, 0.03, 0.08], [0, 0, side * 0.25])
+    // Wings flap on z about the shoulder: inner wing, pale underside, dark hand and fanned primaries.
+    const wing = group(body, [side * 0.26, 0.7, 0.06])
+    part(wing, 'sphere', brown, [side * 0.46, 0, 0], [0.52, 0.06, 0.33])
+    part(wing, 'sphere', cream, [side * 0.46, -0.035, -0.02], [0.48, 0.035, 0.3])
+    part(wing, 'sphere', dark, [side * 0.98, -0.005, -0.05], [0.34, 0.045, 0.27])
+    for (let feather = 0; feather < 4; feather++)
+      part(
+        wing,
+        'sphere',
+        dark,
+        [side * (1.26 + feather * 0.04), -0.01, 0.06 - feather * 0.12],
+        [0.28, 0.03, 0.06],
+        [0, side * (0.35 - feather * 0.22), 0]
+      )
+    limbs.push(wing)
+  }
+  // Rufous fan tail with a dark band; feet tucked under the body.
+  const tail = group(body, [0, 0.64, -0.5])
+  for (const fan of [-1, 0, 1])
+    part(tail, 'sphere', '#b8582f', [fan * 0.09, 0, -0.3], [0.11, 0.03, 0.34], [0, fan * 0.28, 0])
+  part(tail, 'box', dark, [0, 0.02, -0.5], [0.34, 0.025, 0.05])
+  for (const side of [-1, 1]) part(body, 'sphere', gold, [side * 0.1, 0.36, -0.14], [0.05, 0.05, 0.1])
+  actor.tail = tail
+  return actor
+}
+
+/** Green rat snake: a tapering ten-joint chain with dark blotches, raised head, slit eyes and a forked tongue. */
+function snake(): Actor {
+  const scales = '#7f9e50'
+  const blotch = '#4f6a35'
+  const actor = rig('snake', 1.1)
+  const radii = [0.17, 0.2, 0.215, 0.215, 0.205, 0.19, 0.17, 0.145, 0.115, 0.085]
+  let parent: THREE.Object3D = actor.body
+  radii.forEach((radius, index) => {
+    const joint = group(parent, [0, 0, index === 0 ? 0 : -0.25])
+    // Round-capped capsules three radii long overlap their neighbours, so the body reads as one smooth tube.
+    part(joint, 'capsule', scales, [0, radius, -0.125], [radius, radius, radius * 0.85], [Math.PI / 2, 0, 0])
+    if (index % 2) part(joint, 'sphere', blotch, [0, radius * 1.65, -0.125], [radius * 0.6, radius * 0.3, 0.12])
+    if (index === radii.length - 1)
+      part(joint, 'cone', scales, [0, radius * 0.9, -0.35], [radius * 0.9, 0.36, radius * 0.75], [-Math.PI / 2, 0, 0])
+    actor.limbs.push(joint)
+    parent = joint
+  })
+  const head = group(actor.limbs[0], [0, 0.3, 0.24])
+  head.rotation.x = -0.15
+  part(actor.limbs[0], 'sphere', scales, [0, 0.24, 0.12], [0.16, 0.16, 0.2])
+  part(head, 'sphere', scales, [0, 0, 0], [0.22, 0.14, 0.28])
+  part(head, 'sphere', '#e8e2a8', [0, -0.06, 0.03], [0.17, 0.08, 0.24])
+  part(head, 'sphere', blotch, [0, 0.09, -0.05], [0.13, 0.06, 0.15])
+  for (const side of [-1, 1]) {
+    part(head, 'sphere', scales, [side * 0.11, 0.07, 0.08], [0.07, 0.05, 0.08])
+    part(head, 'sphere', '#1b1b1b', [side * 0.05, 0.03, 0.245], [0.015, 0.012, 0.012])
+    part(head, 'sharp', '#d43a4a', [side * 0.018, -0.05, 0.43], [0.012, 0.008, 0.07], [0, side * 0.45, 0])
+  }
+  wildEyes(head, [0.13, 0.05, 0.1], 0.045, '#e3c23a', true)
+  part(head, 'sharp', '#d43a4a', [0, -0.05, 0.33], [0.018, 0.008, 0.16])
+  return actor
+}
+
+/** Crocodile floating with eyes, nostrils and back scutes above the waterline; jaws lined with teeth. */
+function crocodile(): Actor {
+  const hide = '#5f8a68'
+  const ridge = '#41644a'
+  const belly = '#d3d1a2'
+  const actor = rig('crocodile', 1.4)
+  const { body, limbs } = actor
+  part(body, 'sphere', hide, [0, 0.3, 0], [0.55, 0.25, 0.95])
+  part(body, 'sphere', belly, [0, 0.2, 0.05], [0.5, 0.16, 0.85])
+  for (let index = 0; index < 6; index++)
+    for (const side of [-1, 1])
+      part(
+        body,
+        'cone',
+        ridge,
+        [side * 0.16, 0.54 - Math.abs(index - 2.5) * 0.02, 0.62 - index * 0.25],
+        [0.07, 0.12, 0.1]
+      )
+  part(body, 'sphere', hide, [0, 0.3, 0.86], [0.42, 0.22, 0.36])
+  const head = group(body, [0, 0.3, 1.02])
+  part(head, 'box', hide, [0, 0.03, 0.04], [0.5, 0.24, 0.4])
+  part(head, 'box', hide, [0, 0, 0.56], [0.36, 0.14, 0.76])
+  part(head, 'box', belly, [0, -0.1, 0.5], [0.34, 0.08, 0.72])
+  part(head, 'sphere', hide, [0, 0.07, 0.87], [0.12, 0.06, 0.08])
+  for (const side of [-1, 1]) {
+    part(head, 'sphere', '#1d2a20', [side * 0.04, 0.12, 0.88], [0.02, 0.012, 0.02])
+    for (let index = 0; index < 5; index++)
+      part(head, 'cone', '#fbf8ea', [side * 0.16, -0.08, 0.3 + index * 0.13], [0.025, 0.07, 0.025], [Math.PI, 0, 0])
+    part(head, 'sphere', hide, [side * 0.15, 0.16, -0.03], [0.1, 0.09, 0.1])
+  }
+  wildEyes(head, [0.15, 0.19, 0.04], 0.055, '#e2c044', true)
+  for (const side of [-1, 1])
+    for (const end of [-1, 1]) {
+      const leg = group(body, [side * 0.45, 0.26, end * 0.5])
+      part(leg, 'sphere', hide, [side * 0.1, -0.04, 0], [0.16, 0.13, 0.18])
+      part(leg, 'capsule', hide, [side * 0.2, -0.13, 0.02], [0.08, 0.06, 0.08])
+      part(leg, 'sphere', hide, [side * 0.24, -0.24, 0.08], [0.13, 0.04, 0.16])
+      limbs.push(leg)
+    }
+  const tail = group(body, [0, 0.3, -0.85])
+  // One long flattened cone from inside the body to the tip, with a ridge of scutes along its top.
+  part(tail, 'cone', hide, [0, 0, -0.75], [0.4, 2.3, 0.22], [-Math.PI / 2, 0, 0])
+  for (let index = 0; index < 5; index++) {
+    const z = -0.2 - index * 0.34
+    const taper = (z + 1.9) / 2.3
+    part(tail, 'cone', ridge, [0, 0.22 * taper + 0.02, z], [0.07 * taper, 0.13 * taper, 0.09 * taper])
+  }
+  actor.tail = tail
+  return actor
+}
+
+/** One vertex-coloured material per finish (roughness, metalness) for the merged parts of every model. */
+const painted = new Map<string, THREE.MeshStandardMaterial>()
+function paintFor(source: THREE.Material): THREE.Material {
+  const standard = source as THREE.MeshStandardMaterial
+  // Glowing parts keep their own material: the emissive colour cannot vary per vertex.
+  if (!standard.isMeshStandardMaterial || standard.emissive.getHex() !== 0) return source
+  const key = `${standard.roughness}:${standard.metalness}`
+  let found = painted.get(key)
+  if (!found)
+    painted.set(
+      key,
+      (found = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: standard.roughness,
+        metalness: standard.metalness
+      }))
+    )
+  return found
+}
+
 /**
- * Merges the parts of each rigid group (the body, every limb, ear and tail joint) that share a material into one
- * mesh, so a person costs about a dozen draw calls instead of forty-odd. Joints stay separate so they still move.
+ * Merges the parts of each rigid group (the body, every limb, ear and tail joint) into one vertex-coloured mesh per
+ * finish, so a person or animal costs a handful of draw calls however many colours it wears. Joints stay separate so
+ * they still move.
  */
 function compact<T extends THREE.Object3D>(root: T): T {
   root.traverse((node) => {
@@ -821,16 +1132,26 @@ function compact<T extends THREE.Object3D>(root: T): T {
     for (const child of node.children) {
       const mesh = child as THREE.Mesh
       if (!mesh.isMesh || mesh.children.length || Array.isArray(mesh.material) || mesh.material === BEAM) continue
-      const list = byMaterial.get(mesh.material)
+      const target = paintFor(mesh.material)
+      const list = byMaterial.get(target)
       if (list) list.push(mesh)
-      else byMaterial.set(mesh.material, [mesh])
+      else byMaterial.set(target, [mesh])
     }
     for (const [shared, meshes] of byMaterial) {
       if (meshes.length < 2) continue
       const parts = meshes.map((mesh) => {
         mesh.updateMatrix()
-        const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
-        return geometry.applyMatrix4(mesh.matrix)
+        // Indexed, so shared vertices are shaded once (the extruded car cabin gets a trivial index).
+        const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrix)
+        if (!geometry.index) geometry.setIndex([...Array(geometry.attributes.position.count).keys()])
+        if (shared !== mesh.material) {
+          // Bake the part's colour (already linear) into the merged mesh.
+          const { r, g, b } = (mesh.material as THREE.MeshStandardMaterial).color
+          const colors = new Float32Array(geometry.attributes.position.count * 3)
+          for (let index = 0; index < colors.length; index += 3) colors.set([r, g, b], index)
+          geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+        }
+        return geometry
       })
       const merged = new THREE.Mesh(mergeGeometries(parts), shared)
       parts.forEach((part) => part.dispose())
@@ -861,6 +1182,16 @@ function buildRig(kind: string, options: ModelOptions = {}): Actor | undefined {
       return toad(options)
     case 'turtle':
       return turtle(options)
+    case 'fox':
+      return fox()
+    case 'wolf':
+      return wolf(options)
+    case 'hawk':
+      return hawk()
+    case 'snake':
+      return snake()
+    case 'crocodile':
+      return crocodile()
     case 'crow':
       return bird(
         kind,
@@ -929,7 +1260,7 @@ export function buildModel(kind: string, options: ModelOptions = {}): Actor | un
 export function buildCar(color: string, length = 16, width = 6.5, height = 5.5): THREE.Group {
   const car = new THREE.Group()
   const paint = material(color, { rough: 0.35, metal: 0.2 })
-  const glass = material('#253545', { rough: 0.1, metal: 0.4 })
+  const glass = material('#33495a', { rough: 0.1, metal: 0.4 })
   const deck = 0.9
   // Tall vehicles get a boxy kei-van cabin, others a sedan's.
   const boxy = height > 5.8
@@ -938,15 +1269,19 @@ export function buildCar(color: string, length = 16, width = 6.5, height = 5.5):
   part(car, 'box', paint, [0, deck + lower / 2, 0], [width, lower, length])
   const cabinLength = length * (boxy ? 0.74 : 0.52)
   const cabinZ = -length * (boxy ? 0.08 : 0.05)
-  part(car, 'box', paint, [0, deck + lower + cabin / 2, cabinZ], [width * (boxy ? 0.94 : 0.86), cabin, cabinLength])
-  // Windows: a glass band showing on all four sides of the cabin.
+  const shape = boxy ? 'van' : 'sedan'
+  const [front, rear] = CABINS[shape]
+  const roofZ = cabinZ + ((rear - front) * cabinLength) / 2
+  // Glass all round (sloped windscreen and rear window) under a painted roof, split by the centre pillars.
+  part(car, shape, glass, [0, deck + lower, cabinZ], [width * 0.86, cabin, cabinLength])
   part(
     car,
     'box',
-    glass,
-    [0, deck + lower + cabin * 0.5, cabinZ],
-    [width * (boxy ? 0.955 : 0.875), cabin * 0.55, cabinLength * 1.02]
+    paint,
+    [0, deck + lower + cabin, roofZ],
+    [width * 0.88, 0.32, cabinLength * (1 - front - rear) + 0.4]
   )
+  part(car, 'sharp', paint, [0, deck + lower + cabin / 2, roofZ], [width * 0.875, cabin, 0.45])
   for (const side of [-1, 1])
     for (const end of [-1, 1]) {
       part(car, 'wheel', '#1b1c1e', [side * width * 0.46, 1.25, end * length * 0.32], [0.9, 1.25, 1.25])

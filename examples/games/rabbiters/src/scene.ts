@@ -392,119 +392,13 @@ export class RabbitersScene {
   private character(kind: string, tint = '#ffffff', id = '', marked = true): Actor {
     if (kind === 'rabbit') return this.rabbit(tint)
     if (kind === 'wildRabbit') return this.rabbit(tint, true)
-    // Ids pick named looks and extras: a `worker` carries a torch, a `walkdog-*` wears a lead.
-    const model = buildModel(kind, { ...variant(id), id, flashlight: id === 'worker', leash: id.startsWith('walkdog') })
-    if (model) {
-      if (marked) this.addMarker(model)
-      this.scene.add(model.root)
-      return model
-    }
-    const root = new THREE.Group()
-    const body = new THREE.Group()
-    root.add(body)
-    const actor: Actor = {
-      root,
-      body,
-      limbs: [],
-      ears: [],
-      kind,
-      x: NaN,
-      z: NaN,
-      moving: 0,
-      alertAt: -Infinity,
-      top: kind === 'snake' ? 1.4 : 2.3
-    }
-    const color =
-      (
-        {
-          fox: '#d77a3e',
-          wolf: '#7f94a4',
-          hawk: '#987052',
-          snake: '#8baf57',
-          crocodile: '#668c70'
-        } as Record<string, string>
-      )[kind] || '#987052'
-    if (kind === 'snake') {
-      let parent = body
-      for (let index = 0; index < 10; index++) {
-        const joint = new THREE.Group()
-        joint.position.z = index === 0 ? 0 : -0.25
-        parent.add(joint)
-        this.oval(joint, color, 0, 0.23, 0, 0.24 * (1 - index * 0.05), 0.2, 0.25)
-        actor.limbs.push(joint)
-        parent = joint
-      }
-    } else {
-      this.oval(body, color, 0, kind === 'hawk' ? 0.6 : 0.65, 0, 0.52, kind === 'crocodile' ? 0.3 : 0.5, 0.95)
-      if (kind === 'hawk') {
-        for (const side of [-1, 1]) {
-          const wing = new THREE.Group()
-          wing.position.set(side * 0.32, 0.7, 0)
-          body.add(wing)
-          for (let feather = 0; feather < 5; feather++)
-            this.oval(
-              wing,
-              feather % 2 ? '#654f45' : color,
-              side * (0.3 + feather * 0.2),
-              0,
-              -feather * 0.1,
-              0.4,
-              0.09,
-              0.65
-            )
-          actor.limbs.push(wing)
-        }
-      } else {
-        for (const side of [-1, 1])
-          for (const end of [-1, 1]) {
-            const leg = new THREE.Group()
-            leg.position.set(side * 0.34, 0.48, end * 0.55)
-            body.add(leg)
-            this.oval(leg, color, 0, -0.2, 0.08, 0.16, 0.28, 0.23)
-            actor.limbs.push(leg)
-          }
-      }
-      const tail = new THREE.Group()
-      tail.position.set(0, 0.6, -0.6)
-      body.add(tail)
-      this.oval(tail, kind === 'fox' ? '#f4e8d1' : color, 0, 0, -0.5, 0.25, 0.23, 0.8)
-      actor.tail = tail
-    }
-    const headHeight = kind === 'hawk' ? 1 : kind === 'snake' ? 0.27 : kind === 'crocodile' ? 0.45 : 0.95
-    const headZ = kind === 'snake' ? 0.2 : 0.75
-    this.oval(body, color, 0, headHeight, headZ, 0.36, 0.35, 0.39)
-    if (kind === 'crocodile') this.oval(body, '#99ab76', 0, headHeight - 0.1, 1.2, 0.33, 0.18, 0.65)
-    if (kind === 'fox' || kind === 'wolf') this.oval(body, '#e6ddc6', 0, headHeight - 0.12, 1.04, 0.23, 0.19, 0.36)
-    for (const side of [-1, 1]) {
-      this.oval(body, '#23353b', side * 0.23, headHeight + 0.08, headZ + 0.27, 0.065, 0.08, 0.045)
-      this.oval(body, '#ffffff', side * 0.23 - 0.012, headHeight + 0.105, headZ + 0.31, 0.018, 0.023, 0.012)
-      if (kind === 'fox' || kind === 'wolf') {
-        const ear = new THREE.Group()
-        ear.position.set(side * 0.2, headHeight + 0.23, headZ - 0.05)
-        ear.rotation.z = -side * 0.18
-        body.add(ear)
-        this.oval(ear, color, 0, 0.2, 0, 0.13, 0.25, 0.12)
-        this.oval(ear, '#d89d9b', 0, 0.21, 0.09, 0.065, 0.13, 0.035)
-        actor.ears.push(ear)
-      }
-    }
-    if (kind === 'hawk') {
-      const beak = this.mesh(body, new THREE.ConeGeometry(0.15, 0.4, 5), '#e6b553', 0, headHeight - 0.05, 1.1)
-      beak.rotation.x = Math.PI / 2
-    } else
-      this.oval(
-        body,
-        '#344342',
-        0,
-        headHeight - 0.05,
-        kind === 'fox' || kind === 'wolf' ? 1.35 : headZ + 0.36,
-        0.08,
-        0.055,
-        0.06
-      )
-    this.addMarker(actor)
-    this.scene.add(root)
-    return actor
+    // Ids pick named looks and extras: a `worker` carries a torch, a `walkdog-*` wears a lead. A kind this client
+    // does not know yet (a newer host's) borrows the fox's body.
+    const options = { ...variant(id), id, flashlight: id === 'worker', leash: id.startsWith('walkdog') }
+    const model = buildModel(kind, options) ?? buildModel('fox', options)!
+    if (marked) this.addMarker(model)
+    this.scene.add(model.root)
+    return model
   }
 
   /** "?" / "!" sprites and the suspicion meter over a predator. */
