@@ -1,16 +1,20 @@
-import { damage, distance, key, reachable, size, type Game, type Unit } from './game'
+import { damage, distance, enemyActionPositions, key, size, type Game, type Unit } from './game'
+
+export function enemyThreat(game: Game, enemy: Unit): Set<string> {
+  const result = new Set<string>()
+  for (const position of enemyActionPositions(game, enemy).keys()) {
+    const [x, y] = position.split(',').map(Number)
+    for (let row = 0; row < size; row++)
+      for (let column = 0; column < size; column++)
+        if (distance({ x, y }, { x: column, y: row }) <= enemy.range) result.add(key(column, row))
+  }
+  return result
+}
 
 export function dangerZone(game: Game): Set<string> {
   const result = new Set<string>()
   for (const enemy of game.units.filter((unit) => unit.side === 'enemy' && unit.hp > 0)) {
-    // Holding enemies never move, so only their own cell projects reach.
-    const positions = enemy.ai === 'hold' ? [key(enemy.x, enemy.y)] : [...reachable(game, enemy).keys()]
-    for (const position of positions) {
-      const [x, y] = position.split(',').map(Number)
-      for (let row = 0; row < size; row++)
-        for (let column = 0; column < size; column++)
-          if (distance({ x, y }, { x: column, y: row }) <= enemy.range) result.add(key(column, row))
-    }
+    for (const cell of enemyThreat(game, enemy)) result.add(cell)
   }
   return result
 }
