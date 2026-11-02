@@ -6,7 +6,7 @@ Independent, local, single-player tactical example: lantern wardens cross six fr
 
 The prologue, chapter title cards, introductions and victory scenes use the characters' runtime names and rendered 3D portraits. Lines belonging to fallen allies are omitted; the ending remembers fallen allies by their runtime names. Tap or press Enter/Space to complete and advance a line; the skip button or Escape closes the scene. Reduced motion disables type-on and title animation. `setStoryEnabled` in `src/dialogue.ts` is the integration point for a future setting. Credits identify the repository's owner-provided models and music and generated sound effects; they do not imply additional asset rights.
 
-The script covers six planned chapters, including Luka's chapter-four introduction and the final dragon encounter. This checkout still implements only three battles: chapter-four onward, the epilogue and credits are intentionally unreachable until the six-chapter campaign is merged. The six-chapter integration must retain the start and victory hooks and populate the current roster with Luka. The story roster remembers runtime names during this browser session and restores its chapter-start history on replay.
+The six-chapter campaign includes Luka's chapter-four introduction and the final dragon encounter. The story roster remembers runtime names during this browser session and restores its chapter-start history on replay.
 
 Story checks: `npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1` and `E2E_PORT=5271 npx playwright test --config examples/games/ember-grid/playwright.config.ts`. Story screenshots are saved under `test-results/story-*.png`.
 
@@ -79,6 +79,8 @@ Settings are stored under `ember-grid:settings:v1`: BGM/SFX volume, battle speed
 Later missions add one HP to every enemy, which carried growth offsets.
 
 ## Assets and sound
+
+The title quietly reuses the first battle track, beginning only after the first gesture. Battle music stops for the report; synthesized victory, defeat and final-chapter motifs follow the SFX volume and quick mute. Screen changes fade without intercepting input; reduced motion skips the fade. If WebGL is lost, battle input is suspended with a notice until three.js restores its resources and the stage resynchronizes.
 
 Units are the existing published rigged glTF models of the tower-defense game, loaded through its model catalog, `ModelAssetCache` and `ModelUnitVisual` actor (with their material/skinning adapters, foot separation and gait correction); no model, texture or animation byte is changed and no sprite sheet is used. The preparation overlay loads the deployed roles' motions and sounds. Geometry and textures are shared between actors; each actor owns its skeleton and material clones, and rigs are shader-compiled in the background. Failed requests leave battle input disabled and offer retry; successful sources stay cached. Idle units breathe at half frame rate (frozen under reduced motion); presentations render at full rate. The chapter report renders each ally's idle pose from its own model. No new public assets are added.
 

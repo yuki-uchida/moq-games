@@ -1,6 +1,11 @@
 /** Reuses only owner-approved public recordings; never creates or modifies assets. */
 const storageKey = 'ember-grid:sound'
 import { bgmVolume, sfxVolume } from './settings'
+export const jingleNotes = {
+  defeat: [392, 330, 262],
+  victory: [523, 659, 784],
+  final: [523, 659, 784, 1047]
+} as const
 function storedEnabled() {
   try {
     return localStorage.getItem(storageKey) !== 'off'
@@ -11,6 +16,10 @@ function storedEnabled() {
 export class ExpeditionAudio {
   enabled = storedEnabled()
   private battle = true
+  private unlocked = false
+  private context?: AudioContext
+  private jingleGain?: GainNode
+  private title = true
   readonly music = new Audio(`${import.meta.env.BASE_URL}tower-defense-music/monster-assault.mp3`)
   private sounds = new Map<string, string>()
   private preparedVoices = new Map<string, HTMLAudioElement>()
@@ -25,6 +34,7 @@ export class ExpeditionAudio {
     const unlock = () => {
       removeEventListener('pointerdown', unlock, true)
       removeEventListener('keydown', unlock, true)
+      this.unlocked = true
       this.start()
     }
     addEventListener('pointerdown', unlock, true)
@@ -85,10 +95,15 @@ export class ExpeditionAudio {
     return this.enabled
   }
   applySettings() {
-    this.music.volume = 0.07 * bgmVolume()
+    this.music.volume = (this.title ? 0.025 : 0.07) * bgmVolume()
+    if (this.jingleGain) this.jingleGain.gain.value = this.enabled ? sfxVolume() : 0
     this.voices.forEach((voice) => {
       voice.volume = Number(voice.dataset.baseVolume) * sfxVolume()
     })
+  }
+  setTitle(title: boolean) {
+    this.title = title
+    this.applySettings()
   }
   setBattle(active: boolean) {
     if (this.battle === active) return
@@ -97,13 +112,39 @@ export class ExpeditionAudio {
     else this.stop()
   }
   start() {
-    if (this.enabled && this.battle && this.music.paused)
+    if (this.unlocked && this.enabled && this.battle && this.music.paused)
       void this.music.play().catch((error: Error) => {
         if (error.name !== 'AbortError') this.report('音を再生できません。♫ を再度押してください')
       })
   }
+  jingle(kind: 'victory' | 'defeat' | 'final') {
+    if (!this.enabled || !this.unlocked || !sfxVolume()) return
+    this.context ??= new AudioContext()
+    void this.context.resume()
+    this.jingleGain?.disconnect()
+    this.jingleGain = this.context.createGain()
+    this.jingleGain.gain.value = sfxVolume()
+    this.jingleGain.connect(this.context.destination)
+    const notes = jingleNotes[kind]
+    const now = this.context.currentTime
+    notes.forEach((frequency, index) => {
+      const oscillator = this.context!.createOscillator()
+      const gain = this.context!.createGain()
+      const start = now + index * 0.13
+      oscillator.type = 'triangle'
+      oscillator.frequency.value = frequency
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(0.1, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.24)
+      oscillator.connect(gain).connect(this.jingleGain!)
+      oscillator.start(start)
+      oscillator.stop(start + 0.25)
+    })
+    this.music.dataset.jingle = kind
+  }
   stop() {
     this.music.pause()
+    if (this.jingleGain) this.jingleGain.gain.value = 0
     this.voices.forEach((v) => {
       v.pause()
       v.remove()

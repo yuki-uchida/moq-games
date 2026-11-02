@@ -142,3 +142,33 @@
     animation: none;
   }
 }
+.screen-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #101321;
+  pointer-events: none;
+  animation: screen-transition 350ms ease-out forwards;
+}
+
+@keyframes screen-transition {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.context-notice:not([hidden]) {
+  position: fixed;
+  z-index: 1001;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.8rem 1rem;
+  color: #fff;
+  background: #252638;
+  border: 1px solid #e8c880;
+  border-radius: 0.5rem;
+}

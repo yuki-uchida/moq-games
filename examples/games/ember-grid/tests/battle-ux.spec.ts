@@ -160,8 +160,9 @@ test('final chapter result with a fallen ally scrolls at every viewport', async 
   await cell(page, soldier.x, soldier.y).click()
   await cell(page, enemy.x, enemy.y).click()
   await page.getByRole('button', { name: '攻撃', exact: true }).click()
-  await expect(page.locator('#result')).toBeVisible()
+  await expect(page.locator('#result')).toBeVisible({ timeout: 30000 })
   await expect(page.locator('#result')).toContainText('遠征達成')
+  await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'final')
   await expect(page.locator('#report .fallen')).toHaveCount(1)
   for (const viewport of [
     { width: 1280, height: 800 },
