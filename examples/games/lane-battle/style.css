@@ -400,16 +400,56 @@ dialog p {
   height: 44px;
 }
 #stages {
-  display: grid;
-  grid-template-columns: repeat(15, 1fr);
-  gap: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  overflow-x: auto;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: #3a1e0b;
+  scroll-snap-type: x proximity;
+}
+#stages > * {
+  position: relative;
+  flex: none;
+  scroll-snap-align: center;
+}
+/* dotted road between nodes */
+#stages > * + *::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 22px;
+  border-top: 3px dotted #c98a4b;
 }
 #stages button {
-  min-height: 34px;
-  padding: 0;
-  font-size: 12px;
-  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  width: 86px;
+  min-height: 58px;
+  padding: 4px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--area) 35%, #5a361a);
+}
+#stages button b {
+  font-size: 16px;
+}
+#stages button small {
+  font-size: 10px;
+  line-height: 1.2;
+}
+#stages .sealed {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 2px dashed #a06a3c;
+  color: #a06a3c;
+  font-size: 24px;
+  font-weight: bold;
 }
 #stages button[aria-pressed='true'] {
   outline: 3px solid #ffd166;
@@ -499,9 +539,6 @@ button.link {
   text-decoration: underline;
 }
 @media (max-width: 600px) {
-  #stages {
-    grid-template-columns: repeat(10, 1fr);
-  }
   .sheet {
     padding: 16px 14px 6px;
   }

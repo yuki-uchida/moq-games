@@ -134,24 +134,35 @@ $('close').onclick = () => start(selected)
 const enemyNames = (stage) => [...new Set(stage.pattern)].map((i) => ENEMIES[i].name).join('・')
 function renderStages() {
   $('progress').textContent = `${campaign.cleared} / ${STAGES.length} クリア`
-  $('stages').replaceChildren(
-    ...STAGES.map((stage, i) => {
-      const b = document.createElement('button')
-      const best = campaign.records[i]
-      b.dataset.sfx = 'select'
-      b.dataset.area = stage.area
-      b.style.setProperty('--area', stage.color)
-      b.textContent = `${i + 1}${Number.isFinite(best) ? '★' : ''}`
-      b.disabled = i > campaign.cleared
-      b.setAttribute('aria-label', `ステージ${i + 1} ${stage.sub}${b.disabled ? '（未解放）' : ''}`)
-      b.setAttribute('aria-pressed', String(i === selected))
-      b.onclick = () => {
-        selected = i
-        renderStages()
-      }
-      return b
-    })
-  )
+  // Battle-map style: only reached stages are shown, plus one sealed "？" ahead of the frontier.
+  const open = STAGES.slice(0, campaign.cleared + 1).map((stage, i) => {
+    const b = document.createElement('button')
+    const best = campaign.records[i]
+    b.dataset.sfx = 'select'
+    b.dataset.area = stage.area
+    b.style.setProperty('--area', stage.color)
+    b.innerHTML = `<b>${i + 1}${Number.isFinite(best) ? '★' : ''}</b><small>${stage.sub}</small>`
+    b.setAttribute('aria-label', `ステージ${i + 1} ${stage.sub}`)
+    b.setAttribute('aria-pressed', String(i === selected))
+    b.onclick = () => {
+      selected = i
+      renderStages()
+    }
+    return b
+  })
+  const next = campaign.cleared + 1 < STAGES.length ? document.createElement('span') : null
+  if (next) {
+    next.className = 'sealed'
+    next.textContent = '？'
+    next.setAttribute('aria-label', '未解放のステージ')
+  }
+  $('stages').replaceChildren(...open, ...(next ? [next] : []))
+  // After the dialog lays out, centre the selected node on the road.
+  requestAnimationFrame(() => {
+    const road = $('stages'),
+      node = road.querySelector('[aria-pressed="true"]')
+    if (node) road.scrollLeft = node.offsetLeft - (road.clientWidth - node.offsetWidth) / 2
+  })
   const stage = STAGES[selected],
     best = campaign.records[selected]
   $('stage-info').textContent =
