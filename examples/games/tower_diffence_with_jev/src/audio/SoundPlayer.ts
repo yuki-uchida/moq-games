@@ -36,6 +36,8 @@ export interface SoundPlayerDiagnostics extends SoundPlayerStatus {
   played: number
   dropped: number
   recentEventCount: number
+  /** Synthesized game-feel cues actually scheduled, by kind. */
+  feelPlayed: Partial<Record<FeelSound, number>>
 }
 
 interface SoundAsset {
@@ -74,6 +76,7 @@ export class SoundPlayer {
   private readonly recentEvents = new Set<string>()
   private readonly lastCueTime = new Map<string, number>()
   private readonly playFeelSound = createFeelPlayer()
+  private readonly feelPlayed: Partial<Record<FeelSound, number>> = {}
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -139,7 +142,8 @@ export class SoundPlayer {
       loading: this.activeLoads,
       played: this.played,
       dropped: this.dropped,
-      recentEventCount: this.recentEvents.size
+      recentEventCount: this.recentEvents.size,
+      feelPlayed: { ...this.feelPlayed }
     }
   }
 
@@ -269,7 +273,7 @@ export class SoundPlayer {
   playFeel(kind: FeelSound, param?: number): void {
     const context = this.context
     if (this.isDestroyed || !this.isEnabled || this.gainVolume === 0 || !context || !this.master) return
-    this.playFeelSound(kind, context, this.master, param)
+    if (this.playFeelSound(kind, context, this.master, param)) this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
   }
 
   private playCueAsset(key: string, asset: SoundAsset): void {
