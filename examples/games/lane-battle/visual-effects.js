@@ -183,9 +183,54 @@ export const HURT_VFX = {
       ctx.fill()
     }
   },
-  cleaner: emptyEffect,
-  yogurt: emptyEffect,
-  sayu: emptyEffect,
+  cleaner(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.2) return
+    ctx.globalAlpha = 1 - age / 0.2
+    ctx.strokeStyle = '#e8f6ff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(x - 15, y - 55 * aspect)
+    ctx.lineTo(x - 20 - age * 30, y - 62 * aspect)
+    ctx.moveTo(x + 15, y - 55 * aspect)
+    ctx.lineTo(x + 20 + age * 30, y - 62 * aspect)
+    ctx.stroke()
+  },
+  yogurt(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = '#ffffff'
+    for (let index = 0; index < 3; index++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        x + (index - 1) * (8 + age * 40),
+        y - (36 + age * 30 - index * 3) * aspect,
+        3,
+        4 * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+  },
+  sayu(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = '#d6f4ff'
+    for (let index = 0; index < 3; index++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        x + (index - 1) * (8 + age * 40),
+        y - (30 + age * 30 - index * 4) * aspect,
+        2.5,
+        4 * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+  },
   washiki: emptyEffect,
   mop: emptyEffect,
   yoshiki: emptyEffect,
@@ -442,9 +487,54 @@ export const DEATH_VFX = {
       ctx.fill()
     }
   },
-  cleaner: emptyEffect,
-  yogurt: emptyEffect,
-  sayu: emptyEffect,
+  cleaner(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age < 0.3 || age > 1.2) return
+    ctx.globalAlpha = Math.min(1, (age - 0.3) * 5, (1.2 - age) * 4)
+    ctx.fillStyle = '#ffe46a'
+    for (let index = 0; index < 3; index++) {
+      const angle = age * 7 + (index * Math.PI * 2) / 3
+      ctx.beginPath()
+      for (let point = 0; point < 10; point++) {
+        const ray = (point * Math.PI) / 5 - Math.PI / 2
+        const radius = point % 2 ? 1.5 : 4
+        const px = x + Math.cos(angle) * 16 + Math.cos(ray) * radius
+        const py = y - (35 + Math.sin(angle) * 5) * aspect + Math.sin(ray) * radius * aspect
+        if (point) ctx.lineTo(px, py)
+        else ctx.moveTo(px, py)
+      }
+      ctx.closePath()
+      ctx.fill()
+    }
+  },
+  yogurt(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age < 0.2 || age > 1.2) return
+    const spread = Math.min(1, (age - 0.2) / 0.3)
+    ctx.globalAlpha = Math.min(0.85, (1.2 - age) * 3)
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.ellipse(x - unit.side * 12 * spread, y, 27 * spread, 7 * aspect * spread, 0, 0, Math.PI * 2)
+    ctx.fill()
+  },
+  sayu(ctx, unit, age, layer, x, y, aspect) {
+    if (age > 1.25) return
+    if (layer === 'floor' && age > 0.2) {
+      const spread = Math.min(1, (age - 0.2) / 0.3)
+      ctx.globalAlpha = 0.65 * Math.min(1, (1.25 - age) * 4)
+      ctx.fillStyle = '#bcecff'
+      ctx.beginPath()
+      ctx.ellipse(x - unit.side * 10 * spread, y, 25 * spread, 6 * aspect * spread, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    if (layer === 'above' && age > 0.3) {
+      ctx.globalAlpha = 0.5 * Math.min(1, (1.25 - age) * 3)
+      ctx.fillStyle = '#ffffff'
+      for (let index = 0; index < 3; index++) {
+        ctx.beginPath()
+        ctx.arc(x + (index - 1) * 6, y - (20 + index * 7 + age * 20) * aspect, 3 + age * 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  },
   washiki: emptyEffect,
   mop: emptyEffect,
   yoshiki: emptyEffect,
