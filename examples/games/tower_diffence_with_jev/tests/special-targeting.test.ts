@@ -3,7 +3,7 @@ import { FIELDS, initialState, type AllyType } from '../src/game/model'
 import { GameEngine } from '../src/game/GameEngine'
 import { freshSave } from '../src/progression/UpgradeSystem'
 import { castSpecial, SPECIALS } from '../src/game/SpecialAbilities'
-import { bestSpecialTarget, bossInSpecialArea } from '../src/game/SpecialTargeting'
+import { bestSpecialTarget, bossInSpecialArea, autoShouldCast, AUTO_HOLD_SECONDS } from '../src/game/SpecialTargeting'
 const idle = { decide: async () => null }
 function fixture(type: AllyType = 'soldier') {
   const engine = new GameEngine(idle, freshSave(), 'meadow', 42, () => 0)
@@ -88,5 +88,17 @@ describe('bestSpecialTarget', () => {
     const t = bestSpecialTarget(state, 1)!
     expect(t.score).toBeCloseTo(0.25)
     expect(t.point.x).toBeGreaterThanOrEqual(300)
+  })
+})
+
+describe('AUTO cast rule', () => {
+  it('waits for a cluster, a boss or a hurt team, but never hoards a ready special', () => {
+    expect(autoShouldCast('cannon', 2, false, 0)).toBe(true)
+    expect(autoShouldCast('cannon', 1, true, 0)).toBe(true)
+    expect(autoShouldCast('cannon', 1, false, 0)).toBe(false)
+    expect(autoShouldCast('cannon', 1, false, AUTO_HOLD_SECONDS - 0.1)).toBe(false)
+    expect(autoShouldCast('cannon', 1, false, AUTO_HOLD_SECONDS)).toBe(true)
+    expect(autoShouldCast('cannon', 0, false, 99)).toBe(false)
+    expect(autoShouldCast('healer', 0.2, false, 0)).toBe(true)
   })
 })
