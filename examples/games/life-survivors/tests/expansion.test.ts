@@ -58,6 +58,9 @@ function arena(seed: number, parent = 'p_gone') {
   const game = new Game(seed)
   const player = game.addPlayer('a', parent)!
   for (const c of TALENT_CATEGORIES) player.talents[c] = 1
+  // The arena is a bare player: skip 蒸発済み's free birth pick (covered in parents.test.ts).
+  player.pending = 0
+  player.birthPick = false
   return { game, player }
 }
 

@@ -414,10 +414,13 @@ function renderChoices(player: ViewPlayer | undefined) {
     passives: player.passives.map(([id, lv]) => ({ id, lv }))
   }
   const count = player.choices.length
-  element<HTMLElement>('#levelup-note').textContent =
-    role === 'solo'
-      ? `時間は止まっています。1〜${count}キーでも選べます。`
-      : `時間は流れ続けています（選択中は足が遅くなる）。1〜${count}キーでも選べます。`
+  const birthPick = player.parent === 'p_gone' && !player.weapons.length
+  const hint = `1〜${count}キーでも選べます。`
+  element<HTMLElement>('#levelup-note').textContent = birthPick
+    ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
+    : role === 'solo'
+      ? `時間は止まっています。${hint}`
+      : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
   audio.play('cardOpen')
   cards.replaceChildren(

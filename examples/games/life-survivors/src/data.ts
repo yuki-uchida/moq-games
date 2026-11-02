@@ -298,8 +298,8 @@ export const PARENTS: WeaponDef[] = [
     behavior: 'none',
     parent: true,
     damage: 0,
-    desc: '親はいない。武器はないが、そのぶん心が強い。',
-    perk: '精神力 +60・自然回復 +1/秒'
+    desc: '親はいない。武器はないが、そのぶん心が強く、早くから自分の力を見つける。',
+    perk: '精神力 +60・自然回復 +1/秒・生まれてすぐ幼いころの才能を1枚選べる（自立）'
   })
 ]
 

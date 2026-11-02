@@ -50,6 +50,30 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   expect(errors).toEqual([])
 })
 
+test('蒸発済み starts with a free early talent pick and then plays on', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const game = l.game as unknown as { removePlayer(id: string): void; addPlayer(id: string, parent: string): void }
+    game.removePlayer(l.localId)
+    game.addPlayer(l.localId, 'p_gone')
+  })
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#cards .card')).toHaveCount(3)
+  await expect(page.locator('#levelup-note')).toContainText('自分の力で生きていく')
+  await page.keyboard.press('Digit1')
+  await expect(page.locator('#levelup')).toBeHidden()
+  await expect
+    .poll(() => handle.evaluate((l) => (l.view as unknown as { kills: number }).kills), { timeout: 20000 })
+    .toBeGreaterThan(0)
+  await expect(page.locator('#weapons > *')).not.toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
 test('a broken heart: the death plays out before the result, which names the final blow', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
