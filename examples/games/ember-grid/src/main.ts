@@ -234,6 +234,8 @@ async function showProgress(token: number) {
 async function end() {
   if (busy || !ready) return
   if (!beginEnemy(game)) {
+    // A seize objective can be won as the ally phase ends; its outro still plays before the report.
+    if (game.phase === 'won' && !(await victoryScene(generation))) return
     render()
     return
   }
@@ -260,8 +262,21 @@ async function end() {
     if (game.phase !== 'enemy') return
   }
   beginAlly(game)
+  // A survive objective is won once the last required enemy phase ends.
+  if (game.phase === 'won') {
+    if (await victoryScene(token)) render()
+    return
+  }
   render()
   playSharedUiSound('turn', uiVolume())
+}
+/** Plays the chapter outro (and the finale) before the report; false if a restart superseded it. */
+async function victoryScene(token: number) {
+  lockPresentation()
+  await story.victory(token)
+  if (token !== generation) return false
+  busy = false
+  return true
 }
 document.querySelector('#end')!.addEventListener('click', () => void end())
 document.querySelector('#wait')!.addEventListener('click', () => {
