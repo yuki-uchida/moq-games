@@ -3349,3 +3349,17 @@ dialog::backdrop {
 .result-lines:not(:has(li:not([hidden]))) {
   display: none;
 }
+
+/* Stage select: the stage, formation and field lists scroll on small screens while the sortie
+   button stays pinned to the bottom of the dialog, as in mobile game menus. */
+.launch-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding-bottom: 2px;
+  background: var(--paper);
+  /* Fade the list scrolling underneath, and cover the dialog's bottom padding strip below the button. */
+  box-shadow:
+    0 -16px 16px -8px var(--paper),
+    0 40px 0 0 var(--paper);
+}
