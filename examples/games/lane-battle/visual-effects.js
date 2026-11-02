@@ -1034,7 +1034,7 @@ export const IMPACT_STYLES = {
 
 export function activeVictims(effect, units, time) {
   return (effect.victims ?? [])
-    .filter((victim) => time >= victim.at && time - victim.at < 0.22)
+    .filter((victim) => !victim.missed && time >= victim.at && time - victim.at < 0.22)
     .map((victim) => ({ ...victim, unit: units.find((unit) => unit.id === victim.id) }))
 }
 
@@ -1048,6 +1048,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   const progress = Math.max(0, Math.min(1, hitAge / 0.22))
   const victims = activeVictims(effect, units, time)
   const allVictims = (effect.victims ?? [])
+    .filter((victim) => !victim.missed)
     .map(
       (victim) =>
         effect.victimOrigins?.find((unit) => unit.id === victim.id) ?? units.find((unit) => unit.id === victim.id)

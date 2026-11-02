@@ -11,7 +11,7 @@ import {
   isHeavyHit,
   shakeAmplitude
 } from './BattleFeelLogic'
-import { healInArea, placeReadout, readoutText, summarizeImpact, type CastTally, type HpDelta } from './SpecialFeel'
+import { healInArea, placeReadout, readoutText, stackReadout, summarizeImpact, type CastTally, type HpDelta } from './SpecialFeel'
 
 /** Live floating DOM nodes (damage numbers, bursts, chips, coins). Banners and the fixed overlays are extra. */
 const MAX_NODES = 48
@@ -381,6 +381,11 @@ export class BattleFeedback {
       cast.hits += sum.hits
       cast.damage += sum.damage
       cast.kills += sum.kills
+      // A damaging special that hit nothing gets a small MISS puff, not a big card.
+      if (!cast.hits) {
+        if (cast.done >= cast.total) this.spawn(this.options.field, this.make('fx-chip miss', cast.x, cast.y - 40, 'MISS'), 1500)
+        return
+      }
     }
     this.showReadout(cast, false)
   }
@@ -424,7 +429,14 @@ export class BattleFeedback {
     const at = this.screenPoint(cast.x, cast.y, true),
       area = this.options.safeArea?.() ?? { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 },
       box = el.getBoundingClientRect(),
-      pos = placeReadout(at.x, at.y, Math.max(box.width, 150), Math.max(box.height, 80), area)
+      width = Math.max(box.width, 150),
+      height = Math.max(box.height, 80),
+      pos = placeReadout(at.x, at.y, width, height, area)
+    // Two specials landing together must not print one card over the other: step past any it would cover.
+    const others = Array.from(this.overlay.querySelectorAll<HTMLElement>('.fx-special')).filter(
+      (other) => other !== el && other.isConnected
+    )
+    pos.y = stackReadout(pos, width, height, others.map((other) => other.getBoundingClientRect()), area)
     el.style.left = `${Math.round(pos.x)}px`
     el.style.top = `${Math.round(pos.y)}px`
     el.classList.remove('pop')

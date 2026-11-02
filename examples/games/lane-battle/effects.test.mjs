@@ -199,7 +199,7 @@ test('drowsiness, rally, attack down and defense down affect combat', () => {
   assert.ok(vuln.victims[0].vuln.end > vuln.game.time)
 })
 
-test('poison stacks independently and curry refresh delays its explosion', () => {
+test('poison stacks independently and curry re-hits do not delay its explosion', () => {
   const poison = scene('oyster', [30])
   poison.game.rng = () => 0.99
   for (let count = 0; count < 4; count++) {
@@ -213,9 +213,7 @@ test('poison stacks independently and curry refresh delays its explosion', () =>
   step(curry.game, 0.5)
   curry.source.attack = 999
   const hp = curry.victims[1].hp
-  step(curry.game, 1.01)
-  assert.equal(curry.victims[1].hp, hp)
-  step(curry.game, 0.48)
+  step(curry.game, 0.99)
   step(curry.game, 0.02)
   assert.equal(curry.victims[1].hp, hp - curry.source.atk * 0.5)
   const explosion = curry.game.effects.find((effect) => effect.explosion)
@@ -252,11 +250,126 @@ test('caffeine ramps and resets after walking', () => {
 test('milk collision damages and pushes the next foe', () => {
   const { game, source, victims } = scene('milk', [30, 65])
   step(game, 0.01)
-  assert.equal(victims[1].hp, 10000 - source.atk * 0.5)
+  assert.ok(Math.abs(victims[1].hp - (10000 - source.atk * source.collisionDamage)) < 1e-9)
   assert.equal(victims[1].x, 423)
   assert.deepEqual(game.effects.find((entry) => entry.attackerKey === 'milk').collisions, [
     { id: victims[1].id, x: 435, at: game.time }
   ])
+})
+
+test('milk hits both sides of its landing point, its path and boundaries, respecting heavy units', () => {
+  const { game, source, victims } = scene('milk', [30, 50, 60, 90, 91, 30])
+  victims[2].heavy = true
+  const positions = victims.map((victim) => victim.x)
+  step(game, 0.01)
+  assert.equal(victims[0].x, 440)
+  for (const index of [1, 2, 3, 5]) {
+    assert.ok(Math.abs(victims[index].hp - (10000 - source.atk * source.collisionDamage)) < 1e-9, `victim ${index}`)
+    assert.equal(victims[index].x, positions[index] - (index === 2 ? 6 : 12))
+  }
+  assert.equal(victims[4].hp, 10000)
+})
+
+test('delayed victims that die before arrival are marked missed without hiding real hits', () => {
+  for (const key of ['aircon', 'yoshiki', 'daiou', 'korokoro']) {
+    const { game, source, victims } = scene(key, key === 'korokoro' ? [100, 130] : [40, 80])
+    step(game, 0.001)
+    if (key === 'korokoro') step(game, 0.12)
+    const effect = game.effects.find((entry) => entry.attackerKey === key)
+    victims[1].hp = 0
+    source.attack = 999
+    step(game, 0.2)
+    assert.equal(effect.victims[1].missed, true, key)
+    assert.equal(effect.missed, false, key)
+  }
+  const { game, source, victims } = scene('curry', [30])
+  const effect = { victims: [{ id: victims[0].id, at: 0.1 }] }
+  game.projectiles.push({
+    targetId: victims[0].id,
+    src: source,
+    at: 0.1,
+    explosion: true,
+    effect,
+    victim: effect.victims[0]
+  })
+  victims[0].hp = 0
+  step(game, 0.1)
+  assert.equal(effect.victims[0].missed, true)
+  assert.equal(effect.missed, true)
+})
+
+test('burn, each poison stack, stench and wet zones tick exactly through their end', () => {
+  for (const dt of [0.05, 0.01, 1 / 60]) {
+    for (let start = 0; start < 100; start++) {
+      for (const key of ['yakiniku', 'oyster', 'garlic', 'mop']) {
+        const { game, source, victims } = scene(key, [key === 'garlic' ? 100 : 30])
+        game.time = start / 100
+        game.rng = () => 0.99
+        step(game, 0.001)
+        if (key === 'garlic') step(game, 0.12)
+        if (key === 'oyster') {
+          for (let stack = 0; stack < 2; stack++) {
+            source.attack = 0
+            step(game, 0.001)
+          }
+        }
+        source.attack = 999
+        const hp = victims[0].hp
+        const x = victims[0].x
+        const end = game.time + (key === 'oyster' ? 4 : key === 'yakiniku' ? 2 : 3) + dt
+        while (game.time < end) step(game, dt)
+        if (key === 'mop') assert.ok(Math.abs(victims[0].x - x - 36) < 1e-8, `${key} ${start} ${dt}`)
+        else {
+          const damage = source.atk * (key === 'oyster' ? 1.2 : key === 'garlic' ? 0.72 : 0.4)
+          assert.ok(Math.abs(victims[0].hp - (hp - damage)) < 1e-8, `${key} ${start} ${dt}`)
+        }
+      }
+    }
+  }
+})
+
+test('curry re-hits keep the first owner and attack for the blast', () => {
+  const { game, source, victims } = scene('curry', [30, 50])
+  game.deck.push(card({ uid: 2, key: 'curry', atk: source.atk * 3 }))
+  summon(game, 1)
+  const second = game.units.at(-1)
+  second.x = source.x
+  second.attack = 999
+  step(game, 0.01)
+  const mark = victims[0].curry
+  source.attack = 999
+  second.attack = 0
+  step(game, 0.5)
+  assert.equal(victims[0].curry, mark)
+  victims[1].hp = source.atk * 0.5
+  step(game, 1)
+  assert.equal(victims[1].hp, 0)
+  assert.deepEqual([...victims[1].hitters], [1])
+  assert.equal(game.exp[1], victims[1].exp)
+  assert.equal(game.exp[2], undefined)
+})
+
+test('fast curry attacks and rally repeatedly detonate applied marks', () => {
+  for (const rally of [false, true]) {
+    const { game, source, victims } = scene('curry', [30])
+    source.period = 1.2
+    if (rally) source.rally = { end: 20 }
+    let marks = 0
+    let detonations = 0
+    let previous = null
+    for (let frame = 0; frame < 1000; frame++) {
+      step(game, 0.01)
+      const mark = victims[0].curry
+      if (mark && mark !== previous) marks++
+      if (previous && mark !== previous) detonations++
+      previous = mark
+    }
+    assert.ok(detonations > 1, `${rally}: ${detonations}`)
+    assert.ok(marks - detonations <= 1)
+    source.attack = 999
+    step(game, 2)
+    assert.equal(victims[0].curry, null)
+  }
 })
 
 test('fort receives primary damage only; an impact zone can still be created', () => {

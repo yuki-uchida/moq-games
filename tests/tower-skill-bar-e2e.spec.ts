@@ -158,10 +158,10 @@ test('one tap casts at the best target once enemies are in range: honest button,
     .toBeGreaterThan(50)
   await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 3000 })
   // The impact lands after the band is gone and reports what it did.
-  const readout = page.locator('.fx-special')
+  // A hit reports itself on a card; a whiff (the target died first) only puffs a small MISS.
+  const readout = page.locator('.fx-special, #field .fx-chip.miss').first()
   await expect(readout).toBeVisible({ timeout: 5000 })
-  await expect(readout).toContainText('矢の雨')
-  await expect(readout).toContainText(/×\d+ HIT|命中なし/)
+  await expect(readout).toContainText(/矢の雨[\s\S]*×\d+ HIT|MISS/)
   await expect(readout).toHaveCSS('pointer-events', 'none')
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(archer).toHaveAttribute('aria-label', /^矢の雨 あと\d+秒$/)

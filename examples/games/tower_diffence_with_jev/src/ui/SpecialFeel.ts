@@ -97,3 +97,29 @@ export function placeReadout(
     y: Math.min(Math.max(above >= top ? above : y + gap + height, top), Math.max(top, bounds.bottom))
   }
 }
+
+interface Box {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+/**
+ * Bottom y for a readout anchored bottom-centre at `pos` that clears the `taken` boxes: it steps below a
+ * box it would overlap, or above it when there is no room below, staying inside `bounds`.
+ */
+export function stackReadout(pos: Point, width: number, height: number, taken: readonly Box[], bounds: Box, gap = 8): number {
+  let y = pos.y
+  for (let pass = 0; pass < taken.length; pass++) {
+    const hit = taken.find(
+      (b) => pos.x - width / 2 < b.right && pos.x + width / 2 > b.left && y - height < b.bottom && y > b.top
+    )
+    if (!hit) break
+    const below = hit.bottom + gap + height,
+      above = hit.top - gap
+    y = below <= bounds.bottom ? below : above >= bounds.top + height ? above : y
+    if (y === below || y === above) continue
+    break
+  }
+  return y
+}

@@ -41,6 +41,32 @@ describe('bestSpecialTarget', () => {
     enemy(3, 300, 400, { progress: 90 })
     expect(bestSpecialTarget(state, 1)!.point).toEqual({ x: 300, y: 400 })
   })
+  it("skips enemies another cast special is about to hit, so two specials don't land on one cluster", () => {
+    const { state, enemy } = fixture('soldier')
+    enemy(2, 380, 300)
+    enemy(3, 400, 300)
+    enemy(4, 300, 200)
+    const pending = (applied: boolean) => ({
+      id: 'special:9:1:0',
+      sourceId: 9,
+      type: 'archer' as const,
+      x: 390,
+      y: 300,
+      startedAt: 0,
+      releaseAt: 1,
+      endsAt: 2,
+      power: 50,
+      applied
+    })
+    state.specialEffects = [pending(false)]
+    // The pair is covered by the archer's incoming rain: the lone enemy is the best target now.
+    expect(bestSpecialTarget(state, 1)).toMatchObject({ score: 1, point: { x: 300, y: 200 } })
+    state.units = state.units.filter((u) => u.id !== 4)
+    expect(bestSpecialTarget(state, 1)).toBeNull()
+    // Once the rain has landed, whoever survived is a target again.
+    state.specialEffects = [pending(true)]
+    expect(bestSpecialTarget(state, 1)!.score).toBe(2)
+  })
   it('ignores enemies beyond the caster range, even if a cluster sits there', () => {
     const { state, enemy } = fixture('soldier')
     enemy(2, 300 + SPECIALS.soldier.range + 20, 300)
