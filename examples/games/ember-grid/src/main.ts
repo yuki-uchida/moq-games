@@ -174,6 +174,8 @@ function createStage() {
 }
 createStage()
 let contextAvailable = true
+// Only the title screen holds the battle inert; the ending replay plays in the field without a battle.
+const titleOpen = () => document.querySelector('.title-screen') !== null
 const contextNotice = document.createElement('div')
 contextNotice.className = 'context-notice'
 contextNotice.setAttribute('role', 'status')
@@ -184,7 +186,7 @@ field.addEventListener('stage-context', (event) => {
   const restored = (event as CustomEvent<boolean>).detail
   contextAvailable = restored
   contextNotice.hidden = restored
-  document.querySelector<HTMLElement>('#app main')!.inert = !restored || !playing
+  document.querySelector<HTMLElement>('#app main')!.inert = !restored || titleOpen()
   if (restored) render()
 })
 function transition() {
@@ -508,7 +510,7 @@ function hover(x: number, y: number) {
   if (!busy) render()
 }
 render = () => {
-  document.querySelector<HTMLElement>('#app main')!.inert = !playing || !contextAvailable
+  document.querySelector<HTMLElement>('#app main')!.inert = titleOpen() || !contextAvailable
   const focusedControl = document.activeElement as HTMLElement | null
   if (playing) {
     save.checkpoints = checkpoints
@@ -1065,9 +1067,14 @@ const titleProgress = showTitle(saved, {
     const token = ++generation
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
     game.phase = 'won'
+    lockPresentation()
     // Portraits render from the loaded models; the title no longer preloads them.
     await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
-    if (token === generation) void story.victory(token).then(() => location.reload())
+    if (token !== generation) return
+    // Show the final battle behind the epilogue instead of the board left from start-up.
+    render()
+    stage.sync(game)
+    void story.victory(token).then(() => location.reload())
   },
   settings,
   help: openHelp
@@ -1080,13 +1087,15 @@ if (!stageAvailable) {
   buttons.forEach((button) => (button.disabled = true))
   titleProgress('WebGLを利用できません。ブラウザの設定やハードウェアアクセラレーションを確認してください。')
   const retryRenderer = document.createElement('button')
-  retryRenderer.textContent = '画面を再試行'
-  title.querySelector('.title-loading')!.after(retryRenderer)
+  retryRenderer.textContent = '↻ 画面を再試行'
+  title.querySelector('nav')!.prepend(retryRenderer)
+  retryRenderer.focus()
   retryRenderer.onclick = () => {
     if (!createStage()) return
     buttons.forEach((button) => (button.disabled = button.dataset.action !== 'new' && !saved))
-    titleProgress('章を選ぶと準備を開始します')
+    titleProgress('')
     retryRenderer.remove()
+    title.querySelector<HTMLButtonElement>('nav button:not(:disabled)')!.focus()
     render()
   }
-} else titleProgress('章を選ぶと準備を開始します')
+}
