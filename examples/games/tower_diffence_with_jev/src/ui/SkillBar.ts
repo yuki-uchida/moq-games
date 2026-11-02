@@ -1,8 +1,13 @@
 import { ALLY_TYPES, type AllyType, type GameState, type Unit } from '../game/model'
 import { SPECIALS, SPECIAL_COOLDOWN } from '../game/SpecialAbilities'
+import { bestSpecialTarget, specialTargetCount } from '../game/SpecialTargeting'
 
 export const AUTO_SKILL_KEY = 'tower-jev-auto-skill-v1'
 export const LONG_PRESS_MS = 350
+/** How often a ready button re-checks whether the auto-aim would hit anything. */
+export const TARGET_SCAN_MS = 220
+const CROSSHAIR =
+  '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 .8v3.6M8 11.6v3.6M.8 8h3.6M11.6 8h3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
 export function loadAutoSkill(): boolean {
   try { return localStorage.getItem(AUTO_SKILL_KEY) === '1' } catch { return false }
 }
@@ -10,7 +15,7 @@ function saveAutoSkill(on: boolean) {
   try { localStorage.setItem(AUTO_SKILL_KEY, on ? '1' : '0') } catch { /* private mode: keep it for this session only */ }
 }
 
-interface Entry { button: HTMLButtonElement; ring: HTMLElement; count: HTMLElement; mark: HTMLElement; name: HTMLElement; skill: string; hintTimer: number; mode: string; charge: number; label: string }
+interface Entry { button: HTMLButtonElement; ring: HTMLElement; count: HTMLElement; mark: HTMLElement; badge: HTMLElement; name: HTMLElement; tip: string; hintTimer: number; mode: string; charge: number; label: string; targets: number; scanAt: number }
 export interface SkillBarOptions {
   portrait(type: AllyType): string | undefined
   /** Fired on tap/Enter (manual=false) or long-press/Shift+click (manual=true). */
@@ -64,6 +69,7 @@ export class SkillBar {
     button.innerHTML =
       `<img alt="" draggable="false" src="${this.options.portrait(type) ?? ''}"><span class="skill-ring" aria-hidden="true"></span>` +
       `<span class="skill-count" aria-hidden="true"></span><span class="skill-mark" aria-hidden="true"></span>` +
+      `<span class="skill-badge" aria-hidden="true"></span><span class="skill-aim" aria-hidden="true">${CROSSHAIR}</span>` +
       `<span class="skill-name" aria-hidden="true">${SPECIALS[type].name}</span>`
     let timer = 0,
       longPressed = false
@@ -85,12 +91,15 @@ export class SkillBar {
       ring: button.querySelector('.skill-ring')!,
       count: button.querySelector('.skill-count')!,
       mark: button.querySelector('.skill-mark')!,
+      badge: button.querySelector('.skill-badge')!,
       name: button.querySelector('.skill-name')!,
-      skill: SPECIALS[type].name,
+      tip: SPECIALS[type].name,
       hintTimer: 0,
       mode: '',
       charge: -1,
-      label: ''
+      label: '',
+      targets: -2,
+      scanAt: -Infinity
     }
   }
   /** Brief bubble over one skill button (e.g. no target in range), with a small shake. */
@@ -106,8 +115,11 @@ export class SkillBar {
     )
     entry.hintTimer = window.setTimeout(() => {
       delete entry.button.dataset.hint
-      entry.name.textContent = entry.skill
+      entry.name.textContent = entry.tip
     }, 1500)
+  }
+  buttonFor(unitId: number): HTMLButtonElement | undefined {
+    return this.entries.get(unitId)?.button
   }
   /** Cheap per-frame sync: DOM is only touched when a value actually changed. */
   update(state: Readonly<GameState>, visible: boolean) {
@@ -129,22 +141,47 @@ export class SkillBar {
       this.element.replaceChildren(...[...this.entries.values()].map((e) => e.button), this.auto)
       this.element.hidden = !allies.length
     }
+    const now = performance.now()
     for (const unit of allies) {
       const entry = this.entries.get(unit.id)!,
-        spec = SPECIALS[unit.type as AllyType],
+        type = unit.type as AllyType,
+        spec = SPECIALS[type],
         remaining = Math.max(0, unit.specialCooldown ?? 0),
         down = unit.hp <= 0,
         ready = !down && remaining <= 1e-9,
         mode = down ? 'down' : ready ? 'ready' : 'charging',
         seconds = Math.ceil(remaining - 1e-9),
-        charge = ready ? 1 : Math.round(Math.min(1, Math.max(0, 1 - remaining / SPECIAL_COOLDOWN)) * 200) / 200,
-        label = down ? `${spec.name} 戦闘不能` : ready ? `${spec.name} 発動可能` : `${spec.name} あと${seconds}秒`
-      if (entry.mode !== mode) {
+        charge = ready ? 1 : Math.round(Math.min(1, Math.max(0, 1 - remaining / SPECIAL_COOLDOWN)) * 200) / 200
+      // Ready buttons tell the truth about the auto-aim: how many it would hit, or that nothing is in range.
+      let targets = -1
+      if (ready) {
+        if (now - entry.scanAt >= TARGET_SCAN_MS || entry.targets < 0) {
+          entry.scanAt = now
+          const aim = bestSpecialTarget(state, unit.id)
+          targets = aim ? Math.max(1, specialTargetCount(state, type, aim.point)) : 0
+        } else targets = entry.targets
+      }
+      const label = down
+        ? `${spec.name} 戦闘不能`
+        : !ready
+          ? `${spec.name} あと${seconds}秒`
+          : targets > 0
+            ? type === 'healer'
+              ? `${spec.name} 発動可能 回復対象${targets}体`
+              : `${spec.name} 発動可能 ${targets}体`
+            : `${spec.name} 発動可能 · ${type === 'healer' ? '回復が必要な味方なし' : '範囲内に敵なし'} · 長押しで場所を指定`
+      if (entry.mode !== mode || entry.targets !== targets) {
         entry.mode = mode
+        entry.targets = targets
         entry.button.dataset.state = mode
         entry.button.disabled = down
         entry.button.setAttribute('aria-disabled', String(down || !ready))
-        entry.mark.textContent = down ? '✕' : ready ? '✦' : ''
+        if (targets < 0) delete entry.button.dataset.targetCount
+        else entry.button.dataset.targetCount = String(targets)
+        entry.mark.textContent = down ? '✕' : targets > 0 ? '✦' : ''
+        entry.badge.textContent = targets <= 0 ? '' : type === 'healer' ? '回復' : `×${targets}`
+        entry.tip = ready ? `${spec.name} · 長押しで場所を指定` : spec.name
+        if (!entry.button.dataset.hint) entry.name.textContent = entry.tip
       }
       if (entry.charge !== charge) {
         entry.charge = charge

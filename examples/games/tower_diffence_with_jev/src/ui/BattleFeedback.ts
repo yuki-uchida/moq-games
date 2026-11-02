@@ -1,5 +1,6 @@
 import type { FeelSound } from '../audio/FeelSounds'
-import { DEFINITIONS, type GameState, type Owner, type UnitType } from '../game/model'
+import { DEFINITIONS, canTargetUnit, type AllyType, type GameState, type Owner, type UnitType } from '../game/model'
+import { SPECIALS, type SpecialEffect } from '../game/SpecialAbilities'
 import {
   AmountAggregator,
   ComboTracker,
@@ -10,6 +11,7 @@ import {
   isHeavyHit,
   shakeAmplitude
 } from './BattleFeelLogic'
+import { healInArea, placeReadout, readoutText, summarizeImpact, type CastTally, type HpDelta } from './SpecialFeel'
 
 /** Live floating DOM nodes (damage numbers, bursts, chips, coins). Banners and the fixed overlays are extra. */
 const MAX_NODES = 48
@@ -25,6 +27,8 @@ export interface BattleFeedbackOptions {
   baseLabel: HTMLElement
   /** Where flying coins land (the HUD coin counter). */
   coinTarget: () => HTMLElement | null
+  /** Screen rectangle (fixed px) where big readouts may sit: below the HUD, above the skill bar. */
+  safeArea?: () => { left: number; right: number; top: number; bottom: number }
   play: (kind: FeelSound, param?: number) => void
   announce?: (message: string) => void
 }
@@ -49,6 +53,19 @@ const BURST_SVG = `<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="
 const reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
 const prefersReducedMotion = () => !!reduced?.matches
 
+const FIELD_KIND: Partial<Record<AllyType, 'heal' | 'hold'>> = { healer: 'heal', frost: 'hold', ranger: 'hold' }
+/** One special cast being tallied; multi-hit specials add up on a single readout. */
+interface Cast extends CastTally {
+  type: AllyType
+  x: number
+  y: number
+  effects: string[]
+  total: number
+  done: number
+  el: HTMLElement | null
+}
+const castKey = (effectId: string) => effectId.slice(0, effectId.lastIndexOf(':'))
+
 export class BattleFeedback {
   private key = ''
   private frame = 0
@@ -56,6 +73,10 @@ export class BattleFeedback {
   private corpseIds = new Set<number>()
   private bossSeen = new Set<number>()
   private readonly specialHits = new Set<string>()
+  private readonly casts = new Map<string, Cast>()
+  private readonly drops: HpDelta[] = []
+  private readonly gains: HpDelta[] = []
+  private readonly fresh: SpecialEffect[] = []
   private readonly killed = new Set<number>()
   private readonly gone = new Set<number>()
   private readonly force = new Set<number>()
@@ -108,6 +129,7 @@ export class BattleFeedback {
     this.corpseIds.clear()
     this.bossSeen.clear()
     this.specialHits.clear()
+    this.casts.clear()
     this.hits.clear()
     this.heals.clear()
     this.combo.reset()
@@ -153,6 +175,7 @@ export class BattleFeedback {
     const combat = state.phase !== 'preparation' && !baseline
     this.frame++
     this.sweep(now)
+    this.drops.length = this.gains.length = this.fresh.length = 0
 
     // Units: hp diffs, deployments, boss arrival.
     for (const unit of state.units) {
@@ -177,8 +200,13 @@ export class BattleFeedback {
         continue
       }
       if (combat) {
-        if (hp < seen.hp) this.hits.add(unit.id, seen.hp - hp, now)
-        else if (hp > seen.hp) this.heals.add(unit.id, hp - seen.hp, now)
+        if (hp < seen.hp) {
+          this.hits.add(unit.id, seen.hp - hp, now)
+          if (unit.owner === 'ai') this.drops.push({ id: unit.id, x: unit.x, y: unit.y, amount: seen.hp - hp })
+        } else if (hp > seen.hp) {
+          this.heals.add(unit.id, hp - seen.hp, now)
+          if (unit.owner === 'player') this.gains.push({ id: unit.id, x: unit.x, y: unit.y, amount: hp - seen.hp })
+        }
       }
       if (
         !baseline &&
@@ -195,12 +223,20 @@ export class BattleFeedback {
       seen.stamp = this.frame
     }
 
+    // Special impacts that landed since the last frame (read first so this frame's kills can be credited).
+    for (const effect of state.specialEffects ?? []) {
+      if (!effect.applied || this.specialHits.has(effect.id)) continue
+      this.specialHits.add(effect.id)
+      if (!baseline) this.fresh.push(effect)
+    }
+
     // Corpses: the only reliable death signal (enemies leave state.units in the same step).
     const killed = this.killed
     killed.clear()
     let chipBounty = 0,
       chipX = 0,
-      chipY = 0
+      chipY = 0,
+      chipSpecial = false
     for (const corpse of state.corpses) {
       if (this.corpseIds.has(corpse.id)) continue
       this.corpseIds.add(corpse.id)
@@ -225,7 +261,11 @@ export class BattleFeedback {
       chipBounty += bounty
       chipX = corpse.x
       chipY = corpse.y
-      this.burst(corpse.x, corpse.y - 22, corpse.boss ? 'boss' : 'kill')
+      const bySpecial = this.fresh.some(
+        (e) => e.power > 0 && Math.hypot(corpse.x - e.x, corpse.y - e.y) <= SPECIALS[e.type].radius
+      )
+      chipSpecial ||= bySpecial
+      this.burst(corpse.x, corpse.y - 22, corpse.boss ? 'boss' : bySpecial ? 'special' : 'kill')
       this.options.play('kill')
       if (corpse.boss) {
         this.flash('#ffffff')
@@ -239,7 +279,7 @@ export class BattleFeedback {
         this.options.play('combo', chain)
       }
     }
-    if (chipBounty > 0) this.coinChip(chipBounty, chipX, chipY - 30)
+    if (chipBounty > 0) this.coinChip(chipBounty, chipX, chipY - 30, chipSpecial)
 
     // Units that vanished: a corpse means a kill (show the final blow), otherwise they left through the gate.
     const gone = this.gone
@@ -247,7 +287,10 @@ export class BattleFeedback {
     for (const [id, seen] of this.units)
       if (seen.stamp !== this.frame) {
         gone.add(id)
-        if (killed.has(id) && seen.hp > 0 && combat) this.hits.add(id, seen.hp, now)
+        if (killed.has(id) && seen.hp > 0 && combat) {
+          this.hits.add(id, seen.hp, now)
+          if (seen.owner === 'ai') this.drops.push({ id, x: seen.x, y: seen.y, amount: seen.hp, killed: true })
+        }
       }
     const force = this.force
     force.clear()
@@ -257,15 +300,16 @@ export class BattleFeedback {
     for (const { id, amount } of this.heals.flush(now, force)) if (Math.round(amount) >= 2) this.healNumber(id, amount)
     for (const id of gone) this.units.delete(id)
 
-    // Special impacts: the moment a damaging special lands, kick the camera (fields like frost don't).
-    for (const effect of state.specialEffects ?? []) {
-      if (!effect.applied || this.specialHits.has(effect.id)) continue
-      this.specialHits.add(effect.id)
-      if (baseline || !(effect.power > 0)) continue
-      this.shake(4)
-      this.burst(effect.x, effect.y - 10, 'boss')
-      this.options.play('hit-heavy')
+    // Special impacts: the moment a damaging special lands, kick the camera and read the result out.
+    for (const effect of this.fresh) {
+      if (effect.power > 0) {
+        this.shake(4)
+        this.burst(effect.x, effect.y - 10, 'boss')
+        this.options.play('hit-heavy')
+      }
+      this.tallyImpact(state, effect)
     }
+    if (this.casts.size) this.settleCasts(state)
 
     // Castle.
     if (combat && state.playerBaseHp < this.prevBaseHp) this.baseHit(this.prevBaseHp - state.playerBaseHp)
@@ -291,6 +335,103 @@ export class BattleFeedback {
     }
     this.prevPhase = state.phase
     this.prevResult = state.result
+  }
+
+  // --- special readout ------------------------------------------------------
+
+  private tallyImpact(state: Readonly<GameState>, effect: SpecialEffect): void {
+    const spec = SPECIALS[effect.type],
+      key = castKey(effect.id)
+    let cast = this.casts.get(key)
+    if (!cast) {
+      cast = {
+        type: effect.type,
+        x: effect.x,
+        y: effect.y,
+        effects: [],
+        total: spec.impacts.length,
+        done: 0,
+        el: null,
+        hits: 0,
+        damage: 0,
+        kills: 0,
+        held: 0,
+        heal: 0,
+        allies: 0
+      }
+      this.casts.set(key, cast)
+    }
+    cast.done++
+    cast.effects.push(effect.id)
+    const kind = FIELD_KIND[effect.type] ?? null
+    if (kind === 'hold')
+      cast.held = state.units.filter(
+        (u) =>
+          u.owner === 'ai' &&
+          u.hp > 0 &&
+          Math.hypot(u.x - effect.x, u.y - effect.y) <= spec.radius &&
+          canTargetUnit({ owner: 'player', type: effect.type }, u, state.battlefieldVersion)
+      ).length
+    else if (kind === 'heal')
+      cast.allies = state.units.filter(
+        (u) => u.owner === 'player' && u.hp > 0 && Math.hypot(u.x - effect.x, u.y - effect.y) <= spec.radius
+      ).length
+    else {
+      const sum = summarizeImpact(this.drops, effect, spec.radius)
+      cast.hits += sum.hits
+      cast.damage += sum.damage
+      cast.kills += sum.kills
+    }
+    this.showReadout(cast, false)
+  }
+
+  /** Healing circles tally what they heal and report once they end; finished casts are forgotten. */
+  private settleCasts(state: Readonly<GameState>): void {
+    const live = new Set<string>()
+    for (const e of state.specialEffects ?? []) live.add(e.id)
+    for (const [key, cast] of this.casts) {
+      const kind = FIELD_KIND[cast.type]
+      if (kind === 'heal') {
+        cast.heal += healInArea(this.gains, cast, SPECIALS[cast.type].radius)
+        if (!cast.effects.some((id) => live.has(id))) {
+          this.showReadout(cast, true)
+          this.casts.delete(key)
+        }
+      } else if (cast.done >= cast.total || (cast.done > 0 && !cast.effects.some((id) => live.has(id)))) this.casts.delete(key)
+    }
+  }
+
+  private showReadout(cast: Cast, finished: boolean): void {
+    const text = readoutText(SPECIALS[cast.type].name, FIELD_KIND[cast.type] ?? null, cast, finished)
+    let el = cast.el
+    if (!el?.isConnected) {
+      el = this.make('fx-special')
+      el.dataset.type = cast.type
+      el.innerHTML = '<small></small><b></b><span></span><i></i>'
+      this.overlay.append(el)
+      this.live.push({ el, until: 0 })
+      cast.el = el
+    }
+    const [title, main, sub, kills] = Array.from(el.children) as HTMLElement[]
+    title.textContent = text.title
+    main.textContent = text.main
+    sub.textContent = text.sub
+    sub.hidden = !text.sub
+    kills.textContent = text.kills
+    kills.hidden = !text.kills
+    el.dataset.empty = text.main === '命中なし' ? 'true' : 'false'
+    // Anchor above the impact, then keep it between the HUD and the skill bar.
+    const at = this.screenPoint(cast.x, cast.y, true),
+      area = this.options.safeArea?.() ?? { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 },
+      box = el.getBoundingClientRect(),
+      pos = placeReadout(at.x, at.y, Math.max(box.width, 150), Math.max(box.height, 80), area)
+    el.style.left = `${Math.round(pos.x)}px`
+    el.style.top = `${Math.round(pos.y)}px`
+    el.classList.remove('pop')
+    void el.offsetWidth
+    el.classList.add('pop')
+    const entry = this.live.find((item) => item.el === el)
+    if (entry) entry.until = performance.now() + 1900
   }
 
   // --- helpers -----------------------------------------------------------
@@ -347,7 +488,7 @@ export class BattleFeedback {
     )
   }
 
-  private burst(x: number, y: number, size: 'kill' | 'boss' | 'small'): void {
+  private burst(x: number, y: number, size: 'kill' | 'boss' | 'small' | 'special'): void {
     const el = this.make(`fx-burst ${size}`, x, y)
     el.innerHTML = BURST_SVG
     this.spawn(this.options.field, el, 900)
@@ -417,9 +558,9 @@ export class BattleFeedback {
 
   // --- coins ---------------------------------------------------------------
 
-  private screenPoint(x: number, y: number): { x: number; y: number } {
+  private screenPoint(x: number, y: number, fresh = false): { x: number; y: number } {
     const now = performance.now()
-    if (!this.fieldRect || now - this.fieldRect.at > 250) {
+    if (!this.fieldRect || fresh || now - this.fieldRect.at > 250) {
       const r = this.options.field.getBoundingClientRect()
       this.fieldRect = { left: r.left, top: r.top, width: r.width, height: r.height, at: now }
     }
@@ -434,9 +575,9 @@ export class BattleFeedback {
     this.options.play('coin')
   }
 
-  private coinChip(amount: number, worldX: number, worldY: number): void {
+  private coinChip(amount: number, worldX: number, worldY: number, special = false): void {
     const from = this.screenPoint(worldX, worldY)
-    const el = this.make('fx-coin', 0, 0)
+    const el = this.make(special ? 'fx-coin special' : 'fx-coin', 0, 0)
     el.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="#f4c542" stroke="#8a5a14" stroke-width="2"/><circle cx="10" cy="10" r="4.6" fill="none" stroke="#c98d22" stroke-width="1.6"/></svg><span>+${amount}</span>`
     if (this.live.length >= MAX_NODES) {
       this.land(amount)
