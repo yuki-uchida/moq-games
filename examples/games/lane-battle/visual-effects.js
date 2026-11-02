@@ -156,9 +156,33 @@ export const HURT_VFX = {
       ctx.fill()
     }
   },
-  oyster: emptyEffect,
-  ice: emptyEffect,
-  energy: emptyEffect,
+  oyster: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.32) return
+    ctx.globalAlpha = 1 - age / 0.32
+    ctx.strokeStyle = '#dbc9e7'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(x, y - 25 * aspect, 14 + age * 12, Math.PI * 1.1, Math.PI * 1.9)
+    ctx.stroke()
+  },
+  ice: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.45) return
+    ctx.globalAlpha = 1 - age / 0.45
+    ctx.fillStyle = '#bff0d4'
+    ctx.beginPath()
+    ctx.ellipse(x + 11, y - (26 - age * 34) * aspect, 3, 5, 0, 0, Math.PI * 2)
+    ctx.fill()
+  },
+  energy: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.35) return
+    ctx.globalAlpha = 1 - age / 0.35
+    ctx.fillStyle = '#eaffcb'
+    for (let index = 0; index < 3; index++) {
+      ctx.beginPath()
+      ctx.arc(x + (index - 1) * 6, y - (44 + age * 30 + index * 4) * aspect, 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   cleaner: emptyEffect,
   yogurt: emptyEffect,
   sayu: emptyEffect,
@@ -383,9 +407,41 @@ export const DEATH_VFX = {
       }
     }
   },
-  oyster: emptyEffect,
-  ice: emptyEffect,
-  energy: emptyEffect,
+  oyster: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age < 0.1 || age > 0.95) return
+    ctx.globalAlpha = Math.min(1, (age - 0.1) / 0.12, (0.95 - age) / 0.24)
+    ctx.fillStyle = '#bd83cf'
+    for (let index = 0; index < 4; index++) {
+      const rise = (age * 35 + index * 11) % 42
+      ctx.beginPath()
+      ctx.arc(x + (index - 1.5) * 7, y - (12 + rise) * aspect, 2 + (index % 2), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  ice: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age > 1) return
+    const spread = Math.min(1, age / 0.65)
+    ctx.globalAlpha = Math.min(0.8, age * 4, (1 - age) / 0.25)
+    for (const [offset, color] of [
+      [-9, '#f6b6c8'],
+      [9, '#bff0d4']
+    ]) {
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.ellipse(x + offset, y, 5 + 17 * spread, (2 + 4 * spread) * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  energy: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.85) return
+    ctx.globalAlpha = Math.min(0.85, age / 0.1, (0.85 - age) / 0.22)
+    ctx.fillStyle = '#eaffcb'
+    for (let index = 0; index < 5; index++) {
+      ctx.beginPath()
+      ctx.arc(x + (index - 2) * 5, y - (10 + ((age * 35 + index * 7) % 40)) * aspect, 2 + (index % 2), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   cleaner: emptyEffect,
   yogurt: emptyEffect,
   sayu: emptyEffect,

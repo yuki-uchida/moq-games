@@ -1698,6 +1698,10 @@ const MODELS = {
   oyster: {
     koSeconds: 0.95,
     tempo: [0.6, 0.06],
+    striker: 'lid',
+    reacts: ['lid'],
+    parts: [],
+    react: { jolt: 0.3 },
     size: 1,
     moves: {
       lunge: 0.22,
@@ -1742,14 +1746,33 @@ const MODELS = {
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
     act(b, a, c) {
-      b.lid.rotation.x += beat(a, -0.55, 0.45, -0.2)
-      b.lid.rotation.z += beat(a, 0.25, -0.2)
+      b.lid.rotation.x += beat(a, -0.1, 0.75, -0.15)
+      b.lid.rotation.z += beat(a, 0.12, -0.42, 0.16)
+      b.hips.position.x += beat(a, -0.1, 0.08)
+      b.hips.position.y += 0.08 * a.smear
       b.hips.position.x += (c.lastCrit ? 0.12 : 0) * a.hit
+    },
+    hurt(b, h) {
+      const closed = h.power * (1 - Math.min(1, Math.max(0, (h.age - 0.3) / 0.2)))
+      b.lid.rotation.x += 0.4 * closed
+      b.lid.rotation.z -= 0.14 * closed
+      b.spine.scale.y *= 1 - 0.12 * h.jolt
+    },
+    ko(b, k, c) {
+      const close = Math.min(1, k.t / 0.2)
+      b.lid.rotation.x += 0.9 * close
+      b.lid.rotation.z -= 0.22 * close
+      c.actor.tint('#777777', 0.75 * close)
+      c.actor.sink(0.32 * Math.min(1, Math.max(0, (k.t - 0.16) / 0.55)))
     }
   },
   ice: {
     koSeconds: 1,
     tempo: [0.4, 0.035],
+    striker: 'scoop',
+    reacts: ['scoop', 'cherry'],
+    parts: ['cone', 'cherry'],
+    react: { jolt: 0.45 },
     size: 0.95,
     moves: {
       lunge: 0.18,
@@ -1764,10 +1787,11 @@ const MODELS = {
     },
     build(k) {
       k.chain = [0.3, 0.52, 0.72]
-      k.add(GEO.cone, '#d9a35a', [0, 0.25, 0], [0.2, 0.5, 0.2], [Math.PI, 0, 0])
+      k.bone('cone', 'hips', [0, 0.25, 0])
+      k.add(GEO.cone, '#d9a35a', [0, 0.25, 0], [0.2, 0.5, 0.2], [Math.PI, 0, 0], { bone: 'cone' })
       for (const y of [0.15, 0.3, 0.42]) {
         const r = 0.2 * (y / 0.5) + 0.005
-        k.add(GEO.ring, '#b07a38', [0, y, 0], [r, r, 0.3], [Math.PI / 2, 0, 0], { line: false })
+        k.add(GEO.ring, '#b07a38', [0, y, 0], [r, r, 0.3], [Math.PI / 2, 0, 0], { line: false, bone: 'cone' })
       }
       k.add(GEO.sphere, '#f6b6c8', [0, 0.56, 0], 0.23)
       for (const [x, z, h] of [
@@ -1776,16 +1800,43 @@ const MODELS = {
         [0.18, -0.06, 0.06]
       ])
         k.add(GEO.capsule, '#f6b6c8', [x, 0.4, z], [0.05, h, 0.05])
-      k.add(GEO.sphere, '#bff0d4', [0, 0.8, 0], 0.18)
-      k.add(GEO.sphere, '#d62a3c', [0.02, 0.99, 0], 0.05)
-      k.add(GEO.cyl, '#3f6f2a', [-0.02, 1.06, 0], [0.008, 0.07, 0.008], [0, 0, 0.4], { line: false })
+      k.bone('scoop', 'head', [0, 0.8, 0])
+      k.add(GEO.sphere, '#bff0d4', [0, 0.8, 0], 0.18, undefined, { bone: 'scoop' })
+      k.bone('cherry', 'scoop', [0.02, 0.99, 0])
+      k.add(GEO.sphere, '#d62a3c', [0.02, 0.99, 0], 0.05, undefined, { bone: 'cherry' })
+      k.add(GEO.cyl, '#3f6f2a', [-0.02, 1.06, 0], [0.008, 0.07, 0.008], [0, 0, 0.4], { line: false, bone: 'cherry' })
       k.face({ bone: 'chest', y: 0.56, z: 0.2, spread: 0.08, size: 0.75, mood: 'cool' })
     },
-    act() {}
+    act(b, a, c) {
+      b.hips.rotation.z += beat(a, 0.22, -0.36)
+      b.scoop.rotation.z += beat(a, 0.22, -0.35, 0.18)
+      b.scoop.scale.y *= 1 - 0.18 * a.hit + 0.1 * a.recoil
+      b.cherry.rotation.z += 0.3 * Math.sin(c.t * 14) * a.wind + 0.35 * a.recoil
+    },
+    hurt(b, h) {
+      b.scoop.position.x -= 0.13 * h.jolt
+      b.scoop.rotation.z += 0.3 * h.jolt
+      b.cherry.position.y += 0.06 * h.jolt + 0.025 * h.wobble
+    },
+    ko(b, k) {
+      const melt = Math.min(1, k.t / 0.7)
+      const roll = Math.min(1, Math.max(0, (k.t - 0.12) / 0.55))
+      b.spine.position.y -= 0.3 * melt
+      b.spine.scale.set(1 + 0.35 * melt, 1 - 0.55 * melt, 1 + 0.35 * melt)
+      b.cone.rotation.z += 1.6 * roll
+      b.cone.position.x -= 0.2 * roll
+      b.cherry.position.x += 0.55 * roll
+      b.cherry.position.y -= 0.45 * roll
+      b.cherry.rotation.z -= 3 * roll
+    }
   },
   energy: {
     koSeconds: 0.85,
     tempo: [0.2, 0.02],
+    striker: 'tab',
+    reacts: ['tab'],
+    parts: [],
+    react: { jolt: 0.35 },
     size: 0.95,
     moves: {
       lunge: -0.12,
@@ -1809,9 +1860,9 @@ const MODELS = {
       k.bone('tab', 'head', [0.04, 0.78, 0])
       k.add(GEO.rbox, '#dfe3e8', [0.08, 0.785, 0.02], [0.1, 0.014, 0.06], undefined, { bone: 'tab' })
       k.add(GEO.ring, '#dfe3e8', [0.14, 0.79, 0.02], [0.03, 0.03, 0.2], [Math.PI / 2, 0, 0], { bone: 'tab' })
-      k.bone('muzzle', 'head', [0.08, 0.8, 0.02])
+      k.bone('muzzle', 'tab', [0.08, 0.8, 0.02])
       // Fizz jet out of the opened tab toward the foe.
-      k.bone('fizz', 'head', [0.08, 0.8, 0.02])
+      k.bone('fizz', 'tab', [0.08, 0.8, 0.02])
       k.add(GEO.cone, '#e9ffd0', [0.27, 0.86, 0.1], [0.07, 0.3, 0.05], ALONG(Math.PI + 0.35), {
         bone: 'fizz',
         alpha: 0.7
@@ -1829,7 +1880,41 @@ const MODELS = {
       const jet = Math.max(a.smear, a.hit * (1 - a.recoil * 0.4))
       show(b.fizz, jet > 0.05)
       b.fizz.scale.setScalar(0.3 + jet)
-      b.hips.position.x += 0.014 * Math.sin(c.t * (70 + c.ramp * 12)) * a.wind
+      b.hips.position.x += 0.04 * Math.sin(c.t * (70 + c.ramp * 12)) * a.wind
+      b.hips.rotation.z += 0.08 * Math.sin(c.t * 55) * a.wind + 0.12 * Math.sin(c.t * 42) * a.recoil
+      b.fizz.rotation.z = -(
+        b.hips.rotation.z +
+        b.spine.rotation.z +
+        b.chest.rotation.z +
+        b.head.rotation.z +
+        b.tab.rotation.z
+      )
+    },
+    hurt(b, h, c) {
+      b.chest.scale.x *= 1 - 0.18 * h.jolt
+      b.chest.scale.y *= 1 + 0.08 * h.jolt
+      b.tab.rotation.z += 0.55 * h.jolt
+      const jet = Math.max(c.a.smear, c.a.hit * (1 - c.a.recoil * 0.4), 0.45 * h.jolt)
+      show(b.fizz, jet > 0.05)
+      b.fizz.scale.setScalar(0.3 + jet)
+      b.fizz.rotation.z = -(
+        b.hips.rotation.z +
+        b.spine.rotation.z +
+        b.chest.rotation.z +
+        b.head.rotation.z +
+        b.tab.rotation.z
+      )
+    },
+    ko(b, k) {
+      const crush = Math.min(1, k.t / 0.35)
+      const roll = Math.min(1, Math.max(0, (k.t - 0.18) / 0.5))
+      b.hips.scale.y *= 1 - 0.4 * crush
+      b.hips.scale.x *= 1 + 0.16 * crush
+      b.hips.rotation.z += 1.45 * roll
+      b.hips.position.x -= 0.16 * roll
+      b.hips.position.y += 0.22 * roll
+      b.tab.rotation.z += 0.7 * crush
+      show(b.fizz, false)
     }
   },
   // ── Enemies: the cleanup crew ──
