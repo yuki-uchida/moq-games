@@ -4,7 +4,20 @@ const emptyEffect = () => {}
 export const HURT_VFX = {
   katachi: emptyEffect,
   korokoro: emptyEffect,
-  geri: emptyEffect,
+  geri: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.strokeStyle = '#e73d27'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(x - 9, y - 78 * aspect)
+    ctx.lineTo(x - 3, y - 72 * aspect)
+    ctx.lineTo(x - 9, y - 66 * aspect)
+    ctx.moveTo(x + 9, y - 78 * aspect)
+    ctx.lineTo(x + 3, y - 72 * aspect)
+    ctx.lineTo(x + 9, y - 66 * aspect)
+    ctx.stroke()
+  },
   bichi: emptyEffect,
   dodeka: emptyEffect,
   daiou: emptyEffect,
@@ -30,9 +43,43 @@ export const HURT_VFX = {
   geridome: emptyEffect
 }
 export const DEATH_VFX = {
-  katachi: emptyEffect,
-  korokoro: emptyEffect,
-  geri: emptyEffect,
+  katachi: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age < 0.12 || age > 0.75) return
+    const t = (age - 0.12) / 0.63
+    ctx.fillStyle = `rgba(127, 75, 34, ${1 - t})`
+    for (let i = 0; i < 5; i++) {
+      const dx = (i - 2) * 12 * t
+      const dy = -Math.sin(Math.PI * t) * (8 + (i % 3) * 5) * aspect
+      ctx.fillRect(x + dx, y + dy, 4, 3 * aspect)
+    }
+  },
+  korokoro: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age < 0.05 || age > 0.85) return
+    const t = Math.min(1, (age - 0.05) / 0.6)
+    ctx.globalAlpha = age < 0.64 ? 1 : Math.max(0, (0.85 - age) / 0.21)
+    ctx.fillStyle = '#6b3c1c'
+    ctx.beginPath()
+    ctx.ellipse(
+      x + unit.side * 26 * t,
+      y - (3 + 12 * Math.abs(Math.sin(t * Math.PI * 2)) * (1 - t)) * aspect,
+      5,
+      5 * aspect,
+      0,
+      0,
+      Math.PI * 2
+    )
+    ctx.fill()
+  },
+  geri: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'floor' || age < 0.5 || age > 0.8) return
+    const t = (age - 0.5) / 0.3
+    ctx.fillStyle = `rgba(164, 108, 56, ${0.6 * (1 - t)})`
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.ellipse(x + side * (12 + 20 * t), y - 4 * aspect, 7 + 5 * t, (3 + 2 * t) * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   bichi: emptyEffect,
   dodeka: emptyEffect,
   daiou: emptyEffect,

@@ -631,16 +631,24 @@ const MODELS = {
   katachi: {
     koSeconds: 0.85,
     tempo: [0.4, 0.035],
+    striker: 'shield',
+    reacts: ['shield', 'helmet'],
+    parts: ['helmet'],
+    react: { jolt: 0.35 },
     size: 1,
     moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16 },
     build(k) {
       poop(k, BROWN, { arms: ['B'] })
+      mitten(k, 'F', BROWN, [0.29, 0.28, 0.18], 'spine', 0.14, 0.07)
       // Kabuto: a bronze bowl, a flared neck guard and golden kuwagata horns; a lacquered round shield.
-      k.add(GEO.hemi, '#b98a3e', [0, 0.6, 0], [0.27, 0.25, 0.27], undefined, { skin: 'head' })
-      k.add(GEO.flare, '#8f6428', [0, 0.57, -0.01], [0.27, 0.08, 0.27], undefined, { skin: 'head' })
-      k.add(GEO.rcyl, '#d64a3a', [0, 0.7, 0.245], [0.035, 0.02, 0.035], [Math.PI / 2 - 0.3, 0, 0], { skin: 'head' })
+      k.bone('helmet', 'hips', [0, 0.6, 0])
+      k.add(GEO.hemi, '#b98a3e', [0, 0.6, 0], [0.27, 0.25, 0.27], undefined, { bone: 'helmet' })
+      k.add(GEO.flare, '#8f6428', [0, 0.57, -0.01], [0.27, 0.08, 0.27], undefined, { bone: 'helmet' })
+      k.add(GEO.rcyl, '#d64a3a', [0, 0.7, 0.245], [0.035, 0.02, 0.035], [Math.PI / 2 - 0.3, 0, 0], { bone: 'helmet' })
       for (const side of [-1, 1])
-        k.add(GEO.cone, GOLD, [side * 0.07, 0.8, 0.25], [0.022, 0.2, 0.022], [-0.2, 0, -side * 0.45], { skin: 'head' })
+        k.add(GEO.cone, GOLD, [side * 0.07, 0.8, 0.25], [0.022, 0.2, 0.022], [-0.2, 0, -side * 0.45], {
+          bone: 'helmet'
+        })
       k.bone('shield', 'spine', [0.22, 0.27, 0.3])
       const turn = [Math.PI / 2, 0.2, 0, 'YXZ']
       k.add(GEO.rcyl, '#9e3426', [0.22, 0.27, 0.3], [0.2, 0.05, 0.2], turn, { bone: 'shield' })
@@ -648,14 +656,34 @@ const MODELS = {
       k.add(GEO.sphere, GOLD, [0.232, 0.27, 0.35], [0.055, 0.055, 0.035], [0, 0.2, 0], { bone: 'shield' })
     },
     act(b, a) {
-      b.shield.position.x += beat(a, -0.09, 0.13)
+      b.shield.position.x += beat(a, -0.12, 0.2)
+      b.armF.position.x += beat(a, -0.08, 0.16)
       b.shield.rotation.z += beat(a, 0.32, -0.22) + (a.recoil && 0.1 * Math.sin(a.since * 70) * a.recoil)
       b.armB.rotation.z += beat(a, -0.7, 1.5, 0.3)
+    },
+    hurt(b, h) {
+      b.shield.position.x += 0.08 * h.jolt
+      b.shield.rotation.z -= 0.35 * h.jolt
+      b.helmet.rotation.z += 0.16 * h.wobble + 0.05 * h.jolt
+      b.hips.position.x -= Math.max(0, h.power - 1.2) * 0.2 * h.jolt
+    },
+    ko(b, k) {
+      const collapse = Math.min(1, k.age / 0.42)
+      const flight = Math.min(1, Math.max(0, (k.age - 0.08) / 0.37))
+      b.spine.scale.set(1 + 0.35 * collapse, 1 - 0.6 * collapse, 1 + 0.2 * collapse)
+      b.hips.rotation.z += 0.12 * collapse
+      b.shield.rotation.z -= 1.3 * collapse
+      b.helmet.position.x -= 0.45 * flight
+      b.helmet.position.y += 0.48 * Math.sin(Math.PI * flight) - 0.25 * flight
+      b.helmet.rotation.z += 2.2 * flight
     }
   },
   korokoro: {
     koSeconds: 0.85,
     tempo: [0.45, 0.03],
+    striker: 'muzzle',
+    reacts: ['armF', 'tails'],
+    parts: ['pellet'],
     size: 0.86,
     moves: { lunge: 0.14, back: 0.06, rear: 0.24, lean: 0.24, squash: 0.08, stretch: 0.12, bend: 0.22 },
     build(k) {
@@ -680,19 +708,40 @@ const MODELS = {
       // Open the throwing side toward the viewer while winding up, then turn through on the release.
       b.hips.rotation.y += beat(a, -0.5, 0.3)
       show(b.pellet, !(a.since < 0.3))
+      if (a.since >= 0.3 && a.since < 0.44)
+        b.pellet.scale.setScalar(1 + 0.3 * Math.sin(((a.since - 0.3) / 0.14) * Math.PI))
       b.tails.rotation.z += 0.15 * Math.sin(c.t * 16) - 0.5 * a.smear - 0.25 * a.hit
+    },
+    hurt(b, h) {
+      b.hips.rotation.z += 0.06 * h.jolt
+      b.hips.scale.y *= 1 - 0.22 * Math.min(1, h.jolt)
+      b.armF.rotation.z += 0.8 * h.jolt
+      b.armB.rotation.z -= 0.7 * h.jolt
+      b.tails.rotation.z += 0.55 * h.jolt + 0.3 * h.wobble
+    },
+    ko(b, k) {
+      const roll = Math.min(1, k.age / 0.56)
+      const angle = 4 * Math.PI * roll + Math.PI * 0.5 * roll
+      b.hips.position.x -= 0.55 * roll
+      b.hips.position.y += 0.42 * (1 - Math.cos(angle)) + 0.08 * Math.abs(Math.sin(roll * 2 * Math.PI))
+      b.hips.rotation.z += angle
+      show(b.pellet, k.age < 0.05)
     }
   },
   geri: {
     koSeconds: 0.8,
     tempo: [0.36, 0.04],
+    striker: 'head',
+    reacts: ['hips', 'fly'],
+    parts: ['band', 'tails', 'fly'],
     size: 1.14,
-    moves: { lunge: 0.34, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
+    moves: { lunge: 0.4, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
     build(k) {
       poop(k, '#9a5d2e', { mood: 'angry' })
-      k.add(swirlBand(0.52, 0.61), '#3f8f4a', [0, 0, 0], 1)
-      k.add(GEO.sphere, '#3f8f4a', [0, 0.565, -0.27], [0.05, 0.045, 0.04], undefined, { skin: 'chest' })
-      k.bone('tails', 'chest', [0, 0.56, -0.28])
+      k.bone('band', 'hips', [0, 0.56, 0])
+      k.add(swirlBand(0.52, 0.61), '#3f8f4a', [0, 0, 0], 1, undefined, { bone: 'band' })
+      k.add(GEO.sphere, '#3f8f4a', [0, 0.565, -0.27], [0.05, 0.045, 0.04], undefined, { bone: 'band' })
+      k.bone('tails', 'band', [0, 0.56, -0.28])
       for (const s of [-1, 1])
         k.add(GEO.rbox, '#3f8f4a', [s * 0.06, 0.49, -0.31], [0.055, 0.17, 0.025], [0, 0, s * 0.6], { bone: 'tails' })
       k.bone('fly', 'hips', [0, 0.95, 0])
@@ -704,7 +753,7 @@ const MODELS = {
         })
     },
     act(b, a, c) {
-      b.hips.position.x += (c.ambush ? 0.17 : 0) * a.hit
+      b.hips.position.x += (c.ambush ? 0.2 : 0) * a.hit
       b.hips.position.x += 0.025 * Math.sin(c.t * 30) * a.wind
       b.tails.rotation.z += 0.2 * Math.sin(c.t * 18) - 0.7 * a.smear - 0.4 * a.hit + 0.3 * a.wind
       b.armB.rotation.z += beat(a, -0.8, 1.1, 0.4)
@@ -712,6 +761,26 @@ const MODELS = {
       b.fly.position.add(
         new THREE.Vector3(Math.cos(c.t * 7) * 0.42, Math.sin(c.t * 13) * 0.05, Math.sin(c.t * 7) * 0.42)
       )
+    },
+    hurt(b, h) {
+      const brace = h.age >= 0.05 ? Math.sin(Math.min(1, (h.age - 0.05) / 0.35) * Math.PI) * h.power : 0
+      b.hips.position.x += 0.12 * brace
+      b.hips.rotation.z -= 0.25 * brace
+      b.fly.position.x += 0.32 * h.jolt
+      b.fly.position.y += 0.2 * h.jolt
+    },
+    ko(b, k) {
+      const flight = Math.min(1, Math.max(0, (k.age - 0.06) / 0.49))
+      const landing = Math.min(1, Math.max(0, (k.age - 0.5) / 0.12))
+      const angle = 3 * Math.PI * flight + Math.PI * landing
+      b.hips.position.x -= 0.75 * flight
+      b.hips.position.y += 0.42 * (1 - Math.cos(angle)) + 0.35 * Math.sin(Math.PI * flight)
+      b.hips.rotation.z += angle
+      b.band.position.y -= 0.25 * flight
+      b.band.rotation.z += 0.5 * flight
+      b.fly.position.x += 1.1 * Math.sin(angle) * flight
+      b.fly.position.y += 1.1 * Math.cos(angle) * flight
+      b.spine.scale.set(1 + 0.3 * landing, 1 - 0.55 * landing, 1 + 0.2 * landing)
     }
   },
   bichi: {
