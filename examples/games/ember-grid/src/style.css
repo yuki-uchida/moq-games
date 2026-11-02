@@ -158,6 +158,29 @@ header button {
 }
 .cell.seize {
   background: repeating-linear-gradient(45deg, #e4c46a 0 4px, #806c46 4px 8px);
+  box-shadow:
+    inset 0 0 0 4px #ffed9e,
+    inset 0 0 18px #fff4ae;
+}
+.cell.seize::after {
+  content: '✦';
+  position: absolute;
+  inset: 14%;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff2b4;
+  border-radius: 50%;
+  color: #fff6c2;
+  animation: target-pulse 1.1s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.reduce-motion .cell.seize::after {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell.seize::after {
+    animation: none;
+  }
 }
 .healing-preview,
 .healing-effect {
@@ -179,6 +202,14 @@ header button {
 }
 .stand.boss .tag {
   top: calc(var(--tile) * -0.85 * var(--figure, 1) - 14px);
+}
+.crown {
+  color: #ffe47a;
+  font-size: 20px;
+  line-height: 1;
+  text-shadow:
+    0 1px 3px #27120a,
+    0 0 5px #ff8a36;
 }
 /* Drifting embers behind the board; seamless because each layer moves by exactly its tile height. */
 .field::before {
@@ -498,6 +529,11 @@ dialog button {
   .badge {
     font-size: 10px;
     padding: 1px 2px;
+  }
+  #selection {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow-x: auto;
   }
   .console {
     padding: 8px;
@@ -1006,6 +1042,9 @@ fieldset label {
   background: #ff8d70;
 }
 #forecast {
+  position: absolute;
+  z-index: 5;
+  inset: auto 0 0;
   background: #152936;
   padding: 8px;
   border: 1px solid #e9ce8d;

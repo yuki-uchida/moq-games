@@ -265,6 +265,31 @@ for (let y = 0; y < size; y++)
     document.querySelector('#marks')!.append(mark)
     marks.push(mark)
   }
+function positionTags() {
+  const tags = Array.from(document.querySelectorAll<HTMLElement>('#marks .tag'))
+  tags.forEach((tag) => (tag.style.translate = ''))
+  if (!matchMedia('(max-width: 500px)').matches) return
+  const placed: DOMRect[] = []
+  for (const tag of tags.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)) {
+    let rect = tag.getBoundingClientRect(),
+      offset = 0
+    for (
+      let attempts = 0;
+      attempts < tags.length * 100 &&
+      placed.some(
+        (other) =>
+          rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top
+      );
+      attempts++
+    ) {
+      offset -= 2
+      tag.style.translate = `0 ${offset}px`
+      rect = tag.getBoundingClientRect()
+    }
+    placed.push(rect)
+  }
+}
+new ResizeObserver(() => requestAnimationFrame(positionTags)).observe(field)
 function lockPresentation() {
   busy = true
   cells.forEach((cell) => (cell.disabled = true))
@@ -441,7 +466,7 @@ function render() {
     cell.classList.toggle('danger', threatened.has(k))
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
-      ? `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '♛ ' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${finished(game, u) ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}</span></span>`
+      ? `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '<span class="crown">♛</span>' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${finished(game, u) ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}</span></span>`
       : ''
     cell.setAttribute(
       'aria-label',
@@ -449,12 +474,13 @@ function render() {
     )
   })
   tutorial.update()
+  requestAnimationFrame(positionTags)
   stage.sync(game, unit?.id)
   document.querySelector('#turn')!.textContent =
     `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
   document.querySelector('#count')!.textContent =
     `◆ ${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length} / ▼ ${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}`
-  objectiveStatus.textContent = objectiveLabel(game)
+  objectiveStatus.textContent = `${objective.type === 'seize' ? '✦ ' : ''}${objectiveLabel(game)}`
   document.querySelector('#selection')!.textContent = unit
     ? `${unit.name} Lv${unit.level} EXP ${unit.exp}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　⛨ ${unit.def}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
     : '燈守を選択'

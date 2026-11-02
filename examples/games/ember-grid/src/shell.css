@@ -53,13 +53,13 @@
   height: min(75vh, 620px);
 }
 .title-art img {
-  width: 36%;
+  width: 32%;
   max-height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 8px 10px #0009);
 }
 .title-art img:nth-child(2) {
-  width: 45%;
+  width: 36%;
   z-index: 1;
 }
 .title-embers {
@@ -106,20 +106,22 @@
   width: 100%;
   margin: 0.35rem 0;
 }
-@media (max-width: 600px) {
+@media (max-width: 600px) and (orientation: portrait) {
   .title-screen {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(170px, 32vh) auto;
+    align-content: center;
   }
   .title-art {
     grid-column: 1;
-    opacity: 0.28;
-    position: absolute;
-    inset: 4% 0 auto;
-    height: 55%;
+    grid-row: 1;
+    height: 100%;
   }
   .title-content {
     grid-column: 1;
+    grid-row: 2;
     width: min(24rem, 90%);
+    padding-block: 0;
   }
 }
 @media (max-height: 500px) {
