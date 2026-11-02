@@ -14,7 +14,8 @@ await fs.mkdir(root, { recursive: true })
 const ATTACK = [-0.5, -0.32, -0.2, -0.12, -0.07, -0.035, 0, 0.03, 0.07, 0.12, 0.2, 0.32]
 const WALK = [0, 5, 10, 15, 20, 25]
 const HURT = [0, 0.03, 0.07, 0.12, 0.18, 0.26, 0.36, 0.5]
-const KO = [0, 0.06, 0.12, 0.2, 0.28, 0.36, 0.46, 0.56]
+const KO = [0, 0.1, 0.2, 0.35, 0.5, 0.7, 0.85, 1]
+const STATUS = ['freeze', 'stun', 'launch', 'confuse', 'drowsy']
 // Hit strength: a weak, a normal and a critical/knockback hit, each at the same ages.
 const STRENGTH = [0.7, 1, 1.6].flatMap((power) => [0.02, 0.06, 0.12, 0.2, 0.32].map((age) => [power, age]))
 const GROUPS = {
@@ -45,12 +46,15 @@ for (const zoom of [1, 3])
       ['attack', ATTACK],
       ['walk', WALK],
       ['hurt', HURT],
+      ['hurt-weak', HURT],
+      ['hurt-strong', HURT],
+      ['status', STATUS],
       ['strength', STRENGTH],
       ['ko', KO]
     ]) {
       const data = await page.evaluate(
         async ({ keys, motion, samples, zoom }) => {
-          const { LaneModels } = await import('/examples/games/lane-battle/models.js')
+          const { LaneModels, koSeconds } = await import('/examples/games/lane-battle/models.js')
           const { typeOf, ENEMIES } = await import('/examples/games/lane-battle/simulation.js')
           const field = document.querySelector('#field canvas').getBoundingClientRect()
           const scale = field.width < 500 ? 155 : 120
@@ -74,7 +78,15 @@ for (const zoom of [1, 3])
           c.fillStyle = '#333'
           samples.forEach((s, i) =>
             c.fillText(
-              motion === 'walk' ? `d${s}` : motion === 'strength' ? `×${s[0]} ${s[1]}s` : `${s}s`,
+              motion === 'walk'
+                ? `d${s}`
+                : motion === 'status'
+                  ? s
+                  : motion === 'ko'
+                    ? `${s * 100}%`
+                    : motion === 'strength'
+                      ? `×${s[0]} ${s[1]}s`
+                      : `${s}s`,
               label + i * cell[0] + 4,
               head - 5
             )
@@ -99,7 +111,7 @@ for (const zoom of [1, 3])
               c.beginPath()
               c.ellipse(x0 + cell[0] / 2, y0 + cell[1] - 12 * py, 22 * px, 6 * py, 0, 0, 7)
               c.fill()
-              const now = 20 + (motion === 'walk' || motion === 'strength' ? 0 : s)
+              const now = 20 + (motion === 'walk' || motion === 'status' || motion === 'strength' ? 0 : s)
               const u = {
                 id: id++,
                 key,
@@ -113,12 +125,20 @@ for (const zoom of [1, 3])
               }
               if (motion === 'attack') u.phase = ((s % t.period) + t.period) % t.period
               if (motion === 'walk') u.walkDistance = 40 + s
-              if (motion === 'hurt' || motion === 'strength') {
+              if (motion.startsWith('hurt') || motion === 'strength') {
                 u.motion = 'walk'
                 u.walkDistance = 40
-                u.hurt = motion === 'hurt' ? { at: now - s, power: 1 } : { at: now - s[1], power: s[0] }
+                u.hurt =
+                  motion === 'strength'
+                    ? { at: now - s[1], power: s[0] }
+                    : { at: now - s, power: motion === 'hurt-weak' ? 0.7 : motion === 'hurt-strong' ? 1.6 : 1 }
               }
-              if (motion === 'ko') models.fallen(u, 500, 361, 0, s)
+              if (motion === 'status') {
+                u.motion = 'walk'
+                if (s === 'drowsy') u.drowsy = { end: now + 2 }
+                else u.control = { kind: s, start: now - 0.35, end: now + 2 }
+              }
+              if (motion === 'ko') models.fallen(u, 500, 361, 0, s * koSeconds(key))
               else models.unit(u, 500, 361, 0, now)
               const img = models.render(W, H)
               c.drawImage(

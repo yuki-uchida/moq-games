@@ -1,6 +1,7 @@
-import { LaneModels, modelSize, KO_SECONDS } from './models.js'
+import { LaneModels, modelSize, koSeconds, hurtSeconds } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
+import { drawArea, drawStatus, drawZones, HURT_VFX, DEATH_VFX } from './visual-effects.js'
 import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
 import {
   STAGES,
@@ -34,7 +35,7 @@ const SHOTS = {
   turret: ['#e9f7ffcc', '#4c9ad0', 9],
   bichi: ['#a0703e', '#5e3a1c', 7],
   aircon: ['#e6f7ffdd', '#7cc8f0', 8],
-  sake: ['#f2fff5dd', '#5f9e70', 5],
+  sake: ['#f2ffffdd', '#92cbdc', 5],
   garlic: ['#e3ee8cdd', '#93a53e', 9],
   energy: ['#dcff86dd', '#6f9a1c', 5],
   sayu: ['#ffffffdd', '#aab8bf', 6],
@@ -122,7 +123,7 @@ function buildTray() {
   buttons = state.deck.map((d, i) => {
     const b = document.createElement('button')
     b.setAttribute('aria-label', `${d.name}を召喚 ${d.cost}`)
-    b.title = `${d.name} Lv.${d.level}`
+    b.title = `${d.name} Lv.${d.level}：${d.area} ／ ${d.effect} — ${d.effectLine}`
     b.dataset.sfx = 'none'
     b.classList.toggle('special', d.special)
     b.innerHTML = `<canvas class="portrait" width="128" height="112"></canvas><b>${d.cost} 💩</b><small>Lv.${d.level}</small>`
@@ -219,10 +220,11 @@ function renderStages() {
     best = campaign.records[selected],
     boss = bossOf(selected)
   $('boss').src = models.portraitURL(boss.key)
+  $('boss').title = `${boss.name}：${boss.effect}`
   $('stage-info').innerHTML =
     `<strong>${selected + 1}. ${stage.sub}</strong><small>${stage.name}${Number.isFinite(best) ? ` · ベスト${best}秒` : ''}</small>` +
     `<span class="foes">ボス ${boss.name} ・ 敵 ${enemyKinds(stage)
-      .map((t) => `<img alt="${t.name}" title="${t.name}" src="${models.portraitURL(t.key)}">`)
+      .map((t) => `<img alt="${t.name}" title="${t.name}：${t.effect}" src="${models.portraitURL(t.key)}">`)
       .join('')}</span><small>${stage.hint}</small>`
 }
 function showMap() {
@@ -270,9 +272,9 @@ function renderRoster() {
       b.className = t.special ? 'unit special' : 'unit'
       b.setAttribute('aria-pressed', String(slot >= 0))
       b.setAttribute('aria-label', `${t.name} Lv.${e.level}${slot >= 0 ? ' 編成中' : ''}`)
-      b.title = t.line
+      b.title = `${t.line}：${t.area} ／ ${t.effect} — ${t.effectLine}`
       const exp = e.level >= MAX_LEVEL ? 1 : e.exp / expToNext(e.level)
-      b.innerHTML = `<img alt="" src="${models.portraitURL(e.key)}"><span><strong>${t.name}</strong>${t.special ? '<em>特殊</em>' : ''}<small>Lv.${e.level} · ${t.cost}💩</small><small>${statLine(e)}</small><i style="--x:${exp}"></i></span>${slot >= 0 ? `<b class="slot">${slot + 1}</b>` : ''}`
+      b.innerHTML = `<img alt="" src="${models.portraitURL(e.key)}"><span><strong>${t.name}</strong>${t.special ? '<em>特殊</em>' : ''}<small>Lv.${e.level} · ${t.cost}💩</small><small>${statLine(e)}</small><small>${t.area} ／ ${t.effect}</small><i style="--x:${exp}"></i></span>${slot >= 0 ? `<b class="slot">${slot + 1}</b>` : ''}`
       b.onclick = () => {
         if (toggle(campaign, e.uid)) {
           save(campaign)
@@ -294,7 +296,8 @@ function renderShop() {
       b.className = 'unit'
       b.disabled = locked || campaign.coins < t.price
       b.setAttribute('aria-label', `${t.name}を購入 ${t.price}`)
-      b.innerHTML = `<img alt="" src="${models.portraitURL(t.key)}"><span><strong>${t.name}</strong><small>${locked ? `ステージ${t.unlock}クリアで解禁` : `🧻 ${t.price}`}</small><small>${t.line}</small></span>`
+      b.title = t.effectLine
+      b.innerHTML = `<img alt="" src="${models.portraitURL(t.key)}"><span><strong>${t.name}</strong><small>${locked ? `ステージ${t.unlock}クリアで解禁` : `🧻 ${t.price}`}</small><small>${t.area} ／ ${t.effect}</small></span>`
       b.onclick = () => {
         if (buy(campaign, t.key)) {
           save(campaign)
@@ -333,7 +336,7 @@ function showReport(report) {
   if (report.special) {
     const t = typeOf(report.special.key)
     lines.push(
-      `<img alt="" src="${models.portraitURL(t.key)}"><strong>新しい仲間！ ${t.name}</strong>（特殊ユニット HP${report.special.hp} 攻${report.special.atk}）${t.line}`
+      `<img alt="" src="${models.portraitURL(t.key)}"><strong>新しい仲間！ ${t.name}</strong>（特殊ユニット HP${report.special.hp} 攻${report.special.atk}）${t.area} ／ ${t.effect} — ${t.effectLine}`
     )
   }
   for (const u of report.units) {
@@ -484,6 +487,14 @@ function drawToiletCastle(x) {
 }
 /** Ground rows: three per side, interleaved so opposing units never stand at the same depth. */
 const laneY = (u) => (u.side === 1 ? 356 : 350) + (u.id % 3) * 12
+const launchHeight = (u, scale, aspect) =>
+  u.control?.kind === 'launch' && u.control.end > state.time
+    ? Math.sin((Math.PI * (state.time - u.control.start)) / (u.control.end - u.control.start)) *
+      scale *
+      0.8 *
+      modelSize(u.key) *
+      aspect
+    : 0
 /** How far behind its logical point a unit stands (see LaneModels.offset). */
 const standOff = (u) => models.offset(u.key, u.side, 2 - (u.id % 3))
 /**
@@ -610,9 +621,26 @@ function draw() {
   }
   const scale = rect.width < 500 ? 180 : 120
   const aspect = rect.width / 1000 / (rect.height / 450)
+  drawZones(ctx, state.zones, state.time, aspect, calm.matches)
   models.setPresentation(scale, aspect, rect.width / 1000)
   const units = [...state.units].sort((a, b) => a.id - b.id)
   const depth = depthSlots([...fallen, ...units])
+  const unitEffects = (layer) => {
+    for (const u of units) {
+      const age = state.time - (u.hurt?.at ?? Infinity)
+      if (age >= 0 && age < hurtSeconds(u.key)) {
+        ctx.save()
+        HURT_VFX[u.key]?.(ctx, u, age, layer, drawX(u), laneY(u), aspect)
+        ctx.restore()
+      }
+    }
+    for (const ghost of fallen) {
+      ctx.save()
+      DEATH_VFX[ghost.key]?.(ctx, ghost, state.time - ghost.at, layer, drawX(ghost), laneY(ghost), aspect)
+      ctx.restore()
+    }
+  }
+  unitEffects('floor')
   const present = new Set([...fallen, ...units].map((u) => u.id))
   for (const id of glides.keys()) if (!present.has(id)) glides.delete(id)
   for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
@@ -622,12 +650,19 @@ function draw() {
     ctx.beginPath()
     ctx.ellipse(drawX(u), y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
     ctx.fill()
-    models.unit(u, drawX(u), y, depth.get(u), state.time, lead(u), contact(u))
+    if (u.slide && state.time - u.slide.at < 0.15) {
+      ctx.fillStyle = '#c4ae8d99'
+      ctx.beginPath()
+      ctx.ellipse(drawX(u) + u.side * 15, y, 12, 5 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    models.unit(u, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
   }
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
   for (const u of units) {
-    const top = laneY(u) - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
+    const y = laneY(u) - launchHeight(u, scale, aspect)
+    const top = y - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
     const x = drawX(u)
     // Health shows once a unit is hurt, beneath the characters so a bar never covers a face.
     if (u.hp < u.maxHp) {
@@ -636,20 +671,87 @@ function draw() {
       ctx.fillStyle = u.side === 1 ? '#ffd166' : '#7fd1ff'
       ctx.fillRect(x - 18, top, 36 * Math.max(0, u.hp / u.maxHp), 4)
     }
-    if (u.slowUntil > state.time) {
-      ctx.save()
-      ctx.translate(x + 24, top + 3)
-      ctx.scale(1, aspect)
-      ctx.fillStyle = '#5ab8ff'
-      ctx.fillText('❄', 0, 0)
-      ctx.restore()
-    }
   }
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
   ctx.restore()
+  unitEffects('above')
+  for (const ghost of fallen) {
+    const age = state.time - ghost.at
+    if (!ghost.flushed || age < 0 || age >= 0.8) continue
+    ctx.save()
+    ctx.translate(ghost.x, laneY(ghost))
+    ctx.scale(1, aspect)
+    ctx.globalAlpha = 1 - age / 0.8
+    ctx.strokeStyle = '#a6eaff'
+    ctx.lineWidth = 3
+    for (let ring = 0; ring < 3; ring++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        0,
+        -ring * 4,
+        10 + ring * 8 + age * 10,
+        3 + ring * 2,
+        0,
+        age * 7 + ring,
+        age * 7 + ring + Math.PI * 1.7
+      )
+      ctx.stroke()
+    }
+    ctx.beginPath()
+    for (let point = 0; point <= 36; point++) {
+      const angle = point * 0.5 + age * 8
+      const radius = 2 + point * 0.55
+      if (!point) ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.3)
+      else ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.3 - point * age * 1.5)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+  for (const unit of units) {
+    const age = state.time - (unit.control?.end ?? 0)
+    if (unit.control?.kind !== 'launch' || age < 0 || age >= 0.3) continue
+    ctx.save()
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = unit.side === 1 ? '#bb8a50' : '#79aabd'
+    for (let index = 0; index < (calm.matches ? 3 : 6); index++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        drawX(unit) + (index - 2.5) * (5 + age * 25),
+        laneY(unit) - age * 8,
+        5 + age * 10,
+        (3 + age * 7) * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+  for (const u of units) {
+    const y = laneY(u) - launchHeight(u, scale, aspect)
+    const top = y - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
+    drawStatus(ctx, u, drawX(u), y, top, state.time, aspect, calm.matches)
+  }
   for (const e of state.effects) {
+    const source = e.source
+    const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
+    const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
+    const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
+    if (!e.blast && !e.turret)
+      drawArea(
+        ctx,
+        e,
+        typeOf(e.attackerKey),
+        [...units, ...fallen],
+        state.time,
+        aspect,
+        calm.matches,
+        { x: fromX, y: fromY },
+        laneY
+      )
     if (e.blast) {
       // The big fart: a green cloud billowing out over the right (home) half.
       const t = 1 - e.life / 0.6
@@ -672,14 +774,10 @@ function draw() {
       }
       ctx.restore()
     } else if (e.ranged) {
-      const source = e.source
       // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
-      const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.period) : [0, 0]
-      const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
-      const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
       const targetY = e.targetY ?? fromY
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
-      if (progress < 1) {
+      if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
         const x = fromX + (e.x + (e.dx ?? 0) - fromX) * progress
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
@@ -688,26 +786,59 @@ function draw() {
         ctx.save()
         ctx.translate(x, yShot)
         ctx.scale(1, aspect)
-        ctx.beginPath()
-        ctx.arc(0, 0, radius, 0, 7)
         ctx.fillStyle = fill
-        ctx.fill()
-        // A glint, like the pellet still in a thrower's hand.
-        ctx.save()
-        ctx.beginPath()
-        ctx.arc(-radius * 0.35, -radius * 0.35, radius * 0.28, 0, 7)
-        ctx.fillStyle = '#ffffffb0'
-        ctx.fill()
-        ctx.restore()
         ctx.strokeStyle = edge
         ctx.lineWidth = 1.5
-        ctx.stroke()
+        if (['sake', 'energy'].includes(e.attackerKey)) {
+          const count = calm.matches ? 3 : 6
+          for (let index = 0; index < count; index++) {
+            const offset = index * 6
+            ctx.beginPath()
+            ctx.arc(
+              e.side * offset,
+              Math.sin(index * 2 + progress * 5) * 3,
+              radius * (0.4 + (source?.ramp ?? 0) * 0.08),
+              0,
+              7
+            )
+            ctx.fill()
+            ctx.stroke()
+          }
+        } else {
+          ctx.beginPath()
+          ctx.arc(0, 0, radius, 0, 7)
+          ctx.fill()
+          ctx.stroke()
+          if (e.attackerKey === 'korokoro') {
+            // A glint, like the pellet still in a thrower's hand.
+            ctx.beginPath()
+            ctx.arc(-radius * 0.35, -radius * 0.35, radius * 0.28, 0, 7)
+            ctx.fillStyle = '#ffffffb0'
+            ctx.fill()
+          }
+          if (['garlic', 'sayu'].includes(e.attackerKey)) {
+            for (let index = 0; index < (calm.matches ? 2 : 4); index++) {
+              ctx.beginPath()
+              const trailX = e.side * (12 + index * 7)
+              if (e.attackerKey === 'garlic') {
+                ctx.moveTo(trailX, -5)
+                ctx.bezierCurveTo(trailX - 4, -1, trailX + 4, 1, trailX, 5)
+              } else ctx.arc(trailX, -4 - (index % 2) * 5, 2 + index, 0, 7)
+              ctx.stroke()
+            }
+          }
+          if (e.attackerKey === 'seichou') {
+            for (let index = 0; index < (calm.matches ? 2 : 4); index++) {
+              ctx.beginPath()
+              ctx.arc((index - 1.5) * 5, (index % 2) * 5 - 3, 4, 0, 7)
+              ctx.fill()
+            }
+          }
+        }
         ctx.restore()
-      } else if (e.arrived && !e.missed) {
+      } else if (e.turret && e.arrived && !e.missed) {
         drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect)
       }
-    } else {
-      drawContact(e, e.targetY ?? 361 - 30 * aspect, state.time - e.releasedAt, aspect)
     }
   }
   $('gold').textContent = Math.floor(state.gold)
@@ -757,7 +888,9 @@ function tick(now) {
   if (!paused) {
     const alive = new Set(state.units)
     for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
-    while (fallen.length && state.time - fallen[0].at > KO_SECONDS) fallen.shift()
+    for (let index = fallen.length - 1; index >= 0; index--)
+      if (state.time - fallen[index].at > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key)))
+        fallen.splice(index, 1)
     let impact = false,
       shot = false
     for (const effect of state.effects)
@@ -770,7 +903,11 @@ function tick(now) {
           const height = 35 / (models.presentation[0] * modelSize(target.key))
           effect.dx = standOff(target) - target.side * models.front(target.key, height)
         }
-        if (effect.ranged) effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+        if (effect.sourceId != null)
+          effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+        effect.victimOrigins = (effect.victims ?? [])
+          .map(({ id }) => previous.find((unit) => unit.id === id))
+          .filter(Boolean)
         if (!effect.blast) {
           impact ||= !effect.ranged
           shot ||= effect.ranged
