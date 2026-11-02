@@ -1299,14 +1299,14 @@ export function buildCar(color: string, length = 16, width = 6.5, height = 5.5):
     for (const side of [-1, 1])
       part(
         car,
-        'box',
+        'sharp',
         material(end > 0 ? '#fff6d8' : '#d6262c', { glow: end > 0 ? 1.2 : 0.8 }),
         [side * width * 0.36, deck + lower * 0.72, end * length * 0.5],
         [1.2, 0.55, 0.15]
       )
   }
   for (const side of [-1, 1])
-    part(car, 'box', paint, [side * width * 0.52, deck + lower + 0.5, length * 0.12], [0.5, 0.45, 0.7]) // mirrors
+    part(car, 'sharp', paint, [side * width * 0.52, deck + lower + 0.5, length * 0.12], [0.5, 0.45, 0.7]) // mirrors
   return compact(car)
 }
 

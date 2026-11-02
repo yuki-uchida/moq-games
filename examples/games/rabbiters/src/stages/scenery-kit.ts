@@ -1,25 +1,22 @@
 // Small three.js helpers for chapter scenery: a ground mesh from the active map's height grid (walls and
-// furniture baked into it show up as blocks), merged boxes per colour, and a water plane.
+// furniture baked into it show up as blocks), a water plane, and the prop kit the house and town build with.
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { CELL, TERRAIN, WATER_LEVEL, WORLD } from '../map'
 import type { Rect } from './kit'
 import type { Scenery, SceneryState, SceneryView } from '../story'
 
-export type Box = { x: number; y: number; z: number; w: number; h: number; d: number; color: string; turn?: number }
-
-const unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
+type V3 = [number, number, number]
 
 /**
- * Builds static scenery for the active map: the height grid coloured by `colorAt` (y is the vertex height),
- * boxes merged into one mesh per colour (y is the box bottom), and optional water planes at WATER_LEVEL.
- * `update` is called every frame for any animation the stage adds.
+ * Builds static scenery for the active map: the height grid coloured by `colorAt` (y is the vertex height) and
+ * optional water planes at WATER_LEVEL. `update` is called every frame for any animation the stage adds.
  */
 export function buildScenery(
   scene: THREE.Scene,
   options: {
     colorAt(x: number, z: number, y: number): string
-    boxes?: Box[]
     water?: Rect[]
     update?(state: SceneryState, view: SceneryView): void
   }
@@ -27,12 +24,6 @@ export function buildScenery(
   const root = new THREE.Group()
   const geometries: THREE.BufferGeometry[] = []
   const materials = new Map<string, THREE.Material>()
-  const material = (color: string) => {
-    let found = materials.get(color)
-    if (!found)
-      materials.set(color, (found = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true })))
-    return found
-  }
   const { nx, nz, heights } = TERRAIN
   const positions = new Float32Array(nx * nz * 3)
   const colors = new Float32Array(nx * nz * 3)
@@ -66,29 +57,6 @@ export function buildScenery(
   groundMesh.name = 'terrain'
   root.add(groundMesh)
 
-  const byColor = new Map<string, THREE.BufferGeometry[]>()
-  for (const box of options.boxes ?? []) {
-    const part = unitBox
-      .clone()
-      .applyMatrix4(
-        new THREE.Matrix4().compose(
-          new THREE.Vector3(box.x, box.y, box.z),
-          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), box.turn ?? 0),
-          new THREE.Vector3(box.w, box.h, box.d)
-        )
-      )
-    const list = byColor.get(box.color)
-    if (list) list.push(part)
-    else byColor.set(box.color, [part])
-  }
-  for (const [key, parts] of byColor) {
-    const merged = mergeGeometries(parts)
-    parts.forEach((part) => part.dispose())
-    geometries.push(merged)
-    const mesh = new THREE.Mesh(merged, material(key))
-    mesh.castShadow = mesh.receiveShadow = true
-    root.add(mesh)
-  }
   for (const rect of options.water ?? []) {
     const plane = new THREE.PlaneGeometry(rect.maxX - rect.minX, rect.maxZ - rect.minZ).rotateX(-Math.PI / 2)
     geometries.push(plane)
@@ -110,5 +78,202 @@ export function buildScenery(
       materials.forEach((entry) => entry.dispose())
       root.removeFromParent()
     }
+  }
+}
+
+/**
+ * Prop kit: builders add shared unit shapes to a group, then `bake` merges every static mesh into one vertex-coloured
+ * mesh per finish (roughness, metalness, opacity, tag), so a whole chapter's furniture costs a handful of draw calls
+ * however many colours it uses. `soft` boxes have bevelled edges at their true size.
+ */
+export class Kit {
+  readonly materials = new Map<string, THREE.MeshStandardMaterial>()
+  readonly geometry = {
+    box: new THREE.BoxGeometry(1, 1, 1),
+    cylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
+    sphere: new THREE.SphereGeometry(1, 10, 8),
+    /** Fruit, pebbles, leaves: 36 triangles. */
+    pebble: new THREE.SphereGeometry(1, 6, 4),
+    lump: new THREE.IcosahedronGeometry(1, 1),
+    cone: new THREE.ConeGeometry(1, 1, 8),
+    pyramid: new THREE.ConeGeometry(1, 1, 4),
+    frustum: new THREE.CylinderGeometry(0.55, 1, 1, 12),
+    torus: new THREE.TorusGeometry(1, 0.3, 6, 16),
+    /** Thin hoops: wheels, rims. */
+    ring: new THREE.TorusGeometry(1, 0.08, 4, 20),
+    /** A gable: a triangular prism along z, base 1 wide at y = 0 and the ridge at y = 1. */
+    gable: new THREE.CylinderGeometry(1, 1, 1, 3)
+      .rotateX(-Math.PI / 2)
+      .translate(0, 0.5, 0)
+      .scale(1 / Math.sqrt(3), 2 / 3, 1)
+  }
+  private readonly softBoxes = new Map<string, THREE.BufferGeometry>()
+
+  material(
+    color: string,
+    options: { roughness?: number; metal?: number; opacity?: number; tag?: string; side?: THREE.Side } = {}
+  ) {
+    const { roughness = 0.85, metal = 0, opacity = 1, tag = '', side = THREE.FrontSide } = options
+    const key = `${color}:${roughness}:${metal}:${opacity}:${tag}:${side}`
+    let material = this.materials.get(key)
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({
+        color,
+        roughness,
+        metalness: metal,
+        flatShading: true,
+        transparent: opacity < 1,
+        opacity,
+        side
+      })
+      material.name = tag
+      this.materials.set(key, material)
+    }
+    return material
+  }
+
+  add(
+    parent: THREE.Object3D,
+    shape: keyof Kit['geometry'] | 'soft',
+    color: string | THREE.Material,
+    [x, y, z]: V3,
+    [sx, sy, sz]: V3,
+    [rx, ry, rz]: V3 = [0, 0, 0]
+  ) {
+    const soft = shape === 'soft'
+    const mesh = new THREE.Mesh(
+      soft ? this.softBox(sx, sy, sz) : this.geometry[shape],
+      typeof color === 'string' ? this.material(color) : color
+    )
+    mesh.position.set(x, y, z)
+    if (!soft) mesh.scale.set(sx, sy, sz)
+    mesh.rotation.set(rx, ry, rz)
+    // Small parts (fruit, cans, knobs) skip the shadow pass: their shadows barely show and cost a second draw.
+    mesh.castShadow = Math.max(sx, sy, sz) >= 0.6
+    parent.add(mesh)
+    return mesh
+  }
+
+  /** A box by its floor rect and height range (walls, floors, furniture blocks). */
+  block(
+    parent: THREE.Object3D,
+    color: string | THREE.Material,
+    minX: number,
+    maxX: number,
+    minZ: number,
+    maxZ: number,
+    y0: number,
+    y1: number,
+    shape: 'box' | 'soft' = 'box'
+  ) {
+    return this.add(
+      parent,
+      shape,
+      color,
+      [(minX + maxX) / 2, (y0 + y1) / 2, (minZ + maxZ) / 2],
+      [maxX - minX, y1 - y0, maxZ - minZ]
+    )
+  }
+
+  /** A box with bevelled edges (two facets each), built at its size: a scaled unit box would stretch the bevels. */
+  private softBox(w: number, h: number, d: number) {
+    const key = `${w}:${h}:${d}`
+    let geometry = this.softBoxes.get(key)
+    if (!geometry)
+      this.softBoxes.set(
+        key,
+        (geometry = mergeVertices(new RoundedBoxGeometry(w, h, d, 1, Math.min(0.2, Math.min(w, h, d) * 0.3))))
+      )
+    return geometry
+  }
+
+  /**
+   * Merges every mesh under `root` (world transforms baked in) into one mesh per finish and shadow casting, each
+   * part's colour baked into its vertices. Parts that already carry vertex colours (models built elsewhere, like
+   * cars) keep them.
+   */
+  bake(root: THREE.Object3D): THREE.Group {
+    root.updateMatrixWorld(true)
+    const byFinish = new Map<string, { material: THREE.MeshStandardMaterial; parts: THREE.BufferGeometry[] }>()
+    root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return
+      const source = object.material as THREE.MeshStandardMaterial
+      const { roughness, metalness, opacity, flatShading, side, name } = source
+      const key = `baked:${roughness}:${metalness}:${opacity}:${flatShading}:${side}:${name}`
+      let finish = this.materials.get(key)
+      if (!finish) {
+        finish = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness,
+          metalness,
+          flatShading,
+          side,
+          transparent: opacity < 1,
+          opacity
+        })
+        finish.name = name
+        this.materials.set(key, finish)
+      }
+      // Indexed, so shared vertices are shaded once (a sphere has a quarter of the vertices it would have unrolled).
+      const geometry = (object.geometry as THREE.BufferGeometry).clone().applyMatrix4(object.matrixWorld)
+      if (!geometry.index) geometry.setIndex([...Array(geometry.attributes.position.count).keys()])
+      if (!geometry.attributes.color) {
+        const colors = new Float32Array(geometry.attributes.position.count * 3)
+        for (let index = 0; index < colors.length; index += 3) source.color.toArray(colors, index)
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+      }
+      const group = `${key}:${object.castShadow}`
+      const entry = byFinish.get(group)
+      if (entry) entry.parts.push(geometry)
+      else byFinish.set(group, { material: finish, parts: [geometry] })
+    })
+    const baked = new THREE.Group()
+    for (const [group, { material, parts }] of byFinish) {
+      const merged = mergeGeometries(parts)
+      parts.forEach((part) => part.dispose())
+      const mesh = new THREE.Mesh(merged, material)
+      mesh.castShadow = group.endsWith('true') && !material.transparent
+      mesh.receiveShadow = true
+      baked.add(mesh)
+    }
+    return baked
+  }
+
+  dispose() {
+    Object.values(this.geometry).forEach((geometry) => geometry.dispose())
+    this.softBoxes.forEach((geometry) => geometry.dispose())
+    this.materials.forEach((material) => material.dispose())
+  }
+}
+
+/** Two roof boards meeting at a ridge along z, `rise` above the eaves at `y` and `half` either side of x. */
+export function gableRoof(
+  kit: Kit,
+  parent: THREE.Object3D,
+  color: string | THREE.Material,
+  [x, y, z]: V3,
+  half: number,
+  rise: number,
+  length: number,
+  overhang = 0.4,
+  thick = 0.25
+) {
+  const slope = Math.atan2(rise, half)
+  const run = Math.hypot(half, rise) + overhang
+  for (const side of [-1, 1]) {
+    // From just past the ridge down past the eave, lifted by half the board's thickness.
+    const along = (run - 0.05) / 2
+    kit.add(
+      parent,
+      'box',
+      color,
+      [
+        x + side * (Math.cos(slope) * along + (Math.sin(slope) * thick) / 2),
+        y + rise - Math.sin(slope) * along + (Math.cos(slope) * thick) / 2,
+        z
+      ],
+      [run + 0.05, thick, length + overhang * 2],
+      [0, 0, -side * slope]
+    )
   }
 }
