@@ -40,11 +40,11 @@ export function cutAway<T extends THREE.Material>(material: T): T {
           vec3 cutAxis = cutFocus - cameraPosition;
           float cutLength = max(length(cutAxis), 0.001);
           float cutT = dot(vCutWorld - cameraPosition, cutAxis) / (cutLength * cutLength);
-          // Anything hugging the lens, or inside a cone that widens toward the rabbit, stops short of it. Floors
+          // Anything hugging the lens, or inside a tube that widens toward the rabbit, stops short of it. Floors
           // around the rabbit's feet stay: only walls, roofs, trunks and furniture above them are cut.
           if (distance(vCutWorld, cameraPosition) < 1.1) discard;
           if (vCutWorld.y > cutFocus.y - 0.45 && cutT > 0.0 && cutT < 1.0 - 0.7 / cutLength &&
-              distance(vCutWorld, cameraPosition + cutAxis * cutT) < cutRadius * (0.35 + 0.65 * cutT)) discard;
+              distance(vCutWorld, cameraPosition + cutAxis * cutT) < cutRadius * (0.6 + 0.4 * cutT)) discard;
         }`
       )
   }

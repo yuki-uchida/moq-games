@@ -104,8 +104,8 @@ export class WorldView {
     let material = this.materials.get(key)
     if (!material) {
       material = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, side })
-      // Scenery between the camera and the rabbit turns see-through; tunnel walls (back faces) stay solid.
-      if (side !== THREE.BackSide) cutAway(material)
+      // Scenery between the camera and the rabbit turns see-through, tunnel walls included.
+      cutAway(material)
       this.materials.set(key, material)
     }
     return material
@@ -720,10 +720,13 @@ export class WorldView {
     this.tunnels.add(worms)
   }
 
-  /** Per-frame: animates grass and shows the tunnels or see-through logs when the camera needs them. */
+  /** Per-frame: animates grass and swaps surface for tunnels, or fades logs, when the camera needs it. */
   update(time: number, underground: boolean, underLog: boolean) {
     this.sway.value = time
+    // Underground the camera roams outside the cut-open tubes: the surface (terrain from below, water, grass)
+    // would only get in the way.
     this.tunnels.visible = underground
+    this.root.visible = !underground
     for (const material of this.logMaterials) {
       material.opacity = underLog ? 0.35 : 1
       material.depthWrite = !underLog
