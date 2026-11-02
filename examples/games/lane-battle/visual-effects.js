@@ -118,9 +118,44 @@ export const HURT_VFX = {
       ctx.fill()
     }
   },
-  garlic: emptyEffect,
-  curry: emptyEffect,
-  milk: emptyEffect,
+  garlic: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = (1 - age / 0.3) * 0.6
+    ctx.fillStyle = '#c4d85a'
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.arc(x - unit.side * (12 + i * 7 + age * 30), y - (45 + i * 5) * aspect, 3 + age * 10, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  curry: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = '#a8541a'
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 1) * (8 + age * 20), y - (29 + age * 38 + i * 4) * aspect, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  milk: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.globalAlpha = 1 - age / 0.3
+    ctx.fillStyle = '#fff'
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.ellipse(
+        x + (i - 1) * (10 + age * 18),
+        y - (45 + age * 22 + i * 3) * aspect,
+        2.5,
+        4 * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+  },
   oyster: emptyEffect,
   ice: emptyEffect,
   energy: emptyEffect,
@@ -282,9 +317,72 @@ export const DEATH_VFX = {
       ctx.fill()
     }
   },
-  garlic: emptyEffect,
-  curry: emptyEffect,
-  milk: emptyEffect,
+  garlic: (ctx, unit, age, layer, x, y, aspect) => {
+    if (layer !== 'above' || age > 0.95) return
+    ctx.globalAlpha = 0.38 * (1 - age / 0.95)
+    ctx.fillStyle = '#bdcf54'
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 2) * (8 + age * 18), y - (45 + (i % 2) * 10 + age * 18) * aspect, 6 + age * 10, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  curry: (ctx, unit, age, layer, x, y, aspect) => {
+    if (age > 0.95) return
+    ctx.globalAlpha = Math.min(1, (0.95 - age) / 0.24)
+    if (layer === 'floor' && age > 0.25) {
+      ctx.fillStyle = '#a8541a'
+      ctx.beginPath()
+      ctx.ellipse(x, y, 30 * Math.min(1, (age - 0.25) * 4), 6 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    if (layer === 'above' && age < 0.6) {
+      ctx.fillStyle = '#ec5639'
+      ctx.globalAlpha *= 0.45 * (1 - age / 0.6)
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath()
+        ctx.arc(x + (i - 1.5) * 9, y - (34 + age * 35 + (i % 2) * 8) * aspect, 6 + age * 7, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  },
+  milk: (ctx, unit, age, layer, x, y, aspect) => {
+    if (age > 0.85) return
+    ctx.globalAlpha = Math.min(1, (0.85 - age) / 0.21)
+    ctx.fillStyle = '#f9ffff'
+    if (layer === 'floor') {
+      ctx.fillStyle = '#b8dce9'
+      ctx.beginPath()
+      ctx.ellipse(x, y, 27 * Math.min(1, age * 4), 6 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#f9ffff'
+      ctx.beginPath()
+      ctx.ellipse(x, y, 23 * Math.min(1, age * 4), 4 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    if (layer === 'above' && age < 0.5) {
+      const spoutY = y - 55 * (1 - 0.65 * Math.min(1, age / 0.4)) * aspect
+      ctx.strokeStyle = '#f9ffff'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.moveTo(x, spoutY)
+      ctx.lineTo(x, spoutY - 12 * Math.sin((Math.PI * age) / 0.5) * aspect)
+      ctx.stroke()
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath()
+        ctx.ellipse(
+          x + (i - 1.5) * age * 30,
+          y - (55 * (1 - 0.65 * Math.min(1, age / 0.4)) + Math.sin((Math.PI * age) / 0.5) * (18 + i * 4)) * aspect,
+          3,
+          5 * aspect,
+          0,
+          0,
+          Math.PI * 2
+        )
+        ctx.fill()
+      }
+    }
+  },
   oyster: emptyEffect,
   ice: emptyEffect,
   energy: emptyEffect,
