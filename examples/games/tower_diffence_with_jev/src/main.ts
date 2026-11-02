@@ -35,6 +35,9 @@ import './style.css'
 import './ui/title-screen.css'
 import { titleScreenMarkup, titleSaveStatus } from './ui/TitleScreen'
 import './ui/games-home-link.css'
+import './ui/battle-feel.css'
+import { BattleFeedback } from './ui/BattleFeedback'
+import { BattleHud } from './ui/BattleHud'
 import { GameEngine } from './game/GameEngine'
 import {
   CONFIG,
@@ -473,6 +476,17 @@ Object.assign(window, {
   towerDefenseAudioDiagnostics: () => soundPlayer.diagnostics
 })
 const viewport = $('map-scroll')
+const battlePanel = document.querySelector<HTMLElement>('.battle-panel')!
+const battleHud = new BattleHud(battlePanel)
+const battleFeedback = new BattleFeedback({
+  field: $('field'),
+  overlayParent: battlePanel,
+  shakeTarget: document.querySelector<HTMLElement>('.map-shell')!,
+  baseLabel: $('base-health'),
+  coinTarget: () => battleHud.coinElement,
+  play: (kind, param) => soundPlayer.playFeel(kind, param),
+  announce: (message) => announce(message)
+})
 let mapScale = 1
 let mapScaleX = 1
 const settingsPanel = new PanelDialog(
@@ -1093,16 +1107,21 @@ document.addEventListener('pointerdown', (event) => {
   }
 })
 
+let controlTooltipTimer = 0
 function showControlTooltip(target: HTMLElement) {
+  clearTimeout(controlTooltipTimer)
   $('control-tooltip').hidden = true
   const control = target.closest<HTMLButtonElement>('button')
   if (!control || !control.title || (!control.closest('.field-controls') && !control.closest('.floating-tray'))) return
   $('control-tooltip').textContent = control.title
   $('control-tooltip').hidden = false
+  // A clicked control keeps focus; don't leave its name floating over the battle.
+  controlTooltipTimer = window.setTimeout(() => ($('control-tooltip').hidden = true), 1800)
 }
 document.addEventListener('focusin', (event) => {
   if (event.target instanceof HTMLElement) showControlTooltip(event.target)
 })
+document.addEventListener('focusout', () => ($('control-tooltip').hidden = true))
 document.addEventListener('pointerup', (event) => {
   if (event.pointerType === 'touch' && event.target instanceof HTMLElement && !defenderMoveInput.dragging)
     showControlTooltip(event.target)
@@ -2265,7 +2284,6 @@ $('assault').onclick = () => {
   }
   clearPlacementModes()
   if (engine.startAssault()) {
-    soundPlayer.playCue('ui_assault')
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
@@ -2469,7 +2487,6 @@ function persistOutcome() {
     lastStageReward = awardStageClear(stageProgress, engine.state.stage)
     saveStageProgress(stageProgress)
   }
-  soundPlayer.playCue(engine.state.result === 'win' ? 'ui_win' : 'ui_lose')
   battleClock?.stop()
   connection?.cancelPending()
   persist()
@@ -2479,7 +2496,9 @@ function initializeClock() {
     battleClock = createBattleClock({
       step: (dt) => {
         if (!started || !renderer.campaignPrepared || engine.state.phase !== 'assault') return false
-        engine.update(dt, (state) => renderer.assetsReady(state))
+        // Speed x2 runs two simulation steps per clock step; animation reads simulation time, so it stays in sync.
+        for (let i = 0; i < battleHud.speed && engine.state.phase === 'assault'; i++)
+          engine.update(dt, (state) => renderer.assetsReady(state))
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
         syncBattleMusic()
@@ -2607,6 +2626,8 @@ function frame(now: number) {
   // Menu screens have no running battlefield. Keep asynchronous settings feedback
   // alive without rebuilding hidden world art, placement controls or battle UI.
   if (!started) {
+    battleHud.hide()
+    battleFeedback.reset()
     if (now - uiTick > 100) {
       uiTick = now
       commitArtMode()
@@ -2642,6 +2663,8 @@ function frame(now: number) {
     selected,
     !!placingSandbag || !!placingRoadItem
   )
+  battleFeedback.update(state)
+  battleHud.update(state, battleFeedback.bountyArrived)
   if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)
   assetNotice.update(renderer.assetStatus, performance.now(), state.phase === 'assault')

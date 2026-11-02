@@ -2745,6 +2745,8 @@ export class GameRenderer {
         label.querySelector('span')!.textContent =
           `${unit.boss ? '★ ' : ''}${Math.ceil(unit.hp)}/${Math.ceil(unit.maxHp)}`
         label.querySelector('b')!.style.width = `${100 * Math.max(0, unit.hp / unit.maxHp)}%`
+        label.style.setProperty('--hp', String(Math.max(0, unit.hp / unit.maxHp)))
+        label.classList.toggle('full', unit.hp >= unit.maxHp)
         label.style.setProperty(
           '--health',
           unit.hp / unit.maxHp > 0.5 ? '#b8e79b' : unit.hp / unit.maxHp > 0.25 ? '#edcf72' : '#f58b73'
