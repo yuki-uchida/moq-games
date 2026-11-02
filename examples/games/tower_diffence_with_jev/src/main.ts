@@ -1,4 +1,8 @@
 import { SPECIALS, specialReady } from './game/SpecialAbilities'
+import { bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
+import { SkillBar } from './ui/SkillBar'
+import { SkillCutIn } from './ui/SkillCutIn'
+import './ui/skill-bar.css'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
 import { allRoadPaths } from './game/BattlefieldRoutes'
@@ -1040,10 +1044,15 @@ function fireSpecial(point: Point) {
     announce('指定できません')
     return
   }
-  soundPlayer.playCue('ui_special')
+  playCastFeedback(engine.state.units.find((unit) => unit.id === specialAimId)!.type as AllyType)
   clearPlacementModes()
   persist()
   updateSelectionContext()
+}
+function playCastFeedback(type: AllyType) {
+  skillCutIn.play({ portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type })
+  soundPlayer.playCue('ui_special')
+  soundPlayer.playFeel('cutin')
 }
 const specialInput = new GroundTapInput(viewport, {
   acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),
@@ -1062,6 +1071,58 @@ const specialInput = new GroundTapInput(viewport, {
 $('unit-special').onclick = () => {
   if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
   else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
+}
+const skillCutIn = new SkillCutIn($('app'))
+const skillBar = new SkillBar(document.querySelector<HTMLElement>('.game-layout')!, {
+  portrait: displayPortrait,
+  onActivate: activateSkill
+})
+function skillAssetsReady(type: AllyType) {
+  const status = renderer.specialAbilityStatus(type)
+  if (status !== 'ready') announce(status === 'error' ? '必殺技素材を読み込めません。再読み込みしてください。' : '必殺技の3D素材を読込中')
+  return status === 'ready'
+}
+// Auto-aimed cast shared by the bar tap and AUTO. Returns false when nothing was cast.
+function castBestSpecial(id: number, accept: (score: number, point: Point, type: AllyType) => boolean = () => true) {
+  const unit = engine.state.units.find((u) => u.id === id),
+    target = unit && bestSpecialTarget(engine.state, id)
+  if (!unit || !target || !accept(target.score, target.point, unit.type as AllyType) || !engine.castSpecial(id, target.point)) return false
+  playCastFeedback(unit.type as AllyType)
+  announce(`${SPECIALS[unit.type as AllyType].name} 発動`)
+  clearPlacementModes()
+  persist()
+  updateSelectionContext()
+  return true
+}
+function activateSkill(id: number, manual: boolean) {
+  const unit = engine.state.units.find((u) => u.id === id)
+  if (!unit || !assaulting() || document.querySelector('dialog[open]')) return
+  if (!specialReady(engine.state, id)) { announce(unit.hp <= 0 ? '戦闘不能' : `✦ ${Math.ceil(unit.specialCooldown ?? 0)}秒`); return }
+  if (!skillAssetsReady(unit.type as AllyType)) return
+  if (!manual) {
+    if (castBestSpecial(id)) return
+    // Nothing worth hitting: say so on the button instead of opening the aim panel over the field.
+    // Long-press / Shift+click still aims by hand.
+    skillBar.hint(id, unit.type === 'healer' ? '回復が必要な仲間がいません' : '射程内に敵がいません')
+    announce(`${SPECIALS[unit.type as AllyType].name}: 対象なし · 長押しで手動照準`)
+    return
+  }
+  selectDefender(id)
+  beginSpecial(id)
+}
+let autoSkillAt = 0, autoCastAt = -1e9
+function autoSkills(now: number) {
+  if (!skillBar.autoEnabled || now - autoSkillAt < 250) return
+  autoSkillAt = now
+  if (!assaulting() || specialAimId !== null || now - autoCastAt < 600 || document.querySelector('dialog[open]')) return
+  let best: { id: number; score: number } | null = null
+  for (const unit of engine.state.units) {
+    const type = unit.type as AllyType,
+      target = specialReady(engine.state, unit.id) && unit.owner === 'player' && renderer.specialAbilityStatus(type) === 'ready' ? bestSpecialTarget(engine.state, unit.id) : null
+    if (!target || !(type === 'healer' || target.score >= 2 || (target.score >= 1 && bossInSpecialArea(engine.state, type, target.point)))) continue
+    if (!best || target.score > best.score) best = { id: unit.id, score: target.score }
+  }
+  if (best && castBestSpecial(best.id)) autoCastAt = now
 }
 const roadItemInput = new GroundTapInput(viewport, {
   enabled: () => !!placingRoadItem && preparing() && paidRoster() && !document.querySelector('dialog[open]'),
@@ -1127,7 +1188,7 @@ for (const tray of ['unit', 'item'])
   }
 document.addEventListener('pointerdown', (event) => {
   const target = event.target as HTMLElement
-  if (target.closest('.floating-tray, .field-controls, dialog')) return
+  if (target.closest('.floating-tray, .field-controls, .skill-bar, dialog')) return
   closeTrays()
   if (specialAimId === null && !target.closest('[data-unit-id]') && !target.closest('.sandbag-handle') && !target.closest('.road-item-handle')) {
     $('selection-context').hidden = true
@@ -2743,6 +2804,8 @@ function frame(now: number) {
     movingDefenderId = null
   }
   if (specialAimId !== null && !specialReady(state, specialAimId)) { specialAimId = null; renderer.setSpecialPreview(null) }
+  skillBar.update(state, !document.querySelector('dialog[open]'))
+  autoSkills(now)
   updateDefenderPreview()
   commitArtMode()
   renderer.setCommanderMode(engine.ai !== rule)

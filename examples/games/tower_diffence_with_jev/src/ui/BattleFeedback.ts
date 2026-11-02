@@ -54,6 +54,7 @@ export class BattleFeedback {
   private units = new Map<number, Tracked>()
   private corpseIds = new Set<number>()
   private bossSeen = new Set<number>()
+  private readonly specialHits = new Set<string>()
   private readonly killed = new Set<number>()
   private readonly gone = new Set<number>()
   private readonly force = new Set<number>()
@@ -105,6 +106,7 @@ export class BattleFeedback {
     this.units.clear()
     this.corpseIds.clear()
     this.bossSeen.clear()
+    this.specialHits.clear()
     this.hits.clear()
     this.heals.clear()
     this.combo.reset()
@@ -243,6 +245,16 @@ export class BattleFeedback {
     for (const { id, amount } of this.hits.flush(now, force)) this.damageNumber(id, amount)
     for (const { id, amount } of this.heals.flush(now, force)) if (Math.round(amount) >= 2) this.healNumber(id, amount)
     for (const id of gone) this.units.delete(id)
+
+    // Special impacts: the moment a damaging special lands, kick the camera (fields like frost don't).
+    for (const effect of state.specialEffects ?? []) {
+      if (!effect.applied || this.specialHits.has(effect.id)) continue
+      this.specialHits.add(effect.id)
+      if (baseline || !(effect.power > 0)) continue
+      this.shake(4)
+      this.burst(effect.x, effect.y - 10, 'boss')
+      this.options.play('hit-heavy')
+    }
 
     // Castle.
     if (combat && state.playerBaseHp < this.prevBaseHp) this.baseHit(this.prevBaseHp - state.playerBaseHp)
