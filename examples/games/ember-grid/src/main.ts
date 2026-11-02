@@ -78,6 +78,7 @@ const saved = readSave(() => {
 })
 let save = saved ?? freshSave('classic')
 let playing = false
+let replayingEnding = false
 /** Roster each mission starts from: index 0 is the fresh party, later ones are saved on victory. */
 let checkpoints: (Roster | undefined)[] = save.checkpoints
 /** Deployed allies (and those lost earlier) for a mission start or the mission list. */
@@ -515,24 +516,14 @@ render = () => {
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
-    if (!busy && (game.phase === 'won' || game.phase === 'lost')) {
+    if (!busy && game.phase === 'lost') {
       delete save.suspend
-      if (game.phase === 'won') {
-        if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
-        save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
-        if (game.stage === missions.length - 1) {
-          save.completedAt ??= new Date().toISOString()
-          save.finale = snapshotGame(game)
-        }
-        if (game.stage + 1 < missions.length) {
-          checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
-          save.furthest = Math.max(save.furthest, game.stage + 1)
-        }
-      }
     }
     if (!unloading) writeSave(save, notice)
   }
   field.dataset.mission = String(game.stage)
+  document.querySelector<HTMLButtonElement>('#restart')!.disabled = replayingEnding
+  document.querySelector<HTMLButtonElement>('#mission')!.disabled = replayingEnding
   const objective = campaign[game.stage].objective
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map(),
@@ -637,6 +628,22 @@ render = () => {
   if (playing && wasHidden && !result.hidden)
     audio.jingle(game.phase === 'lost' ? 'defeat' : game.stage === missions.length - 1 ? 'final' : 'victory')
 }
+function persistVictory() {
+  if (!playing || game.phase !== 'won') return
+  delete save.suspend
+  if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
+  save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
+  if (game.stage === missions.length - 1) {
+    save.completedAt ??= new Date().toISOString()
+    save.finale = snapshotGame(game)
+  } else {
+    checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
+    save.furthest = Math.max(save.furthest, game.stage + 1)
+  }
+  save.checkpoints = checkpoints
+  save.formation = game.formation
+  if (!unloading) writeSave(save, notice)
+}
 async function choose(x: number, y: number) {
   if (busy || !ready) return
   if (game.phase !== 'ally') return
@@ -693,6 +700,7 @@ async function choose(x: number, y: number) {
       }
       cancelForecast(false)
       if (attack(game, unit, target)) {
+        persistVictory()
         tutorial.advance('target')
         tutorial.advance('attack')
         changed = true
@@ -753,6 +761,7 @@ async function end() {
   undo = undefined
   cancelForecast(false)
   if (!beginEnemy(game)) {
+    persistVictory()
     // A seize objective can be won as the ally phase ends; its outro still plays before the report.
     if (game.phase === 'won' && !(await victoryScene(generation))) return
     render()
@@ -785,6 +794,7 @@ async function end() {
     if (game.phase !== 'enemy') return
   }
   beginAlly(game)
+  persistVictory()
   // A survive objective is won once the last required enemy phase ends.
   if (game.phase === 'won') {
     if (await victoryScene(token)) render()
@@ -879,6 +889,10 @@ document.querySelector('#restart')!.addEventListener('click', () =>
     if (game.stage === 0) tutorial.start(tutorialEnabled())
     // A retry replays the (skippable) chapter opening, then the phase banner.
     if (ready) void openChapter(false)
+    else {
+      pendingOpening = false
+      void prepareBattle()
+    }
   })
 )
 document.querySelector('#recover')!.addEventListener('click', async () => {
@@ -1012,6 +1026,7 @@ async function prepareBattle() {
   void prepareSound(roles, token)
   try {
     await animation.prepare(roles, (done, total) => {
+      if (token !== generation) return
       status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
       titleProgress(status.textContent)
     })
@@ -1020,6 +1035,13 @@ async function prepareBattle() {
     preparation.remove()
     titleProgress('準備完了')
     render()
+    if (replayingEnding) {
+      stage.sync(game)
+      void story.victory(token).then(() => {
+        if (token === generation) location.reload()
+      })
+      return
+    }
     if (pendingOpening !== undefined) {
       const fresh = pendingOpening
       pendingOpening = undefined
@@ -1063,18 +1085,14 @@ const titleProgress = showTitle(saved, {
       startMission(stage ?? save.furthest)
     }
   },
-  ending: async () => {
-    const token = ++generation
+  ending: () => {
+    generation++
+    replayingEnding = true
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
     game.phase = 'won'
     lockPresentation()
-    // Portraits render from the loaded models; the title no longer preloads them.
-    await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
-    if (token !== generation) return
-    // Show the final battle behind the epilogue instead of the board left from start-up.
     render()
-    stage.sync(game)
-    void story.victory(token).then(() => location.reload())
+    void prepareBattle()
   },
   settings,
   help: openHelp
