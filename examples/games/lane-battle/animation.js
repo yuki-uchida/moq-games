@@ -65,10 +65,10 @@ export function flinch(age, power = 1) {
   return { jolt, wobble, flash: Math.max(0, 1 - age / 0.1), face: age < 0.32 }
 }
 
-export const KO_SECONDS = 0.62
+export const KO_SECONDS = 1.15
 /** Knock-out: popped up and back, tipping over, a squash on landing, then a fade. */
-export function knockout(age) {
-  const t = Math.min(1, Math.max(0, age / KO_SECONDS))
+export function knockout(age, duration = KO_SECONDS) {
+  const t = Math.min(1, Math.max(0, age / duration))
   const air = Math.min(1, t / 0.42)
   const landed = Math.max(0, t - 0.42)
   return {
@@ -76,6 +76,6 @@ export function knockout(age) {
     lift: t < 0.42 ? 0.22 * 4 * air * (1 - air) : 0,
     tilt: 1.3 * smooth(t / 0.42),
     squash: t < 0.42 ? 1 + 0.06 * air : 0.82 - 0.22 * Math.exp(-landed / 0.05),
-    fade: t < 0.62 ? 1 : 1 - (t - 0.62) / 0.38
+    fade: t < 0.75 ? 1 : (1 - t) / 0.25
   }
 }

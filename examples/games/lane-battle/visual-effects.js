@@ -1,5 +1,63 @@
 const active = (status, time) => status?.end > time
 
+const emptyEffect = () => {}
+export const HURT_VFX = {
+  katachi: emptyEffect,
+  korokoro: emptyEffect,
+  geri: emptyEffect,
+  bichi: emptyEffect,
+  dodeka: emptyEffect,
+  daiou: emptyEffect,
+  aircon: emptyEffect,
+  ramen: emptyEffect,
+  yofukashi: emptyEffect,
+  sake: emptyEffect,
+  jiro: emptyEffect,
+  yakiniku: emptyEffect,
+  garlic: emptyEffect,
+  curry: emptyEffect,
+  milk: emptyEffect,
+  oyster: emptyEffect,
+  ice: emptyEffect,
+  energy: emptyEffect,
+  cleaner: emptyEffect,
+  yogurt: emptyEffect,
+  sayu: emptyEffect,
+  washiki: emptyEffect,
+  mop: emptyEffect,
+  yoshiki: emptyEffect,
+  seichou: emptyEffect,
+  geridome: emptyEffect
+}
+export const DEATH_VFX = {
+  katachi: emptyEffect,
+  korokoro: emptyEffect,
+  geri: emptyEffect,
+  bichi: emptyEffect,
+  dodeka: emptyEffect,
+  daiou: emptyEffect,
+  aircon: emptyEffect,
+  ramen: emptyEffect,
+  yofukashi: emptyEffect,
+  sake: emptyEffect,
+  jiro: emptyEffect,
+  yakiniku: emptyEffect,
+  garlic: emptyEffect,
+  curry: emptyEffect,
+  milk: emptyEffect,
+  oyster: emptyEffect,
+  ice: emptyEffect,
+  energy: emptyEffect,
+  cleaner: emptyEffect,
+  yogurt: emptyEffect,
+  sayu: emptyEffect,
+  washiki: emptyEffect,
+  mop: emptyEffect,
+  yoshiki: emptyEffect,
+  seichou: emptyEffect,
+  geridome: emptyEffect
+}
+
 export function statusBadges(unit, time) {
   return [
     active(unit.control, time) && unit.control.kind,

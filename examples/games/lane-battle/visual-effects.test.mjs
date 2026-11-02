@@ -1,7 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { activeVictims, IMPACT_STYLES, statusBadges } from './visual-effects.js'
+import { activeVictims, IMPACT_STYLES, statusBadges, HURT_VFX, DEATH_VFX } from './visual-effects.js'
 import { burst, createGame, ENEMIES, POOPS, SPECIALS, summon } from './simulation.js'
+
+test('each unit has independent hurt and death effect hooks', () => {
+  const keys = [...POOPS, ...SPECIALS, ...ENEMIES].map((unit) => unit.key).sort()
+  for (const table of [HURT_VFX, DEATH_VFX]) {
+    assert.deepEqual(Object.keys(table).sort(), keys)
+    for (const key of keys) assert.equal(typeof table[key], 'function')
+  }
+})
 
 test('every unit has an impact style and victims appear at their own hit time', () => {
   assert.deepEqual(

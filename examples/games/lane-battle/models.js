@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { beats, timing, gait, flinch, knockout, KO_SECONDS } from './animation.js'
+import { typeOf } from './simulation.js'
 
 // Characters are built in model space: ~0.9 tall, base at y=0, face toward +Z. Their rig lives in the
 // lane frame instead (+X toward the foe, +Y up, +Z toward the viewer), so every swing is a rotation about Z
@@ -598,8 +599,8 @@ function moveBody(b, p, c) {
   b.spine.rotation.z += bend * 0.3 + 0.06 * h.jolt
   b.chest.rotation.z += bend * 0.35 + 0.1 * h.jolt
   b.head.rotation.z += bend * 0.35 - p.bend * 0.6 * a.recoil + 0.16 * h.jolt - 0.05 * h.wobble
-  if (c.ko >= 0) {
-    const k = knockout(c.ko)
+  if (c.k && !c.customKo) {
+    const k = c.k
     hips.position.x -= k.back
     hips.position.y += k.lift
     hips.rotation.z += k.tilt * p.ko
@@ -628,6 +629,7 @@ const show = (bone, on) => bone && (bone.visible = on)
 const MODELS = {
   // ── Poop army ──
   katachi: {
+    koSeconds: 0.85,
     tempo: [0.4, 0.035],
     size: 1,
     moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16 },
@@ -652,6 +654,7 @@ const MODELS = {
     }
   },
   korokoro: {
+    koSeconds: 0.85,
     tempo: [0.45, 0.03],
     size: 0.86,
     moves: { lunge: 0.14, back: 0.06, rear: 0.24, lean: 0.24, squash: 0.08, stretch: 0.12, bend: 0.22 },
@@ -681,6 +684,7 @@ const MODELS = {
     }
   },
   geri: {
+    koSeconds: 0.8,
     tempo: [0.36, 0.04],
     size: 1.14,
     moves: { lunge: 0.34, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
@@ -711,6 +715,7 @@ const MODELS = {
     }
   },
   bichi: {
+    koSeconds: 0.9,
     tempo: [0.48, 0.03],
     size: 1,
     moves: {
@@ -755,6 +760,7 @@ const MODELS = {
     }
   },
   dodeka: {
+    koSeconds: 1.05,
     tempo: [0.5, 0.06],
     size: 1.35,
     moves: {
@@ -785,6 +791,7 @@ const MODELS = {
     }
   },
   daiou: {
+    koSeconds: 1.15,
     tempo: [0.55, 0.07],
     size: 1.25,
     moves: {
@@ -849,6 +856,7 @@ const MODELS = {
   },
   // ── Specials: things that upset the stomach ──
   aircon: {
+    koSeconds: 0.95,
     tempo: [0.45, 0.04],
     size: 1,
     moves: {
@@ -907,6 +915,7 @@ const MODELS = {
     }
   },
   ramen: {
+    koSeconds: 0.95,
     tempo: [0.4, 0.04],
     size: 1,
     moves: {
@@ -958,6 +967,7 @@ const MODELS = {
     }
   },
   yofukashi: {
+    koSeconds: 1,
     tempo: [0.24, 0.025],
     size: 0.95,
     moves: {
@@ -995,6 +1005,7 @@ const MODELS = {
     }
   },
   sake: {
+    koSeconds: 0.95,
     tempo: [0.45, 0.04],
     size: 1,
     moves: {
@@ -1024,6 +1035,7 @@ const MODELS = {
     }
   },
   jiro: {
+    koSeconds: 1.15,
     tempo: [0.6, 0.07],
     size: 1.25,
     moves: {
@@ -1070,6 +1082,7 @@ const MODELS = {
     act() {}
   },
   yakiniku: {
+    koSeconds: 0.95,
     tempo: [0.42, 0.04],
     size: 1,
     moves: {
@@ -1131,6 +1144,7 @@ const MODELS = {
     }
   },
   garlic: {
+    koSeconds: 0.95,
     tempo: [0.48, 0.03],
     size: 0.95,
     moves: {
@@ -1173,6 +1187,7 @@ const MODELS = {
     }
   },
   curry: {
+    koSeconds: 0.95,
     tempo: [0.5, 0.05],
     size: 1,
     moves: {
@@ -1212,6 +1227,7 @@ const MODELS = {
     }
   },
   milk: {
+    koSeconds: 0.85,
     tempo: [0.42, 0.04],
     size: 0.95,
     moves: {
@@ -1247,6 +1263,7 @@ const MODELS = {
     }
   },
   oyster: {
+    koSeconds: 0.95,
     tempo: [0.6, 0.06],
     size: 1,
     moves: {
@@ -1298,6 +1315,7 @@ const MODELS = {
     }
   },
   ice: {
+    koSeconds: 1,
     tempo: [0.4, 0.035],
     size: 0.95,
     moves: {
@@ -1333,6 +1351,7 @@ const MODELS = {
     act() {}
   },
   energy: {
+    koSeconds: 0.85,
     tempo: [0.2, 0.02],
     size: 0.95,
     moves: {
@@ -1382,6 +1401,7 @@ const MODELS = {
   },
   // ── Enemies: the cleanup crew ──
   cleaner: {
+    koSeconds: 1,
     tempo: [0.42, 0.035],
     size: 1,
     moves: {
@@ -1415,6 +1435,7 @@ const MODELS = {
     }
   },
   mop: {
+    koSeconds: 1,
     tempo: [0.45, 0.04],
     size: 1,
     moves: {
@@ -1460,6 +1481,7 @@ const MODELS = {
     }
   },
   yogurt: {
+    koSeconds: 0.85,
     tempo: [0.3, 0.03],
     size: 0.9,
     moves: {
@@ -1492,6 +1514,7 @@ const MODELS = {
     }
   },
   sayu: {
+    koSeconds: 0.95,
     tempo: [0.45, 0.03],
     size: 0.85,
     moves: {
@@ -1527,6 +1550,7 @@ const MODELS = {
     }
   },
   washiki: {
+    koSeconds: 1.05,
     tempo: [0.48, 0.05],
     size: 1.2,
     moves: {
@@ -1574,6 +1598,7 @@ const MODELS = {
     }
   },
   yoshiki: {
+    koSeconds: 1.05,
     tempo: [0.5, 0.05],
     size: 1.1,
     moves: {
@@ -1635,6 +1660,7 @@ const MODELS = {
     }
   },
   seichou: {
+    koSeconds: 0.9,
     tempo: [0.45, 0.03],
     size: 0.9,
     moves: {
@@ -1677,6 +1703,7 @@ const MODELS = {
     }
   },
   geridome: {
+    koSeconds: 1.1,
     tempo: [0.55, 0.06],
     size: 1.35,
     moves: {
@@ -1715,6 +1742,8 @@ const MODELS = {
   }
 }
 export const modelSize = (key) => MODELS[key]?.size ?? 1
+export const koSeconds = (key) => MODELS[key]?.koSeconds ?? KO_SECONDS
+export const hurtSeconds = (key) => Math.min(typeOf(key)?.heavy ? 0.7 : 0.55, 0.55 * (MODELS[key]?.moves?.mass ?? 1))
 
 /** One rigged character. Bones are per actor; geometry is shared per character key. */
 export class Actor {
@@ -1759,19 +1788,56 @@ export class Actor {
       mesh.bind(skeleton)
     }
     this.rest = Object.values(b).map((bone) => [bone, bone.position.clone()])
+    this.lastPose = this.rest.map(([bone]) => [
+      bone,
+      bone.position.clone(),
+      bone.quaternion.clone(),
+      bone.scale.clone(),
+      true
+    ])
+    this.lastPoseValid = false
     this.motion = 'walk'
     this.fade = null
     this.a = beats('walk', 0, 1)
+    this.floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    this.tintColor = new THREE.Color('#ffffff')
+    this.tintAmount = 0
   }
 
   /** k: lane-x units per model unit; aspect: x-to-y pixel ratio. The player (side 1) faces left. */
-  place(x, y, z, side, k, aspect) {
+  place(x, y, z, side, k, aspect, ground = y) {
     this.root.position.set(x, 450 - y, z)
     this.root.scale.set(-k * side * this.size, k * aspect * this.size, k * this.size)
+    this.floor.constant = -(450 - ground)
+  }
+
+  tint(color, amount) {
+    this.tintColor.set(color)
+    this.tintAmount = amount
+    for (const name of ['toon', 'clear', 'glow']) this.mats[name].color.set('#ffffff').lerp(this.tintColor, amount)
+  }
+
+  sink(depth) {
+    this.bones.hips.position.y -= depth
+    for (const material of Object.values(this.mats)) material.clippingPlanes = depth > 0 ? [this.floor] : null
+  }
+
+  savePose() {
+    for (const entry of this.lastPose) {
+      const [bone, position, rotation, scale] = entry
+      position.copy(bone.position)
+      rotation.copy(bone.quaternion)
+      scale.copy(bone.scale)
+      entry[4] = bone.visible
+    }
+    this.lastPoseValid = true
   }
 
   /** f: { motion, phase, period, walked, lead, hurtAge, power, time, ko, id } */
   animate(f) {
+    this.tint('#ffffff', 0)
+    this.setOpacity(1)
+    for (const material of Object.values(this.mats)) material.clippingPlanes = null
     for (const [bone, p] of this.rest) {
       bone.position.copy(p)
       bone.rotation.set(0, 0, 0)
@@ -1793,13 +1859,27 @@ export class Actor {
     }
     this.a = a
     const t = this.t
+    const settleTime = hurtSeconds(this.key)
+    const h = {
+      ...flinch(f.hurtAge >= settleTime ? -1 : f.hurtAge / t.moves.mass, f.power / Math.sqrt(t.moves.mass)),
+      age: f.hurtAge,
+      power: f.power,
+      settle: Math.min(1, Math.max(0, f.hurtAge / settleTime))
+    }
+    const k =
+      f.ko >= 0
+        ? { ...knockout(f.ko, koSeconds(this.key)), age: f.ko, t: Math.min(1, Math.max(0, f.ko / koSeconds(this.key))) }
+        : null
     const c = {
       a,
       g: gait(f.walked, t.moves.stride),
-      h: flinch(f.hurtAge / t.moves.mass, f.power / Math.sqrt(t.moves.mass)),
+      h,
       walk: f.motion === 'walk' && f.ko < 0 ? 1 - Math.max(a.wind, a.hit) : 0,
       t: f.time,
       ko: f.ko,
+      k,
+      customKo: !!t.recipe.ko,
+      actor: this,
       ambush: a.since <= timing(f.period, t.recipe.tempo).recovery ? f.charged : f.ambushReady,
       strikes: f.strikes ?? 0,
       lastCrit: f.lastCrit ?? false,
@@ -1807,7 +1887,14 @@ export class Actor {
       period: f.period,
       tempo: t.recipe.tempo
     }
-    moveBody(this.bones, t.moves, c)
+    if (f.status?.kind === 'confuse') {
+      c.walk = 1
+      c.g = gait(f.walked - f.status.age * t.moves.stride, t.moves.stride)
+    }
+    moveBody(this.bones, t.moves, {
+      ...c,
+      h: { ...h, jolt: h.jolt * (t.recipe.react?.jolt ?? 1) }
+    })
     t.recipe.act?.(this.bones, a, c)
     // Expressions: focused while winding up, shouting through the strike, ＞＜ when hurt, ×× when out.
     const b = this.bones
@@ -1821,10 +1908,54 @@ export class Actor {
     const blink = (f.time + (f.id % 7) * 0.53) % (2.6 + (f.id % 5) * 0.4) < 0.11
     if (b.eyes) b.eyes.scale.y = mood === 'focus' ? 0.68 : mood === 'calm' && blink ? 0.12 : 1
     if (b.shout) b.shout.scale.setScalar(mood === 'shout' ? 0.8 + 0.4 * a.hit : 1)
+    if (h.age >= 0 && h.settle < 1) t.recipe.hurt?.(b, h, c)
+    if (f.status && !k) {
+      const s = f.status
+      if (s.kind === 'freeze') {
+        if (this.frozenAt !== s.start) {
+          this.frozenAt = s.start
+          if (!this.lastPoseValid) this.savePose()
+        }
+        for (const [bone, position, rotation, scale, visible] of this.lastPose) {
+          bone.position.copy(position)
+          bone.quaternion.copy(rotation)
+          bone.scale.copy(scale)
+          bone.visible = visible
+        }
+        this.tint('#a8dcff', 0.45)
+      } else if (s.kind === 'stun') {
+        b.hips.rotation.z += 0.18 * Math.sin(s.age * 7)
+        show(b.eyes, false)
+        show(b.squint, true)
+      } else if (s.kind === 'launch') {
+        b.hips.rotation.z += 0.45 + 0.32 * Math.sin(s.age * 12)
+        for (const arm of [b.armF, b.armB])
+          if (arm) arm.rotation.z += 1.1 * Math.sin(s.age * 16 + (arm === b.armF ? 0 : 1))
+      } else if (s.kind === 'confuse') {
+        b.hips.rotation.z += 0.2 * Math.sin(s.age * 8)
+        for (const leg of [b.legF, b.legB])
+          if (leg) leg.rotation.z += 0.5 * Math.sin(s.age * 9 + (leg === b.legF ? 0 : Math.PI))
+      } else if (s.kind === 'drowsy') {
+        if (b.eyes) b.eyes.scale.y = 0.48
+        b.head.rotation.z += 0.2 * Math.max(0, Math.sin(s.age * 2)) ** 8
+      }
+      t.recipe.status?.(b, s, c)
+    } else this.frozenAt = null
+    if (k) {
+      this.setOpacity(k.fade)
+      t.recipe.ko?.(b, k, c)
+    }
     const red = (this.key === 'geri' && c.ambush) || this.key === 'curry' ? 0.35 * a.wind : 0
     const green = this.key === 'energy' ? 0.035 * c.ramp * a.wind : 0
-    this.mats.toon.emissive.setRGB(0.6 * c.h.flash + red, 0.6 * c.h.flash + green, 0.6 * c.h.flash)
+    const tintGlow = this.tintAmount * 0.8
+    this.mats.toon.emissive.setRGB(
+      0.6 * c.h.flash + red + tintGlow * this.tintColor.r,
+      0.6 * c.h.flash + green + tintGlow * this.tintColor.g,
+      0.6 * c.h.flash + tintGlow * this.tintColor.b
+    )
+    this.mats.clear.emissive.copy(this.tintColor).multiplyScalar(tintGlow)
     for (const [bone] of this.rest) if (!bone.visible) bone.scale.setScalar(0)
+    if (f.status?.kind !== 'freeze') this.savePose()
   }
 
   setOpacity(opacity) {
@@ -1850,6 +1981,7 @@ export class LaneModels {
 
   constructor() {
     this.renderer.setClearColor(0, 0)
+    this.renderer.localClippingEnabled = true
     this.scene.add(new THREE.HemisphereLight(0xfff8ec, 0x7a5a40, 1.5))
     const key = new THREE.DirectionalLight(0xfff4db, 2.3)
     key.position.set(-300, 600, 800)
@@ -1875,9 +2007,13 @@ export class LaneModels {
   }
 
   /** z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's wind-up). */
-  unit(u, x, y, z, time, lead = Infinity) {
+  unit(u, x, y, z, time, lead = Infinity, ground = y) {
     const actor = this.actor(u.id, u.key)
-    actor.place(x, y, z, u.side, ...this.presentation)
+    actor.place(x, y, z, u.side, ...this.presentation, ground)
+    if (actor.drowsyEnd !== u.drowsy?.end) {
+      actor.drowsyEnd = u.drowsy?.end
+      actor.drowsyStart = time
+    }
     actor.animate({
       motion: u.motion,
       phase: u.phase,
@@ -1888,6 +2024,12 @@ export class LaneModels {
       power: u.hurt?.power ?? 1,
       time,
       ko: -1,
+      status:
+        u.control?.end > time
+          ? { ...u.control, age: time - u.control.start, left: u.control.end - time }
+          : u.drowsy?.end > time
+            ? { kind: 'drowsy', age: time - actor.drowsyStart, left: u.drowsy.end - time }
+            : null,
       id: u.id,
       ambushReady: u.ambush && (u.lastStrikeDistance === undefined || u.walkDistance - u.lastStrikeDistance >= 40),
       charged: u.charged,
@@ -1895,10 +2037,9 @@ export class LaneModels {
       lastCrit: u.lastCrit,
       ramp: u.ramp
     })
-    actor.setOpacity(1)
   }
 
-  /** A fallen unit: knocked back and over with ×× eyes, fading out over KO_SECONDS. */
+  /** A fallen unit: knocked back and over with ×× eyes, fading out over its recipe duration. */
   fallen(ghost, x, y, z, age) {
     const actor = this.actor(ghost.id, ghost.key)
     actor.place(x, y, z, ghost.side, ...this.presentation)
@@ -1914,7 +2055,6 @@ export class LaneModels {
       ko: age,
       id: ghost.id
     })
-    actor.setOpacity(Math.max(0, knockout(age).fade))
   }
 
   /**

@@ -8,6 +8,7 @@ import sharp from 'sharp'
 import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { POOPS, SPECIALS, ENEMIES } from './simulation.js'
+import { koSeconds } from './models.js'
 
 const out = process.argv[2] || process.env.LANE_SHOWCASE_DIR || '/tmp/lane-showcase'
 const url = process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/'
@@ -171,7 +172,7 @@ function deathScene(t) {
   return {
     name: `death-${t.key}`,
     title: `${t.name}：くらい（弱・強）→ 死亡`,
-    seconds: 2.9,
+    seconds: 1.6 + koSeconds(t.key) + 0.3,
     strike: 0.2,
     crop: [380, 620],
     scene: {

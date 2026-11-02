@@ -1,7 +1,7 @@
-import { LaneModels, modelSize, KO_SECONDS } from './models.js'
+import { LaneModels, modelSize, koSeconds, hurtSeconds } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
-import { drawArea, drawStatus, drawZones } from './visual-effects.js'
+import { drawArea, drawStatus, drawZones, HURT_VFX, DEATH_VFX } from './visual-effects.js'
 import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
 import {
   STAGES,
@@ -597,6 +597,22 @@ function draw() {
   models.setPresentation(scale, aspect, rect.width / 1000)
   const units = [...state.units].sort((a, b) => a.id - b.id)
   const depth = depthSlots([...fallen, ...units])
+  const unitEffects = (layer) => {
+    for (const u of units) {
+      const age = state.time - (u.hurt?.at ?? Infinity)
+      if (age >= 0 && age < hurtSeconds(u.key)) {
+        ctx.save()
+        HURT_VFX[u.key]?.(ctx, u, age, layer, drawX(u), laneY(u), aspect)
+        ctx.restore()
+      }
+    }
+    for (const ghost of fallen) {
+      ctx.save()
+      DEATH_VFX[ghost.key]?.(ctx, ghost, state.time - ghost.at, layer, drawX(ghost), laneY(ghost), aspect)
+      ctx.restore()
+    }
+  }
+  unitEffects('floor')
   for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
   for (const u of units) {
     const y = laneY(u)
@@ -610,12 +626,13 @@ function draw() {
       ctx.ellipse(drawX(u) + u.side * 15, y, 12, 5 * aspect, 0, 0, Math.PI * 2)
       ctx.fill()
     }
-    models.unit(u, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u))
+    models.unit(u, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), y)
   }
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
   ctx.restore()
+  unitEffects('above')
   for (const ghost of fallen) {
     const age = state.time - ghost.at
     if (!ghost.flushed || age < 0 || age >= 0.8) continue
@@ -828,7 +845,9 @@ function tick(now) {
     for (const u of previous)
       if (!state.units.some((v) => v.id === u.id))
         fallen.push({ ...u, flushed: previousUnits.find((unit) => unit.id === u.id)?.flushed, at: state.time })
-    while (fallen.length && state.time - fallen[0].at > (fallen[0].flushed ? 0.8 : KO_SECONDS)) fallen.shift()
+    for (let index = fallen.length - 1; index >= 0; index--)
+      if (state.time - fallen[index].at > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key)))
+        fallen.splice(index, 1)
     let impact = false,
       shot = false
     for (const effect of state.effects)
