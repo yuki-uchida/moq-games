@@ -1,0 +1,49 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { POOPS, SPECIALS } from './simulation.js'
+
+test('niche report keeps specials useful and preserves the Lv1 poop baseline', () => {
+  const output = execFileSync(process.execPath, [fileURLToPath(new URL('./balance-report.mjs', import.meta.url))], {
+    encoding: 'utf8'
+  })
+  const table = output
+    .split('ニッチ測定:')[1]
+    .split('\n')
+    .slice(2, 2 + POOPS.length + SPECIALS.length)
+  assert.equal(table.length, POOPS.length + SPECIALS.length)
+  const rows = table.map((line) => {
+    const [name, cost, ...scenarios] = line.split('\t')
+    const cleared = scenarios.map((scenario) => Number.parseFloat(scenario))
+    assert.equal(cleared.length, 3)
+    assert.ok(cleared.every(Number.isFinite))
+    return { name, cost: Number(cost), cleared }
+  })
+  const baseline = [
+    [3.64, 9.4, 0],
+    [10.42, 13.59, 12.55],
+    [9.5, 19.49, 0],
+    [19.02, 56.55, 23.53],
+    [11.75, 29.59, 19],
+    [25.64, 88.28, 46.58]
+  ]
+  for (const [index, unit] of POOPS.entries()) {
+    assert.equal(rows[index].name, unit.name)
+    for (const [scenario, value] of rows[index].cleared.entries()) {
+      assert.ok(value >= baseline[index][scenario], `${unit.name} scenario ${scenario}`)
+    }
+  }
+  const specials = rows.slice(POOPS.length)
+  for (const [index, unit] of SPECIALS.entries()) {
+    const row = specials[index]
+    assert.equal(row.name, unit.name)
+    assert.equal(row.cost, unit.cost)
+    assert.ok(row.cleared.filter((value) => value >= 45).length >= 2, unit.name)
+    assert.ok(unit.cost >= 200 || row.cleared.some((value) => value < 100), unit.name)
+  }
+  for (let scenario = 0; scenario < 3; scenario++) {
+    const perCost = specials.map((row) => row.cleared[scenario] / row.cost)
+    assert.ok(Math.max(...perCost) <= 2 * Math.min(...perCost), `scenario ${scenario}`)
+  }
+})
