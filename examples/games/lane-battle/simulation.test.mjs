@@ -14,8 +14,24 @@ test('investment increases income and reset restores state', () => {
   assert.ok(upgrade(s))
   assert.equal(s.level, 2)
   step(s, 1)
-  assert.equal(s.gold, 47)
+  assert.equal(s.gold, 17)
   assert.equal(createGame().level, 1)
+})
+test('rushing 腸活 to MAX loses to 朝の清掃; a modest investment wins fastest', () => {
+  const play = (cap) => {
+    const s = createGame(0, starterDeck(), 1)
+    while (!s.result && s.time < 900) {
+      if (s.level < cap) upgrade(s)
+      if (s.level >= cap) for (const i of [2, 1, 0]) summon(s, i)
+      if (s.units.some((u) => u.side === -1 && u.x > 650)) burst(s)
+      step(s, 0.05)
+    }
+    return s
+  }
+  const [none, modest, max] = [1, 2, 5].map(play)
+  assert.equal(max.result, 'defeat')
+  assert.equal(modest.result, 'victory')
+  assert.ok(modest.time < none.time)
 })
 test('the poop tower is on the right: poops march left, the cleanup crew marches right', () => {
   const s = createGame()

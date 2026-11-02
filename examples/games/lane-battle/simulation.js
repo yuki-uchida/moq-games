@@ -314,7 +314,7 @@ const AREAS = [
     hint: '全勢力が集う最終決戦。編成と育成のすべてをぶつけよう'
   }
 ]
-const ENEMY_HP = (i) => 16000 + 800 * i
+const ENEMY_HP = (i) => 5500 + 400 * i
 const INTERVAL = (i) => 5 - 0.05 * i
 const FLOOR = (i) => Math.max(1.8, 3.4 - 0.05 * i)
 const POWER = (i) => 0.9 + 0.07 * i
@@ -351,6 +351,8 @@ export function rng(seed = 1) {
   }
 }
 
+/** Summon recharge multiplier over the listed `cooldown`s, so cards cannot be spammed. */
+export const COOLDOWN_SCALE = 1.8
 /** One summon card built from a roster entry ({ uid, key, hp, atk, spd }); speed growth shortens the attack period. */
 export function card(entry) {
   const t = typeOf(entry.key)
@@ -361,7 +363,7 @@ export function card(entry) {
     special: !!t.special,
     level: entry.level ?? 1,
     cost: t.cost,
-    cooldown: t.cooldown,
+    cooldown: t.cooldown * COOLDOWN_SCALE,
     hp: entry.hp ?? t.hp,
     atk: entry.atk ?? t.atk,
     range: t.range,
@@ -395,6 +397,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     spawn: 3,
     turret: 0,
     rushes: 0,
+    opened: false,
     alert: null,
     serial: 0,
     result: null,
@@ -402,7 +405,13 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     exp: {}
   }
 }
-export const upgradeCost = (s) => 70 + (s.level - 1) * 65
+/** 腸活 costs climb steeply so the later levels only pay off in a long siege. */
+export const UPGRADE_COSTS = [100, 250, 450, 700]
+export const upgradeCost = (s) => UPGRADE_COSTS[s.level - 1] ?? Infinity
+/** Every 腸活 level draws the cleanup crew's attention: enemies spawn this much faster per level above 1. */
+export const UPGRADE_ALARM = 0.07
+/** 朝の清掃: an early wave, growing with the stage, punishes a player who spends everything on 腸活. */
+export const OPENING = { at: 12, size: (stage) => 3 + Math.floor(stage / 10) }
 const MAX_UNITS = 24
 /** side 1 summons deck slot `index`; side -1 summons ENEMIES[index] scaled to the stage. */
 export function summon(s, index, side = 1) {
@@ -435,7 +444,7 @@ export function summon(s, index, side = 1) {
 }
 export function upgrade(s) {
   const cost = upgradeCost(s)
-  if (s.result || s.level >= 5 || s.gold < cost) return false
+  if (s.result || s.gold < cost) return false
   s.gold -= cost
   s.level++
   return true
@@ -474,12 +483,24 @@ function land(s, src, target, damage) {
   }
 }
 /** Global marching pace: lane battles are meant to last two to three minutes. */
-export const WALK_PACE = 0.84
+export const WALK_PACE = 1.25
 export const RUSHES = 4
 export const TURRET = { range: 260, period: 1.8, damage: 55 }
-/** The enemy fort fires its ウォシュレット砲 at the closest poop, and sends a 大掃除 rush at 2/3 and 1/3 HP. */
+/** The enemy fort fires its ウォシュレット砲 at the closest poop, sends 朝の清掃 early and a 大掃除 rush at each fifth of its HP. */
+function wave(s, size, text) {
+  const stage = STAGES[s.stage]
+  for (let k = 0; k < size; k++) {
+    summon(s, stage.pattern[(s.enemySpawned + k * 2) % stage.pattern.length], -1)
+    s.units.at(-1).x -= k * 14
+  }
+  s.alert = { text, at: s.time }
+}
 function fortDefense(s, dt) {
   const stage = STAGES[s.stage]
+  if (!s.opened && s.time >= OPENING.at) {
+    s.opened = true
+    wave(s, OPENING.size(s.stage), '朝の清掃だ！')
+  }
   s.turret = Math.max(0, s.turret - dt)
   const near = s.units
     .filter((u) => u.side === 1 && u.hp > 0 && u.x - ENEMY_X < TURRET.range)
@@ -508,12 +529,7 @@ function fortDefense(s, dt) {
   }
   while (s.rushes < RUSHES && s.enemy <= (stage.enemy * (RUSHES - s.rushes)) / (RUSHES + 1)) {
     s.rushes++
-    const size = 3 + s.rushes
-    for (let k = 0; k < size; k++) {
-      summon(s, stage.pattern[(s.enemySpawned + k * 2) % stage.pattern.length], -1)
-      s.units.at(-1).x -= k * 14
-    }
-    s.alert = { text: '大掃除だ！', at: s.time }
+    wave(s, 3 + s.rushes, '大掃除だ！')
   }
 }
 export function step(s, dt) {
@@ -537,7 +553,7 @@ export function step(s, dt) {
   if (s.spawn <= 0) {
     const stage = STAGES[s.stage]
     summon(s, stage.pattern[s.enemySpawned++ % stage.pattern.length], -1)
-    s.spawn = Math.max(stage.floor, stage.interval - s.time / 100)
+    s.spawn = Math.max(stage.floor, stage.interval - s.time / 100) * (1 - UPGRADE_ALARM * (s.level - 1))
   }
   for (const u of s.units) {
     if (u.hp <= 0) continue
