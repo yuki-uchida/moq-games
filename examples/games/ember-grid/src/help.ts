@@ -1,0 +1,64 @@
+const sections = [
+  [
+    '☝ 操作',
+    '味方を選び、青いマスへ移動。敵を選び、予測を確認して攻撃します。↶ 戻すで移動を取り消せます。✓ 待機、▶ ターン終了。敵フェイズは⏩で早送り。',
+    'Tab で盤面へ、矢印でマス移動、Enter / Space で選択、Escape で取消。'
+  ],
+  [
+    '⚔ ルール',
+    '各味方は移動と攻撃を各１回行えます。攻撃・回復・薬の使用後は行動終了。敵の攻撃範囲は ☷ 危険 で表示します。',
+    '木立は被ダメージ −2、岩は通行不可。攻撃は岩越しにも届き、反撃はありません。'
+  ],
+  [
+    '♜ 兵種と相性',
+    '剣はゴブリンに +1、弓は狼に +3。盾は物理 −2、魔法は盾を無視。',
+    '第４章から癒し手が参加。杖は距離１〜２の負傷した味方を回復します。'
+  ],
+  [
+    '⚑ 勝利条件',
+    '６章を踏破しましょう。敵全滅のほか、第４章は制圧、第５章は６ターン防衛、第６章はボス撃破でも勝利。',
+    '味方全滅で敗北。⚑ から到達済みの章に再挑戦できます。'
+  ],
+  [
+    '✦ 成長とロスト',
+    '攻撃・撃破・回復で EXP を獲得し、100 でレベルアップ。回復薬は各章２個、使用者を８回復します。',
+    'カジュアルでは倒れた仲間は次章に復帰。クラシックでは勝利後に永久離脱します。敗北や再挑戦では章開始時に戻ります。'
+  ]
+]
+
+export function setupHelp(dialog: HTMLDialogElement) {
+  document.body.append(dialog)
+  dialog.innerHTML = `<h2 id="help-title">遊び方</h2><div role="tablist" aria-label="遊び方の項目">${sections.map(([label], index) => `<button role="tab" id="help-tab-${index}" aria-controls="help-panel-${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('')}</div>${sections.map(([, first, second], index) => `<section role="tabpanel" id="help-panel-${index}" aria-labelledby="help-tab-${index}" ${index ? 'hidden' : ''}><p>${first}</p><p>${second}</p></section>`).join('')}<button id="help-close">戻る</button>`
+  const tabs = Array.from(dialog.querySelectorAll<HTMLButtonElement>('[role=tab]'))
+  const panels = Array.from(dialog.querySelectorAll<HTMLElement>('[role=tabpanel]'))
+  function select(index: number) {
+    tabs.forEach((tab, current) => {
+      tab.setAttribute('aria-selected', String(current === index))
+      tab.tabIndex = current === index ? 0 : -1
+      panels[current].hidden = current !== index
+    })
+    tabs[index].focus()
+  }
+  tabs.forEach((tab, index) => {
+    tab.onclick = () => select(index)
+    tab.onkeydown = (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      event.preventDefault()
+      select(
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? tabs.length - 1
+            : (index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length
+      )
+    }
+  })
+  dialog.querySelector<HTMLButtonElement>('#help-close')!.onclick = () => dialog.close()
+  let opener: HTMLElement | null = null
+  dialog.onclose = () => opener?.focus()
+  return () => {
+    opener = document.activeElement as HTMLElement | null
+    dialog.showModal()
+    select(0)
+  }
+}

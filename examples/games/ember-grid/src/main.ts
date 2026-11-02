@@ -33,7 +33,7 @@ import { Stage, chapterRoles } from './stage'
 import { dangerZone, forecast } from './tactics'
 import { campaign } from './campaign'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
-import { StoryFlow } from './dialogue'
+import { StoryFlow, setStoryEnabled } from './dialogue'
 import {
   carryForDifficulty,
   freshSave,
@@ -44,8 +44,17 @@ import {
   writeSave,
   type Difficulty
 } from './save'
-import { openSettings, sfxVolume } from './settings'
+import {
+  attackConfirmation,
+  dangerZoneDefault,
+  openSettings,
+  sfxVolume,
+  storyEnabled,
+  tutorialEnabled
+} from './settings'
 import { showTitle } from './title'
+import { setupHelp } from './help'
+import { createTutorial } from './tutorial'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
@@ -80,7 +89,7 @@ let game = newGame(0, 'balanced'),
   inspected: string | undefined,
   hovered: string | undefined,
   generation = 0
-let danger = false
+let danger = dangerZoneDefault()
 let pending: string | undefined
 let undo: { id: string; x: number; y: number } | undefined
 let focusCell = 0
@@ -88,7 +97,7 @@ let fast = false
 let forecastTrigger: HTMLElement | null = null
 let bannerVersion = 0
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true">♫</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog><h2>霧から燈を守ろう</h2><p>3 つの任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から任務と編成を選べます。</p><p>味方を選び、青く光るマスへ移動。赤い敵を選ぶと攻撃予測。同じ敵か攻撃ボタンで確定、やめるで取消。移動直後は ↶ 戻すでやり直せます。各自 1 回移動・1 回攻撃できます。攻撃すると行動終了。赤いマスは移動後に攻撃が届く範囲。敵に触れるとその敵の移動範囲（くすんだ青）と攻撃範囲（赤）を表示。味方同士はすり抜けられます（止まれるのは空きマスのみ）。</p><p>木立（針葉樹のマス）：受けるダメージ −2。岩：通行不可。攻撃は距離のみで判定し、岩越しにも届きます。反撃なし。弓は狼に +3、剣はゴブリンに +1。盾持ちは物理 −2、魔法は盾を無視します。</p><p>✚ 回復薬：全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。任務間では全回復し、レベルと能力は次の任務へ持ち越します。<b>ロスト</b>：任務に勝利すると、その任務中に倒れた味方は遠征から離脱し、以後の任務に出撃できません。敗北・↻ 再挑戦・⚑ 任務選択ではその任務の開始時から始まるので、その挑戦中に倒れた仲間は戻ります。生存 1 人でも次の任務に挑めます。厳しければ ⚑ で以前の任務（到達時のメンバー）からやり直すか、遠征達成後の「最初から遠征」で全員が復帰します。攻撃・撃破・回復で EXP を得て、100 でレベルアップ（兵種ごとの成長率で HP・攻撃・防御が上昇）。防御はその分だけ被ダメージを減らします。✓ は選択した味方の待機。▶ で敵のターン（全員が行動を終えると自動で移ります）。敵は接近し、届く相手のうち残 HP の少ない相手を狙います。</p><p>キーボード：Tab で盤面へ、矢印でマス移動、Enter / Space で選択。Escape で取消。↻ でいつでも再挑戦。</p><button id="close">戻る</button></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true">♫</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -103,7 +112,19 @@ const settingsButton = document.createElement('button')
 settingsButton.textContent = '⚙'
 settingsButton.setAttribute('aria-label', '設定')
 document.querySelector('header')!.append(settingsButton)
-const settings = () => openSettings(() => audio.applySettings(), notice)
+let previousDanger = dangerZoneDefault()
+setStoryEnabled(storyEnabled())
+const settings = () =>
+  openSettings(() => {
+    audio.applySettings()
+    setStoryEnabled(storyEnabled())
+    tutorial.setEnabled(tutorialEnabled())
+    if (previousDanger !== dangerZoneDefault()) {
+      previousDanger = dangerZoneDefault()
+      danger = previousDanger
+      render()
+    }
+  }, notice)
 settingsButton.onclick = settings
 const objectiveStatus = document.createElement('span')
 objectiveStatus.id = 'objective'
@@ -135,11 +156,13 @@ const story = new StoryFlow(
   () => {
     busy = false
     render()
-  }
+  },
+  () => save.difficulty
 )
 const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 const navigation = document.querySelector('nav')!
+const tutorial = createTutorial(document.querySelector('.console')!, notice)
 navigation.insertAdjacentHTML(
   'afterbegin',
   '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険</button><button id="undo">↶ 戻す</button>'
@@ -304,8 +327,30 @@ function cancelForecast(restore = true) {
   document.querySelector<HTMLElement>('#forecast')!.hidden = true
   if (restore) forecastTrigger?.focus()
 }
+function showForecast(unit: Unit, target: Unit, healing: boolean) {
+  pending = target.id
+  forecastTrigger = cells[target.y * size + target.x]
+  const preview = healing ? healForecast(unit, target) : forecast(game, unit, target)
+  const amount = healing ? preview.after - target.hp : target.hp - preview.after
+  const chips = healing ? [] : forecast(game, unit, target).chips
+  const card = document.querySelector<HTMLElement>('#forecast')!
+  card.hidden = false
+  card.setAttribute('aria-label', healing ? '回復予測' : '攻撃予測')
+  card.innerHTML = `<div>${portrait(unit)} ${unit.name} → ${portrait(target)} ${target.name}　♥ ${target.hp} → ${preview.after}　${healing ? '+' : '−'}${amount} ${!healing && preview.after === 0 ? '撃破' : ''}</div><div>${chips.map((chip) => `<span class="modifier">${chip}</span>`).join('')}</div><button id="confirm">${healing ? '回復' : '攻撃'}</button><button id="cancel-forecast">やめる</button>`
+  card.querySelector('#confirm')!.addEventListener('click', () => void choose(target.x, target.y))
+  card.querySelector('#cancel-forecast')!.addEventListener('click', () => cancelForecast())
+  card.onkeydown = (event) => {
+    if (event.key !== 'Tab') return
+    event.preventDefault()
+    const next = document.activeElement?.id === 'confirm' ? '#cancel-forecast' : '#confirm'
+    card.querySelector<HTMLButtonElement>(next)!.focus()
+  }
+  card.querySelector<HTMLButtonElement>('#confirm')!.focus()
+  tutorial.update()
+}
 document.querySelector('#danger')!.addEventListener('click', () => {
   danger = !danger
+  tutorial.advance('danger')
   render()
 })
 document.querySelector('#undo')!.addEventListener('click', () => {
@@ -383,6 +428,7 @@ function render() {
       `${x + 1},${y + 1} ${u ? `${u.boss ? 'ボス ' : ''}${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? (game.stage === 2 ? '崩れた城壁（岩）' : '岩') : game.groves.has(k) ? '木立' : '平地'}${seize ? ' 制圧目標' : ''}${canHeal ? ' 回復可能' : ''}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}${threatened.has(k) ? ' 敵の攻撃範囲' : ''}`
     )
   })
+  tutorial.update()
   stage.sync(game, unit?.id)
   document.querySelector('#turn')!.textContent =
     `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
@@ -431,7 +477,19 @@ async function choose(x: number, y: number) {
   const target = game.units.find((u) => u.hp > 0 && u.x === x && u.y === y),
     unit = game.units.find((u) => u.id === selected)
   const beforeHeal = snapshot(game)
-  if (target?.side === 'ally' && unit && staffHeal(game, unit, target)) {
+  const canHeal =
+    target?.side === 'ally' &&
+    unit &&
+    unit.heal &&
+    !unit.done &&
+    target.hp < target.max &&
+    distance(unit, target) >= 1 &&
+    distance(unit, target) <= 2
+  if (canHeal && target && unit && attackConfirmation() && pending !== target.id) {
+    showForecast(unit, target, true)
+    return
+  }
+  if (canHeal && target && unit && staffHeal(game, unit, target)) {
     cancelForecast(false)
     undo = undefined
     const token = generation
@@ -444,6 +502,7 @@ async function choose(x: number, y: number) {
     if (selected !== target.id) undo = undefined
     cancelForecast(false)
     selected = target.id
+    tutorial.advance('select')
     game.log = target.heal
       ? '杖：負傷した味方を回復 · 射程 1–2'
       : target.role === 'archer'
@@ -455,29 +514,26 @@ async function choose(x: number, y: number) {
     const before = snapshot(game)
     let changed = false
     if (target) {
-      if (!unit.done && distance(unit, target) <= unit.range && pending !== target.id) {
-        pending = target.id
-        forecastTrigger = cells[y * size + x]
-        const preview = forecast(game, unit, target)
-        const card = document.querySelector<HTMLElement>('#forecast')!
-        card.hidden = false
-        card.innerHTML = `<div>${portrait(unit)} ${unit.name} → ${portrait(target)} ${target.name}　♥ ${target.hp} → ${preview.after}　−${preview.amount} ${preview.after === 0 ? '撃破' : ''}</div><div>${preview.chips.map((chip) => `<span class="modifier">${chip}</span>`).join('')}</div><button id="confirm">攻撃</button><button id="cancel-forecast">やめる</button>`
-        card.querySelector('#confirm')!.addEventListener('click', () => void choose(target.x, target.y))
-        card.querySelector('#cancel-forecast')!.addEventListener('click', () => cancelForecast())
-        card.onkeydown = (event) => {
-          if (event.key !== 'Tab') return
-          event.preventDefault()
-          const next = document.activeElement?.id === 'confirm' ? '#cancel-forecast' : '#confirm'
-          card.querySelector<HTMLButtonElement>(next)!.focus()
-        }
-        ;(card.querySelector('#confirm') as HTMLButtonElement).focus()
+      if (
+        !unit.heal &&
+        !unit.done &&
+        distance(unit, target) <= unit.range &&
+        attackConfirmation() &&
+        pending !== target.id
+      ) {
+        tutorial.advance('target')
+        showForecast(unit, target, false)
         return
       }
       cancelForecast(false)
-      if (attack(game, unit, target)) changed = true
-      else
+      if (attack(game, unit, target)) {
+        tutorial.advance('target')
+        tutorial.advance('attack')
+        changed = true
+      } else
         game.log = `${target.name} Lv${target.level} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
     } else if (move(game, unit, x, y)) {
+      tutorial.advance('move')
       cancelForecast(false)
       undo = {
         id: unit.id,
@@ -578,7 +634,10 @@ let pendingOpening: boolean | undefined
 async function openChapter(fresh: boolean) {
   const token = generation
   await story.start(fresh)
-  if (token === generation) void phaseBanner('ally', token)
+  if (token === generation) {
+    if (fresh) tutorial.start(tutorialEnabled())
+    void phaseBanner('ally', token)
+  }
 }
 /** Plays the chapter outro (and the finale) before the report; false if a restart superseded it. */
 async function victoryScene(token: number) {
@@ -588,10 +647,14 @@ async function victoryScene(token: number) {
   busy = false
   return true
 }
-document.querySelector('#end')!.addEventListener('click', () => void end())
+document.querySelector('#end')!.addEventListener('click', () => {
+  tutorial.advance('turn')
+  void end()
+})
 document.querySelector('#wait')!.addEventListener('click', () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && game.phase === 'ally') {
+    tutorial.advance('turn')
     u.done = true
     undo = undefined
     game.log = `${u.name} 待機`
@@ -636,6 +699,7 @@ document.querySelector('#sound')!.addEventListener('click', () => showSound(audi
 function startMission(stage: number) {
   if (!unlocked(save, stage)) return
   generation++
+  tutorial.hide()
   story.cancel()
   animation.cancel()
   clearProgress(field)
@@ -647,6 +711,7 @@ function startMission(stage: number) {
     | 'balanced'
     | 'guard'
   game = newGame(stage, formation)
+  danger = dangerZoneDefault()
   ready = false
   render()
   audio.setMusic(campaign[stage].music)
@@ -658,6 +723,10 @@ function startMission(stage: number) {
 }
 const expedition = document.querySelector<HTMLDialogElement>('#expedition')!
 function listMissions() {
+  expedition.querySelector('p')!.textContent =
+    save.difficulty === 'casual'
+      ? '任務を選ぶと、その任務に到達した時点のメンバーとレベルで始まります。倒れた仲間は勝利後に復帰します。'
+      : '任務を選ぶと、その任務に到達した時点のメンバーとレベルで始まります。離脱した仲間は離脱前の任務を選び直すと戻ります。'
   document.querySelector('#missions')!.innerHTML = missions
     .map((m, i) => {
       if (!unlocked(save, i)) return '<button disabled>🔒 ？？？</button>'
@@ -689,13 +758,8 @@ document.querySelector('#next')!.addEventListener('click', () => {
   }
   startMission((game.stage + 1) % missions.length)
 })
-const dialog = document.querySelector('dialog')!
-dialog.querySelector('p')!.textContent =
-  `${missions.length} の任務で灰の群れを倒し、燈をつなごう。敵全滅・ボス撃破・制圧・防衛のいずれかで勝利、味方全滅で敗北。第 4 章から加わる癒し手は、距離 1–2 の負傷した味方を回復できます。⚑ から到達済みの任務と編成を選べます。`
-dialog.querySelectorAll('p')[3].textContent =
-  '✚ 回復薬は全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。レベルと能力は次の任務へ持ち越します。カジュアルでは倒れた仲間は次の任務で復帰し、クラシックでは勝利後に永久離脱します。敗北・再挑戦・任務選択では開始時の仲間に戻ります。攻撃・撃破・回復で EXP を得てレベルアップします。✓ は待機、▶ は敵のターンです。'
-document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())
-document.querySelector('#close')!.addEventListener('click', () => dialog.close())
+const openHelp = setupHelp(document.querySelector<HTMLDialogElement>('#help-dialog')!)
+document.querySelector('#help')!.addEventListener('click', openHelp)
 render()
 
 // Light synthesized UI feedback that follows the ♫ toggle.
@@ -772,6 +836,6 @@ const titleProgress = showTitle(saved, {
     }
   },
   settings,
-  help: () => dialog.showModal()
+  help: openHelp
 })
 void prepareBattle()

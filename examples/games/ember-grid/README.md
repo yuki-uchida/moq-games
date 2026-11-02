@@ -4,9 +4,9 @@ Independent, local, single-player tactical example: lantern wardens cross six fr
 
 ## Story presentation
 
-The prologue, chapter title cards, introductions and victory scenes use the characters' runtime names and rendered 3D portraits. Lines belonging to fallen allies are omitted; the ending remembers fallen allies by their runtime names. Tap or press Enter/Space to complete and advance a line; the skip button or Escape closes the scene. Reduced motion disables type-on and title animation. `setStoryEnabled` in `src/dialogue.ts` is the integration point for a future setting. Credits identify the repository's owner-provided models and music and generated sound effects; they do not imply additional asset rights.
+The prologue, chapter title cards, introductions and victory scenes use the characters' runtime names and rendered 3D portraits. Lines belonging to fallen allies are omitted; the classic ending remembers fallen allies even after continuing a save, while casual has no memorial. Tap or press Enter/Space to complete and advance a line; the skip button or Escape closes the scene. Turning story off skips dialogue but retains chapter title cards and credits. Reduced motion disables type-on and title animation. Credits identify the repository's owner-provided models and music and generated sound effects; they do not imply additional asset rights.
 
-The script covers six planned chapters, including Luka's chapter-four introduction and the final dragon encounter. This checkout still implements only three battles: chapter-four onward, the epilogue and credits are intentionally unreachable until the six-chapter campaign is merged. The six-chapter integration must retain the start and victory hooks and populate the current roster with Luka. The story roster remembers runtime names during this browser session and restores its chapter-start history on replay.
+The six-chapter campaign includes Luka's chapter-four introduction, the final dragon encounter, the epilogue and credits.
 
 Story checks: `npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1` and `E2E_PORT=5271 npx playwright test --config examples/games/ember-grid/playwright.config.ts`. Story screenshots are saved under `test-results/story-*.png`.
 
@@ -74,7 +74,9 @@ Each mission starts from a recorded party:
 - If a lost ally is needed, ⚑ an earlier mission whose record still includes them; that also replaces the later records once you advance again.
 - Completing the last mission and choosing “最初から遠征” clears the expedition records. The versioned `ember-grid:save:v1` local save contains difficulty, formation, checkpoints, reached and cleared chapters, best turns, and a battle snapshot. Continue restores the snapshot, including random state, or starts the furthest reached chapter from its checkpoint. The snapshot is updated during the ally phase and cleared on victory or defeat. Unavailable storage or invalid saves show a notice and do not prevent play. Starting a new expedition confirms before replacing a save.
 
-Settings are stored under `ember-grid:settings:v1`: BGM/SFX volume, battle speed, attack confirmation, default danger zone, story scenes and reduced motion. Volume, speed and motion apply here; the confirmation, danger-zone and story preferences are exposed for the corresponding features in other branches. The ♫ quick mute remains independent and persists under `ember-grid:sound`.
+Settings are stored under `ember-grid:settings:v1`: BGM/SFX volume, battle speed, attack and heal confirmation, default danger zone, story scenes, tutorial and reduced motion. Changes apply live; battle speed composes with enemy fast-forward. The ♫ quick mute remains independent and persists under `ember-grid:sound`.
+
+The chapter-one tutorial highlights controls and legal targets without blocking play. Skip or complete it to remember the choice in `ember-grid:tutorial-complete:v1`; disabling it in settings hides it. The help dialog uses keyboard-navigable tabs. Heal forecasts show current and resulting HP, and share the attack confirmation and undo controls.
 
 Later missions add one HP to every enemy, which carried growth offsets.
 

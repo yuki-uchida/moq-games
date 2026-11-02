@@ -21,6 +21,43 @@ button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: -3px;
 }
+#help-dialog {
+  max-width: min(680px, 94vw);
+  max-height: 90dvh;
+  overflow: auto;
+}
+#help-dialog [role='tablist'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#help-dialog button {
+  min-height: 40px;
+  padding: 6px 10px;
+}
+#help-dialog [aria-selected='true'] {
+  outline: 2px solid #f4cf7b;
+  background: #70582d;
+}
+#tutorial {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #ffe4a1;
+}
+#tutorial[hidden] {
+  display: none;
+}
+#tutorial button {
+  min-height: 40px;
+  min-width: 70px;
+}
+.tutorial-target {
+  outline: 3px dashed #ffe4a1;
+  outline-offset: -3px;
+}
 main {
   height: 100dvh;
   max-width: 900px;
@@ -921,6 +958,9 @@ fieldset label {
   position: absolute;
   right: 8px;
   top: 8px;
+}
+.console:has(#tutorial:not([hidden])) #detail-button {
+  top: 56px;
 }
 #fast[aria-pressed='true'],
 #wait.recommended {
