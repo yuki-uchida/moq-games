@@ -18,9 +18,33 @@ export const HURT_VFX = {
     ctx.lineTo(x + 9, y - 66 * aspect)
     ctx.stroke()
   },
-  bichi: emptyEffect,
-  dodeka: emptyEffect,
-  daiou: emptyEffect,
+  bichi(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.4) return
+    ctx.fillStyle = `rgba(125, 192, 223, ${1 - age / 0.4})`
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 1.5) * (9 + age * 35), y - (26 + 40 * age - 70 * age * age) * aspect, 2.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  dodeka(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age > 0.3) return
+    ctx.globalAlpha = 0.35 * (1 - age / 0.3)
+    ctx.strokeStyle = '#c6a675'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.ellipse(x, y, 20 + age * 55, (5 + age * 12) * aspect, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  },
+  daiou(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.fillStyle = `rgba(255, 211, 75, ${1 - age / 0.3})`
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 1) * (12 + age * 35), y - (63 + age * 20) * aspect, 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   aircon(ctx, unit, age, layer, x, y, aspect) {
     if (layer !== 'above' || age > 0.22) return
     ctx.strokeStyle = '#fff2a0'
@@ -114,9 +138,43 @@ export const DEATH_VFX = {
       ctx.fill()
     }
   },
-  bichi: emptyEffect,
-  dodeka: emptyEffect,
-  daiou: emptyEffect,
+  bichi(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age > 0.9) return
+    const spread = Math.min(1, age / 0.55)
+    ctx.globalAlpha = Math.min(1, (0.9 - age) / 0.23) * 0.75
+    ctx.fillStyle = '#80502e'
+    ctx.beginPath()
+    ctx.ellipse(x, y, 12 + 38 * spread, (3 + 6 * spread) * aspect, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#d5a777'
+    for (let i = 0; i < 3; i++) {
+      const bubble = Math.max(0, 1 - Math.abs(age - (0.35 + i * 0.12)) / 0.13)
+      if (!bubble) continue
+      ctx.beginPath()
+      ctx.ellipse(x + (i - 1) * 17, y - 2 * aspect, 2 + 4 * bubble, (1 + 2 * bubble) * aspect, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+  },
+  dodeka(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age < 0.58 || age > 1.05) return
+    const t = (age - 0.58) / 0.47
+    ctx.globalAlpha = 0.65 * (1 - t)
+    ctx.strokeStyle = '#b99b70'
+    ctx.lineWidth = 5 * (1 - t) + 1
+    ctx.beginPath()
+    ctx.ellipse(x + 14 * unit.side, y, 20 + 55 * t, (5 + 10 * t) * aspect, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  },
+  daiou(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age < 0.55 || age > 1.15) return
+    const t = (age - 0.55) / 0.6
+    ctx.fillStyle = `rgba(255, 211, 75, ${1 - t})`
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 2.5) * (8 + 12 * t), y - (15 + (i % 3) * 8 + 25 * t) * aspect, 2.5 * (1 - t), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
   aircon(ctx, unit, age, layer, x, y, aspect) {
     if (age > 1.3) return
     if (age < 0.2) HURT_VFX.aircon(ctx, unit, age, layer, x, y, aspect)
