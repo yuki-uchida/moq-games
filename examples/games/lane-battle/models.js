@@ -225,6 +225,8 @@ function lineMaterial(color) {
 // ── Kit: parts, bones and faces for one character ──
 const CHAIN = ['hips', 'spine', 'chest', 'head']
 const INK = '#24150c'
+/** Face colours kept out of the hit flash, so a white character's ＞＜ face still reads while it flashes. */
+const FACE_INK = new Set([INK, '#5e6280', '#7a5a9a', '#5a1a14', '#e8575a'])
 class Kit {
   parts = []
   rigs = {}
@@ -246,7 +248,7 @@ class Kit {
       m,
       color,
       alpha: o.alpha ?? 1,
-      finish: o.glow ? 'glow' : o.alpha ? 'clear' : 'toon',
+      finish: o.glow ? 'glow' : o.alpha ? 'clear' : o.line === false && FACE_INK.has(color) ? 'ink' : 'toon',
       bone: o.bone ?? 'body',
       skin: o.skin,
       line: o.line ?? !(o.glow || o.alpha)
@@ -351,7 +353,10 @@ class Kit {
         [0, 0, mood === 'angry' ? 0 : Math.PI],
         { bone: 'mouth', ...line }
       )
-    this.add(GEO.sphere, '#5a1a14', [cx, my, z + 0.02], [0.07 * s, 0.06 * s, 0.035 * s], undefined, { bone: 'shout' })
+    this.add(GEO.sphere, '#5a1a14', [cx, my, z + 0.02], [0.07 * s, 0.06 * s, 0.035 * s], undefined, {
+      bone: 'shout',
+      line: false
+    })
     this.add(GEO.ball, '#e8575a', [cx, my - 0.03 * s, z + 0.035], [0.045 * s, 0.022 * s, 0.02 * s], undefined, {
       bone: 'shout',
       line: false
@@ -393,6 +398,7 @@ function hull(part, weigh) {
   return w
 }
 const templates = new Map()
+const BANDS = 13
 /**
  * Every part of a character is skinned to one skeleton (the chain plus its rigid bones) and merged per
  * finish, so a character costs a handful of draw calls; hidden bones collapse to zero scale.
@@ -433,13 +439,25 @@ function template(key) {
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weight, 4))
   }
   const meshes = []
-  for (const finish of ['toon', 'clear', 'glow']) {
+  for (const finish of ['toon', 'ink', 'clear', 'glow']) {
     const parts = kit.parts.filter((p) => p.finish === finish)
     if (parts.length) meshes.push([finish, mergeGeometries(parts.map((p) => painted(p, weigh)))])
   }
   const lined = kit.parts.filter((p) => p.line)
   if (lined.length) meshes.push(['line', mergeGeometries(lined.map((p) => hull(p, weigh)))])
-  const t = { recipe, kit, heights, order, meshes, moves: { ...MOVES, ...recipe.moves } }
+  // How far the body (not its props or effects) reaches toward the foe at rest, per 0.1-high band, in model units.
+  const profile = new Array(BANDS).fill(-Infinity)
+  for (const p of kit.parts.filter((p) => p.bone === 'body')) {
+    const v = p.geometry.attributes.position,
+      at = new THREE.Vector3()
+    for (let i = 0; i < v.count; i++) {
+      at.fromBufferAttribute(v, i).applyMatrix4(p.m)
+      const band = Math.min(BANDS - 1, Math.max(0, Math.floor(at.y / 0.1)))
+      profile[band] = Math.max(profile[band], toLane(at.toArray()).x)
+    }
+  }
+  const front = Math.max(...profile)
+  const t = { recipe, kit, heights, order, meshes, front, profile, moves: { ...MOVES, ...recipe.moves } }
   templates.set(key, t)
   return t
 }
@@ -586,8 +604,8 @@ function moveBody(b, p, c) {
     hips.position.y += 0.04 * Math.sin(c.t * 4) + 0.02 * g.hop * walk
     hips.rotation.z -= 0.1 * walk
   }
-  hips.position.x += p.lunge * a.hit - p.back * a.wind - 0.09 * h.jolt
-  hips.position.y += p.rise * a.wind
+  hips.position.x += (p.lunge + c.reach) * a.hit - p.back * a.wind - 0.09 * h.jolt
+  hips.position.y += p.rise * a.wind + 0.3 * h.lift
   hips.rotation.z += p.rear * a.wind - p.lean * a.hit + 0.26 * h.jolt + 0.05 * h.wobble
   sy +=
     -p.squash * a.wind +
@@ -1295,6 +1313,12 @@ const MODELS = {
       ])
         k.add(GEO.sphere, '#8a8e87', [x, y, z], [w, 0.04, w * 0.8], [-1.15, 0, 0.4 * x], { bone: 'lid' })
       k.add(GEO.sphere, '#9b9f98', [-0.3, 0.6, -0.2], [0.2, 0.08, 0.16], [-1.0, 0.4, 0.5], { bone: 'lid' })
+      // Growth plates stepping in from the rim, so the lid's outline is not one smooth curve.
+      for (const [y, z, w, c] of [
+        [0.47, -0.16, 0.4, '#969a93'],
+        [0.55, -0.21, 0.31, '#888c85']
+      ])
+        k.add(GEO.sphere, c, [0.04, y, z], [w, 0.035, w * 0.78], [-1.15, 0, 0.12], { bone: 'lid' })
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
     act(b, a) {
@@ -1726,6 +1750,7 @@ export class Actor {
     this.root = new THREE.Group()
     this.mats = {
       toon: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true }),
+      ink: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true }),
       clear: new THREE.MeshToonMaterial({
         vertexColors: true,
         gradientMap: TONES,
@@ -1799,7 +1824,8 @@ export class Actor {
       h: flinch(f.hurtAge / t.moves.mass, f.power / Math.sqrt(t.moves.mass)),
       walk: f.motion === 'walk' && f.ko < 0 ? 1 - Math.max(a.wind, a.hit) : 0,
       t: f.time,
-      ko: f.ko
+      ko: f.ko,
+      reach: f.reach ?? 0
     }
     moveBody(this.bones, t.moves, c)
     t.recipe.act?.(this.bones, a, c)
@@ -1830,6 +1856,24 @@ export class Actor {
 
 /** A typical melee gap in lane units, and how wide it looks in model units on the desktop presentation. */
 const MELEE = [32, 0.43]
+/** Bones that carry effects or orbiting extras rather than the body or a weapon. */
+const EFFECTS = new Set([
+  'blast',
+  'puff',
+  'splash',
+  'powder',
+  'fizz',
+  'jet',
+  'drops',
+  'steam',
+  'wind',
+  'fly',
+  'pills',
+  'moon',
+  'flames'
+])
+/** How much of a body's front may sit inside a typical melee gap at rest (model units). */
+const CONTACT = 0.12
 
 /** Procedural three.js characters, rendered into an offscreen WebGL canvas in the 1000×450 lane space. */
 export class LaneModels {
@@ -1842,6 +1886,7 @@ export class LaneModels {
   line = OUTLINE.value
   portraits = new Map()
   muzzles = new Map()
+  strikes = new Map()
 
   constructor() {
     this.renderer.setClearColor(0, 0)
@@ -1869,11 +1914,15 @@ export class LaneModels {
     this.line = Math.min(0.04, Math.max(0.012, 1.7 / (size * 0.62 * pxPerLane)))
   }
 
-  /** z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's wind-up). */
-  unit(u, x, y, z, time, lead = Infinity) {
+  /**
+   * z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's
+   * wind-up); reach: extra lunge (model units) that brings its strike onto the foe's body.
+   */
+  unit(u, x, y, z, time, lead = Infinity, reach = 0) {
     const actor = this.actor(u.id, u.key)
     actor.place(x, y, z, u.side, ...this.presentation)
     actor.animate({
+      reach,
       motion: u.motion,
       phase: u.phase,
       period: u.period,
@@ -1914,11 +1963,60 @@ export class LaneModels {
    */
   offset(key, side, row = 0) {
     const k = this.presentation[0]
-    // A typical melee gap (MELEE lane units) looks the same on every screen: on large-scale (portrait)
-    // presentations it would shrink in model terms, so the stand-off grows to make up for it.
-    return (
-      side * ((template(key).moves.stand * modelSize(key) + row * 0.07) * k + Math.max(0, MELEE[1] * k - MELEE[0]) / 2)
-    )
+    // Wide bodies (basins, bowls, the big poops) stand back by their own breadth, keeping a little air in
+    // front that the strike crosses. A typical melee gap (MELEE lane units) looks the same on every screen:
+    // on large-scale (portrait) presentations it would shrink in model terms, so the stand-off grows.
+    const { moves, front } = template(key)
+    const stand = Math.max(moves.stand, front - CONTACT)
+    return side * ((stand * modelSize(key) + row * 0.07) * k + Math.max(0, MELEE[1] * k - MELEE[0]) / 2)
+  }
+
+  /** Lane units from a unit's centre to the front of its body at `height` (model units, before size). */
+  front(key, height = 0.4) {
+    const { profile } = template(key)
+    let band = Math.min(BANDS - 1, Math.max(0, Math.floor(height / 0.1)))
+    while (band > 0 && profile[band] === -Infinity) band--
+    const x = Math.max(profile[band], profile[band - 1] ?? -Infinity, profile[band + 1] ?? -Infinity)
+    return x * modelSize(key) * this.presentation[0]
+  }
+
+  /**
+   * The furthest point of a unit's strike on the contact frame (weapon tip or striking body; effects such as
+   * splashes and jets are left out): [lane units ahead of its centre, height in size-scaled model units].
+   */
+  strike(key) {
+    if (!this.strikes.has(key)) {
+      const actor = new Actor(key)
+      actor.animate({
+        motion: 'attack',
+        phase: 0,
+        period: 1,
+        walked: 0,
+        lead: Infinity,
+        hurtAge: -1,
+        power: 1,
+        time: 0,
+        ko: -1,
+        id: 0
+      })
+      actor.root.updateMatrixWorld(true)
+      const mesh = actor.root.children.find((m) => m.isSkinnedMesh)
+      const { order } = actor.t
+      const skinIndex = mesh.geometry.attributes.skinIndex,
+        position = mesh.geometry.attributes.position,
+        at = new THREE.Vector3()
+      let reach = 0,
+        height = 0
+      for (let i = 0; i < position.count; i++) {
+        if (EFFECTS.has(order[skinIndex.getX(i)])) continue
+        mesh.applyBoneTransform(i, at.fromBufferAttribute(position, i)).applyMatrix4(mesh.matrixWorld)
+        if (at.x > reach) [reach, height] = [at.x, at.y]
+      }
+      this.strikes.set(key, [reach * actor.size, height * actor.size])
+      actor.dispose()
+    }
+    const [reach, height] = this.strikes.get(key)
+    return [reach * this.presentation[0], height]
   }
 
   /** Lane offset from a unit's base to its shot emitter at the moment of release, for the current presentation. */

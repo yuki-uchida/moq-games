@@ -29,6 +29,7 @@ const SPLAT_SECONDS = 0.22
 /** Shot looks by shooter: fill, edge and radius. */
 const SHOTS = {
   pellet: ['#6b3c1c', '#3d200c', 6],
+  korokoro: ['#4a2810', '#2a1608', 7],
   water: ['#e9f7ffcc', '#4c9ad0', 6],
   turret: ['#e9f7ffcc', '#4c9ad0', 9],
   bichi: ['#a0703e', '#5e3a1c', 7],
@@ -46,9 +47,10 @@ function drawContact(effect, y, age, aspect) {
   const size = effect.crit ? 1.7 : effect.splash ? 1.4 : 1
   ctx.save()
   ctx.globalAlpha = 1 - t * t
-  ctx.translate(effect.x, y)
+  ctx.translate(effect.x + (effect.dx ?? 0), y)
   ctx.scale(size, aspect * size)
-  ctx.fillStyle = effect.side === -1 ? '#bfe6ff' : effect.crit ? '#e8a23a' : '#7a4722'
+  const shot = effect.ranged && !effect.turret && SHOTS[effect.source?.key]
+  ctx.fillStyle = effect.crit ? '#e8a23a' : shot ? shot[0] : effect.side === -1 ? '#bfe6ff' : '#7a4722'
   ctx.beginPath()
   ctx.arc(0, 0, 9 * (1 - t) + 3, 0, 7)
   for (let i = 0; i < 7; i++) {
@@ -135,6 +137,7 @@ function start(stage) {
   state = createGame(stage, deckOf(campaign), seed())
   shown = false
   fallen.length = 0
+  glides.clear()
   audio.beat = 0
   buildTray()
   $('stage-name').textContent = `${stage + 1}. ${STAGES[stage].sub}`
@@ -481,12 +484,40 @@ function drawToiletCastle(x) {
 }
 /** Ground rows: three per side, interleaved so opposing units never stand at the same depth. */
 const laneY = (u) => (u.side === 1 ? 356 : 350) + (u.id % 3) * 12
-/** Where a unit is drawn along the lane (see LaneModels.offset); the simulation keeps its own x. */
-const drawX = (u) => u.x + models.offset(u.key, u.side, 2 - (u.id % 3))
+/** How far behind its logical point a unit stands (see LaneModels.offset). */
+const standOff = (u) => models.offset(u.key, u.side, 2 - (u.id % 3))
+/**
+ * Drawn lane x follows the simulation closely but glides through sudden jumps (knockback, 大放屁) on the
+ * battle clock, so a knocked-back unit slides instead of teleporting and nothing moves while paused.
+ */
+const glides = new Map()
+function glideX(u) {
+  let g = glides.get(u.id)
+  if (!g || Math.abs(u.x - g.x) > 300) glides.set(u.id, (g = { x: u.x, t: state.time }))
+  g.x += (u.x - g.x) * (1 - Math.exp(-Math.max(0, state.time - g.t) / 0.045))
+  g.t = state.time
+  return g.x
+}
+/** Where a unit is drawn along the lane; the simulation keeps its own x. */
+const drawX = (u) => glideX(u) + standOff(u)
 /**
  * Painter order: back rows first; within a row the unit nearest the enemy comes last, so whoever is
  * fighting stays on top. Each unit gets its own depth slot, so neighbours never cut into each other.
  */
+/**
+ * Extra lunge (model units) that lands a melee strike on its foe's drawn body: the gap between the striking
+ * point on the contact frame and the front of the foe, capped so a strike never becomes a dash.
+ */
+function contact(u) {
+  const { target } = reach(state, u)
+  if (!target || u.range > 80) return 0
+  const toward = -u.side
+  const [ahead, height] = models.strike(u.key)
+  const strikeX = drawX(u) + toward * ahead
+  const frontX = drawX(target) - toward * models.front(target.key, height / modelSize(target.key))
+  const scale = models.presentation[0] * modelSize(u.key)
+  return Math.min(0.6, Math.max(-0.15, ((frontX - strikeX) * toward) / scale))
+}
 function depthSlots(list) {
   const ranked = [...list].sort((a, b) => laneY(a) - laneY(b) || (b.x - a.x) * b.side || a.id - b.id)
   return new Map(ranked.map((u, i) => [u, (i - ranked.length / 2) * 150]))
@@ -589,7 +620,7 @@ function draw() {
     ctx.beginPath()
     ctx.ellipse(drawX(u), y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
     ctx.fill()
-    models.unit(u, drawX(u), y, depth.get(u), state.time, lead(u))
+    models.unit(u, drawX(u), y, depth.get(u), state.time, lead(u), contact(u))
   }
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
@@ -648,7 +679,7 @@ function draw() {
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
       if (progress < 1) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
-        const x = fromX + (e.x - fromX) * progress
+        const x = fromX + (e.x + (e.dx ?? 0) - fromX) * progress
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
         const [fill, edge, radius] =
           SHOTS[e.turret ? 'turret' : source?.key] ?? (e.side === -1 ? SHOTS.water : SHOTS.pellet)
@@ -659,6 +690,13 @@ function draw() {
         ctx.arc(0, 0, radius, 0, 7)
         ctx.fillStyle = fill
         ctx.fill()
+        // A glint, like the pellet still in a thrower's hand.
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(-radius * 0.35, -radius * 0.35, radius * 0.28, 0, 7)
+        ctx.fillStyle = '#ffffffb0'
+        ctx.fill()
+        ctx.restore()
         ctx.strokeStyle = edge
         ctx.lineWidth = 1.5
         ctx.stroke()
@@ -721,11 +759,13 @@ function tick(now) {
     for (const effect of state.effects)
       if (!heard.has(effect)) {
         heard.add(effect)
-        // Splashes land on the recipient's own row.
+        // Splashes land on the front of the recipient's drawn body, on its own row.
         const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
         if (target) {
           const rect = canvas.getBoundingClientRect()
           effect.targetY = laneY(target) - 35 * (rect.width / 1000 / (rect.height / 450))
+          const height = 35 / (models.presentation[0] * modelSize(target.key))
+          effect.dx = standOff(target) - target.side * models.front(target.key, height)
         }
         if (effect.ranged) effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
         if (!effect.blast) {
