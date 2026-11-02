@@ -17,6 +17,7 @@ import {
 } from './data'
 import { GIFTED, Game, POOR, choiceText, type Input, type Player } from './game'
 import { deathKind } from './art/deaths'
+import { choiceIcon, iconImg } from './art/icons'
 import { sheet } from './art/index'
 import { duration } from './art/sheet'
 import { Renderer, bodyFor } from './render'
@@ -254,7 +255,7 @@ function renderChoices(player: ViewPlayer | undefined) {
       button.className = 'card'
       const icon = document.createElement('span')
       icon.className = 'icon'
-      icon.textContent = info.icon
+      icon.append(iconImg(choiceIcon(choice), info.name))
       const name = document.createElement('strong')
       name.textContent = info.name
       if (info.tag) {
@@ -278,7 +279,7 @@ function slot(icon: string, level: number, className: string, title: string) {
   const item = document.createElement('div')
   item.className = `slot ${className}`
   item.title = title
-  item.textContent = icon
+  item.append(iconImg(icon, title, className === 'evolved'))
   const badge = document.createElement('b')
   badge.textContent = level >= MAX_WEAPON_LEVEL && className !== 'passive' ? 'MAX' : String(level)
   item.append(badge)
@@ -313,7 +314,7 @@ function updateHud(current: View) {
             def.evolve && lv >= MAX_WEAPON_LEVEL && owner.passives.some((p) => p.id === def.evolve!.passive)
           )
           return slot(
-            def.icon,
+            def.id,
             lv,
             def.parent ? 'parent' : evolved ? 'evolved' : '',
             evolved ? def.evolve!.name : def.name
@@ -323,7 +324,7 @@ function updateHud(current: View) {
       element('#passives').replaceChildren(
         ...player.passives.map(([id, lv]) => {
           const def = PASSIVE_BY_ID.get(id)!
-          return slot(def.icon, lv, 'passive', def.name)
+          return slot(def.id, lv, 'passive', def.name)
         })
       )
     }
@@ -379,30 +380,29 @@ function updateHud(current: View) {
 /** The end screen finally reveals the hidden talents. */
 function reflection(player: ViewPlayer) {
   const rows: HTMLElement[] = []
-  const add = (left: string, right: string, className = '') => {
+  const add = (left: string, right: string, className = '', icon?: string) => {
     const row = document.createElement('div')
     row.className = className
     const a = document.createElement('span')
-    a.textContent = left
+    if (icon) a.append(iconImg(icon, left))
+    a.append(left)
     const b = document.createElement('span')
     b.textContent = right
     row.append(a, b)
     rows.push(row)
   }
-  add(
-    `親：${WEAPON_BY_ID.get(player.parent)!.icon} ${WEAPON_BY_ID.get(player.parent)!.name}`,
-    WEAPON_BY_ID.get(player.parent)!.perk ?? ''
-  )
+  add(`親：${WEAPON_BY_ID.get(player.parent)!.name}`, WEAPON_BY_ID.get(player.parent)!.perk ?? '', '', player.parent)
   for (const [id, lv, damage] of player.weapons) {
     const def = WEAPON_BY_ID.get(id)!
-    add(`${def.icon} ${def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`)
+    add(`${def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`, '', id)
   }
   if (player.talents) {
-    const names = Object.fromEntries(TALENT_WEAPONS.map((def) => [def.category, `${def.icon} ${def.name}`]))
+    const talent = Object.fromEntries(TALENT_WEAPONS.map((def) => [def.category, def]))
     for (const category of TALENT_CATEGORIES as TalentCategory[]) {
       const value = player.talents[category]
-      if (value === GIFTED) add(`才能：${names[category]}`, '🌟 天賦の才', 'gifted')
-      else if (value === POOR) add(`才能：${names[category]}`, '✖ 不向き', 'poor')
+      const def = talent[category]
+      if (value === GIFTED) add(`才能：${def.name}`, '🌟 天賦の才', 'gifted', def.id)
+      else if (value === POOR) add(`才能：${def.name}`, '✖ 不向き', 'poor', def.id)
     }
   }
   return rows

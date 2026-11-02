@@ -1,12 +1,12 @@
 import { canvasOf } from './art/atlas'
 import { deathKind, soulAt } from './art/deaths'
-import { NO_FLIP, sheet } from './art/index'
-import type { Raster } from './art/raster'
-import { duration, frameAt } from './art/sheet'
+import { NO_FLIP, PENCIL_DIRS, SWING_DIRS, evolve, playMat, sheet, swing } from './art/index'
+import { Raster } from './art/raster'
+import { duration, frameAt, type Anim } from './art/sheet'
 import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propsAt } from './art/world'
-import { ENEMIES, ENEMY_BY_ID, WEAPONS, ageAt, stageAt, type Stage } from './data'
+import { ENEMIES, ENEMY_BY_ID, MAX_WEAPON_LEVEL, WEAPONS, WEAPON_BY_ID, ageAt, stageAt, type Stage } from './data'
 import { VIEW_HALF } from './game'
-import { STRIDE, type View, type ViewPlayer } from './view'
+import { ITEM_KINDS, STRIDE, type View, type ViewPlayer } from './view'
 
 /** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
 const BODIES: Record<string, string> = {
@@ -25,6 +25,32 @@ const BODIES: Record<string, string> = {
 /** Every life stage has its own painted body. */
 export const bodyFor = (stage: Stage) => BODIES[stage.name] ?? 'adult'
 const GROUND_FADE = 1.5
+/** Whether a player's weapon has evolved (Lv8 + its matching passive), from the snapshot alone. */
+function isEvolvedView(owner: ViewPlayer | undefined, id: string) {
+  const def = WEAPON_BY_ID.get(id)
+  const w = owner?.weapons.find((x) => x[0] === id)
+  return Boolean(
+    def?.evolve && w && w[1] >= MAX_WEAPON_LEVEL && owner!.passives.some((p) => p[0] === def.evolve!.passive)
+  )
+}
+
+/** The tight box around a lettering layer (cached). */
+const letterBoxes = new WeakMap<Raster, { r: Raster; x: number; y: number }>()
+function letterBox(t: Raster) {
+  let box = letterBoxes.get(t)
+  if (box) return box
+  let x0 = t.w
+  let y0 = t.h
+  let x1 = 0
+  let y1 = 0
+  t.map(
+    (c, x, y) => ((x0 = Math.min(x0, x)), (y0 = Math.min(y0, y)), (x1 = Math.max(x1, x)), (y1 = Math.max(y1, y)), c)
+  )
+  box = { r: new Raster(x1 - x0 + 1, y1 - y0 + 1).blit(t, -x0, -y0), x: x0, y: y0 }
+  letterBoxes.set(t, box)
+  return box
+}
+
 /** Where a prop touches the ground: centre x, half-width and row of its lowest pixels (cached). */
 const footprints = new WeakMap<Raster, { cx: number; rx: number; y: number }>()
 function footprint(r: Raster) {
@@ -42,10 +68,7 @@ function footprint(r: Raster) {
 
 /** Sprites carrying lettering (¥, 至急) never mirror. */
 
-const FRIENDS = ['🧑', '👧', '👦', '🧑‍🦱', '👩', '🧔']
-const ITEM_ICONS = ['🍙', '🎁', '🧲']
-
-/** Canvas renderer. Emoji and labels are rasterised once and reused as sprites. */
+/** Canvas renderer: generated pixel art for everything in the world; labels are rasterised once and reused. */
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D
   private readonly sprites = new Map<string, HTMLCanvasElement>()
@@ -93,21 +116,6 @@ export class Renderer {
       this.sprites.set(key, canvas)
     }
     return canvas
-  }
-
-  private emoji(icon: string, size: number) {
-    const px = Math.max(8, Math.round(size))
-    return this.sprite(
-      `e:${icon}:${px}`,
-      (ctx) => {
-        ctx.font = `${px}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(icon, px * 0.65, px * 0.7)
-      },
-      px * 1.3,
-      px * 1.4
-    )
   }
 
   private label(text: string, size: number, color: string, quiet = false) {
@@ -296,7 +304,8 @@ export class Renderer {
     pos: { x: number; y: number },
     local: boolean,
     time: number,
-    phase: View['phase']
+    phase: View['phase'],
+    tagLift = 0
   ) {
     const ctx = this.ctx
     const feet = pos.y + 16
@@ -350,6 +359,13 @@ export class Renderer {
       // A lifted body leaves its shadow on the floor, smaller.
       this.shadow(pos.x, feet, 13 * (1 - (anim.lift?.[index] ?? 0) / 40))
       this.art(anim.frames[index], pos.x, feet, 32, 58, flip, anim.alpha?.[index] ?? 1)
+      // Lettering is never mirrored: drawn unflipped at the mirrored position.
+      const text = anim.text?.[index]
+      if (text) {
+        const box = letterBox(text)
+        const ox = flip ? 64 - box.x - box.r.w : box.x
+        this.art(box.r, pos.x, feet, 32 - ox, 58 - box.y, false, anim.alpha?.[index] ?? 1)
+      }
       const soul = soulAt(t, duration(anim), anim.soul)
       if (soul) {
         const kind = sheet('soul')[anim.soul === 'ghost' ? 'ghost' : 'float']
@@ -383,7 +399,7 @@ export class Renderer {
     this.blit(
       this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
       pos.x,
-      feet - 64,
+      feet - 64 - tagLift,
       0,
       shown
     )
@@ -424,55 +440,90 @@ export class Renderer {
     this.ground(stage, this.groundShown.from ? fade : 1, halfW, halfH)
     this.world()
 
-    // Experience and items.
+    // Experience gems and pickups: pixel sprites with a gentle bob and a soft shadow.
+    const items = sheet('items')
     const g = view.gems
     for (let i = 0; i < g.length; i += STRIDE.gems) {
       if (!visible(g[i], g[i + 1])) continue
       const v = g[i + 2]
-      ctx.fillStyle = v >= 20 ? '#ff5d73' : v >= 4 ? '#6ee7a8' : '#69b7ff'
-      const s = v >= 20 ? 8 : v >= 4 ? 6 : 5
-      ctx.beginPath()
-      ctx.moveTo(g[i], g[i + 1] - s)
-      ctx.lineTo(g[i] + s * 0.7, g[i + 1])
-      ctx.lineTo(g[i], g[i + 1] + s)
-      ctx.lineTo(g[i] - s * 0.7, g[i + 1])
-      ctx.fill()
+      const anim = v >= 20 ? items.gem3 : v >= 4 ? items.gem2 : items.gem1
+      const bob = Math.round(Math.sin(this.clock * 3 + i) * 1.5)
+      this.shadow(g[i], g[i + 1] + 6, 4, 0.2)
+      this.art(anim.frames[frameAt(anim, this.clock + i * 0.07)], g[i], g[i + 1] + bob, 8, 10)
     }
-    const items = view.items
-    for (let i = 0; i < items.length; i += STRIDE.items)
-      this.blit(this.emoji(ITEM_ICONS[items[i]], 26), items[i + 1], items[i + 2] + Math.sin(view.time * 4 + i) * 3)
+    this.world()
+    const it = view.items
+    for (let i = 0; i < it.length; i += STRIDE.items) {
+      const anim = items[ITEM_KINDS[it[i]]]
+      const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
+      this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
+      this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12)
+    }
+    this.world()
 
-    // Ground effects first (auras and zones), then enemies, then flying shots.
+    // Ground effects first (auras and zones), drawn at their real hit radius.
     const s = view.shots
+    const fx = sheet('fx')
+    const at = (anim: Anim, t: number) => anim.frames[frameAt(anim, t)]
     for (let i = 0; i < s.length; i += STRIDE.shots) {
       const def = WEAPONS[s[i]]
       if (def.behavior !== 'aura' && def.behavior !== 'zone') continue
       const owner = view.players[s[i + 6]]
+      const evolved = isEvolvedView(owner, def.id)
       const pos = def.behavior === 'aura' && owner ? positions.get(owner.id)! : { x: s[i + 1], y: s[i + 2] }
       const radius = s[i + 3]
-      const pulse = 1 + Math.sin(view.time * 6) * 0.03
-      ctx.fillStyle = `${def.color}33`
-      ctx.strokeStyle = `${def.color}aa`
-      ctx.lineWidth = 3
-      ctx.setLineDash([10, 8])
-      ctx.beginPath()
-      ctx.arc(pos.x, pos.y, radius * pulse, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.stroke()
-      ctx.setLineDash([])
-      if (def.behavior === 'zone') this.blit(this.emoji(def.icon, 30), pos.x, pos.y, 0, 0.9)
-      else
-        for (let j = 0; j < 4; j++) {
-          const a = view.time * 1.5 + (j * Math.PI) / 2
-          this.blit(
-            this.emoji(def.icon, 16),
-            pos.x + Math.cos(a) * radius * 0.7,
-            pos.y + Math.sin(a) * radius * 0.7,
-            0,
-            0.7
+      if (def.behavior === 'zone') {
+        // 娯楽: an arcade play-mat with a controller and floating pixels.
+        const mat = playMat(radius)
+        this.art(mat, pos.x, pos.y, mat.w / 2, mat.h / 2, false, 0.4)
+        this.art(fx.controller.frames[0], pos.x, pos.y, 9, 6)
+        fx.pixels.frames.forEach((p, j) => {
+          const a = this.clock * 1.3 + j * 1.7 + i
+          this.art(
+            p,
+            pos.x + Math.cos(a) * radius * 0.6,
+            pos.y + Math.sin(a * 1.3) * radius * 0.5 - ((this.clock * 20 + j * 13) % 20),
+            1,
+            1
+          )
+        })
+      } else {
+        // 毒親: a faint toxic ground ring with wisps and skull puffs circling over it.
+        this.world()
+        ctx.fillStyle = 'rgba(122,98,161,0.24)'
+        ctx.strokeStyle = 'rgba(173,143,211,0.6)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.ellipse(pos.x, pos.y + 8, radius, radius * 0.92, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+        for (let j = 0; j < 12; j++) {
+          // Two swirling rings of wisps and skull puffs at different speeds.
+          const inner = j % 2
+          const a = this.clock * (inner ? -1.8 : 1.3) + (j * Math.PI) / 6
+          const sprite = j % 4 === 3 ? fx.skull.frames[0] : at(fx.wisp, this.clock + j * 0.2)
+          this.art(
+            sprite,
+            pos.x + Math.cos(a) * radius * (inner ? 0.45 : 0.8),
+            pos.y + 8 + Math.sin(a) * radius * (inner ? 0.4 : 0.72),
+            sprite.w / 2,
+            sprite.h / 2,
+            false,
+            0.85
           )
         }
+        if (evolved)
+          for (let j = 0; j < 4; j++)
+            this.art(
+              at(fx.star, this.clock + j),
+              pos.x + Math.cos(j * 1.6 + this.clock) * radius * 0.4,
+              pos.y + Math.sin(j * 1.6 + this.clock) * radius * 0.4,
+              4,
+              4
+            )
+      }
     }
+    this.world()
 
     // Characters: enemies and players Y-sorted so overlaps read correctly.
     const sorted: { y: number; draw: () => void }[] = []
@@ -490,9 +541,22 @@ export class Renderer {
     }
     if (smooth && this.frame % 60 === 0) for (const id of this.shown.keys()) if (!live.has(id)) this.shown.delete(id)
 
+    // Name tags of players standing together stack instead of overlapping.
+    const tagLift = new Map<string, number>()
+    view.players.forEach((player, i) => {
+      const pos = positions.get(player.id)!
+      const near = view.players.slice(0, i).filter((o) => {
+        const q = positions.get(o.id)!
+        return Math.abs(q.x - pos.x) < 80 && Math.abs(q.y - pos.y) < 24
+      }).length
+      tagLift.set(player.id, near * 13)
+    })
     for (const player of view.players) {
       const pos = positions.get(player.id)!
-      sorted.push({ y: pos.y + 16, draw: () => this.player(player, pos, player.id === localId, view.time, view.phase) })
+      sorted.push({
+        y: pos.y + 16,
+        draw: () => this.player(player, pos, player.id === localId, view.time, view.phase, tagLift.get(player.id) ?? 0)
+      })
     }
     sorted.sort((a, b) => a.y - b.y)
     for (const item of sorted) item.draw()
@@ -515,7 +579,12 @@ export class Renderer {
       const def = WEAPONS[s[i]]
       const [x, y, radius, angle, life] = [s[i + 1], s[i + 2], s[i + 3], s[i + 4] / 100, s[i + 5] / 100]
       const owner = view.players[s[i + 6]]
+      const evolved = isEvolvedView(owner, def.id)
       const origin = owner ? positions.get(owner.id)! : { x, y }
+      const centred = (frame: Raster, px: number, py: number, alpha = 1) => {
+        const f = evolved ? evolve(frame) : frame
+        this.art(f, px, py, f.w / 2, f.h / 2, false, alpha)
+      }
       switch (def.behavior) {
         case 'aura':
         case 'zone':
@@ -525,68 +594,60 @@ export class Renderer {
           const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
           const ox = origin.x + Math.cos(angle) * orbit
           const oy = origin.y + Math.sin(angle) * orbit
-          const icon = def.id.startsWith('w_friend') ? FRIENDS[i % FRIENDS.length] : def.icon
-          ctx.strokeStyle = `${def.color}55`
-          ctx.lineWidth = 6
-          ctx.beginPath()
-          ctx.arc(origin.x, origin.y, orbit, angle - 0.5, angle)
-          ctx.stroke()
-          this.blit(this.emoji(icon, radius * 1.5), ox, oy, Math.sin(view.time * 12 + i) * 0.2, Math.min(1, life * 4))
+          const art = sheet(`weapon:${def.id}`)
+          const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][i % 3] : art.fly
+          centred(at(anim, this.clock + i * 0.1), ox, oy, Math.min(1, life * 4))
           break
         }
         case 'whip':
         case 'flail': {
-          ctx.save()
-          ctx.translate(x, y)
-          ctx.rotate(angle)
-          ctx.globalAlpha = Math.min(1, life * 1.5)
-          const grad = ctx.createLinearGradient(-radius, 0, radius, 0)
-          grad.addColorStop(0, `${def.color}00`)
-          grad.addColorStop(1, `${def.color}dd`)
-          ctx.fillStyle = grad
-          ctx.beginPath()
-          ctx.ellipse(0, 0, radius, 20, 0, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.restore()
-          for (let j = 0; j < 3; j++)
-            this.blit(
-              this.emoji(def.icon, 18),
-              x + Math.cos(angle) * (j - 1) * radius * 0.6,
-              y + Math.sin(angle) * (j - 1) * radius * 0.6,
-              0,
-              life
-            )
+          // 美容: a crisp white-pink crescent slash with stars; 頼りない親: motion lines with flailing hands
+          // and sweat — both laid exactly along the real whip line (length = radius, at the shot's angle).
+          const kind = def.behavior === 'whip' ? 'slash' : 'flail'
+          const dir = ((Math.round((angle / (Math.PI * 2)) * SWING_DIRS) % SWING_DIRS) + SWING_DIRS) % SWING_DIRS
+          const smear = swing(radius, dir, kind)
+          const alpha = Math.min(1, life * 3)
+          this.art(evolved ? evolve(smear) : smear, x, y, smear.w / 2, smear.h / 2, false, alpha)
+          const n = kind === 'slash' ? 5 : 4
+          for (let j = 0; j < n; j++) {
+            const t = (j / (n - 1)) * 1.6 - 0.8
+            const bulge = (1 - t * t) * 14
+            const px = x + Math.cos(angle) * t * radius + Math.sin(angle) * bulge
+            const py = y + Math.sin(angle) * t * radius - Math.cos(angle) * bulge
+            if (kind === 'slash') centred(at(fx.star, this.clock * 2 + j), px, py, alpha)
+            else {
+              centred(at(fx.hand, this.clock * 4 + j), px, py, alpha)
+              if (j % 2) centred(fx.sweat.frames[0], px + 7, py - 9, alpha)
+            }
+          }
           break
         }
         case 'strike': {
-          ctx.strokeStyle = `${def.color}`
-          ctx.globalAlpha = life
-          ctx.lineWidth = 6
-          ctx.beginPath()
-          ctx.moveTo(x - 30, y - 260)
-          ctx.lineTo(x + 12, y - 120)
-          ctx.lineTo(x - 10, y - 90)
-          ctx.lineTo(x, y)
-          ctx.stroke()
-          ctx.globalAlpha = 1
-          this.blit(this.emoji(def.icon, radius * 1.4), x, y, 0, life)
+          // 投資: a chart-arrow bolt from above and an impact burst.
+          const bolt = at(fx.bolt, this.clock * 2)
+          const f = evolved ? evolve(bolt) : bolt
+          this.art(f, x, y, 12, 118, false, Math.min(1, life * 2))
+          this.art(at(fx.burst, (1 - life) * 0.6), x, y, 14, 14, false, life)
           break
         }
         case 'rain': {
+          // お金持ち: a bundle of bills falls, then coins burst out on impact.
           const fall = Math.max(0, life - 0.35) / 0.65
-          this.blit(this.emoji('💴', 26), x, y - fall * 240, fall * 4, 1)
-          if (fall === 0) this.blit(this.emoji(def.icon, radius * 1.4), x, y, 0, life * 3)
+          if (fall > 0) centred(fx.bills.frames[0], x, y - fall * 240)
+          else this.art(at(fx.coins, (0.35 - life) * 3), x, y + 4, 14, 14, false, Math.min(1, life * 3))
           break
         }
-        default:
-          this.blit(
-            this.emoji(def.icon, Math.max(18, radius * 2)),
-            x,
-            y,
-            def.behavior === 'aim' ? angle + Math.PI / 4 : angle
-          )
+        default: {
+          const art = sheet(`weapon:${def.id}`)
+          if (def.id === 'w_study') {
+            // The pencil points along its flight: one of 16 pre-drawn directions.
+            const d = ((Math.round((angle / (Math.PI * 2)) * PENCIL_DIRS) % PENCIL_DIRS) + PENCIL_DIRS) % PENCIL_DIRS
+            centred(art.fly.frames[d], x, y)
+          } else centred(at(art.fly, this.clock + i * 0.1), x, y)
+        }
       }
     }
+    this.world()
 
     // 大往生: a soft warm beam of light falls onto the bed (renderer alpha, not baked into sprites).
     if (view.phase === 'reaper' || view.phase === 'won') {

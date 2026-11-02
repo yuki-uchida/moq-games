@@ -565,3 +565,29 @@ button {
     transition: none !important;
   }
 }
+
+/* Pixel-art icons from the art code (HUD slots, level-up cards, result rows). */
+.pixel-icon {
+  image-rendering: pixelated;
+  display: block;
+}
+.slot .pixel-icon {
+  width: 32px;
+  height: 32px;
+  margin: auto;
+}
+.passives .slot .pixel-icon {
+  width: 26px;
+  height: 26px;
+}
+.card .icon .pixel-icon {
+  width: 64px;
+  height: 64px;
+}
+.result-build .pixel-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
