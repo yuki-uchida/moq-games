@@ -107,8 +107,8 @@ for (const zoom of [1, 3])
                 u.walkDistance = 40
                 u.hurt = { at: now - s, power: 1 }
               }
-              if (motion === 'ko') models.fallen(u, 500, 361, s)
-              else models.unit(u, 500, 361, now)
+              if (motion === 'ko') models.fallen(u, 500, 361, 0, s)
+              else models.unit(u, 500, 361, 0, now)
               const img = models.render(W, H)
               c.drawImage(
                 img,

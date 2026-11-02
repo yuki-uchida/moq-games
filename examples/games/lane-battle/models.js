@@ -165,6 +165,12 @@ const GEO = {
     [0.08, 0.9],
     [0, 0.9]
   ]),
+  cupBand: lathe([
+    [0.236, 0.16],
+    [0.256, 0.162],
+    [0.287, 0.418],
+    [0.267, 0.42]
+  ]),
   cupBody: lathe([
     [0, 0],
     [0.2, 0],
@@ -550,7 +556,8 @@ const MOVES = {
   walk: 'hop',
   base: 0.25,
   tool: false,
-  ko: 1
+  ko: 1,
+  mass: 1
 }
 function moveBody(b, p, c) {
   const { a, g, h, walk } = c
@@ -607,6 +614,12 @@ function moveBody(b, p, c) {
   hips.scale.set(wide * (1 + p.smear * a.smear), sy, wide)
   for (const arm of [b.armF, b.armB]) if (arm) arm.rotation.z += 0.9 * h.jolt * (arm === b.armF ? 1 : 1.2)
 }
+/** The model's own width axis in the lane frame: lids and flaps hinge about it. */
+const WIDTH = toLane([1, 0, 0]).normalize()
+/** Big swings: blend monotonically from the wind-up angle to the contact angle through the strike. */
+const arc = (a, wind, hit, recoil = 0) =>
+  (a.wind > 0 && a.hit > 0 ? wind + ((hit - wind) * a.hit) / (a.wind + a.hit) : a.wind * wind + a.hit * hit) +
+  recoil * a.recoil
 /** Additive pose channel: rest + d(wind) + d(hit) + d(recoil). */
 const beat = (a, wind, hit, recoil = 0) => wind * a.wind + hit * a.hit + recoil * a.recoil
 const show = (bone, on) => bone && (bone.visible = on)
@@ -633,30 +646,35 @@ const MODELS = {
     },
     act(b, a) {
       b.shield.position.x += beat(a, -0.09, 0.13)
-      b.shield.rotation.z += beat(a, 0.32, -0.22) + 0.1 * Math.sin(a.since * 70) * a.recoil
+      b.shield.rotation.z += beat(a, 0.32, -0.22) + (a.recoil && 0.1 * Math.sin(a.since * 70) * a.recoil)
       b.armB.rotation.z += beat(a, -0.7, 1.5, 0.3)
     }
   },
   korokoro: {
     size: 0.86,
-    moves: { lunge: 0.12, back: 0.06, rear: 0.22, lean: 0.22, squash: 0.08, stretch: 0.1, bend: 0.2 },
+    moves: { lunge: 0.14, back: 0.06, rear: 0.24, lean: 0.24, squash: 0.08, stretch: 0.12, bend: 0.22 },
     build(k) {
-      poop(k, '#8a5229', { sx: 0.95 })
+      poop(k, '#8a5229', { sx: 0.95, arms: ['B'] })
       k.add(swirlBand(0.5, 0.57), '#d64a3a', [0, 0, 0], [0.95, 1, 0.95])
       k.add(GEO.sphere, '#d64a3a', [0, 0.535, -0.28], [0.05, 0.045, 0.04], undefined, { skin: 'chest' })
       k.bone('tails', 'chest', [0, 0.53, -0.3])
       for (const s of [-1, 1])
         k.add(GEO.rbox, '#d64a3a', [s * 0.05, 0.47, -0.33], [0.05, 0.14, 0.025], [0, 0, s * 0.5], { bone: 'tails' })
-      const hand = [-0.37 * 0.95 - 0.065, 0.27 - 0.112, 0.066]
-      k.bone('pellet', 'armB', hand)
-      k.add(GEO.sphere, '#6b3c1c', hand, 0.07, undefined, { bone: 'pellet' })
-      k.bone('muzzle', 'pellet', hand)
+      // The throwing arm is the lead one, long enough to clear the body when it lets go.
+      const hand = mitten(k, 'F', '#8a5229', [0.31, 0.4, 0.2], 'spine', 0.24, 0.07)
+      k.bone('pellet', 'armF', hand)
+      k.add(GEO.sphere, '#6b3c1c', [hand[0], hand[1] - 0.02, hand[2] + 0.04], 0.085, undefined, { bone: 'pellet' })
+      k.bone('muzzle', 'armF', hand)
     },
     act(b, a, c) {
-      b.armB.rotation.z += beat(a, 3.3, 1.9, -1.1)
-      b.armF.rotation.z += beat(a, 0.9, -0.5)
-      b.hips.rotation.y += beat(a, -0.35, 0.2)
-      show(b.pellet, a.since > 0.3)
+      // Overhand windmill: back and up behind the head, over the top, released forward-up, carried through.
+      const thrown = a.wind === 0 && a.hit > 0 && a.since !== Infinity
+      b.armF.rotation.z += thrown ? -2 * Math.PI + (2 * Math.PI - 4.25) * a.hit - 0.9 * a.recoil : arc(a, -2.9, -4.25)
+      b.armF.position.y += 0.18 * a.wind
+      b.armB.rotation.z += beat(a, 0.9, -0.6)
+      // Open the throwing side toward the viewer while winding up, then turn through on the release.
+      b.hips.rotation.y += beat(a, -0.5, 0.3)
+      show(b.pellet, !(a.since < 0.3))
       b.tails.rotation.z += 0.15 * Math.sin(c.t * 16) - 0.5 * a.smear - 0.25 * a.hit
     }
   },
@@ -741,7 +759,8 @@ const MODELS = {
       stretch: 0.05,
       smear: 0.2,
       bend: -0.12,
-      hop: 0.07
+      hop: 0.07,
+      mass: 1.5
     },
     build(k) {
       poop(k, '#5e3518', { arms: [] })
@@ -769,7 +788,8 @@ const MODELS = {
       stretch: 0.06,
       slam: 0.22,
       rise: 0.1,
-      bend: 0.12
+      bend: 0.12,
+      mass: 1.4
     },
     build(k) {
       poop(k, '#4a2a12', { mood: 'proud', arms: [] })
@@ -822,7 +842,16 @@ const MODELS = {
   // ── Specials: things that upset the stomach ──
   aircon: {
     size: 1,
-    moves: { lunge: -0.08, back: 0.05, rear: 0.22, lean: 0.2, squash: -0.06, stretch: 0.04, bend: 0.06, walk: 'float' },
+    moves: {
+      lunge: -0.1,
+      back: 0.04,
+      rear: 0.12,
+      lean: -0.16,
+      squash: -0.07,
+      stretch: 0.04,
+      bend: 0.06,
+      walk: 'float'
+    },
     build(k) {
       k.chain = [0.36, 0.52, 0.68]
       k.add(GEO.rbox, '#f4f6f8', [0, 0.54, 0], [0.86, 0.4, 0.34])
@@ -831,8 +860,10 @@ const MODELS = {
         k.add(GEO.box, '#c4ccd3', [-0.3 + i * 0.15, 0.735, 0.05], [0.1, 0.012, 0.2], undefined, { line: false })
       k.add(GEO.rbox, '#5ad1ff', [0.33, 0.68, 0.168], [0.06, 0.03, 0.01], undefined, { glow: true })
       k.add(GEO.rbox, '#aab3bb', [-0.3, 0.68, 0.168], [0.12, 0.025, 0.01], undefined, { line: false })
-      k.bone('louver', 'hips', [0, 0.36, 0.15])
-      k.add(GEO.rbox, '#cfd6dc', [0, 0.335, 0.17], [0.74, 0.05, 0.1], [0.5, 0, 0], { bone: 'louver' })
+      // The vent under the face and its flap, hinged along its top edge.
+      k.add(GEO.rbox, '#3d4a55', [0, 0.33, 0.12], [0.7, 0.05, 0.08], undefined, { line: false })
+      k.bone('louver', 'hips', [0, 0.355, 0.165])
+      k.add(GEO.rbox, '#cfd6dc', [0, 0.315, 0.17], [0.74, 0.085, 0.022], undefined, { bone: 'louver' })
       k.bone('wind', 'hips', [0, 0.16, 0.1])
       for (let i = 0; i < 3; i++)
         k.add(
@@ -846,19 +877,24 @@ const MODELS = {
             alpha: 0.7
           }
         )
-      k.bone('blast', 'hips', [0.2, 0.3, 0.3])
-      k.add(GEO.cone, '#cdefff', [0.36, 0.3, 0.4], [0.16, 0.34, 0.1], ALONG(Math.PI), { bone: 'blast', alpha: 0.55 })
-      k.bone('muzzle', 'louver', [0.32, 0.3, 0.3])
-      k.face({ bone: 'chest', y: 0.56, z: 0.17, spread: 0.16, mood: 'cool' })
+      // Cold blast: a widening cone out of the open vent toward the foe.
+      k.bone('blast', 'hips', [0.24, 0.28, 0.2])
+      k.add(GEO.cone, '#cdefff', [0.45, 0.27, 0.32], [0.17, 0.42, 0.12], ALONG(Math.PI), { bone: 'blast', alpha: 0.6 })
+      for (const [x, y] of [
+        [0.55, 0.3],
+        [0.68, 0.24]
+      ])
+        k.add(GEO.ball, '#ffffff', [x, y, 0.36], 0.03, undefined, { bone: 'blast', glow: true })
+      k.bone('muzzle', 'hips', [0.3, 0.28, 0.24])
+      k.face({ bone: 'chest', y: 0.57, z: 0.17, spread: 0.16, mood: 'cool' })
     },
     act(b, a, c) {
-      b.louver.rotation.z += beat(a, 0.35, -0.9, 0.2)
+      b.louver.rotateOnAxis(WIDTH, beat(a, 0.2, -1.25, 0.25))
       const blast = Math.max(a.smear, a.hit * (1 - a.recoil * 0.3))
       show(b.blast, blast > 0.05)
-      b.blast.scale.set(0.4 + blast, 0.4 + blast, 0.4 + blast)
+      b.blast.scale.setScalar(0.35 + blast)
       b.wind.rotation.y = c.t * 3
-      const puff = 1 + beat(a, 0.06, -0.04)
-      b.hips.scale.multiplyScalar(puff)
+      b.hips.scale.multiplyScalar(1 + beat(a, 0.07, -0.04))
     }
   },
   ramen: {
@@ -872,7 +908,8 @@ const MODELS = {
       stretch: 0.06,
       bend: 0.1,
       walk: 'waddle',
-      hop: 0.06
+      hop: 0.06,
+      mass: 1.15
     },
     build(k) {
       k.chain = [0.2, 0.36, 0.5]
@@ -983,7 +1020,8 @@ const MODELS = {
       rise: 0.12,
       bend: 0.22,
       walk: 'waddle',
-      hop: 0.05
+      hop: 0.05,
+      mass: 1.6
     },
     build(k) {
       k.chain = [0.3, 0.5, 0.72]
@@ -1036,14 +1074,26 @@ const MODELS = {
         k.add(GEO.box, '#3a3a3a', [x, 0.41, 0], [0.018, 0.018, 0.68], undefined, { line: false })
       k.add(GEO.rbox, '#2a2a2a', [0, 0.12, 0.31], [0.18, 0.09, 0.05])
       k.add(GEO.rbox, '#ff8a2a', [0, 0.12, 0.335], [0.12, 0.05, 0.01], undefined, { glow: true })
-      k.bone('meat', 'chest', [0, 0.44, 0])
+      k.bone('meat', 'chest', [0, 0.47, 0])
       for (const [x, z, r] of [
         [-0.13, 0.05, 0.3],
         [0.12, -0.08, -0.4],
         [0.02, 0.15, 0.1]
       ]) {
-        k.add(GEO.rbox, '#8b3a2a', [x, 0.445, z], [0.22, 0.035, 0.14], [0, r, 0], { bone: 'meat' })
-        k.add(GEO.box, '#f1d6c4', [x, 0.464, z], [0.22, 0.006, 0.03], [0, r, 0], { bone: 'meat', line: false })
+        k.add(GEO.rbox, '#9b3f2c', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'meat' })
+        k.add(GEO.box, '#f6dccb', [x, 0.497, z], [0.24, 0.008, 0.035], [0.12, r, 0], { bone: 'meat', line: false })
+        for (const d of [-0.05, 0.05])
+          k.add(
+            GEO.box,
+            '#3a1810',
+            [x + Math.cos(r) * d, 0.498, z - Math.sin(r) * d],
+            [0.012, 0.006, 0.15],
+            [0.12, r, 0],
+            {
+              bone: 'meat',
+              line: false
+            }
+          )
       }
       k.bone('flames', 'chest', [0, 0.42, 0])
       for (const [x, z, h] of [
@@ -1153,7 +1203,8 @@ const MODELS = {
       smear: 0.16,
       bend: 0.1,
       walk: 'waddle',
-      hop: 0.06
+      hop: 0.06,
+      mass: 1.15
     },
     build(k) {
       k.chain = [0.22, 0.42, 0.62]
@@ -1190,14 +1241,32 @@ const MODELS = {
     build(k) {
       k.chain = [0.15, 0.3, 0.45]
       k.add(GEO.sphere, '#8d918b', [0, 0.14, 0], [0.45, 0.14, 0.37])
-      for (const t of [-0.5, 0, 0.5])
-        k.add(GEO.sphere, '#7a7e78', [t * 0.5, 0.18, -0.1], [0.12, 0.08, 0.25], [0, t, 0], { line: false })
+      // Frilled rim: irregular lumps round the lower shell, a purple lip where it meets the meat.
+      for (let i = 0; i < 11; i++) {
+        const t = (i / 11) * Math.PI * 2,
+          r = 1 + 0.12 * Math.sin(i * 2.7)
+        k.add(
+          GEO.sphere,
+          i % 3 ? '#80847e' : '#9a9e97',
+          [Math.sin(t) * 0.41 * r, 0.15 + 0.02 * Math.cos(i * 1.9), Math.cos(t) * 0.33 * r],
+          [0.11, 0.07, 0.09],
+          [0, t, 0.3 * Math.sin(i)]
+        )
+      }
+      k.add(GEO.ring, '#7a5a86', [0, 0.215, 0.02], [0.36, 0.29, 0.3], [Math.PI / 2, 0, 0], { line: false })
       k.add(GEO.sphere, '#efe4cf', [0, 0.24, 0.03], [0.35, 0.1, 0.28])
       k.add(GEO.ball, '#fff7ea', [0.05, 0.3, 0.2], [0.08, 0.015, 0.03], undefined, { glow: true, alpha: 0.6 })
       k.add(GEO.rbox, '#f4e04a', [0.34, 0.27, 0.16], [0.1, 0.12, 0.05], [0, 0.4, 0.3])
       k.bone('lid', 'spine', [0, 0.26, -0.3])
       k.add(GEO.sphere, '#a3a69f', [0, 0.5, -0.24], [0.45, 0.1, 0.35], [-1.15, 0, 0], { bone: 'lid' })
-      k.add(GEO.sphere, '#8d918b', [0, 0.52, -0.2], [0.3, 0.06, 0.25], [-1.15, 0, 0], { bone: 'lid', line: false })
+      for (const [x, y, z, w] of [
+        [-0.2, 0.62, -0.27, 0.12],
+        [0.05, 0.66, -0.25, 0.14],
+        [0.25, 0.58, -0.25, 0.11],
+        [-0.05, 0.47, -0.17, 0.1],
+        [0.2, 0.42, -0.14, 0.09]
+      ])
+        k.add(GEO.sphere, '#8a8e87', [x, y, z], [w, 0.04, w * 0.8], [-1.15, 0, 0.4 * x], { bone: 'lid' })
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
     act(b, a) {
@@ -1242,13 +1311,14 @@ const MODELS = {
   energy: {
     size: 0.95,
     moves: {
-      lunge: -0.06,
-      back: 0.03,
-      rear: 0.1,
-      lean: -0.14,
-      squash: 0.06,
-      stretch: 0.04,
-      bend: 0.06,
+      lunge: -0.12,
+      back: -0.03,
+      rear: -0.34,
+      lean: -0.22,
+      squash: 0.08,
+      stretch: 0.06,
+      slam: 0.1,
+      bend: 0.12,
       walk: 'waddle',
       hop: 0.06
     },
@@ -1260,21 +1330,29 @@ const MODELS = {
       k.add(GEO.rbox, '#c8f04a', [0.03, 0.24, 0.2], [0.05, 0.18, 0.012], [0, 0, 0.5], { glow: true })
       k.add(GEO.rbox, '#c8f04a', [-0.01, 0.12, 0.2], [0.05, 0.14, 0.012], [0, 0, 0.5], { glow: true })
       k.bone('tab', 'head', [0.04, 0.78, 0])
-      k.add(GEO.rbox, '#dfe3e8', [0.06, 0.785, 0.02], [0.08, 0.012, 0.05], undefined, { bone: 'tab' })
-      k.bone('muzzle', 'head', [0.04, 0.8, 0])
-      k.bone('fizz', 'head', [0.04, 0.8, 0])
+      k.add(GEO.rbox, '#dfe3e8', [0.08, 0.785, 0.02], [0.1, 0.014, 0.06], undefined, { bone: 'tab' })
+      k.add(GEO.ring, '#dfe3e8', [0.14, 0.79, 0.02], [0.03, 0.03, 0.2], [Math.PI / 2, 0, 0], { bone: 'tab' })
+      k.bone('muzzle', 'head', [0.08, 0.8, 0.02])
+      // Fizz jet out of the opened tab toward the foe.
+      k.bone('fizz', 'head', [0.08, 0.8, 0.02])
+      k.add(GEO.cone, '#e9ffd0', [0.27, 0.86, 0.1], [0.07, 0.3, 0.05], ALONG(Math.PI + 0.35), {
+        bone: 'fizz',
+        alpha: 0.7
+      })
       for (const [x, y, r] of [
-        [0.12, 0.86, 0.035],
-        [0.22, 0.9, 0.028],
-        [0.3, 0.86, 0.022]
+        [0.4, 0.95, 0.04],
+        [0.5, 0.9, 0.03],
+        [0.32, 1.0, 0.025]
       ])
-        k.add(GEO.ball, '#e9ffd0', [x, y, 0.08], r, undefined, { bone: 'fizz', alpha: 0.75 })
+        k.add(GEO.ball, '#d6ff7a', [x, y, 0.1], r, undefined, { bone: 'fizz', glow: true })
       k.face({ bone: 'chest', y: 0.5, z: 0.2, spread: 0.08, size: 0.8, mood: 'hyper' })
     },
     act(b, a, c) {
-      b.tab.rotation.z += beat(a, 0.2, -0.6, 0.3)
-      show(b.fizz, a.hit > 0.2)
-      b.hips.position.x += 0.012 * Math.sin(c.t * 60) * a.wind
+      b.tab.rotation.z += beat(a, 0.15, 1.1, -0.3)
+      const jet = Math.max(a.smear, a.hit * (1 - a.recoil * 0.4))
+      show(b.fizz, jet > 0.05)
+      b.fizz.scale.setScalar(0.3 + jet)
+      b.hips.position.x += 0.014 * Math.sin(c.t * 70) * a.wind
     }
   },
   // ── Enemies: the cleanup crew ──
@@ -1372,7 +1450,7 @@ const MODELS = {
       k.chain = [0.2, 0.4, 0.58]
       k.add(GEO.cupBody, '#fbfbf7', [0, 0, 0], 1)
       k.add(GEO.cyl, '#fbfbf7', [0, 0.6, 0], [0.3, 0.02, 0.3])
-      k.add(GEO.tapered, '#4a7fd0', [0, 0.3, 0], [0.28, 0.26, 0.28])
+      k.add(GEO.cupBand, '#4a7fd0', [0, 0, 0], 1)
       k.add(GEO.ball, '#ffffff', [0, 0.3, 0.27], [0.08, 0.04, 0.01], undefined, { line: false })
       k.bone('lid', 'head', [0, 0.62, -0.28])
       k.add(GEO.rbox, '#d8dde3', [0, 0.63, -0.02], [0.56, 0.016, 0.5], [0.25, 0, 0], { bone: 'lid' })
@@ -1432,7 +1510,8 @@ const MODELS = {
       walk: 'waddle',
       hop: 0.04,
       base: 0.5,
-      ko: 0.12
+      ko: 0.12,
+      mass: 1.4
     },
     build(k) {
       k.chain = [0.12, 0.24, 0.36]
@@ -1456,7 +1535,8 @@ const MODELS = {
       k.face({ bone: 'chest', x: 0.3, y: 0.27, z: 0.23, spread: 0.072, size: 0.78, mood: 'angry' })
     },
     act(b, a, c) {
-      b.pipe.rotation.z += 0.06 * Math.sin(c.t * 9) + beat(a, 0.2, -0.3, 0.25)
+      b.pipe.rotation.z +=
+        0.06 * Math.sin(c.t * 9) + beat(a, 0.2, -0.3, 0.25) + (c.ko >= 0 ? 1.1 * Math.min(1, c.ko / 0.35) : 0)
       const s = Math.max(a.smear, a.hit * (1 - a.recoil * 0.5))
       show(b.splash, s > 0.05)
       b.splash.scale.setScalar(0.3 + s)
@@ -1466,13 +1546,14 @@ const MODELS = {
   yoshiki: {
     size: 1.1,
     moves: {
-      lunge: -0.06,
-      back: 0.04,
-      rear: 0.12,
-      lean: -0.08,
-      squash: 0.06,
-      stretch: 0.04,
-      bend: 0.1,
+      lunge: -0.14,
+      back: -0.02,
+      rear: -0.1,
+      lean: -0.16,
+      squash: 0.08,
+      stretch: 0.05,
+      slam: 0.06,
+      bend: 0.12,
       walk: 'waddle',
       hop: 0.04,
       base: 0.55,
@@ -1497,15 +1578,29 @@ const MODELS = {
       k.add(GEO.rcyl, '#f4f6f7', [-0.18, 0.64, -0.02], [0.2, 0.035, 0.24], [0, 0, Math.PI / 2 + 0.12, 'YXZ'], {
         bone: 'lid'
       })
-      k.bone('nozzle', 'hips', [0.26, 0.42, 0])
-      k.add(GEO.cyl, '#c4ccd3', [0.3, 0.43, 0], [0.018, 0.12, 0.018], ALONG(), { bone: 'nozzle' })
-      k.bone('muzzle', 'hips', [0.42, 0.44, 0.1])
+      k.bone('nozzle', 'hips', [0.2, 0.43, 0])
+      k.add(GEO.cyl, '#c4ccd3', [0.28, 0.44, 0], [0.022, 0.16, 0.022], ALONG(), { bone: 'nozzle' })
+      k.add(GEO.sphere, '#9aa6ae', [0.36, 0.44, 0], 0.03, undefined, { bone: 'nozzle' })
+      k.bone('jet', 'nozzle', [0.36, 0.44, 0])
+      k.add(GEO.cone, '#9fd8ff', [0.6, 0.47, 0.06], [0.08, 0.42, 0.06], ALONG(Math.PI + 0.1), {
+        bone: 'jet',
+        alpha: 0.75
+      })
+      for (const [x, y] of [
+        [0.78, 0.5],
+        [0.7, 0.56]
+      ])
+        k.add(GEO.drop, '#cdeeff', [x, y, 0.08], [0.03, 0.05, 0.03], undefined, { bone: 'jet', glow: true })
+      k.bone('muzzle', 'nozzle', [0.42, 0.45, 0.02])
       k.face({ bone: 'chest', x: -0.37, y: 0.65, z: 0.23, spread: 0.08, size: 0.85, mood: 'angry' })
     },
     act(b, a) {
-      b.lid.rotation.z += beat(a, 0.35, -0.3, -0.15)
-      b.nozzle.position.x += beat(a, 0.02, 0.1)
-      b.nozzle.scale.setScalar(1 + beat(a, 0.2, 0.5))
+      b.lid.rotation.z += beat(a, 0.4, -0.55, 0.2)
+      b.nozzle.position.x += beat(a, -0.02, 0.14)
+      b.nozzle.scale.setScalar(1 + beat(a, -0.1, 0.45))
+      const jet = Math.max(a.smear, a.hit * (1 - a.recoil * 0.4))
+      show(b.jet, jet > 0.05)
+      b.jet.scale.setScalar(0.3 + jet)
     }
   },
   seichou: {
@@ -1561,7 +1656,8 @@ const MODELS = {
       slam: 0.1,
       bend: 0.2,
       walk: 'waddle',
-      hop: 0.04
+      hop: 0.04,
+      mass: 1.5
     },
     build(k) {
       k.chain = [0.25, 0.5, 0.72]
@@ -1588,7 +1684,7 @@ const MODELS = {
 export const modelSize = (key) => MODELS[key]?.size ?? 1
 
 /** One rigged character. Bones are per actor; geometry is shared per character key. */
-class Actor {
+export class Actor {
   constructor(key) {
     const t = template(key)
     this.t = t
@@ -1635,8 +1731,8 @@ class Actor {
   }
 
   /** k: lane-x units per model unit; aspect: x-to-y pixel ratio. The player (side 1) faces left. */
-  place(x, y, side, k, aspect) {
-    this.root.position.set(x, 450 - y, (y - 361) * 12)
+  place(x, y, z, side, k, aspect) {
+    this.root.position.set(x, 450 - y, z)
     this.root.scale.set(-k * side * this.size, k * aspect * this.size, k * this.size)
   }
 
@@ -1666,7 +1762,7 @@ class Actor {
     const c = {
       a,
       g: gait(f.walked, t.moves.stride),
-      h: flinch(f.hurtAge, f.power),
+      h: flinch(f.hurtAge / t.moves.mass, f.power / Math.sqrt(t.moves.mass)),
       walk: f.motion === 'walk' && f.ko < 0 ? 1 - Math.max(a.wind, a.hit) : 0,
       t: f.time,
       ko: f.ko
@@ -1703,7 +1799,7 @@ export class LaneModels {
   canvas = document.createElement('canvas')
   renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true })
   scene = new THREE.Scene()
-  camera = new THREE.OrthographicCamera(0, 1000, 450, 0, -2000, 2000)
+  camera = new THREE.OrthographicCamera(0, 1000, 450, 0, -20000, 20000)
   actors = new Map()
   presentation = [1, 1]
   line = OUTLINE.value
@@ -1736,10 +1832,10 @@ export class LaneModels {
     this.line = Math.min(0.04, Math.max(0.012, 1.7 / (size * 0.62 * pxPerLane)))
   }
 
-  /** lead: seconds until the unit reaches its foe while walking (starts the first strike's wind-up). */
-  unit(u, x, y, time, lead = Infinity) {
+  /** z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's wind-up). */
+  unit(u, x, y, z, time, lead = Infinity) {
     const actor = this.actor(u.id, u.key)
-    actor.place(x, y, u.side, ...this.presentation)
+    actor.place(x, y, z, u.side, ...this.presentation)
     actor.animate({
       motion: u.motion,
       phase: u.phase,
@@ -1756,9 +1852,9 @@ export class LaneModels {
   }
 
   /** A fallen unit: knocked back and over with ×× eyes, fading out over KO_SECONDS. */
-  fallen(ghost, x, y, age) {
+  fallen(ghost, x, y, z, age) {
     const actor = this.actor(ghost.id, ghost.key)
-    actor.place(x, y, ghost.side, ...this.presentation)
+    actor.place(x, y, z, ghost.side, ...this.presentation)
     actor.animate({
       motion: 'walk',
       phase: 0,
@@ -1772,6 +1868,14 @@ export class LaneModels {
       id: ghost.id
     })
     actor.setOpacity(Math.max(0, knockout(age).fade))
+  }
+
+  /**
+   * Lane-x offset at which a unit is drawn: a little behind its logical point, so facing fighters stand
+   * apart and only meet on the strike; back rows stand a step further back.
+   */
+  offset(key, side, row = 0) {
+    return side * ((0.22 * modelSize(key) + row * 0.07) * this.presentation[0])
   }
 
   /** Lane offset from a unit's base to its shot emitter at the moment of release, for the current presentation. */

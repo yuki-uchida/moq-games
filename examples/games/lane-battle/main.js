@@ -26,6 +26,19 @@ const canvas = document.querySelector('#field canvas'),
   ctx = canvas.getContext('2d')
 const dialog = document.querySelector('dialog')
 const SPLAT_SECONDS = 0.22
+/** Shot looks by shooter: fill, edge and radius. */
+const SHOTS = {
+  pellet: ['#6b3c1c', '#3d200c', 6],
+  water: ['#e9f7ffcc', '#4c9ad0', 6],
+  turret: ['#e9f7ffcc', '#4c9ad0', 9],
+  bichi: ['#a0703e', '#5e3a1c', 7],
+  aircon: ['#e6f7ffdd', '#7cc8f0', 8],
+  sake: ['#f2fff5dd', '#5f9e70', 5],
+  garlic: ['#e3ee8cdd', '#93a53e', 9],
+  energy: ['#dcff86dd', '#6f9a1c', 5],
+  sayu: ['#ffffffdd', '#aab8bf', 6],
+  seichou: ['#fff1f6dd', '#e07aa0', 6]
+}
 /** Screen-space splash only; the simulation owns recipient, arrival and damage. Poop hits splat brown, cleanup hits splash blue. */
 function drawContact(effect, y, age, aspect) {
   if (age < 0 || age > SPLAT_SECONDS) return
@@ -466,7 +479,18 @@ function drawToiletCastle(x) {
   ctx.lineTo(x + 15, 204)
   ctx.fill()
 }
-const laneY = (u) => 361 + (u.id % 3) * 8
+/** Ground rows: three per side, interleaved so opposing units never stand at the same depth. */
+const laneY = (u) => (u.side === 1 ? 356 : 350) + (u.id % 3) * 12
+/** Where a unit is drawn along the lane (see LaneModels.offset); the simulation keeps its own x. */
+const drawX = (u) => u.x + models.offset(u.key, u.side, 2 - (u.id % 3))
+/**
+ * Painter order: back rows first; within a row the unit nearest the enemy comes last, so whoever is
+ * fighting stays on top. Each unit gets its own depth slot, so neighbours never cut into each other.
+ */
+function depthSlots(list) {
+  const ranked = [...list].sort((a, b) => laneY(a) - laneY(b) || (b.x - a.x) * b.side || a.id - b.id)
+  return new Map(ranked.map((u, i) => [u, (i - ranked.length / 2) * 150]))
+}
 /** Seconds until a walking unit reaches its foe, so the renderer can wind up its first strike in stride. */
 function lead(u) {
   if (u.motion !== 'walk') return Infinity
@@ -553,18 +577,19 @@ function draw() {
     ctx.fillStyle = x === HOME_X ? '#ffd166' : '#7fd1ff'
     ctx.fillRect(x - 39, 211, (78 * hp) / max, 8)
   }
-  const scale = rect.width < 500 ? 155 : 120
+  const scale = rect.width < 500 ? 180 : 120
   const aspect = rect.width / 1000 / (rect.height / 450)
   models.setPresentation(scale, aspect, rect.width / 1000)
-  for (const ghost of fallen) models.fallen(ghost, ghost.x, laneY(ghost), state.time - ghost.at)
   const units = [...state.units].sort((a, b) => a.id - b.id)
+  const depth = depthSlots([...fallen, ...units])
+  for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
   for (const u of units) {
     const y = laneY(u)
     ctx.fillStyle = u.side === 1 ? '#5a361a55' : '#4c9ad055'
     ctx.beginPath()
-    ctx.ellipse(u.x, y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
+    ctx.ellipse(drawX(u), y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
     ctx.fill()
-    models.unit(u, u.x, y, state.time, lead(u))
+    models.unit(u, drawX(u), y, depth.get(u), state.time, lead(u))
   }
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -574,13 +599,14 @@ function draw() {
   ctx.textAlign = 'center'
   for (const u of units) {
     const top = laneY(u) - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
+    const x = drawX(u)
     ctx.fillStyle = '#3a2414'
-    ctx.fillRect(u.x - 18, top, 36, 4)
+    ctx.fillRect(x - 18, top, 36, 4)
     ctx.fillStyle = u.side === 1 ? '#ffd166' : '#7fd1ff'
-    ctx.fillRect(u.x - 18, top, 36 * Math.max(0, u.hp / u.maxHp), 4)
+    ctx.fillRect(x - 18, top, 36 * Math.max(0, u.hp / u.maxHp), 4)
     if (u.slowUntil > state.time) {
       ctx.save()
-      ctx.translate(u.x + 24, top + 3)
+      ctx.translate(x + 24, top + 3)
       ctx.scale(1, aspect)
       ctx.fillStyle = '#5ab8ff'
       ctx.fillText('❄', 0, 0)
@@ -613,22 +639,24 @@ function draw() {
       const source = e.source
       // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
       const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.period) : [0, 0]
-      const fromX = e.turret ? e.from : e.from + dx
+      const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
       const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
       const targetY = e.targetY ?? fromY
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
       if (progress < 1) {
-        // A thrown pellet (poop side), a water shot (cleanup side) lobbed in a small arc.
+        // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
         const x = fromX + (e.x - fromX) * progress
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
+        const [fill, edge, radius] =
+          SHOTS[e.turret ? 'turret' : source?.key] ?? (e.side === -1 ? SHOTS.water : SHOTS.pellet)
         ctx.save()
         ctx.translate(x, yShot)
         ctx.scale(1, aspect)
         ctx.beginPath()
-        ctx.arc(0, 0, e.turret ? 9 : 6, 0, 7)
-        ctx.fillStyle = e.side === -1 ? '#e9f7ffcc' : '#6b3c1c'
+        ctx.arc(0, 0, radius, 0, 7)
+        ctx.fillStyle = fill
         ctx.fill()
-        ctx.strokeStyle = e.side === -1 ? '#4c9ad0' : '#3d200c'
+        ctx.strokeStyle = edge
         ctx.lineWidth = 1.5
         ctx.stroke()
         ctx.restore()
@@ -690,15 +718,13 @@ function tick(now) {
     for (const effect of state.effects)
       if (!heard.has(effect)) {
         heard.add(effect)
-        if (effect.ranged) {
-          effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
-          const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
-          if (target) {
-            const rect = canvas.getBoundingClientRect()
-            const aspect = rect.width / 1000 / (rect.height / 450)
-            effect.targetY = laneY(target) - 35 * aspect
-          }
+        // Splashes land on the recipient's own row.
+        const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
+        if (target) {
+          const rect = canvas.getBoundingClientRect()
+          effect.targetY = laneY(target) - 35 * (rect.width / 1000 / (rect.height / 450))
         }
+        if (effect.ranged) effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
         if (!effect.blast) {
           impact ||= !effect.ranged
           shot ||= effect.ranged
