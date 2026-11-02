@@ -18,6 +18,7 @@ import {
   reachable,
   seeded,
   size,
+  staffHeal,
   type Roster,
   type Unit
 } from './game'
@@ -36,7 +37,7 @@ const rng = () => (seed === null ? Math.random : seeded(Number(seed)))
 let checkpoints: (Roster | undefined)[] = []
 /** Deployed allies (and those lost earlier) for a mission start or the mission list. */
 const sortie = (stage: number) => {
-  const away = lost(checkpoints[stage]).map((u) => u.name)
+  const away = lost(checkpoints[stage], stage).map((u) => u.name)
   const names = createGame(stage, 'balanced', checkpoints[stage])
     .units.filter((u) => u.side === 'ally')
     .map((u) => `${u.name} Lv${u.level}`)
@@ -58,6 +59,9 @@ const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
 })
+const helpText = app.querySelector('dialog p')!
+helpText.textContent =
+  '6 つの任務で燈をつなごう。敵全滅、ボス撃破、制圧、または防衛で勝利。味方全滅で敗北。第４章から癒し手は隣接または距離２の負傷した味方を選んで回復できます。⚑ から任務と編成を選べます。'
 const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
 field.style.setProperty('--grid-size', String(size))
@@ -111,7 +115,7 @@ function render() {
       y = Math.floor(i / size),
       k = key(x, y),
       u = game.units.find((u) => u.x === x && u.y === y && u.hp > 0),
-      canAttack = unit && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range
+      canAttack = unit && !unit.heal && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range
     cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''}`
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
@@ -146,13 +150,13 @@ function render() {
   document.querySelector('#report')!.innerHTML = game.phase === 'won' ? chapterReport(game, portrait) : ''
   document.querySelector('#outcome')!.textContent =
     game.phase === 'won'
-      ? game.stage === 2
-        ? '✦ 遠征達成！ 三つの燈がともった'
+      ? game.stage === missions.length - 1
+        ? '✦ 遠征達成！ 六つの燈がともった'
         : '✦ 霧が晴れた！'
       : '燈は消えた… ↻ で再挑戦（倒れた仲間も戻ります）'
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
-  next.textContent = game.stage === 2 ? '最初から遠征 ↻' : '次の任務 ▶'
+  next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
 }
 async function choose(x: number, y: number) {
@@ -160,10 +164,16 @@ async function choose(x: number, y: number) {
   if (game.phase !== 'ally') return
   const target = game.units.find((u) => u.hp > 0 && u.x === x && u.y === y),
     unit = game.units.find((u) => u.id === selected)
-  if (target?.side === 'ally') {
+  if (target?.side === 'ally' && unit && staffHeal(game, unit, target)) {
+    const token = generation
+    lockPresentation()
+    if (!(await showProgress(token))) return
+    busy = false
+  } else if (target?.side === 'ally') {
     selected = target.id
-    game.log =
-      target.role === 'archer'
+    game.log = target.heal
+      ? '杖：負傷した味方を回復 · 射程 1–2'
+      : target.role === 'archer'
         ? '弓：狼に +3 · 射程 3'
         : target.role === 'mage'
           ? '魔法：装甲を無視 · 射程 2'
@@ -208,7 +218,11 @@ async function showProgress(token: number) {
   return token === generation
 }
 async function end() {
-  if (busy || !ready || !beginEnemy(game)) return
+  if (busy || !ready) return
+  if (!beginEnemy(game)) {
+    render()
+    return
+  }
   selected = inspected = undefined
   const token = generation
   render()
@@ -291,7 +305,9 @@ function listMissions() {
   document.querySelector('#missions')!.innerHTML = missions
     .map((m, i) => {
       const saved = checkpoints[i]
-      const levels = saved ? Object.values(saved).map((u) => u.level) : [1, 1, 1]
+      const levels = createGame(i, 'balanced', saved)
+        .units.filter((u) => u.side === 'ally')
+        .map((u) => u.level)
       return `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
     })
     .join('')
@@ -310,9 +326,9 @@ document.querySelector('#mission')!.addEventListener('click', () => {
 document.querySelector('#cancel-mission')!.addEventListener('click', () => expedition.close())
 document.querySelector('#next')!.addEventListener('click', () => {
   // Victory saves the grown party for the next mission; finishing the expedition starts a fresh one.
-  if (game.stage === 2) checkpoints = []
+  if (game.stage === missions.length - 1) checkpoints = []
   else checkpoints[game.stage + 1] = carry(game)
-  startMission((game.stage + 1) % 3)
+  startMission((game.stage + 1) % missions.length)
 })
 const dialog = document.querySelector('dialog')!
 document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())

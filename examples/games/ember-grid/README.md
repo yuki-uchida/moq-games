@@ -1,20 +1,40 @@
 # デスガイヤ (Ember Grid)
 
-Independent, local, single-player tactical example: three lantern wardens cross three frontiers to disperse the ash pack. No network or SDK initialization is required. Open `/moq-games/examples/games/ember-grid/` after `npm run dev`. The root Vite build includes this separate HTML entry; the gallery is managed separately.
+Independent, local, single-player tactical example: lantern wardens cross six frontiers to disperse the ash pack. No network or SDK initialization is required. Open `/moq-games/examples/games/ember-grid/` after `npm run dev`. The root Vite build includes this separate HTML entry; the gallery is managed separately.
 
 ## Expedition
 
 - **峡谷の燈**: a long rock spine has a one-square central pass and longer flanks around its northern and southern ends. Near-side groves shelter the approach; a wolf and scout screen the pass, with an armored watchman behind them.
 - **風抜けの水路**: staggered stone shelves split the field into winding northern and southern lanes. Central groves link the approaches; two wolves, a scout and an armored watchman threaten the far bank.
 - **灰の環城**: broken walls enclose a grove-studded courtyard with a western gate and a northern breach. Wolves threaten the northern edge while a ranged scout guards the southern approach.
+- **霧の湿原**: seize the shrine at (8,4), or rout the enemy. 癒し手ルカ joins here.
+- **骸の礼拝堂**: survive through the enemy phase of turn 6, or rout the enemy.
+- **灰の玉座**: defeat the ash dragon, or rout the enemy.
 
-Each mission is independently selectable through ⚑. Victory opens a chapter-clear report and offers the next mission; the third victory completes the expedition. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. Both formations retain the sword, bow and mage roles.
+Each mission is independently selectable through ⚑. Victory opens a chapter-clear report and offers the next mission; the sixth victory completes the expedition. Chapter 3 also ends when its boss falls. Seizing requires a living ally on the shrine when the ally phase ends; all chapters also end in victory on a rout, and losing all allies always loses. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. The guard bonus is not carried.
+
+ルカ uses a staff instead of attacking: select her, then an injured living ally at Manhattan distance 1–2 to restore up to 8 HP, end her action, and gain 10 EXP. She joins when starting chapter 4; her survival and growth are carried from chapter 4 onward. Replaying chapter 4 from its start checkpoint brings her back, while a loss in a won chapter removes her from subsequent checkpoints. Starting a new expedition clears all checkpoints. The chapter 4–6 models temporarily reuse already-loaded models; dedicated models, objective indicators and music are future presentation work.
+
+Enemies use three deterministic modes: charge moves toward allies, guard stays until damaged or an ally enters movement plus attack range and then charges permanently, and hold never moves. They prefer a lethal hit, then the highest damage, then the lowest remaining HP, preferring groves when position scores tie. No reinforcements are used.
+
+### Reproducible balance
+
+The Node policy in `tests/strategy.ts` carries survivors and growth between chapters, uses healing, approaches seizure points and values groves during survival. Entries below are `turn:surviving levels` in deployment order; losses are omitted. Both formations clear chapters 1–3 separately from a fresh level-1 party for the same seeds. Later chapters require at least four turns or inflict more than three total damage.
+
+| Formation / seed | 1       | 2       | 3       | 4         | 5         | 6         |
+| ---------------- | ------- | ------- | ------- | --------- | --------- | --------- |
+| balanced / 1     | 4:1/1/1 | 5:1/3/2 | 5:2/4/4 | 4:3/4/5/1 | 6:4/6/1   | 8:7/8/1   |
+| balanced / 7     | 4:1/1/1 | 5:1/3/2 | 4:1/4/3 | 4:2/5/5/1 | 5:3/6/7/1 | 5:4/8/7/1 |
+| balanced / 42    | 4:1/1/1 | 5:1/3/2 | 4:1/4/3 | 4:2/5/5/1 | 5:6/7/1   | 6:8/8/1   |
+| guard / 1        | 4:1/1/1 | 6:2/2/2 | 5:2/3/3 | 4:3/4/5/1 | 5:3/6/6/1 | 7:4/7/8/1 |
+| guard / 7        | 4:1/1/1 | 6:2/2/2 | 4:3/3/3 | 4:3/4/5/1 | 5:4/6/6/1 | 7:4/8/7/1 |
+| guard / 42       | 4:1/1/1 | 6:2/2/2 | 5:2/3/3 | 4:3/4/5/1 | 5:3/6/6/1 | 7:4/7/8/1 |
 
 Select an ally, then a glowing tile to move; select an outlined enemy to attack. Red squares show where the selected ally could strike after any legal move (or from its current square once it has moved). Hovering, focusing or selecting an enemy without an ally selected shows that enemy's movement (muted blue) and strike range (red). Each unit moves once and attacks once per turn. Attacking, waiting or healing ends its action. A unit that has moved, has no enemy in range and cannot usefully heal (full HP or no potions) also counts as finished. Once every living ally is finished, the enemy turn begins automatically after the last action's presentation; End Turn remains available to pass earlier. Range uses Manhattan distance (including through rocks); there are no counterattacks. Groves reduce incoming damage by two, to a minimum of one. Units may walk through squares held by their own side but must stop on an empty square; rocks and opposing units block movement. Enemies follow the same rule, crossing each other but not allies. Walk animations follow the same path.
 
 Bows deal +3 against wolves, swords +1 against goblins. Shield-marked enemies reduce physical damage by two; magic bypasses their armor. Attack previews include terrain, armor and matchup effects. The two shared recovery potions each restore up to eight HP and consume that unit's action. Healing too early wastes supplies; healing instead of attacking can expose the rest of the team.
 
-Defeat all enemies to win; lose all allies to lose. There is no turn limit. Replay clears the current encounter, including a pending enemy sequence. Help is available through ?. All controls support keyboard focus and Enter/Space. Mission selection also provides brief tactical hints. Human completion time has not been measured.
+Defeat all enemies or meet the chapter objective to win; lose all allies to lose. Survival counts completed enemy phases. Replay clears the current encounter, including a pending enemy sequence. Help is available through ?. All controls support keyboard focus and Enter/Space. Mission selection also provides brief tactical hints. Human completion time has not been measured.
 
 ## View
 

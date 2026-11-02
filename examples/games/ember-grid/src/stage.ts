@@ -34,6 +34,7 @@ const definitions = new Map<string, UnitModelDefinition>()
 /** Upright in the board's own Y-up world (the catalog tilts models into a flat 2D board view), and only
  * the motions this game plays, so background rig preparation never requests other clips. */
 function definition(role: string) {
+  if (!ROLES.includes(role as (typeof ROLES)[number])) role = role === 'healer' ? 'mage' : 'goblin'
   let value = definitions.get(role)
   if (!value) {
     const { clips, ...base } = UNIT_MODEL_CATALOG[role as UnitType]!

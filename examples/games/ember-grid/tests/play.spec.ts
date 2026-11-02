@@ -129,17 +129,34 @@ test('all floor, marks and 3D cells stay aligned and tappable after resizing', a
 })
 
 /** Mirrors the reproducible policy in the browser and in Node; ?seed keeps growth rolls in lockstep. */
-/** `idle` only waits each turn; `heal` false skips potions (used to force a loss). */
-async function playMission(page: Page, g: Game, idle?: string, heal = true) {
+/** `sacrifice` advances without attacking; `heal` false skips potions. */
+async function playMission(page: Page, g: Game, sacrifice?: string, heal = true) {
   const cell = (x: number, y: number) => page.locator('.cell').nth(y * size + x)
   for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
     for (const u of g.units
       .filter((u) => u.side === 'ally' && u.hp > 0)
       .sort((a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role))) {
       await cell(u.x, u.y).click()
-      if (u.id === idle) {
-        await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
-        u.done = true
+      if (u.id === sacrifice) {
+        const enemies = g.units.filter((enemy) => enemy.side === 'enemy' && enemy.hp > 0)
+        const positions = [...reachable(g, u).keys()].map((cell) => {
+          const [x, y] = cell.split(',').map(Number)
+          return { x, y }
+        })
+        positions.sort(
+          (a, b) =>
+            Math.min(...enemies.map((enemy) => distance(a, enemy))) -
+            Math.min(...enemies.map((enemy) => distance(b, enemy)))
+        )
+        const position = positions[0]
+        if (position.x !== u.x || position.y !== u.y) {
+          await cell(position.x, position.y).click()
+          move(g, u, position.x, position.y)
+        }
+        if (!allyTurnOver(g)) {
+          await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+          u.done = true
+        }
         continue
       }
       if (heal && u.hp <= u.max - 7 && g.potions > 0) {
@@ -198,15 +215,17 @@ for (const stage of [0, 1, 2])
       await playMission(page, g)
       await expect(page.locator('#result')).toBeVisible()
       await expect(page.locator('.exp-gauge, .level-up')).toHaveCount(0)
-      await expect(page.locator('#result')).toContainText(stage === 2 ? '遠征達成' : '霧が晴れた')
+      await expect(page.locator('#result')).toContainText('霧が晴れた')
       expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)
       expect(await page.evaluate(() => (window as any).emberSoundPlays)).toBeGreaterThan(0)
       await page.screenshot({ path: `test-results/ember-win-${stage + 1}-${width}.png` })
       await page.locator('#next').click()
-      await expect(page.locator('#mission')).toContainText(missions[(stage + 1) % 3].name)
-      await expect(page.locator('#count')).toHaveText(`◆ 3 / ▼ ${3 + ((stage + 1) % 3)}`)
+      const next = createGame(stage + 1, 'balanced', carry(g))
+      const count = `◆ ${next.units.filter((unit) => unit.side === 'ally').length} / ▼ ${next.units.filter((unit) => unit.side === 'enemy').length}`
+      await expect(page.locator('#mission')).toContainText(missions[stage + 1].name)
+      await expect(page.locator('#count')).toHaveText(count)
       await page.getByRole('button', { name: '再プレイ', exact: true }).click()
-      await expect(page.locator('#count')).toHaveText(`◆ 3 / ▼ ${3 + ((stage + 1) % 3)}`)
+      await expect(page.locator('#count')).toHaveText(count)
     })
 
 test('restart cancels an in-flight enemy turn', async ({ page }) => {
@@ -333,9 +352,9 @@ test('an ally who falls in a won mission leaves the expedition until its record 
       await expect(page.locator('.farewell')).toContainText('燈守リオは倒れた…')
       await page.screenshot({ path: 'test-results/ember-farewell-1280.png' })
     })
-  // Neri only waits and nobody heals, so Rio falls; Neri and Mina still win.
+  // Rio advances without attacking and nobody heals; Neri and Mina still win.
   const first = createGame(0, 'balanced', undefined, seeded(7))
-  await playMission(page, first, 'b', false)
+  await playMission(page, first, 'a', false)
   await farewell
   expect(first.units[0].hp).toBe(0)
   const report = page.locator('#report')
