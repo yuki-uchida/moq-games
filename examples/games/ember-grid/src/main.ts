@@ -1070,7 +1070,11 @@ const titleProgress = showTitle(saved, {
     lockPresentation()
     // Portraits render from the loaded models; the title no longer preloads them.
     await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
-    if (token === generation) void story.victory(token).then(() => location.reload())
+    if (token !== generation) return
+    // Show the final battle behind the epilogue instead of the board left from start-up.
+    render()
+    stage.sync(game)
+    void story.victory(token).then(() => location.reload())
   },
   settings,
   help: openHelp
