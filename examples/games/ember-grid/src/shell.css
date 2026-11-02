@@ -174,3 +174,19 @@
   border: 1px solid #e8c880;
   border-radius: 0.5rem;
 }
+
+.sound-notice:not([hidden]) {
+  position: fixed;
+  z-index: 1001;
+  top: 7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  padding: 0.8rem 1rem;
+  color: #fff;
+  background: #252638;
+  border: 1px solid #e8c880;
+  border-radius: 0.5rem;
+  pointer-events: none;
+}

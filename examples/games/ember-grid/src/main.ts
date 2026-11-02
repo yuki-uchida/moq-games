@@ -122,6 +122,8 @@ settingsButton.textContent = '⚙'
 settingsButton.setAttribute('aria-label', '設定')
 document.querySelector('header')!.append(settingsButton)
 let previousDanger = dangerZoneDefault()
+let render = () => {}
+const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
 setStoryEnabled(storyEnabled())
 const settings = () =>
   openSettings(() => {
@@ -155,7 +157,21 @@ app.insertAdjacentHTML(
   '<dialog id="detail" aria-labelledby="detail-title"><div id="detail-content"></div><button id="detail-close">閉じる</button></dialog>'
 )
 field.style.setProperty('--grid-size', String(size))
-const stage = new Stage(field, board)
+let stage: Stage
+let animation: BattleAnimation
+let stageAvailable = false
+function createStage() {
+  try {
+    stage = new Stage(field, board)
+    animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
+    stageAvailable = true
+  } catch {
+    stageAvailable = false
+  }
+  return stageAvailable
+}
+createStage()
+let contextAvailable = true
 const contextNotice = document.createElement('div')
 contextNotice.className = 'context-notice'
 contextNotice.setAttribute('role', 'status')
@@ -164,6 +180,7 @@ contextNotice.hidden = true
 document.body.append(contextNotice)
 field.addEventListener('stage-context', (event) => {
   const restored = (event as CustomEvent<boolean>).detail
+  contextAvailable = restored
   contextNotice.hidden = restored
   document.querySelector<HTMLElement>('#app main')!.inert = !restored || !playing
   if (restored) render()
@@ -187,10 +204,8 @@ const story = new StoryFlow(
   },
   () => save.difficulty
 )
-const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 const navigation = document.querySelector('nav')!
-const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
 navigation.insertAdjacentHTML(
   'afterbegin',
   '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険</button><button id="undo">↶ 戻す</button>'
@@ -433,7 +448,8 @@ function hover(x: number, y: number) {
   hovered = id
   if (!busy) render()
 }
-function render() {
+render = () => {
+  document.querySelector<HTMLElement>('#app main')!.inert = !playing || !contextAvailable
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
@@ -491,7 +507,7 @@ function render() {
   })
   tutorial.update()
   requestAnimationFrame(positionTags)
-  stage.sync(game, unit?.id)
+  if (stageAvailable && playing) stage.sync(game, unit?.id)
   document.querySelector('#turn')!.textContent =
     `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
   document.querySelector('#count')!.textContent =
@@ -846,6 +862,24 @@ preparation.innerHTML = '<span role="status" aria-live="polite"></span><button h
 document.querySelector('.field')!.append(preparation)
 const retry = preparation.querySelector('button')!
 retry.onclick = () => void prepareBattle()
+const soundNotice = document.createElement('div')
+soundNotice.className = 'sound-notice'
+soundNotice.setAttribute('role', 'status')
+soundNotice.hidden = true
+document.body.append(soundNotice)
+async function prepareSound(roles: string[], token: number) {
+  try {
+    await audio.prepare(roles)
+    if (token === generation) soundNotice.hidden = true
+  } catch {
+    if (token !== generation) return
+    soundNotice.textContent = '効果音を読み込めませんでした。バックグラウンドで再試行します。'
+    soundNotice.hidden = false
+    setTimeout(() => {
+      if (token === generation) void prepareSound(roles, token)
+    }, 5000)
+  }
+}
 async function prepareBattle() {
   const token = generation
   const roles = chapterRoles(game)
@@ -854,16 +888,13 @@ async function prepareBattle() {
   const status = preparation.querySelector('span')!
   status.textContent = '3D モデルを準備中…'
   titleProgress(status.textContent)
+  void prepareSound(roles, token)
   try {
-    const results = await Promise.allSettled([
-      animation.prepare(roles, (done, total) => {
-        status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
-        titleProgress(status.textContent)
-      }),
-      audio.prepare(roles)
-    ])
+    await animation.prepare(roles, (done, total) => {
+      status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
+      titleProgress(status.textContent)
+    })
     if (token !== generation) return
-    if (results.some((result) => result.status === 'rejected')) throw new Error('Preparation failed')
     ready = true
     preparation.remove()
     titleProgress('準備完了')
@@ -920,4 +951,21 @@ const titleProgress = showTitle(saved, {
   settings,
   help: openHelp
 })
-void prepareBattle()
+if (!stageAvailable) {
+  const title = document.querySelector<HTMLElement>('.title-screen')!
+  const buttons = title.querySelectorAll<HTMLButtonElement>(
+    '[data-action=new], [data-action=continue], [data-action=chapters]'
+  )
+  buttons.forEach((button) => (button.disabled = true))
+  titleProgress('WebGLを利用できません。ブラウザの設定やハードウェアアクセラレーションを確認してください。')
+  const retryRenderer = document.createElement('button')
+  retryRenderer.textContent = '画面を再試行'
+  title.querySelector('.title-loading')!.after(retryRenderer)
+  retryRenderer.onclick = () => {
+    if (!createStage()) return
+    buttons.forEach((button) => (button.disabled = button.dataset.action !== 'new' && !saved))
+    titleProgress('章を選ぶと準備を開始します')
+    retryRenderer.remove()
+    render()
+  }
+} else titleProgress('章を選ぶと準備を開始します')
