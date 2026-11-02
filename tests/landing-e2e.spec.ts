@@ -159,6 +159,7 @@ test('loads the Rabbiters MoQ WASM through the catalog', async ({ page }) => {
   })
   await page.goto(root)
   await page.getByRole('link', { name: 'ゲームをプレイ: ウサギ・イヤ・ラビット' }).click()
+  await page.locator('#together').click() // the room controls sit behind 「みんなではじめる」
   await page.locator('#room').fill('offline-test')
   const wasm = page.waitForResponse((response) => /moqt_bg.*\.wasm(?:\?|$)/.test(response.url()))
   await page.getByRole('button', { name: 'ルームを作る' }).click()
