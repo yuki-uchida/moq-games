@@ -1,5 +1,15 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    setInterval(() => {
+      const skip = document.querySelector<HTMLButtonElement>('.story-overlay button, .story-credits button')
+      if (skip && document.querySelector('#turn')?.textContent?.includes('勝利'))
+        document.body.dataset.storyVictory = 'yes'
+      skip?.click()
+    }, 100)
+  })
+})
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 390, height: 844 },
@@ -197,6 +207,7 @@ for (const stage of [0, 1, 2])
       const g = createGame(stage, 'balanced', undefined, seeded(7))
       await playMission(page, g)
       await expect(page.locator('#result')).toBeVisible()
+      await expect(page.locator('body')).toHaveAttribute('data-story-victory', 'yes')
       await expect(page.locator('.exp-gauge, .level-up')).toHaveCount(0)
       await expect(page.locator('#result')).toContainText(stage === 2 ? '遠征達成' : '霧が晴れた')
       expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)

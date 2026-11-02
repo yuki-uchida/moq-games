@@ -1,4 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    setInterval(
+      () => document.querySelector<HTMLButtonElement>('.story-overlay button, .story-credits button')?.click(),
+      100
+    )
+  })
+})
 /** Units still in a presentation track on the 3D stage (idle units are excluded). */
 const tracks = (page: Page) =>
   page.evaluate(async () => {
@@ -25,14 +33,14 @@ for (const width of [1280, 390])
     await page.getByRole('button', { name: /4,4 平地 移動可能/ }).tap()
     await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeEnabled()
     await page.evaluate(() => {
-      const samples: { time: number; arrow: boolean; damage: boolean }[] = []
+      const samples: { time: number; arrow: boolean; damage: string | null }[] = []
       ;(window as unknown as { presentationSamples: typeof samples }).presentationSamples = samples
       const start = performance.now()
       const sample = () => {
         samples.push({
           time: performance.now() - start,
           arrow: !!document.querySelector('.stage[data-projectile~="arrow"]'),
-          damage: !!document.querySelector('.damage-number')
+          damage: document.querySelector('.damage-number')?.textContent ?? null
         })
         if (performance.now() - start < 1800) requestAnimationFrame(sample)
       }
@@ -45,17 +53,22 @@ for (const width of [1280, 390])
       page.getByRole('button', { name: /7,4 灰牙/ }).tap()
     ])
     await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
-    await expect(page.locator('.damage-number')).toHaveText('−8')
+    await page.waitForFunction(() =>
+      (window as unknown as { presentationSamples: { damage: string | null }[] }).presentationSamples.some(
+        (sample) => sample.damage !== null
+      )
+    )
     await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible()
     const samples = await page.evaluate(
       () =>
-        (window as unknown as { presentationSamples: { time: number; arrow: boolean; damage: boolean }[] })
+        (window as unknown as { presentationSamples: { time: number; arrow: boolean; damage: string | null }[] })
           .presentationSamples
     )
     const arrow = samples.find((s) => s.arrow),
       impact = samples.find((s) => s.damage)
     expect(arrow).toBeTruthy()
     expect(impact).toBeTruthy()
+    expect(impact!.damage).toBe('−8')
     expect(impact!.time - arrow!.time).toBeGreaterThan(100)
     const voices = page.locator('audio[data-ember-voice]')
     await page.locator('#sound').tap()
