@@ -11,7 +11,7 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /Life Survivors/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /ジンセイガ・ツライデース/ })).toBeVisible()
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#feed')).toContainText('が生まれた。親は')

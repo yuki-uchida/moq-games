@@ -42,7 +42,7 @@ export const samples = [
   },
   {
     id: 'life-survivors',
-    title: 'Life Survivors',
+    title: 'ジンセイガ・ツライデース',
     subtitle: 'LIFE SURVIVAL',
     description: '赤ちゃんから始まる30分の人生。隠れた才能を見極め、人生の手札で押し寄せる困難を退ける。',
     href: './examples/games/life-survivors/index.html',

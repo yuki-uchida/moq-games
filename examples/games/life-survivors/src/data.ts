@@ -1,4 +1,4 @@
-/** Static content for Life Survivors: life stages, weapons ("人生の手札"), personalities and life's troubles. */
+/** Static content for ジンセイガ・ツライデース: life stages, weapons ("人生の手札"), personalities and life's troubles. */
 
 export const RUN_SECONDS = 30 * 60
 export const LIFESPAN = 80

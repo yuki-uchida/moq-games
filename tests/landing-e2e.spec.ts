@@ -101,7 +101,7 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
 for (const [title, path] of [
   ['デスガイヤ', 'ember-grid'],
   ['うんこ大惨事', 'lane-battle'],
-  ['Life Survivors', 'life-survivors']
+  ['ジンセイガ・ツライデース', 'life-survivors']
 ]) {
   test(`opens ${title} from the catalog`, async ({ page }) => {
     await page.goto(root)
