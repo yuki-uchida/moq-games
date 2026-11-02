@@ -31,7 +31,7 @@ test('cold preparation, retry and retained mission assets', async ({ page }) => 
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.locator('[data-stage="2"]').click()
   await expect(page.getByRole('button', { name: /灰の射手/ })).toBeVisible()
-  expect(art.length).toBe(prepared)
+  expect(art.slice(prepared).every((url) => /\/models\/(healer|slime|bat)\//.test(url))).toBe(true)
 })
 
 for (const cacheDisabled of [true, false])

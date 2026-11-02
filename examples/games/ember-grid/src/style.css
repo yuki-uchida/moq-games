@@ -97,6 +97,52 @@ header button {
   --grove: #3c4d3b;
   --stone: #625c59;
 }
+.field[data-mission='3'] {
+  --ground: #526a62;
+  --ground-odd: #485e58;
+  --grove: #304c3c;
+  --stone: #4c6961;
+}
+.field[data-mission='4'] {
+  --ground: #77746a;
+  --ground-odd: #69665e;
+  --grove: #394b3b;
+  --stone: #88847b;
+}
+.field[data-mission='5'] {
+  --ground: #554545;
+  --ground-odd: #483a3e;
+  --grove: #38463b;
+  --stone: #302a30;
+}
+.cell.healable {
+  background: #4caa72;
+  outline: 2px solid #c1ffce;
+}
+.cell.seize {
+  background: repeating-linear-gradient(45deg, #e4c46a 0 4px, #806c46 4px 8px);
+}
+.healing-preview,
+.healing-effect {
+  color: #9dffad;
+  font-weight: bold;
+  text-shadow: 0 1px 3px #003915;
+  white-space: nowrap;
+}
+.healing-effect {
+  width: 72px;
+  height: 72px;
+  margin: -36px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #9dffad;
+  border-radius: 50%;
+  background: radial-gradient(circle, #86ff9f88, transparent 70%);
+  animation: damage-rise 600ms ease-out both;
+}
+.stand.boss .tag {
+  top: calc(var(--tile) * -0.85 * var(--figure, 1) - 14px);
+}
 /* Drifting embers behind the board; seamless because each layer moves by exactly its tile height. */
 .field::before {
   content: '';

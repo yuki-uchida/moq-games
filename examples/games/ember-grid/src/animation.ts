@@ -27,6 +27,8 @@ export function route(game: Game, before: Unit[], from: Unit, to: Point): Point[
 }
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+export const effectKind = (role: string, range: number) =>
+  range < 2 ? 'contact' : role === 'archer' ? 'arrow' : role === 'dragon' ? 'fireball' : 'spell'
 const unit = (dx: number, dy: number) => {
   const length = Math.hypot(dx, dy) || 1
   return { x: dx / length, y: dy / length }
@@ -50,8 +52,8 @@ export class BattleAnimation {
     this.nodes.clear()
     this.stage.release()
   }
-  prepare(progress: (done: number, total: number) => void) {
-    return this.stage.load(progress)
+  prepare(roles: string[], progress: (done: number, total: number) => void) {
+    return this.stage.load(roles, progress)
   }
   /** DOM overlay anchored at a projected world point; never intercepts input. */
   private overlay(point: THREE.Vector3) {
@@ -69,7 +71,7 @@ export class BattleAnimation {
     const token = this.version,
       live = () => token === this.version
     const from = before.find((u) => u.id === acting.id)!
-    const target = game.units.find((u) => u.hp < before.find((old) => old.id === u.id)!.hp)
+    const target = game.units.find((u) => u.hp !== before.find((old) => old.id === u.id)!.hp)
     const path = route(game, before, from, acting)
     const moved = from.x !== acting.x || from.y !== acting.y
     const reduced = reducedMotion()
@@ -77,7 +79,6 @@ export class BattleAnimation {
     if ((!moved && !target) || !actor) return
     try {
       if (moved) {
-        this.cue('healer')
         const step = reduced ? 80 : 220
         for (let i = 1; i < path.length && live(); i++) {
           actor.facing = unit(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y)
@@ -103,14 +104,22 @@ export class BattleAnimation {
         const profile = ATTACK_PROFILES[acting.role as UnitType]
         const ms = reduced ? 80 : profile.durationMs
         const started = performance.now()
-        actor.track = { motion: 'attack', start: started, ms, clipMs: profile.durationMs }
+        actor.track = { motion: acting.heal ? 'heal' : 'attack', start: started, ms, clipMs: profile.durationMs }
         await pause((profile.cueMs / profile.durationMs) * ms)
         if (!live()) return
         this.cue(acting.role)
-        if (acting.role === 'archer' || acting.role === 'mage') {
+        if (acting.heal) {
+          const effect = this.overlay(chest(target))
+          effect.classList.add('healing-effect')
+          effect.textContent = `✚ +${target.hp - old.hp}`
+          await pause(Math.max(600, started + ms - performance.now()))
+          return
+        }
+        const kind = effectKind(acting.role, acting.range)
+        if (kind !== 'contact') {
           const flight = reduced ? 80 : 240
           const origin = this.stage.emitter(acting.id, profile.cueMs) ?? chest(acting)
-          const land = this.stage.shoot(acting.role === 'mage' ? 'spell' : 'arrow', origin, chest(target), flight)
+          const land = this.stage.shoot(kind, origin, chest(target), flight)
           await pause(flight)
           land()
           if (!live()) return

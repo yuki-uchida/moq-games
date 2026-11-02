@@ -31,9 +31,9 @@ export class ExpeditionAudio {
     // The battle keeps running while hidden, so music and voices keep playing too.
     window.addEventListener('pagehide', () => this.stop())
   }
-  async prepare() {
+  async prepare(roles: string[]) {
     // Small, existing action cues only; music streams separately.
-    for (const role of ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer']) {
+    for (const role of roles) {
       if (this.sounds.has(role)) continue
       const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-sfx/${role}_attack.wav`, {
         signal: AbortSignal.timeout(15000)
@@ -64,6 +64,13 @@ export class ExpeditionAudio {
         throw error
       }
     }
+  }
+  setMusic(name: string) {
+    const source = `${import.meta.env.BASE_URL}tower-defense-music/${name}.mp3`
+    if (this.music.getAttribute('src') === source) return
+    this.music.pause()
+    this.music.src = source
+    this.start()
   }
   toggle() {
     this.enabled = !this.enabled
@@ -104,7 +111,7 @@ export class ExpeditionAudio {
       oldest.pause()
       oldest.remove()
     }
-    const file = ['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer'].includes(role) ? role : 'soldier'
+    const file = role
     const prepared = this.preparedVoices.get(file)
     const voice = prepared && (prepared.paused || prepared.ended) ? prepared : new Audio(this.sounds.get(file))
     voice.currentTime = 0
