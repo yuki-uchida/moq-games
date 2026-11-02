@@ -551,7 +551,7 @@ export function burst(s) {
   for (const u of s.units)
     if (u.side === -1 && u.x > 510) {
       damageUnit(s, { side: 1 }, u, burstDamage(s))
-      move(u, -85)
+      move(s, u, -85)
       u.hurt = { at: s.time, power: 1.5 }
     }
   s.effects.push({ x: 760, life: 0.6, blast: true })
@@ -575,8 +575,8 @@ export function reach(s, u) {
   return { target, baseX, gap: distance - (u.range + (target ? 0 : 25)) }
 }
 // Renderer contract: control {kind,start,end}, slow/drowsy/rally/vuln/weak {end},
-// burn, poison[], curry, charged, ramp, flushed and tick describe unit effects.
-// zones hold {sourceId,side,kind,x,end,next,atk}; attack effects record areaKind,
+// burn, poison[], curry, charged, ramp, flushed, tick and slide describe unit effects.
+// zones hold {sourceId,side,kind,x,start,end,next,atk}; attack effects record areaKind,
 // attackerKey, victims [{id,at}], crit and primaryX alongside existing visual fields.
 function control(s, target, kind, duration) {
   if ((target.control?.end ?? 0) > s.time || (target.controlImmuneUntil ?? 0) > s.time) return
@@ -585,9 +585,14 @@ function control(s, target, kind, duration) {
   target.control = { kind, start: s.time, end }
   target.controlImmuneUntil = end + 1.2
 }
-function move(target, amount) {
+function move(s, target, amount) {
   if (target.immovable) return
+  const previous = target.x
   target.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, target.x + amount * (target.heavy ? 0.5 : 1)))
+  if (target.x !== previous) {
+    const remaining = Math.max(0, 1 - (s.time - (target.slide?.at ?? 0)) / 0.15)
+    target.slide = { at: s.time, offset: (target.slide?.offset ?? 0) * remaining ** 2 + previous - target.x }
+  }
 }
 function damageUnit(s, src, target, damage, kind = null, indirect = false) {
   if ((kind || indirect) && src.weak?.end > s.time) damage *= 0.7
@@ -644,10 +649,10 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
     target.flushed = true
   }
   const knock = src.knockback || (primary && charged ? src.ambushKnockback : 0)
-  if (knock) move(target, knock * dirOf(src))
+  if (knock) move(s, target, knock * dirOf(src))
   if (src.pull) {
     const distance = Math.max(0, Math.abs(target.x - src.x) - 8)
-    move(target, -dirOf(src) * Math.min(src.pull, distance))
+    move(s, target, -dirOf(src) * Math.min(src.pull, distance))
   }
   if (src.collision && knock) {
     for (const other of s.units) {
@@ -659,7 +664,7 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
         Math.abs(other.x - target.x) <= src.collision
       ) {
         damageUnit(s, src, other, damage * src.collisionDamage)
-        move(other, src.collisionPush * dirOf(src))
+        move(s, other, src.collisionPush * dirOf(src))
       }
     }
   }
@@ -681,6 +686,7 @@ function placeZone(s, src, x) {
     side: src.side,
     kind: src.zone,
     x,
+    start: s.time,
     end: s.time + src.zoneDuration,
     next: s.time + src.zoneInterval,
     radius: src.zoneRadius,
@@ -808,7 +814,7 @@ function ongoing(s) {
       for (const unit of s.units) {
         if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
         if (zone.kind === 'stench') damageUnit(s, zone.src, unit, zone.atk * zone.damage, 'stench')
-        else move(unit, zone.push * unit.side)
+        else move(s, unit, zone.push * unit.side)
       }
       zone.next += zone.interval
     }

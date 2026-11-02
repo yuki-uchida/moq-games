@@ -16,6 +16,8 @@ Attacks use unit-specific single targets, impact circles, forward bands, cones, 
 
 Status effects include movement slow, control, attack-speed changes, damage modifiers, burns, poison, timed explosions, displacement, execution and healing. Control effects do not overlap and grant a short immunity afterwards; heavy units resist control and displacement, while ドデカ cannot be displaced or launched. Only the strongest movement slow applies. Zones are replaced per source, persist after its death, and expire; damage-over-time ticks do not cause hit flinches. Unit-specific details and values are in `UNITS.md`.
 
+The battlefield draws attack-area cues, status badges and overlays, and mud, stench and wet-floor zones with the simulation clock. Displacements slide to their new position and launched units rise above the lane. Roster and shop cards show attack areas and effect names; summon-card tooltips include their descriptions.
+
 From the repository root:
 
 ```sh
@@ -55,6 +57,8 @@ The root landing page links to this example, and `npm run build` includes its en
 `node examples/games/lane-battle/balance-report.mjs` prints a deterministic level-one damage and survival comparison against a fixed four-unit squad. A `+` marks survival censored by the end of the encounter or the 60-second limit; it is not the unit's eventual lifetime.
 
 `effects.test.mjs` exercises area selection, arrival timing, status effects, control immunity, heavy resistance, persistent zones, damage modifiers, execution, animation contact and deterministic replay.
+
+`visual-effects.test.mjs` checks status-badge priority, expiry and the three-badge limit.
 
 `node --test examples/games/lane-battle/*.test.mjs` covers the simulation (lane direction, atomic summon costs/cooldowns, production, burst, shared kill EXP, unattended defeat, 300 repeated inputs), the campaign (formation limits, shop unlocks, growth odds for poops vs specials, first-clear rewards, defeat EXP, save round-trip and corruption), a full 30-stage human-paced campaign on six seeds (each 90–150 minutes, mean 95–135), that rushing 腸活 to MAX loses to 朝の清掃 and a greedy one, that an unleveled army cannot take the final stage, plus audio lifecycle, the attack, hit-reaction and knock-out clocks (contact held on the hit frame, wind-up before it, no overlap with recovery for any unit), every character's rig staying finite through walk, wind-up, attack, hurt and knock-out without dropping a prop, and projectile timing. `browser-check.mjs`, `failure-check.mjs` and `campaign-check.mjs` cover desktop 1280×800, portrait 390×844 and landscape 844×390 for no overflow, summon, pause, natural defeat/retry, a stage-1 victory through real buttons with its report, unlock, record, new special, formation edit, reload persistence, shop purchase and the mute gate. `audio-browser-check.mjs` verifies no pre-gesture oscillators, continuing BGM, cancellation on pause, resume, mute and unmute in real Chrome. `projectile-browser-check.mjs` uses a deterministic real-renderer fixture to confirm that pellet arrival, death and the impact sound share a frame and that pending pellets freeze during pause. `animation-check.mjs`, `motion-sheet.mjs` and `audio-capture-check.mjs` write local-only recordings and sheets under `/tmp` for manual review; `LANE_URL`, `LANE_EVIDENCE_DIR`, `LANE_AUDIO_DIR` and `FFMPEG_BIN` override their defaults.
 
