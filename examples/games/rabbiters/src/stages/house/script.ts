@@ -105,12 +105,12 @@ function heard(game: Game, x: number, z: number, radius: number, spot: Spot) {
 }
 
 /** Holding E at the latch: 30 s in all, a clink every second; anyone close by bends it back a little. */
-function gnaw(game: Game) {
+function gnaw(game: Game, player: Player) {
   const { state } = game
   const memory = memo(game)
   if (!has(state, FLAG.gnawStart)) {
     state.flags |= FLAG.gnawStart
-    game.say('gnaw_start')
+    game.say('gnaw_start', player.id)
   }
   const before = gnawed(state)
   memory.gnaw += 1 / 60
@@ -133,23 +133,23 @@ function gnaw(game: Game) {
   ) {
     memory.lastScold = state.time
     setGnawed(state, Math.max(0, after - 8))
-    game.say('gnaw_caught')
+    game.say('gnaw_caught', player.id)
   }
   if (gnawed(state) >= GNAW_SECONDS) {
     state.open |= 1 << GATE.cage
     state.flags |= FLAG.latch
     state.step = 2
-    game.say('gnaw_done')
+    game.say('gnaw_done', player.id)
   }
 }
 
 /** Holding E at the fence: dig the gap wide enough. Scrabbling carries; Gon and anyone in the garden hear it. */
-function dig(game: Game) {
+function dig(game: Game, player: Player) {
   const { state } = game
   const memory = memo(game)
   if (!has(state, FLAG.digStart)) {
     state.flags |= FLAG.digStart
-    game.say('dig_start')
+    game.say('dig_start', player.id)
   }
   const before = dug(state)
   memory.dig += 1 / 60
@@ -163,15 +163,15 @@ function dig(game: Game) {
   }
   if (dug(state) >= DIG_SECONDS) {
     state.open |= 1 << GATE.gap
-    game.say('dug')
+    game.say('dug', player.id)
   }
 }
 
 /** Holding E at the pantry: tug a niboshi out of the bag. It rustles, and Mom at the sink may hear it. */
-function pull(game: Game) {
+function pull(game: Game, player: Player) {
   const { state } = game
   const memory = memo(game)
-  if (memory.pull === 0 && game.quiet && niboshiGiven(state) === 0) game.say('niboshi_bag')
+  if (memory.pull === 0 && game.quiet && niboshiGiven(state) === 0) game.say('niboshi_bag', player.id)
   const before = memory.pull
   memory.pull += 1 / 60
   if (Math.floor(memory.pull) > Math.floor(before)) {
@@ -187,13 +187,13 @@ function pull(game: Game) {
   }
 }
 
-function talkTo(game: Game, id: string) {
+function talkTo(game: Game, id: string, player: Player) {
   const { state } = game
   const memory = memo(game)
   if (id === 'pisuke') {
     if (state.step === 0 && !has(state, FLAG.pisuke)) {
       state.flags |= FLAG.pisuke
-      game.say('pisuke_first')
+      game.say('pisuke_first', player.id)
     } else if (state.step < 2) {
       if (game.quiet) game.say('pisuke_again')
     } else if (state.time - memory.squawkAt < SQUAWK_COOLDOWN) {
@@ -234,7 +234,10 @@ export const script: StageScript = {
       people(game).some((person) => person.state === 'chase' && person.targetId)
     ) {
       state.flags |= FLAG.search
-      game.say('search_start')
+      game.say(
+        'search_start',
+        people(game).find((person) => person.state === 'chase' && person.targetId)?.targetId ?? undefined
+      )
     }
     // Gon barks at what he sees; Mom comes out to have a look.
     const gon = state.predators.find((entry) => entry.id === 'gon')
@@ -277,7 +280,7 @@ export const script: StageScript = {
         const carrier = players.find((player) => player.carrying?.startsWith('niboshi'))
         if (carrier && !has(state, FLAG.niboshiGot)) {
           state.flags |= FLAG.niboshiGot
-          game.say('niboshi_got')
+          game.say('niboshi_got', carrier.id)
         }
         if (carrier && near(carrier, TAMA, 2.8)) {
           carrier.carrying = null
@@ -306,14 +309,15 @@ export const script: StageScript = {
         const carrier = players.find((player) => player.carrying === 'tag')
         if (carrier && !has(state, FLAG.tagGot)) {
           state.flags |= FLAG.tagGot
-          game.say('tag_got')
+          game.say('tag_got', carrier.id)
         }
         break
       }
       case 5: {
-        if (!has(state, FLAG.garden) && players.some((player) => inZone('garden', player.x, player.z))) {
+        const outside = players.find((player) => inZone('garden', player.x, player.z))
+        if (!has(state, FLAG.garden) && outside) {
           state.flags |= FLAG.garden
-          game.say('garden_enter')
+          game.say('garden_enter', outside.id)
         }
         // Everyone still on their feet squeezes through together (downed rabbits are carried along).
         const out = players.filter((player) => inZone('exit', player.x, player.z))
@@ -331,7 +335,7 @@ export const script: StageScript = {
     const { state } = game
     const memory = memo(game)
     if (state.step === 1 && held && inCage(player) && near(player, DOOR_INSIDE, 1.4)) {
-      gnaw(game)
+      gnaw(game, player)
       return true
     }
     if (
@@ -341,12 +345,12 @@ export const script: StageScript = {
       !state.players.some((entry) => entry.carrying?.startsWith('niboshi')) &&
       inZone('pantry', player.x, player.z)
     ) {
-      pull(game)
+      pull(game, player)
       return true
     }
     if (state.step === 4 && held && player.carrying === 'tag' && inZone('catflap', player.x, player.z)) {
       // Press the tag to the cat flap until it clicks.
-      if (memory.flap === 0) game.say('catflap_press')
+      if (memory.flap === 0) game.say('catflap_press', player.id)
       memory.flap += 1 / 60
       if (memory.flap >= FLAP_SECONDS) {
         memory.flap = 0
@@ -354,12 +358,12 @@ export const script: StageScript = {
         state.items = []
         state.open |= 1 << GATE.catflap
         state.step = 5
-        game.say('catflap_open')
+        game.say('catflap_open', player.id)
       }
       return true
     }
     if (state.step === 5 && held && !(state.open & (1 << GATE.gap)) && inZone('dig', player.x, player.z)) {
-      dig(game)
+      dig(game, player)
       return true
     }
     // The broken latch: a rabbit put back in the cage pushes the door open again.
@@ -369,13 +373,13 @@ export const script: StageScript = {
       if (pushed >= PUSH_SECONDS) {
         memory.push.delete(player.id)
         state.open |= 1 << GATE.cage
-        if (game.quiet) game.say('door_push')
+        if (game.quiet) game.say('door_push', player.id)
       }
       return true
     }
     const npc = pressed ? npcNear(player.x, player.z, 2.5) : undefined
     if (npc) {
-      talkTo(game, npc.id)
+      talkTo(game, npc.id, player)
       return true
     }
     return false
@@ -387,7 +391,7 @@ export const script: StageScript = {
     const { state } = game
     state.open &= ~(1 << GATE.cage)
     state.flags |= FLAG.search
-    if (game.quiet) game.say(`caught-${predator.id}`)
+    if (game.quiet) game.say(`caught-${predator.id}`, player.id)
   },
 
   respawn: () => SPAWN,
@@ -463,7 +467,7 @@ export const script: StageScript = {
                 title: '第1章｜タグを洗面所の猫ドアへ',
                 progress: at(0.6),
                 label,
-                hint: '猫ドアの前で E を長押し。ひなたがモチを探している、見つからないように'
+                hint: '猫ドアの前で E を長押し。ひなたが探している、見つからないように'
               }
             : {
                 title: '第1章｜玄関の靴箱の下でタグを探そう',

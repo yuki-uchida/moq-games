@@ -66,7 +66,8 @@ const HOME_AT_NIGHT = ['passer-e', 'shopper-2', 'kid-2']
 const near = (a: { x: number; z: number }, b: { x: number; z: number }, reach: number) =>
   Math.hypot(a.x - b.x, a.z - b.z) < reach
 const awake = (state: GameState) => state.players.filter((player) => !player.downed)
-const anyIn = (state: GameState, zone: string) => awake(state).some((player) => inZone(zone, player.x, player.z))
+/** The first rabbit on its feet in `zone`: it speaks the line the zone sets off. */
+const anyIn = (state: GameState, zone: string) => awake(state).find((player) => inZone(zone, player.x, player.z))
 const find = (game: Game, id: string) => game.state.predators.find((predator) => predator.id === id)
 
 /** One tick of gnawing; every few seconds the noise draws whoever is near. True once it is through. */
@@ -76,7 +77,7 @@ function gnaw(game: Game, player: Player, seconds: number, radius: number, heard
   gnawed.set(game, after)
   if (Math.floor(after / NOISE_EVERY) > Math.floor(before / NOISE_EVERY)) {
     game.noise(player.x, player.z, radius)
-    if (after < NOISE_EVERY * 1.5) game.say(heard)
+    if (after < NOISE_EVERY * 1.5) game.say(heard, player.id)
   }
   if (after < seconds) return false
   gnawed.delete(game)
@@ -84,9 +85,9 @@ function gnaw(game: Game, player: Player, seconds: number, radius: number, heard
 }
 
 /** Starts the step's conversation; the step advances once it (and anything queued) has been spoken. */
-function talk(game: Game, id: string) {
+function talk(game: Game, id: string, by?: Player) {
   game.state.flags |= F.talked
-  game.say(id)
+  game.say(id, by?.id)
 }
 
 /** Night: the keeper and the shoppers go home, the dog walker comes out on the riverside. */
@@ -157,25 +158,27 @@ export const script: StageScript = {
   },
   tick(game: Game, dt: number) {
     const { state } = game
-    const once = (bit: number, line?: string) => {
+    const once = (bit: number, line?: string, by?: Player) => {
       if (state.flags & bit) return false
       state.flags |= bit
-      if (line) game.say(line)
+      if (line) game.say(line, by?.id)
       return true
     }
-    const advance = (step: number, line?: string) => {
+    const advance = (step: number, line?: string, by?: Player) => {
       state.step = step
       state.flags &= ~F.talked
-      if (line) game.say(line)
+      if (line) game.say(line, by?.id)
     }
     keepToBeats(game, dt)
     const listened = state.flags & F.talked && game.quiet
     const players = awake(state)
     const tora = find(game, 'tora')
-    if (tora && players.some((player) => near(player, tora, 16))) once(F.tora, 'alley_cats')
+    const spotted = tora && players.find((player) => near(player, tora, 16))
+    if (spotted) once(F.tora, 'alley_cats', spotted)
+    let by: Player | undefined
     switch (state.step) {
       case STEP.alley:
-        if (anyIn(state, 'garbage')) advance(STEP.ponta, 'garbage')
+        if ((by = anyIn(state, 'garbage'))) advance(STEP.ponta, 'garbage', by)
         break
       case STEP.ponta:
         if (listened) advance(STEP.net)
@@ -187,7 +190,7 @@ export const script: StageScript = {
         }
         break
       case STEP.cabbage:
-        if (players.some((player) => player.carrying === 'cabbage')) once(F.carried, 'cabbage_got')
+        if ((by = players.find((player) => player.carrying === 'cabbage'))) once(F.carried, 'cabbage_got', by)
         if (listened) advance(STEP.back)
         break
       case STEP.back:
@@ -199,15 +202,15 @@ export const script: StageScript = {
         }
         break
       case STEP.road:
-        if (anyIn(state, 'road')) once(F.road, 'road_first')
-        if (anyIn(state, 'crossed')) advance(STEP.pet, 'road_crossed')
+        if ((by = anyIn(state, 'road'))) once(F.road, 'road_first', by)
+        if ((by = anyIn(state, 'crossed'))) advance(STEP.pet, 'road_crossed', by)
         break
       case STEP.pet:
-        if (players.some((player) => player.x > -30)) once(F.shop, 'shopping_street')
+        if ((by = players.find((player) => player.x > -30))) once(F.shop, 'shopping_street', by)
         if (listened) advance(STEP.street)
         break
       case STEP.street:
-        if (anyIn(state, 'street-end')) advance(STEP.poppo, 'street_end')
+        if ((by = anyIn(state, 'street-end'))) advance(STEP.poppo, 'street_end', by)
         break
       case STEP.poppo:
         if (listened) {
@@ -216,7 +219,7 @@ export const script: StageScript = {
         }
         break
       case STEP.bread:
-        if (players.some((player) => player.carrying === 'bread')) once(F.carried, 'bread_got')
+        if ((by = players.find((player) => player.carrying === 'bread'))) once(F.carried, 'bread_got', by)
         if (listened) {
           advance(STEP.dusk)
           game.setRoute('keeper', CLOSING)
@@ -224,10 +227,10 @@ export const script: StageScript = {
         break
       case STEP.dusk: {
         // Resting under the floor (any rabbit) while the sky goes dark and the keeper locks up.
-        const resting = players.some((player) => inShelter(player.x, player.z))
+        const resting = players.find((player) => inShelter(player.x, player.z))
         const rest = (rested.get(game) ?? 0) + (resting ? dt : 0)
         rested.set(game, rest)
-        if (rest >= DUSK_SECONDS && !(state.flags & F.talked)) talk(game, 'nightfall')
+        if (rest >= DUSK_SECONDS && !(state.flags & F.talked)) talk(game, 'nightfall', resting)
         if (listened) {
           rested.delete(game)
           advance(STEP.bank)
@@ -237,10 +240,10 @@ export const script: StageScript = {
       }
       case STEP.bank:
         walkDog(game)
-        if (anyIn(state, 'bank')) once(F.bank, 'night_bank')
-        if (players.some((player) => near(player, find(game, 'walker') ?? { x: 1e9, z: 0 }, 22)))
-          once(F.walker, 'walker')
-        if (players.some((player) => near(player, EXIT, 14))) once(F.drain, 'drain_near')
+        if ((by = anyIn(state, 'bank'))) once(F.bank, 'night_bank', by)
+        if ((by = players.find((player) => near(player, find(game, 'walker') ?? { x: 1e9, z: 0 }, 22))))
+          once(F.walker, 'walker', by)
+        if ((by = players.find((player) => near(player, EXIT, 14)))) once(F.drain, 'drain_near', by)
         if (state.open & 1 && anyIn(state, 'exit')) game.nextStage()
         break
     }
@@ -250,49 +253,49 @@ export const script: StageScript = {
     const npc = npcNear(player.x, player.z, 2.6)?.id
     const fresh = !(state.flags & F.talked)
     if (pressed && fresh && npc === 'ponta' && (state.step === STEP.ponta || state.step === STEP.back)) {
-      talk(game, state.step === STEP.ponta ? 'ponta_first' : 'ponta_drain')
+      talk(game, state.step === STEP.ponta ? 'ponta_first' : 'ponta_drain', player)
       return true
     }
     if (held && fresh && state.step === STEP.net && inZone('net', player.x, player.z)) {
       // Tearing plastic rustles: the crows and Tora's gang come to look.
-      if (gnaw(game, player, NET_SECONDS, 18, 'net_heard')) talk(game, 'ponta_net')
+      if (gnaw(game, player, NET_SECONDS, 18, 'net_heard')) talk(game, 'ponta_net', player)
       return true
     }
     if (pressed && fresh && npc === 'kits' && state.step === STEP.cabbage && player.carrying === 'cabbage') {
       player.carrying = null // eaten: the item stays put away
-      talk(game, 'kits_thanks')
+      talk(game, 'kits_thanks', player)
       return true
     }
     if (pressed && fresh && npc === 'kurumi' && state.step === STEP.pet) {
-      talk(game, 'kurumi_first')
+      talk(game, 'kurumi_first', player)
       return true
     }
     if (pressed && fresh && npc === 'poppo' && state.step === STEP.poppo) {
-      talk(game, 'poppo_first')
+      talk(game, 'poppo_first', player)
       return true
     }
     if (pressed && fresh && npc === 'poppo' && state.step === STEP.bread && player.carrying === 'bread') {
       player.carrying = null
-      talk(game, 'poppo_thanks')
+      talk(game, 'poppo_thanks', player)
       return true
     }
     if (held && state.step === STEP.bank && !(state.open & 1) && inZone('grate', player.x, player.z)) {
       // A rattling grate carries along the riverside: the dog walker may come by.
       if (gnaw(game, player, GRATE_SECONDS, 24, 'grate_heard')) {
         state.open |= 1
-        game.say('grate_open')
+        game.say('grate_open', player.id)
       }
       return true
     }
     if (pressed && npc && game.quiet) {
-      game.say(`${npc}_idle`)
+      game.say(`${npc}_idle`, player.id)
       return true
     }
     return false
   },
   caught(game, player, predator) {
     game.sendBack(player, predator)
-    if (game.quiet) game.say('caught')
+    if (game.quiet) game.say('caught', player.id)
   },
   respawn(state: GameState) {
     if (state.step === STEP.alley) return SPAWN

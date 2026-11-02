@@ -19,8 +19,8 @@ import { SEE_THROUGH, cutAway } from './see-through'
 import { STEALTH, flies } from './stealth'
 import { playerColor } from './game'
 import { BURROW, CAMPAIGN, HAVEN } from './campaign'
-import { STAGES } from './stages'
-import { talkLine, type Bark, type Scenery } from './story'
+import { STAGES, fillNames, spokenLine } from './stages'
+import { type Bark, type Scenery } from './story'
 import { buildCar, buildItem, buildModel, type Actor, type ModelOptions } from './models'
 
 export interface RabbitersSceneState {
@@ -54,6 +54,7 @@ export interface RabbitersSceneState {
     angle: number
     state: string
     suspicion?: number
+    targetId?: string | null
   }[]
   droppings?: { id: string; x: number; y: number; z: number; t: number }[]
   foods: { id: string; kind?: FoodKind; x: number; y: number; z: number; active: boolean }[]
@@ -68,7 +69,7 @@ export interface RabbitersSceneState {
   stage?: number
   step?: number
   items?: { id: string; kind: string; x: number; y: number; z: number; active: boolean }[]
-  talk?: { id: string; at: number } | null
+  talk?: { id: string; at: number; by?: string } | null
 }
 
 /** Default enemy barks when a predator turns suspicious or gives chase; stages override by id or kind. */
@@ -771,11 +772,24 @@ export class RabbitersScene {
         'bath' in entity ? (entity.bath ?? 0) : 0
       )
       if (entity.key.startsWith('predator:')) {
-        const { state: mood, suspicion } = entity as unknown as { state: string; suspicion?: number }
+        const {
+          state: mood,
+          suspicion,
+          targetId
+        } = entity as unknown as {
+          state: string
+          suspicion?: number
+          targetId?: string | null
+        }
         // Client-only barks on a change of mind; they never cross the relay.
         if (mood !== actor.lastState && actor.lastState !== undefined) {
           const text = (def.barks?.[entity.id] ?? def.barks?.[entity.kind] ?? BARKS[entity.kind])?.[mood as keyof Bark]
-          if (text) actor.bark = { text, until: this.clock + 1.8 }
+          const target = state.players.find((player) => player.id === targetId)
+          if (text)
+            actor.bark = {
+              text: fillNames(text, target?.name ?? 'モチ', state.players.length),
+              until: this.clock + 1.8
+            }
         }
         this.updateMarker(actor, mood, suspicion ?? 0, actor.top)
       }
@@ -783,12 +797,12 @@ export class RabbitersScene {
         actor.root.rotation.y = entity.angle + Math.sin(state.time * 0.7 + entity.x) * 0.25
     }
     // Speech: the conversation's current speaker, else any fresh bark.
-    const line = talkLine(def.conversations, state.talk, state.time)
+    const line = spokenLine(stage, state)
     const speaker =
-      line &&
-      (line.who === 'rabbit'
-        ? this.actors.get(`player:${localPlayerId}`)
-        : (this.actors.get(`npc:${line.who}`) ?? this.actors.get(`predator:${line.who}`)))
+      line?.speaker &&
+      (this.actors.get(line.speaker) ??
+        this.actors.get(`npc:${line.speaker}`) ??
+        this.actors.get(`predator:${line.speaker}`))
     for (const actor of this.actors.values()) {
       const bark = actor.bark && actor.bark.until > this.clock ? actor.bark.text : undefined
       this.speak(actor, line && actor === speaker ? line.text : bark)

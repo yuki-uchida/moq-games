@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { Game, coverAt, type Player } from '../src/game'
 import { NPCS, TERRAIN, heightAt, inShelter, inZone, setStage } from '../src/map'
-import { STAGES } from '../src/stages'
+import { STAGES, spokenLine } from '../src/stages'
 import { PLANS, route } from '../src/stages/house/family'
 import { FLAG, GNAW_SECONDS, gnawed, has, setGnawed } from '../src/stages/house/flags'
 import { CAGE, CAGE_DOOR, GATE, NIBOSHI, SPAWN, TAG, TAMA } from '../src/stages/house/map'
 import { DOOR_INSIDE } from '../src/stages/house/script'
+import { lineSeconds } from '../src/story'
 import { idle } from './bot'
 import { HouseBot, houseField } from './house-bot'
 
@@ -107,6 +108,34 @@ describe('Chapter 1: the house', () => {
     expect(game.state.step).toBe(2)
     expect(game.state.open & (1 << GATE.cage)).toBeTruthy()
     expect(has(game.state, FLAG.latch)).toBe(true)
+  })
+
+  it('in a shared room, the rabbit who gnaws speaks, under its own name, on every client', () => {
+    const game = new Game(3, undefined, HOUSE)
+    game.addPlayer('host')
+    game.addPlayer('guest')
+    expect(game.state.players.map((player) => player.name)).toEqual(['モチ', 'きなこ'])
+    // The narrator and the family talk about the siblings together.
+    const second = game.state.talk!.at + lineSeconds(STAGES[HOUSE].conversations.intro[0]) + 0.1
+    expect(spokenLine(HOUSE, { ...game.state, time: second })?.text).toContain('ウサギのモチたちは')
+    Object.assign(game.state, { step: 1, talk: null })
+    game.state.predators = []
+    const guest = game.state.players[1]
+    place(guest, DOOR_INSIDE.x, DOOR_INSIDE.z)
+    game.setInput(guest.id, { ...idle, interact: true })
+    advance(game, 0.1)
+    expect(spokenLine(HOUSE, game.state)).toEqual({
+      who: 'rabbit',
+      name: 'きなこ',
+      speaker: 'player:guest',
+      text: STAGES[HOUSE].conversations.gnaw_start[0].text
+    })
+    // Mom scolds the one at the latch by name.
+    game.spawnPredator('human', CAGE_DOOR.x + 2, CAGE_DOOR.z - 3, { id: 'mom' })
+    advance(game, 4)
+    expect(game.state.talk).toMatchObject({ id: 'gnaw_caught', by: 'guest' })
+    game.state.talk!.at = game.state.time
+    expect(spokenLine(HOUSE, game.state)?.text).toBe('こら、きなこ。かじっちゃダメでしょ。')
   })
 
   it('carries a caught rabbit back to its cage; the loose door is pushed open again, and the family starts searching', () => {

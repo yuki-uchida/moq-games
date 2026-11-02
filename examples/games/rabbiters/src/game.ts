@@ -151,8 +151,9 @@ export interface GameState {
   /** Open gates, bit i = GATES[i]. */
   open: number
   items: Item[]
-  /** Conversation being spoken and the game time it began; clients derive the current line. */
-  talk: { id: string; at: number } | null
+  /** Conversation being spoken and the game time it began; clients derive the current line. `by`: the rabbit it
+   * is about (it speaks the 'rabbit' lines; default the host's rabbit). */
+  talk: { id: string; at: number; by?: string } | null
 }
 
 /** Snapshot sent through the relay: food and nest positions come from the shared map. */
@@ -237,6 +238,8 @@ export const PLAYER_COLORS = [
   '#e85fb0',
   '#24306e'
 ] as const
+/** Rabbit names by collar slot: the host (first in) is always モチ, siblings join as its family. */
+export const RABBIT_NAMES = ['モチ', 'きなこ', 'あんこ', 'だいふく', 'おはぎ', 'さくら', 'ゆず', 'くろまめ'] as const
 
 /** Lowest palette slot not worn by anyone already in the room; wraps to the least-worn once all are taken. */
 export function pickPlayerColor(players: readonly Pick<Player, 'color'>[]): number {
@@ -501,7 +504,7 @@ export class Game {
   private trails = new Map<string, { x: number; z: number }[]>()
   /** Route progress per predator: the waypoint it is heading for and the wait left there. */
   private legs = new Map<string, { index: number; wait: number }>()
-  private talkQueue: string[] = []
+  private talkQueue: { id: string; by?: string }[] = []
   /** Rabbits holding E, for rising-edge detection. */
   private holding = new Set<string>()
 
@@ -698,10 +701,11 @@ export class Game {
     }
   }
 
-  /** Queues a conversation from the stage's CONVERSATIONS; it starts as soon as the current one ends. */
-  say(id: string) {
-    if (!this.state.talk) this.state.talk = { id, at: this.state.time }
-    else this.talkQueue.push(id)
+  /** Queues a conversation from the stage's CONVERSATIONS; it starts as soon as the current one ends. `by`: the
+   * player whose rabbit speaks its 'rabbit' lines (default the host's). */
+  say(id: string, by?: string) {
+    if (!this.state.talk) this.state.talk = by ? { id, at: this.state.time, by } : { id, at: this.state.time }
+    else this.talkQueue.push({ id, by })
   }
 
   /** True while no conversation is playing or queued. */
@@ -737,19 +741,21 @@ export class Game {
     return this.seed / 4294967296
   }
 
-  addPlayer(id: string, name: string) {
+  /** Names default to the collar slot's RABBIT_NAMES entry, so every client calls each rabbit the same. */
+  addPlayer(id: string, name?: string) {
     if (
       typeof id !== 'string' ||
       !id.trim() ||
       id.length > 128 ||
-      typeof name !== 'string' ||
+      (name !== undefined && typeof name !== 'string') ||
       this.state.phase !== 'playing' ||
       this.state.players.some((player) => player.id === id)
     )
       return
+    const color = pickPlayerColor(this.state.players)
     this.state.players.push({
       id,
-      name: name.slice(0, 40),
+      name: (name ?? RABBIT_NAMES[color]).slice(0, 40),
       x: SPAWN.x,
       y: heightAt(SPAWN.x, SPAWN.z),
       z: SPAWN.z,
@@ -765,7 +771,7 @@ export class Game {
       pregnant: false,
       pregnancy: 0,
       bath: 0,
-      color: pickPlayerColor(this.state.players),
+      color,
       carrying: null
     })
     this.dropIn.set(id, this.nextDropping())
@@ -1199,7 +1205,7 @@ export class Game {
     }
     if (state.talk && state.time - state.talk.at >= talkSeconds(STAGES[state.stage].conversations, state.talk.id)) {
       const next = this.talkQueue.shift()
-      state.talk = next === undefined ? null : { id: next, at: state.time }
+      state.talk = next === undefined ? null : next.by ? { ...next, at: state.time } : { id: next.id, at: state.time }
     }
     this.script.tick(this, dt)
     if (state.stage !== stage) return

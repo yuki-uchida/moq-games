@@ -114,28 +114,30 @@ function remove(game: Game, ids: readonly string[]) {
   for (const id of ids) game.removePredator(id)
 }
 
-function advance(game: Game, step: number) {
+/** `by`: the rabbit that got there, who speaks the step's opening line. */
+function advance(game: Game, step: number, by?: Player) {
   const { state } = game
+  const say = (id: string) => game.say(id, by?.id)
   state.step = step
   state.flags &= ~FLAG.talk
   setHold(state, 0)
   setHold(state, 0, 'B')
   if (step === STEP.outfall) {
     state.open |= 1
-    game.say('drained')
+    say('drained')
   } else if (step === STEP.stones) {
     // Out of the sewer at dawn: the river's creatures wake, the sewer's are left behind.
     remove(game, SEWER_IDS)
     spawn(game, RIVER_CREATURES)
-    game.say('outfall')
-  } else if (step === STEP.bridge) game.say('bridge_dogs')
+    say('outfall')
+  } else if (step === STEP.bridge) say('bridge_dogs')
   else if (step === STEP.genji) {
     remove(
       game,
       RIVER_CREATURES.map((entry) => entry.id!)
     )
     spawn(game, PARK_CREATURES)
-    game.say('park_enter')
+    say('park_enter')
   } else if (step === STEP.dandelion)
     SPOTS.dandelions.forEach((spot, index) =>
       state.items.push({
@@ -149,7 +151,7 @@ function advance(game: Game, step: number) {
     )
   else if (step === STEP.exit) {
     state.open |= 2
-    game.say('net_done')
+    say('net_done')
   }
 }
 
@@ -164,7 +166,7 @@ function turn(game: Game, player: Player, seconds: number, line: string, flag: n
   const { state } = game
   if (!(state.flags & flag)) {
     state.flags |= flag
-    game.say(line)
+    game.say(line, player.id)
   }
   const ticks = holdTicks(state, counter) + 1
   setHold(state, ticks, counter)
@@ -225,7 +227,7 @@ export const script: StageScript = {
     const { state } = game
     choreograph(game)
     const players = awake(game)
-    const anyIn = (id: string) => players.some((player) => inZone(id, player.x, player.z))
+    const anyIn = (id: string) => players.find((player) => inZone(id, player.x, player.z))
     // Swift water at the ford: a rabbit that touches it (or stands on a stone in a surge) is swept back.
     const surge = surging(state.time)
     for (const player of players)
@@ -235,7 +237,7 @@ export const script: StageScript = {
         (surge || waterDepth(player.x, player.z) > 0.05) &&
         player.y - heightAt(player.x, player.z) < 0.05
       ) {
-        if (game.quiet) game.say('swept')
+        if (game.quiet) game.say('swept', player.id)
         game.sendBack(player)
       }
     switch (state.step) {
@@ -248,7 +250,7 @@ export const script: StageScript = {
           if (player.carrying !== 'handle') continue
           if (inZone('valve', player.x, player.z)) {
             deliver(game, player)
-            game.say('handle_set')
+            game.say('handle_set', player.id)
             advance(game, STEP.valve)
             break
           }
@@ -262,17 +264,19 @@ export const script: StageScript = {
         break
       }
       case STEP.outfall:
-        if (anyIn('outfall')) advance(game, STEP.stones)
+        if (anyIn('outfall')) advance(game, STEP.stones, anyIn('outfall'))
         break
-      case STEP.stones:
-        if (!(state.flags & FLAG.stones) && players.some((player) => near(player, SPOTS.launch, 9))) {
+      case STEP.stones: {
+        const launching = players.find((player) => near(player, SPOTS.launch, 9))
+        if (!(state.flags & FLAG.stones) && launching) {
           state.flags |= FLAG.stones
-          game.say('river_stones')
+          game.say('river_stones', launching.id)
         }
-        if (anyIn('eastbank')) advance(game, STEP.bridge)
+        if (anyIn('eastbank')) advance(game, STEP.bridge, anyIn('eastbank'))
         break
+      }
       case STEP.bridge:
-        if (anyIn('parkgate')) advance(game, STEP.genji)
+        if (anyIn('parkgate')) advance(game, STEP.genji, anyIn('parkgate'))
         break
       case STEP.dandelion:
         if (state.flags & FLAG.talk) {
@@ -302,7 +306,7 @@ export const script: StageScript = {
     if (npc?.id === 'gama') {
       if (state.step === STEP.gama && !(state.flags & FLAG.talk)) {
         state.flags |= FLAG.talk
-        game.say('gama_first')
+        game.say('gama_first', player.id)
       } else if (game.quiet)
         game.say(state.step <= STEP.handle ? 'gama_handle' : state.step <= STEP.drain ? 'gama_valve' : 'gama_go')
       return true
@@ -310,7 +314,7 @@ export const script: StageScript = {
     if (npc?.id === 'genji') {
       if (state.step === STEP.genji && !(state.flags & FLAG.talk)) {
         state.flags |= FLAG.talk
-        game.say('genji_first')
+        game.say('genji_first', player.id)
       } else if (game.quiet && state.step >= STEP.dandelion && !player.carrying?.startsWith('dandelion'))
         game.say(state.step === STEP.dandelion ? 'genji_wait' : 'genji_go')
       return true
@@ -324,8 +328,8 @@ export const script: StageScript = {
           state.flags |= flag
           if (state.flags & FLAG.valveA && state.flags & FLAG.valveB) {
             advance(game, STEP.drain)
-            game.say('valve_done')
-          } else game.say('valve_half')
+            game.say('valve_done', player.id)
+          } else game.say('valve_half', player.id)
         }
         return true
       }
@@ -341,12 +345,12 @@ export const script: StageScript = {
           active: true
         })
         setHold(state, 0)
-        game.say('handle_got')
+        game.say('handle_got', player.id)
       }
       return true
     }
     if (held && state.step === STEP.net && !(state.flags & FLAG.talk) && inZone('net', player.x, player.z)) {
-      if (turn(game, player, HOLD.net, 'net_gnawing', FLAG.gnawing)) advance(game, STEP.exit)
+      if (turn(game, player, HOLD.net, 'net_gnawing', FLAG.gnawing)) advance(game, STEP.exit, player)
       return true
     }
     return false

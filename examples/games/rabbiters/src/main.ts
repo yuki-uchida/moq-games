@@ -38,8 +38,7 @@ import {
 import { SAND_PATCHES } from './stages/forest/map'
 import { Minimap } from './minimap'
 import { CHAPTERS, createStraws, nightAmount } from './campaign'
-import { STAGES, speakerName } from './stages'
-import { talkLine } from './story'
+import { STAGES, speakerName, spokenLine } from './stages'
 
 function element<T extends HTMLElement>(selector: string): T {
   const result = document.querySelector<T>(selector)
@@ -197,7 +196,13 @@ function validSnapshot(value: unknown): value is GameState {
     !integer(value.open, 2 ** 31 - 1) ||
     !Array.isArray(value.items) ||
     value.items.length > 32 ||
-    !(value.talk === null || (record(value.talk) && label(value.talk.id) && numeric(value.talk.at, 0, 1e8)))
+    !(
+      value.talk === null ||
+      (record(value.talk) &&
+        label(value.talk.id) &&
+        numeric(value.talk.at, 0, 1e8) &&
+        (value.talk.by === undefined || label(value.talk.by)))
+    )
   )
     return false
   return (
@@ -368,7 +373,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
   checkpoint = undefined
   game = nextRole === 'guest' ? undefined : new Game(1, mapTerrain, Number(chapterSelect.value) || 0)
   guestView = nextRole === 'guest' ? new GuestView() : undefined
-  game?.addPlayer(localId, 'あなた')
+  game?.addPlayer(localId)
   snapshot = game?.state
   try {
     if (nextRole !== 'solo') {
@@ -394,7 +399,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
         onPresence: (ids) => {
           if (attempt !== generation || nextRole !== 'host' || !game) return
           for (const id of ids) {
-            if (!game.state.players.some((player) => player.id === id)) game.addPlayer(id, `仲間 ${id.slice(0, 4)}`)
+            if (!game.state.players.some((player) => player.id === id)) game.addPlayer(id)
           }
           for (const player of [...game.state.players]) {
             if (player.id !== localId && !ids.includes(player.id)) {
@@ -662,10 +667,10 @@ function updateStory(state: GameState) {
     element<HTMLElement>('#announcements').textContent = `第${state.stage + 1}章　${STAGES[state.stage].title}`
     if (role !== 'guest') markReached(state.stage)
   }
-  const line = talkLine(STAGES[state.stage].conversations, state.talk, state.time)
+  const line = spokenLine(state.stage, state)
   subtitle.hidden = !line
   if (line) {
-    const name = speakerName(state.stage, line.who)
+    const { name } = line
     element<HTMLElement>('#subtitle-name').textContent = name
     element<HTMLElement>('#subtitle-name').hidden = !name
     element<HTMLElement>('#subtitle-text').textContent = line.text

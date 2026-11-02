@@ -23,7 +23,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   'yomogi-3': [{ who: 'yomogi', text: '子どもはゆっくりしか歩けない。浅瀬をわたって、大樫を目指すんだよ。' }],
   epilogue: [
     { who: 'narrator', text: 'ケージの中で見ていた窓の外には、こんなに広い世界があった。' },
-    { who: 'narrator', text: '家を抜け出し、夜の町を走り、水の道をたどって、モチたちは森にたどり着いた。' },
+    { who: 'narrator', text: '家を抜け出し、夜の町を走り、水の道をたどって、{rabbits}は森にたどり着いた。' },
     { who: 'narrator', text: 'そして今、小さな命が新しい野原で跳ねている。' }
   ]
 }

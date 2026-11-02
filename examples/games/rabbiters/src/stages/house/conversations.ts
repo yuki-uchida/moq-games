@@ -12,8 +12,8 @@ export const NAMES: Record<string, string> = {
 export const CONVERSATIONS: Record<string, Line[]> = {
   intro: [
     { who: 'narrator', text: 'ここは、ひなたの家のリビング。' },
-    { who: 'narrator', text: '小さなケージの中で、ウサギのモチは今日も目を覚ました。' },
-    { who: 'hinata', text: 'おはよう、モチ！ ごはんだよ。' },
+    { who: 'narrator', text: '小さなケージの中で、ウサギの{rabbits}は今日も目を覚ました。' },
+    { who: 'hinata', text: 'おはよう、{rabbits}！ ごはんだよ。' },
     { who: 'rabbit', text: 'ペレット……きのうと、おなじあじ。' }
   ],
   eat_done: [{ who: 'rabbit', text: 'おなかはいっぱい。でも、なんだかつまらない。' }],
@@ -30,14 +30,14 @@ export const CONVERSATIONS: Record<string, Line[]> = {
     { who: 'hinata', text: 'はーい！ ランドセル、ランドセル……。' }
   ],
   hinata_leaves: [
-    { who: 'hinata', text: 'いってきまーす！ モチ、いい子にしててね。' },
+    { who: 'hinata', text: 'いってきまーす！ {rabbits}、いい子にしててね。' },
     { who: 'mom', text: '気をつけてね！' }
   ],
   gnaw_start: [{ who: 'rabbit', text: 'この留め金、すこしグラグラしてる……。' }],
   gnaw_heard: [{ who: 'mom', text: '……ん？ いま、なにか音がした？' }],
   gnaw_heard_dad: [{ who: 'dad', text: 'ん？ ケージのほうで音がしたな。' }],
   gnaw_caught: [
-    { who: 'mom', text: 'こら、モチ。かじっちゃダメでしょ。' },
+    { who: 'mom', text: 'こら、{name}。かじっちゃダメでしょ。' },
     { who: 'rabbit', text: '……留め金、すこし戻されちゃった。' }
   ],
   gnaw_done: [
@@ -48,7 +48,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   pisuke_squawk: [{ who: 'pisuke', text: 'ピンポーン！ オキャクサマー！' }],
   pisuke_tired: [{ who: 'pisuke', text: 'ノド カラカラ……。' }],
   door_push: [{ who: 'rabbit', text: '留め金はこわれたまま。おせば、ひらく！' }],
-  search_start: [{ who: 'mom', text: 'あら？ モチがケージから出てる！' }],
+  search_start: [{ who: 'mom', text: 'あら？ {name}がケージから出てる！' }],
   tama_first: [
     { who: 'tama', text: '……ふにゃ。なんじゃ、ケージの白いのかい。' },
     { who: 'tama', text: '外へ出たいのかい。ふん、わしも若いころはそうじゃった。' },
@@ -68,8 +68,8 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   tama_tag: [{ who: 'tama', text: '靴箱の下じゃ。しゃがまんと、もぐれんぞ。' }],
   tama_bye: [{ who: 'tama', text: 'まだおったのかい。さっさとお行き。' }],
   hinata_home: [
-    { who: 'hinata', text: 'ただいまー！ ……あれ？ モチがいない！' },
-    { who: 'hinata', text: 'ママー！ モチがいないよー！' },
+    { who: 'hinata', text: 'ただいまー！ ……あれ？ {rabbits}がいない！' },
+    { who: 'hinata', text: 'ママー！ {rabbits}がいないよー！' },
     { who: 'mom', text: 'えっ、ケージがあいてる！ 探さなきゃ。' }
   ],
   tag_got: [{ who: 'rabbit', text: 'タマさんのにおいがする。これだ！' }],
@@ -92,12 +92,12 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   dug: [{ who: 'rabbit', text: 'これで通れる！ しゃがんで、くぐろう。' }],
   'caught-mom': [{ who: 'mom', text: 'はい、おうちに戻ろうね。' }],
   'caught-dad': [{ who: 'dad', text: 'こらこら、脱走はダメだぞ。' }],
-  'caught-hinata': [{ who: 'hinata', text: 'つかまえた！ もう、モチったら。' }]
+  'caught-hinata': [{ who: 'hinata', text: 'つかまえた！ もう、{name}ったら。' }]
 }
 
 export const BARKS: Record<string, Bark> = {
-  mom: { suspicious: 'モチ？', chase: 'あっ、モチ！', search: 'モチー？' },
-  dad: { suspicious: 'ん？', chase: 'こら、まて！', search: 'おーい、モチ' },
-  hinata: { suspicious: 'あれ？', chase: 'まてまてー！', search: 'モチー？ どこー？' },
+  mom: { suspicious: '{name}？', chase: 'あっ、{name}！', search: '{name}ー？' },
+  dad: { suspicious: 'ん？', chase: 'こら、まて！', search: 'おーい、{name}' },
+  hinata: { suspicious: 'あれ？', chase: 'まてまてー！', search: '{name}ー？ どこー？' },
   gon: { suspicious: 'ウゥゥ……', chase: 'ワン！ワンワン！', search: 'クンクン' }
 }

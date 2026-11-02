@@ -22,7 +22,7 @@ export const script: StageScript = {
   },
   interact(game: Game, player: Player, _held: boolean, pressed: boolean) {
     if (!pressed || !npcNear(player.x, player.z, 2.5) || !game.quiet) return false
-    game.say(`yomogi-${game.state.chapter}`)
+    game.say(`yomogi-${game.state.chapter}`, player.id)
     return true
   },
   objective(state: GameState, player: Player) {
