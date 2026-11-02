@@ -591,19 +591,18 @@ function draw() {
     ctx.fill()
     models.unit(u, drawX(u), y, depth.get(u), state.time, lead(u))
   }
-  ctx.save()
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
-  ctx.restore()
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
   for (const u of units) {
     const top = laneY(u) - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
     const x = drawX(u)
-    ctx.fillStyle = '#3a2414'
-    ctx.fillRect(x - 18, top, 36, 4)
-    ctx.fillStyle = u.side === 1 ? '#ffd166' : '#7fd1ff'
-    ctx.fillRect(x - 18, top, 36 * Math.max(0, u.hp / u.maxHp), 4)
+    // Health shows once a unit is hurt, beneath the characters so a bar never covers a face.
+    if (u.hp < u.maxHp) {
+      ctx.fillStyle = '#3a2414'
+      ctx.fillRect(x - 18, top, 36, 4)
+      ctx.fillStyle = u.side === 1 ? '#ffd166' : '#7fd1ff'
+      ctx.fillRect(x - 18, top, 36 * Math.max(0, u.hp / u.maxHp), 4)
+    }
     if (u.slowUntil > state.time) {
       ctx.save()
       ctx.translate(x + 24, top + 3)
@@ -613,6 +612,10 @@ function draw() {
       ctx.restore()
     }
   }
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(models.render(canvas.width, canvas.height), 0, 0)
+  ctx.restore()
   for (const e of state.effects) {
     if (e.blast) {
       // The big fart: a green cloud billowing out over the right (home) half.

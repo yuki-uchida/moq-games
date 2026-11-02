@@ -1,8 +1,10 @@
-// Local-only review sheets: every character's walk, attack and hit reaction on the game clock,
-// rendered by the real LaneModels at the in-game size (×1) and enlarged (×3) for detail.
+// Local-only review sheets: every character's walk, attack, hit reaction and knock-out on the game clock,
+// rendered by the real LaneModels at the in-game size (×1) and enlarged (×3) for detail, plus the front
+// line of a deterministic melee as main.js draws it (duel-pc.png, duel-portrait.png, 50ms per tile).
 // Usage: LANE_URL=… node examples/games/lane-battle/motion-sheet.mjs [outDir]
 import { chromium } from '@playwright/test'
 import fs from 'node:fs/promises'
+import sharp from 'sharp'
 const root = process.argv[2] || process.env.LANE_EVIDENCE_DIR || '/tmp/lane-motion-sheets'
 const url = process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/'
 await fs.mkdir(root, { recursive: true })
@@ -133,4 +135,55 @@ for (const zoom of [1, 3])
       await fs.writeFile(file, Buffer.from(data.split(',')[1], 'base64'))
       console.log(file)
     }
+await page.close()
+
+// The front line as the game draws it: two カチカチうんこ against two 清掃員 at melee range, every 50ms
+// through both sides' strikes and hit reactions, on desktop and on a portrait phone.
+const duel = `
+export function createGame(stage = 0, deck, seed) {
+  const s = fixtureBase(stage, deck, seed)
+  s.spawn = s.turret = 1e9
+  s.opened = true
+  summon(s, 0); summon(s, 0, -1); s.cooldowns[0] = 0; summon(s, 0); summon(s, 0, -1)
+  for (const [u, x] of s.units.map((u, i) => [u, [500, 468, 520, 455][i]])) Object.assign(u, { x, hp: 1e6, maxHp: 1e6 })
+  return s
+}`
+for (const [name, width, height, box] of [
+  ['pc', 1280, 800, [0.3, 0.6, 0.25, 0.3]],
+  ['portrait', 390, 844, [0.25, 0.62, 0.42, 0.2]]
+]) {
+  const view = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 })
+  await view.route('**/lane-battle/simulation.js*', async (route) => {
+    const response = await route.fetch()
+    const body = (await response.text()).replace('export function createGame(', 'function fixtureBase(') + duel
+    route.fulfill({ response, body })
+  })
+  await view.clock.install({ time: new Date(0) })
+  await view.clock.pauseAt(new Date(0))
+  await view.goto(url)
+  while (!(await view.locator('dialog[open]').count())) await view.clock.runFor(50)
+  await view.getByRole('button', { name: 'ステージ選択へ' }).click()
+  await view.getByRole('button', { name: 'ブリッと出撃' }).click()
+  const tiles = []
+  for (let i = 0; i < 24; i++) {
+    await view.clock.runFor(50)
+    const shot = await view.locator('#field canvas').screenshot()
+    const { width: w, height: h } = await sharp(shot).metadata()
+    const crop = {
+      left: Math.round(w * box[0]),
+      top: Math.round(h * box[1]),
+      width: Math.round(w * box[2]),
+      height: Math.round(h * box[3])
+    }
+    tiles.push(await sharp(shot).extract(crop).resize(400).png().toBuffer())
+  }
+  const { height: th } = await sharp(tiles[0]).metadata()
+  const file = `${root}/duel-${name}.png`
+  await sharp({ create: { width: 405 * 6, height: (th + 5) * 4, channels: 3, background: '#fff' } })
+    .composite(tiles.map((input, i) => ({ input, left: (i % 6) * 405, top: Math.floor(i / 6) * (th + 5) })))
+    .png()
+    .toFile(file)
+  console.log(file)
+  await view.close()
+}
 await browser.close()

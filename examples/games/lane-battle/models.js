@@ -557,7 +557,8 @@ const MOVES = {
   base: 0.25,
   tool: false,
   ko: 1,
-  mass: 1
+  mass: 1,
+  stand: 0.26
 }
 function moveBody(b, p, c) {
   const { a, g, h, walk } = c
@@ -629,7 +630,7 @@ const MODELS = {
   // ── Poop army ──
   katachi: {
     size: 1,
-    moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16 },
+    moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16, stand: 0.32 },
     build(k) {
       poop(k, BROWN, { arms: ['B'] })
       // Kabuto: a bronze bowl, a flared neck guard and golden kuwagata horns; a lacquered round shield.
@@ -663,7 +664,11 @@ const MODELS = {
       // The throwing arm is the lead one, long enough to clear the body when it lets go.
       const hand = mitten(k, 'F', '#8a5229', [0.31, 0.4, 0.2], 'spine', 0.24, 0.07)
       k.bone('pellet', 'armF', hand)
-      k.add(GEO.sphere, '#6b3c1c', [hand[0], hand[1] - 0.02, hand[2] + 0.04], 0.085, undefined, { bone: 'pellet' })
+      k.add(GEO.sphere, '#4a2810', [hand[0], hand[1] - 0.02, hand[2] + 0.05], 0.085, undefined, { bone: 'pellet' })
+      k.add(GEO.ball, '#ffe6c8', [hand[0] - 0.02, hand[1] + 0.02, hand[2] + 0.12], 0.022, undefined, {
+        bone: 'pellet',
+        glow: true
+      })
       k.bone('muzzle', 'armF', hand)
     },
     act(b, a, c) {
@@ -680,7 +685,17 @@ const MODELS = {
   },
   geri: {
     size: 1.14,
-    moves: { lunge: 0.34, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
+    moves: {
+      lunge: 0.34,
+      back: 0.12,
+      rear: 0.2,
+      lean: 0.36,
+      squash: 0.17,
+      stretch: 0.14,
+      smear: 0.22,
+      bend: 0.2,
+      stand: 0.22
+    },
     build(k) {
       poop(k, '#9a5d2e', { mood: 'angry' })
       k.add(swirlBand(0.52, 0.61), '#3f8f4a', [0, 0, 0], 1)
@@ -760,7 +775,8 @@ const MODELS = {
       smear: 0.2,
       bend: -0.12,
       hop: 0.07,
-      mass: 1.5
+      mass: 1.5,
+      stand: 0.2
     },
     build(k) {
       poop(k, '#5e3518', { arms: [] })
@@ -789,7 +805,8 @@ const MODELS = {
       slam: 0.22,
       rise: 0.1,
       bend: 0.12,
-      mass: 1.4
+      mass: 1.4,
+      stand: 0.3
     },
     build(k) {
       poop(k, '#4a2a12', { mood: 'proud', arms: [] })
@@ -909,7 +926,8 @@ const MODELS = {
       bend: 0.1,
       walk: 'waddle',
       hop: 0.06,
-      mass: 1.15
+      mass: 1.15,
+      stand: 0.32
     },
     build(k) {
       k.chain = [0.2, 0.36, 0.5]
@@ -958,7 +976,8 @@ const MODELS = {
       stretch: 0.08,
       bend: 0.18,
       walk: 'waddle',
-      hop: 0.07
+      hop: 0.07,
+      stand: 0.28
     },
     build(k) {
       k.chain = [0.3, 0.55, 0.8]
@@ -1021,7 +1040,8 @@ const MODELS = {
       bend: 0.22,
       walk: 'waddle',
       hop: 0.05,
-      mass: 1.6
+      mass: 1.6,
+      stand: 0.2
     },
     build(k) {
       k.chain = [0.3, 0.5, 0.72]
@@ -1064,7 +1084,8 @@ const MODELS = {
       rise: 0,
       bend: 0.06,
       walk: 'waddle',
-      hop: 0.07
+      hop: 0.07,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.2, 0.38, 0.5]
@@ -1074,21 +1095,24 @@ const MODELS = {
         k.add(GEO.box, '#3a3a3a', [x, 0.41, 0], [0.018, 0.018, 0.68], undefined, { line: false })
       k.add(GEO.rbox, '#2a2a2a', [0, 0.12, 0.31], [0.18, 0.09, 0.05])
       k.add(GEO.rbox, '#ff8a2a', [0, 0.12, 0.335], [0.12, 0.05, 0.01], undefined, { glow: true })
-      k.bone('meat', 'chest', [0, 0.47, 0])
+      k.bone('meat', 'chest', [0, 0.5, 0])
       for (const [x, z, r] of [
         [-0.13, 0.05, 0.3],
         [0.12, -0.08, -0.4],
         [0.02, 0.15, 0.1]
       ]) {
-        k.add(GEO.rbox, '#9b3f2c', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'meat' })
-        k.add(GEO.box, '#f6dccb', [x, 0.497, z], [0.24, 0.008, 0.035], [0.12, r, 0], { bone: 'meat', line: false })
+        k.add(GEO.rbox, '#9b3f2c', [x, 0.5, z], [0.25, 0.065, 0.16], [0.3, r, 0], { bone: 'meat' })
+        k.add(GEO.box, '#f6dccb', [x, 0.534, z + 0.01], [0.24, 0.008, 0.035], [0.3, r, 0], {
+          bone: 'meat',
+          line: false
+        })
         for (const d of [-0.05, 0.05])
           k.add(
             GEO.box,
             '#3a1810',
-            [x + Math.cos(r) * d, 0.498, z - Math.sin(r) * d],
+            [x + Math.cos(r) * d, 0.535, z - Math.sin(r) * d + 0.01],
             [0.012, 0.006, 0.15],
-            [0.12, r, 0],
+            [0.3, r, 0],
             {
               bone: 'meat',
               line: false
@@ -1164,7 +1188,8 @@ const MODELS = {
       stretch: 0.1,
       bend: 0.16,
       walk: 'waddle',
-      hop: 0.06
+      hop: 0.06,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.2, 0.4, 0.58]
@@ -1204,7 +1229,8 @@ const MODELS = {
       bend: 0.1,
       walk: 'waddle',
       hop: 0.06,
-      mass: 1.15
+      mass: 1.15,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.22, 0.42, 0.62]
@@ -1236,7 +1262,8 @@ const MODELS = {
       stretch: 0.08,
       bend: 0.06,
       walk: 'waddle',
-      hop: 0.05
+      hop: 0.05,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.15, 0.3, 0.45]
@@ -1267,6 +1294,7 @@ const MODELS = {
         [0.2, 0.42, -0.14, 0.09]
       ])
         k.add(GEO.sphere, '#8a8e87', [x, y, z], [w, 0.04, w * 0.8], [-1.15, 0, 0.4 * x], { bone: 'lid' })
+      k.add(GEO.sphere, '#9b9f98', [-0.3, 0.6, -0.2], [0.2, 0.08, 0.16], [-1.0, 0.4, 0.5], { bone: 'lid' })
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
     act(b, a) {
@@ -1285,7 +1313,8 @@ const MODELS = {
       stretch: 0.1,
       bend: 0.32,
       walk: 'hop',
-      hop: 0.08
+      hop: 0.08,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.3, 0.52, 0.72]
@@ -1359,17 +1388,18 @@ const MODELS = {
   cleaner: {
     size: 1,
     moves: {
-      lunge: 0.12,
+      lunge: 0.06,
       back: 0.05,
       rear: 0.14,
-      lean: 0.26,
+      lean: 0.18,
       squash: 0.04,
       stretch: 0.03,
-      bend: 0.3,
+      bend: 0.2,
       walk: 'legs',
       stride: 18,
       tool: true,
-      base: 0.12
+      base: 0.12,
+      stand: 0.34
     },
     build(k) {
       person(k, '#3d6fb6')
@@ -1382,8 +1412,8 @@ const MODELS = {
       k.add(GEO.box, '#f4f4f4', along(-0.38), [0.24, 0.05, 0.08], undefined, { bone: 'armB' })
     },
     act(b, a) {
-      b.armB.rotation.z += beat(a, 3.1, 1.45, 0.25)
-      b.armF.rotation.z += beat(a, 2.6, 1.0)
+      b.armB.rotation.z += beat(a, 3.1, 1.3, 0.25)
+      b.armF.rotation.z += beat(a, 2.6, 0.95)
       b.legF.rotation.z += beat(a, 0.1, 0.45)
       b.legB.rotation.z += beat(a, -0.15, -0.25)
     }
@@ -1391,17 +1421,18 @@ const MODELS = {
   mop: {
     size: 1,
     moves: {
-      lunge: 0.14,
+      lunge: 0.07,
       back: 0.06,
       rear: 0.1,
-      lean: 0.2,
+      lean: 0.15,
       squash: 0.05,
       stretch: 0.03,
-      bend: 0.22,
+      bend: 0.16,
       walk: 'legs',
       stride: 18,
       tool: true,
-      base: 0.12
+      base: 0.12,
+      stand: 0.34
     },
     build(k) {
       person(k, '#7b5aa6')
@@ -1444,7 +1475,8 @@ const MODELS = {
       rise: 0,
       bend: 0.1,
       walk: 'hop',
-      hop: 0.08
+      hop: 0.08,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.2, 0.4, 0.58]
@@ -1511,7 +1543,8 @@ const MODELS = {
       hop: 0.04,
       base: 0.5,
       ko: 0.12,
-      mass: 1.4
+      mass: 1.4,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.12, 0.24, 0.36]
@@ -1657,7 +1690,8 @@ const MODELS = {
       bend: 0.2,
       walk: 'waddle',
       hop: 0.04,
-      mass: 1.5
+      mass: 1.5,
+      stand: 0.2
     },
     build(k) {
       k.chain = [0.25, 0.5, 0.72]
@@ -1794,6 +1828,9 @@ export class Actor {
   }
 }
 
+/** A typical melee gap in lane units, and how wide it looks in model units on the desktop presentation. */
+const MELEE = [32, 0.43]
+
 /** Procedural three.js characters, rendered into an offscreen WebGL canvas in the 1000×450 lane space. */
 export class LaneModels {
   canvas = document.createElement('canvas')
@@ -1871,11 +1908,17 @@ export class LaneModels {
   }
 
   /**
-   * Lane-x offset at which a unit is drawn: a little behind its logical point, so facing fighters stand
-   * apart and only meet on the strike; back rows stand a step further back.
+   * Lane-x offset at which a unit is drawn: behind its logical point by its stand-off, so facing fighters
+   * keep their faces and bodies apart and only a weapon or the striking body meets the foe; back rows
+   * stand a step further back.
    */
   offset(key, side, row = 0) {
-    return side * ((0.22 * modelSize(key) + row * 0.07) * this.presentation[0])
+    const k = this.presentation[0]
+    // A typical melee gap (MELEE lane units) looks the same on every screen: on large-scale (portrait)
+    // presentations it would shrink in model terms, so the stand-off grows to make up for it.
+    return (
+      side * ((template(key).moves.stand * modelSize(key) + row * 0.07) * k + Math.max(0, MELEE[1] * k - MELEE[0]) / 2)
+    )
   }
 
   /** Lane offset from a unit's base to its shot emitter at the moment of release, for the current presentation. */
