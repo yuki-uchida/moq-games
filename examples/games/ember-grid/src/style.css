@@ -21,6 +21,70 @@ button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: -3px;
 }
+#touch-assist {
+  display: none;
+  position: absolute;
+  top: 56px;
+  right: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #9ab1a8;
+  border-radius: 8px;
+  background: #385d57;
+  color: white;
+}
+#touch-assist[aria-pressed='true'] {
+  outline: 2px solid #f4cf7b;
+}
+@media (pointer: coarse) {
+  #touch-assist {
+    display: inline-block;
+  }
+  .console #log {
+    min-height: 44px;
+    padding-right: 52px;
+  }
+  .console:has(#tutorial:not([hidden])) #touch-assist {
+    top: 104px;
+  }
+}
+#touch-choices {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  padding: 8px;
+}
+#touch-choices[open] {
+  display: flex;
+  flex-direction: column;
+}
+#touch-choices::backdrop {
+  background: transparent;
+}
+#touch-choices > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+#touch-choices button {
+  min-width: 44px;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+#touch-cancel {
+  flex: none;
+  width: 100%;
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  #touch-choices > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 #help-dialog {
   max-width: min(680px, 94vw);
   max-height: 90dvh;
@@ -980,6 +1044,12 @@ fieldset label {
   #phase-banner {
     animation: none;
   }
+}
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
 }
 #fast,
 #detail-button {

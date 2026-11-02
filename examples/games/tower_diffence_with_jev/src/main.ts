@@ -127,6 +127,8 @@ import {
   recordStars,
   starsFor,
   starsOf,
+  STAR_GOALS,
+  nextGoal,
   totalStars
 } from './progression/StageProgress'
 import { CoachMarks } from './ui/CoachMarks'
@@ -239,7 +241,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <header class="topbar"><a class="games-home-link" href="../../../index.html" aria-label="MoQ Games ホームへ戻る"><span aria-hidden="true">←</span> MoQ Games</a><div class="tools"><button id="game-title-return" class="unused-navigation" tabindex="-1" aria-label="保存してタイトルに戻る">Title</button><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot jev-ui" aria-hidden="true"></span><span id="settings-label">設定</span></button></div></header>
 <main class="game-layout" inert>
 <section class="battle-panel" aria-label="戦場">
-<div class="stage-label">Stage <span id="stage">01</span></div><span id="phase" class="sr-only" role="status"></span>
+<div class="stage-label">Stage <span id="stage">01</span><span id="stage-goal" class="stage-goal" hidden></span></div><span id="phase" class="sr-only" role="status"></span>
 <div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><span class="sr-only">地図をドラッグ・スクロールして移動</span></div>
 <div class="map-shell"><div id="map-scroll" tabindex="0" aria-label="戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動"><div id="map-world"><div id="field"><div id="base-health" class="base-health"><progress id="player-bar" max="${CONFIG.baseHp}" value="${CONFIG.baseHp}" aria-label="拠点の残り体力" aria-describedby="player-hp"></progress><span id="player-hp" class="sr-only">100 / 100</span></div></div></div></div></div>
 <p id="feedback" class="sr-only" role="status" aria-live="polite">4つのフィールドから遠征先を選ぼう。</p>
@@ -257,10 +259,11 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><ul id="stage-goals" class="stage-goals" aria-label="星の条件"></ul><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
+<dialog id="pause-dialog" class="panel pause-dialog" aria-labelledby="pause-title"><h2 id="pause-title">一時停止中</h2><div id="pause-actions" class="pause-actions"><button id="pause-resume" class="primary">▶ 再開</button><button id="pause-restart">↻ もう一度</button><button id="pause-exit">ステージ選択へ</button></div><div id="pause-confirm" class="pause-confirm" hidden><p>進行状況は失われます</p><button id="pause-confirm-accept">確認して実行</button><button id="pause-confirm-cancel">戻る</button></div></dialog>
 <dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><span id="campaign-loading-stage" class="loading-stage" aria-hidden="true"></span><h2 id="campaign-loading-title">キャラクターを準備中</h2><div id="campaign-loading-party" class="loading-party" aria-hidden="true"></div><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><p id="campaign-loading-tip" class="loading-tip" aria-hidden="true"></p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
 ${resultMarkup(emblems.cleared)}`
 initializeFortificationIcons()
@@ -445,8 +448,10 @@ $<HTMLInputElement>('music-volume').oninput = () => {
   $('music-volume-value').textContent = `${Math.round(musicPreferences.volume * 100)}%`
   saveMusicPreferences(musicPreferences)
 }
+// Player pause during the assault: never saved, cleared whenever the dialog closes or the battle ends.
+let paused = false
 function syncBattleMusic() {
-  battleMusic.setSuspended(pageSuspended || campaignLoading.open)
+  battleMusic.setSuspended(pageSuspended || campaignLoading.open || paused)
   battleMusic.setBattle(
     started && engine.state.phase === 'assault',
     `${engine.state.seed}:${engine.state.fieldId}:${engine.state.stage}`,
@@ -512,7 +517,7 @@ function closeResult() {
   resultRevealAt = 0
   $<HTMLDialogElement>('result').close()
 }
-const battleHud = new BattleHud(battlePanel)
+const battleHud = new BattleHud(battlePanel, undefined, () => pauseBattle())
 const battleFeedback = new BattleFeedback({
   field: $('field'),
   overlayParent: battlePanel,
@@ -556,6 +561,58 @@ for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data
   }
 }
 const gatePanel = new PanelDialog($<HTMLDialogElement>('gate-panel'), [$('gate-toggle')], $('gate-close'))
+const pauseDialog = $<HTMLDialogElement>('pause-dialog')
+const pausePanel = new PanelDialog(pauseDialog, [], $('pause-resume'))
+let pauseAction: 'restart' | 'exit' | null = null
+function pauseBattle() {
+  if (paused || !assaulting() || document.querySelector('dialog[open]')) return
+  paused = true
+  pauseAction = null
+  $('pause-actions').hidden = false
+  $('pause-confirm').hidden = true
+  cancelPlacementGestures()
+  pausePanel.open(battleHud.pauseButton)
+  syncBattleMusic()
+}
+// Any way of closing (resume, Esc, battle end, new stage) lands here, so a pause can never get stuck.
+pauseDialog.addEventListener('close', () => {
+  paused = false
+  syncBattleMusic()
+})
+$('pause-resume').onclick = () => pausePanel.close()
+function runPauseAction(action: 'restart' | 'exit') {
+  pausePanel.close(false)
+  if (action === 'exit') return $('retry').click()
+  battleClock?.stop()
+  selectedStage = engine.state.stage
+  startFreshCampaign()
+}
+function askPauseAction(action: 'restart' | 'exit') {
+  if (engine.state.time <= 5) return runPauseAction(action)
+  pauseAction = action
+  $('pause-actions').hidden = true
+  $('pause-confirm').hidden = false
+  $('pause-confirm-accept').focus({ preventScroll: true })
+}
+$('pause-restart').onclick = () => askPauseAction('restart')
+$('pause-exit').onclick = () => askPauseAction('exit')
+$('pause-confirm-accept').onclick = () => pauseAction && runPauseAction(pauseAction)
+$('pause-confirm-cancel').onclick = () => {
+  pauseAction = null
+  $('pause-actions').hidden = false
+  $('pause-confirm').hidden = true
+  $('pause-resume').focus({ preventScroll: true })
+}
+window.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement
+  if (
+    event.key.toLowerCase() !== 'p' || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+    ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable
+  )
+    return
+  if (paused) pausePanel.close()
+  else pauseBattle()
+})
 const saveConfirm = new PanelDialog($<HTMLDialogElement>('save-confirm'), [$('save-reset')], $('save-confirm-cancel'))
 const launchDialog = $<HTMLDialogElement>('launch')
 const titleDialog = $<HTMLDialogElement>('title-screen')
@@ -1130,7 +1187,7 @@ let autoSkillAt = 0, autoCastAt = -1e9, autoBattle = ''
 // Simulation time at which AUTO first saw each special ready, so it never hoards one for long.
 const autoReadySince = new Map<number, number>()
 function autoSkills(now: number) {
-  if (!skillBar.autoEnabled || now - autoSkillAt < 250) return
+  if (paused || !skillBar.autoEnabled || now - autoSkillAt < 250) return
   autoSkillAt = now
   const state = engine.state,
     battle = `${state.battleId}:${state.stage}`
@@ -1746,6 +1803,17 @@ function renderStageSelect() {
     card.querySelector('.stage-stars')!.textContent = open ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : ''
     card.setAttribute('aria-label', `ステージ${stage}${open ? `・クリア報酬 ${stageReward(stage)} コイン${cleared ? `・クリア済み・星${stars}/3` : ''}` : '・未解放'}`)
   }
+  const best = starsOf(stageProgress, selectedStage)
+  $('stage-goals').replaceChildren(
+    ...STAR_GOALS.map((label, i) => {
+      const got = best > i,
+        item = document.createElement('li')
+      item.dataset.got = String(got)
+      item.setAttribute('aria-label', `星${i + 1} ${label}${got ? ' 達成済み' : ''}`)
+      item.innerHTML = `<span class="goal-star" aria-hidden="true">${(got ? '★' : '☆').repeat(i + 1)}</span><span aria-hidden="true">${label}${got ? ' ✓' : ''}</span>`
+      return item
+    })
+  )
   updateStart()
   const have = owned(stageProgress)
   $('formation-count').textContent = `${stageProgress.formation.length} / ${FORMATION_SLOTS}`
@@ -2684,7 +2752,7 @@ function initializeClock() {
       step: (dt) => {
         if (!started || !renderer.campaignPrepared || engine.state.phase !== 'assault') return false
         // Cast time-stop: the clock keeps running but its steps are dropped, so no time catches up afterwards.
-        if (performance.now() < freezeUntil) {
+        if (paused || performance.now() < freezeUntil) {
           persistOutcome()
           return true
         }
@@ -2759,7 +2827,7 @@ function pageHidden(event: PageTransitionEvent) {
 function pageShown(event: PageTransitionEvent) {
   if (!event.persisted || !pageSuspended || simulationDisposed) return
   pageSuspended = false
-  battleMusic.setSuspended(campaignLoading.open)
+  battleMusic.setSuspended(campaignLoading.open || paused)
   soundPlayer.setEnabled(soundPreferences.enabled)
   resumedAfterSuspension = true
   initializeClock()
@@ -2815,6 +2883,7 @@ function updateDefenderPreview() {
 function frame(now: number) {
   animationFrameId = 0
   if (simulationDisposed || pageSuspended || document.visibilityState === 'hidden') return
+  if (paused && !assaulting()) pausePanel.close(false)
   // Menu screens have no running battlefield. Keep asynchronous settings feedback
   // alive without rebuilding hidden world art, placement controls or battle UI.
   if (!started) {
@@ -2880,6 +2949,12 @@ function frame(now: number) {
     updateArtModeStatus()
     $('gold').textContent = `${save.gold} G`
     $('stage').textContent = String(state.stage).padStart(2, '0')
+    const goal = nextGoal(starsOf(stageProgress, state.stage)),
+      goalText = goal ? `目標 ${'★'.repeat(goal.stars)} ${goal.label}` : ''
+    if ($('stage-goal').textContent !== goalText) {
+      $('stage-goal').textContent = goalText
+      $('stage-goal').hidden = !goal
+    }
     $('app').dataset.phase = state.phase
     $('app').dataset.economyVersion = String(state.economyVersion ?? 1)
     $('player-bar').dataset.health = state.playerBaseHp <= CONFIG.baseHp * 0.3 ? 'low' : 'healthy'

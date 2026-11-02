@@ -116,6 +116,12 @@ export function toggleFormation(p: StageProgress, type: AllyType): boolean {
 export const starsFor = (baseHp: number, maxHp: number = CONFIG.baseHp): number =>
   baseHp >= maxHp ? 3 : baseHp >= maxHp / 2 ? 2 : 1
 
+/** What each star asks for; the stage select, the preparation chip and the result hint all read this. */
+export const STAR_GOALS = ['クリア', '拠点HP半分以上', '拠点ノーダメージ'] as const
+/** The next star still to earn given the best rating, or null once all three are won. */
+export const nextGoal = (best: number): { stars: number; label: string } | null =>
+  best >= 3 ? null : { stars: best + 1, label: STAR_GOALS[Math.max(0, best)] }
+
 export const starsOf = (p: StageProgress, stage: number): number => p.stars?.[stage - 1] ?? 0
 export const totalStars = (p: StageProgress): number => (p.stars ?? []).reduce((a, b) => a + b, 0)
 

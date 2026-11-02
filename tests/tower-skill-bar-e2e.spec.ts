@@ -49,7 +49,8 @@ test('skill bar is hidden in preparation and shows one accessible button per all
   await openOfflineCampaign(page)
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'preparation')
   await expect(page.locator('#skill-bar')).toBeHidden()
-  await seed(page)
+  // Far from the cave, so "nothing in range yet" still holds however slowly the page renders.
+  await seed(page, { far: true })
   await assault(page)
   const bar = page.locator('#skill-bar'),
     buttons = page.locator('.skill-btn')

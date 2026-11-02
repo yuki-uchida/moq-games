@@ -102,6 +102,8 @@ let danger = dangerZoneDefault()
 let pending: string | undefined
 let undo: { id: string; x: number; y: number } | undefined
 let focusCell = 0
+let restoreBoardFocus = false
+let focusParking: HTMLElement | null = null
 let fast = false
 let forecastTrigger: HTMLElement | null = null
 let bannerVersion = 0
@@ -122,6 +124,8 @@ settingsButton.textContent = '⚙'
 settingsButton.setAttribute('aria-label', '設定')
 document.querySelector('header')!.append(settingsButton)
 let previousDanger = dangerZoneDefault()
+let render = () => {}
+const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
 setStoryEnabled(storyEnabled())
 const settings = () =>
   openSettings(() => {
@@ -155,7 +159,21 @@ app.insertAdjacentHTML(
   '<dialog id="detail" aria-labelledby="detail-title"><div id="detail-content"></div><button id="detail-close">閉じる</button></dialog>'
 )
 field.style.setProperty('--grid-size', String(size))
-const stage = new Stage(field, board)
+let stage: Stage
+let animation: BattleAnimation
+let stageAvailable = false
+function createStage() {
+  try {
+    stage = new Stage(field, board)
+    animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
+    stageAvailable = true
+  } catch {
+    stageAvailable = false
+  }
+  return stageAvailable
+}
+createStage()
+let contextAvailable = true
 const contextNotice = document.createElement('div')
 contextNotice.className = 'context-notice'
 contextNotice.setAttribute('role', 'status')
@@ -164,6 +182,7 @@ contextNotice.hidden = true
 document.body.append(contextNotice)
 field.addEventListener('stage-context', (event) => {
   const restored = (event as CustomEvent<boolean>).detail
+  contextAvailable = restored
   contextNotice.hidden = restored
   document.querySelector<HTMLElement>('#app main')!.inert = !restored || !playing
   if (restored) render()
@@ -187,10 +206,53 @@ const story = new StoryFlow(
   },
   () => save.difficulty
 )
-const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
+document
+  .querySelector('#selection')!
+  .insertAdjacentHTML(
+    'afterend',
+    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false">⊞</button>'
+  )
+app.insertAdjacentHTML(
+  'beforeend',
+  '<dialog id="touch-choices" aria-label="マスを選択"><div></div><button type="button" id="touch-cancel">閉じる</button></dialog>'
+)
+const touchAssist = document.querySelector<HTMLButtonElement>('#touch-assist')!
+const touchChoices = document.querySelector<HTMLDialogElement>('#touch-choices')!
+const consolePanel = document.querySelector<HTMLElement>('.console')!
+function positionTouchChoices() {
+  const bounds = consolePanel.getBoundingClientRect()
+  Object.assign(touchChoices.style, {
+    left: `${bounds.left}px`,
+    top: `${bounds.top}px`,
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`
+  })
+}
+new ResizeObserver(positionTouchChoices).observe(consolePanel)
+window.addEventListener('resize', positionTouchChoices)
+touchAssist.onclick = () =>
+  touchAssist.setAttribute('aria-pressed', String(touchAssist.getAttribute('aria-pressed') !== 'true'))
+document.querySelector<HTMLButtonElement>('#touch-cancel')!.onclick = () => touchChoices.close()
+function chooseNearby(x: number, y: number) {
+  const choices = touchChoices.querySelector('div')!
+  choices.replaceChildren()
+  for (let row = Math.max(0, y - 1); row <= Math.min(size - 1, y + 1); row++)
+    for (let column = Math.max(0, x - 1); column <= Math.min(size - 1, x + 1); column++) {
+      const original = cells[row * size + column]
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = original.getAttribute('aria-label')
+      button.onclick = () => {
+        touchChoices.close()
+        void choose(column, row)
+      }
+      choices.append(button)
+    }
+  positionTouchChoices()
+  touchChoices.showModal()
+}
 const navigation = document.querySelector('nav')!
-const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
 navigation.insertAdjacentHTML(
   'afterbegin',
   '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険</button><button id="undo">↶ 戻す</button>'
@@ -201,7 +263,8 @@ document
 // Status tags float above the 3D layer on a second projected grid, nearer cells on top.
 const marks: HTMLSpanElement[] = []
 let longPress: ReturnType<typeof setTimeout> | undefined
-let suppressClick = false
+let suppressClick = false,
+  touchTap = false
 let touchStart: { x: number; y: number } | undefined
 for (let y = 0; y < size; y++)
   for (let x = 0; x < size; x++) {
@@ -209,12 +272,14 @@ for (let y = 0; y < size; y++)
     cell.className = 'cell'
     cell.tabIndex = x === 0 && y === 0 ? 0 : -1
     cell.style.cssText = `--x:${x};--y:${y}`
-    cell.onclick = () => {
+    cell.onclick = (event) => {
       if (suppressClick) {
         suppressClick = false
         return
       }
-      void choose(x, y)
+      // pointerdown carries the input type everywhere; keyboard activation (detail 0) bypasses the chooser.
+      if (touchTap && event.detail > 0 && touchAssist.getAttribute('aria-pressed') === 'true') chooseNearby(x, y)
+      else void choose(x, y)
     }
     cell.oncontextmenu = (event) => {
       const target = game.units.find((unit) => unit.hp > 0 && unit.x === x && unit.y === y)
@@ -224,6 +289,7 @@ for (let y = 0; y < size; y++)
       }
     }
     cell.onpointerdown = (event) => {
+      touchTap = event.pointerType === 'touch'
       if (event.pointerType !== 'touch') return
       suppressClick = false
       touchStart = { x: event.clientX, y: event.clientY }
@@ -299,9 +365,16 @@ function positionTags() {
 }
 new ResizeObserver(() => requestAnimationFrame(positionTags)).observe(field)
 function lockPresentation() {
+  restoreBoardFocus ||= Boolean(
+    document.activeElement?.closest('#board, nav, #forecast') || document.activeElement === document.body
+  )
   busy = true
   cells.forEach((cell) => (cell.disabled = true))
   document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
+  if (restoreBoardFocus && document.activeElement === document.body && !document.querySelector('dialog[open]')) {
+    focusParking = document.querySelector<HTMLButtonElement>('#restart')!
+    focusParking.focus()
+  }
 }
 /** Chapter-report portrait: an idle pose rendered from the unit's own 3D model. */
 const portrait = (u: Unit) => `<img class="portrait" alt="" src="${ready ? stage.portrait(u.role) : ''}">`
@@ -376,6 +449,7 @@ async function phaseBanner(phase: 'ally' | 'enemy', token: number) {
 }
 board.onpointerleave = () => hover(-1, -1)
 function cancelForecast(restore = true) {
+  if (!restore && document.activeElement?.closest('#forecast')) restoreBoardFocus = true
   pending = undefined
   document.querySelector<HTMLElement>('#forecast')!.hidden = true
   if (restore) forecastTrigger?.focus()
@@ -433,7 +507,9 @@ function hover(x: number, y: number) {
   hovered = id
   if (!busy) render()
 }
-function render() {
+render = () => {
+  document.querySelector<HTMLElement>('#app main')!.inert = !playing || !contextAvailable
+  const focusedControl = document.activeElement as HTMLElement | null
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
@@ -491,7 +567,7 @@ function render() {
   })
   tutorial.update()
   requestAnimationFrame(positionTags)
-  stage.sync(game, unit?.id)
+  if (stageAvailable && playing) stage.sync(game, unit?.id)
   document.querySelector('#turn')!.textContent =
     `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
   document.querySelector('#count')!.textContent =
@@ -532,6 +608,29 @@ function render() {
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
   next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
+  if (focusedControl !== document.body && document.activeElement === document.body) restoreBoardFocus = true
+  if (
+    restoreBoardFocus &&
+    !busy &&
+    ready &&
+    !document.querySelector('dialog[open]') &&
+    (document.activeElement === document.body || document.activeElement === focusParking)
+  ) {
+    const ally = game.units.find((candidate) => candidate.id === selected && candidate.hp > 0)
+    if (ally && game.phase === 'ally') {
+      cells[focusCell].tabIndex = -1
+      focusCell = ally.y * size + ally.x
+    }
+    const target =
+      game.phase === 'ally'
+        ? cells[focusCell]
+        : game.phase === 'won'
+          ? next
+          : document.querySelector<HTMLButtonElement>(game.phase === 'enemy' ? '#fast' : '#restart')!
+    restoreBoardFocus = false
+    focusParking = null
+    target.focus()
+  }
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
   if (playing && wasHidden && !result.hidden)
     audio.jingle(game.phase === 'lost' ? 'defeat' : game.stage === missions.length - 1 ? 'final' : 'victory')
@@ -729,23 +828,57 @@ document.querySelector('#wait')!.addEventListener('click', () => {
     afterAction()
   }
 })
-document.querySelector('#restart')!.addEventListener('click', () => {
-  generation++
-  story.cancel()
-  animation.cancel()
-  clearProgress(field)
-  busy = false
-  game = newGame(game.stage, game.formation)
-  save.suspend = snapshotGame(game)
-  audio.start()
-  selected = inspected = undefined
-  undo = undefined
-  cancelForecast(false)
-  render()
-  if (game.stage === 0) tutorial.start(tutorialEnabled())
-  // A retry replays the (skippable) chapter opening, then the phase banner.
-  if (ready) void openChapter(false)
-})
+function hasProgress() {
+  const initial = createGame(game.stage, game.formation, checkpoints[game.stage])
+  return (
+    game.turn !== 1 ||
+    game.phase !== 'ally' ||
+    game.potions !== initial.potions ||
+    JSON.stringify(game.units) !== JSON.stringify(initial.units)
+  )
+}
+function confirmDiscard(action: () => void) {
+  if (!hasProgress()) return action()
+  const dialog = document.createElement('dialog')
+  dialog.className = 'shell-dialog'
+  dialog.setAttribute('aria-labelledby', 'discard-title')
+  dialog.innerHTML =
+    '<h2 id="discard-title">⚠ 戦闘の進行を破棄しますか？</h2><p>現在の戦闘と中断記録が失われます。</p><button type="button" data-cancel>✕ 戻る</button><button type="button" data-confirm>↻ 破棄して続ける</button>'
+  document.body.append(dialog)
+  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick = () => dialog.close()
+  dialog.querySelector<HTMLButtonElement>('[data-confirm]')!.onclick = () => {
+    dialog.close()
+    action()
+  }
+  dialog.onkeydown = (event) => {
+    if (event.key !== 'Tab') return
+    event.preventDefault()
+    const next = document.activeElement?.hasAttribute('data-cancel') ? '[data-confirm]' : '[data-cancel]'
+    dialog.querySelector<HTMLButtonElement>(next)!.focus()
+  }
+  dialog.onclose = () => dialog.remove()
+  dialog.showModal()
+  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.focus()
+}
+document.querySelector('#restart')!.addEventListener('click', () =>
+  confirmDiscard(() => {
+    generation++
+    story.cancel()
+    animation.cancel()
+    clearProgress(field)
+    busy = false
+    game = newGame(game.stage, game.formation)
+    save.suspend = snapshotGame(game)
+    audio.start()
+    selected = inspected = undefined
+    undo = undefined
+    cancelForecast(false)
+    render()
+    if (game.stage === 0) tutorial.start(tutorialEnabled())
+    // A retry replays the (skippable) chapter opening, then the phase banner.
+    if (ready) void openChapter(false)
+  })
+)
 document.querySelector('#recover')!.addEventListener('click', async () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && recover(game, u)) {
@@ -811,8 +944,10 @@ function listMissions() {
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
     (button) =>
       (button.onclick = () => {
-        expedition.close()
-        startMission(Number(button.dataset.stage))
+        confirmDiscard(() => {
+          expedition.close()
+          startMission(Number(button.dataset.stage))
+        })
       })
   )
 }
@@ -846,6 +981,24 @@ preparation.innerHTML = '<span role="status" aria-live="polite"></span><button h
 document.querySelector('.field')!.append(preparation)
 const retry = preparation.querySelector('button')!
 retry.onclick = () => void prepareBattle()
+const soundNotice = document.createElement('div')
+soundNotice.className = 'sound-notice'
+soundNotice.setAttribute('role', 'status')
+soundNotice.hidden = true
+document.body.append(soundNotice)
+async function prepareSound(roles: string[], token: number) {
+  try {
+    await audio.prepare(roles)
+    if (token === generation) soundNotice.hidden = true
+  } catch {
+    if (token !== generation) return
+    soundNotice.textContent = '効果音を読み込めませんでした。バックグラウンドで再試行します。'
+    soundNotice.hidden = false
+    setTimeout(() => {
+      if (token === generation) void prepareSound(roles, token)
+    }, 5000)
+  }
+}
 async function prepareBattle() {
   const token = generation
   const roles = chapterRoles(game)
@@ -854,16 +1007,13 @@ async function prepareBattle() {
   const status = preparation.querySelector('span')!
   status.textContent = '3D モデルを準備中…'
   titleProgress(status.textContent)
+  void prepareSound(roles, token)
   try {
-    const results = await Promise.allSettled([
-      animation.prepare(roles, (done, total) => {
-        status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
-        titleProgress(status.textContent)
-      }),
-      audio.prepare(roles)
-    ])
+    await animation.prepare(roles, (done, total) => {
+      status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
+      titleProgress(status.textContent)
+    })
     if (token !== generation) return
-    if (results.some((result) => result.status === 'rejected')) throw new Error('Preparation failed')
     ready = true
     preparation.remove()
     titleProgress('準備完了')
@@ -911,13 +1061,32 @@ const titleProgress = showTitle(saved, {
       startMission(stage ?? save.furthest)
     }
   },
-  ending: () => {
-    generation++
+  ending: async () => {
+    const token = ++generation
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
     game.phase = 'won'
-    void story.victory(generation).then(() => location.reload())
+    // Portraits render from the loaded models; the title no longer preloads them.
+    await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
+    if (token === generation) void story.victory(token).then(() => location.reload())
   },
   settings,
   help: openHelp
 })
-void prepareBattle()
+if (!stageAvailable) {
+  const title = document.querySelector<HTMLElement>('.title-screen')!
+  const buttons = title.querySelectorAll<HTMLButtonElement>(
+    '[data-action=new], [data-action=continue], [data-action=chapters], [data-action=ending]'
+  )
+  buttons.forEach((button) => (button.disabled = true))
+  titleProgress('WebGLを利用できません。ブラウザの設定やハードウェアアクセラレーションを確認してください。')
+  const retryRenderer = document.createElement('button')
+  retryRenderer.textContent = '画面を再試行'
+  title.querySelector('.title-loading')!.after(retryRenderer)
+  retryRenderer.onclick = () => {
+    if (!createStage()) return
+    buttons.forEach((button) => (button.disabled = button.dataset.action !== 'new' && !saved))
+    titleProgress('章を選ぶと準備を開始します')
+    retryRenderer.remove()
+    render()
+  }
+} else titleProgress('章を選ぶと準備を開始します')

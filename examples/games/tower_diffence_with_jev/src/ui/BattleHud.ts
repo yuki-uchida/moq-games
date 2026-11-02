@@ -12,7 +12,9 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18.500 1.800 7.500l5.700 4.500L12 4l4.500 8 5.700-4.500L21 18.500Z" fill="currentColor" stroke="#2c3f33" stroke-width="1.600" stroke-linejoin="round"/><path d="M3.500 21.500h17" stroke="#2c3f33" stroke-width="2" stroke-linecap="round"/></svg>',
   coin: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#f4c542" stroke="#fff3d6" stroke-width="1.800"/><circle cx="12" cy="12" r="5.800" fill="none" stroke="#b98017" stroke-width="2"/></svg>',
   speed:
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.500v13l8.500-6.500Zm9.500 0v13L21 12Z" fill="currentColor"/></svg>'
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.500v13l8.500-6.500Zm9.500 0v13L21 12Z" fill="currentColor"/></svg>',
+  pause:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.500" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1.500" fill="currentColor"/></svg>'
 }
 
 function readSpeed(): BattleSpeed {
@@ -38,6 +40,7 @@ export class BattleHud {
   private readonly coinBox: HTMLElement
   private readonly coinNum: HTMLElement
   private readonly speedButton: HTMLButtonElement
+  readonly pauseButton: HTMLButtonElement
   private currentSpeed: BattleSpeed = readSpeed()
   private shown = false
   private speedShown = true
@@ -45,11 +48,11 @@ export class BattleHud {
   private lastCoins = -1
   private cache = { castle: '', level: '', enemies: '', crown: '', coins: '' }
 
-  constructor(parent: HTMLElement, private readonly onSpeed?: (speed: BattleSpeed) => void) {
+  constructor(parent: HTMLElement, private readonly onSpeed?: (speed: BattleSpeed) => void, private readonly onPause?: () => void) {
     this.root = document.createElement('div')
     this.root.className = 'battle-hud'
     this.root.hidden = true
-    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div>`
+    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-pause" type="button" aria-label="一時停止" title="一時停止 (P)" hidden>${ICONS.pause}</button><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div>`
     parent.append(this.root)
     const q = <T extends HTMLElement>(selector: string) => this.root.querySelector<T>(selector)!
     this.castle = q('.bhud-castle')
@@ -67,6 +70,8 @@ export class BattleHud {
     this.speedButton.addEventListener('click', () => {
       this.setSpeed(this.currentSpeed === 1 ? 2 : 1)
     })
+    this.pauseButton = q<HTMLButtonElement>('.bhud-pause')
+    this.pauseButton.addEventListener('click', () => this.onPause?.())
     this.paintSpeed()
   }
 
@@ -115,6 +120,8 @@ export class BattleHud {
       this.speedShown = speedShown
       this.speedButton.hidden = !speedShown
     }
+
+    this.pauseButton.hidden = state.phase !== 'assault'
 
     const hp = Math.max(0, Math.ceil(state.playerBaseHp)),
       ratio = Math.max(0, Math.min(1, state.playerBaseHp / CONFIG.baseHp))

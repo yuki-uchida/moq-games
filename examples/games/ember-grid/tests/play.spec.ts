@@ -1,6 +1,106 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { acceptDiscard, enterBattle } from './shell-helper'
+
+test('touch assistance offers large neighboring choices after rotation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await enterBattle(page)
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 }
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.getByRole('button', { name: /2,5 燈守/ }).tap()
+    const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+    await expect(dialog).toBeVisible()
+    const fieldBox = await page.locator('.field').boundingBox()
+    const dialogBox = await dialog.boundingBox()
+    expect(
+      fieldBox!.y + fieldBox!.height <= dialogBox!.y + 1 || fieldBox!.x + fieldBox!.width <= dialogBox!.x + 1
+    ).toBe(true)
+    for (const button of await dialog.getByRole('button').all()) {
+      const box = await button.boundingBox()
+      expect(box!.width).toBeGreaterThanOrEqual(44)
+      expect(box!.height).toBeGreaterThanOrEqual(44)
+    }
+    await page.screenshot({ path: `test-results/touch-assist-${viewport.width}.png` })
+    await dialog.getByRole('button', { name: /2,5 燈守/ }).tap()
+    await expect(dialog).not.toBeVisible()
+    await expect(page.getByRole('button', { name: /4,5 平地 移動可能/ })).toBeVisible()
+  }
+  await page.getByRole('button', { name: /4,5 平地 移動可能/ }).tap()
+  await page
+    .getByRole('dialog', { name: 'マスを選択' })
+    .getByRole('button', { name: /4,5 平地 移動可能/ })
+    .tap()
+  await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeVisible()
+})
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 844, height: 390 }
+]) {
+  test(`touch assistance disambiguates adjacent combat at ${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await enterBattle(page)
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    const enemy = await page.evaluate(() => {
+      const stage = (
+        document.querySelector('.stage') as HTMLCanvasElement & {
+          stage: { last: { game: import('../src/game').Game } }
+        }
+      ).stage
+      const game = stage.last.game
+      const archer = game.units.find((unit) => unit.role === 'archer' && unit.side === 'ally')!
+      const enemy = game.units.find((unit) => unit.side === 'enemy')!
+      Object.assign(archer, { x: 2, y: 4 })
+      Object.assign(enemy, { x: 3, y: 4 })
+      for (const key of ['2,4', '2,5', '3,4']) game.rocks.delete(key)
+      return { name: enemy.name, hp: enemy.hp }
+    })
+    await page.getByRole('button', { name: '敵の攻撃範囲' }).click()
+    await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
+    const cell = (x: number, y: number) => page.locator('.cell').nth(y * 10 + x)
+    const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+    await cell(3, 4).tap()
+    await dialog.getByRole('button', { name: /3,5 風読み/ }).tap()
+    await cell(2, 4).tap()
+    await dialog.getByRole('button', { name: /3,6 .*移動可能/ }).tap()
+    await expect(cell(2, 5)).toHaveAttribute('aria-label', /風読み/, { timeout: 30000 })
+    await cell(2, 5).tap()
+    await dialog.getByRole('button', { name: new RegExp(`4,5 ${enemy.name}`) }).tap()
+    await expect(page.locator('#forecast')).toBeVisible()
+    await page.getByRole('button', { name: '攻撃', exact: true }).tap()
+    await expect(cell(3, 4)).not.toHaveAttribute('aria-label', new RegExp(`HP ${enemy.hp}(?:\\D|$)`), {
+      timeout: 30000
+    })
+  })
+}
+test('touch choices remain readable in the final chapter', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await enterBattle(page, './', true)
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.getByRole('button', { name: '任務と編成' }).click()
+  await page.locator('[data-stage="5"]').click()
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 }
+  ]) {
+    await page.setViewportSize(viewport)
+    await page
+      .getByRole('button', { name: /燈守リオ/ })
+      .first()
+      .tap()
+    const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+    await expect(dialog).toBeVisible()
+    await page.screenshot({ path: `test-results/touch-assist-chapter6-${viewport.width}.png` })
+    await dialog.getByRole('button', { name: '閉じる' }).tap()
+  }
+})
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     setInterval(() => {
@@ -53,6 +153,7 @@ for (const viewport of [
     if (viewport.width === 390) await expect(page.locator('[data-ember-music]')).not.toHaveAttribute('data-jingle')
     else await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'defeat')
     await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+    await acceptDiscard(page)
     await expect(page.locator('#turn')).toContainText('味方 · 1')
     await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 3')
     expect(errors).toEqual([])
@@ -80,6 +181,7 @@ test('all floor, marks and 3D cells stay aligned and tappable after resizing', a
   await page.setViewportSize({ width: 1280, height: 800 })
   await enterBattle(page)
   await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
   for (const viewport of [
     { width: 1280, height: 800 },
     { width: 390, height: 844 },
@@ -254,6 +356,7 @@ test('restart cancels an in-flight enemy turn', async ({ page }) => {
   await enterBattle(page)
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
+  await acceptDiscard(page)
   await page.waitForTimeout(1600)
   await expect(page.locator('#turn')).toContainText('味方 · 1')
   await expect(page.getByRole('button', { name: /2,5 燈守リオ HP 16/ })).toBeVisible()
