@@ -1,10 +1,12 @@
 import { defineConfig } from '@playwright/test'
 
+const port = Number(process.env.PAGES_PORT || 4174)
+
 // Verify the actual Pages output, not Vite's development-only module routes.
 export default defineConfig({
   testDir: './tests',
   testMatch:
-    /(?:(?:landing|tower-title|tower-standalone|tower-special-abilities|tower-skill-bar|tower-pause|tower-music)-e2e|tower-model-review|tower-sidecar-e2e|tower-meshopt-equivalence|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement|tower-proximal-game)\.spec\.ts/,
+    /(?:(?:landing|ember-grid|tower-title|tower-standalone|tower-special-abilities|tower-skill-bar|tower-pause|tower-music)-e2e|tower-model-review|tower-sidecar-e2e|tower-meshopt-equivalence|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement|tower-proximal-game)\.spec\.ts/,
   // Shard independent page fixtures at test granularity; each runner still uses one worker.
   fullyParallel: true,
   workers: 1,
@@ -16,7 +18,7 @@ export default defineConfig({
   outputDir: 'test-results/pages',
   reporter: [['list'], ['html', { outputFolder: 'playwright-report/pages', open: 'never' }]],
   use: {
-    baseURL: 'http://127.0.0.1:4174',
+    baseURL: `http://127.0.0.1:${port}`,
     browserName: 'chromium',
     headless: true,
     // Software WebGL makes the actual mesh review reproducible on hosted runners.
@@ -27,8 +29,8 @@ export default defineConfig({
     trace: 'retain-on-failure'
   },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4174 --strictPort',
-    url: 'http://127.0.0.1:4174/moq-games/',
+    command: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
+    url: `http://127.0.0.1:${port}/moq-games/`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000
   }
