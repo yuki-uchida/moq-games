@@ -21,9 +21,43 @@ export const HURT_VFX = {
   bichi: emptyEffect,
   dodeka: emptyEffect,
   daiou: emptyEffect,
-  aircon: emptyEffect,
-  ramen: emptyEffect,
-  yofukashi: emptyEffect,
+  aircon(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.22) return
+    ctx.strokeStyle = '#fff2a0'
+    ctx.lineWidth = 2
+    ctx.globalAlpha = 1 - age / 0.22
+    for (let i = 0; i < 4; i++) {
+      const angle = (i * Math.PI) / 2 + age * 5
+      ctx.beginPath()
+      ctx.moveTo(x + Math.cos(angle) * 16, y - 35 * aspect + Math.sin(angle) * 12)
+      ctx.lineTo(x + Math.cos(angle) * (21 + age * 35), y - 35 * aspect + Math.sin(angle) * (17 + age * 35))
+      ctx.stroke()
+    }
+  },
+  ramen(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.3) return
+    ctx.fillStyle = '#e9ae36'
+    ctx.globalAlpha = 1 - age / 0.3
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.ellipse(x + (i - 1) * (12 + age * 25), y - (26 + age * 25 - i * 3) * aspect, 3, 2 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  yofukashi(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.18) return
+    ctx.globalAlpha = 1 - age / 0.18
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(x - 9, y - 52 * aspect)
+    ctx.lineTo(x - 2, y - 43 * aspect)
+    ctx.lineTo(x - 6, y - 37 * aspect)
+    ctx.lineTo(x + 8, y - 24 * aspect)
+    ctx.moveTo(x - 2, y - 43 * aspect)
+    ctx.lineTo(x + 9, y - 46 * aspect)
+    ctx.stroke()
+  },
   sake: emptyEffect,
   jiro: emptyEffect,
   yakiniku: emptyEffect,
@@ -83,9 +117,52 @@ export const DEATH_VFX = {
   bichi: emptyEffect,
   dodeka: emptyEffect,
   daiou: emptyEffect,
-  aircon: emptyEffect,
-  ramen: emptyEffect,
-  yofukashi: emptyEffect,
+  aircon(ctx, unit, age, layer, x, y, aspect) {
+    if (age > 1.3) return
+    if (age < 0.2) HURT_VFX.aircon(ctx, unit, age, layer, x, y, aspect)
+    if (layer === 'floor' && age > 0.3) {
+      ctx.fillStyle = '#aeeaff'
+      ctx.globalAlpha = Math.max(0, 0.5 * (1 - age / 1.3))
+      ctx.beginPath()
+      ctx.ellipse(x, y, 18 + age * 9, 4 * aspect, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    if (layer === 'above' && age < 0.8) {
+      ctx.fillStyle = '#44494c'
+      ctx.globalAlpha = 0.55 * (1 - age / 0.8)
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath()
+        ctx.arc(x + (i - 1) * 7 + age * 8, y - (35 + i * 7 + age * 35) * aspect, 3 + age * 5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  },
+  ramen(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age < 0.2 || age > 1.3) return
+    const spread = Math.min(1, (age - 0.2) / 0.35)
+    ctx.globalAlpha = 0.7 * Math.min(1, (1.3 - age) / 0.35)
+    ctx.fillStyle = '#e9ae36'
+    ctx.beginPath()
+    ctx.ellipse(x, y, 24 * spread, 7 * aspect * spread, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#fff0a3'
+    ctx.lineWidth = 2
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.moveTo(x - 16 * spread, y + (i - 1) * 2 * aspect)
+      ctx.bezierCurveTo(x - 6, y - 5 * aspect, x + 6, y + 5 * aspect, x + 16 * spread, y + (i - 1) * 2 * aspect)
+      ctx.stroke()
+    }
+  },
+  yofukashi(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age < 0.2 || age > 1.25) return
+    ctx.globalAlpha = Math.min(1, (age - 0.2) * 4, (1.25 - age) * 3)
+    ctx.fillStyle = '#aaa8f1'
+    ctx.font = 'bold 16px sans-serif'
+    ctx.fillText('Z', x + 10 + age * 10, y - (45 + age * 25) * aspect)
+    ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('z', x + 22 + age * 9, y - (37 + age * 25) * aspect)
+  },
   sake: emptyEffect,
   jiro: emptyEffect,
   yakiniku: emptyEffect,
