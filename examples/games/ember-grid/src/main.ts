@@ -205,6 +205,51 @@ const story = new StoryFlow(
   () => save.difficulty
 )
 const cells: HTMLButtonElement[] = []
+document
+  .querySelector('#selection')!
+  .insertAdjacentHTML(
+    'afterend',
+    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false">⊞</button>'
+  )
+app.insertAdjacentHTML(
+  'beforeend',
+  '<dialog id="touch-choices" aria-label="マスを選択"><div></div><button type="button" id="touch-cancel">閉じる</button></dialog>'
+)
+const touchAssist = document.querySelector<HTMLButtonElement>('#touch-assist')!
+const touchChoices = document.querySelector<HTMLDialogElement>('#touch-choices')!
+const consolePanel = document.querySelector<HTMLElement>('.console')!
+function positionTouchChoices() {
+  const bounds = consolePanel.getBoundingClientRect()
+  Object.assign(touchChoices.style, {
+    left: `${bounds.left}px`,
+    top: `${bounds.top}px`,
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`
+  })
+}
+new ResizeObserver(positionTouchChoices).observe(consolePanel)
+window.addEventListener('resize', positionTouchChoices)
+touchAssist.onclick = () =>
+  touchAssist.setAttribute('aria-pressed', String(touchAssist.getAttribute('aria-pressed') !== 'true'))
+document.querySelector<HTMLButtonElement>('#touch-cancel')!.onclick = () => touchChoices.close()
+function chooseNearby(x: number, y: number) {
+  const choices = touchChoices.querySelector('div')!
+  choices.replaceChildren()
+  for (let row = Math.max(0, y - 1); row <= Math.min(size - 1, y + 1); row++)
+    for (let column = Math.max(0, x - 1); column <= Math.min(size - 1, x + 1); column++) {
+      const original = cells[row * size + column]
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = original.getAttribute('aria-label')
+      button.onclick = () => {
+        touchChoices.close()
+        void choose(column, row)
+      }
+      choices.append(button)
+    }
+  positionTouchChoices()
+  touchChoices.showModal()
+}
 const navigation = document.querySelector('nav')!
 navigation.insertAdjacentHTML(
   'afterbegin',
@@ -224,12 +269,18 @@ for (let y = 0; y < size; y++)
     cell.className = 'cell'
     cell.tabIndex = x === 0 && y === 0 ? 0 : -1
     cell.style.cssText = `--x:${x};--y:${y}`
-    cell.onclick = () => {
+    cell.onclick = (event) => {
       if (suppressClick) {
         suppressClick = false
         return
       }
-      void choose(x, y)
+      if (
+        event instanceof PointerEvent &&
+        event.pointerType === 'touch' &&
+        touchAssist.getAttribute('aria-pressed') === 'true'
+      )
+        chooseNearby(x, y)
+      else void choose(x, y)
     }
     cell.oncontextmenu = (event) => {
       const target = game.units.find((unit) => unit.hp > 0 && unit.x === x && unit.y === y)
