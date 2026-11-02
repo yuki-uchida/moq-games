@@ -65,6 +65,13 @@ const notice = () => {
   document.querySelector('#storage-notice')!.textContent = '保存できないか、保存データを読み込めませんでした'
 }
 let storageNotice = false
+let unloading = false
+window.addEventListener('beforeunload', () => {
+  unloading = true
+})
+window.addEventListener('pageshow', () => {
+  unloading = false
+})
 const saved = readSave(() => {
   storageNotice = true
 })
@@ -428,19 +435,22 @@ function render() {
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
-    if (game.phase === 'ally' && !busy) save.suspend = snapshotGame(game)
-    if (game.phase === 'won' || game.phase === 'lost') {
+    if (!busy && (game.phase === 'won' || game.phase === 'lost')) {
       delete save.suspend
       if (game.phase === 'won') {
         if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
         save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
+        if (game.stage === missions.length - 1) {
+          save.completedAt ??= new Date().toISOString()
+          save.finale = snapshotGame(game)
+        }
         if (game.stage + 1 < missions.length) {
           checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
           save.furthest = Math.max(save.furthest, game.stage + 1)
         }
       }
     }
-    writeSave(save, notice)
+    if (!unloading) writeSave(save, notice)
   }
   field.dataset.mission = String(game.stage)
   const objective = campaign[game.stage].objective
@@ -673,6 +683,8 @@ async function end() {
     if (await victoryScene(token)) render()
     return
   }
+  save.suspend = snapshotGame(game)
+  if (!unloading) writeSave(save, notice)
   render()
   void phaseBanner('ally', token)
   playSharedUiSound('turn', uiVolume())
@@ -718,6 +730,7 @@ document.querySelector('#restart')!.addEventListener('click', () => {
   clearProgress(field)
   busy = false
   game = newGame(game.stage, game.formation)
+  save.suspend = snapshotGame(game)
   audio.start()
   selected = inspected = undefined
   undo = undefined
@@ -761,6 +774,7 @@ function startMission(stage: number) {
     | 'balanced'
     | 'guard'
   game = newGame(stage, formation)
+  save.suspend = snapshotGame(game)
   danger = dangerZoneDefault()
   ready = false
   render()
@@ -872,11 +886,13 @@ const titleProgress = showTitle(saved, {
   continue: (stage) => {
     playing = true
     audio.setTitle(false)
+    document.querySelector<HTMLInputElement>(`input[name=formation][value=${save.formation}]`)!.checked = true
     if (stage === undefined && save.suspend) {
       transition()
       pendingOpening = undefined
       generation++
       game = restoreGame(save.suspend)
+      document.querySelector<HTMLInputElement>(`input[name=formation][value=${game.formation}]`)!.checked = true
       ready = false
       render()
       audio.setMusic(campaign[game.stage].music)
@@ -887,6 +903,12 @@ const titleProgress = showTitle(saved, {
       document.querySelector<HTMLInputElement>(`input[name=formation][value=${save.formation}]`)!.checked = true
       startMission(stage ?? save.furthest)
     }
+  },
+  ending: () => {
+    generation++
+    game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
+    game.phase = 'won'
+    void story.victory(generation).then(() => location.reload())
   },
   settings,
   help: openHelp

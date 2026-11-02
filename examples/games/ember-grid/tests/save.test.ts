@@ -3,6 +3,41 @@ import { createGame, seeded } from '../src/game'
 import { carryForDifficulty, freshSave, readSave, restoreGame, snapshotGame, unlocked, writeSave } from '../src/save'
 
 describe('campaign saves', () => {
+  it('keeps a snapshot independent from live and restored battles', () => {
+    const game = createGame(3, 'guard', undefined, seeded(42))
+    game.units[0].alerted = true
+    game.units[0].moved = true
+    game.units[0].done = true
+    game.turn = 4
+    game.potions = 1
+    game.progress = { id: game.units[0].id, from: 1, to: 2, level: 1, gains: { max: 1, power: 2, def: 3 } }
+    const saved = snapshotGame(game)
+    const original = structuredClone(saved)
+    game.units[0].hp = 1
+    game.units[0].done = true
+    game.units[0].alerted = false
+    game.potions--
+    game.progress.gains!.max = 9
+    game.rng()
+    expect(saved).toEqual(original)
+    const restored = restoreGame(saved)
+    expect(snapshotGame(restored)).toEqual(original)
+    const second = restoreGame(saved)
+    expect([restored.rng(), restored.rng()]).toEqual([second.rng(), second.rng()])
+    restored.units[0].hp = 0
+    expect(saved).toEqual(original)
+  })
+  it('reads a legacy v1 save without completion fields', () => {
+    const legacy = freshSave('classic')
+    legacy.suspend = snapshotGame(createGame())
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(legacy) })
+    expect(
+      readSave(() => {
+        throw Error('read failed')
+      })
+    ).toEqual(legacy)
+    vi.unstubAllGlobals()
+  })
   it('round trips the battle, extensions and random stream', () => {
     const game = createGame(0, 'balanced', undefined, seeded(19))
     Object.assign(game.units[0], { futureAbility: 'heal' })

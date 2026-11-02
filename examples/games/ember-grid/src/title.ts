@@ -7,14 +7,29 @@ export function showTitle(
   actions: {
     start: (difficulty: Difficulty) => void
     continue: (stage?: number) => void
+    ending: () => void
     settings: () => void
     help: () => void
   }
 ) {
   const title = document.createElement('section')
+  const completed = !!save && (Boolean(save.completedAt) || save.cleared.includes(missions.length - 1))
   title.className = 'title-screen'
   title.setAttribute('aria-label', 'タイトル')
   title.innerHTML = `<div class="title-embers" aria-hidden="true"></div><div class="title-art" aria-hidden="true">${['archer', 'soldier', 'mage'].map((role) => `<img src="${import.meta.env.BASE_URL}tower-defense-art/title/${role}.png" alt="">`).join('')}</div><div class="title-content"><small>EMBER GRID · TACTICAL RPG</small><h1>デスガイヤ</h1><p>灰の彼方へ、燈をつなぐ。</p><nav><button data-action="continue" ${save ? '' : 'disabled'}>▶ つづきから${save ? `<small>${missions[save.suspend?.stage ?? save.furthest].name} · ${save.suspend?.turn ?? 1} ターン · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</small>` : ''}</button><button data-action="new">✦ はじめから</button><button data-action="chapters" ${save ? '' : 'disabled'}>⚑ 章を選ぶ</button><button data-action="settings">⚙ 設定</button><button data-action="help">? 遊び方</button></nav><p class="title-loading" role="status">3D モデルを準備中…</p></div>`
+  if (completed) {
+    const button = title.querySelector<HTMLButtonElement>('[data-action=continue]')!
+    if (save?.suspend)
+      button.insertAdjacentHTML(
+        'beforebegin',
+        '<p>✦ 遠征達成</p><button data-action="ending">▶ エンディングを再生</button>'
+      )
+    else button.outerHTML = '<p>✦ 遠征達成</p><button data-action="ending">▶ エンディングを再生</button>'
+    title.querySelector<HTMLButtonElement>('[data-action=ending]')!.onclick = () => {
+      close()
+      actions.ending()
+    }
+  }
   document.body.append(title)
   const main = document.querySelector<HTMLElement>('#app main')!
   main.inert = true
@@ -23,10 +38,12 @@ export function showTitle(
     main.inert = false
     title.remove()
   }
-  title.querySelector<HTMLButtonElement>('[data-action=continue]')!.onclick = () => {
-    close()
-    actions.continue()
-  }
+  const continueButton = title.querySelector<HTMLButtonElement>('[data-action=continue]')
+  if (continueButton)
+    continueButton.onclick = () => {
+      close()
+      actions.continue()
+    }
   title.querySelector<HTMLButtonElement>('[data-action=settings]')!.onclick = actions.settings
   title.querySelector<HTMLButtonElement>('[data-action=help]')!.onclick = actions.help
   title.querySelector<HTMLButtonElement>('[data-action=new]')!.onclick = () => {
@@ -66,7 +83,11 @@ export function showTitle(
     dialog.onclose = () => dialog.remove()
     dialog.showModal()
   }
-  title.querySelector<HTMLButtonElement>(save ? '[data-action=continue]' : '[data-action=new]')!.focus()
+  title
+    .querySelector<HTMLButtonElement>(
+      completed && !save?.suspend ? '[data-action=ending]' : save ? '[data-action=continue]' : '[data-action=new]'
+    )!
+    .focus()
   return (message: string) => {
     const status = title.querySelector('.title-loading')
     if (status) status.textContent = message

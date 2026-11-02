@@ -11,6 +11,8 @@ export type Save = {
   furthest: number
   cleared: number[]
   bestTurns: Record<number, number>
+  completedAt?: string
+  finale?: Snapshot
   suspend?: Snapshot
 }
 export const saveKey = 'ember-grid:save:v1'
@@ -27,11 +29,16 @@ export const unlocked = (save: Save, stage: number) =>
   Number.isInteger(stage) && stage >= 0 && stage < missions.length && stage <= save.furthest
 export function snapshotGame(game: Game): Snapshot {
   const { rng, ...rest } = game
-  return { ...rest, rocks: [...game.rocks], groves: [...game.groves], rngState: (rng as { state?: number }).state ?? 0 }
+  return structuredClone({
+    ...rest,
+    rocks: [...game.rocks],
+    groves: [...game.groves],
+    rngState: (rng as { state?: number }).state ?? 0
+  })
 }
 export function restoreGame(snapshot: Snapshot): Game {
   const { rngState, rocks, groves, ...rest } = snapshot
-  return { ...rest, rocks: new Set(rocks), groves: new Set(groves), rng: seeded(rngState) }
+  return { ...structuredClone(rest), rocks: new Set(rocks), groves: new Set(groves), rng: seeded(rngState) }
 }
 export function carryForDifficulty(game: Game, difficulty: Difficulty): Roster {
   if (difficulty === 'classic') return carry(game)
@@ -79,6 +86,20 @@ export function readSave(notice: () => void): Save | undefined {
       ].every((field) => numeric(unit[field as keyof typeof unit])) &&
       typeof unit.moved === 'boolean' &&
       typeof unit.done === 'boolean'
+    const validSnapshot = (snapshot: Snapshot, phase: Game['phase']) =>
+      Array.isArray(snapshot.units) &&
+      snapshot.units.length > 0 &&
+      snapshot.units.every(validUnit) &&
+      new Set(snapshot.units.map((unit) => unit.id)).size === snapshot.units.length &&
+      numeric(snapshot.turn) &&
+      numeric(snapshot.potions) &&
+      typeof snapshot.log === 'string' &&
+      snapshot.phase === phase &&
+      ['balanced', 'guard'].includes(snapshot.formation) &&
+      Array.isArray(snapshot.rocks) &&
+      Array.isArray(snapshot.groves) &&
+      Number.isInteger(snapshot.rngState) &&
+      unlocked(save, snapshot.stage)
     if (
       save.version !== 1 ||
       !['casual', 'classic'].includes(save.difficulty) ||
@@ -90,20 +111,9 @@ export function readSave(notice: () => void): Save | undefined {
       save.furthest >= missions.length ||
       !Array.isArray(save.cleared) ||
       !save.bestTurns ||
-      (save.suspend &&
-        (!Array.isArray(save.suspend.units) ||
-          save.suspend.units.length === 0 ||
-          !save.suspend.units.every(validUnit) ||
-          new Set(save.suspend.units.map((unit) => unit.id)).size !== save.suspend.units.length ||
-          !numeric(save.suspend.turn) ||
-          !numeric(save.suspend.potions) ||
-          typeof save.suspend.log !== 'string' ||
-          save.suspend.phase !== 'ally' ||
-          !['balanced', 'guard'].includes(save.suspend.formation) ||
-          !Array.isArray(save.suspend.rocks) ||
-          !Array.isArray(save.suspend.groves) ||
-          !Number.isInteger(save.suspend.rngState) ||
-          !unlocked(save, save.suspend.stage)))
+      (save.completedAt !== undefined && typeof save.completedAt !== 'string') ||
+      (save.suspend && !validSnapshot(save.suspend, 'ally')) ||
+      (save.finale && (!validSnapshot(save.finale, 'won') || save.finale.stage !== missions.length - 1))
     )
       throw new Error('Invalid save')
     return save
