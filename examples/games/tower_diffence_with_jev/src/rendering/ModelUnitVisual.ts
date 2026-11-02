@@ -92,6 +92,8 @@ const smooth = (value: number) => {
 }
 
 /** True polygonal actor, never a billboard or a render-to-texture sprite. */
+const FLASH_WHITE = new THREE.Color(0xffffff)
+
 export class ModelUnitVisual {
   readonly root = new THREE.Group()
   private turn = new THREE.Group()
@@ -117,10 +119,17 @@ export class ModelUnitVisual {
   private lastMotion?: ModelMotion
   private lastSample = 0
   private lastPose?: ModelPose
-  private appearance = { opacity: 1, tint: new THREE.Color(0xffffff) }
+  private appearance = { opacity: 1, tint: new THREE.Color(0xffffff), flash: 0 }
   private materialBases = new Map<
     THREE.Material,
-    { color?: THREE.Color; opacity: number; transparent: boolean; depthWrite: boolean }
+    {
+      color?: THREE.Color
+      emissive?: THREE.Color
+      emissiveIntensity: number
+      opacity: number
+      transparent: boolean
+      depthWrite: boolean
+    }
   >()
   constructor(
     readonly definition: UnitModelDefinition,
@@ -310,11 +319,12 @@ export class ModelUnitVisual {
     const switching = this.active !== instance
     // Snapshot the visible (possibly blended) outgoing pose before restoring authored values.
     const from = live && forward && switching && this.active ? snapshot(this.active.lease.scene) : undefined
-    if (this.fade) for (const [node, [p, q, s]] of this.fade.authored) {
-      node.position.copy(p)
-      node.quaternion.copy(q)
-      node.scale.copy(s)
-    }
+    if (this.fade)
+      for (const [node, [p, q, s]] of this.fade.authored) {
+        node.position.copy(p)
+        node.quaternion.copy(q)
+        node.scale.copy(s)
+      }
     this.fade?.authored.clear()
     if (live && (!forward || switching))
       this.fade = from && { from, to: instance, start: this.lastTime!, authored: new Map() }
@@ -422,10 +432,11 @@ export class ModelUnitVisual {
    * transparent ordering before a fade. Run one rig per background preparation job.
    */
   prepareInitialBounds(): boolean {
-    for (const instance of this.leases.values()) if (instance.firstPose && !instance.exactBounds) {
-      this.computeInitialBounds(instance)
-      return true
-    }
+    for (const instance of this.leases.values())
+      if (instance.firstPose && !instance.exactBounds) {
+        this.computeInitialBounds(instance)
+        return true
+      }
     return false
   }
   private computeInitialBounds(instance: MotionInstance): void {
@@ -457,9 +468,16 @@ export class ModelUnitVisual {
   get motion(): ModelMotion | undefined {
     return this.lastMotion
   }
-  setAppearance(opacity = 1, tint = 0xffffff): void {
-    if (this.appearance.opacity === opacity && this.appearance.tint.getHex() === tint) return
+  /** `flash` (0..1) adds a white emissive hit flash on top of the material's own emissive. */
+  setAppearance(opacity = 1, tint = 0xffffff, flash = 0): void {
+    if (
+      this.appearance.opacity === opacity &&
+      this.appearance.tint.getHex() === tint &&
+      this.appearance.flash === flash
+    )
+      return
     this.appearance.opacity = opacity
+    this.appearance.flash = flash
     this.appearance.tint.setHex(tint)
     if (opacity < 1) for (const instance of this.leases.values()) this.computeInitialBounds(instance)
     for (const { lease } of this.leases.values()) this.applyAppearance(lease.scene)
@@ -474,6 +492,8 @@ export class ModelUnitVisual {
             opacity: material.opacity,
             transparent: material.transparent,
             depthWrite: material.depthWrite,
+            emissiveIntensity: material instanceof THREE.MeshStandardMaterial ? material.emissiveIntensity : 1,
+            emissive: material instanceof THREE.MeshStandardMaterial ? material.emissive.clone() : undefined,
             color: material instanceof THREE.MeshStandardMaterial ? material.color.clone() : undefined
           }
           this.materialBases.set(material, base)
@@ -487,6 +507,12 @@ export class ModelUnitVisual {
         material.depthWrite = this.appearance.opacity < 1 ? false : base.depthWrite
         if (base.color && material instanceof THREE.MeshStandardMaterial)
           material.color.copy(base.color).multiply(this.appearance.tint)
+        if (base.emissive && material instanceof THREE.MeshStandardMaterial) {
+          const f = this.appearance.flash
+          // flash 0 restores the exact base values
+          material.emissive.copy(base.emissive).lerp(FLASH_WHITE, f)
+          material.emissiveIntensity = base.emissiveIntensity + (f > 0 ? f * 1.2 : 0)
+        }
       }
     })
   }
