@@ -13,6 +13,24 @@ const out = resolve(root, '.build/life-survivors-art')
 const load = async (path) => (await runnerImport(resolve(root, path), { configFile: false, logLevel: 'error' })).module
 const art = await load('examples/games/life-survivors/src/art/index.ts')
 const { frameAt, duration } = await load('examples/games/life-survivors/src/art/sheet.ts')
+/** Sheets as reviewed: lettering layers composited onto their frames (unmirrored, as in the game). */
+const lettered = new Map()
+const sheetOf = (id) => {
+  if (!lettered.has(id)) {
+    const raw = art.sheet(id)
+    lettered.set(
+      id,
+      Object.fromEntries(
+        Object.keys(raw).map((k) => {
+          const anim = raw[k]
+          if (!anim.text) return [k, anim]
+          return [k, { ...anim, frames: anim.frames.map((f, i) => (anim.text[i] ? f.clone().blit(anim.text[i]) : f)) }]
+        })
+      )
+    )
+  }
+  return lettered.get(id)
+}
 const only = process.argv.slice(2)
 const pick = (id) => !only.length || only.some((prefix) => id.startsWith(prefix))
 const FFMPEG = process.env.FFMPEG || '/opt/homebrew/bin/ffmpeg'
@@ -193,7 +211,7 @@ function exportGif(id, name, anim, bg) {
 const written = []
 for (const id of Object.keys(art.SHEETS)) {
   if (!pick(id)) continue
-  const sheet = art.sheet(id)
+  const sheet = sheetOf(id)
   written.push(...(await exportSheet(id, sheet)))
   const bg = art.groundFor?.(id)
   if (bg) written.push(...(await exportSheet(id, sheet, bg)))
@@ -256,17 +274,17 @@ const TAGS = [
 ]
 if (pick('deathtags')) {
   const kinds = new Set()
-  for (const b of BODY_ORDER) for (const k of Object.keys(art.sheet(`death:${b}`))) kinds.add(k)
+  for (const b of BODY_ORDER) for (const k of Object.keys(sheetOf(`death:${b}`))) kinds.add(k)
   for (const kind of kinds) {
-    const rows = BODY_ORDER.filter((b) => art.sheet(`death:${b}`)[kind])
+    const rows = BODY_ORDER.filter((b) => sheetOf(`death:${b}`)[kind])
     const per = 12
     const cw = 64 * 2 + 2
-    const lines = rows.map((b) => Math.ceil(art.sheet(`death:${b}`)[kind].frames.length / per))
+    const lines = rows.map((b) => Math.ceil(sheetOf(`death:${b}`)[kind].frames.length / per))
     const img = canvas(8 + per * cw, 8 + lines.reduce((sum, n) => sum + n * cw + 18, 0))
     const labels = []
     let y = 8
     rows.forEach((b, i) => {
-      const anim = art.sheet(`death:${b}`)[kind]
+      const anim = sheetOf(`death:${b}`)[kind]
       labels.push([
         `${b} · ${kind} · ${anim.frames.length}f @ ${anim.fps}fps${anim.soul ? ` · ${anim.soul}` : ''}`,
         8,
@@ -290,7 +308,7 @@ if (pick('deathtags')) {
   const labels = TAGS.map((t, i) => [t ?? '(none)', 8 + i * cw, 4, 12])
   BODY_ORDER.forEach((b, r) =>
     TAGS.forEach((tag, c) => {
-      const deaths = art.sheet(`death:${b}`)
+      const deaths = sheetOf(`death:${b}`)
       const kind = art.deathKind(tag, STAGE_AGE[b], b)
       const anim = deaths[kind]
       const x = 8 + c * cw
@@ -311,6 +329,86 @@ if (pick('deathtags')) {
     })
   )
   written.push(await save('deaths_matrix.png', img, labels))
+}
+
+/** A plain labelled grid of rasters at ×scale on a dark backdrop (wrapped ≤ MAX_W). */
+async function grid(file, entries, scale, cell) {
+  const cw = cell * scale + 8
+  const per = Math.max(1, Math.floor((MAX_W - 8) / cw))
+  const rows = Math.ceil(entries.length / per)
+  const img = canvas(8 + per * cw, 8 + rows * (cell * scale + 24))
+  const labels = []
+  entries.forEach(([label, r], i) => {
+    const x = 8 + (i % per) * cw
+    const y = 8 + Math.floor(i / per) * (cell * scale + 24)
+    const bg = canvas(cell * scale, cell * scale, [52, 50, 62])
+    for (let j = 0; j < bg.h; j++)
+      img.data.set(bg.data.subarray(j * bg.w * 4, (j + 1) * bg.w * 4), ((y + j) * img.w + x) * 4)
+    drawRaster(img, r, x + Math.round((cell - r.w) / 2) * scale, y + Math.round((cell - r.h) / 2) * scale, scale)
+    labels.push([label, x, y + cell * scale + 3, 12])
+  })
+  return save(file, img, labels)
+}
+
+if (pick('weapons')) {
+  const entries = []
+  for (const id of Object.keys(art.SHEETS).filter((k) => k.startsWith('weapon:'))) {
+    const fly = art.sheet(id).fly
+    const f = fly.frames[id === 'weapon:w_study' ? 14 : 0]
+    entries.push([id.slice(7), f], [`${id.slice(7)} 進化`, art.evolve(f)])
+  }
+  const fx = art.sheet('fx')
+  for (const k of Object.keys(fx)) {
+    const f = fx[k].frames[0]
+    if (f.h > 40) entries.push([`fx ${k}`, f], [`fx ${k} 進化`, art.evolve(f)])
+    else entries.push([`fx ${k}`, f])
+  }
+  written.push(
+    await grid(
+      'roster_weapons.png',
+      entries.filter(([, r]) => r.h <= 40),
+      4,
+      32
+    )
+  )
+  written.push(
+    await grid(
+      'roster_weapons_tall.png',
+      [...entries.filter(([, r]) => r.h > 40), ['zone mat r58', art.playMat(58)]],
+      2,
+      120
+    )
+  )
+  const items = art.sheet('items')
+  written.push(
+    await grid(
+      'roster_items.png',
+      Object.keys(items).flatMap((k) => items[k].frames.map((f, i) => [`${k} ${i}`, f])),
+      6,
+      16
+    )
+  )
+  const icons = art.sheet('icons')
+  const ids = Object.keys(icons)
+  written.push(
+    await grid(
+      'hud_icons.png',
+      ids.map((k) => [k, icons[k].frames[0]]),
+      1,
+      32
+    )
+  )
+  written.push(
+    await grid(
+      'hud_icons_x2.png',
+      ids.flatMap((k) => [
+        [k, icons[k].frames[0]],
+        [`${k} 進化`, art.evolve(icons[k].frames[0])]
+      ]),
+      2,
+      32
+    )
+  )
 }
 
 if (pick('lineup')) {

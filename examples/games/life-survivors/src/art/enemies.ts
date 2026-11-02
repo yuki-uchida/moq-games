@@ -225,12 +225,12 @@ export function bullySheet(): Sheet {
 const YEN = ['K...K', '.K.K.', 'KKKKK', '..K..', 'KKKKK', '..K..']
 
 /** Feathered wing poses (right wing; mirrored for the left): up, level, down. */
-const WINGS = [
+export const WINGS = [
   ['.....wW', '...wwWg', '..wWWg.', '.wWgg..', 'wWg....'],
   ['.......', 'wwwwwww', 'WWWWWWw', 'gWgWgW.', '.......'],
   ['wWg....', '.wWgg..', '..wWWg.', '...wwWg', '.....wW']
 ]
-const WING_KEY = { w: C.white, W: R.paper[1], g: R.paper[2] }
+export const WING_KEY = { w: C.white, W: R.paper[1], g: R.paper[2] }
 
 function banknote(layer: Raster, x: number, y: number, tilt: number, flap: number) {
   part(layer, (l) => {

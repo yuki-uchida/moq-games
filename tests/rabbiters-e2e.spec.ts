@@ -332,17 +332,19 @@ test('desktop: starts a solo game and collects food by moving', async ({ page })
 })
 
 test('desktop: TPS controls, airborne pose, and sound toggle', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.route('**/src/main.ts*', async (route) => {
     const response = await route.fetch()
     const source = await response.text()
     await route.fulfill({
       response,
       body: `${source}
+import * as observeMap from '/src/map.ts';
 window.rabbitersObserve = () => {
   const player = game?.state.players.find((entry) => entry.id === localId);
   const actor = scene.actors.get('player:' + localId);
   if (!player || !actor) return null;
-  return { x: player.x, y: player.y, z: player.z, yaw,
+  return { x: player.x, y: player.y, z: player.z, yaw, lift: player.y - observeMap.floorAt(player.x, player.y, player.z),
     legs: actor.limbs.map((leg) => leg.rotation.x), body: actor.body.rotation.x,
     camera: { x: scene.camera.position.x, y: scene.camera.position.y, z: scene.camera.position.z },
     audioState: audio.context?.state, gain: audio.master?.gain.value };
@@ -357,6 +359,7 @@ window.rabbitersObserve = () => {
     y: number
     z: number
     yaw: number
+    lift: number
     legs: number[]
     body: number
     camera: { x: number; y: number; z: number }
@@ -400,9 +403,10 @@ window.rabbitersObserve = () => {
   })
   await page.keyboard.up('Space')
   await page.keyboard.up('KeyW')
-  const airborne = frames.filter((frame) => frame.y > 0.15)
+  // Height above the ground, not absolute: after landing the rabbit walks on, possibly up a slope.
+  const airborne = frames.filter((frame) => frame.lift > 0.15)
   expect(airborne.length).toBeGreaterThan(3)
-  expect(Math.max(...airborne.map((frame) => frame.y))).toBeGreaterThan(0.6)
+  expect(Math.max(...airborne.map((frame) => frame.lift))).toBeGreaterThan(0.6)
   for (const frame of airborne) {
     expect(frame.legs).toEqual(airborne[0].legs)
     expect(frame.body).toBe(airborne[0].body)

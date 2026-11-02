@@ -1,5 +1,5 @@
 ---
-name: agent-start
+name: subagent-start
 description: サブエージェント（Agent ツール / T3 delegate_task）を起動する直前に必ず読む。モデルは Claude Opus 5.5 か GPT-6.1 Terra を前提とし、推論レベルをタスク難易度に合わせて明示的に設定する。
 ---
 

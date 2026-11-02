@@ -6,6 +6,7 @@ import {
   type EffectSoundKey
 } from '../game/CombatSoundEvents'
 import { playUiSound, type UiSound } from '../../../shared/UiSound'
+import { createFeelPlayer, type FeelSound } from './FeelSounds'
 
 export interface SoundCatalogEntry {
   id: string
@@ -72,6 +73,7 @@ export class SoundPlayer {
   private readonly voices = new Set<SoundVoice>()
   private readonly recentEvents = new Set<string>()
   private readonly lastCueTime = new Map<string, number>()
+  private readonly playFeelSound = createFeelPlayer()
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -261,6 +263,13 @@ export class SoundPlayer {
     if (this.isDestroyed || !this.isEnabled || !context || context.currentTime - this.lastPlayAt < 0.03) return
     // Master gain is the user volume (default 20%); scale so the default lands near the other games.
     playUiSound(kind, context, this.master ?? undefined, 4)
+  }
+
+  /** Synthesized game-feel cue through the master gain (same on/off and volume as the clips). */
+  playFeel(kind: FeelSound, param?: number): void {
+    const context = this.context
+    if (this.isDestroyed || !this.isEnabled || this.gainVolume === 0 || !context || !this.master) return
+    this.playFeelSound(kind, context, this.master, param)
   }
 
   private playCueAsset(key: string, asset: SoundAsset): void {

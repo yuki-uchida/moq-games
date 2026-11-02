@@ -20,4 +20,6 @@ Use headless browser verification. Local-only migration provenance (not publishe
 
 ## Subagents
 
-Before launching any subagent (Agent tool or T3 `delegate_task`), read and follow the project skill `.claude/skills/agent-start/SKILL.md`. In this repository it replaces the global "Opus 5.5 medium / Sonnet 5.5" subagent rule.
+Before launching any subagent (Agent tool or T3 `delegate_task`), read and follow the project skill `.claude/skills/subagent-start/SKILL.md`. In this repository it replaces the global "Opus 5.5 medium / Sonnet 5.5" subagent rule.
+
+When a `/goal` is set (a "Goal set:" kickoff message or an active goal), read and follow `.claude/skills/goal-review/SKILL.md` before doing the work: evaluate the goal yourself first; once you pass it, get a cross-vendor second opinion. Both must pass, and fixes go to a lower same-vendor model.

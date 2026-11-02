@@ -93,3 +93,21 @@ it('keeps emitters authored and internal re-samples from starting or corrupting 
   fresh.sample(idle(10))
   expect(x(fresh)).toBe(0)
 })
+
+it('hit flash is additive, restores base emissive at 0, and is per actor', async () => {
+  const a = await visual(),
+    b = await visual()
+  for (const v of [a, b]) v.sample(idle(1))
+  const mat = (v: ModelUnitVisual) =>
+    (v.root.getObjectByName('body') as THREE.Mesh).material as THREE.MeshStandardMaterial
+  const base = { e: mat(a).emissive.getHex(), i: mat(a).emissiveIntensity }
+  a.setAppearance(1, 0xffffff, 0.8)
+  expect(mat(a).emissive.r).toBeCloseTo(0.8)
+  expect(mat(a).emissiveIntensity).toBeGreaterThan(base.i)
+  expect(mat(b).emissive.getHex()).toBe(base.e)
+  expect(mat(b).emissiveIntensity).toBe(base.i)
+  expect(mat(a)).not.toBe(mat(b))
+  a.setAppearance(1, 0xffffff, 0)
+  expect(mat(a).emissive.getHex()).toBe(base.e)
+  expect(mat(a).emissiveIntensity).toBe(base.i)
+})

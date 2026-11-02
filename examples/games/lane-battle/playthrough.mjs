@@ -25,6 +25,8 @@ for (let i = 0; i < 90; i++) {
     await page.screenshot({ path: '/tmp/lane-result.png' })
     await page.getByRole('button', { name: 'ステージ選択へ' }).click()
     await page.getByRole('button', { name: 'ブリッと出撃' }).click()
+    // The fake clock holds animation frames; let one draw the fresh HUD.
+    await page.clock.runFor(100)
     assert.match(await page.locator('#home').textContent(), /^(\d+) \/ \1$/)
     break
   }

@@ -20,18 +20,40 @@ interface Kit {
 }
 type Extra = Pick<Anim, 'alpha' | 'lift' | 'soul'>
 
+/**
+ * Lettering (「グゥ〜」, 「不合格」, ！, ？) lives on its own layer per frame, so a left-facing (mirrored)
+ * death mirrors the props but never the text: the renderer draws it unflipped at the mirrored spot.
+ */
+const LETTERS = new WeakMap<Raster, Raster>()
+const keep = (from: Raster, to: Raster) => {
+  const t = LETTERS.get(from)
+  if (t) LETTERS.set(to, t)
+  return to
+}
+function lettered(r: Raster, draw: (l: Raster) => void) {
+  const t = LETTERS.get(r)?.clone() ?? new Raster(r.w, r.h)
+  part(t, draw)
+  const out = r.clone()
+  LETTERS.set(out, t)
+  return out
+}
+
 /** Keeps every death frame on the baseline (a deep kneel never sinks below the floor). */
 function settle(r: Raster) {
   let maxY = -1
   r.map((c, _x, y) => ((maxY = Math.max(maxY, y)), c))
-  return maxY > 58 ? new Raster(r.w, r.h).blit(r, 0, 58 - maxY) : r
+  return maxY > 58 ? keep(r, new Raster(r.w, r.h).blit(r, 0, 58 - maxY)) : r
 }
-const once = (frames: Raster[], fps: number, extra: Extra = {}): Anim => ({
-  frames: frames.map(settle),
-  fps,
-  loop: false,
-  ...extra
-})
+const once = (frames: Raster[], fps: number, extra: Extra = {}): Anim => {
+  const text = frames.map((f) => LETTERS.get(f))
+  return {
+    frames: frames.map(settle),
+    fps,
+    loop: false,
+    ...(text.some(Boolean) ? { text } : {}),
+    ...extra
+  }
+}
 const fadeOut = (n: number, tail: number[]) => [...Array(n - tail.length).fill(1), ...tail]
 
 // Palette remaps: uniform dimming, colour draining to grey, stone, white ash, a flushed face.
@@ -75,7 +97,11 @@ const FLUSH = (() => {
   t[R.skin[3]] = R.orange[2]
   return t
 })()
-const tone = (r: Raster, table: readonly number[]) => r.clone().map((c) => table[c])
+const tone = (r: Raster, table: readonly number[]) =>
+  keep(
+    r,
+    r.clone().map((c) => table[c])
+  )
 function darken(r: Raster, steps: number) {
   if (steps >= 3) return r.map((c) => (INKS.has(c) ? C.inkCool : R.hair[3]))
   return remap(r, DIM[steps - 1])
@@ -84,12 +110,12 @@ function darken(r: Raster, steps: number) {
 const over = (base: Raster, draw: (l: Raster) => void, outline = true) => {
   const r = base.clone()
   part(r, draw, outline)
-  return r
+  return keep(base, r)
 }
 const under = (base: Raster, draw: (l: Raster) => void) => {
   const r = new Raster(base.w, base.h)
   part(r, draw)
-  return r.blit(base)
+  return keep(base, r.blit(base))
 }
 
 /** Shared pose shortcuts for a kit. */
@@ -390,14 +416,16 @@ function starve(k: Kit) {
   const { P, H } = kitTools(k)
   const head = H()
   const withBowl = (r: Raster) => under(r, bowl)
+  const bx = Math.min(42, Math.round(head.x + head.w - 4))
+  const by = Math.max(1, head.y - 11)
   const bubble = (r: Raster) =>
-    over(r, (l) => {
-      const x = Math.min(42, Math.round(head.x + head.w - 4))
-      const y = Math.max(1, head.y - 11)
-      l.rect(x, y, 21, 9, R.paper[0])
-      l.poly([x + 2, y + 9, x + 6, y + 9, x + 1, y + 12], R.paper[0])
-      write(l, 'グゥ〜', x + 2, y + 1, C.inkCool)
-    })
+    lettered(
+      over(r, (l) => {
+        l.rect(bx, by, 21, 9, R.paper[0])
+        l.poly([bx + 2, by + 9, bx + 6, by + 9, bx + 1, by + 12], R.paper[0])
+      }),
+      (l) => write(l, 'グゥ〜', bx + 2, by + 1, C.inkCool)
+    )
   const sweat = (r: Raster) =>
     over(r, (l) => l.stamp(['.c', 'cc', 'cc'], Math.min(60, head.x + head.w), head.y + 2, { c: R.mint[0] }))
   const belly: Partial<Pose> = { handN: [7, 6], handF: [-2, 7] }
@@ -457,7 +485,7 @@ function runover(k: Kit) {
   dust(landed, 8, 56, 3)
   dust(landed, 56, 56, 3)
   const frames = [
-    over(P({ face: 'open' }), (l) => write(l, '!', Math.round(head.x + head.w), Math.max(1, head.y - 4), R.red[1])),
+    lettered(P({ face: 'open' }), (l) => write(l, '!', Math.round(head.x + head.w), Math.max(1, head.y - 4), R.red[1])),
     withCar(P({ face: 'pain', lean: -1 }), -46, 0),
     over(withCar(P({ face: 'pain', lean: -2, squash: 1 }), -22, 1), (l) => {
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 4)
@@ -776,12 +804,14 @@ function burnout(k: Kit) {
       if (impact) for (const d of [-1, 1]) l.line(sx + 8 + d * 10, y + 6, sx + 8 + d * 15, y + 10, R.yellow[0])
     })
   const verdict = (r: Raster) =>
-    over(r, (l) => {
-      l.rect(5, 2, 33, 12, R.paper[0])
-      l.rect(5, 2, 33, 1, R.red[1])
-      l.rect(5, 13, 33, 1, R.red[1])
-      write(l, '不合格', 7, 4, R.red[1])
-    })
+    lettered(
+      over(r, (l) => {
+        l.rect(5, 2, 33, 12, R.paper[0])
+        l.rect(5, 2, 33, 1, R.red[1])
+        l.rect(5, 13, 33, 1, R.red[1])
+      }),
+      (l) => write(l, '不合格', 7, 4, R.red[1])
+    )
   const slump = sitting(k.body, { slump: 3 })
   const wisps = (r: Raster, i: number) =>
     over(
@@ -870,7 +900,7 @@ function overheat(k: Kit) {
   const { P, H, red } = kitTools(k)
   const head = H()
   const qs = (r: Raster, n: number) =>
-    over(r, (l) => {
+    lettered(r, (l) => {
       for (let q = 0; q < n; q++)
         write(
           l,
