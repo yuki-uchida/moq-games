@@ -29,6 +29,7 @@ async function seed(page: Page, { soldierDown = false, far = false } = {}) {
   await page.evaluate((raw) => {
     localStorage.setItem('tower-jev-v3', raw)
     localStorage.removeItem('tower-jev-auto-skill-v1')
+    localStorage.removeItem('tower-jev-coach-aim-v1')
   }, raw)
   await page.reload()
   await page.locator('#title-continue').click()
@@ -54,8 +55,16 @@ test('skill bar is hidden in preparation and shows one accessible button per all
     buttons = page.locator('.skill-btn')
   await expect(bar).toBeVisible()
   await expect(buttons).toHaveCount(2)
-  await expect(buttons.nth(0)).toHaveAttribute('aria-label', '回転斬撃 発動可能')
-  await expect(buttons.nth(1)).toHaveAttribute('aria-label', '矢の雨 発動可能')
+  // Charged but nothing in range yet: the label says so and how to aim by hand; the crosshair badge shows it.
+  await expect(buttons.nth(0)).toHaveAttribute('aria-label', '回転斬撃 発動可能 · 範囲内に敵なし · 長押しで場所を指定')
+  await expect(buttons.nth(1)).toHaveAttribute('aria-label', '矢の雨 発動可能 · 範囲内に敵なし · 長押しで場所を指定')
+  await expect(buttons.nth(0)).toHaveAttribute('data-state', 'ready')
+  await expect(buttons.nth(0)).toHaveAttribute('data-target-count', '0')
+  await expect(buttons.nth(0).locator('.skill-aim')).toBeVisible()
+  await expect(buttons.nth(0).locator('.skill-badge')).toBeHidden()
+  await expect(buttons.nth(0)).toHaveCSS('animation-name', 'none')
+  await buttons.nth(0).hover()
+  await expect(buttons.nth(0).locator('.skill-name')).toHaveText('回転斬撃 · 長押しで場所を指定')
   for (const box of await buttons.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()))) {
     expect(box.width).toBeGreaterThanOrEqual(48)
     expect(box.height).toBeGreaterThanOrEqual(48)
@@ -86,7 +95,11 @@ test('nothing in range: a tap says so on the button, long press and Shift+click 
   await expect(page.locator('#selection-context')).toBeHidden()
   expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
   await expect(soldier).not.toHaveAttribute('data-hint', 'true', { timeout: 3000 })
-  await expect(soldier.locator('.skill-name')).toHaveText('回転斬撃')
+  await expect(soldier.locator('.skill-name')).toHaveText('回転斬撃 · 長押しで場所を指定')
+  // The first no-target tap teaches long-press once (and only once).
+  await expect(page.locator('.coach[data-step="aim"]')).toBeVisible()
+  await expect(page.locator('.coach-bubble')).toContainText('長押しで場所を選べる')
+  expect(await page.evaluate(() => localStorage.getItem('tower-jev-coach-aim-v1'))).toBe('1')
   const box = (await soldier.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
@@ -99,27 +112,59 @@ test('nothing in range: a tap says so on the button, long press and Shift+click 
   await expect(page.locator('#unit-special')).toHaveText('×')
 })
 
-test('one tap casts at the best target once enemies are in range, with cut-in, ring and countdown', async ({ page }) => {
+test('one tap casts at the best target once enemies are in range: honest button, time-stop, then the result readout', async ({ page }) => {
   await seed(page)
   await assault(page)
   const archer = page.locator('.skill-btn[data-skill-type="archer"]')
-  // Enemies walk in on their own; keep tapping until a cast actually happens (the tap itself is the feature).
-  await expect
-    .poll(
-      async () => {
-        await archer.click()
-        if (await page.locator('#unit-special').evaluate((e) => e.textContent === '×')) await page.keyboard.press('Escape')
-        return (await stored(page)).state.units.find((u: any) => u.type === 'archer').specialCooldown ?? 0
-      },
-      { timeout: 120_000, intervals: [500] }
-    )
-    .toBeGreaterThan(55)
-  await expect(page.locator('#skill-cutin')).toBeVisible()
+  // Enemies walk in on their own; the button turns bright with a hit count once the auto-aim would hit something.
+  await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(archer).toHaveAttribute('data-state', 'ready')
+  await expect(archer).toHaveAttribute('aria-label', /^矢の雨 発動可能 \d+体$/)
+  await expect(archer.locator('.skill-badge')).toHaveText(/^×\d+$/)
+  await expect(archer.locator('.skill-mark')).toHaveText('✦')
+  await expect(archer).not.toHaveCSS('animation-name', 'none')
+  // The first-skill coach mark points at a button that will hit.
+  await expect(page.locator('.coach[data-step="skills"]')).toBeVisible()
   await expect(page.locator('#skill-cutin')).toHaveCSS('pointer-events', 'none')
+  // Time-stop: tap and measure in the page, so slow software-GPU round trips can't blur it. The
+  // first frame after the tap shows the band and the landing ring; the simulation clock then stands
+  // still for ~0.65 s of real time (slower frames only lengthen the measured stop) and runs again.
+  const stop = await archer.evaluate(async (button: HTMLButtonElement) => {
+    const app = document.getElementById('app')!,
+      read = () => Number(app.dataset.simulationTime),
+      frame = () => new Promise((resolve) => requestAnimationFrame(resolve)),
+      shown = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector)
+        return !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
+      }
+    const tappedAt = performance.now()
+    button.click()
+    await frame()
+    const band = shown('#skill-cutin .skill-cutin-band'),
+      ring = shown('#field .skill-target-ring'),
+      frozenAt = read()
+    while (performance.now() - tappedAt < 6000) {
+      await frame()
+      if (read() !== frozenAt) return { band, ring, stoppedMs: performance.now() - tappedAt }
+    }
+    return { band, ring, stoppedMs: -1 }
+  })
+  expect(stop.band).toBe(true)
+  expect(stop.ring).toBe(true)
+  expect(stop.stoppedMs).toBeGreaterThanOrEqual(500)
+  await expect
+    .poll(async () => (await stored(page)).state.units.find((u: any) => u.type === 'archer').specialCooldown ?? 0)
+    .toBeGreaterThan(50)
+  await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 3000 })
+  // The impact lands after the band is gone and reports what it did.
+  const readout = page.locator('.fx-special')
+  await expect(readout).toBeVisible({ timeout: 5000 })
+  await expect(readout).toContainText('矢の雨')
+  await expect(readout).toContainText(/×\d+ HIT|命中なし/)
+  await expect(readout).toHaveCSS('pointer-events', 'none')
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(archer).toHaveAttribute('aria-label', /^矢の雨 あと\d+秒$/)
   await expect(archer.locator('.skill-count')).toHaveText(/^\d+$/)
-  await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 3000 })
 })
 
 test('a downed ally shows a disabled greyed button', async ({ page }, info) => {

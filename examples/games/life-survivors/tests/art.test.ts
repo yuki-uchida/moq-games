@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
-import { ENEMIES, ENEMY_BY_ID, PASSIVES, STAGES, TAG_NAMES, WEAPONS } from '../src/data'
+import { BULLET_KINDS, ENEMIES, ENEMY_BY_ID, PASSIVES, STAGES, TAG_NAMES, WEAPONS } from '../src/data'
 import { ITEM_KINDS } from '../src/view'
 import { deathKind } from '../src/art/deaths'
 import { SHEETS } from '../src/art/index'
@@ -42,7 +42,7 @@ describe('pixel art', () => {
         id.startsWith('tiles:') ||
         id.startsWith('props:') ||
         id.startsWith('weapon:') ||
-        ['fx', 'items', 'icons'].includes(id)
+        ['fx', 'items', 'icons', 'bullets'].includes(id)
       )
         continue
       // Souls are 16px; the 大往生 soul (halo) is 24px.
@@ -68,7 +68,11 @@ describe('pixel art', () => {
       whip: ['star'],
       flail: ['hand', 'sweat'],
       strike: ['bolt', 'burst'],
-      rain: ['bills', 'coins']
+      rain: ['bills', 'coins'],
+      chain: ['like'],
+      slam: ['dust', 'crack'],
+      nova: ['note'],
+      trail: ['perfume']
     }
     for (const def of WEAPONS) {
       expect([def.id, built.icons[def.id]?.frames[0].w]).toEqual([def.id, 32])
@@ -83,6 +87,11 @@ describe('pixel art', () => {
     expect(built['weapon:w_study'].fly.frames).toHaveLength(16)
     for (const p of PASSIVES) expect([p.id, built.icons[p.id]?.frames[0].w]).toEqual([p.id, 32])
     for (const id of ['meal', 'coin']) expect(built.icons[id].frames[0].w).toBe(32)
+    // Effects every hit, death and blast is drawn with.
+    for (const k of ['spark', 'crit', 'poof', 'boom', 'shine', 'heal']) expect([k, Boolean(fx[k])]).toEqual([k, true])
+    // Enemy bullets: one 16×16 anim per kind the game can fire.
+    for (const kind of BULLET_KINDS)
+      for (const f of built.bullets[kind]?.frames ?? [undefined]) expect([kind, f?.w, f?.h]).toEqual([kind, 16, 16])
     for (const kind of [...ITEM_KINDS, 'gem1', 'gem2', 'gem3'])
       expect([kind, built.items[kind].frames[0].w]).toEqual([kind, 16])
   })

@@ -1,15 +1,28 @@
 const KEY = 'tower-jev-coach-v1'
+const AIM_KEY = 'tower-jev-coach-aim-v1'
 const POINTER =
   '<svg viewBox="0 0 24 28" aria-hidden="true"><path d="M5 2.5 19 11l-6.2 1.6 3.6 7-3.2 1.6-3.6-7L5 19.5Z" fill="#fffdf2" stroke="#304c3e" stroke-width="2" stroke-linejoin="round"/></svg>'
 
-type Step = 'deck' | 'drag' | 'assault' | 'skills'
+type Step = 'deck' | 'drag' | 'assault' | 'skills' | 'aim'
 const TEXT: Record<Step, string> = {
   deck: '仲間をえらぶ',
   drag: 'ドラッグで道のそばへ',
   assault: '準備OKなら出撃！',
-  skills: 'スキルをタップ！'
+  skills: 'スキルをタップ！',
+  aim: '長押しで場所を選べる'
 }
-const SKILLS_MS = 3000
+const SKILLS_MS = 4000
+const AIM_MS = 3500
+/** The skill button that is ready and would hit the most enemies, or null when none would hit. */
+const bestSkillButton = (): Element | null => {
+  let best: Element | null = null,
+    bestCount = 0
+  for (const button of Array.from(document.querySelectorAll('#skill-bar .skill-btn[data-state="ready"]'))) {
+    const count = Number((button as HTMLElement).dataset.targetCount)
+    if (count > bestCount) { best = button; bestCount = count }
+  }
+  return best
+}
 
 export interface CoachContext {
   started: boolean
@@ -33,6 +46,8 @@ export class CoachMarks {
   private skillsSince = 0
   private dragAnimation: Animation | undefined
   private skillsDone = false
+  private aimTarget: Element | null = null
+  private aimUntil = 0
   private lastUpdate = 0
 
   constructor(
@@ -79,15 +94,37 @@ export class CoachMarks {
     }
   }
 
+  /**
+   * After the first tap on a ready skill with nothing in range, point at that button and say how to aim by hand.
+   * Shown once ever (its own key), also for players who already finished the first-play hints.
+   */
+  noteNoTarget(button: Element): void {
+    try {
+      if (this.storage?.getItem(AIM_KEY) === '1') return
+      this.storage?.setItem(AIM_KEY, '1')
+    } catch {
+      if (this.aimUntil) return
+    }
+    this.aimTarget = button
+    this.aimUntil = performance.now() + AIM_MS
+    this.lastUpdate = 0
+  }
+
   get active(): boolean {
     return !this.done
   }
 
   /** Cheap enough for frame(); real work runs at most every 100 ms. */
   update(ctx: CoachContext, now: number): void {
-    if (this.done) return
     if (now - this.lastUpdate < 100) return
     this.lastUpdate = now
+    if (this.aimUntil) {
+      const rect = this.aimTarget?.isConnected && now < this.aimUntil && !ctx.modal ? this.aimTarget.getBoundingClientRect() : null
+      if (rect?.width) return this.show('aim', rect)
+      this.aimUntil = 0
+      this.hide()
+    }
+    if (this.done) return
     const step = this.pick(ctx, now)
     if (!step) return this.hide()
     const target = this.targetFor(step)
@@ -105,7 +142,13 @@ export class CoachMarks {
       return document.getElementById('unit-tray')?.hidden === false ? 'drag' : 'deck'
     }
     if (ctx.phase === 'assault' && !this.skillsDone) {
-      if (!document.querySelector('[data-coach="skills"]:not([hidden])')) return null
+      // Using any skill ends the first-skill hint for good (its button is recharging now).
+      if (this.skillsSince && document.querySelector('#skill-bar .skill-btn[data-state="charging"]')) {
+        this.skillsDone = true
+        return null
+      }
+      // Only point at a button that will actually hit something right now.
+      if (!bestSkillButton()) return null
       this.skillsSince ||= now
       if (now - this.skillsSince > SKILLS_MS) {
         this.skillsDone = true
@@ -119,7 +162,7 @@ export class CoachMarks {
   private targetFor(step: Step): Element | null {
     if (step === 'deck') return document.getElementById('deck-toggle')
     if (step === 'assault') return document.getElementById('assault')
-    if (step === 'skills') return document.querySelector('[data-coach="skills"]')
+    if (step === 'skills') return bestSkillButton()
     return document.querySelector('#unit-tray .cards .unit:not([hidden])')
   }
 

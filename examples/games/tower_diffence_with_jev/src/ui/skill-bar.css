@@ -91,11 +91,70 @@
 .skill-mark:empty {
   display: none;
 }
-.skill-btn[data-state='ready'] {
+.skill-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -3px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border: 1.5px solid #4a3200;
+  border-radius: 9px;
+  background: #fff3c4;
+  color: #4a3200;
+  font: 900 12px/15px system-ui, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.skill-badge:empty {
+  display: none;
+}
+/* Crosshair = "long-press to aim by hand". Small on every ready button; the main cue when nothing is in range. */
+.skill-aim {
+  position: absolute;
+  left: -4px;
+  bottom: -3px;
+  display: none;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #243b30;
+  border: 1.5px solid #ffd96a;
+  color: #ffd96a;
+  pointer-events: none;
+}
+.skill-aim svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.skill-btn[data-state='ready'] .skill-aim {
+  display: block;
+}
+/* Ready and the auto-aim would hit something: bright pulse. */
+.skill-btn[data-state='ready']:not([data-target-count='0']) {
   animation: skill-ready 1.1s ease-in-out infinite;
 }
 .skill-btn[data-state='ready'] img {
   filter: none;
+}
+/* Ready but nothing in range: gold ring, dimmed, no pulse; the crosshair shows the manual-aim way out. */
+.skill-btn[data-state='ready'][data-target-count='0'] img {
+  filter: brightness(0.72) saturate(0.8);
+}
+.skill-btn[data-state='ready'][data-target-count='0'] .skill-aim {
+  left: auto;
+  right: -4px;
+  bottom: auto;
+  top: -4px;
+  width: 22px;
+  height: 22px;
+  background: #ffd96a;
+  color: #4a3200;
 }
 .skill-btn[data-state='down'] {
   cursor: default;
@@ -195,7 +254,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .skill-btn[data-state='ready'] {
+  .skill-btn[data-state='ready']:not([data-target-count='0']) {
     animation: none;
     box-shadow: 0 0 10px 3px #ffd96acc;
   }
@@ -204,8 +263,10 @@
   }
 }
 
-/* Cast cut-in: diagonal band across the screen center; the field stays visible and live. */
+/* Cast cut-in: a short band in the screen half opposite the target while the simulation is frozen
+   (650 ms of real time, same at x1 and x2), so the cast motion and impact that follow are never covered. */
 .skill-cutin {
+  --band-h: clamp(84px, 14dvh, 140px);
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -216,70 +277,127 @@
   display: none;
 }
 .skill-cutin.playing {
-  animation: cutin-dim 0.9s ease-out both;
+  animation: cutin-dim 0.65s ease-out both;
 }
 .skill-cutin-band {
   position: absolute;
-  top: 50%;
-  left: -10%;
-  width: 120%;
-  height: clamp(96px, 20dvh, 170px);
-  margin-top: calc(clamp(96px, 20dvh, 170px) / -2);
+  left: -6%;
+  width: 112%;
+  height: var(--band-h);
   display: flex;
   align-items: center;
   gap: clamp(12px, 3vw, 32px);
   padding-left: 14%;
+  box-sizing: border-box;
   background: linear-gradient(100deg, #10241ad9 0%, #1e4a38e6 55%, #3a6e4ecc 100%);
   border-block: 3px solid #ffd96a;
   box-shadow: 0 0 28px #0008;
-  transform: skewY(-5deg);
+}
+.skill-cutin[data-side='top'] .skill-cutin-band {
+  top: max(96px, 13dvh);
+}
+.skill-cutin[data-side='bottom'] .skill-cutin-band {
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 96px);
 }
 .skill-cutin.playing .skill-cutin-band {
-  animation: cutin-band 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: cutin-band 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .skill-cutin-band img {
   flex: none;
-  width: clamp(88px, 22dvh, 190px);
-  height: clamp(88px, 22dvh, 190px);
-  margin-block: -12px;
-  border: 4px solid #ffd96a;
+  width: calc(var(--band-h) * 0.92);
+  height: calc(var(--band-h) * 0.92);
+  border: 3px solid #ffd96a;
   border-radius: 50%;
   object-fit: cover;
   object-position: 50% 20%;
   background: #243b30;
   box-shadow: 0 4px 16px #000a;
-  transform: skewY(5deg);
 }
 .skill-cutin-text {
   display: flex;
   flex-direction: column-reverse;
   gap: 2px;
-  transform: skewY(5deg);
   color: #fff8df;
   text-shadow: 0 2px 0 #4a3200, 0 0 12px #000a;
 }
 .skill-cutin-text b {
-  font: 900 clamp(30px, 6.5vw, 64px) / 1.05 system-ui, sans-serif;
+  font: 900 clamp(26px, 5.2vw, 56px) / 1.05 system-ui, sans-serif;
   font-style: italic;
   letter-spacing: 0.04em;
   color: #fff;
   -webkit-text-stroke: 1px #7a5a10;
 }
 .skill-cutin-text small {
-  font: 700 clamp(13px, 2vw, 20px) / 1.2 system-ui, sans-serif;
+  font: 700 clamp(12px, 1.8vw, 18px) / 1.2 system-ui, sans-serif;
   letter-spacing: 0.12em;
   color: #ffe9a8;
 }
 @keyframes cutin-dim {
   0% { background: #0000; }
-  15%, 70% { background: #0a14106b; }
+  15%, 75% { background: #0a14103d; }
   100% { background: #0000; }
 }
 @keyframes cutin-band {
-  0% { transform: translateX(-60%) skewY(-5deg); opacity: 0; }
-  22% { transform: translateX(0) skewY(-5deg); opacity: 1; }
-  78% { transform: translateX(2%) skewY(-5deg); opacity: 1; }
-  100% { transform: translateX(40%) skewY(-5deg); opacity: 0; }
+  0% { transform: translateX(-40%); opacity: 0; }
+  20% { transform: translateX(0); opacity: 1; }
+  82% { transform: translateX(1.5%); opacity: 1; }
+  100% { transform: translateX(12%); opacity: 0; }
+}
+/* Where it will land: a ground circle of the real radius, drawn in world space inside #field. */
+#field .skill-target-ring {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  translate: -50% -50%;
+  border: 4px solid #fff3c4;
+  border-radius: 50%;
+  background: radial-gradient(#ffd96a59, #ffd96a33 70%, transparent 72%);
+  box-shadow: 0 0 0 3px #b8860bcc, 0 0 22px 4px #ffd96aee, inset 0 0 18px #ffd96acc;
+  pointer-events: none;
+  animation: target-ring 0.65s ease-in-out infinite alternate;
+}
+#field .skill-target-ring[hidden] {
+  display: none;
+}
+#field .skill-target-ring i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff3c4;
+  border: 3px solid #b8860b;
+  transform: translate(-50%, -50%) scaleX(var(--field-aspect-inverse, 1));
+}
+@keyframes target-ring {
+  from { opacity: 0.7; scale: 0.94; }
+  to { opacity: 1; scale: 1.02; }
+}
+@media (max-width: 600px) {
+  .skill-cutin {
+    --band-h: 92px;
+  }
+  .skill-cutin[data-side='top'] .skill-cutin-band {
+    top: 120px;
+  }
+  .skill-cutin[data-side='bottom'] .skill-cutin-band {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 142px);
+  }
+  .skill-cutin-band {
+    padding-left: 10%;
+  }
+}
+@media (max-height: 500px) {
+  .skill-cutin {
+    --band-h: 70px;
+  }
+  .skill-cutin[data-side='top'] .skill-cutin-band {
+    top: 56px;
+  }
+  .skill-cutin[data-side='bottom'] .skill-cutin-band {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 66px);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .skill-cutin.playing,
@@ -287,9 +405,12 @@
     animation-name: cutin-fade;
     animation-timing-function: linear;
   }
+  #field .skill-target-ring {
+    animation: none;
+  }
   @keyframes cutin-fade {
     0%, 100% { opacity: 0; }
-    20%, 75% { opacity: 1; }
+    20%, 80% { opacity: 1; }
   }
 }
 

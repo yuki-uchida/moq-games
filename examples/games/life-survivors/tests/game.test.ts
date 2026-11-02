@@ -39,7 +39,8 @@ describe('combat', () => {
       game.tick(1 / 60)
       game.state.popups.forEach((p) => seen.add(p))
     }
-    const popups = [...seen]
+    // Critical hits double any number, so compare ordinary hits only.
+    const popups = [...seen].filter((p) => !p.crit)
     expect(popups.some((p) => p.strong)).toBe(true)
     expect(popups.some((p) => !p.strong)).toBe(true)
     const strong = popups.filter((p) => p.strong).map((p) => p.v)
@@ -173,7 +174,7 @@ describe('snapshots', () => {
     game.spawnEnemy('germ')
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)).toBeTruthy()
-    expect(readView({ ...view, enemies: [1, 999, 0, 0, 100, 0] })).toBeUndefined()
+    expect(readView({ ...view, enemies: [1, 999, 0, 0, 100, 0, 0] })).toBeUndefined()
     expect(readView({ ...view, players: [{ ...view.players[0], weapons: [['nope', 1, 0]] }] })).toBeUndefined()
     expect(readView({ ...view, players: [{ ...view.players[0], color: 'red;x' }] })).toBeUndefined()
     expect(readView({ ...view, phase: 'paused' })).toBeUndefined()

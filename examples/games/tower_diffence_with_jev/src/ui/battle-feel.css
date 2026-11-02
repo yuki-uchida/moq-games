@@ -838,6 +838,127 @@
   }
 }
 
+/* ---------- Special-move result readout (screen space, kept between the HUD and the skill bar) ---------- */
+.fx-special {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 150px;
+  padding: 6px 16px 8px;
+  border: 2px solid #ffd96a;
+  border-radius: 14px;
+  background: linear-gradient(#1c3a2cf2, #14281ff2);
+  box-shadow: 0 6px 22px #000a, 0 0 18px #ffd96a66;
+  color: #fff8de;
+  text-align: center;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+}
+.fx-special.pop {
+  animation: fx-special 1.9s ease-out forwards;
+}
+.fx-special small {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffe9a8;
+}
+.fx-special b {
+  font-size: 40px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: -2px 0 #7a3b00, 2px 0 #7a3b00, 0 -2px #7a3b00, 0 2px #7a3b00, 0 4px 6px #0008;
+}
+.fx-special span {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #ffd84a;
+}
+.fx-special i {
+  margin-top: 2px;
+  padding: 1px 12px;
+  border-radius: 999px;
+  background: #e2402e;
+  border: 1.5px solid #fff3d6;
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 900;
+}
+.fx-special[hidden],
+.fx-special [hidden] {
+  display: none;
+}
+.fx-special[data-empty='true'] {
+  border-color: #aeb7b0;
+  box-shadow: 0 6px 22px #000a;
+}
+.fx-special[data-empty='true'] b {
+  font-size: 24px;
+  color: #d6dcd4;
+  text-shadow: none;
+}
+@keyframes fx-special {
+  0% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  10% {
+    opacity: 1;
+    scale: 1.2;
+  }
+  20% {
+    scale: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (max-width: 600px) {
+  .fx-special {
+    min-width: 128px;
+    padding: 4px 12px 6px;
+  }
+  .fx-special b {
+    font-size: 32px;
+  }
+  .fx-special span {
+    font-size: 16px;
+  }
+  .fx-special i {
+    font-size: 15px;
+  }
+}
+/* A kill by a special: bigger, hotter burst and a coin chip that stands out from normal bounties. */
+#field .fx-burst.special {
+  width: 230px;
+  height: 230px;
+  animation-duration: 0.75s;
+}
+#field .fx-burst.special circle {
+  stroke: #ffb347;
+  stroke-width: 7;
+}
+#field .fx-burst.special path {
+  fill: #ff7a3c;
+  stroke: #fff3c4;
+}
+.fx-coin.special {
+  background: #5a1d3ee6;
+  border-color: #ff9ed8;
+  color: #ffe0f2;
+  box-shadow: 0 0 10px #ff9ed8aa;
+}
+
 /* ---------- Reduced motion: short fades instead of flying and shaking ---------- */
 @media (prefers-reduced-motion: reduce) {
   #field .fx-num,
@@ -848,6 +969,9 @@
   #field .fx-chip,
   #field .fx-combo {
     animation: fx-fade 0.6s ease-out forwards;
+  }
+  .fx-special.pop {
+    animation: fx-fade 1.9s ease-out forwards;
   }
   #field .fx-landing::before,
   #field .fx-landing::after {
