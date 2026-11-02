@@ -1,7 +1,34 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { statusBadges } from './visual-effects.js'
-import { burst, createGame, summon } from './simulation.js'
+import { activeVictims, IMPACT_STYLES, statusBadges } from './visual-effects.js'
+import { burst, createGame, ENEMIES, POOPS, SPECIALS, summon } from './simulation.js'
+
+test('every unit has an impact style and victims appear at their own hit time', () => {
+  assert.deepEqual(
+    Object.keys(IMPACT_STYLES).sort(),
+    [...POOPS, ...SPECIALS, ...ENEMIES].map((unit) => unit.key).sort()
+  )
+  const effect = {
+    victims: [
+      { id: 1, at: 1 },
+      { id: 2, at: 1.1 }
+    ]
+  }
+  const units = [{ id: 1 }, { id: 2 }]
+  assert.deepEqual(activeVictims(effect, units, 0.99), [])
+  assert.deepEqual(
+    activeVictims(effect, units, 1.05).map((victim) => victim.id),
+    [1]
+  )
+  assert.deepEqual(
+    activeVictims(effect, units, 1.11).map((victim) => victim.id),
+    [1, 2]
+  )
+  assert.deepEqual(
+    activeVictims(effect, units, 1.23).map((victim) => victim.id),
+    [2]
+  )
+})
 
 test('status badges follow priority, expiry and the three-badge limit', () => {
   const unit = {

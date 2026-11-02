@@ -34,7 +34,7 @@ const SHOTS = {
   turret: ['#e9f7ffcc', '#4c9ad0', 9],
   bichi: ['#a0703e', '#5e3a1c', 7],
   aircon: ['#e6f7ffdd', '#7cc8f0', 8],
-  sake: ['#f2fff5dd', '#5f9e70', 5],
+  sake: ['#f2ffffdd', '#92cbdc', 5],
   garlic: ['#e3ee8cdd', '#93a53e', 9],
   energy: ['#dcff86dd', '#6f9a1c', 5],
   sayu: ['#ffffffdd', '#aab8bf', 6],
@@ -629,7 +629,22 @@ function draw() {
     drawStatus(ctx, u, x, y, top, state.time, aspect, calm.matches)
   }
   for (const e of state.effects) {
-    if (!e.blast) drawArea(ctx, e, typeOf(e.attackerKey), units, state.time, aspect)
+    const source = e.source
+    const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
+    const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
+    const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
+    if (!e.blast && !e.turret)
+      drawArea(
+        ctx,
+        e,
+        typeOf(e.attackerKey),
+        [...units, ...fallen],
+        state.time,
+        aspect,
+        calm.matches,
+        { x: fromX, y: fromY },
+        laneY
+      )
     if (e.blast) {
       // The big fart: a green cloud billowing out over the right (home) half.
       const t = 1 - e.life / 0.6
@@ -652,14 +667,10 @@ function draw() {
       }
       ctx.restore()
     } else if (e.ranged) {
-      const source = e.source
       // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
-      const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
-      const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
-      const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
       const targetY = e.targetY ?? fromY
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
-      if (progress < 1) {
+      if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
         const x = fromX + (e.x - fromX) * progress
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
@@ -668,19 +679,52 @@ function draw() {
         ctx.save()
         ctx.translate(x, yShot)
         ctx.scale(1, aspect)
-        ctx.beginPath()
-        ctx.arc(0, 0, radius, 0, 7)
         ctx.fillStyle = fill
-        ctx.fill()
         ctx.strokeStyle = edge
         ctx.lineWidth = 1.5
-        ctx.stroke()
+        if (['sake', 'energy'].includes(e.attackerKey)) {
+          const count = calm.matches ? 3 : 6
+          for (let index = 0; index < count; index++) {
+            const offset = index * 6
+            ctx.beginPath()
+            ctx.arc(
+              e.side * offset,
+              Math.sin(index * 2 + progress * 5) * 3,
+              radius * (0.4 + (source?.ramp ?? 0) * 0.08),
+              0,
+              7
+            )
+            ctx.fill()
+            ctx.stroke()
+          }
+        } else {
+          ctx.beginPath()
+          ctx.arc(0, 0, radius, 0, 7)
+          ctx.fill()
+          ctx.stroke()
+          if (['garlic', 'sayu'].includes(e.attackerKey)) {
+            for (let index = 0; index < (calm.matches ? 2 : 4); index++) {
+              ctx.beginPath()
+              const trailX = e.side * (12 + index * 7)
+              if (e.attackerKey === 'garlic') {
+                ctx.moveTo(trailX, -5)
+                ctx.bezierCurveTo(trailX - 4, -1, trailX + 4, 1, trailX, 5)
+              } else ctx.arc(trailX, -4 - (index % 2) * 5, 2 + index, 0, 7)
+              ctx.stroke()
+            }
+          }
+          if (e.attackerKey === 'seichou') {
+            for (let index = 0; index < (calm.matches ? 2 : 4); index++) {
+              ctx.beginPath()
+              ctx.arc((index - 1.5) * 5, (index % 2) * 5 - 3, 4, 0, 7)
+              ctx.fill()
+            }
+          }
+        }
         ctx.restore()
-      } else if (e.arrived && !e.missed) {
+      } else if (e.turret && e.arrived && !e.missed) {
         drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect)
       }
-    } else {
-      drawContact(e, e.targetY ?? 361 - 30 * aspect, state.time - e.releasedAt, aspect)
     }
   }
   $('gold').textContent = Math.floor(state.gold)
@@ -740,7 +784,11 @@ function tick(now) {
           const rect = canvas.getBoundingClientRect()
           effect.targetY = laneY(target) - 35 * (rect.width / 1000 / (rect.height / 450))
         }
-        if (effect.ranged) effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+        if (effect.sourceId != null)
+          effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+        effect.victimOrigins = (effect.victims ?? [])
+          .map(({ id }) => previous.find((unit) => unit.id === id))
+          .filter(Boolean)
         if (!effect.blast) {
           impact ||= !effect.ranged
           shot ||= effect.ranged

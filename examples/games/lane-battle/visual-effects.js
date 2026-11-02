@@ -212,49 +212,272 @@ export function drawStatus(ctx, unit, x, y, top, time, aspect, reduced) {
   ctx.restore()
 }
 
-export function drawArea(ctx, effect, source, units, time, aspect) {
-  const age = time - effect.releasedAt - (effect.ranged && !['cone', 'pierce'].includes(effect.areaKind) ? 0.12 : 0)
-  if (age < 0 || age > 0.22 || effect.missed) return
-  const progress = age / 0.22
-  const type = source ?? {}
+export const IMPACT_STYLES = {
+  katachi: ['#ffe76d', '#ffffff', 'star'],
+  korokoro: ['#844619', '#d6a36a', 'splat'],
+  geri: ['#a35b2a', '#ffffff', 'ring'],
+  bichi: ['#905124', '#d6a36a', 'splat'],
+  dodeka: ['#b77937', '#f5cf8e', 'dust'],
+  daiou: ['#ffd34b', '#fff5bd', 'star'],
+  aircon: ['#aeeaff', '#ffffff', 'dust'],
+  ramen: ['#e9ae36', '#fff4c1', 'lines'],
+  yofukashi: ['#ffffff', '#fff3cf', 'arc'],
+  sake: ['#d9f8ff', '#ffffff', 'splat'],
+  jiro: ['#fff5ab', '#ffffff', 'sticks'],
+  yakiniku: ['#f48b2b', '#ffe676', 'splat'],
+  garlic: ['#b4cc48', '#e7f5a6', 'waves'],
+  curry: ['#f34b2e', '#ffe1bd', 'star'],
+  milk: ['#ffffff', '#d6efff', 'lines'],
+  oyster: ['#b882cf', '#f7dfff', 'arc'],
+  ice: ['#8beaff', '#ffffff', 'shards'],
+  energy: ['#d9ef57', '#ffffff', 'bubbles'],
+  cleaner: ['#a6a6a0', '#eef8ff', 'dust'],
+  yogurt: ['#ffffff', '#c4e8ff', 'splat'],
+  sayu: ['#d6f4ff', '#ffffff', 'dust'],
+  washiki: ['#82d2f5', '#effbff', 'splat'],
+  mop: ['#91dafa', '#ffffff', 'splat'],
+  yoshiki: ['#78c9f5', '#ffffff', 'splat'],
+  seichou: ['#ef9fc2', '#fff3fa', 'star'],
+  geridome: ['#ffffff', '#c8e4f4', 'shards']
+}
+
+export function activeVictims(effect, units, time) {
+  return (effect.victims ?? [])
+    .filter((victim) => time >= victim.at && time - victim.at < 0.22)
+    .map((victim) => ({ ...victim, unit: units.find((unit) => unit.id === victim.id) }))
+}
+
+export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle, laneY) {
+  const style = IMPACT_STYLES[effect.attackerKey]
+  if (!style) return
+  const [color, light, shape] = style
   const dir = -effect.side
-  const radius = effect.attackerKey === 'curry' ? 40 : (type.radius ?? 40)
-  const y = 367
-  ctx.save()
-  ctx.globalAlpha = 0.8 * (1 - progress)
-  ctx.translate(0, y)
-  ctx.scale(1, aspect)
-  ctx.strokeStyle = effect.attackerKey === 'curry' ? '#ff662c' : effect.side === 1 ? '#e7aa45' : '#c2edff'
-  ctx.fillStyle = effect.attackerKey === 'curry' ? '#ff793f66' : effect.side === 1 ? '#daa05255' : '#b4eaff66'
-  ctx.lineWidth = 3
-  const ellipse = (x, rx, ry) => {
+  const age = time - effect.releasedAt
+  const hitAge = age - (effect.ranged && !['cone', 'pierce'].includes(effect.areaKind) ? 0.12 : 0)
+  const progress = Math.max(0, Math.min(1, hitAge / 0.22))
+  const victims = activeVictims(effect, units, time)
+  const allVictims = (effect.victims ?? [])
+    .map(
+      (victim) =>
+        effect.victimOrigins?.find((unit) => unit.id === victim.id) ?? units.find((unit) => unit.id === victim.id)
+    )
+    .filter(Boolean)
+  const farthest = Math.max(
+    Math.abs(effect.primaryX - effect.from),
+    ...allVictims.map((unit) => Math.abs(unit.x - effect.from))
+  )
+  const floor = 367
+  const count = reduced ? 3 : 7
+  const line = (x1, y1, x2, y2) => {
     ctx.beginPath()
-    ctx.ellipse(x, 0, Math.max(1, rx), ry, 0, 0, Math.PI * 2)
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+    ctx.stroke()
+  }
+  const ellipse = (x, y, rx, ry) => {
+    ctx.beginPath()
+    ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2)
     ctx.fill()
     ctx.stroke()
   }
-  if (effect.areaKind === 'circle') ellipse(effect.primaryX, radius, 14)
-  else if (effect.areaKind === 'ring') ellipse(effect.from, (type.range ?? 40) + 40, 18)
-  else if (effect.areaKind === 'shockwave') ellipse(effect.primaryX + dir * 80 * progress, 8, 14)
-  else if (['band', 'cone', 'pierce'].includes(effect.areaKind)) {
-    const victims = effect.victims.map((victim) => units.find((unit) => unit.id === victim.id)).filter(Boolean)
-    const length = ['cone', 'pierce'].includes(effect.areaKind)
-      ? Math.max(Math.abs(effect.primaryX - effect.from), ...victims.map((victim) => Math.abs(victim.x - effect.from)))
-      : (type.range ?? 40) + (type.extra ?? 0)
-    const end = effect.from + dir * length
+  ctx.save()
+  ctx.translate(0, floor)
+  ctx.scale(1, aspect)
+  ctx.strokeStyle = light
+  ctx.fillStyle = color
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+
+  if (age >= 0 && age < 0.22 && ['cone', 'pierce'].includes(effect.areaKind)) {
+    const startX = muzzle?.x ?? effect.from
+    const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
+    const end = effect.from + dir * farthest * Math.min(1, age / 0.12)
+    ctx.globalAlpha = 0.3 * (1 - age / 0.3)
     ctx.beginPath()
-    ctx.moveTo(effect.from, -3)
-    ctx.lineTo(end, effect.areaKind === 'cone' ? -20 : -8)
-    ctx.lineTo(end, effect.areaKind === 'cone' ? 20 : 8)
+    ctx.moveTo(startX, startY - 5)
+    ctx.lineTo(end, startY - (effect.areaKind === 'cone' ? 32 : 9))
+    ctx.lineTo(end, startY + (effect.areaKind === 'cone' ? 32 : 9))
+    ctx.lineTo(startX, startY + 5)
     ctx.closePath()
     ctx.fill()
-    ctx.stroke()
+    ctx.globalAlpha = 0.8 * (1 - age / 0.22)
+    for (let index = 0; index < count; index++) {
+      const fraction = ((index / count + age * 4) % 1) * Math.min(1, age / 0.12)
+      const x = startX + (effect.from + dir * farthest - startX) * fraction
+      const y = startY + (index - (count - 1) / 2) * (effect.areaKind === 'cone' ? fraction * 8 : 2)
+      line(x - dir * 10, y, x + dir * 8, y)
+    }
   }
-  if (effect.crit) {
+
+  if (hitAge >= 0 && hitAge < 0.22 && !effect.missed) {
+    ctx.globalAlpha = 0.8 * (1 - progress)
+    if (effect.areaKind === 'circle' || effect.areaKind === 'ring') {
+      const radius = effect.areaKind === 'ring' ? (type?.range ?? 40) + 40 : (type?.radius ?? 40)
+      const center = effect.areaKind === 'ring' ? effect.from : effect.x
+      const width = radius * Math.min(1, 0.4 + progress * 3)
+      if (effect.areaKind === 'ring' || effect.attackerKey === 'geridome') {
+        ctx.beginPath()
+        ctx.ellipse(center, 0, width, 11 + progress * 5, 0, 0, Math.PI * 2)
+        ctx.stroke()
+      } else ellipse(center, 0, width, 11 + progress * 5)
+      if (['jiro', 'geridome', 'bichi', 'yakiniku', 'seichou'].includes(effect.attackerKey)) {
+        for (let index = 0; index < count; index++) {
+          const offset = ((index / Math.max(1, count - 1)) * 2 - 1) * width
+          const height = 6 + (index % 3) * 5 + progress * 12
+          if (['bichi', 'yakiniku'].includes(effect.attackerKey)) {
+            ellipse(center + offset, -height, 3, 4)
+            if (effect.attackerKey === 'yakiniku')
+              line(center + offset - 3, -height - 5, center + offset + 3, -height - 9)
+          } else line(center + offset, -3, center + offset + (index % 2 ? 4 : -4), -height)
+        }
+      }
+    }
+    if (effect.attackerKey === 'daiou') {
+      const crest = effect.primaryX + dir * Math.min(80, age * 600)
+      ctx.beginPath()
+      ctx.moveTo(crest - dir * 12, 0)
+      ctx.lineTo(crest - dir * 5, -8)
+      ctx.lineTo(crest, -22)
+      ctx.lineTo(crest + dir * 6, -8)
+      ctx.lineTo(crest + dir * 12, 0)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      for (let index = 0; index < count; index++) ellipse(crest - dir * (index * 6), -4 - (index % 3) * 5, 2, 2)
+      ellipse(effect.primaryX, 0, 12 + progress * 20, 6)
+    }
+    if (effect.attackerKey === 'geri') {
+      ctx.lineWidth = 7
+      line(effect.from + dir * 10, -24, effect.from - dir * (35 + progress * 25), -24)
+    }
+    if (['dodeka', 'mop'].includes(effect.attackerKey)) {
+      const length = (type?.range ?? 40) + (type?.extra ?? 0)
+      const width = length * Math.min(1, 0.35 + progress * 4)
+      ctx.lineWidth = effect.attackerKey === 'mop' ? 5 : 9
+      ctx.beginPath()
+      ctx.ellipse(
+        effect.from + dir * width * 0.5,
+        -3,
+        width * 0.5,
+        effect.attackerKey === 'mop' ? 9 : 20,
+        0,
+        Math.PI,
+        Math.PI * 2
+      )
+      ctx.stroke()
+    }
+  }
+
+  const points =
+    effect.missed && !['cone', 'pierce', 'shockwave'].includes(effect.areaKind)
+      ? []
+      : victims.length
+        ? victims.map(({ id, unit, at }) => ({
+            x: unit?.x ?? effect.victimOrigins?.find((origin) => origin.id === id)?.x ?? effect.x,
+            y: unit ? laneY(unit) - 30 * aspect : (effect.targetY ?? floor - 30 * aspect),
+            age: time - at
+          }))
+        : effect.targetId == null && hitAge >= 0 && !effect.missed
+          ? [{ x: effect.x, y: effect.targetY ?? floor - 30 * aspect, age: hitAge }]
+          : []
+  for (const point of points) {
+    const t = Math.min(1, point.age / 0.22)
+    const x = point.x
+    const y = (point.y - floor) / aspect
+    const burstColor =
+      effect.attackerKey === 'geri' && effect.source?.charged
+        ? '#ff6534'
+        : effect.attackerKey === 'sake' && effect.crit
+          ? '#ff9fca'
+          : color
+    ctx.globalAlpha = 1 - t
+    ctx.fillStyle = burstColor
+    ctx.strokeStyle = light
+    ctx.lineWidth = 2.5
+    if (shape === 'ring') {
+      ctx.beginPath()
+      ctx.arc(x, y, 5 + t * (effect.source?.charged ? 32 : 22), 0, Math.PI * 2)
+      ctx.stroke()
+      if (effect.source?.charged) {
+        ctx.fillStyle = burstColor
+        ellipse(x, y, 12 * (1 - t) + 2, 12 * (1 - t) + 2)
+      }
+    } else if (shape === 'arc') {
+      ctx.beginPath()
+      const flip = (effect.source?.strikes ?? 0) % 2 ? Math.PI : 0
+      ctx.arc(x, y, 12 + t * 12, flip - 1.2, flip + 1.2)
+      ctx.stroke()
+    } else if (shape === 'star') {
+      ctx.beginPath()
+      for (let index = 0; index < 10; index++) {
+        const angle = (index * Math.PI) / 5 - Math.PI / 2
+        const radius = (index % 2 ? 5 : 14) * (1 - t * 0.5)
+        if (index === 0) ctx.moveTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius)
+        else ctx.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius)
+      }
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    } else ellipse(x, y, 5 + (1 - t) * 7, 5 + (1 - t) * 7)
+    const hitParticles = effect.attackerKey === 'yofukashi' ? 3 : count
+    for (let index = 0; index < hitParticles; index++) {
+      const angle = (index * Math.PI * 2) / hitParticles + (effect.attackerKey === 'sake' && effect.crit ? t * 4 : 0)
+      const distance = 10 + t * (shape === 'star' ? 25 : 18)
+      const px = x + Math.cos(angle) * distance
+      const py = y + Math.sin(angle) * distance
+      if (shape === 'waves') {
+        ctx.beginPath()
+        ctx.moveTo(px, py + 4)
+        ctx.bezierCurveTo(px - 5, py, px + 5, py - 4, px, py - 8)
+        ctx.stroke()
+      } else if (shape === 'shards') {
+        ctx.beginPath()
+        ctx.moveTo(px, py - 6)
+        ctx.lineTo(px + 3, py + 4)
+        ctx.lineTo(px - 3, py + 2)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      } else if (effect.attackerKey === 'oyster') {
+        ctx.beginPath()
+        ctx.arc(px, py, 2 + (index % 3), 0, Math.PI * 2)
+        ctx.stroke()
+      } else if (['star', 'lines', 'sticks', 'arc'].includes(shape)) {
+        line(px, py, px + Math.cos(angle) * 7, py + Math.sin(angle) * 7)
+      } else ellipse(px, py, shape === 'dust' ? 5 : 3, shape === 'dust' ? 4 : 3)
+    }
+    if (['curry', 'sayu', 'ice'].includes(effect.attackerKey)) {
+      for (let index = 0; index < (reduced ? 2 : 3); index++) {
+        ctx.beginPath()
+        ctx.arc(x + (index - 1) * 10, y - 20 - t * 16, 4 + t * 4, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+    }
+    if (effect.attackerKey === 'ramen') {
+      line(x - dir * 30, y - 5, x, y - 5)
+      line(x - dir * 30, y + 1, x, y + 1)
+    }
+    if (['cleaner', 'milk'].includes(effect.attackerKey)) {
+      const direction = effect.attackerKey === 'cleaner' ? -dir : dir
+      for (let index = 0; index < 3; index++) line(x - direction * 22, y + index * 6, x - direction * 10, y + index * 6)
+    }
+    if (effect.attackerKey === 'sake' && effect.crit) {
+      ctx.strokeStyle = '#ff9fca'
+      ctx.beginPath()
+      ctx.arc(x, y, 8 + t * 14, t * 5, t * 5 + Math.PI * 1.5)
+      ctx.stroke()
+    }
+    if (effect.attackerKey === 'katachi') {
+      ctx.fillStyle = '#9e6b39'
+      for (let index = 0; index < (reduced ? 2 : 4); index++) ellipse(x + (index - 1.5) * 7, 0, 4, 3)
+    }
+  }
+  if (effect.crit && hitAge >= 0 && hitAge < 0.22) {
+    ctx.globalAlpha = 1 - progress
     ctx.fillStyle = '#ffef97'
     ctx.font = 'bold 17px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('会心!', effect.primaryX, -55 - progress * 15)
+    ctx.fillText('会心!', effect.x, -65 - progress * 15)
   }
   ctx.restore()
 }
