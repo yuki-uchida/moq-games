@@ -148,7 +148,8 @@ export class CoachMarks {
         return null
       }
       // Only point at a button that will actually hit something right now.
-      if (!bestSkillButton()) return null
+      // AUTO already fires them, so "tap a skill" would only distract.
+      if (document.querySelector('#skill-auto[aria-pressed="true"]') || !bestSkillButton()) return null
       this.skillsSince ||= now
       if (now - this.skillsSince > SKILLS_MS) {
         this.skillsDone = true

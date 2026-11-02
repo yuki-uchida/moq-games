@@ -27,13 +27,24 @@ async function seed(page: Page, seconds = 0) {
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#app')).toHaveAttribute('data-phase', 'assault')
+  // The engine holds the clock until every special effect is prepared (slow on a software GPU).
+  await expect
+    .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.loaded), {
+      timeout: 120_000
+    })
+    .toBe(10)
 }
-// Simulation seconds gained in one real second, measured inside the page.
+// Simulation seconds gained in one real second, measured inside the page. The time attribute is
+// written when a frame renders, so start and end on freshly rendered frames: on a slow software GPU
+// the value read right after a click can predate the last steps before the pause.
 const advance = (page: Page) =>
   page.evaluate(async () => {
     const app = document.getElementById('app')!,
-      before = Number(app.dataset.simulationTime)
+      rendered = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    await rendered()
+    const before = Number(app.dataset.simulationTime)
     await new Promise((resolve) => setTimeout(resolve, 1000))
+    await rendered()
     return Number(app.dataset.simulationTime) - before
   })
 
@@ -45,7 +56,7 @@ test('pause stops the simulation, resume and P restore it, focus returns to the 
   expect(box.width).toBeGreaterThanOrEqual(44)
   expect(box.height).toBeGreaterThanOrEqual(44)
   await expect(pause).toHaveAttribute('aria-label', '一時停止')
-  expect(await advance(page)).toBeGreaterThan(0.5)
+  await expect.poll(() => advance(page), { timeout: 60_000 }).toBeGreaterThan(0.3)
   await pause.click()
   await expect(dialog).toBeVisible()
   await expect(page.locator('#pause-resume')).toBeFocused()
@@ -53,13 +64,13 @@ test('pause stops the simulation, resume and P restore it, focus returns to the 
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await expect(pause).toBeFocused()
-  expect(await advance(page)).toBeGreaterThan(0.5)
+  await expect.poll(() => advance(page), { timeout: 60_000 }).toBeGreaterThan(0.3)
   await page.keyboard.press('p')
   await expect(dialog).toBeVisible()
   expect(await advance(page)).toBe(0)
   await page.locator('#pause-resume').click()
   await expect(dialog).toBeHidden()
-  expect(await advance(page)).toBeGreaterThan(0.5)
+  await expect.poll(() => advance(page), { timeout: 60_000 }).toBeGreaterThan(0.3)
   await page.keyboard.press('p')
   await page.keyboard.press('p')
   await expect(dialog).toBeHidden()
