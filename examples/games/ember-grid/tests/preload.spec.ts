@@ -140,6 +140,7 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
         }
         requestAnimationFrame(frame)
         document.querySelector<HTMLButtonElement>('.cell[aria-label^="7,4 灰牙"]')!.click()
+        document.querySelector<HTMLButtonElement>('#confirm')!.click()
       })
     })
     expect(samples.some((s) => s.active === 2)).toBe(true)

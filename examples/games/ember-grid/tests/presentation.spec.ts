@@ -38,11 +38,12 @@ for (const width of [1280, 390])
       }
       requestAnimationFrame(sample)
     })
+    await page.getByRole('button', { name: /7,4 灰牙/ }).tap()
     await Promise.all([
       page.waitForFunction(() => !!document.querySelector('.stage[data-projectile~="arrow"]'), undefined, {
         polling: 'raf'
       }),
-      page.getByRole('button', { name: /7,4 灰牙/ }).tap()
+      page.getByRole('button', { name: '攻撃', exact: true }).tap()
     ])
     await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
     await expect(page.locator('.damage-number')).toHaveText('−8')
@@ -69,6 +70,7 @@ for (const width of [1280, 390])
       .first()
       .tap()
     await page.getByRole('button', { name: /灰牙 HP 2/ }).tap()
+    await page.getByRole('button', { name: '攻撃', exact: true }).tap()
     await page.waitForFunction(() => !!document.querySelector('.stage[data-motion~="death"]'), undefined, {
       polling: 'raf'
     })
@@ -155,6 +157,7 @@ test('hidden tab keeps player and enemy turns advancing without animation frames
   await page.getByRole('button', { name: /2,4 風読み/ }).click()
   await page.getByRole('button', { name: /4,4 平地 移動可能/ }).click()
   await page.getByRole('button', { name: /7,4 灰牙/ }).click()
+  await page.getByRole('button', { name: '攻撃', exact: true }).click()
   await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible()
   await page.locator('#end').click()
   await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 5000 })

@@ -65,7 +65,7 @@ export class BattleAnimation {
     this.nodes.add(node)
     return node
   }
-  async present(game: Game, before: Unit[], acting: Unit) {
+  async present(game: Game, before: Unit[], acting: Unit, speed = 1) {
     const token = this.version,
       live = () => token === this.version
     const from = before.find((u) => u.id === acting.id)!
@@ -78,7 +78,7 @@ export class BattleAnimation {
     try {
       if (moved) {
         this.cue('healer')
-        const step = reduced ? 80 : 220
+        const step = (reduced ? 80 : 220) / speed
         for (let i = 1; i < path.length && live(); i++) {
           actor.facing = unit(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y)
           actor.track = {
@@ -101,14 +101,14 @@ export class BattleAnimation {
         victim.facing = unit(acting.x - target.x, acting.y - target.y)
         const chest = (p: Point) => world(p, 0.42 * this.stage.figure)
         const profile = ATTACK_PROFILES[acting.role as UnitType]
-        const ms = reduced ? 80 : profile.durationMs
+        const ms = (reduced ? 80 : profile.durationMs) / speed
         const started = performance.now()
         actor.track = { motion: 'attack', start: started, ms, clipMs: profile.durationMs }
         await pause((profile.cueMs / profile.durationMs) * ms)
         if (!live()) return
         this.cue(acting.role)
         if (acting.role === 'archer' || acting.role === 'mage') {
-          const flight = reduced ? 80 : 240
+          const flight = (reduced ? 80 : 240) / speed
           const origin = this.stage.emitter(acting.id, profile.cueMs) ?? chest(acting)
           const land = this.stage.shoot(acting.role === 'mage' ? 'spell' : 'arrow', origin, chest(target), flight)
           await pause(flight)
@@ -116,7 +116,7 @@ export class BattleAnimation {
           if (!live()) return
         }
         const impactedAt = performance.now(),
-          reaction = reduced ? 80 : target.hp === 0 ? 550 : 300
+          reaction = (reduced ? 80 : target.hp === 0 ? 550 : 300) / speed
         victim.track = {
           motion: target.hp === 0 ? 'death' : 'hit',
           start: impactedAt,

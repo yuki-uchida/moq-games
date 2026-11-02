@@ -381,7 +381,7 @@ export class Stage {
     let url = this.portraits.get(role)
     if (url) return url
     const camera = new THREE.OrthographicCamera(-0.62, 0.62, 1.0, -0.08, -50, 50)
-    camera.position.copy(this.camera.position)
+    camera.position.set(-0.8 / Math.SQRT2, 0.6, 0.8 / Math.SQRT2).multiplyScalar(20)
     camera.lookAt(0, 0, 0)
     const scene = new THREE.Scene()
     scene.environment = this.scene.environment

@@ -154,13 +154,16 @@ async function playMission(page: Page, g: Game, idle?: string, heal = true) {
       }
       if (target) {
         await cell(target.x, target.y).click()
+        await page.getByRole('button', { name: '攻撃', exact: true }).click()
         attack(g, u, target)
       }
       if (g.phase === 'won') break
     }
     if (g.phase === 'ally') {
+      await expect(page.getByRole('button', { name: '▶ ターン終了' })).toBeEnabled({ timeout: 30000 })
       // The page hands over by itself once every ally is spent.
-      if (!allyTurnOver(g)) await page.getByRole('button', { name: '▶ ターン終了' }).click()
+      if (!allyTurnOver(g) || (await page.locator('#undo').isEnabled()))
+        await page.getByRole('button', { name: '▶ ターン終了' }).click()
       beginEnemy(g)
       g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
       beginAlly(g)
@@ -168,6 +171,7 @@ async function playMission(page: Page, g: Game, idle?: string, heal = true) {
     }
   }
   expect(g.phase).toBe('won')
+  await expect(page.locator('#result')).toBeVisible({ timeout: 30000 })
 }
 for (const stage of [0, 1, 2])
   for (const width of [1280, 390])
