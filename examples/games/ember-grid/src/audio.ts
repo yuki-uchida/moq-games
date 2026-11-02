@@ -153,6 +153,7 @@ export class ExpeditionAudio {
   }
   cue(role = 'healer') {
     if (!this.enabled) return
+    if (!this.sounds.has(role)) return
     this.voices = this.voices.filter((v) => !v.ended && !v.paused)
     if (this.voices.length >= 4) {
       const oldest = this.voices.shift()!
