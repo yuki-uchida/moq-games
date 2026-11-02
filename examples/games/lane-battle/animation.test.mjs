@@ -39,7 +39,7 @@ test('each unit keeps its scheduled cycle until the next contact', () => {
     const game = createGame(0, [card({ uid: 1, key: isEnemy ? 'katachi' : type.key })])
     game.gold = 999
     game.spawn = 999
-    game.opened = true
+    game.opened = 2
     game.rushes = 4
     game.turret = 999
     summon(game, isEnemy ? ENEMIES.indexOf(type) : 0, isEnemy ? -1 : 1)
@@ -111,7 +111,11 @@ test('hit reactions jolt at once, scale with power and settle within half a seco
   assert.equal(flinch(0, 1).flash, 1)
   assert.equal(flinch(0.2, 1).flash, 0)
   assert.ok(Math.abs(flinch(0.45, 1).jolt) < 0.01 && Math.abs(flinch(0.45, 1).wobble) < 0.1)
-  assert.deepEqual(flinch(-1, 1), { jolt: 0, wobble: 0, flash: 0, face: false })
+  assert.deepEqual(flinch(-1, 1), { jolt: 0, wobble: 0, lift: 0, flash: 0, face: false })
+  // Criticals and knockback read as heavier: a longer hold, a pop upward and a longer ＞＜ face.
+  assert.ok(flinch(0.07, 1.6).jolt / 1.6 > flinch(0.07, 0.7).jolt / 0.7)
+  assert.ok(flinch(0.1, 1.6).lift > 0 && flinch(0.1, 1).lift === 0)
+  assert.ok(flinch(0.35, 1.6).face && !flinch(0.3, 0.7).face)
 })
 
 test('a knocked-out unit tips over and is gone by KO_SECONDS', () => {

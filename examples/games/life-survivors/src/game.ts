@@ -1,7 +1,10 @@
 import {
+  BULLET_INDEX,
   ENEMY_BY_ID,
-  LEVEL_TEXT,
+  ENEMY_INDEX,
   EVENTS,
+  ITEM_KINDS,
+  LEVEL_TEXT,
   MAX_GAME_PLAYERS,
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
@@ -12,16 +15,21 @@ import {
   PLAYER_COLORS,
   POOLS,
   RUN_SECONDS,
+  STAGES,
   TALENT_CATEGORIES,
   TALENT_WEAPONS,
   WEAPON_BY_ID,
+  WEAPON_INDEX,
   WEAPON_SLOTS,
   ageAt,
+  stageAt,
+  type BossPattern,
   type EnemyDef,
   type TalentCategory,
   type Tag,
   type WeaponDef
 } from './data'
+import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -29,13 +37,31 @@ export const POOR = 0.55
 export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
+export const MAX_BULLETS = 140
+/** Damage multiplier of each face of the ギャンブル die. */
+export const DICE_MULT = [0.3, 0.6, 1, 1.5, 2.5, 5]
+/** A critical hit hits this much harder. */
+export const CRIT_MULTIPLIER = 2
 const PLAYER_RADIUS = 14
 const BASE_SPEED = 135
 const STEP = 1 / 60
 const MAX_ENEMIES = 560
 const MAX_GEMS = 320
 const MAX_SHOTS = 420
+const MAX_ITEMS = 36
 const CELL = 80
+const ELITE_FROM = 120
+const ELITE_CHANCE = 0.018
+const SLOWMO_SECONDS = 1.4
+const SLOWMO_SCALE = 0.3
+const BULLET_IFRAMES = 0.5
+const BOSS_IFRAMES = 0.6
+/** Share of max HP a level-up restores. */
+const LEVEL_HEAL = 0.06
+/** Crowd shooters hold their fire while this many bullets are already in the air (bosses ignore it). */
+const SHOOTER_BULLET_LIMIT = 40
+/** Pattern cooldowns of bosses (seconds). */
+const PATTERN_COOLDOWN: Record<BossPattern, number> = { ring: 3.5, spiral: 6, summon: 7, charge: 6 }
 
 export interface Input {
   x: number
@@ -73,7 +99,14 @@ export interface Player {
   choices: string[]
   choiceSeq: number
   pending: number
+  /** 蒸発済み's free birth hand is still waiting to be dealt (consumed by the first offer). */
+  birthPick?: boolean
   hurt: number
+  /** Seconds of grace after an enemy bullet hit. */
+  invuln: number
+  /** Cooldown of the HURT fx and the damage gathered for it. */
+  hurtFx: number
+  hurtAcc: number
   /** Enemy id that dealt the final blow while downed (picks the death animation and the result text). */
   killer?: string
 }
@@ -92,6 +125,27 @@ export interface Enemy {
   slow: number
   life: number
   flash: number
+  /** A tougher variant that appeared at random. */
+  elite: boolean
+  /** Collision radius multiplier (elites are bigger). */
+  scale: number
+  /** AI state (charger: 0 approach, 1 windup, 2 dash, 3 recover; circler: 0 orbit, 1 dive; boss charge likewise). */
+  mode: number
+  /** Seconds left in the current mode (or until the next blink). */
+  timer: number
+  /** Locked target of a windup. */
+  tx: number
+  ty: number
+  /** > 0 while telegraphing an attack. */
+  windup: number
+  /** > 0 while fading out before a teleport. */
+  blink: number
+  shotCd: number
+  /** Boss pattern cooldowns, parallel to the def's patterns. */
+  pcd: number[]
+  /** Seconds of spiral fire left. */
+  burst: number
+  spin: number
 }
 
 export interface Shot {
@@ -118,6 +172,32 @@ export interface Shot {
   /** Whip half-extents (x along facing). */
   w: number
   h: number
+  /** Variant for the renderer: dice face, chain link, biting, armed, pellet kind. */
+  v: number
+  /** Seconds before the shot exists (staples fired one after another). */
+  delay: number
+  /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
+  aux: number
+  /** Every hit crits (a rolled 6). */
+  crit: boolean
+  critChance: number
+  strongMult: number
+  /** What a pet is chasing. */
+  target?: Enemy
+}
+
+export interface Bullet {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  r: number
+  damage: number
+  life: number
+  /** Index into BULLET_KINDS. */
+  kind: number
+  /** Enemy def id of the shooter (the killer when it downs someone). */
+  src: string
 }
 
 export interface Gem {
@@ -138,6 +218,7 @@ export interface Popup {
   y: number
   v: number
   strong: boolean
+  crit: boolean
   owner: string
   life: number
 }
@@ -158,10 +239,15 @@ export interface GameState {
   players: Player[]
   enemies: Enemy[]
   shots: Shot[]
+  bullets: Bullet[]
   gems: Gem[]
   items: Item[]
   popups: Popup[]
   log: LogEntry[]
+  /** Recent events for renderer / HUD / audio, oldest first. */
+  fx: FxEvent[]
+  /** Real seconds of slow motion left (after a boss falls); `Game.step` slows time while it lasts. */
+  slowmo: number
   eventIndex: number
   reaper?: { x: number; y: number }
   nextId: number
@@ -204,6 +290,16 @@ export interface PlayerStats {
   might: number
   cooldown: number
   area: number
+  /** Chance of a critical hit. */
+  crit: number
+  /** Bonus weapon count from 器用. */
+  amount: number
+  /** Projectile speed multiplier. */
+  shotSpeed: number
+  /** Effect duration multiplier. */
+  duration: number
+  /** Damage multiplier against a card's 特攻 tags. */
+  strong: number
 }
 
 export function playerStats(player: Player): PlayerStats {
@@ -217,7 +313,12 @@ export function playerStats(player: Player): PlayerStats {
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
     might: 1 + p('p_hot') * 0.1,
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07),
-    area: 1 + p('p_kind') * 0.08
+    area: 1 + p('p_kind') * 0.08,
+    crit: 0.05 + p('p_lucky') * 0.05,
+    amount: p('p_clever') >= 4 ? 2 : p('p_clever') >= 1 ? 1 : 0,
+    shotSpeed: 1 + p('p_curious') * 0.1,
+    duration: 1 + p('p_curious') * 0.1,
+    strong: STRONG_MULTIPLIER + p('p_savvy') * 0.25
   }
 }
 
@@ -227,6 +328,9 @@ export interface WeaponStats {
   amount: number
   area: number
   duration: number
+  speed: number
+  crit: number
+  strong: number
 }
 
 /** Everything that multiplies a weapon, including the hidden talent. */
@@ -246,9 +350,18 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
   return {
     damage,
     cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
-    amount: def.amount + (lv >= 2 ? 1 : 0) + (lv >= 5 ? 1 : 0) + (lv >= 8 ? 1 : 0) + (evolved ? 1 : 0),
+    amount:
+      def.amount +
+      (lv >= 2 ? 1 : 0) +
+      (lv >= 5 ? 1 : 0) +
+      (lv >= 8 ? 1 : 0) +
+      (evolved ? 1 : 0) +
+      (def.behavior === 'none' ? 0 : stats.amount),
     area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
-    duration: def.duration * (evolved ? 1.3 : 1)
+    duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
+    speed: stats.shotSpeed,
+    crit: stats.crit,
+    strong: stats.strong
   }
 }
 
@@ -280,6 +393,9 @@ export function choiceText(player: Player, choice: string): { icon: string; name
     : { icon: '💴', name: 'お小遣い', text: '経験値を少しもらう', tag: '' }
 }
 
+/** Chance that a chest holds three turning points instead of one. */
+export const CHEST_TRIPLE = 0.06
+
 export class Game {
   state: GameState
   private readonly rng: () => number
@@ -287,6 +403,11 @@ export class Game {
   private spawnDebt = 0
   private inputs = new Map<string, Input>()
   private accumulator = 0
+  private fxSeq = 0
+  private stageIndex = -1
+  private tickHits = 0
+  private tickShots = 0
+  private tickKills = 0
 
   constructor(seed = Date.now()) {
     this.rng = mulberry32(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b))
@@ -300,10 +421,13 @@ export class Game {
       players: [],
       enemies: [],
       shots: [],
+      bullets: [],
       gems: [],
       items: [],
       popups: [],
       log: [],
+      fx: [],
+      slowmo: 0,
       eventIndex: 0,
       nextId: 1
     }
@@ -311,6 +435,17 @@ export class Game {
 
   random() {
     return this.rng()
+  }
+
+  /** Records an event for the renderer / HUD / audio. */
+  private emit(type: number, x = 0, y = 0, a = 0, b = 0) {
+    const fx = this.state.fx
+    fx.push({ seq: ++this.fxSeq, t: this.state.time, type, x: Math.round(x), y: Math.round(y), a: Math.round(a), b })
+    if (fx.length > FX_CAP) fx.shift()
+  }
+
+  private playerIndex(player: Player) {
+    return Math.max(0, this.state.players.indexOf(player))
   }
 
   addPlayer(id: string, parentId?: string): Player | undefined {
@@ -346,8 +481,12 @@ export class Game {
       passives: [],
       choices: [],
       choiceSeq: 0,
-      pending: 0,
-      hurt: 0
+      pending: parent === 'p_gone' ? 1 : 0,
+      birthPick: parent === 'p_gone',
+      hurt: 0,
+      invuln: 0,
+      hurtFx: 0,
+      hurtAcc: 0
     }
     player.maxHp = player.hp = playerStats(player).maxHp
     state.players.push(player)
@@ -387,8 +526,12 @@ export class Game {
     return players.length === 1 && players[0].choices.length > 0
   }
 
+  /** Advances by real time. Slow motion (after a boss falls) stretches it; `tick` itself is never scaled. */
   step(dt: number) {
-    this.accumulator = Math.min(this.accumulator + dt, 0.25)
+    const state = this.state
+    const scale = state.slowmo > 0 ? SLOWMO_SCALE : 1
+    state.slowmo = Math.max(0, state.slowmo - dt)
+    this.accumulator = Math.min(this.accumulator + dt * scale, 0.25)
     while (this.accumulator >= STEP) {
       this.accumulator -= STEP
       this.tick(STEP)
@@ -402,12 +545,17 @@ export class Game {
 
   tick(dt: number) {
     const state = this.state
+    this.tickHits = 0
+    this.tickShots = 0
+    this.tickKills = 0
     for (const popup of state.popups) popup.life -= dt
     state.popups = state.popups.filter((popup) => popup.life > 0)
+    while (state.fx.length && state.fx[0].t < state.time - FX_WINDOW) state.fx.shift()
     if (state.phase === 'won' || state.phase === 'lost' || this.paused || !state.players.length) return
     if (state.phase === 'reaper') return this.reaperTick(dt)
     state.time += dt
     if (state.time >= RUN_SECONDS) return this.summonReaper()
+    this.stageTick()
     this.movePlayers(dt)
     this.runEvents()
     this.spawn(dt)
@@ -415,11 +563,22 @@ export class Game {
     this.moveEnemies(dt)
     this.fireWeapons(dt)
     this.moveShots(dt)
+    this.moveBullets(dt)
     this.collectGems(dt)
     this.revivePlayers(dt)
     if (state.players.every((player) => player.downed)) {
       state.phase = 'lost'
       this.log(`心が折れた… 享年${ageAt(state.time)}歳`)
+    }
+  }
+
+  /** Announces each life stage once, when the age enters it. */
+  private stageTick() {
+    const stage = stageAt(this.state.time)
+    const index = STAGES.indexOf(stage)
+    if (index > this.stageIndex) {
+      this.stageIndex = index
+      this.emit(FX.STAGE, 0, 0, index)
     }
   }
 
@@ -429,6 +588,7 @@ export class Game {
     state.phase = 'reaper'
     state.enemies = []
     state.shots = []
+    state.bullets = []
     const anchor = state.players[0]
     state.reaper = { x: anchor.x + 420, y: anchor.y - 260 }
     this.log('死神が迎えに来た。寿命が尽きる——')
@@ -452,6 +612,8 @@ export class Game {
       const stats = playerStats(player)
       player.maxHp = stats.maxHp
       player.hurt = Math.max(0, player.hurt - dt)
+      player.invuln = Math.max(0, player.invuln - dt)
+      player.hurtFx = Math.max(0, player.hurtFx - dt)
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? { x: 0, y: 0, pick: -1, pickSeq: -1 }
       // Level-up choices slow you down in co-op so picking is not a death sentence.
@@ -476,20 +638,39 @@ export class Game {
   private runEvents() {
     const state = this.state
     while (state.eventIndex < EVENTS.length && state.time >= EVENTS[state.eventIndex].at) {
-      const event = EVENTS[state.eventIndex++]
+      const index = state.eventIndex++
+      const event = EVENTS[index]
       this.log(event.text)
       if (event.boss) this.spawnEnemy(event.boss)
       if (event.swarm) {
         const count = Math.round((event.count ?? 20) * this.playerFactor())
         const anchor = this.randomAlive()
         if (!anchor) continue
+        this.emit(FX.SWARM, anchor.x, anchor.y, index)
+        const formation = event.formation ?? 'ring'
+        const side = this.rng() * Math.PI * 2
+        const px = -Math.sin(side)
+        const py = Math.cos(side)
+        const cx = anchor.x + Math.cos(side) * SPAWN_RADIUS
+        const cy = anchor.y + Math.sin(side) * SPAWN_RADIUS
+        const spacing = Math.min(34, 1500 / count)
+        const clump = 36 + count * 2.2
         for (let i = 0; i < count; i++) {
-          const angle = (i / count) * Math.PI * 2
-          this.spawnEnemy(
-            event.swarm,
-            anchor.x + Math.cos(angle) * SPAWN_RADIUS,
-            anchor.y + Math.sin(angle) * SPAWN_RADIUS
-          )
+          if (formation === 'wall') {
+            const offset = (i - (count - 1) / 2) * spacing
+            this.spawnEnemy(event.swarm, cx + px * offset, cy + py * offset)
+          } else if (formation === 'cluster') {
+            const angle = this.rng() * Math.PI * 2
+            const radius = Math.sqrt(this.rng()) * clump
+            this.spawnEnemy(event.swarm, cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius)
+          } else {
+            const angle = (i / count) * Math.PI * 2
+            this.spawnEnemy(
+              event.swarm,
+              anchor.x + Math.cos(angle) * SPAWN_RADIUS,
+              anchor.y + Math.sin(angle) * SPAWN_RADIUS
+            )
+          }
         }
       }
     }
@@ -533,11 +714,31 @@ export class Game {
           break
         }
       }
-      this.spawnEnemy(kind)
+      const def = ENEMY_BY_ID.get(kind)!
+      if (def.behavior === 'swarm') {
+        // Swarmers come in clumps of five to eight from one direction.
+        const anchor = this.randomAlive()
+        if (!anchor) return
+        const count = 5 + Math.floor(this.rng() * 4)
+        const side = this.rng() * Math.PI * 2
+        for (let i = 0; i < count; i++) {
+          const angle = this.rng() * Math.PI * 2
+          const radius = Math.sqrt(this.rng()) * 60
+          this.spawnEnemy(
+            kind,
+            anchor.x + Math.cos(side) * SPAWN_RADIUS + Math.cos(angle) * radius,
+            anchor.y + Math.sin(side) * SPAWN_RADIUS + Math.sin(angle) * radius
+          )
+        }
+        this.spawnDebt -= count - 1
+        continue
+      }
+      const elite = state.time >= ELITE_FROM && def.behavior !== 'dash' && this.rng() < ELITE_CHANCE
+      this.spawnEnemy(kind, undefined, undefined, { elite })
     }
   }
 
-  spawnEnemy(kind: string, x?: number, y?: number) {
+  spawnEnemy(kind: string, x?: number, y?: number, options: { elite?: boolean } = {}) {
     const state = this.state
     const def = ENEMY_BY_ID.get(kind)!
     const anchor = this.randomAlive()
@@ -547,7 +748,11 @@ export class Game {
       x = anchor.x + Math.cos(angle) * SPAWN_RADIUS
       y = anchor.y + Math.sin(angle) * SPAWN_RADIUS
     }
-    const hp = def.behavior === 'boss' ? def.hp * (1 + (state.players.length - 1) * 0.6) : def.hp * this.hpScale()
+    const elite = Boolean(options.elite) && def.behavior !== 'boss'
+    const hp =
+      def.behavior === 'boss'
+        ? def.hp * (1 + (state.players.length - 1) * 0.6)
+        : def.hp * this.hpScale() * (elite ? 5 : 1)
     let vx = 0
     let vy = 0
     if (def.behavior === 'dash') {
@@ -568,9 +773,30 @@ export class Game {
       vy,
       slow: 0,
       life: 0,
-      flash: 0
+      flash: 0,
+      elite,
+      scale: elite ? 1.25 : 1,
+      mode: 0,
+      timer: 0,
+      tx: 0,
+      ty: 0,
+      windup: 0,
+      blink: 0,
+      shotCd: 0,
+      pcd: [],
+      burst: 0,
+      spin: 0
     }
+    if (def.shot) enemy.shotCd = 0.6 + this.rng() * def.shot.cooldown
+    if (def.behavior === 'blink') enemy.timer = 1.5 + this.rng() * 1.5
+    if (def.behavior === 'circler') enemy.timer = 2 + this.rng()
+    if (def.behavior === 'boss') enemy.pcd = (def.patterns ?? []).map((_, i) => 2 + i * 2.5)
     state.enemies.push(enemy)
+    if (def.behavior === 'boss') this.emit(FX.BOSS_SPAWN, x, y, ENEMY_INDEX.get(kind)!)
+    if (elite) {
+      this.emit(FX.ELITE, x, y, ENEMY_INDEX.get(kind)!)
+      this.log(`手ごわい「${def.name}」が現れた！`)
+    }
     return enemy
   }
 
@@ -615,10 +841,34 @@ export class Game {
     return best ? { player: best, distance: Math.sqrt(distance) } : undefined
   }
 
+  /** Nearest living enemy to a point within `range`, skipping the given ids. */
+  private nearestEnemy(x: number, y: number, range: number, skip?: Set<number>) {
+    let best: Enemy | undefined
+    let distance = range * range
+    for (const enemy of this.state.enemies) {
+      if (enemy.hp <= 0 || skip?.has(enemy.id)) continue
+      const d = (enemy.x - x) ** 2 + (enemy.y - y) ** 2
+      if (d <= distance) {
+        distance = d
+        best = enemy
+      }
+    }
+    return best
+  }
+
+  /** How much of a knockback this enemy feels. */
+  private knockScale(enemy: Enemy, def: EnemyDef) {
+    if (def.behavior === 'boss') return 0
+    return (def.behavior === 'tank' ? 0.15 : 1) * (enemy.elite ? 0.3 : 1)
+  }
+
   private moveEnemies(dt: number) {
     const state = this.state
+    const list = state.enemies
+    const count = list.length
     const remaining: Enemy[] = []
-    for (const enemy of state.enemies) {
+    for (let i = 0; i < count; i++) {
+      const enemy = list[i]
       if (enemy.hp <= 0) continue
       const def = ENEMY_BY_ID.get(enemy.kind)!
       enemy.life += dt
@@ -629,24 +879,127 @@ export class Game {
         remaining.push(enemy)
         continue
       }
+      const radius = def.radius * enemy.scale
       // Life speeds up as you age.
       const speed = def.speed * (enemy.slow > 0 ? 0.45 : 1) * (1 + (state.time / RUN_SECONDS) * 0.35)
-      if (def.behavior === 'dash') {
-        if (enemy.life > 5) continue
-        enemy.x += enemy.vx * dt
-        enemy.y += enemy.vy * dt
-      } else {
-        const dx = target.player.x - enemy.x
-        const dy = target.player.y - enemy.y
-        const l = target.distance || 1
-        enemy.x += (dx / l) * speed * dt
-        enemy.y += (dy / l) * speed * dt
+      const l = target.distance || 1
+      const ux = (target.player.x - enemy.x) / l
+      const uy = (target.player.y - enemy.y) / l
+      // Velocity this tick; behaviours below fill it in.
+      let mx = ux * speed
+      let my = uy * speed
+      let separate = true
+      switch (def.behavior) {
+        case 'dash':
+          if (enemy.life > 5) continue
+          mx = enemy.vx
+          my = enemy.vy
+          separate = false
+          break
+        case 'swarm': {
+          const weave = Math.sin(enemy.life * 4 + enemy.id * 1.7) * 0.9
+          mx = (ux - uy * weave) * speed
+          my = (uy + ux * weave) * speed
+          break
+        }
+        case 'charger': {
+          const burst = this.chargeAi(enemy, def, target, ux, uy, def.dash ?? 340, 0.7, 0.6, 0.8, 220, dt)
+          mx = burst.x
+          my = burst.y
+          separate = burst.separate
+          break
+        }
+        case 'shooter': {
+          const spec = def.shot!
+          if (l > 300) {
+            mx = ux * speed
+            my = uy * speed
+          } else if (l < 210) {
+            mx = -ux * speed * 0.8
+            my = -uy * speed * 0.8
+          } else {
+            const sign = enemy.id % 2 ? 1 : -1
+            mx = -uy * sign * speed * 0.7
+            my = ux * sign * speed * 0.7
+          }
+          enemy.shotCd -= dt
+          if (enemy.shotCd <= 0 && l < 500 && state.bullets.length < SHOOTER_BULLET_LIMIT) {
+            enemy.shotCd = spec.cooldown * (0.9 + this.rng() * 0.2)
+            this.shoot(enemy, def, target.player)
+          }
+          break
+        }
+        case 'circler':
+          if (enemy.mode === 0) {
+            if (l > 320) {
+              mx = ux * speed
+              my = uy * speed
+            } else {
+              const sign = enemy.id % 2 ? 1 : -1
+              const radial = Math.max(-1, Math.min(1, (l - 180) / 120))
+              mx = (-uy * sign * 1.2 + ux * radial) * speed
+              my = (ux * sign * 1.2 + uy * radial) * speed
+              enemy.timer -= dt
+              if (enemy.timer <= 0) {
+                enemy.mode = 1
+                enemy.timer = 0.9
+                enemy.vx = ux * speed * 3.2
+                enemy.vy = uy * speed * 3.2
+              }
+            }
+          } else {
+            mx = enemy.vx
+            my = enemy.vy
+            separate = false
+            enemy.timer -= dt
+            if (enemy.timer <= 0) {
+              enemy.mode = 0
+              enemy.timer = 2 + this.rng()
+            }
+          }
+          break
+        case 'blink':
+          if (enemy.blink > 0) {
+            mx = 0
+            my = 0
+            enemy.blink -= dt
+            if (enemy.blink <= 0) {
+              enemy.blink = 0
+              const angle = this.rng() * Math.PI * 2
+              enemy.x = target.player.x + Math.cos(angle) * 120
+              enemy.y = target.player.y + Math.sin(angle) * 120
+              enemy.timer = 2.6 + this.rng() * 0.8
+            }
+          } else {
+            enemy.timer -= dt
+            if (enemy.timer <= 0) enemy.blink = 0.35
+          }
+          break
+        case 'ghost': {
+          const wave = Math.sin(enemy.life * 1.5 + enemy.id) * 0.9
+          mx = (ux - uy * wave) * speed
+          my = (uy + ux * wave) * speed
+          separate = false
+          break
+        }
+        case 'boss': {
+          const move = this.bossAi(enemy, def, target, ux, uy, speed, dt)
+          mx = move.x
+          my = move.y
+          separate = move.separate
+          break
+        }
+        default:
+      }
+      enemy.x += mx * dt
+      enemy.y += my * dt
+      if (separate)
         // Light separation so crowds read as a crowd, not a single blob.
-        this.near(enemy.x, enemy.y, def.radius, (other) => {
+        this.near(enemy.x, enemy.y, radius, (other) => {
           if (other === enemy) return
           const ox = enemy.x - other.x
           const oy = enemy.y - other.y
-          const min = def.radius + ENEMY_BY_ID.get(other.kind)!.radius * 0.8
+          const min = radius + ENEMY_BY_ID.get(other.kind)!.radius * other.scale * 0.8
           const d2 = ox * ox + oy * oy
           if (d2 > 0.01 && d2 < min * min) {
             const d = Math.sqrt(d2)
@@ -655,12 +1008,11 @@ export class Game {
             enemy.y += oy * push
           }
         })
-        // Too far from everyone: re-enter from the edge instead of trailing forever.
-        if (target.distance > SPAWN_RADIUS * 1.45 && def.behavior !== 'boss') {
-          const angle = this.rng() * Math.PI * 2
-          enemy.x = target.player.x + Math.cos(angle) * SPAWN_RADIUS
-          enemy.y = target.player.y + Math.sin(angle) * SPAWN_RADIUS
-        }
+      // Too far from everyone: re-enter from the edge instead of trailing forever.
+      if (def.behavior !== 'dash' && def.behavior !== 'boss' && target.distance > SPAWN_RADIUS * 1.45) {
+        const angle = this.rng() * Math.PI * 2
+        enemy.x = target.player.x + Math.cos(angle) * SPAWN_RADIUS
+        enemy.y = target.player.y + Math.sin(angle) * SPAWN_RADIUS
       }
       enemy.x += enemy.kx * dt
       enemy.y += enemy.ky * dt
@@ -668,24 +1020,262 @@ export class Game {
       enemy.ky *= Math.exp(-dt * 8)
       for (const player of state.players) {
         if (player.downed) continue
-        const reach = def.radius + PLAYER_RADIUS
-        if ((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2 < reach * reach) this.hurt(player, def, dt)
+        const reach = radius + PLAYER_RADIUS
+        if ((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2 >= reach * reach) continue
+        if (enemy.mode === 2 && (def.behavior === 'charger' || def.behavior === 'boss')) {
+          // A charge lands as one blow (then the attacker is spent), not as a grinding touch.
+          if (player.invuln > 0) continue
+          const armor = playerStats(player).armor
+          this.damagePlayer(
+            player,
+            Math.max(def.damage * 0.25, def.damage * 0.8 - armor) * (enemy.elite ? 1.5 : 1),
+            def.id
+          )
+          player.invuln = BULLET_IFRAMES
+          enemy.mode = 3
+          enemy.timer = 0.8
+        } else if (def.behavior === 'boss') {
+          // A life event hits in blows with a moment's grace between, so one clumsy touch is not the end.
+          if (player.invuln > 0) continue
+          const armor = playerStats(player).armor
+          this.damagePlayer(player, Math.max(def.damage * 0.2, def.damage * 0.6 - armor), def.id)
+          player.invuln = BOSS_IFRAMES
+        } else this.hurt(player, def, dt, enemy.elite ? 1.5 : 1)
       }
       remaining.push(enemy)
     }
+    // Anything born during the pass (summons) joins next tick.
+    for (let i = count; i < list.length; i++) remaining.push(list[i])
     state.enemies = remaining
   }
 
-  private hurt(player: Player, def: EnemyDef, dt: number) {
+  /**
+   * Approach, telegraph, dash at the spot locked at the start of the telegraph, recover.
+   * Used by chargers and by bosses' `charge` pattern (which enters through mode 1).
+   */
+  private chargeAi(
+    enemy: Enemy,
+    def: EnemyDef,
+    target: { player: Player; distance: number },
+    ux: number,
+    uy: number,
+    dash: number,
+    windup: number,
+    dashTime: number,
+    recover: number,
+    range: number,
+    dt: number
+  ) {
+    let x = 0
+    let y = 0
+    let separate = true
+    const speed = def.speed * (enemy.slow > 0 ? 0.45 : 1) * (1 + (this.state.time / RUN_SECONDS) * 0.35)
+    if (enemy.mode === 0) {
+      if (target.distance <= range && def.behavior === 'charger') this.beginWindup(enemy, def, target.player, windup)
+      else {
+        x = ux * speed
+        y = uy * speed
+      }
+    } else if (enemy.mode === 1) {
+      enemy.timer -= dt
+      enemy.windup = Math.max(0, enemy.timer)
+      if (enemy.timer <= 0) {
+        enemy.mode = 2
+        enemy.timer = dashTime
+        enemy.windup = 0
+        const dx = enemy.tx - enemy.x
+        const dy = enemy.ty - enemy.y
+        const l = Math.hypot(dx, dy)
+        const dirx = l > 1 ? dx / l : ux
+        const diry = l > 1 ? dy / l : uy
+        enemy.vx = dirx * dash
+        enemy.vy = diry * dash
+      }
+    } else if (enemy.mode === 2) {
+      x = enemy.vx
+      y = enemy.vy
+      separate = false
+      enemy.timer -= dt
+      if (enemy.timer <= 0) {
+        enemy.mode = 3
+        enemy.timer = recover
+      }
+    } else {
+      enemy.timer -= dt
+      if (enemy.timer <= 0) enemy.mode = 0
+    }
+    return { x, y, separate }
+  }
+
+  private beginWindup(enemy: Enemy, def: EnemyDef, player: Player, windup: number) {
+    enemy.mode = 1
+    enemy.timer = windup
+    enemy.windup = windup
+    enemy.tx = player.x
+    enemy.ty = player.y
+    this.emit(FX.WINDUP, enemy.x, enemy.y, ENEMY_INDEX.get(def.id)!)
+  }
+
+  /** Boss movement plus its attack patterns. */
+  private bossAi(
+    enemy: Enemy,
+    def: EnemyDef,
+    target: { player: Player; distance: number },
+    ux: number,
+    uy: number,
+    speed: number,
+    dt: number
+  ) {
+    const patterns = def.patterns ?? []
+    for (let i = 0; i < enemy.pcd.length; i++) enemy.pcd[i] -= dt
+    if (enemy.burst > 0) this.spiralFire(enemy, def, dt)
+    if (enemy.mode === 0 && enemy.burst <= 0 && target.distance < 640) {
+      for (let i = 0; i < patterns.length; i++) {
+        if (enemy.pcd[i] > 0) continue
+        enemy.pcd[i] = PATTERN_COOLDOWN[patterns[i]]
+        this.startPattern(enemy, def, patterns[i], target.player)
+        break
+      }
+    }
+    if (enemy.mode === 0) return { x: ux * speed, y: uy * speed, separate: true }
+    return this.chargeAi(enemy, def, target, ux, uy, def.dash ?? 380, 0.9, 0.55, 0.8, 0, dt)
+  }
+
+  private startPattern(enemy: Enemy, def: EnemyDef, pattern: BossPattern, player: Player) {
+    const bullet = BULLET_INDEX.get(def.id) ?? 0
+    const damage = Math.max(4, Math.round(def.damage * 0.3))
+    if (pattern === 'ring') {
+      const count = 10 + Math.min(6, Math.floor(def.hp / 6000))
+      const offset = this.rng() * Math.PI * 2
+      for (let i = 0; i < count; i++) {
+        const angle = offset + (i / count) * Math.PI * 2
+        this.addBullet(enemy.x, enemy.y, angle, 150, 8, damage, bullet, def.id)
+      }
+      this.emit(FX.ENEMY_SHOT, enemy.x, enemy.y, ENEMY_INDEX.get(def.id)!)
+    } else if (pattern === 'spiral') {
+      enemy.burst = 2
+      enemy.shotCd = 0
+      enemy.spin = this.rng() * Math.PI * 2
+    } else if (pattern === 'summon') {
+      const count = 4 + (def.hp > 20000 ? 2 : def.hp > 5000 ? 1 : 0)
+      const alive = this.state.enemies.reduce((n, e) => n + (e.kind === def.minion ? 1 : 0), 0)
+      if (def.minion && alive < 12 && this.state.enemies.length + count < MAX_ENEMIES)
+        for (let i = 0; i < count; i++) {
+          const angle = (i / count) * Math.PI * 2 + this.rng() * 0.4
+          this.spawnEnemy(
+            def.minion,
+            enemy.x + Math.cos(angle) * (def.radius + 50),
+            enemy.y + Math.sin(angle) * (def.radius + 50)
+          )
+        }
+      this.emit(FX.ENEMY_SHOT, enemy.x, enemy.y, ENEMY_INDEX.get(def.id)!)
+    } else this.beginWindup(enemy, def, player, 0.9)
+  }
+
+  private spiralFire(enemy: Enemy, def: EnemyDef, dt: number) {
+    enemy.burst -= dt
+    enemy.shotCd -= dt
+    const bullet = BULLET_INDEX.get(def.id) ?? 0
+    const damage = Math.max(4, Math.round(def.damage * 0.3))
+    while (enemy.shotCd <= 0 && enemy.burst > -0.1) {
+      enemy.shotCd += 0.12
+      enemy.spin += 0.5
+      this.addBullet(enemy.x, enemy.y, enemy.spin, 170, 8, damage, bullet, def.id)
+      this.addBullet(enemy.x, enemy.y, enemy.spin + Math.PI, 170, 8, damage, bullet, def.id)
+    }
+  }
+
+  private addBullet(
+    x: number,
+    y: number,
+    angle: number,
+    speed: number,
+    r: number,
+    damage: number,
+    kind: number,
+    src: string
+  ) {
+    if (this.state.bullets.length >= MAX_BULLETS) return
+    this.state.bullets.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r,
+      damage,
+      life: 3.6,
+      kind,
+      src
+    })
+  }
+
+  /** A shooter's volley at a player. */
+  private shoot(enemy: Enemy, def: EnemyDef, player: Player) {
+    const spec = def.shot!
+    const kind = BULLET_INDEX.get(spec.bullet) ?? 0
+    const count = spec.count ?? 1
+    const damage = spec.damage * (enemy.elite ? 1.5 : 1)
+    const aim = Math.atan2(player.y - enemy.y, player.x - enemy.x)
+    if (spec.ring) {
+      const offset = this.rng() * Math.PI * 2
+      for (let i = 0; i < count; i++)
+        this.addBullet(enemy.x, enemy.y, offset + (i / count) * Math.PI * 2, spec.speed, 7, damage, kind, def.id)
+    } else
+      for (let i = 0; i < count; i++) {
+        const angle = aim + (count > 1 ? (i / (count - 1) - 0.5) * (spec.spread ?? 0.5) : 0)
+        this.addBullet(enemy.x, enemy.y, angle, spec.speed, 7, damage, kind, def.id)
+      }
+    if (this.tickShots++ < 3) this.emit(FX.ENEMY_SHOT, enemy.x, enemy.y, ENEMY_INDEX.get(def.id)!)
+  }
+
+  private moveBullets(dt: number) {
+    const state = this.state
+    if (!state.bullets.length) return
+    const alive = state.players.filter((player) => !player.downed)
+    const kept: Bullet[] = []
+    for (const bullet of state.bullets) {
+      bullet.life -= dt
+      if (bullet.life <= 0) continue
+      bullet.x += bullet.vx * dt
+      bullet.y += bullet.vy * dt
+      let spent = false
+      for (const player of alive) {
+        if (player.invuln > 0) continue
+        const reach = bullet.r + PLAYER_RADIUS - 3
+        if ((player.x - bullet.x) ** 2 + (player.y - bullet.y) ** 2 < reach * reach) {
+          const armor = playerStats(player).armor
+          this.damagePlayer(player, Math.max(bullet.damage * 0.25, bullet.damage - armor), bullet.src)
+          player.invuln = BULLET_IFRAMES
+          spent = true
+          break
+        }
+      }
+      if (!spent) kept.push(bullet)
+    }
+    state.bullets = kept
+  }
+
+  /** Contact damage, applied continuously while touching. */
+  private hurt(player: Player, def: EnemyDef, dt: number, mult = 1) {
     const armor = playerStats(player).armor
-    const damage = Math.max(def.damage * 0.25, def.damage - armor) * dt * 2.2
-    player.hp -= damage
+    this.damagePlayer(player, Math.max(def.damage * 0.25, def.damage - armor) * dt * 2.2 * mult, def.id)
+  }
+
+  private damagePlayer(player: Player, amount: number, killer: string) {
+    player.hp -= amount
     player.hurt = 0.2
+    player.hurtAcc += amount
+    if (player.hurtFx <= 0) {
+      player.hurtFx = 0.25
+      this.emit(FX.HURT, player.x, player.y, this.playerIndex(player), Math.max(1, Math.round(player.hurtAcc)))
+      player.hurtAcc = 0
+    }
     if (player.hp <= 0) {
       player.hp = 0
       player.downed = true
       player.revive = 0
-      player.killer = def.id
+      player.killer = killer
+      this.emit(FX.DOWN, player.x, player.y, this.playerIndex(player))
       this.log(`${player.name}の心が折れた…（仲間がそばにいると立ち直る）`)
     }
   }
@@ -702,6 +1292,8 @@ export class Game {
         player.revive = 0
         player.killer = undefined
         player.hp = player.maxHp * 0.5
+        player.hurtAcc = 0
+        this.emit(FX.REVIVE, player.x, player.y, this.playerIndex(player))
         this.log(`${player.name}が立ち直った！`)
       }
     }
@@ -718,6 +1310,7 @@ export class Game {
         const ws = weaponStats(player, weapon, stats)
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
+        this.emit(FX.FIRE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
         this.fire(player, weapon, ws)
       }
     }
@@ -735,9 +1328,8 @@ export class Game {
   }
 
   private shot(player: Player, def: WeaponDef, ws: WeaponStats, extra: Partial<Shot>) {
-    if (this.state.shots.length >= MAX_SHOTS) return
     const life = extra.life ?? ws.duration
-    this.state.shots.push({
+    const shot: Shot = {
       id: this.state.nextId++,
       owner: player.id,
       weapon: def.id,
@@ -759,15 +1351,24 @@ export class Game {
       hits: new Map(),
       w: 0,
       h: 0,
+      v: 0,
+      delay: 0,
+      aux: 0,
+      crit: false,
+      critChance: ws.crit,
+      strongMult: ws.strong,
       ...extra,
       life
-    })
+    }
+    if (this.state.shots.length < MAX_SHOTS) this.state.shots.push(shot)
+    return shot
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats) {
     const def = WEAPON_BY_ID.get(weapon.id)!
     const n = ws.amount
     const rng = this.rng
+    const speed = def.speed * ws.speed
     switch (def.behavior) {
       case 'orbit':
         for (let i = 0; i < n; i++)
@@ -793,8 +1394,8 @@ export class Game {
             : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
           if (def.behavior === 'bounce') angle += (rng() - 0.5) * 0.6
           this.shot(player, def, ws, {
-            vx: Math.cos(angle) * def.speed,
-            vy: Math.sin(angle) * def.speed,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
             angle,
             pierce: def.pierce + (weapon.lv >= 4 ? 1 : 0)
           })
@@ -804,13 +1405,13 @@ export class Game {
       case 'wander':
         for (let i = 0; i < n; i++) {
           const angle = rng() * Math.PI * 2
-          this.shot(player, def, ws, { vx: Math.cos(angle) * def.speed, vy: Math.sin(angle) * def.speed, angle })
+          this.shot(player, def, ws, { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, angle })
         }
         break
       case 'arc':
         for (let i = 0; i < n; i++) {
           const side = (i % 2 ? -1 : 1) * (player.fx < 0 ? -1 : 1)
-          this.shot(player, def, ws, { vx: side * (90 + rng() * 140 + i * 30), vy: -def.speed - rng() * 80 })
+          this.shot(player, def, ws, { vx: side * (90 + rng() * 140 + i * 30), vy: -speed - rng() * 80 })
         }
         break
       case 'zone':
@@ -837,23 +1438,214 @@ export class Game {
       }
       case 'whip':
       case 'flail':
+      case 'beam':
         for (let i = 0; i < n; i++) {
           let angle =
             def.behavior === 'flail' ? rng() * Math.PI * 2 : Math.atan2(player.fy, player.fx) + (i % 2 ? Math.PI : 0)
-          if (def.behavior === 'whip' && i >= 2) angle += (i % 2 ? -1 : 1) * 0.6
+          if (def.behavior !== 'flail' && i >= 2) angle += (i % 2 ? -1 : 1) * 0.6
           const length = def.area * ws.area
+          if (def.behavior === 'beam')
+            this.shot(player, def, ws, {
+              angle,
+              w: length / 2,
+              h: 9 * ws.area,
+              r: length / 2,
+              x: player.x + Math.cos(angle) * length * 0.5,
+              y: player.y + Math.sin(angle) * length * 0.5,
+              tick: 0.2
+            })
+          else
+            this.shot(player, def, ws, {
+              angle,
+              w: length / 2,
+              h: 22 * ws.area,
+              r: length / 2,
+              x: player.x + Math.cos(angle) * length * 0.5,
+              y: player.y + Math.sin(angle) * length * 0.5,
+              tick: Infinity
+            })
+        }
+        break
+      case 'chain': {
+        // SNS: instant. Each link is a short-lived visual segment that ends on its victim.
+        const hit = new Set<number>()
+        let fromX = player.x
+        let fromY = player.y
+        const jump = 170 * ws.area
+        for (let i = 0; i < 2 + n; i++) {
+          const target = this.nearestEnemy(fromX, fromY, i === 0 ? 420 : jump, hit)
+          if (!target) break
+          hit.add(target.id)
+          const dx = target.x - fromX
+          const dy = target.y - fromY
+          const link = this.shot(player, def, ws, {
+            x: target.x,
+            y: target.y,
+            angle: Math.atan2(dy, dx),
+            r: Math.hypot(dx, dy),
+            v: i,
+            pierce: 1,
+            tick: Infinity
+          })
+          this.damage(target, ENEMY_BY_ID.get(target.kind)!, link, player)
+          fromX = target.x
+          fromY = target.y
+        }
+        break
+      }
+      case 'pet': {
+        // Dogs stay out as long as the card keeps firing; a new activation refreshes them and tops up the pack.
+        let have = 0
+        for (const shot of this.state.shots)
+          if (shot.owner === player.id && shot.weapon === def.id) {
+            have++
+            shot.life = shot.maxLife = ws.duration
+          }
+        for (let i = have; i < n; i++)
           this.shot(player, def, ws, {
+            x: player.x + Math.cos(i * 2.4) * 24,
+            y: player.y + Math.sin(i * 2.4) * 24,
+            orbit: i * 2.4,
+            spin: speed,
+            tick: 0.4
+          })
+        break
+      }
+      case 'slam': {
+        const radius = def.area * ws.area
+        const slam = this.shot(player, def, ws, { r: radius, tick: Infinity })
+        this.near(player.x, player.y, radius, (enemy) => {
+          const edef = ENEMY_BY_ID.get(enemy.kind)!
+          const reach = radius + edef.radius * enemy.scale
+          if ((enemy.x - player.x) ** 2 + (enemy.y - player.y) ** 2 <= reach * reach)
+            this.damage(enemy, edef, slam, player)
+        })
+        this.emit(FX.BLAST, player.x, player.y, radius, WEAPON_INDEX.get(def.id)!)
+        break
+      }
+      case 'barrage': {
+        const target = this.nearestEnemy(player.x, player.y, 700)
+        const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
+        for (let i = 0; i < n * 3; i++) {
+          const angle = base + (rng() - 0.5) * 0.08
+          this.shot(player, def, ws, {
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
             angle,
-            w: length / 2,
-            h: 22 * ws.area,
-            r: length / 2,
-            x: player.x + Math.cos(angle) * length * 0.5,
-            y: player.y + Math.sin(angle) * length * 0.5,
+            delay: i * 0.06
+          })
+        }
+        break
+      }
+      case 'boomerang': {
+        const target = this.nearestEnemy(player.x, player.y, 700)
+        const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
+        for (let i = 0; i < n; i++) {
+          const angle = base + (i - (n - 1) / 2) * 0.45
+          this.shot(player, def, ws, {
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            tick: 0.35
+          })
+        }
+        break
+      }
+      case 'nova':
+        for (let i = 0; i < n; i++)
+          this.shot(player, def, ws, {
+            r: 10,
+            w: def.area * ws.area,
+            tick: Infinity,
+            delay: i * 0.22
+          })
+        break
+      case 'sweep':
+        for (let i = 0; i < n; i++) {
+          const side = rng() < 0.5 ? -1 : 1
+          this.shot(player, def, ws, {
+            x: player.x - side * (VIEW_HALF.x + 40),
+            y: player.y + (rng() * 2 - 1) * 220,
+            vx: side * speed,
+            angle: side > 0 ? 0 : Math.PI,
+            tick: 5
+          })
+        }
+        break
+      case 'mine': {
+        let planted = 0
+        for (const shot of this.state.shots) if (shot.owner === player.id && shot.weapon === def.id) planted++
+        for (let i = 0; i < n && planted + i < 5 + n * 2; i++) {
+          const angle = rng() * Math.PI * 2
+          this.shot(player, def, ws, {
+            x: player.x + (i ? Math.cos(angle) * 28 : 0),
+            y: player.y + (i ? Math.sin(angle) * 28 : 0),
+            r: 16,
+            w: def.area * ws.area,
+            aux: 0.4,
             tick: Infinity
           })
         }
         break
+      }
+      case 'dice': {
+        const found = this.targets(player, n, 700)
+        const luck = passiveLevel(player, 'p_lucky')
+        for (let i = 0; i < n; i++) {
+          const target = found[i % Math.max(1, found.length)]
+          const angle = target
+            ? Math.atan2(target.y - player.y, target.x - player.x)
+            : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
+          const face = this.rollFace(luck)
+          this.shot(player, def, ws, {
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle: rng() * Math.PI * 2,
+            damage: ws.damage * DICE_MULT[face - 1],
+            v: face,
+            crit: face === 6,
+            pierce: def.pierce + (weapon.lv >= 4 ? 1 : 0)
+          })
+        }
+        break
+      }
+      case 'trail':
+        for (let i = 0; i < n; i++) {
+          const jitter = i ? 30 : 0
+          this.shot(player, def, ws, {
+            x: player.x + (rng() * 2 - 1) * jitter,
+            y: player.y + (rng() * 2 - 1) * jitter,
+            tick: 0.5
+          })
+        }
+        break
+      case 'fan': {
+        const count = n + 2
+        const target = this.nearestEnemy(player.x, player.y, 520)
+        const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
+        for (let i = 0; i < count; i++) {
+          const angle = base + (i / (count - 1) - 0.5) * 1.0
+          this.shot(player, def, ws, {
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            v: Math.floor(rng() * 3)
+          })
+        }
+        break
+      }
     }
+  }
+
+  /** The face a die lands on; 運がいい tilts the odds toward the high faces. */
+  private rollFace(luck: number) {
+    const weights = [1, 2, 3, 4, 5, 6].map((face) => Math.max(0.1, 1 + 0.2 * luck * (face - 3.5)))
+    let roll = this.rng() * weights.reduce((sum, w) => sum + w, 0)
+    for (let face = 1; face <= 6; face++) {
+      roll -= weights[face - 1]
+      if (roll <= 0) return face
+    }
+    return 6
   }
 
   private moveShots(dt: number) {
@@ -861,9 +1653,20 @@ export class Game {
     const players = new Map(state.players.map((player) => [player.id, player]))
     const kept: Shot[] = []
     for (const shot of state.shots) {
-      shot.life -= dt
       const owner = players.get(shot.owner)
-      if (shot.life <= 0 || !owner) continue
+      if (!owner) continue
+      if (shot.delay > 0) {
+        shot.delay -= dt
+        // Staples leave from wherever the owner is when their turn comes.
+        if (shot.delay <= 0 && shot.kind === 'barrage') {
+          shot.x = owner.x
+          shot.y = owner.y
+        }
+        kept.push(shot)
+        continue
+      }
+      shot.life -= dt
+      if (shot.life <= 0) continue
       switch (shot.kind) {
         case 'orbit':
           shot.angle += shot.spin * dt
@@ -913,6 +1716,57 @@ export class Game {
         case 'zone':
         case 'strike':
         case 'rain':
+        case 'chain':
+        case 'slam':
+        case 'trail':
+          break
+        case 'beam':
+          shot.x = owner.x + Math.cos(shot.angle) * shot.w
+          shot.y = owner.y + Math.sin(shot.angle) * shot.w
+          break
+        case 'nova':
+          shot.x = owner.x
+          shot.y = owner.y
+          shot.r = 10 + (shot.w - 10) * (1 - shot.life / shot.maxLife)
+          break
+        case 'dice':
+          shot.x += shot.vx * dt
+          shot.y += shot.vy * dt
+          shot.angle += dt * 12
+          break
+        case 'boomerang': {
+          shot.aux += dt
+          const out = shot.maxLife * 0.42
+          if (shot.aux < out) {
+            const slowing = 1 - shot.aux / out
+            shot.x += shot.vx * slowing * dt
+            shot.y += shot.vy * slowing * dt
+          } else {
+            const dx = owner.x - shot.x
+            const dy = owner.y - shot.y
+            const d = Math.hypot(dx, dy)
+            const speed = Math.min(720, 120 + (shot.aux - out) * 700)
+            if (d < 22) continue
+            shot.x += (dx / d) * Math.min(d, speed * dt)
+            shot.y += (dy / d) * Math.min(d, speed * dt)
+          }
+          shot.angle += dt * 14
+          break
+        }
+        case 'pet':
+          this.movePet(shot, owner, dt)
+          break
+        case 'mine':
+          if (shot.aux > 0) {
+            shot.aux -= dt
+            shot.v = 0
+          } else {
+            shot.v = 1
+            if (this.mineTouched(shot)) {
+              this.burstMine(shot, owner)
+              continue
+            }
+          }
           break
         default:
           shot.x += shot.vx * dt
@@ -923,24 +1777,92 @@ export class Game {
     state.shots = kept
   }
 
+  private movePet(shot: Shot, owner: Player, dt: number) {
+    shot.aux -= dt
+    if (shot.aux <= 0 || (shot.target && shot.target.hp <= 0)) {
+      shot.aux = 0.2
+      let best: Enemy | undefined
+      let distance = Infinity
+      this.near(owner.x, owner.y, 300, (enemy) => {
+        if (Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > 300) return
+        const d = (enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2
+        if (d < distance) {
+          distance = d
+          best = enemy
+        }
+      })
+      shot.target = best
+    }
+    const target = shot.target
+    // With nothing to chase the dog trots back to its spot beside the owner.
+    const goalX = target ? target.x : owner.x + Math.cos(shot.orbit) * 34
+    const goalY = target ? target.y : owner.y + Math.sin(shot.orbit) * 34
+    const dx = goalX - shot.x
+    const dy = goalY - shot.y
+    const d = Math.hypot(dx, dy)
+    if (d > 4) {
+      const step = Math.min(d, shot.spin * dt)
+      shot.x += (dx / d) * step
+      shot.y += (dy / d) * step
+      if (d > 8) shot.angle = Math.atan2(dy, dx)
+    }
+    const reach = target ? shot.r + (ENEMY_BY_ID.get(target.kind)?.radius ?? 12) * target.scale + 6 : 0
+    shot.v = target && d < reach ? 1 : 0
+  }
+
+  private mineTouched(shot: Shot) {
+    let touched = false
+    this.near(shot.x, shot.y, 30, (enemy) => {
+      const reach = shot.r + 6 + ENEMY_BY_ID.get(enemy.kind)!.radius * enemy.scale
+      if ((enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2 <= reach * reach) {
+        touched = true
+        return false
+      }
+    })
+    return touched
+  }
+
+  private burstMine(shot: Shot, owner: Player) {
+    const radius = shot.w
+    this.near(shot.x, shot.y, radius, (enemy) => {
+      const def = ENEMY_BY_ID.get(enemy.kind)!
+      const reach = radius + def.radius * enemy.scale
+      if ((enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2 <= reach * reach) this.damage(enemy, def, shot, owner)
+    })
+    this.emit(FX.BLAST, shot.x, shot.y, radius, WEAPON_INDEX.get(shot.weapon)!)
+  }
+
   /** Applies hits; returns false once the shot is used up. */
   private collide(shot: Shot, owner: Player) {
     const time = this.state.time
+    if (shot.kind === 'chain' || shot.kind === 'slam' || shot.kind === 'mine') return true
     // Rain falls first and lands at the end of its life; strikes land immediately.
     if (shot.kind === 'rain' && shot.life > shot.maxLife * 0.35) return true
     let alive = true
-    const rect = shot.kind === 'whip' || shot.kind === 'flail'
+    if (shot.kind === 'nova') {
+      this.near(shot.x, shot.y, shot.r + 20, (enemy) => {
+        const def = ENEMY_BY_ID.get(enemy.kind)!
+        const d = Math.hypot(enemy.x - shot.x, enemy.y - shot.y)
+        if (Math.abs(d - shot.r) > 16 + def.radius * enemy.scale) return
+        if (shot.hits.has(enemy.id)) return
+        shot.hits.set(enemy.id, Infinity)
+        this.damage(enemy, def, shot, owner)
+      })
+      return true
+    }
+    const rect = shot.kind === 'whip' || shot.kind === 'flail' || shot.kind === 'beam'
     const cos = Math.cos(shot.angle)
     const sin = Math.sin(shot.angle)
     this.near(shot.x, shot.y, shot.r, (enemy) => {
       const def = ENEMY_BY_ID.get(enemy.kind)!
+      const radius = def.radius * enemy.scale
       const dx = enemy.x - shot.x
       const dy = enemy.y - shot.y
       if (rect) {
         const along = dx * cos + dy * sin
         const across = -dx * sin + dy * cos
-        if (Math.abs(along) > shot.w + def.radius || Math.abs(across) > shot.h + def.radius) return
-      } else if (dx * dx + dy * dy > (shot.r + def.radius) ** 2) return
+        if (Math.abs(along) > shot.w + radius || Math.abs(across) > shot.h + radius) return
+      } else if (dx * dx + dy * dy > (shot.r + radius) ** 2) return
       if ((shot.hits.get(enemy.id) ?? -1) > time) return
       shot.hits.set(enemy.id, time + shot.tick)
       this.damage(enemy, def, shot, owner)
@@ -954,16 +1876,19 @@ export class Game {
 
   private damage(enemy: Enemy, def: EnemyDef, shot: Shot, owner: Player) {
     const strong = shot.strong.includes(def.tag)
-    const amount = shot.damage * (strong ? STRONG_MULTIPLIER : 1) * (0.9 + this.rng() * 0.2)
+    const crit = shot.crit || this.rng() < shot.critChance
+    const amount =
+      shot.damage * (strong ? shot.strongMult : 1) * (0.9 + this.rng() * 0.2) * (crit ? CRIT_MULTIPLIER : 1)
     enemy.hp -= amount
     enemy.flash = 0.12
     if (shot.weapon === 'w_love') enemy.slow = 1.2
-    if (shot.knockback && def.behavior !== 'boss') {
+    const knock = shot.knockback * this.knockScale(enemy, def)
+    if (knock) {
       const dx = enemy.x - owner.x
       const dy = enemy.y - owner.y
       const l = Math.hypot(dx, dy) || 1
-      enemy.kx += (dx / l) * shot.knockback
-      enemy.ky += (dy / l) * shot.knockback
+      enemy.kx += (dx / l) * knock
+      enemy.ky += (dy / l) * knock
     }
     const weapon = owner.weapons.find((w) => w.id === shot.weapon)
     if (weapon) weapon.damage += Math.min(amount, Math.max(0, enemy.hp + amount))
@@ -973,23 +1898,49 @@ export class Game {
         y: enemy.y - def.radius,
         v: Math.round(amount),
         strong,
+        crit,
         owner: owner.id,
         life: 0.6
       })
+    if (this.tickHits < (crit ? 5 : 3)) {
+      this.tickHits++
+      this.emit(FX.HIT, enemy.x, enemy.y, WEAPON_INDEX.get(shot.weapon)!, (strong ? 1 : 0) | (crit ? 2 : 0))
+    }
     if (enemy.hp <= 0) this.kill(enemy, def)
+  }
+
+  /** Leaves a pickup; the oldest one on the ground makes room when there are too many. */
+  private drop(kind: Item['kind'], x: number, y: number) {
+    const items = this.state.items
+    if (items.length >= MAX_ITEMS) items.shift()
+    items.push({ kind, x, y })
   }
 
   private kill(enemy: Enemy, def: EnemyDef) {
     const state = this.state
     state.kills++
-    if (state.gems.length < MAX_GEMS) state.gems.push({ x: enemy.x, y: enemy.y, v: def.xp, pull: false })
-    else state.gems[Math.floor(this.rng() * state.gems.length)].v += def.xp
+    const xp = def.xp * (enemy.elite ? 6 : 1)
+    if (state.gems.length < MAX_GEMS) state.gems.push({ x: enemy.x, y: enemy.y, v: xp, pull: false })
+    else state.gems[Math.floor(this.rng() * state.gems.length)].v += xp
+    const index = ENEMY_INDEX.get(def.id)!
     if (def.behavior === 'boss') {
-      state.items.push({ kind: 'chest', x: enemy.x, y: enemy.y })
+      this.drop('chest', enemy.x, enemy.y)
+      state.slowmo = SLOWMO_SECONDS
+      this.emit(FX.BOSS_KILL, enemy.x, enemy.y, index)
       this.log(`「${def.name}」を乗り越えた！ 転機が訪れる。`)
-    } else if (this.rng() < 0.006 && state.items.length < 20) state.items.push({ kind: 'meal', x: enemy.x, y: enemy.y })
-    else if (this.rng() < 0.0012 && state.items.length < 20)
-      state.items.push({ kind: 'magnet', x: enemy.x, y: enemy.y })
+    } else {
+      if (this.tickKills++ < 12) this.emit(FX.KILL, enemy.x, enemy.y, index, enemy.elite ? 1 : 0)
+      if (enemy.elite) {
+        // Elites always leave something: a meal, or now and then a turning point.
+        this.drop(this.rng() < 0.6 ? 'meal' : 'chest', enemy.x, enemy.y)
+      } else if (this.rng() < 0.006 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
+      else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
+    }
+    if (def.child && def.children)
+      for (let i = 0; i < def.children; i++) {
+        const angle = (i / def.children) * Math.PI * 2 + this.rng()
+        this.spawnEnemy(def.child, enemy.x + Math.cos(angle) * 22, enemy.y + Math.sin(angle) * 22)
+      }
   }
 
   private collectGems(dt: number) {
@@ -997,6 +1948,7 @@ export class Game {
     const alive = state.players.filter((player) => !player.downed)
     if (!alive.length) return
     const stats = new Map(alive.map((player) => [player.id, playerStats(player)]))
+    const gathered = new Map<string, number>()
     const kept: Gem[] = []
     for (const gem of state.gems) {
       let best: Player | undefined
@@ -1016,16 +1968,32 @@ export class Game {
         gem.x += ((best.x - gem.x) / (distance || 1)) * speed
         gem.y += ((best.y - gem.y) / (distance || 1)) * speed
       }
-      if (distance < PLAYER_RADIUS + 8) this.gainXp(gem.v * s.xpGain)
-      else kept.push(gem)
+      if (distance < PLAYER_RADIUS + 8) {
+        this.gainXp(gem.v * s.xpGain)
+        gathered.set(best.id, (gathered.get(best.id) ?? 0) + 1)
+      } else kept.push(gem)
     }
     state.gems = kept
+    for (const [id, count] of gathered) {
+      const player = alive.find((p) => p.id === id)!
+      this.emit(FX.GEM, player.x, player.y, count, this.playerIndex(player))
+    }
     state.items = state.items.filter((item) => {
       const taker = alive.find((player) => Math.hypot(player.x - item.x, player.y - item.y) < PLAYER_RADIUS + 16)
       if (!taker) return true
-      if (item.kind === 'meal') taker.hp = Math.min(taker.maxHp, taker.hp + 40)
-      else if (item.kind === 'magnet') for (const gem of state.gems) gem.pull = true
-      else for (const player of alive) player.pending++
+      const takerIndex = this.playerIndex(taker)
+      if (item.kind === 'meal') {
+        taker.hp = Math.min(taker.maxHp, taker.hp + 40)
+        this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('meal'), takerIndex)
+      } else if (item.kind === 'magnet') {
+        for (const gem of state.gems) gem.pull = true
+        this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('magnet'), takerIndex)
+      } else {
+        // A chest holds one turning point for everyone, or now and then (with a lucky taker) three.
+        const grant = this.rng() < CHEST_TRIPLE + passiveLevel(taker, 'p_lucky') * 0.05 ? 3 : 1
+        for (const player of alive) player.pending += grant
+        this.emit(FX.CHEST, item.x, item.y, grant, takerIndex)
+      }
       return false
     })
   }
@@ -1033,11 +2001,35 @@ export class Game {
   gainXp(amount: number) {
     const state = this.state
     state.xp += amount
+    let leveled = false
     while (state.xp >= state.xpNext) {
       state.xp -= state.xpNext
       state.level++
+      leveled = true
       state.xpNext = Math.round(xpForLevel(state.level) * (1 + (state.players.length - 1) * 0.5))
-      for (const player of state.players) if (!player.downed) player.pending++
+      for (const player of state.players)
+        if (!player.downed) {
+          player.pending++
+          // Growing up also mends the heart a little.
+          player.hp = Math.min(player.maxHp, player.hp + player.maxHp * LEVEL_HEAL)
+          this.emit(FX.LEVELUP, player.x, player.y, state.level, this.playerIndex(player))
+        }
+    }
+    if (leveled) for (const player of state.players) if (!player.downed) this.shockwave(player)
+  }
+
+  /** A level-up pushes the crowd back off whoever grew (no damage). */
+  private shockwave(player: Player) {
+    for (const enemy of this.state.enemies) {
+      if (enemy.hp <= 0) continue
+      const dx = enemy.x - player.x
+      const dy = enemy.y - player.y
+      const d = Math.hypot(dx, dy)
+      if (d > 190) continue
+      const def = ENEMY_BY_ID.get(enemy.kind)!
+      const push = 360 * (1 - d / 260) * this.knockScale(enemy, def)
+      enemy.kx += (dx / (d || 1)) * push
+      enemy.ky += (dy / (d || 1)) * push
     }
   }
 
@@ -1055,10 +2047,37 @@ export class Game {
     return result
   }
 
+  /** Cards you already hold come up more often, so a build can actually be finished. */
+  private cardWeight(player: Player, choice: string) {
+    const [kind, id] = choice.split(':')
+    const owned =
+      kind === 'w' ? player.weapons.some((w) => w.id === id) : player.passives.some((passive) => passive.id === id)
+    return owned ? 2.5 : 1
+  }
+
   private offer(player: Player) {
-    const pool = this.options(player)
+    // 蒸発済み's first hand (自立): only the talents of early childhood, whatever the age.
+    const birth = player.birthPick === true
+    player.birthPick = false
+    const pool = birth
+      ? TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => `w:${def.id}`)
+      : this.options(player)
     const hand: string[] = []
-    while (hand.length < 3 && pool.length) hand.push(pool.splice(Math.floor(this.rng() * pool.length), 1)[0])
+    // 運がいい sometimes deals a fourth card.
+    const size = 3 + (this.rng() < passiveLevel(player, 'p_lucky') * 0.1 ? 1 : 0)
+    while (hand.length < size && pool.length) {
+      const weights = pool.map((choice) => this.cardWeight(player, choice))
+      let roll = this.rng() * weights.reduce((sum, w) => sum + w, 0)
+      let pick = pool.length - 1
+      for (let i = 0; i < weights.length; i++) {
+        roll -= weights[i]
+        if (roll <= 0) {
+          pick = i
+          break
+        }
+      }
+      hand.push(pool.splice(pick, 1)[0])
+    }
     if (!hand.length) hand.push('x:meal', 'x:coin')
     player.choices = hand
     player.pending--
@@ -1075,24 +2094,33 @@ export class Game {
       if (owned) {
         const before = isEvolved(player, owned)
         owned.lv = Math.min(MAX_WEAPON_LEVEL, owned.lv + 1)
-        if (!before && isEvolved(player, owned))
-          this.log(`${player.name}の「${WEAPON_BY_ID.get(id)!.name}」が「${weaponName(player, owned)}」に進化！`)
+        if (!before && isEvolved(player, owned)) this.announceEvolution(player, owned)
       } else {
         player.weapons.push({ id, lv: 1, cd: 0.2, held: 0, damage: 0 })
         this.feel(player, WEAPON_BY_ID.get(id)!)
       }
     } else if (kind === 'p') {
       const owned = player.passives.find((p) => p.id === id)
-      const evolvedBefore = player.weapons.filter((w) => isEvolved(player, w)).length
+      const evolvedBefore = new Set(player.weapons.filter((w) => isEvolved(player, w)).map((w) => w.id))
       if (owned) owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
       else player.passives.push({ id, lv: 1 })
-      if (player.weapons.filter((w) => isEvolved(player, w)).length > evolvedBefore)
-        this.log(`${player.name}の手札が進化した！`)
+      let evolved = false
+      for (const weapon of player.weapons)
+        if (!evolvedBefore.has(weapon.id) && isEvolved(player, weapon)) {
+          evolved = true
+          this.emit(FX.EVOLVE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
+        }
+      if (evolved) this.log(`${player.name}の手札が進化した！`)
       const stats = playerStats(player)
       if (stats.maxHp > player.maxHp) player.hp += stats.maxHp - player.maxHp
       player.maxHp = stats.maxHp
     } else if (choice === 'x:meal') player.hp = Math.min(player.maxHp, player.hp + 40)
     else this.gainXp(this.state.xpNext * 0.25)
+  }
+
+  private announceEvolution(player: Player, weapon: OwnedWeapon) {
+    this.emit(FX.EVOLVE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
+    this.log(`${player.name}の「${WEAPON_BY_ID.get(weapon.id)!.name}」が「${weaponName(player, weapon)}」に進化！`)
   }
 
   /** A hunch about the hidden talent — right three times out of four. */

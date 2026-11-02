@@ -56,6 +56,17 @@ const help = element<HTMLElement>('#help')
 const result = element<HTMLElement>('#result')
 const error = element<HTMLElement>('#start-error')
 const alertOverlay = element<HTMLElement>('#alert-overlay')
+const phoneLayout = matchMedia(
+  '(max-width: 760px), (pointer: coarse) and (max-height: 550px) and (orientation: landscape)'
+)
+const touchInput = matchMedia('(pointer: coarse)')
+const KEY_ICONS: Record<string, [string, string]> = {
+  WASD: ['i-move', 'スティック'],
+  SPACE: ['i-jump', 'ジャンプ'],
+  C: ['i-crouch', 'しゃがむ'],
+  E: ['i-act', 'アクション']
+}
+let shownHint = ''
 const connection = element<HTMLElement>('#connection span')
 const leave = element<HTMLButtonElement>('#leave')
 const restart = element<HTMLButtonElement>('#restart')
@@ -591,6 +602,10 @@ function updateHud(state: GameState) {
   const underground = isUnderground(player.x, player.y, player.z)
   const coverName = (cover: Cover) => STAGES[state.stage].coverNames?.[cover] ?? COVER_NAMES[cover]
   const nearTrunk = !underground && treesNear(player.x, player.z, 1.5).length > 0
+  // Cover reads as a green vignette and a lit hide button; phones show the line only when it is urgent.
+  alertOverlay.classList.toggle('covered', player.hidden && !suspected && !hunting.size)
+  element<HTMLElement>('#touch-crouch').classList.toggle('active', player.hidden)
+  element<HTMLElement>('#condition').classList.toggle('urgent', player.downed)
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
     : hunting.size
@@ -612,7 +627,10 @@ function updateHud(state: GameState) {
       : regionName(player.x, player.y, player.z)
   minimap.draw(state, localId, yaw)
   const objective = STAGES[state.stage].script.objective(state, player)
-  element<HTMLElement>('#objective-title').textContent = objective.title
+  // Phones drop the chapter prefix; the title card and minimap already name the chapter.
+  element<HTMLElement>('#objective-title').textContent = phoneLayout.matches
+    ? objective.title.replace(/^第\d+章｜/, '')
+    : objective.title
   element<HTMLElement>('#food-progress').hidden = !forest || state.chapter !== 0
   element<HTMLElement>('#food-count').textContent =
     `${Math.min(player.foodEaten, RULES.requiredFood)} / ${RULES.requiredFood}`
@@ -629,6 +647,7 @@ function updateHud(state: GameState) {
     if (!first)
       element<HTMLElement>('#announcements').textContent = `${chapter.season}「${chapter.title}」${chapter.goal}`
   }
+  element<HTMLElement>('#nest-count').hidden = !forest && phoneLayout.matches
   element<HTMLElement>('#nest-count').textContent = forest
     ? `${nightAmount(state.time) > 0.5 ? '☾ 夜' : '☀ 昼'} · 残る巣 ${state.nests.filter((nest) => nest.active).length}`
     : `第${state.stage + 1}章　${STAGES[state.stage].title}`
@@ -639,24 +658,54 @@ function updateHud(state: GameState) {
   const sandPit = forest && SAND_PATCHES.some(([x, z]) => Math.hypot(x - player.x, z - player.z) < 2.4)
   const hole = !player.downed && tunnelExitNear(player.x, player.z, underground ? 1.3 : 1.6)
   const friend = !player.downed && !underground && npcNear(player.x, player.z, 2.5)
-  element<HTMLElement>('#hint').textContent = nearFriend
-    ? 'E を押して仲間を助ける'
-    : nearNest
-      ? 'E を長押しして卵を壊す'
-      : hole
-        ? underground
-          ? 'SPACE で地上に出る'
-          : 'C で穴にもぐる'
-        : friend && !state.talk
-          ? `E で話す（${speakerName(state.stage, friend.id)}）`
-          : (objective.hint ??
-            (player.bath >= 1
-              ? '砂浴びでにおいを消した'
-              : player.bath > 0
-                ? `砂浴び中… ${Math.round(player.bath * 100)}%`
-                : sandPit
-                  ? 'C を長押しして砂浴び（においを消す）'
-                  : ''))
+  showHint(
+    nearFriend
+      ? 'E を押して仲間を助ける'
+      : nearNest
+        ? 'E を長押しして卵を壊す'
+        : hole
+          ? underground
+            ? 'SPACE で地上に出る'
+            : 'C で穴にもぐる'
+          : friend && !state.talk
+            ? `E で話す（${speakerName(state.stage, friend.id)}）`
+            : (objective.hint ??
+              (player.bath >= 1
+                ? '砂浴びでにおいを消した'
+                : player.bath > 0
+                  ? `砂浴び中… ${Math.round(player.bath * 100)}%`
+                  : sandPit
+                    ? 'C を長押しして砂浴び（においを消す）'
+                    : ''))
+  )
+}
+
+/** On touch screens key names in a hint become the matching on-screen button icon. */
+function showHint(text: string) {
+  if (text === shownHint) return
+  shownHint = text
+  const hint = element<HTMLElement>('#hint')
+  if (!touchInput.matches) {
+    hint.textContent = text
+    return
+  }
+  hint.replaceChildren(
+    ...text
+      .replace('マウスで見まわす', '画面をなぞって見まわす')
+      .split(/\b(WASD|SPACE|C|E)\b ?/)
+      .map((part, index) => {
+        if (index % 2 === 0) return document.createTextNode(part)
+        const [icon, label] = KEY_ICONS[part]
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        svg.setAttribute('class', 'key-icon')
+        svg.setAttribute('role', 'img')
+        svg.setAttribute('aria-label', label)
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use')
+        use.setAttribute('href', `#${icon}`)
+        svg.append(use)
+        return svg
+      })
+  )
 }
 
 /** Chapter title card and the conversation subtitle; shown to everyone, with or without a rabbit. */

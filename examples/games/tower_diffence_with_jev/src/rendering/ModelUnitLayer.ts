@@ -1,5 +1,13 @@
 import * as THREE from 'three'
-import { stageRules, type GameState, type Unit, type UnitType, type Point, type CombatAttack } from '../game/model'
+import {
+  ANIMATION,
+  stageRules,
+  type GameState,
+  type Unit,
+  type UnitType,
+  type Point,
+  type CombatAttack
+} from '../game/model'
 import { ModelAssetCache } from './ModelAssetCache'
 import { attackAssetElapsedMs } from '../game/AttackProfiles'
 import { ModelUnitVisual, unitModelPose, type UnitModelDefinition, type ModelMotion } from './ModelUnitVisual'
@@ -11,6 +19,14 @@ interface Actor {
   last: Unit
   deadAt?: number
   stride?: { travelled: number; cycle: number }
+}
+
+/** Fast attack, fast decay over ANIMATION.hit; quantized to 10 steps to avoid material churn. */
+export function hitFlash(unit: Pick<Unit, 'hitAnimation' | 'owner'>): number {
+  if (!(unit.hitAnimation > 0)) return 0
+  const t = 1 - Math.min(1, unit.hitAnimation / ANIMATION.hit) // 0 = just hit
+  const curve = t < 0.15 ? 0.6 + (t / 0.15) * 0.4 : Math.max(0, 1 - (t - 0.15) / 0.85) ** 1.5
+  return Math.round(curve * (unit.owner === 'player' ? 0.5 : 0.85) * 10) / 10
 }
 
 /** Owns mesh lifetimes independently of the simulation's short corpse retention. */
@@ -172,7 +188,8 @@ export class ModelUnitLayer {
         (action) => action.attackerId === unit.id && action.sequence === unit.attackSequence
       )
       let pose = unitModelPose(unit, state.time, action)
-      if (pose.motion === 'special' && state.phase !== 'assault') pose = { ...pose, motion: 'idle', seconds: 0, loop: true }
+      if (pose.motion === 'special' && state.phase !== 'assault')
+        pose = { ...pose, motion: 'idle', seconds: 0, loop: true }
       if (unit.type === 'paladin' && pose.motion === 'heal' && !actor.visual.definition.clips.heal) {
         // Existing temporary Paladin healing has no dedicated authored animation.
         // Keep an explicitly neutral pose instead of showing a damaging sword swing.
@@ -181,15 +198,14 @@ export class ModelUnitLayer {
       if (pose.motion === 'walk') {
         // Distance-driven stride remains synchronized when frost changes movement speed. The
         // per-heading screen rate is integrated, so turning never jumps the stride phase.
-        const rate =
-          actor.visual.walkRate(pose.facingX, pose.facingY, pose.boss) / actor.visual.definition.walkDistance
+        const rate = actor.visual.walkRate(pose.facingX, pose.facingY, pose.boss) / actor.visual.definition.walkDistance
         const step = unit.travelled - (actor.stride?.travelled ?? Infinity)
         const cycle = step >= 0 ? actor.stride!.cycle + step * rate : unit.travelled * rate
         actor.stride = { travelled: unit.travelled, cycle }
         pose = { ...pose, cycle }
       }
       actor.visual.setPosition(unit.x, unit.y)
-      actor.visual.setAppearance(1, unit.hitAnimation > 0 ? 0xffc3b8 : 0xffffff)
+      actor.visual.setAppearance(1, 0xffffff, hitFlash(unit))
       try {
         actor.visual.sample({ ...pose, time: state.time })
       } catch (error) {

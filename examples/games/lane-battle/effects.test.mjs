@@ -5,7 +5,7 @@ import { POOPS, SPECIALS, ENEMIES, burst, card, createGame, summon, step } from 
 function scene(key, distances = [30], enemyKey = 'cleaner') {
   const enemy = ENEMIES.find((type) => type.key === key)
   const game = createGame(0, [card({ uid: 1, key: enemy ? 'katachi' : key })], 42)
-  Object.assign(game, { gold: 999, spawn: 999, opened: true, rushes: 4, turret: 999 })
+  Object.assign(game, { gold: 999, spawn: 999, opened: 2, rushes: 4, turret: 999 })
   if (enemy) summon(game, ENEMIES.indexOf(enemy), -1)
   else summon(game, 0)
   const source = game.units[0]

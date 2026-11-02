@@ -6,6 +6,11 @@ import {
   type EffectSoundKey
 } from '../game/CombatSoundEvents'
 import { playUiSound, type UiSound } from '../../../shared/UiSound'
+import { createFeelPlayer, type FeelSound } from './FeelSounds'
+
+/** Synthesized cues measured 6-15 dB (RMS) above the shipped attack clips at the same master
+ * gain; -6 dB keeps frequent kill/coin/heavy-hit cues level with the combat sounds. */
+const FEEL_BUS_GAIN = 0.5
 
 export interface SoundCatalogEntry {
   id: string
@@ -35,6 +40,8 @@ export interface SoundPlayerDiagnostics extends SoundPlayerStatus {
   played: number
   dropped: number
   recentEventCount: number
+  /** Synthesized game-feel cues actually scheduled, by kind. */
+  feelPlayed: Partial<Record<FeelSound, number>>
 }
 
 interface SoundAsset {
@@ -72,6 +79,9 @@ export class SoundPlayer {
   private readonly voices = new Set<SoundVoice>()
   private readonly recentEvents = new Set<string>()
   private readonly lastCueTime = new Map<string, number>()
+  private readonly playFeelSound = createFeelPlayer()
+  private readonly feelPlayed: Partial<Record<FeelSound, number>> = {}
+  private feelBus: GainNode | null = null
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -137,7 +147,8 @@ export class SoundPlayer {
       loading: this.activeLoads,
       played: this.played,
       dropped: this.dropped,
-      recentEventCount: this.recentEvents.size
+      recentEventCount: this.recentEvents.size,
+      feelPlayed: { ...this.feelPlayed }
     }
   }
 
@@ -261,6 +272,18 @@ export class SoundPlayer {
     if (this.isDestroyed || !this.isEnabled || !context || context.currentTime - this.lastPlayAt < 0.03) return
     // Master gain is the user volume (default 20%); scale so the default lands near the other games.
     playUiSound(kind, context, this.master ?? undefined, 4)
+  }
+
+  /** Synthesized game-feel cue through the master gain (same on/off and volume as the clips). */
+  playFeel(kind: FeelSound, param?: number): void {
+    const context = this.context
+    if (this.isDestroyed || !this.isEnabled || this.gainVolume === 0 || !context || !this.master) return
+    if (!this.feelBus || this.feelBus.context !== context) {
+      this.feelBus = context.createGain()
+      this.feelBus.gain.value = FEEL_BUS_GAIN
+      this.feelBus.connect(this.master)
+    }
+    if (this.playFeelSound(kind, context, this.feelBus, param)) this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
   }
 
   private playCueAsset(key: string, asset: SoundAsset): void {

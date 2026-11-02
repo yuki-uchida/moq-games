@@ -223,9 +223,35 @@ function lineMaterial(color) {
   return m
 }
 
+/** Per-vertex shading mode: face ink (lit, never flashes), body (lit, flashes when hit), glow (unlit). */
+const MODE = { ink: 0, toon: 1, clear: 1, glow: 2 }
+/** Toon shading driven by the per-vertex mode, so one draw covers a character's body, face and glow. */
+function toonMaterial(extra = {}) {
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true, ...extra })
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader =
+      'attribute float mode;\nvarying float vMode;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvMode = mode;')
+    shader.fragmentShader =
+      'varying float vMode;\n' +
+      shader.fragmentShader
+        .replace(
+          'vec3 totalEmissiveRadiance = emissive;',
+          'vec3 totalEmissiveRadiance = emissive * step(0.5, vMode) * (1.0 - step(1.5, vMode));'
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          'outgoingLight = mix(outgoingLight, diffuseColor.rgb, step(1.5, vMode));\n#include <opaque_fragment>'
+        )
+  }
+  return m
+}
+
 // ── Kit: parts, bones and faces for one character ──
 const CHAIN = ['hips', 'spine', 'chest', 'head']
 const INK = '#24150c'
+/** Face colours kept out of the hit flash, so a white character's ＞＜ face still reads while it flashes. */
+const FACE_INK = new Set([INK, '#5e6280', '#7a5a9a', '#5a1a14', '#e8575a'])
 class Kit {
   parts = []
   rigs = {}
@@ -247,7 +273,7 @@ class Kit {
       m,
       color,
       alpha: o.alpha ?? 1,
-      finish: o.glow ? 'glow' : o.alpha ? 'clear' : 'toon',
+      finish: o.glow ? 'glow' : o.alpha ? 'clear' : o.line === false && FACE_INK.has(color) ? 'ink' : 'toon',
       bone: o.bone ?? 'body',
       skin: o.skin,
       line: o.line ?? !(o.glow || o.alpha)
@@ -352,7 +378,10 @@ class Kit {
         [0, 0, mood === 'angry' ? 0 : Math.PI],
         { bone: 'mouth', ...line }
       )
-    this.add(GEO.sphere, '#5a1a14', [cx, my, z + 0.02], [0.07 * s, 0.06 * s, 0.035 * s], undefined, { bone: 'shout' })
+    this.add(GEO.sphere, '#5a1a14', [cx, my, z + 0.02], [0.07 * s, 0.06 * s, 0.035 * s], undefined, {
+      bone: 'shout',
+      line: false
+    })
     this.add(GEO.ball, '#e8575a', [cx, my - 0.03 * s, z + 0.035], [0.045 * s, 0.022 * s, 0.02 * s], undefined, {
       bone: 'shout',
       line: false
@@ -379,6 +408,7 @@ function painted(part, weigh) {
     color.set([c.r * k, c.g * k, c.b * k, part.alpha], i * 4)
   }
   g.setAttribute('color', new THREE.BufferAttribute(color, 4))
+  g.setAttribute('mode', new THREE.BufferAttribute(new Float32Array(n).fill(MODE[part.finish] ?? 1), 1))
   weigh(g, part)
   return g
 }
@@ -394,6 +424,7 @@ function hull(part, weigh) {
   return w
 }
 const templates = new Map()
+const BANDS = 13
 /**
  * Every part of a character is skinned to one skeleton (the chain plus its rigid bones) and merged per
  * finish, so a character costs a handful of draw calls; hidden bones collapse to zero scale.
@@ -434,13 +465,32 @@ function template(key) {
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weight, 4))
   }
   const meshes = []
-  for (const finish of ['toon', 'clear', 'glow']) {
-    const parts = kit.parts.filter((p) => p.finish === finish)
+  // Two meshes and an outline per character: everything solid (face ink and unlit glow included, glow drawn
+  // last so its translucent highlights blend over the body) and the depth-free translucent parts.
+  const solid = kit.parts
+    .filter((p) => p.finish !== 'clear')
+    .sort((a, b) => (a.finish === 'glow') - (b.finish === 'glow'))
+  const clear = kit.parts.filter((p) => p.finish === 'clear')
+  for (const [finish, parts] of [
+    ['toon', solid],
+    ['clear', clear]
+  ])
     if (parts.length) meshes.push([finish, mergeGeometries(parts.map((p) => painted(p, weigh)))])
-  }
   const lined = kit.parts.filter((p) => p.line)
   if (lined.length) meshes.push(['line', mergeGeometries(lined.map((p) => hull(p, weigh)))])
-  const t = { recipe, kit, heights, order, meshes, moves: { ...MOVES, ...recipe.moves } }
+  // How far the body (not its props or effects) reaches toward the foe at rest, per 0.1-high band, in model units.
+  const profile = new Array(BANDS).fill(-Infinity)
+  for (const p of kit.parts.filter((p) => p.bone === 'body')) {
+    const v = p.geometry.attributes.position,
+      at = new THREE.Vector3()
+    for (let i = 0; i < v.count; i++) {
+      at.fromBufferAttribute(v, i).applyMatrix4(p.m)
+      const band = Math.min(BANDS - 1, Math.max(0, Math.floor(at.y / 0.1)))
+      profile[band] = Math.max(profile[band], toLane(at.toArray()).x)
+    }
+  }
+  const front = Math.max(...profile)
+  const t = { recipe, kit, heights, order, meshes, front, profile, moves: { ...MOVES, ...recipe.moves } }
   templates.set(key, t)
   return t
 }
@@ -558,7 +608,8 @@ const MOVES = {
   base: 0.25,
   tool: false,
   ko: 1,
-  mass: 1
+  mass: 1,
+  stand: 0.26
 }
 function moveBody(b, p, c) {
   const { a, g, h, walk } = c
@@ -586,8 +637,8 @@ function moveBody(b, p, c) {
     hips.position.y += 0.04 * Math.sin(c.t * 4) + 0.02 * g.hop * walk
     hips.rotation.z -= 0.1 * walk
   }
-  hips.position.x += p.lunge * a.hit - p.back * a.wind - 0.09 * h.jolt
-  hips.position.y += p.rise * a.wind
+  hips.position.x += (p.lunge + c.reach) * a.hit - p.back * a.wind - 0.09 * h.jolt
+  hips.position.y += p.rise * a.wind + 0.3 * h.lift
   hips.rotation.z += p.rear * a.wind - p.lean * a.hit + 0.26 * h.jolt + 0.05 * h.wobble
   sy +=
     -p.squash * a.wind +
@@ -636,7 +687,7 @@ const MODELS = {
     parts: ['helmet'],
     react: { jolt: 0.35 },
     size: 1,
-    moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16 },
+    moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16, stand: 0.32 },
     build(k) {
       poop(k, BROWN, { arms: ['B'] })
       mitten(k, 'F', BROWN, [0.29, 0.28, 0.18], 'spine', 0.14, 0.07)
@@ -696,7 +747,11 @@ const MODELS = {
       // The throwing arm is the lead one, long enough to clear the body when it lets go.
       const hand = mitten(k, 'F', '#8a5229', [0.31, 0.4, 0.2], 'spine', 0.24, 0.07)
       k.bone('pellet', 'armF', hand)
-      k.add(GEO.sphere, '#6b3c1c', [hand[0], hand[1] - 0.02, hand[2] + 0.04], 0.085, undefined, { bone: 'pellet' })
+      k.add(GEO.sphere, '#4a2810', [hand[0], hand[1] - 0.02, hand[2] + 0.05], 0.085, undefined, { bone: 'pellet' })
+      k.add(GEO.ball, '#ffe6c8', [hand[0] - 0.02, hand[1] + 0.02, hand[2] + 0.12], 0.022, undefined, {
+        bone: 'pellet',
+        glow: true
+      })
       k.bone('muzzle', 'armF', hand)
     },
     act(b, a, c) {
@@ -735,7 +790,17 @@ const MODELS = {
     reacts: ['hips', 'fly'],
     parts: ['band', 'tails', 'fly'],
     size: 1.14,
-    moves: { lunge: 0.4, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
+    moves: {
+      lunge: 0.4,
+      back: 0.12,
+      rear: 0.2,
+      lean: 0.36,
+      squash: 0.17,
+      stretch: 0.14,
+      smear: 0.22,
+      bend: 0.2,
+      stand: 0.22
+    },
     build(k) {
       poop(k, '#9a5d2e', { mood: 'angry' })
       k.bone('band', 'hips', [0, 0.56, 0])
@@ -867,7 +932,8 @@ const MODELS = {
       smear: 0.2,
       bend: -0.12,
       hop: 0.07,
-      mass: 1.5
+      mass: 1.5,
+      stand: 0.2
     },
     build(k) {
       poop(k, '#5e3518', { arms: [] })
@@ -917,7 +983,8 @@ const MODELS = {
       slam: 0.22,
       rise: 0.1,
       bend: 0.12,
-      mass: 1.4
+      mass: 1.4,
+      stand: 0.3
     },
     build(k) {
       poop(k, '#4a2a12', { mood: 'proud', arms: [] })
@@ -1112,7 +1179,8 @@ const MODELS = {
       bend: 0.1,
       walk: 'waddle',
       hop: 0.06,
-      mass: 1.15
+      mass: 1.15,
+      stand: 0.32
     },
     build(k) {
       k.chain = [0.2, 0.36, 0.5]
@@ -1199,7 +1267,8 @@ const MODELS = {
       stretch: 0.08,
       bend: 0.18,
       walk: 'waddle',
-      hop: 0.07
+      hop: 0.07,
+      stand: 0.28
     },
     build(k) {
       k.chain = [0.3, 0.55, 0.8]
@@ -1326,7 +1395,8 @@ const MODELS = {
       bend: 0.22,
       walk: 'waddle',
       hop: 0.05,
-      mass: 1.6
+      mass: 1.6,
+      stand: 0.2
     },
     build(k) {
       k.chain = [0.3, 0.5, 0.72]
@@ -1406,7 +1476,8 @@ const MODELS = {
       rise: 0,
       bend: 0.06,
       walk: 'waddle',
-      hop: 0.07
+      hop: 0.07,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.2, 0.38, 0.5]
@@ -1417,24 +1488,27 @@ const MODELS = {
         k.add(GEO.box, '#3a3a3a', [x, 0.41, 0], [0.018, 0.018, 0.68], undefined, { line: false, bone: 'grill' })
       k.add(GEO.rbox, '#2a2a2a', [0, 0.12, 0.31], [0.18, 0.09, 0.05])
       k.add(GEO.rbox, '#ff8a2a', [0, 0.12, 0.335], [0.12, 0.05, 0.01], undefined, { glow: true })
-      k.bone('meat', 'chest', [0, 0.47, 0])
-      k.bone('char', 'chest', [0, 0.47, 0])
-      k.bone('meatTip', 'meat', [0.2, 0.47, 0])
+      k.bone('meat', 'chest', [0, 0.5, 0])
+      k.bone('char', 'chest', [0, 0.5, 0])
+      k.bone('meatTip', 'meat', [0.2, 0.5, 0])
       for (const [x, z, r] of [
         [-0.13, 0.05, 0.3],
         [0.12, -0.08, -0.4],
         [0.02, 0.15, 0.1]
       ]) {
-        k.add(GEO.rbox, '#9b3f2c', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'meat' })
-        k.add(GEO.rbox, '#261b18', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'char' })
-        k.add(GEO.box, '#f6dccb', [x, 0.497, z], [0.24, 0.008, 0.035], [0.12, r, 0], { bone: 'meat', line: false })
+        k.add(GEO.rbox, '#9b3f2c', [x, 0.5, z], [0.25, 0.065, 0.16], [0.3, r, 0], { bone: 'meat' })
+        k.add(GEO.rbox, '#261b18', [x, 0.5, z], [0.25, 0.065, 0.16], [0.3, r, 0], { bone: 'char' })
+        k.add(GEO.box, '#f6dccb', [x, 0.534, z + 0.01], [0.24, 0.008, 0.035], [0.3, r, 0], {
+          bone: 'meat',
+          line: false
+        })
         for (const d of [-0.05, 0.05])
           k.add(
             GEO.box,
             '#3a1810',
-            [x + Math.cos(r) * d, 0.498, z - Math.sin(r) * d],
+            [x + Math.cos(r) * d, 0.535, z - Math.sin(r) * d + 0.01],
             [0.012, 0.006, 0.15],
-            [0.12, r, 0],
+            [0.3, r, 0],
             {
               bone: 'meat',
               line: false
@@ -1590,7 +1664,8 @@ const MODELS = {
       stretch: 0.1,
       bend: 0.16,
       walk: 'waddle',
-      hop: 0.06
+      hop: 0.06,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.2, 0.4, 0.58]
@@ -1660,7 +1735,8 @@ const MODELS = {
       bend: 0.1,
       walk: 'waddle',
       hop: 0.06,
-      mass: 1.15
+      mass: 1.15,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.22, 0.42, 0.62]
@@ -1712,7 +1788,8 @@ const MODELS = {
       stretch: 0.08,
       bend: 0.06,
       walk: 'waddle',
-      hop: 0.05
+      hop: 0.05,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.15, 0.3, 0.45]
@@ -1743,6 +1820,13 @@ const MODELS = {
         [0.2, 0.42, -0.14, 0.09]
       ])
         k.add(GEO.sphere, '#8a8e87', [x, y, z], [w, 0.04, w * 0.8], [-1.15, 0, 0.4 * x], { bone: 'lid' })
+      k.add(GEO.sphere, '#9b9f98', [-0.3, 0.6, -0.2], [0.2, 0.08, 0.16], [-1.0, 0.4, 0.5], { bone: 'lid' })
+      // Growth plates stepping in from the rim, so the lid's outline is not one smooth curve.
+      for (const [y, z, w, c] of [
+        [0.47, -0.16, 0.4, '#969a93'],
+        [0.55, -0.21, 0.31, '#888c85']
+      ])
+        k.add(GEO.sphere, c, [0.04, y, z], [w, 0.035, w * 0.78], [-1.15, 0, 0.12], { bone: 'lid' })
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
     act(b, a, c) {
@@ -1783,7 +1867,8 @@ const MODELS = {
       stretch: 0.1,
       bend: 0.32,
       walk: 'hop',
-      hop: 0.08
+      hop: 0.08,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.3, 0.52, 0.72]
@@ -1929,17 +2014,18 @@ const MODELS = {
     react: { jolt: 0.4 },
     size: 1,
     moves: {
-      lunge: 0.12,
+      lunge: 0.06,
       back: 0.05,
       rear: 0.14,
-      lean: 0.26,
+      lean: 0.18,
       squash: 0.04,
       stretch: 0.03,
-      bend: 0.3,
+      bend: 0.2,
       walk: 'legs',
       stride: 18,
       tool: true,
-      base: 0.12
+      base: 0.12,
+      stand: 0.34
     },
     build(k) {
       person(k, '#3d6fb6')
@@ -1990,17 +2076,18 @@ const MODELS = {
     react: { jolt: 0.4 },
     size: 1,
     moves: {
-      lunge: 0.14,
+      lunge: 0.07,
       back: 0.06,
       rear: 0.1,
-      lean: 0.2,
+      lean: 0.15,
       squash: 0.05,
       stretch: 0.03,
-      bend: 0.22,
+      bend: 0.16,
       walk: 'legs',
       stride: 18,
       tool: true,
-      base: 0.12
+      base: 0.12,
+      stand: 0.34
     },
     build(k) {
       person(k, '#7b5aa6')
@@ -2070,7 +2157,8 @@ const MODELS = {
       rise: 0,
       bend: 0.1,
       walk: 'hop',
-      hop: 0.08
+      hop: 0.08,
+      stand: 0.22
     },
     build(k) {
       k.chain = [0.2, 0.4, 0.58]
@@ -2183,7 +2271,8 @@ const MODELS = {
       hop: 0.04,
       base: 0.5,
       ko: 0.12,
-      mass: 1.4
+      mass: 1.4,
+      stand: 0.24
     },
     build(k) {
       k.chain = [0.12, 0.24, 0.36]
@@ -2401,7 +2490,8 @@ const MODELS = {
       bend: 0.2,
       walk: 'waddle',
       hop: 0.04,
-      mass: 1.5
+      mass: 1.5,
+      stand: 0.2
     },
     build(k) {
       k.chain = [0.25, 0.5, 0.72]
@@ -2459,14 +2549,8 @@ export class Actor {
     this.size = t.recipe.size
     this.root = new THREE.Group()
     this.mats = {
-      toon: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true }),
-      clear: new THREE.MeshToonMaterial({
-        vertexColors: true,
-        gradientMap: TONES,
-        transparent: true,
-        depthWrite: false
-      }),
-      glow: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true }),
+      toon: toonMaterial(),
+      clear: toonMaterial({ depthWrite: false }),
       line: lineMaterial(t.recipe.line ?? LINE)
     }
     const b = (this.bones = {})
@@ -2484,7 +2568,7 @@ export class Actor {
       b[name] = bone
     }
     this.root.updateMatrixWorld(true)
-    const skeleton = new THREE.Skeleton(t.order.map((n) => b[n]))
+    const skeleton = (this.skeleton = new THREE.Skeleton(t.order.map((n) => b[n])))
     for (const [finish, geometry] of t.meshes) {
       const mesh = new THREE.SkinnedMesh(geometry, this.mats[finish])
       mesh.rotation.y = FACE
@@ -2500,13 +2584,23 @@ export class Actor {
       bone.scale.clone(),
       true
     ])
+    this.floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    this.tintColor = new THREE.Color('#ffffff')
+    this.reset()
+  }
+
+  /** Clears per-unit motion memory, for a fresh unit or one reused from the pool. */
+  reset() {
     this.lastPoseValid = false
+    this.frozenAt = null
+    this.drowsyEnd = undefined
+    this.drowsyStart = 0
+    this.tintAmount = 0
+    this.setOpacity(1)
+    for (const material of Object.values(this.mats)) material.clippingPlanes = null
     this.motion = 'walk'
     this.fade = null
     this.a = beats('walk', 0, 1)
-    this.floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
-    this.tintColor = new THREE.Color('#ffffff')
-    this.tintAmount = 0
   }
 
   /** k: lane-x units per model unit; aspect: x-to-y pixel ratio. The player (side 1) faces left. */
@@ -2519,7 +2613,7 @@ export class Actor {
   tint(color, amount) {
     this.tintColor.set(color)
     this.tintAmount = amount
-    for (const name of ['toon', 'clear', 'glow']) this.mats[name].color.set('#ffffff').lerp(this.tintColor, amount)
+    for (const name of ['toon', 'clear']) this.mats[name].color.set('#ffffff').lerp(this.tintColor, amount)
   }
 
   sink(depth) {
@@ -2590,7 +2684,8 @@ export class Actor {
       lastCrit: f.lastCrit ?? false,
       ramp: f.ramp ?? 0,
       period: f.period,
-      tempo: t.recipe.tempo
+      tempo: t.recipe.tempo,
+      reach: f.reach ?? 0
     }
     if (f.status?.kind === 'confuse') {
       c.walk = 1
@@ -2668,9 +2763,31 @@ export class Actor {
   }
 
   dispose() {
+    this.skeleton.dispose()
     for (const m of Object.values(this.mats)) m.dispose()
   }
 }
+
+/** A typical melee gap in lane units, and how wide it looks in model units on the desktop presentation. */
+const MELEE = [32, 0.43]
+/** Bones that carry effects or orbiting extras rather than the body or a weapon. */
+const EFFECTS = new Set([
+  'blast',
+  'puff',
+  'splash',
+  'powder',
+  'fizz',
+  'jet',
+  'drops',
+  'steam',
+  'wind',
+  'fly',
+  'pills',
+  'moon',
+  'flames'
+])
+/** How much of a body's front may sit inside a typical melee gap at rest (model units). */
+const CONTACT = 0.12
 
 /** Procedural three.js characters, rendered into an offscreen WebGL canvas in the 1000×450 lane space. */
 export class LaneModels {
@@ -2683,6 +2800,8 @@ export class LaneModels {
   line = OUTLINE.value
   portraits = new Map()
   muzzles = new Map()
+  strikes = new Map()
+  pool = new Map()
 
   constructor() {
     this.renderer.setClearColor(0, 0)
@@ -2693,15 +2812,31 @@ export class LaneModels {
     this.scene.add(key)
   }
 
+  /**
+   * The actor drawing unit `id`. Actors whose unit has gone return to a per-character pool and are reused,
+   * so a long battle allocates no new skeletons, bone textures or materials once its cast has appeared.
+   */
   actor(id, key) {
     let actor = this.actors.get(id)
+    if (actor && actor.key !== key) {
+      this.release(id, actor)
+      actor = undefined
+    }
     if (!actor) {
-      actor = new Actor(key)
+      actor = this.pool.get(key)?.pop() ?? new Actor(key)
+      actor.reset()
       this.scene.add(actor.root)
       this.actors.set(id, actor)
     }
     actor.seen = true
     return actor
+  }
+
+  release(id, actor) {
+    this.scene.remove(actor.root)
+    this.actors.delete(id)
+    if (!this.pool.has(actor.key)) this.pool.set(actor.key, [])
+    this.pool.get(actor.key).push(actor)
   }
 
   /** size: the lane's unit width; aspect: x-to-y pixel ratio of the stretched lane canvas; pxPerLane: CSS px per lane unit. */
@@ -2711,8 +2846,12 @@ export class LaneModels {
     this.line = Math.min(0.04, Math.max(0.012, 1.7 / (size * 0.62 * pxPerLane)))
   }
 
-  /** z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's wind-up). */
-  unit(u, x, y, z, time, lead = Infinity, ground = y) {
+  /**
+   * z: the unit's depth slot; lead: seconds until it reaches its foe while walking (starts the first strike's
+   * wind-up); reach: extra lunge (model units) that brings its strike onto the foe's body; ground: the floor
+   * line a sinking death is cut at (defaults to y).
+   */
+  unit(u, x, y, z, time, lead = Infinity, reach = 0, ground = y) {
     const actor = this.actor(u.id, u.key)
     actor.place(x, y, z, u.side, ...this.presentation, ground)
     if (actor.drowsyEnd !== u.drowsy?.end) {
@@ -2720,6 +2859,7 @@ export class LaneModels {
       actor.drowsyStart = time
     }
     actor.animate({
+      reach,
       motion: u.motion,
       phase: u.phase,
       period: u.cycle ?? u.period,
@@ -2763,11 +2903,66 @@ export class LaneModels {
   }
 
   /**
-   * Lane-x offset at which a unit is drawn: a little behind its logical point, so facing fighters stand
-   * apart and only meet on the strike; back rows stand a step further back.
+   * Lane-x offset at which a unit is drawn: behind its logical point by its stand-off, so facing fighters
+   * keep their faces and bodies apart and only a weapon or the striking body meets the foe; back rows
+   * stand a step further back.
    */
   offset(key, side, row = 0) {
-    return side * ((0.22 * modelSize(key) + row * 0.07) * this.presentation[0])
+    const k = this.presentation[0]
+    // Wide bodies (basins, bowls, the big poops) stand back by their own breadth, keeping a little air in
+    // front that the strike crosses. A typical melee gap (MELEE lane units) looks the same on every screen:
+    // on large-scale (portrait) presentations it would shrink in model terms, so the stand-off grows.
+    const { moves, front } = template(key)
+    const stand = Math.max(moves.stand, front - CONTACT)
+    return side * ((stand * modelSize(key) + row * 0.07) * k + Math.max(0, MELEE[1] * k - MELEE[0]) / 2)
+  }
+
+  /** Lane units from a unit's centre to the front of its body at `height` (model units, before size). */
+  front(key, height = 0.4) {
+    const { profile } = template(key)
+    let band = Math.min(BANDS - 1, Math.max(0, Math.floor(height / 0.1)))
+    while (band > 0 && profile[band] === -Infinity) band--
+    const x = Math.max(profile[band], profile[band - 1] ?? -Infinity, profile[band + 1] ?? -Infinity)
+    return x * modelSize(key) * this.presentation[0]
+  }
+
+  /**
+   * The furthest point of a unit's strike on the contact frame (weapon tip or striking body; effects such as
+   * splashes and jets are left out): [lane units ahead of its centre, height in size-scaled model units].
+   */
+  strike(key) {
+    if (!this.strikes.has(key)) {
+      const actor = new Actor(key)
+      actor.animate({
+        motion: 'attack',
+        phase: 0,
+        period: 1,
+        walked: 0,
+        lead: Infinity,
+        hurtAge: -1,
+        power: 1,
+        time: 0,
+        ko: -1,
+        id: 0
+      })
+      actor.root.updateMatrixWorld(true)
+      const mesh = actor.root.children.find((m) => m.isSkinnedMesh)
+      const { order } = actor.t
+      const skinIndex = mesh.geometry.attributes.skinIndex,
+        position = mesh.geometry.attributes.position,
+        at = new THREE.Vector3()
+      let reach = 0,
+        height = 0
+      for (let i = 0; i < position.count; i++) {
+        if (EFFECTS.has(order[skinIndex.getX(i)])) continue
+        mesh.applyBoneTransform(i, at.fromBufferAttribute(position, i)).applyMatrix4(mesh.matrixWorld)
+        if (at.x > reach) [reach, height] = [at.x, at.y]
+      }
+      this.strikes.set(key, [reach * actor.size, height * actor.size])
+      actor.dispose()
+    }
+    const [reach, height] = this.strikes.get(key)
+    return [reach * this.presentation[0], height]
   }
 
   /** Lane offset from a unit's base to its shot emitter at the moment of release, for the current presentation. */
@@ -2801,11 +2996,8 @@ export class LaneModels {
   /** Renders this frame's actors at width×height pixels; actors not touched since the last render are released. */
   render(width, height) {
     for (const [id, actor] of this.actors)
-      if (!actor.seen) {
-        this.scene.remove(actor.root)
-        actor.dispose()
-        this.actors.delete(id)
-      } else actor.seen = false
+      if (!actor.seen) this.release(id, actor)
+      else actor.seen = false
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false)
     OUTLINE.value = this.line
     this.renderer.render(this.scene, this.camera)

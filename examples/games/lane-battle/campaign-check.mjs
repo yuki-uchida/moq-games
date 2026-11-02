@@ -33,6 +33,8 @@ await Promise.all(
     await page.getByRole('button', { name: 'ブリッと出撃' }).click()
     assert.equal(await page.locator('#map').isVisible(), false)
     assert.equal(await page.locator('#tray button').count(), 2, 'starter formation')
+    // Low rolls from here on: the first clear's 30% special roll succeeds, so the report can show it.
+    await page.evaluate(() => (Math.random = () => 0.1))
     let won = false
     for (let i = 0; i < 300 && !won; i++) {
       await page.evaluate(() => {

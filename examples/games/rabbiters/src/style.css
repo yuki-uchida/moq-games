@@ -968,3 +968,139 @@ button:active:not(:disabled) {
     opacity: 1;
   }
 }
+/* Desktop keeps the cards at their own corners; phones stack them in one compact column. */
+.hud-stack {
+  display: contents;
+}
+/* Phones: icon-only header, slim cards, wrapping hint — the field stays visible. */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 550px) and (orientation: landscape) {
+  .topbar {
+    padding: 10px 12px;
+  }
+  .wordmark {
+    display: none;
+  }
+  .top-actions {
+    margin-left: auto;
+  }
+  #condition:not(.urgent) {
+    display: none;
+  }
+  .connection span,
+  .meter-row > span:nth-child(2),
+  .vitals .eyebrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .top-actions {
+    gap: 6px;
+  }
+  .connection {
+    padding: 8px;
+  }
+  .hud-stack {
+    position: absolute;
+    top: 56px;
+    left: 10px;
+    width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hud-stack .hud-card,
+  .hud-stack .objective-card {
+    position: static;
+    width: auto;
+    padding: 8px 10px;
+  }
+  .vitals .eyebrow + .meter-row {
+    margin-top: 0;
+  }
+  .meter-row {
+    margin-top: 6px;
+  }
+  .condition {
+    margin-top: 6px;
+    padding-top: 6px;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+  .objective-card h2 {
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+  .objective-foot {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 5px;
+    font-size: 9px;
+  }
+  .map-card {
+    top: 56px;
+    right: 10px;
+    width: 116px;
+  }
+  .interaction-hint {
+    width: max-content;
+    max-width: calc(100% - 32px);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.5;
+  }
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  .interaction-hint {
+    bottom: 168px;
+  }
+}
+/* Landscape phones: subtitles sit in the top gap between the card column and the minimap. */
+@media (pointer: coarse) and (max-height: 550px) and (orientation: landscape) {
+  .interaction-hint {
+    max-width: calc(100% - 420px);
+  }
+  .subtitle {
+    top: 56px;
+    bottom: auto;
+    width: calc(100% - 340px);
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.touch-buttons button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.touch-buttons svg {
+  width: 64%;
+  height: 64%;
+  fill: currentColor;
+}
+/* Lit while the rabbit is in cover. */
+.touch-buttons button.active {
+  background: #8cc785e8;
+  color: #13301f;
+  box-shadow: 0 0 14px #9fdc8f;
+}
+.key-icon {
+  width: 1.6em;
+  height: 1.6em;
+  margin: 0 3px;
+  vertical-align: -0.45em;
+  fill: currentColor;
+}
+/* In cover: the screen edge closes in with leafy green. */
+.alert-overlay.covered {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, transparent 48%, rgb(24 74 42 / 0.6) 100%);
+}

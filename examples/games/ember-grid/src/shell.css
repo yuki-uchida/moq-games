@@ -1,0 +1,176 @@
+.title-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow: auto;
+  background: radial-gradient(ellipse at 68% 80%, #64351e, #101a22 65%);
+  color: #fff2d4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+}
+.title-content {
+  position: relative;
+  z-index: 2;
+  grid-column: 1;
+  grid-row: 1;
+  width: min(32rem, 90%);
+  margin: auto;
+  padding: 1rem;
+}
+.title-content h1 {
+  font-size: clamp(2.7rem, 7vw, 5.5rem);
+  margin: 0.15em 0;
+  color: #ffe1a1;
+  text-shadow: 0 3px #6b281a;
+}
+.title-content p {
+  margin: 0.4rem 0 1rem;
+}
+.title-content nav {
+  display: grid;
+  gap: 0.35rem;
+}
+.title-content button,
+.shell-dialog button {
+  text-align: left;
+  min-height: 44px;
+}
+.title-content button small {
+  display: block;
+  font-size: 0.75rem;
+}
+.title-content button:disabled,
+.shell-dialog button:disabled {
+  opacity: 0.5;
+}
+.title-art {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  height: min(75vh, 620px);
+}
+.title-art img {
+  width: 32%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 10px #0009);
+}
+.title-art img:nth-child(2) {
+  width: 36%;
+  z-index: 1;
+}
+.title-embers {
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+  background-image: radial-gradient(#ffba70 1px, transparent 2px), radial-gradient(#fff4d0 1px, transparent 2px);
+  background-size:
+    87px 91px,
+    137px 151px;
+  opacity: 0.25;
+  animation: embers 18s linear infinite;
+}
+@keyframes embers {
+  to {
+    transform: translateY(-90px);
+  }
+}
+.reduce-motion .title-embers {
+  animation: none;
+}
+.shell-dialog {
+  max-height: 90dvh;
+  overflow: auto;
+  max-width: min(90vw, 34rem);
+}
+#storage-notice {
+  position: fixed;
+  z-index: 100;
+  right: 1rem;
+  bottom: 1rem;
+  background: #3a241e;
+  color: #fff;
+}
+#storage-notice:empty {
+  display: none;
+}
+.shell-dialog label {
+  display: block;
+  margin: 0.8rem 0;
+}
+.shell-dialog button {
+  display: block;
+  width: 100%;
+  margin: 0.35rem 0;
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .title-screen {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(170px, 32vh) auto;
+    align-content: center;
+  }
+  .title-art {
+    grid-column: 1;
+    grid-row: 1;
+    height: 100%;
+  }
+  .title-content {
+    grid-column: 1;
+    grid-row: 2;
+    width: min(24rem, 90%);
+    padding-block: 0;
+  }
+}
+@media (max-height: 500px) {
+  .title-content h1 {
+    font-size: 2.3rem;
+  }
+  .title-content p {
+    margin: 0.2rem 0;
+  }
+  .title-content button {
+    min-height: 44px;
+    padding: 0.25rem 0.7rem;
+  }
+  .title-content nav {
+    gap: 0.15rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title-embers {
+    animation: none;
+  }
+}
+.screen-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #101321;
+  pointer-events: none;
+  animation: screen-transition 350ms ease-out forwards;
+}
+
+@keyframes screen-transition {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.context-notice:not([hidden]) {
+  position: fixed;
+  z-index: 1001;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.8rem 1rem;
+  color: #fff;
+  background: #252638;
+  border: 1px solid #e8c880;
+  border-radius: 0.5rem;
+}

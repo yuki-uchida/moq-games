@@ -1,4 +1,9 @@
 import { SPECIALS, specialReady } from './game/SpecialAbilities'
+import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
+import { SkillBar } from './ui/SkillBar'
+import { SkillCutIn } from './ui/SkillCutIn'
+import { nextFreezeUntil } from './ui/SpecialFeel'
+import './ui/skill-bar.css'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
 import { allRoadPaths } from './game/BattlefieldRoutes'
@@ -35,6 +40,9 @@ import './style.css'
 import './ui/title-screen.css'
 import { titleScreenMarkup, titleSaveStatus } from './ui/TitleScreen'
 import './ui/games-home-link.css'
+import './ui/battle-feel.css'
+import { BattleFeedback } from './ui/BattleFeedback'
+import { BattleHud } from './ui/BattleHud'
 import { GameEngine } from './game/GameEngine'
 import {
   CONFIG,
@@ -114,8 +122,15 @@ import {
   stageReward,
   stageStartGold,
   stageUnlocked,
-  toggleFormation
+  toggleFormation,
+  awardBounty,
+  recordStars,
+  starsFor,
+  starsOf,
+  totalStars
 } from './progression/StageProgress'
+import { CoachMarks } from './ui/CoachMarks'
+import { REVEAL_DELAY_MS, createResultCard, defeatTip, prefersReducedMotion, resultMarkup } from './ui/ResultCard'
 import { PanelDialog } from './input/PanelDialog'
 import { MapPan } from './input/MapPan'
 import { SandbagInput, sandbagPlacementLabel } from './input/SandbagInput'
@@ -131,6 +146,12 @@ const save = freshRunFromProfile(loadedCampaign.profile, 2, 1),
 let stageProgress = loadStageProgress(loadedCampaign.profile.purchased),
   selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1),
   lastStageReward = 0
+let lastBounty = 0,
+  lastKills: number | null = null,
+  starImproved = false,
+  newUnlock: number | null = null,
+  resultLive = false,
+  resultRevealAt = 0
 let engine = new GameEngine(rule, save, undefined, undefined, undefined, DRAGON_BREATH_MOUTHS, 2, 1),
   selected: AllyType = 'soldier'
 let connection: JevConnection | undefined,
@@ -236,12 +257,12 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><em></em></button>`).join('')}</div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
-<dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><h2 id="campaign-loading-title">キャラクターを準備中</h2><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
-<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-icon" class="result-icon" aria-hidden="true">${emblems.cleared}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div class="result-summary"><span id="result-stage"></span><b id="result-gold"></b></div><p id="reward"></p><button id="next" class="primary">次のステージへ →</button><button id="retry" class="primary">ステージ選択へ</button><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
+<dialog id="campaign-loading" class="panel" aria-labelledby="campaign-loading-title"><span id="campaign-loading-stage" class="loading-stage" aria-hidden="true"></span><h2 id="campaign-loading-title">キャラクターを準備中</h2><div id="campaign-loading-party" class="loading-party" aria-hidden="true"></div><progress id="campaign-loading-progress" max="1" value="0" aria-label="キャラクターの準備"></progress><p id="campaign-loading-status" role="status" aria-live="polite">0 / 1</p><p id="campaign-loading-tip" class="loading-tip" aria-hidden="true"></p><button id="campaign-loading-retry" class="primary" hidden>再試行</button><button id="campaign-loading-cancel">タイトルへ戻る</button></dialog>
+${resultMarkup(emblems.cleared)}`
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
@@ -473,6 +494,41 @@ Object.assign(window, {
   towerDefenseAudioDiagnostics: () => soundPlayer.diagnostics
 })
 const viewport = $('map-scroll')
+const battlePanel = document.querySelector<HTMLElement>('.battle-panel')!
+const coach = new CoachMarks(
+  $('app'),
+  (() => {
+    try {
+      return localStorage
+    } catch {
+      return undefined
+    }
+  })(),
+  stageProgress.cleared >= 1
+)
+const resultCard = createResultCard($('result'), (kind, param) => soundPlayer.playFeel(kind, param))
+function closeResult() {
+  resultCard.cancel()
+  resultRevealAt = 0
+  $<HTMLDialogElement>('result').close()
+}
+const battleHud = new BattleHud(battlePanel)
+const battleFeedback = new BattleFeedback({
+  field: $('field'),
+  overlayParent: battlePanel,
+  shakeTarget: document.querySelector<HTMLElement>('.map-shell')!,
+  baseLabel: $('base-health'),
+  coinTarget: () => battleHud.coinElement,
+  // Band between the HUD and the skill bar where big readouts may sit.
+  safeArea: () => ({
+    left: 8,
+    right: innerWidth - 8,
+    top: battleHud.root.hidden ? 8 : battleHud.root.getBoundingClientRect().bottom + 6,
+    bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
+  }),
+  play: (kind, param) => soundPlayer.playFeel(kind, param),
+  announce: (message) => announce(message)
+})
 let mapScale = 1
 let mapScaleX = 1
 const settingsPanel = new PanelDialog(
@@ -535,7 +591,7 @@ function resetTitleCampaign() {
   started = rewarded = outcomeSaved = false
   clearPlacementModes()
   document.querySelector('.game-layout')!.setAttribute('inert', '')
-  $<HTMLDialogElement>('result').close()
+  closeResult()
   updateField()
   updateStart()
   openTitle()
@@ -996,10 +1052,21 @@ function fireSpecial(point: Point) {
     announce('指定できません')
     return
   }
-  soundPlayer.playCue('ui_special')
+  playCastFeedback(engine.state.units.find((unit) => unit.id === specialAimId)!.type as AllyType, point)
   clearPlacementModes()
   persist()
   updateSelectionContext()
+}
+// Real time until which the simulation is stopped for the cast cut-in (see initializeClock).
+let freezeUntil = 0
+function playCastFeedback(type: AllyType, point: Point) {
+  skillCutIn.play(
+    { portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type },
+    { point, radius: SPECIALS[type].radius }
+  )
+  freezeUntil = nextFreezeUntil(performance.now(), freezeUntil)
+  soundPlayer.playCue('ui_special')
+  soundPlayer.playFeel('cutin')
 }
 const specialInput = new GroundTapInput(viewport, {
   acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),
@@ -1018,6 +1085,78 @@ const specialInput = new GroundTapInput(viewport, {
 $('unit-special').onclick = () => {
   if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
   else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
+}
+const skillCutIn = new SkillCutIn($('app'), $('field'))
+const skillBar = new SkillBar(document.querySelector<HTMLElement>('.game-layout')!, {
+  portrait: displayPortrait,
+  onActivate: activateSkill
+})
+function skillAssetsReady(type: AllyType) {
+  const status = renderer.specialAbilityStatus(type)
+  if (status !== 'ready') announce(status === 'error' ? '必殺技素材を読み込めません。再読み込みしてください。' : '必殺技の3D素材を読込中')
+  return status === 'ready'
+}
+// Auto-aimed cast shared by the bar tap and AUTO. Returns false when nothing was cast.
+function castBestSpecial(id: number, accept: (score: number, point: Point, type: AllyType) => boolean = () => true) {
+  const unit = engine.state.units.find((u) => u.id === id),
+    target = unit && bestSpecialTarget(engine.state, id)
+  if (!unit || !target || !accept(target.score, target.point, unit.type as AllyType) || !engine.castSpecial(id, target.point)) return false
+  playCastFeedback(unit.type as AllyType, target.point)
+  announce(`${SPECIALS[unit.type as AllyType].name} 発動`)
+  clearPlacementModes()
+  persist()
+  updateSelectionContext()
+  return true
+}
+function activateSkill(id: number, manual: boolean) {
+  const unit = engine.state.units.find((u) => u.id === id)
+  if (!unit || !assaulting() || document.querySelector('dialog[open]')) return
+  if (!specialReady(engine.state, id)) { announce(unit.hp <= 0 ? '戦闘不能' : `✦ ${Math.ceil(unit.specialCooldown ?? 0)}秒`); return }
+  if (!skillAssetsReady(unit.type as AllyType)) return
+  if (!manual) {
+    if (castBestSpecial(id)) return
+    // Nothing worth hitting: say so on the button instead of opening the aim panel over the field.
+    // Long-press / Shift+click still aims by hand.
+    skillBar.hint(id, unit.type === 'healer' ? '回復が必要な仲間がいません' : '射程内に敵がいません')
+    const button = skillBar.buttonFor(id)
+    if (button) coach.noteNoTarget(button)
+    announce(`${SPECIALS[unit.type as AllyType].name}: 対象なし · 長押しで手動照準`)
+    return
+  }
+  selectDefender(id)
+  beginSpecial(id)
+}
+let autoSkillAt = 0, autoCastAt = -1e9, autoBattle = ''
+// Simulation time at which AUTO first saw each special ready, so it never hoards one for long.
+const autoReadySince = new Map<number, number>()
+function autoSkills(now: number) {
+  if (!skillBar.autoEnabled || now - autoSkillAt < 250) return
+  autoSkillAt = now
+  const state = engine.state,
+    battle = `${state.battleId}:${state.stage}`
+  if (battle !== autoBattle) {
+    autoBattle = battle
+    autoReadySince.clear()
+  }
+  if (!assaulting() || specialAimId !== null || now - autoCastAt < 600 || document.querySelector('dialog[open]')) return
+  let best: { id: number; score: number } | null = null
+  for (const unit of state.units) {
+    if (unit.owner !== 'player') continue
+    if (!specialReady(state, unit.id)) {
+      autoReadySince.delete(unit.id)
+      continue
+    }
+    if (!autoReadySince.has(unit.id)) autoReadySince.set(unit.id, state.time)
+    const type = unit.type as AllyType,
+      target = renderer.specialAbilityStatus(type) === 'ready' ? bestSpecialTarget(state, unit.id) : null
+    if (
+      !target ||
+      !autoShouldCast(type, target.score, bossInSpecialArea(state, type, target.point), state.time - autoReadySince.get(unit.id)!)
+    )
+      continue
+    if (!best || target.score > best.score) best = { id: unit.id, score: target.score }
+  }
+  if (best && castBestSpecial(best.id)) autoCastAt = now
 }
 const roadItemInput = new GroundTapInput(viewport, {
   enabled: () => !!placingRoadItem && preparing() && paidRoster() && !document.querySelector('dialog[open]'),
@@ -1083,7 +1222,7 @@ for (const tray of ['unit', 'item'])
   }
 document.addEventListener('pointerdown', (event) => {
   const target = event.target as HTMLElement
-  if (target.closest('.floating-tray, .field-controls, dialog')) return
+  if (target.closest('.floating-tray, .field-controls, .skill-bar, dialog')) return
   closeTrays()
   if (specialAimId === null && !target.closest('[data-unit-id]') && !target.closest('.sandbag-handle') && !target.closest('.road-item-handle')) {
     $('selection-context').hidden = true
@@ -1093,16 +1232,21 @@ document.addEventListener('pointerdown', (event) => {
   }
 })
 
+let controlTooltipTimer = 0
 function showControlTooltip(target: HTMLElement) {
+  clearTimeout(controlTooltipTimer)
   $('control-tooltip').hidden = true
   const control = target.closest<HTMLButtonElement>('button')
   if (!control || !control.title || (!control.closest('.field-controls') && !control.closest('.floating-tray'))) return
   $('control-tooltip').textContent = control.title
   $('control-tooltip').hidden = false
+  // A clicked control keeps focus; don't leave its name floating over the battle.
+  controlTooltipTimer = window.setTimeout(() => ($('control-tooltip').hidden = true), 1800)
 }
 document.addEventListener('focusin', (event) => {
   if (event.target instanceof HTMLElement) showControlTooltip(event.target)
 })
+document.addEventListener('focusout', () => ($('control-tooltip').hidden = true))
 document.addEventListener('pointerup', (event) => {
   if (event.pointerType === 'touch' && event.target instanceof HTMLElement && !defenderMoveInput.dragging)
     showControlTooltip(event.target)
@@ -1457,6 +1601,38 @@ function cancelCampaignPreparation() {
 $('campaign-loading-cancel').onclick = cancelCampaignPreparation
 campaignLoading.addEventListener('cancel', (event) => { event.preventDefault(); cancelCampaignPreparation() })
 $('campaign-loading-retry').onclick = () => { if (campaignAction && campaignState) void prepareCampaign(campaignAction, campaignState) }
+const LOADING_TIPS = [
+  '盾の騎士を道の上に置くと敵を足止めできる',
+  '必殺技は敵が固まった時に',
+  '射程の長い仲間は道の曲がり角の内側へ',
+  '×2速で待ち時間を短縮',
+  '撃破するとコインがもらえる。拠点ノーダメージで★3'
+]
+let loadingTipTimer = 0
+function fillLoadingScreen(state: NonNullable<typeof campaignState>) {
+  $('campaign-loading-stage').textContent = `STAGE ${String(state.stage).padStart(2, '0')}`
+  const placed = [...new Set(state.units.filter((unit) => unit.owner === 'player').map((unit) => unit.type))],
+    party = placed.length ? placed : stageProgress.formation
+  $('campaign-loading-party').replaceChildren(
+    ...party.slice(0, FORMATION_SLOTS).map((type, i) => {
+      const img = document.createElement('img')
+      img.src = displayPortrait(type) ?? ''
+      img.alt = ''
+      img.draggable = false
+      img.style.animationDelay = `${i * 0.08}s`
+      return img
+    })
+  )
+  let tip = state.stage % LOADING_TIPS.length
+  const tipEl = $('campaign-loading-tip')
+  tipEl.textContent = LOADING_TIPS[tip]
+  clearInterval(loadingTipTimer)
+  loadingTipTimer = window.setInterval(() => {
+    if (!campaignLoading.open) return clearInterval(loadingTipTimer)
+    tip = (tip + 1) % LOADING_TIPS.length
+    tipEl.textContent = LOADING_TIPS[tip]
+  }, 2600)
+}
 async function prepareCampaign(action: () => void, state: NonNullable<typeof campaignState> = engine.state) {
   if (campaignPreparation) return
   const request = new AbortController()
@@ -1464,6 +1640,7 @@ async function prepareCampaign(action: () => void, state: NonNullable<typeof cam
   campaignAction = action
   campaignState = state
   $('campaign-loading-retry').hidden = true
+  fillLoadingScreen(state)
   if (!campaignLoading.open) campaignLoading.showModal()
   $('campaign-loading-cancel').focus({ preventScroll: true })
   try {
@@ -1529,7 +1706,7 @@ function commitFreshCampaign() {
   lastSavedCheckpoint = ''
   discardedClockMs = 0
   resumedAfterSuspension = false
-  $<HTMLDialogElement>('result').close()
+  closeResult()
   showLegacyMigration = false
   pendingRun = null
   replaceStoredRun = false
@@ -1556,6 +1733,7 @@ $('start').onclick = () => {
 function renderStageSelect() {
   if (!stageUnlocked(stageProgress, selectedStage)) selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1)
   $('stage-coins').textContent = String(stageProgress.coins)
+  $('stage-stars').textContent = String(totalStars(stageProgress))
   for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-stage]'))) {
     const stage = Number(card.dataset.stage),
       open = stageUnlocked(stageProgress, stage),
@@ -1563,8 +1741,10 @@ function renderStageSelect() {
     card.disabled = !open
     card.dataset.cleared = String(cleared)
     card.setAttribute('aria-pressed', String(stage === selectedStage))
+    const stars = starsOf(stageProgress, stage)
     card.querySelector('em')!.textContent = open ? `${cleared ? '✓ ' : ''}+${stageReward(stage)}` : '🔒'
-    card.setAttribute('aria-label', `ステージ${stage}${open ? `・クリア報酬 ${stageReward(stage)} コイン${cleared ? '・クリア済み' : ''}` : '・未解放'}`)
+    card.querySelector('.stage-stars')!.textContent = open ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : ''
+    card.setAttribute('aria-label', `ステージ${stage}${open ? `・クリア報酬 ${stageReward(stage)} コイン${cleared ? `・クリア済み・星${stars}/3` : ''}` : '・未解放'}`)
   }
   updateStart()
   const have = owned(stageProgress)
@@ -1635,10 +1815,12 @@ function resumeRun() {
   engine = restored
   save.formation = [...new Set([...stageProgress.formation, ...retainedDefenders(engine.state).map((unit) => unit.type as AllyType)])]
   // A battle won before the stage select existed still unlocks its next stage (once: cleared then covers it).
-  if (engine.state.result === 'win' && engine.state.stage > stageProgress.cleared) {
-    lastStageReward = awardStageClear(stageProgress, engine.state.stage)
-    saveStageProgress(stageProgress)
-  }
+  lastBounty = 0
+  lastKills = null
+  starImproved = false
+  newUnlock = null
+  resultLive = false
+  if (engine.state.result === 'win' && engine.state.stage > stageProgress.cleared) settleOutcome(engine.state, 0)
   showLegacyMigration = false
   pendingRun = null
   replaceStoredRun = false
@@ -2077,7 +2259,7 @@ $('save-confirm-accept').onclick = () => {
     saveConfirm.close(false)
     settingsPanel.close(false)
     upgradePanel.close(false)
-    $<HTMLDialogElement>('result').close()
+    closeResult()
     document.querySelector('.game-layout')!.setAttribute('inert', '')
     if (!launchDialog.open) showLaunch()
     updateField()
@@ -2265,7 +2447,6 @@ $('assault').onclick = () => {
   }
   clearPlacementModes()
   if (engine.startAssault()) {
-    soundPlayer.playCue('ui_assault')
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
@@ -2279,6 +2460,10 @@ $('assault').onclick = () => {
 $('next').onclick = () => {
   if (!stageUnlocked(stageProgress, engine.state.stage + 1)) return
   selectedStage = engine.state.stage + 1
+  startFreshCampaign()
+}
+$('retry-stage').onclick = () => {
+  selectedStage = engine.state.stage
   startFreshCampaign()
 }
 $('retry').onclick = () => {
@@ -2306,7 +2491,7 @@ $('retry').onclick = () => {
   selected = 'soldier'
   selectedSlot = null
   removing = false
-  $<HTMLDialogElement>('result').close()
+  closeResult()
   settingsPanel.close(false)
   upgradePanel.close(false)
   sandbagConfirm.close(false)
@@ -2462,14 +2647,33 @@ updateField()
 $<HTMLSelectElement>('mode').value = 'rule'
 configureAI()
 openTitle()
+/** Pay the stage (win) and kill bonus coins, record the star rating, and remember what the result card shows. */
+function settleOutcome(state: Readonly<typeof engine.state>, bounty: number) {
+  const first = state.stage > stageProgress.cleared,
+    stars = starsFor(state.playerBaseHp),
+    best = starsOf(stageProgress, state.stage)
+  lastBounty = bounty
+  if (state.result === 'win') {
+    coach.finish()
+    lastStageReward = awardStageClear(stageProgress, state.stage, bounty)
+    recordStars(stageProgress, state.stage, stars)
+    starImproved = best > 0 && stars > best
+    newUnlock = first && state.stage < CONFIG.stages ? state.stage + 1 : null
+  } else {
+    lastStageReward = awardBounty(stageProgress, bounty)
+    starImproved = false
+    newUnlock = null
+  }
+  saveStageProgress(stageProgress)
+}
 function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true
-  if (engine.state.result === 'win') {
-    lastStageReward = awardStageClear(stageProgress, engine.state.stage)
-    saveStageProgress(stageProgress)
-  }
-  soundPlayer.playCue(engine.state.result === 'win' ? 'ui_win' : 'ui_lose')
+  // The feedback layer counts kills per frame; settle the final blows before the bounty is paid.
+  battleFeedback.update(engine.state)
+  lastKills = battleFeedback.kills
+  resultLive = true
+  settleOutcome(engine.state, battleFeedback.bounty)
   battleClock?.stop()
   connection?.cancelPending()
   persist()
@@ -2479,7 +2683,14 @@ function initializeClock() {
     battleClock = createBattleClock({
       step: (dt) => {
         if (!started || !renderer.campaignPrepared || engine.state.phase !== 'assault') return false
-        engine.update(dt, (state) => renderer.assetsReady(state))
+        // Cast time-stop: the clock keeps running but its steps are dropped, so no time catches up afterwards.
+        if (performance.now() < freezeUntil) {
+          persistOutcome()
+          return true
+        }
+        // Speed x2 runs two simulation steps per clock step; animation reads simulation time, so it stays in sync.
+        for (let i = 0; i < battleHud.speed && engine.state.phase === 'assault'; i++)
+          engine.update(dt, (state) => renderer.assetsReady(state))
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
         syncBattleMusic()
@@ -2607,6 +2818,8 @@ function frame(now: number) {
   // Menu screens have no running battlefield. Keep asynchronous settings feedback
   // alive without rebuilding hidden world art, placement controls or battle UI.
   if (!started) {
+    battleHud.hide()
+    battleFeedback.reset()
     if (now - uiTick > 100) {
       uiTick = now
       commitArtMode()
@@ -2630,6 +2843,8 @@ function frame(now: number) {
     movingDefenderId = null
   }
   if (specialAimId !== null && !specialReady(state, specialAimId)) { specialAimId = null; renderer.setSpecialPreview(null) }
+  skillBar.update(state, !document.querySelector('dialog[open]'))
+  autoSkills(now)
   updateDefenderPreview()
   commitArtMode()
   renderer.setCommanderMode(engine.ai !== rule)
@@ -2642,6 +2857,8 @@ function frame(now: number) {
     selected,
     !!placingSandbag || !!placingRoadItem
   )
+  battleFeedback.update(state)
+  battleHud.update(state, battleFeedback.bountyArrived)
   if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)
   assetNotice.update(renderer.assetStatus, performance.now(), state.phase === 'assault')
@@ -2678,6 +2895,16 @@ function frame(now: number) {
     $('time').textContent =
       `${String(Math.floor(state.time / 60)).padStart(2, '0')}:${String(Math.floor(state.time % 60)).padStart(2, '0')}`
     const defenders = state.units.filter((unit) => unit.owner === 'player').length
+    coach.update(
+      {
+        started,
+        phase: state.phase,
+        defenders,
+        dragging: $('app').classList.contains('unit-dragging'),
+        modal: !!document.querySelector('dialog[open]')
+      },
+      now
+    )
     updateRosterControls()
     updateSelectionContext()
     updateFortificationControls()
@@ -2750,12 +2977,12 @@ function frame(now: number) {
       ? '全10ステージ、防衛成功！'
       : won
         ? `STAGE ${state.stage} 防衛成功！`
-        : '王国の門が破られました'
+        : '防衛失敗…'
     $('reward').textContent = finished
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : 'ステージ選択で編成を見直して再挑戦しよう。'
+        : `ヒント: ${defeatTip(state.stage)}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
@@ -2769,8 +2996,27 @@ function frame(now: number) {
         ? 'A LITTLE VICTORY'
         : 'ANOTHER ADVENTURE AWAITS'
     $('result-stage').textContent = `${FIELDS[state.fieldId].name} · STAGE ${String(state.stage).padStart(2, '0')}`
-    $('result-gold').textContent = won ? `+${lastStageReward || stageReward(state.stage)} コイン` : `所持 ${stageProgress.coins} コイン`
-    $('retry').textContent = 'ステージ選択へ'
+    // Let the STAGE CLEAR / defeat banner play first; a resumed or backgrounded battle shows the card at once.
+    resultRevealAt = now + (resultLive ? REVEAL_DELAY_MS : 0)
+  }
+  if (resultRevealAt && rewarded && state.result && now >= resultRevealAt) {
+    resultRevealAt = 0
+    const won = state.result === 'win'
+    resultCard.show({
+      won,
+      finished: state.phase === 'victory',
+      stars: won ? starsFor(state.playerBaseHp) : 0,
+      improved: starImproved,
+      reward: won ? stageReward(state.stage) : 0,
+      bounty: lastBounty,
+      kills: lastKills,
+      specials: state.units.reduce((sum, u) => sum + (u.owner === 'player' ? (u.specialSequence ?? 0) : 0), 0),
+      hp: state.playerBaseHp,
+      maxHp: CONFIG.baseHp,
+      seconds: state.time,
+      unlocked: newUnlock,
+      instant: prefersReducedMotion() || !resultLive
+    })
     showOutcomeDialog($<HTMLDialogElement>('result'), state.phase)
   }
   requestFrame()

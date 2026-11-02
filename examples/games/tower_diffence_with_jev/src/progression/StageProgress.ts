@@ -9,6 +9,8 @@ export interface StageProgress {
   cleared: number
   recruited: AllyType[]
   formation: AllyType[]
+  /** Best star rating (0-3) per stage, index = stage - 1. Optional so older saves still parse. */
+  stars?: number[]
 }
 
 export const STAGE_PROGRESS_KEY = 'tower-jev-stages-v1'
@@ -21,7 +23,8 @@ export const freshStageProgress = (recruited: readonly AllyType[] = []): StagePr
   coins: 0,
   cleared: 0,
   recruited: RECRUITABLE.filter((type) => recruited.includes(type)),
-  formation: STARTERS.slice(0, FORMATION_SLOTS)
+  formation: STARTERS.slice(0, FORMATION_SLOTS),
+  stars: Array(CONFIG.stages).fill(0)
 })
 
 export const owned = (p: StageProgress): AllyType[] =>
@@ -54,6 +57,11 @@ export function parseStageProgress(value: unknown): StageProgress | null {
     formation: []
   }
   const have = owned(p)
+  const stored = Array.isArray(value.stars) ? value.stars : []
+  p.stars = Array.from({ length: CONFIG.stages }, (_, i) => {
+    const n = stored[i]
+    return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 0
+  })
   p.formation = have.filter((t) => (value.formation as unknown[]).includes(t)).slice(0, FORMATION_SLOTS)
   if (!p.formation.length) p.formation = STARTERS.slice(0, FORMATION_SLOTS)
   return p
@@ -104,9 +112,33 @@ export function toggleFormation(p: StageProgress, type: AllyType): boolean {
   return true
 }
 
-export function awardStageClear(p: StageProgress, stage: number): number {
-  const reward = stageReward(stage)
+/** 3 stars when the castle took no damage, 2 with at least half its HP left, otherwise 1 (wins only). */
+export const starsFor = (baseHp: number, maxHp: number = CONFIG.baseHp): number =>
+  baseHp >= maxHp ? 3 : baseHp >= maxHp / 2 ? 2 : 1
+
+export const starsOf = (p: StageProgress, stage: number): number => p.stars?.[stage - 1] ?? 0
+export const totalStars = (p: StageProgress): number => (p.stars ?? []).reduce((a, b) => a + b, 0)
+
+/** Keeps the best rating; returns true when it improved. */
+export function recordStars(p: StageProgress, stage: number, stars: number): boolean {
+  if (!Number.isInteger(stage) || stage < 1 || stage > CONFIG.stages) return false
+  const value = Math.max(0, Math.min(3, Math.floor(stars)))
+  p.stars = Array.from({ length: CONFIG.stages }, (_, i) => p.stars?.[i] ?? 0)
+  if (value <= p.stars[stage - 1]) return false
+  p.stars[stage - 1] = value
+  return true
+}
+
+/** Pays the stage reward plus the kill bonus; returns the total. */
+export function awardStageClear(p: StageProgress, stage: number, bonus = 0): number {
+  const reward = stageReward(stage) + bonus
   p.coins += reward
   p.cleared = Math.max(p.cleared, Math.min(CONFIG.stages, stage))
   return reward
+}
+
+/** A lost battle still pays the kill bonus. */
+export function awardBounty(p: StageProgress, bonus: number): number {
+  p.coins += bonus
+  return bonus
 }

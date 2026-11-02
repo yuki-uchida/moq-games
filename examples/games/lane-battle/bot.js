@@ -10,11 +10,13 @@ import {
   POOPS,
   card,
   typeOf,
-  rng
+  rng,
+  OPENING
 } from './simulation.js'
 import { newCampaign, settle, buy, deckOf, SLOTS } from './campaign.js'
 
 /**
+ * Both modes hold off 腸活 until both 朝の清掃 waves are out.
  * greedy: acts every 50ms, summons everything affordable (most expensive first), invests to 腸活 Lv.3.
  * casual: a human-paced player — one tap per second on a random ready card, stops investing at Lv.2,
  * and only notices a threat to the tower when enemies are close.
@@ -25,13 +27,14 @@ export function playBattle(deck, stage, seed = 1, { maxTime = 900, casual = fals
   const order = deck.map((_, i) => i).sort((a, b) => deck[b].cost - deck[a].cost)
   let next = 0
   while (!s.result && s.time < maxTime) {
+    const morning = s.opened < OPENING.at.length
     if (!casual) {
-      if (s.level < 3 && s.gold >= upgradeCost(s) + 30) upgrade(s)
+      if (!morning && s.level < 3 && s.gold >= upgradeCost(s) + 30) upgrade(s)
       for (const i of order) summon(s, i)
       if (s.units.some((u) => u.side === -1 && u.x > 650)) burst(s)
     } else if (s.time >= next) {
       next = s.time + 1
-      if (s.level < 2 && s.gold >= upgradeCost(s) + 40) upgrade(s)
+      if (!morning && s.level < 2 && s.gold >= upgradeCost(s) + 40) upgrade(s)
       else {
         const ready = order.filter((i) => s.cooldowns[i] <= 0 && s.gold >= deck[i].cost)
         if (ready.length) summon(s, ready[Math.floor(random() * ready.length)])

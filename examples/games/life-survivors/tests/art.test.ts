@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
-import { ENEMIES, ENEMY_BY_ID, STAGES, TAG_NAMES } from '../src/data'
+import { BULLET_KINDS, ENEMIES, ENEMY_BY_ID, PASSIVES, STAGES, TAG_NAMES, WEAPONS } from '../src/data'
+import { ITEM_KINDS } from '../src/view'
 import { deathKind } from '../src/art/deaths'
 import { SHEETS } from '../src/art/index'
 import { PALETTE } from '../src/art/palette'
@@ -37,7 +38,13 @@ describe('pixel art', () => {
       expect(s.flash.frames).toHaveLength(s.move.frames.length)
     }
     for (const [id, sheet] of Object.entries(built)) {
-      if (id.startsWith('tiles:') || id.startsWith('props:')) continue
+      if (
+        id.startsWith('tiles:') ||
+        id.startsWith('props:') ||
+        id.startsWith('weapon:') ||
+        ['fx', 'items', 'icons', 'bullets'].includes(id)
+      )
+        continue
       // Souls are 16px; the 大往生 soul (halo) is 24px.
       const size = (name: string) => (big(id) ? 128 : id === 'soul' ? (name === 'halo' ? 24 : 16) : 64)
       for (const [name, anim] of Object.entries(sheet)) {
@@ -51,6 +58,42 @@ describe('pixel art', () => {
         for (const frame of anim.frames) expect([id, frame.w, frame.h]).toEqual([id, size(name), size(name)])
       }
     }
+  })
+
+  test('every weapon, passive and pickup has a world sprite and a HUD icon', () => {
+    const fx = built.fx
+    const need: Record<string, string[]> = {
+      aura: ['wisp', 'skull'],
+      zone: ['controller', 'pixels'],
+      whip: ['star'],
+      flail: ['hand', 'sweat'],
+      strike: ['bolt', 'burst'],
+      rain: ['bills', 'coins'],
+      chain: ['like'],
+      slam: ['dust', 'crack'],
+      nova: ['note'],
+      trail: ['perfume']
+    }
+    for (const def of WEAPONS) {
+      expect([def.id, built.icons[def.id]?.frames[0].w]).toEqual([def.id, 32])
+      if (def.behavior === 'none') continue
+      if (need[def.behavior])
+        for (const k of need[def.behavior]) expect([def.id, Boolean(fx[k])]).toEqual([def.id, true])
+      else {
+        const fly = built[`weapon:${def.id}`].fly
+        for (const f of fly.frames) expect([def.id, f.w, f.h]).toEqual([def.id, 32, 32])
+      }
+    }
+    expect(built['weapon:w_study'].fly.frames).toHaveLength(16)
+    for (const p of PASSIVES) expect([p.id, built.icons[p.id]?.frames[0].w]).toEqual([p.id, 32])
+    for (const id of ['meal', 'coin']) expect(built.icons[id].frames[0].w).toBe(32)
+    // Effects every hit, death and blast is drawn with.
+    for (const k of ['spark', 'crit', 'poof', 'boom', 'shine', 'heal']) expect([k, Boolean(fx[k])]).toEqual([k, true])
+    // Enemy bullets: one 16×16 anim per kind the game can fire.
+    for (const kind of BULLET_KINDS)
+      for (const f of built.bullets[kind]?.frames ?? [undefined]) expect([kind, f?.w, f?.h]).toEqual([kind, 16, 16])
+    for (const kind of [...ITEM_KINDS, 'gem1', 'gem2', 'gem3'])
+      expect([kind, built.items[kind].frames[0].w]).toEqual([kind, 16])
   })
 
   test('every stage has a seamless ground (≥3 variants) and four props', () => {

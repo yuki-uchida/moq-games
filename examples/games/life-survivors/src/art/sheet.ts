@@ -12,6 +12,8 @@ export interface Anim {
   lift?: number[]
   /** What rises at the end of a death: a soul, a Japanese ghost (病死) or a haloed soul (大往生). */
   soul?: 'soul' | 'ghost' | 'halo'
+  /** Per-frame lettering drawn unmirrored on top (a left-facing death never mirrors text). */
+  text?: (Raster | undefined)[]
 }
 
 export type Sheet = Record<string, Anim>

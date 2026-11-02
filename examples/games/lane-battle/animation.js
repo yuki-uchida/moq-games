@@ -57,12 +57,19 @@ export function gait(walked, stride) {
   }
 }
 
-/** Hit reaction: an instant jolt held for a few frames, then a damped wobble; `flash` and `face` are short. */
+/**
+ * Hit reaction: an instant jolt held for a few frames, then a damped wobble. Stronger hits (power above 1:
+ * criticals, knockback, heavy blows) hold the jolt longer, pop the body up and keep the ＞＜ face longer;
+ * weak ones barely flash.
+ */
 export function flinch(age, power = 1) {
-  if (!(age >= 0 && age < 0.55)) return { jolt: 0, wobble: 0, flash: 0, face: false }
-  const jolt = (age < 0.05 ? 1 : Math.exp(-(age - 0.05) / 0.075)) * power
+  if (!(age >= 0 && age < 0.55)) return { jolt: 0, wobble: 0, lift: 0, flash: 0, face: false }
+  const hold = 0.03 + 0.02 * power
+  const jolt = (age < hold ? 1 : Math.exp(-(age - hold) / (0.055 + 0.02 * power))) * power
   const wobble = Math.exp(-age / 0.13) * Math.sin((age / 0.21) * Math.PI * 2) * power
-  return { jolt, wobble, flash: Math.max(0, 1 - age / 0.1), face: age < 0.32 }
+  const lift = Math.max(0, power - 1.15) * Math.sin(Math.PI * Math.min(1, age / 0.24))
+  const flash = Math.max(0, 1 - age / (0.07 + 0.03 * power)) * Math.min(1, 0.6 + 0.4 * power)
+  return { jolt, wobble, lift, flash, face: age < 0.18 + 0.12 * power }
 }
 
 export const KO_SECONDS = 1.15

@@ -5,31 +5,49 @@ import { ModelEnvironmentLighting } from '../../tower_diffence_with_jev/src/rend
 import { UNIT_MODEL_CATALOG } from '../../tower_diffence_with_jev/src/rendering/models/catalog'
 import type { UnitType } from '../../tower_diffence_with_jev/src/game/model'
 import { finished, size, type Game, type Unit } from './game'
+import { reducedMotion } from './settings'
 
 export type Point = { x: number; y: number }
 export type Track =
   | { motion: 'walk'; start: number; ms: number; from: Point; to: Point; cycle: number }
-  | { motion: 'attack'; start: number; ms: number; clipMs: number }
+  | { motion: 'attack' | 'heal'; start: number; ms: number; clipMs: number }
   | { motion: 'hit' | 'death'; start: number; ms: number; push: Point }
 type Actor = {
   id: string
   role: string
   visual: ModelUnitVisual
   ring: THREE.Mesh
+  aura: THREE.Mesh
   shadow: THREE.Mesh
   at: Point
   facing: Point
   phase: number
   track?: Track
   dim: boolean
+  boss: boolean
 }
 
 export const ROLES = ['soldier', 'archer', 'mage', 'goblin', 'wolf'] as const
-const MOTIONS = ['idle', 'walk', 'attack'] as const
+export const chapterRoles = (game: Game) => [...new Set(game.units.map((unit) => unit.role))]
 /** Model gameplay pixels (≈128 per figure) → tiles. */
 const MODEL_SIZE = 2.3 / 128
+const roleScales: Record<string, number> = {
+  soldier: 1,
+  archer: 1,
+  mage: 1,
+  healer: 1,
+  goblin: 1,
+  wolf: 0.85,
+  slime: 0.45,
+  bat: 0.7,
+  beetle: 0.75,
+  wraith: 1,
+  shaman: 0.7,
+  ogre: 0.8,
+  dragon: 1
+}
+export const roleScale = (role: string) => roleScales[role] ?? 1
 const FALL_SECONDS = 0.82
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const definitions = new Map<string, UnitModelDefinition>()
 /** Upright in the board's own Y-up world (the catalog tilts models into a flat 2D board view), and only
  * the motions this game plays, so background rig preparation never requests other clips. */
@@ -37,7 +55,15 @@ function definition(role: string) {
   let value = definitions.get(role)
   if (!value) {
     const { clips, ...base } = UNIT_MODEL_CATALOG[role as UnitType]!
-    value = { ...base, viewElevation: Math.PI / 2, clips: { idle: clips.idle, walk: clips.walk, attack: clips.attack } }
+    value = {
+      ...base,
+      viewElevation: Math.PI / 2,
+      clips: {
+        idle: clips.idle,
+        walk: clips.walk,
+        ...(role === 'healer' ? { heal: clips.heal } : { attack: clips.attack })
+      }
+    }
     definitions.set(role, value)
   }
   return value
@@ -84,6 +110,7 @@ export class Stage {
     rings: {
       ally: new THREE.MeshBasicMaterial({ color: 0x82d1ed, transparent: true, opacity: 0.7, depthWrite: false }),
       enemy: new THREE.MeshBasicMaterial({ color: 0xe0957b, transparent: true, opacity: 0.7, depthWrite: false }),
+      boss: new THREE.MeshBasicMaterial({ color: 0xffbc48, transparent: true, opacity: 0.9, depthWrite: false }),
       selected: new THREE.MeshBasicMaterial({ color: 0xffdf7d, depthWrite: false })
     }
   }
@@ -103,6 +130,17 @@ export class Stage {
     this.canvas.className = 'stage'
     this.canvas.setAttribute('aria-hidden', 'true')
     this.canvas.dataset.motion = ''
+    this.canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault()
+      this.field.dispatchEvent(new CustomEvent('stage-context', { detail: false }))
+    })
+    this.canvas.addEventListener('webglcontextrestored', () => {
+      this.terrainKey = ''
+      this.release()
+      this.resize()
+      this.draw(true)
+      this.field.dispatchEvent(new CustomEvent('stage-context', { detail: true }))
+    })
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     this.renderer.setClearColor(0, 0)
@@ -117,6 +155,7 @@ export class Stage {
     this.scene.add(lantern)
     this.units.matrixAutoUpdate = false
     this.units.matrix.set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1)
+    this.terrain.name = 'terrain'
     this.scene.add(this.units, this.terrain)
     field.append(this.canvas)
     new ResizeObserver(() => this.resize()).observe(field)
@@ -142,7 +181,8 @@ export class Stage {
     const figure = Math.min(1.35, Math.max(1, 60 / tile))
     if (figure !== this.figure) {
       this.figure = figure
-      for (const actor of this.actors.values()) actor.visual.setPresentation(MODEL_SIZE * figure, 1)
+      for (const actor of this.actors.values())
+        actor.visual.setPresentation(MODEL_SIZE * figure * roleScale(actor.role) * (actor.boss ? 1.25 : 1), 1)
     }
     this.field.style.setProperty('--figure', String(figure))
     this.renderer.setSize(field.width, field.height)
@@ -166,9 +206,9 @@ export class Stage {
   }
 
   /** Required sources for every role: resolves once decoded, rejects if any failed (retry re-requests only those). */
-  load(progress: (done: number, total: number) => void) {
+  load(roles: string[], progress: (done: number, total: number) => void) {
     this.cache.retryFailed()
-    const specs = ROLES.flatMap((role) => MOTIONS.map((motion) => definition(role).clips[motion]!))
+    const specs = roles.flatMap((role) => Object.values(definition(role).clips).filter((clip) => clip !== undefined))
     return new Promise<void>((resolve, reject) => {
       const poll = () => {
         const states = specs.map((spec) => this.cache.requestSource(spec))
@@ -188,7 +228,12 @@ export class Stage {
     if (key === this.terrainKey) return
     this.terrainKey = key
     this.terrain.clear()
-    for (const k of game.rocks) this.terrain.add(this.place(Props.rock(game.stage, k), k))
+    for (const k of game.rocks) {
+      const obstacle = this.place(Props.rock(game.stage, k), k)
+      obstacle.name = 'impassable-prop'
+      obstacle.userData.cell = k
+      this.terrain.add(obstacle)
+    }
     for (const k of game.groves) if (!game.rocks.has(k)) this.terrain.add(this.place(Props.grove(), k))
   }
   private place(object: THREE.Object3D, k: string) {
@@ -211,23 +256,28 @@ export class Stage {
     }
     if (!actor) {
       const visual = new ModelUnitVisual(definition(u.role), this.cache)
-      visual.setPresentation(MODEL_SIZE * this.figure, 1)
+      visual.setPresentation(MODEL_SIZE * this.figure * roleScale(u.role) * (u.boss ? 1.25 : 1), 1)
       const shadow = new THREE.Mesh(this.shared.plane, this.shared.shadow)
       shadow.scale.setScalar(0.62)
       const ring = new THREE.Mesh(this.shared.ring, this.shared.rings[u.side])
-      shadow.renderOrder = ring.renderOrder = -1
+      const aura = new THREE.Mesh(this.shared.ring, this.shared.rings.boss)
+      aura.name = 'boss-aura'
+      aura.scale.setScalar(1.65)
+      shadow.renderOrder = ring.renderOrder = aura.renderOrder = -1
       this.units.add(visual.root)
-      this.scene.add(shadow, ring)
+      this.scene.add(shadow, ring, aura)
       actor = {
         id: u.id,
         role: u.role,
         visual,
         ring,
+        aura,
         shadow,
         at: { x: u.x, y: u.y },
         facing: rest(u),
         phase: Math.random() * 4,
-        dim: false
+        dim: false,
+        boss: !!u.boss
       }
       this.actors.set(u.id, actor)
       void this.warm(visual)
@@ -242,6 +292,7 @@ export class Stage {
   private remove(actor: Actor) {
     actor.visual.dispose()
     actor.ring.removeFromParent()
+    actor.aura.removeFromParent()
     actor.shadow.removeFromParent()
     this.actors.delete(actor.id)
   }
@@ -255,6 +306,10 @@ export class Stage {
       if (u.hp <= 0) continue
       alive.add(u.id)
       const actor = this.actor(u)
+      if (actor.boss !== !!u.boss) {
+        actor.boss = !!u.boss
+        actor.visual.setPresentation(MODEL_SIZE * this.figure * roleScale(actor.role) * (actor.boss ? 1.25 : 1), 1)
+      }
       actor.ring.material = u.id === selected ? this.shared.rings.selected : this.shared.rings[u.side]
       actor.dim = finished(game, u)
       if (!actor.track) {
@@ -311,14 +366,14 @@ export class Stage {
         t = track ? Math.max(0, Math.min(1, (now - track.start) / track.ms)) : 0
       let at = actor.at,
         opacity = 1,
-        tint = actor.dim ? 0x777777 : 0xffffff
+        tint = actor.role === 'slime' ? (actor.dim ? 0x575039 : 0xb8aa78) : actor.dim ? 0x777777 : 0xffffff
       const pose = { facingX: actor.facing.x, facingY: actor.facing.y, boss: false, time: now / 1000 }
       if (track) motions.add(track.motion)
       if (track?.motion === 'walk') {
         at = { x: track.from.x + (track.to.x - track.from.x) * t, y: track.from.y + (track.to.y - track.from.y) * t }
         actor.visual.sample({ ...pose, motion: 'walk', seconds: 0, cycle: track.cycle + t, loop: true })
-      } else if (track?.motion === 'attack') {
-        actor.visual.sample({ ...pose, motion: 'attack', seconds: (t * track.clipMs) / 1000, loop: false })
+      } else if (track?.motion === 'attack' || track?.motion === 'heal') {
+        actor.visual.sample({ ...pose, motion: track.motion, seconds: (t * track.clipMs) / 1000, loop: false })
       } else if (track?.motion === 'death') {
         actor.visual.sampleAllyDeath(t * FALL_SECONDS, pose)
         opacity = 1 - t * t
@@ -345,6 +400,8 @@ export class Stage {
       actor.visual.setAppearance(opacity, tint)
       actor.shadow.position.set(position.x, 0.002, position.z)
       actor.ring.position.set(position.x, 0.004, position.z)
+      actor.aura.position.set(position.x, 0.006, position.z)
+      actor.aura.visible = actor.boss && opacity > 0.5
       actor.ring.visible = actor.shadow.visible = opacity > 0.5
     }
     for (const p of this.projectiles) p.userData.update?.(now)
@@ -354,8 +411,8 @@ export class Stage {
   }
 
   /** Arrow or spell flying from `from` to `to` over ms (positions are time-based; rAF only renders). */
-  shoot(kind: 'arrow' | 'spell', from: THREE.Vector3, to: THREE.Vector3, ms: number) {
-    const object = kind === 'arrow' ? Props.arrow() : Props.spell()
+  shoot(kind: 'arrow' | 'spell' | 'fireball', from: THREE.Vector3, to: THREE.Vector3, ms: number) {
+    const object = kind === 'arrow' ? Props.arrow() : Props.spell(kind === 'fireball')
     object.name = kind
     const start = performance.now()
     object.userData.update = (now: number) => {
@@ -364,7 +421,7 @@ export class Stage {
       // A shallow arc for arrows; spells fly straight.
       if (kind === 'arrow') object.position.y += Math.sin(Math.PI * t) * 0.12 * from.distanceTo(to)
       object.lookAt(to)
-      if (kind === 'spell') object.rotation.z = now / 90
+      if (kind !== 'arrow') object.rotation.z = now / 90
     }
     object.userData.update(start)
     this.scene.add(object)
@@ -381,7 +438,7 @@ export class Stage {
     let url = this.portraits.get(role)
     if (url) return url
     const camera = new THREE.OrthographicCamera(-0.62, 0.62, 1.0, -0.08, -50, 50)
-    camera.position.copy(this.camera.position)
+    camera.position.set(-0.8 / Math.SQRT2, 0.6, 0.8 / Math.SQRT2).multiplyScalar(20)
     camera.lookAt(0, 0, 0)
     const scene = new THREE.Scene()
     scene.environment = this.scene.environment
@@ -426,7 +483,7 @@ const Props = (() => {
     trunk: flat(0x3a2618),
     needles: [flat(0x2f5f3d), flat(0x3f7a4b), flat(0x58925a)],
     bush: [flat(0x24452f), flat(0x3d6e45)],
-    rock: [flat(0x66544b), flat(0x495d65)],
+    rock: [flat(0x66544b), flat(0x495d65), flat(0x65615d), flat(0x4c6961), flat(0x88847b), flat(0x302a30)],
     ruin: flat(0x65615d),
     ruinTop: flat(0x817971),
     moss: flat(0x6d7d5a),
@@ -440,7 +497,8 @@ const Props = (() => {
       opacity: 0.45,
       blending: THREE.AdditiveBlending,
       depthWrite: false
-    })
+    }),
+    fire: new THREE.MeshBasicMaterial({ color: 0xff6b19 })
   }
   const g = {
     trunk: new THREE.CylinderGeometry(0.025, 0.035, 0.14, 6).translate(0, 0.07, 0),
@@ -450,6 +508,11 @@ const Props = (() => {
       new THREE.ConeGeometry(0.09, 0.22, 7).translate(0, 0.62, 0)
     ],
     bush: new THREE.IcosahedronGeometry(0.075, 0),
+    reed: new THREE.CylinderGeometry(0.012, 0.016, 0.48, 5).translate(0, 0.24, 0),
+    pillar: new THREE.CylinderGeometry(0.12, 0.15, 0.7, 6).translate(0, 0.35, 0),
+    gravestone: new THREE.BoxGeometry(0.38, 0.55, 0.13).translate(0, 0.275, 0),
+    capital: new THREE.BoxGeometry(0.35, 0.1, 0.35).translate(0, 0.73, 0),
+    flame: new THREE.ConeGeometry(0.12, 0.28, 5).translate(0, 0.68, 0),
     rock: (() => {
       // Deterministic faceted boulder: an icosahedron with a few pulled vertices, flat-shaded.
       const rock = new THREE.IcosahedronGeometry(0.3, 0)
@@ -521,6 +584,38 @@ const Props = (() => {
         group.add(new THREE.Mesh(g.wall, m.ruin), top)
         return group
       }
+      if (stage >= 3) {
+        const [x, y] = cell.split(',').map(Number)
+        if (stage === 4) {
+          const pillar = (x + y) % 2 === 0
+          group.add(new THREE.Mesh(pillar ? g.pillar : g.gravestone, m.ruinTop))
+          if (pillar) group.add(new THREE.Mesh(g.capital, m.ruin))
+          group.add(new THREE.Mesh(g.wallTop, m.ruin))
+          return group
+        }
+        const mesh = new THREE.Mesh(g.rock, m.rock[stage])
+        mesh.scale.set(1.4, 1, 1.4)
+        group.add(mesh)
+        if (stage === 3) {
+          for (const [x, z, tilt] of [
+            [-0.28, 0.12, -0.2],
+            [0.25, -0.12, 0.15],
+            [0.24, 0.2, -0.1]
+          ]) {
+            const reed = new THREE.Mesh(g.reed, m.moss)
+            reed.position.set(x, 0, z)
+            reed.rotation.z = tilt
+            group.add(reed)
+          }
+        } else if (stage === 5) {
+          const brazier = new THREE.Mesh(g.pillar, m.rock[stage])
+          const flame = new THREE.Mesh(g.flame, m.fire)
+          brazier.position.set(0.18, 0, -0.12)
+          flame.position.copy(brazier.position)
+          group.add(brazier, flame)
+        }
+        return group
+      }
       const mesh = new THREE.Mesh(g.rock, m.rock[stage])
       group.scale.setScalar(1.6)
       // The crack faces the camera (toward −X, +Z).
@@ -534,9 +629,9 @@ const Props = (() => {
       group.add(new THREE.Mesh(g.shaft, m.shaft), new THREE.Mesh(g.tip, m.tip))
       return group
     },
-    spell() {
+    spell(fire = false) {
       const group = new THREE.Group()
-      group.add(new THREE.Mesh(g.orb, m.spell), new THREE.Mesh(g.halo, m.glow))
+      group.add(new THREE.Mesh(g.orb, fire ? m.fire : m.spell), new THREE.Mesh(g.halo, m.glow))
       return group
     }
   }

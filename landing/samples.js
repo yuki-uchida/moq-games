@@ -14,10 +14,10 @@ export const samples = [
     id: 'ember-grid',
     title: 'デスガイヤ',
     subtitle: 'TACTICAL RPG',
-    description: '仲間を動かし、地形を読み、敵を迎え撃つ。小さな盤面のターン制戦術。',
+    description: '六章の物語を進む戦術RPG。癒し手を仲間に迎え、ボスに挑み、仲間の離脱と向き合う。セーブ対応。',
     href: './examples/games/ember-grid/index.html',
     category: 'TACTICS',
-    tags: ['ターン制', 'ブラウザでプレイ'],
+    tags: ['ターン制', 'カジュアルモード', 'ブラウザでプレイ'],
     art: 'ember-grid'
   },
   {

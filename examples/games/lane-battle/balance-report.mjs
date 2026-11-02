@@ -1,12 +1,13 @@
 import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
-import { specialScale } from './campaign.js'
+/** Specials in the niche probe fight at the strength of one joining after stage index 15 at +8% per stage. */
+const NICHE_SPECIAL_SCALE = 2.2
 
 function measure(type, side) {
   const deck = side === 1 ? [card({ uid: 1, key: type.key })] : [card({ uid: 1, key: 'katachi' })]
   const game = createGame(0, deck, 42)
   game.gold = 999
   game.spawn = 999
-  game.opened = true
+  game.opened = 2
   game.rushes = 4
   game.turret = 999
   if (side === 1) summon(game, 0)
@@ -49,14 +50,15 @@ const scenarios = {
 }
 
 function measureNiche(type, foes) {
-  const scale = type.special ? specialScale(15) : 1
+  // A fixed special strength, so the table compares the units themselves, not the campaign's join scaling.
+  const scale = type.special ? NICHE_SPECIAL_SCALE : 1
   const deck = [
     card({ uid: 1, key: type.key, hp: Math.round(type.hp * scale), atk: Math.round(type.atk * scale) }),
     card({ uid: 2, key: 'katachi' }),
     card({ uid: 3, key: 'katachi' })
   ]
   const game = createGame(15, deck, 7)
-  Object.assign(game, { spawn: 1e9, opened: true, rushes: 99, turret: 1e9, gold: 1e9 })
+  Object.assign(game, { spawn: 1e9, opened: 2, rushes: 99, turret: 1e9, gold: 1e9 })
   for (let index = 0; index < deck.length; index++) summon(game, index)
   ;[560, 540, 548].forEach((x, index) => {
     game.units[index].x = x
@@ -106,7 +108,7 @@ function measureSquad(type, side) {
   )
   game.gold = 9999
   game.spawn = 999
-  game.opened = true
+  game.opened = 2
   game.rushes = 4
   game.turret = 999
   for (const [index] of playerKeys.entries()) {

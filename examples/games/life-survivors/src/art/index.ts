@@ -1,4 +1,8 @@
 import { bossSheets } from './bosses'
+import { BOSSES2_NO_FLIP, bosses2Sheets, bulletSheet } from './bosses2'
+import { ROSTER2_NO_FLIP, roster2Sheets } from './roster2'
+import { ROSTER3_NO_FLIP, roster3Sheets } from './roster3'
+import { weaponSheets } from './weapons'
 import { bullySheet, expenseSheet, flash, germSheet, hsBossSheet, jobSheet, rosterSheets } from './enemies'
 import { deathSheets } from './deaths'
 import { peopleSheets } from './people'
@@ -26,7 +30,12 @@ export const SHEETS: Record<string, () => Sheet> = {
   'enemy:b_hs': withFlash(hsBossSheet),
   ...Object.fromEntries(Object.entries(bossSheets).map(([id, make]) => [id, id === 'reaper' ? make : withFlash(make)])),
   ...deathSheets,
+  ...weaponSheets(),
   ...Object.fromEntries(Object.entries(rosterSheets).map(([id, make]) => [id, withFlash(make)])),
+  ...Object.fromEntries(
+    Object.entries({ ...roster2Sheets, ...roster3Sheets, ...bosses2Sheets }).map(([id, make]) => [id, withFlash(make)])
+  ),
+  bullets: bulletSheet,
   ...Object.fromEntries(
     Object.entries(peopleSheets).map(([id, make]) => [id, id.startsWith('enemy:') ? withFlash(make) : make])
   ),
@@ -153,8 +162,19 @@ export const mockups = () =>
   })
 
 export { groundTile }
+export { PENCIL_DIRS, SWING_DIRS, evolve, playMat, swing } from './weapons'
 export { FLAT_PROPS } from './world'
 /** Sprites carrying lettering (¥, 至急, 0点 …) never mirror. */
-export const NO_FLIP = new Set(['expense', 'job', 'b_hs', 'b_shukatsu', 'b_mortgage', 'b_rebel'])
+export const NO_FLIP = new Set([
+  'expense',
+  'job',
+  'b_hs',
+  'b_shukatsu',
+  'b_mortgage',
+  'b_rebel',
+  ...ROSTER2_NO_FLIP,
+  ...ROSTER3_NO_FLIP,
+  ...BOSSES2_NO_FLIP
+])
 export { deathKind, soulAt } from './deaths'
 export { PALETTE_RGBA } from './palette'

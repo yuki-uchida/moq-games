@@ -1,3 +1,5 @@
+import { campaign } from './campaign'
+
 export type Unit = {
   id: string
   name: string
@@ -13,6 +15,10 @@ export type Unit = {
   moved: boolean
   done: boolean
   armor?: number
+  ai?: 'charge' | 'guard' | 'hold'
+  boss?: boolean
+  alerted?: boolean
+  heal?: number
   level: number
   exp: number
   def: number
@@ -47,48 +53,14 @@ export const groves = new Set(['2,3', '3,5', '2,7', '5,1', '5,8', '6,7'])
 export const key = (x: number, y: number) => `${x},${y}`
 export const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
-export const missions = [
-  {
-    name: '01 峡谷の燈',
-    hint: '中央の一マスの隘路を守るか、南北の外周から岩壁を迂回。手前の木立で迎え撃つ。',
-    rocks: [...rocks],
-    groves: [...groves]
-  },
-  {
-    name: '02 風抜けの水路',
-    hint: '食い違う岩棚を抜け、中央の木立か南北の水路を選ぶ。両岸から迫る敵に注意。',
-    rocks: [
-      '2,1',
-      '3,1',
-      '4,1',
-      '6,1',
-      '3,3',
-      '5,3',
-      '6,3',
-      '3,5',
-      '5,5',
-      '6,5',
-      '2,7',
-      '3,7',
-      '4,7',
-      '6,7',
-      '7,7',
-      '5,8'
-    ],
-    groves: ['2,3', '4,2', '4,4', '4,6', '6,4', '6,8', '7,8']
-  },
-  {
-    name: '03 灰の環城',
-    hint: '西門から中庭へ進むか、北の破れ目を回る。南の射手と北の狼に挟まれないように。',
-    rocks: ['3,1', '5,1', '6,1', '3,2', '3,3', '3,6', '3,7', '3,8', '4,8', '5,8', '6,8', '6,6', '6,7'],
-    groves: ['2,3', '2,5', '4,3', '4,6', '5,4', '7,3', '7,7']
-  }
-]
+export const missions = campaign.map(({ name, hint, rocks, groves }) => ({ name, hint, rocks, groves }))
+const healerJoin = campaign.findIndex((chapter) => chapter.recruits.includes('healer'))
 /** Per-role chance for each stat to rise by one on level up. */
 export const growth: Record<string, Gains> = {
   soldier: { max: 0.8, power: 0.45, def: 0.45 },
   archer: { max: 0.6, power: 0.55, def: 0.25 },
-  mage: { max: 0.5, power: 0.65, def: 0.2 }
+  mage: { max: 0.5, power: 0.65, def: 0.2 },
+  healer: { max: 0.6, power: 0.4, def: 0.3 }
 }
 export const expPerLevel = 100
 /** FE-style: base 10 per hit, scaled by the level gap; defeating adds a larger bonus. */
@@ -98,13 +70,16 @@ export function expFor(unit: Unit, target: Unit, defeated: boolean): number {
 }
 export const healExp = 10
 /** Seedable PRNG (mulberry32) so growth rolls are reproducible. */
-export function seeded(seed: number): () => number {
-  return () => {
+export function seeded(seed: number): (() => number) & { state: number } {
+  const random = () => {
     seed = (seed + 0x6d2b79f5) | 0
+    random.state = seed
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+  random.state = seed | 0
+  return random
 }
 /** Roll each stat against its growth rate; an empty level up raises the role's best stat. */
 export function rollGrowth(role: string, rng: () => number): Gains {
@@ -137,7 +112,8 @@ export function grant(game: Game, unit: Unit, amount: number) {
 export const farewell: Record<string, string> = {
   soldier: '「すまない…燈を、頼む…」',
   archer: '「風が…止んだ…」',
-  mage: '「星が…見えない…」'
+  mage: '「星が…見えない…」',
+  healer: '「どうか…燈を絶やさないで…」'
 }
 /** Survivors only: an ally who fell in a won mission leaves the expedition for good. */
 export function carry(game: Game): Roster {
@@ -156,15 +132,19 @@ export const mvp = (game: Game) =>
     .filter((u) => u.side === 'ally')
     .sort((a, b) => Number(b.hp > 0) - Number(a.hp > 0) || b.kills - a.kills || b.dealt - a.dealt)[0]
 /** Allies of the fresh party absent from a recorded roster (lost in an earlier victory). */
-export const lost = (roster?: Roster) =>
-  roster ? createGame().units.filter((u) => u.side === 'ally' && !roster[u.id]) : []
+export const lost = (roster?: Roster, stage = 0) =>
+  roster
+    ? createGame(stage).units.filter(
+        (u) => u.side === 'ally' && !roster[u.id] && !(u.role === 'healer' && stage === healerJoin)
+      )
+    : []
 export function createGame(
   stage = 0,
   formation: Formation = 'balanced',
   roster?: Roster,
   rng: () => number = Math.random
 ): Game {
-  stage = Math.max(0, Math.min(2, stage))
+  stage = Math.max(0, Math.min(campaign.length - 1, Math.trunc(stage) || 0))
   const unit = (
     id: string,
     name: string,
@@ -213,34 +193,35 @@ export function createGame(
       unit('a', '燈守リオ', 'soldier', 'ally', 1, 4, 16, 6, 1),
       unit('b', '風読みネリ', 'archer', 'ally', 1, 3, 11, 5, 3),
       unit('c', '星織ミナ', 'mage', 'ally', 1, 5, 10, 7, 2),
-      unit('d', '灰牙', 'wolf', 'enemy', 6, 3, 10, 4, 1, 3, 1 + stage * 2),
-      unit('e', '煤の斥候', 'goblin', 'enemy', 6, 5, 10, 4, 1, 3, 1 + stage * 2),
-      { ...unit('f', '霧番', 'goblin', 'enemy', 7, 4, 14, 5, 1, 3, 2 + stage * 2), armor: 2 }
+      ...(healerJoin >= 0 && stage >= healerJoin
+        ? [{ ...unit('i', '癒し手ルカ', 'healer', 'ally', 0, 4, 12, 0, 2), heal: 8 }]
+        : []),
+      ...campaign[stage].enemies.map((enemy) => ({
+        ...unit(
+          enemy.id,
+          enemy.name,
+          enemy.role,
+          'enemy',
+          enemy.x,
+          enemy.y,
+          enemy.hp,
+          enemy.power,
+          enemy.range,
+          enemy.move,
+          enemy.level
+        ),
+        ai: enemy.ai,
+        armor: enemy.armor,
+        boss: enemy.boss
+      }))
     ]
   }
-  if (stage === 1) {
-    game.units[3].y = 2
-    game.units[4].y = 6
-    game.units.push(unit('g', '風牙', 'wolf', 'enemy', 7, 1, 11, 4, 1, 3, 3))
-  }
-  if (stage === 2) {
-    game.units.push(
-      unit('g', '風牙', 'wolf', 'enemy', 8, 0, 8, 3, 1, 3, 5),
-      unit('h', '灰の射手', 'archer', 'enemy', 8, 8, 8, 3, 2, 3, 6)
-    )
-    game.units[3].power = 3
-    game.units[4].power = 3
-    game.units[3].x = 7
-    game.units[3].y = 2
-    game.units[4].x = 7
-    game.units[4].y = 6
-    game.units[5].x = 8
-    game.units[5].y = 4
-  }
-  // Higher-level packs are slightly sturdier; carried growth offsets this.
-  for (const u of game.units) if (u.side === 'enemy' && stage > 0) u.hp = u.max += 1
+  game.units.filter((u) => u.side === 'ally').forEach((u, index) => Object.assign(u, campaign[stage].deployment[index]))
   // Allies missing from a recorded roster were lost and do not deploy.
-  if (roster) game.units = game.units.filter((u) => u.side !== 'ally' || roster[u.id])
+  if (roster)
+    game.units = game.units.filter(
+      (u) => u.side !== 'ally' || roster[u.id] || (stage === healerJoin && u.role === 'healer')
+    )
   for (const u of game.units) {
     const saved = roster?.[u.id]
     if (saved) Object.assign(u, saved, { hp: saved.max, startLevel: saved.level })
@@ -306,7 +287,7 @@ export function path(game: Pick<Game, 'units' | 'rocks'>, unit: Unit, to: Point)
 /** Cells an unspent unit could strike after moving, excluding move destinations and its own side's cells. */
 export function attackRange(game: Game, unit: Unit): Set<string> {
   const result = new Set<string>()
-  if (unit.done || unit.hp <= 0) return result
+  if (unit.done || unit.hp <= 0 || unit.heal) return result
   const moves = unit.moved ? new Map([[key(unit.x, unit.y), 0]]) : reachable(game, unit)
   for (const k of moves.keys()) {
     const [ox, oy] = k.split(',').map(Number)
@@ -317,12 +298,59 @@ export function attackRange(game: Game, unit: Unit): Set<string> {
   for (const u of game.units) if (u.hp > 0 && u.side === unit.side) result.delete(key(u.x, u.y))
   return result
 }
+export function enemyActionPositions(game: Game, enemy: Unit): Map<string, number> {
+  return enemy.ai === 'hold' ? new Map([[key(enemy.x, enemy.y), 0]]) : reachable(game, enemy)
+}
+export function healRange(game: Game, unit: Unit): Set<string> {
+  const result = new Set<string>()
+  if (!unit.heal || unit.done || unit.hp <= 0) return result
+  const positions = unit.moved ? [key(unit.x, unit.y)] : [...reachable(game, unit).keys()]
+  for (const ally of game.units) {
+    if (ally.side !== 'ally' || ally.hp <= 0 || ally.hp >= ally.max || ally.id === unit.id) continue
+    if (
+      positions.some((position) => {
+        const [x, y] = position.split(',').map(Number)
+        const d = distance({ x, y }, ally)
+        return d >= 1 && d <= 2
+      })
+    )
+      result.add(key(ally.x, ally.y))
+  }
+  return result
+}
+export const healForecast = (healer: Unit, target: Unit) => ({
+  before: target.hp,
+  after: Math.min(target.max, target.hp + (healer.heal ?? 0))
+})
+export function staffHeal(game: Game, healer: Unit, target: Unit): boolean {
+  if (
+    game.phase !== 'ally' ||
+    healer.side !== 'ally' ||
+    !healer.heal ||
+    healer.done ||
+    healer.hp <= 0 ||
+    target.side !== 'ally' ||
+    target.hp <= 0 ||
+    target.hp >= target.max ||
+    distance(healer, target) < 1 ||
+    distance(healer, target) > 2
+  )
+    return false
+  const { before, after } = healForecast(healer, target)
+  target.hp = after
+  healer.done = true
+  game.log = `${healer.name} → ${target.name} 回復 +${after - before}`
+  grant(game, healer, healExp)
+  return true
+}
 /** Spent units, plus moved units with no target in range and no useful potion. */
 export function finished(game: Game, unit: Unit): boolean {
   return (
     unit.done ||
     (unit.moved &&
-      !game.units.some((t) => t.hp > 0 && t.side !== unit.side && distance(unit, t) <= unit.range) &&
+      !(unit.heal
+        ? healRange(game, unit).size
+        : game.units.some((t) => t.hp > 0 && t.side !== unit.side && distance(unit, t) <= unit.range)) &&
       (unit.side !== 'ally' || unit.hp >= unit.max || game.potions <= 0))
   )
 }
@@ -362,8 +390,23 @@ export function recover(game: Game, unit: Unit): boolean {
   return true
 }
 export function settle(game: Game) {
-  if (!game.units.some((u) => u.side === 'enemy' && u.hp > 0)) game.phase = 'won'
-  else if (!game.units.some((u) => u.side === 'ally' && u.hp > 0)) game.phase = 'lost'
+  const objective = campaign[game.stage].objective
+  if (!game.units.some((u) => u.side === 'ally' && u.hp > 0)) game.phase = 'lost'
+  else if (
+    !game.units.some((u) => u.side === 'enemy' && u.hp > 0) ||
+    (objective.type === 'boss' && game.units.some((u) => u.side === 'enemy' && u.boss && u.hp <= 0))
+  )
+    game.phase = 'won'
+}
+export function objectiveLabel(game: Game): string {
+  const objective = campaign[game.stage].objective
+  return objective.type === 'survive'
+    ? `◎ 残り${Math.max(0, objective.turns - game.turn + 1)}ターン`
+    : objective.type === 'boss'
+      ? '◎ ボス撃破'
+      : objective.type === 'seize'
+        ? '◎ 制圧'
+        : '◎ 全滅'
 }
 export function move(game: Game, unit: Unit, x: number, y: number): boolean {
   if (
@@ -385,6 +428,7 @@ export function attack(game: Game, unit: Unit, target: Unit): boolean {
     game.phase !== unit.side ||
     unit.done ||
     unit.hp <= 0 ||
+    !!unit.heal ||
     target.hp <= 0 ||
     target.side === unit.side ||
     distance(unit, target) > unit.range
@@ -403,11 +447,37 @@ export function attack(game: Game, unit: Unit, target: Unit): boolean {
 export function enemyStep(game: Game, unit: Unit) {
   if (game.phase !== 'enemy' || unit.hp <= 0) return
   const targets = game.units.filter((u) => u.side === 'ally' && u.hp > 0)
-  const options = [...reachable(game, unit).keys()].map((k) => {
+  if (
+    unit.ai === 'guard' &&
+    !unit.alerted &&
+    (unit.hp < unit.max || targets.some((target) => distance(unit, target) <= unit.move + unit.range))
+  )
+    unit.alerted = true
+  const options = (
+    unit.ai === 'guard' && !unit.alerted ? [key(unit.x, unit.y)] : [...enemyActionPositions(game, unit).keys()]
+  ).map((k) => {
     const [x, y] = k.split(',').map(Number)
     return { x, y }
   })
+  const best = (position: (typeof options)[number]) =>
+    targets
+      .filter((target) => distance(position, target) <= unit.range)
+      .sort(
+        (a, b) =>
+          Number(damage(unit, b, game) >= b.hp) - Number(damage(unit, a, game) >= a.hp) ||
+          damage(unit, b, game) - damage(unit, a, game) ||
+          a.hp - b.hp
+      )[0]
   options.sort((a, b) => {
+    const ta = best(a),
+      tb = best(b)
+    if (ta && tb) {
+      const priority =
+        Number(damage(unit, tb, game) >= tb.hp) - Number(damage(unit, ta, game) >= ta.hp) ||
+        damage(unit, tb, game) - damage(unit, ta, game) ||
+        ta.hp - tb.hp
+      if (priority) return priority
+    } else if (ta || tb) return ta ? -1 : 1
     const score = (p: typeof a) =>
       Math.min(...targets.map((t) => (distance(p, t) <= unit.range ? 0 : distance(p, t) - unit.range))) * 10 +
       (game.groves.has(key(p.x, p.y)) ? -1 : 0)
@@ -416,13 +486,22 @@ export function enemyStep(game: Game, unit: Unit) {
   const p = options[0]
   unit.x = p.x
   unit.y = p.y
-  const target = targets.filter((t) => distance(unit, t) <= unit.range).sort((a, b) => a.hp - b.hp)[0]
+  const target = best(p)
   if (target) attack(game, unit, target)
   else game.log = `${unit.name} 接近`
   unit.done = true
+  return target
 }
 export function beginEnemy(game: Game) {
   if (game.phase !== 'ally') return false
+  const objective = campaign[game.stage].objective
+  if (
+    objective.type === 'seize' &&
+    game.units.some((unit) => unit.side === 'ally' && unit.hp > 0 && unit.x === objective.x && unit.y === objective.y)
+  ) {
+    game.phase = 'won'
+    return false
+  }
   game.phase = 'enemy'
   game.units.forEach((u) => {
     u.done = false
@@ -432,6 +511,11 @@ export function beginEnemy(game: Game) {
 }
 export function beginAlly(game: Game) {
   if (game.phase !== 'enemy') return
+  const objective = campaign[game.stage].objective
+  if (objective.type === 'survive' && game.turn >= objective.turns) {
+    game.phase = 'won'
+    return
+  }
   game.turn++
   game.phase = 'ally'
   game.units.forEach((u) => {

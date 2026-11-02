@@ -24,7 +24,7 @@ const fixture =
   `
 function buildScene(scene) {
   const s = baseGame(scene.stage ?? 0, [], 1)
-  Object.assign(s, { spawn: scene.spawn ?? 1e9, opened: true, rushes: 99, turret: 1e9, gold: 0, deck: [], cooldowns: [] })
+  Object.assign(s, { spawn: scene.spawn ?? 1e9, opened: 2, rushes: 99, turret: 1e9, gold: 0, deck: [], cooldowns: [] })
   if (scene.lucky) s.rng = () => 0
   for (const spec of scene.units) {
     const side = spec.side ?? (ENEMIES.some((t) => t.key === spec.key) ? -1 : 1)

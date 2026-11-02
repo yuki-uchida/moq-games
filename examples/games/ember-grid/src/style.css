@@ -21,6 +21,43 @@ button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: -3px;
 }
+#help-dialog {
+  max-width: min(680px, 94vw);
+  max-height: 90dvh;
+  overflow: auto;
+}
+#help-dialog [role='tablist'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#help-dialog button {
+  min-height: 40px;
+  padding: 6px 10px;
+}
+#help-dialog [aria-selected='true'] {
+  outline: 2px solid #f4cf7b;
+  background: #70582d;
+}
+#tutorial {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #ffe4a1;
+}
+#tutorial[hidden] {
+  display: none;
+}
+#tutorial button {
+  min-height: 40px;
+  min-width: 70px;
+}
+.tutorial-target {
+  outline: 3px dashed #ffe4a1;
+  outline-offset: -3px;
+}
 main {
   height: 100dvh;
   max-width: 900px;
@@ -96,6 +133,83 @@ header button {
   --ground-odd: #696056;
   --grove: #3c4d3b;
   --stone: #625c59;
+}
+.field[data-mission='3'] {
+  --ground: #526a62;
+  --ground-odd: #485e58;
+  --grove: #304c3c;
+  --stone: #4c6961;
+}
+.field[data-mission='4'] {
+  --ground: #77746a;
+  --ground-odd: #69665e;
+  --grove: #394b3b;
+  --stone: #88847b;
+}
+.field[data-mission='5'] {
+  --ground: #554545;
+  --ground-odd: #483a3e;
+  --grove: #38463b;
+  --stone: #302a30;
+}
+.cell.healable {
+  background: #4caa72;
+  outline: 2px solid #c1ffce;
+}
+.cell.seize {
+  background: repeating-linear-gradient(45deg, #e4c46a 0 4px, #806c46 4px 8px);
+  box-shadow:
+    inset 0 0 0 4px #ffed9e,
+    inset 0 0 18px #fff4ae;
+}
+.cell.seize::after {
+  content: '✦';
+  position: absolute;
+  inset: 14%;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff2b4;
+  border-radius: 50%;
+  color: #fff6c2;
+  animation: target-pulse 1.1s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.reduce-motion .cell.seize::after {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell.seize::after {
+    animation: none;
+  }
+}
+.healing-preview,
+.healing-effect {
+  color: #9dffad;
+  font-weight: bold;
+  text-shadow: 0 1px 3px #003915;
+  white-space: nowrap;
+}
+.healing-effect {
+  width: 72px;
+  height: 72px;
+  margin: -36px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #9dffad;
+  border-radius: 50%;
+  background: radial-gradient(circle, #86ff9f88, transparent 70%);
+  animation: damage-rise 600ms ease-out both;
+}
+.stand.boss .tag {
+  top: calc(var(--tile) * -0.85 * var(--figure, 1) - 14px);
+}
+.crown {
+  color: #ffe47a;
+  font-size: 20px;
+  line-height: 1;
+  text-shadow:
+    0 1px 3px #27120a,
+    0 0 5px #ff8a36;
 }
 /* Drifting embers behind the board; seamless because each layer moves by exactly its tile height. */
 .field::before {
@@ -326,6 +440,7 @@ header button {
   font-size: 13px;
 }
 .console {
+  position: relative;
   min-height: 112px;
   background: #1c333e;
   border: 1px solid #405762;
@@ -334,7 +449,10 @@ header button {
 }
 #selection {
   font-size: 13px;
-  min-height: 20px;
+  min-height: 44px;
+  padding-right: 52px;
+  display: flex;
+  align-items: center;
 }
 #log {
   font-size: 12px;
@@ -344,15 +462,19 @@ header button {
 }
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 nav button {
   min-height: 44px;
-  flex: 1;
+  flex: 1 1 64px;
   border: 1px solid #719692;
   background: #305650;
   border-radius: 8px;
   color: #fff;
+}
+#end {
+  flex-basis: 96px;
 }
 nav button:last-child {
   background: #775a30;
@@ -407,6 +529,11 @@ dialog button {
   .badge {
     font-size: 10px;
     padding: 1px 2px;
+  }
+  #selection {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow-x: auto;
   }
   .console {
     padding: 8px;
@@ -802,12 +929,152 @@ fieldset label {
 /* Chapter clear report. */
 #result.chapter {
   inset: 2%;
+  align-self: stretch;
+  justify-self: stretch;
   display: flex;
   flex-direction: column;
   gap: 8px;
   overflow: auto;
   padding: 14px;
   font-weight: normal;
+  min-height: 0;
+  justify-content: flex-start;
+}
+#result.chapter > * {
+  flex-shrink: 0;
+}
+#phase-banner {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: 15%;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  border: 1px solid #e2d190;
+  border-radius: 8px;
+  background: #142d3af2;
+  color: white;
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: phase-in 550ms ease both;
+}
+#phase-banner[hidden] {
+  display: none;
+}
+@keyframes phase-in {
+  from {
+    opacity: 0;
+    translate: 0 -8px;
+  }
+  20%,
+  80% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #phase-banner {
+    animation: none;
+  }
+}
+#fast,
+#detail-button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #9ab1a8;
+  border-radius: 8px;
+  background: #385d57;
+  color: white;
+}
+#detail-button {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+}
+.console:has(#tutorial:not([hidden])) #detail-button {
+  top: 56px;
+}
+#fast[aria-pressed='true'],
+#wait.recommended {
+  outline: 3px solid #ffe27b;
+}
+#detail .portrait {
+  float: left;
+  width: 90px;
+  height: 90px;
+  margin-right: 12px;
+}
+#detail {
+  width: min(90vw, 340px);
+  box-sizing: border-box;
+}
+#detail h2 {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+#detail progress {
+  width: 120px;
+}
+#detail p {
+  clear: both;
+}
+.cell.danger {
+  background-image: repeating-linear-gradient(45deg, #f9ce4d66 0 3px, transparent 3px 9px);
+  outline: 2px dashed #ffe27b;
+  outline-offset: -3px;
+}
+.hpbar {
+  display: block;
+  height: 3px;
+  width: 100%;
+  background: #172327;
+}
+.hpbar > span {
+  display: block;
+  height: 100%;
+  background: #80dbf0;
+}
+.enemy .hpbar > span {
+  background: #ff8d70;
+}
+#forecast {
+  position: absolute;
+  z-index: 5;
+  inset: auto 0 0;
+  background: #152936;
+  padding: 8px;
+  border: 1px solid #e9ce8d;
+  border-radius: 8px;
+}
+#forecast .portrait {
+  width: 40px;
+  height: 40px;
+  vertical-align: middle;
+}
+#forecast .modifier {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 2px 4px 4px 0;
+  border: 1px solid #a9b6a1;
+  border-radius: 12px;
+  font-size: 12px;
+}
+#forecast button {
+  min-height: 40px;
+  min-width: 76px;
+  border: 1px solid #9ab1a8;
+  border-radius: 6px;
+  background: #385d57;
+  color: white;
+  margin-right: 6px;
+}
+#forecast #confirm {
+  background: #987335;
+  border-color: #e9ce8d;
 }
 #result.chapter[hidden] {
   display: none;

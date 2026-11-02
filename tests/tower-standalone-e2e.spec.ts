@@ -53,6 +53,18 @@ test('plays the included RuleAI game through a natural outcome without optional 
   })
   await openOfflineCampaign(page)
   await dragUnitToWorld(page, 'soldier', getField('meadow', 2, 4).slots[0])
+  // Count the battle feedback nodes as they are added; they remove themselves after playing.
+  await page.evaluate(() => {
+    const counts = ((window as any).__feel = { numbers: 0, banners: [] as string[] })
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of Array.from(record.addedNodes)) {
+          if (!(node instanceof HTMLElement)) continue
+          if (node.classList.contains('fx-num')) counts.numbers++
+          if (node.classList.contains('fx-banner')) counts.banners.push(node.className)
+        }
+    }).observe(document.getElementById('app')!, { childList: true, subtree: true })
+  })
   // Act
   await page.locator('#assault').click()
   // Assert
@@ -60,6 +72,12 @@ test('plays the included RuleAI game through a natural outcome without optional 
   await expect(page.locator('#time')).not.toHaveText('00:00')
   await expect(page.locator('#result')).toBeVisible({ timeout: 150000 })
   expect(external).toEqual([])
+  const feel = await page.evaluate(() => (window as any).__feel)
+  expect(feel.numbers).toBeGreaterThan(0)
+  expect(feel.banners[0]).toContain('assault')
+  expect(feel.banners.at(-1)).toMatch(/\b(win|lose)\b/)
+  await expect(page.locator('#result-gold')).toHaveText(/^\+\d+ コイン$/)
+  await expect(page.locator('#retry-stage')).toBeVisible()
 })
 
 test('does not offer or fetch omitted environment art, including a stale 3D URL', async ({ page }) => {

@@ -11,7 +11,7 @@ const stats = [
 
 let context: AudioContext | undefined
 /** Short synthesized rising chime; no asset is added. */
-function chime() {
+function chime(volume: number) {
   context ??= new AudioContext()
   const now = context.currentTime
   ;[523, 659, 784, 1047].forEach((frequency, i) => {
@@ -20,7 +20,7 @@ function chime() {
     osc.type = 'triangle'
     osc.frequency.value = frequency
     gain.gain.setValueAtTime(0.0001, now + i * 0.09)
-    gain.gain.exponentialRampToValueAtTime(0.12, now + i * 0.09 + 0.02)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.12 * volume), now + i * 0.09 + 0.02)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.09 + 0.35)
     osc.connect(gain).connect(context!.destination)
     osc.start(now + i * 0.09)
@@ -34,7 +34,7 @@ export function clearProgress(field: HTMLElement) {
 }
 
 /** FE-style EXP gauge fill, followed by a level-up window whose raised stats light one by one. */
-export async function presentProgress(field: HTMLElement, unit: Unit, progress: Progress, sound: boolean) {
+export async function presentProgress(field: HTMLElement, unit: Unit, progress: Progress, volume: number) {
   clearProgress(field)
   const gauge = document.createElement('div')
   gauge.className = 'exp-gauge'
@@ -71,7 +71,7 @@ export async function presentProgress(field: HTMLElement, unit: Unit, progress: 
     .map(([stat, label]) => `<div data-stat="${stat}"><dt>${label}</dt><dd>${before[stat]}</dd><span></span></div>`)
     .join('')}</dl>`
   field.append(panel)
-  if (sound) chime()
+  if (volume > 0) chime(volume)
   await wait(420)
   for (const [stat] of stats) {
     if (!progress.gains[stat]) continue
@@ -97,16 +97,16 @@ export async function presentFarewell(field: HTMLElement, unit: Unit, portrait: 
 }
 
 /** Chapter-clear summary: turns, defeats, every ally's growth and the MVP. */
-export function chapterReport(game: Game, portrait: (unit: Unit) => string) {
+export function chapterReport(game: Game, portrait: (unit: Unit) => string, casual = false) {
   const allies = game.units.filter((u) => u.side === 'ally'),
     best = mvp(game)
   const kills = allies.reduce((sum, u) => sum + u.kills, 0)
   return `<header><small>CHAPTER ${game.stage + 1} CLEAR</small><strong>${missions[game.stage].name}</strong></header>
 <dl class="chapter-stats"><div><dt>ターン</dt><dd>${game.turn}</dd></div><div><dt>撃破</dt><dd>${kills}</dd></div><div><dt>生存</dt><dd>${allies.filter((u) => u.hp > 0).length}/${allies.length}</dd></div><div><dt>残り薬</dt><dd>${game.potions}</dd></div></dl>
-${allies.some((u) => u.hp <= 0) ? '<p class="chapter-lost">倒れた仲間は遠征から離脱し、以後の任務に出撃できません。</p>' : ''}<ul class="chapter-units">${allies
+${allies.some((u) => u.hp <= 0) ? `<p class="chapter-lost">${casual ? '倒れた仲間は次の任務に復帰します。' : '倒れた仲間は遠征から離脱し、以後の任務に出撃できません。'}</p>` : ''}<ul class="chapter-units">${allies
     .map(
       (u) =>
-        `<li class="${u === best ? 'mvp' : ''}${u.hp > 0 ? '' : ' fallen'}">${portrait(u)}<div><p><b>${u.name}</b>${u === best ? '<mark>MVP</mark>' : ''}${u.hp > 0 ? '' : '<mark class="lost">離脱</mark>'}</p><p>Lv ${u.level}${u.level > u.startLevel ? `<ins>▲${u.level - u.startLevel}</ins>` : ''}　<span class="exp-line"><i><em style="width:${u.exp}%"></em></i>${u.exp}</span>　${u.hp > 0 ? `<ins>+${u.gained} EXP</ins>` : '<small>獲得EXPなし</small>'}</p><p>♥ ${u.max}　⚔ ${u.power}　⛨ ${u.def}　撃破 ${u.kills}</p></div></li>`
+        `<li class="${u === best ? 'mvp' : ''}${u.hp > 0 ? '' : ' fallen'}">${portrait(u)}<div><p><b>${u.name}</b>${u === best ? '<mark>MVP</mark>' : ''}${u.hp > 0 ? '' : `<mark class="lost">${casual ? '復帰' : '離脱'}</mark>`}</p><p>Lv ${u.level}${u.level > u.startLevel ? `<ins>▲${u.level - u.startLevel}</ins>` : ''}　<span class="exp-line"><i><em style="width:${u.exp}%"></em></i>${u.exp}</span>　${u.hp > 0 || casual ? `<ins>+${u.gained} EXP</ins>` : '<small>獲得EXPなし</small>'}</p><p>♥ ${u.max}　⚔ ${u.power}　⛨ ${u.def}　撃破 ${u.kills}</p></div></li>`
     )
     .join('')}</ul>`
 }

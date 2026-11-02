@@ -1,5 +1,16 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
+import { enterBattle } from './shell-helper'
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    setInterval(() => {
+      const skip = document.querySelector<HTMLButtonElement>('.story-overlay button, .story-credits button')
+      if (skip && document.querySelector('#turn')?.textContent?.includes('勝利'))
+        document.body.dataset.storyVictory = 'yes'
+      skip?.click()
+    }, 100)
+  })
+})
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 390, height: 844 },
@@ -9,7 +20,10 @@ for (const viewport of [
     await page.setViewportSize(viewport)
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.goto('./')
+    await enterBattle(page)
+    if (viewport.width === 390) await page.getByRole('button', { name: '音を無効にする' }).click()
+    // The prologue and chapter opening finish (skipped by the hook) before the board takes input.
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
     await expect(page.getByRole('button', { name: /2,5 燈守/ })).toBeVisible()
     await page.getByRole('button', { name: '遊び方' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
@@ -36,6 +50,8 @@ for (const viewport of [
         })
     }
     await expect(page.locator('#result')).toContainText('燈は消えた')
+    if (viewport.width === 390) await expect(page.locator('[data-ember-music]')).not.toHaveAttribute('data-jingle')
+    else await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'defeat')
     await page.getByRole('button', { name: '再プレイ', exact: true }).click()
     await expect(page.locator('#turn')).toContainText('味方 · 1')
     await expect(page.locator('#count')).toHaveText('◆ 3 / ▼ 3')
@@ -62,7 +78,7 @@ import {
 
 test('all floor, marks and 3D cells stay aligned and tappable after resizing', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./')
+  await enterBattle(page)
   await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
   for (const viewport of [
     { width: 1280, height: 800 },
@@ -129,17 +145,34 @@ test('all floor, marks and 3D cells stay aligned and tappable after resizing', a
 })
 
 /** Mirrors the reproducible policy in the browser and in Node; ?seed keeps growth rolls in lockstep. */
-/** `idle` only waits each turn; `heal` false skips potions (used to force a loss). */
-async function playMission(page: Page, g: Game, idle?: string, heal = true) {
+/** `sacrifice` advances without attacking; `heal` false skips potions. */
+async function playMission(page: Page, g: Game, sacrifice?: string, heal = true) {
   const cell = (x: number, y: number) => page.locator('.cell').nth(y * size + x)
   for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
     for (const u of g.units
       .filter((u) => u.side === 'ally' && u.hp > 0)
       .sort((a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role))) {
       await cell(u.x, u.y).click()
-      if (u.id === idle) {
-        await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
-        u.done = true
+      if (u.id === sacrifice) {
+        const enemies = g.units.filter((enemy) => enemy.side === 'enemy' && enemy.hp > 0)
+        const positions = [...reachable(g, u).keys()].map((cell) => {
+          const [x, y] = cell.split(',').map(Number)
+          return { x, y }
+        })
+        positions.sort(
+          (a, b) =>
+            Math.min(...enemies.map((enemy) => distance(a, enemy))) -
+            Math.min(...enemies.map((enemy) => distance(b, enemy)))
+        )
+        const position = positions[0]
+        if (position.x !== u.x || position.y !== u.y) {
+          await cell(position.x, position.y).click()
+          move(g, u, position.x, position.y)
+        }
+        if (!allyTurnOver(g)) {
+          await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+          u.done = true
+        }
         continue
       }
       if (heal && u.hp <= u.max - 7 && g.potions > 0) {
@@ -154,13 +187,16 @@ async function playMission(page: Page, g: Game, idle?: string, heal = true) {
       }
       if (target) {
         await cell(target.x, target.y).click()
+        await page.getByRole('button', { name: '攻撃', exact: true }).click()
         attack(g, u, target)
       }
       if (g.phase === 'won') break
     }
     if (g.phase === 'ally') {
+      await expect(page.getByRole('button', { name: '▶ ターン終了' })).toBeEnabled({ timeout: 30000 })
       // The page hands over by itself once every ally is spent.
-      if (!allyTurnOver(g)) await page.getByRole('button', { name: '▶ ターン終了' }).click()
+      if (!allyTurnOver(g) || (await page.locator('#undo').isEnabled()))
+        await page.getByRole('button', { name: '▶ ターン終了' }).click()
       beginEnemy(g)
       g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
       beginAlly(g)
@@ -168,12 +204,13 @@ async function playMission(page: Page, g: Game, idle?: string, heal = true) {
     }
   }
   expect(g.phase).toBe('won')
+  await expect(page.locator('#result')).toBeVisible({ timeout: 30000 })
 }
 for (const stage of [0, 1, 2])
   for (const width of [1280, 390])
     test(`win mission ${stage + 1} and replay ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-      await page.goto('./?seed=7')
+      await enterBattle(page, './?seed=7', stage > 0)
       if (stage > 0) {
         await page.getByRole('button', { name: '任務と編成' }).click()
         await page.locator(`[data-stage="${stage}"]`).click()
@@ -197,20 +234,24 @@ for (const stage of [0, 1, 2])
       const g = createGame(stage, 'balanced', undefined, seeded(7))
       await playMission(page, g)
       await expect(page.locator('#result')).toBeVisible()
+      await expect(page.locator('body')).toHaveAttribute('data-story-victory', 'yes')
       await expect(page.locator('.exp-gauge, .level-up')).toHaveCount(0)
-      await expect(page.locator('#result')).toContainText(stage === 2 ? '遠征達成' : '霧が晴れた')
+      await expect(page.locator('#result')).toContainText('霧が晴れた')
+      await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-jingle', 'victory')
       expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)
       expect(await page.evaluate(() => (window as any).emberSoundPlays)).toBeGreaterThan(0)
       await page.screenshot({ path: `test-results/ember-win-${stage + 1}-${width}.png` })
       await page.locator('#next').click()
-      await expect(page.locator('#mission')).toContainText(missions[(stage + 1) % 3].name)
-      await expect(page.locator('#count')).toHaveText(`◆ 3 / ▼ ${3 + ((stage + 1) % 3)}`)
+      const next = createGame(stage + 1, 'balanced', carry(g))
+      const count = `◆ ${next.units.filter((unit) => unit.side === 'ally').length} / ▼ ${next.units.filter((unit) => unit.side === 'enemy').length}`
+      await expect(page.locator('#mission')).toContainText(missions[stage + 1].name)
+      await expect(page.locator('#count')).toHaveText(count)
       await page.getByRole('button', { name: '再プレイ', exact: true }).click()
-      await expect(page.locator('#count')).toHaveText(`◆ 3 / ▼ ${3 + ((stage + 1) % 3)}`)
+      await expect(page.locator('#count')).toHaveText(count)
     })
 
 test('restart cancels an in-flight enemy turn', async ({ page }) => {
-  await page.goto('./')
+  await enterBattle(page)
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
   await page.waitForTimeout(1600)
@@ -222,7 +263,7 @@ test('restart cancels an in-flight enemy turn', async ({ page }) => {
 for (const width of [1280, 390])
   test(`two-cell walk stays visible through its full presentation ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto('./')
+    await enterBattle(page)
     await page.getByRole('button', { name: /2,5 燈守/ }).tap()
     const started = Date.now()
     await page.getByRole('button', { name: /4,5 平地 移動可能/ }).tap()
@@ -235,7 +276,7 @@ for (const width of [1280, 390])
 
 test('guard formation and mission selection are available without leaving the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('./')
+  await enterBattle(page, './', true)
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.getByRole('radio', { name: /守備隊/ }).check()
   await page.locator('[data-stage="1"]').click()
@@ -248,7 +289,7 @@ test('guard formation and mission selection are available without leaving the sc
 for (const width of [1280, 390])
   test(`attack range, enemy preview, ally pass-through and automatic turn end ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto('./')
+    await enterBattle(page)
     await page.getByRole('button', { name: /2,5 燈守/ }).tap()
     await expect(page.locator('.cell.legal').first()).toBeVisible()
     await expect(page.getByRole('button', { name: /^6,5 平地 攻撃範囲/ })).toBeVisible()
@@ -275,7 +316,7 @@ for (const width of [1280, 390])
 
 test('chapter report, level up and carried growth across the expedition', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./?seed=7')
+  await enterBattle(page, './?seed=7')
   const levelUp = page
     .locator('.level-up .up')
     .first()
@@ -325,7 +366,7 @@ test('chapter report, level up and carried growth across the expedition', async 
 
 test('an ally who falls in a won mission leaves the expedition until its record is replayed', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./?seed=7')
+  await enterBattle(page, './?seed=7')
   const farewell = page
     .locator('.farewell')
     .waitFor({ timeout: 110000 })
@@ -333,9 +374,9 @@ test('an ally who falls in a won mission leaves the expedition until its record 
       await expect(page.locator('.farewell')).toContainText('燈守リオは倒れた…')
       await page.screenshot({ path: 'test-results/ember-farewell-1280.png' })
     })
-  // Neri only waits and nobody heals, so Rio falls; Neri and Mina still win.
+  // Rio advances without attacking and nobody heals; Neri and Mina still win.
   const first = createGame(0, 'balanced', undefined, seeded(7))
-  await playMission(page, first, 'b', false)
+  await playMission(page, first, 'a', false)
   await farewell
   expect(first.units[0].hp).toBe(0)
   const report = page.locator('#report')

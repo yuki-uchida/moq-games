@@ -105,8 +105,11 @@ for (const mobile of [false, true])
     if (mobile) await page.touchscreen.tap(target.x, target.y)
     else await page.mouse.click(target.x, target.y)
     expect((await stored(page)).state.units[0].specialCooldown).toBeGreaterThan(59)
+    // A cast stops time for the cut-in first, so the short burst window starts later: sample finely.
     await expect
-      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active))
+      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active), {
+        intervals: [50]
+      })
       .toBe(1)
     await page.screenshot({ path: info.outputPath(`special-burst-${mobile}.png`) })
     await expect
@@ -136,13 +139,17 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
     expect(cast.units[0].specialCooldown).toBeGreaterThan(59)
     await expect(page.locator('.unit-health.player')).toHaveAttribute('data-rendered-motion', 'special')
     await expect
-      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active > 0))
+      .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active > 0), {
+        intervals: [50]
+      })
       .toBe(true)
-    await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
+    // Save before the screenshot: a software-GPU capture can outlast a short field (ranger: 5.7 s),
+    // and the checkpoint below must be taken while the field is still active.
     await page.locator('#settings-toggle').click()
     await page.locator('[data-settings-tab=save]').click()
     await page.locator('#save-now').click()
     const saved = (await stored(page)).state
+    await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
     expect(saved.units[0].specialCooldown).toBeGreaterThan(0)
     expect(saved.units[0].specialCooldown).toBeCloseTo(cast.units[0].specialCooldown - (saved.time - cast.time), 5)
     if (['healer', 'frost', 'ranger'].includes(type)) expect(saved.specialEffects.length).toBeGreaterThan(0)

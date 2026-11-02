@@ -1,0 +1,1024 @@
+/* Battle "game feel" layer: HUD, floating effects, banners and commercial-style unit hp bars. */
+
+/* ---------- Battle HUD ---------- */
+.battle-hud {
+  position: fixed;
+  z-index: 6;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 6px 0 14px;
+  border: 1px solid #b6c59445;
+  border-radius: 16px;
+  background: #1c3a2cdb;
+  box-shadow: 0 4px 14px #10271940;
+  color: #fff8de;
+  font: 800 15px/1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+  pointer-events: none;
+}
+.battle-hud[hidden] {
+  display: none;
+}
+.bhud-main,
+.bhud-side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.bhud-castle,
+.bhud-enemies,
+.bhud-coins {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.battle-hud svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  filter: drop-shadow(0 1px 1px #0006);
+}
+.bhud-num {
+  min-width: 2.2ch;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px #0008;
+}
+.bhud-bar {
+  position: relative;
+  display: block;
+  width: 112px;
+  height: 13px;
+  overflow: hidden;
+  border: 2px solid #0f261c;
+  border-radius: 8px;
+  background: #0f261c;
+  box-shadow: inset 0 0 0 1px #ffffff1f;
+}
+.bhud-fill,
+.bhud-trail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  border-radius: 6px;
+}
+.bhud-fill {
+  background: linear-gradient(#a6e58b, #5fb852);
+  box-shadow: inset 0 2px 0 #ffffff55;
+  transition: width 0.14s ease-out;
+}
+.bhud-trail {
+  background: #fffbe8;
+  transition: width 0.3s ease-out 0.3s;
+}
+.bhud-castle[data-level='mid'] .bhud-fill {
+  background: linear-gradient(#ffd77a, #e9a22f);
+}
+.bhud-castle[data-level='low'] .bhud-fill {
+  background: linear-gradient(#ff9a86, #e1493a);
+}
+.bhud-castle[data-level='low'] {
+  animation: bhud-pulse 0.9s ease-in-out infinite;
+}
+.bhud-castle[data-level='low'] .bhud-num {
+  color: #ffb3a6;
+}
+.bhud-enemies .bhud-fill {
+  background: linear-gradient(#d9b7ff, #8f56d4);
+}
+.bhud-crown {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: #0f261c;
+  color: #6f7f74;
+}
+.bhud-crown[hidden] {
+  display: none;
+}
+.bhud-crown svg {
+  width: 16px;
+  height: 16px;
+  filter: none;
+}
+.bhud-crown[data-state='alive'] {
+  color: #ffd24a;
+  box-shadow: 0 0 0 2px #ffd24a, 0 0 10px #ffd24a;
+  animation: bhud-pulse 0.8s ease-in-out infinite;
+}
+.bhud-crown[data-state='down'] {
+  color: #ffd24a;
+  box-shadow: 0 0 0 2px #7be495;
+}
+.bhud-crown[data-state='down']::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4cbf6a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.8 6.2 2.1 2.1 4.3-4.6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.bhud-coins {
+  padding: 0 8px 0 5px;
+  height: 30px;
+  border-radius: 15px;
+  background: #0f261c99;
+  color: #ffe6a0;
+}
+.bhud-coins svg {
+  width: 20px;
+  height: 20px;
+}
+.bhud-coins .bhud-num {
+  min-width: 3ch;
+}
+.bhud-speed {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 52px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid #779173;
+  border-radius: 12px;
+  background: #44644e;
+  color: #f9f4db;
+  font: inherit;
+  font-size: 15px;
+}
+.bhud-speed[hidden] {
+  display: none;
+}
+.bhud-speed svg {
+  width: 16px;
+  height: 16px;
+}
+.bhud-speed[aria-pressed='true'] {
+  border-color: #fff0c7;
+  background: var(--gold);
+  color: var(--ink);
+}
+.bhud-speed[aria-pressed='true'] svg {
+  filter: none;
+}
+@keyframes bhud-pulse {
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* Narrower than the wide layout: castle and progress sit beside the heading, coins and speed bottom-left. */
+@media (max-width: 1179px) {
+  .battle-hud {
+    display: contents;
+  }
+  .bhud-main,
+  .bhud-side {
+    position: fixed;
+    z-index: 6;
+    border: 1px solid #b6c59445;
+    background: #1c3a2cdb;
+    box-shadow: 0 4px 14px #10271940;
+    color: #fff8de;
+    font: 800 14px/1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+    pointer-events: none;
+  }
+  .bhud-main {
+    top: max(10px, env(safe-area-inset-top));
+    left: calc(max(14px, env(safe-area-inset-left)) + 138px);
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 14px;
+    gap: 12px;
+  }
+  .bhud-side {
+    left: max(12px, env(safe-area-inset-left));
+    bottom: calc(46px + max(0px, env(safe-area-inset-bottom)));
+    gap: 6px;
+    padding: 0 0 0 6px;
+    border-radius: 14px;
+    height: 48px;
+  }
+  .bhud-bar {
+    width: 84px;
+  }
+}
+@media (max-width: 420px) {
+  .bhud-main {
+    top: max(6px, env(safe-area-inset-top));
+    left: max(6px, env(safe-area-inset-left));
+    height: auto;
+    width: max(104px, calc(100vw - 262px));
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 5px 7px;
+  }
+  .bhud-castle,
+  .bhud-enemies {
+    gap: 5px;
+  }
+  .bhud-bar {
+    flex: 1;
+    width: auto;
+    min-width: 28px;
+    height: 11px;
+  }
+  .battle-hud svg {
+    width: 16px;
+    height: 16px;
+  }
+  .bhud-num {
+    font-size: 13px;
+    min-width: 2ch;
+  }
+  .bhud-enemies .bhud-num {
+    min-width: 3.4ch;
+  }
+  .bhud-crown {
+    width: 17px;
+    height: 17px;
+    margin-left: 0;
+  }
+  .bhud-crown svg {
+    width: 11px;
+    height: 11px;
+  }
+}
+
+/* ---------- Screen-space overlay ---------- */
+.fx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fx-overlay > * {
+  pointer-events: none;
+}
+.fx-vignette,
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.fx-vignette {
+  box-shadow: inset 0 0 110px 36px #e0281ccc, inset 0 0 36px 8px #ff3b2e99;
+}
+.fx-coin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px 2px 3px;
+  border-radius: 14px;
+  background: #3a2a0bdd;
+  border: 1.5px solid #ffd96b;
+  color: #ffe9a8;
+  font: 900 15px/18px 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  will-change: transform;
+}
+.fx-coin svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- Banners ---------- */
+.fx-banner {
+  position: absolute;
+  left: 50%;
+  top: max(22%, 120px);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: 100vw;
+  padding: 10px 56px 12px;
+  text-align: center;
+  color: #fff8de;
+  background: linear-gradient(90deg, transparent, #1c3a2ce6 28%, #1c3a2ce6 72%, transparent);
+  animation: fx-banner 1.3s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  transform: translateX(-50%);
+}
+.fx-banner small {
+  font: 800 14px/1 'Hiragino Sans', system-ui, sans-serif;
+  letter-spacing: 0.34em;
+  color: #ffe6a0;
+  text-shadow: 0 1px 2px #000a;
+}
+.fx-banner b {
+  font: 900 clamp(34px, 6.4vw, 72px) / 1.05 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-shadow:
+    -3px 0 #1d2b21,
+    3px 0 #1d2b21,
+    0 -3px #1d2b21,
+    0 3px #1d2b21,
+    -2px -2px #1d2b21,
+    2px 2px #1d2b21,
+    -2px 2px #1d2b21,
+    2px -2px #1d2b21,
+    0 6px 12px #0007;
+}
+.fx-banner.boss {
+  padding-block: 24px 24px;
+  background: linear-gradient(90deg, transparent, #7d1712f0 24%, #7d1712f0 76%, transparent);
+}
+.fx-banner.boss::before,
+.fx-banner.boss::after {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 11px;
+  background: repeating-linear-gradient(-45deg, #ffcf2e 0 14px, #1b1512 14px 28px);
+  border-radius: 3px;
+}
+.fx-banner.boss::before {
+  top: 0;
+}
+.fx-banner.boss::after {
+  bottom: 0;
+}
+.fx-banner.boss b {
+  color: #ffefc0;
+}
+.fx-banner.boss small {
+  font-size: 17px;
+  color: #ffd0c8;
+}
+.fx-banner.win {
+  background: linear-gradient(90deg, transparent, #5c3d0bd9 26%, #5c3d0bd9 74%, transparent);
+}
+.fx-banner.win b {
+  color: #ffd84d;
+  background: linear-gradient(#fff7c4, #ffd23e 50%, #f19b1a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 0 #6b3a05) drop-shadow(0 0 10px #ffd24a99);
+  text-shadow: none;
+}
+.fx-banner.lose {
+  background: linear-gradient(90deg, transparent, #2d3330e6 26%, #2d3330e6 74%, transparent);
+  filter: saturate(0.25);
+}
+.fx-banner.lose b {
+  color: #cfd4d0;
+}
+.fx-banner i {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  left: calc(8% + var(--i) * 15%);
+  top: 14%;
+  background: #fff3b0;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  animation: fx-twinkle 0.7s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i) * 90ms);
+}
+.fx-banner i:nth-of-type(even) {
+  top: auto;
+  bottom: calc(8% + var(--i) * 6%);
+}
+@keyframes fx-banner {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.7);
+  }
+  16% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-14px) scale(0.92);
+  }
+}
+@keyframes fx-twinkle {
+  from {
+    transform: scale(0.4) rotate(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1.1) rotate(25deg);
+    opacity: 1;
+  }
+}
+
+/* ---------- World-space effects (inside #field, scaled with it) ---------- */
+#field {
+  --anchor: translate(-50%, -50%) scaleX(var(--field-aspect-inverse, 1));
+}
+#field .fx-num,
+#field .fx-burst,
+#field .fx-puff,
+#field .fx-chip,
+#field .fx-landing,
+#field .fx-combo {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  transform: var(--anchor);
+  white-space: nowrap;
+}
+#field .fx-num {
+  font: 900 27px/1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fffaf0;
+  text-shadow:
+    -2px 0 #2b1a14,
+    2px 0 #2b1a14,
+    0 -2px #2b1a14,
+    0 2px #2b1a14,
+    -2px -2px #2b1a14,
+    2px 2px #2b1a14,
+    -2px 2px #2b1a14,
+    2px -2px #2b1a14,
+    0 4px 5px #0006;
+  animation: fx-num-pop 0.75s ease-out forwards;
+}
+#field .fx-num.heavy {
+  font-size: 42px;
+  color: #ffd84a;
+  text-shadow:
+    -3px 0 #7a2a00,
+    3px 0 #7a2a00,
+    0 -3px #7a2a00,
+    0 3px #7a2a00,
+    -2px -2px #7a2a00,
+    2px 2px #7a2a00,
+    -2px 2px #7a2a00,
+    2px -2px #7a2a00,
+    0 5px 6px #0007;
+  animation: fx-num-heavy 0.9s ease-out forwards;
+}
+#field .fx-num.ally {
+  font-size: 20px;
+  color: #ff7a6b;
+  text-shadow:
+    -2px 0 #3a0f0b,
+    2px 0 #3a0f0b,
+    0 -2px #3a0f0b,
+    0 2px #3a0f0b,
+    0 3px 4px #0006;
+}
+#field .fx-num.heal {
+  font-size: 22px;
+  color: #8cf0a2;
+  text-shadow:
+    -2px 0 #0e3a1b,
+    2px 0 #0e3a1b,
+    0 -2px #0e3a1b,
+    0 2px #0e3a1b,
+    0 3px 4px #0006;
+}
+#field .fx-num.base {
+  font-size: 32px;
+  color: #ff5b4a;
+  text-shadow:
+    -3px 0 #3a0a06,
+    3px 0 #3a0a06,
+    0 -3px #3a0a06,
+    0 3px #3a0a06,
+    0 5px 6px #0007;
+  animation: fx-num-heavy 1.1s ease-out forwards;
+}
+@keyframes fx-num-pop {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) scale(0.6);
+  }
+  14% {
+    opacity: 1;
+    transform: var(--anchor) translateY(-6px) scale(1.25);
+  }
+  30% {
+    transform: var(--anchor) translateY(-12px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-30px) scale(1);
+  }
+}
+@keyframes fx-num-heavy {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) scale(0.5);
+  }
+  14% {
+    opacity: 1;
+    transform: var(--anchor) translateY(-8px) scale(1.5);
+  }
+  30% {
+    transform: var(--anchor) translateY(-14px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-38px) scale(1.1);
+  }
+}
+#field .fx-burst {
+  width: 150px;
+  height: 150px;
+  animation: fx-burst 0.55s ease-out forwards;
+}
+#field .fx-burst.boss {
+  width: 260px;
+  height: 260px;
+  animation-duration: 0.8s;
+}
+#field .fx-burst.small {
+  width: 76px;
+  height: 76px;
+  animation-duration: 0.4s;
+}
+#field .fx-burst svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+#field .fx-burst circle {
+  stroke: #fff6c8;
+}
+#field .fx-burst path {
+  fill: #ffd54a;
+  stroke: #fff6c8;
+  stroke-width: 0.12;
+}
+#field .fx-burst.boss path {
+  fill: #fff1a8;
+}
+@keyframes fx-burst {
+  0% {
+    opacity: 1;
+    transform: var(--anchor) scale(0.25) rotate(0);
+  }
+  60% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) scale(1.35) rotate(24deg);
+  }
+}
+#field .fx-puff {
+  width: 54px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(#d8dcd6e6, #9ea59f80 60%, transparent 72%);
+  animation: fx-puff 0.9s ease-out forwards;
+}
+@keyframes fx-puff {
+  from {
+    opacity: 0.95;
+    transform: var(--anchor) scale(0.4);
+  }
+  to {
+    opacity: 0;
+    transform: var(--anchor) translateY(-10px) scale(1.7);
+  }
+}
+#field .fx-chip {
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: #2f3532e6;
+  border: 1px solid #aeb7b0;
+  color: #f2f5f0;
+  font: 800 13px/16px 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+  animation: fx-chip 1.5s ease-out forwards;
+}
+@keyframes fx-chip {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) translateY(4px);
+  }
+  12% {
+    opacity: 1;
+    transform: var(--anchor);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-18px);
+  }
+}
+#field .fx-landing {
+  width: 0;
+  height: 0;
+  animation: fx-landing 0.8s linear forwards;
+}
+#field .fx-landing::before,
+#field .fx-landing::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  border-radius: 50%;
+}
+#field .fx-landing::before {
+  width: 76px;
+  height: 46px;
+  border: 4px solid #fff6c8;
+  box-shadow: 0 0 8px #fff6c8aa;
+  animation: fx-landing-ring 0.6s ease-out forwards;
+}
+#field .fx-landing::after {
+  width: 70px;
+  height: 42px;
+  background: radial-gradient(#e6d9b3d0, #cdbd8c66 55%, transparent 70%);
+  animation: fx-landing-dust 0.8s ease-out forwards;
+}
+@keyframes fx-landing {
+  to {
+    opacity: 0.99;
+  }
+}
+@keyframes fx-landing-ring {
+  from {
+    opacity: 1;
+    scale: 0.25;
+  }
+  to {
+    opacity: 0;
+    scale: 1.4;
+  }
+}
+@keyframes fx-landing-dust {
+  from {
+    opacity: 0.9;
+    scale: 0.3;
+  }
+  to {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+#field .fx-combo {
+  --grow: 1;
+  font: 900 italic calc(22px * var(--grow)) / 1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  color: #fff0a0;
+  text-shadow:
+    -3px 0 #8a3200,
+    3px 0 #8a3200,
+    0 -3px #8a3200,
+    0 3px #8a3200,
+    -2px -2px #8a3200,
+    2px 2px #8a3200,
+    -2px 2px #8a3200,
+    2px -2px #8a3200,
+    0 5px 6px #0007;
+  animation: fx-combo 1.3s ease-out forwards;
+}
+@keyframes fx-combo {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) rotate(-6deg) scale(0.5);
+  }
+  12% {
+    opacity: 1;
+    transform: var(--anchor) rotate(-6deg) scale(1.3);
+  }
+  24% {
+    transform: var(--anchor) rotate(-6deg) scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-24px) rotate(-6deg) scale(1);
+  }
+}
+
+/* ---------- Commercial-style unit hp bars ---------- */
+/* The numbers stay in the DOM for assistive tech and tests, but are not drawn. */
+.unit-health span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  background: none;
+  border: 0;
+}
+.unit-health {
+  --hp: 1;
+  transition: opacity 0.2s;
+}
+.unit-health i {
+  position: relative;
+  width: 40px;
+  height: 8px;
+  margin: 0 auto;
+  border: 2px solid #f1f7e6;
+  border-radius: 5px;
+  background: #16261f;
+  box-shadow: 0 1px 3px #0009;
+}
+.unit-health.ai i {
+  border-color: #2a1511;
+  box-shadow: 0 1px 3px #000a, 0 0 0 1px #ffb4a233;
+}
+.unit-health i::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--hp) * 100%);
+  background: #fffbe8;
+  transition: width 0.3s ease-out 0.3s;
+}
+.unit-health b {
+  position: relative;
+  border-radius: 3px;
+  background: linear-gradient(#ffffff55, #ffffff00 60%), var(--health);
+  transition: width 0.12s ease-out;
+}
+.unit-health.ai b {
+  background: linear-gradient(#ffffff44, #ffffff00 60%), linear-gradient(90deg, #ff9a4a, #e5402f);
+}
+.unit-health.ai.full:not(.boss) {
+  opacity: 0.5;
+}
+.unit-health.ai::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  translate: 0 -50%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 2l6 5h8l6-5-1 9c0 6-4 11-9 11S3 17 3 11Z' fill='%23c4352a' stroke='%232a1511' stroke-width='2.4' stroke-linejoin='round'/%3E%3Ccircle cx='9' cy='13' r='1.8' fill='%23fff'/%3E%3Ccircle cx='15' cy='13' r='1.8' fill='%23fff'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.unit-health.boss i {
+  width: 62px;
+  height: 10px;
+  border-radius: 6px;
+}
+.unit-health.boss::before {
+  content: 'BOSS';
+  position: absolute;
+  left: 50%;
+  top: auto;
+  bottom: calc(100% + 3px);
+  width: auto;
+  height: auto;
+  translate: -50% 0;
+  padding: 2px 6px 2px 19px;
+  border: 1.5px solid #ffd24a;
+  border-radius: 7px;
+  background: #8a1f1a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 18.5 1.8 7.500l5.7 4.5L12 4l4.5 8 5.7-4.5L21 18.5Z' fill='%23ffd24a'/%3E%3C/svg%3E") 3px 50% / 14px 14px no-repeat;
+  color: #ffeab0;
+  font: 900 10px/12px 'Hiragino Sans', system-ui, sans-serif;
+  letter-spacing: 0.08em;
+}
+.unit-health .battle-relocation-status {
+  left: calc(100% - 2px);
+  top: -3px;
+  padding: 0 4px;
+  border: 1px solid #8fb48a;
+  border-radius: 7px;
+  background: #1e342a;
+  color: #e6f3d8;
+  font: 800 10px/13px 'Hiragino Sans', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+.unit-health[data-relocation='used'] .battle-relocation-status {
+  opacity: 0.55;
+}
+.base-health {
+  opacity: 0.8;
+}
+
+/* ---------- Start-button feel ---------- */
+.field-icon:active:not(:disabled) {
+  scale: 0.91;
+}
+#app[data-phase='preparation'] #assault:not(:disabled) {
+  border-color: #ffe499;
+  animation: assault-glow 1.7s ease-in-out infinite;
+}
+@keyframes assault-glow {
+  0%,
+  100% {
+    box-shadow: 0 4px 18px #15372930, 0 0 0 0 #ffd24a00;
+  }
+  50% {
+    box-shadow: 0 4px 18px #15372930, 0 0 0 7px #ffd24a88, 0 0 22px 4px #ffd24a66;
+  }
+}
+
+/* ---------- Special-move result readout (screen space, kept between the HUD and the skill bar) ---------- */
+.fx-special {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 150px;
+  padding: 6px 16px 8px;
+  border: 2px solid #ffd96a;
+  border-radius: 14px;
+  background: linear-gradient(#1c3a2cf2, #14281ff2);
+  box-shadow: 0 6px 22px #000a, 0 0 18px #ffd96a66;
+  color: #fff8de;
+  text-align: center;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+}
+.fx-special.pop {
+  animation: fx-special 1.9s ease-out forwards;
+}
+.fx-special small {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffe9a8;
+}
+.fx-special b {
+  font-size: 40px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: -2px 0 #7a3b00, 2px 0 #7a3b00, 0 -2px #7a3b00, 0 2px #7a3b00, 0 4px 6px #0008;
+}
+.fx-special span {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #ffd84a;
+}
+.fx-special i {
+  margin-top: 2px;
+  padding: 1px 12px;
+  border-radius: 999px;
+  background: #e2402e;
+  border: 1.5px solid #fff3d6;
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 900;
+}
+.fx-special[hidden],
+.fx-special [hidden] {
+  display: none;
+}
+.fx-special[data-empty='true'] {
+  border-color: #aeb7b0;
+  box-shadow: 0 6px 22px #000a;
+}
+.fx-special[data-empty='true'] b {
+  font-size: 24px;
+  color: #d6dcd4;
+  text-shadow: none;
+}
+@keyframes fx-special {
+  0% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  10% {
+    opacity: 1;
+    scale: 1.2;
+  }
+  20% {
+    scale: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (max-width: 600px) {
+  .fx-special {
+    min-width: 128px;
+    padding: 4px 12px 6px;
+  }
+  .fx-special b {
+    font-size: 32px;
+  }
+  .fx-special span {
+    font-size: 16px;
+  }
+  .fx-special i {
+    font-size: 15px;
+  }
+}
+/* A kill by a special: bigger, hotter burst and a coin chip that stands out from normal bounties. */
+#field .fx-burst.special {
+  width: 230px;
+  height: 230px;
+  animation-duration: 0.75s;
+}
+#field .fx-burst.special circle {
+  stroke: #ffb347;
+  stroke-width: 7;
+}
+#field .fx-burst.special path {
+  fill: #ff7a3c;
+  stroke: #fff3c4;
+}
+.fx-coin.special {
+  background: #5a1d3ee6;
+  border-color: #ff9ed8;
+  color: #ffe0f2;
+  box-shadow: 0 0 10px #ff9ed8aa;
+}
+
+/* ---------- Reduced motion: short fades instead of flying and shaking ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #field .fx-num,
+  #field .fx-num.heavy,
+  #field .fx-num.base,
+  #field .fx-burst,
+  #field .fx-puff,
+  #field .fx-chip,
+  #field .fx-combo {
+    animation: fx-fade 0.6s ease-out forwards;
+  }
+  .fx-special.pop {
+    animation: fx-fade 1.9s ease-out forwards;
+  }
+  #field .fx-landing::before,
+  #field .fx-landing::after {
+    animation: none;
+    opacity: 0.6;
+  }
+  .fx-banner {
+    animation: fx-fade-banner 1.3s ease-out forwards;
+  }
+  .fx-banner i,
+  .bhud-castle[data-level='low'],
+  .bhud-crown[data-state='alive'],
+  #app[data-phase='preparation'] #assault:not(:disabled) {
+    animation: none;
+  }
+  #app[data-phase='preparation'] #assault:not(:disabled) {
+    box-shadow: 0 4px 18px #15372930, 0 0 0 5px #ffd24a88;
+  }
+  .unit-health i::before,
+  .bhud-trail {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+}
+@keyframes fx-fade {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fx-fade-banner {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%);
+  }
+  15%,
+  80% {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%);
+  }
+}
