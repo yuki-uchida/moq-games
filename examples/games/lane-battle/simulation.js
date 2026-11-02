@@ -397,7 +397,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     spawn: 3,
     turret: 0,
     rushes: 0,
-    opened: false,
+    opened: 0,
     alert: null,
     serial: 0,
     result: null,
@@ -410,8 +410,11 @@ export const UPGRADE_COSTS = [100, 250, 450, 700]
 export const upgradeCost = (s) => UPGRADE_COSTS[s.level - 1] ?? Infinity
 /** Every 腸活 level draws the cleanup crew's attention: enemies spawn this much faster per level above 1. */
 export const UPGRADE_ALARM = 0.07
-/** 朝の清掃: an early wave, growing with the stage, punishes a player who spends everything on 腸活. */
-export const OPENING = { at: 12, size: (stage) => 3 + Math.floor(stage / 10) }
+/**
+ * 朝の清掃: two early waves of 清掃員, growing with the stage, that pay no 💩 bounty. The smell of 腸活 draws
+ * `perLevel` extra cleaners per level above 1, so investing before the morning is held costs more than it earns.
+ */
+export const OPENING = { at: [10, 30], size: (stage) => 4 + Math.floor(stage / 10), perLevel: 6 }
 const MAX_UNITS = 24
 /** side 1 summons deck slot `index`; side -1 summons ENEMIES[index] scaled to the stage. */
 export function summon(s, index, side = 1) {
@@ -500,19 +503,21 @@ export const WALK_PACE = 1.25
 export const RUSHES = 4
 export const TURRET = { range: 260, period: 1.8, damage: 55 }
 /** The enemy fort fires its ウォシュレット砲 at the closest poop, sends 朝の清掃 early and a 大掃除 rush at each fifth of its HP. */
-function wave(s, size, text) {
+function wave(s, size, text, { bounty, type } = {}) {
   const stage = STAGES[s.stage]
   for (let k = 0; k < size; k++) {
-    summon(s, stage.pattern[(s.enemySpawned + k * 2) % stage.pattern.length], -1)
+    summon(s, type ?? stage.pattern[(s.enemySpawned + k * 2) % stage.pattern.length], -1)
     s.units.at(-1).x -= k * 14
+    s.units.at(-1).bounty = bounty
   }
   s.alert = { text, at: s.time }
 }
 function fortDefense(s, dt) {
   const stage = STAGES[s.stage]
-  if (!s.opened && s.time >= OPENING.at) {
-    s.opened = true
-    wave(s, OPENING.size(s.stage), '朝の清掃だ！')
+  while (s.opened < OPENING.at.length && s.time >= OPENING.at[s.opened]) {
+    s.opened++
+    const smell = OPENING.perLevel * (s.level - 1)
+    wave(s, OPENING.size(s.stage) + smell, smell ? '清掃員が増員だ！' : '朝の清掃だ！', { bounty: 0, type: 0 })
   }
   s.turret = Math.max(0, s.turret - dt)
   const near = s.units
@@ -607,7 +612,7 @@ export function step(s, dt) {
   s.units = s.units.filter((u) => {
     if (u.hp > 0) return true
     if (u.side === -1) {
-      s.gold = Math.min(999, s.gold + STAGES[s.stage].reward)
+      s.gold = Math.min(999, s.gold + (u.bounty ?? STAGES[s.stage].reward))
       s.kills++
       // Every unit that hurt the fallen enemy earns its EXP.
       for (const uid of u.hitters ?? []) s.exp[uid] = (s.exp[uid] || 0) + u.exp
