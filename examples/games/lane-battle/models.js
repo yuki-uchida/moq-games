@@ -858,10 +858,14 @@ const MODELS = {
   aircon: {
     koSeconds: 0.95,
     tempo: [0.45, 0.04],
+    striker: 'muzzle',
+    reacts: ['louver', 'chest'],
+    parts: [],
+    react: { jolt: 0.45 },
     size: 1,
     moves: {
       lunge: -0.1,
-      back: 0.04,
+      back: 0.4,
       rear: 0.12,
       lean: -0.16,
       squash: -0.07,
@@ -875,7 +879,10 @@ const MODELS = {
       k.add(GEO.rbox, '#dfe5ea', [0, 0.37, 0.02], [0.82, 0.07, 0.3])
       for (let i = 0; i < 5; i++)
         k.add(GEO.box, '#c4ccd3', [-0.3 + i * 0.15, 0.735, 0.05], [0.1, 0.012, 0.2], undefined, { line: false })
-      k.add(GEO.rbox, '#5ad1ff', [0.33, 0.68, 0.168], [0.06, 0.03, 0.01], undefined, { glow: true })
+      k.bone('led', 'head', [0.33, 0.68, 0.168])
+      k.add(GEO.rbox, '#5ad1ff', [0.33, 0.68, 0.168], [0.06, 0.03, 0.01], undefined, { bone: 'led', glow: true })
+      k.bone('fault', 'head', [0.33, 0.68, 0.168])
+      k.add(GEO.rbox, '#ff4433', [0.33, 0.68, 0.168], [0.06, 0.03, 0.01], undefined, { bone: 'fault', glow: true })
       k.add(GEO.rbox, '#aab3bb', [-0.3, 0.68, 0.168], [0.12, 0.025, 0.01], undefined, { line: false })
       // The vent under the face and its flap, hinged along its top edge.
       k.add(GEO.rbox, '#3d4a55', [0, 0.33, 0.12], [0.7, 0.05, 0.08], undefined, { line: false })
@@ -903,6 +910,13 @@ const MODELS = {
       ])
         k.add(GEO.ball, '#ffffff', [x, y, 0.36], 0.03, undefined, { bone: 'blast', glow: true })
       k.bone('muzzle', 'hips', [0.3, 0.28, 0.24])
+      k.bone('frost', 'hips', [0.3, 0.28, 0.24])
+      for (const [x, y] of [
+        [0.27, 0.29],
+        [0.37, 0.3],
+        [0.32, 0.36]
+      ])
+        k.add(GEO.ball, '#d5f4ff', [x, y, 0.25], 0.025, undefined, { bone: 'frost', glow: true })
       k.face({ bone: 'chest', y: 0.57, z: 0.17, spread: 0.16, mood: 'cool' })
     },
     act(b, a, c) {
@@ -911,12 +925,40 @@ const MODELS = {
       show(b.blast, blast > 0.05)
       b.blast.scale.setScalar(0.35 + blast)
       b.wind.rotation.y = c.t * 3
+      b.frost.scale.setScalar(Math.max(0.03, a.wind))
       b.hips.scale.multiplyScalar(1 + beat(a, 0.07, -0.04))
+      b.fault.scale.setScalar(0.02)
+      b.led.scale.setScalar(!a.wind || Math.sin(c.t * 22) > -0.3 ? 1 : 0.02)
+    },
+    hurt(b, h) {
+      b.spine.rotation.z -= 0.027 * h.jolt
+      b.chest.rotation.z -= 0.015 * h.jolt
+      b.head.rotation.z -= 0.072 * h.jolt
+      b.louver.rotateOnAxis(WIDTH, 0.7 * h.jolt + 0.55 * h.wobble)
+      b.led.scale.setScalar(0.02)
+      b.fault.scale.setScalar(Math.floor(h.age * 28) % 2 === 0 ? 1 : 0.02)
+    },
+    ko(b, k, c) {
+      const fall = Math.min(1, k.t / 0.45)
+      const bounce = k.t > 0.45 ? Math.sin(Math.min(1, (k.t - 0.45) / 0.25) * Math.PI) * 0.09 : 0
+      b.hips.position.y -= 0.04 * Math.sin(c.t * 4) + 0.2 * fall - bounce
+      b.hips.rotation.z += 0.2 * fall
+      b.louver.rotateOnAxis(WIDTH, -0.9 * fall)
+      b.led.scale.setScalar(k.t < 0.08 ? 1 : 0.02)
+      b.fault.scale.setScalar(k.t < 0.12 ? 1 : 0.02)
+      show(b.blast, false)
+      b.wind.scale.setScalar(Math.max(0.01, 1 - k.t))
+      b.frost.scale.setScalar(0.03)
+      c.actor.tint('#747b80', 0.35 * fall)
     }
   },
   ramen: {
     koSeconds: 0.95,
     tempo: [0.4, 0.04],
+    striker: 'sticks',
+    reacts: ['soup', 'naruto', 'sticks'],
+    parts: ['sticks'],
+    react: { jolt: 0.65 },
     size: 1,
     moves: {
       lunge: 0.2,
@@ -941,7 +983,8 @@ const MODELS = {
           line: false
         })
       }
-      k.add(GEO.cyl, '#e2a64a', [0, 0.4, 0], [0.44, 0.02, 0.44], undefined, { line: false })
+      k.bone('soup', 'chest', [0, 0.4, 0])
+      k.add(GEO.cyl, '#e2a64a', [0, 0.4, 0], [0.44, 0.02, 0.44], undefined, { bone: 'soup', line: false })
       for (const [x, z, r] of [
         [-0.1, 0.1, 0.09],
         [0.1, -0.12, 0.08],
@@ -949,9 +992,13 @@ const MODELS = {
         [-0.2, -0.08, 0.08],
         [0.02, 0.0, 0.1]
       ])
-        k.add(GEO.ring, '#f6d36b', [x, 0.42, z], [r, r, 0.5], [Math.PI / 2, 0, 0.3], { line: false })
-      k.add(GEO.rcyl, '#fbf3ee', [0.2, 0.43, 0.08], [0.09, 0.025, 0.09], [0.25, 0, 0])
-      k.add(GEO.ring, '#e86a9a', [0.2, 0.445, 0.085], [0.045, 0.045, 0.3], [Math.PI / 2 + 0.25, 0, 0], { line: false })
+        k.add(GEO.ring, '#f6d36b', [x, 0.42, z], [r, r, 0.5], [Math.PI / 2, 0, 0.3], { bone: 'soup', line: false })
+      k.bone('naruto', 'soup', [0.2, 0.43, 0.08])
+      k.add(GEO.rcyl, '#fbf3ee', [0.2, 0.43, 0.08], [0.09, 0.025, 0.09], [0.25, 0, 0], { bone: 'naruto' })
+      k.add(GEO.ring, '#e86a9a', [0.2, 0.445, 0.085], [0.045, 0.045, 0.3], [Math.PI / 2 + 0.25, 0, 0], {
+        bone: 'naruto',
+        line: false
+      })
       k.add(GEO.rcyl, '#9a5a32', [-0.17, 0.44, -0.02], [0.13, 0.03, 0.13], [0.35, 0, 0.2])
       k.add(GEO.sphere, '#fff7e6', [-0.04, 0.43, 0.22], [0.08, 0.05, 0.07], [0.3, 0, 0])
       k.add(GEO.ball, '#f39a1c', [-0.04, 0.47, 0.23], [0.04, 0.02, 0.035], [0.3, 0, 0], { line: false })
@@ -959,16 +1006,47 @@ const MODELS = {
       k.bone('sticks', 'chest', [0.24, 0.46, 0.0])
       for (const s of [0, 0.045])
         k.add(GEO.cyl, '#d9b277', [0.3 + s, 0.68, -0.02 + s], [0.013, 0.72, 0.013], [0, 0, -0.45], { bone: 'sticks' })
+      k.bone('noodle', 'chest', [0.3, 0.47, 0.28])
+      k.add(GEO.capsule, '#ffe398', [0.5, 0.47, 0.28], [0.015, 0.4, 0.015], ALONG(), { bone: 'noodle', line: false })
+      k.bone('steam', 'chest', [0, 0.6, 0])
+      for (const [x, y] of [
+        [-0.1, 0.7],
+        [0, 0.78],
+        [0.1, 0.69]
+      ])
+        k.add(GEO.ball, '#fff8e8', [x, y, 0.03], [0.035, 0.07, 0.025], undefined, { bone: 'steam', alpha: 0.5 })
       k.face({ bone: 'spine', y: 0.24, z: 0.42, spread: 0.13 })
     },
     act(b, a) {
       b.sticks.rotation.z += beat(a, 0.85, -1.15, 0.2)
-      b.sticks.position.x += beat(a, -0.04, 0.1)
+      b.sticks.position.x += beat(a, -0.16, 0.16, -0.04)
+      b.noodle.scale.setScalar(Math.max(0.03, a.recoil))
+      b.steam.scale.setScalar(Math.max(0.03, a.wind))
+    },
+    hurt(b, h) {
+      b.soup.rotation.z -= 0.2 * h.jolt + 0.12 * h.wobble
+      b.soup.position.y += 0.07 * h.jolt
+      b.naruto.rotation.y += 1.2 * h.jolt + 0.5 * h.wobble
+      b.sticks.rotation.z += 0.4 * h.jolt + 0.3 * h.wobble
+    },
+    ko(b, k) {
+      const fall = Math.min(1, k.t / 0.58)
+      b.hips.rotation.z -= 2.6 * fall
+      b.hips.position.x += 0.2 * fall
+      b.hips.position.y += 0.29 * fall + 0.16 * Math.sin(Math.PI * fall)
+      b.soup.rotation.z += 0.45 * fall
+      b.sticks.position.x += 0.4 * fall
+      b.sticks.position.y -= 0.2 * fall
+      b.sticks.rotation.z += 1.1 * fall
     }
   },
   yofukashi: {
     koSeconds: 1,
     tempo: [0.24, 0.025],
+    striker: 'head',
+    reacts: ['cap', 'chest'],
+    parts: [],
+    react: { jolt: 0.7 },
     size: 0.95,
     moves: {
       lunge: 0.14,
@@ -984,7 +1062,10 @@ const MODELS = {
     build(k) {
       k.chain = [0.3, 0.55, 0.8]
       k.add(GEO.rbox, '#22252e', [0, 0.47, 0], [0.46, 0.82, 0.09])
-      k.add(GEO.rbox, '#3b6fd8', [0, 0.47, 0.044], [0.4, 0.7, 0.01], undefined, { glow: true })
+      k.bone('screen', 'chest', [0, 0.47, 0.044])
+      k.add(GEO.rbox, '#3b6fd8', [0, 0.47, 0.044], [0.4, 0.7, 0.01], undefined, { bone: 'screen', glow: true })
+      k.bone('screenFlash', 'screen', [0, 0.47, 0.052])
+      k.add(GEO.rbox, '#ffffff', [0, 0.47, 0.052], [0.38, 0.68, 0.005], undefined, { bone: 'screenFlash', glow: true })
       k.add(GEO.rbox, '#1a1c22', [0, 0.84, 0.047], [0.12, 0.025, 0.01], undefined, { line: false })
       k.add(GEO.ball, '#b9d3ff', [-0.12, 0.66, 0.05], [0.07, 0.012, 0.004], [0, 0, 0.6], { glow: true, alpha: 0.6 })
       k.bone('cap', 'head', [0.02, 0.86, 0])
@@ -1002,6 +1083,25 @@ const MODELS = {
       b.hips.rotation.z -= (c.lastCrit ? 0.2 : 0) * a.hit
       b.cap.rotation.z += 0.1 * Math.sin(c.t * 5) + beat(a, 0.3, -0.5, -0.4)
       b.moon.position.y += 0.03 * Math.sin(c.t * 2)
+      b.screen.scale.multiplyScalar(1 + 0.08 * a.hit)
+      b.screenFlash.scale.setScalar(Math.max(0.03, a.hit))
+    },
+    hurt(b, h) {
+      b.cap.position.y += 0.06 * h.jolt
+      b.cap.rotation.z += 0.25 * h.jolt + 0.2 * h.wobble
+      b.chest.rotation.z += 0.1 * h.jolt
+      b.screen.scale.multiplyScalar(1 - 0.08 * h.flash)
+    },
+    ko(b, k, c) {
+      const fall = Math.min(1, Math.max(0, (k.t - 0.12) / 0.55))
+      show(b.eyes, k.t < 0.2)
+      show(b.ko, k.t >= 0.2)
+      b.eyes.scale.y = Math.max(0.03, 1 - k.t / 0.2)
+      b.hips.rotation.z += 1.3 * fall + 0.08 * Math.sin(k.t * 16) * (1 - fall)
+      b.hips.position.y += 0.18 * fall
+      b.moon.position.y -= 0.45 * fall + 0.03 * Math.sin(c.t * 2)
+      b.screenFlash.scale.setScalar(0.03)
+      c.actor.tint('#485169', 0.65 * Math.min(1, k.t / 0.5))
     }
   },
   sake: {
