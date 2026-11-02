@@ -1,4 +1,5 @@
 import type { FeelSound } from '../audio/FeelSounds'
+import { STAR_GOALS } from '../progression/StageProgress'
 
 /** Everything the end-of-stage card needs; main.ts gathers it, this module only presents it. */
 export interface ResultView {
@@ -59,7 +60,7 @@ export const formatClock = (seconds: number): string =>
 export const prefersReducedMotion = (): boolean =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const HINTS = ['', '拠点HP半分以上で★2', '拠点ノーダメージで★3', 'パーフェクト！拠点ノーダメージ']
+const HINTS = ['', `${STAR_GOALS[1]}で★2`, `${STAR_GOALS[2]}で★3`, `パーフェクト！${STAR_GOALS[2]}`]
 const CONFETTI_COLORS = ['#f0bd3a', '#e2574c', '#5fa86a', '#4a9bd0', '#f08a3c', '#b36bd0']
 
 function confetti(host: HTMLElement, count: number): void {

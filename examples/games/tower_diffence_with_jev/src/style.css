@@ -3365,3 +3365,78 @@ dialog::backdrop {
     0 -16px 16px -8px var(--paper),
     0 40px 0 0 var(--paper);
 }
+
+/* ---- Pause menu and star goals ---- */
+.pause-dialog {
+  width: min(320px, calc(100vw - 32px));
+  text-align: center;
+}
+.pause-dialog::backdrop {
+  background: #0c1a1388;
+}
+.pause-dialog h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+}
+.pause-actions,
+.pause-confirm {
+  display: grid;
+  gap: 8px;
+}
+.pause-actions button,
+.pause-confirm button {
+  min-height: 48px;
+}
+.pause-confirm p {
+  margin: 0;
+  font-weight: 700;
+  color: #82311e;
+}
+.pause-confirm[hidden],
+.pause-actions[hidden] {
+  display: none;
+}
+.stage-goals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.stage-goals li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1.5px solid #b9a56a;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a6a3a;
+  background: transparent;
+}
+.stage-goals li[data-got='true'] {
+  border-color: #c5a056;
+  background: #fff0ca;
+  color: #6b4a07;
+}
+.stage-goals li[data-got='true'] .goal-star {
+  color: #d09a28;
+}
+.stage-goals .goal-star {
+  letter-spacing: 0;
+}
+.stage-label .stage-goal {
+  display: block;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #1c3a2cc7;
+  font-size: 12px;
+}
+.stage-label .stage-goal[hidden],
+#app[data-phase='assault'] .stage-label .stage-goal {
+  display: none;
+}

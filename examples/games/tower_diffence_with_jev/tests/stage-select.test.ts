@@ -14,6 +14,7 @@ import {
   parseStageProgress,
   recordStars,
   recruit,
+  nextGoal,
   starsFor,
   starsOf,
   totalStars,
@@ -70,6 +71,10 @@ describe('stage select progress', () => {
     })
     expect(parsed).toMatchObject({ recruited: ['mage'], formation: ['mage'] })
     expect(loadStageProgress(['frost'], { getItem: () => '{bad' }).recruited).toEqual(['frost'])
+  })
+  it('names the next unearned star goal', () => {
+    expect([0, 1, 2, 3].map((best) => nextGoal(best)?.stars ?? null)).toEqual([1, 2, 3, null])
+    expect(nextGoal(2)?.label).toBe('拠点ノーダメージ')
   })
   it('rates a win by the castle HP left and keeps the best rating', () => {
     expect([starsFor(CONFIG.baseHp), starsFor(CONFIG.baseHp - 1), starsFor(CONFIG.baseHp / 2), starsFor(1)]).toEqual([3, 2, 2, 1])
