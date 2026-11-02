@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { GameEngine } from '../src/game/GameEngine'
 import { RuleBasedAI } from '../src/ai/AIController'
-import { FIELDS, stageRules } from '../src/game/model'
+import { CONFIG, FIELDS, stageRules } from '../src/game/model'
 import { validateCampaignCheckpoint } from '../src/game/CampaignCheckpoint'
 import { loadCampaignSave, saveCampaignCheckpoint } from '../src/progression/CampaignStorage'
 import { availableAllies, freshRunFromProfile } from '../src/progression/UpgradeSystem'
 import {
   FORMATION_SLOTS,
+  awardBounty,
   awardStageClear,
   freshStageProgress,
   loadStageProgress,
   parseStageProgress,
+  recordStars,
   recruit,
+  starsFor,
+  starsOf,
+  totalStars,
   stageStartGold,
   stageUnlocked,
   toggleFormation
@@ -65,6 +70,33 @@ describe('stage select progress', () => {
     })
     expect(parsed).toMatchObject({ recruited: ['mage'], formation: ['mage'] })
     expect(loadStageProgress(['frost'], { getItem: () => '{bad' }).recruited).toEqual(['frost'])
+  })
+  it('rates a win by the castle HP left and keeps the best rating', () => {
+    expect([starsFor(CONFIG.baseHp), starsFor(CONFIG.baseHp - 1), starsFor(CONFIG.baseHp / 2), starsFor(1)]).toEqual([3, 2, 2, 1])
+    expect(starsFor(50, 100)).toBe(2)
+    const p = freshStageProgress()
+    expect(recordStars(p, 2, 2)).toBe(true)
+    expect(recordStars(p, 2, 1)).toBe(false)
+    expect(recordStars(p, 2, 3)).toBe(true)
+    expect(recordStars(p, 0, 3)).toBe(false)
+    expect([starsOf(p, 2), starsOf(p, 1), totalStars(p)]).toEqual([3, 0, 3])
+    expect(p.stars).toHaveLength(CONFIG.stages)
+  })
+  it('adds the kill bonus to a clear and still pays it on defeat', () => {
+    const p = freshStageProgress()
+    expect(awardStageClear(p, 1, 25)).toBe(stageRules(1).reward + 25)
+    expect(awardBounty(p, 7)).toBe(7)
+    expect(p.coins).toBe(stageRules(1).reward + 32)
+    expect(p.cleared).toBe(1)
+  })
+  it('parses progress saved before stars existed and ignores malformed stars', () => {
+    const base = { version: 1, coins: 5, cleared: 1, recruited: [], formation: ['soldier'] }
+    const zeros = Array(CONFIG.stages).fill(0)
+    expect(parseStageProgress(base)?.stars).toEqual(zeros)
+    expect(parseStageProgress({ ...base, stars: 'x' })?.stars).toEqual(zeros)
+    const mixed = parseStageProgress({ ...base, stars: [3, 9, -1, 1.5, 'a', null, 2] })!
+    expect(mixed.stars!.slice(0, 7)).toEqual([3, 0, 0, 0, 0, 0, 2])
+    expect(mixed.coins).toBe(5)
   })
   it('deploys only the formation', () => {
     const { save, engine } = stageEngine(1)
