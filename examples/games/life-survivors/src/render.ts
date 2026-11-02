@@ -1,12 +1,25 @@
 import { canvasOf } from './art/atlas'
+import { BEAM_DIRS, STAPLE_DIRS, beam } from './art/arsenal'
 import { deathKind, soulAt } from './art/deaths'
 import { NO_FLIP, PENCIL_DIRS, SWING_DIRS, evolve, playMat, sheet, swing } from './art/index'
+import { R } from './art/palette'
 import { Raster } from './art/raster'
-import { duration, frameAt, type Anim } from './art/sheet'
+import { duration, frameAt, type Anim, type Sheet } from './art/sheet'
 import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propsAt } from './art/world'
-import { ENEMIES, ENEMY_BY_ID, MAX_WEAPON_LEVEL, WEAPONS, WEAPON_BY_ID, ageAt, stageAt, type Stage } from './data'
+import {
+  ENEMIES,
+  ENEMY_BY_ID,
+  MAX_WEAPON_LEVEL,
+  WEAPONS,
+  WEAPON_BY_ID,
+  ageAt,
+  stageAt,
+  type EnemyDef,
+  type Stage
+} from './data'
+import { Effects, PK } from './effects'
 import { VIEW_HALF } from './game'
-import { ITEM_KINDS, STRIDE, type View, type ViewPlayer } from './view'
+import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
 
 /** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
 const BODIES: Record<string, string> = {
@@ -25,6 +38,7 @@ const BODIES: Record<string, string> = {
 /** Every life stage has its own painted body. */
 export const bodyFor = (stage: Stage) => BODIES[stage.name] ?? 'adult'
 const GROUND_FADE = 1.5
+const TAU = Math.PI * 2
 /** Whether a player's weapon has evolved (Lv8 + its matching passive), from the snapshot alone. */
 function isEvolvedView(owner: ViewPlayer | undefined, id: string) {
   const def = WEAPON_BY_ID.get(id)
@@ -33,6 +47,24 @@ function isEvolvedView(owner: ViewPlayer | undefined, id: string) {
     def?.evolve && w && w[1] >= MAX_WEAPON_LEVEL && owner!.passives.some((p) => p[0] === def.evolve!.passive)
   )
 }
+
+/** Cheap deterministic noise in 0..1 (for jitter that must not change between draws of the same frame). */
+function hash(a: number, b = 0) {
+  let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263)
+  h = Math.imul(h ^ (h >>> 13), 1274126177)
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+/** Frame index of an animation at time t without allocating (falls back to frameAt for held frames). */
+function frameIndex(anim: Anim, t: number) {
+  if (anim.hold) return frameAt(anim, t)
+  const n = anim.frames.length
+  const tick = Math.floor(Math.max(0, t) * anim.fps)
+  return anim.loop ? tick % n : Math.min(n - 1, tick)
+}
+const pick = (anim: Anim, t: number) => anim.frames[frameIndex(anim, t)]
+const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n)
+const easeOut = (t: number) => 1 - (1 - clamp01(t)) ** 3
 
 /** The tight box around a lettering layer (cached). */
 const letterBoxes = new WeakMap<Raster, { r: Raster; x: number; y: number }>()
@@ -66,7 +98,82 @@ function footprint(r: Raster) {
   return found
 }
 
-/** Sprites carrying lettering (¥, 至急) never mirror. */
+/** A one-pixel gold outline around a sprite (one extra pixel of padding on every side), cached per frame. */
+const outlines = new WeakMap<Raster, Raster>()
+function goldOutline(src: Raster) {
+  let out = outlines.get(src)
+  if (out) return out
+  out = new Raster(src.w + 2, src.h + 2)
+  for (let y = -1; y <= src.h; y++)
+    for (let x = -1; x <= src.w; x++)
+      if (
+        !src.get(x, y) &&
+        (src.get(x - 1, y) || src.get(x + 1, y) || src.get(x, y - 1) || src.get(x, y + 1) || src.get(x - 1, y - 1))
+      )
+        out.set(x + 1, y + 1, R.yellow[1])
+  outlines.set(src, out)
+  return out
+}
+
+/** A text/bubble canvas drawn at `res`× resolution and shown at 1/res of its pixel size. */
+interface Label extends HTMLCanvasElement {
+  res: number
+}
+
+/** Damage number styles: label scale relative to the 20 px glyph atlas, fill colour. */
+const NUMBER_STYLES = {
+  other: { scale: 0.5, color: '#b9b3c9' },
+  mine: { scale: 0.62, color: '#ffffff' },
+  strong: { scale: 0.78, color: '#ffcf4d' },
+  crit: { scale: 0.9, color: '#ff6a3d' },
+  both: { scale: 1.12, color: '#ff8a2a' }
+} as const
+type NumberStyle = keyof typeof NUMBER_STYLES
+const NUMBER_FONT = '800 20px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif'
+
+interface Ent {
+  /** Sort key (feet). */
+  y: number
+  /** ENEMIES index. */
+  kind: number
+  def?: EnemyDef
+  player?: ViewPlayer
+  id: number
+  x: number
+  yy: number
+  hp: number
+  flash: number
+  flags: number
+  tagLift: number
+  state?: EnemyState
+}
+
+interface EnemyState {
+  born: number
+  seen: number
+  windup: number
+  blink: boolean
+}
+
+/** Scratch view of the shot being drawn. */
+interface ShotView {
+  i: number
+  x: number
+  y: number
+  r: number
+  angle: number
+  /** Remaining life 0..1 */
+  life: number
+  /** Elapsed life 0..1 */
+  age: number
+  v: number
+  ox: number
+  oy: number
+  evolved: boolean
+}
+
+const BOSS_AURA = '#a02850'
+const GOLD = '#ffd75e'
 
 /** Canvas renderer: generated pixel art for everything in the world; labels are rasterised once and reused. */
 export class Renderer {
@@ -74,11 +181,19 @@ export class Renderer {
   private readonly sprites = new Map<string, HTMLCanvasElement>()
   private readonly shown = new Map<number, { x: number; y: number; seen: number }>()
   private readonly shownPlayers = new Map<string, { x: number; y: number }>()
+  private readonly states = new Map<number, EnemyState>()
+  /** Pending life bars: x, y, width, filled width, height, colour (0 normal, 1 boss, 2 elite). */
+  private readonly bars: number[] = []
+  private readonly numbers = new Map<string, Label>()
   private frame = 0
   private width = 1
   private height = 1
   private scale = 1
+  /** Where the world is drawn from this frame (the focus plus screen shake). */
   private camera = { x: 0, y: 0 }
+  /** The followed player's position without shake. */
+  private focus = { x: 0, y: 0 }
+  private readonly shake = { x: 0, y: 0 }
   /** Renderer clock: animations keep breathing even while the game is paused. */
   private clock = 0
   private wonAt?: number
@@ -89,10 +204,42 @@ export class Renderer {
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
+  /** Particles, trauma and flashes driven by the fx events of the views drawn so far. */
+  readonly fx = new Effects()
+  private readonly fxView = { local: -1, px: 0, py: 0, cx: 0, cy: 0, hw: 0, hh: 0 }
+  private readonly measure =
+    typeof document === 'undefined' ? undefined : document.createElement('canvas').getContext('2d')
+  private readonly ents: Ent[] = []
+  private entCount = 0
+  private readonly winders: Ent[] = []
+  private readonly enemySheets: (Sheet | undefined)[] = []
+  private readonly evo = new Int8Array(16 * 64)
+  private readonly shot: ShotView = {
+    i: 0,
+    x: 0,
+    y: 0,
+    r: 0,
+    angle: 0,
+    life: 1,
+    age: 0,
+    v: 0,
+    ox: 0,
+    oy: 0,
+    evolved: false
+  }
+  private readonly beamWarm = new Set<number>()
+  private halfW = 0
+  private halfH = 0
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!
     this.resize()
+    if (typeof window.matchMedia === 'function') {
+      const query = window.matchMedia('(prefers-reduced-motion: reduce)')
+      const apply = () => (this.fx.motion = query.matches ? 0.25 : 1)
+      apply()
+      query.addEventListener?.('change', apply)
+    }
   }
 
   resize() {
@@ -118,53 +265,144 @@ export class Renderer {
     return canvas
   }
 
+  /** A canvas painted at 2× resolution (drawn with logical size w×h). */
+  private hires(
+    key: string,
+    w: number,
+    h: number,
+    draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
+  ) {
+    let canvas = this.sprites.get(key) as Label | undefined
+    if (!canvas) {
+      canvas = document.createElement('canvas') as Label
+      canvas.res = 2
+      canvas.width = Math.ceil(w * 2)
+      canvas.height = Math.ceil(h * 2)
+      const g = canvas.getContext('2d')!
+      g.scale(2, 2)
+      draw(g, w, h)
+      if (this.sprites.size > 600) this.sprites.clear()
+      this.sprites.set(key, canvas)
+    }
+    return canvas
+  }
+
   private label(text: string, size: number, color: string, quiet = false) {
     const px = Math.round(size)
+    return this.hires(`l:${text}:${px}:${color}:${quiet}`, px * (text.length + 1.2), px * 1.6, (ctx, w, h) => {
+      ctx.font = `700 ${px}px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = quiet ? Math.max(1.5, px / 5) : Math.max(2, px / 4)
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = quiet ? 'rgba(15,12,20,.55)' : 'rgba(15,12,20,.85)'
+      ctx.strokeText(text, w / 2, h / 2)
+      ctx.fillStyle = color
+      ctx.fillText(text, w / 2, h / 2)
+    })
+  }
+
+  /** A whole damage number as one sprite; a small FIFO cache keeps the number of canvases bounded. */
+  private numberSprite(text: string, style: NumberStyle) {
+    const key = `${style}:${text}`
+    let canvas = this.numbers.get(key)
+    if (canvas) return canvas
+    const pad = 3
+    const measure = this.measure!
+    measure.font = NUMBER_FONT
+    canvas = this.hires(`n:${key}`, Math.ceil(measure.measureText(text).width + pad * 2), 32, (ctx, w, h) => {
+      ctx.font = NUMBER_FONT
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 5
+      ctx.strokeStyle = 'rgba(15,12,20,.9)'
+      ctx.strokeText(text, w / 2, h / 2)
+      ctx.fillStyle = NUMBER_STYLES[style].color
+      ctx.fillText(text, w / 2, h / 2)
+    })
+    // The number sprites live in their own map (not in the shared sprite cache, which clears wholesale).
+    this.sprites.delete(`n:${key}`)
+    if (this.numbers.size >= 240) for (const old of [...this.numbers.keys()].slice(0, 80)) this.numbers.delete(old)
+    this.numbers.set(key, canvas as Label)
+    return canvas
+  }
+
+  /** Draws a damage number centred at (x, y). */
+  private number(text: string, style: NumberStyle, x: number, y: number, scale: number, alpha: number) {
+    this.blit(this.numberSprite(text, style), x, y, 0, alpha, NUMBER_STYLES[style].scale * scale)
+  }
+
+  /** A soft radial blob of one colour (cached), for glows, halos and auras. */
+  private blob(color: string) {
     return this.sprite(
-      `l:${text}:${px}:${color}:${quiet}`,
+      `blob:${color}`,
       (ctx) => {
-        ctx.font = `700 ${px}px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.lineWidth = quiet ? Math.max(1.5, px / 5) : Math.max(2, px / 4)
-        ctx.strokeStyle = quiet ? 'rgba(15,12,20,.55)' : 'rgba(15,12,20,.85)'
-        ctx.strokeText(text, ctx.canvas.width / 2, ctx.canvas.height / 2)
-        ctx.fillStyle = color
-        ctx.fillText(text, ctx.canvas.width / 2, ctx.canvas.height / 2)
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32)
+        grad.addColorStop(0, color)
+        grad.addColorStop(0.35, color)
+        grad.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.globalAlpha = 1
+        ctx.fillStyle = grad
+        ctx.fillRect(0, 0, 64, 64)
       },
-      px * (text.length + 1.2),
-      px * 1.6
+      64,
+      64
     )
   }
 
-  private blit(image: HTMLCanvasElement, x: number, y: number, angle = 0, alpha = 1) {
+  private glowAt(x: number, y: number, radius: number, color: string, alpha: number, add = true) {
     const ctx = this.ctx
-    if (!angle && alpha === 1) return ctx.drawImage(image, x - image.width / 2, y - image.height / 2)
+    ctx.globalAlpha = alpha
+    if (add) ctx.globalCompositeOperation = 'lighter'
+    ctx.drawImage(this.blob(color), x - radius, y - radius, radius * 2, radius * 2)
+    if (add) ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 1
+  }
+
+  private blit(image: HTMLCanvasElement, x: number, y: number, angle = 0, alpha = 1, scale = 1) {
+    const ctx = this.ctx
+    const res = (image as Label).res || 1
+    const w = (image.width / res) * scale
+    const h = (image.height / res) * scale
+    if (!angle) {
+      ctx.globalAlpha = alpha
+      ctx.drawImage(image, x - w / 2, y - h / 2, w, h)
+      ctx.globalAlpha = 1
+      return
+    }
     ctx.save()
     ctx.globalAlpha = alpha
     ctx.translate(x, y)
     ctx.rotate(angle)
-    ctx.drawImage(image, -image.width / 2, -image.height / 2)
+    ctx.drawImage(image, -w / 2, -h / 2, w, h)
     ctx.restore()
   }
 
   /**
    * Draws a pixel-art frame with its pivot (px, py) at world (x, y): device-pixel snapped, pre-upscaled by
-   * k = ceil(scale) and smoothed down to the final size ("sharp bilinear"). Leaves an identity transform.
+   * k = ceil(scale) and smoothed down to the final size ("sharp bilinear"). `sx`/`sy` stretch it around the pivot.
+   * Leaves an identity transform.
    */
-  private art(r: Raster, x: number, y: number, px: number, py: number, flip = false, alpha = 1) {
+  private art(r: Raster, x: number, y: number, px: number, py: number, flip = false, alpha = 1, sx = 1, sy = sx) {
     const s = this.scale
-    const k = Math.max(1, Math.ceil(s - 0.01))
-    const dw = r.w * s
-    const dh = r.h * s
+    const k = Math.min(4, Math.max(1, Math.ceil(s * Math.max(sx, sy) - 0.01)))
+    const dw = r.w * s * sx
+    const dh = r.h * s * sy
     const ax = Math.round(this.canvas.width / 2 + (x - this.camera.x) * s)
-    const left = Math.round(ax - (flip ? r.w - px : px) * s)
-    const top = Math.round(this.canvas.height / 2 + (y - this.camera.y) * s - py * s)
+    const left = Math.round(ax - (flip ? r.w - px : px) * s * sx)
+    const top = Math.round(this.canvas.height / 2 + (y - this.camera.y) * s - py * s * sy)
     const ctx = this.ctx
     ctx.globalAlpha = alpha
     ctx.setTransform(flip ? -1 : 1, 0, 0, 1, flip ? left + dw : left, top)
     ctx.drawImage(canvasOf(r, k), 0, 0, dw, dh)
     ctx.globalAlpha = 1
+  }
+
+  /** A 32×32-style weapon frame centred on (x, y), optionally evolved (gold trim). */
+  private centred(frame: Raster, x: number, y: number, evolved: boolean, alpha = 1, scale = 1, flip = false) {
+    const f = evolved ? evolve(frame) : frame
+    this.art(f, x, y, f.w / 2, f.h / 2, flip, alpha, scale)
   }
 
   private world() {
@@ -275,28 +513,135 @@ export class Renderer {
     return entry
   }
 
-  private enemy(def: (typeof ENEMIES)[number], id: number, pos: { x: number; y: number }, hp: number, flash: number) {
+  private enemySheet(index: number) {
+    return (this.enemySheets[index] ??= sheet(`enemy:${ENEMIES[index].id}`))
+  }
+
+  /** The "!" speech bubble above a winding-up enemy (cached). */
+  private bang() {
+    return this.hires('bang', 14, 18, (ctx, w) => {
+      ctx.fillStyle = '#15101c'
+      ctx.fillRect(1, 1, w - 2, 13)
+      ctx.fillRect(0, 2, w, 11)
+      ctx.fillRect(4, 14, 4, 3)
+      ctx.fillStyle = '#fff6f0'
+      ctx.fillRect(2, 2, w - 4, 11)
+      ctx.fillRect(1, 3, w - 2, 9)
+      ctx.fillRect(5, 13, 2, 3)
+      ctx.fillStyle = '#e8302e'
+      ctx.fillRect(6, 3, 2, 6)
+      ctx.fillRect(6, 10, 2, 2)
+    })
+  }
+
+  private enemy(e: Ent) {
+    const def = e.def!
     const ctx = this.ctx
+    this.world()
+    const st = e.state!
     const boss = def.behavior === 'boss'
-    const feet = pos.y + def.radius * 0.8
-    const art = sheet(`enemy:${def.id}`)
-    this.shadow(pos.x, feet, def.radius * 0.9)
-    const anim = flash ? art.flash : art.move
-    const frame = anim.frames[frameAt(anim, this.clock + (id % 7) * 0.13)]
+    const elite = (e.flags & ENEMY_FLAG.elite) !== 0
+    const windup = (e.flags & ENEMY_FLAG.windup) !== 0
+    const blink = (e.flags & ENEMY_FLAG.blink) !== 0
+    const ghost = (e.flags & ENEMY_FLAG.ghost) !== 0
+    const scale = elite ? 1.25 : 1
+    const id = e.id
+    const spawn = clamp01((this.clock - st.born) / 0.25)
+    let x = e.x
+    let y = e.yy
+    let alpha = 0.25 + 0.75 * easeOut(spawn)
+    let sx = scale
+    let sy = scale
+    // Spawn-in: rises out of the ground a few px while fading in.
+    y += (1 - easeOut(spawn)) * 8
+    if (ghost) {
+      x += Math.sin(this.clock * 2.2 + id) * 2.4
+      y += Math.sin(this.clock * 1.7 + id * 1.3) * 1.6
+      alpha *= 0.46 + 0.06 * Math.sin(this.clock * 3 + id)
+    }
+    if (blink) {
+      alpha *= 0.25 + 0.4 * Math.abs(Math.sin(this.clock * 34 + id))
+      sx *= 0.9
+      sy *= 1.06
+    }
+    if (windup) {
+      // Coiling up before the dash: a nervous shiver.
+      const t = Math.floor(this.clock * 40)
+      x += (hash(t, id) - 0.5) * 3
+      y += (hash(t, id + 77) - 0.5) * 1.6
+    }
+    const feet = y + def.radius * scale * 0.8
+    const art = this.enemySheet(e.kind)
+    if (boss) {
+      // An ominous pulsing aura with a few dark motes rising off the body.
+      const r = def.radius * 3.2
+      this.glowAt(x, feet - def.radius * 0.8, r, BOSS_AURA, 0.2 + 0.07 * Math.sin(this.clock * 2.2), false)
+      ctx.fillStyle = 'rgba(70,20,60,.55)'
+      for (let j = 0; j < 6; j++) {
+        const rise = (this.clock * 22 + j * 17) % 72
+        ctx.globalAlpha = Math.min(1, (72 - rise) / 30)
+        ctx.fillRect(Math.round(x + (hash(j, id) - 0.5) * def.radius * 2.6), Math.round(feet - rise - 4), 2, 2)
+      }
+      ctx.globalAlpha = 1
+    }
+    if (elite) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.clock * 5 + id)
+      this.glowAt(x, feet - def.radius * 0.5, def.radius * 2.6, GOLD, 0.25 + 0.22 * pulse)
+    }
+    const anim = e.flash ? art.flash : art.move
+    const frame = anim.frames[frameIndex(anim, this.clock + (id % 7) * 0.13)]
     const big = frame.w > 64
-    this.art(frame, pos.x, feet, big ? 64 : 32, big ? 120 : 58, pos.x > this.camera.x && !NO_FLIP.has(def.id))
+    const flip = x > this.focus.x && !NO_FLIP.has(def.id)
+    const px = big ? 64 : 32
+    const py = big ? 120 : 58
+    if (elite) {
+      const out = goldOutline(frame)
+      this.art(out, x, feet, px + 1, py + 1, flip, (0.55 + 0.45 * Math.sin(this.clock * 6 + id) ** 2) * alpha, sx, sy)
+    }
+    this.art(frame, x, feet, px, py, flip, alpha, sx, sy)
     this.world()
     // Regular enemies get a small, quiet name tag; life-event bosses keep a big one.
-    if (boss) this.blit(this.label(def.name, 16, '#ffe08a'), pos.x, feet + 14)
-    else this.blit(this.label(def.name, 8, '#f4ecff', true), pos.x, feet + 7, 0, 0.75)
-    if (boss || hp < 100) {
-      const w = def.radius * 2
-      const top = feet - (boss ? 108 : 50)
-      ctx.fillStyle = 'rgba(0,0,0,.6)'
-      ctx.fillRect(pos.x - w / 2, top, w, boss ? 6 : 3)
-      ctx.fillStyle = boss ? '#ff5d73' : '#ffb3b3'
-      ctx.fillRect(pos.x - w / 2, top, (w * hp) / 100, boss ? 6 : 3)
+    if (boss) this.blit(this.label(def.name, 16, '#ffe08a'), x, feet + 14)
+    else if (alpha > 0.5 && (this.entCount < 60 || Math.abs(x - this.focus.x) + Math.abs(feet - this.focus.y) < 260))
+      this.blit(this.label(def.name, 8, '#f4ecff', true), x, feet + 7, 0, 0.75)
+    const top = feet - (boss ? 108 : 50 * scale)
+    const bar = this.bars
+    if (windup) {
+      // "!" pops over the head (bigger on bosses).
+      const pop = 1 + 0.55 * Math.max(0, 1 - (this.clock - st.windup) / 0.14)
+      const bob = Math.sin(this.clock * 30) * 1
+      this.blit(this.bang(), x, top - (boss ? 18 : 8) + bob, 0, 1, (boss ? 1.5 : 1) * pop)
     }
+    if (elite) {
+      const w = def.radius * 2 * scale
+      const wob = Math.sin(this.clock * 5 + id) * 1.5
+      this.blit(this.label('強', 11, GOLD), x, top - 12 + wob, 0, 1, 1 + 0.06 * Math.sin(this.clock * 6))
+      bar.push(x - w / 2, top, w, (w * e.hp) / 100, 3, 2)
+    } else if (boss || e.hp < 100) {
+      // Life bars are collected and drawn together after the crowd.
+      const w = def.radius * 2
+      bar.push(x - w / 2, top, w, (w * e.hp) / 100, boss ? 6 : 3, boss ? 1 : 0)
+    }
+  }
+
+  /** All pending enemy life bars in three fills. */
+  private lifeBars() {
+    const bars = this.bars
+    if (!bars.length) return
+    const ctx = this.ctx
+    ctx.fillStyle = 'rgba(0,0,0,.6)'
+    ctx.beginPath()
+    for (let i = 0; i < bars.length; i += 6) ctx.rect(bars[i], bars[i + 1], bars[i + 2], bars[i + 4])
+    ctx.fill()
+    const colors = ['#ffb3b3', '#ff5d73', GOLD]
+    for (let c = 0; c < 3; c++) {
+      ctx.fillStyle = colors[c]
+      ctx.beginPath()
+      for (let i = 0; i < bars.length; i += 6)
+        if (bars[i + 5] === c) ctx.rect(bars[i], bars[i + 1], bars[i + 3], bars[i + 4])
+      ctx.fill()
+    }
+    bars.length = 0
   }
 
   private player(
@@ -414,17 +759,837 @@ export class Renderer {
     ctx.globalAlpha = 1
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Weapons.
+
+  /** Loads shot `i` of a view's flat array into the scratch record. */
+  private load(view: View, origins: { x: number; y: number }[], i: number) {
+    const s = view.shots
+    const sh = this.shot
+    const ownerIndex = s[i + 6]
+    sh.i = i
+    sh.x = s[i + 1]
+    sh.y = s[i + 2]
+    sh.r = s[i + 3]
+    sh.angle = s[i + 4] / 100
+    sh.life = s[i + 5] / 100
+    sh.age = 1 - sh.life
+    sh.v = s[i + 7]
+    const origin = origins[ownerIndex]
+    sh.ox = origin ? origin.x : sh.x
+    sh.oy = origin ? origin.y : sh.y
+    const key = ownerIndex * 64 + s[i]
+    let known = key < this.evo.length ? this.evo[key] : 0
+    if (!known) {
+      known = isEvolvedView(view.players[ownerIndex], WEAPONS[s[i]].id) ? 2 : 1
+      if (key < this.evo.length) this.evo[key] = known
+    }
+    sh.evolved = known === 2
+    return sh
+  }
+
+  /** Ground-level weapon effects: auras, zones, shockwave rings, rings of song and drifting perfume. */
+  private groundShot(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const ctx = this.ctx
+    const fx = sheet('fx')
+    const { x, y, r: radius, evolved, i } = sh
+    switch (def.behavior) {
+      case 'aura':
+      case 'zone': {
+        const pos = def.behavior === 'aura' ? { x: sh.ox, y: sh.oy } : { x, y }
+        if (def.behavior === 'zone') {
+          // 娯楽: an arcade play-mat with a controller and floating pixels.
+          const mat = playMat(radius)
+          this.art(mat, pos.x, pos.y, mat.w / 2, mat.h / 2, false, 0.4)
+          this.art(fx.controller.frames[0], pos.x, pos.y, 9, 6)
+          fx.pixels.frames.forEach((p, j) => {
+            const a = this.clock * 1.3 + j * 1.7 + i
+            this.art(
+              p,
+              pos.x + Math.cos(a) * radius * 0.6,
+              pos.y + Math.sin(a * 1.3) * radius * 0.5 - ((this.clock * 20 + j * 13) % 20),
+              1,
+              1
+            )
+          })
+        } else {
+          // 毒親: a faint toxic ground ring with wisps and skull puffs circling over it.
+          this.world()
+          ctx.fillStyle = 'rgba(122,98,161,0.24)'
+          ctx.strokeStyle = 'rgba(173,143,211,0.6)'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.ellipse(pos.x, pos.y + 8, radius, radius * 0.92, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+          for (let j = 0; j < 12; j++) {
+            // Two swirling rings of wisps and skull puffs at different speeds.
+            const inner = j % 2
+            const a = this.clock * (inner ? -1.8 : 1.3) + (j * Math.PI) / 6
+            const sprite = j % 4 === 3 ? fx.skull.frames[0] : pick(fx.wisp, this.clock + j * 0.2)
+            this.art(
+              sprite,
+              pos.x + Math.cos(a) * radius * (inner ? 0.45 : 0.8),
+              pos.y + 8 + Math.sin(a) * radius * (inner ? 0.4 : 0.72),
+              sprite.w / 2,
+              sprite.h / 2,
+              false,
+              0.85
+            )
+          }
+          if (evolved)
+            for (let j = 0; j < 4; j++)
+              this.art(
+                pick(fx.star, this.clock + j),
+                pos.x + Math.cos(j * 1.6 + this.clock) * radius * 0.4,
+                pos.y + Math.sin(j * 1.6 + this.clock) * radius * 0.4,
+                4,
+                4
+              )
+        }
+        break
+      }
+      case 'slam': {
+        // 筋トレ: the shockwave spreads over the floor as a cracked ring with dust puffs, at its real radius.
+        const a = sh.age
+        const grow = easeOut(a * 3.2)
+        const ring = radius * (0.3 + 0.7 * grow)
+        const fade = clamp01(sh.life * 2.2)
+        this.world()
+        ctx.fillStyle = `rgba(255,236,190,${0.13 * fade})`
+        ctx.beginPath()
+        ctx.arc(x, y, ring, 0, TAU)
+        ctx.fill()
+        ctx.strokeStyle = `rgba(255,255,255,${0.7 * fade})`
+        ctx.lineWidth = 4 * (1 - a * 0.6)
+        ctx.beginPath()
+        ctx.arc(x, y, ring, 0, TAU)
+        ctx.stroke()
+        if (evolved) {
+          ctx.strokeStyle = `rgba(255,215,94,${0.6 * fade})`
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.arc(x, y, ring * 0.82, 0, TAU)
+          ctx.stroke()
+        }
+        const cracks = Math.max(6, Math.min(14, Math.round(ring / 11)))
+        const crack = fx.crack.frames[a > 0.35 ? 1 : 0]
+        for (let j = 0; j < cracks; j++) {
+          const ang = (j / cracks) * TAU + 0.25
+          this.art(crack, x + Math.cos(ang) * ring * 0.96, y + Math.sin(ang) * ring * 0.96, 24, 12, j % 2 === 1, fade)
+        }
+        const dust = fx.dust.frames
+        for (let j = 0; j < 10; j++) {
+          const ang = (j / 10) * TAU + 0.6
+          const d = dust[Math.min(dust.length - 1, Math.floor(a * 3.4 + (j % 3) * 0.2))]
+          this.art(d, x + Math.cos(ang) * ring, y + Math.sin(ang) * ring - a * 14, 8, 11, false, fade * 0.9, 1.5)
+        }
+        break
+      }
+      case 'nova': {
+        // カラオケ: a faint soundwave ring under the song.
+        const fade = clamp01(sh.life * 2.5)
+        this.world()
+        ctx.strokeStyle = evolved ? `rgba(255,215,94,${0.32 * fade})` : `rgba(255,170,215,${0.3 * fade})`
+        ctx.lineWidth = 4
+        ctx.beginPath()
+        ctx.arc(sh.ox, sh.oy, radius, 0, TAU)
+        ctx.stroke()
+        ctx.lineWidth = 1.5
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 * fade})`
+        ctx.beginPath()
+        ctx.arc(sh.ox, sh.oy, Math.max(2, radius - 6), 0, TAU)
+        ctx.stroke()
+        break
+      }
+      case 'trail': {
+        // 香水: a cloud of three drifting puffs that thins out as it lingers.
+        const a = sh.age
+        const fade = clamp01(a * 7) * clamp01(sh.life * 2.5) * 0.82
+        const puff = Math.max(1, Math.min(1.6, radius / 26))
+        const drift = a * 10
+        for (let j = 0; j < 3; j++) {
+          const ang = this.clock * 0.7 + i * 1.3 + (j * TAU) / 3
+          const cx = x + Math.cos(ang) * radius * 0.42 + Math.sin(this.clock * 1.8 + i + j) * 2
+          const cy = y + Math.sin(ang) * radius * 0.34 - drift
+          const frame = fx.perfume.frames[(j + Math.floor(this.clock * 3 + i)) % 3]
+          this.art(
+            evolved ? evolve(frame) : frame,
+            cx,
+            cy,
+            16,
+            16,
+            false,
+            fade,
+            puff * (0.9 + 0.2 * Math.sin(this.clock * 2 + j))
+          )
+        }
+        if (evolved && this.clock % 0.5 < 0.25)
+          this.art(
+            pick(fx.heal, this.clock * 2 + i),
+            x + Math.sin(this.clock * 3 + i) * 8,
+            y - 14 - drift,
+            6,
+            6,
+            false,
+            fade
+          )
+        break
+      }
+      case 'mine': {
+        // 貯金: the piggy bank on the floor, a hint of a pulse once armed.
+        const art = sheet('weapon:w_savings')
+        const armed = sh.v === 1
+        const frame = pick(armed ? art.armed : art.fly, this.clock + i * 0.2)
+        this.shadow(x, y + 10, 11, 0.25)
+        const pulse = armed ? 1 + 0.07 * Math.sin(this.clock * 12 + i) : 1
+        this.art(evolved ? evolve(frame) : frame, x, y + 4, 16, 22, false, 1, pulse, pulse)
+        break
+      }
+      default:
+    }
+  }
+
+  /** Streaks of fading afterimages behind a fast projectile heading (hx, hy). */
+  /** Afterimages left to draw this frame (fast projectiles only leave trails while the screen is not flooded). */
+  private trailBudget = 0
+
+  private afterimages(
+    frame: Raster,
+    x: number,
+    y: number,
+    hx: number,
+    hy: number,
+    step: number,
+    evolved: boolean,
+    n = 3
+  ) {
+    n = Math.min(n, this.trailBudget)
+    this.trailBudget -= n
+    for (let k = n; k >= 1; k--)
+      this.centred(frame, x - hx * step * k, y - hy * step * k, evolved, 0.32 - k * 0.07, 1 - k * 0.04)
+  }
+
+  /** A jagged lightning bolt between two points, flickering as it lives. */
+  private bolt(x0: number, y0: number, x1: number, y1: number, i: number, alpha: number, evolved: boolean) {
+    const ctx = this.ctx
+    const dx = x1 - x0
+    const dy = y1 - y0
+    const len = Math.hypot(dx, dy) || 1
+    const n = Math.max(2, Math.floor(len / 15))
+    const nx = -dy / len
+    const ny = dx / len
+    const tick = Math.floor(this.clock * 24)
+    this.world()
+    ctx.lineJoin = 'miter'
+    ctx.lineCap = 'butt'
+    const stroke = (color: string, width: number, jitter: number, seed: number) => {
+      ctx.strokeStyle = color
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(Math.round(x0), Math.round(y0))
+      for (let j = 1; j < n; j++) {
+        const t = j / n
+        const off = (hash(i * 31 + j + seed, tick) - 0.5) * jitter
+        ctx.lineTo(Math.round(x0 + dx * t + nx * off), Math.round(y0 + dy * t + ny * off))
+      }
+      ctx.lineTo(Math.round(x1), Math.round(y1))
+      ctx.stroke()
+    }
+    ctx.globalAlpha = alpha
+    if (evolved) {
+      stroke('rgba(255,209,102,.35)', 7, 16, 0)
+      stroke('#ffd166', 3, 16, 0)
+      stroke('rgba(255,255,255,.7)', 1, 22, 9)
+    } else stroke('rgba(76,201,240,.38)', 6, 14, 0)
+    if (!evolved) stroke('#4cc9f0', 3, 14, 0)
+    stroke('#ffffff', 1.5, 14, 0)
+    ctx.globalAlpha = 1
+  }
+
+  /** Weapon sprites and bolts, above the characters. */
+  private topShot(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const ctx = this.ctx
+    const fx = sheet('fx')
+    const { x, y, r: radius, angle, life, evolved, i } = sh
+    const age = sh.age
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    const trails = this.trailBudget > 0
+    switch (def.behavior) {
+      case 'aura':
+      case 'zone':
+      case 'trail':
+      case 'mine':
+      case 'none':
+        break
+      case 'orbit': {
+        // Re-derive the orbit around the eased owner so it never lags behind them.
+        const owner = view.players[view.shots[i + 6]]
+        const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
+        const ox = sh.ox + cos * orbit
+        const oy = sh.oy + sin * orbit
+        const art = sheet(`weapon:${def.id}`)
+        const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][(i / STRIDE.shots) % 3] : art.fly
+        this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4))
+        break
+      }
+      case 'whip':
+      case 'flail': {
+        // 美容: a crisp white-pink crescent slash with stars; 頼りない親: motion lines with flailing hands
+        // and sweat — both laid exactly along the real whip line (length = radius, at the shot's angle).
+        const kind = def.behavior === 'whip' ? 'slash' : 'flail'
+        const dir = ((Math.round((angle / TAU) * SWING_DIRS) % SWING_DIRS) + SWING_DIRS) % SWING_DIRS
+        const smear = swing(radius, dir, kind)
+        const alpha = Math.min(1, life * 3)
+        this.art(evolved ? evolve(smear) : smear, x, y, smear.w / 2, smear.h / 2, false, alpha)
+        const n = kind === 'slash' ? 5 : 4
+        for (let j = 0; j < n; j++) {
+          const t = (j / (n - 1)) * 1.6 - 0.8
+          const bulge = (1 - t * t) * 14
+          const px = x + cos * t * radius + sin * bulge
+          const py = y + sin * t * radius - cos * bulge
+          if (kind === 'slash') this.centred(pick(fx.star, this.clock * 2 + j), px, py, evolved, alpha)
+          else {
+            this.centred(pick(fx.hand, this.clock * 4 + j), px, py, evolved, alpha)
+            if (j % 2) this.centred(fx.sweat.frames[0], px + 7, py - 9, evolved, alpha)
+          }
+        }
+        break
+      }
+      case 'strike': {
+        // 投資: a chart-arrow bolt from above and an impact burst.
+        const f = pick(fx.bolt, this.clock * 2)
+        this.art(evolved ? evolve(f) : f, x, y, 12, 118, false, Math.min(1, life * 2))
+        this.art(pick(fx.burst, (1 - life) * 0.6), x, y, 14, 14, false, life)
+        break
+      }
+      case 'rain': {
+        // お金持ち: a bundle of bills falls, then coins burst out on impact.
+        const fall = Math.max(0, life - 0.35) / 0.65
+        if (fall > 0) this.centred(fx.bills.frames[0], x, y - fall * 240, evolved)
+        else this.art(pick(fx.coins, (0.35 - life) * 3), x, y + 4, 14, 14, false, Math.min(1, life * 3))
+        break
+      }
+      case 'chain': {
+        // SNS: a lightning link from the previous node to this one, "like" bubbles popping on the nodes.
+        const ageSec = age * 0.25
+        const start = sh.v * 0.04
+        if (ageSec < start) break
+        const reach = clamp01((ageSec - start) / 0.05)
+        const x0 = x - cos * radius
+        const y0 = y - sin * radius
+        const alpha = clamp01(life * 3)
+        this.bolt(x0, y0, x0 + (x - x0) * reach, y0 + (y - y0) * reach, i, alpha, evolved)
+        if (reach >= 1) {
+          const since = ageSec - start - 0.05
+          const frame = fx.like.frames[since < 0.04 ? 0 : since < 0.09 ? 1 : 2]
+          this.centred(frame, x, y - 12 - clamp01(since * 6) * 6, evolved, alpha, 1.25)
+          this.art(pick(fx.spark, this.clock * 3 + sh.v), x, y, 6, 6, false, alpha)
+        }
+        if (sh.v === 0) this.art(pick(fx.spark, this.clock * 3), x0, y0, 6, 6, false, alpha)
+        break
+      }
+      case 'pet': {
+        // ペット: the dog runs at its prey and snaps when it arrives; mirrored by where it is heading.
+        const art = sheet('weapon:w_pet')
+        const biting = sh.v === 1
+        const frame = pick(biting ? art.bite : art.fly, this.clock * (biting ? 1 : 1) + i * 0.13)
+        const flip = cos < 0
+        const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
+        this.shadow(x, y + 7, 10, 0.24)
+        const f = evolved ? evolve(frame) : frame
+        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4))
+        if (biting) {
+          const sp = pick(fx.spark, this.clock * 2 + i)
+          this.art(sp, x + cos * 14, y + sin * 6 - 6, 6, 6, false, 0.9)
+        }
+        if (evolved)
+          this.art(
+            pick(fx.star, this.clock * 2 + i),
+            x + Math.cos(this.clock * 6 + i) * 10,
+            y - 14 + Math.sin(this.clock * 6 + i) * 4,
+            4,
+            4
+          )
+        break
+      }
+      case 'slam': {
+        // The dumbbell is hoisted over the owner's head and slammed down at their feet, then fades.
+        const art = sheet('weapon:w_muscle')
+        const fall = clamp01(age / 0.2)
+        const drop = fall * fall
+        const dy = -58 + drop * 70
+        const squash = age > 0.2 && age < 0.36 ? 0.8 + 0.2 * ((age - 0.2) / 0.16) : 1
+        const frame = art.fly.frames[age < 0.2 ? 0 : 1]
+        this.art(
+          evolved ? evolve(frame) : frame,
+          x,
+          y + dy,
+          16,
+          24,
+          false,
+          clamp01(life * 3),
+          1 / Math.sqrt(squash),
+          squash
+        )
+        break
+      }
+      case 'beam': {
+        // 読書: the knowledge beam along the facing direction, an open book at the owner's end.
+        const dir = ((Math.round((angle / TAU) * BEAM_DIRS) % BEAM_DIRS) + BEAM_DIRS) % BEAM_DIRS
+        const raster = beam(radius, dir)
+        this.warmBeam(radius)
+        const alpha = clamp01(age * 9) * clamp01(life * 4) * (0.88 + 0.12 * Math.sin(this.clock * 55 + i))
+        const cx = sh.ox + cos * radius
+        const cy = sh.oy + sin * radius
+        if (evolved) {
+          this.world()
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.strokeStyle = `rgba(255,215,94,${0.22 * alpha})`
+          ctx.lineWidth = 26
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(sh.ox, sh.oy)
+          ctx.lineTo(sh.ox + cos * radius * 2, sh.oy + sin * radius * 2)
+          ctx.stroke()
+          ctx.lineCap = 'butt'
+          ctx.globalCompositeOperation = 'source-over'
+        }
+        this.art(raster, cx, cy, raster.w / 2, raster.h / 2, false, alpha)
+        const book = pick(sheet('weapon:w_reading').fly, this.clock + i * 0.1)
+        this.centred(book, sh.ox + cos * 12, sh.oy + sin * 12 - 6, evolved, clamp01(life * 5))
+        break
+      }
+      case 'barrage': {
+        // 残業: staples in one of 16 directions with a small streak.
+        const art = sheet('weapon:w_overtime')
+        const d = ((Math.round((angle / TAU) * STAPLE_DIRS) % STAPLE_DIRS) + STAPLE_DIRS) % STAPLE_DIRS
+        const frame = art.fly.frames[d]
+        this.centred(frame, x, y, evolved)
+        break
+      }
+      case 'boomerang': {
+        // 結婚指輪: a spinning ring with a short afterimage along its way out and back.
+        const art = sheet('weapon:w_ring')
+        const frame = pick(art.fly, this.clock + i * 0.1)
+        const dx = x - sh.ox
+        const dy = y - sh.oy
+        const d = Math.hypot(dx, dy)
+        if (d > 6 && trails) {
+          const way = life > 0.58 ? 1 : -1
+          this.afterimages(frame, x, y, (dx / d) * way, (dy / d) * way, 9, evolved, 3)
+        }
+        this.centred(frame, x, y, evolved)
+        if (evolved)
+          this.art(
+            pick(fx.star, this.clock * 2 + i),
+            x + Math.cos(this.clock * 9) * 12,
+            y + Math.sin(this.clock * 9) * 12,
+            4,
+            4
+          )
+        break
+      }
+      case 'nova': {
+        // カラオケ: notes riding the expanding ring; the microphone at the singer.
+        const fade = clamp01(life * 2.2) * clamp01(age * 10)
+        const n = Math.max(6, Math.min(24, Math.round(radius / 8)))
+        for (let j = 0; j < n; j++) {
+          const ang = (j / n) * TAU + this.clock * 1.6
+          const rr = radius + Math.sin(this.clock * 8 + j) * 2.5
+          this.art(
+            fx.note.frames[j % 3],
+            sh.ox + Math.cos(ang) * rr,
+            sh.oy + Math.sin(ang) * rr - 3,
+            6,
+            7,
+            false,
+            fade,
+            1.25
+          )
+        }
+        if (evolved && radius > 40)
+          for (let j = 0; j < Math.floor(n / 2); j++) {
+            const ang = (j / (n / 2)) * TAU - this.clock * 2.2
+            this.art(
+              fx.note.frames[(j + 1) % 3],
+              sh.ox + Math.cos(ang) * radius * 0.62,
+              sh.oy + Math.sin(ang) * radius * 0.62 - 3,
+              6,
+              7,
+              false,
+              fade * 0.8
+            )
+          }
+        const mic = pick(sheet('weapon:w_karaoke').fly, this.clock)
+        this.centred(mic, sh.ox + 17, sh.oy - 6 + Math.sin(this.clock * 10) * 1.5, evolved, clamp01(life * 6))
+        break
+      }
+      case 'sweep': {
+        // 旅行: a paper plane gliding across, mirrored by its heading, with speed streaks and afterimages.
+        const art = sheet('weapon:w_travel')
+        const frame = pick(art.fly, this.clock + i * 0.1)
+        const flip = cos < 0
+        if (trails) {
+          const f = evolved ? evolve(frame) : frame
+          const n = Math.min(3, this.trailBudget)
+          this.trailBudget -= n
+          for (let k = n; k >= 1; k--) this.art(f, x - cos * 12 * k, y, 16, 16, flip, 0.3 - k * 0.07)
+        }
+        this.world()
+        ctx.fillStyle = 'rgba(255,255,255,.5)'
+        for (let k = 0; k < 3; k++) {
+          const len = 16 + k * 6
+          ctx.fillRect(Math.round(cos > 0 ? x - 14 - len : x + 14), Math.round(y - 5 + k * 5), len, 1)
+        }
+        this.centred(frame, x, y, evolved, 1, 1, flip)
+        break
+      }
+      case 'dice': {
+        // ギャンブル: a tumbling die that settles on its rolled face; a six glitters gold.
+        const art = sheet('weapon:w_gamble')
+        const face = Math.max(1, Math.min(6, sh.v))
+        const dx = x - sh.ox
+        const dy = y - sh.oy
+        const d = Math.hypot(dx, dy)
+        const shows = life < 0.7
+        if (face === 6) {
+          this.world()
+          this.glowAt(x, y, 22, '#ffd75e', 0.5 + 0.2 * Math.sin(this.clock * 14 + i))
+        }
+        if (shows) {
+          const pop = 1 + 0.3 * clamp01(1 - (0.7 - life) / 0.09)
+          this.centred(art.faces.frames[face - 1], x, y, evolved, 1, 1.1 * pop)
+        } else {
+          if (d > 6 && trails) this.afterimages(pick(art.fly, this.clock), x, y, dx / d, dy / d, 11, evolved, 2)
+          this.centred(
+            pick(art.fly, this.clock * 1.4 + i * 0.3),
+            x,
+            y - Math.abs(Math.sin(this.clock * 7 + i)) * 3,
+            evolved
+          )
+        }
+        if (face === 6)
+          for (let j = 0; j < 3; j++) {
+            const a = this.clock * 5 + (j * TAU) / 3 + i
+            this.art(
+              pick(fx.shine, this.clock * 3 + j),
+              x + Math.cos(a) * 15,
+              y + Math.sin(a) * 12 - 2,
+              4,
+              4,
+              false,
+              1,
+              1.4
+            )
+          }
+        break
+      }
+      case 'fan': {
+        // 料理: food pellets spinning through the air in a fan.
+        const art = sheet('weapon:w_cooking')
+        const anim = [art.fly, art.alt, art.alt2][sh.v % 3]
+        const frame = pick(anim, this.clock + i * 0.07)
+        if (trails) this.afterimages(frame, x, y, cos, sin, 8, evolved, 2)
+        this.centred(frame, x, y, evolved, 1, 0.85)
+        break
+      }
+      default: {
+        // aim, homing, bounce, arc, wander: the weapon's own flying frames; fast ones leave afterimages.
+        const art = sheet(`weapon:${def.id}`)
+        if (def.id === 'w_study') {
+          // The pencil points along its flight: one of 16 pre-drawn directions.
+          const d = ((Math.round((angle / TAU) * PENCIL_DIRS) % PENCIL_DIRS) + PENCIL_DIRS) % PENCIL_DIRS
+          const frame = art.fly.frames[d]
+          if (trails) this.afterimages(frame, x, y, cos, sin, 8, evolved, 2)
+          this.centred(frame, x, y, evolved)
+        } else {
+          const frame = pick(art.fly, this.clock + i * 0.1)
+          if (trails && (def.behavior === 'homing' || def.behavior === 'aim'))
+            this.afterimages(frame, x, y, cos, sin, 8, evolved, 2)
+          this.centred(frame, x, y, evolved)
+        }
+      }
+    }
+  }
+
+  /** Builds every direction of a beam length in idle time so turning around never hitches. */
+  private warmBeam(radius: number) {
+    const key = Math.max(16, Math.round(radius / 8) * 8)
+    if (this.beamWarm.has(key) || typeof requestIdleCallback !== 'function') return
+    this.beamWarm.add(key)
+    const k = Math.min(4, Math.max(1, Math.ceil(this.scale - 0.01)))
+    let dir = 0
+    const next = () => {
+      if (dir >= BEAM_DIRS) return
+      canvasOf(beam(key, dir++), k)
+      requestIdleCallback(next, { timeout: 3000 })
+    }
+    requestIdleCallback(next, { timeout: 3000 })
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Particles and screen effects.
+
+  private particles(layer: number) {
+    const ctx = this.ctx
+    const items = this.fx.pool.items
+    const fx = sheet('fx')
+    const cx = this.camera.x
+    const cy = this.camera.y
+    for (let n = 0; n < items.length; n++) {
+      const p = items[n]
+      if (p.layer !== layer || p.delay > 0) continue
+      const reach = p.kind === PK.debris || p.kind === PK.sprite || p.kind === PK.pop ? 40 : 360
+      if (Math.abs(p.x - cx) > this.halfW + reach || Math.abs(p.y - cy) > this.halfH + reach) continue
+      const t = p.age / p.life
+      switch (p.kind) {
+        case PK.debris: {
+          const s = this.scale
+          const size = Math.max(1, Math.round(p.size * s))
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.globalAlpha = p.fade ? clamp01((1 - t) * 3) : 1
+          ctx.fillStyle = p.color
+          ctx.fillRect(
+            Math.round(this.canvas.width / 2 + (p.x - cx) * s),
+            Math.round(this.canvas.height / 2 + (p.y - cy) * s),
+            size,
+            size
+          )
+          ctx.globalAlpha = 1
+          break
+        }
+        case PK.sprite: {
+          const anim = fx[p.spr]
+          if (!anim) break
+          const frame = p.once
+            ? anim.frames[Math.min(anim.frames.length - 1, Math.floor(t * anim.frames.length))]
+            : pick(anim, p.age)
+          const alpha = p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
+          this.art(frame, p.x, p.y, frame.w / 2, frame.h / 2, false, alpha, p.size * (1 + p.size2 * t))
+          break
+        }
+        case PK.ring: {
+          this.world()
+          const r = p.size2 + (p.size - p.size2) * easeOut(t)
+          ctx.globalAlpha = p.alpha * (1 - t) ** 1.3
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = p.width * (1 - t * 0.55)
+          ctx.beginPath()
+          ctx.ellipse(p.x, p.y, r, r * p.n, 0, 0, TAU)
+          ctx.stroke()
+          ctx.globalAlpha = 1
+          break
+        }
+        case PK.glow: {
+          this.world()
+          const e = easeOut(t)
+          this.glowAt(p.x, p.y, p.size * (0.55 + 0.45 * e), p.color, p.alpha * (1 - t) ** 1.5, p.add)
+          break
+        }
+        case PK.rays: {
+          this.world()
+          const len = p.size * easeOut(t * 1.4)
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = p.alpha * (1 - t)
+          ctx.fillStyle = p.color
+          for (let k = 0; k < p.n; k++) {
+            const a = p.rot + (k * TAU) / p.n
+            const half = 0.04 + 0.02 * (k % 2)
+            ctx.beginPath()
+            ctx.moveTo(p.x, p.y)
+            ctx.lineTo(p.x + Math.cos(a - half) * len, p.y + Math.sin(a - half) * len)
+            ctx.lineTo(p.x + Math.cos(a + half) * len, p.y + Math.sin(a + half) * len)
+            ctx.closePath()
+            ctx.fill()
+          }
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.globalAlpha = 1
+          break
+        }
+        case PK.pillar: {
+          // A column of golden light rising off the player.
+          this.world()
+          const w = p.size * (1 - t * 0.6) * (t < 0.12 ? t / 0.12 : 1)
+          const grad = ctx.createLinearGradient(0, p.y, 0, p.y - p.width)
+          grad.addColorStop(0, 'rgba(255,215,94,0.5)')
+          grad.addColorStop(1, 'rgba(255,215,94,0)')
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.globalAlpha = (1 - t) ** 1.2
+          ctx.fillStyle = grad
+          ctx.fillRect(p.x - w / 2, p.y - p.width, w, p.width)
+          ctx.fillStyle = 'rgba(255,255,255,.3)'
+          ctx.fillRect(p.x - w / 6, p.y - p.width * 0.8, w / 3, p.width * 0.8)
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.globalAlpha = 1
+          break
+        }
+        case PK.pop: {
+          // The enemy's flash frame stretches, squashes and shrinks away.
+          const art = this.enemySheet(p.n).flash
+          const frame = art.frames[0]
+          const big = frame.w > 64
+          const k = 1 - t
+          const feet = p.y + ENEMIES[p.n].radius * p.size * 0.8
+          const stretch = 1 + 0.3 * Math.sin(clamp01(t * 2.4) * Math.PI)
+          this.art(
+            frame,
+            p.x,
+            feet,
+            big ? 64 : 32,
+            big ? 120 : 58,
+            p.x > this.focus.x && !NO_FLIP.has(ENEMIES[p.n].id),
+            clamp01(k * 1.6),
+            p.size * (1 + 0.45 * t) * k,
+            p.size * stretch * (1 - 0.5 * t) * k
+          )
+          break
+        }
+        case PK.warn: {
+          // A pulsing red warning circle where the boss is about to arrive.
+          this.world()
+          const pulse = 0.5 + 0.5 * Math.sin(p.age * 14)
+          const fade = clamp01((1 - t) * 6)
+          ctx.globalAlpha = fade
+          ctx.fillStyle = `rgba(255,50,70,${0.1 + 0.12 * pulse})`
+          ctx.beginPath()
+          ctx.ellipse(p.x, p.y, p.size, p.size * 0.55, 0, 0, TAU)
+          ctx.fill()
+          ctx.strokeStyle = `rgba(255,70,90,${0.6 + 0.3 * pulse})`
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.ellipse(p.x, p.y, p.size, p.size * 0.55, 0, 0, TAU)
+          ctx.stroke()
+          ctx.setLineDash([9, 7])
+          ctx.lineDashOffset = -p.age * 40
+          ctx.lineWidth = 2
+          ctx.strokeStyle = 'rgba(255,200,200,.8)'
+          ctx.beginPath()
+          ctx.ellipse(p.x, p.y, p.size * 0.72, p.size * 0.4, 0, 0, TAU)
+          ctx.stroke()
+          ctx.setLineDash([])
+          ctx.globalAlpha = 1
+          break
+        }
+        default:
+      }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+  }
+
+  /** A red telegraph lane from a winding-up enemy toward its nearest player. */
+  private telegraph(e: Ent, origins: { x: number; y: number }[]) {
+    const ctx = this.ctx
+    const def = e.def!
+    const boss = def.behavior === 'boss'
+    let best = -1
+    let bd = Infinity
+    for (let j = 0; j < origins.length; j++) {
+      const d = (origins[j].x - e.x) ** 2 + (origins[j].y - e.yy) ** 2
+      if (d < bd) {
+        bd = d
+        best = j
+      }
+    }
+    if (best < 0) return
+    const angle = Math.atan2(origins[best].y - e.yy, origins[best].x - e.x)
+    const len = Math.min(Math.sqrt(bd), boss ? 460 : 320)
+    const half = Math.max(9, def.radius * (boss ? 0.95 : 0.8))
+    const pulse = 0.5 + 0.5 * Math.sin(this.clock * 16)
+    this.world()
+    ctx.save()
+    ctx.translate(e.x, e.yy)
+    ctx.rotate(angle)
+    const grad = ctx.createLinearGradient(0, 0, len, 0)
+    grad.addColorStop(0, `rgba(255,50,40,${0.06 + 0.06 * pulse})`)
+    grad.addColorStop(1, `rgba(255,50,40,${0.22 + 0.1 * pulse})`)
+    ctx.fillStyle = grad
+    ctx.fillRect(0, -half, len, half * 2)
+    ctx.setLineDash([8, 6])
+    ctx.lineDashOffset = -this.clock * 60
+    ctx.strokeStyle = `rgba(255,110,90,${0.5 + 0.25 * pulse})`
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(0, -half)
+    ctx.lineTo(len, -half)
+    ctx.moveTo(0, half)
+    ctx.lineTo(len, half)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.restore()
+  }
+
+  /** Screen-space overlays: flashes, the low-HP vignette. Leaves an identity transform. */
+  private overlays(view: View, me: ViewPlayer | undefined) {
+    const ctx = this.ctx
+    const w = this.canvas.width
+    const h = this.canvas.height
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    const edge = (rgb: string, alpha: number, inner: number) => {
+      const grad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * inner, w / 2, h / 2, Math.hypot(w, h) / 2)
+      grad.addColorStop(0, `rgba(${rgb},0)`)
+      grad.addColorStop(1, `rgba(${rgb},${alpha})`)
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, w, h)
+    }
+    for (const f of this.fx.flashes) {
+      const a = Math.min(1, f.alpha)
+      if (f.kind === 'full') {
+        ctx.fillStyle = `rgba(${f.rgb},${a})`
+        ctx.fillRect(0, 0, w, h)
+      } else edge(f.rgb, a, 0.3)
+    }
+    if (me && !me.downed && view.phase === 'playing' && me.maxHp > 0) {
+      const ratio = Math.max(0, me.hp) / me.maxHp
+      if (ratio < 0.3) {
+        // A heartbeat that quickens as the life drains away.
+        const s = 1 - ratio / 0.3
+        const t = (this.clock * (1.1 + 1.6 * s)) % 1
+        const bump = (c: number) => Math.exp(-(((t - c) / 0.07) ** 2))
+        const beat = bump(0.08) + 0.6 * bump(0.28)
+        edge('200,20,40', (0.2 + 0.4 * s) * (0.55 + 0.45 * Math.min(1, beat)) * (this.fx.motion < 1 ? 0.6 : 1), 0.25)
+      }
+    }
+  }
+
   draw(view: View, localId: string, dt: number, smooth: boolean) {
     this.frame++
     const ctx = this.ctx
     const k = smooth ? Math.min(1, dt * 14) : 1
     const me = view.players.find((p) => p.id === localId) ?? view.players[0]
     const positions = new Map(view.players.map((p) => [p.id, this.playerPosition(p, k)]))
-    if (me) this.camera = { ...positions.get(me.id)! }
+    const origins = view.players.map((p) => positions.get(p.id)!)
+    if (me) {
+      const p = positions.get(me.id)!
+      this.focus.x = p.x
+      this.focus.y = p.y
+    }
     this.clock += dt
     const stage = stageAt(view.time)
-    const halfW = this.canvas.width / 2 / this.scale + 80
-    const halfH = this.canvas.height / 2 / this.scale + 80
+    this.halfW = this.canvas.width / 2 / this.scale + 80
+    this.halfH = this.canvas.height / 2 / this.scale + 80
+    const halfW = this.halfW
+    const halfH = this.halfH
+
+    // Events first: they spawn particles, shake and flashes for this frame.
+    const local = view.players.findIndex((p) => p.id === localId)
+    const fv = this.fxView
+    fv.local = local
+    fv.px = this.focus.x
+    fv.py = this.focus.y
+    fv.cx = this.focus.x
+    fv.cy = this.focus.y
+    fv.hw = halfW - 80
+    fv.hh = halfH - 80
+    this.fx.consume(view.fx, view.time, fv)
+    this.fx.update(Math.min(dt, 0.1))
+    this.evo.fill(0)
+    // Shake: a camera offset snapped to device pixels so the whole picture moves rigidly.
+    this.fx.shakeOffset(this.shake)
+    const snap = (v: number) => Math.round(v * this.scale) / this.scale
+    this.camera.x = this.focus.x + snap(this.shake.x)
+    this.camera.y = this.focus.y + snap(this.shake.y)
     const visible = (x: number, y: number) => Math.abs(x - this.camera.x) < halfW && Math.abs(y - this.camera.y) < halfH
 
     // Ground of this stage of life, crossfading from the previous one when a new stage begins.
@@ -443,13 +1608,21 @@ export class Renderer {
     // Experience gems and pickups: pixel sprites with a gentle bob and a soft shadow.
     const items = sheet('items')
     const g = view.gems
+    // Shadows of everything in one path: much cheaper than one fill each.
+    ctx.fillStyle = 'rgba(12,8,20,.2)'
+    ctx.beginPath()
+    for (let i = 0; i < g.length; i += STRIDE.gems) {
+      if (!visible(g[i], g[i + 1])) continue
+      ctx.moveTo(g[i] + 4, g[i + 1] + 6)
+      ctx.ellipse(g[i], g[i + 1] + 6, 4, 1.5, 0, 0, TAU)
+    }
+    ctx.fill()
     for (let i = 0; i < g.length; i += STRIDE.gems) {
       if (!visible(g[i], g[i + 1])) continue
       const v = g[i + 2]
       const anim = v >= 20 ? items.gem3 : v >= 4 ? items.gem2 : items.gem1
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 1.5)
-      this.shadow(g[i], g[i + 1] + 6, 4, 0.2)
-      this.art(anim.frames[frameAt(anim, this.clock + i * 0.07)], g[i], g[i + 1] + bob, 8, 10)
+      this.art(pick(anim, this.clock + i * 0.07), g[i], g[i + 1] + bob, 8, 10)
     }
     this.world()
     const it = view.items
@@ -461,106 +1634,121 @@ export class Renderer {
     }
     this.world()
 
-    // Ground effects first (auras and zones), drawn at their real hit radius.
-    const s = view.shots
-    const fx = sheet('fx')
-    const at = (anim: Anim, t: number) => anim.frames[frameAt(anim, t)]
-    for (let i = 0; i < s.length; i += STRIDE.shots) {
-      const def = WEAPONS[s[i]]
-      if (def.behavior !== 'aura' && def.behavior !== 'zone') continue
-      const owner = view.players[s[i + 6]]
-      const evolved = isEvolvedView(owner, def.id)
-      const pos = def.behavior === 'aura' && owner ? positions.get(owner.id)! : { x: s[i + 1], y: s[i + 2] }
-      const radius = s[i + 3]
-      if (def.behavior === 'zone') {
-        // 娯楽: an arcade play-mat with a controller and floating pixels.
-        const mat = playMat(radius)
-        this.art(mat, pos.x, pos.y, mat.w / 2, mat.h / 2, false, 0.4)
-        this.art(fx.controller.frames[0], pos.x, pos.y, 9, 6)
-        fx.pixels.frames.forEach((p, j) => {
-          const a = this.clock * 1.3 + j * 1.7 + i
-          this.art(
-            p,
-            pos.x + Math.cos(a) * radius * 0.6,
-            pos.y + Math.sin(a * 1.3) * radius * 0.5 - ((this.clock * 20 + j * 13) % 20),
-            1,
-            1
-          )
-        })
-      } else {
-        // 毒親: a faint toxic ground ring with wisps and skull puffs circling over it.
-        this.world()
-        ctx.fillStyle = 'rgba(122,98,161,0.24)'
-        ctx.strokeStyle = 'rgba(173,143,211,0.6)'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.ellipse(pos.x, pos.y + 8, radius, radius * 0.92, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.stroke()
-        for (let j = 0; j < 12; j++) {
-          // Two swirling rings of wisps and skull puffs at different speeds.
-          const inner = j % 2
-          const a = this.clock * (inner ? -1.8 : 1.3) + (j * Math.PI) / 6
-          const sprite = j % 4 === 3 ? fx.skull.frames[0] : at(fx.wisp, this.clock + j * 0.2)
-          this.art(
-            sprite,
-            pos.x + Math.cos(a) * radius * (inner ? 0.45 : 0.8),
-            pos.y + 8 + Math.sin(a) * radius * (inner ? 0.4 : 0.72),
-            sprite.w / 2,
-            sprite.h / 2,
-            false,
-            0.85
-          )
+    // Enemies of the crowd (kept for the telegraphs and the Y-sorted draw).
+    const e = view.enemies
+    this.entCount = 0
+    this.winders.length = 0
+    const fresh = this.states.size === 0
+    for (let i = 0; i < e.length; i += STRIDE.enemies) {
+      const def = ENEMIES[e[i + 1]]
+      const id = e[i]
+      const pos = smooth ? this.ease(id, e[i + 2], e[i + 3], k) : null
+      const x = pos ? pos.x : e[i + 2]
+      const y = pos ? pos.y : e[i + 3]
+      const flags = e[i + 6]
+      let st = this.states.get(id)
+      if (!st) {
+        st = {
+          born: fresh && e.length > STRIDE.enemies * 6 ? -9 : this.clock,
+          seen: this.frame,
+          windup: -9,
+          blink: false
         }
-        if (evolved)
-          for (let j = 0; j < 4; j++)
-            this.art(
-              at(fx.star, this.clock + j),
-              pos.x + Math.cos(j * 1.6 + this.clock) * radius * 0.4,
-              pos.y + Math.sin(j * 1.6 + this.clock) * radius * 0.4,
-              4,
-              4
-            )
+        this.states.set(id, st)
       }
+      st.seen = this.frame
+      if (flags & ENEMY_FLAG.windup) {
+        if (st.windup < 0) st.windup = this.clock
+      } else st.windup = -9
+      const blinking = (flags & ENEMY_FLAG.blink) !== 0
+      if (blinking !== st.blink) {
+        st.blink = blinking
+        // Vanishes and reappears in a puff of smoke.
+        if (visible(x, y)) this.fx.sprite('poof', x, y, { life: 0.3, scale: 0.9, fade: false })
+      }
+      if (!visible(x, y)) continue
+      const ent = (this.ents[this.entCount] ??= {
+        y: 0,
+        kind: 0,
+        id: 0,
+        x: 0,
+        yy: 0,
+        hp: 0,
+        flash: 0,
+        flags: 0,
+        tagLift: 0
+      })
+      this.entCount++
+      ent.y = y + def.radius * 0.8
+      ent.def = def
+      ent.kind = e[i + 1]
+      ent.player = undefined
+      ent.id = id
+      ent.x = x
+      ent.yy = y
+      ent.hp = e[i + 4]
+      ent.flash = e[i + 5]
+      ent.flags = flags
+      ent.state = st
+      if (flags & ENEMY_FLAG.windup) this.winders.push(ent)
     }
+    if (this.frame % 60 === 0) {
+      for (const [id, entry] of this.shown) if (entry.seen !== this.frame) this.shown.delete(id)
+      for (const [id, entry] of this.states) if (entry.seen !== this.frame) this.states.delete(id)
+    }
+
+    // Ground effects first (auras, zones, shockwaves, clouds), drawn at their real hit radius.
+    const s = view.shots
+    for (const w of this.winders) this.telegraph(w, origins)
+    this.particles(0)
+    this.world()
+    for (let i = 0; i < s.length; i += STRIDE.shots) this.groundShot(view, this.load(view, origins, i), WEAPONS[s[i]])
     this.world()
 
     // Characters: enemies and players Y-sorted so overlaps read correctly.
-    const sorted: { y: number; draw: () => void }[] = []
-    const e = view.enemies
-    const live = new Set<number>()
-    for (let i = 0; i < e.length; i += STRIDE.enemies) {
-      const def = ENEMIES[e[i + 1]]
-      const pos = smooth ? this.ease(e[i], e[i + 2], e[i + 3], k) : { x: e[i + 2], y: e[i + 3] }
-      live.add(e[i])
-      if (!visible(pos.x, pos.y)) continue
-      const id = e[i]
-      const hp = e[i + 4]
-      const flash = e[i + 5]
-      sorted.push({ y: pos.y + def.radius * 0.8, draw: () => this.enemy(def, id, pos, hp, flash) })
-    }
-    if (smooth && this.frame % 60 === 0) for (const id of this.shown.keys()) if (!live.has(id)) this.shown.delete(id)
-
+    const list: Ent[] = this.ents.slice(0, this.entCount)
     // Name tags of players standing together stack instead of overlapping.
-    const tagLift = new Map<string, number>()
     view.players.forEach((player, i) => {
-      const pos = positions.get(player.id)!
+      const pos = origins[i]
       const near = view.players.slice(0, i).filter((o) => {
         const q = positions.get(o.id)!
         return Math.abs(q.x - pos.x) < 80 && Math.abs(q.y - pos.y) < 24
       }).length
-      tagLift.set(player.id, near * 13)
-    })
-    for (const player of view.players) {
-      const pos = positions.get(player.id)!
-      sorted.push({
+      list.push({
         y: pos.y + 16,
-        draw: () => this.player(player, pos, player.id === localId, view.time, view.phase, tagLift.get(player.id) ?? 0)
+        kind: 0,
+        player,
+        id: i,
+        x: pos.x,
+        yy: pos.y,
+        hp: 0,
+        flash: 0,
+        flags: 0,
+        tagLift: near * 13
       })
-    }
-    sorted.sort((a, b) => a.y - b.y)
-    for (const item of sorted) item.draw()
+    })
+    list.sort((a, b) => a.y - b.y)
+    // Every enemy's shadow in one path (ghosts cast none), under all the sprites.
     this.world()
+    ctx.fillStyle = 'rgba(12,8,20,.28)'
+    ctx.beginPath()
+    for (let n = 0; n < this.entCount; n++) {
+      const ent = list[n]
+      if (!ent.def || ent.flags & ENEMY_FLAG.ghost) continue
+      const rx = ent.def.radius * 0.9 * (ent.flags & ENEMY_FLAG.elite ? 1.25 : 1)
+      ctx.moveTo(ent.x + rx, ent.y)
+      ctx.ellipse(ent.x, ent.y, rx, Math.min(6, rx * 0.36), 0, 0, TAU)
+    }
+    ctx.fill()
+    this.bars.length = 0
+    for (const item of list) {
+      if (item.player) {
+        const player = item.player
+        this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
+      } else this.enemy(item)
+    }
+    this.world()
+    this.lifeBars()
     // While your own death plays, the world dims around a spotlight on the body (others' deaths don't).
     const mine = view.players.find((p) => p.id === localId)
     const dying = mine?.downed ? this.deaths.get(mine.id) : undefined
@@ -575,79 +1763,56 @@ export class Renderer {
       ctx.fillRect(this.camera.x - halfW, this.camera.y - halfH, halfW * 2, halfH * 2)
     }
 
+    this.trailBudget = 70
     for (let i = 0; i < s.length; i += STRIDE.shots) {
-      const def = WEAPONS[s[i]]
-      const [x, y, radius, angle, life] = [s[i + 1], s[i + 2], s[i + 3], s[i + 4] / 100, s[i + 5] / 100]
-      const owner = view.players[s[i + 6]]
-      const evolved = isEvolvedView(owner, def.id)
-      const origin = owner ? positions.get(owner.id)! : { x, y }
-      const centred = (frame: Raster, px: number, py: number, alpha = 1) => {
-        const f = evolved ? evolve(frame) : frame
-        this.art(f, px, py, f.w / 2, f.h / 2, false, alpha)
-      }
-      switch (def.behavior) {
-        case 'aura':
-        case 'zone':
-          break
-        case 'orbit': {
-          // Re-derive the orbit around the eased owner so it never lags behind them.
-          const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
-          const ox = origin.x + Math.cos(angle) * orbit
-          const oy = origin.y + Math.sin(angle) * orbit
-          const art = sheet(`weapon:${def.id}`)
-          const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][i % 3] : art.fly
-          centred(at(anim, this.clock + i * 0.1), ox, oy, Math.min(1, life * 4))
-          break
-        }
-        case 'whip':
-        case 'flail': {
-          // 美容: a crisp white-pink crescent slash with stars; 頼りない親: motion lines with flailing hands
-          // and sweat — both laid exactly along the real whip line (length = radius, at the shot's angle).
-          const kind = def.behavior === 'whip' ? 'slash' : 'flail'
-          const dir = ((Math.round((angle / (Math.PI * 2)) * SWING_DIRS) % SWING_DIRS) + SWING_DIRS) % SWING_DIRS
-          const smear = swing(radius, dir, kind)
-          const alpha = Math.min(1, life * 3)
-          this.art(evolved ? evolve(smear) : smear, x, y, smear.w / 2, smear.h / 2, false, alpha)
-          const n = kind === 'slash' ? 5 : 4
-          for (let j = 0; j < n; j++) {
-            const t = (j / (n - 1)) * 1.6 - 0.8
-            const bulge = (1 - t * t) * 14
-            const px = x + Math.cos(angle) * t * radius + Math.sin(angle) * bulge
-            const py = y + Math.sin(angle) * t * radius - Math.cos(angle) * bulge
-            if (kind === 'slash') centred(at(fx.star, this.clock * 2 + j), px, py, alpha)
-            else {
-              centred(at(fx.hand, this.clock * 4 + j), px, py, alpha)
-              if (j % 2) centred(fx.sweat.frames[0], px + 7, py - 9, alpha)
-            }
-          }
-          break
-        }
-        case 'strike': {
-          // 投資: a chart-arrow bolt from above and an impact burst.
-          const bolt = at(fx.bolt, this.clock * 2)
-          const f = evolved ? evolve(bolt) : bolt
-          this.art(f, x, y, 12, 118, false, Math.min(1, life * 2))
-          this.art(at(fx.burst, (1 - life) * 0.6), x, y, 14, 14, false, life)
-          break
-        }
-        case 'rain': {
-          // お金持ち: a bundle of bills falls, then coins burst out on impact.
-          const fall = Math.max(0, life - 0.35) / 0.65
-          if (fall > 0) centred(fx.bills.frames[0], x, y - fall * 240)
-          else this.art(at(fx.coins, (0.35 - life) * 3), x, y + 4, 14, 14, false, Math.min(1, life * 3))
-          break
-        }
-        default: {
-          const art = sheet(`weapon:${def.id}`)
-          if (def.id === 'w_study') {
-            // The pencil points along its flight: one of 16 pre-drawn directions.
-            const d = ((Math.round((angle / (Math.PI * 2)) * PENCIL_DIRS) % PENCIL_DIRS) + PENCIL_DIRS) % PENCIL_DIRS
-            centred(art.fly.frames[d], x, y)
-          } else centred(at(art.fly, this.clock + i * 0.1), x, y)
-        }
-      }
+      const sh = this.load(view, origins, i)
+      if (Math.abs(sh.x - this.camera.x) > halfW + 400 && Math.abs(sh.ox - this.camera.x) > halfW + 400) continue
+      this.topShot(view, sh, WEAPONS[s[i]])
     }
     this.world()
+
+    // Enemy bullets: the animated sprite on a pulsing red danger halo (one baked image per bullet).
+    const b = view.bullets
+    if (b.length) {
+      const sprites = sheet('bullets')
+      const sc = this.scale
+      const kk = Math.max(1, Math.ceil(sc - 0.01))
+      const size = Math.round(40 * sc)
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      for (let i = 0; i < b.length; i += STRIDE.bullets) {
+        if (!visible(b[i], b[i + 1])) continue
+        const kind = b[i + 2]
+        const anim = sprites[BULLET_KINDS[kind]]
+        const index = frameIndex(anim, this.clock + i * 0.05)
+        const hot = Math.sin(this.clock * 12 + i) > 0
+        const image = this.sprite(
+          `bullet:${kind}:${index}:${hot}:${kk}`,
+          (g) => {
+            g.scale(kk, kk)
+            const boss = kind >= 5
+            const grad = g.createRadialGradient(20, 20, 0, 20, 20, boss ? 19 : 16)
+            const tint = boss ? '255,74,42' : '255,51,85'
+            grad.addColorStop(0, `rgba(${tint},${hot ? 0.72 : 0.5})`)
+            grad.addColorStop(0.55, `rgba(${tint},${hot ? 0.45 : 0.3})`)
+            grad.addColorStop(1, `rgba(${tint},0)`)
+            g.fillStyle = grad
+            g.fillRect(0, 0, 40, 40)
+            g.imageSmoothingEnabled = true
+            g.drawImage(canvasOf(anim.frames[index], kk), 20 - 9.2, 20 - 9.2, 18.4, 18.4)
+          },
+          40 * kk,
+          40 * kk
+        )
+        ctx.drawImage(
+          image,
+          Math.round(this.canvas.width / 2 + (b[i] - this.camera.x) * sc - size / 2),
+          Math.round(this.canvas.height / 2 + (b[i + 1] - this.camera.y) * sc - size / 2),
+          size,
+          size
+        )
+      }
+      this.world()
+    }
 
     // 大往生: a soft warm beam of light falls onto the bed (renderer alpha, not baked into sprites).
     if (view.phase === 'reaper' || view.phase === 'won') {
@@ -697,19 +1862,25 @@ export class Renderer {
       this.halo = undefined
     }
 
+    // Hits, deaths, level-ups ... : the particles of the fx events.
+    this.particles(1)
+    this.world()
+
+    // Damage numbers: pop in big, settle, drift up; 特攻 stays yellow with "!", crits are bigger, orange-red, "!!".
     const p = view.popups
     for (let i = 0; i < p.length; i += STRIDE.popups) {
       const mine = view.players[p[i + 4]]?.id === localId
-      const strong = p[i + 3] === 1
+      const bits = p[i + 3]
+      const strong = (bits & POPUP_BIT.strong) !== 0
+      const crit = (bits & POPUP_BIT.crit) !== 0
       const life = p[i + 5] / 100
-      const color = strong ? '#ffcf4d' : mine ? '#ffffff' : '#b9b3c9'
-      this.blit(
-        this.label(strong ? `${p[i + 2]}!` : String(p[i + 2]), strong ? 15 : mine ? 12 : 10, color),
-        p[i],
-        p[i + 1] - (1 - life) * 24,
-        0,
-        Math.min(1, life * 2)
-      )
+      const style: NumberStyle = strong && crit ? 'both' : crit ? 'crit' : strong ? 'strong' : mine ? 'mine' : 'other'
+      const text = `${p[i + 2]}${crit ? '!!' : strong ? '!' : ''}`
+      const age = (1 - life) * 0.6
+      const pop = 1 + 0.6 * (1 - easeOut(age / 0.12))
+      if (crit && mine && life > 0.85) this.fx.trauma.atLeast(0.14)
+      const hop = age < 0.12 ? -Math.sin((age / 0.12) * Math.PI) * 3 : 0
+      this.number(text, style, p[i], p[i + 1] - (1 - life) * 24 + hop, pop, Math.min(1, life * 2))
     }
 
     // Edge arrows toward life events still off-screen.
@@ -736,5 +1907,7 @@ export class Renderer {
       )
       ctx.globalAlpha = 1
     }
+
+    this.overlays(view, mine)
   }
 }

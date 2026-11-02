@@ -141,3 +141,86 @@ test('two players share one life-world: the guest moves and gets their own hand'
   await expect(guest.locator('#levelup')).toBeHidden()
   expect(errors).toEqual([])
 })
+
+type Hook = {
+  game: {
+    state: {
+      time: number
+      eventIndex: number
+      players: { x: number; y: number; choices: string[]; choiceSeq: number }[]
+    }
+    spawnEnemy(kind: string, x: number, y: number): void
+  }
+}
+
+test('a boss announces itself: WARNING banner, then a boss bar under the xp bar', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#boss-bar')).toBeHidden()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const game = (l as unknown as Hook).game
+    game.state.eventIndex = 99
+    const p = game.state.players[0]
+    game.spawnEnemy('b_hs', p.x + 260, p.y)
+  })
+  await expect(page.locator('#banner .banner-warning')).toBeVisible()
+  await expect(page.locator('#banner .banner-warning')).toContainText('WARNING')
+  await expect(page.locator('#banner .banner-warning')).toContainText('人生イベント：高校受験')
+  await expect(page.locator('#boss-bar')).toBeVisible()
+  await expect(page.locator('#boss-name')).toHaveText('高校受験')
+  // banners never stack: the warning leaves before the next one shows
+  await expect(page.locator('#banner .banner')).toHaveCount(1)
+  await expect(page.locator('#banner .banner-warning')).toBeHidden({ timeout: 5000 })
+  expect(errors).toEqual([])
+})
+
+test('the sound toggle is a pressed button, flips with M, and survives a reload', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  const title = page.locator('#mute-title')
+  await expect(title).toHaveAttribute('aria-pressed', 'false')
+  await title.click()
+  await expect(title).toHaveAttribute('aria-pressed', 'true')
+  await page.reload()
+  await expect(page.locator('#mute-title')).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  const mute = page.locator('#mute')
+  await expect(mute).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('KeyM')
+  await expect(mute).toHaveAttribute('aria-pressed', 'false')
+  await page.getByRole('button', { name: '遊び方を表示' }).click()
+  await expect(page.locator('#volume')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.reload()
+  await expect(page.locator('#mute-title')).toHaveAttribute('aria-pressed', 'false')
+  expect(errors).toEqual([])
+})
+
+test('a lucky four-card hand shows rarity frames and key 4 picks the last card', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const p = (l as unknown as Hook).game.state.players[0]
+    p.choices = ['w:w_sns', 'w:w_pet', 'p:p_hot', 'x:meal']
+    p.choiceSeq++
+  })
+  await expect(page.locator('#cards .card')).toHaveCount(4)
+  await expect(page.locator('#levelup-note')).toContainText('1〜4キー')
+  await expect(page.locator('#cards .card.rarity-new')).toHaveCount(2)
+  await expect(page.locator('#cards .card.rarity-passive')).toHaveCount(1)
+  await expect(page.locator('#cards .card .ribbon').first()).toHaveText('NEW')
+  await page.keyboard.press('Digit4')
+  await expect(page.locator('#levelup')).toBeHidden()
+  await expect.poll(() => handle.evaluate((l) => (l as unknown as Hook).game.state.players[0].choices.length)).toBe(0)
+  expect(errors).toEqual([])
+})
