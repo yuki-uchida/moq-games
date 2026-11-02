@@ -359,6 +359,20 @@ export const LIE = {
     '....HJHHJHHJ......',
     '...JJJJJJJJ.......'
   ],
+  // Face up (on the back): nose and closed eyes on the upper side, the back of the head and hair on the floor.
+  up: [
+    '........44........',
+    '......112221......',
+    '....11222222JJ....',
+    '...12KK222KKHHJ...',
+    '..122222222222HJ..',
+    '..12m222222222HHJ.',
+    '..1m2222222222HHHJ',
+    '..3322222222JHHHHJ',
+    '...333222JJHHHHHJ.',
+    '.....33JJHHHHHJJ..',
+    '.......JJJJJJJ....'
+  ],
   receding: [
     '.......33...JJ....',
     '.....12232..JHJJ..',
@@ -607,31 +621,100 @@ export function sitting(b: Body, o: { hug?: boolean; slump?: number; face?: Face
   }
 }
 
-/** A body flattened paper-thin on the floor (its own drawing, not a scaled squash), toward +x: head end. */
+/**
+ * The classic cartoon flattened body: a top-down paper doll lying spread-eagle on the floor (its own drawing,
+ * not a scaled squash) in the stage's clothing colours, ~34px across, tyre tracks over it, a corner peeling.
+ */
 export function flatBody(b: Body, o: { tracks?: boolean; peel?: number } = {}) {
   const r = new Raster(SIZE, SIZE)
-  const y = GROUND - 4
+  const cx = 32
+  const cy = 44
+  const hair = b.lie.head.key.H ?? R.hair[2]
+  const shoe = b.pants[3]
   part(r, (l) => {
-    l.rect(8, y + 1, 8, 2, b.pants[2])
-    l.rect(16, y, 14, 3, b.pants[1])
-    l.rect(30, y - 1, 14, 4, b.lie.coat[1])
-    l.rect(30, y - 1, 14, 1, b.lie.coat[0])
-    l.rect(24, y - 3, 3, 2, SKIN[1])
-    l.rect(40, y - 3, 3, 2, SKIN[1])
-    l.ellipse(51, y + 1, 7, 2.6, SKIN[1])
-    l.ellipse(54, y + 1, 4, 2.6, b.lie.head.key.H ?? R.hair[2])
-    l.set(48, y, C.inkCool)
-    l.set(48, y + 2, C.inkCool)
-    if (o.tracks)
-      for (let x = 12; x < 56; x += 6) {
-        l.rect(x, y - 1, 3, 5, R.hair[3])
-        l.paint(x + 3, y, R.hair[2])
-      }
-    if (o.peel) {
-      // The feet end peels up like a sticker.
-      l.rect(8, y + 1, 8, 2, 0)
-      l.poly([8, y + 2 - o.peel * 3, 16, y, 16, y + 3], b.pants[0])
+    // Limbs splayed: arms up and out, legs down and out.
+    for (const s of [-1, 1]) {
+      l.thick(cx + s * 4, cy - 3, cx + s * 14, cy - 11, 4, b.sleeve[1])
+      l.ellipse(cx + s * 15, cy - 12, 2.4, 2.4, SKIN[1])
+      l.thick(cx + s * 3, cy + 6, cx + s * 9, cy + 13, 5, b.pants[1])
+      l.rect(cx + s * 10 - (s < 0 ? 3 : 0), cy + 12, 4, 3, shoe)
     }
+    l.rect(cx - 6, cy - 5, 13, 12, b.lie.coat[1])
+    l.rect(cx - 6, cy - 5, 13, 1, b.lie.coat[0])
+    l.rect(cx - 6, cy + 6, 13, 1, b.lie.coat[2])
+    // Head: a ring of hair around the face, eyes closed.
+    l.ellipse(cx + 0.5, cy - 11, 6, 5.5, hair)
+    l.ellipse(cx + 0.5, cy - 10, 5, 4.5, SKIN[1])
+    l.rect(cx - 3, cy - 11, 2, 1, C.inkCool)
+    l.rect(cx + 2, cy - 11, 2, 1, C.inkCool)
+    l.rect(cx - 1, cy - 8, 2, 1, SKIN[3])
   })
+  if (o.tracks)
+    // Two tyre tracks across the doll (only where the doll is), with tread blocks.
+    for (const off of [-4, 6])
+      for (let x = cx - 18; x < cx + 18; x++) {
+        const y = Math.round(cy + off + (x - cx) * 0.35)
+        // Dark rubber bands with pale tread gaps read on light and dark clothing alike.
+        r.paint(x, y, x % 3 === 0 ? R.metal[1] : R.hair[3])
+        r.paint(x, y + 1, R.hair[3])
+        r.paint(x, y + 2, x % 3 === 1 ? R.metal[1] : R.hair[3])
+      }
+  if (o.peel) {
+    // The lower-right foot corner peels up like a sticker, showing the pale back.
+    r.rect(cx + 9, cy + 9, 8, 8, 0)
+    part(r, (l) => {
+      l.poly([cx + 8, cy + 10, cx + 15, cy + 9 - o.peel! * 3, cx + 13, cy + 14], R.paper[1])
+    })
+  }
+  return r
+}
+
+/** A body lying on its back, face up and eyes closed, arms along its sides (toward +x: the head end). */
+export function lyingBack(b: Body, o: { squash?: number; thin?: number } = {}) {
+  const r = new Raster(SIZE, SIZE)
+  const g = GROUND - 1
+  const thick = b.lie.thick - 1 - (o.squash ?? 0) - Math.round((o.thin ?? 0) * 2)
+  const x0 = 20
+  const x1 = 38
+  const top = g - thick + 1
+  const legLen = b.thigh + b.shin
+  limb(
+    r,
+    { x: x0 + 3, y: top + 3 },
+    { x: x0 + 1 - legLen, y: top + 1 },
+    b.thigh,
+    b.shin,
+    -1,
+    b.legW,
+    b.pants,
+    true,
+    (l, end) => b.shoe(l, { x: end.x - 3, y: end.y - 2 })
+  )
+  limb(
+    r,
+    { x: x0 + 3, y: g - 2 },
+    { x: x0 + 1 - legLen, y: g - 2 },
+    b.thigh,
+    b.shin,
+    1,
+    b.legW,
+    b.pants,
+    false,
+    (l, end) => b.shoe(l, { x: end.x - 3, y: end.y - 2 })
+  )
+  part(r, (l) => {
+    l.rect(x0 + 2, top + 1, x1 - x0, g - top, b.lie.coat[1])
+    // The chest rises a little above the belly.
+    l.ellipse(x1 - 6, top + 1, 7, 2.5, b.lie.coat[1])
+    l.ellipse(x0 + 3, (top + g) / 2 + 0.5, 3, (g - top) / 2 + 0.5, b.lie.coat[1])
+    shadeEdges(l, b.lie.coat, 2, true)
+    l.rect(x0 + 2, g - 1, x1 - x0, 1, b.lie.coat[3])
+    b.lie.detail?.(l, x0, x1, top, g)
+  })
+  part(r, (l) => l.stamp(LIE.up, x1 - 2, g + 1 - LIE.up.length, { ...KEY, ...b.lie.head.key }))
+  // Near arm resting along the side, hand by the hip.
+  limb(r, { x: x1 - 3, y: top + 3 }, { x: x0 + 6, y: g - 2 }, b.upper, b.fore, 1, b.armW, b.sleeve, false, (l, end) =>
+    (b.hand ?? defaultHand)(l, end)
+  )
   return r
 }

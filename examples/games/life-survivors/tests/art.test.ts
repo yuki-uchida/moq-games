@@ -38,8 +38,9 @@ describe('pixel art', () => {
     }
     for (const [id, sheet] of Object.entries(built)) {
       if (id.startsWith('tiles:') || id.startsWith('props:')) continue
-      const size = big(id) ? 128 : id === 'soul' ? 16 : 64
-      for (const anim of Object.values(sheet)) {
+      // Souls are 16px; the 大往生 soul (halo) is 24px.
+      const size = (name: string) => (big(id) ? 128 : id === 'soul' ? (name === 'halo' ? 24 : 16) : 64)
+      for (const [name, anim] of Object.entries(sheet)) {
         if (id.startsWith('death:')) {
           expect(anim.frames.length).toBeGreaterThanOrEqual(12)
           expect(anim.frames.length).toBeLessThanOrEqual(24)
@@ -47,7 +48,7 @@ describe('pixel art', () => {
           // Fades are renderer alpha per frame, never dithered pixels.
           if (anim.alpha) expect(anim.alpha).toHaveLength(anim.frames.length)
         }
-        for (const frame of anim.frames) expect([id, frame.w, frame.h]).toEqual([id, size, size])
+        for (const frame of anim.frames) expect([id, frame.w, frame.h]).toEqual([id, size(name), size(name)])
       }
     }
   })

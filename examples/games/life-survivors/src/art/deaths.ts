@@ -3,7 +3,7 @@ import { Raster, ball, part, remap } from './raster'
 import { car } from './enemies'
 import { ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid, type BedPose } from './player'
 import { STAGE_BODIES, STAGE_PAINTERS } from './people'
-import { GROUND, dust, flatBody, headBox, lying, pose, sitting, type Body, type Pose } from './rig'
+import { GROUND, dust, flatBody, headBox, lying, lyingBack, pose, sitting, type Body, type Pose } from './rig'
 import type { Anim, Sheet } from './sheet'
 
 /**
@@ -51,6 +51,22 @@ const MUTED = toneTable([
 const GREY = toneTable([R.metal[0], R.metal[1], R.metal[2], R.metal[3], C.inkCool])
 const STONE = toneTable([R.paving[0], R.paving[1], R.paving[2], R.metal[2], R.metal[3], C.inkCool])
 const WHITE = toneTable([C.white, R.paper[1], R.paper[2], R.paper[3]], 70)
+const COOL = [
+  R.metal[0],
+  R.metal[1],
+  R.metal[2],
+  R.metal[3],
+  R.navy[0],
+  R.navy[1],
+  R.navy[2],
+  R.navy[3],
+  R.paper[2],
+  R.paper[3],
+  R.hair[3],
+  C.inkCool
+]
+/** A cool blue-grey night tint by brightness (two steps). */
+const NIGHT = [toneTable(COOL, -12), toneTable(COOL, -40)]
 const FLUSH = (() => {
   const t: number[] = Array.from({ length: 256 }, (_, i) => i)
   t[R.skin[0]] = R.skin[1]
@@ -478,7 +494,13 @@ function illness(k: Kit) {
       if (o.cough) puff(l, m.x + 6 + o.cough * 2, m.y + 1, 1.5 + o.cough, R.paper[1])
     })
   }
-  const down = fall(k, { face: 'dead' })
+  // Falls backward onto the back, face up.
+  const back = (squash: number) => lyingBack(k.body, { squash })
+  const impact = back(1)
+  dust(impact, 8, 56, 3)
+  dust(impact, 54, 56, 3)
+  const settling = back(0)
+  dust(settling, 7, 56, 2)
   const frames = [
     P({ face: 'open' }),
     sick({ face: 'down' }),
@@ -487,9 +509,11 @@ function illness(k: Kit) {
     sick({ face: 'pain', squash: 1, bob: 1 }, { thermo: true, cough: 2 }),
     sick({ face: 'down', lean: 2 }, { thermo: true }),
     sick({ face: 'spiral', lean: -2 }, { thermo: true }),
-    sick({ face: 'spiral', kneel: 3, lean: -1 }),
-    sick({ face: 'dead', kneel: 5, lean: -3 }),
-    ...down.slice(4)
+    sick({ face: 'spiral', kneel: 3, lean: -3 }),
+    sick({ face: 'dead', kneel: 5, lean: -6, handN: [-5, 3], handF: [-4, 3] }),
+    impact,
+    settling,
+    back(0)
   ]
   const last = frames[frames.length - 1]
   return once([...frames, last, last, last], 8, { soul: 'ghost' })
@@ -1001,47 +1025,52 @@ function babyDeaths(): Sheet {
 function bedDeaths(): Sheet {
   const B = (p: Partial<BedPose>) => bed(bedPose({ breath: 0, ...p }))
   const flat = (face: BedPose['face'], head = 1) => B({ monitor: 9, face, head })
-  const illness = once(
-    [
-      B({ monitor: 0, breath: 2, face: 'pain' }),
-      B({ monitor: 1, breath: 1, face: 'pain' }),
-      B({ monitor: 2, breath: 2, face: 'down' }),
-      B({ monitor: 3, breath: 1, face: 'down' }),
-      B({ monitor: 0, breath: 0, face: 'calm' }),
-      B({ monitor: 2, face: 'calm' }),
-      ...Array(8).fill(flat('dead'))
-    ],
-    6,
-    { soul: 'ghost' }
-  )
-  const flatline = once(
-    [
-      B({ monitor: 0, breath: 2, face: 'pain' }),
-      B({ monitor: 2, face: 'down' }),
-      B({ monitor: 1, face: 'calm' }),
-      ...Array(10).fill(flat('dead'))
-    ],
-    6
-  )
+  const illness = () =>
+    once(
+      [
+        B({ monitor: 0, breath: 2, face: 'pain' }),
+        B({ monitor: 1, breath: 1, face: 'pain' }),
+        B({ monitor: 2, breath: 2, face: 'down' }),
+        B({ monitor: 3, breath: 1, face: 'down' }),
+        B({ monitor: 0, breath: 0, face: 'calm' }),
+        B({ monitor: 2, face: 'calm' }),
+        ...Array(8).fill(flat('dead'))
+      ],
+      6,
+      { soul: 'ghost' }
+    )
+  const flatline = () =>
+    once(
+      [
+        B({ monitor: 0, breath: 2, face: 'pain' }),
+        B({ monitor: 2, face: 'down' }),
+        B({ monitor: 1, face: 'calm' }),
+        ...Array(10).fill(flat('dead'))
+      ],
+      6
+    )
   const tray = (r: Raster) =>
     over(r, (l) => {
       l.rect(10, 32, 12, 2, R.brown[1])
       l.rect(11, 29, 9, 3, R.paper[1])
       l.rect(12, 29, 7, 1, R.paper[3])
     })
-  const starveFrames = [
-    tray(B({ face: 'down', breath: 1 })),
-    tray(B({ face: 'down', breath: 2 })),
-    tray(B({ face: 'pain', breath: 1 })),
-    tray(B({ face: 'down' })),
-    tray(B({ face: 'calm', head: 1 })),
-    tray(B({ face: 'dead', head: 1 }))
-  ]
-  for (let i = 0; i < 8; i++) {
-    const r = tray(B({ face: 'dead', head: 1 }))
-    fly(r, Math.round(30 + Math.cos(i * 1.3) * 10), Math.round(26 + Math.sin(i * 1.3) * 3), i % 2 === 0)
-    if (i > 1) fly(r, Math.round(26 - Math.cos(i * 1.3) * 8), Math.round(22 + Math.sin(i * 1.3) * 2), i % 2 === 1)
-    starveFrames.push(r)
+  const starve = () => {
+    const starveFrames = [
+      tray(B({ face: 'down', breath: 1 })),
+      tray(B({ face: 'down', breath: 2 })),
+      tray(B({ face: 'pain', breath: 1 })),
+      tray(B({ face: 'down' })),
+      tray(B({ face: 'calm', head: 1 })),
+      tray(B({ face: 'dead', head: 1 }))
+    ]
+    for (let i = 0; i < 8; i++) {
+      const r = tray(B({ face: 'dead', head: 1 }))
+      fly(r, Math.round(30 + Math.cos(i * 1.3) * 10), Math.round(26 + Math.sin(i * 1.3) * 3), i % 2 === 0)
+      if (i > 1) fly(r, Math.round(26 - Math.cos(i * 1.3) * 8), Math.round(22 + Math.sin(i * 1.3) * 2), i % 2 === 1)
+      starveFrames.push(r)
+    }
+    return once(starveFrames, 6)
   }
   const bubbles = (r: Raster, n: number) =>
     over(r, (l) => {
@@ -1067,25 +1096,26 @@ function bedDeaths(): Sheet {
       }
       if (dusty) puff(l, 34, 24, 2 + dusty * 2, R.paper[2])
     })
-  const shatterAnim = once(
-    [
-      bubbles(B({ face: 'pain' }), 1),
-      bubbles(B({ face: 'pain' }), 2),
-      bubbles(B({ face: 'pain' }), 3),
-      bubbles(B({ face: 'down' }), 5),
-      tone(bubbles(B({ face: 'down' }), 5), MUTED),
-      tone(bubbles(B({ face: 'down' }), 5), STONE),
-      over(tone(bubbles(B({ face: 'down' }), 5), STONE), (l) => cracks(l, 46, 14, 3), false),
-      crumbled(3),
-      crumbled(2),
-      crumbled(1),
-      crumbled(0),
-      crumbled(0),
-      crumbled(0),
-      crumbled(0)
-    ],
-    8
-  )
+  const shatterAnim = () =>
+    once(
+      [
+        bubbles(B({ face: 'pain' }), 1),
+        bubbles(B({ face: 'pain' }), 2),
+        bubbles(B({ face: 'pain' }), 3),
+        bubbles(B({ face: 'down' }), 5),
+        tone(bubbles(B({ face: 'down' }), 5), MUTED),
+        tone(bubbles(B({ face: 'down' }), 5), STONE),
+        over(tone(bubbles(B({ face: 'down' }), 5), STONE), (l) => cracks(l, 46, 14, 3), false),
+        crumbled(3),
+        crumbled(2),
+        crumbled(1),
+        crumbled(0),
+        crumbled(0),
+        crumbled(0),
+        crumbled(0)
+      ],
+      8
+    )
   const hit = (x: number, i: number) =>
     B({ face: 'pain', spin: i })
       .clone()
@@ -1099,67 +1129,64 @@ function bedDeaths(): Sheet {
     r.map((c, _x, y) => ((bottom = Math.max(bottom, y)), c))
     return new Raster(64, 64).blit(r, 0, 58 - bottom)
   }
-  const runoverAnim = once(
-    [
-      B({ face: 'open' }),
-      hit(46, 0),
-      hit(30, 1),
-      hit(20, 2),
-      over(hit(22, 3), (l) => dust(l, 50, 54, 4)),
-      tipped(0),
-      tipped(1),
-      tipped(2),
-      tipped(3),
-      tipped(0),
-      tipped(1),
-      tipped(2),
-      tipped(3),
-      tipped(0)
-    ],
-    10
-  )
-  const webbed = (n: number, d: number) => {
-    const r = tone(
-      B({ face: n > 1 ? 'dead' : 'down', head: Math.min(2, n) }),
-      d > 1 ? DIM[1] : d ? DIM[0] : Array.from({ length: 256 }, (_, i) => i)
+  const runoverAnim = () =>
+    once(
+      [
+        B({ face: 'open' }),
+        hit(46, 0),
+        hit(30, 1),
+        hit(20, 2),
+        over(hit(22, 3), (l) => dust(l, 50, 54, 4)),
+        tipped(0),
+        tipped(1),
+        tipped(2),
+        tipped(3),
+        tipped(0),
+        tipped(1),
+        tipped(2),
+        tipped(3),
+        tipped(0)
+      ],
+      10
     )
+  // 孤独死: a cool blue-grey night falls over everything (no warm shift), dust motes drift, the flower in the
+  // vase wilts, cobwebs and dust gather, the head droops.
+  const vase = (l: Raster, wilt: number) => {
+    l.rect(4, 44, 12, 2, R.brown[1])
+    l.rect(6, 46, 2, 10, R.brown[2])
+    l.rect(13, 46, 2, 10, R.brown[2])
+    l.ellipse(10, 40, 3, 4, R.sky[1])
+    l.line(10, 36, 10 + wilt, 30 + wilt * 2, R.green[2])
+    l.ellipse(10 + wilt * 2, 30 + wilt * 3, 2, 1.6, wilt > 1 ? R.brown[1] : R.pink[1])
+    if (wilt > 1) l.rect(14, 43, 2, 1, R.pink[2])
+  }
+  const lonelyFrame = (n: number) => {
+    const base = B({ face: n > 4 ? 'dead' : 'down', head: Math.min(2, Math.floor(n / 3)) })
+    part(base, (l) => vase(l, Math.min(2, Math.floor(n / 4))))
+    const r = n === 0 ? base : tone(base, NIGHT[n < 3 ? 0 : 1])
     part(
       r,
       (l) => {
-        if (n > 0) {
+        const webs = Math.min(3, Math.floor(n / 3))
+        if (webs > 0) {
           for (let a = 0; a < Math.PI / 2; a += 0.3)
-            l.line(59, 26, 59 - Math.cos(a) * 8, 26 + Math.sin(a) * 8, R.paper[2])
-          for (const rr of [3, 6])
-            for (let a = 0; a < Math.PI / 2; a += 0.15) l.set(59 - Math.cos(a) * rr, 26 + Math.sin(a) * rr, R.paper[2])
+            l.line(59, 26, 59 - Math.cos(a) * (5 + webs * 2), 26 + Math.sin(a) * (5 + webs * 2), R.metal[1])
+          for (let rr = 3; rr <= 3 + webs * 2; rr += 3)
+            for (let a = 0; a < Math.PI / 2; a += 0.15) l.set(59 - Math.cos(a) * rr, 26 + Math.sin(a) * rr, R.metal[1])
         }
-        for (let s = 0; s < n * 4; s++) l.set(12 + ((s * 11) % 34), 35 + ((s * 7) % 6), R.paper[3])
-        if (n > 2)
-          for (let a = 0; a < Math.PI / 2; a += 0.3)
-            l.line(5, 32, 5 + Math.cos(a) * 6, 32 + Math.sin(a) * 6, R.paper[2])
+        for (let s2 = 0; s2 < n * 3; s2++) l.set(14 + ((s2 * 11) % 34), 36 + ((s2 * 7) % 6), R.metal[2])
+        // Dust motes drifting slowly through the dark.
+        for (let m = 0; m < 6; m++) l.set(18 + m * 7 + (n % 3), 8 + ((m * 9 + n * 2) % 22), R.metal[0])
       },
       false
     )
     return r
   }
-  const lonely = once(
-    [
-      webbed(0, 0),
-      webbed(0, 1),
-      webbed(1, 1),
-      webbed(1, 2),
-      webbed(2, 2),
-      webbed(3, 2),
-      webbed(3, 2),
-      webbed(4, 2),
-      webbed(5, 2),
-      webbed(5, 2),
-      webbed(6, 2),
-      webbed(6, 2),
-      webbed(6, 2),
-      webbed(6, 2)
-    ],
-    6
-  )
+  const lonely = () =>
+    once(
+      Array.from({ length: 14 }, (_, n) => lonelyFrame(n)),
+      6
+    )
   // 大往生: a peaceful smile while the reaper arrives; then the haloed soul rises (rendered by soulAt).
   const glow = (i: number) =>
     over(
@@ -1181,16 +1208,8 @@ function bedDeaths(): Sheet {
       },
       false
     )
-  const won = once([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(glow), 6, { soul: 'halo' })
-  return {
-    collapse: flatline,
-    illness,
-    starve: once(starveFrames, 6),
-    shatter: shatterAnim,
-    runover: runoverAnim,
-    lonely,
-    won
-  }
+  const won = () => once([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(glow), 6, { soul: 'halo' })
+  return lazySheet({ collapse: flatline, illness, starve, shatter: shatterAnim, runover: runoverAnim, lonely, won })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1205,36 +1224,97 @@ const UPRIGHT: Record<string, Kit> = {
   )
 }
 
+/**
+ * A sheet whose animations are generated only when first read (and then kept), so a death costs just its
+ * own frames at the moment a player goes down — and the renderer pre-warms them in idle time anyway.
+ */
+function lazySheet(make: Record<string, () => Anim>): Sheet {
+  const out = {} as Sheet
+  for (const [key, build] of Object.entries(make)) {
+    let anim: Anim | undefined
+    Object.defineProperty(out, key, { enumerable: true, get: () => (anim ??= build()) })
+  }
+  return out
+}
+
 function uprightDeaths(id: string): Sheet {
   const k = UPRIGHT[id]
-  return {
-    collapse: collapse(k),
-    ...(ADULT_AGE.has(id) ? { hang: hang(k) } : { alone: alone(k) }),
-    starve: starve(k),
-    runover: runover(k),
-    illness: illness(k),
-    shatter: shatter(k),
-    overwork: overwork(k),
-    heartbreak: heartbreak(k),
-    dogpile: dogpile(k),
-    burnout: burnout(k),
-    heatstroke: heatstroke(k),
-    overheat: overheat(k)
-  }
+  return lazySheet({
+    collapse: () => collapse(k),
+    ...(ADULT_AGE.has(id) ? { hang: () => hang(k) } : { alone: () => alone(k) }),
+    starve: () => starve(k),
+    runover: () => runover(k),
+    illness: () => illness(k),
+    shatter: () => shatter(k),
+    overwork: () => overwork(k),
+    heartbreak: () => heartbreak(k),
+    dogpile: () => dogpile(k),
+    burnout: () => burnout(k),
+    heatstroke: () => heatstroke(k),
+    overheat: () => overheat(k)
+  })
 }
 
 export const deathSheets: Record<string, () => Sheet> = {
   ...Object.fromEntries(Object.keys(UPRIGHT).map((id) => [`death:${id}`, () => uprightDeaths(id)])),
-  'death:baby': babyDeaths,
+  'death:baby': () => {
+    let all: Sheet | undefined
+    return lazySheet(
+      Object.fromEntries(['collapse', 'illness', 'shatter'].map((k) => [k, () => (all ??= babyDeaths())[k]]))
+    )
+  },
   'death:bed': bedDeaths,
   soul: () => ({
     float: { frames: [0, 1, 2, 3].map((f) => soul(f, 'soul')), fps: 6, loop: true },
     ghost: { frames: [0, 1, 2, 3].map((f) => soul(f, 'ghost')), fps: 6, loop: true },
-    halo: { frames: [0, 1, 2, 3].map((f) => soul(f, 'halo')), fps: 6, loop: true }
+    halo: { frames: [0, 1, 2, 3].map(angel), fps: 5, loop: true }
   })
 }
 
-/** A small calm soul (16×16, pivot bottom centre); the ghost wears a 天冠 headband; the halo soul sparkles. */
+/**
+ * 大往生's soul (24×24, pivot bottom centre): a pale little old man in a white robe with a halo and tiny
+ * wings, smiling and waving. The renderer draws it slightly translucent.
+ */
+function angel(f: number) {
+  const r = new Raster(24, 24)
+  const flap = f % 2
+  part(r, (l) => {
+    for (const s2 of [-1, 1])
+      l.stamp(
+        flap ? ['ww..', 'wWww', '.WWw'] : ['....', 'wwww', 'WWww'],
+        s2 < 0 ? 3 : 17,
+        11,
+        { w: C.white, W: R.paper[2] },
+        s2 < 0
+      )
+  })
+  part(r, (l) => {
+    l.poly([8, 13, 16, 13, 18, 22, 6, 22], C.white)
+    l.rect(8, 21, 8, 1, R.paper[1])
+    l.ellipse(12, 9, 4.5, 4.5, R.skin[0])
+    l.rect(8, 9, 1, 3, R.paper[1])
+    l.rect(15, 9, 1, 3, R.paper[1])
+    l.stamp(['K.K..K.K', '.K....K.'], 8, 8, { K: R.skin[3] })
+    l.stamp(['.WWWW.', 'W....W'], 9, 11, { W: R.paper[1] })
+    l.set(11, 13, R.skin[3])
+    l.set(12, 13, R.skin[3])
+    // A waving hand.
+    l.line(17, 15, 20, 11 - flap, R.paper[1])
+    l.ellipse(20.5, 10 - flap, 1.6, 1.6, R.skin[0])
+  })
+  part(
+    r,
+    (l) => {
+      for (let a = 0; a < Math.PI * 2; a += 0.15) l.set(12 + Math.cos(a) * 4.5, 2.5 + Math.sin(a) * 1.3, R.yellow[0])
+      l.set(2 + f * 5, 4 + (f % 2) * 5, R.yellow[0])
+      l.set(21 - f * 3, 6 + (f % 3) * 4, R.yellow[1])
+    },
+    false
+  )
+  return r
+}
+
+/** A small calm soul (16×16, pivot bottom centre); the ghost wears a 天冠 headband. */
 function soul(f: number, kind: 'soul' | 'ghost' | 'halo') {
   const r = new Raster(16, 16)
   const tail = [
@@ -1261,16 +1341,6 @@ function soul(f: number, kind: 'soul' | 'ghost' | 'halo') {
     l.set(9, 10, R.mint[3])
     l.set(10, 10, R.mint[3])
   })
-  if (kind === 'halo')
-    part(
-      r,
-      (l) => {
-        for (let a = 0; a < Math.PI * 2; a += 0.2) l.set(8 + Math.cos(a) * 4, 2 + Math.sin(a) * 1.2, R.yellow[0])
-        l.set(1 + f * 3, 6 + (f % 2) * 4, R.yellow[0])
-        l.set(14 - f * 2, 12 - (f % 2) * 5, R.yellow[1])
-      },
-      false
-    )
   return r
 }
 
@@ -1307,10 +1377,13 @@ export function deathKind(tag: string | undefined, age: number, body: string) {
 export function soulAt(t: number, animSeconds: number, kind: Anim['soul'] = 'soul') {
   const start = kind === 'halo' ? 0.3 : animSeconds * 0.8
   if (t < start) return undefined
-  const rise = Math.min(1, (t - start) / (kind === 'halo' ? 1.6 : 0.9))
+  const rise = Math.min(1, (t - start) / (kind === 'halo' ? 2.6 : 0.9))
   return {
-    dx: kind === 'halo' ? rise * 44 : 0,
-    dy: (kind === 'halo' ? -24 - rise * 28 : -16 - rise * 18) + Math.sin((t - start) * 2.6) * 2 * rise,
+    dx: kind === 'halo' ? rise * 14 : 0,
+    // The ghost rises from the chest of a body lying on its back.
+    dy:
+      (kind === 'halo' ? -22 - rise * 46 : kind === 'ghost' ? -6 - rise * 30 : -16 - rise * 18) +
+      Math.sin((t - start) * 2.6) * 2 * rise,
     alpha: Math.min(1, (t - start) * 3)
   }
 }

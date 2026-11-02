@@ -59,6 +59,9 @@ export class Renderer {
   /** Renderer clock: animations keep breathing even while the game is paused. */
   private clock = 0
   private wonAt?: number
+  private beamAt?: number
+  /** ms spent generating the death animation on the frame a player went down (dev hook). */
+  deathBuildMs = 0
   private halo?: { x: number; y: number; t: number; alpha: number }
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
@@ -225,6 +228,20 @@ export class Renderer {
       }
   }
 
+  /** Builds this stage's death animations one per idle callback, so going down never hitches. */
+  private prewarm(body: string) {
+    if (typeof requestIdleCallback !== 'function') return
+    const deaths = sheet(`death:${body}`)
+    const kinds = Object.keys(deaths)
+    const next = () => {
+      const kind = kinds.shift()
+      if (!kind) return
+      void deaths[kind]
+      requestIdleCallback(next, { timeout: 2000 })
+    }
+    requestIdleCallback(next, { timeout: 2000 })
+  }
+
   /** Eases guest-side entities between snapshots; hosts pass smooth=false. */
   private ease(id: number, x: number, y: number, k: number) {
     const entry = this.shown.get(id)
@@ -295,10 +312,13 @@ export class Renderer {
     // Identity ring at the feet (player colour), drawn under the sprite.
     this.world()
     ctx.strokeStyle = player.color
+    if (phase === 'reaper' || phase === 'won')
+      ctx.globalAlpha = Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6)
     ctx.lineWidth = local ? 3 : 2
     ctx.beginPath()
     ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
     ctx.stroke()
+    ctx.globalAlpha = 1
     const flip = player.fx < 0
     // 大往生: a peaceful smile while the reaper comes, then the haloed soul rises beside it.
     const ending = body === 'bed' && !player.downed && (phase === 'reaper' || phase === 'won')
@@ -319,6 +339,10 @@ export class Renderer {
         const tag = player.killer ? ENEMY_BY_ID.get(player.killer)?.tag : undefined
         death = { at: this.clock, body, kind: deathKind(tag, ageAt(time), body) }
         this.deaths.set(player.id, death)
+        // Measured for the dev hook: the cost of the death animation on the frame a player goes down.
+        const start = performance.now()
+        void sheet(`death:${body}`)[death.kind]
+        this.deathBuildMs = performance.now() - start
       }
       const anim = sheet(`death:${death.body}`)[death.kind] ?? sheet(`death:${death.body}`).collapse
       const t = this.clock - death.at
@@ -352,14 +376,26 @@ export class Renderer {
       )
       this.world()
     }
-    this.blit(this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color), pos.x, feet - 64)
+    // In the finale the name tag and bar fade away so the bed and the rising soul are unobstructed.
+    const shown =
+      phase === 'reaper' || phase === 'won' ? Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6) : 1
+    if (shown <= 0) return
+    this.blit(
+      this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
+      pos.x,
+      feet - 64,
+      0,
+      shown
+    )
     // Downed players show only the revive ring, not an empty bar.
     if (player.downed) return
     const w = 40
+    ctx.globalAlpha = shown
     ctx.fillStyle = 'rgba(0,0,0,.6)'
     ctx.fillRect(pos.x - w / 2, feet + 8, w, 5)
     ctx.fillStyle = player.hp / player.maxHp > 0.3 ? '#7be495' : '#ff6b6b'
     ctx.fillRect(pos.x - w / 2, feet + 8, (w * Math.max(0, player.hp)) / Math.max(1, player.maxHp), 5)
+    ctx.globalAlpha = 1
   }
 
   draw(view: View, localId: string, dt: number, smooth: boolean) {
@@ -376,7 +412,10 @@ export class Renderer {
     const visible = (x: number, y: number) => Math.abs(x - this.camera.x) < halfW && Math.abs(y - this.camera.y) < halfH
 
     // Ground of this stage of life, crossfading from the previous one when a new stage begins.
-    if (this.groundShown?.stage !== stage) this.groundShown = { stage, from: this.groundShown?.stage, at: this.clock }
+    if (this.groundShown?.stage !== stage) {
+      this.groundShown = { stage, from: this.groundShown?.stage, at: this.clock }
+      this.prewarm(bodyFor(stage))
+    }
     const fade = Math.min(1, (this.clock - this.groundShown.at) / GROUND_FADE)
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.fillStyle = '#16121c'
@@ -549,6 +588,30 @@ export class Renderer {
       }
     }
 
+    // 大往生: a soft warm beam of light falls onto the bed (renderer alpha, not baked into sprites).
+    if (view.phase === 'reaper' || view.phase === 'won') {
+      const me = view.players.find((p) => p.id === localId) ?? view.players[0]
+      if (me) {
+        const pos = positions.get(me.id)!
+        if (this.beamAt === undefined) this.beamAt = this.clock
+        const k = Math.min(1, (this.clock - this.beamAt) / 1.2)
+        const top = this.camera.y - halfH
+        const grad = ctx.createLinearGradient(0, top, 0, pos.y + 24)
+        grad.addColorStop(0, 'rgba(255,236,170,0)')
+        grad.addColorStop(1, `rgba(255,236,170,${0.32 * k})`)
+        ctx.save()
+        ctx.globalCompositeOperation = 'screen'
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.moveTo(pos.x - 14, top)
+        ctx.lineTo(pos.x + 22, top)
+        ctx.lineTo(pos.x + 40, pos.y + 24)
+        ctx.lineTo(pos.x - 36, pos.y + 24)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+    } else this.beamAt = undefined
     if (view.reaper) {
       // Drawn a step to the side of where it hovers so the old man's face stays visible beside it.
       const x = view.reaper[0] + 30
@@ -567,7 +630,8 @@ export class Renderer {
     }
     if (this.halo) {
       const halo = sheet('soul').halo
-      this.art(halo.frames[frameAt(halo, this.halo.t)], this.halo.x, this.halo.y, 8, 16, false, this.halo.alpha)
+      const frame = halo.frames[frameAt(halo, this.halo.t)]
+      this.art(frame, this.halo.x, this.halo.y, frame.w / 2, frame.h, false, this.halo.alpha * 0.88)
       this.world()
       this.halo = undefined
     }

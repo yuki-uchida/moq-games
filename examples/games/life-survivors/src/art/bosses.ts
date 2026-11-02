@@ -57,9 +57,13 @@ const SKULL = [
   '..gwgwgwgg..'
 ]
 
-function reaper(i: number, t: number) {
+function reaper(i: number, t: number, bow = 0) {
   const r = new Raster(S, S)
   const y = Math.round(Math.sin(t) * 2)
+  // Bowing: the hood and skull lower and lean forward, the scythe tilts away, a hand rests on the chest.
+  const hx = Math.round(bow * 5)
+  const hy = Math.round(bow * 8)
+  const tilt = Math.round(bow * 14)
   const fl = (k: number) => Math.round(Math.sin(t + k) * 2.5)
   const ROBE = R.hair
   // The back of the cloak flows out behind.
@@ -89,18 +93,25 @@ function reaper(i: number, t: number) {
     l.line(44, 52 + y, 34 + fl(1), 104 + y, ROBE[3])
   })
   // The blade arcs back over the hood (never toward the player), with a bright cutting edge.
-  const top = { x: 100, y: 12 + y }
+  const top = { x: 100 + tilt, y: 12 + y + Math.round(bow * 4) }
   part(r, (l) => {
     for (let s = 0; s <= 1; s += 0.004) {
       const a = -0.5 - s * 2.2
       const w = 4 * (1 - s) + 0.6
-      l.ellipse(76 + Math.cos(a) * (28 - w), 28 + y + Math.sin(a) * (26 - w), w, w, R.metal[1])
+      l.ellipse(
+        76 + tilt + Math.cos(a) * (28 - w),
+        28 + y + Math.round(bow * 4) + Math.sin(a) * (26 - w),
+        w,
+        w,
+        R.metal[1]
+      )
     }
     shadeEdges(l, R.metal, 1)
     for (let s = 0.04; s <= 0.92; s += 0.004) {
       const a = -0.5 - s * 2.2
-      l.paint(76 + Math.cos(a) * 28.5, 28 + y + Math.sin(a) * 26.5, R.metal[0])
-      if (s > 0.3 && s < 0.6) l.paint(76 + Math.cos(a) * 27.5, 28 + y + Math.sin(a) * 25.5, C.white)
+      l.paint(76 + tilt + Math.cos(a) * 28.5, 28 + y + Math.round(bow * 4) + Math.sin(a) * 26.5, R.metal[0])
+      if (s > 0.3 && s < 0.6)
+        l.paint(76 + tilt + Math.cos(a) * 27.5, 28 + y + Math.round(bow * 4) + Math.sin(a) * 25.5, C.white)
     }
   })
   // Main cloak: lit left rim, three-tone folds, shaded right, a tattered hem that drifts.
@@ -126,19 +137,39 @@ function reaper(i: number, t: number) {
   })
   // Hood: tall and leaning forward, a lit rim around a deep opening.
   part(r, (l) => {
-    l.poly([50, 40 + y, 56, 18 + y, 66, 8 + y, 76, 10 + y, 86, 22 + y, 90, 38 + y, 84, 50 + y, 58, 52 + y], ROBE[1])
+    l.poly(
+      [
+        50,
+        40 + y,
+        56 + hx,
+        18 + y + hy,
+        66 + hx,
+        8 + y + hy,
+        76 + hx,
+        10 + y + hy,
+        86 + hx,
+        22 + y + hy,
+        90 + hx,
+        38 + y + hy,
+        84,
+        50 + y,
+        58,
+        52 + y
+      ],
+      ROBE[1]
+    )
     shadeEdges(l, ROBE, 2, true)
-    l.ellipse(74, 32 + y, 10.5, 13.5, ROBE[0])
-    l.ellipse(74.5, 32.5 + y, 9, 12, C.inkCool)
-    l.ellipse(76, 34 + y, 7, 9.5, R.hair[3])
+    l.ellipse(74 + hx, 32 + y + hy, 10.5, 13.5 - bow * 2, ROBE[0])
+    l.ellipse(74.5 + hx, 32.5 + y + hy, 9, 12 - bow * 2, C.inkCool)
+    l.ellipse(76 + hx, 34 + y + hy, 7, 9.5 - bow * 2, R.hair[3])
   })
   part(
     r,
     (l) => {
-      l.stamp(SKULL, 70, 28 + y, { ...KEY, g: R.paper[3], c: C.glow })
+      l.stamp(SKULL, 70 + hx, 28 + y + hy, { ...KEY, g: R.paper[3], c: C.glow })
       // The brim's shadow covers the skull's crown.
-      for (let x = 70; x < 82; x++)
-        for (let yy = 28; yy < 31; yy++) if (l.get(x, yy + y) === C.white) l.set(x, yy + y, R.paper[3])
+      for (let x = 70 + hx; x < 82 + hx; x++)
+        for (let yy = 28; yy < 31; yy++) if (l.get(x, yy + y + hy) === C.white) l.set(x, yy + y + hy, R.paper[3])
     },
     false
   )
@@ -148,12 +179,21 @@ function reaper(i: number, t: number) {
     shadeEdges(l, R.brown)
     l.rect(top.x - 2, top.y - 2, 4, 4, R.metal[2])
   })
-  part(r, (l) => {
-    l.poly([74, 52 + y, 84, 54 + y, 98, 64 + y, 96, 74 + y, 86, 72 + y, 72, 62 + y], ROBE[1])
-    shadeEdges(l, ROBE, 2, true)
-    l.poly([90, 64 + y, 98, 64 + y, 96, 74 + y, 89, 72 + y], C.inkCool)
-  })
-  part(r, (l) => l.stamp(['.ww.w.', 'wgwwgw', 'wwwwww', 'gwwgwg', '.g..g.'], 94, 63 + y, { ...KEY, g: R.paper[2] }))
+  if (bow <= 0.5)
+    part(r, (l) => {
+      l.poly([74, 52 + y, 84, 54 + y, 98, 64 + y, 96, 74 + y, 86, 72 + y, 72, 62 + y], ROBE[1])
+      shadeEdges(l, ROBE, 2, true)
+      l.poly([90, 64 + y, 98, 64 + y, 96, 74 + y, 89, 72 + y], C.inkCool)
+    })
+  if (bow > 0.5) {
+    // The bony hand rests on the chest instead of gripping the shaft.
+    part(r, (l) => {
+      l.poly([74, 52 + y, 82, 54 + y, 84, 60 + y, 78, 64 + y, 72, 60 + y], ROBE[1])
+      shadeEdges(l, ROBE, 1, true)
+    })
+    part(r, (l) => l.stamp(['.ww.w.', 'wgwwgw', 'wwwwww', 'gwwgwg'], 74, 58 + y, { ...KEY, g: R.paper[2] }))
+  } else
+    part(r, (l) => l.stamp(['.ww.w.', 'wgwwgw', 'wwwwww', 'gwwgwg', '.g..g.'], 94, 63 + y, { ...KEY, g: R.paper[2] }))
   return r
 }
 
@@ -774,17 +814,9 @@ function bigIllness(i: number, t: number) {
 export const bossSheets: Record<string, () => Sheet> = {
   reaper: () => ({
     ...six(reaper, 5),
-    // A slow bow: the hood, skull and arm lower toward the soul; the robe below stays.
+    // A clear bow: head lowered, scythe tilted away, a hand on the chest — held for a beat.
     bow: {
-      frames: [0, 2, 4, 6, 7, 7, 7].map((b, i) => {
-        const r = reaper(i % 6, 0)
-        const out = new Raster(S, S)
-        out.blit(r)
-        for (let y = 0; y < 56; y++) for (let x = 0; x < S; x++) out.set(x, y, 0)
-        const top = new Raster(S, S)
-        for (let y = 0; y < 56; y++) for (let x = 0; x < S; x++) top.set(x, y, r.get(x, y))
-        return out.blit(top, Math.round(b / 2), b)
-      }),
+      frames: [0, 0.35, 0.7, 1, 1, 1, 1, 1, 1].map((b, i) => reaper(i % 6, 0, b)),
       fps: 6,
       loop: false
     }

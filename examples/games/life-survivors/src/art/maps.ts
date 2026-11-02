@@ -526,12 +526,16 @@ const P: Record<string, Record<string, () => Raster>> = {
           for (let k = 0; k < 3; k++) l.rect(19 + k * 9, 40, 6, 3, R.yellow[2])
         }
       ),
-    books: () =>
+    signboard: () =>
       prop(64, 64, (l) => {
-        box(l, 18, 48, 26, 7, 4, R.navy)
-        box(l, 20, 41, 22, 7, 4, R.red)
-        box(l, 17, 34, 24, 7, 4, R.mint)
-        for (const y of [50, 43, 36]) l.rect(40, y, 4, 4, R.paper[1])
+        // A サークル勧誘 board on two legs.
+        l.line(22, 40, 18, 56, R.wood[2])
+        l.line(42, 40, 46, 56, R.wood[2])
+        box(l, 14, 20, 36, 22, 3, R.wood)
+        l.rect(16, 22, 32, 18, R.paper[1])
+        l.rect(18, 25, 18, 3, R.red[1])
+        l.rect(18, 31, 26, 1, R.paper[3])
+        l.rect(18, 35, 20, 1, R.paper[3])
       }),
     bench: () =>
       prop(64, 64, (l) => {
@@ -543,56 +547,65 @@ const P: Record<string, Record<string, () => Raster>> = {
       })
   },
   street: {
-    wall: () => {
-      const r = new Raster(128, 64)
-      part(r, (l) => {
-        box(l, 4, 22, 116, 34, 4, R.metal)
-        for (let y = 26; y < 56; y += 8)
-          for (let x = ((y - 26) / 8) % 2 ? 4 : 18; x < 120; x += 28) {
-            l.rect(x, y, 1, 8, R.metal[2])
-            l.rect(4, y + 7, 116, 1, R.metal[2])
+    // Suburban things only — no vehicles (a parked car would read as the 交通事故 enemy).
+    mailbox: () =>
+      prop(
+        64,
+        64,
+        (l) => l.rect(30, 38, 4, 18, R.metal[2]),
+        (l) => {
+          box(l, 22, 24, 18, 14, 3, R.red)
+          l.rect(25, 28, 12, 2, R.hair[3])
+          l.rect(27, 32, 8, 3, C.white)
+        }
+      ),
+    planters: () =>
+      prop(
+        64,
+        64,
+        (l) => {
+          for (const [x, h] of [
+            [18, 12],
+            [34, 16],
+            [48, 10]
+          ])
+            for (let k = 0; k < 5; k++) ball(l, x - 3 + k * 1.5, 46 - h + (k % 2) * 3, 4, 3, R.green, false)
+        },
+        (l) => {
+          for (const x of [12, 28, 42]) {
+            l.poly([x, 44, x + 12, 44, x + 10, 56, x + 2, 56], R.brick[0])
+            l.rect(x, 44, 12, 2, R.orange[0])
           }
-        l.rect(4, 20, 120, 3, R.metal[0])
-      })
-      return r
-    },
-    car: () => {
-      const r = new Raster(128, 64)
-      part(r, (l) => {
-        for (const x of [32, 92]) ball(l, x, 52, 7, 7, [R.hair[1], R.hair[2], R.hair[3], R.hair[3], R.hair[4]], false)
-      })
-      part(r, (l) => {
-        l.poly([14, 46, 18, 34, 34, 20, 96, 20, 108, 34, 114, 38, 116, 48, 14, 50], R.sky[1])
-        shadeEdges(l, R.sky, 2, true)
-        l.poly([38, 24, 62, 24, 62, 34, 28, 34], R.navy[2])
-        l.poly([66, 24, 94, 24, 104, 34, 66, 34], R.navy[2])
-        l.rect(14, 42, 102, 2, R.sky[2])
-        l.rect(110, 38, 5, 3, R.yellow[0])
-        l.rect(14, 38, 3, 3, R.red[1])
-        for (const x of [32, 92]) l.ellipse(x, 52, 3, 3, R.metal[1])
-      })
-      return r
-    },
-    cart: () =>
+          shadeEdges(l, R.orange, 1)
+        }
+      ),
+    garbage: () =>
+      prop(
+        64,
+        64,
+        (l) => {
+          for (const [x, y, c] of [
+            [20, 48, R.paper[1]],
+            [30, 46, R.mint[0]],
+            [40, 49, R.paper[1]]
+          ] as const)
+            ball(l, x, y, 6, 5, [c, c, R.paper[2], R.paper[3], R.paper[4]], false)
+        },
+        (l) => {
+          // The green net thrown over the bags at a ごみ集積所.
+          for (let x = 13; x < 48; x += 3) l.line(x, 42, x + 4, 55, R.green[2])
+          for (let y = 43; y < 56; y += 3) l.line(13, y, 48, y, R.green[2])
+        }
+      ),
+    pole: () =>
       prop(64, 64, (l) => {
-        l.poly([12, 28, 50, 28, 46, 46, 18, 46], R.metal[1])
-        l.poly([15, 31, 47, 31, 44, 43, 20, 43], 0)
-        for (let x = 18; x < 48; x += 4) l.line(x, 31, x - 1, 43, R.metal[1])
-        for (let y = 34; y < 43; y += 3) l.line(16, y, 47, y, R.metal[2])
-        l.line(50, 28, 56, 20, R.metal[1])
-        l.rect(53, 18, 6, 2, R.red[1])
-        l.line(18, 46, 18, 54, R.metal[2])
-        l.line(44, 46, 44, 54, R.metal[2])
-        for (const x of [18, 44]) l.rect(x - 1, 54, 3, 2, R.hair[2])
+        cyl(l, 26, 2, 12, 52, R.metal)
+        l.rect(26, 30, 12, 6, R.yellow[1])
+        for (let x = 26; x < 38; x += 4) l.poly([x, 30, x + 2, 30, x + 4, 36, x + 2, 36], C.inkCool)
+        l.rect(36, 12, 6, 2, R.metal[3])
       }),
-    cone: () =>
-      prop(64, 64, (l) => {
-        l.poly([28, 20, 36, 20, 42, 52, 22, 52], R.orange[1])
-        l.rect(25, 30, 14, 4, C.white)
-        l.rect(24, 40, 17, 4, C.white)
-        box(l, 18, 52, 28, 3, 3, R.orange)
-        shadeEdges(l, R.orange, 1, true)
-      })
+    vending: () => P.sidewalk.vending(),
+    bicycle: () => P.gym.bicycle()
   },
   golf: {
     flag: () =>

@@ -616,10 +616,18 @@ export function car(i: number) {
     l.poly([19, 34 + b, 24, 27 + b, 31, 27 + b, 31, 34 + b], R.navy[2])
     l.poly([33, 34 + b, 33, 27 + b, 41, 27 + b, 46, 34 + b], R.navy[2])
     // Angry eyes on the windshield, brows slammed down.
-    for (const ex of [26, 38]) {
-      l.rect(ex - 2, 29 + b, 5, 4, C.white)
-      l.rect(ex, 30 + b, 2, 3, C.inkCool)
-      l.line(ex - 3, 27 + b + (ex < 30 ? 0 : 2), ex + 3, 27 + b + (ex < 30 ? 2 : 0), C.inkCool)
+    // Big white eyes with pupils turned inward, cut by thick brows slanting down toward the middle.
+    for (const [ex, inner] of [
+      [26, 1],
+      [38, -1]
+    ] as const) {
+      l.rect(ex - 3, 28 + b, 7, 5, C.white)
+      l.rect(ex + (inner > 0 ? 1 : -2), 30 + b, 2, 3, C.inkCool)
+      for (let k = 0; k < 7; k++) {
+        const x = ex - 3 + k
+        const drop = inner > 0 ? Math.floor(k / 2) : Math.floor((6 - k) / 2)
+        l.rect(x, 26 + b + drop, 1, 2, C.inkCool)
+      }
     }
     l.rect(8, 42 + b, 3, 3, R.red[1])
     // Angry headlight eyes and a toothy grille on the front.

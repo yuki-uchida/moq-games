@@ -532,6 +532,9 @@ if (import.meta.env.DEV)
       },
       get localId() {
         return localId
+      },
+      get deathBuildMs() {
+        return renderer.deathBuildMs
       }
     }
   })

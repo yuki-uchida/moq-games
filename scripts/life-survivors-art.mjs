@@ -159,8 +159,8 @@ function exportGif(id, name, anim, bg) {
       drawRaster(
         img,
         frame,
-        Math.round(32 + soul.dx - 8) * SCALE,
-        Math.round(58 + soul.dy - 16) * SCALE,
+        Math.round(32 + soul.dx - frame.w / 2) * SCALE,
+        Math.round(58 + soul.dy - frame.h) * SCALE,
         SCALE,
         false,
         soul.alpha
@@ -303,8 +303,8 @@ if (pick('deathtags')) {
       drawRaster(
         img,
         art.sheet('soul')[sk].frames[0],
-        x + Math.round(32 + soul.dx - 8) * 2,
-        y + Math.round(58 + soul.dy - 16) * 2,
+        x + Math.round(32 + soul.dx - art.sheet('soul')[sk].frames[0].w / 2) * 2,
+        y + Math.round(58 + soul.dy - art.sheet('soul')[sk].frames[0].h) * 2,
         2
       )
       if (c === 0) labels.push([b, x + 2, y + 2, 11])

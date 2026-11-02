@@ -20,6 +20,10 @@ const args = process.argv.slice(2)
 const doScreens = !args.some((a) => a === 'playback' || a === 'deaths') || args.includes('screens')
 const doPlayback = !args.some((a) => a === 'screens' || a === 'deaths') || args.includes('playback')
 const doDeaths = !args.some((a) => a === 'screens' || a === 'playback') || args.includes('deaths')
+const only = args
+  .find((a) => a.startsWith('only='))
+  ?.slice(5)
+  .split(',')
 const dsfs = args
   .find((a) => a.startsWith('dsf='))
   ?.slice(4)
@@ -383,17 +387,21 @@ if (doPlayback)
 
 if (doDeaths) {
   const dir = resolve(outRoot, 'playback/deaths')
-  rmSync(dir, { recursive: true, force: true })
+  if (!only) rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
+  const buildMs = []
   const at = (name) => resolve(dir, name)
   for (const [name, age, killer] of TAG_DEATHS) {
+    if (only && !only.includes(name)) continue
     const { path, marks } = await clip(1, dir, `death-${name}`, async (page, mark) => {
       await start(page)
       await scene(page, age, [], 0.01)
       await page.waitForTimeout(1600)
       await kill(page, killer)
       mark('down')
-      await page.waitForTimeout(6600)
+      await page.waitForTimeout(600)
+      buildMs.push(`${name}: ${(await page.evaluate(() => window.__life.deathBuildMs)).toFixed(2)} ms`)
+      await page.waitForTimeout(6000)
     })
     strip(path, at(`death-${name}`), { from: marks.down, seconds: 5, fps: 12, w: 220, h: 160, dsf: 1, dy: -30 })
     strip(path, at(`death-${name}-result`), {
@@ -406,34 +414,38 @@ if (doDeaths) {
       cols: 1
     })
   }
-  // 大往生: the reaper arrives, the old man smiles, the haloed soul rises, the reaper bows, then the result.
-  const { path, marks } = await clip(1, dir, 'ending-daioujou', async (page, mark) => {
-    await start(page)
-    await scene(page, 79, ['illness', 'germ'])
-    await page.waitForTimeout(800)
-    await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
-    mark('arrive')
-    await page.waitForTimeout(9000)
-  })
-  strip(path, at('ending-daioujou'), {
-    from: marks.arrive,
-    seconds: 7.5,
-    fps: 8,
-    w: 360,
-    h: 260,
-    dsf: 1,
-    cols: 10,
-    dy: -40
-  })
-  strip(path, at('ending-daioujou-result'), {
-    from: marks.arrive + 8.6,
-    seconds: 0.25,
-    fps: 4,
-    w: 800,
-    h: 520,
-    dsf: 1,
-    cols: 1
-  })
+  writeFileSync(resolve(dir, 'death-build-ms.txt'), buildMs.join('\n') + '\n')
+  console.log(buildMs.join('\n'))
+  if (!only || only.includes('ending')) {
+    // 大往生: the reaper arrives, the old man smiles, the haloed soul rises, the reaper bows, then the result.
+    const { path, marks } = await clip(1, dir, 'ending-daioujou', async (page, mark) => {
+      await start(page)
+      await scene(page, 79, ['illness', 'germ'])
+      await page.waitForTimeout(800)
+      await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
+      mark('arrive')
+      await page.waitForTimeout(9000)
+    })
+    strip(path, at('ending-daioujou'), {
+      from: marks.arrive,
+      seconds: 7.5,
+      fps: 8,
+      w: 420,
+      h: 340,
+      dsf: 1,
+      cols: 10,
+      dy: -70
+    })
+    strip(path, at('ending-daioujou-result'), {
+      from: marks.arrive + 8.6,
+      seconds: 0.25,
+      fps: 4,
+      w: 800,
+      h: 520,
+      dsf: 1,
+      cols: 1
+    })
+  }
 }
 
 await browser.close()
