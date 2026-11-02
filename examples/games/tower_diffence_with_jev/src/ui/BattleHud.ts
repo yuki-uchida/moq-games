@@ -49,7 +49,7 @@ export class BattleHud {
     this.root = document.createElement('div')
     this.root.className = 'battle-hud'
     this.root.hidden = true
-    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="倒した敵">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div>`
+    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div>`
     parent.append(this.root)
     const q = <T extends HTMLElement>(selector: string) => this.root.querySelector<T>(selector)!
     this.castle = q('.bhud-castle')
@@ -135,12 +135,19 @@ export class BattleHud {
 
     const rules = stageRules(state.stage, state.waveBossPolicy),
       resolved = Math.min(state.enemiesResolved, rules.enemyCount),
-      enemies = `${resolved}/${rules.enemyCount}`
+      kills = Math.min(resolved, state.corpses.filter((corpse) => corpse.owner === 'ai').length),
+      passed = resolved - kills,
+      remaining = rules.enemyCount - resolved,
+      enemies = `${remaining}:${kills}:${passed}`
     if (enemies !== this.cache.enemies) {
       this.cache.enemies = enemies
-      this.enemyNum.textContent = enemies
+      // Remaining enemies, not "defeated": enemies that reach the castle also leave the count.
+      this.enemyNum.textContent = `残り${remaining}`
       this.enemyFill.style.width = `${(resolved / rules.enemyCount) * 100}%`
-      this.enemyBar.parentElement!.setAttribute('aria-label', `倒した敵 ${enemies}`)
+      this.enemyBar.parentElement!.setAttribute(
+        'aria-label',
+        `敵 全${rules.enemyCount}体 · 残り${remaining} · 撃破${kills}${passed ? ` · 通過${passed}` : ''}`
+      )
     }
     let crown = 'idle'
     if (!rules.bossType) crown = 'none'

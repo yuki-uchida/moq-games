@@ -204,7 +204,16 @@ export class BattleFeedback {
     for (const corpse of state.corpses) {
       if (this.corpseIds.has(corpse.id)) continue
       this.corpseIds.add(corpse.id)
-      if (baseline) continue
+      if (baseline) {
+        // A resumed battle: count what was already won, silently, and show it as already collected.
+        if (corpse.owner === 'ai') {
+          const bounty = bountyFor(corpse.type, corpse.boss)
+          this.killCount++
+          this.bountyTotal += bounty
+          this.bountyLanded += bounty
+        }
+        continue
+      }
       killed.add(corpse.id)
       if (corpse.owner === 'player') {
         this.allyDown(corpse.x, corpse.y)
