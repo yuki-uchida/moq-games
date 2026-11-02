@@ -613,6 +613,8 @@ function draw() {
   models.setPresentation(scale, aspect, rect.width / 1000)
   const units = [...state.units].sort((a, b) => a.id - b.id)
   const depth = depthSlots([...fallen, ...units])
+  const present = new Set([...fallen, ...units].map((u) => u.id))
+  for (const id of glides.keys()) if (!present.has(id)) glides.delete(id)
   for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
   for (const u of units) {
     const y = laneY(u)
@@ -744,7 +746,8 @@ function finish() {
 }
 function tick(now) {
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
-  const previous = state.units.map((u) => ({ ...u }))
+  // The unit objects as they were before this tick's steps: units that fall keep their final state.
+  const previous = state.units.slice()
   const elapsed = clock.advance(
     now,
     !paused && !state.result,
@@ -752,7 +755,8 @@ function tick(now) {
     () => !!state.result
   )
   if (!paused) {
-    for (const u of previous) if (!state.units.some((v) => v.id === u.id)) fallen.push({ ...u, at: state.time })
+    const alive = new Set(state.units)
+    for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
     while (fallen.length && state.time - fallen[0].at > KO_SECONDS) fallen.shift()
     let impact = false,
       shot = false
@@ -762,8 +766,7 @@ function tick(now) {
         // Splashes land on the front of the recipient's drawn body, on its own row.
         const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
         if (target) {
-          const rect = canvas.getBoundingClientRect()
-          effect.targetY = laneY(target) - 35 * (rect.width / 1000 / (rect.height / 450))
+          effect.targetY = laneY(target) - 35 * models.presentation[1]
           const height = 35 / (models.presentation[0] * modelSize(target.key))
           effect.dx = standOff(target) - target.side * models.front(target.key, height)
         }

@@ -1,5 +1,5 @@
 import { SPECIALS, specialReady } from './game/SpecialAbilities'
-import { bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
+import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
 import { SkillBar } from './ui/SkillBar'
 import { SkillCutIn } from './ui/SkillCutIn'
 import './ui/skill-bar.css'
@@ -1110,16 +1110,34 @@ function activateSkill(id: number, manual: boolean) {
   selectDefender(id)
   beginSpecial(id)
 }
-let autoSkillAt = 0, autoCastAt = -1e9
+let autoSkillAt = 0, autoCastAt = -1e9, autoBattle = ''
+// Simulation time at which AUTO first saw each special ready, so it never hoards one for long.
+const autoReadySince = new Map<number, number>()
 function autoSkills(now: number) {
   if (!skillBar.autoEnabled || now - autoSkillAt < 250) return
   autoSkillAt = now
+  const state = engine.state,
+    battle = `${state.battleId}:${state.stage}`
+  if (battle !== autoBattle) {
+    autoBattle = battle
+    autoReadySince.clear()
+  }
   if (!assaulting() || specialAimId !== null || now - autoCastAt < 600 || document.querySelector('dialog[open]')) return
   let best: { id: number; score: number } | null = null
-  for (const unit of engine.state.units) {
+  for (const unit of state.units) {
+    if (unit.owner !== 'player') continue
+    if (!specialReady(state, unit.id)) {
+      autoReadySince.delete(unit.id)
+      continue
+    }
+    if (!autoReadySince.has(unit.id)) autoReadySince.set(unit.id, state.time)
     const type = unit.type as AllyType,
-      target = specialReady(engine.state, unit.id) && unit.owner === 'player' && renderer.specialAbilityStatus(type) === 'ready' ? bestSpecialTarget(engine.state, unit.id) : null
-    if (!target || !(type === 'healer' || target.score >= 2 || (target.score >= 1 && bossInSpecialArea(engine.state, type, target.point)))) continue
+      target = renderer.specialAbilityStatus(type) === 'ready' ? bestSpecialTarget(state, unit.id) : null
+    if (
+      !target ||
+      !autoShouldCast(type, target.score, bossInSpecialArea(state, type, target.point), state.time - autoReadySince.get(unit.id)!)
+    )
+      continue
     if (!best || target.score > best.score) best = { id: unit.id, score: target.score }
   }
   if (best && castBestSpecial(best.id)) autoCastAt = now

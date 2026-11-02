@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Actor } from './models.js'
+import * as THREE from 'three'
+import { Actor, LaneModels } from './models.js'
 import { POOPS, SPECIALS, ENEMIES } from './simulation.js'
 
 // Bones that only appear for an expression or an attack effect.
@@ -44,4 +45,30 @@ test('every character keeps finite bones through walk, wind-up, attack, hurt and
       if (!TRANSIENT.has(name))
         assert.notEqual(bone.matrixWorld.determinant(), 0, `${t.key}.${name} hidden while walking`)
   }
+})
+
+test('a disposed actor frees its bone texture', () => {
+  const actor = new Actor('katachi')
+  actor.skeleton.computeBoneTexture()
+  let freed = false
+  actor.skeleton.boneTexture.addEventListener('dispose', () => (freed = true))
+  actor.dispose()
+  assert.ok(freed)
+})
+
+test('released actors are reused per character, so a long battle allocates no new GPU resources', () => {
+  // The pool logic only; rendering needs WebGL.
+  const models = Object.assign(Object.create(LaneModels.prototype), {
+    scene: new THREE.Scene(),
+    actors: new Map(),
+    pool: new Map()
+  })
+  const first = models.actor(1, 'katachi')
+  models.release(1, first)
+  assert.equal(models.actor(2, 'katachi'), first, 'same character: reused')
+  assert.notEqual(models.actor(3, 'cleaner'), first, 'other character: its own actor')
+  const swapped = models.actor(2, 'mop')
+  assert.equal(swapped.key, 'mop', 'an id reused for another character gets that character')
+  assert.equal(models.actor(4, 'katachi'), first, 'the replaced actor went back to its pool')
+  assert.equal(models.scene.children.length, models.actors.size)
 })

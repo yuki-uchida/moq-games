@@ -471,11 +471,19 @@ const dirOf = (u) => -u.side
 /** The foe `u` engages (the nearest live foe not behind it, else the fort) and the distance still to walk before it is in range. */
 export function reach(s, u) {
   const dir = dirOf(u)
-  const target = s.units
-    .filter((v) => v.side !== u.side && v.hp > 0 && (v.x - u.x) * dir >= -12)
-    .sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0]
+  // One pass for the nearest; on a tie the earlier unit wins, exactly as a stable sort would pick.
+  let target,
+    nearest = Infinity
+  for (const v of s.units) {
+    if (v.side === u.side || !(v.hp > 0) || !((v.x - u.x) * dir >= -12)) continue
+    const distance = Math.abs(v.x - u.x)
+    if (distance < nearest) {
+      target = v
+      nearest = distance
+    }
+  }
   const baseX = u.side === 1 ? ENEMY_X + 7 : HOME_X - 7
-  const distance = target ? Math.abs(target.x - u.x) : Math.abs(baseX - u.x)
+  const distance = target ? nearest : Math.abs(baseX - u.x)
   return { target, baseX, gap: distance - (u.range + (target ? 0 : 25)) }
 }
 /** Applies one released attack: splash, slow and knockback hit every foe near the recipient. */

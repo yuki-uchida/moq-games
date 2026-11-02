@@ -52,3 +52,11 @@ export function bossInSpecialArea(state: Readonly<GameState>, type: AllyType, po
       Math.hypot(u.x - point.x, u.y - point.y) <= SPECIALS[type].radius
   )
 }
+
+/** Seconds AUTO may hold a ready special while waiting for a better target. */
+export const AUTO_HOLD_SECONDS = 6
+/** AUTO waits for a cluster (2+ enemies), a boss or a hurt team, but never hoards a ready special:
+ * after AUTO_HOLD_SECONDS a single enemy in range is worth it, since enemies here arrive seconds apart. */
+export function autoShouldCast(type: AllyType, score: number, bossInArea: boolean, readyForSeconds: number): boolean {
+  return type === 'healer' || score >= 2 || (score >= 1 && (bossInArea || readyForSeconds >= AUTO_HOLD_SECONDS))
+}

@@ -222,6 +222,30 @@ function lineMaterial(color) {
   return m
 }
 
+/** Per-vertex shading mode: face ink (lit, never flashes), body (lit, flashes when hit), glow (unlit). */
+const MODE = { ink: 0, toon: 1, clear: 1, glow: 2 }
+/** Toon shading driven by the per-vertex mode, so one draw covers a character's body, face and glow. */
+function toonMaterial(extra = {}) {
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true, ...extra })
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader =
+      'attribute float mode;\nvarying float vMode;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvMode = mode;')
+    shader.fragmentShader =
+      'varying float vMode;\n' +
+      shader.fragmentShader
+        .replace(
+          'vec3 totalEmissiveRadiance = emissive;',
+          'vec3 totalEmissiveRadiance = emissive * step(0.5, vMode) * (1.0 - step(1.5, vMode));'
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          'outgoingLight = mix(outgoingLight, diffuseColor.rgb, step(1.5, vMode));\n#include <opaque_fragment>'
+        )
+  }
+  return m
+}
+
 // ── Kit: parts, bones and faces for one character ──
 const CHAIN = ['hips', 'spine', 'chest', 'head']
 const INK = '#24150c'
@@ -383,6 +407,7 @@ function painted(part, weigh) {
     color.set([c.r * k, c.g * k, c.b * k, part.alpha], i * 4)
   }
   g.setAttribute('color', new THREE.BufferAttribute(color, 4))
+  g.setAttribute('mode', new THREE.BufferAttribute(new Float32Array(n).fill(MODE[part.finish] ?? 1), 1))
   weigh(g, part)
   return g
 }
@@ -439,10 +464,17 @@ function template(key) {
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weight, 4))
   }
   const meshes = []
-  for (const finish of ['toon', 'ink', 'clear', 'glow']) {
-    const parts = kit.parts.filter((p) => p.finish === finish)
+  // Two meshes and an outline per character: everything solid (face ink and unlit glow included, glow drawn
+  // last so its translucent highlights blend over the body) and the depth-free translucent parts.
+  const solid = kit.parts
+    .filter((p) => p.finish !== 'clear')
+    .sort((a, b) => (a.finish === 'glow') - (b.finish === 'glow'))
+  const clear = kit.parts.filter((p) => p.finish === 'clear')
+  for (const [finish, parts] of [
+    ['toon', solid],
+    ['clear', clear]
+  ])
     if (parts.length) meshes.push([finish, mergeGeometries(parts.map((p) => painted(p, weigh)))])
-  }
   const lined = kit.parts.filter((p) => p.line)
   if (lined.length) meshes.push(['line', mergeGeometries(lined.map((p) => hull(p, weigh)))])
   // How far the body (not its props or effects) reaches toward the foe at rest, per 0.1-high band, in model units.
@@ -1745,19 +1777,13 @@ export const modelSize = (key) => MODELS[key]?.size ?? 1
 export class Actor {
   constructor(key) {
     const t = template(key)
+    this.key = key
     this.t = t
     this.size = t.recipe.size
     this.root = new THREE.Group()
     this.mats = {
-      toon: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true }),
-      ink: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TONES, transparent: true }),
-      clear: new THREE.MeshToonMaterial({
-        vertexColors: true,
-        gradientMap: TONES,
-        transparent: true,
-        depthWrite: false
-      }),
-      glow: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true }),
+      toon: toonMaterial(),
+      clear: toonMaterial({ depthWrite: false }),
       line: lineMaterial(t.recipe.line ?? LINE)
     }
     const b = (this.bones = {})
@@ -1775,7 +1801,7 @@ export class Actor {
       b[name] = bone
     }
     this.root.updateMatrixWorld(true)
-    const skeleton = new THREE.Skeleton(t.order.map((n) => b[n]))
+    const skeleton = (this.skeleton = new THREE.Skeleton(t.order.map((n) => b[n])))
     for (const [finish, geometry] of t.meshes) {
       const mesh = new THREE.SkinnedMesh(geometry, this.mats[finish])
       mesh.rotation.y = FACE
@@ -1784,6 +1810,11 @@ export class Actor {
       mesh.bind(skeleton)
     }
     this.rest = Object.values(b).map((bone) => [bone, bone.position.clone()])
+    this.reset()
+  }
+
+  /** Clears per-unit motion memory, for a fresh unit or one reused from the pool. */
+  reset() {
     this.motion = 'walk'
     this.fade = null
     this.a = beats('walk', 0, 1)
@@ -1850,6 +1881,7 @@ export class Actor {
   }
 
   dispose() {
+    this.skeleton.dispose()
     for (const m of Object.values(this.mats)) m.dispose()
   }
 }
@@ -1887,6 +1919,7 @@ export class LaneModels {
   portraits = new Map()
   muzzles = new Map()
   strikes = new Map()
+  pool = new Map()
 
   constructor() {
     this.renderer.setClearColor(0, 0)
@@ -1896,15 +1929,31 @@ export class LaneModels {
     this.scene.add(key)
   }
 
+  /**
+   * The actor drawing unit `id`. Actors whose unit has gone return to a per-character pool and are reused,
+   * so a long battle allocates no new skeletons, bone textures or materials once its cast has appeared.
+   */
   actor(id, key) {
     let actor = this.actors.get(id)
+    if (actor && actor.key !== key) {
+      this.release(id, actor)
+      actor = undefined
+    }
     if (!actor) {
-      actor = new Actor(key)
+      actor = this.pool.get(key)?.pop() ?? new Actor(key)
+      actor.reset()
       this.scene.add(actor.root)
       this.actors.set(id, actor)
     }
     actor.seen = true
     return actor
+  }
+
+  release(id, actor) {
+    this.scene.remove(actor.root)
+    this.actors.delete(id)
+    if (!this.pool.has(actor.key)) this.pool.set(actor.key, [])
+    this.pool.get(actor.key).push(actor)
   }
 
   /** size: the lane's unit width; aspect: x-to-y pixel ratio of the stretched lane canvas; pxPerLane: CSS px per lane unit. */
@@ -2050,11 +2099,8 @@ export class LaneModels {
   /** Renders this frame's actors at width×height pixels; actors not touched since the last render are released. */
   render(width, height) {
     for (const [id, actor] of this.actors)
-      if (!actor.seen) {
-        this.scene.remove(actor.root)
-        actor.dispose()
-        this.actors.delete(id)
-      } else actor.seen = false
+      if (!actor.seen) this.release(id, actor)
+      else actor.seen = false
     if (this.canvas.width !== width || this.canvas.height !== height) this.renderer.setSize(width, height, false)
     OUTLINE.value = this.line
     this.renderer.render(this.scene, this.camera)

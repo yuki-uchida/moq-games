@@ -138,11 +138,13 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
     await expect
       .poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().specialAbilities.active > 0))
       .toBe(true)
-    await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
+    // Save before the screenshot: a software-GPU capture can outlast a short field (ranger: 5.7 s),
+    // and the checkpoint below must be taken while the field is still active.
     await page.locator('#settings-toggle').click()
     await page.locator('[data-settings-tab=save]').click()
     await page.locator('#save-now').click()
     const saved = (await stored(page)).state
+    await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
     expect(saved.units[0].specialCooldown).toBeGreaterThan(0)
     expect(saved.units[0].specialCooldown).toBeCloseTo(cast.units[0].specialCooldown - (saved.time - cast.time), 5)
     if (['healer', 'frost', 'ranger'].includes(type)) expect(saved.specialEffects.length).toBeGreaterThan(0)
