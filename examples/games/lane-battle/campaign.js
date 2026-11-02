@@ -12,7 +12,9 @@ export const GROWTH = {
   special: { hp: 0.22, atk: 0.2, spd: 0.1 }
 }
 /** A special joining after stage index `stage` starts this many times stronger than its listed stats. */
-export const specialScale = (stage) => 1 + 0.08 * stage
+export const specialScale = (stage) => 1 + 0.03 * stage
+/** Chance that a first clear brings a special. */
+export const SPECIAL_CHANCE = 0.3
 const STORAGE = 'unko-daisanji-campaign-v1'
 
 export function newCampaign() {
@@ -99,7 +101,7 @@ export function pickSpecial(c, random) {
   return pool[Math.floor(random() * pool.length)].key
 }
 
-/** Settles a finished battle: kill EXP (and clear bonus on victory), coins, records and the new special. */
+/** Settles a finished battle: kill EXP (and clear bonus on victory), coins, records and, sometimes, a new special. */
 export function settle(c, game, random) {
   const victory = game.result === 'victory'
   const first = victory && game.stage === c.cleared
@@ -117,7 +119,7 @@ export function settle(c, game, random) {
     c.records[game.stage] = Math.min(best ?? Infinity, Math.floor(game.time))
     if (first) {
       c.cleared = Math.min(STAGES.length, c.cleared + 1)
-      report.special = addEntry(c, pickSpecial(c, random), game.stage + 1)
+      if (random() < SPECIAL_CHANCE) report.special = addEntry(c, pickSpecial(c, random), game.stage + 1)
     }
   }
   return report
