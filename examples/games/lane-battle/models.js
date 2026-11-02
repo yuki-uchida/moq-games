@@ -1007,6 +1007,10 @@ const MODELS = {
   sake: {
     koSeconds: 0.95,
     tempo: [0.45, 0.04],
+    striker: 'muzzle',
+    reacts: ['hips', 'head'],
+    parts: ['cap'],
+    react: { jolt: 0.6 },
     size: 1,
     moves: {
       lunge: 0.06,
@@ -1025,18 +1029,48 @@ const MODELS = {
       k.add(GEO.ball, '#d8ffe6', [-0.12, 0.38, 0.19], [0.03, 0.14, 0.02], [0, 0.5, 0], { glow: true, alpha: 0.55 })
       k.add(GEO.rcyl, '#fbf6e9', [0, 0.3, 0.02], [0.236, 0.3, 0.236])
       k.add(GEO.rbox, '#d33a2c', [0, 0.41, 0.2], [0.09, 0.07, 0.04], undefined, { line: false })
-      k.add(GEO.rcyl, '#d33a2c', [0, 0.93, 0], [0.09, 0.07, 0.09])
+      k.bone('cap', 'head', [0, 0.93, 0])
+      k.add(GEO.rcyl, '#d33a2c', [0, 0.93, 0], [0.09, 0.07, 0.09], undefined, { bone: 'cap' })
       k.bone('muzzle', 'head', [0, 0.96, 0])
+      k.bone('bubble', 'head', [0.16, 1.04, 0.1])
+      k.add(GEO.sphere, '#dffaff', [0.16, 1.04, 0.1], 0.05, undefined, { bone: 'bubble', alpha: 0.65 })
       k.face({ bone: 'spine', y: 0.3, z: 0.24, spread: 0.08, size: 0.8, mood: 'drunk' })
     },
     act(b, a, c) {
-      b.hips.rotation.z += 0.06 * Math.sin(c.t * 2.3) * (1 - a.wind)
+      b.hips.rotation.z += 0.06 * Math.sin(c.t * 2.3) * (1 - a.hit) + beat(a, 0.12, -0.34, 0.12)
+      b.hips.position.x += beat(a, -0.06, 0.12, -0.04)
+      b.hips.position.y += 0.05 * a.recoil
+      b.bubble.scale.setScalar(0.05 + 0.95 * a.recoil)
+      b.bubble.position.y += 0.12 * a.recoil
+      b.chest.rotation.z += beat(a, 0.08, -0.16, 0.12)
+      b.head.rotation.z += beat(a, 0.05, -0.12, 0.15)
       b.hips.rotation.z -= (c.lastCrit ? 0.25 : 0) * a.hit
+    },
+    hurt(b, h) {
+      const wobble = Math.cos(h.age * Math.PI * 10) * Math.exp(-h.age * 7) * h.power
+      b.hips.rotation.z += 0.35 * wobble
+      b.head.rotation.z -= 0.1 * wobble
+    },
+    ko(b, k, c) {
+      const fall = Math.min(1, k.t / 0.55)
+      const roll = Math.max(0, Math.min(1, (k.t - 0.5) / 0.25))
+      b.hips.rotation.z += 1.4 * fall + 0.45 * roll + 0.2 * Math.sin(k.t * 24) * (1 - fall)
+      b.hips.rotateY(Math.PI * roll)
+      b.hips.position.x -= 0.2 * roll
+      const capFlight = Math.max(0, Math.min(1, (k.t - 0.28) / 0.42))
+      b.head.updateWorldMatrix(true, false)
+      const capLanding = c.actor.root.localToWorld(new THREE.Vector3(-0.95, 0.04, 0.12))
+      b.cap.position.lerp(b.head.worldToLocal(capLanding), capFlight)
+      b.cap.rotation.z += 5 * capFlight
     }
   },
   jiro: {
     koSeconds: 1.15,
     tempo: [0.6, 0.07],
+    striker: 'towerTip',
+    reacts: ['hips', 'tower'],
+    parts: ['pork'],
+    react: { jolt: 0.4 },
     size: 1.25,
     moves: {
       lunge: 0.14,
@@ -1059,13 +1093,16 @@ const MODELS = {
       k.add(GEO.ring, '#2d4f8a', [0, 0.26, 0], [0.455, 0.455, 0.12], [Math.PI / 2, 0, 0], { line: false })
       k.add(GEO.cyl, '#f2efe6', [0, 0.04, 0], [0.22, 0.05, 0.22])
       k.add(GEO.cyl, '#b07a3c', [0, 0.37, 0], [0.47, 0.02, 0.47], undefined, { line: false })
-      k.add(GEO.cone, '#eef2c8', [0, 0.64, 0], [0.34, 0.54, 0.34])
+      k.bone('tower', 'chest', [0, 0.4, 0])
+      k.bone('towerTip', 'tower', [0, 0.94, 0])
+      k.add(GEO.cone, '#eef2c8', [0, 0.64, 0], [0.34, 0.54, 0.34], undefined, { bone: 'tower' })
       for (let i = 0; i < 14; i++) {
         const t = i * 2.4,
           y = 0.45 + (i % 5) * 0.08
         const r = 0.33 * (1 - (y - 0.37) / 0.56)
         k.add(GEO.capsule, '#f7f9e0', [Math.sin(t) * r, y, Math.cos(t) * r], [0.03, 0.12, 0.03], [0.4, t, 0.9], {
-          line: false
+          line: false,
+          bone: 'tower'
         })
       }
       for (const [x, y, z] of [
@@ -1073,17 +1110,49 @@ const MODELS = {
         [-0.15, 0.5, 0.22],
         [0.05, 0.78, 0.1]
       ])
-        k.add(GEO.sphere, '#7fb24a', [x, y, z], [0.07, 0.035, 0.05], [0.3, 0, 0.3])
-      for (const s of [-1, 1]) k.add(GEO.rbox, '#8a4b2a', [s * 0.3, 0.48, 0.05], [0.24, 0.09, 0.2], [0, 0, s * 0.7])
+        k.add(GEO.sphere, '#7fb24a', [x, y, z], [0.07, 0.035, 0.05], [0.3, 0, 0.3], { bone: 'tower' })
+      k.bone('pork', 'hips', [0.3, 0.48, 0.05])
+      for (const s of [-1, 1])
+        k.add(
+          GEO.rbox,
+          '#8a4b2a',
+          [s * 0.3, 0.48, 0.05],
+          [0.24, 0.09, 0.2],
+          [0, 0, s * 0.7],
+          s === 1 ? { bone: 'pork' } : undefined
+        )
       k.add(GEO.sphere, '#fffef6', [0.06, 0.44, 0.3], 0.05)
-      k.add(GEO.sphere, '#f4e3b0', [0.02, 0.92, 0], [0.09, 0.05, 0.09])
+      k.add(GEO.sphere, '#f4e3b0', [0.02, 0.92, 0], [0.09, 0.05, 0.09], undefined, { bone: 'tower' })
       k.face({ bone: 'hips', y: 0.2, z: 0.46, spread: 0.14 })
     },
-    act() {}
+    act(b, a) {
+      b.hips.position.y += 0.2 * a.wind ** 4
+      b.hips.position.x += beat(a, -0.06, 0.12, -0.03)
+      b.hips.scale.y *= 1 - 0.12 * a.wind - 0.16 * a.hit
+      b.tower.rotation.z += beat(a, 0.42, -0.75, 0.48)
+    },
+    hurt(b, h) {
+      b.hips.rotation.z -= 0.05 * h.wobble
+      b.tower.rotation.z += (0.55 * h.jolt - 0.1 * h.wobble) * (1 - h.settle)
+    },
+    ko(b, k, c) {
+      const collapse = Math.max(0, Math.min(1, (k.t - 0.18) / 0.4))
+      const tip = Math.max(0, Math.min(1, (k.t - 0.45) / 0.3))
+      b.tower.rotation.z += 0.2 * Math.sin(k.t * 20) * (1 - collapse) + 0.9 * collapse
+      b.tower.scale.y *= 1 - 0.7 * collapse
+      b.hips.rotation.z += 0.75 * tip
+      b.head.updateWorldMatrix(true, false)
+      const landing = c.actor.root.localToWorld(new THREE.Vector3(-0.75, 0.08, 0.15))
+      b.pork.position.lerp(b.hips.worldToLocal(landing), collapse)
+      b.pork.rotation.z += 4 * collapse
+    }
   },
   yakiniku: {
     koSeconds: 0.95,
     tempo: [0.42, 0.04],
+    striker: 'meatTip',
+    reacts: ['meat', 'flames', 'grill'],
+    parts: ['meat', 'char', 'meatTip'],
     size: 1,
     moves: {
       lunge: 0.2,
@@ -1100,18 +1169,22 @@ const MODELS = {
     build(k) {
       k.chain = [0.2, 0.38, 0.5]
       k.add(GEO.tapered, '#c9a27a', [0, 0.2, 0], [0.36, 0.4, 0.36])
-      k.add(GEO.ring, '#3a3a3a', [0, 0.41, 0], [0.37, 0.37, 0.6], [Math.PI / 2, 0, 0])
+      k.bone('grill', 'chest', [0, 0.41, 0])
+      k.add(GEO.ring, '#3a3a3a', [0, 0.41, 0], [0.37, 0.37, 0.6], [Math.PI / 2, 0, 0], { bone: 'grill' })
       for (const x of [-0.2, 0, 0.2])
-        k.add(GEO.box, '#3a3a3a', [x, 0.41, 0], [0.018, 0.018, 0.68], undefined, { line: false })
+        k.add(GEO.box, '#3a3a3a', [x, 0.41, 0], [0.018, 0.018, 0.68], undefined, { line: false, bone: 'grill' })
       k.add(GEO.rbox, '#2a2a2a', [0, 0.12, 0.31], [0.18, 0.09, 0.05])
       k.add(GEO.rbox, '#ff8a2a', [0, 0.12, 0.335], [0.12, 0.05, 0.01], undefined, { glow: true })
       k.bone('meat', 'chest', [0, 0.47, 0])
+      k.bone('char', 'chest', [0, 0.47, 0])
+      k.bone('meatTip', 'meat', [0.2, 0.47, 0])
       for (const [x, z, r] of [
         [-0.13, 0.05, 0.3],
         [0.12, -0.08, -0.4],
         [0.02, 0.15, 0.1]
       ]) {
         k.add(GEO.rbox, '#9b3f2c', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'meat' })
+        k.add(GEO.rbox, '#261b18', [x, 0.468, z], [0.25, 0.055, 0.16], [0.12, r, 0], { bone: 'char' })
         k.add(GEO.box, '#f6dccb', [x, 0.497, z], [0.24, 0.008, 0.035], [0.12, r, 0], { bone: 'meat', line: false })
         for (const d of [-0.05, 0.05])
           k.add(
@@ -1138,9 +1211,40 @@ const MODELS = {
     act(b, a, c) {
       const flare = 1 + beat(a, -0.4, 1.4, 0.6) + 0.15 * Math.sin(c.t * 20)
       b.flames.scale.set(1 + 0.2 * (flare - 1), flare, 1 + 0.2 * (flare - 1))
-      b.meat.position.y += beat(a, -0.02, 0.12, 0.08)
-      b.meat.rotation.z += beat(a, 0, -0.5, 0.4)
-      b.hips.position.y += 0.06 * a.smear
+      b.meat.position.y += beat(a, 0.16, 0.04, 0.1)
+      b.meat.position.x += beat(a, -0.1, 0.24, -0.08)
+      b.meat.rotation.z += beat(a, 0.3, -1.1, 0.5)
+      b.char.position.copy(b.meat.position)
+      b.char.rotation.copy(b.meat.rotation)
+      b.char.scale.setScalar(0.05)
+      b.hips.position.y += 0.1 * a.smear
+      b.hips.rotation.z += beat(a, 0.14, -0.22, 0.12)
+    },
+    hurt(b, h) {
+      b.meat.position.y += 0.14 * h.jolt
+      b.meat.rotation.z += 1.2 * h.jolt + 0.4 * h.wobble
+      b.char.position.copy(b.meat.position)
+      b.char.rotation.copy(b.meat.rotation)
+      b.flames.scale.y *= 1 + 0.8 * h.jolt
+      b.grill.rotation.z += 0.2 * h.jolt + 0.3 * h.wobble
+    },
+    ko(b, k, c) {
+      const extinguish = Math.min(1, k.t / 0.35)
+      const fall = Math.max(0, Math.min(1, (k.t - 0.3) / 0.4))
+      b.flames.scale.y *= 1 - 0.98 * extinguish
+      c.actor.tint('#2b1e19', 0.45 * extinguish)
+      b.hips.rotation.z += 1.2 * fall
+      b.char.position.copy(b.meat.position)
+      b.char.rotation.copy(b.meat.rotation)
+      b.chest.updateWorldMatrix(true, false)
+      const landing = c.actor.root.localToWorld(new THREE.Vector3(-0.7, 0.06, 0.15))
+      const localLanding = b.chest.worldToLocal(landing)
+      b.meat.position.lerp(localLanding, fall)
+      b.char.position.copy(b.meat.position)
+      b.meat.rotation.z += 3 * fall
+      b.char.rotation.z += 3 * fall
+      b.char.position.add(new THREE.Vector3(0, 0.045 * extinguish, 0).applyQuaternion(b.char.quaternion))
+      b.char.scale.setScalar(0.05 + 0.95 * extinguish)
     }
   },
   garlic: {
