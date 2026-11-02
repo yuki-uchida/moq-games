@@ -97,8 +97,26 @@ export const HURT_VFX = {
   washiki: emptyEffect,
   mop: emptyEffect,
   yoshiki: emptyEffect,
-  seichou: emptyEffect,
-  geridome: emptyEffect
+  seichou(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.32) return
+    ctx.fillStyle = '#fff1f7'
+    ctx.globalAlpha = 1 - age / 0.32
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 2) * (5 + age * 28), y - (30 + age * (28 + i * 4)) * aspect, 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  geridome(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 0.35) return
+    ctx.fillStyle = '#ffffff'
+    ctx.globalAlpha = 1 - age / 0.35
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath()
+      ctx.ellipse(x + (i - 1) * (18 + age * 24), y - (65 + age * 20) * aspect, 4, 2 * aspect, i, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
 }
 export const DEATH_VFX = {
   katachi: (ctx, unit, age, layer, x, y, aspect) => {
@@ -236,8 +254,38 @@ export const DEATH_VFX = {
   washiki: emptyEffect,
   mop: emptyEffect,
   yoshiki: emptyEffect,
-  seichou: emptyEffect,
-  geridome: emptyEffect
+  seichou(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'above' || age > 1.1) return
+    ctx.fillStyle = '#fff1f7'
+    ctx.globalAlpha = 0.8 * (1 - age / 1.1)
+    for (let i = 0; i < 7; i++) {
+      ctx.beginPath()
+      ctx.arc(x + (i - 3) * (4 + age * 24), y - (22 + age * (22 + (i % 3) * 12)) * aspect, 3 + age * 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  },
+  geridome(ctx, unit, age, layer, x, y, aspect) {
+    if (layer !== 'floor' || age < 0.25 || age > 1.4) return
+    const spread = Math.min(1, (age - 0.25) / 0.45)
+    ctx.globalAlpha = Math.min(1, (1.4 - age) / 0.3)
+    ctx.fillStyle = '#f9f9f3'
+    ctx.strokeStyle = '#a7a7a2'
+    ctx.lineWidth = 1
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath()
+      ctx.ellipse(x + (i - 2) * 14 * spread, y + (i % 2 ? 3 : -2) * aspect, 4, 2 * aspect, i * 0.4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+    if (age < 0.7) {
+      ctx.globalAlpha = 0.35 * (1 - (age - 0.25) / 0.45)
+      ctx.strokeStyle = '#d5d4cb'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.ellipse(x, y, 15 + spread * 24, (4 + spread * 5) * aspect, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+  }
 }
 
 export function statusBadges(unit, time) {

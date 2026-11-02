@@ -1904,6 +1904,10 @@ const MODELS = {
   seichou: {
     koSeconds: 0.9,
     tempo: [0.45, 0.03],
+    striker: 'cap',
+    reacts: ['cap', 'chest'],
+    parts: ['cap'],
+    react: { jolt: 0.55 },
     size: 0.9,
     moves: {
       lunge: 0.04,
@@ -1933,20 +1937,47 @@ const MODELS = {
         [0.4, 0.62, 0.045]
       ])
         k.add(GEO.ball, '#fff6fa', [x, y, 0.12], r, undefined, { bone: 'powder', alpha: 0.75 })
-      k.bone('muzzle', 'chest', [0.15, 0.56, 0.1])
+      k.bone('muzzle', 'chest', [0.3, 0.46, 0.12])
       k.face({ bone: 'spine', y: 0.34, z: 0.22, spread: 0.08, size: 0.8, mood: 'angry' })
     },
     act(b, a) {
-      b.cap.rotation.z += beat(a, -0.1, 0.5, -0.2)
-      b.cap.position.y += beat(a, 0, 0.06)
+      b.cap.rotation.z += arc(a, 0.85, -0.18, 0.2)
+      b.cap.position.y += beat(a, 0.22, 0.005, 0.06)
+      b.cap.position.x += beat(a, -0.12, 0.04, -0.03)
+      b.hips.position.y += beat(a, -0.05, 0.12, 0.02)
+      b.hips.rotation.z += beat(a, 0.16, -0.18, 0.08)
+      b.chest.rotation.z += beat(a, 0.14, -0.12, 0.04)
       const p = Math.max(a.smear, a.hit * (1 - a.recoil * 0.5))
       show(b.powder, p > 0.05)
       b.powder.scale.setScalar(0.3 + p)
+    },
+    hurt(b, h, c) {
+      b.cap.position.x -= 0.1 * h.jolt
+      b.cap.position.y += 0.13 * h.jolt
+      b.cap.rotation.z += 0.32 * h.jolt + 0.15 * h.wobble
+      b.chest.rotation.z += 0.1 * h.jolt
+      const p = Math.max(c.a.smear, c.a.hit * (1 - c.a.recoil * 0.5), h.jolt)
+      show(b.powder, p > 0.05)
+      b.powder.scale.setScalar(0.3 + p)
+    },
+    ko(b, k) {
+      const fall = Math.min(1, k.t / 0.55)
+      const pop = Math.min(1, k.t / 0.65)
+      b.hips.rotation.z += 1.15 * fall
+      b.hips.position.y -= 0.08 * fall
+      b.cap.position.x += 0.03 * pop
+      b.cap.position.y += 0.38 * Math.sin(Math.PI * pop) + 0.3 * pop
+      b.cap.rotation.z += 3.2 * pop
+      show(b.powder, false)
     }
   },
   geridome: {
     koSeconds: 1.1,
     tempo: [0.55, 0.06],
+    striker: 'cap',
+    reacts: ['cap', 'pills'],
+    parts: ['cap', 'pills'],
+    react: { jolt: 0.45 },
     size: 1.35,
     moves: {
       lunge: 0.2,
@@ -1975,11 +2006,32 @@ const MODELS = {
       k.face({ bone: 'spine', y: 0.28, z: 0.31, spread: 0.1, size: 0.9, mood: 'angry' })
     },
     act(b, a, c) {
-      b.cap.position.y += beat(a, -0.01, 0.12, 0.1)
-      b.cap.rotation.z += beat(a, 0.1, -0.3, 0.5)
-      b.pills.position.add(
-        new THREE.Vector3(Math.cos(c.t * 6) * 0.42, 0.05 * Math.sin(c.t * 11), Math.sin(c.t * 6) * 0.42)
-      )
+      b.hips.rotation.z += beat(a, 0.3, -0.15, 0.1)
+      b.hips.position.x += beat(a, -0.08, 0.06, -0.03)
+      b.hips.position.y += beat(a, 0, -0.04, 0.02)
+      b.chest.rotation.z += beat(a, 0.12, -0.1, 0.08)
+      b.cap.position.y += beat(a, 0, 0.02, 0.06) + a.wind * 0.025 * Math.sin(c.t * 48)
+      b.cap.rotation.z += beat(a, 0.1, -0.15, 0.24) + a.wind * 0.1 * Math.sin(c.t * 48)
+      const orbit = c.t * 6 + a.wind * Math.sin(c.t * 20)
+      b.pills.position.add(new THREE.Vector3(Math.cos(orbit) * 0.42, 0.05 * Math.sin(c.t * 11), Math.sin(orbit) * 0.42))
+      b.pills.rotation.z += orbit
+    },
+    hurt(b, h) {
+      b.hips.rotation.z += 0.15 * h.jolt + 0.1 * h.wobble
+      b.cap.position.y += 0.13 * h.jolt
+      b.cap.rotation.z += 0.22 * h.jolt
+      b.pills.scale.multiplyScalar(1 + 0.5 * h.jolt)
+      b.pills.position.x += 0.14 * h.jolt
+    },
+    ko(b, k) {
+      const pop = Math.min(1, k.t / 0.45)
+      const fall = Math.min(1, Math.max(0, (k.t - 0.12) / 0.4))
+      b.hips.rotation.z += 1.35 * fall
+      b.hips.position.y += 0.2 * fall
+      b.cap.position.x += 0.3 * pop
+      b.cap.position.y += 0.45 * Math.sin(Math.PI * pop) - 0.3 * pop
+      b.cap.rotation.z += 3 * pop
+      b.pills.scale.setScalar(1 - 0.9 * fall)
     }
   }
 }
