@@ -670,7 +670,8 @@ function updateStory(state: GameState) {
     if (role !== 'guest') markReached(state.stage)
   }
   const line = spokenLine(state.stage, state)
-  subtitle.hidden = !line
+  // A speaker on stage says the line in a bubble; the subtitle only carries narration and off-stage voices.
+  subtitle.hidden = !line || scene.voiced
   if (line) {
     const { name } = line
     element<HTMLElement>('#subtitle-name').textContent = name

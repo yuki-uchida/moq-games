@@ -137,7 +137,10 @@ export class RabbitersScene {
   private readonly haven = new THREE.Group()
   private readonly havenRing: THREE.Mesh
   private readonly beddingPile = new THREE.Group()
+  /** Whether the conversation's current line shows in a speaker's bubble (the HUD subtitle then stays hidden). */
+  voiced = false
   private yaw = 0
+  private arm = Infinity // current camera arm length (see render)
   private pitch = 0
   private disposed = false
 
@@ -661,6 +664,7 @@ export class RabbitersScene {
     this.haven.visible = this.beddingPile.visible = stage === FOREST
     this.target.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z)
     this.camera.position.set(SPAWN.x, this.target.y + 3.6, SPAWN.z + 8)
+    this.arm = Infinity
   }
 
   /** Ring-and-diamond beacons over the stage script's markers (where to go, whom to talk to). */
@@ -803,6 +807,7 @@ export class RabbitersScene {
       (this.actors.get(line.speaker) ??
         this.actors.get(`npc:${line.speaker}`) ??
         this.actors.get(`predator:${line.speaker}`))
+    this.voiced = !!speaker
     for (const actor of this.actors.values()) {
       const bark = actor.bark && actor.bark.until > this.clock ? actor.bark.text : undefined
       this.speak(actor, line && actor === speaker ? line.text : bark)
@@ -920,23 +925,40 @@ export class RabbitersScene {
     // The boom: its usual angle for the place, tilted by the player (from just under level to almost top-down).
     const boom = Math.hypot(distance, height - lift)
     const pitch = THREE.MathUtils.clamp(Math.atan2(height - lift, distance) + this.pitch, -0.15, 1.35)
-    const back = boom * Math.cos(pitch)
-    const desired = new THREE.Vector3(
-      focus.x + Math.sin(this.yaw) * back,
-      focus.y + boom * Math.sin(pitch),
-      focus.z + Math.cos(this.yaw) * back
+    // Spring arm: walls (more than 4 m over the rabbit) and a cave's own walls stop it just in front of them, so
+    // the camera never looks from behind one. It shortens at once and eases back out. Smaller things (cage bars,
+    // furniture, trees, rocks) don't stop it: between the camera and the rabbit they turn see-through.
+    const direction = new THREE.Vector3(
+      Math.sin(this.yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(this.yaw) * Math.cos(pitch)
     )
-    // No collision: walls, bars, trees, rocks and tunnel sides between the camera and the rabbit turn
-    // see-through instead. The forest's hills only lift the camera so it never ends up inside the ground.
-    if (this.stage === FOREST && !underground) desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
-    this.camera.position.lerp(desired, smoothing)
+    const reach = underground ? boom : this.armReach(focus, direction, boom, cave)
+    this.arm = this.arm > reach ? reach : this.arm + (reach - this.arm) * (1 - Math.exp(-elapsed * 2.5))
+    this.camera.position.copy(focus).addScaledVector(direction, this.arm)
+    // Pressed short against a wall, the camera rises (rooms have no ceiling) to look down at the rabbit rather
+    // than fill the screen with it.
+    if (!underground) {
+      const lifted = this.camera.position.y + Math.max(0, 4.5 - this.arm) * 1.2
+      this.camera.position.y = cave
+        ? Math.min(lifted, Math.max(this.camera.position.y, cave.floor + cave.roof - 0.8))
+        : lifted
+    }
+    // The forest's hills lift the camera so it never ends up inside the ground.
+    if (this.stage === FOREST && !underground)
+      this.camera.position.y = Math.max(
+        this.camera.position.y,
+        heightAt(this.camera.position.x, this.camera.position.z) + 1
+      )
     this.keepCameraClear(this.camera.position, underground)
     if (underground || cave) this.camera.lookAt(focus)
     else {
       // Aim a little past the rabbit so the horizon, and landmarks for finding the way, stay in frame (less so
       // when looking down from high up, where it would push the rabbit off the bottom of the screen).
       const ahead = focus.clone().sub(this.camera.position).setY(0)
-      if (ahead.lengthSq() > 0.01) ahead.setLength(6 * Math.cos(pitch) ** 2)
+      const level = ahead.length()
+      const steep = Math.atan2(this.camera.position.y - focus.y, level)
+      if (level > 0.01) ahead.setLength(6 * Math.cos(Math.max(0, steep)) ** 2 * Math.min(1, level / 6))
       this.camera.lookAt(
         focus
           .clone()
@@ -962,7 +984,21 @@ export class RabbitersScene {
     this.renderer.render(this.scene, this.camera)
   }
 
-  /** Final guard after smoothing: never under the ground; underground, never up in the open. */
+  /** How far the camera arm reaches from `focus` along `direction` before a wall or a cave's edge. */
+  private armReach(focus: THREE.Vector3, direction: THREE.Vector3, length: number, cave: ReturnType<typeof caveAt>) {
+    const point = new THREE.Vector3()
+    for (let along = 0.3; along < length; along += 0.1) {
+      point.copy(focus).addScaledVector(direction, along)
+      const ground = heightAt(point.x, point.z)
+      const blocked = cave
+        ? Math.hypot(point.x - cave.x, point.z - cave.z) > cave.r - 1 || point.y > cave.floor + cave.roof - 0.8
+        : this.stage !== FOREST && ground > point.y - 0.2 && ground > this.target.y + 4
+      if (blocked) return Math.max(0.8, along - 0.4)
+    }
+    return length
+  }
+
+  /** Final guard: never under the ground; underground, never up in the open. */
   private keepCameraClear(point: THREE.Vector3, underground: boolean) {
     const ground = heightAt(point.x, point.z)
     if (underground) point.y = Math.max(Math.min(point.y, ground - 0.4), this.target.y + 0.3)
