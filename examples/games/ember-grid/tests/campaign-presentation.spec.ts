@@ -89,6 +89,7 @@ for (const width of [1280, 390])
         if (action.healing) {
           const before = action.healing.hp
           await cell(action.healing.x, action.healing.y).click()
+          await page.getByRole('button', { name: '回復', exact: true }).click()
           expect(staffHeal(game, unit, action.healing)).toBe(true)
           await expect(page.locator('.healing-effect')).toContainText(`+${action.healing.hp - before}`)
           if (!healed) await page.screenshot({ path: `test-results/ember-heal-${width}.png` })

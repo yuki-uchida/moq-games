@@ -1,12 +1,21 @@
 import { pause } from './animation'
 import { availableLines, bosses, chapters, epilogue, intros, memorial, outros, prologue, type Line } from './story'
-import type { Game } from './game'
+import { createGame, type Game } from './game'
+import type { Difficulty } from './save'
+import { reducedMotion } from './settings'
 import './dialogue.css'
 
 type Character = { id: string; name: string; role: string; hp: number; side: string }
+export const memorialNames = (game: Game, difficulty: Difficulty) => {
+  if (difficulty === 'casual') return []
+  const survivors = new Set(game.units.filter((unit) => unit.side === 'ally' && unit.hp > 0).map((unit) => unit.id))
+  return createGame(5)
+    .units.filter((unit) => unit.side === 'ally' && !survivors.has(unit.id))
+    .map((unit) => unit.name)
+}
 let enabled = true
 export const setStoryEnabled = (value: boolean) => (enabled = value)
-const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+const reduced = reducedMotion
 
 export class Dialogue {
   private cancelCurrent?: () => void
@@ -18,7 +27,6 @@ export class Dialogue {
     this.cancelCurrent?.()
   }
   async title(index: number, name: string, objective: string) {
-    if (!enabled) return
     const card = document.createElement('div')
     card.className = 'story-title'
     card.innerHTML = `<small>CHAPTER ${index + 1}</small><strong></strong><span></span>`
@@ -127,7 +135,6 @@ export class Dialogue {
     })
   }
   async credits() {
-    if (!enabled) return
     const previous = document.activeElement as HTMLElement | null
     const overlay = document.createElement('div')
     overlay.className = 'story-credits'
@@ -172,7 +179,8 @@ export class StoryFlow {
     private game: () => Game,
     private generation: () => number,
     private lock: () => void,
-    private unlock: () => void
+    private unlock: () => void,
+    private difficulty: () => Difficulty
   ) {
     this.dialogue = new Dialogue(field, portrait)
   }
@@ -216,8 +224,7 @@ export class StoryFlow {
     await this.dialogue.play(outros[game.stage] ?? [], game.units)
     if (token !== this.generation()) return
     if (game.stage === 5) {
-      const survivors = new Set(game.units.filter((unit) => unit.side === 'ally' && unit.hp > 0).map((unit) => unit.id))
-      const absent = [...this.roster].filter(([id]) => !survivors.has(id)).map(([, name]) => name)
+      const absent = memorialNames(game, this.difficulty())
       await this.dialogue.play([...epilogue, ...memorial(absent)], game.units)
       if (token === this.generation()) await this.dialogue.credits()
     }

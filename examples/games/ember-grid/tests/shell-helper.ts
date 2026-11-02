@@ -1,6 +1,7 @@
 import type { Dialog, Page } from '@playwright/test'
 
 export async function enterBattle(page: Page, url = './', unlocked = false) {
+  await page.addInitScript(() => localStorage.setItem('ember-grid:tutorial-complete:v1', '1'))
   if (unlocked) {
     await page.addInitScript(() => {
       if (!localStorage.getItem('ember-grid:save:v1'))
