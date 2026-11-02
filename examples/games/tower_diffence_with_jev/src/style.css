@@ -3299,12 +3299,14 @@ dialog::backdrop {
   width: 64px;
   height: 64px;
   object-fit: contain;
-  animation: loading-bob 1.1s ease-in-out infinite alternate;
+  /* One hop in, then still: an endless animation here keeps the compositor busy while the GPU
+     prepares the models, which made software-GPU loading 4x slower (280 s vs 69 s). */
+  animation: loading-hop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
   filter: drop-shadow(0 3px 2px #0003);
 }
-@keyframes loading-bob {
-  from { transform: translateY(2px); }
-  to { transform: translateY(-8px); }
+@keyframes loading-hop {
+  from { transform: translateY(14px) scale(0.8); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 #campaign-loading progress {
   appearance: none;

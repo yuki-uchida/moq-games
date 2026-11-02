@@ -1619,7 +1619,7 @@ function fillLoadingScreen(state: NonNullable<typeof campaignState>) {
       img.src = displayPortrait(type) ?? ''
       img.alt = ''
       img.draggable = false
-      img.style.animationDelay = `${i * -0.35}s`
+      img.style.animationDelay = `${i * 0.08}s`
       return img
     })
   )
