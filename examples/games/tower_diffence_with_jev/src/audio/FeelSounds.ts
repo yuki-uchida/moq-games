@@ -51,12 +51,13 @@ export function createFeelPlayer() {
   const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
   let active = 0
 
-  return function play(kind: FeelSound, context: AudioContext, destination: AudioNode, param = 0): void {
-    if (context.state !== 'running') return
+  /** Returns whether the cue was scheduled (false when suspended, rate-limited or over the voice cap). */
+  return function play(kind: FeelSound, context: AudioContext, destination: AudioNode, param = 0): boolean {
+    if (context.state !== 'running') return false
     const now = context.currentTime
     const gap = MIN_INTERVAL[kind]
-    if (gap !== undefined && now - (lastAt.get(kind) ?? -Infinity) < gap) return
-    if (active >= MAX_VOICES) return
+    if (gap !== undefined && now - (lastAt.get(kind) ?? -Infinity) < gap) return false
+    if (active >= MAX_VOICES) return false
     lastAt.set(kind, now)
 
     const finish = (node: AudioScheduledSourceNode, ...extra: AudioNode[]) => {
@@ -207,6 +208,8 @@ export function createFeelPlayer() {
       }
     } catch {
       /* Feel sounds are optional. */
+      return false
     }
+    return true
   }
 }

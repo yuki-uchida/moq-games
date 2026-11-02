@@ -3,7 +3,8 @@ import { DEFINITIONS, type UnitType } from '../game/model'
 /** DOM-free rules for the battle "game feel" layer. */
 export const HIT_WINDOW_MS = 110
 export const HEAL_WINDOW_MS = 400
-export const COMBO_WINDOW_MS = 1600
+/** Simulation milliseconds between kills that still chain (kills in this game are seconds apart). */
+export const COMBO_WINDOW_MS = 2000
 
 export const bountyFor = (type: UnitType, boss: boolean): number => DEFINITIONS[type].cost + (boss ? 10 : 0)
 
@@ -34,6 +35,10 @@ export class AmountAggregator {
     this.pending.clear()
   }
 }
+
+/** Multi-kill callout: 2 → DOUBLE!, 3 → TRIPLE!, more → ×N COMBO!. */
+export const comboLabel = (count: number): string =>
+  count === 2 ? 'DOUBLE!' : count === 3 ? 'TRIPLE!' : `×${count} COMBO!`
 
 /** Counts kills that follow each other within the window. */
 export class ComboTracker {

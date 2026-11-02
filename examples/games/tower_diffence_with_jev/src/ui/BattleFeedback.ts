@@ -4,6 +4,7 @@ import {
   AmountAggregator,
   ComboTracker,
   HEAL_WINDOW_MS,
+  comboLabel,
   HIT_WINDOW_MS,
   bountyFor,
   isHeavyHit,
@@ -54,6 +55,7 @@ export class BattleFeedback {
   private units = new Map<number, Tracked>()
   private corpseIds = new Set<number>()
   private bossSeen = new Set<number>()
+  private readonly specialHits = new Set<string>()
   private readonly killed = new Set<number>()
   private readonly gone = new Set<number>()
   private readonly force = new Set<number>()
@@ -105,6 +107,7 @@ export class BattleFeedback {
     this.units.clear()
     this.corpseIds.clear()
     this.bossSeen.clear()
+    this.specialHits.clear()
     this.hits.clear()
     this.heals.clear()
     this.combo.reset()
@@ -220,8 +223,9 @@ export class BattleFeedback {
         this.shake(6)
         this.options.play('hit-heavy')
       }
-      const chain = this.combo.hit(now)
-      if (chain >= 3) {
+      // Chained on simulation time, so ×2 speed or a slow frame doesn't change what counts as a combo.
+      const chain = this.combo.hit(corpse.diedAt * 1000)
+      if (chain >= 2) {
         this.comboCallout(chain, corpse.x, corpse.y - 52)
         this.options.play('combo', chain)
       }
@@ -243,6 +247,16 @@ export class BattleFeedback {
     for (const { id, amount } of this.hits.flush(now, force)) this.damageNumber(id, amount)
     for (const { id, amount } of this.heals.flush(now, force)) if (Math.round(amount) >= 2) this.healNumber(id, amount)
     for (const id of gone) this.units.delete(id)
+
+    // Special impacts: the moment a damaging special lands, kick the camera (fields like frost don't).
+    for (const effect of state.specialEffects ?? []) {
+      if (!effect.applied || this.specialHits.has(effect.id)) continue
+      this.specialHits.add(effect.id)
+      if (baseline || !(effect.power > 0)) continue
+      this.shake(4)
+      this.burst(effect.x, effect.y - 10, 'boss')
+      this.options.play('hit-heavy')
+    }
 
     // Castle.
     if (combat && state.playerBaseHp < this.prevBaseHp) this.baseHit(this.prevBaseHp - state.playerBaseHp)
@@ -342,8 +356,8 @@ export class BattleFeedback {
 
   private comboCallout(count: number, x: number, y: number): void {
     this.comboEl?.remove()
-    const el = this.make('fx-combo', x, y, `×${count} COMBO!`)
-    el.style.setProperty('--grow', String(Math.min(2, 1 + (count - 3) * 0.12)))
+    const el = this.make('fx-combo', x, y, comboLabel(count))
+    el.style.setProperty('--grow', String(Math.min(2, 0.9 + (count - 2) * 0.14)))
     if (this.spawn(this.options.field, el, 1300)) this.comboEl = el
   }
 

@@ -53,33 +53,35 @@
       <p id="look-hint" class="look-hint" hidden></p>
 
       <section id="hud" class="hud" aria-label="プレイヤーの状態" hidden>
-        <div class="hud-card vitals">
-          <div class="eyebrow">
-            <span id="player-color" class="status-dot" title="あなたの首輪の色"></span> YOUR RABBIT
-            <span id="player-name"></span>
+        <div class="hud-stack">
+          <div class="hud-card vitals">
+            <div class="eyebrow">
+              <span id="player-color" class="status-dot" title="あなたの首輪の色"></span> YOUR RABBIT
+              <span id="player-name"></span>
+            </div>
+            <div class="meter-row">
+              <span class="meter-icon heart" aria-hidden="true">♥</span><span>体力</span>
+              <div class="meter"><i id="health-bar"></i></div>
+              <b id="health-value">100</b>
+            </div>
+            <div class="meter-row">
+              <span class="meter-icon food-icon" aria-hidden="true">✿</span><span>おなか</span>
+              <div class="meter hunger"><i id="hunger-bar"></i></div>
+              <b id="hunger-value">100</b>
+            </div>
+            <div id="condition" class="condition">草むらで身を隠そう</div>
           </div>
-          <div class="meter-row">
-            <span class="meter-icon heart" aria-hidden="true">♥</span><span>体力</span>
-            <div class="meter"><i id="health-bar"></i></div>
-            <b id="health-value">100</b>
-          </div>
-          <div class="meter-row">
-            <span class="meter-icon food-icon" aria-hidden="true">✿</span><span>おなか</span>
-            <div class="meter hunger"><i id="hunger-bar"></i></div>
-            <b id="hunger-value">100</b>
-          </div>
-          <div id="condition" class="condition">草むらで身を隠そう</div>
-        </div>
-        <div class="objective-card">
-          <h2 id="objective-title">食べて、大きくなろう</h2>
-          <div class="objective-progress"><i id="growth-bar"></i></div>
-          <div class="objective-foot">
-            <span id="objective-progress">成長 0%</span>
-            <span id="food-progress"
-              ><span class="food-icon" aria-hidden="true">✿</span><span class="sr-only">食べた数</span>
-              <b id="food-count">0 / 6</b></span
-            >
-            <span id="nest-count">残る巣 3</span>
+          <div class="objective-card">
+            <h2 id="objective-title">食べて、大きくなろう</h2>
+            <div class="objective-progress"><i id="growth-bar"></i></div>
+            <div class="objective-foot">
+              <span id="objective-progress">成長 0%</span>
+              <span id="food-progress"
+                ><span class="food-icon" aria-hidden="true">✿</span><span class="sr-only">食べた数</span>
+                <b id="food-count">0 / 6</b></span
+              >
+              <span id="nest-count">残る巣 3</span>
+            </div>
           </div>
         </div>
         <figure class="map-card">

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AmountAggregator,
   ComboTracker,
+  comboLabel,
   bountyFor,
   isHeavyHit,
   shakeAmplitude
@@ -38,13 +39,16 @@ describe('battle feel logic', () => {
     expect(hits.flush(1000)).toEqual([])
   })
 
-  it('chains kills within 1.6s and restarts after a gap', () => {
+  it('chains kills within 2s of simulation time and restarts after a gap', () => {
     const combo = new ComboTracker()
     expect(combo.hit(0)).toBe(1)
-    expect(combo.hit(1500)).toBe(2)
-    expect(combo.hit(3000)).toBe(3)
-    expect(combo.hit(4700)).toBe(1)
+    expect(combo.hit(1900)).toBe(2)
+    expect(combo.hit(3900)).toBe(3)
+    expect(combo.hit(6000)).toBe(1)
     combo.reset()
-    expect(combo.hit(4800)).toBe(1)
+    expect(combo.hit(6100)).toBe(1)
+  })
+  it('names double and triple kills before counting combos', () => {
+    expect([2, 3, 4, 7].map(comboLabel)).toEqual(['DOUBLE!', 'TRIPLE!', '×4 COMBO!', '×7 COMBO!'])
   })
 })
