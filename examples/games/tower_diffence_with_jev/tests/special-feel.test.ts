@@ -11,6 +11,7 @@ import {
   nextFreezeUntil,
   placeReadout,
   readoutText,
+  stackReadout,
   summarizeImpact,
   type CastTally
 } from '../src/ui/SpecialFeel'
@@ -77,5 +78,16 @@ describe('special-move presentation rules', () => {
     expect(aim.score).toBe(4)
     expect(specialTargetCount(state, 'soldier', aim.point)).toBe(2)
     expect(specialTargetCount(state, 'soldier', { x: 300 + SPECIALS.soldier.radius * 3, y: 300 })).toBe(0)
+  })
+
+  it('steps a readout past one it would cover, below when there is room, otherwise above', () => {
+    const bounds = { left: 0, right: 800, top: 60, bottom: 700 }
+    const taken = [{ left: 300, right: 460, top: 200, bottom: 290 }]
+    // Same anchor as the existing card: goes below it.
+    expect(stackReadout({ x: 380, y: 290 }, 160, 90, taken, bounds)).toBe(290 + 8 + 90)
+    // No room below: goes above it.
+    expect(stackReadout({ x: 380, y: 290 }, 160, 90, taken, { ...bounds, bottom: 380 })).toBe(200 - 8)
+    // Not overlapping: stays where it was placed.
+    expect(stackReadout({ x: 620, y: 290 }, 160, 90, taken, bounds)).toBe(290)
   })
 })

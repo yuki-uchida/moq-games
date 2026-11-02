@@ -528,7 +528,13 @@ const battleFeedback = new BattleFeedback({
   safeArea: () => ({
     left: 8,
     right: innerWidth - 8,
-    top: battleHud.root.hidden ? 8 : battleHud.root.getBoundingClientRect().bottom + 6,
+    top:
+      Math.max(
+        8,
+        ...[battleHud.root.querySelector('.bhud-main'), document.querySelector('.topbar'), document.querySelector('.field-controls')].map(
+          (box) => (box instanceof HTMLElement && box.getClientRects().length ? box.getBoundingClientRect().bottom : 0)
+        )
+      ) + 6,
     bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
   }),
   play: (kind, param) => soundPlayer.playFeel(kind, param),
