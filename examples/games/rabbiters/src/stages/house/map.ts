@@ -82,6 +82,8 @@ export const SOLIDS: (Rect & { h: number; name: string })[] = [
   { ...r(-33.5, -26.5, 20, 20.5), h: CAGE_TOP, name: 'cage' },
   { ...r(-33.5, -31.25, 15.5, 16), h: CAGE_TOP, name: 'cage' },
   { ...r(-28.75, -26.5, 15.5, 16), h: CAGE_TOP, name: 'cage' },
+  // The hut in the cage's south-east corner: as tall as the bars, so it can't be used to hop out over them.
+  { ...r(-28.85, -27, 18.35, 20), h: CAGE_TOP, name: 'hut' },
   { ...r(-26, -25, 17.5, 18.5), h: 3, name: 'birdstand' },
   { ...r(-38.5, -36, 2, 12), h: 2, name: 'tv' },
   { ...r(-10, -6, 16.5, 19.5), h: 2.4, name: 'toybox' },

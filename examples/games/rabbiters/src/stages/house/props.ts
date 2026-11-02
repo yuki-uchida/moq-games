@@ -23,8 +23,9 @@ const steel = (kit: Kit) => kit.material('#aeb6bd', { metal: 0.8, roughness: 0.2
 export function petCage(kit: Kit, x: number, z: number) {
   const root = group(x, z)
   const wire = kit.material('#d9dde2', { metal: 0.6, roughness: 0.35 })
-  kit.add(root, 'soft', '#e6c9a0', [0, 0.15, 0], [6.6, 0.3, 4.6])
-  kit.add(root, 'box', '#f3e6c8', [0, 0.31, 0], [6, 0.04, 4])
+  // A thin tray and bedding, flush with the floor the rabbit walks on (floors stay solid in the see-through cut).
+  kit.add(root, 'box', '#e6c9a0', [0, 0.03, 0], [6.6, 0.06, 4.6])
+  kit.add(root, 'box', '#f3e6c8', [0, 0.07, 0], [6, 0.02, 4])
   for (let px = -3.25; px <= 3.251; px += 0.5)
     for (const pz of [-2.25, 2.25])
       if (pz > 0 || Math.abs(px) > 1.3) kit.add(root, 'box', wire, [px, 1.6, pz], [0.06, 3.2, 0.06])
@@ -35,14 +36,14 @@ export function petCage(kit: Kit, x: number, z: number) {
     for (const px of [-3.25, 3.25]) kit.add(root, 'box', wire, [px, y, 0], [0.07, 0.07, 4.5])
   }
   for (let px = -3.25; px <= 3.251; px += 0.75) kit.add(root, 'box', wire, [px, 3.2, 0], [0.05, 0.05, 4.5])
-  kit.add(root, 'frustum', '#8fb6d9', [-2, 0.5, 1.4], [0.6, 0.35, 0.45], [Math.PI, 0, 0]) // pellet bowl
+  kit.add(root, 'frustum', '#8fb6d9', [-2, 0.25, 1.4], [0.6, 0.35, 0.45], [Math.PI, 0, 0]) // pellet bowl
   kit.add(root, 'cylinder', '#c4e3f2', [2.8, 1.8, 1.9], [0.25, 1.2, 0.25]) // water bottle
   kit.add(root, 'cylinder', wire, [2.8, 1.1, 1.9], [0.06, 0.4, 0.06])
   // Wooden hut with a round doorway and a pitched roof.
-  kit.add(root, 'soft', '#c7955c', [2, 0.85, 1.1], [1.6, 1.0, 1.4])
-  kit.add(root, 'gable', '#c7955c', [2, 1.35, 1.1], [1.6, 0.45, 1.4])
-  gableRoof(kit, root, '#a5733f', [2, 1.35, 1.1], 0.8, 0.45, 1.4, 0.12, 0.08)
-  kit.add(root, 'cylinder', '#5a3a22', [2, 0.75, 0.39], [0.35, 0.02, 0.35], [Math.PI / 2, 0, 0])
+  kit.add(root, 'soft', '#c7955c', [2, 0.58, 1.1], [1.6, 1.0, 1.4])
+  kit.add(root, 'gable', '#c7955c', [2, 1.08, 1.1], [1.6, 0.45, 1.4])
+  gableRoof(kit, root, '#a5733f', [2, 1.08, 1.1], 0.8, 0.45, 1.4, 0.12, 0.08)
+  kit.add(root, 'cylinder', '#5a3a22', [2, 0.48, 0.39], [0.35, 0.02, 0.35], [Math.PI / 2, 0, 0])
   return root
 }
 
