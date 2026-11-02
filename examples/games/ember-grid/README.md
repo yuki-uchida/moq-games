@@ -80,7 +80,7 @@ Each mission starts from a recorded party:
 
 Settings are stored under `ember-grid:settings:v1`: BGM/SFX volume, battle speed, attack and heal confirmation, default danger zone, story scenes, tutorial and reduced motion. Changes apply live; battle speed composes with enemy fast-forward. The ♫ quick mute remains independent and persists under `ember-grid:sound`.
 
-The chapter-one tutorial highlights controls and legal targets without blocking play. Skip or complete it to remember the choice in `ember-grid:tutorial-complete:v1`; disabling it in settings hides it. The help dialog uses keyboard-navigable tabs. Heal forecasts show current and resulting HP, and share the attack confirmation and undo controls.
+The chapter-one tutorial follows the selected ally and available actions, including waiting or undoing a move with no target; a turn ending followed by the danger control completes it without requiring an attack. Restarting or revisiting chapter one starts unfinished guidance again. It highlights controls and legal targets without blocking play. Skip or complete it to remember the choice in `ember-grid:tutorial-complete:v1`; disabling it in settings hides it. The help dialog uses keyboard-navigable tabs. Heal forecasts show current and resulting HP, and share the attack confirmation and undo controls.
 
 Later missions add one HP to every enemy, which carried growth offsets.
 

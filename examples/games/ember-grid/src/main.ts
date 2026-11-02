@@ -182,7 +182,7 @@ const story = new StoryFlow(
 const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
 const navigation = document.querySelector('nav')!
-const tutorial = createTutorial(document.querySelector('.console')!, notice)
+const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
 navigation.insertAdjacentHTML(
   'afterbegin',
   '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険</button><button id="undo">↶ 戻す</button>'
@@ -371,6 +371,7 @@ function cancelForecast(restore = true) {
   pending = undefined
   document.querySelector<HTMLElement>('#forecast')!.hidden = true
   if (restore) forecastTrigger?.focus()
+  tutorial.update()
 }
 function showForecast(unit: Unit, target: Unit, healing: boolean) {
   pending = target.id
@@ -684,7 +685,7 @@ async function openChapter(fresh: boolean) {
   const token = generation
   await story.start(fresh)
   if (token === generation) {
-    if (fresh) tutorial.start(tutorialEnabled())
+    if (game.stage === 0) tutorial.start(tutorialEnabled())
     void phaseBanner('ally', token)
   }
 }
@@ -723,6 +724,7 @@ document.querySelector('#restart')!.addEventListener('click', () => {
   undo = undefined
   cancelForecast(false)
   render()
+  if (game.stage === 0) tutorial.start(tutorialEnabled())
   // A retry replays the (skippable) chapter opening, then the phase banner.
   if (ready) void openChapter(false)
 })

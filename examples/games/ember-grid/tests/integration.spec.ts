@@ -17,6 +17,37 @@ test.beforeEach(async ({ page }) => {
 })
 
 for (const width of [1280, 390]) {
+  for (const [name, x, y] of [
+    ['rio', 1, 4],
+    ['archer', 1, 3],
+    ['mage', 1, 5]
+  ] as const) {
+    test(`tutorial ${name} undo and restart ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+      await page.goto('./?seed=7')
+      await start(page)
+      const hint = page.locator('#tutorial')
+      await cell(page, x, y).click()
+      await expect(hint).toContainText('移動可能')
+      const destination = name === 'rio' ? cell(page, 3, 4) : page.locator('.cell.legal').first()
+      await destination.click()
+      await expect(page.locator('#undo')).toBeEnabled({ timeout: 30000 })
+      if (name === 'rio') {
+        await expect(hint).toContainText('待機')
+        await page.screenshot({ path: `test-results/tutorial-no-target-${width}.png` })
+      }
+      await page.locator('#undo').click()
+      await expect(hint).toContainText('移動可能')
+      await page.locator('#restart').click()
+      await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+      await expect(hint).toContainText('味方を選ぼう')
+      await cell(page, x, y).click()
+      await page.locator('#wait').click()
+      await expect(hint).toContainText('攻撃範囲')
+      await page.locator('#danger').click()
+      await expect(hint).toBeHidden()
+    })
+  }
   test(`heal forecast ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
     await page.goto('./?seed=7')
@@ -73,6 +104,10 @@ for (const width of [1280, 390]) {
     await cell(page, 6, 3).click()
     await expect(hint).toContainText('攻撃予測')
     await shot(3)
+    await page.getByRole('button', { name: 'やめる' }).click()
+    await expect(hint).toContainText('敵を選ぼう')
+    await cell(page, 6, 3).click()
+    await expect(hint).toContainText('攻撃予測')
     await page.getByRole('button', { name: '攻撃', exact: true }).click()
     await expect(hint).toContainText('待機')
     await shot(4)
