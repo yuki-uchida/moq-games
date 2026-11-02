@@ -977,7 +977,15 @@ button:active:not(:disabled) {
   .topbar {
     padding: 10px 12px;
   }
-  .wordmark > span,
+  .wordmark {
+    display: none;
+  }
+  .top-actions {
+    margin-left: auto;
+  }
+  #condition:not(.urgent) {
+    display: none;
+  }
   .connection span,
   .meter-row > span:nth-child(2),
   .vitals .eyebrow {
@@ -986,10 +994,6 @@ button:active:not(:disabled) {
     height: 1px;
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
-  }
-  .rabbit-mark {
-    width: 32px;
-    height: 32px;
   }
   .top-actions {
     gap: 6px;
@@ -1065,4 +1069,38 @@ button:active:not(:disabled) {
     padding: 8px 12px;
     font-size: 12px;
   }
+}
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.touch-buttons button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.touch-buttons svg {
+  width: 64%;
+  height: 64%;
+  fill: currentColor;
+}
+/* Lit while the rabbit is in cover. */
+.touch-buttons button.active {
+  background: #8cc785e8;
+  color: #13301f;
+  box-shadow: 0 0 14px #9fdc8f;
+}
+.key-icon {
+  width: 1.6em;
+  height: 1.6em;
+  margin: 0 3px;
+  vertical-align: -0.45em;
+  fill: currentColor;
+}
+/* In cover: the screen edge closes in with leafy green. */
+.alert-overlay.covered {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, transparent 48%, rgb(24 74 42 / 0.6) 100%);
 }
