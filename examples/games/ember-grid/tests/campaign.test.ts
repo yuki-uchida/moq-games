@@ -20,8 +20,19 @@ import {
   type Roster
 } from '../src/game'
 import { plan } from './strategy'
+import { roleScale } from '../src/stage'
 
 describe('campaign data', () => {
+  it('keeps every campaign role within its intended presentation scale', () => {
+    const roles = new Set(campaign.flatMap((chapter) => chapter.enemies.map((unit) => unit.role)))
+    for (const role of [...roles, 'soldier', 'archer', 'mage', 'healer']) {
+      expect(roleScale(role)).toBeGreaterThan(0)
+      expect(roleScale(role)).toBeLessThanOrEqual(1)
+    }
+    expect(roleScale('slime')).toBeLessThan(roleScale('soldier'))
+    expect(roleScale('bat')).toBeLessThan(roleScale('soldier'))
+    expect(roleScale('dragon') * 1.25).toBe(1.25)
+  })
   it('defines six chapters with valid terrain, deployment and enemy cells', () => {
     expect(campaign).toHaveLength(6)
     for (const chapter of campaign) {
