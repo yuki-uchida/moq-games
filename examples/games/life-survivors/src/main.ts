@@ -2,10 +2,12 @@ import './style.css'
 import { CooperativeNetwork } from '../../rabbiters/src/network'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import {
+  ENEMY_BY_ID,
   MAX_WEAPON_LEVEL,
   PASSIVE_BY_ID,
   RUN_SECONDS,
   TALENT_CATEGORIES,
+  TAG_NAMES,
   TALENT_WEAPONS,
   WEAPON_BY_ID,
   ageAt,
@@ -40,6 +42,8 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
 const APP = 'life-survivors-v1'
+/** A lost life lets the last death animation (and the rising soul) play before the result dialog. */
+const DEATH_DELAY_MS = 4200
 
 let role: 'solo' | 'host' | 'guest' | undefined
 let game: Game | undefined
@@ -53,6 +57,7 @@ let sentAt = 0
 let hudAt = 0
 let shownChoices = ''
 let resultShown = false
+let lostAt = 0
 let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
@@ -99,6 +104,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
   pick = undefined
   shownChoices = ''
   resultShown = false
+  lostAt = 0
   try {
     if (next !== 'solo') {
       if (!relay.value.trim() || !room.value.trim()) throw new Error('Relay URLとルーム名を入力してください。')
@@ -333,14 +339,18 @@ function updateHud(current: View) {
     setTimeout(() => line.remove(), 5000)
     while (feed.children.length > 4) feed.lastElementChild?.remove()
   }
-  if ((current.phase === 'won' || current.phase === 'lost') && !resultShown) {
+  if (current.phase === 'lost' && !lostAt) lostAt = performance.now()
+  const settled = current.phase === 'won' || (current.phase === 'lost' && performance.now() - lostAt >= DEATH_DELAY_MS)
+  if (settled && !resultShown) {
     const age = ageAt(current.time)
     const won = current.phase === 'won'
+    const killer = player?.killer ? ENEMY_BY_ID.get(player.killer) : undefined
+    const cause = killer ? `とどめ：${killer.name}（${TAG_NAMES[killer.tag]}）。` : ''
     showResult(
       won ? `大往生 — 享年${age}歳` : `心が折れた — 享年${age}歳`,
       won
         ? `死神が迎えに来た。30分の人生を生き抜いた。Lv ${current.level}・乗り越えた困難 ${current.kills}`
-        : `${stageAt(current.time).name}で力尽きた。Lv ${current.level}・乗り越えた困難 ${current.kills}`,
+        : `${stageAt(current.time).name}で力尽きた。${cause}Lv ${current.level}・乗り越えた困難 ${current.kills}`,
       won ? '🌅' : '💔',
       player ? reflection(player) : []
     )

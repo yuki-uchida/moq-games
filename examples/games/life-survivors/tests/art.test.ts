@@ -1,0 +1,132 @@
+import { createHash } from 'node:crypto'
+import { describe, expect, test } from 'vitest'
+import { ENEMIES, ENEMY_BY_ID, STAGES, TAG_NAMES } from '../src/data'
+import { deathKind } from '../src/art/deaths'
+import { SHEETS } from '../src/art/index'
+import { PALETTE } from '../src/art/palette'
+import type { Sheet } from '../src/art/sheet'
+import { GROUNDS, PROP_NAMES, groundTile } from '../src/art/world'
+import { bodyFor } from '../src/render'
+
+const built = Object.fromEntries(Object.entries(SHEETS).map(([id, make]) => [id, make()])) as Record<string, Sheet>
+const lowest = (frame: Sheet[string]['frames'][number]) => {
+  let y = -1
+  frame.map((c, _x, row) => ((y = Math.max(y, row)), c))
+  return y
+}
+const BODIES = ['baby', 'toddler', 'kid', 'junior', 'high', 'college', 'adult', 'prime', 'middle', 'elder', 'bed']
+const big = (id: string) => id.startsWith('enemy:b_') || id === 'reaper'
+
+describe('pixel art', () => {
+  test('every life stage, enemy and boss has its sprite with the right size and frame count', () => {
+    for (const body of BODIES) {
+      const s = built[`player:${body}`]
+      expect([body, Object.keys(s).sort()]).toEqual([body, ['hurt', 'idle', 'walk']])
+      expect(s.idle.frames).toHaveLength(4)
+      expect(s.walk.frames).toHaveLength(6)
+      expect(s.hurt.frames.length).toBeGreaterThanOrEqual(1)
+      expect(s.hurt.frames.length).toBeLessThanOrEqual(2)
+      expect(built[`death:${body}`].collapse).toBeDefined()
+    }
+    // No emoji fallbacks remain: every enemy in the game data has a sheet with a white flash twin.
+    for (const def of ENEMIES) {
+      const s = built[`enemy:${def.id}`]
+      expect([def.id, Boolean(s)]).toEqual([def.id, true])
+      expect(s.move.frames.length).toBeGreaterThanOrEqual(4)
+      expect(s.move.frames.length).toBeLessThanOrEqual(6)
+      expect(s.flash.frames).toHaveLength(s.move.frames.length)
+    }
+    expect(Object.keys(built['death:adult']).sort()).toEqual(['collapse', 'hang', 'starve'])
+    for (const [id, sheet] of Object.entries(built)) {
+      if (id.startsWith('tiles:') || id.startsWith('props:')) continue
+      const size = big(id) ? 128 : id === 'soul' ? 16 : 64
+      for (const anim of Object.values(sheet)) {
+        if (id.startsWith('death:')) {
+          expect(anim.frames.length).toBeGreaterThanOrEqual(12)
+          expect(anim.frames.length).toBeLessThanOrEqual(20)
+          expect(anim.loop).toBe(false)
+          // Fades are renderer alpha per frame, never dithered pixels.
+          if (anim.alpha) expect(anim.alpha).toHaveLength(anim.frames.length)
+        }
+        for (const frame of anim.frames) expect([id, frame.w, frame.h]).toEqual([id, size, size])
+      }
+    }
+  })
+
+  test('every stage has a seamless ground (≥3 variants) and four props', () => {
+    for (const stage of STAGES) {
+      const ground = GROUNDS[stage.name]
+      expect([stage.name, Boolean(ground)]).toEqual([stage.name, true])
+      expect(built[`tiles:${ground}`].tiles.frames.length).toBeGreaterThanOrEqual(3)
+      for (const frame of built[`tiles:${ground}`].tiles.frames) {
+        expect([frame.w, frame.h]).toEqual([64, 64])
+        expect(frame.data.every((c) => c > 0)).toBe(true)
+      }
+      expect(PROP_NAMES[ground].length).toBeGreaterThanOrEqual(4)
+      expect(Object.keys(built[`props:${ground}`]).sort()).toEqual([...PROP_NAMES[ground]].sort())
+      for (const prop of Object.values(built[`props:${ground}`])) {
+        expect([64, 128]).toContain(prop.frames[0].w)
+        expect([64, 128]).toContain(prop.frames[0].h)
+        expect(prop.frames[0].w * prop.frames[0].h).toBeLessThanOrEqual(128 * 64)
+      }
+      expect(groundTile(ground, 3, -7)).toBe(groundTile(ground, 3, -7))
+    }
+  })
+
+  test('only master-palette colours, ≤ 96 of them, and alpha is 0 or 255', () => {
+    expect(PALETTE.length - 1).toBeLessThanOrEqual(96)
+    for (const [id, sheet] of Object.entries(built))
+      for (const anim of Object.values(sheet))
+        for (const frame of anim.frames) {
+          for (const c of frame.data) if (c >= PALETTE.length) throw new Error(`${id}: index ${c} outside the palette`)
+          const rgba = frame.rgba()
+          for (let i = 3; i < rgba.length; i += 4)
+            if (rgba[i] !== 0 && rgba[i] !== 255) throw new Error(`${id}: alpha ${rgba[i]}`)
+        }
+  })
+
+  test('feet sit on the shared baseline (row 58 of 64, 120 of 128) so flipping and animating never jitter', () => {
+    for (const id of [...BODIES.map((b) => `player:${b}`), 'enemy:bully'])
+      for (const anim of Object.values(built[id]))
+        for (const frame of anim.frames) expect([id, lowest(frame)]).toEqual([id, 58])
+    for (const frame of built['enemy:b_hs'].move.frames) expect(lowest(frame)).toBe(120)
+    for (const [id, sheet] of Object.entries(built)) {
+      if (id.startsWith('death:'))
+        for (const anim of Object.values(sheet))
+          for (const frame of anim.frames) expect(lowest(frame)).toBeLessThanOrEqual(58)
+      if (big(id)) for (const frame of sheet.move.frames) expect([id, lowest(frame) <= 120]).toEqual([id, true])
+    }
+  })
+
+  test('generation is deterministic and fast', () => {
+    const digest = () => {
+      const hash = createHash('sha256')
+      const start = performance.now()
+      for (const make of Object.values(SHEETS))
+        for (const anim of Object.values(make())) for (const frame of anim.frames) hash.update(frame.data)
+      return { hash: hash.digest('hex'), ms: performance.now() - start }
+    }
+    const a = digest()
+    const b = digest()
+    expect(b.hash).toBe(a.hash)
+    // Everything (all stages, the full roster, maps) takes ~0.4 s on a laptop; the browser builds only
+    // what is on screen, lazily. 4 s leaves ~10× headroom for slow CI while still catching a blow-up.
+    expect(Math.min(a.ms, b.ms)).toBeLessThan(4000)
+  })
+})
+
+describe('bodies and deaths', () => {
+  test('every life stage has its own body', () => {
+    expect(STAGES.map(bodyFor)).toEqual(BODIES)
+  })
+
+  test('the killer’s tag picks the death; 首吊り is never shown for minors', () => {
+    expect(deathKind(ENEMY_BY_ID.get('boss')!.tag, 25, 'adult')).toBe('hang')
+    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 17, 'adult')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 9, 'kid')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('expense')!.tag, 30, 'adult')).toBe('starve')
+    expect(deathKind(ENEMY_BY_ID.get('germ')!.tag, 30, 'adult')).toBe('collapse')
+    expect(deathKind(undefined, 30, 'adult')).toBe('collapse')
+    expect(TAG_NAMES.people).toBe('人間関係')
+  })
+})

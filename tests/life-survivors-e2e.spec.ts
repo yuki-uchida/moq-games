@@ -50,6 +50,33 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   expect(errors).toEqual([])
 })
 
+test('a broken heart: the death plays out before the result, which names the final blow', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await expect(page.getByText('死や自死を暗示する表現があります')).toBeVisible()
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const game = l.game as unknown as {
+      state: { time: number; players: { x: number; y: number; hp: number; weapons: unknown[] }[] }
+      spawnEnemy(kind: string, x: number, y: number): void
+    }
+    const p = game.state.players[0]
+    game.state.time = 25 * 22.5
+    p.weapons = []
+    p.hp = 0.01
+    game.spawnEnemy('boss', p.x, p.y)
+  })
+  await expect.poll(() => handle.evaluate((l) => l.view.phase)).toBe('lost')
+  await page.waitForTimeout(1000)
+  await expect(page.locator('#result')).toBeHidden()
+  await expect(page.getByRole('heading', { name: /心が折れた — 享年25歳/ })).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('#result-text')).toContainText('とどめ：上司（人間関係）')
+  expect(errors).toEqual([])
+})
+
 // Replaces the relay with a BroadcastChannel so two real pages play a host/guest session.
 const fakeNetwork = `
 export const MAX_PAYLOAD_BYTES = 65536;

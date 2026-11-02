@@ -1,4 +1,13 @@
-import { ENEMIES, ENEMY_INDEX, MAX_GAME_PLAYERS, PASSIVE_BY_ID, TALENT_CATEGORIES, WEAPONS, WEAPON_BY_ID } from './data'
+import {
+  ENEMIES,
+  ENEMY_BY_ID,
+  ENEMY_INDEX,
+  MAX_GAME_PLAYERS,
+  PASSIVE_BY_ID,
+  TALENT_CATEGORIES,
+  WEAPONS,
+  WEAPON_BY_ID
+} from './data'
 import type { GameState } from './game'
 
 /** What the renderer and HUD draw. Hosts build it locally and broadcast it; guests receive it. */
@@ -15,6 +24,8 @@ export interface ViewPlayer {
   downed: boolean
   revive: number
   hurt: boolean
+  /** Enemy id of the final blow while downed. */
+  killer?: string
   parent: string
   weapons: [string, number, number][]
   passives: [string, number][]
@@ -104,6 +115,7 @@ export function toView(state: GameState): View {
       downed: p.downed,
       revive: Math.round(p.revive * 100) / 100,
       hurt: p.hurt > 0,
+      ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
       weapons: p.weapons.map((w) => [w.id, w.lv, r(w.damage)]),
       passives: p.passives.map((s) => [s.id, s.lv]),
@@ -148,6 +160,7 @@ function playerOk(value: unknown): value is ViewPlayer {
     [p.x, p.y, p.fx, p.fy, p.hp, p.maxHp, p.revive, p.choiceSeq].every((n) => finite(n)) &&
     typeof p.downed === 'boolean' &&
     typeof p.hurt === 'boolean' &&
+    (p.killer === undefined || (text(p.killer, 40) && ENEMY_BY_ID.has(p.killer))) &&
     text(p.parent) &&
     WEAPON_BY_ID.has(p.parent) &&
     Array.isArray(p.weapons) &&

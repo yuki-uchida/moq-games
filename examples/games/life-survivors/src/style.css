@@ -480,6 +480,11 @@ button {
   gap: 8px;
   margin-top: 6px;
 }
+.content-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0 0 10px;
+}
 .fine-print {
   color: var(--muted);
   margin: 4px 0 0;

@@ -181,3 +181,39 @@ describe('snapshots', () => {
     expect(WEAPON_BY_ID.size).toBeGreaterThan(14)
   })
 })
+
+describe('the final blow', () => {
+  test('a downed player remembers who broke them, until they get back up', () => {
+    const game = new Game(12)
+    const a = game.addPlayer('a')!
+    const b = game.addPlayer('b')!
+    b.x = a.x + 400
+    a.weapons = []
+    a.hp = 0.01
+    game.spawnEnemy('boss', a.x, a.y)
+    game.tick(1 / 60)
+    expect(a.downed).toBe(true)
+    expect(a.killer).toBe('boss')
+    const view = JSON.parse(JSON.stringify(toView(game.state)))
+    expect(view.players[0].killer).toBe('boss')
+    expect(view.players[1].killer).toBeUndefined()
+    expect(readView(view)).toBeTruthy()
+    game.state.enemies = []
+    b.x = a.x + 20
+    b.y = a.y
+    for (let i = 0; i < 60 * 3.2; i++) game.tick(1 / 60)
+    expect(a.downed).toBe(false)
+    expect(a.killer).toBeUndefined()
+    expect(toView(game.state).players[0].killer).toBeUndefined()
+  })
+
+  test('snapshots only accept a real enemy id as the killer', () => {
+    const game = new Game(1)
+    game.addPlayer('a')
+    const view = JSON.parse(JSON.stringify(toView(game.state)))
+    expect(readView({ ...view, players: [{ ...view.players[0], killer: 'boss' }] })).toBeTruthy()
+    expect(readView({ ...view, players: [{ ...view.players[0], killer: 'nope' }] })).toBeUndefined()
+    expect(readView({ ...view, players: [{ ...view.players[0], killer: 'constructor' }] })).toBeUndefined()
+    expect(readView({ ...view, players: [{ ...view.players[0], killer: 7 }] })).toBeUndefined()
+  })
+})

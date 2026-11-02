@@ -74,6 +74,8 @@ export interface Player {
   choiceSeq: number
   pending: number
   hurt: number
+  /** Enemy id that dealt the final blow while downed (picks the death animation and the result text). */
+  killer?: string
 }
 
 export interface Enemy {
@@ -683,6 +685,7 @@ export class Game {
       player.hp = 0
       player.downed = true
       player.revive = 0
+      player.killer = def.id
       this.log(`${player.name}の心が折れた…（仲間がそばにいると立ち直る）`)
     }
   }
@@ -697,6 +700,7 @@ export class Game {
       if (player.revive >= 1) {
         player.downed = false
         player.revive = 0
+        player.killer = undefined
         player.hp = player.maxHp * 0.5
         this.log(`${player.name}が立ち直った！`)
       }

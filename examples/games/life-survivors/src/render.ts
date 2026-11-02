@@ -1,6 +1,46 @@
-import { ENEMIES, TAG_COLORS, WEAPONS, stageAt } from './data'
+import { canvasOf } from './art/atlas'
+import { deathKind, soulAt } from './art/deaths'
+import { NO_FLIP, sheet } from './art/index'
+import type { Raster } from './art/raster'
+import { duration, frameAt } from './art/sheet'
+import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propAt } from './art/world'
+import { ENEMIES, ENEMY_BY_ID, WEAPONS, ageAt, stageAt, type Stage } from './data'
 import { VIEW_HALF } from './game'
 import { STRIDE, type View, type ViewPlayer } from './view'
+
+/** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
+const BODIES: Record<string, string> = {
+  乳児期: 'baby',
+  幼児期: 'toddler',
+  小学生: 'kid',
+  中学生: 'junior',
+  高校生: 'high',
+  大学生: 'college',
+  社会人: 'adult',
+  働き盛り: 'prime',
+  中年: 'middle',
+  老後: 'elder',
+  寝たきり: 'bed'
+}
+/** Every life stage has its own painted body. */
+export const bodyFor = (stage: Stage) => BODIES[stage.name] ?? 'adult'
+const GROUND_FADE = 1.5
+/** Where a prop touches the ground: centre x, half-width and row of its lowest pixels (cached). */
+const footprints = new WeakMap<Raster, { cx: number; rx: number; y: number }>()
+function footprint(r: Raster) {
+  let found = footprints.get(r)
+  if (found) return found
+  let maxY = -1
+  r.map((c, _x, y) => ((maxY = Math.max(maxY, y)), c))
+  let lo = r.w
+  let hi = -1
+  r.map((c, x, y) => (y >= maxY - 3 && ((lo = Math.min(lo, x)), (hi = Math.max(hi, x))), c))
+  found = hi < 0 ? { cx: 0, rx: 0, y: 0 } : { cx: (lo + hi + 1) / 2, rx: (hi - lo + 1) / 2 + 1, y: maxY }
+  footprints.set(r, found)
+  return found
+}
+
+/** Sprites carrying lettering (¥, 至急) never mirror. */
 
 const FRIENDS = ['🧑', '👧', '👦', '🧑‍🦱', '👩', '🧔']
 const ITEM_ICONS = ['🍙', '🎁', '🧲']
@@ -16,6 +56,11 @@ export class Renderer {
   private height = 1
   private scale = 1
   private camera = { x: 0, y: 0 }
+  /** Renderer clock: animations keep breathing even while the game is paused. */
+  private clock = 0
+  private groundShown?: { stage: Stage; from?: Stage; at: number }
+  private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
+  private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!
@@ -60,16 +105,16 @@ export class Renderer {
     )
   }
 
-  private label(text: string, size: number, color: string) {
+  private label(text: string, size: number, color: string, quiet = false) {
     const px = Math.round(size)
     return this.sprite(
-      `l:${text}:${px}:${color}`,
+      `l:${text}:${px}:${color}:${quiet}`,
       (ctx) => {
         ctx.font = `700 ${px}px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.lineWidth = Math.max(2, px / 4)
-        ctx.strokeStyle = 'rgba(15,12,20,.85)'
+        ctx.lineWidth = quiet ? Math.max(1.5, px / 5) : Math.max(2, px / 4)
+        ctx.strokeStyle = quiet ? 'rgba(15,12,20,.55)' : 'rgba(15,12,20,.85)'
         ctx.strokeText(text, ctx.canvas.width / 2, ctx.canvas.height / 2)
         ctx.fillStyle = color
         ctx.fillText(text, ctx.canvas.width / 2, ctx.canvas.height / 2)
@@ -88,6 +133,94 @@ export class Renderer {
     ctx.rotate(angle)
     ctx.drawImage(image, -image.width / 2, -image.height / 2)
     ctx.restore()
+  }
+
+  /**
+   * Draws a pixel-art frame with its pivot (px, py) at world (x, y): device-pixel snapped, pre-upscaled by
+   * k = ceil(scale) and smoothed down to the final size ("sharp bilinear"). Leaves an identity transform.
+   */
+  private art(r: Raster, x: number, y: number, px: number, py: number, flip = false, alpha = 1) {
+    const s = this.scale
+    const k = Math.max(1, Math.ceil(s - 0.01))
+    const dw = r.w * s
+    const dh = r.h * s
+    const ax = Math.round(this.canvas.width / 2 + (x - this.camera.x) * s)
+    const left = Math.round(ax - (flip ? r.w - px : px) * s)
+    const top = Math.round(this.canvas.height / 2 + (y - this.camera.y) * s - py * s)
+    const ctx = this.ctx
+    ctx.globalAlpha = alpha
+    ctx.setTransform(flip ? -1 : 1, 0, 0, 1, flip ? left + dw : left, top)
+    ctx.drawImage(canvasOf(r, k), 0, 0, dw, dh)
+    ctx.globalAlpha = 1
+  }
+
+  private world() {
+    this.ctx.setTransform(
+      this.scale,
+      0,
+      0,
+      this.scale,
+      this.canvas.width / 2 - this.camera.x * this.scale,
+      this.canvas.height / 2 - this.camera.y * this.scale
+    )
+  }
+
+  private shadow(x: number, y: number, rx: number, alpha = 0.28, flat = 0.36) {
+    const ctx = this.ctx
+    this.world()
+    ctx.fillStyle = `rgba(12,8,20,${alpha})`
+    ctx.beginPath()
+    ctx.ellipse(x, y, rx, Math.min(6, rx * flat), 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  /** One stage's ground over the visible area: painted tiles and props. */
+  private ground(stage: Stage, alpha: number, halfW: number, halfH: number) {
+    const ctx = this.ctx
+    const key = GROUNDS[stage.name]
+    // Tiles: nearest-neighbour onto integer device rectangles so neighbours meet without seams.
+    const s = this.scale
+    const k = Math.max(1, Math.ceil(s - 0.01))
+    const sx = (wx: number) => Math.round(this.canvas.width / 2 + (wx - this.camera.x) * s)
+    const sy = (wy: number) => Math.round(this.canvas.height / 2 + (wy - this.camera.y) * s)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.imageSmoothingEnabled = false
+    ctx.globalAlpha = alpha
+    const tx0 = Math.floor((this.camera.x - halfW) / TILE)
+    const ty0 = Math.floor((this.camera.y - halfH) / TILE)
+    for (let tx = tx0; tx * TILE < this.camera.x + halfW; tx++)
+      for (let ty = ty0; ty * TILE < this.camera.y + halfH; ty++) {
+        const left = sx(tx * TILE)
+        const top = sy(ty * TILE)
+        ctx.drawImage(
+          canvasOf(groundTile(key, tx, ty), k),
+          left,
+          top,
+          sx((tx + 1) * TILE) - left,
+          sy((ty + 1) * TILE) - top
+        )
+      }
+    ctx.imageSmoothingEnabled = true
+    ctx.globalAlpha = 1
+    const props = sheet(`props:${key}`)
+    for (
+      let cx = Math.floor((this.camera.x - halfW - 64) / PROP_CELL);
+      cx * PROP_CELL < this.camera.x + halfW + 64;
+      cx++
+    )
+      for (
+        let cy = Math.floor((this.camera.y - halfH - 64) / PROP_CELL);
+        cy * PROP_CELL < this.camera.y + halfH + 128;
+        cy++
+      ) {
+        const prop = propAt(key, cx, cy)
+        if (!prop) continue
+        const frame = props[prop.name].frames[0]
+        const foot = footprint(frame)
+        if (foot.rx && !FLAT_PROPS.has(prop.name))
+          this.shadow(prop.x - frame.w / 2 + foot.cx, prop.y - frame.h + 6 + foot.y + 1, foot.rx, 0.2 * alpha, 0.2)
+        this.art(frame, prop.x, prop.y, frame.w / 2, frame.h - 6, false, alpha)
+      }
   }
 
   /** Eases guest-side entities between snapshots; hosts pass smooth=false. */
@@ -115,6 +248,95 @@ export class Renderer {
     return entry
   }
 
+  private enemy(def: (typeof ENEMIES)[number], id: number, pos: { x: number; y: number }, hp: number, flash: number) {
+    const ctx = this.ctx
+    const boss = def.behavior === 'boss'
+    const feet = pos.y + def.radius * 0.8
+    const art = sheet(`enemy:${def.id}`)
+    this.shadow(pos.x, feet, def.radius * 0.9)
+    const anim = flash ? art.flash : art.move
+    const frame = anim.frames[frameAt(anim, this.clock + (id % 7) * 0.13)]
+    const big = frame.w > 64
+    this.art(frame, pos.x, feet, big ? 64 : 32, big ? 120 : 58, pos.x > this.camera.x && !NO_FLIP.has(def.id))
+    this.world()
+    // Regular enemies get a small, quiet name tag; life-event bosses keep a big one.
+    if (boss) this.blit(this.label(def.name, 16, '#ffe08a'), pos.x, feet + 14)
+    else this.blit(this.label(def.name, 8, '#f4ecff', true), pos.x, feet + 7, 0, 0.75)
+    if (boss || hp < 100) {
+      const w = def.radius * 2
+      const top = feet - (boss ? 108 : 50)
+      ctx.fillStyle = 'rgba(0,0,0,.6)'
+      ctx.fillRect(pos.x - w / 2, top, w, boss ? 6 : 3)
+      ctx.fillStyle = boss ? '#ff5d73' : '#ffb3b3'
+      ctx.fillRect(pos.x - w / 2, top, (w * hp) / 100, boss ? 6 : 3)
+    }
+  }
+
+  private player(player: ViewPlayer, pos: { x: number; y: number }, local: boolean, time: number) {
+    const ctx = this.ctx
+    const feet = pos.y + 16
+    const stage = stageAt(time)
+    const body = bodyFor(stage)
+    // Movement from the eased on-screen position (views carry no velocity).
+    const m = this.motion.get(player.id) ?? { x: pos.x, y: pos.y, speed: 0 }
+    const step = Math.hypot(pos.x - m.x, pos.y - m.y)
+    m.speed += (Math.min(400, step * 60) - m.speed) * 0.25
+    m.x = pos.x
+    m.y = pos.y
+    this.motion.set(player.id, m)
+    // Identity ring at the feet (player colour), drawn under the sprite.
+    this.world()
+    ctx.strokeStyle = player.color
+    ctx.lineWidth = local ? 3 : 2
+    ctx.beginPath()
+    ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    this.shadow(pos.x, feet, 13)
+    const flip = player.fx < 0
+    if (player.downed) {
+      let death = this.deaths.get(player.id)
+      if (!death) {
+        const tag = player.killer ? ENEMY_BY_ID.get(player.killer)?.tag : undefined
+        death = { at: this.clock, body, kind: deathKind(tag, ageAt(time), body) }
+        this.deaths.set(player.id, death)
+      }
+      const anim = sheet(`death:${death.body}`)[death.kind]
+      const t = this.clock - death.at
+      const index = frameAt(anim, t)
+      this.art(anim.frames[index], pos.x, feet, 32, 58, flip, anim.alpha?.[index] ?? 1)
+      const soul = soulAt(t, duration(anim))
+      if (soul) {
+        const float = sheet('soul').float
+        this.art(float.frames[frameAt(float, t)], pos.x, feet + soul.dy, 8, 16, false, soul.alpha)
+      }
+      this.world()
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.arc(pos.x, pos.y, 28, -Math.PI / 2, -Math.PI / 2 + player.revive * Math.PI * 2)
+      ctx.stroke()
+    } else {
+      this.deaths.delete(player.id)
+      const art = sheet(`player:${body}`)
+      const anim = player.hurt ? art.hurt : m.speed > 25 ? art.walk : art.idle
+      this.art(
+        anim.frames[frameAt(anim, player.hurt ? ((this.clock * 8) % 2) / 8 : this.clock)],
+        pos.x,
+        feet,
+        32,
+        58,
+        flip
+      )
+      this.world()
+    }
+    this.blit(this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color), pos.x, feet - 64)
+    const w = 40
+    ctx.fillStyle = 'rgba(0,0,0,.6)'
+    ctx.fillRect(pos.x - w / 2, feet + 8, w, 5)
+    ctx.fillStyle = player.hp / player.maxHp > 0.3 ? '#7be495' : '#ff6b6b'
+    ctx.fillRect(pos.x - w / 2, feet + 8, (w * Math.max(0, player.hp)) / Math.max(1, player.maxHp), 5)
+  }
+
   draw(view: View, localId: string, dt: number, smooth: boolean) {
     this.frame++
     const ctx = this.ctx
@@ -122,48 +344,21 @@ export class Renderer {
     const me = view.players.find((p) => p.id === localId) ?? view.players[0]
     const positions = new Map(view.players.map((p) => [p.id, this.playerPosition(p, k)]))
     if (me) this.camera = { ...positions.get(me.id)! }
+    this.clock += dt
     const stage = stageAt(view.time)
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.fillStyle = stage.ground
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
-    ctx.setTransform(
-      this.scale,
-      0,
-      0,
-      this.scale,
-      this.canvas.width / 2 - this.camera.x * this.scale,
-      this.canvas.height / 2 - this.camera.y * this.scale
-    )
     const halfW = this.canvas.width / 2 / this.scale + 80
     const halfH = this.canvas.height / 2 / this.scale + 80
     const visible = (x: number, y: number) => Math.abs(x - this.camera.x) < halfW && Math.abs(y - this.camera.y) < halfH
 
-    // Ground: grid and scattered keepsakes of this stage of life.
-    const cell = 160
-    ctx.strokeStyle = stage.line
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    for (let x = Math.floor((this.camera.x - halfW) / cell) * cell; x < this.camera.x + halfW; x += cell) {
-      ctx.moveTo(x, this.camera.y - halfH)
-      ctx.lineTo(x, this.camera.y + halfH)
-    }
-    for (let y = Math.floor((this.camera.y - halfH) / cell) * cell; y < this.camera.y + halfH; y += cell) {
-      ctx.moveTo(this.camera.x - halfW, y)
-      ctx.lineTo(this.camera.x + halfW, y)
-    }
-    ctx.stroke()
-    for (let cx = Math.floor((this.camera.x - halfW) / cell); cx * cell < this.camera.x + halfW; cx++)
-      for (let cy = Math.floor((this.camera.y - halfH) / cell); cy * cell < this.camera.y + halfH; cy++) {
-        const hash = Math.abs(Math.imul(cx * 73856093, 1) ^ Math.imul(cy, 19349663)) % 997
-        if (hash % 5) continue
-        this.blit(
-          this.emoji(stage.decor[hash % stage.decor.length], 26),
-          cx * cell + (hash % 120) + 20,
-          cy * cell + ((hash * 7) % 120) + 20,
-          0,
-          0.35
-        )
-      }
+    // Ground of this stage of life, crossfading from the previous one when a new stage begins.
+    if (this.groundShown?.stage !== stage) this.groundShown = { stage, from: this.groundShown?.stage, at: this.clock }
+    const fade = Math.min(1, (this.clock - this.groundShown.at) / GROUND_FADE)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.fillStyle = '#16121c'
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    if (this.groundShown.from && fade < 1) this.ground(this.groundShown.from, 1, halfW, halfH)
+    this.ground(stage, this.groundShown.from ? fade : 1, halfW, halfH)
+    this.world()
 
     // Experience and items.
     const g = view.gems
@@ -215,6 +410,8 @@ export class Renderer {
         }
     }
 
+    // Characters: enemies and players Y-sorted so overlaps read correctly.
+    const sorted: { y: number; draw: () => void }[] = []
     const e = view.enemies
     const live = new Set<number>()
     for (let i = 0; i < e.length; i += STRIDE.enemies) {
@@ -222,34 +419,33 @@ export class Renderer {
       const pos = smooth ? this.ease(e[i], e[i + 2], e[i + 3], k) : { x: e[i + 2], y: e[i + 3] }
       live.add(e[i])
       if (!visible(pos.x, pos.y)) continue
-      const boss = def.behavior === 'boss'
-      const wobble = Math.sin(view.time * 8 + e[i]) * 2
-      ctx.fillStyle = 'rgba(0,0,0,.25)'
-      ctx.beginPath()
-      ctx.ellipse(pos.x, pos.y + def.radius * 0.8, def.radius * 0.9, def.radius * 0.35, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = e[i + 5] ? '#ffffff' : TAG_COLORS[def.tag]
-      ctx.globalAlpha = e[i + 5] ? 0.9 : 0.55
-      ctx.beginPath()
-      ctx.arc(pos.x, pos.y + wobble, def.radius, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.globalAlpha = 1
-      const angle = def.behavior === 'dash' ? 0 : Math.sin(view.time * 5 + e[i]) * 0.12
-      this.blit(this.emoji(def.icon, def.radius * 1.7), pos.x, pos.y + wobble, angle)
-      this.blit(
-        this.label(def.name, boss ? 16 : 10, boss ? '#ffe08a' : '#f4ecff'),
-        pos.x,
-        pos.y + def.radius + (boss ? 14 : 8)
-      )
-      if (boss || e[i + 4] < 100) {
-        const w = def.radius * 2
-        ctx.fillStyle = 'rgba(0,0,0,.6)'
-        ctx.fillRect(pos.x - w / 2, pos.y - def.radius - 12, w, boss ? 6 : 3)
-        ctx.fillStyle = boss ? '#ff5d73' : '#ffb3b3'
-        ctx.fillRect(pos.x - w / 2, pos.y - def.radius - 12, (w * e[i + 4]) / 100, boss ? 6 : 3)
-      }
+      const id = e[i]
+      const hp = e[i + 4]
+      const flash = e[i + 5]
+      sorted.push({ y: pos.y + def.radius * 0.8, draw: () => this.enemy(def, id, pos, hp, flash) })
     }
     if (smooth && this.frame % 60 === 0) for (const id of this.shown.keys()) if (!live.has(id)) this.shown.delete(id)
+
+    for (const player of view.players) {
+      const pos = positions.get(player.id)!
+      sorted.push({ y: pos.y + 16, draw: () => this.player(player, pos, player.id === localId, view.time) })
+    }
+    sorted.sort((a, b) => a.y - b.y)
+    for (const item of sorted) item.draw()
+    this.world()
+    // While your own death plays, the world dims around a spotlight on the body (others' deaths don't).
+    const mine = view.players.find((p) => p.id === localId)
+    const dying = mine?.downed ? this.deaths.get(mine.id) : undefined
+    if (mine && dying) {
+      const pos = positions.get(mine.id)!
+      const k = Math.min(1, (this.clock - dying.at) / 0.6)
+      const grad = ctx.createRadialGradient(pos.x, pos.y - 8, 26, pos.x, pos.y - 8, 240)
+      grad.addColorStop(0, 'rgba(8,5,14,0)')
+      grad.addColorStop(0.25, `rgba(8,5,14,${0.5 * k})`)
+      grad.addColorStop(1, `rgba(8,5,14,${0.82 * k})`)
+      ctx.fillStyle = grad
+      ctx.fillRect(this.camera.x - halfW, this.camera.y - halfH, halfW * 2, halfH * 2)
+    }
 
     for (let i = 0; i < s.length; i += STRIDE.shots) {
       const def = WEAPONS[s[i]]
@@ -328,49 +524,13 @@ export class Renderer {
       }
     }
 
-    for (const player of view.players) {
-      const pos = positions.get(player.id)!
-      const local = player.id === localId
-      ctx.fillStyle = 'rgba(0,0,0,.3)'
-      ctx.beginPath()
-      ctx.ellipse(pos.x, pos.y + 16, 16, 6, 0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = player.color
-      ctx.lineWidth = local ? 4 : 3
-      ctx.beginPath()
-      ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2)
-      ctx.stroke()
-      if (player.downed) {
-        this.blit(this.emoji('💔', 30), pos.x, pos.y)
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 4
-        ctx.beginPath()
-        ctx.arc(pos.x, pos.y, 28, -Math.PI / 2, -Math.PI / 2 + player.revive * Math.PI * 2)
-        ctx.stroke()
-      } else
-        this.blit(
-          this.emoji(stage.icon, 32),
-          pos.x,
-          pos.y - 2 + Math.sin(view.time * 10) * (player.hurt ? 3 : 1),
-          player.fx < 0 ? -0.08 : 0.08,
-          player.hurt ? 0.6 : 1
-        )
-      this.blit(this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color), pos.x, pos.y - 34)
-      const w = 40
-      ctx.fillStyle = 'rgba(0,0,0,.6)'
-      ctx.fillRect(pos.x - w / 2, pos.y + 24, w, 5)
-      ctx.fillStyle = player.hp / player.maxHp > 0.3 ? '#7be495' : '#ff6b6b'
-      ctx.fillRect(pos.x - w / 2, pos.y + 24, (w * Math.max(0, player.hp)) / Math.max(1, player.maxHp), 5)
-    }
-
     if (view.reaper) {
       const [x, y] = view.reaper
-      ctx.fillStyle = 'rgba(10,0,20,.35)'
-      ctx.beginPath()
-      ctx.arc(x, y, 70, 0, Math.PI * 2)
-      ctx.fill()
-      this.blit(this.emoji('💀', 64), x, y + Math.sin(view.time * 3) * 6)
-      this.blit(this.label('死神', 18, '#e6d6ff'), x, y + 50)
+      const target = view.players[0] ? positions.get(view.players[0].id)! : { x, y }
+      this.shadow(x, y + 66, 26, 0.18)
+      this.art(sheet('reaper').move.frames[frameAt(sheet('reaper').move, this.clock)], x, y + 60, 64, 120, target.x < x)
+      this.world()
+      this.blit(this.label('死神', 18, '#e6d6ff'), x, y + 76)
     }
 
     const p = view.popups
@@ -399,13 +559,18 @@ export class Renderer {
       const a = Math.atan2(dy, dx)
       const cx = this.canvas.width / 2 + Math.cos(a) * (this.canvas.width / 2 - 40)
       const cy = this.canvas.height / 2 + Math.sin(a) * (this.canvas.height / 2 - 40)
-      this.blit(
-        this.emoji(def.icon, 36),
-        Math.min(this.canvas.width - 30, Math.max(30, cx)),
-        Math.min(this.canvas.height - 30, Math.max(30, cy)),
-        0,
-        0.8 + Math.sin(view.time * 8) * 0.2
+      // The boss's own sprite, small, pulsing at the screen edge.
+      const frame = sheet(`enemy:${def.id}`).move.frames[0]
+      const size = 56 + Math.sin(view.time * 8) * 4
+      ctx.globalAlpha = 0.85
+      ctx.drawImage(
+        canvasOf(frame, 1),
+        Math.min(this.canvas.width - 34, Math.max(34, cx)) - size / 2,
+        Math.min(this.canvas.height - 34, Math.max(34, cy)) - size / 2,
+        size,
+        size
       )
+      ctx.globalAlpha = 1
     }
   }
 }

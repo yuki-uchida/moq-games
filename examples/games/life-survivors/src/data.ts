@@ -69,7 +69,8 @@ export const STAGES: Stage[] = [
   { age: 23, name: '社会人', icon: '🧑‍💼', ground: '#2c3238', line: '#3b434b', decor: ['🏢', '🚃', '☕'] },
   { age: 35, name: '働き盛り', icon: '🧑‍💼', ground: '#33322b', line: '#45433a', decor: ['🏠', '🚗', '🛒'] },
   { age: 50, name: '中年', icon: '🧔', ground: '#3a302a', line: '#4c4037', decor: ['⛳', '🍶', '💊'] },
-  { age: 65, name: '老後', icon: '🧓', ground: '#352c2f', line: '#463a3e', decor: ['🍵', '🌳', '🪑'] }
+  { age: 65, name: '老後', icon: '🧓', ground: '#352c2f', line: '#463a3e', decor: ['🍵', '🌳', '🪑'] },
+  { age: 75, name: '寝たきり', icon: '🛏️', ground: '#2f3036', line: '#3d3f47', decor: ['💊', '🌷', '🩺'] }
 ]
 
 export function stageAt(time: number): Stage {

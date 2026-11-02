@@ -4,6 +4,10 @@
 
 Lane Battle builds its poop army, special units, cleanup-crew enemies, forts and restroom backdrop from three.js geometry and 2D canvas drawing in the game code, and synthesizes its sound with Web Audio. The catalog's poop illustration is original inline SVG. It loads no image or model files.
 
+## Life Survivors runtime
+
+Life Survivors draws its pixel art — player stages, enemies, the reaper, death animations, ground tiles and props — from TypeScript code in `examples/games/life-survivors/src/art/` with fixed seeds and one shared palette, and rasterises it in the browser on first use. It ships no image files; the review sheets and GIFs under `.build/life-survivors-art/` are local, generated outputs.
+
 ## Rabbiters runtime
 
 Rabbiters creates its 3D characters and scenery from geometry in the game code and synthesizes its music and effects with Web Audio. The catalog image `landing/rabbiters-team.jpg` is a screenshot of five rabbits rendered by that game code, with the HUD hidden; it contains no third-party material. The concept and motion references in `examples/games/rabbiters/art-source/` remain source-only and are not included in the Pages build.

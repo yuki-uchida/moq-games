@@ -1,0 +1,153 @@
+import { bossSheets } from './bosses'
+import { bullySheet, expenseSheet, flash, germSheet, hsBossSheet, jobSheet, rosterSheets } from './enemies'
+import { deathSheets } from './deaths'
+import { peopleSheets } from './people'
+import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
+import type { Sheet } from './sheet'
+import { PROP_NAMES, TILE, groundTile, propAt, propSheet, tileSheet } from './world'
+
+/** Enemy sheets get a white hit-flash twin of every frame. */
+const withFlash = (make: () => Sheet) => () => {
+  const s = make()
+  return { ...s, flash: { ...s.move, frames: s.move.frames.map(flash) } }
+}
+
+/** Every generated sheet, built lazily on first use and cached. */
+export const SHEETS: Record<string, () => Sheet> = {
+  'player:baby': babySheet,
+  'player:kid': kidSheet,
+  'player:adult': adultSheet,
+  'player:elder': elderSheet,
+  'player:bed': bedSheet,
+  'enemy:germ': withFlash(germSheet),
+  'enemy:bully': withFlash(bullySheet),
+  'enemy:expense': withFlash(expenseSheet),
+  'enemy:job': withFlash(jobSheet),
+  'enemy:b_hs': withFlash(hsBossSheet),
+  ...Object.fromEntries(Object.entries(bossSheets).map(([id, make]) => [id, id === 'reaper' ? make : withFlash(make)])),
+  ...deathSheets,
+  ...Object.fromEntries(Object.entries(rosterSheets).map(([id, make]) => [id, withFlash(make)])),
+  ...Object.fromEntries(
+    Object.entries(peopleSheets).map(([id, make]) => [id, id.startsWith('enemy:') ? withFlash(make) : make])
+  ),
+  ...Object.fromEntries(
+    Object.keys(PROP_NAMES).flatMap((g) => [
+      [`tiles:${g}`, () => tileSheet(g)],
+      [`props:${g}`, () => propSheet(g)]
+    ])
+  )
+}
+
+const cache = new Map<string, Sheet>()
+export function sheet(id: string): Sheet {
+  let found = cache.get(id)
+  if (!found) {
+    found = SHEETS[id]()
+    cache.set(id, found)
+  }
+  return found
+}
+
+/** The stage ground each sheet is reviewed on. */
+const REVIEW_GROUND: Record<string, string> = {
+  'player:baby': 'nursery',
+  'player:kid': 'school',
+  'player:adult': 'office',
+  'death:adult': 'office',
+  'death:kid': 'school',
+  'death:baby': 'nursery',
+  'player:elder': 'office',
+  'death:elder': 'office',
+  'enemy:germ': 'nursery',
+  'enemy:bully': 'school',
+  'enemy:expense': 'office',
+  'enemy:job': 'office',
+  'enemy:b_hs': 'school',
+  reaper: 'office'
+}
+export const groundFor = (id: string) => REVIEW_GROUND[id] ?? (id.startsWith('props:') ? id.slice(6) : undefined)
+
+/** Review mockups: a 640×360 art-px crop of a stage with its props, the player and a crowd. */
+const SCENES: [string, string, string[]][] = [
+  ['nursery', 'baby', ['germ', 'germ', 'germ', 'insult', 'germ']],
+  ['playground', 'toddler', ['germ', 'insult', 'bully', 'insult', 'germ']],
+  ['school', 'kid', ['bully', 'lesson', 'teacher', 'germ', 'b_hs']],
+  ['gym', 'junior', ['lesson', 'exam', 'club', 'bully', 'teacher']],
+  ['sidewalk', 'high', ['exam', 'club', 'girlfriend', 'insult', 'car']],
+  ['campus', 'college', ['exam', 'expense', 'girlfriend', 'job', 'b_univ']],
+  ['office', 'adult', ['job', 'expense', 'boss', 'cert', 'b_shukatsu']],
+  ['street', 'prime', ['kid', 'job', 'loan', 'boss', 'b_mortgage']],
+  ['golf', 'middle', ['illness', 'loan', 'gossip', 'job', 'b_layoff']],
+  ['garden', 'elder', ['illness', 'germ', 'gossip', 'loan', 'expense']],
+  ['ward', 'bed', ['illness', 'germ', 'expense', 'insult', 'b_illness']]
+]
+
+/** Review mockups: a 640×360 art-px crop of each stage with its props, the player and a crowd. */
+export const mockups = () =>
+  SCENES.map(([ground, body, foes]) => ({
+    ground,
+    player: `player:${body}`,
+    enemies: foes.map((id) => `enemy:${id}`)
+  })).map(({ ground, player, enemies }) => {
+    const ox = 3 * TILE * 3
+    const oy = 2 * TILE * 3
+    const items: {
+      sheet: string
+      anim: string
+      frame: number
+      x: number
+      y: number
+      px: number
+      py: number
+      flip?: boolean
+      shadow?: number
+      layer: number
+    }[] = []
+    for (let cy = 1; cy < 6; cy++)
+      for (let cx = 2; cx < 8; cx++) {
+        const prop = propAt(ground, cx, cy)
+        if (!prop) continue
+        const frame = propSheet(ground)[prop.name].frames[0]
+        items.push({
+          sheet: `props:${ground}`,
+          anim: prop.name,
+          frame: 0,
+          x: prop.x - ox,
+          y: prop.y - oy,
+          px: frame.w / 2,
+          py: frame.h - 6,
+          layer: 0
+        })
+      }
+    items.push({ sheet: player, anim: 'walk', frame: 1, x: 320, y: 200, px: 32, py: 58, shadow: 11, layer: 1 })
+    const spots = [
+      [180, 140],
+      [460, 130],
+      [520, 260],
+      [140, 290],
+      [380, 320]
+    ]
+    enemies.forEach((id, i) => {
+      const big = id.startsWith('enemy:b_')
+      items.push({
+        sheet: id,
+        anim: 'move',
+        frame: i % 6,
+        x: spots[i][0],
+        y: spots[i][1],
+        px: big ? 64 : 32,
+        py: big ? 120 : 58,
+        flip: spots[i][0] > 320 && !NO_FLIP.has(id.slice(6)),
+        shadow: big ? 26 : 10,
+        layer: 1
+      })
+    })
+    return { stage: ground, ox: 0, oy: 0, items }
+  })
+
+export { groundTile }
+export { FLAT_PROPS } from './world'
+/** Sprites carrying lettering (¥, 至急, 0点 …) never mirror. */
+export const NO_FLIP = new Set(['expense', 'job', 'b_hs', 'b_shukatsu', 'b_mortgage', 'b_rebel'])
+export { soulAt } from './deaths'
+export { PALETTE_RGBA } from './palette'
