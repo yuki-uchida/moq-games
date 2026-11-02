@@ -196,10 +196,10 @@ export const SPECIALS = [
     name: '牛乳',
     cost: 120,
     hp: 540,
-    atk: 37,
+    atk: 34,
     range: 36,
     speed: 28,
-    period: 0.97,
+    period: 1.1,
     cooldown: 9,
     line: 'ゴロゴロ押し返す'
   },
@@ -313,7 +313,7 @@ const MECHANICS = {
     'single',
     '玉突き',
     '押し飛ばした敵を後ろの敵にぶつける。',
-    { knockback: 30, collision: 30, collisionDamage: 0.5, collisionPush: 12 }
+    { knockback: 30, collision: 30, collisionDamage: 0.35, collisionPush: 12 }
   ],
   oyster: [
     'single',
@@ -645,7 +645,7 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
         src: attribution
       })
   }
-  if (src.mark) {
+  if (src.mark && !target.curry) {
     const mark = { end: s.time + src.mark, atk: src.atk, src: attribution }
     target.curry = mark
     s.projectiles.push({ targetId: target.id, src, at: mark.end, curry: mark, effect: { x: target.x } })
@@ -655,6 +655,7 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
     target.flushed = true
   }
   const knock = src.knockback || (primary && charged ? src.ambushKnockback : 0)
+  const previousX = target.x
   if (knock) move(s, target, knock * dirOf(src))
   if (src.pull) {
     const distance = Math.max(0, Math.abs(target.x - src.x) - 8)
@@ -666,8 +667,8 @@ function applyHit(s, src, target, damage, crit, primary = false, charged = false
         other !== target &&
         other.side === target.side &&
         other.hp > 0 &&
-        (other.x - target.x) * dirOf(src) > 0 &&
-        Math.abs(other.x - target.x) <= src.collision
+        (Math.abs(other.x - target.x) <= src.collision ||
+          (other.x >= Math.min(previousX, target.x) && other.x <= Math.max(previousX, target.x)))
       ) {
         if (effect) (effect.collisions ||= []).push({ id: other.id, x: other.x, at: s.time })
         damageUnit(s, src, other, damage * src.collisionDamage)
@@ -706,6 +707,7 @@ function placeZone(s, src, x) {
 }
 function impact(s, shot, target) {
   const { src, damage, crit, effect } = shot
+  effect.hit = true
   const x = target?.x ?? effect.primaryX
   if (shot.primary) {
     placeZone(s, src, x)
@@ -737,8 +739,9 @@ function impact(s, shot, target) {
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0]
     if (next) {
       const at = s.time + 0.15
-      effect.victims.push({ id: next.id, at })
-      s.projectiles.push({ targetId: next.id, src, damage: damage * 0.6, crit, at, effect, primary: false })
+      const victim = { id: next.id, at }
+      effect.victims.push(victim)
+      s.projectiles.push({ targetId: next.id, src, damage: damage * 0.6, crit, at, effect, victim, primary: false })
     }
   }
 }
@@ -761,7 +764,8 @@ function attack(s, src, target, baseX, crit, damage) {
   s.effects.push(effect)
   const enqueue = (victim, multiplier, delay, primary) => {
     const at = s.time + delay
-    if (victim && src.areaKind !== 'circle') effect.victims.push({ id: victim.id, at })
+    const victimEntry = victim && src.areaKind !== 'circle' ? { id: victim.id, at } : null
+    if (victimEntry) effect.victims.push(victimEntry)
     const shot = {
       targetId: victim?.id ?? null,
       src,
@@ -769,6 +773,7 @@ function attack(s, src, target, baseX, crit, damage) {
       crit,
       at,
       effect,
+      victim: victimEntry,
       primary,
       charged: src.charged
     }
@@ -810,7 +815,7 @@ function ongoing(s) {
       for (const dot of [unit.burn, ...(unit.poison || [])]) {
         if (!dot) continue
         const interval = dot.interval
-        while (dot.next <= s.time && dot.next <= dot.end && unit.hp > 0) {
+        while (dot.next <= s.time + 1e-9 && dot.next <= dot.end + 1e-9 && unit.hp > 0) {
           damageUnit(s, dot.src, unit, dot.atk * dot.damage, dot === unit.burn ? 'burn' : 'poison')
           dot.next += interval
         }
@@ -819,7 +824,7 @@ function ongoing(s) {
     }
   }
   for (const zone of s.zones) {
-    while (zone.kind !== 'mud' && zone.next <= s.time && zone.next <= zone.end) {
+    while (zone.kind !== 'mud' && zone.next <= s.time + 1e-9 && zone.next <= zone.end + 1e-9) {
       for (const unit of s.units) {
         if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
         if (zone.kind === 'stench') damageUnit(s, zone.src, unit, zone.atk * zone.damage, 'stench')
@@ -920,13 +925,15 @@ export function step(s, dt) {
         s.effects.push(effect)
         for (const victim of s.units)
           if (victim.side === target.side && victim.hp > 0 && Math.abs(victim.x - target.x) <= p.src.markRadius) {
-            effect.victims.push({ id: victim.id, at: p.at })
+            const victimEntry = { id: victim.id, at: p.at }
+            effect.victims.push(victimEntry)
             pending.push({
               targetId: victim.id,
               src: p.src,
               damage: p.curry.atk * p.src.markDamage,
               at: p.at,
               effect,
+              victim: victimEntry,
               explosion: true
             })
           }
@@ -934,11 +941,16 @@ export function step(s, dt) {
       continue
     }
     if (p.explosion) {
-      if (target) damageUnit(s, p.src, target, p.damage, null, true)
+      if (target) {
+        p.effect.hit = true
+        damageUnit(s, p.src, target, p.damage, null, true)
+      } else if (p.victim) p.victim.missed = true
+      p.effect.missed = !p.effect.hit
       continue
     }
     p.effect.arrived = true
-    p.effect.missed = p.targetId !== null && !target
+    if (!target && p.targetId !== null && p.victim) p.victim.missed = true
+    p.effect.missed = !p.effect.hit && p.targetId !== null && !target
     if (target || p.targetId === null) impact(s, p, target)
   }
   fortDefense(s, dt)

@@ -909,7 +909,7 @@ function tick(now) {
           .map(({ id }) => previous.find((unit) => unit.id === id))
           .filter(Boolean)
         if (!effect.blast) {
-          impact ||= !effect.ranged
+          impact ||= !effect.ranged && (!effect.explosion || effect.hit)
           shot ||= effect.ranged
         }
       }

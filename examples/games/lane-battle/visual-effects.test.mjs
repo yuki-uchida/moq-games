@@ -11,6 +11,10 @@ test('each unit has independent hurt and death effect hooks', () => {
   }
 })
 
+test('missed victims do not show an impact', () => {
+  assert.deepEqual(activeVictims({ victims: [{ id: 1, at: 1, missed: true }] }, [{ id: 1 }], 1.05), [])
+})
+
 test('every unit has an impact style and victims appear at their own hit time', () => {
   assert.deepEqual(
     Object.keys(IMPACT_STYLES).sort(),
