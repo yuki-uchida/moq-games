@@ -1,5 +1,6 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
+import { enterBattle } from './shell-helper'
 for (const viewport of [
   { width: 1280, height: 800 },
   { width: 390, height: 844 },
@@ -9,7 +10,7 @@ for (const viewport of [
     await page.setViewportSize(viewport)
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.goto('./')
+    await enterBattle(page)
     await expect(page.getByRole('button', { name: /2,5 燈守/ })).toBeVisible()
     await page.getByRole('button', { name: '遊び方' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
@@ -62,7 +63,7 @@ import {
 
 test('all floor, marks and 3D cells stay aligned and tappable after resizing', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./')
+  await enterBattle(page)
   await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
   for (const viewport of [
     { width: 1280, height: 800 },
@@ -173,7 +174,7 @@ for (const stage of [0, 1, 2])
   for (const width of [1280, 390])
     test(`win mission ${stage + 1} and replay ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-      await page.goto('./?seed=7')
+      await enterBattle(page, './?seed=7', stage > 0)
       if (stage > 0) {
         await page.getByRole('button', { name: '任務と編成' }).click()
         await page.locator(`[data-stage="${stage}"]`).click()
@@ -210,7 +211,7 @@ for (const stage of [0, 1, 2])
     })
 
 test('restart cancels an in-flight enemy turn', async ({ page }) => {
-  await page.goto('./')
+  await enterBattle(page)
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
   await page.waitForTimeout(1600)
@@ -222,7 +223,7 @@ test('restart cancels an in-flight enemy turn', async ({ page }) => {
 for (const width of [1280, 390])
   test(`two-cell walk stays visible through its full presentation ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto('./')
+    await enterBattle(page)
     await page.getByRole('button', { name: /2,5 燈守/ }).tap()
     const started = Date.now()
     await page.getByRole('button', { name: /4,5 平地 移動可能/ }).tap()
@@ -235,7 +236,7 @@ for (const width of [1280, 390])
 
 test('guard formation and mission selection are available without leaving the screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('./')
+  await enterBattle(page, './', true)
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.getByRole('radio', { name: /守備隊/ }).check()
   await page.locator('[data-stage="1"]').click()
@@ -248,7 +249,7 @@ test('guard formation and mission selection are available without leaving the sc
 for (const width of [1280, 390])
   test(`attack range, enemy preview, ally pass-through and automatic turn end ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto('./')
+    await enterBattle(page)
     await page.getByRole('button', { name: /2,5 燈守/ }).tap()
     await expect(page.locator('.cell.legal').first()).toBeVisible()
     await expect(page.getByRole('button', { name: /^6,5 平地 攻撃範囲/ })).toBeVisible()
@@ -275,7 +276,7 @@ for (const width of [1280, 390])
 
 test('chapter report, level up and carried growth across the expedition', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./?seed=7')
+  await enterBattle(page, './?seed=7')
   const levelUp = page
     .locator('.level-up .up')
     .first()
@@ -325,7 +326,7 @@ test('chapter report, level up and carried growth across the expedition', async 
 
 test('an ally who falls in a won mission leaves the expedition until its record is replayed', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('./?seed=7')
+  await enterBattle(page, './?seed=7')
   const farewell = page
     .locator('.farewell')
     .waitFor({ timeout: 110000 })

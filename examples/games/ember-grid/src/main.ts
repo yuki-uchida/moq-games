@@ -4,7 +4,6 @@ import {
   attackRange,
   beginAlly,
   beginEnemy,
-  carry,
   createGame,
   damage,
   distance,
@@ -23,17 +22,39 @@ import {
 } from './game'
 import { chapterReport, clearProgress, presentFarewell, presentProgress } from './progress'
 import './style.css'
+import './shell.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
 import { Stage } from './stage'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
+import {
+  carryForDifficulty,
+  freshSave,
+  readSave,
+  restoreGame,
+  snapshotGame,
+  unlocked,
+  writeSave,
+  type Difficulty
+} from './save'
+import { openSettings, sfxVolume } from './settings'
+import { showTitle } from './title'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
 const seed = new URLSearchParams(location.search).get('seed')
-const rng = () => (seed === null ? Math.random : seeded(Number(seed)))
+const rng = () => seeded(seed === null ? Math.floor(Math.random() * 0x100000000) : Number(seed))
+const notice = () => {
+  document.querySelector('#storage-notice')!.textContent = '保存できないか、保存データを読み込めませんでした'
+}
+let storageNotice = false
+const saved = readSave(() => {
+  storageNotice = true
+})
+let save = saved ?? freshSave('classic')
+let playing = false
 /** Roster each mission starts from: index 0 is the fresh party, later ones are saved on victory. */
-let checkpoints: (Roster | undefined)[] = []
+let checkpoints: (Roster | undefined)[] = save.checkpoints
 /** Deployed allies (and those lost earlier) for a mission start or the mission list. */
 const sortie = (stage: number) => {
   const away = lost(checkpoints[stage]).map((u) => u.name)
@@ -58,6 +79,18 @@ const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
 })
+audio.applySettings()
+const storageStatus = document.createElement('p')
+storageStatus.id = 'storage-notice'
+storageStatus.setAttribute('role', 'status')
+document.body.append(storageStatus)
+if (storageNotice) notice()
+const settingsButton = document.createElement('button')
+settingsButton.textContent = '⚙'
+settingsButton.setAttribute('aria-label', '設定')
+document.querySelector('header')!.append(settingsButton)
+const settings = () => openSettings(() => audio.applySettings(), notice)
+settingsButton.onclick = settings
 const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
 field.style.setProperty('--grid-size', String(size))
@@ -96,6 +129,23 @@ function hover(x: number, y: number) {
   if (!busy) render()
 }
 function render() {
+  if (playing) {
+    save.checkpoints = checkpoints
+    save.formation = game.formation
+    if (game.phase === 'ally' && !busy) save.suspend = snapshotGame(game)
+    if (game.phase === 'won' || game.phase === 'lost') {
+      delete save.suspend
+      if (game.phase === 'won') {
+        if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
+        save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
+        if (game.stage + 1 < missions.length) {
+          checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
+          save.furthest = Math.max(save.furthest, game.stage + 1)
+        }
+      }
+    }
+    writeSave(save, notice)
+  }
   field.dataset.mission = String(game.stage)
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map(),
@@ -138,21 +188,23 @@ function render() {
   potion.textContent = `✚ ${game.potions}`
   potion.disabled =
     busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
-  document.querySelector('#mission')!.textContent = `⚑ ${missions[game.stage].name}`
+  document.querySelector('#mission')!.textContent =
+    `⚑ ${missions[game.stage].name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}`
   const result = document.querySelector<HTMLDivElement>('#result')!
   // Wait for the final EXP presentation before revealing the chapter report.
   result.hidden = busy || (game.phase !== 'won' && game.phase !== 'lost')
   result.classList.toggle('chapter', game.phase === 'won')
-  document.querySelector('#report')!.innerHTML = game.phase === 'won' ? chapterReport(game, portrait) : ''
+  document.querySelector('#report')!.innerHTML =
+    game.phase === 'won' ? chapterReport(game, portrait, save.difficulty === 'casual') : ''
   document.querySelector('#outcome')!.textContent =
     game.phase === 'won'
-      ? game.stage === 2
-        ? '✦ 遠征達成！ 三つの燈がともった'
+      ? game.stage === missions.length - 1
+        ? '✦ 遠征達成！ 燈がともった'
         : '✦ 霧が晴れた！'
       : '燈は消えた… ↻ で再挑戦（倒れた仲間も戻ります）'
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
-  next.textContent = game.stage === 2 ? '最初から遠征 ↻' : '次の任務 ▶'
+  next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
 }
 async function choose(x: number, y: number) {
@@ -204,7 +256,7 @@ async function showProgress(token: number) {
   game.progress = undefined
   if (!progress) return true
   render()
-  await presentProgress(field, game.units.find((u) => u.id === progress.id)!, progress, audio.enabled)
+  await presentProgress(field, game.units.find((u) => u.id === progress.id)!, progress, audio.enabled ? sfxVolume() : 0)
   return token === generation
 }
 async function end() {
@@ -274,6 +326,7 @@ function showSound(enabled: boolean) {
 showSound(audio.enabled)
 document.querySelector('#sound')!.addEventListener('click', () => showSound(audio.toggle()))
 function startMission(stage: number) {
+  if (!unlocked(save, stage)) return
   generation++
   animation.cancel()
   clearProgress(field)
@@ -285,14 +338,16 @@ function startMission(stage: number) {
   game = newGame(stage, formation)
   render()
   audio.start()
+  document.querySelector<HTMLButtonElement>('#mission')!.focus()
 }
 const expedition = document.querySelector<HTMLDialogElement>('#expedition')!
 function listMissions() {
   document.querySelector('#missions')!.innerHTML = missions
     .map((m, i) => {
+      if (!unlocked(save, i)) return '<button disabled>🔒 ？？？</button>'
       const saved = checkpoints[i]
       const levels = saved ? Object.values(saved).map((u) => u.level) : [1, 1, 1]
-      return `<button data-stage="${i}"><strong>${m.name}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
+      return `<button data-stage="${i}"><strong>${m.name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</strong><small>${m.hint}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
     })
     .join('')
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
@@ -310,17 +365,23 @@ document.querySelector('#mission')!.addEventListener('click', () => {
 document.querySelector('#cancel-mission')!.addEventListener('click', () => expedition.close())
 document.querySelector('#next')!.addEventListener('click', () => {
   // Victory saves the grown party for the next mission; finishing the expedition starts a fresh one.
-  if (game.stage === 2) checkpoints = []
-  else checkpoints[game.stage + 1] = carry(game)
-  startMission((game.stage + 1) % 3)
+  if (game.stage === missions.length - 1) {
+    save = freshSave(save.difficulty)
+    checkpoints = save.checkpoints
+  }
+  startMission((game.stage + 1) % missions.length)
 })
 const dialog = document.querySelector('dialog')!
+dialog.querySelector('p')!.textContent =
+  `${missions.length} の任務で灰の群れを倒し、燈をつなごう。各任務は敵全滅で勝利、味方全滅で敗北。⚑ から到達済みの任務と編成を選べます。`
+dialog.querySelectorAll('p')[3].textContent =
+  '✚ 回復薬は全員共有で任務ごとに 2 個。自分を 8 回復して行動終了。守備隊は HP +4・移動 2、標準隊は移動 3。レベルと能力は次の任務へ持ち越します。カジュアルでは倒れた仲間は次の任務で復帰し、クラシックでは勝利後に永久離脱します。敗北・再挑戦・任務選択では開始時の仲間に戻ります。攻撃・撃破・回復で EXP を得てレベルアップします。✓ は待機、▶ は敵のターンです。'
 document.querySelector('#help')!.addEventListener('click', () => dialog.showModal())
 document.querySelector('#close')!.addEventListener('click', () => dialog.close())
 render()
 
 // Light synthesized UI feedback that follows the ♫ toggle.
-const uiVolume = () => (audio.enabled && !document.hidden ? 1 : 0)
+const uiVolume = () => (audio.enabled && !document.hidden ? sfxVolume() : 0)
 cells.forEach((cell) => (cell.dataset.sfx = 'select'))
 bindUiSounds(app, (kind) => playSharedUiSound(kind, uiVolume()), 'button:not(.cell)')
 warmUpAudio()
@@ -336,20 +397,46 @@ async function prepareBattle() {
   retry.hidden = true
   const status = preparation.querySelector('span')!
   status.textContent = '3D モデルを準備中…'
+  titleProgress(status.textContent)
   try {
     const results = await Promise.allSettled([
       animation.prepare((done, total) => {
         status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
+        titleProgress(status.textContent)
       }),
       audio.prepare()
     ])
     if (results.some((result) => result.status === 'rejected')) throw new Error('Preparation failed')
     ready = true
     preparation.remove()
+    titleProgress('準備完了')
     render()
   } catch {
     status.textContent = '素材を読み込めませんでした。接続を確認して再試行してください'
+    titleProgress(status.textContent)
     retry.hidden = false
   }
 }
+const titleProgress = showTitle(saved, {
+  start: (difficulty) => {
+    save = freshSave(difficulty)
+    checkpoints = save.checkpoints
+    playing = true
+    startMission(0)
+  },
+  continue: (stage) => {
+    playing = true
+    if (stage === undefined && save.suspend) {
+      game = restoreGame(save.suspend)
+      render()
+      audio.start()
+      document.querySelector<HTMLButtonElement>('#mission')!.focus()
+    } else {
+      document.querySelector<HTMLInputElement>(`input[name=formation][value=${save.formation}]`)!.checked = true
+      startMission(stage ?? save.furthest)
+    }
+  },
+  settings,
+  help: () => dialog.showModal()
+})
 void prepareBattle()

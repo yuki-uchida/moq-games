@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { enterBattle } from './shell-helper'
 /** Units still in a presentation track on the 3D stage (idle units are excluded). */
 const tracks = (page: Page) =>
   page.evaluate(async () => {
@@ -18,10 +19,12 @@ for (const width of [1280, 390])
     const music = page.locator('audio[data-ember-music]')
     await expect(music).toHaveJSProperty('paused', true)
     expect(await music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBe(0)
-    await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
-    // Default-on music starts with the first gesture (autoplay policy).
-    await page.getByRole('button', { name: /2,4 風読み/ }).tap()
+    // Default-on music starts with the first title gesture (autoplay policy).
+    await page.getByRole('button', { name: '✦ はじめから' }).click()
     await expect.poll(() => music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0.1)
+    await page.getByRole('button', { name: '⚔ クラシック' }).click()
+    await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: /2,4 風読み/ }).tap()
     await page.getByRole('button', { name: /4,4 平地 移動可能/ }).tap()
     await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeEnabled()
     await page.evaluate(() => {
@@ -44,8 +47,8 @@ for (const width of [1280, 390])
       }),
       page.getByRole('button', { name: /7,4 灰牙/ }).tap()
     ])
-    await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
     await expect(page.locator('.damage-number')).toHaveText('−8')
+    await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
     await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible()
     const samples = await page.evaluate(
       () =>
@@ -79,7 +82,8 @@ for (const width of [1280, 390])
   })
 
 test('autoplay failure recovery, audio decoding and waveform', async ({ page }) => {
-  await page.goto('./')
+  await enterBattle(page)
+  await page.locator('#sound').click()
   await page.evaluate(() => {
     const music = document.querySelector<HTMLAudioElement>('audio')!
     const play = music.play.bind(music)
@@ -88,7 +92,7 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
       return Promise.reject(new DOMException('Blocked for autoplay test', 'NotAllowedError'))
     }
   })
-  await page.locator('#count').click()
+  await page.locator('#sound').click()
   await expect(page.locator('#log')).toContainText('音を再生できません')
   await page.locator('#sound').click()
   await page.locator('#sound').click()
@@ -129,11 +133,13 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
   await expect(page.locator('audio')).toHaveJSProperty('paused', false)
   // Reload: still on, but silent until a gesture; a mute choice persists.
   await page.reload()
-  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('audio')).toHaveJSProperty('paused', true)
+  await page.getByRole('button', { name: /つづきから/ }).click()
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
   await page.locator('#sound').click()
   await expect(page.locator('audio')).toHaveJSProperty('paused', true)
   await page.reload()
+  await page.getByRole('button', { name: /つづきから/ }).click()
   await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false')
   await page.locator('#count').click()
   await page.waitForTimeout(300)
@@ -141,7 +147,7 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
 })
 
 test('hidden tab keeps player and enemy turns advancing without animation frames', async ({ page }) => {
-  await page.goto('./')
+  await enterBattle(page)
   await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 30000 })
   // Emulate a background tab: hidden, and rAF/Web Animations never progress.
   await page.evaluate(() => {
@@ -163,7 +169,7 @@ test('hidden tab keeps player and enemy turns advancing without animation frames
 })
 
 test('restart cancels player motion and reduced motion keeps controls usable', async ({ page }) => {
-  await page.goto('./')
+  await enterBattle(page)
   await page.getByRole('button', { name: /2,5 燈守/ }).click()
   await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
   await page.locator('#restart').click()
@@ -182,7 +188,7 @@ test('missing 3D model holds preparation and retries without stranding input', a
   await page.route('**/tower-defense-art/models/wolf/wolf-walk-smooth.glb', (route) =>
     fail ? route.fulfill({ status: 404, body: 'missing' }) : route.continue()
   )
-  await page.goto('./')
+  await enterBattle(page)
   await expect(page.locator('.preparation button')).toBeVisible()
   await expect(page.getByRole('button', { name: /2,5 燈守/ })).toBeDisabled()
   fail = false

@@ -8,7 +8,7 @@ Independent, local, single-player tactical example: three lantern wardens cross 
 - **風抜けの水路**: staggered stone shelves split the field into winding northern and southern lanes. Central groves link the approaches; two wolves, a scout and an armored watchman threaten the far bank.
 - **灰の環城**: broken walls enclose a grove-studded courtyard with a western gate and a northern breach. Wolves threaten the northern edge while a ranged scout guards the southern approach.
 
-Each mission is independently selectable through ⚑. Victory opens a chapter-clear report and offers the next mission; the third victory completes the expedition. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. Both formations retain the sword, bow and mage roles.
+The title screen offers a new expedition, continue, reached chapters, settings and help. Choose **カジュアル** to restore fallen allies after victory with their growth up to their fall, or **クラシック** for permanent loss. Difficulty stays fixed for the expedition and is shown in the status and mission list. Unreached chapters are locked. Victory opens a chapter-clear report and offers the next mission. Standard formation moves three squares; guard formation gains four maximum HP per ally but moves only two squares. Both formations retain the sword, bow and mage roles.
 
 Select an ally, then a glowing tile to move; select an outlined enemy to attack. Red squares show where the selected ally could strike after any legal move (or from its current square once it has moved). Hovering, focusing or selecting an enemy without an ally selected shows that enemy's movement (muted blue) and strike range (red). Each unit moves once and attacks once per turn. Attacking, waiting or healing ends its action. A unit that has moved, has no enemy in range and cannot usefully heal (full HP or no potions) also counts as finished. Once every living ally is finished, the enemy turn begins automatically after the last action's presentation; End Turn remains available to pass earlier. Range uses Manhattan distance (including through rocks); there are no counterattacks. Groves reduce incoming damage by two, to a minimum of one. Units may walk through squares held by their own side but must stop on an empty square; rocks and opposing units block movement. Enemies follow the same rule, crossing each other but not allies. Walk animations follow the same path.
 
@@ -32,17 +32,19 @@ Victory shows a chapter report: turns, defeats, survivors, remaining potions and
 
 Level, EXP and stats carry into the next mission; HP is fully restored and potions reset to two.
 
-Fallen allies are lost (FE-style). When an ally falls, a short farewell window shows their last words and “○○は倒れた…”. If the mission is then won, every ally who fell in it leaves the expedition for good: the chapter report shows them greyed out as 離脱 with no EXP earned, and they are left out of the next mission’s record and do not deploy. The start log and the ⚑ list show each mission’s deployed members (出撃) and lost ones (離脱). A single survivor can still start the next mission alone.
+When an ally falls, a short farewell window shows their last words and “○○は倒れた…”. In classic mode, winning makes the loss permanent: the report marks them 離脱 and they do not deploy in the next mission. In casual mode, they return with their growth up to the fall. The start log and the ⚑ list show each mission’s deployed members (出撃) and lost ones (離脱). A single survivor can still start the next mission alone.
 
 Each mission starts from a recorded party:
 
 - Mission 1 always starts from the fresh Lv 1 party.
 - Advancing from a victory records the grown party as the next mission’s start.
-- Defeat, ↻ replay and ⚑ selection start the mission from its record, discarding EXP earned and undoing losses in the abandoned attempt (like an FE reset); a mission not yet reached starts from the fresh Lv 1 party. The selection list shows each start level and its members.
+- Defeat, ↻ replay and ⚑ selection start the mission from its record, discarding EXP earned and undoing losses in the abandoned attempt (like an FE reset). Unreached missions cannot be selected. The selection list shows each start level and its members.
 - If a lost ally is needed, ⚑ an earlier mission whose record still includes them; that also replaces the later records once you advance again.
-- Completing the third mission and choosing “最初から遠征” clears all records for a new expedition. Records are kept for the page session only.
+- Completing the last mission and choosing “最初から遠征” clears the expedition records. The versioned `ember-grid:save:v1` local save contains difficulty, formation, checkpoints, reached and cleared chapters, best turns, and a battle snapshot. Continue restores the snapshot, including random state, or starts the furthest reached chapter from its checkpoint. The snapshot is updated during the ally phase and cleared on victory or defeat. Unavailable storage or invalid saves show a notice and do not prevent play. Starting a new expedition confirms before replacing a save.
 
-Later missions add one HP to every enemy, which carried growth offsets; the fresh Lv 1 party can still clear every mission directly.
+Settings are stored under `ember-grid:settings:v1`: BGM/SFX volume, battle speed, attack confirmation, default danger zone, story scenes and reduced motion. Volume, speed and motion apply here; the confirmation, danger-zone and story preferences are exposed for the corresponding features in other branches. The ♫ quick mute remains independent and persists under `ember-grid:sound`.
+
+Later missions add one HP to every enemy, which carried growth offsets.
 
 ## Assets and sound
 
@@ -50,7 +52,7 @@ Units are the existing, already published rigged glTF models of the tower-defens
 
 Movement and combat sample the models' own authored clips; logical combat rules remain synchronous and unchanged. Walks follow four-neighbour legal paths at 220 ms and one walk cycle per tile. Attacks play the attack clip at the tower game's recorded durations and contact times (`ATTACK_PROFILES`); arrows and spells leave the model's authored release point (bow string, staff tip) and fly for 240 ms before the target reacts. Hits flash and recoil the victim along the attack direction while a rising HP-loss number and the shared pixel contact spark appear as DOM overlays at the projected point; a defeat plays a rig-wide fall and fades out over 550 ms. Reduced-motion mode shortens presentation and reactions. Every step is timed by `pause()` rather than animation frames, and the stage samples the same time-based tracks whenever it renders, so hidden tabs still complete. Restart/mission selection cancels an in-flight presentation; overlays never intercept input. See the repository [asset rights and provenance](../../../ASSETS.md) and [license](../../../LICENSE). Local-only originals and candidates remain untouched.
 
-Sound is on by default (♫); because of browser autoplay policy, music starts at the first pointer or key gesture. Turning ♫ off is remembered in `localStorage` (`ember-grid:sound`) across reloads. The existing owner-approved `tower-defense-music/monster-assault.mp3` loops at 14% volume. Existing `tower-defense-sfx/{soldier,archer,mage,goblin,wolf}_attack.wav` recordings accompany combat at the existing hit/release event; `healer_attack.wav` provides quiet movement/recovery feedback. Voices are bounded to four. Music stops at victory/defeat and resumes only during an active battle. Hidden tabs keep playing: battle presentation completes on a time basis while hidden (no `requestAnimationFrame`/Web Animations dependency, waits resolve immediately), so enemy turns keep advancing, and music/voices continue so a backgrounded battle stays audible. Muting stops all voices. No generation, transcoding or new sound publication occurs. See [music provenance](../../../public/tower-defense-music/README.md) and [WAV provenance](../../../public/tower-defense-sfx/README.md). Subjective listening quality is separate from browser playback/decoding checks.
+Sound is on by default (♫); because of browser autoplay policy, music starts at the first pointer or key gesture. Turning ♫ off is remembered in `localStorage` (`ember-grid:sound`) across reloads. The existing owner-approved `tower-defense-music/monster-assault.mp3` loops at a 7% base volume, scaled by the BGM setting. Existing `tower-defense-sfx/{soldier,archer,mage,goblin,wolf}_attack.wav` recordings accompany combat at the existing hit/release event; `healer_attack.wav` provides quiet movement/recovery feedback. Voices are bounded to four. Music stops at victory/defeat and resumes only during an active battle. Hidden tabs keep playing: battle presentation completes on a time basis while hidden (no `requestAnimationFrame`/Web Animations dependency, waits resolve immediately), so enemy turns keep advancing, and music/voices continue so a backgrounded battle stays audible. Muting stops all voices. No generation, transcoding or new sound publication occurs. See [music provenance](../../../public/tower-defense-music/README.md) and [WAV provenance](../../../public/tower-defense-sfx/README.md). Subjective listening quality is separate from browser playback/decoding checks.
 
 ## Verification
 
@@ -63,7 +65,7 @@ npm run lint
 npx prettier --check examples/games/ember-grid
 npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1
 npm run build
-npx playwright test --config examples/games/ember-grid/playwright.config.ts
+E2E_PORT=5281 npx playwright test --config examples/games/ember-grid/playwright.config.ts
 # With the development server running:
 node examples/games/ember-grid/background-check.mjs
 ```

@@ -4,6 +4,7 @@ import type * as THREE from 'three'
 import { world, type Point, type Stage } from './stage'
 import { ATTACK_PROFILES } from '../../tower_diffence_with_jev/src/game/AttackProfiles'
 import type { UnitType } from '../../tower_diffence_with_jev/src/game/model'
+import { battleSpeed, reducedMotion } from './settings'
 
 /** Waits ms, but resolves at once while/when the tab is hidden so turns never stall on throttled timers. */
 export function pause(ms: number) {
@@ -14,7 +15,7 @@ export function pause(ms: number) {
       document.removeEventListener('visibilitychange', done)
       resolve()
     }
-    const timer = setTimeout(done, ms)
+    const timer = setTimeout(done, ms * battleSpeed())
     document.addEventListener('visibilitychange', done)
   })
 }
@@ -26,7 +27,6 @@ export function route(game: Game, before: Unit[], from: Unit, to: Point): Point[
   return path({ rocks: game.rocks, units: before }, from, to)
 }
 
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const unit = (dx: number, dy: number) => {
   const length = Math.hypot(dx, dy) || 1
   return { x: dx / length, y: dy / length }
@@ -84,7 +84,7 @@ export class BattleAnimation {
           actor.track = {
             motion: 'walk',
             start: performance.now(),
-            ms: step,
+            ms: step * battleSpeed(),
             from: path[i - 1],
             to: path[i],
             cycle: i - 1
@@ -103,14 +103,19 @@ export class BattleAnimation {
         const profile = ATTACK_PROFILES[acting.role as UnitType]
         const ms = reduced ? 80 : profile.durationMs
         const started = performance.now()
-        actor.track = { motion: 'attack', start: started, ms, clipMs: profile.durationMs }
+        actor.track = { motion: 'attack', start: started, ms: ms * battleSpeed(), clipMs: profile.durationMs }
         await pause((profile.cueMs / profile.durationMs) * ms)
         if (!live()) return
         this.cue(acting.role)
         if (acting.role === 'archer' || acting.role === 'mage') {
           const flight = reduced ? 80 : 240
           const origin = this.stage.emitter(acting.id, profile.cueMs) ?? chest(acting)
-          const land = this.stage.shoot(acting.role === 'mage' ? 'spell' : 'arrow', origin, chest(target), flight)
+          const land = this.stage.shoot(
+            acting.role === 'mage' ? 'spell' : 'arrow',
+            origin,
+            chest(target),
+            flight * battleSpeed()
+          )
           await pause(flight)
           land()
           if (!live()) return
@@ -120,7 +125,7 @@ export class BattleAnimation {
         victim.track = {
           motion: target.hp === 0 ? 'death' : 'hit',
           start: impactedAt,
-          ms: reaction,
+          ms: reaction * battleSpeed(),
           push: actor.facing
         }
         const a = this.stage.screen(chest(acting)),
@@ -132,7 +137,13 @@ export class BattleAnimation {
         this.overlay(world(target, 0.5 * this.stage.figure)).append(number)
         // Finish both the attack clip's recovery and the victim's reaction.
         const now = performance.now()
-        await pause(Math.max(started + ms - now, impactedAt + reaction - now, 0))
+        await pause(
+          Math.max(
+            (started + ms * battleSpeed() - now) / battleSpeed(),
+            (impactedAt + reaction * battleSpeed() - now) / battleSpeed(),
+            0
+          )
+        )
       }
     } catch (error) {
       // A failed model must never strand input or change the tactical result.

@@ -5,6 +5,7 @@ import { ModelEnvironmentLighting } from '../../tower_diffence_with_jev/src/rend
 import { UNIT_MODEL_CATALOG } from '../../tower_diffence_with_jev/src/rendering/models/catalog'
 import type { UnitType } from '../../tower_diffence_with_jev/src/game/model'
 import { finished, size, type Game, type Unit } from './game'
+import { reducedMotion } from './settings'
 
 export type Point = { x: number; y: number }
 export type Track =
@@ -29,7 +30,6 @@ const MOTIONS = ['idle', 'walk', 'attack'] as const
 /** Model gameplay pixels (≈128 per figure) → tiles. */
 const MODEL_SIZE = 2.3 / 128
 const FALL_SECONDS = 0.82
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 const definitions = new Map<string, UnitModelDefinition>()
 /** Upright in the board's own Y-up world (the catalog tilts models into a flat 2D board view), and only
  * the motions this game plays, so background rig preparation never requests other clips. */
