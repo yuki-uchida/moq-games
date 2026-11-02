@@ -113,7 +113,7 @@ export class Stage {
     key.position.copy(world({ x: -3, y: -1 }, 7))
     this.scene.add(key)
     const lantern = new THREE.PointLight(0xffa04a, 9, 7, 1.4)
-    lantern.position.copy(world({ x: 0.5, y: 4.5 }, 1.6))
+    lantern.position.copy(world({ x: 1.5, y: 5 }, 1.6))
     this.scene.add(lantern)
     this.units.matrixAutoUpdate = false
     this.units.matrix.set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1)
@@ -184,11 +184,11 @@ export class Stage {
 
   /** Rocks and groves for the current mission; shared geometry/materials, rebuilt only on a layout change. */
   private build(game: Game) {
-    const key = [...game.rocks].join(';') + '|' + [...game.groves].join(';')
+    const key = game.stage + '|' + [...game.rocks].join(';') + '|' + [...game.groves].join(';')
     if (key === this.terrainKey) return
     this.terrainKey = key
     this.terrain.clear()
-    for (const k of game.rocks) this.terrain.add(this.place(Props.rock(), k))
+    for (const k of game.rocks) this.terrain.add(this.place(Props.rock(game.stage, k), k))
     for (const k of game.groves) if (!game.rocks.has(k)) this.terrain.add(this.place(Props.grove(), k))
   }
   private place(object: THREE.Object3D, k: string) {
@@ -426,7 +426,9 @@ const Props = (() => {
     trunk: flat(0x3a2618),
     needles: [flat(0x2f5f3d), flat(0x3f7a4b), flat(0x58925a)],
     bush: [flat(0x24452f), flat(0x3d6e45)],
-    rock: flat(0x4c5259, { roughness: 0.95 }),
+    rock: [flat(0x66544b), flat(0x495d65)],
+    ruin: flat(0x65615d),
+    ruinTop: flat(0x817971),
     moss: flat(0x6d7d5a),
     ember: new THREE.MeshBasicMaterial({ color: 0xff9a4a }),
     shaft: new THREE.MeshBasicMaterial({ color: 0xfff2bd }),
@@ -462,6 +464,8 @@ const Props = (() => {
       rock.computeVertexNormals()
       return rock
     })(),
+    wall: new THREE.BoxGeometry(0.72, 0.31, 0.62).translate(0, 0.155, 0),
+    wallTop: new THREE.BoxGeometry(0.42, 0.17, 0.45).translate(0.1, 0.395, -0.05),
     crack: new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3([
         new THREE.Vector3(-0.1, 0.36, 0.2),
@@ -504,18 +508,20 @@ const Props = (() => {
   return {
     grove() {
       const group = new THREE.Group()
-      group.add(
-        tree(0.16, -0.18, 1.55),
-        tree(-0.22, -0.02, 1.25),
-        tree(0.1, 0.18, 1.35),
-        bush(-0.26, 0.28),
-        bush(0.28, 0.22)
-      )
+      group.add(tree(0.24, -0.25, 1.15), tree(-0.2, -0.22, 0.9), tree(0.26, 0.14, 0.85), bush(-0.25, -0.2))
       return group
     },
-    rock() {
+    rock(stage: number, cell: string) {
       const group = new THREE.Group()
-      const mesh = new THREE.Mesh(g.rock, m.rock)
+      if (stage === 2) {
+        const [x, y] = cell.split(',').map(Number)
+        const top = new THREE.Mesh(g.wallTop, m.ruinTop)
+        top.rotation.y = (((x + y) % 3) - 1) * 0.15
+        if ((x + y) % 2) top.scale.x = 0.7
+        group.add(new THREE.Mesh(g.wall, m.ruin), top)
+        return group
+      }
+      const mesh = new THREE.Mesh(g.rock, m.rock[stage])
       group.scale.setScalar(1.6)
       // The crack faces the camera (toward −X, +Z).
       const crack = new THREE.Mesh(g.crack, m.ember)

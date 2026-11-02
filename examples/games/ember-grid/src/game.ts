@@ -41,30 +41,47 @@ export type Game = {
   rng: () => number
   progress?: Progress
 }
-export const size = 7
-export const rocks = new Set(['3,1', '3,2', '3,4', '3,5'])
-export const groves = new Set(['1,2', '2,4', '4,2', '5,4'])
+export const size = 10
+export const rocks = new Set(['4,1', '4,2', '4,3', '4,5', '4,6', '4,7', '4,8', '5,2', '5,7'])
+export const groves = new Set(['2,3', '3,5', '2,7', '5,1', '5,8', '6,7'])
 export const key = (x: number, y: number) => `${x},${y}`
 export const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 export const missions = [
   {
     name: '01 峡谷の燈',
-    hint: '狭い峠。木立を利用し、狼を弓で迎え撃つ。',
-    rocks: ['3,1', '3,2', '3,4', '3,5'],
-    groves: ['1,2', '2,4', '4,2', '5,4']
+    hint: '中央の一マスの隘路を守るか、南北の外周から岩壁を迂回。手前の木立で迎え撃つ。',
+    rocks: [...rocks],
+    groves: [...groves]
   },
   {
     name: '02 風抜けの水路',
-    hint: '二つの迂回路。射程を保ち、装甲兵を魔法で崩す。',
-    rocks: ['2,1', '2,2', '4,4', '4,5'],
-    groves: ['1,3', '3,2', '3,4', '5,3']
+    hint: '食い違う岩棚を抜け、中央の木立か南北の水路を選ぶ。両岸から迫る敵に注意。',
+    rocks: [
+      '2,1',
+      '3,1',
+      '4,1',
+      '6,1',
+      '3,3',
+      '5,3',
+      '6,3',
+      '3,5',
+      '5,5',
+      '6,5',
+      '2,7',
+      '3,7',
+      '4,7',
+      '6,7',
+      '7,7',
+      '5,8'
+    ],
+    groves: ['2,3', '4,2', '4,4', '4,6', '6,4', '6,8', '7,8']
   },
   {
     name: '03 灰の環城',
-    hint: '群れとの最終戦。包囲を避け、傷が深ければ回復。苦戦したら守備陣形。',
-    rocks: ['2,2', '4,2', '3,4'],
-    groves: ['1,1', '1,5', '4,1', '4,5', '3,4']
+    hint: '西門から中庭へ進むか、北の破れ目を回る。南の射手と北の狼に挟まれないように。',
+    rocks: ['3,1', '5,1', '6,1', '3,2', '3,3', '3,6', '3,7', '3,8', '4,8', '5,8', '6,8', '6,6', '6,7'],
+    groves: ['2,3', '2,5', '4,3', '4,6', '5,4', '7,3', '7,7']
   }
 ]
 /** Per-role chance for each stat to rise by one on level up. */
@@ -193,26 +210,32 @@ export function createGame(
     phase: 'ally',
     log: '味方を選択 → 青いマスへ移動 → 敵を攻撃',
     units: [
-      unit('a', '燈守リオ', 'soldier', 'ally', 0, 3, 16, 6, 1),
-      unit('b', '風読みネリ', 'archer', 'ally', 0, 2, 11, 5, 3),
-      unit('c', '星織ミナ', 'mage', 'ally', 0, 4, 10, 7, 2),
-      unit('d', '灰牙', 'wolf', 'enemy', 5, 2, 10, 4, 1, 3, 1 + stage * 2),
-      unit('e', '煤の斥候', 'goblin', 'enemy', 5, 4, 10, 4, 1, 3, 1 + stage * 2),
-      { ...unit('f', '霧番', 'goblin', 'enemy', 6, 3, 14, 5, 1, 3, 2 + stage * 2), armor: 2 }
+      unit('a', '燈守リオ', 'soldier', 'ally', 1, 4, 16, 6, 1),
+      unit('b', '風読みネリ', 'archer', 'ally', 1, 3, 11, 5, 3),
+      unit('c', '星織ミナ', 'mage', 'ally', 1, 5, 10, 7, 2),
+      unit('d', '灰牙', 'wolf', 'enemy', 6, 3, 10, 4, 1, 3, 1 + stage * 2),
+      unit('e', '煤の斥候', 'goblin', 'enemy', 6, 5, 10, 4, 1, 3, 1 + stage * 2),
+      { ...unit('f', '霧番', 'goblin', 'enemy', 7, 4, 14, 5, 1, 3, 2 + stage * 2), armor: 2 }
     ]
   }
-  if (stage === 1) game.units.push(unit('g', '風牙', 'wolf', 'enemy', 6, 1, 11, 4, 1, 3, 3))
+  if (stage === 1) {
+    game.units[3].y = 2
+    game.units[4].y = 6
+    game.units.push(unit('g', '風牙', 'wolf', 'enemy', 7, 1, 11, 4, 1, 3, 3))
+  }
   if (stage === 2) {
     game.units.push(
-      unit('g', '風牙', 'wolf', 'enemy', 5, 0, 8, 3, 1, 3, 5),
-      unit('h', '灰の射手', 'archer', 'enemy', 6, 6, 8, 3, 2, 3, 6)
+      unit('g', '風牙', 'wolf', 'enemy', 8, 0, 8, 3, 1, 3, 5),
+      unit('h', '灰の射手', 'archer', 'enemy', 8, 8, 8, 3, 2, 3, 6)
     )
     game.units[3].power = 3
     game.units[4].power = 3
-    game.units[3].y = 1
-    game.units[4].y = 5
-    game.units[5].x = 6
-    game.units[5].y = 3
+    game.units[3].x = 7
+    game.units[3].y = 2
+    game.units[4].x = 7
+    game.units[4].y = 6
+    game.units[5].x = 8
+    game.units[5].y = 4
   }
   // Higher-level packs are slightly sturdier; carried growth offsets this.
   for (const u of game.units) if (u.side === 'enemy' && stage > 0) u.hp = u.max += 1

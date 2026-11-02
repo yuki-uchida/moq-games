@@ -5,11 +5,11 @@ import { depth, route } from '../src/animation'
 import { ROLES } from '../src/stage'
 import { UNIT_MODEL_CATALOG } from '../../tower_diffence_with_jev/src/rendering/models/catalog'
 import { ATTACK_PROFILES } from '../../tower_diffence_with_jev/src/game/AttackProfiles'
-import { createGame } from '../src/game'
+import { createGame, size } from '../src/game'
 describe('3D presentation contracts', () => {
   it('orders cells back to front', () => {
-    expect(depth({ x: 6, y: 0 })).toBe(0)
-    expect(depth({ x: 0, y: 6 })).toBe(12)
+    expect(depth({ x: size - 1, y: 0 })).toBe(0)
+    expect(depth({ x: 0, y: size - 1 })).toBe(2 * (size - 1))
     expect(depth({ x: 2, y: 3 })).toBeLessThan(depth({ x: 2, y: 4 }))
     expect(depth({ x: 2, y: 3 })).toBeLessThan(depth({ x: 1, y: 3 }))
   })
@@ -23,7 +23,7 @@ describe('3D presentation contracts', () => {
       expect(g.rocks.has(`${p.x},${p.y}`)).toBe(false)
       expect(g.units.some((other) => other.id !== u.id && other.x === p.x && other.y === p.y)).toBe(false)
     })
-    expect(route(g, g.units, g.units[1], { x: 0, y: 5 })).toHaveLength(4)
+    expect(route(g, g.units, g.units[1], { x: 1, y: 6 })).toHaveLength(4)
   })
   it('every role has tracked idle/walk/attack glTF sources and a contact inside its attack clip', () => {
     const tracked = execFileSync('git', ['ls-files', 'public/tower-defense-art/models'], { encoding: 'utf8' })

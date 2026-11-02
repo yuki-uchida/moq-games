@@ -20,10 +20,10 @@ for (const width of [1280, 390])
     expect(await music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBe(0)
     await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'true')
     // Default-on music starts with the first gesture (autoplay policy).
-    await page.getByRole('button', { name: /1,3 風読み/ }).tap()
+    await page.getByRole('button', { name: /2,4 風読み/ }).tap()
     await expect.poll(() => music.evaluate((a: HTMLAudioElement) => a.currentTime)).toBeGreaterThan(0.1)
-    await page.getByRole('button', { name: /3,3 平地 移動可能/ }).tap()
-    await expect(page.getByRole('button', { name: /3,3 風読み/ })).toBeEnabled()
+    await page.getByRole('button', { name: /4,4 平地 移動可能/ }).tap()
+    await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeEnabled()
     await page.evaluate(() => {
       const samples: { time: number; arrow: boolean; damage: boolean }[] = []
       ;(window as unknown as { presentationSamples: typeof samples }).presentationSamples = samples
@@ -42,11 +42,11 @@ for (const width of [1280, 390])
       page.waitForFunction(() => !!document.querySelector('.stage[data-projectile~="arrow"]'), undefined, {
         polling: 'raf'
       }),
-      page.getByRole('button', { name: /6,3 灰牙/ }).tap()
+      page.getByRole('button', { name: /7,4 灰牙/ }).tap()
     ])
     await page.screenshot({ path: `test-results/ember-arrow-${width}.png` })
     await expect(page.locator('.damage-number')).toHaveText('−8')
-    await expect(page.getByRole('button', { name: /6,3 灰牙 HP 2/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible()
     const samples = await page.evaluate(
       () =>
         (window as unknown as { presentationSamples: { time: number; arrow: boolean; damage: boolean }[] })
@@ -152,10 +152,10 @@ test('hidden tab keeps player and enemy turns advancing without animation frames
     }
     document.dispatchEvent(new Event('visibilitychange'))
   })
-  await page.getByRole('button', { name: /1,3 風読み/ }).click()
-  await page.getByRole('button', { name: /3,3 平地 移動可能/ }).click()
-  await page.getByRole('button', { name: /6,3 灰牙/ }).click()
-  await expect(page.getByRole('button', { name: /6,3 灰牙 HP 2/ })).toBeVisible()
+  await page.getByRole('button', { name: /2,4 風読み/ }).click()
+  await page.getByRole('button', { name: /4,4 平地 移動可能/ }).click()
+  await page.getByRole('button', { name: /7,4 灰牙/ }).click()
+  await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible()
   await page.locator('#end').click()
   await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 5000 })
   await expect(page.locator('.fx')).toHaveCount(0)
@@ -164,16 +164,16 @@ test('hidden tab keeps player and enemy turns advancing without animation frames
 
 test('restart cancels player motion and reduced motion keeps controls usable', async ({ page }) => {
   await page.goto('./')
-  await page.getByRole('button', { name: /1,4 燈守/ }).click()
-  await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
+  await page.getByRole('button', { name: /2,5 燈守/ }).click()
+  await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
   await page.locator('#restart').click()
   await page.waitForTimeout(1000)
-  await expect(page.getByRole('button', { name: /1,4 燈守リオ HP 16/ })).toBeEnabled()
+  await expect(page.getByRole('button', { name: /2,5 燈守リオ HP 16/ })).toBeEnabled()
   expect(await tracks(page)).toEqual([])
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.getByRole('button', { name: /1,4 燈守/ }).click()
-  await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
-  await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
+  await page.getByRole('button', { name: /2,5 燈守/ }).click()
+  await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
+  await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeEnabled()
   expect(await tracks(page)).toEqual([])
 })
 
@@ -184,13 +184,13 @@ test('missing 3D model holds preparation and retries without stranding input', a
   )
   await page.goto('./')
   await expect(page.locator('.preparation button')).toBeVisible()
-  await expect(page.getByRole('button', { name: /1,4 燈守/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /2,5 燈守/ })).toBeDisabled()
   fail = false
   await page.locator('.preparation button').click()
   await expect(page.locator('.preparation')).toHaveCount(0)
-  await page.getByRole('button', { name: /1,4 燈守/ }).click()
-  await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
-  await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeEnabled()
+  await page.getByRole('button', { name: /2,5 燈守/ }).click()
+  await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
+  await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeEnabled()
   await expect(page.locator('#end')).toBeEnabled()
   expect(await tracks(page)).toEqual([])
 })

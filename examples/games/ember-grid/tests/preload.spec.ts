@@ -24,9 +24,9 @@ test('cold preparation, retry and retained mission assets', async ({ page }) => 
   // Retry only the rejected model.
   expect(art.length - completed).toBe(1)
   const prepared = art.length
-  await page.getByRole('button', { name: /1,4 燈守/ }).click()
-  await page.getByRole('button', { name: /3,4 平地 移動可能/ }).click()
-  await expect(page.getByRole('button', { name: /3,4 燈守/ })).toBeVisible()
+  await page.getByRole('button', { name: /2,5 燈守/ }).click()
+  await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
+  await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeVisible()
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
   await page.getByRole('button', { name: '任務と編成' }).click()
   await page.locator('[data-stage="2"]').click()
@@ -119,9 +119,9 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
   })
   for (let repeat = 0; repeat < 2; repeat++) {
     if (repeat) await page.getByRole('button', { name: '再プレイ', exact: true }).click()
-    await page.getByRole('button', { name: /1,3 風読み/ }).click()
-    await page.getByRole('button', { name: /3,3 平地 移動可能/ }).click()
-    await expect(page.getByRole('button', { name: /3,3 風読み/ })).toBeEnabled()
+    await page.getByRole('button', { name: /2,4 風読み/ }).click()
+    await page.getByRole('button', { name: /4,4 平地 移動可能/ }).click()
+    await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeEnabled()
     const samples = await page.evaluate(async () => {
       const stage = (document.querySelector('.stage') as HTMLCanvasElement & { stage?: import('../src/stage').Stage })
         .stage
@@ -139,7 +139,7 @@ test('cold and replayed attacks retain visible actors at 100 ms RTT', async ({ p
           else resolve(samples)
         }
         requestAnimationFrame(frame)
-        document.querySelectorAll<HTMLButtonElement>('.cell')[2 * 7 + 5].click()
+        document.querySelector<HTMLButtonElement>('.cell[aria-label^="7,4 灰牙"]')!.click()
       })
     })
     expect(samples.some((s) => s.active === 2)).toBe(true)

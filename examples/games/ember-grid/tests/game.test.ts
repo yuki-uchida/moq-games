@@ -24,9 +24,35 @@ import {
   mvp,
   lost,
   rollGrowth,
-  seeded
+  seeded,
+  size
 } from '../src/game'
 describe('Ember Grid rules', () => {
+  for (const stage of [0, 1, 2])
+    it(`mission ${stage + 1} has connected terrain and valid starting cells`, () => {
+      const game = createGame(stage)
+      const positions = game.units.map((unit) => key(unit.x, unit.y))
+      expect(size).toBeGreaterThan(7)
+      expect(new Set(positions).size).toBe(positions.length)
+      for (const cell of [...game.rocks, ...game.groves]) {
+        const [x, y] = cell.split(',').map(Number)
+        expect(x).toBeGreaterThanOrEqual(0)
+        expect(x).toBeLessThan(size)
+        expect(y).toBeGreaterThanOrEqual(0)
+        expect(y).toBeLessThan(size)
+        expect(game.rocks.has(cell) && game.groves.has(cell)).toBe(false)
+      }
+      for (const unit of game.units) {
+        expect(unit.x).toBeGreaterThanOrEqual(0)
+        expect(unit.x).toBeLessThan(size)
+        expect(unit.y).toBeGreaterThanOrEqual(0)
+        expect(unit.y).toBeLessThan(size)
+        expect(game.rocks.has(key(unit.x, unit.y))).toBe(false)
+        expect(reachable(game, unit).size).toBeGreaterThan(1)
+      }
+      const open = reachable({ rocks: game.rocks, units: [] }, { ...game.units[0], move: size * size })
+      expect(open.size).toBe(size * size - game.rocks.size)
+    })
   it('healing consumes a shared charge and action, and formations trade speed for health', () => {
     const g = createGame(1, 'guard'),
       u = g.units[0]
@@ -56,54 +82,54 @@ describe('Ember Grid rules', () => {
     expect(damage(g.units[0], guard, g)).toBe(5)
     const other = createGame(2)
     other.rocks.clear()
-    expect(g.rocks.size).toBe(4)
+    expect(g.rocks.size).toBe(9)
     expect(createGame(2).units.filter((u) => u.side === 'enemy')).toHaveLength(5)
   })
 
   it('blocks rocks, occupied cells, double moves and out of range attacks', () => {
     const g = createGame(),
       u = g.units[0]
-    expect(move(g, u, 3, 1)).toBe(false)
-    expect(move(g, u, 0, 2)).toBe(false)
+    expect(move(g, u, 4, 3)).toBe(false)
+    expect(move(g, u, 1, 3)).toBe(false)
     expect(attack(g, u, g.units[3])).toBe(false)
-    expect(move(g, u, 2, 3)).toBe(true)
-    expect(move(g, u, 3, 3)).toBe(false)
+    expect(move(g, u, 3, 4)).toBe(true)
+    expect(move(g, u, 4, 4)).toBe(false)
     expect([...reachable(g, u).keys()].some((k) => rocks.has(k))).toBe(false)
   })
   it('allies pass through allies but stop only on empty cells; foes and rocks still block', () => {
     const g = createGame(),
       neri = g.units[1]
-    // Neri (0,2) crosses Rio (0,3) and Mina (0,4) to reach (0,5) in three steps.
-    expect(path(g, neri, { x: 0, y: 5 })).toEqual([
-      { x: 0, y: 2 },
-      { x: 0, y: 3 },
-      { x: 0, y: 4 },
-      { x: 0, y: 5 }
+    // Neri (1,3) crosses Rio (1,4) and Mina (1,5) to reach (1,6) in three steps.
+    expect(path(g, neri, { x: 1, y: 6 })).toEqual([
+      { x: 1, y: 3 },
+      { x: 1, y: 4 },
+      { x: 1, y: 5 },
+      { x: 1, y: 6 }
     ])
-    expect(reachable(g, neri).has('0,3')).toBe(false)
-    expect(move(g, neri, 0, 3)).toBe(false)
-    expect(move(g, neri, 0, 5)).toBe(true)
+    expect(reachable(g, neri).has('1,4')).toBe(false)
+    expect(move(g, neri, 1, 4)).toBe(false)
+    expect(move(g, neri, 1, 6)).toBe(true)
     // An enemy wall is not crossable for allies, but enemies cross each other.
     const h = createGame(),
       rio = h.units[0],
       [wolf, scout] = [h.units[3], h.units[4]]
-    Object.assign(wolf, { x: 1, y: 3 })
-    Object.assign(scout, { x: 2, y: 3 })
+    Object.assign(wolf, { x: 2, y: 4 })
+    Object.assign(scout, { x: 3, y: 4 })
     h.units[1].hp = h.units[2].hp = 0
-    expect(path(h, rio, { x: 2, y: 3 })).toEqual([{ x: 0, y: 3 }])
-    expect(path(h, wolf, { x: 3, y: 3 }).map((p) => key(p.x, p.y))).toEqual(['1,3', '2,3', '3,3'])
-    expect(reachable(h, wolf).has('0,3')).toBe(false)
+    expect(path(h, rio, { x: 3, y: 4 })).toEqual([{ x: 1, y: 4 }])
+    expect(path(h, wolf, { x: 4, y: 4 }).map((p) => key(p.x, p.y))).toEqual(['2,4', '3,4', '4,4'])
+    expect(reachable(h, wolf).has('1,4')).toBe(false)
   })
   it('attack range covers strikes after any legal move, excluding move cells', () => {
     const g = createGame(),
       rio = g.units[0]
     const range = attackRange(g, rio)
-    expect(range.has('4,3')).toBe(true)
-    expect(range.has('5,3')).toBe(false)
+    expect(range.has('5,4')).toBe(true)
+    expect(range.has('6,4')).toBe(false)
     expect([...range].some((k) => reachable(g, rio).has(k))).toBe(false)
-    expect(range.has('0,2')).toBe(false)
-    move(g, rio, 2, 3)
-    expect([...attackRange(g, rio)].sort()).toEqual(['1,3', '2,2', '2,4', '3,3'])
+    expect(range.has('1,3')).toBe(false)
+    move(g, rio, 3, 4)
+    expect([...attackRange(g, rio)].sort()).toEqual(['2,4', '3,3', '3,5', '4,4'])
     rio.done = true
     expect(attackRange(g, rio).size).toBe(0)
   })
@@ -112,14 +138,14 @@ describe('Ember Grid rules', () => {
       [rio, neri, mina] = g.units
     expect(allyTurnOver(g)).toBe(false)
     neri.done = mina.done = true
-    move(g, rio, 2, 3)
+    move(g, rio, 3, 4)
     expect(finished(g, rio)).toBe(true)
     expect(allyTurnOver(g)).toBe(true)
     rio.hp = 10
     expect(finished(g, rio)).toBe(false)
     g.potions = 0
     expect(finished(g, rio)).toBe(true)
-    Object.assign(g.units[3], { x: 2, y: 4 })
+    Object.assign(g.units[3], { x: 3, y: 5 })
     expect(finished(g, rio)).toBe(false)
     g.units[3].hp = 0
     neri.hp = 0
@@ -131,10 +157,10 @@ describe('Ember Grid rules', () => {
     const g = createGame(),
       u = g.units[0],
       e = g.units[3]
-    e.x = 1
-    e.y = 2
-    u.x = 1
-    u.y = 3
+    e.x = 2
+    e.y = 3
+    u.x = 2
+    u.y = 4
     expect(damage(u, e)).toBe(4)
     expect(attack(g, u, e)).toBe(true)
     expect(attack(g, u, e)).toBe(false)
@@ -156,29 +182,35 @@ describe('Ember Grid rules', () => {
   })
   for (const stage of [0, 1, 2])
     for (const formation of ['balanced', 'guard'] as const)
-      it(`mission ${stage + 1} is winnable with ${formation}`, () => {
-        // Match the browser playthrough fixture; random growth changes this policy's outcome.
-        const g = createGame(stage, formation, undefined, seeded(7))
-        for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
-          for (const u of g.units
-            .filter((u) => u.side === 'ally' && u.hp > 0)
-            .sort(
-              (a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role)
-            )) {
-            if (u.hp <= u.max - 7 && recover(g, u)) continue
-            const { position: p, target } = plan(g, u)
-            move(g, u, p.x, p.y)
-            if (target) attack(g, u, target)
-            if (g.phase === 'won') break
+      for (const seed of [1, 7, 42])
+        it(`mission ${stage + 1} is winnable with ${formation} and seed ${seed}`, () => {
+          // Match the browser playthrough fixture; random growth changes this policy's outcome.
+          const g = createGame(stage, formation, undefined, seeded(seed))
+          let firstContact = 0
+          for (let turn = 0; turn < 25 && g.phase !== 'won' && g.phase !== 'lost'; turn++) {
+            for (const u of g.units
+              .filter((u) => u.side === 'ally' && u.hp > 0)
+              .sort(
+                (a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role)
+              )) {
+              if (u.hp <= u.max - 7 && recover(g, u)) continue
+              const { position: p, target } = plan(g, u)
+              move(g, u, p.x, p.y)
+              if (target) attack(g, u, target)
+              if (!firstContact && g.units.some((unit) => unit.dealt > 0)) firstContact = g.turn
+              if (g.phase === 'won') break
+            }
+            if (g.phase === 'ally') {
+              beginEnemy(g)
+              g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
+              if (!firstContact && g.units.some((unit) => unit.dealt > 0)) firstContact = g.turn
+              beginAlly(g)
+            }
           }
-          if (g.phase === 'ally') {
-            beginEnemy(g)
-            g.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(g, u))
-            beginAlly(g)
-          }
-        }
-        expect(g.phase).toBe('won')
-      })
+          expect(g.phase).toBe('won')
+          expect(firstContact).toBeGreaterThan(0)
+          expect(firstContact).toBeLessThanOrEqual(2)
+        })
 })
 describe('Ember Grid growth', () => {
   it('awards hit, defeat and recovery EXP scaled by level gap', () => {
@@ -196,8 +228,8 @@ describe('Ember Grid growth', () => {
     const h = createGame(),
       a = h.units[0],
       goblin = h.units[4]
-    a.x = 4
-    a.y = 4
+    a.x = 5
+    a.y = 5
     expect(attack(h, a, goblin)).toBe(true)
     expect(a.exp).toBe(10)
     expect(h.progress).toEqual({ id: 'a', from: 0, to: 10, level: 1 })
@@ -297,7 +329,7 @@ describe('Ember Grid growth', () => {
       ally = g.units[2],
       wolf = g.units[3]
     beginEnemy(g)
-    Object.assign(ally, { x: 4, y: 2, hp: 1 })
+    Object.assign(ally, { x: 5, y: 3, hp: 1 })
     attack(g, wolf, ally)
     expect(g.log).toContain('星織ミナは倒れた…')
   })

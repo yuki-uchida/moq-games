@@ -60,6 +60,7 @@ const audio = new ExpeditionAudio((message) => {
 })
 const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
+field.style.setProperty('--grid-size', String(size))
 const stage = new Stage(field, board)
 const animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
 const cells: HTMLButtonElement[] = []
@@ -95,6 +96,7 @@ function hover(x: number, y: number) {
   if (!busy) render()
 }
 function render() {
+  field.dataset.mission = String(game.stage)
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map(),
     foe =
@@ -117,7 +119,7 @@ function render() {
       : ''
     cell.setAttribute(
       'aria-label',
-      `${x + 1},${y + 1} ${u ? `${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? '岩' : game.groves.has(k) ? '木立' : '平地'}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}`
+      `${x + 1},${y + 1} ${u ? `${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? (game.stage === 2 ? '崩れた城壁（岩）' : '岩') : game.groves.has(k) ? '木立' : '平地'}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}`
     )
   })
   stage.sync(game, unit?.id)
