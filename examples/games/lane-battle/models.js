@@ -1146,6 +1146,10 @@ const MODELS = {
   garlic: {
     koSeconds: 0.95,
     tempo: [0.48, 0.03],
+    striker: 'muzzle',
+    reacts: ['clove0', 'clove2'],
+    parts: ['clove0', 'clove1', 'clove2', 'clove3', 'clove4', 'sprout'],
+    react: { jolt: 0.65 },
     size: 0.95,
     moves: {
       lunge: 0.04,
@@ -1163,9 +1167,18 @@ const MODELS = {
       k.add(GEO.sphere, '#f4ede0', [0, 0.36, 0], [0.4, 0.36, 0.4])
       for (let i = 0; i < 5; i++) {
         const t = (i / 5) * Math.PI * 2 + 0.3
-        k.add(GEO.sphere, i % 2 ? '#efe2d6' : '#ead2e4', [Math.cos(t) * 0.2, 0.38, Math.sin(t) * 0.2], [0.2, 0.33, 0.2])
+        k.bone(`clove${i}`, 'hips', [Math.cos(t) * 0.2, 0.12, Math.sin(t) * 0.2])
+        k.add(
+          GEO.sphere,
+          i % 2 ? '#efe2d6' : '#ead2e4',
+          [Math.cos(t) * 0.2, 0.38, Math.sin(t) * 0.2],
+          [0.2, 0.33, 0.2],
+          undefined,
+          { bone: `clove${i}` }
+        )
       }
-      k.add(GEO.cone, '#e8dcc6', [0, 0.8, 0], [0.08, 0.26, 0.08])
+      k.bone('sprout', 'head', [0, 0.68, 0])
+      k.add(GEO.cone, '#e8dcc6', [0, 0.8, 0], [0.08, 0.26, 0.08], undefined, { bone: 'sprout' })
       for (const x of [-0.08, 0, 0.08])
         k.add(GEO.cyl, '#bfa47a', [x, 0.02, 0], [0.012, 0.07, 0.012], undefined, { line: false })
       k.bone('puff', 'head', [0.08, 0.92, 0])
@@ -1175,7 +1188,7 @@ const MODELS = {
         [0.55, 0.98, 0.1]
       ])
         k.add(GEO.ball, '#d9e86a', [x, y, 0.15], r, undefined, { bone: 'puff', alpha: 0.55 })
-      k.bone('muzzle', 'head', [0.1, 0.92, 0.1])
+      k.bone('muzzle', 'sprout', [0, 0.93, 0])
       k.face({ bone: 'spine', y: 0.4, z: 0.4, spread: 0.12 })
     },
     act(b, a) {
@@ -1184,11 +1197,43 @@ const MODELS = {
       b.puff.scale.setScalar(0.3 + p)
       b.puff.position.x += 0.15 * (1 - a.hit) * a.hit
       b.hips.scale.multiplyScalar(1 + beat(a, 0.1, -0.06))
+      b.hips.position.x += beat(a, -0.08, 0.18, -0.06)
+      b.sprout.rotation.z += beat(a, 0.15, -0.5, 0.18)
+    },
+    hurt(b, h) {
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + 0.3
+        b[`clove${i}`].position.x += Math.cos(angle) * 0.1 * h.jolt
+        b[`clove${i}`].position.z -= Math.sin(angle) * 0.1 * h.jolt
+        b[`clove${i}`].rotation.z -= Math.cos(angle) * 0.3 * h.jolt
+      }
+      show(b.puff, h.jolt > 0.03)
+      b.puff.scale.setScalar(0.25 + 0.45 * h.jolt)
+    },
+    ko(b, k) {
+      const burst = Math.min(1, k.t / 0.5)
+      b.hips.scale.y *= 1 - 0.35 * burst
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + 0.3
+        const clove = b[`clove${i}`]
+        clove.position.x += Math.cos(angle) * 0.7 * burst
+        clove.position.z -= Math.sin(angle) * 0.65 * burst
+        clove.position.y += 0.4 * Math.sin(Math.PI * burst)
+        clove.rotation.z += Math.cos(angle) * 1.6 * burst
+      }
+      b.sprout.position.x += 0.36 * burst
+      b.sprout.position.y += 0.55 * Math.sin(Math.PI * burst) - 0.38 * burst
+      b.sprout.rotation.z += 2.1 * burst
+      show(b.puff, false)
     }
   },
   curry: {
     koSeconds: 0.95,
     tempo: [0.5, 0.05],
+    striker: 'chili',
+    reacts: ['rice', 'roux', 'chili'],
+    parts: ['chili'],
+    react: { jolt: 0.7 },
     size: 1,
     moves: {
       lunge: 0.24,
@@ -1205,8 +1250,10 @@ const MODELS = {
       k.chain = [0.2, 0.4, 0.58]
       k.add(GEO.rcyl, '#f8f6f0', [0, 0.03, 0], [0.5, 0.05, 0.5])
       k.add(GEO.ring, '#d9c9a0', [0, 0.05, 0], [0.47, 0.47, 0.25], [Math.PI / 2, 0, 0], { line: false })
-      k.add(GEO.hemi, '#fbfbf5', [-0.04, 0.04, 0], [0.36, 0.52, 0.36])
-      k.add(GEO.sphere, '#a8541a', [0.17, 0.14, 0.04], [0.33, 0.28, 0.33])
+      k.bone('rice', 'hips', [-0.04, 0.04, 0])
+      k.bone('roux', 'hips', [0.17, 0.14, 0.04])
+      k.add(GEO.hemi, '#fbfbf5', [-0.04, 0.04, 0], [0.36, 0.52, 0.36], undefined, { bone: 'rice' })
+      k.add(GEO.sphere, '#a8541a', [0.17, 0.14, 0.04], [0.33, 0.28, 0.33], undefined, { bone: 'roux' })
       for (const [x, y, z, c] of [
         [0.26, 0.36, 0.22, '#e0902a'],
         [0.32, 0.3, -0.05, '#f0d27a'],
@@ -1222,13 +1269,39 @@ const MODELS = {
     },
     act(b, a, c) {
       b.chili.rotation.z += beat(a, 0.5, -0.9, 0.3)
+      b.chili.position.x += beat(a, -0.08, 0.12, -0.04)
+      b.hips.rotation.z += beat(a, 0.15, -0.18, 0.16)
+      b.roux.scale.y += 0.12 * a.wind * (1 + Math.sin(c.t * 22))
       const flare = 1 + beat(a, 0.4, 1.0) + 0.12 * Math.sin(c.t * 22)
       b.flames.scale.set(flare, flare, flare)
+    },
+    hurt(b, h) {
+      b.roux.scale.y += 0.3 * h.jolt
+      b.roux.position.y += 0.1 * h.jolt
+      b.rice.rotation.z += 0.25 * h.jolt + 0.22 * h.wobble
+      b.chili.rotation.z += 0.55 * h.jolt
+    },
+    ko(b, k, c) {
+      const boil = Math.min(1, k.t / 0.35)
+      const fall = Math.min(1, Math.max(0, (k.t - 0.25) / 0.4))
+      b.roux.scale.y += 0.2 * (1 - fall) * Math.abs(Math.sin(k.age * 35))
+      b.hips.rotation.z -= 1.1 * fall
+      b.hips.position.x += 0.15 * fall
+      b.hips.position.y += 0.22 * fall
+      b.chili.position.x += 0.5 * fall
+      b.chili.position.y += 0.25 * Math.sin(Math.PI * fall) - 0.1 * fall
+      b.chili.rotation.z -= 2 * fall
+      b.flames.scale.multiplyScalar(1 + boil * (1 - fall))
+      c.actor.tint('#ff6b37', 0.22 * (1 - fall))
     }
   },
   milk: {
     koSeconds: 0.85,
     tempo: [0.42, 0.04],
+    striker: 'spout',
+    reacts: ['spout', 'hips'],
+    parts: [],
+    react: { jolt: 0.75 },
     size: 0.95,
     moves: {
       lunge: 0.26,
@@ -1258,8 +1331,22 @@ const MODELS = {
       k.add(GEO.rbox, '#e6e6e0', [0, 0.77, 0], [0.42, 0.07, 0.025], undefined, { bone: 'spout' })
       k.face({ bone: 'spine', y: 0.4, z: 0.22, spread: 0.1, size: 0.9 })
     },
-    act(b, a) {
+    act(b, a, c) {
       b.spout.rotation.z += beat(a, 0.3, -0.4, 0.4)
+      b.hips.position.y += 0.04 * a.wind * Math.abs(Math.sin(c.t * 24)) - 0.08 * a.hit
+      b.hips.rotation.z += beat(a, 0.15, -0.95, 0.25)
+      b.hips.position.x += beat(a, -0.05, 0.12, -0.06)
+      b.head.rotation.z += beat(a, 0.1, -0.2, 0.15)
+    },
+    hurt(b, h) {
+      b.hips.scale.x *= 1 - 0.2 * h.jolt
+      b.spout.rotation.z += 0.6 * h.jolt + 0.45 * h.wobble
+    },
+    ko(b, k) {
+      const crush = Math.min(1, k.t / 0.48)
+      b.hips.scale.y *= 1 - 0.75 * crush
+      b.hips.scale.x *= 1 + 0.18 * crush
+      b.spout.rotation.z += 0.4 * Math.sin(Math.PI * crush)
     }
   },
   oyster: {
