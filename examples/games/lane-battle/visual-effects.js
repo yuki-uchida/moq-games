@@ -288,13 +288,29 @@ export const HURT_VFX = {
 }
 export const DEATH_VFX = {
   katachi: (ctx, unit, age, layer, x, y, aspect) => {
-    if (layer !== 'floor' || age < 0.12 || age > 0.75) return
-    const t = (age - 0.12) / 0.63
-    ctx.fillStyle = `rgba(127, 75, 34, ${1 - t})`
-    for (let i = 0; i < 5; i++) {
-      const dx = (i - 2) * 12 * t
-      const dy = -Math.sin(Math.PI * t) * (8 + (i % 3) * 5) * aspect
-      ctx.fillRect(x + dx, y + dy, 4, 3 * aspect)
+    // The hard body cracks: six outlined brown chunks spin out in arcs and land beside it.
+    if (layer !== 'above' || age < 0.12 || age > 0.8) return
+    const t = (age - 0.12) / 0.68
+    ctx.globalAlpha = Math.min(1, (1 - t) * 2.5)
+    ctx.fillStyle = '#7f4b22'
+    ctx.strokeStyle = '#3a2210'
+    ctx.lineWidth = 1.5
+    for (let i = 0; i < 6; i++) {
+      const out = Math.min(1, t * 1.6)
+      const lift = Math.max(0, Math.sin(Math.PI * Math.min(1, t * 1.4))) * (22 + (i % 3) * 9)
+      const r = 4 + (i % 3)
+      ctx.save()
+      ctx.translate(x + (i - 2.5) * 21 * out, y - (4 + lift) * aspect)
+      ctx.rotate(t * (i % 2 ? 6 : -5))
+      ctx.beginPath()
+      ctx.moveTo(-r, 0)
+      ctx.lineTo(-r * 0.2, -r * aspect)
+      ctx.lineTo(r, -r * 0.3 * aspect)
+      ctx.lineTo(r * 0.4, r * 0.8 * aspect)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      ctx.restore()
     }
   },
   korokoro: (ctx, unit, age, layer, x, y, aspect) => {
@@ -739,11 +755,49 @@ export function drawStatus(ctx, unit, x, y, top, time, aspect, reduced) {
   ctx.translate(x, y)
   const charged =
     unit.ambush && (unit.lastStrikeDistance === undefined || unit.walkDistance - unit.lastStrikeDistance >= 40)
-  if ((charged && unit.motion === 'walk') || unit.ramp > 0) {
-    ctx.fillStyle = charged ? '#ef512c55' : `rgba(228, 232, 65, ${unit.ramp * 0.07})`
-    ctx.beginPath()
-    ctx.ellipse(0, -bodyHeight * 0.4, 28, bodyHeight * 0.4, 0, 0, Math.PI * 2)
-    ctx.fill()
+  if (charged && unit.motion === 'walk') {
+    // ゲリラ奇襲 ready: red speed lines trail behind it (its back faces its own fort) and dust kicks up.
+    const back = unit.side
+    ctx.strokeStyle = '#ef512c'
+    ctx.lineWidth = 2
+    for (let i = 0; i < 3; i++) {
+      const phase = (time * 3 + i / 3) % 1
+      const lineY = -bodyHeight * (0.22 + i * 0.2)
+      ctx.globalAlpha = 0.85 * (1 - phase)
+      ctx.beginPath()
+      ctx.moveTo(back * (16 + phase * 8), lineY)
+      ctx.lineTo(back * (30 + phase * 16), lineY)
+      ctx.stroke()
+    }
+    ctx.fillStyle = '#c4ae8d'
+    for (let i = 0; i < (reduced ? 1 : 3); i++) {
+      const phase = (time * 2.2 + i / 3) % 1
+      ctx.globalAlpha = 0.6 * (1 - phase)
+      ctx.beginPath()
+      ctx.ellipse(
+        back * (12 + phase * 18),
+        -2 - phase * 6 * aspect,
+        3 + phase * 4,
+        (2 + phase * 3) * aspect,
+        0,
+        0,
+        Math.PI * 2
+      )
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
+  }
+  if (unit.ramp > 0) {
+    // カフェイン加速: green fizz bubbles rise around the can, one more per stack.
+    ctx.fillStyle = '#d6ff7a'
+    for (let i = 0; i < unit.ramp; i++) {
+      const phase = (time * 1.6 + i * 0.37) % 1
+      ctx.globalAlpha = 0.9 * (1 - phase)
+      ctx.beginPath()
+      ctx.arc(Math.sin(i * 2.1 + time * 3) * 12, -bodyHeight * (0.3 + phase * 0.8), 2 + (i % 2), 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.globalAlpha = 1
   }
   if (active(unit.slow, time)) {
     ctx.fillStyle = '#a9e5ff99'

@@ -1906,10 +1906,12 @@ const MODELS = {
       )
     },
     ko(b, k) {
-      const crush = Math.min(1, k.t / 0.35)
-      const roll = Math.min(1, Math.max(0, (k.t - 0.18) / 0.5))
-      b.hips.scale.y *= 1 - 0.4 * crush
-      b.hips.scale.x *= 1 + 0.16 * crush
+      // Crunched flat from above in a few frames, then it tips over and rolls.
+      const crush = Math.min(1, k.t / 0.25)
+      const crunch = crush * crush * (3 - 2 * crush)
+      const roll = Math.min(1, Math.max(0, (k.t - 0.22) / 0.48))
+      b.hips.scale.y *= 1 - 0.58 * crunch
+      b.hips.scale.x *= 1 + 0.3 * crunch
       b.hips.rotation.z += 1.45 * roll
       b.hips.position.x -= 0.16 * roll
       b.hips.position.y += 0.22 * roll
