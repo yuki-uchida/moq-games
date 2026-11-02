@@ -1,4 +1,5 @@
 import './style.css'
+import { getPrimaryRelayUrl } from '../../../../utils/relayPresets'
 import {
   Game,
   RULES,
@@ -60,7 +61,8 @@ const leave = element<HTMLButtonElement>('#leave')
 const restart = element<HTMLButtonElement>('#restart')
 const retry = element<HTMLButtonElement>('#retry-season')
 const soundToggle = element<HTMLButtonElement>('#sound-toggle')
-const relay = element<HTMLInputElement>('#relay')
+// ?relayUrl= overrides it for local relays and tests.
+const relayUrl = getPrimaryRelayUrl('https://relay.moqt.research.skyway.io')
 const room = element<HTMLInputElement>('#room')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
 const chapterPick = element<HTMLElement>('#chapter-pick')
@@ -377,10 +379,10 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
   snapshot = game?.state
   try {
     if (nextRole !== 'solo') {
-      if (!relay.value.trim() || !room.value.trim()) throw new Error('Relay URLとルーム名を入力してください。')
+      if (!room.value.trim()) throw new Error('ルーム名を入力してください。')
       let connectionError = ''
       const current = new CooperativeNetwork({
-        relayUrl: relay.value.trim(),
+        relayUrl,
         room: room.value.trim(),
         role: nextRole,
         playerId: localId,
@@ -758,6 +760,15 @@ function frame(now: number) {
 }
 
 buttons[0].addEventListener('click', () => void start('solo'))
+const together = element<HTMLButtonElement>('#together')
+const multiplayerFields = element<HTMLElement>('#multiplayer-fields')
+together.addEventListener('click', () => {
+  multiplayerFields.hidden = !multiplayerFields.hidden
+  together.setAttribute('aria-expanded', String(!multiplayerFields.hidden))
+  if (multiplayerFields.hidden) return
+  room.focus({ preventScroll: true })
+  multiplayerFields.scrollIntoView({ block: 'nearest' })
+})
 buttons[1].addEventListener('click', () => void start('host'))
 buttons[2].addEventListener('click', () => void start('guest'))
 leave.addEventListener('click', () => void returnToTitle())

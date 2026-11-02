@@ -1,4 +1,5 @@
 import './style.css'
+import { getPrimaryRelayUrl } from '../../../../utils/relayPresets'
 import { CooperativeNetwork } from '../../rabbiters/src/network'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import {
@@ -37,7 +38,8 @@ const help = element<HTMLElement>('#help')
 const result = element<HTMLElement>('#result')
 const startError = element<HTMLElement>('#start-error')
 const connection = element<HTMLElement>('#connection')
-const relay = element<HTMLInputElement>('#relay')
+// ?relayUrl= overrides it for local relays and tests.
+const relayUrl = getPrimaryRelayUrl('https://relay.moqt.research.skyway.io')
 const room = element<HTMLInputElement>('#room')
 const feed = element<HTMLElement>('#feed')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
@@ -121,11 +123,11 @@ async function start(next: 'solo' | 'host' | 'guest') {
   wonAt = 0
   try {
     if (next !== 'solo') {
-      if (!relay.value.trim() || !room.value.trim()) throw new Error('Relay URLとルーム名を入力してください。')
+      if (!room.value.trim()) throw new Error('ルーム名を入力してください。')
       let failure = ''
       const current = new CooperativeNetwork({
         app: APP,
-        relayUrl: relay.value.trim(),
+        relayUrl,
         room: room.value.trim(),
         role: next,
         playerId: localId,

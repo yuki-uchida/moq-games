@@ -54,7 +54,10 @@
 
       <section id="hud" class="hud" aria-label="プレイヤーの状態" hidden>
         <div class="hud-card vitals">
-          <div class="eyebrow"><span id="player-color" class="status-dot" title="あなたの首輪の色"></span> YOUR RABBIT <span id="player-name"></span></div>
+          <div class="eyebrow">
+            <span id="player-color" class="status-dot" title="あなたの首輪の色"></span> YOUR RABBIT
+            <span id="player-name"></span>
+          </div>
           <div class="meter-row">
             <span class="meter-icon heart" aria-hidden="true">♥</span><span>体力</span>
             <div class="meter"><i id="health-bar"></i></div>
@@ -86,9 +89,7 @@
           </figcaption>
         </figure>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
-        <div id="subtitle" class="subtitle" hidden>
-          <b id="subtitle-name"></b><span id="subtitle-text"></span>
-        </div>
+        <div id="subtitle" class="subtitle" hidden><b id="subtitle-name"></b><span id="subtitle-text"></span></div>
         <div id="title-card" class="title-card" aria-hidden="true" hidden>
           <p id="title-card-chapter">第1章</p>
           <h2 id="title-card-title"></h2>
@@ -115,7 +116,9 @@
         <div class="start-inner">
           <p class="overline"><span></span> A COOPERATIVE SURVIVAL STORY</p>
           <h1 id="start-title">小さな命を、<br /><em>つないでゆく。</em></h1>
-          <p class="intro">ペットのウサギ「モチ」の、はじめての大冒険。<br />見つからないように隠れて、仲間と進もう。</p>
+          <p class="intro">
+            ペットのウサギ「モチ」の、はじめての大冒険。<br />見つからないように隠れて、仲間と進もう。
+          </p>
           <div class="story-rule">
             <span class="rule-icon">✦</span>
             <p>
@@ -125,19 +128,20 @@
             </p>
           </div>
           <label id="chapter-pick" class="chapter-pick" hidden
-            ><span>はじめる章</span><select id="chapter-select"></select
+            ><span>はじめる章</span
+            ><select id="chapter-select"></select
           ></label>
           <button id="solo" class="button button-primary" type="button"><span>ひとりではじめる</span><b>↗</b></button>
-          <div class="divider"><span></span> OR PLAY TOGETHER <span></span></div>
-          <div class="multiplayer-fields">
-            <label for="relay">MoQ Relay URL</label>
-            <input
-              id="relay"
-              type="url"
-              value="https://relay.moqt.research.skyway.io"
-              autocomplete="url"
-              spellcheck="false"
-            />
+          <button
+            id="together"
+            class="button button-outline together"
+            type="button"
+            aria-expanded="false"
+            aria-controls="multiplayer-fields"
+          >
+            みんなではじめる
+          </button>
+          <div id="multiplayer-fields" class="multiplayer-fields" hidden>
             <label for="room">ルーム名</label>
             <input
               id="room"
@@ -151,9 +155,7 @@
               <button id="host" class="button button-outline" type="button">ルームを作る</button
               ><button id="join" class="button button-outline" type="button">ルームに参加</button>
             </div>
-            <p class="fine-print">
-              同じRelayとルーム名で集合します。ルーム名は認証ではありません。信頼できるRelayを使用してください。
-            </p>
+            <p class="fine-print">同じルーム名で集合します。ルーム名は認証ではありません。</p>
           </div>
           <p id="start-error" class="error" role="alert"></p>
         </div>

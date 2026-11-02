@@ -292,9 +292,17 @@ input:focus-visible {
   flex: 1;
   background: #ffffff29;
 }
+.together {
+  flex: none;
+  width: 100%;
+  margin: 10px 0;
+}
 .multiplayer-fields {
   display: grid;
   gap: 7px;
+}
+.multiplayer-fields[hidden] {
+  display: none;
 }
 .multiplayer-fields label {
   font-size: 10px;
