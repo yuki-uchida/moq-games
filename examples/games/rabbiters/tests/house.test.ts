@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { Game, coverAt, type Player } from '../src/game'
-import { NPCS, TERRAIN, heightAt, inZone, setStage } from '../src/map'
+import { NPCS, TERRAIN, heightAt, inShelter, inZone, setStage } from '../src/map'
 import { STAGES } from '../src/stages'
 import { PLANS, route } from '../src/stages/house/family'
 import { FLAG, GNAW_SECONDS, gnawed, has, setGnawed } from '../src/stages/house/flags'
-import { CAGE_DOOR, GATE, NIBOSHI, SPAWN, TAG, TAMA } from '../src/stages/house/map'
+import { CAGE, CAGE_DOOR, GATE, NIBOSHI, SPAWN, TAG, TAMA } from '../src/stages/house/map'
 import { DOOR_INSIDE } from '../src/stages/house/script'
 import { idle } from './bot'
 import { HouseBot, houseField } from './house-bot'
@@ -59,6 +59,11 @@ describe('Chapter 1: the house', () => {
     expect(game.state.talk?.id).toBe('intro')
     // In the cage a rabbit is home: nobody minds it.
     expect(coverAt(player.x, player.y, player.z, false)).toBe('shelter')
+    // ...even pressed into a corner or against the door, and not a step outside.
+    for (let x = CAGE.minX; x <= CAGE.maxX; x += 0.25)
+      for (let z = CAGE.minZ; z <= CAGE.maxZ; z += 0.25) expect(inShelter(x, z), `${x},${z}`).toBe(true)
+    expect(inShelter(CAGE_DOOR.x, CAGE_DOOR.z - 0.3)).toBe(false)
+    expect(inShelter(CAGE.minX - 0.6, 18)).toBe(false)
   })
 
   it('routes every family schedule through the doorways', () => {
@@ -179,7 +184,7 @@ describe('Chapter 1: the house', () => {
   }, 60_000)
 
   it('clears with the whole family and Gon about, for a cautious rabbit, in 20–40 minutes', () => {
-    for (const seed of [2, 3, 4]) {
+    for (const seed of [1, 4, 7]) {
       const { minutes, catches } = play(seed, 1, true, 60)
       console.log(`house threat run, seed ${seed}: ${minutes.toFixed(1)} min, caught ${catches}×`)
       expect(minutes).toBeGreaterThanOrEqual(20)

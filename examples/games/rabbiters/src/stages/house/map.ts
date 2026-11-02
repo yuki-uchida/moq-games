@@ -128,9 +128,8 @@ export const GATES: Gate[] = [
 
 /** Inside the cage counts as home: nobody minds a rabbit in its cage. */
 export const SHELTERS: Circle[] = [
-  { x: -31.8, z: 18, r: 2 },
-  { x: -30, z: 18, r: 2 },
-  { x: -28.2, z: 18, r: 2 },
+  // The cage, corners and door included: one circle per 2×2 cell of its floor, reaching no further than the walls.
+  ...[-32, -30, -28].flatMap((x) => [17, 19].map((z) => ({ x, z, r: 1.45 }))),
   { x: 15, z: -33.6, r: 2.2 } // the oshiire
 ]
 export const PELLETS = [
