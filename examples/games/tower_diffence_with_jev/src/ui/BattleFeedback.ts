@@ -4,6 +4,7 @@ import {
   AmountAggregator,
   ComboTracker,
   HEAL_WINDOW_MS,
+  comboLabel,
   HIT_WINDOW_MS,
   bountyFor,
   isHeavyHit,
@@ -222,8 +223,9 @@ export class BattleFeedback {
         this.shake(6)
         this.options.play('hit-heavy')
       }
-      const chain = this.combo.hit(now)
-      if (chain >= 3) {
+      // Chained on simulation time, so ×2 speed or a slow frame doesn't change what counts as a combo.
+      const chain = this.combo.hit(corpse.diedAt * 1000)
+      if (chain >= 2) {
         this.comboCallout(chain, corpse.x, corpse.y - 52)
         this.options.play('combo', chain)
       }
@@ -354,8 +356,8 @@ export class BattleFeedback {
 
   private comboCallout(count: number, x: number, y: number): void {
     this.comboEl?.remove()
-    const el = this.make('fx-combo', x, y, `×${count} COMBO!`)
-    el.style.setProperty('--grow', String(Math.min(2, 1 + (count - 3) * 0.12)))
+    const el = this.make('fx-combo', x, y, comboLabel(count))
+    el.style.setProperty('--grow', String(Math.min(2, 0.9 + (count - 2) * 0.14)))
     if (this.spawn(this.options.field, el, 1300)) this.comboEl = el
   }
 
