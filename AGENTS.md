@@ -17,3 +17,7 @@ This authorization does not permit force-pushing, rewriting published history, d
 The pinned SDK is generated into `.generated/moqt-sdk` by the explicit first-time `node scripts/setup-sdk.mjs` step before `npm ci --ignore-scripts`. Normal development reuses that output; it must not rebuild Rust or depend on a sibling checkout. See `sdk/README.md` for setup and regeneration.
 
 Use headless browser verification. Local-only migration provenance (not published): `migration/source-inventory.json`.
+
+## Subagents
+
+Before launching any subagent (Agent tool or T3 `delegate_task`), read and follow the project skill `.claude/skills/agent-start/SKILL.md`. In this repository it replaces the global "Opus 5.5 medium / Sonnet 5.5" subagent rule.
