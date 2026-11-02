@@ -1,8 +1,39 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { beats, timing, flinch, knockout, KO_SECONDS } from './animation.js'
-import { POOPS, SPECIALS, ENEMIES } from './simulation.js'
+import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
 const TYPES = [...POOPS, ...SPECIALS, ...ENEMIES]
+
+test('each unit keeps its scheduled cycle until the next contact', () => {
+  for (const type of TYPES) {
+    const isEnemy = ENEMIES.includes(type)
+    const game = createGame(0, [card({ uid: 1, key: isEnemy ? 'katachi' : type.key })])
+    game.gold = 999
+    game.spawn = 999
+    game.opened = true
+    game.rushes = 4
+    game.turret = 999
+    summon(game, isEnemy ? ENEMIES.indexOf(type) : 0, isEnemy ? -1 : 1)
+    summon(game, 0, isEnemy ? 1 : -1)
+    const [unit, target] = game.units
+    unit.x = 500
+    target.x = 500 + (isEnemy ? 10 : -10)
+    target.speed = 0
+    target.attack = 999
+    target.hp = target.maxHp = 1e9
+    step(game, 0.001)
+    const cycle = unit.cycle
+    assert.equal(cycle, unit.period * (type.rallyEffect ? 0.8 : 1), type.key)
+    assert.equal(beats(unit.motion, unit.phase, unit.cycle).hit, 1, type.key)
+    unit.period *= 0.8
+    step(game, cycle / 2)
+    assert.equal(unit.cycle, cycle, type.key)
+    step(game, cycle / 2)
+    const expected = (unit.period * (type.rallyEffect ? 0.8 : 1)) / (type.caffeine ? 1.08 : 1)
+    assert.equal(unit.cycle, expected, type.key)
+    assert.equal(beats(unit.motion, unit.phase, unit.cycle).hit, 1, type.key)
+  }
+})
 
 test('contact is held on the simulation hit; wind-up comes before it and recovery after', () => {
   for (const t of TYPES) {

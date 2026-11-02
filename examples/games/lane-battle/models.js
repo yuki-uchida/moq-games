@@ -1839,7 +1839,7 @@ export class LaneModels {
     actor.animate({
       motion: u.motion,
       phase: u.phase,
-      period: u.period,
+      period: u.cycle ?? u.period,
       walked: u.walkDistance,
       lead,
       hurtAge: u.hurt ? time - u.hurt.at : -1,

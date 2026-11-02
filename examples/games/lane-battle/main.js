@@ -638,7 +638,7 @@ function draw() {
     } else if (e.ranged) {
       const source = e.source
       // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
-      const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.period) : [0, 0]
+      const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
       const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
       const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
       const targetY = e.targetY ?? fromY

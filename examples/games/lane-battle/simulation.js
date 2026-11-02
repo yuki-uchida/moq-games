@@ -9,7 +9,7 @@ export const POOPS = [
     key: 'katachi',
     name: 'カチカチうんこ',
     cost: 35,
-    hp: 180,
+    hp: 150,
     atk: 22,
     range: 32,
     speed: 27,
@@ -24,7 +24,7 @@ export const POOPS = [
     name: 'コロコロうんこ',
     cost: 65,
     hp: 85,
-    atk: 29,
+    atk: 26,
     range: 160,
     speed: 24,
     period: 1.45,
@@ -38,7 +38,7 @@ export const POOPS = [
     name: 'ゲリラうんこ',
     cost: 95,
     hp: 240,
-    atk: 35,
+    atk: 32,
     range: 38,
     speed: 46,
     period: 0.85,
@@ -57,7 +57,6 @@ export const POOPS = [
     speed: 26,
     period: 1.6,
     cooldown: 7,
-    splash: 60,
     price: 400,
     unlock: 5,
     line: '飛び散るしぶきで群れを巻き込む'
@@ -72,7 +71,6 @@ export const POOPS = [
     speed: 18,
     period: 1.4,
     cooldown: 12,
-    knock: 18,
     price: 700,
     unlock: 10,
     line: '腹巻きの巨体で押し返す壁'
@@ -82,12 +80,11 @@ export const POOPS = [
     name: '宿便大王',
     cost: 240,
     hp: 560,
-    atk: 88,
+    atk: 80,
     range: 45,
     speed: 22,
     period: 1.5,
     cooldown: 16,
-    splash: 45,
     price: 1100,
     unlock: 16,
     line: '溜めこんだ王の一撃'
@@ -101,12 +98,11 @@ export const SPECIALS = [
     name: '冷房',
     cost: 120,
     hp: 260,
-    atk: 34,
+    atk: 30,
     range: 170,
     speed: 22,
     period: 1.5,
     cooldown: 10,
-    slow: 2.5,
     line: 'お腹を冷やす冷風で敵の足を鈍らせる'
   },
   {
@@ -114,7 +110,7 @@ export const SPECIALS = [
     name: 'ラーメン',
     cost: 120,
     hp: 520,
-    atk: 48,
+    atk: 44,
     range: 36,
     speed: 30,
     period: 1,
@@ -126,7 +122,7 @@ export const SPECIALS = [
     name: '夜ふかし',
     cost: 120,
     hp: 200,
-    atk: 40,
+    atk: 44,
     range: 34,
     speed: 58,
     period: 0.7,
@@ -144,7 +140,7 @@ export const SPECIALS = [
     speed: 24,
     period: 1.4,
     cooldown: 10,
-    crit: 0.35,
+    crit: 0.3,
     line: '酔いが回ると会心の大ダメージ'
   },
   {
@@ -152,12 +148,11 @@ export const SPECIALS = [
     name: '二郎系ラーメン',
     cost: 300,
     hp: 1500,
-    atk: 90,
+    atk: 80,
     range: 44,
     speed: 16,
     period: 1.6,
     cooldown: 20,
-    splash: 55,
     line: 'ヤサイマシマシ。超重量級'
   },
   {
@@ -165,12 +160,11 @@ export const SPECIALS = [
     name: '焼肉',
     cost: 180,
     hp: 560,
-    atk: 60,
+    atk: 52,
     range: 40,
     speed: 26,
     period: 1.2,
     cooldown: 12,
-    splash: 45,
     line: '脂がはねて周りも巻き込む'
   },
   {
@@ -178,12 +172,11 @@ export const SPECIALS = [
     name: 'ニンニク',
     cost: 160,
     hp: 240,
-    atk: 46,
+    atk: 40,
     range: 150,
     speed: 24,
     period: 1.6,
     cooldown: 11,
-    splash: 70,
     line: '強烈なにおいで群れごと攻撃'
   },
   {
@@ -191,7 +184,7 @@ export const SPECIALS = [
     name: '激辛カレー',
     cost: 190,
     hp: 380,
-    atk: 115,
+    atk: 95,
     range: 38,
     speed: 30,
     period: 1.5,
@@ -208,7 +201,6 @@ export const SPECIALS = [
     speed: 28,
     period: 1.1,
     cooldown: 9,
-    knock: 30,
     line: 'ゴロゴロ押し返す'
   },
   {
@@ -216,7 +208,7 @@ export const SPECIALS = [
     name: '生ガキ',
     cost: 220,
     hp: 300,
-    atk: 150,
+    atk: 120,
     range: 40,
     speed: 34,
     period: 1.8,
@@ -234,7 +226,6 @@ export const SPECIALS = [
     speed: 32,
     period: 1,
     cooldown: 8,
-    slow: 2,
     line: 'キーンと冷やして足止め'
   },
   {
@@ -242,7 +233,7 @@ export const SPECIALS = [
     name: 'エナジードリンク',
     cost: 150,
     hp: 240,
-    atk: 28,
+    atk: 24,
     range: 150,
     speed: 30,
     period: 0.55,
@@ -257,11 +248,112 @@ export const ENEMIES = [
   { key: 'yogurt', name: 'ヨーグルト', hp: 90, atk: 14, range: 30, speed: 50, period: 0.8, exp: 8 },
   { key: 'sayu', name: '白湯', hp: 80, atk: 26, range: 150, speed: 24, period: 1.4, exp: 10 },
   { key: 'washiki', name: '和式便器', hp: 480, atk: 22, range: 34, speed: 17, period: 1.3, exp: 18 },
-  { key: 'mop', name: 'モップのおばちゃん', hp: 280, atk: 26, range: 38, speed: 26, period: 1.2, splash: 40, exp: 16 },
-  { key: 'yoshiki', name: '洋式便器', hp: 300, atk: 30, range: 170, speed: 18, period: 1.7, knock: 15, exp: 20 },
-  { key: 'seichou', name: '整腸剤', hp: 130, atk: 28, range: 150, speed: 26, period: 1.5, splash: 45, exp: 14 },
-  { key: 'geridome', name: '下痢止め', hp: 900, atk: 48, range: 42, speed: 15, period: 1.6, splash: 40, exp: 50 }
+  { key: 'mop', name: 'モップのおばちゃん', hp: 280, atk: 26, range: 38, speed: 26, period: 1.2, exp: 16 },
+  { key: 'yoshiki', name: '洋式便器', hp: 300, atk: 30, range: 170, speed: 18, period: 1.7, exp: 20 },
+  { key: 'seichou', name: '整腸剤', hp: 130, atk: 28, range: 150, speed: 26, period: 1.5, exp: 14 },
+  { key: 'geridome', name: '下痢止め', hp: 760, atk: 48, range: 42, speed: 15, period: 1.6, exp: 50 }
 ]
+// Attack geometry and mechanics are shared by cards and summoned units.
+const MECHANICS = {
+  katachi: ['single', 'カチカチ装甲', '盾で受けて、受けるダメージを減らす。', { armor: true }],
+  korokoro: ['bounce', '跳弾', '当たったつぶてが奥の敵へ転がって二撃目。'],
+  geri: [
+    'band',
+    'ゲリラ奇襲',
+    '歩いて来た最初の一撃が2倍になり、敵を押し返す。',
+    { extra: 25, multipliers: [1, 0.6], ambush: true, ambushMultiplier: 2, ambushKnockback: 24 }
+  ],
+  bichi: [
+    'circle',
+    'ぬかるみ',
+    '着弾点にぬかるみを作り、敵の足を遅くする。',
+    { radius: 60, zone: 'mud', zoneDuration: 3, zoneInterval: 0.5 }
+  ],
+  dodeka: [
+    'band',
+    '押し返し',
+    '前方の3体をまとめて押し返す。押されず、浮かない。',
+    { extra: 30, multipliers: [1, 1, 1], knockback: 18, heavy: true, immovable: true }
+  ],
+  daiou: [
+    'shockwave',
+    '大王の号令',
+    '叩きつけるたび、周りの味方の攻撃を速める。',
+    { multipliers: [1, 0.8, 0.8, 0.8], rallyEffect: true, heavy: true }
+  ],
+  aircon: [
+    'cone',
+    '鈍足',
+    '冷風で前方3体の足を鈍らせる。',
+    { multipliers: [1, 0.8, 0.6], slowEffect: 2.5, slowFactor: 0.5 }
+  ],
+  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.3 }],
+  yofukashi: ['single', '眠気', '当てた敵を眠くして攻撃を遅らせる。会心あり。', { drowsyEffect: 2.5 }],
+  sake: ['single', '千鳥足', '会心で敵を千鳥足にして後退させる。', { confuse: 1.2 }],
+  jiro: ['ring', '打ち上げ', '地響きで周りの敵を打ち上げる。', { launch: 0.6, heavy: true }],
+  yakiniku: [
+    'circle',
+    'やけど',
+    '当たった敵全員をやけどさせる。',
+    { radius: 45, burnEffect: 2, burnInterval: 0.5, burnDamage: 0.1 }
+  ],
+  garlic: [
+    'circle',
+    '悪臭',
+    '着弾点に悪臭を残し、中の敵を削り続ける。',
+    { radius: 70, zone: 'stench', zoneDuration: 3, zoneRadius: 60, zoneInterval: 0.5, zoneDamage: 0.12 }
+  ],
+  curry: [
+    'single',
+    '激辛マーク',
+    '少し後に爆発する激辛マークを付ける。',
+    { mark: 1.5, markRadius: 40, markDamage: 0.5 }
+  ],
+  milk: [
+    'single',
+    '玉突き',
+    '押し飛ばした敵を後ろの敵にぶつける。',
+    { knockback: 30, collision: 30, collisionDamage: 0.5, collisionPush: 12 }
+  ],
+  oyster: [
+    'single',
+    '食あたり',
+    '重なる毒を与える。会心あり。',
+    { poisonEffect: 4, poisonInterval: 1, poisonDamage: 0.1, poisonStacks: 3 }
+  ],
+  ice: ['single', '凍結', 'ときどき敵を凍らせて止める。', { freeze: 0.8, freezeChance: 0.3 }],
+  energy: ['single', 'カフェイン加速', '同じ敵へ撃ち続けるほど連射が速くなる。', { caffeine: true }],
+  cleaner: ['single', '掃き寄せ', 'うんこを手前へ引き寄せる。', { pull: 14 }],
+  yogurt: ['single', '防御ダウン', '酸っぱさでうんこの防御を下げる。', { vulnerable: 3 }],
+  sayu: ['single', '攻撃ダウン', 'ぽかぽかでうんこの攻撃力を下げる。', { weaken: 3 }],
+  washiki: ['single', '流す', '弱ったうんこを流して倒す。', { execute: 0.2, executeHeavy: 0.1, heavy: true }],
+  mop: [
+    'band',
+    '濡れ床',
+    '前方3体をなぎ払い、濡れ床で滑らせる。',
+    { extra: 30, multipliers: [1, 1, 1], zone: 'wet', zoneDuration: 3, zoneRadius: 45, zoneInterval: 0.5, zonePush: 6 }
+  ],
+  yoshiki: ['pierce', '水圧', '水流で3体を貫き、押し戻す。', { multipliers: [1, 0.75, 0.5], knockback: 15 }],
+  seichou: ['circle', '整腸ヒール', '着弾点の仲間を回復する。', { radius: 45, heal: 0.0625 }],
+  geridome: ['circle', 'スタン', '周りのうんこを少しの間止める。', { radius: 40, stun: 0.7, heavy: true }]
+}
+/** Short area label for menus, e.g. 「近接・前方3体」 or 「遠距離160・跳弾2体」. */
+const AREA_LABELS = {
+  single: () => '単体',
+  bounce: () => '跳弾2体',
+  band: (m) => `前方${m.multipliers.length}体`,
+  circle: () => '着弾範囲',
+  cone: () => '冷風3体',
+  pierce: () => '貫通3体',
+  shockwave: () => '衝撃波4体',
+  ring: () => '周囲5体'
+}
+for (const unit of [...POOPS, ...SPECIALS, ...ENEMIES]) {
+  const [areaKind, effect, effectLine, mechanics = {}] = MECHANICS[unit.key]
+  const reach = unit.range > 80 ? `遠距離${unit.range}` : '近接'
+  const area = `${reach}・${AREA_LABELS[areaKind](mechanics)}`
+  Object.assign(unit, mechanics, { areaKind, area, effect, effectLine })
+}
 const TYPES = new Map([...POOPS, ...SPECIALS, ...ENEMIES].map((t) => [t.key, t]))
 export const typeOf = (key) => TYPES.get(key)
 
@@ -357,6 +449,7 @@ export const COOLDOWN_SCALE = 1.8
 export function card(entry) {
   const t = typeOf(entry.key)
   return {
+    ...t,
     uid: entry.uid,
     key: t.key,
     name: t.name,
@@ -369,9 +462,6 @@ export function card(entry) {
     range: t.range,
     speed: t.speed,
     period: t.period / (1 + (entry.spd ?? 0) * 0.03),
-    splash: t.splash || 0,
-    slow: t.slow || 0,
-    knock: t.knock || 0,
     crit: t.crit || 0
   }
 }
@@ -392,6 +482,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     units: [],
     effects: [],
     projectiles: [],
+    zones: [],
     cooldowns: deck.map(() => 0),
     burst: 0,
     spawn: 3,
@@ -435,9 +526,11 @@ export function summon(s, index, side = 1) {
     atk: t.atk * power,
     exp: side === 1 ? 0 : Math.round(t.exp * (1 + 0.05 * s.stage)),
     attack: 0,
+    cycle: t.period,
     phase: 0,
     walkDistance: 0,
     slowUntil: 0,
+    weak: { end: 0 },
     motion: 'walk'
   })
   return true
@@ -457,8 +550,8 @@ export function burst(s) {
   s.burst = BURST_COOLDOWN
   for (const u of s.units)
     if (u.side === -1 && u.x > 510) {
-      u.hp -= burstDamage(s)
-      u.x -= 85
+      damageUnit(s, { side: 1 }, u, burstDamage(s))
+      move(u, -85)
       u.hurt = { at: s.time, power: 1.5 }
     }
   s.effects.push({ x: 760, life: 0.6, blast: true })
@@ -468,32 +561,259 @@ const dirOf = (u) => -u.side
 /** The foe `u` engages (the nearest live foe not behind it, else the fort) and the distance still to walk before it is in range. */
 export function reach(s, u) {
   const dir = dirOf(u)
-  const target = s.units
-    .filter((v) => v.side !== u.side && v.hp > 0 && (v.x - u.x) * dir >= -12)
-    .sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0]
+  let target
+  let nearest = Infinity
+  for (const candidate of s.units) {
+    const distance = Math.abs(candidate.x - u.x)
+    if (candidate.side !== u.side && candidate.hp > 0 && (candidate.x - u.x) * dir >= -12 && distance < nearest) {
+      target = candidate
+      nearest = distance
+    }
+  }
   const baseX = u.side === 1 ? ENEMY_X + 7 : HOME_X - 7
   const distance = target ? Math.abs(target.x - u.x) : Math.abs(baseX - u.x)
   return { target, baseX, gap: distance - (u.range + (target ? 0 : 25)) }
 }
-/** Applies one released attack: splash, slow and knockback hit every foe near the recipient. */
-function land(s, src, target, damage) {
+// Renderer contract: control {kind,start,end}, slow/drowsy/rally/vuln/weak {end},
+// burn, poison[], curry, charged, ramp, flushed and tick describe unit effects.
+// zones hold {sourceId,side,kind,x,end,next,atk}; attack effects record areaKind,
+// attackerKey, victims [{id,at}], crit and primaryX alongside existing visual fields.
+function control(s, target, kind, duration) {
+  if ((target.control?.end ?? 0) > s.time || (target.controlImmuneUntil ?? 0) > s.time) return
+  if (kind === 'launch' && target.immovable) return
+  const end = s.time + duration * (target.heavy ? 0.5 : 1)
+  target.control = { kind, start: s.time, end }
+  target.controlImmuneUntil = end + 1.2
+}
+function move(target, amount) {
+  if (target.immovable) return
+  target.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, target.x + amount * (target.heavy ? 0.5 : 1)))
+}
+function damageUnit(s, src, target, damage, kind = null, indirect = false) {
+  if ((kind || indirect) && src.weak?.end > s.time) damage *= 0.7
+  damage *= (target.vuln?.end > s.time ? 1.2 : 1) * (target.armor ? 0.7 : 1)
+  const dealt = Math.min(target.hp, damage)
+  target.hp -= damage
+  if (kind) target.tick = { at: s.time, kind }
+  else target.hurt = { at: s.time, power: Math.min(1.6, 0.7 + (damage / target.maxHp) * 3) }
+  if (src.uid) (target.hitters ||= new Set()).add(src.uid)
+  return dealt
+}
+function applyHit(s, src, target, damage, crit, primary = false, charged = false) {
+  if (target.hp <= 0) return
+  if (primary && charged) damage *= src.ambushMultiplier
+  const dealt = damageUnit(s, src, target, damage)
+  if (src.drain && src.hp > 0) src.hp = Math.min(src.maxHp, src.hp + dealt * src.drain)
+  if (src.slowEffect) target.slow = { end: s.time + src.slowEffect, factor: src.slowFactor }
+  if (src.drowsyEffect) target.drowsy = { end: s.time + src.drowsyEffect }
+  if (src.vulnerable) target.vuln = { end: s.time + src.vulnerable }
+  if (src.weaken) target.weak.end = s.time + src.weaken
+  if (src.freeze && s.rng() < src.freezeChance) control(s, target, 'freeze', src.freeze)
+  if (src.stun) control(s, target, 'stun', src.stun)
+  if (src.launch) control(s, target, 'launch', src.launch)
+  if (src.confuse && crit) control(s, target, 'confuse', src.confuse)
+  const attribution = { side: src.side, id: src.id, uid: src.uid, weak: src.weak }
+  if (src.burnEffect)
+    target.burn = {
+      end: s.time + src.burnEffect,
+      next: s.time + src.burnInterval,
+      interval: src.burnInterval,
+      damage: src.burnDamage,
+      atk: src.atk,
+      src: attribution
+    }
+  if (src.poisonEffect) {
+    target.poison = (target.poison || []).filter((p) => p.end > s.time)
+    if (target.poison.length < src.poisonStacks)
+      target.poison.push({
+        end: s.time + src.poisonEffect,
+        next: s.time + src.poisonInterval,
+        interval: src.poisonInterval,
+        damage: src.poisonDamage,
+        atk: src.atk,
+        src: attribution
+      })
+  }
+  if (src.mark) {
+    const mark = { end: s.time + src.mark, atk: src.atk, src: attribution }
+    target.curry = mark
+    s.projectiles.push({ targetId: target.id, src, at: mark.end, curry: mark, effect: { x: target.x } })
+  }
+  if (src.execute && target.hp > 0 && target.hp <= target.maxHp * (target.heavy ? src.executeHeavy : src.execute)) {
+    target.hp = 0
+    target.flushed = true
+  }
+  const knock = src.knockback || (primary && charged ? src.ambushKnockback : 0)
+  if (knock) move(target, knock * dirOf(src))
+  if (src.pull) {
+    const distance = Math.max(0, Math.abs(target.x - src.x) - 8)
+    move(target, -dirOf(src) * Math.min(src.pull, distance))
+  }
+  if (src.collision && knock) {
+    for (const other of s.units) {
+      if (
+        other !== target &&
+        other.side === target.side &&
+        other.hp > 0 &&
+        (other.x - target.x) * dirOf(src) > 0 &&
+        Math.abs(other.x - target.x) <= src.collision
+      ) {
+        damageUnit(s, src, other, damage * src.collisionDamage)
+        move(other, src.collisionPush * dirOf(src))
+      }
+    }
+  }
+}
+function land(s, src, target, damage, crit = false, primary = true, charged = false) {
   if (!target) {
+    if (primary && charged) damage *= src.ambushMultiplier
     if (src.side === 1) s.enemy = Math.max(0, s.enemy - damage)
     else s.home = Math.max(0, s.home - damage)
     return
   }
-  const victims = src.splash
-    ? s.units.filter((v) => v.side === target.side && v.hp > 0 && Math.abs(v.x - target.x) <= src.splash)
-    : [target]
-  if (!victims.includes(target)) victims.push(target)
-  for (const v of victims) {
-    v.hp -= damage
-    // Visual only: the renderer plays a hit reaction scaled by how hard this hit was.
-    v.hurt = { at: s.time, power: Math.min(1.6, 0.7 + (damage / v.maxHp) * 3 + (src.knock ? 0.3 : 0)) }
-    if (src.uid) (v.hitters ||= new Set()).add(src.uid)
-    if (src.slow) v.slowUntil = s.time + src.slow
-    if (src.knock) v.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, v.x + src.knock * dirOf(src)))
+  applyHit(s, src, target, damage, crit, primary, charged)
+}
+function placeZone(s, src, x) {
+  if (!src.zone) return
+  s.zones = s.zones.filter((zone) => zone.sourceId !== src.id)
+  s.zones.push({
+    sourceId: src.id,
+    side: src.side,
+    kind: src.zone,
+    x,
+    end: s.time + src.zoneDuration,
+    next: s.time + src.zoneInterval,
+    radius: src.zoneRadius,
+    interval: src.zoneInterval,
+    damage: src.zoneDamage,
+    push: src.zonePush,
+    atk: src.atk,
+    src: { side: src.side, uid: src.uid, weak: src.weak }
+  })
+}
+function impact(s, shot, target) {
+  const { src, damage, crit, effect } = shot
+  const x = target?.x ?? effect.primaryX
+  if (shot.primary) {
+    placeZone(s, src, x)
+    if (target && src.heal)
+      for (const ally of s.units) {
+        if (ally.side === src.side && ally.hp > 0 && Math.abs(ally.x - x) <= src.radius)
+          ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * src.heal)
+      }
   }
+  if (!target) return land(s, src, null, damage, crit, shot.primary, shot.charged)
+  if (shot.primary && src.areaKind === 'circle') {
+    for (const victim of s.units.filter(
+      (unit) => unit.side === target.side && unit.hp > 0 && Math.abs(unit.x - x) <= src.radius
+    )) {
+      effect.victims.push({ id: victim.id, at: s.time })
+      land(s, src, victim, damage, crit, victim === target)
+    }
+  } else {
+    land(s, src, target, damage, crit, shot.primary, shot.charged)
+  }
+  if (shot.primary && src.areaKind === 'bounce') {
+    const next = s.units
+      .filter(
+        (unit) =>
+          unit.side === target.side && unit.hp > 0 && (unit.x - x) * dirOf(src) > 0 && Math.abs(unit.x - x) <= 70
+      )
+      .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0]
+    if (next) {
+      const at = s.time + 0.15
+      effect.victims.push({ id: next.id, at })
+      s.projectiles.push({ targetId: next.id, src, damage: damage * 0.6, crit, at, effect, primary: false })
+    }
+  }
+}
+function attack(s, src, target, baseX, crit, damage) {
+  const effect = {
+    x: target?.x ?? baseX,
+    primaryX: target?.x ?? baseX,
+    life: 0.22,
+    side: src.side,
+    ranged: src.range > 80,
+    crit,
+    from: src.x,
+    sourceId: src.id,
+    targetId: target?.id ?? null,
+    releasedAt: s.time,
+    attackerKey: src.key,
+    areaKind: src.areaKind,
+    victims: []
+  }
+  s.effects.push(effect)
+  const enqueue = (victim, multiplier, delay, primary) => {
+    const at = s.time + delay
+    if (victim && src.areaKind !== 'circle') effect.victims.push({ id: victim.id, at })
+    const shot = {
+      targetId: victim?.id ?? null,
+      src,
+      damage: damage * multiplier,
+      crit,
+      at,
+      effect,
+      primary,
+      charged: src.charged
+    }
+    if (delay > 0) s.projectiles.push(shot)
+    else impact(s, shot, victim)
+  }
+  if (!target) return enqueue(null, 1, effect.ranged ? 0.12 : 0, true)
+  if (['band', 'cone', 'pierce', 'shockwave', 'ring'].includes(src.areaKind)) {
+    // The engaged foe is always the first victim (even when it has closed in); the area adds the rest,
+    // nearest first. The shockwave starts under the engaged foe and runs 80 further.
+    const dir = dirOf(src)
+    const start = Math.abs(target.x - src.x)
+    const others = s.units
+      .filter((unit) => {
+        if (unit === target || unit.side === src.side || unit.hp <= 0) return false
+        const distance = (unit.x - src.x) * dir
+        if (src.areaKind === 'ring') return Math.abs(distance) <= src.range + 40
+        if (src.areaKind === 'shockwave') return distance >= start && distance <= start + 80
+        return distance >= 0 && distance <= src.range + (src.extra || 0)
+      })
+      .sort((a, b) => Math.abs(a.x - src.x) - Math.abs(b.x - src.x))
+    const multipliers = src.multipliers || [1, 1, 1, 1, 1]
+    ;[target, ...others].slice(0, multipliers.length).forEach((victim, index) => {
+      const distance = Math.abs(victim.x - src.x)
+      const delay =
+        src.areaKind === 'shockwave'
+          ? (distance - start) / 600
+          : ['cone', 'pierce'].includes(src.areaKind)
+            ? (0.12 * distance) / src.range
+            : 0
+      enqueue(victim, multipliers[index], delay, index === 0)
+    })
+  } else enqueue(target, 1, effect.ranged ? 0.12 : 0, true)
+}
+function ongoing(s) {
+  for (const unit of s.units) {
+    if (unit.hp <= 0) continue
+    if (unit.burn || unit.poison?.length) {
+      for (const dot of [unit.burn, ...(unit.poison || [])]) {
+        if (!dot) continue
+        const interval = dot.interval
+        while (dot.next <= s.time && dot.next <= dot.end && unit.hp > 0) {
+          damageUnit(s, dot.src, unit, dot.atk * dot.damage, dot === unit.burn ? 'burn' : 'poison')
+          dot.next += interval
+        }
+      }
+      if (unit.poison?.length) unit.poison = unit.poison.filter((dot) => dot.end > s.time)
+    }
+  }
+  for (const zone of s.zones) {
+    while (zone.kind !== 'mud' && zone.next <= s.time && zone.next <= zone.end) {
+      for (const unit of s.units) {
+        if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
+        if (zone.kind === 'stench') damageUnit(s, zone.src, unit, zone.atk * zone.damage, 'stench')
+        else move(unit, zone.push * unit.side)
+      }
+      zone.next += zone.interval
+    }
+  }
+  s.zones = s.zones.filter((zone) => zone.end > s.time)
 }
 /** Global marching pace: lane battles are meant to last two to three minutes. */
 export const WALK_PACE = 1.25
@@ -551,16 +871,58 @@ export function step(s, dt) {
   s.gold = Math.min(999, s.gold + income(s) * dt)
   s.cooldowns = s.cooldowns.map((c) => Math.max(0, c - dt))
   s.burst = Math.max(0, s.burst - dt)
+  ongoing(s)
   // Released shots keep their original recipient even if the shooter dies.
-  s.projectiles = s.projectiles.filter((p) => {
+  const pending = s.projectiles
+  s.projectiles = []
+  for (const p of pending) {
     const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
     if (target) p.effect.x = target.x
-    if (s.time < p.at) return true
+    if (s.time < p.at) {
+      s.projectiles.push(p)
+      continue
+    }
+    if (p.curry) {
+      if (target && target.curry === p.curry) {
+        target.curry = null
+        const effect = {
+          x: target.x,
+          primaryX: target.x,
+          life: 0.22,
+          side: p.src.side,
+          ranged: false,
+          crit: false,
+          releasedAt: s.time,
+          sourceId: p.src.id,
+          targetId: target.id,
+          attackerKey: p.src.key,
+          areaKind: 'circle',
+          victims: []
+        }
+        s.effects.push(effect)
+        for (const victim of s.units)
+          if (victim.side === target.side && victim.hp > 0 && Math.abs(victim.x - target.x) <= p.src.markRadius) {
+            effect.victims.push({ id: victim.id, at: p.at })
+            pending.push({
+              targetId: victim.id,
+              src: p.src,
+              damage: p.curry.atk * p.src.markDamage,
+              at: p.at,
+              effect,
+              explosion: true
+            })
+          }
+      }
+      continue
+    }
+    if (p.explosion) {
+      if (target) damageUnit(s, p.src, target, p.damage, null, true)
+      continue
+    }
     p.effect.arrived = true
     p.effect.missed = p.targetId !== null && !target
-    if (target || p.targetId === null) land(s, p.src, target, p.damage)
-    return false
-  })
+    if (target || p.targetId === null) impact(s, p, target)
+  }
   fortDefense(s, dt)
   s.spawn -= dt
   if (s.spawn <= 0) {
@@ -571,35 +933,48 @@ export function step(s, dt) {
   for (const u of s.units) {
     if (u.hp <= 0) continue
     const dir = dirOf(u)
-    u.attack = Math.max(0, u.attack - dt)
-    u.phase += dt
+    const controlTime = u.control
+      ? Math.max(0, Math.min(s.time, u.control.end) - Math.max(s.time - dt, u.control.start))
+      : 0
+    // Confused units stagger home at their own pace; heavy units only shorten the duration, not the walk.
+    if (u.control?.kind === 'confuse' && controlTime > 0)
+      u.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, u.x + u.side * u.speed * WALK_PACE * 0.4 * controlTime))
+    if (u.control?.end > s.time) {
+      u.motion = 'idle'
+      continue
+    }
+    const activeTime = dt - controlTime
+    u.attack = Math.max(0, u.attack - activeTime)
+    u.phase += activeTime
     const { target, baseX, gap } = reach(s, u)
     if (gap <= 0) {
       u.motion = 'attack'
       if (u.attack <= 0) {
-        u.attack = u.period
+        const targetId = target?.id ?? null
+        if (u.caffeine) u.ramp = u.rampTarget === targetId ? Math.min(5, (u.ramp || 0) + 1) : 0
+        u.rampTarget = targetId
+        u.charged = !!u.ambush && (u.lastStrikeDistance === undefined || u.walkDistance - u.lastStrikeDistance >= 40)
+        u.lastStrikeDistance = u.walkDistance
+        if (u.rallyEffect)
+          for (const ally of s.units) {
+            if (ally.side === u.side && ally.hp > 0 && Math.abs(ally.x - u.x) <= 140) ally.rally = { end: s.time + 4 }
+          }
+        u.cycle =
+          (u.period * (u.drowsy?.end > s.time ? 1.35 : 1) * (u.rally?.end > s.time ? 0.8 : 1)) /
+          (1 + (u.ramp || 0) * 0.08)
+        u.attack = u.cycle
         u.phase = 0
         const crit = u.crit > 0 && s.rng() < u.crit
-        const damage = u.atk * (crit ? 2.5 : 1)
-        const effect = {
-          x: target?.x ?? baseX,
-          life: 0.22,
-          side: u.side,
-          ranged: u.range > 80,
-          crit,
-          splash: u.splash,
-          from: u.x,
-          sourceId: u.id,
-          targetId: target?.id ?? null,
-          releasedAt: s.time
-        }
-        s.effects.push(effect)
-        if (effect.ranged) s.projectiles.push({ targetId: effect.targetId, src: u, damage, at: s.time + 0.12, effect })
-        else land(s, u, target, damage)
+        const damage = u.atk * (crit ? 2.5 : 1) * (u.weak?.end > s.time ? 0.7 : 1)
+        attack(s, u, target, baseX, crit, damage)
       }
     } else {
       u.motion = 'walk'
-      const distanceWalked = u.speed * WALK_PACE * (s.time < u.slowUntil ? 0.5 : 1) * dt
+      u.ramp = 0
+      u.rampTarget = undefined
+      const muddy = s.zones.some((zone) => zone.kind === 'mud' && zone.side !== u.side && Math.abs(u.x - zone.x) <= 50)
+      const slow = Math.min(u.slow?.end > s.time ? u.slow.factor : 1, muddy ? 0.55 : 1)
+      const distanceWalked = u.speed * WALK_PACE * slow * activeTime
       u.x += distanceWalked * dir
       u.walkDistance += distanceWalked
     }
