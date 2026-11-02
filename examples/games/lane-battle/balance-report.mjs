@@ -1,4 +1,5 @@
 import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
+import { specialScale } from './campaign.js'
 
 function measure(type, side) {
   const deck = side === 1 ? [card({ uid: 1, key: type.key })] : [card({ uid: 1, key: 'katachi' })]
@@ -39,6 +40,60 @@ for (const [side, types] of [
     const result = measure(type, side)
     console.log(`${type.name}\t${side === 1 ? '味方' : '敵'}\t${result.damage}\t${result.perCost}\t${result.survival}`)
   }
+}
+
+const scenarios = {
+  heavy: ['geridome', 'washiki'],
+  swarm: ['cleaner', 'cleaner', 'yogurt', 'yogurt', 'cleaner', 'yogurt'],
+  ranged: ['sayu', 'seichou', 'yoshiki']
+}
+
+function measureNiche(type, foes) {
+  const scale = type.special ? specialScale(15) : 1
+  const deck = [
+    card({ uid: 1, key: type.key, hp: Math.round(type.hp * scale), atk: Math.round(type.atk * scale) }),
+    card({ uid: 2, key: 'katachi' }),
+    card({ uid: 3, key: 'katachi' })
+  ]
+  const game = createGame(15, deck, 7)
+  Object.assign(game, { spawn: 1e9, opened: true, rushes: 99, turret: 1e9, gold: 1e9 })
+  for (let index = 0; index < deck.length; index++) summon(game, index)
+  ;[560, 540, 548].forEach((x, index) => {
+    game.units[index].x = x
+  })
+  foes.forEach((key, index) => {
+    summon(
+      game,
+      ENEMIES.findIndex((enemy) => enemy.key === key),
+      -1
+    )
+    game.units.at(-1).x = 420 - index * 14
+  })
+  const subject = game.units[0]
+  const enemies = game.units.filter((unit) => unit.side === -1)
+  const total = enemies.reduce((sum, unit) => sum + unit.maxHp, 0)
+  let survival = 0
+  while (
+    !game.result &&
+    game.time < 40 &&
+    enemies.some((unit) => unit.hp > 0) &&
+    game.units.some((unit) => unit.side === 1 && unit.hp > 0)
+  ) {
+    step(game, 0.05)
+    if (subject.hp > 0) survival = game.time
+  }
+  const cleared = (100 * (total - enemies.reduce((sum, unit) => sum + Math.max(0, unit.hp), 0))) / total
+  return `${cleared.toFixed(2)}% / ${((cleared * 100) / type.cost).toFixed(2)} / ${survival.toFixed(1)}s`
+}
+
+console.log('\nニッチ測定: 固定シード7、第16面倍率、特殊は第15面加入倍率2.2、うんこはLv1、カチカチ2体、最大40秒')
+console.log('unit\tcost\theavy (% / 100 cost / 生存秒)\tswarm (% / 100 cost / 生存秒)\tranged (% / 100 cost / 生存秒)')
+for (const type of [...POOPS, ...SPECIALS]) {
+  console.log(
+    `${type.name}\t${type.cost}\t${Object.values(scenarios)
+      .map((foes) => measureNiche(type, foes))
+      .join('\t')}`
+  )
 }
 
 function measureSquad(type, side) {
