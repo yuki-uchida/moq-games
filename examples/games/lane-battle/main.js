@@ -724,10 +724,14 @@ function frame(now) {
   tick(now)
   requestAnimationFrame(frame)
 }
-// Browsers may throttle or suspend this timer; the same clock reconciles on return.
-setInterval(() => {
-  if (document.hidden) tick(performance.now())
-}, 250)
+// rAF stops for hidden or occluded windows, so a 250ms heartbeat keeps the battle running. A worker's
+// timer escapes the main thread's background throttling; the shared clock reconciles whatever is still missed.
+try {
+  const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 250)']))
+  new Worker(url).onmessage = () => tick(performance.now())
+} catch {
+  setInterval(() => tick(performance.now()), 250)
+}
 buildTray()
 $('stage-name').textContent = `${selected + 1}. ${STAGES[selected].sub}`
 modal(

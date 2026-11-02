@@ -59,6 +59,17 @@ try {
   await real.waitForTimeout(100)
   assert.notEqual(await real.locator('#clock').textContent(), beforeFreeze)
   console.log('real CDP page freeze / resume reconciled elapsed time PASS')
+  // An occluded window stops animation frames while document.hidden stays false; the battle must keep running.
+  const occluded = await browser.newPage()
+  await occluded.goto(process.env.LANE_URL || 'http://127.0.0.1:5293/examples/games/lane-battle/')
+  await occluded.getByRole('button', { name: 'ステージ選択へ' }).click()
+  await occluded.getByRole('button', { name: 'ブリッと出撃' }).click()
+  await occluded.evaluate(() => (window.requestAnimationFrame = () => 0))
+  const time = () => occluded.evaluate(() => document.querySelector('#clock').textContent)
+  const stalled = await time()
+  await occluded.waitForTimeout(2500)
+  assert.notEqual(await time(), stalled, 'battle advances without animation frames')
+  console.log('visible page without animation frames keeps the battle running PASS')
 } finally {
   await browser.close()
 }
