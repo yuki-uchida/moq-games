@@ -40,6 +40,13 @@
   display: block;
   font-size: 0.75rem;
 }
+.title-content button[data-action='continue'] {
+  padding-block: 0.4rem;
+}
+.title-content button[data-action='continue'] small:last-child {
+  color: #fff2d4;
+  font-size: 0.85rem;
+}
 .title-content button:disabled,
 .shell-dialog button:disabled {
   opacity: 0.5;

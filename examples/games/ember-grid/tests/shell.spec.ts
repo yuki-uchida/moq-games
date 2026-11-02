@@ -234,6 +234,22 @@ for (const viewport of [
     expect(save.cleared).toContain(5)
     expect(save.completedAt).toBeTruthy()
     expect(save.suspend).toBeUndefined()
+    const raw = await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))
+    await page.locator('#next').click()
+    const confirmation = page.getByRole('dialog', { name: '⚠ 新しい遠征を始めますか？' })
+    await expect(confirmation.getByRole('button', { name: '✕ 戻る' })).toBeFocused()
+    await page.screenshot({ path: `test-results/ember-expedition-confirm-${viewport.width}.png` })
+    await confirmation.getByRole('button', { name: '✕ 戻る' }).click()
+    expect(await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))).toBe(raw)
+    await page.locator('#next').click()
+    await page.keyboard.press('Escape')
+    expect(await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))).toBe(raw)
+    await page.locator('#next').click()
+    await confirmation.getByRole('button', { name: '↻ 破棄して続ける' }).click()
+    await expect
+      .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ember-grid:save:v1')!).suspend?.stage))
+      .toBe(0)
+    await page.evaluate((value) => localStorage.setItem('ember-grid:save:v1', value!), raw)
     await page.reload()
     await expect(page.locator('.title-screen')).toContainText('遠征達成')
     await page.screenshot({ path: `test-results/ember-completed-title-${viewport.width}.png` })
@@ -242,6 +258,68 @@ for (const viewport of [
     await expect
       .poll(() => page.evaluate(() => sessionStorage.getItem('saw-credits')).catch(() => null), { timeout: 30000 })
       .toBe('yes')
+  })
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 }
+]) {
+  test(`title chapter replacement protects suspend ${viewport.width}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.addInitScript(() => localStorage.setItem('ember-grid:tutorial-complete:v1', '1'))
+    await page.goto('./?seed=7')
+    await page.getByRole('button', { name: '✦ はじめから' }).click()
+    await page.getByRole('button', { name: '⚔ クラシック' }).click()
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await page.evaluate(() => {
+      const key = 'ember-grid:save:v1'
+      const save = JSON.parse(localStorage.getItem(key)!)
+      save.furthest = 1
+      save.suspend.turn = 2
+      localStorage.setItem(key, JSON.stringify(save))
+    })
+    const raw = await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))
+    for (const [stage, name] of [
+      [0, '峡谷の燈'],
+      [1, '風抜けの水路']
+    ] as const) {
+      await page.reload()
+      const note = page.getByText('味方ターン開始時から再開', { exact: true })
+      await expect(note).toBeVisible()
+      await expect(note).toBeInViewport()
+      await page.screenshot({ path: `test-results/ember-resume-note-${viewport.width}.png` })
+      await page.getByRole('button', { name: '⚑ 章を選ぶ' }).click()
+      const chapter = page.getByRole('dialog', { name: '⚑ 章を選ぶ' }).getByRole('button', { name })
+      await chapter.click()
+      const confirm = page.getByRole('dialog', { name: '⚠ 戦闘の進行を破棄しますか？' })
+      await expect(confirm.getByRole('button', { name: '✕ 戻る' })).toBeFocused()
+      await page.screenshot({ path: `test-results/ember-chapter-confirm-${viewport.width}.png` })
+      await confirm.getByRole('button', { name: '✕ 戻る' }).click()
+      await expect(chapter).toBeFocused()
+      expect(await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))).toBe(raw)
+      await chapter.click()
+      await page.keyboard.press('Escape')
+      await expect(chapter).toBeFocused()
+      expect(await page.evaluate(() => localStorage.getItem('ember-grid:save:v1'))).toBe(raw)
+      await chapter.click()
+      await confirm.getByRole('button', { name: '↻ 破棄して続ける' }).click()
+      await expect
+        .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ember-grid:save:v1')!).suspend?.stage))
+        .toBe(stage)
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ember-grid:save:v1')!).suspend.turn)).toBe(1)
+      await page.evaluate((value) => localStorage.setItem('ember-grid:save:v1', value!), raw)
+    }
+    await page.evaluate(() => {
+      const key = 'ember-grid:save:v1'
+      const save = JSON.parse(localStorage.getItem(key)!)
+      save.suspend.turn = 1
+      localStorage.setItem(key, JSON.stringify(save))
+    })
+    await page.reload()
+    await page.getByRole('button', { name: '⚑ 章を選ぶ' }).click()
+    await page.getByRole('dialog', { name: '⚑ 章を選ぶ' }).getByRole('button', { name: '峡谷の燈' }).click()
+    await expect(page.locator('.title-screen')).toHaveCount(0)
   })
 }
 

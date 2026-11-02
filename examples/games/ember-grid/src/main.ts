@@ -1,3 +1,4 @@
+import { confirmReplacement } from './confirm'
 import {
   allyTurnOver,
   attack,
@@ -841,26 +842,7 @@ function hasProgress() {
 }
 function confirmDiscard(action: () => void) {
   if (!hasProgress()) return action()
-  const dialog = document.createElement('dialog')
-  dialog.className = 'shell-dialog'
-  dialog.setAttribute('aria-labelledby', 'discard-title')
-  dialog.innerHTML =
-    '<h2 id="discard-title">⚠ 戦闘の進行を破棄しますか？</h2><p>現在の戦闘と中断記録が失われます。</p><button type="button" data-cancel>✕ 戻る</button><button type="button" data-confirm>↻ 破棄して続ける</button>'
-  document.body.append(dialog)
-  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick = () => dialog.close()
-  dialog.querySelector<HTMLButtonElement>('[data-confirm]')!.onclick = () => {
-    dialog.close()
-    action()
-  }
-  dialog.onkeydown = (event) => {
-    if (event.key !== 'Tab') return
-    event.preventDefault()
-    const next = document.activeElement?.hasAttribute('data-cancel') ? '[data-confirm]' : '[data-cancel]'
-    dialog.querySelector<HTMLButtonElement>(next)!.focus()
-  }
-  dialog.onclose = () => dialog.remove()
-  dialog.showModal()
-  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.focus()
+  confirmReplacement('現在の戦闘と中断記録が失われます。', action)
 }
 document.querySelector('#restart')!.addEventListener('click', () =>
   confirmDiscard(() => {
@@ -961,8 +943,16 @@ document.querySelector('#cancel-mission')!.addEventListener('click', () => exped
 document.querySelector('#next')!.addEventListener('click', () => {
   // Victory saves the grown party for the next mission; finishing the expedition starts a fresh one.
   if (game.stage === missions.length - 1) {
-    save = freshSave(save.difficulty)
-    checkpoints = save.checkpoints
+    confirmReplacement(
+      '達成した遠征の記録、解放した章とチェックポイントが新しい遠征に置き換わります。',
+      () => {
+        save = freshSave(save.difficulty)
+        checkpoints = save.checkpoints
+        startMission(0)
+      },
+      '⚠ 新しい遠征を始めますか？'
+    )
+    return
   }
   startMission((game.stage + 1) % missions.length)
 })
