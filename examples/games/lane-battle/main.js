@@ -1,4 +1,4 @@
-import { LaneModels, modelSize } from './models.js'
+import { LaneModels, modelSize, KO_SECONDS } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
 import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
@@ -16,6 +16,8 @@ import {
   upgradeCost,
   burst,
   step,
+  reach,
+  WALK_PACE,
   BURST_COOLDOWN
 } from './simulation.js'
 import { SLOTS, MAX_LEVEL, expToNext, load, save, erase, deckOf, toggle, buy, settle } from './campaign.js'
@@ -465,6 +467,13 @@ function drawToiletCastle(x) {
   ctx.fill()
 }
 const laneY = (u) => 361 + (u.id % 3) * 8
+/** Seconds until a walking unit reaches its foe, so the renderer can wind up its first strike in stride. */
+function lead(u) {
+  if (u.motion !== 'walk') return Infinity
+  const { target, gap } = reach(state, u)
+  const closing = (u.speed + (target?.motion === 'walk' ? target.speed : 0)) * WALK_PACE
+  return Math.max(0, gap) / closing
+}
 function draw() {
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
@@ -473,7 +482,10 @@ function draw() {
     canvas.height = Math.round(rect.height * dpr)
   }
   ctx.setTransform(canvas.width / 1000, 0, 0, canvas.height / 450, 0, 0)
-  // A tiled restroom: wall, floor and a toilet-paper road unrolled between the two forts.
+  // A tiled restroom: wall, floor and a toilet-paper road unrolled between the two forts. An opaque base
+  // first, so anti-aliased seams at fractional pixels never blend in the previous frame.
+  ctx.fillStyle = '#b9ac96'
+  ctx.fillRect(0, 0, 1000, 450)
   ctx.fillStyle = STAGES[state.stage].color
   ctx.fillRect(0, 0, 1000, 320)
   ctx.strokeStyle = '#ffffff66'
@@ -543,11 +555,8 @@ function draw() {
   }
   const scale = rect.width < 500 ? 155 : 120
   const aspect = rect.width / 1000 / (rect.height / 450)
-  models.setPresentation(scale, aspect)
-  for (const ghost of fallen) {
-    const age = state.time - ghost.at
-    models.fallen(ghost, ghost.x + ghost.side * age * 20, laneY(ghost), age, 1 - age / 0.42)
-  }
+  models.setPresentation(scale, aspect, rect.width / 1000)
+  for (const ghost of fallen) models.fallen(ghost, ghost.x, laneY(ghost), state.time - ghost.at)
   const units = [...state.units].sort((a, b) => a.id - b.id)
   for (const u of units) {
     const y = laneY(u)
@@ -555,7 +564,7 @@ function draw() {
     ctx.beginPath()
     ctx.ellipse(u.x, y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
     ctx.fill()
-    models.unit(u, u.x, y, state.time)
+    models.unit(u, u.x, y, state.time, lead(u))
   }
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -602,8 +611,10 @@ function draw() {
       ctx.restore()
     } else if (e.ranged) {
       const source = e.source
-      const fromX = e.turret ? e.from : e.from + (source?.side === -1 ? 0.2 : -0.2) * scale
-      const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) - 0.24 * scale * aspect
+      // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
+      const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.period) : [0, 0]
+      const fromX = e.turret ? e.from : e.from + dx
+      const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
       const targetY = e.targetY ?? fromY
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
       if (progress < 1) {
@@ -673,7 +684,7 @@ function tick(now) {
   )
   if (!paused) {
     for (const u of previous) if (!state.units.some((v) => v.id === u.id)) fallen.push({ ...u, at: state.time })
-    while (fallen.length && state.time - fallen[0].at > 0.42) fallen.shift()
+    while (fallen.length && state.time - fallen[0].at > KO_SECONDS) fallen.shift()
     let impact = false,
       shot = false
     for (const effect of state.effects)

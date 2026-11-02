@@ -459,11 +459,22 @@ export function burst(s) {
     if (u.side === -1 && u.x > 510) {
       u.hp -= burstDamage(s)
       u.x -= 85
+      u.hurt = { at: s.time, power: 1.5 }
     }
   s.effects.push({ x: 760, life: 0.6, blast: true })
   return true
 }
 const dirOf = (u) => -u.side
+/** The foe `u` engages (the nearest live foe not behind it, else the fort) and the distance still to walk before it is in range. */
+export function reach(s, u) {
+  const dir = dirOf(u)
+  const target = s.units
+    .filter((v) => v.side !== u.side && v.hp > 0 && (v.x - u.x) * dir >= -12)
+    .sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0]
+  const baseX = u.side === 1 ? ENEMY_X + 7 : HOME_X - 7
+  const distance = target ? Math.abs(target.x - u.x) : Math.abs(baseX - u.x)
+  return { target, baseX, gap: distance - (u.range + (target ? 0 : 25)) }
+}
 /** Applies one released attack: splash, slow and knockback hit every foe near the recipient. */
 function land(s, src, target, damage) {
   if (!target) {
@@ -477,6 +488,8 @@ function land(s, src, target, damage) {
   if (!victims.includes(target)) victims.push(target)
   for (const v of victims) {
     v.hp -= damage
+    // Visual only: the renderer plays a hit reaction scaled by how hard this hit was.
+    v.hurt = { at: s.time, power: Math.min(1.6, 0.7 + (damage / v.maxHp) * 3 + (src.knock ? 0.3 : 0)) }
     if (src.uid) (v.hitters ||= new Set()).add(src.uid)
     if (src.slow) v.slowUntil = s.time + src.slow
     if (src.knock) v.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, v.x + src.knock * dirOf(src)))
@@ -560,12 +573,8 @@ export function step(s, dt) {
     const dir = dirOf(u)
     u.attack = Math.max(0, u.attack - dt)
     u.phase += dt
-    const target = s.units
-      .filter((v) => v.side !== u.side && v.hp > 0 && (v.x - u.x) * dir >= -12)
-      .sort((a, b) => Math.abs(a.x - u.x) - Math.abs(b.x - u.x))[0]
-    const baseX = u.side === 1 ? ENEMY_X + 7 : HOME_X - 7
-    const distance = target ? Math.abs(target.x - u.x) : Math.abs(baseX - u.x)
-    if (distance <= u.range + (target ? 0 : 25)) {
+    const { target, baseX, gap } = reach(s, u)
+    if (gap <= 0) {
       u.motion = 'attack'
       if (u.attack <= 0) {
         u.attack = u.period
