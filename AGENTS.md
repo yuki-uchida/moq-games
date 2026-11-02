@@ -1,5 +1,7 @@
 # moq-games
 
+Respond to the user in Japanese.
+
 This independent checkout owns the tower-defense game, its bot, review tools, assets and tests. Preserve game behavior, original asset bytes and provenance. Large originals and unadopted candidates are preserved locally and ignored by Git; do not delete them.
 
 ## Commits and pushes
