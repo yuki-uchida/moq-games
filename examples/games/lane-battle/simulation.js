@@ -528,6 +528,7 @@ export function summon(s, index, side = 1) {
     attack: 0,
     cycle: t.period,
     phase: 0,
+    strikes: 0,
     walkDistance: 0,
     slowUntil: 0,
     weak: { end: 0 },
@@ -975,6 +976,8 @@ export function step(s, dt) {
         u.attack = u.cycle
         u.phase = 0
         const crit = u.crit > 0 && s.rng() < u.crit
+        u.strikes++
+        u.lastCrit = crit
         const damage = u.atk * (crit ? 2.5 : 1) * (u.weak?.end > s.time ? 0.7 : 1)
         attack(s, u, target, baseX, crit, damage)
       }

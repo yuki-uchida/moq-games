@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { beats, gait, flinch, knockout, KO_SECONDS } from './animation.js'
+import { beats, timing, gait, flinch, knockout, KO_SECONDS } from './animation.js'
 
 // Characters are built in model space: ~0.9 tall, base at y=0, face toward +Z. Their rig lives in the
 // lane frame instead (+X toward the foe, +Y up, +Z toward the viewer), so every swing is a rotation about Z
@@ -628,6 +628,7 @@ const show = (bone, on) => bone && (bone.visible = on)
 const MODELS = {
   // ── Poop army ──
   katachi: {
+    tempo: [0.4, 0.035],
     size: 1,
     moves: { lunge: 0.26, back: 0.1, rear: 0.18, lean: 0.24, squash: 0.13, stretch: 0.1, bend: 0.16 },
     build(k) {
@@ -651,6 +652,7 @@ const MODELS = {
     }
   },
   korokoro: {
+    tempo: [0.45, 0.03],
     size: 0.86,
     moves: { lunge: 0.14, back: 0.06, rear: 0.24, lean: 0.24, squash: 0.08, stretch: 0.12, bend: 0.22 },
     build(k) {
@@ -679,6 +681,7 @@ const MODELS = {
     }
   },
   geri: {
+    tempo: [0.36, 0.04],
     size: 1.14,
     moves: { lunge: 0.34, back: 0.12, rear: 0.2, lean: 0.36, squash: 0.17, stretch: 0.14, smear: 0.22, bend: 0.2 },
     build(k) {
@@ -697,6 +700,8 @@ const MODELS = {
         })
     },
     act(b, a, c) {
+      b.hips.position.x += (c.ambush ? 0.17 : 0) * a.hit
+      b.hips.position.x += 0.025 * Math.sin(c.t * 30) * a.wind
       b.tails.rotation.z += 0.2 * Math.sin(c.t * 18) - 0.7 * a.smear - 0.4 * a.hit + 0.3 * a.wind
       b.armB.rotation.z += beat(a, -0.8, 1.1, 0.4)
       b.armF.rotation.z += beat(a, -0.6, 0.9)
@@ -706,6 +711,7 @@ const MODELS = {
     }
   },
   bichi: {
+    tempo: [0.48, 0.03],
     size: 1,
     moves: {
       lunge: 0.1,
@@ -749,6 +755,7 @@ const MODELS = {
     }
   },
   dodeka: {
+    tempo: [0.5, 0.06],
     size: 1.35,
     moves: {
       lunge: 0.28,
@@ -778,6 +785,7 @@ const MODELS = {
     }
   },
   daiou: {
+    tempo: [0.55, 0.07],
     size: 1.25,
     moves: {
       lunge: 0.12,
@@ -841,6 +849,7 @@ const MODELS = {
   },
   // ── Specials: things that upset the stomach ──
   aircon: {
+    tempo: [0.45, 0.04],
     size: 1,
     moves: {
       lunge: -0.1,
@@ -898,6 +907,7 @@ const MODELS = {
     }
   },
   ramen: {
+    tempo: [0.4, 0.04],
     size: 1,
     moves: {
       lunge: 0.2,
@@ -948,6 +958,7 @@ const MODELS = {
     }
   },
   yofukashi: {
+    tempo: [0.24, 0.025],
     size: 0.95,
     moves: {
       lunge: 0.14,
@@ -976,11 +987,15 @@ const MODELS = {
       k.face({ bone: 'chest', y: 0.56, z: 0.06, spread: 0.1, size: 0.9, mood: 'sleepy' })
     },
     act(b, a, c) {
+      const backhand = (c.strikes + (a.since > timing(c.period, c.tempo).recovery ? 1 : 0)) % 2 === 0
+      b.chest.rotation.y += (backhand ? -1 : 1) * beat(a, 0.45, -0.45, 0.15)
+      b.hips.rotation.z -= (c.lastCrit ? 0.2 : 0) * a.hit
       b.cap.rotation.z += 0.1 * Math.sin(c.t * 5) + beat(a, 0.3, -0.5, -0.4)
       b.moon.position.y += 0.03 * Math.sin(c.t * 2)
     }
   },
   sake: {
+    tempo: [0.45, 0.04],
     size: 1,
     moves: {
       lunge: 0.06,
@@ -1005,9 +1020,11 @@ const MODELS = {
     },
     act(b, a, c) {
       b.hips.rotation.z += 0.06 * Math.sin(c.t * 2.3) * (1 - a.wind)
+      b.hips.rotation.z -= (c.lastCrit ? 0.25 : 0) * a.hit
     }
   },
   jiro: {
+    tempo: [0.6, 0.07],
     size: 1.25,
     moves: {
       lunge: 0.14,
@@ -1053,6 +1070,7 @@ const MODELS = {
     act() {}
   },
   yakiniku: {
+    tempo: [0.42, 0.04],
     size: 1,
     moves: {
       lunge: 0.2,
@@ -1113,6 +1131,7 @@ const MODELS = {
     }
   },
   garlic: {
+    tempo: [0.48, 0.03],
     size: 0.95,
     moves: {
       lunge: 0.04,
@@ -1154,6 +1173,7 @@ const MODELS = {
     }
   },
   curry: {
+    tempo: [0.5, 0.05],
     size: 1,
     moves: {
       lunge: 0.24,
@@ -1192,6 +1212,7 @@ const MODELS = {
     }
   },
   milk: {
+    tempo: [0.42, 0.04],
     size: 0.95,
     moves: {
       lunge: 0.26,
@@ -1226,6 +1247,7 @@ const MODELS = {
     }
   },
   oyster: {
+    tempo: [0.6, 0.06],
     size: 1,
     moves: {
       lunge: 0.22,
@@ -1269,12 +1291,14 @@ const MODELS = {
         k.add(GEO.sphere, '#8a8e87', [x, y, z], [w, 0.04, w * 0.8], [-1.15, 0, 0.4 * x], { bone: 'lid' })
       k.face({ bone: 'spine', y: 0.33, z: 0.24, spread: 0.11, size: 0.85, mood: 'angry' })
     },
-    act(b, a) {
+    act(b, a, c) {
       b.lid.rotation.x += beat(a, -0.55, 0.45, -0.2)
       b.lid.rotation.z += beat(a, 0.25, -0.2)
+      b.hips.position.x += (c.lastCrit ? 0.12 : 0) * a.hit
     }
   },
   ice: {
+    tempo: [0.4, 0.035],
     size: 0.95,
     moves: {
       lunge: 0.18,
@@ -1309,6 +1333,7 @@ const MODELS = {
     act() {}
   },
   energy: {
+    tempo: [0.2, 0.02],
     size: 0.95,
     moves: {
       lunge: -0.12,
@@ -1352,11 +1377,12 @@ const MODELS = {
       const jet = Math.max(a.smear, a.hit * (1 - a.recoil * 0.4))
       show(b.fizz, jet > 0.05)
       b.fizz.scale.setScalar(0.3 + jet)
-      b.hips.position.x += 0.014 * Math.sin(c.t * 70) * a.wind
+      b.hips.position.x += 0.014 * Math.sin(c.t * (70 + c.ramp * 12)) * a.wind
     }
   },
   // ── Enemies: the cleanup crew ──
   cleaner: {
+    tempo: [0.42, 0.035],
     size: 1,
     moves: {
       lunge: 0.12,
@@ -1389,6 +1415,7 @@ const MODELS = {
     }
   },
   mop: {
+    tempo: [0.45, 0.04],
     size: 1,
     moves: {
       lunge: 0.14,
@@ -1433,6 +1460,7 @@ const MODELS = {
     }
   },
   yogurt: {
+    tempo: [0.3, 0.03],
     size: 0.9,
     moves: {
       lunge: 0.22,
@@ -1464,6 +1492,7 @@ const MODELS = {
     }
   },
   sayu: {
+    tempo: [0.45, 0.03],
     size: 0.85,
     moves: {
       lunge: 0.05,
@@ -1498,6 +1527,7 @@ const MODELS = {
     }
   },
   washiki: {
+    tempo: [0.48, 0.05],
     size: 1.2,
     moves: {
       lunge: 0.16,
@@ -1544,6 +1574,7 @@ const MODELS = {
     }
   },
   yoshiki: {
+    tempo: [0.5, 0.05],
     size: 1.1,
     moves: {
       lunge: -0.14,
@@ -1604,6 +1635,7 @@ const MODELS = {
     }
   },
   seichou: {
+    tempo: [0.45, 0.03],
     size: 0.9,
     moves: {
       lunge: 0.04,
@@ -1645,6 +1677,7 @@ const MODELS = {
     }
   },
   geridome: {
+    tempo: [0.55, 0.06],
     size: 1.35,
     moves: {
       lunge: 0.2,
@@ -1686,6 +1719,7 @@ export const modelSize = (key) => MODELS[key]?.size ?? 1
 /** One rigged character. Bones are per actor; geometry is shared per character key. */
 export class Actor {
   constructor(key) {
+    this.key = key
     const t = template(key)
     this.t = t
     this.size = t.recipe.size
@@ -1744,7 +1778,7 @@ export class Actor {
       bone.scale.set(1, 1, 1)
       bone.visible = true
     }
-    const a = beats(f.motion, f.phase, f.period, f.lead)
+    const a = beats(f.motion, f.phase, f.period, f.lead, this.t.recipe.tempo)
     // A strike interrupted by the target falling eases out instead of snapping back to the walk.
     if (f.motion !== this.motion) {
       if (this.motion === 'attack') this.fade = { at: f.time, wind: this.a.wind, hit: this.a.hit }
@@ -1765,7 +1799,13 @@ export class Actor {
       h: flinch(f.hurtAge / t.moves.mass, f.power / Math.sqrt(t.moves.mass)),
       walk: f.motion === 'walk' && f.ko < 0 ? 1 - Math.max(a.wind, a.hit) : 0,
       t: f.time,
-      ko: f.ko
+      ko: f.ko,
+      ambush: a.since <= timing(f.period, t.recipe.tempo).recovery ? f.charged : f.ambushReady,
+      strikes: f.strikes ?? 0,
+      lastCrit: f.lastCrit ?? false,
+      ramp: f.ramp ?? 0,
+      period: f.period,
+      tempo: t.recipe.tempo
     }
     moveBody(this.bones, t.moves, c)
     t.recipe.act?.(this.bones, a, c)
@@ -1781,7 +1821,9 @@ export class Actor {
     const blink = (f.time + (f.id % 7) * 0.53) % (2.6 + (f.id % 5) * 0.4) < 0.11
     if (b.eyes) b.eyes.scale.y = mood === 'focus' ? 0.68 : mood === 'calm' && blink ? 0.12 : 1
     if (b.shout) b.shout.scale.setScalar(mood === 'shout' ? 0.8 + 0.4 * a.hit : 1)
-    this.mats.toon.emissive.setScalar(0.6 * c.h.flash)
+    const red = (this.key === 'geri' && c.ambush) || this.key === 'curry' ? 0.35 * a.wind : 0
+    const green = this.key === 'energy' ? 0.035 * c.ramp * a.wind : 0
+    this.mats.toon.emissive.setRGB(0.6 * c.h.flash + red, 0.6 * c.h.flash + green, 0.6 * c.h.flash)
     for (const [bone] of this.rest) if (!bone.visible) bone.scale.setScalar(0)
   }
 
@@ -1846,7 +1888,12 @@ export class LaneModels {
       power: u.hurt?.power ?? 1,
       time,
       ko: -1,
-      id: u.id
+      id: u.id,
+      ambushReady: u.ambush && (u.lastStrikeDistance === undefined || u.walkDistance - u.lastStrikeDistance >= 40),
+      charged: u.charged,
+      strikes: u.strikes,
+      lastCrit: u.lastCrit,
+      ramp: u.ramp
     })
     actor.setOpacity(1)
   }

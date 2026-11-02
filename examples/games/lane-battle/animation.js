@@ -5,14 +5,14 @@
 const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x))
 
 /** Phase lengths in seconds for an attack period: anticipation (incl. strike), strike, recovery, contact hold. */
-export function timing(period) {
-  const anticipation = Math.min(0.42, period * 0.5)
+export function timing(period, tempo = [0.42, 0.035]) {
+  const anticipation = Math.min(tempo[0], period * 0.55)
   const recovery = Math.min(0.34, period * 0.4)
   return {
     anticipation,
     strike: Math.min(0.08, anticipation * 0.32),
     recovery,
-    hold: Math.min(0.035, recovery * 0.12)
+    hold: Math.min(tempo[1], recovery * 0.5)
   }
 }
 
@@ -22,8 +22,8 @@ export function timing(period) {
  * `recoil` is the rebound right after contact. While walking, `lead` (seconds until the foe is in range)
  * starts the anticipation early so even the first strike is wound up.
  */
-export function beats(motion, phase, period, lead = Infinity) {
-  const { anticipation, strike, recovery, hold } = timing(period)
+export function beats(motion, phase, period, lead = Infinity, tempo) {
+  const { anticipation, strike, recovery, hold } = timing(period, tempo)
   const until = motion === 'attack' ? period - phase : lead
   const since = motion === 'attack' ? phase : Infinity
   let wind = 0,
