@@ -817,14 +817,15 @@ window.addEventListener('pagehide', () => {
   scene.dispose()
 })
 
-let drag: { id: number; x: number } | undefined
+let drag: { id: number; x: number; y: number } | undefined
 const lookHint = element<HTMLElement>('#look-hint')
 const canLock = matchMedia('(pointer: fine)').matches && typeof world.requestPointerLock === 'function'
 const locked = () => document.pointerLockElement === world
-const rotate = (dx: number) => {
+const rotate = (dx: number, dy: number) => {
   const delta = dx * -0.006
   yaw += delta
   scene.orbit(delta)
+  scene.tilt(dy * 0.004) // drag down to look from higher up
 }
 function updateLookHint() {
   lookHint.hidden = !canLock || !started
@@ -834,7 +835,7 @@ document.addEventListener('pointerlockchange', updateLookHint)
 document.addEventListener('pointerlockerror', updateLookHint)
 world.addEventListener('pointerdown', (event) => {
   if (!started || (event.pointerType === 'mouse' && event.button !== 0)) return
-  drag = { id: event.pointerId, x: event.clientX }
+  drag = { id: event.pointerId, x: event.clientX, y: event.clientY }
   world.setPointerCapture(event.pointerId)
   // Pointer lock for mouse only; on refusal the drag above keeps working.
   if (canLock && event.pointerType === 'mouse' && !locked()) {
@@ -848,12 +849,13 @@ world.addEventListener('pointerdown', (event) => {
 })
 world.addEventListener('pointermove', (event) => {
   if (locked()) {
-    if (event.pointerType === 'mouse') rotate(event.movementX)
+    if (event.pointerType === 'mouse') rotate(event.movementX, event.movementY)
     return
   }
   if (!drag || drag.id !== event.pointerId) return
-  rotate(event.clientX - drag.x)
+  rotate(event.clientX - drag.x, event.clientY - drag.y)
   drag.x = event.clientX
+  drag.y = event.clientY
 })
 for (const type of ['pointerup', 'pointercancel'] as const)
   world.addEventListener(type, () => {

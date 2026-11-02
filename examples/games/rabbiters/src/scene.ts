@@ -1,13 +1,12 @@
 import * as THREE from 'three'
 import {
-  CAVES,
   FOREST,
   NPCS,
   SPAWN,
-  blockersNear,
   caveAt,
   floorAt,
   heightAt,
+  inZone,
   isUnderground,
   logOver,
   logTop,
@@ -100,8 +99,6 @@ function variant(id: string): ModelOptions {
   }
 }
 
-const UP = new THREE.Vector3(0, 1, 0)
-
 export class RabbitersScene {
   private readonly scene = new THREE.Scene()
   private readonly camera = new THREE.PerspectiveCamera(48, 1, 0.1, 240)
@@ -140,6 +137,7 @@ export class RabbitersScene {
   private readonly havenRing: THREE.Mesh
   private readonly beddingPile = new THREE.Group()
   private yaw = 0
+  private pitch = 0
   private disposed = false
 
   constructor(private readonly container: HTMLElement) {
@@ -900,36 +898,31 @@ export class RabbitersScene {
     const underLog = !!log && !!local && local.y < logTop(log)
     const narrow = this.camera.aspect < 0.8
     const distance = underground ? 3 : cave ? 5 : narrow ? 8.5 : 7.5
-    const height = underground ? 1.3 : cave ? 2 : narrow ? 4 : 3.4
-    const focus = this.target.clone().add(new THREE.Vector3(0, underground ? 0.55 : 1, 0))
-    const backX = Math.sin(this.yaw)
-    const backZ = Math.cos(this.yaw)
-    const desired = new THREE.Vector3(focus.x + backX * distance, this.target.y + height, focus.z + backZ * distance)
-    // In tunnels and the built chapters the boom ignores walls, cage bars and tunnel sides and stays right behind
-    // the rabbit: whatever is left in between turns see-through. Only the forest's hills and rocks, and caves,
-    // push it around.
-    const ghost = underground || (this.stage !== FOREST && !cave)
-    let reach = desired
-    if (!ghost) {
-      desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1) // rise over the hills behind the rabbit
-      // If a rock or cave wall blocks the boom, swing it around the rabbit before giving up.
-      const full = desired.distanceTo(focus)
-      reach = focus.clone()
-      for (const swing of [0, 0.5, -0.5, 1, -1]) {
-        const swung = desired.clone().sub(focus).applyAxisAngle(UP, swing).add(focus)
-        const candidate = this.boom(focus, swung, cave)
-        if (candidate.distanceTo(focus) > reach.distanceTo(focus)) reach = candidate
-        if (reach.distanceTo(focus) >= full * 0.7) break
-      }
-      if (reach.distanceTo(focus) < 1.2 && !cave) reach = desired // a thin post; look through it
-    }
-    this.camera.position.lerp(reach, smoothing)
-    this.keepCameraClear(this.camera.position, underground, cave)
+    // In Mochi's cage the camera starts below the bars' top (3.2) and looks through them.
+    const caged = !!local && inZone('cage', local.x, local.z)
+    const height = underground ? 1.3 : cave ? 2 : caged ? 2.6 : narrow ? 4 : 3.4
+    const lift = underground ? 0.55 : 1
+    const focus = this.target.clone().add(new THREE.Vector3(0, lift, 0))
+    // The boom: its usual angle for the place, tilted by the player (from just under level to almost top-down).
+    const boom = Math.hypot(distance, height - lift)
+    const pitch = THREE.MathUtils.clamp(Math.atan2(height - lift, distance) + this.pitch, -0.15, 1.35)
+    const back = boom * Math.cos(pitch)
+    const desired = new THREE.Vector3(
+      focus.x + Math.sin(this.yaw) * back,
+      focus.y + boom * Math.sin(pitch),
+      focus.z + Math.cos(this.yaw) * back
+    )
+    // No collision: walls, bars, trees, rocks and tunnel sides between the camera and the rabbit turn
+    // see-through instead. The forest's hills only lift the camera so it never ends up inside the ground.
+    if (this.stage === FOREST && !underground) desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 1)
+    this.camera.position.lerp(desired, smoothing)
+    this.keepCameraClear(this.camera.position, underground)
     if (underground || cave) this.camera.lookAt(focus)
     else {
-      // Aim a little past the rabbit so the horizon, and landmarks for finding the way, stay in frame.
+      // Aim a little past the rabbit so the horizon, and landmarks for finding the way, stay in frame (less so
+      // when looking down from high up, where it would push the rabbit off the bottom of the screen).
       const ahead = focus.clone().sub(this.camera.position).setY(0)
-      if (ahead.lengthSq() > 0.01) ahead.setLength(6)
+      if (ahead.lengthSq() > 0.01) ahead.setLength(6 * Math.cos(pitch) ** 2)
       this.camera.lookAt(
         focus
           .clone()
@@ -947,66 +940,27 @@ export class RabbitersScene {
       underLog,
       under: roof && local && local.y - heightAt(local.x, local.z) < roof.bottom ? roof : undefined
     })
-    // Cut a see-through cone from the camera to the rabbit (not in caves, which frame it themselves).
-    SEE_THROUGH.radius.value = local && !cave ? (underground ? 1 : 1.5) : 0
+    // Cut a see-through cone from the camera to the rabbit.
+    SEE_THROUGH.radius.value = local ? (underground ? 1 : 1.5) : 0
     // Past the cut-open tunnel walls lies earth, not sky.
     if (underground) (this.scene.background as THREE.Color).set('#2a1f18')
     SEE_THROUGH.focus.value = { x: this.target.x, y: this.target.y + 0.7, z: this.target.z }
     this.renderer.render(this.scene, this.camera)
   }
 
-  /** Walks the camera boom out from the rabbit and stops before terrain, rocks or cave walls. */
-  private boom(focus: THREE.Vector3, desired: THREE.Vector3, cave: (typeof CAVES)[number] | undefined) {
-    const step = desired.clone().sub(focus)
-    const steps = Math.ceil(step.length() / 0.2)
-    const probe = focus.clone()
-    const reach = focus.clone()
-    for (let index = 1; index <= steps; index++) {
-      probe.copy(focus).addScaledVector(step, index / steps)
-      if (this.blocksCamera(probe, cave)) break
-      reach.copy(probe)
-    }
-    return reach
-  }
-
-  private blocksCamera(point: THREE.Vector3, cave: (typeof CAVES)[number] | undefined) {
-    if (point.y < heightAt(point.x, point.z) + 0.35) return true
-    // Trees don't push the camera around (they turn see-through instead); big rocks still do.
-    for (const blocker of blockersNear(point.x, point.z))
-      if (
-        blocker.kind === 'rock' &&
-        point.y < blocker.top &&
-        Math.hypot(point.x - blocker.x, point.z - blocker.z) < blocker.r + 0.3
-      )
-        return true
-    if (cave)
-      return Math.hypot(point.x - cave.x, point.z - cave.z) > cave.r - 1 || point.y > cave.floor + cave.roof - 0.8
-    for (const dome of CAVES)
-      if (
-        Math.hypot(point.x - dome.x, point.z - dome.z) < dome.r + dome.wall + 0.4 &&
-        point.y < dome.floor + dome.roof + 0.5
-      )
-        return true
-    // Fallen logs, like trees, turn see-through instead of pushing the camera in.
-    return false
-  }
-
-  /** Final guard after smoothing: never under the ground or outside a cave; underground, never up in the open. */
-  private keepCameraClear(point: THREE.Vector3, underground: boolean, cave: (typeof CAVES)[number] | undefined) {
+  /** Final guard after smoothing: never under the ground; underground, never up in the open. */
+  private keepCameraClear(point: THREE.Vector3, underground: boolean) {
     const ground = heightAt(point.x, point.z)
-    if (underground) {
-      point.y = Math.max(Math.min(point.y, ground - 0.4), this.target.y + 0.3)
-      return
-    }
-    // Walls and tall furniture (more than 3 m over the rabbit) don't lift the camera: it looks through them.
-    if (ground < this.target.y + 3) point.y = Math.max(point.y, ground + 0.3)
-    if (!cave) return
-    const dx = point.x - cave.x
-    const dz = point.z - cave.z
-    const limit = cave.r - 1
-    const length = Math.hypot(dx, dz)
-    if (length > limit) point.set(cave.x + (dx / length) * limit, point.y, cave.z + (dz / length) * limit)
-    point.y = Math.min(point.y, cave.floor + cave.roof - 0.8)
+    if (underground) point.y = Math.max(Math.min(point.y, ground - 0.4), this.target.y + 0.3)
+    // The forest's hills lift the camera; in the built chapters walls and furniture never do (it looks through
+    // them), it only stays above the floor the rabbit is on.
+    else if (this.stage === FOREST) point.y = Math.max(point.y, ground + 0.3)
+    else point.y = Math.max(point.y, Math.min(ground, this.target.y) + 0.3)
+  }
+
+  /** Tilts the camera up or down around the rabbit (positive looks from higher up). */
+  tilt(deltaRadians: number): void {
+    if (Number.isFinite(deltaRadians)) this.pitch = THREE.MathUtils.clamp(this.pitch + deltaRadians, -0.6, 1.1)
   }
 
   orbit(deltaRadians: number): void {
