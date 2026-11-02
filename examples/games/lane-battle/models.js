@@ -1557,7 +1557,7 @@ const MODELS = {
       walk: 'waddle',
       hop: 0.04,
       base: 0.55,
-      ko: 0.85
+      ko: 0.55
     },
     build(k) {
       k.chain = [0.2, 0.42, 0.62]
