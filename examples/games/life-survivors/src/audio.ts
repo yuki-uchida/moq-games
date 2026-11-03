@@ -351,6 +351,10 @@ const WEAPON_FIRE: Record<string, Recipe> = {
     v.tone('sine', 2600, 2600, 0.12, 0.12, 0.05)
     v.tone('sine', 3400, 3400, 0.16, 0.14, 0.04)
   },
+  p_yankee: (v) => {
+    v.tone('sawtooth', 70, 150, 0, 0.2, 0.1, 600) // a revving growl as it storms off
+    v.noise(0, 0.14, 0.1, 'lowpass', 1400, 400)
+  },
   p_gone: () => {},
   // talents
   w_friend: (v) => {
