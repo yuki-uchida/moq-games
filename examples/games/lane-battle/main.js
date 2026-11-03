@@ -1,6 +1,7 @@
 import { LaneModels, modelSize, koSeconds, hurtSeconds } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
+import { heldStrike } from './animation.js'
 import { drawArea, drawStatus, drawZones, HURT_VFX, DEATH_VFX } from './visual-effects.js'
 import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
 import {
@@ -139,6 +140,7 @@ function start(stage) {
   shown = false
   fallen.length = 0
   glides.clear()
+  contacts.clear()
   audio.beat = 0
   buildTray()
   $('stage-name').textContent = `${stage + 1}. ${STAGES[stage].sub}`
@@ -502,6 +504,7 @@ const standOff = (u) => models.offset(u.key, u.side, 2 - (u.id % 3))
  * battle clock, so a knocked-back unit slides instead of teleporting and nothing moves while paused.
  */
 const glides = new Map()
+const contacts = new Map()
 function glideX(u) {
   let g = glides.get(u.id)
   if (!g || Math.abs(u.x - g.x) > 300) glides.set(u.id, (g = { x: u.x, t: state.time }))
@@ -520,7 +523,7 @@ const drawX = (u) => glideX(u) + standOff(u)
  * point on the contact frame and the front of the foe, capped so a strike never becomes a dash.
  */
 function contact(u) {
-  const { target } = reach(state, u)
+  const target = heldStrike(contacts.get(u.id), u, state.time)?.target ?? reach(state, u).target
   if (!target || u.range > 80) return 0
   const toward = -u.side
   const [ahead, height] = models.strike(u.key)
@@ -643,6 +646,10 @@ function draw() {
   unitEffects('floor')
   const present = new Set([...fallen, ...units].map((u) => u.id))
   for (const id of glides.keys()) if (!present.has(id)) glides.delete(id)
+  for (const [id, held] of contacts) {
+    const unit = units.find((entry) => entry.id === id)
+    if (!unit || !heldStrike(held, unit, state.time)) contacts.delete(id)
+  }
   for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
   for (const u of units) {
     const y = laneY(u)
@@ -656,7 +663,9 @@ function draw() {
       ctx.ellipse(drawX(u) + u.side * 15, y, 12, 5 * aspect, 0, 0, Math.PI * 2)
       ctx.fill()
     }
-    models.unit(u, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
+    const held = heldStrike(contacts.get(u.id), u, state.time)
+    const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    models.unit(visual, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
   }
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
@@ -898,6 +907,17 @@ function tick(now) {
         heard.add(effect)
         // Splashes land on the front of the recipient's drawn body, on its own row.
         const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
+        const attacker = state.units.find((u) => u.id === effect.sourceId)
+        if (attacker && !effect.ranged && !effect.explosion) {
+          if (target)
+            contacts.set(attacker.id, {
+              target,
+              at: effect.releasedAt,
+              cycle: attacker.cycle,
+              strikes: attacker.strikes
+            })
+          else contacts.delete(attacker.id)
+        }
         if (target) {
           effect.targetY = laneY(target) - 35 * models.presentation[1]
           const height = 35 / (models.presentation[0] * modelSize(target.key))

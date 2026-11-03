@@ -4,6 +4,12 @@
 
 const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x))
 
+export function heldStrike(held, unit, time) {
+  return held && held.strikes === unit.strikes && time >= held.at && time - held.at < Math.min(0.5, held.cycle)
+    ? held
+    : null
+}
+
 /** Phase lengths in seconds for an attack period: anticipation (incl. strike), strike, recovery, contact hold. */
 export function timing(period, tempo = [0.42, 0.035]) {
   const anticipation = Math.min(tempo[0], period * 0.55)
