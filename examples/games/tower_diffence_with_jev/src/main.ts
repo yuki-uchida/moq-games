@@ -2,7 +2,6 @@ import { SPECIALS, specialReady } from './game/SpecialAbilities'
 import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
 import { SkillBar } from './ui/SkillBar'
 import { SkillCutIn } from './ui/SkillCutIn'
-import { nextFreezeUntil } from './ui/SpecialFeel'
 import './ui/skill-bar.css'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
@@ -537,7 +536,11 @@ const battleFeedback = new BattleFeedback({
       ) + 6,
     bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
   }),
-  play: (kind, param) => soundPlayer.playFeel(kind, param),
+  play: (kind, param) => {
+    soundPlayer.playFeel(kind, param)
+    // Let the boss horn read over the battle music.
+    if (kind === 'boss') battleMusic.duck()
+  },
   announce: (message) => announce(message)
 })
 let mapScale = 1
@@ -1123,13 +1126,13 @@ function fireSpecial(point: Point) {
 // Real time until which the simulation is stopped for the cast cut-in (see initializeClock).
 let freezeUntil = 0
 function playCastFeedback(type: AllyType, point: Point) {
-  skillCutIn.play(
+  freezeUntil = skillCutIn.play(
     { portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type },
     { point, radius: SPECIALS[type].radius }
   )
-  freezeUntil = nextFreezeUntil(performance.now(), freezeUntil)
   soundPlayer.playCue('ui_special')
   soundPlayer.playFeel('cutin')
+  battleMusic.duck()
 }
 const specialInput = new GroundTapInput(viewport, {
   acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),
@@ -2744,7 +2747,7 @@ function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true
   // The feedback layer counts kills per frame; settle the final blows before the bounty is paid.
-  battleFeedback.update(engine.state)
+  battleFeedback.update(engine.state, performance.now(), engine.takeSpecialImpacts())
   lastKills = battleFeedback.kills
   resultLive = true
   settleOutcome(engine.state, battleFeedback.bounty)
@@ -2932,7 +2935,7 @@ function frame(now: number) {
     selected,
     !!placingSandbag || !!placingRoadItem
   )
-  battleFeedback.update(state)
+  battleFeedback.update(state, performance.now(), engine.takeSpecialImpacts())
   battleHud.update(state, battleFeedback.bountyArrived)
   if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)

@@ -154,6 +154,26 @@ export interface SpecialEffect extends Point {
   power: number
   applied: boolean
 }
+/**
+ * What one special effect did in one simulation step. Presentation only: it never enters GameState or the
+ * save, so the readouts can say exactly what the special did (and not what other attacks did nearby).
+ */
+export interface SpecialImpact extends Point {
+  effectId: string
+  /** The effect id without its last `:index`: all impacts of one cast share it. */
+  castKey: string
+  type: AllyType
+  sourceId: number
+  /** Distinct units this effect hit (damage specials), rooted (frost/ranger) or covered (healer). */
+  targets: number[]
+  /** The special's own damage this step. */
+  damage: number
+  /** Hp actually restored by a healer field this step (capped by each ally's missing hp). */
+  heal: number
+  /** Targets that died this step (filled by the engine once deaths are resolved). */
+  kills: number[]
+}
+export const specialCastKey = (effectId: string): string => effectId.slice(0, effectId.lastIndexOf(':'))
 export function specialReady(state: Readonly<GameState>, id: number, point?: Point): boolean {
   const unit = state.units.find((u) => u.id === id)
   if (
@@ -215,7 +235,8 @@ export function advanceSpecials(
   dt: number,
   damage: Map<number, number>,
   healing: Map<number, number>,
-  history: DamageContribution[]
+  history: DamageContribution[],
+  impacts?: SpecialImpact[]
 ): void {
   for (const unit of [...state.units, ...(state.reserveUnits ?? [])]) {
     if (
@@ -237,10 +258,27 @@ export function advanceSpecials(
     }
     const activeDt = Math.max(0, Math.min(state.time, effect.endsAt) - Math.max(state.time - dt, effect.releaseAt))
     if ((!field && effect.applied) || state.time + 1e-9 < effect.releaseAt) continue
+    const impact: SpecialImpact = {
+      effectId: effect.id,
+      castKey: specialCastKey(effect.id),
+      type: effect.type,
+      sourceId: effect.sourceId,
+      x: effect.x,
+      y: effect.y,
+      targets: [],
+      damage: 0,
+      heal: 0,
+      kills: []
+    }
     for (const unit of state.units) {
       if (unit.hp <= 0 || Math.hypot(unit.x - effect.x, unit.y - effect.y) > spec.radius) continue
       if (effect.type === 'healer') {
-        if (unit.owner === 'player') healing.set(unit.id, (healing.get(unit.id) ?? 0) + unit.maxHp * 0.06 * activeDt)
+        if (unit.owner === 'player') {
+          const amount = unit.maxHp * 0.06 * activeDt
+          healing.set(unit.id, (healing.get(unit.id) ?? 0) + amount)
+          impact.targets.push(unit.id)
+          impact.heal += Math.max(0, Math.min(amount, unit.maxHp - unit.hp))
+        }
       } else if (
         unit.owner === 'ai' &&
         canTargetUnit({ owner: 'player', type: effect.type }, unit, state.battlefieldVersion)
@@ -249,13 +287,16 @@ export function advanceSpecials(
           unit.specialRootUntil = Math.max(unit.specialRootUntil ?? 0, (field ? effect.endsAt : state.time) + spec.root)
           if (!field) unit.specialStunUntil = Math.max(unit.specialStunUntil ?? 0, state.time + spec.root)
         }
+        if (spec.root) impact.targets.push(unit.id)
         if (effect.power > 0) {
+          if (!spec.root) impact.targets.push(unit.id)
           const amount = incomingDamage(
             effect.power,
             unit,
             state.time,
             ['mage', 'paladin'].includes(effect.type) ? 'magic' : 'physical'
           )
+          impact.damage += amount
           damage.set(unit.id, (damage.get(unit.id) ?? 0) + amount)
           history.push({
             targetId: unit.id,
@@ -268,6 +309,9 @@ export function advanceSpecials(
         }
       }
     }
+    // A field reports its first step and every step that did something; a burst reports its one landing.
+    if (impacts && (!effect.applied || impact.heal > 0 || (field && impact.type !== 'healer' && impact.targets.length)))
+      impacts.push(impact)
     effect.applied = true
   }
   if (state.specialEffects) state.specialEffects = state.specialEffects.filter((effect) => effect.endsAt > state.time)

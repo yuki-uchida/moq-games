@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ALLY_TYPES, FIELDS, initialState, stageRules, type AllyType } from '../src/game/model'
 import { GameEngine } from '../src/game/GameEngine'
 import { freshSave } from '../src/progression/UpgradeSystem'
-import { advanceSpecials, castSpecial, SPECIALS, specialReady } from '../src/game/SpecialAbilities'
+import { advanceSpecials, castSpecial, SPECIALS, specialReady, type SpecialImpact } from '../src/game/SpecialAbilities'
 import type { DamageContribution } from '../src/game/TacticalHistory'
 const idle = { decide: async () => null }
 function fixture(type: AllyType = 'soldier') {
@@ -27,6 +27,74 @@ function step(state: ReturnType<typeof initialState>, dt: number) {
   advanceSpecials(state, dt, damage, healing, history)
   return { damage, healing, history }
 }
+describe('special impact reports (presentation only)', () => {
+  const impactsOf = (state: ReturnType<typeof initialState>, dt: number) => {
+    state.time += dt
+    const impacts: SpecialImpact[] = []
+    advanceSpecials(state, dt, new Map(), new Map(), [], impacts)
+    return impacts
+  }
+  it('reports a special that hits nothing as zero targets and zero damage, whatever else damaged the enemy', () => {
+    const { state } = fixture('soldier')
+    state.battlefieldVersion = 2
+    state.units[1].type = 'bat' // a soldier's special cannot hit it
+    castSpecial(state, 1, { x: 300, y: 300 })
+    state.units[1].hp -= 12 // an ordinary attack landing in the same step
+    const [impact, ...rest] = impactsOf(state, SPECIALS.soldier.release)
+    expect(rest).toEqual([])
+    expect(impact).toMatchObject({ castKey: 'special:1:1', targets: [], damage: 0, heal: 0 })
+  })
+  it('reports only the special\'s own contribution, not other damage to the same enemy', () => {
+    const { state } = fixture('soldier')
+    castSpecial(state, 1, { x: 300, y: 300 })
+    state.units[1].hp -= 500
+    const [impact] = impactsOf(state, SPECIALS.soldier.release)
+    expect(impact.targets).toEqual([2])
+    expect(impact.damage).toBe(SPECIALS.soldier.power * 20)
+  })
+  it('keeps two specials landing in the same step apart', () => {
+    const { state } = fixture('soldier')
+    state.units.push({ ...state.units[0], id: 5, type: 'soldier', x: 560, y: 300 })
+    state.units.push({ ...state.units[1], id: 6, hp: 1000, x: 600, y: 300 })
+    castSpecial(state, 1, { x: 300, y: 300 })
+    castSpecial(state, 5, { x: 600, y: 300 })
+    const impacts = impactsOf(state, SPECIALS.soldier.release)
+    expect(impacts.map((i) => [i.castKey, i.targets])).toEqual([
+      ['special:1:1', [2]],
+      ['special:5:1', [6]]
+    ])
+    expect(impacts.map((i) => i.damage)).toEqual([80, 80])
+  })
+  it('reports a healer field\'s own heal, capped by each ally\'s missing hp, and frost\'s rooted targets', () => {
+    const { state } = fixture('healer')
+    state.units[2].hp = 99.99 // ally 3 is almost full; ally 1 (the healer) has 50/100
+    castSpecial(state, 1, { x: 300, y: 300 })
+    state.units[1].hp -= 5 // unrelated damage to an enemy changes nothing
+    const first = impactsOf(state, SPECIALS.healer.release + 1)[0]
+    expect(first.targets.sort()).toEqual([1, 3])
+    // activeDt = 1 s: ally 1 would get 6 hp, ally 3 only its missing 0.01.
+    expect(first.heal).toBeCloseTo(6.01, 2)
+    const frost = fixture('frost').state
+    castSpecial(frost, 1, { x: 300, y: 300 })
+    expect(impactsOf(frost, SPECIALS.frost.release)[0]).toMatchObject({ targets: [2], damage: 0, heal: 0 })
+  })
+  it('queues impacts in the engine with the step\'s kills, drains them once, and never saves them', () => {
+    const { engine } = fixture('soldier')
+    engine.startAssault()
+    const unit = engine.state.units[0]
+    expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime' })).toBe(true)
+    const enemy = engine.state.units.find((u) => u.owner === 'ai')!
+    enemy.hp = 1
+    // The slime walks in from the cave; aim where it will be at the release.
+    expect(engine.castSpecial(unit.id, { x: 110, y: 150 })).toBe(true)
+    for (let tick = 0; tick < Math.ceil((SPECIALS.soldier.release + 0.05) * 60); tick++) engine.update(1 / 60)
+    const impacts = engine.takeSpecialImpacts()
+    expect(impacts).toHaveLength(1)
+    expect(impacts[0]).toMatchObject({ sourceId: unit.id, targets: [enemy.id], kills: [enemy.id] })
+    expect(engine.takeSpecialImpacts()).toEqual([])
+    expect(JSON.stringify(engine.exportCheckpoint())).not.toContain('castKey')
+  })
+})
 describe('individual special abilities', () => {
   for (const type of ALLY_TYPES)
     it(`${type} applies its own role only in the selected circle`, () => {

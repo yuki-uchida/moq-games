@@ -10,38 +10,54 @@ export type BandSide = 'top' | 'bottom'
 export const bandSide = (targetScreenY: number, viewportHeight: number): BandSide =>
   targetScreenY > viewportHeight / 2 ? 'top' : 'bottom'
 
-/** A freeze starts only when none is running, so overlapping casts never stack a longer stop. */
-export const nextFreezeUntil = (now: number, current: number): number => (now < current ? current : now + FREEZE_MS)
+/** At most this many cut-in bands queue up; a cast beyond that gets its ring and readout but no band. */
+export const MAX_CUT_IN_CHAIN = 3
 
-/** One unit's hp change seen between two UI frames. */
-export interface HpDelta extends Point {
-  id: number
-  /** Hp lost (damage) or gained (heal), always positive. */
-  amount: number
-  killed?: boolean
+/**
+ * Where the next cast's band plays when the bands still pending end at `ends` (real ms): right after the last
+ * one, each FREEZE_MS long. null once MAX_CUT_IN_CHAIN bands are pending. The simulation stays stopped until
+ * the latest band end, so every cast's motion and impact still play after its own band.
+ */
+export function chainCutIn(now: number, ends: readonly number[]): { start: number; end: number } | null {
+  const pending = ends.filter((end) => end > now)
+  if (pending.length >= MAX_CUT_IN_CHAIN) return null
+  const start = Math.max(now, ...pending)
+  return { start, end: start + FREEZE_MS }
 }
 
-export interface ImpactSummary {
-  hits: number
+/** What the engine reported one special did (structural subset of SpecialImpact, so this file stays game-free). */
+export interface ImpactReport {
+  targets: readonly number[]
   damage: number
-  kills: number
+  heal: number
+  kills: readonly number[]
 }
-
-/** Enemies that lost hp inside the circle around `point`, with the total damage and the kills among them. */
-export function summarizeImpact(drops: readonly HpDelta[], point: Point, radius: number): ImpactSummary {
-  const out: ImpactSummary = { hits: 0, damage: 0, kills: 0 }
-  for (const d of drops) {
-    if (Math.hypot(d.x - point.x, d.y - point.y) > radius) continue
-    out.hits++
-    out.damage += d.amount
-    if (d.killed) out.kills++
+/** Running totals of one cast's reports: distinct targets and kills, summed damage and heal. */
+export interface CastAccum {
+  targets: Set<number>
+  kills: Set<number>
+  damage: number
+  heal: number
+}
+export const newAccum = (): CastAccum => ({ targets: new Set(), kills: new Set(), damage: 0, heal: 0 })
+export function addImpact(acc: CastAccum, impact: ImpactReport): void {
+  for (const id of impact.targets) acc.targets.add(id)
+  for (const id of impact.kills) acc.kills.add(id)
+  acc.damage += impact.damage
+  acc.heal += impact.heal
+}
+export type FieldKind = 'heal' | 'hold' | null
+/** The readout numbers for a cast: exactly what its own reports added up to. */
+export function castTally(kind: FieldKind, acc: CastAccum): CastTally {
+  return {
+    hits: kind ? 0 : acc.targets.size,
+    damage: kind ? 0 : acc.damage,
+    kills: kind ? 0 : acc.kills.size,
+    held: kind === 'hold' ? acc.targets.size : 0,
+    heal: kind === 'heal' ? acc.heal : 0,
+    allies: kind === 'heal' ? acc.targets.size : 0
   }
-  return out
 }
-
-/** Sum of heals landing inside the circle. */
-export const healInArea = (gains: readonly HpDelta[], point: Point, radius: number): number =>
-  gains.reduce((sum, g) => sum + (Math.hypot(g.x - point.x, g.y - point.y) <= radius ? g.amount : 0), 0)
 
 export interface CastTally {
   hits: number

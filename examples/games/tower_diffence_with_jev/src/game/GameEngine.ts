@@ -1,4 +1,4 @@
-import { castSpecial, advanceSpecials, specialMotionActive } from './SpecialAbilities'
+import { castSpecial, advanceSpecials, specialMotionActive, type SpecialImpact } from './SpecialAbilities'
 import { goblinPursuitTarget } from './GoblinTarget'
 import { tankAvailableToEnemy } from './TankRoadblock'
 import { attackDamageType, incomingDamage } from './DamageRules'
@@ -142,11 +142,14 @@ import {
   mouthAt,
   type BreathMouthTracks
 } from './BreathGeometry'
+const SPECIAL_IMPACT_QUEUE_LIMIT = 256
 export class GameEngine {
   castSpecial(id: number, point: Point): boolean { return castSpecial(this.state, id, point) }
   readonly state: GameState
   private history = new TacticalHistory()
   private combatSounds: CombatSoundEvent[] = []
+  // Presentation only (never saved, never read by the simulation): what each special did this step.
+  private specialImpacts: SpecialImpact[] = []
   private interception = new DefenderInterception()
   private id = 0
   private accumulator = 0
@@ -197,6 +200,11 @@ export class GameEngine {
     const sounds = this.combatSounds
     this.combatSounds = []
     return sounds
+  }
+  takeSpecialImpacts(): SpecialImpact[] {
+    const impacts = this.specialImpacts
+    this.specialImpacts = []
+    return impacts
   }
   private emitCombatSound(attack: CombatAttack, kind: CombatSoundKind, at: number): void {
     if (attack.kind === 'heal' || attack.type === 'healer') return
@@ -876,6 +884,7 @@ export class GameEngine {
     this.defenderDetours.clear()
     this.failedDefenderDetours.clear()
     this.combatSounds = []
+    this.specialImpacts = []
     s.stage++
     s.waveBossPolicy = 2
     s.phase = 'preparation'
@@ -2389,7 +2398,8 @@ export class GameEngine {
       attack.status = hit ? 'hit' : 'missed'
       if (hit && !attack.projectile) this.emitCombatSound(attack, 'hit', attack.impactAt)
     }
-    advanceSpecials(s, dt, damage, healing, historyContributions)
+    const stepImpacts: SpecialImpact[] = []
+    advanceSpecials(s, dt, damage, healing, historyContributions, stepImpacts)
     this.advanceGateShots(damage, historyContributions)
     const defeatedThisStep: Unit[] = []
     for (const u of s.units) {
@@ -2425,6 +2435,15 @@ export class GameEngine {
       u.hp = nextHp
       if (nextHp === 0) this.recordCorpse(u)
       if (amount > 0) u.hitAnimation = ANIMATION.hit
+    }
+    if (stepImpacts.length) {
+      const dead = new Set(defeatedThisStep.map((unit) => unit.id))
+      for (const impact of stepImpacts) {
+        impact.kills = impact.targets.filter((id) => dead.has(id) && impact.damage > 0)
+        this.specialImpacts.push(impact)
+      }
+      if (this.specialImpacts.length > SPECIAL_IMPACT_QUEUE_LIMIT)
+        this.specialImpacts.splice(0, this.specialImpacts.length - SPECIAL_IMPACT_QUEUE_LIMIT)
     }
     const areaAttacks = new Map(
       historyContributions.filter((value) => value.area).map((value) => [value.attackId, value])
