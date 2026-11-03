@@ -726,12 +726,21 @@ button {
   gap: 4px;
   font-size: 13px;
 }
+.result-talent-values small {
+  display: block;
+  white-space: nowrap;
+  opacity: 0.8;
+}
 .result-build {
   display: grid;
   gap: 4px;
   margin: 12px 0 18px;
   text-align: left;
   font-size: 13px;
+}
+.result-build h4 {
+  margin: 12px 0 2px;
+  color: var(--accent);
 }
 .result-build div {
   display: flex;
