@@ -16,7 +16,7 @@ test('movement does not consume game randomness when choices are made separately
   expect(game.random()).toBe(control.random())
 })
 
-test('normal play from birth can reach employment, sports and asset paths without talent-aware choices', () => {
+test('normal play from birth can reach employment, sports, asset and creative paths without talent-aware choices', () => {
   const eventIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
   expect(eventIndex).toBeGreaterThanOrEqual(0)
   const runs: { seed: number; priorities: readonly string[]; time: number; outcome: string | undefined }[] = []
@@ -24,7 +24,8 @@ test('normal play from birth can reach employment, sports and asset paths withou
   for (const priorities of [
     ['w_work', 'w_study'],
     ['w_sports', 'w_muscle'],
-    ['w_savings', 'w_invest']
+    ['w_savings', 'w_invest'],
+    ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking']
   ]) {
     for (const seed of [1, 2, 3, 4, 5]) {
       const game = new Game(seed)
@@ -65,6 +66,10 @@ test('normal play from birth can reach employment, sports and asset paths withou
   ).toBe(true)
   expect(
     runs.some((run) => run.priorities[0] === 'w_savings' && run.outcome === LIFE_OUTCOMES.b_shukatsu[4]),
+    JSON.stringify(runs)
+  ).toBe(true)
+  expect(
+    runs.some((run) => run.priorities[0] === 'w_hobby' && run.outcome === LIFE_OUTCOMES.b_shukatsu[5]),
     JSON.stringify(runs)
   ).toBe(true)
 }, 120_000)
