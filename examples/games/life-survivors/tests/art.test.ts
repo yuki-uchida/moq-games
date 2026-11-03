@@ -96,6 +96,21 @@ describe('pixel art', () => {
       expect([kind, built.items[kind].frames[0].w]).toEqual([kind, 16])
   })
 
+  test('ヤンキー親 runs in, flying-kicks and swaggers home in its own frames, not the monster parent’s', () => {
+    const own = built['weapon:p_yankee']
+    expect([own.fly.frames.length, own.kick.frames.length, own.walk.frames.length]).toEqual([4, 2, 4])
+    const key = (frame: Sheet[string]['frames'][number]) => Buffer.from(frame.data).toString('hex')
+    const monster = new Set(built['weapon:p_monster'].fly.frames.map(key))
+    const frames = [own.fly, own.kick, own.walk].flatMap((anim) => anim.frames)
+    for (const frame of frames) {
+      expect([frame.w, frame.h]).toEqual([32, 32])
+      expect(monster.has(key(frame))).toBe(false)
+    }
+    expect(new Set(frames.map(key)).size).toBe(frames.length)
+    expect(key(built.icons.p_yankee.frames[0])).not.toBe(key(built.icons.p_monster.frames[0]))
+    expect(built.fx.impact.frames).toHaveLength(2)
+  })
+
   test('every stage has a seamless ground (≥3 variants) and four props', () => {
     for (const stage of STAGES) {
       const ground = GROUNDS[stage.name]
