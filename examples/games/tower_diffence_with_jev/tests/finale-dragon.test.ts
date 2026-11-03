@@ -8,6 +8,7 @@ import {
   combatStats,
   getField,
   getLegalAIActions,
+  serializeStateForAI,
   stageRules,
   type WaveBossPolicy
 } from '../src/game/model'
@@ -94,6 +95,17 @@ describe('finale battle', () => {
     expect(run.seen.regularDragon).toBe(false)
     expect([...run.seen.bossAttacks]).toEqual([1])
     for (const scale of run.seen.otherAttacks) expect(scale).toBe(2)
+  })
+  it('reports the boss dragon range, splash and policy to the commander', () => {
+    const boss = run.boss!,
+      observe = (waveBossPolicy: WaveBossPolicy, attackRange: number) =>
+        serializeStateForAI({ ...run.e.state, waveBossPolicy, units: [{ ...boss, attackRange }] })
+    const next = observe(3, 170),
+      old = observe(2, 212.5)
+    expect(next.wave.waveBossPolicy).toBe(3)
+    expect(next.enemies[0]).toMatchObject({ boss: true, range: 170, splash: 109.375 })
+    expect(old.wave.waveBossPolicy).toBe(2)
+    expect(old.enemies[0]).toMatchObject({ boss: true, range: 212.5, splash: 218.75 })
   })
   const validate = (value: unknown) => {
     const c = value as CampaignCheckpoint

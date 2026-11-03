@@ -31,6 +31,7 @@ import {
 } from './data'
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { activeSynergies } from './synergies'
+import { LIFE_OUTCOMES, type LifeDecision } from './history'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -94,6 +95,7 @@ export interface Player {
   downed: boolean
   revive: number
   joinedAt: number
+  history: LifeDecision[]
   married: boolean
   hasChild: boolean
   parent: string
@@ -287,6 +289,8 @@ export function generateTalents(rng: () => number): Record<TalentCategory, numbe
 }
 export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
+const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
+  age >= def.minAge && (def.id !== 'w_ring' || player.married) && !player.weapons.some((weapon) => weapon.id === def.id)
 
 export function isEvolved(player: Player, weapon: OwnedWeapon) {
   const def = WEAPON_BY_ID.get(weapon.id)
@@ -510,6 +514,7 @@ export class Game {
       downed: false,
       revive: 0,
       joinedAt: state.time,
+      history: [],
       married: false,
       hasChild: false,
       parent,
@@ -697,28 +702,20 @@ export class Game {
             if (career.studied !== undefined) continue
             career.studied = level('w_study') >= 3
             reward = career.studied ? 1 : 0
-            text = career.studied ? '勉強が実り、専門課程へ進学。転機を1回獲得。' : '実践から学ぶ進路を選んだ。'
+            text = LIFE_OUTCOMES.b_univ[career.studied ? 0 : 1]
           } else if (event.boss === 'b_shukatsu') {
             if (career.employed !== undefined) continue
             career.employed = level('w_work') >= 2
             reward = career.employed ? (career.studied ? 2 : 1) : 0
-            text = career.employed
-              ? career.studied
-                ? '学びと仕事がつながり、専門職に就職。転機を2回獲得。'
-                : '実務を磨き、現場で就職。転機を1回獲得。'
-              : '就職を急がず、自分の道を探す。'
+            text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
           } else {
             if (career.settled !== undefined) continue
             career.settled = true
             reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
-            text =
-              reward === 2
-                ? '職歴と磨いた仕事で、リストラ期に再就職。転機を2回獲得。'
-                : reward === 1
-                  ? '過去の職歴を頼りに、次の仕事へ。転機を1回獲得。'
-                  : '職歴に頼らず、新しい生き方を探す。'
+            text = LIFE_OUTCOMES.b_layoff[reward === 2 ? 0 : reward === 1 ? 1 : 2]
           }
           player.careerPending += reward
+          player.history.push({ event: index, outcome: text })
           this.log(text, player.id)
         }
       }
@@ -728,13 +725,18 @@ export class Game {
       if (wedding || birth) {
         for (const player of state.players) {
           if (player.joinedAt >= event.at) continue
+          if (player.history.some((decision) => decision.event === index)) continue
           if (wedding) {
             player.married = player.weapons.some((weapon) => weapon.id === 'w_love' && weapon.lv >= 2)
-            this.log(player.married ? '結婚した！配偶者が毎秒HPを2回復。' : '独身の人生を歩む。', player.id)
+            this.log(LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1], player.id)
           } else if (player.married) {
             player.hasChild = true
-            this.log('子どもが生まれた！家族の回復が毎秒HP3に。', player.id)
+            this.log(LIFE_OUTCOMES.nightcry[0], player.id)
           }
+          const outcome = wedding
+            ? LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1]
+            : LIFE_OUTCOMES.nightcry[player.hasChild ? 0 : 1]
+          player.history.push({ event: index, outcome })
         }
       }
       if (event.boss === 'b_layoff') {
@@ -2152,8 +2154,7 @@ export class Game {
     const result: string[] = []
     for (const weapon of player.weapons) if (weapon.lv < MAX_WEAPON_LEVEL) result.push(`w:${weapon.id}`)
     if (talentWeaponCount(player) < weaponSlots(player))
-      for (const def of TALENT_WEAPONS)
-        if (age >= def.minAge && !player.weapons.some((w) => w.id === def.id)) result.push(`w:${def.id}`)
+      for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives) if (passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
     if (player.passives.length < PASSIVE_SLOTS)
       for (const def of PASSIVES) if (!player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
@@ -2173,9 +2174,8 @@ export class Game {
     if ((player.pending === 0 && player.swapPending > 0) || (career && !this.options(player).length)) {
       if (career) player.careerPending--
       else player.swapPending--
-      const pool = TALENT_WEAPONS.filter(
-        (def) => ageAt(this.state.time) >= def.minAge && !player.weapons.some((w) => w.id === def.id)
-      )
+      const age = ageAt(this.state.time)
+      const pool = TALENT_WEAPONS.filter((def) => canObtainWeapon(player, def, age))
       const hand: string[] = []
       while (hand.length < 3 && pool.length)
         hand.push(`s:${pool.splice(Math.floor(this.rng() * pool.length), 1)[0].id}`)

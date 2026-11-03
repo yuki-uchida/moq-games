@@ -15,6 +15,7 @@ import {
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
 import type { GameState } from './game'
+import { historyOk, type LifeDecision } from './history'
 
 export { BULLET_KINDS, ITEM_KINDS }
 
@@ -43,6 +44,7 @@ export interface ViewPlayer {
   choiceSeq: number
   /** Only revealed once a life is over. */
   talents?: Record<string, number>
+  history?: LifeDecision[]
 }
 
 export interface View {
@@ -163,7 +165,7 @@ export function toView(state: GameState): View {
       passives: p.passives.map((s) => [s.id, s.lv]),
       choices: p.choices,
       choiceSeq: p.choiceSeq,
-      ...(over ? { talents: { ...p.talents } } : {})
+      ...(over ? { talents: { ...p.talents }, history: p.history.map((decision) => ({ ...decision })) } : {})
     })),
     enemies,
     shots,
@@ -235,7 +237,13 @@ export function readView(value: unknown): View | undefined {
     ['playing', 'reaper', 'won', 'lost'].includes(v.phase as string) &&
     Array.isArray(v.players) &&
     v.players.length <= MAX_GAME_PLAYERS &&
-    v.players.every((p) => playerOk(p) && (v.phase === 'won' || v.phase === 'lost' || p.talents === undefined)) &&
+    v.players.every(
+      (p) =>
+        playerOk(p) &&
+        (v.phase === 'won' || v.phase === 'lost'
+          ? p.history === undefined || historyOk(p.history, v.time as number)
+          : p.talents === undefined && p.history === undefined)
+    ) &&
     flat(v.enemies, STRIDE.enemies, VIEW_CAPS.enemies) &&
     flat(v.shots, STRIDE.shots, VIEW_CAPS.shots) &&
     flat(v.bullets, STRIDE.bullets, VIEW_CAPS.bullets) &&

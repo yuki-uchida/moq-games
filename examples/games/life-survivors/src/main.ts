@@ -713,6 +713,16 @@ function showResult(
   rows.forEach((row, index) => row.style.setProperty('--i', String(index)))
   element('#result-build').replaceChildren(...rows)
   element('#result-build-title').hidden = !player
+  element('#result-history').hidden = !player?.history
+  element('#result-history-list').replaceChildren(
+    ...(player?.history?.length
+      ? player.history.map((decision) => {
+          const row = document.createElement('li')
+          row.textContent = `${Math.floor(ageAt(EVENTS[decision.event].at))}歳：${decision.outcome}`
+          return row
+        })
+      : [Object.assign(document.createElement('li'), { textContent: '経験した人生の分岐はありません。' })])
+  )
   const talents = player?.talents
   element('#result-talents').hidden = !talents
   if (talents) {
@@ -919,7 +929,7 @@ window.addEventListener('keydown', (event) => {
   if (/^Digit[1-8]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
     event.preventDefault()
-  } else if (moveKeys.has(event.code)) {
+  } else if (moveKeys.has(event.code) && event.target !== element('#synergy-list')) {
     keys.add(event.code)
     event.preventDefault()
   }
