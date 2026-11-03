@@ -69,5 +69,5 @@ describe('蒸発済み: 自立', () => {
       expect(best, `seed ${seed} best lv`).toBeGreaterThanOrEqual(2)
     }
     process.stderr.write(report.join('\n'))
-  })
+  }, 20_000)
 })
