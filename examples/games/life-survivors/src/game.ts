@@ -1535,7 +1535,7 @@ export class Game {
           this.shot(player, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
-            spin: def.speed,
+            spin: def.id === 'p_monster' ? 240 * ws.speed : def.speed,
             r: 20 * Math.sqrt(ws.area),
             tick: 0.45
           })
@@ -1845,9 +1845,12 @@ export class Game {
       if (shot.life <= 0) continue
       switch (shot.kind) {
         case 'orbit':
-          shot.angle += shot.spin * dt
-          shot.x = owner.x + Math.cos(shot.angle) * shot.orbit
-          shot.y = owner.y + Math.sin(shot.angle) * shot.orbit
+          if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
+          else {
+            shot.angle += shot.spin * dt
+            shot.x = owner.x + Math.cos(shot.angle) * shot.orbit
+            shot.y = owner.y + Math.sin(shot.angle) * shot.orbit
+          }
           break
         case 'aura':
           shot.x = owner.x
