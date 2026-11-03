@@ -127,6 +127,7 @@ import {
   stageUnlocked,
   toggleFormation,
   awardBounty,
+  affordableRecruit,
   recordStars,
   starsFor,
   starsOf,
@@ -2770,6 +2771,11 @@ updateField()
 $<HTMLSelectElement>('mode').value = 'rule'
 configureAI()
 openTitle()
+/** On 総力戦 stages, the name of an ally the player could recruit right now (every owned ally fights there). */
+function allOutRecruitName(stage: number): string | undefined {
+  const type = stage >= ALL_OUT_FROM_STAGE ? affordableRecruit(stageProgress) : null
+  return type ? DEFINITIONS[type].name : undefined
+}
 /** Pay the stage (win) and kill bonus coins, record the star rating, and remember what the result card shows. */
 function settleOutcome(state: Readonly<typeof engine.state>, bounty: number) {
   const first = state.stage > stageProgress.cleared,
@@ -3112,7 +3118,7 @@ function frame(now: number) {
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, assaultGold)}`
+        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, assaultGold, allOutRecruitName(state.stage))}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
