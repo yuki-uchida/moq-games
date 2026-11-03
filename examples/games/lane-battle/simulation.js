@@ -108,13 +108,13 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 110,
+    cost: 120,
     hp: 500,
     atk: 56,
     range: 36,
     speed: 30,
     period: 0.95,
-    cooldown: 6,
+    cooldown: 10,
     line: '背脂こってり。前線を支える万能型'
   },
   {
@@ -126,7 +126,7 @@ export const SPECIALS = [
     range: 34,
     speed: 52,
     period: 0.525,
-    cooldown: 6,
+    cooldown: 7,
     crit: 0.3125,
     line: '寝不足の暴走。素早い連打と会心'
   },
@@ -146,7 +146,7 @@ export const SPECIALS = [
   {
     key: 'jiro',
     name: '二郎系ラーメン',
-    cost: 300,
+    cost: 285,
     hp: 1850,
     atk: 92,
     range: 44,
@@ -164,7 +164,7 @@ export const SPECIALS = [
     range: 40,
     speed: 26,
     period: 1.31,
-    cooldown: 11.5,
+    cooldown: 15,
     line: '脂がはねて周りも巻き込む'
   },
   {
@@ -188,19 +188,19 @@ export const SPECIALS = [
     range: 38,
     speed: 30,
     period: 1.52,
-    cooldown: 9.75,
+    cooldown: 16.25,
     line: '一撃が重い、辛さの暴力'
   },
   {
     key: 'milk',
     name: '牛乳',
     cost: 140,
-    hp: 625,
-    atk: 40,
+    hp: 650,
+    atk: 42.5,
     range: 36,
     speed: 28,
     period: 1.1,
-    cooldown: 9,
+    cooldown: 7,
     line: 'ゴロゴロ押し返す'
   },
   {
@@ -287,7 +287,7 @@ const MECHANICS = {
     '冷風で前方3体の足を鈍らせる。',
     { multipliers: [1, 0.8, 0.6], slowEffect: 2.5, slowFactor: 0.5 }
   ],
-  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.275 }],
+  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.35 }],
   yofukashi: ['single', '眠気', '当てた敵を眠くして攻撃を遅らせる。会心あり。', { drowsyEffect: 3.125 }],
   sake: ['single', '千鳥足', '会心で敵を千鳥足にして後退させる。', { confuse: 1.2 }],
   jiro: ['ring', '打ち上げ', '地響きで周りの敵を打ち上げる。', { launch: 0.6, heavy: true }],
@@ -313,7 +313,7 @@ const MECHANICS = {
     'single',
     '玉突き',
     '押し飛ばした敵を後ろの敵にぶつける。',
-    { knockback: 30, collision: 30, collisionDamage: 0.625, collisionPush: 12 }
+    { knockback: 37.5, collision: 30, collisionDamage: 0.625, collisionPush: 15 }
   ],
   oyster: [
     'single',
@@ -875,13 +875,7 @@ function strike(s, u, target, baseX) {
 }
 function ongoing(s, start, struck) {
   const end = s.time
-  const attacks = []
-  for (const unit of s.units) {
-    if (unit.hp <= 0 || unit.attack > end - start + 1e-9) continue
-    const { gap } = reach(s, unit)
-    if (gap > 0) continue
-    attacks.push(unit)
-  }
+  let now = start
   let decisive = null
   while (true) {
     let event = null
@@ -925,17 +919,19 @@ function ongoing(s, start, struck) {
         projectile.targetId === null
       )
     }
-    for (const unit of attacks) {
-      if (unit.hp <= 0) continue
+    for (const unit of s.units) {
+      if (unit.hp <= 0 || struck.has(unit) || unit.attack > end - start + 1e-9) continue
       let at = start + unit.attack
-      if (unit.control && unit.control.start <= at && unit.control.end > start)
-        at += Math.max(0, Math.min(end, unit.control.end) - Math.max(start, unit.control.start))
+      if (unit.control && unit.control.start <= at + 1e-9 && unit.control.end > start)
+        at += unit.control.end - Math.max(start, unit.control.start)
+      at = Math.max(at, now)
+      if (unit.control && unit.control.start <= at && unit.control.end > at) at = unit.control.end
       if (at > end + 1e-9) continue
       const current = reach(s, unit)
+      if (current.gap > 0) continue
       consider(
         at,
         () => {
-          attacks.splice(attacks.indexOf(unit), 1)
           if (unit.hp <= 0 || (unit.control?.end ?? 0) > s.time) return
           const { target, baseX, gap } = reach(s, unit)
           if (gap > 0) return
@@ -947,7 +943,7 @@ function ongoing(s, start, struck) {
       )
     }
     if (!event) break
-    s.time = event.at
+    now = s.time = Math.max(start, event.at)
     event.run()
     if (s.result && decisive === null) decisive = s.time
   }
@@ -1029,7 +1025,7 @@ function tick(s, dt) {
   s.burst = Math.max(0, s.burst - dt)
   const struck = new Map()
   ongoing(s, s.time - dt, struck)
-  if (s.result) return
+  if (s.result) return settleDeaths(s)
   fortDefense(s, dt)
   s.spawn -= dt
   if (s.spawn <= 0) {
@@ -1063,7 +1059,7 @@ function tick(s, dt) {
       u.motion = 'attack'
       if (u.attack <= 0) {
         strike(s, u, target, baseX)
-        if (s.result) return
+        if (s.result) return settleDeaths(s)
       }
     } else {
       u.motion = 'walk'
@@ -1076,6 +1072,10 @@ function tick(s, dt) {
       u.walkDistance += distanceWalked
     }
   }
+  settleDeaths(s)
+  s.effects = s.effects.filter((e) => (e.life -= dt) > 0)
+}
+function settleDeaths(s) {
   s.units = s.units.filter((u) => {
     if (u.hp > 0) return true
     if (u.side === -1) {
@@ -1086,5 +1086,4 @@ function tick(s, dt) {
     }
     return false
   })
-  s.effects = s.effects.filter((e) => (e.life -= dt) > 0)
 }
