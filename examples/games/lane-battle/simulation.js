@@ -96,7 +96,7 @@ export const SPECIALS = [
   {
     key: 'aircon',
     name: '冷房',
-    cost: 120,
+    cost: 125,
     hp: 240,
     atk: 31,
     range: 170,
@@ -108,24 +108,24 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 120,
-    hp: 395,
-    atk: 40,
+    cost: 105,
+    hp: 470,
+    atk: 48,
     range: 36,
     speed: 30,
-    period: 1,
+    period: 0.95,
     cooldown: 8,
     line: '背脂こってり。前線を支える万能型'
   },
   {
     key: 'yofukashi',
     name: '夜ふかし',
-    cost: 120,
-    hp: 217,
-    atk: 40,
+    cost: 105,
+    hp: 220,
+    atk: 50,
     range: 34,
     speed: 58,
-    period: 0.652,
+    period: 0.6,
     cooldown: 8,
     crit: 0.25,
     line: '寝不足の暴走。素早い連打と会心'
@@ -133,7 +133,7 @@ export const SPECIALS = [
   {
     key: 'sake',
     name: 'お酒',
-    cost: 140,
+    cost: 115,
     hp: 185,
     atk: 41,
     range: 165,
@@ -147,8 +147,8 @@ export const SPECIALS = [
     key: 'jiro',
     name: '二郎系ラーメン',
     cost: 300,
-    hp: 1475,
-    atk: 80,
+    hp: 1850,
+    atk: 92,
     range: 44,
     speed: 16,
     period: 1.6,
@@ -158,7 +158,7 @@ export const SPECIALS = [
   {
     key: 'yakiniku',
     name: '焼肉',
-    cost: 180,
+    cost: 225,
     hp: 560,
     atk: 51,
     range: 40,
@@ -170,7 +170,7 @@ export const SPECIALS = [
   {
     key: 'garlic',
     name: 'ニンニク',
-    cost: 160,
+    cost: 195,
     hp: 240,
     atk: 40,
     range: 150,
@@ -182,7 +182,7 @@ export const SPECIALS = [
   {
     key: 'curry',
     name: '激辛カレー',
-    cost: 190,
+    cost: 170,
     hp: 380,
     atk: 95,
     range: 38,
@@ -194,9 +194,9 @@ export const SPECIALS = [
   {
     key: 'milk',
     name: '牛乳',
-    cost: 120,
-    hp: 540,
-    atk: 34,
+    cost: 135,
+    hp: 625,
+    atk: 36,
     range: 36,
     speed: 28,
     period: 1.1,
@@ -206,7 +206,7 @@ export const SPECIALS = [
   {
     key: 'oyster',
     name: '生ガキ',
-    cost: 220,
+    cost: 165,
     hp: 300,
     atk: 120,
     range: 40,
@@ -219,19 +219,19 @@ export const SPECIALS = [
   {
     key: 'ice',
     name: 'アイスの食べすぎ',
-    cost: 110,
-    hp: 375,
-    atk: 41,
+    cost: 96,
+    hp: 400,
+    atk: 45,
     range: 34,
     speed: 32,
-    period: 1,
+    period: 0.85,
     cooldown: 8,
     line: 'キーンと冷やして足止め'
   },
   {
     key: 'energy',
     name: 'エナジードリンク',
-    cost: 150,
+    cost: 115,
     hp: 240,
     atk: 24,
     range: 150,
@@ -287,8 +287,8 @@ const MECHANICS = {
     '冷風で前方3体の足を鈍らせる。',
     { multipliers: [1, 0.8, 0.6], slowEffect: 2.5, slowFactor: 0.5 }
   ],
-  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.259 }],
-  yofukashi: ['single', '眠気', '当てた敵を眠くして攻撃を遅らせる。会心あり。', { drowsyEffect: 2.5 }],
+  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.375 }],
+  yofukashi: ['single', '眠気', '当てた敵を眠くして攻撃を遅らせる。会心あり。', { drowsyEffect: 3.125 }],
   sake: ['single', '千鳥足', '会心で敵を千鳥足にして後退させる。', { confuse: 1.2 }],
   jiro: ['ring', '打ち上げ', '地響きで周りの敵を打ち上げる。', { launch: 0.6, heavy: true }],
   yakiniku: [
@@ -307,13 +307,13 @@ const MECHANICS = {
     'single',
     '激辛マーク',
     '少し後に爆発する激辛マークを付ける。',
-    { mark: 1.5, markRadius: 40, markDamage: 0.5 }
+    { mark: 1.5, markRadius: 40, markDamage: 0.625 }
   ],
   milk: [
     'single',
     '玉突き',
     '押し飛ばした敵を後ろの敵にぶつける。',
-    { knockback: 30, collision: 30, collisionDamage: 0.35, collisionPush: 12 }
+    { knockback: 30, collision: 30, collisionDamage: 0.625, collisionPush: 12 }
   ],
   oyster: [
     'single',
@@ -321,7 +321,7 @@ const MECHANICS = {
     '重なる毒を与える。会心あり。',
     { poisonEffect: 4, poisonInterval: 1, poisonDamage: 0.1, poisonStacks: 3 }
   ],
-  ice: ['single', '凍結', 'ときどき敵を凍らせて止める。', { freeze: 0.8, freezeChance: 0.3 }],
+  ice: ['single', '凍結', 'ときどき敵を凍らせて止める。', { freeze: 1, freezeChance: 0.375 }],
   energy: ['single', 'カフェイン加速', '同じ敵へ撃ち続けるほど連射が速くなる。', { caffeine: true }],
   cleaner: ['single', '掃き寄せ', 'うんこを手前へ引き寄せる。', { pull: 14 }],
   yogurt: ['single', '防御ダウン', '酸っぱさでうんこの防御を下げる。', { vulnerable: 3 }],
@@ -785,7 +785,7 @@ function attack(s, src, target, baseX, crit, damage) {
     // The engaged foe is always the first victim (even when it has closed in); the area adds the rest,
     // nearest first. The shockwave starts under the engaged foe and runs 80 further.
     const dir = dirOf(src)
-    const start = Math.abs(target.x - src.x)
+    const start = (target.x - src.x) * dir
     const others = s.units
       .filter((unit) => {
         if (unit === target || unit.side === src.side || unit.hp <= 0) return false
@@ -794,13 +794,15 @@ function attack(s, src, target, baseX, crit, damage) {
         if (src.areaKind === 'shockwave') return distance >= start && distance <= start + 80
         return distance >= 0 && distance <= src.range + (src.extra || 0)
       })
-      .sort((a, b) => Math.abs(a.x - src.x) - Math.abs(b.x - src.x))
+      .sort((a, b) =>
+        src.areaKind === 'shockwave' ? (a.x - b.x) * dir : Math.abs(a.x - src.x) - Math.abs(b.x - src.x)
+      )
     const multipliers = src.multipliers || [1, 1, 1, 1, 1]
     ;[target, ...others].slice(0, multipliers.length).forEach((victim, index) => {
       const distance = Math.abs(victim.x - src.x)
       const delay =
         src.areaKind === 'shockwave'
-          ? (distance - start) / 600
+          ? ((victim.x - src.x) * dir - start) / 600
           : ['cone', 'pierce'].includes(src.areaKind)
             ? (0.12 * distance) / src.range
             : 0
@@ -899,7 +901,7 @@ export function step(s, dt) {
   s.projectiles = []
   for (const p of pending) {
     const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
-    if (target && !p.explosion) p.effect.x = target.x
+    if (target) p.effect.x = target.x
     if (s.time < p.at) {
       s.projectiles.push(p)
       continue
@@ -919,33 +921,17 @@ export function step(s, dt) {
           targetId: target.id,
           attackerKey: p.src.key,
           explosion: true,
+          hit: true,
           areaKind: 'circle',
           victims: []
         }
         s.effects.push(effect)
         for (const victim of s.units)
           if (victim.side === target.side && victim.hp > 0 && Math.abs(victim.x - target.x) <= p.src.markRadius) {
-            const victimEntry = { id: victim.id, at: p.at }
-            effect.victims.push(victimEntry)
-            pending.push({
-              targetId: victim.id,
-              src: p.src,
-              damage: p.curry.atk * p.src.markDamage,
-              at: p.at,
-              effect,
-              victim: victimEntry,
-              explosion: true
-            })
+            effect.victims.push({ id: victim.id, at: p.at })
+            damageUnit(s, p.src, victim, p.curry.atk * p.src.markDamage, null, true)
           }
       }
-      continue
-    }
-    if (p.explosion) {
-      if (target) {
-        p.effect.hit = true
-        damageUnit(s, p.src, target, p.damage, null, true)
-      } else if (p.victim) p.victim.missed = true
-      p.effect.missed = !p.effect.hit
       continue
     }
     p.effect.arrived = true

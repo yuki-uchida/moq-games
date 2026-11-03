@@ -1,6 +1,5 @@
 import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
-/** Specials in the niche probe fight at the strength of one joining after stage index 15 at +8% per stage. */
-const NICHE_SPECIAL_SCALE = 2.2
+import { specialScale } from './campaign.js'
 
 function measure(type, side) {
   const deck = side === 1 ? [card({ uid: 1, key: type.key })] : [card({ uid: 1, key: 'katachi' })]
@@ -50,8 +49,7 @@ const scenarios = {
 }
 
 function measureNiche(type, foes) {
-  // A fixed special strength, so the table compares the units themselves, not the campaign's join scaling.
-  const scale = type.special ? NICHE_SPECIAL_SCALE : 1
+  const scale = type.special ? specialScale(15) : 1
   const deck = [
     card({ uid: 1, key: type.key, hp: Math.round(type.hp * scale), atk: Math.round(type.atk * scale) }),
     card({ uid: 2, key: 'katachi' }),
@@ -88,7 +86,9 @@ function measureNiche(type, foes) {
   return `${cleared.toFixed(2)}% / ${((cleared * 100) / type.cost).toFixed(2)} / ${survival.toFixed(1)}s`
 }
 
-console.log('\nニッチ測定: 固定シード7、第16面倍率、特殊は第15面加入倍率2.2、うんこはLv1、カチカチ2体、最大40秒')
+console.log(
+  `\nニッチ測定: 固定シード7、第16面倍率、特殊はステージindex 15加入倍率${specialScale(15)}、うんこはLv1、カチカチ2体、最大40秒`
+)
 console.log('unit\tcost\theavy (% / 100 cost / 生存秒)\tswarm (% / 100 cost / 生存秒)\tranged (% / 100 cost / 生存秒)')
 for (const type of [...POOPS, ...SPECIALS]) {
   console.log(

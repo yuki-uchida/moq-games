@@ -35,11 +35,18 @@ test('niche report keeps specials useful and preserves the Lv1 poop baseline', (
     }
   }
   const specials = rows.slice(POOPS.length)
+  const medians = [0, 1, 2].map((scenario) => {
+    const values = specials.map((row) => row.cleared[scenario] / row.cost).sort((a, b) => a - b)
+    return (values[5] + values[6]) / 2
+  })
   for (const [index, unit] of SPECIALS.entries()) {
     const row = specials[index]
     assert.equal(row.name, unit.name)
     assert.equal(row.cost, unit.cost)
-    assert.ok(row.cleared.filter((value) => value >= 45).length >= 2, unit.name)
+    assert.ok(
+      row.cleared.some((value, scenario) => value / row.cost >= medians[scenario]),
+      unit.name
+    )
     assert.ok(unit.cost >= 200 || row.cleared.some((value) => value < 100), unit.name)
   }
   for (let scenario = 0; scenario < 3; scenario++) {

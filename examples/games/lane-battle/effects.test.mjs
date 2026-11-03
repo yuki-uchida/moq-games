@@ -140,6 +140,22 @@ test('shockwave starts under the engaged foe and runs 80 further; ring hits at m
   assert.equal(ring.victims.filter((victim) => victim.hp < 10000).length, 5)
 })
 
+test('shockwave measures its window and timing from a foe behind the attacker', () => {
+  const { game, victims } = scene('daiou', [-5, 7, 75, 75.5, 83])
+  step(game, 0.001)
+  const effect = game.effects.find((entry) => entry.attackerKey === 'daiou')
+  assert.deepEqual(
+    effect.victims.map((entry) => entry.id),
+    victims.slice(0, 3).map((victim) => victim.id)
+  )
+  assert.ok(Math.abs(effect.victims[1].at - (game.time + 12 / 600)) < 1e-9)
+  assert.ok(Math.abs(effect.victims[2].at - (game.time + 80 / 600)) < 1e-9)
+  step(game, 0.14)
+  assert.ok(victims[2].hp < 10000)
+  assert.equal(victims[3].hp, 10000)
+  assert.equal(victims[4].hp, 10000)
+})
+
 test('cold slow and mud use the strongest factor rather than multiplying', () => {
   const { game, victims } = scene('aircon', [50])
   step(game, 0.01)
@@ -186,7 +202,7 @@ test('immovable units ignore launch, knockback and pull', () => {
 test('drowsiness, rally, attack down and defense down affect combat', () => {
   const sleepy = scene('yofukashi', [30])
   step(sleepy.game, 0.01)
-  assert.equal(sleepy.victims[0].drowsy.end, 2.51)
+  assert.equal(sleepy.victims[0].drowsy.end, 3.135)
   const rally = scene('daiou', [40])
   step(rally.game, 0.01)
   assert.ok(Math.abs(rally.source.cycle - rally.source.period * 0.8) < 1e-9)
@@ -215,7 +231,7 @@ test('poison stacks independently and curry re-hits do not delay its explosion',
   const hp = curry.victims[1].hp
   step(curry.game, 0.99)
   step(curry.game, 0.02)
-  assert.equal(curry.victims[1].hp, hp - curry.source.atk * 0.5)
+  assert.equal(curry.victims[1].hp, hp - curry.source.atk * 0.625)
   const explosion = curry.game.effects.find((effect) => effect.explosion)
   assert.equal(explosion.x, curry.victims[0].x)
   assert.equal(explosion.primaryX, curry.victims[0].x)
@@ -282,20 +298,49 @@ test('delayed victims that die before arrival are marked missed without hiding r
     assert.equal(effect.victims[1].missed, true, key)
     assert.equal(effect.missed, false, key)
   }
-  const { game, source, victims } = scene('curry', [30])
-  const effect = { victims: [{ id: victims[0].id, at: 0.1 }] }
-  game.projectiles.push({
-    targetId: victims[0].id,
-    src: source,
-    at: 0.1,
-    explosion: true,
-    effect,
-    victim: effect.victims[0]
-  })
-  victims[0].hp = 0
-  step(game, 0.1)
-  assert.equal(effect.victims[0].missed, true)
-  assert.equal(effect.missed, true)
+})
+
+test('curry blast resolves immediately before later shots and skips dead marked targets', () => {
+  for (const competing of [false, true]) {
+    const { game, source, victims } = scene('curry', [30, 50])
+    step(game, 0.01)
+    source.attack = 999
+    const hp = victims.map((victim) => victim.hp)
+    if (competing) {
+      for (const victim of victims) {
+        const entry = { id: victim.id, at: 1.51 }
+        game.projectiles.push({
+          targetId: victim.id,
+          src: source,
+          damage: 20000,
+          at: 1.51,
+          effect: { victims: [entry] },
+          victim: entry
+        })
+      }
+    }
+    step(game, 1.49)
+    step(game, 0.02)
+    const effect = game.effects.find((entry) => entry.explosion)
+    assert.equal(effect.hit, true)
+    assert.deepEqual(
+      effect.victims.map((entry) => entry.id),
+      victims.map((victim) => victim.id)
+    )
+    assert.ok(effect.victims.every((entry) => !entry.missed))
+    if (competing) assert.ok(victims.every((victim) => victim.hp <= 0))
+    else victims.forEach((victim, index) => assert.equal(victim.hp, hp[index] - source.atk * source.markDamage))
+  }
+  const dead = scene('curry', [30])
+  step(dead.game, 0.01)
+  dead.source.attack = 999
+  dead.victims[0].hp = 0
+  step(dead.game, 1.49)
+  step(dead.game, 0.02)
+  assert.equal(
+    dead.game.effects.some((effect) => effect.explosion),
+    false
+  )
 })
 
 test('burn, each poison stack, stench and wet zones tick exactly through their end', () => {
@@ -341,7 +386,7 @@ test('curry re-hits keep the first owner and attack for the blast', () => {
   second.attack = 0
   step(game, 0.5)
   assert.equal(victims[0].curry, mark)
-  victims[1].hp = source.atk * 0.5
+  victims[1].hp = source.atk * 0.625
   step(game, 1)
   assert.equal(victims[1].hp, 0)
   assert.deepEqual([...victims[1].hitters], [1])
