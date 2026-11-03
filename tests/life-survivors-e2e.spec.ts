@@ -12,6 +12,57 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('synergy details show activation and release from the local hand', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((life) => {
+    const game = life.game as unknown as Game
+    const player = game.state.players[0]
+    player.birthPick = false
+    player.choices = []
+    player.pending = 0
+    player.weapons = ['w_reading', 'w_invest'].map((id) => ({ id, lv: 1, cd: 100, held: 0, damage: 0 }))
+  })
+  await expect(page.locator('#synergy-count')).toHaveText('人生の相乗効果 1/3')
+  await page.locator('#synergy-count').focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#synergies')).toHaveAttribute('open', '')
+  await expect(page.locator('#synergy-list')).toContainText('発動中：知識で資産形成')
+  await page.screenshot({ path: testInfo.outputPath('synergies-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(
+    await page.evaluate(() => {
+      const panel = document.querySelector('#synergy-list')!
+      const feed = document.querySelector('#feed p')
+      if (!feed) return true
+      const a = panel.getBoundingClientRect()
+      const b = feed.getBoundingClientRect()
+      const left = Math.max(a.left, b.left)
+      const right = Math.min(a.right, b.right)
+      const top = Math.max(a.top, b.top)
+      const bottom = Math.min(a.bottom, b.bottom)
+      return (
+        right <= left ||
+        bottom <= top ||
+        panel.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2))
+      )
+    })
+  ).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('synergies-mobile.png') })
+  await handle.evaluate((life) => {
+    const game = life.game as unknown as Game
+    const player = game.state.players[0]
+    player.choices = ['r:w_reading:w_hobby']
+    game.choose(player, 0)
+  })
+  await expect(page.locator('#synergy-count')).toHaveText('人生の相乗効果 0/3')
+  await expect(page.locator('#synergy-list')).toContainText('未発動：知識で資産形成')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#synergies')).not.toHaveAttribute('open')
+})
+
 test('trained careers render together for local and co-op participants', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -321,6 +372,20 @@ test('two players share one life-world: the guest moves and gets their own hand'
     .poll(() => hostLife.evaluate((l, id) => l.game.state.players.find((p) => p.id === id)!.choices.length, guestId))
     .toBe(0)
   await expect(guest.locator('#levelup')).toBeHidden()
+  await hostLife.evaluate((hook, id) => {
+    const game = hook.game as unknown as Game
+    for (const player of game.state.players) {
+      const ids = player.id === id ? ['w_reading', 'w_invest'] : ['w_friend']
+      player.weapons = ids.map((weapon) => ({ id: weapon, lv: 1, cd: 100, held: 0, damage: 0 }))
+    }
+  }, guestId)
+  await expect(host.locator('#synergy-count')).toHaveText('人生の相乗効果 0/3')
+  await expect(guest.locator('#synergy-count')).toHaveText('人生の相乗効果 1/3')
+  await guest.locator('#synergy-count').click()
+  await expect(guest.locator('#synergy-list')).toContainText('発動中：知識で資産形成')
+  expect(
+    await guestLife.evaluate((hook, id) => hook.view.players.find((player) => player.id === id), guestId)
+  ).not.toHaveProperty('talents')
   expect(errors).toEqual([])
 })
 

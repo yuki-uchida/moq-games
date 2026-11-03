@@ -30,6 +30,7 @@ import {
   type WeaponDef
 } from './data'
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
+import { activeSynergies } from './synergies'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -354,6 +355,8 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
   const def = WEAPON_BY_ID.get(weapon.id)!
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
+  const synergies = def.parent ? [] : activeSynergies(player.weapons.map((owned) => owned.id))
+  const bonuses = synergies.filter((synergy) => synergy.target === def.category)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
   if (def.category) damage *= player.talents[def.category]
   if (evolved) damage *= 1.6
@@ -364,8 +367,13 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
     damage *= 1 + weapon.held / 150
   }
   return {
-    damage,
-    cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
+    damage: damage * bonuses.reduce((value, synergy) => value * synergy.damage, 1),
+    cooldown:
+      def.cooldown *
+      (lv >= 7 ? 0.85 : 1) *
+      stats.cooldown *
+      (evolved ? 0.8 : 1) *
+      bonuses.reduce((value, synergy) => value * synergy.cooldown, 1),
     amount:
       def.amount +
       (lv >= 2 ? 1 : 0) +
@@ -373,7 +381,11 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
       (lv >= 8 ? 1 : 0) +
       (evolved ? 1 : 0) +
       (def.behavior === 'none' ? 0 : stats.amount),
-    area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
+    area:
+      (lv >= 4 ? 1.25 : 1) *
+      stats.area *
+      (evolved ? 1.2 : 1) *
+      bonuses.reduce((value, synergy) => value * synergy.area, 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
