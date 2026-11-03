@@ -1,4 +1,5 @@
 import type { UnitType } from '../../tower_diffence_with_jev/src/game/model'
+import type { MusicTrack } from './music'
 
 export type CampaignUnit = {
   id: string
@@ -31,7 +32,7 @@ export type Chapter = {
   deployment: { x: number; y: number }[]
   enemies: CampaignUnit[]
   objective: Objective
-  music: 'monster-assault' | 'monster-assault-2' | 'final-boss'
+  music: MusicTrack
   recruits: string[]
 }
 
@@ -68,7 +69,7 @@ export const campaign: Chapter[] = [
       enemy('f', '霧番', 'goblin', 7, 4, 14, 5, 1, 2, { armor: 2 })
     ],
     objective: { type: 'rout' },
-    music: 'monster-assault',
+    music: 'ember-march',
     recruits: []
   },
   {
@@ -102,7 +103,7 @@ export const campaign: Chapter[] = [
       enemy('g', '風牙', 'wolf', 7, 1, 12, 4, 1, 3)
     ],
     objective: { type: 'rout' },
-    music: 'monster-assault',
+    music: 'ember-march',
     recruits: []
   },
   {
@@ -120,7 +121,7 @@ export const campaign: Chapter[] = [
       enemy('h', '灰の射手', 'archer', 8, 8, 8, 2, 2, 6)
     ],
     objective: { type: 'boss' },
-    music: 'monster-assault',
+    music: 'ember-march',
     recruits: []
   },
   {
@@ -137,7 +138,7 @@ export const campaign: Chapter[] = [
       enemy('g', '夜蝙蝠', 'bat', 8, 1, 10, 4, 1, 7)
     ],
     objective: { type: 'seize', x: 8, y: 4 },
-    music: 'monster-assault-2',
+    music: 'moonlit-ward',
     recruits: ['healer']
   },
   {
@@ -154,7 +155,7 @@ export const campaign: Chapter[] = [
       enemy('g', '礼拝の影', 'wraith', 8, 5, 12, 5, 2, 9)
     ],
     objective: { type: 'survive', turns: 6 },
-    music: 'monster-assault-2',
+    music: 'moonlit-ward',
     recruits: []
   },
   {
@@ -171,7 +172,7 @@ export const campaign: Chapter[] = [
       enemy('g', '玉座の牙', 'wolf', 7, 7, 14, 5, 1, 10)
     ],
     objective: { type: 'boss' },
-    music: 'final-boss',
+    music: 'crown-of-embers',
     recruits: []
   }
 ]
