@@ -2,7 +2,6 @@ import { SPECIALS, specialReady } from './game/SpecialAbilities'
 import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from './game/SpecialTargeting'
 import { SkillBar } from './ui/SkillBar'
 import { SkillCutIn } from './ui/SkillCutIn'
-import { nextFreezeUntil } from './ui/SpecialFeel'
 import './ui/skill-bar.css'
 import { audioPackAvailable, environmentPackAvailable, environmentArtControls } from './BuildAssets'
 import { soundStatusMessage } from './audio/SoundStatus'
@@ -1123,11 +1122,10 @@ function fireSpecial(point: Point) {
 // Real time until which the simulation is stopped for the cast cut-in (see initializeClock).
 let freezeUntil = 0
 function playCastFeedback(type: AllyType, point: Point) {
-  skillCutIn.play(
+  freezeUntil = skillCutIn.play(
     { portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type },
     { point, radius: SPECIALS[type].radius }
   )
-  freezeUntil = nextFreezeUntil(performance.now(), freezeUntil)
   soundPlayer.playCue('ui_special')
   soundPlayer.playFeel('cutin')
 }
@@ -2744,7 +2742,7 @@ function persistOutcome() {
   if (!engine.state.result || outcomeSaved) return
   outcomeSaved = true
   // The feedback layer counts kills per frame; settle the final blows before the bounty is paid.
-  battleFeedback.update(engine.state)
+  battleFeedback.update(engine.state, performance.now(), engine.takeSpecialImpacts())
   lastKills = battleFeedback.kills
   resultLive = true
   settleOutcome(engine.state, battleFeedback.bounty)
@@ -2932,7 +2930,7 @@ function frame(now: number) {
     selected,
     !!placingSandbag || !!placingRoadItem
   )
-  battleFeedback.update(state)
+  battleFeedback.update(state, performance.now(), engine.takeSpecialImpacts())
   battleHud.update(state, battleFeedback.bountyArrived)
   if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)

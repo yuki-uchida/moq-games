@@ -118,6 +118,8 @@ export class CoachMarks {
   update(ctx: CoachContext, now: number): void {
     if (now - this.lastUpdate < 100) return
     this.lastUpdate = now
+    // Never talk over a skill cut-in.
+    if (document.getElementById('skill-cutin')?.hidden === false) return this.hide()
     if (this.aimUntil) {
       const rect = this.aimTarget?.isConnected && now < this.aimUntil && !ctx.modal ? this.aimTarget.getBoundingClientRect() : null
       if (rect?.width) return this.show('aim', rect)
