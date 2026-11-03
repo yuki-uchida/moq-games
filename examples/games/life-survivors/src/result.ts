@@ -1,4 +1,13 @@
-import { TALENT_CATEGORIES } from './data'
+import { PASSIVE_BY_ID, TALENT_CATEGORIES, WEAPON_BY_ID } from './data'
+import type { ViewPlayer } from './view'
+
+export function resultCategories(player: Pick<ViewPlayer, 'weapons' | 'passives'>) {
+  return TALENT_CATEGORIES.map((category) => ({
+    category,
+    weapons: player.weapons.filter(([id]) => WEAPON_BY_ID.get(id)?.category === category),
+    passives: player.passives.filter(([id]) => PASSIVE_BY_ID.get(id)?.category === category)
+  }))
+}
 
 export function talentRadarPoints(talents: Record<string, number>): string {
   return TALENT_CATEGORIES.map((category, index) => {
