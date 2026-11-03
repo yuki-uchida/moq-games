@@ -29,7 +29,7 @@ const BODIES: Record<string, string> = {
   小学生: 'kid',
   中学生: 'junior',
   高校生: 'high',
-  大学生: 'college',
+  青年期: 'college',
   社会人: 'adult',
   働き盛り: 'prime',
   中年: 'middle',
