@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ENEMIES, burst, card, createGame, rng, step, summon } from './simulation.js'
+import { ENEMIES, burst, card, createGame, reach, rng, step, summon } from './simulation.js'
 
 const frames = [
+  () => 1 / 60,
   () => 0.01,
   () => 0.05,
   (() => {
@@ -10,6 +11,124 @@ const frames = [
     return () => 0.004 + random() * 0.046
   })()
 ]
+
+function reviewScene(keys) {
+  const game = createGame(
+    0,
+    keys.map((key, index) => card({ uid: index + 1, key })),
+    1
+  )
+  Object.assign(game, { time: 1, gold: 999, spawn: 999, opened: 2, rushes: 4, turret: 999 })
+  for (let index = 0; index < keys.length; index++) assert.ok(summon(game, index))
+  assert.ok(
+    summon(
+      game,
+      ENEMIES.findIndex((unit) => unit.key === 'cleaner'),
+      -1
+    )
+  )
+  return game
+}
+
+test('a ready attacker retargets the fort when its blocker dies within the tick', () => {
+  for (const homeImpact of [1.01, 1.02]) {
+    const results = frames.map((frame) => {
+      const game = reviewScene(['katachi', 'korokoro'])
+      assert.ok(
+        summon(
+          game,
+          ENEMIES.findIndex((unit) => unit.key === 'sayu'),
+          -1
+        )
+      )
+      const [attacker, shooter, blocker, enemyShooter] = game.units
+      Object.assign(game, { home: 1, enemy: 1 })
+      Object.assign(attacker, { x: 100, attack: 0 })
+      Object.assign(shooter, { x: 200, attack: 1 })
+      Object.assign(blocker, { x: 65, hp: 1, attack: 0.5 })
+      Object.assign(enemyShooter, { x: 800, attack: 1 })
+      assert.ok(reach(game, attacker).gap > 0)
+      for (const [targetId, src, at] of [
+        [blocker.id, shooter, 1.003],
+        [null, enemyShooter, homeImpact]
+      ])
+        game.projectiles.push({ targetId, src, at, damage: src.atk, primary: true, effect: { victims: [] } })
+      advance(game, 0.05, frame)
+      return { result: game.result, time: game.time, home: game.home, enemy: game.enemy, strikes: attacker.strikes }
+    })
+    for (const result of results) assert.deepEqual(result, results[0])
+    assert.deepEqual(results[0], { result: 'victory', time: 1.003, home: 1, enemy: 0, strikes: 1 })
+  }
+})
+
+test('deaths before a decisive fort hit are rewarded but later projectiles do not land', () => {
+  const results = frames.map((frame) => {
+    const game = reviewScene(['korokoro', 'katachi'])
+    const [shooter, attacker, victim] = game.units
+    game.enemy = 1
+    Object.assign(shooter, { x: 650, attack: 1 })
+    Object.assign(attacker, { x: 100, attack: 0.005 })
+    Object.assign(victim, { x: 500, hp: 1, attack: 0.5 })
+    game.projectiles.push({
+      targetId: victim.id,
+      src: shooter,
+      damage: shooter.atk,
+      at: 1.003,
+      primary: true,
+      effect: { victims: [] }
+    })
+    game.projectiles.push({ targetId: null, src: { side: -1 }, damage: 9999, at: 1.01, effect: { victims: [] } })
+    advance(game, 0.05, frame)
+    return {
+      result: game.result,
+      time: game.time,
+      kills: game.kills,
+      exp: game.exp,
+      retained: game.units.includes(victim),
+      pending: game.projectiles.length
+    }
+  })
+  for (const result of results) assert.deepEqual(result, results[0])
+  assert.deepEqual(results[0], {
+    result: 'victory',
+    time: 1.005,
+    kills: 1,
+    exp: { 1: 10 },
+    retained: false,
+    pending: 1
+  })
+})
+
+test('a zone displacement engages a ready attacker during the same tick', () => {
+  const game = reviewScene(['katachi'])
+  const [attacker, victim] = game.units
+  Object.assign(attacker, { x: 200, attack: 0, speed: 0 })
+  Object.assign(victim, { x: 150, attack: 1, speed: 0 })
+  game.zones.push({ side: 1, kind: 'wash', x: 150, radius: 10, next: 1.003, end: 1.003, interval: 1, push: -20 })
+  step(game, 1 / 60)
+  assert.equal(attacker.strikes, 1)
+  assert.equal(game.effects.find((effect) => effect.sourceId === attacker.id).releasedAt, 1.003)
+})
+
+test('an engaged ready attacker strikes as control ends within the tick', () => {
+  const game = reviewScene(['katachi'])
+  const [attacker, victim] = game.units
+  Object.assign(attacker, { x: 200, attack: 0, speed: 0, control: { kind: 'stun', start: 0.99, end: 1.005 } })
+  Object.assign(victim, { x: 180, attack: 1, speed: 0 })
+  step(game, 1 / 60)
+  assert.equal(attacker.strikes, 1)
+  assert.equal(game.effects.find((effect) => effect.sourceId === attacker.id).releasedAt, 1.005)
+})
+
+test('rounding at a control start cannot repeatedly schedule a blocked attack', () => {
+  const game = reviewScene(['katachi'])
+  const [attacker, victim] = game.units
+  game.time = 191.05
+  Object.assign(attacker, { x: 200, attack: 0, speed: 0, control: { kind: 'stun', start: 191.05, end: 191.35 } })
+  Object.assign(victim, { x: 180, attack: 1, speed: 0 })
+  step(game, 1 / 60)
+  assert.equal(attacker.strikes, 0)
+})
 
 function advance(game, duration, frame) {
   let remaining = duration
@@ -51,8 +170,7 @@ test('the earlier fort impact ends the battle for every frame sequence', () => {
     advance(game, 1, frame)
     return { time: game.time, result: game.result, home: game.home, enemy: game.enemy }
   })
-  assert.deepEqual(results[1], results[0])
-  assert.deepEqual(results[2], results[0])
+  for (const result of results) assert.deepEqual(result, results[0])
   assert.equal(results[0].result, 'victory')
   assert.equal(results[0].home, 10)
 })
@@ -79,8 +197,7 @@ test('an attack before a lethal burn is frame independent', () => {
     advance(game, 0.2, frame)
     return { hp: source.hp, weak: source.weak.end, strikes: attacker.strikes }
   })
-  assert.deepEqual(results[1], results[0])
-  assert.deepEqual(results[2], results[0])
+  for (const result of results) assert.deepEqual(result, results[0])
   assert.equal(results[0].strikes, 1)
 })
 
@@ -232,6 +349,5 @@ test('a scripted mixed battle produces the same state across frame sequences', (
       units: game.units.map(({ id, hp, x }) => ({ id, hp, x }))
     }
   })
-  assert.deepEqual(results[1], results[0])
-  assert.deepEqual(results[2], results[0])
+  for (const result of results) assert.deepEqual(result, results[0])
 })
