@@ -1,6 +1,6 @@
 import type { FeelSound } from '../audio/FeelSounds'
-import { DEFINITIONS, canTargetUnit, type AllyType, type GameState, type Owner, type UnitType } from '../game/model'
-import { SPECIALS, type SpecialEffect } from '../game/SpecialAbilities'
+import { DEFINITIONS, type AllyType, type GameState, type Owner, type UnitType } from '../game/model'
+import { SPECIALS, type SpecialImpact } from '../game/SpecialAbilities'
 import {
   AmountAggregator,
   ComboTracker,
@@ -11,7 +11,7 @@ import {
   isHeavyHit,
   shakeAmplitude
 } from './BattleFeelLogic'
-import { healInArea, placeReadout, readoutText, summarizeImpact, type CastTally, type HpDelta } from './SpecialFeel'
+import { addImpact, castTally, newAccum, placeReadout, readoutText, stackReadout, type CastAccum, type FieldKind } from './SpecialFeel'
 
 /** Live floating DOM nodes (damage numbers, bursts, chips, coins). Banners and the fixed overlays are extra. */
 const MAX_NODES = 48
@@ -54,17 +54,19 @@ const reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-
 const prefersReducedMotion = () => !!reduced?.matches
 
 const FIELD_KIND: Partial<Record<AllyType, 'heal' | 'hold'>> = { healer: 'heal', frost: 'hold', ranger: 'hold' }
-/** One special cast being tallied; multi-hit specials add up on a single readout. */
-interface Cast extends CastTally {
+const fieldKind = (type: AllyType): FieldKind => FIELD_KIND[type] ?? null
+/** One special cast being tallied from the engine's own impact reports; multi-hit specials add up on a single readout. */
+interface Cast {
   type: AllyType
   x: number
   y: number
   effects: string[]
   total: number
   done: number
+  acc: CastAccum
+  shown: boolean
   el: HTMLElement | null
 }
-const castKey = (effectId: string) => effectId.slice(0, effectId.lastIndexOf(':'))
 
 export class BattleFeedback {
   private key = ''
@@ -72,11 +74,7 @@ export class BattleFeedback {
   private units = new Map<number, Tracked>()
   private corpseIds = new Set<number>()
   private bossSeen = new Set<number>()
-  private readonly specialHits = new Set<string>()
   private readonly casts = new Map<string, Cast>()
-  private readonly drops: HpDelta[] = []
-  private readonly gains: HpDelta[] = []
-  private readonly fresh: SpecialEffect[] = []
   private readonly killed = new Set<number>()
   private readonly gone = new Set<number>()
   private readonly force = new Set<number>()
@@ -128,7 +126,6 @@ export class BattleFeedback {
     this.units.clear()
     this.corpseIds.clear()
     this.bossSeen.clear()
-    this.specialHits.clear()
     this.casts.clear()
     this.hits.clear()
     this.heals.clear()
@@ -165,7 +162,8 @@ export class BattleFeedback {
     this.flashLayer.animate([{ opacity: 0 }, { opacity: 0.55, offset: 0.2 }, { opacity: 0 }], { duration: 320 })
   }
 
-  update(state: Readonly<GameState>, now = performance.now()): void {
+  /** `impacts` are what the engine reported the specials did since the last call (engine.takeSpecialImpacts()). */
+  update(state: Readonly<GameState>, now = performance.now(), impacts: readonly SpecialImpact[] = []): void {
     const key = `${state.battleId}:${state.stage}`
     const baseline = key !== this.key
     if (baseline) {
@@ -175,7 +173,6 @@ export class BattleFeedback {
     const combat = state.phase !== 'preparation' && !baseline
     this.frame++
     this.sweep(now)
-    this.drops.length = this.gains.length = this.fresh.length = 0
 
     // Units: hp diffs, deployments, boss arrival.
     for (const unit of state.units) {
@@ -202,10 +199,8 @@ export class BattleFeedback {
       if (combat) {
         if (hp < seen.hp) {
           this.hits.add(unit.id, seen.hp - hp, now)
-          if (unit.owner === 'ai') this.drops.push({ id: unit.id, x: unit.x, y: unit.y, amount: seen.hp - hp })
         } else if (hp > seen.hp) {
           this.heals.add(unit.id, hp - seen.hp, now)
-          if (unit.owner === 'player') this.gains.push({ id: unit.id, x: unit.x, y: unit.y, amount: hp - seen.hp })
         }
       }
       if (
@@ -223,12 +218,10 @@ export class BattleFeedback {
       seen.stamp = this.frame
     }
 
-    // Special impacts that landed since the last frame (read first so this frame's kills can be credited).
-    for (const effect of state.specialEffects ?? []) {
-      if (!effect.applied || this.specialHits.has(effect.id)) continue
-      this.specialHits.add(effect.id)
-      if (!baseline) this.fresh.push(effect)
-    }
+    // Kills the damaging specials report (read first so this frame's corpses can be credited to them).
+    const specialKills = new Set<number>()
+    if (!baseline)
+      for (const impact of impacts) if (SPECIALS[impact.type].power > 0) for (const id of impact.kills) specialKills.add(id)
 
     // Corpses: the only reliable death signal (enemies leave state.units in the same step).
     const killed = this.killed
@@ -261,9 +254,7 @@ export class BattleFeedback {
       chipBounty += bounty
       chipX = corpse.x
       chipY = corpse.y
-      const bySpecial = this.fresh.some(
-        (e) => e.power > 0 && Math.hypot(corpse.x - e.x, corpse.y - e.y) <= SPECIALS[e.type].radius
-      )
+      const bySpecial = specialKills.has(corpse.id)
       chipSpecial ||= bySpecial
       this.burst(corpse.x, corpse.y - 22, corpse.boss ? 'boss' : bySpecial ? 'special' : 'kill')
       this.options.play('kill')
@@ -287,10 +278,7 @@ export class BattleFeedback {
     for (const [id, seen] of this.units)
       if (seen.stamp !== this.frame) {
         gone.add(id)
-        if (killed.has(id) && seen.hp > 0 && combat) {
-          this.hits.add(id, seen.hp, now)
-          if (seen.owner === 'ai') this.drops.push({ id, x: seen.x, y: seen.y, amount: seen.hp, killed: true })
-        }
+        if (killed.has(id) && seen.hp > 0 && combat) this.hits.add(id, seen.hp, now)
       }
     const force = this.force
     force.clear()
@@ -301,14 +289,15 @@ export class BattleFeedback {
     for (const id of gone) this.units.delete(id)
 
     // Special impacts: the moment a damaging special lands, kick the camera and read the result out.
-    for (const effect of this.fresh) {
-      if (effect.power > 0) {
-        this.shake(4)
-        this.burst(effect.x, effect.y - 10, 'boss')
-        this.options.play('hit-heavy')
+    if (!baseline)
+      for (const impact of impacts) {
+        if (SPECIALS[impact.type].power > 0) {
+          this.shake(4)
+          this.burst(impact.x, impact.y - 10, 'boss')
+          this.options.play('hit-heavy')
+        }
+        this.tallyImpact(impact)
       }
-      this.tallyImpact(state, effect)
-    }
     if (this.casts.size) this.settleCasts(state)
 
     // Castle.
@@ -339,70 +328,57 @@ export class BattleFeedback {
 
   // --- special readout ------------------------------------------------------
 
-  private tallyImpact(state: Readonly<GameState>, effect: SpecialEffect): void {
-    const spec = SPECIALS[effect.type],
-      key = castKey(effect.id)
-    let cast = this.casts.get(key)
+  private tallyImpact(impact: SpecialImpact): void {
+    let cast = this.casts.get(impact.castKey)
     if (!cast) {
       cast = {
-        type: effect.type,
-        x: effect.x,
-        y: effect.y,
+        type: impact.type,
+        x: impact.x,
+        y: impact.y,
         effects: [],
-        total: spec.impacts.length,
+        total: SPECIALS[impact.type].impacts.length,
         done: 0,
-        el: null,
-        hits: 0,
-        damage: 0,
-        kills: 0,
-        held: 0,
-        heal: 0,
-        allies: 0
+        acc: newAccum(),
+        shown: false,
+        el: null
       }
-      this.casts.set(key, cast)
+      this.casts.set(impact.castKey, cast)
     }
-    cast.done++
-    cast.effects.push(effect.id)
-    const kind = FIELD_KIND[effect.type] ?? null
-    if (kind === 'hold')
-      cast.held = state.units.filter(
-        (u) =>
-          u.owner === 'ai' &&
-          u.hp > 0 &&
-          Math.hypot(u.x - effect.x, u.y - effect.y) <= spec.radius &&
-          canTargetUnit({ owner: 'player', type: effect.type }, u, state.battlefieldVersion)
-      ).length
-    else if (kind === 'heal')
-      cast.allies = state.units.filter(
-        (u) => u.owner === 'player' && u.hp > 0 && Math.hypot(u.x - effect.x, u.y - effect.y) <= spec.radius
-      ).length
-    else {
-      const sum = summarizeImpact(this.drops, effect, spec.radius)
-      cast.hits += sum.hits
-      cast.damage += sum.damage
-      cast.kills += sum.kills
+    if (!cast.effects.includes(impact.effectId)) cast.effects.push(impact.effectId)
+    addImpact(cast.acc, impact)
+    if (fieldKind(cast.type)) {
+      // A field reports every step; its card opens once, and a healer's closes with the total.
+      if (cast.shown) return
+      cast.shown = true
+    } else {
+      cast.done++
+      // A damaging special that hit nothing gets a small MISS puff, not a big card.
+      if (!cast.acc.targets.size) {
+        if (cast.done >= cast.total) this.spawn(this.options.field, this.make('fx-chip miss', cast.x, cast.y - 40, 'MISS'), 1500)
+        return
+      }
     }
     this.showReadout(cast, false)
   }
 
-  /** Healing circles tally what they heal and report once they end; finished casts are forgotten. */
+  /** Healing circles report once they end; finished casts are forgotten. */
   private settleCasts(state: Readonly<GameState>): void {
     const live = new Set<string>()
     for (const e of state.specialEffects ?? []) live.add(e.id)
     for (const [key, cast] of this.casts) {
-      const kind = FIELD_KIND[cast.type]
-      if (kind === 'heal') {
-        cast.heal += healInArea(this.gains, cast, SPECIALS[cast.type].radius)
-        if (!cast.effects.some((id) => live.has(id))) {
+      const over = !cast.effects.some((id) => live.has(id))
+      if (cast.type === 'healer') {
+        if (over) {
           this.showReadout(cast, true)
           this.casts.delete(key)
         }
-      } else if (cast.done >= cast.total || (cast.done > 0 && !cast.effects.some((id) => live.has(id)))) this.casts.delete(key)
+      } else if (FIELD_KIND[cast.type] ? over : cast.done >= cast.total || (cast.done > 0 && over)) this.casts.delete(key)
     }
   }
 
   private showReadout(cast: Cast, finished: boolean): void {
-    const text = readoutText(SPECIALS[cast.type].name, FIELD_KIND[cast.type] ?? null, cast, finished)
+    const kind = fieldKind(cast.type),
+      text = readoutText(SPECIALS[cast.type].name, kind, castTally(kind, cast.acc), finished)
     let el = cast.el
     if (!el?.isConnected) {
       el = this.make('fx-special')
@@ -424,7 +400,14 @@ export class BattleFeedback {
     const at = this.screenPoint(cast.x, cast.y, true),
       area = this.options.safeArea?.() ?? { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 },
       box = el.getBoundingClientRect(),
-      pos = placeReadout(at.x, at.y, Math.max(box.width, 150), Math.max(box.height, 80), area)
+      width = Math.max(box.width, 150),
+      height = Math.max(box.height, 80),
+      pos = placeReadout(at.x, at.y, width, height, area)
+    // Two specials landing together must not print one card over the other: step past any it would cover.
+    const others = Array.from(this.overlay.querySelectorAll<HTMLElement>('.fx-special')).filter(
+      (other) => other !== el && other.isConnected
+    )
+    pos.y = stackReadout(pos, width, height, others.map((other) => other.getBoundingClientRect()), area)
     el.style.left = `${Math.round(pos.x)}px`
     el.style.top = `${Math.round(pos.y)}px`
     el.classList.remove('pop')

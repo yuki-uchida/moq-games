@@ -13,6 +13,7 @@ import {
   finished,
   key,
   move,
+  objectiveLabel,
   path,
   reachable,
   rocks,
@@ -28,6 +29,13 @@ import {
   size
 } from '../src/game'
 describe('Ember Grid rules', () => {
+  it('labels every completed objective as achieved', () => {
+    for (const stage of [0, 3, 4, 5]) {
+      const game = createGame(stage)
+      game.phase = 'won'
+      expect(objectiveLabel(game)).toBe(stage === 4 ? '◎ 防衛達成' : '◎ 任務達成')
+    }
+  })
   for (const stage of [0, 1, 2])
     it(`mission ${stage + 1} has connected terrain and valid starting cells`, () => {
       const game = createGame(stage)

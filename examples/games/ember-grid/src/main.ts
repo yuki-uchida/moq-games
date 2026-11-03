@@ -1,3 +1,4 @@
+import { confirmReplacement } from './confirm'
 import {
   allyTurnOver,
   attack,
@@ -78,6 +79,7 @@ const saved = readSave(() => {
 })
 let save = saved ?? freshSave('classic')
 let playing = false
+let replayingEnding = false
 /** Roster each mission starts from: index 0 is the fresh party, later ones are saved on victory. */
 let checkpoints: (Roster | undefined)[] = save.checkpoints
 /** Deployed allies (and those lost earlier) for a mission start or the mission list. */
@@ -515,24 +517,14 @@ render = () => {
   if (playing) {
     save.checkpoints = checkpoints
     save.formation = game.formation
-    if (!busy && (game.phase === 'won' || game.phase === 'lost')) {
+    if (!busy && game.phase === 'lost') {
       delete save.suspend
-      if (game.phase === 'won') {
-        if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
-        save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
-        if (game.stage === missions.length - 1) {
-          save.completedAt ??= new Date().toISOString()
-          save.finale = snapshotGame(game)
-        }
-        if (game.stage + 1 < missions.length) {
-          checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
-          save.furthest = Math.max(save.furthest, game.stage + 1)
-        }
-      }
     }
     if (!unloading) writeSave(save, notice)
   }
   field.dataset.mission = String(game.stage)
+  document.querySelector<HTMLButtonElement>('#restart')!.disabled = replayingEnding
+  document.querySelector<HTMLButtonElement>('#mission')!.disabled = replayingEnding
   const objective = campaign[game.stage].objective
   const unit = game.units.find((u) => u.id === selected && u.hp > 0),
     legal = unit && !unit.moved && !unit.done ? reachable(game, unit) : new Map(),
@@ -637,6 +629,22 @@ render = () => {
   if (playing && wasHidden && !result.hidden)
     audio.jingle(game.phase === 'lost' ? 'defeat' : game.stage === missions.length - 1 ? 'final' : 'victory')
 }
+function persistVictory() {
+  if (!playing || game.phase !== 'won') return
+  delete save.suspend
+  if (!save.cleared.includes(game.stage)) save.cleared.push(game.stage)
+  save.bestTurns[game.stage] = Math.min(save.bestTurns[game.stage] ?? Infinity, game.turn)
+  if (game.stage === missions.length - 1) {
+    save.completedAt ??= new Date().toISOString()
+    save.finale = snapshotGame(game)
+  } else {
+    checkpoints[game.stage + 1] = carryForDifficulty(game, save.difficulty)
+    save.furthest = Math.max(save.furthest, game.stage + 1)
+  }
+  save.checkpoints = checkpoints
+  save.formation = game.formation
+  if (!unloading) writeSave(save, notice)
+}
 async function choose(x: number, y: number) {
   if (busy || !ready) return
   if (game.phase !== 'ally') return
@@ -693,6 +701,7 @@ async function choose(x: number, y: number) {
       }
       cancelForecast(false)
       if (attack(game, unit, target)) {
+        persistVictory()
         tutorial.advance('target')
         tutorial.advance('attack')
         changed = true
@@ -718,6 +727,7 @@ async function choose(x: number, y: number) {
       if (token !== generation) return
       if (!(await showProgress(token))) return
       if (unit.done) undo = undefined
+      render()
       await story.victory(token)
       if (token !== generation) return
       busy = false
@@ -753,6 +763,7 @@ async function end() {
   undo = undefined
   cancelForecast(false)
   if (!beginEnemy(game)) {
+    persistVictory()
     // A seize objective can be won as the ally phase ends; its outro still plays before the report.
     if (game.phase === 'won' && !(await victoryScene(generation))) return
     render()
@@ -785,6 +796,7 @@ async function end() {
     if (game.phase !== 'enemy') return
   }
   beginAlly(game)
+  persistVictory()
   // A survive objective is won once the last required enemy phase ends.
   if (game.phase === 'won') {
     if (await victoryScene(token)) render()
@@ -810,6 +822,7 @@ async function openChapter(fresh: boolean) {
 /** Plays the chapter outro (and the finale) before the report; false if a restart superseded it. */
 async function victoryScene(token: number) {
   lockPresentation()
+  render()
   await story.victory(token)
   if (token !== generation) return false
   busy = false
@@ -841,26 +854,7 @@ function hasProgress() {
 }
 function confirmDiscard(action: () => void) {
   if (!hasProgress()) return action()
-  const dialog = document.createElement('dialog')
-  dialog.className = 'shell-dialog'
-  dialog.setAttribute('aria-labelledby', 'discard-title')
-  dialog.innerHTML =
-    '<h2 id="discard-title">⚠ 戦闘の進行を破棄しますか？</h2><p>現在の戦闘と中断記録が失われます。</p><button type="button" data-cancel>✕ 戻る</button><button type="button" data-confirm>↻ 破棄して続ける</button>'
-  document.body.append(dialog)
-  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick = () => dialog.close()
-  dialog.querySelector<HTMLButtonElement>('[data-confirm]')!.onclick = () => {
-    dialog.close()
-    action()
-  }
-  dialog.onkeydown = (event) => {
-    if (event.key !== 'Tab') return
-    event.preventDefault()
-    const next = document.activeElement?.hasAttribute('data-cancel') ? '[data-confirm]' : '[data-cancel]'
-    dialog.querySelector<HTMLButtonElement>(next)!.focus()
-  }
-  dialog.onclose = () => dialog.remove()
-  dialog.showModal()
-  dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.focus()
+  confirmReplacement('現在の戦闘と中断記録が失われます。', action)
 }
 document.querySelector('#restart')!.addEventListener('click', () =>
   confirmDiscard(() => {
@@ -879,6 +873,10 @@ document.querySelector('#restart')!.addEventListener('click', () =>
     if (game.stage === 0) tutorial.start(tutorialEnabled())
     // A retry replays the (skippable) chapter opening, then the phase banner.
     if (ready) void openChapter(false)
+    else {
+      pendingOpening = false
+      void prepareBattle()
+    }
   })
 )
 document.querySelector('#recover')!.addEventListener('click', async () => {
@@ -961,8 +959,16 @@ document.querySelector('#cancel-mission')!.addEventListener('click', () => exped
 document.querySelector('#next')!.addEventListener('click', () => {
   // Victory saves the grown party for the next mission; finishing the expedition starts a fresh one.
   if (game.stage === missions.length - 1) {
-    save = freshSave(save.difficulty)
-    checkpoints = save.checkpoints
+    confirmReplacement(
+      '達成した遠征の記録、解放した章とチェックポイントが新しい遠征に置き換わります。',
+      () => {
+        save = freshSave(save.difficulty)
+        checkpoints = save.checkpoints
+        startMission(0)
+      },
+      '⚠ 新しい遠征を始めますか？'
+    )
+    return
   }
   startMission((game.stage + 1) % missions.length)
 })
@@ -1012,6 +1018,7 @@ async function prepareBattle() {
   void prepareSound(roles, token)
   try {
     await animation.prepare(roles, (done, total) => {
+      if (token !== generation) return
       status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
       titleProgress(status.textContent)
     })
@@ -1020,6 +1027,13 @@ async function prepareBattle() {
     preparation.remove()
     titleProgress('準備完了')
     render()
+    if (replayingEnding) {
+      stage.sync(game)
+      void story.victory(token).then(() => {
+        if (token === generation) location.reload()
+      })
+      return
+    }
     if (pendingOpening !== undefined) {
       const fresh = pendingOpening
       pendingOpening = undefined
@@ -1063,18 +1077,14 @@ const titleProgress = showTitle(saved, {
       startMission(stage ?? save.furthest)
     }
   },
-  ending: async () => {
-    const token = ++generation
+  ending: () => {
+    generation++
+    replayingEnding = true
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
     game.phase = 'won'
     lockPresentation()
-    // Portraits render from the loaded models; the title no longer preloads them.
-    await animation.prepare(chapterRoles(game), () => {}).catch(() => {})
-    if (token !== generation) return
-    // Show the final battle behind the epilogue instead of the board left from start-up.
     render()
-    stage.sync(game)
-    void story.victory(token).then(() => location.reload())
+    void prepareBattle()
   },
   settings,
   help: openHelp

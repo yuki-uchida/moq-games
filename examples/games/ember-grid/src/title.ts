@@ -1,3 +1,4 @@
+import { confirmReplacement } from './confirm'
 import { missions } from './game'
 import { unlocked, type Difficulty, type Save } from './save'
 import { reducedMotion } from './settings'
@@ -39,6 +40,8 @@ export function showTitle(
     title.remove()
   }
   const continueButton = title.querySelector<HTMLButtonElement>('[data-action=continue]')
+  if (continueButton && save?.suspend)
+    continueButton.insertAdjacentHTML('beforeend', '<small>味方ターン開始時から再開</small>')
   if (continueButton)
     continueButton.onclick = () => {
       close()
@@ -70,13 +73,18 @@ export function showTitle(
     const dialog = document.createElement('dialog')
     dialog.className = 'shell-dialog'
     dialog.innerHTML = `<h2>⚑ 章を選ぶ</h2>${missions.map((mission, index) => `<button data-stage="${index}" ${unlocked(save, index) ? '' : 'disabled'}>${unlocked(save, index) ? mission.name : '🔒 ？？？'}</button>`).join('')}<button data-cancel>戻る</button>`
+    dialog.setAttribute('aria-label', '⚑ 章を選ぶ')
     document.body.append(dialog)
     dialog.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
       (button) =>
         (button.onclick = () => {
-          dialog.close()
-          close()
-          actions.continue(Number(button.dataset.stage))
+          const start = () => {
+            dialog.close()
+            close()
+            actions.continue(Number(button.dataset.stage))
+          }
+          if (save.suspend && save.suspend.turn > 1) confirmReplacement('現在の戦闘と中断記録が失われます。', start)
+          else start()
         })
     )
     dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick = () => dialog.close()

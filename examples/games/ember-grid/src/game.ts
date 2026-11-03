@@ -400,6 +400,7 @@ export function settle(game: Game) {
 }
 export function objectiveLabel(game: Game): string {
   const objective = campaign[game.stage].objective
+  if (game.phase === 'won') return objective.type === 'survive' ? '◎ 防衛達成' : '◎ 任務達成'
   return objective.type === 'survive'
     ? `◎ 残り${Math.max(0, objective.turns - game.turn + 1)}ターン`
     : objective.type === 'boss'

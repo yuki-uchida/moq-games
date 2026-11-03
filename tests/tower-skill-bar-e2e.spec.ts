@@ -158,14 +158,80 @@ test('one tap casts at the best target once enemies are in range: honest button,
     .toBeGreaterThan(50)
   await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 3000 })
   // The impact lands after the band is gone and reports what it did.
-  const readout = page.locator('.fx-special')
+  // A hit reports itself on a card; a whiff (the target died first) only puffs a small MISS.
+  const readout = page.locator('.fx-special, #field .fx-chip.miss').first()
   await expect(readout).toBeVisible({ timeout: 5000 })
-  await expect(readout).toContainText('矢の雨')
-  await expect(readout).toContainText(/×\d+ HIT|命中なし/)
+  await expect(readout).toContainText(/矢の雨[\s\S]*×\d+ HIT|MISS/)
   await expect(readout).toHaveCSS('pointer-events', 'none')
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(archer).toHaveAttribute('aria-label', /^矢の雨 あと\d+秒$/)
   await expect(archer.locator('.skill-count')).toHaveText(/^\d+$/)
+})
+
+test('two specials cast back-to-back each get their own band one after the other, their own ring, and their own result', async ({
+  page
+}) => {
+  await seed(page)
+  await assault(page)
+  const archer = page.locator('.skill-btn[data-skill-type="archer"]'),
+    soldier = page.locator('.skill-btn[data-skill-type="soldier"]')
+  await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(archer).toHaveAttribute('data-state', 'ready')
+  await expect(soldier).toHaveAttribute('data-state', 'ready')
+  // Where the soldier stands, on screen: the second cast is aimed there by hand (the one-tap auto-aim
+  // deliberately skips enemies another cast is about to hit, so it would refuse a same-moment second cast).
+  const spot = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
+      unit = state.units.find((u: any) => u.type === 'soldier'),
+      field = document.getElementById('field')!,
+      box = field.querySelector('canvas')!.getBoundingClientRect()
+    return {
+      x: box.x + (unit.x / (Number(field.dataset.worldWidth) || 1280)) * box.width,
+      y: box.y + (unit.y / (Number(field.dataset.worldHeight) || 920)) * box.height
+    }
+  })
+  // Record every rendered frame in the page, so slow round trips can't blur what was on screen.
+  await page.evaluate(() => {
+    const visible = (element: Element | null) => !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
+    const log: Array<{ t: number; sim: number; band: string | null; rings: number }> = ((window as any).__cutinLog = [])
+    const tick = () => {
+      const band = document.querySelector('#skill-cutin .skill-cutin-text b')
+      log.push({
+        t: performance.now(),
+        sim: Number(document.getElementById('app')!.dataset.simulationTime),
+        band: visible(band) ? band!.textContent : null,
+        rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length
+      })
+      requestAnimationFrame(tick)
+    }
+    tick()
+  })
+  await archer.click()
+  await soldier.click({ modifiers: ['Shift'] })
+  await expect(page.locator('#unit-special')).toHaveText('×')
+  await page.mouse.click(spot.x, spot.y)
+  await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 5000 })
+  await expect(page.locator('#field .skill-target-ring')).toHaveCount(0)
+  await expect(archer).toHaveAttribute('data-state', 'charging')
+  await expect(soldier).toHaveAttribute('data-state', 'charging')
+  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number }>)
+  const names = log.map((f) => f.band).filter((n, i, all) => n && n !== all[i - 1]),
+    first = log.find((f) => f.rings > 0)!,
+    resumed = log.find((f) => f.t > first.t && f.sim > first.sim)!
+  // Both bands play, in cast order; both rings stand together; the simulation waits for both bands.
+  expect(names).toEqual(['矢の雨', '回転斬撃'])
+  expect(Math.max(...log.map((f) => f.rings))).toBe(2)
+  expect(resumed.t - first.t).toBeGreaterThanOrEqual(1100)
+  // Each ring goes when its own band ends: one ring is left during the second band.
+  const second = log.filter((f) => f.band === '回転斬撃')
+  expect(second.at(-1)!.rings).toBe(1)
+  // Each cast reports itself: its own card (named after it) or a MISS puff, never one result for both.
+  await expect
+    .poll(() => page.locator('.fx-special, #field .fx-chip.miss').count(), { timeout: 8000, intervals: [100] })
+    .toBeGreaterThanOrEqual(2)
+  const cards = await page.locator('.fx-special').allTextContents()
+  for (const card of cards) expect(card).toMatch(/矢の雨|回転斬撃/)
+  expect(new Set(cards.map((card) => (card.includes('矢の雨') ? 'a' : 'b'))).size).toBe(cards.length)
 })
 
 test('a downed ally shows a disabled greyed button', async ({ page }, info) => {

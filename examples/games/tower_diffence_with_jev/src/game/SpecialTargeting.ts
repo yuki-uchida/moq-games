@@ -7,7 +7,8 @@ export const HEALER_MIN_SCORE = 0.15
 /**
  * Pure auto-aim for a one-tap special. Candidates are unit positions inside the caster's range;
  * the best one is the circle that holds the most (boss = 3) targetable enemies, ties go to the
- * enemy closest to the gate. Returns null when the unit is not ready or nothing is worth hitting.
+ * enemy closest to the gate; enemies that another cast special is about to hit don't count. Returns null
+ * when the unit is not ready or nothing is worth hitting.
  */
 export function bestSpecialTarget(
   state: Readonly<GameState>,
@@ -22,7 +23,11 @@ export function bestSpecialTarget(
       u.hp > 0 &&
       (heal ? u.owner === 'player' : u.owner === 'ai' && canTargetUnit({ owner: 'player', type }, u, state.battlefieldVersion))
     ),
-    weight = (u: Unit) => (heal ? 1 - u.hp / u.maxHp : u.boss ? 3 : 1)
+    // Enemies inside a damaging special that is cast but has not landed yet are already taken care of:
+    // aiming another special at them would likely land on nothing.
+    incoming = (state.specialEffects ?? []).filter((e) => !e.applied && e.power > 0),
+    covered = (u: Unit) => incoming.some((e) => Math.hypot(u.x - e.x, u.y - e.y) <= SPECIALS[e.type].radius),
+    weight = (u: Unit) => (heal ? 1 - u.hp / u.maxHp : covered(u) ? 0 : u.boss ? 3 : 1)
   let best: { point: Point; score: number; progress: number } | null = null
   for (const candidate of pool) {
     if (Math.hypot(candidate.x - caster.x, candidate.y - caster.y) > spec.range) continue

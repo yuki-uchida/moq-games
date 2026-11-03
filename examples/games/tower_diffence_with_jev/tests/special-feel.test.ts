@@ -7,11 +7,14 @@ import { SPECIALS } from '../src/game/SpecialAbilities'
 import {
   FREEZE_MS,
   bandSide,
-  healInArea,
-  nextFreezeUntil,
+  MAX_CUT_IN_CHAIN,
+  addImpact,
+  castTally,
+  chainCutIn,
+  newAccum,
   placeReadout,
   readoutText,
-  summarizeImpact,
+  stackReadout,
   type CastTally
 } from '../src/ui/SpecialFeel'
 
@@ -25,22 +28,49 @@ describe('special-move presentation rules', () => {
     expect(bandSide(80, 844)).toBe('bottom')
   })
 
-  it('freezes for one cut-in length and never stacks a second freeze', () => {
-    const first = nextFreezeUntil(1000, 0)
-    expect(first).toBe(1000 + FREEZE_MS)
-    expect(nextFreezeUntil(1200, first)).toBe(first)
-    expect(nextFreezeUntil(first, first)).toBe(first + FREEZE_MS)
+  it('chains cut-in bands one after another, FREEZE_MS each, at most three deep', () => {
+    expect(chainCutIn(1000, [])).toEqual({ start: 1000, end: 1000 + FREEZE_MS })
+    const second = chainCutIn(1200, [1000 + FREEZE_MS])!
+    expect(second).toEqual({ start: 1000 + FREEZE_MS, end: 1000 + 2 * FREEZE_MS })
+    const third = chainCutIn(1300, [1000 + FREEZE_MS, second.end])!
+    expect(third.end).toBe(1000 + 3 * FREEZE_MS)
+    expect(MAX_CUT_IN_CHAIN).toBe(3)
+    // A fourth overlapping cast gets no band, so the freeze does not grow.
+    expect(chainCutIn(1400, [1000 + FREEZE_MS, second.end, third.end])).toBeNull()
+    // Bands that already ended no longer count.
+    expect(chainCutIn(third.end, [1000 + FREEZE_MS, second.end, third.end])).toEqual({
+      start: third.end,
+      end: third.end + FREEZE_MS
+    })
   })
 
-  it('sums damage, hits and kills only for enemies inside the circle', () => {
-    const drops = [
-      { id: 1, x: 100, y: 100, amount: 40 },
-      { id: 2, x: 150, y: 100, amount: 60, killed: true },
-      { id: 3, x: 400, y: 100, amount: 99 }
-    ]
-    expect(summarizeImpact(drops, { x: 100, y: 100 }, 95)).toEqual({ hits: 2, damage: 100, kills: 1 })
-    expect(summarizeImpact([], { x: 0, y: 0 }, 50)).toEqual({ hits: 0, damage: 0, kills: 0 })
-    expect(healInArea([{ id: 1, x: 0, y: 0, amount: 7 }, { id: 2, x: 500, y: 0, amount: 9 }], { x: 0, y: 0 }, 130)).toBe(7)
+  const impact = (extra: Partial<Parameters<typeof addImpact>[1]> = {}) => ({ targets: [], damage: 0, heal: 0, kills: [], ...extra })
+  it('tallies only what the special itself reported: distinct hits, its damage, its kills', () => {
+    // A normal attack's 12 never reaches the reports: a special that hit nothing reads as a miss.
+    const miss = newAccum()
+    addImpact(miss, impact())
+    expect(castTally(null, miss)).toEqual(tally())
+    // A multi-impact cast: the same enemy hit twice is one hit, damage and kills add up across impacts.
+    const runner = newAccum()
+    addImpact(runner, impact({ targets: [7, 8], damage: 80 }))
+    addImpact(runner, impact({ targets: [7], damage: 40, kills: [7] }))
+    expect(castTally(null, runner)).toEqual(tally({ hits: 2, damage: 120, kills: 1 }))
+  })
+  it('keeps two casts landing in the same step apart and counts field targets and heals from reports', () => {
+    const a = newAccum(),
+      b = newAccum()
+    addImpact(a, impact({ targets: [1], damage: 30, kills: [1] }))
+    addImpact(b, impact({ targets: [1, 2, 3], damage: 90 }))
+    expect(castTally(null, a)).toEqual(tally({ hits: 1, damage: 30, kills: 1 }))
+    expect(castTally(null, b)).toEqual(tally({ hits: 3, damage: 90 }))
+    const heal = newAccum()
+    addImpact(heal, impact({ targets: [4, 5], heal: 3 }))
+    addImpact(heal, impact({ targets: [4, 5], heal: 2.5 }))
+    expect(castTally('heal', heal)).toEqual(tally({ allies: 2, heal: 5.5 }))
+    const hold = newAccum()
+    addImpact(hold, impact({ targets: [9] }))
+    addImpact(hold, impact({ targets: [9, 10] }))
+    expect(castTally('hold', hold)).toEqual(tally({ held: 2 }))
   })
 
   it('words the readout for damage, empty, hold and heal specials', () => {
@@ -77,5 +107,16 @@ describe('special-move presentation rules', () => {
     expect(aim.score).toBe(4)
     expect(specialTargetCount(state, 'soldier', aim.point)).toBe(2)
     expect(specialTargetCount(state, 'soldier', { x: 300 + SPECIALS.soldier.radius * 3, y: 300 })).toBe(0)
+  })
+
+  it('steps a readout past one it would cover, below when there is room, otherwise above', () => {
+    const bounds = { left: 0, right: 800, top: 60, bottom: 700 }
+    const taken = [{ left: 300, right: 460, top: 200, bottom: 290 }]
+    // Same anchor as the existing card: goes below it.
+    expect(stackReadout({ x: 380, y: 290 }, 160, 90, taken, bounds)).toBe(290 + 8 + 90)
+    // No room below: goes above it.
+    expect(stackReadout({ x: 380, y: 290 }, 160, 90, taken, { ...bounds, bottom: 380 })).toBe(200 - 8)
+    // Not overlapping: stays where it was placed.
+    expect(stackReadout({ x: 620, y: 290 }, 160, 90, taken, bounds)).toBe(290)
   })
 })
