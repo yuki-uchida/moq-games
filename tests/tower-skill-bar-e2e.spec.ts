@@ -1,16 +1,29 @@
 import { expect, test, type Page } from '@playwright/test'
 import { GameEngine } from '../examples/games/tower_diffence_with_jev/src/game/GameEngine'
-import { getField } from '../examples/games/tower_diffence_with_jev/src/game/model'
-import { freshSave } from '../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem'
+import { getField, getLegalAIActions, type AllyType } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { SPECIALS } from '../examples/games/tower_diffence_with_jev/src/game/SpecialAbilities'
+import { freshRunFromProfile, freshSave } from '../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem'
+import { stageStartGold } from '../examples/games/tower_diffence_with_jev/src/progression/StageProgress'
 import { openOfflineCampaign, towerPath } from './tower-defense-e2e-arrange'
 
 // Seeds a campaign already in the assault with a soldier (optionally down) and an archer.
-async function seed(page: Page, { soldierDown = false, far = false } = {}) {
-  const save = freshSave()
+async function seed(
+  page: Page,
+  { soldierDown = false, far = false, tough = false, wolf = false, spawn = false, casters = ['soldier', 'archer'] as AllyType[] } = {}
+) {
+  const save = wolf ? freshRunFromProfile({ version: 1, purchased: [] }, 2, 1) : freshSave()
   save.economyVersion = 2
-  save.gold = 120
+  save.gold = wolf ? stageStartGold(2) : 120
+  for (const type of casters) if (!['soldier', 'archer', 'runner', 'tank'].includes(type)) save.purchased.push(type)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
-  for (const type of ['soldier', 'archer'] as const) {
+  // wolf: a runner and an archer next to the entrance and one fast wolf (hp 143) that runs out of the runner's circle.
+  if (wolf) {
+    save.formation = ['runner', 'archer']
+    expect(engine.startAtStage(2)).toBe(true)
+    expect(engine.place('runner', { x: 240, y: 100 })).toBe(true)
+    expect(engine.place('archer', { x: 280, y: 100 })).toBe(true)
+  }
+  for (const type of wolf ? [] : casters) {
     const slots = getField('meadow', 2, 4).slots.filter((p) => engine.previewPlacement(type, p).valid),
       point = far ? slots.at(-1) : slots[0]
     expect(point).toBeTruthy()
@@ -19,11 +32,28 @@ async function seed(page: Page, { soldierDown = false, far = false } = {}) {
   if (soldierDown) engine.state.units.find((u) => u.type === 'soldier')!.hp = 0
   expect(engine.startAssault()).toBe(true)
   engine.update(1 / 60)
-  const checkpoint = engine.exportCheckpoint()!
+  if (wolf || spawn) {
+    const kind = wolf ? 'wolf' : 'goblin'
+    expect(engine.applyAIAction(getLegalAIActions(engine.state).find((a) => a.type === 'spawn' && a.unitType === kind))).toBe(true)
+  }
+  if (tough) {
+    // One enemy (spawned now) that neither special alone can finish.
+    expect(engine.applyAIAction(getLegalAIActions(engine.state).find((a) => a.type === 'spawn' && a.unitType === 'goblin'))).toBe(true)
+    const enemy = engine.state.units.find((u) => u.owner === 'ai')!
+    for (const caster of engine.state.units.filter((u) => u.owner === 'player'))
+      expect(enemy.hp, caster.type).toBeGreaterThan(SPECIALS[caster.type as 'soldier' | 'archer'].power * caster.attack)
+  }
+  // A checkpoint is only exportable once the spawn has settled.
+  let checkpoint = engine.exportCheckpoint()
+  for (let tick = 0; !checkpoint && tick < 1200; tick++) {
+    engine.update(1 / 60)
+    checkpoint = engine.exportCheckpoint()
+  }
+  expect(checkpoint).toBeTruthy()
   const raw = JSON.stringify({
     version: 3,
-    profile: checkpoint.profile,
-    run: { version: 1, progress: checkpoint.progress, engine: checkpoint }
+    profile: checkpoint!.profile,
+    run: { version: 1, progress: checkpoint!.progress, engine: checkpoint }
   })
   await page.goto(towerPath)
   await page.evaluate((raw) => {
@@ -178,8 +208,7 @@ test('two specials cast back-to-back each get their own band one after the other
   await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
   await expect(archer).toHaveAttribute('data-state', 'ready')
   await expect(soldier).toHaveAttribute('data-state', 'ready')
-  // Where the soldier stands, on screen: the second cast is aimed there by hand (the one-tap auto-aim
-  // deliberately skips enemies another cast is about to hit, so it would refuse a same-moment second cast).
+  // Where the soldier stands, on screen: the second cast is aimed there by hand.
   const spot = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
       unit = state.units.find((u: any) => u.type === 'soldier'),
@@ -193,14 +222,15 @@ test('two specials cast back-to-back each get their own band one after the other
   // Record every rendered frame in the page, so slow round trips can't blur what was on screen.
   await page.evaluate(() => {
     const visible = (element: Element | null) => !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
-    const log: Array<{ t: number; sim: number; band: string | null; rings: number }> = ((window as any).__cutinLog = [])
+    const log: Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }> = ((window as any).__cutinLog = [])
     const tick = () => {
       const band = document.querySelector('#skill-cutin .skill-cutin-text b')
       log.push({
         t: performance.now(),
         sim: Number(document.getElementById('app')!.dataset.simulationTime),
         band: visible(band) ? band!.textContent : null,
-        rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length
+        rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length,
+        cutin: (window as any).towerDefenseAudioDiagnostics().feelPlayed.cutin ?? 0
       })
       requestAnimationFrame(tick)
     }
@@ -214,14 +244,22 @@ test('two specials cast back-to-back each get their own band one after the other
   await expect(page.locator('#field .skill-target-ring')).toHaveCount(0)
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(soldier).toHaveAttribute('data-state', 'charging')
-  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number }>)
+  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }>)
   const names = log.map((f) => f.band).filter((n, i, all) => n && n !== all[i - 1]),
     first = log.find((f) => f.rings > 0)!,
     resumed = log.find((f) => f.t > first.t && f.sim > first.sim)!
   // Both bands play, in cast order; both rings stand together; the simulation waits for both bands.
   expect(names).toEqual(['矢の雨', '回転斬撃'])
+  // Each band sounds (cut-in whoosh) when it appears, in the same or the next frame, and nothing sounds without a band.
+  const bandStarts = log.flatMap((f, i) => (f.band && f.band !== log[i - 1]?.band ? [i] : [])),
+    soundSteps = log.flatMap((f, i) => (i > 0 ? Array<number>(f.cutin - log[i - 1].cutin).fill(i) : []))
+  expect(soundSteps).toHaveLength(bandStarts.length)
+  for (const [n, start] of bandStarts.entries()) expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
   expect(Math.max(...log.map((f) => f.rings))).toBe(2)
-  expect(resumed.t - first.t).toBeGreaterThanOrEqual(1100)
+  // The first cast happened after the frame before `first` (a software GPU can render ~200 ms apart), so time
+  // that frame: a single 650 ms stop would still fail this, a chained one passes however slow the frames are.
+  const beforeFirst = log[log.indexOf(first) - 1] ?? first
+  expect(resumed.t - beforeFirst.t).toBeGreaterThanOrEqual(1100)
   // Each ring goes when its own band ends: one ring is left during the second band.
   const second = log.filter((f) => f.band === '回転斬撃')
   expect(second.at(-1)!.rings).toBe(1)
@@ -233,6 +271,111 @@ test('two specials cast back-to-back each get their own band one after the other
   for (const card of cards) expect(card).toMatch(/矢の雨|回転斬撃/)
   expect(new Set(cards.map((card) => (card.includes('矢の雨') ? 'a' : 'b'))).size).toBe(cards.length)
 })
+
+test('two skills tapped back to back on one tough enemy are both cast: a special that cannot finish it does not hide it', async ({
+  page
+}) => {
+  await seed(page, { tough: true })
+  await assault(page)
+  const archer = page.locator('.skill-btn[data-skill-type="archer"]'),
+    soldier = page.locator('.skill-btn[data-skill-type="soldier"]')
+  await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(soldier).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(archer).toHaveAttribute('data-state', 'ready')
+  await expect(soldier).toHaveAttribute('data-state', 'ready')
+  // Two taps in the same task: the second one sees the first cast still pending.
+  await page.evaluate(() => {
+    for (const type of ['archer', 'soldier']) document.querySelector<HTMLElement>(`.skill-btn[data-skill-type="${type}"]`)!.click()
+  })
+  await expect(archer).toHaveAttribute('data-state', 'charging')
+  await expect(soldier).toHaveAttribute('data-state', 'charging')
+  const effects = (await stored(page)).state.specialEffects as Array<{ type: string }>
+  expect(new Set(effects.map((e) => e.type))).toEqual(new Set(['archer', 'soldier']))
+})
+
+test('a follow-up special is still taken against a fast enemy that will leave the first special\'s circle', async ({ page }) => {
+  await seed(page, { wolf: true })
+  await assault(page)
+  const runner = page.locator('.skill-btn[data-skill-type="runner"]'),
+    archer = page.locator('.skill-btn[data-skill-type="archer"]')
+  await expect(runner).toHaveAttribute('data-state', 'ready', { timeout: 120_000 })
+  await expect(archer).toHaveAttribute('data-state', 'ready')
+  // Two taps in the same task: the archer's tap sees the runner's three-hit cast still pending, but the wolf
+  // (speed 130) is out of the 65 px circle before the later hits, so those hits cannot be counted on.
+  await page.evaluate(() => {
+    for (const type of ['runner', 'archer']) document.querySelector<HTMLElement>(`.skill-btn[data-skill-type="${type}"]`)!.click()
+  })
+  await expect(runner).toHaveAttribute('data-state', 'charging')
+  await expect(archer).toHaveAttribute('data-state', 'charging')
+  const effects = (await stored(page)).state.specialEffects as Array<{ type: string }>
+  expect(new Set(effects.map((e) => e.type))).toEqual(new Set(['runner', 'archer']))
+})
+
+for (const [name, viewport] of [
+  ['landscape phone', { width: 844, height: 390 }],
+  ['portrait phone', { width: 390, height: 844 }],
+  ['desktop', { width: 1440, height: 900 }]
+] as const)
+  test(`three specials cast back to back leave their result cards apart from each other and from the HUD: ${name}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport)
+    await seed(page, { casters: ['frost', 'ranger', 'healer'], spawn: true })
+    await assault(page)
+    const types = ['frost', 'ranger', 'healer']
+    for (const type of types) await expect(page.locator(`.skill-btn[data-skill-type="${type}"]`)).toHaveAttribute('data-state', 'ready', { timeout: 120_000 })
+    // Aim each cast by hand next to the caster (not on its handle), so the three cards want nearly the same spot on screen.
+    for (const type of types) {
+      const spot = await page.evaluate((type) => {
+        const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
+          unit = state.units.find((u: any) => u.type === type),
+          field = document.getElementById('field')!,
+          box = field.querySelector('canvas')!.getBoundingClientRect()
+        return {
+          x: box.x + ((unit.x + 20) / (Number(field.dataset.worldWidth) || 1280)) * box.width,
+          y: box.y + ((unit.y + 140) / (Number(field.dataset.worldHeight) || 920)) * box.height
+        }
+      }, type)
+      await page.locator(`.skill-btn[data-skill-type="${type}"]`).click({ modifiers: ['Shift'] })
+      await expect(page.locator('#unit-special')).toHaveText('×')
+      await page.mouse.click(spot.x, spot.y)
+    }
+    await expect.poll(() => page.locator('.fx-special').count(), { timeout: 20_000, intervals: [50] }).toBe(3)
+    const result = await page.evaluate(() => {
+      const rect = (el: Element) => {
+        const { left, right, top, bottom } = el.getBoundingClientRect()
+        return { left, right, top, bottom }
+      }
+      // A card's layout box (anchored bottom-centre), not the box a running pop animation is scaling.
+      const card = (el: HTMLElement) => {
+        const x = parseFloat(el.style.left),
+          y = parseFloat(el.style.top)
+        return { left: x - el.offsetWidth / 2, right: x + el.offsetWidth / 2, top: y - el.offsetHeight, bottom: y, font: parseFloat(getComputedStyle(el.querySelector('b')!).fontSize), text: el.textContent }
+      }
+      const hits = (a: any, b: any) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5,
+        cards = Array.from(document.querySelectorAll<HTMLElement>('.fx-special')).map(card),
+        hud = ['.bhud-main', '.bhud-side', '#skill-bar', '.field-controls', '.topbar'].flatMap((selector) =>
+          Array.from(document.querySelectorAll(selector)).filter((el) => el.getClientRects().length).map((el) => ({ selector, ...rect(el) }))
+        ),
+        overlaps: string[] = []
+      cards.forEach((a, i) => {
+        cards.slice(i + 1).forEach((b) => hits(a, b) && overlaps.push(`${a.text} x ${b.text}`))
+        hud.forEach((box) => hits(a, box) && overlaps.push(`${a.text} x ${box.selector}`))
+        if (a.left < 0 || a.top < 0 || a.right > innerWidth || a.bottom > innerHeight) overlaps.push(`${a.text} off screen`)
+      })
+      return { overlaps, cards, hudSelectors: hud.map((box) => box.selector) }
+    })
+    expect(result.overlaps).toEqual([])
+    expect(result.hudSelectors).toContain('#skill-bar')
+    // Short screens print the compact one-line card, readable at 13 px or more; the others keep the big one.
+    for (const card of result.cards) {
+      if (viewport.height <= 560) {
+        expect(card.font).toBeGreaterThanOrEqual(13)
+        expect(card.bottom - card.top).toBeLessThanOrEqual(40)
+      } else expect(card.bottom - card.top).toBeGreaterThan(60)
+    }
+    await page.screenshot({ path: test.info().outputPath(`result-cards-${viewport.width}x${viewport.height}.png`) })
+  })
 
 test('a downed ally shows a disabled greyed button', async ({ page }, info) => {
   await seed(page, { soldierDown: true })

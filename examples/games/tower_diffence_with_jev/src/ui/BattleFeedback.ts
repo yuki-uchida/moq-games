@@ -11,7 +11,18 @@ import {
   isHeavyHit,
   shakeAmplitude
 } from './BattleFeelLogic'
-import { addImpact, castTally, newAccum, placeReadout, readoutText, stackReadout, type CastAccum, type FieldKind } from './SpecialFeel'
+import {
+  addImpact,
+  castTally,
+  compactReadoutText,
+  compactReadouts,
+  newAccum,
+  placeCard,
+  readoutText,
+  type Box,
+  type CastAccum,
+  type FieldKind
+} from './SpecialFeel'
 
 /** Live floating DOM nodes (damage numbers, bursts, chips, coins). Banners and the fixed overlays are extra. */
 const MAX_NODES = 48
@@ -28,12 +39,14 @@ export interface BattleFeedbackOptions {
   /** Where flying coins land (the HUD coin counter). */
   coinTarget: () => HTMLElement | null
   /** Screen rectangle (fixed px) where big readouts may sit: below the HUD, above the skill bar. */
-  safeArea?: () => { left: number; right: number; top: number; bottom: number }
+  /** Where result cards may sit: the area and the visible HUD boxes inside it they must stay clear of. */
+  safeArea?: () => { area: Box; blocked: readonly Box[] }
   play: (kind: FeelSound, param?: number) => void
   announce?: (message: string) => void
 }
 
 interface Tracked {
+  type: UnitType
   hp: number
   maxHp: number
   owner: Owner
@@ -95,6 +108,8 @@ export class BattleFeedback {
   private killCount = 0
   private bountyTotal = 0
   private bountyLanded = 0
+  private leakMap = new Map<string, { type: UnitType; boss: boolean; count: number }>()
+  private leakUnknown = 0
 
   constructor(private readonly options: BattleFeedbackOptions) {
     this.overlay = document.createElement('div')
@@ -120,6 +135,15 @@ export class BattleFeedback {
     return this.bountyLanded
   }
 
+  /** Enemies that went through the gate this battle (seen leaving without a corpse), grouped by type and boss. */
+  get leaked(): ReadonlyArray<{ type: UnitType; boss: boolean; count: number }> {
+    return [...this.leakMap.values()]
+  }
+  /** Gate exits before this session's baseline (a resumed battle), whose types are unknown. */
+  get leakedUnknown(): number {
+    return this.leakUnknown
+  }
+
   /** Forget the previous battle; the next update only records a baseline. */
   reset(): void {
     this.key = ''
@@ -131,6 +155,8 @@ export class BattleFeedback {
     this.heals.clear()
     this.combo.reset()
     this.killCount = this.bountyTotal = this.bountyLanded = 0
+    this.leakMap.clear()
+    this.leakUnknown = 0
     for (const { el } of this.live) el.remove()
     this.live.length = 0
     this.comboEl = null
@@ -180,6 +206,7 @@ export class BattleFeedback {
       let seen = this.units.get(unit.id)
       if (!seen) {
         seen = {
+          type: unit.type,
           hp,
           maxHp: unit.maxHp,
           owner: unit.owner,
@@ -270,6 +297,7 @@ export class BattleFeedback {
         this.options.play('combo', chain)
       }
     }
+    if (baseline) this.leakUnknown = Math.max(0, state.enemiesResolved - state.corpses.filter((c) => c.owner === 'ai').length)
     if (chipBounty > 0) this.coinChip(chipBounty, chipX, chipY - 30, chipSpecial)
 
     // Units that vanished: a corpse means a kill (show the final blow), otherwise they left through the gate.
@@ -278,6 +306,12 @@ export class BattleFeedback {
     for (const [id, seen] of this.units)
       if (seen.stamp !== this.frame) {
         gone.add(id)
+        if (seen.owner === 'ai' && !this.corpseIds.has(id)) {
+          const k = `${seen.type}:${seen.boss}`,
+            e = this.leakMap.get(k)
+          if (e) e.count++
+          else this.leakMap.set(k, { type: seen.type, boss: seen.boss, count: 1 })
+        }
         if (killed.has(id) && seen.hp > 0 && combat) this.hits.add(id, seen.hp, now)
       }
     const force = this.force
@@ -376,6 +410,22 @@ export class BattleFeedback {
     }
   }
 
+  private cards(): HTMLElement[] {
+    return Array.from(this.overlay.querySelectorAll<HTMLElement>('.fx-special')).filter((card) => card.isConnected)
+  }
+
+  /** A card's layout box (its own left/top/size, so a pop animation in progress does not skew it). */
+  private cardBox(card: HTMLElement): Box {
+    const x = parseFloat(card.style.left) || 0,
+      y = parseFloat(card.style.top) || 0
+    return { left: x - card.offsetWidth / 2, right: x + card.offsetWidth / 2, top: y - card.offsetHeight, bottom: y }
+  }
+
+  private retire(card: HTMLElement): void {
+    card.remove()
+    this.live = this.live.filter((item) => item.el !== card)
+  }
+
   private showReadout(cast: Cast, finished: boolean): void {
     const kind = fieldKind(cast.type),
       text = readoutText(SPECIALS[cast.type].name, kind, castTally(kind, cast.acc), finished)
@@ -388,26 +438,31 @@ export class BattleFeedback {
       this.live.push({ el, until: 0 })
       cast.el = el
     }
-    const [title, main, sub, kills] = Array.from(el.children) as HTMLElement[]
+    const [title, main, sub, kills] = Array.from(el.children) as HTMLElement[],
+      compact = compactReadouts(innerHeight)
+    el.classList.toggle('compact', compact)
+    title.hidden = compact
     title.textContent = text.title
-    main.textContent = text.main
+    main.textContent = compact ? compactReadoutText(SPECIALS[cast.type].name, kind, castTally(kind, cast.acc), finished) : text.main
     sub.textContent = text.sub
-    sub.hidden = !text.sub
+    sub.hidden = compact || !text.sub
     kills.textContent = text.kills
-    kills.hidden = !text.kills
+    kills.hidden = compact || !text.kills
     el.dataset.empty = text.main === '命中なし' ? 'true' : 'false'
-    // Anchor above the impact, then keep it between the HUD and the skill bar.
+    // Anchor above the impact, then keep it clear of every HUD box and of the cards already on screen.
     const at = this.screenPoint(cast.x, cast.y, true),
-      area = this.options.safeArea?.() ?? { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 },
-      box = el.getBoundingClientRect(),
-      width = Math.max(box.width, 150),
-      height = Math.max(box.height, 80),
-      pos = placeReadout(at.x, at.y, width, height, area)
-    // Two specials landing together must not print one card over the other: step past any it would cover.
-    const others = Array.from(this.overlay.querySelectorAll<HTMLElement>('.fx-special')).filter(
-      (other) => other !== el && other.isConnected
-    )
-    pos.y = stackReadout(pos, width, height, others.map((other) => other.getBoundingClientRect()), area)
+      { area, blocked } = this.options.safeArea?.() ?? { area: { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 }, blocked: [] },
+      width = Math.max(el.offsetWidth, compact ? 0 : 150),
+      height = Math.max(el.offsetHeight, compact ? 0 : 80)
+    let others = this.cards().filter((other) => other !== el),
+      pos = placeCard(at, width, height, area, [...blocked, ...others.map((other) => this.cardBox(other))])
+    // No room even among the free spots: retire the oldest card early rather than stack on top of it.
+    while (!pos && others.length) {
+      this.retire(others[0])
+      others = others.slice(1)
+      pos = placeCard(at, width, height, area, [...blocked, ...others.map((other) => this.cardBox(other))])
+    }
+    pos ??= { x: Math.min(Math.max(at.x, area.left + width / 2), area.right - width / 2), y: Math.max(area.top + height, Math.min(at.y - 34, area.bottom)) }
     el.style.left = `${Math.round(pos.x)}px`
     el.style.top = `${Math.round(pos.y)}px`
     el.classList.remove('pop')

@@ -43,8 +43,8 @@ describe('bestSpecialTarget', () => {
   })
   it("skips enemies another cast special is about to hit, so two specials don't land on one cluster", () => {
     const { state, enemy } = fixture('soldier')
-    enemy(2, 380, 300)
-    enemy(3, 400, 300)
+    enemy(2, 380, 300, { hp: 30 })
+    enemy(3, 400, 300, { hp: 30 })
     enemy(4, 300, 200)
     const pending = (applied: boolean) => ({
       id: 'special:9:1:0',
@@ -66,6 +66,80 @@ describe('bestSpecialTarget', () => {
     // Once the rain has landed, whoever survived is a target again.
     state.specialEffects = [pending(true)]
     expect(bestSpecialTarget(state, 1)!.score).toBe(2)
+  })
+  describe('pending specials only cover what they will finish', () => {
+    const pending = (extra: object = {}) => ({
+      id: 'special:9:1:0',
+      sourceId: 9,
+      type: 'soldier' as const,
+      x: 380,
+      y: 300,
+      startedAt: 0,
+      releaseAt: 1,
+      endsAt: 2,
+      power: 80,
+      applied: false,
+      ...extra
+    })
+    it('keeps a high-HP boss a target while the pending damage cannot kill it', () => {
+      const { state, enemy } = fixture('soldier')
+      enemy(2, 380, 300, { boss: true, hp: 1000, maxHp: 1000 })
+      state.specialEffects = [pending()]
+      expect(bestSpecialTarget(state, 1)).toMatchObject({ score: 3, point: { x: 380, y: 300 } })
+    })
+    it('skips an enemy the pending damage kills, summing every impact of a multi-hit cast', () => {
+      const { state, enemy } = fixture('soldier')
+      enemy(2, 380, 300, { hp: 100 })
+      state.specialEffects = [pending({ power: 60 })]
+      expect(bestSpecialTarget(state, 1)!.score).toBe(1)
+      state.specialEffects = [pending({ power: 60 }), pending({ id: 'special:9:1:1', power: 60 })]
+      expect(bestSpecialTarget(state, 1)).toBeNull()
+    })
+    describe('movement before the impact', () => {
+      // Soldier circle radius 95; the enemy sits 60 px from the centre; the impact lands 1 s after the cast.
+      const lethal = { power: 500, releaseAt: 1 }
+      it('keeps a fast enemy that can leave the circle before the impact a target', () => {
+        const { state, enemy } = fixture('soldier')
+        enemy(2, 380, 300, { hp: 100, speed: 70 })
+        state.specialEffects = [pending({ ...lethal, x: 320 })] // 60 + 70 x 1 s > 95
+        expect(bestSpecialTarget(state, 1)!.score).toBe(1)
+      })
+      it('still skips an enemy that cannot leave the circle in time', () => {
+        const { state, enemy } = fixture('soldier')
+        enemy(2, 380, 300, { hp: 100, speed: 20 })
+        state.specialEffects = [pending({ ...lethal, x: 320 })] // 60 + 20 x 1 s <= 95
+        expect(bestSpecialTarget(state, 1)).toBeNull()
+      })
+      it('skips a held enemy even when its speed would carry it out', () => {
+        const { state, enemy } = fixture('soldier')
+        enemy(2, 380, 300, { hp: 100, speed: 70, specialRootUntil: 5 })
+        state.specialEffects = [pending({ ...lethal, x: 320 })]
+        expect(bestSpecialTarget(state, 1)).toBeNull()
+        state.units[1].specialRootUntil = 0
+        state.units[1].specialStunUntil = 5
+        expect(bestSpecialTarget(state, 1)).toBeNull()
+      })
+      it('counts only the impacts it will still be inside (a multi-hit the enemy outruns)', () => {
+        const { state, enemy } = fixture('soldier')
+        enemy(2, 380, 300, { hp: 100, speed: 40 })
+        // 3 impacts of 40 at +0.5/+0.8/+3 s, radius 95, 60 px away: reach 20/32/120, so only two land (80 < 100).
+        state.specialEffects = [0.5, 0.8, 3].map((releaseAt, i) =>
+          pending({ id: `special:9:1:${i}`, x: 320, power: 40, releaseAt })
+        )
+        expect(bestSpecialTarget(state, 1)!.score).toBe(1)
+        state.specialEffects[2].releaseAt = 0.85 // reach 34 -> all three land: 120 >= 100
+        expect(bestSpecialTarget(state, 1)).toBeNull()
+      })
+    })
+    it("keeps a flier inside a ground special's circle a target for the archer", () => {
+      const { state, enemy } = fixture('archer')
+      state.battlefieldVersion = 2
+      enemy(2, 380, 300, { type: 'bat', hp: 10 })
+      state.specialEffects = [pending()] // a soldier's special cannot hit fliers
+      expect(bestSpecialTarget(state, 1)!.score).toBe(1)
+      state.specialEffects = [pending({ type: 'archer' })]
+      expect(bestSpecialTarget(state, 1)).toBeNull()
+    })
   })
   it('ignores enemies beyond the caster range, even if a cluster sits there', () => {
     const { state, enemy } = fixture('soldier')

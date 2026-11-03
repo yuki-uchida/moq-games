@@ -95,6 +95,64 @@ describe('special impact reports (presentation only)', () => {
     expect(JSON.stringify(engine.exportCheckpoint())).not.toContain('castKey')
   })
 })
+describe('kill credit: one source per kill', () => {
+  // A real engine in the assault with one 5-HP slime; the specials/attacks are cast and timed by hand
+  // to land in the same engine step, and the slime's step-kill is read from the queued impacts.
+  function scene() {
+    const { engine } = fixture('soldier')
+    engine.startAssault()
+    expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime' })).toBe(true)
+    const caster = engine.state.units.find((u) => u.owner === 'player')!,
+      enemy = engine.state.units.find((u) => u.owner === 'ai')!
+    enemy.hp = enemy.maxHp = 5
+    const point = { x: 110, y: 150 } // where the walking slime will be at the release
+    expect(engine.castSpecial(caster.id, point)).toBe(true)
+    const ally = (type: AllyType, id: number) => {
+      const unit = { ...caster, id, type, x: caster.x, y: caster.y, specialCooldown: undefined, specialCast: undefined }
+      engine.state.units.push(unit)
+      expect(engine.castSpecial(id, point)).toBe(true)
+      return unit
+    }
+    return { engine, caster, enemy, ally, effects: engine.state.specialEffects! }
+  }
+  const land = (engine: GameEngine) => {
+    for (let tick = 0; tick < 120 && !engine.state.specialEffects!.every((e) => e.applied); tick++) engine.update(1 / 60)
+    return engine.takeSpecialImpacts()
+  }
+  it('credits a special that alone kills', () => {
+    const { engine, enemy } = scene()
+    const impacts = land(engine)
+    expect(impacts.map((i) => i.kills)).toEqual([[enemy.id]])
+  })
+  it('does not credit a 0.04 special for a kill that a 100-damage normal hit made', () => {
+    const { engine, caster, enemy, effects } = scene()
+    effects[0].power = 0.04
+    engine.state.attacks.push({
+      id: 'normal:1', attackerId: 900, sequence: 1, owner: 'player', type: 'soldier', targetId: enemy.id,
+      damageActive: true, damageHit: false, base: false, power: 100, range: 999, startedAt: 0,
+      releaseAt: 0, impactAt: effects[0].releaseAt, endsAt: effects[0].releaseAt + 0.2, projectile: false,
+      status: 'released', origin: { x: caster.x, y: caster.y }, target: { x: enemy.x, y: enemy.y }, damageType: 'melee'
+    })
+    engine.state.units.push({ ...caster, id: 900, specialCast: undefined })
+    const impacts = land(engine)
+    expect(impacts).toHaveLength(1)
+    expect(impacts[0].targets).toEqual([enemy.id])
+    expect(impacts[0].kills).toEqual([])
+    expect(engine.state.units.some((u) => u.id === enemy.id)).toBe(false)
+  })
+  it('gives two specials landing on one enemy in one step exactly one kill: the bigger hit', () => {
+    const { engine, enemy, ally, effects } = scene()
+    ally('archer', 901)
+    const [soldier, archer] = effects
+    archer.releaseAt = soldier.releaseAt
+    archer.power = soldier.power * 2
+    const impacts = land(engine)
+    expect(impacts).toHaveLength(2)
+    expect(impacts.flatMap((i) => i.kills)).toEqual([enemy.id])
+    expect(impacts.find((i) => i.type === 'archer')!.kills).toEqual([enemy.id])
+    expect(impacts.find((i) => i.type === 'soldier')!.kills).toEqual([])
+  })
+})
 describe('individual special abilities', () => {
   for (const type of ALLY_TYPES)
     it(`${type} applies its own role only in the selected circle`, () => {

@@ -1,4 +1,5 @@
 import { canTargetUnit, type AllyType, type GameState, type Point, type Unit } from './model'
+import { incomingDamage } from './DamageRules'
 import { SPECIALS, specialReady } from './SpecialAbilities'
 
 /** Healer is skipped below this total missing-HP ratio inside the circle. */
@@ -7,7 +8,7 @@ export const HEALER_MIN_SCORE = 0.15
 /**
  * Pure auto-aim for a one-tap special. Candidates are unit positions inside the caster's range;
  * the best one is the circle that holds the most (boss = 3) targetable enemies, ties go to the
- * enemy closest to the gate; enemies that another cast special is about to hit don't count. Returns null
+ * enemy closest to the gate; enemies that pending specials will finish don't count. Returns null
  * when the unit is not ready or nothing is worth hitting.
  */
 export function bestSpecialTarget(
@@ -23,10 +24,24 @@ export function bestSpecialTarget(
       u.hp > 0 &&
       (heal ? u.owner === 'player' : u.owner === 'ai' && canTargetUnit({ owner: 'player', type }, u, state.battlefieldVersion))
     ),
-    // Enemies inside a damaging special that is cast but has not landed yet are already taken care of:
-    // aiming another special at them would likely land on nothing.
+    // An enemy is already handled only when the cast-but-not-landed specials that can hit it, inside their
+    // circle, are expected to finish it (real damage rules, every impact of a multi-hit cast summed).
     incoming = (state.specialEffects ?? []).filter((e) => !e.applied && e.power > 0),
-    covered = (u: Unit) => incoming.some((e) => Math.hypot(u.x - e.x, u.y - e.y) <= SPECIALS[e.type].radius),
+    covered = (u: Unit) => {
+      let pending = 0
+      for (const e of incoming) {
+        // The enemy may walk up to speed x time-to-impact before this impact lands (slows only make it slower), so an
+        // impact counts only when the enemy is still inside its circle in the worst case. Rooted/stunned past it: 0.
+        const held = Math.max(u.specialRootUntil ?? 0, u.specialStunUntil ?? 0) >= e.releaseAt,
+          reach = held ? 0 : u.speed * Math.max(0, e.releaseAt - state.time)
+        if (
+          Math.hypot(u.x - e.x, u.y - e.y) + reach <= SPECIALS[e.type].radius &&
+          canTargetUnit({ owner: 'player', type: e.type }, u, state.battlefieldVersion)
+        )
+          pending += incomingDamage(e.power, u, state.time, ['mage', 'paladin'].includes(e.type) ? 'magic' : 'physical')
+      }
+      return pending >= u.hp
+    },
     weight = (u: Unit) => (heal ? 1 - u.hp / u.maxHp : covered(u) ? 0 : u.boss ? 3 : 1)
   let best: { point: Point; score: number; progress: number } | null = null
   for (const candidate of pool) {

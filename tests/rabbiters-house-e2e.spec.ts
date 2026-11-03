@@ -9,6 +9,7 @@ async function withHooks(page: Page) {
       response,
       body: `${await response.text()}
 import * as houseMap from '/src/map.ts';
+import { HouseBot } from '/tests/house-bot.ts';
 window.houseTest = {
   state: () => JSON.parse(JSON.stringify({ ...game.state, predators: game.state.predators.map(({ route, leash, ...rest }) => rest) })),
   place(x, z) { Object.assign(game.state.players[0], { x, z, y: houseMap.heightAt(x, z) }); },
@@ -16,6 +17,13 @@ window.houseTest = {
   keepOnly(ids) { game.state.predators = game.state.predators.filter((entry) => ids.includes(entry.id)); },
   move(id, values) { Object.assign(game.state.predators.find((entry) => entry.id === id), values); },
   npc: (id) => houseMap.NPCS.find((npc) => npc.id === id),
+  openingUntil(talk) {
+    const bot = new HouseBot(game, game.state.players[0].id);
+    for (let frame = 0; frame < 90 * 60 && game.state.step === 0 && game.state.talk?.id !== talk; frame++) {
+      game.setInput(bot.id, bot.input());
+      game.step(1 / 60);
+    }
+  },
   zone(id) { const zone = houseMap.ZONES.find((entry) => entry.id === id); return { x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2 }; },
   marker(id) {
     const symbol = scene.actors.get('predator:' + id)?.marker?.symbol;
@@ -29,6 +37,7 @@ window.houseTest = {
 
 const hooks = <T>(page: Page, run: string) => page.evaluate<T>(`window.houseTest.${run}`)
 type State = {
+  time: number
   stage: number
   step: number
   flags: number
@@ -38,6 +47,30 @@ type State = {
   predators: { id: string; state: string }[]
 }
 const state = (page: Page) => hooks<State>(page, 'state()')
+
+test('house: breakfast and Pisuke lead straight into Hinata leaving and the latch objective', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await withHooks(page)
+  await page.goto('/?chapter=1')
+  await page.locator('#solo').click()
+
+  await hooks(page, "openingUntil('morning_call')")
+  await expect(page.locator('#subtitle-text')).toContainText('そろそろ出る時間')
+  await expect(page.locator('#objective-title')).toContainText('ひなたが学校へ行くのを待とう')
+
+  await hooks(page, "openingUntil('hinata_leaves')")
+  await expect(page.locator('#subtitle-text')).toContainText('いってきまーす')
+  await expect(page.locator('#hint')).toContainText('玄関へ向かっている')
+
+  await hooks(page, "openingUntil('end')")
+  await expect(page.locator('#objective-title')).toContainText('留め金をかじろう')
+  const departed = await state(page)
+  expect(departed.time).toBeLessThan(90)
+  expect(departed.step).toBe(1)
+  expect(departed.predators.some((person) => person.id === 'hinata')).toBe(false)
+  expect(errors).toEqual([])
+})
 
 test('house: cage start, Pisuke, a family member spots Mochi, fence gap to chapter 2', async ({ page }, testInfo) => {
   test.setTimeout(120_000)

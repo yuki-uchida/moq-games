@@ -5,8 +5,8 @@ export interface MusicPreferences {
 }
 // Scale playback only: persisted volume remains the user's slider preference. Recorded with the default
 // sliders, effects sat a median 1.3 dB *under* the music at 0.8 (hits and kills got masked); 0.5 keeps them
-// clearly above it.
-const MUSIC_OUTPUT_GAIN = 0.5
+// clearly above it; recorded again on one clock with the effects, 0.4 keeps the key cues above it too.
+const MUSIC_OUTPUT_GAIN = 0.4
 /** Music level while a big moment (cut-in, boss horn) plays, and how long the dip lasts. */
 export const MUSIC_DUCK = { level: 0.45, holdMs: 700, releaseMs: 400 } as const
 const DEFAULT_MUSIC_VOLUME = 0.2
