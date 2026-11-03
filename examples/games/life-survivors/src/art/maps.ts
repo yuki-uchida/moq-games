@@ -301,7 +301,7 @@ export const MAP_GROUNDS: Record<string, string> = {
   幼児期: 'playground',
   中学生: 'gym',
   高校生: 'sidewalk',
-  大学生: 'campus',
+  青年期: 'campus',
   働き盛り: 'street',
   中年: 'golf',
   老後: 'garden',

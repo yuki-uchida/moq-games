@@ -785,6 +785,10 @@ export class Game {
         const employed = state.players.filter((player) => this.careers.get(player.id)?.employed)
         if (!employed.length) continue
         this.log(`${employed.map((player) => player.name).join('・')}の仕事の試練：${event.text}`)
+      } else if (event.boss === 'b_care') {
+        const families = state.players.filter((player) => player.joinedAt < event.at && player.parent !== 'p_gone')
+        if (!families.length) continue
+        this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
       } else if (wedding || childEvent) {
         const families = state.players.filter((player) => (wedding ? player.married : player.hasChild))
         if (!families.length) continue
