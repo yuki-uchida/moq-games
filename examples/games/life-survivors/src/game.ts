@@ -2139,8 +2139,10 @@ export class Game {
       state.xpNext = Math.round(xpForLevel(state.level) * (1 + (state.players.length - 1) * 0.5))
       for (const player of state.players)
         if (!player.downed) {
-          if (!this.options(player).length && state.level % 5 === 0) player.swapPending++
-          else player.pending++
+          const hasOptions = this.options(player).length > 0
+          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player)))
+            player.swapPending++
+          if (hasOptions || state.level % 5 !== 0) player.pending++
           // Growing up also mends the heart a little.
           player.hp = Math.min(player.maxHp, player.hp + player.maxHp * LEVEL_HEAL)
           this.emit(FX.LEVELUP, player.x, player.y, state.level, this.playerIndex(player))

@@ -220,6 +220,41 @@ test('turning point cards show their talent category without revealing talent va
   await page.screenshot({ path: testInfo.outputPath('talent-guide-mobile.png') })
 })
 
+test('a full weapon hand offers growth before its optional fifth-level swap', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (session) => {
+    const dataPath = '/src/data.ts'
+    const { EVENTS } = await import(dataPath)
+    const game = session.game as unknown as Game
+    const player = game.state.players[0]
+    game.state.time = 350
+    game.state.eventIndex = EVENTS.findIndex((event: { at: number }) => event.at > game.state.time)
+    game.state.level = 4
+    player.parent = 'p_edu'
+    player.birthPick = false
+    player.pending = 0
+    player.swapPending = 0
+    player.careerPending = 0
+    player.choices = []
+    player.weapons = ['w_friend', 'w_sports', 'w_hobby', 'w_reading', 'w_study', 'w_pet'].map((id) => ({
+      id,
+      lv: 1,
+      cd: 100,
+      held: 0,
+      damage: 0
+    }))
+    game.gainXp(game.state.xpNext)
+  })
+  await expect.poll(() => handle.evaluate((session) => session.view.players[0].choices[0])).toMatch(/^[wp]:/)
+  await page.locator('#cards .card').first().click()
+  await expect.poll(() => handle.evaluate((session) => session.view.players[0].choices[0])).toMatch(/^s:/)
+  await expect(page.locator('#levelup-note')).toContainText('新しい武器')
+  await page.getByRole('button', { name: /交換しない/ }).click()
+  await expect(page.locator('#levelup')).toBeHidden()
+})
+
 test('a full build skips ordinary level-ups and offers an optional weapon swap', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
