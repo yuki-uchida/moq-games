@@ -4,10 +4,11 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { POOPS, SPECIALS } from './simulation.js'
 
+const output = execFileSync(process.execPath, [fileURLToPath(new URL('./balance-report.mjs', import.meta.url))], {
+  encoding: 'utf8'
+})
+
 test('niche report keeps specials useful and preserves the Lv1 poop baseline', () => {
-  const output = execFileSync(process.execPath, [fileURLToPath(new URL('./balance-report.mjs', import.meta.url))], {
-    encoding: 'utf8'
-  })
   const table = output
     .split('ニッチ測定:')[1]
     .split('\n')
@@ -53,4 +54,29 @@ test('niche report keeps specials useful and preserves the Lv1 poop baseline', (
     const perCost = specials.map((row) => row.cleared[scenario] / row.cost)
     assert.ok(Math.max(...perCost) <= 2 * Math.min(...perCost), `scenario ${scenario}`)
   }
+})
+
+test('every special wins reliably and is summoned in the realistic formation', () => {
+  const formation = output
+    .split('実戦編成:')[1]
+    .split('\n')
+    .slice(2, 3 + SPECIALS.length)
+  assert.equal(formation.length, SPECIALS.length + 1)
+  const [baselineName, baselineWins, baselineTime, baselineSummons] = formation[0].split('\t')
+  assert.equal(baselineName, 'なし')
+  assert.match(baselineWins, /^(?:[0-9]|[1-3][0-9]|40)\/40$/)
+  assert.ok(Number.isFinite(Number(baselineTime)))
+  assert.equal(Number(baselineSummons), 0)
+  const regressions = []
+  for (const [index, row] of formation.slice(1).entries()) {
+    const [name, winsText, timeText, summonsText] = row.split('\t')
+    assert.equal(name, SPECIALS[index].name)
+    assert.match(winsText, /^(?:[0-9]|[1-3][0-9]|40)\/40$/)
+    const wins = Number.parseFloat(winsText)
+    const time = Number.parseFloat(timeText)
+    const summons = Number(summonsText)
+    assert.ok(Number.isFinite(time) && Number.isFinite(summons), name)
+    if (wins < 34 || summons < 1) regressions.push(`${name}: ${winsText}, ${summons} summons`)
+  }
+  assert.deepEqual(regressions, [])
 })

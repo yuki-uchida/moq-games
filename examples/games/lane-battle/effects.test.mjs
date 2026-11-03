@@ -343,6 +343,27 @@ test('curry blast resolves immediately before later shots and skips dead marked 
   )
 })
 
+test('earlier arriving shot kills a marked target before its blast in either step size', () => {
+  const run = (steps) => {
+    const { game, source, victims } = scene('curry', [30, 50])
+    step(game, 0.01)
+    source.attack = 999
+    victims[0].hp = 50
+    game.deck.push(card({ uid: 2, key: 'korokoro' }))
+    summon(game, 1)
+    const shooter = game.units.at(-1)
+    shooter.attack = 999
+    shooter.speed = 0
+    game.projectiles.push({ targetId: victims[0].id, src: shooter, damage: 100, at: 1.491, effect: {} })
+    for (const dt of steps) step(game, dt)
+    return { hp: victims.map((victim) => victim.hp), blasts: game.effects.filter((effect) => effect.explosion).length }
+  }
+  const large = run([1.51])
+  const small = run(Array(151).fill(0.01))
+  assert.deepEqual(large, small)
+  assert.equal(large.blasts, 0)
+})
+
 test('burn, each poison stack, stench and wet zones tick exactly through their end', () => {
   for (const dt of [0.05, 0.01, 1 / 60]) {
     for (let start = 0; start < 100; start++) {
