@@ -721,6 +721,90 @@ test('desktop: pointer lock rotates the view without holding a button', async ({
   await expect.poll(yaw).not.toBeCloseTo(before, 1)
 })
 
+test('real patrol AI discovers the rabbit through normal browser frames', async ({ page }) => {
+  test.setTimeout(120_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersDiscovery = {
+  states: ['patrol'], alarms: 0, localSpots: 0, chaseFrames: 0,
+  stage() {
+    const player = game.state.players[0];
+    Object.assign(player, { x: -125, z: 8, y: 0 });
+    game.state.foods = [];
+    game.state.nests.forEach((nest) => { nest.active = false; });
+    game.state.predators = [{ id: 'discovery-fox', kind: 'fox', x: -125, z: -2,
+      y: 0, angle: 0.6, state: 'patrol', targetId: null, suspicion: 0 }];
+    const alarm = audio.alarm.bind(audio);
+    audio.alarm = () => { this.alarms++; alarm(); };
+    const emit = feel.emit.bind(feel);
+    feel.emit = (event) => {
+      if (event.type === 'spotted' && event.you) this.localSpots++;
+      emit(event);
+    };
+    const render = scene.render.bind(scene);
+    scene.render = (...args) => {
+      const predator = game.state.predators[0];
+      if (this.states.at(-1) !== predator.state) this.states.push(predator.state);
+      if (predator.state === 'chase') this.chaseFrames++;
+      render(...args);
+    };
+  },
+  read() {
+    const predator = game.state.predators[0];
+    return { states: this.states, alarms: this.alarms, localSpots: this.localSpots,
+      chaseFrames: this.chaseFrames, state: predator.state, suspicion: predator.suspicion,
+      targetsLocal: predator.targetId === localId, audioState: audio.context?.state };
+  }
+};`
+    })
+  })
+  await page.goto('/?chapter=4')
+  await page.locator('#solo').click()
+  await page.evaluate('window.rabbitersDiscovery.stage()')
+  const read = () =>
+    page.evaluate<{
+      states: string[]
+      alarms: number
+      localSpots: number
+      chaseFrames: number
+      state: string
+      suspicion: number
+      targetsLocal: boolean
+      audioState: string
+    }>('window.rabbitersDiscovery.read()')
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'suspicious', { timeout: 30_000 })
+  await expect(page.locator('.fx-threat')).toBeVisible()
+  await expect(page.locator('#condition')).toContainText('怪しまれている')
+  const suspicious = await read()
+  expect(suspicious.state).toBe('suspicious')
+  expect(suspicious.suspicion).toBeGreaterThan(0)
+  expect(suspicious.suspicion).toBeLessThan(1)
+  expect(suspicious.targetsLocal).toBe(true)
+  expect(suspicious.alarms).toBe(0)
+  expect(suspicious.localSpots).toBe(0)
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase', { timeout: 60_000 })
+  await expect(page.locator('.fx-threat')).toBeVisible()
+  await expect(page.locator('.fx-threat')).toContainText('1体が追跡中')
+  await expect(page.locator('.fx-detection')).toHaveClass(/fx-on/)
+  await expect(page.locator('#condition')).toContainText('見つかった')
+  await expect.poll(async () => (await read()).chaseFrames).toBeGreaterThanOrEqual(3)
+  expect(await read()).toMatchObject({
+    states: ['patrol', 'suspicious', 'chase'],
+    state: 'chase',
+    targetsLocal: true,
+    alarms: 1,
+    localSpots: 1,
+    audioState: 'running'
+  })
+  await expect(page.locator('#start-error')).toBeEmpty()
+  expect(errors).toEqual([])
+})
+
 test('stealth: "?" then "!" cues, alert vignette and droppings', async ({ page }, testInfo) => {
   test.setTimeout(60_000)
   const errors: string[] = []
