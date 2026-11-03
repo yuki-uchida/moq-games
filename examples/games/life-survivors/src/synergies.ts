@@ -27,6 +27,33 @@ export const SYNERGIES = [
     cooldown: 1,
     area: 1.15,
     text: '対人系 × 恋愛系 → 恋愛系の範囲 +15%'
+  },
+  {
+    name: '体験が育む表現',
+    pair: ['sports', 'hobby'],
+    target: 'hobby',
+    damage: 1.1,
+    cooldown: 1,
+    area: 1,
+    text: '身体系 × 創造系 → 創造系の威力 +10%'
+  },
+  {
+    name: '遊びからのひらめき',
+    pair: ['hobby', 'study'],
+    target: 'study',
+    damage: 1,
+    cooldown: 0.95,
+    area: 1,
+    text: '創造系 × 知性系 → 知性系の待ち時間 -5%'
+  },
+  {
+    name: 'ゆとりが広げる交流',
+    pair: ['invest', 'friend'],
+    target: 'friend',
+    damage: 1,
+    cooldown: 1,
+    area: 1.1,
+    text: '資産系 × 対人系 → 対人系の範囲 +10%'
   }
 ] as const
 
