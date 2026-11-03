@@ -7,7 +7,7 @@ import type { Game, GameState, Player, Predator } from '../../game'
 import { heightAt, inZone, npcNear, type Point } from '../../map'
 import { inRect } from '../kit'
 import type { Marker, Objective, StageScript } from '../../story'
-import { FRONT, PHASE_SECONDS, driveFamily, investigate, investigating, phaseAt, type Spot } from './family'
+import { FRONT, driveFamily, investigate, investigating, phaseAt, type Spot } from './family'
 import {
   DIG_SECONDS,
   FLAG,
@@ -250,23 +250,23 @@ export const script: StageScript = {
 
     switch (state.step) {
       case 0: {
-        if (!has(state, FLAG.morningCall) && state.time >= PHASE_SECONDS - 45 && game.quiet) {
-          state.flags |= FLAG.morningCall
-          game.say('morning_call')
-        }
         if (!has(state, FLAG.pellets) && pelletsEaten(state) >= PELLETS.length) {
           state.flags |= FLAG.pellets
           game.say('eat_done')
         }
-        // Hinata sets off for school when the morning is over.
+        // Finish breakfast and Pisuke's conversation, then send Hinata to school without a clock-based wait.
         if (
           (state.flags & (FLAG.pellets | FLAG.pisuke)) === (FLAG.pellets | FLAG.pisuke) &&
           !has(state, FLAG.bye) &&
-          state.time >= PHASE_SECONDS &&
           game.quiet
         ) {
-          state.flags |= FLAG.bye
-          game.say('hinata_leaves')
+          if (!has(state, FLAG.morningCall)) {
+            state.flags |= FLAG.morningCall
+            game.say('morning_call')
+          } else {
+            state.flags |= FLAG.bye
+            game.say('hinata_leaves')
+          }
         }
         if (has(state, FLAG.bye) && game.quiet && !state.predators.some((entry) => entry.id === 'hinata'))
           state.step = 1
@@ -420,9 +420,11 @@ export const script: StageScript = {
               }
             : {
                 title: '第1章｜ひなたが学校へ行くのを待とう',
-                progress: at(0.6 + 0.4 * Math.min(1, state.time / PHASE_SECONDS)),
+                progress: at(has(state, FLAG.bye) ? 0.95 : has(state, FLAG.morningCall) ? 0.8 : 0.6),
                 label,
-                hint: 'ケージの中なら安心。C でしゃがむ、マウスで見まわす練習をしよう'
+                hint: has(state, FLAG.bye)
+                  ? 'ひなたが玄関へ向かっているよ。出かけたら留め金をかじろう'
+                  : '話を聞いている間に、ひなたが学校へ行く準備をするよ'
               }
         break
       case 1:

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Game, coverAt, type Player } from '../src/game'
 import { NPCS, TERRAIN, heightAt, inShelter, inZone, setStage } from '../src/map'
 import { STAGES, spokenLine } from '../src/stages'
-import { PLANS, route } from '../src/stages/house/family'
+import { PHASE_SECONDS, PLANS, route } from '../src/stages/house/family'
 import { FLAG, GNAW_SECONDS, gnawed, has, setGnawed } from '../src/stages/house/flags'
 import { CAGE, CAGE_DOOR, GATE, NIBOSHI, SPAWN, TAG, TAMA } from '../src/stages/house/map'
 import { DOOR_INSIDE } from '../src/stages/house/script'
@@ -90,6 +90,39 @@ describe('Chapter 1: the house', () => {
     for (const goal of [TAMA, NIBOSHI, TAG, { x: 32, z: 22.6 }, { x: -38.25, z: 58 }])
       expect(houseField(goal).has(cell(SPAWN)), JSON.stringify(goal)).toBe(true)
   })
+
+  it.each([1, 2])('sends Hinata to school after the opening conversations, with %i rabbit(s)', (rabbits) => {
+    const { game } = solo()
+    if (rabbits === 2) game.addPlayer('b', 'B')
+    const bots = game.state.players.map((player) => new HouseBot(game, player.id))
+    const conversations: string[] = []
+    for (let frame = 0; frame < 90 * 60 && game.state.step === 0; frame++) {
+      const talk = game.state.talk?.id
+      if (talk && conversations.at(-1) !== talk) conversations.push(talk)
+      for (const bot of bots) game.setInput(bot.id, bot.input())
+      game.step(1 / 60)
+    }
+    expect(conversations).toEqual(['intro', 'eat_done', 'pisuke_first', 'morning_call', 'hinata_leaves'])
+    expect(game.state.time).toBeLessThan(90)
+    expect(game.state.step).toBe(1)
+    expect(game.state.predators.some((person) => person.id === 'hinata')).toBe(false)
+    expect(game.quiet).toBe(true)
+    expect(game.state.open & (1 << GATE.cage)).toBe(0)
+    expect(STAGES[HOUSE].script.objective(game.state, game.state.players[0]).title).toContain('留め金')
+  })
+
+  it.each([0, FLAG.pellets, FLAG.pisuke])(
+    'keeps Hinata home while an opening task is unfinished (flags %i)',
+    (flags) => {
+      const { game } = solo()
+      Object.assign(game.state, { time: PHASE_SECONDS + 1, talk: null, flags })
+      advance(game, 10)
+      expect(game.state.step).toBe(0)
+      expect(has(game.state, FLAG.morningCall)).toBe(false)
+      expect(has(game.state, FLAG.bye)).toBe(false)
+      expect(game.state.predators.some((person) => person.id === 'hinata')).toBe(true)
+    }
+  )
 
   it('gnaws the latch in 30 s of holding E; someone close by bends it back', () => {
     const { game, player } = solo()
@@ -205,21 +238,24 @@ describe('Chapter 1: the house', () => {
     expect(game.state.stage).toBe(1)
   })
 
-  it('clears without threats (bot knows the way) in at least 8 minutes of game time', () => {
+  it('clears without threats (bot knows the way) in 5–20 minutes without the long opening wait', () => {
     const { minutes, game } = play(5, 1, false, 20)
     console.log(`house threat-free: ${minutes.toFixed(1)} min`)
     expect(game.state.stage).toBe(1)
-    expect(minutes).toBeGreaterThanOrEqual(8)
+    expect(minutes).toBeGreaterThanOrEqual(5)
+    expect(minutes).toBeLessThan(20)
   }, 60_000)
 
-  it('clears with the whole family and Gon about, for a cautious rabbit, in 20–40 minutes', () => {
-    for (const seed of [1, 4, 7]) {
+  it.each([1, 4, 7])(
+    'clears with the whole family and Gon about, for a cautious rabbit, in 17–40 minutes (seed %i)',
+    (seed) => {
       const { minutes, catches } = play(seed, 1, true, 60)
       console.log(`house threat run, seed ${seed}: ${minutes.toFixed(1)} min, caught ${catches}×`)
-      expect(minutes).toBeGreaterThanOrEqual(20)
+      expect(minutes).toBeGreaterThanOrEqual(17)
       expect(minutes).toBeLessThanOrEqual(40)
-    }
-  }, 240_000)
+    },
+    240_000
+  )
 
   it('clears in co-op with two rabbits', () => {
     const { minutes } = play(7, 2, false, 25)
