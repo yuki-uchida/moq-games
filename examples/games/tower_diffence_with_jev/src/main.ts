@@ -536,7 +536,11 @@ const battleFeedback = new BattleFeedback({
       ) + 6,
     bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
   }),
-  play: (kind, param) => soundPlayer.playFeel(kind, param),
+  play: (kind, param) => {
+    soundPlayer.playFeel(kind, param)
+    // Let the boss horn read over the battle music.
+    if (kind === 'boss') battleMusic.duck()
+  },
   announce: (message) => announce(message)
 })
 let mapScale = 1
@@ -1128,6 +1132,7 @@ function playCastFeedback(type: AllyType, point: Point) {
   )
   soundPlayer.playCue('ui_special')
   soundPlayer.playFeel('cutin')
+  battleMusic.duck()
 }
 const specialInput = new GroundTapInput(viewport, {
   acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),

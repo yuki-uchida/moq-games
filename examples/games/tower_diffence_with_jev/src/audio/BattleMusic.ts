@@ -3,8 +3,12 @@ export interface MusicPreferences {
   enabled: boolean
   volume: number
 }
-// Scale playback only: persisted volume remains the user's slider preference.
-const MUSIC_OUTPUT_GAIN = 0.8
+// Scale playback only: persisted volume remains the user's slider preference. Recorded with the default
+// sliders, effects sat a median 1.3 dB *under* the music at 0.8 (hits and kills got masked); 0.5 keeps them
+// clearly above it.
+const MUSIC_OUTPUT_GAIN = 0.5
+/** Music level while a big moment (cut-in, boss horn) plays, and how long the dip lasts. */
+export const MUSIC_DUCK = { level: 0.45, holdMs: 700, releaseMs: 400 } as const
 const DEFAULT_MUSIC_VOLUME = 0.2
 function musicOutputVolume(volume: number): number {
   return Math.max(0, Math.min(1, volume)) * MUSIC_OUTPUT_GAIN
@@ -53,6 +57,9 @@ export class BattleMusic {
   private selectionBattle = ''
   private selection = 0
   private status = '襲撃中だけ再生します。'
+  private baseVolume = musicOutputVolume(DEFAULT_MUSIC_VOLUME)
+  private duckTimer: ReturnType<typeof setTimeout> | undefined
+  private duckUntil = 0
   constructor(
     private readonly media: MusicMedia,
     private readonly changed: (status: string) => void = () => {},
@@ -78,13 +85,28 @@ export class BattleMusic {
     }
   }
   configure(preferences: MusicPreferences): void {
-    this.media.volume = musicOutputVolume(preferences.volume)
+    this.baseVolume = musicOutputVolume(preferences.volume)
+    this.media.volume = Date.now() < this.duckUntil ? this.baseVolume * MUSIC_DUCK.level : this.baseVolume
     const changed = this.enabled !== preferences.enabled
     this.enabled = preferences.enabled
     if (changed) {
       if (this.enabled && this.battle) this.media.preload = 'auto'
       this.reconcile()
     }
+  }
+  /** Dip the music under a big moment so its sound reads, then ease back. Overlapping calls extend the dip. */
+  duck(): void {
+    if (this.destroyed) return
+    this.duckUntil = Date.now() + MUSIC_DUCK.holdMs
+    this.media.volume = this.baseVolume * MUSIC_DUCK.level
+    clearTimeout(this.duckTimer)
+    const release = (step: number) => {
+      const steps = 8,
+        level = MUSIC_DUCK.level + ((1 - MUSIC_DUCK.level) * step) / steps
+      this.media.volume = this.baseVolume * level
+      if (step < steps) this.duckTimer = setTimeout(() => release(step + 1), MUSIC_DUCK.releaseMs / steps)
+    }
+    this.duckTimer = setTimeout(() => release(1), MUSIC_DUCK.holdMs)
   }
   /** Call synchronously from a trusted user gesture. Failed autoplay is retried only on another gesture or state change. */
   unlock(): void {
@@ -153,6 +175,7 @@ export class BattleMusic {
     this.reconcile()
   }
   destroy(): void {
+    clearTimeout(this.duckTimer)
     this.destroyed = true
     this.stop(true)
     this.media.src = ''

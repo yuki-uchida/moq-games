@@ -3,6 +3,7 @@ import {
   BattleMusic,
   loadMusicPreferences,
   saveMusicPreferences,
+  MUSIC_DUCK,
   MUSIC_PREFERENCES_KEY
 } from '../src/audio/BattleMusic'
 
@@ -34,7 +35,7 @@ describe('battle-only streamed music', () => {
     expect(media.play).toHaveBeenCalledTimes(1)
     expect(media.loop).toBe(true)
     expect(media.preload).toBe('auto')
-    expect(media.volume).toBeCloseTo(0.16)
+    expect(media.volume).toBeCloseTo(0.1)
     music.setBattle(false, 'run:1')
     expect(media.currentTime).toBe(0)
     expect(music.diagnostics.playing).toBe(false)
@@ -71,7 +72,7 @@ describe('battle-only streamed music', () => {
     media.currentTime = 42
     music.setBattle(true, 'run:2')
     expect(media.currentTime).toBe(0)
-    expect(media.volume).toBeCloseTo(0.08)
+    expect(media.volume).toBeCloseTo(0.05)
     music.destroy()
     music.unlock()
     expect(music.diagnostics.playing).toBe(false)
@@ -178,14 +179,14 @@ describe('battle-only streamed music', () => {
     })
     const first = setup()
     first.music.configure(loadMusicPreferences())
-    expect(first.media.volume).toBeCloseTo(0.16)
+    expect(first.media.volume).toBeCloseTo(0.1)
     saveMusicPreferences({ enabled: true, volume: 0.75 })
     for (let reload = 0; reload < 3; reload++) {
       const resumed = setup()
       const preferences = loadMusicPreferences()
       resumed.music.configure(preferences)
       expect(preferences.volume).toBe(0.75)
-      expect(resumed.media.volume).toBeCloseTo(0.6)
+      expect(resumed.media.volume).toBeCloseTo(0.375)
       saveMusicPreferences(preferences)
     }
     expect(JSON.parse(data.get(MUSIC_PREFERENCES_KEY)!)).toEqual({ enabled: true, volume: 0.75 })
@@ -195,21 +196,37 @@ describe('battle-only streamed music', () => {
     music.unlock()
     music.setBattle(true, 'volume:1')
     for (const [input, output] of [
-      [0.5, 0.4],
+      [0.5, 0.25],
       [0, 0],
-      [1, 0.8],
+      [1, 0.5],
       [-1, 0],
-      [2, 0.8]
+      [2, 0.5]
     ]) {
       music.configure({ enabled: true, volume: input })
       expect(media.volume).toBeCloseTo(output)
     }
     music.configure({ enabled: false, volume: 0.5 })
     expect(music.diagnostics.playing).toBe(false)
-    expect(media.volume).toBeCloseTo(0.4)
+    expect(media.volume).toBeCloseTo(0.25)
     music.configure({ enabled: true, volume: 0.5 })
     expect(music.diagnostics.playing).toBe(true)
-    expect(media.volume).toBeCloseTo(0.4)
+    expect(media.volume).toBeCloseTo(0.25)
+  })
+  it('ducks under a big moment and eases back to the slider level, also across a slider change', () => {
+    vi.useFakeTimers()
+    try {
+      const { music, media } = setup()
+      music.configure({ enabled: true, volume: 0.4 })
+      expect(media.volume).toBeCloseTo(0.2)
+      music.duck()
+      expect(media.volume).toBeCloseTo(0.2 * MUSIC_DUCK.level)
+      music.configure({ enabled: true, volume: 0.8 })
+      expect(media.volume).toBeCloseTo(0.4 * MUSIC_DUCK.level)
+      vi.advanceTimersByTime(MUSIC_DUCK.holdMs + MUSIC_DUCK.releaseMs + 50)
+      expect(media.volume).toBeCloseTo(0.4)
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('persists music preferences and tolerates missing or corrupt storage', () => {
     const getItem = vi.fn(() => '{bad')
