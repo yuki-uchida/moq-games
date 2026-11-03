@@ -287,6 +287,8 @@ export function generateTalents(rng: () => number): Record<TalentCategory, numbe
 }
 export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
+const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
+  age >= def.minAge && (def.id !== 'w_ring' || player.married) && !player.weapons.some((weapon) => weapon.id === def.id)
 
 export function isEvolved(player: Player, weapon: OwnedWeapon) {
   const def = WEAPON_BY_ID.get(weapon.id)
@@ -2152,8 +2154,7 @@ export class Game {
     const result: string[] = []
     for (const weapon of player.weapons) if (weapon.lv < MAX_WEAPON_LEVEL) result.push(`w:${weapon.id}`)
     if (talentWeaponCount(player) < weaponSlots(player))
-      for (const def of TALENT_WEAPONS)
-        if (age >= def.minAge && !player.weapons.some((w) => w.id === def.id)) result.push(`w:${def.id}`)
+      for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives) if (passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
     if (player.passives.length < PASSIVE_SLOTS)
       for (const def of PASSIVES) if (!player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
@@ -2173,9 +2174,8 @@ export class Game {
     if ((player.pending === 0 && player.swapPending > 0) || (career && !this.options(player).length)) {
       if (career) player.careerPending--
       else player.swapPending--
-      const pool = TALENT_WEAPONS.filter(
-        (def) => ageAt(this.state.time) >= def.minAge && !player.weapons.some((w) => w.id === def.id)
-      )
+      const age = ageAt(this.state.time)
+      const pool = TALENT_WEAPONS.filter((def) => canObtainWeapon(player, def, age))
       const hand: string[] = []
       while (hand.length < 3 && pool.length)
         hand.push(`s:${pool.splice(Math.floor(this.rng() * pool.length), 1)[0].id}`)

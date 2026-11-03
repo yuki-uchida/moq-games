@@ -142,10 +142,11 @@ describe('new talent weapons', () => {
     expect(game.state.players).toHaveLength(1)
   })
 
-  test('every new weapon becomes offerable exactly from its minimum age', () => {
+  test('every new weapon becomes offerable from its minimum age when its requirements are met', () => {
     for (const id of Object.keys(NEW_WEAPONS)) {
       const { game, player } = arena(5)
       const def = WEAPON_BY_ID.get(id)!
+      if (id === 'w_ring') player.married = true
       game.state.time = timeAtAge(def.minAge) + 0.5
       expect(ageAt(game.state.time)).toBe(def.minAge)
       expect(game.options(player)).toContain(`w:${id}`)
