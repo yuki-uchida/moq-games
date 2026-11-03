@@ -1,17 +1,104 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, TALENT_WEAPONS } from '../src/data'
-import { Game } from '../src/game'
+import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS } from '../src/data'
+import { Game, RAID, raidReach } from '../src/game'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
 
 describe('ヤンキー親', () => {
+  /** A yankee parent about to fire, with unkillable bullies held in place at the given offsets. */
+  function raid(seed: number, offsets: [number, number][]) {
+    const game = new Game(seed)
+    const player = game.addPlayer('a', 'p_yankee')!
+    for (const c of TALENT_CATEGORIES) player.talents[c] = 1
+    const posts = offsets.map(([dx, dy]) => {
+      const enemy = game.spawnEnemy('bully', player.x + dx, player.y + dy)!
+      enemy.hp = enemy.maxHp = 1e9
+      return { enemy, x: enemy.x, y: enemy.y }
+    })
+    /** Ticks until the first raid is over, returning each raid shot's path from the owner. */
+    const watch = () => {
+      const paths = new Map<number, { d: number; a: number }[]>()
+      for (let i = 0; i < 60 * 3; i++) {
+        player.hp = player.maxHp
+        for (const p of posts) {
+          p.enemy.x = p.x
+          p.enemy.y = p.y
+          p.enemy.kx = p.enemy.ky = 0
+        }
+        game.tick(1 / 60)
+        const shots = game.state.shots.filter((s) => s.weapon === 'p_yankee')
+        if (!shots.length && paths.size) break
+        for (const s of shots) {
+          const path = paths.get(s.id) ?? []
+          path.push({ d: Math.hypot(s.x - player.x, s.y - player.y), a: Math.atan2(s.y - player.y, s.x - player.x) })
+          paths.set(s.id, path)
+        }
+      }
+      return [...paths.values()].map((path) => {
+        const top = path.reduce((a, b) => (b.d > a.d ? b : a))
+        return { farthest: top.d, bearing: top.a, last: path[path.length - 1].d }
+      })
+    }
+    return { game, player, posts, watch }
+  }
+
   test('a physical parent card, unlike 蒸発済み', () => {
     const parent = PARENTS.find((entry) => entry.id === 'p_yankee')!
     expect(parent.category).toBe('sports')
-    expect(parent.behavior).not.toBe('none')
+    expect(parent.behavior).toBe('raid')
     expect(new Game(1).addPlayer('a', parent.id)!.weapons.map((weapon) => weapon.id)).toEqual(['p_yankee'])
     expect(new Game(1).addPlayer('a', 'p_gone')!.weapons).toEqual([])
+  })
+
+  test('a raid runs out, kicks a little further and ends back at the owner without jumps', () => {
+    expect(raidReach(0)).toBe(0)
+    expect(raidReach(RAID.kick)).toBeCloseTo(0.8)
+    expect(raidReach(RAID.back)).toBeCloseTo(1)
+    expect(raidReach(1)).toBeCloseTo(0)
+    for (let k = 1; k <= 100; k++) expect(Math.abs(raidReach(k / 100) - raidReach((k - 1) / 100))).toBeLessThan(0.05)
+  })
+
+  test('storms at the nearest enemy, kicks it and swaggers back to the owner', () => {
+    const { posts, watch } = raid(11, [
+      [130, 0],
+      [-260, 0]
+    ])
+    const [only, ...more] = watch()
+    expect(more).toEqual([])
+    // A stride short of the enemy at 130, so the kicking sole lands on it.
+    expect(only.bearing).toBeCloseTo(0, 1)
+    expect(only.farthest).toBeGreaterThan(105)
+    expect(only.farthest).toBeLessThan(125)
+    expect(only.last).toBeLessThan(15)
+    expect(posts[0].enemy.hp).toBeLessThan(1e9)
+    expect(posts[1].enemy.hp).toBe(1e9)
+  })
+
+  test('with nobody near it swaggers out the way the owner faces and back', () => {
+    const { player, watch } = raid(12, [])
+    player.fx = 0
+    player.fy = 1
+    const [only] = watch()
+    expect(only.bearing).toBeCloseTo(Math.PI / 2, 1)
+    expect(only.farthest).toBeGreaterThan(90)
+    expect(only.farthest).toBeLessThan(110)
+    expect(only.last).toBeLessThan(15)
+  })
+
+  test('器用 sends one yankee parent at each of the nearest enemies', () => {
+    const { player, watch } = raid(13, [
+      [120, 0],
+      [0, 150],
+      [-300, 0]
+    ])
+    player.passives = [{ id: 'p_clever', lv: 1 }]
+    const bearings = watch()
+      .map((path) => path.bearing)
+      .sort((a, b) => a - b)
+    expect(bearings).toHaveLength(2)
+    expect(bearings[0]).toBeCloseTo(0, 1)
+    expect(bearings[1]).toBeCloseTo(Math.PI / 2, 1)
   })
 })
 
