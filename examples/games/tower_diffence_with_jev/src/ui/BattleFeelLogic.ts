@@ -8,6 +8,29 @@ export const COMBO_WINDOW_MS = 2000
 
 export const bountyFor = (type: UnitType, boss: boolean): number => DEFINITIONS[type].cost + (boss ? 10 : 0)
 
+export interface CastleReacher {
+  type: UnitType
+  boss: boolean
+  count: number
+}
+/** Enemies that reached the castle: gate exits, plus castle attackers that never left (a boss keeps attacking). */
+export function castleReachers(
+  exits: Iterable<CastleReacher>,
+  attackers: ReadonlyMap<number, { type: UnitType; boss: boolean }>,
+  exited: ReadonlySet<number>
+): CastleReacher[] {
+  const merged = new Map<string, CastleReacher>()
+  for (const e of exits) merged.set(`${e.type}:${e.boss}`, { ...e })
+  for (const [id, a] of attackers) {
+    if (exited.has(id)) continue
+    const key = `${a.type}:${a.boss}`,
+      e = merged.get(key)
+    if (e) e.count++
+    else merged.set(key, { type: a.type, boss: a.boss, count: 1 })
+  }
+  return [...merged.values()]
+}
+
 export const isHeavyHit = (damage: number, maxHp: number): boolean => damage >= 90 || damage >= maxHp * 0.3
 
 /** Castle shake in px, proportional to damage and capped. */

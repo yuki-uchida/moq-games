@@ -4,6 +4,7 @@ import {
   ComboTracker,
   comboLabel,
   bountyFor,
+  castleReachers,
   isHeavyHit,
   shakeAmplitude
 } from '../src/ui/BattleFeelLogic'
@@ -50,5 +51,22 @@ describe('battle feel logic', () => {
   })
   it('names double and triple kills before counting combos', () => {
     expect([2, 3, 4, 7].map(comboLabel)).toEqual(['DOUBLE!', 'TRIPLE!', '×4 COMBO!', '×7 COMBO!'])
+  })
+})
+
+describe('enemies that reached the castle', () => {
+  it('adds castle attackers that never left, such as a boss, and counts a gate exit once', () => {
+    const exits = [{ type: 'goblin' as const, boss: false, count: 2 }]
+    const attackers = new Map([
+      [7, { type: 'goblin' as const, boss: false }],
+      [9, { type: 'dragon' as const, boss: true }],
+      [11, { type: 'goblin' as const, boss: false }]
+    ])
+    expect(castleReachers(exits, attackers, new Set([7]))).toEqual([
+      { type: 'goblin', boss: false, count: 3 },
+      { type: 'dragon', boss: true, count: 1 }
+    ])
+    expect(exits[0].count).toBe(2)
+    expect(castleReachers([], new Map(), new Set())).toEqual([])
   })
 })
