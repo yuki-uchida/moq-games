@@ -47,7 +47,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-const setup = () => {
+const setup = (initialize?: (game: Game, audio: RabbitersAudio) => void) => {
   vi.useFakeTimers()
   const context = new Context()
   vi.stubGlobal(
@@ -61,11 +61,59 @@ const setup = () => {
   game.addPlayer('local', 'Rabbit')
   for (const predator of game.state.predators) predator.targetId = 'local'
   audio.start()
+  initialize?.(game, audio)
   audio.update(game.state, 'local')
   return { audio, game, context }
 }
 
 describe('Rabbiters audio', () => {
+  it('sounds initial local discovery once without replaying history and delays chase music', () => {
+    const { audio, game, context } = setup((game) => {
+      game.state.time = 20
+      game.state.predators[0].state = 'chase'
+      game.state.players[0].pregnant = true
+      game.state.bedding = 6
+      game.state.chapter = 2
+      game.state.kits = [{ id: 'old-loss', x: 0, y: 0, z: 0, angle: 0, hidden: false, status: 'lost' }]
+    })
+    expect(context.voices).toHaveLength(4)
+    expect(context.voices[0].frequency.setValueAtTime).toHaveBeenCalledWith(160, 0)
+    audio.update(game.state, 'local')
+    game.state.time += 0.1
+    game.state.predators[1].state = 'chase'
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(4)
+    context.currentTime = 0.54
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(4)
+    context.currentTime = 0.55
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(7)
+    expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(98, 0.55)
+    audio.stop()
+  })
+
+  it.each(['other player', 'missing local', 'won', 'lost', 'muted'])(
+    'does not sound initial discovery for %s',
+    (scenario) => {
+      const { audio, game, context } = setup((game, audio) => {
+        game.state.predators[0].state = 'chase'
+        if (scenario === 'other player') {
+          game.addPlayer('other', 'Other')
+          game.state.predators[0].targetId = 'other'
+        }
+        if (scenario === 'missing local') game.state.players = []
+        if (scenario === 'won' || scenario === 'lost') game.state.phase = scenario
+        if (scenario === 'muted') audio.setMuted(true)
+      })
+      expect(context.voices).toHaveLength(0)
+      audio.setMuted(false)
+      audio.update(game.state, 'local')
+      expect(context.voices).toHaveLength(0)
+      audio.stop()
+    }
+  )
+
   it('gives discovery a sustained impact and chase a syncopated bass without raising master gain', () => {
     const { audio, game, context } = setup()
     game.state.predators[0].state = 'chase'

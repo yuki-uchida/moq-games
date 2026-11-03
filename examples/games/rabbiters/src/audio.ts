@@ -117,7 +117,13 @@ export class RabbitersAudio {
     }
     const previous = this.previous
     this.previous = next
-    if (!previous) return
+    if (!previous) {
+      if (next.phase === 'playing' && player && next.chased.has(localPlayerId)) {
+        this.musicAfter = (this.context?.currentTime ?? 0) + 0.55
+        this.alarm()
+      }
+      return
+    }
     if (previous.threat !== next.threat || previous.phase !== next.phase) {
       this.silence()
       this.beat = 0

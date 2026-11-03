@@ -48,3 +48,98 @@ window.rabbitersAnnouncementProbe = {
   await expect.poll(read).toEqual({ updates: 2, text: '見つかった！' })
   expect(errors).toEqual([])
 })
+
+test('a guest triggers the warning when its first snapshot is already a local chase', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/network.ts*', (route) =>
+    route.fulfill({
+      contentType: 'text/javascript',
+      body: `
+        export const MAX_PLAYERS = 16;
+        export class CooperativeNetwork {
+          constructor(options) { this.options = options; }
+          async start() { this.options.onStatus('ready', 'Connected'); }
+          async sendInput() {}
+          async stop() {}
+        }
+      `
+    })
+  )
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+let alarmCount = 0;
+let alarmVoices = 0;
+const alarm = audio.alarm.bind(audio);
+audio.alarm = () => { alarmCount++; alarm(); alarmVoices = audio.voices.size; };
+window.rabbitersFirstChase = {
+  capture() {
+    this.peak = 0;
+    this.analyser = audio.context.createAnalyser();
+    this.sink = audio.context.createGain();
+    this.sink.gain.value = 0;
+    audio.master.connect(this.analyser);
+    this.analyser.connect(this.sink);
+    this.sink.connect(audio.context.destination);
+    const samples = new Float32Array(this.analyser.fftSize);
+    this.timer = setInterval(() => {
+      this.analyser.getFloatTimeDomainData(samples);
+      for (const sample of samples) this.peak = Math.max(this.peak, Math.abs(sample));
+    }, 10);
+  },
+  deliver() {
+    if (!this.wire) {
+      const host = new Game();
+      host.addPlayer(localId);
+      Object.assign(host.state.predators[0], { state: 'chase', targetId: localId, suspicion: 1 });
+      this.wire = packSnapshot(host.state);
+    }
+    network.options.onSnapshot(this.wire);
+  },
+  read() { return { alarms: alarmCount, voices: alarmVoices, peak: this.peak,
+    audioState: audio.context?.state, target: snapshot?.predators[0]?.targetId, localId }; },
+  stop() {
+    clearInterval(this.timer);
+    audio.master.disconnect(this.analyser);
+    this.analyser.disconnect();
+    this.sink.disconnect();
+  }
+};`
+    })
+  })
+  await page.goto('/')
+  await page.locator('#together').click()
+  await page.locator('#room').fill('first-chase')
+  await page.locator('#join').click()
+  await expect(page.locator('#hud')).toBeVisible()
+  await page.evaluate('window.rabbitersFirstChase.capture()')
+  const deliver = () => page.evaluate('window.rabbitersFirstChase.deliver()')
+  const read = () =>
+    page.evaluate<{
+      alarms: number
+      voices: number
+      peak: number
+      audioState: string
+      target: string
+      localId: string
+    }>('window.rabbitersFirstChase.read()')
+  await deliver()
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
+  await expect(page.locator('.fx-detection')).toHaveClass(/fx-on/)
+  await expect(page.locator('#alert-overlay')).toHaveClass(/spotted/)
+  await expect(page.locator('#condition')).toContainText('見つかった！')
+  await expect.poll(async () => (await read()).alarms).toBe(1)
+  await expect.poll(async () => (await read()).peak).toBeGreaterThan(0.001)
+  expect(await read()).toMatchObject({ audioState: 'running', alarms: 1, voices: 4 })
+  expect((await read()).target).toBe((await read()).localId)
+  for (let index = 0; index < 4; index++) {
+    await deliver()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  }
+  expect((await read()).alarms).toBe(1)
+  await page.evaluate('window.rabbitersFirstChase.stop()')
+  expect(errors).toEqual([])
+})
