@@ -6,7 +6,9 @@ const param = () => ({
   value: 0,
   setValueAtTime: vi.fn(),
   linearRampToValueAtTime: vi.fn(),
-  exponentialRampToValueAtTime: vi.fn()
+  exponentialRampToValueAtTime: vi.fn(),
+  setTargetAtTime: vi.fn(),
+  cancelScheduledValues: vi.fn()
 })
 const node = (extra: object = {}) => ({ connect: vi.fn((n: unknown) => n), disconnect: vi.fn(), ...extra })
 
@@ -172,7 +174,11 @@ describe('LifeAudio', () => {
     const again = new LifeAudio(storage)
     expect(again.volume).toBe(0.4)
     expect(again.muted).toBe(true)
-    expect(JSON.parse(storage.getItem('life-survivors:sound') ?? '{}')).toEqual({ muted: true, volume: 0.4 })
+    expect(JSON.parse(storage.getItem('life-survivors:sound') ?? '{}')).toEqual({
+      muted: true,
+      volume: 0.4,
+      music: 0.5
+    })
   })
 
   it('limits spam for same-instant plays', () => {
@@ -248,6 +254,28 @@ describe('LifeAudio', () => {
     expect(context.oscillators.length).toBe(0)
     audio.setHeartbeat(0)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('resumes a suspended or iOS-interrupted context from a gesture and opens the output', () => {
+    const { audio, context } = setup()
+    expect(context.resume).not.toHaveBeenCalled()
+    for (const state of ['suspended', 'interrupted']) {
+      context.state = state
+      const sources = context.sources
+      audio.unlock()
+      expect(context.sources).toBe(sources + 1)
+    }
+    expect(context.resume).toHaveBeenCalledTimes(2)
+    context.state = 'closed'
+    audio.unlock()
+    expect(context.resume).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks iOS for a playback session so the silent switch does not mute the game', () => {
+    const session = { type: 'auto' }
+    vi.stubGlobal('navigator', { audioSession: session })
+    setup()
+    expect(session.type).toBe('playback')
   })
 
   it('never throws without an AudioContext', () => {

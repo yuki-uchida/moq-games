@@ -22,6 +22,7 @@ import { BURROW, CAMPAIGN, HAVEN } from './campaign'
 import { STAGES, fillNames, spokenLine } from './stages'
 import { type Bark, type Scenery } from './story'
 import { buildCar, buildItem, buildModel, type Actor, type ModelOptions } from './models'
+import { WorldFx } from './fx'
 
 export interface RabbitersSceneState {
   time: number
@@ -143,6 +144,10 @@ export class RabbitersScene {
   private arm = Infinity // current camera arm length (see render)
   private pitch = 0
   private disposed = false
+  /** Game-feel particles and camera shake (see fx.ts). */
+  readonly fx = new WorldFx(this.scene)
+  private readonly shake = new THREE.Vector3()
+  private readonly projected = new THREE.Vector3()
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' })
@@ -981,7 +986,19 @@ export class RabbitersScene {
     // Past the cut-open tunnel walls lies earth, not sky.
     if (underground) (this.scene.background as THREE.Color).set('#2a1f18')
     SEE_THROUGH.focus.value = { x: this.target.x, y: this.target.y + 0.7, z: this.target.z }
+    this.fx.update(elapsed, this.camera)
+    // The shake rides on top of the camera placed above; next frame places it afresh.
+    this.camera.position.add(this.fx.shakeOffset(this.shake))
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** A world point in CSS pixels relative to the field, or null when it is behind the camera or off screen. */
+  screenPoint(point: { x: number; y: number; z: number }): { x: number; y: number } | null {
+    if (this.disposed) return null
+    const ndc = this.projected.set(point.x, point.y + 0.6, point.z).project(this.camera)
+    if (ndc.z > 1 || Math.abs(ndc.x) > 1.1 || Math.abs(ndc.y) > 1.1) return null
+    const box = this.renderer.domElement.getBoundingClientRect()
+    return { x: box.left + ((ndc.x + 1) / 2) * box.width, y: box.top + ((1 - ndc.y) / 2) * box.height }
   }
 
   /** How far the camera arm reaches from `focus` along `direction` before a wall or a cave's edge. */
@@ -1055,6 +1072,7 @@ export class RabbitersScene {
     this.actors.clear()
     this.items.clear()
     this.scenery?.dispose()
+    this.fx.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
     this.scene.clear()

@@ -108,9 +108,9 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 105,
-    hp: 470,
-    atk: 48,
+    cost: 120,
+    hp: 500,
+    atk: 56,
     range: 36,
     speed: 30,
     period: 0.95,
@@ -120,14 +120,14 @@ export const SPECIALS = [
   {
     key: 'yofukashi',
     name: '夜ふかし',
-    cost: 105,
-    hp: 220,
-    atk: 50,
+    cost: 124,
+    hp: 250,
+    atk: 55,
     range: 34,
     speed: 58,
-    period: 0.6,
-    cooldown: 8,
-    crit: 0.25,
+    period: 0.525,
+    cooldown: 10,
+    crit: 0.3125,
     line: '寝不足の暴走。素早い連打と会心'
   },
   {
@@ -182,7 +182,7 @@ export const SPECIALS = [
   {
     key: 'curry',
     name: '激辛カレー',
-    cost: 170,
+    cost: 190,
     hp: 380,
     atk: 95,
     range: 38,
@@ -194,9 +194,9 @@ export const SPECIALS = [
   {
     key: 'milk',
     name: '牛乳',
-    cost: 135,
+    cost: 140,
     hp: 625,
-    atk: 36,
+    atk: 40,
     range: 36,
     speed: 28,
     period: 1.1,
@@ -206,25 +206,25 @@ export const SPECIALS = [
   {
     key: 'oyster',
     name: '生ガキ',
-    cost: 165,
-    hp: 300,
-    atk: 120,
+    cost: 175,
+    hp: 375,
+    atk: 165,
     range: 40,
     speed: 34,
-    period: 1.8,
+    period: 1.5,
     cooldown: 15,
-    crit: 0.2,
+    crit: 0.225,
     line: '当たると危険。一発逆転'
   },
   {
     key: 'ice',
     name: 'アイスの食べすぎ',
-    cost: 96,
-    hp: 400,
+    cost: 100,
+    hp: 425,
     atk: 45,
     range: 34,
     speed: 32,
-    period: 0.85,
+    period: 0.75,
     cooldown: 8,
     line: 'キーンと冷やして足止め'
   },
@@ -897,7 +897,7 @@ export function step(s, dt) {
   s.burst = Math.max(0, s.burst - dt)
   ongoing(s)
   // Released shots keep their original recipient even if the shooter dies.
-  const pending = s.projectiles
+  const pending = s.projectiles.sort((a, b) => a.at - b.at)
   s.projectiles = []
   for (const p of pending) {
     const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)

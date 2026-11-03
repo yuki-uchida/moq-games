@@ -1,5 +1,18 @@
-import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
-import { specialScale } from './campaign.js'
+import {
+  POOPS,
+  SPECIALS,
+  ENEMIES,
+  card,
+  createGame,
+  summon,
+  step,
+  rng,
+  upgrade,
+  upgradeCost,
+  burst,
+  OPENING
+} from './simulation.js'
+import { addEntry, levelUp, newCampaign, specialScale } from './campaign.js'
 
 function measure(type, side) {
   const deck = side === 1 ? [card({ uid: 1, key: type.key })] : [card({ uid: 1, key: 'katachi' })]
@@ -48,14 +61,14 @@ const scenarios = {
   ranged: ['sayu', 'seichou', 'yoshiki']
 }
 
-function measureNiche(type, foes) {
+function measureNiche(type, foes, seed) {
   const scale = type.special ? specialScale(15) : 1
   const deck = [
     card({ uid: 1, key: type.key, hp: Math.round(type.hp * scale), atk: Math.round(type.atk * scale) }),
     card({ uid: 2, key: 'katachi' }),
     card({ uid: 3, key: 'katachi' })
   ]
-  const game = createGame(15, deck, 7)
+  const game = createGame(15, deck, seed)
   Object.assign(game, { spawn: 1e9, opened: 2, rushes: 99, turret: 1e9, gold: 1e9 })
   for (let index = 0; index < deck.length; index++) summon(game, index)
   ;[560, 540, 548].forEach((x, index) => {
@@ -83,18 +96,78 @@ function measureNiche(type, foes) {
     if (subject.hp > 0) survival = game.time
   }
   const cleared = (100 * (total - enemies.reduce((sum, unit) => sum + Math.max(0, unit.hp), 0))) / total
-  return `${cleared.toFixed(2)}% / ${((cleared * 100) / type.cost).toFixed(2)} / ${survival.toFixed(1)}s`
+  return { cleared, survival }
 }
 
 console.log(
-  `\nニッチ測定: 固定シード7、第16面倍率、特殊はステージindex 15加入倍率${specialScale(15)}、うんこはLv1、カチカチ2体、最大40秒`
+  `\nニッチ測定: シード1〜50の平均、第16面倍率、特殊はステージindex 15加入倍率${specialScale(15)}、うんこはLv1、カチカチ2体、最大40秒`
 )
 console.log('unit\tcost\theavy (% / 100 cost / 生存秒)\tswarm (% / 100 cost / 生存秒)\tranged (% / 100 cost / 生存秒)')
 for (const type of [...POOPS, ...SPECIALS]) {
   console.log(
     `${type.name}\t${type.cost}\t${Object.values(scenarios)
-      .map((foes) => measureNiche(type, foes))
+      .map((foes) => {
+        const samples = Array.from({ length: 50 }, (_, index) => measureNiche(type, foes, index + 1))
+        const cleared = samples.reduce((sum, sample) => sum + sample.cleared, 0) / samples.length
+        const survival = samples.reduce((sum, sample) => sum + sample.survival, 0) / samples.length
+        return `${cleared.toFixed(2)}% / ${((cleared * 100) / type.cost).toFixed(2)} / ${survival.toFixed(2)}s`
+      })
       .join('\t')}`
+  )
+}
+
+const medianLevels = [22, 29, 18, 15]
+const campaign = newCampaign()
+const growthRandom = rng(15)
+for (const [index, type] of POOPS.slice(0, 4).entries()) {
+  const entry = campaign.roster.find((unit) => unit.key === type.key) ?? addEntry(campaign, type.key)
+  while (entry.level < medianLevels[index]) levelUp(entry, growthRandom)
+}
+const poopDeck = campaign.roster.map(card)
+function measureFormation(deck, seed, specialIndex) {
+  const game = createGame(15, deck, seed)
+  const random = rng(seed ^ 0x5eed)
+  const order = deck
+    .map((_, index) => index)
+    .filter((index) => index !== specialIndex)
+    .sort((a, b) => deck[b].cost - deck[a].cost)
+  let next = 0
+  let summons = 0
+  while (!game.result && game.time < 900) {
+    const morning = game.opened < OPENING.at.length
+    if (game.time >= next) {
+      next = game.time + 1
+      if (!morning && game.level < 2 && game.gold >= upgradeCost(game) + 40) upgrade(game)
+      else if (
+        specialIndex >= 0 &&
+        game.cooldowns[specialIndex] <= 0 &&
+        !game.units.some((unit) => unit.side === 1 && unit.uid === deck[specialIndex].uid && unit.hp > 0)
+      ) {
+        if (game.gold >= deck[specialIndex].cost) {
+          summon(game, specialIndex)
+          summons++
+        }
+      } else {
+        const ready = order.filter((index) => game.cooldowns[index] <= 0 && game.gold >= deck[index].cost)
+        if (ready.length) summon(game, ready[Math.floor(random() * ready.length)])
+      }
+      if (game.units.some((unit) => unit.side === -1 && unit.x > 800)) burst(game)
+    }
+    step(game, 0.05)
+  }
+  return { game, summons }
+}
+
+console.log(`\n実戦編成: 面15到達時の6シード中央値 Lv ${medianLevels.join('/')}, シード1〜40`)
+console.log('unit\twins\tmean time(s)\tmean summons')
+for (const type of [null, ...SPECIALS]) {
+  const deck = [...poopDeck]
+  if (type) deck.push(card(addEntry(campaign, type.key, 15)))
+  const battles = Array.from({ length: 40 }, (_, index) =>
+    measureFormation(deck, index + 1, type ? deck.length - 1 : -1)
+  )
+  console.log(
+    `${type?.name ?? 'なし'}\t${battles.filter((battle) => battle.game.result === 'victory').length}/40\t${(battles.reduce((sum, battle) => sum + battle.game.time, 0) / battles.length).toFixed(4)}\t${(battles.reduce((sum, battle) => sum + battle.summons, 0) / battles.length).toFixed(4)}`
   )
 }
 

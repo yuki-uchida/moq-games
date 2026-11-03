@@ -35,7 +35,7 @@
           <div class="kills" aria-label="乗り越えた数">🗡 <b id="kills">0</b></div>
           <div class="top-actions">
             <span id="connection" class="connection">ひとりで</span>
-            <button id="mute" class="icon-button" type="button" aria-label="効果音をミュート" aria-pressed="false">
+            <button id="mute" class="icon-button" type="button" aria-label="音をミュート" aria-pressed="false">
               🔊
             </button>
             <button id="help-open" class="icon-button" type="button" aria-label="遊び方を表示">?</button>
@@ -43,6 +43,8 @@
           </div>
         </div>
         <div id="banner" class="banner-layer" aria-hidden="true"></div>
+        <div id="stick" class="stick" aria-hidden="true" hidden><i id="stick-knob"></i></div>
+        <p id="move-hint" class="move-hint" aria-hidden="true" hidden>画面のどこでもスライドして移動。攻撃は自動。</p>
         <div class="hand" aria-label="人生の手札">
           <div id="weapons" class="slots"></div>
           <div id="passives" class="slots passives"></div>
@@ -77,10 +79,10 @@
           </ul>
           <p class="content-note">※ 死や自死を暗示する表現があります</p>
           <p class="sound-note">
-            <button id="mute-title" class="mute-chip" type="button" aria-label="効果音をミュート" aria-pressed="false">
+            <button id="mute-title" class="mute-chip" type="button" aria-label="音をミュート" aria-pressed="false">
               🔊
             </button>
-            効果音あり（Mキーでオン／オフ）
+            BGM・効果音あり<span class="key-only">（Mキーでオン／オフ）</span>
           </p>
           <button id="solo" class="button button-primary" type="button">ひとりで生まれる</button>
           <div class="divider"><span></span> みんなで生きる <span></span></div>
@@ -110,7 +112,10 @@
           <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
           <h2 id="help-title">生き抜くために</h2>
           <ul class="help-list">
-            <li><strong>移動だけ。</strong>手札は自動で困難を攻撃します。WASD／矢印キー、スマホは画面をドラッグ。</li>
+            <li>
+              <strong>移動だけ。</strong
+              >手札は自動で困難を攻撃します。WASD／矢印キー。スマホは画面のどこでも指を置いてスライド（スティックが出ます）。
+            </li>
             <li>
               <strong>経験値（◆）を集めて転機を迎える。</strong
               >3枚（運がいいと4枚）から1枚選び、手札を増やす・強化する（1〜4キー）。経験値はチーム共通、選択は各自です。
@@ -140,9 +145,13 @@
             <li><strong>心が折れても。</strong>仲間がそばに立つと立ち直ります。全員折れたら人生終了。</li>
           </ul>
           <div class="sound-row">
+            <label for="music-volume">BGMの音量</label>
+            <input id="music-volume" type="range" min="0" max="100" step="5" value="50" />
+          </div>
+          <div class="sound-row">
             <label for="volume">効果音の音量</label>
             <input id="volume" type="range" min="0" max="100" step="5" value="70" />
-            <span class="sound-key">M キーでミュート</span>
+            <span class="sound-key key-only">M キーでミュート</span>
           </div>
           <button id="help-done" class="button button-primary" type="button">わかった</button>
         </div>
