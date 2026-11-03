@@ -27,6 +27,43 @@ const arena = () => {
 }
 
 describe('education and career history', () => {
+  test('social, romantic and creative appearances do not grant or displace career qualifications and rewards', () => {
+    for (const talent of [
+      'w_friend',
+      'w_sns',
+      'w_pet',
+      'w_love',
+      'w_beauty',
+      'w_ring',
+      'w_perfume',
+      'w_hobby',
+      'w_karaoke',
+      'w_travel',
+      'w_cooking'
+    ]) {
+      for (const qualified of [undefined, 'w_work', 'w_sports', 'w_invest']) {
+        const run = (withAppearance: boolean) => {
+          const game = new Game(123)
+          const player = game.addPlayer('personal', 'p_free')!
+          player.weapons = qualified
+            ? [{ id: qualified, lv: qualified === 'w_work' ? 2 : 4, cd: 100, held: 0, damage: 0 }]
+            : []
+          if (withAppearance) player.weapons.push({ id: talent, lv: 8, cd: 100, held: 0, damage: 0 })
+          player.passives = [{ id: TALENT_WEAPONS.find(({ id }) => id === talent)!.evolve!.passive, lv: 1 }]
+          event(game, 'b_shukatsu')
+          const firstReward = player.careerPending
+          event(game, 'b_layoff')
+          return {
+            history: player.history,
+            firstReward,
+            finalReward: player.careerPending,
+            bosses: game.state.enemies.map(({ type }) => type)
+          }
+        }
+        expect(run(true)).toEqual(run(false))
+      }
+    }
+  })
   test('eight personal paths share appearance ranking, preserve history and validate terminal views', () => {
     const { game, players } = arena()
     const builds: [string, number][][] = [

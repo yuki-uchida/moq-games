@@ -240,6 +240,60 @@ test('synergy details show activation and release from the local hand', async ({
   await expect(page.locator('#synergies')).not.toHaveAttribute('open')
 })
 
+for (const width of [1280, 390]) {
+  test(`social romantic and creative styles render independently during play at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate((life) => {
+      const game = life.game as unknown as Game
+      game.targetPopulation = () => 0
+      game.addPlayer('style-romantic', 'p_gone')
+      game.addPlayer('style-creative', 'p_gone')
+      game.state.time = 350
+      game.state.eventIndex = 99
+      game.state.enemies = []
+      game.state.players.forEach((player, index) => {
+        player.birthPick = false
+        player.pending = 0
+        player.choices = []
+        player.x = 1000 + index * 55
+        player.y = 1000
+        player.weapons = [{ id: ['w_friend', 'w_love', 'w_hobby'][index], lv: 4, cd: 100, held: 0, damage: 0 }]
+      })
+    })
+    const styles = () =>
+      handle.evaluate(async (life) => {
+        const path = '/src/art/careers.ts'
+        const { careerFor } = await import(path)
+        return (life.view as unknown as View).players.map(careerFor)
+      })
+    await expect.poll(styles).toEqual(['social', 'romantic', 'creative'])
+    await expect(page.locator('#banner')).toBeHidden({ timeout: 6000 })
+    await page.keyboard.down('ArrowDown')
+    await expect
+      .poll(() => handle.evaluate((life) => (life.view as unknown as View).players[0].y))
+      .toBeGreaterThan(1020)
+    await page.keyboard.up('ArrowDown')
+    await page.screenshot({ path: testInfo.outputPath(`new-styles-${width}.png`) })
+    await handle.evaluate((life) => {
+      const player = (life.game as unknown as Game).state.players[0]
+      player.weapons = [{ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }]
+    })
+    await expect.poll(styles).toEqual([undefined, 'romantic', 'creative'])
+    await handle.evaluate((life) => {
+      ;(life.game as unknown as Game).state.players[0].weapons[0].lv = 4
+    })
+    await expect.poll(styles).toEqual(['creative', 'romantic', 'creative'])
+    expect(errors).toEqual([])
+  })
+}
+
 test('trained careers render together for local and co-op participants', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -905,6 +959,27 @@ test('sports and asset paths reach only their own terminal history over snapshot
     )
   ).toBe(true)
   await expect(guest.locator('#result-history')).toBeHidden()
+  await hostLife.evaluate((hook, id) => {
+    const game = hook.game as unknown as Game
+    for (const player of game.state.players) {
+      player.weapons = [{ id: player.id === id ? 'w_love' : 'w_friend', lv: 8, cd: 100, held: 0, damage: 0 }]
+    }
+  }, guestId)
+  for (const peer of [hostLife, guestLife]) {
+    await expect
+      .poll(() =>
+        peer.evaluate(async (hook, id) => {
+          const path = '/src/art/careers.ts'
+          const { careerFor } = await import(path)
+          const players = (hook.view as unknown as View).players
+          return [
+            careerFor(players.find((player) => player.id !== id)!),
+            careerFor(players.find((player) => player.id === id)!)
+          ]
+        }, guestId)
+      )
+      .toEqual(['social', 'romantic'])
+  }
   await hostLife.evaluate((hook) => {
     ;(hook.game as unknown as Game).state.phase = 'lost'
   })
