@@ -78,19 +78,19 @@ describe('Rabbiters audio', () => {
     game.state.nests[0].active = false
     game.state.time = 1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(10)
+    expect(context.voices).toHaveLength(6)
     audio.update(game.state, 'local')
     audio.update(JSON.parse(JSON.stringify(game.state)), 'local')
     audio.update({ ...game.state, time: 0 }, 'local')
-    expect(context.voices).toHaveLength(10)
+    expect(context.voices).toHaveLength(6)
     game.state.phase = 'won'
     audio.update(game.state, 'local')
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(14)
+    expect(context.voices).toHaveLength(10)
     audio.stop()
   })
 
-  it('throttles continuous damage and consumes muted events without replay', () => {
+  it('leaves local action sounds to sfx and consumes muted events without replay', () => {
     const { audio, game, context } = setup()
     audio.setMuted(true)
     game.state.players[0].foodEaten++
@@ -103,15 +103,15 @@ describe('Rabbiters audio', () => {
       game.state.players[0].health--
       audio.update(game.state, 'local')
     }
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(0)
     audio.stop()
     game.state.time = 0
     audio.start()
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(0)
     game.state.phase = 'lost'
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(6)
+    expect(context.voices).toHaveLength(4)
     audio.stop()
   })
 

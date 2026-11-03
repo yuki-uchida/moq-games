@@ -1,12 +1,8 @@
 import type { GameState } from './game'
-import { floorAt } from './map'
 
 type Observation = {
   time: number
   playerId: string
-  y: number
-  health: number
-  foodEaten: number
   pregnant: boolean
   phase: GameState['phase']
   nests: Set<string>
@@ -24,7 +20,6 @@ export class RabbitersAudio {
   private voices = new Set<OscillatorNode>()
   private muted = false
   private previous: Observation | null = null
-  private lastHit = -Infinity
   private lastAlarm = -Infinity
   private lastQuery = -Infinity
   private beat = 0
@@ -59,7 +54,6 @@ export class RabbitersAudio {
     this.context = null
     this.master = null
     this.previous = null
-    this.lastHit = -Infinity
     this.lastAlarm = -Infinity
     this.lastQuery = -Infinity
     this.beat = 0
@@ -77,9 +71,6 @@ export class RabbitersAudio {
     const next: Observation = {
       time: state.time,
       playerId: localPlayerId,
-      y: player ? player.y - floorAt(player.x, player.y, player.z) : 0, // height above ground or tunnel floor
-      health: player?.health ?? 0,
-      foodEaten: player?.foodEaten ?? 0,
       pregnant: player?.pregnant ?? false,
       phase: state.phase,
       nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id)),
@@ -126,12 +117,6 @@ export class RabbitersAudio {
     else if (next.bedding > previous.bedding) this.chime([587, 784])
     if (next.kitsLost > previous.kitsLost) this.chime([440, 330, 220], 'triangle')
     if (!player || previous.playerId !== localPlayerId) return
-    if (previous.y <= 0.01 && next.y > 0.05) this.tone(330, 0.14, 'sine', 0, 660)
-    if (next.foodEaten > previous.foodEaten) this.chime([880, 1175])
-    if (next.health < previous.health && state.time - this.lastHit >= 0.6) {
-      this.lastHit = state.time
-      this.tone(155, 0.18, 'triangle', 0, 55)
-    }
     if (!previous.pregnant && next.pregnant) this.chime([523, 659, 880])
   }
 

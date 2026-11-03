@@ -16,6 +16,7 @@ import {
 } from './game'
 import { PREDATOR_KINDS, STEALTH } from './stealth'
 import { RabbitersAudio } from './audio'
+import { GameFeel } from './feel'
 import { GuestView, type InputAck } from './guest-view'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
@@ -50,6 +51,7 @@ function element<T extends HTMLElement>(selector: string): T {
 const world = element<HTMLDivElement>('#world')
 const scene = new RabbitersScene(world)
 const audio = new RabbitersAudio()
+const feel = new GameFeel(scene, element<HTMLElement>('#app'))
 const hud = element<HTMLElement>('#hud')
 const startPanel = element<HTMLElement>('#start-panel')
 const help = element<HTMLElement>('#help')
@@ -361,6 +363,7 @@ function disconnect(message: string, source: CooperativeNetwork) {
   network = undefined
   connectionLost = true
   audio.stop()
+  feel.stop()
   void source.stop(false)
   clearInput()
   element<HTMLElement>('#result-title').textContent = '通信が切断されました'
@@ -375,6 +378,7 @@ function disconnect(message: string, source: CooperativeNetwork) {
 
 async function start(nextRole: 'solo' | 'host' | 'guest') {
   audio.start()
+  feel.start()
   const attempt = ++generation
   error.textContent = ''
   buttons.forEach((button) => (button.disabled = true))
@@ -470,6 +474,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     network = undefined
     void failed?.stop()
     audio.stop()
+    feel.stop()
     game = undefined
     role = undefined
     showError(cause instanceof Error ? cause.message : '接続できませんでした。')
@@ -487,6 +492,7 @@ async function returnToTitle() {
   updateLookHint()
   connectionLost = false
   audio.stop()
+  feel.stop()
   clearInput()
   remoteInputAt.clear()
   remoteInputAcks.clear()
@@ -732,6 +738,7 @@ function updateStory(state: GameState) {
 function retrySeason() {
   if (!game || !checkpoint) return
   game = Game.resume(retryState(checkpoint, game.state))
+  feel.reset()
   snapshot = game.state
   shownChapter = -1
   result.hidden = true
@@ -801,6 +808,7 @@ function frame(now: number) {
     started && !connectionLost && guestView && snapshot ? guestView.render(snapshot, localId, input, dt, now) : current
   scene.render(visual, started ? localId : 'preview', dt)
   if (started && !connectionLost && snapshot) audio.update(snapshot, localId)
+  feel.update(started && !connectionLost ? snapshot : undefined, localId)
   if (started && now - hudAt > 100) {
     hudAt = now
     updateStory(current)
@@ -827,10 +835,14 @@ retry.addEventListener('click', retrySeason)
 soundToggle.addEventListener('click', () => {
   soundEnabled = !soundEnabled
   audio.setMuted(!soundEnabled)
+  feel.setMuted(!soundEnabled)
   soundToggle.setAttribute('aria-pressed', String(soundEnabled))
   soundToggle.title = soundEnabled ? 'サウンドをオフ' : 'サウンドをオン'
   soundToggle.textContent = soundEnabled ? '♪' : '×'
-  if (soundEnabled && started && !connectionLost) audio.start()
+  if (soundEnabled && started && !connectionLost) {
+    audio.start()
+    feel.start()
+  }
 })
 element<HTMLButtonElement>('#help-open').addEventListener('click', () => {
   help.hidden = false
@@ -880,6 +892,7 @@ window.addEventListener('resize', () => scene.resize())
 window.addEventListener('pagehide', () => {
   void network?.stop()
   audio.stop()
+  feel.stop()
   scene.dispose()
 })
 
