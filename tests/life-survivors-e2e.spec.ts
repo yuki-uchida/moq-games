@@ -12,6 +12,65 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('reading effects render behind local and co-op players', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const orders = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 10 })
+    view.enemies = []
+    view.shots = [
+      WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_reading'),
+      player.x,
+      player.y,
+      100,
+      0,
+      50,
+      0,
+      0
+    ]
+    return [false, true].map((evolved) => {
+      player.weapons = [['w_reading', evolved ? 8 : 1, 0]]
+      player.passives = evolved ? [['p_curious', 1]] : []
+      const renderer = new Renderer(document.createElement('canvas'))
+      const events: string[] = []
+      let layer = ''
+      for (const method of ['groundShot', 'topShot']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          layer = method
+          original(...args)
+          layer = ''
+        }
+      }
+      for (const method of ['art', 'centred']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          if (layer) events.push(`${layer}:${method}`)
+          original(...args)
+        }
+      }
+      const originalPlayer = renderer.player.bind(renderer)
+      renderer.player = (...args: unknown[]) => {
+        events.push('player')
+        originalPlayer(...args)
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return events
+    })
+  })
+  for (const events of orders) {
+    expect(events).toEqual(['groundShot:art', 'groundShot:centred', 'groundShot:art', 'player', 'player'])
+  }
+})
+
 test('synergy details show activation and release from the local hand', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
@@ -358,7 +417,7 @@ export class CooperativeNetwork {
   constructor(options) { this.options = options; this.playerId = options.playerId; }
   async start() {
     const o = this.options;
-    this.channel = new BroadcastChannel('life-' + o.room);
+    this.channel = new BroadcastChannel(JSON.stringify(['anon', o.app ?? 'rabbiters-v1', o.room]));
     this.channel.onmessage = ({ data }) => {
       if (o.role === 'host' && data.type === 'hello') { this.players.add(data.id); o.onPresence([...this.players]); }
       if (o.role === 'host' && data.type === 'input') o.onInput(data.id, data.input);
@@ -372,6 +431,56 @@ export class CooperativeNetwork {
   async broadcastSnapshot(state) { this.channel.postMessage({ type: 'snapshot', state }); }
   async stop() { this.channel?.close(); }
 }`
+
+test('current and legacy rooms remain separated while current guests receive snapshots', async ({ context }) => {
+  await context.addInitScript(() => {
+    const Channel = window.BroadcastChannel
+    const channels: string[] = []
+    ;(window as unknown as { lifeChannels: string[] }).lifeChannels = channels
+    window.BroadcastChannel = class extends Channel {
+      constructor(name: string) {
+        super(name)
+        channels.push(name)
+      }
+    }
+  })
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const legacy = await context.newPage()
+  for (const page of [host, guest, legacy]) await page.goto('/')
+  for (const page of [host, guest]) await page.locator('#room').fill('version-isolation')
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await expect(host.locator('#hud')).toBeVisible()
+  await legacy.evaluate(async (source) => {
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+    const { CooperativeNetwork } = await import(url)
+    const network = new CooperativeNetwork({
+      app: 'life-survivors-v4',
+      room: 'version-isolation',
+      role: 'guest',
+      playerId: 'legacy-player',
+      onSnapshot() {},
+      onStatus() {}
+    })
+    await network.start()
+    ;(window as unknown as { legacyNetwork: unknown }).legacyNetwork = network
+    URL.revokeObjectURL(url)
+  }, fakeNetwork)
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  expect(await hostLife.evaluate((hook) => hook.game.state.players.map((player) => player.id))).not.toContain(
+    'legacy-player'
+  )
+  const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
+})
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
@@ -492,6 +601,62 @@ test('career events give only the qualified guest a turning point', async ({ con
     )
     .toEqual([])
   await expect(guest.locator('#levelup')).toBeHidden()
+  expect(errors).toEqual([])
+})
+
+test('sports and asset paths reach only their own terminal history over snapshots', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const errors: string[] = []
+  for (const page of [host, guest]) {
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await page.locator('#room').fill('alternative-careers')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  const guestId = await guestLife.evaluate((hook) => hook.localId)
+  await hostLife.evaluate(async (hook, id) => {
+    const dataPath = '/src/data.ts'
+    const { EVENTS } = await import(dataPath)
+    const game = hook.game as unknown as Game
+    for (const player of game.state.players) {
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+      player.weapons = [{ id: player.id === id ? 'w_savings' : 'w_muscle', lv: 4, cd: 100, held: 0, damage: 0 }]
+    }
+    for (const boss of ['b_shukatsu', 'b_layoff']) {
+      const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
+      game.state.enemies = []
+      game.state.eventIndex = index
+      game.state.time = EVENTS[index].at - 0.01
+      game.tick(0.01)
+    }
+  }, guestId)
+  await expect(guest.locator('#feed')).toContainText('資産を活かす道を広げる')
+  await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
+  expect(
+    await guestLife.evaluate((hook) =>
+      hook.view!.players.every((player) => player.history === undefined && player.talents === undefined)
+    )
+  ).toBe(true)
+  await expect(guest.locator('#result-history')).toBeHidden()
+  await hostLife.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.phase = 'lost'
+  })
+  await expect(guest.locator('#result-history-list')).toContainText('資産を育て、資産を活かす道へ')
+  await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
+  await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
+  await expect(host.locator('#result-history-list')).toContainText('運動を磨き、スポーツの道へ')
+  await expect(host.locator('#result-history-list')).not.toContainText('資産')
   expect(errors).toEqual([])
 })
 

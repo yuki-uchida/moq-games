@@ -137,6 +137,7 @@ import {
 } from './progression/StageProgress'
 import { CoachMarks } from './ui/CoachMarks'
 import { REVEAL_DELAY_MS, createResultCard, defeatAdvice, prefersReducedMotion, resultMarkup } from './ui/ResultCard'
+import { BattleSpecialCounter } from './ui/BattleFeelLogic'
 import { PanelDialog } from './input/PanelDialog'
 import { MapPan } from './input/MapPan'
 import { SandbagInput, sandbagPlacementLabel } from './input/SandbagInput'
@@ -1203,6 +1204,8 @@ function activateSkill(id: number, manual: boolean) {
   beginSpecial(id)
 }
 let autoSkillAt = 0, autoCastAt = -1e9, autoBattle = ''
+// Seen every frame so an old expedition save is counted from where this battle began.
+const battleSpecials = new BattleSpecialCounter()
 // Simulation time at which AUTO first saw each special ready, so it never hoards one for long.
 const autoReadySince = new Map<number, number>()
 function autoSkills(now: number) {
@@ -2820,6 +2823,8 @@ function initializeClock() {
         // Speed x2 runs two simulation steps per clock step; animation reads simulation time, so it stays in sync.
         for (let i = 0; i < battleHud.speed && engine.state.phase === 'assault'; i++)
           engine.update(dt, (state) => renderer.assetsReady(state))
+        // A hidden tab gets no animation frames but the battle keeps running here, so AUTO keeps casting too.
+        if (document.visibilityState === 'hidden') autoSkills(performance.now())
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
         syncBattleMusic()
@@ -2974,6 +2979,7 @@ function frame(now: number) {
   }
   if (specialAimId !== null && !specialReady(state, specialAimId)) { specialAimId = null; renderer.setSpecialPreview(null) }
   skillBar.update(state, !document.querySelector('dialog[open]'))
+  battleSpecials.count(state)
   autoSkills(now)
   updateDefenderPreview()
   commitArtMode()
@@ -3148,7 +3154,7 @@ function frame(now: number) {
       kills: lastKills,
       leaks: battleFeedback.leaked.map((l) => ({ ...l, portrait: displayPortrait(l.type) })),
       unknownLeaks: battleFeedback.leakedUnknown,
-      specials: state.units.reduce((sum, u) => sum + (u.owner === 'player' ? (u.specialSequence ?? 0) : 0), 0),
+      specials: battleSpecials.count(state),
       hp: state.playerBaseHp,
       maxHp: CONFIG.baseHp,
       seconds: state.time,

@@ -442,10 +442,14 @@ export const CHEST_TRIPLE = 0.06
 export class Game {
   state: GameState
   private readonly rng: () => number
+  private readonly feelRng: () => number
   private grid = new Map<number, Enemy[]>()
   private spawnDebt = 0
   private inputs = new Map<string, Input>()
-  private careers = new Map<string, { studied?: boolean; employed?: boolean; settled?: boolean }>()
+  private careers = new Map<
+    string,
+    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets'; settled?: boolean }
+  >()
   private accumulator = 0
   private fxSeq = 0
   private stageIndex = -1
@@ -455,6 +459,7 @@ export class Game {
 
   constructor(seed = Date.now()) {
     this.rng = mulberry32(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b))
+    this.feelRng = mulberry32(Math.imul(seed ^ 0x243f6a88, 0x85ebca6b))
     this.state = {
       time: 0,
       phase: 'playing',
@@ -696,6 +701,8 @@ export class Game {
           if (player.joinedAt >= event.at) continue
           const career = this.careers.get(player.id)!
           const level = (id: string) => player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0
+          const sports = Math.max(level('w_sports'), level('w_muscle'))
+          const assets = Math.max(level('w_invest'), level('w_savings'))
           let reward = 0
           let text: string
           if (event.boss === 'b_univ') {
@@ -708,11 +715,20 @@ export class Game {
             career.employed = level('w_work') >= 2
             reward = career.employed ? (career.studied ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
+            if (!career.employed && Math.max(sports, assets) >= 4) {
+              career.path = sports >= assets ? 'sports' : 'assets'
+              reward = 1
+              text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : 4]
+            }
           } else {
             if (career.settled !== undefined) continue
             career.settled = true
             reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_layoff[reward === 2 ? 0 : reward === 1 ? 1 : 2]
+            if (career.path) {
+              reward = (career.path === 'sports' ? sports : assets) >= 4 ? 2 : 1
+              text = LIFE_OUTCOMES.b_layoff[(career.path === 'sports' ? 3 : 5) + (reward === 2 ? 0 : 1)]
+            }
           }
           player.careerPending += reward
           player.history.push({ event: index, outcome: text })
@@ -2226,25 +2242,28 @@ export class Game {
       const index = player.weapons.findIndex((weapon) => weapon.id === id)
       if (index >= 0 && replacement && WEAPON_BY_ID.has(replacement)) {
         player.weapons[index] = { id: replacement, lv: 1, cd: 0.2, held: 0, damage: 0 }
-        this.feel(player, WEAPON_BY_ID.get(replacement)!)
+        this.feel(player, WEAPON_BY_ID.get(replacement)!, 1)
       }
     } else if (kind === 'w') {
       const owned = player.weapons.find((w) => w.id === id)
       if (owned) {
         const before = isEvolved(player, owned)
         owned.lv = Math.min(MAX_WEAPON_LEVEL, owned.lv + 1)
+        this.feel(player, WEAPON_BY_ID.get(id)!, owned.lv)
         if (!before && isEvolved(player, owned)) this.announceEvolution(player, owned)
       } else {
         player.weapons.push({ id, lv: 1, cd: 0.2, held: 0, damage: 0 })
-        this.feel(player, WEAPON_BY_ID.get(id)!)
+        this.feel(player, WEAPON_BY_ID.get(id)!, 1)
       }
     } else if (kind === 'p') {
       const owned = player.passives.find((p) => p.id === id)
       const evolvedBefore = new Set(player.weapons.filter((w) => isEvolved(player, w)).map((w) => w.id))
-      if (owned) owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
-      else {
+      if (owned) {
+        owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
+        this.feel(player, PASSIVE_BY_ID.get(id)!, owned.lv)
+      } else {
         player.passives.push({ id, lv: 1 })
-        this.feel(player, PASSIVE_BY_ID.get(id)!)
+        this.feel(player, PASSIVE_BY_ID.get(id)!, 1)
       }
       let evolved = false
       for (const weapon of player.weapons)
@@ -2265,14 +2284,14 @@ export class Game {
     this.log(`${player.name}の「${WEAPON_BY_ID.get(weapon.id)!.name}」が「${weaponName(player, weapon)}」に進化！`)
   }
 
-  /** A hunch about the hidden talent — right three times out of four. */
-  private feel(player: Player, def: Pick<WeaponDef, 'category' | 'icon' | 'name'>) {
+  private feel(player: Player, def: Pick<WeaponDef, 'category' | 'icon' | 'name'>, level: number) {
     if (!def.category) return
     const power = player.talents[def.category]
     const actual = power >= 1.25 ? GIFTED : power <= 0.9 ? POOR : 1
-    const truthful = this.rng() < 0.75
+    if (level === 1 && this.rng() >= 0.75) this.rng()
+    const truthful = this.feelRng() < Math.min(1, 0.5 + (level - 1) * 0.1)
     const values = [GIFTED, 1, POOR]
-    const sensed = truthful ? actual : values.filter((v) => v !== actual)[Math.floor(this.rng() * 2)]
+    const sensed = truthful ? actual : values.filter((v) => v !== actual)[Math.floor(this.feelRng() * 2)]
     const text =
       sensed === GIFTED
         ? 'なんだか、しっくりくる…！'
