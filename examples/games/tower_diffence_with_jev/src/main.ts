@@ -525,18 +525,20 @@ const battleFeedback = new BattleFeedback({
   shakeTarget: document.querySelector<HTMLElement>('.map-shell')!,
   baseLabel: $('base-health'),
   coinTarget: () => battleHud.coinElement,
-  // Band between the HUD and the skill bar where big readouts may sit.
+  // Result cards may sit anywhere on screen except on a visible HUD box (top bar, field buttons, the battle HUD's
+  // castle/coins/speed clusters, the skill bar).
   safeArea: () => ({
-    left: 8,
-    right: innerWidth - 8,
-    top:
-      Math.max(
-        8,
-        ...[battleHud.root.querySelector('.bhud-main'), document.querySelector('.topbar'), document.querySelector('.field-controls')].map(
-          (box) => (box instanceof HTMLElement && box.getClientRects().length ? box.getBoundingClientRect().bottom : 0)
-        )
-      ) + 6,
-    bottom: skillBar.element.hidden ? innerHeight - 8 : skillBar.element.getBoundingClientRect().top - 8
+    area: { left: 8, right: innerWidth - 8, top: 8, bottom: innerHeight - 8 },
+    blocked: [
+      ...Array.from(battleHud.root.querySelectorAll('.bhud-main, .bhud-side')),
+      document.querySelector('.topbar'),
+      document.querySelector('.field-controls'),
+      skillBar.element
+    ].flatMap((box) => {
+      if (!(box instanceof HTMLElement) || box.hidden || !box.getClientRects().length) return []
+      const { left, right, top, bottom } = box.getBoundingClientRect()
+      return [{ left, right, top, bottom }]
+    })
   }),
   play: (kind, param) => {
     soundPlayer.playFeel(kind, param)

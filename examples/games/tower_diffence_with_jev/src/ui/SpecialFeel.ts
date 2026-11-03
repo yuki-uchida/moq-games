@@ -93,49 +93,62 @@ export function readoutText(name: string, fieldKind: 'heal' | 'hold' | null, tal
   }
 }
 
-/**
- * Bottom-centre anchor for a readout box of width x height: above the impact when there is room, otherwise
- * below it, always inside `bounds` (fixed screen px: under the HUD, above the skill bar).
- */
-export function placeReadout(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  bounds: { left: number; right: number; top: number; bottom: number },
-  gap = 34
-): Point {
-  const hw = width / 2,
-    top = bounds.top + height,
-    above = y - gap
-  return {
-    x: Math.min(Math.max(x, bounds.left + hw), Math.max(bounds.left + hw, bounds.right - hw)),
-    y: Math.min(Math.max(above >= top ? above : y + gap + height, top), Math.max(top, bounds.bottom))
-  }
+/** Short screens (landscape phones) print one-line result cards instead of the big ones. */
+export const COMPACT_MAX_HEIGHT = 560
+export const compactReadouts = (viewportHeight: number): boolean => viewportHeight <= COMPACT_MAX_HEIGHT
+
+/** The one-line form of the readout (`槍連撃 ×2 HIT · 71 · 撃破1`) for short screens. */
+export function compactReadoutText(name: string, fieldKind: FieldKind, tally: CastTally, finished: boolean): string {
+  if (fieldKind === 'heal') return finished ? `${name} 回復 +${Math.round(tally.heal)}` : `${name} ${tally.allies}体を回復中`
+  if (fieldKind === 'hold') return `${name} ${tally.held}体 足止め`
+  if (tally.hits === 0) return `${name} 命中なし`
+  return `${name} ×${tally.hits} HIT · ${Math.round(tally.damage)}${tally.kills > 0 ? ` · 撃破${tally.kills}` : ''}`
 }
 
-interface Box {
+export interface Box {
   left: number
   right: number
   top: number
   bottom: number
 }
+const overlaps = (a: Box, b: Box): boolean => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+
 /**
- * Bottom y for a readout anchored bottom-centre at `pos` that clears the `taken` boxes: it steps below a
- * box it would overlap, or above it when there is no room below, staying inside `bounds`.
+ * Where a width x height card (anchored bottom-centre, like the CSS) goes: the spot nearest to "just above the
+ * impact at `anchor`" that lies inside `area` and overlaps none of `taken` (the visible HUD boxes and the cards
+ * already shown), keeping `gap` px from each. Candidates are the anchor itself plus every edge of the area and of
+ * the taken boxes, so a card that no longer fits in the column flows into the next one beside it. null when
+ * nothing fits; the caller then retires its oldest card and tries again.
  */
-export function stackReadout(pos: Point, width: number, height: number, taken: readonly Box[], bounds: Box, gap = 8): number {
-  let y = pos.y
-  for (let pass = 0; pass < taken.length; pass++) {
-    const hit = taken.find(
-      (b) => pos.x - width / 2 < b.right && pos.x + width / 2 > b.left && y - height < b.bottom && y > b.top
-    )
-    if (!hit) break
-    const below = hit.bottom + gap + height,
-      above = hit.top - gap
-    y = below <= bounds.bottom ? below : above >= bounds.top + height ? above : y
-    if (y === below || y === above) continue
-    break
+export function placeCard(
+  anchor: Point,
+  width: number,
+  height: number,
+  area: Box,
+  taken: readonly Box[],
+  gap = 8,
+  lift = 34
+): Point | null {
+  const wantLeft = anchor.x - width / 2,
+    wantTop = anchor.y - lift - height,
+    lefts = [wantLeft, area.left, area.right - width],
+    tops = [wantTop, area.top, area.bottom - height]
+  for (const b of taken) {
+    lefts.push(b.right + gap, b.left - gap - width)
+    tops.push(b.bottom + gap, b.top - gap - height)
   }
-  return y
+  let best: Point | null = null,
+    bestCost = Infinity
+  for (const left of lefts)
+    for (const top of tops) {
+      const box = { left, right: left + width, top, bottom: top + height }
+      if (box.left < area.left - 1e-6 || box.right > area.right + 1e-6 || box.top < area.top - 1e-6 || box.bottom > area.bottom + 1e-6) continue
+      if (taken.some((b) => overlaps(box, { left: b.left - gap / 2, right: b.right + gap / 2, top: b.top - gap / 2, bottom: b.bottom + gap / 2 }))) continue
+      const cost = (left - wantLeft) ** 2 + (top - wantTop) ** 2
+      if (cost < bestCost) {
+        bestCost = cost
+        best = { x: left + width / 2, y: top + height }
+      }
+    }
+  return best
 }

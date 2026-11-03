@@ -29,12 +29,17 @@ export function bestSpecialTarget(
     incoming = (state.specialEffects ?? []).filter((e) => !e.applied && e.power > 0),
     covered = (u: Unit) => {
       let pending = 0
-      for (const e of incoming)
+      for (const e of incoming) {
+        // The enemy may walk up to speed x time-to-impact before this impact lands (slows only make it slower), so an
+        // impact counts only when the enemy is still inside its circle in the worst case. Rooted/stunned past it: 0.
+        const held = Math.max(u.specialRootUntil ?? 0, u.specialStunUntil ?? 0) >= e.releaseAt,
+          reach = held ? 0 : u.speed * Math.max(0, e.releaseAt - state.time)
         if (
-          Math.hypot(u.x - e.x, u.y - e.y) <= SPECIALS[e.type].radius &&
+          Math.hypot(u.x - e.x, u.y - e.y) + reach <= SPECIALS[e.type].radius &&
           canTargetUnit({ owner: 'player', type: e.type }, u, state.battlefieldVersion)
         )
           pending += incomingDamage(e.power, u, state.time, ['mage', 'paladin'].includes(e.type) ? 'magic' : 'physical')
+      }
       return pending >= u.hp
     },
     weight = (u: Unit) => (heal ? 1 - u.hp / u.maxHp : covered(u) ? 0 : u.boss ? 3 : 1)
