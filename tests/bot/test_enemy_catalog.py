@@ -77,5 +77,40 @@ class EnemyCatalogTests(unittest.TestCase):
                 self.assertAlmostEqual(boss['range'], base['range'] * 1.25)
 
 
+class FinaleDragonBossTests(unittest.TestCase):
+    def state(self, **wave):
+        return {'stage': 10, 'battlefieldVersion': 2, 'wave': {'strength': 1.9, **wave}}
+
+    def test_policy_three_boss_dragon_keeps_short_unscaled_geometry(self):
+        stats = jev.spawn_stats('dragon', self.state(waveBossPolicy=3), boss=True)
+        self.assertAlmostEqual(stats['range'], 170)
+        self.assertAlmostEqual(stats['attack'], 18 * 1.9 * 1.95 * .75)
+        self.assertAlmostEqual(stats['splash'], 109.375)
+        self.assertAlmostEqual(stats['breathLength'], 170)
+
+    def test_older_policies_and_missing_field_keep_old_numbers(self):
+        for wave in ({'waveBossPolicy': 2}, {'waveBossPolicy': 1}, {}):
+            with self.subTest(wave=wave):
+                stats = jev.spawn_stats('dragon', self.state(**wave), boss=True)
+                self.assertAlmostEqual(stats['range'], 212.5)
+                self.assertAlmostEqual(stats['attack'], 18 * 1.9 * 1.95)
+                self.assertAlmostEqual(stats['splash'], 218.75)
+                self.assertAlmostEqual(stats['breathLength'], 425)
+
+    def test_policy_three_leaves_other_units_unchanged(self):
+        for name, boss in (('dragon', False), ('ogre', True)):
+            self.assertEqual(jev.spawn_stats(name, self.state(waveBossPolicy=3), boss=boss),
+                             jev.spawn_stats(name, self.state(waveBossPolicy=2), boss=boss))
+
+    def test_wave_state_policy_field(self):
+        base = {'enemyCount': 1, 'strength': 1, 'spawnInterval': 1, 'reward': 1, 'enemyTypes': [],
+                'spawnBudget': 1, 'bossType': None, 'spawned': 0, 'resolved': 0, 'budgetRemaining': 1}
+        self.assertEqual(jev.WaveState(**base).waveBossPolicy, 2)
+        for policy in (1, 2, 3):
+            self.assertEqual(jev.WaveState(**base, waveBossPolicy=policy).waveBossPolicy, policy)
+        with self.assertRaises(ValidationError):
+            jev.WaveState(**base, waveBossPolicy=4)
+
+
 if __name__ == '__main__':
     unittest.main()
