@@ -108,7 +108,7 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 120,
+    cost: 110,
     hp: 500,
     atk: 56,
     range: 36,
@@ -120,11 +120,11 @@ export const SPECIALS = [
   {
     key: 'yofukashi',
     name: '夜ふかし',
-    cost: 124,
-    hp: 250,
-    atk: 55,
+    cost: 130,
+    hp: 400,
+    atk: 40,
     range: 34,
-    speed: 58,
+    speed: 52,
     period: 0.525,
     cooldown: 10,
     crit: 0.3125,
@@ -134,8 +134,8 @@ export const SPECIALS = [
     key: 'sake',
     name: 'お酒',
     cost: 115,
-    hp: 185,
-    atk: 41,
+    hp: 240,
+    atk: 45,
     range: 165,
     speed: 24,
     period: 1.4,
@@ -225,19 +225,19 @@ export const SPECIALS = [
     range: 34,
     speed: 32,
     period: 0.75,
-    cooldown: 8,
+    cooldown: 10,
     line: 'キーンと冷やして足止め'
   },
   {
     key: 'energy',
     name: 'エナジードリンク',
-    cost: 115,
-    hp: 240,
+    cost: 130,
+    hp: 300,
     atk: 24,
     range: 150,
     speed: 30,
     period: 0.55,
-    cooldown: 10,
+    cooldown: 12.5,
     line: 'カフェインで超連射'
   }
 ].map((t) => ({ ...t, special: true }))
@@ -484,6 +484,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     projectiles: [],
     zones: [],
     cooldowns: deck.map(() => 0),
+    summons: deck.map(() => 0),
     burst: 0,
     spawn: 3,
     turret: 0,
@@ -516,6 +517,7 @@ export function summon(s, index, side = 1) {
       return false
     s.gold -= t.cost
     s.cooldowns[index] = t.cooldown
+    s.summons[index]++
   }
   const power = side === 1 ? 1 : STAGES[s.stage].power + Math.min(s.time / 350, 0.4)
   s.units.push({
@@ -810,32 +812,83 @@ function attack(s, src, target, baseX, crit, damage) {
     })
   } else enqueue(target, 1, effect.ranged ? 0.12 : 0, true)
 }
-function ongoing(s) {
-  for (const unit of s.units) {
-    if (unit.hp <= 0) continue
-    if (unit.burn || unit.poison?.length) {
-      for (const dot of [unit.burn, ...(unit.poison || [])]) {
-        if (!dot) continue
-        const interval = dot.interval
-        while (dot.next <= s.time + 1e-9 && dot.next <= dot.end + 1e-9 && unit.hp > 0) {
-          damageUnit(s, dot.src, unit, dot.atk * dot.damage, dot === unit.burn ? 'burn' : 'poison')
-          dot.next += interval
+function arrive(s, p) {
+  const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
+  if (target) p.effect.x = target.x
+  if (p.curry) {
+    if (target && target.curry === p.curry) {
+      target.curry = null
+      const effect = {
+        x: target.x,
+        primaryX: target.x,
+        life: 0.22,
+        side: p.src.side,
+        ranged: false,
+        crit: false,
+        releasedAt: s.time,
+        sourceId: p.src.id,
+        targetId: target.id,
+        attackerKey: p.src.key,
+        explosion: true,
+        hit: true,
+        areaKind: 'circle',
+        victims: []
+      }
+      s.effects.push(effect)
+      for (const victim of s.units)
+        if (victim.side === target.side && victim.hp > 0 && Math.abs(victim.x - target.x) <= p.src.markRadius) {
+          effect.victims.push({ id: victim.id, at: p.at })
+          damageUnit(s, p.src, victim, p.curry.atk * p.src.markDamage, null, true)
         }
-      }
-      if (unit.poison?.length) unit.poison = unit.poison.filter((dot) => dot.end > s.time)
     }
+    return
   }
-  for (const zone of s.zones) {
-    while (zone.kind !== 'mud' && zone.next <= s.time + 1e-9 && zone.next <= zone.end + 1e-9) {
-      for (const unit of s.units) {
-        if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
-        if (zone.kind === 'stench') damageUnit(s, zone.src, unit, zone.atk * zone.damage, 'stench')
-        else move(s, unit, zone.push * unit.side)
-      }
-      zone.next += zone.interval
+  p.effect.arrived = true
+  if (!target && p.targetId !== null && p.victim) p.victim.missed = true
+  p.effect.missed = !p.effect.hit && p.targetId !== null && !target
+  if (target || p.targetId === null) impact(s, p, target)
+}
+function ongoing(s) {
+  const end = s.time
+  while (true) {
+    let event = null
+    const consider = (at, run) => {
+      if (at <= end + 1e-9 && (!event || at < event.at)) event = { at, run }
     }
+    for (const unit of s.units) {
+      if (unit.hp <= 0) continue
+      for (const dot of [unit.burn, ...(unit.poison || [])]) {
+        if (!dot || dot.next > dot.end + 1e-9) continue
+        consider(dot.next, () => {
+          damageUnit(s, dot.src, unit, dot.atk * dot.damage, dot === unit.burn ? 'burn' : 'poison')
+          dot.next += dot.interval
+        })
+      }
+    }
+    for (const zone of s.zones) {
+      if (zone.kind === 'mud' || zone.next > zone.end + 1e-9) continue
+      consider(zone.next, () => {
+        for (const unit of s.units) {
+          if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
+          if (zone.kind === 'stench') damageUnit(s, zone.src, unit, zone.atk * zone.damage, 'stench')
+          else move(s, unit, zone.push * unit.side)
+        }
+        zone.next += zone.interval
+      })
+    }
+    for (const projectile of s.projectiles) {
+      consider(projectile.at, () => {
+        s.projectiles.splice(s.projectiles.indexOf(projectile), 1)
+        arrive(s, projectile)
+      })
+    }
+    if (!event) break
+    s.time = event.at
+    event.run()
   }
-  s.zones = s.zones.filter((zone) => zone.end > s.time)
+  s.time = end
+  for (const unit of s.units) if (unit.poison?.length) unit.poison = unit.poison.filter((dot) => dot.end > end)
+  s.zones = s.zones.filter((zone) => zone.end > end)
 }
 /** Global marching pace: lane battles are meant to last two to three minutes. */
 export const WALK_PACE = 1.25
@@ -896,49 +949,6 @@ export function step(s, dt) {
   s.cooldowns = s.cooldowns.map((c) => Math.max(0, c - dt))
   s.burst = Math.max(0, s.burst - dt)
   ongoing(s)
-  // Released shots keep their original recipient even if the shooter dies.
-  const pending = s.projectiles.sort((a, b) => a.at - b.at)
-  s.projectiles = []
-  for (const p of pending) {
-    const target = p.targetId === null ? null : s.units.find((u) => u.id === p.targetId && u.hp > 0)
-    if (target) p.effect.x = target.x
-    if (s.time < p.at) {
-      s.projectiles.push(p)
-      continue
-    }
-    if (p.curry) {
-      if (target && target.curry === p.curry) {
-        target.curry = null
-        const effect = {
-          x: target.x,
-          primaryX: target.x,
-          life: 0.22,
-          side: p.src.side,
-          ranged: false,
-          crit: false,
-          releasedAt: s.time,
-          sourceId: p.src.id,
-          targetId: target.id,
-          attackerKey: p.src.key,
-          explosion: true,
-          hit: true,
-          areaKind: 'circle',
-          victims: []
-        }
-        s.effects.push(effect)
-        for (const victim of s.units)
-          if (victim.side === target.side && victim.hp > 0 && Math.abs(victim.x - target.x) <= p.src.markRadius) {
-            effect.victims.push({ id: victim.id, at: p.at })
-            damageUnit(s, p.src, victim, p.curry.atk * p.src.markDamage, null, true)
-          }
-      }
-      continue
-    }
-    p.effect.arrived = true
-    if (!target && p.targetId !== null && p.victim) p.victim.missed = true
-    p.effect.missed = !p.effect.hit && p.targetId !== null && !target
-    if (target || p.targetId === null) impact(s, p, target)
-  }
   fortDefense(s, dt)
   s.spawn -= dt
   if (s.spawn <= 0) {
