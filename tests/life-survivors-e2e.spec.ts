@@ -1173,10 +1173,13 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
 
   const cdp = await context.newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })
-  // Far past the stick's rim: the base follows the finger, so speed stays capped at full.
+  const baseTransform = await page.locator('#stick').evaluate((element) => element.style.transform)
   for (let i = 1; i <= 8; i++)
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 + i * 20, y: 600 }] })
   await expect(page.locator('#stick')).toHaveJSProperty('hidden', false)
+  await expect(page.locator('#stick')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 200, 600)')
+  expect(baseTransform).toBe('translate(200px, 600px)')
+  await expect(page.locator('#stick-knob')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 56, 0)')
   await expect(page.locator('#move-hint')).toBeHidden()
   const x0 = await handle.evaluate((l) => l.view.players[0].x)
   await expect.poll(() => handle.evaluate((l) => l.view.players[0].x)).toBeGreaterThan(x0 + 20)
