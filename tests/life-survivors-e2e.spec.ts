@@ -12,6 +12,65 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('reading effects render behind local and co-op players', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const orders = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 10 })
+    view.enemies = []
+    view.shots = [
+      WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_reading'),
+      player.x,
+      player.y,
+      100,
+      0,
+      50,
+      0,
+      0
+    ]
+    return [false, true].map((evolved) => {
+      player.weapons = [['w_reading', evolved ? 8 : 1, 0]]
+      player.passives = evolved ? [['p_curious', 1]] : []
+      const renderer = new Renderer(document.createElement('canvas'))
+      const events: string[] = []
+      let layer = ''
+      for (const method of ['groundShot', 'topShot']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          layer = method
+          original(...args)
+          layer = ''
+        }
+      }
+      for (const method of ['art', 'centred']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          if (layer) events.push(`${layer}:${method}`)
+          original(...args)
+        }
+      }
+      const originalPlayer = renderer.player.bind(renderer)
+      renderer.player = (...args: unknown[]) => {
+        events.push('player')
+        originalPlayer(...args)
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return events
+    })
+  })
+  for (const events of orders) {
+    expect(events).toEqual(['groundShot:art', 'groundShot:centred', 'groundShot:art', 'player', 'player'])
+  }
+})
+
 test('synergy details show activation and release from the local hand', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
@@ -399,7 +458,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v3',
+      app: 'life-survivors-v4',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -418,9 +477,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v3', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {

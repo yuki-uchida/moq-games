@@ -290,6 +290,25 @@ export const PARENTS: WeaponDef[] = [
     perk: '投資の威力 +30%'
   }),
   weapon({
+    id: 'p_yankee',
+    category: 'sports',
+    name: 'ヤンキー親',
+    icon: '👊',
+    color: '#e0704f',
+    behavior: 'orbit',
+    parent: true,
+    damage: 16,
+    cooldown: 4,
+    duration: 3.4,
+    amount: 1,
+    area: 115,
+    speed: 4.2,
+    pierce: Infinity,
+    knockback: 340,
+    strong: ['people', 'class'],
+    desc: 'あなたのまわりを走り回って敵を蹴散らす。人間関係・授業に特攻。'
+  }),
+  weapon({
     id: 'p_gone',
     category: 'sports',
     name: '蒸発済み',

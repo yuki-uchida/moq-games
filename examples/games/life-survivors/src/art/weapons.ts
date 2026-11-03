@@ -534,6 +534,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
     'weapon:p_free': () => ({ fly: four(balloon, 4) }),
     'weapon:p_over': () => ({ fly: loop([0, 1].map(shield), 3) }),
     'weapon:p_monster': () => ({ fly: four(parent, 10) }),
+    'weapon:p_yankee': () => ({ fly: four(parent, 10) }),
     'weapon:w_friend': () => ({
       fly: four((f) => friend(f, 0), 10),
       alt: four((f) => friend(f, 1), 10),
@@ -587,6 +588,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
         p_weak: icon(new Raster(24, 24).blit(hand(0), 2, 6).blit(hand(1), 10, 4).blit(sweat(), 17, 14)),
         p_over: icon(shield(0)),
         p_monster: icon(parent(0)),
+        p_yankee: icon(parent(0)),
         p_rich: icon(new Raster(28, 28).blit(bills(), 4, 4).blit(coins(1), 0, 10)),
         p_gone: tiny(
           32,
