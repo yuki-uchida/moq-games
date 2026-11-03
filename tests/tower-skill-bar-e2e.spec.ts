@@ -240,7 +240,10 @@ test('two specials cast back-to-back each get their own band one after the other
   expect(soundSteps).toHaveLength(bandStarts.length)
   for (const [n, start] of bandStarts.entries()) expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
   expect(Math.max(...log.map((f) => f.rings))).toBe(2)
-  expect(resumed.t - first.t).toBeGreaterThanOrEqual(1100)
+  // The first cast happened after the frame before `first` (a software GPU can render ~200 ms apart), so time
+  // that frame: a single 650 ms stop would still fail this, a chained one passes however slow the frames are.
+  const beforeFirst = log[log.indexOf(first) - 1] ?? first
+  expect(resumed.t - beforeFirst.t).toBeGreaterThanOrEqual(1100)
   // Each ring goes when its own band ends: one ring is left during the second band.
   const second = log.filter((f) => f.band === '回転斬撃')
   expect(second.at(-1)!.rings).toBe(1)
