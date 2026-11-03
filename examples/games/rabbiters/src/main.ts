@@ -12,6 +12,7 @@ import {
   unpackSnapshot,
   type Cover,
   type GameState,
+  type Task,
   type Input
 } from './game'
 import { PREDATOR_KINDS, STEALTH } from './stealth'
@@ -238,7 +239,9 @@ function validSnapshot(value: unknown): value is GameState {
         typeof player.hidden === 'boolean' &&
         typeof player.downed === 'boolean' &&
         typeof player.pregnant === 'boolean' &&
-        (player.carrying === null || label(player.carrying))
+        (player.carrying === null || label(player.carrying)) &&
+        (player.task === undefined ||
+          (record(player.task) && label(player.task.label) && numeric(player.task.progress, 0, 1)))
     ) &&
     value.straws.every((straw: unknown) => record(straw) && position(straw) && typeof straw.active === 'boolean') &&
     value.items.every(
@@ -571,6 +574,7 @@ function updateHud(state: GameState) {
     element<HTMLElement>('#announcements').textContent = won ? 'ゲームクリア' : 'ゲームオーバー'
   }
   const player = state.players.find((entry) => entry.id === localId)
+  updateTaskGauge(player?.task)
   if (!player) {
     element<HTMLElement>('#condition').textContent = 'ホストのゲームを待っています…'
     return
@@ -709,6 +713,20 @@ function showHint(text: string) {
         return svg
       })
   )
+}
+
+/** The big hold-E gauge under the rabbit: what it is doing and how far along; 完了！ once it is done. */
+function updateTaskGauge(task: Task | undefined) {
+  const gauge = element<HTMLElement>('#task-gauge')
+  gauge.hidden = !task
+  if (!task) return
+  const percent = Math.round(task.progress * 100)
+  const done = percent >= 100
+  gauge.classList.toggle('done', done)
+  gauge.setAttribute('aria-valuenow', String(percent))
+  element<HTMLElement>('#task-label').textContent = done ? `${task.label}　完了！` : `${task.label}…`
+  element<HTMLElement>('#task-percent').textContent = `${percent}%`
+  element<HTMLElement>('#task-bar').style.width = `${percent}%`
 }
 
 /** Chapter title card and the conversation subtitle; shown to everyone, with or without a rabbit. */

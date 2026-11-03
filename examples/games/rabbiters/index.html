@@ -123,6 +123,21 @@
         </div>
         <div class="area-card"><span id="area-name">ふるさとの草原</span></div>
         <div id="hint" class="interaction-hint" aria-live="polite"></div>
+        <div
+          id="task-gauge"
+          class="task-gauge"
+          role="progressbar"
+          aria-labelledby="task-label"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          hidden
+        >
+          <div class="task-gauge-head">
+            <kbd aria-hidden="true">E</kbd><span id="task-label"></span><b id="task-percent">0%</b>
+          </div>
+          <div class="task-gauge-track"><i id="task-bar"></i></div>
+        </div>
         <div id="subtitle" class="subtitle" hidden><b id="subtitle-name"></b><span id="subtitle-text"></span></div>
         <div id="title-card" class="title-card" aria-hidden="true" hidden>
           <p id="title-card-chapter">第1章</p>

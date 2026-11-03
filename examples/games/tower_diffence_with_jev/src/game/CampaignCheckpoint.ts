@@ -26,8 +26,10 @@ import {
   initialState,
   isAction,
   isAirborneEnemy,
+  CURRENT_WAVE_BOSS_POLICY,
   combatStats,
   deploymentCooldown,
+  enemyGeometryScale,
   pathLength,
   pointOnPath,
   stageRules,
@@ -39,6 +41,7 @@ import {
   type EnemyType,
   type FieldId,
   type GameState,
+  type WaveBossPolicy,
   type FortificationsState,
   type GateShot,
   type RoadItem,
@@ -116,7 +119,7 @@ import {
   type Decoder
 } from './CheckpointCodec'
 
-export const CAMPAIGN_CHECKPOINT_VERSION = 18
+export const CAMPAIGN_CHECKPOINT_VERSION = 19
 export const CHECKPOINT_LIMITS = {
   simulationSeconds: 24 * 60 * 60,
   maximumId: 0xffffffff,
@@ -213,7 +216,7 @@ export type CampaignStateCheckpoint = Pick<
 > & { corpses: CheckpointCorpse[] }
 
 export interface CampaignCheckpoint {
-  version: 18
+  version: 19
   profile: ProfileData
   progress: RunProgressData
   rewardedThroughStage: number
@@ -284,6 +287,9 @@ interface VersionSixteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'ver
 interface VersionSeventeenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
   version: 17
 }
+interface VersionEighteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
+  version: 18
+}
 type DecodedCheckpoint =
   | LegacyCampaignCheckpoint
   | VersionTwoCampaignCheckpoint
@@ -302,6 +308,7 @@ type DecodedCheckpoint =
   | VersionFifteenCampaignCheckpoint
   | VersionSixteenCampaignCheckpoint
   | VersionSeventeenCampaignCheckpoint
+  | VersionEighteenCampaignCheckpoint
   | CampaignCheckpoint
 type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
@@ -395,6 +402,8 @@ function checkpointRules(checkpoint: DecodedCheckpoint) {
         )
       }
 }
+const checkpointPolicy = (checkpoint: DecodedCheckpoint): WaveBossPolicy =>
+  checkpoint.version === 1 ? 1 : checkpoint.state.waveBossPolicy
 function checkpointStats(
   checkpoint: DecodedCheckpoint,
   unit: Pick<Unit, 'owner' | 'type' | 'boss' | 'level' | 'equipment'> & Partial<Pick<Unit, 'maxHp'>>,
@@ -406,15 +415,14 @@ function checkpointStats(
         ? unit.level!
         : checkpoint.progress.unitLevels[unit.type as AllyType]
       : 1
-  const stats = (
+  const stats =
     version === 1
-      ? legacyCheckpointCombatStats
+      ? legacyCheckpointCombatStats(unit, checkpoint.state.stage, level)
       : version < 8
-        ? preBalanceCheckpointCombatStats
+        ? preBalanceCheckpointCombatStats(unit, checkpoint.state.stage, level)
         : version === 8
-          ? versionEightCheckpointCombatStats
-          : combatStats
-  )(unit, checkpoint.state.stage, level)
+          ? versionEightCheckpointCombatStats(unit, checkpoint.state.stage, level)
+          : combatStats(unit, checkpoint.state.stage, level, checkpointPolicy(checkpoint))
   // Frozen pre-v15 balance must validate before any migration is applied.
   if (version >= 9 && version < 15 && unit.owner === 'player') {
     if (RANGED_ALLY_TYPES.includes(unit.type as AllyType)) stats.maxHp *= 2
@@ -862,7 +870,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     ...stateSchema,
     battlefieldVersion: choice([1, 2]),
     layoutRevision: version >= 16 ? choice([1, 2, 3, 4]) : version >= 14 ? choice([1, 2, 3]) : () => 1,
-    waveBossPolicy: choice([1, 2]),
+    waveBossPolicy: version >= 19 ? choice([1, 2, 3]) : choice([1, 2]),
     lastAction: nullable(decodeCurrentAction),
     requestedAction: nullable(decodeCurrentAction)
   })
@@ -1149,7 +1157,13 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       version: choice([17]),
       state: decodeCurrentState
     })
-  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([18]), state: decodeCurrentState })
+  if (version === 18)
+    return object<VersionEighteenCampaignCheckpoint>({
+      ...checkpointSchema,
+      version: choice([18]),
+      state: decodeCurrentState
+    })
+  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([19]), state: decodeCurrentState })
 }
 const checkpointDecoders = {
   1: createCheckpointDecoder(1),
@@ -1169,11 +1183,12 @@ const checkpointDecoders = {
   15: createCheckpointDecoder(15),
   16: createCheckpointDecoder(16),
   17: createCheckpointDecoder(17),
-  18: createCheckpointDecoder(18)
+  18: createCheckpointDecoder(18),
+  19: createCheckpointDecoder(19)
 }
 function decodeCheckpoint(value: unknown): DecodedCheckpoint {
   const input = record(value),
-    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])(input.version),
+    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
   const revision =
@@ -1272,11 +1287,14 @@ export function validateCampaignCheckpoint(
     migrateHealthBalance(normalized)
     removePaladinHealing(normalized)
     const migrated = normalized.version === 2 ? migrateGenericWaitCheckpoint(normalized) : normalized,
-      current = checkpointDecoders[18]({
+      current = checkpointDecoders[19]({
         ...migrated,
-        version: 18,
+        version: 19,
         state: {
           ...migrated.state,
+          // Nothing has spawned during preparation, so it can adopt the current wave rules.
+          waveBossPolicy:
+            migrated.state.phase === 'preparation' ? CURRENT_WAVE_BOSS_POLICY : migrated.state.waveBossPolicy,
           cooldowns: Object.fromEntries(ENEMY_TYPES.map((type) => [type, migrated.state.cooldowns[type] ?? 0])),
           battlefieldVersion: battlefieldVersion(migrated),
           layoutRevision: layoutRevision(migrated),
@@ -1290,7 +1308,7 @@ export function validateCampaignCheckpoint(
             : {})
         }
       })
-    requireCheckpoint(current.version === 18)
+    requireCheckpoint(current.version === 19)
     validateCheckpointSemantics(current, progress, current.profile)
     return current
   } catch {
@@ -1331,7 +1349,7 @@ function migrateHealthBalance(checkpoint: DecodedCheckpoint): void {
           : checkpoint.progress.economyVersion === 2
             ? unit.level!
             : checkpoint.progress.unitLevels[unit.type as AllyType],
-      maxHp = combatStats(unit, checkpoint.state.stage, level).maxHp
+      maxHp = combatStats(unit, checkpoint.state.stage, level, checkpointPolicy(checkpoint)).maxHp
     if (near(unit.maxHp, maxHp)) continue
     unit.hp = unit.hp === 0 ? 0 : Math.max(Number.MIN_VALUE, Math.min(maxHp, unit.hp * (maxHp / unit.maxHp)))
     unit.maxHp = maxHp
@@ -1526,7 +1544,11 @@ function validateCheckpointSemantics(
     requireCheckpoint(retained.length <= ALLY_TYPES.length && unique(retained.map((unit) => unit.type)))
     requireCheckpoint(retained.every((unit) => !runtime.deploymentByUnit.some((entry) => entry.unitId === unit.id)))
   }
-  requireCheckpoint(checkpoint.version === 1 || s.phase !== 'preparation' || checkpoint.state.waveBossPolicy === 2)
+  requireCheckpoint(
+    checkpoint.version === 1 ||
+      s.phase !== 'preparation' ||
+      checkpoint.state.waveBossPolicy === (checkpoint.version >= 19 ? 3 : 2)
+  )
   requireCheckpoint(JSON.stringify(checkpoint.progress) === JSON.stringify(pairedProgress))
   requireCheckpoint(JSON.stringify(checkpoint.profile) === JSON.stringify(pairedProfile))
   if (checkpoint.version < 8)
@@ -1705,7 +1727,12 @@ function migrateBossAndMeleeBalance(checkpoint: DecodedCheckpoint): void {
     if (attack.owner === 'player') attack.range = attack.type === 'paladin' ? 46 : DEFINITIONS[attack.type].range
   for (const event of s.commanderSupport?.history ?? []) {
     if (event.outcome !== 'applied' || event.action.effect !== 'heal' || !supportEventBoss(checkpoint, event)) continue
-    const maxHp = combatStats({ owner: 'ai', type: event.target.type, boss: true }, s.stage).maxHp
+    const maxHp = combatStats(
+      { owner: 'ai', type: event.target.type, boss: true },
+      s.stage,
+      1,
+      checkpointPolicy(checkpoint)
+    ).maxHp
     if (event.amount > Math.min(maxHp * COMMANDER_SUPPORT.healFraction, COMMANDER_SUPPORT.maximumHeal) + epsilon)
       event.legacyBossHeal = true
   }
@@ -1742,7 +1769,8 @@ function migrateBossFlightReturn(checkpoint: DecodedCheckpoint): void {
 
 function migrateEnemyCombatBalance(checkpoint: DecodedCheckpoint): void {
   for (const unit of checkpoint.state.units)
-    if (unit.owner === 'ai' && !unit.boss) unit.attack = combatStats(unit, checkpoint.state.stage).attack
+    if (unit.owner === 'ai' && !unit.boss)
+      unit.attack = combatStats(unit, checkpoint.state.stage, 1, checkpointPolicy(checkpoint)).attack
   for (const attack of checkpoint.state.attacks)
     if (attack.owner === 'ai') {
       attack.geometryScale = 1
@@ -1783,6 +1811,7 @@ function normalizeSandbagHealth(
     | VersionFifteenCampaignCheckpoint
     | VersionSixteenCampaignCheckpoint
     | VersionSeventeenCampaignCheckpoint
+    | VersionEighteenCampaignCheckpoint
     | CampaignCheckpoint
 ): void {
   const bags = checkpoint.state.sandbags.filter((bag) => bag.maxHp !== ROAD_EFFECTS.sandbag.hp)
@@ -1799,7 +1828,7 @@ function checkpointValidationState(checkpoint: DecodedCheckpoint): GameState {
     ...checkpoint.state,
     battlefieldVersion: battlefieldVersion(checkpoint),
     layoutRevision: layoutRevision(checkpoint),
-    waveBossPolicy: checkpoint.version === 1 ? 1 : checkpoint.state.waveBossPolicy,
+    waveBossPolicy: checkpointPolicy(checkpoint),
     corpses: [],
     battleId: 0,
     commanderOrder: null,
@@ -2392,6 +2421,8 @@ function validateAttacks(checkpoint: DecodedCheckpoint): void {
       requireCheckpoint(attack.owner === 'ai' ? attack.geometryScale !== undefined : attack.geometryScale === undefined)
       if (attack.owner === 'ai' && !attack.boss)
         requireCheckpoint(!!attack.legacyRegularAttack === (attack.geometryScale === 1))
+      if (checkpoint.version >= 19 && attack.owner === 'ai' && attack.boss && checkpointPolicy(checkpoint) === 3)
+        requireCheckpoint(attack.geometryScale === enemyGeometryScale({ ...attack, boss: true }, 3))
     }
     requireCheckpoint(!attack.legacyRegularAttack || (checkpoint.version >= 9 && attack.owner === 'ai' && !attack.boss))
     const stats = checkpointStats(

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
+import type { Game } from '../examples/games/life-survivors/src/game'
+import type { View } from '../examples/games/life-survivors/src/view'
 
 type Life = {
   game: {
@@ -9,6 +11,44 @@ type Life = {
   localId: string
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
+
+test('trained careers render together for local and co-op participants', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((life) => {
+    const game = life.game as unknown as {
+      state: {
+        time: number
+        players: {
+          x: number
+          y: number
+          birthPick: boolean
+          pending: number
+          choices: string[]
+          weapons: { id: string; lv: number; cd: number; held: number; damage: number }[]
+        }[]
+      }
+      addPlayer(id: string, parent: string): unknown
+    }
+    game.addPlayer('career-bureaucrat', 'p_gone')
+    game.addPlayer('career-investor', 'p_gone')
+    game.state.time = 350
+    game.state.players.forEach((player, index) => {
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+      player.x = 1000 + index * 45
+      player.y = 1000
+      player.weapons = [{ id: ['w_sports', 'w_study', 'w_invest'][index], lv: 5, cd: 100, held: 0, damage: 0 }]
+    })
+  })
+  await expect.poll(() => handle.evaluate((life) => life.view.players.length)).toBe(3)
+  await expect.poll(() => handle.evaluate((life) => life.view.time)).toBeGreaterThan(350)
+  await page.screenshot({ path: testInfo.outputPath('careers-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath('careers-mobile.png') })
+})
 
 test('turning point cards show their talent category without revealing talent values', async ({ page }, testInfo) => {
   await page.goto('/')
@@ -283,6 +323,73 @@ test('two players share one life-world: the guest moves and gets their own hand'
   await expect(guest.locator('#levelup')).toBeHidden()
   expect(errors).toEqual([])
 })
+
+for (const width of [1280, 390]) {
+  test(`family support reaches a moving guest and renders at ${width}px`, async ({ context }, testInfo) => {
+    await context.route('**/rabbiters/src/network.ts*', (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+    )
+    const host = await context.newPage()
+    const guest = await context.newPage()
+    await guest.setViewportSize({ width, height: 844 })
+    const errors: string[] = []
+    for (const page of [host, guest]) {
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.goto('/')
+      await page.locator('#room').fill(`family-${width}`)
+    }
+    await host.getByRole('button', { name: 'ルームを作る' }).click()
+    await guest.getByRole('button', { name: 'ルームに参加' }).click()
+    const hostLife = await life(host)
+    const guestLife = await life(guest)
+    await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
+    await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+    const guestId = await guestLife.evaluate((hook) => hook.localId)
+    await hostLife.evaluate(async (hook, id) => {
+      const dataPath = '/src/data.ts'
+      const { EVENTS } = await import(dataPath)
+      const game = hook.game as unknown as Game
+      for (const player of game.state.players) {
+        player.parent = 'p_free'
+        player.choices = []
+        player.pending = 0
+        player.birthPick = false
+        player.weapons = [{ id: 'w_love', lv: player.id === id ? 2 : 1, cd: 100, held: 0, damage: 0 }]
+      }
+      for (const index of [
+        EVENTS.findIndex((event: { boss: string }) => event.boss === 'b_wedding'),
+        EVENTS.findIndex((event: { swarm: string }) => event.swarm === 'nightcry')
+      ]) {
+        game.state.eventIndex = index
+        game.state.time = EVENTS[index].at - 0.01
+        game.tick(0.01)
+      }
+      game.state.enemies = []
+      game.state.players.find((player) => player.id === id)!.hp = 20
+    }, guestId)
+    const personal = () =>
+      guestLife.evaluate(
+        (hook, id) => (hook.view as unknown as View | undefined)?.players.find((player) => player.id === id),
+        guestId
+      )
+    await expect.poll(personal).toMatchObject({ married: true, hasChild: true })
+    expect(
+      (await guestLife.evaluate((hook) => (hook.view as unknown as View).players)).find(
+        (player) => player.id !== guestId
+      )
+    ).toMatchObject({ married: false, hasChild: false })
+    await expect.poll(async () => (await personal())!.hp).toBeGreaterThan(20)
+    const start = (await personal())!.x
+    await guest.bringToFront()
+    await guest.keyboard.down('KeyD')
+    await expect.poll(async () => (await personal())!.x).toBeGreaterThan(start + 30)
+    await guest.keyboard.up('KeyD')
+    await guest.screenshot({ path: testInfo.outputPath(`family-${width}.png`) })
+    expect(errors).toEqual([])
+    await host.close()
+    await guest.close()
+  })
+}
 
 type Hook = {
   game: {

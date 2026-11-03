@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { GameEngine } from '../src/game/GameEngine'
 import { forecastEnemy } from '../src/game/Interception'
+import { CAMPAIGN_CHECKPOINT_VERSION } from '../src/game/CampaignCheckpoint'
 import { RoadGeometrySnapshot } from '../src/game/RoadGeometryCache'
 import type { ForecastQueryContext } from '../src/game/ForecastQueryContext'
 import { advanceEnemyTravel, nextRoadObstruction, routeSandbags } from '../src/game/EnemyTravel'
@@ -142,7 +143,7 @@ describe('new grounded enemies with call-local forecast snapshots', () => {
     enemy.lastDamagedAt = engine.state.time
     checkFreshReads(engine, enemy)
     const checkpoint = engine.exportCheckpoint()!
-    expect(checkpoint.version).toBe(18)
+    expect(checkpoint.version).toBe(CAMPAIGN_CHECKPOINT_VERSION)
     const restored = GameEngine.fromCheckpoint(JSON.parse(JSON.stringify(checkpoint)), idle, save, () => 0)!
     expect(restored).not.toBeNull()
     const resumed = restored.state.units.find((unit) => unit.id === enemy.id)!

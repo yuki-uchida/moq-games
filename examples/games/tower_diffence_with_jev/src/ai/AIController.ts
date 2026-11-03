@@ -64,7 +64,7 @@ export class RuleBasedAI implements AIController {
       let score =
         members.reduce((sum, member) => {
           const definition = DEFINITIONS[member.unitType],
-            stats = combatStats({ owner: 'ai', type: member.unitType, boss: member.boss }, s.stage)
+            stats = combatStats({ owner: 'ai', type: member.unitType, boss: member.boss }, s.stage, 1, s.waveBossPolicy)
           return (
             sum +
             (0.5 +

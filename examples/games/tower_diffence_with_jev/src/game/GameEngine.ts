@@ -106,7 +106,9 @@ import {
   type Point,
   type AIAction,
   type EnemyType,
-  type AINoDecisionReason
+  type AINoDecisionReason,
+  CURRENT_WAVE_BOSS_POLICY,
+  enemyGeometryScale
 } from './model'
 import type { AIController } from '../ai/AIController'
 import {
@@ -812,7 +814,7 @@ export class GameEngine {
     unit.facingY = facing.y
   }
   private refreshDefender(unit: Unit): void {
-    const stats = combatStats(unit, this.state.stage, defenderLevel(unit, this.save)),
+    const stats = combatStats(unit, this.state.stage, defenderLevel(unit, this.save), this.state.waveBossPolicy),
       healthFraction = unit.hp / unit.maxHp
     if (stats.attack > unit.attack && this.state.units.includes(unit))
       this.history.change(this.state, 'upgrade', unit, canInitiateDamage(unit) ? stats.attack - unit.attack : 0)
@@ -886,7 +888,7 @@ export class GameEngine {
     this.combatSounds = []
     this.specialImpacts = []
     s.stage++
-    s.waveBossPolicy = 2
+    s.waveBossPolicy = CURRENT_WAVE_BOSS_POLICY
     s.phase = 'preparation'
     s.result = null
     s.time = 0
@@ -956,7 +958,8 @@ export class GameEngine {
       stats = combatStats(
         { owner, type, boss },
         this.state.stage,
-        this.save.economyVersion === 2 ? 1 : this.save.unitLevels[type as AllyType]
+        this.save.economyVersion === 2 ? 1 : this.save.unitLevels[type as AllyType],
+        this.state.waveBossPolicy
       )
     const p = slot ?? fieldFor(this.state).path[0],
       hp = stats.maxHp,
@@ -2112,7 +2115,7 @@ export class GameEngine {
         kind,
         ...(kind === 'attack' ? { damageType: attackDamageType(u.type) } : {}),
         ...(u.owner === 'ai' ? { timeScale: ENEMY_ACTION_TIME_SCALE } : {}),
-        ...(u.owner === 'ai' ? { geometryScale: 2 as const } : {}),
+        ...(u.owner === 'ai' ? { geometryScale: enemyGeometryScale(u, s.waveBossPolicy) } : {}),
         ...(s.battlefieldVersion === 2 ? { battlefieldVersion: 2 as const } : {}),
         id: `${u.id}:${u.attackSequence}`,
         attackerId: u.id,

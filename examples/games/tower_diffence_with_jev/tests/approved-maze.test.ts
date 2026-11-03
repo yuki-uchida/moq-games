@@ -130,9 +130,10 @@ describe('approved irregular maze revision 4', () => {
       if (revision < 4) {
         const legacy = structuredClone(checkpoint) as unknown as {
           version: number
-          state: { cooldowns: Record<string, number> }
+          state: { cooldowns: Record<string, number>; waveBossPolicy: number }
         }
         legacy.version = 15
+        legacy.state.waveBossPolicy = 2
         for (const type of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling'])
           delete legacy.state.cooldowns[type]
         const old = GameEngine.fromCheckpoint(legacy, idle, save, () => 0)!

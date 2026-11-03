@@ -141,7 +141,7 @@ export class Dialogue {
     overlay.setAttribute('role', 'dialog')
     overlay.setAttribute('aria-label', 'クレジット')
     overlay.innerHTML =
-      '<div><h2>デスガイヤ · CREDITS</h2><p>ゲーム・物語 · Ember Grid</p><p>3Dモデル · オーナー提供素材 / Meshy Pro</p><p>音楽 · オーナー提供 / Suno Pro</p><p>効果音 · Stable Audio 3 Small-SFX</p><p>遊んでくれて、ありがとう。</p></div><button>スキップ</button>'
+      '<div><h2>デスガイヤ · CREDITS</h2><p>ゲーム・物語 · Ember Grid</p><p>3Dモデル · オーナー提供素材 / Meshy Pro</p><p>音楽 · Ember Grid オリジナル / コード生成PCM</p><p>効果音 · Stable Audio 3 Small-SFX</p><p>遊んでくれて、ありがとう。</p></div><button>スキップ</button>'
     this.field.append(overlay)
     const button = overlay.querySelector('button')!
     button.focus()

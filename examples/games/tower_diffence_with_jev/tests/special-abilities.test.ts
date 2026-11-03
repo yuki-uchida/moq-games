@@ -325,7 +325,8 @@ describe('individual special abilities', () => {
   })
   it('migrates v17 as initially ready and rejects malformed special state', () => {
     const { engine, save } = fixture()
-    const legacy = { ...engine.exportCheckpoint()!, version: 17 }
+    const exported = engine.exportCheckpoint()!,
+      legacy = { ...exported, version: 17, state: { ...exported.state, waveBossPolicy: 2 as const } }
     const restored = GameEngine.fromCheckpoint(legacy, idle, save, () => 0)!
     expect(restored).not.toBeNull()
     restored.startAssault()
