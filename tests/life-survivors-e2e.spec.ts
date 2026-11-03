@@ -10,6 +10,44 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('trained careers render together for local and co-op participants', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((life) => {
+    const game = life.game as unknown as {
+      state: {
+        time: number
+        players: {
+          x: number
+          y: number
+          birthPick: boolean
+          pending: number
+          choices: string[]
+          weapons: { id: string; lv: number; cd: number; held: number; damage: number }[]
+        }[]
+      }
+      addPlayer(id: string, parent: string): unknown
+    }
+    game.addPlayer('career-bureaucrat', 'p_gone')
+    game.addPlayer('career-investor', 'p_gone')
+    game.state.time = 350
+    game.state.players.forEach((player, index) => {
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+      player.x = 1000 + index * 45
+      player.y = 1000
+      player.weapons = [{ id: ['w_sports', 'w_study', 'w_invest'][index], lv: 5, cd: 100, held: 0, damage: 0 }]
+    })
+  })
+  await expect.poll(() => handle.evaluate((life) => life.view.players.length)).toBe(3)
+  await expect.poll(() => handle.evaluate((life) => life.view.time)).toBeGreaterThan(350)
+  await page.screenshot({ path: testInfo.outputPath('careers-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath('careers-mobile.png') })
+})
+
 test('turning point cards show their talent category without revealing talent values', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
