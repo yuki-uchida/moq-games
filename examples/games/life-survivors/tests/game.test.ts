@@ -1,5 +1,16 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, RUN_SECONDS, TALENT_CATEGORIES, WEAPON_BY_ID } from '../src/data'
+import {
+  MAX_PASSIVE_LEVEL,
+  MAX_WEAPON_LEVEL,
+  PASSIVES,
+  PASSIVE_SLOTS,
+  PARENTS,
+  RUN_SECONDS,
+  TALENT_CATEGORIES,
+  TALENT_WEAPONS,
+  WEAPON_BY_ID,
+  WEAPON_SLOTS
+} from '../src/data'
 import { GIFTED, Game, POOR, REAPER_SECONDS, STRONG_MULTIPLIER, isEvolved, weaponName, weaponStats } from '../src/game'
 import { readView, toView } from '../src/view'
 import { MAX_PAYLOAD_BYTES } from '../../rabbiters/src/network'
@@ -75,6 +86,40 @@ describe('combat', () => {
 })
 
 describe('turning points', () => {
+  test('a complete build skips empty hands and can swap a talent every five levels', () => {
+    const game = new Game(2)
+    const player = game.addPlayer('a', 'p_edu')!
+    game.state.time = RUN_SECONDS / 2
+    player.weapons.push(
+      ...TALENT_WEAPONS.slice(0, WEAPON_SLOTS).map(({ id }) => ({
+        id,
+        lv: MAX_WEAPON_LEVEL,
+        cd: 0,
+        held: 0,
+        damage: 0
+      }))
+    )
+    player.weapons[0].lv = MAX_WEAPON_LEVEL
+    player.passives = PASSIVES.slice(0, PASSIVE_SLOTS).map(({ id }) => ({ id, lv: MAX_PASSIVE_LEVEL }))
+    game.state.level = 3
+    game.gainXp(game.state.xpNext)
+    game.tick(1 / 60)
+    expect(player.choices).toEqual([])
+    game.gainXp(game.state.xpNext)
+    game.tick(1 / 60)
+    expect(player.choices[0]).toMatch(/^s:/)
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    const newWeapon = player.choices[0].split(':')[1]
+    game.choose(player, 0)
+    expect(player.choices[0]).toMatch(/^r:/)
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    const oldWeapon = player.choices[0].split(':')[1]
+    game.choose(player, 0)
+    expect(player.weapons.some((weapon) => weapon.id === oldWeapon)).toBe(false)
+    expect(player.weapons.find((weapon) => weapon.id === newWeapon)?.lv).toBe(1)
+    expect(player.weapons[0].id).toBe('p_edu')
+  })
+
   test('solo pauses for a choice and only accepts the current hand', () => {
     const game = new Game(2)
     const player = game.addPlayer('a')!

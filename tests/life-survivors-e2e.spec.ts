@@ -7,6 +7,75 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('a full build skips ordinary level-ups and offers an optional weapon swap', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const game = l.game as unknown as {
+      state: {
+        time: number
+        level: number
+        xpNext: number
+        players: { choices: string[]; pending: number; birthPick: boolean }[]
+      }
+      options(player: unknown): string[]
+      choose(player: unknown, index: number): void
+      gainXp(amount: number): void
+    }
+    game.state.time = 900
+    const player = game.state.players[0]
+    player.birthPick = false
+    player.pending = 0
+    for (let i = 0; i < 200; i++) {
+      const option = game.options(player)[0]
+      if (!option) break
+      player.choices = [option]
+      game.choose(player, 0)
+    }
+    game.state.level = 3
+    game.gainXp(game.state.xpNext)
+  })
+  await expect(page.locator('#levelup')).toBeHidden()
+  await handle.evaluate((l) => l.game.gainXp((l.game.state as unknown as { xpNext: number }).xpNext))
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#levelup-note')).toContainText('新しい武器')
+  await page.locator('#cards .card').first().click()
+  await expect.poll(() => handle.evaluate((l) => l.view.players[0].choices[0])).toMatch(/^r:/)
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#levelup-note')).toContainText('手放す武器')
+  await page.getByRole('button', { name: /交換しない/ }).click()
+  await expect(page.locator('#levelup')).toBeHidden()
+  await expect.poll(() => handle.evaluate((l) => l.game.state.players[0].choices)).toEqual([])
+  await expect.poll(() => handle.evaluate((l) => l.view.players[0].choices)).toEqual([])
+  await handle.evaluate((l) => {
+    const state = l.game.state as unknown as { level: number; xpNext: number }
+    state.level = 9
+    l.game.gainXp(state.xpNext)
+  })
+  await expect.poll(() => handle.evaluate((l) => l.view.players[0].choices[0])).toMatch(/^s:/)
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#levelup-note')).toContainText('新しい武器')
+  const newWeapon = await handle.evaluate((l) => l.view.players[0].choices[0].split(':')[1])
+  await page.locator('#cards .card').first().click()
+  await expect.poll(() => handle.evaluate((l) => l.view.players[0].choices[0])).toMatch(/^r:/)
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#levelup-note')).toContainText('手放す武器')
+  const oldWeapon = await handle.evaluate((l) => l.view.players[0].choices[0].split(':')[1])
+  await page.locator('#cards .card').first().click()
+  await expect(page.locator('#levelup')).toBeHidden()
+  await expect
+    .poll(() => handle.evaluate((l) => (l.view.players[0] as unknown as { weapons: [string, number][] }).weapons))
+    .toEqual(expect.arrayContaining([[newWeapon, 1, expect.any(Number)]]))
+  expect(
+    await handle.evaluate(
+      (l, oldId) =>
+        (l.view.players[0] as unknown as { weapons: [string, number][] }).weapons.some(([id]) => id === oldId),
+      oldWeapon
+    )
+  ).toBe(false)
+})
+
 test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

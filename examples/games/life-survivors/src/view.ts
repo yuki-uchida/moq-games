@@ -180,12 +180,14 @@ const flat = (value: unknown, stride: number, max: number) =>
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
 const choiceOk = (value: unknown) => {
   if (!text(value, 40)) return false
-  const [kind, id] = value.split(':')
+  const [kind, id, replacement] = value.split(':')
+  if (kind === 's') return WEAPON_BY_ID.has(id) && replacement === undefined
+  if (kind === 'r') return WEAPON_BY_ID.has(id) && WEAPON_BY_ID.has(replacement)
   return kind === 'w'
     ? WEAPON_BY_ID.has(id)
     : kind === 'p'
       ? PASSIVE_BY_ID.has(id)
-      : value === 'x:meal' || value === 'x:coin'
+      : value === 'x:meal' || value === 'x:coin' || value === 'x:skip'
 }
 
 function playerOk(value: unknown): value is ViewPlayer {
@@ -209,7 +211,7 @@ function playerOk(value: unknown): value is ViewPlayer {
     p.passives.length <= 12 &&
     p.passives.every((s) => Array.isArray(s) && PASSIVE_BY_ID.has(s[0]) && finite(s[1], 1, 5)) &&
     Array.isArray(p.choices) &&
-    p.choices.length <= 4 &&
+    p.choices.length <= 8 &&
     p.choices.every(choiceOk) &&
     (p.talents === undefined ||
       (record(p.talents) && TALENT_CATEGORIES.every((c) => finite((p.talents as Record<string, unknown>)[c], 0, 5))))
