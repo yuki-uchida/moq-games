@@ -818,7 +818,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v2', () => {
+describe('protocol v3', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -828,9 +828,9 @@ describe('protocol v2', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v2 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v3 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(2)
+    expect(view.v).toBe(3)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -839,10 +839,10 @@ describe('protocol v2', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects v1 and every malformed v2 field', () => {
+  test('readView rejects old versions and every malformed v3 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
-    expect(readView({ ...view, v: 3 })).toBeUndefined()
+    expect(readView({ ...view, v: 2 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
     expect(readView(noBullets)).toBeUndefined()
     expect(readView({ ...view, bullets: [1, 2, 99, 0] })).toBeUndefined()

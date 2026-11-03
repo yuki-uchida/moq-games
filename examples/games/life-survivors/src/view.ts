@@ -4,6 +4,7 @@ import {
   ENEMIES,
   ENEMY_BY_ID,
   ENEMY_INDEX,
+  EVENTS,
   ITEM_KINDS,
   MAX_GAME_PLAYERS,
   PASSIVE_BY_ID,
@@ -30,6 +31,8 @@ export interface ViewPlayer {
   maxHp: number
   downed: boolean
   revive: number
+  married: boolean
+  hasChild: boolean
   hurt: boolean
   /** Enemy id of the final blow while downed. */
   killer?: string
@@ -43,7 +46,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 2
+  v: 3
   time: number
   phase: GameState['phase']
   level: number
@@ -132,7 +135,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 2,
+    v: 3,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -151,6 +154,8 @@ export function toView(state: GameState): View {
       maxHp: r(p.maxHp),
       downed: p.downed,
       revive: Math.round(p.revive * 100) / 100,
+      married: p.married,
+      hasChild: p.hasChild,
       hurt: p.hurt > 0,
       ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
@@ -201,6 +206,9 @@ function playerOk(value: unknown): value is ViewPlayer {
     [p.x, p.y, p.fx, p.fy, p.hp, p.maxHp, p.revive, p.choiceSeq].every((n) => finite(n)) &&
     typeof p.downed === 'boolean' &&
     typeof p.hurt === 'boolean' &&
+    typeof p.married === 'boolean' &&
+    typeof p.hasChild === 'boolean' &&
+    (!p.hasChild || p.married) &&
     (p.killer === undefined || (text(p.killer, 40) && ENEMY_BY_ID.has(p.killer))) &&
     text(p.parent) &&
     WEAPON_BY_ID.has(p.parent) &&
@@ -220,7 +228,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 2) return undefined
+  if (!record(value) || value.v !== 3) return undefined
   const v = value
   const ok =
     [v.time, v.level, v.xp, v.xpNext, v.kills].every((n) => finite(n, 0, 1e9)) &&
@@ -240,6 +248,17 @@ export function readView(value: unknown): View | undefined {
     v.log.every((e) => record(e) && finite(e.t) && text(e.text) && (e.to === undefined || text(e.to, 64))) &&
     (v.reaper === null || (Array.isArray(v.reaper) && v.reaper.length === 2 && v.reaper.every((n) => finite(n))))
   if (!ok) return undefined
+  if (new Set((v.players as ViewPlayer[]).map((player) => player.id)).size !== (v.players as ViewPlayer[]).length)
+    return undefined
+  const weddingAt = Math.round(EVENTS.find((event) => event.boss === 'b_wedding')!.at * 100) / 100
+  const birthAt = Math.round(EVENTS.find((event) => event.swarm === 'nightcry')!.at * 100) / 100
+  if (
+    (v.players as ViewPlayer[]).some(
+      (player) =>
+        (player.married && (v.time as number) < weddingAt) || (player.hasChild && (v.time as number) < birthAt)
+    )
+  )
+    return undefined
   const enemies = v.enemies as number[]
   for (let i = 0; i < enemies.length; i += STRIDE.enemies)
     if (!ENEMIES[enemies[i + 1]] || !Number.isInteger(enemies[i + 6]) || enemies[i + 6] < 0 || enemies[i + 6] > 15)
