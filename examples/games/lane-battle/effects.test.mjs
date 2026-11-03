@@ -34,6 +34,18 @@ test('all units expose geometry and effect descriptions', () => {
     if (type.cost) assert.equal(card({ uid: 1, key: type.key }).areaKind, type.areaKind)
   }
 })
+
+test('summon counts exclude attempts rejected at the ally cap', () => {
+  const game = createGame(0, [card({ uid: 1, key: 'katachi' })], 1)
+  game.gold = 9999
+  for (let index = 0; index < 24; index++) {
+    game.cooldowns[0] = 0
+    assert.equal(summon(game, 0), true)
+  }
+  game.cooldowns[0] = 0
+  assert.equal(summon(game, 0), false)
+  assert.equal(game.summons[0], 24)
+})
 test('band hits nearest enemies with the documented multipliers and ambush', () => {
   const { game, source, victims } = scene('geri', [20, 30, 40])
   step(game, 0.01)
@@ -362,6 +374,56 @@ test('earlier arriving shot kills a marked target before its blast in either ste
   const small = run(Array(151).fill(0.01))
   assert.deepEqual(large, small)
   assert.equal(large.blasts, 0)
+})
+
+test('curry detonation precedes a later lethal burn at either frame size', () => {
+  const run = (dt) => {
+    const { game, source, victims } = scene('curry', [30, 50])
+    step(game, 0.01)
+    source.attack = 999
+    source.speed = 0
+    victims[0].hp = 100
+    victims[0].burn = { next: 1.52, end: 1.52, interval: 0.5, atk: 1000, damage: 1, src: source }
+    game.time = 1.5
+    for (let count = 0; count < Math.round(0.05 / dt); count++) step(game, dt)
+    return {
+      hp: [source, ...victims].map((unit) => unit.hp),
+      blasts: game.effects.filter((effect) => effect.explosion).length
+    }
+  }
+  const result = run(0.05)
+  assert.deepEqual(result, run(0.01))
+  assert.equal(result.blasts, 1)
+  assert.equal(result.hp[2], 10000 - 95 * 0.625)
+})
+
+test('an earlier projectile kills a target before a later stench tick', () => {
+  const run = (dt) => {
+    const { game, source, victims } = scene('korokoro', [100])
+    source.attack = 999
+    source.speed = 0
+    victims[0].hp = 50
+    game.time = 1.5
+    game.zones.push({
+      kind: 'stench',
+      side: 1,
+      x: victims[0].x,
+      radius: 60,
+      next: 1.52,
+      end: 1.52,
+      interval: 0.5,
+      atk: 1000,
+      damage: 1,
+      src: source
+    })
+    game.projectiles.push({ targetId: victims[0].id, src: source, damage: 60, at: 1.51, effect: {} })
+    for (let count = 0; count < Math.round(0.05 / dt); count++) step(game, dt)
+    return { hp: [source, ...victims].map((unit) => unit.hp), tick: victims[0].tick }
+  }
+  const result = run(0.05)
+  assert.deepEqual(result, run(0.01))
+  assert.equal(result.tick, undefined)
+  assert.equal(result.hp[1], -10)
 })
 
 test('burn, each poison stack, stench and wet zones tick exactly through their end', () => {
