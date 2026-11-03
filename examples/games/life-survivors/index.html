@@ -69,7 +69,7 @@
 
       <section id="start-panel" class="start-panel" aria-labelledby="start-title">
         <div class="start-inner">
-          <p class="overline">A 30-MINUTE LIFE</p>
+          <p class="overline">A 15-MINUTE LIFE</p>
           <h1 id="start-title">ジンセイガ・ツライデース<small>人生サバイバー</small></h1>
           <p class="intro">
             あなたは赤ちゃんとして生まれる。親は選べない。才能は見えない。<br />
@@ -79,6 +79,7 @@
             <li><b>👶</b>全員が赤ちゃんから。親はランダムに決まる（親ガチャ）</li>
             <li><b>🔮</b>才能は隠れている。手応えから自分の向き不向きを見極めよう</li>
             <li><b>🃏</b>友人・勉強・仕事・恋愛・投資…人生の手札を組み、性格で進化</li>
+            <li><b>🛤️</b>育てた手札で進学・進路・結婚が分岐。条件はゲーム中の「?」で確認</li>
             <li><b>💥</b>敵も弾を撃ってくる。動いてかわそう。手ごわい個体を倒すと転機やごはんが落ちる</li>
             <li><b>💀</b>15:00、死神が迎えに来たら大往生（クリア）</li>
           </ul>
@@ -116,6 +117,7 @@
         <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
           <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
           <h2 id="help-title">生き抜くために</h2>
+          <p>ひとりプレイはこの画面を開いている間は一時停止。みんなで遊ぶときは時間が進みます。</p>
           <figure class="talent-guide">
             <svg viewBox="0 0 300 240" role="img" aria-labelledby="talent-title talent-desc">
               <title id="talent-title">秘密の才能の六角形</title>
@@ -137,6 +139,25 @@
               線でつながる隣同士は似やすい。武器も性格もこの6分野。仕事は知性、美容は恋愛。手応えと攻撃から探り、最後に全分野をふりかえろう。
             </figcaption>
           </figure>
+          <section aria-labelledby="life-path-help-title">
+            <h3 id="life-path-help-title">人生の分岐条件</h3>
+            <ul class="help-list">
+              <li><strong>20歳・進学。</strong>大学受験イベント時に勉強Lv3以上で進学。</li>
+              <li>
+                <strong>28歳・進路。</strong
+                >就職活動イベント時に仕事Lv2以上で就職の候補に。スポーツ・筋トレのどちらかLv4以上で運動の道、投資・貯金のどちらかLv4以上で資産の道、趣味・カラオケ・旅行・料理のいずれかLv4以上で創作の道も候補になります。複数候補は手札の育成度と進化で決まり、同点は武器の定義順です。創作の道は転機1回。
+              </li>
+              <li>
+                <strong>64歳・創作の続き。</strong
+                >創作の道を選んだ本人は、現在も創作武器のいずれかLv4以上なら転機2回。それ以外は過去の創作経験を活かす転機1回。交換しても履歴は残り、創作だけではリストラボスは出現しません。
+              </li>
+              <li>
+                <strong>結婚。</strong
+                >結婚イベント時に恋愛Lv2以上で結婚。配偶者が本人の精神力を少しずつ回復します（ダウン中を除く）。
+              </li>
+            </ul>
+            <p>これらは隠れた才能ではなく、その時点の手札で一度だけ決定。後から育て直しても結果は変わりません。</p>
+          </section>
           <ul class="help-list">
             <li>
               <strong>移動だけ。</strong

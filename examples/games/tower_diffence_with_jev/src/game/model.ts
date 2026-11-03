@@ -823,17 +823,18 @@ export function routePathFor(
 ): Point[] {
   return routeFor(fieldFor(state), routeId).path
 }
-export type WaveBossPolicy = 1 | 2 | 3
-export const CURRENT_WAVE_BOSS_POLICY: WaveBossPolicy = 3
+export type WaveBossPolicy = 1 | 2 | 3 | 4
+export const CURRENT_WAVE_BOSS_POLICY: WaveBossPolicy = 4
 const WAVE_BOSSES: Record<WaveBossPolicy, Partial<Record<number, EnemyType>>> = {
   1: { 3: 'ogre', 6: 'ogre', 9: 'ogre', 10: 'dragon' },
   2: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
-  3: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
+  3: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
+  4: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
 }
 export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2) {
   // Preserve saved-wave counts/stats/budgets; space stronger late enemies rather than stacking them.
   const level = Math.max(1, Math.min(CONFIG.stages, stage)),
-    enemyCount = 3 + level * 2,
+    enemyCount = level === CONFIG.stages && waveBossPolicy >= 4 ? 21 : 3 + level * 2,
     bossType = WAVE_BOSSES[waveBossPolicy][level] ?? null
   return {
     enemyCount,

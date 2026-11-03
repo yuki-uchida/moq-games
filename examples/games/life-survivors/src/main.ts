@@ -68,7 +68,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v5'
+const APP = 'life-survivors-v6'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -106,7 +106,7 @@ let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
 const keys = new Set<string>()
-/** Floating touch stick: the base sits where the finger landed and is dragged along past STICK_RADIUS. */
+/** Floating touch stick: the base stays where the finger landed. */
 let drag: { id: number; x: number; y: number; dx: number; dy: number } | undefined
 const STICK_RADIUS = 56
 const STICK_DEAD = 6
@@ -812,7 +812,7 @@ function frame(now: number) {
       for (const player of game.state.players)
         if (player.id !== localId && now - (remoteInputAt.get(player.id) ?? 0) > 500)
           game.setInput(player.id, { x: 0, y: 0, pick: -1, pickSeq: -1 })
-    game.step(dt)
+    if (role !== 'solo' || help.hidden) game.step(dt)
     view = toView(game.state)
   }
   const player = me()
@@ -866,14 +866,28 @@ buttons[1].addEventListener('click', () => void start('host'))
 buttons[2].addEventListener('click', () => void start('guest'))
 element('#leave').addEventListener('click', () => void returnToTitle())
 element('#restart').addEventListener('click', () => void returnToTitle())
-element('#help-open').addEventListener('click', () => {
+const helpOpen = element<HTMLButtonElement>('#help-open')
+const helpClose = element<HTMLButtonElement>('#help-close')
+const helpDone = element<HTMLButtonElement>('#help-done')
+const closeHelp = () => {
+  help.hidden = true
+  helpOpen.focus()
+}
+helpOpen.addEventListener('click', () => {
   help.hidden = false
-  element<HTMLButtonElement>('#help-close').focus()
+  helpClose.focus()
 })
-for (const selector of ['#help-close', '#help-done'])
-  element(selector).addEventListener('click', () => {
-    help.hidden = true
-  })
+for (const button of [helpClose, helpDone]) button.addEventListener('click', closeHelp)
+help.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return
+  if (event.shiftKey && document.activeElement === helpClose) {
+    event.preventDefault()
+    helpDone.focus()
+  } else if (!event.shiftKey && document.activeElement === helpDone) {
+    event.preventDefault()
+    helpClose.focus()
+  }
+})
 // Shared UI cues follow the game's mute / volume; level-up cards have their own cues.
 bindUiSounds(document, (kind) => playSharedUiSound(kind, audio.muted ? 0 : audio.volume), 'button:not(.card)')
 warmUpAudio()
@@ -928,7 +942,10 @@ for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] 
 
 const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
 window.addEventListener('keydown', (event) => {
-  if (event.code === 'Escape') help.hidden = true
+  if (event.code === 'Escape' && !help.hidden) {
+    closeHelp()
+    return
+  }
   if (event.code === 'KeyM' && started && !event.repeat && !(event.target instanceof HTMLInputElement)) {
     toggleMute()
     return
@@ -994,12 +1011,8 @@ canvas.addEventListener('pointermove', (event) => {
   let dy = event.clientY - drag.y
   const length = Math.hypot(dx, dy)
   if (length > STICK_RADIUS) {
-    // Drag the base along so reversing direction responds at once.
-    const over = (length - STICK_RADIUS) / length
-    drag.x += dx * over
-    drag.y += dy * over
-    dx -= dx * over
-    dy -= dy * over
+    dx *= STICK_RADIUS / length
+    dy *= STICK_RADIUS / length
   }
   drag.dx = dx
   drag.dy = dy

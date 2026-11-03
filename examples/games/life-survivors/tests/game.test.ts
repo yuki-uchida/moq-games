@@ -31,6 +31,18 @@ import { playLife } from './bot'
 
 const idle = { x: 0, y: 0, pick: -1, pickSeq: -1 }
 
+test('a monster parent chases the nearest enemy', () => {
+  const game = new Game(3)
+  const player = game.addPlayer('a', 'p_monster')!
+  player.weapons[0].cd = 0
+  game.spawnEnemy('germ', player.x - 180, player.y)
+  game.spawnEnemy('bully', player.x + 100, player.y)
+  game.tick(1 / 60)
+  const shot = game.state.shots.find((entry) => entry.weapon === 'p_monster')!
+  expect(shot.target?.kind).toBe('bully')
+  expect(shot.x).toBeGreaterThan(player.x)
+})
+
 describe('life pacing', () => {
   test('ages increasingly quickly over a 15 minute life', () => {
     expect(RUN_SECONDS).toBe(900)

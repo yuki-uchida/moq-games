@@ -463,7 +463,7 @@ export class Game {
   private inputs = new Map<string, Input>()
   private careers = new Map<
     string,
-    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets'; settled?: boolean }
+    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets' | 'creative'; settled?: boolean }
   >()
   private accumulator = 0
   private fxSeq = 0
@@ -718,6 +718,7 @@ export class Game {
           const level = (id: string) => player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0
           const sports = Math.max(level('w_sports'), level('w_muscle'))
           const assets = Math.max(level('w_invest'), level('w_savings'))
+          const creative = Math.max(level('w_hobby'), level('w_karaoke'), level('w_travel'), level('w_cooking'))
           let reward = 0
           let text: string
           if (event.boss === 'b_univ') {
@@ -732,6 +733,7 @@ export class Game {
             if (work) eligible.push('bureaucrat')
             if (sports >= 4) eligible.push('soccer')
             if (assets >= 4) eligible.push('entrepreneur')
+            if (creative >= 4) eligible.push('creative')
             const selected =
               rankedCareer(
                 player.weapons.map(({ id, lv }) => [id, lv]),
@@ -741,10 +743,10 @@ export class Game {
             career.employed = selected === 'bureaucrat'
             reward = career.employed ? (career.studied ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
-            if (selected === 'soccer' || selected === 'entrepreneur') {
-              career.path = selected === 'soccer' ? 'sports' : 'assets'
+            if (selected === 'soccer' || selected === 'entrepreneur' || selected === 'creative') {
+              career.path = selected === 'soccer' ? 'sports' : selected === 'entrepreneur' ? 'assets' : 'creative'
               reward = 1
-              text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : 4]
+              text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : career.path === 'assets' ? 4 : 5]
             }
           } else {
             if (career.settled !== undefined) continue
@@ -752,8 +754,11 @@ export class Game {
             reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_layoff[reward === 2 ? 0 : reward === 1 ? 1 : 2]
             if (career.path) {
-              reward = (career.path === 'sports' ? sports : assets) >= 4 ? 2 : 1
-              text = LIFE_OUTCOMES.b_layoff[(career.path === 'sports' ? 3 : 5) + (reward === 2 ? 0 : 1)]
+              reward = (career.path === 'sports' ? sports : career.path === 'assets' ? assets : creative) >= 4 ? 2 : 1
+              text =
+                LIFE_OUTCOMES.b_layoff[
+                  (career.path === 'sports' ? 3 : career.path === 'assets' ? 5 : 7) + (reward === 2 ? 0 : 1)
+                ]
             }
           }
           player.careerPending += reward
@@ -785,6 +790,10 @@ export class Game {
         const employed = state.players.filter((player) => this.careers.get(player.id)?.employed)
         if (!employed.length) continue
         this.log(`${employed.map((player) => player.name).join('・')}の仕事の試練：${event.text}`)
+      } else if (event.boss === 'b_care') {
+        const families = state.players.filter((player) => player.joinedAt < event.at && player.parent !== 'p_gone')
+        if (!families.length) continue
+        this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
       } else if (wedding || childEvent) {
         const families = state.players.filter((player) => (wedding ? player.married : player.hasChild))
         if (!families.length) continue
@@ -1531,7 +1540,7 @@ export class Game {
           this.shot(player, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
-            spin: def.speed,
+            spin: def.id === 'p_monster' ? 240 * ws.speed : def.speed,
             r: 20 * Math.sqrt(ws.area),
             tick: 0.45
           })
@@ -1841,9 +1850,12 @@ export class Game {
       if (shot.life <= 0) continue
       switch (shot.kind) {
         case 'orbit':
-          shot.angle += shot.spin * dt
-          shot.x = owner.x + Math.cos(shot.angle) * shot.orbit
-          shot.y = owner.y + Math.sin(shot.angle) * shot.orbit
+          if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
+          else {
+            shot.angle += shot.spin * dt
+            shot.x = owner.x + Math.cos(shot.angle) * shot.orbit
+            shot.y = owner.y + Math.sin(shot.angle) * shot.orbit
+          }
           break
         case 'aura':
           shot.x = owner.x

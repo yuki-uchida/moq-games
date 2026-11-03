@@ -29,7 +29,7 @@ const BODIES: Record<string, string> = {
   小学生: 'kid',
   中学生: 'junior',
   高校生: 'high',
-  大学生: 'college',
+  青年期: 'college',
   社会人: 'adult',
   働き盛り: 'prime',
   中年: 'middle',
@@ -1074,8 +1074,8 @@ export class Renderer {
         // Re-derive the orbit around the eased owner so it never lags behind them.
         const owner = view.players[view.shots[i + 6]]
         const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
-        const ox = sh.ox + cos * orbit
-        const oy = sh.oy + sin * orbit
+        const ox = def.id === 'p_monster' ? x : sh.ox + cos * orbit
+        const oy = def.id === 'p_monster' ? y : sh.oy + sin * orbit
         const art = sheet(`weapon:${def.id}`)
         const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][(i / STRIDE.shots) % 3] : art.fly
         this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4))

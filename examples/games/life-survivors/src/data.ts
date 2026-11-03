@@ -68,7 +68,7 @@ export const STAGES: Stage[] = [
   { age: 6, name: '小学生', icon: '🧒', ground: '#2c3a33', line: '#3a4a42', decor: ['🎒', '🏫', '🌸'] },
   { age: 12, name: '中学生', icon: '🧑‍🎓', ground: '#2b3443', line: '#394355', decor: ['📐', '🏀', '🚲'] },
   { age: 15, name: '高校生', icon: '🧑‍🎓', ground: '#302d45', line: '#3e3a57', decor: ['🎧', '📮', '🍞'] },
-  { age: 18, name: '大学生', icon: '🧑', ground: '#3b2d3e', line: '#4b3a4f', decor: ['☕', '🍻', '📚'] },
+  { age: 18, name: '青年期', icon: '🧑', ground: '#3b2d3e', line: '#4b3a4f', decor: ['☕', '🍻', '📚'] },
   { age: 23, name: '社会人', icon: '🧑‍💼', ground: '#2c3238', line: '#3b434b', decor: ['🏢', '🚃', '☕'] },
   { age: 35, name: '働き盛り', icon: '🧑‍💼', ground: '#33322b', line: '#45433a', decor: ['🏠', '🚗', '🛒'] },
   { age: 50, name: '中年', icon: '🧔', ground: '#3a302a', line: '#4c4037', decor: ['⛳', '🍶', '💊'] },
@@ -270,7 +270,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: 'あなたのまわりを走り回って蹴散らす。人間（教師・いじめっ子・上司）に特攻。'
+    desc: '近くの敵に襲いかかって蹴散らす。人間（教師・いじめっ子・上司）に特攻。'
   }),
   weapon({
     id: 'p_rich',

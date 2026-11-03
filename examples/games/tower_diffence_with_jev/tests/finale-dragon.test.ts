@@ -25,6 +25,17 @@ describe('wave rules', () => {
       { enemyTypes: _b, ...old } = stageRules(10, 2)
     expect(next).toEqual(old)
   })
+  it('trims only the stage-10 enemy count under policy 4', () => {
+    expect(stageRules(10, 3)).toMatchObject({ enemyCount: 23, spawnBudget: 120 })
+    expect(stageRules(10, 4)).toMatchObject({ enemyCount: 21, spawnBudget: 110 })
+    expect(stageRules(9, 4).enemyCount).toBe(21)
+    const { enemyCount: _a, spawnBudget: _b, ...next } = stageRules(10, 4),
+      { enemyCount: _c, spawnBudget: _d, ...old } = stageRules(10, 3)
+    expect(next).toEqual(old)
+    for (let stage = 1; stage < CONFIG.stages; stage++) expect(stageRules(stage, 4)).toEqual(stageRules(stage, 2))
+    const dragon = { owner: 'ai', type: 'dragon', boss: true } as const
+    expect(combatStats(dragon, 10, 1, 4)).toEqual(combatStats(dragon, 10, 1, 3))
+  })
   it('shortens only the finale dragon boss reach and softens its hits', () => {
     const dragon = { owner: 'ai', type: 'dragon', boss: true } as const,
       stats = (policy: WaveBossPolicy) => combatStats(dragon, 10, 1, policy)
@@ -50,13 +61,14 @@ it('never offers the enemy commander a regular dragon in the policy-3 finale', (
     )
   expect(regularDragons(2).length).toBeGreaterThan(0)
   expect(regularDragons(3)).toEqual([])
+  expect(regularDragons(4)).toEqual([])
 })
 // A finale battle where the boss dragon is alive with an attack of its own in flight.
 async function finale() {
   let clock = 0
   const save = freshRunFromProfile(freshProfile(), 2, 1),
     e = new GameEngine(new RuleBasedAI(), save, 'meadow', 42, () => clock, DRAGON_BREATH_MOUTHS, 2, 4)
-  expect(e.state.waveBossPolicy).toBe(3)
+  expect(e.state.waveBossPolicy).toBe(4)
   expect(e.startAtStage(10)).toBe(true)
   for (const slot of getField('meadow', 2, 4).slots.slice(-3)) e.place('tank', slot)
   const prep = e.exportCheckpoint()!
@@ -100,9 +112,9 @@ describe('finale battle', () => {
     const boss = run.boss!,
       observe = (waveBossPolicy: WaveBossPolicy, attackRange: number) =>
         serializeStateForAI({ ...run.e.state, waveBossPolicy, units: [{ ...boss, attackRange }] })
-    const next = observe(3, 170),
+    const next = observe(4, 170),
       old = observe(2, 212.5)
-    expect(next.wave.waveBossPolicy).toBe(3)
+    expect(next.wave.waveBossPolicy).toBe(4)
     expect(next.enemies[0]).toMatchObject({ boss: true, range: 170, splash: 109.375 })
     expect(old.wave.waveBossPolicy).toBe(2)
     expect(old.enemies[0]).toMatchObject({ boss: true, range: 212.5, splash: 218.75 })
@@ -112,9 +124,9 @@ describe('finale battle', () => {
     return validateCampaignCheckpoint(c, c.progress, c.profile)
   }
   const clone = () => structuredClone(run.checkpoint!) as any
-  it('round-trips a v19 checkpoint with the boss attacking', () => {
-    expect(run.checkpoint?.version).toBe(19)
-    expect(run.checkpoint!.state.waveBossPolicy).toBe(3)
+  it('round-trips a v20 checkpoint with the boss attacking', () => {
+    expect(run.checkpoint?.version).toBe(20)
+    expect(run.checkpoint!.state.waveBossPolicy).toBe(4)
     expect(validate(JSON.parse(JSON.stringify(run.checkpoint)))).not.toBeNull()
     const c = JSON.parse(JSON.stringify(run.checkpoint)),
       restored = GameEngine.fromCheckpoint(
@@ -124,12 +136,27 @@ describe('finale battle', () => {
         () => 0,
         DRAGON_BREATH_MOUTHS
       )
-    expect(restored?.state.waveBossPolicy).toBe(3)
-    expect(restored?.exportCheckpoint()?.version).toBe(19)
+    expect(restored?.state.waveBossPolicy).toBe(4)
+    expect(restored?.exportCheckpoint()?.version).toBe(20)
   })
-  it('accepts a policy-3 preparation checkpoint', () => {
-    expect(run.prep.version).toBe(19)
+  it('accepts a policy-4 preparation checkpoint', () => {
+    expect(run.prep.version).toBe(20)
     expect(validate(run.prep)).not.toBeNull()
+  })
+  it('restores a v19 policy-3 preparation under policy 4 and keeps a v19 assault on policy 3', () => {
+    const prep = structuredClone(run.prep) as any
+    prep.version = 19
+    prep.state.waveBossPolicy = 3
+    const restored = (c: any) =>
+      GameEngine.fromCheckpoint(c, idle, resumeProgress(c.profile, c.progress), () => 0, DRAGON_BREATH_MOUTHS)
+    expect(restored(prep)?.state.waveBossPolicy).toBe(4)
+    const assault = clone()
+    assault.version = 19
+    assault.state.waveBossPolicy = 3
+    const e = restored(assault)!
+    expect(e.state.waveBossPolicy).toBe(3)
+    expect(e.exportCheckpoint()?.version).toBe(20)
+    expect(stageRules(10, e.state.waveBossPolicy).enemyCount).toBe(23)
   })
   it('rejects mismatched or illegal finale checkpoints', () => {
     const old = clone()
@@ -138,6 +165,11 @@ describe('finale battle', () => {
     const prep = structuredClone(run.prep) as any
     prep.state.waveBossPolicy = 2
     expect(validate(prep)).toBeNull()
+    prep.state.waveBossPolicy = 3
+    expect(validate(prep)).toBeNull()
+    const v19 = structuredClone(run.checkpoint!) as any
+    v19.version = 19
+    expect(validate(v19)).toBeNull()
     const dragon = structuredClone(run.early!) as any
     const regular = dragon.state.units.find((u: any) => u.owner === 'ai' && !u.boss)
     expect(regular).toBeDefined()

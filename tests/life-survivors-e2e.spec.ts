@@ -12,6 +12,100 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+for (const width of [1280, 390]) {
+  test(`youth stage does not assume an education path at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate(async (life) => {
+      const dataPath = '/src/data.ts'
+      const { EVENTS, timeAtAge } = await import(dataPath)
+      const game = life.game as unknown as Game
+      const player = game.state.players[0]
+      game.targetPopulation = () => 0
+      player.birthPick = false
+      player.choices = []
+      player.pending = 0
+      game.state.eventIndex = EVENTS.length
+      game.state.enemies = []
+      game.state.log = []
+      game.state.time = timeAtAge(18) + 0.01
+    })
+    await expect(page.locator('#stage')).toHaveText('青年期')
+    await expect(page.locator('#announcements')).toHaveText('青年期、18歳')
+    await expect(page.locator('#banner .banner-title')).toHaveText('青年期', { timeout: 6000 })
+    await expect(page.locator('#banner .banner-sub')).toContainText('これからの道を探して')
+    await page.screenshot({ path: testInfo.outputPath(`youth-stage-${width}.png`) })
+  })
+}
+
+for (const width of [1280, 390]) {
+  test(`life path help is readable, scrollable and keyboard accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await expect(page.locator('#start-panel')).toContainText('A 15-MINUTE LIFE')
+    await expect(page.locator('#start-panel')).not.toContainText('30-MINUTE')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate((life) => {
+      const player = (life.game as unknown as Game).state.players[0]
+      player.birthPick = false
+      player.choices = []
+      player.pending = 0
+    })
+    const trigger = page.getByRole('button', { name: '遊び方を表示' })
+    const dialog = page.getByRole('dialog', { name: '生き抜くために' })
+    const close = dialog.getByRole('button', { name: '閉じる' })
+    const done = dialog.getByRole('button', { name: 'わかった' })
+    await trigger.click()
+    await expect(dialog).toHaveAttribute('aria-modal', 'true')
+    await expect(close).toBeFocused()
+    await expect(dialog).toContainText('ひとりプレイはこの画面を開いている間は一時停止')
+    const pausedAt = await handle.evaluate((life) => life.game.state.time)
+    await page.waitForTimeout(250)
+    expect(await handle.evaluate((life) => life.game.state.time)).toBe(pausedAt)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-top.png`) })
+    const conditions = page.getByRole('region', { name: '人生の分岐条件' })
+    await conditions.scrollIntoViewIfNeeded()
+    await expect(conditions).toContainText('大学受験イベント時に勉強Lv3以上')
+    await expect(conditions).toContainText('仕事Lv2以上')
+    await expect(conditions).toContainText('スポーツ・筋トレのどちらかLv4以上')
+    await expect(conditions).toContainText('投資・貯金のどちらかLv4以上')
+    await expect(conditions).toContainText('趣味・カラオケ・旅行・料理のいずれかLv4以上')
+    await expect(conditions).toContainText('64歳')
+    await expect(conditions).toContainText('複数候補は手札の育成度と進化')
+    await expect(conditions).toContainText('結婚イベント時に恋愛Lv2以上')
+    await expect(conditions).toContainText('本人の精神力')
+    await expect(conditions).toContainText('一度だけ決定')
+    await expect(conditions).not.toContainText('手応え')
+    await expect(conditions).not.toContainText('0.55')
+    await expect(conditions).not.toContainText('1.7')
+    expect(await page.locator('#help').evaluate((help) => help.scrollWidth <= help.clientWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-conditions.png`) })
+    await close.focus()
+    await page.keyboard.press('Shift+Tab')
+    await expect(done).toBeFocused()
+    expect(await page.locator('#help').evaluate((help) => help.scrollTop)).toBeGreaterThan(0)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-bottom.png`) })
+    await page.keyboard.press('Tab')
+    await expect(close).toBeFocused()
+    await close.click()
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+    await expect.poll(() => handle.evaluate((life) => life.game.state.time)).toBeGreaterThan(pausedAt)
+    await page.keyboard.press('Enter')
+    await expect(dialog).toBeVisible()
+    await done.click()
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+}
+
 test('reading effects render behind local and co-op players', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -147,6 +241,60 @@ test('synergy details show activation and release from the local hand', async ({
   await page.keyboard.press('Enter')
   await expect(page.locator('#synergies')).not.toHaveAttribute('open')
 })
+
+for (const width of [1280, 390]) {
+  test(`social romantic and creative styles render independently during play at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate((life) => {
+      const game = life.game as unknown as Game
+      game.targetPopulation = () => 0
+      game.addPlayer('style-romantic', 'p_gone')
+      game.addPlayer('style-creative', 'p_gone')
+      game.state.time = 350
+      game.state.eventIndex = 99
+      game.state.enemies = []
+      game.state.players.forEach((player, index) => {
+        player.birthPick = false
+        player.pending = 0
+        player.choices = []
+        player.x = 1000 + index * 55
+        player.y = 1000
+        player.weapons = [{ id: ['w_friend', 'w_love', 'w_hobby'][index], lv: 4, cd: 100, held: 0, damage: 0 }]
+      })
+    })
+    const styles = () =>
+      handle.evaluate(async (life) => {
+        const path = '/src/art/careers.ts'
+        const { careerFor } = await import(path)
+        return (life.view as unknown as View).players.map(careerFor)
+      })
+    await expect.poll(styles).toEqual(['social', 'romantic', 'creative'])
+    await expect(page.locator('#banner')).toBeHidden({ timeout: 6000 })
+    await page.keyboard.down('ArrowDown')
+    await expect
+      .poll(() => handle.evaluate((life) => (life.view as unknown as View).players[0].y))
+      .toBeGreaterThan(1020)
+    await page.keyboard.up('ArrowDown')
+    await page.screenshot({ path: testInfo.outputPath(`new-styles-${width}.png`) })
+    await handle.evaluate((life) => {
+      const player = (life.game as unknown as Game).state.players[0]
+      player.weapons = [{ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }]
+    })
+    await expect.poll(styles).toEqual([undefined, 'romantic', 'creative'])
+    await handle.evaluate((life) => {
+      ;(life.game as unknown as Game).state.players[0].weapons[0].lv = 4
+    })
+    await expect.poll(styles).toEqual(['creative', 'romantic', 'creative'])
+    expect(errors).toEqual([])
+  })
+}
 
 test('trained careers render together for local and co-op participants', async ({ page }, testInfo) => {
   await page.goto('/')
@@ -540,7 +688,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v4',
+      app: 'life-survivors-v5',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -559,9 +707,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
@@ -593,6 +741,12 @@ test('two players share one life-world: the guest moves and gets their own hand'
   const guestId = await guestLife.evaluate((l) => l.localId)
   await expect.poll(() => guestLife.evaluate((l) => l.view?.players.length ?? 0)).toBe(2)
   await expect(guest.locator('#team li')).toHaveCount(2)
+
+  await host.bringToFront()
+  await host.getByRole('button', { name: '遊び方を表示' }).click()
+  const helpTime = await hostLife.evaluate((l) => l.game.state.time)
+  await expect.poll(() => hostLife.evaluate((l) => l.game.state.time)).toBeGreaterThan(helpTime)
+  await host.getByRole('dialog', { name: '生き抜くために' }).getByRole('button', { name: '閉じる' }).click()
 
   const start = await hostLife.evaluate((l, id) => l.game.state.players.find((p) => p.id === id)!.x, guestId)
   await guest.bringToFront()
@@ -686,7 +840,7 @@ test('career events give only the qualified guest a turning point', async ({ con
   expect(errors).toEqual([])
 })
 
-test('sports and asset paths reach only their own terminal history over snapshots', async ({ context }) => {
+test('a guest without parents can join another player’s care trial', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
   )
@@ -696,7 +850,7 @@ test('sports and asset paths reach only their own terminal history over snapshot
   for (const page of [host, guest]) {
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto('/')
-    await page.locator('#room').fill('alternative-careers')
+    await page.locator('#room').fill('care-event')
   }
   await host.getByRole('button', { name: 'ルームを作る' }).click()
   await guest.getByRole('button', { name: 'ルームに参加' }).click()
@@ -705,57 +859,155 @@ test('sports and asset paths reach only their own terminal history over snapshot
   await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
   await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
   const guestId = await guestLife.evaluate((hook) => hook.localId)
-  await hostLife.evaluate(async (hook, id) => {
+  const parentName = await hostLife.evaluate(async (hook, id) => {
     const dataPath = '/src/data.ts'
     const { EVENTS } = await import(dataPath)
     const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
     for (const player of game.state.players) {
+      player.parent = player.id === id ? 'p_gone' : 'p_free'
       player.birthPick = false
-      player.pending = 0
       player.choices = []
-      player.weapons = [
-        { id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 },
-        { id: player.id === id ? 'w_savings' : 'w_muscle', lv: 4, cd: 100, held: 0, damage: 0 }
-      ]
+      player.pending = 0
     }
-    for (const boss of ['b_shukatsu', 'b_layoff']) {
-      const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
-      game.state.enemies = []
-      game.state.eventIndex = index
-      game.state.time = EVENTS[index].at - 0.01
-      game.tick(0.01)
-    }
+    const index = EVENTS.findIndex((event: { boss: string }) => event.boss === 'b_care')
+    game.state.enemies = []
+    game.state.eventIndex = index
+    game.state.time = EVENTS[index].at - 0.01
+    game.tick(0.01)
+    return game.state.players.find((player) => player.id !== id)!.name
   }, guestId)
+  await expect(guest.locator('#feed')).toContainText(`${parentName}の家族の試練：親の介護が始まった`)
   await expect
     .poll(() =>
-      guestLife.evaluate(async (hook, id) => {
-        const careerPath = '/src/art/careers.ts'
-        const { careerFor } = await import(careerPath)
-        const players = (hook.view as unknown as View).players
-        const hostPlayer = players.find((player) => player.id !== id)
-        const guestPlayer = players.find((player) => player.id === id)
-        return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
-      }, guestId)
+      guestLife.evaluate(async (hook) => {
+        const dataPath = '/src/data.ts'
+        const { ENEMY_INDEX } = await import(dataPath)
+        const enemies = (hook.view as unknown as View).enemies
+        return enemies.some((value, index) => index % 7 === 1 && value === ENEMY_INDEX.get('b_care'))
+      })
     )
-    .toEqual(['soccer', 'entrepreneur'])
-  await expect(guest.locator('#feed')).toContainText('資産を活かす道を広げる')
-  await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
-  expect(
-    await guestLife.evaluate((hook) =>
-      hook.view!.players.every((player) => player.history === undefined && player.talents === undefined)
-    )
-  ).toBe(true)
-  await expect(guest.locator('#result-history')).toBeHidden()
-  await hostLife.evaluate((hook) => {
-    ;(hook.game as unknown as Game).state.phase = 'lost'
-  })
-  await expect(guest.locator('#result-history-list')).toContainText('資産を育て、資産を活かす道へ')
-  await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
-  await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
-  await expect(host.locator('#result-history-list')).toContainText('運動を磨き、スポーツの道へ')
-  await expect(host.locator('#result-history-list')).not.toContainText('資産')
+    .toBe(true)
+  const start = await hostLife.evaluate(
+    (hook, id) => hook.game.state.players.find((player) => player.id === id)!.x,
+    guestId
+  )
+  await guest.bringToFront()
+  await guest.keyboard.down('KeyD')
+  await expect
+    .poll(() => hostLife.evaluate((hook, id) => hook.game.state.players.find((player) => player.id === id)!.x, guestId))
+    .toBeGreaterThan(start + 30)
+  await guest.keyboard.up('KeyD')
   expect(errors).toEqual([])
 })
+
+for (const path of ['assets', 'creative'] as const) {
+  test(`sports and ${path} paths reach only their own terminal history over snapshots`, async ({ context }) => {
+    await context.route('**/rabbiters/src/network.ts*', (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+    )
+    const host = await context.newPage()
+    const guest = await context.newPage()
+    const errors: string[] = []
+    for (const page of [host, guest]) {
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.goto('/')
+      await page.locator('#room').fill('alternative-careers')
+    }
+    await host.getByRole('button', { name: 'ルームを作る' }).click()
+    await guest.getByRole('button', { name: 'ルームに参加' }).click()
+    const hostLife = await life(host)
+    const guestLife = await life(guest)
+    await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
+    await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+    const guestId = await guestLife.evaluate((hook) => hook.localId)
+    await hostLife.evaluate(
+      async (hook, { id, creative }) => {
+        const dataPath = '/src/data.ts'
+        const { EVENTS } = await import(dataPath)
+        const game = hook.game as unknown as Game
+        for (const player of game.state.players) {
+          player.birthPick = false
+          player.pending = 0
+          player.choices = []
+          player.weapons = [
+            { id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 },
+            {
+              id: player.id === id ? (creative ? 'w_hobby' : 'w_savings') : 'w_muscle',
+              lv: 4,
+              cd: 100,
+              held: 0,
+              damage: 0
+            }
+          ]
+        }
+        for (const boss of ['b_shukatsu', 'b_layoff']) {
+          const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
+          game.state.enemies = []
+          game.state.eventIndex = index
+          game.state.time = EVENTS[index].at - 0.01
+          game.tick(0.01)
+        }
+      },
+      { id: guestId, creative: path === 'creative' }
+    )
+    await expect
+      .poll(() =>
+        guestLife.evaluate(async (hook, id) => {
+          const careerPath = '/src/art/careers.ts'
+          const { careerFor } = await import(careerPath)
+          const players = (hook.view as unknown as View).players
+          const hostPlayer = players.find((player) => player.id !== id)
+          const guestPlayer = players.find((player) => player.id === id)
+          return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
+        }, guestId)
+      )
+      .toEqual(['soccer', path === 'creative' ? 'creative' : 'entrepreneur'])
+    await expect(guest.locator('#feed')).toContainText(
+      path === 'creative' ? '創作の道を広げる' : '資産を活かす道を広げる'
+    )
+    await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
+    expect(
+      await guestLife.evaluate((hook) =>
+        hook.view!.players.every((player) => player.history === undefined && player.talents === undefined)
+      )
+    ).toBe(true)
+    await expect(guest.locator('#result-history')).toBeHidden()
+    await hostLife.evaluate((hook, id) => {
+      const game = hook.game as unknown as Game
+      for (const player of game.state.players) {
+        player.weapons = [{ id: player.id === id ? 'w_love' : 'w_friend', lv: 8, cd: 100, held: 0, damage: 0 }]
+      }
+    }, guestId)
+    for (const peer of [hostLife, guestLife]) {
+      await expect
+        .poll(() =>
+          peer.evaluate(async (hook, id) => {
+            const path = '/src/art/careers.ts'
+            const { careerFor } = await import(path)
+            const players = (hook.view as unknown as View).players
+            return [
+              careerFor(players.find((player) => player.id !== id)!),
+              careerFor(players.find((player) => player.id === id)!)
+            ]
+          }, guestId)
+        )
+        .toEqual(['social', 'romantic'])
+    }
+    await hostLife.evaluate((hook) => {
+      ;(hook.game as unknown as Game).state.phase = 'lost'
+    })
+    await expect(guest.locator('#result-history-list')).toContainText(
+      path === 'creative' ? '好きなことを磨き、創作の道へ' : '資産を育て、資産を活かす道へ'
+    )
+    await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
+    await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
+    await expect(host.locator('#result-history-list')).toContainText('運動を磨き、スポーツの道へ')
+    await expect(host.locator('#result-history-list')).not.toContainText('資産')
+    await expect(host.locator('#result-history-list')).not.toContainText('創作')
+    expect(errors).toEqual([])
+  })
+}
 
 for (const width of [1280, 390]) {
   test(`family support reaches a moving guest and renders at ${width}px`, async ({ context }, testInfo) => {
@@ -939,10 +1191,13 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
 
   const cdp = await context.newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })
-  // Far past the stick's rim: the base follows the finger, so speed stays capped at full.
+  const baseTransform = await page.locator('#stick').evaluate((element) => element.style.transform)
   for (let i = 1; i <= 8; i++)
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 + i * 20, y: 600 }] })
   await expect(page.locator('#stick')).toHaveJSProperty('hidden', false)
+  await expect(page.locator('#stick')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 200, 600)')
+  expect(baseTransform).toBe('translate(200px, 600px)')
+  await expect(page.locator('#stick-knob')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 56, 0)')
   await expect(page.locator('#move-hint')).toBeHidden()
   const x0 = await handle.evaluate((l) => l.view.players[0].x)
   await expect.poll(() => handle.evaluate((l) => l.view.players[0].x)).toBeGreaterThan(x0 + 20)

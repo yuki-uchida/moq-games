@@ -233,6 +233,77 @@ describe('personal life branches', () => {
   })
 })
 
+describe('parent care trials', () => {
+  const care = EVENTS.findIndex((entry) => entry.boss === 'b_care')
+  const careLog = (game: Game) => game.state.log.filter((entry) => entry.text.includes(EVENTS[care].text))
+
+  test('absent parents skip the shared log and boss even with a parent weapon', () => {
+    const game = new Game(123)
+    const first = game.addPlayer('first', 'p_gone')!
+    game.addPlayer('second', 'p_gone')!
+    first.weapons = [{ id: 'p_free', lv: 1, cd: 100, held: 0, damage: 0 }]
+    event(game, care)
+    expect(careLog(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_care')).toBe(false)
+    expect(game.state.eventIndex).toBe(care + 1)
+    game.addPlayer('late', 'p_free')!
+    game.tick(0.01)
+    expect(careLog(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_care')).toBe(false)
+  })
+
+  test('mixed parents share one named trial regardless of weapons or downed state', () => {
+    const { game, first, second } = arena()
+    first.weapons = []
+    second.downed = true
+    const gone = game.addPlayer('gone', 'p_gone')!
+    gone.pending = 0
+    const talents = game.state.players.map((player) => structuredClone(player.talents))
+    const histories = game.state.players.map((player) => structuredClone(player.history))
+    event(game, care)
+    expect(careLog(game)).toEqual([
+      expect.objectContaining({ text: `${first.name}・${second.name}の家族の試練：${EVENTS[care].text}` })
+    ])
+    expect(careLog(game)[0].to).toBeUndefined()
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_care')).toHaveLength(1)
+    const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
+    expect(view.enemies).toEqual(toView(game.state).enemies)
+    expect(view.enemies.length).toBeGreaterThan(0)
+    expect(view.players.every((player) => player.talents === undefined)).toBe(true)
+    expect(game.state.players.map((player) => player.talents)).toEqual(talents)
+    expect(game.state.players.map((player) => player.history)).toEqual(histories)
+    const boss = game.state.enemies.find((enemy) => enemy.kind === 'b_care')!
+    boss.x = gone.x
+    boss.y = gone.y
+    gone.weapons = [{ id: 'w_perfume', lv: 1, cd: 0, held: 0, damage: 0 }]
+    game.tick(0.01)
+    expect(gone.weapons[0].damage).toBeGreaterThan(0)
+    game.removePlayer(first.id)
+    game.removePlayer(second.id)
+    game.addPlayer(first.id, 'p_free')!
+    game.tick(0.01)
+    expect(careLog(game)).toHaveLength(1)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_care')).toHaveLength(1)
+  })
+
+  test('departed parents and joins at or after an unprocessed boundary do not trigger past care', () => {
+    const game = new Game(123)
+    game.addPlayer('anchor', 'p_gone')!
+    game.addPlayer('departed', 'p_free')!
+    game.removePlayer('departed')
+    game.state.eventIndex = care
+    game.state.time = EVENTS[care].at
+    game.addPlayer('boundary', 'p_free')!
+    game.tick(0.01)
+    expect(careLog(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_care')).toBe(false)
+    game.addPlayer('departed', 'p_free')!
+    game.tick(0.01)
+    expect(careLog(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_care')).toBe(false)
+  })
+})
+
 describe('family healing and wire state', () => {
   test('heals only the owner, caps HP, and stops for downed, departed and ended lives without slots', () => {
     const { game, first, second } = arena()
@@ -279,7 +350,7 @@ describe('family healing and wire state', () => {
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)?.players[0]).toMatchObject({ married: true, hasChild: true })
     expect(view.players[0].talents).toBeUndefined()
-    for (const v of [1, 2, 3, 5]) expect(readView({ ...view, v })).toBeUndefined()
+    for (const v of [1, 2, 3, 4, 6]) expect(readView({ ...view, v })).toBeUndefined()
     for (const patch of [
       { married: false },
       { married: 1 },

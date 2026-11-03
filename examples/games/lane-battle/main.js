@@ -300,7 +300,7 @@ function renderRoster() {
       b.setAttribute('aria-pressed', String(slot >= 0))
       b.setAttribute('aria-label', `${t.name} Lv.${e.level}${slot >= 0 ? ' 編成中' : ''}`)
       b.title = `${t.line}：${t.area} ／ ${t.effect} — ${t.effectLine}`
-      const exp = e.level >= MAX_LEVEL ? 1 : e.exp / expToNext(e.level)
+      const exp = e.level >= MAX_LEVEL ? 1 : Math.min(1, e.exp / expToNext(e.level))
       b.innerHTML = `<img alt="" src="${models.portraitURL(e.key)}"><span><strong>${t.name}</strong>${t.special ? '<em>特殊</em>' : ''}<small>Lv.${e.level} · ${t.cost}💩</small><small>${statLine(e)}</small><small>${t.area} ／ ${t.effect}</small><i style="--x:${exp}"></i></span>${slot >= 0 ? `<b class="slot">${slot + 1}</b>` : ''}`
       b.onclick = () => {
         if (toggle(campaign, e.uid)) {
