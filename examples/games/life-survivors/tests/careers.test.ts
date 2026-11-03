@@ -27,6 +27,16 @@ const appearances: Record<string, string> = {
   w_gamble: 'entrepreneur'
 }
 
+test.each(['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'])(
+  '%s joins career ranking at Lv4 without changing appearance ranking',
+  (weapon) => {
+    expect(rankedCareer([[weapon, 3]], [])).toBeUndefined()
+    expect(rankedCareer([[weapon, 4]], [])).toBe('creative')
+    expect(rankedCareer([[weapon, 8]], [], [])).toBeUndefined()
+    expect(careerFor({ weapons: [[weapon, 4, 0]], passives: [] })).toBe('creative')
+  }
+)
+
 test('all twenty talents require owned Lv4; evolution only boosts owned maximum-level weapons', () => {
   expect(Object.keys(appearances).sort()).toEqual(TALENT_WEAPONS.map(({ id }) => id).sort())
   for (const weapon of TALENT_WEAPONS) {
@@ -69,8 +79,8 @@ test('ties use definition order for every pair, regardless of inventory order', 
   }
 })
 
-test('new styles never rank for career events, even evolved or explicitly eligible', () => {
-  const existing = ['soccer', 'bureaucrat', 'entrepreneur'] as const
+test('appearance-only styles never rank for career events, even evolved or explicitly eligible', () => {
+  const existing = ['soccer', 'bureaucrat', 'entrepreneur', 'creative'] as const
   for (const weapon of TALENT_WEAPONS.filter(
     ({ id }) => !existing.includes(appearances[id] as (typeof existing)[number])
   )) {

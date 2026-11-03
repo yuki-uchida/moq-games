@@ -27,20 +27,109 @@ const arena = () => {
 }
 
 describe('education and career history', () => {
-  test('social, romantic and creative appearances do not grant or displace career qualifications and rewards', () => {
-    for (const talent of [
-      'w_friend',
-      'w_sns',
-      'w_pet',
-      'w_love',
-      'w_beauty',
-      'w_ring',
-      'w_perfume',
-      'w_hobby',
-      'w_karaoke',
-      'w_travel',
-      'w_cooking'
-    ]) {
+  test.each(['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'])(
+    '%s qualifies only at Lv4 and retains creative experience after exchange',
+    (weapon) => {
+      for (const level of [3, 4]) {
+        const { game, players } = arena()
+        equip(players[0], weapon, level)
+        event(game, 'b_shukatsu')
+        expect(players[0].history[0].outcome).toBe(LIFE_OUTCOMES.b_shukatsu[level === 4 ? 5 : 2])
+        expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
+        expect(players.slice(1).every((player) => player.careerPending === 0)).toBe(true)
+        const first = { ...players[0].history[0] }
+        equip(players[0], 'w_work', 8)
+        event(game, 'b_layoff')
+        expect(players[0].history[0]).toEqual(first)
+        expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
+        expect(players[0].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[level === 4 ? 8 : 2])
+        expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+        game.state.phase = 'lost'
+        const view = JSON.parse(JSON.stringify(toView(game.state)))
+        expect(readView(view)).toBeTruthy()
+        expect(readView({ ...view, v: 4 })).toBeUndefined()
+        view.players[0].history[0].outcome = LIFE_OUTCOMES.b_layoff[7]
+        expect(readView(view)).toBeUndefined()
+      }
+    }
+  )
+
+  test('eight creative histories remain personal through downing, late joins and reused IDs', () => {
+    const { game, players } = arena()
+    const creative = ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking']
+    players.forEach((player, index) => equip(player, creative[index % 4], 4))
+    players[0].downed = true
+    players[0].hp = 0
+    event(game, 'b_shukatsu')
+    expect(players.every((player) => player.careerPending === 1)).toBe(true)
+    expect(players[0].downed).toBe(true)
+    game.removePlayer(players[7].id)
+    const rejoined = game.addPlayer(players[7].id, 'p_free')!
+    equip(rejoined, 'w_hobby', 8)
+    players.slice(0, 7).forEach((player, index) => equip(player, creative[(index + 1) % 4], index % 2 ? 3 : 4))
+    event(game, 'b_layoff')
+    expect(players.slice(0, 7).map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 2, 1, 2])
+    expect(rejoined.careerPending).toBe(0)
+    expect(rejoined.history).toHaveLength(1)
+    expect(players[0].hp).toBe(0)
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+    game.state.phase = 'lost'
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+
+    const lateGame = new Game(123)
+    lateGame.addPlayer('anchor', 'p_free')
+    event(lateGame, 'b_univ')
+    const late = lateGame.addPlayer('late', 'p_free')!
+    equip(late, 'w_hobby', 4)
+    event(lateGame, 'b_shukatsu')
+    expect(late.history).toEqual([
+      { event: EVENTS.findIndex((entry) => entry.boss === 'b_shukatsu'), outcome: LIFE_OUTCOMES.b_shukatsu[5] }
+    ])
+    lateGame.removePlayer(late.id)
+    lateGame.state.time = EVENTS.find((entry) => entry.boss === 'b_shukatsu')!.at
+    const boundary = lateGame.addPlayer(late.id, 'p_free')!
+    equip(boundary, 'w_hobby', 8)
+    event(lateGame, 'b_shukatsu')
+    expect(boundary.history).toEqual([])
+  })
+
+  test.each(['w_work', 'w_sports', 'w_invest'])(
+    'creative competes with %s using level, evolution and definition order',
+    (competitor) => {
+      const creative = TALENT_WEAPONS.find(({ id }) => id === 'w_hobby')!
+      const other = TALENT_WEAPONS.find(({ id }) => id === competitor)!
+      for (const [creativeLevel, otherLevel, passive] of [
+        [3, 4, undefined],
+        [5, 4, undefined],
+        [4, 5, undefined],
+        [4, 4, undefined],
+        [8, 8, creative.evolve!.passive],
+        [8, 8, other.evolve!.passive],
+        [7, 8, creative.evolve!.passive]
+      ] as const) {
+        const game = new Game(123)
+        const player = game.addPlayer('p0', 'p_free')!
+        player.weapons = [
+          [competitor, otherLevel],
+          ['w_hobby', creativeLevel]
+        ].map(([id, lv]) => ({ id: id as string, lv: lv as number, cd: 100, held: 0, damage: 0 }))
+        player.passives = passive ? [{ id: passive, lv: 1 }] : []
+        const creativeScore = creativeLevel + (creativeLevel === 8 && passive === creative.evolve!.passive ? 8 : 0)
+        const otherScore = otherLevel + (otherLevel === 8 && passive === other.evolve!.passive ? 8 : 0)
+        const wins =
+          creativeLevel >= 4 &&
+          (creativeScore > otherScore ||
+            (creativeScore === otherScore && TALENT_WEAPONS.indexOf(creative) < TALENT_WEAPONS.indexOf(other)))
+        event(game, 'b_shukatsu')
+        expect(player.history[0].outcome).toBe(
+          LIFE_OUTCOMES.b_shukatsu[wins ? 5 : competitor === 'w_work' ? 1 : competitor === 'w_sports' ? 3 : 4]
+        )
+      }
+    }
+  )
+
+  test('social and romantic appearances do not grant or displace career qualifications and rewards', () => {
+    for (const talent of ['w_friend', 'w_sns', 'w_pet', 'w_love', 'w_beauty', 'w_ring', 'w_perfume']) {
       for (const qualified of [undefined, 'w_work', 'w_sports', 'w_invest']) {
         const run = (withAppearance: boolean) => {
           const game = new Game(123)

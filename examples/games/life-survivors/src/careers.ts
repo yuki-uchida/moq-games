@@ -1,7 +1,7 @@
 import { MAX_WEAPON_LEVEL, WEAPONS } from './data'
 
-export type Career = 'soccer' | 'bureaucrat' | 'entrepreneur'
-export type Appearance = Career | 'social' | 'romantic' | 'creative'
+export type Career = 'soccer' | 'bureaucrat' | 'entrepreneur' | 'creative'
+export type Appearance = Career | 'social' | 'romantic'
 
 const CAREERS: Record<string, Career> = {
   w_sports: 'soccer',
@@ -12,7 +12,11 @@ const CAREERS: Record<string, Career> = {
   w_overtime: 'bureaucrat',
   w_invest: 'entrepreneur',
   w_savings: 'entrepreneur',
-  w_gamble: 'entrepreneur'
+  w_gamble: 'entrepreneur',
+  w_hobby: 'creative',
+  w_karaoke: 'creative',
+  w_travel: 'creative',
+  w_cooking: 'creative'
 }
 
 const APPEARANCES: Record<string, Appearance> = {
@@ -23,11 +27,7 @@ const APPEARANCES: Record<string, Appearance> = {
   w_love: 'romantic',
   w_beauty: 'romantic',
   w_ring: 'romantic',
-  w_perfume: 'romantic',
-  w_hobby: 'creative',
-  w_karaoke: 'creative',
-  w_travel: 'creative',
-  w_cooking: 'creative'
+  w_perfume: 'romantic'
 }
 
 export function rankedCareer(
