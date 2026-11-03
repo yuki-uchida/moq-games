@@ -21,7 +21,12 @@ export class SkillCutIn {
   private readonly bands: Band[] = []
   private readonly rings = new Set<HTMLElement>()
   private timer = 0
-  constructor(parent: HTMLElement, private readonly field: HTMLElement) {
+  constructor(
+    parent: HTMLElement,
+    private readonly field: HTMLElement,
+    /** Called in the same task that makes a band visible (sound and BGM duck belong here, not at cast time). */
+    private readonly onBandStart?: (info: CutInInfo) => void
+  ) {
     this.element.id = 'skill-cutin'
     this.element.className = 'skill-cutin'
     this.element.setAttribute('aria-hidden', 'true')
@@ -78,6 +83,7 @@ export class SkillCutIn {
     }
   }
   private show({ info, side }: Band) {
+    this.onBandStart?.(info)
     this.element.dataset.type = info.type
     if (info.portrait) this.portrait.src = info.portrait
     this.portrait.hidden = !info.portrait

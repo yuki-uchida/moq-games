@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 import { GameEngine } from '../examples/games/tower_diffence_with_jev/src/game/GameEngine'
-import { getField } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { getField, getLegalAIActions } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { SPECIALS } from '../examples/games/tower_diffence_with_jev/src/game/SpecialAbilities'
 import { freshSave } from '../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem'
 import { openOfflineCampaign, towerPath } from './tower-defense-e2e-arrange'
 
 // Seeds a campaign already in the assault with a soldier (optionally down) and an archer.
-async function seed(page: Page, { soldierDown = false, far = false } = {}) {
+async function seed(page: Page, { soldierDown = false, far = false, tough = false } = {}) {
   const save = freshSave()
   save.economyVersion = 2
   save.gold = 120
@@ -19,11 +20,24 @@ async function seed(page: Page, { soldierDown = false, far = false } = {}) {
   if (soldierDown) engine.state.units.find((u) => u.type === 'soldier')!.hp = 0
   expect(engine.startAssault()).toBe(true)
   engine.update(1 / 60)
-  const checkpoint = engine.exportCheckpoint()!
+  if (tough) {
+    // One enemy (spawned now) that neither special alone can finish.
+    expect(engine.applyAIAction(getLegalAIActions(engine.state).find((a) => a.type === 'spawn' && a.unitType === 'goblin'))).toBe(true)
+    const enemy = engine.state.units.find((u) => u.owner === 'ai')!
+    for (const caster of engine.state.units.filter((u) => u.owner === 'player'))
+      expect(enemy.hp, caster.type).toBeGreaterThan(SPECIALS[caster.type as 'soldier' | 'archer'].power * caster.attack)
+  }
+  // A checkpoint is only exportable once the spawn has settled.
+  let checkpoint = engine.exportCheckpoint()
+  for (let tick = 0; !checkpoint && tick < 1200; tick++) {
+    engine.update(1 / 60)
+    checkpoint = engine.exportCheckpoint()
+  }
+  expect(checkpoint).toBeTruthy()
   const raw = JSON.stringify({
     version: 3,
-    profile: checkpoint.profile,
-    run: { version: 1, progress: checkpoint.progress, engine: checkpoint }
+    profile: checkpoint!.profile,
+    run: { version: 1, progress: checkpoint!.progress, engine: checkpoint }
   })
   await page.goto(towerPath)
   await page.evaluate((raw) => {
@@ -178,8 +192,7 @@ test('two specials cast back-to-back each get their own band one after the other
   await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
   await expect(archer).toHaveAttribute('data-state', 'ready')
   await expect(soldier).toHaveAttribute('data-state', 'ready')
-  // Where the soldier stands, on screen: the second cast is aimed there by hand (the one-tap auto-aim
-  // deliberately skips enemies another cast is about to hit, so it would refuse a same-moment second cast).
+  // Where the soldier stands, on screen: the second cast is aimed there by hand.
   const spot = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
       unit = state.units.find((u: any) => u.type === 'soldier'),
@@ -193,14 +206,15 @@ test('two specials cast back-to-back each get their own band one after the other
   // Record every rendered frame in the page, so slow round trips can't blur what was on screen.
   await page.evaluate(() => {
     const visible = (element: Element | null) => !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
-    const log: Array<{ t: number; sim: number; band: string | null; rings: number }> = ((window as any).__cutinLog = [])
+    const log: Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }> = ((window as any).__cutinLog = [])
     const tick = () => {
       const band = document.querySelector('#skill-cutin .skill-cutin-text b')
       log.push({
         t: performance.now(),
         sim: Number(document.getElementById('app')!.dataset.simulationTime),
         band: visible(band) ? band!.textContent : null,
-        rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length
+        rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length,
+        cutin: (window as any).towerDefenseAudioDiagnostics().feelPlayed.cutin ?? 0
       })
       requestAnimationFrame(tick)
     }
@@ -214,12 +228,17 @@ test('two specials cast back-to-back each get their own band one after the other
   await expect(page.locator('#field .skill-target-ring')).toHaveCount(0)
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(soldier).toHaveAttribute('data-state', 'charging')
-  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number }>)
+  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }>)
   const names = log.map((f) => f.band).filter((n, i, all) => n && n !== all[i - 1]),
     first = log.find((f) => f.rings > 0)!,
     resumed = log.find((f) => f.t > first.t && f.sim > first.sim)!
   // Both bands play, in cast order; both rings stand together; the simulation waits for both bands.
   expect(names).toEqual(['矢の雨', '回転斬撃'])
+  // Each band sounds (cut-in whoosh) when it appears, in the same or the next frame, and nothing sounds without a band.
+  const bandStarts = log.flatMap((f, i) => (f.band && f.band !== log[i - 1]?.band ? [i] : [])),
+    soundSteps = log.flatMap((f, i) => (i > 0 ? Array<number>(f.cutin - log[i - 1].cutin).fill(i) : []))
+  expect(soundSteps).toHaveLength(bandStarts.length)
+  for (const [n, start] of bandStarts.entries()) expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
   expect(Math.max(...log.map((f) => f.rings))).toBe(2)
   expect(resumed.t - first.t).toBeGreaterThanOrEqual(1100)
   // Each ring goes when its own band ends: one ring is left during the second band.
@@ -232,6 +251,27 @@ test('two specials cast back-to-back each get their own band one after the other
   const cards = await page.locator('.fx-special').allTextContents()
   for (const card of cards) expect(card).toMatch(/矢の雨|回転斬撃/)
   expect(new Set(cards.map((card) => (card.includes('矢の雨') ? 'a' : 'b'))).size).toBe(cards.length)
+})
+
+test('two skills tapped back to back on one tough enemy are both cast: a special that cannot finish it does not hide it', async ({
+  page
+}) => {
+  await seed(page, { tough: true })
+  await assault(page)
+  const archer = page.locator('.skill-btn[data-skill-type="archer"]'),
+    soldier = page.locator('.skill-btn[data-skill-type="soldier"]')
+  await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(soldier).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
+  await expect(archer).toHaveAttribute('data-state', 'ready')
+  await expect(soldier).toHaveAttribute('data-state', 'ready')
+  // Two taps in the same task: the second one sees the first cast still pending.
+  await page.evaluate(() => {
+    for (const type of ['archer', 'soldier']) document.querySelector<HTMLElement>(`.skill-btn[data-skill-type="${type}"]`)!.click()
+  })
+  await expect(archer).toHaveAttribute('data-state', 'charging')
+  await expect(soldier).toHaveAttribute('data-state', 'charging')
+  const effects = (await stored(page)).state.specialEffects as Array<{ type: string }>
+  expect(new Set(effects.map((e) => e.type))).toEqual(new Set(['archer', 'soldier']))
 })
 
 test('a downed ally shows a disabled greyed button', async ({ page }, info) => {

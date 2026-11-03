@@ -2437,9 +2437,17 @@ export class GameEngine {
       if (amount > 0) u.hitAnimation = ANIMATION.hit
     }
     if (stepImpacts.length) {
+      // Kill credit: one source per kill. A target that died this step is credited to the single largest damage
+      // contribution on it this step, across every source (normal attacks, splash, breath, spikes, gate shots and
+      // specials); the first one wins ties. A special impact lists only the targets it was that largest source for.
+      const killer = new Map<number, DamageContribution>()
+      for (const c of historyContributions) {
+        const best = killer.get(c.targetId)
+        if (!best || c.amount > best.amount) killer.set(c.targetId, c)
+      }
       const dead = new Set(defeatedThisStep.map((unit) => unit.id))
       for (const impact of stepImpacts) {
-        impact.kills = impact.targets.filter((id) => dead.has(id) && impact.damage > 0)
+        impact.kills = impact.targets.filter((id) => dead.has(id) && impact.damage > 0 && killer.get(id)?.attackId === impact.effectId)
         this.specialImpacts.push(impact)
       }
       if (this.specialImpacts.length > SPECIAL_IMPACT_QUEUE_LIMIT)

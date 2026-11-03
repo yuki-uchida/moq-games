@@ -1132,9 +1132,6 @@ function playCastFeedback(type: AllyType, point: Point) {
     { portrait: displayPortrait(type), skill: SPECIALS[type].name, unit: DEFINITIONS[type].name, type },
     { point, radius: SPECIALS[type].radius }
   )
-  soundPlayer.playCue('ui_special')
-  soundPlayer.playFeel('cutin')
-  battleMusic.duck()
 }
 const specialInput = new GroundTapInput(viewport, {
   acceptTarget: (target) => target instanceof Element && !!target.closest('[data-unit-id]'),
@@ -1154,7 +1151,12 @@ $('unit-special').onclick = () => {
   if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
   else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
 }
-const skillCutIn = new SkillCutIn($('app'), $('field'))
+const skillCutIn = new SkillCutIn($('app'), $('field'), () => {
+  // Each queued band sounds (and ducks the BGM) when it appears, not when it was cast.
+  soundPlayer.playCue('ui_special')
+  soundPlayer.playFeel('cutin')
+  battleMusic.duck()
+})
 const skillBar = new SkillBar(document.querySelector<HTMLElement>('.game-layout')!, {
   portrait: displayPortrait,
   onActivate: activateSkill
