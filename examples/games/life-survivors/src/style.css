@@ -746,6 +746,14 @@ button {
 .result-build .poor {
   color: #9aa3ad;
 }
+#result-history-list {
+  padding-left: 1.5em;
+  text-align: left;
+  line-height: 1.5;
+}
+#result-history-list li + li {
+  margin-top: 0.35em;
+}
 @media (max-width: 640px) {
   .meter {
     width: 90px;
