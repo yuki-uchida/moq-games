@@ -4,6 +4,43 @@ import { Game } from '../src/game'
 import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
+test('normal cards can turn an early career into a different later career', () => {
+  const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
+  const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
+  const runs: { seed: number; time: number; early?: string; later?: string }[] = []
+  for (let seed = 1; seed <= 20; seed++) {
+    const game = new Game(seed)
+    const player = game.addPlayer('p0')!
+    for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
+      if (game.state.phase !== 'playing' || game.state.eventIndex > laterIndex) break
+      const priorities =
+        game.state.eventIndex > earlyIndex ? ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'] : ['w_work', 'w_study']
+      const scores = player.choices.map((choice) => {
+        const [kind, id] = choice.split(':')
+        const priority = priorities.indexOf(id)
+        if (kind === 'r') return priority >= 0 ? -1 : 1
+        if (kind === 's') return priority >= 0 ? 4 : -1
+        if (choice === 'x:skip') return 0
+        if (priority >= 0) return 5 - priority
+        if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 2
+        return 1
+      })
+      const input = botInput(game, { ...player, choices: [] }, 'random')
+      input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
+      game.setInput(player.id, input)
+      for (let step = 0; step < 6; step++) game.tick(1 / 60)
+    }
+    const early = player.history.find((decision) => decision.event === earlyIndex)?.outcome
+    const later = player.history.find((decision) => decision.event === laterIndex)?.outcome
+    runs.push({ seed, time: game.state.time, early, later })
+    if (early && LIFE_OUTCOMES.b_shukatsu.slice(0, 2).includes(early) && later === LIFE_OUTCOMES.b_layoff[12]) {
+      console.info('Normal-card later career:', JSON.stringify(runs.at(-1)))
+      return
+    }
+  }
+  expect.fail(JSON.stringify(runs))
+}, 120_000)
+
 test('movement does not consume game randomness when choices are made separately', () => {
   const game = new Game(7)
   const control = new Game(7)

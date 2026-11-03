@@ -760,6 +760,37 @@ export class Game {
                   (career.path === 'sports' ? 3 : career.path === 'assets' ? 5 : 7) + (reward === 2 ? 0 : 1)
                 ]
             }
+            const eligible: Career[] = []
+            if (level('w_work') >= 4) eligible.push('bureaucrat')
+            if (sports >= 4) eligible.push('soccer')
+            if (assets >= 4) eligible.push('entrepreneur')
+            if (creative >= 4) eligible.push('creative')
+            const selected = rankedCareer(
+              player.weapons.map(({ id, lv }) => [id, lv]),
+              player.passives.map(({ id, lv }) => [id, lv]),
+              eligible
+            )
+            const previous = career.employed
+              ? 'bureaucrat'
+              : career.path === 'sports'
+                ? 'soccer'
+                : career.path === 'assets'
+                  ? 'entrepreneur'
+                  : career.path === 'creative'
+                    ? 'creative'
+                    : undefined
+            if (selected && selected !== previous) {
+              reward = 2
+              const outcome =
+                selected === 'bureaucrat'
+                  ? previous
+                    ? 14
+                    : career.employed === false
+                      ? 13
+                      : 9
+                  : 9 + ['bureaucrat', 'soccer', 'entrepreneur', 'creative'].indexOf(selected)
+              text = LIFE_OUTCOMES.b_layoff[outcome]
+            }
           }
           player.careerPending += reward
           player.history.push({ event: index, outcome: text })
