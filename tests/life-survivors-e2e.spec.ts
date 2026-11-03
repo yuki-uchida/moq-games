@@ -135,6 +135,92 @@ for (const width of [1280, 390]) {
 }
 
 for (const width of [1280, 390]) {
+  for (const [age, name, subtitle] of [
+    [23, '成人期', '自分の歩幅で進んで'],
+    [35, '壮年期', '日々を重ねて']
+  ] as const) {
+    for (const [weapon, outcome] of [
+      ['', '就職を急がず、自分の道を探す。'],
+      ['w_work', '実務を磨き、現場で就職。転機を1回獲得。'],
+      ['w_hobby', '好きなことを磨き、創作の道へ。転機を1回獲得。'],
+      ['w_sports', '運動を磨き、スポーツの道へ。転機を1回獲得。'],
+      ['w_invest', '資産を育て、資産を活かす道へ。転機を1回獲得。']
+    ] as const) {
+      test(`adult stage stays path-neutral at age ${age}, ${weapon || 'no work'}, ${width}px`, async ({
+        page
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 844 })
+        await page.goto('/')
+        await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+        const handle = await life(page)
+        const history = await handle.evaluate(
+          async (hook, setup) => {
+            const dataPath = '/src/data.ts'
+            const { EVENTS, timeAtAge } = await import(dataPath)
+            const game = hook.game as unknown as Game
+            const player = game.state.players[0]
+            game.targetPopulation = () => 0
+            player.birthPick = false
+            player.choices = []
+            player.pending = 0
+            player.weapons = setup.weapon ? [{ id: setup.weapon, lv: 4, cd: 100, held: 0, damage: 0 }] : []
+            if (setup.age === 35) {
+              const index = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_shukatsu')
+              game.state.eventIndex = index
+              game.state.time = EVENTS[index].at - 0.01
+              game.tick(0.02)
+              player.careerPending = 0
+              player.choices = []
+              game.state.fx = []
+            }
+            game.state.eventIndex = EVENTS.length
+            game.state.enemies = []
+            game.state.log = []
+            game.state.time = timeAtAge(setup.age) + 0.01
+            return player.history.at(-1)?.outcome
+          },
+          { age, weapon }
+        )
+        if (age === 35) expect(history).toBe(outcome)
+        await expect(page.locator('#stage')).toHaveText(name)
+        await expect(page.locator('#announcements')).toHaveText(`${name}、${age}歳`)
+        await expect(page.locator('#announcements')).toHaveAttribute('aria-live', 'assertive')
+        await expect(page.locator('#banner .banner-title')).toHaveText(name, { timeout: 6000 })
+        await expect(page.locator('#banner .banner-meta')).toHaveText(`${age}歳`)
+        await expect(page.locator('#banner .banner-sub')).toHaveText(`🧑 ${subtitle}`)
+        expect(await page.locator('.hud-top').evaluate((hud) => hud.scrollWidth <= hud.clientWidth)).toBe(true)
+        const bannerBounds = await page.locator('#banner .banner-stage').evaluate((banner) => {
+          const animation = banner.getAnimations()[0]
+          const currentTime = animation.currentTime
+          const duration = Number(animation.effect!.getComputedTiming().duration)
+          animation.pause()
+          const bounds = [0.1, 0.5, 0.9].flatMap((progress) => {
+            animation.currentTime = duration * progress
+            return Array.from(banner.querySelectorAll('.banner-meta, .banner-title, .banner-sub'), (element) => {
+              const rect = element.getBoundingClientRect()
+              return { progress, text: element.textContent, left: rect.left, right: rect.right }
+            })
+          })
+          animation.currentTime = currentTime
+          animation.play()
+          return bounds
+        })
+        for (const { progress, text, left, right } of bannerBounds) {
+          expect(left, `${text} at ${progress}`).toBeGreaterThanOrEqual(0)
+          expect(right, `${text} at ${progress}`).toBeLessThanOrEqual(width)
+        }
+        if (!weapon) await page.screenshot({ path: testInfo.outputPath(`stage-${age}-${width}.png`) })
+        await handle.evaluate((hook) => {
+          const game = hook.game as unknown as Game
+          game.state.players[0].hp = 0
+          game.state.phase = 'lost'
+        })
+        await expect(page.locator('#result-text')).toHaveText(`${name}で力尽きた。`, { timeout: 8000 })
+        await expect(page.locator('#result')).toBeVisible()
+      })
+    }
+  }
+
   test(`youth stage does not assume an education path at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 })
     await page.goto('/')
