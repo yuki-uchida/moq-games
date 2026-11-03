@@ -43,8 +43,9 @@ test('actual decisions are personal, ordered, stable and terminal-only for eight
   expect(players[0].history.filter((decision) => EVENTS[decision.event].boss === 'b_wedding')).toHaveLength(1)
   expect(players[0].married).toBe(true)
   run('nightcry')
-  expect(players[0].history.at(-1)!.outcome).toContain('子どもが生まれた')
-  expect(players[1].history.at(-1)!.outcome).toContain('子どもを持たない')
+  game.setInput(players[0].id, { pick: 0, pickSeq: players[0].choiceSeq })
+  expect(players[0].history.at(-1)!.outcome).toContain('子どもを迎えた')
+  expect(players[1].history.at(-1)!.outcome).toContain('未婚')
   for (const [index, player] of players.entries())
     player.weapons = [{ id: 'w_work', lv: index % 2 ? 3 : 4, cd: 100, held: 0, damage: 0 }]
   run('b_layoff')

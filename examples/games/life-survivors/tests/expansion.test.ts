@@ -819,7 +819,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v6', () => {
+describe('protocol v7', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -829,9 +829,9 @@ describe('protocol v6', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v6 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v7 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(6)
+    expect(view.v).toBe(7)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -840,7 +840,7 @@ describe('protocol v6', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v6 field', () => {
+  test('readView rejects old versions and every malformed v7 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()

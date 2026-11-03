@@ -28,6 +28,9 @@ const event = (game: Game, index: number) => {
   game.state.eventIndex = index
   game.state.time = EVENTS[index].at - 0.01
   game.tick(0.01)
+  if (index === birth)
+    for (const player of game.state.players)
+      if (player.choices[0] === 'f:yes') game.setInput(player.id, { pick: 0, pickSeq: player.choiceSeq })
 }
 
 describe('personal life branches', () => {
@@ -350,7 +353,7 @@ describe('family healing and wire state', () => {
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)?.players[0]).toMatchObject({ married: true, hasChild: true })
     expect(view.players[0].talents).toBeUndefined()
-    for (const v of [1, 2, 3, 4, 5, 7]) expect(readView({ ...view, v })).toBeUndefined()
+    for (const v of [1, 2, 3, 4, 5, 6, 8]) expect(readView({ ...view, v })).toBeUndefined()
     for (const patch of [
       { married: false },
       { married: 1 },

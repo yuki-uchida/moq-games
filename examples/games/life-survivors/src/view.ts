@@ -15,7 +15,7 @@ import {
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
 import type { GameState } from './game'
-import { historyOk, type LifeDecision } from './history'
+import { historyOk, LIFE_OUTCOMES, type LifeDecision } from './history'
 
 export { BULLET_KINDS, ITEM_KINDS }
 
@@ -48,7 +48,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 6
+  v: 7
   time: number
   phase: GameState['phase']
   level: number
@@ -137,7 +137,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 6,
+    v: 7,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -186,8 +186,10 @@ const flat = (value: unknown, stride: number, max: number) =>
   Array.isArray(value) && value.length % stride === 0 && value.length <= stride * max && value.every((n) => finite(n))
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
 const choiceOk = (value: unknown) => {
+  if (value === 'f:yes' || value === 'f:no') return true
   if (!text(value, 40)) return false
   const [kind, id, replacement] = value.split(':')
+  if (value.split(':').length !== (kind === 'r' ? 3 : 2)) return false
   if (kind === 's') return WEAPON_BY_ID.has(id) && replacement === undefined
   if (kind === 'r') return WEAPON_BY_ID.has(id) && WEAPON_BY_ID.has(replacement)
   return kind === 'w'
@@ -202,6 +204,34 @@ function playerOk(value: unknown): value is ViewPlayer {
   const p = value
   return (
     text(p.id, 64) &&
+    Object.keys(p).every((key) =>
+      [
+        'id',
+        'name',
+        'color',
+        'x',
+        'y',
+        'fx',
+        'fy',
+        'hp',
+        'maxHp',
+        'revive',
+        'choiceSeq',
+        'downed',
+        'hurt',
+        'married',
+        'hasChild',
+        'killer',
+        'parent',
+        'weapons',
+        'passives',
+        'choices',
+        'talents',
+        'history'
+      ].includes(key)
+    ) &&
+    Number.isSafeInteger(p.choiceSeq) &&
+    (p.choiceSeq as number) >= 0 &&
     text(p.name, 16) &&
     text(p.color, 16) &&
     /^#[0-9a-f]{6}$/i.test(p.color) &&
@@ -223,6 +253,8 @@ function playerOk(value: unknown): value is ViewPlayer {
     Array.isArray(p.choices) &&
     p.choices.length <= 8 &&
     p.choices.every(choiceOk) &&
+    (!p.choices.some((choice) => typeof choice === 'string' && choice.startsWith('f:')) ||
+      (p.married && !p.hasChild && p.choices.length === 2 && p.choices[0] === 'f:yes' && p.choices[1] === 'f:no')) &&
     (p.talents === undefined ||
       (record(p.talents) && TALENT_CATEGORIES.every((c) => finite((p.talents as Record<string, unknown>)[c], 0, 5))))
   )
@@ -230,7 +262,32 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 6) return undefined
+  if (!record(value) || value.v !== 7) return undefined
+  if (
+    Object.keys(value).some(
+      (key) =>
+        ![
+          'v',
+          'time',
+          'phase',
+          'level',
+          'xp',
+          'xpNext',
+          'kills',
+          'players',
+          'enemies',
+          'shots',
+          'bullets',
+          'gems',
+          'items',
+          'popups',
+          'fx',
+          'log',
+          'reaper'
+        ].includes(key)
+    )
+  )
+    return undefined
   const v = value
   const ok =
     [v.time, v.level, v.xp, v.xpNext, v.kills].every((n) => finite(n, 0, 1e9)) &&
@@ -263,7 +320,19 @@ export function readView(value: unknown): View | undefined {
   if (
     (v.players as ViewPlayer[]).some(
       (player) =>
-        (player.married && (v.time as number) < weddingAt) || (player.hasChild && (v.time as number) < birthAt)
+        (player.married && (v.time as number) < weddingAt) ||
+        (player.hasChild && (v.time as number) < birthAt) ||
+        (player.choices.includes('f:yes') && (v.time as number) < birthAt) ||
+        (player.history !== undefined &&
+          (() => {
+            const wedding = player.history.find((entry) => EVENTS[entry.event].boss === 'b_wedding')
+            const birth = player.history.find((entry) => EVENTS[entry.event].swarm === 'nightcry')
+            return (
+              player.married !== (wedding?.outcome === LIFE_OUTCOMES.b_wedding[0]) ||
+              player.hasChild !== (birth?.outcome === LIFE_OUTCOMES.nightcry[0]) ||
+              (!!birth && (birth.outcome === LIFE_OUTCOMES.nightcry[2]) === player.married)
+            )
+          })())
     )
   )
     return undefined
