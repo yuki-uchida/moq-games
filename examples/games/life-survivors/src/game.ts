@@ -446,7 +446,10 @@ export class Game {
   private grid = new Map<number, Enemy[]>()
   private spawnDebt = 0
   private inputs = new Map<string, Input>()
-  private careers = new Map<string, { studied?: boolean; employed?: boolean; settled?: boolean }>()
+  private careers = new Map<
+    string,
+    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets'; settled?: boolean }
+  >()
   private accumulator = 0
   private fxSeq = 0
   private stageIndex = -1
@@ -698,6 +701,8 @@ export class Game {
           if (player.joinedAt >= event.at) continue
           const career = this.careers.get(player.id)!
           const level = (id: string) => player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0
+          const sports = Math.max(level('w_sports'), level('w_muscle'))
+          const assets = Math.max(level('w_invest'), level('w_savings'))
           let reward = 0
           let text: string
           if (event.boss === 'b_univ') {
@@ -710,11 +715,20 @@ export class Game {
             career.employed = level('w_work') >= 2
             reward = career.employed ? (career.studied ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
+            if (!career.employed && Math.max(sports, assets) >= 4) {
+              career.path = sports >= assets ? 'sports' : 'assets'
+              reward = 1
+              text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : 4]
+            }
           } else {
             if (career.settled !== undefined) continue
             career.settled = true
             reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_layoff[reward === 2 ? 0 : reward === 1 ? 1 : 2]
+            if (career.path) {
+              reward = (career.path === 'sports' ? sports : assets) >= 4 ? 2 : 1
+              text = LIFE_OUTCOMES.b_layoff[(career.path === 'sports' ? 3 : 5) + (reward === 2 ? 0 : 1)]
+            }
           }
           player.careerPending += reward
           player.history.push({ event: index, outcome: text })

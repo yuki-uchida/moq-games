@@ -25,6 +25,136 @@ const arena = () => {
 }
 
 describe('education and career history', () => {
+  test('eight personal paths preserve work priority, maxima, ties and terminal validation', () => {
+    const { game, players } = arena()
+    const builds: [string, number][][] = [
+      [['w_sports', 4]],
+      [['w_muscle', 4]],
+      [['w_invest', 4]],
+      [['w_savings', 4]],
+      [
+        ['w_sports', 4],
+        ['w_invest', 5]
+      ],
+      [
+        ['w_muscle', 5],
+        ['w_savings', 5]
+      ],
+      [
+        ['w_work', 2],
+        ['w_sports', 8],
+        ['w_invest', 8]
+      ],
+      [
+        ['w_sports', 3],
+        ['w_savings', 3]
+      ]
+    ]
+    players.forEach((player, index) => {
+      player.weapons = builds[index].map(([id, lv]) => ({ id, lv, cd: 100, held: 0, damage: 0 }))
+    })
+    players[0].downed = true
+    players[0].hp = 0
+    event(game, 'b_shukatsu')
+    expect(players.map((player) => player.careerPending)).toEqual([1, 1, 1, 1, 1, 1, 1, 0])
+    expect(players.map((player) => player.history[0].outcome)).toEqual([
+      ...Array(2).fill('運動を磨き、スポーツの道へ。転機を1回獲得。'),
+      ...Array(3).fill('資産を育て、資産を活かす道へ。転機を1回獲得。'),
+      '運動を磨き、スポーツの道へ。転機を1回獲得。',
+      '実務を磨き、現場で就職。転機を1回獲得。',
+      '就職を急がず、自分の道を探す。'
+    ])
+    const decisions = players.map((player) => [...player.history])
+    players.forEach((player, index) => equip(player, index % 2 ? 'w_muscle' : 'w_savings', 4))
+    event(game, 'b_shukatsu')
+    expect(players.map((player) => player.history)).toEqual(decisions)
+    expect(players.every((player) => player.careerPending === 0)).toBe(true)
+    event(game, 'b_layoff')
+    expect(players.map((player) => player.careerPending)).toEqual([1, 2, 2, 1, 2, 2, 1, 0])
+    expect(players[0].downed).toBe(true)
+    expect(players[0].hp).toBe(0)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(1)
+    expect(
+      toView(game.state).players.every((player) => player.history === undefined && player.talents === undefined)
+    ).toBe(true)
+    game.state.phase = 'lost'
+    const terminal = JSON.parse(JSON.stringify(toView(game.state)))
+    expect(readView(terminal)).toBeTruthy()
+    expect(terminal.players.map((player: Player) => player.history)).toEqual(players.map((player) => player.history))
+    expect(terminal.players.every((player: Player) => !('path' in player))).toBe(true)
+  })
+
+  test.each(['w_sports', 'w_muscle', 'w_invest', 'w_savings'])(
+    '%s replacement preserves the path, but only current weapons in that field earn two rewards',
+    (weapon) => {
+      const {
+        game,
+        players: [player]
+      } = arena()
+      equip(player, weapon, 4)
+      event(game, 'b_shukatsu')
+      const decision = { ...player.history[0] }
+      player.choices = [`r:${weapon}:w_work`]
+      game.choose(player, 0)
+      player.weapons[0].lv = 8
+      event(game, 'b_layoff')
+      expect(player.careerPending).toBe(1)
+      expect(player.history[0]).toEqual(decision)
+      expect(player.history[1].outcome).toContain(
+        weapon === 'w_sports' || weapon === 'w_muscle' ? '過去の運動経験' : '過去の資産経験'
+      )
+      expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+      game.state.phase = 'lost'
+      expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    }
+  )
+
+  test('new paths do not transfer to late or reused IDs, nor activate the shared layoff boss', () => {
+    const game = new Game(123)
+    const original = game.addPlayer('same', 'p_free')!
+    equip(original, 'w_sports', 4)
+    event(game, 'b_shukatsu')
+    const late = game.addPlayer('late', 'p_free')!
+    equip(late, 'w_invest', 8)
+    game.removePlayer(original.id)
+    const reused = game.addPlayer('same', 'p_free')!
+    equip(reused, 'w_sports', 8)
+    event(game, 'b_layoff')
+    expect([late.careerPending, reused.careerPending]).toEqual([0, 0])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+  })
+
+  test('education keeps the two-point job reward ahead of both alternative paths', () => {
+    const {
+      game,
+      players: [player]
+    } = arena()
+    equip(player, 'w_study', 3)
+    event(game, 'b_univ')
+    player.weapons = ['w_work', 'w_sports', 'w_invest'].map((id) => ({ id, lv: 8, cd: 100, held: 0, damage: 0 }))
+    event(game, 'b_shukatsu')
+    expect(player.careerPending).toBe(2)
+    expect(player.history.at(-1)!.outcome).toContain('専門職')
+  })
+
+  test('a late participant can choose a future path but not one at their join boundary', () => {
+    const game = new Game(123)
+    game.addPlayer('anchor', 'p_free')
+    event(game, 'b_univ')
+    const future = game.addPlayer('future', 'p_free')!
+    equip(future, 'w_savings', 4)
+    const index = EVENTS.findIndex((entry) => entry.boss === 'b_shukatsu')
+    game.state.eventIndex = index
+    game.state.time = EVENTS[index].at
+    const boundary = game.addPlayer('boundary', 'p_free')!
+    equip(boundary, 'w_sports', 8)
+    game.tick(0.001)
+    expect(future.careerPending).toBe(1)
+    expect(boundary.history).toEqual([])
+    event(game, 'b_layoff')
+    expect([future.careerPending, boundary.careerPending]).toEqual([2, 0])
+  })
+
   test('eight players decide independently at all three stages, without using talent', () => {
     const { game, players } = arena()
     players.forEach((player, index) => equip(player, 'w_study', index % 2 ? 2 : 3))
