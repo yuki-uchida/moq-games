@@ -16,6 +16,7 @@ import {
   WEAPON_BY_ID,
   WEAPON_INDEX,
   ageAt,
+  timeAtAge,
   type EnemyDef
 } from '../src/data'
 import { FX, FX_CAP, FX_STRIDE, FX_WINDOW, type FxEvent } from '../src/fx'
@@ -145,11 +146,11 @@ describe('new talent weapons', () => {
     for (const id of Object.keys(NEW_WEAPONS)) {
       const { game, player } = arena(5)
       const def = WEAPON_BY_ID.get(id)!
-      game.state.time = def.minAge * (RUN_SECONDS / 80) + 0.5
+      game.state.time = timeAtAge(def.minAge) + 0.5
       expect(ageAt(game.state.time)).toBe(def.minAge)
       expect(game.options(player)).toContain(`w:${id}`)
       if (def.minAge > 0) {
-        game.state.time = (def.minAge - 1) * (RUN_SECONDS / 80) + 0.5
+        game.state.time = timeAtAge(def.minAge - 1) + 0.5
         expect(game.options(player)).not.toContain(`w:${id}`)
       }
     }
@@ -439,7 +440,7 @@ describe('enemies', () => {
 
   test('swarm events announce themselves and the wall formation lines up', () => {
     const { game, player } = arena(6)
-    game.state.time = 59.99
+    game.state.time = EVENTS[0].at - 0.01
     game.tick(1 / 60)
     const swarm = ofType(collect(game), FX.SWARM)
     expect(swarm).toHaveLength(1)
@@ -746,7 +747,7 @@ describe('fx channel', () => {
       const stages: number[] = []
       run(game, player, 3, () => game.state.fx.filter((e) => e.type === FX.STAGE).forEach((e) => stages.push(e.a)))
       expect(stages).toContain(0)
-      game.state.time = (RUN_SECONDS / 80) * STAGES[1].age + 0.01
+      game.state.time = timeAtAge(STAGES[1].age) + 0.01
       run(game, player, 2, () => game.state.fx.filter((e) => e.type === FX.STAGE).forEach((e) => stages.push(e.a)))
       expect(stages).toContain(1)
       for (let i = 0; i < 6; i++) game.spawnEnemy('germ', player.x + 20, player.y)

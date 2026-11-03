@@ -1,6 +1,6 @@
 import { toView } from '../src/view'
 import { Game, GIFTED, POOR, type Player } from '../src/game'
-import { ENEMY_BY_ID, WEAPON_BY_ID } from '../src/data'
+import { ENEMY_BY_ID, RUN_SECONDS, WEAPON_BY_ID } from '../src/data'
 
 /** A simple kiting autopilot used by tests to play whole lives headlessly. */
 export function botInput(game: Game, player: Player, strategy: 'smart' | 'random' | 'bad') {
@@ -109,7 +109,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
   return { x: l > 0 ? x / l : 0, y: l > 0 ? y / l : 0, pick, pickSeq: player.choiceSeq }
 }
 
-export function playLife(seed: number, strategy: 'smart' | 'random' | 'bad', players = 1, maxSeconds = 1810) {
+export function playLife(seed: number, strategy: 'smart' | 'random' | 'bad', players = 1, maxSeconds = RUN_SECONDS + 10) {
   const game = new Game(seed)
   for (let i = 0; i < players; i++) game.addPlayer(`p${i}`)
   let peak = 0
