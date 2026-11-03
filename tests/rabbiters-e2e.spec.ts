@@ -1081,7 +1081,19 @@ window.rabbitersMobileSpot = () => {
   await expect(warning).toHaveAttribute('data-mode', 'chase')
   await expect(warning).toBeVisible()
   await expect(detection).toHaveClass(/fx-on/)
+  await detection.evaluate((element) => element.getAnimations().forEach((animation) => animation.pause()))
   await expect(detection).toHaveCSS('animation-name', 'fx-detection-fade')
+  const assertPortraitDetection = async () => {
+    const bounds = (await detection.boundingBox())!
+    const objectives = (await page.locator('.hud-stack').boundingBox())!
+    const viewport = page.viewportSize()!
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width)
+    expect(bounds.y).toBeGreaterThanOrEqual(objectives.y + objectives.height)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height)
+    expect(await detection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await assertPortraitDetection()
   expect(
     await warning.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
@@ -1096,6 +1108,30 @@ window.rabbitersMobileSpot = () => {
   await expect(page.locator('.fx-layer')).toHaveCSS('pointer-events', 'none')
   await expect(page.locator('.fx-chase')).toHaveCSS('animation-name', 'none')
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-reduced-motion.png') })
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await detection.evaluate((element) => element.getAnimations().forEach((animation) => animation.pause()))
+  await expect(detection).toHaveCSS('animation-name', 'fx-detection-impact')
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 760, height: 1024 }
+  ]) {
+    await page.setViewportSize(viewport)
+    for (const time of [0, 144]) {
+      const animationCount = await detection.evaluate((element, currentTime) => {
+        const animations = element.getAnimations()
+        for (const animation of animations) {
+          animation.pause()
+          animation.currentTime = currentTime
+        }
+        return animations.length
+      }, time)
+      expect(animationCount).toBeGreaterThan(0)
+      await assertPortraitDetection()
+    }
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' })
 
   await page.setViewportSize({ width: 844, height: 390 })
   await page.evaluate(() => {

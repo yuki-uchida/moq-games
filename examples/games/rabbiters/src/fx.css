@@ -159,6 +159,12 @@
     white-space: normal;
   }
 }
+@media (max-width: 760px) and (orientation: portrait) {
+  .fx-detection {
+    top: max(240px, 30%);
+    width: min(360px, calc((100% - 32px) / 1.12));
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .fx-detection.fx-on {
     animation: fx-detection-fade 1.2s ease-out;
