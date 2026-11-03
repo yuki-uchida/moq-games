@@ -1,6 +1,6 @@
 import { plan } from './strategy'
 import { test, expect, type Page } from '@playwright/test'
-import { acceptDiscard, enterBattle } from './shell-helper'
+import { acceptDiscard, cameraSettled, clickCell, enterBattle } from './shell-helper'
 
 test('touch assistance offers large neighboring choices after rotation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -189,6 +189,10 @@ test('all floor, marks and 3D cells stay aligned and tappable after resizing', a
     { width: 1280, height: 800 }
   ]) {
     await page.setViewportSize(viewport)
+    // Every tile must be reachable on the whole-board view; zoomed views are covered in camera.spec.ts.
+    const whole = page.getByRole('button', { name: '全体を表示' })
+    if (await whole.isEnabled()) await whole.click()
+    await cameraSettled(page)
     let metrics = { count: 0, marks: 0, error: Infinity, inaccessible: 0, minWidth: 0, minHeight: 0 }
     await expect
       .poll(async () => {
@@ -254,7 +258,7 @@ async function playMission(page: Page, g: Game, sacrifice?: string, heal = true)
     for (const u of g.units
       .filter((u) => u.side === 'ally' && u.hp > 0)
       .sort((a, b) => ['archer', 'mage', 'soldier'].indexOf(a.role) - ['archer', 'mage', 'soldier'].indexOf(b.role))) {
-      await cell(u.x, u.y).click()
+      await clickCell(page, cell(u.x, u.y))
       if (u.id === sacrifice) {
         const enemies = g.units.filter((enemy) => enemy.side === 'enemy' && enemy.hp > 0)
         const positions = [...reachable(g, u).keys()].map((cell) => {
@@ -268,7 +272,7 @@ async function playMission(page: Page, g: Game, sacrifice?: string, heal = true)
         )
         const position = positions[0]
         if (position.x !== u.x || position.y !== u.y) {
-          await cell(position.x, position.y).click()
+          await clickCell(page, cell(position.x, position.y))
           move(g, u, position.x, position.y)
         }
         if (!allyTurnOver(g)) {
@@ -284,11 +288,11 @@ async function playMission(page: Page, g: Game, sacrifice?: string, heal = true)
       }
       const { position: p, target } = plan(g, u)
       if (p.x !== u.x || p.y !== u.y) {
-        await cell(p.x, p.y).click()
+        await clickCell(page, cell(p.x, p.y))
         move(g, u, p.x, p.y)
       }
       if (target) {
-        await cell(target.x, target.y).click()
+        await clickCell(page, cell(target.x, target.y))
         await page.getByRole('button', { name: '攻撃', exact: true }).click()
         attack(g, u, target)
       }

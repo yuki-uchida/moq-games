@@ -170,10 +170,17 @@ header button {
   position: relative;
   /* Board and billboards size from the field: cq units below. */
   container-type: size;
-  overflow: hidden;
+  /* Clip, not hidden: focus and scrollIntoView must never scroll the board away from the 3D layer. */
+  overflow: clip;
   border-radius: 14px;
+  /* The camera (src/camera.ts) zooms the floor and tag grids and pans them; drags and pinches are its own. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   --tilt: 0.6;
-  --board: min((100cqw - 8px) / 1.4142, (100cqh - 55px) / (1.4142 * var(--tilt)));
+  --zoom: 1;
+  --board-fit: min((100cqw - 8px) / 1.4142, (100cqh - 55px) / (1.4142 * var(--tilt)));
+  --board: calc(var(--board-fit) * var(--zoom));
   --tile: calc(var(--board) * 1.4142 / var(--grid-size));
   --ground: #6a7050;
   --ground-odd: #626949;
@@ -307,8 +314,9 @@ header button {
 /* Floor (tile buttons) below the 3D layer, status tags above it: same projected grid. */
 #board,
 #marks {
-  grid-area: 1 / 1;
-  position: relative;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(var(--grid-size), 1fr);
@@ -316,8 +324,9 @@ header button {
   width: var(--board);
   aspect-ratio: 1;
   flex: none;
-  /* Orthographic 2.5D floor: rotate, then squash. .stand applies the exact inverse. */
-  transform: scale(1, var(--tilt)) rotate(-45deg);
+  /* Orthographic 2.5D floor: rotate, then squash, then pan. .stand applies the exact inverse. */
+  transform: translate(calc(-50% + var(--pan-x, 0px)), calc(-50% + var(--pan-y, 0px))) scale(1, var(--tilt))
+    rotate(-45deg);
 }
 #board {
   background: #1f2a22;
@@ -779,7 +788,39 @@ fieldset label {
   }
 }
 #result {
+  z-index: 5;
+}
+/* Camera buttons sit in the field's corner, below results, dialogue and banners. */
+.zoom-controls {
+  position: absolute;
   z-index: 4;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 6px;
+}
+.zoom-controls button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #9ab1a8;
+  border-radius: 10px;
+  background: #1c3540d9;
+  color: #f1f5e9;
+  font-size: 20px;
+  line-height: 1;
+}
+.zoom-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+@media (pointer: coarse) {
+  .zoom-controls button {
+    width: 44px;
+    height: 44px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .field::before,
