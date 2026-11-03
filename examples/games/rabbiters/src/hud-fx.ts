@@ -1,5 +1,38 @@
 import './fx.css'
 import type { JuiceEvent } from './juice-events'
+import type { GameState } from './game'
+import type { ThreatTracker } from './audio'
+
+export interface ThreatStatus {
+  mode: 'clear' | 'suspicious' | 'chase' | 'search'
+  count: number
+  suspicion: number
+}
+
+export function threatFor(state: GameState | undefined, localPlayerId: string, tracker?: ThreatTracker): ThreatStatus {
+  const player = state?.players.find((entry) => entry.id === localPlayerId)
+  const clear: ThreatStatus = { mode: 'clear', count: 0, suspicion: 0 }
+  if (!state || state.phase !== 'playing' || !player || player.downed) return clear
+  const predators = state.predators.filter((predator) => predator.targetId === player.id)
+  const count = predators.filter((predator) => predator.state === 'chase').length
+  if (count) return { mode: 'chase', count, suspicion: 1 }
+  const suspicious = predators.filter((predator) => predator.state === 'suspicious')
+  return suspicious.length
+    ? {
+        mode: 'suspicious',
+        count: suspicious.length,
+        suspicion: Math.max(...suspicious.map((predator) => predator.suspicion))
+      }
+    : state.predators.some((predator) => predator.state === 'search' && tracker?.targets.get(predator.id) === player.id)
+      ? {
+          mode: 'search',
+          count: state.predators.filter(
+            (predator) => predator.state === 'search' && tracker?.targets.get(predator.id) === player.id
+          ).length,
+          suspicion: 1
+        }
+      : clear
+}
 
 export type PopupTone = 'good' | 'gold' | 'warm' | 'hot' | 'bad' | 'info' | 'alert'
 export type PopupSize = 'sm' | 'md' | 'lg' | 'xl'
@@ -112,6 +145,10 @@ export class HudFx {
   private readonly burst: HTMLElement
   private readonly chaseEl: HTMLElement
   private readonly hiddenEl: HTMLElement
+  private readonly threatEl: HTMLElement
+  private readonly detectionEl: HTMLElement
+  private threatMode: ThreatStatus['mode'] = 'clear'
+  private releaseTimer?: ReturnType<typeof setTimeout>
   private readonly confettiTimers = new Set<ReturnType<typeof setTimeout>>()
   private readonly doc: Document
   private disposed = false
@@ -122,6 +159,10 @@ export class HudFx {
     this.layer.setAttribute('aria-hidden', 'true')
     this.chaseEl = this.child('fx-vignette fx-chase')
     this.hiddenEl = this.child('fx-vignette fx-cover')
+    this.detectionEl = this.child('fx-detection')
+    this.detectionEl.addEventListener('animationend', () => this.detectionEl.classList.remove('fx-on'))
+    this.threatEl = this.child('fx-threat')
+    this.threatEl.hidden = true
     this.flashes = {
       hurt: this.child('fx-flash fx-flash-hurt'),
       gold: this.child('fx-flash fx-flash-gold'),
@@ -165,12 +206,51 @@ export class HudFx {
     this.chaseEl.classList.toggle('fx-active', active)
   }
 
+  setThreat(threat: ThreatStatus, showRelease = true): void {
+    if (this.disposed) return
+    const previous = this.threatMode
+    this.threatMode = threat.mode
+    if (threat.mode === 'clear' && previous === 'clear' && showRelease) return
+    clearTimeout(this.releaseTimer)
+    this.threatEl.dataset.mode = threat.mode
+    this.threatEl.style.setProperty('--threat-level', String(Math.max(0, Math.min(1, threat.suspicion))))
+    this.threatEl.hidden = threat.mode === 'clear'
+    if (threat.mode !== 'chase') this.detectionEl.classList.remove('fx-on')
+    if (threat.mode === 'chase') {
+      this.threatEl.textContent = `! 見つかった · ${threat.count}体が追跡中`
+      if (previous !== 'chase') retrigger(this.detectionEl, 'fx-on')
+    } else if (threat.mode === 'suspicious') {
+      this.threatEl.textContent = '? 気づかれそう · そっと隠れよう'
+    } else if (threat.mode === 'search') {
+      this.threatEl.textContent = '? まだ捜索中 · 隠れて待とう'
+    } else {
+      this.detectionEl.classList.remove('fx-on')
+      if (showRelease && (previous === 'chase' || previous === 'search')) {
+        this.threatEl.hidden = false
+        this.threatEl.textContent = '✓ 追跡が途切れた · ひと息'
+        this.releaseTimer = setTimeout(() => {
+          this.threatEl.hidden = true
+        }, 1800)
+      }
+    }
+  }
+
+  reset(): void {
+    this.setThreat({ mode: 'clear', count: 0, suspicion: 0 }, false)
+    for (const slot of this.popups) {
+      slot.busy = false
+      slot.el.hidden = true
+    }
+    for (const el of [...Object.values(this.flashes), this.burst]) el.classList.remove('fx-on')
+  }
+
   setHidden(hidden: boolean): void {
     this.hiddenEl.classList.toggle('fx-active', hidden)
   }
 
   dispose(): void {
     this.disposed = true
+    clearTimeout(this.releaseTimer)
     for (const t of this.confettiTimers) clearTimeout(t)
     this.confettiTimers.clear()
     this.layer.remove()

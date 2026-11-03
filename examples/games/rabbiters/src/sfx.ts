@@ -49,6 +49,7 @@ export class RabbitersSfx {
   }
 
   stop(): void {
+    this.chase = false
     this.stopHeart()
     try {
       this.master?.disconnect()
@@ -215,9 +216,6 @@ export class RabbitersSfx {
         this.tone(620 * vary(0.04), 900, 0.06, 'sine', { peak: 0.14, attack: 0.004 })
         break
       case 'spotted':
-        if (!event.you) return
-        this.tone(95, 40, 0.34, 'sine', { peak: 0.5 })
-        this.hiss(0.32, 'bandpass', 400, 2200, { peak: 0.14, attack: 0.04, q: 0.8 })
         break
       case 'objective':
       case 'chapter':

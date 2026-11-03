@@ -122,6 +122,8 @@ describe('Rabbiters sfx', () => {
     for (const event of [{ type: 'suspicious', at }, { type: 'kitLost' }, { type: 'lost' }] as JuiceEvent[])
       sfx.play(event)
     sfx.play({ type: 'spotted', at, you: false })
+    sfx.play({ type: 'spotted', at, you: true })
+    sfx.play({ type: 'spotted', at, you: true })
     sfx.play({ type: 'land', at, impact: 0.05 })
     expect(context.nodes).toBe(0)
   })
@@ -192,6 +194,23 @@ describe('Rabbiters sfx', () => {
     const before = context.nodes
     vi.advanceTimersByTime(2000)
     expect(context.nodes).toBe(before)
+    sfx.stop()
+  })
+
+  it('does not restart a previous chase after stop/start, and stays silent while muted', () => {
+    vi.useFakeTimers()
+    const { sfx, context } = setup()
+    sfx.setChase(true)
+    sfx.setMuted(true)
+    vi.advanceTimersByTime(1200)
+    expect(context.nodes).toBe(0)
+    sfx.stop()
+    sfx.start()
+    sfx.setMuted(false)
+    expect(vi.getTimerCount()).toBe(0)
+    sfx.setChase(true)
+    vi.advanceTimersByTime(600)
+    expect(context.nodes).toBe(2)
     sfx.stop()
   })
 

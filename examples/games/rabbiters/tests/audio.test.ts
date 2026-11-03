@@ -50,12 +50,61 @@ const setup = () => {
   const audio = new RabbitersAudio()
   const game = new Game()
   game.addPlayer('local', 'Rabbit')
+  for (const predator of game.state.predators) predator.targetId = 'local'
   audio.start()
   audio.update(game.state, 'local')
   return { audio, game, context }
 }
 
 describe('Rabbiters audio', () => {
+  it('replaces cheerful music with suspicion and chase pulses, then restores it on escape', () => {
+    const { audio, game, context } = setup()
+    const predator = game.state.predators[0]
+    const update = (time: number) => {
+      game.state.time = time
+      context.currentTime = time
+      audio.update(game.state, 'local')
+    }
+    predator.state = 'suspicious'
+    update(1)
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-1)?.frequency.setValueAtTime).toHaveBeenCalledWith(196, 1)
+    const warning = context.voices.at(-1)!
+    predator.state = 'chase'
+    update(2)
+    expect(warning.stop).toHaveBeenCalledTimes(2)
+    const stingCount = context.voices.length
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(stingCount)
+    context.currentTime = 2.6
+    vi.advanceTimersByTime(250)
+    expect(context.voices[stingCount].frequency.setValueAtTime).toHaveBeenCalledWith(98, 2.6)
+    const pulse = context.voices[stingCount]
+    predator.state = 'patrol'
+    update(3)
+    expect(pulse.stop).toHaveBeenCalledTimes(2)
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 3)
+    predator.state = 'chase'
+    update(4)
+    expect(context.voices.at(-1)?.type).toBe('sine')
+    audio.stop()
+  })
+
+  it('does not stack discovery stings as more predators join an ongoing team chase', () => {
+    const { audio, game, context } = setup()
+    game.state.predators[0].state = 'chase'
+    game.state.time = 1
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(4)
+    game.state.predators[1].state = 'chase'
+    game.state.time = 4
+    audio.update(game.state, 'local')
+    audio.update({ ...game.state, time: 2 }, 'local')
+    expect(context.voices).toHaveLength(4)
+    audio.stop()
+  })
+
   it('initializes and resumes synchronously, with one music timer', () => {
     const { audio, context } = setup()
     expect(context.resume).toHaveBeenCalledOnce()
@@ -138,13 +187,72 @@ describe('Rabbiters audio', () => {
     expect(context.voices.some((voice) => voice.type === 'square')).toBe(true)
     first.state = 'chase'
     at(1.4)
-    expect(context.voices).toHaveLength(6)
+    expect(context.voices).toHaveLength(10)
     audio.setMuted(true)
     Object.assign(first, { state: 'patrol' })
     at(5)
     first.state = 'chase'
     at(5.1)
-    expect(context.voices).toHaveLength(6)
+    expect(context.voices).toHaveLength(10)
+    audio.stop()
+  })
+
+  it('keeps search music until the last related enemy stops, without adopting unrelated searches', () => {
+    const { audio, game, context } = setup()
+    const [first, second] = game.state.predators
+    const update = (time: number) => {
+      game.state.time = time
+      context.currentTime = time
+      audio.update(game.state, 'local')
+    }
+    first.state = 'chase'
+    update(1)
+    Object.assign(first, { state: 'search', targetId: null })
+    Object.assign(second, { state: 'search', targetId: null })
+    update(2)
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-1)?.frequency.setValueAtTime).toHaveBeenCalledWith(196, 2)
+    update(6)
+    first.state = 'patrol'
+    update(6.5)
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 6.5)
+    audio.stop()
+  })
+
+  it('consumes muted discoveries, supports rediscovery and clears search history on stop and phase end', () => {
+    const { audio, game, context } = setup()
+    const predator = game.state.predators[0]
+    predator.state = 'chase'
+    game.state.time = 1
+    audio.setMuted(true)
+    audio.update(game.state, 'local')
+    audio.setMuted(false)
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(0)
+    Object.assign(predator, { state: 'search', targetId: null })
+    game.state.time = 2
+    audio.update(game.state, 'local')
+    Object.assign(predator, { state: 'chase', targetId: 'local' })
+    game.state.time = 2.1
+    audio.update(game.state, 'local')
+    expect(context.voices).toHaveLength(4)
+    game.state.phase = 'lost'
+    audio.update(game.state, 'local')
+    game.state.phase = 'playing'
+    Object.assign(predator, { state: 'search', targetId: null })
+    game.state.time = 3
+    context.currentTime = 3
+    audio.update(game.state, 'local')
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 3)
+    audio.stop()
+    audio.start()
+    game.state.time = 0
+    context.currentTime = 0
+    audio.update(game.state, 'local')
+    vi.advanceTimersByTime(250)
+    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 0)
     audio.stop()
   })
 

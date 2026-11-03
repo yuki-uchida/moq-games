@@ -1,5 +1,23 @@
 import type { GameState } from './game'
 
+export class ThreatTracker {
+  readonly targets = new Map<string, string>()
+
+  reset(): void {
+    this.targets.clear()
+  }
+
+  update(state: GameState): void {
+    const retained = new Map(this.targets)
+    this.reset()
+    if (state.phase !== 'playing') return
+    for (const predator of state.predators) {
+      const target = predator.state === 'search' ? (predator.targetId ?? retained.get(predator.id)) : predator.targetId
+      if (target && predator.state !== 'patrol') this.targets.set(predator.id, target)
+    }
+  }
+}
+
 type Observation = {
   time: number
   playerId: string
@@ -7,6 +25,8 @@ type Observation = {
   phase: GameState['phase']
   nests: Set<string>
   predators: Map<string, string>
+  threat: 'calm' | 'suspicious' | 'chase'
+  chased: Set<string>
   chapter: number
   stage: number
   bedding: number
@@ -20,9 +40,10 @@ export class RabbitersAudio {
   private voices = new Set<OscillatorNode>()
   private muted = false
   private previous: Observation | null = null
-  private lastAlarm = -Infinity
   private lastQuery = -Infinity
   private beat = 0
+  private musicAfter = 0
+  private readonly threats = new ThreatTracker()
 
   start(): void {
     try {
@@ -54,9 +75,10 @@ export class RabbitersAudio {
     this.context = null
     this.master = null
     this.previous = null
-    this.lastAlarm = -Infinity
+    this.threats.reset()
     this.lastQuery = -Infinity
     this.beat = 0
+    this.musicAfter = 0
   }
 
   setMuted(muted: boolean): void {
@@ -68,6 +90,7 @@ export class RabbitersAudio {
   update(state: GameState, localPlayerId: string): void {
     if (this.previous && state.time < this.previous.time) return
     const player = state.players.find((entry) => entry.id === localPlayerId)
+    this.threats.update(state)
     const next: Observation = {
       time: state.time,
       playerId: localPlayerId,
@@ -75,6 +98,16 @@ export class RabbitersAudio {
       phase: state.phase,
       nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id)),
       predators: new Map(state.predators.map((predator) => [predator.id, predator.state])),
+      threat: state.predators.some((predator) => predator.state === 'chase')
+        ? 'chase'
+        : this.threats.targets.size > 0
+          ? 'suspicious'
+          : 'calm',
+      chased: new Set(
+        state.predators
+          .filter((predator) => predator.state === 'chase' && predator.targetId)
+          .map((predator) => predator.targetId!)
+      ),
       chapter: state.chapter,
       stage: state.stage ?? 3,
       bedding: state.bedding,
@@ -83,6 +116,11 @@ export class RabbitersAudio {
     const previous = this.previous
     this.previous = next
     if (!previous) return
+    if (previous.threat !== next.threat || previous.phase !== next.phase) {
+      this.silence()
+      this.beat = 0
+      this.musicAfter = 0
+    }
     if (previous.phase === 'playing' && next.phase !== 'playing') {
       this.chime(next.phase === 'won' ? [523, 659, 784, 1047] : [392, 330, 262, 196])
     }
@@ -93,11 +131,8 @@ export class RabbitersAudio {
       const before = previous.predators.get(predator.id)
       return before !== undefined && before !== predator.state
     }
-    if (
-      state.predators.some((predator) => predator.state === 'chase' && changed(predator)) &&
-      state.time - this.lastAlarm >= 1.5
-    ) {
-      this.lastAlarm = state.time
+    if ([...next.chased].some((id) => !previous.chased.has(id))) {
+      this.musicAfter = (this.context?.currentTime ?? 0) + 0.55
       this.alarm()
     } else if (
       state.predators.some(
@@ -132,6 +167,18 @@ export class RabbitersAudio {
 
   private music(): void {
     if (this.previous?.phase !== 'playing') return
+    if ((this.context?.currentTime ?? 0) < this.musicAfter) return
+    if (this.previous.threat !== 'calm') {
+      const step = this.beat++ % 8
+      if (this.previous.threat === 'chase') {
+        this.tone([98, 98, 104, 98, 98, 92, 104, 92][step], 0.16, 'triangle', 0, 73, 0.12)
+        if (step % 2 === 0) this.tone(196, 0.09, 'square', 0.12, 185, 0.025)
+        if (step === 7) this.tone(784, 0.1, 'sine', 0, 740, 0.04)
+      } else if (step % 2 === 0) {
+        this.tone(step % 4 === 0 ? 196 : 208, 0.3, 'sine', 0, 185, 0.07)
+      }
+      return
+    }
     const melody = [72, 76, 79, 76, 74, 79, 81, 79, 76, 72, 69, 72, 74, 71, 67, 71]
     const step = this.beat++ % melody.length
     this.tone(440 * 2 ** ((melody[step] - 69) / 12), 0.18, 'sine')
@@ -140,7 +187,7 @@ export class RabbitersAudio {
 
   /** Original "spotted" sting: a low thump, two rising square blips and a ringing tail. */
   private alarm(): void {
-    this.tone(110, 0.22, 'triangle', 0, 55, 0.2)
+    this.tone(110, 0.22, 'triangle', 0, 55, 0.18)
     this.tone(740, 0.07, 'square', 0, 760, 0.06)
     this.tone(1480, 0.09, 'square', 0.07, 1500, 0.06)
     this.tone(1976, 0.45, 'sine', 0.07, 1900, 0.08)

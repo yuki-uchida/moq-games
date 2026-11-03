@@ -742,6 +742,26 @@ window.rabbitersStealth = {
   advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
   freeze() { this.step = game.step.bind(game); game.step = () => {}; },
   spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -125, z: 5, state: 'chase', targetId: localId, suspicion: 1 }); },
+  startMeters() {
+    this.meters = [audio, feel.sfx].map((engine) => {
+      const analyser = engine.context.createAnalyser();
+      const sink = engine.context.createGain();
+      sink.gain.value = 0;
+      engine.master.connect(analyser);
+      analyser.connect(sink);
+      sink.connect(engine.context.destination);
+      return { analyser, sink, samples: new Float32Array(analyser.fftSize), peak: 0 };
+    });
+    this.meterTimer = setInterval(() => {
+      for (const meter of this.meters) {
+        meter.analyser.getFloatTimeDomainData(meter.samples);
+        for (const sample of meter.samples) meter.peak = Math.max(meter.peak, Math.abs(sample));
+      }
+    }, 20);
+  },
+  resetMeters() { for (const meter of this.meters) meter.peak = 0; },
+  peaks() { return this.meters.map((meter) => meter.peak); },
+  stopMeters() { clearInterval(this.meterTimer); for (const meter of this.meters) { meter.analyser.disconnect(); meter.sink.disconnect(); } },
   read(id) {
     const predator = game.state.predators.find((entry) => entry.id === id);
     const actor = scene.actors.get('predator:' + id);
@@ -750,7 +770,8 @@ window.rabbitersStealth = {
       state: predator.state, suspicion: predator.suspicion, y: predator.y, renderedY: actor?.root.position.y,
       marker: symbol?.visible ? [...scene.textures].find(([, texture]) => texture === symbol.material.map)?.[0] : null,
       meter: actor?.marker.fill.visible ?? false, overlay: alertOverlay.className,
-      droppings: game.state.droppings.length, renderedDroppings: scene.droppings.size, alarm: audio.lastAlarm
+      droppings: game.state.droppings.length, renderedDroppings: scene.droppings.size,
+      musicThreat: audio.previous?.threat, audioState: audio.context?.state
     };
   }
 };`
@@ -769,7 +790,8 @@ window.rabbitersStealth = {
     overlay: string
     droppings: number
     renderedDroppings: number
-    alarm: number
+    musicThreat: string
+    audioState: string
   }
   const run = <T>(expression: string) => page.evaluate<T>(`window.rabbitersStealth.${expression}`)
   const read = (id = 'fox') => run<Reading>(`read(${JSON.stringify(id)})`)
@@ -804,19 +826,96 @@ window.rabbitersStealth = {
   await expect.poll(async () => (await read()).marker).toBe('?#e0a020')
   await expect.poll(async () => (await read()).meter).toBe(true)
   await expect.poll(async () => (await read()).overlay).toContain('suspected')
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'suspicious')
   await expect(page.locator('#condition')).toContainText('怪しまれている')
   await expect.poll(async () => (await read()).renderedDroppings).toBeGreaterThanOrEqual(4)
   await page.screenshot({ path: testInfo.outputPath('stealth-question.png') })
 
+  await run('startMeters()')
   await run("spot('fox')")
   await expect.poll(async () => (await read()).marker).toBe('!#d8342c')
   await expect.poll(async () => (await read()).overlay).toContain('spotted')
-  await expect.poll(async () => (await read()).alarm).toBeGreaterThan(-1)
+  await expect.poll(async () => (await read()).audioState).toBe('running')
+  await expect.poll(async () => (await read()).musicThreat).toBe('chase')
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
+  await expect(page.locator('.fx-threat')).toContainText('1体')
   await expect(page.locator('#condition')).toContainText('見つかった')
   await page.waitForTimeout(150)
   await page.screenshot({ path: testInfo.outputPath('stealth-spotted.png') })
+  await expect.poll(async () => (await run<number[]>('peaks()'))[0]).toBeGreaterThan(0.001)
+  await expect.poll(async () => (await run<number[]>('peaks()'))[1]).toBeGreaterThan(0.001)
+  await page.locator('#sound-toggle').click()
+  await expect(page.locator('#sound-toggle')).toHaveAttribute('aria-pressed', 'false')
+  await page.waitForTimeout(150)
+  await run('resetMeters()')
+  await page.waitForTimeout(350)
+  expect(await run<number[]>('peaks()')).toEqual([0, 0])
+  await page.locator('#sound-toggle').click()
+  await expect(page.locator('#sound-toggle')).toHaveAttribute('aria-pressed', 'true')
+
+  await run("spot('hawk')")
+  await expect(page.locator('.fx-threat')).toContainText('2体')
+  await run("move('fox', { state: 'search', targetId: null })")
+  await expect(page.locator('.fx-threat')).toContainText('1体')
+  await run("move('hawk', { state: 'search', targetId: null })")
+  await expect(page.locator('.fx-threat')).toContainText('捜索')
+  await expect.poll(async () => (await read()).musicThreat).not.toBe('calm')
+  await page.screenshot({ path: testInfo.outputPath('stealth-search.png') })
+  await run("move('fox', { state: 'patrol', targetId: null })")
+  await expect(page.locator('.fx-threat')).toContainText('捜索')
+  await run("move('hawk', { state: 'patrol', targetId: null })")
+  await expect.poll(async () => (await read()).musicThreat).toBe('calm')
+  await expect(page.locator('.fx-threat')).toContainText('ひと息')
+  await expect(page.locator('.fx-threat')).toBeHidden({ timeout: 5000 })
+  await run('stopMeters()')
 
   expect(errors).toEqual([])
+})
+
+test('the discovery warning stays readable and nonblocking on mobile with reduced motion', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersMobileSpot = () => {
+  game.step = () => {};
+  const player = game.state.players.find((entry) => entry.id === localId);
+  const predator = game.state.predators[0];
+  Object.assign(predator, { state: 'patrol', targetId: null, suspicion: 0 });
+  return () => Object.assign(predator, { x: player.x + 3, z: player.z, state: 'chase', targetId: localId, suspicion: 1 });
+};`
+    })
+  })
+  await page.goto('/?chapter=4')
+  await page.locator('#solo').click()
+  await page.evaluate(() => {
+    const globals = window as unknown as { rabbitersMobileSpot: () => () => void; triggerSpot?: () => void }
+    globals.triggerSpot = globals.rabbitersMobileSpot()
+  })
+  await page.waitForTimeout(150)
+  await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
+  const warning = page.locator('.fx-threat')
+  await expect(warning).toHaveAttribute('data-mode', 'chase')
+  await expect(warning).toBeVisible()
+  expect(
+    await warning.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.left >= 0 && bounds.right <= innerWidth && element.scrollWidth <= element.clientWidth
+    })
+  ).toBe(true)
+  const warningBounds = await warning.boundingBox()
+  const vitalsBounds = await page.locator('.vitals').boundingBox()
+  expect(warningBounds).not.toBeNull()
+  expect(vitalsBounds).not.toBeNull()
+  expect(warningBounds!.x).toBeGreaterThanOrEqual(vitalsBounds!.x + vitalsBounds!.width)
+  await expect(page.locator('.fx-layer')).toHaveCSS('pointer-events', 'none')
+  await expect(page.locator('.fx-chase')).toHaveCSS('animation-name', 'none')
+  await page.screenshot({ path: testInfo.outputPath('stealth-mobile-reduced-motion.png') })
 })
 
 test('map tour: terrain, tunnels, logs and caves stay readable and cheap to draw', async ({ page }, testInfo) => {
