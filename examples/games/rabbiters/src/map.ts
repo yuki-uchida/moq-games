@@ -1,5 +1,5 @@
 /**
- * The map engine shared by the host simulation, every renderer and the minimap. It answers queries about
+ * The map engine shared by the host simulation and every renderer. It answers queries about
  * the active stage's map (`setStage`); the data exports are live bindings that follow the active stage.
  * Each stage map is built once, on first use, from constants and fixed seeds, so no map data crosses the relay.
  */
@@ -89,7 +89,7 @@ export interface StageMap {
   zones?: readonly Zone[]
   /** Dust-bath ground. */
   sand?(x: number, z: number): boolean
-  /** Area name shown under the minimap when no named zone covers the point. */
+  /** Area name shown in the HUD area label when no named zone covers the point. */
   region?(x: number, z: number): string
 }
 

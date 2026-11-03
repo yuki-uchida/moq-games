@@ -38,7 +38,6 @@ import {
   tunnelExitNear
 } from './map'
 import { SAND_PATCHES } from './stages/forest/map'
-import { Minimap } from './minimap'
 import { CHAPTERS, createStraws, nightAmount } from './campaign'
 import { STAGES, speakerName, spokenLine } from './stages'
 
@@ -520,7 +519,6 @@ async function returnToTitle() {
   await current?.stop()
 }
 
-const minimap = new Minimap(element<HTMLCanvasElement>('#minimap'))
 const COVER_NAMES: Record<Cover, string> = {
   tunnel: 'モグラのトンネル',
   shelter: '巣穴・木のうろの中',
@@ -631,9 +629,8 @@ function updateHud(state: GameState) {
     underground && STAGES[state.stage].coverNames?.tunnel
       ? coverName('tunnel')
       : regionName(player.x, player.y, player.z)
-  minimap.draw(state, localId, yaw)
   const objective = STAGES[state.stage].script.objective(state, player)
-  // Phones drop the chapter prefix; the title card and minimap already name the chapter.
+  // Phones drop the chapter prefix; the title card already names the chapter.
   element<HTMLElement>('#objective-title').textContent = phoneLayout.matches
     ? objective.title.replace(/^第\d+章｜/, '')
     : objective.title
