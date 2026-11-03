@@ -190,7 +190,9 @@ describe('local threat HUD', () => {
     const badge = elements.find((element) => element.className === 'fx-threat')!
     try {
       expect(elements.find((element) => element.className === 'fx-detection-message')?.textContent).toBe('見つかった！')
-      expect(elements.find((element) => element.className === 'fx-detection-hint')?.textContent).toContain('草かげ')
+      expect(elements.find((element) => element.className === 'fx-detection-hint')?.textContent).toBe(
+        'ぴんち！ 逃げよう！'
+      )
       expect(detection.appendChild).toHaveBeenCalledTimes(3)
       hud.setThreat({ mode: 'chase', count: 1, suspicion: 1 })
       hud.setThreat({ mode: 'chase', count: 2, suspicion: 1 })

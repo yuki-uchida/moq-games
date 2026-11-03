@@ -791,7 +791,7 @@ window.rabbitersDiscovery = {
   await expect(page.locator('.fx-threat')).toBeVisible()
   await expect(page.locator('.fx-threat')).toContainText('1体が追跡中')
   await expect(page.locator('.fx-detection')).toHaveClass(/fx-on/)
-  await expect(page.locator('#condition')).toContainText('見つかった')
+  await expect(page.locator('#condition')).toHaveText('見つかった！ 逃げよう！')
   await expect.poll(async () => (await read()).chaseFrames).toBeGreaterThanOrEqual(3)
   expect(await read()).toMatchObject({
     states: ['patrol', 'suspicious', 'chase'],
@@ -1078,11 +1078,36 @@ window.rabbitersMobileSpot = () => {
   await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
   const warning = page.locator('.fx-threat')
   const detection = page.locator('.fx-detection')
+  const subtitle = page.locator('#subtitle')
   await expect(warning).toHaveAttribute('data-mode', 'chase')
   await expect(warning).toBeVisible()
   await expect(detection).toHaveClass(/fx-on/)
   await detection.evaluate((element) => element.getAnimations().forEach((animation) => animation.pause()))
   await expect(detection).toHaveCSS('animation-name', 'fx-detection-fade')
+  const assertSubtitleClear = async () => {
+    await expect(subtitle).toBeVisible()
+    const bounds = (await subtitle.boundingBox())!
+    const viewport = page.viewportSize()!
+    expect(bounds.y).toBeGreaterThanOrEqual(0)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height)
+    for (const overlay of [
+      warning,
+      detection,
+      page.locator('.objective-card'),
+      page.locator('#look-hint'),
+      page.locator('.joystick'),
+      page.locator('.touch-buttons')
+    ]) {
+      if (!(await overlay.isVisible())) continue
+      const other = (await overlay.boundingBox())!
+      expect(
+        bounds.x >= other.x + other.width ||
+          bounds.x + bounds.width <= other.x ||
+          bounds.y >= other.y + other.height ||
+          bounds.y + bounds.height <= other.y
+      ).toBe(true)
+    }
+  }
   const assertPortraitDetection = async () => {
     const bounds = (await detection.boundingBox())!
     const objectives = (await page.locator('.hud-stack').boundingBox())!
@@ -1094,6 +1119,7 @@ window.rabbitersMobileSpot = () => {
     expect(await detection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
   await assertPortraitDetection()
+  await assertSubtitleClear()
   expect(
     await warning.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
@@ -1129,8 +1155,12 @@ window.rabbitersMobileSpot = () => {
       }, time)
       expect(animationCount).toBeGreaterThan(0)
       await assertPortraitDetection()
+      await assertSubtitleClear()
     }
   }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await assertSubtitleClear()
+  await page.screenshot({ path: testInfo.outputPath('stealth-desktop-subtitle.png') })
   await page.emulateMedia({ reducedMotion: 'reduce' })
 
   await page.setViewportSize({ width: 844, height: 390 })
@@ -1144,6 +1174,7 @@ window.rabbitersMobileSpot = () => {
   await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
   await expect(detection).toHaveClass(/fx-on/)
   await expect(escapePopup).toBeHidden()
+  await assertSubtitleClear()
   expect(
     await detection.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
@@ -1151,6 +1182,9 @@ window.rabbitersMobileSpot = () => {
     })
   ).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-landscape.png') })
+  await page.evaluate(() => (window as unknown as { rabbitersMobileSpot: () => () => void }).rabbitersMobileSpot())
+  await expect(warning).toBeHidden({ timeout: 5000 })
+  expect(await subtitle.evaluate((element) => Number.parseFloat(getComputedStyle(element).top))).toBeCloseTo(390 * 0.12)
 })
 
 test('map tour: terrain, tunnels, logs and caves stay readable and cheap to draw', async ({ page }, testInfo) => {

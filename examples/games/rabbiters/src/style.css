@@ -1162,6 +1162,29 @@ button:active:not(:disabled) {
     font-size: 12px;
   }
 }
+#app:has(.fx-threat:not([hidden])) .subtitle {
+  top: auto;
+  bottom: 70px;
+}
+@media (max-width: 760px) and (orientation: portrait) {
+  #app:has(.fx-threat:not([hidden])) .subtitle {
+    bottom: 148px;
+  }
+}
+@media (max-height: 550px) and (orientation: landscape) {
+  #app:has(.fx-threat:not([hidden])) .subtitle {
+    bottom: 12px;
+  }
+}
+@media (min-width: 761px) and (pointer: fine) and (max-height: 550px) and (orientation: landscape) {
+  #app:has(.fx-threat:not([hidden])) .subtitle {
+    right: 16px;
+    bottom: 42px;
+    left: auto;
+    width: min(640px, calc(100% - 430px));
+    transform: none;
+  }
+}
 .icon-sprite {
   position: absolute;
   width: 0;

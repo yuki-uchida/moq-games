@@ -165,7 +165,7 @@ export class HudFx {
     const message = this.make('strong', 'fx-detection-message')
     message.textContent = '見つかった！'
     const hint = this.make('span', 'fx-detection-hint')
-    hint.textContent = 'ぴんち！ 草かげへ逃げよう'
+    hint.textContent = 'ぴんち！ 逃げよう！'
     this.detectionEl.appendChild(signal)
     this.detectionEl.appendChild(message)
     this.detectionEl.appendChild(hint)

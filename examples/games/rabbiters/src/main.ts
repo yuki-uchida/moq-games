@@ -619,7 +619,7 @@ function updateHud(state: GameState) {
     : hunting.size
       ? nearTrunk
         ? '見つかった！ 木のあいだを抜ければ追っ手が遅れる'
-        : '見つかった！ 茂みや穴に逃げこもう'
+        : '見つかった！ 逃げよう！'
       : suspected
         ? '怪しまれている… 今のうちに隠れよう'
         : player.hidden
