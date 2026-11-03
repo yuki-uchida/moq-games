@@ -1006,6 +1006,35 @@ dialog::backdrop {
   color: #3a573e;
   text-align: center;
 }
+.stage-card[data-all-out='true']::after {
+  content: '総力戦';
+  position: absolute;
+  top: -7px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #fff;
+  background: #a2402f;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.stage-card {
+  position: relative;
+}
+#formation-count[data-all-out='true'] {
+  color: #fff;
+  background: #a2402f;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.85em;
+  display: inline-block;
+}
+.formation-card[data-all-out='true']:disabled {
+  opacity: 1;
+}
+.formation-card[data-all-out='true'][data-state='formation'] {
+  cursor: default;
+}
 .formation-card[data-state='recruit'] img {
   filter: grayscale(1) brightness(0.8);
 }

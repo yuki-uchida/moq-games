@@ -620,7 +620,7 @@ function updateHud(current: View) {
     const cause = killer ? `とどめ：${killer.name}（${TAG_NAMES[killer.tag]}）。` : ''
     showResult(
       won ? `大往生 — 享年${age}歳` : `心が折れた — 享年${age}歳`,
-      won ? '死神が迎えに来た。30分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
+      won ? '死神が迎えに来た。15分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
       won ? '🌅' : '💔',
       player ? reflection(player) : [],
       { level: current.level, kills: current.kills }

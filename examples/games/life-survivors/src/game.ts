@@ -265,7 +265,7 @@ export function mulberry32(seed: number) {
   }
 }
 
-export const xpForLevel = (level: number) => Math.round(5 + level * 6 + level * level * 0.3)
+export const xpForLevel = (level: number) => Math.round((5 + level * 6 + level * level * 0.3) * 1.3)
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
@@ -693,8 +693,9 @@ export class Game {
   }
 
   hpScale() {
-    const minutes = this.state.time / 60
-    return (1 + minutes * 0.14 + minutes * minutes * 0.004) * (1 + (this.state.players.length - 1) * 0.45)
+    const progress = this.state.time / RUN_SECONDS
+    const minutes = progress * 30
+    return (1 + minutes * 0.14 + minutes * minutes * 0.004) * (1 + 0.2 * progress ** 2) * (1 + (this.state.players.length - 1) * 0.45)
   }
 
   targetPopulation() {

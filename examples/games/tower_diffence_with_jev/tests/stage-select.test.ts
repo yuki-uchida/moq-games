@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { GameEngine } from '../src/game/GameEngine'
 import { RuleBasedAI } from '../src/ai/AIController'
-import { CONFIG, FIELDS, stageRules } from '../src/game/model'
+import { ALLY_TYPES, CONFIG, FIELDS, stageRules } from '../src/game/model'
 import { validateCampaignCheckpoint } from '../src/game/CampaignCheckpoint'
 import { loadCampaignSave, saveCampaignCheckpoint } from '../src/progression/CampaignStorage'
 import { availableAllies, freshRunFromProfile } from '../src/progression/UpgradeSystem'
 import {
+  ALL_OUT_FROM_STAGE,
+  battleFormation,
   FORMATION_SLOTS,
+  owned,
   awardBounty,
   awardStageClear,
   freshStageProgress,
@@ -136,5 +139,16 @@ describe('stage select progress', () => {
     })
     expect(loaded.issue).toBeNull()
     expect(loaded.run?.engine.state.stage).toBe(5)
+  })
+})
+
+describe('総力戦', () => {
+  it('stages from 9 field every owned ally, earlier stages keep the formation', () => {
+    const p = freshStageProgress(ALLY_TYPES)
+    expect(ALL_OUT_FROM_STAGE).toBe(9)
+    expect(battleFormation(p, 8)).toEqual(p.formation)
+    expect(p.formation.length).toBeLessThanOrEqual(FORMATION_SLOTS)
+    expect(battleFormation(p, 9).length).toBeGreaterThan(p.formation.length)
+    expect(battleFormation(p, 10)).toEqual(owned(p))
   })
 })

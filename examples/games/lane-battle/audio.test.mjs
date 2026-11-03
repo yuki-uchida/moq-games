@@ -66,3 +66,27 @@ test('missing Web Audio does not prevent game startup', () => {
   sound.effect('victory')
   assert.equal(sound.context, null)
 })
+test('retries suspended and interrupted audio and supports prefixed Web Audio', () => {
+  let resumes = 0
+  globalThis.webkitAudioContext = class {
+    state = 'suspended'
+    resume() {
+      resumes++
+      return Promise.resolve()
+    }
+  }
+  try {
+    const sound = new BattleAudio()
+    sound.unlock()
+    sound.unlock()
+    assert.equal(resumes, 2)
+    sound.context.state = 'interrupted'
+    sound.unlock()
+    assert.equal(resumes, 3)
+    sound.context.state = 'running'
+    sound.unlock()
+    assert.equal(resumes, 3)
+  } finally {
+    delete globalThis.webkitAudioContext
+  }
+})

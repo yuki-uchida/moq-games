@@ -29,6 +29,10 @@ export const freshStageProgress = (recruited: readonly AllyType[] = []): StagePr
 
 export const owned = (p: StageProgress): AllyType[] =>
   ALLY_TYPES.filter((t) => STARTERS.includes(t) || p.recruited.includes(t))
+/** 総力戦: the final stages field every owned ally type instead of the chosen formation. */
+export const ALL_OUT_FROM_STAGE = 9
+export const battleFormation = (p: StageProgress, stage: number): AllyType[] =>
+  stage >= ALL_OUT_FROM_STAGE ? owned(p) : [...p.formation]
 export const stageUnlocked = (p: StageProgress, stage: number): boolean =>
   Number.isInteger(stage) && stage >= 1 && stage <= Math.min(CONFIG.stages, p.cleared + 1)
 export const stageReward = (stage: number): number => stageRules(stage).reward

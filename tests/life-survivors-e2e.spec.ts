@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 type Life = {
-  game: { state: { time: number; players: { id: string; choices: string[]; x: number }[] }; gainXp(n: number): void }
+  game: { state: { time: number; xpNext: number; players: { id: string; choices: string[]; x: number }[] }; gainXp(n: number): void }
   view: { time: number; phase: string; players: { id: string; x: number; choices: string[] }[] }
   localId: string
 }
@@ -23,7 +23,7 @@ test('a full build skips ordinary level-ups and offers an optional weapon swap',
       choose(player: unknown, index: number): void
       gainXp(amount: number): void
     }
-    game.state.time = 900
+    game.state.time = 600
     const player = game.state.players[0]
     player.birthPick = false
     player.pending = 0
@@ -76,7 +76,7 @@ test('a full build skips ordinary level-ups and offers an optional weapon swap',
   ).toBe(false)
 })
 
-test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ page }, testInfo) => {
+test('a solo life: birth, a turning point, and the reaper at 15:00', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
@@ -95,7 +95,7 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   await expect.poll(() => handle.evaluate((l) => l.view.players[0].x)).toBeGreaterThan(40)
   await page.keyboard.up('KeyD')
 
-  await handle.evaluate((l) => l.game.gainXp(12))
+  await handle.evaluate((l) => l.game.gainXp(l.game.state.xpNext))
   await expect(page.locator('#levelup')).toBeVisible()
   await expect(page.locator('#cards .card')).toHaveCount(3)
   await page.screenshot({ path: testInfo.outputPath('levelup.png') })
@@ -106,11 +106,11 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   await expect(page.locator('#levelup')).toBeHidden()
   await expect.poll(() => handle.evaluate((l) => l.view.time)).toBeGreaterThan(paused)
 
-  await handle.evaluate((l) => (l.game.state.time = 60 * 14))
+  await handle.evaluate((l) => (l.game.state.time = 60 * 8))
   await page.waitForTimeout(1500)
   await page.screenshot({ path: testInfo.outputPath('midlife.png') })
   await handle.evaluate((l) => {
-    l.game.state.time = 30 * 60 - 0.5
+    l.game.state.time = 15 * 60 - 0.5
     for (const p of l.game.state.players) p.choices = []
   })
   await expect(page.locator('#feed')).toContainText('死神', { timeout: 5000 })
@@ -162,7 +162,7 @@ test('a broken heart: the death plays out before the result, which names the fin
     }
     const p = game.state.players[0]
     ;(p as unknown as { choices: string[] }).choices = [] // no 蒸発済み birth pick holding time
-    game.state.time = 25 * 22.5
+    game.state.time = 900 * (25 / 80) ** (1 / 1.4)
     p.weapons = []
     p.hp = 0.01
     game.spawnEnemy('boss', p.x, p.y)
@@ -235,7 +235,7 @@ test('two players share one life-world: the guest moves and gets their own hand'
     .toBeGreaterThan(start + 30)
   await guest.keyboard.up('KeyD')
 
-  await hostLife.evaluate((l) => l.game.gainXp(12))
+  await hostLife.evaluate((l) => l.game.gainXp(l.game.state.xpNext))
   await expect(guest.locator('#cards .card')).toHaveCount(3)
   await expect(guest.locator('#levelup-note')).toContainText('時間は流れ続けています')
   await guest.screenshot({ path: testInfo.outputPath('guest.png') })
@@ -396,11 +396,13 @@ test('the music follows a life: title, stages, a boss, the reaper, the ending an
   await handle.evaluate((l) => {
     const game = (l as unknown as Hook).game
     game.state.eventIndex = 99
-    for (const p of game.state.players) Object.assign(p, { choices: [], invuln: 1e9 })
+    Object.assign(game, { spawn: () => {} })
+    game.state.enemies = []
+    for (const p of game.state.players) Object.assign(p, { choices: [], invuln: 1e9, hp: 1e9, maxHp: 1e9 })
   })
   await expect.poll(async () => (await music()).live).toBeGreaterThan(0)
 
-  await handle.evaluate((l) => (l.game.state.time = 60 * 14)) // age 37: 働き盛り
+  await handle.evaluate((l) => (l.game.state.time = 60 * 8 + 40)) // age 37: 働き盛り
   await expect.poll(music).toMatchObject({ theme: 'office', layer: 1 })
 
   await handle.evaluate((l) => {
@@ -422,7 +424,7 @@ test('the music follows a life: title, stages, a boss, the reaper, the ending an
   await page.keyboard.press('Escape')
 
   await handle.evaluate((l) => {
-    l.game.state.time = 30 * 60 - 0.5
+    l.game.state.time = 15 * 60 - 0.5
     for (const p of l.game.state.players) p.choices = []
   })
   await expect.poll(theme).toBe('reaper')

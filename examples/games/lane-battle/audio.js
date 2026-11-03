@@ -8,8 +8,9 @@ export class BattleAudio {
   running = false
   unlock() {
     try {
-      this.context ||= new AudioContext()
-      this.context.resume()?.catch(() => {})
+      const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext
+      this.context ||= new AudioContextClass()
+      if (this.context.state !== 'running') this.context.resume()?.catch(() => {})
     } catch {
       /* Audio is optional. */
     }
