@@ -4,6 +4,8 @@
 
 const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x))
 
+export const deathBlend = (age) => smooth(age / 0.1)
+
 export function heldStrike(held, unit, time) {
   return held && held.strikes === unit.strikes && time >= held.at && time - held.at < Math.min(0.5, held.cycle)
     ? held

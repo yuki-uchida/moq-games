@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { beats, timing, gait, flinch, knockout, KO_SECONDS } from './animation.js'
+import { beats, timing, gait, flinch, knockout, deathBlend, KO_SECONDS } from './animation.js'
 import { typeOf } from './simulation.js'
 
 // Characters are built in model space: ~0.9 tall, base at y=0, face toward +Z. Their rig lives in the
@@ -2584,6 +2584,7 @@ export class Actor {
       bone.scale.clone(),
       true
     ])
+    this.lastPlace = new THREE.Vector3()
     this.floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
     this.tintColor = new THREE.Color('#ffffff')
     this.reset()
@@ -2592,6 +2593,8 @@ export class Actor {
   /** Clears per-unit motion memory, for a fresh unit or one reused from the pool. */
   reset() {
     this.lastPoseValid = false
+    this.lastPlaceValid = false
+    this.frozenPose = null
     this.frozenAt = null
     this.drowsyEnd = undefined
     this.drowsyStart = 0
@@ -2715,8 +2718,15 @@ export class Actor {
         if (this.frozenAt !== s.start) {
           this.frozenAt = s.start
           if (!this.lastPoseValid) this.savePose()
+          this.frozenPose = this.lastPose.map(([bone, position, rotation, scale, visible]) => [
+            bone,
+            position.clone(),
+            rotation.clone(),
+            scale.clone(),
+            visible
+          ])
         }
-        for (const [bone, position, rotation, scale, visible] of this.lastPose) {
+        for (const [bone, position, rotation, scale, visible] of this.frozenPose) {
           bone.position.copy(position)
           bone.quaternion.copy(rotation)
           bone.scale.copy(scale)
@@ -2755,7 +2765,16 @@ export class Actor {
     )
     this.mats.clear.emissive.copy(this.tintColor).multiplyScalar(tintGlow)
     for (const [bone] of this.rest) if (!bone.visible) bone.scale.setScalar(0)
-    if (f.status?.kind !== 'freeze') this.savePose()
+    if (k && this.lastPoseValid) {
+      const blend = deathBlend(f.ko)
+      for (const [bone, position, rotation, scale, visible] of this.lastPose) {
+        bone.position.lerpVectors(position, bone.position, blend)
+        bone.quaternion.slerp(rotation, 1 - blend)
+        bone.scale.lerpVectors(scale, bone.scale, blend)
+        if (blend < 1 && visible) bone.visible = true
+      }
+    }
+    if (!k) this.savePose()
   }
 
   setOpacity(opacity) {
@@ -2854,6 +2873,8 @@ export class LaneModels {
   unit(u, x, y, z, time, lead = Infinity, reach = 0, ground = y) {
     const actor = this.actor(u.id, u.key)
     actor.place(x, y, z, u.side, ...this.presentation, ground)
+    actor.lastPlace.copy(actor.root.position)
+    actor.lastPlaceValid = true
     if (actor.drowsyEnd !== u.drowsy?.end) {
       actor.drowsyEnd = u.drowsy?.end
       actor.drowsyStart = time
@@ -2888,6 +2909,7 @@ export class LaneModels {
   fallen(ghost, x, y, z, age) {
     const actor = this.actor(ghost.id, ghost.key)
     actor.place(x, y, z, ghost.side, ...this.presentation)
+    if (actor.lastPlaceValid) actor.root.position.lerpVectors(actor.lastPlace, actor.root.position, deathBlend(age))
     actor.animate({
       motion: 'walk',
       phase: 0,
