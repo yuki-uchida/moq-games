@@ -10,7 +10,6 @@ import {
   PASSIVE_BY_ID,
   RUN_SECONDS,
   STAGES,
-  TALENT_CATEGORIES,
   TALENT_NAMES,
   TAG_NAMES,
   WEAPONS,
@@ -18,7 +17,7 @@ import {
   ageAt,
   stageAt
 } from './data'
-import { talentRadarPoints } from './result'
+import { resultCategories, talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
 import { LifeAudio } from './audio'
 import { activeSynergies, SYNERGIES } from './synergies'
@@ -670,15 +669,21 @@ function reflection(player: ViewPlayer) {
     rows.push(row)
   }
   add(`親：${WEAPON_BY_ID.get(player.parent)!.name}`, WEAPON_BY_ID.get(player.parent)!.perk ?? '', '', player.parent)
-  for (const [id, lv, damage] of player.weapons) {
-    const def = WEAPON_BY_ID.get(id)!
-    const evolved =
-      def.evolve && lv >= MAX_WEAPON_LEVEL && player.passives.some(([passive]) => passive === def.evolve!.passive)
-    add(`${evolved ? def.evolve!.name : def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`, '', id)
-  }
-  for (const [id, lv] of player.passives) {
-    const def = PASSIVE_BY_ID.get(id)!
-    add(`${def.name} Lv${lv}`, '性格', '', id)
+  for (const group of resultCategories(player)) {
+    const heading = document.createElement('h4')
+    heading.textContent = `${TALENT_NAMES[group.category]}：武器 ${group.weapons.length}・性格 ${group.passives.length}`
+    rows.push(heading)
+    if (!group.weapons.length && !group.passives.length) add('なし', '')
+    for (const [id, lv, damage] of group.weapons) {
+      const def = WEAPON_BY_ID.get(id)!
+      const evolved =
+        def.evolve && lv >= MAX_WEAPON_LEVEL && player.passives.some(([passive]) => passive === def.evolve!.passive)
+      add(`${evolved ? def.evolve!.name : def.name} Lv${lv}`, `武器・与えた力 ${damage.toLocaleString()}`, '', id)
+    }
+    for (const [id, lv] of group.passives) {
+      const def = PASSIVE_BY_ID.get(id)!
+      add(`${def.name} Lv${lv}`, '性格', '', id)
+    }
   }
   return rows
 }
@@ -728,9 +733,12 @@ function showResult(
   if (talents) {
     document.querySelector('#result-radar')!.setAttribute('points', talentRadarPoints(talents))
     element('#result-talent-values').replaceChildren(
-      ...TALENT_CATEGORIES.map((category) => {
+      ...resultCategories(player!).map(({ category, weapons, passives }) => {
         const value = document.createElement('span')
-        value.textContent = `${TALENT_NAMES[category]} ×${talents[category].toFixed(2)}`
+        value.append(`${TALENT_NAMES[category]} ×${talents[category].toFixed(2)}`)
+        const counts = document.createElement('small')
+        counts.textContent = `武器${weapons.length}・性格${passives.length}`
+        value.append(counts)
         return value
       })
     )
