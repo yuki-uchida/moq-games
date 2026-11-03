@@ -7,6 +7,7 @@ import { loadCampaignSave, saveCampaignCheckpoint } from '../src/progression/Cam
 import { availableAllies, freshRunFromProfile } from '../src/progression/UpgradeSystem'
 import {
   ALL_OUT_FROM_STAGE,
+  affordableRecruit,
   battleFormation,
   FORMATION_SLOTS,
   owned,
@@ -151,4 +152,17 @@ describe('総力戦', () => {
     expect(battleFormation(p, 9).length).toBeGreaterThan(p.formation.length)
     expect(battleFormation(p, 10)).toEqual(owned(p))
   })
+})
+
+it('offers the cheapest ally the coins can recruit, and nothing once all are owned or unaffordable', () => {
+  const p = freshStageProgress()
+  p.coins = 79
+  expect(affordableRecruit(p)).toBeNull()
+  p.coins = 80
+  expect(affordableRecruit(p)).toBe('healer')
+  expect(recruit(p, 'healer')).toBe(true)
+  p.coins = 1000
+  expect(affordableRecruit(p)).toBe('frost')
+  for (const type of ['frost', 'ranger', 'mage', 'cannon', 'paladin'] as const) expect(recruit(p, type)).toBe(true)
+  expect(affordableRecruit(p)).toBeNull()
 })
