@@ -8,7 +8,7 @@ This independent checkout owns the tower-defense game, its bot, review tools, as
 
 Before starting any user-requested work, fetch the latest `main` branch from `origin` and merge `origin/main` into the working branch. Resolve any merge conflicts before making task-specific changes. Preserve uncommitted changes and do not rewrite published history.
 
-For repository editing requests, read `.claude/skills/create-pr/SKILL.md` at the start and again before the final response, not only when creating a PR. If `master` does not exist, report that blocker; do not silently substitute another branch.
+For repository editing requests, read `.claude/skills/create-pr/SKILL.md` at the start and again before the final response, not only when creating a PR. If `main` does not exist, report that blocker; do not silently substitute another branch.
 
 ## Commits and pull requests
 

@@ -244,11 +244,18 @@ test('a solo life: birth, a turning point, and the reaper at 15:00', async ({ pa
   await handle.evaluate((l) => {
     l.game.state.time = 15 * 60 - 0.5
     for (const p of l.game.state.players) p.choices = []
+    const player = (l.game as unknown as Game).state.players[0]
+    player.weapons = [{ id: 'w_invest', lv: 8, cd: 100, held: 0, damage: 123 }]
+    player.passives = [{ id: 'p_greedy', lv: 1 }]
+    player.talents.friend = 1.7
   })
   await expect(page.locator('#feed')).toContainText('死神', { timeout: 5000 })
   await page.screenshot({ path: testInfo.outputPath('reaper.png') })
   await expect(page.getByRole('heading', { name: /大往生 — 享年80歳/ })).toBeVisible({ timeout: 8000 })
-  await expect(page.locator('#result-build')).toContainText('才能：')
+  await expect(page.locator('#result-talent-values')).toContainText('対人 ×1.70')
+  await expect(page.locator('#result-radar')).toHaveAttribute('points', /^150\.0,30\.0 /)
+  await expect(page.locator('#result-build')).toContainText('複利の魔法 Lv8')
+  await expect(page.locator('#result-build')).toContainText('がめつい Lv1')
   await page.screenshot({ path: testInfo.outputPath('result.png') })
   await page.getByRole('button', { name: 'もう一度生まれる' }).click()
   await expect(page.getByRole('button', { name: 'ひとりで生まれる' })).toBeVisible()

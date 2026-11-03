@@ -701,6 +701,31 @@ button {
 .result-symbol {
   font-size: 56px;
 }
+.result-talents svg {
+  width: min(220px, 100%);
+  display: block;
+  margin: auto;
+}
+.radar-grid {
+  fill: rgba(255, 255, 255, 0.05);
+  stroke: #9aa3ad;
+}
+.radar-value {
+  fill: rgba(255, 208, 110, 0.45);
+  stroke: #ffe08a;
+  stroke-width: 3;
+}
+.radar-labels {
+  fill: currentColor;
+  text-anchor: middle;
+  font-size: 17px;
+}
+.result-talent-values {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  font-size: 13px;
+}
 .result-build {
   display: grid;
   gap: 4px;
