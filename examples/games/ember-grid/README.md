@@ -8,6 +8,8 @@ The prologue, chapter title cards, introductions and victory scenes use the char
 
 The six-chapter campaign includes Luka's chapter-four introduction, the final dragon encounter, the epilogue and credits.
 
+Victory updates the turn and objective before the outro; the report follows the dialogue.
+
 Story checks: `npx vitest run examples/games/ember-grid/tests/*.test.ts --maxWorkers=1` and `E2E_PORT=5271 npx playwright test --config examples/games/ember-grid/playwright.config.ts`. Story screenshots are saved under `test-results/story-*.png`.
 
 ## Expedition

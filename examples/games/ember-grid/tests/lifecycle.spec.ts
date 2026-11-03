@@ -99,6 +99,10 @@ for (const point of ['outro', 'epilogue', 'credits'] as const) {
     await page.getByRole('button', { name: /7,6 ボス 灰/ }).click()
     await page.getByRole('button', { name: '攻撃', exact: true }).click()
     await expect(page.locator('.story-overlay')).toBeVisible({ timeout: 30000 })
+    await expect(page.locator('#turn')).toHaveText('✦ 勝利 · 1')
+    await expect(page.locator('#objective')).toContainText('◎ 任務達成')
+    await expect(page.locator('#fast')).toBeHidden()
+    await expect(page.locator('#result')).toBeHidden()
     if (point !== 'outro') {
       await page.locator('.story-overlay button').click()
       if (point === 'epilogue') await expect(page.locator('.story-overlay')).toBeVisible()
@@ -145,6 +149,10 @@ test('seize clear is saved before its outro', async ({ page }) => {
   await page.getByRole('dialog').getByRole('button', { name: '戻る' }).click()
   await page.locator('#end').click()
   await expect(page.locator('.story-overlay')).toBeVisible({ timeout: 30000 })
+  await expect(page.locator('#turn')).toHaveText('✦ 勝利 · 1')
+  await expect(page.locator('#objective')).toContainText('◎ 任務達成')
+  await expect(page.locator('#fast')).toBeHidden()
+  await expect(page.locator('#result')).toBeHidden()
   const save = await page.evaluate(() => JSON.parse(localStorage.getItem('ember-grid:save:v1')!))
   expect(save.cleared).toContain(3)
   expect(save.furthest).toBe(4)
@@ -153,4 +161,49 @@ test('seize clear is saved before its outro', async ({ page }) => {
   expect(save.suspend).toBeUndefined()
   await page.reload()
   await expect(page.getByRole('button', { name: /つづきから/ })).toContainText('骸の礼拝堂')
+})
+
+test('survive victory updates the HUD and saves before its outro', async ({ page }) => {
+  await page.goto('./?seed=7')
+  await page.evaluate(async () => {
+    const gamePath = './src/game.ts'
+    const savePath = './src/save.ts'
+    const { createGame, seeded } = await import(gamePath)
+    const { freshSave, snapshotGame } = await import(savePath)
+    const game = createGame(4, 'balanced', undefined, seeded(7))
+    game.turn = 6
+    for (const unit of game.units.filter((unit: { side: string }) => unit.side === 'ally')) unit.def = 100
+    localStorage.setItem('ember-grid:settings:v1', JSON.stringify({ version: 1, story: false, tutorial: false }))
+    localStorage.setItem(
+      'ember-grid:save:v1',
+      JSON.stringify({ ...freshSave('classic'), furthest: 4, cleared: [0, 1, 2, 3], suspend: snapshotGame(game) })
+    )
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /つづきから/ }).click()
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.getByRole('button', { name: '設定', exact: true }).click()
+  await page.getByLabel('ストーリー').check()
+  await page.getByRole('dialog').getByRole('button', { name: '戻る' }).click()
+  await page.locator('#end').click()
+  await expect(page.locator('.story-overlay p')).toHaveText('礼拝堂の燈台が、暗闇に輝いた。', { timeout: 30000 })
+  await expect(page.locator('#turn')).toHaveText('✦ 勝利 · 6')
+  await expect(page.locator('#objective')).toContainText('◎ 防衛達成')
+  await expect(page.locator('#fast')).toBeHidden()
+  await expect(page.locator('#result')).toBeHidden()
+  const save = await page.evaluate(() => JSON.parse(localStorage.getItem('ember-grid:save:v1')!))
+  expect(save.cleared).toContain(4)
+  expect(save.furthest).toBe(5)
+  expect(save.checkpoints[5]).toBeTruthy()
+  expect(save.bestTurns[4]).toBe(6)
+  expect(save.suspend).toBeUndefined()
+  for (const viewport of [
+    { width: 844, height: 390 },
+    { width: 390, height: 844 }
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.screenshot({ path: `test-results/ember-survive-victory-${viewport.width}.png` })
+  }
+  await page.reload()
+  await expect(page.getByRole('button', { name: /つづきから/ })).toContainText('灰の玉座')
 })

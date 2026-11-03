@@ -727,6 +727,7 @@ async function choose(x: number, y: number) {
       if (token !== generation) return
       if (!(await showProgress(token))) return
       if (unit.done) undo = undefined
+      render()
       await story.victory(token)
       if (token !== generation) return
       busy = false
@@ -821,6 +822,7 @@ async function openChapter(fresh: boolean) {
 /** Plays the chapter outro (and the finale) before the report; false if a restart superseded it. */
 async function victoryScene(token: number) {
   lockPresentation()
+  render()
   await story.victory(token)
   if (token !== generation) return false
   busy = false
