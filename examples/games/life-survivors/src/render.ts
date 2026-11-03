@@ -30,8 +30,8 @@ const BODIES: Record<string, string> = {
   中学生: 'junior',
   高校生: 'high',
   青年期: 'college',
-  社会人: 'adult',
-  働き盛り: 'prime',
+  成人期: 'adult',
+  壮年期: 'prime',
   中年: 'middle',
   老後: 'elder',
   寝たきり: 'bed'

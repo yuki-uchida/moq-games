@@ -69,8 +69,8 @@ export const STAGES: Stage[] = [
   { age: 12, name: '中学生', icon: '🧑‍🎓', ground: '#2b3443', line: '#394355', decor: ['📐', '🏀', '🚲'] },
   { age: 15, name: '高校生', icon: '🧑‍🎓', ground: '#302d45', line: '#3e3a57', decor: ['🎧', '📮', '🍞'] },
   { age: 18, name: '青年期', icon: '🧑', ground: '#3b2d3e', line: '#4b3a4f', decor: ['☕', '🍻', '📚'] },
-  { age: 23, name: '社会人', icon: '🧑‍💼', ground: '#2c3238', line: '#3b434b', decor: ['🏢', '🚃', '☕'] },
-  { age: 35, name: '働き盛り', icon: '🧑‍💼', ground: '#33322b', line: '#45433a', decor: ['🏠', '🚗', '🛒'] },
+  { age: 23, name: '成人期', icon: '🧑', ground: '#2c3238', line: '#3b434b', decor: ['🏢', '🚃', '☕'] },
+  { age: 35, name: '壮年期', icon: '🧑', ground: '#33322b', line: '#45433a', decor: ['🏠', '🚗', '🛒'] },
   { age: 50, name: '中年', icon: '🧔', ground: '#3a302a', line: '#4c4037', decor: ['⛳', '🍶', '💊'] },
   { age: 65, name: '老後', icon: '🧓', ground: '#352c2f', line: '#463a3e', decor: ['🍵', '🌳', '🪑'] },
   { age: 75, name: '寝たきり', icon: '🛏️', ground: '#2f3036', line: '#3d3f47', decor: ['💊', '🌷', '🩺'] }

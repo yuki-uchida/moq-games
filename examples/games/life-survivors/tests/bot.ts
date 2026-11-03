@@ -166,6 +166,8 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
   let pick = -1
   if (player.choices.length) {
     const score = (choice: string) => {
+      if (choice === 'f:yes') return 100
+      if (choice === 'f:no') return -100
       const [kind, id] = choice.split(':')
       if (strategy === 'random') return game.random()
       if (kind !== 'w') {

@@ -26,6 +26,124 @@ const arena = () => {
   return { game, players }
 }
 
+describe('later career changes', () => {
+  test.each([
+    ['undecided', 13],
+    ['sports', 14],
+    ['late', 9]
+  ] as const)('work describes only the confirmed %s past', (past, outcome) => {
+    const game = new Game(123)
+    game.addPlayer('anchor', 'p_free')
+    const early = game.addPlayer('early', 'p_free')!
+    if (past === 'sports') equip(early, 'w_sports', 4)
+    event(game, 'b_shukatsu')
+    const player = past === 'late' ? game.addPlayer('late', 'p_free')! : early
+    const oldHistory = structuredClone(player.history)
+    equip(player, 'w_work', 4)
+    event(game, 'b_layoff')
+    expect(player.history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[outcome])
+    expect(player.history.slice(0, -1)).toEqual(oldHistory)
+    expect(player.careerPending).toBe(2)
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+    game.state.phase = 'lost'
+    const view = JSON.parse(JSON.stringify(toView(game.state)))
+    expect(readView(view)).toBeTruthy()
+    const target = view.players.find((entry: { id: string }) => entry.id === player.id)
+    expect(target.history).toEqual(player.history)
+    for (const other of [9, 13, 14].filter((index) => index !== outcome)) {
+      target.history.at(-1).outcome = LIFE_OUTCOMES.b_layoff[other]
+      expect(readView(view)).toBeUndefined()
+    }
+    target.history.at(-1).outcome = '後年に磨いた仕事で、初就職または新分野の仕事に挑戦。転機を2回獲得。'
+    expect(readView(view)).toBeUndefined()
+  })
+
+  test.each(['w_study', 'w_reading', 'w_overtime', 'w_gamble', 'w_friend', 'w_love'])(
+    '%s alone cannot qualify a later career',
+    (weapon) => {
+      const { game, players } = arena()
+      event(game, 'b_shukatsu')
+      equip(players[0], weapon, 8)
+      event(game, 'b_layoff')
+      expect(players[0].careerPending).toBe(0)
+      expect(players[0].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[2])
+    }
+  )
+
+  test('joining at or after the later boundary cannot invent a later career', () => {
+    for (const offset of [0, 1]) {
+      const game = new Game(123)
+      game.addPlayer('anchor', 'p_free')
+      const index = EVENTS.findIndex((entry) => entry.boss === 'b_layoff')
+      game.state.eventIndex = index
+      game.state.time = EVENTS[index].at + offset
+      const player = game.addPlayer('late', 'p_free')!
+      equip(player, 'w_work', 8)
+      game.tick(0.001)
+      expect(player.history).toEqual([])
+      expect(player.careerPending).toBe(0)
+      expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+    }
+  })
+
+  test.each([
+    'w_work',
+    'w_sports',
+    'w_muscle',
+    'w_invest',
+    'w_savings',
+    'w_hobby',
+    'w_karaoke',
+    'w_travel',
+    'w_cooking'
+  ])('%s qualifies only at level four, independently of early decisions', (weapon) => {
+    for (const early of [undefined, 'w_work', 'w_sports', 'w_invest', 'w_hobby']) {
+      for (const level of [3, 4]) {
+        const { game, players } = arena()
+        const player = players[0]
+        if (early) equip(player, early, 4)
+        event(game, 'b_shukatsu')
+        const original = { ...player.history[0] }
+        equip(player, weapon, level)
+        player.downed = true
+        player.hp = 0
+        event(game, 'b_layoff')
+        expect(player.history[0]).toEqual(original)
+        expect(player.careerPending).toBe(level === 4 ? 2 : early ? 1 : 0)
+        expect(players.slice(1).every((friend) => friend.careerPending === 0)).toBe(true)
+        expect(player.hp).toBe(0)
+        expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(early === 'w_work')
+        const history = structuredClone(player.history)
+        event(game, 'b_layoff')
+        expect(player.history).toEqual(history)
+        expect(player.careerPending).toBe(0)
+        game.state.phase = 'lost'
+        const view = JSON.parse(JSON.stringify(toView(game.state)))
+        expect(readView(view)).toBeTruthy()
+        expect(readView({ ...view, v: 5 })).toBeUndefined()
+        view.players[0].history.at(-1).outcome = 'forged later career'
+        expect(readView(view)).toBeUndefined()
+      }
+    }
+  })
+
+  test('ranking uses evolution and definition order, not hand order or another player', () => {
+    for (const evolved of [false, true]) {
+      const { game, players } = arena()
+      event(game, 'b_shukatsu')
+      const player = players[0]
+      player.weapons = ['w_hobby', 'w_sports'].map((id) => ({ id, lv: 8, cd: 100, held: 0, damage: 0 }))
+      if (evolved) player.passives = [{ id: TALENT_WEAPONS.find(({ id }) => id === 'w_hobby')!.evolve!.passive, lv: 1 }]
+      equip(players[1], 'w_work', 8)
+      event(game, 'b_layoff')
+      expect(player.history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[evolved ? 12 : 10])
+      expect(players[1].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[13])
+      expect(toView(game.state).players.every((entry) => !entry.talents && !entry.history)).toBe(true)
+      expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+    }
+  })
+})
+
 describe('education and career history', () => {
   test.each(['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'])(
     '%s qualifies only at Lv4 and retains creative experience after exchange',
@@ -38,7 +156,7 @@ describe('education and career history', () => {
         expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
         expect(players.slice(1).every((player) => player.careerPending === 0)).toBe(true)
         const first = { ...players[0].history[0] }
-        equip(players[0], 'w_work', 8)
+        equip(players[0], 'w_work', 3)
         event(game, 'b_layoff')
         expect(players[0].history[0]).toEqual(first)
         expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
@@ -69,7 +187,7 @@ describe('education and career history', () => {
     players.slice(0, 7).forEach((player, index) => equip(player, creative[(index + 1) % 4], index % 2 ? 3 : 4))
     event(game, 'b_layoff')
     expect(players.slice(0, 7).map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 2, 1, 2])
-    expect(rejoined.careerPending).toBe(0)
+    expect(rejoined.careerPending).toBe(2)
     expect(rejoined.history).toHaveLength(1)
     expect(players[0].hp).toBe(0)
     expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
@@ -198,7 +316,7 @@ describe('education and career history', () => {
     expect(players.map((player) => player.history)).toEqual(decisions)
     expect(players.every((player) => player.careerPending === 0)).toBe(true)
     event(game, 'b_layoff')
-    expect(players.map((player) => player.careerPending)).toEqual([1, 2, 2, 1, 2, 2, 1, 0])
+    expect(players.map((player) => player.careerPending)).toEqual([2, 2, 2, 2, 2, 2, 2, 2])
     expect(players[0].downed).toBe(true)
     expect(players[0].hp).toBe(0)
     expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(0)
@@ -369,14 +487,14 @@ describe('education and career history', () => {
     equip(player, outcome === 3 ? 'w_invest' : 'w_sports', 8)
     event(game, 'b_layoff')
     expect(player.history[0]).toEqual(decision)
-    expect(player.careerPending).toBe(outcome === 2 ? 0 : 1)
+    expect(player.careerPending).toBe(2)
     expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(outcome === 1 ? 1 : 0)
     game.state.phase = 'lost'
     expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
   })
 
   test.each(['w_sports', 'w_muscle', 'w_invest', 'w_savings'])(
-    '%s replacement preserves the path, but only current weapons in that field earn two rewards',
+    '%s replacement preserves the old path and permits a new qualified field',
     (weapon) => {
       const {
         game,
@@ -389,11 +507,9 @@ describe('education and career history', () => {
       game.choose(player, 0)
       player.weapons[0].lv = 8
       event(game, 'b_layoff')
-      expect(player.careerPending).toBe(1)
+      expect(player.careerPending).toBe(2)
       expect(player.history[0]).toEqual(decision)
-      expect(player.history[1].outcome).toContain(
-        weapon === 'w_sports' || weapon === 'w_muscle' ? '過去の運動経験' : '過去の資産経験'
-      )
+      expect(player.history[1].outcome).toBe(LIFE_OUTCOMES.b_layoff[14])
       expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
       game.state.phase = 'lost'
       expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
@@ -411,7 +527,7 @@ describe('education and career history', () => {
     const reused = game.addPlayer('same', 'p_free')!
     equip(reused, 'w_sports', 8)
     event(game, 'b_layoff')
-    expect([late.careerPending, reused.careerPending]).toEqual([0, 0])
+    expect([late.careerPending, reused.careerPending]).toEqual([2, 2])
     expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
   })
 
@@ -457,7 +573,7 @@ describe('education and career history', () => {
     expect(future.careerPending).toBe(1)
     expect(boundary.history).toEqual([])
     event(game, 'b_layoff')
-    expect([future.careerPending, boundary.careerPending]).toEqual([2, 0])
+    expect([future.careerPending, boundary.careerPending]).toEqual([2, 2])
   })
 
   test('eight players decide independently at all three stages, without using talent', () => {
@@ -470,7 +586,7 @@ describe('education and career history', () => {
     expect(players.map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 0, 0, 0, 0])
     players.forEach((player, index) => equip(player, 'w_work', index % 2 ? 3 : 4))
     event(game, 'b_layoff')
-    expect(players.map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 0, 0, 0, 0])
+    expect(players.map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 2, 0, 2, 0])
     expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(1)
     expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
     for (const player of toView(game.state).players) {
@@ -618,7 +734,7 @@ describe('education and career history', () => {
     equip(late, 'w_work', 8)
     event(game, 'b_layoff')
     expect(newcomer.careerPending).toBe(2)
-    expect(late.careerPending).toBe(0)
+    expect(late.careerPending).toBe(2)
   })
 
   test('joining exactly on an unprocessed boundary skips that decision', () => {

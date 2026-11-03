@@ -13,6 +13,214 @@ type Life = {
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
 for (const width of [1280, 390]) {
+  test(`family choices preserve solo cards with keyboard and touch at ${width}px`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
+    const page = await context.newPage()
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate(async (hook) => {
+      const path = '/src/data.ts'
+      const { EVENTS } = await import(path)
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = [{ id: 'w_love', lv: 2, cd: 100, held: 0, damage: 0 }]
+      const wedding = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_wedding')
+      game.state.eventIndex = wedding
+      game.state.time = EVENTS[wedding].at - 0.01
+      game.tick(0.01)
+      game.state.enemies = []
+      const birth = EVENTS.findIndex((event: { swarm?: string }) => event.swarm === 'nightcry')
+      game.state.eventIndex = birth
+      game.state.time = EVENTS[birth].at - 0.01
+      player.pending = 1
+      game.tick(0.01)
+    })
+    await expect(page.locator('#levelup-title')).toHaveText('家族の選択')
+    await expect(page.locator('#levelup-note')).toContainText('時間は止まっています')
+    const time = await handle.evaluate((hook) => hook.game.state.time)
+    await page.waitForTimeout(400)
+    expect(await handle.evaluate((hook) => hook.game.state.time)).toBe(time)
+    expect(await page.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`solo-family-${width}.png`) })
+    if (width === 390) await page.getByRole('button', { name: /迎えない.*本人の回復/ }).tap()
+    else await page.keyboard.press('Digit2')
+    await expect(page.locator('#levelup-title')).toHaveText('人生の転機')
+    await expect(page.locator('#cards .card')).toHaveCount(3)
+    await page.waitForTimeout(400)
+    if (width === 390) await page.locator('#cards .card').first().tap()
+    else await page.keyboard.press('Digit1')
+    await expect(page.locator('#levelup')).toBeHidden()
+    await expect.poll(() => handle.evaluate((hook) => hook.game.state.time)).toBeGreaterThan(time)
+    expect(await handle.evaluate((hook) => (hook.game as unknown as Game).state.players[0].hasChild)).toBe(false)
+    await context.close()
+  })
+
+  test(`host and guest independently restore exchange cards at ${width}px`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
+    await context.route('**/rabbiters/src/network.ts*', (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+    )
+    const host = await context.newPage()
+    const guest = await context.newPage()
+    for (const page of [host, guest]) {
+      await page.goto('/')
+      await page.locator('#room').fill(`choices-${width}`)
+    }
+    await host.getByRole('button', { name: 'ルームを作る' }).click()
+    await guest.getByRole('button', { name: 'ルームに参加' }).click()
+    const handle = await life(host)
+    await expect.poll(() => handle.evaluate((hook) => hook.game.state.players.length)).toBe(2)
+    await handle.evaluate(async (hook) => {
+      const path = '/src/data.ts'
+      const { EVENTS } = await import(path)
+      const game = hook.game as unknown as Game
+      for (const player of game.state.players) {
+        player.choices = []
+        player.pending = player.swapPending = player.careerPending = 0
+        player.birthPick = false
+        player.weapons = [{ id: 'w_love', lv: 2, cd: 100, held: 0, damage: 0 }]
+      }
+      const wedding = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_wedding')
+      game.state.eventIndex = wedding
+      game.state.time = EVENTS[wedding].at - 0.01
+      game.tick(0.01)
+      game.state.enemies = []
+      const birth = EVENTS.findIndex((event: { swarm?: string }) => event.swarm === 'nightcry')
+      game.state.eventIndex = birth
+      game.state.time = EVENTS[birth].at - 0.02
+      for (const player of game.state.players) {
+        player.choices = ['s:w_work', 'x:skip']
+        game.choose(player, 0)
+        player.pending = 2
+        player.swapPending = 3
+      }
+      game.tick(0.021)
+    })
+    for (const page of [host, guest]) {
+      await expect(page.locator('#levelup-title')).toHaveText('家族の選択')
+      await expect(page.locator('#levelup-note')).toContainText('時間は流れ続けています')
+    }
+    const time = await handle.evaluate((hook) => hook.game.state.time)
+    await guest.bringToFront()
+    await guest.waitForTimeout(400)
+    await guest.screenshot({ path: testInfo.outputPath(`coop-family-${width}.png`) })
+    if (width === 390) await guest.getByRole('button', { name: /迎える.*本人の回復/ }).tap()
+    else await guest.keyboard.press('Digit1')
+    await expect(guest.locator('#levelup-note')).toContainText('手放す武器')
+    await expect(host.locator('#levelup-title')).toHaveText('家族の選択')
+    await expect.poll(() => handle.evaluate((hook) => hook.game.state.time)).toBeGreaterThan(time)
+    await host.bringToFront()
+    await host.keyboard.press('Digit2')
+    await expect(host.locator('#levelup-note')).toContainText('手放す武器')
+    const states = await handle.evaluate((hook) =>
+      (hook.game as unknown as Game).state.players.map((player) => ({
+        hasChild: player.hasChild,
+        choices: player.choices,
+        pending: player.pending,
+        swapPending: player.swapPending
+      }))
+    )
+    expect(states.map((player) => player.hasChild)).toEqual([false, true])
+    for (const player of states) {
+      expect(player.choices).toEqual(['r:w_love:w_work', 'x:skip'])
+      expect([player.pending, player.swapPending]).toEqual([2, 3])
+    }
+    await guest.screenshot({ path: testInfo.outputPath(`restored-exchange-${width}.png`) })
+    await context.close()
+  })
+}
+
+for (const width of [1280, 390]) {
+  for (const [age, name, subtitle] of [
+    [23, '成人期', '自分の歩幅で進んで'],
+    [35, '壮年期', '日々を重ねて']
+  ] as const) {
+    for (const [weapon, outcome] of [
+      ['', '就職を急がず、自分の道を探す。'],
+      ['w_work', '実務を磨き、現場で就職。転機を1回獲得。'],
+      ['w_hobby', '好きなことを磨き、創作の道へ。転機を1回獲得。'],
+      ['w_sports', '運動を磨き、スポーツの道へ。転機を1回獲得。'],
+      ['w_invest', '資産を育て、資産を活かす道へ。転機を1回獲得。']
+    ] as const) {
+      test(`adult stage stays path-neutral at age ${age}, ${weapon || 'no work'}, ${width}px`, async ({
+        page
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 844 })
+        await page.goto('/')
+        await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+        const handle = await life(page)
+        const history = await handle.evaluate(
+          async (hook, setup) => {
+            const dataPath = '/src/data.ts'
+            const { EVENTS, timeAtAge } = await import(dataPath)
+            const game = hook.game as unknown as Game
+            const player = game.state.players[0]
+            game.targetPopulation = () => 0
+            player.birthPick = false
+            player.choices = []
+            player.pending = 0
+            player.weapons = setup.weapon ? [{ id: setup.weapon, lv: 4, cd: 100, held: 0, damage: 0 }] : []
+            if (setup.age === 35) {
+              const index = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_shukatsu')
+              game.state.eventIndex = index
+              game.state.time = EVENTS[index].at - 0.01
+              game.tick(0.02)
+              player.careerPending = 0
+              player.choices = []
+              game.state.fx = []
+            }
+            game.state.eventIndex = EVENTS.length
+            game.state.enemies = []
+            game.state.log = []
+            game.state.time = timeAtAge(setup.age) + 0.01
+            return player.history.at(-1)?.outcome
+          },
+          { age, weapon }
+        )
+        if (age === 35) expect(history).toBe(outcome)
+        await expect(page.locator('#stage')).toHaveText(name)
+        await expect(page.locator('#announcements')).toHaveText(`${name}、${age}歳`)
+        await expect(page.locator('#announcements')).toHaveAttribute('aria-live', 'assertive')
+        await expect(page.locator('#banner .banner-title')).toHaveText(name, { timeout: 6000 })
+        await expect(page.locator('#banner .banner-meta')).toHaveText(`${age}歳`)
+        await expect(page.locator('#banner .banner-sub')).toHaveText(`🧑 ${subtitle}`)
+        expect(await page.locator('.hud-top').evaluate((hud) => hud.scrollWidth <= hud.clientWidth)).toBe(true)
+        const bannerBounds = await page.locator('#banner .banner-stage').evaluate((banner) => {
+          const animation = banner.getAnimations()[0]
+          const currentTime = animation.currentTime
+          const duration = Number(animation.effect!.getComputedTiming().duration)
+          animation.pause()
+          const bounds = [0.1, 0.5, 0.9].flatMap((progress) => {
+            animation.currentTime = duration * progress
+            return Array.from(banner.querySelectorAll('.banner-meta, .banner-title, .banner-sub'), (element) => {
+              const rect = element.getBoundingClientRect()
+              return { progress, text: element.textContent, left: rect.left, right: rect.right }
+            })
+          })
+          animation.currentTime = currentTime
+          animation.play()
+          return bounds
+        })
+        for (const { progress, text, left, right } of bannerBounds) {
+          expect(left, `${text} at ${progress}`).toBeGreaterThanOrEqual(0)
+          expect(right, `${text} at ${progress}`).toBeLessThanOrEqual(width)
+        }
+        if (!weapon) await page.screenshot({ path: testInfo.outputPath(`stage-${age}-${width}.png`) })
+        await handle.evaluate((hook) => {
+          const game = hook.game as unknown as Game
+          game.state.players[0].hp = 0
+          game.state.phase = 'lost'
+        })
+        await expect(page.locator('#result-text')).toHaveText(`${name}で力尽きた。`, { timeout: 8000 })
+        await expect(page.locator('#result')).toBeVisible()
+      })
+    }
+  }
+
   test(`youth stage does not assume an education path at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 })
     await page.goto('/')
@@ -74,6 +282,7 @@ for (const width of [1280, 390]) {
     await expect(conditions).toContainText('投資・貯金のどちらかLv4以上')
     await expect(conditions).toContainText('趣味・カラオケ・旅行・料理のいずれかLv4以上')
     await expect(conditions).toContainText('64歳')
+    await expect(conditions).toContainText('後から育てた手札は64歳の進路に反映')
     await expect(conditions).toContainText('複数候補は手札の育成度と進化')
     await expect(conditions).toContainText('結婚イベント時に恋愛Lv2以上')
     await expect(conditions).toContainText('本人の精神力')
@@ -516,6 +725,14 @@ test('a solo life: birth, a turning point, and the reaper at 15:00', async ({ pa
     player.weapons = [{ id: 'w_invest', lv: 8, cd: 100, held: 0, damage: 123 }]
     player.passives = [{ id: 'p_greedy', lv: 1 }]
     player.talents.friend = 1.7
+    const game = l.game as unknown as Game
+    game.tick(0.01)
+    for (const participant of game.state.players) {
+      participant.choices = []
+      participant.pending = 0
+      participant.careerPending = 0
+      participant.swapPending = 0
+    }
   })
   await expect(page.locator('#feed')).toContainText('死神', { timeout: 5000 })
   await page.screenshot({ path: testInfo.outputPath('reaper.png') })
@@ -544,6 +761,9 @@ test('a solo life: birth, a turning point, and the reaper at 15:00', async ({ pa
 test('蒸発済み starts with a free early talent pick and then plays on', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    Date.now = () => 39
+  })
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   await expect(page.locator('#hud')).toBeVisible()
@@ -688,7 +908,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v5',
+      app: 'life-survivors-v7',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -707,9 +927,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v7', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
@@ -901,7 +1121,7 @@ test('a guest without parents can join another player’s care trial', async ({ 
   expect(errors).toEqual([])
 })
 
-for (const path of ['assets', 'creative'] as const) {
+for (const path of ['assets', 'creative', 'later-creative'] as const) {
   test(`sports and ${path} paths reach only their own terminal history over snapshots`, async ({ context }) => {
     await context.route('**/rabbiters/src/network.ts*', (route) =>
       route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
@@ -922,7 +1142,7 @@ for (const path of ['assets', 'creative'] as const) {
     await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
     const guestId = await guestLife.evaluate((hook) => hook.localId)
     await hostLife.evaluate(
-      async (hook, { id, creative }) => {
+      async (hook, { id, creative, later }) => {
         const dataPath = '/src/data.ts'
         const { EVENTS } = await import(dataPath)
         const game = hook.game as unknown as Game
@@ -942,6 +1162,10 @@ for (const path of ['assets', 'creative'] as const) {
           ]
         }
         for (const boss of ['b_shukatsu', 'b_layoff']) {
+          if (later) {
+            const player = game.state.players.find((entry) => entry.id === id)!
+            player.weapons = [{ id: boss === 'b_shukatsu' ? 'w_work' : 'w_hobby', lv: 4, cd: 100, held: 0, damage: 0 }]
+          }
           const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
           game.state.enemies = []
           game.state.eventIndex = index
@@ -949,7 +1173,7 @@ for (const path of ['assets', 'creative'] as const) {
           game.tick(0.01)
         }
       },
-      { id: guestId, creative: path === 'creative' }
+      { id: guestId, creative: path !== 'assets', later: path === 'later-creative' }
     )
     await expect
       .poll(() =>
@@ -962,9 +1186,13 @@ for (const path of ['assets', 'creative'] as const) {
           return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
         }, guestId)
       )
-      .toEqual(['soccer', path === 'creative' ? 'creative' : 'entrepreneur'])
+      .toEqual(['soccer', path !== 'assets' ? 'creative' : 'entrepreneur'])
     await expect(guest.locator('#feed')).toContainText(
-      path === 'creative' ? '創作の道を広げる' : '資産を活かす道を広げる'
+      path === 'later-creative'
+        ? '新たに創作の道に挑戦'
+        : path === 'creative'
+          ? '創作の道を広げる'
+          : '資産を活かす道を広げる'
     )
     await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
     expect(
@@ -998,7 +1226,11 @@ for (const path of ['assets', 'creative'] as const) {
       ;(hook.game as unknown as Game).state.phase = 'lost'
     })
     await expect(guest.locator('#result-history-list')).toContainText(
-      path === 'creative' ? '好きなことを磨き、創作の道へ' : '資産を育て、資産を活かす道へ'
+      path === 'later-creative'
+        ? '実務を磨き、現場で就職'
+        : path === 'creative'
+          ? '好きなことを磨き、創作の道へ'
+          : '資産を育て、資産を活かす道へ'
     )
     await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
     await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
@@ -1057,6 +1289,14 @@ for (const width of [1280, 390]) {
         (hook, id) => (hook.view as unknown as View | undefined)?.players.find((player) => player.id === id),
         guestId
       )
+    await expect.poll(personal).toMatchObject({ married: true, hasChild: false, choices: ['f:yes', 'f:no'] })
+    await expect(guest.locator('#levelup-title')).toHaveText('家族の選択')
+    await guest.screenshot({ path: testInfo.outputPath(`family-choice-${width}.png`) })
+    expect(await guest.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
+    if (width === 390) {
+      await guest.waitForTimeout(400)
+      await guest.getByRole('button', { name: /迎える.*本人の回復/ }).click()
+    } else await guest.keyboard.press('Digit1')
     await expect.poll(personal).toMatchObject({ married: true, hasChild: true })
     expect(
       (await guestLife.evaluate((hook) => (hook.view as unknown as View).players)).find(
@@ -1077,7 +1317,7 @@ for (const width of [1280, 390]) {
     })
     await expect(guest.locator('#result-history')).toBeVisible()
     await expect(guest.locator('#result-history-list')).toContainText('結婚した！')
-    await expect(guest.locator('#result-history-list')).toContainText('子どもが生まれた！')
+    await expect(guest.locator('#result-history-list')).toContainText('子どもを迎えた！')
     await expect(guest.locator('#result-history-list')).not.toContainText('独身')
     await expect(host.locator('#result-history-list')).toContainText('独身')
     await expect(host.locator('#result-history-list')).not.toContainText('結婚した！')

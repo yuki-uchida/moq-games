@@ -68,7 +68,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v6'
+const APP = 'life-survivors-v8'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -421,7 +421,7 @@ function choose(index: number) {
 
 function renderChoices(player: ViewPlayer | undefined) {
   const key =
-    player && player.choices.length && pick?.seq !== player.choiceSeq
+    view?.phase === 'playing' && player && player.choices.length && pick?.seq !== player.choiceSeq
       ? `${player.choiceSeq}:${player.choices.join()}`
       : ''
   if (key === shownChoices) return
@@ -435,16 +435,20 @@ function renderChoices(player: ViewPlayer | undefined) {
   }
   const count = player.choices.length
   const birthPick = player.parent === 'p_gone' && !player.weapons.length
+  const familyPick = player.choices[0] === 'f:yes'
+  element('#levelup-title').textContent = familyPick ? '家族の選択' : '人生の転機'
   const hint = touchUi ? 'タップで決定。' : `1〜${count}キーでも選べます。`
-  element<HTMLElement>('#levelup-note').textContent = player.choices[0]?.startsWith('s:')
-    ? `交換する新しい武器を選ぼう。${hint}`
-    : player.choices[0]?.startsWith('r:')
-      ? `手放す武器を選ぼう。新しい武器はLv 1から始まります。${hint}`
-      : birthPick
-        ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
-        : role === 'solo'
-          ? `時間は止まっています。${hint}`
-          : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
+  element<HTMLElement>('#levelup-note').textContent = familyPick
+    ? `子どもを迎えますか？${role === 'solo' ? '時間は止まっています。' : '時間は流れ続けています。'}${hint}`
+    : player.choices[0]?.startsWith('s:')
+      ? `交換する新しい武器を選ぼう。${hint}`
+      : player.choices[0]?.startsWith('r:')
+        ? `手放す武器を選ぼう。新しい武器はLv 1から始まります。${hint}`
+        : birthPick
+          ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
+          : role === 'solo'
+            ? `時間は止まっています。${hint}`
+            : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
   cardsShownAt = performance.now()
   audio.play('cardOpen')
@@ -458,7 +462,7 @@ function renderChoices(player: ViewPlayer | undefined) {
       button.style.setProperty('--i', String(index))
       const icon = document.createElement('span')
       icon.className = 'icon'
-      if (choice === 'x:skip') icon.textContent = info.icon
+      if (choice === 'x:skip' || choice.startsWith('f:')) icon.textContent = info.icon
       else icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
       const name = document.createElement('strong')
       name.textContent = info.name
@@ -723,7 +727,7 @@ function showResult(
     ...(player?.history?.length
       ? player.history.map((decision) => {
           const row = document.createElement('li')
-          row.textContent = `${Math.floor(ageAt(EVENTS[decision.event].at))}歳：${decision.outcome}`
+          row.textContent = `${Math.floor(ageAt(decision.at ?? EVENTS[decision.event].at))}歳：${decision.outcome}`
           return row
         })
       : [Object.assign(document.createElement('li'), { textContent: '経験した人生の分岐はありません。' })])
