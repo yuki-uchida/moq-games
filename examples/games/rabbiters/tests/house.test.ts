@@ -182,9 +182,9 @@ describe('Chapter 1: the house', () => {
     }
     const count = (type: JuiceEvent['type']) => events.filter((event) => event.type === type).length
     watch(0.1)
-    // Hold for a third of the job, then let go: ticks along the way, but no fanfare.
+    // Hold for nearly all of the job, then let go: ticks along the way, but no fanfare.
     game.setInput(player.id, { ...idle, interact: true })
-    watch(GNAW_SECONDS / 3)
+    watch(GNAW_SECONDS * 0.95)
     game.setInput(player.id, idle)
     watch(1)
     expect(count('taskTick')).toBeGreaterThanOrEqual(2)

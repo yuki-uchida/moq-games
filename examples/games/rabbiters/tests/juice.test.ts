@@ -144,8 +144,7 @@ describe('JuiceDetector', () => {
     setTask({ label: 'かじる', progress: 0.95 })
     expect(types(tick())).toEqual(['taskTick'])
     setTask(undefined)
-    expect(types(tick())).toEqual(['taskDone'])
-    expect(tick()).toEqual([])
+    expect(tick()).toEqual([]) // let go at 95%: not done
     setTask({ label: '掘る', progress: 0.5 })
     tick()
     setTask(undefined)
