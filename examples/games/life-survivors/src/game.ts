@@ -44,6 +44,20 @@ export const MAX_BULLETS = 140
 export const DICE_MULT = [0.3, 0.6, 1, 1.5, 2.5, 5]
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
+/**
+ * ヤンキー親's raid as shares of its life: storming out until `kick`, the flying kick until `back`, then the
+ * swagger home. The renderer reads the same timeline from the shot's age.
+ */
+export const RAID = { kick: 0.3, back: 0.46 } as const
+/** How far out a raid is, as a share of its reach, after `t` (0..1) of its life; it ends back at the owner. */
+export function raidReach(t: number) {
+  if (t < RAID.kick) {
+    const k = t / RAID.kick
+    return 0.8 * k * (0.6 + 0.4 * k)
+  }
+  if (t < RAID.back) return 0.8 + 0.2 * Math.sin(((t - RAID.kick) / (RAID.back - RAID.kick)) * (Math.PI / 2))
+  return 1 - (t - RAID.back) / (1 - RAID.back)
+}
 const PLAYER_RADIUS = 14
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -177,7 +191,7 @@ export interface Shot {
   knockback: number
   strong: Tag[]
   hits: Map<number, number>
-  /** Whip half-extents (x along facing). */
+  /** Whip half-extents (x along facing); the full radius of a nova or mine; a raid's hit radius on foot. */
   w: number
   h: number
   /** Variant for the renderer: dice face, chain link, biting, armed, pellet kind. */
@@ -1764,6 +1778,22 @@ export class Game {
         }
         break
       }
+      case 'raid': {
+        // ヤンキー親 storms out at the nearest enemies, one each, stopping a stride short so the sole lands on
+        // them; with nobody near it swaggers out ahead.
+        const reach = def.area * ws.area
+        const found = this.targets(player, n, reach * 2)
+        const r = 18 * Math.sqrt(ws.area)
+        for (let i = 0; i < n; i++) {
+          const target = found[i]
+          const angle = target
+            ? Math.atan2(target.y - player.y, target.x - player.x)
+            : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.7
+          const d = target ? Math.hypot(target.x - player.x, target.y - player.y) - 14 : reach * 0.6
+          this.shot(player, def, ws, { angle, orbit: Math.max(48, Math.min(reach, d)), r, w: r, tick: 0.3 })
+        }
+        break
+      }
     }
   }
 
@@ -1886,6 +1916,15 @@ export class Game {
         case 'pet':
           this.movePet(shot, owner, dt)
           break
+        case 'raid': {
+          // Out and back along one line from the owner; the flying kick lands a wider blow than the run.
+          const t = 1 - shot.life / shot.maxLife
+          const d = shot.orbit * raidReach(t)
+          shot.x = owner.x + Math.cos(shot.angle) * d
+          shot.y = owner.y + Math.sin(shot.angle) * d
+          shot.r = shot.w * (t >= RAID.kick && t < RAID.back ? 1.6 : 1)
+          break
+        }
         case 'mine':
           if (shot.aux > 0) {
             shot.aux -= dt
@@ -2139,8 +2178,10 @@ export class Game {
       state.xpNext = Math.round(xpForLevel(state.level) * (1 + (state.players.length - 1) * 0.5))
       for (const player of state.players)
         if (!player.downed) {
-          if (!this.options(player).length && state.level % 5 === 0) player.swapPending++
-          else player.pending++
+          const hasOptions = this.options(player).length > 0
+          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player)))
+            player.swapPending++
+          if (hasOptions || state.level % 5 !== 0) player.pending++
           // Growing up also mends the heart a little.
           player.hp = Math.min(player.maxHp, player.hp + player.maxHp * LEVEL_HEAL)
           this.emit(FX.LEVELUP, player.x, player.y, state.level, this.playerIndex(player))

@@ -186,42 +186,69 @@ header button {
   --ground-odd: #626949;
   --grove: #314b32;
   --stone: #66594f;
-  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.1 -.42'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)'/%3E%3C/svg%3E");
+  --floor-detail: repeating-linear-gradient(165deg, transparent 0 17px, #dfbc7c12 18px, transparent 20px 38px);
+  --haze: #bb93583b;
+  --rim: #a49969;
+  --strata: #564637;
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .38 -.14'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)'/%3E%3C/svg%3E");
   background:
-    radial-gradient(ellipse at 50% 50%, #17231c44, #101b18b8),
-    radial-gradient(ellipse 45% 18% at 20% 26%, #c5bf8838, transparent),
-    radial-gradient(ellipse 38% 22% at 85% 80%, #9b97683b, transparent),
-    repeating-linear-gradient(135deg, #d2c7a408 0 1px, transparent 1px 29px), var(--ground);
+    radial-gradient(ellipse at 50% 48%, transparent 28%, #080f1bd9 100%),
+    radial-gradient(ellipse 65% 25% at 20% 24%, var(--haze), transparent),
+    radial-gradient(ellipse 45% 30% at 90% 90%, var(--haze), transparent),
+    repeating-linear-gradient(155deg, #cbd8d006 0 1px, transparent 1px 43px), #172128;
+  box-shadow:
+    inset 0 1px 0 #e4e1cb1c,
+    inset 0 -24px 48px #070b154d;
 }
 .field[data-mission='1'] {
   --ground: #536c65;
   --ground-odd: #4b625c;
   --grove: #304b3c;
   --stone: #52646a;
+  --floor-detail: repeating-linear-gradient(0deg, transparent 0 8px, #b9e6e51c 9px, transparent 10px 19px);
+  --haze: #78b7c43b;
+  --rim: #82aaa0;
+  --strata: #344e56;
 }
 .field[data-mission='2'] {
   --ground: #71685e;
   --ground-odd: #696056;
   --grove: #3c4d3b;
   --stone: #625c59;
+  --floor-detail: repeating-linear-gradient(90deg, transparent 0 48%, #e5cfab22 49% 51%, transparent 52%);
+  --haze: #c8ad7b33;
+  --rim: #b5a58a;
+  --strata: #51473f;
 }
 .field[data-mission='3'] {
   --ground: #526a62;
   --ground-odd: #485e58;
   --grove: #304c3c;
   --stone: #4c6961;
+  --floor-detail: radial-gradient(ellipse at 70% 35%, #8eb8a92b 0 14%, transparent 48%);
+  --haze: #a1d4be40;
+  --rim: #7fada0;
+  --strata: #314a45;
 }
 .field[data-mission='4'] {
   --ground: #77746a;
   --ground-odd: #69665e;
   --grove: #394b3b;
   --stone: #88847b;
+  --floor-detail: linear-gradient(45deg, transparent 47%, #eee2bd1c 48% 50%, transparent 51%);
+  --haze: #b5accc38;
+  --rim: #b6b0a2;
+  --strata: #504b55;
 }
 .field[data-mission='5'] {
   --ground: #554545;
   --ground-odd: #483a3e;
   --grove: #38463b;
   --stone: #302a30;
+  --floor-detail: repeating-linear-gradient(90deg, transparent 0 45%, #d49d7526 46% 48%, transparent 49%);
+  --haze: #d5846933;
+  --rim: #ad7d70;
+  --strata: #452f3b;
 }
 .cell.healable {
   background: #4caa72;
@@ -330,6 +357,9 @@ header button {
 }
 #board {
   background: #1f2a22;
+  box-shadow:
+    0 0 0 1px var(--rim),
+    -18px 20px 32px #03091480;
 }
 #marks {
   z-index: 3;
@@ -361,7 +391,7 @@ header button {
   height: 100%;
   transform-origin: 100% 0;
   transform: skewY(-45deg);
-  background: var(--noise), linear-gradient(90deg, #120d0b, #3f2d21 45%, #6a4d33 86%, #6f8a52 92%, #8fb06a);
+  background: var(--noise), linear-gradient(90deg, #100f16, var(--strata) 75%, var(--rim) 96%, var(--rim));
 }
 #board::after {
   top: 100%;
@@ -370,7 +400,7 @@ header button {
   height: 5%;
   transform-origin: 0 0;
   transform: skewX(-45deg);
-  background: var(--noise), linear-gradient(0deg, #0b0807, #281c15 45%, #45331f 86%, #4b5f38 92%, #5f7a48);
+  background: var(--noise), linear-gradient(0deg, #090c13, var(--strata) 86%, var(--rim) 98%);
 }
 .cell {
   position: relative;
@@ -381,13 +411,14 @@ header button {
   overflow: visible;
   /* Noise + one board-wide light map sliced per cell (lantern glow on the ally flank, ash at the far edge). */
   background:
-    var(--noise) calc(var(--x) * -31px) calc(var(--y) * -47px) / 96px,
+    var(--floor-detail),
+    var(--noise) calc(var(--x) * -31px) calc(var(--y) * -47px) / 160px,
     radial-gradient(circle at 16% 64%, #ffb86a5c, #ff9a4a1c 30%, transparent 52%)
       calc(var(--x) * 100% / (var(--grid-size) - 1)) calc(var(--y) * 100% / (var(--grid-size) - 1)) /
       calc(var(--grid-size) * 100%) calc(var(--grid-size) * 100%),
     radial-gradient(circle at 30% 70%, transparent 38%, #0b111866 100%) calc(var(--x) * 100% / (var(--grid-size) - 1))
       calc(var(--y) * 100% / (var(--grid-size) - 1)) / calc(var(--grid-size) * 100%) calc(var(--grid-size) * 100%),
-    linear-gradient(135deg, #ffffff10, transparent 60%),
+    linear-gradient(135deg, #ffffff16, transparent 60%),
     var(--ground);
 }
 .cell.odd {

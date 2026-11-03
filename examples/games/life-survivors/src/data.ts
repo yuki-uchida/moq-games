@@ -108,6 +108,7 @@ export type Behavior =
   | 'dice'
   | 'trail'
   | 'fan'
+  | 'raid'
   | 'none'
 
 export type TalentCategory = 'friend' | 'love' | 'sports' | 'hobby' | 'study' | 'invest'
@@ -294,19 +295,18 @@ export const PARENTS: WeaponDef[] = [
     category: 'sports',
     name: 'ヤンキー親',
     icon: '👊',
-    color: '#e0704f',
-    behavior: 'orbit',
+    color: '#7a62a1',
+    behavior: 'raid',
     parent: true,
     damage: 16,
-    cooldown: 4,
-    duration: 3.4,
+    cooldown: 2,
+    duration: 1.5,
     amount: 1,
-    area: 115,
-    speed: 4.2,
+    area: 170,
     pierce: Infinity,
-    knockback: 340,
+    knockback: 300,
     strong: ['people', 'class'],
-    desc: 'あなたのまわりを走り回って敵を蹴散らす。人間関係・授業に特攻。'
+    desc: '一番近い敵に殴り込んで飛び蹴りし、肩で風を切って戻ってくる。人間関係・授業に特攻。'
   }),
   weapon({
     id: 'p_gone',

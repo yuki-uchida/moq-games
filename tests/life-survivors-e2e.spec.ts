@@ -220,6 +220,41 @@ test('turning point cards show their talent category without revealing talent va
   await page.screenshot({ path: testInfo.outputPath('talent-guide-mobile.png') })
 })
 
+test('a full weapon hand offers growth before its optional fifth-level swap', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (session) => {
+    const dataPath = '/src/data.ts'
+    const { EVENTS } = await import(dataPath)
+    const game = session.game as unknown as Game
+    const player = game.state.players[0]
+    game.state.time = 350
+    game.state.eventIndex = EVENTS.findIndex((event: { at: number }) => event.at > game.state.time)
+    game.state.level = 4
+    player.parent = 'p_edu'
+    player.birthPick = false
+    player.pending = 0
+    player.swapPending = 0
+    player.careerPending = 0
+    player.choices = []
+    player.weapons = ['w_friend', 'w_sports', 'w_hobby', 'w_reading', 'w_study', 'w_pet'].map((id) => ({
+      id,
+      lv: 1,
+      cd: 100,
+      held: 0,
+      damage: 0
+    }))
+    game.gainXp(game.state.xpNext)
+  })
+  await expect.poll(() => handle.evaluate((session) => session.view.players[0].choices[0])).toMatch(/^[wp]:/)
+  await page.locator('#cards .card').first().click()
+  await expect.poll(() => handle.evaluate((session) => session.view.players[0].choices[0])).toMatch(/^s:/)
+  await expect(page.locator('#levelup-note')).toContainText('新しい武器')
+  await page.getByRole('button', { name: /交換しない/ }).click()
+  await expect(page.locator('#levelup')).toBeHidden()
+})
+
 test('a full build skips ordinary level-ups and offers an optional weapon swap', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -379,6 +414,53 @@ test('蒸発済み starts with a free early talent pick and then plays on', asyn
     .poll(() => handle.evaluate((l) => (l.view as unknown as { kills: number }).kills), { timeout: 20000 })
     .toBeGreaterThan(0)
   await expect(page.locator('#weapons > *')).not.toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
+test('ヤンキー親 storms out, flying-kicks the nearest enemy and swaggers home', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const game = l.game as unknown as Game
+    game.removePlayer(l.localId)
+    const player = game.addPlayer(l.localId, 'p_yankee')!
+    // Time stands still: the test steps the raid itself while the page keeps drawing it.
+    game.step = () => {}
+    game.state.enemies.length = 0
+    const bully = game.spawnEnemy('bully', player.x + 120, player.y)!
+    bully.hp = bully.maxHp = 1e9
+  })
+  /** Steps until the raid has lived `share` of its life, holding the bully still; how far out it is then. */
+  const raidAt = (share: number) =>
+    handle.evaluate((l, share) => {
+      const game = l.game as unknown as Game
+      const player = game.state.players[0]
+      const bully = game.state.enemies[0]
+      for (let i = 0; i < 600; i++) {
+        const raid = game.state.shots.find((shot) => shot.weapon === 'p_yankee')
+        if (raid && 1 - raid.life / raid.maxLife >= share) return Math.hypot(raid.x - player.x, raid.y - player.y)
+        bully.x = player.x + 120
+        bully.y = player.y
+        bully.kx = bully.ky = 0
+        player.hp = player.maxHp
+        game.tick(1 / 60)
+      }
+      return -1
+    }, share)
+  expect(await raidAt(0.15)).toBeGreaterThan(10)
+  await page.screenshot({ path: testInfo.outputPath('yankee-run.png') })
+  const kick = await raidAt(0.4)
+  expect(kick).toBeGreaterThan(90)
+  await page.screenshot({ path: testInfo.outputPath('yankee-kick.png') })
+  expect(await handle.evaluate((l) => (l.game as unknown as Game).state.enemies[0].hp)).toBeLessThan(1e9)
+  const home = await raidAt(0.8)
+  expect(home).toBeGreaterThan(0)
+  expect(home).toBeLessThan(kick)
+  await page.screenshot({ path: testInfo.outputPath('yankee-home.png') })
   expect(errors).toEqual([])
 })
 
