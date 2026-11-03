@@ -1,5 +1,12 @@
 name: Checks and Pages
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
+      - '.agents/**'
 permissions:
   contents: read
 # A newer push to the same ref supersedes the running checks; Pages still publishes only a fully passing run.
@@ -7,7 +14,34 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+      tower: ${{ steps.scope.outputs.tower }}
+      ember: ${{ steps.scope.outputs.ember }}
+      debug: ${{ steps.scope.outputs.debug }}
+      bot: ${{ steps.scope.outputs.bot }}
+      audit: ${{ steps.scope.outputs.audit }}
+      pages: ${{ steps.scope.outputs.pages }}
+      browser: ${{ steps.scope.outputs.browser }}
+      shards: ${{ steps.scope.outputs.shards }}
+      pagesBrowser: ${{ steps.scope.outputs.pagesBrowser }}
+      unit: ${{ steps.scope.outputs.unit }}
+      node: ${{ steps.scope.outputs.node }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/ci-scope.test.mjs
+      - id: scope
+        run: node scripts/ci-scope.mjs
   build:
+    needs: changes
+    if: needs.changes.outputs.pages == 'true'
     # Only the prepared Pages output and SDK gate the browser shards, so produce them first and
     # run the typecheck, lint and unit suites beside them instead of ahead of them.
     runs-on: ubuntu-latest
@@ -57,6 +91,8 @@ jobs:
         with:
           path: dist
   check:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -76,16 +112,24 @@ jobs:
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+        if: needs.changes.outputs.runtime == 'true'
       - run: npx tsc --noEmit -p examples/games/ember-grid/tsconfig.json
+        if: needs.changes.outputs.ember == 'true'
       - run: npm run lint
-      # Run every unit suite so new test files cannot silently fall outside CI.
+        if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true'
       - name: Unit tests
-        run: npx vitest run examples/games/tower_diffence_with_jev/tests examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/ember-grid/tests/*.test.ts tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts --maxWorkers=1
+        if: needs.changes.outputs.unit != ''
+        run: npx vitest run ${{ needs.changes.outputs.unit }} --maxWorkers=1
       - name: Node contract tests
-        run: node --test tests/published-motion-verification.test.mjs tests/published-refined-motions.test.mjs tests/landing-catalog.test.mjs tests/tower-viewer-catalog.test.mjs tests/forecast-reference-catalog.test.mjs tests/tower-model-sidecars.test.mjs examples/games/lane-battle/*.test.mjs
+        if: needs.changes.outputs.node != ''
+        run: node --test ${{ needs.changes.outputs.node }}
       - run: npm run typecheck:tower-debug
+        if: needs.changes.outputs.debug == 'true'
       - run: npm run test:tower-debug
+        if: needs.changes.outputs.debug == 'true'
   slow-checks:
+    needs: changes
+    if: needs.changes.outputs.tower == 'true' || needs.changes.outputs.bot == 'true' || needs.changes.outputs.audit == 'true'
     # Independent of the Pages artifact, so these run beside build instead of delaying the browser shards.
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -106,17 +150,23 @@ jobs:
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: npm audit --omit=dev --audit-level=high
+        if: needs.changes.outputs.audit == 'true'
       - name: Verify exact forecast equivalence
+        if: needs.changes.outputs.tower == 'true'
         run: node scripts/validate-forecast-performance.mjs
       - uses: actions/setup-python@v5
+        if: needs.changes.outputs.bot == 'true'
         with:
           python-version: '3.12'
       - name: Install offline bot test dependencies
+        if: needs.changes.outputs.bot == 'true'
         run: python -m pip install httpx==0.28.1 pydantic==2.13.4
       - name: Test offline bot and serialized HP contracts
+        if: needs.changes.outputs.bot == 'true'
         run: python -m unittest discover -s tests/bot -v
   browser:
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.pagesBrowser == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -126,7 +176,7 @@ jobs:
       # runner stretches a shard by half again, so keep the per-shard load near 3.5 minutes.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        shard: ${{ fromJSON(needs.changes.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -158,13 +208,15 @@ jobs:
       # Playwright's --shard splits the ordered list into contiguous blocks, which groups
       # each spec's slow cold-start tests together. Deal tests round-robin instead.
       - name: Select this shard's tests
+        id: shard
         run: |
-          npx playwright test --config playwright.pages.config.ts --list |
+          npx playwright test --config playwright.pages.config.ts ${{ needs.changes.outputs.browser }} --list |
             grep ' › ' | awk 'NR % ${{ strategy.job-total }} == ${{ matrix.shard }} % ${{ strategy.job-total }}' |
             sed -E 's/^ +//; s/:[0-9]+:[0-9]+ › / › /' > shard-tests.txt
           cat shard-tests.txt
-          test -s shard-tests.txt
+          if test -s shard-tests.txt; then echo 'has-tests=true' >> "$GITHUB_OUTPUT"; fi
       - name: Test the Pages build in Chromium
+        if: steps.shard.outputs.has-tests == 'true'
         run: npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt
       - name: Upload shard report and failure evidence
         if: always()
@@ -177,8 +229,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build, check, slow-checks, browser]
+    if: >-
+      always() && !cancelled() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.changes.result == 'success' && needs.build.result == 'success' &&
+      needs.check.result == 'success' &&
+      (needs.slow-checks.result == 'success' || needs.slow-checks.result == 'skipped') &&
+      (needs.browser.result == 'success' || needs.browser.result == 'skipped')
+    needs: [changes, build, check, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -203,7 +261,9 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
       - name: Verify published motion assets and pages
+        if: needs.changes.outputs.tower == 'true'
         run: node scripts/verify-published-motions.mjs '${{ steps.deployment.outputs.page_url }}' .verified-model-sidecars/model-sidecar-digests.json
 
       - name: Verify published refined motion overlays
+        if: needs.changes.outputs.tower == 'true'
         run: node scripts/verify-published-refined-motions.mjs '${{ steps.deployment.outputs.page_url }}'
