@@ -124,6 +124,7 @@ describe('turning points', () => {
     const game = new Game(2)
     const player = game.addPlayer('a', 'p_edu')!
     game.state.time = RUN_SECONDS / 2
+    game.state.eventIndex = EVENTS.findIndex((event) => event.at > game.state.time)
     player.weapons.push(
       ...TALENT_WEAPONS.slice(0, WEAPON_SLOTS).map(({ id }) => ({
         id,

@@ -72,6 +72,7 @@ export function selectScope(paths) {
     runtime,
     tower: has('tower'),
     ember: has('ember-grid'),
+    life: has('life-survivors'),
     debug: has('debug'),
     bot: has('bot') || has('tower'),
     audit: shared,
@@ -81,12 +82,13 @@ export function selectScope(paths) {
       : [
           has('tower') && 'tower-',
           has('landing') && 'landing-e2e.spec.ts',
-          has('ember-grid') && 'ember-grid-e2e.spec.ts'
+          has('ember-grid') && 'ember-grid-e2e.spec.ts',
+          has('life-survivors') && 'life-survivors-published-e2e.spec.ts'
         ]
           .filter(Boolean)
           .join(' '),
     shards: JSON.stringify(has('tower') ? Array.from({ length: 16 }, (_, index) => index + 1) : [1]),
-    pagesBrowser: has('tower') || has('landing') || has('ember-grid'),
+    pagesBrowser: has('tower') || has('landing') || has('ember-grid') || has('life-survivors'),
     unit: unit.join(' '),
     node: node.join(' ')
   }
