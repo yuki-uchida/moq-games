@@ -46,6 +46,20 @@ export function playBattle(deck, stage, seed = 1, { maxTime = 900, casual = fals
   return s
 }
 
+export function summonKeepingOne(game, specialIndex, order, random) {
+  const special = game.deck[specialIndex]
+  if (
+    game.cooldowns[specialIndex] <= 0 &&
+    game.gold >= special.cost / 2 &&
+    !game.units.some((unit) => unit.side === 1 && unit.uid === special.uid && unit.hp > 0)
+  ) {
+    if (game.gold >= special.cost) summon(game, specialIndex)
+  } else {
+    const ready = order.filter((index) => game.cooldowns[index] <= 0 && game.gold >= game.deck[index].cost)
+    if (ready.length) summon(game, ready[Math.floor(random() * ready.length)])
+  }
+}
+
 const score = (e) => {
   const d = card(e)
   return (d.hp * d.atk) / d.period / d.cost
