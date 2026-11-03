@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { ENEMIES, ITEM_KINDS, WEAPONS, WEAPON_BY_ID } from '../src/data'
+import { ENEMIES, ITEM_KINDS, STAGES, WEAPONS, WEAPON_BY_ID, stageAt, timeAtAge } from '../src/data'
+import { GROUNDS } from '../src/art/world'
 import { FX, FX_STRIDE } from '../src/fx'
 import {
   BANNER_MS,
   BannerQueue,
   FxTracker,
+  STAGE_LINES,
   choiceRarity,
   consumeFx,
   findBoss,
@@ -15,6 +17,7 @@ import {
   type FxContext,
   type SoundSink
 } from '../src/hud'
+import { bodyFor } from '../src/render'
 import { STRIDE } from '../src/view'
 
 type Call = [string, string | undefined, Record<string, unknown> | undefined]
@@ -35,6 +38,17 @@ const ctx = (extra: Partial<FxContext> = {}): FxContext => ({
   ...extra
 })
 const names = (calls: Call[]) => calls.map((c) => c[1])
+
+describe('life stage presentation', () => {
+  it('uses a path-neutral stage while retaining the youth artwork', () => {
+    const stage = stageAt(timeAtAge(18) + 0.01)
+    expect(stage.name).toBe('青年期')
+    expect(stageAt(timeAtAge(22) + 0.01)).toBe(stage)
+    expect(STAGE_LINES[STAGES.indexOf(stage)]).toBe('これからの道を探して')
+    expect(bodyFor(stage)).toBe('college')
+    expect(GROUNDS[stage.name]).toBe('campus')
+  })
+})
 
 describe('FxTracker', () => {
   it('hands out each seq once and resets when a new game starts', () => {
