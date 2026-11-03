@@ -598,10 +598,7 @@ function updateHud(state: GameState) {
   const suspected = state.predators.some(
     (predator) => predator.targetId === player.id && predator.state === 'suspicious'
   )
-  if ([...hunting].some((id) => !chasers.has(id))) {
-    // Restart the flash for every new pursuer.
-    alertOverlay.classList.remove('spotted')
-    void alertOverlay.offsetWidth
+  if (hunting.size && !chasers.size) {
     alertOverlay.classList.add('spotted')
     element<HTMLElement>('#announcements').textContent = '見つかった！'
   } else if (!hunting.size) alertOverlay.classList.remove('spotted')

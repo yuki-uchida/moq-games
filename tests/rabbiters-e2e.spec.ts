@@ -155,7 +155,11 @@ window.rabbitersWirePredator = () => {
   }
 })
 
-test('a guest moves smoothly before delayed host snapshots arrive', async ({ browser, baseURL }) => {
+test('a guest moves and receives suspicion and discovery through mocked host snapshots', async ({
+  browser,
+  baseURL
+}) => {
+  test.setTimeout(60_000)
   const context = await browser.newContext({ baseURL })
   const network = `
     export const MAX_PLAYERS = 16;
@@ -175,7 +179,10 @@ test('a guest moves smoothly before delayed host snapshots arrive', async ({ bro
             setTimeout(() => this.options.onInput(data.playerId, data.input), 300);
           } else if (data.type === 'snapshot' && this.options.role === 'guest') {
             setTimeout(() => {
-              if (!window.rabbitersHoldSnapshots) this.options.onSnapshot(data.state);
+              if (!window.rabbitersHoldSnapshots) {
+                this.options.onSnapshot(data.state);
+                window.rabbitersReceivedSnapshots = (window.rabbitersReceivedSnapshots ?? 0) + 1;
+              }
             }, 300);
           }
         };
@@ -183,7 +190,10 @@ test('a guest moves smoothly before delayed host snapshots arrive', async ({ bro
         if (this.options.role === 'guest') this.channel.postMessage({ type: 'hello', playerId: this.playerId });
       }
       async sendInput(input) { this.channel.postMessage({ type: 'input', playerId: this.playerId, input }); }
-      async broadcastSnapshot(state) { this.channel.postMessage({ type: 'snapshot', state }); }
+      async broadcastSnapshot(state) {
+        if (window.rabbitersRepeatSnapshot) state = window.rabbitersFrozenSnapshot ??= structuredClone(state);
+        this.channel.postMessage({ type: 'snapshot', state });
+      }
       async stop() { this.channel.close(); }
     }
   `
@@ -199,15 +209,27 @@ window.rabbitersPosition = () => {
   return actor && player ? { shown: actor.root.position.x, confirmed: player.x,
     moving: actor.moving, leg: actor.limbs[0].rotation.x } : null;
 };
-window.rabbitersSuspectGuest = () => {
+let discoveryAlarms = 0;
+let discoverySpots = 0;
+const discoveryAlarm = audio.alarm.bind(audio);
+audio.alarm = () => { discoveryAlarms++; discoveryAlarm(); };
+const discoveryEmit = feel.emit.bind(feel);
+feel.emit = (event) => {
+  if (event.type === 'spotted' && event.you) discoverySpots++;
+  discoveryEmit(event);
+};
+window.rabbitersSuspectGuest = (state) => {
   const step = game.step.bind(game);
   game.step = (seconds) => {
     step(seconds);
     const guest = game.state.players.find((player) => player.id !== localId);
     if (guest && game.state.predators[0]) Object.assign(game.state.predators[0],
-      { state: 'suspicious', suspicion: 0.6, targetId: guest.id });
+      { state, suspicion: state === 'chase' ? 1 : 0.6, targetId: guest.id });
   };
 };
+window.rabbitersDiscoveryCounts = () => ({ alarms: discoveryAlarms, spots: discoverySpots,
+  received: window.rabbitersReceivedSnapshots ?? 0, time: snapshot?.time,
+  audioState: audio.context?.state });
 window.rabbitersPredatorCue = () => {
   const predator = snapshot?.predators[0];
   const marker = scene.actors.get('predator:' + predator?.id)?.marker;
@@ -279,7 +301,9 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
     expect(samples[index].shown - samples[index - 1].shown).toBeLessThan(0.8)
   }
   await expect.poll(async () => (await position())!.confirmed, { timeout: 10_000 }).toBeGreaterThan(-117.5)
-  await host.evaluate(() => (window as unknown as { rabbitersSuspectGuest: () => void }).rabbitersSuspectGuest())
+  await host.evaluate(() =>
+    (window as unknown as { rabbitersSuspectGuest: (state: string) => void }).rabbitersSuspectGuest('suspicious')
+  )
   await expect
     .poll(
       () =>
@@ -305,6 +329,42 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
       overlay: true,
       condition: '怪しまれている… 今のうちに隠れよう'
     })
+  const counts = (target: typeof guest) =>
+    target.evaluate<{
+      alarms: number
+      spots: number
+      received: number
+      time: number
+      audioState: string
+    }>('window.rabbitersDiscoveryCounts()')
+  await expect(guest.locator('.fx-threat')).toHaveAttribute('data-mode', 'suspicious')
+  await expect(guest.locator('.fx-threat')).toBeVisible()
+  expect(await counts(guest)).toMatchObject({ alarms: 0, spots: 0, audioState: 'running' })
+  await host.evaluate(() => {
+    const hooks = window as unknown as {
+      rabbitersSuspectGuest: (state: string) => void
+      rabbitersRepeatSnapshot: boolean
+    }
+    hooks.rabbitersSuspectGuest('chase')
+    hooks.rabbitersRepeatSnapshot = true
+  })
+  await expect(guest.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
+  await expect(guest.locator('.fx-threat')).toBeVisible()
+  await expect(guest.locator('.fx-threat')).toContainText('1体が追跡中')
+  await expect(guest.locator('.fx-detection')).toHaveClass(/fx-on/)
+  await expect(guest.locator('#alert-overlay')).toHaveClass(/spotted/)
+  await expect(guest.locator('#alert-overlay')).not.toHaveClass(/suspected/)
+  await expect(guest.locator('#condition')).toContainText('見つかった！')
+  await expect.poll(async () => (await counts(guest)).alarms).toBe(1)
+  const discovered = await counts(guest)
+  expect(discovered).toMatchObject({ alarms: 1, spots: 1 })
+  await expect.poll(async () => (await counts(guest)).received).toBeGreaterThan(discovered.received + 3)
+  expect(await counts(guest)).toMatchObject({ alarms: 1, spots: 1, time: discovered.time })
+  await expect(host.locator('#alert-overlay')).not.toHaveClass(/spotted|suspected/)
+  await expect(host.locator('.fx-threat')).not.toBeVisible()
+  await expect(host.locator('.fx-detection')).not.toHaveClass(/fx-on/)
+  await expect(host.locator('#condition')).not.toContainText('見つかった！')
+  expect(await counts(host)).toMatchObject({ alarms: 1, spots: 0 })
   await context.close()
 })
 
