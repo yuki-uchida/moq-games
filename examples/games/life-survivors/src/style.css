@@ -213,6 +213,35 @@ button {
   display: flex;
   gap: 6px;
 }
+#synergies {
+  pointer-events: auto;
+  max-width: min(340px, calc(100vw - 40px));
+  font-size: 12px;
+}
+#synergies summary {
+  cursor: pointer;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+#synergies summary::after {
+  content: '▾';
+  margin-left: auto;
+  padding-left: 8px;
+}
+#synergies[open] summary::after {
+  content: '▴';
+}
+.hand:has(#synergies[open]) {
+  z-index: 1;
+}
+#synergy-list {
+  max-height: 160px;
+  overflow-y: auto;
+  background: #18212e;
+  padding: 8px;
+  border-radius: 8px;
+}
 .slot {
   position: relative;
   width: 44px;

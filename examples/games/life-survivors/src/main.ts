@@ -22,6 +22,7 @@ import {
 } from './data'
 import { Game, choiceText, type Input, type Player } from './game'
 import { LifeAudio } from './audio'
+import { activeSynergies, SYNERGIES } from './synergies'
 import { musicCue } from './music'
 import { FX } from './fx'
 import {
@@ -569,6 +570,15 @@ function updateHud(current: View) {
     const key = JSON.stringify([player.weapons.map((w) => w.slice(0, 2)), player.passives])
     if (key !== handKey) {
       handKey = key
+      const active = activeSynergies(player.weapons.map(([id]) => id))
+      element('#synergy-count').textContent = `人生の相乗効果 ${active.length}/${SYNERGIES.length}`
+      element('#synergy-list').replaceChildren(
+        ...SYNERGIES.map((synergy) => {
+          const item = document.createElement('p')
+          item.textContent = `${active.includes(synergy) ? '発動中' : '未発動'}：${synergy.name} — ${synergy.text}`
+          return item
+        })
+      )
       const owner = { passives: player.passives.map(([id, lv]) => ({ id, lv })) }
       const before = new Map(prev.hand)
       prev.hand.clear()
