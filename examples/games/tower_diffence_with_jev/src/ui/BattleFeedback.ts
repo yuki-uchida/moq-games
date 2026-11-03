@@ -8,6 +8,7 @@ import {
   comboLabel,
   HIT_WINDOW_MS,
   bountyFor,
+  castleReachers,
   isHeavyHit,
   shakeAmplitude
 } from './BattleFeelLogic'
@@ -109,6 +110,8 @@ export class BattleFeedback {
   private bountyTotal = 0
   private bountyLanded = 0
   private leakMap = new Map<string, { type: UnitType; boss: boolean; count: number }>()
+  private readonly leakIds = new Set<number>()
+  private readonly castleAttackers = new Map<number, { type: UnitType; boss: boolean }>()
   private leakUnknown = 0
 
   constructor(private readonly options: BattleFeedbackOptions) {
@@ -135,9 +138,9 @@ export class BattleFeedback {
     return this.bountyLanded
   }
 
-  /** Enemies that went through the gate this battle (seen leaving without a corpse), grouped by type and boss. */
+  /** Enemies that reached the castle this battle (left through the gate, or hit the castle), by type and boss. */
   get leaked(): ReadonlyArray<{ type: UnitType; boss: boolean; count: number }> {
-    return [...this.leakMap.values()]
+    return castleReachers(this.leakMap.values(), this.castleAttackers, this.leakIds)
   }
   /** Gate exits before this session's baseline (a resumed battle), whose types are unknown. */
   get leakedUnknown(): number {
@@ -156,6 +159,8 @@ export class BattleFeedback {
     this.combo.reset()
     this.killCount = this.bountyTotal = this.bountyLanded = 0
     this.leakMap.clear()
+    this.leakIds.clear()
+    this.castleAttackers.clear()
     this.leakUnknown = 0
     for (const { el } of this.live) el.remove()
     this.live.length = 0
@@ -300,6 +305,11 @@ export class BattleFeedback {
     if (baseline) this.leakUnknown = Math.max(0, state.enemiesResolved - state.corpses.filter((c) => c.owner === 'ai').length)
     if (chipBounty > 0) this.coinChip(chipBounty, chipX, chipY - 30, chipSpecial)
 
+    // Enemies whose attacks hit the castle; a boss keeps attacking there instead of leaving through the gate.
+    for (const attack of state.attacks)
+      if (attack.owner === 'ai' && attack.base && attack.damageHit && !this.castleAttackers.has(attack.attackerId))
+        this.castleAttackers.set(attack.attackerId, { type: attack.type, boss: !!attack.boss })
+
     // Units that vanished: a corpse means a kill (show the final blow), otherwise they left through the gate.
     const gone = this.gone
     gone.clear()
@@ -307,6 +317,7 @@ export class BattleFeedback {
       if (seen.stamp !== this.frame) {
         gone.add(id)
         if (seen.owner === 'ai' && !this.corpseIds.has(id)) {
+          this.leakIds.add(id)
           const k = `${seen.type}:${seen.boss}`,
             e = this.leakMap.get(k)
           if (e) e.count++

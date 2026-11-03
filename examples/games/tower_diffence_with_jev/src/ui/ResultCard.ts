@@ -58,12 +58,14 @@ const TIPS = [
 /** Deterministic so a retried stage keeps its hint instead of flickering between loads. */
 export const defeatTip = (stage: number): string => TIPS[(stage - 1) % TIPS.length]
 
-/** Targeted defeat advice: boss > flier > unspent gold > the rotating tip. */
+/** Targeted defeat advice: an affordable 総力戦 recruit > boss > flier > unspent gold > the rotating tip. */
 export function defeatAdvice(
   stage: number,
   leaks: ReadonlyArray<{ type: UnitType; boss: boolean }>,
-  unspentGold: number
+  unspentGold: number,
+  recruitName?: string
 ): string {
+  if (recruitName) return `コインで${recruitName}を招集しよう（総力戦は仲間全員で出撃）`
   if (leaks.some((l) => l.boss)) return 'ボスには必殺技を集中しよう（長押しで場所を指定）'
   if (leaks.some((l) => isAirborneEnemy(l.type))) return '空の敵には射手・魔法使いなど射程のある仲間を'
   if (unspentGold >= 60) return `ゴールドが${unspentGold}G残っていました。準備中に仲間をタップして強化しよう`
@@ -139,7 +141,7 @@ export function createResultCard(dialog: HTMLElement, play: (kind: FeelSound, pa
     leakBox.replaceChildren()
     if (!leakBox.hidden) {
       const label = document.createElement('span')
-      label.textContent = '突破した敵'
+      label.textContent = '拠点に届いた敵'
       leakBox.append(label)
       for (const l of leaks) {
         const item = document.createElement('span'),
