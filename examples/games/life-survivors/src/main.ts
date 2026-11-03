@@ -20,7 +20,7 @@ import {
   stageAt,
   type TalentCategory
 } from './data'
-import { GIFTED, Game, POOR, choiceText, type Input, type Player } from './game'
+import { Game, choiceText, type Input, type Player } from './game'
 import { LifeAudio } from './audio'
 import { musicCue } from './music'
 import { FX } from './fx'
@@ -464,8 +464,21 @@ function renderChoices(player: ViewPlayer | undefined) {
         tag.textContent = info.tag
         name.append(tag)
       }
+      const [kind, id] = choice.split(':')
+      const category =
+        kind === 'p'
+          ? PASSIVE_BY_ID.get(id)?.category
+          : kind === 'w' || kind === 's' || kind === 'r'
+            ? WEAPON_BY_ID.get(id)?.category
+            : undefined
+      if (category) {
+        const label = document.createElement('span')
+        label.className = 'card-category'
+        label.textContent = `${TALENT_NAMES[category]}系`
+        name.append(label)
+      }
       const text = document.createElement('span')
-      text.textContent = info.text
+      text.textContent = kind === 'p' ? `${info.text}（基準値）` : info.text
       const hint = document.createElement('kbd')
       hint.textContent = String(index + 1)
       button.append(icon, name, text, hint)
@@ -652,8 +665,13 @@ function reflection(player: ViewPlayer) {
       const value = player.talents[category]
       const icon = TALENT_WEAPONS.find((def) => def.category === category)?.id
       const label = `才能：${TALENT_NAMES[category]}`
-      if (value === GIFTED) add(label, '🌟 天賦の才', 'gifted flip', icon)
-      else if (value === POOR) add(label, '✖ 不向き', 'poor flip', icon)
+      const rating = value >= 1.25 ? '🌟 得意' : value <= 0.9 ? '✖ 不向き' : 'ふつう'
+      add(
+        label,
+        `${rating} ×${value.toFixed(2)}`,
+        value >= 1.25 ? 'gifted flip' : value <= 0.9 ? 'poor flip' : 'flip',
+        icon
+      )
     }
   }
   return rows
