@@ -12,7 +12,7 @@ For user-requested work, commit changes, create pull requests and merge them wit
 
 In each pull request description, briefly describe only the added and removed features in Japanese. Do not explain why the changes were needed.
 
-For each pull request, check only that it has no merge conflicts, then squash-merge it immediately without waiting for pre-merge CI or review. After merging, verify that CI succeeds on `main`; if CI fails, create another pull request to fix it and repeat this process. Do not bypass branch protection or other repository restrictions.
+Before creating or merging a pull request, read and follow `.claude/skills/create-pr/SKILL.md`. Confirm required CI succeeds and the pull request has no merge conflicts before squash-merging. After merging, verify that CI succeeds on `main`; if CI fails, create another pull request to fix it and repeat this process. Do not bypass branch protection or other repository restrictions.
 
 Keep each commit a coherent, test-passing unit. Before committing, validate the exact changes being committed with the relevant checks. For affected code, configuration or runtime behavior, run `npm run typecheck`, `npm run lint`, the relevant tests (`npm test` or the applicable focused suites), `npm run build`, and relevant headless E2E. For documentation-only changes, check formatting, links and documented commands. Never call skipped, blocked or unrun checks passing; resolve failures or report the blocker before committing the affected change. Do not bundle unrelated or unverified work into a passing commit.
 
