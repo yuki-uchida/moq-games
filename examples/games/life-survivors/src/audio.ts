@@ -508,6 +508,19 @@ interface Active {
   end: number
 }
 
+/**
+ * iOS routes Web Audio through the "ambient" session by default, which the silent switch mutes.
+ * A game the player explicitly unmuted should be heard, like a video, so ask for playback.
+ */
+function preferPlaybackSession() {
+  try {
+    const nav = (globalThis as { navigator?: { audioSession?: { type: string } } }).navigator
+    if (nav?.audioSession && nav.audioSession.type !== 'playback') nav.audioSession.type = 'playback'
+  } catch {
+    /* unsupported */
+  }
+}
+
 export class LifeAudio {
   private ctx: AudioContext | null = null
   private bus: GainNode | null = null
@@ -565,12 +578,29 @@ export class LifeAudio {
         }
         const Ctor = g.AudioContext ?? g.webkitAudioContext
         if (!Ctor) return
+        preferPlaybackSession()
         this.build(new Ctor())
       }
       const ctx = this.ctx
-      if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {})
+      // iOS also reports 'interrupted' after calls or app switches; both need a gesture resume.
+      if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+        void ctx.resume().catch(() => {})
+        this.kick(ctx)
+      }
     } catch {
       this.ctx = null
+    }
+  }
+
+  /** Older iOS WebKit only opens the output once a source starts inside the gesture. */
+  private kick(ctx: AudioContext) {
+    try {
+      const source = ctx.createBufferSource()
+      source.buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
+      source.connect(ctx.destination)
+      source.start(0)
+    } catch {
+      /* best effort */
     }
   }
 

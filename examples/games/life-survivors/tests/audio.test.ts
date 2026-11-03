@@ -250,6 +250,28 @@ describe('LifeAudio', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('resumes a suspended or iOS-interrupted context from a gesture and opens the output', () => {
+    const { audio, context } = setup()
+    expect(context.resume).not.toHaveBeenCalled()
+    for (const state of ['suspended', 'interrupted']) {
+      context.state = state
+      const sources = context.sources
+      audio.unlock()
+      expect(context.sources).toBe(sources + 1)
+    }
+    expect(context.resume).toHaveBeenCalledTimes(2)
+    context.state = 'closed'
+    audio.unlock()
+    expect(context.resume).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks iOS for a playback session so the silent switch does not mute the game', () => {
+    const session = { type: 'auto' }
+    vi.stubGlobal('navigator', { audioSession: session })
+    setup()
+    expect(session.type).toBe('playback')
+  })
+
   it('never throws without an AudioContext', () => {
     vi.stubGlobal('AudioContext', undefined)
     vi.stubGlobal('webkitAudioContext', undefined)

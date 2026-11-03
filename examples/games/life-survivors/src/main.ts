@@ -819,9 +819,17 @@ volume.addEventListener('change', () => {
   audio.play('gem')
 })
 syncSound()
-// Browsers only start audio from a gesture: any first press unlocks it.
-for (const type of ['pointerdown', 'keydown'] as const)
-  window.addEventListener(type, () => audio.unlock(), { capture: true, passive: true })
+// Browsers only start audio from an activation gesture. A touch/pen press is not one (its
+// release is), so unlocking on pointerdown alone left phones silent.
+const unlockOnGesture = (event: Event) => {
+  if (!event.isTrusted) return
+  const pointer = (event as PointerEvent).pointerType
+  if (event.type === 'pointerdown' && pointer !== 'mouse') return
+  if (event.type === 'pointerup' && pointer === 'mouse') return
+  audio.unlock()
+}
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const)
+  window.addEventListener(type, unlockOnGesture, { capture: true, passive: true })
 
 const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
 window.addEventListener('keydown', (event) => {
