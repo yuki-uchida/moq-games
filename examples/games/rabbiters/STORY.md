@@ -43,7 +43,7 @@
 
 ## 3. ステージ仕様
 
-各章は目標（step）を順に進める。目標ごとにチェックポイントを取り、HUDの目標カード・ミニマップの目標マーカー・ヒントで次にやることが常に分かるようにする。人間の行動は**繰り返すスケジュール**（数分周期）で、プレイヤーは隠れて好機を待てる（詰みを作らない）。
+各章は目標（step）を順に進める。目標ごとにチェックポイントを取り、HUDの目標カード・3Dの目印・ヒントで次にやることが常に分かるようにする。人間の行動は**繰り返すスケジュール**（数分周期）で、プレイヤーは隠れて好機を待てる（詰みを作らない）。
 
 ### 第1章「ケージの外へ」— 家（約30分）
 
@@ -145,7 +145,7 @@
 - `gates`：線分 `{ax, az, bx, bz}`。i 番目のゲートは `GameState.open` のビット i が立つと開く。閉じたゲートは全員の移動を止める（横切る・押し込む両方）。ゲストの予測も同じビットで動く。
 - `npcs`：`{ id, kind, x, z, angle }`。シーンが models.ts のモデルで描き、首を少し振る。そばでEを押すとスクリプトの `interact` へ。`npcNear(x, z, reach)` で探せる。
 - `lanes`：`{ points, loop?, speed, cars: [{ offset, color }], length?, width?, height? }`（既定 16×6.5×5.5）。**`vehiclesAt(time)` は時刻だけの純関数**で、スナップショットに載らない。ホストは地上のウサギが車体に重なると倒す（`downed`、一撃）。全員が同じ式で描く。
-- `zones`：`Rect & { id?, name?, light? }`。`light` は見つかりやすさの倍率（重なると積、街灯 1.3、暗がり 0.6）。`name` はミニマップ下の地域名（`zonesAt`・`inZone(id, x, z)`・`lightAt`）。トリガーは `inZone('exit', x, z)` のように `id` で判定する。
+- `zones`：`Rect & { id?, name?, light? }`。`light` は見つかりやすさの倍率（重なると積、街灯 1.3、暗がり 0.6）。`name` は右上に出る地域名（`zonesAt`・`inZone(id, x, z)`・`lightAt`）。トリガーは `inZone('exit', x, z)` のように `id` で判定する。
 - 既存の `grass`・`bushes`・`logs`・`shelters`・`caves`・トンネル・`foods`・`nests`（森のみ）・`predatorStarts` は全ステージで使える。`sand(x, z)`（砂浴び）と `region(x, z)`（地域名の既定）は任意。
 
 ### 敵と生き物
@@ -187,7 +187,7 @@ interface StageScript {
   caught?(game: Game, player: Player, predator: Predator): void
   respawn?(state: GameState): Point // 捕まったウサギを戻す位置（今のチェックポイント）
   objective(state: GameState, player: Player): { title: string; progress: number; label: string; hint?: string } // 純関数
-  markers?(state: GameState): { x: number; z: number; kind: 'goal' | 'npc' | 'item' }[] // ミニマップと3Dの目印
+  markers?(state: GameState): { x: number; z: number; kind: 'goal' | 'npc' | 'item' }[] // 3Dの目印
 }
 interface StageLook {
   sky: string
@@ -202,7 +202,7 @@ interface StageLook {
 ```
 
 - **スクリプトは状態を持たない**：進行は `step`・`flags`・`open`・`items` に置く（チェックポイント・再挑戦・ゲストが見られるのは状態だけ）。数秒の長押しの進み具合のような一時的な値だけはスクリプト内に置いてよい（仮の水の道のバルブ）。
-- 章のクリアは `game.nextStage()`：ステージ番号を進め、地図を切り替え、食べもの・敵・アイテム・フン・会話を初期化し、全員を新しいスポーンへ（体力は満タン、成長と季節の値は章ごとにやり直し、スコアは引き継ぎ）、新しい章の `start` を呼ぶ。クライアントは `stage` の変化でシーナリー・光・NPC・ミニマップを作り直し、タイトルカード（「第2章　知らない町」）を出す。森の季節バナーはタイトルカードが消えてから出る。
+- 章のクリアは `game.nextStage()`：ステージ番号を進め、地図を切り替え、食べもの・敵・アイテム・フン・会話を初期化し、全員を新しいスポーンへ（体力は満タン、成長と季節の値は章ごとにやり直し、スコアは引き継ぎ）、新しい章の `start` を呼ぶ。クライアントは `stage` の変化でシーナリー・光・NPCを作り直し、タイトルカード（「第2章　知らない町」）を出す。森の季節バナーはタイトルカードが消えてから出る。
 - チェックポイント：`progress(state) = stage×10⁶ + chapter×10³ + step` が増えるたびにホストが状態を保存し、敗北時に「第N章のチェックポイントからやり直す」（森は「夏からやり直す」など従来どおり）。`retryState` と `Game.resume(state)` で再開する。
 - 続きから：到達した章を `localStorage` の `rabbiters.reached`（0〜3）に記録し、タイトルの「はじめる章」で選べる（ソロとホスト）。`?chapter=N`（1〜4）でその章を選んだ状態でタイトルが開く。
 - スナップショットに `stage`・`step`・`flags`・`open`・`items`・`talk` を載せる。`stage` のない古いホストのスナップショット（食べもののリスト形式も含む）は森として扱う。`unpackSnapshot` はスナップショットの `stage` に地図を切り替えてから食べものを復元し、検証に落ちたら元の地図に戻す。位置の範囲はそのステージの `WORLD`、敵の種類は `PREDATOR_KINDS` で検証する。

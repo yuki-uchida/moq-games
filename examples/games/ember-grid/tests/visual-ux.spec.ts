@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { acceptDiscard, enterBattle } from './shell-helper'
+import { acceptDiscard, cameraSettled, enterBattle } from './shell-helper'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -73,6 +73,9 @@ for (const [width, height] of [
         true
       )
     await page.getByRole('button', { name: /4,4 平地 移動可能/ }).click()
+    // The camera eases onto the archer's reach after the move; the forecast must not shift the board after that.
+    await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeVisible()
+    await cameraSettled(page)
     const boardBefore = await page.locator('#board').boundingBox()
     await page.getByRole('button', { name: /7,4 灰牙/ }).click()
     await expect(page.locator('#forecast')).toBeVisible()

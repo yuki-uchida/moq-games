@@ -32,6 +32,7 @@ import './shell.css'
 import { ExpeditionAudio } from './audio'
 import { BattleAnimation, depth, pause, snapshot } from './animation'
 import { Stage, chapterRoles } from './stage'
+import { BoardCamera } from './camera'
 import { dangerZone, enemyThreat, forecast } from './tactics'
 import { campaign } from './campaign'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
@@ -175,6 +176,20 @@ function createStage() {
   return stageAvailable
 }
 createStage()
+let tagsTimer: ReturnType<typeof setTimeout> | undefined
+const camera = new BoardCamera(
+  field,
+  board,
+  () => {
+    if (stageAvailable) stage.resize()
+    // Tag de-overlap reads every tag's box, so it waits until the view settles.
+    clearTimeout(tagsTimer)
+    tagsTimer = setTimeout(() => requestAnimationFrame(positionTags), 120)
+  },
+  () => clearTimeout(longPress)
+)
+// Reachable from the page for browser verification, like `canvas.stage`.
+Object.assign(field, { camera })
 let contextAvailable = true
 // Only the title screen holds the battle inert; the ending replay plays in the field without a battle.
 const titleOpen = () => document.querySelector('.title-screen') !== null
@@ -314,6 +329,8 @@ for (let y = 0; y < size; y++)
       cells[focusCell].tabIndex = -1
       focusCell = y * size + x
       cell.tabIndex = 0
+      // Keyboard focus may land on a cell the camera has panned away from.
+      if (cell.matches(':focus-visible')) camera.reveal([{ x, y }])
       hover(x, y)
     }
     cell.addEventListener('keydown', (event) => {
@@ -334,7 +351,7 @@ for (let y = 0; y < size; y++)
       cells[focusCell].tabIndex = -1
       focusCell = nextY * size + nextX
       cells[focusCell].tabIndex = 0
-      cells[focusCell].focus()
+      cells[focusCell].focus({ preventScroll: true })
     })
     board.append(cell)
     cells.push(cell)
@@ -504,6 +521,30 @@ document.addEventListener('keydown', (event) => {
     afterAction()
   }
 })
+const cellAt = (cell: string) => {
+  const [x, y] = cell.split(',').map(Number)
+  return { x, y }
+}
+let framed = -1,
+  focused = ''
+/**
+ * Each battle opens on everyone; selecting an ally moves in on its moves (after moving, its reach);
+ * once it is spent or released, the allies still able to act come back into view.
+ */
+function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach: Set<string>) {
+  if (framed !== generation) {
+    framed = generation
+    focused = ''
+    camera.frameAll(game.units.filter((u) => u.hp > 0))
+  }
+  const focus = unit && game.phase === 'ally' ? `${unit.id}:${unit.x},${unit.y}:${unit.moved}:${unit.done}` : ''
+  if (focus === focused) return
+  const previous = focused
+  focused = focus
+  if (unit && focus && !unit.done) camera.focus([unit, ...[...legal.keys(), ...(unit.moved ? reach : [])].map(cellAt)])
+  else if (previous && game.phase === 'ally')
+    camera.reveal(game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !u.done))
+}
 /** Preview an enemy's move and strike range while it is hovered or focused. */
 function hover(x: number, y: number) {
   const id = game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.x === x && u.y === y)?.id
@@ -562,6 +603,7 @@ render = () => {
   tutorial.update()
   requestAnimationFrame(positionTags)
   if (stageAvailable && playing) stage.sync(game, unit?.id)
+  followCamera(unit, legal, reach)
   document.querySelector('#turn')!.textContent =
     `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
   document.querySelector('#count')!.textContent =
@@ -782,6 +824,8 @@ async function end() {
     const before = snapshot(game),
       standing = game.units.filter((a) => a.side === 'ally' && a.hp > 0)
     const target = enemyStep(game, u)
+    // Follow the enemy when its move or strike would happen off screen.
+    camera.reveal([before.find((old) => old.id === u.id)!, u, ...(target ? [target] : [])], fast ? 90 : 280)
     lockPresentation()
     await animation.present(game, before, u, target ? { kind: 'attack', target } : undefined, fast ? 3 : 1)
     if (token !== generation) return
@@ -805,6 +849,7 @@ async function end() {
   save.suspend = snapshotGame(game)
   if (!unloading) writeSave(save, notice)
   render()
+  camera.reveal(game.units.filter((u) => u.side === 'ally' && u.hp > 0))
   void phaseBanner('ally', token)
   playSharedUiSound('turn', uiVolume())
 }

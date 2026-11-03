@@ -137,6 +137,8 @@ export class Stage {
     this.canvas.addEventListener('webglcontextrestored', () => {
       this.terrainKey = ''
       this.release()
+      // A restored context needs its drawing buffer sized again.
+      this.layout.width = 0
       this.resize()
       this.draw(true)
       this.field.dispatchEvent(new CustomEvent('stage-context', { detail: true }))
@@ -167,25 +169,33 @@ export class Stage {
     requestAnimationFrame(loop)
   }
 
-  /** Match the CSS floor: elevation asin(--tilt), 45° azimuth, 1 world unit = one unprojected tile. */
+  /**
+   * Match the CSS floor: elevation asin(--tilt), 45° azimuth, 1 world unit = one unprojected tile.
+   * The camera's zoom and pan reach here through the floor's own size and position.
+   */
   resize() {
     const field = this.field.getBoundingClientRect(),
       board = this.board.getBoundingClientRect(),
-      tilt = Number.parseFloat(getComputedStyle(this.field).getPropertyValue('--tilt')) || 0.6,
+      style = getComputedStyle(this.field),
+      tilt = Number.parseFloat(style.getPropertyValue('--tilt')) || 0.6,
+      zoom = Number.parseFloat(style.getPropertyValue('--zoom')) || 1,
       tile = this.board.offsetWidth / size
     if (!field.width || !tile) return
     const cx = board.left - field.left + board.width / 2,
       cy = board.top - field.top + board.height / 2,
       elevation = Math.asin(tilt)
+    // Reallocating the drawing buffer on every pan step would be wasteful; only a new field size needs it.
+    if (field.width !== this.layout.width || field.height !== this.layout.height)
+      this.renderer.setSize(field.width, field.height)
     this.layout = { width: field.width, height: field.height, tile }
-    const figure = Math.min(1.35, Math.max(1, 60 / tile))
+    // Narrow screens enlarge figures as at the whole-board fit; zooming then scales them like the floor.
+    const figure = Math.min(1.35, Math.max(1, 60 / (tile / zoom)))
     if (figure !== this.figure) {
       this.figure = figure
       for (const actor of this.actors.values())
         actor.visual.setPresentation(MODEL_SIZE * figure * roleScale(actor.role) * (actor.boss ? 1.25 : 1), 1)
     }
     this.field.style.setProperty('--figure', String(figure))
-    this.renderer.setSize(field.width, field.height)
     Object.assign(this.camera, {
       left: -cx / tile,
       right: (field.width - cx) / tile,

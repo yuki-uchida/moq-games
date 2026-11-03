@@ -12,7 +12,7 @@ import {
   staffHeal
 } from '../src/game'
 import { plan } from './strategy'
-import { enterBattle } from './shell-helper'
+import { clickCell, enterBattle } from './shell-helper'
 
 // Chapter scenes are skipped as soon as they appear; these specs cover the battle presentation.
 test.beforeEach(async ({ page }) => {
@@ -80,15 +80,15 @@ for (const width of [1280, 390])
     for (let turn = 0; turn < 25 && game.phase === 'ally'; turn++) {
       for (const unit of game.units.filter((u) => u.side === 'ally' && u.hp > 0)) {
         if (game.phase !== 'ally') break
-        await cell(unit.x, unit.y).click()
+        await clickCell(page, cell(unit.x, unit.y))
         const action = plan(game, unit)
         if (action.position.x !== unit.x || action.position.y !== unit.y) {
-          await cell(action.position.x, action.position.y).click()
+          await clickCell(page, cell(action.position.x, action.position.y))
           move(game, unit, action.position.x, action.position.y)
         }
         if (action.healing) {
           const before = action.healing.hp
-          await cell(action.healing.x, action.healing.y).click()
+          await clickCell(page, cell(action.healing.x, action.healing.y))
           await page.getByRole('button', { name: '回復', exact: true }).click()
           expect(staffHeal(game, unit, action.healing)).toBe(true)
           await expect(page.locator('.healing-effect')).toContainText(`+${action.healing.hp - before}`)
@@ -99,7 +99,7 @@ for (const width of [1280, 390])
           )
           healed = true
         } else if (action.target) {
-          await cell(action.target.x, action.target.y).click()
+          await clickCell(page, cell(action.target.x, action.target.y))
           await page.getByRole('button', { name: '攻撃', exact: true }).click()
           attack(game, unit, action.target)
         }

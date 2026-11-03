@@ -227,7 +227,7 @@ export const RULES = {
   burrowHeal: 4
 } as const
 
-/** Collar colours: distinct hues that read on grass, sand and the minimap. */
+/** Collar colours: distinct hues that read on grass and sand. */
 export const PLAYER_COLORS = [
   '#e8455a',
   '#2f7fe0',

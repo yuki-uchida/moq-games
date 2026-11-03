@@ -308,7 +308,7 @@ export function bathtub(kit: Kit, x: number, z: number, width: number, length: n
   return root
 }
 
-/** Wash stool and bucket (visual only, by the tub). */
+/** Wash stool and bucket by the tub (solid: see SOLIDS). */
 export function bathStool(kit: Kit, x: number, z: number) {
   const root = group(x, z)
   kit.add(root, 'soft', '#e8a0a8', [0, 0.8, 0], [1.4, 0.2, 1.0])

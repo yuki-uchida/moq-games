@@ -3,6 +3,7 @@ import { Game, canEnter, coverAt, packSnapshot, unpackSnapshot, type Input, type
 import {
   CAVES,
   DEEP_WATER,
+  FOREST,
   FOODS,
   LOGS,
   NESTS,
@@ -18,6 +19,7 @@ import {
   isUnderground,
   lineOfSight,
   logTop,
+  setStage,
   tunnelNearest,
   waterDepth
 } from '../src/map'
@@ -357,5 +359,42 @@ describe('Rabbiters world map', () => {
     expect(unpackSnapshot({ ...wire, foods: wire.foods.slice(1) })).toBeUndefined()
     expect(unpackSnapshot({ ...wire, nests: [...wire.nests.slice(1), 500] })).toBeUndefined()
     expect(unpackSnapshot(null)).toBeUndefined()
+  })
+
+  it('gives solid-looking props collision in every chapter, not just walls and trees', () => {
+    // [chapter, x, z, what]: a rabbit (radius 0.3) standing on the floor there would be inside the prop.
+    const props: [number, number, number, string][] = [
+      [0, -3.1, 19.3, 'sideboard'],
+      [0, -37.6, 7, 'TV screen'],
+      [0, 29, -5, 'pantry side'],
+      [0, 35, -5, 'pantry side'],
+      [0, -10, -30.5, 'wash stool'],
+      [0, -8.4, -30.2, 'bucket'],
+      [0, 17, 36, 'clothesline pole'],
+      [1, -92, 2.2, 'bicycle'],
+      [1, -93.8, 2.2, 'bicycle wheel'],
+      [1, -152, -12.9, 'bicycle'],
+      [1, -32.9, -24.9, 'bus-stop sign'],
+      [1, 27, 13, 'bakery counter'],
+      [2, -72, -23.4, 'valve post'],
+      [2, -81.1, 15, 'valve post'],
+      [2, -83, 16, 'toolbox'],
+      [2, -44.6, -2, 'outfall frame'],
+      [2, -36.2, 13.6, "angler's bucket"],
+      [2, 98.2, 22.2, 'slide leg'],
+      [2, 100, 29, 'slide chute'],
+      [2, 104, 20, 'swing post'],
+      [2, 56, -46, 'bench leg'],
+      [2, 130, -22, 'hill pine']
+    ]
+    try {
+      for (const [stage, x, z, what] of props) {
+        setStage(stage)
+        const floor = Math.min(heightAt(x + 2, z), heightAt(x - 2, z), heightAt(x, z + 2), heightAt(x, z - 2))
+        expect(hitsBlocker(x, z, 0.3) || heightAt(x, z) > floor + 0.6, what).toBe(true)
+      }
+    } finally {
+      setStage(FOREST)
+    }
   })
 })

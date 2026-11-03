@@ -3,7 +3,7 @@ import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
 import { heldStrike } from './animation.js'
 import { drawArea, drawStatus, drawZones, HURT_VFX, DEATH_VFX } from './visual-effects.js'
-import { bindUiSounds, playUiSound, warmUpAudio } from '../shared/UiSound.ts'
+import { bindUiSounds, playUiSound } from '../shared/UiSound.ts'
 import {
   STAGES,
   POOPS,
@@ -88,10 +88,11 @@ document.addEventListener('visibilitychange', () => {
   tick(performance.now())
   syncAudio()
 })
-document.addEventListener('pointerdown', () => audio.unlock(), { once: true })
-document.addEventListener('keydown', () => audio.unlock(), { once: true })
+document.addEventListener('pointerdown', () => audio.unlock())
+document.addEventListener('touchend', () => audio.unlock())
+document.addEventListener('click', () => audio.unlock(), true)
+document.addEventListener('keydown', () => audio.unlock())
 bindUiSounds(document, (kind) => !muted && !document.hidden && playUiSound(kind, audio.context))
-warmUpAudio()
 /** A short pop on the control that just acted; the sound already confirms it. */
 const calm = matchMedia('(prefers-reduced-motion: reduce)')
 const pop = (button) =>

@@ -433,11 +433,15 @@ function renderChoices(player: ViewPlayer | undefined) {
   const count = player.choices.length
   const birthPick = player.parent === 'p_gone' && !player.weapons.length
   const hint = touchUi ? 'タップで決定。' : `1〜${count}キーでも選べます。`
-  element<HTMLElement>('#levelup-note').textContent = birthPick
-    ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
-    : role === 'solo'
-      ? `時間は止まっています。${hint}`
-      : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
+  element<HTMLElement>('#levelup-note').textContent = player.choices[0]?.startsWith('s:')
+    ? `交換する新しい武器を選ぼう。${hint}`
+    : player.choices[0]?.startsWith('r:')
+      ? `手放す武器を選ぼう。新しい武器はLv 1から始まります。${hint}`
+      : birthPick
+        ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
+        : role === 'solo'
+          ? `時間は止まっています。${hint}`
+          : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
   cardsShownAt = performance.now()
   audio.play('cardOpen')
@@ -451,7 +455,8 @@ function renderChoices(player: ViewPlayer | undefined) {
       button.style.setProperty('--i', String(index))
       const icon = document.createElement('span')
       icon.className = 'icon'
-      icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
+      if (choice === 'x:skip') icon.textContent = info.icon
+      else icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
       const name = document.createElement('strong')
       name.textContent = info.name
       if (info.tag && rarity !== 'new') {
@@ -615,7 +620,7 @@ function updateHud(current: View) {
     const cause = killer ? `とどめ：${killer.name}（${TAG_NAMES[killer.tag]}）。` : ''
     showResult(
       won ? `大往生 — 享年${age}歳` : `心が折れた — 享年${age}歳`,
-      won ? '死神が迎えに来た。30分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
+      won ? '死神が迎えに来た。15分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
       won ? '🌅' : '💔',
       player ? reflection(player) : [],
       { level: current.level, kills: current.kills }
@@ -872,7 +877,7 @@ window.addEventListener('keydown', (event) => {
     return
   }
   if (!started || !help.hidden) return
-  if (/^Digit[1-4]$/.test(event.code) && !levelup.hidden) {
+  if (/^Digit[1-8]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
     event.preventDefault()
   } else if (moveKeys.has(event.code)) {

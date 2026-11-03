@@ -1,11 +1,46 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, RUN_SECONDS, TALENT_CATEGORIES, WEAPON_BY_ID } from '../src/data'
-import { GIFTED, Game, POOR, REAPER_SECONDS, STRONG_MULTIPLIER, isEvolved, weaponName, weaponStats } from '../src/game'
+import {
+  ageAt,
+  EVENTS,
+  MAX_PASSIVE_LEVEL,
+  MAX_WEAPON_LEVEL,
+  PASSIVES,
+  PASSIVE_SLOTS,
+  PARENTS,
+  RUN_SECONDS,
+  TALENT_CATEGORIES,
+  TALENT_WEAPONS,
+  timeAtAge,
+  WEAPON_BY_ID,
+  WEAPON_SLOTS
+} from '../src/data'
+import { GIFTED, Game, POOR, REAPER_SECONDS, STRONG_MULTIPLIER, isEvolved, weaponName, weaponStats, xpForLevel } from '../src/game'
 import { readView, toView } from '../src/view'
 import { MAX_PAYLOAD_BYTES } from '../../rabbiters/src/network'
 import { playLife } from './bot'
 
 const idle = { x: 0, y: 0, pick: -1, pickSeq: -1 }
+
+describe('life pacing', () => {
+  test('ages increasingly quickly over a 15 minute life', () => {
+    expect(RUN_SECONDS).toBe(900)
+    expect(ageAt(0)).toBe(0)
+    expect(ageAt(RUN_SECONDS)).toBe(80)
+    expect(ageAt(450) - ageAt(0)).toBeLessThan(ageAt(900) - ageAt(450))
+    expect(timeAtAge(40) - timeAtAge(20)).toBeGreaterThan(timeAtAge(60) - timeAtAge(40))
+    expect(EVENTS.every((event) => event.at < RUN_SECONDS)).toBe(true)
+    expect(ageAt(EVENTS.find((event) => event.boss === 'b_hs')!.at + 0.01)).toBe(13)
+  })
+
+  test('levels require more experience and late enemies gain durability', () => {
+    expect(xpForLevel(10)).toBeGreaterThan(Math.round(5 + 10 * 6 + 10 * 10 * 0.3))
+    const game = new Game(1)
+    game.addPlayer('a')
+    expect(game.hpScale()).toBe(1)
+    game.state.time = RUN_SECONDS
+    expect(game.hpScale()).toBeCloseTo((1 + 30 * 0.14 + 30 * 30 * 0.004) * 1.2)
+  })
+})
 
 describe('birth', () => {
   test('every life starts as a baby holding only the parent card, with hidden talents', () => {
@@ -75,6 +110,40 @@ describe('combat', () => {
 })
 
 describe('turning points', () => {
+  test('a complete build skips empty hands and can swap a talent every five levels', () => {
+    const game = new Game(2)
+    const player = game.addPlayer('a', 'p_edu')!
+    game.state.time = RUN_SECONDS / 2
+    player.weapons.push(
+      ...TALENT_WEAPONS.slice(0, WEAPON_SLOTS).map(({ id }) => ({
+        id,
+        lv: MAX_WEAPON_LEVEL,
+        cd: 0,
+        held: 0,
+        damage: 0
+      }))
+    )
+    player.weapons[0].lv = MAX_WEAPON_LEVEL
+    player.passives = PASSIVES.slice(0, PASSIVE_SLOTS).map(({ id }) => ({ id, lv: MAX_PASSIVE_LEVEL }))
+    game.state.level = 3
+    game.gainXp(game.state.xpNext)
+    game.tick(1 / 60)
+    expect(player.choices).toEqual([])
+    game.gainXp(game.state.xpNext)
+    game.tick(1 / 60)
+    expect(player.choices[0]).toMatch(/^s:/)
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    const newWeapon = player.choices[0].split(':')[1]
+    game.choose(player, 0)
+    expect(player.choices[0]).toMatch(/^r:/)
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    const oldWeapon = player.choices[0].split(':')[1]
+    game.choose(player, 0)
+    expect(player.weapons.some((weapon) => weapon.id === oldWeapon)).toBe(false)
+    expect(player.weapons.find((weapon) => weapon.id === newWeapon)?.lv).toBe(1)
+    expect(player.weapons[0].id).toBe('p_edu')
+  })
+
   test('solo pauses for a choice and only accepts the current hand', () => {
     const game = new Game(2)
     const player = game.addPlayer('a')!
@@ -101,7 +170,7 @@ describe('turning points', () => {
     expect(baby).not.toContain('w:w_work')
     expect(baby).not.toContain('w:w_invest')
     expect(baby).toContain('w:w_hobby')
-    game.state.time = RUN_SECONDS * (25 / 80)
+    game.state.time = timeAtAge(25) + 0.01
     expect(game.options(player)).toEqual(expect.arrayContaining(['w:w_work', 'w:w_invest', 'w:w_love']))
   })
 
@@ -143,7 +212,7 @@ describe('end of life', () => {
     expect(game.state.phase).toBe('lost')
   })
 
-  test('at 30:00 the reaper comes and the life ends in a clear', () => {
+  test('at 15:00 the reaper comes and the life ends in a clear', () => {
     const game = new Game(1)
     game.addPlayer('a')
     game.state.time = RUN_SECONDS - 0.01
@@ -157,7 +226,7 @@ describe('end of life', () => {
     expect(toView(game.state).players[0].talents).toBeDefined()
   })
 
-  test('a well-read life survives all 30 minutes, and snapshots stay small and valid', () => {
+  test('a well-read life survives all 15 minutes, and snapshots stay small and valid', () => {
     const { game, peak, bytes } = playLife(1, 'smart')
     expect(game.state.phase).toBe('reaper')
     expect(peak).toBeGreaterThan(250)

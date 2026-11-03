@@ -14,6 +14,7 @@ import {
   GATE,
   GRASS_PATCHES,
   ROOMS,
+  POLES,
   SOLIDS,
   TUNNEL_NODES,
   WALLS,
@@ -201,7 +202,8 @@ export function scenery(scene: THREE.Scene): Scenery {
       const c = mid(chairRoof)
       statics.add(props.chair(kit, c.x, c.z, c.z < t.z ? 0 : Math.PI, fadeDark))
     }
-    statics.add(props.sideboard(kit, -3.125, 19.25, 1.25, 8.5, 3.4)) // against the living-room wall
+    const board = mid(solid('sideboard')) // against the living-room wall
+    statics.add(props.sideboard(kit, board.x, board.z, board.w, board.d, solid('sideboard').h))
   }
   // Kitchen.
   {
@@ -293,7 +295,8 @@ export function scenery(scene: THREE.Scene): Scenery {
     garden.add(props.shed(kit, shed.x, shed.z, shed.w, shed.d))
     const dog = mid(solid('doghouse'))
     garden.add(props.dogHouse(kit, dog.x, dog.z))
-    for (const x of [17, 35]) kit.add(garden, 'cylinder', '#9aa0a6', [x, 3.5, 36], [0.15, 7, 0.15])
+    for (const pole of POLES)
+      kit.add(garden, 'cylinder', '#9aa0a6', [pole.x, pole.top / 2, pole.z], [0.15, pole.top, 0.15])
     kit.add(garden, 'cylinder', '#e0e0e0', [26, 6.6, 36], [0.04, 18, 0.04], [0, 0, Math.PI / 2])
     for (const [x, color] of [
       [20, '#7fa7d9'],

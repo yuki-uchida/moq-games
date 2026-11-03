@@ -343,6 +343,26 @@ export const LAMPS: readonly { x: number; z: number }[] = [
   { x: 120.5, z: -6 }
 ]
 POSTS.push(...LAMPS.map(({ x, z }): Blocker => ({ x, z, r: 0.3, top: 9, kind: 'rock' })))
+/** Bicycles parked in the alleys: centre and heading (the frame runs along (sin a, cos a)). */
+export const BICYCLES: readonly { x: number; z: number; angle: number; color: string }[] = [
+  { x: -92, z: 2.2, angle: Math.PI / 2, color: '#d9d4c8' },
+  { x: -152, z: -12.9, angle: Math.PI / 2 + 0.05, color: '#3a8ac0' }
+]
+// Props too thin or too small for the 1 m height grid stand as rows of posts: each bicycle from wheel to wheel,
+// the bus-stop sign and the bakery counter. Scenery draws these with their props, not as POSTS. (The levee's guard
+// rails stay open: rabbits slip under the rail between its posts.)
+const PROPS: Blocker[] = []
+for (const bike of BICYCLES)
+  for (let along = -2.5; along <= 2.5; along += 0.833)
+    PROPS.push({
+      x: bike.x + Math.sin(bike.angle) * along,
+      z: bike.z + Math.cos(bike.angle) * along,
+      r: 0.45,
+      top: 1.2, // an open frame: only the wheels' lower half hides anything
+      kind: 'rock'
+    })
+PROPS.push({ x: -32.9, z: -24.9, r: 0.12, top: 7, kind: 'rock' })
+for (let index = 0; index < 5; index++) PROPS.push({ x: 24.7 + index * 1.15, z: 13, r: 0.65, top: 1.5, kind: 'rock' })
 
 /** Cardboard and polybuckets (bushes): crouch beside them and nobody sees you. */
 const BUSHES: Circle[] = [
@@ -489,7 +509,7 @@ export function buildMap(): StageMap {
     grass: GRASS,
     bushes: BUSHES,
     trees: TREES,
-    rocks: POSTS,
+    rocks: [...POSTS, ...PROPS],
     logs: [],
     shelters: [{ x: SHRINE_HALL.x, z: SHRINE_HALL.z, r: 4.5 }], // under the shrine's raised floor
     caves: [],

@@ -1,6 +1,6 @@
 /** Static content for ジンセイガ・ツライデース: life stages, weapons ("人生の手札"), personalities and life's troubles. */
 
-export const RUN_SECONDS = 30 * 60
+export const RUN_SECONDS = 15 * 60
 export const LIFESPAN = 80
 export const MAX_WEAPON_LEVEL = 8
 export const MAX_PASSIVE_LEVEL = 5
@@ -48,7 +48,10 @@ export const TAG_COLORS: Record<Tag, string> = {
   class: '#8d9b5b'
 }
 
-export const ageAt = (time: number) => Math.min(LIFESPAN, Math.floor((Math.max(0, time) / RUN_SECONDS) * LIFESPAN))
+export const ageAt = (time: number) =>
+  Math.min(LIFESPAN, Math.floor((Math.max(0, time) / RUN_SECONDS) ** 1.4 * LIFESPAN))
+
+export const timeAtAge = (age: number) => RUN_SECONDS * (Math.max(0, age) / LIFESPAN) ** (1 / 1.4)
 
 export interface Stage {
   age: number
@@ -1090,7 +1093,8 @@ export const EVENTS: LifeEvent[] = (
     { at: 1680, swarm: 'forget', count: 30, text: '物忘れがひどくなってきた…' },
     { at: 1740, swarm: 'illness', count: 60, text: '最後の試練。あと少し…！' }
   ] as LifeEvent[]
-).sort((a, b) => a.at - b.at)
+).map((event) => ({ ...event, at: timeAtAge((event.at / (30 * 60)) * LIFESPAN) }))
+  .sort((a, b) => a.at - b.at)
 
 export const PLAYER_COLORS = ['#ffd166', '#06d6a0', '#ef476f', '#4cc9f0', '#f78c6b', '#b388eb', '#90be6d', '#f9c74f']
 export const MAX_GAME_PLAYERS = 8

@@ -99,6 +99,7 @@ export interface Player {
   choices: string[]
   choiceSeq: number
   pending: number
+  swapPending: number
   /** 蒸発済み's free birth hand is still waiting to be dealt (consumed by the first offer). */
   birthPick?: boolean
   hurt: number
@@ -264,7 +265,7 @@ export function mulberry32(seed: number) {
   }
 }
 
-export const xpForLevel = (level: number) => Math.round(5 + level * 6 + level * level * 0.3)
+export const xpForLevel = (level: number) => Math.round((5 + level * 6 + level * level * 0.3) * 1.3)
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
@@ -367,6 +368,16 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
 
 export function choiceText(player: Player, choice: string): { icon: string; name: string; text: string; tag: string } {
   const [kind, id] = choice.split(':')
+  if (kind === 's' || kind === 'r') {
+    const def = WEAPON_BY_ID.get(id)!
+    return {
+      icon: def.icon,
+      name: def.name,
+      text: kind === 's' ? '新しく装備する武器' : 'この武器と入れ替える',
+      tag: kind === 's' ? 'NEW' : '交換'
+    }
+  }
+  if (choice === 'x:skip') return { icon: '↩', name: '交換しない', text: '今の武器をそのまま使う', tag: '' }
   if (kind === 'w') {
     const def = WEAPON_BY_ID.get(id)!
     const owned = player.weapons.find((w) => w.id === id)
@@ -482,6 +493,7 @@ export class Game {
       choices: [],
       choiceSeq: 0,
       pending: parent === 'p_gone' ? 1 : 0,
+      swapPending: 0,
       birthPick: parent === 'p_gone',
       hurt: 0,
       invuln: 0,
@@ -513,7 +525,7 @@ export class Game {
       x /= length
       y /= length
     }
-    const pick = Math.trunc(num(value.pick, -1, 3, -1))
+    const pick = Math.trunc(num(value.pick, -1, 7, -1))
     const pickSeq = Math.trunc(num(value.pickSeq, -1, Number.MAX_SAFE_INTEGER, -1))
     this.inputs.set(id, { x, y, pick, pickSeq })
     const player = this.state.players.find((p) => p.id === id)
@@ -631,7 +643,7 @@ export class Game {
         for (const friend of this.state.players)
           if (friend !== player && !friend.downed && Math.hypot(friend.x - player.x, friend.y - player.y) < 140)
             friend.hp = Math.min(friend.maxHp, friend.hp + kind * 0.5 * dt)
-      if (!player.choices.length && player.pending > 0) this.offer(player)
+      if (!player.choices.length && (player.pending > 0 || player.swapPending > 0)) this.offer(player)
     }
   }
 
@@ -681,8 +693,9 @@ export class Game {
   }
 
   hpScale() {
-    const minutes = this.state.time / 60
-    return (1 + minutes * 0.14 + minutes * minutes * 0.004) * (1 + (this.state.players.length - 1) * 0.45)
+    const progress = this.state.time / RUN_SECONDS
+    const minutes = progress * 30
+    return (1 + minutes * 0.14 + minutes * minutes * 0.004) * (1 + 0.2 * progress ** 2) * (1 + (this.state.players.length - 1) * 0.45)
   }
 
   targetPopulation() {
@@ -2009,7 +2022,8 @@ export class Game {
       state.xpNext = Math.round(xpForLevel(state.level) * (1 + (state.players.length - 1) * 0.5))
       for (const player of state.players)
         if (!player.downed) {
-          player.pending++
+          if (!this.options(player).length && state.level % 5 === 0) player.swapPending++
+          else player.pending++
           // Growing up also mends the heart a little.
           player.hp = Math.min(player.maxHp, player.hp + player.maxHp * LEVEL_HEAL)
           this.emit(FX.LEVELUP, player.x, player.y, state.level, this.playerIndex(player))
@@ -2056,6 +2070,17 @@ export class Game {
   }
 
   private offer(player: Player) {
+    if (player.pending === 0 && player.swapPending > 0) {
+      player.swapPending--
+      const pool = TALENT_WEAPONS.filter(
+        (def) => ageAt(this.state.time) >= def.minAge && !player.weapons.some((w) => w.id === def.id)
+      )
+      const hand: string[] = []
+      while (hand.length < 3 && pool.length)
+        hand.push(`s:${pool.splice(Math.floor(this.rng() * pool.length), 1)[0].id}`)
+      if (hand.length && talentWeaponCount(player)) player.choices = [...hand, 'x:skip']
+      return
+    }
     // 蒸発済み's first hand (自立): only the talents of early childhood, whatever the age.
     const birth = player.birthPick === true
     player.birthPick = false
@@ -2078,7 +2103,6 @@ export class Game {
       }
       hand.push(pool.splice(pick, 1)[0])
     }
-    if (!hand.length) hand.push('x:meal', 'x:coin')
     player.choices = hand
     player.pending--
   }
@@ -2086,10 +2110,23 @@ export class Game {
   choose(player: Player, index: number) {
     const choice = player.choices[index]
     if (!choice) return
-    const [kind, id] = choice.split(':')
+    const [kind, id, replacement] = choice.split(':')
     player.choices = []
     player.choiceSeq++
-    if (kind === 'w') {
+    if (kind === 's') {
+      player.choices = [
+        ...player.weapons
+          .filter((weapon) => !WEAPON_BY_ID.get(weapon.id)?.parent)
+          .map((weapon) => `r:${weapon.id}:${id}`),
+        'x:skip'
+      ]
+    } else if (kind === 'r') {
+      const index = player.weapons.findIndex((weapon) => weapon.id === id)
+      if (index >= 0 && replacement && WEAPON_BY_ID.has(replacement)) {
+        player.weapons[index] = { id: replacement, lv: 1, cd: 0.2, held: 0, damage: 0 }
+        this.feel(player, WEAPON_BY_ID.get(replacement)!)
+      }
+    } else if (kind === 'w') {
       const owned = player.weapons.find((w) => w.id === id)
       if (owned) {
         const before = isEvolved(player, owned)
@@ -2115,7 +2152,7 @@ export class Game {
       if (stats.maxHp > player.maxHp) player.hp += stats.maxHp - player.maxHp
       player.maxHp = stats.maxHp
     } else if (choice === 'x:meal') player.hp = Math.min(player.maxHp, player.hp + 40)
-    else this.gainXp(this.state.xpNext * 0.25)
+    else if (choice === 'x:coin') this.gainXp(this.state.xpNext * 0.25)
   }
 
   private announceEvolution(player: Player, weapon: OwnedWeapon) {
