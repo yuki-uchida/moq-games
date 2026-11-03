@@ -192,6 +192,23 @@
           <p id="result-stats" class="result-stats" hidden>
             Lv <b id="result-level">0</b> ・ 乗り越えた困難 <b id="result-kills">0</b>
           </p>
+          <section id="result-talents" class="result-talents" hidden>
+            <h3>あなたの才能</h3>
+            <svg viewBox="0 0 300 260" role="img" aria-label="6分野の才能。詳しい倍率は図の下に表示">
+              <polygon class="radar-grid" points="150,30 236.6,80 236.6,180 150,230 63.4,180 63.4,80" />
+              <polygon id="result-radar" class="radar-value" />
+              <g class="radar-labels">
+                <text x="150" y="20">対人</text>
+                <text x="263" y="82">恋愛</text>
+                <text x="263" y="185">身体</text>
+                <text x="150" y="250">創造</text>
+                <text x="37" y="185">知性</text>
+                <text x="37" y="82">資産</text>
+              </g>
+            </svg>
+            <div id="result-talent-values" class="result-talent-values"></div>
+          </section>
+          <h3 id="result-build-title" hidden>人生の終わりに持っていた手札</h3>
           <div id="result-build" class="result-build"></div>
           <button id="restart" class="button button-primary" type="button">もう一度生まれる</button>
         </div>
