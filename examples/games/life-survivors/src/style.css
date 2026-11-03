@@ -1400,3 +1400,331 @@ button {
     height: 44px;
   }
 }
+
+/* Touch: floating stick, no selection / callouts / pull-to-refresh, larger hit areas. */
+html,
+body {
+  overscroll-behavior: none;
+}
+#app {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#app input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+button {
+  touch-action: manipulation;
+}
+.stick {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.stick::before,
+.stick i {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+}
+.stick::before {
+  width: 112px;
+  height: 112px;
+  left: -56px;
+  top: -56px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.12));
+}
+.stick i {
+  display: block;
+  width: 48px;
+  height: 48px;
+  left: -24px;
+  top: -24px;
+  background: rgba(255, 207, 77, 0.55);
+  border: 2px solid rgba(255, 240, 200, 0.85);
+  box-shadow: 0 2px 10px #0008;
+}
+.move-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(26% + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 6, 16, 0.75);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: hint-bob 1.6s ease-in-out infinite alternate;
+}
+@keyframes hint-bob {
+  to {
+    transform: translateX(-50%) translateY(-6px);
+  }
+}
+.touch-ui .key-only,
+.touch-ui .card kbd {
+  display: none;
+}
+@media (pointer: coarse) {
+  .icon-button {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+/* Notches and home indicators (viewport-fit=cover). */
+.hud-top {
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+}
+.hand {
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+}
+.levelup {
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+/* A panel taller than the screen scrolls from its top instead of being cut off above. */
+.start-panel,
+.dialog-backdrop {
+  place-items: start center;
+}
+.start-inner,
+.dialog {
+  margin: auto 0;
+}
+
+/* Phones in portrait: age and buttons on the first row, a full-width mind meter under them. */
+@media (max-width: 640px) {
+  .hud-top {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas: 'life actions' 'mind mind';
+    gap: 6px;
+  }
+  .life-card {
+    grid-area: life;
+    padding: 6px 10px;
+  }
+  .age b {
+    font-size: 22px;
+  }
+  .age small {
+    font-size: 12px;
+  }
+  .clock {
+    font-size: 13px;
+  }
+  .clock small {
+    font-size: 11px;
+  }
+  .mind-card {
+    grid-area: mind;
+    padding: 6px 10px;
+    font-size: 11px;
+    gap: 8px;
+  }
+  .mind-card .meter {
+    flex: 1;
+    width: auto;
+  }
+  .top-actions {
+    grid-area: actions;
+    align-self: start;
+    gap: 4px;
+  }
+  .connection {
+    max-width: 92px;
+    padding: 3px 6px;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .boss-bar,
+  .hud:has(#boss-bar:not([hidden])) .boss-bar {
+    top: 142px;
+  }
+  .feed,
+  .hud:has(#boss-bar:not([hidden])) .feed {
+    top: auto;
+    bottom: calc(110px + env(safe-area-inset-bottom));
+    width: 92vw;
+  }
+  .feed p {
+    padding: 4px 10px;
+  }
+  .feed p:nth-child(n + 4) {
+    display: none;
+  }
+  .start-inner,
+  .dialog {
+    padding: 20px;
+  }
+}
+
+/* Phones in landscape: little height, so everything shrinks and the feed moves to the bottom right. */
+@media (max-height: 500px) {
+  .xp-bar {
+    height: 12px;
+  }
+  .xp-bar span {
+    font-size: 10px;
+    line-height: 12px;
+  }
+  .hud-top {
+    top: 18px;
+    gap: 6px;
+  }
+  .life-card {
+    min-width: 0;
+    padding: 4px 10px;
+  }
+  .age b {
+    font-size: 20px;
+  }
+  .clock {
+    font-size: 12px;
+  }
+  .life-line {
+    margin-top: 3px;
+  }
+  .mind-card {
+    padding: 6px 10px;
+  }
+  .meter {
+    width: 110px;
+  }
+  .kills {
+    padding: 6px 10px;
+  }
+  .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+  .team {
+    top: 70px;
+    right: max(12px, env(safe-area-inset-right));
+  }
+  .boss-bar,
+  .hud:has(#boss-bar:not([hidden])) .boss-bar {
+    top: 70px;
+    width: min(420px, 50vw);
+  }
+  .feed,
+  .hud:has(#boss-bar:not([hidden])) .feed {
+    top: auto;
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    transform: none;
+    width: min(360px, 42vw);
+    justify-items: end;
+  }
+  .feed p {
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+  .feed p:nth-child(n + 4) {
+    display: none;
+  }
+  .banner-layer {
+    top: 22%;
+  }
+  .slot {
+    width: 34px;
+    height: 34px;
+  }
+  .slot .pixel-icon {
+    width: 26px;
+    height: 26px;
+  }
+  .passives .slot {
+    width: 26px;
+    height: 26px;
+  }
+  .passives .slot .pixel-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .hand {
+    padding: 5px;
+    gap: 4px;
+  }
+  .move-hint {
+    bottom: 18%;
+  }
+  .levelup {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .levelup-panel {
+    max-height: calc(100vh - 16px);
+    padding: 8px 12px 10px;
+  }
+  .levelup .overline {
+    display: none;
+  }
+  .levelup h2 {
+    font-size: 18px;
+  }
+  .levelup-note {
+    margin: 2px 0 6px;
+  }
+  .card {
+    padding: 8px 10px;
+  }
+  .start-inner,
+  .dialog {
+    padding: 16px 20px;
+  }
+  /* Title: story on the left, buttons on the right, so starting needs no scrolling. */
+  .start-inner {
+    width: min(860px, 100%);
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    column-gap: 24px;
+    grid-auto-flow: row dense;
+    align-content: start;
+  }
+  .start-inner > * {
+    grid-column: 1;
+  }
+  .start-inner > .sound-note,
+  .start-inner > .button,
+  .start-inner > .divider,
+  .start-inner > .multiplayer-fields,
+  .start-inner > .error,
+  .start-inner > .home-link {
+    grid-column: 2;
+  }
+  .start-inner h1 {
+    font-size: 28px;
+  }
+  .start-inner h1 small {
+    font-size: 12px;
+  }
+  .intro {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 6px 0;
+  }
+  .rules {
+    font-size: 12px;
+    gap: 2px;
+    margin-bottom: 6px;
+  }
+  .content-note {
+    margin: 0;
+  }
+}

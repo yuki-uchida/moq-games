@@ -18,6 +18,10 @@ test('a solo life: birth, a turning point, and the reaper at 30:00', async ({ pa
   await expect(page.locator('#stage')).toHaveText('乳児期')
 
   const handle = await life(page)
+  // A 蒸発済み parent opens with a birth pick, which stops time; this life starts empty-handed instead.
+  await handle.evaluate((l) => {
+    for (const p of l.game.state.players) p.choices = []
+  })
   await page.keyboard.down('KeyD')
   await expect.poll(() => handle.evaluate((l) => l.view.players[0].x)).toBeGreaterThan(40)
   await page.keyboard.up('KeyD')
@@ -88,6 +92,7 @@ test('a broken heart: the death plays out before the result, which names the fin
       spawnEnemy(kind: string, x: number, y: number): void
     }
     const p = game.state.players[0]
+    ;(p as unknown as { choices: string[] }).choices = [] // no 蒸発済み birth pick holding time
     game.state.time = 25 * 22.5
     p.weapons = []
     p.hp = 0.01
@@ -141,6 +146,13 @@ test('two players share one life-world: the guest moves and gets their own hand'
   await expect(guest.locator('#hud')).toBeVisible()
   const hostLife = await life(host)
   await expect.poll(() => hostLife.evaluate((l) => l.game.state.players.length)).toBe(2)
+  // No 蒸発済み birth pick in the way: its note would replace the co-op one.
+  await hostLife.evaluate((l) => {
+    for (const p of l.game.state.players as unknown as { parent: string; choices: string[] }[]) {
+      if (p.parent === 'p_gone') p.parent = 'p_free'
+      p.choices = []
+    }
+  })
   const guestLife = await life(guest)
   const guestId = await guestLife.evaluate((l) => l.localId)
   await expect.poll(() => guestLife.evaluate((l) => l.view?.players.length ?? 0)).toBe(2)
@@ -247,6 +259,52 @@ test('a lucky four-card hand shows rarity frames and key 4 picks the last card',
   await expect(page.locator('#levelup')).toBeHidden()
   await expect.poll(() => handle.evaluate((l) => (l as unknown as Hook).game.state.players[0].choices.length)).toBe(0)
   expect(errors).toEqual([])
+})
+
+test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fresh hand is ignored', async ({
+  browser
+}) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).tap()
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect(page.locator('#move-hint')).toBeVisible()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    for (const p of l.game.state.players) p.choices = []
+  })
+
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })
+  // Far past the stick's rim: the base follows the finger, so speed stays capped at full.
+  for (let i = 1; i <= 8; i++)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 + i * 20, y: 600 }] })
+  await expect(page.locator('#stick')).toHaveJSProperty('hidden', false)
+  await expect(page.locator('#move-hint')).toBeHidden()
+  const x0 = await handle.evaluate((l) => l.view.players[0].x)
+  await expect.poll(() => handle.evaluate((l) => l.view.players[0].x)).toBeGreaterThan(x0 + 20)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect(page.locator('#stick')).toHaveJSProperty('hidden', true)
+
+  await handle.evaluate((l) => {
+    const p = l.game.state.players[0] as unknown as { choices: string[]; choiceSeq: number }
+    p.choices = ['w:w_sns', 'w:w_pet', 'p:p_hot']
+    p.choiceSeq++
+  })
+  const card = page.locator('#cards .card').first()
+  await expect(card).toBeAttached()
+  // A finger still lifting from steering lands on the hand the moment it opens.
+  await card.dispatchEvent('click', { detail: 1 })
+  await expect(page.locator('#levelup')).toBeVisible()
+  await expect(page.locator('#levelup-note')).toContainText('タップで決定')
+  await page.waitForTimeout(400)
+  await card.tap()
+  await expect(page.locator('#levelup')).toBeHidden()
+  expect(errors).toEqual([])
+  await context.close()
 })
 
 test('the music follows a life: title, stages, a boss, the reaper, the ending and the BGM slider', async ({ page }) => {

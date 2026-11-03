@@ -107,16 +107,27 @@ let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
 const keys = new Set<string>()
+/** Floating touch stick: the base sits where the finger landed and is dragged along past STICK_RADIUS. */
 let drag: { id: number; x: number; y: number; dx: number; dy: number } | undefined
+const STICK_RADIUS = 56
+const STICK_DEAD = 6
+const stick = element<HTMLElement>('#stick')
+const stickKnob = element<HTMLElement>('#stick-knob')
+/** Touch players see tap hints instead of number-key hints. */
+let touchUi = matchMedia('(pointer: coarse)').matches
+/** A card tap this soon after the hand opens is a stray tap meant for moving, not a choice. */
+const CARD_TAP_GUARD_MS = 350
+let cardsShownAt = 0
+const moveHint = element<HTMLElement>('#move-hint')
 
 const me = (): ViewPlayer | undefined => view?.players.find((player) => player.id === localId)
 
 function movement() {
   let x = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0)
   let y = (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0)
-  if (drag && Math.hypot(drag.dx, drag.dy) > 8) {
-    x = drag.dx / 50
-    y = drag.dy / 50
+  if (drag && Math.hypot(drag.dx, drag.dy) > STICK_DEAD) {
+    x = drag.dx / STICK_RADIUS
+    y = drag.dy / STICK_RADIUS
   }
   const length = Math.hypot(x, y)
   return length > 1 ? { x: x / length, y: y / length } : { x, y }
@@ -345,6 +356,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
     hud.hidden = false
     result.hidden = true
     keys.clear()
+    moveHint.hidden = !touchUi
     canvas.focus()
     audio.play('start')
   } catch (cause) {
@@ -373,6 +385,8 @@ function disconnect(message: string, source: CooperativeNetwork) {
 async function returnToTitle() {
   ++generation
   started = false
+  endDrag()
+  moveHint.hidden = true
   const current = network
   network = undefined
   game = undefined
@@ -418,13 +432,14 @@ function renderChoices(player: ViewPlayer | undefined) {
   }
   const count = player.choices.length
   const birthPick = player.parent === 'p_gone' && !player.weapons.length
-  const hint = `1〜${count}キーでも選べます。`
+  const hint = touchUi ? 'タップで決定。' : `1〜${count}キーでも選べます。`
   element<HTMLElement>('#levelup-note').textContent = birthPick
     ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
     : role === 'solo'
       ? `時間は止まっています。${hint}`
       : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
+  cardsShownAt = performance.now()
   audio.play('cardOpen')
   cards.replaceChildren(
     ...player.choices.map((choice, index) => {
@@ -458,6 +473,8 @@ function renderChoices(player: ViewPlayer | undefined) {
       }
       button.addEventListener('click', (event) => {
         event.stopPropagation() // the card has its own cue; no generic tap on top
+        // detail 0 = keyboard activation, which is always deliberate.
+        if (event.detail > 0 && performance.now() - cardsShownAt < CARD_TAP_GUARD_MS) return
         choose(index)
       })
       button.addEventListener('pointerenter', (event) => {
@@ -864,7 +881,20 @@ window.addEventListener('keydown', (event) => {
   }
 })
 window.addEventListener('keyup', (event) => keys.delete(event.code))
-window.addEventListener('blur', () => keys.clear())
+function endDrag() {
+  drag = undefined
+  stick.hidden = true
+}
+window.addEventListener('blur', () => {
+  keys.clear()
+  endDrag()
+})
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    keys.clear()
+    endDrag()
+  }
+})
 // A hidden tab's timers crawl, so the music pauses instead of stuttering.
 document.addEventListener('visibilitychange', () => audio.setHidden(document.hidden))
 window.addEventListener('resize', () => renderer.resize())
@@ -872,20 +902,53 @@ window.addEventListener('pagehide', () => {
   audio.dispose()
   void network?.stop()
 })
+function placeStick() {
+  if (!drag) return
+  stick.style.transform = `translate(${drag.x}px, ${drag.y}px)`
+  stickKnob.style.transform = `translate(${drag.dx}px, ${drag.dy}px)`
+}
+window.addEventListener(
+  'pointerdown',
+  (event) => {
+    touchUi = event.pointerType !== 'mouse'
+    document.documentElement.classList.toggle('touch-ui', touchUi)
+  },
+  { capture: true, passive: true }
+)
+document.documentElement.classList.toggle('touch-ui', touchUi)
 canvas.addEventListener('pointerdown', (event) => {
-  if (!started) return
+  if (!started || drag) return // one finger steers; a second one is ignored
   drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0 }
   canvas.setPointerCapture(event.pointerId)
+  moveHint.hidden = true
+  if (event.pointerType !== 'mouse') {
+    stick.hidden = false
+    placeStick()
+  }
 })
 canvas.addEventListener('pointermove', (event) => {
   if (drag?.id !== event.pointerId) return
-  drag.dx = event.clientX - drag.x
-  drag.dy = event.clientY - drag.y
+  let dx = event.clientX - drag.x
+  let dy = event.clientY - drag.y
+  const length = Math.hypot(dx, dy)
+  if (length > STICK_RADIUS) {
+    // Drag the base along so reversing direction responds at once.
+    const over = (length - STICK_RADIUS) / length
+    drag.x += dx * over
+    drag.y += dy * over
+    dx -= dx * over
+    dy -= dy * over
+  }
+  drag.dx = dx
+  drag.dy = dy
+  placeStick()
 })
-for (const type of ['pointerup', 'pointercancel'] as const)
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const)
   canvas.addEventListener(type, (event) => {
-    if (drag?.id === event.pointerId) drag = undefined
+    if (drag?.id === event.pointerId) endDrag()
   })
+// No long-press menu or callout on the field.
+canvas.addEventListener('contextmenu', (event) => event.preventDefault())
 
 if (import.meta.env.DEV)
   Object.assign(window, {
