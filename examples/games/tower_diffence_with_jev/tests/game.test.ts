@@ -243,7 +243,7 @@ describe('enemy director rules', () => {
     // Arrange
     const { engine } = campaign(10)
     engine.startAssault()
-    const rules = stageRules(10)
+    const rules = stageRules(10, engine.state.waveBossPolicy)
     // Act
     while (engine.state.enemiesSpawned < rules.enemyCount) {
       engine.state.time += 20
