@@ -422,6 +422,13 @@ button {
 .card strong {
   font-size: 16px;
 }
+.card .card-category {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
 .card em {
   margin-left: 6px;
   font-style: normal;
@@ -625,6 +632,34 @@ button {
   border: 0;
   background: none;
   font-size: 22px;
+}
+.talent-guide {
+  margin: 12px 0;
+}
+.talent-guide svg {
+  display: block;
+  width: min(100%, 320px);
+  margin: auto;
+  overflow: visible;
+}
+.talent-guide polygon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.talent-guide text {
+  fill: currentColor;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-size: 14px;
+  paint-order: stroke;
+  stroke: #25212b;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+.talent-guide figcaption {
+  font-size: 0.85em;
+  line-height: 1.6;
 }
 .help-list {
   padding-left: 18px;

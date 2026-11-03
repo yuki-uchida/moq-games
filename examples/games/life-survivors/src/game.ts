@@ -268,6 +268,18 @@ export function mulberry32(seed: number) {
 export const xpForLevel = (level: number) => Math.round((5 + level * 6 + level * level * 0.3) * 1.3)
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
+export const passivePower = (player: Player, id: string) =>
+  passiveLevel(player, id) * player.talents[PASSIVE_BY_ID.get(id)!.category]
+
+export function generateTalents(rng: () => number): Record<TalentCategory, number> {
+  const anchors = TALENT_CATEGORIES.map(() => rng())
+  return Object.fromEntries(
+    TALENT_CATEGORIES.map((category, index) => {
+      const value = (anchors[index] * 2 + anchors[(index + 5) % 6] + anchors[(index + 1) % 6]) / 4
+      return [category, POOR + value * (GIFTED - POOR)]
+    })
+  ) as Record<TalentCategory, number>
+}
 export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
 
@@ -304,7 +316,7 @@ export interface PlayerStats {
 }
 
 export function playerStats(player: Player): PlayerStats {
-  const p = (id: string) => passiveLevel(player, id)
+  const p = (id: string) => passivePower(player, id)
   return {
     maxHp: 100 + p('p_bold') * 20 + (player.parent === 'p_gone' ? 60 : 0) + (player.parent === 'p_toxic' ? -10 : 0),
     armor: p('p_stubborn') + (player.parent === 'p_over' ? 1 : 0),
@@ -312,11 +324,11 @@ export function playerStats(player: Player): PlayerStats {
     speed: BASE_SPEED * (1 + p('p_healthy') * 0.08),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
-    might: 1 + p('p_hot') * 0.1,
+    might: 1 + p('p_hot') * 0.1 + p('p_clever') * 0.03,
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07),
     area: 1 + p('p_kind') * 0.08,
     crit: 0.05 + p('p_lucky') * 0.05,
-    amount: p('p_clever') >= 4 ? 2 : p('p_clever') >= 1 ? 1 : 0,
+    amount: passiveLevel(player, 'p_clever') >= 4 ? 2 : passiveLevel(player, 'p_clever') >= 1 ? 1 : 0,
     shotSpeed: 1 + p('p_curious') * 0.1,
     duration: 1 + p('p_curious') * 0.1,
     strong: STRONG_MULTIPLIER + p('p_savvy') * 0.25
@@ -345,7 +357,7 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
   if (weapon.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
   if (weapon.id === 'w_invest') {
     if (player.parent === 'p_rich') damage *= 1.3
-    damage *= 1 + passiveLevel(player, 'p_greedy') * 0.15
+    damage *= 1 + passivePower(player, 'p_greedy') * 0.15
     damage *= 1 + weapon.held / 150
   }
   return {
@@ -466,13 +478,7 @@ export class Game {
     if (state.players.length >= MAX_GAME_PLAYERS) return undefined
     const index = state.players.length
     const parent = parentId ?? PARENTS[Math.floor(this.rng() * PARENTS.length)].id
-    // Hidden talents: two gifts, one or two weaknesses, the rest ordinary.
-    const order = [...TALENT_CATEGORIES].sort(() => this.rng() - 0.5)
-    const talents = Object.fromEntries(TALENT_CATEGORIES.map((c) => [c, 1])) as Record<TalentCategory, number>
-    talents[order[0]] = GIFTED
-    talents[order[1]] = GIFTED
-    talents[order[2]] = POOR
-    if (this.rng() < 0.5) talents[order[3]] = POOR
+    const talents = generateTalents(this.rng)
     const anchor = state.players.find((p) => !p.downed)
     const player: Player = {
       id,
@@ -638,7 +644,7 @@ export class Game {
         player.fy = input.y / l
       }
       player.hp = Math.min(stats.maxHp, player.hp + stats.regen * dt)
-      const kind = passiveLevel(player, 'p_kind')
+      const kind = passivePower(player, 'p_kind')
       if (kind)
         for (const friend of this.state.players)
           if (friend !== player && !friend.downed && Math.hypot(friend.x - player.x, friend.y - player.y) < 140)
@@ -695,7 +701,11 @@ export class Game {
   hpScale() {
     const progress = this.state.time / RUN_SECONDS
     const minutes = progress * 30
-    return (1 + minutes * 0.14 + minutes * minutes * 0.004) * (1 + 0.2 * progress ** 2) * (1 + (this.state.players.length - 1) * 0.45)
+    return (
+      (1 + minutes * 0.14 + minutes * minutes * 0.004) *
+      (1 + 0.2 * progress ** 2) *
+      (1 + (this.state.players.length - 1) * 0.45)
+    )
   }
 
   targetPopulation() {
@@ -1603,7 +1613,7 @@ export class Game {
       }
       case 'dice': {
         const found = this.targets(player, n, 700)
-        const luck = passiveLevel(player, 'p_lucky')
+        const luck = passivePower(player, 'p_lucky')
         for (let i = 0; i < n; i++) {
           const target = found[i % Math.max(1, found.length)]
           const angle = target
@@ -2003,7 +2013,7 @@ export class Game {
         this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('magnet'), takerIndex)
       } else {
         // A chest holds one turning point for everyone, or now and then (with a lucky taker) three.
-        const grant = this.rng() < CHEST_TRIPLE + passiveLevel(taker, 'p_lucky') * 0.05 ? 3 : 1
+        const grant = this.rng() < CHEST_TRIPLE + passivePower(taker, 'p_lucky') * 0.05 ? 3 : 1
         for (const player of alive) player.pending += grant
         this.emit(FX.CHEST, item.x, item.y, grant, takerIndex)
       }
@@ -2089,7 +2099,7 @@ export class Game {
       : this.options(player)
     const hand: string[] = []
     // 運がいい sometimes deals a fourth card.
-    const size = 3 + (this.rng() < passiveLevel(player, 'p_lucky') * 0.1 ? 1 : 0)
+    const size = 3 + (this.rng() < passivePower(player, 'p_lucky') * 0.1 ? 1 : 0)
     while (hand.length < size && pool.length) {
       const weights = pool.map((choice) => this.cardWeight(player, choice))
       let roll = this.rng() * weights.reduce((sum, w) => sum + w, 0)
@@ -2140,7 +2150,10 @@ export class Game {
       const owned = player.passives.find((p) => p.id === id)
       const evolvedBefore = new Set(player.weapons.filter((w) => isEvolved(player, w)).map((w) => w.id))
       if (owned) owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
-      else player.passives.push({ id, lv: 1 })
+      else {
+        player.passives.push({ id, lv: 1 })
+        this.feel(player, PASSIVE_BY_ID.get(id)!)
+      }
       let evolved = false
       for (const weapon of player.weapons)
         if (!evolvedBefore.has(weapon.id) && isEvolved(player, weapon)) {
@@ -2161,9 +2174,10 @@ export class Game {
   }
 
   /** A hunch about the hidden talent — right three times out of four. */
-  private feel(player: Player, def: WeaponDef) {
+  private feel(player: Player, def: Pick<WeaponDef, 'category' | 'icon' | 'name'>) {
     if (!def.category) return
-    const actual = player.talents[def.category]
+    const power = player.talents[def.category]
+    const actual = power >= 1.25 ? GIFTED : power <= 0.9 ? POOR : 1
     const truthful = this.rng() < 0.75
     const values = [GIFTED, 1, POOR]
     const sensed = truthful ? actual : values.filter((v) => v !== actual)[Math.floor(this.rng() * 2)]
