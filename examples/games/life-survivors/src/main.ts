@@ -13,13 +13,12 @@ import {
   TALENT_CATEGORIES,
   TALENT_NAMES,
   TAG_NAMES,
-  TALENT_WEAPONS,
   WEAPONS,
   WEAPON_BY_ID,
   ageAt,
-  stageAt,
-  type TalentCategory
+  stageAt
 } from './data'
+import { talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
 import { LifeAudio } from './audio'
 import { activeSynergies, SYNERGIES } from './synergies'
@@ -650,6 +649,7 @@ function updateHud(current: View) {
       won ? '死神が迎えに来た。15分の人生を生き抜いた。' : `${stageAt(current.time).name}で力尽きた。${cause}`,
       won ? '🌅' : '💔',
       player ? reflection(player) : [],
+      player,
       { level: current.level, kills: current.kills }
     )
   }
@@ -672,21 +672,13 @@ function reflection(player: ViewPlayer) {
   add(`親：${WEAPON_BY_ID.get(player.parent)!.name}`, WEAPON_BY_ID.get(player.parent)!.perk ?? '', '', player.parent)
   for (const [id, lv, damage] of player.weapons) {
     const def = WEAPON_BY_ID.get(id)!
-    add(`${def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`, '', id)
+    const evolved =
+      def.evolve && lv >= MAX_WEAPON_LEVEL && player.passives.some(([passive]) => passive === def.evolve!.passive)
+    add(`${evolved ? def.evolve!.name : def.name} Lv${lv}`, `与えた力 ${damage.toLocaleString()}`, '', id)
   }
-  if (player.talents) {
-    for (const category of TALENT_CATEGORIES as TalentCategory[]) {
-      const value = player.talents[category]
-      const icon = TALENT_WEAPONS.find((def) => def.category === category)?.id
-      const label = `才能：${TALENT_NAMES[category]}`
-      const rating = value >= 1.25 ? '🌟 得意' : value <= 0.9 ? '✖ 不向き' : 'ふつう'
-      add(
-        label,
-        `${rating} ×${value.toFixed(2)}`,
-        value >= 1.25 ? 'gifted flip' : value <= 0.9 ? 'poor flip' : 'flip',
-        icon
-      )
-    }
+  for (const [id, lv] of player.passives) {
+    const def = PASSIVE_BY_ID.get(id)!
+    add(`${def.name} Lv${lv}`, '性格', '', id)
   }
   return rows
 }
@@ -709,6 +701,7 @@ function showResult(
   text: string,
   symbol: string,
   rows: HTMLElement[],
+  player?: ViewPlayer,
   stats?: { level: number; kills: number }
 ) {
   resultShown = true
@@ -719,13 +712,27 @@ function showResult(
   element('#result-symbol').textContent = symbol
   rows.forEach((row, index) => row.style.setProperty('--i', String(index)))
   element('#result-build').replaceChildren(...rows)
+  element('#result-build-title').hidden = !player
+  const talents = player?.talents
+  element('#result-talents').hidden = !talents
+  if (talents) {
+    document.querySelector('#result-radar')!.setAttribute('points', talentRadarPoints(talents))
+    element('#result-talent-values').replaceChildren(
+      ...TALENT_CATEGORIES.map((category) => {
+        const value = document.createElement('span')
+        value.textContent = `${TALENT_NAMES[category]} ×${talents[category].toFixed(2)}`
+        return value
+      })
+    )
+  }
   element('#result-stats').hidden = !stats
   if (stats) {
     countUp(element('#result-level'), stats.level, 300, 900)
     countUp(element('#result-kills'), stats.kills, 450, 1200)
   }
   result.hidden = false
-  element<HTMLButtonElement>('#restart').focus()
+  result.scrollTop = 0
+  element<HTMLButtonElement>('#restart').focus({ preventScroll: true })
 }
 
 /** Sounds, banners, boss bar and heartbeat from one view — the same path for solo, host and guest. */
