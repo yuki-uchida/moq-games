@@ -60,19 +60,21 @@ test('each unit keeps its scheduled cycle until the next contact', () => {
     target.speed = 0
     target.attack = 999
     target.hp = target.maxHp = 1e9
-    step(game, 0.001)
+    step(game, 1 / 60)
     assert.equal(unit.strikes, 1, type.key)
     assert.equal(typeof unit.lastCrit, 'boolean', type.key)
     const cycle = unit.cycle
     assert.equal(cycle, unit.period * (type.rallyEffect ? 0.8 : 1), type.key)
+    assert.ok(Math.abs(unit.phase - (game.time - game.effects.at(-1).releasedAt)) < 1e-9, type.key)
     assert.equal(beats(unit.motion, unit.phase, unit.cycle).hit, 1, type.key)
     unit.period *= 0.8
     step(game, cycle / 2)
     assert.equal(unit.cycle, cycle, type.key)
-    step(game, cycle / 2)
+    for (let tick = 0; tick < Math.ceil(cycle * 60) + 2 && unit.strikes < 2; tick++) step(game, 1 / 60)
     const expected = (unit.period * (type.rallyEffect ? 0.8 : 1)) / (type.caffeine ? 1.08 : 1)
     assert.equal(unit.strikes, 2, type.key)
     assert.equal(unit.cycle, expected, type.key)
+    assert.ok(Math.abs(unit.phase - (game.time - game.effects.at(-1).releasedAt)) < 1e-9, type.key)
     assert.equal(beats(unit.motion, unit.phase, unit.cycle).hit, 1, type.key)
   }
 })

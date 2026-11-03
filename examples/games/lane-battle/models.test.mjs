@@ -21,6 +21,96 @@ const TRANSIENT = new Set([
   'pellet'
 ])
 
+test('all deaths start at the last living pose and preserve their authored knockout', () => {
+  for (const unit of [...POOPS, ...SPECIALS, ...ENEMIES]) {
+    const base = {
+      motion: 'walk',
+      phase: 0.4,
+      period: unit.period,
+      walked: 17,
+      lead: Infinity,
+      hurtAge: -1,
+      power: 1,
+      time: 10,
+      ko: -1,
+      id: 3,
+      reach: 0.55
+    }
+    const cases = [
+      { motion: 'attack', phase: 0.01 },
+      { motion: 'walk', walked: 17 },
+      ...['freeze', 'stun', 'launch', 'confuse', 'drowsy'].map((kind) => ({
+        status: { kind, start: 9, age: 0.4, left: 1 }
+      }))
+    ]
+    for (const scene of cases) {
+      const actor = new Actor(unit.key)
+      const reference = new Actor(unit.key)
+      actor.animate(base)
+      actor.animate({ ...base, ...scene })
+      reference.animate(base)
+      reference.animate({ ...base, ...scene })
+      reference.lastPoseValid = false
+      const previous = Object.fromEntries(
+        Object.entries(actor.bones).map(([name, bone]) => [
+          name,
+          {
+            position: bone.position.clone(),
+            rotation: bone.quaternion.clone(),
+            scale: bone.scale.clone()
+          }
+        ])
+      )
+      const death = { ...base, motion: 'walk', phase: 0, period: 1, walked: 0, reach: 0, time: 0, ko: 0 }
+      actor.animate(death)
+      reference.animate(death)
+      for (const [name, bone] of Object.entries(actor.bones)) {
+        assert.ok(bone.position.distanceTo(previous[name].position) < 0.02, `${unit.key}.${name} position`)
+        assert.ok(
+          bone.quaternion.angleTo(previous[name].rotation) < (5 * Math.PI) / 180,
+          `${unit.key}.${name} rotation`
+        )
+        assert.ok(bone.scale.distanceTo(previous[name].scale) < 0.02, `${unit.key}.${name} scale`)
+      }
+      for (const age of [0.016, 0.05, 0.1, 0.2, 0.4, koSeconds(unit.key)]) {
+        actor.animate({ ...death, ko: age, time: age })
+        reference.animate({ ...death, ko: age, time: age })
+        actor.root.updateMatrixWorld(true)
+        for (const [name, bone] of Object.entries(actor.bones)) {
+          const expected = reference.bones[name]
+          assert.ok(bone.matrixWorld.elements.every(Number.isFinite), `${unit.key}.${name} non-finite`)
+          if (age >= 0.1) {
+            assert.ok(bone.position.distanceTo(expected.position) < 1e-8, `${unit.key}.${name} knockout position`)
+            assert.ok(bone.quaternion.angleTo(expected.quaternion) < 1e-7, `${unit.key}.${name} knockout rotation`)
+          }
+        }
+      }
+      assert.equal(actor.mats.toon.opacity, 0, `${unit.key} knockout fade`)
+      actor.reset()
+      assert.equal(actor.lastPoseValid, false)
+      assert.equal(actor.lastPlaceValid, false)
+      actor.animate(death)
+      reference.animate(death)
+      assert.ok(actor.bones.hips.position.distanceTo(reference.bones.hips.position) < 1e-8, `${unit.key} pool reset`)
+      actor.dispose()
+      reference.dispose()
+    }
+  }
+})
+
+test('fallen actor preserves its last rendered root before blending to its death position', () => {
+  const actor = new Actor('oyster')
+  const models = { actor: () => actor, presentation: [40, 0.8] }
+  const unit = { id: 1, key: 'oyster', side: 1, motion: 'attack', phase: 0.01, cycle: 1, walkDistance: 17 }
+  LaneModels.prototype.unit.call(models, unit, 400, 250, 50, 3, Infinity, 0.5, 300)
+  const root = actor.root.position.clone()
+  LaneModels.prototype.fallen.call(models, unit, 420, 300, 100, 0)
+  assert.ok(actor.root.position.distanceTo(root) < 1e-8)
+  LaneModels.prototype.fallen.call(models, unit, 420, 300, 100, 0.1)
+  assert.ok(actor.root.position.distanceTo(new Vector3(420, 150, 100)) < 1e-8)
+  actor.dispose()
+})
+
 test('every character keeps finite bones through walk, wind-up, attack, hurt and knock-out, and never drops a prop', () => {
   for (const t of [...POOPS, ...SPECIALS, ...ENEMIES]) {
     const actor = new Actor(t.key)
