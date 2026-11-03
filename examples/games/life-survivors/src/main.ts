@@ -69,7 +69,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v2'
+const APP = 'life-survivors-v3'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -210,7 +210,11 @@ function bannerFor(e: FxEv, localIndex: number, now: number) {
     }
     case FX.SWARM: {
       const event = EVENTS[e.a]
-      if (event) push({ kind: 'swarm', title: event.text })
+      if (event)
+        push({
+          kind: 'swarm',
+          title: event.swarm === 'nightcry' || event.swarm === 'kid' ? `仲間の家族の試練：${event.text}` : event.text
+        })
       break
     }
     case FX.CHEST:

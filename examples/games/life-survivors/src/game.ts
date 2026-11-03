@@ -92,6 +92,9 @@ export interface Player {
   maxHp: number
   downed: boolean
   revive: number
+  joinedAt: number
+  married: boolean
+  hasChild: boolean
   parent: string
   talents: Record<TalentCategory, number>
   weapons: OwnedWeapon[]
@@ -476,7 +479,7 @@ export class Game {
     const existing = state.players.find((player) => player.id === id)
     if (existing) return existing
     if (state.players.length >= MAX_GAME_PLAYERS) return undefined
-    const index = state.players.length
+    const index = PLAYER_COLORS.findIndex((color) => !state.players.some((player) => player.color === color))
     const parent = parentId ?? PARENTS[Math.floor(this.rng() * PARENTS.length)].id
     const talents = generateTalents(this.rng)
     const anchor = state.players.find((p) => !p.downed)
@@ -492,6 +495,9 @@ export class Game {
       maxHp: 0,
       downed: false,
       revive: 0,
+      joinedAt: state.time,
+      married: false,
+      hasChild: false,
       parent,
       talents,
       weapons: parent === 'p_gone' ? [] : [{ id: parent, lv: 1, cd: 0.5, held: 0, damage: 0 }],
@@ -558,7 +564,7 @@ export class Game {
 
   private log(text: string, to?: string) {
     this.state.log.push({ t: this.state.time, text, to })
-    if (this.state.log.length > 8) this.state.log.shift()
+    if (this.state.log.length > 12) this.state.log.shift()
   }
 
   tick(dt: number) {
@@ -582,6 +588,10 @@ export class Game {
     this.fireWeapons(dt)
     this.moveShots(dt)
     this.moveBullets(dt)
+    for (const player of state.players) {
+      if (!player.downed && player.married)
+        player.hp = Math.min(player.maxHp, player.hp + (2 + (player.hasChild ? 1 : 0)) * dt)
+    }
     this.collectGems(dt)
     this.revivePlayers(dt)
     if (state.players.every((player) => player.downed)) {
@@ -658,7 +668,26 @@ export class Game {
     while (state.eventIndex < EVENTS.length && state.time >= EVENTS[state.eventIndex].at) {
       const index = state.eventIndex++
       const event = EVENTS[index]
-      this.log(event.text)
+      const wedding = event.boss === 'b_wedding'
+      const birth = event.swarm === 'nightcry'
+      const childEvent = birth || event.boss === 'b_rebel' || event.swarm === 'kid'
+      if (wedding || birth) {
+        for (const player of state.players) {
+          if (player.joinedAt >= event.at) continue
+          if (wedding) {
+            player.married = player.weapons.some((weapon) => weapon.id === 'w_love' && weapon.lv >= 2)
+            this.log(player.married ? '結婚した！配偶者が毎秒HPを2回復。' : '独身の人生を歩む。', player.id)
+          } else if (player.married) {
+            player.hasChild = true
+            this.log('子どもが生まれた！家族の回復が毎秒HP3に。', player.id)
+          }
+        }
+      }
+      if (wedding || childEvent) {
+        const families = state.players.filter((player) => (wedding ? player.married : player.hasChild))
+        if (!families.length) continue
+        this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
+      } else this.log(event.text)
       if (event.boss) this.spawnEnemy(event.boss)
       if (event.swarm) {
         const count = Math.round((event.count ?? 20) * this.playerFactor())
@@ -724,7 +753,9 @@ export class Game {
     if (deficit <= 0) return
     this.spawnDebt += Math.min(deficit, 6 + state.time / 30) * dt * 2
     const age = ageAt(state.time)
-    const pool = POOLS.find((entry) => age < entry.untilAge)!.enemies
+    const pool = POOLS.find((entry) => age < entry.untilAge)!.enemies.filter(
+      ([id]) => ENEMY_BY_ID.get(id)!.tag !== 'child' || state.players.some((player) => player.hasChild)
+    )
     const total = pool.reduce((sum, [, weight]) => sum + weight, 0)
     while (this.spawnDebt >= 1) {
       this.spawnDebt--

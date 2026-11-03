@@ -674,6 +674,23 @@ export class Renderer {
     ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
     ctx.stroke()
     ctx.globalAlpha = 1
+    if (!player.downed && phase === 'playing' && player.married) {
+      const family = player.hasChild ? ['adult', 'kid'] : ['adult']
+      for (const [index, member] of family.entries()) {
+        const familyX = pos.x + (index === 0 ? -34 : 34)
+        const familyFeet = feet + 12
+        const art = sheet(`player:${member}`)
+        const anim = m.speed > 25 ? art.walk : art.idle
+        this.shadow(familyX, familyFeet, 9)
+        this.art(anim.frames[frameAt(anim, this.clock)], familyX, familyFeet, 32, 58, player.fx < 0, 0.9)
+        this.world()
+        ctx.strokeStyle = player.color
+        ctx.beginPath()
+        ctx.ellipse(familyX, familyFeet, 12, 4, 0, 0, Math.PI * 2)
+        ctx.stroke()
+        this.blit(this.label(index === 0 ? '配偶者 +2HP/s' : '子 +1HP/s', 9, player.color), familyX, familyFeet + 18)
+      }
+    }
     const flip = player.fx < 0
     // 大往生: a peaceful smile while the reaper comes, then the haloed soul rises beside it.
     const ending = body === 'bed' && !player.downed && (phase === 'reaper' || phase === 'won')
