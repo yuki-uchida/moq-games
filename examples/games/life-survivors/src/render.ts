@@ -811,8 +811,35 @@ export class Renderer {
   private groundShot(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
     const ctx = this.ctx
     const fx = sheet('fx')
-    const { x, y, r: radius, evolved, i } = sh
+    const { x, y, r: radius, angle, life, age, evolved, i } = sh
     switch (def.behavior) {
+      case 'beam': {
+        const cos = Math.cos(angle)
+        const sin = Math.sin(angle)
+        const dir = ((Math.round((angle / TAU) * BEAM_DIRS) % BEAM_DIRS) + BEAM_DIRS) % BEAM_DIRS
+        const raster = beam(radius, dir)
+        this.warmBeam(radius)
+        const alpha = clamp01(age * 9) * clamp01(life * 4) * (0.88 + 0.12 * Math.sin(this.clock * 55 + i))
+        const cx = sh.ox + cos * radius
+        const cy = sh.oy + sin * radius
+        if (evolved) {
+          this.world()
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.strokeStyle = `rgba(255,215,94,${0.22 * alpha})`
+          ctx.lineWidth = 26
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(sh.ox, sh.oy)
+          ctx.lineTo(sh.ox + cos * radius * 2, sh.oy + sin * radius * 2)
+          ctx.stroke()
+          ctx.lineCap = 'butt'
+          ctx.globalCompositeOperation = 'source-over'
+        }
+        this.art(raster, cx, cy, raster.w / 2, raster.h / 2, false, alpha)
+        const book = pick(sheet('weapon:w_reading').fly, this.clock + i * 0.1)
+        this.centred(book, sh.ox + cos * 12, sh.oy + sin * 12 - 6, evolved, clamp01(life * 5))
+        break
+      }
       case 'aura':
       case 'zone': {
         const pos = def.behavior === 'aura' ? { x: sh.ox, y: sh.oy } : { x, y }
@@ -1038,6 +1065,7 @@ export class Renderer {
     switch (def.behavior) {
       case 'aura':
       case 'zone':
+      case 'beam':
       case 'trail':
       case 'mine':
       case 'none':
@@ -1152,32 +1180,6 @@ export class Renderer {
           1 / Math.sqrt(squash),
           squash
         )
-        break
-      }
-      case 'beam': {
-        // 読書: the knowledge beam along the facing direction, an open book at the owner's end.
-        const dir = ((Math.round((angle / TAU) * BEAM_DIRS) % BEAM_DIRS) + BEAM_DIRS) % BEAM_DIRS
-        const raster = beam(radius, dir)
-        this.warmBeam(radius)
-        const alpha = clamp01(age * 9) * clamp01(life * 4) * (0.88 + 0.12 * Math.sin(this.clock * 55 + i))
-        const cx = sh.ox + cos * radius
-        const cy = sh.oy + sin * radius
-        if (evolved) {
-          this.world()
-          ctx.globalCompositeOperation = 'lighter'
-          ctx.strokeStyle = `rgba(255,215,94,${0.22 * alpha})`
-          ctx.lineWidth = 26
-          ctx.lineCap = 'round'
-          ctx.beginPath()
-          ctx.moveTo(sh.ox, sh.oy)
-          ctx.lineTo(sh.ox + cos * radius * 2, sh.oy + sin * radius * 2)
-          ctx.stroke()
-          ctx.lineCap = 'butt'
-          ctx.globalCompositeOperation = 'source-over'
-        }
-        this.art(raster, cx, cy, raster.w / 2, raster.h / 2, false, alpha)
-        const book = pick(sheet('weapon:w_reading').fly, this.clock + i * 0.1)
-        this.centred(book, sh.ox + cos * 12, sh.oy + sin * 12 - 6, evolved, clamp01(life * 5))
         break
       }
       case 'barrage': {

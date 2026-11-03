@@ -5,6 +5,16 @@ import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
 
+describe('ヤンキー親', () => {
+  test('a physical parent card, unlike 蒸発済み', () => {
+    const parent = PARENTS.find((entry) => entry.id === 'p_yankee')!
+    expect(parent.category).toBe('sports')
+    expect(parent.behavior).not.toBe('none')
+    expect(new Game(1).addPlayer('a', parent.id)!.weapons.map((weapon) => weapon.id)).toEqual(['p_yankee'])
+    expect(new Game(1).addPlayer('a', 'p_gone')!.weapons).toEqual([])
+  })
+})
+
 describe('蒸発済み: 自立', () => {
   test('the first hand at birth is three early talents and picking one gives it at lv 1', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
