@@ -262,6 +262,30 @@ $('world').addEventListener(
 
 // ── 作戦室 (between battles): formation, shop ──
 const statLine = (e) => `HP${e.hp} 攻${e.atk} 速${e.spd}`
+function showUnitDetail(entry, trigger) {
+  const type = typeOf(entry.key)
+  const detail = document.createElement('dialog')
+  detail.className = 'unit-detail'
+  detail.setAttribute('aria-labelledby', 'unit-detail-name')
+  detail.innerHTML = `<div class="detail-heading"><img alt="" src="${models.portraitURL(entry.key)}"><div><h2 id="unit-detail-name">${type.name}</h2><p>Lv.${entry.level} · ${type.cost}💩<br>${statLine(entry)}</p></div></div><p>${type.line}</p><h3>${type.area} ／ ${type.effect}</h3><p>${type.effectLine}</p><button class="detail-close" autofocus>閉じる</button>`
+  detail.querySelector('button').onclick = () => detail.close()
+  detail.onclick = (event) => {
+    const rect = detail.getBoundingClientRect()
+    if (
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    )
+      detail.close()
+  }
+  detail.onclose = () => {
+    detail.remove()
+    trigger.focus()
+  }
+  document.body.append(detail)
+  detail.showModal()
+}
 function renderRoster() {
   $('slots').textContent = `${campaign.loadout.length} / ${SLOTS}`
   const order = (e) => (typeOf(e.key).special ? 100 - e.uid / 1000 : POOPS.findIndex((t) => t.key === e.key))
@@ -284,7 +308,15 @@ function renderRoster() {
           renderRoster()
         }
       }
-      return b
+      const card = document.createElement('div')
+      card.className = 'roster-card'
+      const info = document.createElement('button')
+      info.className = 'unit-info'
+      info.setAttribute('aria-label', `${t.name}の詳細`)
+      info.textContent = 'ⓘ'
+      info.onclick = () => showUnitDetail(e, info)
+      card.append(b, info)
+      return card
     })
   )
 }

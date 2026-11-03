@@ -279,21 +279,21 @@ test('milk collision damages and pushes the next foe', () => {
   const { game, source, victims } = scene('milk', [30, 65])
   step(game, 1 / 60)
   assert.ok(Math.abs(victims[1].hp - (10000 - source.atk * source.collisionDamage)) < 1e-9)
-  assert.equal(victims[1].x, 423)
+  assert.equal(victims[1].x, 420)
   assert.deepEqual(game.effects.find((entry) => entry.attackerKey === 'milk').collisions, [
     { id: victims[1].id, x: 435, at: 0 }
   ])
 })
 
 test('milk hits both sides of its landing point, its path and boundaries, respecting heavy units', () => {
-  const { game, source, victims } = scene('milk', [30, 50, 60, 90, 91, 30])
+  const { game, source, victims } = scene('milk', [30, 50, 60, 97.5, 97.6, 30])
   victims[2].heavy = true
   const positions = victims.map((victim) => victim.x)
   step(game, 1 / 60)
-  assert.equal(victims[0].x, 440)
+  assert.equal(victims[0].x, 432.5)
   for (const index of [1, 2, 3, 5]) {
     assert.ok(Math.abs(victims[index].hp - (10000 - source.atk * source.collisionDamage)) < 1e-9, `victim ${index}`)
-    assert.equal(victims[index].x, positions[index] - (index === 2 ? 6 : 12))
+    assert.equal(victims[index].x, positions[index] - (index === 2 ? 7.5 : 15))
   }
   assert.equal(victims[4].hp, 10000)
 })
@@ -626,7 +626,7 @@ test('stench ticks without flinching and wet floors ignore immovable units', () 
 test('pull, knockback and launch respect heavy resistance', () => {
   for (const [key, expected] of [
     ['cleaner', -7],
-    ['milk', -15]
+    ['milk', -18.75]
   ]) {
     const { game, victims } = scene(key, [30])
     victims[0].heavy = true
