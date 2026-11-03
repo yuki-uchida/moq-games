@@ -1,4 +1,4 @@
-import { MAX_WEAPON_LEVEL, WEAPONS } from '../data'
+import { rankedCareer } from '../careers'
 import type { ViewPlayer } from '../view'
 import { R } from './palette'
 import { COLLEGE, HIGH, JUNIOR, MIDDLE, PRIME } from './people'
@@ -16,35 +16,8 @@ const BODIES: Record<string, Body> = {
   middle: MIDDLE,
   elder: ELDER
 }
-const CAREERS: Record<string, string> = {
-  w_sports: 'soccer',
-  w_muscle: 'soccer',
-  w_study: 'bureaucrat',
-  w_reading: 'bureaucrat',
-  w_work: 'bureaucrat',
-  w_overtime: 'bureaucrat',
-  w_invest: 'entrepreneur',
-  w_savings: 'entrepreneur',
-  w_gamble: 'entrepreneur'
-}
-
 export function careerFor(player: Pick<ViewPlayer, 'weapons' | 'passives'>): string | undefined {
-  let best = 3
-  let career: string | undefined
-  for (const def of WEAPONS) {
-    const owned = player.weapons.find(([id]) => id === def.id)
-    if (!owned || !CAREERS[def.id]) continue
-    const evolved =
-      owned[1] >= MAX_WEAPON_LEVEL &&
-      def.evolve &&
-      player.passives.some(([id, lv]) => id === def.evolve!.passive && lv > 0)
-    const score = owned[1] + (evolved ? MAX_WEAPON_LEVEL : 0)
-    if (score > best) {
-      best = score
-      career = CAREERS[def.id]
-    }
-  }
-  return career
+  return rankedCareer(player.weapons, player.passives)
 }
 
 export function careerSheet(body: string, career: string): Sheet {
