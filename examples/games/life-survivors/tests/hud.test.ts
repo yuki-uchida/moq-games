@@ -40,6 +40,24 @@ const ctx = (extra: Partial<FxContext> = {}): FxContext => ({
 const names = (calls: Call[]) => calls.map((c) => c[1])
 
 describe('life stage presentation', () => {
+  it.each([
+    [23, 35, '成人期', '自分の歩幅で進んで', 'adult', 'office'],
+    [35, 50, '壮年期', '日々を重ねて', 'prime', 'street']
+  ] as const)(
+    'keeps age %i path-neutral with unchanged artwork and boundaries',
+    (age, nextAge, name, line, body, ground) => {
+      const stage = stageAt(timeAtAge(age) + 0.01)
+      expect(stage.name).toBe(name)
+      expect(stage.icon).toBe('🧑')
+      expect(stageAt(timeAtAge(age) - 0.01)).not.toBe(stage)
+      expect(stageAt(timeAtAge(nextAge) - 0.01)).toBe(stage)
+      expect(stageAt(timeAtAge(nextAge) + 0.01)).not.toBe(stage)
+      expect(STAGE_LINES[STAGES.indexOf(stage)]).toBe(line)
+      expect(bodyFor(stage)).toBe(body)
+      expect(GROUNDS[stage.name]).toBe(ground)
+    }
+  )
+
   it('uses a path-neutral stage while retaining the youth artwork', () => {
     const stage = stageAt(timeAtAge(18) + 0.01)
     expect(stage.name).toBe('青年期')

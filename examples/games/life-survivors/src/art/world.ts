@@ -4,7 +4,7 @@ import { Raster, ball, part, rng, shadeEdges, type Ramp } from './raster'
 import type { Anim, Sheet } from './sheet'
 
 /** Life stages that have painted ground; others keep the old flat look. */
-export const GROUNDS: Record<string, string> = { 乳児期: 'nursery', 小学生: 'school', 社会人: 'office', ...MAP_GROUNDS }
+export const GROUNDS: Record<string, string> = { 乳児期: 'nursery', 小学生: 'school', 成人期: 'office', ...MAP_GROUNDS }
 export const TILE = 64
 
 const still = (frame: Raster): Anim => ({ frames: [frame], fps: 1, loop: true })
