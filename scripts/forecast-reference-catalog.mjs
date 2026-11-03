@@ -3,7 +3,12 @@
 const regions = [
   ['export const ENEMY_TYPES = [', '] as const'],
   ['export const ENEMY_MELEE_TYPES:', 'export function isEnemyMelee'],
-  ['export const DEFINITIONS: Record<UnitType, UnitDefinition> = {', 'export type FieldId']
+  ['export const DEFINITIONS: Record<UnitType, UnitDefinition> = {', 'export type FieldId'],
+  // Wave-boss policies, the boss stats they select and the policy new battles start with are
+  // game rules as well; the forecast arithmetic around them stays frozen.
+  ['export type WaveBossPolicy', 'export function stageRules('],
+  ['export const unitLevelMultiplier', 'export function deploymentCooldown('],
+  ['    waveBossPolicy: ', '\n    battlefieldVersion,']
 ]
 function region(source, start, end) {
   const begin = source.indexOf(start)
