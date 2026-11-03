@@ -14,7 +14,7 @@ export interface Objective {
   hint?: string
 }
 
-/** A minimap and 3D target marker: 'goal' rings the place to go, 'npc' someone to talk to, 'item' a thing to fetch. */
+/** A 3D target marker: 'goal' rings the place to go, 'npc' someone to talk to, 'item' a thing to fetch. */
 export type Marker = Point & { kind: 'goal' | 'npc' | 'item' }
 
 /**
@@ -34,7 +34,7 @@ export interface StageScript {
   respawn?(state: GameState): Point
   /** Pure; runs on every client for the HUD objective card. */
   objective(state: GameState, player: Player): Objective
-  /** Pure; minimap and 3D markers. */
+  /** Pure; 3D markers. */
   markers?(state: GameState): Marker[]
 }
 

@@ -596,9 +596,9 @@ for (const viewport of [
       expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width)
       expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height)
     }
-    // The minimap shares the screen with the vitals card and touch controls without covering them.
+    // The area label shares the screen with the vitals card and touch controls without covering them.
     const box = async (selector: string) => (await page.locator(selector).boundingBox())!
-    const map = await box('.map-card')
+    const map = await box('.area-card')
     expect(map.x).toBeGreaterThanOrEqual(0)
     expect(map.x + map.width).toBeLessThanOrEqual(viewport.width)
     for (const selector of ['.vitals', '#joystick', '.touch-buttons']) {
@@ -608,7 +608,7 @@ for (const viewport of [
         other.x + other.width <= map.x ||
         map.y + map.height <= other.y ||
         other.y + other.height <= map.y
-      expect(apart, `${selector} overlaps the minimap`).toBe(true)
+      expect(apart, `${selector} overlaps the area label`).toBe(true)
     }
     await page.screenshot({ path: testInfo.outputPath(`hud-${viewport.width}x${viewport.height}.png`) })
     const joystick = (await page.locator('#joystick').boundingBox())!
@@ -855,7 +855,7 @@ window.rabbitersTour = {
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/?chapter=4')
   await page.locator('#solo').click()
-  await expect(page.locator('#minimap')).toBeVisible()
+  await expect(page.locator('#area-name')).toBeVisible()
   type Info = {
     x: number
     y: number
@@ -977,7 +977,7 @@ window.rabbitersTour = {
   expect(errors).toEqual([])
 })
 
-test('teammates wear distinct collar colours in the scene, HUD and minimap', async ({ page }, testInfo) => {
+test('teammates wear distinct collar colours in the scene and HUD', async ({ page }, testInfo) => {
   await page.route('**/src/main.ts*', async (route) => {
     const response = await route.fetch()
     const source = await response.text()
@@ -996,8 +996,7 @@ window.rabbitersAddTeammates = (count) => {
   game.step = () => {};
   return game.state.players.map((player) => player.color);
 };
-window.rabbitersTurnTeam = () => game.state.players.forEach((player) => { player.angle = Math.PI; });
-window.rabbitersSpreadTeammates = () => game.state.players.slice(1).forEach((mate, index) => { mate.z += 30 + 8 * index; });`
+window.rabbitersTurnTeam = () => game.state.players.forEach((player) => { player.angle = Math.PI; });`
     })
   })
   await page.goto('/?chapter=4')
@@ -1015,16 +1014,4 @@ window.rabbitersSpreadTeammates = () => game.state.players.slice(1).forEach((mat
   await page.evaluate(() => (window as unknown as { rabbitersTurnTeam: () => void }).rabbitersTurnTeam())
   await page.waitForTimeout(300)
   await page.screenshot({ path: testInfo.outputPath('team-collars-back.png') })
-  await page.evaluate(() => (window as unknown as { rabbitersSpreadTeammates: () => void }).rabbitersSpreadTeammates())
-  await page.waitForTimeout(300)
-  // Each teammate's minimap dot is painted in its own collar colour.
-  const dots = await page.evaluate(() => {
-    const canvas = document.querySelector<HTMLCanvasElement>('#minimap')!
-    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
-    const found = new Set<string>()
-    for (let index = 0; index < data.length; index += 4)
-      found.add(`${data[index]},${data[index + 1]},${data[index + 2]}`)
-    return ['47,127,224', '242,180,23', '138,79,216', '23,179,163'].filter((rgb) => found.has(rgb))
-  })
-  expect(dots).toHaveLength(4)
 })
