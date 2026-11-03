@@ -2820,6 +2820,8 @@ function initializeClock() {
         // Speed x2 runs two simulation steps per clock step; animation reads simulation time, so it stays in sync.
         for (let i = 0; i < battleHud.speed && engine.state.phase === 'assault'; i++)
           engine.update(dt, (state) => renderer.assetsReady(state))
+        // A hidden tab gets no animation frames but the battle keeps running here, so AUTO keeps casting too.
+        if (document.visibilityState === 'hidden') autoSkills(performance.now())
         soundPlayer.setBattle(engine.state.battleId, engine.state.stage)
         soundPlayer.consume(engine.takeCombatSounds(), engine.state.time)
         syncBattleMusic()
