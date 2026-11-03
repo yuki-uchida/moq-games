@@ -88,6 +88,10 @@ class FinaleDragonBossTests(unittest.TestCase):
         self.assertAlmostEqual(stats['splash'], 109.375)
         self.assertAlmostEqual(stats['breathLength'], 170)
 
+    def test_policy_four_boss_dragon_matches_policy_three(self):
+        self.assertEqual(jev.spawn_stats('dragon', self.state(waveBossPolicy=4), boss=True),
+                         jev.spawn_stats('dragon', self.state(waveBossPolicy=3), boss=True))
+
     def test_older_policies_and_missing_field_keep_old_numbers(self):
         for wave in ({'waveBossPolicy': 2}, {'waveBossPolicy': 1}, {}):
             with self.subTest(wave=wave):
@@ -106,10 +110,10 @@ class FinaleDragonBossTests(unittest.TestCase):
         base = {'enemyCount': 1, 'strength': 1, 'spawnInterval': 1, 'reward': 1, 'enemyTypes': [],
                 'spawnBudget': 1, 'bossType': None, 'spawned': 0, 'resolved': 0, 'budgetRemaining': 1}
         self.assertEqual(jev.WaveState(**base).waveBossPolicy, 2)
-        for policy in (1, 2, 3):
+        for policy in (1, 2, 3, 4):
             self.assertEqual(jev.WaveState(**base, waveBossPolicy=policy).waveBossPolicy, policy)
         with self.assertRaises(ValidationError):
-            jev.WaveState(**base, waveBossPolicy=4)
+            jev.WaveState(**base, waveBossPolicy=5)
 
 
 if __name__ == '__main__':

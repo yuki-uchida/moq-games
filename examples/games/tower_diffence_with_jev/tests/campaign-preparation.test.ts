@@ -141,7 +141,7 @@ it('does not accept a consumed GPU upload error on Retry without a restored cont
 
 
 it('prepares exactly the allies and legal stage enemies, including bosses and restored deployments', () => {
-  for (const waveBossPolicy of [1, 2, 3] as const) {
+  for (const waveBossPolicy of [1, 2, 3, 4] as const) {
     for (let level = 1; level <= 10; level++) {
       const wave = stageRules(level, waveBossPolicy)
       const actual = campaignRequiredTypes({ ...stage, stage: level, waveBossPolicy })
