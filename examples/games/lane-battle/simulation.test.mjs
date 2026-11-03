@@ -1,7 +1,25 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { STAGES, HOME_X, ENEMY_X, createGame, summon, step, upgrade, burst, starterDeck } from './simulation.js'
-import { playBattle } from './bot.js'
+import { STAGES, HOME_X, ENEMY_X, createGame, summon, step, upgrade, burst, starterDeck, card } from './simulation.js'
+import { playBattle, summonKeepingOne } from './bot.js'
+test('keep-one policy deploys support before saving, then reserves for its missing unit', () => {
+  const game = createGame(0, [card({ uid: 1, key: 'katachi' }), card({ uid: 2, key: 'jiro' })])
+  game.gold = 100
+  summonKeepingOne(game, 1, [0], () => 0)
+  assert.deepEqual(game.summons, [1, 0])
+  game.cooldowns[0] = 0
+  game.gold = 150
+  summonKeepingOne(game, 1, [0], () => 0)
+  assert.deepEqual(game.summons, [1, 0])
+  assert.equal(game.gold, 150)
+  game.gold = 300
+  summonKeepingOne(game, 1, [0], () => 0)
+  assert.deepEqual(game.summons, [1, 1])
+  game.cooldowns[1] = 0
+  game.gold = 200
+  summonKeepingOne(game, 1, [0], () => 0)
+  assert.deepEqual(game.summons, [2, 1])
+})
 test('summoning charges once and cooldown blocks duplicates', () => {
   const s = createGame()
   assert.ok(summon(s, 0))

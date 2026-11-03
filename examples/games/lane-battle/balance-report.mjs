@@ -13,7 +13,7 @@ import {
   OPENING
 } from './simulation.js'
 import { addEntry, levelUp, newCampaign, specialScale } from './campaign.js'
-import { playBattle, playCampaign } from './bot.js'
+import { playBattle, playCampaign, summonKeepingOne } from './bot.js'
 
 const realisticOnly = process.argv.find((arg) => arg.startsWith('--realistic='))?.slice('--realistic='.length)
 const nicheOnly = process.argv.includes('--niche-only')
@@ -158,15 +158,7 @@ if (!nicheOnly) {
       if (game.time >= next) {
         next = game.time + 1
         if (!morning && game.level < 2 && game.gold >= upgradeCost(game) + 40) upgrade(game)
-        else if (
-          game.cooldowns[specialIndex] <= 0 &&
-          !game.units.some((unit) => unit.side === 1 && unit.uid === deck[specialIndex].uid && unit.hp > 0)
-        ) {
-          if (game.gold >= deck[specialIndex].cost) summon(game, specialIndex)
-        } else {
-          const ready = order.filter((index) => game.cooldowns[index] <= 0 && game.gold >= deck[index].cost)
-          if (ready.length) summon(game, ready[Math.floor(random() * ready.length)])
-        }
+        else summonKeepingOne(game, specialIndex, order, random)
         if (game.units.some((unit) => unit.side === -1 && unit.x > 800)) burst(game)
       }
       step(game, 0.05)
