@@ -20,6 +20,7 @@ jobs:
       runtime: ${{ steps.scope.outputs.runtime }}
       tower: ${{ steps.scope.outputs.tower }}
       ember: ${{ steps.scope.outputs.ember }}
+      life: ${{ steps.scope.outputs.life }}
       debug: ${{ steps.scope.outputs.debug }}
       bot: ${{ steps.scope.outputs.bot }}
       audit: ${{ steps.scope.outputs.audit }}
@@ -124,6 +125,20 @@ jobs:
       - name: Node contract tests
         if: needs.changes.outputs.node != ''
         run: node --test ${{ needs.changes.outputs.node }}
+      - name: Install Chromium for life-survivors
+        if: needs.changes.outputs.life == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Test life-survivors in Chromium
+        if: needs.changes.outputs.life == 'true'
+        run: npm run e2e:life-survivors
+      - name: Upload life-survivors browser failure evidence
+        if: failure() && needs.changes.outputs.life == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: life-survivors-browser-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       - run: npm run typecheck:tower-debug
         if: needs.changes.outputs.debug == 'true'
       - run: npm run test:tower-debug

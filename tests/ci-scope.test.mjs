@@ -14,6 +14,7 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /fetch-depth: 0/)
   assert.match(workflow, /needs\.changes\.outputs\.pagesBrowser == 'true'/)
   assert.match(workflow, /needs\.changes\.outputs\.ember == 'true'/)
+  assert.match(workflow, /needs\.changes\.outputs\.life == 'true'[\s\S]*?npm run e2e:life-survivors/)
   assert.match(workflow, /needs\.check\.result == 'success'/)
   assert.match(workflow, /needs\.slow-checks\.result == 'skipped'/)
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
@@ -27,7 +28,7 @@ test('documentation and instruction changes do not run game checks or publish', 
     '.claude/skills/review/SKILL.md',
     '.agents/config.json'
   ])
-  for (const key of ['runtime', 'pages', 'pagesBrowser', 'bot', 'debug']) assert.equal(scope[key], false)
+  for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug']) assert.equal(scope[key], false)
   assert.equal(scope.unit, '')
   assert.equal(scope.node, '')
 })
@@ -43,7 +44,9 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid']) {
       assert.equal(scope.unit, 'examples/games/' + game + '/tests')
       assert.equal(scope.node, '')
       assert.equal(scope.pages, true)
-      assert.equal(scope.pagesBrowser, game === 'ember-grid')
+      assert.equal(scope.pagesBrowser, game === 'ember-grid' || game === 'life-survivors')
+      assert.equal(scope.life, game === 'life-survivors')
+      if (game === 'life-survivors') assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts')
       for (const key of ['bot', 'debug']) assert.equal(scope[key], false)
     }
   })
@@ -113,7 +116,7 @@ test('shared dependencies, CI and unknown paths conservatively check all games',
     const scope = selectScope([path])
     for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid'])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
-    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser']) assert.equal(scope[key], true)
+    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life']) assert.equal(scope[key], true)
   }
 })
 
@@ -121,6 +124,8 @@ test('multiple changed games are combined without selecting other games', () => 
   const scope = selectScope(['tests/rabbiters-e2e.spec.ts', 'public/life-survivors/hero.png'])
   assert.equal(scope.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
   assert.equal(scope.tower, false)
+  assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.equal(scope.life, true)
 })
 
 test('default Vitest config excludes Playwright specs without narrowing unit test includes', () => {

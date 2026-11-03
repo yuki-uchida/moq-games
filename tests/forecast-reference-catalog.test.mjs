@@ -13,10 +13,15 @@ const strip = (source) =>
       /export const DEFINITIONS: Record<UnitType, UnitDefinition> = \{[\s\S]*?(?=export type FieldId)/,
       'DEFINITIONS'
     )
+    .replace(/export type WaveBossPolicy[\s\S]*?(?=export function stageRules\()/, 'WAVE_BOSS_POLICIES')
+    .replace(/export const unitLevelMultiplier[\s\S]*?(?=export function deploymentCooldown\()/, 'COMBAT_STATS')
+    .replace(/\n {4}waveBossPolicy: [^\n]*(?=\n {4}battlefieldVersion,)/, '\n    INITIAL_WAVE_BOSS_POLICY')
 test('only aligns declarative catalogs and preserves the hashed forecast oracle', () => {
   const aligned = alignForecastReferenceCatalog(reference, current)
   assert.equal(strip(aligned), strip(reference))
   for (const id of ['crystalSentinel', 'koboldLancer', 'clockworkPatchling']) assert.ok(aligned.includes(id))
+  for (const rule of ['waveBossPolicy: CURRENT_WAVE_BOSS_POLICY,', 'export const enemyGeometryScale'])
+    assert.ok(aligned.includes(rule))
   assert.equal(alignForecastReferenceCatalog(aligned, current), aligned)
   const manifest = JSON.parse(readFileSync('tests/performance/forecast-baseline/manifest.json', 'utf8'))
   assert.equal(createHash('sha256').update(reference).digest('hex'), manifest.sha256['model.ts'])
