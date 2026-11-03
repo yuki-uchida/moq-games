@@ -3,5 +3,9 @@ import viteConfig from './vite.config.mjs'
 
 export default mergeConfig(
   viteConfig,
-  defineConfig({ test: { exclude: [...configDefaults.exclude, '**/.sdk-cache/**', '**/.generated/**'] } })
+  defineConfig({
+    test: {
+      exclude: [...configDefaults.exclude, '**/ember-grid/tests/**/*.spec.*', '**/.sdk-cache/**', '**/.generated/**']
+    }
+  })
 )

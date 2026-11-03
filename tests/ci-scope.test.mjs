@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 test('workflow runs on main pushes only and gates dependent jobs by scope', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8')
@@ -119,3 +122,39 @@ test('multiple changed games are combined without selecting other games', () => 
   assert.equal(scope.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
   assert.equal(scope.tower, false)
 })
+
+test('default Vitest config excludes Playwright specs without narrowing unit test includes', () => {
+  const config = readFileSync(new URL('../vitest.config.mts', import.meta.url), 'utf8')
+  assert.match(config, /exclude:\s*\[\s*\.\.\.configDefaults\.exclude,\s*'\*\*\/ember-grid\/tests\/\*\*\/\*\.spec\.\*'/)
+  assert.doesNotMatch(config, /\binclude\s*:/)
+})
+
+test(
+  'CI Vitest discovery keeps every game unit test and excludes Playwright specs',
+  {
+    skip: !existsSync(new URL('../node_modules/vitest/vitest.mjs', import.meta.url)) && 'dependencies are not installed'
+  },
+  () => {
+    const root = fileURLToPath(new URL('../', import.meta.url))
+    const targets = selectScope(['package.json']).unit.split(' ')
+    const expected = targets.flatMap((target) =>
+      target.endsWith('/tests')
+        ? readdirSync(resolve(root, target), { recursive: true })
+            .filter(
+              (file) =>
+                /\.test\.[cm]?[jt]sx?$/.test(file) ||
+                (!target.includes('/ember-grid/') && /\.spec\.[cm]?[jt]sx?$/.test(file))
+            )
+            .map((file) => resolve(root, target, file))
+        : [resolve(root, target)]
+    )
+    const discovered = JSON.parse(
+      execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'list', ...targets, '--filesOnly', '--json'], {
+        cwd: root,
+        encoding: 'utf8'
+      })
+    ).map((entry) => entry.file)
+    assert.ok(expected.length > 0)
+    assert.deepEqual(discovered.sort(), expected.sort())
+  }
+)
