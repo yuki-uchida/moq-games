@@ -742,6 +742,15 @@ window.rabbitersStealth = {
   advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
   freeze() { this.step = game.step.bind(game); game.step = () => {}; },
   spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -125, z: 5, state: 'chase', targetId: localId, suspicion: 1 }); },
+  watchCues() {
+    this.localSpots = 0;
+    this.alarms = 0;
+    const emit = feel.emit.bind(feel);
+    feel.emit = (event) => { if (event.type === 'spotted' && event.you) this.localSpots++; emit(event); };
+    const alarm = audio.alarm.bind(audio);
+    audio.alarm = () => { this.alarms++; alarm(); };
+  },
+  cues() { return { localSpots: this.localSpots, alarms: this.alarms }; },
   startMeters() {
     this.meters = [audio, feel.sfx].map((engine) => {
       const analyser = engine.context.createAnalyser();
@@ -831,6 +840,7 @@ window.rabbitersStealth = {
   await expect.poll(async () => (await read()).renderedDroppings).toBeGreaterThanOrEqual(4)
   await page.screenshot({ path: testInfo.outputPath('stealth-question.png') })
 
+  await run('watchCues()')
   await run('startMeters()')
   await run("spot('fox')")
   await expect.poll(async () => (await read()).marker).toBe('!#d8342c')
@@ -839,6 +849,7 @@ window.rabbitersStealth = {
   await expect.poll(async () => (await read()).musicThreat).toBe('chase')
   await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
   await expect(page.locator('.fx-threat')).toContainText('1体')
+  await expect.poll(async () => run('cues()')).toEqual({ localSpots: 1, alarms: 1 })
   await expect(page.locator('#condition')).toContainText('見つかった')
   await page.waitForTimeout(150)
   await page.screenshot({ path: testInfo.outputPath('stealth-spotted.png') })
@@ -855,6 +866,7 @@ window.rabbitersStealth = {
 
   await run("spot('hawk')")
   await expect(page.locator('.fx-threat')).toContainText('2体')
+  expect(await run('cues()')).toEqual({ localSpots: 1, alarms: 1 })
   await run("move('fox', { state: 'search', targetId: null })")
   await expect(page.locator('.fx-threat')).toContainText('1体')
   await run("move('hawk', { state: 'search', targetId: null })")
@@ -867,6 +879,12 @@ window.rabbitersStealth = {
   await expect.poll(async () => (await read()).musicThreat).toBe('calm')
   await expect(page.locator('.fx-threat')).toContainText('ひと息')
   await expect(page.locator('.fx-threat')).toBeHidden({ timeout: 5000 })
+
+  await run("move('fox', { state: 'chase', targetId: 'friend' })")
+  await expect.poll(async () => run('cues()')).toEqual({ localSpots: 1, alarms: 2 })
+  await run("spot('fox')")
+  await expect.poll(async () => run('cues()')).toEqual({ localSpots: 2, alarms: 3 })
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
   await run('stopMeters()')
 
   expect(errors).toEqual([])
@@ -900,8 +918,11 @@ window.rabbitersMobileSpot = () => {
   await page.waitForTimeout(150)
   await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
   const warning = page.locator('.fx-threat')
+  const detection = page.locator('.fx-detection')
   await expect(warning).toHaveAttribute('data-mode', 'chase')
   await expect(warning).toBeVisible()
+  await expect(detection).toHaveClass(/fx-on/)
+  await expect(detection).toHaveCSS('animation-name', 'fx-detection-fade')
   expect(
     await warning.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
@@ -916,6 +937,25 @@ window.rabbitersMobileSpot = () => {
   await expect(page.locator('.fx-layer')).toHaveCSS('pointer-events', 'none')
   await expect(page.locator('.fx-chase')).toHaveCSS('animation-name', 'none')
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-reduced-motion.png') })
+
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.evaluate(() => {
+    const globals = window as unknown as { rabbitersMobileSpot: () => () => void; triggerSpot?: () => void }
+    globals.triggerSpot = globals.rabbitersMobileSpot()
+  })
+  await expect(warning).toHaveAttribute('data-mode', 'clear')
+  const escapePopup = page.locator('.fx-popup[data-event="escaped"]')
+  await expect(escapePopup).toBeVisible()
+  await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
+  await expect(detection).toHaveClass(/fx-on/)
+  await expect(escapePopup).toBeHidden()
+  expect(
+    await detection.evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight
+    })
+  ).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('stealth-mobile-landscape.png') })
 })
 
 test('map tour: terrain, tunnels, logs and caves stay readable and cheap to draw', async ({ page }, testInfo) => {

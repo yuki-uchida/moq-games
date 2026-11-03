@@ -160,6 +160,15 @@ export class HudFx {
     this.chaseEl = this.child('fx-vignette fx-chase')
     this.hiddenEl = this.child('fx-vignette fx-cover')
     this.detectionEl = this.child('fx-detection')
+    const signal = this.make('span', 'fx-detection-signal')
+    signal.textContent = '!'
+    const message = this.make('strong', 'fx-detection-message')
+    message.textContent = '見つかった！'
+    const hint = this.make('span', 'fx-detection-hint')
+    hint.textContent = 'ぴんち！ 草かげへ逃げよう'
+    this.detectionEl.appendChild(signal)
+    this.detectionEl.appendChild(message)
+    this.detectionEl.appendChild(hint)
     this.detectionEl.addEventListener('animationend', () => this.detectionEl.classList.remove('fx-on'))
     this.threatEl = this.child('fx-threat')
     this.threatEl.hidden = true
@@ -189,7 +198,7 @@ export class HudFx {
   emit(event: JuiceEvent, screen?: { x: number; y: number } | null): void {
     if (this.disposed) return
     const popup = popupFor(event)
-    if (popup) this.showPopup(popup, screen ?? null)
+    if (popup && event.type !== 'spotted') this.showPopup(popup, screen ?? null, event.type)
     const flash = flashFor(event)
     if (flash) this.flash(flash)
     const haptic = hapticFor(event)
@@ -218,7 +227,14 @@ export class HudFx {
     if (threat.mode !== 'chase') this.detectionEl.classList.remove('fx-on')
     if (threat.mode === 'chase') {
       this.threatEl.textContent = `! 見つかった · ${threat.count}体が追跡中`
-      if (previous !== 'chase') retrigger(this.detectionEl, 'fx-on')
+      if (previous !== 'chase') {
+        for (const slot of this.popups) {
+          if (slot.el.dataset.event !== 'escaped') continue
+          slot.busy = false
+          slot.el.hidden = true
+        }
+        retrigger(this.detectionEl, 'fx-on')
+      }
     } else if (threat.mode === 'suspicious') {
       this.threatEl.textContent = '? 気づかれそう · そっと隠れよう'
     } else if (threat.mode === 'search') {
@@ -268,7 +284,7 @@ export class HudFx {
     return el
   }
 
-  private showPopup(spec: PopupSpec, screen: { x: number; y: number } | null): void {
+  private showPopup(spec: PopupSpec, screen: { x: number; y: number } | null, event: JuiceEvent['type']): void {
     const layerBox = this.layer.getBoundingClientRect()
     const w = layerBox.width || (typeof innerWidth === 'number' ? innerWidth : 800)
     const h = layerBox.height || (typeof innerHeight === 'number' ? innerHeight : 600)
@@ -285,6 +301,7 @@ export class HudFx {
     slot.startedAt = now
     const el = slot.el
     el.hidden = false
+    el.dataset.event = event
     el.textContent = spec.text
     el.className = `fx-popup fx-tone-${spec.tone} fx-size-${spec.size}`
     el.style.setProperty('--fx-x', `${Math.round(x)}px`)

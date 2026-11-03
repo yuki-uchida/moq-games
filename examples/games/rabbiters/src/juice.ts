@@ -87,12 +87,16 @@ export class JuiceDetector {
     for (const [id, was] of previous.nests) {
       if (was.active && next.nests.get(id)?.active === false) events.push({ type: 'nestBroken', at: point(was) })
     }
+    let localSpotted = previous.chasingMe > 0 || !previous.hasPlayer || !next.hasPlayer || next.downed
     for (const [id, predator] of next.predators) {
       const before = previous.predators.get(id)
-      if (!before) continue
-      if (predator.state === 'chase' && before.state !== 'chase') {
-        events.push({ type: 'spotted', at: predator.at, you: predator.targetId === localPlayerId })
+      if (predator.state === 'chase' && predator.targetId === localPlayerId) {
+        if (!localSpotted) events.push({ type: 'spotted', at: predator.at, you: true })
+        localSpotted = true
+      } else if (before && predator.state === 'chase' && before.state !== 'chase') {
+        events.push({ type: 'spotted', at: predator.at, you: false })
       } else if (
+        before &&
         predator.state === 'suspicious' &&
         before.state !== 'suspicious' &&
         predator.targetId === localPlayerId

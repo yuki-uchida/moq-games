@@ -164,6 +164,7 @@ describe('local threat HUD', () => {
         dataset: {} as Record<string, string>,
         offsetWidth: 100,
         style: { setProperty: vi.fn() },
+        getBoundingClientRect: () => ({ width: 800, height: 600, left: 0, top: 0 }),
         classList: {
           add: vi.fn((value: string) => classes.add(value)),
           remove: vi.fn((value: string) => classes.delete(value))
@@ -188,17 +189,42 @@ describe('local threat HUD', () => {
     const detection = elements.find((element) => element.className === 'fx-detection')!
     const badge = elements.find((element) => element.className === 'fx-threat')!
     try {
+      expect(elements.find((element) => element.className === 'fx-detection-message')?.textContent).toBe('見つかった！')
+      expect(elements.find((element) => element.className === 'fx-detection-hint')?.textContent).toContain('草かげ')
+      expect(detection.appendChild).toHaveBeenCalledTimes(3)
       hud.setThreat({ mode: 'chase', count: 1, suspicion: 1 })
       hud.setThreat({ mode: 'chase', count: 2, suspicion: 1 })
+      hud.emit({ type: 'spotted', you: true, at: { x: 0, y: 0 } })
+      hud.emit({ type: 'spotted', you: true, at: { x: 0, y: 0 } })
+      expect(elements.filter((element) => element.className === 'fx-popup').every((element) => element.hidden)).toBe(
+        true
+      )
       expect(detection.classList.add).toHaveBeenCalledTimes(1)
       expect(badge.textContent).toContain('2体')
+      const animationEnd = detection.addEventListener.mock.calls.find(([type]) => type === 'animationend')?.[1]
+      animationEnd()
+      expect(detection.classList.remove).toHaveBeenLastCalledWith('fx-on')
+      hud.setThreat({ mode: 'chase', count: 3, suspicion: 1 })
+      expect(detection.classList.add).toHaveBeenCalledTimes(1)
       hud.setThreat({ mode: 'search', count: 2, suspicion: 1 })
       expect(badge.textContent).toContain('捜索中')
       expect(badge.textContent).not.toContain('ひと息')
+      hud.setThreat({ mode: 'chase', count: 2, suspicion: 1 })
+      expect(detection.classList.add).toHaveBeenCalledTimes(2)
+      hud.setThreat({ mode: 'search', count: 2, suspicion: 1 })
       hud.setThreat({ mode: 'clear', count: 0, suspicion: 0 })
       expect(badge.textContent).toContain('追跡が途切れた')
+      hud.emit({ type: 'escaped', at: { x: 0, y: 0 } })
+      hud.emit({ type: 'pickup', at: { x: 0, y: 0 } })
+      const escapePopup = elements.find((element) => element.dataset.event === 'escaped')!
+      const pickupPopup = elements.find((element) => element.dataset.event === 'pickup')!
+      expect(escapePopup.hidden).toBe(false)
+      hud.setThreat({ mode: 'chase', count: 1, suspicion: 1 })
+      expect(escapePopup.hidden).toBe(true)
+      expect(pickupPopup.hidden).toBe(false)
       hud.reset()
       expect(badge.hidden).toBe(true)
+      expect(detection.classList.remove).toHaveBeenLastCalledWith('fx-on')
       hud.setThreat({ mode: 'suspicious', count: 1, suspicion: 0.5 })
       vi.advanceTimersByTime(2000)
       expect(badge.hidden).toBe(false)

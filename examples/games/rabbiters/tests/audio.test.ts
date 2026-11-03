@@ -12,11 +12,18 @@ class Context {
   state = 'running'
   currentTime = 0
   destination = {}
+  gains: {
+    gain: ReturnType<typeof parameter>
+    connect: ReturnType<typeof vi.fn>
+    disconnect: ReturnType<typeof vi.fn>
+  }[] = []
   voices: ReturnType<Context['createOscillator']>[] = []
   resume = vi.fn(() => Promise.resolve())
   close = vi.fn(() => Promise.resolve())
   createGain() {
-    return { gain: parameter(), connect: vi.fn(), disconnect: vi.fn() }
+    const gain = { gain: parameter(), connect: vi.fn(), disconnect: vi.fn() }
+    this.gains.push(gain)
+    return gain
   }
   createOscillator() {
     const voice = {
@@ -57,6 +64,50 @@ const setup = () => {
 }
 
 describe('Rabbiters audio', () => {
+  it('gives discovery a sustained impact and chase a syncopated bass without raising master gain', () => {
+    const { audio, game, context } = setup()
+    game.state.predators[0].state = 'chase'
+    game.state.time = 1
+    context.currentTime = 1
+    audio.update(game.state, 'local')
+    expect(context.gains[0].gain.value).toBe(0.12)
+    expect(context.gains[1].gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.36, 1.01)
+    expect(context.gains[1].gain.setValueAtTime).toHaveBeenCalledWith(0.36, 1 + 0.28 * 0.15)
+    expect(context.voices[0].frequency.exponentialRampToValueAtTime).toHaveBeenCalledWith(45, 1.28)
+    context.currentTime = 1.6
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(7)
+    expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(98, 1.6)
+    expect(context.voices[5].start).toHaveBeenCalledWith(1.725)
+    expect(context.gains[5].gain.setValueAtTime).toHaveBeenCalledWith(0.28, 1.6 + 0.22 * 0.6)
+    audio.stop()
+  })
+
+  it('bounds scheduled polyphony and signal peaks, then frees voices on mute and end', () => {
+    const { audio, game, context } = setup()
+    game.state.predators[0].state = 'chase'
+    game.state.time = 1
+    audio.update(game.state, 'local')
+    context.currentTime = 1
+    vi.advanceTimersByTime(4000)
+    expect(context.voices).toHaveLength(16)
+    const peaks = context.gains.slice(1).map((gain) => gain.gain.linearRampToValueAtTime.mock.calls[0][0] as number)
+    expect(Math.max(...peaks)).toBeLessThanOrEqual(0.36)
+    expect(peaks.reduce((sum, peak) => sum + peak, 0) * context.gains[0].gain.value).toBeLessThan(1)
+    const ended = context.voices[0]
+    ;(ended.onended as (() => void) | null)?.()
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(17)
+    audio.setMuted(true)
+    vi.advanceTimersByTime(1000)
+    expect(context.voices).toHaveLength(17)
+    audio.setMuted(false)
+    vi.advanceTimersByTime(250)
+    expect(context.voices.length).toBeGreaterThan(17)
+    audio.stop()
+    expect(context.voices.every((voice) => voice.disconnect.mock.calls.length > 0)).toBe(true)
+  })
+
   it('replaces cheerful music with suspicion and chase pulses, then restores it on escape', () => {
     const { audio, game, context } = setup()
     const predator = game.state.predators[0]

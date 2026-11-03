@@ -171,11 +171,14 @@ export class RabbitersAudio {
     if (this.previous.threat !== 'calm') {
       const step = this.beat++ % 8
       if (this.previous.threat === 'chase') {
-        this.tone([98, 98, 104, 98, 98, 92, 104, 92][step], 0.16, 'triangle', 0, 73, 0.12)
-        if (step % 2 === 0) this.tone(196, 0.09, 'square', 0.12, 185, 0.025)
-        if (step === 7) this.tone(784, 0.1, 'sine', 0, 740, 0.04)
+        const bass = [98, 98, 104, 98, 98, 92, 104, 92][step]
+        this.tone(bass, 0.22, 'triangle', 0, bass, 0.28, 0.6)
+        this.tone(bass * 2, 0.1, 'square', 0.125, bass * 2, 0.07, 0.4)
+        this.tone(step % 2 === 0 ? 150 : 120, 0.1, 'sine', 0, 48, 0.26)
+        if (step % 2 === 1) this.tone(1760, 0.045, 'triangle', 0.125, 880, 0.06)
+        if (step === 3 || step === 7) this.tone(587, 0.12, 'sine', 0.125, 740, 0.1, 0.3)
       } else if (step % 2 === 0) {
-        this.tone(step % 4 === 0 ? 196 : 208, 0.3, 'sine', 0, 185, 0.07)
+        this.tone(step % 4 === 0 ? 196 : 208, 0.36, 'sine', 0, 185, 0.14, 0.45)
       }
       return
     }
@@ -185,12 +188,11 @@ export class RabbitersAudio {
     if (step % 4 === 0) this.tone([131, 147, 110, 98][step / 4], 0.45, 'triangle')
   }
 
-  /** Original "spotted" sting: a low thump, two rising square blips and a ringing tail. */
   private alarm(): void {
-    this.tone(110, 0.22, 'triangle', 0, 55, 0.18)
-    this.tone(740, 0.07, 'square', 0, 760, 0.06)
-    this.tone(1480, 0.09, 'square', 0.07, 1500, 0.06)
-    this.tone(1976, 0.45, 'sine', 0.07, 1900, 0.08)
+    this.tone(160, 0.28, 'triangle', 0, 45, 0.36, 0.15)
+    this.tone(830, 0.12, 'square', 0, 622, 0.14, 0.35)
+    this.tone(1245, 0.17, 'triangle', 0.035, 932, 0.22, 0.4)
+    this.tone(466, 0.36, 'sine', 0.16, 698, 0.18, 0.25)
   }
 
   private chime(notes: number[], type: OscillatorType = 'sine'): void {
@@ -203,10 +205,11 @@ export class RabbitersAudio {
     type: OscillatorType,
     delay = 0,
     end = frequency,
-    peak = 0.15
+    peak = 0.15,
+    hold = 0
   ): void {
     const context = this.context
-    if (!context || !this.master || this.muted || context.state !== 'running') return
+    if (!context || !this.master || this.muted || context.state !== 'running' || this.voices.size >= 16) return
     try {
       const oscillator = context.createOscillator()
       const envelope = context.createGain()
@@ -215,7 +218,8 @@ export class RabbitersAudio {
       oscillator.frequency.setValueAtTime(frequency, start)
       oscillator.frequency.exponentialRampToValueAtTime(end, start + duration)
       envelope.gain.setValueAtTime(0, start)
-      envelope.gain.linearRampToValueAtTime(peak, start + 0.01)
+      envelope.gain.linearRampToValueAtTime(Math.min(peak, 0.36), start + 0.01)
+      if (hold > 0) envelope.gain.setValueAtTime(Math.min(peak, 0.36), start + duration * hold)
       envelope.gain.exponentialRampToValueAtTime(0.001, start + duration)
       oscillator.connect(envelope)
       envelope.connect(this.master)
