@@ -9,8 +9,14 @@ import { playUiSound, type UiSound } from '../../../shared/UiSound'
 import { createFeelPlayer, type FeelSound } from './FeelSounds'
 
 /** Synthesized cues measured 6-15 dB (RMS) above the shipped attack clips at the same master
- * gain; -6 dB keeps frequent kill/coin/heavy-hit cues level with the combat sounds. */
+ * gain, so routine ones (coins, deploys, stars) sit at -6 dB, level with the combat sounds. The
+ * moments that must read over the battle music keep more: kills, heavy hits, cut-ins, combos, the boss
+ * horn, castle hits and the outcome stings. */
 const FEEL_BUS_GAIN = 0.5
+const FEEL_KEY_GAIN = 0.8
+const KEY_FEEL: ReadonlySet<FeelSound> = new Set(['kill', 'hit-heavy', 'cutin', 'combo', 'boss', 'base-hit', 'clear', 'defeat', 'assault'])
+/** Recent feel cues (kind and AudioContext time), for diagnostics and mix measurements. */
+const FEEL_LOG_LIMIT = 128
 
 export interface SoundCatalogEntry {
   id: string
@@ -42,6 +48,8 @@ export interface SoundPlayerDiagnostics extends SoundPlayerStatus {
   recentEventCount: number
   /** Synthesized game-feel cues actually scheduled, by kind. */
   feelPlayed: Partial<Record<FeelSound, number>>
+  /** The last scheduled feel cues with their AudioContext time. */
+  feelLog: { kind: FeelSound; at: number }[]
 }
 
 interface SoundAsset {
@@ -82,6 +90,8 @@ export class SoundPlayer {
   private readonly playFeelSound = createFeelPlayer()
   private readonly feelPlayed: Partial<Record<FeelSound, number>> = {}
   private feelBus: GainNode | null = null
+  private feelKeyBus: GainNode | null = null
+  private readonly feelLog: { kind: FeelSound; at: number }[] = []
   private currentBattle: { battleId: number; stage: number } | null = null
   private resumePending: Promise<void> | null = null
   private activeLoads = 0
@@ -148,7 +158,8 @@ export class SoundPlayer {
       played: this.played,
       dropped: this.dropped,
       recentEventCount: this.recentEvents.size,
-      feelPlayed: { ...this.feelPlayed }
+      feelPlayed: { ...this.feelPlayed },
+      feelLog: [...this.feelLog]
     }
   }
 
@@ -282,8 +293,16 @@ export class SoundPlayer {
       this.feelBus = context.createGain()
       this.feelBus.gain.value = FEEL_BUS_GAIN
       this.feelBus.connect(this.master)
+      this.feelKeyBus = context.createGain()
+      this.feelKeyBus.gain.value = FEEL_KEY_GAIN
+      this.feelKeyBus.connect(this.master)
     }
-    if (this.playFeelSound(kind, context, this.feelBus, param)) this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
+    const bus = KEY_FEEL.has(kind) ? this.feelKeyBus! : this.feelBus
+    if (this.playFeelSound(kind, context, bus, param)) {
+      this.feelPlayed[kind] = (this.feelPlayed[kind] ?? 0) + 1
+      this.feelLog.push({ kind, at: context.currentTime })
+      if (this.feelLog.length > FEEL_LOG_LIMIT) this.feelLog.shift()
+    }
   }
 
   private playCueAsset(key: string, asset: SoundAsset): void {
