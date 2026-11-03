@@ -1520,7 +1520,8 @@ export function observeRoadEffects(s: Readonly<GameState>) {
 }
 export function serializeStateForAI(s: Readonly<GameState>) {
   const field = fieldFor(s),
-    rules = stageRules(s.stage, s.waveBossPolicy)
+    { waveBossPolicy } = s,
+    rules = stageRules(s.stage, waveBossPolicy)
   const summarize = (u: Unit) => {
     const roadblockTank = observeTankRoadblock(s, u)
     return {
@@ -1555,7 +1556,7 @@ export function serializeStateForAI(s: Readonly<GameState>) {
       leash: DEFINITIONS[u.type].leash,
       range: u.attackRange,
       boss: u.boss,
-      splash: attackSplash(u.type, u.boss, s.battlefieldVersion),
+      splash: attackSplash(u.type, u.boss, s.battlefieldVersion, enemyGeometryScale(u, s.waveBossPolicy)),
       ...(s.battlefieldVersion === 2 ? { routeId: u.routeId, flight: u.flight ? { ...u.flight } : undefined } : {}),
       role:
         DEFINITIONS[u.type].splash || u.type === 'brute' || u.type === 'ogre'
@@ -1593,6 +1594,7 @@ export function serializeStateForAI(s: Readonly<GameState>) {
     },
     wave: {
       ...rules,
+      waveBossPolicy,
       spawned: s.enemiesSpawned,
       resolved: s.enemiesResolved,
       budgetRemaining: rules.spawnBudget - s.budgetSpent,
