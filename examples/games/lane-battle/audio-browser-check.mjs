@@ -48,4 +48,31 @@ console.log(
   'audio autoplay/BGM/pause/resume/mute/unmute PASS',
   JSON.stringify(await page.evaluate(() => window.audioProof))
 )
+const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+await mobile.addInitScript(() => {
+  const NativeAudioContext = window.AudioContext
+  window.mobileAudioProof = { attempts: [], state: 'suspended', gesture: '' }
+  for (const type of ['pointerdown', 'touchend', 'click']) {
+    document.addEventListener(type, () => (window.mobileAudioProof.gesture = type), true)
+  }
+  window.AudioContext = class extends NativeAudioContext {
+    get state() {
+      return window.mobileAudioProof.state
+    }
+    resume() {
+      const proof = window.mobileAudioProof
+      proof.attempts.push(proof.gesture)
+      if (proof.gesture === 'pointerdown') return Promise.reject(new Error('gesture not accepted'))
+      proof.state = 'running'
+      return super.resume()
+    }
+  }
+})
+await mobile.goto(process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/')
+await mobile.getByRole('button', { name: 'ステージ選択へ' }).tap()
+assert.deepEqual(await mobile.evaluate(() => window.mobileAudioProof.attempts.slice(0, 2)), ['pointerdown', 'touchend'])
+await mobile.evaluate(() => (window.mobileAudioProof.state = 'interrupted'))
+await mobile.getByRole('button', { name: 'ブリッと出撃' }).tap()
+assert.equal(await mobile.evaluate(() => window.mobileAudioProof.state), 'running')
+console.log('mobile gesture retry and interrupted audio recovery PASS')
 await browser.close()
