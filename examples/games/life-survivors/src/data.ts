@@ -270,7 +270,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: 'あなたのまわりを走り回って蹴散らす。人間（教師・いじめっ子・上司）に特攻。'
+    desc: '近くの敵に襲いかかって蹴散らす。人間（教師・いじめっ子・上司）に特攻。'
   }),
   weapon({
     id: 'p_rich',

@@ -72,6 +72,8 @@ for (const width of [1280, 390]) {
     await expect(conditions).toContainText('仕事Lv2以上')
     await expect(conditions).toContainText('スポーツ・筋トレのどちらかLv4以上')
     await expect(conditions).toContainText('投資・貯金のどちらかLv4以上')
+    await expect(conditions).toContainText('趣味・カラオケ・旅行・料理のいずれかLv4以上')
+    await expect(conditions).toContainText('64歳')
     await expect(conditions).toContainText('複数候補は手札の育成度と進化')
     await expect(conditions).toContainText('結婚イベント時に恋愛Lv2以上')
     await expect(conditions).toContainText('本人の精神力')
@@ -686,7 +688,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v4',
+      app: 'life-survivors-v5',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -705,9 +707,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v4', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v6', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v5', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
@@ -899,97 +901,113 @@ test('a guest without parents can join another player’s care trial', async ({ 
   expect(errors).toEqual([])
 })
 
-test('sports and asset paths reach only their own terminal history over snapshots', async ({ context }) => {
-  await context.route('**/rabbiters/src/network.ts*', (route) =>
-    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
-  )
-  const host = await context.newPage()
-  const guest = await context.newPage()
-  const errors: string[] = []
-  for (const page of [host, guest]) {
-    page.on('pageerror', (error) => errors.push(error.message))
-    await page.goto('/')
-    await page.locator('#room').fill('alternative-careers')
-  }
-  await host.getByRole('button', { name: 'ルームを作る' }).click()
-  await guest.getByRole('button', { name: 'ルームに参加' }).click()
-  const hostLife = await life(host)
-  const guestLife = await life(guest)
-  await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
-  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
-  const guestId = await guestLife.evaluate((hook) => hook.localId)
-  await hostLife.evaluate(async (hook, id) => {
-    const dataPath = '/src/data.ts'
-    const { EVENTS } = await import(dataPath)
-    const game = hook.game as unknown as Game
-    for (const player of game.state.players) {
-      player.birthPick = false
-      player.pending = 0
-      player.choices = []
-      player.weapons = [
-        { id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 },
-        { id: player.id === id ? 'w_savings' : 'w_muscle', lv: 4, cd: 100, held: 0, damage: 0 }
-      ]
-    }
-    for (const boss of ['b_shukatsu', 'b_layoff']) {
-      const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
-      game.state.enemies = []
-      game.state.eventIndex = index
-      game.state.time = EVENTS[index].at - 0.01
-      game.tick(0.01)
-    }
-  }, guestId)
-  await expect
-    .poll(() =>
-      guestLife.evaluate(async (hook, id) => {
-        const careerPath = '/src/art/careers.ts'
-        const { careerFor } = await import(careerPath)
-        const players = (hook.view as unknown as View).players
-        const hostPlayer = players.find((player) => player.id !== id)
-        const guestPlayer = players.find((player) => player.id === id)
-        return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
-      }, guestId)
+for (const path of ['assets', 'creative'] as const) {
+  test(`sports and ${path} paths reach only their own terminal history over snapshots`, async ({ context }) => {
+    await context.route('**/rabbiters/src/network.ts*', (route) =>
+      route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
     )
-    .toEqual(['soccer', 'entrepreneur'])
-  await expect(guest.locator('#feed')).toContainText('資産を活かす道を広げる')
-  await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
-  expect(
-    await guestLife.evaluate((hook) =>
-      hook.view!.players.every((player) => player.history === undefined && player.talents === undefined)
-    )
-  ).toBe(true)
-  await expect(guest.locator('#result-history')).toBeHidden()
-  await hostLife.evaluate((hook, id) => {
-    const game = hook.game as unknown as Game
-    for (const player of game.state.players) {
-      player.weapons = [{ id: player.id === id ? 'w_love' : 'w_friend', lv: 8, cd: 100, held: 0, damage: 0 }]
+    const host = await context.newPage()
+    const guest = await context.newPage()
+    const errors: string[] = []
+    for (const page of [host, guest]) {
+      page.on('pageerror', (error) => errors.push(error.message))
+      await page.goto('/')
+      await page.locator('#room').fill('alternative-careers')
     }
-  }, guestId)
-  for (const peer of [hostLife, guestLife]) {
+    await host.getByRole('button', { name: 'ルームを作る' }).click()
+    await guest.getByRole('button', { name: 'ルームに参加' }).click()
+    const hostLife = await life(host)
+    const guestLife = await life(guest)
+    await expect.poll(() => hostLife.evaluate((hook) => hook.game.state.players.length)).toBe(2)
+    await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+    const guestId = await guestLife.evaluate((hook) => hook.localId)
+    await hostLife.evaluate(
+      async (hook, { id, creative }) => {
+        const dataPath = '/src/data.ts'
+        const { EVENTS } = await import(dataPath)
+        const game = hook.game as unknown as Game
+        for (const player of game.state.players) {
+          player.birthPick = false
+          player.pending = 0
+          player.choices = []
+          player.weapons = [
+            { id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 },
+            {
+              id: player.id === id ? (creative ? 'w_hobby' : 'w_savings') : 'w_muscle',
+              lv: 4,
+              cd: 100,
+              held: 0,
+              damage: 0
+            }
+          ]
+        }
+        for (const boss of ['b_shukatsu', 'b_layoff']) {
+          const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
+          game.state.enemies = []
+          game.state.eventIndex = index
+          game.state.time = EVENTS[index].at - 0.01
+          game.tick(0.01)
+        }
+      },
+      { id: guestId, creative: path === 'creative' }
+    )
     await expect
       .poll(() =>
-        peer.evaluate(async (hook, id) => {
-          const path = '/src/art/careers.ts'
-          const { careerFor } = await import(path)
+        guestLife.evaluate(async (hook, id) => {
+          const careerPath = '/src/art/careers.ts'
+          const { careerFor } = await import(careerPath)
           const players = (hook.view as unknown as View).players
-          return [
-            careerFor(players.find((player) => player.id !== id)!),
-            careerFor(players.find((player) => player.id === id)!)
-          ]
+          const hostPlayer = players.find((player) => player.id !== id)
+          const guestPlayer = players.find((player) => player.id === id)
+          return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
         }, guestId)
       )
-      .toEqual(['social', 'romantic'])
-  }
-  await hostLife.evaluate((hook) => {
-    ;(hook.game as unknown as Game).state.phase = 'lost'
+      .toEqual(['soccer', path === 'creative' ? 'creative' : 'entrepreneur'])
+    await expect(guest.locator('#feed')).toContainText(
+      path === 'creative' ? '創作の道を広げる' : '資産を活かす道を広げる'
+    )
+    await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
+    expect(
+      await guestLife.evaluate((hook) =>
+        hook.view!.players.every((player) => player.history === undefined && player.talents === undefined)
+      )
+    ).toBe(true)
+    await expect(guest.locator('#result-history')).toBeHidden()
+    await hostLife.evaluate((hook, id) => {
+      const game = hook.game as unknown as Game
+      for (const player of game.state.players) {
+        player.weapons = [{ id: player.id === id ? 'w_love' : 'w_friend', lv: 8, cd: 100, held: 0, damage: 0 }]
+      }
+    }, guestId)
+    for (const peer of [hostLife, guestLife]) {
+      await expect
+        .poll(() =>
+          peer.evaluate(async (hook, id) => {
+            const path = '/src/art/careers.ts'
+            const { careerFor } = await import(path)
+            const players = (hook.view as unknown as View).players
+            return [
+              careerFor(players.find((player) => player.id !== id)!),
+              careerFor(players.find((player) => player.id === id)!)
+            ]
+          }, guestId)
+        )
+        .toEqual(['social', 'romantic'])
+    }
+    await hostLife.evaluate((hook) => {
+      ;(hook.game as unknown as Game).state.phase = 'lost'
+    })
+    await expect(guest.locator('#result-history-list')).toContainText(
+      path === 'creative' ? '好きなことを磨き、創作の道へ' : '資産を育て、資産を活かす道へ'
+    )
+    await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
+    await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
+    await expect(host.locator('#result-history-list')).toContainText('運動を磨き、スポーツの道へ')
+    await expect(host.locator('#result-history-list')).not.toContainText('資産')
+    await expect(host.locator('#result-history-list')).not.toContainText('創作')
+    expect(errors).toEqual([])
   })
-  await expect(guest.locator('#result-history-list')).toContainText('資産を育て、資産を活かす道へ')
-  await expect(guest.locator('#result-history-list')).toContainText('転機を2回獲得')
-  await expect(guest.locator('#result-history-list')).not.toContainText('スポーツ')
-  await expect(host.locator('#result-history-list')).toContainText('運動を磨き、スポーツの道へ')
-  await expect(host.locator('#result-history-list')).not.toContainText('資産')
-  expect(errors).toEqual([])
-})
+}
 
 for (const width of [1280, 390]) {
   test(`family support reaches a moving guest and renders at ${width}px`, async ({ context }, testInfo) => {
