@@ -3148,7 +3148,7 @@ function frame(now: number) {
       unlocked: newUnlock,
       instant: prefersReducedMotion() || !resultLive
     })
-    showOutcomeDialog($<HTMLDialogElement>('result'), state.phase)
+    showOutcomeDialog($<HTMLDialogElement>('result'), state.phase, state.stage >= ALL_OUT_FROM_STAGE)
   }
   requestFrame()
 }

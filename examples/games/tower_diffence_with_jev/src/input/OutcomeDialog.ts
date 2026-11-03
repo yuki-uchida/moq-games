@@ -5,7 +5,7 @@ function preventDismissal(event: Event): void {
 }
 
 /** Open the result card with the buttons that fit the outcome; the primary one takes focus. */
-export function showOutcomeDialog(dialog: HTMLDialogElement, phase: GameState['phase']): void {
+export function showOutcomeDialog(dialog: HTMLDialogElement, phase: GameState['phase'], allOut = false): void {
   dialog.addEventListener('cancel', preventDismissal)
   const button = (id: string) => dialog.querySelector<HTMLButtonElement>(`#${id}`)!,
     next = button('next'),
@@ -17,7 +17,9 @@ export function showOutcomeDialog(dialog: HTMLDialogElement, phase: GameState['p
   next.hidden = !cleared
   again.hidden = false
   select.hidden = false
-  select.textContent = defeat ? '編成を見直す' : 'ステージ選択へ'
+  // 総力戦 stages field every owned ally, so there is no formation to revisit: send the player back to the
+  // stage select (to recruit, or to try other stages) and say so.
+  select.textContent = defeat && !allOut ? '編成を見直す' : 'ステージ選択へ'
   for (const el of [next, again, select]) el.classList.toggle('primary', el === primary)
   if (!dialog.open) dialog.showModal()
   primary.focus({ preventScroll: true })
