@@ -112,6 +112,8 @@ import {
 import { showOutcomeDialog } from './input/OutcomeDialog'
 import {
   FORMATION_SLOTS,
+  ALL_OUT_FROM_STAGE,
+  battleFormation,
   STAGE_PROGRESS_KEY,
   awardStageClear,
   freshStageProgress,
@@ -260,7 +262,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><ul id="stage-goals" class="stage-goals" aria-label="星の条件"></ul><div id="stage-enemies" class="stage-enemies" role="group" aria-label="出現する敵"></div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><ul id="stage-goals" class="stage-goals" aria-label="星の条件"></ul><div id="stage-enemies" class="stage-enemies" role="group" aria-label="出現する敵"></div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成（ステージ1〜8）、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
@@ -1684,9 +1686,9 @@ let loadingTipTimer = 0
 function fillLoadingScreen(state: NonNullable<typeof campaignState>) {
   $('campaign-loading-stage').textContent = `STAGE ${String(state.stage).padStart(2, '0')}`
   const placed = [...new Set(state.units.filter((unit) => unit.owner === 'player').map((unit) => unit.type))],
-    party = placed.length ? placed : stageProgress.formation
+    party = placed.length ? placed : battleFormation(stageProgress, state.stage)
   $('campaign-loading-party').replaceChildren(
-    ...party.slice(0, FORMATION_SLOTS).map((type, i) => {
+    ...party.map((type, i) => {
       const img = document.createElement('img')
       img.src = displayPortrait(type) ?? ''
       img.alt = ''
@@ -1763,7 +1765,7 @@ function commitFreshCampaign() {
     connection?.cancelPending()
     replaceProgress(freshRunFromProfile({ version: 1, purchased: [...stageProgress.recruited] }, 2, 1))
     save.gold = stageStartGold(selectedStage)
-    save.formation = [...stageProgress.formation]
+    save.formation = battleFormation(stageProgress, selectedStage)
     engine = new GameEngine(engine.ai, save, undefined, undefined, undefined, DRAGON_BREATH_MOUTHS, 2, layoutRevision)
     engine.startAtStage(selectedStage)
     engine.setHistoryEnabled(historyEnabled)
@@ -1815,6 +1817,7 @@ function renderStageSelect() {
     card.setAttribute('aria-pressed', String(stage === selectedStage))
     const stars = starsOf(stageProgress, stage)
     card.querySelector('em')!.textContent = open ? `${cleared ? '✓ ' : ''}+${stageReward(stage)}` : '🔒'
+    card.dataset.allOut = String(stage >= ALL_OUT_FROM_STAGE)
     card.querySelector('.stage-stars')!.textContent = open ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : ''
     card.setAttribute('aria-label', `ステージ${stage}${open ? `・クリア報酬 ${stageReward(stage)} コイン${cleared ? `・クリア済み・星${stars}/3` : ''}` : '・未解放'}`)
   }
@@ -1858,23 +1861,29 @@ function renderStageSelect() {
   }
   updateStart()
   const have = owned(stageProgress)
-  $('formation-count').textContent = `${stageProgress.formation.length} / ${FORMATION_SLOTS}`
+  const allOut = selectedStage >= ALL_OUT_FROM_STAGE
+  $('formation-count').textContent = allOut ? '総力戦 · 持っている仲間全員で出撃' : `${stageProgress.formation.length} / ${FORMATION_SLOTS}`
+  $('formation-count').dataset.allOut = String(allOut)
   for (const card of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-ally]'))) {
     const type = card.dataset.ally as AllyType,
       mine = have.includes(type),
       inFormation = stageProgress.formation.includes(type),
+      fighting = mine && (allOut || inFormation),
       cost = DEFINITIONS[type].purchaseCost
-    card.dataset.state = inFormation ? 'formation' : mine ? 'owned' : 'recruit'
-    card.setAttribute('aria-pressed', String(inFormation))
+    card.dataset.state = fighting ? 'formation' : mine ? 'owned' : 'recruit'
+    card.setAttribute('aria-pressed', String(fighting))
+    card.dataset.allOut = String(allOut && mine)
     card.disabled = mine
-      ? inFormation
+      ? allOut
+        ? true
+        : inFormation
         ? stageProgress.formation.length === 1
         : stageProgress.formation.length >= FORMATION_SLOTS
       : stageProgress.coins < cost
-    card.querySelector('small')!.textContent = mine ? (inFormation ? '編成中' : '控え') : `招集 ${cost} コイン`
+    card.querySelector('small')!.textContent = mine ? (allOut ? '総力戦' : inFormation ? '編成中' : '控え') : `招集 ${cost} コイン`
     card.setAttribute(
       'aria-label',
-      `${DEFINITIONS[type].name}・${mine ? (inFormation ? '編成中、選ぶと外す' : '控え、選ぶと編成') : `${cost} コインで招集`}`
+      `${DEFINITIONS[type].name}・${mine ? (allOut ? '総力戦で出撃' : inFormation ? '編成中、選ぶと外す' : '控え、選ぶと編成') : `${cost} コインで招集`}`
     )
   }
 }
