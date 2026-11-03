@@ -32,6 +32,7 @@ import {
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { activeSynergies } from './synergies'
 import { LIFE_OUTCOMES, type LifeDecision } from './history'
+import { rankedCareer, type Career } from './careers'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -726,11 +727,22 @@ export class Game {
             text = LIFE_OUTCOMES.b_univ[career.studied ? 0 : 1]
           } else if (event.boss === 'b_shukatsu') {
             if (career.employed !== undefined) continue
-            career.employed = level('w_work') >= 2
+            const work = level('w_work') >= 2
+            const eligible: Career[] = []
+            if (work) eligible.push('bureaucrat')
+            if (sports >= 4) eligible.push('soccer')
+            if (assets >= 4) eligible.push('entrepreneur')
+            const selected =
+              rankedCareer(
+                player.weapons.map(({ id, lv }) => [id, lv]),
+                player.passives.map(({ id, lv }) => [id, lv]),
+                eligible
+              ) ?? (work ? 'bureaucrat' : undefined)
+            career.employed = selected === 'bureaucrat'
             reward = career.employed ? (career.studied ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
-            if (!career.employed && Math.max(sports, assets) >= 4) {
-              career.path = sports >= assets ? 'sports' : 'assets'
+            if (selected === 'soccer' || selected === 'entrepreneur') {
+              career.path = selected === 'soccer' ? 'sports' : 'assets'
               reward = 1
               text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : 4]
             }
