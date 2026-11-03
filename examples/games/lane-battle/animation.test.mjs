@@ -1,9 +1,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { beats, timing, flinch, knockout, KO_SECONDS } from './animation.js'
+import { beats, timing, flinch, knockout, KO_SECONDS, heldStrike } from './animation.js'
 import { Actor } from './models.js'
 import { POOPS, SPECIALS, ENEMIES, card, createGame, summon, step } from './simulation.js'
 const TYPES = [...POOPS, ...SPECIALS, ...ENEMIES]
+
+test('a strike keeps its original target until recovery expires or a new cycle starts', () => {
+  const target = { id: 2, hp: 0 }
+  const held = { target, at: 10, cycle: 0.3, strikes: 1 }
+  assert.equal(heldStrike(held, { strikes: 1 }, 10.2)?.target, target)
+  assert.equal(heldStrike(held, { strikes: 1 }, 10.3), null)
+  assert.equal(heldStrike(held, { strikes: 2 }, 10.1), null)
+  assert.equal(heldStrike({ ...held, cycle: 1 }, { strikes: 1 }, 10.5), null)
+  assert.equal(heldStrike(held, { strikes: 1 }, 9.9), null)
+})
 const TEMPOS = {
   katachi: [0.4, 0.035],
   korokoro: [0.45, 0.03],
