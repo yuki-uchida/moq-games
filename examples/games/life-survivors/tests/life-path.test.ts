@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 import { EVENTS, MAX_PASSIVE_LEVEL, MAX_WEAPON_LEVEL, PASSIVES, PASSIVE_SLOTS, TALENT_WEAPONS } from '../src/data'
 import { Game, weaponSlots, type Player } from '../src/game'
 import { readView, toView } from '../src/view'
+import { careerFor } from '../src/art/careers'
+import { LIFE_OUTCOMES } from '../src/history'
 
 const equip = (player: Player, id: string, lv: number) => {
   player.weapons = [{ id, lv, cd: 100, held: 0, damage: 0 }]
@@ -25,7 +27,7 @@ const arena = () => {
 }
 
 describe('education and career history', () => {
-  test('eight personal paths preserve work priority, maxima, ties and terminal validation', () => {
+  test('eight personal paths share appearance ranking, preserve history and validate terminal views', () => {
     const { game, players } = arena()
     const builds: [string, number][][] = [
       [['w_sports', 4]],
@@ -61,7 +63,7 @@ describe('education and career history', () => {
       ...Array(2).fill('運動を磨き、スポーツの道へ。転機を1回獲得。'),
       ...Array(3).fill('資産を育て、資産を活かす道へ。転機を1回獲得。'),
       '運動を磨き、スポーツの道へ。転機を1回獲得。',
-      '実務を磨き、現場で就職。転機を1回獲得。',
+      '運動を磨き、スポーツの道へ。転機を1回獲得。',
       '就職を急がず、自分の道を探す。'
     ])
     const decisions = players.map((player) => [...player.history])
@@ -73,7 +75,7 @@ describe('education and career history', () => {
     expect(players.map((player) => player.careerPending)).toEqual([1, 2, 2, 1, 2, 2, 1, 0])
     expect(players[0].downed).toBe(true)
     expect(players[0].hp).toBe(0)
-    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(1)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(0)
     expect(
       toView(game.state).players.every((player) => player.history === undefined && player.talents === undefined)
     ).toBe(true)
@@ -82,6 +84,169 @@ describe('education and career history', () => {
     expect(readView(terminal)).toBeTruthy()
     expect(terminal.players.map((player: Player) => player.history)).toEqual(players.map((player) => player.history))
     expect(terminal.players.every((player: Player) => !('path' in player))).toBe(true)
+  })
+
+  test.each<{
+    name: string
+    weapons: [string, number][]
+    passive?: string
+    outcome: number
+    appearance?: string
+  }>([
+    {
+      name: 'sports outranks qualified work',
+      weapons: [
+        ['w_work', 2],
+        ['w_sports', 8]
+      ],
+      outcome: 3,
+      appearance: 'soccer'
+    },
+    {
+      name: 'assets outrank qualified work',
+      weapons: [
+        ['w_work', 2],
+        ['w_invest', 8]
+      ],
+      outcome: 4,
+      appearance: 'entrepreneur'
+    },
+    {
+      name: 'study contributes to qualified work',
+      weapons: [
+        ['w_work', 2],
+        ['w_study', 8],
+        ['w_sports', 7]
+      ],
+      outcome: 1,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'reading contributes to qualified work',
+      weapons: [
+        ['w_work', 2],
+        ['w_reading', 8],
+        ['w_invest', 7]
+      ],
+      outcome: 1,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'overtime contributes to qualified work',
+      weapons: [
+        ['w_work', 2],
+        ['w_overtime', 8],
+        ['w_muscle', 7]
+      ],
+      outcome: 1,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'definition order puts investment before muscle',
+      weapons: [
+        ['w_muscle', 5],
+        ['w_invest', 5]
+      ],
+      outcome: 4,
+      appearance: 'entrepreneur'
+    },
+    {
+      name: 'definition order puts study before investment',
+      weapons: [
+        ['w_invest', 8],
+        ['w_work', 2],
+        ['w_study', 8]
+      ],
+      outcome: 1,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'definition order puts sports before study',
+      weapons: [
+        ['w_study', 8],
+        ['w_work', 2],
+        ['w_sports', 8]
+      ],
+      outcome: 3,
+      appearance: 'soccer'
+    },
+    {
+      name: 'evolved investment beats earlier sports',
+      weapons: [
+        ['w_sports', 8],
+        ['w_work', 2],
+        ['w_invest', 8]
+      ],
+      passive: 'p_greedy',
+      outcome: 4,
+      appearance: 'entrepreneur'
+    },
+    {
+      name: 'evolved reading beats earlier sports',
+      weapons: [
+        ['w_sports', 8],
+        ['w_work', 2],
+        ['w_reading', 8]
+      ],
+      passive: 'p_curious',
+      outcome: 1,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'unqualified study is ignored',
+      weapons: [
+        ['w_study', 8],
+        ['w_work', 1],
+        ['w_invest', 4]
+      ],
+      outcome: 4,
+      appearance: 'bureaucrat'
+    },
+    {
+      name: 'gambling contributes to qualified assets',
+      weapons: [
+        ['w_sports', 7],
+        ['w_savings', 4],
+        ['w_gamble', 8]
+      ],
+      outcome: 4,
+      appearance: 'entrepreneur'
+    },
+    {
+      name: 'gambling alone cannot qualify assets',
+      weapons: [
+        ['w_gamble', 8],
+        ['w_work', 2]
+      ],
+      outcome: 1,
+      appearance: 'entrepreneur'
+    },
+    {
+      name: 'gambling without qualifications finds own path',
+      weapons: [['w_gamble', 8]],
+      outcome: 2,
+      appearance: 'entrepreneur'
+    },
+    { name: 'level two work needs no ranked appearance', weapons: [['w_work', 2]], outcome: 1 },
+    { name: 'level three work needs no ranked appearance', weapons: [['w_work', 3]], outcome: 1 }
+  ])('$name', ({ weapons, passive, outcome, appearance }) => {
+    const game = new Game(123)
+    const player = game.addPlayer('worker', 'p_free')!
+    player.weapons = weapons.map(([id, lv]) => ({ id, lv, cd: 100, held: 0, damage: 999999 }))
+    player.passives = passive ? [{ id: passive, lv: 1 }] : []
+    expect(careerFor(toView(game.state).players[0])).toBe(appearance)
+    event(game, 'b_shukatsu')
+    expect(player.history[0].outcome).toBe(LIFE_OUTCOMES.b_shukatsu[outcome])
+    expect(player.careerPending).toBe(outcome === 2 ? 0 : 1)
+    expect(toView(game.state).players[0]).not.toHaveProperty('history')
+    const decision = { ...player.history[0] }
+    equip(player, outcome === 3 ? 'w_invest' : 'w_sports', 8)
+    event(game, 'b_layoff')
+    expect(player.history[0]).toEqual(decision)
+    expect(player.careerPending).toBe(outcome === 2 ? 0 : 1)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'b_layoff')).toHaveLength(outcome === 1 ? 1 : 0)
+    game.state.phase = 'lost'
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
   })
 
   test.each(['w_sports', 'w_muscle', 'w_invest', 'w_savings'])(
@@ -124,18 +289,32 @@ describe('education and career history', () => {
     expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
   })
 
-  test('education keeps the two-point job reward ahead of both alternative paths', () => {
-    const {
-      game,
-      players: [player]
-    } = arena()
-    equip(player, 'w_study', 3)
-    event(game, 'b_univ')
-    player.weapons = ['w_work', 'w_sports', 'w_invest'].map((id) => ({ id, lv: 8, cd: 100, held: 0, damage: 0 }))
-    event(game, 'b_shukatsu')
-    expect(player.careerPending).toBe(2)
-    expect(player.history.at(-1)!.outcome).toContain('専門職')
-  })
+  test.each([
+    ['w_work', 2, 0],
+    ['w_sports', 1, 3],
+    ['w_invest', 1, 4]
+  ] as const)(
+    'education preserves the reward for selected %s, not automatic employment',
+    (leading, reward, outcome) => {
+      const {
+        game,
+        players: [player]
+      } = arena()
+      equip(player, 'w_study', 3)
+      event(game, 'b_univ')
+      expect(player.careerPending).toBe(1)
+      player.weapons = ['w_work', 'w_sports', 'w_invest'].map((id) => ({
+        id,
+        lv: id === leading ? 8 : 7,
+        cd: 100,
+        held: 0,
+        damage: 0
+      }))
+      event(game, 'b_shukatsu')
+      expect(player.careerPending).toBe(reward)
+      expect(player.history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_shukatsu[outcome])
+    }
+  )
 
   test('a late participant can choose a future path but not one at their join boundary', () => {
     const game = new Game(123)

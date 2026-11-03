@@ -713,7 +713,10 @@ test('sports and asset paths reach only their own terminal history over snapshot
       player.birthPick = false
       player.pending = 0
       player.choices = []
-      player.weapons = [{ id: player.id === id ? 'w_savings' : 'w_muscle', lv: 4, cd: 100, held: 0, damage: 0 }]
+      player.weapons = [
+        { id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 },
+        { id: player.id === id ? 'w_savings' : 'w_muscle', lv: 4, cd: 100, held: 0, damage: 0 }
+      ]
     }
     for (const boss of ['b_shukatsu', 'b_layoff']) {
       const index = EVENTS.findIndex((event: { boss: string }) => event.boss === boss)
@@ -723,6 +726,18 @@ test('sports and asset paths reach only their own terminal history over snapshot
       game.tick(0.01)
     }
   }, guestId)
+  await expect
+    .poll(() =>
+      guestLife.evaluate(async (hook, id) => {
+        const careerPath = '/src/art/careers.ts'
+        const { careerFor } = await import(careerPath)
+        const players = (hook.view as unknown as View).players
+        const hostPlayer = players.find((player) => player.id !== id)
+        const guestPlayer = players.find((player) => player.id === id)
+        return hostPlayer && guestPlayer ? [careerFor(hostPlayer), careerFor(guestPlayer)] : []
+      }, guestId)
+    )
+    .toEqual(['soccer', 'entrepreneur'])
   await expect(guest.locator('#feed')).toContainText('資産を活かす道を広げる')
   await expect(host.locator('#feed')).toContainText('スポーツの道を広げる')
   expect(
