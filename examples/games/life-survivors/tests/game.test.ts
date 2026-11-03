@@ -14,7 +14,17 @@ import {
   WEAPON_BY_ID,
   WEAPON_SLOTS
 } from '../src/data'
-import { GIFTED, Game, POOR, REAPER_SECONDS, STRONG_MULTIPLIER, isEvolved, weaponName, weaponStats, xpForLevel } from '../src/game'
+import {
+  GIFTED,
+  Game,
+  POOR,
+  REAPER_SECONDS,
+  STRONG_MULTIPLIER,
+  isEvolved,
+  weaponName,
+  weaponStats,
+  xpForLevel
+} from '../src/game'
 import { readView, toView } from '../src/view'
 import { MAX_PAYLOAD_BYTES } from '../../rabbiters/src/network'
 import { playLife } from './bot'
@@ -50,8 +60,8 @@ describe('birth', () => {
       expect(PARENTS.map((p) => p.id)).toContain(player.parent)
       expect(player.weapons.map((w) => w.id)).toEqual(player.parent === 'p_gone' ? [] : [player.parent])
       const values = TALENT_CATEGORIES.map((c) => player.talents[c])
-      expect(values.filter((v) => v === GIFTED)).toHaveLength(2)
-      expect(values.filter((v) => v === POOR).length).toBeGreaterThanOrEqual(1)
+      expect(values).toHaveLength(6)
+      expect(values.every((v) => v >= POOR && v <= GIFTED)).toBe(true)
       expect(toView(game.state).players[0].talents).toBeUndefined()
     }
   })

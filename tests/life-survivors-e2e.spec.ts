@@ -1,11 +1,48 @@
 import { expect, test, type Page } from '@playwright/test'
 
 type Life = {
-  game: { state: { time: number; xpNext: number; players: { id: string; choices: string[]; x: number }[] }; gainXp(n: number): void }
+  game: {
+    state: { time: number; xpNext: number; players: { id: string; choices: string[]; x: number }[] }
+    gainXp(n: number): void
+  }
   view: { time: number; phase: string; players: { id: string; x: number; choices: string[] }[] }
   localId: string
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
+
+test('turning point cards show their talent category without revealing talent values', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((l) => {
+    const player = l.game.state.players[0] as (typeof l.game.state.players)[number] & {
+      choiceSeq: number
+      birthPick: boolean
+      pending: number
+    }
+    player.birthPick = false
+    player.pending = 0
+    player.choices = ['w:w_study', 'p:p_savvy']
+    player.choiceSeq++
+  })
+  await expect(page.locator('#cards .card').nth(0)).toContainText('知性系')
+  await expect(page.locator('#cards .card').nth(1)).toContainText('対人系')
+  await expect(page.locator('#cards .card').nth(1)).toContainText('基準値')
+  expect(await handle.evaluate((l) => l.view.players[0])).not.toHaveProperty('talents')
+  await page
+    .locator('#cards .card')
+    .evaluateAll((cards) =>
+      Promise.all(cards.flatMap((card) => card.getAnimations().map((animation) => animation.finished)))
+    )
+  await page.screenshot({ path: testInfo.outputPath('talent-cards-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: testInfo.outputPath('talent-cards-mobile.png') })
+  await page.locator('#cards .card').first().click()
+  await page.getByRole('button', { name: '遊び方を表示' }).click()
+  await expect(page.getByRole('img', { name: '秘密の才能の六角形' })).toBeVisible()
+  await expect(page.locator('#help-close')).toBeFocused()
+  await page.screenshot({ path: testInfo.outputPath('talent-guide-mobile.png') })
+})
 
 test('a full build skips ordinary level-ups and offers an optional weapon swap', async ({ page }) => {
   await page.goto('/')

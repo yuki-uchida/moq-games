@@ -227,7 +227,7 @@ export function readView(value: unknown): View | undefined {
     ['playing', 'reaper', 'won', 'lost'].includes(v.phase as string) &&
     Array.isArray(v.players) &&
     v.players.length <= MAX_GAME_PLAYERS &&
-    v.players.every(playerOk) &&
+    v.players.every((p) => playerOk(p) && (v.phase === 'won' || v.phase === 'lost' || p.talents === undefined)) &&
     flat(v.enemies, STRIDE.enemies, VIEW_CAPS.enemies) &&
     flat(v.shots, STRIDE.shots, VIEW_CAPS.shots) &&
     flat(v.bullets, STRIDE.bullets, VIEW_CAPS.bullets) &&

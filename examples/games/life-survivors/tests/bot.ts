@@ -1,5 +1,5 @@
 import { toView } from '../src/view'
-import { Game, GIFTED, POOR, type Player } from '../src/game'
+import { Game, type Player } from '../src/game'
 import { ENEMY_BY_ID, RUN_SECONDS, WEAPON_BY_ID } from '../src/data'
 
 /** A simple kiting autopilot used by tests to play whole lives headlessly. */
@@ -8,6 +8,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
   let x = 0
   let y = 0
   let nearestEnemy: { dx: number; dy: number; d: number } | undefined
+  let beamTarget: { dx: number; dy: number; d: number } | undefined
   for (const enemy of game.state.enemies) {
     const dx = player.x - enemy.x
     const dy = player.y - enemy.y
@@ -19,6 +20,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
       y += (dy / d) * ((room - d) / room) * 3
     }
     if (!nearestEnemy || d < nearestEnemy.d) nearestEnemy = { dx, dy, d }
+    if (d > 100 && d < 320 && (!beamTarget || d < beamTarget.d)) beamTarget = { dx, dy, d }
     if (strategy === 'smart' && enemy.windup > 0 && d < 420) {
       // A telegraphed charge: step off the line it is about to run along.
       const ax = enemy.tx - enemy.x
@@ -81,6 +83,14 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
     x -= (nearestEnemy.dx / nearestEnemy.d) * 0.7
     y -= (nearestEnemy.dy / nearestEnemy.d) * 0.7
   }
+  if (
+    strategy === 'smart' &&
+    beamTarget &&
+    player.weapons.some((weapon) => WEAPON_BY_ID.get(weapon.id)?.behavior === 'beam' && weapon.cd <= 0.11)
+  ) {
+    x = -beamTarget.dx
+    y = -beamTarget.dy
+  }
   const l = Math.hypot(x, y)
   let pick = -1
   if (player.choices.length) {
@@ -98,8 +108,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
       const def = WEAPON_BY_ID.get(id)!
       const talent = def.category ? player.talents[def.category] : 1
       const owned = player.weapons.some((w) => w.id === id)
-      const [good, worse] = strategy === 'smart' ? [GIFTED, POOR] : [POOR, GIFTED]
-      const fit = talent === good ? 5 : talent === worse ? 0.1 : 1.6
+      const fit = strategy === 'smart' ? talent ** 3 * 1.6 : 1.6 / talent ** 3
       // Depth beats breadth: a card you already hold keeps growing.
       return owned ? fit * 2 + 1 : fit
     }
@@ -109,7 +118,12 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
   return { x: l > 0 ? x / l : 0, y: l > 0 ? y / l : 0, pick, pickSeq: player.choiceSeq }
 }
 
-export function playLife(seed: number, strategy: 'smart' | 'random' | 'bad', players = 1, maxSeconds = RUN_SECONDS + 10) {
+export function playLife(
+  seed: number,
+  strategy: 'smart' | 'random' | 'bad',
+  players = 1,
+  maxSeconds = RUN_SECONDS + 10
+) {
   const game = new Game(seed)
   for (let i = 0; i < players; i++) game.addPlayer(`p${i}`)
   let peak = 0

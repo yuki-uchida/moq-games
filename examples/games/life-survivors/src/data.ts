@@ -110,27 +110,16 @@ export type Behavior =
   | 'fan'
   | 'none'
 
-export type TalentCategory = 'friend' | 'sports' | 'study' | 'work' | 'love' | 'hobby' | 'invest' | 'beauty'
+export type TalentCategory = 'friend' | 'love' | 'sports' | 'hobby' | 'study' | 'invest'
 export const TALENT_NAMES: Record<TalentCategory, string> = {
-  friend: '友人',
-  sports: 'スポーツ',
-  study: '勉強',
-  work: '仕事',
+  friend: '対人',
+  sports: '身体',
+  study: '知性',
   love: '恋愛',
-  hobby: '娯楽',
-  invest: '投資',
-  beauty: '美容'
+  hobby: '創造',
+  invest: '資産'
 }
-export const TALENT_CATEGORIES: TalentCategory[] = [
-  'friend',
-  'sports',
-  'study',
-  'work',
-  'love',
-  'hobby',
-  'invest',
-  'beauty'
-]
+export const TALENT_CATEGORIES: TalentCategory[] = ['friend', 'love', 'sports', 'hobby', 'study', 'invest']
 
 export interface WeaponDef {
   id: string
@@ -140,7 +129,7 @@ export interface WeaponDef {
   behavior: Behavior
   /** Parent weapons are dealt at birth and never offered on level-up. */
   parent?: boolean
-  category?: TalentCategory
+  category: TalentCategory
   damage: number
   cooldown: number
   amount: number
@@ -158,7 +147,7 @@ export interface WeaponDef {
 }
 
 const weapon = (
-  def: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'icon' | 'behavior' | 'desc'>
+  def: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'icon' | 'behavior' | 'desc' | 'category'>
 ): WeaponDef => ({
   color: '#fff',
   damage: 10,
@@ -177,6 +166,7 @@ const weapon = (
 export const PARENTS: WeaponDef[] = [
   weapon({
     id: 'p_toxic',
+    category: 'friend',
     name: '毒親',
     icon: '☠️',
     color: '#a46be0',
@@ -193,6 +183,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_edu',
+    category: 'study',
     name: '教育親',
     icon: '📚',
     color: '#5fc2c9',
@@ -209,6 +200,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_free',
+    category: 'hobby',
     name: '放任主義',
     icon: '🎈',
     color: '#f2c94c',
@@ -226,6 +218,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_weak',
+    category: 'friend',
     name: '頼りない親',
     icon: '🫠',
     color: '#c7b8a3',
@@ -241,6 +234,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_over',
+    category: 'love',
     name: '過保護',
     icon: '🛡️',
     color: '#8fb8de',
@@ -260,6 +254,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_monster',
+    category: 'friend',
     name: 'モンスターペアレント',
     icon: '👹',
     color: '#e0704f',
@@ -278,6 +273,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_rich',
+    category: 'invest',
     name: 'お金持ち',
     icon: '💰',
     color: '#e0b93f',
@@ -295,6 +291,7 @@ export const PARENTS: WeaponDef[] = [
   }),
   weapon({
     id: 'p_gone',
+    category: 'sports',
     name: '蒸発済み',
     icon: '🌫️',
     color: '#9aa3ad',
@@ -388,7 +385,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     icon: '✨',
     color: '#f5d0f0',
     behavior: 'whip',
-    category: 'beauty',
+    category: 'love',
     damage: 17,
     cooldown: 1.25,
     area: 150,
@@ -423,7 +420,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     icon: '💼',
     color: '#6d8fd6',
     behavior: 'arc',
-    category: 'work',
+    category: 'study',
     damage: 24,
     cooldown: 1.5,
     speed: 520,
@@ -534,7 +531,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     icon: '🖇️',
     color: '#6d8fd6',
     behavior: 'barrage',
-    category: 'work',
+    category: 'study',
     damage: 6,
     cooldown: 2.3,
     amount: 1,
@@ -647,7 +644,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     icon: '🌸',
     color: '#b98ae6',
     behavior: 'trail',
-    category: 'beauty',
+    category: 'love',
     damage: 6,
     cooldown: 0.35,
     amount: 1,
@@ -685,6 +682,7 @@ export const WEAPON_BY_ID = new Map(WEAPONS.map((def) => [def.id, def]))
 export const WEAPON_INDEX = new Map(WEAPONS.map((def, index) => [def.id, index]))
 
 export interface PassiveDef {
+  category: TalentCategory
   id: string
   name: string
   icon: string
@@ -692,18 +690,18 @@ export interface PassiveDef {
 }
 
 export const PASSIVES: PassiveDef[] = [
-  { id: 'p_diligent', name: '勤勉', icon: '📖', desc: 'クールダウン -7%' },
-  { id: 'p_stubborn', name: '頑固', icon: '🗿', desc: '防御 +1' },
-  { id: 'p_hot', name: '熱い', icon: '🔥', desc: '威力 +10%' },
-  { id: 'p_kind', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
-  { id: 'p_greedy', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%・投資 +15%' },
-  { id: 'p_bold', name: '図太い', icon: '🐘', desc: '精神力の最大値 +20' },
-  { id: 'p_optimist', name: '楽天家', icon: '🌈', desc: '精神力の自然回復 +0.4/秒' },
-  { id: 'p_healthy', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' },
-  { id: 'p_lucky', name: '運がいい', icon: '🍀', desc: '会心率 +5%・転機の札が増えることも' },
-  { id: 'p_clever', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）' },
-  { id: 'p_curious', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
-  { id: 'p_savvy', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' }
+  { id: 'p_diligent', category: 'study', name: '勤勉', icon: '📖', desc: 'クールダウン -7%' },
+  { id: 'p_stubborn', category: 'sports', name: '頑固', icon: '🗿', desc: '防御 +1' },
+  { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +10%' },
+  { id: 'p_kind', category: 'friend', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
+  { id: 'p_greedy', category: 'invest', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%・投資 +15%' },
+  { id: 'p_bold', category: 'sports', name: '図太い', icon: '🐘', desc: '精神力の最大値 +20' },
+  { id: 'p_optimist', category: 'love', name: '楽天家', icon: '🌈', desc: '精神力の自然回復 +0.4/秒' },
+  { id: 'p_healthy', category: 'sports', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' },
+  { id: 'p_lucky', category: 'invest', name: '運がいい', icon: '🍀', desc: '会心率 +5%・転機の札が増えることも' },
+  { id: 'p_clever', category: 'hobby', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）・威力 +3%' },
+  { id: 'p_curious', category: 'hobby', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
+  { id: 'p_savvy', category: 'friend', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' }
 ]
 export const PASSIVE_BY_ID = new Map(PASSIVES.map((def) => [def.id, def]))
 
@@ -1093,7 +1091,8 @@ export const EVENTS: LifeEvent[] = (
     { at: 1680, swarm: 'forget', count: 30, text: '物忘れがひどくなってきた…' },
     { at: 1740, swarm: 'illness', count: 60, text: '最後の試練。あと少し…！' }
   ] as LifeEvent[]
-).map((event) => ({ ...event, at: timeAtAge((event.at / (30 * 60)) * LIFESPAN) }))
+)
+  .map((event) => ({ ...event, at: timeAtAge((event.at / (30 * 60)) * LIFESPAN) }))
   .sort((a, b) => a.at - b.at)
 
 export const PLAYER_COLORS = ['#ffd166', '#06d6a0', '#ef476f', '#4cc9f0', '#f78c6b', '#b388eb', '#90be6d', '#f9c74f']

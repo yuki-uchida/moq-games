@@ -38,6 +38,16 @@ describe('蒸発済み: 自立', () => {
     }
   })
 
+  test('the smart bot points a ready beam toward a safely distant enemy', () => {
+    const game = new Game(39)
+    const player = game.addPlayer('a', 'p_gone')!
+    player.weapons.push({ id: 'w_reading', lv: 1, cd: 0.05, held: 0, damage: 0 })
+    game.spawnEnemy('germ', player.x + 200, player.y)
+    const input = botInput(game, player, 'smart')
+    expect(input.x).toBeCloseTo(1)
+    expect(input.y).toBeCloseTo(0)
+  })
+
   test('without injected experience a smart bot gets going within 180 s', () => {
     const report: string[] = []
     for (const seed of [39, 46, 50, 1, 2, 3, 4]) {

@@ -103,7 +103,7 @@ describe('new talent weapons', () => {
       expect(def.evolve).toEqual({ passive: want.passive, name: want.name })
       expect(def.desc.length).toBeGreaterThan(8)
     }
-    expect(TALENT_NAMES.hobby).toBe('娯楽')
+    expect(TALENT_NAMES.hobby).toBe('創造')
     expect(Object.keys(TALENT_NAMES).sort()).toEqual([...TALENT_CATEGORIES].sort())
   })
 
