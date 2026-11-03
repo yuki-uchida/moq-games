@@ -720,7 +720,9 @@ export class Game {
 
   /** Marks `player` as busy with a hold-E job this tick; the HUD shows `label` with a gauge at `progress` (0..1). */
   work(player: Player, label: string, progress: number) {
-    player.task = { label, progress: round(clamp(progress, 0, 1)) }
+    // Only a finished job reads 100%: rounding must not turn 99.6% into a completion (the gauge and the
+    // game-feel layer both treat 1 as done).
+    player.task = { label, progress: progress >= 1 ? 1 : Math.min(0.99, round(clamp(progress, 0, 1))) }
     // A finished job stays on the gauge (at 100%) for a moment, so everyone sees it complete.
     if (player.task.progress >= 1) this.finished.set(player.id, { task: player.task, until: this.state.time + 0.8 })
     else this.finished.delete(player.id)

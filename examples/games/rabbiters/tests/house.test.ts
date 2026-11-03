@@ -167,6 +167,14 @@ describe('Chapter 1: the house', () => {
     expect(player.task).toBeUndefined()
   })
 
+  it('never reports an unfinished job as 100%, however close', () => {
+    const { game, player } = solo()
+    game.work(player, 'かじる', 0.996)
+    expect(player.task?.progress).toBe(0.99)
+    game.work(player, 'かじる', 1)
+    expect(player.task?.progress).toBe(1)
+  })
+
   it('feeds the game-feel layer: a real hold-E job ticks and finishes once, and letting go early does not', () => {
     const { game, player } = solo()
     Object.assign(game.state, { step: 1, talk: null })
