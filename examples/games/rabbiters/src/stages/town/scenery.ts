@@ -8,6 +8,7 @@ import { buildCar } from '../../models'
 import type { Scenery, SceneryState, StageLook } from '../../story'
 import { Kit, buildScenery, gableRoof } from '../scenery-kit'
 import {
+  BICYCLES,
   BREAD,
   DISPLAYS,
   DRAIN_MOUTH,
@@ -168,8 +169,7 @@ function props(kit: Kit, statics: THREE.Group): Lit[] {
           [-side * 0.5, 0, 0]
         )
     }
-  bicycle(kit, place(-100, 0, 2.2, Math.PI / 2), '#d9d4c8')
-  bicycle(kit, place(-146, 0, -12.9, Math.PI / 2 + 0.05), '#3a8ac0')
+  for (const bike of BICYCLES) bicycle(kit, place(bike.x, 0, bike.z, bike.angle), bike.color)
   for (const stand of STANDS) {
     // Bus-stop bench (slats on a steel frame, with the stop's sign) and the pet-shop stand: a top on two legs.
     const x = (stand.minX + stand.maxX) / 2

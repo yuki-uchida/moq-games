@@ -4,7 +4,7 @@
 // with the chained dog and the gap under the fence. Walls and tall furniture are baked into the height grid
 // (blocking movement and sight); low furniture is an overhang to crawl under. This file imports only ../kit and
 // types (see map.ts); the script and scenery read the named layout below.
-import type { Capsule, FoodSpot, Gate, Overhang, PredatorStart, StageMap, TunnelNode, Zone } from '../../map'
+import type { Blocker, Capsule, FoodSpot, Gate, Overhang, PredatorStart, StageMap, TunnelNode, Zone } from '../../map'
 import { grid, type Circle, type Rect } from '../kit'
 
 export const WORLD = { minX: -50, maxX: 50, minZ: -45, maxZ: 60 } as const
@@ -95,8 +95,21 @@ export const SOLIDS: (Rect & { h: number; name: string })[] = [
   { ...r(-8, -6, -36, -33), h: 2, name: 'toilet' },
   { ...r(38, 40, -30, -16), h: 6, name: 'bookshelf' },
   { ...r(-4, 0, -36, -33.5), h: 4, name: 'tansu' },
-  { ...r(-0.5, 4.5, 40.5, 45.5), h: 3.2, name: 'doghouse' }
+  { ...r(-0.5, 4.5, 40.5, 45.5), h: 3.2, name: 'doghouse' },
+  { ...r(-3.75, -2.5, 15, 23.5), h: 3.4, name: 'sideboard' },
+  // The TV's screen on its board, the wash stool and its bucket.
+  { ...r(-37.75, -37.45, 2.8, 11.2), h: 5.55, name: 'tvscreen' },
+  { ...r(-10.75, -9.25, -31, -30), h: 0.9, name: 'stool' },
+  { ...r(-8.95, -7.85, -30.75, -29.65), h: 0.8, name: 'bucket' }
 ]
+/**
+ * Thin things standing on the floor, too thin for the height grid: the clothesline poles, and the pantry's two side
+ * panels as rows of posts (top 0: they stop rabbits but, open shelves that they are, hide nobody from the kitchen).
+ */
+export const POLES: Blocker[] = [17, 35].map((x) => ({ x, z: 36, r: 0.15, top: 7, kind: 'rock' }))
+const PANTRY_SIDES: Blocker[] = [29, 35].flatMap((x) =>
+  [-5.6, -5.2, -4.8, -4.4].map((z): Blocker => ({ x, z, r: 0.15, top: 0, kind: 'rock' }))
+)
 
 /** Low furniture: rabbits crawl under (crouch when `bottom` < 1.3); people can't follow. */
 export const FURNITURE: (Overhang & { name: string })[] = [
@@ -251,7 +264,7 @@ export function buildMap(): StageMap {
     grass: GRASS_PATCHES,
     bushes: BUSHES,
     trees: [],
-    rocks: [],
+    rocks: [...POLES, ...PANTRY_SIDES],
     logs: [],
     shelters: SHELTERS,
     caves: [],

@@ -14,6 +14,7 @@ import {
   FLOODED,
   FOOTBRIDGE,
   GRASS,
+  HILL_TREES,
   LOOP,
   OVERHANGS,
   PIPE,
@@ -27,6 +28,7 @@ import {
   SLIDE,
   SPOTS,
   STONES,
+  SWING_POSTS,
   TREES,
   ZONES
 } from './map'
@@ -286,7 +288,7 @@ function parkProps(parts: Part[]) {
     [SANDBOX.maxX, (SANDBOX.minZ + SANDBOX.maxZ) / 2, 0.4, SANDBOX.maxZ - SANDBOX.minZ]
   ])
     parts.push(box('#b07a4a', [x, 0.2, z], [w, 0.4, d]))
-  for (const ox of [-4, 4]) parts.push(box('#3d7cc9', [108 + ox, 4, 20], [0.3, 8, 0.3]))
+  for (const { x, z } of SWING_POSTS) parts.push(box('#3d7cc9', [x, 4, z], [0.3, 8, 0.3]))
   parts.push(box('#3d7cc9', [108, 8, 20], [8.6, 0.3, 0.3]))
   for (let index = 0; index < 22; index++) {
     const angle = (index / 22) * Math.PI * 2
@@ -307,11 +309,11 @@ function parkProps(parts: Part[]) {
   ])
     parts.push(box('#6e5236', [124.5, 4.6, (z0 + z1) / 2], [0.4, 0.3, z1 - z0]))
   for (const z of [-64.5, 64.5]) parts.push(box('#6e5236', [77, 4.6, z], [94, 0.3, 0.4]))
-  // The back hill's trees, and lamp posts along the loop.
-  for (const z of [-56, -44, -22, -8, 6, 22, 40, 54]) {
-    const y = ground0(130, z)
-    parts.push(cyl('#5d4128', [130, y + 4, z], [1, 8, 1]))
-    parts.push({ shape: 'cone', color: '#3f7a3c', at: [130, y + 10, z], size: [6, 10, 6] })
+  // The pines on the back hill.
+  for (const tree of HILL_TREES) {
+    const y = ground0(tree.x, tree.z)
+    parts.push(cyl('#5d4128', [tree.x, y + 4, tree.z], [1, 8, 1]))
+    parts.push({ shape: 'cone', color: '#3f7a3c', at: [tree.x, y + 10, tree.z], size: [6, 10, 6] })
   }
 }
 

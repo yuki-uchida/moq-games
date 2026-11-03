@@ -228,7 +228,7 @@ export const PARK_CREATURES: PredatorStart[] = [
     z: 20,
     route: [
       { x: 92, z: 20, wait: 5 },
-      { x: 110, z: 20 },
+      { x: 110, z: 18 }, // below the swing frame, clear of its posts
       { x: 112, z: 42, wait: 6 },
       { x: 96, z: 42 },
       { x: 92, z: 30, wait: 4 }
@@ -378,6 +378,47 @@ export const TREES: Blocker[] = [
   [76, 60],
   [36, 46]
 ].map(([x, z]) => ({ x, z, r: 0.6, top: 14, kind: 'tree' as const }))
+/** The pines on the back hill beyond the fence. */
+export const HILL_TREES: Blocker[] = [-56, -44, -22, -8, 6, 22, 40, 54].map((z) => ({
+  x: 130,
+  z,
+  r: 0.5,
+  top: heightOf(130, z) + 15,
+  kind: 'tree'
+}))
+/** The swing frame's two posts. */
+export const SWING_POSTS: readonly Point[] = [
+  { x: 104, z: 20 },
+  { x: 112, z: 20 }
+]
+const post = (x: number, z: number, r: number, top: number): Blocker => ({ x, z, r, top, kind: 'rock' })
+/**
+ * Props too thin or too small for the height grid, as posts: the valve posts, the worker's ladder and toolbox, the
+ * outfall's concrete frame, the angler's bucket, the slide's legs and chute, the swing posts and the bench legs.
+ */
+const PROPS: Blocker[] = [
+  post(SPOTS.valve.x, SPOTS.valve.z - 1.4, 0.45, 3),
+  post(SPOTS.valve2.x + 1.4, SPOTS.valve2.z, 0.45, 3),
+  post(-88.7, 17.6, 0.1, 8),
+  post(-87.3, 17.6, 0.1, 8),
+  post(-83.5, 16, 0.5, 0.8),
+  post(-82.5, 16, 0.5, 0.8),
+  post(-44.6, PIPE.minZ - 1, 0.7, 10),
+  post(-44.6, PIPE.maxZ + 1, 0.7, 10),
+  post(-36.2, 13.6, 0.45, 1),
+  ...[-1.8, 1.8].flatMap((ox) =>
+    [-1.8, 1.8].map((oz) => post((SLIDE.minX + SLIDE.maxX) / 2 + ox, (SLIDE.minZ + SLIDE.maxZ) / 2 + oz, 0.2, 5.6))
+  ),
+  ...[27, 29, 31].map((z) => post((SLIDE.minX + SLIDE.maxX) / 2, z, 1.2, 1)),
+  ...SWING_POSTS.map(({ x, z }) => post(x, z, 0.2, 8)),
+  ...BENCHES.flatMap(({ x, z, along }) =>
+    [-4, 4].flatMap((end) =>
+      [-0.8, 0, 0.8].map((across) =>
+        along === 'x' ? post(x + end, z + across, 0.3, 1.5) : post(x + across, z + end, 0.3, 1.5)
+      )
+    )
+  )
+]
 
 const food = (x: number, z: number, kind: FoodSpot['kind']): FoodSpot => ({
   x,
@@ -476,8 +517,8 @@ export function buildMap(): StageMap {
     predatorStarts: PREDATOR_STARTS,
     grass: GRASS,
     bushes: BUSHES,
-    trees: TREES,
-    rocks: [],
+    trees: [...TREES, ...HILL_TREES],
+    rocks: PROPS,
     logs: [],
     shelters: SHELTERS,
     caves: [],
