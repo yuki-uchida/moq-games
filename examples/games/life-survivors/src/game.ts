@@ -104,6 +104,7 @@ export interface Player {
   choiceSeq: number
   pending: number
   swapPending: number
+  careerPending: number
   /** 蒸発済み's free birth hand is still waiting to be dealt (consumed by the first offer). */
   birthPick?: boolean
   hurt: number
@@ -440,6 +441,7 @@ export class Game {
   private grid = new Map<number, Enemy[]>()
   private spawnDebt = 0
   private inputs = new Map<string, Input>()
+  private careers = new Map<string, { studied?: boolean; employed?: boolean; settled?: boolean }>()
   private accumulator = 0
   private fxSeq = 0
   private stageIndex = -1
@@ -518,6 +520,7 @@ export class Game {
       choiceSeq: 0,
       pending: parent === 'p_gone' ? 1 : 0,
       swapPending: 0,
+      careerPending: 0,
       birthPick: parent === 'p_gone',
       hurt: 0,
       invuln: 0,
@@ -526,6 +529,7 @@ export class Game {
     }
     player.maxHp = player.hp = playerStats(player).maxHp
     state.players.push(player)
+    this.careers.set(id, {})
     const parentDef = WEAPON_BY_ID.get(parent)!
     this.log(`${player.name}が生まれた。親は「${parentDef.name}」。`)
     return player
@@ -534,6 +538,7 @@ export class Game {
   removePlayer(id: string) {
     this.state.players = this.state.players.filter((player) => player.id !== id)
     this.inputs.delete(id)
+    this.careers.delete(id)
     this.state.shots = this.state.shots.filter((shot) => shot.owner !== id)
   }
 
@@ -671,7 +676,8 @@ export class Game {
         for (const friend of this.state.players)
           if (friend !== player && !friend.downed && Math.hypot(friend.x - player.x, friend.y - player.y) < 140)
             friend.hp = Math.min(friend.maxHp, friend.hp + kind * 0.5 * dt)
-      if (!player.choices.length && (player.pending > 0 || player.swapPending > 0)) this.offer(player)
+      if (!player.choices.length && (player.pending > 0 || player.swapPending > 0 || player.careerPending > 0))
+        this.offer(player)
     }
   }
 
@@ -680,6 +686,42 @@ export class Game {
     while (state.eventIndex < EVENTS.length && state.time >= EVENTS[state.eventIndex].at) {
       const index = state.eventIndex++
       const event = EVENTS[index]
+      if (event.boss === 'b_univ' || event.boss === 'b_shukatsu' || event.boss === 'b_layoff') {
+        for (const player of state.players) {
+          if (player.joinedAt >= event.at) continue
+          const career = this.careers.get(player.id)!
+          const level = (id: string) => player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0
+          let reward = 0
+          let text: string
+          if (event.boss === 'b_univ') {
+            if (career.studied !== undefined) continue
+            career.studied = level('w_study') >= 3
+            reward = career.studied ? 1 : 0
+            text = career.studied ? '勉強が実り、専門課程へ進学。転機を1回獲得。' : '実践から学ぶ進路を選んだ。'
+          } else if (event.boss === 'b_shukatsu') {
+            if (career.employed !== undefined) continue
+            career.employed = level('w_work') >= 2
+            reward = career.employed ? (career.studied ? 2 : 1) : 0
+            text = career.employed
+              ? career.studied
+                ? '学びと仕事がつながり、専門職に就職。転機を2回獲得。'
+                : '実務を磨き、現場で就職。転機を1回獲得。'
+              : '就職を急がず、自分の道を探す。'
+          } else {
+            if (career.settled !== undefined) continue
+            career.settled = true
+            reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
+            text =
+              reward === 2
+                ? '職歴と磨いた仕事で、リストラ期に再就職。転機を2回獲得。'
+                : reward === 1
+                  ? '過去の職歴を頼りに、次の仕事へ。転機を1回獲得。'
+                  : '職歴に頼らず、新しい生き方を探す。'
+          }
+          player.careerPending += reward
+          this.log(text, player.id)
+        }
+      }
       const wedding = event.boss === 'b_wedding'
       const birth = event.swarm === 'nightcry'
       const childEvent = birth || event.boss === 'b_rebel' || event.swarm === 'kid'
@@ -695,7 +737,11 @@ export class Game {
           }
         }
       }
-      if (wedding || childEvent) {
+      if (event.boss === 'b_layoff') {
+        const employed = state.players.filter((player) => this.careers.get(player.id)?.employed)
+        if (!employed.length) continue
+        this.log(`${employed.map((player) => player.name).join('・')}の仕事の試練：${event.text}`)
+      } else if (wedding || childEvent) {
         const families = state.players.filter((player) => (wedding ? player.married : player.hasChild))
         if (!families.length) continue
         this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
@@ -2123,8 +2169,10 @@ export class Game {
   }
 
   private offer(player: Player) {
-    if (player.pending === 0 && player.swapPending > 0) {
-      player.swapPending--
+    const career = player.pending === 0 && player.swapPending === 0 && player.careerPending > 0
+    if ((player.pending === 0 && player.swapPending > 0) || (career && !this.options(player).length)) {
+      if (career) player.careerPending--
+      else player.swapPending--
       const pool = TALENT_WEAPONS.filter(
         (def) => ageAt(this.state.time) >= def.minAge && !player.weapons.some((w) => w.id === def.id)
       )
@@ -2157,7 +2205,8 @@ export class Game {
       hand.push(pool.splice(pick, 1)[0])
     }
     player.choices = hand
-    player.pending--
+    if (career) player.careerPending--
+    else player.pending--
   }
 
   choose(player: Player, index: number) {
