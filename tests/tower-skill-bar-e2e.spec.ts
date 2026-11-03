@@ -394,6 +394,39 @@ test('a downed ally shows a disabled greyed button', async ({ page }, info) => {
   }
 })
 
+for (const speed of [1, 2] as const)
+  test(`AUTO keeps casting in a hidden tab, where the battle goes on, and the page draws again on return: x${speed}`, async ({
+    page
+  }) => {
+    // Far from the cave with a goblin on the way: nothing is in range yet when the tab goes away.
+    await seed(page, { far: true, spawn: true })
+    await assault(page)
+    if (speed === 2) await page.locator('.bhud-speed[aria-pressed="false"]').click()
+    await page.locator('#skill-auto').click()
+    await expect(page.locator('#skill-auto')).toHaveAttribute('aria-pressed', 'true')
+    expect((await stored(page)).state.units.some((u: any) => (u.specialCooldown ?? 0) > 0)).toBe(false)
+    // Hidden: the game stops drawing, but its battle clock keeps stepping the fight.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await expect
+      .poll(async () => (await stored(page)).state.units.some((u: any) => (u.specialCooldown ?? 0) > 0), {
+        timeout: 180_000,
+        intervals: [1000]
+      })
+      .toBe(true)
+    // Visible again: the page draws the battle where it now stands.
+    const drawnWhileHidden = Number(await page.locator('#app').getAttribute('data-simulation-time'))
+    await page.evaluate(() => {
+      delete (document as unknown as { visibilityState?: string }).visibilityState
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await expect
+      .poll(async () => Number(await page.locator('#app').getAttribute('data-simulation-time')), { timeout: 60_000 })
+      .toBeGreaterThan(drawnWhileHidden)
+  })
+
 test('AUTO persists, is announced as pressed, and fires specials without a tap', async ({ page }) => {
   await seed(page)
   await assault(page)
