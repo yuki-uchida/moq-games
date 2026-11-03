@@ -111,6 +111,7 @@ jobs:
           key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
+      - run: node --test tests/ci-scope.test.mjs
       - run: npm run typecheck
         if: needs.changes.outputs.runtime == 'true'
       - run: npx tsc --noEmit -p examples/games/ember-grid/tsconfig.json
