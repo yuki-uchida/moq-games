@@ -71,7 +71,7 @@ const anyIn = (state: GameState, zone: string) => awake(state).find((player) => 
 const find = (game: Game, id: string) => game.state.predators.find((predator) => predator.id === id)
 
 /** One tick of gnawing; every few seconds the noise draws whoever is near. True once it is through. */
-function gnaw(game: Game, player: Player, seconds: number, radius: number, heard: string) {
+function gnaw(game: Game, player: Player, label: string, seconds: number, radius: number, heard: string) {
   const before = gnawed.get(game) ?? 0
   const after = before + 1 / 60
   gnawed.set(game, after)
@@ -79,6 +79,7 @@ function gnaw(game: Game, player: Player, seconds: number, radius: number, heard
     game.noise(player.x, player.z, radius)
     if (after < NOISE_EVERY * 1.5) game.say(heard, player.id)
   }
+  game.work(player, label, after / seconds)
   if (after < seconds) return false
   gnawed.delete(game)
   return true
@@ -258,7 +259,7 @@ export const script: StageScript = {
     }
     if (held && fresh && state.step === STEP.net && inZone('net', player.x, player.z)) {
       // Tearing plastic rustles: the crows and Tora's gang come to look.
-      if (gnaw(game, player, NET_SECONDS, 18, 'net_heard')) talk(game, 'ponta_net', player)
+      if (gnaw(game, player, 'ネットをかじる', NET_SECONDS, 18, 'net_heard')) talk(game, 'ponta_net', player)
       return true
     }
     if (pressed && fresh && npc === 'kits' && state.step === STEP.cabbage && player.carrying === 'cabbage') {
@@ -281,7 +282,7 @@ export const script: StageScript = {
     }
     if (held && state.step === STEP.bank && !(state.open & 1) && inZone('grate', player.x, player.z)) {
       // A rattling grate carries along the riverside: the dog walker may come by.
-      if (gnaw(game, player, GRATE_SECONDS, 24, 'grate_heard')) {
+      if (gnaw(game, player, '格子の針金をかじる', GRATE_SECONDS, 24, 'grate_heard')) {
         state.open |= 1
         game.say('grate_open', player.id)
       }
