@@ -8,6 +8,46 @@ test('six categories classify every weapon and passive in ring order', () => {
   for (const def of [...WEAPONS, ...PASSIVES]) expect(TALENT_CATEGORIES).toContain(def.category)
 })
 
+test('weapon and passive hunches become more accurate with each level', () => {
+  for (const [kind, id, maxLevel] of [
+    ['w', 'w_friend', 8],
+    ['p', 'p_kind', 5]
+  ] as const) {
+    for (let level = 1; level <= maxLevel; level++) {
+      for (const correct of [true, false]) {
+        if (!correct && level >= 6) continue
+        const game = new Game(1)
+        const player = game.addPlayer('a', 'p_gone')!
+        player.talents.friend = GIFTED
+        const threshold = Math.min(1, 0.5 + (level - 1) * 0.1)
+        Object.defineProperty(game, 'feelRng', { value: () => (correct ? threshold - 0.01 : threshold + 0.01) })
+        for (let count = 1; count <= level; count++) {
+          player.choices = [`${kind}:${id}`]
+          game.choose(player, 0)
+        }
+        expect(game.state.log.at(-1)?.text.includes('しっくりくる'), `${kind} level ${level}`).toBe(correct)
+      }
+    }
+  }
+})
+
+test('hunches preserve the gameplay random sequence', () => {
+  for (const choice of ['w:w_friend', 'p:p_kind']) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const game = new Game(seed)
+      const control = new Game(seed)
+      const player = game.addPlayer('a', 'p_gone')!
+      control.addPlayer('a', 'p_gone')
+      if (control.random() >= 0.75) control.random()
+      for (let level = 1; level <= 2; level++) {
+        player.choices = [choice]
+        game.choose(player, 0)
+      }
+      expect(game.random()).toBe(control.random())
+    }
+  }
+})
+
 test('seeded lives are diverse, bounded and more similar to neighbors than opposites', () => {
   let adjacent = 0
   let opposite = 0
