@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import { EVENTS } from '../src/data'
-import { Game, type Player } from '../src/game'
+import {
+  EVENTS,
+  MAX_PASSIVE_LEVEL,
+  MAX_WEAPON_LEVEL,
+  PASSIVES,
+  PASSIVE_SLOTS,
+  TALENT_WEAPONS,
+  timeAtAge
+} from '../src/data'
+import { Game, weaponSlots, type Player } from '../src/game'
 import { readView, toView } from '../src/view'
 
 const wedding = EVENTS.findIndex((event) => event.boss === 'b_wedding')
@@ -23,6 +31,114 @@ const event = (game: Game, index: number) => {
 }
 
 describe('personal life branches', () => {
+  test('new rings require the personal wedding result, not age or current love level', () => {
+    const { game, first, second } = arena()
+    love(first, 8)
+    love(second, 2)
+    game.state.time = EVENTS[wedding].at - 0.02
+    expect(game.options(first)).not.toContain('w:w_ring')
+    expect(game.options(second)).not.toContain('w:w_ring')
+    love(first, 1)
+    event(game, wedding)
+    love(first, 8)
+    second.weapons = []
+    expect(game.options(first)).not.toContain('w:w_ring')
+    expect(game.options(second)).toContain('w:w_ring')
+    game.state.time = timeAtAge(21)
+    expect(game.options(second)).not.toContain('w:w_ring')
+    game.state.time = EVENTS[wedding].at + 1
+    second.choices = game.options(second)
+    game.choose(second, second.choices.indexOf('w:w_ring'))
+    expect(second.weapons).toEqual([expect.objectContaining({ id: 'w_ring', lv: 1 })])
+    expect(first.weapons.some((weapon) => weapon.id === 'w_ring')).toBe(false)
+  })
+
+  test.each([false, true])('owned rings still upgrade before marriage (%s)', (married) => {
+    const { game, first } = arena()
+    first.married = married
+    first.weapons = [{ id: 'w_ring', lv: 1, cd: 100, held: 0, damage: 0 }]
+    expect(game.options(first)).toContain('w:w_ring')
+    first.choices = ['w:w_ring']
+    game.choose(first, 0)
+    expect(first.weapons[0].lv).toBe(2)
+    first.weapons[0].lv = MAX_WEAPON_LEVEL
+    expect(game.options(first)).not.toContain('w:w_ring')
+  })
+
+  test.each(['swapPending', 'careerPending'] as const)(
+    '%s ring offers respect marriage and allow cancellation',
+    (pending) => {
+      const { game, first, second } = arena()
+      love(second, 2)
+      event(game, wedding)
+      game.state.enemies = []
+      for (const player of [first, second]) {
+        player.weapons = TALENT_WEAPONS.filter((def) => def.id !== 'w_ring').map((def) => ({
+          id: def.id,
+          lv: MAX_WEAPON_LEVEL,
+          cd: 100,
+          held: 0,
+          damage: 0
+        }))
+        player.passives = PASSIVES.slice(0, PASSIVE_SLOTS).map((def) => ({ id: def.id, lv: MAX_PASSIVE_LEVEL }))
+        player.pending = player.swapPending = player.careerPending = 0
+        player.choices = []
+      }
+      game.state.time = timeAtAge(21)
+      second[pending] = 1
+      game.tick(0.01)
+      expect(second.choices).toEqual([])
+      game.state.time = EVENTS[wedding].at + 1
+      first[pending] = second[pending] = 1
+      game.tick(0.01)
+      expect(first.choices).toEqual([])
+      expect(first[pending]).toBe(0)
+      expect(second.choices).toEqual(['s:w_ring', 'x:skip'])
+      const before = structuredClone(second.weapons)
+      game.choose(second, 0)
+      expect(second.choices).toContain(`r:${before[0].id}:w_ring`)
+      game.choose(second, second.choices.indexOf('x:skip'))
+      expect(second.weapons).toEqual(before)
+      second[pending] = 1
+      game.tick(0.01)
+      game.choose(second, 0)
+      game.choose(second, 0)
+      expect(second.weapons[0]).toMatchObject({ id: 'w_ring', lv: 1 })
+      expect(second.choices).toEqual([])
+      const time = game.state.time
+      game.tick(0.01)
+      expect(game.state.time).toBeGreaterThan(time)
+    }
+  )
+
+  test.each(['swapPending', 'careerPending'] as const)(
+    '%s offers rings only to married players with a full legal build',
+    (pending) => {
+      const { game, first, second } = arena()
+      love(second, 2)
+      event(game, wedding)
+      for (const player of [first, second]) {
+        player.weapons = TALENT_WEAPONS.filter((def) => def.id !== 'w_ring')
+          .slice(0, weaponSlots(player))
+          .map((def) => ({ id: def.id, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }))
+        player.passives = PASSIVES.slice(0, PASSIVE_SLOTS).map((def) => ({ id: def.id, lv: MAX_PASSIVE_LEVEL }))
+        player.pending = player.swapPending = player.careerPending = 0
+        player.choices = []
+        expect(game.options(player)).toHaveLength(0)
+      }
+      let marriedOffer = false
+      for (let attempt = 0; attempt < 60; attempt++) {
+        game.state.enemies = []
+        first[pending] = second[pending] = 1
+        game.tick(0.01)
+        expect(first.choices).not.toContain('s:w_ring')
+        marriedOffer ||= second.choices.includes('s:w_ring')
+        for (const player of [first, second]) game.choose(player, player.choices.indexOf('x:skip'))
+      }
+      expect(marriedOffer).toBe(true)
+    }
+  )
+
   test('every player receives a personal result in a full room', () => {
     const game = new Game(123)
     const players = Array.from({ length: 8 }, (_, index) => game.addPlayer(`player${index}`, 'p_free')!)

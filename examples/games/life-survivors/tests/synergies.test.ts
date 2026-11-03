@@ -1,12 +1,100 @@
 import { expect, test } from 'vitest'
 import { WEAPON_BY_ID } from '../src/data'
 import { Game, isEvolved, weaponStats, type Player } from '../src/game'
-import { activeSynergies } from '../src/synergies'
+import { activeSynergies, SYNERGIES } from '../src/synergies'
 import { readView, toView } from '../src/view'
 
 function equip(player: Player, ...ids: string[]) {
   player.weapons = ids.map((id) => ({ id, lv: 1, cd: 0, held: 0, damage: 0 }))
 }
+
+test.each([
+  ['w_study', 'w_invest', 'w_savings', 'w_gamble', 'w_sports', 1.2, 1, 1],
+  ['w_sports', 'w_love', 'w_beauty', 'w_perfume', 'w_study', 1, 0.9, 1],
+  ['w_friend', 'w_love', 'w_beauty', 'w_perfume', 'w_study', 1, 1, 1.15],
+  ['w_sports', 'w_hobby', 'w_karaoke', 'w_travel', 'w_friend', 1.1, 1, 1],
+  ['w_hobby', 'w_study', 'w_reading', 'w_work', 'w_love', 1, 0.95, 1],
+  ['w_invest', 'w_friend', 'w_sns', 'w_pet', 'w_sports', 1, 1, 1.1]
+] as const)(
+  '%s + %s applies once to each target and releases on exchange',
+  (source, target, second, firstReplacement, secondReplacement, damage, cooldown, area) => {
+    const game = new Game(10)
+    const player = game.addPlayer('a', 'p_gone')!
+    const other = game.addPlayer('b', 'p_gone')!
+    equip(player, target, second)
+    equip(other, source)
+    const otherBase = weaponStats(other, other.weapons[0])
+    const bases = player.weapons.map((weapon) => weaponStats(player, weapon))
+    expect(activeSynergies(player.weapons.map((weapon) => weapon.id))).toHaveLength(0)
+    const extraSource = {
+      w_study: 'w_reading',
+      w_sports: 'w_muscle',
+      w_friend: 'w_sns',
+      w_hobby: 'w_karaoke',
+      w_invest: 'w_savings'
+    }[source]
+    equip(player, target, second, source, extraSource)
+    expect(activeSynergies(player.weapons.map((weapon) => weapon.id))).toHaveLength(1)
+    for (let index = 0; index < 2; index++) {
+      const expected = {
+        ...bases[index],
+        damage: bases[index].damage * damage,
+        cooldown: bases[index].cooldown * cooldown,
+        area: bases[index].area * area
+      }
+      expect(weaponStats(player, player.weapons[index])).toEqual(expected)
+    }
+    expect(weaponStats(other, other.weapons[0])).toEqual(otherBase)
+    for (const [id, replacement] of [
+      [source, firstReplacement],
+      [extraSource, secondReplacement]
+    ]) {
+      expect(player.weapons.some((weapon) => weapon.id === replacement)).toBe(false)
+      player.choices = [`s:${replacement}`]
+      game.choose(player, 0)
+      expect(player.choices).toContain(`r:${id}:${replacement}`)
+      game.choose(player, player.choices.indexOf(`r:${id}:${replacement}`))
+    }
+    const remaining = activeSynergies(player.weapons.map((weapon) => weapon.id))
+    expect(remaining).toHaveLength(0)
+    for (let index = 0; index < 2; index++) {
+      expect(weaponStats(player, player.weapons[index])).toEqual(bases[index])
+    }
+  }
+)
+
+test('all six adjacent pairs coexist without compounding unrelated bonuses or exposing talents', () => {
+  const game = new Game(11)
+  const player = game.addPlayer('a', 'p_gone')!
+  const ids = ['w_friend', 'w_love', 'w_sports', 'w_hobby', 'w_study', 'w_invest']
+  const multipliers = [
+    [1, 1, 1.1],
+    [1, 0.9, 1.15],
+    [1, 1, 1],
+    [1.1, 1, 1],
+    [1, 0.95, 1],
+    [1.2, 1, 1]
+  ]
+  const bases = ids.map((id) => {
+    equip(player, id)
+    return weaponStats(player, player.weapons[0])
+  })
+  equip(player, ...ids)
+  expect(SYNERGIES).toHaveLength(6)
+  expect(activeSynergies(ids)).toHaveLength(6)
+  for (let index = 0; index < ids.length; index++) {
+    const actual = weaponStats(player, player.weapons[index])
+    expect(actual).toEqual({
+      ...bases[index],
+      damage: bases[index].damage * multipliers[index][0],
+      cooldown: bases[index].cooldown * multipliers[index][1],
+      area: bases[index].area * multipliers[index][2]
+    })
+  }
+  const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
+  expect(view.players[0]).not.toHaveProperty('talents')
+  expect(activeSynergies(view.players[0].weapons.map(([id]) => id))).toHaveLength(6)
+})
 
 test('knowledge supports investment once, independently of talent and weapon levels', () => {
   const game = new Game(1)

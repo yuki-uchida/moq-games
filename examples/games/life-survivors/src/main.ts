@@ -919,7 +919,7 @@ window.addEventListener('keydown', (event) => {
   if (/^Digit[1-8]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
     event.preventDefault()
-  } else if (moveKeys.has(event.code)) {
+  } else if (moveKeys.has(event.code) && event.target !== element('#synergy-list')) {
     keys.add(event.code)
     event.preventDefault()
   }
