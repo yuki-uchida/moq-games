@@ -172,6 +172,22 @@ describe('JuiceDetector', () => {
     expect(tick()).toEqual([])
   })
 
+  it('shows a suspicion cue when a predator switches its attention to you', () => {
+    game.addPlayer('friend', 'Friend')
+    const predator = game.state.predators[0]
+    Object.assign(predator, { state: 'suspicious', targetId: 'friend' })
+    expect(tick()).toEqual([])
+    predator.targetId = 'local'
+    expect(tick()).toEqual([
+      expect.objectContaining({ type: 'suspicious', at: expect.objectContaining({ x: predator.x }) })
+    ])
+    expect(tick()).toEqual([])
+    predator.targetId = 'friend'
+    expect(tick()).toEqual([])
+    predator.targetId = 'local'
+    expect(types(tick())).toEqual(['suspicious'])
+  })
+
   it('emits one local discovery per chase, including a predator retargeting while already chasing', () => {
     const [first, second] = game.state.predators
     Object.assign(first, { state: 'chase', targetId: 'friend' })

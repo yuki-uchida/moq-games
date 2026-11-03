@@ -98,7 +98,7 @@ export class JuiceDetector {
       } else if (
         before &&
         predator.state === 'suspicious' &&
-        before.state !== 'suspicious' &&
+        (before.state !== 'suspicious' || before.targetId !== localPlayerId) &&
         predator.targetId === localPlayerId
       ) {
         events.push({ type: 'suspicious', at: predator.at })

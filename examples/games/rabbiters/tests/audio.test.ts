@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Game } from '../src/game'
 import { RabbitersAudio } from '../src/audio'
+import { JuiceDetector } from '../src/juice'
+import { newMind, updatePredator } from '../src/stealth'
 
 const parameter = () => ({
   value: 0,
@@ -245,6 +247,72 @@ describe('Rabbiters audio', () => {
     first.state = 'chase'
     at(5.1)
     expect(context.voices).toHaveLength(10)
+    audio.stop()
+  })
+
+  it('warns when a suspicious predator switches from a teammate to the local rabbit', () => {
+    const { audio, game, context } = setup()
+    game.addPlayer('friend', 'Friend')
+    const predator = game.state.predators[0]
+    const update = (time: number) => {
+      game.state.time = time
+      audio.update(game.state, 'local')
+    }
+    Object.assign(predator, { state: 'suspicious', targetId: 'friend' })
+    update(1)
+    expect(context.voices).toHaveLength(0)
+    predator.targetId = 'local'
+    update(1.1)
+    expect(context.voices).toHaveLength(2)
+    update(1.2)
+    expect(context.voices).toHaveLength(2)
+    predator.targetId = 'friend'
+    update(1.3)
+    predator.targetId = 'local'
+    update(1.4)
+    expect(context.voices).toHaveLength(2)
+    predator.targetId = 'friend'
+    update(4)
+    predator.targetId = 'local'
+    update(4.1)
+    expect(context.voices).toHaveLength(4)
+    audio.stop()
+  })
+
+  it('warns when the real predator AI retargets during suspicion', () => {
+    const { audio, game, context } = setup()
+    game.addPlayer('friend', 'Friend')
+    const predator = game.state.predators[0]
+    Object.assign(predator, { kind: 'fox', x: 0, y: 0, z: 0, angle: 0, state: 'patrol', targetId: null, suspicion: 0 })
+    game.state.predators = [predator]
+    audio.update(game.state, 'local')
+    const detector = new JuiceDetector()
+    detector.update(game.state, 'local')
+    const mind = newMind()
+    const targets = [
+      { id: 'friend', x: 0, y: 0, z: 9, visibility: 1 },
+      { id: 'local', x: 0, y: 0, z: 10, visibility: 1 }
+    ]
+    const tick = () => {
+      game.state.time += 1 / 60
+      updatePredator(predator, mind, targets, {
+        dt: 1 / 60,
+        time: game.state.time,
+        droppings: [],
+        scents: new Map(),
+        terrain: { heightAt: () => 0, sightLine: () => 1 },
+        random: () => 0.5
+      })
+      audio.update(game.state, 'local')
+      return detector.update(game.state, 'local')
+    }
+    expect(tick()).toEqual([])
+    expect(predator).toMatchObject({ state: 'suspicious', targetId: 'friend' })
+    expect(context.voices).toHaveLength(0)
+    targets[0].z = 20
+    expect(tick()).toEqual([expect.objectContaining({ type: 'suspicious' })])
+    expect(predator).toMatchObject({ state: 'suspicious', targetId: 'local' })
+    expect(context.voices).toHaveLength(2)
     audio.stop()
   })
 

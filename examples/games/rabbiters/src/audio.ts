@@ -24,7 +24,7 @@ type Observation = {
   pregnant: boolean
   phase: GameState['phase']
   nests: Set<string>
-  predators: Map<string, string>
+  predators: Map<string, Pick<GameState['predators'][number], 'state' | 'targetId'>>
   threat: 'calm' | 'suspicious' | 'chase'
   chased: Set<string>
   chapter: number
@@ -97,7 +97,9 @@ export class RabbitersAudio {
       pregnant: player?.pregnant ?? false,
       phase: state.phase,
       nests: new Set(state.nests.filter((nest) => nest.active).map((nest) => nest.id)),
-      predators: new Map(state.predators.map((predator) => [predator.id, predator.state])),
+      predators: new Map(
+        state.predators.map((predator) => [predator.id, { state: predator.state, targetId: predator.targetId }])
+      ),
       threat: state.predators.some((predator) => predator.state === 'chase')
         ? 'chase'
         : this.threats.targets.size > 0
@@ -127,21 +129,20 @@ export class RabbitersAudio {
     if (next.phase !== 'playing') return
     if ([...previous.nests].some((id) => !next.nests.has(id))) this.chime([180, 110, 65], 'sawtooth')
     // Any rabbit being spotted is a team-wide cue; "?" only sounds for suspicion aimed at you.
-    const changed = (predator: GameState['predators'][number]) => {
-      const before = previous.predators.get(predator.id)
-      return before !== undefined && before !== predator.state
-    }
     if ([...next.chased].some((id) => !previous.chased.has(id))) {
       this.musicAfter = (this.context?.currentTime ?? 0) + 0.55
       this.alarm()
     } else if (
-      state.predators.some(
-        (predator) =>
+      state.predators.some((predator) => {
+        const before = previous.predators.get(predator.id)
+        return (
           predator.state === 'suspicious' &&
           predator.targetId === localPlayerId &&
-          changed(predator) &&
-          previous.predators.get(predator.id) !== 'chase'
-      ) &&
+          before !== undefined &&
+          before.state !== 'chase' &&
+          (before.state !== 'suspicious' || before.targetId !== localPlayerId)
+        )
+      }) &&
       state.time - this.lastQuery >= 2
     ) {
       this.lastQuery = state.time

@@ -805,6 +805,81 @@ window.rabbitersDiscovery = {
   expect(errors).toEqual([])
 })
 
+test('real predator AI warns when it retargets a suspicious rabbit', async ({ page }) => {
+  test.setTimeout(60_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersRetarget = {
+  queries: 0, cues: 0, states: ['patrol'],
+  stage() {
+    game.addPlayer('retarget-friend', 'Friend');
+    const player = game.state.players.find((entry) => entry.id === localId);
+    const friend = game.state.players.find((entry) => entry.id === 'retarget-friend');
+    Object.assign(player, { x: -125, z: 8, y: 0 });
+    Object.assign(friend, { x: -125, z: 7, y: 0 });
+    game.state.foods = [];
+    game.state.nests.forEach((nest) => { nest.active = false; });
+    game.state.predators = [{ id: 'retarget-fox', kind: 'fox', x: -125, z: -2,
+      y: 0, angle: 0.6, state: 'patrol', targetId: null, suspicion: 0 }];
+    const tone = audio.tone.bind(audio);
+    audio.tone = (...args) => {
+      const before = audio.voices.size;
+      tone(...args);
+      if (args[0] === 494 && audio.voices.size > before) this.queries++;
+    };
+    const emit = feel.emit.bind(feel);
+    feel.emit = (event) => { if (event.type === 'suspicious') this.cues++; emit(event); };
+    const render = scene.render.bind(scene);
+    scene.render = (...args) => {
+      const state = game.state.predators[0].state;
+      if (this.states.at(-1) !== state) this.states.push(state);
+      render(...args);
+    };
+  },
+  moveFriendAway() {
+    Object.assign(game.state.players.find((entry) => entry.id === 'retarget-friend'), { x: -125, z: 23 });
+  },
+  read() {
+    const predator = game.state.predators[0];
+    return { state: predator.state, target: predator.targetId === localId ? 'local' : predator.targetId,
+      queries: this.queries, cues: this.cues, states: this.states, audioState: audio.context?.state };
+  }
+};`
+    })
+  })
+  await page.goto('/?chapter=4')
+  await page.locator('#solo').click()
+  await page.evaluate('window.rabbitersRetarget.stage()')
+  const read = () =>
+    page.evaluate<{
+      state: string
+      target: string
+      queries: number
+      cues: number
+      states: string[]
+      audioState: string
+    }>('window.rabbitersRetarget.read()')
+  await expect.poll(read).toMatchObject({ state: 'suspicious', target: 'retarget-friend', queries: 0, cues: 0 })
+  await page.evaluate('window.rabbitersRetarget.moveFriendAway()')
+  await expect.poll(read).toMatchObject({
+    state: 'suspicious',
+    target: 'local',
+    queries: 1,
+    cues: 1,
+    states: ['patrol', 'suspicious'],
+    audioState: 'running'
+  })
+  await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'suspicious')
+  await expect(page.locator('.fx-popup[data-event="suspicious"]')).toBeVisible()
+  await expect.poll(async () => (await read()).state).toBe('chase')
+  expect(errors).toEqual([])
+})
+
 test('stealth: "?" then "!" cues, alert vignette and droppings', async ({ page }, testInfo) => {
   test.setTimeout(60_000)
   const errors: string[] = []
