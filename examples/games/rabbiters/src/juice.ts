@@ -203,8 +203,8 @@ export class JuiceDetector {
       }
       return
     }
-    if (this.taskLabel !== null && this.taskProgress >= 0.9 && !this.taskDoneFired)
-      events.push({ type: 'taskDone', at })
+    // A job only counts as done when it reports 100% (Game.work keeps a finished job on the gauge for a moment);
+    // letting go or being interrupted at any earlier point is not a success, however close.
     this.clearTask()
     if (task) {
       this.taskLabel = task.label

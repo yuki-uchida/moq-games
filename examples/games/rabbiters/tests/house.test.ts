@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Game, coverAt, type Player } from '../src/game'
+import { JuiceDetector } from '../src/juice'
+import type { JuiceEvent } from '../src/juice-events'
 import { NPCS, TERRAIN, heightAt, inShelter, inZone, setStage } from '../src/map'
 import { STAGES, spokenLine } from '../src/stages'
 import { PHASE_SECONDS, PLANS, route } from '../src/stages/house/family'
@@ -141,6 +143,67 @@ describe('Chapter 1: the house', () => {
     expect(game.state.step).toBe(2)
     expect(game.state.open & (1 << GATE.cage)).toBeTruthy()
     expect(has(game.state, FLAG.latch)).toBe(true)
+  })
+
+  it('shows the hold-E gauge while gnawing, 完了 for a moment, and nothing once E is let go', () => {
+    const { game, player } = solo()
+    Object.assign(game.state, { step: 1, talk: null })
+    game.state.predators = []
+    place(player, DOOR_INSIDE.x, DOOR_INSIDE.z)
+    expect(player.task).toBeUndefined()
+    game.setInput(player.id, { ...idle, interact: true })
+    advance(game, GNAW_SECONDS / 2)
+    expect(player.task?.label).toBe('留め金をかじる')
+    expect(player.task?.progress).toBeCloseTo(0.5, 1)
+    game.setInput(player.id, idle)
+    advance(game, 0.1)
+    expect(player.task).toBeUndefined()
+    game.setInput(player.id, { ...idle, interact: true })
+    for (let frame = 0; frame < GNAW_SECONDS * 60 && game.state.step === 1; frame++) game.step(1 / 60)
+    expect(game.state.step).toBe(2)
+    advance(game, 0.5)
+    expect(player.task).toEqual({ label: '留め金をかじる', progress: 1 })
+    advance(game, 0.5)
+    expect(player.task).toBeUndefined()
+  })
+
+  it('never reports an unfinished job as 100%, however close', () => {
+    const { game, player } = solo()
+    game.work(player, 'かじる', 0.996)
+    expect(player.task?.progress).toBe(0.99)
+    game.work(player, 'かじる', 1)
+    expect(player.task?.progress).toBe(1)
+  })
+
+  it('feeds the game-feel layer: a real hold-E job ticks and finishes once, and letting go early does not', () => {
+    const { game, player } = solo()
+    Object.assign(game.state, { step: 1, talk: null })
+    game.state.predators = []
+    place(player, DOOR_INSIDE.x, DOOR_INSIDE.z)
+    const detector = new JuiceDetector()
+    const events: JuiceEvent[] = []
+    const watch = (seconds: number) => {
+      for (let tick = 0; tick < Math.round(seconds * 10); tick++) {
+        advance(game, 0.1)
+        events.push(...detector.update(game.state, player.id))
+      }
+    }
+    const count = (type: JuiceEvent['type']) => events.filter((event) => event.type === type).length
+    watch(0.1)
+    // Hold for nearly all of the job, then let go: ticks along the way, but no fanfare.
+    game.setInput(player.id, { ...idle, interact: true })
+    watch(GNAW_SECONDS * 0.95)
+    game.setInput(player.id, idle)
+    watch(1)
+    expect(count('taskTick')).toBeGreaterThanOrEqual(2)
+    expect(count('taskDone')).toBe(0)
+    // Hold it through: the finish is announced exactly once.
+    game.setInput(player.id, { ...idle, interact: true })
+    watch(GNAW_SECONDS)
+    game.setInput(player.id, idle)
+    watch(2)
+    expect(game.state.step).toBe(2)
+    expect(count('taskDone')).toBe(1)
   })
 
   it('in a shared room, the rabbit who gnaws speaks, under its own name, on every client', () => {

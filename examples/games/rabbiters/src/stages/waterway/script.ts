@@ -162,7 +162,15 @@ function deliver(game: Game, player: Player) {
 }
 
 /** Ticks of E held at a valve or the net; noisy every 3 s. Returns true when the job is done. */
-function turn(game: Game, player: Player, seconds: number, line: string, flag: number, counter: Counter = 'A') {
+function turn(
+  game: Game,
+  player: Player,
+  label: string,
+  seconds: number,
+  line: string,
+  flag: number,
+  counter: Counter = 'A'
+) {
   const { state } = game
   if (!(state.flags & flag)) {
     state.flags |= flag
@@ -171,6 +179,7 @@ function turn(game: Game, player: Player, seconds: number, line: string, flag: n
   const ticks = holdTicks(state, counter) + 1
   setHold(state, ticks, counter)
   if (ticks % 180 === 0) game.noise(player.x, player.z, 18)
+  game.work(player, label, (ticks * TICK) / seconds)
   return ticks * TICK >= seconds
 }
 const dandelionsLeft = (state: GameState) => state.items.filter((item) => item.kind === 'dandelion').length
@@ -324,7 +333,7 @@ export const script: StageScript = {
       ['valve2', FLAG.valveB, 'B']
     ] as const)
       if (held && state.step === STEP.valve && !(state.flags & flag) && inZone(zone, player.x, player.z)) {
-        if (turn(game, player, HOLD.valve, 'valve_turning', FLAG.turning, counter)) {
+        if (turn(game, player, 'バルブを回す', HOLD.valve, 'valve_turning', FLAG.turning, counter)) {
           state.flags |= flag
           if (state.flags & FLAG.valveA && state.flags & FLAG.valveB) {
             advance(game, STEP.drain)
@@ -335,7 +344,7 @@ export const script: StageScript = {
       }
     if (held && state.step === STEP.handle && !state.items.length && inZone('nest', player.x, player.z)) {
       // The rats hid the handle in their junk: rummaging rustles (and draws them).
-      if (turn(game, player, HOLD.rummage, 'rummaging', FLAG.handle)) {
+      if (turn(game, player, 'ガラクタをさがす', HOLD.rummage, 'rummaging', FLAG.handle)) {
         state.items.push({
           id: 'handle',
           kind: 'handle',
@@ -350,7 +359,7 @@ export const script: StageScript = {
       return true
     }
     if (held && state.step === STEP.net && !(state.flags & FLAG.talk) && inZone('net', player.x, player.z)) {
-      if (turn(game, player, HOLD.net, 'net_gnawing', FLAG.gnawing)) advance(game, STEP.exit, player)
+      if (turn(game, player, '網をかじる', HOLD.net, 'net_gnawing', FLAG.gnawing)) advance(game, STEP.exit, player)
       return true
     }
     return false

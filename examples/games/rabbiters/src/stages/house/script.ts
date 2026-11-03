@@ -135,6 +135,7 @@ function gnaw(game: Game, player: Player) {
     setGnawed(state, Math.max(0, after - 8))
     game.say('gnaw_caught', player.id)
   }
+  game.work(player, '留め金をかじる', gnawed(state) / GNAW_SECONDS)
   if (gnawed(state) >= GNAW_SECONDS) {
     state.open |= 1 << GATE.cage
     state.flags |= FLAG.latch
@@ -161,6 +162,7 @@ function dig(game: Game, player: Player) {
     game.noise(GAP.x, GAP.z, DIG_NOISE)
     heard(game, GAP.x, GAP.z, DIG_NOISE, LOOK_AT_GAP)
   }
+  game.work(player, 'すき間を掘る', dug(state) / DIG_SECONDS)
   if (dug(state) >= DIG_SECONDS) {
     state.open |= 1 << GATE.gap
     game.say('dug', player.id)
@@ -181,6 +183,7 @@ function pull(game: Game, player: Player) {
       game.say('niboshi_heard')
     }
   }
+  game.work(player, 'にぼしを引っぱる', memory.pull / PULL_SECONDS)
   if (memory.pull >= PULL_SECONDS) {
     memory.pull = 0
     state.items = [item(`niboshi-${niboshiGiven(state)}`, 'niboshi', NIBOSHI)]
@@ -352,6 +355,7 @@ export const script: StageScript = {
       // Press the tag to the cat flap until it clicks.
       if (memory.flap === 0) game.say('catflap_press', player.id)
       memory.flap += 1 / 60
+      game.work(player, 'タグを押しあてる', memory.flap / FLAP_SECONDS)
       if (memory.flap >= FLAP_SECONDS) {
         memory.flap = 0
         player.carrying = null
@@ -370,6 +374,7 @@ export const script: StageScript = {
     if (has(state, FLAG.latch) && !cageOpen(state) && held && near(player, CAGE_DOOR, 1.5)) {
       const pushed = (memory.push.get(player.id) ?? 0) + 1 / 60
       memory.push.set(player.id, pushed)
+      game.work(player, '扉を押す', pushed / PUSH_SECONDS)
       if (pushed >= PUSH_SECONDS) {
         memory.push.delete(player.id)
         state.open |= 1 << GATE.cage

@@ -99,6 +99,14 @@ export interface Player {
   color?: number
   /** Id of the straw bundle this rabbit is carrying in its mouth. */
   carrying: string | null
+  /** The hold-E job under way this tick (gnawing, digging, turning a valve…), for the on-screen gauge. */
+  task?: Task
+}
+
+/** A hold-E job: what the rabbit is doing and how far along it is (0..1). */
+export interface Task {
+  label: string
+  progress: number
 }
 
 /** Host-side extras ride along on the predator: a patrol `route` and a chain (`leash`) around a post. */
@@ -507,6 +515,8 @@ export class Game {
   private talkQueue: { id: string; by?: string }[] = []
   /** Rabbits holding E, for rising-edge detection. */
   private holding = new Set<string>()
+  /** Hold-E jobs just completed, kept on the gauge until `until`. */
+  private finished = new Map<string, { task: Task; until: number }>()
 
   /** A new game at `stage` (default the forest, chapter 4), running that stage's `start`. */
   constructor(
@@ -708,6 +718,16 @@ export class Game {
     else this.talkQueue.push({ id, by })
   }
 
+  /** Marks `player` as busy with a hold-E job this tick; the HUD shows `label` with a gauge at `progress` (0..1). */
+  work(player: Player, label: string, progress: number) {
+    // Only a finished job reads 100%: rounding must not turn 99.6% into a completion (the gauge and the
+    // game-feel layer both treat 1 as done).
+    player.task = { label, progress: progress >= 1 ? 1 : Math.min(0.99, round(clamp(progress, 0, 1))) }
+    // A finished job stays on the gauge (at 100%) for a moment, so everyone sees it complete.
+    if (player.task.progress >= 1) this.finished.set(player.id, { task: player.task, until: this.state.time + 0.8 })
+    else this.finished.delete(player.id)
+  }
+
   /** True while no conversation is playing or queued. */
   get quiet() {
     return !this.state.talk && !this.talkQueue.length
@@ -906,6 +926,12 @@ export class Game {
     }
     const vehicles = LANES.length ? vehiclesAt(state.time) : undefined
     for (const player of state.players) {
+      const finished = this.finished.get(player.id)
+      if (finished && state.time < finished.until) player.task = finished.task
+      else if (player.task) {
+        delete player.task
+        this.finished.delete(player.id)
+      }
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? idle
       let movement = this.movements.get(player.id)
@@ -1022,6 +1048,7 @@ export class Game {
           if (!nest.active || distance(player, nest) > 2.5) continue
           nest.health = Math.max(0, nest.health - dt * 70)
           nest.active = nest.health > 0
+          this.work(player, '卵を壊す', 1 - nest.health / 100)
         }
       }
       if (!handled && input.interact) {
