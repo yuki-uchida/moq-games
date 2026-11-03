@@ -130,6 +130,7 @@ export class RabbitersAudio {
     if ([...previous.nests].some((id) => !next.nests.has(id))) this.chime([180, 110, 65], 'sawtooth')
     // Any rabbit being spotted is a team-wide cue; "?" only sounds for suspicion aimed at you.
     if ([...next.chased].some((id) => !previous.chased.has(id))) {
+      this.silence()
       this.musicAfter = (this.context?.currentTime ?? 0) + 0.55
       this.alarm()
     } else if (

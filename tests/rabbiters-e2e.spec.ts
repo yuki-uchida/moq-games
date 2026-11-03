@@ -805,6 +805,81 @@ window.rabbitersDiscovery = {
   expect(errors).toEqual([])
 })
 
+test('a new local discovery interrupts team chase music and produces an alert signal', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersAudioPriority = {
+  alarms: 0, musicVoices: 0, stopped: 0, peak: 0, localTriggered: false,
+  ready() { return !!audio.previous && audio.context?.state === 'running'; },
+  stage() {
+    game.step = () => {};
+    game.addPlayer('friend', 'Friend');
+    const template = game.state.predators[0];
+    game.state.predators = [
+      { ...template, id: 'friend-pursuer', state: 'patrol', targetId: null },
+      { ...template, id: 'local-pursuer', state: 'patrol', targetId: null }
+    ];
+    const analyser = audio.context.createAnalyser();
+    analyser.fftSize = 1024;
+    audio.master.connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    const alarm = audio.alarm.bind(audio);
+    audio.alarm = () => {
+      this.alarms++;
+      alarm();
+      if (this.alarms === 2) {
+        const until = audio.context.currentTime + 0.5;
+        const sample = () => {
+          analyser.getFloatTimeDomainData(samples);
+          for (const value of samples) this.peak = Math.max(this.peak, Math.abs(value));
+          if (audio.context.currentTime < until) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }
+    };
+    const music = audio.music.bind(audio);
+    audio.music = () => {
+      music();
+      if (this.localTriggered || audio.previous?.threat !== 'chase' ||
+          audio.context.currentTime < audio.musicAfter || !audio.voices.size) return;
+      const voices = [...audio.voices];
+      this.musicVoices = voices.length;
+      for (const voice of voices) {
+        const stop = voice.stop.bind(voice);
+        voice.stop = (...args) => { this.stopped++; return stop(...args); };
+      }
+      this.localTriggered = true;
+      Object.assign(game.state.predators[1], { state: 'chase', targetId: localId });
+      game.state.time += 0.01;
+    };
+    Object.assign(game.state.predators[0], { state: 'chase', targetId: 'friend' });
+    game.state.time += 0.01;
+  },
+  read() { return { alarms: this.alarms, musicVoices: this.musicVoices, stopped: this.stopped, peak: this.peak }; }
+};`
+    })
+  })
+  await page.goto('/?chapter=4')
+  await page.locator('#solo').click()
+  await expect.poll(() => page.evaluate<boolean>('window.rabbitersAudioPriority.ready()')).toBe(true)
+  await page.evaluate('window.rabbitersAudioPriority.stage()')
+  const read = () =>
+    page.evaluate<{ alarms: number; musicVoices: number; stopped: number; peak: number }>(
+      'window.rabbitersAudioPriority.read()'
+    )
+  await expect.poll(async () => (await read()).alarms).toBe(2)
+  await expect.poll(async () => (await read()).peak).toBeGreaterThan(0.001)
+  const result = await read()
+  expect(result.musicVoices).toBeGreaterThan(0)
+  expect(result.stopped).toBe(result.musicVoices)
+  expect(errors).toEqual([])
+})
+
 test('real predator AI warns when it retargets a suspicious rabbit', async ({ page }) => {
   test.setTimeout(60_000)
   const errors: string[] = []

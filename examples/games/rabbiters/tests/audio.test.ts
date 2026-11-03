@@ -158,6 +158,57 @@ describe('Rabbiters audio', () => {
     audio.stop()
   })
 
+  it('interrupts chase music when a different rabbit is discovered', () => {
+    const { audio, game, context } = setup()
+    game.addPlayer('friend', 'Friend')
+    const [first, second] = game.state.predators
+    Object.assign(first, { state: 'chase', targetId: 'friend' })
+    game.state.time = context.currentTime = 1
+    audio.update(game.state, 'local')
+    for (const voice of context.voices) (voice.onended as (() => void) | null)?.()
+    context.currentTime = 1.6
+    vi.advanceTimersByTime(250)
+    const music = context.voices.slice(4)
+    expect(music).toHaveLength(3)
+    Object.assign(second, { state: 'chase', targetId: 'local' })
+    game.state.time = context.currentTime = 1.61
+    audio.update(game.state, 'local')
+    expect(music.every((voice) => voice.stop.mock.calls.length === 2)).toBe(true)
+    expect(context.voices.slice(-4).map((voice) => voice.frequency.setValueAtTime.mock.calls[0][0])).toEqual([
+      160, 830, 1245, 466
+    ])
+    const count = context.voices.length
+    vi.advanceTimersByTime(250)
+    expect(context.voices).toHaveLength(count)
+    context.currentTime = 2.2
+    vi.advanceTimersByTime(250)
+    expect(context.voices.length).toBeGreaterThan(count)
+    audio.stop()
+  })
+
+  it('keeps a new discovery audible when several rabbits are spotted in quick succession', () => {
+    const { audio, game, context } = setup()
+    const template = game.state.predators[0]
+    game.state.predators = Array.from({ length: 5 }, (_, index) => ({
+      ...template,
+      id: `predator-${index}`,
+      state: 'patrol',
+      targetId: null
+    }))
+    for (let index = 0; index < 5; index++) {
+      const targetId = index === 4 ? 'local' : `friend-${index}`
+      if (index < 4) game.addPlayer(targetId, targetId)
+      Object.assign(game.state.predators[index], { state: 'chase', targetId })
+      game.state.time = context.currentTime = 1 + index * 0.01
+      audio.update(game.state, 'local')
+    }
+    expect(context.voices).toHaveLength(20)
+    expect(context.voices.slice(-4).map((voice) => voice.frequency.setValueAtTime.mock.calls[0][0])).toEqual([
+      160, 830, 1245, 466
+    ])
+    audio.stop()
+  })
+
   it('initializes and resumes synchronously, with one music timer', () => {
     const { audio, context } = setup()
     expect(context.resume).toHaveBeenCalledOnce()
