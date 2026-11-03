@@ -414,6 +414,10 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
 }
 
 export function choiceText(player: Player, choice: string): { icon: string; name: string; text: string; tag: string } {
+  if (choice === 'f:yes')
+    return { icon: '🧒', name: '迎える', text: '本人の回復が毎秒HP2→3。子育ての試練が加わる', tag: '' }
+  if (choice === 'f:no')
+    return { icon: '🤝', name: '迎えない', text: '本人の回復は毎秒HP2のまま。今の家族で歩む', tag: '' }
   const [kind, id] = choice.split(':')
   if (kind === 's' || kind === 'r') {
     const def = WEAPON_BY_ID.get(id)!
@@ -461,6 +465,8 @@ export class Game {
   private grid = new Map<number, Enemy[]>()
   private spawnDebt = 0
   private inputs = new Map<string, Input>()
+  private familyHands = new Map<string, string[]>()
+  private nightcryStarted = false
   private careers = new Map<
     string,
     { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets' | 'creative'; settled?: boolean }
@@ -563,6 +569,7 @@ export class Game {
   removePlayer(id: string) {
     this.state.players = this.state.players.filter((player) => player.id !== id)
     this.inputs.delete(id)
+    this.familyHands.delete(id)
     this.careers.delete(id)
     this.state.shots = this.state.shots.filter((shot) => shot.owner !== id)
   }
@@ -579,17 +586,30 @@ export class Game {
       x /= length
       y /= length
     }
-    const pick = Math.trunc(num(value.pick, -1, 7, -1))
-    const pickSeq = Math.trunc(num(value.pickSeq, -1, Number.MAX_SAFE_INTEGER, -1))
+    const pick = Number.isSafeInteger(value.pick) ? (value.pick as number) : -1
+    const pickSeq = Number.isSafeInteger(value.pickSeq) ? (value.pickSeq as number) : -1
     this.inputs.set(id, { x, y, pick, pickSeq })
     const player = this.state.players.find((p) => p.id === id)
-    if (player && pick >= 0 && pickSeq === player.choiceSeq && pick < player.choices.length) this.choose(player, pick)
+    if (
+      this.state.phase === 'playing' &&
+      player &&
+      pick >= 0 &&
+      pickSeq === player.choiceSeq &&
+      pick < player.choices.length
+    )
+      this.choose(player, pick)
   }
 
   /** Solo play pauses on a level-up, like a board game turn; co-op keeps running. */
   get paused() {
     const players = this.state.players
-    return players.length === 1 && players[0].choices.length > 0
+    return (
+      this.state.phase === 'playing' &&
+      this.state.time < RUN_SECONDS &&
+      players.length === 1 &&
+      !players[0].downed &&
+      players[0].choices.length > 0
+    )
   }
 
   /** Advances by real time. Slow motion (after a boss falls) stretches it; `tick` itself is never scaled. */
@@ -808,15 +828,17 @@ export class Game {
             player.married = player.weapons.some((weapon) => weapon.id === 'w_love' && weapon.lv >= 2)
             this.log(LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1], player.id)
           } else if (player.married) {
-            player.hasChild = true
-            this.log(LIFE_OUTCOMES.nightcry[0], player.id)
+            this.familyHands.set(player.id, player.choices)
+            player.choices = ['f:yes', 'f:no']
+            player.choiceSeq++
+            player.history.push({ event: index, outcome: LIFE_OUTCOMES.nightcry[3] })
+            continue
           }
-          const outcome = wedding
-            ? LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1]
-            : LIFE_OUTCOMES.nightcry[player.hasChild ? 0 : 1]
+          const outcome = wedding ? LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1] : LIFE_OUTCOMES.nightcry[2]
           player.history.push({ event: index, outcome })
         }
       }
+      if (birth) continue
       if (event.boss === 'b_layoff') {
         const employed = state.players.filter((player) => this.careers.get(player.id)?.employed)
         if (!employed.length) continue
@@ -831,35 +853,38 @@ export class Game {
         this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
       } else this.log(event.text)
       if (event.boss) this.spawnEnemy(event.boss)
-      if (event.swarm) {
-        const count = Math.round((event.count ?? 20) * this.playerFactor())
-        const anchor = this.randomAlive()
-        if (!anchor) continue
-        this.emit(FX.SWARM, anchor.x, anchor.y, index)
-        const formation = event.formation ?? 'ring'
-        const side = this.rng() * Math.PI * 2
-        const px = -Math.sin(side)
-        const py = Math.cos(side)
-        const cx = anchor.x + Math.cos(side) * SPAWN_RADIUS
-        const cy = anchor.y + Math.sin(side) * SPAWN_RADIUS
-        const spacing = Math.min(34, 1500 / count)
-        const clump = 36 + count * 2.2
-        for (let i = 0; i < count; i++) {
-          if (formation === 'wall') {
-            const offset = (i - (count - 1) / 2) * spacing
-            this.spawnEnemy(event.swarm, cx + px * offset, cy + py * offset)
-          } else if (formation === 'cluster') {
-            const angle = this.rng() * Math.PI * 2
-            const radius = Math.sqrt(this.rng()) * clump
-            this.spawnEnemy(event.swarm, cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius)
-          } else {
-            const angle = (i / count) * Math.PI * 2
-            this.spawnEnemy(
-              event.swarm,
-              anchor.x + Math.cos(angle) * SPAWN_RADIUS,
-              anchor.y + Math.sin(angle) * SPAWN_RADIUS
-            )
-          }
+      if (event.swarm) this.spawnSwarm(index)
+    }
+  }
+
+  private spawnSwarm(index: number, anchor = this.randomAlive()) {
+    const event = EVENTS[index]
+    if (event.swarm && anchor) {
+      const count = Math.round((event.count ?? 20) * this.playerFactor())
+      this.emit(FX.SWARM, anchor.x, anchor.y, index)
+      const formation = event.formation ?? 'ring'
+      const side = this.rng() * Math.PI * 2
+      const px = -Math.sin(side)
+      const py = Math.cos(side)
+      const cx = anchor.x + Math.cos(side) * SPAWN_RADIUS
+      const cy = anchor.y + Math.sin(side) * SPAWN_RADIUS
+      const spacing = Math.min(34, 1500 / count)
+      const clump = 36 + count * 2.2
+      for (let i = 0; i < count; i++) {
+        if (formation === 'wall') {
+          const offset = (i - (count - 1) / 2) * spacing
+          this.spawnEnemy(event.swarm, cx + px * offset, cy + py * offset)
+        } else if (formation === 'cluster') {
+          const angle = this.rng() * Math.PI * 2
+          const radius = Math.sqrt(this.rng()) * clump
+          this.spawnEnemy(event.swarm, cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius)
+        } else {
+          const angle = (i / count) * Math.PI * 2
+          this.spawnEnemy(
+            event.swarm,
+            anchor.x + Math.cos(angle) * SPAWN_RADIUS,
+            anchor.y + Math.sin(angle) * SPAWN_RADIUS
+          )
         }
       }
     }
@@ -2282,6 +2307,7 @@ export class Game {
   }
 
   private offer(player: Player) {
+    player.choiceSeq++
     const career = player.pending === 0 && player.swapPending === 0 && player.careerPending > 0
     if ((player.pending === 0 && player.swapPending > 0) || (career && !this.options(player).length)) {
       if (career) player.careerPending--
@@ -2322,8 +2348,31 @@ export class Game {
   }
 
   choose(player: Player, index: number) {
+    if (this.state.phase !== 'playing' || !Number.isSafeInteger(index) || !this.state.players.includes(player)) return
     const choice = player.choices[index]
     if (!choice) return
+    if (choice === 'f:yes' || choice === 'f:no') {
+      const hand = this.familyHands.get(player.id)
+      if (!hand) return
+      this.familyHands.delete(player.id)
+      player.choices = hand
+      player.choiceSeq++
+      player.hasChild = choice === 'f:yes'
+      const event = EVENTS.findIndex((entry) => entry.swarm === 'nightcry')
+      const outcome = LIFE_OUTCOMES.nightcry[player.hasChild ? 0 : 1]
+      player.history = player.history.filter((entry) => entry.event !== event)
+      player.history.push({ event, outcome, at: this.state.time })
+      player.history.sort(
+        (first, second) => (first.at ?? EVENTS[first.event].at) - (second.at ?? EVENTS[second.event].at)
+      )
+      this.log(outcome, player.id)
+      if (player.hasChild && !this.nightcryStarted) {
+        this.nightcryStarted = true
+        this.log(`${player.name}の家族の試練：${EVENTS[event].text}`)
+        this.spawnSwarm(event, player)
+      }
+      return
+    }
     const [kind, id, replacement] = choice.split(':')
     player.choices = []
     player.choiceSeq++
