@@ -3,12 +3,22 @@ import { ATTACK_PROFILES, combatAttackInterval, ENEMY_ACTION_TIME_SCALE } from '
 import { BREATH_TIMING, breathGeometry } from './BreathGeometry'
 import { FORTIFICATIONS, gateDamageFactor } from './Fortifications'
 import { heavyImpactGeometry } from './HeavyImpact'
-import { DEFINITIONS, attackSplash, canTargetUnit, fieldFor, type GameState, type Point, type Unit } from './model'
+import {
+  DEFINITIONS,
+  attackSplash,
+  canTargetUnit,
+  enemyGeometryScale,
+  fieldFor,
+  type GameState,
+  type Point,
+  type Unit
+} from './model'
 
 export const MAX_VISIBLE_SUPPORT_PROJECTILES = 48
 
 export function observeSupportCombat(unit: Readonly<Unit>, state: Readonly<GameState>) {
-  const profile = ATTACK_PROFILES[unit.type],
+  const geometryScale = unit.owner === 'ai' ? enemyGeometryScale(unit, state.waveBossPolicy) : 1,
+    profile = ATTACK_PROFILES[unit.type],
     timeScale = unit.owner === 'ai' ? ENEMY_ACTION_TIME_SCALE : 1,
     definition = DEFINITIONS[unit.type],
     heavy = heavyImpactGeometry({
@@ -18,10 +28,17 @@ export function observeSupportCombat(unit: Readonly<Unit>, state: Readonly<GameS
       range: unit.attackRange,
       boss: unit.boss,
       battlefieldVersion: state.battlefieldVersion,
-      geometryScale: unit.owner === 'ai' ? 2 : 1
+      geometryScale
     }),
-    splash = attackSplash(unit.type, unit.boss, state.battlefieldVersion),
-    breath = breathGeometry({ x: 0, y: 0 }, { x: 1, y: 0 }, unit.attackRange, undefined, state.battlefieldVersion, 2)
+    splash = attackSplash(unit.type, unit.boss, state.battlefieldVersion, geometryScale),
+    breath = breathGeometry(
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      unit.attackRange,
+      undefined,
+      state.battlefieldVersion,
+      geometryScale
+    )
   return {
     primaryKind: canInitiateDamage(unit) ? ('attack' as const) : ('heal' as const),
     primaryInterval: canInitiateDamage(unit)
