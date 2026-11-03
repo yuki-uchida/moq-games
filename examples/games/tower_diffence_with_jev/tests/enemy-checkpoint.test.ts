@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameEngine } from '../src/game/GameEngine'
-import { validateCampaignCheckpoint } from '../src/game/CampaignCheckpoint'
+import { CAMPAIGN_CHECKPOINT_VERSION, validateCampaignCheckpoint } from '../src/game/CampaignCheckpoint'
 import { ENEMY_TYPES, getField, stageRules, type EnemyType } from '../src/game/model'
 import { freshSave } from '../src/progression/UpgradeSystem'
 
@@ -42,6 +42,7 @@ function historical(version: 14 | 15 | 16) {
   const checkpoint = structuredClone(game(1).engine.exportCheckpoint()!) as unknown as Record<string, any>
   expect(checkpoint).not.toBeNull()
   checkpoint.version = version
+  checkpoint.state.waveBossPolicy = 2
   for (const type of additions) delete checkpoint.state.cooldowns[type]
   return checkpoint
 }
@@ -54,7 +55,7 @@ describe('v17 enemy checkpoint compatibility', () => {
         for (let tick = 0; tick < 30; tick++) engine.update(1 / 60)
         const checkpoint = engine.exportCheckpoint()!
         expect(checkpoint).not.toBeNull()
-        expect(checkpoint.version).toBe(18)
+        expect(checkpoint.version).toBe(CAMPAIGN_CHECKPOINT_VERSION)
         const restored = GameEngine.fromCheckpoint(JSON.parse(JSON.stringify(checkpoint)), idle, save, () => 0)!
         expect(restored).not.toBeNull()
         expect(restored.state.units).toEqual(engine.state.units)
@@ -100,7 +101,7 @@ describe('v17 enemy checkpoint compatibility', () => {
     it(`migrates v${version} historical cooldown keys`, () => {
       const migrated = validate(historical(version))!
       expect(migrated).not.toBeNull()
-      expect(migrated.version).toBe(18)
+      expect(migrated.version).toBe(CAMPAIGN_CHECKPOINT_VERSION)
       expect(Object.keys(migrated.state.cooldowns)).toEqual([...ENEMY_TYPES])
       for (const type of additions) expect(migrated.state.cooldowns[type]).toBe(0)
     })
@@ -122,7 +123,7 @@ describe('v17 enemy checkpoint compatibility', () => {
     for (let tick = 0; tick < 30; tick++) engine.update(1 / 60)
     const checkpoint = structuredClone(engine.exportCheckpoint()!)
     expect(checkpoint).not.toBeNull()
-    const old = { ...checkpoint, version: 16 }
+    const old = { ...checkpoint, version: 16, state: { ...checkpoint.state, waveBossPolicy: 2 as const } }
     for (const type of additions) delete (old.state.cooldowns as Partial<typeof old.state.cooldowns>)[type]
     const migrated = validate(old)!
     expect(migrated).not.toBeNull()

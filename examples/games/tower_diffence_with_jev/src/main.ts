@@ -61,7 +61,8 @@ import {
   type Placement,
   type Point,
   type Equipment,
-  type RoadItemKind
+  type RoadItemKind,
+  CURRENT_WAVE_BOSS_POLICY
 } from './game/model'
 import { RuleBasedAI, JevAI } from './ai/AIController'
 import { GameRenderer } from './rendering/GameRenderer'
@@ -651,7 +652,7 @@ function showLaunch() {
 /** Download the likely battle while menus are read, so 出撃 only waits for GPU warm-up. */
 function prefetchLikelyCampaign() {
   if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return
-  const state = pendingRun?.engine.state ?? { ...engine.state, stage: selectedStage, waveBossPolicy: 2, units: [], pendingSpawns: [] }
+  const state = pendingRun?.engine.state ?? { ...engine.state, stage: selectedStage, waveBossPolicy: CURRENT_WAVE_BOSS_POLICY, units: [], pendingSpawns: [] }
   renderer.prefetchCampaign(artBase, state)
 }
 function resetTitleCampaign() {
@@ -1752,7 +1753,7 @@ renderer.onContextRestored = () => {
   })
   else if (campaignAction && campaignState) void prepareCampaign(campaignAction, campaignState)
 }
-function startFreshCampaign() { void prepareCampaign(commitFreshCampaign, { ...engine.state, stage: selectedStage, waveBossPolicy: 2, units: [], pendingSpawns: [] }) }
+function startFreshCampaign() { void prepareCampaign(commitFreshCampaign, { ...engine.state, stage: selectedStage, waveBossPolicy: CURRENT_WAVE_BOSS_POLICY, units: [], pendingSpawns: [] }) }
 function commitFreshCampaign() {
   history.replaceState({ towerScreen: 'game' }, '', '#game')
   const layoutRevision: LayoutRevision = 4
@@ -1832,7 +1833,7 @@ function renderStageSelect() {
       return item
     })
   )
-  const rules = stageRules(selectedStage, 2),
+  const rules = stageRules(selectedStage, CURRENT_WAVE_BOSS_POLICY),
     foes = [...(rules.bossType ? [rules.bossType] : []), ...rules.enemyTypes.filter((t) => t !== rules.bossType)],
     enemyBox = $('stage-enemies')
   enemyBox.replaceChildren()

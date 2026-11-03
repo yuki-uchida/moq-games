@@ -823,10 +823,12 @@ export function routePathFor(
 ): Point[] {
   return routeFor(fieldFor(state), routeId).path
 }
-export type WaveBossPolicy = 1 | 2
+export type WaveBossPolicy = 1 | 2 | 3
+export const CURRENT_WAVE_BOSS_POLICY: WaveBossPolicy = 3
 const WAVE_BOSSES: Record<WaveBossPolicy, Partial<Record<number, EnemyType>>> = {
   1: { 3: 'ogre', 6: 'ogre', 9: 'ogre', 10: 'dragon' },
-  2: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
+  2: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
+  3: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
 }
 export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2) {
   // Preserve saved-wave counts/stats/budgets; space stronger late enemies rather than stacking them.
@@ -838,17 +840,30 @@ export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2) {
     strength: 1 + (level - 1) * 0.1,
     spawnInterval: level <= 5 ? 2.8 - level * 0.14 : 2.1 + (level - 5) * 0.38,
     reward: 65 + level * 15,
-    enemyTypes: ENEMY_TYPES.filter((t) => DEFINITIONS[t].unlockStage <= level),
+    enemyTypes: ENEMY_TYPES.filter(
+      (t) => DEFINITIONS[t].unlockStage <= level && !(waveBossPolicy >= 3 && level === CONFIG.stages && t === bossType)
+    ),
     spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),
     bossType
   }
 }
 export const REGULAR_ENEMY_ATTACK_MULTIPLIER = 1.3
 export const unitLevelMultiplier = (level: number): number => 1.12 ** (level - 1)
+/** Policy 3 stage-10 boss dragon: shorter reach, softer hits and unscaled attack geometry. */
+export const FINALE_DRAGON_BOSS_ATTACK = 0.75
+export const finaleDragonBoss = (
+  unit: Pick<Unit, 'owner' | 'type' | 'boss'>,
+  waveBossPolicy: WaveBossPolicy
+): boolean => waveBossPolicy >= 3 && unit.owner === 'ai' && !!unit.boss && unit.type === 'dragon'
+export const enemyGeometryScale = (
+  unit: Pick<Unit, 'owner' | 'type' | 'boss'>,
+  waveBossPolicy: WaveBossPolicy
+): 1 | 2 => (finaleDragonBoss(unit, waveBossPolicy) ? 1 : 2)
 export function combatStats(
   unit: Pick<Unit, 'owner' | 'type' | 'boss'> & Partial<Pick<Unit, 'equipment'>>,
   stage: number,
-  allyLevel = 1
+  allyLevel = 1,
+  waveBossPolicy: WaveBossPolicy
 ) {
   const definition = DEFINITIONS[unit.type],
     scale = unit.owner === 'player' ? unitLevelMultiplier(allyLevel) : stageRules(stage).strength
@@ -867,9 +882,10 @@ export function combatStats(
     attack:
       definition.attack *
       scale *
+      (finaleDragonBoss(unit, waveBossPolicy) ? FINALE_DRAGON_BOSS_ATTACK : 1) *
       (unit.boss ? 1.95 : unit.owner === 'ai' ? REGULAR_ENEMY_ATTACK_MULTIPLIER : 1) *
       (unit.owner === 'player' && unit.equipment === 'weapon' ? 1.2 : 1),
-    range: definition.range * (unit.boss ? 1.25 : 1)
+    range: definition.range * (unit.boss && !finaleDragonBoss(unit, waveBossPolicy) ? 1.25 : 1)
   }
 }
 export function deploymentCooldown(type: EnemyType, stage: number): number {
@@ -1058,7 +1074,7 @@ export function initialState(
     tacticalHistory: null,
     time: 0,
     stage: 1,
-    waveBossPolicy: 2,
+    waveBossPolicy: CURRENT_WAVE_BOSS_POLICY,
     battlefieldVersion,
     layoutRevision,
     phase: 'preparation',

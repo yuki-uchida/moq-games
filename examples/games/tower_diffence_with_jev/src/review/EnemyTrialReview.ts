@@ -165,7 +165,7 @@ function snapshot() {
     battlefieldVersion: engine.state.battlefieldVersion,
     rules: stageRules(engine.state.stage, engine.state.waveBossPolicy),
     definition: DEFINITIONS[actor.type],
-    expectedStats: combatStats(actor, engine.state.stage),
+    expectedStats: combatStats(actor, engine.state.stage, 1, engine.state.waveBossPolicy),
     playerBaseHp: engine.state.playerBaseHp,
     enemiesResolved: engine.state.enemiesResolved,
     corpseRecorded: !!corpse,
