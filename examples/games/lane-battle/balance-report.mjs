@@ -130,7 +130,7 @@ if (!realisticOnly) {
 if (!nicheOnly) {
   const full = process.argv.includes('--full')
   const stages = selectedStage ? [Number(selectedStage)] : full ? [8, 15, 22] : [15, 22]
-  const seeds = full ? 160 : 60
+  const seeds = full ? 160 : realisticOnly ? 40 : 60
   const samples = Object.fromEntries(stages.map((stage) => [stage, []]))
   for (const seed of [3, 11, 29, 42, 77, 101]) {
     const seen = new Set()

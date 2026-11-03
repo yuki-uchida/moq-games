@@ -23,13 +23,14 @@ test('niche report keeps specials useful and preserves the Lv1 poop baseline', (
     assert.ok(cleared.every(Number.isFinite))
     return { name, cost: Number(cost), cleared }
   })
+  // Lv1 poop floors are the 50-seed means measured with the fixed tick.
   const baseline = [
     [3.64, 9.4, 0],
     [10.42, 13.59, 12.55],
     [9.5, 19.49, 0],
-    [19.02, 56.55, 23.53],
-    [11.75, 29.59, 19],
-    [25.64, 88.28, 46.58]
+    [19.02, 54.7, 23.53],
+    [11.75, 23.93, 19],
+    [25.64, 86.82, 46.58]
   ]
   for (const [index, unit] of POOPS.entries()) {
     assert.equal(rows[index].name, unit.name)

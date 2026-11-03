@@ -16,7 +16,7 @@ function scene() {
 test('ranged damage and death happen at arrow arrival, never at release', () => {
   const { s, archer, target } = scene()
   target.hp = archer.atk
-  step(s, 0.01)
+  step(s, 1 / 60)
   const effect = s.effects[0]
   assert.equal(target.hp, archer.atk)
   assert.equal(s.projectiles.length, 1)
@@ -25,7 +25,7 @@ test('ranged damage and death happen at arrow arrival, never at release', () => 
   step(s, at - s.time - 0.001)
   assert.ok(s.units.includes(target))
   assert.equal(s.kills, 0)
-  step(s, 0.002)
+  step(s, 1 / 60)
   assert.equal(effect.arrived, true)
   assert.equal(effect.missed, false)
   assert.equal(s.units.includes(target), false)
@@ -37,10 +37,10 @@ test('an already dead recipient is not retargeted or rewarded twice', () => {
   summon(s, 0, -1)
   const other = s.units[2]
   other.x = 390
-  step(s, 0.01)
+  step(s, 1 / 60)
   const otherHp = other.hp
   target.hp = 0
-  step(s, 0.01)
+  step(s, 1 / 60)
   assert.equal(s.kills, 1)
   step(s, 0.12)
   assert.equal(other.hp, otherHp)
@@ -49,7 +49,7 @@ test('an already dead recipient is not retargeted or rewarded twice', () => {
 })
 test('released arrows survive shooter death and follow a moving original recipient', () => {
   const { s, archer, target } = scene()
-  step(s, 0.01)
+  step(s, 1 / 60)
   const hp = target.hp
   archer.hp = 0
   target.x = 380
@@ -66,7 +66,7 @@ test('fort victory/defeat waits for impact and terminal state cannot apply more 
     const archer = s.units[0]
     archer.x = side === 1 ? 100 : 900
     s[side === 1 ? 'enemy' : 'home'] = archer.atk
-    step(s, 0.01)
+    step(s, 1 / 60)
     assert.equal(s.result, null)
     assert.equal(s[side === 1 ? 'enemy' : 'home'], archer.atk)
     step(s, 0.12)
