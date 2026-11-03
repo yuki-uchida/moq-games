@@ -117,10 +117,10 @@ test('autoplay failure recovery, audio decoding and waveform', async ({ page }) 
     const context = new AudioContext()
     const result = []
     for (const file of [
-      'tower-defense-music/monster-assault.mp3',
+      document.querySelector<HTMLAudioElement>('[data-ember-music]')!.src,
       ...['soldier', 'archer', 'mage', 'goblin', 'wolf', 'healer'].map((r) => `tower-defense-sfx/${r}_attack.wav`)
     ]) {
-      const response = await fetch(`/moq-games/${file}`)
+      const response = await fetch(file.startsWith('blob:') ? file : `/moq-games/${file}`)
       const buffer = await context.decodeAudioData(await response.arrayBuffer())
       const data = buffer.getChannelData(0)
       let energy = 0,

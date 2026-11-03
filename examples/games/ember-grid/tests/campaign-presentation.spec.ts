@@ -35,15 +35,16 @@ for (const viewport of [
     await enterBattle(page, './', true)
     await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 90000 })
     for (const [chapter, roles, music, objective] of [
-      [3, ['healer', 'slime', 'bat'], 'monster-assault-2', '制圧'],
-      [4, ['healer', 'wraith', 'shaman', 'beetle'], 'monster-assault-2', '残り6ターン'],
-      [5, ['healer', 'ogre', 'dragon'], 'final-boss', 'ボス']
+      [3, ['healer', 'slime', 'bat'], 'moonlit-ward', '制圧'],
+      [4, ['healer', 'wraith', 'shaman', 'beetle'], 'moonlit-ward', '残り6ターン'],
+      [5, ['healer', 'ogre', 'dragon'], 'crown-of-embers', 'ボス']
     ] as const) {
       await page.getByRole('button', { name: '任務と編成' }).click()
       await page.locator(`[data-stage="${chapter}"]`).click()
       await expect(page.locator('.preparation')).toHaveCount(0, { timeout: 90000 })
       await expect(page.locator('#objective')).toContainText(objective)
-      await expect(page.locator('[data-ember-music]')).toHaveAttribute('src', new RegExp(`${music}\\.mp3$`))
+      await expect(page.locator('[data-ember-music]')).toHaveAttribute('data-track', music)
+      await expect(page.locator('[data-ember-music]')).toHaveAttribute('src', /^blob:/)
       await expect
         .poll(
           async () =>

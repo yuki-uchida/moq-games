@@ -1,6 +1,6 @@
-/** Reuses only owner-approved public recordings; never creates or modifies assets. */
 const storageKey = 'ember-grid:sound'
 import { bgmVolume, sfxVolume } from './settings'
+import { composeMusic, type MusicTrack } from './music'
 export const jingleNotes = {
   defeat: [392, 330, 262],
   victory: [523, 659, 784],
@@ -20,7 +20,8 @@ export class ExpeditionAudio {
   private context?: AudioContext
   private jingleGain?: GainNode
   private title = true
-  readonly music = new Audio(`${import.meta.env.BASE_URL}tower-defense-music/monster-assault.mp3`)
+  readonly music = new Audio()
+  private musicSources = new Map<MusicTrack, string>()
   private sounds = new Map<string, string>()
   private preparedVoices = new Map<string, HTMLAudioElement>()
   private voices: HTMLAudioElement[] = []
@@ -30,6 +31,8 @@ export class ExpeditionAudio {
     this.music.preload = 'none'
     this.music.dataset.emberMusic = 'true'
     document.body.append(this.music)
+    this.setMusic('ember-march')
+    this.applySettings()
     // Music is on by default; autoplay policy allows it from the first user gesture.
     const unlock = () => {
       removeEventListener('pointerdown', unlock, true)
@@ -43,7 +46,7 @@ export class ExpeditionAudio {
     window.addEventListener('pagehide', () => this.stop())
   }
   async prepare(roles: string[]) {
-    // Small, existing action cues only; music streams separately. The healer cue doubles as quiet potion feedback.
+    // Existing action cues only; the healer cue doubles as quiet potion feedback.
     for (const role of new Set([...roles, 'healer'])) {
       if (this.sounds.has(role)) continue
       const response = await fetch(`${import.meta.env.BASE_URL}tower-defense-sfx/${role}_attack.wav`, {
@@ -76,11 +79,16 @@ export class ExpeditionAudio {
       }
     }
   }
-  setMusic(name: string) {
-    const source = `${import.meta.env.BASE_URL}tower-defense-music/${name}.mp3`
-    if (this.music.getAttribute('src') === source) return
+  setMusic(name: MusicTrack) {
+    if (this.music.dataset.track === name) return
+    let source = this.musicSources.get(name)
+    if (!source) {
+      source = URL.createObjectURL(new Blob([composeMusic(name)], { type: 'audio/wav' }))
+      this.musicSources.set(name, source)
+    }
     this.music.pause()
     this.music.src = source
+    this.music.dataset.track = name
     this.start()
   }
   toggle() {
