@@ -1,4 +1,4 @@
-import { DEFINITIONS, type UnitType } from '../game/model'
+import { DEFINITIONS, type GameState, type UnitType } from '../game/model'
 
 /** DOM-free rules for the battle "game feel" layer. */
 export const HIT_WINDOW_MS = 110
@@ -29,6 +29,28 @@ export function castleReachers(
     else merged.set(key, { type: a.type, boss: a.boss, count: 1 })
   }
   return [...merged.values()]
+}
+
+type SpecialCountState = Pick<GameState, 'battleId' | 'stage' | 'previousStageSummary' | 'units'>
+/** Defenders placed for this stage (any stage-select battle, or stage 1) start their cast counts at zero. */
+export const placedThisStage = (s: Pick<GameState, 'stage' | 'previousStageSummary'>): boolean => {
+  const previous = s.previousStageSummary
+  // A stage-select battle records its skipped stages as this neutral summary; an old expedition save does not.
+  return s.stage === 1 || !previous || (previous.maxProgress === 0.5 && previous.baseDamage === 0 && previous.defenderDamage === 0)
+}
+/** Specials cast in this battle. An old expedition save carries defenders, and their cast counts, over from earlier stages. */
+export class BattleSpecialCounter {
+  private key = ''
+  private base = 0
+  count(s: SpecialCountState): number {
+    const total = s.units.reduce((sum, u) => sum + (u.owner === 'player' ? (u.specialSequence ?? 0) : 0), 0),
+      key = `${s.battleId}:${s.stage}`
+    if (key !== this.key) {
+      this.key = key
+      this.base = placedThisStage(s) ? 0 : total
+    }
+    return Math.max(0, total - this.base)
+  }
 }
 
 export const isHeavyHit = (damage: number, maxHp: number): boolean => damage >= 90 || damage >= maxHp * 0.3

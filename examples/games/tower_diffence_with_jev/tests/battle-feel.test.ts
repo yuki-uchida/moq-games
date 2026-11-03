@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   AmountAggregator,
+  BattleSpecialCounter,
   ComboTracker,
   comboLabel,
   bountyFor,
@@ -68,5 +69,26 @@ describe('enemies that reached the castle', () => {
     ])
     expect(exits[0].count).toBe(2)
     expect(castleReachers([], new Map(), new Set())).toEqual([])
+  })
+})
+
+describe('specials cast in this battle', () => {
+  const ally = (specialSequence: number) => ({ owner: 'player' as const, specialSequence })
+  const neutral = { stage: 9, spawned: 21, resolved: 21, maxProgress: 0.5, baseDamage: 0, defenderDamage: 0 }
+  const played = { stage: 9, spawned: 21, resolved: 21, maxProgress: 0.93, baseDamage: 12, defenderDamage: 340 }
+  it('counts every cast of a battle whose defenders were placed for it, even when resumed mid-battle', () => {
+    const counter = new BattleSpecialCounter()
+    expect(counter.count({ battleId: 1, stage: 10, previousStageSummary: neutral, units: [ally(2), ally(1)] } as never)).toBe(3)
+    expect(counter.count({ battleId: 2, stage: 1, previousStageSummary: null, units: [ally(1)] } as never)).toBe(1)
+  })
+  it('leaves out casts an old expedition save carried over from earlier stages', () => {
+    const counter = new BattleSpecialCounter(),
+      units = [ally(25), ally(15)],
+      state = { battleId: 3, stage: 10, previousStageSummary: played, units }
+    expect(counter.count(state as never)).toBe(0)
+    units[0].specialSequence += 2
+    units[1].specialSequence += 1
+    expect(counter.count(state as never)).toBe(3)
+    expect(counter.count({ ...state, battleId: 4 } as never)).toBe(0)
   })
 })
