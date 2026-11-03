@@ -118,6 +118,198 @@ function parent(f: number) {
   return r
 }
 
+type Pt = readonly [number, number]
+/** One frame of ヤンキー親: joints in side view facing right, far limb first, then near. */
+interface YankeeFrame {
+  hip: Pt
+  shoulder: Pt
+  head: Pt
+  legs: readonly [knee: Pt, foot: Pt][]
+  arms: readonly [elbow: Pt, hand: Pt][]
+  /** The long coat's tails behind the legs. */
+  tail: number[]
+  /** Its front panels hanging over the near thigh (only when not blown back). */
+  skirt?: number[]
+  /** Fists out (running, kicking) or hands in the pockets (strutting). */
+  fists: boolean
+  /** The near foot thrust out sole first. */
+  kick?: boolean
+}
+
+const at = ([x, y]: Pt, dx: number, dy: number): Pt => [x + dx, y + dy]
+
+/** Storming in: four running frames, leaning into the dash with the coat streaming behind. */
+function yankeeRun(f: number): YankeeFrame {
+  const bob = [0, -1, 0, -1][f]
+  const hip: Pt = [14, 20 + bob]
+  const legPose: Record<string, [Pt, Pt]> = {
+    front: [at(hip, 5, 3), [22, 29]],
+    back: [at(hip, -1, 5), [8, 27]],
+    support: [at(hip, 3, 5), [16, 30]],
+    swing: [at(hip, 4, 3), at(hip, -2, 7)]
+  }
+  const [far, near] = [
+    ['back', 'front'],
+    ['swing', 'support'],
+    ['front', 'back'],
+    ['support', 'swing']
+  ][f]
+  const shoulder: Pt = [18, 13 + bob]
+  const arm = (k: string): [Pt, Pt] =>
+    k === 'front'
+      ? [at(shoulder, 3, 3), at(shoulder, 6, 1)]
+      : k === 'back'
+        ? [at(shoulder, -3, 3), at(shoulder, -6, 1)]
+        : [at(shoulder, 0, 4), at(shoulder, 3, 6)]
+  const wave = f % 2
+  return {
+    hip,
+    shoulder,
+    head: [21, 9 + bob],
+    legs: [legPose[far], legPose[near]],
+    arms: [arm(f === 0 ? 'front' : f === 2 ? 'back' : 'mid'), arm(f === 0 ? 'back' : f === 2 ? 'front' : 'mid')],
+    tail: [13, 15 + bob, 15, 21 + bob, 5, 23 + bob + wave, 2, 19 + bob - wave],
+    fists: true
+  }
+}
+
+/** The flying kick: leaning back in the air, the near leg thrust out at the target, the far leg tucked. */
+function yankeeKick(f: number): YankeeFrame {
+  const reach = f % 2
+  return {
+    hip: [13, 19],
+    shoulder: [10, 12],
+    head: [10, 8],
+    legs: [
+      [
+        [17, 23],
+        [12, 26]
+      ],
+      [
+        [20, 20],
+        [26 + reach, 22]
+      ]
+    ],
+    arms: [
+      [
+        [13, 13],
+        [15, 11]
+      ],
+      [
+        [6, 15],
+        [3, 14 - reach]
+      ]
+    ],
+    tail: [9, 15, 13, 19, 9, 28 - reach, 4, 25 + reach],
+    fists: true,
+    kick: true
+  }
+}
+
+/** The swagger home: upright, chest out, hands in the pockets, a bouncing bow-legged walk. */
+function yankeeStrut(f: number): YankeeFrame {
+  const bob = [0, -1, 0, -1][f]
+  const hip: Pt = [15, 21 + bob]
+  const stride = [3, 0, -3, 0][f]
+  const lift = [0, 1, 0, 1][f]
+  // The shoulders roll with each step.
+  const roll = [0, 1, 0, -1][f]
+  const shoulder: Pt = [15 + roll, 13 + bob]
+  return {
+    hip,
+    shoulder,
+    head: [16 + roll, 9 + bob],
+    legs: [
+      [at(hip, -stride / 2 - 1, 4), [15 - stride, 30 - (f === 3 ? lift : 0)]],
+      [at(hip, stride / 2 + 1, 4), [16 + stride, 30 - (f === 1 ? lift : 0)]]
+    ],
+    arms: [
+      [at(shoulder, -2, 4), at(shoulder, 0, 8)],
+      [at(shoulder, -4, 5), at(shoulder, -1, 8)]
+    ],
+    tail: [11, 15 + bob, 14, 19 + bob, 13, 26 + bob, 9 - (f % 2), 25 + bob],
+    skirt: [hip[0] - 3, hip[1] - 1, hip[0] + 4, hip[1] - 1, hip[0] + 5 - (f % 2), hip[1] + 5, hip[0] - 2, hip[1] + 5],
+    fists: false
+  }
+}
+
+/**
+ * ヤンキー親: a former delinquent parent — a blond pompadour, black sunglasses, a long purple 特攻服 with gold
+ * embroidery over a white sarashi, and setta sandals. Side view facing right; the renderer mirrors it.
+ */
+function yankee(frame: YankeeFrame) {
+  const r = new Raster(N, N)
+  const SUIT = R.purple
+  const { hip, shoulder, head, legs, arms, tail, skirt, fists, kick } = frame
+  const leg = (l: Raster, [knee, foot]: readonly [Pt, Pt], c: number) => {
+    // Bontan: baggy at the thigh, tight at the ankle.
+    l.thick(hip[0], hip[1], knee[0], knee[1], 4, c)
+    l.thick(knee[0], knee[1], foot[0], foot[1], 3, c)
+  }
+  const sandal = (l: Raster, [x, y]: Pt, sole: boolean) => {
+    if (sole) {
+      l.rect(x + 1, y - 2, 1, 4, R.brown[2])
+      l.rect(x - 1, y - 1, 2, 2, R.skin[1])
+    } else {
+      l.rect(x - 1, y - 1, 4, 1, R.skin[1])
+      l.rect(x - 2, y, 5, 1, R.brown[2])
+    }
+  }
+  const arm = (l: Raster, [elbow, hand]: readonly [Pt, Pt], c: number) => {
+    l.thick(shoulder[0], shoulder[1], elbow[0], elbow[1], 3, c)
+    l.thick(elbow[0], elbow[1], hand[0], hand[1], 3, c)
+    if (fists) l.rect(hand[0] - 1, hand[1] - 1, 3, 3, R.skin[1])
+  }
+  // Far limbs a step darker, then the coat's tails behind the near leg.
+  part(r, (l) => {
+    leg(l, legs[0], SUIT[2])
+    sandal(l, legs[0][1], false)
+  })
+  part(r, (l) => arm(l, arms[0], SUIT[2]))
+  part(r, (l) => {
+    l.poly(tail, SUIT[1])
+    shadeEdges(l, SUIT, 1)
+    l.set(tail[4] + 1, tail[5] - 2, R.yellow[1])
+  })
+  part(r, (l) => {
+    leg(l, legs[1], SUIT[1])
+    shadeEdges(l, SUIT, 1, true)
+    sandal(l, legs[1][1], Boolean(kick))
+  })
+  // Torso: the coat hanging open over a white sarashi, gold embroidery down the back.
+  part(r, (l) => {
+    const [sx, sy] = shoulder
+    const [hx, hy] = hip
+    l.poly([sx - 4, sy - 1, sx + 2, sy - 1, hx + 4, hy + 1, hx - 3, hy + 1], SUIT[1])
+    if (skirt) l.poly(skirt, SUIT[1])
+    shadeEdges(l, SUIT, 1, true)
+    l.poly([sx, sy, sx + 2.5, sy, hx + 3.5, hy - 2, hx + 1, hy - 2], R.paper[1])
+    for (let k = 0; k < 3; k++) {
+      const t = (k + 0.5) / 3
+      l.set(sx - 2 + (hx - sx) * t, sy + 2 + (hy - sy - 4) * t, R.yellow[1])
+    }
+  })
+  part(r, (l) => arm(l, arms[1], SUIT[1]))
+  // Head: sunglasses and a scowl under slicked-back sides with a ducktail flick at the nape.
+  part(r, (l) => {
+    const [x, y] = head
+    ball(l, x, y, 4.3, 4.5, R.skin)
+    l.poly([x - 4.5, y - 0.5, x - 3.5, y - 3.6, x + 1, y - 4.6, x - 0.5, y - 1.5, x - 2.6, y + 0.4], R.yellow[2])
+    l.poly([x - 4.3, y - 0.8, x - 5.9, y + 1.2, x - 3.7, y + 0.8], R.yellow[2])
+    l.rect(x, y - 1, 5, 2, C.inkCool)
+    l.line(x - 2, y - 1, x, y - 1, C.inkCool)
+    l.set(x + 3, y - 1, C.white)
+    l.rect(x + 2, y + 3, 2, 1, C.inkWarm)
+  })
+  // The pompadour: a long blond roll out over the brow, its tip curling down.
+  part(r, (l) => {
+    const [x, y] = head
+    ball(l, x + 3, y - 5, 5.6, 2.7, R.yellow)
+    ball(l, x + 7.6, y - 3.7, 1.7, 1.7, R.yellow, false)
+  })
+  return r
+}
+
 /** 友人: small friend kids running the orbit (three outfits). */
 function friend(f: number, v: number) {
   const r = new Raster(N, N)
@@ -271,6 +463,22 @@ const controller = () =>
     l.set(14, 6, R.yellow[1])
   })
 const pixel = (c: number) => tiny(3, 3, (l) => l.rect(0, 0, 2, 2, c), false)
+/** ヤンキー親's kick landing: a jagged comic impact burst, white with a hot yellow core. */
+const impact = (f: number) =>
+  tiny(24, 24, (l) => {
+    const star = (outer: number, inner: number, c: number) => {
+      const pts: number[] = []
+      for (let k = 0; k < 18; k++) {
+        const rr = k % 2 ? inner : outer - ((k * 5) % 3)
+        const a = (k / 18) * Math.PI * 2 + f * 0.35
+        pts.push(12 + Math.cos(a) * rr, 12 + Math.sin(a) * rr)
+      }
+      l.poly(pts, c)
+    }
+    star([11, 9][f], [5, 4][f], C.white)
+    star([6, 5][f], [3, 2.5][f], R.yellow[0])
+    l.ellipse(12, 12, 1.6, 1.6, R.orange[0])
+  })
 /** 投資: a jagged chart-arrow lightning bolt from above (24×120) and its impact burst. */
 const bolt = (f: number) =>
   tiny(24, 120, (l) => {
@@ -534,7 +742,14 @@ export function weaponSheets(): Record<string, () => Sheet> {
     'weapon:p_free': () => ({ fly: four(balloon, 4) }),
     'weapon:p_over': () => ({ fly: loop([0, 1].map(shield), 3) }),
     'weapon:p_monster': () => ({ fly: four(parent, 10) }),
-    'weapon:p_yankee': () => ({ fly: four(parent, 10) }),
+    'weapon:p_yankee': () => ({
+      fly: four((f) => yankee(yankeeRun(f)), 14),
+      kick: loop(
+        [0, 1].map((f) => yankee(yankeeKick(f))),
+        10
+      ),
+      walk: four((f) => yankee(yankeeStrut(f)), 7)
+    }),
     'weapon:w_friend': () => ({
       fly: four((f) => friend(f, 0), 10),
       alt: four((f) => friend(f, 1), 10),
@@ -557,6 +772,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
       star: loop([0, 1].map(star), 6),
       controller: loop([controller()], 1),
       pixels: loop([R.pink[1], R.sky[1], R.yellow[1], R.mint[1]].map(pixel), 1),
+      impact: loop([0, 1].map(impact), 12),
       bolt: loop([0, 1].map(bolt), 12),
       burst: loop([0, 1, 2].map(burst), 12),
       bills: loop([bills()], 1),
@@ -588,7 +804,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
         p_weak: icon(new Raster(24, 24).blit(hand(0), 2, 6).blit(hand(1), 10, 4).blit(sweat(), 17, 14)),
         p_over: icon(shield(0)),
         p_monster: icon(parent(0)),
-        p_yankee: icon(parent(0)),
+        p_yankee: icon(yankee(yankeeStrut(0))),
         p_rich: icon(new Raster(28, 28).blit(bills(), 4, 4).blit(coins(1), 0, 10)),
         p_gone: tiny(
           32,

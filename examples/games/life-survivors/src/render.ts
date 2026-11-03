@@ -19,7 +19,7 @@ import {
   type Stage
 } from './data'
 import { Effects, PK } from './effects'
-import { VIEW_HALF } from './game'
+import { RAID, VIEW_HALF } from './game'
 import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
 
 /** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
@@ -1210,6 +1210,63 @@ export class Renderer {
             4,
             4
           )
+        break
+      }
+      case 'raid': {
+        // ヤンキー親: storms out at an enemy, flying-kicks it and swaggers home. Laid along the raid line from
+        // the eased owner (like the orbiters, so it never lags) and mirrored by the way it is heading.
+        const owner = view.players[view.shots[i + 6]]
+        const dist = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
+        const px = sh.ox + cos * dist
+        const py = sh.oy + sin * dist
+        const art = sheet('weapon:p_yankee')
+        const out = age < RAID.back
+        const flip = out ? cos < 0 : cos > 0
+        if (age < RAID.kick) {
+          // The run in: dust kicked up behind and a short trail of afterimages.
+          const frame = pick(art.fly, this.clock + i * 0.1)
+          const appear = clamp01(age * 14)
+          for (let k = 1; k <= 2; k++)
+            this.art(
+              pick(fx.dust, this.clock + k * 0.13),
+              px - cos * 11 * k,
+              py + 13 - sin * 11 * k,
+              8,
+              13,
+              false,
+              appear * (0.75 - k * 0.2)
+            )
+          this.shadow(px, py + 14, 9, 0.24 * appear)
+          if (trails) {
+            const n = Math.min(2, this.trailBudget)
+            this.trailBudget -= n
+            for (let k = n; k >= 1; k--)
+              this.centred(frame, px - cos * 9 * k, py - sin * 9 * k, evolved, appear * (0.3 - k * 0.08), 1, flip)
+          }
+          this.centred(frame, px, py, evolved, appear, 1, flip)
+        } else if (out) {
+          // The flying kick: a hop off the ground, then a comic impact at the sole.
+          const k = (age - RAID.kick) / (RAID.back - RAID.kick)
+          const hop = Math.sin(k * Math.PI) * 8
+          this.shadow(px, py + 14, 9 - hop * 0.4, 0.2)
+          this.centred(art.kick.frames[k < 0.5 ? 0 : 1], px, py - hop, evolved, 1, 1, flip)
+          if (k > 0.3)
+            this.art(
+              fx.impact.frames[k < 0.65 ? 0 : 1],
+              px + (flip ? -13 : 13),
+              py - hop + 6,
+              12,
+              12,
+              false,
+              clamp01((1 - k) * 4),
+              0.7 + k * 0.5
+            )
+        } else {
+          // The swagger home, fading out as it reaches the owner.
+          const alpha = clamp01(life * 12)
+          this.shadow(px, py + 14, 9, 0.24 * alpha)
+          this.centred(pick(art.walk, this.clock + i * 0.1), px, py, evolved, alpha, 1, flip)
+        }
         break
       }
       case 'nova': {
