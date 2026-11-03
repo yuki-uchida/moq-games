@@ -114,7 +114,7 @@ export const SPECIALS = [
     range: 36,
     speed: 30,
     period: 0.95,
-    cooldown: 8,
+    cooldown: 6,
     line: '背脂こってり。前線を支える万能型'
   },
   {
@@ -126,7 +126,7 @@ export const SPECIALS = [
     range: 34,
     speed: 52,
     period: 0.525,
-    cooldown: 10,
+    cooldown: 6,
     crit: 0.3125,
     line: '寝不足の暴走。素早い連打と会心'
   },
@@ -164,7 +164,7 @@ export const SPECIALS = [
     range: 40,
     speed: 26,
     period: 1.31,
-    cooldown: 12,
+    cooldown: 11.5,
     line: '脂がはねて周りも巻き込む'
   },
   {
@@ -184,11 +184,11 @@ export const SPECIALS = [
     name: '激辛カレー',
     cost: 190,
     hp: 380,
-    atk: 95,
+    atk: 105,
     range: 38,
     speed: 30,
     period: 1.52,
-    cooldown: 13,
+    cooldown: 9.75,
     line: '一撃が重い、辛さの暴力'
   },
   {
@@ -206,7 +206,7 @@ export const SPECIALS = [
   {
     key: 'oyster',
     name: '生ガキ',
-    cost: 175,
+    cost: 180,
     hp: 375,
     atk: 165,
     range: 40,
@@ -219,7 +219,7 @@ export const SPECIALS = [
   {
     key: 'ice',
     name: 'アイスの食べすぎ',
-    cost: 100,
+    cost: 85,
     hp: 425,
     atk: 45,
     range: 34,
@@ -287,7 +287,7 @@ const MECHANICS = {
     '冷風で前方3体の足を鈍らせる。',
     { multipliers: [1, 0.8, 0.6], slowEffect: 2.5, slowFactor: 0.5 }
   ],
-  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.375 }],
+  ramen: ['single', '背脂ドレイン', '与えたダメージで体力を回復する。', { drain: 0.275 }],
   yofukashi: ['single', '眠気', '当てた敵を眠くして攻撃を遅らせる。会心あり。', { drowsyEffect: 3.125 }],
   sake: ['single', '千鳥足', '会心で敵を千鳥足にして後退させる。', { confuse: 1.2 }],
   jiro: ['ring', '打ち上げ', '地響きで周りの敵を打ち上げる。', { launch: 0.6, heavy: true }],
@@ -295,7 +295,7 @@ const MECHANICS = {
     'circle',
     'やけど',
     '当たった敵全員をやけどさせる。',
-    { radius: 45, burnEffect: 2, burnInterval: 0.5, burnDamage: 0.1 }
+    { radius: 45, burnEffect: 2, burnInterval: 0.5, burnDamage: 0.125 }
   ],
   garlic: [
     'circle',
@@ -471,6 +471,8 @@ export const income = (s) => STAGES[s.stage].income + s.level * 4
 export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
   return {
     time: 0,
+    ticks: 0,
+    tickRemainder: 0,
     stage,
     deck,
     rng: rng(seed),
@@ -684,6 +686,8 @@ function land(s, src, target, damage, crit = false, primary = true, charged = fa
     if (primary && charged) damage *= src.ambushMultiplier
     if (src.side === 1) s.enemy = Math.max(0, s.enemy - damage)
     else s.home = Math.max(0, s.home - damage)
+    if (s.enemy <= 0) s.result = 'victory'
+    else if (s.home <= 0) s.result = 'defeat'
     return
   }
   applyHit(s, src, target, damage, crit, primary, charged, effect)
@@ -848,17 +852,50 @@ function arrive(s, p) {
   p.effect.missed = !p.effect.hit && p.targetId !== null && !target
   if (target || p.targetId === null) impact(s, p, target)
 }
-function ongoing(s) {
+function strike(s, u, target, baseX) {
+  const targetId = target?.id ?? null
+  if (u.caffeine) u.ramp = u.rampTarget === targetId ? Math.min(5, (u.ramp || 0) + 1) : 0
+  u.rampTarget = targetId
+  u.charged = !!u.ambush && (u.lastStrikeDistance === undefined || u.walkDistance - u.lastStrikeDistance >= 40)
+  u.lastStrikeDistance = u.walkDistance
+  if (u.rallyEffect)
+    for (const ally of s.units) {
+      if (ally.side === u.side && ally.hp > 0 && Math.abs(ally.x - u.x) <= 140) ally.rally = { end: s.time + 4 }
+    }
+  u.cycle =
+    (u.period * (u.drowsy?.end > s.time ? 1.35 : 1) * (u.rally?.end > s.time ? 0.8 : 1)) / (1 + (u.ramp || 0) * 0.08)
+  u.attack = u.cycle
+  u.phase = 0
+  u.motion = 'attack'
+  const crit = u.crit > 0 && s.rng() < u.crit
+  u.strikes++
+  u.lastCrit = crit
+  const damage = u.atk * (crit ? 2.5 : 1) * (u.weak?.end > s.time ? 0.7 : 1)
+  attack(s, u, target, baseX, crit, damage)
+}
+function ongoing(s, start, struck) {
   const end = s.time
+  const attacks = []
+  for (const unit of s.units) {
+    if (unit.hp <= 0 || unit.attack > end - start + 1e-9) continue
+    const { gap } = reach(s, unit)
+    if (gap > 0) continue
+    attacks.push(unit)
+  }
+  let decisive = null
   while (true) {
     let event = null
-    const consider = (at, run) => {
-      if (at <= end + 1e-9 && (!event || at < event.at)) event = { at, run }
+    const consider = (at, run, priority = 0, fort = false) => {
+      if (decisive !== null && (!fort || at !== decisive)) return
+      if (at <= end + 1e-9 && (!event || at < event.at || (at === event.at && priority > event.priority)))
+        event = { at, run, priority }
     }
     for (const unit of s.units) {
       if (unit.hp <= 0) continue
-      for (const dot of [unit.burn, ...(unit.poison || [])]) {
-        if (!dot || dot.next > dot.end + 1e-9) continue
+      const dots = unit.poison || []
+      for (let index = -1; index < dots.length; index++) {
+        const dot = index < 0 ? unit.burn : dots[index]
+        if (!dot || dot.next > dot.end + 1e-9 || dot.next > end + 1e-9) continue
         consider(dot.next, () => {
           damageUnit(s, dot.src, unit, dot.atk * dot.damage, dot === unit.burn ? 'burn' : 'poison')
           dot.next += dot.interval
@@ -866,7 +903,7 @@ function ongoing(s) {
       }
     }
     for (const zone of s.zones) {
-      if (zone.kind === 'mud' || zone.next > zone.end + 1e-9) continue
+      if (zone.kind === 'mud' || zone.next > zone.end + 1e-9 || zone.next > end + 1e-9) continue
       consider(zone.next, () => {
         for (const unit of s.units) {
           if (unit.side === zone.side || unit.hp <= 0 || Math.abs(unit.x - zone.x) > zone.radius) continue
@@ -877,14 +914,46 @@ function ongoing(s) {
       })
     }
     for (const projectile of s.projectiles) {
-      consider(projectile.at, () => {
-        s.projectiles.splice(s.projectiles.indexOf(projectile), 1)
-        arrive(s, projectile)
-      })
+      if (projectile.at > end + 1e-9) continue
+      consider(
+        projectile.at,
+        () => {
+          s.projectiles.splice(s.projectiles.indexOf(projectile), 1)
+          arrive(s, projectile)
+        },
+        projectile.targetId === null && projectile.src.side === 1 ? 1 : 0,
+        projectile.targetId === null
+      )
+    }
+    for (const unit of attacks) {
+      if (unit.hp <= 0) continue
+      let at = start + unit.attack
+      if (unit.control && unit.control.start <= at && unit.control.end > start)
+        at += Math.max(0, Math.min(end, unit.control.end) - Math.max(start, unit.control.start))
+      if (at > end + 1e-9) continue
+      const current = reach(s, unit)
+      consider(
+        at,
+        () => {
+          attacks.splice(attacks.indexOf(unit), 1)
+          if (unit.hp <= 0 || (unit.control?.end ?? 0) > s.time) return
+          const { target, baseX, gap } = reach(s, unit)
+          if (gap > 0) return
+          strike(s, unit, target, baseX)
+          struck.set(unit, s.time)
+        },
+        !current.target && unit.side === 1 ? 1 : 0,
+        !current.target && current.gap <= 0
+      )
     }
     if (!event) break
     s.time = event.at
     event.run()
+    if (s.result && decisive === null) decisive = s.time
+  }
+  if (decisive !== null) {
+    s.time = decisive
+    return
   }
   s.time = end
   for (const unit of s.units) if (unit.poison?.length) unit.poison = unit.poison.filter((dot) => dot.end > end)
@@ -942,13 +1011,25 @@ function fortDefense(s, dt) {
     wave(s, 3 + s.rushes, '大掃除だ！')
   }
 }
+const TICK = 1 / 60
 export function step(s, dt) {
   if (s.result) return
-  s.time += dt
+  if (s.ticks === 0 && !s.tickRemainder) s.tickOrigin = s.time
+  s.tickRemainder += dt * 60
+  const ticks = Math.floor(s.tickRemainder + 1e-9)
+  s.tickRemainder = Math.max(0, s.tickRemainder - ticks)
+  for (let index = 0; index < ticks && !s.result; index++) {
+    s.time = s.tickOrigin + ++s.ticks / 60
+    tick(s, TICK)
+  }
+}
+function tick(s, dt) {
   s.gold = Math.min(999, s.gold + income(s) * dt)
   s.cooldowns = s.cooldowns.map((c) => Math.max(0, c - dt))
   s.burst = Math.max(0, s.burst - dt)
-  ongoing(s)
+  const struck = new Map()
+  ongoing(s, s.time - dt, struck)
+  if (s.result) return
   fortDefense(s, dt)
   s.spawn -= dt
   if (s.spawn <= 0) {
@@ -965,36 +1046,24 @@ export function step(s, dt) {
     // Confused units stagger home at their own pace; heavy units only shorten the duration, not the walk.
     if (u.control?.kind === 'confuse' && controlTime > 0)
       u.x = Math.min(HOME_X - 5, Math.max(ENEMY_X + 5, u.x + u.side * u.speed * WALK_PACE * 0.4 * controlTime))
+    const activeStart = struck.get(u) ?? s.time - dt
+    const activeControl = u.control
+      ? Math.max(0, Math.min(s.time, u.control.end) - Math.max(activeStart, u.control.start))
+      : 0
+    const activeTime = s.time - activeStart - activeControl
+    u.attack = Math.max(0, u.attack - activeTime)
+    u.phase += activeTime
     if (u.control?.end > s.time) {
       u.motion = 'idle'
       continue
     }
-    const activeTime = dt - controlTime
-    u.attack = Math.max(0, u.attack - activeTime)
-    u.phase += activeTime
+    if (struck.has(u)) continue
     const { target, baseX, gap } = reach(s, u)
     if (gap <= 0) {
       u.motion = 'attack'
       if (u.attack <= 0) {
-        const targetId = target?.id ?? null
-        if (u.caffeine) u.ramp = u.rampTarget === targetId ? Math.min(5, (u.ramp || 0) + 1) : 0
-        u.rampTarget = targetId
-        u.charged = !!u.ambush && (u.lastStrikeDistance === undefined || u.walkDistance - u.lastStrikeDistance >= 40)
-        u.lastStrikeDistance = u.walkDistance
-        if (u.rallyEffect)
-          for (const ally of s.units) {
-            if (ally.side === u.side && ally.hp > 0 && Math.abs(ally.x - u.x) <= 140) ally.rally = { end: s.time + 4 }
-          }
-        u.cycle =
-          (u.period * (u.drowsy?.end > s.time ? 1.35 : 1) * (u.rally?.end > s.time ? 0.8 : 1)) /
-          (1 + (u.ramp || 0) * 0.08)
-        u.attack = u.cycle
-        u.phase = 0
-        const crit = u.crit > 0 && s.rng() < u.crit
-        u.strikes++
-        u.lastCrit = crit
-        const damage = u.atk * (crit ? 2.5 : 1) * (u.weak?.end > s.time ? 0.7 : 1)
-        attack(s, u, target, baseX, crit, damage)
+        strike(s, u, target, baseX)
+        if (s.result) return
       }
     } else {
       u.motion = 'walk'
@@ -1018,6 +1087,4 @@ export function step(s, dt) {
     return false
   })
   s.effects = s.effects.filter((e) => (e.life -= dt) > 0)
-  if (s.home <= 0) s.result = 'defeat'
-  else if (s.enemy <= 0) s.result = 'victory'
 }

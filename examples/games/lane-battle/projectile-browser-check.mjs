@@ -21,12 +21,14 @@ export function createGame(stage=0,deck,seed) {
 }
 export function step(s,dt) {
  stepBase(s,dt);
+ const shot=s.projectiles.find(p=>p.targetId===2);
+ if (shot) window.flight ||= {releasedAt:shot.effect.releasedAt,arrivalAt:shot.at};
  (window.syncTrace ||= []).push({t:s.time,hp:s.units.find(u=>u.id===2)?.hp||0,arrived:s.effects.some(e=>e.ranged&&e.arrived),projectiles:s.projectiles.length});
 }
 `
 const audio = (await fs.readFile(new URL('./audio.js', import.meta.url), 'utf8')).replace(
   '  effect(kind) {',
-  '  effect(kind) {\n    (window.soundTrace ||= []).push({kind,time:performance.now()/1000});'
+  '  effect(kind) {\n    (window.soundTrace ||= []).push({kind,time:window.syncTrace?.at(-1)?.t,frame:window.syncTrace?.length-1});'
 )
 // 3D model loading polls on timers; advance the paused fake clock until the title dialog opens.
 async function begin(page) {
@@ -60,14 +62,23 @@ for (const [name, width, height] of [
       .first()
       .screenshot({ path: `${root}/${name}-${i}.png` })
   }
-  const trace = await page.evaluate(() => ({ frames: window.syncTrace, sounds: window.soundTrace }))
+  const trace = await page.evaluate(() => ({
+    frames: window.syncTrace,
+    sounds: window.soundTrace,
+    flight: window.flight
+  }))
   const release = trace.frames.find((f) => f.projectiles === 1),
     death = trace.frames.find((f) => f.hp === 0)
-  assert.ok(death.t - release.t >= 0.12 - 1e-9)
+  // Exact event times can occur between the tick-end snapshots observed by the renderer.
+  assert.ok(Math.abs(trace.flight.arrivalAt - trace.flight.releasedAt - 0.12) < 1e-9)
+  assert.ok(death.t >= trace.flight.arrivalAt - 1e-9 && death.t < trace.flight.arrivalAt + 1 / 60 + 1e-9)
+  assert.ok(trace.frames[trace.frames.indexOf(death) - 1].t < trace.flight.arrivalAt)
+  assert.ok(death.t - release.t >= 0.12 - 1 / 60 - 1e-9)
   assert.ok(death.t - release.t <= 0.12 + 1 / 60 + 1e-9)
   assert.equal(death.arrived, true, 'arrival and death share a simulation update')
   const shot = trace.sounds.find((e) => e.kind === 'shot'),
     hit = trace.sounds.find((e) => e.kind === 'hit')
+  assert.equal(hit.frame, trace.frames.indexOf(death), 'impact sound and death share the same update')
   assert.ok(Math.abs(hit.time - shot.time - (death.t - release.t)) < 0.00001, 'impact sound shares the death frame')
   await fs.writeFile(`${root}/${name}-trace.json`, JSON.stringify(trace, null, 2))
   execFileSync(process.env.FFMPEG_BIN || 'ffmpeg', [
