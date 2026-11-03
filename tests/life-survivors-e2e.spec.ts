@@ -12,6 +12,70 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+for (const width of [1280, 390]) {
+  test(`life path help is readable, scrollable and keyboard accessible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await expect(page.locator('#start-panel')).toContainText('A 15-MINUTE LIFE')
+    await expect(page.locator('#start-panel')).not.toContainText('30-MINUTE')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate((life) => {
+      const player = (life.game as unknown as Game).state.players[0]
+      player.birthPick = false
+      player.choices = []
+      player.pending = 0
+    })
+    const trigger = page.getByRole('button', { name: '遊び方を表示' })
+    const dialog = page.getByRole('dialog', { name: '生き抜くために' })
+    const close = dialog.getByRole('button', { name: '閉じる' })
+    const done = dialog.getByRole('button', { name: 'わかった' })
+    await trigger.click()
+    await expect(dialog).toHaveAttribute('aria-modal', 'true')
+    await expect(close).toBeFocused()
+    await expect(dialog).toContainText('ひとりプレイはこの画面を開いている間は一時停止')
+    const pausedAt = await handle.evaluate((life) => life.game.state.time)
+    await page.waitForTimeout(250)
+    expect(await handle.evaluate((life) => life.game.state.time)).toBe(pausedAt)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-top.png`) })
+    const conditions = page.getByRole('region', { name: '人生の分岐条件' })
+    await conditions.scrollIntoViewIfNeeded()
+    await expect(conditions).toContainText('大学受験イベント時に勉強Lv3以上')
+    await expect(conditions).toContainText('仕事Lv2以上')
+    await expect(conditions).toContainText('スポーツ・筋トレのどちらかLv4以上')
+    await expect(conditions).toContainText('投資・貯金のどちらかLv4以上')
+    await expect(conditions).toContainText('複数候補は手札の育成度と進化')
+    await expect(conditions).toContainText('結婚イベント時に恋愛Lv2以上')
+    await expect(conditions).toContainText('本人の精神力')
+    await expect(conditions).toContainText('一度だけ決定')
+    await expect(conditions).not.toContainText('手応え')
+    await expect(conditions).not.toContainText('0.55')
+    await expect(conditions).not.toContainText('1.7')
+    expect(await page.locator('#help').evaluate((help) => help.scrollWidth <= help.clientWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-conditions.png`) })
+    await close.focus()
+    await page.keyboard.press('Shift+Tab')
+    await expect(done).toBeFocused()
+    expect(await page.locator('#help').evaluate((help) => help.scrollTop)).toBeGreaterThan(0)
+    await page.screenshot({ path: testInfo.outputPath(`help-${width}-bottom.png`) })
+    await page.keyboard.press('Tab')
+    await expect(close).toBeFocused()
+    await close.click()
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+    await expect.poll(() => handle.evaluate((life) => life.game.state.time)).toBeGreaterThan(pausedAt)
+    await page.keyboard.press('Enter')
+    await expect(dialog).toBeVisible()
+    await done.click()
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+}
+
 test('reading effects render behind local and co-op players', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -593,6 +657,12 @@ test('two players share one life-world: the guest moves and gets their own hand'
   const guestId = await guestLife.evaluate((l) => l.localId)
   await expect.poll(() => guestLife.evaluate((l) => l.view?.players.length ?? 0)).toBe(2)
   await expect(guest.locator('#team li')).toHaveCount(2)
+
+  await host.bringToFront()
+  await host.getByRole('button', { name: '遊び方を表示' }).click()
+  const helpTime = await hostLife.evaluate((l) => l.game.state.time)
+  await expect.poll(() => hostLife.evaluate((l) => l.game.state.time)).toBeGreaterThan(helpTime)
+  await host.getByRole('dialog', { name: '生き抜くために' }).getByRole('button', { name: '閉じる' }).click()
 
   const start = await hostLife.evaluate((l, id) => l.game.state.players.find((p) => p.id === id)!.x, guestId)
   await guest.bringToFront()

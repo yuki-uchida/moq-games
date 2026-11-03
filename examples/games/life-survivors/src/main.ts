@@ -812,7 +812,7 @@ function frame(now: number) {
       for (const player of game.state.players)
         if (player.id !== localId && now - (remoteInputAt.get(player.id) ?? 0) > 500)
           game.setInput(player.id, { x: 0, y: 0, pick: -1, pickSeq: -1 })
-    game.step(dt)
+    if (role !== 'solo' || help.hidden) game.step(dt)
     view = toView(game.state)
   }
   const player = me()
@@ -866,14 +866,28 @@ buttons[1].addEventListener('click', () => void start('host'))
 buttons[2].addEventListener('click', () => void start('guest'))
 element('#leave').addEventListener('click', () => void returnToTitle())
 element('#restart').addEventListener('click', () => void returnToTitle())
-element('#help-open').addEventListener('click', () => {
+const helpOpen = element<HTMLButtonElement>('#help-open')
+const helpClose = element<HTMLButtonElement>('#help-close')
+const helpDone = element<HTMLButtonElement>('#help-done')
+const closeHelp = () => {
+  help.hidden = true
+  helpOpen.focus()
+}
+helpOpen.addEventListener('click', () => {
   help.hidden = false
-  element<HTMLButtonElement>('#help-close').focus()
+  helpClose.focus()
 })
-for (const selector of ['#help-close', '#help-done'])
-  element(selector).addEventListener('click', () => {
-    help.hidden = true
-  })
+for (const button of [helpClose, helpDone]) button.addEventListener('click', closeHelp)
+help.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return
+  if (event.shiftKey && document.activeElement === helpClose) {
+    event.preventDefault()
+    helpDone.focus()
+  } else if (!event.shiftKey && document.activeElement === helpDone) {
+    event.preventDefault()
+    helpClose.focus()
+  }
+})
 // Shared UI cues follow the game's mute / volume; level-up cards have their own cues.
 bindUiSounds(document, (kind) => playSharedUiSound(kind, audio.muted ? 0 : audio.volume), 'button:not(.card)')
 warmUpAudio()
@@ -928,7 +942,10 @@ for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] 
 
 const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
 window.addEventListener('keydown', (event) => {
-  if (event.code === 'Escape') help.hidden = true
+  if (event.code === 'Escape' && !help.hidden) {
+    closeHelp()
+    return
+  }
   if (event.code === 'KeyM' && started && !event.repeat && !(event.target instanceof HTMLInputElement)) {
     toggleMute()
     return
