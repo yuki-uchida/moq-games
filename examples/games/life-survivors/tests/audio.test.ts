@@ -6,7 +6,9 @@ const param = () => ({
   value: 0,
   setValueAtTime: vi.fn(),
   linearRampToValueAtTime: vi.fn(),
-  exponentialRampToValueAtTime: vi.fn()
+  exponentialRampToValueAtTime: vi.fn(),
+  setTargetAtTime: vi.fn(),
+  cancelScheduledValues: vi.fn()
 })
 const node = (extra: object = {}) => ({ connect: vi.fn((n: unknown) => n), disconnect: vi.fn(), ...extra })
 
@@ -172,7 +174,11 @@ describe('LifeAudio', () => {
     const again = new LifeAudio(storage)
     expect(again.volume).toBe(0.4)
     expect(again.muted).toBe(true)
-    expect(JSON.parse(storage.getItem('life-survivors:sound') ?? '{}')).toEqual({ muted: true, volume: 0.4 })
+    expect(JSON.parse(storage.getItem('life-survivors:sound') ?? '{}')).toEqual({
+      muted: true,
+      volume: 0.4,
+      music: 0.5
+    })
   })
 
   it('limits spam for same-instant plays', () => {

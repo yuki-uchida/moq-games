@@ -248,3 +248,65 @@ test('a lucky four-card hand shows rarity frames and key 4 picks the last card',
   await expect.poll(() => handle.evaluate((l) => (l as unknown as Hook).game.state.players[0].choices.length)).toBe(0)
   expect(errors).toEqual([])
 })
+
+test('the music follows a life: title, stages, a boss, the reaper, the ending and the BGM slider', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  type Music = { theme: string | null; layer: number; live: number; enabled: boolean }
+  const music = () => page.evaluate(() => (window as unknown as { __life: { music: Music } }).__life.music)
+  const theme = async () => (await music()).theme
+  await page.goto('/')
+  // Any press unlocks audio and the title theme starts.
+  await page.locator('#start-title').click()
+  await expect.poll(theme).toBe('title')
+  await expect.poll(async () => (await music()).live).toBeGreaterThan(0)
+
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#hud')).toBeVisible()
+  await expect.poll(music).toMatchObject({ theme: 'cradle', layer: 0, enabled: true })
+  const handle = await life(page)
+  // This life only listens: no birth pick, no scheduled life events, and nothing can break the mind.
+  await handle.evaluate((l) => {
+    const game = (l as unknown as Hook).game
+    game.state.eventIndex = 99
+    for (const p of game.state.players) Object.assign(p, { choices: [], invuln: 1e9 })
+  })
+  await expect.poll(async () => (await music()).live).toBeGreaterThan(0)
+
+  await handle.evaluate((l) => (l.game.state.time = 60 * 14)) // age 37: 働き盛り
+  await expect.poll(music).toMatchObject({ theme: 'office', layer: 1 })
+
+  await handle.evaluate((l) => {
+    const game = (l as unknown as Hook).game
+    game.state.eventIndex = 99
+    const p = game.state.players[0]
+    game.spawnEnemy('b_hs', p.x + 400, p.y)
+  })
+  await expect.poll(theme).toBe('boss')
+  await expect.poll(async () => (await music()).live, { timeout: 5000 }).toBeGreaterThan(0)
+  await handle.evaluate((l) => ((l as unknown as { game: { state: { enemies: unknown[] } } }).game.state.enemies = []))
+  await expect.poll(theme).toBe('office')
+
+  await page.getByRole('button', { name: '遊び方を表示' }).click()
+  await page.locator('#music-volume').fill('0')
+  await expect.poll(music).toMatchObject({ enabled: false })
+  await page.locator('#music-volume').fill('40')
+  await expect.poll(music).toMatchObject({ enabled: true })
+  await page.keyboard.press('Escape')
+
+  await handle.evaluate((l) => {
+    l.game.state.time = 30 * 60 - 0.5
+    for (const p of l.game.state.players) p.choices = []
+  })
+  await expect.poll(theme).toBe('reaper')
+  // The reaper's 4 s and the 3 s farewell run on game time, which slows down with the frame rate.
+  await expect(page.getByRole('heading', { name: /大往生/ })).toBeVisible({ timeout: 15000 })
+  await expect.poll(theme).toBe('won')
+  await page.getByRole('button', { name: 'もう一度生まれる' }).click()
+  await expect.poll(theme).toBe('title')
+  await expect.poll(async () => (await music()).live).toBeGreaterThan(0)
+
+  await page.reload()
+  await expect(page.locator('#music-volume')).toHaveValue('40')
+  expect(errors).toEqual([])
+})

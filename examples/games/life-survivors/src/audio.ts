@@ -1,7 +1,10 @@
 /**
- * Life Survivors sound effects. Everything is synthesized with Web Audio (no audio files).
- * Never throws: without an AudioContext (node, tests, old browsers) every call is a silent no-op.
+ * Life Survivors sound effects and the music bus. Everything is synthesized with Web Audio (no audio files);
+ * music.ts plays the background music. Never throws: without an AudioContext (node, tests, old browsers)
+ * every call is a silent no-op.
  */
+import { MusicPlayer, type MusicCue, type MusicState } from './music'
+
 export type SfxName =
   | 'hit'
   | 'hitStrong'
@@ -45,6 +48,8 @@ export interface PlayOptions {
 const STORAGE_KEY = 'life-survivors:sound'
 const DEFAULT_VOLUME = 0.7
 const MASTER_MAX = 0.9
+const DEFAULT_MUSIC_VOLUME = 0.5
+const MUSIC_MAX = 0.7
 const VOICE_CAP = 28
 const FIRE_CAP = 5
 const FIRE_INTERVAL = 0.06
@@ -500,6 +505,21 @@ const PITCH_JITTER: Partial<Record<SfxName, number>> = {
   cardHover: 0.05
 }
 
+/** Stingers the music dips under: [level, seconds]. */
+const DUCK: Partial<Record<SfxName, [number, number]>> = {
+  levelUp: [0.55, 0.9],
+  evolve: [0.4, 1.6],
+  chest: [0.55, 1.1],
+  stage: [0.5, 0.9],
+  swarm: [0.6, 0.9],
+  bossWarn: [0.35, 1.6],
+  bossKill: [0.35, 2],
+  reaper: [0.6, 2.4],
+  won: [0.4, 3],
+  lost: [0.4, 2.2],
+  start: [0.6, 0.6]
+}
+
 const GEM_SCALE = [0, 2, 4, 7, 9]
 const GEM_STEPS = 15
 
@@ -525,6 +545,10 @@ export class LifeAudio {
   private ctx: AudioContext | null = null
   private bus: GainNode | null = null
   private master: GainNode | null = null
+  private musicOut: GainNode | null = null
+  private player: MusicPlayer | null = null
+  private wantedMusic: MusicCue | null = null
+  private hidden = false
   private noiseBuffer: AudioBuffer | null = null
   private active: Active[] = []
   private last = new Map<string, number>()
@@ -532,6 +556,7 @@ export class LifeAudio {
   private gemAt = -10
   private _muted = false
   private _volume = DEFAULT_VOLUME
+  private _musicVolume = DEFAULT_MUSIC_VOLUME
   private beatTimer: ReturnType<typeof setTimeout> | undefined
   private beatLevel = 0
   private readonly storage: Storage2 | undefined
@@ -541,10 +566,13 @@ export class LifeAudio {
     try {
       const raw = this.storage?.getItem(STORAGE_KEY)
       if (raw) {
-        const saved = JSON.parse(raw) as { muted?: unknown; volume?: unknown }
+        const saved = JSON.parse(raw) as { muted?: unknown; volume?: unknown; music?: unknown }
         this._muted = saved.muted === true
         if (typeof saved.volume === 'number' && Number.isFinite(saved.volume)) {
           this._volume = clamp(saved.volume, 0, 1)
+        }
+        if (typeof saved.music === 'number' && Number.isFinite(saved.music)) {
+          this._musicVolume = clamp(saved.music, 0, 1)
         }
       }
     } catch {
@@ -567,6 +595,42 @@ export class LifeAudio {
     this._volume = Number.isFinite(volume) ? clamp(volume, 0, 1) : DEFAULT_VOLUME
     this.applyMaster()
     this.save()
+  }
+  /** Background music volume, separate from the effects. Mute silences both. */
+  get musicVolume(): number {
+    return this._musicVolume
+  }
+  setMusicVolume(volume: number): void {
+    this._musicVolume = Number.isFinite(volume) ? clamp(volume, 0, 1) : DEFAULT_MUSIC_VOLUME
+    this.applyMaster()
+    this.save()
+  }
+
+  /** The theme that should be playing (null = silence). Remembered until a context exists; cheap per frame. */
+  setMusic(cue: MusicCue | null): void {
+    const wanted = this.wantedMusic
+    if (cue === wanted || (cue && wanted && cue.theme === wanted.theme && cue.layer === wanted.layer)) return
+    this.wantedMusic = cue ? { ...cue } : null
+    this.player?.set(this.wantedMusic)
+  }
+  /** 0..1: low-passes the music (time stopped for a level-up, a mind about to break). */
+  setMuffle(amount: number): void {
+    this.player?.setMuffle(amount)
+  }
+  /** A hidden tab queues no music (its timers are throttled); effects are untouched. */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden
+    this.applyMaster()
+  }
+  get music(): MusicState {
+    return (
+      this.player?.state ?? {
+        theme: this.wantedMusic?.theme ?? null,
+        layer: this.wantedMusic?.layer ?? 0,
+        live: 0,
+        enabled: false
+      }
+    )
   }
 
   unlock(): void {
@@ -609,7 +673,9 @@ export class LifeAudio {
     if (!recipe) return
     const [interval, cap] = LIMITS[name]
     if (name === 'gem') return this.playGem(options)
-    this.start(name, interval, cap, options, PITCH_JITTER[name] ?? 0.04, recipe)
+    const duck = DUCK[name]
+    if (this.start(name, interval, cap, options, PITCH_JITTER[name] ?? 0.04, recipe) && duck)
+      this.player?.duck(duck[0], duck[1])
   }
 
   fire(weaponId: string, options: PlayOptions & { evolved?: boolean } = {}): void {
@@ -637,8 +703,11 @@ export class LifeAudio {
     this.beatLevel = 0
     this.active = []
     this.last.clear()
+    this.player?.dispose()
+    this.player = null
+    this.wantedMusic = null
     const ctx = this.ctx
-    this.ctx = this.bus = this.master = this.noiseBuffer = null
+    this.ctx = this.bus = this.master = this.musicOut = this.noiseBuffer = null
     try {
       void ctx?.close().catch(() => {})
     } catch {
@@ -670,16 +739,29 @@ export class LifeAudio {
     } catch {
       this.noiseBuffer = null
     }
+    // Music skips the effects compressor so a busy fight never pumps it.
+    try {
+      const musicOut = ctx.createGain()
+      musicOut.connect(ctx.destination)
+      this.musicOut = musicOut
+      this.player = new MusicPlayer(ctx, musicOut, this.noiseBuffer)
+    } catch {
+      this.player = null
+    }
     this.applyMaster()
+    this.player?.set(this.wantedMusic)
   }
 
   private applyMaster() {
     if (this.master) this.master.gain.value = this._muted ? 0 : this._volume * MASTER_MAX
+    if (this.musicOut) this.musicOut.gain.value = this._muted ? 0 : this._musicVolume * MUSIC_MAX
+    this.player?.setEnabled(!this._muted && !this.hidden && this._musicVolume > 0)
   }
 
   private save() {
     try {
-      this.storage?.setItem(STORAGE_KEY, JSON.stringify({ muted: this._muted, volume: this._volume }))
+      const settings = { muted: this._muted, volume: this._volume, music: this._musicVolume }
+      this.storage?.setItem(STORAGE_KEY, JSON.stringify(settings))
     } catch {
       /* storage unavailable */
     }
@@ -720,12 +802,12 @@ export class LifeAudio {
     jitter: number,
     recipe: Recipe,
     pitch = 1
-  ) {
+  ): boolean {
     try {
       const ctx = this.ready()
-      if (!ctx || !this.bus) return
+      if (!ctx || !this.bus) return false
       const now = ctx.currentTime
-      if (!this.admit(key, interval, cap, now)) return
+      if (!this.admit(key, interval, cap, now)) return false
       const gain = clamp(options.gain ?? 1, 0, 4)
       const rate = clamp(options.rate ?? 1, 0.25, 4)
       const entry: Active = { key, end: now + 0.3 }
@@ -752,8 +834,9 @@ export class LifeAudio {
       recipe(voice)
       entry.end = now + voice.length + 0.02
       this.active.push(entry)
+      return true
     } catch {
-      /* sound is optional */
+      return false
     }
   }
 

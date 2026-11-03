@@ -1265,6 +1265,12 @@ button {
   margin: 8px 0 16px;
   font-size: 13px;
 }
+.sound-row + .sound-row {
+  margin-top: -8px;
+}
+.sound-row label {
+  min-width: 6.5em;
+}
 .sound-row input {
   flex: 1;
   accent-color: var(--accent);

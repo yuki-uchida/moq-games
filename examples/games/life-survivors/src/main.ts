@@ -22,6 +22,7 @@ import {
 } from './data'
 import { GIFTED, Game, POOR, choiceText, type Input, type Player } from './game'
 import { LifeAudio } from './audio'
+import { musicCue } from './music'
 import { FX } from './fx'
 import {
   BANNER_MS,
@@ -383,6 +384,8 @@ async function returnToTitle() {
   help.hidden = true
   resetFeel()
   audio.dispose()
+  // Still inside the click: a fresh context lets the title theme start without another tap.
+  audio.unlock()
   startPanel.hidden = false
   buttons.forEach((button) => (button.disabled = false))
   setStatus('ひとりで')
@@ -714,6 +717,10 @@ function feel(current: View, now: number) {
   if (step.hide || step.show) unmountBanner()
   if (step.show) mountBanner(step.show)
   updateBossBar(current)
+  const stage = STAGES.indexOf(stageAt(current.time))
+  audio.setMusic(musicCue({ started: true, phase: current.phase, stage, boss: bossShown !== undefined, resultShown }))
+  // An open hand of cards and a breaking mind both pull the world away: the music goes muffled.
+  audio.setMuffle(Math.max(levelup.hidden ? 0 : 0.55, beat * 0.5))
 }
 
 function frame(now: number) {
@@ -742,6 +749,7 @@ function frame(now: number) {
   if (view) renderer.draw(view, localId, dt, role === 'guest')
   else renderer.draw(attract.view(now), 'attract', dt, false)
   if (started && view) feel(view, now)
+  else audio.setMusic(musicCue({ started, stage: 0, boss: false, resultShown }))
   if (started && view) {
     renderChoices(resultShown ? undefined : player)
     if (now - hudAt > 100) {
@@ -793,13 +801,15 @@ warmUpAudio()
 
 const muteButtons = ['#mute', '#mute-title'].map((selector) => element<HTMLButtonElement>(selector))
 const volume = element<HTMLInputElement>('#volume')
+const musicVolume = element<HTMLInputElement>('#music-volume')
 function syncSound() {
   for (const button of muteButtons) {
     button.textContent = audio.muted ? '🔇' : '🔊'
     button.setAttribute('aria-pressed', String(audio.muted))
-    button.title = audio.muted ? '効果音：オフ（Mキー）' : '効果音：オン（Mキー）'
+    button.title = audio.muted ? 'サウンド：オフ（Mキー）' : 'サウンド：オン（Mキー）'
   }
   volume.value = String(Math.round(audio.volume * 100))
+  musicVolume.value = String(Math.round(audio.musicVolume * 100))
 }
 function toggleMute() {
   audio.unlock()
@@ -817,6 +827,12 @@ volume.addEventListener('input', () => {
 volume.addEventListener('change', () => {
   audio.unlock()
   audio.play('gem')
+})
+musicVolume.addEventListener('input', () => {
+  audio.unlock()
+  audio.setMusicVolume(Number(musicVolume.value) / 100)
+  if (audio.muted && audio.musicVolume > 0) audio.setMuted(false)
+  syncSound()
 })
 syncSound()
 // Browsers only start audio from an activation gesture. A touch/pen press is not one (its
@@ -849,6 +865,8 @@ window.addEventListener('keydown', (event) => {
 })
 window.addEventListener('keyup', (event) => keys.delete(event.code))
 window.addEventListener('blur', () => keys.clear())
+// A hidden tab's timers crawl, so the music pauses instead of stuttering.
+document.addEventListener('visibilitychange', () => audio.setHidden(document.hidden))
 window.addEventListener('resize', () => renderer.resize())
 window.addEventListener('pagehide', () => {
   audio.dispose()
@@ -883,6 +901,9 @@ if (import.meta.env.DEV)
       },
       get deathBuildMs() {
         return renderer.deathBuildMs
+      },
+      get music() {
+        return audio.music
       }
     }
   })
