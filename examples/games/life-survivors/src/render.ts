@@ -1,4 +1,5 @@
 import { canvasOf } from './art/atlas'
+import { careerFor } from './art/careers'
 import { BEAM_DIRS, STAPLE_DIRS, beam } from './art/arsenal'
 import { deathKind, soulAt } from './art/deaths'
 import { NO_FLIP, PENCIL_DIRS, SWING_DIRS, evolve, playMat, sheet, swing } from './art/index'
@@ -725,7 +726,8 @@ export class Renderer {
     } else {
       this.deaths.delete(player.id)
       this.shadow(pos.x, feet, 13)
-      const art = sheet(`player:${body}`)
+      const career = !['baby', 'toddler', 'bed'].includes(body) ? careerFor(player) : undefined
+      const art = sheet(`player:${body}${career ? `:${career}` : ''}`)
       const anim = player.hurt ? art.hurt : m.speed > 25 ? art.walk : art.idle
       this.art(
         anim.frames[frameAt(anim, player.hurt ? ((this.clock * 8) % 2) / 8 : this.clock)],

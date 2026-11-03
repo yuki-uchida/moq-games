@@ -1,4 +1,5 @@
 import { bossSheets } from './bosses'
+import { careerSheets } from './careers'
 import { BOSSES2_NO_FLIP, bosses2Sheets, bulletSheet } from './bosses2'
 import { ROSTER2_NO_FLIP, roster2Sheets } from './roster2'
 import { ROSTER3_NO_FLIP, roster3Sheets } from './roster3'
@@ -18,6 +19,7 @@ const withFlash = (make: () => Sheet) => () => {
 
 /** Every generated sheet, built lazily on first use and cached. */
 export const SHEETS: Record<string, () => Sheet> = {
+  ...careerSheets,
   'player:baby': babySheet,
   'player:kid': kidSheet,
   'player:adult': adultSheet,
