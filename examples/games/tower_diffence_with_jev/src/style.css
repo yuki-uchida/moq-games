@@ -3440,3 +3440,114 @@ dialog::backdrop {
 #app[data-phase='assault'] .stage-label .stage-goal {
   display: none;
 }
+.stage-enemies {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #7a6a3a;
+}
+.stage-enemies b {
+  font-size: 12px;
+}
+.stage-enemies small {
+  font-size: 11px;
+  font-weight: 700;
+}
+.foe {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid #b9a56a;
+  border-radius: 8px;
+  background: #fff8e0;
+}
+.foe img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.foe[data-boss='true'] {
+  border-color: #b8332a;
+  box-shadow: 0 0 0 1.5px #b8332a;
+}
+.foe .crown {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  translate: -50% 0;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1;
+  color: #d09a28;
+  text-shadow: 0 0 2px #fff;
+}
+.foe em {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  translate: -50% 0;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #b8332a;
+  color: #fff;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 11px;
+}
+.foe .wing {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  padding: 1px;
+  border-radius: 50%;
+  background: #3e6f9c;
+  color: #fff;
+}
+.result-leaks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6a3a2a;
+}
+.result-leaks[hidden] {
+  display: none;
+}
+.result-leaks .leak {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px 1px 2px;
+  border-radius: 999px;
+  background: #f3dfd6;
+}
+.result-leaks img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+.result-leaks .leak[data-boss='true'] {
+  box-shadow: 0 0 0 1.5px #b8332a;
+}
+.result-leaks .crown {
+  font-style: normal;
+  color: #d09a28;
+  font-size: 12px;
+}
+@media (max-height: 560px) {
+  .result-leaks { margin-top: 3px; font-size: 10px; }
+  .result-leaks img { width: 20px; height: 20px; }
+}

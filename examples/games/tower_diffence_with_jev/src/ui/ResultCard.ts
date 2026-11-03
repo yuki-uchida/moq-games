@@ -1,4 +1,5 @@
 import type { FeelSound } from '../audio/FeelSounds'
+import { DEFINITIONS, isAirborneEnemy, type UnitType } from '../game/model'
 import { STAR_GOALS } from '../progression/StageProgress'
 
 /** Everything the end-of-stage card needs; main.ts gathers it, this module only presents it. */
@@ -19,6 +20,9 @@ export interface ResultView {
   seconds: number
   /** Stage number unlocked for the first time by this clear. */
   unlocked: number | null
+  /** Enemies that got through the gate (defeat only); `unknownLeaks` are exits whose type was not observed. */
+  leaks?: ReadonlyArray<{ type: UnitType; boss: boolean; count: number; portrait?: string }>
+  unknownLeaks?: number
   /** Show the final numbers at once (reduced motion, resumed checkpoints). */
   instant: boolean
 }
@@ -43,7 +47,7 @@ const CLOCK =
 
 /** The whole #result dialog; ids are relied on by main.ts and the e2e specs. */
 export const resultMarkup = (icon: string): string =>
-  `<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-confetti" class="result-confetti" aria-hidden="true"></div><div class="result-main"><div id="result-icon" class="result-icon" aria-hidden="true">${icon}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div id="result-stars" class="result-stars" role="img" aria-label="">${STAR.repeat(3).replaceAll('<svg', '<svg class="rs"')}</div><p id="result-hint" class="result-hint"></p><div class="result-tags"><span id="result-new" class="result-tag new" hidden></span><span id="result-best" class="result-tag best" hidden>ベスト更新!</span></div></div><div class="result-side"><ul class="result-lines"><li id="result-line-clear" data-line>${COIN}<span>クリア報酬</span><b id="result-clear-gold"></b></li><li id="result-line-bounty" data-line>${SWORD}<span>撃破ボーナス</span><b id="result-bounty"></b></li></ul><div class="result-summary" data-line><span id="result-stage"></span><b id="result-gold"></b></div><ul class="result-chips" data-line><li id="chip-kills">${SWORD}<span></span></li><li id="chip-specials">${SPARK}<span></span></li><li id="chip-hp">${HEART}<span></span></li><li id="chip-time">${CLOCK}<span></span></li></ul><p id="reward" data-line></p><div class="result-actions"><button id="next" class="primary">次のステージへ →</button><button id="retry-stage">もう一度</button><button id="retry" class="text-button">ステージ選択へ</button></div></div><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
+  `<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-confetti" class="result-confetti" aria-hidden="true"></div><div class="result-main"><div id="result-icon" class="result-icon" aria-hidden="true">${icon}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div id="result-stars" class="result-stars" role="img" aria-label="">${STAR.repeat(3).replaceAll('<svg', '<svg class="rs"')}</div><p id="result-hint" class="result-hint"></p><div class="result-tags"><span id="result-new" class="result-tag new" hidden></span><span id="result-best" class="result-tag best" hidden>ベスト更新!</span></div></div><div class="result-side"><ul class="result-lines"><li id="result-line-clear" data-line>${COIN}<span>クリア報酬</span><b id="result-clear-gold"></b></li><li id="result-line-bounty" data-line>${SWORD}<span>撃破ボーナス</span><b id="result-bounty"></b></li></ul><div class="result-summary" data-line><span id="result-stage"></span><b id="result-gold"></b></div><ul class="result-chips" data-line><li id="chip-kills">${SWORD}<span></span></li><li id="chip-specials">${SPARK}<span></span></li><li id="chip-hp">${HEART}<span></span></li><li id="chip-time">${CLOCK}<span></span></li></ul><p id="result-leaks" class="result-leaks" hidden></p><p id="reward" data-line></p><div class="result-actions"><button id="next" class="primary">次のステージへ →</button><button id="retry-stage">もう一度</button><button id="retry" class="text-button">ステージ選択へ</button></div></div><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
 
 const TIPS = [
   '盾の騎士を道の上に置くと敵を足止めできる',
@@ -53,6 +57,18 @@ const TIPS = [
 ]
 /** Deterministic so a retried stage keeps its hint instead of flickering between loads. */
 export const defeatTip = (stage: number): string => TIPS[(stage - 1) % TIPS.length]
+
+/** Targeted defeat advice: boss > flier > unspent gold > the rotating tip. */
+export function defeatAdvice(
+  stage: number,
+  leaks: ReadonlyArray<{ type: UnitType; boss: boolean }>,
+  unspentGold: number
+): string {
+  if (leaks.some((l) => l.boss)) return 'ボスには必殺技を集中しよう（長押しで場所を指定）'
+  if (leaks.some((l) => isAirborneEnemy(l.type))) return '空の敵には射手・魔法使いなど射程のある仲間を'
+  if (unspentGold >= 60) return `ゴールドが${unspentGold}G残っていました。準備中に仲間をタップして強化しよう`
+  return defeatTip(stage)
+}
 
 export const formatClock = (seconds: number): string =>
   `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -116,6 +132,33 @@ export function createResultCard(dialog: HTMLElement, play: (kind: FeelSound, pa
     $('result-line-bounty').hidden = v.bounty === 0
     $('result-clear-gold').textContent = coins(v.reward)
     $('result-bounty').textContent = coins(v.bounty)
+    const leakBox = $('result-leaks'),
+      unknown = v.unknownLeaks ?? 0,
+      leaks = v.won ? [] : (v.leaks ?? [])
+    leakBox.hidden = leaks.length + unknown === 0
+    leakBox.replaceChildren()
+    if (!leakBox.hidden) {
+      const label = document.createElement('span')
+      label.textContent = '突破した敵'
+      leakBox.append(label)
+      for (const l of leaks) {
+        const item = document.createElement('span'),
+          name = `${l.boss ? 'ボス ' : ''}${DEFINITIONS[l.type].name} ×${l.count}`
+        item.className = 'leak'
+        item.dataset.boss = String(l.boss)
+        item.title = name
+        item.setAttribute('role', 'img')
+        item.setAttribute('aria-label', name)
+        item.innerHTML = `${l.portrait ? `<img src="${l.portrait}" alt="" draggable="false">` : ''}${l.boss ? '<i class="crown" aria-hidden="true">♛</i>' : ''}<b>×${l.count}</b>`
+        leakBox.append(item)
+      }
+      if (unknown) {
+        const item = document.createElement('span')
+        item.className = 'leak'
+        item.textContent = `ほか ${unknown}体`
+        leakBox.append(item)
+      }
+    }
     $('chip-kills').hidden = v.kills === null
     $('chip-kills').querySelector('span')!.textContent = `撃破 ${v.kills ?? 0}体`
     $('chip-specials').querySelector('span')!.textContent = `必殺技 ${v.specials}回`

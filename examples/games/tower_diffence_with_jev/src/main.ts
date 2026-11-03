@@ -48,6 +48,7 @@ import {
   ROAD_EFFECTS,
   ALLY_TYPES,
   DEFINITIONS,
+  isAirborneEnemy,
   FIELDS,
   getField,
   fieldFor,
@@ -131,7 +132,7 @@ import {
   totalStars
 } from './progression/StageProgress'
 import { CoachMarks } from './ui/CoachMarks'
-import { REVEAL_DELAY_MS, createResultCard, defeatTip, prefersReducedMotion, resultMarkup } from './ui/ResultCard'
+import { REVEAL_DELAY_MS, createResultCard, defeatAdvice, prefersReducedMotion, resultMarkup } from './ui/ResultCard'
 import { PanelDialog } from './input/PanelDialog'
 import { MapPan } from './input/MapPan'
 import { SandbagInput, sandbagPlacementLabel } from './input/SandbagInput'
@@ -147,7 +148,8 @@ const save = freshRunFromProfile(loadedCampaign.profile, 2, 1),
 let stageProgress = loadStageProgress(loadedCampaign.profile.purchased),
   selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1),
   lastStageReward = 0
-let lastBounty = 0,
+let assaultGold = 0,
+  lastBounty = 0,
   lastKills: number | null = null,
   starImproved = false,
   newUnlock: number | null = null,
@@ -258,7 +260,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <dialog id="scout-result" class="panel scout-result" aria-labelledby="scout-name"><button id="scout-close" class="icon-close" aria-label="スカウト結果を閉じる">×</button><img id="scout-portrait" alt=""><h2 id="scout-name"></h2></dialog>
 <dialog id="upgrade-panel" class="panel settings shop" aria-labelledby="upgrade-title"><div class="dialog-heading"><div><span class="eyebrow">THE COMPANY LODGE</span><h2 id="upgrade-title">雇用と強化</h2></div><button id="upgrade-close" class="close-button" aria-label="雇用と強化を閉じる">×</button></div><div class="shop-balance"><span>使えるゴールド</span><b id="shop-gold">80 G</b></div><p id="shop-intro" class="dialog-intro">仲間は次の遠征に引き継ぎます。</p><nav class="shop-pages" aria-label="強化する仲間"><button id="shop-prev" aria-label="前の仲間">‹</button><span id="shop-page" aria-live="polite"></span><button id="shop-next" aria-label="次の仲間">›</button></nav><div id="upgrades"></div><p id="shop-footnote" class="shop-footnote">強化は HP・攻撃力に反映されます。配置済みの仲間も、準備中に一緒に強くなります。</p></dialog>
 <button id="connection-warning" class="connection-warning panel jev-ui" hidden aria-label="接続の問題を確認。接続・AI設定を開く"></button>
-<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><ul id="stage-goals" class="stage-goals" aria-label="星の条件"></ul><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
+<dialog id="launch" class="launch panel" aria-labelledby="launch-title"><button id="launch-title-return" class="text-button title-return">← Title</button><div class="launch-intro"><div class="kingdom-crest" aria-hidden="true"><svg viewBox="0 0 120 104"><path d="M20 37Q5 30 15 14Q39 18 40 39M21 51Q1 50 6 32Q26 33 35 47M100 37Q115 30 105 14Q81 18 80 39M99 51Q119 50 114 32Q94 33 85 47" fill="#88a576"/><path d="M30 23Q60 9 90 23V54Q88 78 60 94Q32 78 30 54Z" fill="#e1b85c" stroke="#fff3ce" stroke-width="4"/><path d="M37 29Q60 19 83 29V53Q81 72 60 85Q39 72 37 53Z" fill="#365d49"/><path d="M55 62V37L60 30L65 37V62M47 58H73M60 61V74" fill="#f6ebc8" stroke="#f6ebc8" stroke-width="4" stroke-linejoin="round"/><path d="m19 70 2 5 5 2-5 2-2 5-2-5-5-2 5-2ZM101 64l2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#d6ab55"/></svg></div><h1 id="launch-title">ステージを選ぼう</h1></div><section class="stage-select" aria-labelledby="stage-select-title"><div class="choice-heading"><h2 id="stage-select-title">ステージ</h2><span class="coin-purse">所持コイン <b id="stage-coins">0</b> <span class="star-purse">★ <b id="stage-stars">0</b>/${CONFIG.stages * 3}</span></span></div><div id="stage-list" class="stage-list" role="group" aria-label="ステージ">${Array.from({ length: CONFIG.stages }, (_, i) => `<button class="stage-card" data-sfx="select" data-stage="${i + 1}" aria-pressed="false"><small>STAGE</small><b>${String(i + 1).padStart(2, '0')}</b><i class="stage-stars" aria-hidden="true"></i><em></em></button>`).join('')}</div><ul id="stage-goals" class="stage-goals" aria-label="星の条件"></ul><div id="stage-enemies" class="stage-enemies" role="group" aria-label="出現する敵"></div><div class="choice-heading"><h2>編成 <span id="formation-count"></span></h2><span>持っている仲間は選んで編成、未加入はコインで招集</span></div><div id="formation-list" class="formation-list" role="group" aria-label="編成と招集">${ALLY_TYPES.map((type) => `<button class="formation-card" data-sfx="select" data-ally="${type}"><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><b>${DEFINITIONS[type].name}</b><small></small></button>`).join('')}</div></section><div class="choice-heading"><h2>フィールド</h2></div><div class="field-choice" role="group" aria-label="4つのフィールド">${fieldIds.map((id, i) => `<button class="field-card" data-field="${id}" data-sfx="select" aria-pressed="${i === 0}"><span class="field-art">${mapPreview(id)}<span class="field-check" aria-hidden="true">✓</span></span><span class="field-copy"><small>FIELD 0${i + 1}</small><b>${FIELDS[id].name}</b><em>${FIELDS[id].description}</em></span></button>`).join('')}</div><details class="launch-help"><summary>遊び方・遠征の詳細</summary><p id="battlefield-version-help" class="launch-note">ステージをクリアするとコインがもらえ、次のステージが解放されます。コインで仲間を招集し、最大${FORMATION_SLOTS}種類を編成して出撃。戦闘中のゴールドはステージごとに用意され、1体40G・各種類1体です。</p><p class="launch-note">初戦は4種類で2経路を守ろう。ドラッグ配置後に襲撃開始。準備中の移動は無料。控えへ戻すと40G返金、再配置は40G。</p></details><div class="launch-footer"><p id="saved-run-note" class="notice" role="status"></p><button id="resume-run" class="primary" hidden>保存した遠征を続ける</button><p id="launch-status" class="notice" role="status"></p><div class="launch-actions"><button id="start" class="primary" data-sfx="confirm">出撃 →</button><button id="offline-start" class="jev-ui">接続なしで始める</button><button id="launch-settings" class="text-button jev-ui" aria-controls="settings" aria-expanded="false">Jev・接続の設定</button></div></div></dialog>
 <dialog id="save-confirm" class="panel settings" aria-labelledby="save-confirm-title"><h2 id="save-confirm-title">保存中の遠征を置き換えますか？</h2><p id="save-confirm-detail"></p><div class="road-actions"><button id="save-confirm-cancel">戻る</button><button id="save-confirm-accept">確認して続ける</button></div></dialog>
 <dialog id="sandbag-confirm" class="panel settings" aria-labelledby="sandbag-confirm-title"><h2 id="sandbag-confirm-title">損傷した土のうを撤去しますか？</h2><p id="sandbag-confirm-detail">この土のうは失われ、在庫には戻りません。</p><div class="road-actions"><button id="sandbag-cancel-remove">戻る</button><button id="sandbag-confirm-remove">失われることを確認して撤去</button></div></dialog>
 ${fortificationDialogs}
@@ -1823,6 +1825,33 @@ function renderStageSelect() {
       return item
     })
   )
+  const rules = stageRules(selectedStage, 2),
+    foes = [...(rules.bossType ? [rules.bossType] : []), ...rules.enemyTypes.filter((t) => t !== rules.bossType)],
+    enemyBox = $('stage-enemies')
+  enemyBox.replaceChildren()
+  const heading = document.createElement('b')
+  heading.textContent = '出現する敵'
+  enemyBox.append(heading)
+  for (const type of foes) {
+    const boss = type === rules.bossType,
+      flier = isAirborneEnemy(type),
+      name = `${boss ? 'ボス ' : ''}${DEFINITIONS[type].name}${flier ? '（空を飛ぶ）' : ''}`,
+      item = document.createElement('span')
+    item.className = 'foe'
+    item.dataset.boss = String(boss)
+    item.dataset.flier = String(flier)
+    item.dataset.enemy = type
+    item.title = name
+    item.setAttribute('role', 'img')
+    item.setAttribute('aria-label', name)
+    item.innerHTML = `<img src="${displayPortrait(type) ?? ''}" alt="" draggable="false">${boss ? '<i class="crown" aria-hidden="true">♛</i><em aria-hidden="true">BOSS</em>' : ''}${flier ? '<svg class="wing" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5c8 0 14 4 18 12-6-1-9-3-11-5 3 0 5 .5 7 1.500C12 10 7 8 2 5Z" fill="currentColor"/></svg>' : ''}`
+    enemyBox.append(item)
+  }
+  if (foes.some(isAirborneEnemy)) {
+    const note = document.createElement('small')
+    note.textContent = '空の敵は射程のある仲間で'
+    enemyBox.append(note)
+  }
   updateStart()
   const have = owned(stageProgress)
   $('formation-count').textContent = `${stageProgress.formation.length} / ${FORMATION_SLOTS}`
@@ -1894,6 +1923,7 @@ function resumeRun() {
   // A battle won before the stage select existed still unlocks its next stage (once: cleared then covers it).
   lastBounty = 0
   lastKills = null
+  assaultGold = 0
   starImproved = false
   newUnlock = null
   resultLive = false
@@ -2523,7 +2553,9 @@ $('assault').onclick = () => {
     return
   }
   clearPlacementModes()
+  const goldBefore = save.gold
   if (engine.startAssault()) {
+    assaultGold = goldBefore
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
@@ -3066,7 +3098,7 @@ function frame(now: number) {
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : `ヒント: ${defeatTip(state.stage)}`
+        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, assaultGold)}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
@@ -3094,6 +3126,8 @@ function frame(now: number) {
       reward: won ? stageReward(state.stage) : 0,
       bounty: lastBounty,
       kills: lastKills,
+      leaks: battleFeedback.leaked.map((l) => ({ ...l, portrait: displayPortrait(l.type) })),
+      unknownLeaks: battleFeedback.leakedUnknown,
       specials: state.units.reduce((sum, u) => sum + (u.owner === 'player' ? (u.specialSequence ?? 0) : 0), 0),
       hp: state.playerBaseHp,
       maxHp: CONFIG.baseHp,

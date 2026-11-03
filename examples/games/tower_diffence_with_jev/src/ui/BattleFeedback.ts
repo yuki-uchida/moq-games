@@ -34,6 +34,7 @@ export interface BattleFeedbackOptions {
 }
 
 interface Tracked {
+  type: UnitType
   hp: number
   maxHp: number
   owner: Owner
@@ -95,6 +96,8 @@ export class BattleFeedback {
   private killCount = 0
   private bountyTotal = 0
   private bountyLanded = 0
+  private leakMap = new Map<string, { type: UnitType; boss: boolean; count: number }>()
+  private leakUnknown = 0
 
   constructor(private readonly options: BattleFeedbackOptions) {
     this.overlay = document.createElement('div')
@@ -120,6 +123,15 @@ export class BattleFeedback {
     return this.bountyLanded
   }
 
+  /** Enemies that went through the gate this battle (seen leaving without a corpse), grouped by type and boss. */
+  get leaked(): ReadonlyArray<{ type: UnitType; boss: boolean; count: number }> {
+    return [...this.leakMap.values()]
+  }
+  /** Gate exits before this session's baseline (a resumed battle), whose types are unknown. */
+  get leakedUnknown(): number {
+    return this.leakUnknown
+  }
+
   /** Forget the previous battle; the next update only records a baseline. */
   reset(): void {
     this.key = ''
@@ -131,6 +143,8 @@ export class BattleFeedback {
     this.heals.clear()
     this.combo.reset()
     this.killCount = this.bountyTotal = this.bountyLanded = 0
+    this.leakMap.clear()
+    this.leakUnknown = 0
     for (const { el } of this.live) el.remove()
     this.live.length = 0
     this.comboEl = null
@@ -180,6 +194,7 @@ export class BattleFeedback {
       let seen = this.units.get(unit.id)
       if (!seen) {
         seen = {
+          type: unit.type,
           hp,
           maxHp: unit.maxHp,
           owner: unit.owner,
@@ -270,6 +285,7 @@ export class BattleFeedback {
         this.options.play('combo', chain)
       }
     }
+    if (baseline) this.leakUnknown = Math.max(0, state.enemiesResolved - state.corpses.filter((c) => c.owner === 'ai').length)
     if (chipBounty > 0) this.coinChip(chipBounty, chipX, chipY - 30, chipSpecial)
 
     // Units that vanished: a corpse means a kill (show the final blow), otherwise they left through the gate.
@@ -278,6 +294,12 @@ export class BattleFeedback {
     for (const [id, seen] of this.units)
       if (seen.stamp !== this.frame) {
         gone.add(id)
+        if (seen.owner === 'ai' && !this.corpseIds.has(id)) {
+          const k = `${seen.type}:${seen.boss}`,
+            e = this.leakMap.get(k)
+          if (e) e.count++
+          else this.leakMap.set(k, { type: seen.type, boss: seen.boss, count: 1 })
+        }
         if (killed.has(id) && seen.hp > 0 && combat) this.hits.add(id, seen.hp, now)
       }
     const force = this.force
