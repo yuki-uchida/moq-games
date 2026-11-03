@@ -97,6 +97,12 @@ export function saveStageProgress(
   }
 }
 
+/** The cheapest ally not recruited yet that the current coins can pay for, if any. */
+export const affordableRecruit = (p: StageProgress): AllyType | null =>
+  RECRUITABLE.filter((t) => !p.recruited.includes(t) && DEFINITIONS[t].purchaseCost <= p.coins).sort(
+    (a, b) => DEFINITIONS[a].purchaseCost - DEFINITIONS[b].purchaseCost
+  )[0] ?? null
+
 export function recruit(p: StageProgress, type: AllyType): boolean {
   const cost = DEFINITIONS[type]?.purchaseCost ?? 0
   if (!RECRUITABLE.includes(type) || p.recruited.includes(type) || p.coins < cost) return false
