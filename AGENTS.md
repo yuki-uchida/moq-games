@@ -4,11 +4,19 @@ Respond to the user in Japanese.
 
 This independent checkout owns the tower-defense game, its bot, review tools, assets and tests. Preserve game behavior, original asset bytes and provenance. Large originals and unadopted candidates are preserved locally and ignored by Git; do not delete them.
 
+## Before starting work
+
+Before starting any user-requested work, fetch the latest `master` branch from `origin` and merge `origin/master` into the working branch. Resolve any merge conflicts before making task-specific changes. Preserve uncommitted changes and do not rewrite published history.
+
+For repository editing requests, read `.claude/skills/create-pr/SKILL.md` at the start and again before the final response, not only when creating a PR. If `master` does not exist, report that blocker; do not silently substitute another branch.
+
 ## Commits and pull requests
 
 For user-requested work in this repository, use pull requests instead of pushing directly to `main`. Split work into pull requests by major coherent unit; prefer one pull request per user instruction, but use stacked pull requests when the work cannot be cleanly separated otherwise.
 
 For user-requested work, commit changes, create pull requests and merge them without asking the user for a decision or approval each time, subject to the restrictions below.
+
+An editing request is complete only after validation, commit, push, PR creation, squash merge and successful CI on the merge commit. Before reporting completion, run the skill's read-only completion check for each PR. Questions and explicit user limits (such as no push or no merge) are exceptions. Authentication, permissions, unavailable checks and branch protection are blockers, not success: continue independent permitted steps, then report the exact unfinished steps without retry loops. Never include unrelated existing changes.
 
 In each pull request description, briefly describe only the added and removed features in Japanese. Do not explain why the changes were needed.
 
