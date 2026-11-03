@@ -85,7 +85,7 @@ export function levelUp(entry, random) {
 export function gainExp(entry, amount, random) {
   const ups = []
   entry.exp += amount
-  while (entry.level < MAX_LEVEL && entry.exp >= expToNext(entry.level)) {
+  while (ups.length < 2 && entry.level < MAX_LEVEL && entry.exp >= expToNext(entry.level)) {
     entry.exp -= expToNext(entry.level)
     const from = entry.level
     ups.push({ from, ...levelUp(entry, random) })

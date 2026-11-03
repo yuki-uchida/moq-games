@@ -90,6 +90,22 @@ test('defeat keeps kill EXP but gives no clear bonus or reward', () => {
   assert.equal(report.units[1].exp, 0)
 })
 
+test('each battle grants at most two levels and carries excess EXP forward', () => {
+  const c = newCampaign()
+  const game = createGame(0, deckOf(c))
+  game.result = 'defeat'
+  game.exp = { 1: 1000 }
+  const first = settle(c, game, rng(1))
+  assert.equal(first.units[0].ups.length, 2)
+  assert.equal(c.roster[0].level, 3)
+  assert.equal(c.roster[0].exp, 1000 - 110 - 140)
+  game.exp = {}
+  const second = settle(c, game, rng(2))
+  assert.equal(second.units[0].ups.length, 2)
+  assert.equal(c.roster[0].level, 5)
+  assert.equal(c.roster[0].exp, 1000 - 110 - 140 - 170 - 200)
+})
+
 test('save data round-trips and survives corruption', () => {
   const store = new Map()
   const storage = {
