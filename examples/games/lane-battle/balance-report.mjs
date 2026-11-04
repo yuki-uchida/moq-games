@@ -19,7 +19,7 @@ import { realisticBarFailures } from './realistic-bars.mjs'
 
 const realisticOnly = process.argv.find((arg) => arg.startsWith('--realistic='))?.slice('--realistic='.length)
 const nicheOnly = process.argv.includes('--niche-only')
-const [selectedStage, selectedPolicy] = realisticOnly?.split(':') ?? []
+const [selectedStage, selectedPolicy, selectedGroup] = realisticOnly?.split(':') ?? []
 
 function measure(type, side) {
   const deck = side === 1 ? [card({ uid: 1, key: type.key })] : [card({ uid: 1, key: 'katachi' })]
@@ -133,7 +133,9 @@ if (!nicheOnly) {
   const full = process.argv.includes('--full')
   const stages = selectedStage ? [Number(selectedStage)] : full ? [8, 15, 22] : [15, 22]
   const seeds = full ? 160 : realisticOnly ? 40 : 60
-  const samples = collectRealisticSamples(stages, [22])
+  const samples = process.argv.includes('--samples-from-env')
+    ? JSON.parse(process.env.LANE_REALISTIC_SAMPLES)
+    : collectRealisticSamples(stages, [22])
   function measureFormation(deck, stage, seed, specialIndex) {
     const game = createGame(stage, deck, seed)
     const random = rng(seed ^ 0x5eed)
@@ -161,8 +163,25 @@ if (!nicheOnly) {
     console.log(`deck ${stage}: ${baseline.deck.map((unit) => `${unit.key}:${unit.level}`).join('/')}`)
     for (const policy of selectedPolicy ? [selectedPolicy] : ['keep', 'casual']) {
       const rows = []
-      for (const type of [null, ...SPECIALS]) {
-        const { deck, specialIndex } = type ? realisticFormation(stage, samples[stage], type) : baseline
+      const owned =
+        stage === 8
+          ? []
+          : samples[stage].flatMap((roster, index) =>
+              roster
+                .filter((entry) => entry.equipped && SPECIALS.some((type) => type.key === entry.key))
+                .map((entry) => ({
+                  type: SPECIALS.find((type) => type.key === entry.key),
+                  entry,
+                  index
+                }))
+            )
+      const fresh = selectedGroup === 'old' ? [] : SPECIALS.map((type) => ({ type }))
+      for (const sample of [null, ...fresh, ...(selectedGroup === 'fresh' ? [] : owned)]) {
+        const { type, entry, index } = sample ?? {}
+        const name = entry
+          ? `旧加入${index + 1}:${type.name}:Lv${entry.level}:x${entry.scale.toFixed(2)}`
+          : (type?.name ?? '基準')
+        const { deck, specialIndex } = type ? realisticFormation(stage, samples[stage], type, entry) : baseline
         const focusIndex = type ? specialIndex : deck.length > 4 ? 4 : -1
         const battles = Array.from({ length: seeds }, (_, index) =>
           policy === 'keep' && focusIndex >= 0
@@ -178,9 +197,9 @@ if (!nicheOnly) {
           const block = battles.slice(offset, offset + 40)
           blocks.push(`${block.filter((battle) => battle.result === 'victory').length}/${block.length}`)
         }
-        rows.push({ name: type?.name ?? '基準', wins, summons, blocks: blocks.map((block) => Number.parseInt(block)) })
+        rows.push({ name, wins, summons, blocks: blocks.map((block) => Number.parseInt(block)) })
         console.log(
-          `${stage}\t${policy}\t${type?.name ?? '基準'}\t${wins}/${seeds}\t${time.toFixed(2)}\t${summons.toFixed(4)}\t${blocks.join(' ')}`
+          `${stage}\t${policy}\t${name}\t${wins}/${seeds}\t${time.toFixed(2)}\t${summons.toFixed(4)}\t${blocks.join(' ')}`
         )
       }
       if (full) {

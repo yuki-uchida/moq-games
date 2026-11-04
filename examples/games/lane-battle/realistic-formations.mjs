@@ -8,6 +8,7 @@ export function collectRealisticSamples(stages, clearStages = []) {
     const seen = new Set()
     playCampaign(rng(seed), {
       casual: true,
+      untilCleared: Math.max(...stages.map((stage) => stage + (clearStages.includes(stage) ? 1 : 0))),
       log: (_battle, report, campaign) => {
         for (const stage of stages) {
           const ready = clearStages.includes(stage)
@@ -15,7 +16,9 @@ export function collectRealisticSamples(stages, clearStages = []) {
             : campaign.cleared === stage
           if (!ready || seen.has(stage)) continue
           seen.add(stage)
-          samples[stage].push(campaign.roster.map(({ key, level }) => ({ key, level })))
+          samples[stage].push(
+            campaign.roster.map((entry) => ({ ...entry, equipped: campaign.loadout.includes(entry.uid) }))
+          )
         }
       }
     })
@@ -23,7 +26,7 @@ export function collectRealisticSamples(stages, clearStages = []) {
   return samples
 }
 
-export function realisticFormation(stage, samples, special = null) {
+export function realisticFormation(stage, samples, special = null, owned = null) {
   if (samples.length !== 6) throw new Error(`stage ${stage} needs six campaign samples`)
   const campaign = newCampaign()
   campaign.cleared = stage
@@ -46,6 +49,9 @@ export function realisticFormation(stage, samples, special = null) {
   chooseFormation(campaign)
   const entries = campaign.loadout.map((uid) => campaign.roster.find((entry) => entry.uid === uid))
   const specialIndex = special ? Math.min(4, entries.length) : -1
-  if (special) entries.splice(specialIndex, 0, addEntry(campaign, special.key, stage))
+  if (special) {
+    const entry = addEntry(campaign, special.key, stage)
+    entries.splice(specialIndex, 0, owned ? { ...owned, uid: entry.uid } : entry)
+  }
   return { deck: entries.slice(0, 6).map(card), specialIndex }
 }
