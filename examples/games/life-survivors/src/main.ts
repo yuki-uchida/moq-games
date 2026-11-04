@@ -19,6 +19,7 @@ import {
 } from './data'
 import { resultCategories, talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
+import { petForm, sportsForm, weaponAppearance } from './weapon-life'
 import { LifeAudio } from './audio'
 import { activeSynergies, SYNERGIES } from './synergies'
 import { musicCue } from './music'
@@ -99,6 +100,7 @@ let lastTime = performance.now()
 let sentAt = 0
 let hudAt = 0
 let shownChoices = ''
+let shownChoiceHand = ''
 let resultShown = false
 let lostAt = 0
 let wonAt = 0
@@ -424,17 +426,22 @@ function choose(index: number) {
 }
 
 function renderChoices(player: ViewPlayer | undefined) {
-  const key =
+  const hand =
     view?.phase === 'playing' && player && player.choices.length && pick?.seq !== player.choiceSeq
       ? `${player.choiceSeq}:${player.choices.join()}`
       : ''
+  const key =
+    hand && player && view ? `${hand}:${sportsForm(ageAt(view.time)).key}:${petForm(player.petAge ?? 0).name}` : ''
   if (key === shownChoices) return
+  const sameHand = Boolean(shownChoices && hand && hand === shownChoiceHand)
+  const focusedIndex = sameHand ? Array.from(cards.children).indexOf(document.activeElement as Element) : -1
   shownChoices = key
+  shownChoiceHand = hand
   levelup.hidden = !key
   if (!key || !player) return
   const owner = {
     ...player,
-    weapons: player.weapons.map(([id, lv]) => ({ id, lv })),
+    weapons: player.weapons.map(([id, lv]) => ({ id, lv, acquiredAge: ageAt(view!.time) - (player.petAge ?? 0) })),
     passives: player.passives.map(([id, lv]) => ({ id, lv }))
   }
   const count = player.choices.length
@@ -457,11 +464,13 @@ function renderChoices(player: ViewPlayer | undefined) {
               ? `時間は止まっています。${hint}`
               : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
-  cardsShownAt = performance.now()
-  audio.play('cardOpen')
+  if (!sameHand) {
+    cardsShownAt = performance.now()
+    audio.play('cardOpen')
+  }
   cards.replaceChildren(
     ...player.choices.map((choice, index) => {
-      const info = choiceText(owner as unknown as Player, choice)
+      const info = choiceText(owner as unknown as Player, choice, ageAt(view!.time))
       const rarity = choiceRarity(player.weapons, player.passives, choice)
       const button = document.createElement('button')
       button.type = 'button'
@@ -470,7 +479,16 @@ function renderChoices(player: ViewPlayer | undefined) {
       const icon = document.createElement('span')
       icon.className = 'icon'
       if (choice === 'x:skip' || choice.startsWith('f:') || choice.startsWith('d:')) icon.textContent = info.icon
-      else icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
+      else {
+        const id = choiceIcon(choice)
+        icon.append(
+          iconImg(
+            WEAPON_BY_ID.has(id) ? weaponAppearance(id, ageAt(view!.time), player.petAge).art : id,
+            info.name,
+            rarity === 'evolve'
+          )
+        )
+      }
       const name = document.createElement('strong')
       name.textContent = info.name
       if (info.tag && rarity !== 'new') {
@@ -515,7 +533,8 @@ function renderChoices(player: ViewPlayer | undefined) {
       return button
     })
   )
-  ;(cards.firstElementChild as HTMLButtonElement | null)?.focus({ preventScroll: true })
+  if (!sameHand || focusedIndex >= 0)
+    (cards.children[sameHand ? focusedIndex : 0] as HTMLButtonElement | undefined)?.focus({ preventScroll: true })
 }
 
 const RIBBONS: Partial<Record<Rarity, string>> = { new: 'NEW', evolve: '進化！' }
@@ -576,7 +595,12 @@ function updateHud(current: View) {
     prev.hp = player.hp
     element('#hp-value').textContent = player.downed ? '折' : String(Math.max(0, Math.ceil(player.hp)))
     element('.mind-card').classList.toggle('low', player.hp / player.maxHp < 0.3)
-    const key = JSON.stringify([player.weapons.map((w) => w.slice(0, 2)), player.passives])
+    const key = JSON.stringify([
+      player.weapons.map((w) => w.slice(0, 2)),
+      player.passives,
+      weaponAppearance('w_sports', ageAt(time)).art,
+      player.petAge
+    ])
     if (key !== handKey) {
       handKey = key
       const active = activeSynergies(player.weapons.map(([id]) => id))
@@ -599,19 +623,20 @@ function updateHud(current: View) {
       element('#weapons').replaceChildren(
         ...player.weapons.map(([id, lv]) => {
           const def = WEAPON_BY_ID.get(id)!
+          const appearance = weaponAppearance(id, ageAt(time), player.petAge)
           const evolved = Boolean(
             def.evolve && lv >= MAX_WEAPON_LEVEL && owner.passives.some((p) => p.id === def.evolve!.passive)
           )
           return mark(
             slot(
-              def.id,
+              appearance.art,
               lv,
               def.parent ? 'parent' : evolved ? 'evolved' : '',
               def.parent
                 ? [def.name, def.desc, def.perk].filter(Boolean).join('：')
                 : evolved
-                  ? def.evolve!.name
-                  : def.name
+                  ? `${def.evolve!.name}${appearance.name === def.name ? '' : `／${appearance.name}`}`
+                  : appearance.name
             ),
             id,
             `${lv}:${evolved}`
@@ -697,9 +722,15 @@ function reflection(player: ViewPlayer) {
     if (!group.weapons.length && !group.passives.length) add('なし', '')
     for (const [id, lv, damage] of group.weapons) {
       const def = WEAPON_BY_ID.get(id)!
+      const appearance = weaponAppearance(id, ageAt(view!.time), player.petAge)
       const evolved =
         def.evolve && lv >= MAX_WEAPON_LEVEL && player.passives.some(([passive]) => passive === def.evolve!.passive)
-      add(`${evolved ? def.evolve!.name : def.name} Lv${lv}`, `武器・与えた力 ${damage.toLocaleString()}`, '', id)
+      add(
+        `${evolved ? `${def.evolve!.name}${appearance.name === def.name ? '' : `／${appearance.name}`}` : appearance.name} Lv${lv}`,
+        `武器・与えた力 ${damage.toLocaleString()}`,
+        '',
+        appearance.art
+      )
     }
     for (const [id, lv] of group.passives) {
       const def = PASSIVE_BY_ID.get(id)!

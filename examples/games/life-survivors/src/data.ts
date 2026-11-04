@@ -359,7 +359,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 80,
     strong: ['sickness', 'sports'],
     minAge: 5,
-    desc: '画面中を跳ね回るボール。病気・スポーツに特攻。',
+    desc: '年齢に合わせてサッカー→野球→バスケ→テニス→ゴルフ→ゲートボールに変化。病気・スポーツに特攻。',
     evolve: { passive: 'p_hot', name: '全国制覇' }
   }),
   weapon({
@@ -504,7 +504,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'child'],
     minAge: 3,
-    desc: '愛犬が敵に噛みついてくれる。手が空けば飼い主のそばへ。悪口・子育てに特攻。',
+    desc: '子犬から成長し、迎えて20年でお別れ。初めてのお別れで性格「愛犬との思い出」を獲得。悪口・子育てに特攻。',
     evolve: { passive: 'p_optimist', name: '忠犬' }
   }),
   weapon({
@@ -720,7 +720,14 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'p_lucky', category: 'invest', name: '運がいい', icon: '🍀', desc: '会心率 +5%・転機の札が増えることも' },
   { id: 'p_clever', category: 'hobby', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）・威力 +3%' },
   { id: 'p_curious', category: 'hobby', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
-  { id: 'p_savvy', category: 'friend', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' }
+  { id: 'p_savvy', category: 'friend', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' },
+  {
+    id: 'p_petmemory',
+    category: 'friend',
+    name: '愛犬との思い出',
+    icon: '🐾',
+    desc: 'お別れで一度だけ獲得。精神力の自然回復 +0.4/秒（通常の性格枠を使わない）'
+  }
 ]
 export const PASSIVE_BY_ID = new Map(PASSIVES.map((def) => [def.id, def]))
 
@@ -911,7 +918,7 @@ const REPLACEMENTS: Record<string, Pick<EnemyDef, 'id' | 'name' | 'icon'>> = {
   lesson: { id: 'lesson_pressure', name: '授業の遅れ', icon: '🧮' },
   club: { id: 'overtraining', name: '過度な練習', icon: '🏃' },
   boss: { id: 'intimidating_boss', name: '威圧的な上司', icon: '😤' },
-  kid: { id: 'mischief', name: '子育てのいたずら', icon: '🧒' },
+  kid: { id: 'mischief', name: '子育てのいたずら', icon: '🖍️' },
   senpai: { id: 'abusive_senpai', name: '横暴な先輩', icon: '🧑‍🎓' },
   girlfriend: { id: 'temptation', name: '浮気相手のイケメン店長', icon: '💔' },
   vaccine: { id: 'infection', name: '感染症', icon: '🦠' },
@@ -1118,7 +1125,7 @@ export const EVENTS: LifeEvent[] = (
     { at: 300, boss: 'b_hs', text: '高校受験がやってきた！' },
     { at: 380, swarm: 'pimple', count: 40, text: '思春期。ニキビが大量発生！' },
     { at: 450, boss: 'b_univ', text: '大学受験がやってきた！' },
-    { at: 500, swarm: 'drinking', count: 18, formation: 'cluster', text: '新歓コンパの季節！' },
+    { at: 500, swarm: 'drinking', count: 18, formation: 'cluster', text: '新歓コンパでお酒を断れない！' },
     { at: 525, boss: 'b_heartbreak', text: '失恋した…！' },
     { at: 570, swarm: 'car', count: 10, text: '免許を取った。事故に注意！' },
     { at: 630, boss: 'b_shukatsu', text: '就職活動が始まった！' },

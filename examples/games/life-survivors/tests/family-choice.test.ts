@@ -289,6 +289,7 @@ test('normal play from birth reaches and answers a family card using ordinary ca
         if (choice === 'f:no') return -100
         if (choice === 'w:w_love' || choice === 's:w_love') return 20
         const [kind, id] = choice.split(':')
+        if (kind === 's') return -1
         if (kind === 'r') return id === 'w_love' ? -10 : 10
         if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 4 : 3
         return 1

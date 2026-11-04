@@ -37,7 +37,7 @@ for (const viewport of [
     await page.getByRole('button', { name: /4,5 平地 移動可能/ }).click()
     await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeEnabled()
     await page.getByRole('button', { name: '▶ ターン終了' }).click()
-    await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 15000 })
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 15000 })
     await page.reload()
     await page.screenshot({ path: `test-results/shell-continue-${viewport.width}.png` })
     page.once('dialog', (dialog) => void dialog.dismiss())
@@ -47,7 +47,7 @@ for (const viewport of [
     await page.getByRole('button', { name: /つづきから/ }).click()
     await expect(page.getByRole('button', { name: '任務と編成' })).toBeFocused()
     await expect(page.getByRole('button', { name: /4,5 燈守/ })).toBeVisible()
-    await expect(page.locator('#turn')).toContainText('味方 · 2')
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方')
     await page.screenshot({ path: `test-results/ember-resumed-${viewport.width}.png` })
     await page.getByRole('button', { name: '設定', exact: true }).click()
     await expect(page.getByLabel('BGM 音量')).toHaveValue('30')
@@ -104,7 +104,7 @@ for (const viewport of [
       await expect(page.locator('#result')).toBeVisible()
       await expect(page.locator('#report')).toContainText(difficulty === 'casual' ? '次の任務に復帰' : '遠征から離脱')
       await page.locator('#next').click()
-      await expect(page.locator('#count')).toContainText(difficulty === 'casual' ? '◆ 3' : '◆ 2')
+      await expect(page.locator('#count')).toContainText(difficulty === 'casual' ? '味方 3' : '味方 2')
     })
   }
   test(`blocked storage still starts ${viewport.width}`, async ({ page }) => {

@@ -9,6 +9,7 @@ import { careerDeathSheet, deathSheets } from './deaths'
 import { familySheets } from './family'
 import { infectionSheet, outbreakSheet } from './pathogens'
 import { peopleSheets } from './people'
+import { mischiefSheet } from './mischief'
 import { R } from './palette'
 import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
 import type { Sheet } from './sheet'
@@ -49,7 +50,7 @@ export const SHEETS: Record<string, () => Sheet> = {
   'enemy:lesson_pressure': () => sheet('enemy:lesson'),
   'enemy:overtraining': () => sheet('enemy:club'),
   'enemy:intimidating_boss': () => sheet('enemy:boss'),
-  'enemy:mischief': () => sheet('enemy:kid'),
+  'enemy:mischief': withFlash(mischiefSheet),
   'enemy:abusive_senpai': () => sheet('enemy:senpai'),
   ...Object.fromEntries(
     Object.entries({

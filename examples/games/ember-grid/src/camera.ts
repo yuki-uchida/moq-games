@@ -123,7 +123,7 @@ export class BoardCamera {
     this.controls.setAttribute('aria-label', 'カメラ')
     const icon = (path: string) =>
       `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`
-    this.controls.innerHTML = `<button type="button" data-zoom="in" aria-label="拡大">${icon('M12 5v14M5 12h14')}</button><button type="button" data-zoom="out" aria-label="縮小">${icon('M5 12h14')}</button><button type="button" data-zoom="fit" aria-label="全体を表示">${icon('M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5')}</button>`
+    this.controls.innerHTML = `<button type="button" data-zoom="in" aria-label="拡大" title="拡大">${icon('M12 5v14M5 12h14')}</button><button type="button" data-zoom="out" aria-label="縮小" title="縮小">${icon('M5 12h14')}</button><button type="button" data-zoom="fit" aria-label="全体を表示" title="全体を表示">${icon('M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5')}</button>`
     this.controls.onclick = (event) => {
       const action = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-zoom]')?.dataset.zoom
       if (action === 'fit') this.to({ zoom: 1, x: (size - 1) / 2, y: (size - 1) / 2 })

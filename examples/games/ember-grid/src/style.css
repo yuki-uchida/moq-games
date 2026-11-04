@@ -47,6 +47,10 @@ button:focus-visible {
   .console:has(#tutorial:not([hidden])) #touch-assist {
     top: 104px;
   }
+  /* The guide line already gives the right-hand buttons their room; only the tutorial row needs the taller log. */
+  .console:not(:has(#tutorial:not([hidden]))) #log {
+    min-height: 22px;
+  }
 }
 #touch-choices {
   position: fixed;
@@ -158,6 +162,8 @@ header button {
 }
 .status {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   justify-content: space-between;
   font-size: 14px;
   color: #c2d9d1;
@@ -570,6 +576,7 @@ nav {
   gap: 8px;
 }
 nav button {
+  white-space: nowrap;
   min-height: 44px;
   flex: 1 1 64px;
   border: 1px solid #719692;
@@ -661,7 +668,7 @@ dialog button {
   main {
     display: grid;
     grid-template-columns: 1fr 260px;
-    grid-template-rows: 56px 24px 1fr;
+    grid-template-rows: 56px auto 1fr;
     max-width: 1000px;
   }
   header {
@@ -693,10 +700,9 @@ dialog button {
 }
 .status {
   align-items: center;
-  gap: 6px;
+  gap: 4px 12px;
 }
 #recover {
-  flex: 0 0 58px;
   background: #385865;
 }
 #result button {
@@ -767,6 +773,9 @@ fieldset label {
   }
   #mission {
     font-size: 10px;
+  }
+  nav button {
+    font-size: 14px;
   }
 }
 @media (max-height: 500px) and (min-width: 600px) {
@@ -1097,18 +1106,32 @@ fieldset label {
 #phase-banner {
   position: absolute;
   z-index: 6;
-  left: 50%;
-  top: 15%;
-  transform: translateX(-50%);
-  padding: 10px 24px;
-  border: 1px solid #e2d190;
-  border-radius: 8px;
-  background: #142d3af2;
+  left: 0;
+  right: 0;
+  top: 50%;
+  translate: 0 -50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0;
+  background: linear-gradient(90deg, transparent, #12466be6 18%, #12466be6 82%, transparent);
+  border-block: 2px solid #8fd8ff;
   color: white;
-  font-weight: bold;
   white-space: nowrap;
   pointer-events: none;
-  animation: phase-in 550ms ease both;
+  animation: phase-in 800ms ease both;
+}
+#phase-banner[data-phase='enemy'] {
+  background: linear-gradient(90deg, transparent, #7a1f1ae6 18%, #7a1f1ae6 82%, transparent);
+  border-block-color: #ff9a86;
+}
+#phase-banner b {
+  font-size: clamp(24px, 5vw, 38px);
+  letter-spacing: 0.14em;
+}
+#phase-banner span {
+  font-size: 13px;
 }
 #phase-banner[hidden] {
   display: none;
@@ -1116,15 +1139,16 @@ fieldset label {
 @keyframes phase-in {
   from {
     opacity: 0;
-    translate: 0 -8px;
+    transform: scaleY(0.4);
   }
-  20%,
+  15%,
   80% {
     opacity: 1;
-    translate: 0 0;
+    transform: scaleY(1);
   }
   to {
     opacity: 0;
+    transform: scaleY(1);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1154,6 +1178,12 @@ fieldset label {
 }
 .console:has(#tutorial:not([hidden])) #detail-button {
   top: 56px;
+}
+#danger[aria-pressed='true'] {
+  background: #6b5a24;
+  border-color: #ffe27b;
+  color: #fff3c4;
+  box-shadow: inset 0 0 0 1px #ffe27b;
 }
 #fast[aria-pressed='true'],
 #wait.recommended {
@@ -1385,4 +1415,185 @@ fieldset label {
 /* Immediate press feedback; `scale` composes with any transform. */
 button:active:not(:disabled) {
   scale: 0.96;
+}
+
+/* HUD: labeled status bar, next-step guide, map legend and enemy callout. */
+.sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#turn .phase {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 1px solid #8fd8ff;
+  background: #1f5f86;
+  color: #e8f7ff;
+}
+#turn[data-phase='enemy'] .phase {
+  background: #8a2f28;
+  border-color: #ff9a86;
+}
+#turn[data-phase='won'] .phase {
+  background: #7a5a1e;
+  border-color: #ffd76a;
+}
+#turn[data-phase='lost'] .phase {
+  background: #4a4f55;
+  border-color: #9aa3a8;
+}
+#turn .turn-no {
+  margin-right: 6px;
+}
+#count .ally b {
+  color: #8fd8ff;
+}
+#count .enemy b {
+  color: #ff9a86;
+}
+#count .ally {
+  margin-right: 6px;
+}
+.hud-label {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e9ce8d;
+  color: #2b1d08;
+  font-size: 11px;
+  font-weight: bold;
+}
+#guide {
+  margin: 0 0 6px;
+  min-height: 20px;
+  padding-right: 52px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #ffe4a1;
+}
+#guide::before {
+  content: '▶ ';
+  font-size: 10px;
+  color: #e9ce8d;
+}
+.console:has(#tutorial:not([hidden])) #guide {
+  display: none;
+}
+#legend {
+  position: absolute;
+  z-index: 4;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-flow: row wrap;
+  gap: 4px 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #0d1a22c4;
+  font-size: 11px;
+  color: #e7efe9;
+  max-width: calc(100% - 72px);
+  pointer-events: none;
+}
+#legend:empty,
+.field.reporting #legend {
+  display: none;
+}
+#legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#legend i {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  font-style: normal;
+  line-height: 10px;
+  text-align: center;
+}
+#legend [data-kind='move'] i {
+  background: #3d6b70;
+  box-shadow: inset 0 0 0 1.5px #8beaf9;
+}
+#legend [data-kind='attack'] i {
+  background: #7a3c36;
+  box-shadow: inset 0 0 0 1px #ff8a76;
+}
+#legend [data-kind='heal'] i {
+  background: #4caa72;
+  box-shadow: inset 0 0 0 1.5px #c1ffce;
+}
+#legend [data-kind='enemy-move'] i {
+  background: #4a5170;
+  box-shadow: inset 0 0 0 1px #9aa6d8;
+}
+#legend [data-kind='danger'] i {
+  background: repeating-linear-gradient(45deg, #f9ce4d99 0 2px, transparent 2px 5px);
+  border: 1px dashed #ffe27b;
+  box-sizing: border-box;
+}
+#legend [data-kind='seize'] i {
+  width: auto;
+  color: #ffd76a;
+  font-size: 12px;
+}
+#actor {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
+  padding: 4px 14px;
+  border: 1px solid #ff9a86;
+  border-radius: 999px;
+  background: #3a1512e6;
+  color: #ffe9e4;
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#actor[hidden] {
+  display: none;
+}
+.cell.acting {
+  box-shadow:
+    inset 0 0 0 3px #ff6b57,
+    inset 0 0 14px #ff3b2a99;
+}
+
+/* Small phones keep the title on one line; landscape phones keep the side column short enough for the status. */
+@media (max-width: 360px) {
+  header small {
+    display: none;
+  }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+  .nav-long {
+    display: none;
+  }
+  nav button {
+    font-size: 13px;
+  }
+  /* Still announced; the guide line and enemy callout carry the same information on screen. */
+  .console #log {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+/* A very short field (small phones) needs every pixel for the board; help explains the tints. */
+@container (max-height: 240px) {
+  #legend {
+    display: none;
+  }
 }

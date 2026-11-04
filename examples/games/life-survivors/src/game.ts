@@ -33,6 +33,7 @@ import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { activeSynergies } from './synergies'
 import { LIFE_OUTCOMES, type LifeDecision } from './history'
 import { rankedCareer, type Career } from './careers'
+import { PET_LIFESPAN, PET_MEMORY, weaponAppearance } from './weapon-life'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -91,6 +92,7 @@ export interface Input {
 
 export interface OwnedWeapon {
   id: string
+  acquiredAge?: number
   lv: number
   cd: number
   /** Seconds held; investments compound with it. */
@@ -292,7 +294,8 @@ export function mulberry32(seed: number) {
   }
 }
 
-export const xpForLevel = (level: number) => Math.round((5 + level * 6 + level * level * 0.3) * 1.3)
+export const xpForLevel = (level: number) =>
+  Math.round((5 + level * 6 + level * level * 0.3) * 1.3 * (1 + Math.min(20, Math.max(0, level - 10)) * 0.0125))
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const passivePower = (player: Player, id: string) =>
@@ -317,9 +320,10 @@ export function isEvolved(player: Player, weapon: OwnedWeapon) {
   return Boolean(def?.evolve && weapon.lv >= MAX_WEAPON_LEVEL && passiveLevel(player, def.evolve.passive) > 0)
 }
 
-export function weaponName(player: Player, weapon: OwnedWeapon) {
+export function weaponName(player: Player, weapon: OwnedWeapon, age?: number) {
   const def = WEAPON_BY_ID.get(weapon.id)!
-  return isEvolved(player, weapon) ? def.evolve!.name : def.name
+  const name = age === undefined ? def.name : weaponAppearance(weapon.id, age, age - (weapon.acquiredAge ?? age)).name
+  return isEvolved(player, weapon) ? `${def.evolve!.name}${name === def.name ? '' : `／${name}`}` : name
 }
 
 export interface PlayerStats {
@@ -352,7 +356,7 @@ export function playerStats(player: Player): PlayerStats {
     regen:
       player.parent === 'p_toxic'
         ? 0
-        : p('p_optimist') * 0.4 + p('p_kind') * 0.2 + (player.parent === 'p_gone' ? 1 : 0),
+        : p('p_optimist') * 0.4 + p('p_kind') * 0.2 + p(PET_MEMORY) * 0.4 + (player.parent === 'p_gone' ? 1 : 0),
     speed: BASE_SPEED * (1 + p('p_healthy') * 0.08),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
@@ -421,7 +425,11 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
   }
 }
 
-export function choiceText(player: Player, choice: string): { icon: string; name: string; text: string; tag: string } {
+export function choiceText(
+  player: Player,
+  choice: string,
+  age?: number
+): { icon: string; name: string; text: string; tag: string } {
   if (choice === 'd:yes')
     return { icon: '💞', name: '交際する', text: 'パートナーと交際を始める。浮気相手が現れる', tag: '' }
   if (choice === 'd:no') return { icon: '🌿', name: '交際しない', text: '今は一人で歩む', tag: '' }
@@ -432,9 +440,13 @@ export function choiceText(player: Player, choice: string): { icon: string; name
   const [kind, id] = choice.split(':')
   if (kind === 's' || kind === 'r') {
     const def = WEAPON_BY_ID.get(id)!
+    const appearance =
+      age === undefined
+        ? def
+        : weaponAppearance(id, age, age - (player.weapons.find((w) => w.id === id)?.acquiredAge ?? age))
     return {
-      icon: def.icon,
-      name: def.name,
+      icon: appearance.icon,
+      name: appearance.name,
       text: kind === 's' ? def.desc : 'この武器と入れ替える',
       tag: kind === 's' ? 'NEW' : '交換'
     }
@@ -443,15 +455,16 @@ export function choiceText(player: Player, choice: string): { icon: string; name
   if (kind === 'w') {
     const def = WEAPON_BY_ID.get(id)!
     const owned = player.weapons.find((w) => w.id === id)
-    if (!owned) return { icon: def.icon, name: def.name, text: def.desc, tag: 'NEW' }
+    const appearance = age === undefined ? def : weaponAppearance(id, age, age - (owned?.acquiredAge ?? age))
+    if (!owned) return { icon: appearance.icon, name: appearance.name, text: def.desc, tag: 'NEW' }
     const next = owned.lv + 1
     const evolves =
       next === MAX_WEAPON_LEVEL && def.evolve && passiveLevel(player, def.evolve.passive)
         ? `・${def.evolve.name}に進化！`
         : ''
     return {
-      icon: def.icon,
-      name: def.name,
+      icon: appearance.icon,
+      name: appearance.name,
       text: `${LEVEL_TEXT[next]}${evolves}`,
       tag: `Lv ${next}`
     }
@@ -467,7 +480,7 @@ export function choiceText(player: Player, choice: string): { icon: string; name
 }
 
 /** Chance that a chest holds three turning points instead of one. */
-export const CHEST_TRIPLE = 0.06
+export const CHEST_TRIPLE = 0.2
 
 export class Game {
   state: GameState
@@ -660,6 +673,7 @@ export class Game {
     if (state.phase === 'won' || state.phase === 'lost' || this.paused || !state.players.length) return
     if (state.phase === 'reaper') return this.reaperTick(dt)
     state.time += dt
+    this.ageWeapons()
     if (state.time >= RUN_SECONDS) return this.summonReaper()
     this.stageTick()
     this.movePlayers(dt)
@@ -1638,6 +1652,31 @@ export class Game {
     }
   }
 
+  private ageWeapons() {
+    const age = ageAt(this.state.time)
+    for (const player of this.state.players) {
+      const pet = player.weapons.find((weapon) => weapon.id === 'w_pet')
+      if (!pet) continue
+      pet.acquiredAge ??= age
+      if (age - pet.acquiredAge < PET_LIFESPAN) continue
+      player.weapons = player.weapons.filter((weapon) => weapon !== pet)
+      this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== pet.id)
+      const refresh = (hand: string[]) => hand.filter((choice) => !choice.startsWith('r:w_pet:'))
+      if (player.choices.some((choice) => choice === 'w:w_pet' || choice.startsWith('r:w_pet:'))) {
+        player.choices = refresh(player.choices)
+        if (!player.choices.length) player.choices = ['x:skip']
+        player.choiceSeq++
+      }
+      const familyHand = this.familyHands.get(player.id)
+      if (familyHand?.length) {
+        const remaining = refresh(familyHand)
+        this.familyHands.set(player.id, remaining.length ? remaining : ['x:skip'])
+      }
+      if (!passiveLevel(player, PET_MEMORY)) player.passives.push({ id: PET_MEMORY, lv: 1 })
+      this.log(`${player.name}の愛犬が旅立った。「愛犬との思い出」は心に残る。`)
+    }
+  }
+
   private targets(player: Player, count: number, range: number) {
     const found: { enemy: Enemy; d: number }[] = []
     for (const enemy of this.state.enemies) {
@@ -2332,8 +2371,7 @@ export class Game {
         for (const gem of state.gems) gem.pull = true
         this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('magnet'), takerIndex)
       } else {
-        // A chest holds one turning point for everyone, or now and then (with a lucky taker) three.
-        const grant = this.rng() < CHEST_TRIPLE + passivePower(taker, 'p_lucky') * 0.05 ? 3 : 1
+        const grant = this.rng() < CHEST_TRIPLE ? 3 : 1
         for (const player of alive) player.pending += grant
         this.emit(FX.CHEST, item.x, item.y, grant, takerIndex)
       }
@@ -2386,9 +2424,11 @@ export class Game {
     for (const weapon of player.weapons) if (weapon.lv < MAX_WEAPON_LEVEL) result.push(`w:${weapon.id}`)
     if (talentWeaponCount(player) < weaponSlots(player))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
-    for (const passive of player.passives) if (passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
-    if (player.passives.length < PASSIVE_SLOTS)
-      for (const def of PASSIVES) if (!player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
+    for (const passive of player.passives)
+      if (passive.id !== PET_MEMORY && passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
+    if (player.passives.filter((passive) => passive.id !== PET_MEMORY).length < PASSIVE_SLOTS)
+      for (const def of PASSIVES)
+        if (def.id !== PET_MEMORY && !player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
     return result
   }
 
@@ -2490,7 +2530,16 @@ export class Game {
     } else if (kind === 'r') {
       const index = player.weapons.findIndex((weapon) => weapon.id === id)
       if (index >= 0 && replacement && WEAPON_BY_ID.has(replacement)) {
-        player.weapons[index] = { id: replacement, lv: 1, cd: 0.2, held: 0, damage: 0 }
+        if (id === 'w_pet')
+          this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== id)
+        player.weapons[index] = {
+          id: replacement,
+          lv: 1,
+          cd: 0.2,
+          held: 0,
+          damage: 0,
+          acquiredAge: ageAt(this.state.time)
+        }
         this.feel(player, WEAPON_BY_ID.get(replacement)!, 1)
       }
     } else if (kind === 'w') {
@@ -2501,7 +2550,7 @@ export class Game {
         this.feel(player, WEAPON_BY_ID.get(id)!, owned.lv)
         if (!before && isEvolved(player, owned)) this.announceEvolution(player, owned)
       } else {
-        player.weapons.push({ id, lv: 1, cd: 0.2, held: 0, damage: 0 })
+        player.weapons.push({ id, lv: 1, cd: 0.2, held: 0, damage: 0, acquiredAge: ageAt(this.state.time) })
         this.feel(player, WEAPON_BY_ID.get(id)!, 1)
       }
     } else if (kind === 'p') {
