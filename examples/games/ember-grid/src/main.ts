@@ -783,7 +783,11 @@ async function choose(x: number, y: number) {
         tutorial.advance('attack')
         changed = true
       } else
-        game.log = `${target.name} Lv${target.level} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
+        game.log = unit.done
+          ? `${unit.name}は行動済みです`
+          : unit.heal
+            ? `${unit.name}は攻撃できません（杖で味方を回復）`
+            : `${target.name}は射程外です（${unit.name}の射程 ${unit.range}）`
     } else if (move(game, unit, x, y)) {
       tutorial.advance('move')
       cancelForecast(false)
@@ -811,7 +815,7 @@ async function choose(x: number, y: number) {
     }
   } else if (target) {
     inspected = target.id
-    game.log = `${target.name} Lv${target.level} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
+    game.log = `${target.name}（${roleNames[target.role] ?? target.role} Lv${target.level}）HP ${target.hp}/${target.max} · 攻撃 ${target.power} · 射程 ${target.range}${target.armor ? ` · 盾 ${target.armor}` : ''}`
   } else inspected = undefined
   afterAction()
 }
