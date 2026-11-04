@@ -105,3 +105,89 @@ test('the potion button keeps its name in landscape (844x390)', async ({ page })
   await start(page, { width: 844, height: 390 })
   await expect(page.locator('#recover')).toContainText('薬')
 })
+
+async function enableTouchAssist(page: Page) {
+  await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
+}
+
+test('the touch chooser opens on screen from an enemy and from an ally (568x320)', async ({ page }, info) => {
+  await start(page, { width: 568, height: 320 })
+  await enableTouchAssist(page)
+  const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+  for (const [name, shot] of [
+    [/7,4 灰牙/, 'chooser-enemy.png'],
+    [/2,4 風読み/, 'chooser-ally.png']
+  ] as const) {
+    await page.getByRole('button', { name }).tap()
+    await expect(dialog).toBeVisible()
+    const height = await page.evaluate(() => window.innerHeight)
+    const buttons = await dialog.getByRole('button').all()
+    expect(buttons.length).toBeGreaterThan(2)
+    for (const button of buttons) {
+      const box = (await button.boundingBox())!
+      expect(box.y).toBeGreaterThanOrEqual(0)
+      expect(box.y + box.height).toBeLessThanOrEqual(height + 0.5)
+    }
+    await page.screenshot({ path: info.outputPath(shot) })
+    await dialog.getByRole('button', { name: '閉じる' }).tap()
+    await expect(dialog).not.toBeVisible()
+  }
+})
+
+test('the toast stays visible after scrolling (568x320)', async ({ page }, info) => {
+  await start(page, { width: 568, height: 320 })
+  const { enemy } = await farTargets(page)
+  await cell(page, 2, 4).click()
+  await page.evaluate(() => window.scrollBy(0, 160))
+  await cell(page, enemy.x, enemy.y).click()
+  const toast = page.locator('#toast')
+  await expect(toast).toContainText('射程外')
+  const box = (await toast.boundingBox())!
+  const height = await page.evaluate(() => window.innerHeight)
+  expect(box.y).toBeGreaterThanOrEqual(0)
+  expect(box.y + box.height).toBeLessThanOrEqual(height)
+  await page.screenshot({ path: info.outputPath('toast-scrolled.png') })
+})
+
+test('the chooser outlines the squares it offers (390x844)', async ({ page }, info) => {
+  await start(page, { width: 390, height: 844 })
+  await enableTouchAssist(page)
+  await page.getByRole('button', { name: /2,4 風読み/ }).tap()
+  await expect(page.getByRole('dialog', { name: 'マスを選択' })).toBeVisible()
+  await expect(page.locator('.cell.touch-origin')).toHaveCount(1)
+  expect(await page.locator('.cell.touch-near').count()).toBeGreaterThan(2)
+  await page.screenshot({ path: info.outputPath('chooser-highlight.png') })
+  await page.getByRole('button', { name: '閉じる' }).tap()
+  await expect(page.locator('.cell.touch-origin')).toHaveCount(0)
+  await expect(page.locator('.cell.touch-near')).toHaveCount(0)
+})
+
+test('a lethal hit shows the same number in the forecast and the popup', async ({ page }, info) => {
+  await start(page, { width: 844, height: 390 })
+  await cell(page, 2, 4).click()
+  await cell(page, 4, 4).click()
+  await expect(page.locator('#undo')).toBeEnabled()
+  await page.evaluate(() => {
+    const game = (
+      document.querySelector('.stage') as HTMLCanvasElement & {
+        stage: { last: { game: import('../src/game').Game } }
+      }
+    ).stage.last.game
+    game.units.find((u) => u.name === '灰牙')!.hp = 2
+  })
+  await cell(page, 7, 4).click()
+  await expect(page.locator('#forecast')).toContainText('−8')
+  await page.evaluate(() => {
+    const w = window as unknown as { popups: string[] }
+    w.popups = []
+    new MutationObserver(() => {
+      document.querySelectorAll('.damage-number').forEach((n) => {
+        if (n.textContent && !w.popups.includes(n.textContent)) w.popups.push(n.textContent)
+      })
+    }).observe(document.body, { subtree: true, childList: true, characterData: true })
+  })
+  await page.locator('#confirm').click()
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { popups: string[] }).popups[0]), { timeout: 30000 })
+    .toMatch(/^−8/)
+})

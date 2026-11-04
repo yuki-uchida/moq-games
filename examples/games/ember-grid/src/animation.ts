@@ -20,12 +20,13 @@ export function pause(ms: number) {
   })
 }
 export const snapshot = (game: Game) => game.units.map((u) => ({ ...u }))
-type Action = { kind: 'attack' | 'heal'; target: Unit }
+/** amount: damage as the forecast and log state it (can exceed the HP actually lost on a lethal hit). */
+export type Action = { kind: 'attack' | 'heal'; target: Unit; amount?: number }
 export function actionChange(before: Unit[], action: Action) {
   const old = before.find((unit) => unit.id === action.target.id)!
   return {
     target: action.target,
-    amount: action.kind === 'attack' ? old.hp - action.target.hp : action.target.hp - old.hp
+    amount: action.amount ?? (action.kind === 'attack' ? old.hp - action.target.hp : action.target.hp - old.hp)
   }
 }
 /** Back-to-front order: the far corner is (size-1, 0), the near corner (0, size-1). */

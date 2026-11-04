@@ -80,6 +80,13 @@ export function guideText({ game, selected, inspected, pendingHeal, busy, ready 
     if (healer) return targets ? '緑のマスの味方を回復、または ✓ 待機' : '✓ 待機で行動終了（↶ 戻すで移動を取消）'
     return targets ? '赤く光る敵を選んで攻撃、または ✓ 待機' : '攻撃できる敵がいません · ✓ 待機（↶ 戻すで取消）'
   }
+  const goal = campaign[game.stage].objective
+  if (
+    !selected &&
+    goal.type === 'seize' &&
+    game.units.some((u) => u.side === 'ally' && u.hp > 0 && u.x === goal.x && u.y === goal.y)
+  )
+    return '祠を確保中 · ▶ ターン終了で制圧'
   if (!selected && inspected && inspected.side === 'enemy' && inspected.hp > 0)
     return `${inspected.name}の移動範囲（青）と攻撃範囲（赤）を表示中`
   if (game.units.some((u) => u.side === 'ally' && u.hp > 0 && !finished(game, u)))

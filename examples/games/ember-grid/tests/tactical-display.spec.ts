@@ -28,7 +28,7 @@ for (const width of [1280, 390]) {
       Object.assign(target, { x: 3, y: 4, hp: kind === 'heal' ? target.max - 4 : kind === 'kill' ? 1 : target.max })
       game.rocks.delete('2,4')
       game.rocks.delete('3,4')
-      const amount = kind === 'heal' ? 4 : Math.min(target.hp, damage(actor, target, game))
+      const amount = kind === 'heal' ? 4 : damage(actor, target, game)
       const save = saved(game)
       await page.addInitScript((value) => {
         localStorage.setItem('ember-grid:save:v1', JSON.stringify(value))
