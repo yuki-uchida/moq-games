@@ -1,7 +1,7 @@
 import { LaneModels, modelSize, koSeconds, hurtSeconds } from './models.js'
 import { BattleAudio } from './audio.js'
 import { BattleClock } from './clock.js'
-import { heldStrike } from './animation.js'
+import { heldStrike, timing } from './animation.js'
 import { drawArea, drawStatus, drawZones, HURT_VFX, DEATH_VFX } from './visual-effects.js'
 import { bindUiSounds, playUiSound } from '../shared/UiSound.ts'
 import {
@@ -78,6 +78,7 @@ const heard = new WeakSet()
 const heardImpacts = new WeakSet()
 const fallen = []
 let resultVisual = null
+let visualLast = null
 let reconciling = false
 let catchupScheduled = false
 let capNoticeUntil = 0
@@ -89,6 +90,7 @@ function syncAudio() {
   audio.setRunning(!paused && !document.hidden)
 }
 document.addEventListener('visibilitychange', () => {
+  visualLast = null
   if (resultVisual) clock.reset(performance.now())
   tick(performance.now())
   syncAudio()
@@ -160,6 +162,7 @@ function start(stage) {
   dialog.close()
   $('map').hidden = true
   paused = false
+  visualLast = null
   clock.reset(performance.now())
   tone('summon')
 }
@@ -420,6 +423,7 @@ function togglePause() {
   tick(performance.now())
   if (dialog.open || !$('map').hidden || clock.pending) return
   paused = !paused
+  visualLast = null
   clock.reset(performance.now())
   syncAudio()
 }
@@ -543,8 +547,10 @@ function drawToiletCastle(x) {
 /** Ground rows: three per side, interleaved so opposing units never stand at the same depth. */
 const laneY = (u) => (u.side === 1 ? 356 : 350) + (u.id % 3) * 12
 const launchHeight = (u, scale, aspect) =>
-  u.control?.kind === 'launch' && u.control.end > state.time
-    ? Math.sin((Math.PI * (state.time - u.control.start)) / (u.control.end - u.control.start)) *
+  u.control?.kind === 'launch' && u.control.end > state.time + (resultVisual?.elapsed ?? 0)
+    ? Math.sin(
+        (Math.PI * (state.time + (resultVisual?.elapsed ?? 0) - u.control.start)) / (u.control.end - u.control.start)
+      ) *
       scale *
       0.8 *
       modelSize(u.key) *
@@ -606,7 +612,10 @@ function draw() {
     if (resultVisual)
       resultVisual.duration = Math.max(
         resultVisual.duration,
-        resultVisual.elapsed + Math.max(ghost.flushed ? 0.8 : 0, koSeconds(ghost.key)) - ghost.visualAge + 0.15
+        resultVisual.elapsed +
+          Math.max(ghost.flushed ? 0.8 : 0, koSeconds(ghost.key)) -
+          ghost.visualAge +
+          (calm.matches ? 0.05 : 0.15)
       )
   }
   const rect = canvas.getBoundingClientRect()
@@ -689,7 +698,7 @@ function draw() {
   }
   const scale = rect.width < 500 ? 180 : 120
   const aspect = rect.width / 1000 / (rect.height / 450)
-  drawZones(ctx, state.zones, state.time, aspect, calm.matches)
+  drawZones(ctx, state.zones, visualTime, aspect, calm.matches)
   models.setPresentation(scale, aspect, rect.width / 1000)
   const units = [...state.units].sort((a, b) => a.id - b.id)
   const depth = depthSlots([...fallen, ...units])
@@ -713,7 +722,7 @@ function draw() {
   for (const id of glides.keys()) if (!present.has(id)) glides.delete(id)
   for (const [id, held] of contacts) {
     const unit = units.find((entry) => entry.id === id)
-    if (!unit || !heldStrike(held, unit, state.time)) contacts.delete(id)
+    if (!unit || !heldStrike(held, unit, visualTime)) contacts.delete(id)
   }
   for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge)
   for (const u of units) {
@@ -722,17 +731,35 @@ function draw() {
     ctx.beginPath()
     ctx.ellipse(drawX(u), y + 2, 22 * modelSize(u.key), 6, 0, 0, 7)
     ctx.fill()
-    if (u.slide && state.time - u.slide.at < 0.15) {
+    if (u.slide && visualTime - u.slide.at < 0.15) {
       ctx.fillStyle = '#c4ae8d99'
       ctx.beginPath()
       ctx.ellipse(drawX(u) + u.side * 15, y, 12, 5 * aspect, 0, 0, Math.PI * 2)
       ctx.fill()
     }
-    const held = heldStrike(contacts.get(u.id), u, state.time)
-    let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
-    if (resultVisual && visual.hurt)
-      visual = { ...visual, hurt: { ...visual.hurt, at: visual.hurt.at - resultVisual.elapsed } }
-    models.unit(visual, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
+    const held = heldStrike(contacts.get(u.id), u, visualTime)
+    let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: visualTime - held.at } : u
+    if (resultVisual) {
+      const recovery = timing(visual.cycle).recovery
+      visual = {
+        ...visual,
+        phase:
+          visual === u && u.motion === 'attack'
+            ? Math.min(u.phase + resultVisual.elapsed, Math.max(u.phase, recovery))
+            : visual.phase,
+        walkDistance: u.walkDistance + (u.motion === 'walk' ? resultVisual.elapsed * u.speed * WALK_PACE : 0)
+      }
+    }
+    models.unit(
+      visual,
+      drawX(u),
+      y - launchHeight(u, scale, aspect),
+      depth.get(u),
+      visualTime,
+      resultVisual ? Infinity : lead(u),
+      contact(u),
+      y
+    )
   }
   ctx.font = '12px sans-serif'
   ctx.textAlign = 'center'
@@ -786,7 +813,7 @@ function draw() {
     ctx.restore()
   }
   for (const unit of units) {
-    const age = state.time - (unit.control?.end ?? 0)
+    const age = visualTime - (unit.control?.end ?? 0)
     if (unit.control?.kind !== 'launch' || age < 0 || age >= 0.3) continue
     ctx.save()
     ctx.globalAlpha = 1 - age / 0.3
@@ -809,7 +836,7 @@ function draw() {
   for (const u of units) {
     const y = laneY(u) - launchHeight(u, scale, aspect)
     const top = y - (scale * 0.8 * modelSize(u.key) * (rect.width / 1000)) / (rect.height / 450)
-    drawStatus(ctx, u, drawX(u), y, top, state.time, aspect, calm.matches)
+    drawStatus(ctx, u, drawX(u), y, top, visualTime, aspect, calm.matches)
   }
   for (const e of state.effects) {
     if (e.cancelled) continue
@@ -968,11 +995,12 @@ function finish(report) {
 function tick(now) {
   // Death motions age with real visible time, so they keep real speed down to 4 fps; a longer stall
   // advances them by at most 0.25 s, so a death the player has barely seen still plays out.
-  const visualDelta =
-    !paused && !document.hidden && clock.last !== null ? Math.min(0.25, Math.max(0, (now - clock.last) / 1000)) : 0
+  const visible =
+    !paused && !document.hidden && !clock.pending && (state.result || clock.last === null || now - clock.last <= 30000)
+  const visualDelta = visible && visualLast !== null ? Math.min(0.25, Math.max(0, (now - visualLast) / 1000)) : 0
+  visualLast = visible ? now : null
   for (const ghost of fallen) if (ghost.visualStarted) ghost.visualAge += visualDelta
-  if (resultVisual && !paused && !document.hidden && clock.last !== null)
-    resultVisual.elapsed += Math.max(0, (now - clock.last) / 1000)
+  if (resultVisual) resultVisual.elapsed += visualDelta
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
   // The unit objects as they were before this tick's steps: units that fall keep their final state.
   const previous = state.units.slice()
@@ -1046,8 +1074,15 @@ function tick(now) {
       Math.max(
         0,
         ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (unit.visualAge ?? 0)),
-        ...state.effects.map((effect) => effect.life)
-      ) + 0.15
+        ...state.effects.map((effect) => effect.life),
+        ...state.units.map((unit) => (unit.hurt ? hurtSeconds(unit.key) - (state.time - unit.hurt.at) : 0)),
+        ...state.units.map((unit) => {
+          const held = heldStrike(contacts.get(unit.id), unit, state.time)
+          const phase =
+            unit.motion === 'attack' ? unit.phase : held && unit.motion === 'walk' ? state.time - held.at : Infinity
+          return timing(unit.cycle).recovery - phase
+        })
+      ) + (calm.matches ? 0.05 : 0.15)
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
   if (!document.hidden) draw()

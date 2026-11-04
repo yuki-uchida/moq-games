@@ -37,11 +37,11 @@ const main = [
     `for (const ghost of fallen) { models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge); recordDeath(ghost, true) }`
   ],
   [
-    "let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u",
-    `let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    "let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: visualTime - held.at } : u",
+    `let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: visualTime - held.at } : u
     if (u.tag === 'victim') Object.assign(visual, { motion: globalThis.__deathMode, phase: 0.01, walkDistance: 9 })`
   ],
-  ['contact(u), y)', 'contact(u), y); recordDeath(u, false)'],
+  ['contact(u),\n      y\n    )', 'contact(u),\n      y\n    ); recordDeath(u, false)'],
   [
     'function depthSlots(list) {',
     `function recordDeath(unit, dead) {
