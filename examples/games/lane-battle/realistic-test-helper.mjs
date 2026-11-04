@@ -20,7 +20,7 @@ export function testRealistic(stage, policy) {
       })
     assert.equal(rows.length, SPECIALS.length + 1)
     const baseline = rows[0]
-    assert.equal(baseline.name, 'ドデカ')
+    assert.equal(baseline.name, '基準')
     const failures = []
     for (const [index, type] of SPECIALS.entries()) {
       const row = rows[index + 1]

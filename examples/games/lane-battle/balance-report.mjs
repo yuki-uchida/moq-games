@@ -12,8 +12,9 @@ import {
   burst,
   OPENING
 } from './simulation.js'
-import { addEntry, levelUp, newCampaign, specialScale } from './campaign.js'
-import { playBattle, playCampaign, summonKeepingOne } from './bot.js'
+import { specialScale } from './campaign.js'
+import { playBattle, summonKeepingOne } from './bot.js'
+import { collectRealisticSamples, realisticFormation } from './realistic-formations.mjs'
 
 const realisticOnly = process.argv.find((arg) => arg.startsWith('--realistic='))?.slice('--realistic='.length)
 const nicheOnly = process.argv.includes('--niche-only')
@@ -131,20 +132,7 @@ if (!nicheOnly) {
   const full = process.argv.includes('--full')
   const stages = selectedStage ? [Number(selectedStage)] : full ? [8, 15, 22] : [15, 22]
   const seeds = full ? 160 : realisticOnly ? 40 : 60
-  const samples = Object.fromEntries(stages.map((stage) => [stage, []]))
-  for (const seed of [3, 11, 29, 42, 77, 101]) {
-    const seen = new Set()
-    playCampaign(rng(seed), {
-      casual: true,
-      log: (_battle, _report, campaign) => {
-        if (!stages.includes(campaign.cleared) || seen.has(campaign.cleared)) return
-        seen.add(campaign.cleared)
-        samples[campaign.cleared].push(
-          POOPS.map((type) => campaign.roster.find((entry) => entry.key === type.key)?.level ?? 1)
-        )
-      }
-    })
-  }
+  const samples = collectRealisticSamples(stages)
   function measureFormation(deck, stage, seed, specialIndex) {
     const game = createGame(stage, deck, seed)
     const random = rng(seed ^ 0x5eed)
@@ -168,41 +156,28 @@ if (!nicheOnly) {
   console.log(`\n実戦編成: ステージ到達時の6シード中央値、シード1〜${seeds}`)
   console.log('stage\tpolicy\tunit\twins\tmean time(s)\tmean summons\t40-seed blocks')
   for (const stage of stages) {
-    const levels = POOPS.map((_, index) => {
-      const values = samples[stage].map((sample) => sample[index]).sort((a, b) => a - b)
-      return Math.round((values[2] + values[3]) / 2)
-    })
-    const campaign = newCampaign()
-    const growthRandom = rng(stage)
-    const entries = POOPS.map((type, index) => {
-      const entry = campaign.roster.find((unit) => unit.key === type.key) ?? addEntry(campaign, type.key)
-      while (entry.level < levels[index]) levelUp(entry, growthRandom)
-      return entry
-    })
-    const base = entries.filter((entry) => entry.key !== 'dodeka').map(card)
-    console.log(`levels ${stage}: ${levels.join('/')}`)
+    const baseline = realisticFormation(stage, samples[stage])
+    console.log(`deck ${stage}: ${baseline.deck.map((unit) => `${unit.key}:${unit.level}`).join('/')}`)
     for (const policy of selectedPolicy ? [selectedPolicy] : ['keep', 'casual']) {
       for (const type of [null, ...SPECIALS]) {
-        const deck = [
-          ...base,
-          type ? card(addEntry(campaign, type.key, stage)) : card(entries.find((entry) => entry.key === 'dodeka'))
-        ]
-        const specialIndex = deck.length - 1
+        const { deck, specialIndex } = type ? realisticFormation(stage, samples[stage], type) : baseline
+        const focusIndex = type ? specialIndex : deck.length > 4 ? 4 : -1
         const battles = Array.from({ length: seeds }, (_, index) =>
-          policy === 'keep'
-            ? measureFormation(deck, stage, index + 1, specialIndex)
+          policy === 'keep' && focusIndex >= 0
+            ? measureFormation(deck, stage, index + 1, focusIndex)
             : playBattle(deck, stage, index + 1, { casual: true })
         )
         const wins = battles.filter((battle) => battle.result === 'victory').length
         const time = battles.reduce((sum, battle) => sum + battle.time, 0) / seeds
-        const summons = battles.reduce((sum, battle) => sum + battle.summons[specialIndex], 0) / seeds
+        const summons =
+          focusIndex >= 0 ? battles.reduce((sum, battle) => sum + battle.summons[focusIndex], 0) / seeds : 0
         const blocks = []
         for (let offset = 0; offset < seeds; offset += 40) {
           const block = battles.slice(offset, offset + 40)
           blocks.push(`${block.filter((battle) => battle.result === 'victory').length}/${block.length}`)
         }
         console.log(
-          `${stage}\t${policy}\t${type?.name ?? 'ドデカ'}\t${wins}/${seeds}\t${time.toFixed(2)}\t${summons.toFixed(4)}\t${blocks.join(' ')}`
+          `${stage}\t${policy}\t${type?.name ?? '基準'}\t${wins}/${seeds}\t${time.toFixed(2)}\t${summons.toFixed(4)}\t${blocks.join(' ')}`
         )
       }
     }
