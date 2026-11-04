@@ -424,7 +424,7 @@ export function choiceText(player: Player, choice: string): { icon: string; name
     return {
       icon: def.icon,
       name: def.name,
-      text: kind === 's' ? '新しく装備する武器' : 'この武器と入れ替える',
+      text: kind === 's' ? def.desc : 'この武器と入れ替える',
       tag: kind === 's' ? 'NEW' : '交換'
     }
   }
