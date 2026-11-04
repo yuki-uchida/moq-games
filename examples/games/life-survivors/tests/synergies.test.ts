@@ -172,6 +172,28 @@ test('new attacks use the current synergy while existing shots keep their origin
   expect(shots[1].r).toBeCloseTo(love.area)
 })
 
+test('social range synergy extends the first SNS link as well as subsequent links', () => {
+  const fire = (distances: number[], withAssets: boolean) => {
+    const game = new Game(12)
+    const player = game.addPlayer('a', 'p_gone')!
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
+    equip(player, 'w_sns', ...(withAssets ? ['w_savings'] : []))
+    if (withAssets) player.weapons[1].cd = 1000
+    const enemies = distances.map((distance) => game.spawnEnemy('bully', player.x + distance, player.y)!)
+    for (const enemy of enemies) enemy.hp = enemy.maxHp = 10000
+    game.tick(0.01)
+    return enemies.map((enemy) => enemy.maxHp - enemy.hp)
+  }
+
+  expect(fire([440], false)[0]).toBe(0)
+  expect(fire([440], true)[0]).toBeGreaterThan(0)
+  expect(fire([470], true)[0]).toBe(0)
+  expect(fire([100, 285], false)[1]).toBe(0)
+  expect(fire([100, 285], true)[1]).toBeGreaterThan(0)
+})
+
 test('parents and personalities neither activate nor receive synergy bonuses', () => {
   const game = new Game(4)
   const player = game.addPlayer('a', 'p_rich')!
