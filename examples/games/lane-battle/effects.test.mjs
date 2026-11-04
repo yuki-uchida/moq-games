@@ -444,11 +444,11 @@ test('burn, each poison stack, stench and wet zones tick exactly through their e
         source.attack = 999
         const hp = victims[0].hp
         const x = victims[0].x
-        const end = game.time + (key === 'oyster' ? 4 : key === 'yakiniku' ? 2 : 3) + dt
+        const end = game.time + (key === 'oyster' ? 5 : key === 'yakiniku' ? 2 : 3) + dt
         while (game.time < end) step(game, dt)
         if (key === 'mop') assert.ok(Math.abs(victims[0].x - x - 36) < 1e-8, `${key} ${start} ${dt}`)
         else {
-          const damage = source.atk * (key === 'oyster' ? 1.2 : key === 'garlic' ? 0.72 : 0.5)
+          const damage = source.atk * (key === 'oyster' ? 1.875 : key === 'garlic' ? 0.72 : 0.5)
           assert.ok(Math.abs(victims[0].hp - (hp - damage)) < 1e-8, `${key} ${start} ${dt}`)
         }
       }
@@ -774,15 +774,15 @@ test('rally refreshes allies and drowsiness changes the next scheduled cycle', (
   assert.equal(sleepy.victims[0].cycle, sleepy.victims[0].period * 1.35)
 })
 
-test('poison deals four independent ticks without flinching', () => {
+test('poison deals five independent ticks without flinching', () => {
   const { game, source, victims } = scene('oyster', [30])
   game.rng = () => 0.99
   step(game, 1 / 60)
   source.attack = 999
   const hp = victims[0].hp
   victims[0].hurt = null
-  step(game, 4)
-  assert.ok(Math.abs(victims[0].hp - (hp - source.atk * 0.4)) < 1e-9)
+  step(game, 5)
+  assert.ok(Math.abs(victims[0].hp - (hp - source.atk * 0.625)) < 1e-9)
   assert.equal(victims[0].hurt, null)
   assert.equal(victims[0].tick.kind, 'poison')
   assert.equal(victims[0].poison.length, 0)

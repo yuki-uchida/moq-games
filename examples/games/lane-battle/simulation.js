@@ -108,7 +108,7 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 120,
+    cost: 116,
     hp: 500,
     atk: 56,
     range: 36,
@@ -206,9 +206,9 @@ export const SPECIALS = [
   {
     key: 'oyster',
     name: '生ガキ',
-    cost: 180,
+    cost: 175,
     hp: 375,
-    atk: 165,
+    atk: 170,
     range: 40,
     speed: 34,
     period: 1.5,
@@ -319,7 +319,7 @@ const MECHANICS = {
     'single',
     '食あたり',
     '重なる毒を与える。会心あり。',
-    { poisonEffect: 4, poisonInterval: 1, poisonDamage: 0.1, poisonStacks: 3 }
+    { poisonEffect: 5, poisonInterval: 1, poisonDamage: 0.125, poisonStacks: 3 }
   ],
   ice: ['single', '凍結', 'ときどき敵を凍らせて止める。', { freeze: 1, freezeChance: 0.375 }],
   energy: ['single', 'カフェイン加速', '同じ敵へ撃ち続けるほど連射が速くなる。', { caffeine: true }],

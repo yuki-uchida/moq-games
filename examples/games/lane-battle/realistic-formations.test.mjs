@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { POOPS, SPECIALS, rng } from './simulation.js'
 import { playCampaign } from './bot.js'
-import { specialScale } from './campaign.js'
+import { specialScale, SPECIAL_CATCH_UP } from './campaign.js'
 import { collectRealisticSamples, realisticFormation } from './realistic-formations.mjs'
 
 test('realistic decks contain only unlocked, typically owned poops and the special under test', () => {
@@ -13,7 +13,7 @@ test('realistic decks contain only unlocked, typically owned poops and the speci
     casual: true,
     log: (_battle, report, campaign) => {
       if (!firstClear && report.victory && campaign.cleared === 23)
-        firstClear = campaign.roster.map(({ key, level }) => ({ key, level }))
+        firstClear = campaign.roster.map((entry) => ({ ...entry, equipped: campaign.loadout.includes(entry.uid) }))
     }
   })
   assert.deepEqual(samples[22][0], firstClear)
@@ -58,6 +58,23 @@ test('realistic decks contain only unlocked, typically owned poops and the speci
         assert.equal(deck[specialIndex].hp, Math.round(type.hp * specialScale(stage)))
         assert.equal(deck[specialIndex].atk, Math.round(type.atk * specialScale(stage)))
         assert.equal(deck[specialIndex].period, type.period)
+      }
+    }
+    for (const roster of samples[stage]) {
+      for (const entry of roster.filter((unit) => unit.equipped && SPECIALS.some((type) => type.key === unit.key))) {
+        const type = SPECIALS.find((unit) => unit.key === entry.key)
+        const { deck, specialIndex } = realisticFormation(stage, samples[stage], type, entry)
+        assert.equal(deck[specialIndex].level, entry.level)
+        assert.equal(deck[specialIndex].hp, entry.hp)
+        assert.equal(deck[specialIndex].atk, entry.atk)
+        assert.ok(entry.hp >= Math.round(type.hp * specialScale(stage) * SPECIAL_CATCH_UP))
+        assert.ok(entry.atk >= Math.round(type.atk * specialScale(stage) * SPECIAL_CATCH_UP))
+        assert.equal(deck.filter((unit) => SPECIALS.some((special) => special.key === unit.key)).length, 1)
+        assert.deepEqual(
+          deck.filter((unit) => unit.uid !== deck[specialIndex].uid).map((unit) => unit.key),
+          baseline.map((unit) => unit.key)
+        )
+        assert.equal(new Set(deck.map((unit) => unit.uid)).size, deck.length)
       }
     }
   }

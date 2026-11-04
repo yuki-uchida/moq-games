@@ -73,12 +73,15 @@ export function chooseFormation(c) {
 
 export const MENU_SECONDS = 45
 /** Plays the campaign in order, retrying (and so grinding EXP) on defeat; `time` includes MENU_SECONDS per battle in the 作戦室. */
-export function playCampaign(random, { tries = 200, casual = false, log = () => {} } = {}) {
+export function playCampaign(
+  random,
+  { tries = 200, casual = false, log = () => {}, untilCleared = STAGES.length } = {}
+) {
   const c = newCampaign()
   let time = 0,
     battles = 0,
     defeats = 0
-  while (c.cleared < STAGES.length && battles < tries) {
+  while (c.cleared < untilCleared && c.cleared < STAGES.length && battles < tries) {
     for (const t of POOPS) buy(c, t.key)
     chooseFormation(c)
     const s = playBattle(deckOf(c), c.cleared, Math.floor(random() * 1e9), { casual })
