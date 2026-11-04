@@ -106,7 +106,6 @@ let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
 const keys = new Set<string>()
-/** Floating touch stick: the base stays where the finger landed. */
 let drag: { id: number; x: number; y: number; dx: number; dy: number } | undefined
 const STICK_RADIUS = 56
 const STICK_DEAD = 6
@@ -1020,6 +1019,11 @@ canvas.addEventListener('pointermove', (event) => {
   let dy = event.clientY - drag.y
   const length = Math.hypot(dx, dy)
   if (length > STICK_RADIUS) {
+    if (event.pointerType !== 'mouse') {
+      const follow = ((length - STICK_RADIUS) / length) * 0.1
+      drag.x += dx * follow
+      drag.y += dy * follow
+    }
     dx *= STICK_RADIUS / length
     dy *= STICK_RADIUS / length
   }
