@@ -1694,7 +1694,7 @@ export class Game {
         let fromY = player.y
         const jump = 170 * ws.area
         for (let i = 0; i < 2 + n; i++) {
-          const target = this.nearestEnemy(fromX, fromY, i === 0 ? 420 : jump, hit)
+          const target = this.nearestEnemy(fromX, fromY, i === 0 ? 420 * ws.area : jump, hit)
           if (!target) break
           hit.add(target.id)
           const dx = target.x - fromX
@@ -1719,8 +1719,13 @@ export class Game {
         let have = 0
         for (const shot of this.state.shots)
           if (shot.owner === player.id && shot.weapon === def.id) {
-            have++
+            if (have++ >= n) continue
             shot.life = shot.maxLife = ws.duration
+            shot.r = def.area * ws.area
+            shot.damage = ws.damage
+            shot.spin = speed
+            shot.critChance = ws.crit
+            shot.strongMult = ws.strong
           }
         for (let i = have; i < n; i++)
           this.shot(player, def, ws, {
