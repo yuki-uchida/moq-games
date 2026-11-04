@@ -250,37 +250,106 @@ app.insertAdjacentHTML(
 const touchAssist = document.querySelector<HTMLButtonElement>('#touch-assist')!
 const touchChoices = document.querySelector<HTMLDialogElement>('#touch-choices')!
 const consolePanel = document.querySelector<HTMLElement>('.console')!
+/** Board squares the chooser offers: the tapped one and its neighbours (outlined while the dialog is open). */
+let touchOrigin: number | undefined
+let touchNear = new Set<number>()
+function touchMark(index: number) {
+  return index === touchOrigin ? 'touch-origin' : touchNear.has(index) ? 'touch-near' : ''
+}
+function markTouchCells() {
+  cells.forEach((cell, index) => {
+    cell.classList.toggle('touch-origin', index === touchOrigin)
+    cell.classList.toggle('touch-near', touchNear.has(index))
+  })
+}
+function clearTouchCells() {
+  touchOrigin = undefined
+  touchNear = new Set()
+  markTouchCells()
+}
+/** Over the console when it is fully on screen; otherwise a panel fixed to the viewport bottom. */
 function positionTouchChoices() {
   const bounds = consolePanel.getBoundingClientRect()
-  Object.assign(touchChoices.style, {
-    left: `${bounds.left}px`,
-    top: `${bounds.top}px`,
-    width: `${bounds.width}px`,
-    height: `${bounds.height}px`
-  })
+  const onScreen =
+    bounds.top >= 0 && bounds.left >= 0 && bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth
+  touchChoices.classList.toggle('touch-panel', !onScreen)
+  Object.assign(
+    touchChoices.style,
+    onScreen
+      ? {
+          left: `${bounds.left}px`,
+          top: `${bounds.top}px`,
+          bottom: 'auto',
+          width: `${bounds.width}px`,
+          height: `${bounds.height}px`
+        }
+      : {
+          left: '8px',
+          top: 'auto',
+          bottom: '8px',
+          width: `${window.innerWidth - 16}px`,
+          height: `${Math.min(260, window.innerHeight * 0.55)}px`
+        }
+  )
+  return !onScreen
 }
 new ResizeObserver(positionTouchChoices).observe(consolePanel)
 window.addEventListener('resize', positionTouchChoices)
 touchAssist.onclick = () =>
   touchAssist.setAttribute('aria-pressed', String(touchAssist.getAttribute('aria-pressed') !== 'true'))
 document.querySelector<HTMLButtonElement>('#touch-cancel')!.onclick = () => touchChoices.close()
+touchChoices.addEventListener('close', clearTouchCells)
+/** On-screen direction arrows for the 3×3 chooser, in reading order. */
+const directionArrows = ['↖', '↑', '↗', '←', '・', '→', '↙', '↓', '↘']
 function chooseNearby(x: number, y: number) {
   const choices = touchChoices.querySelector('div')!
   choices.replaceChildren()
+  // The floor is drawn rotated, so lay the neighbours out where they appear on screen, not in board order.
+  const centre = (cell: HTMLElement) => {
+    const box = cell.getBoundingClientRect()
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2, w: box.width, h: box.height }
+  }
+  const origin = centre(cells[y * size + x])
+  const slots: (HTMLElement | undefined)[] = Array(9).fill(undefined)
   for (let row = Math.max(0, y - 1); row <= Math.min(size - 1, y + 1); row++)
     for (let column = Math.max(0, x - 1); column <= Math.min(size - 1, x + 1); column++) {
       const original = cells[row * size + column]
+      const point = centre(original)
+      const side = (offset: number, extent: number) => (Math.abs(offset) < extent * 0.25 ? 0 : Math.sign(offset))
+      const slot = (side(point.y - origin.y, origin.h) + 1) * 3 + side(point.x - origin.x, origin.w) + 1
+      const label = original.getAttribute('aria-label') ?? ''
       const button = document.createElement('button')
       button.type = 'button'
-      button.textContent = original.getAttribute('aria-label')
+      // The accessible name keeps the coordinates; the face shows the direction and what is there.
+      button.setAttribute('aria-label', label)
+      button.innerHTML = `<span class="touch-dir" aria-hidden="true">${directionArrows[slot]}</span>${label.replace(/^\d+,\d+ /, '')}`
+      if (column === x && row === y) button.classList.add('touch-origin')
       button.onclick = () => {
         touchChoices.close()
+        clearTouchCells()
         void choose(column, row)
       }
-      choices.append(button)
+      slots[slot] = button
     }
-  positionTouchChoices()
+  for (const button of slots) {
+    if (button) choices.append(button)
+    else {
+      const empty = document.createElement('span')
+      empty.className = 'touch-empty'
+      empty.setAttribute('aria-hidden', 'true')
+      choices.append(empty)
+    }
+  }
+  touchOrigin = y * size + x
+  touchNear = new Set()
+  for (let row = Math.max(0, y - 1); row <= Math.min(size - 1, y + 1); row++)
+    for (let column = Math.max(0, x - 1); column <= Math.min(size - 1, x + 1); column++)
+      if (row * size + column !== touchOrigin) touchNear.add(row * size + column)
+  const panel = positionTouchChoices()
   touchChoices.showModal()
+  markTouchCells()
+  // In the bottom panel the board scrolls so the tapped square (and its figure) stays above it.
+  if (panel) revealAbove(touchChoices.getBoundingClientRect().top - 4, [cells[touchOrigin].getBoundingClientRect()])
 }
 const navigation = document.querySelector('nav')!
 navigation.insertAdjacentHTML(
@@ -479,14 +548,22 @@ function cancelForecast(restore = true) {
 function revealAboveCard(unit: Unit, target: Unit, card: HTMLElement) {
   const limit = card.getBoundingClientRect().top - 4
   const rect = (u: Unit) => cells[u.y * size + u.x].getBoundingClientRect()
-  const span = (units: Unit[]) => {
-    const rects = units.map(rect)
-    return { top: Math.min(...rects.map((r) => r.top)) - 44, bottom: Math.max(...rects.map((r) => r.bottom)) }
-  }
-  let box = span([unit, target])
-  if (box.bottom - box.top > limit) box = span([target])
+  revealAbove(limit, [rect(unit), rect(target)], [rect(target)])
+}
+/** Scroll so the squares (with ~44px of headroom for their figures) sit between the viewport top and `limit`. */
+function revealAbove(limit: number, rects: DOMRect[], fallback = rects) {
+  const span = (list: DOMRect[]) => ({
+    top: Math.min(...list.map((r) => r.top)) - 44,
+    bottom: Math.max(...list.map((r) => r.bottom))
+  })
+  let box = span(rects)
+  if (box.bottom - box.top > limit) box = span(fallback)
   const delta = box.bottom > limit ? box.bottom - limit : box.top < 0 ? box.top : 0
   if (delta) window.scrollBy(0, delta)
+}
+/** Damage as the forecast stated it: the attacker's power before any level-up the strike earned. */
+function dealt(before: Unit[], attacker: Unit, target: Unit) {
+  return damage(before.find((old) => old.id === attacker.id) ?? attacker, target, game)
 }
 function showForecast(unit: Unit, target: Unit, healing: boolean) {
   pending = target.id
@@ -630,7 +707,7 @@ render = () => {
       canAttack = unit && !unit.heal && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range,
       canHeal = unit && u && unit.heal && healRange(game, unit).has(k) && distance(unit, u) <= 2,
       seize = objective.type === 'seize' && objective.x === x && objective.y === y
-    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''} ${u && u === acting ? 'acting' : ''}`
+    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''} ${touchMark(y * size + x)} ${u && u === acting ? 'acting' : ''}`
     cell.classList.toggle('danger', threatened.has(k))
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
@@ -651,7 +728,10 @@ render = () => {
   document.querySelector('#count')!.innerHTML =
     `<span class="ally">味方 <b>${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length}</b></span><span class="sep" aria-hidden="true"> · </span><span class="enemy">敵 <b>${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}</b></span>`
   objectiveStatus.innerHTML = `<span class="hud-label">勝利条件</span> <span class="objective-text">${objectiveText(game)}</span>`
-  objectiveStatus.title = '敵を全滅させても勝利 · 味方が全滅すると敗北'
+  objectiveStatus.title =
+    objective.type === 'seize'
+      ? '✦の祠に味方を置いたまま味方フェイズを終えると制圧 · 敵を全滅させても勝利 · 味方が全滅すると敗北'
+      : '敵を全滅させても勝利 · 味方が全滅すると敗北'
   document.querySelector('#legend')!.innerHTML = legendItems({ game, selected: unit, foe, danger })
     .map(({ kind, label }) => `<span data-kind="${kind}"><i>${kind === 'seize' ? '✦' : ''}</i>${label}</span>`)
     .join('')
@@ -841,7 +921,12 @@ async function choose(x: number, y: number) {
     if (changed) {
       const token = generation
       lockPresentation()
-      await animation.present(game, before, unit, target ? { kind: 'attack', target } : undefined)
+      await animation.present(
+        game,
+        before,
+        unit,
+        target ? { kind: 'attack', target, amount: dealt(before, unit, target) } : undefined
+      )
       if (token !== generation) return
       if (!(await showProgress(token))) return
       if (unit.done) undo = undefined
@@ -905,7 +990,13 @@ async function end() {
     // Follow the enemy when its move or strike would happen off screen.
     camera.reveal([before.find((old) => old.id === u.id)!, u, ...(target ? [target] : [])], fast ? 90 : 280)
     lockPresentation()
-    await animation.present(game, before, u, target ? { kind: 'attack', target } : undefined, fast ? 3 : 1)
+    await animation.present(
+      game,
+      before,
+      u,
+      target ? { kind: 'attack', target, amount: dealt(before, u, target) } : undefined,
+      fast ? 3 : 1
+    )
     if (token !== generation) return
     const fallen = standing.find((a) => a.hp <= 0)
     if (fallen) {

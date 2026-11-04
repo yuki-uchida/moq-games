@@ -1,7 +1,11 @@
+import { campaign } from './campaign'
 import { chapters } from './story'
 
 /** The victory condition shown under a chapter or mission, without a label prefix. */
-export const chapterObjective = (index: number) => (chapters[index]?.[1] as string | undefined) ?? ''
+export const chapterObjective = (index: number) =>
+  campaign[index]?.objective.type === 'seize'
+    ? '祠を制圧する（✦に味方を置いて味方フェイズ終了）'
+    : ((chapters[index]?.[1] as string | undefined) ?? '')
 
 /** One-line chapter summary for the title's chapter select: objective, clear mark and best turns. */
 export function chapterLine(index: number, save: { cleared: number[]; bestTurns: Record<number, number> }): string {

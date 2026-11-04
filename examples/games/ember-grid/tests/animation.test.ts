@@ -22,6 +22,14 @@ describe('3D presentation contracts', () => {
       amount: before.find((unit) => unit.id === target.id)!.hp - target.hp
     })
   })
+  it('prefers the stated damage over the HP actually lost', () => {
+    const game = createGame(0, 'balanced', undefined, seeded(7))
+    const target = game.units.find((unit) => unit.side === 'enemy')!
+    const before = game.units.map((unit) => ({ ...unit }))
+    target.hp = 0
+    expect(actionChange(before, { kind: 'attack', target, amount: 99 }).amount).toBe(99)
+    expect(actionChange(before, { kind: 'attack', target }).amount).toBe(before.find((u) => u.id === target.id)!.hp)
+  })
   it('loads only the roles deployed in each chapter', () => {
     expect(chapterRoles(createGame(0)).sort()).toEqual([...ROLES].sort())
     expect(chapterRoles(createGame(3))).toEqual(expect.arrayContaining(['healer', 'slime', 'bat']))

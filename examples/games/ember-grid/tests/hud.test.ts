@@ -72,6 +72,19 @@ describe('guideText', () => {
     expect(guideText({ ...base, game, selected: unit, pendingHeal: true })).toContain('回復予測')
     expect(guideText({ ...base, game, selected: unit, pendingHeal: false })).toContain('攻撃予測')
   })
+  it('announces a held shrine in a seize chapter', () => {
+    const game = createGame(stageOf('seize'))
+    const goal = campaign[game.stage].objective as { x: number; y: number }
+    const unit = fighter(game)
+    expect(guideText({ ...base, game })).not.toContain('祠を確保中')
+    unit.x = goal.x
+    unit.y = goal.y
+    expect(guideText({ ...base, game })).toBe('祠を確保中 · ▶ ターン終了で制圧')
+    expect(guideText({ ...base, game, selected: unit })).not.toContain('祠を確保中')
+    const rout = createGame(0)
+    fighter(rout).x = goal.x
+    expect(guideText({ ...base, game: rout })).not.toContain('祠を確保中')
+  })
   it('guides a selected fighter', () => {
     const game = createGame(0)
     const unit = fighter(game)
