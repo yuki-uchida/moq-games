@@ -7,6 +7,7 @@ import {
   ENEMY_BY_ID,
   EVENTS,
   MAX_WEAPON_LEVEL,
+  PARENT_LEGACIES,
   PASSIVE_BY_ID,
   RUN_SECONDS,
   STAGES,
@@ -39,6 +40,7 @@ import {
   type Rarity
 } from './hud'
 import { deathKind } from './art/deaths'
+import { parentFarewell } from './history'
 import { choiceIcon, iconImg } from './art/icons'
 import { sheet } from './art/index'
 import { duration } from './art/sheet'
@@ -69,7 +71,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v11'
+const APP = 'life-survivors-v12'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -148,6 +150,8 @@ function showStartError(message: string) {
 
 const bannerLayer = element<HTMLElement>('#banner')
 let bannerEl: HTMLElement | undefined
+let farewellEl: HTMLElement | undefined
+let farewellUntil = 0
 
 function unmountBanner() {
   bannerEl?.remove()
@@ -163,6 +167,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, co
 
 function mountBanner(banner: Banner) {
   const node = el('div', `banner banner-${banner.kind}`)
+  if (banner.kind === 'warning' && banner.sub === '人生イベント：親の介護') node.classList.add('banner-care')
   node.style.setProperty('--dur', `${banner.duration}ms`)
   if (banner.kind === 'warning') {
     node.append(el('i', 'stripes top'), el('b', 'banner-title', banner.title), el('i', 'stripes bottom'))
@@ -182,8 +187,14 @@ function mountBanner(banner: Banner) {
     if (banner.sub) node.append(el('p', 'banner-sub', `${banner.emoji ? `${banner.emoji} ` : ''}${banner.sub}`))
     if (banner.kind === 'chest' || banner.kind === 'bossKill') node.prepend(el('i', 'rays'))
   }
-  bannerEl = node
-  bannerLayer.replaceChildren(node)
+  if (banner.kind === 'farewell') {
+    farewellEl?.remove()
+    farewellEl = node
+    element('#hud').append(node)
+  } else {
+    bannerEl = node
+    bannerLayer.replaceChildren(node)
+  }
 }
 
 /** Translates an fx event into a cinematic banner. Log-backed lines (elite, evolve text) stay in the feed. */
@@ -275,6 +286,10 @@ function updateBossBar(current: View) {
 
 /** Everything that remembers the previous game's HUD / audio state. */
 function resetFeel() {
+  farewellShown = ''
+  farewellEl?.remove()
+  farewellEl = undefined
+  farewellUntil = 0
   tracker.reset()
   banners.clear()
   unmountBanner()
@@ -646,7 +661,10 @@ function updateHud(current: View) {
       element('#passives').replaceChildren(
         ...player.passives.map(([id, lv]) => {
           const def = PASSIVE_BY_ID.get(id)!
-          return mark(slot(def.id, lv, 'passive', def.name), id, String(lv))
+          const inherited = player.parentDeath?.reward === 'passive' && PARENT_LEGACIES[player.parent] === id
+          const item = slot(def.id, lv, 'passive', `${def.name}${inherited ? '（親の看取りで継承）' : ''}`)
+          item.classList.toggle('inherited', inherited)
+          return mark(item, id, String(lv))
         })
       )
     }
@@ -714,7 +732,12 @@ function reflection(player: ViewPlayer) {
     rows.push(row)
   }
   const parent = WEAPON_BY_ID.get(player.parent)!
-  add(`親：${parent.name}`, [parent.desc, parent.perk].filter(Boolean).join(' '), '', player.parent)
+  add(
+    `親${player.parentDeath ? '（他界）' : ''}：${parent.name}`,
+    [parent.desc, parent.perk].filter(Boolean).join(' '),
+    '',
+    player.parent
+  )
   for (const group of resultCategories(player)) {
     const heading = document.createElement('h4')
     heading.textContent = `${TALENT_NAMES[group.category]}：武器 ${group.weapons.length}・性格 ${group.passives.length}`
@@ -806,9 +829,30 @@ function showResult(
 }
 
 /** Sounds, banners, boss bar and heartbeat from one view — the same path for solo, host and guest. */
+let farewellShown = ''
+
 function feel(current: View, now: number) {
   const index = current.players.findIndex((p) => p.id === localId)
   const self = current.players[index]
+  let farewellText: string | undefined
+  if (self?.parentDeath && farewellShown !== `${self.id}:${self.parentDeath.at}`) {
+    farewellShown = `${self.id}:${self.parentDeath.at}`
+    const text = parentFarewell(self.parent, self.parentDeath.reward)
+    const reward = self.parentDeath.reward
+    const sub =
+      reward === 'passive'
+        ? `「${PASSIVE_BY_ID.get(PARENT_LEGACIES[self.parent])!.name}」を継承`
+        : reward === 'choice'
+          ? '成長の選択 +1'
+          : '親の武器を手放した'
+    mountBanner({ kind: 'farewell', title: '親とのお別れ', sub, duration: BANNER_MS.farewell })
+    farewellUntil = now + BANNER_MS.farewell
+    farewellText = text
+  }
+  if (farewellEl && now >= farewellUntil) {
+    farewellEl.remove()
+    farewellEl = undefined
+  }
   if (!resultShown) {
     const events = consumeFx(
       current.fx,
@@ -832,6 +876,7 @@ function feel(current: View, now: number) {
     )
     for (const e of events) bannerFor(e, index, now)
   }
+  if (farewellText) element('#announcements').textContent = farewellText
   const cue = phaseCue(prevPhase, current.phase)
   prevPhase = current.phase
   if (cue) audio.play(cue)

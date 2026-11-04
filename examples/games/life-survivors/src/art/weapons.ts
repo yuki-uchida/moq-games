@@ -682,6 +682,51 @@ const coin = (size = 32) =>
 const icon = (src: Raster) => new Raster(32, 32).blit(src, Math.round((32 - src.w) / 2), Math.round((32 - src.h) / 2))
 
 const PASSIVE_ICONS: Record<string, () => Raster> = {
+  p_affection: () =>
+    tiny(32, 32, (l) => {
+      l.ellipse(10, 11, 7, 7, R.pink[1])
+      l.ellipse(22, 11, 7, 7, R.pink[1])
+      l.poly([4, 14, 28, 14, 25, 20, 16, 28, 7, 20], R.pink[1])
+      shadeEdges(l, R.pink, 2, true)
+      l.thick(7, 10, 10, 7, 2, R.pink[0])
+      l.rect(21, 8, 3, 2, R.pink[0])
+    }),
+  p_acceptance: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 12, 5, 5, R.mint)
+      l.poly([3, 13, 6, 12, 10, 20, 15, 22, 15, 27, 7, 25, 3, 20], R.skin[1])
+      l.poly([29, 13, 26, 12, 22, 20, 17, 22, 17, 27, 25, 25, 29, 20], R.skin[1])
+      shadeEdges(l, R.skin, 1, true)
+      l.thick(8, 18, 13, 21, 2, R.skin[0])
+      l.thick(24, 18, 19, 21, 2, R.skin[0])
+      l.rect(10, 26, 5, 3, R.mint[2])
+      l.rect(17, 26, 5, 3, R.mint[2])
+    }),
+  p_patience: () =>
+    tiny(32, 32, (l) => {
+      l.poly([3, 25, 6, 16, 12, 11, 21, 12, 27, 18, 29, 26, 18, 28, 7, 28], R.metal[1])
+      shadeEdges(l, R.metal, 2, true)
+      l.poly([6, 17, 12, 12, 20, 13, 16, 19], R.metal[0])
+      l.poly([17, 20, 26, 19, 28, 25, 19, 27], R.metal[2])
+      l.line(12, 13, 16, 19, R.metal[2])
+      l.thick(16, 11, 16, 6, 2, R.green[2])
+      l.poly([16, 8, 10, 7, 9, 3, 14, 4], R.green[0])
+      l.poly([17, 7, 20, 3, 24, 3, 22, 6], R.green[1])
+    }),
+  p_courage: () =>
+    tiny(32, 32, (l) => {
+      l.poly([16, 2, 21, 5, 27, 6, 28, 13, 30, 18, 26, 25, 20, 29, 12, 29, 6, 25, 2, 18, 4, 10, 7, 5], R.brown[1])
+      shadeEdges(l, R.brown, 2, true)
+      ball(l, 8, 10, 3, 3, R.yellow)
+      ball(l, 24, 10, 3, 3, R.yellow)
+      ball(l, 16, 16, 9, 10, R.yellow)
+      l.line(10, 13, 13, 14, R.brown[3])
+      l.line(19, 14, 22, 13, R.brown[3])
+      ball(l, 13, 21, 4, 3, R.skin)
+      ball(l, 19, 21, 4, 3, R.skin)
+      l.poly([13, 18, 19, 18, 16, 21], C.inkWarm)
+      l.line(16, 21, 16, 24, C.inkWarm)
+    }),
   // 勤勉: an open book.
   p_diligent: () =>
     tiny(32, 32, (l) => {

@@ -674,6 +674,18 @@ export class Effects {
         if (a === v.local) this.addTrauma(0.3)
         break
       }
+      case FX.PARENT_DEATH: {
+        this.ring(x, y, 12, 90, 1.8, '#c7d9ef', { width: 2 })
+        for (let i = 0; i < 8; i++)
+          this.sprite('shine', x + this.r(-24, 24), y - 10, {
+            life: 2.4,
+            scale: 1.2,
+            vy: -24,
+            delay: i * 0.12,
+            once: false
+          })
+        break
+      }
       case FX.REVIVE: {
         this.ring(x, y, 10, 100, 0.65, '#7be495', { width: 4 })
         this.glow(x, y, 70, 0.6, '#7be495')

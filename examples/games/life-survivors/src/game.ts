@@ -9,6 +9,7 @@ import {
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
   PARENTS,
+  PARENT_LEGACIES,
   PASSIVES,
   PASSIVE_BY_ID,
   PASSIVE_SLOTS,
@@ -31,7 +32,7 @@ import {
 } from './data'
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { activeSynergies } from './synergies'
-import { LIFE_OUTCOMES, type LifeDecision } from './history'
+import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
 import { PET_LIFESPAN, PET_MEMORY, weaponAppearance } from './weapon-life'
 
@@ -118,12 +119,14 @@ export interface Player {
   married: boolean
   hasChild: boolean
   parent: string
+  parentDeath?: { at: number; x: number; y: number; reward: ParentReward }
   talents: Record<TalentCategory, number>
   weapons: OwnedWeapon[]
   passives: { id: string; lv: number }[]
   choices: string[]
   choiceSeq: number
   pending: number
+  parentRewardPending: number
   swapPending: number
   careerPending: number
   /** 蒸発済み's free birth hand is still waiting to be dealt (consumed by the first offer). */
@@ -351,16 +354,22 @@ export interface PlayerStats {
 export function playerStats(player: Player): PlayerStats {
   const p = (id: string) => passivePower(player, id)
   return {
-    maxHp: 100 + p('p_bold') * 20 + (player.parent === 'p_gone' ? 60 : 0) + (player.parent === 'p_toxic' ? -10 : 0),
-    armor: p('p_stubborn') + (player.parent === 'p_over' ? 1 : 0),
+    maxHp:
+      100 +
+      (p('p_bold') + p('p_acceptance')) * 20 +
+      (player.parent === 'p_gone' ? 60 : 0) +
+      (player.parent === 'p_toxic' ? -10 : 0),
+    armor: p('p_stubborn') + p('p_patience') + (player.parent === 'p_over' ? 1 : 0),
     regen:
       player.parent === 'p_toxic'
         ? 0
-        : p('p_optimist') * 0.4 + p('p_kind') * 0.2 + p(PET_MEMORY) * 0.4 + (player.parent === 'p_gone' ? 1 : 0),
+        : (p('p_optimist') + p('p_affection') + p(PET_MEMORY)) * 0.4 +
+          p('p_kind') * 0.2 +
+          (player.parent === 'p_gone' ? 1 : 0),
     speed: BASE_SPEED * (1 + p('p_healthy') * 0.08),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
-    might: (1 + p('p_hot') * 0.1 + p('p_clever') * 0.03) * (player.parent === 'p_toxic' ? 1.25 : 1),
+    might: (1 + (p('p_hot') + p('p_courage')) * 0.1 + p('p_clever') * 0.03) * (player.parent === 'p_toxic' ? 1.25 : 1),
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07),
     area: 1 + p('p_kind') * 0.08,
     crit: 0.05 + p('p_lucky') * 0.05,
@@ -576,6 +585,7 @@ export class Game {
       choices: [],
       choiceSeq: 0,
       pending: parent === 'p_gone' ? 1 : 0,
+      parentRewardPending: 0,
       swapPending: 0,
       careerPending: 0,
       birthPick: parent === 'p_gone',
@@ -762,7 +772,10 @@ export class Game {
             Math.hypot(friend.x - player.x, friend.y - player.y) < 140
           )
             friend.hp = Math.min(friend.maxHp, friend.hp + kind * 0.5 * dt)
-      if (!player.choices.length && (player.pending > 0 || player.swapPending > 0 || player.careerPending > 0))
+      if (
+        !player.choices.length &&
+        (player.pending > 0 || player.parentRewardPending > 0 || player.swapPending > 0 || player.careerPending > 0)
+      )
         this.offer(player)
     }
   }
@@ -926,6 +939,7 @@ export class Game {
         const families = state.players.filter((player) => player.joinedAt < event.at && player.parent !== 'p_gone')
         if (!families.length) continue
         this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
+        for (const player of families) this.loseParent(player, index)
       } else if (wedding || childEvent) {
         const families = state.players.filter((player) => (wedding ? player.married : player.hasChild))
         if (!families.length) continue
@@ -2417,11 +2431,55 @@ export class Game {
     }
   }
 
+  private loseParent(player: Player, event: number) {
+    if (player.parentDeath) return
+    const weapon = player.weapons.find((owned) => owned.id === player.parent)
+    const legacy = PARENT_LEGACIES[player.parent]
+    let reward: ParentReward = 'none'
+    if (weapon && weapon.lv >= MAX_WEAPON_LEVEL) {
+      if (passiveLevel(player, legacy) >= MAX_PASSIVE_LEVEL) {
+        reward = 'choice'
+        player.parentRewardPending++
+      } else {
+        reward = 'passive'
+        this.grantPassive(player, legacy)
+      }
+    }
+    player.parentDeath = { at: EVENTS[event].at, x: player.x, y: player.y, reward }
+    player.weapons = player.weapons.filter((owned) => owned.id !== player.parent)
+    this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== player.parent)
+    player.shieldGrace = 0
+    player.shieldRecovery = 0
+    const clean = (hand: string[]) => {
+      const result = hand.filter(
+        (choice) =>
+          choice !== `w:${player.parent}` &&
+          !(choice === `p:${legacy}` && passiveLevel(player, legacy) >= MAX_PASSIVE_LEVEL)
+      )
+      if (hand.length && !result.length) player.parentRewardPending++
+      return result
+    }
+    const choices = clean(player.choices)
+    if (choices.length !== player.choices.length) player.choiceSeq++
+    player.choices = choices
+    const saved = this.familyHands.get(player.id)
+    if (saved) this.familyHands.set(player.id, clean(saved))
+    const outcome = parentFarewell(player.parent, reward)
+    player.history.push({ event, outcome })
+    player.history.sort(
+      (first, second) => (first.at ?? EVENTS[first.event].at) - (second.at ?? EVENTS[second.event].at)
+    )
+    this.log(outcome, player.id)
+    this.emit(FX.PARENT_DEATH, player.x, player.y, WEAPON_INDEX.get(player.parent)!, this.playerIndex(player))
+  }
+
   /** Builds the level-up hand for a player from what their age and slots allow. */
   options(player: Player): string[] {
     const age = ageAt(this.state.time)
     const result: string[] = []
-    for (const weapon of player.weapons) if (weapon.lv < MAX_WEAPON_LEVEL) result.push(`w:${weapon.id}`)
+    for (const weapon of player.weapons)
+      if (weapon.lv < MAX_WEAPON_LEVEL && !(player.parentDeath && weapon.id === player.parent))
+        result.push(`w:${weapon.id}`)
     if (talentWeaponCount(player) < weaponSlots(player))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives)
@@ -2442,8 +2500,9 @@ export class Game {
 
   private offer(player: Player) {
     player.choiceSeq++
-    const career = player.pending === 0 && player.swapPending === 0 && player.careerPending > 0
-    if ((player.pending === 0 && player.swapPending > 0) || (career && !this.options(player).length)) {
+    const parentReward = player.pending === 0 && player.parentRewardPending > 0
+    const career = player.pending === 0 && !parentReward && player.swapPending === 0 && player.careerPending > 0
+    if ((player.pending === 0 && !parentReward && player.swapPending > 0) || (career && !this.options(player).length)) {
       if (career) player.careerPending--
       else player.swapPending--
       const age = ageAt(this.state.time)
@@ -2460,6 +2519,7 @@ export class Game {
     const pool = birth
       ? TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => `w:${def.id}`)
       : this.options(player)
+    if (!pool.length && parentReward) pool.push('x:meal', 'x:coin')
     const hand: string[] = []
     // 運がいい sometimes deals a fourth card.
     const size = 3 + (this.rng() < passivePower(player, 'p_lucky') * 0.1 ? 1 : 0)
@@ -2478,6 +2538,7 @@ export class Game {
     }
     player.choices = hand
     if (career) player.careerPending--
+    else if (parentReward) player.parentRewardPending--
     else player.pending--
   }
 
@@ -2543,6 +2604,7 @@ export class Game {
         this.feel(player, WEAPON_BY_ID.get(replacement)!, 1)
       }
     } else if (kind === 'w') {
+      if (player.parentDeath && id === player.parent) return
       const owned = player.weapons.find((w) => w.id === id)
       if (owned) {
         const before = isEvolved(player, owned)
@@ -2554,27 +2616,31 @@ export class Game {
         this.feel(player, WEAPON_BY_ID.get(id)!, 1)
       }
     } else if (kind === 'p') {
-      const owned = player.passives.find((p) => p.id === id)
-      const evolvedBefore = new Set(player.weapons.filter((w) => isEvolved(player, w)).map((w) => w.id))
-      if (owned) {
-        owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
-        this.feel(player, PASSIVE_BY_ID.get(id)!, owned.lv)
-      } else {
-        player.passives.push({ id, lv: 1 })
-        this.feel(player, PASSIVE_BY_ID.get(id)!, 1)
-      }
-      let evolved = false
-      for (const weapon of player.weapons)
-        if (!evolvedBefore.has(weapon.id) && isEvolved(player, weapon)) {
-          evolved = true
-          this.emit(FX.EVOLVE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
-        }
-      if (evolved) this.log(`${player.name}の手札が進化した！`)
-      const stats = playerStats(player)
-      if (stats.maxHp > player.maxHp) player.hp += stats.maxHp - player.maxHp
-      player.maxHp = stats.maxHp
+      this.grantPassive(player, id)
     } else if (choice === 'x:meal') player.hp = Math.min(player.maxHp, player.hp + 40)
     else if (choice === 'x:coin') this.gainXp(this.state.xpNext * 0.25)
+  }
+
+  private grantPassive(player: Player, id: string) {
+    const owned = player.passives.find((p) => p.id === id)
+    const evolvedBefore = new Set(player.weapons.filter((w) => isEvolved(player, w)).map((w) => w.id))
+    if (owned) {
+      owned.lv = Math.min(MAX_PASSIVE_LEVEL, owned.lv + 1)
+      this.feel(player, PASSIVE_BY_ID.get(id)!, owned.lv)
+    } else {
+      player.passives.push({ id, lv: 1 })
+      this.feel(player, PASSIVE_BY_ID.get(id)!, 1)
+    }
+    let evolved = false
+    for (const weapon of player.weapons)
+      if (!evolvedBefore.has(weapon.id) && isEvolved(player, weapon)) {
+        evolved = true
+        this.emit(FX.EVOLVE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
+      }
+    if (evolved) this.log(`${player.name}の手札が進化した！`)
+    const stats = playerStats(player)
+    if (!player.downed && stats.maxHp > player.maxHp) player.hp += stats.maxHp - player.maxHp
+    player.maxHp = stats.maxHp
   }
 
   private announceEvolution(player: Player, weapon: OwnedWeapon) {

@@ -18,7 +18,6 @@ import {
   move,
   healRange,
   healForecast,
-  objectiveLabel,
   reachable,
   seeded,
   size,
@@ -60,6 +59,7 @@ import { showTitle } from './title'
 import { setupHelp } from './help'
 import { createTutorial } from './tutorial'
 import { detailHtml, forecastHtml, terrainText, unitCardHtml } from './cards'
+import { chapterObjective } from './menus'
 import { guideText, legendItems, objectiveText, phaseLabel, roleNames } from './hud'
 let busy = false
 let ready = false
@@ -115,7 +115,7 @@ let bannerVersion = 0
 let pendingHeal: boolean | undefined
 let actingId: string | undefined
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復薬 </span>2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><p id="defeat-note" hidden>再挑戦すると章の開始時の編成に戻り、倒れた仲間も戻ります。</p><div id="report"></div><button id="next">次の任務 ▶</button><button id="retry" hidden>↻ この章に再挑戦</button><button id="retry-missions" class="secondary" hidden>⚑ 任務を選ぶ</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復薬 </span>2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -651,7 +651,11 @@ render = () => {
   document.querySelector('#danger')!.setAttribute('aria-pressed', String(danger))
   ;(document.querySelector('#wait') as HTMLButtonElement).disabled =
     busy || !ready || !unit || unit.done || game.phase !== 'ally'
-  ;(document.querySelector('#end') as HTMLButtonElement).disabled = busy || !ready || game.phase !== 'ally'
+  const endButton = document.querySelector<HTMLButtonElement>('#end')!
+  endButton.disabled = busy || !ready || game.phase !== 'ally'
+  const left =
+    game.phase === 'ally' ? game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !finished(game, u)).length : 0
+  endButton.innerHTML = `▶ ターン終了${left ? ` <span class="end-left">残り${left}</span>` : ''}`
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
   potion.innerHTML = `✚ <span class="nav-long">回復薬 </span>${game.potions}`
   potion.disabled =
@@ -671,7 +675,12 @@ render = () => {
       ? game.stage === missions.length - 1
         ? '✦ 遠征達成！ 六つの燈がともった'
         : '✦ 霧が晴れた！'
-      : '燈は消えた… ↻ で再挑戦（倒れた仲間も戻ります）'
+      : '燈は消えた… 味方が全滅しました'
+  const lost = !result.hidden && game.phase === 'lost'
+  result.classList.toggle('defeat', game.phase === 'lost')
+  for (const id of ['#retry', '#retry-missions', '#defeat-note'])
+    document.querySelector<HTMLElement>(id)!.hidden = !lost
+  if (!result.hidden) document.querySelectorAll<HTMLButtonElement>('nav button').forEach((b) => (b.disabled = true))
   const next = document.querySelector<HTMLButtonElement>('#next')!
   next.hidden = game.phase !== 'won'
   next.textContent = game.stage === missions.length - 1 ? '最初から遠征 ↻' : '次の任務 ▶'
@@ -774,7 +783,11 @@ async function choose(x: number, y: number) {
         tutorial.advance('attack')
         changed = true
       } else
-        game.log = `${target.name} Lv${target.level} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''} · 射程外です`
+        game.log = unit.done
+          ? `${unit.name}は行動済みです`
+          : unit.heal
+            ? `${unit.name}は攻撃できません（杖で味方を回復）`
+            : `${target.name}は射程外です（${unit.name}の射程 ${unit.range}）`
     } else if (move(game, unit, x, y)) {
       tutorial.advance('move')
       cancelForecast(false)
@@ -802,7 +815,7 @@ async function choose(x: number, y: number) {
     }
   } else if (target) {
     inspected = target.id
-    game.log = `${target.name} Lv${target.level} ♥ ${target.hp}/${target.max} ⚔ ${target.power} ◎ ${target.range}${target.armor ? ' ⬡ 2' : ''}`
+    game.log = `${target.name}（${roleNames[target.role] ?? target.role} Lv${target.level}）HP ${target.hp}/${target.max} · 攻撃 ${target.power} · 射程 ${target.range}${target.armor ? ` · 盾 ${target.armor}` : ''}`
   } else inspected = undefined
   afterAction()
 }
@@ -930,29 +943,33 @@ function confirmDiscard(action: () => void) {
   if (!hasProgress()) return action()
   confirmReplacement('現在の戦闘と中断記録が失われます。', action)
 }
-document.querySelector('#restart')!.addEventListener('click', () =>
-  confirmDiscard(() => {
-    generation++
-    story.cancel()
-    animation.cancel()
-    clearProgress(field)
-    busy = false
-    game = newGame(game.stage, game.formation)
-    save.suspend = snapshotGame(game)
-    audio.start()
-    selected = inspected = undefined
-    undo = undefined
-    cancelForecast(false)
-    render()
-    if (game.stage === 0) tutorial.start(tutorialEnabled())
-    // A retry replays the (skippable) chapter opening, then the phase banner.
-    if (ready) void openChapter(false)
-    else {
-      pendingOpening = false
-      void prepareBattle()
-    }
-  })
-)
+function restartChapter() {
+  generation++
+  story.cancel()
+  animation.cancel()
+  clearProgress(field)
+  busy = false
+  game = newGame(game.stage, game.formation)
+  save.suspend = snapshotGame(game)
+  audio.start()
+  selected = inspected = undefined
+  undo = undefined
+  cancelForecast(false)
+  render()
+  if (game.stage === 0) tutorial.start(tutorialEnabled())
+  // A retry replays the (skippable) chapter opening, then the phase banner.
+  if (ready) void openChapter(false)
+  else {
+    pendingOpening = false
+    void prepareBattle()
+  }
+}
+document.querySelector('#restart')!.addEventListener('click', () => confirmDiscard(restartChapter))
+// A lost battle has nothing left to discard.
+document.querySelector('#retry')!.addEventListener('click', restartChapter)
+document
+  .querySelector('#retry-missions')!
+  .addEventListener('click', () => document.querySelector<HTMLButtonElement>('#mission')!.click())
 document.querySelector('#recover')!.addEventListener('click', async () => {
   const u = game.units.find((u) => u.id === selected)
   if (!busy && u && recover(game, u)) {
@@ -1012,7 +1029,9 @@ function listMissions() {
       const levels = createGame(i, 'balanced', saved)
         .units.filter((u) => u.side === 'ally')
         .map((u) => u.level)
-      return `<button data-stage="${i}"><strong>${m.name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</strong><small>${m.hint} · ${objectiveLabel(createGame(i, 'balanced', saved))}</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
+      const current = i === game.stage
+      const badges = `${current ? ' <em class="badge-current">現在の任務</em>' : ''}${save.cleared.includes(i) ? ' <em class="badge-clear">✓ クリア</em>' : ''}`
+      return `<button data-stage="${i}"${current ? ' aria-current="true"' : ''}><strong>${m.name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}${badges}</strong><small>${m.hint}</small><small class="objective">勝利条件：${chapterObjective(i)} · 味方全滅で敗北</small><small class="roster">開始 Lv ${levels.join(' / ')}${saved ? ' · 到達時の記録' : ''}</small><small class="roster">${sortie(i)}</small></button>`
     })
     .join('')
   document.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(
@@ -1059,7 +1078,8 @@ warmUpAudio()
 // Keep the complete field visible; only battle actions wait for decoded 3D models.
 const preparation = document.createElement('div')
 preparation.className = 'preparation'
-preparation.innerHTML = '<span role="status" aria-live="polite"></span><button hidden>再試行</button>'
+preparation.innerHTML =
+  '<span role="status" aria-live="polite"></span><i class="prep-bar"><em></em></i><button hidden>再試行</button>'
 document.querySelector('.field')!.append(preparation)
 const retry = preparation.querySelector('button')!
 retry.onclick = () => void prepareBattle()
@@ -1087,12 +1107,17 @@ async function prepareBattle() {
   field.append(preparation)
   retry.hidden = true
   const status = preparation.querySelector('span')!
+  const bar = preparation.querySelector<HTMLElement>('.prep-bar')!
+  const fill = bar.querySelector('em')!
+  bar.hidden = false
+  fill.style.width = '0%'
   status.textContent = '3D モデルを準備中…'
   titleProgress(status.textContent)
   void prepareSound(roles, token)
   try {
     await animation.prepare(roles, (done, total) => {
       if (token !== generation) return
+      fill.style.width = `${Math.round((done / total) * 100)}%`
       status.textContent = `3D モデルを準備中 ${Math.round((done / total) * 100)}%`
       titleProgress(status.textContent)
     })
@@ -1119,6 +1144,7 @@ async function prepareBattle() {
     if (token !== generation) return
     status.textContent = '素材を読み込めませんでした。接続を確認して再試行してください'
     titleProgress(status.textContent)
+    bar.hidden = true
     retry.hidden = false
   }
 }

@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { EVENTS, timeAtAge } from '../src/data'
 import { Game } from '../src/game'
+import { readView, toView } from '../src/view'
 import { PET_MEMORY } from '../src/weapon-life'
 
 test('relationship choices preserve each player’s outstanding hand, even if left open until the wedding', () => {
@@ -51,4 +52,24 @@ test('an expiring pet updates the saved hand without losing the relationship cho
   game.choose(player, 0)
   expect(player.dating).toBe(true)
   expect(player.choices).toEqual(['x:skip'])
+})
+
+test('a late relationship choice survives the parent farewell and remains valid in snapshots', () => {
+  const game = new Game(96)
+  const care = EVENTS.findIndex((event) => event.boss === 'b_care')
+  game.state.eventIndex = care
+  game.state.time = EVENTS[care].at - 0.1
+  const player = game.addPlayer('late', 'p_over')!
+  game.addPlayer('other', 'p_gone')
+  expect(player.choices).toEqual(['d:yes', 'd:no'])
+
+  game.tick(0.2)
+  expect(player.parentDeath).toBeDefined()
+  expect(player.choices).toEqual(['d:yes', 'd:no'])
+  expect(readView(toView(game.state))).toBeDefined()
+
+  game.choose(player, 0)
+  expect(player.dating).toBe(true)
+  expect(game.spawnEnemy('temptation')?.targetPlayer).toBe(player.id)
+  expect(readView(toView(game.state))).toBeDefined()
 })

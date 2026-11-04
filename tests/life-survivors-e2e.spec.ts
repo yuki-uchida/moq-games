@@ -1288,7 +1288,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v10',
+      app: 'life-survivors-v11',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1307,9 +1307,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v10', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
@@ -1390,6 +1390,230 @@ test('two players share one life-world: the guest moves and gets their own hand'
   await expect(host.locator('#synergy-count')).toHaveText('人生の相乗効果 0/6')
   expect(errors).toEqual([])
 })
+
+test('parent farewell synchronizes death, inheritance, HUD and animation for host and guest', async ({
+  context
+}, testInfo) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const errors: string[] = []
+  for (const page of [host, guest]) {
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await page.locator('#room').fill('parent-farewell')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  for (const page of [host, guest])
+    await page.evaluate(() => {
+      const messages: string[] = []
+      ;(window as unknown as { farewellAnnouncements: string[] }).farewellAnnouncements = messages
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) messages.push(node.textContent ?? '')
+          if (record.type === 'characterData') messages.push(record.oldValue ?? '', record.target.textContent ?? '')
+        }
+      }).observe(document.querySelector('#announcements')!, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        characterDataOldValue: true
+      })
+    })
+  await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, MAX_WEAPON_LEVEL } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.players.forEach((player, index) => {
+      player.parent = index ? 'p_toxic' : 'p_over'
+      player.weapons = [{ id: player.parent, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }]
+      player.passives = []
+      player.birthPick = false
+      player.pending = player.swapPending = player.careerPending = 0
+      player.choices = []
+    })
+    game.state.enemies = []
+    const care = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_care')
+    game.state.eventIndex = care
+    game.state.time = EVENTS[care].at - 0.01
+    game.tick(0.02)
+  })
+  await expect(host.locator('#weapons .parent')).toHaveCount(0)
+  await expect(guest.locator('#weapons .parent')).toHaveCount(0)
+  await expect(host.locator('#passives .inherited')).toHaveAttribute('title', '愛情（親の看取りで継承）')
+  await expect(guest.locator('#passives .inherited')).toHaveAttribute('title', '包容力（親の看取りで継承）')
+  for (const page of [host, guest]) {
+    await expect(page.locator('.banner-farewell')).toContainText('親とのお別れ')
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          (window as unknown as { farewellAnnouncements: string[] }).farewellAnnouncements.some(
+            (message) => message.includes('看取り') && message.includes('継承')
+          )
+        )
+      )
+      .toBe(true)
+  }
+  const current = await guestLife.evaluate((hook) => hook.view as unknown as View)
+  expect(current.players.every((player) => player.parentDeath?.reward === 'passive')).toBe(true)
+  expect(current.players.every((player) => !player.weapons.some(([id]) => id === player.parent))).toBe(true)
+  expect(current.time - current.players[0].parentDeath!.at).toBeLessThan(6)
+  await testInfo.attach('parent-farewell-host', { body: await host.screenshot(), contentType: 'image/png' })
+  await testInfo.attach('parent-farewell-guest', { body: await guest.screenshot(), contentType: 'image/png' })
+  expect(errors).toEqual([])
+})
+
+for (const reward of ['none', 'choice'] as const) {
+  test(`parent farewell survives missing FX with reward ${reward}`, async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate(async (hook, reward) => {
+      const path = '/src/data.ts'
+      const { EVENTS, MAX_WEAPON_LEVEL, PARENT_LEGACIES } = await import(path)
+      const game = hook.game as unknown as Game
+      game.targetPopulation = () => 0
+      const player = game.state.players[0]
+      player.parent = 'p_over'
+      player.weapons = [
+        { id: player.parent, lv: reward === 'none' ? 1 : MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }
+      ]
+      player.passives = reward === 'choice' ? [{ id: PARENT_LEGACIES[player.parent], lv: 5 }] : []
+      player.birthPick = false
+      player.pending = player.swapPending = player.careerPending = 0
+      player.choices = []
+      game.state.enemies = []
+      const care = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_care')
+      game.state.eventIndex = care
+      game.state.time = EVENTS[care].at - 0.01
+      game.tick(0.02)
+      game.state.fx = []
+    }, reward)
+    await expect(page.locator('.banner-farewell .banner-sub')).toHaveText(
+      reward === 'choice' ? '成長の選択 +1' : '親の武器を手放した'
+    )
+    await expect(page.locator('#announcements')).toContainText('を看取り、親の武器を手放した。')
+    await expect(page.locator('#announcements')).toContainText(
+      reward === 'choice' ? '成長の選択を1回獲得' : '性格の継承はなかった'
+    )
+  })
+}
+
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 }
+]) {
+  test(`parent farewell stays visible throughout its animation at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize(viewport)
+    await page.addInitScript(() => {
+      const frames: number[] = []
+      ;(window as unknown as { farewellAlphas: number[] }).farewellAlphas = frames
+      const labels = new WeakSet<HTMLCanvasElement>()
+      const original = CanvasRenderingContext2D.prototype.fillText
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+        if (text.includes('継承！')) labels.add(this.canvas)
+        original.call(this, text, x, y, maxWidth)
+      }
+      const drawImage = CanvasRenderingContext2D.prototype.drawImage
+      CanvasRenderingContext2D.prototype.drawImage = function (...args: unknown[]) {
+        if (labels.has(args[0] as HTMLCanvasElement)) frames.push(this.globalAlpha)
+        Reflect.apply(drawImage, this, args)
+      }
+    })
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await expect(page.locator('.banner-stage')).toBeVisible()
+    await expect(page.locator('.banner-stage')).toBeHidden()
+    await handle.evaluate(async (hook) => {
+      const path = '/src/data.ts'
+      const { EVENTS, MAX_WEAPON_LEVEL } = await import(path)
+      const game = hook.game as unknown as Game
+      game.targetPopulation = () => 0
+      const player = game.state.players[0]
+      player.parent = 'p_over'
+      player.weapons = [{ id: player.parent, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }]
+      player.passives = []
+      player.birthPick = false
+      player.pending = player.swapPending = player.careerPending = 0
+      player.choices = []
+      game.state.enemies = []
+      const care = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_care')
+      game.state.eventIndex = care
+      game.state.time = EVENTS[care].at - 0.01
+      game.tick(0.02)
+    })
+    const banner = page.locator('.banner-farewell')
+    await expect(banner).toContainText('愛情')
+    await expect(banner.locator('.banner-sub')).toHaveText('「愛情」を継承')
+    const warning = page.locator('.banner-care')
+    await expect(warning).toContainText('WARNING', { timeout: 500 })
+    await expect(warning).toContainText('親の介護')
+    const warningBounds = (await warning.boundingBox())!
+    expect(warningBounds.x).toBeGreaterThanOrEqual(0)
+    expect(warningBounds.x + warningBounds.width).toBeLessThanOrEqual(viewport.width)
+    expect(warningBounds.y).toBeGreaterThan(viewport.height / 2 + 48)
+    expect(warningBounds.y + warningBounds.height).toBeLessThanOrEqual(viewport.height)
+    const bounds = await banner.evaluate(async (node) => {
+      const animation = node.getAnimations()[0]
+      if (!animation) throw new Error('親とのお別れのアニメーションがありません')
+      animation.pause()
+      const positions = []
+      for (const time of [0, 540, 900, 2000, 3690, 4400]) {
+        animation.currentTime = time
+        await new Promise(requestAnimationFrame)
+        const rect = node.getBoundingClientRect()
+        positions.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+      }
+      animation.currentTime = 2000
+      return positions
+    })
+    for (const rect of bounds) {
+      expect(rect.left).toBeGreaterThanOrEqual(-0.5)
+      expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
+      expect(rect.top).toBeGreaterThanOrEqual(-0.5)
+      expect(rect.bottom).toBeLessThanOrEqual(viewport.height + 0.5)
+      expect(rect.top).toBeGreaterThan(viewport.height / 2 + 48)
+      expect(rect.top).toBeGreaterThanOrEqual(warningBounds.y + warningBounds.height - 0.5)
+    }
+    await expect(page.locator('#announcements')).toContainText('を看取り、親の武器を手放した。')
+    await expect(page.locator('#feed')).toContainText('を継承（未所持ならLv1・所持済みならLv+1）')
+    await expect(page.locator('#feed')).toBeHidden()
+    await page.screenshot({ path: testInfo.outputPath(`farewell-warning-${viewport.width}.png`) })
+    await expect(warning).toBeHidden({ timeout: 3000 })
+    await expect(banner).toBeVisible()
+    const stage = page.locator('.banner-stage')
+    await expect(stage).toBeVisible()
+    await expect(stage).toContainText('中年')
+    const stageBounds = (await stage.boundingBox())!
+    expect(stageBounds.y).toBeGreaterThan(viewport.height / 2 + 48)
+    expect(stageBounds.x).toBeGreaterThanOrEqual(0)
+    expect(stageBounds.x + stageBounds.width).toBeLessThanOrEqual(viewport.width)
+    expect(stageBounds.y + stageBounds.height).toBeLessThanOrEqual((await banner.boundingBox())!.y + 0.5)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const frames = (window as unknown as { farewellAlphas: number[] }).farewellAlphas
+          return frames.some((alpha) => alpha > 0 && alpha < 1)
+        })
+      )
+      .toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`farewell-${viewport.width}.png`) })
+    expect(errors).toEqual([])
+  })
+}
 
 test('career events give only the qualified guest a turning point', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
@@ -1477,7 +1701,7 @@ test('a guest without parents can join another player’s care trial', async ({ 
     game.tick(0.01)
     return game.state.players.find((player) => player.id !== id)!.name
   }, guestId)
-  await expect(guest.locator('#feed')).toContainText(`${parentName}の家族の試練：親の介護が始まった`)
+  await expect(guest.locator('#feed')).toContainText(`${parentName}の家族の試練：親の介護と、最期のお別れ…`)
   await expect
     .poll(() =>
       guestLife.evaluate(async (hook) => {
@@ -1492,6 +1716,9 @@ test('a guest without parents can join another player’s care trial', async ({ 
     (hook, id) => hook.game.state.players.find((player) => player.id === id)!.x,
     guestId
   )
+  await expect(guest.locator('.banner-care')).toContainText('WARNING', { timeout: 500 })
+  await expect(guest.locator('.banner-care')).toContainText('親の介護')
+  await expect(guest.locator('.banner-farewell')).toHaveCount(0)
   await guest.bringToFront()
   await guest.keyboard.down('KeyD')
   await expect

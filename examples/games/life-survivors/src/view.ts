@@ -7,6 +7,7 @@ import {
   EVENTS,
   ITEM_KINDS,
   MAX_GAME_PLAYERS,
+  PARENT_LEGACIES,
   PASSIVE_BY_ID,
   TALENT_CATEGORIES,
   WEAPONS,
@@ -15,7 +16,7 @@ import {
   ageAt
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
-import type { GameState } from './game'
+import type { GameState, Player } from './game'
 import { historyOk, LIFE_OUTCOMES, type LifeDecision } from './history'
 
 export { BULLET_KINDS, ITEM_KINDS }
@@ -40,6 +41,7 @@ export interface ViewPlayer {
   /** Enemy id of the final blow while downed. */
   killer?: string
   parent: string
+  parentDeath?: Player['parentDeath']
   weapons: [string, number, number][]
   petAge?: number
   passives: [string, number][]
@@ -51,7 +53,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 10
+  v: 11
   time: number
   phase: GameState['phase']
   level: number
@@ -140,7 +142,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 10,
+    v: 11,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -165,6 +167,7 @@ export function toView(state: GameState): View {
       hurt: p.hurt > 0,
       ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
+      ...(p.parentDeath ? { parentDeath: { ...p.parentDeath } } : {}),
       weapons: p.weapons.map((w) => [w.id, w.lv, r(w.damage)]),
       ...(p.weapons.some((w) => w.id === 'w_pet')
         ? { petAge: ageAt(state.time) - (p.weapons.find((w) => w.id === 'w_pet')!.acquiredAge ?? ageAt(state.time)) }
@@ -231,6 +234,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'hasChild',
         'killer',
         'parent',
+        'parentDeath',
         'weapons',
         'petAge',
         'passives',
@@ -254,6 +258,13 @@ function playerOk(value: unknown): value is ViewPlayer {
     (p.killer === undefined || (text(p.killer, 40) && ENEMY_BY_ID.has(p.killer))) &&
     text(p.parent) &&
     WEAPON_BY_ID.has(p.parent) &&
+    (p.parentDeath === undefined ||
+      (record(p.parentDeath) &&
+        Object.keys(p.parentDeath).length === 4 &&
+        finite(p.parentDeath.at) &&
+        finite(p.parentDeath.x) &&
+        finite(p.parentDeath.y) &&
+        ['none', 'passive', 'choice'].includes(p.parentDeath.reward as string))) &&
     Array.isArray(p.weapons) &&
     (p.petAge === undefined ||
       (finite(p.petAge, 0, 20) && p.weapons.some((weapon) => Array.isArray(weapon) && weapon[0] === 'w_pet'))) &&
@@ -276,7 +287,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 10) return undefined
+  if (!record(value) || value.v !== 11) return undefined
   if (
     Object.keys(value).some(
       (key) =>
@@ -332,10 +343,22 @@ export function readView(value: unknown): View | undefined {
   const weddingAt = Math.round(EVENTS.find((event) => event.boss === 'b_wedding')!.at * 100) / 100
   const datingAt = EVENTS.find((event) => event.swarm === 'car')!.at
   const birthAt = Math.round(EVENTS.find((event) => event.swarm === 'nightcry')!.at * 100) / 100
+  const careAt = EVENTS.find((event) => event.boss === 'b_care')!.at
   if (
     (v.players as ViewPlayer[]).some(
       (player) =>
         ((player.dating || player.choices.includes('d:yes')) && (v.time as number) < datingAt) ||
+        (player.parentDeath !== undefined &&
+          (!PARENT_LEGACIES[player.parent] ||
+            player.parentDeath.at !== careAt ||
+            (v.time as number) < Math.round(careAt * 100) / 100 ||
+            player.weapons.some(([id]) => id === player.parent) ||
+            player.choices.includes(`w:${player.parent}`) ||
+            (player.parentDeath.reward !== 'none' &&
+              !player.passives.some(
+                ([id, lv]) =>
+                  id === PARENT_LEGACIES[player.parent] && (player.parentDeath!.reward !== 'choice' || lv === 5)
+              )))) ||
         (player.married && (v.time as number) < weddingAt) ||
         (player.hasChild && (v.time as number) < birthAt) ||
         (player.choices.includes('f:yes') && (v.time as number) < birthAt) ||

@@ -106,7 +106,7 @@ export function chapterReport(game: Game, portrait: (unit: Unit) => string, casu
 ${allies.some((u) => u.hp <= 0) ? `<p class="chapter-lost">${casual ? '倒れた仲間は次の任務に復帰します。' : '倒れた仲間は遠征から離脱し、以後の任務に出撃できません。'}</p>` : ''}<ul class="chapter-units">${allies
     .map(
       (u) =>
-        `<li class="${u === best ? 'mvp' : ''}${u.hp > 0 ? '' : ' fallen'}">${portrait(u)}<div><p><b>${u.name}</b>${u === best ? '<mark>MVP</mark>' : ''}${u.hp > 0 ? '' : `<mark class="lost">${casual ? '復帰' : '離脱'}</mark>`}</p><p>Lv ${u.level}${u.level > u.startLevel ? `<ins>▲${u.level - u.startLevel}</ins>` : ''}　<span class="exp-line"><i><em style="width:${u.exp}%"></em></i>${u.exp}</span>　${u.hp > 0 || casual ? `<ins>+${u.gained} EXP</ins>` : '<small>獲得EXPなし</small>'}</p><p>♥ ${u.max}　⚔ ${u.power}　⛨ ${u.def}　撃破 ${u.kills}</p></div></li>`
+        `<li class="${u === best ? 'mvp' : ''}${u.hp > 0 ? '' : ' fallen'}">${portrait(u)}<div><p><b>${u.name}</b>${u === best ? '<mark>MVP</mark>' : ''}${u.hp > 0 ? '' : `<mark class="lost">${casual ? '復帰' : '離脱'}</mark>`}</p><p>Lv ${u.level}${u.level > u.startLevel ? `<ins>▲${u.level - u.startLevel}</ins>` : ''}　<span class="exp-line"><i><em style="width:${u.exp}%"></em></i>${u.exp}</span>　${u.hp > 0 || casual ? `<ins>+${u.gained} EXP</ins>` : '<small>獲得EXPなし</small>'}</p><p>HP ${u.max}　攻撃 ${u.power}　防御 ${u.def}　撃破 ${u.kills}</p></div></li>`
     )
     .join('')}</ul>`
 }
