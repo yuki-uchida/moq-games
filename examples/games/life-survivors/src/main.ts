@@ -68,7 +68,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v8'
+const APP = 'life-survivors-v9'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -106,7 +106,6 @@ let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
 const remoteInputAt = new Map<string, number>()
 const keys = new Set<string>()
-/** Floating touch stick: the base stays where the finger landed. */
 let drag: { id: number; x: number; y: number; dx: number; dy: number } | undefined
 const STICK_RADIUS = 56
 const STICK_DEAD = 6
@@ -212,7 +211,12 @@ function bannerFor(e: FxEv, localIndex: number, now: number) {
       if (event)
         push({
           kind: 'swarm',
-          title: event.swarm === 'nightcry' || event.swarm === 'kid' ? `仲間の家族の試練：${event.text}` : event.text
+          title:
+            event.swarm === 'nightcry' || event.swarm === 'kid'
+              ? `仲間の家族の試練：${event.text}`
+              : event.swarm === 'meeting'
+                ? `仕事の試練：${event.text}`
+                : event.text
         })
       break
     }
@@ -1015,6 +1019,11 @@ canvas.addEventListener('pointermove', (event) => {
   let dy = event.clientY - drag.y
   const length = Math.hypot(dx, dy)
   if (length > STICK_RADIUS) {
+    if (event.pointerType !== 'mouse') {
+      const follow = ((length - STICK_RADIUS) / length) * 0.1
+      drag.x += dx * follow
+      drag.y += dy * follow
+    }
     dx *= STICK_RADIUS / length
     dy *= STICK_RADIUS / length
   }

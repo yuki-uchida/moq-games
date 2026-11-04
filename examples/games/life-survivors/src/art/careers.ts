@@ -20,7 +20,7 @@ export function careerFor(player: Pick<ViewPlayer, 'weapons' | 'passives'>): str
   return rankedAppearance(player.weapons, player.passives)
 }
 
-export function careerSheet(body: string, career: string): Sheet {
+export function careerBody(body: string, career: string): Body {
   const original = BODIES[body]
   const athlete = career === 'soccer'
   const investor = career === 'entrepreneur'
@@ -48,6 +48,31 @@ export function careerSheet(body: string, career: string): Sheet {
     sleeve: clothes,
     cuff: athlete ? R.paper[0] : original.cuff,
     shoe: athlete ? sneaker : original.shoe,
+    lie: {
+      ...original.lie,
+      coat: clothes,
+      beside: undefined,
+      detail: (layer, _x0, x1, top, bottom) => {
+        const chest = x1 - 6
+        if (athlete) {
+          layer.rect(chest, top + 2, 2, Math.max(1, bottom - top - 3), R.paper[0])
+          layer.rect(chest - 2, top + 2, 4, 1, R.paper[0])
+        } else if (casual) {
+          if (social) {
+            layer.rect(chest - 1, top + 2, 3, 3, R.paper[1])
+            layer.set(chest, top + 3, R.yellow[1])
+          } else if (romantic) {
+            layer.rect(chest + 2, top + 1, 2, Math.max(1, bottom - top - 1), R.purple[1])
+          } else {
+            layer.rect(chest - 4, top + 2, 7, Math.max(1, bottom - top - 3), R.paper[1])
+            layer.rect(chest - 2, top + 3, 3, 2, R.orange[2])
+          }
+        } else {
+          layer.rect(chest + 2, top + 1, 2, Math.max(1, bottom - top - 1), R.paper[0])
+          layer.rect(chest - 3, top + 2, 6, 1, investor ? R.yellow[1] : R.red[1])
+        }
+      }
+    },
     torso: (layer, { hx, hy, top, lean }) => {
       layer.rect(hx - 7 + lean, top, 15, hy - top + 2, clothes[1])
       layer.rect(hx - 7 + lean, top, 2, hy - top + 2, clothes[0])
@@ -101,17 +126,39 @@ export function careerSheet(body: string, career: string): Sheet {
           raster.rect(hand.x, hand.y + 3, 2, 2, R.yellow[1])
         }
   }
-  const paint = (poses: ReturnType<typeof idlePoses>) =>
-    poses.map((pose) => human(dressed, body === 'elder' ? { ...pose, lean: 3, handF: [3, 7] } : pose))
-  return {
-    idle: { frames: paint(idlePoses()), fps: 6, loop: true, hold: [3, 2, 3, 1] },
+  return dressed
+}
+
+export function careerSheet(body: string, career: string): Sheet {
+  const frames = careerSheetFrames(body, career)
+  let step = frames.next()
+  while (!step.done) step = frames.next()
+  return step.value
+}
+
+export function* careerSheetFrames(body: string, career: string): Generator<void, Sheet> {
+  const dressed = careerBody(body, career)
+  const result: Sheet = {
+    idle: { frames: [], fps: 6, loop: true, hold: [3, 2, 3, 1] },
     walk: {
-      frames: paint(walkPoses({ scale: body === 'kid' ? 0.8 : body === 'elder' ? 0.5 : 1 })),
+      frames: [],
       fps: body === 'elder' ? 8 : 11,
       loop: true
     },
-    hurt: { frames: paint(hurtPoses()), fps: 8, loop: false }
+    hurt: { frames: [], fps: 8, loop: false }
   }
+  const poses = {
+    idle: idlePoses(),
+    walk: walkPoses({ scale: body === 'kid' ? 0.8 : body === 'elder' ? 0.5 : 1 }),
+    hurt: hurtPoses()
+  }
+  for (const [name, sequence] of Object.entries(poses)) {
+    for (const pose of sequence) {
+      result[name].frames.push(human(dressed, body === 'elder' ? { ...pose, lean: 3, handF: [3, 7] } : pose))
+      yield
+    }
+  }
+  return result
 }
 
 export const careerSheets = Object.fromEntries(

@@ -2,23 +2,31 @@ import { POOPS, card, rng } from './simulation.js'
 import { addEntry, levelUp, newCampaign } from './campaign.js'
 import { chooseFormation, playCampaign } from './bot.js'
 
-export function collectRealisticSamples(stages) {
+export function collectRealisticSamples(stages, clearStages = []) {
   const samples = Object.fromEntries(stages.map((stage) => [stage, []]))
   for (const seed of [3, 11, 29, 42, 77, 101]) {
     const seen = new Set()
     playCampaign(rng(seed), {
       casual: true,
-      log: (_battle, _report, campaign) => {
-        if (!stages.includes(campaign.cleared) || seen.has(campaign.cleared)) return
-        seen.add(campaign.cleared)
-        samples[campaign.cleared].push(campaign.roster.map(({ key, level }) => ({ key, level })))
+      untilCleared: Math.max(...stages.map((stage) => stage + (clearStages.includes(stage) ? 1 : 0))),
+      log: (_battle, report, campaign) => {
+        for (const stage of stages) {
+          const ready = clearStages.includes(stage)
+            ? report.victory && campaign.cleared === stage + 1
+            : campaign.cleared === stage
+          if (!ready || seen.has(stage)) continue
+          seen.add(stage)
+          samples[stage].push(
+            campaign.roster.map((entry) => ({ ...entry, equipped: campaign.loadout.includes(entry.uid) }))
+          )
+        }
       }
     })
   }
   return samples
 }
 
-export function realisticFormation(stage, samples, special = null) {
+export function realisticFormation(stage, samples, special = null, owned = null) {
   if (samples.length !== 6) throw new Error(`stage ${stage} needs six campaign samples`)
   const campaign = newCampaign()
   campaign.cleared = stage
@@ -41,6 +49,9 @@ export function realisticFormation(stage, samples, special = null) {
   chooseFormation(campaign)
   const entries = campaign.loadout.map((uid) => campaign.roster.find((entry) => entry.uid === uid))
   const specialIndex = special ? Math.min(4, entries.length) : -1
-  if (special) entries.splice(specialIndex, 0, addEntry(campaign, special.key, stage))
+  if (special) {
+    const entry = addEntry(campaign, special.key, stage)
+    entries.splice(specialIndex, 0, owned ? { ...owned, uid: entry.uid } : entry)
+  }
   return { deck: entries.slice(0, 6).map(card), specialIndex }
 }

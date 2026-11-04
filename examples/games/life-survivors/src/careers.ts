@@ -1,6 +1,6 @@
 import { MAX_WEAPON_LEVEL, WEAPONS } from './data'
 
-export type Career = 'soccer' | 'bureaucrat' | 'entrepreneur' | 'creative'
+export type Career = 'soccer' | 'bureaucrat' | 'entrepreneur' | 'creative' | 'social'
 export type Appearance = Career | 'social' | 'romantic'
 
 const CAREERS: Record<string, Career> = {
@@ -16,7 +16,10 @@ const CAREERS: Record<string, Career> = {
   w_hobby: 'creative',
   w_karaoke: 'creative',
   w_travel: 'creative',
-  w_cooking: 'creative'
+  w_cooking: 'creative',
+  w_friend: 'social',
+  w_sns: 'social',
+  w_pet: 'social'
 }
 
 const APPEARANCES: Record<string, Appearance> = {

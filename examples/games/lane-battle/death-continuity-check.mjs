@@ -33,12 +33,12 @@ const patch = (text, from, to) => {
 }
 const main = [
   [
-    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)',
-    `for (const ghost of fallen) { models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at); recordDeath(ghost, true) }`
+    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge)',
+    `for (const ghost of fallen) { models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge); recordDeath(ghost, true) }`
   ],
   [
-    "const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u",
-    `const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    "let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u",
+    `let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
     if (u.tag === 'victim') Object.assign(visual, { motion: globalThis.__deathMode, phase: 0.01, walkDistance: 9 })`
   ],
   ['contact(u), y)', 'contact(u), y); recordDeath(u, false)'],

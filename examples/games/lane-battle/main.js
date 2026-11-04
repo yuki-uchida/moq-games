@@ -20,6 +20,7 @@ import {
   step,
   reach,
   WALK_PACE,
+  MAX_UNITS,
   BURST_COOLDOWN
 } from './simulation.js'
 import { SLOTS, MAX_LEVEL, expToNext, load, save, erase, deckOf, toggle, buy, settle } from './campaign.js'
@@ -79,6 +80,8 @@ const fallen = []
 let resultVisual = null
 let reconciling = false
 let catchupScheduled = false
+let capNoticeUntil = 0
+const allyCount = () => state.units.filter((unit) => unit.side === 1).length
 function tone(kind) {
   if (!document.hidden && !reconciling) audio.effect(kind)
 }
@@ -110,6 +113,11 @@ $('sound').onclick = () => {
 }
 let buttons = []
 function deploy(i) {
+  if (!paused && !state.result && !clock.pending && allyCount() >= MAX_UNITS) {
+    capNoticeUntil = performance.now() + 2000
+    $('notice').textContent = `味方が満員です ${MAX_UNITS}/${MAX_UNITS}`
+    return
+  }
   if (!paused && !state.result && !clock.pending && summon(state, i)) {
     tone('summon')
     pop(buttons[i])
@@ -143,6 +151,7 @@ function start(stage) {
   shown = false
   resultVisual = null
   fallen.length = 0
+  capNoticeUntil = 0
   glides.clear()
   contacts.clear()
   audio.beat = 0
@@ -407,7 +416,6 @@ function modal(title, message) {
   dialog.showModal()
   dialog.querySelector('.sheet').scrollTop = 0
 }
-/** Keyboard-only pause (Space); the battlefield has no pause button. */
 function togglePause() {
   tick(performance.now())
   if (dialog.open || !$('map').hidden || clock.pending) return
@@ -415,6 +423,7 @@ function togglePause() {
   clock.reset(performance.now())
   syncAudio()
 }
+$('pause').onclick = togglePause
 $('upgrade').onclick = () => {
   invest()
 }
@@ -589,6 +598,17 @@ function lead(u) {
 }
 function draw() {
   const visualTime = state.time + (resultVisual?.elapsed ?? 0)
+  for (const ghost of fallen) {
+    if (!ghost.visualStarted) {
+      ghost.visualAge = 0
+      ghost.visualStarted = true
+    }
+    if (resultVisual)
+      resultVisual.duration = Math.max(
+        resultVisual.duration,
+        resultVisual.elapsed + Math.max(ghost.flushed ? 0.8 : 0, koSeconds(ghost.key)) - ghost.visualAge + 0.15
+      )
+  }
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
   if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
@@ -675,7 +695,7 @@ function draw() {
   const depth = depthSlots([...fallen, ...units])
   const unitEffects = (layer) => {
     for (const u of units) {
-      const age = state.time - (u.hurt?.at ?? Infinity)
+      const age = visualTime - (u.hurt?.at ?? Infinity)
       if (age >= 0 && age < hurtSeconds(u.key)) {
         ctx.save()
         HURT_VFX[u.key]?.(ctx, u, age, layer, drawX(u), laneY(u), aspect)
@@ -684,7 +704,7 @@ function draw() {
     }
     for (const ghost of fallen) {
       ctx.save()
-      DEATH_VFX[ghost.key]?.(ctx, ghost, visualTime - ghost.at, layer, drawX(ghost), laneY(ghost), aspect)
+      DEATH_VFX[ghost.key]?.(ctx, ghost, ghost.visualAge, layer, drawX(ghost), laneY(ghost), aspect)
       ctx.restore()
     }
   }
@@ -695,7 +715,7 @@ function draw() {
     const unit = units.find((entry) => entry.id === id)
     if (!unit || !heldStrike(held, unit, state.time)) contacts.delete(id)
   }
-  for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)
+  for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge)
   for (const u of units) {
     const y = laneY(u)
     ctx.fillStyle = u.side === 1 ? '#5a361a55' : '#4c9ad055'
@@ -709,7 +729,9 @@ function draw() {
       ctx.fill()
     }
     const held = heldStrike(contacts.get(u.id), u, state.time)
-    const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    if (resultVisual && visual.hurt)
+      visual = { ...visual, hurt: { ...visual.hurt, at: visual.hurt.at - resultVisual.elapsed } }
     models.unit(visual, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
   }
   ctx.font = '12px sans-serif'
@@ -732,7 +754,7 @@ function draw() {
   ctx.restore()
   unitEffects('above')
   for (const ghost of fallen) {
-    const age = visualTime - ghost.at
+    const age = ghost.visualAge
     if (!ghost.flushed || age < 0 || age >= 0.8) continue
     ctx.save()
     ctx.translate(ghost.x, laneY(ghost))
@@ -790,6 +812,7 @@ function draw() {
     drawStatus(ctx, u, drawX(u), y, top, state.time, aspect, calm.matches)
   }
   for (const e of state.effects) {
+    if (e.cancelled) continue
     if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
@@ -897,16 +920,30 @@ function draw() {
     }
   }
   $('gold').textContent = Math.floor(state.gold)
-  $('rate').textContent = `+${income(state)}/s · Lv.${state.level}`
+  const allies = allyCount()
+  const full = allies >= MAX_UNITS
+  if (!full) capNoticeUntil = 0
+  $('rate').textContent =
+    `+${income(state)}/s · Lv.${state.level}${allies >= MAX_UNITS - 4 ? ` · 味方 ${allies}/${MAX_UNITS}` : ''}`
   $('home').textContent = `${Math.ceil(state.home)} / ${STAGES[state.stage].home}`
   $('enemy').textContent = `${Math.ceil(state.enemy)} / ${STAGES[state.stage].enemy}`
   $('clock').textContent = `${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}`
   const alert = state.alert && state.time - state.alert.at < 2.5 ? state.alert.text : ''
-  $('notice').textContent = paused ? 'Ⅱ' : alert
-  $('notice').classList.toggle('paused', paused || !!alert)
+  $('notice').textContent = paused
+    ? 'Ⅱ'
+    : performance.now() < capNoticeUntil
+      ? `味方が満員です ${MAX_UNITS}/${MAX_UNITS}`
+      : alert
+  $('notice').classList.toggle('paused', paused || (!!alert && performance.now() >= capNoticeUntil))
+  $('pause').textContent = paused ? '▶' : 'Ⅱ'
+  $('pause').setAttribute('aria-label', paused ? '再開' : '一時停止')
+  $('pause').setAttribute('aria-pressed', String(paused))
   buttons.forEach((b, i) => {
     const d = state.deck[i]
-    b.disabled = paused || !!state.result || state.gold < d.cost || state.cooldowns[i] > 0
+    b.disabled = paused || !!state.result || (!full && (state.gold < d.cost || state.cooldowns[i] > 0))
+    b.setAttribute('aria-disabled', String(full || b.disabled))
+    b.setAttribute('aria-label', `${d.name}を召喚 ${d.cost}${full ? ' 味方が満員' : ''}`)
+    b.classList.toggle('full', full)
     // Recharge shade: the remaining share of the cooldown darkens the card from the top.
     b.style.setProperty('--cd', state.cooldowns[i] / d.cooldown)
   })
@@ -916,9 +953,7 @@ function draw() {
   $('burst').style.setProperty('--cd', state.burst / BURST_COOLDOWN)
   $('burst').querySelector('b').textContent = state.burst > 0 ? String(Math.ceil(state.burst)) : ''
 }
-function finish() {
-  const report = settle(campaign, state, Math.random)
-  save(campaign)
+function finish(report) {
   const last = state.stage === STAGES.length - 1
   if (report.victory) selected = Math.min(state.stage + 1, campaign.cleared, STAGES.length - 1)
   showReport(report)
@@ -931,6 +966,11 @@ function finish() {
   tone(state.result)
 }
 function tick(now) {
+  // Death motions age with real visible time, so they keep real speed down to 4 fps; a longer stall
+  // advances them by at most 0.25 s, so a death the player has barely seen still plays out.
+  const visualDelta =
+    !paused && !document.hidden && clock.last !== null ? Math.min(0.25, Math.max(0, (now - clock.last) / 1000)) : 0
+  for (const ghost of fallen) if (ghost.visualStarted) ghost.visualAge += visualDelta
   if (resultVisual && !paused && !document.hidden && clock.last !== null)
     resultVisual.elapsed += Math.max(0, (now - clock.last) / 1000)
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
@@ -942,13 +982,22 @@ function tick(now) {
     (dt) => step(state, dt),
     () => !!state.result
   )
+  const resultStarted = state.result && !resultVisual
+  if (resultStarted) {
+    for (const projectile of state.projectiles) {
+      if (projectile.victim) projectile.victim.missed = true
+      if (!projectile.effect.hit) projectile.effect.cancelled = true
+    }
+    const report = settle(campaign, state, Math.random)
+    save(campaign)
+    resultVisual = { report, elapsed: 0 }
+  }
   if (!paused) {
-    const alive = new Set(state.units)
-    for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
+    fallen.push(...state.deaths.splice(0))
     for (let index = fallen.length - 1; index >= 0; index--)
       if (
-        state.time + (resultVisual?.elapsed ?? 0) - fallen[index].at >
-        Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
+        fallen[index].visualStarted &&
+        fallen[index].visualAge > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
       )
         fallen.splice(index, 1)
     let impact = false,
@@ -992,23 +1041,24 @@ function tick(now) {
     if (impact) tone('hit')
     if (shot) tone('shot')
   }
-  if (state.result && !resultVisual) {
-    resultVisual = {
-      elapsed: 0,
-      duration:
-        Math.max(
-          0,
-          ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (state.time - unit.at)),
-          ...state.effects.map((effect) => effect.life)
-        ) + 0.15
-    }
-  }
+  if (resultStarted)
+    resultVisual.duration =
+      Math.max(
+        0,
+        ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (unit.visualAge ?? 0)),
+        ...state.effects.map((effect) => effect.life)
+      ) + 0.15
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
   if (!document.hidden) draw()
-  if (state.result && !shown && resultVisual.elapsed >= resultVisual.duration) {
+  if (
+    state.result &&
+    !shown &&
+    fallen.every((ghost) => ghost.visualStarted) &&
+    resultVisual.elapsed >= resultVisual.duration
+  ) {
     shown = true
-    finish()
+    finish(resultVisual.report)
   }
   reconciling = false
   if (elapsed.pending && !state.result) {

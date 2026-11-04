@@ -12,7 +12,11 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
-for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 }
+]) {
   test(`mobile HUD fits ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await page.goto('/')
@@ -36,6 +40,58 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
 }
 
 for (const width of [1280, 390]) {
+  test(`employment history announces a personal meeting at ${width}px`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
+    const page = await context.newPage()
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate(async (hook) => {
+      const path = '/src/data.ts'
+      const { EVENTS } = await import(path)
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+      player.weapons = [{ id: 'w_work', lv: 2, cd: 100, held: 0, damage: 0 }]
+      const career = EVENTS.findIndex((event: { boss?: string }) => event.boss === 'b_shukatsu')
+      game.state.eventIndex = career
+      game.state.time = EVENTS[career].at - 0.01
+      game.tick(0.02)
+      player.careerPending = 0
+      player.choices = []
+      game.state.enemies = []
+      game.state.fx = []
+      const meeting = EVENTS.findIndex((event: { swarm?: string }) => event.swarm === 'meeting')
+      game.state.eventIndex = meeting
+      game.state.time = EVENTS[meeting].at - 0.01
+      game.tick(0.02)
+    })
+    await expect(page.locator('#feed')).toContainText('P1の仕事の試練：会議、会議、また会議')
+    await expect(page.locator('#banner .banner-title')).toHaveText('仕事の試練：会議、会議、また会議…', {
+      timeout: 8000
+    })
+    const titleBounds = await page.locator('#banner .banner-swarm').evaluate((banner) => {
+      const animation = banner.getAnimations()[0]
+      animation.pause()
+      const duration = Number(animation.effect!.getComputedTiming().duration)
+      const bounds = [0.2, 0.5, 0.8].map((progress) => {
+        animation.currentTime = duration * progress
+        const title = banner.querySelector('.banner-title')!.getBoundingClientRect()
+        return { progress, left: title.left, right: title.right }
+      })
+      animation.currentTime = duration / 2
+      return bounds
+    })
+    for (const { progress, left, right } of titleBounds) {
+      expect(left, `banner at ${progress}`).toBeGreaterThanOrEqual(0)
+      expect(right, `banner at ${progress}`).toBeLessThanOrEqual(width)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`meeting-${width}.png`) })
+    await context.close()
+  })
+
   test(`weapon exchange explains each candidate at ${width}px`, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
     const page = await context.newPage()
@@ -498,6 +554,89 @@ test('synergy details show activation and release from the local hand', async ({
 })
 
 for (const width of [1280, 390]) {
+  test(`downed players retain their own outfits at ${width}px`, async ({ page }, testInfo) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate(async (hook) => {
+      const renderPath = '/src/render.ts'
+      const dataPath = '/src/data.ts'
+      const { Renderer } = await import(renderPath)
+      const { EVENTS, timeAtAge } = await import(dataPath)
+      const observed = window as unknown as { deathAppearances: Record<string, string> }
+      observed.deathAppearances = {}
+      const original = Renderer.prototype.player
+      Renderer.prototype.player = function (
+        player: { id: string; weapons: [string, number, number][] },
+        ...args: unknown[]
+      ) {
+        original.call(this, player, ...args)
+        const death = this.deaths.get(player.id)
+        observed.deathAppearances[player.id] = `${death?.body ?? 'alive'}|${player.weapons[0]?.[0] ?? ''}`
+      }
+      const game = hook.game as unknown as Game
+      game.targetPopulation = () => 0
+      for (let index = 0; index < 6; index++) game.addPlayer(`outfit-${index}`, 'p_gone')
+      game.state.time = timeAtAge(30)
+      game.state.eventIndex = EVENTS.length
+      game.state.enemies = []
+      const locations = [
+        [-90, -90],
+        [0, -130],
+        [90, -90],
+        [-90, 90],
+        [0, 130],
+        [90, 90]
+      ]
+      const weapons = ['w_sports', 'w_study', 'w_invest', 'w_friend', 'w_love', 'w_hobby']
+      game.state.players.forEach((player, index) => {
+        player.birthPick = false
+        player.pending = 0
+        player.choices = []
+        player.x = 1000 + (index ? locations[index - 1][0] : 0)
+        player.y = 1000 + (index ? locations[index - 1][1] : 0)
+        if (!index) return
+        player.weapons = [{ id: weapons[index - 1], lv: 4, cd: 100, held: 0, damage: 0 }]
+        player.downed = true
+        player.hp = 0
+        player.killer = 'germ'
+      })
+    })
+    const appearances = () =>
+      page.evaluate(() => (window as unknown as { deathAppearances: Record<string, string> }).deathAppearances)
+    await expect.poll(appearances).toMatchObject({
+      'outfit-0': 'adult:soccer|w_sports',
+      'outfit-1': 'adult:bureaucrat|w_study',
+      'outfit-2': 'adult:entrepreneur|w_invest',
+      'outfit-3': 'adult:social|w_friend',
+      'outfit-4': 'adult:romantic|w_love',
+      'outfit-5': 'adult:creative|w_hobby'
+    })
+    await expect(page.locator('#banner')).toBeHidden({ timeout: 6000 })
+    await page.screenshot({ path: testInfo.outputPath(`downed-outfits-${width}.png`) })
+    await handle.evaluate((hook) => {
+      const player = (hook.game as unknown as Game).state.players[1]
+      player.weapons = [{ id: 'w_invest', lv: 4, cd: 100, held: 0, damage: 0 }]
+    })
+    await expect.poll(async () => (await appearances())['outfit-0']).toBe('adult:soccer|w_invest')
+    await handle.evaluate((hook) => {
+      const player = (hook.game as unknown as Game).state.players[1]
+      player.downed = false
+      player.hp = 100
+    })
+    await expect.poll(async () => (await appearances())['outfit-0']).toBe('alive|w_invest')
+    await handle.evaluate((hook) => {
+      const player = (hook.game as unknown as Game).state.players[1]
+      player.downed = true
+      player.hp = 0
+    })
+    await expect.poll(async () => (await appearances())['outfit-0']).toBe('adult:entrepreneur|w_invest')
+    expect(errors).toEqual([])
+  })
+
   test(`social romantic and creative styles render independently during play at ${width}px`, async ({
     page
   }, testInfo) => {
@@ -814,11 +953,8 @@ test('蒸発済み starts with a free early talent pick and then plays on', asyn
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   await expect(page.locator('#hud')).toBeVisible()
   const handle = await life(page)
-  await handle.evaluate((l) => {
-    const game = l.game as unknown as { removePlayer(id: string): void; addPlayer(id: string, parent: string): void }
-    game.removePlayer(l.localId)
-    game.addPlayer(l.localId, 'p_gone')
-  })
+  expect(await handle.evaluate((l) => (l.game as unknown as Game).state.players[0].parent)).toBe('p_gone')
+  await expect(page.locator('#weapons > *')).toHaveCount(0)
   await expect(page.locator('#levelup')).toBeVisible()
   await expect(page.locator('#cards .card')).toHaveCount(3)
   await expect(page.locator('#levelup-note')).toContainText('自分の力で生きていく')
@@ -954,7 +1090,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v7',
+      app: 'life-survivors-v8',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -973,9 +1109,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v7', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {
@@ -1471,9 +1607,15 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#move-hint')).toBeVisible()
   const handle = await life(page)
+  // A life without parents deals its first hand on the first tick: clear it and anything still to deal.
   await handle.evaluate((l) => {
-    for (const p of l.game.state.players) p.choices = []
+    for (const p of (l.game as unknown as Game).state.players) {
+      p.choices = []
+      p.pending = 0
+      p.birthPick = false
+    }
   })
+  await expect(page.locator('#levelup')).toBeHidden()
 
   const cdp = await context.newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })
@@ -1481,8 +1623,10 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
   for (let i = 1; i <= 8; i++)
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 + i * 20, y: 600 }] })
   await expect(page.locator('#stick')).toHaveJSProperty('hidden', false)
-  await expect(page.locator('#stick')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 200, 600)')
   expect(baseTransform).toBe('translate(200px, 600px)')
+  const baseX = await page.locator('#stick').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).m41)
+  expect(baseX).toBeGreaterThan(200)
+  expect(baseX).toBeLessThan(240)
   await expect(page.locator('#stick-knob')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 56, 0)')
   await expect(page.locator('#move-hint')).toBeHidden()
   const x0 = await handle.evaluate((l) => l.view.players[0].x)

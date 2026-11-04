@@ -91,7 +91,7 @@ export const POOPS = [
   }
 ]
 
-/** Special units: things that upset the stomach. Strong at first, but they rarely grow. */
+/** Special units: things that upset the stomach. Strong at first and grow with the campaign. */
 export const SPECIALS = [
   {
     key: 'aircon',
@@ -108,7 +108,7 @@ export const SPECIALS = [
   {
     key: 'ramen',
     name: 'ラーメン',
-    cost: 120,
+    cost: 116,
     hp: 500,
     atk: 56,
     range: 36,
@@ -159,7 +159,7 @@ export const SPECIALS = [
     key: 'yakiniku',
     name: '焼肉',
     cost: 225,
-    hp: 560,
+    hp: 700,
     atk: 51,
     range: 40,
     speed: 26,
@@ -183,7 +183,7 @@ export const SPECIALS = [
     key: 'curry',
     name: '激辛カレー',
     cost: 190,
-    hp: 380,
+    hp: 430,
     atk: 105,
     range: 38,
     speed: 30,
@@ -200,19 +200,19 @@ export const SPECIALS = [
     range: 36,
     speed: 28,
     period: 1.1,
-    cooldown: 7,
+    cooldown: 11.25,
     line: 'ゴロゴロ押し返す'
   },
   {
     key: 'oyster',
     name: '生ガキ',
-    cost: 180,
+    cost: 175,
     hp: 375,
-    atk: 165,
+    atk: 170,
     range: 40,
     speed: 34,
     period: 1.5,
-    cooldown: 15,
+    cooldown: 18.75,
     crit: 0.225,
     line: '当たると危険。一発逆転'
   },
@@ -319,7 +319,7 @@ const MECHANICS = {
     'single',
     '食あたり',
     '重なる毒を与える。会心あり。',
-    { poisonEffect: 4, poisonInterval: 1, poisonDamage: 0.1, poisonStacks: 3 }
+    { poisonEffect: 5, poisonInterval: 1, poisonDamage: 0.125, poisonStacks: 3 }
   ],
   ice: ['single', '凍結', 'ときどき敵を凍らせて止める。', { freeze: 1, freezeChance: 0.375 }],
   energy: ['single', 'カフェイン加速', '同じ敵へ撃ち続けるほど連射が速くなる。', { caffeine: true }],
@@ -482,6 +482,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     home: STAGES[stage].home,
     enemy: STAGES[stage].enemy,
     units: [],
+    deaths: [],
     effects: [],
     projectiles: [],
     zones: [],
@@ -509,7 +510,7 @@ export const UPGRADE_ALARM = 0.07
  * `perLevel` extra cleaners per level above 1, so investing before the morning is held costs more than it earns.
  */
 export const OPENING = { at: [10, 30], size: (stage) => 4 + Math.floor(stage / 10), perLevel: 6 }
-const MAX_UNITS = 24
+export const MAX_UNITS = 24
 /** side 1 summons deck slot `index`; side -1 summons ENEMIES[index] scaled to the stage. */
 export function summon(s, index, side = 1) {
   const t = side === 1 ? s.deck[index] : ENEMIES[index]
@@ -1078,6 +1079,7 @@ function tick(s, dt) {
 function settleDeaths(s) {
   s.units = s.units.filter((u) => {
     if (u.hp > 0) return true
+    s.deaths.push({ ...u, at: s.time })
     if (u.side === -1) {
       s.gold = Math.min(999, s.gold + (u.bounty ?? STAGES[s.stage].reward))
       s.kills++

@@ -26,6 +26,242 @@ const arena = () => {
   return { game, players }
 }
 
+describe('fixed meeting swarm', () => {
+  const meetingIndex = EVENTS.findIndex((entry) => entry.swarm === 'meeting')
+  const meeting = (game: Game) => {
+    game.state.enemies = []
+    game.state.eventIndex = meetingIndex
+    game.state.time = EVENTS[meetingIndex].at - 0.001
+    game.tick(0.001)
+  }
+  const logs = (game: Game) => game.state.log.filter((entry) => !entry.to && entry.text.includes('会議、会議'))
+
+  test('unemployed and alternative careers do not trigger the fixed swarm', () => {
+    const { game, players } = arena()
+    for (const [index, weapon] of ['w_work', 'w_sports', 'w_invest', 'w_hobby', 'w_friend'].entries()) {
+      equip(players[index], weapon, index === 0 ? 1 : 4)
+    }
+    event(game, 'b_shukatsu')
+    for (const player of players) equip(player, 'w_work', 8)
+    meeting(game)
+    expect(logs(game)).toEqual([])
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(0)
+    game.spawnEnemy('meeting')
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(true)
+  })
+
+  test('mixed careers use personal employment history, including downed workers, only once', () => {
+    const { game, players } = arena()
+    equip(players[0], 'w_work', 2)
+    equip(players[1], 'w_sports', 4)
+    event(game, 'b_shukatsu')
+    equip(players[0], 'w_hobby', 8)
+    equip(players[1], 'w_work', 8)
+    players[0].downed = true
+    players[0].hp = 0
+    meeting(game)
+    expect(logs(game).map((entry) => entry.text)).toEqual([
+      `${players[0].name}の仕事の試練：${EVENTS[meetingIndex].text}`
+    ])
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+      Math.round(EVENTS[meetingIndex].count! * game.playerFactor())
+    )
+    const enemyIds = game.state.enemies.map((enemy) => enemy.id)
+    game.tick(0.001)
+    expect(logs(game)).toHaveLength(1)
+    expect(game.state.enemies.map((enemy) => enemy.id)).toEqual(enemyIds)
+  })
+
+  test('departed workers and reused IDs cannot trigger or replay the swarm', () => {
+    const { game, players } = arena()
+    equip(players[0], 'w_work', 2)
+    event(game, 'b_shukatsu')
+    game.removePlayer(players[0].id)
+    meeting(game)
+    const newcomer = game.addPlayer(players[0].id, 'p_free')!
+    equip(newcomer, 'w_work', 8)
+    game.tick(0.001)
+    expect(logs(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(false)
+  })
+
+  test.each([-0.001, 0, 0.001])('employment history respects joining at boundary offset %s', (offset) => {
+    const { game, players } = arena()
+    equip(players[0], 'w_work', 2)
+    event(game, 'b_shukatsu')
+    players[0].joinedAt = EVENTS[meetingIndex].at + offset
+    meeting(game)
+    expect(logs(game)).toHaveLength(offset < 0 ? 1 : 0)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+      offset < 0 ? Math.round(EVENTS[meetingIndex].count! * game.playerFactor()) : 0
+    )
+  })
+
+  test.each([0, 0.001])('actual newcomers at boundary offset %s have no employment history', (offset) => {
+    const { game, players } = arena()
+    game.removePlayer(players[0].id)
+    event(game, 'b_shukatsu')
+    game.state.eventIndex = meetingIndex
+    game.state.time = EVENTS[meetingIndex].at + offset
+    const newcomer = game.addPlayer('newcomer', 'p_free')!
+    equip(newcomer, 'w_work', 8)
+    game.tick(0.001)
+    expect(logs(game)).toEqual([])
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(false)
+    expect(newcomer.history).toEqual([])
+  })
+
+  test('multiple workers share one swarm and one log naming only the workers', () => {
+    const { game, players } = arena()
+    for (const player of players.slice(0, 2)) equip(player, 'w_work', 2)
+    event(game, 'b_shukatsu')
+    meeting(game)
+    expect(logs(game).map((entry) => entry.text)).toEqual([
+      `${players[0].name}・${players[1].name}の仕事の試練：${EVENTS[meetingIndex].text}`
+    ])
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+      Math.round(EVENTS[meetingIndex].count! * game.playerFactor())
+    )
+  })
+})
+
+describe('social life paths', () => {
+  test('late joins skip past boundaries and social ownership does not create a family', () => {
+    for (const boss of ['b_shukatsu', 'b_layoff']) {
+      for (const offset of [0, 1]) {
+        const game = new Game(123)
+        game.addPlayer('anchor', 'p_free')
+        const index = EVENTS.findIndex((entry) => entry.boss === boss)
+        game.state.eventIndex = index
+        game.state.time = EVENTS[index].at + offset
+        const late = game.addPlayer('late', 'p_free')!
+        equip(late, 'w_friend', 8)
+        game.tick(0.001)
+        expect(late.history).toEqual([])
+        expect(late.careerPending).toBe(0)
+      }
+    }
+    const { game, players } = arena()
+    players[0].weapons = ['w_friend', 'w_sns', 'w_pet'].map((id) => ({ id, lv: 8, cd: 100, held: 0, damage: 0 }))
+    event(game, 'b_wedding')
+    expect(players[0].married).toBe(false)
+    expect(players[0].hasChild).toBe(false)
+    expect(players[0].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_wedding[1])
+  })
+
+  test.each(['w_friend', 'w_sns', 'w_pet'])('%s qualifies personally and preserves past experience', (weapon) => {
+    for (const level of [3, 4]) {
+      const { game, players } = arena()
+      equip(players[0], weapon, level)
+      players[0].downed = true
+      players[0].hp = 0
+      event(game, 'b_shukatsu')
+      expect(players[0].history[0].outcome).toBe(LIFE_OUTCOMES.b_shukatsu[level === 4 ? 6 : 2])
+      expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
+      expect(players.slice(1).every((player) => player.careerPending === 0)).toBe(true)
+      const early = structuredClone(players[0].history)
+      equip(players[0], weapon, 3)
+      event(game, 'b_layoff')
+      expect(players[0].careerPending).toBe(level === 4 ? 1 : 0)
+      expect(players[0].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[level === 4 ? 16 : 2])
+      expect(players[0].history.slice(0, -1)).toEqual(early)
+      expect(players[0].hp).toBe(0)
+      expect(players[0].downed).toBe(true)
+      expect(players[0].married).toBeFalsy()
+      expect(toView(game.state).players.every((player) => !player.history && !player.talents)).toBe(true)
+      game.state.phase = 'lost'
+      const view = JSON.parse(JSON.stringify(toView(game.state)))
+      expect(readView(view)).toBeTruthy()
+      expect(readView({ ...view, v: 7 })).toBeUndefined()
+      view.players[0].history.at(-1).outcome = LIFE_OUTCOMES.b_layoff[level === 4 ? 17 : 15]
+      expect(readView(view)).toBeUndefined()
+    }
+  })
+
+  test.each(['w_friend', 'w_sns', 'w_pet'])('%s continues or starts later without rewriting history', (weapon) => {
+    for (const earlyWeapon of [weapon, 'w_work', 'w_sports', 'w_invest', 'w_hobby', undefined]) {
+      const { game, players } = arena()
+      if (earlyWeapon) equip(players[0], earlyWeapon, 4)
+      event(game, 'b_shukatsu')
+      const early = structuredClone(players[0].history)
+      equip(players[0], weapon, 4)
+      event(game, 'b_layoff')
+      expect(players[0].careerPending).toBe(2)
+      expect(players[0].history.at(-1)!.outcome).toBe(LIFE_OUTCOMES.b_layoff[earlyWeapon === weapon ? 15 : 17])
+      expect(players[0].history.slice(0, -1)).toEqual(early)
+      const history = structuredClone(players[0].history)
+      event(game, 'b_layoff')
+      expect(players[0].history).toEqual(history)
+      expect(players[0].careerPending).toBe(0)
+      game.state.phase = 'lost'
+      expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    }
+  })
+
+  test('eight personal histories survive downing but not exit or reused IDs', () => {
+    const { game, players } = arena()
+    const weapons = ['w_friend', 'w_sns', 'w_pet']
+    players.forEach((player, index) => equip(player, weapons[index % 3], 4))
+    event(game, 'b_shukatsu')
+    expect(players.every((player) => player.careerPending === 1)).toBe(true)
+    game.removePlayer(players[7].id)
+    const rejoined = game.addPlayer(players[7].id, 'p_free')!
+    expect(rejoined.history).toEqual([])
+    expect(rejoined.careerPending).toBe(0)
+    equip(rejoined, 'w_pet', 4)
+    players[0].downed = true
+    players[0].hp = 0
+    players.slice(0, 7).forEach((player, index) => equip(player, weapons[index % 3], index % 2 ? 3 : 4))
+    event(game, 'b_layoff')
+    expect(players.slice(0, 7).map((player) => player.careerPending)).toEqual([2, 1, 2, 1, 2, 1, 2])
+    expect(rejoined.history).toHaveLength(1)
+    expect(rejoined.history[0].outcome).toBe(LIFE_OUTCOMES.b_layoff[17])
+    expect(players[0].hp).toBe(0)
+    players[0].downed = false
+    players[0].hp = players[0].maxHp
+    game.tick(0.001)
+    expect(players[0].choices.length).toBeGreaterThan(0)
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'b_layoff')).toBe(false)
+  })
+
+  test.each(['w_work', 'w_sports', 'w_invest', 'w_hobby'])(
+    'competes with %s by evolution and definition order',
+    (competitor) => {
+      for (const weapon of ['w_friend', 'w_sns', 'w_pet']) {
+        const social = TALENT_WEAPONS.find(({ id }) => id === weapon)!
+        const other = TALENT_WEAPONS.find(({ id }) => id === competitor)!
+        for (const [socialLevel, otherLevel, passive] of [
+          [5, 4, undefined],
+          [4, 5, undefined],
+          [4, 4, undefined],
+          [8, 8, social.evolve!.passive],
+          [8, 8, other.evolve!.passive]
+        ] as const) {
+          const { game, players } = arena()
+          players[0].weapons = [
+            { id: competitor, lv: otherLevel, cd: 100, held: 0, damage: 0 },
+            { id: weapon, lv: socialLevel, cd: 100, held: 0, damage: 0 }
+          ]
+          players[0].passives = passive ? [{ id: passive, lv: 1 }] : []
+          const socialScore = socialLevel + (socialLevel === 8 && passive === social.evolve!.passive ? 8 : 0)
+          const otherScore = otherLevel + (otherLevel === 8 && passive === other.evolve!.passive ? 8 : 0)
+          const wins =
+            socialScore > otherScore ||
+            (socialScore === otherScore && TALENT_WEAPONS.indexOf(social) < TALENT_WEAPONS.indexOf(other))
+          event(game, 'b_shukatsu')
+          expect(players[0].history[0].outcome === LIFE_OUTCOMES.b_shukatsu[6]).toBe(wins)
+          expect(
+            careerFor({
+              weapons: players[0].weapons.map(({ id, lv }) => [id, lv, 0]),
+              passives: players[0].passives.map(({ id, lv }) => [id, lv])
+            }) === 'social'
+          ).toBe(wins)
+        }
+      }
+    }
+  )
+})
+
 describe('later career changes', () => {
   test.each([
     ['undecided', 13],
@@ -58,7 +294,7 @@ describe('later career changes', () => {
     expect(readView(view)).toBeUndefined()
   })
 
-  test.each(['w_study', 'w_reading', 'w_overtime', 'w_gamble', 'w_friend', 'w_love'])(
+  test.each(['w_study', 'w_reading', 'w_overtime', 'w_gamble', 'w_love'])(
     '%s alone cannot qualify a later career',
     (weapon) => {
       const { game, players } = arena()
@@ -246,8 +482,8 @@ describe('education and career history', () => {
     }
   )
 
-  test('social and romantic appearances do not grant or displace career qualifications and rewards', () => {
-    for (const talent of ['w_friend', 'w_sns', 'w_pet', 'w_love', 'w_beauty', 'w_ring', 'w_perfume']) {
+  test('romantic appearances do not grant or displace career qualifications and rewards', () => {
+    for (const talent of ['w_love', 'w_beauty', 'w_ring', 'w_perfume']) {
       for (const qualified of [undefined, 'w_work', 'w_sports', 'w_invest']) {
         const run = (withAppearance: boolean) => {
           const game = new Game(123)

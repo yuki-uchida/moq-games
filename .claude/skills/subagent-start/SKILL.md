@@ -21,6 +21,8 @@ description: サブエージェント（Agent ツール / T3 delegate_task）を
 
 ## 推論レベル
 
+GPT-6.1 Sol で high 以上が必要な場合は GPT-6.1 Terra の medium に任せる。Claude Sonnet で high 以上が必要な場合は Claude Opus 5.5 の medium に任せる。
+
 自分でタスク難易度を判断して設定する。**迷ったら一段低いレベルにする。**
 
 | レベル     | 目安                                                                                |

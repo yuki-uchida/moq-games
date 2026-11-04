@@ -23,7 +23,7 @@ function expectCurrentStats(player: Player, shot: Shot) {
   expect(shot.maxLife).toBeCloseTo(stats.duration)
 }
 
-test('pet reactivation adds and removes synergy only for its owner', () => {
+test('new pets use current synergy without changing existing pets or other owners', () => {
   const game = new Game(5)
   const player = equip(game, 'a')
   const other = equip(game, 'b')
@@ -38,18 +38,21 @@ test('pet reactivation adds and removes synergy only for its owner', () => {
     other.weapons[0].cd = 0
     game.tick(0.01)
     expect(game.state.shots).toContain(pet)
-    expect(pet.r).toBeCloseTo(baseRadius * (active ? 1.1 : 1))
-    expectCurrentStats(player, pet)
+    const newest = game.state.shots.filter((shot) => shot.owner === player.id).at(-1)!
+    expect(pet.r).toBeCloseTo(baseRadius)
+    expect(newest.r).toBeCloseTo(baseRadius * (active ? 1.1 : 1))
+    expectCurrentStats(player, newest)
     expectCurrentStats(other, otherPet)
     expect(otherPet.r).toBeCloseTo(baseRadius)
   }
 })
 
-test('pet reactivation updates level and passive stats without resetting ongoing state', () => {
+test('new pets use current level and passive stats without changing existing pets', () => {
   const game = new Game(7)
   const player = equip(game, 'a')
   game.tick(1)
   const pet = game.state.shots[0]
+  const original = { r: pet.r, damage: pet.damage, spin: pet.spin, maxLife: pet.maxLife }
   expect(game.state.enemies.length).toBeGreaterThan(0)
   pet.target = game.state.enemies[0]
   pet.angle = Math.atan2(pet.target.y - pet.y, pet.target.x - pet.x)
@@ -75,13 +78,14 @@ test('pet reactivation updates level and passive stats without resetting ongoing
     player.weapons[0].cd = 0
     game.tick(0)
     expect(game.state.shots).toContain(pet)
-    expectCurrentStats(player, pet)
-    expect(pet.life).toBe(pet.maxLife)
+    expect(pet).toMatchObject(original)
     expect(pet).toMatchObject(ongoing)
     expect(pet.target).toBe(ongoing.target)
     expect(pet.hits).toBe(ongoing.hits)
     expect(pet.hits.get(-1)).toBe(100)
-    expect(game.state.shots.filter((shot) => shot.kind === 'pet')).toHaveLength(5)
+    const pets = game.state.shots.filter((shot) => shot.kind === 'pet')
+    expect(pets).toHaveLength(upgraded ? 6 : 7)
+    expectCurrentStats(player, pets.at(-1)!)
   }
 })
 
@@ -133,3 +137,34 @@ test('reacquiring a lower-level pet lets excess dogs expire', () => {
   }
   expect(game.state.shots.filter((shot) => shot.weapon === 'w_pet')).toHaveLength(1)
 })
+
+test.each(['w_pet', 'w_friend', 'p_over'])(
+  '%s overlaps activations when duration exceeds cooldown, then old shots expire',
+  (id) => {
+    const game = new Game(5)
+    const player = equip(game, 'a', [id])
+    player.passives = [{ id: 'p_curious', lv: 5 }]
+    game.tick(0)
+    const first = game.state.shots.filter((shot) => shot.weapon === id)
+    const duration = first[0].life
+    const cooldown = player.weapons[0].cd
+    expect(duration).toBeGreaterThan(cooldown)
+    for (let frame = 0; frame < Math.ceil((cooldown + 0.01) * 60); frame++) {
+      player.hp = player.maxHp
+      game.state.enemies = []
+      game.tick(1 / 60)
+    }
+    const overlapping = game.state.shots.filter((shot) => shot.weapon === id)
+    expect(overlapping).toHaveLength(first.length * 2)
+    expect(first.every((shot) => overlapping.includes(shot))).toBe(true)
+    player.weapons[0].cd = 100
+    for (let frame = 0; frame < Math.ceil((duration - cooldown + 0.02) * 60); frame++) {
+      player.hp = player.maxHp
+      game.state.enemies = []
+      game.tick(1 / 60)
+    }
+    const remaining = game.state.shots.filter((shot) => shot.weapon === id)
+    expect(remaining).toHaveLength(first.length)
+    expect(first.every((shot) => !remaining.includes(shot))).toBe(true)
+  }
+)

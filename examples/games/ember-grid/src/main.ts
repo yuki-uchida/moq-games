@@ -292,10 +292,11 @@ for (let y = 0; y < size; y++)
     cell.tabIndex = x === 0 && y === 0 ? 0 : -1
     cell.style.cssText = `--x:${x};--y:${y}`
     cell.onclick = (event) => {
-      if (suppressClick) {
+      if (suppressClick && event.detail > 0) {
         suppressClick = false
         return
       }
+      suppressClick = false
       // pointerdown carries the input type everywhere; keyboard activation (detail 0) bypasses the chooser.
       if (touchTap && event.detail > 0 && touchAssist.getAttribute('aria-pressed') === 'true') chooseNearby(x, y)
       else void choose(x, y)
@@ -308,9 +309,10 @@ for (let y = 0; y < size; y++)
       }
     }
     cell.onpointerdown = (event) => {
+      clearTimeout(longPress)
       touchTap = event.pointerType === 'touch'
-      if (event.pointerType !== 'touch') return
       suppressClick = false
+      if (event.pointerType !== 'touch' || !event.isPrimary) return
       touchStart = { x: event.clientX, y: event.clientY }
       const target = game.units.find((unit) => unit.hp > 0 && unit.x === x && unit.y === y)
       if (target)
@@ -528,8 +530,7 @@ const cellAt = (cell: string) => {
 let framed = -1,
   focused = ''
 /**
- * Each battle opens on everyone; selecting an ally moves in on its moves (after moving, its reach);
- * once it is spent or released, the allies still able to act come back into view.
+ * Each battle opens on everyone; selecting an ally reveals its moves (after moving, its reach).
  */
 function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach: Set<string>) {
   if (framed !== generation) {
@@ -539,11 +540,8 @@ function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach:
   }
   const focus = unit && game.phase === 'ally' ? `${unit.id}:${unit.x},${unit.y}:${unit.moved}:${unit.done}` : ''
   if (focus === focused) return
-  const previous = focused
   focused = focus
   if (unit && focus && !unit.done) camera.focus([unit, ...[...legal.keys(), ...(unit.moved ? reach : [])].map(cellAt)])
-  else if (previous && game.phase === 'ally')
-    camera.reveal(game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !u.done))
 }
 /** Preview an enemy's move and strike range while it is hovered or focused. */
 function hover(x: number, y: number) {

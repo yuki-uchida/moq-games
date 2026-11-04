@@ -158,7 +158,7 @@ test('ties use definition order for every pair, regardless of inventory order', 
 })
 
 test('appearance-only styles never rank for career events, even evolved or explicitly eligible', () => {
-  const existing = ['soccer', 'bureaucrat', 'entrepreneur', 'creative'] as const
+  const existing = ['soccer', 'bureaucrat', 'entrepreneur', 'creative', 'social'] as const
   for (const weapon of TALENT_WEAPONS.filter(
     ({ id }) => !existing.includes(appearances[id] as (typeof existing)[number])
   )) {

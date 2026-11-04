@@ -1,11 +1,12 @@
 import { bossSheets } from './bosses'
-import { careerSheets } from './careers'
+import { careerSheetFrames, careerSheets } from './careers'
 import { BOSSES2_NO_FLIP, bosses2Sheets, bulletSheet } from './bosses2'
 import { ROSTER2_NO_FLIP, roster2Sheets } from './roster2'
 import { ROSTER3_NO_FLIP, roster3Sheets } from './roster3'
 import { weaponSheets } from './weapons'
 import { bullySheet, expenseSheet, flash, germSheet, hsBossSheet, jobSheet, rosterSheets } from './enemies'
-import { deathSheets } from './deaths'
+import { careerDeathSheet, deathSheets } from './deaths'
+import { familySheets } from './family'
 import { peopleSheets } from './people'
 import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
 import type { Sheet } from './sheet'
@@ -25,6 +26,7 @@ export const SHEETS: Record<string, () => Sheet> = {
   'player:adult': adultSheet,
   'player:elder': elderSheet,
   'player:bed': bedSheet,
+  ...familySheets,
   'enemy:germ': withFlash(germSheet),
   'enemy:bully': withFlash(bullySheet),
   'enemy:expense': withFlash(expenseSheet),
@@ -50,10 +52,36 @@ export const SHEETS: Record<string, () => Sheet> = {
 }
 
 const cache = new Map<string, Sheet>()
+let partial: { id: string; frames: Generator<void, Sheet>; at: number } | undefined
+
+export function retainAppearancePrewarm(ids: string[]) {
+  if (partial && (!ids.includes(partial.id) || performance.now() - partial.at > 250)) partial = undefined
+}
+
+export function prewarmAppearanceFrame(id: string): boolean {
+  if (cache.has(id) || !careerSheets[id]) return true
+  const now = performance.now()
+  if (!partial || partial.id !== id || now - partial.at > 250) {
+    const [, body, career] = id.split(':')
+    partial = { id, frames: careerSheetFrames(body, career), at: now }
+  }
+  partial.at = now
+  const step = partial.frames.next()
+  if (!step.done) return false
+  cache.set(id, step.value)
+  partial = undefined
+  return true
+}
+
 export function sheet(id: string): Sheet {
+  if (partial?.id === id) partial = undefined
   let found = cache.get(id)
   if (!found) {
-    found = SHEETS[id]()
+    const [kind, body, career] = id.split(':')
+    found =
+      kind === 'death' && career && careerSheets[`player:${body}:${career}`]
+        ? careerDeathSheet(body, career)
+        : SHEETS[id]()
     cache.set(id, found)
   }
   return found
