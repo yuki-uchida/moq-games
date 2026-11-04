@@ -20,6 +20,7 @@ test('retired enemies retain their original definitions and drawable sprites', (
     { id: 'worksheet', name: 'プリント', hp: 6, behavior: 'chase' },
     { id: 'dodgeball', name: 'ドッジボール', hp: 24, behavior: 'shooter' },
     { id: 'crush', name: '片思い', hp: 34, behavior: 'circler' },
+    { id: 'unrequited_worry', name: '片思いの悩み', hp: 34, behavior: 'circler' },
     { id: 'drinking', name: '飲み会', hp: 46, behavior: 'shooter' },
     { id: 'scholarship', name: '奨学金', hp: 160, behavior: 'tank' },
     { id: 'meeting', name: '会議', hp: 220, behavior: 'tank' },
