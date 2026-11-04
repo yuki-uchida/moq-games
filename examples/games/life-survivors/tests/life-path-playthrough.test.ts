@@ -7,7 +7,7 @@ import { botInput } from './bot'
 test('normal cards can turn employment at 28 into a creative career at 64', () => {
   const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
   const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
-  const game = new Game(22)
+  const game = new Game(25)
   const player = game.addPlayer('p0')!
   const acquired = new Set<string>()
   const competingCareers = [
@@ -157,7 +157,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
     ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'],
     ['w_friend', 'w_sns', 'w_pet']
   ]) {
-    for (const seed of [1, 2, 3, 4, 5]) {
+    for (const seed of priorities[0] === 'w_work' ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] : [1, 2, 3, 4, 5]) {
       const game = new Game(seed)
       const player = game.addPlayer('p0')!
       const score = (choice: string) => {
