@@ -22,6 +22,7 @@ import {
   WEAPON_BY_ID,
   WEAPON_INDEX,
   WEAPON_SLOTS,
+  isRelationshipEnemy,
   ageAt,
   stageAt,
   type BossPattern,
@@ -440,7 +441,12 @@ export function choiceText(
   age?: number
 ): { icon: string; name: string; text: string; tag: string } {
   if (choice === 'd:yes')
-    return { icon: '💞', name: '交際する', text: 'パートナーと交際を始める。浮気相手が現れる', tag: '' }
+    return {
+      icon: '💞',
+      name: '交際する',
+      text: 'パートナーと交際を始める。浮気相手や束縛するパートナーが現れる',
+      tag: ''
+    }
   if (choice === 'd:no') return { icon: '🌿', name: '交際しない', text: '今は一人で歩む', tag: '' }
   if (choice === 'f:yes')
     return { icon: '🧒', name: '迎える', text: '本人の回復が毎秒HP2→3。子育ての試練が加わる', tag: '' }
@@ -1016,7 +1022,8 @@ export class Game {
     const pool = POOLS.find((entry) => age < entry.untilAge)!.enemies.filter(
       ([id]) =>
         (ENEMY_BY_ID.get(id)!.tag !== 'child' || state.players.some((player) => player.hasChild)) &&
-        (id !== 'temptation' || state.players.some((player) => !player.downed && (player.dating || player.married)))
+        (!isRelationshipEnemy(id) ||
+          state.players.some((player) => !player.downed && (player.dating || player.married)))
     )
     const total = pool.reduce((sum, [, weight]) => sum + weight, 0)
     while (this.spawnDebt >= 1) {
@@ -1058,8 +1065,8 @@ export class Game {
     const state = this.state
     const def = ENEMY_BY_ID.get(kind)
     if (!def) return
-    const eligible = kind === 'temptation' ? state.players.filter((p) => !p.downed && (p.dating || p.married)) : []
-    const anchor = kind === 'temptation' ? eligible[Math.floor(this.rng() * eligible.length)] : this.randomAlive()
+    const eligible = isRelationshipEnemy(kind) ? state.players.filter((p) => !p.downed && (p.dating || p.married)) : []
+    const anchor = isRelationshipEnemy(kind) ? eligible[Math.floor(this.rng() * eligible.length)] : this.randomAlive()
     if (!anchor) return
     if (state.enemies.length >= MAX_ENEMIES + 20) {
       if (def.behavior !== 'boss') return
@@ -1089,7 +1096,7 @@ export class Game {
     const enemy: Enemy = {
       id: state.nextId++,
       kind,
-      ...(kind === 'temptation' ? { targetPlayer: anchor.id } : {}),
+      ...(isRelationshipEnemy(kind) ? { targetPlayer: anchor.id } : {}),
       x,
       y,
       hp,
@@ -1201,8 +1208,8 @@ export class Game {
       enemy.life += dt
       enemy.flash = Math.max(0, enemy.flash - dt)
       enemy.slow = Math.max(0, enemy.slow - dt)
-      const owner = enemy.kind === 'temptation' ? state.players.find((p) => p.id === enemy.targetPlayer) : undefined
-      if (enemy.kind === 'temptation' && (!owner || owner.downed || (!owner.dating && !owner.married))) {
+      const owner = isRelationshipEnemy(enemy.kind) ? state.players.find((p) => p.id === enemy.targetPlayer) : undefined
+      if (isRelationshipEnemy(enemy.kind) && (!owner || owner.downed || (!owner.dating && !owner.married))) {
         enemy.hp = 0
         for (const shot of state.shots) if (shot.target === enemy) shot.target = undefined
         continue
@@ -1354,7 +1361,7 @@ export class Game {
       enemy.kx *= Math.exp(-dt * 8)
       enemy.ky *= Math.exp(-dt * 8)
       for (const player of state.players) {
-        if (enemy.kind === 'temptation' && player.id !== enemy.targetPlayer) continue
+        if (isRelationshipEnemy(enemy.kind) && player.id !== enemy.targetPlayer) continue
         if (player.downed) continue
         const reach = radius + PLAYER_RADIUS
         if ((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2 >= reach * reach) continue

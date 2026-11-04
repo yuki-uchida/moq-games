@@ -30,12 +30,53 @@ test('relationship choice uses the game UI and unlocks the personal rival', asyn
   })
   await expect(page.locator('#levelup-title')).toHaveText('交際の選択')
   await expect(page.locator('#cards')).toContainText('交際する')
-  await expect(page.locator('#cards')).toContainText('浮気相手が現れる')
+  await expect(page.locator('#cards')).toContainText('浮気相手や束縛するパートナーが現れる')
   await page.keyboard.press('Digit1')
   await expect.poll(() => handle.evaluate((hook) => (hook.game as unknown as Game).state.players[0].dating)).toBe(true)
   expect(await handle.evaluate((hook) => (hook.game as unknown as Game).spawnEnemy('temptation')?.targetPlayer)).toBe(
     await handle.evaluate((hook) => hook.localId)
   )
+})
+
+test('the controlling partner is personal in co-op and retires when its owner leaves', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate(async (hook) => {
+    const path = '/src/art/index.ts'
+    const { SHEETS } = await import(path)
+    const dataPath = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(dataPath)
+    const game = hook.game as unknown as Game
+    game.state.time = timeAtAge(30)
+    game.state.eventIndex = EVENTS.length
+    const owner = game.state.players[0]
+    owner.choices = []
+    owner.pending = 0
+    owner.weapons = []
+    owner.dating = true
+    owner.x = 600
+    const other = game.addPlayer('other', 'p_free')!
+    other.choices = []
+    other.pending = 0
+    other.x = 0
+    other.weapons = []
+    const enemy = game.spawnEnemy('controlling_partner', other.x, other.y)!
+    const health = other.hp
+    game.tick(0.01)
+    const tracked = enemy.x > 0
+    const protectedOther = other.hp === health
+    const personal = enemy.targetPlayer === owner.id
+    const former = SHEETS['enemy:unrequited_worry']().move.frames[0].data
+    const distinct = SHEETS['enemy:controlling_partner']().move.frames[0].data.some(
+      (pixel: number, index: number) => pixel !== former[index]
+    )
+    game.removePlayer(owner.id)
+    game.tick(0.01)
+    return { tracked, protectedOther, personal, distinct, retired: !game.state.enemies.includes(enemy) }
+  })
+  expect(result).toEqual({ tracked: true, protectedOther: true, personal: true, distinct: true, retired: true })
+  await expect(page.locator('canvas')).toBeVisible()
 })
 
 test('childhood mischief announces a family challenge', async ({ page }) => {
@@ -1288,7 +1329,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v11',
+      app: 'life-survivors-v12',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1307,9 +1348,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v13', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v13', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {

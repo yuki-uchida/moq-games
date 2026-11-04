@@ -49,7 +49,7 @@ const NEW_WEAPONS: Record<string, { name: string; passive: string; behavior: str
   w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' }
 }
 const NEW_ENEMY_IDS = [
-  'mosquito', 'infection', 'biting_dog', 'picky_eating', 'homework', 'unfinished_worksheet', 'ball_impact', 'pimple', 'unrequited_worry', 'abusive_senpai', 'forced_drinking',
+  'mosquito', 'infection', 'biting_dog', 'picky_eating', 'homework', 'unfinished_worksheet', 'ball_impact', 'pimple', 'controlling_partner', 'abusive_senpai', 'forced_drinking',
   'scholarship_debt', 'deadline', 'endless_meeting', 'spam', 'powerhara', 'train', 'tax', 'tax_arrears', 'nightcry', 'backpain', 'scam',
   'forget', 'loneliness'
 ] // prettier-ignore
@@ -414,7 +414,8 @@ describe('enemies', () => {
       'scholarship',
       'meeting',
       'coin',
-      'b_vaccine'
+      'b_vaccine',
+      'unrequited_worry'
     ])
     const { game } = arena(7)
     for (const id of disabled) {
@@ -480,7 +481,7 @@ describe('enemies', () => {
     expect(at(78)).toEqual(expect.arrayContaining(['backpain', 'scam', 'forget', 'loneliness', 'tax', 'temptation']))
     expect(at(30)).toEqual(
       expect.arrayContaining([
-        'unrequited_worry',
+        'controlling_partner',
         'forced_drinking',
         'deadline',
         'endless_meeting',
@@ -639,7 +640,8 @@ describe('enemies', () => {
 
   test('circlers orbit before they dive', () => {
     const { game, player } = arena(17)
-    const crush = game.spawnEnemy('unrequited_worry', player.x + 200, player.y)!
+    player.dating = true
+    const crush = game.spawnEnemy('controlling_partner', player.x + 200, player.y)!
     crush.timer = 1
     let dived = false
     let orbit = 0
@@ -891,7 +893,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v11', () => {
+describe('protocol v12', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -901,9 +903,9 @@ describe('protocol v11', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v11 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v12 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(11)
+    expect(view.v).toBe(12)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -912,7 +914,7 @@ describe('protocol v11', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v11 field', () => {
+  test('readView rejects old versions and every malformed v12 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
@@ -921,6 +923,7 @@ describe('protocol v11', () => {
     expect(readView({ ...view, v: 8 })).toBeUndefined()
     expect(readView({ ...view, v: 9 })).toBeUndefined()
     expect(readView({ ...view, v: 10 })).toBeUndefined()
+    expect(readView({ ...view, v: 11 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
