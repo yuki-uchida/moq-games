@@ -115,7 +115,7 @@ let bannerVersion = 0
 let pendingHeal: boolean | undefined
 let actingId: string | undefined
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><p id="defeat-note" hidden>再挑戦すると章の開始時の編成に戻り、倒れた仲間も戻ります。</p><div id="report"></div><button id="next">次の任務 ▶</button><button id="retry" hidden>↻ この章に再挑戦</button><button id="retry-missions" class="secondary" hidden>⚑ 任務を選ぶ</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復薬 </span>2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="toast" hidden aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><p id="defeat-note" hidden>再挑戦すると章の開始時の編成に戻り、倒れた仲間も戻ります。</p><div id="report"></div><button id="next">次の任務 ▶</button><button id="retry" hidden>↻ この章に再挑戦</button><button id="retry-missions" class="secondary" hidden>⚑ 任務を選ぶ</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復</span>薬 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -454,6 +454,18 @@ function updateGuide() {
     ready
   })
 }
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+/** Failure feedback visible at every size; the log keeps the screen-reader announcement. */
+function flash(message: string) {
+  game.log = message
+  const toast = document.querySelector<HTMLElement>('#toast')!
+  toast.textContent = message
+  toast.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.hidden = true
+  }, 2400)
+}
 function cancelForecast(restore = true) {
   if (!restore && document.activeElement?.closest('#forecast')) restoreBoardFocus = true
   pending = undefined
@@ -463,12 +475,26 @@ function cancelForecast(restore = true) {
   tutorial.update()
   updateGuide()
 }
+/** Floating forecast (small landscape): scroll so the target sits between the viewport top and the card. */
+function revealAboveCard(unit: Unit, target: Unit, card: HTMLElement) {
+  const limit = card.getBoundingClientRect().top - 4
+  const rect = (u: Unit) => cells[u.y * size + u.x].getBoundingClientRect()
+  const span = (units: Unit[]) => {
+    const rects = units.map(rect)
+    return { top: Math.min(...rects.map((r) => r.top)) - 44, bottom: Math.max(...rects.map((r) => r.bottom)) }
+  }
+  let box = span([unit, target])
+  if (box.bottom - box.top > limit) box = span([target])
+  const delta = box.bottom > limit ? box.bottom - limit : box.top < 0 ? box.top : 0
+  if (delta) window.scrollBy(0, delta)
+}
 function showForecast(unit: Unit, target: Unit, healing: boolean) {
   pending = target.id
   pendingHeal = healing
   forecastTrigger = cells[target.y * size + target.x]
-  const preview = healing ? healForecast(unit, target) : forecast(game, unit, target)
-  const chips = healing ? [] : forecast(game, unit, target).chips
+  const attackPreview = healing ? undefined : forecast(game, unit, target)
+  const preview = attackPreview ?? healForecast(unit, target)
+  const chips = attackPreview?.chips ?? []
   const card = document.querySelector<HTMLElement>('#forecast')!
   card.hidden = false
   card.setAttribute('aria-label', healing ? '回復予測' : '攻撃予測')
@@ -479,6 +505,7 @@ function showForecast(unit: Unit, target: Unit, healing: boolean) {
     targetSrc: ready ? stage.portrait(target.role) : '',
     healing,
     after: preview.after,
+    damage: attackPreview?.amount,
     chips
   })
   card.querySelector('#confirm')!.addEventListener('click', () => void choose(target.x, target.y))
@@ -489,7 +516,11 @@ function showForecast(unit: Unit, target: Unit, healing: boolean) {
     const next = document.activeElement?.id === 'confirm' ? '#cancel-forecast' : '#confirm'
     card.querySelector<HTMLButtonElement>(next)!.focus()
   }
-  card.querySelector<HTMLButtonElement>('#confirm')!.focus()
+  const confirm = card.querySelector<HTMLButtonElement>('#confirm')!
+  if (getComputedStyle(card).position === 'fixed') {
+    confirm.focus({ preventScroll: true })
+    revealAboveCard(unit, target, card)
+  } else confirm.focus()
   tutorial.update()
   updateGuide()
 }
@@ -657,7 +688,7 @@ render = () => {
     game.phase === 'ally' ? game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !finished(game, u)).length : 0
   endButton.innerHTML = `▶ ターン終了${left ? ` <span class="end-left">残り${left}</span>` : ''}`
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
-  potion.innerHTML = `✚ <span class="nav-long">回復薬 </span>${game.potions}`
+  potion.innerHTML = `✚ <span class="nav-long">回復</span>薬 ${game.potions}`
   potion.disabled =
     busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
   document.querySelector('#mission')!.textContent =
@@ -755,7 +786,7 @@ async function choose(x: number, y: number) {
     if (!(await showProgress(token))) return
     busy = false
   } else if (target?.side === 'ally') {
-    if (selected !== target.id) undo = undefined
+    if (undo && undo.id !== target.id) undo = undefined
     cancelForecast(false)
     selected = target.id
     tutorial.advance('select')
@@ -782,12 +813,17 @@ async function choose(x: number, y: number) {
         tutorial.advance('target')
         tutorial.advance('attack')
         changed = true
-      } else
-        game.log = unit.done
-          ? `${unit.name}は行動済みです`
-          : unit.heal
-            ? `${unit.name}は攻撃できません（杖で味方を回復）`
-            : `${target.name}は射程外です（${unit.name}の射程 ${unit.range}）`
+      } else {
+        flash(
+          unit.done
+            ? `${unit.name}は行動済みです`
+            : unit.heal
+              ? `${unit.name}は攻撃できません（杖で回復）`
+              : `${target.name}は射程外です（${unit.name}の射程 ${unit.range}）`
+        )
+        selected = undefined
+        inspected = target.id
+      }
     } else if (move(game, unit, x, y)) {
       tutorial.advance('move')
       cancelForecast(false)
@@ -799,7 +835,8 @@ async function choose(x: number, y: number) {
       changed = true
     } else {
       cancelForecast(false)
-      game.log = 'そのマスには移動できません'
+      selected = undefined
+      flash('選択を解除しました（移動は青いマスへ）')
     }
     if (changed) {
       const token = generation

@@ -2170,3 +2170,75 @@ button:active:not(:disabled) {
     clip-path: inset(50%);
   }
 }
+
+#toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 7;
+  max-width: calc(100% - 24px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #e9ce8d;
+  background: #2a1c12ee;
+  color: #ffe9c4;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  pointer-events: none;
+}
+#toast[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  #toast {
+    animation: toast-in 0.18s ease-out;
+  }
+}
+.reduce-motion #toast {
+  animation: none;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: -50% -8px;
+  }
+}
+@media (max-height: 500px) and (max-width: 599px) {
+  #forecast {
+    position: fixed;
+    inset: auto 8px 8px 8px;
+    z-index: 40;
+    max-height: 60vh;
+    overflow-y: auto;
+    box-shadow: 0 6px 24px #000c;
+  }
+  #forecast:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'grid grid' 'mods actions';
+    align-items: center;
+    gap: 6px 10px;
+  }
+  #forecast .fc-title,
+  #forecast .portrait {
+    display: none;
+  }
+  #forecast .fc-grid {
+    grid-area: grid;
+  }
+  #forecast .fc-mods {
+    grid-area: mods;
+  }
+  #forecast .fc-actions {
+    grid-area: actions;
+    display: flex;
+    gap: 6px;
+  }
+  #forecast button {
+    min-height: 44px;
+    padding: 0 14px;
+    white-space: nowrap;
+  }
+}

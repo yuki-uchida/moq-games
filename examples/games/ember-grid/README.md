@@ -133,3 +133,7 @@ Playwright starts only its own Vite server on 127.0.0.1:5187 and defaults to ins
 Screenshots, including `ember-range-*.png`, `ember-enemy-range-1280.png`, `ember-farewell-1280.png`, `ember-lost-chapter-1280.png` and `ember-lost-missions-1280.png`, are written to ignored `test-results/ember-*.png`.
 
 Background callback verification additionally skips one minute of callbacks during an enemy sequence, then confirms return to the next ally turn, and restarts during another pending sequence to verify cancellation. The turn-based game does not accrue elapsed-time turns: only the already requested finite enemy sequence may finish. Rendering can wait for browser/OS resume; the generation token prevents an old encounter from changing a restarted mission.
+
+## Input feedback
+
+Inputs that cannot be carried out show a short toast over the board (the log keeps the screen-reader announcement). With an ally selected, tapping a non-blue square deselects it, and tapping an enemy that cannot be attacked shows that enemy's range and card instead. The forecast shows the attack's damage, which can exceed the target's remaining HP. On small landscape screens the forecast floats at the bottom of the viewport and the page scrolls so the target stays visible above it.
