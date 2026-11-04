@@ -45,7 +45,7 @@ try {
   const advance = (time) =>
     page.evaluate((time) => {
       __tick(time)
-      return { kills: __game.kills, fallen: __fallen.map(({ id, key, at }) => ({ id, key, age: __game.time - at })) }
+      return { kills: __game.kills, fallen: __fallen.map(({ id, key, visualAge }) => ({ id, key, age: visualAge })) }
     }, time)
   const first = await advance(1100)
   assert.equal(first.kills, 2)
@@ -53,12 +53,19 @@ try {
   assert.equal(new Set(first.fallen.map(({ id }) => id)).size, 2)
   assert.ok(first.fallen.every(({ age }) => age >= 0 && age <= 0.1))
   await page.screenshot({ path: '/tmp/lane-long-frame/start.png' })
-  const later = await advance(2000)
-  assert.equal(later.fallen.length, 2)
-  assert.ok(later.fallen.every(({ age, key }) => age >= koSeconds(key) * 0.75 && age < koSeconds(key)))
+  const catchup = await advance(62100)
+  const nextBatch = await advance(62101)
+  assert.ok(first.fallen.every(({ id }) => catchup.fallen.some((ghost) => ghost.id === id)))
+  assert.ok(first.fallen.every(({ id }) => nextBatch.fallen.some((ghost) => ghost.id === id)))
+  for (let time = 62151; time < 63000; time += 50) await advance(time)
+  const later = await advance(63000)
+  const original = later.fallen.filter(({ id }) => first.fallen.some((ghost) => ghost.id === id))
+  assert.equal(original.length, 2)
+  assert.ok(original.every(({ age, key }) => age >= koSeconds(key) * 0.75 && age < koSeconds(key)))
   await page.screenshot({ path: '/tmp/lane-long-frame/fade.png' })
-  const end = await advance(3000)
-  assert.equal(end.fallen.length, 0)
+  for (let time = 63050; time < 64000; time += 50) await advance(time)
+  const end = await advance(64000)
+  assert.ok(first.fallen.every(({ id }) => !end.fallen.some((ghost) => ghost.id === id)))
   console.log('long frame: both ghosts start, animate through fade and expire PASS')
 } finally {
   await browser.close()

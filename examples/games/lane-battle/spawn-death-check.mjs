@@ -29,12 +29,12 @@ const main = sourceMain
   .replace('const fallen = []', 'const fallen = []; globalThis.__fallen = fallen')
   .replace('function tick(now) {', 'globalThis.__tick = tick; function tick(now) {')
   .replace(
-    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)',
+    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge)',
     `for (const ghost of fallen) {
-    models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)
+    models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), ghost.visualAge)
     const actor = models.actors.get(ghost.id)
     globalThis.__poses ??= {}
-    globalThis.__poses[ghost.id] = { age: visualTime - ghost.at, rotation: actor.bones.hips.rotation.toArray().slice(0, 3) }
+    globalThis.__poses[ghost.id] = { age: ghost.visualAge, rotation: actor.bones.hips.rotation.toArray().slice(0, 3) }
   }`
   )
 await mkdir('/tmp/lane-pause', { recursive: true })

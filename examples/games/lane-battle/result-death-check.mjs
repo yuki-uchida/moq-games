@@ -63,7 +63,7 @@ export function createGame() {
           effects: __game.effects.map(({ life }) => life),
           units: __game.units.map(({ id, x, hp }) => ({ id, x, hp }))
         },
-        age: __fallen.length ? __game.time + __visual().elapsed - __fallen[0].at : null,
+        age: __fallen.length ? __fallen[0].visualAge : null,
         modal: document.querySelector('dialog').open
       }))
     const first = await status()

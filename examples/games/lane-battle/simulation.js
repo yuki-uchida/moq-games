@@ -510,7 +510,7 @@ export const UPGRADE_ALARM = 0.07
  * `perLevel` extra cleaners per level above 1, so investing before the morning is held costs more than it earns.
  */
 export const OPENING = { at: [10, 30], size: (stage) => 4 + Math.floor(stage / 10), perLevel: 6 }
-const MAX_UNITS = 24
+export const MAX_UNITS = 24
 /** side 1 summons deck slot `index`; side -1 summons ENEMIES[index] scaled to the stage. */
 export function summon(s, index, side = 1) {
   const t = side === 1 ? s.deck[index] : ENEMIES[index]
