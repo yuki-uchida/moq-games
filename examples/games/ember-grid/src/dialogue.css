@@ -36,9 +36,19 @@
   font-size: clamp(15px, 2.5vw, 19px);
   line-height: 1.5;
 }
+.story-box button,
+.story-credits button {
+  min-height: 40px;
+  min-width: 70px;
+  padding: 6px 12px;
+  border: 1px solid #e9ce8d88;
+  border-radius: 6px;
+  background: #1c333ecc;
+  color: #ffe4a1;
+  font-size: 13px;
+}
 .story-box button {
   align-self: start;
-  padding: 8px;
 }
 .story-title {
   position: absolute;
