@@ -1,9 +1,10 @@
 import { C, R, dimTable, toneTable } from './palette'
 import { Raster, ball, part, remap } from './raster'
 import { car } from './enemies'
+import { careerBody } from './careers'
 import { CASUAL_ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid, type BedPose } from './player'
 import { STAGE_BODIES, STAGE_PAINTERS } from './people'
-import { GROUND, dust, flatBody, headBox, lying, lyingBack, pose, sitting, type Body, type Pose } from './rig'
+import { GROUND, dust, flatBody, headBox, human, lying, lyingBack, pose, sitting, type Body, type Pose } from './rig'
 import type { Anim, Sheet } from './sheet'
 
 /**
@@ -1267,8 +1268,7 @@ function lazySheet(make: Record<string, () => Anim>): Sheet {
   return out
 }
 
-function uprightDeaths(id: string): Sheet {
-  const k = UPRIGHT[id]
+function uprightDeaths(id: string, k = UPRIGHT[id]): Sheet {
   return lazySheet({
     collapse: () => collapse(k),
     ...(ADULT_AGE.has(id) ? { hang: () => hang(k) } : { alone: () => alone(k) }),
@@ -1283,6 +1283,11 @@ function uprightDeaths(id: string): Sheet {
     heatstroke: () => heatstroke(k),
     overheat: () => overheat(k)
   })
+}
+
+export function careerDeathSheet(id: string, career: string): Sheet {
+  const body = careerBody(id, career)
+  return uprightDeaths(id, { body, paint: (pose) => human(body, pose) })
 }
 
 export const deathSheets: Record<string, () => Sheet> = {

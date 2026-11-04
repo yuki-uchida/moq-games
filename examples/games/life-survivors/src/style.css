@@ -1245,6 +1245,7 @@ button {
 }
 .banner-swarm .banner-title {
   font-size: clamp(18px, 5vw, 30px);
+  text-wrap: balance;
   color: #2a1700;
   text-shadow: none;
 }
@@ -1259,6 +1260,7 @@ button {
   }
   86% {
     opacity: 1;
+    transform: none;
   }
   100% {
     opacity: 0;

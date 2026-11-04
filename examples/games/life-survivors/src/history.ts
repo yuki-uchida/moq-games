@@ -14,7 +14,8 @@ export const LIFE_OUTCOMES: Record<string, readonly string[]> = {
     '就職を急がず、自分の道を探す。',
     '運動を磨き、スポーツの道へ。転機を1回獲得。',
     '資産を育て、資産を活かす道へ。転機を1回獲得。',
-    '好きなことを磨き、創作の道へ。転機を1回獲得。'
+    '好きなことを磨き、創作の道へ。転機を1回獲得。',
+    '人とのつながりを育て、人とのつながりを活かす道へ。転機を1回獲得。'
   ],
   b_layoff: [
     '職歴と磨いた仕事で、リストラ期に再就職。転機を2回獲得。',
@@ -31,7 +32,10 @@ export const LIFE_OUTCOMES: Record<string, readonly string[]> = {
     '後年に育てた資産で、新たに資産を活かす道に挑戦。転機を2回獲得。',
     '後年に磨いた表現で、新たに創作の道に挑戦。転機を2回獲得。',
     '後年に磨いた仕事で、初めて就職。転機を2回獲得。',
-    '後年に磨いた仕事で、別分野から仕事の道へ転向。転機を2回獲得。'
+    '後年に磨いた仕事で、別分野から仕事の道へ転向。転機を2回獲得。',
+    '育て続けたつながりで、人とのつながりを活かす道を広げる。転機を2回獲得。',
+    '過去の対人経験を活かし、次の道へ。転機を1回獲得。',
+    '後年に育てたつながりで、新たに人とのつながりを活かす道に挑戦。転機を2回獲得。'
   ],
   b_wedding: ['結婚した！配偶者が毎秒HPを2回復。', '独身の人生を歩む。'],
   nightcry: [
@@ -77,6 +81,12 @@ export function historyOk(value: unknown, time: number): value is LifeDecision[]
     if (Object.keys(entry).some((key) => key !== 'event' && key !== 'outcome' && key !== 'at')) return false
     if (event.boss === 'b_shukatsu') earlyCareer = decision.outcome
     if (event.boss === 'b_layoff') {
+      if (
+        LIFE_OUTCOMES.b_layoff.slice(15, 17).includes(decision.outcome) &&
+        earlyCareer !== LIFE_OUTCOMES.b_shukatsu[6]
+      )
+        return false
+      if (decision.outcome === LIFE_OUTCOMES.b_layoff[17] && earlyCareer === LIFE_OUTCOMES.b_shukatsu[6]) return false
       if (decision.outcome === LIFE_OUTCOMES.b_layoff[9] && earlyCareer !== undefined) return false
       if (decision.outcome === LIFE_OUTCOMES.b_layoff[13] && earlyCareer !== LIFE_OUTCOMES.b_shukatsu[2]) return false
       if (

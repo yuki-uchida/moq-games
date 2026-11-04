@@ -467,9 +467,10 @@ export class Game {
   private inputs = new Map<string, Input>()
   private familyHands = new Map<string, string[]>()
   private nightcryStarted = false
+  private pendingBosses: string[] = []
   private careers = new Map<
     string,
-    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets' | 'creative'; settled?: boolean }
+    { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets' | 'creative' | 'social'; settled?: boolean }
   >()
   private accumulator = 0
   private fxSeq = 0
@@ -728,6 +729,7 @@ export class Game {
 
   private runEvents() {
     const state = this.state
+    this.pendingBosses = this.pendingBosses.filter((kind) => !this.spawnEnemy(kind))
     while (state.eventIndex < EVENTS.length && state.time >= EVENTS[state.eventIndex].at) {
       const index = state.eventIndex++
       const event = EVENTS[index]
@@ -739,6 +741,7 @@ export class Game {
           const sports = Math.max(level('w_sports'), level('w_muscle'))
           const assets = Math.max(level('w_invest'), level('w_savings'))
           const creative = Math.max(level('w_hobby'), level('w_karaoke'), level('w_travel'), level('w_cooking'))
+          const social = Math.max(level('w_friend'), level('w_sns'), level('w_pet'))
           let reward = 0
           let text: string
           if (event.boss === 'b_univ') {
@@ -754,6 +757,7 @@ export class Game {
             if (sports >= 4) eligible.push('soccer')
             if (assets >= 4) eligible.push('entrepreneur')
             if (creative >= 4) eligible.push('creative')
+            if (social >= 4) eligible.push('social')
             const selected =
               rankedCareer(
                 player.weapons.map(({ id, lv }) => [id, lv]),
@@ -763,10 +767,18 @@ export class Game {
             career.employed = selected === 'bureaucrat'
             reward = career.employed ? (career.studied ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_shukatsu[career.employed ? (career.studied ? 0 : 1) : 2]
-            if (selected === 'soccer' || selected === 'entrepreneur' || selected === 'creative') {
-              career.path = selected === 'soccer' ? 'sports' : selected === 'entrepreneur' ? 'assets' : 'creative'
+            if (
+              selected === 'soccer' ||
+              selected === 'entrepreneur' ||
+              selected === 'creative' ||
+              selected === 'social'
+            ) {
+              career.path = selected === 'soccer' ? 'sports' : selected === 'entrepreneur' ? 'assets' : selected
               reward = 1
-              text = LIFE_OUTCOMES.b_shukatsu[career.path === 'sports' ? 3 : career.path === 'assets' ? 4 : 5]
+              text =
+                LIFE_OUTCOMES.b_shukatsu[
+                  career.path === 'sports' ? 3 : career.path === 'assets' ? 4 : career.path === 'creative' ? 5 : 6
+                ]
             }
           } else {
             if (career.settled !== undefined) continue
@@ -774,10 +786,20 @@ export class Game {
             reward = career.employed ? (level('w_work') >= 4 ? 2 : 1) : 0
             text = LIFE_OUTCOMES.b_layoff[reward === 2 ? 0 : reward === 1 ? 1 : 2]
             if (career.path) {
-              reward = (career.path === 'sports' ? sports : career.path === 'assets' ? assets : creative) >= 4 ? 2 : 1
+              reward =
+                (career.path === 'sports'
+                  ? sports
+                  : career.path === 'assets'
+                    ? assets
+                    : career.path === 'creative'
+                      ? creative
+                      : social) >= 4
+                  ? 2
+                  : 1
               text =
                 LIFE_OUTCOMES.b_layoff[
-                  (career.path === 'sports' ? 3 : career.path === 'assets' ? 5 : 7) + (reward === 2 ? 0 : 1)
+                  (career.path === 'sports' ? 3 : career.path === 'assets' ? 5 : career.path === 'creative' ? 7 : 15) +
+                    (reward === 2 ? 0 : 1)
                 ]
             }
             const eligible: Career[] = []
@@ -785,6 +807,7 @@ export class Game {
             if (sports >= 4) eligible.push('soccer')
             if (assets >= 4) eligible.push('entrepreneur')
             if (creative >= 4) eligible.push('creative')
+            if (social >= 4) eligible.push('social')
             const selected = rankedCareer(
               player.weapons.map(({ id, lv }) => [id, lv]),
               player.passives.map(({ id, lv }) => [id, lv]),
@@ -796,9 +819,7 @@ export class Game {
                 ? 'soccer'
                 : career.path === 'assets'
                   ? 'entrepreneur'
-                  : career.path === 'creative'
-                    ? 'creative'
-                    : undefined
+                  : career.path
             if (selected && selected !== previous) {
               reward = 2
               const outcome =
@@ -808,7 +829,9 @@ export class Game {
                     : career.employed === false
                       ? 13
                       : 9
-                  : 9 + ['bureaucrat', 'soccer', 'entrepreneur', 'creative'].indexOf(selected)
+                  : selected === 'social'
+                    ? 17
+                    : 9 + ['bureaucrat', 'soccer', 'entrepreneur', 'creative'].indexOf(selected)
               text = LIFE_OUTCOMES.b_layoff[outcome]
             }
           }
@@ -839,8 +862,10 @@ export class Game {
         }
       }
       if (birth) continue
-      if (event.boss === 'b_layoff') {
-        const employed = state.players.filter((player) => this.careers.get(player.id)?.employed)
+      if (event.boss === 'b_layoff' || event.swarm === 'meeting') {
+        const employed = state.players.filter(
+          (player) => this.careers.get(player.id)?.employed && (event.swarm !== 'meeting' || player.joinedAt < event.at)
+        )
         if (!employed.length) continue
         this.log(`${employed.map((player) => player.name).join('・')}の仕事の試練：${event.text}`)
       } else if (event.boss === 'b_care') {
@@ -852,7 +877,7 @@ export class Game {
         if (!families.length) continue
         this.log(`${families.map((player) => player.name).join('・')}の家族の試練：${event.text}`)
       } else this.log(event.text)
-      if (event.boss) this.spawnEnemy(event.boss)
+      if (event.boss && !this.spawnEnemy(event.boss)) this.pendingBosses.push(event.boss)
       if (event.swarm) this.spawnSwarm(index)
     }
   }
@@ -963,7 +988,15 @@ export class Game {
     const state = this.state
     const def = ENEMY_BY_ID.get(kind)!
     const anchor = this.randomAlive()
-    if (!anchor || state.enemies.length >= MAX_ENEMIES + 20) return
+    if (!anchor) return
+    if (state.enemies.length >= MAX_ENEMIES + 20) {
+      if (def.behavior !== 'boss') return
+      const index = state.enemies.findIndex((enemy) => ENEMY_BY_ID.get(enemy.kind)!.behavior !== 'boss')
+      if (index < 0) return
+      const [retired] = state.enemies.splice(index, 1)
+      retired.hp = 0
+      for (const shot of state.shots) if (shot.target === retired) shot.target = undefined
+    }
     if (x === undefined || y === undefined) {
       const angle = this.rng() * Math.PI * 2
       x = anchor.x + Math.cos(angle) * SPAWN_RADIUS

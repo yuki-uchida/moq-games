@@ -48,7 +48,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 7
+  v: 8
   time: number
   phase: GameState['phase']
   level: number
@@ -137,7 +137,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 7,
+    v: 8,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -262,7 +262,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 7) return undefined
+  if (!record(value) || value.v !== 8) return undefined
   if (
     Object.keys(value).some(
       (key) =>
