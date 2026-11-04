@@ -45,7 +45,8 @@ for (const width of [1280, 390])
           arrow: !!document.querySelector('.stage[data-projectile~="arrow"]'),
           damage: document.querySelector('.damage-number')?.textContent ?? null
         })
-        if (performance.now() - start < 1800) requestAnimationFrame(sample)
+        // The window covers the forecast and confirm taps, which wait for the camera to settle first.
+        if (performance.now() - start < 8000) requestAnimationFrame(sample)
       }
       requestAnimationFrame(sample)
     })
