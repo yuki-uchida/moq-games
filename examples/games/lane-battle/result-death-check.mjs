@@ -16,9 +16,9 @@ try {
       source.replace('export function createGame(', 'function baseGame(') +
       `
 export function createGame() {
-  const game = baseGame(0, [card({ uid: 1, key: 'korokoro' }), card({ uid: 2, key: 'katachi' })], 1)
+  const game = baseGame(0, [card({ uid: 1, key: 'korokoro' }), card({ uid: 2, key: 'katachi' }), card({ uid: 3, key: 'geri' })], 1)
   Object.assign(game, {time: 1, gold: 999, spawn: 999, opened: 2, rushes: 4, turret: 999, ${result === 'victory' ? 'enemy' : 'home'}: 1})
-  summon(game, 0); summon(game, 1); summon(game, 0, -1)
+  summon(game, 0); summon(game, 1); summon(game, 2, -1)
   const [shooter, attacker, victim] = game.units
   Object.assign(shooter, {x: 650, attack: 1})
   Object.assign(attacker, {x: 100, attack: 1})
@@ -80,19 +80,25 @@ export function createGame() {
     await page.clock.runFor(500)
     assert.deepEqual(await status(), paused, 'pause freezes final visual and simulation')
     await page.keyboard.press('Space')
+    await page.clock.runFor(500)
+    const beforeHidden = await status()
+    assert.ok(beforeHidden.age > 0.5 && !beforeHidden.modal)
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: true })
       document.dispatchEvent(new Event('visibilitychange'))
     })
     const hidden = await status()
-    await page.clock.runFor(500)
+    await page.clock.runFor(3000)
     assert.deepEqual(await status(), hidden, 'hidden tab freezes visual and simulation')
     assert.equal(await page.evaluate((key) => localStorage.getItem(key), storageKey), savedAtDecision)
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: false })
       document.dispatchEvent(new Event('visibilitychange'))
     })
-    await page.clock.runFor(650)
+    const resumed = await status()
+    assert.equal(resumed.age, beforeHidden.age, 'hidden time must not age the death on resume')
+    assert.deepEqual(resumed.game, first.game)
+    await page.clock.runFor(80)
     const later = await status()
     assert.deepEqual(later.game, first.game)
     assert.ok(later.age > 0.6 && !later.modal)

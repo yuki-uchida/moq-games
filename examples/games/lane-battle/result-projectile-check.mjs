@@ -38,8 +38,8 @@ const main = (await readFile(new URL('./main.js', import.meta.url), 'utf8'))
   )
   .replace('        laneY\n      )', '        laneY\n      ))')
   .replace(
-    '    models.unit(visual,',
-    '    globalThis.reviewHurtAge = state.time - (visual.hurt?.at ?? Infinity); models.unit(visual,'
+    '    models.unit(\n      visual,',
+    '    globalThis.reviewHurtAge = visualTime - (visual.hurt?.at ?? Infinity); models.unit(\n      visual,'
   )
 
 await mkdir('/tmp/lane-result-projectile', { recursive: true })
