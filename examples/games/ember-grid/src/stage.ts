@@ -244,7 +244,7 @@ export class Stage {
       obstacle.userData.cell = k
       this.terrain.add(obstacle)
     }
-    for (const k of game.groves) if (!game.rocks.has(k)) this.terrain.add(this.place(Props.grove(), k))
+    for (const k of game.groves) if (!game.rocks.has(k)) this.terrain.add(this.place(Props.grove(game.stage), k))
   }
   private place(object: THREE.Object3D, k: string) {
     const [x, y] = k.split(',').map(Number)
@@ -492,6 +492,8 @@ const Props = (() => {
   const m = {
     trunk: flat(0x3a2618),
     needles: [flat(0x2f5f3d), flat(0x3f7a4b), flat(0x58925a)],
+    chapelLeaves: [flat(0x465b58), flat(0x60756c), flat(0x839084)],
+    ashLeaves: [flat(0x58433c), flat(0x79554a), flat(0x9b7560)],
     bush: [flat(0x24452f), flat(0x3d6e45)],
     rock: [flat(0x66544b), flat(0x495d65), flat(0x65615d), flat(0x4c6961), flat(0x88847b), flat(0x302a30)],
     ruin: flat(0x65615d),
@@ -554,12 +556,15 @@ const Props = (() => {
     orb: new THREE.IcosahedronGeometry(0.06, 1),
     halo: new THREE.IcosahedronGeometry(0.12, 1)
   }
-  const tree = (x: number, z: number, s: number) => {
+  const tree = (x: number, z: number, s: number, stage: number) => {
     const group = new THREE.Group()
     group.add(new THREE.Mesh(g.trunk, m.trunk))
-    g.tiers.forEach((tier, i) => group.add(new THREE.Mesh(tier, m.needles[i])))
+    const leaves = stage === 4 ? m.chapelLeaves : stage === 5 ? m.ashLeaves : m.needles
+    g.tiers.forEach((tier, i) => group.add(new THREE.Mesh(tier, leaves[i])))
     group.position.set(x, 0, z)
     group.scale.setScalar(s)
+    if (stage === 4) group.scale.multiply(new THREE.Vector3(0.7, 0.85, 0.7))
+    if (stage === 5) group.scale.multiply(new THREE.Vector3(0.85, 0.8, 0.85))
     group.rotation.y = x * 7
     return group
   }
@@ -579,9 +584,10 @@ const Props = (() => {
     return group
   }
   return {
-    grove() {
+    grove(stage: number) {
       const group = new THREE.Group()
-      group.add(tree(0.24, -0.25, 1.15), tree(-0.2, -0.22, 0.9), tree(0.26, 0.14, 0.85), bush(-0.25, -0.2))
+      group.add(tree(0.24, -0.25, 1.15, stage), tree(-0.2, -0.22, 0.9, stage), tree(0.26, 0.14, 0.85, stage))
+      if (stage !== 4 && stage !== 5) group.add(bush(-0.25, -0.2))
       return group
     },
     rock(stage: number, cell: string) {
