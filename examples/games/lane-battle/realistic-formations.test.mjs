@@ -1,11 +1,22 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { POOPS, SPECIALS } from './simulation.js'
+import { POOPS, SPECIALS, rng } from './simulation.js'
+import { playCampaign } from './bot.js'
+import { specialScale } from './campaign.js'
 import { collectRealisticSamples, realisticFormation } from './realistic-formations.mjs'
 
 test('realistic decks contain only unlocked, typically owned poops and the special under test', () => {
   const stages = [8, 15, 22]
-  const samples = collectRealisticSamples(stages)
+  const samples = collectRealisticSamples(stages, [22])
+  let firstClear
+  playCampaign(rng(3), {
+    casual: true,
+    log: (_battle, report, campaign) => {
+      if (!firstClear && report.victory && campaign.cleared === 23)
+        firstClear = campaign.roster.map(({ key, level }) => ({ key, level }))
+    }
+  })
+  assert.deepEqual(samples[22][0], firstClear)
   for (const stage of stages) {
     const baseline = realisticFormation(stage, samples[stage]).deck
     const expected = POOPS.filter(
@@ -42,7 +53,12 @@ test('realistic decks contain only unlocked, typically owned poops and the speci
         type ? [type.key] : []
       )
       assert.equal(specialIndex, type ? Math.min(4, poops.length) : -1)
-      if (type) assert.equal(deck[specialIndex].hp, Math.round(type.hp * (1 + 0.03 * stage)))
+      if (type) {
+        assert.equal(deck[specialIndex].level, 1)
+        assert.equal(deck[specialIndex].hp, Math.round(type.hp * specialScale(stage)))
+        assert.equal(deck[specialIndex].atk, Math.round(type.atk * specialScale(stage)))
+        assert.equal(deck[specialIndex].period, type.period)
+      }
     }
   }
   assert.deepEqual(

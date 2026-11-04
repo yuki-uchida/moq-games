@@ -675,7 +675,7 @@ function draw() {
   const depth = depthSlots([...fallen, ...units])
   const unitEffects = (layer) => {
     for (const u of units) {
-      const age = state.time - (u.hurt?.at ?? Infinity)
+      const age = visualTime - (u.hurt?.at ?? Infinity)
       if (age >= 0 && age < hurtSeconds(u.key)) {
         ctx.save()
         HURT_VFX[u.key]?.(ctx, u, age, layer, drawX(u), laneY(u), aspect)
@@ -709,7 +709,9 @@ function draw() {
       ctx.fill()
     }
     const held = heldStrike(contacts.get(u.id), u, state.time)
-    const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    let visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
+    if (resultVisual && visual.hurt)
+      visual = { ...visual, hurt: { ...visual.hurt, at: visual.hurt.at - resultVisual.elapsed } }
     models.unit(visual, drawX(u), y - launchHeight(u, scale, aspect), depth.get(u), state.time, lead(u), contact(u), y)
   }
   ctx.font = '12px sans-serif'
@@ -790,6 +792,7 @@ function draw() {
     drawStatus(ctx, u, drawX(u), y, top, state.time, aspect, calm.matches)
   }
   for (const e of state.effects) {
+    if (e.cancelled) continue
     if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
@@ -916,9 +919,7 @@ function draw() {
   $('burst').style.setProperty('--cd', state.burst / BURST_COOLDOWN)
   $('burst').querySelector('b').textContent = state.burst > 0 ? String(Math.ceil(state.burst)) : ''
 }
-function finish() {
-  const report = settle(campaign, state, Math.random)
-  save(campaign)
+function finish(report) {
   const last = state.stage === STAGES.length - 1
   if (report.victory) selected = Math.min(state.stage + 1, campaign.cleared, STAGES.length - 1)
   showReport(report)
@@ -942,6 +943,16 @@ function tick(now) {
     (dt) => step(state, dt),
     () => !!state.result
   )
+  const resultStarted = state.result && !resultVisual
+  if (resultStarted) {
+    for (const projectile of state.projectiles) {
+      if (projectile.victim) projectile.victim.missed = true
+      if (!projectile.effect.hit) projectile.effect.cancelled = true
+    }
+    const report = settle(campaign, state, Math.random)
+    save(campaign)
+    resultVisual = { report, elapsed: 0 }
+  }
   if (!paused) {
     const alive = new Set(state.units)
     for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
@@ -992,23 +1003,19 @@ function tick(now) {
     if (impact) tone('hit')
     if (shot) tone('shot')
   }
-  if (state.result && !resultVisual) {
-    resultVisual = {
-      elapsed: 0,
-      duration:
-        Math.max(
-          0,
-          ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (state.time - unit.at)),
-          ...state.effects.map((effect) => effect.life)
-        ) + 0.15
-    }
-  }
+  if (resultStarted)
+    resultVisual.duration =
+      Math.max(
+        0,
+        ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (state.time - unit.at)),
+        ...state.effects.map((effect) => effect.life)
+      ) + 0.15
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
   if (!document.hidden) draw()
   if (state.result && !shown && resultVisual.elapsed >= resultVisual.duration) {
     shown = true
-    finish()
+    finish(resultVisual.report)
   }
   reconciling = false
   if (elapsed.pending && !state.result) {

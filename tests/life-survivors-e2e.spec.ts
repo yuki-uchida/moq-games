@@ -12,6 +12,33 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 }
+]) {
+  test(`mobile HUD fits ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto('/')
+    expect(await page.locator('body').evaluate((body) => getComputedStyle(body).touchAction)).toBe('manipulation')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const xp = page.locator('.xp-bar')
+    const hp = page.locator('.xp-bar .meter')
+    await expect(hp).toBeVisible()
+    const xpBox = (await xp.boundingBox())!
+    const hpBox = (await hp.boundingBox())!
+    expect(hpBox.x).toBeGreaterThanOrEqual(xpBox.x)
+    expect(hpBox.x + hpBox.width).toBeLessThanOrEqual(xpBox.x + xpBox.width)
+    expect(hpBox.y).toBeGreaterThanOrEqual(xpBox.y)
+    expect(hpBox.y + hpBox.height).toBeLessThanOrEqual(xpBox.y + xpBox.height)
+    for (const selector of ['.life-card', '#connection', '#mute', '#help-open', '#leave']) {
+      const box = (await page.locator(selector).boundingBox())!
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+    }
+  })
+}
+
 for (const width of [1280, 390]) {
   test(`weapon exchange explains each candidate at ${width}px`, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 })
@@ -1448,9 +1475,15 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#move-hint')).toBeVisible()
   const handle = await life(page)
+  // A life without parents deals its first hand on the first tick: clear it and anything still to deal.
   await handle.evaluate((l) => {
-    for (const p of l.game.state.players) p.choices = []
+    for (const p of (l.game as unknown as Game).state.players) {
+      p.choices = []
+      p.pending = 0
+      p.birthPick = false
+    }
   })
+  await expect(page.locator('#levelup')).toBeHidden()
 
   const cdp = await context.newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })

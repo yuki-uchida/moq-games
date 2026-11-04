@@ -132,6 +132,81 @@ const NUMBER_STYLES = {
 type NumberStyle = keyof typeof NUMBER_STYLES
 const NUMBER_FONT = '800 20px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif'
 
+/** A spouse or child walking with a married player (renderer-only; positions never reach the game). */
+export interface Follower {
+  sheet: string
+  x: number
+  y: number
+  speed: number
+  flip: boolean
+  /** Animation offset so the two never step in lockstep. */
+  phase: number
+  /** Their player is below full HP, so the healing they give shows. */
+  heal: boolean
+}
+
+/**
+ * The family are support, not units: drawn smaller than the player and walking behind them — on the side away
+ * from the way the player faces and a step further back. Slots are offsets from the player's position.
+ */
+export const FAMILY_SCALE = 0.75
+export const FAMILY_SLOTS = [
+  { sheet: 'family:spouse', dx: 16, dy: -7 },
+  { sheet: 'player:kid', dx: 28, dy: -1 }
+] as const
+/** How quickly (1/s) they close in on their slot, and the farthest (world px) they ever trail behind it. */
+const FAMILY_FOLLOW = 7
+export const FAMILY_LAG = 40
+/** Seconds between the small healing pluses that rise off them while their player is hurt. */
+const FAMILY_HEAL_EVERY = 1.6
+
+/**
+ * Moves a player's family `dt` seconds toward their slots behind the player drawn at `pos`: the spouse once
+ * married, the child once welcomed, nobody while the player is down or the life is ending. They ease after the
+ * player and never trail more than FAMILY_LAG behind a slot; someone new or far away appears in their slot.
+ * Updates `crew` in place and returns it.
+ */
+export function followFamily(
+  crew: Follower[],
+  player: Pick<ViewPlayer, 'fx' | 'married' | 'hasChild' | 'downed' | 'hp' | 'maxHp'>,
+  phase: View['phase'],
+  pos: { x: number; y: number },
+  dt: number
+) {
+  const count = player.downed || phase !== 'playing' || !player.married ? 0 : player.hasChild ? 2 : 1
+  crew.length = Math.min(crew.length, count)
+  const back = player.fx < 0 ? 1 : -1
+  const step = Math.min(Math.max(0, dt), 0.1)
+  const k = 1 - Math.exp(-FAMILY_FOLLOW * step)
+  for (let i = 0; i < count; i++) {
+    const slot = FAMILY_SLOTS[i]
+    const tx = pos.x + back * slot.dx
+    const ty = pos.y + slot.dy
+    const m = crew[i]
+    if (!m || Math.hypot(m.x - tx, m.y - ty) > 200) {
+      crew[i] = { sheet: slot.sheet, x: tx, y: ty, speed: 0, flip: back > 0, phase: i * 0.37, heal: false }
+      continue
+    }
+    let x = m.x + (tx - m.x) * k
+    let y = m.y + (ty - m.y) * k
+    const off = Math.hypot(x - tx, y - ty)
+    if (off > FAMILY_LAG) {
+      x = tx + ((x - tx) * FAMILY_LAG) / off
+      y = ty + ((y - ty) * FAMILY_LAG) / off
+    }
+    const vx = step > 0 ? (x - m.x) / step : 0
+    const speed = step > 0 ? Math.hypot(x - m.x, y - m.y) / step : 0
+    m.speed += (Math.min(400, speed) - m.speed) * 0.25
+    // Walking, they face where they walk; standing, the way their player faces.
+    if (m.speed <= 25) m.flip = player.fx < 0
+    else if (Math.abs(vx) > 20) m.flip = vx < 0
+    m.x = x
+    m.y = y
+  }
+  for (const m of crew) m.heal = player.hp < player.maxHp
+  return crew
+}
+
 interface Ent {
   /** Sort key (feet). */
   y: number
@@ -139,6 +214,7 @@ interface Ent {
   kind: number
   def?: EnemyDef
   player?: ViewPlayer
+  member?: Follower
   id: number
   x: number
   yy: number
@@ -204,6 +280,7 @@ export class Renderer {
   private halo?: { x: number; y: number; t: number; alpha: number }
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
+  private readonly families = new Map<string, Follower[]>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   /** Particles, trauma and flashes driven by the fx events of the views drawn so far. */
   readonly fx = new Effects()
@@ -674,23 +751,6 @@ export class Renderer {
     ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
     ctx.stroke()
     ctx.globalAlpha = 1
-    if (!player.downed && phase === 'playing' && player.married) {
-      const family = player.hasChild ? ['adult', 'kid'] : ['adult']
-      for (const [index, member] of family.entries()) {
-        const familyX = pos.x + (index === 0 ? -34 : 34)
-        const familyFeet = feet + 12
-        const art = sheet(`player:${member}`)
-        const anim = m.speed > 25 ? art.walk : art.idle
-        this.shadow(familyX, familyFeet, 9)
-        this.art(anim.frames[frameAt(anim, this.clock)], familyX, familyFeet, 32, 58, player.fx < 0, 0.9)
-        this.world()
-        ctx.strokeStyle = player.color
-        ctx.beginPath()
-        ctx.ellipse(familyX, familyFeet, 12, 4, 0, 0, Math.PI * 2)
-        ctx.stroke()
-        this.blit(this.label(index === 0 ? '配偶者 +2HP/s' : '子 +1HP/s', 9, player.color), familyX, familyFeet + 18)
-      }
-    }
     const flip = player.fx < 0
     // 大往生: a peaceful smile while the reaper comes, then the haloed soul rises beside it.
     const ending = body === 'bed' && !player.downed && (phase === 'reaper' || phase === 'won')
@@ -767,15 +827,28 @@ export class Renderer {
       0,
       shown
     )
-    // Downed players show only the revive ring, not an empty bar.
-    if (player.downed) return
-    const w = 40
-    ctx.globalAlpha = shown
-    ctx.fillStyle = 'rgba(0,0,0,.6)'
-    ctx.fillRect(pos.x - w / 2, feet + 8, w, 5)
-    ctx.fillStyle = player.hp / player.maxHp > 0.3 ? '#7be495' : '#ff6b6b'
-    ctx.fillRect(pos.x - w / 2, feet + 8, (w * Math.max(0, player.hp)) / Math.max(1, player.maxHp), 5)
-    ctx.globalAlpha = 1
+  }
+
+  /** A player's family this frame (kept per player so they ease along between frames). */
+  private family(player: ViewPlayer, pos: { x: number; y: number }, phase: View['phase'], dt: number) {
+    let crew = this.families.get(player.id)
+    if (!crew) this.families.set(player.id, (crew = []))
+    return followFamily(crew, player, phase, pos, dt)
+  }
+
+  /** One family member: smaller than the player, with a small healing plus now and then while it is needed. */
+  private follower(m: Follower) {
+    const feet = m.y + 16
+    const art = sheet(m.sheet)
+    const anim = m.speed > 25 ? art.walk : art.idle
+    this.shadow(m.x, feet, 13 * FAMILY_SCALE)
+    this.art(anim.frames[frameAt(anim, this.clock + m.phase)], m.x, feet, 32, 58, m.flip, 1, FAMILY_SCALE)
+    if (m.heal) {
+      const t = (this.clock + m.phase * 2) % FAMILY_HEAL_EVERY
+      if (t < 0.7)
+        this.art(pick(sheet('fx').heal, t), m.x + 2, feet - 44 * FAMILY_SCALE - t * 12, 6, 6, false, 1 - t / 0.7, 0.8)
+    }
+    this.world()
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1804,14 +1877,28 @@ export class Renderer {
         flags: 0,
         tagLift: near * 13
       })
+      // The family sorts on its own feet, so a step behind the player is drawn behind them.
+      for (const member of this.family(player, pos, view.phase, dt))
+        list.push({
+          y: member.y + 16,
+          kind: 0,
+          member,
+          id: i,
+          x: member.x,
+          yy: member.y,
+          hp: 0,
+          flash: 0,
+          flags: 0,
+          tagLift: 0
+        })
     })
+    if (this.frame % 60 === 0) for (const id of this.families.keys()) if (!positions.has(id)) this.families.delete(id)
     list.sort((a, b) => a.y - b.y)
     // Every enemy's shadow in one path (ghosts cast none), under all the sprites.
     this.world()
     ctx.fillStyle = 'rgba(12,8,20,.28)'
     ctx.beginPath()
-    for (let n = 0; n < this.entCount; n++) {
-      const ent = list[n]
+    for (const ent of list) {
       if (!ent.def || ent.flags & ENEMY_FLAG.ghost) continue
       const rx = ent.def.radius * 0.9 * (ent.flags & ENEMY_FLAG.elite ? 1.25 : 1)
       ctx.moveTo(ent.x + rx, ent.y)
@@ -1820,7 +1907,8 @@ export class Renderer {
     ctx.fill()
     this.bars.length = 0
     for (const item of list) {
-      if (item.player) {
+      if (item.member) this.follower(item.member)
+      else if (item.player) {
         const player = item.player
         this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
       } else this.enemy(item)

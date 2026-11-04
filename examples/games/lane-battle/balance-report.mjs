@@ -15,6 +15,7 @@ import {
 import { specialScale } from './campaign.js'
 import { playBattle, summonKeepingOne } from './bot.js'
 import { collectRealisticSamples, realisticFormation } from './realistic-formations.mjs'
+import { realisticBarFailures } from './realistic-bars.mjs'
 
 const realisticOnly = process.argv.find((arg) => arg.startsWith('--realistic='))?.slice('--realistic='.length)
 const nicheOnly = process.argv.includes('--niche-only')
@@ -132,7 +133,7 @@ if (!nicheOnly) {
   const full = process.argv.includes('--full')
   const stages = selectedStage ? [Number(selectedStage)] : full ? [8, 15, 22] : [15, 22]
   const seeds = full ? 160 : realisticOnly ? 40 : 60
-  const samples = collectRealisticSamples(stages)
+  const samples = collectRealisticSamples(stages, [22])
   function measureFormation(deck, stage, seed, specialIndex) {
     const game = createGame(stage, deck, seed)
     const random = rng(seed ^ 0x5eed)
@@ -153,12 +154,13 @@ if (!nicheOnly) {
     }
     return game
   }
-  console.log(`\n実戦編成: ステージ到達時の6シード中央値、シード1〜${seeds}`)
+  console.log(`\n実戦編成: index 8・15は到達時、index 22は初勝利直後の6シード中央値、シード1〜${seeds}`)
   console.log('stage\tpolicy\tunit\twins\tmean time(s)\tmean summons\t40-seed blocks')
   for (const stage of stages) {
     const baseline = realisticFormation(stage, samples[stage])
     console.log(`deck ${stage}: ${baseline.deck.map((unit) => `${unit.key}:${unit.level}`).join('/')}`)
     for (const policy of selectedPolicy ? [selectedPolicy] : ['keep', 'casual']) {
+      const rows = []
       for (const type of [null, ...SPECIALS]) {
         const { deck, specialIndex } = type ? realisticFormation(stage, samples[stage], type) : baseline
         const focusIndex = type ? specialIndex : deck.length > 4 ? 4 : -1
@@ -176,9 +178,17 @@ if (!nicheOnly) {
           const block = battles.slice(offset, offset + 40)
           blocks.push(`${block.filter((battle) => battle.result === 'victory').length}/${block.length}`)
         }
+        rows.push({ name: type?.name ?? '基準', wins, summons, blocks: blocks.map((block) => Number.parseInt(block)) })
         console.log(
           `${stage}\t${policy}\t${type?.name ?? '基準'}\t${wins}/${seeds}\t${time.toFixed(2)}\t${summons.toFixed(4)}\t${blocks.join(' ')}`
         )
+      }
+      if (full) {
+        const failures = realisticBarFailures(stage, policy, rows, seeds)
+        if (failures.length) {
+          console.error(failures.join('\n'))
+          process.exitCode = 1
+        }
       }
     }
   }

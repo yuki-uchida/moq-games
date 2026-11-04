@@ -1101,7 +1101,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     const end = target?.x ?? start + dir * 30
     const duration = second ? second.at - first.at : 0.35
     const elapsed = time - first.at
-    if (elapsed >= 0 && elapsed < duration) {
+    if (!second?.missed && elapsed >= 0 && elapsed < duration) {
       const t = Math.min(1, elapsed / duration)
       const firstUnit = units.find((unit) => unit.id === first.id)
       const ground = ((firstUnit ? laneY(firstUnit) : floor) - floor) / aspect
