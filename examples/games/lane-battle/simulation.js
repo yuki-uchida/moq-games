@@ -146,7 +146,7 @@ export const SPECIALS = [
   {
     key: 'jiro',
     name: '二郎系ラーメン',
-    cost: 285,
+    cost: 270,
     hp: 1850,
     atk: 92,
     range: 44,
