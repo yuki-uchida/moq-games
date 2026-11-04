@@ -264,21 +264,46 @@ window.addEventListener('resize', positionTouchChoices)
 touchAssist.onclick = () =>
   touchAssist.setAttribute('aria-pressed', String(touchAssist.getAttribute('aria-pressed') !== 'true'))
 document.querySelector<HTMLButtonElement>('#touch-cancel')!.onclick = () => touchChoices.close()
+/** On-screen direction arrows for the 3×3 chooser, in reading order. */
+const directionArrows = ['↖', '↑', '↗', '←', '・', '→', '↙', '↓', '↘']
 function chooseNearby(x: number, y: number) {
   const choices = touchChoices.querySelector('div')!
   choices.replaceChildren()
+  // The floor is drawn rotated, so lay the neighbours out where they appear on screen, not in board order.
+  const centre = (cell: HTMLElement) => {
+    const box = cell.getBoundingClientRect()
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2, w: box.width, h: box.height }
+  }
+  const origin = centre(cells[y * size + x])
+  const slots: (HTMLElement | undefined)[] = Array(9).fill(undefined)
   for (let row = Math.max(0, y - 1); row <= Math.min(size - 1, y + 1); row++)
     for (let column = Math.max(0, x - 1); column <= Math.min(size - 1, x + 1); column++) {
       const original = cells[row * size + column]
+      const point = centre(original)
+      const side = (offset: number, extent: number) => (Math.abs(offset) < extent * 0.25 ? 0 : Math.sign(offset))
+      const slot = (side(point.y - origin.y, origin.h) + 1) * 3 + side(point.x - origin.x, origin.w) + 1
+      const label = original.getAttribute('aria-label') ?? ''
       const button = document.createElement('button')
       button.type = 'button'
-      button.textContent = original.getAttribute('aria-label')
+      // The accessible name keeps the coordinates; the face shows the direction and what is there.
+      button.setAttribute('aria-label', label)
+      button.innerHTML = `<span class="touch-dir" aria-hidden="true">${directionArrows[slot]}</span>${label.replace(/^\d+,\d+ /, '')}`
+      if (column === x && row === y) button.classList.add('touch-origin')
       button.onclick = () => {
         touchChoices.close()
         void choose(column, row)
       }
-      choices.append(button)
+      slots[slot] = button
     }
+  for (const button of slots) {
+    if (button) choices.append(button)
+    else {
+      const empty = document.createElement('span')
+      empty.className = 'touch-empty'
+      empty.setAttribute('aria-hidden', 'true')
+      choices.append(empty)
+    }
+  }
   positionTouchChoices()
   touchChoices.showModal()
 }
