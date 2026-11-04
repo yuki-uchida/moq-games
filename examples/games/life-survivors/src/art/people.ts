@@ -1,6 +1,16 @@
 import { C, R } from './palette'
 import { Raster, part, shadeEdges, type Ramp } from './raster'
-import { ADULT_HEAD, HAIR_KEY, hurtPoses, idlePoses, leatherShoe, planes, sneaker, walkPoses } from './player'
+import {
+  ADULT_HEAD,
+  CASUAL_ADULT,
+  HAIR_KEY,
+  hurtPoses,
+  idlePoses,
+  leatherShoe,
+  planes,
+  sneaker,
+  walkPoses
+} from './player'
 import { LIE, SKIN, defaultHand, human, type Body, type HeadSpec, type Pose, type Pt } from './rig'
 import type { Anim, Sheet } from './sheet'
 
@@ -820,7 +830,16 @@ export const toddler = (p: Pose) => human(TODDLER, p)
 export const junior = (p: Pose) => human(JUNIOR, p)
 export const high = (p: Pose) => human(HIGH, p)
 export const college = (p: Pose) => human(COLLEGE, p)
-export const prime = (p: Pose) => human(PRIME, { ...p, handF: p.handF && p.item ? [-4, -1] : p.handF })
+export const CASUAL_PRIME: Body = {
+  ...PRIME,
+  sleeve: R.sky,
+  shortSleeve: false,
+  shoe: sneaker,
+  behind: undefined,
+  torso: CASUAL_ADULT.torso,
+  lie: { ...PRIME.lie, coat: R.sky }
+}
+export const prime = (p: Pose) => human(CASUAL_PRIME, { ...p, handF: p.handF && p.item ? [-4, -1] : p.handF })
 export const middle = (p: Pose) => human(MIDDLE, p)
 
 export const peopleSheets: Record<string, () => Sheet> = {
@@ -835,7 +854,7 @@ export const peopleSheets: Record<string, () => Sheet> = {
   'player:high': () => playerSheet(HIGH, { walk: { swing: 0.5 } }),
   'player:college': () => playerSheet(COLLEGE, { walk: {}, mod: (p) => ({ ...p, handF: [0, 7] }) }),
   'player:prime': () =>
-    playerSheet(PRIME, { walk: { swing: 0.5 }, mod: (p) => ({ ...p, handF: [-4, -1], head: [0, 1] }) }),
+    playerSheet(CASUAL_PRIME, { walk: { swing: 0.5 }, mod: (p) => ({ ...p, handF: [-4, -1], head: [0, 1] }) }),
   'player:middle': () => playerSheet(MIDDLE, { walk: { swing: 0.6, scale: 0.85 }, fps: 9 }),
   'enemy:teacher': () => ({
     move: anim(
@@ -911,7 +930,7 @@ export const STAGE_BODIES: Record<string, Body> = {
   junior: JUNIOR,
   high: HIGH,
   college: COLLEGE,
-  prime: PRIME,
+  prime: CASUAL_PRIME,
   middle: MIDDLE
 }
 export const STAGE_PAINTERS: Record<string, (p: Pose) => Raster> = { toddler, junior, high, college, prime, middle }

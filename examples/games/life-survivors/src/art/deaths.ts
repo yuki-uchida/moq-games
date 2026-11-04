@@ -1,7 +1,7 @@
 import { C, R, dimTable, toneTable } from './palette'
 import { Raster, ball, part, remap } from './raster'
 import { car } from './enemies'
-import { ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid, type BedPose } from './player'
+import { CASUAL_ADULT, ELDER, KID, adult, baby, bed, bedPose, crawl, elder, kid, type BedPose } from './player'
 import { STAGE_BODIES, STAGE_PAINTERS } from './people'
 import { GROUND, dust, flatBody, headBox, lying, lyingBack, pose, sitting, type Body, type Pose } from './rig'
 import type { Anim, Sheet } from './sheet'
@@ -1247,7 +1247,7 @@ function bedDeaths(): Sheet {
 const ADULT_AGE = new Set(['college', 'adult', 'prime', 'middle', 'elder'])
 const UPRIGHT: Record<string, Kit> = {
   kid: { body: KID, paint: kid },
-  adult: { body: ADULT, paint: adult },
+  adult: { body: CASUAL_ADULT, paint: adult },
   elder: { body: ELDER, paint: elder },
   ...Object.fromEntries(
     Object.keys(STAGE_BODIES).map((id) => [id, { body: STAGE_BODIES[id], paint: STAGE_PAINTERS[id] }])
