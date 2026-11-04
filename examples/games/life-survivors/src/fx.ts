@@ -37,7 +37,8 @@ export const FX = {
   /** x, y, a = enemy index (charger / boss charge telegraph) */
   WINDUP: 17,
   /** x, y, a = enemy index (an elite appeared) */
-  ELITE: 18
+  ELITE: 18,
+  PARENT_DEATH: 19
 } as const
 
 export type FxType = (typeof FX)[keyof typeof FX]

@@ -6,6 +6,19 @@ import { ENEMIES, ITEM_KINDS, MAX_WEAPON_LEVEL, WEAPONS, WEAPON_BY_ID } from './
 import { FX, FX_STRIDE } from './fx'
 import type { PlayOptions, SfxName } from './audio'
 import { STRIDE } from './view'
+import type { ViewPlayer } from './view'
+
+export function parentMemorialAt(player: Pick<ViewPlayer, 'parentDeath'>, time: number) {
+  if (!player.parentDeath) return undefined
+  const age = time - player.parentDeath.at
+  if (age < 0 || age >= 6) return undefined
+  return {
+    age,
+    alpha: Math.min(1, (6 - age) / 1.5),
+    rise: Math.max(0, age - 1) * 18,
+    rewardAlpha: Math.min(1, Math.max(0, age - 1.5))
+  }
+}
 
 export interface FxEv {
   seq: number
@@ -76,6 +89,9 @@ export function soundForFx(e: FxEv, ctx: FxContext, sink: SoundSink, tracker: Fx
   const near = spectating ? 0.6 : gainFor(e.x, e.y, ctx)
   const dist = Math.hypot(e.x - ctx.x, e.y - ctx.y)
   switch (e.type) {
+    case FX.PARENT_DEATH:
+      sink.play('down', mine(e.b) ? {} : { pan, gain: 0.35 })
+      break
     case FX.KILL:
       sink.play(e.b & 1 ? 'killElite' : 'kill', { pan, gain: near })
       break
@@ -163,7 +179,7 @@ export function heartbeatLevel(hp: number, maxHp: number, alive: boolean, playin
 
 /* ---------------------------------------------------------------------------------------------- banners */
 
-export type BannerKind = 'warning' | 'bossKill' | 'stage' | 'swarm' | 'chest' | 'evolve'
+export type BannerKind = 'warning' | 'bossKill' | 'stage' | 'swarm' | 'chest' | 'evolve' | 'farewell'
 export interface Banner {
   kind: BannerKind
   title: string
@@ -179,6 +195,7 @@ export interface Banner {
 }
 
 export const BANNER_MS: Record<BannerKind, number> = {
+  farewell: 4500,
   warning: 2200,
   bossKill: 1900,
   stage: 1800,
@@ -186,7 +203,15 @@ export const BANNER_MS: Record<BannerKind, number> = {
   chest: 1500,
   evolve: 2000
 }
-const PRIORITY: Record<BannerKind, number> = { warning: 5, evolve: 4, bossKill: 3, chest: 2, stage: 1, swarm: 0 }
+const PRIORITY: Record<BannerKind, number> = {
+  farewell: 6,
+  warning: 5,
+  evolve: 4,
+  bossKill: 3,
+  chest: 2,
+  stage: 1,
+  swarm: 0
+}
 const MAX_WAITING = 4
 /** A banner that waited this long is stale. */
 const STALE_MS = 6000
@@ -197,7 +222,17 @@ export class BannerQueue {
   current: { banner: Banner; until: number } | undefined
 
   push(banner: Banner, now: number) {
-    this.waiting.push({ banner, at: now })
+    if (banner.kind === 'warning') {
+      if (this.current && this.current.banner.kind !== 'warning' && this.current.until > now) {
+        this.waiting.unshift({
+          banner: { ...this.current.banner, duration: this.current.until - now },
+          at: now
+        })
+        this.current = undefined
+      }
+      const firstOrdinary = this.waiting.findIndex((entry) => entry.banner.kind !== 'warning')
+      this.waiting.splice(firstOrdinary < 0 ? this.waiting.length : firstOrdinary, 0, { banner, at: now })
+    } else this.waiting.push({ banner, at: now })
     while (this.waiting.length > MAX_WAITING) {
       let drop = 0
       for (let i = 1; i < this.waiting.length; i++)

@@ -218,6 +218,27 @@ describe('fx -> sound', () => {
 })
 
 describe('BannerQueue', () => {
+  it('shows warnings immediately before a stage and resumes the interrupted stage', () => {
+    const queue = new BannerQueue()
+    queue.push({ kind: 'stage', title: '50歳', duration: BANNER_MS.stage }, 0)
+    expect(queue.update(0).show?.title).toBe('50歳')
+    queue.push({ kind: 'warning', title: '介護', duration: BANNER_MS.warning }, 100)
+    expect(queue.update(100).show?.title).toBe('介護')
+    queue.push({ kind: 'warning', title: '別のボス', duration: BANNER_MS.warning }, 200)
+    expect(queue.update(200)).toEqual({})
+    expect(queue.update(2300).show?.title).toBe('別のボス')
+    expect(queue.update(4500).show?.title).toBe('50歳')
+    expect(queue.update(6200)).toEqual({ hide: true })
+  })
+
+  it('puts a same-frame warning ahead of an unmounted stage', () => {
+    const queue = new BannerQueue()
+    queue.push({ kind: 'stage', title: '50歳', duration: BANNER_MS.stage }, 0)
+    queue.push({ kind: 'warning', title: '介護', duration: BANNER_MS.warning }, 0)
+    expect(queue.update(0).show?.title).toBe('介護')
+    expect(queue.update(BANNER_MS.warning).show?.title).toBe('50歳')
+  })
+
   it('shows one banner at a time, in order', () => {
     const q = new BannerQueue()
     q.push({ kind: 'warning', title: 'W', duration: BANNER_MS.warning }, 0)

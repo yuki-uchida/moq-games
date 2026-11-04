@@ -1,4 +1,18 @@
-import { EVENTS } from './data'
+import { EVENTS, PARENTS, PARENT_LEGACIES, PASSIVE_BY_ID } from './data'
+
+export type ParentReward = 'none' | 'passive' | 'choice'
+
+export function parentFarewell(parent: string, reward: ParentReward) {
+  const name = PARENTS.find((def) => def.id === parent)!.name
+  const legacy = PASSIVE_BY_ID.get(PARENT_LEGACIES[parent])!.name
+  return `${name}を看取り、親の武器を手放した。${
+    reward === 'passive'
+      ? `最大まで育てた絆から「${legacy}」を継承（未所持ならLv1・所持済みならLv+1）。`
+      : reward === 'choice'
+        ? `「${legacy}」は最大のため、成長の選択を1回獲得。`
+        : '最大レベル未満のため、性格の継承はなかった。'
+  }`
+}
 
 export interface LifeDecision {
   event: number
@@ -7,6 +21,9 @@ export interface LifeDecision {
 }
 
 export const LIFE_OUTCOMES: Record<string, readonly string[]> = {
+  b_care: Object.keys(PARENT_LEGACIES).flatMap((parent) =>
+    (['none', 'passive', 'choice'] as const).map((reward) => parentFarewell(parent, reward))
+  ),
   b_univ: ['勉強が実り、専門課程へ進学。転機を1回獲得。', '実践から学ぶ進路を選んだ。'],
   b_shukatsu: [
     '学びと仕事がつながり、専門職に就職。転機を2回獲得。',

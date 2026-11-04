@@ -21,6 +21,8 @@ import {
   ENEMIES,
   ENEMY_BY_ID,
   MAX_WEAPON_LEVEL,
+  PARENT_LEGACIES,
+  PASSIVE_BY_ID,
   STAGES,
   WEAPONS,
   WEAPON_BY_ID,
@@ -31,6 +33,7 @@ import {
   type Stage
 } from './data'
 import { Effects, PK } from './effects'
+import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { petForm, weaponAppearance } from './weapon-life'
 import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
@@ -299,6 +302,8 @@ export class Renderer {
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly families = new Map<string, Follower[]>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
+  private readonly parentMemorials = new Map<string, { key: string; age: number }>()
+  private parentMemorialTime?: number
   private readonly warmedDeaths = new Set<string>()
   private readonly warmedAppearances = new Set<string>()
   private appearanceView?: View
@@ -1763,8 +1768,56 @@ export class Renderer {
     }
   }
 
+  private drawParentMemorials(view: View, dt: number, smooth: boolean) {
+    if (this.parentMemorialTime !== undefined && view.time < this.parentMemorialTime) this.parentMemorials.clear()
+    this.parentMemorialTime = view.time
+    for (const id of this.parentMemorials.keys()) {
+      if (!view.players.some((player) => player.id === id && player.parentDeath)) this.parentMemorials.delete(id)
+    }
+    for (const player of view.players) {
+      const death = player.parentDeath
+      if (!death) continue
+      const key = [player.parent, death.at, death.x, death.y, death.reward].join(':')
+      const elapsed = view.time - death.at
+      let entry = this.parentMemorials.get(player.id)
+      if (!entry || entry.key !== key) {
+        entry = { key, age: elapsed }
+        this.parentMemorials.set(player.id, entry)
+      } else {
+        entry.age =
+          smooth && elapsed >= 0 ? Math.max(elapsed, entry.age + (view.phase === 'playing' ? dt : 0)) : elapsed
+      }
+      const memorial = parentMemorialAt(player, death.at + entry.age)
+      if (!memorial || !player.parentDeath) continue
+      const { x, y, reward } = player.parentDeath
+      const { age, alpha, rise, rewardAlpha } = memorial
+      const anim = sheet('death:elder').collapse
+      const index = frameAt(anim, age)
+      this.art(anim.frames[index], x + 30, y + 12, 32, 58, false, (anim.alpha?.[index] ?? 1) * alpha)
+      this.art(sheet('icons')[player.parent].frames[0], x + 30, y - 58 - rise, 16, 16, false, alpha)
+      const soul = sheet('soul').float
+      this.art(pick(soul, age), x + 30, y - 20 - rise, 8, 16, false, Math.min(1, Math.max(0, age - 0.8)) * alpha)
+      const legacy = PARENT_LEGACIES[player.parent]
+      if (reward !== 'none')
+        this.art(sheet('icons')[legacy].frames[0], x + 30, y - 92, 16, 16, false, rewardAlpha * alpha)
+      this.world()
+      const lines = [
+        `${player.name}：${WEAPON_BY_ID.get(player.parent)!.name}とのお別れ`,
+        reward === 'none'
+          ? '親の武器を手放した'
+          : reward === 'choice'
+            ? '成長の選択 +1'
+            : `「${PASSIVE_BY_ID.get(legacy)!.name}」を継承！`
+      ]
+      lines.forEach((text, line) => {
+        this.blit(this.label(text, 13, '#f1f4fc'), x + 30, y - 112 + line * 18, 0, line ? rewardAlpha * alpha : alpha)
+      })
+    }
+  }
+
   draw(view: View, localId: string, dt: number, smooth: boolean) {
     this.prewarmAppearances(view)
+    this.prewarm('elder')
     this.frame++
     const ctx = this.ctx
     const k = smooth ? Math.min(1, dt * 14) : 1
@@ -2088,6 +2141,8 @@ export class Renderer {
       this.world()
       this.halo = undefined
     }
+
+    this.drawParentMemorials(view, dt, smooth)
 
     // Hits, deaths, level-ups ... : the particles of the fx events.
     this.particles(1)
