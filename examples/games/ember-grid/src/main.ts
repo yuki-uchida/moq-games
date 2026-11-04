@@ -59,6 +59,7 @@ import {
 import { showTitle } from './title'
 import { setupHelp } from './help'
 import { createTutorial } from './tutorial'
+import { guideText, legendItems, objectiveText, phaseLabel, roleNames } from './hud'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
@@ -110,8 +111,10 @@ let focusParking: HTMLElement | null = null
 let fast = false
 let forecastTrigger: HTMLElement | null = null
 let bannerVersion = 0
+let pendingHeal: boolean | undefined
+let actingId: string | undefined
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true">♫</button><button id="help" aria-label="遊び方">?</button><button id="restart" aria-label="再プレイ">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><div id="report"></div><button id="next">次の任務 ▶</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復薬 </span>2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -125,6 +128,7 @@ if (storageNotice) notice()
 const settingsButton = document.createElement('button')
 settingsButton.textContent = '⚙'
 settingsButton.setAttribute('aria-label', '設定')
+settingsButton.title = '設定'
 document.querySelector('header')!.append(settingsButton)
 let previousDanger = dangerZoneDefault()
 let render = () => {}
@@ -147,7 +151,10 @@ objectiveStatus.id = 'objective'
 document.querySelector('.status')!.append(objectiveStatus)
 const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
-field.insertAdjacentHTML('beforeend', '<div id="phase-banner" hidden aria-live="polite"></div>')
+field.insertAdjacentHTML(
+  'beforeend',
+  '<div id="phase-banner" hidden aria-live="polite"></div><div id="legend" aria-hidden="true"></div><div id="actor" hidden aria-hidden="true"></div>'
+)
 document
   .querySelector('.status')!
   .insertAdjacentHTML(
@@ -156,7 +163,10 @@ document
   )
 document
   .querySelector('#selection')!
-  .insertAdjacentHTML('afterend', '<button id="detail-button" aria-label="ユニット詳細" disabled>ⓘ</button>')
+  .insertAdjacentHTML(
+    'afterend',
+    '<button id="detail-button" aria-label="ユニット詳細" title="ユニット詳細" disabled>ⓘ</button>'
+  )
 app.insertAdjacentHTML(
   'beforeend',
   '<dialog id="detail" aria-labelledby="detail-title"><div id="detail-content"></div><button id="detail-close">閉じる</button></dialog>'
@@ -230,7 +240,7 @@ document
   .querySelector('#selection')!
   .insertAdjacentHTML(
     'afterend',
-    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false">⊞</button>'
+    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false" title="タッチ選択補助">⊞</button>'
   )
 app.insertAdjacentHTML(
   'beforeend',
@@ -274,7 +284,7 @@ function chooseNearby(x: number, y: number) {
 const navigation = document.querySelector('nav')!
 navigation.insertAdjacentHTML(
   'afterbegin',
-  '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険</button><button id="undo">↶ 戻す</button>'
+  '<button id="danger" aria-label="敵の攻撃範囲" aria-pressed="false">☷ 危険<span class="nav-long">範囲</span></button><button id="undo">↶ 戻す</button>'
 )
 document
   .querySelector('#log')!
@@ -406,21 +416,6 @@ let detailTrigger: HTMLElement | null = null
 function openDetail(unit: Unit, trigger: HTMLElement) {
   if (busy || !ready || detail.open) return
   detailTrigger = trigger
-  const roles: Record<string, string> = {
-    soldier: '剣士',
-    archer: '弓兵',
-    mage: '魔法使い',
-    healer: '癒し手',
-    goblin: 'ゴブリン',
-    wolf: '狼',
-    slime: 'スライム',
-    bat: 'コウモリ',
-    beetle: '甲虫',
-    shaman: '呪術師',
-    wraith: '亡霊',
-    ogre: 'オーガ',
-    dragon: '竜'
-  }
   const notes = [
     unit.boss ? '♛ ボス' : '',
     unit.ai === 'hold'
@@ -444,7 +439,7 @@ function openDetail(unit: Unit, trigger: HTMLElement) {
   ].filter(Boolean)
   const note = notes.join(' · ')
   document.querySelector('#detail-content')!.innerHTML =
-    `${portrait(unit)}<h2 id="detail-title">${unit.name}</h2><p>${roles[unit.role] ?? unit.role} · Lv ${unit.level}</p>${unit.side === 'ally' ? `<label>EXP ${unit.exp}/100 <progress max="100" value="${unit.exp}"></progress></label>` : ''}<p>♥ HP ${unit.hp}/${unit.max} · ⚔ 攻撃 ${unit.power} · ⛨ 防御 ${unit.def}</p><p>◎ 射程 ${unit.range} · ◇ 移動 ${unit.move} · ⬡ 盾 ${unit.armor ?? 0}</p><p>${note}</p>`
+    `${portrait(unit)}<h2 id="detail-title">${unit.name}</h2><p>${roleNames[unit.role] ?? unit.role} · Lv ${unit.level}</p>${unit.side === 'ally' ? `<label>EXP ${unit.exp}/100 <progress max="100" value="${unit.exp}"></progress></label>` : ''}<p>♥ HP ${unit.hp}/${unit.max} · ⚔ 攻撃 ${unit.power} · ⛨ 防御 ${unit.def}</p><p>◎ 射程 ${unit.range} · ◇ 移動 ${unit.move} · ⬡ 盾 ${unit.armor ?? 0}</p><p>${note}</p>`
   detail.showModal()
   document.querySelector<HTMLButtonElement>('#detail-close')!.focus()
 }
@@ -464,22 +459,35 @@ field.addEventListener('pointerdown', enableFast, true)
 async function phaseBanner(phase: 'ally' | 'enemy', token: number) {
   const banner = document.querySelector<HTMLElement>('#phase-banner')!
   const version = ++bannerVersion
-  banner.textContent = `${phase === 'ally' ? '◆ 味方フェイズ' : '▼ 敵フェイズ'} · ターン ${game.turn}`
+  banner.innerHTML = `<b>${phaseLabel(phase)}</b><span>ターン ${game.turn}</span>`
   banner.hidden = false
   banner.dataset.phase = phase
-  await pause(matchMedia('(prefers-reduced-motion: reduce)').matches ? 80 : 550)
+  await pause(reducedMotion() ? 80 : 800)
   if (generation === token && version === bannerVersion) banner.hidden = true
 }
 board.onpointerleave = () => hover(-1, -1)
+function updateGuide() {
+  document.querySelector('#guide')!.textContent = guideText({
+    game,
+    selected: game.units.find((u) => u.id === selected),
+    inspected: game.units.find((u) => u.id === (hovered ?? inspected)),
+    pendingHeal: pending ? pendingHeal : undefined,
+    busy,
+    ready
+  })
+}
 function cancelForecast(restore = true) {
   if (!restore && document.activeElement?.closest('#forecast')) restoreBoardFocus = true
   pending = undefined
+  pendingHeal = undefined
   document.querySelector<HTMLElement>('#forecast')!.hidden = true
   if (restore) forecastTrigger?.focus()
   tutorial.update()
+  updateGuide()
 }
 function showForecast(unit: Unit, target: Unit, healing: boolean) {
   pending = target.id
+  pendingHeal = healing
   forecastTrigger = cells[target.y * size + target.x]
   const preview = healing ? healForecast(unit, target) : forecast(game, unit, target)
   const amount = healing ? preview.after - target.hp : target.hp - preview.after
@@ -498,6 +506,7 @@ function showForecast(unit: Unit, target: Unit, healing: boolean) {
   }
   card.querySelector<HTMLButtonElement>('#confirm')!.focus()
   tutorial.update()
+  updateGuide()
 }
 document.querySelector('#danger')!.addEventListener('click', () => {
   danger = !danger
@@ -578,6 +587,8 @@ render = () => {
         ? new Set([...enemyThreat(game, foe)].filter((cell) => !foeMove.has(cell) || cell === key(foe.x, foe.y)))
         : new Set<string>(),
     threatened = danger ? dangerZone(game) : new Set<string>()
+  const acting = game.phase === 'enemy' ? game.units.find((u) => u.id === actingId && u.hp > 0) : undefined
+  if (!acting) actingId = undefined
   cells.forEach((cell, i) => {
     cell.disabled = busy || !ready
     const x = i % size,
@@ -587,7 +598,7 @@ render = () => {
       canAttack = unit && !unit.heal && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range,
       canHeal = unit && u && unit.heal && healRange(game, unit).has(k) && distance(unit, u) <= 2,
       seize = objective.type === 'seize' && objective.x === x && objective.y === y
-    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''}`
+    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''} ${u && u === acting ? 'acting' : ''}`
     cell.classList.toggle('danger', threatened.has(k))
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
@@ -602,15 +613,24 @@ render = () => {
   requestAnimationFrame(positionTags)
   if (stageAvailable && playing) stage.sync(game, unit?.id)
   followCamera(unit, legal, reach)
-  document.querySelector('#turn')!.textContent =
-    `${game.phase === 'enemy' ? '▼ 敵' : game.phase === 'won' ? '✦ 勝利' : game.phase === 'lost' ? '◇ 敗北' : '◆ 味方'} · ${game.turn}`
-  document.querySelector('#count')!.textContent =
-    `◆ ${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length} / ▼ ${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}`
-  objectiveStatus.textContent = `${objective.type === 'seize' ? '✦ ' : ''}${objectiveLabel(game)}`
+  const turnEl = document.querySelector<HTMLElement>('#turn')!
+  turnEl.dataset.phase = game.phase
+  turnEl.innerHTML = `<span class="turn-no">ターン <b>${game.turn}</b></span><span class="sep" aria-hidden="true"> · </span><span class="phase">${phaseLabel(game.phase)}</span>`
+  document.querySelector('#count')!.innerHTML =
+    `<span class="ally">味方 <b>${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length}</b></span><span class="sep" aria-hidden="true"> · </span><span class="enemy">敵 <b>${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}</b></span>`
+  objectiveStatus.innerHTML = `<span class="hud-label">勝利条件</span> <span class="objective-text">${objectiveText(game)}</span>`
+  objectiveStatus.title = '敵を全滅させても勝利 · 味方が全滅すると敗北'
+  document.querySelector('#legend')!.innerHTML = legendItems({ game, selected: unit, foe, danger })
+    .map(({ kind, label }) => `<span data-kind="${kind}"><i>${kind === 'seize' ? '✦' : ''}</i>${label}</span>`)
+    .join('')
+  const actor = document.querySelector<HTMLElement>('#actor')!
+  actor.hidden = !acting
+  if (acting) actor.textContent = `▼ ${acting.name}（${roleNames[acting.role] ?? acting.role}）の行動`
   document.querySelector('#selection')!.textContent = unit
     ? `${unit.name} Lv${unit.level} EXP ${unit.exp}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　⛨ ${unit.def}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
-    : '燈守を選択'
+    : 'ユニットを選ぶと能力を表示'
   document.querySelector('#log')!.textContent = game.log
+  updateGuide()
   ;(document.querySelector('#detail-button') as HTMLButtonElement).disabled = busy || !ready || !(selected ?? inspected)
   document.querySelector<HTMLElement>('#fast')!.hidden = game.phase !== 'enemy'
   document.querySelector('#wait')!.classList.toggle('recommended', Boolean(undo && allyTurnOver(game)))
@@ -621,7 +641,7 @@ render = () => {
     busy || !ready || !unit || unit.done || game.phase !== 'ally'
   ;(document.querySelector('#end') as HTMLButtonElement).disabled = busy || !ready || game.phase !== 'ally'
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
-  potion.textContent = `✚ ${game.potions}`
+  potion.innerHTML = `✚ <span class="nav-long">回復薬 </span>${game.potions}`
   potion.disabled =
     busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
   document.querySelector('#mission')!.textContent =
@@ -631,6 +651,7 @@ render = () => {
   const wasHidden = result.hidden
   result.hidden = busy || (game.phase !== 'won' && game.phase !== 'lost')
   result.classList.toggle('chapter', game.phase === 'won')
+  field.classList.toggle('reporting', !result.hidden)
   document.querySelector('#report')!.innerHTML =
     game.phase === 'won' ? chapterReport(game, portrait, save.difficulty === 'casual') : ''
   document.querySelector('#outcome')!.textContent =
@@ -817,6 +838,8 @@ async function end() {
   await phaseBanner('enemy', token)
   if (token !== generation) return
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
+    actingId = u.id
+    render()
     if (!fast) await pause(280)
     if (token !== generation) return
     const before = snapshot(game),
@@ -837,6 +860,7 @@ async function end() {
     render()
     if (game.phase !== 'enemy') return
   }
+  actingId = undefined
   beginAlly(game)
   persistVictory()
   // A survive objective is won once the last required enemy phase ends.

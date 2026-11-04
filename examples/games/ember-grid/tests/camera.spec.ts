@@ -143,7 +143,7 @@ test('mouse drag pans and the wheel zooms without acting; keys zoom and follow f
   // After the enemy turn the allies are back in view.
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
-  await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 60000 })
+  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 60000 })
   await settle(page)
   expect(await inField(page, '#board .cell.ally')).toBe(true)
 })
