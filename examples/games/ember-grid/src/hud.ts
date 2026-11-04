@@ -53,7 +53,7 @@ export type GuideState = {
 export function guideText({ game, selected, inspected, pendingHeal, busy, ready }: GuideState): string {
   if (!ready) return '3D モデルを準備中…'
   if (game.phase === 'won') return '勝利！ 結果を確認して次の任務へ'
-  if (game.phase === 'lost') return '敗北… ↻ でこの章に再挑戦'
+  if (game.phase === 'lost') return '敗北… 「↻ この章に再挑戦」で章の最初から'
   if (game.phase === 'enemy') return '敵フェイズ中 · 画面タップか ⏩ で早送り'
   if (busy) return '行動中…'
   if (pendingHeal === true) return '回復予測を確認し「回復」で確定（やめる で取消）'

@@ -64,7 +64,7 @@ describe('guideText', () => {
     game.phase = 'won'
     expect(guideText({ ...base, game })).toBe('勝利！ 結果を確認して次の任務へ')
     game.phase = 'lost'
-    expect(guideText({ ...base, game })).toBe('敗北… ↻ でこの章に再挑戦')
+    expect(guideText({ ...base, game })).toBe('敗北… 「↻ この章に再挑戦」で章の最初から')
     game.phase = 'enemy'
     expect(guideText({ ...base, game })).toContain('敵フェイズ中')
     game.phase = 'ally'

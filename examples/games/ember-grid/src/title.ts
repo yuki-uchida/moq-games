@@ -1,6 +1,7 @@
 import { confirmReplacement } from './confirm'
 import { missions } from './game'
 import { unlocked, type Difficulty, type Save } from './save'
+import { chapterLine } from './menus'
 import { reducedMotion } from './settings'
 
 export function showTitle(
@@ -17,7 +18,7 @@ export function showTitle(
   const completed = !!save && (Boolean(save.completedAt) || save.cleared.includes(missions.length - 1))
   title.className = 'title-screen'
   title.setAttribute('aria-label', 'タイトル')
-  title.innerHTML = `<div class="title-embers" aria-hidden="true"></div><div class="title-art" aria-hidden="true">${['archer', 'soldier', 'mage'].map((role) => `<img src="${import.meta.env.BASE_URL}tower-defense-art/title/${role}.png" alt="">`).join('')}</div><div class="title-content"><small>EMBER GRID · TACTICAL RPG</small><h1>デスガイヤ</h1><p>灰の彼方へ、燈をつなぐ。</p><nav><button data-action="continue" ${save ? '' : 'disabled'}>▶ つづきから${save ? `<small>${missions[save.suspend?.stage ?? save.furthest].name} · ${save.suspend?.turn ?? 1} ターン · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</small>` : ''}</button><button data-action="new">✦ はじめから</button><button data-action="chapters" ${save ? '' : 'disabled'}>⚑ 章を選ぶ</button><button data-action="settings">⚙ 設定</button><button data-action="help">? 遊び方</button></nav><p class="title-loading" role="status"></p></div>`
+  title.innerHTML = `<div class="title-embers" aria-hidden="true"></div><div class="title-art" aria-hidden="true">${['archer', 'soldier', 'mage'].map((role) => `<img src="${import.meta.env.BASE_URL}tower-defense-art/title/${role}.png" alt="">`).join('')}</div><div class="title-content"><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1><p>灰の彼方へ、燈をつなぐ。</p><nav><button data-action="continue" ${save ? '' : 'disabled'}>▶ つづきから${save ? `<small>${missions[save.suspend?.stage ?? save.furthest].name} · ${save.suspend?.turn ?? 1} ターン · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</small>` : ''}</button><button data-action="new">✦ はじめから</button><button data-action="chapters" ${save ? '' : 'disabled'}>⚑ 章を選ぶ</button><button data-action="settings">⚙ 設定</button><button data-action="help">? 遊び方</button></nav><p class="title-loading" role="status"></p></div>`
   if (completed) {
     const button = title.querySelector<HTMLButtonElement>('[data-action=continue]')!
     if (save?.suspend)
@@ -52,7 +53,7 @@ export function showTitle(
   title.querySelector<HTMLButtonElement>('[data-action=new]')!.onclick = () => {
     const dialog = document.createElement('dialog')
     dialog.className = 'shell-dialog'
-    dialog.innerHTML = `<h2>難易度を選択</h2><p>カジュアルは倒れた仲間が章の後に復帰。クラシックは永久離脱します。</p><button data-difficulty="casual">◆ カジュアル</button><button data-difficulty="classic">⚔ クラシック</button><button data-cancel>戻る</button>`
+    dialog.innerHTML = `<h2>難易度を選択</h2><p>カジュアルは倒れた仲間が章の後に復帰。クラシックは永久離脱します。</p><button data-difficulty="casual">◆ カジュアル<small>倒れた仲間は章クリア後に復帰 · はじめての方におすすめ</small></button><button data-difficulty="classic">⚔ クラシック<small>倒れた仲間は永久に離脱 · 手応えのある遠征</small></button><button data-cancel>戻る</button>`
     document.body.append(dialog)
     dialog.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(
       (button) =>
@@ -72,7 +73,7 @@ export function showTitle(
     if (!save) return
     const dialog = document.createElement('dialog')
     dialog.className = 'shell-dialog'
-    dialog.innerHTML = `<h2>⚑ 章を選ぶ</h2>${missions.map((mission, index) => `<button data-stage="${index}" ${unlocked(save, index) ? '' : 'disabled'}>${unlocked(save, index) ? mission.name : '🔒 ？？？'}</button>`).join('')}<button data-cancel>戻る</button>`
+    dialog.innerHTML = `<h2>⚑ 章を選ぶ</h2>${missions.map((mission, index) => `<button data-stage="${index}" ${unlocked(save, index) ? '' : 'disabled'}>${unlocked(save, index) ? `${mission.name}<small>${chapterLine(index, save)}</small>` : '🔒 ？？？'}</button>`).join('')}<button data-cancel>戻る</button>`
     dialog.setAttribute('aria-label', '⚑ 章を選ぶ')
     document.body.append(dialog)
     dialog.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(

@@ -197,3 +197,67 @@
   border-radius: 0.5rem;
   pointer-events: none;
 }
+
+/* Grouped settings, option descriptions. */
+.set-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.set-head h2 {
+  margin: 0;
+}
+.shell-dialog .set-head button {
+  width: auto;
+  margin: 0;
+  padding-inline: 1rem;
+}
+.set-group {
+  margin-top: 1rem;
+}
+.set-group h3 {
+  margin: 0 0 0.2rem;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #e9ce8d;
+}
+.shell-dialog .set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 44px;
+  margin: 0;
+}
+.set-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #e9ce8d;
+}
+.set-row output {
+  min-width: 3.2em;
+  text-align: right;
+}
+.set-check {
+  justify-content: flex-start;
+}
+.set-check input {
+  flex: none;
+  accent-color: #e9ce8d;
+}
+.set-check small,
+.shell-dialog button small {
+  display: block;
+  font-size: 12px;
+  color: #a9c0b8;
+  letter-spacing: 0;
+}
+.set-label {
+  flex: none;
+  min-width: 7.5em;
+}
+.set-check span {
+  flex: 1;
+  text-align: left;
+}
