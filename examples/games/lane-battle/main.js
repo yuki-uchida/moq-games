@@ -966,8 +966,10 @@ function finish(report) {
   tone(state.result)
 }
 function tick(now) {
+  // Death motions age with real visible time, so they keep real speed down to 4 fps; a longer stall
+  // advances them by at most 0.25 s, so a death the player has barely seen still plays out.
   const visualDelta =
-    !paused && !document.hidden && clock.last !== null ? Math.min(0.05, Math.max(0, (now - clock.last) / 1000)) : 0
+    !paused && !document.hidden && clock.last !== null ? Math.min(0.25, Math.max(0, (now - clock.last) / 1000)) : 0
   for (const ghost of fallen) if (ghost.visualStarted) ghost.visualAge += visualDelta
   if (resultVisual && !paused && !document.hidden && clock.last !== null)
     resultVisual.elapsed += Math.max(0, (now - clock.last) / 1000)
