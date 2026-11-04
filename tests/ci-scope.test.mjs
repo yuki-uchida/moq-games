@@ -158,7 +158,7 @@ test(
         cwd: root,
         encoding: 'utf8'
       })
-    ).map((entry) => entry.file)
+    ).map((entry) => resolve(entry.file))
     assert.ok(expected.length > 0)
     assert.deepEqual(discovered.sort(), expected.sort())
   }
