@@ -1,8 +1,14 @@
+import { createHash } from 'node:crypto'
 import { expect, test } from 'vitest'
 import { careerFor, careerSheets } from '../src/art/careers'
 import { sheet } from '../src/art/index'
 import { rankedCareer } from '../src/careers'
-import { MAX_WEAPON_LEVEL, PARENTS, PASSIVES, TALENT_WEAPONS } from '../src/data'
+import { MAX_WEAPON_LEVEL, PARENTS, PASSIVES, TALENT_WEAPONS, stageAt, timeAtAge } from '../src/data'
+import { R } from '../src/art/palette'
+import { CASUAL_PRIME, PRIME, STAGE_BODIES } from '../src/art/people'
+import { ADULT, CASUAL_ADULT } from '../src/art/player'
+import { lying } from '../src/art/rig'
+import { bodyFor } from '../src/render'
 
 const appearances: Record<string, string> = {
   w_friend: 'social',
@@ -26,6 +32,78 @@ const appearances: Record<string, string> = {
   w_savings: 'entrepreneur',
   w_gamble: 'entrepreneur'
 }
+
+test('adult and prime dedicated outfits retain their original pixels', () => {
+  const hash = createHash('sha256')
+  for (const body of ['adult', 'prime'])
+    for (const style of ['soccer', 'bureaucrat', 'entrepreneur', 'social', 'romantic', 'creative'])
+      for (const animation of Object.values(sheet(`player:${body}:${style}`)))
+        for (const frame of animation.frames) hash.update(frame.data)
+  expect(hash.digest('hex')).toMatchInlineSnapshot(`"a9320a487ee190121be035103c9110886e6987b047f50e81a40087ed1ad92779"`)
+})
+
+test.each([
+  ['adult', ADULT, CASUAL_ADULT],
+  ['prime', PRIME, CASUAL_PRIME]
+] as const)('%s keeps its age-specific anatomy in casual clothes, including downed poses', (body, original, casual) => {
+  for (const key of [
+    'head',
+    'headAt',
+    'hip',
+    'thigh',
+    'shin',
+    'legW',
+    'gap',
+    'torsoH',
+    'span',
+    'upper',
+    'fore',
+    'armW',
+    'hang'
+  ] as const)
+    expect(casual[key]).toEqual(original[key])
+  expect(CASUAL_ADULT.head).not.toBe(CASUAL_PRIME.head)
+  expect(casual.item).toBeUndefined()
+  expect(casual.behind).toBeUndefined()
+  expect(casual.lie.coat).toBe(R.sky)
+  expect(casual.lie.detail).toBeUndefined()
+  for (const animation of Object.values(sheet(`player:${body}`)))
+    for (const frame of animation.frames) {
+      expect(frame.data.includes(R.sky[1])).toBe(true)
+      expect(frame.data.includes(R.red[1])).toBe(false)
+    }
+  expect(lying(casual).data.includes(R.sky[1])).toBe(true)
+  expect(sheet(`death:${body}`).collapse.frames.some((frame) => frame.data.includes(R.sky[1]))).toBe(true)
+  expect(STAGE_BODIES.prime).toBe(CASUAL_PRIME)
+})
+
+test('age boundaries and each participants current loadout select standard or dedicated outfits independently', () => {
+  const host = { weapons: [['w_work', 3, 0]] as [string, number, number][], passives: [] }
+  const guest = { weapons: [['w_sports', 4, 0]] as [string, number, number][], passives: [] }
+  for (const [age, expectedBody] of [
+    [22.99, 'college'],
+    [23, 'adult'],
+    [34.99, 'adult'],
+    [35, 'prime'],
+    [49.99, 'prime'],
+    [50, 'middle']
+  ] as const) {
+    const body = bodyFor(stageAt(timeAtAge(age)))
+    expect(body).toBe(expectedBody)
+    const appearance = (player: typeof host) => {
+      const style = careerFor(player)
+      return sheet(`player:${body}${style ? `:${style}` : ''}`)
+    }
+    expect(appearance(host)).toBe(sheet(`player:${body}`))
+    expect(appearance(guest)).toBe(sheet(`player:${body}:soccer`))
+    host.weapons[0][1] = 4
+    expect(appearance(host)).toBe(sheet(`player:${body}:bureaucrat`))
+    host.weapons = [['w_hobby', 1, 0]]
+    expect(appearance(host)).toBe(sheet(`player:${body}`))
+    expect(appearance(guest)).toBe(sheet(`player:${body}:soccer`))
+    host.weapons = [['w_work', 3, 0]]
+  }
+})
 
 test.each(['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'])(
   '%s joins career ranking at Lv4 without changing appearance ranking',

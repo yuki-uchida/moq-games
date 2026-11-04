@@ -7,6 +7,17 @@ import { botInput } from './bot'
 test('normal cards can turn an early career into a different later career', () => {
   const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
   const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
+  const competingCareers = [
+    'w_work',
+    'w_study',
+    'w_reading',
+    'w_overtime',
+    'w_sports',
+    'w_muscle',
+    'w_invest',
+    'w_savings',
+    'w_gamble'
+  ]
   const runs: { seed: number; time: number; early?: string; later?: string }[] = []
   for (let seed = 1; seed <= 20; seed++) {
     const game = new Game(seed)
@@ -18,7 +29,12 @@ test('normal cards can turn an early career into a different later career', () =
       const scores = player.choices.map((choice) => {
         const [kind, id] = choice.split(':')
         const priority = priorities.indexOf(id)
-        if (kind === 'r') return priority >= 0 ? -1 : 1
+        if (kind === 'r') {
+          if (priority >= 0) return -1
+          return game.state.eventIndex > earlyIndex && competingCareers.includes(id)
+            ? 3 + (player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0)
+            : 1
+        }
         if (kind === 's') return priority >= 0 ? 4 : -1
         if (choice === 'x:skip') return 0
         if (priority >= 0) return 5 - priority
@@ -74,8 +90,8 @@ test('normal play from birth can reach employment, sports, asset and creative pa
         if (kind === 's') return priority >= 0 ? 4 : -1
         if (choice === 'x:skip') return 0
         if (priority >= 0) return 5 - priority
-        if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 2
-        return 1
+        if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 1
+        return 2
       }
 
       for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {

@@ -6,6 +6,8 @@ From a fresh clone, install Git, Node.js 24/npm and rustup, then run `node scrip
 
 The source checkout lives under `.sdk-cache/source/<commit>` and output under `.generated/moqt-sdk`. Setup verifies origin, exact HEAD, clean source, Cargo.lock and wrapper hashes. It refuses to overwrite edited output and never resets or cleans an existing checkout. Preserve any local edits elsewhere before retrying. Interrupted staging directories remain ignored for diagnosis. Changing the pin requires updating its hashes and revalidating the SDK; a branch name or moving HEAD is not accepted.
 
+Text hashes normalize Git's CRLF checkout conversion to LF; the cached source is not changed.
+
 WASM uses the upstream Cargo.lock with `--locked` and remaps home, temporary and checkout paths. Wrapper source comes from the same public commit; only its imports are adapted to the generated package layout. No local moq-wasm working tree is read. CI caches generated output, sources, tool binaries and Cargo inputs by OS, architecture and setup inputs, and verifies cached integrity before use.
 
 The SDK includes upstream MIT attribution and conservatively collected Cargo dependency declarations and available LICENSE/COPYING/NOTICE texts. `scripts/prepare-pages.mjs` includes these and the game/three.js notices in `dist/THIRD-PARTY-NOTICES.txt`. Dependency acquisition does not waive license obligations. Keep this generated file with distributed builds; do not remove individual notices without checking their conditions. CI verifies the notice and provenance files exist.

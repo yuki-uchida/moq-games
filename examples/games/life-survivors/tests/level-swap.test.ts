@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { EVENTS, MAX_WEAPON_LEVEL, TALENT_WEAPONS, timeAtAge, WEAPON_BY_ID } from '../src/data'
-import { Game, weaponSlots, xpForLevel } from '../src/game'
+import { choiceText, Game, weaponSlots, xpForLevel } from '../src/game'
 
 const setup = (age: number, parent = 'p_edu') => {
   const game = new Game(2)
@@ -25,6 +25,20 @@ const finishGrowth = (game: Game, player: ReturnType<typeof setup>['player']) =>
   game.tick(0.01)
   expect(player.choices[0]).toMatch(/^s:/)
 }
+
+test('exchange candidates describe each weapon without changing replacement and cancellation text', () => {
+  const { player } = setup(30)
+  for (const weapon of TALENT_WEAPONS) {
+    expect(choiceText(player, `s:${weapon.id}`)).toEqual({
+      icon: weapon.icon,
+      name: weapon.name,
+      text: weapon.desc,
+      tag: 'NEW'
+    })
+  }
+  expect(choiceText(player, 'r:w_friend:w_invest').text).toBe('この武器と入れ替える')
+  expect(choiceText(player, 'x:skip').text).toBe('今の武器をそのまま使う')
+})
 
 describe('full talent slots with ordinary growth remaining', () => {
   test.each([11, 12, 15, 16, 22])('offers normal growth then age-limited cancellable swaps at age %i', (age) => {

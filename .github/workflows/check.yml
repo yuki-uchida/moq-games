@@ -63,7 +63,7 @@ jobs:
             .generated/moqt-sdk
             ~/.cargo/registry
             ~/.cargo/git
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: npm run build
@@ -109,7 +109,7 @@ jobs:
             .generated/moqt-sdk
             ~/.cargo/registry
             ~/.cargo/git
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: node --test tests/ci-scope.test.mjs
@@ -162,7 +162,7 @@ jobs:
             .generated/moqt-sdk
             ~/.cargo/registry
             ~/.cargo/git
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
       - run: npm audit --omit=dev --audit-level=high

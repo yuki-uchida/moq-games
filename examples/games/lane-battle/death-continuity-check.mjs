@@ -26,18 +26,23 @@ export function createGame(stage, deck, seed) {
   return s
 }
 `
-const main = (await fs.readFile(new URL('./main.js', import.meta.url), 'utf8'))
-  .replace(
-    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)',
-    `for (const ghost of fallen) { models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at); recordDeath(ghost, true) }`
-  )
-  .replace(
+// Each instrumentation point must still exist in main.js; fail loudly instead of silently recording nothing.
+const patch = (text, from, to) => {
+  assert.ok(text.includes(from), `death-continuity-check: main.js no longer contains ${JSON.stringify(from)}`)
+  return text.replace(from, to)
+}
+const main = [
+  [
+    'for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)',
+    `for (const ghost of fallen) { models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at); recordDeath(ghost, true) }`
+  ],
+  [
     "const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u",
     `const visual = held && u.motion === 'walk' ? { ...u, motion: 'attack', phase: state.time - held.at } : u
     if (u.tag === 'victim') Object.assign(visual, { motion: globalThis.__deathMode, phase: 0.01, walkDistance: 9 })`
-  )
-  .replace('contact(u), y)', 'contact(u), y); recordDeath(u, false)')
-  .replace(
+  ],
+  ['contact(u), y)', 'contact(u), y); recordDeath(u, false)'],
+  [
     'function depthSlots(list) {',
     `function recordDeath(unit, dead) {
       if (unit.tag !== 'victim') return
@@ -47,7 +52,8 @@ const main = (await fs.readFile(new URL('./main.js', import.meta.url), 'utf8'))
       globalThis.__deathFrame = { dead, age: dead ? state.time - unit.at : -1, x: matrix[12], y: matrix[13], leg: actor.bones.legF?.rotation.z, hit: actor.a.hit, scale: Math.abs(actor.root.scale.x), aspect: Math.abs(actor.root.scale.y / actor.root.scale.x), time: state.time }
     }
     function depthSlots(list) {`
-  )
+  ]
+].reduce((text, [from, to]) => patch(text, from, to), await fs.readFile(new URL('./main.js', import.meta.url), 'utf8'))
 
 await fs.mkdir(output, { recursive: true })
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
