@@ -600,7 +600,16 @@ function updateHud(current: View) {
             def.evolve && lv >= MAX_WEAPON_LEVEL && owner.passives.some((p) => p.id === def.evolve!.passive)
           )
           return mark(
-            slot(def.id, lv, def.parent ? 'parent' : evolved ? 'evolved' : '', evolved ? def.evolve!.name : def.name),
+            slot(
+              def.id,
+              lv,
+              def.parent ? 'parent' : evolved ? 'evolved' : '',
+              def.parent
+                ? [def.name, def.desc, def.perk].filter(Boolean).join('：')
+                : evolved
+                  ? def.evolve!.name
+                  : def.name
+            ),
             id,
             `${lv}:${evolved}`
           )
@@ -676,7 +685,8 @@ function reflection(player: ViewPlayer) {
     row.append(a, b)
     rows.push(row)
   }
-  add(`親：${WEAPON_BY_ID.get(player.parent)!.name}`, WEAPON_BY_ID.get(player.parent)!.perk ?? '', '', player.parent)
+  const parent = WEAPON_BY_ID.get(player.parent)!
+  add(`親：${parent.name}`, [parent.desc, parent.perk].filter(Boolean).join(' '), '', player.parent)
   for (const group of resultCategories(player)) {
     const heading = document.createElement('h4')
     heading.textContent = `${TALENT_NAMES[group.category]}：武器 ${group.weapons.length}・性格 ${group.passives.length}`
