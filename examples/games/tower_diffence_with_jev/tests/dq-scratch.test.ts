@@ -149,7 +149,9 @@ describe('runtime DQ scratch reuse preserves authored output', () => {
         ).toBe(spec.sha)
       for (const suffix of ['MultiplyMatrices', 'MatrixToDualQuaternion']) {
         const name = spec.role + suffix
-        expect((spec.runtime as any)[name].toString()).toBe((spec.source as any)[name].toString())
+        expect((spec.runtime as any)[name].toString().replaceAll('\r\n', '\n')).toBe(
+          (spec.source as any)[name].toString().replaceAll('\r\n', '\n')
+        )
       }
     })
     for (const file of spec.files) {
