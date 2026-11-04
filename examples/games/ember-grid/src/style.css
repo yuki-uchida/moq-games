@@ -623,7 +623,7 @@ nav button:last-child {
   border-color: #a68b55;
 }
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: default;
 }
 #result {
@@ -669,7 +669,7 @@ dialog button {
     font-size: 21px;
   }
   .badge {
-    font-size: 10px;
+    font-size: 11px;
     padding: 1px 2px;
   }
   .console {
@@ -798,7 +798,7 @@ fieldset label {
     font-size: 12px;
   }
   #mission {
-    font-size: 10px;
+    font-size: 11px;
   }
   nav button {
     font-size: 14px;
@@ -1950,4 +1950,223 @@ button:active:not(:disabled) {
 #terrain[hidden],
 .field.reporting #terrain {
   display: none;
+}
+
+/* Result screens, help legend, mission list and preparation progress. */
+#end .end-left {
+  display: inline-block;
+  font-size: 11px;
+  background: #00000040;
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-left: 4px;
+}
+#result.defeat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 16px;
+}
+#result.defeat[hidden] {
+  display: none;
+}
+#result.defeat > * {
+  width: 100%;
+  max-width: 420px;
+}
+#result.defeat #outcome {
+  font-size: 20px;
+  font-weight: bold;
+  color: #f0c9bd;
+  margin: 0;
+}
+#defeat-note {
+  margin: 0;
+  color: #b9c9c3;
+  font-size: 13px;
+}
+#defeat-note[hidden] {
+  display: none;
+}
+#result #retry {
+  background: #987335;
+  border-color: #e9ce8d;
+}
+#result #retry-missions {
+  background: #2f5a5e;
+  border-color: #8fc9c4;
+}
+#help-dialog [role='tab'] {
+  width: auto;
+  min-height: 40px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin: 0;
+}
+#help-dialog [role='tab'][aria-selected='true'] {
+  background: #70582d;
+  outline: 2px solid #f4cf7b;
+}
+#help-dialog h3 {
+  font-size: 13px;
+  color: #e9ce8d;
+  margin: 14px 0 6px;
+}
+.legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.legend-list .sw {
+  flex: none;
+  width: 28px;
+  height: 20px;
+  border-radius: 3px;
+  background: #2b4a50;
+  text-align: center;
+  line-height: 20px;
+  font-style: normal;
+  color: #ffd76a;
+}
+.legend-list .sw-move {
+  background: #3d6b70;
+  box-shadow: inset 0 0 0 2px #8beaf9;
+}
+.legend-list .sw-reach {
+  background: #7a3c36;
+  box-shadow: inset 0 0 0 1px #ff8a76;
+}
+.legend-list .sw-target {
+  background: #5a2f2c;
+  box-shadow: inset 0 0 0 3px #ff8a76;
+}
+.legend-list .sw-heal {
+  background: #4caa72;
+  box-shadow: inset 0 0 0 2px #c1ffce;
+}
+.legend-list .sw-enemy-move {
+  background: #4a5170;
+  box-shadow: inset 0 0 0 1px #9aa6d8;
+}
+.legend-list .sw-danger {
+  background: repeating-linear-gradient(45deg, #f9ce4d99 0 3px, transparent 3px 8px);
+  outline: 2px dashed #ffe27b;
+  outline-offset: -2px;
+}
+.legend-list .sw-seize {
+  background: repeating-linear-gradient(45deg, #e4c46a 0 4px, #806c46 4px 8px);
+}
+.legend-list .mk {
+  flex: none;
+  min-width: 28px;
+  text-align: center;
+  color: #e9ce8d;
+}
+.legend-list .mk.ally {
+  color: #7fc4ff;
+}
+.legend-list .mk.foe {
+  color: #ff8a76;
+}
+#missions button[aria-current='true'] {
+  border-color: #e9ce8d;
+}
+#missions .objective {
+  color: #ffe4a1;
+}
+#missions em {
+  font-style: normal;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 4px;
+  background: #00000050;
+  white-space: nowrap;
+}
+#missions .badge-current {
+  color: #e9ce8d;
+  border: 1px solid #e9ce8d;
+}
+#missions .badge-clear {
+  color: #b6e8c0;
+}
+.prep-bar {
+  display: block;
+  width: 220px;
+  max-width: 80%;
+  height: 8px;
+  border-radius: 4px;
+  background: #0a141a;
+  border: 1px solid #ffffff2a;
+  overflow: hidden;
+}
+.prep-bar[hidden] {
+  display: none;
+}
+.prep-bar em {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #e9ce8d, #fff3c4);
+  transition: width 0.2s;
+}
+/* While a result is shown there is nothing to inspect. */
+.field.reporting + .console .unit-empty {
+  visibility: hidden;
+}
+/* A stable console: selecting, hovering or a longer message never resizes the field. */
+#selection,
+#selection.unit-card {
+  min-height: 72px;
+}
+#selection:not(.unit-card) {
+  display: flex;
+  align-items: center;
+}
+#log {
+  height: 1.2em;
+  min-height: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (max-width: 500px) {
+  #guide {
+    min-height: 34px;
+  }
+  #log {
+    height: 2.4em;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+@media (max-width: 360px) {
+  #selection,
+  #selection.unit-card {
+    min-height: 70px;
+  }
+  /* The detail dialog keeps the matchup note; the smallest phones need the room for the board. */
+  #selection .uc-note {
+    display: none;
+  }
+  .console #log {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }

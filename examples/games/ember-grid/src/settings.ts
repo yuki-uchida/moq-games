@@ -43,13 +43,20 @@ export const reducedMotion = () =>
 export function openSettings(onChange: () => void, notice: () => void) {
   const dialog = document.createElement('dialog')
   dialog.className = 'shell-dialog'
-  dialog.innerHTML = `<h2>⚙ 設定</h2><label>BGM 音量 <input name="bgm" type="range" min="0" max="100" value="${settings.bgm}"></label><label>効果音 音量 <input name="sfx" type="range" min="0" max="100" value="${settings.sfx}"></label><label>戦闘速度 <select name="speed"><option value="normal">通常</option><option value="fast">高速</option></select></label><label><input name="confirm" type="checkbox"> 攻撃・回復の確認</label><label><input name="danger" type="checkbox"> 危険範囲を初期表示</label><label><input name="story" type="checkbox"> ストーリー</label><label><input name="tutorial" type="checkbox"> チュートリアル</label><label>動き <select name="motion"><option value="system">システムに従う</option><option value="reduce">減らす</option></select></label><button type="button">戻る</button>`
+  const range = (name: 'bgm' | 'sfx', label: string) =>
+    `<label class="set-row"><span class="set-label">${label}</span> <input name="${name}" type="range" min="0" max="100" value="${settings[name]}"><output>${settings[name]}%</output></label>`
+  const check = (name: string, label: string, note: string) =>
+    `<label class="set-row set-check"><input name="${name}" type="checkbox"><span>${label}<small>${note}</small></span></label>`
+  dialog.innerHTML = `<div class="set-head"><h2>⚙ 設定</h2><button type="button">戻る</button></div><section class="set-group"><h3>サウンド</h3>${range('bgm', 'BGM 音量')}${range('sfx', '効果音 音量')}</section><section class="set-group"><h3>戦闘</h3><label class="set-row">戦闘速度 <select name="speed"><option value="normal">通常</option><option value="fast">高速</option></select></label>${check('confirm', '攻撃・回復の確認', '実行前に予測カードを表示')}${check('danger', '危険範囲を初期表示', '章の開始時から敵の攻撃範囲を表示')}</section><section class="set-group"><h3>表示と演出</h3>${check('story', 'ストーリー', '会話シーンを表示（章タイトルは常に表示）')}${check('tutorial', 'チュートリアル', '第1章で操作ガイドを表示')}<label class="set-row">動き <select name="motion"><option value="system">システムに従う</option><option value="reduce">減らす</option></select></label></section>`
   document.body.append(dialog)
   for (const name of ['confirm', 'danger', 'story', 'tutorial'] as const)
     dialog.querySelector<HTMLInputElement>(`[name=${name}]`)!.checked = settings[name]
   for (const name of ['speed', 'motion'] as const)
     dialog.querySelector<HTMLSelectElement>(`[name=${name}]`)!.value = settings[name]
   dialog.oninput = () => {
+    dialog.querySelectorAll('output').forEach((out) => {
+      out.textContent = `${out.parentElement!.querySelector<HTMLInputElement>('input')!.value}%`
+    })
     settings = {
       bgm: Number(dialog.querySelector<HTMLInputElement>('[name=bgm]')!.value),
       sfx: Number(dialog.querySelector<HTMLInputElement>('[name=sfx]')!.value),
