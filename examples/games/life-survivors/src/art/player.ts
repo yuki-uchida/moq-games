@@ -538,7 +538,41 @@ export function hurtPoses(extra: Partial<Pose> = {}) {
   ]
 }
 
-export const adult = (p: Pose) => human(ADULT, p)
+export const CASUAL_ADULT: Body = {
+  ...ADULT,
+  pants: R.navy,
+  sleeve: R.sky,
+  cuff: undefined,
+  shoe: sneaker,
+  item: undefined,
+  torso: (layer, { hx, hy, top, lean, p }) => {
+    const thin = Math.round(p.thin * 3)
+    layer.rect(hx - 2 + lean, top - 3, 5, 4, SKIN[2])
+    layer.poly(
+      [
+        hx - 9 + lean + thin,
+        top + 2,
+        hx - 6 + lean + thin,
+        top,
+        hx + 6 + lean - thin,
+        top,
+        hx + 9 + lean - thin,
+        top + 2,
+        hx + 8 - thin,
+        hy + 2,
+        hx - 8 + thin,
+        hy + 2
+      ],
+      R.sky[1]
+    )
+    planes(layer, R.sky, R.sky[1])
+    layer.rect(hx - 2 + lean, top, 5, 2, R.sky[2])
+    layer.rect(hx - 7 + thin, hy, 15 - 2 * thin, 1, R.sky[2])
+  },
+  lie: { ...ADULT.lie, coat: R.sky, detail: undefined }
+}
+
+export const adult = (p: Pose) => human(CASUAL_ADULT, p)
 export const kid = (p: Pose) => human(KID, p)
 export const elder = (p: Pose) => human(ELDER, p)
 
