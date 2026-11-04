@@ -11,7 +11,8 @@ import {
   TALENT_CATEGORIES,
   WEAPONS,
   WEAPON_BY_ID,
-  WEAPON_INDEX
+  WEAPON_INDEX,
+  ageAt
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
 import type { GameState } from './game'
@@ -39,6 +40,7 @@ export interface ViewPlayer {
   killer?: string
   parent: string
   weapons: [string, number, number][]
+  petAge?: number
   passives: [string, number][]
   choices: string[]
   choiceSeq: number
@@ -48,7 +50,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 8
+  v: 9
   time: number
   phase: GameState['phase']
   level: number
@@ -137,7 +139,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 8,
+    v: 9,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -162,6 +164,9 @@ export function toView(state: GameState): View {
       ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
       weapons: p.weapons.map((w) => [w.id, w.lv, r(w.damage)]),
+      ...(p.weapons.some((w) => w.id === 'w_pet')
+        ? { petAge: ageAt(state.time) - (p.weapons.find((w) => w.id === 'w_pet')!.acquiredAge ?? ageAt(state.time)) }
+        : {}),
       passives: p.passives.map((s) => [s.id, s.lv]),
       choices: p.choices,
       choiceSeq: p.choiceSeq,
@@ -224,6 +229,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'killer',
         'parent',
         'weapons',
+        'petAge',
         'passives',
         'choices',
         'talents',
@@ -245,6 +251,8 @@ function playerOk(value: unknown): value is ViewPlayer {
     text(p.parent) &&
     WEAPON_BY_ID.has(p.parent) &&
     Array.isArray(p.weapons) &&
+    (p.petAge === undefined ||
+      (finite(p.petAge, 0, 20) && p.weapons.some((weapon) => Array.isArray(weapon) && weapon[0] === 'w_pet'))) &&
     p.weapons.length <= 12 &&
     p.weapons.every((w) => Array.isArray(w) && WEAPON_BY_ID.has(w[0]) && finite(w[1], 1, 8) && finite(w[2], 0, 1e12)) &&
     Array.isArray(p.passives) &&
@@ -262,7 +270,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 8) return undefined
+  if (!record(value) || value.v !== 9) return undefined
   if (
     Object.keys(value).some(
       (key) =>

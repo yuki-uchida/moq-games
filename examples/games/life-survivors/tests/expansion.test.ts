@@ -257,7 +257,7 @@ describe('passives', () => {
   test('the four new 性格 exist and scale as described', () => {
     const { player } = arena(1)
     for (const id of ['p_lucky', 'p_clever', 'p_curious', 'p_savvy']) expect(PASSIVES.map((p) => p.id)).toContain(id)
-    expect(PASSIVES).toHaveLength(12)
+    expect(PASSIVES).toHaveLength(13)
     const base = playerStats(player)
     expect(base.crit).toBeCloseTo(0.05)
     expect(base.amount).toBe(0)
@@ -819,7 +819,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v8', () => {
+describe('protocol v9', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -829,9 +829,9 @@ describe('protocol v8', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v8 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v9 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(8)
+    expect(view.v).toBe(9)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -840,12 +840,13 @@ describe('protocol v8', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v8 field', () => {
+  test('readView rejects old versions and every malformed v9 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
     expect(readView({ ...view, v: 5 })).toBeUndefined()
     expect(readView({ ...view, v: 7 })).toBeUndefined()
+    expect(readView({ ...view, v: 8 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
