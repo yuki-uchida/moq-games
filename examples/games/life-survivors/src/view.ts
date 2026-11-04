@@ -115,7 +115,7 @@ export function toView(state: GameState): View {
       r(s.angle * 100) % 100000,
       r((s.life / s.maxLife) * 100),
       ownerIndex.get(s.owner) ?? 0,
-      r(s.v)
+      s.weapon === 'p_over' && (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : r(s.v)
     )
   }
   const bullets: number[] = []
