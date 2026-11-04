@@ -313,7 +313,17 @@ const featured = new Map<string, Raster>()
 export function mapTile(ground: string, tx: number, ty: number, h: number) {
   const v = h % 7 < 4 ? 0 : h % 7 < 6 ? 1 : 2
   // Row/column-dependent features (court lines, centre lines, checkers) join the cache key.
-  const key = `${ground}:${v}:${((ty % 30) + 30) % 30}:${tx & 1}`
+  const coordinate =
+    ground === 'gym'
+      ? Number(ty % 6 === 0)
+      : ground === 'street'
+        ? ty % 5 === 0
+          ? 1 + (tx & 1)
+          : 0
+        : ground === 'ward'
+          ? (tx + ty) & 1
+          : 0
+  const key = `${ground}:${v}:${coordinate}`
   let t = cache.get(key)
   if (!t) cache.set(key, (t = TILES[ground](tx, ty, v)))
   const shapes = shapesFor(ground, tx, ty)

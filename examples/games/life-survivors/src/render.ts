@@ -2,7 +2,17 @@ import { canvasOf } from './art/atlas'
 import { careerFor } from './art/careers'
 import { BEAM_DIRS, STAPLE_DIRS, beam } from './art/arsenal'
 import { deathKind, soulAt } from './art/deaths'
-import { NO_FLIP, PENCIL_DIRS, SWING_DIRS, evolve, playMat, sheet, swing } from './art/index'
+import {
+  NO_FLIP,
+  PENCIL_DIRS,
+  SWING_DIRS,
+  evolve,
+  playMat,
+  prewarmAppearanceFrame,
+  retainAppearancePrewarm,
+  sheet,
+  swing
+} from './art/index'
 import { R } from './art/palette'
 import { Raster } from './art/raster'
 import { duration, frameAt, type Anim, type Sheet } from './art/sheet'
@@ -11,10 +21,12 @@ import {
   ENEMIES,
   ENEMY_BY_ID,
   MAX_WEAPON_LEVEL,
+  STAGES,
   WEAPONS,
   WEAPON_BY_ID,
   ageAt,
   stageAt,
+  timeAtAge,
   type EnemyDef,
   type Stage
 } from './data'
@@ -38,6 +50,10 @@ const BODIES: Record<string, string> = {
 }
 /** Every life stage has its own painted body. */
 export const bodyFor = (stage: Stage) => BODIES[stage.name] ?? 'adult'
+const appearanceFor = (player: ViewPlayer, body: string) => {
+  const career = !['baby', 'toddler', 'bed'].includes(body) ? careerFor(player) : undefined
+  return `${body}${career ? `:${career}` : ''}`
+}
 const GROUND_FADE = 1.5
 const TAU = Math.PI * 2
 /** Whether a player's weapon has evolved (Lv8 + its matching passive), from the snapshot alone. */
@@ -282,6 +298,11 @@ export class Renderer {
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly families = new Map<string, Follower[]>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
+  private readonly warmedDeaths = new Set<string>()
+  private readonly warmedAppearances = new Set<string>()
+  private appearanceView?: View
+  private appearanceTime?: number
+  private appearancePending = false
   /** Particles, trauma and flashes driven by the fx events of the views drawn so far. */
   readonly fx = new Effects()
   private readonly fxView = { local: -1, px: 0, py: 0, cx: 0, cy: 0, hw: 0, hh: 0 }
@@ -552,9 +573,42 @@ export class Renderer {
       }
   }
 
+  private appearanceTargets() {
+    const view = this.appearanceView
+    if (!view || view.phase !== 'playing') return []
+    const next = STAGES[STAGES.indexOf(stageAt(view.time)) + 1]
+    if (!next) return []
+    const remaining = timeAtAge(next.age) - view.time
+    if (remaining <= 0 || remaining > 5) return []
+    const body = bodyFor(next)
+    return [
+      ...new Set(view.players.filter((player) => !player.downed).map((player) => appearanceFor(player, body)))
+    ].filter((appearance) => !this.warmedAppearances.has(appearance))
+  }
+
+  private prewarmAppearances(view: View) {
+    if (this.appearanceTime !== undefined && (view.time < this.appearanceTime || view.time - this.appearanceTime > 1)) {
+      retainAppearancePrewarm([])
+    }
+    this.appearanceTime = view.time
+    this.appearanceView = view
+    retainAppearancePrewarm(this.appearanceTargets().map((appearance) => `player:${appearance}`))
+    if (typeof requestIdleCallback !== 'function' || this.appearancePending || !this.appearanceTargets().length) return
+    this.appearancePending = true
+    const requestedAt = performance.now()
+    requestIdleCallback((deadline) => {
+      this.appearancePending = false
+      if (performance.now() - requestedAt > 250 || deadline.didTimeout || deadline.timeRemaining() < 1) return
+      const appearance = this.appearanceTargets()[0]
+      if (!appearance) return
+      if (prewarmAppearanceFrame(`player:${appearance}`)) this.warmedAppearances.add(appearance)
+    })
+  }
+
   /** Builds this stage's death animations one per idle callback, so going down never hitches. */
   private prewarm(body: string) {
-    if (typeof requestIdleCallback !== 'function') return
+    if (typeof requestIdleCallback !== 'function' || this.warmedDeaths.has(body)) return
+    this.warmedDeaths.add(body)
     const deaths = sheet(`death:${body}`)
     const kinds = Object.keys(deaths)
     const next = () => {
@@ -734,6 +788,7 @@ export class Renderer {
     const feet = pos.y + 16
     const stage = stageAt(time)
     const body = bodyFor(stage)
+    const appearance = appearanceFor(player, body)
     // Movement from the eased on-screen position (views carry no velocity).
     const m = this.motion.get(player.id) ?? { x: pos.x, y: pos.y, speed: 0 }
     const step = Math.hypot(pos.x - m.x, pos.y - m.y)
@@ -769,11 +824,11 @@ export class Renderer {
       let death = this.deaths.get(player.id)
       if (!death) {
         const tag = player.killer ? ENEMY_BY_ID.get(player.killer)?.tag : undefined
-        death = { at: this.clock, body, kind: deathKind(tag, ageAt(time), body) }
+        death = { at: this.clock, body: appearance, kind: deathKind(tag, ageAt(time), body) }
         this.deaths.set(player.id, death)
         // Measured for the dev hook: the cost of the death animation on the frame a player goes down.
         const start = performance.now()
-        void sheet(`death:${body}`)[death.kind]
+        void sheet(`death:${death.body}`)[death.kind]
         this.deathBuildMs = performance.now() - start
       }
       const anim = sheet(`death:${death.body}`)[death.kind] ?? sheet(`death:${death.body}`).collapse
@@ -803,8 +858,8 @@ export class Renderer {
     } else {
       this.deaths.delete(player.id)
       this.shadow(pos.x, feet, 13)
-      const career = !['baby', 'toddler', 'bed'].includes(body) ? careerFor(player) : undefined
-      const art = sheet(`player:${body}${career ? `:${career}` : ''}`)
+      this.prewarm(appearance)
+      const art = sheet(`player:${appearance}`)
       const anim = player.hurt ? art.hurt : m.speed > 25 ? art.walk : art.idle
       this.art(
         anim.frames[frameAt(anim, player.hurt ? ((this.clock * 8) % 2) / 8 : this.clock)],
@@ -1705,11 +1760,13 @@ export class Renderer {
   }
 
   draw(view: View, localId: string, dt: number, smooth: boolean) {
+    this.prewarmAppearances(view)
     this.frame++
     const ctx = this.ctx
     const k = smooth ? Math.min(1, dt * 14) : 1
     const me = view.players.find((p) => p.id === localId) ?? view.players[0]
     const positions = new Map(view.players.map((p) => [p.id, this.playerPosition(p, k)]))
+    for (const id of this.deaths.keys()) if (!positions.has(id)) this.deaths.delete(id)
     const origins = view.players.map((p) => positions.get(p.id)!)
     if (me) {
       const p = positions.get(me.id)!
