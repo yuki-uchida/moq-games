@@ -1,4 +1,4 @@
-import { showContact } from './ImpactPresentation'
+import { prepareContacts, showContact } from './ImpactPresentation'
 import { path, size, type Game, type Unit } from './game'
 import type * as THREE from 'three'
 import { world, type Point, type Stage } from './stage'
@@ -60,7 +60,12 @@ export class BattleAnimation {
     this.nodes.clear()
     this.stage.release()
   }
-  prepare(roles: string[], progress: (done: number, total: number) => void) {
+  async prepare(roles: string[], progress: (done: number, total: number) => void) {
+    try {
+      prepareContacts(roles)
+    } catch (error) {
+      console.warn('Ember contact effect unavailable', error)
+    }
     return this.stage.load(roles, progress)
   }
   /** DOM overlay anchored at a projected world point; never intercepts input. */

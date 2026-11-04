@@ -643,6 +643,20 @@ dialog button {
     padding: 8px;
   }
 }
+@media (max-height: 500px) and (max-width: 599px) {
+  body {
+    height: auto;
+    overflow: auto;
+  }
+  main {
+    height: auto;
+    min-height: 100dvh;
+  }
+  .field {
+    flex: none;
+    height: calc(100dvh - 24px);
+  }
+}
 @media (max-height: 500px) and (min-width: 600px) {
   main {
     display: grid;

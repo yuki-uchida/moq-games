@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { enterBattle } from './shell-helper'
+import { enterBattle, cameraSettled } from './shell-helper'
 
 // Chapter scenes are skipped as soon as they appear unless a test drives them itself.
 test.beforeEach(async ({ page }) => {
@@ -16,6 +16,42 @@ const ready = async (page: Page, unlocked = false) => {
   await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
 }
 const cell = (page: Page, x: number, y: number) => page.locator('.cell').nth(y * 10 + x)
+
+for (const fingers of [2, 3]) {
+  test(`held ${fingers}-finger touch on units cancels long press and restores single touch`, async ({
+    page,
+    context
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await ready(page)
+    await cameraSettled(page)
+    const points = await Promise.all(
+      [/2,4 風読み/, /2,5 燈守/, /2,6 星織/].slice(0, fingers).map(async (name, id) => {
+        const unit = page.getByRole('button', { name })
+        const box = (await unit.boundingBox())!
+        const point = { id, x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) }
+        expect(await unit.evaluate((node, { x, y }) => document.elementFromPoint(x, y) === node, point)).toBe(true)
+        return point
+      })
+    )
+    const client = await context.newCDPSession(page)
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [points[0]] })
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points.slice(0, 2) })
+    if (fingers === 3) await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points })
+    await page.waitForTimeout(750)
+    await expect(page.locator('#detail')).not.toBeVisible()
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [points[points.length - 1]] })
+    await page.waitForTimeout(750)
+    await expect(page.locator('#detail')).not.toBeVisible()
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await expect(page.locator('.cell.legal')).toHaveCount(0)
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [points[0]] })
+    await expect(page.getByRole('dialog', { name: /風読み/ })).toBeVisible()
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.cell.legal')).toHaveCount(0)
+  })
+}
 
 for (const viewport of [
   { width: 1280, height: 800 },
@@ -108,11 +144,53 @@ test('touch long press opens and dismisses unit details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await ready(page)
   const unit = page.getByRole('button', { name: /2,4 風読み/ })
-  await unit.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 100, clientY: 100 })
+  await unit.dispatchEvent('pointerdown', { pointerType: 'touch', isPrimary: true, clientX: 100, clientY: 100 })
   await expect(page.getByRole('dialog', { name: /風読み/ })).toBeVisible()
   await unit.dispatchEvent('pointerup', { pointerType: 'touch', clientX: 100, clientY: 100 })
   await page.getByRole('button', { name: '閉じる' }).click()
   await expect(unit).toBeFocused()
+})
+
+for (const input of ['keyboard', 'mouse', 'touch'] as const) {
+  test(`the first ${input} action works after a touch long press`, async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await ready(page)
+    const unit = page.getByRole('button', { name: /2,4 風読み/ })
+    const box = (await unit.boundingBox())!
+    const client = await context.newCDPSession(page)
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }]
+    })
+    await expect(page.getByRole('dialog', { name: /風読み/ })).toBeVisible()
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await page.getByRole('button', { name: '閉じる' }).click()
+    await expect(unit).toBeFocused()
+    await expect(page.locator('.cell.legal')).toHaveCount(0)
+    if (input === 'keyboard') await page.keyboard.press('Enter')
+    else if (input === 'mouse') await unit.click()
+    else await unit.tap()
+    await expect(page.getByRole('button', { name: /3,4 木立 移動可能/ })).toBeVisible()
+  })
+}
+
+test('closing details before releasing a long press does not select the unit', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await ready(page)
+  const unit = page.getByRole('button', { name: /2,4 風読み/ })
+  const box = (await unit.boundingBox())!
+  const client = await context.newCDPSession(page)
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }]
+  })
+  await expect(page.getByRole('dialog', { name: /風読み/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(unit).toBeFocused()
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect(page.locator('.cell.legal')).toHaveCount(0)
+  await unit.tap()
+  await expect(page.getByRole('button', { name: /3,4 木立 移動可能/ })).toBeVisible()
 })
 
 test('last move waits for an explicit action and field tap fast-forwards', async ({ page }) => {
