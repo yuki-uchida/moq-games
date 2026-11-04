@@ -7,7 +7,7 @@ import { botInput } from './bot'
 test('normal cards can turn employment at 28 into a creative career at 64', () => {
   const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
   const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
-  const game = new Game(6)
+  const game = new Game(18)
   const player = game.addPlayer('p0')!
   const acquired = new Set<string>()
   const competingCareers = [
@@ -64,7 +64,7 @@ test('normal cards can turn employment at 28 into a creative career at 64', () =
 }, 60_000)
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 11],
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 18],
   [['w_friend', 'w_sns', 'w_pet'], 17, 1]
 ] as const)(
   'normal cards can turn an early career into later %s',

@@ -11,9 +11,18 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 import sharp from 'sharp'
 import { createServer } from 'vite'
+import {
+  ARSENAL_ENEMIES,
+  BOSSES,
+  BOSS_CROWD,
+  DEATHS,
+  PART1,
+  STAGES,
+  TAG_DEATHS
+} from './life-survivors-screen-data.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const outRoot = resolve(root, '.build/life-survivors-art')
+const outRoot = resolve(process.env.LIFE_SURVIVORS_SCREEN_DIR || resolve(root, '.build/life-survivors-art'))
 const port = Number(process.env.E2E_PORT || 5294)
 const FFMPEG = process.env.FFMPEG || '/opt/homebrew/bin/ffmpeg'
 const args = process.argv.slice(2)
@@ -35,64 +44,6 @@ const dsfs = args
   .split(',')
   .map(Number) ?? [1, 2]
 
-// Stage name, an age inside it, and enemies from its pool.
-const STAGES = [
-  ['乳児期', 1, ['germ', 'germ', 'germ', 'insult']],
-  ['幼児期', 4, ['germ', 'insult', 'bully', 'insult']],
-  ['小学生', 8, ['bully', 'bully', 'lesson', 'teacher']],
-  ['中学生', 13, ['lesson', 'exam', 'club', 'bully']],
-  ['高校生', 16, ['exam', 'club', 'girlfriend', 'teacher']],
-  ['青年期', 20, ['exam', 'expense', 'girlfriend', 'gossip']],
-  ['社会人', 25, ['job', 'expense', 'boss', 'cert']],
-  ['働き盛り', 40, ['kid', 'job', 'loan', 'boss']],
-  ['中年', 55, ['illness', 'loan', 'gossip', 'job']],
-  ['老後', 70, ['illness', 'loan', 'germ', 'gossip']],
-  ['寝たきり', 77, ['illness', 'germ', 'expense', 'insult']]
-]
-const BOSSES = [
-  ['b_hs', 14],
-  ['b_univ', 18],
-  ['b_shukatsu', 22],
-  ['b_wedding', 30],
-  ['b_mortgage', 38],
-  ['b_rebel', 45],
-  ['b_layoff', 52],
-  ['b_illness', 60]
-]
-// Every death that exists: [clip name, age, killer].
-const DEATHS = [
-  ['hang', 25, 'boss'],
-  ['starve', 25, 'expense'],
-  ...STAGES.map(([name, age]) => [`collapse-${name}`, age, 'germ'])
-]
-// Phase 3: the killer's Tag picks the death. One killer per Tag, then the special bodies.
-const TAG_KILLER = {
-  people: 'boss',
-  money: 'expense',
-  accident: 'car',
-  sickness: 'germ',
-  insult: 'insult',
-  work: 'job',
-  love: 'girlfriend',
-  child: 'kid',
-  exam: 'exam',
-  sports: 'club',
-  class: 'lesson'
-}
-const TAG_DEATHS = [
-  ...Object.entries(TAG_KILLER).map(([tag, killer]) => [`社会人-${tag}`, 25, killer]),
-  ['小学生-people-alone', 8, 'bully'],
-  ['乳児期-sickness', 1, 'germ'],
-  ['乳児期-insult', 1, 'insult'],
-  ['老後-people-hang', 70, 'boss'],
-  ['寝たきり-sickness', 77, 'germ'],
-  ['寝たきり-money', 77, 'expense'],
-  ['寝たきり-insult', 77, 'insult'],
-  ['寝たきり-accident', 77, 'car'],
-  ['寝たきり-people', 77, 'boss'],
-  ['寝たきり-other', 77, 'job']
-]
-
 const server = await createServer({
   configFile: resolve(root, 'vite.config.life-survivors.mjs'),
   server: { port, strictPort: true },
@@ -112,16 +63,19 @@ async function start(page) {
 /** Sets the age, clears the field, removes weapons so crowds stay, and spawns enemies in a ring. */
 const scene = (page, age, enemies, hp = Infinity, radius = 1) =>
   page.evaluate(
-    ({ age, enemies, hp, radius }) => {
+    async ({ age, enemies, hp, radius }) => {
+      const { timeAtAge } = await import('/src/data.ts')
       const l = window.__life
       const s = l.game.state
       const p = s.players[0]
-      s.time = (age / 80) * 30 * 60 + 1
+      s.time = timeAtAge(age) + 1
       s.eventIndex = 999
       s.enemies = []
       s.gems = []
       p.weapons = []
       p.choices = []
+      p.pending = p.parentRewardPending = p.swapPending = p.careerPending = 0
+      p.birthPick = false
       p.hp = Math.min(hp, p.maxHp)
       // Regeneration clamps hp to maxHp, so keep a scenery player topped up instead.
       clearInterval(window.__keepAlive)
@@ -129,20 +83,39 @@ const scene = (page, age, enemies, hp = Infinity, radius = 1) =>
       enemies.forEach((kind, i) => {
         const a = (i / enemies.length) * Math.PI * 2 + 0.4
         const d = (kind.startsWith('b_') ? 200 : 110 + (i % 3) * 45) * radius
-        l.game.spawnEnemy(kind, p.x + Math.cos(a) * d * 1.6, p.y + Math.sin(a) * d)
+        if (!l.game.spawnEnemy(kind, p.x + Math.cos(a) * d * 1.6, p.y + Math.sin(a) * d))
+          throw new Error(`Cannot spawn scene enemy: ${kind}`)
       })
     },
     { age, enemies, hp, radius }
   )
 
-const kill = (page, killer) =>
-  page.evaluate((killer) => {
+const kill = async (page, killer) => {
+  await page.evaluate((killer) => {
     const l = window.__life
     const p = l.game.state.players[0]
-    l.game.spawnEnemy(killer, p.x + 4, p.y)
+    p.hp = 0.01
+    p.invuln = 0
+    if (killer === 'temptation') p.dating = true
+    if (!l.game.spawnEnemy(killer, p.x + 4, p.y)) throw new Error(`Cannot spawn death enemy: ${killer}`)
     // Once the blow lands, clear the field so the death animation is unobstructed.
     setTimeout(() => (l.game.state.enemies = []), 150)
   }, killer)
+  await page.waitForFunction(
+    (kind) => {
+      const player = window.__life.game.state.players[0]
+      return player.downed && player.killer === kind
+    },
+    killer,
+    { timeout: 2000 }
+  )
+}
+
+const nearEnd = (page) =>
+  page.evaluate(async () => {
+    const { RUN_SECONDS } = await import('/src/data.ts')
+    window.__life.game.state.time = RUN_SECONDS - 0.3
+  })
 
 // ---------------------------------------------------------------------------------------------
 // Stills.
@@ -199,7 +172,7 @@ if (doScreens) {
   }
   await start(page)
   await scene(page, 79, [])
-  await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
+  await nearEnd(page)
   await page.waitForTimeout(2200)
   await shot('reaper')
   await page.close()
@@ -387,7 +360,7 @@ if (doPlayback)
     for (const [boss, age] of BOSSES) {
       const { path, marks } = await clip(dsf, dir, `boss-${boss}`, async (page, mark) => {
         await start(page)
-        await scene(page, age, [boss, 'germ', 'insult', 'bully', 'job', 'expense', 'exam'], Infinity, 1.2)
+        await scene(page, age, [boss, ...BOSS_CROWD], Infinity, 1.2)
         await page.waitForTimeout(800)
         mark('chase')
         await page.keyboard.down('KeyA')
@@ -402,7 +375,7 @@ if (doPlayback)
         await start(page)
         await scene(page, 79, ['illness', 'germ'])
         await page.waitForTimeout(800)
-        await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
+        await nearEnd(page)
         mark('arrive')
         await page.waitForTimeout(6000)
       })
@@ -448,7 +421,7 @@ if (doDeaths) {
       await start(page)
       await scene(page, 79, ['illness', 'germ'])
       await page.waitForTimeout(800)
-      await page.evaluate(() => (window.__life.game.state.time = 30 * 60 - 0.3))
+      await nearEnd(page)
       mark('arrive')
       await page.waitForTimeout(9000)
     })
@@ -503,26 +476,6 @@ if (doPart1) {
   if (!only) rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   const at = (name) => resolve(dir, name)
-  const PART1 = [
-    ['小学生-スポーツ', 8, 'club'],
-    ['小学生-授業', 8, 'lesson'],
-    ['小学生-事故', 8, 'car'],
-    ['小学生-悪口', 8, 'insult'],
-    ['中学生-試験', 13, 'exam'],
-    ['高校生-恋愛', 16, 'girlfriend'],
-    ['青年期-人間関係', 18, 'boss'],
-    ['働き盛り-仕事', 40, 'job'],
-    ['中年-子育て', 55, 'kid'],
-    ['老後-人間関係', 70, 'boss'],
-    ['老後-病気', 70, 'germ'],
-    ['老後-お金', 70, 'expense'],
-    ['幼児期-事故', 4, 'car'],
-    ['幼児期-悪口', 4, 'insult'],
-    ['社会人-事故-left', 25, 'car', true],
-    ['社会人-仕事-left', 25, 'job', true],
-    ['社会人-恋愛-left', 25, 'girlfriend', true],
-    ['社会人-人間関係-left', 25, 'boss', true]
-  ]
   for (const [name, age, killer, left] of PART1) {
     if (only && !only.includes(name)) continue
     const { path, marks } = await clip(1, dir, `death-${name}`, async (page, mark) => {
@@ -573,9 +526,10 @@ if (doPart1) {
     const wall = {}
     const mark = (key) => (wall[key] = Date.now() / 1000)
     // Age 25, a field cleared; the guest stands 160 units away from the host with 0.01 hp.
-    await host.evaluate((id) => {
+    await host.evaluate(async (id) => {
+      const { timeAtAge } = await import('/src/data.ts')
       const s = window.__life.game.state
-      s.time = (25 / 80) * 30 * 60 + 1
+      s.time = timeAtAge(25) + 1
       s.eventIndex = 999
       s.enemies = []
       const [h, g] = [s.players.find((p) => p.id !== id), s.players.find((p) => p.id === id)]
@@ -691,20 +645,7 @@ if (doArsenal) {
   }
   await start(page)
   // A late-game build: a parent plus six talents at Lv8, three of them evolved by their passives.
-  await scene(page, 45, [
-    'job',
-    'job',
-    'expense',
-    'expense',
-    'boss',
-    'kid',
-    'kid',
-    'gossip',
-    'loan',
-    'job',
-    'expense',
-    'kid'
-  ])
+  await scene(page, 45, ARSENAL_ENEMIES)
   await arm(page, ['p_toxic', 'w_study', 'w_sports', 'w_love', 'w_beauty', 'w_work', 'w_invest'], 8, [
     'p_diligent',
     'p_hot',

@@ -927,7 +927,7 @@ const REPLACEMENTS: Record<string, Pick<EnemyDef, 'id' | 'name' | 'icon'>> = {
   pepper: { id: 'picky_eating', name: '偏食', icon: '🫑' },
   worksheet: { id: 'unfinished_worksheet', name: '終わらないプリント', icon: '📃' },
   dodgeball: { id: 'ball_impact', name: 'ボールの直撃', icon: '🔴' },
-  crush: { id: 'unrequited_worry', name: '片思いの悩み', icon: '💔' },
+  crush: { id: 'controlling_partner', name: '束縛するパートナー', icon: '🔒' },
   drinking: { id: 'forced_drinking', name: '断れない飲み会', icon: '🍺' },
   scholarship: { id: 'scholarship_debt', name: '奨学金の返済', icon: '🎓' },
   meeting: { id: 'endless_meeting', name: '終わらない会議', icon: '🗂️' },
@@ -942,7 +942,13 @@ const REPLACEMENTS: Record<string, Pick<EnemyDef, 'id' | 'name' | 'icon'>> = {
   vaccine: { id: 'infection', name: '感染症', icon: '🦠' },
   b_vaccine: { id: 'b_outbreak', name: '感染症の流行', icon: '🦠' }
 }
-export const DISABLED_ENEMIES = ORIGINAL_ENEMIES.filter((def) => REPLACEMENTS[def.id])
+const unrequitedWorry: EnemyDef = {
+  ...ORIGINAL_ENEMIES.find((def) => def.id === 'crush')!,
+  id: 'unrequited_worry',
+  name: '片思いの悩み',
+  icon: '💔'
+}
+export const DISABLED_ENEMIES = [...ORIGINAL_ENEMIES.filter((def) => REPLACEMENTS[def.id]), unrequitedWorry]
 const replacementId = (id: string) => REPLACEMENTS[id]?.id ?? id
 export const ENEMIES: EnemyDef[] = ORIGINAL_ENEMIES.map((def) => ({
   ...def,
@@ -952,6 +958,7 @@ export const ENEMIES: EnemyDef[] = ORIGINAL_ENEMIES.map((def) => ({
 }))
 export const ENEMY_BY_ID = new Map(ENEMIES.map((def) => [def.id, def]))
 export const ENEMY_INDEX = new Map(ENEMIES.map((def, index) => [def.id, index]))
+export const isRelationshipEnemy = (id: string) => id === 'temptation' || id === 'controlling_partner'
 
 /** Enemy bullet sprite names (sheet `bullets`); the index is what snapshots carry. */
 export const BULLET_KINDS = [
@@ -1096,7 +1103,7 @@ const NEW_SPAWNS: [string, number, number, number][] = [
   ['homework', 6, 18, 1],
   ['dodgeball', 6, 15, 0.7],
   ['pimple', 12, 23, 0.9],
-  ['crush', 12, 35, 1],
+  ['crush', 12, 999, 1],
   ['senpai', 12, 23, 0.5],
   ['drinking', 18, 35, 0.6],
   ['scholarship', 18, 50, 0.6],
