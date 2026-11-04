@@ -12,6 +12,35 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+for (const [parent, description] of [
+  ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
+  ['p_over', '防御は本人ごとに最短1.5秒間隔'],
+  ['p_toxic', '全武器の威力 +25%'],
+  ['p_toxic', '自然回復なし（性格・仲間・家庭）']
+]) {
+  test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await handle.evaluate((hook, parent) => {
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      player.parent = parent
+      player.weapons = [{ id: parent, lv: 1, cd: 100, held: 0, damage: 0 }]
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+    }, parent)
+    await expect.poll(() => page.locator('#weapons .parent').getAttribute('title')).toContain(description)
+    await handle.evaluate((hook) => {
+      const game = hook.game as unknown as Game
+      game.state.phase = 'lost'
+    })
+    await expect(page.locator('#result')).toBeVisible({ timeout: 8000 })
+    await expect(page.locator('#result-build')).toContainText(description)
+  })
+}
+
 for (const viewport of [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
@@ -1624,7 +1653,9 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 + i * 20, y: 600 }] })
   await expect(page.locator('#stick')).toHaveJSProperty('hidden', false)
   expect(baseTransform).toBe('translate(200px, 600px)')
-  const baseX = await page.locator('#stick').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).m41)
+  const baseX = await page
+    .locator('#stick')
+    .evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).m41)
   expect(baseX).toBeGreaterThan(200)
   expect(baseX).toBeLessThan(240)
   await expect(page.locator('#stick-knob')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 56, 0)')

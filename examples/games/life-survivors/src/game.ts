@@ -73,6 +73,7 @@ const SLOWMO_SECONDS = 1.4
 const SLOWMO_SCALE = 0.3
 const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
+const SHIELD_RECOVERY = 1.5
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
 /** Crowd shooters hold their fire while this many bullets are already in the air (bosses ignore it). */
@@ -127,6 +128,8 @@ export interface Player {
   hurt: number
   /** Seconds of grace after an enemy bullet hit. */
   invuln: number
+  shieldGrace: number
+  shieldRecovery: number
   /** Cooldown of the HURT fx and the damage gathered for it. */
   hurtFx: number
   hurtAcc: number
@@ -344,11 +347,14 @@ export function playerStats(player: Player): PlayerStats {
   return {
     maxHp: 100 + p('p_bold') * 20 + (player.parent === 'p_gone' ? 60 : 0) + (player.parent === 'p_toxic' ? -10 : 0),
     armor: p('p_stubborn') + (player.parent === 'p_over' ? 1 : 0),
-    regen: p('p_optimist') * 0.4 + p('p_kind') * 0.2 + (player.parent === 'p_gone' ? 1 : 0),
+    regen:
+      player.parent === 'p_toxic'
+        ? 0
+        : p('p_optimist') * 0.4 + p('p_kind') * 0.2 + (player.parent === 'p_gone' ? 1 : 0),
     speed: BASE_SPEED * (1 + p('p_healthy') * 0.08),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
-    might: 1 + p('p_hot') * 0.1 + p('p_clever') * 0.03,
+    might: (1 + p('p_hot') * 0.1 + p('p_clever') * 0.03) * (player.parent === 'p_toxic' ? 1.25 : 1),
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07),
     area: 1 + p('p_kind') * 0.08,
     crit: 0.05 + p('p_lucky') * 0.05,
@@ -556,6 +562,8 @@ export class Game {
       birthPick: parent === 'p_gone',
       hurt: 0,
       invuln: 0,
+      shieldGrace: 0,
+      shieldRecovery: 0,
       hurtFx: 0,
       hurtAcc: 0
     }
@@ -652,7 +660,7 @@ export class Game {
     this.moveShots(dt)
     this.moveBullets(dt)
     for (const player of state.players) {
-      if (!player.downed && player.married)
+      if (!player.downed && player.married && player.parent !== 'p_toxic')
         player.hp = Math.min(player.maxHp, player.hp + (2 + (player.hasChild ? 1 : 0)) * dt)
     }
     this.collectGems(dt)
@@ -704,6 +712,8 @@ export class Game {
       player.maxHp = stats.maxHp
       player.hurt = Math.max(0, player.hurt - dt)
       player.invuln = Math.max(0, player.invuln - dt)
+      player.shieldGrace = Math.max(0, player.shieldGrace - dt)
+      player.shieldRecovery = Math.max(0, player.shieldRecovery - dt)
       player.hurtFx = Math.max(0, player.hurtFx - dt)
       if (player.downed) continue
       const input = this.inputs.get(player.id) ?? { x: 0, y: 0, pick: -1, pickSeq: -1 }
@@ -720,7 +730,12 @@ export class Game {
       const kind = passivePower(player, 'p_kind')
       if (kind)
         for (const friend of this.state.players)
-          if (friend !== player && !friend.downed && Math.hypot(friend.x - player.x, friend.y - player.y) < 140)
+          if (
+            friend !== player &&
+            !friend.downed &&
+            friend.parent !== 'p_toxic' &&
+            Math.hypot(friend.x - player.x, friend.y - player.y) < 140
+          )
             friend.hp = Math.min(friend.maxHp, friend.hp + kind * 0.5 * dt)
       if (!player.choices.length && (player.pending > 0 || player.swapPending > 0 || player.careerPending > 0))
         this.offer(player)
@@ -1293,7 +1308,7 @@ export class Game {
           if (player.invuln > 0) continue
           const armor = playerStats(player).armor
           this.damagePlayer(player, Math.max(def.damage * 0.2, def.damage * 0.6 - armor), def.id)
-          player.invuln = BOSS_IFRAMES
+          if (player.invuln <= 0) player.invuln = BOSS_IFRAMES
         } else this.hurt(player, def, dt, enemy.elite ? 1.5 : 1)
       }
       remaining.push(enemy)
@@ -1516,6 +1531,20 @@ export class Game {
   }
 
   private damagePlayer(player: Player, amount: number, killer: string) {
+    if (player.shieldGrace > 0) return
+    if (player.parent === 'p_over' && player.shieldRecovery <= 0) {
+      const shield = this.state.shots.find(
+        (shot) =>
+          shot.owner === player.id && shot.weapon === 'p_over' && shot.life > 0 && shot.delay <= 0 && shot.v === 0
+      )
+      if (shield) {
+        shield.v = 1
+        player.invuln = BULLET_IFRAMES
+        player.shieldGrace = BULLET_IFRAMES
+        player.shieldRecovery = SHIELD_RECOVERY
+        return
+      }
+    }
     player.hp -= amount
     player.hurt = 0.2
     player.hurtAcc += amount

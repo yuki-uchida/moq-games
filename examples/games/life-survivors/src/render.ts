@@ -1206,7 +1206,8 @@ export class Renderer {
         const oy = def.id === 'p_monster' ? y : sh.oy + sin * orbit
         const art = sheet(`weapon:${def.id}`)
         const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][(i / STRIDE.shots) % 3] : art.fly
-        this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4))
+        const guard = def.id === 'p_over' && sh.v === 1 ? 0.45 : 1
+        this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4) * guard)
         break
       }
       case 'whip':

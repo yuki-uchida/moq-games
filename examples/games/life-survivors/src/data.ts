@@ -180,7 +180,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'people'],
     desc: '身のまわりに毒の空気。悪口や人間関係に特攻。',
-    perk: '精神力の最大値 -10'
+    perk: '全武器の威力 +25%。精神力の最大値 -10・自然回復なし（性格・仲間・家庭）。食事・レベルアップでは回復できる'
   }),
   weapon({
     id: 'p_edu',
@@ -250,7 +250,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '盾があなたのそばを離れない。事故・病気に特攻。',
+    desc: '周回する盾で攻撃。盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵（接触も防ぐ）。防御は本人ごとに最短1.5秒間隔で、枚数・勤勉・好奇心では短縮されない。使用済み・再防御待ちの薄い盾も攻撃を続ける。事故・病気に特攻。',
     perk: '防御 +1'
   }),
   weapon({
@@ -270,7 +270,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '近くの敵に襲いかかって蹴散らす。人間（教師・いじめっ子・上司）に特攻。'
+    desc: '子のそばを離れて近くの敵を追い回す。人間関係・授業に特攻。'
   }),
   weapon({
     id: 'p_rich',
