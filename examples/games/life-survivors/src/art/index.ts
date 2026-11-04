@@ -7,7 +7,9 @@ import { weaponSheets } from './weapons'
 import { bullySheet, expenseSheet, flash, germSheet, hsBossSheet, jobSheet, rosterSheets } from './enemies'
 import { careerDeathSheet, deathSheets } from './deaths'
 import { familySheets } from './family'
+import { infectionSheet, outbreakSheet } from './pathogens'
 import { peopleSheets } from './people'
+import { R } from './palette'
 import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
 import type { Sheet } from './sheet'
 import { PROP_NAMES, TILE, groundTile, propSheet, propsAt, tileSheet } from './world'
@@ -43,6 +45,45 @@ export const SHEETS: Record<string, () => Sheet> = {
   ...Object.fromEntries(
     Object.entries(peopleSheets).map(([id, make]) => [id, id.startsWith('enemy:') ? withFlash(make) : make])
   ),
+  'enemy:abusive_teacher': () => sheet('enemy:teacher'),
+  'enemy:lesson_pressure': () => sheet('enemy:lesson'),
+  'enemy:overtraining': () => sheet('enemy:club'),
+  'enemy:intimidating_boss': () => sheet('enemy:boss'),
+  'enemy:mischief': () => sheet('enemy:kid'),
+  'enemy:abusive_senpai': () => sheet('enemy:senpai'),
+  ...Object.fromEntries(
+    Object.entries({
+      overwork: 'job',
+      biting_dog: 'dog',
+      picky_eating: 'pepper',
+      unfinished_worksheet: 'worksheet',
+      ball_impact: 'dodgeball',
+      unrequited_worry: 'crush',
+      forced_drinking: 'drinking',
+      scholarship_debt: 'scholarship',
+      endless_meeting: 'meeting',
+      tax_arrears: 'coin'
+    }).map(([id, original]) => [
+      `enemy:${id}`,
+      withFlash(() => {
+        const source = sheet(`enemy:${original}`)
+        return {
+          ...source,
+          move: {
+            ...source.move,
+            frames: source.move.frames.map((frame) => {
+              const marked = frame.clone()
+              marked.ellipse(53, 11, 7, 7, R.red[4]).ellipse(53, 11, 5, 5, R.red[1])
+              marked.rect(52, 7, 2, 5, R.paper[0]).rect(52, 14, 2, 2, R.paper[0])
+              return marked
+            })
+          }
+        }
+      })
+    ])
+  ),
+  'enemy:infection': withFlash(infectionSheet),
+  'enemy:b_outbreak': withFlash(outbreakSheet),
   ...Object.fromEntries(
     Object.keys(PROP_NAMES).flatMap((g) => [
       [`tiles:${g}`, () => tileSheet(g)],
@@ -117,13 +158,13 @@ export const groundFor = (id: string) => REVIEW_GROUND[id] ?? (id.startsWith('pr
 const SCENES: [string, string, string[]][] = [
   ['nursery', 'baby', ['germ', 'germ', 'germ', 'insult', 'germ']],
   ['playground', 'toddler', ['germ', 'insult', 'bully', 'insult', 'germ']],
-  ['school', 'kid', ['bully', 'lesson', 'teacher', 'germ', 'b_hs']],
-  ['gym', 'junior', ['lesson', 'exam', 'club', 'bully', 'teacher']],
-  ['sidewalk', 'high', ['exam', 'club', 'girlfriend', 'insult', 'car']],
-  ['campus', 'college', ['exam', 'expense', 'girlfriend', 'job', 'b_univ']],
-  ['office', 'adult', ['job', 'expense', 'boss', 'cert', 'b_shukatsu']],
-  ['street', 'prime', ['kid', 'job', 'loan', 'boss', 'b_mortgage']],
-  ['golf', 'middle', ['illness', 'loan', 'gossip', 'job', 'b_layoff']],
+  ['school', 'kid', ['bully', 'lesson_pressure', 'abusive_teacher', 'germ', 'b_hs']],
+  ['gym', 'junior', ['lesson_pressure', 'exam', 'overtraining', 'bully', 'abusive_teacher']],
+  ['sidewalk', 'high', ['exam', 'overtraining', 'insult', 'car']],
+  ['campus', 'college', ['exam', 'expense', 'overwork', 'b_univ']],
+  ['office', 'adult', ['overwork', 'expense', 'intimidating_boss', 'cert', 'b_shukatsu']],
+  ['street', 'prime', ['mischief', 'overwork', 'loan', 'intimidating_boss', 'b_mortgage']],
+  ['golf', 'middle', ['illness', 'loan', 'gossip', 'overwork', 'b_layoff']],
   ['garden', 'elder', ['illness', 'germ', 'gossip', 'loan', 'expense']],
   ['ward', 'bed', ['illness', 'germ', 'expense', 'insult', 'b_illness']]
 ]
@@ -198,6 +239,9 @@ export { FLAT_PROPS } from './world'
 export const NO_FLIP = new Set([
   'expense',
   'job',
+  'overwork',
+  'scholarship_debt',
+  'tax_arrears',
   'b_hs',
   'b_shukatsu',
   'b_mortgage',

@@ -885,6 +885,29 @@ export const peopleSheets: Record<string, () => Sheet> = {
       10
     )
   }),
+  'enemy:temptation': () => ({
+    move: anim(
+      walkPoses({ scale: 0.8, swing: 0.3 }).map((pose, index) =>
+        human(
+          {
+            ...PRIME,
+            head: head({ hair: HAIR.styled, key: BROWN_HAIR }),
+            behind: undefined,
+            sleeve: R.navy,
+            shortSleeve: false,
+            torso: (layer, { hx, hy, top, lean }) => {
+              layer.poly([hx - 8 + lean, top, hx + 8 + lean, top, hx + 9, hy, hx - 9, hy], R.navy[1])
+              planes(layer, R.navy, R.navy[1])
+              layer.poly([hx - 3 + lean, top, hx + 3 + lean, top, hx + lean, top + 9], R.paper[1])
+              layer.rect(hx + lean, top + 2, 2, 7, R.red[1])
+            }
+          },
+          { ...pose, face: index === 4 ? 'blink' : 'open' }
+        )
+      ),
+      10
+    )
+  }),
   'enemy:boss': () => {
     // A red face: the boss's skin runs hot.
     const hot = new Map([

@@ -68,7 +68,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v9'
+const APP = 'life-survivors-v11'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -212,9 +212,9 @@ function bannerFor(e: FxEv, localIndex: number, now: number) {
         push({
           kind: 'swarm',
           title:
-            event.swarm === 'nightcry' || event.swarm === 'kid'
+            event.swarm === 'nightcry' || event.swarm === 'mischief'
               ? `仲間の家族の試練：${event.text}`
-              : event.swarm === 'meeting'
+              : event.swarm === 'endless_meeting'
                 ? `仕事の試練：${event.text}`
                 : event.text
         })
@@ -440,19 +440,22 @@ function renderChoices(player: ViewPlayer | undefined) {
   const count = player.choices.length
   const birthPick = player.parent === 'p_gone' && !player.weapons.length
   const familyPick = player.choices[0] === 'f:yes'
-  element('#levelup-title').textContent = familyPick ? '家族の選択' : '人生の転機'
+  const datingPick = player.choices[0] === 'd:yes'
+  element('#levelup-title').textContent = familyPick ? '家族の選択' : datingPick ? '交際の選択' : '人生の転機'
   const hint = touchUi ? 'タップで決定。' : `1〜${count}キーでも選べます。`
   element<HTMLElement>('#levelup-note').textContent = familyPick
     ? `子どもを迎えますか？${role === 'solo' ? '時間は止まっています。' : '時間は流れ続けています。'}${hint}`
-    : player.choices[0]?.startsWith('s:')
-      ? `交換する新しい武器を選ぼう。${hint}`
-      : player.choices[0]?.startsWith('r:')
-        ? `手放す武器を選ぼう。新しい武器はLv 1から始まります。${hint}`
-        : birthPick
-          ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
-          : role === 'solo'
-            ? `時間は止まっています。${hint}`
-            : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
+    : datingPick
+      ? `パートナーと交際しますか？${hint}`
+      : player.choices[0]?.startsWith('s:')
+        ? `交換する新しい武器を選ぼう。${hint}`
+        : player.choices[0]?.startsWith('r:')
+          ? `手放す武器を選ぼう。新しい武器はLv 1から始まります。${hint}`
+          : birthPick
+            ? `親はいない。自分の力で生きていく手札を1枚選ぼう。${hint}`
+            : role === 'solo'
+              ? `時間は止まっています。${hint}`
+              : `時間は流れ続けています（選択中は足が遅くなる）。${hint}`
   cards.dataset.count = String(count)
   cardsShownAt = performance.now()
   audio.play('cardOpen')
@@ -466,7 +469,7 @@ function renderChoices(player: ViewPlayer | undefined) {
       button.style.setProperty('--i', String(index))
       const icon = document.createElement('span')
       icon.className = 'icon'
-      if (choice === 'x:skip' || choice.startsWith('f:')) icon.textContent = info.icon
+      if (choice === 'x:skip' || choice.startsWith('f:') || choice.startsWith('d:')) icon.textContent = info.icon
       else icon.append(iconImg(choiceIcon(choice), info.name, rarity === 'evolve'))
       const name = document.createElement('strong')
       name.textContent = info.name

@@ -112,6 +112,7 @@ export interface Player {
   revive: number
   joinedAt: number
   history: LifeDecision[]
+  dating: boolean
   married: boolean
   hasChild: boolean
   parent: string
@@ -140,6 +141,7 @@ export interface Player {
 export interface Enemy {
   id: number
   kind: string
+  targetPlayer?: string
   x: number
   y: number
   hp: number
@@ -420,6 +422,9 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
 }
 
 export function choiceText(player: Player, choice: string): { icon: string; name: string; text: string; tag: string } {
+  if (choice === 'd:yes')
+    return { icon: '💞', name: '交際する', text: 'パートナーと交際を始める。浮気相手が現れる', tag: '' }
+  if (choice === 'd:no') return { icon: '🌿', name: '交際しない', text: '今は一人で歩む', tag: '' }
   if (choice === 'f:yes')
     return { icon: '🧒', name: '迎える', text: '本人の回復が毎秒HP2→3。子育ての試練が加わる', tag: '' }
   if (choice === 'f:no')
@@ -548,6 +553,7 @@ export class Game {
       revive: 0,
       joinedAt: state.time,
       history: [],
+      dating: false,
       married: false,
       hasChild: false,
       parent,
@@ -569,6 +575,11 @@ export class Game {
     }
     player.maxHp = player.hp = playerStats(player).maxHp
     state.players.push(player)
+    if (state.time >= EVENTS.find((event) => event.swarm === 'car')!.at) {
+      this.familyHands.set(player.id, player.choices)
+      player.choices = ['d:yes', 'd:no']
+      player.choiceSeq++
+    }
     this.careers.set(id, {})
     const parentDef = WEAPON_BY_ID.get(parent)!
     this.log(`${player.name}が生まれた。親は「${parentDef.name}」。`)
@@ -856,13 +867,26 @@ export class Game {
         }
       }
       const wedding = event.boss === 'b_wedding'
+      if (event.swarm === 'car') {
+        for (const player of state.players) {
+          if (player.joinedAt >= event.at) continue
+          this.familyHands.set(player.id, player.choices)
+          player.choices = ['d:yes', 'd:no']
+          player.choiceSeq++
+        }
+      }
       const birth = event.swarm === 'nightcry'
-      const childEvent = birth || event.boss === 'b_rebel' || event.swarm === 'kid'
+      const childEvent = birth || event.boss === 'b_rebel' || event.swarm === 'mischief'
       if (wedding || birth) {
         for (const player of state.players) {
           if (player.joinedAt >= event.at) continue
           if (player.history.some((decision) => decision.event === index)) continue
           if (wedding) {
+            if (player.choices[0] === 'd:yes') {
+              player.choices = this.familyHands.get(player.id) ?? []
+              this.familyHands.delete(player.id)
+              player.choiceSeq++
+            }
             player.married = player.weapons.some((weapon) => weapon.id === 'w_love' && weapon.lv >= 2)
             this.log(LIFE_OUTCOMES.b_wedding[player.married ? 0 : 1], player.id)
           } else if (player.married) {
@@ -877,9 +901,10 @@ export class Game {
         }
       }
       if (birth) continue
-      if (event.boss === 'b_layoff' || event.swarm === 'meeting') {
+      if (event.boss === 'b_layoff' || event.swarm === 'endless_meeting') {
         const employed = state.players.filter(
-          (player) => this.careers.get(player.id)?.employed && (event.swarm !== 'meeting' || player.joinedAt < event.at)
+          (player) =>
+            this.careers.get(player.id)?.employed && (event.swarm !== 'endless_meeting' || player.joinedAt < event.at)
         )
         if (!employed.length) continue
         this.log(`${employed.map((player) => player.name).join('・')}の仕事の試練：${event.text}`)
@@ -961,7 +986,9 @@ export class Game {
     this.spawnDebt += Math.min(deficit, 6 + state.time / 30) * dt * 2
     const age = ageAt(state.time)
     const pool = POOLS.find((entry) => age < entry.untilAge)!.enemies.filter(
-      ([id]) => ENEMY_BY_ID.get(id)!.tag !== 'child' || state.players.some((player) => player.hasChild)
+      ([id]) =>
+        (ENEMY_BY_ID.get(id)!.tag !== 'child' || state.players.some((player) => player.hasChild)) &&
+        (id !== 'temptation' || state.players.some((player) => !player.downed && (player.dating || player.married)))
     )
     const total = pool.reduce((sum, [, weight]) => sum + weight, 0)
     while (this.spawnDebt >= 1) {
@@ -1001,8 +1028,10 @@ export class Game {
 
   spawnEnemy(kind: string, x?: number, y?: number, options: { elite?: boolean } = {}) {
     const state = this.state
-    const def = ENEMY_BY_ID.get(kind)!
-    const anchor = this.randomAlive()
+    const def = ENEMY_BY_ID.get(kind)
+    if (!def) return
+    const eligible = kind === 'temptation' ? state.players.filter((p) => !p.downed && (p.dating || p.married)) : []
+    const anchor = kind === 'temptation' ? eligible[Math.floor(this.rng() * eligible.length)] : this.randomAlive()
     if (!anchor) return
     if (state.enemies.length >= MAX_ENEMIES + 20) {
       if (def.behavior !== 'boss') return
@@ -1032,6 +1061,7 @@ export class Game {
     const enemy: Enemy = {
       id: state.nextId++,
       kind,
+      ...(kind === 'temptation' ? { targetPlayer: anchor.id } : {}),
       x,
       y,
       hp,
@@ -1143,7 +1173,15 @@ export class Game {
       enemy.life += dt
       enemy.flash = Math.max(0, enemy.flash - dt)
       enemy.slow = Math.max(0, enemy.slow - dt)
-      const target = this.nearestPlayer(enemy.x, enemy.y)
+      const owner = enemy.kind === 'temptation' ? state.players.find((p) => p.id === enemy.targetPlayer) : undefined
+      if (enemy.kind === 'temptation' && (!owner || owner.downed || (!owner.dating && !owner.married))) {
+        enemy.hp = 0
+        for (const shot of state.shots) if (shot.target === enemy) shot.target = undefined
+        continue
+      }
+      const target = owner
+        ? { player: owner, distance: Math.hypot(owner.x - enemy.x, owner.y - enemy.y) }
+        : this.nearestPlayer(enemy.x, enemy.y)
       if (!target) {
         remaining.push(enemy)
         continue
@@ -1288,6 +1326,7 @@ export class Game {
       enemy.kx *= Math.exp(-dt * 8)
       enemy.ky *= Math.exp(-dt * 8)
       for (const player of state.players) {
+        if (enemy.kind === 'temptation' && player.id !== enemy.targetPlayer) continue
         if (player.downed) continue
         const reach = radius + PLAYER_RADIUS
         if ((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2 >= reach * reach) continue
@@ -2406,6 +2445,16 @@ export class Game {
     if (this.state.phase !== 'playing' || !Number.isSafeInteger(index) || !this.state.players.includes(player)) return
     const choice = player.choices[index]
     if (!choice) return
+    if (choice === 'd:yes' || choice === 'd:no') {
+      const hand = this.familyHands.get(player.id)
+      if (!hand) return
+      this.familyHands.delete(player.id)
+      player.choices = hand
+      player.choiceSeq++
+      player.dating = choice === 'd:yes'
+      this.log(player.dating ? 'パートナーと交際を始めた。' : '今は一人で歩むことにした。', player.id)
+      return
+    }
     if (choice === 'f:yes' || choice === 'f:no') {
       const hand = this.familyHands.get(player.id)
       if (!hand) return

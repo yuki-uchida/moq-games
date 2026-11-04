@@ -14,7 +14,7 @@ import { readView, toView } from '../src/view'
 const wedding = EVENTS.findIndex((event) => event.boss === 'b_wedding')
 const birth = EVENTS.findIndex((event) => event.swarm === 'nightcry')
 const rebel = EVENTS.findIndex((event) => event.boss === 'b_rebel')
-const friends = EVENTS.findIndex((event) => event.swarm === 'kid')
+const friends = EVENTS.findIndex((event) => event.swarm === 'mischief')
 const love = (player: Player, lv: number) => {
   player.weapons = [{ id: 'w_love', lv, cd: 100, held: 0, damage: 0 }]
 }
@@ -200,9 +200,9 @@ describe('personal life branches', () => {
     love(second, 1)
     game.state.log = []
     for (const index of [wedding, birth, rebel, friends]) event(game, index)
-    expect(game.state.enemies.some((enemy) => ['b_wedding', 'nightcry', 'b_rebel', 'kid'].includes(enemy.kind))).toBe(
-      false
-    )
+    expect(
+      game.state.enemies.some((enemy) => ['b_wedding', 'nightcry', 'b_rebel', 'mischief'].includes(enemy.kind))
+    ).toBe(false)
     expect(game.state.log.some((entry) => /結婚|生まれた|反抗期|友だち/.test(entry.text))).toBe(false)
   })
 
@@ -353,7 +353,7 @@ describe('family healing and wire state', () => {
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)?.players[0]).toMatchObject({ married: true, hasChild: true })
     expect(view.players[0].talents).toBeUndefined()
-    for (const v of [1, 2, 3, 4, 5, 6, 7, 9]) expect(readView({ ...view, v })).toBeUndefined()
+    for (const v of [1, 2, 3, 4, 5, 6, 7, 8]) expect(readView({ ...view, v })).toBeUndefined()
     for (const patch of [
       { married: false },
       { married: 1 },

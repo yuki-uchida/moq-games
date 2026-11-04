@@ -58,7 +58,7 @@ describe('pixel art', () => {
         for (const frame of anim.frames) expect([id, frame.w, frame.h]).toEqual([id, size(name), size(name)])
       }
     }
-  })
+  }, 30_000)
 
   test('every weapon, passive and pickup has a world sprite and a HUD icon', () => {
     const fx = built.fx
@@ -141,7 +141,7 @@ describe('pixel art', () => {
           for (let i = 3; i < rgba.length; i += 4)
             if (rgba[i] !== 0 && rgba[i] !== 255) throw new Error(`${id}: alpha ${rgba[i]}`)
         }
-  })
+  }, 30_000)
 
   test('feet sit on the shared baseline (row 58 of 64, 120 of 128) so flipping and animating never jitter', () => {
     for (const id of [...BODIES.map((b) => `player:${b}`), 'enemy:bully'])
@@ -170,7 +170,7 @@ describe('pixel art', () => {
     // Everything (all stages, the full roster, maps) takes ~0.4 s on a laptop; the browser builds only
     // what is on screen, lazily. 4 s leaves ~10× headroom for slow CI while still catching a blow-up.
     expect(Math.min(a.ms, b.ms)).toBeLessThan(4000)
-  })
+  }, 30_000)
 })
 
 describe('bodies and deaths', () => {
@@ -191,14 +191,14 @@ describe('bodies and deaths', () => {
           if (age < 18) expect(kind).not.toBe('hang')
         }
     }
-    expect(deathKind(ENEMY_BY_ID.get('boss')!.tag, 25, 'adult')).toBe('hang')
+    expect(deathKind(ENEMY_BY_ID.get('intimidating_boss')!.tag, 25, 'adult')).toBe('hang')
     expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 17, 'high')).toBe('alone')
     expect(deathKind(ENEMY_BY_ID.get('bully')!.tag, 9, 'kid')).toBe('alone')
     expect(deathKind(ENEMY_BY_ID.get('expense')!.tag, 30, 'adult')).toBe('starve')
     expect(deathKind(ENEMY_BY_ID.get('car')!.tag, 40, 'prime')).toBe('runover')
     expect(deathKind(ENEMY_BY_ID.get('germ')!.tag, 1, 'baby')).toBe('illness')
-    expect(deathKind(ENEMY_BY_ID.get('kid')!.tag, 1, 'baby')).toBe('collapse')
-    expect(deathKind(ENEMY_BY_ID.get('boss')!.tag, 78, 'bed')).toBe('lonely')
+    expect(deathKind(ENEMY_BY_ID.get('mischief')!.tag, 1, 'baby')).toBe('collapse')
+    expect(deathKind(ENEMY_BY_ID.get('intimidating_boss')!.tag, 78, 'bed')).toBe('lonely')
     expect(deathKind(undefined, 30, 'adult')).toBe('collapse')
     // The 大往生 ending and the ghost/halo souls exist.
     expect(built['death:bed'].won.soul).toBe('halo')

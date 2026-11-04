@@ -27,7 +27,7 @@ const arena = () => {
 }
 
 describe('fixed meeting swarm', () => {
-  const meetingIndex = EVENTS.findIndex((entry) => entry.swarm === 'meeting')
+  const meetingIndex = EVENTS.findIndex((entry) => entry.swarm === 'endless_meeting')
   const meeting = (game: Game) => {
     game.state.enemies = []
     game.state.eventIndex = meetingIndex
@@ -45,9 +45,9 @@ describe('fixed meeting swarm', () => {
     for (const player of players) equip(player, 'w_work', 8)
     meeting(game)
     expect(logs(game)).toEqual([])
-    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(0)
-    game.spawnEnemy('meeting')
-    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(true)
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'endless_meeting')).toHaveLength(0)
+    game.spawnEnemy('endless_meeting')
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'endless_meeting')).toBe(true)
   })
 
   test('mixed careers use personal employment history, including downed workers, only once', () => {
@@ -63,7 +63,7 @@ describe('fixed meeting swarm', () => {
     expect(logs(game).map((entry) => entry.text)).toEqual([
       `${players[0].name}の仕事の試練：${EVENTS[meetingIndex].text}`
     ])
-    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'endless_meeting')).toHaveLength(
       Math.round(EVENTS[meetingIndex].count! * game.playerFactor())
     )
     const enemyIds = game.state.enemies.map((enemy) => enemy.id)
@@ -82,7 +82,7 @@ describe('fixed meeting swarm', () => {
     equip(newcomer, 'w_work', 8)
     game.tick(0.001)
     expect(logs(game)).toEqual([])
-    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(false)
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'endless_meeting')).toBe(false)
   })
 
   test.each([-0.001, 0, 0.001])('employment history respects joining at boundary offset %s', (offset) => {
@@ -92,7 +92,7 @@ describe('fixed meeting swarm', () => {
     players[0].joinedAt = EVENTS[meetingIndex].at + offset
     meeting(game)
     expect(logs(game)).toHaveLength(offset < 0 ? 1 : 0)
-    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'endless_meeting')).toHaveLength(
       offset < 0 ? Math.round(EVENTS[meetingIndex].count! * game.playerFactor()) : 0
     )
   })
@@ -107,7 +107,7 @@ describe('fixed meeting swarm', () => {
     equip(newcomer, 'w_work', 8)
     game.tick(0.001)
     expect(logs(game)).toEqual([])
-    expect(game.state.enemies.some((enemy) => enemy.kind === 'meeting')).toBe(false)
+    expect(game.state.enemies.some((enemy) => enemy.kind === 'endless_meeting')).toBe(false)
     expect(newcomer.history).toEqual([])
   })
 
@@ -119,7 +119,7 @@ describe('fixed meeting swarm', () => {
     expect(logs(game).map((entry) => entry.text)).toEqual([
       `${players[0].name}・${players[1].name}の仕事の試練：${EVENTS[meetingIndex].text}`
     ])
-    expect(game.state.enemies.filter((enemy) => enemy.kind === 'meeting')).toHaveLength(
+    expect(game.state.enemies.filter((enemy) => enemy.kind === 'endless_meeting')).toHaveLength(
       Math.round(EVENTS[meetingIndex].count! * game.playerFactor())
     )
   })

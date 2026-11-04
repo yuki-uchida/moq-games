@@ -807,7 +807,7 @@ const enemy = (
   extra: Partial<EnemyDef> = {}
 ): EnemyDef => ({ id, name, icon, tag, hp, speed, damage, radius, xp, behavior, ...extra })
 
-export const ENEMIES: EnemyDef[] = [
+const ORIGINAL_ENEMIES: EnemyDef[] = [
   enemy('germ', '風邪', '🦠', 'sickness', 6, 42, 4, 12, 1),
   enemy('insult', '悪口', '💬', 'insult', 4, 74, 3, 11, 1),
   enemy('bully', 'いじめっ子', '😠', 'people', 15, 56, 6, 15, 2),
@@ -896,6 +896,35 @@ export const ENEMIES: EnemyDef[] = [
     minion: 'loneliness'
   })
 ]
+const REPLACEMENTS: Record<string, Pick<EnemyDef, 'id' | 'name' | 'icon'>> = {
+  job: { id: 'overwork', name: '過重労働', icon: '📄' },
+  dog: { id: 'biting_dog', name: '噛みつく野良犬', icon: '🐕' },
+  pepper: { id: 'picky_eating', name: '偏食', icon: '🫑' },
+  worksheet: { id: 'unfinished_worksheet', name: '終わらないプリント', icon: '📃' },
+  dodgeball: { id: 'ball_impact', name: 'ボールの直撃', icon: '🔴' },
+  crush: { id: 'unrequited_worry', name: '片思いの悩み', icon: '💔' },
+  drinking: { id: 'forced_drinking', name: '断れない飲み会', icon: '🍺' },
+  scholarship: { id: 'scholarship_debt', name: '奨学金の返済', icon: '🎓' },
+  meeting: { id: 'endless_meeting', name: '終わらない会議', icon: '🗂️' },
+  coin: { id: 'tax_arrears', name: '税金の滞納', icon: '🪙' },
+  teacher: { id: 'abusive_teacher', name: '暴言教師', icon: '👨‍🏫' },
+  lesson: { id: 'lesson_pressure', name: '授業の遅れ', icon: '🧮' },
+  club: { id: 'overtraining', name: '過度な練習', icon: '🏃' },
+  boss: { id: 'intimidating_boss', name: '威圧的な上司', icon: '😤' },
+  kid: { id: 'mischief', name: '子育てのいたずら', icon: '🧒' },
+  senpai: { id: 'abusive_senpai', name: '横暴な先輩', icon: '🧑‍🎓' },
+  girlfriend: { id: 'temptation', name: '浮気相手のイケメン店長', icon: '💔' },
+  vaccine: { id: 'infection', name: '感染症', icon: '🦠' },
+  b_vaccine: { id: 'b_outbreak', name: '感染症の流行', icon: '🦠' }
+}
+export const DISABLED_ENEMIES = ORIGINAL_ENEMIES.filter((def) => REPLACEMENTS[def.id])
+const replacementId = (id: string) => REPLACEMENTS[id]?.id ?? id
+export const ENEMIES: EnemyDef[] = ORIGINAL_ENEMIES.map((def) => ({
+  ...def,
+  ...REPLACEMENTS[def.id],
+  ...(def.child ? { child: replacementId(def.child) } : {}),
+  ...(def.minion ? { minion: replacementId(def.minion) } : {})
+}))
 export const ENEMY_BY_ID = new Map(ENEMIES.map((def) => [def.id, def]))
 export const ENEMY_INDEX = new Map(ENEMIES.map((def, index) => [def.id, index]))
 
@@ -914,7 +943,7 @@ export const BULLET_KINDS = [
   'b_rebel',
   'b_layoff',
   'b_illness',
-  'b_vaccine',
+  'b_outbreak',
   'b_heartbreak',
   'b_tax',
   'b_care'
@@ -965,7 +994,7 @@ const BASE_POOLS: { untilAge: number; enemies: PoolEntry[] }[] = [
       ['bully', 2],
       ['teacher', 1.5],
       ['insult', 2],
-      ['girlfriend', 0.8],
+      ['temptation', 0.8],
       ['car', 0.25]
     ]
   },
@@ -974,7 +1003,7 @@ const BASE_POOLS: { untilAge: number; enemies: PoolEntry[] }[] = [
     enemies: [
       ['exam', 2],
       ['expense', 3],
-      ['girlfriend', 2],
+      ['temptation', 2],
       ['job', 1.5],
       ['insult', 2],
       ['gossip', 1],
@@ -987,7 +1016,7 @@ const BASE_POOLS: { untilAge: number; enemies: PoolEntry[] }[] = [
       ['job', 3],
       ['expense', 3],
       ['boss', 1.5],
-      ['girlfriend', 1.5],
+      ['temptation', 1.5],
       ['cert', 1.5],
       ['gossip', 2],
       ['car', 0.3]
@@ -1036,7 +1065,7 @@ const BASE_POOLS: { untilAge: number; enemies: PoolEntry[] }[] = [
 const NEW_SPAWNS: [string, number, number, number][] = [
   ['mosquito', 0, 12, 0.9],
   ['mosquito', 65, 999, 0.9],
-  ['vaccine', 0, 6, 1.1],
+  ['infection', 0, 6, 1.1],
   ['dog', 3, 12, 1],
   ['pepper', 3, 12, 0.7],
   ['homework', 6, 18, 1],
@@ -1056,7 +1085,8 @@ const NEW_SPAWNS: [string, number, number, number][] = [
   ['backpain', 45, 999, 0.5],
   ['scam', 60, 999, 0.8],
   ['forget', 60, 999, 0.8],
-  ['loneliness', 60, 999, 0.8]
+  ['loneliness', 60, 999, 0.8],
+  ['temptation', 30, 999, 1]
 ]
 const POOL_BANDS = [0, 3, 6, 12, 15, 18, 23, 30, 35, 45, 50, 60, 65]
 
@@ -1064,7 +1094,7 @@ export const POOLS: { untilAge: number; enemies: PoolEntry[] }[] = POOL_BANDS.ma
   const untilAge = i + 1 < POOL_BANDS.length ? POOL_BANDS[i + 1] : 999
   const base = BASE_POOLS.find((entry) => from < entry.untilAge)!
   const added = NEW_SPAWNS.filter(([, lo, hi]) => lo <= from && untilAge <= hi).map(([id, , , w]): PoolEntry => [id, w])
-  return { untilAge, enemies: [...base.enemies, ...added] }
+  return { untilAge, enemies: [...base.enemies, ...added].map(([id, weight]) => [replacementId(id), weight]) }
 })
 
 export type Formation = 'ring' | 'wall' | 'cluster'
@@ -1082,7 +1112,7 @@ export interface LifeEvent {
 export const EVENTS: LifeEvent[] = (
   [
     { at: 60, swarm: 'mosquito', count: 24, formation: 'wall', text: '夏が来た。蚊の大群！' },
-    { at: 100, boss: 'b_vaccine', text: '予防接種の日がやってきた！' },
+    { at: 100, boss: 'b_outbreak', text: '感染症が流行している！' },
     { at: 150, swarm: 'insult', count: 30, text: 'クラスで悪口が広まった！' },
     { at: 220, swarm: 'homework', count: 14, text: '夏休みの宿題が山積み！' },
     { at: 300, boss: 'b_hs', text: '高校受験がやってきた！' },
@@ -1102,7 +1132,7 @@ export const EVENTS: LifeEvent[] = (
     { at: 1170, swarm: 'meeting', count: 10, text: '会議、会議、また会議…' },
     { at: 1230, boss: 'b_rebel', text: '子供が反抗期に入った！' },
     { at: 1300, swarm: 'backpain', count: 12, text: '腰をやってしまった…' },
-    { at: 1380, swarm: 'kid', count: 40, text: '子供の友だちが大集合！' },
+    { at: 1380, swarm: 'kid', count: 40, text: '子育てのいたずらに振り回される！' },
     { at: 1440, boss: 'b_layoff', text: 'リストラの噂…！' },
     { at: 1530, boss: 'b_care', text: '親の介護が始まった…' },
     { at: 1580, swarm: 'scam', count: 20, text: 'オレオレ詐欺の電話が鳴る！' },
@@ -1111,7 +1141,12 @@ export const EVENTS: LifeEvent[] = (
     { at: 1740, swarm: 'illness', count: 60, text: '最後の試練。あと少し…！' }
   ] as LifeEvent[]
 )
-  .map((event) => ({ ...event, at: timeAtAge((event.at / (30 * 60)) * LIFESPAN) }))
+  .map((event) => ({
+    ...event,
+    boss: event.boss && replacementId(event.boss),
+    swarm: event.swarm && replacementId(event.swarm),
+    at: timeAtAge((event.at / (30 * 60)) * LIFESPAN)
+  }))
   .sort((a, b) => a.at - b.at)
 
 export const PLAYER_COLORS = ['#ffd166', '#06d6a0', '#ef476f', '#4cc9f0', '#f78c6b', '#b388eb', '#90be6d', '#f9c74f']

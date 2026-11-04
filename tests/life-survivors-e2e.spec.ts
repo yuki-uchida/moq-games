@@ -12,6 +12,55 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('relationship choice uses the game UI and unlocks the personal rival', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    player.choices = []
+    player.pending = 0
+    const event = EVENTS.findIndex((entry: { swarm?: string }) => entry.swarm === 'car')
+    game.state.eventIndex = event
+    game.state.time = EVENTS[event].at - 0.01
+    game.tick(0.02)
+  })
+  await expect(page.locator('#levelup-title')).toHaveText('交際の選択')
+  await expect(page.locator('#cards')).toContainText('交際する')
+  await expect(page.locator('#cards')).toContainText('浮気相手が現れる')
+  await page.keyboard.press('Digit1')
+  await expect.poll(() => handle.evaluate((hook) => (hook.game as unknown as Game).state.players[0].dating)).toBe(true)
+  expect(await handle.evaluate((hook) => (hook.game as unknown as Game).spawnEnemy('temptation')?.targetPlayer)).toBe(
+    await handle.evaluate((hook) => hook.localId)
+  )
+})
+
+test('childhood mischief announces a family challenge', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    player.choices = []
+    player.pending = 0
+    player.married = true
+    player.hasChild = true
+    const event = EVENTS.findIndex((entry: { swarm?: string }) => entry.swarm === 'mischief')
+    game.state.eventIndex = event
+    game.state.time = EVENTS[event].at - 0.01
+    game.tick(0.02)
+  })
+  await expect(page.locator('#banner .banner-title')).toHaveText('仲間の家族の試練：子育てのいたずらに振り回される！', {
+    timeout: 8000
+  })
+})
+
 for (const [parent, description] of [
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
@@ -92,7 +141,7 @@ for (const width of [1280, 390]) {
       player.choices = []
       game.state.enemies = []
       game.state.fx = []
-      const meeting = EVENTS.findIndex((event: { swarm?: string }) => event.swarm === 'meeting')
+      const meeting = EVENTS.findIndex((event: { swarm?: string }) => event.swarm === 'endless_meeting')
       game.state.eventIndex = meeting
       game.state.time = EVENTS[meeting].at - 0.01
       game.tick(0.02)
@@ -1061,13 +1110,13 @@ test('a broken heart: the death plays out before the result, which names the fin
     game.state.time = 900 * (25 / 80) ** (1 / 1.4)
     p.weapons = []
     p.hp = 0.01
-    game.spawnEnemy('boss', p.x, p.y)
+    game.spawnEnemy('intimidating_boss', p.x, p.y)
   })
   await expect.poll(() => handle.evaluate((l) => l.view.phase)).toBe('lost')
   await page.waitForTimeout(1000)
   await expect(page.locator('#result')).toBeHidden()
   await expect(page.getByRole('heading', { name: /心が折れた — 享年25歳/ })).toBeVisible({ timeout: 6000 })
-  await expect(page.locator('#result-text')).toContainText('とどめ：上司（人間関係）')
+  await expect(page.locator('#result-text')).toContainText('とどめ：威圧的な上司（人間関係）')
   expect(errors).toEqual([])
 })
 
@@ -1119,7 +1168,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v8',
+      app: 'life-survivors-v9',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1138,9 +1187,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v11', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {

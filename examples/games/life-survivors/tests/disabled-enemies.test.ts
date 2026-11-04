@@ -1,0 +1,57 @@
+import { expect, test } from 'vitest'
+import { DISABLED_ENEMIES } from '../src/data'
+import { SHEETS } from '../src/art/index'
+
+test('retired enemies retain their original definitions and drawable sprites', () => {
+  const originals = [
+    { id: 'teacher', name: '教師', hp: 26, behavior: 'chase' },
+    { id: 'lesson', name: '授業', hp: 22, behavior: 'chase' },
+    { id: 'club', name: 'スポーツ', hp: 20, behavior: 'chase' },
+    { id: 'girlfriend', name: '彼女', hp: 50, behavior: 'chase' },
+    { id: 'boss', name: '上司', hp: 84, behavior: 'chase' },
+    { id: 'kid', name: '子供', hp: 34, behavior: 'chase' },
+    { id: 'vaccine', name: '注射', hp: 14, behavior: 'charger' },
+    { id: 'senpai', name: '先輩', hp: 140, behavior: 'tank' },
+    { id: 'job', name: '仕事', hp: 48, behavior: 'chase' },
+    { id: 'dog', name: '野良犬', hp: 22, behavior: 'charger' },
+    { id: 'pepper', name: 'ピーマン', hp: 18, behavior: 'shooter' },
+    { id: 'worksheet', name: 'プリント', hp: 6, behavior: 'chase' },
+    { id: 'dodgeball', name: 'ドッジボール', hp: 24, behavior: 'shooter' },
+    { id: 'crush', name: '片思い', hp: 34, behavior: 'circler' },
+    { id: 'drinking', name: '飲み会', hp: 46, behavior: 'shooter' },
+    { id: 'scholarship', name: '奨学金', hp: 160, behavior: 'tank' },
+    { id: 'meeting', name: '会議', hp: 220, behavior: 'tank' },
+    { id: 'coin', name: '小銭', hp: 10, behavior: 'chase' },
+    { id: 'b_vaccine', name: '予防接種の日', hp: 420, behavior: 'boss' }
+  ]
+  for (const original of originals)
+    expect(DISABLED_ENEMIES.find((enemy) => enemy.id === original.id)).toMatchObject(original)
+
+  for (const enemy of DISABLED_ENEMIES) {
+    const make = SHEETS[`enemy:${enemy.id}`]
+    expect([enemy.id, typeof make]).toEqual([enemy.id, 'function'])
+    const { move, flash } = make()
+    expect(move.frames.length).toBeGreaterThan(0)
+    expect(flash.frames).toHaveLength(move.frames.length)
+  }
+})
+
+test('replacement sprites distinguish the difficulty without changing the originals', () => {
+  const replacements = {
+    overwork: 'job',
+    biting_dog: 'dog',
+    picky_eating: 'pepper',
+    unfinished_worksheet: 'worksheet',
+    ball_impact: 'dodgeball',
+    unrequited_worry: 'crush',
+    forced_drinking: 'drinking',
+    scholarship_debt: 'scholarship',
+    endless_meeting: 'meeting',
+    tax_arrears: 'coin'
+  }
+  for (const [active, original] of Object.entries(replacements)) {
+    expect(SHEETS[`enemy:${active}`]().move.frames[0].rgba()).not.toEqual(
+      SHEETS[`enemy:${original}`]().move.frames[0].rgba()
+    )
+  }
+})

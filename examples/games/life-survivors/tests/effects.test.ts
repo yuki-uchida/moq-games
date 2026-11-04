@@ -87,7 +87,7 @@ describe('ParticlePool', () => {
 describe('Effects', () => {
   test('a kill pops the enemy, puffs and throws debris in its colour; a repeated snapshot adds nothing', () => {
     const fx = new Effects(() => 0.5)
-    const index = ENEMIES.findIndex((e) => e.id === 'job')
+    const index = ENEMIES.findIndex((e) => e.id === 'overwork')
     const list = ev(1, FX.KILL, 10, 10, index, 0)
     expect(fx.consume(list, 1, view)).toBe(1)
     const kinds = fx.pool.items.map((p) => p.kind)
