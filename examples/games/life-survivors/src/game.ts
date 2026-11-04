@@ -1748,19 +1748,7 @@ export class Game {
         break
       }
       case 'pet': {
-        // Dogs stay out as long as the card keeps firing; a new activation refreshes them and tops up the pack.
-        let have = 0
-        for (const shot of this.state.shots)
-          if (shot.owner === player.id && shot.weapon === def.id) {
-            if (have++ >= n) continue
-            shot.life = shot.maxLife = ws.duration
-            shot.r = def.area * ws.area
-            shot.damage = ws.damage
-            shot.spin = speed
-            shot.critChance = ws.crit
-            shot.strongMult = ws.strong
-          }
-        for (let i = have; i < n; i++)
+        for (let i = 0; i < n; i++)
           this.shot(player, def, ws, {
             x: player.x + Math.cos(i * 2.4) * 24,
             y: player.y + Math.sin(i * 2.4) * 24,
