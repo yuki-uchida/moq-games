@@ -729,7 +729,25 @@ export const PASSIVES: PassiveDef[] = [
     desc: 'お別れで一度だけ獲得。精神力の自然回復 +0.4/秒（通常の性格枠を使わない）'
   }
 ]
-export const PASSIVE_BY_ID = new Map(PASSIVES.map((def) => [def.id, def]))
+
+export const INHERITED_PASSIVES: PassiveDef[] = [
+  { id: 'p_affection', category: 'love', name: '愛情', icon: '💗', desc: '精神力の自然回復 +0.4/秒' },
+  { id: 'p_acceptance', category: 'friend', name: '包容力', icon: '🫂', desc: '精神力の最大値 +20' },
+  { id: 'p_patience', category: 'sports', name: '忍耐力', icon: '🪨', desc: '防御 +1' },
+  { id: 'p_courage', category: 'sports', name: '勇気', icon: '🦁', desc: '威力 +10%' }
+]
+export const PASSIVE_BY_ID = new Map([...PASSIVES, ...INHERITED_PASSIVES].map((def) => [def.id, def]))
+
+export const PARENT_LEGACIES: Record<string, string> = {
+  p_over: 'p_affection',
+  p_toxic: 'p_acceptance',
+  p_monster: 'p_patience',
+  p_free: 'p_courage',
+  p_edu: 'p_diligent',
+  p_weak: 'p_healthy',
+  p_rich: 'p_greedy',
+  p_yankee: 'p_hot'
+}
 
 /** Weapon-level upgrades; index = new level. */
 export const LEVEL_TEXT = [
@@ -1111,7 +1129,7 @@ export const EVENTS: LifeEvent[] = (
     { at: 1300, swarm: 'backpain', count: 12, text: '腰をやってしまった…' },
     { at: 1380, swarm: 'kid', count: 40, text: '子供の友だちが大集合！' },
     { at: 1440, boss: 'b_layoff', text: 'リストラの噂…！' },
-    { at: 1530, boss: 'b_care', text: '親の介護が始まった…' },
+    { at: 1125, boss: 'b_care', text: '親の介護と、最期のお別れ…' },
     { at: 1580, swarm: 'scam', count: 20, text: 'オレオレ詐欺の電話が鳴る！' },
     { at: 1620, boss: 'b_illness', text: '大きな病気が見つかった！' },
     { at: 1680, swarm: 'forget', count: 30, text: '物忘れがひどくなってきた…' },

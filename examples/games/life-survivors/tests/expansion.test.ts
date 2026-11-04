@@ -816,12 +816,20 @@ describe('fx channel', () => {
       note(game)
     }
     const names = Object.fromEntries(Object.entries(FX).map(([name, type]) => [type, name]))
+    {
+      const { game } = arena(29, 'p_over')
+      const care = EVENTS.findIndex((event) => event.boss === 'b_care')
+      game.state.time = EVENTS[care].at - 0.01
+      game.state.eventIndex = care
+      game.tick(0.01)
+      note(game)
+    }
     const missing = Object.values(FX).filter((type) => !seen.has(type))
     expect(missing.map((type) => names[type])).toEqual([])
   })
 })
 
-describe('protocol v9', () => {
+describe('protocol v10', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -831,9 +839,9 @@ describe('protocol v9', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v9 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v10 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(9)
+    expect(view.v).toBe(10)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -842,13 +850,14 @@ describe('protocol v9', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v9 field', () => {
+  test('readView rejects old versions and every malformed v10 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
     expect(readView({ ...view, v: 5 })).toBeUndefined()
     expect(readView({ ...view, v: 7 })).toBeUndefined()
     expect(readView({ ...view, v: 8 })).toBeUndefined()
+    expect(readView({ ...view, v: 9 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view

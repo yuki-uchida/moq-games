@@ -274,7 +274,9 @@ describe('parent care trials', () => {
     expect(view.enemies.length).toBeGreaterThan(0)
     expect(view.players.every((player) => player.talents === undefined)).toBe(true)
     expect(game.state.players.map((player) => player.talents)).toEqual(talents)
-    expect(game.state.players.map((player) => player.history)).toEqual(histories)
+    expect(first.history).toHaveLength(histories[0].length + 1)
+    expect(second.history).toHaveLength(histories[1].length + 1)
+    expect(gone.history).toEqual(histories[2])
     const boss = game.state.enemies.find((enemy) => enemy.kind === 'b_care')!
     boss.x = gone.x
     boss.y = gone.y
@@ -353,7 +355,7 @@ describe('family healing and wire state', () => {
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)?.players[0]).toMatchObject({ married: true, hasChild: true })
     expect(view.players[0].talents).toBeUndefined()
-    for (const v of [1, 2, 3, 4, 5, 6, 7, 8, 10]) expect(readView({ ...view, v })).toBeUndefined()
+    for (const v of [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]) expect(readView({ ...view, v })).toBeUndefined()
     for (const patch of [
       { married: false },
       { married: 1 },

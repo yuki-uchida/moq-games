@@ -288,6 +288,10 @@ button {
 .slot.parent {
   border-color: #e0704f;
 }
+.slot.inherited {
+  border-color: #c7d9ef;
+  box-shadow: 0 0 8px #c7d9ef80;
+}
 .slot.evolved {
   border-color: var(--accent);
   box-shadow: 0 0 12px #ffcf4d77;
@@ -1105,6 +1109,67 @@ button {
   background: linear-gradient(90deg, transparent, rgba(30, 0, 4, 0.88) 12%, rgba(30, 0, 4, 0.88) 88%, transparent);
   animation: warn-in var(--dur) ease-out both;
 }
+.banner-farewell {
+  position: fixed;
+  left: 6%;
+  right: 6%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: auto;
+  z-index: 3;
+  padding: 2px 12px;
+  box-sizing: border-box;
+  background: linear-gradient(90deg, transparent, #182b4670 10%, #182b4670 90%, transparent);
+  backdrop-filter: blur(4px);
+  border-block: 1px solid #c7d9ef88;
+  animation: pop-hold var(--dur) ease-out both;
+}
+.banner-farewell .banner-title {
+  color: #e2edff;
+  font-size: 20px;
+}
+.banner-farewell .banner-sub {
+  font-size: 14px;
+  line-height: 1.3;
+  color: #fff;
+}
+.banner-care,
+.hud:has(.banner-farewell) .banner-layer {
+  position: fixed;
+  top: auto;
+  bottom: max(84px, calc(env(safe-area-inset-bottom) + 72px));
+  left: 6%;
+  right: 6%;
+  width: auto;
+}
+.banner-care,
+.hud:has(.banner-farewell) .banner-warning {
+  background: linear-gradient(90deg, transparent, #1e000470 12%, #1e000470 88%, transparent);
+}
+.banner-care .banner-title,
+.hud:has(.banner-farewell) .banner-layer .banner-title {
+  font-size: 20px;
+}
+.hud:has(.banner-farewell) .banner-layer .banner {
+  gap: 2px;
+}
+.hud:has(.banner-farewell) .banner-layer .banner-meta {
+  font-size: 12px;
+  line-height: 1.1;
+}
+.banner-care .banner-sub,
+.hud:has(.banner-farewell) .banner-layer .banner-sub {
+  font-size: 13px;
+}
+.banner-care .stripes,
+.hud:has(.banner-farewell) .banner-layer .stripes {
+  height: 4px;
+}
+.banner-care .banner-title {
+  animation: none;
+}
+.hud:has(.banner-farewell, .banner-care) .feed {
+  visibility: hidden;
+}
 .banner-warning .banner-title {
   color: #ff3b47;
   letter-spacing: 0.35em;
@@ -1206,6 +1271,9 @@ button {
 }
 .banner-stage {
   animation: stage-slide var(--dur) ease-out both;
+}
+.hud:has(.banner-farewell) .banner-stage {
+  animation-name: pop-hold;
 }
 .banner-stage .banner-title {
   background: linear-gradient(180deg, #fff, #ffd6a5);
