@@ -1471,9 +1471,15 @@ test('on a phone, a slide anywhere shows a stick and steers; a stray tap on a fr
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#move-hint')).toBeVisible()
   const handle = await life(page)
+  // A life without parents deals its first hand on the first tick: clear it and anything still to deal.
   await handle.evaluate((l) => {
-    for (const p of l.game.state.players) p.choices = []
+    for (const p of (l.game as unknown as Game).state.players) {
+      p.choices = []
+      p.pending = 0
+      p.birthPick = false
+    }
   })
+  await expect(page.locator('#levelup')).toBeHidden()
 
   const cdp = await context.newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 600 }] })
