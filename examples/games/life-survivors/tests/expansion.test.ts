@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   BULLET_KINDS,
+  DISABLED_ENEMIES,
   ENEMIES,
   ENEMY_BY_ID,
   ENEMY_INDEX,
@@ -48,11 +49,11 @@ const NEW_WEAPONS: Record<string, { name: string; passive: string; behavior: str
   w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' }
 }
 const NEW_ENEMY_IDS = [
-  'mosquito', 'vaccine', 'dog', 'pepper', 'homework', 'worksheet', 'dodgeball', 'pimple', 'crush', 'senpai', 'drinking',
-  'scholarship', 'deadline', 'meeting', 'spam', 'powerhara', 'train', 'tax', 'coin', 'nightcry', 'backpain', 'scam',
+  'mosquito', 'infection', 'biting_dog', 'picky_eating', 'homework', 'unfinished_worksheet', 'ball_impact', 'pimple', 'unrequited_worry', 'abusive_senpai', 'forced_drinking',
+  'scholarship_debt', 'deadline', 'endless_meeting', 'spam', 'powerhara', 'train', 'tax', 'tax_arrears', 'nightcry', 'backpain', 'scam',
   'forget', 'loneliness'
 ] // prettier-ignore
-const NEW_BOSS_IDS = ['b_vaccine', 'b_heartbreak', 'b_tax', 'b_care']
+const NEW_BOSS_IDS = ['b_outbreak', 'b_heartbreak', 'b_tax', 'b_care']
 
 /** A one-player arena: no parent weapon, ordinary talents, nothing in the way. */
 function arena(seed: number, parent = 'p_gone') {
@@ -115,10 +116,10 @@ describe('new talent weapons', () => {
     const posts: ReturnType<typeof post>[] = []
     if (id === 'w_travel')
       // Planes cross at a random height: a column of posts covers every one.
-      for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'senpai', player.x, player.y + y))
-    else if (id === 'w_savings' || id === 'w_perfume') posts.push(post(game, 'senpai', player.x + 36, player.y))
-    else if (id === 'w_muscle') posts.push(post(game, 'senpai', player.x + 70, player.y))
-    else posts.push(post(game, 'senpai', player.x + 120, player.y))
+      for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'abusive_senpai', player.x, player.y + y))
+    else if (id === 'w_savings' || id === 'w_perfume') posts.push(post(game, 'abusive_senpai', player.x + 36, player.y))
+    else if (id === 'w_muscle') posts.push(post(game, 'abusive_senpai', player.x + 70, player.y))
+    else posts.push(post(game, 'abusive_senpai', player.x + 120, player.y))
     const popups = new Set<unknown>()
     run(game, player, 60 * 6, () => {
       for (const p of posts) p.hold()
@@ -161,7 +162,7 @@ describe('new talent weapons', () => {
     {
       const { game, player } = arena(2)
       player.weapons.push({ id: 'w_muscle', lv: 1, cd: 0, held: 0, damage: 0 })
-      const p = post(game, 'senpai', player.x + 60, player.y)
+      const p = post(game, 'abusive_senpai', player.x + 60, player.y)
       p.enemy.kx = 0
       game.tick(1 / 60)
       const blast = ofType(collect(game), FX.BLAST)
@@ -174,7 +175,7 @@ describe('new talent weapons', () => {
     {
       const { game, player } = arena(2)
       player.weapons.push({ id: 'w_sns', lv: 1, cd: 0, held: 0, damage: 0 })
-      const posts = [100, 220, 330].map((dx) => post(game, 'senpai', player.x + dx, player.y))
+      const posts = [100, 220, 330].map((dx) => post(game, 'abusive_senpai', player.x + dx, player.y))
       game.tick(1 / 60)
       // Three links (2 + amount): every post is hit once at creation, and the segments never collide.
       expect(posts.every((p) => p.enemy.hp < p.enemy.maxHp)).toBe(true)
@@ -187,7 +188,7 @@ describe('new talent weapons', () => {
     {
       const { game, player } = arena(2)
       player.weapons.push({ id: 'w_overtime', lv: 1, cd: 0, held: 0, damage: 0 })
-      post(game, 'senpai', player.x + 300, player.y)
+      post(game, 'abusive_senpai', player.x + 300, player.y)
       game.tick(1 / 60)
       const staples = game.state.shots.filter((s) => s.weapon === 'w_overtime')
       expect(staples).toHaveLength(3)
@@ -201,7 +202,7 @@ describe('new talent weapons', () => {
   test('a die rolls its face into the variant and a six always crits', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
-    post(game, 'senpai', player.x + 400, player.y)
+    post(game, 'abusive_senpai', player.x + 400, player.y)
     const faces = new Set<number>()
     const crits: boolean[] = []
     for (let i = 0; i < 60 * 40; i++) {
@@ -224,7 +225,7 @@ describe('new talent weapons', () => {
     const dogs = game.state.shots.filter((s) => s.weapon === 'w_pet')
     expect(dogs).toHaveLength(1)
     expect(Math.hypot(dogs[0].x - player.x, dogs[0].y - player.y)).toBeLessThan(60)
-    const p = post(game, 'senpai', player.x + 200, player.y)
+    const p = post(game, 'abusive_senpai', player.x + 200, player.y)
     let bit = false
     run(game, player, 120, () => {
       p.hold()
@@ -237,7 +238,7 @@ describe('new talent weapons', () => {
   test('a boomerang comes back to its owner and disappears', () => {
     const { game, player } = arena(4)
     player.weapons.push({ id: 'w_ring', lv: 1, cd: 0, held: 0, damage: 0 })
-    post(game, 'senpai', player.x + 600, player.y)
+    post(game, 'abusive_senpai', player.x + 600, player.y)
     let far = 0
     let gone = false
     for (let i = 0; i < 60 * 4; i++) {
@@ -283,7 +284,7 @@ describe('passives', () => {
   test('critical hits appear, hit twice as hard and are flagged all the way into the snapshot', () => {
     const { game, player } = arena(21, 'p_toxic')
     player.passives = [{ id: 'p_lucky', lv: 5 }]
-    const target = post(game, 'club', player.x + 30, player.y)
+    const target = post(game, 'overtraining', player.x + 30, player.y)
     const seen = new Set<Game['state']['popups'][number]>()
     let flagged = false
     run(game, player, 60 * 30, () => {
@@ -385,13 +386,65 @@ describe('passives', () => {
     game.gainXp(game.state.xpNext)
     expect(enemy.kx).toBeGreaterThan(100)
     expect(enemy.hp).toBe(hp)
-    const tank = game.spawnEnemy('senpai', player.x + 70, player.y)!
+    const tank = game.spawnEnemy('abusive_senpai', player.x + 70, player.y)!
     game.gainXp(game.state.xpNext)
     expect(tank.kx).toBeLessThan(enemy.kx / 3)
   })
 })
 
 describe('enemies', () => {
+  test('retired enemies remain available as definitions but cannot spawn through any gameplay path', () => {
+    const disabled = new Set(DISABLED_ENEMIES.map((def) => def.id))
+    expect([...disabled]).toEqual([
+      'teacher',
+      'lesson',
+      'club',
+      'girlfriend',
+      'job',
+      'boss',
+      'kid',
+      'vaccine',
+      'dog',
+      'pepper',
+      'worksheet',
+      'dodgeball',
+      'crush',
+      'senpai',
+      'drinking',
+      'scholarship',
+      'meeting',
+      'coin',
+      'b_vaccine'
+    ])
+    const { game } = arena(7)
+    for (const id of disabled) {
+      expect(ENEMY_BY_ID.has(id)).toBe(false)
+      expect(game.spawnEnemy(id)).toBeUndefined()
+      expect(POOLS.some((pool) => pool.enemies.some(([kind]) => kind === id))).toBe(false)
+      expect(EVENTS.some((event) => event.boss === id || event.swarm === id)).toBe(false)
+      expect(ENEMIES.some((def) => def.child === id || def.minion === id)).toBe(false)
+    }
+  })
+
+  test('replacement summon and split targets resolve to active definitions', () => {
+    expect(ENEMY_BY_ID.get('b_shukatsu')?.minion).toBe('overwork')
+    expect(ENEMY_BY_ID.get('homework')?.child).toBe('unfinished_worksheet')
+    expect(ENEMY_BY_ID.get('tax')?.child).toBe('tax_arrears')
+    expect(ENEMY_BY_ID.get('b_tax')?.minion).toBe('tax_arrears')
+  })
+
+  test('a partner-related threat requires a relationship and is assigned to its owner', () => {
+    const { game, player } = arena(8)
+    player.weapons.push({ id: 'w_love', lv: 8, cd: 0, held: 0, damage: 0 })
+    expect(game.spawnEnemy('temptation')).toBeUndefined()
+    player.married = true
+    const enemy = game.spawnEnemy('temptation')!
+    expect(enemy.targetPlayer).toBe(player.id)
+    game.addPlayer('b', 'p_gone')
+    expect(game.spawnEnemy('temptation')?.targetPlayer).toBe(player.id)
+    expect(game.state.enemies).toContain(enemy)
+  })
+
   test('there are 41 regular enemies and 12 bosses, new ids appended in order', () => {
     const regular = ENEMIES.filter((e) => e.behavior !== 'boss')
     const bosses = ENEMIES.filter((e) => e.behavior === 'boss')
@@ -420,13 +473,21 @@ describe('enemies', () => {
     expect(at(2)).toContain('mosquito')
     expect(at(40)).not.toContain('mosquito')
     expect(at(70)).toContain('mosquito')
-    expect(at(10)).toContain('dog')
-    expect(at(12)).not.toContain('dog')
+    expect(at(10)).toContain('biting_dog')
+    expect(at(12)).not.toContain('biting_dog')
     expect(at(40)).toContain('nightcry')
     expect(at(52)).not.toContain('nightcry')
-    expect(at(78)).toEqual(expect.arrayContaining(['backpain', 'scam', 'forget', 'loneliness', 'tax']))
+    expect(at(78)).toEqual(expect.arrayContaining(['backpain', 'scam', 'forget', 'loneliness', 'tax', 'temptation']))
     expect(at(30)).toEqual(
-      expect.arrayContaining(['crush', 'drinking', 'deadline', 'meeting', 'spam', 'powerhara', 'train'])
+      expect.arrayContaining([
+        'unrequited_worry',
+        'forced_drinking',
+        'deadline',
+        'endless_meeting',
+        'spam',
+        'powerhara',
+        'train'
+      ])
     )
   })
 
@@ -439,6 +500,7 @@ describe('enemies', () => {
       if (e.formation) expect(['ring', 'wall', 'cluster']).toContain(e.formation)
     }
     expect(EVENTS.filter((e) => e.boss)).toHaveLength(12)
+    expect(EVENTS.find((event) => event.swarm === 'forced_drinking')?.text).toContain('断れない')
   })
 
   test('swarm events announce themselves and the wall formation lines up', () => {
@@ -459,8 +521,8 @@ describe('enemies', () => {
 
   test('a homework pile splits into worksheets and a tax notice into coins', () => {
     for (const [kind, child, count] of [
-      ['homework', 'worksheet', 3],
-      ['tax', 'coin', 4]
+      ['homework', 'unfinished_worksheet', 3],
+      ['tax', 'tax_arrears', 4]
     ] as const) {
       const { game, player } = arena(9, 'p_toxic')
       const enemy = game.spawnEnemy(kind, player.x + 20, player.y)!
@@ -477,7 +539,7 @@ describe('enemies', () => {
 
   test('shooters spit bullets that hurt, then vanish, and name the shooter as the killer', () => {
     const { game, player } = arena(12)
-    const shooter = game.spawnEnemy('pepper', player.x + 250, player.y)!
+    const shooter = game.spawnEnemy('picky_eating', player.x + 250, player.y)!
     shooter.shotCd = 0
     let tick = 0
     while (!game.state.bullets.length && tick++ < 120) game.tick(1 / 60)
@@ -496,8 +558,8 @@ describe('enemies', () => {
     player.invuln = 0
     for (let i = 0; i < 60 * 8 && !player.downed; i++) game.tick(1 / 60)
     expect(player.downed).toBe(true)
-    expect(player.killer).toBe('pepper')
-    expect(toView(game.state).players[0].killer).toBe('pepper')
+    expect(player.killer).toBe('picky_eating')
+    expect(toView(game.state).players[0].killer).toBe('picky_eating')
   })
 
   test('bullets cannot shred: a hit grants grace and the bullet count is capped', () => {
@@ -513,7 +575,7 @@ describe('enemies', () => {
         damage: 10,
         life: 3,
         kind: 0,
-        src: 'pepper'
+        src: 'picky_eating'
       })
     game.tick(1 / 60)
     // Only the first connected; the rest pass through the grace period and stay in flight.
@@ -528,10 +590,10 @@ describe('enemies', () => {
 
   test('chargers telegraph, flag themselves, then dash', () => {
     const { game, player } = arena(15)
-    const dog = game.spawnEnemy('dog', player.x + 200, player.y)!
+    const dog = game.spawnEnemy('biting_dog', player.x + 200, player.y)!
     game.tick(1 / 60)
     expect(ofType(collect(game), FX.WINDUP)).toHaveLength(1)
-    expect(ofType(collect(game), FX.WINDUP)[0].a).toBe(ENEMY_INDEX.get('dog'))
+    expect(ofType(collect(game), FX.WINDUP)[0].a).toBe(ENEMY_INDEX.get('biting_dog'))
     const view = toView(game.state)
     expect(view.enemies[6] & ENEMY_FLAG.windup).toBeTruthy()
     const x = dog.x
@@ -577,7 +639,7 @@ describe('enemies', () => {
 
   test('circlers orbit before they dive', () => {
     const { game, player } = arena(17)
-    const crush = game.spawnEnemy('crush', player.x + 200, player.y)!
+    const crush = game.spawnEnemy('unrequited_worry', player.x + 200, player.y)!
     crush.timer = 1
     let dived = false
     let orbit = 0
@@ -639,9 +701,9 @@ describe('bosses', () => {
       if (boss.patterns!.includes('summon')) expect(ENEMY_BY_ID.has(boss.minion!)).toBe(true)
       if (boss.patterns!.includes('charge')) expect(boss.dash).toBeGreaterThan(boss.speed)
     }
-    expect(ENEMY_BY_ID.get('b_vaccine')).toMatchObject({ hp: 420, patterns: ['charge'] })
+    expect(ENEMY_BY_ID.get('b_outbreak')).toMatchObject({ hp: 420, patterns: ['charge'] })
     expect(ENEMY_BY_ID.get('b_heartbreak')).toMatchObject({ hp: 4200, patterns: ['ring', 'charge'] })
-    expect(ENEMY_BY_ID.get('b_tax')).toMatchObject({ hp: 7000, patterns: ['summon', 'ring'], minion: 'coin' })
+    expect(ENEMY_BY_ID.get('b_tax')).toMatchObject({ hp: 7000, patterns: ['summon', 'ring'], minion: 'tax_arrears' })
     expect(ENEMY_BY_ID.get('b_care')).toMatchObject({ hp: 36000, patterns: ['summon', 'spiral'], minion: 'loneliness' })
     expect(ENEMY_BY_ID.get('b_hs')!.patterns).toEqual(['ring'])
     expect(ENEMY_BY_ID.get('b_layoff')!.patterns).toEqual(['spiral', 'summon'])
@@ -680,13 +742,13 @@ describe('bosses', () => {
 
   test('boss spawn and defeat are announced; defeat drops a chest and slows time', () => {
     const { game, player } = arena(22, 'p_toxic')
-    const boss = game.spawnEnemy('b_vaccine', player.x + 30, player.y)!
+    const boss = game.spawnEnemy('b_outbreak', player.x + 30, player.y)!
     const events = collect(game)
     expect(ofType(events, FX.BOSS_SPAWN)).toHaveLength(1)
     boss.hp = 1
     run(game, player, 120, () => collect(game, events))
     expect(ofType(events, FX.BOSS_KILL)).toHaveLength(1)
-    expect(ofType(events, FX.BOSS_KILL)[0].a).toBe(ENEMY_INDEX.get('b_vaccine'))
+    expect(ofType(events, FX.BOSS_KILL)[0].a).toBe(ENEMY_INDEX.get('b_outbreak'))
     expect(game.state.items.some((i) => i.kind === 'chest') || ofType(events, FX.CHEST).length > 0).toBe(true)
     expect(game.state.slowmo).toBeGreaterThan(0)
     // Slow motion stretches `step`, never `tick`.
@@ -757,9 +819,9 @@ describe('fx channel', () => {
       game.state.enemies.forEach((e) => (e.hp = 1))
       game.state.gems.push({ x: player.x, y: player.y, v: 50, pull: true })
       game.state.items.push({ kind: 'meal', x: player.x, y: player.y }, { kind: 'magnet', x: player.x, y: player.y })
-      const shooter = game.spawnEnemy('dodgeball', player.x + 250, player.y)!
+      const shooter = game.spawnEnemy('ball_impact', player.x + 250, player.y)!
       shooter.shotCd = 0
-      game.spawnEnemy('dog', player.x + 150, player.y)
+      game.spawnEnemy('biting_dog', player.x + 150, player.y)
       game.spawnEnemy('b_hs', player.x + 700, player.y)
       game.spawnEnemy('bully', player.x - 700, player.y, { elite: true })
       for (let i = 0; i < 90; i++) {
@@ -811,8 +873,8 @@ describe('fx channel', () => {
       player.weapons.push({ id: 'w_muscle', lv: 1, cd: 0, held: 0, damage: 0 })
       game.tick(1 / 60)
       note(game)
-      const boss = game.spawnEnemy('b_vaccine', player.x + 900, player.y)!
-      ;(game as unknown as { kill(e: Enemy, d: EnemyDef): void }).kill(boss, ENEMY_BY_ID.get('b_vaccine')!)
+      const boss = game.spawnEnemy('b_outbreak', player.x + 900, player.y)!
+      ;(game as unknown as { kill(e: Enemy, d: EnemyDef): void }).kill(boss, ENEMY_BY_ID.get('b_outbreak')!)
       note(game)
     }
     const names = Object.fromEntries(Object.entries(FX).map(([name, type]) => [type, name]))
@@ -829,19 +891,19 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v10', () => {
+describe('protocol v11', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
-    game.spawnEnemy('pepper', player.x + 250, player.y)!.shotCd = 0
+    game.spawnEnemy('picky_eating', player.x + 250, player.y)!.shotCd = 0
     run(game, player, 120)
     ;(game as unknown as { emit(type: number): void }).emit(FX.STAGE)
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v10 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v11 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(10)
+    expect(view.v).toBe(11)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -850,7 +912,7 @@ describe('protocol v10', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v10 field', () => {
+  test('readView rejects old versions and every malformed v11 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
@@ -858,6 +920,7 @@ describe('protocol v10', () => {
     expect(readView({ ...view, v: 7 })).toBeUndefined()
     expect(readView({ ...view, v: 8 })).toBeUndefined()
     expect(readView({ ...view, v: 9 })).toBeUndefined()
+    expect(readView({ ...view, v: 10 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
@@ -891,7 +954,7 @@ describe('protocol v10', () => {
   test('the snapshot carries variants, flags and bullet kinds from the simulation', () => {
     const { game, player } = arena(31)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
-    post(game, 'senpai', player.x + 400, player.y)
+    post(game, 'abusive_senpai', player.x + 400, player.y)
     game.tick(1 / 60)
     const shot = toView(game.state).shots
     expect(shot[7]).toBeGreaterThanOrEqual(1)

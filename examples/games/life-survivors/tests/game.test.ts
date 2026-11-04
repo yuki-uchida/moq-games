@@ -286,12 +286,12 @@ describe('the final blow', () => {
     b.x = a.x + 400
     a.weapons = []
     a.hp = 0.01
-    game.spawnEnemy('boss', a.x, a.y)
+    game.spawnEnemy('intimidating_boss', a.x, a.y)
     game.tick(1 / 60)
     expect(a.downed).toBe(true)
-    expect(a.killer).toBe('boss')
+    expect(a.killer).toBe('intimidating_boss')
     const view = JSON.parse(JSON.stringify(toView(game.state)))
-    expect(view.players[0].killer).toBe('boss')
+    expect(view.players[0].killer).toBe('intimidating_boss')
     expect(view.players[1].killer).toBeUndefined()
     expect(readView(view)).toBeTruthy()
     game.state.enemies = []
@@ -307,7 +307,7 @@ describe('the final blow', () => {
     const game = new Game(1)
     game.addPlayer('a')
     const view = JSON.parse(JSON.stringify(toView(game.state)))
-    expect(readView({ ...view, players: [{ ...view.players[0], killer: 'boss' }] })).toBeTruthy()
+    expect(readView({ ...view, players: [{ ...view.players[0], killer: 'intimidating_boss' }] })).toBeTruthy()
     expect(readView({ ...view, players: [{ ...view.players[0], killer: 'nope' }] })).toBeUndefined()
     expect(readView({ ...view, players: [{ ...view.players[0], killer: 'constructor' }] })).toBeUndefined()
     expect(readView({ ...view, players: [{ ...view.players[0], killer: 7 }] })).toBeUndefined()

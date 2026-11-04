@@ -724,5 +724,10 @@ const bulletFrames: Record<string, () => Raster[]> = {
 
 /** Enemy bullets (16×16, 2–4 frames each), one anim per bullet kind name. */
 export function bulletSheet(): Sheet {
-  return Object.fromEntries(Object.entries(bulletFrames).map(([name, make]) => [name, loop(make(), 8)]))
+  return Object.fromEntries(
+    Object.entries({ ...bulletFrames, b_outbreak: bulletFrames.b_illness }).map(([name, make]) => [
+      name,
+      loop(make(), 8)
+    ])
+  )
 }

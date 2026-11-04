@@ -34,6 +34,7 @@ export interface ViewPlayer {
   maxHp: number
   downed: boolean
   revive: number
+  dating: boolean
   married: boolean
   hasChild: boolean
   hurt: boolean
@@ -52,7 +53,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 10
+  v: 11
   time: number
   phase: GameState['phase']
   level: number
@@ -141,7 +142,7 @@ export function toView(state: GameState): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 10,
+    v: 11,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -160,6 +161,7 @@ export function toView(state: GameState): View {
       maxHp: r(p.maxHp),
       downed: p.downed,
       revive: Math.round(p.revive * 100) / 100,
+      dating: p.dating,
       married: p.married,
       hasChild: p.hasChild,
       hurt: p.hurt > 0,
@@ -194,7 +196,7 @@ const flat = (value: unknown, stride: number, max: number) =>
   Array.isArray(value) && value.length % stride === 0 && value.length <= stride * max && value.every((n) => finite(n))
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
 const choiceOk = (value: unknown) => {
-  if (value === 'f:yes' || value === 'f:no') return true
+  if (value === 'f:yes' || value === 'f:no' || value === 'd:yes' || value === 'd:no') return true
   if (!text(value, 40)) return false
   const [kind, id, replacement] = value.split(':')
   if (value.split(':').length !== (kind === 'r' ? 3 : 2)) return false
@@ -227,6 +229,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'choiceSeq',
         'downed',
         'hurt',
+        'dating',
         'married',
         'hasChild',
         'killer',
@@ -248,6 +251,7 @@ function playerOk(value: unknown): value is ViewPlayer {
     [p.x, p.y, p.fx, p.fy, p.hp, p.maxHp, p.revive, p.choiceSeq].every((n) => finite(n)) &&
     typeof p.downed === 'boolean' &&
     typeof p.hurt === 'boolean' &&
+    typeof p.dating === 'boolean' &&
     typeof p.married === 'boolean' &&
     typeof p.hasChild === 'boolean' &&
     (!p.hasChild || p.married) &&
@@ -272,6 +276,8 @@ function playerOk(value: unknown): value is ViewPlayer {
     Array.isArray(p.choices) &&
     p.choices.length <= 8 &&
     p.choices.every(choiceOk) &&
+    (!p.choices.some((choice) => typeof choice === 'string' && choice.startsWith('d:')) ||
+      (!p.dating && !p.married && p.choices.length === 2 && p.choices[0] === 'd:yes' && p.choices[1] === 'd:no')) &&
     (!p.choices.some((choice) => typeof choice === 'string' && choice.startsWith('f:')) ||
       (p.married && !p.hasChild && p.choices.length === 2 && p.choices[0] === 'f:yes' && p.choices[1] === 'f:no')) &&
     (p.talents === undefined ||
@@ -281,7 +287,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 10) return undefined
+  if (!record(value) || value.v !== 11) return undefined
   if (
     Object.keys(value).some(
       (key) =>
@@ -335,11 +341,13 @@ export function readView(value: unknown): View | undefined {
   if (new Set((v.players as ViewPlayer[]).map((player) => player.id)).size !== (v.players as ViewPlayer[]).length)
     return undefined
   const weddingAt = Math.round(EVENTS.find((event) => event.boss === 'b_wedding')!.at * 100) / 100
+  const datingAt = EVENTS.find((event) => event.swarm === 'car')!.at
   const birthAt = Math.round(EVENTS.find((event) => event.swarm === 'nightcry')!.at * 100) / 100
   const careAt = EVENTS.find((event) => event.boss === 'b_care')!.at
   if (
     (v.players as ViewPlayer[]).some(
       (player) =>
+        ((player.dating || player.choices.includes('d:yes')) && (v.time as number) < datingAt) ||
         (player.parentDeath !== undefined &&
           (!PARENT_LEGACIES[player.parent] ||
             player.parentDeath.at !== careAt ||
