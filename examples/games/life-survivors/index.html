@@ -16,7 +16,14 @@
 
       <section id="hud" class="hud" aria-label="人生の状態" hidden>
         <div class="edge-pulse" id="edge-pulse" aria-hidden="true"></div>
-        <div class="xp-bar" aria-label="経験値"><i id="xp-fill"></i><span id="level">Lv 1</span></div>
+        <div class="xp-bar" aria-label="経験値と精神力">
+          <i id="xp-fill"></i><span id="level">Lv 1</span>
+          <div class="mind-card">
+            <span>精神力</span>
+            <div class="meter"><i id="hp-trail"></i><i id="hp-fill"></i></div>
+            <b id="hp-value">100</b>
+          </div>
+        </div>
         <div id="boss-bar" class="boss-bar" aria-hidden="true" hidden>
           <div class="boss-name"><b id="boss-name"></b><small id="boss-extra"></small></div>
           <div class="boss-meter"><i id="boss-trail"></i><i id="boss-fill"></i></div>
@@ -26,11 +33,6 @@
             <div class="age"><b id="age">0</b><span>歳</span> <small id="stage">乳児期</small></div>
             <div class="clock" aria-label="経過時間"><span id="clock">00:00</span><small>/ 15:00</small></div>
             <div class="life-line" aria-hidden="true"><i id="life-progress"></i></div>
-          </div>
-          <div class="mind-card">
-            <span>精神力</span>
-            <div class="meter"><i id="hp-trail"></i><i id="hp-fill"></i></div>
-            <b id="hp-value">100</b>
           </div>
           <div class="kills" aria-label="乗り越えた数">🗡 <b id="kills">0</b></div>
           <div class="top-actions">

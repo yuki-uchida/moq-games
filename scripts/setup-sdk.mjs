@@ -13,6 +13,7 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeSourceText } from './sdk-source-text.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (path) => readFileSync(path, 'utf8')
@@ -23,10 +24,16 @@ const cache = join(root, '.sdk-cache')
 const source = join(cache, 'source', manifest.commit)
 const stampName = '.setup-integrity.json'
 const inputHash = hash(
-  ['sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs'].map((p) => read(join(root, p))).join('\n')
+  ['sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs']
+    .map((p) => read(join(root, p)))
+    .join('\n')
 )
 const env = { ...process.env, RUSTUP_TOOLCHAIN: manifest.rust }
 function run(command, args, cwd = root, capture = false) {
+  if (process.platform === 'win32' && command === 'npm') {
+    command = process.env.ComSpec || 'cmd.exe'
+    args = ['/d', '/s', '/c', 'npm.cmd', ...args]
+  }
   return execFileSync(command, args, {
     cwd,
     env,
@@ -58,7 +65,7 @@ function assertSource() {
     throw new Error('Cached source HEAD does not match the pinned commit; no checkout was changed.')
   if (run('git', ['status', '--porcelain', '--untracked-files=all'], source, true))
     throw new Error('Cached source has local changes; no reset or cleanup was performed.')
-  if (hash(readFileSync(join(source, 'Cargo.lock'))) !== manifest.cargoLockSha256)
+  if (hash(normalizeSourceText(read(join(source, 'Cargo.lock')))) !== manifest.cargoLockSha256)
     throw new Error('Pinned Cargo.lock hash mismatch.')
 }
 
@@ -125,7 +132,7 @@ try {
   if (existsSync(join(staging, 'wasm/.gitignore'))) unlinkSync(join(staging, 'wasm/.gitignore'))
   mkdirSync(join(staging, 'source'))
   for (const [name, expected] of Object.entries(manifest.wrapperSha256)) {
-    let text = read(join(source, 'examples/browser/lib/moqt', name))
+    let text = normalizeSourceText(read(join(source, 'examples/browser/lib/moqt', name)))
     if (hash(text) !== expected) throw new Error(`Pinned wrapper hash mismatch: ${name}`)
     text = text
       .replaceAll("'../../pkg/moqt_client_wasm'", "'../wasm/moqt_client_wasm.js'")

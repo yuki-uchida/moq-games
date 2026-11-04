@@ -767,15 +767,6 @@ export class Renderer {
       0,
       shown
     )
-    // Downed players show only the revive ring, not an empty bar.
-    if (player.downed) return
-    const w = 40
-    ctx.globalAlpha = shown
-    ctx.fillStyle = 'rgba(0,0,0,.6)'
-    ctx.fillRect(pos.x - w / 2, feet + 8, w, 5)
-    ctx.fillStyle = player.hp / player.maxHp > 0.3 ? '#7be495' : '#ff6b6b'
-    ctx.fillRect(pos.x - w / 2, feet + 8, (w * Math.max(0, player.hp)) / Math.max(1, player.maxHp), 5)
-    ctx.globalAlpha = 1
   }
 
   // -------------------------------------------------------------------------------------------
