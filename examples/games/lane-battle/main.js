@@ -44,13 +44,13 @@ const SHOTS = {
   seichou: ['#fff1f6dd', '#e07aa0', 6]
 }
 /** Screen-space splash only; the simulation owns recipient, arrival and damage. Poop hits splat brown, cleanup hits splash blue. */
-function drawContact(effect, y, age, aspect) {
+function drawContact(effect, x, y, age, aspect) {
   if (age < 0 || age > SPLAT_SECONDS) return
   const t = age / SPLAT_SECONDS
   const size = effect.crit ? 1.7 : effect.splash ? 1.4 : 1
   ctx.save()
   ctx.globalAlpha = 1 - t * t
-  ctx.translate(effect.x + (effect.dx ?? 0), y)
+  ctx.translate(x, y)
   ctx.scale(size, aspect * size)
   const shot = effect.ranged && !effect.turret && SHOTS[effect.source?.key]
   ctx.fillStyle = effect.crit ? '#e8a23a' : shot ? shot[0] : effect.side === -1 ? '#bfe6ff' : '#7a4722'
@@ -573,6 +573,10 @@ function glideX(u) {
 }
 /** Where a unit is drawn along the lane; the simulation keeps its own x. */
 const drawX = (u) => glideX(u) + standOff(u)
+const drawnFront = (u) => ({
+  x: drawX(u) - u.side * models.front(u.key, 35 / (models.presentation[0] * modelSize(u.key))),
+  y: laneY(u) - launchHeight(u, models.presentation[0] / 0.62, models.presentation[1]) - 35 * models.presentation[1]
+})
 /**
  * Painter order: back rows first; within a row the unit nearest the enemy comes last, so whoever is
  * fighting stays on top. Each unit gets its own depth slot, so neighbours never cut into each other.
@@ -855,7 +859,8 @@ function draw() {
         aspect,
         calm.matches,
         { x: fromX, y: fromY },
-        laneY
+        laneY,
+        drawnFront
       )
     if (e.blast) {
       // The big fart: a green cloud billowing out over the right (home) half.
@@ -879,12 +884,15 @@ function draw() {
       }
       ctx.restore()
     } else if (e.ranged) {
-      // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
-      const targetY = e.targetY ?? fromY
+      // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame and
+      // home on the target's drawn front, following it if it is knocked back or falls mid-flight.
+      const target = [...units, ...fallen].find((unit) => unit.id === e.targetId)
+      const front = target ? drawnFront(target) : { x: e.x + (e.dx ?? 0), y: e.targetY ?? fromY }
+      const targetY = front.y
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (visualTime - e.releasedAt) / 0.12))
       if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
-        const x = fromX + (e.x + (e.dx ?? 0) - fromX) * progress
+        const x = fromX + (front.x - fromX) * progress
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
         const [fill, edge, radius] =
           SHOTS[e.turret ? 'turret' : source?.key] ?? (e.side === -1 ? SHOTS.water : SHOTS.pellet)
@@ -942,7 +950,7 @@ function draw() {
         }
         ctx.restore()
       } else if (e.turret && e.arrived && !e.missed) {
-        drawContact(e, targetY, visualTime - e.releasedAt - 0.12, aspect)
+        drawContact(e, front.x, targetY, visualTime - e.releasedAt - 0.12, aspect)
       }
     }
   }

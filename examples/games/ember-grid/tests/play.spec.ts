@@ -388,7 +388,7 @@ test('guard formation and mission selection are available without leaving the sc
   await page.getByRole('radio', { name: /守備隊/ }).check()
   await page.locator('[data-stage="1"]').click()
   await page.getByRole('button', { name: /2,5 燈守リオ HP 20/ }).tap()
-  await expect(page.locator('#selection')).toContainText('◇ 2')
+  await expect(page.locator('#selection')).toContainText('移動 2')
   await expect(page.locator('#count')).toHaveText('味方 3 · 敵 4')
   await page.screenshot({ path: 'test-results/ember-guard-390.png' })
 })
@@ -448,9 +448,9 @@ test('chapter report, level up and carried growth across the expedition', async 
   await page.locator('#next').click()
   const second = createGame(1, 'balanced', carry(first), seeded(7))
   await page.getByRole('button', { name: /星織ミナ/ }).click()
-  await expect(page.locator('#selection')).toContainText(
-    `星織ミナ Lv${second.units[2].level} EXP ${second.units[2].exp}　♥ ${second.units[2].max}/`
-  )
+  await expect(page.locator('#selection')).toContainText(`星織ミナ 魔法使い Lv${second.units[2].level}`)
+  await expect(page.locator('#selection')).toContainText(`EXP ${second.units[2].exp}/100`)
+  await expect(page.locator('#selection')).toContainText(`HP ${second.units[2].max}/${second.units[2].max}`)
   await playMission(page, second)
   await levelUp
   await expect(report).toBeVisible()
@@ -466,9 +466,8 @@ test('chapter report, level up and carried growth across the expedition', async 
   await page.getByRole('button', { name: '再プレイ', exact: true }).click()
   const third = createGame(2, 'balanced', carry(second))
   await page.getByRole('button', { name: /風読みネリ/ }).click()
-  await expect(page.locator('#selection')).toContainText(
-    `風読みネリ Lv${third.units[1].level} EXP ${third.units[1].exp}`
-  )
+  await expect(page.locator('#selection')).toContainText(`風読みネリ 弓兵 Lv${third.units[1].level}`)
+  await expect(page.locator('#selection')).toContainText(`EXP ${third.units[1].exp}/100`)
 })
 
 test('an ally who falls in a won mission leaves the expedition until its record is replayed', async ({ page }) => {
