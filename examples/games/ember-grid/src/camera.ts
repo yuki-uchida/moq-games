@@ -67,6 +67,38 @@ export function shows(m: Metrics, view: View, cells: Cell[]) {
   })
 }
 
+export function revealAtZoom(m: Metrics, view: View, cells: Cell[]): View {
+  if (shows(m, view, cells)) return view
+  const tile = tileWidth(m),
+    centre = project(m, view),
+    points = cells.map((cell) => project(m, cell))
+  const shift = (min: number, max: number, lower: number, upper: number) =>
+    max - min > upper - lower ? (min + max - lower - upper) / 2 : Math.min(0, min - lower) + Math.max(0, max - upper)
+  const xs = points.map((point) => point.x - centre.x),
+    ys = points.map((point) => point.y - centre.y)
+  return clampView(m, {
+    zoom: view.zoom,
+    ...unproject(m, {
+      x:
+        centre.x +
+        shift(
+          Math.min(...xs),
+          Math.max(...xs),
+          (-m.width / 2 + 1) / view.zoom + 0.5 * tile,
+          (m.width / 2 - 1) / view.zoom - 0.5 * tile
+        ),
+      y:
+        centre.y +
+        shift(
+          Math.min(...ys),
+          Math.max(...ys),
+          (-m.height / 2 + 1) / view.zoom + 1.1 * tile,
+          (m.height / 2 - 1) / view.zoom - 0.4 * tile
+        )
+    })
+  })
+}
+
 /**
  * Zoom and pan for the oblique board. The view is applied as CSS variables on the field (`--zoom`
  * enlarges the floor and tag grids, `--pan-x/y` shift them); `changed` then re-fits the 3D camera,
@@ -143,7 +175,7 @@ export class BoardCamera {
     const start = performance.now()
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / duration),
-        e = 1 - (1 - t) ** 3
+        e = t * t * (3 - 2 * t)
       this.apply({
         zoom: from.zoom * (to.zoom / from.zoom) ** e,
         x: from.x + (to.x - from.x) * e,
@@ -160,11 +192,11 @@ export class BoardCamera {
     const m = this.metrics()
     if (m.width && m.fit && cells.length) this.to(frameView(m, cells, 1, limits(m).start), 0)
   }
-  /** Selection: move in on the unit's options without ever zooming out. */
+  /** Selection: retain zoom and move only when options are outside the field. */
   focus(cells: Cell[]) {
     const m = this.metrics(),
       current = this.target ?? this.view
-    if (m.width && m.fit && cells.length) this.to(frameView(m, cells, current.zoom, limits(m).focus))
+    if (m.width && m.fit && cells.length && !shows(m, current, cells)) this.to(revealAtZoom(m, current, cells), 500)
   }
   /** Brings cells into view if needed, zooming out only as far as they require. */
   reveal(cells: Cell[], duration = 280) {
