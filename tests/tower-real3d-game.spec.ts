@@ -49,7 +49,6 @@ test('normal game uses lazy real meshes, ignores legacy art flags and restores a
   await expect(page.locator('.trial-art-tools')).toBeHidden()
   await expect(page.locator('.enemy-trial-art-tools')).toBeHidden()
   await page.locator('#settings-close').click()
-  await page.locator('[data-field="meadow"]').click()
   await page.locator('#start').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
   await expect

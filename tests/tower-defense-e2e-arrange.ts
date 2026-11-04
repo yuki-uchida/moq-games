@@ -2,21 +2,19 @@ import { expect, type Page, type TestInfo } from '@playwright/test'
 import {
   FIELDS,
   type AllyType,
-  type FieldId,
   type Point
 } from '../examples/games/tower_diffence_with_jev/src/game/model'
 
 export const towerPath = '/moq-games/examples/games/tower_diffence_with_jev/index.html'
 
-export async function openOfflineCampaign(page: Page, field: FieldId = 'meadow') {
+export async function openOfflineCampaign(page: Page) {
   await page.goto(towerPath)
   await page.locator('#title-new').click()
   await expect(page.locator('#launch')).toBeVisible()
-  await page.locator(`[data-field="${field}"]`).click()
   await page.locator('#start').click()
   await expect(page.locator('#launch')).toBeHidden({ timeout: 180_000 })
   await expect(page.locator('#ai-mode')).toHaveText('RULE · OFFLINE')
-  await expect(page.locator('#field-name')).toHaveText(FIELDS[field].name)
+  await expect(page.locator('#field-name')).toHaveText(FIELDS.meadow.name)
   await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', '4')
   await expect(page.locator('#field canvas').first()).toBeVisible()
 }

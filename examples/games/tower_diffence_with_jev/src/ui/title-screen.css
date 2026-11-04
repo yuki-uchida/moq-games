@@ -312,11 +312,6 @@
   .launch { padding: 16px 24px; }
   .launch .kingdom-crest { width: 48px; height: 42px; margin: 0 auto; }
   .launch h1 { font-size: 22px; line-height: 1.25; margin: 4px 0 8px; }
-  .launch .field-choice { gap: 6px; }
-  .launch .field-card { padding: 6px; gap: 8px; }
-  .launch .field-art { width: 58px; }
-  .launch .field-copy { gap: 1px; }
-  .launch .field-card em { line-height: 1.25; }
   .launch-footer { margin-top: 8px; padding-top: 8px; }
   .launch #launch-status { margin-bottom: 4px; }
   .launch-help { margin-top: 0; }
