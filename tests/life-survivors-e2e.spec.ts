@@ -1458,7 +1458,8 @@ for (const reward of ['none', 'choice'] as const) {
 for (const viewport of [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
-  { width: 844, height: 390 }
+  { width: 844, height: 390 },
+  { width: 1280, height: 720 }
 ]) {
   test(`parent farewell stays visible throughout its animation at ${viewport.width}x${viewport.height}`, async ({
     page
@@ -1493,8 +1494,13 @@ for (const viewport of [
       game.targetPopulation = () => 0
       const player = game.state.players[0]
       player.parent = 'p_over'
-      player.weapons = [{ id: player.parent, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }]
-      player.passives = []
+      player.weapons = [player.parent, 'w_friend', 'w_sports', 'w_study', 'w_love', 'w_beauty', 'w_hobby'].map(
+        (id) => ({ id, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 })
+      )
+      player.passives = ['p_diligent', 'p_stubborn', 'p_hot', 'p_kind', 'p_bold', 'p_healthy'].map((id) => ({
+        id,
+        lv: 1
+      }))
       player.birthPick = false
       player.pending = player.swapPending = player.careerPending = 0
       player.choices = []
@@ -1510,47 +1516,76 @@ for (const viewport of [
     const warning = page.locator('.banner-care')
     await expect(warning).toContainText('WARNING', { timeout: 500 })
     await expect(warning).toContainText('親の介護')
-    const warningBounds = (await warning.boundingBox())!
-    expect(warningBounds.x).toBeGreaterThanOrEqual(0)
-    expect(warningBounds.x + warningBounds.width).toBeLessThanOrEqual(viewport.width)
-    expect(warningBounds.y).toBeGreaterThan(viewport.height / 2 + 48)
-    expect(warningBounds.y + warningBounds.height).toBeLessThanOrEqual(viewport.height)
-    const bounds = await banner.evaluate(async (node) => {
-      const animation = node.getAnimations()[0]
-      if (!animation) throw new Error('親とのお別れのアニメーションがありません')
-      animation.pause()
-      const positions = []
-      for (const time of [0, 540, 900, 2000, 3690, 4400]) {
-        animation.currentTime = time
-        await new Promise(requestAnimationFrame)
-        const rect = node.getBoundingClientRect()
-        positions.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+    await expect(page.locator('#weapons .slot')).toHaveCount(6)
+    await expect(page.locator('#passives .slot')).toHaveCount(7)
+    const inspect = async (selector: string, duration: number) =>
+      page.evaluate(
+        async ({ selector, duration }) => {
+          const active = document.querySelector<HTMLElement>(selector)!
+          const farewell = document.querySelector<HTMLElement>('.banner-farewell')!
+          const activeAnimation = active.getAnimations()[0]
+          const farewellAnimation = farewell.getAnimations()[0]
+          if (!activeAnimation || !farewellAnimation) throw new Error('バナーのアニメーションがありません')
+          activeAnimation.pause()
+          farewellAnimation.pause()
+          const positions = []
+          for (const fraction of [0, 0.08, 0.12, 0.2, 0.5, 0.82, 0.88, 0.98]) {
+            activeAnimation.currentTime = duration * fraction
+            farewellAnimation.currentTime = 4500 * fraction
+            await new Promise(requestAnimationFrame)
+            const rect = (element: Element) => {
+              const bounds = element.getBoundingClientRect()
+              return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom }
+            }
+            positions.push({
+              active: rect(active),
+              farewell: rect(farewell),
+              weapons: rect(document.querySelector('#weapons')!),
+              passives: rect(document.querySelector('#passives')!)
+            })
+          }
+          farewellAnimation.currentTime = 2000
+          activeAnimation.currentTime = duration / 2
+          await new Promise(requestAnimationFrame)
+          return positions
+        },
+        { selector, duration }
+      )
+    const separated = (left: { left: number; right: number; top: number; bottom: number }, right: typeof left) =>
+      left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
+    const checkBounds = (positions: Awaited<ReturnType<typeof inspect>>) => {
+      for (const position of positions) {
+        for (const rect of [position.active, position.farewell]) {
+          expect(rect.left).toBeGreaterThanOrEqual(-0.5)
+          expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
+          expect(rect.top).toBeGreaterThanOrEqual(-0.5)
+          expect(rect.bottom).toBeLessThanOrEqual(viewport.height + 0.5)
+          expect(separated(rect, position.weapons), JSON.stringify(position)).toBe(true)
+          expect(separated(rect, position.passives), JSON.stringify(position)).toBe(true)
+        }
+        for (const other of positions)
+          expect(separated(position.active, other.farewell), JSON.stringify({ position, other })).toBe(true)
       }
-      animation.currentTime = 2000
-      return positions
-    })
-    for (const rect of bounds) {
-      expect(rect.left).toBeGreaterThanOrEqual(-0.5)
-      expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
-      expect(rect.top).toBeGreaterThanOrEqual(-0.5)
-      expect(rect.bottom).toBeLessThanOrEqual(viewport.height + 0.5)
-      expect(rect.top).toBeGreaterThan(viewport.height / 2 + 48)
-      expect(rect.top).toBeGreaterThanOrEqual(warningBounds.y + warningBounds.height - 0.5)
     }
+    checkBounds(await inspect('.banner-care', 2200))
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
+    checkBounds(await inspect('.banner-care', 2200))
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect(page.locator('#announcements')).toContainText('を看取り、親の武器を手放した。')
     await expect(page.locator('#feed')).toContainText('を継承（未所持ならLv1・所持済みならLv+1）')
-    await expect(page.locator('#feed')).toBeHidden()
+    await expect(page.locator('#feed')).toHaveCSS('opacity', '0')
+    await expect(page.locator('#feed')).not.toHaveCSS('visibility', 'hidden')
+    await expect(page.locator('#feed')).toHaveAttribute('aria-live', 'polite')
     await page.screenshot({ path: testInfo.outputPath(`farewell-warning-${viewport.width}.png`) })
     await expect(warning).toBeHidden({ timeout: 3000 })
     await expect(banner).toBeVisible()
     const stage = page.locator('.banner-stage')
     await expect(stage).toBeVisible()
     await expect(stage).toContainText('中年')
-    const stageBounds = (await stage.boundingBox())!
-    expect(stageBounds.y).toBeGreaterThan(viewport.height / 2 + 48)
-    expect(stageBounds.x).toBeGreaterThanOrEqual(0)
-    expect(stageBounds.x + stageBounds.width).toBeLessThanOrEqual(viewport.width)
-    expect(stageBounds.y + stageBounds.height).toBeLessThanOrEqual((await banner.boundingBox())!.y + 0.5)
+    checkBounds(await inspect('.banner-stage', 1800))
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
+    checkBounds(await inspect('.banner-stage', 1800))
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect
       .poll(() =>
         page.evaluate(() => {
