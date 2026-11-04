@@ -1794,12 +1794,12 @@ export class Renderer {
       const anim = sheet('death:elder').collapse
       const index = frameAt(anim, age)
       this.art(anim.frames[index], x + 30, y + 12, 32, 58, false, (anim.alpha?.[index] ?? 1) * alpha)
-      this.art(sheet('icons')[player.parent].frames[0], x + 30, y - 58 - rise, 16, 16, false, alpha)
+      this.art(sheet('icons')[player.parent].frames[0], x - 2, y - 16 - rise * 0.65, 16, 16, false, alpha)
       const soul = sheet('soul').float
-      this.art(pick(soul, age), x + 30, y - 20 - rise, 8, 16, false, Math.min(1, Math.max(0, age - 0.8)) * alpha)
+      this.art(pick(soul, age), x + 30, y - 15 - rise * 0.5, 8, 16, false, Math.min(1, Math.max(0, age - 0.8)) * alpha)
       const legacy = PARENT_LEGACIES[player.parent]
       if (reward !== 'none')
-        this.art(sheet('icons')[legacy].frames[0], x + 30, y - 92, 16, 16, false, rewardAlpha * alpha)
+        this.art(sheet('icons')[legacy].frames[0], x + 62, y - 65, 16, 16, false, rewardAlpha * alpha)
       this.world()
       const lines = [
         `${player.name}：${WEAPON_BY_ID.get(player.parent)!.name}とのお別れ`,
@@ -1810,7 +1810,7 @@ export class Renderer {
             : `「${PASSIVE_BY_ID.get(legacy)!.name}」を継承！`
       ]
       lines.forEach((text, line) => {
-        this.blit(this.label(text, 13, '#f1f4fc'), x + 30, y - 112 + line * 18, 0, line ? rewardAlpha * alpha : alpha)
+        this.blit(this.label(text, 13, '#f1f4fc'), x + 30, y - 126 + line * 22, 0, line ? rewardAlpha * alpha : alpha)
       })
     }
   }

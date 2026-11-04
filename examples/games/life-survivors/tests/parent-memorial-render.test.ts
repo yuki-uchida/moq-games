@@ -114,7 +114,7 @@ test.each([1, 1.5, 2])('farewell labels retain world-relative position and scale
     expect(labels[1].image.text).toBe('成長の選択 +1')
     labels.forEach((label, line) => {
       expect(label.x / dpr).toBeCloseTo(400 + 30 * scale)
-      expect(label.y / dpr).toBeCloseTo(300 + (-112 + line * 18) * scale)
+      expect(label.y / dpr).toBeCloseTo(300 + (-126 + line * 22) * scale)
       expect(label.width / dpr).toBeCloseTo((Math.ceil(13 * (label.image.text!.length + 1.2) * 2) / 2) * scale)
       expect(label.height / dpr).toBeCloseTo((Math.ceil(13 * 1.6 * 2) / 2) * scale)
       expect(label.alpha).toBeCloseTo(line ? 0.5 : 1)
@@ -128,6 +128,26 @@ test.each([1, 1.5, 2])('farewell labels retain world-relative position and scale
     expect(ink[1].color).toBe('#f1f4fc')
     expect(ink[0].font).toContain('700 13px')
     expect(draws.slice(-2)).toEqual(labels)
+  }
+})
+
+test.each([1, 2])('memorial icons stay clear of both labels throughout the animation at DPR %s', (dpr) => {
+  const { render, view, draws } = harness(dpr, 1500, -800)
+  view.players[0].parentDeath!.reward = 'passive'
+  for (const age of [0, 1, 1.5, 2, 3, 4.5, 5.9]) {
+    view.time = 100 + age
+    const labels = render()
+    const parent = draws[1]
+    const soul = draws[2]
+    const legacy = draws[3]
+    const bottom = Math.max(...labels.map((label) => label.y + label.height / 2))
+    expect(parent.y - parent.height / 2).toBeGreaterThanOrEqual(bottom)
+    expect(soul.y - soul.height / 2).toBeGreaterThanOrEqual(bottom)
+    expect(legacy.y - legacy.height / 2).toBeGreaterThanOrEqual(bottom)
+    expect(labels[0].y + labels[0].height / 2).toBeLessThanOrEqual(labels[1].y - labels[1].height / 2)
+    expect(Math.abs(parent.x - legacy.x)).toBeGreaterThanOrEqual((parent.width + legacy.width) / 2)
+    expect(Math.abs(parent.x - soul.x)).toBeGreaterThanOrEqual((parent.width + soul.width) / 2)
+    expect(Math.abs(legacy.x - soul.x)).toBeGreaterThanOrEqual((legacy.width + soul.width) / 2)
   }
 })
 
