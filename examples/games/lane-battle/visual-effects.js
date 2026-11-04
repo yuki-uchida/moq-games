@@ -1038,7 +1038,7 @@ export function activeVictims(effect, units, time) {
     .map((victim) => ({ ...victim, unit: units.find((unit) => unit.id === victim.id) }))
 }
 
-export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle, laneY) {
+export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle, laneY, drawnFront) {
   const style = IMPACT_STYLES[effect.attackerKey]
   if (!style) return
   const [color, light, shape] = style
@@ -1083,34 +1083,61 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   if (effect.attackerKey === 'yoshiki' && age >= 0 && age < 0.22) {
     const startX = muzzle?.x ?? effect.from
     const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
-    const endY = ((effect.targetY ?? floor - 30) - floor) / aspect
+    const points = (effect.victims ?? [])
+      .filter((victim) => !victim.missed)
+      .map((victim) => ({
+        ...victim,
+        unit: units.find((unit) => unit.id === victim.id) ?? effect.victimOrigins?.find((unit) => unit.id === victim.id)
+      }))
+      .filter((victim) => victim.unit)
+      .sort((first, second) => first.at - second.at)
+    let previous = { x: startX, y: startY, at: effect.releasedAt }
     ctx.globalAlpha = Math.min(1, (0.22 - age) / 0.08)
-    ctx.strokeStyle = '#4cb6ed'
-    ctx.lineWidth = 10
-    line(startX, startY, effect.x, endY)
-    ctx.strokeStyle = '#efffff'
-    ctx.lineWidth = 5
-    line(startX, startY, effect.x, endY)
+    const path = [previous]
+    if (!points.length && effect.targetId == null) {
+      const progress = Math.min(1, Math.max(0, age / 0.12))
+      path.push({ x: startX + (effect.x - startX) * progress, y: startY })
+    }
+    for (const victim of points) {
+      const front = drawnFront(victim.unit)
+      const next = { x: front.x, y: (front.y - floor) / aspect, at: victim.at }
+      const progress = Math.max(0, Math.min(1, (time - previous.at) / (next.at - previous.at || 1)))
+      path.push({ x: previous.x + (next.x - previous.x) * progress, y: previous.y + (next.y - previous.y) * progress })
+      if (progress < 1) break
+      previous = next
+    }
+    for (const [stroke, width] of [
+      ['#4cb6ed', 10],
+      ['#efffff', 5]
+    ]) {
+      ctx.strokeStyle = stroke
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(path[0].x, path[0].y)
+      for (const point of path.slice(1)) ctx.lineTo(point.x, point.y)
+      ctx.stroke()
+    }
   }
 
   if (effect.attackerKey === 'korokoro' && effect.arrived && !effect.missed && effect.victims?.length) {
     const first = effect.victims[0]
     const second = effect.victims[1]
-    const start = effect.victimOrigins?.find((unit) => unit.id === first.id)?.x ?? effect.primaryX
+    const firstUnit =
+      units.find((unit) => unit.id === first.id) ?? effect.victimOrigins?.find((unit) => unit.id === first.id)
+    const start = firstUnit ? drawnFront(firstUnit) : { x: effect.primaryX, y: effect.targetY ?? floor }
     const target = units.find((unit) => unit.id === second?.id)
-    const end = target?.x ?? start + dir * 30
+    const end = target ? drawnFront(target) : { x: start.x + dir * 30, y: start.y }
     const duration = second ? second.at - first.at : 0.35
     const elapsed = time - first.at
     if (!second?.missed && elapsed >= 0 && elapsed < duration) {
       const t = Math.min(1, elapsed / duration)
-      const firstUnit = units.find((unit) => unit.id === first.id)
-      const ground = ((firstUnit ? laneY(firstUnit) : floor) - floor) / aspect
-      const destination = target ? (laneY(target) - floor) / aspect : ground
+      const ground = (start.y - floor) / aspect
+      const destination = (end.y - floor) / aspect
       ctx.globalAlpha = second ? 1 : 1 - t
       ctx.fillStyle = '#804319'
       ctx.strokeStyle = '#f1c17b'
       ctx.lineWidth = 2
-      ellipse(start + (end - start) * t, ground + (destination - ground) * t - 5 - Math.sin(t * Math.PI) * 8, 6, 6)
+      ellipse(start.x + (end.x - start.x) * t, ground + (destination - ground) * t - Math.sin(t * Math.PI) * 8, 6, 6)
     }
   }
 
@@ -1198,7 +1225,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     }
   }
 
-  if (age >= 0 && age < 0.22 && ['cone', 'pierce'].includes(effect.areaKind)) {
+  if (effect.attackerKey !== 'yoshiki' && age >= 0 && age < 0.22 && ['cone', 'pierce'].includes(effect.areaKind)) {
     const startX = muzzle?.x ?? effect.from
     const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
     const end = effect.from + dir * farthest * Math.min(1, age / 0.12)
@@ -1282,11 +1309,15 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     effect.missed && !['cone', 'pierce', 'shockwave'].includes(effect.areaKind)
       ? []
       : victims.length
-        ? victims.map(({ id, unit, at }) => ({
-            x: unit?.x ?? effect.victimOrigins?.find((origin) => origin.id === id)?.x ?? effect.x,
-            y: unit ? laneY(unit) - 30 * aspect : (effect.targetY ?? floor - 30 * aspect),
-            age: time - at
-          }))
+        ? victims.map(({ id, unit, at }) => {
+            const victim = unit ?? effect.victimOrigins?.find((origin) => origin.id === id)
+            const front = effect.ranged && victim ? drawnFront(victim) : null
+            return {
+              x: front?.x ?? victim?.x ?? effect.x,
+              y: front?.y ?? (victim ? laneY(victim) - 30 * aspect : (effect.targetY ?? floor - 30 * aspect)),
+              age: time - at
+            }
+          })
         : effect.targetId == null && hitAge >= 0 && !effect.missed
           ? [{ x: effect.x, y: effect.targetY ?? floor - 30 * aspect, age: hitAge }]
           : []

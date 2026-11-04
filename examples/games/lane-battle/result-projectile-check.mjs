@@ -36,7 +36,7 @@ const main = (await readFile(new URL('./main.js', import.meta.url), 'utf8'))
     '      drawArea(\n        ctx,',
     '      (globalThis.reviewDrawn.push(e.attackerKey), drawArea(\n        ctx,'
   )
-  .replace('        laneY\n      )', '        laneY\n      ))')
+  .replace('        drawnFront\n      )', '        drawnFront\n      ))')
   .replace(
     '    models.unit(\n      visual,',
     '    globalThis.reviewHurtAge = visualTime - (visual.hurt?.at ?? Infinity); models.unit(\n      visual,'
