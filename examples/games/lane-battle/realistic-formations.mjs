@@ -2,16 +2,21 @@ import { POOPS, card, rng } from './simulation.js'
 import { addEntry, levelUp, newCampaign } from './campaign.js'
 import { chooseFormation, playCampaign } from './bot.js'
 
-export function collectRealisticSamples(stages) {
+export function collectRealisticSamples(stages, clearStages = []) {
   const samples = Object.fromEntries(stages.map((stage) => [stage, []]))
   for (const seed of [3, 11, 29, 42, 77, 101]) {
     const seen = new Set()
     playCampaign(rng(seed), {
       casual: true,
-      log: (_battle, _report, campaign) => {
-        if (!stages.includes(campaign.cleared) || seen.has(campaign.cleared)) return
-        seen.add(campaign.cleared)
-        samples[campaign.cleared].push(campaign.roster.map(({ key, level }) => ({ key, level })))
+      log: (_battle, report, campaign) => {
+        for (const stage of stages) {
+          const ready = clearStages.includes(stage)
+            ? report.victory && campaign.cleared === stage + 1
+            : campaign.cleared === stage
+          if (!ready || seen.has(stage)) continue
+          seen.add(stage)
+          samples[stage].push(campaign.roster.map(({ key, level }) => ({ key, level })))
+        }
       }
     })
   }

@@ -6,13 +6,13 @@ export const MAX_LEVEL = 50
 export const expToNext = (level) => 80 + level * 30
 export const clearBonus = (stage) => 40 + stage * 6
 export const coinReward = (stage, first) => Math.round((50 + stage * 5) * (first ? 1 : 0.4))
-/** Chance that each stat grows on a level-up. Poops grow reliably; specials start strong and mostly stall. */
+/** Chance that each stat grows on a level-up. Poops grow reliably; specials start stronger. */
 export const GROWTH = {
   poop: { hp: 0.8, atk: 0.75, spd: 0.4 },
-  special: { hp: 0.22, atk: 0.2, spd: 0.1 }
+  special: { hp: 0.52, atk: 0.45, spd: 0.25 }
 }
 /** A special joining after stage index `stage` starts this many times stronger than its listed stats. */
-export const specialScale = (stage) => 1 + 0.03 * stage
+export const specialScale = (stage) => 1 + 0.03 * stage + 0.28 * Math.max(0, stage - 15)
 /** Chance that a first clear brings a special. */
 export const SPECIAL_CHANCE = 0.3
 const STORAGE = 'unko-daisanji-campaign-v1'
