@@ -191,3 +191,197 @@ test('a lethal hit shows the same number in the forecast and the popup', async (
     .poll(() => page.evaluate(() => (window as unknown as { popups: string[] }).popups[0]), { timeout: 30000 })
     .toMatch(/^−8/)
 })
+
+test('the enemy turn plays with the battlefield in view after scrolling to End Turn (568x320)', async ({
+  page
+}, info) => {
+  await start(page, { width: 568, height: 320 })
+  await page.locator('#end').scrollIntoViewIfNeeded()
+  await page.locator('#end').tap()
+  await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+  const field = (await page.locator('.field').boundingBox())!
+  expect(field.y).toBeGreaterThanOrEqual(-1)
+  expect(field.y + field.height).toBeLessThanOrEqual(320 + 1)
+  await expect(page.locator('#actor')).toBeInViewport()
+  await page.screenshot({ path: info.outputPath('enemy-turn.png') })
+  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
+})
+
+const inViewport = (page: Page, selector: string) =>
+  page.evaluate((sel) => {
+    const r = document.querySelector(sel)!.getBoundingClientRect()
+    return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth && r.width > 0
+  }, selector)
+
+for (const viewport of [
+  { width: 640, height: 360 },
+  { width: 640, height: 320 },
+  { width: 844, height: 390 }
+]) {
+  test(`side column never covers the status bar at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
+    await start(page, viewport)
+    await cell(page, 2, 4).click()
+    await expect(page.locator('#selection')).not.toBeEmpty()
+    await page.screenshot({ path: info.outputPath('side-column.png') })
+    const result = await page.evaluate(() => {
+      const status = document.querySelector('.status')!.getBoundingClientRect()
+      const consoleTop = document.querySelector('.console')!.getBoundingClientRect().top
+      const covered: string[] = []
+      for (const id of ['mission', 'turn', 'count', 'objective', 'end']) {
+        const el = document.querySelector(`#${id}`)
+        if (!el) {
+          covered.push(`${id}: missing`)
+          continue
+        }
+        const r = el.getBoundingClientRect()
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        const inside = r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth
+        if (!hit || !el.contains(hit) || !inside) covered.push(id)
+      }
+      return { statusBottom: status.bottom, consoleTop, covered }
+    })
+    expect(result.statusBottom).toBeLessThanOrEqual(result.consoleTop + 1)
+    expect(result.covered).toEqual([])
+  })
+}
+
+test('first-time tutorial stays visible with the board at 568x320', async ({ page }, info) => {
+  await page.setViewportSize({ width: 568, height: 320 })
+  await page.goto('./?seed=7')
+  page.once('dialog', (dialog) => void dialog.accept())
+  await page.getByRole('button', { name: '✦ はじめから' }).click()
+  await page.getByRole('button', { name: '⚔ クラシック' }).click()
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await cameraSettled(page)
+  const tutorial = page.locator('#tutorial')
+  await expect(tutorial).toContainText('味方を選ぼう')
+  await page.screenshot({ path: info.outputPath('tutorial-start.png') })
+  expect(await inViewport(page, '#tutorial')).toBe(true)
+  await expect(tutorial.getByRole('button', { name: /スキップ/ })).toBeInViewport({ ratio: 1 })
+  const ratio = await page.evaluate(() => {
+    const r = document.querySelector('.field')!.getBoundingClientRect()
+    const visible = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0))
+    return visible / r.height
+  })
+  expect(ratio).toBeGreaterThanOrEqual(0.8)
+  await cell(page, 2, 4).click()
+  await expect(tutorial).toContainText('移動可能')
+  await page.screenshot({ path: info.outputPath('tutorial-selected.png') })
+  expect(await inViewport(page, '#tutorial')).toBe(true)
+  const reachable = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('.cell.legal')].some((c) => {
+      const r = c.getBoundingClientRect()
+      const x = r.x + r.width / 2
+      const y = r.y + r.height / 2
+      const hit = document.elementFromPoint(x, y)
+      return x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && !!hit && c.contains(hit)
+    })
+  )
+  expect(reachable).toBe(true)
+})
+
+for (const viewport of [
+  { width: 844, height: 390 },
+  { width: 640, height: 360 }
+]) {
+  test(`touch chooser text is not clipped at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
+    await start(page, viewport)
+    await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
+    await cell(page, 2, 4).tap()
+    const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+    await expect(dialog).toBeVisible()
+    await page.screenshot({ path: info.outputPath('chooser.png') })
+    const boxes = await dialog.evaluate((root) => {
+      const rect = (el: Element) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x, y: r.y, w: r.width, h: r.height }
+      }
+      const choices = [...root.querySelectorAll<HTMLButtonElement>(':scope > div button')]
+      return {
+        choices: choices.map((b) => ({
+          ...rect(b),
+          clippedY: b.scrollHeight > b.clientHeight + 1,
+          clippedX: b.scrollWidth > b.clientWidth + 1,
+          inside: b.getBoundingClientRect().bottom <= innerHeight && b.getBoundingClientRect().right <= innerWidth
+        })),
+        close: rect(root.querySelector('#touch-cancel')!)
+      }
+    })
+    expect(boxes.choices.length).toBeGreaterThan(0)
+    const c = boxes.close
+    for (const b of boxes.choices) {
+      expect(b.clippedY).toBe(false)
+      expect(b.clippedX).toBe(false)
+      expect(b.w).toBeGreaterThanOrEqual(44)
+      expect(b.h).toBeGreaterThanOrEqual(44)
+      expect(b.inside && b.x >= 0 && b.y >= 0).toBe(true)
+      const apart = b.x + b.w <= c.x + 1 || c.x + c.w <= b.x + 1 || b.y + b.h <= c.y + 1 || c.y + c.h <= b.y + 1
+      expect(apart).toBe(true)
+    }
+  })
+}
+
+test('no discard warning after a defeat when picking a mission', async ({ page }) => {
+  await enterBattle(page, './?seed=7')
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.evaluate(() => {
+    const game = (
+      document.querySelector('.stage') as HTMLCanvasElement & {
+        stage: { last: { game: import('../src/game').Game } }
+      }
+    ).stage.last.game
+    const allies = game.units.filter((u) => u.side === 'ally')
+    const foes = game.units.filter((u) => u.side === 'enemy')
+    allies.forEach((a, i) => {
+      a.hp = 1
+      Object.assign(a, { x: i * 2, y: 0 })
+    })
+    foes.forEach((f, i) => Object.assign(f, { x: (i % allies.length) * 2, y: 1 }))
+    for (let x = 0; x < 6; x++) for (const y of [0, 1]) game.rocks.delete(`${x},${y}`)
+  })
+  for (let turn = 0; turn < 6 && !(await page.locator('#result').isVisible()); turn++) {
+    await page.getByRole('button', { name: '▶ ターン終了' }).click()
+    await expect(page.locator('#end'))
+      .toBeEnabled({ timeout: 30000 })
+      .catch(() => {})
+  }
+  await expect(page.locator('#result')).toContainText('燈は消えた', { timeout: 30000 })
+  await page.locator('#retry-missions').click()
+  await page.locator('[data-stage="0"]').click()
+  await expect(page.getByRole('button', { name: '↻ 破棄して続ける' })).toHaveCount(0)
+  await expect(page.locator('#turn')).toContainText('ターン 1 · 味方')
+})
+
+test('the potion button names the remaining count (390x844)', async ({ page }) => {
+  await start(page, { width: 390, height: 844 })
+  await expect(page.getByRole('button', { name: '回復薬 残り2' })).toBeVisible()
+  await page.evaluate(() => {
+    const game = (
+      document.querySelector('.stage') as HTMLCanvasElement & {
+        stage: { last: { game: import('../src/game').Game } }
+      }
+    ).stage.last.game
+    const ally = game.units.find((u) => u.side === 'ally' && u.x === 1 && u.y === 3)!
+    ally.hp = Math.max(1, ally.hp - 3)
+  })
+  await cell(page, 2, 4).click()
+  await page.getByRole('button', { name: '回復薬 残り2' }).click()
+  await expect(page.getByRole('button', { name: '回復薬 残り1' })).toBeAttached()
+})
+
+test('the status bar stays pinned while the small landscape page scrolls (568x320)', async ({ page }) => {
+  await start(page, { width: 568, height: 320 })
+  await page.locator('#end').scrollIntoViewIfNeeded()
+  for (const id of ['#turn', '#count', '#objective']) {
+    const box = (await page.locator(id).boundingBox())!
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(60)
+  }
+  await page.locator('#end').tap()
+  await expect(page.locator('#fast')).toBeVisible({ timeout: 30000 })
+  await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+  const status = (await page.locator('.status').boundingBox())!
+  const actor = (await page.locator('#actor').boundingBox())!
+  expect(status.height).toBeLessThan(50)
+  expect(actor.y).toBeGreaterThanOrEqual(status.y + status.height - 1)
+})

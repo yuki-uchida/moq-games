@@ -74,7 +74,7 @@ test('chapter one outro precedes the report', async ({ page }) => {
       )) {
       await cell(unit.x, unit.y).click()
       if (unit.hp <= unit.max - 7 && game.potions > 0) {
-        await page.getByRole('button', { name: '回復薬', exact: true }).click()
+        await page.getByRole('button', { name: /^回復薬 残り/ }).click()
         recover(game, unit)
         continue
       }

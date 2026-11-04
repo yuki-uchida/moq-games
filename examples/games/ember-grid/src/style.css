@@ -2270,3 +2270,101 @@ button:active:not(:disabled) {
   border-color: #ffe4a1;
   box-shadow: inset 0 0 0 1px #ffe4a1;
 }
+
+/* Side-column layout: the console never covers the status bar. */
+@media (max-height: 500px) and (min-width: 600px) {
+  main {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .console {
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .console > nav {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    background: #1c333e;
+    padding-top: 4px;
+  }
+  #touch-choices button {
+    font-size: 12px;
+    line-height: 1.2;
+    padding: 2px 4px;
+  }
+  .touch-dir {
+    font-size: 13px;
+  }
+}
+@media (max-height: 400px) and (min-width: 600px) {
+  main {
+    grid-template-rows: 44px auto minmax(0, 1fr);
+  }
+  #selection .uc-note {
+    display: none;
+  }
+}
+@media (max-height: 340px) and (min-width: 600px) {
+  #selection .uc-exp {
+    display: none;
+  }
+  #selection,
+  #selection.unit-card {
+    min-height: 56px;
+  }
+  #guide {
+    font-size: 11px;
+  }
+  .console {
+    padding: 4px 8px;
+    row-gap: 0;
+  }
+}
+/* Scroll layout: the first-time tutorial floats over the board. */
+@media (max-height: 500px) and (max-width: 599px) {
+  #tutorial:not([hidden]) {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 35;
+    box-shadow: 0 6px 20px #000c;
+  }
+  body:has(#tutorial:not([hidden])) #toast {
+    top: 64px;
+  }
+}
+/* Scroll layout: the status bar stays pinned, so turn, phase and objective never scroll away. */
+@media (max-height: 500px) and (max-width: 599px) {
+  .status {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    margin-inline: -12px;
+    padding: 4px 12px;
+    background: #101e27f2;
+    box-shadow: 0 4px 10px #0008;
+  }
+  #tutorial:not([hidden]),
+  #toast {
+    top: 44px;
+  }
+  body:has(#tutorial:not([hidden])) #toast {
+    top: 100px;
+  }
+  #terrain,
+  #actor {
+    top: 18px;
+  }
+  /* Keep the pinned bar to one row: fast-forward floats below it, and the ally-phase tutorial waits out the enemy turn. */
+  #fast {
+    position: fixed;
+    top: 44px;
+    right: 8px;
+    z-index: 36;
+  }
+  body:has(#turn[data-phase='enemy']) #tutorial {
+    display: none;
+  }
+}

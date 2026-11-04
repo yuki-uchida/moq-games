@@ -282,7 +282,7 @@ async function playMission(page: Page, g: Game, sacrifice?: string, heal = true)
         continue
       }
       if (heal && u.hp <= u.max - 7 && g.potions > 0) {
-        await page.getByRole('button', { name: '回復薬', exact: true }).click()
+        await page.getByRole('button', { name: /^回復薬 残り/ }).click()
         recover(g, u)
         continue
       }

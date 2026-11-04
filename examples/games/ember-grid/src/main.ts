@@ -115,7 +115,7 @@ let bannerVersion = 0
 let pendingHeal: boolean | undefined
 let actingId: string | undefined
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="toast" hidden aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><p id="defeat-note" hidden>再挑戦すると章の開始時の編成に戻り、倒れた仲間も戻ります。</p><div id="report"></div><button id="next">次の任務 ▶</button><button id="retry" hidden>↻ この章に再挑戦</button><button id="retry-missions" class="secondary" hidden>⚑ 任務を選ぶ</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬">✚ <span class="nav-long">回復</span>薬 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
+app.innerHTML = `<main><header><div><small>DEATH GAIA · TACTICAL RPG</small><h1>デスガイヤ</h1></div><button id="sound" aria-label="音を無効にする" aria-pressed="true" title="音のオン/オフ">♫</button><button id="help" aria-label="遊び方" title="遊び方">?</button><button id="restart" aria-label="再プレイ" title="この章を最初からやり直す">↻</button></header><section class="status"><button id="mission" aria-label="任務と編成" title="任務の選択と編成">⚑ 01</button><strong id="turn"></strong><span id="count"></span></section><div class="field"><div id="board" aria-label="戦術盤"></div><div id="marks" aria-hidden="true"></div><div id="toast" hidden aria-hidden="true"></div><div id="result" hidden><p id="outcome"></p><p id="defeat-note" hidden>再挑戦すると章の開始時の編成に戻り、倒れた仲間も戻ります。</p><div id="report"></div><button id="next">次の任務 ▶</button><button id="retry" hidden>↻ この章に再挑戦</button><button id="retry-missions" class="secondary" hidden>⚑ 任務を選ぶ</button></div></div><section class="console"><p id="guide"></p><div id="selection"></div><div id="log" role="status" aria-live="polite"></div><nav><button id="recover" aria-label="回復薬 残り2">✚ <span class="nav-long">回復</span>薬 2</button><button id="wait">✓ 待機</button><button id="end">▶ ターン終了</button></nav></section><dialog id="help-dialog" aria-labelledby="help-title"></dialog><dialog id="expedition"><h2>燈をつなぐ遠征</h2><div id="missions"></div><fieldset><legend>編成</legend><label><input type="radio" name="formation" value="balanced" checked> 標準隊 · 移動 3</label><label><input type="radio" name="formation" value="guard"> 守備隊 · HP +4 / 移動 2</label></fieldset><p>任務を選ぶと新しい戦闘を開始します。その任務に最後に到達した時点のメンバーとレベルで始まり、未到達なら全員 Lv 1 です。倒れて離脱した仲間は、離脱前の任務を選び直すと戻ります。</p><button id="cancel-mission">戻る</button></dialog></main>`
 const audio = new ExpeditionAudio((message) => {
   game.log = message
   document.querySelector('#log')!.textContent = message
@@ -270,6 +270,22 @@ function clearTouchCells() {
 /** Over the console when it is fully on screen; otherwise a panel fixed to the viewport bottom. */
 function positionTouchChoices() {
   const bounds = consolePanel.getBoundingClientRect()
+  if (matchMedia('(max-height: 500px) and (min-width: 600px)').matches) {
+    // Side column: cover everything from the status bar down to the console bottom.
+    const status = document.querySelector<HTMLElement>('.status')!.getBoundingClientRect()
+    const fits = bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth && status.top >= 0
+    if (fits) {
+      touchChoices.classList.remove('touch-panel')
+      Object.assign(touchChoices.style, {
+        left: `${bounds.left}px`,
+        top: `${status.top}px`,
+        bottom: 'auto',
+        width: `${bounds.width}px`,
+        height: `${bounds.bottom - status.top}px`
+      })
+      return false
+    }
+  }
   const onScreen =
     bounds.top >= 0 && bounds.left >= 0 && bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth
   touchChoices.classList.toggle('touch-panel', !onScreen)
@@ -476,7 +492,8 @@ function lockPresentation() {
   document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
   if (restoreBoardFocus && document.activeElement === document.body && !document.querySelector('dialog[open]')) {
     focusParking = document.querySelector<HTMLButtonElement>('#restart')!
-    focusParking.focus()
+    // Parking focus must not scroll a scrolling layout away from the board.
+    focusParking.focus({ preventScroll: true })
   }
 }
 /** Chapter-report portrait: an idle pose rendered from the unit's own 3D model. */
@@ -550,15 +567,21 @@ function revealAboveCard(unit: Unit, target: Unit, card: HTMLElement) {
   const rect = (u: Unit) => cells[u.y * size + u.x].getBoundingClientRect()
   revealAbove(limit, [rect(unit), rect(target)], [rect(target)])
 }
-/** Scroll so the squares (with ~44px of headroom for their figures) sit between the viewport top and `limit`. */
+/** Top of the usable area: below the status bar where it stays pinned (small landscape scroll layout). */
+function visibleTop() {
+  const status = document.querySelector<HTMLElement>('.status')!
+  return getComputedStyle(status).position === 'sticky' ? Math.max(0, status.getBoundingClientRect().bottom) : 0
+}
+/** Scroll so the squares (with ~44px of headroom for their figures) sit between the usable top and `limit`. */
 function revealAbove(limit: number, rects: DOMRect[], fallback = rects) {
+  const top = visibleTop()
   const span = (list: DOMRect[]) => ({
     top: Math.min(...list.map((r) => r.top)) - 44,
     bottom: Math.max(...list.map((r) => r.bottom))
   })
   let box = span(rects)
-  if (box.bottom - box.top > limit) box = span(fallback)
-  const delta = box.bottom > limit ? box.bottom - limit : box.top < 0 ? box.top : 0
+  if (box.bottom - box.top > limit - top) box = span(fallback)
+  const delta = box.bottom > limit ? box.bottom - limit : box.top < top ? box.top - top : 0
   if (delta) window.scrollBy(0, delta)
 }
 /** Damage as the forecast stated it: the attacker's power before any level-up the strike earned. */
@@ -769,6 +792,7 @@ render = () => {
   endButton.innerHTML = `▶ ターン終了${left ? ` <span class="end-left">残り${left}</span>` : ''}`
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
   potion.innerHTML = `✚ <span class="nav-long">回復</span>薬 ${game.potions}`
+  potion.setAttribute('aria-label', `回復薬 残り${game.potions}`)
   potion.disabled =
     busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
   document.querySelector('#mission')!.textContent =
@@ -816,7 +840,8 @@ render = () => {
           : document.querySelector<HTMLButtonElement>(game.phase === 'enemy' ? '#fast' : '#restart')!
     restoreBoardFocus = false
     focusParking = null
-    target.focus()
+    // Only a board square may scroll into view; restoring focus to a button must not move the page.
+    target.focus(target === cells[focusCell] ? undefined : { preventScroll: true })
   }
   audio.setBattle(game.phase === 'ally' || game.phase === 'enemy')
   if (playing && wasHidden && !result.hidden)
@@ -977,6 +1002,7 @@ async function end() {
   selected = inspected = undefined
   const token = generation
   render()
+  showBattlefield()
   await phaseBanner('enemy', token)
   if (token !== generation) return
   for (const u of game.units.filter((u) => u.side === 'enemy' && u.hp > 0)) {
@@ -1026,11 +1052,16 @@ async function end() {
 /** A chapter opening requested before the models were ready (true: a new expedition, prologue first). */
 let pendingOpening: boolean | undefined
 /** Chapter title card and intro scenes, then the first ally-phase banner. */
+/** Small landscape screens scroll the page: bring the whole battlefield into view. */
+function showBattlefield() {
+  if (matchMedia('(max-height: 500px) and (max-width: 599px)').matches) field.scrollIntoView({ block: 'end' })
+}
 async function openChapter(fresh: boolean) {
   const token = generation
   await story.start(fresh)
   if (token === generation) {
     if (game.stage === 0) tutorial.start(tutorialEnabled())
+    showBattlefield()
     void phaseBanner('ally', token)
   }
 }
@@ -1068,6 +1099,8 @@ function hasProgress() {
   )
 }
 function confirmDiscard(action: () => void) {
+  // A defeat already cleared the suspend record and a victory is already saved.
+  if (game.phase === 'lost' || game.phase === 'won') return action()
   if (!hasProgress()) return action()
   confirmReplacement('現在の戦闘と中断記録が失われます。', action)
 }
