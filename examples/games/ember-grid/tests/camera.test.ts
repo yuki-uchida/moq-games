@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampView, frameView, limits, project, shows, unproject, type Metrics } from '../src/camera'
+import { clampView, frameView, limits, project, revealAtZoom, shows, unproject, type Metrics } from '../src/camera'
 
 const phone: Metrics = { fit: 256, tilt: 0.95, width: 370, height: 520 }
 const desktop: Metrics = { fit: 642, tilt: 0.6, width: 1236, height: 528 }
@@ -55,5 +55,18 @@ describe('board camera', () => {
     const view = frameView(phone, [{ x: 1, y: 8 }], limits(phone).focus, limits(phone).focus)
     expect(shows(phone, view, [{ x: 1, y: 8 }])).toBe(true)
     expect(shows(phone, view, [{ x: 9, y: 0 }])).toBe(false)
+  })
+
+  it('retains zoom and moves only enough to reveal cells', () => {
+    const view = clampView(phone, { zoom: 2, ...centre })
+    expect(revealAtZoom(phone, view, [centre])).toBe(view)
+    const cells = [{ x: 9, y: 8 }]
+    expect(shows(phone, view, cells)).toBe(false)
+    const next = revealAtZoom(phone, view, cells)
+    expect(next.zoom).toBe(view.zoom)
+    expect(shows(phone, next, cells)).toBe(true)
+    const before = project(phone, view),
+      after = project(phone, next)
+    expect(after.y).toBeCloseTo(before.y)
   })
 })
