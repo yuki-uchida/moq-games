@@ -56,6 +56,9 @@ describe('life pacing', () => {
 
   test('levels require more experience and late enemies gain durability', () => {
     expect(xpForLevel(10)).toBeGreaterThan(Math.round(5 + 10 * 6 + 10 * 10 * 0.3))
+    expect(xpForLevel(10)).toBe(Math.round((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3))
+    expect(xpForLevel(20)).toBe(Math.round((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125))
+    expect(xpForLevel(30)).toBe(Math.round((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25))
     const game = new Game(1)
     game.addPlayer('a')
     expect(game.hpScale()).toBe(1)

@@ -354,7 +354,7 @@ describe('passives', () => {
     expect(fours).toBeLessThan(260)
   })
 
-  test('chests give one turning point, and sometimes three when luck is with you', () => {
+  test('chests give three turning points 20% of the time regardless of luck', () => {
     const grants = (lucky: number) => {
       const { game, player } = arena(14)
       if (lucky) player.passives = [{ id: 'p_lucky', lv: lucky }]
@@ -372,7 +372,9 @@ describe('passives', () => {
     const lucky = grants(5)
     expect(plain.length).toBe(300)
     expect(new Set([...plain, ...lucky])).toEqual(new Set([1, 3]))
-    expect(lucky.filter((n) => n === 3).length).toBeGreaterThan(plain.filter((n) => n === 3).length)
+    expect(lucky).toEqual(plain)
+    expect(plain.filter((n) => n === 3).length).toBeGreaterThan(40)
+    expect(plain.filter((n) => n === 3).length).toBeLessThan(80)
     expect(passiveLevel({ passives: [] } as unknown as Player, 'p_lucky')).toBe(0)
   })
 
