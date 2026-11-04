@@ -292,10 +292,11 @@ for (let y = 0; y < size; y++)
     cell.tabIndex = x === 0 && y === 0 ? 0 : -1
     cell.style.cssText = `--x:${x};--y:${y}`
     cell.onclick = (event) => {
-      if (suppressClick) {
+      if (suppressClick && event.detail > 0) {
         suppressClick = false
         return
       }
+      suppressClick = false
       // pointerdown carries the input type everywhere; keyboard activation (detail 0) bypasses the chooser.
       if (touchTap && event.detail > 0 && touchAssist.getAttribute('aria-pressed') === 'true') chooseNearby(x, y)
       else void choose(x, y)
@@ -308,9 +309,10 @@ for (let y = 0; y < size; y++)
       }
     }
     cell.onpointerdown = (event) => {
+      clearTimeout(longPress)
       touchTap = event.pointerType === 'touch'
-      if (event.pointerType !== 'touch') return
       suppressClick = false
+      if (event.pointerType !== 'touch' || !event.isPrimary) return
       touchStart = { x: event.clientX, y: event.clientY }
       const target = game.units.find((unit) => unit.hp > 0 && unit.x === x && unit.y === y)
       if (target)
