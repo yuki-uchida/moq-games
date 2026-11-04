@@ -69,6 +69,11 @@ export function createGame() {
     const first = await status()
     assert.equal(first.game.result, result)
     assert.ok(first.age > 0 && !first.modal)
+    const expectedCampaign = newCampaign()
+    const expected = settle(expectedCampaign, first.game, () => 0.99)
+    const storageKey = 'unko-daisanji-campaign-v1'
+    const savedAtDecision = await page.evaluate((key) => localStorage.getItem(key), storageKey)
+    assert.deepEqual(JSON.parse(savedAtDecision), expectedCampaign, 'settled before the closing animation')
     await page.screenshot({ path: `/tmp/lane-final-death/${result}-100ms.png` })
     await page.keyboard.press('Space')
     const paused = await status()
@@ -82,6 +87,7 @@ export function createGame() {
     const hidden = await status()
     await page.clock.runFor(500)
     assert.deepEqual(await status(), hidden, 'hidden tab freezes visual and simulation')
+    assert.equal(await page.evaluate((key) => localStorage.getItem(key), storageKey), savedAtDecision)
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: false })
       document.dispatchEvent(new Event('visibilitychange'))
@@ -93,10 +99,9 @@ export function createGame() {
     await page.screenshot({ path: `/tmp/lane-final-death/${result}-750ms.png` })
     await page.clock.runFor(1000)
     assert.equal((await status()).modal, true)
-    const expectedCampaign = newCampaign()
-    const expected = settle(expectedCampaign, first.game, () => 0.99)
-    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('unko-daisanji-campaign-v1')))
+    const saved = JSON.parse(await page.evaluate((key) => localStorage.getItem(key), storageKey))
     assert.deepEqual(saved, expectedCampaign)
+    assert.equal(JSON.stringify(saved), savedAtDecision, 'dialog does not settle twice')
     assert.equal(expected.victory, result === 'victory')
     assert.match(
       await page.locator('#title').textContent(),
@@ -104,6 +109,30 @@ export function createGame() {
     )
     console.log(result, 'visual age, pause, visibility, frozen battle, result and rewards PASS')
     await page.close()
+
+    const reloadPage = await browser.newPage()
+    await reloadPage.clock.install({ time: new Date(0) })
+    await reloadPage.clock.pauseAt(new Date(0))
+    await reloadPage.addInitScript(() => {
+      Math.random = () => 0.99
+    })
+    await reloadPage.route('**/lane-battle/simulation.js*', (route) =>
+      route.fulfill({ contentType: 'application/javascript', body: simulation })
+    )
+    await reloadPage.goto(url)
+    await reloadPage.getByRole('button', { name: 'ステージ選択へ' }).click()
+    await reloadPage.getByRole('button', { name: 'ブリッと出撃' }).click()
+    await reloadPage.clock.runFor(100)
+    assert.equal(await reloadPage.locator('dialog').evaluate((dialog) => dialog.open), false)
+    await reloadPage.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    assert.equal(await reloadPage.evaluate((key) => localStorage.getItem(key), storageKey), savedAtDecision)
+    await reloadPage.reload()
+    assert.equal(await reloadPage.evaluate((key) => localStorage.getItem(key), storageKey), savedAtDecision)
+    await reloadPage.close()
+    console.log(result, 'hidden immediately and reload preserves settled campaign PASS')
   }
 } finally {
   await browser.close()

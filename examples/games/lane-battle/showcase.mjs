@@ -9,6 +9,7 @@ import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { POOPS, SPECIALS, ENEMIES } from './simulation.js'
 import { koSeconds } from './models.js'
+import assert from 'node:assert/strict'
 
 const out = process.argv[2] || process.env.LANE_SHOWCASE_DIR || '/tmp/lane-showcase'
 const url = process.env.LANE_URL || 'http://127.0.0.1:5193/examples/games/lane-battle/'
@@ -169,12 +170,23 @@ function statusScene() {
 }
 function deathScene(t) {
   const enemy = isEnemy(t.key)
+  const deathTime = 1.6
+  const end = deathTime + koSeconds(t.key) + 0.2
+  const deathPicks = Array.from({ length: 10 }, (_, index) =>
+    Math.min(
+      Math.round((end + 0.1) * FPS) - 1,
+      Math.max(0, Math.round((deathTime - 0.1 + ((end - deathTime + 0.1) * index) / 9) * FPS) - 1)
+    )
+  )
+  assert.ok((deathPicks[0] + 1) / FPS <= deathTime - 0.1 + 1e-9)
+  assert.ok((deathPicks.at(-1) + 1) / FPS >= deathTime + koSeconds(t.key))
   return {
     name: `death-${t.key}`,
     title: `${t.name}：くらい（弱・強）→ 死亡`,
     seconds: 1.6 + koSeconds(t.key) + 0.3,
-    strike: 0.2,
-    crop: [380, 620],
+    strike: deathTime,
+    deathPicks,
+    crop: [320, 680],
     scene: {
       units: [{ key: t.key, x: 500, dummy: true, hp: 1e6, tag: 'victim', side: enemy ? -1 : 1 }],
       script: [
@@ -298,12 +310,16 @@ for (const shot of SCENES) {
       .png()
       .toFile(file)
   }
-  const every = [...Array(frames).keys()].filter((f) => f % 3 === 2)
+  const every = [...new Set([...Array(frames).keys()].filter((f) => f % 3 === 2).concat(shot.deathPicks ?? []))].sort(
+    (a, b) => a - b
+  )
   await sheet(every, 1, Math.min(every.length, Math.max(4, Math.floor(2400 / cropW))), `${dir}.png`)
   const at = (sec) => Math.min(frames - 1, Math.max(0, Math.round((sec + shot.strike) * FPS) - 1))
-  const keys = shot.warmup
-    ? [0.3, 1.5, 3, 4.5].map(at)
-    : [-0.3, -0.1, 0, 0.033, 0.1, 0.2, 0.45, 0.9].map(at).filter((f, i, a) => a.indexOf(f) === i)
+  const keys =
+    shot.deathPicks ??
+    (shot.warmup
+      ? [0.3, 1.5, 3, 4.5].map(at)
+      : [-0.3, -0.1, 0, 0.033, 0.1, 0.2, 0.45, 0.9].map(at).filter((f, i, a) => a.indexOf(f) === i))
   await sheet(keys, 3, Math.min(keys.length, Math.max(2, Math.floor(3600 / (cropW * 3)))), `${dir}-x3.png`)
   execFileSync(ffmpeg, [
     '-y',
