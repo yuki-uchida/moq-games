@@ -44,6 +44,9 @@ export class ExpeditionAudio {
     addEventListener('keydown', unlock, true)
     // The battle keeps running while hidden, so music and voices keep playing too.
     window.addEventListener('pagehide', () => this.stop())
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) this.start()
+    })
   }
   async prepare(roles: string[]) {
     // Existing action cues only; the healer cue doubles as quiet potion feedback.
