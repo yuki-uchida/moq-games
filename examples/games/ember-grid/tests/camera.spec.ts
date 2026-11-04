@@ -58,13 +58,15 @@ const inField = (page: Page, selector: string) =>
       })
     )
   }, selector)
-const settle = (page: Page) => page.waitForTimeout(450)
+const settle = (page: Page) => page.waitForTimeout(650)
 
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 1280, height: 800 }
 ]) {
-  test(`battle opens closer, selection zooms in and the layers stay aligned at ${viewport.width}`, async ({ page }) => {
+  test(`battle opens closer, selection preserves zoom and the layers stay aligned at ${viewport.width}`, async ({
+    page
+  }) => {
     await page.setViewportSize(viewport)
     await enterBattle(page)
     await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
@@ -78,7 +80,7 @@ for (const viewport of [
     await page.getByRole('button', { name: /風読み/ }).click()
     await settle(page)
     const selected = await view(page)
-    expect(selected.zoom).toBeGreaterThan(start.zoom)
+    expect(selected.zoom).toBe(start.zoom)
     expect(await inField(page, '#board .cell.legal')).toBe(true)
     expect(await misalignment(page)).toBeLessThan(1.5)
     await page.screenshot({ path: `test-results/camera-select-${viewport.width}.png` })

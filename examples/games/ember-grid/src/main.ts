@@ -530,8 +530,7 @@ const cellAt = (cell: string) => {
 let framed = -1,
   focused = ''
 /**
- * Each battle opens on everyone; selecting an ally moves in on its moves (after moving, its reach);
- * once it is spent or released, the allies still able to act come back into view.
+ * Each battle opens on everyone; selecting an ally reveals its moves (after moving, its reach).
  */
 function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach: Set<string>) {
   if (framed !== generation) {
@@ -541,11 +540,8 @@ function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach:
   }
   const focus = unit && game.phase === 'ally' ? `${unit.id}:${unit.x},${unit.y}:${unit.moved}:${unit.done}` : ''
   if (focus === focused) return
-  const previous = focused
   focused = focus
   if (unit && focus && !unit.done) camera.focus([unit, ...[...legal.keys(), ...(unit.moved ? reach : [])].map(cellAt)])
-  else if (previous && game.phase === 'ally')
-    camera.reveal(game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !u.done))
 }
 /** Preview an enemy's move and strike range while it is hovered or focused. */
 function hover(x: number, y: number) {

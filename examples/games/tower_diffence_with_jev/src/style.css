@@ -939,11 +939,6 @@ dialog::backdrop {
   font-size: 11px;
   color: #82876d;
 }
-.field-choice {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
 .coin-purse b {
   color: #9a6b12;
   font-size: 14px;
@@ -1041,74 +1036,6 @@ dialog::backdrop {
 .formation-card[data-state='recruit'] small {
   color: #9a6b12;
   font-weight: 700;
-}
-.field-card {
-  display: flex;
-  align-items: center;
-  text-align: left;
-  gap: 12px;
-  padding: 10px;
-  background: #f0f0df;
-  min-width: 0;
-  border-radius: 12px;
-}
-.field-card[aria-pressed='true'] {
-  border-color: #c5a056;
-  box-shadow: 0 0 0 2px #d8b36555;
-  background: #fff0ca;
-}
-.field-art {
-  display: block;
-  position: relative;
-  width: 88px;
-  flex: none;
-}
-.field-card svg,
-.field-card .field-art img {
-  width: 100%;
-  height: auto;
-  display: block;
-  border-radius: 7px;
-  border: 1px solid #8e9d7170;
-}
-.field-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.field-card small {
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: 1px;
-  color: #80886b;
-}
-.field-card b {
-  font-size: 15px;
-  color: #3a573e;
-}
-.field-card em {
-  font-style: normal;
-  font-size: 11px;
-  color: #737a62;
-  line-height: 1.65;
-  font-weight: 400;
-}
-.field-check {
-  display: none;
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 20px;
-  height: 20px;
-  background: var(--forest);
-  color: #fff5d1;
-  border-radius: 50%;
-  font-size: 11px;
-  border: 2px solid #fff2cd;
-  text-align: center;
-}
-.field-card[aria-pressed='true'] .field-check {
-  display: block;
 }
 .launch-footer {
   border-top: 1px solid var(--line);
@@ -1519,32 +1446,6 @@ dialog::backdrop {
   .choice-heading {
     margin-top: 21px;
   }
-  .field-choice {
-    gap: 10px;
-  }
-  .field-card {
-    display: block;
-    padding: 9px;
-  }
-  .field-art {
-    width: 100%;
-    margin-bottom: 8px;
-  }
-  .field-card svg,
-  .field-card .field-art img {
-    width: 100%;
-    max-height: 85px;
-    background: #e6e7ce;
-  }
-  .field-copy {
-    gap: 3px;
-  }
-  .field-card b {
-    font-size: 14px;
-  }
-  .field-card em {
-    font-size: 10px;
-  }
   .launch-actions .primary {
     min-width: 0;
   }
@@ -1744,13 +1645,6 @@ dialog::backdrop {
   }
   .kingdom-crest {
     display: none;
-  }
-  .field-card {
-    display: flex;
-  }
-  .field-art {
-    width: 70px;
-    margin: 0;
   }
   .launch-actions {
     display: flex;

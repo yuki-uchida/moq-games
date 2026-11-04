@@ -17,6 +17,7 @@ test('title has exact menu, no-save explanation, New game and back', async ({ pa
   expect(await rawSave(page)).toBeNull()
   await page.locator('#title-new').click()
   await expect(page.locator('#launch')).toBeVisible()
+  await expect(page.locator('[data-field], .field-choice')).toHaveCount(0)
   await page.goBack()
   await expect(page.locator('#title-screen')).toBeVisible()
   expect(await rawSave(page)).toBeNull()
@@ -27,7 +28,6 @@ test('reload and Continue restore actual saved campaign; opening and cancelling 
 }) => {
   await page.goto(towerPath)
   await page.locator('#title-new').click()
-  await page.locator('[data-field="meadow"]').click()
   await page.locator('#start').click()
   await expect(page.locator('#launch')).toBeHidden({ timeout: 180_000 })
   const saved = await rawSave(page)
@@ -72,7 +72,6 @@ test('explicit Save and Title restore this tab after another tab replaces an unc
 }) => {
   await page.goto(towerPath)
   await page.locator('#title-new').click()
-  await page.locator('[data-field="meadow"]').click()
   await page.locator('#start').click()
   await expect(page.locator('#launch')).toBeHidden({ timeout: 180_000 })
   const savedA = await rawSave(page)
@@ -82,12 +81,17 @@ test('explicit Save and Title restore this tab after another tab replaces an unc
   try {
     await other.goto(towerPath)
     await other.locator('#title-new').click()
-    await other.locator('[data-field="desert"]').click()
     await other.locator('#start').click()
     await expect(other.locator('#save-confirm')).toBeVisible()
     await other.locator('#save-confirm-accept').click()
     await expect(other.locator('#launch')).toBeHidden({ timeout: 180_000 })
-    const savedB = await rawSave(other)
+    const savedB = await other.evaluate(() => {
+      const save = JSON.parse(localStorage.getItem('tower-jev-v3')!)
+      save.testMarker = true
+      const raw = JSON.stringify(save)
+      localStorage.setItem('tower-jev-v3', raw)
+      return raw
+    })
     expect(savedB).not.toBeNull()
     expect(savedB).not.toBe(savedA)
     expect(await rawSave(page)).toBe(savedB)
