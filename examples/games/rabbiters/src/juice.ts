@@ -1,6 +1,8 @@
 import type { GameState } from './game'
 import type { JuiceEvent, JuicePoint } from './juice-events'
 import { floorAt } from './map'
+import { DiscoveryTracker } from './discoveries'
+import { ThreatTracker } from './audio'
 
 const STEP_WALK = 0.55
 const STEP_SPRINT = 0.8
@@ -47,6 +49,8 @@ const point = (value: { x: number; y: number; z: number }): JuicePoint => ({ x: 
 
 /** Derives game-feel events by diffing consecutive GameState snapshots (identical on host and guests). */
 export class JuiceDetector {
+  private readonly discoveries = new DiscoveryTracker()
+  private readonly threats = new ThreatTracker()
   private previous: Snapshot | null = null
   private travelled = 0
   private airborne = false
@@ -59,6 +63,8 @@ export class JuiceDetector {
   private taskProgress = 0
 
   reset(): void {
+    this.discoveries.reset()
+    this.threats.reset()
     this.previous = null
     this.travelled = 0
     this.airborne = false
@@ -71,13 +77,40 @@ export class JuiceDetector {
   update(state: GameState, localPlayerId: string): JuiceEvent[] {
     const previous = this.previous
     if (previous && state.time < previous.time) return []
+    if (previous && previous.stage !== (state.stage ?? 3)) this.threats.reset()
+    const discoveries = this.discoveries.update(state)
+    this.threats.update(state)
     const next = this.observe(state, localPlayerId)
     this.previous = next
     if (!previous || previous.playerId !== localPlayerId) {
       this.resync(next, state, localPlayerId)
+      const discovery = discoveries.find((entry) => entry.targetId === localPlayerId)
+      if (state.phase !== 'playing') return []
+      if (discovery) return [{ type: 'spotted', at: point(discovery), you: true }]
+      if (next.hasPlayer && !next.downed && !next.chasingMe) {
+        const predator = [...next.predators.values()].find(
+          (entry) => entry.state === 'suspicious' && entry.targetId === localPlayerId
+        )
+        if (predator) return [{ type: 'suspicious', at: predator.at }]
+      }
       return []
     }
     const events: JuiceEvent[] = []
+    for (const discovery of discoveries) {
+      if (state.phase !== 'playing' && discovery.targetId !== localPlayerId) continue
+      if (!state.players.some((player) => player.id === discovery.targetId)) continue
+      if (previous.stage === next.stage && discovery.targetId === localPlayerId && previous.chasingMe > 0) continue
+      if (
+        previous.stage === next.stage &&
+        discovery.targetId !== localPlayerId &&
+        previous.predators.get(discovery.predatorId)?.state === 'chase' &&
+        next.predators.get(discovery.predatorId)?.state === 'chase'
+      )
+        continue
+      if (events.some((event) => event.type === 'spotted' && event.you === (discovery.targetId === localPlayerId)))
+        continue
+      events.push({ type: 'spotted', at: point(discovery), you: discovery.targetId === localPlayerId })
+    }
     if (previous.phase === 'playing' && next.phase !== 'playing') {
       events.push({ type: next.phase === 'won' ? 'won' : 'lost' })
     }
@@ -87,18 +120,32 @@ export class JuiceDetector {
     for (const [id, was] of previous.nests) {
       if (was.active && next.nests.get(id)?.active === false) events.push({ type: 'nestBroken', at: point(was) })
     }
-    let localSpotted = previous.chasingMe > 0 || !previous.hasPlayer || !next.hasPlayer || next.downed
+    let localSpotted =
+      (!stageChanged && previous.chasingMe > 0) ||
+      !previous.hasPlayer ||
+      !next.hasPlayer ||
+      next.downed ||
+      events.some((event) => event.type === 'spotted' && event.you)
     for (const [id, predator] of next.predators) {
       const before = previous.predators.get(id)
       if (predator.state === 'chase' && predator.targetId === localPlayerId) {
         if (!localSpotted) events.push({ type: 'spotted', at: predator.at, you: true })
         localSpotted = true
-      } else if (before && predator.state === 'chase' && before.state !== 'chase') {
-        events.push({ type: 'spotted', at: predator.at, you: false })
       } else if (
         before &&
+        predator.state === 'chase' &&
+        before.state !== 'chase' &&
+        !events.some((event) => event.type === 'spotted' && !event.you)
+      ) {
+        events.push({ type: 'spotted', at: predator.at, you: false })
+      } else if (
+        next.hasPlayer &&
+        !next.downed &&
+        !next.chasingMe &&
         predator.state === 'suspicious' &&
-        (before.state !== 'suspicious' || before.targetId !== localPlayerId) &&
+        (stageChanged ||
+          ((before?.state !== 'chase' || before.targetId !== localPlayerId) &&
+            (before?.state !== 'suspicious' || before.targetId !== localPlayerId))) &&
         predator.targetId === localPlayerId
       ) {
         events.push({ type: 'suspicious', at: predator.at })
@@ -275,8 +322,14 @@ export class JuiceDetector {
           { state: predator.state, targetId: predator.targetId, at: point(predator) }
         ])
       ),
-      chasingMe: state.predators.filter((predator) => predator.state === 'chase' && predator.targetId === localPlayerId)
-        .length
+      chasingMe:
+        player && !player.downed
+          ? state.predators.filter(
+              (predator) =>
+                predator.state === 'chase' &&
+                (predator.targetId === localPlayerId || this.threats.targets.get(predator.id)?.has(localPlayerId))
+            ).length
+          : 0
     }
   }
 }

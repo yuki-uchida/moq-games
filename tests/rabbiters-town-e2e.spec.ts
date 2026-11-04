@@ -73,8 +73,9 @@ test('town: walk, a stray cat, Ponta, then on to the waterway', async ({ page },
   const ponta = await hooks<{ x: number; z: number }>(page, "npc('ponta')")
   await hooks(page, `place(${ponta.x + 1.4}, ${ponta.z})`)
   await expect(page.locator('#hint')).toContainText('E で話す', { timeout: 30_000 }) // once the current line ends
-  await page.keyboard.press('KeyE')
+  await page.keyboard.down('KeyE')
   await expect(page.locator('#subtitle-name')).toHaveText('タヌキのポン太')
+  await page.keyboard.up('KeyE')
   await expect(page.locator('#objective-title')).toHaveText('第2章｜ポン太の話を聞こう')
 
   // The busiest view: two lanes of traffic, parked cars and the shopping street behind.

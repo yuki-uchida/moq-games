@@ -581,7 +581,7 @@ window.rabbitersTestAccelerate = () => {
     ([x, z]) => (window as unknown as Hooks).rabbitersTestPlace(x, z, { hunger: 100 }),
     [straw.x, straw.z]
   )
-  await expect(page.locator('#hint')).toContainText('巣材を巣穴へ')
+  await expect(page.locator('#hint')).toContainText('巣材を巣穴へ（遅く、見つかりやすい）')
   expect((await state()).players[0].carrying).toBe(straw.id)
   await page.evaluate(() => (window as unknown as Hooks).rabbitersTestPlace(-118, -1))
   await expect(page.locator('#objective-progress')).toHaveText('巣材 1 / 6')
@@ -940,6 +940,62 @@ window.rabbitersAudioPriority = {
   expect(errors).toEqual([])
 })
 
+test('a predator retargeting a teammate warns the newly chased rabbit once', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.route('**/src/main.ts*', async (route) => {
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      body: `${await response.text()}
+window.rabbitersRetarget = {
+  alarms: 0, spots: 0,
+  initialized() { return !!audio.previous && audio.context?.state === 'running'; },
+  start() {
+    game.step = () => {};
+    game.addPlayer('retarget-friend', 'Friend');
+    const local = game.state.players.find((player) => player.id === localId);
+    const friend = game.state.players.find((player) => player.id === 'retarget-friend');
+    const predator = game.state.predators[0];
+    Object.assign(friend, { x: local.x + 1, y: local.y, z: local.z });
+    Object.assign(predator, { x: local.x, y: local.y, z: local.z + 3, state: 'chase', targetId: friend.id });
+    game.state.predators = [predator];
+    const alarm = audio.alarm.bind(audio);
+    audio.alarm = () => {
+      const previous = new Set(audio.voices);
+      alarm();
+      if ([...audio.voices].some((voice) => !previous.has(voice))) this.alarms++;
+    };
+    const emit = feel.emit.bind(feel);
+    feel.emit = (event) => {
+      if (event.type === 'spotted' && event.you) this.spots++;
+      emit(event);
+    };
+    game.state.time += 0.1;
+  },
+  ready() { return this.alarms === 1 && audio.context.currentTime >= audio.musicAfter; },
+  target(id) { game.state.predators[0].targetId = id === 'local' ? localId : 'retarget-friend'; game.state.time += 0.1; },
+  read() { return { alarms: this.alarms, spots: this.spots }; }
+};`
+    })
+  })
+  await page.goto('/?chapter=4')
+  await page.locator('#solo').click()
+  await expect.poll(() => page.evaluate<boolean>('window.rabbitersRetarget.initialized()')).toBe(true)
+  await page.evaluate('window.rabbitersRetarget.start()')
+  await expect.poll(() => page.evaluate<boolean>('window.rabbitersRetarget.ready()')).toBe(true)
+  await page.evaluate("window.rabbitersRetarget.target('local')")
+  const read = () => page.evaluate<{ alarms: number; spots: number }>('window.rabbitersRetarget.read()')
+  await expect.poll(read).toEqual({ alarms: 2, spots: 1 })
+  await expect(page.locator('.fx-detection')).toHaveClass(/fx-on/)
+  for (const target of ['friend', 'local', 'friend', 'local']) {
+    await page.evaluate((id) => (window as any).rabbitersRetarget.target(id), target)
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  }
+  expect(await read()).toEqual({ alarms: 2, spots: 1 })
+  expect(errors).toEqual([])
+})
+
 test('real predator AI warns when it retargets a suspicious rabbit', async ({ page }) => {
   test.setTimeout(60_000)
   const errors: string[] = []
@@ -1036,13 +1092,28 @@ window.rabbitersStealth = {
   advance(seconds) { const step = this.step ?? game.step.bind(game); for (let index = 0; index < seconds * 60; index++) step(1 / 60); },
   freeze() { this.step = game.step.bind(game); game.step = () => {}; },
   spot(id) { Object.assign(game.state.predators.find((entry) => entry.id === id), { x: -125, z: 5, state: 'chase', targetId: localId, suspicion: 1 }); },
+  teamThenLocal(id) {
+    game.addPlayer('friend', 'Friend');
+    Object.assign(game.state.predators.find((entry) => entry.id === id), { state: 'chase', targetId: 'friend' });
+    audio.update(game.state, localId);
+    feel.update(game.state, localId);
+    const afterFriend = this.cues();
+    this.spot(id);
+    audio.update(game.state, localId);
+    feel.update(game.state, localId);
+    return { afterFriend, afterLocal: this.cues() };
+  },
   watchCues() {
     this.localSpots = 0;
     this.alarms = 0;
     const emit = feel.emit.bind(feel);
     feel.emit = (event) => { if (event.type === 'spotted' && event.you) this.localSpots++; emit(event); };
     const alarm = audio.alarm.bind(audio);
-    audio.alarm = () => { this.alarms++; alarm(); };
+    audio.alarm = () => {
+      const previous = new Set(audio.voices);
+      alarm();
+      if ([...audio.voices].some((voice) => !previous.has(voice))) this.alarms++;
+    };
   },
   cues() { return { localSpots: this.localSpots, alarms: this.alarms }; },
   startMeters() {
@@ -1174,10 +1245,10 @@ window.rabbitersStealth = {
   await expect(page.locator('.fx-threat')).toContainText('ひと息')
   await expect(page.locator('.fx-threat')).toBeHidden({ timeout: 5000 })
 
-  await run("move('fox', { state: 'chase', targetId: 'friend' })")
-  await expect.poll(async () => run('cues()')).toEqual({ localSpots: 1, alarms: 2 })
-  await run("spot('fox')")
-  await expect.poll(async () => run('cues()')).toEqual({ localSpots: 2, alarms: 3 })
+  expect(await run("teamThenLocal('fox')")).toEqual({
+    afterFriend: { localSpots: 1, alarms: 2 },
+    afterLocal: { localSpots: 2, alarms: 2 }
+  })
   await expect(page.locator('.fx-threat')).toHaveAttribute('data-mode', 'chase')
   await run('stopMeters()')
 
@@ -1249,11 +1320,27 @@ window.rabbitersMobileSpot = () => {
     const viewport = page.viewportSize()!
     expect(bounds.x).toBeGreaterThanOrEqual(0)
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width)
-    expect(bounds.y).toBeGreaterThanOrEqual(objectives.y + objectives.height)
+    expect(
+      bounds.x >= objectives.x + objectives.width ||
+        bounds.x + bounds.width <= objectives.x ||
+        bounds.y >= objectives.y + objectives.height ||
+        bounds.y + bounds.height <= objectives.y
+    ).toBe(true)
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height)
     expect(await detection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
+  const assertWarningClear = async (other = warning) => {
+    const card = (await detection.boundingBox())!
+    const status = (await other.boundingBox())!
+    expect(
+      card.x >= status.x + status.width ||
+        card.x + card.width <= status.x ||
+        card.y >= status.y + status.height ||
+        card.y + card.height <= status.y
+    ).toBe(true)
+  }
   await assertPortraitDetection()
+  await assertWarningClear()
   await assertSubtitleClear()
   expect(
     await warning.evaluate((element) => {
@@ -1266,7 +1353,9 @@ window.rabbitersMobileSpot = () => {
   expect(warningBounds).not.toBeNull()
   expect(vitalsBounds).not.toBeNull()
   expect(warningBounds!.x).toBeGreaterThanOrEqual(vitalsBounds!.x + vitalsBounds!.width)
-  await expect(page.locator('.fx-layer')).toHaveCSS('pointer-events', 'none')
+  const effectLayers = page.locator('.fx-layer')
+  await expect(effectLayers).toHaveCount(2)
+  for (const layer of await effectLayers.all()) await expect(layer).toHaveCSS('pointer-events', 'none')
   await expect(page.locator('.fx-chase')).toHaveCSS('animation-name', 'none')
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-reduced-motion.png') })
 
@@ -1290,15 +1379,29 @@ window.rabbitersMobileSpot = () => {
       }, time)
       expect(animationCount).toBeGreaterThan(0)
       await assertPortraitDetection()
+      await assertWarningClear()
       await assertSubtitleClear()
+      if (viewport.width === 320 && time === 144)
+        await page.screenshot({ path: testInfo.outputPath('stealth-mobile-320.png') })
     }
   }
   await page.setViewportSize({ width: 1280, height: 800 })
+  for (const time of [0, 144]) {
+    await detection.evaluate((element, currentTime) => {
+      element.getAnimations().forEach((animation) => (animation.currentTime = currentTime))
+    }, time)
+    await assertWarningClear()
+  }
   await assertSubtitleClear()
   await page.screenshot({ path: testInfo.outputPath('stealth-desktop-subtitle.png') })
   await page.emulateMedia({ reducedMotion: 'reduce' })
 
+  const touch = await page.context().newCDPSession(page)
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 })
   await page.setViewportSize({ width: 844, height: 390 })
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+  await expect(page.locator('.joystick')).toBeVisible()
+  await expect(page.locator('.touch-buttons')).toBeVisible()
   await page.evaluate(() => {
     const globals = window as unknown as { rabbitersMobileSpot: () => () => void; triggerSpot?: () => void }
     globals.triggerSpot = globals.rabbitersMobileSpot()
@@ -1309,7 +1412,27 @@ window.rabbitersMobileSpot = () => {
   await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
   await expect(detection).toHaveClass(/fx-on/)
   await expect(escapePopup).toBeHidden()
+  await page.reload()
+  await page.locator('#solo').click()
+  await page.evaluate(() => {
+    const globals = window as unknown as { rabbitersMobileSpot: () => () => void; triggerSpot?: () => void }
+    globals.triggerSpot = globals.rabbitersMobileSpot()
+  })
+  await page.waitForTimeout(150)
+  await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
+  await expect(detection).toHaveClass(/fx-on/)
+  await assertWarningClear()
   await assertSubtitleClear()
+  for (const control of [page.locator('.joystick'), page.locator('.touch-buttons')]) {
+    const bounds = (await detection.boundingBox())!
+    const other = (await control.boundingBox())!
+    expect(
+      bounds.x >= other.x + other.width ||
+        bounds.x + bounds.width <= other.x ||
+        bounds.y >= other.y + other.height ||
+        bounds.y + bounds.height <= other.y
+    ).toBe(true)
+  }
   expect(
     await detection.evaluate((element) => {
       const bounds = element.getBoundingClientRect()
@@ -1317,9 +1440,43 @@ window.rabbitersMobileSpot = () => {
     })
   ).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-landscape.png') })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect(detection).toHaveCSS('animation-name', 'fx-detection-impact')
+  for (const viewport of [
+    { width: 844, height: 390 },
+    { width: 568, height: 320 }
+  ]) {
+    await page.setViewportSize(viewport)
+    for (const time of [0, 144]) {
+      const animationCount = await detection.evaluate((element, currentTime) => {
+        const animations = element.getAnimations()
+        animations.forEach((animation) => {
+          animation.pause()
+          animation.currentTime = currentTime
+        })
+        return animations.length
+      }, time)
+      expect(animationCount).toBeGreaterThan(0)
+      await assertWarningClear()
+      if (viewport.width === 568) {
+        for (const control of [
+          page.locator('.vitals'),
+          page.locator('#sound-toggle'),
+          page.locator('#leave'),
+          page.locator('#help-open')
+        ]) {
+          if (await control.isVisible()) await assertWarningClear(control)
+        }
+        expect(await detection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+        if (time === 144) await page.screenshot({ path: testInfo.outputPath('stealth-mobile-small-landscape.png') })
+      }
+    }
+  }
   await page.evaluate(() => (window as unknown as { rabbitersMobileSpot: () => () => void }).rabbitersMobileSpot())
   await expect(warning).toBeHidden({ timeout: 5000 })
-  expect(await subtitle.evaluate((element) => Number.parseFloat(getComputedStyle(element).top))).toBeCloseTo(390 * 0.12)
+  await assertSubtitleClear()
+  const subtitleBounds = (await subtitle.boundingBox())!
+  expect(subtitleBounds.y + subtitleBounds.height).toBeCloseTo(page.viewportSize()!.height)
 })
 
 test('map tour: terrain, tunnels, logs and caves stay readable and cheap to draw', async ({ page }, testInfo) => {

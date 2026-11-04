@@ -75,8 +75,9 @@ test('waterway: sewer → river → park, with dialogue, an enemy cue and the ha
   await hooks(page, `place(${gama.x}, ${gama.z - 1.4})`)
   await expect(page.locator('#subtitle')).toBeHidden({ timeout: 15_000 }) // the hint waits for the narration
   await expect(page.locator('#hint')).toContainText('E で話す（ヒキガエルのガマ先生）')
-  await page.keyboard.press('KeyE')
+  await page.keyboard.down('KeyE')
   await expect(page.locator('#subtitle-name')).toHaveText('ヒキガエルのガマ先生', { timeout: 15_000 })
+  await page.keyboard.up('KeyE')
 
   // The worker's torch: a rabbit lit up in front of him is spotted (the alert overlay fires).
   await hooks(page, "keep('worker')")

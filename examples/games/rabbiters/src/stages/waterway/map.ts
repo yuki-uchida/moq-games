@@ -95,6 +95,13 @@ export const CHECKPOINTS = {
 /** The flashlight's lit patch ahead of the sewer worker; the script moves it every tick (host only). */
 export const BEAM: Zone = { id: 'beam', light: 2.2, minX: 1e6, maxX: 1e6, minZ: 1e6, maxZ: 1e6 }
 
+export function beamRect(worker?: Point & { angle: number }): Rect {
+  if (!worker) return { minX: 1e6, maxX: 1e6, minZ: 1e6, maxZ: 1e6 }
+  const x = worker.x + Math.sin(worker.angle) * 5.5
+  const z = worker.z + Math.cos(worker.angle) * 5.5
+  return { minX: x - 3.5, maxX: x + 3.5, minZ: z - 3.5, maxZ: z + 3.5 }
+}
+
 function sewerHeight(x: number, z: number) {
   // Footbridge with rails, over the channel.
   if (z > FOOTBRIDGE.minZ && z < FOOTBRIDGE.maxZ && x >= -92 && x <= -88) return x === -92 || x === -88 ? 3 : 0.4

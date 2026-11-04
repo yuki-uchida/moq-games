@@ -13,7 +13,9 @@ export function threatFor(state: GameState | undefined, localPlayerId: string, t
   const player = state?.players.find((entry) => entry.id === localPlayerId)
   const clear: ThreatStatus = { mode: 'clear', count: 0, suspicion: 0 }
   if (!state || state.phase !== 'playing' || !player || player.downed) return clear
-  const predators = state.predators.filter((predator) => predator.targetId === player.id)
+  const predators = state.predators.filter(
+    (predator) => predator.targetId === player.id || tracker?.targets.get(predator.id)?.has(player.id)
+  )
   const count = predators.filter((predator) => predator.state === 'chase').length
   if (count) return { mode: 'chase', count, suspicion: 1 }
   const suspicious = predators.filter((predator) => predator.state === 'suspicious')
@@ -23,11 +25,13 @@ export function threatFor(state: GameState | undefined, localPlayerId: string, t
         count: suspicious.length,
         suspicion: Math.max(...suspicious.map((predator) => predator.suspicion))
       }
-    : state.predators.some((predator) => predator.state === 'search' && tracker?.targets.get(predator.id) === player.id)
+    : state.predators.some(
+          (predator) => predator.state === 'search' && tracker?.targets.get(predator.id)?.has(player.id)
+        )
       ? {
           mode: 'search',
           count: state.predators.filter(
-            (predator) => predator.state === 'search' && tracker?.targets.get(predator.id) === player.id
+            (predator) => predator.state === 'search' && tracker?.targets.get(predator.id)?.has(player.id)
           ).length,
           suspicion: 1
         }
@@ -140,6 +144,7 @@ interface PopupSlot {
 
 export class HudFx {
   private readonly layer: HTMLElement
+  private readonly detectionLayer: HTMLElement
   private readonly popups: PopupSlot[] = []
   private readonly flashes: Record<FlashKind, HTMLElement>
   private readonly burst: HTMLElement
@@ -147,6 +152,8 @@ export class HudFx {
   private readonly hiddenEl: HTMLElement
   private readonly threatEl: HTMLElement
   private readonly detectionEl: HTMLElement
+  private readonly detectionHint: HTMLElement
+  private transientDetection = false
   private threatMode: ThreatStatus['mode'] = 'clear'
   private releaseTimer?: ReturnType<typeof setTimeout>
   private readonly confettiTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -160,16 +167,23 @@ export class HudFx {
     this.chaseEl = this.child('fx-vignette fx-chase')
     this.hiddenEl = this.child('fx-vignette fx-cover')
     this.detectionEl = this.child('fx-detection')
+    this.detectionLayer = this.make('div', 'fx-layer')
+    this.detectionLayer.setAttribute('aria-hidden', 'true')
+    this.detectionLayer.appendChild(this.detectionEl)
     const signal = this.make('span', 'fx-detection-signal')
     signal.textContent = '!'
     const message = this.make('strong', 'fx-detection-message')
     message.textContent = '見つかった！'
-    const hint = this.make('span', 'fx-detection-hint')
-    hint.textContent = 'ぴんち！ 逃げよう！'
+    this.detectionHint = this.make('span', 'fx-detection-hint')
+    this.detectionHint.textContent = 'ぴんち！ 逃げよう！'
     this.detectionEl.appendChild(signal)
     this.detectionEl.appendChild(message)
-    this.detectionEl.appendChild(hint)
-    this.detectionEl.addEventListener('animationend', () => this.detectionEl.classList.remove('fx-on'))
+    this.detectionEl.appendChild(this.detectionHint)
+    this.detectionEl.addEventListener('animationend', () => {
+      this.transientDetection = false
+      this.detectionEl.classList.remove('fx-on')
+      this.detectionLayer.style.setProperty('z-index', '4')
+    })
     this.threatEl = this.child('fx-threat')
     this.threatEl.hidden = true
     this.flashes = {
@@ -193,10 +207,18 @@ export class HudFx {
       el.addEventListener('animationend', () => el.classList.remove('fx-on'))
     }
     root.appendChild(this.layer)
+    root.appendChild(this.detectionLayer)
   }
 
-  emit(event: JuiceEvent, screen?: { x: number; y: number } | null): void {
+  emit(event: JuiceEvent, screen?: { x: number; y: number } | null, aboveResult = false): void {
     if (this.disposed) return
+    if (event.type === 'lost' && this.transientDetection) this.detectionLayer.style.setProperty('z-index', '6')
+    if (event.type === 'spotted' && event.you && this.threatMode !== 'chase') {
+      this.detectionHint.textContent = 'ぴんち！'
+      this.transientDetection = true
+      if (aboveResult) this.detectionLayer.style.setProperty('z-index', '6')
+      retrigger(this.detectionEl, 'fx-on')
+    }
     const popup = popupFor(event)
     if (popup && event.type !== 'spotted') this.showPopup(popup, screen ?? null, event.type)
     const flash = flashFor(event)
@@ -224,10 +246,12 @@ export class HudFx {
     this.threatEl.dataset.mode = threat.mode
     this.threatEl.style.setProperty('--threat-level', String(Math.max(0, Math.min(1, threat.suspicion))))
     this.threatEl.hidden = threat.mode === 'clear'
-    if (threat.mode !== 'chase') this.detectionEl.classList.remove('fx-on')
+    if (threat.mode !== 'chase' && !this.transientDetection) this.detectionEl.classList.remove('fx-on')
     if (threat.mode === 'chase') {
       this.threatEl.textContent = `! 見つかった · ${threat.count}体が追跡中`
       if (previous !== 'chase') {
+        this.transientDetection = true
+        this.detectionHint.textContent = 'ぴんち！ 逃げよう！'
         for (const slot of this.popups) {
           if (slot.el.dataset.event !== 'escaped') continue
           slot.busy = false
@@ -240,7 +264,7 @@ export class HudFx {
     } else if (threat.mode === 'search') {
       this.threatEl.textContent = '? まだ捜索中 · 隠れて待とう'
     } else {
-      this.detectionEl.classList.remove('fx-on')
+      if (!this.transientDetection) this.detectionEl.classList.remove('fx-on')
       if (showRelease && (previous === 'chase' || previous === 'search')) {
         this.threatEl.hidden = false
         this.threatEl.textContent = '✓ 追跡が途切れた · ひと息'
@@ -251,7 +275,9 @@ export class HudFx {
     }
   }
 
-  reset(): void {
+  reset(preserveDetection = false): void {
+    if (!preserveDetection) this.transientDetection = false
+    this.detectionLayer.style.setProperty('z-index', this.transientDetection ? '6' : '4')
     this.setThreat({ mode: 'clear', count: 0, suspicion: 0 }, false)
     for (const slot of this.popups) {
       slot.busy = false
@@ -265,11 +291,14 @@ export class HudFx {
   }
 
   dispose(): void {
+    this.transientDetection = false
+    this.detectionEl.classList.remove('fx-on')
     this.disposed = true
     clearTimeout(this.releaseTimer)
     for (const t of this.confettiTimers) clearTimeout(t)
     this.confettiTimers.clear()
     this.layer.remove()
+    this.detectionLayer.remove()
   }
 
   private make(tag: string, cls: string): HTMLElement {

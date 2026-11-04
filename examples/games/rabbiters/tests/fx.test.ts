@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { FX_CAPACITY, WorldFx } from '../src/fx'
 import { flashFor, hapticFor, popupFor } from '../src/hud-fx'
 import type { JuiceEvent } from '../src/juice-events'
@@ -89,6 +89,35 @@ describe('WorldFx', () => {
     advance(fx, camera, 1)
     expect(fx.currentTrauma).toBe(0)
     expect(fx.shakeOffset(out).length()).toBe(0)
+  })
+
+  it('suppresses discovery shake while reduced motion is enabled', () => {
+    const preference = { matches: false }
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(preference))
+    try {
+      const fx = new WorldFx(new THREE.Scene())
+      const camera = new THREE.PerspectiveCamera()
+      const out = new THREE.Vector3()
+      fx.emit({ type: 'spotted', at, you: true })
+      fx.update(0.016, camera)
+      expect(fx.shakeOffset(out).length()).toBeGreaterThan(0)
+
+      preference.matches = true
+      expect(fx.shakeOffset(out).toArray()).toEqual([0, 0, 0])
+      const previousTrauma = fx.currentTrauma
+      fx.update(0.016, camera)
+      expect(fx.currentTrauma).toBeLessThan(previousTrauma)
+      fx.emit({ type: 'spotted', at, you: true })
+      expect(fx.shakeOffset(out).toArray()).toEqual([0, 0, 0])
+
+      preference.matches = false
+      expect(fx.shakeOffset(out).length()).toBeGreaterThan(0)
+      advance(fx, camera, 1)
+      expect(fx.shakeOffset(out).length()).toBe(0)
+      fx.dispose()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('adds trauma for hard landings and hurt but not soft landings', () => {

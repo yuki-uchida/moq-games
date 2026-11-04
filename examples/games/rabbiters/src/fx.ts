@@ -79,6 +79,8 @@ export class WorldFx {
   private readonly gravity = new Float32Array(FX_CAPACITY)
   private readonly drag = new Float32Array(FX_CAPACITY)
   private readonly color = new THREE.Color()
+  private readonly reducedMotion =
+    typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
   private cursor = 0
   private alive = 0
   private trauma = 0
@@ -116,12 +118,16 @@ export class WorldFx {
     return this.trauma
   }
 
+  get prefersReducedMotion(): boolean {
+    return this.reducedMotion?.matches ?? false
+  }
+
   addTrauma(amount: number): void {
     this.trauma = Math.min(1, Math.max(0, this.trauma + amount))
   }
 
   shakeOffset(out: THREE.Vector3): THREE.Vector3 {
-    if (this.trauma <= 0.0001) return out.set(0, 0, 0)
+    if (this.prefersReducedMotion || this.trauma <= 0.0001) return out.set(0, 0, 0)
     const amp = this.trauma * this.trauma * MAX_SHAKE
     const t = this.time
     const nx = Math.sin(t * 31.7) * 0.6 + Math.sin(t * 17.3 + 1.3) * 0.4
