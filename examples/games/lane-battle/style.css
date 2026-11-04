@@ -281,6 +281,11 @@ button b {
 header #sound {
   width: 40px;
 }
+header #pause {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
 button[hidden] {
   display: none;
 }

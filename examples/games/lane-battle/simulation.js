@@ -482,6 +482,7 @@ export function createGame(stage = 0, deck = starterDeck(), seed = 1) {
     home: STAGES[stage].home,
     enemy: STAGES[stage].enemy,
     units: [],
+    deaths: [],
     effects: [],
     projectiles: [],
     zones: [],
@@ -1078,6 +1079,7 @@ function tick(s, dt) {
 function settleDeaths(s) {
   s.units = s.units.filter((u) => {
     if (u.hp > 0) return true
+    s.deaths.push({ ...u, at: s.time })
     if (u.side === -1) {
       s.gold = Math.min(999, s.gold + (u.bounty ?? STAGES[s.stage].reward))
       s.kills++
