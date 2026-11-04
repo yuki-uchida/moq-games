@@ -203,6 +203,16 @@ button b {
   background: #1e0f05d9;
   pointer-events: none;
 }
+#tray button.full::before {
+  content: '満員';
+  position: absolute;
+  z-index: 1;
+  top: 18px;
+  background: #3b2412;
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
 /* Lighter dimming than other buttons so the recharge shade's edge stays readable. */
 #tray button:disabled,
 #burst:disabled {

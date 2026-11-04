@@ -45,7 +45,7 @@ try {
   const advance = (time) =>
     page.evaluate((time) => {
       __tick(time)
-      return { kills: __game.kills, fallen: __fallen.map(({ id, key, at }) => ({ id, key, age: __game.time - at })) }
+      return { kills: __game.kills, fallen: __fallen.map(({ id, key, visualAge }) => ({ id, key, age: visualAge })) }
     }, time)
   const first = await advance(1100)
   assert.equal(first.kills, 2)
@@ -53,12 +53,40 @@ try {
   assert.equal(new Set(first.fallen.map(({ id }) => id)).size, 2)
   assert.ok(first.fallen.every(({ age }) => age >= 0 && age <= 0.1))
   await page.screenshot({ path: '/tmp/lane-long-frame/start.png' })
-  const later = await advance(2000)
-  assert.equal(later.fallen.length, 2)
-  assert.ok(later.fallen.every(({ age, key }) => age >= koSeconds(key) * 0.75 && age < koSeconds(key)))
-  await page.screenshot({ path: '/tmp/lane-long-frame/fade.png' })
-  const end = await advance(3000)
-  assert.equal(end.fallen.length, 0)
+  const catchup = await advance(62100)
+  const nextBatch = await advance(62101)
+  assert.ok(first.fallen.every(({ id }) => catchup.fallen.some((ghost) => ghost.id === id)))
+  assert.ok(first.fallen.every(({ id }) => nextBatch.fallen.some((ghost) => ghost.id === id)))
+  // Step 50 ms frames and follow each original ghost: it must stay visible until it has aged through its
+  // whole death motion (the fade is the last quarter), then disappear.
+  const seen = new Map(
+    first.fallen.map(({ id }) => [
+      id,
+      { fade: false, gone: false, last: nextBatch.fallen.find((ghost) => ghost.id === id).age }
+    ])
+  )
+  let shot = false
+  for (let time = 62151; time <= 66000 && [...seen.values()].some((ghost) => !ghost.gone); time += 50) {
+    const frame = await advance(time)
+    for (const { id, key } of first.fallen) {
+      const ghost = seen.get(id)
+      if (ghost.gone) continue
+      const current = frame.fallen.find((entry) => entry.id === id)
+      if (!current) {
+        assert.ok(ghost.last >= koSeconds(key) - 0.05, `${key} vanished at age ${ghost.last.toFixed(2)}`)
+        ghost.gone = true
+        continue
+      }
+      assert.ok(current.age - ghost.last <= 0.25 + 1e-9, `${key} aged too fast`)
+      ghost.last = current.age
+      if (current.age >= koSeconds(key) * 0.75) ghost.fade = true
+    }
+    if (!shot && [...seen.values()].every((ghost) => ghost.fade || ghost.gone)) {
+      await page.screenshot({ path: '/tmp/lane-long-frame/fade.png' })
+      shot = true
+    }
+  }
+  assert.ok([...seen.values()].every((ghost) => ghost.fade && ghost.gone))
   console.log('long frame: both ghosts start, animate through fade and expire PASS')
 } finally {
   await browser.close()
