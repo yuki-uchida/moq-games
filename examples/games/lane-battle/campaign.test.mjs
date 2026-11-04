@@ -1,7 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { STAGES, SPECIALS, rng, typeOf, createGame } from './simulation.js'
-import { newCampaign, addEntry, levelUp, toggle, buy, settle, load, save, deckOf, SLOTS, GROWTH } from './campaign.js'
+import {
+  newCampaign,
+  addEntry,
+  levelUp,
+  toggle,
+  buy,
+  settle,
+  load,
+  save,
+  deckOf,
+  SLOTS,
+  GROWTH,
+  specialScale
+} from './campaign.js'
 import { playBattle, playCampaign } from './bot.js'
 
 test('a new campaign owns the two starter poops in its formation', () => {
@@ -40,7 +53,7 @@ test('poops are bought with 🧻 once unlocked', () => {
   assert.equal(buy(c, 'ramen'), false, 'specials are not for sale')
 })
 
-test('poops grow reliably; specials start stronger but rarely grow', () => {
+test('poops grow reliably; specials start stronger and can grow', () => {
   const random = rng(5)
   const c = newCampaign()
   const poop = c.roster[0]
@@ -57,9 +70,17 @@ test('poops grow reliably; specials start stronger but rarely grow', () => {
       grown[kind].blank += !g.hp && !g.atk && !g.spd
     }
   assert.equal(grown.poop.blank, 0, 'a poop level always grows something')
-  assert.ok(grown.special.blank > 100, 'specials often gain nothing')
+  assert.ok(grown.special.blank > 0, 'specials can have empty levels')
   assert.ok(grown.poop.hp / 400 > GROWTH.poop.hp - 0.06)
   assert.ok(Math.abs(grown.special.hp / 400 - GROWTH.special.hp) < 0.08)
+})
+
+test('special joining strength follows the stage and keeps early scaling unchanged', () => {
+  assert.equal(specialScale(0), 1)
+  assert.equal(specialScale(15), 1.45)
+  assert.equal(specialScale(22), 3.62)
+  assert.ok(GROWTH.special.hp > 0.22 && GROWTH.special.hp < GROWTH.poop.hp)
+  assert.ok(GROWTH.special.atk > 0.2 && GROWTH.special.atk < GROWTH.poop.atk)
 })
 
 test('victory pays EXP, 🧻 and a random special on the first clear only', () => {

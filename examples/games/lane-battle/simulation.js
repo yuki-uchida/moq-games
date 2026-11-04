@@ -91,7 +91,7 @@ export const POOPS = [
   }
 ]
 
-/** Special units: things that upset the stomach. Strong at first, but they rarely grow. */
+/** Special units: things that upset the stomach. Strong at first and grow with the campaign. */
 export const SPECIALS = [
   {
     key: 'aircon',
@@ -159,7 +159,7 @@ export const SPECIALS = [
     key: 'yakiniku',
     name: '焼肉',
     cost: 225,
-    hp: 560,
+    hp: 700,
     atk: 51,
     range: 40,
     speed: 26,
@@ -183,7 +183,7 @@ export const SPECIALS = [
     key: 'curry',
     name: '激辛カレー',
     cost: 190,
-    hp: 380,
+    hp: 430,
     atk: 105,
     range: 38,
     speed: 30,
@@ -200,7 +200,7 @@ export const SPECIALS = [
     range: 36,
     speed: 28,
     period: 1.1,
-    cooldown: 7,
+    cooldown: 11.25,
     line: 'ゴロゴロ押し返す'
   },
   {
@@ -212,7 +212,7 @@ export const SPECIALS = [
     range: 40,
     speed: 34,
     period: 1.5,
-    cooldown: 15,
+    cooldown: 18.75,
     crit: 0.225,
     line: '当たると危険。一発逆転'
   },
