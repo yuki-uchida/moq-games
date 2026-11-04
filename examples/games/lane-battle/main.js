@@ -589,6 +589,16 @@ function lead(u) {
 }
 function draw() {
   const visualTime = state.time + (resultVisual?.elapsed ?? 0)
+  for (const ghost of fallen) {
+    if (ghost.visualStarted) continue
+    ghost.at = Math.max(ghost.at, visualTime - 0.05)
+    ghost.visualStarted = true
+    if (resultVisual)
+      resultVisual.duration = Math.max(
+        resultVisual.duration,
+        resultVisual.elapsed + Math.max(ghost.flushed ? 0.8 : 0, koSeconds(ghost.key)) - (visualTime - ghost.at) + 0.15
+      )
+  }
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
   if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
@@ -960,8 +970,9 @@ function tick(now) {
     fallen.push(...state.deaths.splice(0))
     for (let index = fallen.length - 1; index >= 0; index--)
       if (
+        fallen[index].visualStarted &&
         state.time + (resultVisual?.elapsed ?? 0) - fallen[index].at >
-        Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
+          Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
       )
         fallen.splice(index, 1)
     let impact = false,
@@ -1015,7 +1026,12 @@ function tick(now) {
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
   if (!document.hidden) draw()
-  if (state.result && !shown && resultVisual.elapsed >= resultVisual.duration) {
+  if (
+    state.result &&
+    !shown &&
+    fallen.every((ghost) => ghost.visualStarted) &&
+    resultVisual.elapsed >= resultVisual.duration
+  ) {
     shown = true
     finish(resultVisual.report)
   }
