@@ -7,7 +7,7 @@ import { botInput } from './bot'
 test('normal cards can turn employment at 28 into a creative career at 64', () => {
   const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
   const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
-  const game = new Game(25)
+  const game = new Game(22)
   const player = game.addPlayer('p0')!
   const acquired = new Set<string>()
   const competingCareers = [

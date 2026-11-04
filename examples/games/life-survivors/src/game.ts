@@ -290,7 +290,8 @@ export function mulberry32(seed: number) {
   }
 }
 
-export const xpForLevel = (level: number) => Math.round((5 + level * 6 + level * level * 0.3) * 1.3)
+export const xpForLevel = (level: number) =>
+  Math.round((5 + level * 6 + level * level * 0.3) * 1.3 * (1 + Math.min(20, Math.max(0, level - 10)) * 0.0125))
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const passivePower = (player: Player, id: string) =>
@@ -462,7 +463,7 @@ export function choiceText(player: Player, choice: string): { icon: string; name
 }
 
 /** Chance that a chest holds three turning points instead of one. */
-export const CHEST_TRIPLE = 0.06
+export const CHEST_TRIPLE = 0.2
 
 export class Game {
   state: GameState
@@ -2293,8 +2294,7 @@ export class Game {
         for (const gem of state.gems) gem.pull = true
         this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('magnet'), takerIndex)
       } else {
-        // A chest holds one turning point for everyone, or now and then (with a lucky taker) three.
-        const grant = this.rng() < CHEST_TRIPLE + passivePower(taker, 'p_lucky') * 0.05 ? 3 : 1
+        const grant = this.rng() < CHEST_TRIPLE ? 3 : 1
         for (const player of alive) player.pending += grant
         this.emit(FX.CHEST, item.x, item.y, grant, takerIndex)
       }
