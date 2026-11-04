@@ -12,6 +12,124 @@ type Life = {
 }
 const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 
+test('co-op cards retain focus across birthdays and appearance changes', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.addPlayer('other', 'p_over')
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(10) + 0.01
+    game.state.enemies = []
+    const player = game.state.players[0]
+    player.birthPick = false
+    player.weapons = [{ id: 'w_sports', lv: 1, cd: 100, held: 0, damage: 0 }]
+    player.choices = ['w:w_sports', 'x:skip']
+    player.choiceSeq++
+  })
+  const second = page.locator('#cards .card').nth(1)
+  await expect(second).toBeVisible()
+  await second.focus()
+  const original = await second.elementHandle()
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { timeAtAge } = await import(path)
+    ;(hook.game as unknown as Game).state.time = timeAtAge(11) + 0.01
+  })
+  await expect
+    .poll(() =>
+      handle.evaluate(async (hook) => {
+        const path = '/src/data.ts'
+        const { ageAt } = await import(path)
+        return ageAt(hook.view.time)
+      })
+    )
+    .toBe(11)
+  await expect(second).toBeFocused()
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { timeAtAge } = await import(path)
+    ;(hook.game as unknown as Game).state.time = timeAtAge(12) + 0.01
+  })
+  await expect(page.locator('#cards')).toContainText('野球')
+  await expect(second).toBeFocused()
+})
+
+test('age-dependent sports and pet life stay consistent in cards, HUD and results', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    player.birthPick = false
+    player.pending = player.swapPending = player.careerPending = 0
+    player.choices = []
+    player.weapons = [
+      { id: 'w_sports', lv: 8, cd: 0, held: 0, damage: 100 },
+      { id: 'w_pet', lv: 1, cd: 0, held: 0, damage: 0, acquiredAge: 5 }
+    ]
+    player.passives = [{ id: 'p_hot', lv: 1 }]
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(5) + 0.01
+    game.state.enemies = []
+  })
+  await expect(page.locator('#weapons')).toContainText('MAX')
+  await expect(page.locator('#weapons .slot[title*="サッカー"]')).toHaveCount(1)
+  await expect(page.locator('#weapons .slot[title*="子犬"]')).toHaveCount(1)
+  const sportIcon = page.locator('#weapons .slot[title*="サッカー"] img')
+  const soccerUrl = await sportIcon.getAttribute('src')
+  for (const [age, name] of [
+    [6, 'サッカー'],
+    [12, '野球'],
+    [15, 'バスケ'],
+    [18, 'テニス'],
+    [23, 'ゴルフ'],
+    [50, 'ゲートボール']
+  ] as const) {
+    await handle.evaluate(async (hook, age) => {
+      const path = '/src/data.ts'
+      const { timeAtAge } = await import(path)
+      const game = hook.game as unknown as Game
+      game.state.time = timeAtAge(age) + 0.01
+      game.state.enemies = []
+    }, age)
+    const slot = page.locator(`#weapons .slot[title*="${name}"]`)
+    await expect(slot).toHaveCount(1)
+    await expect(slot).toHaveAttribute('title', new RegExp(`全国制覇.*${name}`))
+    if (name === 'サッカー') expect(await slot.locator('img').getAttribute('src')).toBe(soccerUrl)
+    else expect(await slot.locator('img').getAttribute('src')).not.toBe(soccerUrl)
+    if (age === 12) await expect(page.locator('#weapons .slot[title*="成犬"]')).toHaveCount(1)
+    if (age === 18) await expect(page.locator('#weapons .slot[title*="老犬"]')).toHaveCount(1)
+  }
+  await expect(page.locator('#weapons .slot[title*="ペット"]')).toHaveCount(0)
+  await expect(page.locator('#passives .slot[title*="愛犬との思い出"]')).toHaveCount(1)
+  await handle.evaluate((hook) => {
+    const player = (hook.game as unknown as Game).state.players[0]
+    player.choices = ['w:w_sports', 'w:w_pet']
+    player.choiceSeq++
+  })
+  await expect(page.locator('#cards')).toContainText('ゲートボール')
+  await expect(page.locator('#cards')).toContainText('子犬')
+  await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    game.state.players[0].choices = []
+    game.state.phase = 'lost'
+  })
+  await expect(page.locator('#result-build')).toContainText('ゲートボール')
+  await expect(page.locator('#result-build')).toContainText('愛犬との思い出 Lv1')
+  await expect(page.locator('#result-build')).not.toContainText('ペット Lv')
+  expect(errors).toEqual([])
+})
+
 for (const [parent, description] of [
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
@@ -1119,7 +1237,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v8',
+      app: 'life-survivors-v9',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1138,9 +1256,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v8', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v10', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v10', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v9', 'version-isolation'])])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {

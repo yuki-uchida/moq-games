@@ -86,7 +86,8 @@ test('every passive responds to talent without changing integer levels or evolut
     p_lucky: (player) => playerStats(player).crit,
     p_clever: (player) => playerStats(player).might,
     p_curious: (player) => playerStats(player).shotSpeed,
-    p_savvy: (player) => playerStats(player).strong
+    p_savvy: (player) => playerStats(player).strong,
+    p_petmemory: (player) => playerStats(player).regen
   }
   for (const def of PASSIVES) {
     const player = new Game(1).addPlayer('a', 'p_gone')!
