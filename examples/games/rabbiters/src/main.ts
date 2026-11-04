@@ -16,7 +16,7 @@ import {
   type Input
 } from './game'
 import { PREDATOR_KINDS, STEALTH } from './stealth'
-import { RabbitersAudio } from './audio'
+import { bindAudioResume, RabbitersAudio } from './audio'
 import { GameFeel } from './feel'
 import { GuestView, type InputAck } from './guest-view'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
@@ -51,7 +51,12 @@ function element<T extends HTMLElement>(selector: string): T {
 const world = element<HTMLDivElement>('#world')
 const scene = new RabbitersScene(world)
 const audio = new RabbitersAudio()
-const feel = new GameFeel(scene, element<HTMLElement>('#app'))
+function announceSpotted() {
+  spottedUntil = performance.now() + 650
+  alertOverlay.classList.add('spotted')
+  element<HTMLElement>('#discovery-announcements').textContent = '見つかった！'
+}
+const feel = new GameFeel(scene, element<HTMLElement>('#app'), announceSpotted)
 const hud = element<HTMLElement>('#hud')
 const startPanel = element<HTMLElement>('#start-panel')
 const help = element<HTMLElement>('#help')
@@ -106,7 +111,8 @@ let started = false
 let connectionLost = false
 let generation = 0
 let soundEnabled = true
-let chasers = new Set<string>()
+let wasChased = false
+let spottedUntil = 0
 let shownChapter = -1
 let shownStage = -1
 /** Snapshot taken whenever the stage, season or objective advances, so a lost run resumes there. */
@@ -183,6 +189,29 @@ const position = (value: Record<string, unknown>) =>
   numeric(value.z, WORLD.minZ - 2, WORLD.maxZ + 2)
 
 function validSnapshot(value: unknown): value is GameState {
+  if (record(value) && value.discoveries !== undefined) {
+    if (!Array.isArray(value.discoveries) || value.discoveries.length > 4096) return false
+    const pairs = new Set<string>()
+    for (const entry of value.discoveries) {
+      if (
+        !record(entry) ||
+        !label(entry.predatorId) ||
+        !label(entry.targetId) ||
+        !Number.isSafeInteger(entry.count) ||
+        !numeric(entry.count, 1, Number.MAX_SAFE_INTEGER) ||
+        (entry.stage !== undefined &&
+          (!Number.isInteger(entry.stage) || !numeric(entry.stage, 0, STAGES.length - 1))) ||
+        (entry.time !== undefined && !numeric(entry.time, 0, Number(value.time))) ||
+        !numeric(entry.x, -1000, 1000) ||
+        !numeric(entry.y, -1000, 1000) ||
+        !numeric(entry.z, -1000, 1000)
+      )
+        return false
+      const pair = JSON.stringify([entry.time === undefined ? entry.predatorId : null, entry.targetId])
+      if (pairs.has(pair)) return false
+      pairs.add(pair)
+    }
+  }
   if (!record(value) || !numeric(value.time, 0, 1e8) || !['playing', 'won', 'lost'].includes(String(value.phase)))
     return false
   if (
@@ -412,8 +441,13 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
           game?.setInput(id, input as Input)
         },
         onSnapshot: (state) => {
+          const stage = activeStage()
           const received = attempt === generation ? readSnapshot(state) : undefined
-          if (received) snapshot = received
+          if (received && (!snapshot || received.time >= snapshot.time)) {
+            snapshot = received
+            audio.update(received, localId)
+            feel.update(received, localId)
+          } else if (received) setStage(stage)
         },
         onPresence: (ids) => {
           if (attempt !== generation || nextRole !== 'host' || !game) return
@@ -517,7 +551,8 @@ async function returnToTitle() {
   buttons.forEach((button) => (button.disabled = false))
   error.textContent = ''
   sessionStatus('ひとりでプレイ')
-  chasers = new Set()
+  wasChased = false
+  spottedUntil = 0
   alertOverlay.className = 'alert-overlay'
   await current?.stop()
 }
@@ -590,36 +625,27 @@ function updateHud(state: GameState) {
     element<HTMLElement>(`#${name}-bar`).style.width = `${value}%`
     element<HTMLElement>(`#${name}-value`).textContent = String(Math.ceil(value))
   }
-  const hunting = new Set(
-    state.predators
-      .filter((predator) => predator.targetId === player.id && predator.state === 'chase')
-      .map((predator) => predator.id)
-  )
+  const hunting = feel.isChasing
   const suspected = state.predators.some(
     (predator) => predator.targetId === player.id && predator.state === 'suspicious'
   )
-  if ([...hunting].some((id) => !chasers.has(id))) {
-    // Restart the flash for every new pursuer.
-    alertOverlay.classList.remove('spotted')
-    void alertOverlay.offsetWidth
-    alertOverlay.classList.add('spotted')
-    element<HTMLElement>('#announcements').textContent = '見つかった！'
-  } else if (!hunting.size) alertOverlay.classList.remove('spotted')
-  alertOverlay.classList.toggle('suspected', suspected && !hunting.size)
-  chasers = hunting
+  if (hunting && !wasChased && performance.now() >= spottedUntil) announceSpotted()
+  else if (!hunting && performance.now() >= spottedUntil) alertOverlay.classList.remove('spotted')
+  alertOverlay.classList.toggle('suspected', suspected && !hunting)
+  wasChased = hunting
   const underground = isUnderground(player.x, player.y, player.z)
   const coverName = (cover: Cover) => STAGES[state.stage].coverNames?.[cover] ?? COVER_NAMES[cover]
   const nearTrunk = !underground && treesNear(player.x, player.z, 1.5).length > 0
   // Cover reads as a green vignette and a lit hide button; phones show the line only when it is urgent.
-  alertOverlay.classList.toggle('covered', player.hidden && !suspected && !hunting.size)
+  alertOverlay.classList.toggle('covered', player.hidden && !suspected && !hunting)
   element<HTMLElement>('#touch-crouch').classList.toggle('active', player.hidden)
   element<HTMLElement>('#condition').classList.toggle('urgent', player.downed)
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'
-    : hunting.size
+    : hunting
       ? nearTrunk
         ? '見つかった！ 木のあいだを抜ければ追っ手が遅れる'
-        : '見つかった！ 茂みや穴に逃げこもう'
+        : '見つかった！ 逃げよう！'
       : suspected
         ? '怪しまれている… 今のうちに隠れよう'
         : player.hidden
@@ -753,7 +779,9 @@ function updateStory(state: GameState) {
 function retrySeason() {
   if (!game || !checkpoint) return
   game = Game.resume(retryState(checkpoint, game.state))
-  feel.reset()
+  feel.reset(game.state, localId)
+  wasChased = false
+  spottedUntil = 0
   snapshot = game.state
   shownChapter = -1
   result.hidden = true
@@ -889,6 +917,11 @@ const allowedKeys = new Set([
   'KeyC',
   'KeyE'
 ])
+const detachAudioResume = bindAudioResume(document, () => {
+  if (!started || connectionLost || !soundEnabled) return
+  audio.start()
+  feel.start()
+})
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape' && !help.hidden) {
     help.hidden = true
@@ -903,8 +936,16 @@ window.addEventListener('blur', clearInput)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) clearInput()
 })
-window.addEventListener('resize', () => scene.resize())
+const subtitleLayout = new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--subtitle-height', `${subtitle.getBoundingClientRect().height}px`)
+})
+subtitleLayout.observe(subtitle)
+const fieldLayout = new ResizeObserver(() => scene.resize())
+fieldLayout.observe(world)
 window.addEventListener('pagehide', () => {
+  detachAudioResume()
+  subtitleLayout.disconnect()
+  fieldLayout.disconnect()
   void network?.stop()
   audio.stop()
   feel.stop()

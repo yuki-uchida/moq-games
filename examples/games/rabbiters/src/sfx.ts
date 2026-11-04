@@ -5,6 +5,7 @@ export type UiSound = 'tap' | 'hover' | 'toggle' | 'open' | 'close' | 'start'
 const MASTER_GAIN = 0.22
 const MAX_VOICES = 24
 const BEAT_MS = 545 // ~110 bpm
+const MAX_BEAT_LATENESS_MS = 50
 const MIN_GAP = { step: 0.09, hover: 0.06, taskTick: 0.07, hurt: 0.3 }
 
 type ToneOptions = { delay?: number; attack?: number; peak?: number; detune?: number }
@@ -23,8 +24,10 @@ export class RabbitersSfx {
   private last = { step: -Infinity, hover: -Infinity, taskTick: -Infinity, hurt: -Infinity }
   private footLeft = true
   private chase = false
+  private chaseSince = 0
   private chaseLevel = 0
-  private heart: ReturnType<typeof setInterval> | null = null
+  private heart: ReturnType<typeof setTimeout> | null = null
+  private readonly heartVoices = new Set<OscillatorNode>()
 
   start(): void {
     try {
@@ -33,6 +36,12 @@ export class RabbitersSfx {
           globalThis.AudioContext ??
           (globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
         if (!Context) return
+        if (this.context) {
+          this.stopHeart()
+          this.master?.disconnect()
+          this.ends = []
+          this.last = { step: -Infinity, hover: -Infinity, taskTick: -Infinity, hurt: -Infinity }
+        }
         this.context = new Context()
         this.master = this.context.createGain()
         this.master.gain.value = this.muted ? 0 : MASTER_GAIN
@@ -42,13 +51,18 @@ export class RabbitersSfx {
         this.noise = null
       }
       void this.context.resume().catch(() => {})
-      if (this.chase) this.startHeart()
+      if (this.chase) {
+        if (this.heart !== null) clearTimeout(this.heart)
+        this.heart = null
+        this.startHeart()
+      }
     } catch {
       this.stop()
     }
   }
 
   stop(): void {
+    this.chase = false
     this.stopHeart()
     try {
       this.master?.disconnect()
@@ -64,6 +78,8 @@ export class RabbitersSfx {
 
   setMuted(muted: boolean): void {
     this.muted = muted
+    if (muted) this.stopHeart()
+    else if (this.chase) this.startHeart()
     try {
       if (this.master) this.master.gain.value = muted ? 0 : MASTER_GAIN
     } catch {}
@@ -71,6 +87,7 @@ export class RabbitersSfx {
 
   /** Soft heartbeat while a predator is chasing the local rabbit. */
   setChase(active: boolean): void {
+    if (active && !this.chase) this.chaseSince = performance.now()
     this.chase = active
     if (active) this.startHeart()
     else this.stopHeart()
@@ -174,9 +191,9 @@ export class RabbitersSfx {
         break
       }
       case 'taskDone':
-        this.bell(1319, 0, 0.2)
-        this.bell(1760, 0.11, 0.2)
-        this.shimmer(0.45, 0.1, 0.1, 0.05)
+        this.bell(1319, 0, 0.12)
+        this.bell(1760, 0.11, 0.12)
+        this.shimmer(0.45, 0.06, 0.1, 0.05)
         break
       case 'hurt':
         if (now - this.last.hurt < MIN_GAP.hurt) return
@@ -215,9 +232,6 @@ export class RabbitersSfx {
         this.tone(620 * vary(0.04), 900, 0.06, 'sine', { peak: 0.14, attack: 0.004 })
         break
       case 'spotted':
-        if (!event.you) return
-        this.tone(95, 40, 0.34, 'sine', { peak: 0.5 })
-        this.hiss(0.32, 'bandpass', 400, 2200, { peak: 0.14, attack: 0.04, q: 0.8 })
         break
       case 'objective':
       case 'chapter':
@@ -239,14 +253,31 @@ export class RabbitersSfx {
   }
 
   private startHeart(): void {
-    if (this.heart !== null || !this.context) return
-    this.heart = setInterval(() => this.beat(), BEAT_MS)
+    if (this.heart !== null || !this.context || this.muted || !this.chase) return
+    const elapsed = performance.now() - this.chaseSince
+    this.heart = setTimeout(
+      () => {
+        this.heart = null
+        if ((performance.now() - this.chaseSince) % BEAT_MS < MAX_BEAT_LATENESS_MS) this.beat()
+        this.startHeart()
+      },
+      Math.ceil(BEAT_MS - (elapsed % BEAT_MS))
+    )
   }
 
   private stopHeart(): void {
-    if (this.heart !== null) clearInterval(this.heart)
+    if (this.heart !== null) clearTimeout(this.heart)
     this.heart = null
     this.chaseLevel = 0
+    for (const voice of this.heartVoices) {
+      try {
+        voice.stop()
+      } catch {}
+      try {
+        voice.disconnect()
+      } catch {}
+    }
+    this.heartVoices.clear()
   }
 
   private beat(): void {
@@ -255,8 +286,10 @@ export class RabbitersSfx {
     if (!this.ready()) return
     try {
       const level = this.chaseLevel
-      this.tone(72, 46, 0.14, 'sine', { peak: 0.3 * level })
-      this.tone(62, 40, 0.16, 'sine', { peak: 0.2 * level, delay: 0.17 })
+      const first = this.tone(72, 46, 0.14, 'sine', { peak: 0.3 * level })
+      if (first) this.heartVoices.add(first)
+      const second = this.tone(62, 40, 0.16, 'sine', { peak: 0.2 * level, delay: 0.17 })
+      if (second) this.heartVoices.add(second)
     } catch {}
   }
 
@@ -298,7 +331,7 @@ export class RabbitersSfx {
     duration: number,
     type: OscillatorType,
     { delay = 0, attack = 0.008, peak = 0.15, detune = 0 }: ToneOptions = {}
-  ): void {
+  ): OscillatorNode | undefined {
     const context = this.context
     const master = this.master
     if (!context || !master || !this.reserve(duration, delay)) return
@@ -315,11 +348,13 @@ export class RabbitersSfx {
     oscillator.connect(envelope)
     envelope.connect(master)
     oscillator.onended = () => {
+      this.heartVoices.delete(oscillator)
       oscillator.disconnect()
       envelope.disconnect()
     }
     oscillator.start(start)
     oscillator.stop(start + duration + 0.02)
+    return oscillator
   }
 
   private hiss(

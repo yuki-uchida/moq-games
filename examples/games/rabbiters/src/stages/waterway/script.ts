@@ -6,7 +6,18 @@ import { canEnter, type Game, type GameState, type Player, type Predator } from 
 import { flies } from '../../stealth'
 import { heightAt, inZone, npcNear, waterDepth, type Point, type PredatorStart, type Waypoint } from '../../map'
 import type { Marker, Objective, StageScript } from '../../story'
-import { BEAM, CHECKPOINTS, HUBS, PARK_CREATURES, RIVER_CREATURES, ROUTES, SEWER_IDS, SPOTS, ZONES } from './map'
+import {
+  BEAM,
+  beamRect,
+  CHECKPOINTS,
+  HUBS,
+  PARK_CREATURES,
+  RIVER_CREATURES,
+  ROUTES,
+  SEWER_IDS,
+  SPOTS,
+  ZONES
+} from './map'
 
 export const STEP = {
   gama: 0,
@@ -189,11 +200,7 @@ function choreograph(game: Game) {
   const { predators } = game.state
   const find = (id: string) => predators.find((predator) => predator.id === id)
   const worker = find('worker')
-  if (worker) {
-    // The torch lights a patch ahead of the worker: rabbits in it are far easier to see.
-    const ahead = { x: worker.x + Math.sin(worker.angle) * 5.5, z: worker.z + Math.cos(worker.angle) * 5.5 }
-    Object.assign(BEAM, { minX: ahead.x - 3.5, maxX: ahead.x + 3.5, minZ: ahead.z - 3.5, maxZ: ahead.z + 3.5 })
-  } else Object.assign(BEAM, { minX: 1e6, maxX: 1e6, minZ: 1e6, maxZ: 1e6 })
+  Object.assign(BEAM, beamRect(worker))
   for (const predator of predators) {
     unstick(game, predator)
     const shouting = predator.state === 'chase'

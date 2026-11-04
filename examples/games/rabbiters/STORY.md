@@ -159,7 +159,7 @@
 
 - `GameState` に `stage`・`step`（章内の目標番号）・`flags`（章ごとのビット）・`open`（ゲート）・`items`（`{ id, kind, x, y, z, active }`）・`talk`（`{ id, at }` か `null`）。アイテムは巣材と同じく触れると拾い（`player.carrying` を共用。遅く・見つかりやすくなる）、噛まれる・捕まる・退出すると元の位置に戻る。届け先の判定と受け渡しはスクリプトが行う。
 - 会話は各章の `CONVERSATIONS: Record<string, Line[]>`（`Line = { who, text }`、`who` はNPC ID・敵ID・`rabbit`（自分のウサギ）・`narrator`）。1行の表示時間は `1.6 + 文字数 × 0.12` 秒（`lineSeconds`）。クライアントは `talkLine(conversations, talk, time)` で今のセリフを求める。ホストの `game.say(id)` は話し中なら順番待ちに積む（`game.quiet` で空きを確認）。
-- 表示：画面上部の字幕（話し手の名前＋セリフ。名前は `StageDef.names`）と話し手の頭上の吹き出し。`narrator` は字幕のみ。`rabbit` のセリフは `game.say(id, by)` の `by`（話のきっかけになったプレイヤー、`talk.by`）のウサギが話し、名前もそのウサギのもの（省略時はホストのウサギ）。見ている人のウサギではないので、協力プレイでも全員に同じ話し手が見える。
+- 表示：画面下部の字幕（話し手の名前＋セリフ。名前は `StageDef.names`）または話し手の頭上の吹き出し。`narrator` は字幕のみ。`rabbit` のセリフは `game.say(id, by)` の `by`（話のきっかけになったプレイヤー、`talk.by`）のウサギが話し、名前もそのウサギのもの（省略時はホストのウサギ）。見ている人のウサギではないので、協力プレイでも全員に同じ話し手が見える。
 - セリフと敵のひとことの `{name}` は話題のウサギ（`talk.by`、ひとことは追っている相手。いなければモチ）の名前、`{rabbits}` はひとりなら「モチ」、複数なら「モチたち」になる。
 - 敵のひとことはクライアントだけの吹き出し（状態が `suspicious`・`chase`・`search` に変わった時）。既定は scene.ts の `BARKS`、`StageDef.barks` で敵IDか種類ごとに上書き（例：家の `mom` は「{name}？」「あっ、{name}！」）。
 - Eを押している間、ホストは毎ティック `script.interact(game, player, held = true, pressed)` を呼ぶ（`pressed` は押した最初のティックだけ真）。`true` を返すと巣の破壊・仲間の救助より優先。NPCのそばでは「E で話す（名前）」のヒントが出る。

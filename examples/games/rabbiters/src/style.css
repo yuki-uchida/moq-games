@@ -23,6 +23,10 @@ button,
 input {
   font: inherit;
 }
+#app {
+  position: relative;
+  height: calc(100% - var(--subtitle-height, 0px));
+}
 button {
   cursor: pointer;
 }
@@ -53,23 +57,6 @@ input:focus-visible {
 .alert-overlay.spotted {
   opacity: 1;
   background: radial-gradient(ellipse at center, transparent 45%, rgb(214 44 40 / 0.55) 100%);
-  animation: spotted-flash 0.9s ease-out;
-}
-@keyframes spotted-flash {
-  0% {
-    background-color: rgb(255 240 220 / 0.55);
-  }
-  25% {
-    background-color: rgb(214 44 40 / 0.18);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .alert-overlay.spotted {
-    animation: none;
-  }
 }
 #world canvas {
   display: block;
@@ -1004,19 +991,16 @@ button:active:not(:disabled) {
   font-size: 12px;
   padding: 0 10px;
 }
-/* Conversation subtitle: speaker name over the line; high on wide screens so it never hides the rabbit. */
 .subtitle {
-  position: absolute;
-  left: 50%;
-  top: 12%;
-  transform: translateX(-50%);
-  width: min(640px, calc(100% - 32px));
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
   display: grid;
   gap: 4px;
-  padding: 12px 18px;
-  border-radius: 8px;
-  background: #0d211bdd;
-  box-shadow: 0 8px 26px #0006;
+  padding: 8px max(12px, calc((100% - 640px) / 2));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: #0d211b;
   pointer-events: none;
   font-size: 15px;
   line-height: 1.6;
@@ -1049,12 +1033,6 @@ button:active:not(:disabled) {
 /* A season banner raised with a chapter title waits for the title to fade. */
 .title-card.show ~ .chapter-banner.show {
   animation-delay: 4.3s;
-}
-@media (max-width: 700px) {
-  .subtitle {
-    top: auto;
-    bottom: 30%;
-  }
 }
 .title-card p {
   margin: 0;
@@ -1166,18 +1144,13 @@ button:active:not(:disabled) {
     bottom: 214px;
   }
 }
-/* Landscape phones: subtitles sit in the top gap between the card column and the area label. */
 @media (pointer: coarse) and (max-height: 550px) and (orientation: landscape) {
   .interaction-hint {
     max-width: calc(100% - 420px);
   }
-  .subtitle {
-    top: 56px;
-    bottom: auto;
-    width: calc(100% - 340px);
-    padding: 8px 12px;
-    font-size: 12px;
-  }
+}
+#app:has(.fx-threat:not([hidden]), .fx-detection.fx-on) :is(.title-card, .chapter-banner) {
+  visibility: hidden;
 }
 .icon-sprite {
   position: absolute;
@@ -1209,7 +1182,7 @@ button:active:not(:disabled) {
   fill: currentColor;
 }
 /* In cover: the screen edge closes in with leafy green. */
-.alert-overlay.covered {
+.alert-overlay.covered:not(.spotted) {
   opacity: 1;
   background: radial-gradient(ellipse at center, transparent 48%, rgb(24 74 42 / 0.6) 100%);
 }

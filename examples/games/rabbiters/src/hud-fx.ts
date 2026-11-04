@@ -1,5 +1,42 @@
 import './fx.css'
 import type { JuiceEvent } from './juice-events'
+import type { GameState } from './game'
+import type { ThreatTracker } from './audio'
+
+export interface ThreatStatus {
+  mode: 'clear' | 'suspicious' | 'chase' | 'search'
+  count: number
+  suspicion: number
+}
+
+export function threatFor(state: GameState | undefined, localPlayerId: string, tracker?: ThreatTracker): ThreatStatus {
+  const player = state?.players.find((entry) => entry.id === localPlayerId)
+  const clear: ThreatStatus = { mode: 'clear', count: 0, suspicion: 0 }
+  if (!state || state.phase !== 'playing' || !player || player.downed) return clear
+  const predators = state.predators.filter(
+    (predator) => predator.targetId === player.id || tracker?.targets.get(predator.id)?.has(player.id)
+  )
+  const count = predators.filter((predator) => predator.state === 'chase').length
+  if (count) return { mode: 'chase', count, suspicion: 1 }
+  const suspicious = predators.filter((predator) => predator.state === 'suspicious')
+  return suspicious.length
+    ? {
+        mode: 'suspicious',
+        count: suspicious.length,
+        suspicion: Math.max(...suspicious.map((predator) => predator.suspicion))
+      }
+    : state.predators.some(
+          (predator) => predator.state === 'search' && tracker?.targets.get(predator.id)?.has(player.id)
+        )
+      ? {
+          mode: 'search',
+          count: state.predators.filter(
+            (predator) => predator.state === 'search' && tracker?.targets.get(predator.id)?.has(player.id)
+          ).length,
+          suspicion: 1
+        }
+      : clear
+}
 
 export type PopupTone = 'good' | 'gold' | 'warm' | 'hot' | 'bad' | 'info' | 'alert'
 export type PopupSize = 'sm' | 'md' | 'lg' | 'xl'
@@ -107,11 +144,18 @@ interface PopupSlot {
 
 export class HudFx {
   private readonly layer: HTMLElement
+  private readonly detectionLayer: HTMLElement
   private readonly popups: PopupSlot[] = []
   private readonly flashes: Record<FlashKind, HTMLElement>
   private readonly burst: HTMLElement
   private readonly chaseEl: HTMLElement
   private readonly hiddenEl: HTMLElement
+  private readonly threatEl: HTMLElement
+  private readonly detectionEl: HTMLElement
+  private readonly detectionHint: HTMLElement
+  private transientDetection = false
+  private threatMode: ThreatStatus['mode'] = 'clear'
+  private releaseTimer?: ReturnType<typeof setTimeout>
   private readonly confettiTimers = new Set<ReturnType<typeof setTimeout>>()
   private readonly doc: Document
   private disposed = false
@@ -122,6 +166,26 @@ export class HudFx {
     this.layer.setAttribute('aria-hidden', 'true')
     this.chaseEl = this.child('fx-vignette fx-chase')
     this.hiddenEl = this.child('fx-vignette fx-cover')
+    this.detectionEl = this.child('fx-detection')
+    this.detectionLayer = this.make('div', 'fx-layer')
+    this.detectionLayer.setAttribute('aria-hidden', 'true')
+    this.detectionLayer.appendChild(this.detectionEl)
+    const signal = this.make('span', 'fx-detection-signal')
+    signal.textContent = '!'
+    const message = this.make('strong', 'fx-detection-message')
+    message.textContent = '見つかった！'
+    this.detectionHint = this.make('span', 'fx-detection-hint')
+    this.detectionHint.textContent = 'ぴんち！ 逃げよう！'
+    this.detectionEl.appendChild(signal)
+    this.detectionEl.appendChild(message)
+    this.detectionEl.appendChild(this.detectionHint)
+    this.detectionEl.addEventListener('animationend', () => {
+      this.transientDetection = false
+      this.detectionEl.classList.remove('fx-on')
+      this.detectionLayer.style.setProperty('z-index', '4')
+    })
+    this.threatEl = this.child('fx-threat')
+    this.threatEl.hidden = true
     this.flashes = {
       hurt: this.child('fx-flash fx-flash-hurt'),
       gold: this.child('fx-flash fx-flash-gold'),
@@ -143,12 +207,20 @@ export class HudFx {
       el.addEventListener('animationend', () => el.classList.remove('fx-on'))
     }
     root.appendChild(this.layer)
+    root.appendChild(this.detectionLayer)
   }
 
-  emit(event: JuiceEvent, screen?: { x: number; y: number } | null): void {
+  emit(event: JuiceEvent, screen?: { x: number; y: number } | null, aboveResult = false): void {
     if (this.disposed) return
+    if (event.type === 'lost' && this.transientDetection) this.detectionLayer.style.setProperty('z-index', '6')
+    if (event.type === 'spotted' && event.you && this.threatMode !== 'chase') {
+      this.detectionHint.textContent = 'ぴんち！'
+      this.transientDetection = true
+      if (aboveResult) this.detectionLayer.style.setProperty('z-index', '6')
+      retrigger(this.detectionEl, 'fx-on')
+    }
     const popup = popupFor(event)
-    if (popup) this.showPopup(popup, screen ?? null)
+    if (popup && event.type !== 'spotted') this.showPopup(popup, screen ?? null, event.type)
     const flash = flashFor(event)
     if (flash) this.flash(flash)
     const haptic = hapticFor(event)
@@ -165,15 +237,68 @@ export class HudFx {
     this.chaseEl.classList.toggle('fx-active', active)
   }
 
+  setThreat(threat: ThreatStatus, showRelease = true): void {
+    if (this.disposed) return
+    const previous = this.threatMode
+    this.threatMode = threat.mode
+    if (threat.mode === 'clear' && previous === 'clear' && showRelease) return
+    clearTimeout(this.releaseTimer)
+    this.threatEl.dataset.mode = threat.mode
+    this.threatEl.style.setProperty('--threat-level', String(Math.max(0, Math.min(1, threat.suspicion))))
+    this.threatEl.hidden = threat.mode === 'clear'
+    if (threat.mode !== 'chase' && !this.transientDetection) this.detectionEl.classList.remove('fx-on')
+    if (threat.mode === 'chase') {
+      this.threatEl.textContent = `! 見つかった · ${threat.count}体が追跡中`
+      if (previous !== 'chase') {
+        this.transientDetection = true
+        this.detectionHint.textContent = 'ぴんち！ 逃げよう！'
+        for (const slot of this.popups) {
+          if (slot.el.dataset.event !== 'escaped') continue
+          slot.busy = false
+          slot.el.hidden = true
+        }
+        retrigger(this.detectionEl, 'fx-on')
+      }
+    } else if (threat.mode === 'suspicious') {
+      this.threatEl.textContent = '? 気づかれそう · そっと隠れよう'
+    } else if (threat.mode === 'search') {
+      this.threatEl.textContent = '? まだ捜索中 · 隠れて待とう'
+    } else {
+      if (!this.transientDetection) this.detectionEl.classList.remove('fx-on')
+      if (showRelease && (previous === 'chase' || previous === 'search')) {
+        this.threatEl.hidden = false
+        this.threatEl.textContent = '✓ 追跡が途切れた · ひと息'
+        this.releaseTimer = setTimeout(() => {
+          this.threatEl.hidden = true
+        }, 1800)
+      }
+    }
+  }
+
+  reset(preserveDetection = false): void {
+    if (!preserveDetection) this.transientDetection = false
+    this.detectionLayer.style.setProperty('z-index', this.transientDetection ? '6' : '4')
+    this.setThreat({ mode: 'clear', count: 0, suspicion: 0 }, false)
+    for (const slot of this.popups) {
+      slot.busy = false
+      slot.el.hidden = true
+    }
+    for (const el of [...Object.values(this.flashes), this.burst]) el.classList.remove('fx-on')
+  }
+
   setHidden(hidden: boolean): void {
     this.hiddenEl.classList.toggle('fx-active', hidden)
   }
 
   dispose(): void {
+    this.transientDetection = false
+    this.detectionEl.classList.remove('fx-on')
     this.disposed = true
+    clearTimeout(this.releaseTimer)
     for (const t of this.confettiTimers) clearTimeout(t)
     this.confettiTimers.clear()
     this.layer.remove()
+    this.detectionLayer.remove()
   }
 
   private make(tag: string, cls: string): HTMLElement {
@@ -188,7 +313,7 @@ export class HudFx {
     return el
   }
 
-  private showPopup(spec: PopupSpec, screen: { x: number; y: number } | null): void {
+  private showPopup(spec: PopupSpec, screen: { x: number; y: number } | null, event: JuiceEvent['type']): void {
     const layerBox = this.layer.getBoundingClientRect()
     const w = layerBox.width || (typeof innerWidth === 'number' ? innerWidth : 800)
     const h = layerBox.height || (typeof innerHeight === 'number' ? innerHeight : 600)
@@ -205,6 +330,7 @@ export class HudFx {
     slot.startedAt = now
     const el = slot.el
     el.hidden = false
+    el.dataset.event = event
     el.textContent = spec.text
     el.className = `fx-popup fx-tone-${spec.tone} fx-size-${spec.size}`
     el.style.setProperty('--fx-x', `${Math.round(x)}px`)

@@ -136,6 +136,16 @@ export interface Nest extends Omit<Food, 'kind'> {
 }
 
 export interface GameState {
+  discoveries?: {
+    predatorId: string
+    targetId: string
+    count: number
+    stage?: number
+    time?: number
+    x: number
+    y: number
+    z: number
+  }[]
   time: number
   players: Player[]
   predators: Predator[]
@@ -186,7 +196,7 @@ const MAX_STAND = 1.5 // nothing can rest on steeper ground: cliff faces are not
 /** Rabbit heights: standing, and crouched (low sofas and parked cars need a crouch). */
 export const RABBIT_STAND = 1.3
 export const RABBIT_CROUCH = 0.8
-const SPRINT_NOISE = 1.3 // sprinting thumps: predators notice the rabbit from further away
+export const SPRINT_NOISE = 1.3 // sprinting thumps: predators notice the rabbit from further away
 const distance = (first: { x: number; z: number }, second: { x: number; z: number }) =>
   Math.hypot(first.x - second.x, first.z - second.z)
 const round = (value: number) => Math.round(value * 100) / 100
@@ -392,7 +402,7 @@ export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover
 }
 
 /** Whether this predator can perceive a rabbit in this cover at all (before range, angle and sight lines). */
-function exposed(predator: Predator, player: { x: number; z: number }, cover: Cover): boolean {
+export function exposed(predator: Predator, player: { x: number; z: number }, cover: Cover): boolean {
   if (cover === 'open') return true
   if (cover === 'canopy') return !flies(predator.kind)
   if (cover === 'water') return predator.kind === 'crocodile'
@@ -471,7 +481,12 @@ export const progress = (state: Pick<GameState, 'stage' | 'chapter' | 'step'>) =
  * in the den stays there: only a bundle that was in someone's mouth returns to the field.
  */
 export function retryState(checkpoint: GameState, current: GameState): GameState {
-  const state: GameState = { ...structuredClone(checkpoint), time: current.time, talk: null }
+  const state: GameState = {
+    ...structuredClone(checkpoint),
+    time: current.time,
+    talk: null,
+    discoveries: structuredClone(current.discoveries)
+  }
   state.items = state.items.map((item) => ({
     ...item,
     active: item.active || state.players.some((player) => player.carrying === item.id)
@@ -527,6 +542,7 @@ export class Game {
     this.seed = Number.isFinite(seed) ? seed >>> 0 : 1
     this.state = {
       time: 0,
+      discoveries: [],
       players: [],
       foods: [],
       nests: [],
@@ -554,6 +570,11 @@ export class Game {
     const game = new Game(seed, mapTerrain, state.stage)
     game.talkQueue = []
     game.state = state
+    game.state.discoveries = state.players.flatMap((player) => {
+      const entries = (state.discoveries ?? []).filter((entry) => entry.targetId === player.id)
+      const latest = entries.at(-1)
+      return latest ? [{ ...latest, count: entries.reduce((sum, entry) => sum + entry.count, 0) }] : []
+    })
     return game
   }
 
@@ -571,6 +592,7 @@ export class Game {
   }
 
   private enterStage(stage: number) {
+    for (const entry of this.state.discoveries ?? []) entry.stage ??= this.state.stage
     setStage(stage)
     setGates(0)
     const state = this.state
@@ -852,6 +874,7 @@ export class Game {
     if (leaving) this.dropStraw(leaving)
     this.trails.delete(id)
     this.state.players = this.state.players.filter((player) => player.id !== id)
+    this.state.discoveries = this.state.discoveries?.filter((entry) => entry.targetId !== id)
     this.inputs.delete(id)
     this.movements.delete(id)
     this.dropIn.delete(id)
@@ -1147,6 +1170,10 @@ export class Game {
       let home = this.homes.get(predator.id)
       if (!home) this.homes.set(predator.id, (home = { x: predator.x, z: predator.z }))
       const before = { x: predator.x, y: predator.y, z: predator.z }
+      const previousTarget = predator.state === 'chase' ? predator.targetId : null
+      const alreadyChased = new Set(
+        state.predators.filter((hunter) => hunter.state === 'chase').map((hunter) => hunter.targetId)
+      )
       const chased = updatePredator(predator, this.mind(predator.id), targets, {
         dt,
         time: state.time,
@@ -1181,6 +1208,26 @@ export class Game {
         Object.assign(predator, { state: 'patrol', targetId: null, suspicion: 0 })
         predator.angle = Math.atan2(predator.x - BURROW.x, predator.z - BURROW.z)
         Object.assign(this.mind(predator.id), { trail: null, lastKnown: null, linger: 0 })
+      }
+      if (
+        chased &&
+        predator.state === 'chase' &&
+        previousTarget !== chased.id &&
+        !alreadyChased.has(chased.id) &&
+        state.players.some((player) => player.id === chased.id)
+      ) {
+        const discoveries = (state.discoveries ??= [])
+        const count =
+          discoveries.filter((entry) => entry.targetId === chased.id).reduce((sum, entry) => sum + entry.count, 0) + 1
+        state.discoveries = discoveries.filter((entry) => entry.targetId !== chased.id)
+        state.discoveries.push({
+          predatorId: predator.id,
+          targetId: chased.id,
+          count,
+          stage: state.stage,
+          time: state.time,
+          ...before
+        })
       }
       const target =
         chased &&

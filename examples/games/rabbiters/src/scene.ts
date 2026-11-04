@@ -524,8 +524,8 @@ export class RabbitersScene {
     let scale = 0
     if (state === 'chase') {
       material.map = this.markerTexture('!', '#d8342c')
-      scale = since < 0.15 ? 0.3 + (since / 0.15) * 1.3 : since < 0.4 ? 1.6 - ((since - 0.15) / 0.25) * 0.5 : 1.1
-      if (since > 1.6) scale = 0.8
+      if (this.fx.prefersReducedMotion || since > 1.6) scale = 0.8
+      else scale = since < 0.15 ? 0.3 + (since / 0.15) * 1.3 : since < 0.4 ? 1.6 - ((since - 0.15) / 0.25) * 0.5 : 1.1
       material.opacity = 1
     } else if (state === 'suspicious' || state === 'search') {
       const active = state === 'suspicious'
