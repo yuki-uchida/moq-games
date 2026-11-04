@@ -59,6 +59,7 @@ import {
 import { showTitle } from './title'
 import { setupHelp } from './help'
 import { createTutorial } from './tutorial'
+import { detailHtml, forecastHtml, terrainText, unitCardHtml } from './cards'
 import { guideText, legendItems, objectiveText, phaseLabel, roleNames } from './hud'
 let busy = false
 let ready = false
@@ -153,7 +154,7 @@ const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
 field.insertAdjacentHTML(
   'beforeend',
-  '<div id="phase-banner" hidden aria-live="polite"></div><div id="legend" aria-hidden="true"></div><div id="actor" hidden aria-hidden="true"></div>'
+  '<div id="phase-banner" hidden aria-live="polite"></div><div id="legend" aria-hidden="true"></div><div id="actor" hidden aria-hidden="true"></div><div id="terrain" hidden aria-hidden="true"></div>'
 )
 document
   .querySelector('.status')!
@@ -165,7 +166,7 @@ document
   .querySelector('#selection')!
   .insertAdjacentHTML(
     'afterend',
-    '<button id="detail-button" aria-label="ユニット詳細" title="ユニット詳細" disabled>ⓘ</button>'
+    '<div class="console-side"><button id="detail-button" aria-label="ユニット詳細" title="ユニット詳細" disabled>ⓘ</button></div>'
   )
 app.insertAdjacentHTML(
   'beforeend',
@@ -237,9 +238,9 @@ const story = new StoryFlow(
 )
 const cells: HTMLButtonElement[] = []
 document
-  .querySelector('#selection')!
+  .querySelector('.console-side')!
   .insertAdjacentHTML(
-    'afterend',
+    'beforeend',
     '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false" title="タッチ選択補助">⊞</button>'
   )
 app.insertAdjacentHTML(
@@ -416,30 +417,7 @@ let detailTrigger: HTMLElement | null = null
 function openDetail(unit: Unit, trigger: HTMLElement) {
   if (busy || !ready || detail.open) return
   detailTrigger = trigger
-  const notes = [
-    unit.boss ? '♛ ボス' : '',
-    unit.ai === 'hold'
-      ? 'その場から動かない'
-      : unit.ai === 'guard' && !unit.alerted
-        ? '近づくか攻撃されるまで待機'
-        : '',
-    unit.heal
-      ? `杖で味方を ${unit.heal} 回復 · 射程 1–2`
-      : unit.side === 'ally'
-        ? unit.role === 'archer'
-          ? '狼に +3'
-          : unit.role === 'soldier'
-            ? 'ゴブリンに +1'
-            : '魔法は盾を無視'
-        : unit.role === 'wolf'
-          ? '弓に弱い（+3）'
-          : unit.role === 'goblin'
-            ? '剣に弱い（+1）'
-            : ''
-  ].filter(Boolean)
-  const note = notes.join(' · ')
-  document.querySelector('#detail-content')!.innerHTML =
-    `${portrait(unit)}<h2 id="detail-title">${unit.name}</h2><p>${roleNames[unit.role] ?? unit.role} · Lv ${unit.level}</p>${unit.side === 'ally' ? `<label>EXP ${unit.exp}/100 <progress max="100" value="${unit.exp}"></progress></label>` : ''}<p>♥ HP ${unit.hp}/${unit.max} · ⚔ 攻撃 ${unit.power} · ⛨ 防御 ${unit.def}</p><p>◎ 射程 ${unit.range} · ◇ 移動 ${unit.move} · ⬡ 盾 ${unit.armor ?? 0}</p><p>${note}</p>`
+  document.querySelector('#detail-content')!.innerHTML = detailHtml(unit, ready ? stage.portrait(unit.role) : '')
   detail.showModal()
   document.querySelector<HTMLButtonElement>('#detail-close')!.focus()
 }
@@ -490,12 +468,19 @@ function showForecast(unit: Unit, target: Unit, healing: boolean) {
   pendingHeal = healing
   forecastTrigger = cells[target.y * size + target.x]
   const preview = healing ? healForecast(unit, target) : forecast(game, unit, target)
-  const amount = healing ? preview.after - target.hp : target.hp - preview.after
   const chips = healing ? [] : forecast(game, unit, target).chips
   const card = document.querySelector<HTMLElement>('#forecast')!
   card.hidden = false
   card.setAttribute('aria-label', healing ? '回復予測' : '攻撃予測')
-  card.innerHTML = `<div>${portrait(unit)} ${unit.name} → ${portrait(target)} ${target.name}　♥ ${target.hp} → ${preview.after}　${healing ? '+' : '−'}${amount} ${!healing && preview.after === 0 ? '撃破' : ''}</div><div>${chips.map((chip) => `<span class="modifier">${chip}</span>`).join('')}</div><button id="confirm">${healing ? '回復' : '攻撃'}</button><button id="cancel-forecast">やめる</button>`
+  card.innerHTML = forecastHtml({
+    attacker: unit,
+    target,
+    attackerSrc: ready ? stage.portrait(unit.role) : '',
+    targetSrc: ready ? stage.portrait(target.role) : '',
+    healing,
+    after: preview.after,
+    chips
+  })
   card.querySelector('#confirm')!.addEventListener('click', () => void choose(target.x, target.y))
   card.querySelector('#cancel-forecast')!.addEventListener('click', () => cancelForecast())
   card.onkeydown = (event) => {
@@ -552,12 +537,28 @@ function followCamera(unit: Unit | undefined, legal: Map<string, number>, reach:
   focused = focus
   if (unit && focus && !unit.done) camera.focus([unit, ...[...legal.keys(), ...(unit.moved ? reach : [])].map(cellAt)])
 }
+let hoverCell = { x: -1, y: -1 }
+let selectionHtml = ''
+const terrainEl = document.querySelector<HTMLElement>('#terrain')!
+/** Describe the terrain under the last hovered or focused cell (ally phase only). */
+function updateTerrain() {
+  const show =
+    ready && hoverCell.x >= 0 && game.phase === 'ally' && document.querySelector<HTMLElement>('#result')!.hidden
+  terrainEl.hidden = !show
+  terrainEl.textContent = show ? terrainText(game, hoverCell.x, hoverCell.y) : ''
+}
 /** Preview an enemy's move and strike range while it is hovered or focused. */
 function hover(x: number, y: number) {
   const id = game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.x === x && u.y === y)?.id
-  if (id === hovered) return
+  const cellChanged = x !== hoverCell.x || y !== hoverCell.y
+  hoverCell = { x, y }
+  if (id === hovered) {
+    if (cellChanged) updateTerrain()
+    return
+  }
   hovered = id
   if (!busy) render()
+  else updateTerrain()
 }
 render = () => {
   document.querySelector<HTMLElement>('#app main')!.inert = titleOpen() || !contextAvailable
@@ -626,10 +627,21 @@ render = () => {
   const actor = document.querySelector<HTMLElement>('#actor')!
   actor.hidden = !acting
   if (acting) actor.textContent = `▼ ${acting.name}（${roleNames[acting.role] ?? acting.role}）の行動`
-  document.querySelector('#selection')!.textContent = unit
-    ? `${unit.name} Lv${unit.level} EXP ${unit.exp}　♥ ${unit.hp}/${unit.max}　⚔ ${unit.power}　⛨ ${unit.def}　◎ ${unit.range}　◇ ${unit.move}${unit.armor ? `　⬡ ${unit.armor}` : ''}`
-    : 'ユニットを選ぶと能力を表示'
+  const cardUnit = unit ?? game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.id === (hovered ?? inspected))
+  const selectionEl = document.querySelector<HTMLElement>('#selection')!
+  const cardHtml = cardUnit
+    ? unitCardHtml(cardUnit, ready ? stage.portrait(cardUnit.role) : '')
+    : '<p class="unit-empty">ユニットを選ぶと能力を表示</p>'
+  // Portraits are data URLs: only replace the card when it changes, and keep the markup out of the DOM.
+  if (cardHtml !== selectionHtml) {
+    selectionHtml = cardHtml
+    selectionEl.innerHTML = cardHtml
+  }
+  selectionEl.className = cardUnit ? 'unit-card' : ''
+  if (cardUnit) selectionEl.dataset.side = cardUnit.side
+  else delete selectionEl.dataset.side
   document.querySelector('#log')!.textContent = game.log
+  updateTerrain()
   updateGuide()
   ;(document.querySelector('#detail-button') as HTMLButtonElement).disabled = busy || !ready || !(selected ?? inspected)
   document.querySelector<HTMLElement>('#fast')!.hidden = game.phase !== 'enemy'
@@ -738,13 +750,8 @@ async function choose(x: number, y: number) {
     cancelForecast(false)
     selected = target.id
     tutorial.advance('select')
-    game.log = target.heal
-      ? '杖：負傷した味方を回復 · 射程 1–2'
-      : target.role === 'archer'
-        ? '弓：狼に +3 · 射程 3'
-        : target.role === 'mage'
-          ? '魔法：装甲を無視 · 射程 2'
-          : '剣：ゴブリンに +1 · 射程 1'
+    // The unit card shows the stats and matchups; the log just confirms the choice.
+    game.log = `${target.name}（${roleNames[target.role] ?? target.role}）を選択`
   } else if (unit) {
     const before = snapshot(game)
     let changed = false
