@@ -407,7 +407,6 @@ function modal(title, message) {
   dialog.showModal()
   dialog.querySelector('.sheet').scrollTop = 0
 }
-/** Keyboard-only pause (Space); the battlefield has no pause button. */
 function togglePause() {
   tick(performance.now())
   if (dialog.open || !$('map').hidden || clock.pending) return
@@ -415,6 +414,7 @@ function togglePause() {
   clock.reset(performance.now())
   syncAudio()
 }
+$('pause').onclick = togglePause
 $('upgrade').onclick = () => {
   invest()
 }
@@ -907,6 +907,9 @@ function draw() {
   const alert = state.alert && state.time - state.alert.at < 2.5 ? state.alert.text : ''
   $('notice').textContent = paused ? 'Ⅱ' : alert
   $('notice').classList.toggle('paused', paused || !!alert)
+  $('pause').textContent = paused ? '▶' : 'Ⅱ'
+  $('pause').setAttribute('aria-label', paused ? '再開' : '一時停止')
+  $('pause').setAttribute('aria-pressed', String(paused))
   buttons.forEach((b, i) => {
     const d = state.deck[i]
     b.disabled = paused || !!state.result || state.gold < d.cost || state.cooldowns[i] > 0
@@ -954,8 +957,7 @@ function tick(now) {
     resultVisual = { report, elapsed: 0 }
   }
   if (!paused) {
-    const alive = new Set(state.units)
-    for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
+    fallen.push(...state.deaths.splice(0))
     for (let index = fallen.length - 1; index >= 0; index--)
       if (
         state.time + (resultVisual?.elapsed ?? 0) - fallen[index].at >
