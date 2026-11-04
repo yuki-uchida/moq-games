@@ -30,7 +30,7 @@ export function createGame(stage, deck, seed) {
 }
 `
 const main = (await fs.readFile(new URL('./main.js', import.meta.url), 'utf8'))
-  .replace('contact(u), y)', 'recordContact(u, contact(u)), y)')
+  .replace('contact(u),\n      y', 'recordContact(u, contact(u)),\n      y')
   .replace(
     'function depthSlots(list) {',
     `function recordContact(u, extra) {
