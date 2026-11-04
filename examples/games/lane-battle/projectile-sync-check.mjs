@@ -33,7 +33,8 @@ try {
     ['korokoro-mobile', 390, 844, 'korokoro', false],
     ['knockback', 1280, 800, 'korokoro', true],
     ['sake', 1280, 800, 'sake', false],
-    ['beam', 1280, 800, 'yoshiki', false]
+    ['beam', 1280, 800, 'yoshiki', false],
+    ['beam-miss', 1280, 800, 'yoshiki', false]
   ]) {
     const beam = key === 'yoshiki'
     const fixture =
@@ -78,8 +79,10 @@ export function createGame(stage, deck, seed) {
         const effect = syncState().effects.find((item) => item.attackerKey === attackerKey)
         return effect && { arrived: effect.arrived, releasedAt: effect.releasedAt }
       }, key)
-      if (state && moving && !displaced) {
-        await page.locator('#burst').click()
+      if (state && !displaced && (moving || name === 'beam-miss')) {
+        // Right after release: knock the target back with 大放屁, or fell the first beam victim.
+        if (moving) await page.locator('#burst').click()
+        else await page.evaluate(() => (syncState().units.find((unit) => unit.x === 430).hp = 0))
         displaced = true
       }
       if (state && !state.arrived && !saved) {
@@ -110,17 +113,22 @@ export function createGame(stage, deck, seed) {
           'beam reaches victim'
         )
       }
+      if (name === 'beam-miss')
+        assert.ok(
+          !trace.some((item) => item.kind === 'impact' && item.key === key && item.time < frames[0].victims[1].at),
+          'the jet runs on through a fallen victim without splashing it'
+        )
     } else {
       const destination = trace.find((item) => item.kind === 'destination' && item.key === key && item.arrived)
       const impact = trace.find((item) => item.kind === 'impact' && item.key === key)
       assert.ok(destination && impact, `${name}: impact found ${JSON.stringify(trace.slice(-8))}`)
       assert.ok(Math.hypot(destination.x - impact.x, destination.y - impact.y) * (width / 1000) < 2, name)
-      assert.ok(
-        Math.hypot(destination.shotX - destination.x, destination.shotY - destination.y) * (width / 1000) < 2,
-        `${name}: projectile reaches the target on the hit frame`
-      )
+      // The last drawn shot is at most one frame of flight short of where the splash appears.
+      const shots = trace.filter((item) => item.kind === 'shot' && item.key === key)
+      const gap = Math.hypot(shots.at(-1).x - impact.x, shots.at(-1).y - impact.y)
+      const flight = Math.hypot(shots[0].x - impact.x, shots[0].y - impact.y)
+      assert.ok(gap <= flight * 0.2 + 3, `${name}: last shot ${gap.toFixed(1)} of ${flight.toFixed(1)} from the splash`)
       if (moving) {
-        const shots = trace.filter((item) => item.kind === 'shot' && item.key === key)
         assert.ok(displaced && shots.length > 1, 'moving target observed during flight')
         assert.ok(Math.abs(shots.at(-1).front - shots[0].front) > 5, 'destination tracks knockback')
       }

@@ -884,8 +884,9 @@ function draw() {
       }
       ctx.restore()
     } else if (e.ranged) {
-      // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
-      const target = units.find((unit) => unit.id === e.targetId)
+      // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame and
+      // home on the target's drawn front, following it if it is knocked back or falls mid-flight.
+      const target = [...units, ...fallen].find((unit) => unit.id === e.targetId)
       const front = target ? drawnFront(target) : { x: e.x + (e.dx ?? 0), y: e.targetY ?? fromY }
       const targetY = front.y
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (visualTime - e.releasedAt) / 0.12))

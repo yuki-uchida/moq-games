@@ -1083,8 +1083,8 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   if (effect.attackerKey === 'yoshiki' && age >= 0 && age < 0.22) {
     const startX = muzzle?.x ?? effect.from
     const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
+    // The jet still runs through a victim that fell before it arrived (that one gets no splash).
     const points = (effect.victims ?? [])
-      .filter((victim) => !victim.missed)
       .map((victim) => ({
         ...victim,
         unit: units.find((unit) => unit.id === victim.id) ?? effect.victimOrigins?.find((unit) => unit.id === victim.id)
