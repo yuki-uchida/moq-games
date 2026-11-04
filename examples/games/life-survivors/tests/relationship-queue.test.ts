@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { EVENTS, timeAtAge } from '../src/data'
+import { EVENTS, MAX_PASSIVE_LEVEL, MAX_WEAPON_LEVEL, timeAtAge } from '../src/data'
 import { Game } from '../src/game'
 import { readView, toView } from '../src/view'
 import { PET_MEMORY } from '../src/weapon-life'
@@ -61,14 +61,20 @@ test('a late relationship choice survives the parent farewell and remains valid 
   game.state.time = EVENTS[care].at - 0.1
   const player = game.addPlayer('late', 'p_over')!
   game.addPlayer('other', 'p_gone')
+  player.weapons[0].lv = MAX_WEAPON_LEVEL
+  player.passives = [{ id: 'p_affection', lv: MAX_PASSIVE_LEVEL - 1 }]
+  const seq = player.choiceSeq
   expect(player.choices).toEqual(['d:yes', 'd:no'])
 
   game.tick(0.2)
-  expect(player.parentDeath).toBeDefined()
+  expect(player.parentDeath?.reward).toBe('passive')
+  expect(player.weapons.some((weapon) => weapon.id === 'p_over')).toBe(false)
+  expect(player.passives).toContainEqual({ id: 'p_affection', lv: MAX_PASSIVE_LEVEL })
   expect(player.choices).toEqual(['d:yes', 'd:no'])
+  expect(player.choiceSeq).toBe(seq)
   expect(readView(toView(game.state))).toBeDefined()
 
-  game.choose(player, 0)
+  game.setInput(player.id, { pick: 0, pickSeq: seq })
   expect(player.dating).toBe(true)
   expect(game.spawnEnemy('temptation')?.targetPlayer).toBe(player.id)
   expect(readView(toView(game.state))).toBeDefined()

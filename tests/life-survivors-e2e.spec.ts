@@ -10,7 +10,10 @@ type Life = {
   view: { time: number; phase: string; players: { id: string; x: number; choices: string[] }[] }
   localId: string
 }
-const life = (page: Page) => page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
+const life = async (page: Page) => {
+  await page.waitForFunction(() => Boolean((window as unknown as { __life?: Life }).__life))
+  return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
+}
 
 test('relationship choice uses the game UI and unlocks the personal rival', async ({ page }) => {
   await page.goto('/')
@@ -1509,6 +1512,17 @@ for (const reward of ['none', 'choice'] as const) {
 for (const viewport of [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
+  { width: 320, height: 500 },
+  { width: 320, height: 501 },
+  { width: 390, height: 501 },
+  { width: 640, height: 501 },
+  { width: 320, height: 320 },
+  { width: 400, height: 320 },
+  { width: 480, height: 320 },
+  { width: 540, height: 320 },
+  { width: 568, height: 320 },
+  { width: 640, height: 568 },
+  { width: 641, height: 568 },
   { width: 844, height: 390 },
   { width: 1280, height: 720 }
 ]) {
@@ -1537,6 +1551,10 @@ for (const viewport of [
     await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
     const handle = await life(page)
     await expect(page.locator('.banner-stage')).toBeVisible()
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
+    await expect(page.locator('.banner-stage')).toHaveCSS('animation-name', 'stage-slide')
+    await expect(page.locator('.banner-stage')).toHaveCSS('display', 'grid')
+    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect(page.locator('.banner-stage')).toBeHidden()
     await handle.evaluate(async (hook) => {
       const path = '/src/data.ts'
@@ -1569,6 +1587,7 @@ for (const viewport of [
     await expect(warning).toContainText('親の介護')
     await expect(page.locator('#weapons .slot')).toHaveCount(6)
     await expect(page.locator('#passives .slot')).toHaveCount(7)
+    await expect(page.locator('#boss-bar')).toBeVisible()
     const inspect = async (selector: string, duration: number) =>
       page.evaluate(
         async ({ selector, duration }) => {
@@ -1592,7 +1611,16 @@ for (const viewport of [
               active: rect(active),
               farewell: rect(farewell),
               weapons: rect(document.querySelector('#weapons')!),
-              passives: rect(document.querySelector('#passives')!)
+              passives: rect(document.querySelector('#passives')!),
+              hand: rect(document.querySelector('.hand')!),
+              hud: rect(document.querySelector('.hud-top')!),
+              boss: rect(document.querySelector('#boss-bar')!),
+              synergyList: rect(document.querySelector('#synergy-list')!),
+              synergyItem: rect(document.querySelector('#synergy-list p')!),
+              text: [
+                ...active.querySelectorAll('.banner-title, .banner-sub, .banner-meta'),
+                ...farewell.querySelectorAll('.banner-title, .banner-sub')
+              ].map(rect)
             })
           }
           farewellAnimation.currentTime = 2000
@@ -1604,8 +1632,16 @@ for (const viewport of [
       )
     const separated = (left: { left: number; right: number; top: number; bottom: number }, right: typeof left) =>
       left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
-    const checkBounds = (positions: Awaited<ReturnType<typeof inspect>>) => {
+    const checkBounds = (positions: Awaited<ReturnType<typeof inspect>>, expanded = false) => {
       for (const position of positions) {
+        if (expanded) {
+          expect(position.hand.top).toBeGreaterThanOrEqual(0)
+          expect(position.hand.bottom).toBeLessThanOrEqual(viewport.height)
+          expect(position.hand.right).toBeLessThanOrEqual(viewport.width)
+          expect(separated(position.hand, position.hud), JSON.stringify(position)).toBe(true)
+          expect(separated(position.hand, position.boss), JSON.stringify(position)).toBe(true)
+          expect(position.synergyItem.top + 12).toBeLessThanOrEqual(position.synergyList.bottom)
+        }
         for (const rect of [position.active, position.farewell]) {
           expect(rect.left).toBeGreaterThanOrEqual(-0.5)
           expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
@@ -1613,14 +1649,34 @@ for (const viewport of [
           expect(rect.bottom).toBeLessThanOrEqual(viewport.height + 0.5)
           expect(separated(rect, position.weapons), JSON.stringify(position)).toBe(true)
           expect(separated(rect, position.passives), JSON.stringify(position)).toBe(true)
+          if (expanded)
+            for (const panel of [position.hand, position.hud, position.boss])
+              expect(separated(rect, panel), JSON.stringify(position)).toBe(true)
         }
+        if (expanded)
+          for (const rect of position.text) {
+            expect(rect.left).toBeGreaterThanOrEqual(-0.5)
+            expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
+            for (const panel of [position.hand, position.hud, position.boss])
+              expect(separated(rect, panel), JSON.stringify(position)).toBe(true)
+          }
         for (const other of positions)
           expect(separated(position.active, other.farewell), JSON.stringify({ position, other })).toBe(true)
       }
     }
     checkBounds(await inspect('.banner-care', 2200))
     await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
-    checkBounds(await inspect('.banner-care', 2200))
+    checkBounds(await inspect('.banner-care', 2200), true)
+    if (viewport.width < 480 && viewport.height <= 500) {
+      const canScroll = await page.locator('.hand').evaluate((node: HTMLElement) => {
+        node.scrollTop = node.scrollHeight
+        const moved = node.scrollTop > 0
+        node.scrollTop = 0
+        return moved
+      })
+      expect(canScroll).toBe(true)
+    }
+    await page.screenshot({ path: testInfo.outputPath(`farewell-expanded-${viewport.width}.png`) })
     await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect(page.locator('#announcements')).toContainText('を看取り、親の武器を手放した。')
     await expect(page.locator('#feed')).toContainText('を継承（未所持ならLv1・所持済みならLv+1）')
@@ -1635,7 +1691,7 @@ for (const viewport of [
     await expect(stage).toContainText('中年')
     checkBounds(await inspect('.banner-stage', 1800))
     await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
-    checkBounds(await inspect('.banner-stage', 1800))
+    checkBounds(await inspect('.banner-stage', 1800), true)
     await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect
       .poll(() =>
