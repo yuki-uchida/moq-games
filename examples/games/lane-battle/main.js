@@ -76,6 +76,7 @@ let muted = false
 const heard = new WeakSet()
 const heardImpacts = new WeakSet()
 const fallen = []
+let resultVisual = null
 let reconciling = false
 let catchupScheduled = false
 function tone(kind) {
@@ -85,6 +86,7 @@ function syncAudio() {
   audio.setRunning(!paused && !document.hidden)
 }
 document.addEventListener('visibilitychange', () => {
+  if (resultVisual) clock.reset(performance.now())
   tick(performance.now())
   syncAudio()
 })
@@ -108,13 +110,13 @@ $('sound').onclick = () => {
 }
 let buttons = []
 function deploy(i) {
-  if (!paused && !clock.pending && summon(state, i)) {
+  if (!paused && !state.result && !clock.pending && summon(state, i)) {
     tone('summon')
     pop(buttons[i])
   }
 }
 function invest() {
-  if (!paused && !clock.pending && upgrade(state)) {
+  if (!paused && !state.result && !clock.pending && upgrade(state)) {
     tone('upgrade')
     pop($('upgrade'))
   }
@@ -139,6 +141,7 @@ function start(stage) {
   selected = stage
   state = createGame(stage, deckOf(campaign), seed())
   shown = false
+  resultVisual = null
   fallen.length = 0
   glides.clear()
   contacts.clear()
@@ -262,12 +265,12 @@ $('world').addEventListener(
 
 // ── 作戦室 (between battles): formation, shop ──
 const statLine = (e) => `HP${e.hp} 攻${e.atk} 速${e.spd}`
-function showUnitDetail(entry, trigger) {
+function showUnitDetail(entry, trigger, shop = false) {
   const type = typeOf(entry.key)
   const detail = document.createElement('dialog')
   detail.className = 'unit-detail'
   detail.setAttribute('aria-labelledby', 'unit-detail-name')
-  detail.innerHTML = `<div class="detail-heading"><img alt="" src="${models.portraitURL(entry.key)}"><div><h2 id="unit-detail-name">${type.name}</h2><p>Lv.${entry.level} · ${type.cost}💩<br>${statLine(entry)}</p></div></div><p>${type.line}</p><h3>${type.area} ／ ${type.effect}</h3><p>${type.effectLine}</p><button class="detail-close" autofocus>閉じる</button>`
+  detail.innerHTML = `<div class="detail-heading"><img alt="" src="${models.portraitURL(entry.key)}"><div><h2 id="unit-detail-name">${type.name}</h2><p>Lv.${entry.level} · ${type.cost}💩<br>${statLine(entry)}</p></div></div>${shop ? `<p>🧻 ${type.price} · ${type.unlock ? `ステージ${type.unlock}クリアで解禁` : '最初から解禁'}</p>` : ''}<p>${type.line}</p><h3>${type.area} ／ ${type.effect}</h3><p>${type.effectLine}</p><button class="detail-close" autofocus>閉じる</button>`
   detail.querySelector('button').onclick = () => detail.close()
   detail.onclick = (event) => {
     const rect = detail.getBoundingClientRect()
@@ -340,7 +343,15 @@ function renderShop() {
           renderHQ()
         }
       }
-      return b
+      const card = document.createElement('div')
+      card.className = 'roster-card'
+      const info = document.createElement('button')
+      info.className = 'unit-info'
+      info.setAttribute('aria-label', `${t.name}の詳細`)
+      info.textContent = 'ⓘ'
+      info.onclick = () => showUnitDetail({ key: t.key, level: 1, hp: t.hp, atk: t.atk, spd: 0 }, info, true)
+      card.append(b, info)
+      return card
     })
   )
   $('shop-section').hidden = !items.length
@@ -408,7 +419,7 @@ $('upgrade').onclick = () => {
   invest()
 }
 $('burst').onclick = () => {
-  if (!paused && !clock.pending && burst(state)) {
+  if (!paused && !state.result && !clock.pending && burst(state)) {
     tone('burst')
     pop($('burst'))
   }
@@ -577,6 +588,7 @@ function lead(u) {
   return Math.max(0, gap) / closing
 }
 function draw() {
+  const visualTime = state.time + (resultVisual?.elapsed ?? 0)
   const rect = canvas.getBoundingClientRect()
   const dpr = Math.min(devicePixelRatio, 2)
   if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
@@ -672,7 +684,7 @@ function draw() {
     }
     for (const ghost of fallen) {
       ctx.save()
-      DEATH_VFX[ghost.key]?.(ctx, ghost, state.time - ghost.at, layer, drawX(ghost), laneY(ghost), aspect)
+      DEATH_VFX[ghost.key]?.(ctx, ghost, visualTime - ghost.at, layer, drawX(ghost), laneY(ghost), aspect)
       ctx.restore()
     }
   }
@@ -683,7 +695,7 @@ function draw() {
     const unit = units.find((entry) => entry.id === id)
     if (!unit || !heldStrike(held, unit, state.time)) contacts.delete(id)
   }
-  for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), state.time - ghost.at)
+  for (const ghost of fallen) models.fallen(ghost, drawX(ghost), laneY(ghost), depth.get(ghost), visualTime - ghost.at)
   for (const u of units) {
     const y = laneY(u)
     ctx.fillStyle = u.side === 1 ? '#5a361a55' : '#4c9ad055'
@@ -720,7 +732,7 @@ function draw() {
   ctx.restore()
   unitEffects('above')
   for (const ghost of fallen) {
-    const age = state.time - ghost.at
+    const age = visualTime - ghost.at
     if (!ghost.flushed || age < 0 || age >= 0.8) continue
     ctx.save()
     ctx.translate(ghost.x, laneY(ghost))
@@ -778,6 +790,7 @@ function draw() {
     drawStatus(ctx, u, drawX(u), y, top, state.time, aspect, calm.matches)
   }
   for (const e of state.effects) {
+    if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
     const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
@@ -788,7 +801,7 @@ function draw() {
         e,
         typeOf(e.attackerKey),
         [...units, ...fallen],
-        state.time,
+        visualTime,
         aspect,
         calm.matches,
         { x: fromX, y: fromY },
@@ -796,7 +809,7 @@ function draw() {
       )
     if (e.blast) {
       // The big fart: a green cloud billowing out over the right (home) half.
-      const t = 1 - e.life / 0.6
+      const t = 1 - (e.life - (resultVisual?.elapsed ?? 0)) / 0.6
       ctx.save()
       ctx.globalAlpha = 0.55 * (1 - t)
       ctx.fillStyle = '#9ccf5a'
@@ -818,7 +831,7 @@ function draw() {
     } else if (e.ranged) {
       // Shots leave the shooter's own emitter (hand, bottle mouth, nozzle…) as posed on the release frame.
       const targetY = e.targetY ?? fromY
-      const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (state.time - e.releasedAt) / 0.12))
+      const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (visualTime - e.releasedAt) / 0.12))
       if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
         const x = fromX + (e.x + (e.dx ?? 0) - fromX) * progress
@@ -879,7 +892,7 @@ function draw() {
         }
         ctx.restore()
       } else if (e.turret && e.arrived && !e.missed) {
-        drawContact(e, targetY, state.time - e.releasedAt - 0.12, aspect)
+        drawContact(e, targetY, visualTime - e.releasedAt - 0.12, aspect)
       }
     }
   }
@@ -893,13 +906,13 @@ function draw() {
   $('notice').classList.toggle('paused', paused || !!alert)
   buttons.forEach((b, i) => {
     const d = state.deck[i]
-    b.disabled = paused || state.gold < d.cost || state.cooldowns[i] > 0
+    b.disabled = paused || !!state.result || state.gold < d.cost || state.cooldowns[i] > 0
     // Recharge shade: the remaining share of the cooldown darkens the card from the top.
     b.style.setProperty('--cd', state.cooldowns[i] / d.cooldown)
   })
-  $('upgrade').disabled = paused || state.level >= 5 || state.gold < upgradeCost(state)
+  $('upgrade').disabled = paused || !!state.result || state.level >= 5 || state.gold < upgradeCost(state)
   $('upgrade').querySelector('b').textContent = state.level >= 5 ? 'MAX' : `${upgradeCost(state)} 💩`
-  $('burst').disabled = paused || state.burst > 0
+  $('burst').disabled = paused || !!state.result || state.burst > 0
   $('burst').style.setProperty('--cd', state.burst / BURST_COOLDOWN)
   $('burst').querySelector('b').textContent = state.burst > 0 ? String(Math.ceil(state.burst)) : ''
 }
@@ -918,6 +931,8 @@ function finish() {
   tone(state.result)
 }
 function tick(now) {
+  if (resultVisual && !paused && !document.hidden && clock.last !== null)
+    resultVisual.elapsed += Math.max(0, (now - clock.last) / 1000)
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
   // The unit objects as they were before this tick's steps: units that fall keep their final state.
   const previous = state.units.slice()
@@ -931,7 +946,10 @@ function tick(now) {
     const alive = new Set(state.units)
     for (const u of previous) if (!alive.has(u)) fallen.push({ ...u, at: state.time })
     for (let index = fallen.length - 1; index >= 0; index--)
-      if (state.time - fallen[index].at > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key)))
+      if (
+        state.time + (resultVisual?.elapsed ?? 0) - fallen[index].at >
+        Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
+      )
         fallen.splice(index, 1)
     let impact = false,
       shot = false
@@ -974,10 +992,21 @@ function tick(now) {
     if (impact) tone('hit')
     if (shot) tone('shot')
   }
+  if (state.result && !resultVisual) {
+    resultVisual = {
+      elapsed: 0,
+      duration:
+        Math.max(
+          0,
+          ...fallen.map((unit) => Math.max(unit.flushed ? 0.8 : 0, koSeconds(unit.key)) - (state.time - unit.at)),
+          ...state.effects.map((effect) => effect.life)
+        ) + 0.15
+    }
+  }
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
   if (!document.hidden) draw()
-  if (state.result && !shown) {
+  if (state.result && !shown && resultVisual.elapsed >= resultVisual.duration) {
     shown = true
     finish()
   }

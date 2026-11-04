@@ -626,7 +626,8 @@ dialog p {
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 6px;
 }
-#roster {
+#roster,
+#shop {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 }
 .roster-card {
@@ -762,9 +763,6 @@ button.link {
   }
   #roster,
   #shop {
-    grid-template-columns: 1fr 1fr;
-  }
-  #roster {
     grid-template-columns: 1fr;
   }
   button.unit img {
