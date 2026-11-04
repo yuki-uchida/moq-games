@@ -39,6 +39,8 @@ export type ForecastCard = {
   targetSrc: string
   healing: boolean
   after: number
+  /** Attack damage as shown on the board and in the log (may exceed the HP actually lost). */
+  damage?: number
   chips: string[]
 }
 
@@ -50,6 +52,7 @@ export function forecastHtml({
   targetSrc,
   healing,
   after,
+  damage,
   chips
 }: ForecastCard): string {
   const amount = healing ? after - target.hp : target.hp - after
@@ -60,7 +63,7 @@ export function forecastHtml({
   const mods = healing
     ? `<span class="modifier base">杖 +${attacker.heal ?? 0}</span>`
     : `<span class="modifier base">攻撃 ${attacker.power}</span>${chips.map((chip) => `<span class="modifier">${chip}</span>`).join('')}<span class="modifier note">反撃なし</span>`
-  return `<p class="fc-title">${healing ? '回復予測' : '攻撃予測'}</p><div class="fc-grid">${unitBox(attacker, attackerSrc, 'ally', `HP ${attacker.hp}/${attacker.max}`)}<div class="fc-mid"><strong class="fc-amount">${healing ? '+' : '−'}${amount}</strong><small>${healing ? '回復' : 'ダメージ'}</small>${!healing && after === 0 ? '<mark class="fc-ko">撃破</mark>' : ''}</div>${unitBox(target, targetSrc, `target ${target.side}`, `HP ${target.hp} → ${after}`, bar)}</div><div class="fc-mods">${mods}</div><div class="fc-actions"><button id="confirm">${healing ? '回復' : '攻撃'}</button><button id="cancel-forecast">やめる</button></div>`
+  return `<p class="fc-title">${healing ? '回復予測' : '攻撃予測'}</p><div class="fc-grid">${unitBox(attacker, attackerSrc, 'ally', `HP ${attacker.hp}/${attacker.max}`)}<div class="fc-mid"><strong class="fc-amount">${healing ? '+' : '−'}${healing ? amount : (damage ?? amount)}</strong><small>${healing ? '回復' : 'ダメージ'}</small>${!healing && after === 0 ? '<mark class="fc-ko">撃破</mark>' : ''}</div>${unitBox(target, targetSrc, `target ${target.side}`, `HP ${target.hp} → ${after}`, bar)}</div><div class="fc-mods">${mods}</div><div class="fc-actions"><button id="confirm">${healing ? '回復' : '攻撃'}</button><button id="cancel-forecast">やめる</button></div>`
 }
 
 /** Full unit sheet for the detail dialog. */

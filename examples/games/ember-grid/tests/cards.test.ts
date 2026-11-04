@@ -79,6 +79,23 @@ describe('forecastHtml', () => {
     expect(html).not.toContain('fc-ko')
     expect(html).toContain('id="confirm">攻撃')
   })
+  it('shows the attack damage, not the HP actually lost', () => {
+    const html = forecastHtml({
+      attacker,
+      target: { ...target, hp: 2, max: 10 },
+      attackerSrc: '',
+      targetSrc: '',
+      healing: false,
+      after: 0,
+      damage: 6,
+      chips: []
+    })
+    const s = t(html)
+    expect(s).toContain('−6')
+    expect(s).toContain('HP 2 → 0')
+    expect(s).toContain('撃破')
+    expect(s).not.toContain('−2')
+  })
   it('marks lethal', () => {
     const html = forecastHtml({
       attacker,
