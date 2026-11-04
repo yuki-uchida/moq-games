@@ -32,6 +32,7 @@ import {
 } from './data'
 import { Effects, PK } from './effects'
 import { RAID, VIEW_HALF } from './game'
+import { petForm, weaponAppearance } from './weapon-life'
 import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
 
 /** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
@@ -1270,12 +1271,14 @@ export class Renderer {
         // ペット: the dog runs at its prey and snaps when it arrives; mirrored by where it is heading.
         const art = sheet('weapon:w_pet')
         const biting = sh.v === 1
-        const frame = pick(biting ? art.bite : art.fly, this.clock * (biting ? 1 : 1) + i * 0.13)
+        const years = view.players[view.shots[i + 6]]?.petAge ?? 0
+        const form = petForm(years)
+        const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
         const flip = cos < 0
         const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
         this.shadow(x, y + 7, 10, 0.24)
         const f = evolved ? evolve(frame) : frame
-        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4))
+        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale)
         if (biting) {
           const sp = pick(fx.spark, this.clock * 2 + i)
           this.art(sp, x + cos * 14, y + sin * 6 - 6, 6, 6, false, 0.9)
@@ -1504,7 +1507,7 @@ export class Renderer {
       }
       default: {
         // aim, homing, bounce, arc, wander: the weapon's own flying frames; fast ones leave afterimages.
-        const art = sheet(`weapon:${def.id}`)
+        const art = sheet(`weapon:${def.id === 'w_sports' ? weaponAppearance(def.id, ageAt(view.time)).art : def.id}`)
         if (def.id === 'w_study') {
           // The pencil points along its flight: one of 16 pre-drawn directions.
           const d = ((Math.round((angle / TAU) * PENCIL_DIRS) % PENCIL_DIRS) + PENCIL_DIRS) % PENCIL_DIRS

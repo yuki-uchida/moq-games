@@ -3,6 +3,7 @@ import { KEY, Raster, ball, part, shadeEdges, type Ramp } from './raster'
 import { arsenalFx, arsenalIcons, arsenalSheets } from './arsenal'
 import { WINGS, WING_KEY, pencil } from './enemies'
 import type { Anim, Sheet } from './sheet'
+import { SPORTS_FORMS } from '../weapon-life'
 
 /**
  * Weapons, their effects, pickups and HUD icons, in the same pixel style (palette ramps, selout, light from
@@ -358,6 +359,34 @@ function soccer(f: number) {
     l.set(11, 11, C.white)
   })
   return r
+}
+
+function sportsBall(kind: string, frame: number) {
+  if (kind === 'soccer') return soccer(frame)
+  const raster = new Raster(N, N)
+  part(raster, (layer) => {
+    const shift = frame % 2
+    if (kind === 'golf' || kind === 'gateball') {
+      layer.thick(10, 4, 20, 24, 2, R.metal[1])
+      layer.thick(kind === 'golf' ? 17 : 12, 25, 26, 25, 4, kind === 'golf' ? R.metal[2] : R.brown[1])
+      ball(layer, 7, 25, 4, 4, kind === 'golf' ? R.paper : R.red)
+    } else {
+      ball(layer, 16, 16, 10, 10, kind === 'basketball' ? R.orange : kind === 'tennis' ? R.green : R.paper)
+      const seam = kind === 'baseball' ? R.red[1] : kind === 'tennis' ? R.paper[0] : R.brown[3]
+      layer.line(10 + shift, 8, 13 + shift, 24, seam)
+      layer.line(22 - shift, 8, 19 - shift, 24, seam)
+      if (kind === 'basketball') {
+        layer.line(7, 16, 25, 16, seam)
+        layer.line(16, 7, 16, 25, seam)
+      }
+      if (kind === 'baseball')
+        for (let row = 10; row < 24; row += 4) {
+          layer.line(9, row, 13, row + 1, seam)
+          layer.line(19, row + 1, 23, row, seam)
+        }
+    }
+  })
+  return raster
 }
 
 /** 勉強: a pencil pointing in one of 16 directions. */
@@ -756,6 +785,12 @@ export function weaponSheets(): Record<string, () => Sheet> {
       alt2: four((f) => friend(f, 2), 10)
     }),
     'weapon:w_sports': () => ({ fly: four(soccer, 12) }),
+    ...Object.fromEntries(
+      SPORTS_FORMS.map((form) => [
+        `weapon:w_sports_${form.key}`,
+        () => ({ fly: four((frame) => sportsBall(form.key, frame), 12) })
+      ])
+    ),
     'weapon:w_study': () => ({
       fly: loop(
         Array.from({ length: PENCIL_DIRS }, (_, d) => pencilDir(d)),
@@ -820,6 +855,17 @@ export function weaponSheets(): Record<string, () => Sheet> {
         ),
         w_friend: icon(friend(0, 0)),
         w_sports: icon(soccer(0)),
+        ...Object.fromEntries(SPORTS_FORMS.map((form) => [`w_sports_${form.key}`, icon(sportsBall(form.key, 0))])),
+        p_petmemory: tiny(32, 32, (layer) => {
+          ball(layer, 16, 21, 6, 5, R.brown)
+          for (const [x, y] of [
+            [7, 14],
+            [13, 8],
+            [20, 8],
+            [26, 14]
+          ])
+            ball(layer, x, y, 3, 4, R.brown)
+        }),
         w_study: icon(pencilDir(14)),
         w_love: icon(wingedHeart(0)),
         w_beauty: icon(new Raster(28, 28).blit(star(0), 4, 4).blit(star(1), 15, 10).blit(star(0), 8, 17)),
