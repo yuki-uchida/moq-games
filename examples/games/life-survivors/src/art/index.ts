@@ -6,6 +6,7 @@ import { ROSTER3_NO_FLIP, roster3Sheets } from './roster3'
 import { weaponSheets } from './weapons'
 import { bullySheet, expenseSheet, flash, germSheet, hsBossSheet, jobSheet, rosterSheets } from './enemies'
 import { deathSheets } from './deaths'
+import { familySheets } from './family'
 import { peopleSheets } from './people'
 import { adultSheet, babySheet, bedSheet, elderSheet, kidSheet } from './player'
 import type { Sheet } from './sheet'
@@ -25,6 +26,7 @@ export const SHEETS: Record<string, () => Sheet> = {
   'player:adult': adultSheet,
   'player:elder': elderSheet,
   'player:bed': bedSheet,
+  ...familySheets,
   'enemy:germ': withFlash(germSheet),
   'enemy:bully': withFlash(bullySheet),
   'enemy:expense': withFlash(expenseSheet),
