@@ -131,7 +131,7 @@ test('enemy fast forward preserves the same phase result', async ({ page }) => {
       await page.getByRole('button', { name: '敵フェイズを早送り' }).click()
       await expect(page.locator('#fast')).toHaveAttribute('aria-pressed', 'true')
     }
-    await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 20000 })
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 20000 })
     outcomes.push(await page.locator('.cell.ally, .cell.enemy').allTextContents())
     outcomes[outcomes.length - 1] = await page
       .locator('.cell.ally, .cell.enemy')
@@ -201,7 +201,7 @@ test('last move waits for an explicit action and field tap fast-forwards', async
   }
   await page.getByRole('button', { name: /2,4 風読み/ }).click()
   await page.getByRole('button', { name: /3,4 木立 移動可能/ }).click()
-  await expect(page.locator('#turn')).toContainText('味方 · 1')
+  await expect(page.locator('#turn')).toContainText('ターン 1 · 味方')
   await expect(page.locator('#wait')).toHaveClass(/recommended/)
   await page.getByRole('button', { name: '↶ 戻す' }).click()
   await expect(page.getByRole('button', { name: /2,4 風読み/ })).toBeVisible()
@@ -210,7 +210,7 @@ test('last move waits for an explicit action and field tap fast-forwards', async
   await expect(page.locator('#phase-banner')).toContainText('敵フェイズ')
   await page.locator('.field').click({ position: { x: 5, y: 5 } })
   await expect(page.locator('#fast')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 20000 })
+  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 20000 })
 })
 
 test('final chapter result with a fallen ally scrolls at every viewport', async ({ page }) => {

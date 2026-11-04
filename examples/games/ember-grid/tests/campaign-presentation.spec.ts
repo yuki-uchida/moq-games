@@ -114,7 +114,7 @@ for (const width of [1280, 390])
       game.units.filter((u) => u.side === 'enemy').forEach((u) => enemyStep(game, u))
       beginAlly(game)
       if (game.phase === 'ally')
-        await expect(page.locator('#turn')).toContainText(`味方 · ${game.turn}`, { timeout: 30000 })
+        await expect(page.locator('#turn')).toContainText(`ターン ${game.turn} · 味方`, { timeout: 30000 })
     }
     expect(healed).toBe(true)
     expect(game.phase).toBe('won')

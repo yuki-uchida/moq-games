@@ -35,11 +35,11 @@ test('starts a battle, attacks, and resumes after ending the turn', async ({ pag
   await page.getByRole('button', { name: '攻撃', exact: true }).click()
   await expect(page.getByRole('button', { name: /7,4 灰牙 HP 2/ })).toBeVisible({ timeout: 30000 })
   await page.getByRole('button', { name: '▶ ターン終了' }).click()
-  await expect(page.locator('#turn')).toContainText('味方 · 2', { timeout: 30000 })
+  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
   await page.reload()
   await page.getByRole('button', { name: /つづきから/ }).click()
   await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
-  await expect(page.locator('#turn')).toContainText('味方 · 2')
+  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方')
   await expect(page.getByRole('button', { name: /4,4 風読み/ })).toBeVisible()
 })
 

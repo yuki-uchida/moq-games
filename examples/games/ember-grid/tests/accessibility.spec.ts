@@ -149,7 +149,7 @@ test('chapter one is playable by keyboard', async ({ page }) => {
       beginEnemy(game)
       game.units.filter((unit) => unit.side === 'enemy').forEach((unit) => enemyStep(game, unit))
       beginAlly(game)
-      await expect(page.locator('#turn')).toContainText(`味方 · ${game.turn}`, { timeout: 30000 })
+      await expect(page.locator('#turn')).toContainText(`ターン ${game.turn} · 味方`, { timeout: 30000 })
       expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false)
     }
   }

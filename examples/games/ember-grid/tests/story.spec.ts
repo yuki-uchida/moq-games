@@ -98,7 +98,7 @@ test('chapter one outro precedes the report', async ({ page }) => {
       beginEnemy(game)
       game.units.filter((unit) => unit.side === 'enemy').forEach((unit) => enemyStep(game, unit))
       beginAlly(game)
-      await expect(page.locator('#turn')).toContainText(`味方 · ${game.turn}`, { timeout: 15000 })
+      await expect(page.locator('#turn')).toContainText(`ターン ${game.turn} · 味方`, { timeout: 15000 })
     }
   }
   expect(game.phase).toBe('won')

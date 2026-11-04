@@ -107,7 +107,7 @@ for (const [width, height] of [
       }
       if (chapter === 3) {
         await expect(page.getByRole('button', { name: /^9,5 .*制圧目標/ })).toHaveClass(/seize/)
-        await expect(page.locator('#objective')).toContainText('✦ ◎ 制圧')
+        await expect(page.locator('#objective')).toContainText('✦ 祠を制圧')
         expect(await page.locator('.cell.seize').evaluate((cell) => getComputedStyle(cell, '::after').content)).toBe(
           '"✦"'
         )
