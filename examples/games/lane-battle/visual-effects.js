@@ -1038,6 +1038,8 @@ export function activeVictims(effect, units, time) {
     .map((victim) => ({ ...victim, unit: units.find((unit) => unit.id === victim.id) }))
 }
 
+const streamTimes = new WeakMap()
+
 export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle, laneY, drawnFront) {
   const style = IMPACT_STYLES[effect.attackerKey]
   if (!style) return
@@ -1047,17 +1049,6 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   const hitAge = age - (effect.ranged && !['cone', 'pierce'].includes(effect.areaKind) ? 0.12 : 0)
   const progress = Math.max(0, Math.min(1, hitAge / 0.22))
   const victims = activeVictims(effect, units, time)
-  const allVictims = (effect.victims ?? [])
-    .filter((victim) => !victim.missed)
-    .map(
-      (victim) =>
-        effect.victimOrigins?.find((unit) => unit.id === victim.id) ?? units.find((unit) => unit.id === victim.id)
-    )
-    .filter(Boolean)
-  const farthest = Math.max(
-    Math.abs(effect.primaryX - effect.from),
-    ...allVictims.map((unit) => Math.abs(unit.x - effect.from))
-  )
   const floor = 367
   const count = reduced ? 3 : 7
   const line = (x1, y1, x2, y2) => {
@@ -1080,7 +1071,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
   ctx.lineWidth = 3
   ctx.lineCap = 'round'
 
-  if (effect.attackerKey === 'yoshiki' && age >= 0 && age < 0.22) {
+  if (['yoshiki', 'aircon'].includes(effect.attackerKey) && age >= 0 && age < 0.22) {
     const startX = muzzle?.x ?? effect.from
     const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
     // The jet still runs through a victim that fell before it arrived (that one gets no splash).
@@ -1094,29 +1085,65 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     let previous = { x: startX, y: startY, at: effect.releasedAt }
     ctx.globalAlpha = Math.min(1, (0.22 - age) / 0.08)
     const path = [previous]
-    if (!points.length && effect.targetId == null) {
+    const previousTime = streamTimes.get(effect) ?? effect.releasedAt
+    const crossed =
+      effect.attackerKey === 'aircon' && points.filter((victim) => previousTime < victim.at && time >= victim.at).at(-1)
+    const displayTime = crossed ? crossed.at : time
+    let pending = false
+    if (effect.attackerKey === 'yoshiki' && !points.length && effect.targetId == null) {
       const progress = Math.min(1, Math.max(0, age / 0.12))
       path.push({ x: startX + (effect.x - startX) * progress, y: startY })
     }
     for (const victim of points) {
       const front = drawnFront(victim.unit)
       const next = { x: front.x, y: (front.y - floor) / aspect, at: victim.at }
-      const progress = Math.max(0, Math.min(1, (time - previous.at) / (next.at - previous.at || 1)))
+      const progress = Math.max(0, Math.min(1, (displayTime - previous.at) / (next.at - previous.at || 1)))
       path.push({ x: previous.x + (next.x - previous.x) * progress, y: previous.y + (next.y - previous.y) * progress })
-      if (progress < 1) break
+      if (progress < 1) {
+        pending = true
+        break
+      }
       previous = next
     }
-    for (const [stroke, width] of [
-      ['#4cb6ed', 10],
-      ['#efffff', 5]
-    ]) {
-      ctx.strokeStyle = stroke
-      ctx.lineWidth = width
+    if (effect.attackerKey === 'aircon') {
+      streamTimes.set(effect, time)
+      if (!crossed && !pending && previous.at <= time) {
+        const reach = effect.from + dir * type.range
+        const end = previous.x + (dir * ((time - previous.at) * type.range)) / 0.12
+        path.push({
+          x: dir > 0 ? Math.max(previous.x, Math.min(reach, end)) : Math.min(previous.x, Math.max(reach, end)),
+          y: previous.y
+        })
+      }
+      const end = path.at(-1).x
+      ctx.globalAlpha = 0.3 * (1 - age / 0.3)
       ctx.beginPath()
-      ctx.moveTo(path[0].x, path[0].y)
-      for (const point of path.slice(1)) ctx.lineTo(point.x, point.y)
-      ctx.stroke()
-    }
+      ctx.moveTo(startX, startY - 5)
+      ctx.lineTo(end, startY - 32)
+      ctx.lineTo(end, startY + 32)
+      ctx.lineTo(startX, startY + 5)
+      ctx.closePath()
+      ctx.fill()
+      ctx.globalAlpha = 0.8 * (1 - age / 0.22)
+      for (let index = 0; index < count; index++) {
+        const fraction = (index / count + age * 4) % 1
+        const x = startX + (end - startX) * fraction
+        const y = startY + (index - (count - 1) / 2) * fraction * 8
+        const tip = dir > 0 ? Math.min(end, x + dir * 8) : Math.max(end, x + dir * 8)
+        line(x - dir * 10, y, tip, y)
+      }
+    } else
+      for (const [stroke, width] of [
+        ['#4cb6ed', 10],
+        ['#efffff', 5]
+      ]) {
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = width
+        ctx.beginPath()
+        ctx.moveTo(path[0].x, path[0].y)
+        for (const point of path.slice(1)) ctx.lineTo(point.x, point.y)
+        ctx.stroke()
+      }
   }
 
   if (effect.attackerKey === 'korokoro' && effect.arrived && !effect.missed && effect.victims?.length) {
@@ -1222,27 +1249,6 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
       ellipse(effect.x + Math.cos(angle) * 26 * t, y + Math.sin(angle) * 26 * t, 15 + 8 * t, 15 + 8 * t)
       ctx.fillStyle = '#554a49'
       ellipse(effect.x + Math.cos(angle) * 32 * t, y - 25 - t * 20 + Math.sin(angle) * 12, 5 + 7 * t, 5 + 7 * t)
-    }
-  }
-
-  if (effect.attackerKey !== 'yoshiki' && age >= 0 && age < 0.22 && ['cone', 'pierce'].includes(effect.areaKind)) {
-    const startX = muzzle?.x ?? effect.from
-    const startY = ((muzzle?.y ?? floor - 30) - floor) / aspect
-    const end = effect.from + dir * farthest * Math.min(1, age / 0.12)
-    ctx.globalAlpha = 0.3 * (1 - age / 0.3)
-    ctx.beginPath()
-    ctx.moveTo(startX, startY - 5)
-    ctx.lineTo(end, startY - (effect.areaKind === 'cone' ? 32 : 9))
-    ctx.lineTo(end, startY + (effect.areaKind === 'cone' ? 32 : 9))
-    ctx.lineTo(startX, startY + 5)
-    ctx.closePath()
-    ctx.fill()
-    ctx.globalAlpha = 0.8 * (1 - age / 0.22)
-    for (let index = 0; index < count; index++) {
-      const fraction = ((index / count + age * 4) % 1) * Math.min(1, age / 0.12)
-      const x = startX + (effect.from + dir * farthest - startX) * fraction
-      const y = startY + (index - (count - 1) / 2) * (effect.areaKind === 'cone' ? fraction * 8 : 2)
-      line(x - dir * 10, y, x + dir * 8, y)
     }
   }
 
