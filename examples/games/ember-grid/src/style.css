@@ -35,7 +35,7 @@ button:focus-visible {
 }
 @media (pointer: coarse) {
   #touch-assist {
-    display: inline-block;
+    display: grid;
   }
 }
 #touch-choices {
@@ -671,7 +671,7 @@ dialog button {
     padding: 8px;
   }
 }
-@media (max-height: 500px) and (max-width: 599px) {
+@media (max-height: 500px) and (max-width: 519px) {
   body {
     height: auto;
     overflow: auto;
@@ -682,13 +682,13 @@ dialog button {
   }
   .field {
     flex: none;
-    height: calc(100dvh - 24px);
+    height: calc(100dvh - 64px);
   }
 }
-@media (max-height: 500px) and (min-width: 600px) {
+@media (max-height: 500px) and (min-width: 520px) {
   main {
     display: grid;
-    grid-template-columns: 1fr 260px;
+    grid-template-columns: 1fr clamp(200px, 40vw, 260px);
     grid-template-rows: 56px auto 1fr;
     max-width: 1000px;
   }
@@ -799,7 +799,7 @@ fieldset label {
     font-size: 14px;
   }
 }
-@media (max-height: 500px) and (min-width: 600px) {
+@media (max-height: 500px) and (min-width: 520px) {
   .status {
     flex-wrap: wrap;
     font-size: 11px;
@@ -1755,7 +1755,7 @@ button:active:not(:disabled) {
     display: none;
   }
 }
-@media (max-height: 500px) and (min-width: 600px) {
+@media (max-height: 500px) and (min-width: 520px) {
   .nav-long {
     display: none;
   }
@@ -1783,7 +1783,7 @@ button:active:not(:disabled) {
     display: none;
   }
 }
-@media (max-height: 500px) and (min-width: 600px) {
+@media (max-height: 500px) and (min-width: 520px) {
   .console {
     padding: 6px 8px;
     row-gap: 2px;
@@ -2200,7 +2200,7 @@ button:active:not(:disabled) {
     translate: -50% -8px;
   }
 }
-@media (max-height: 500px) and (max-width: 599px) {
+@media (max-height: 500px) and (max-width: 519px) {
   #toast {
     position: fixed;
     top: 8px;
@@ -2272,7 +2272,7 @@ button:active:not(:disabled) {
 }
 
 /* Side-column layout: the console never covers the status bar. */
-@media (max-height: 500px) and (min-width: 600px) {
+@media (max-height: 500px) and (min-width: 520px) {
   main {
     grid-template-rows: auto auto minmax(0, 1fr);
   }
@@ -2297,7 +2297,7 @@ button:active:not(:disabled) {
     font-size: 13px;
   }
 }
-@media (max-height: 400px) and (min-width: 600px) {
+@media (max-height: 400px) and (min-width: 520px) {
   main {
     grid-template-rows: 44px auto minmax(0, 1fr);
   }
@@ -2305,7 +2305,7 @@ button:active:not(:disabled) {
     display: none;
   }
 }
-@media (max-height: 340px) and (min-width: 600px) {
+@media (max-height: 340px) and (min-width: 520px) {
   #selection .uc-exp {
     display: none;
   }
@@ -2322,7 +2322,7 @@ button:active:not(:disabled) {
   }
 }
 /* Scroll layout: the first-time tutorial floats over the board. */
-@media (max-height: 500px) and (max-width: 599px) {
+@media (max-height: 500px) and (max-width: 519px) {
   #tutorial:not([hidden]) {
     position: fixed;
     top: 8px;
@@ -2336,7 +2336,7 @@ button:active:not(:disabled) {
   }
 }
 /* Scroll layout: the status bar stays pinned, so turn, phase and objective never scroll away. */
-@media (max-height: 500px) and (max-width: 599px) {
+@media (max-height: 500px) and (max-width: 519px) {
   .status {
     position: sticky;
     top: 0;
@@ -2406,5 +2406,71 @@ button:active:not(:disabled) {
   }
   #help-dialog [role='tab'] {
     flex: none;
+  }
+}
+/* Icon buttons in the console say what they do; the touch assist shows when it is on. */
+.console-side button {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 2px 0;
+  line-height: 1.1;
+}
+.console-side button small {
+  font-size: 9px;
+  letter-spacing: 0;
+  color: #d6e6e0;
+  white-space: nowrap;
+}
+#touch-assist[aria-pressed='true'] {
+  background: #6b5a24;
+  border-color: #ffe27b;
+}
+/* Narrow side column (landscape phones 520–639 px wide): two-row status, compact header. */
+@media (max-height: 500px) and (min-width: 520px) and (max-width: 639px) {
+  .mission-difficulty {
+    display: none;
+  }
+}
+@media (max-height: 500px) and (min-width: 520px) and (max-width: 599px) {
+  header button {
+    width: 36px;
+  }
+}
+@media (max-height: 500px) and (min-width: 520px) and (max-width: 559px) {
+  header h1 {
+    display: none;
+  }
+}
+/* The pinned status bar spans the page padding, which is 8 px on narrow screens. */
+@media (max-height: 500px) and (max-width: 500px) {
+  .status {
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
+}
+/* Short side column: tighter spacing so the info buttons clear the pinned action buttons. */
+@media (max-height: 340px) and (min-width: 520px) {
+  .console {
+    padding-block: 2px;
+  }
+  .console > nav {
+    gap: 4px;
+    padding-top: 2px;
+  }
+  .console-side {
+    gap: 4px;
+  }
+}
+/* Narrow side column: stats on one line and three action buttons per row. */
+@media (max-height: 500px) and (min-width: 520px) and (max-width: 639px) {
+  #selection .uc-stats {
+    font-size: 11px;
+    gap: 0 7px;
+  }
+  .console > nav button {
+    flex-basis: 56px;
+    padding-inline: 2px;
+    font-size: 13px;
   }
 }

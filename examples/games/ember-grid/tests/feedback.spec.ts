@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { cameraSettled, enterBattle } from './shell-helper'
+import { cameraSettled, clickCell, enterBattle } from './shell-helper'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -87,19 +87,28 @@ test('an ally that moved and was deselected can still undo (390x844)', async ({ 
   await expect(page.locator('#undo')).toBeEnabled()
 })
 
-test('floating forecast keeps the target visible (568x320)', async ({ page }, info) => {
-  await start(page, { width: 568, height: 320 })
-  await cell(page, 2, 4).click()
-  await cell(page, 4, 4).click()
-  await expect(page.locator('#undo')).toBeEnabled()
-  await cell(page, 7, 4).click()
-  await expect(page.locator('#confirm')).toBeInViewport()
-  const card = (await page.locator('#forecast').boundingBox())!
-  const box = (await cell(page, 7, 4).boundingBox())!
-  expect(box.y + box.height).toBeLessThanOrEqual(card.y + 1)
-  expect(box.y).toBeGreaterThanOrEqual(0)
-  await page.screenshot({ path: info.outputPath('forecast.png') })
-})
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`the forecast keeps its target visible at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
+    await start(page, viewport)
+    await cell(page, 2, 4).click()
+    await cell(page, 4, 4).click()
+    await expect(page.locator('#undo')).toBeEnabled()
+    await cell(page, 7, 4).click()
+    await expect(page.locator('#confirm')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#cancel-forecast')).toBeInViewport({ ratio: 0.99 })
+    const visible = await cell(page, 7, 4).evaluate((target) => {
+      const r = target.getBoundingClientRect()
+      const x = r.x + r.width / 2
+      const y = r.y + r.height / 2
+      const hit = document.elementFromPoint(x, y)
+      return y >= 0 && y <= innerHeight && !!hit && target.contains(hit)
+    })
+    expect(visible).toBe(true)
+    await page.screenshot({ path: info.outputPath('forecast.png') })
+  })
 
 test('the potion button keeps its name in landscape (844x390)', async ({ page }) => {
   await start(page, { width: 844, height: 390 })
@@ -110,44 +119,54 @@ async function enableTouchAssist(page: Page) {
   await page.getByRole('button', { name: 'タッチ選択補助' }).tap()
 }
 
-test('the touch chooser opens on screen from an enemy and from an ally (568x320)', async ({ page }, info) => {
-  await start(page, { width: 568, height: 320 })
-  await enableTouchAssist(page)
-  const dialog = page.getByRole('dialog', { name: 'マスを選択' })
-  for (const [name, shot] of [
-    [/7,4 灰牙/, 'chooser-enemy.png'],
-    [/2,4 風読み/, 'chooser-ally.png']
-  ] as const) {
-    await page.getByRole('button', { name }).tap()
-    await expect(dialog).toBeVisible()
-    const height = await page.evaluate(() => window.innerHeight)
-    const buttons = await dialog.getByRole('button').all()
-    expect(buttons.length).toBeGreaterThan(2)
-    for (const button of buttons) {
-      const box = (await button.boundingBox())!
-      expect(box.y).toBeGreaterThanOrEqual(0)
-      expect(box.y + box.height).toBeLessThanOrEqual(height + 0.5)
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`the touch chooser opens on screen from an enemy and from an ally at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }, info) => {
+    await start(page, viewport)
+    await enableTouchAssist(page)
+    const dialog = page.getByRole('dialog', { name: 'マスを選択' })
+    for (const [name, shot] of [
+      [/7,4 灰牙/, 'chooser-enemy.png'],
+      [/2,4 風読み/, 'chooser-ally.png']
+    ] as const) {
+      await page.getByRole('button', { name }).tap()
+      await expect(dialog).toBeVisible()
+      const height = await page.evaluate(() => window.innerHeight)
+      const buttons = await dialog.getByRole('button').all()
+      expect(buttons.length).toBeGreaterThan(2)
+      for (const button of buttons) {
+        const box = (await button.boundingBox())!
+        expect(box.y).toBeGreaterThanOrEqual(0)
+        expect(box.y + box.height).toBeLessThanOrEqual(height + 0.5)
+      }
+      await page.screenshot({ path: info.outputPath(shot) })
+      await dialog.getByRole('button', { name: '閉じる' }).tap()
+      await expect(dialog).not.toBeVisible()
     }
-    await page.screenshot({ path: info.outputPath(shot) })
-    await dialog.getByRole('button', { name: '閉じる' }).tap()
-    await expect(dialog).not.toBeVisible()
-  }
-})
+  })
 
-test('the toast stays visible after scrolling (568x320)', async ({ page }, info) => {
-  await start(page, { width: 568, height: 320 })
-  const { enemy } = await farTargets(page)
-  await cell(page, 2, 4).click()
-  await page.evaluate(() => window.scrollBy(0, 160))
-  await cell(page, enemy.x, enemy.y).click()
-  const toast = page.locator('#toast')
-  await expect(toast).toContainText('射程外')
-  const box = (await toast.boundingBox())!
-  const height = await page.evaluate(() => window.innerHeight)
-  expect(box.y).toBeGreaterThanOrEqual(0)
-  expect(box.y + box.height).toBeLessThanOrEqual(height)
-  await page.screenshot({ path: info.outputPath('toast-scrolled.png') })
-})
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`the toast stays visible after scrolling at ${viewport.width}x${viewport.height}`, async ({ page }, info) => {
+    await start(page, viewport)
+    const { enemy } = await farTargets(page)
+    await cell(page, 2, 4).click()
+    await page.evaluate(() => window.scrollBy(0, 160))
+    await clickCell(page, cell(page, enemy.x, enemy.y))
+    const toast = page.locator('#toast')
+    await expect(toast).toContainText('射程外')
+    const box = (await toast.boundingBox())!
+    const height = await page.evaluate(() => window.innerHeight)
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(height)
+    await page.screenshot({ path: info.outputPath('toast-scrolled.png') })
+  })
 
 test('the chooser outlines the squares it offers (390x844)', async ({ page }, info) => {
   await start(page, { width: 390, height: 844 })
@@ -192,20 +211,24 @@ test('a lethal hit shows the same number in the forecast and the popup', async (
     .toMatch(/^−8/)
 })
 
-test('the enemy turn plays with the battlefield in view after scrolling to End Turn (568x320)', async ({
-  page
-}, info) => {
-  await start(page, { width: 568, height: 320 })
-  await page.locator('#end').scrollIntoViewIfNeeded()
-  await page.locator('#end').tap()
-  await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
-  const field = (await page.locator('.field').boundingBox())!
-  expect(field.y).toBeGreaterThanOrEqual(-1)
-  expect(field.y + field.height).toBeLessThanOrEqual(320 + 1)
-  await expect(page.locator('#actor')).toBeInViewport()
-  await page.screenshot({ path: info.outputPath('enemy-turn.png') })
-  await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
-})
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`the enemy turn plays with the battlefield in view after scrolling to End Turn at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }, info) => {
+    await start(page, viewport)
+    await page.locator('#end').scrollIntoViewIfNeeded()
+    await page.locator('#end').tap()
+    await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+    const field = (await page.locator('.field').boundingBox())!
+    expect(field.y).toBeGreaterThanOrEqual(-1)
+    expect(field.y + field.height).toBeLessThanOrEqual(320 + 1)
+    await expect(page.locator('#actor')).toBeInViewport()
+    await page.screenshot({ path: info.outputPath('enemy-turn.png') })
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
+  })
 
 const inViewport = (page: Page, selector: string) =>
   page.evaluate((sel) => {
@@ -214,6 +237,8 @@ const inViewport = (page: Page, selector: string) =>
   }, selector)
 
 for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 600, height: 320 },
   { width: 640, height: 360 },
   { width: 640, height: 320 },
   { width: 844, height: 390 }
@@ -245,40 +270,46 @@ for (const viewport of [
   })
 }
 
-test('first-time tutorial stays visible with the board at 568x320', async ({ page }, info) => {
-  await page.setViewportSize({ width: 568, height: 320 })
-  await page.goto('./?seed=7')
-  page.once('dialog', (dialog) => void dialog.accept())
-  await page.getByRole('button', { name: '✦ はじめから' }).click()
-  await page.getByRole('button', { name: '⚔ クラシック' }).click()
-  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
-  await cameraSettled(page)
-  const tutorial = page.locator('#tutorial')
-  await expect(tutorial).toContainText('味方を選ぼう')
-  await page.screenshot({ path: info.outputPath('tutorial-start.png') })
-  expect(await inViewport(page, '#tutorial')).toBe(true)
-  await expect(tutorial.getByRole('button', { name: /スキップ/ })).toBeInViewport({ ratio: 1 })
-  const ratio = await page.evaluate(() => {
-    const r = document.querySelector('.field')!.getBoundingClientRect()
-    const visible = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0))
-    return visible / r.height
-  })
-  expect(ratio).toBeGreaterThanOrEqual(0.8)
-  await cell(page, 2, 4).click()
-  await expect(tutorial).toContainText('移動可能')
-  await page.screenshot({ path: info.outputPath('tutorial-selected.png') })
-  expect(await inViewport(page, '#tutorial')).toBe(true)
-  const reachable = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('.cell.legal')].some((c) => {
-      const r = c.getBoundingClientRect()
-      const x = r.x + r.width / 2
-      const y = r.y + r.height / 2
-      const hit = document.elementFromPoint(x, y)
-      return x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && !!hit && c.contains(hit)
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`first-time tutorial stays visible with the board at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }, info) => {
+    await page.setViewportSize(viewport)
+    await page.goto('./?seed=7')
+    page.once('dialog', (dialog) => void dialog.accept())
+    await page.getByRole('button', { name: '✦ はじめから' }).click()
+    await page.getByRole('button', { name: '⚔ クラシック' }).click()
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await cameraSettled(page)
+    const tutorial = page.locator('#tutorial')
+    await expect(tutorial).toContainText('味方を選ぼう')
+    await page.screenshot({ path: info.outputPath('tutorial-start.png') })
+    expect(await inViewport(page, '#tutorial')).toBe(true)
+    await expect(tutorial.getByRole('button', { name: /スキップ/ })).toBeInViewport({ ratio: 1 })
+    const ratio = await page.evaluate(() => {
+      const r = document.querySelector('.field')!.getBoundingClientRect()
+      const visible = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0))
+      return visible / r.height
     })
-  )
-  expect(reachable).toBe(true)
-})
+    expect(ratio).toBeGreaterThanOrEqual(0.8)
+    await cell(page, 2, 4).click()
+    await expect(tutorial).toContainText('移動可能')
+    await page.screenshot({ path: info.outputPath('tutorial-selected.png') })
+    expect(await inViewport(page, '#tutorial')).toBe(true)
+    const reachable = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.cell.legal')].some((c) => {
+        const r = c.getBoundingClientRect()
+        const x = r.x + r.width / 2
+        const y = r.y + r.height / 2
+        const hit = document.elementFromPoint(x, y)
+        return x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && !!hit && c.contains(hit)
+      })
+    )
+    expect(reachable).toBe(true)
+  })
 
 for (const viewport of [
   { width: 844, height: 390 },
@@ -369,22 +400,35 @@ test('the potion button names the remaining count (390x844)', async ({ page }) =
   await expect(page.getByRole('button', { name: '回復薬 残り1' })).toBeAttached()
 })
 
-test('the status bar stays pinned while the small landscape page scrolls (568x320)', async ({ page }) => {
-  await start(page, { width: 568, height: 320 })
-  await page.locator('#end').scrollIntoViewIfNeeded()
-  for (const id of ['#turn', '#count', '#objective']) {
-    const box = (await page.locator(id).boundingBox())!
-    expect(box.y).toBeGreaterThanOrEqual(0)
-    expect(box.y + box.height).toBeLessThanOrEqual(60)
-  }
-  await page.locator('#end').tap()
-  await expect(page.locator('#fast')).toBeVisible({ timeout: 30000 })
-  await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
-  const status = (await page.locator('.status').boundingBox())!
-  const actor = (await page.locator('#actor').boundingBox())!
-  expect(status.height).toBeLessThan(50)
-  expect(actor.y).toBeGreaterThanOrEqual(status.y + status.height - 1)
-})
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`the status bar stays readable while scrolling and in the enemy turn at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await start(page, viewport)
+    const uncovered = (selector: string) =>
+      page.locator(selector).evaluate((element) => {
+        const r = element.getBoundingClientRect()
+        const x = r.x + r.width / 2
+        const y = r.y + r.height / 2
+        const hit = (() => {
+          const previous = element.style.pointerEvents
+          element.style.pointerEvents = 'auto'
+          const found = document.elementFromPoint(x, y)
+          element.style.pointerEvents = previous
+          return found
+        })()
+        return r.top >= 0 && r.bottom <= innerHeight && !!hit && element.contains(hit)
+      })
+    await page.locator('#end').scrollIntoViewIfNeeded()
+    for (const id of ['#turn', '#count', '#objective', '#end']) expect(await uncovered(id)).toBe(true)
+    await page.locator('#end').tap()
+    await expect(page.locator('#fast')).toBeVisible({ timeout: 30000 })
+    await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+    for (const id of ['#turn', '#fast', '#actor']) expect(await uncovered(id)).toBe(true)
+  })
 
 for (const viewport of [
   { width: 320, height: 568 },
@@ -476,3 +520,97 @@ for (const viewport of [
     await expect(page.locator('#expedition')).toBeHidden()
   })
 }
+
+/** Leaves one enemy at 1 HP beside the second ally, so a single attack decides the chapter. */
+async function rigLastEnemy(page: Page) {
+  return page.evaluate(() => {
+    const game = (
+      document.querySelector('.stage') as HTMLCanvasElement & {
+        stage: { last: { game: import('../src/game').Game } }
+      }
+    ).stage.last.game
+    const allies = game.units.filter((u) => u.side === 'ally')
+    const enemies = game.units.filter((u) => u.side === 'enemy')
+    enemies.forEach((e) => (e.hp = 0))
+    Object.assign(enemies[0], { hp: 1, x: allies[1].x + 1, y: allies[1].y })
+    game.rocks.delete(`${enemies[0].x},${enemies[0].y}`)
+    game.groves.delete(`${enemies[0].x},${enemies[0].y}`)
+    return { ally: allies[1].y * 10 + allies[1].x, enemy: enemies[0].y * 10 + enemies[0].x }
+  })
+}
+const uncoveredIn = (page: Page, selector: string) =>
+  page.locator(selector).evaluate((element) => {
+    const r = element.getBoundingClientRect()
+    const x = r.x + r.width / 2
+    const y = r.y + r.height / 2
+    const hit = (() => {
+      const previous = element.style.pointerEvents
+      element.style.pointerEvents = 'auto'
+      const found = document.elementFromPoint(x, y)
+      element.style.pointerEvents = previous
+      return found
+    })()
+    return r.top >= 0 && r.bottom <= innerHeight && r.width > 0 && !!hit && element.contains(hit)
+  })
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 320, height: 568 }
+])
+  test(`the tutorial ends with the battle at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    page.on('dialog', (dialog) => void dialog.accept())
+    await page.goto('./?seed=7')
+    await page.getByRole('button', { name: '✦ はじめから' }).click()
+    await page.getByRole('button', { name: '⚔ クラシック' }).click()
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await expect(page.locator('#tutorial')).toBeVisible()
+    // Defeat: every ally at 1 HP next to an enemy.
+    await page.evaluate(() => {
+      const game = (
+        document.querySelector('.stage') as HTMLCanvasElement & {
+          stage: { last: { game: import('../src/game').Game } }
+        }
+      ).stage.last.game
+      const allies = game.units.filter((u) => u.side === 'ally')
+      const foes = game.units.filter((u) => u.side === 'enemy')
+      allies.forEach((a, i) => Object.assign(a, { hp: 1, x: i * 2, y: 0 }))
+      foes.forEach((f, i) => Object.assign(f, { x: (i % allies.length) * 2, y: 1 }))
+      for (let x = 0; x < 6; x++) for (const y of [0, 1]) game.rocks.delete(`${x},${y}`)
+    })
+    for (let turn = 0; turn < 6 && !(await page.locator('#result').isVisible()); turn++) {
+      await page.getByRole('button', { name: /▶ ターン終了/ }).click()
+      await expect(page.locator('#end'))
+        .toBeEnabled({ timeout: 30000 })
+        .catch(() => {})
+    }
+    await expect(page.locator('#result')).toContainText('燈は消えた', { timeout: 30000 })
+    await expect(page.locator('#result')).toBeVisible()
+    await expect(page.locator('#retry')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#tutorial')).toBeHidden()
+    await expect(page.locator('.tutorial-target')).toHaveCount(0)
+    for (const id of ['#outcome', '#retry', '#retry-missions']) expect(await uncoveredIn(page, id)).toBe(true)
+    // Retrying chapter one brings the unfinished guidance back.
+    await page.locator('#retry').click()
+    await expect(page.locator('#tutorial')).toBeVisible({ timeout: 30000 })
+  })
+
+for (const viewport of [
+  { width: 480, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`a victory through the forecast shows its heading and next button at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await start(page, viewport)
+    const spots = await rigLastEnemy(page)
+    await page.locator('.cell').nth(spots.ally).dispatchEvent('click')
+    await page.evaluate(() => window.scrollBy(0, 120))
+    await page.locator('.cell').nth(spots.enemy).dispatchEvent('click')
+    await expect(page.locator('#forecast')).toBeVisible()
+    await page.locator('#confirm').click()
+    await expect(page.locator('#result')).toBeVisible({ timeout: 60000 })
+    await expect(page.locator('#outcome')).toContainText('霧が晴れた')
+    await expect(page.locator('#next')).toBeInViewport({ ratio: 0.99 })
+    for (const id of ['#outcome', '#next']) expect(await uncoveredIn(page, id)).toBe(true)
+  })

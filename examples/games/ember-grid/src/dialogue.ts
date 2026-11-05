@@ -57,11 +57,13 @@ export class Dialogue {
     overlay.setAttribute('aria-label', '物語')
     overlay.tabIndex = -1
     overlay.innerHTML =
-      '<div class="story-box"><img alt=""><div class="story-copy"><strong></strong><p></p></div><button>スキップ</button></div>'
+      '<div class="story-box"><img alt=""><div class="story-copy"><strong></strong><p></p></div><button>スキップ</button><span class="story-next" aria-hidden="true" hidden>▼</span></div>'
     const image = overlay.querySelector('img')!,
       name = overlay.querySelector('strong')!,
       text = overlay.querySelector('p')!,
-      skip = overlay.querySelector('button')!
+      skip = overlay.querySelector('button')!,
+      // Shown once the line is complete: tapping or Enter goes on.
+      next = overlay.querySelector<HTMLElement>('.story-next')!
     this.field.append(overlay)
     overlay.focus()
     await new Promise<void>((resolve) => {
@@ -99,10 +101,14 @@ export class Dialogue {
         }
         count = reduced() ? line.text.length : 0
         text.textContent = line.text.slice(0, count)
+        next.hidden = count < line.text.length
         if (count < line.text.length)
           timer = window.setInterval(() => {
             text.textContent = line.text.slice(0, ++count)
-            if (count >= line.text.length) clearInterval(timer)
+            if (count >= line.text.length) {
+              clearInterval(timer)
+              next.hidden = false
+            }
           }, 25)
       }
       const advance = () => {
@@ -110,6 +116,7 @@ export class Dialogue {
           count = script[index].text.length
           text.textContent = script[index].text
           clearInterval(timer)
+          next.hidden = false
         } else if (++index < script.length) show()
         else finish()
       }
