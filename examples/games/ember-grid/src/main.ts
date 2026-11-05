@@ -157,10 +157,10 @@ const settings = () =>
 settingsButton.onclick = settings
 const objectiveStatus = document.createElement('span')
 objectiveStatus.id = 'objective'
-// A tap (or Enter) shows the complete condition, which a narrow status may shorten.
+// A tap (or Enter) shows the complete condition, which a narrow status may shorten; the dotted underline
+// (style.css) marks it as pressable and render() gives it an accessible name with the current objective.
 objectiveStatus.tabIndex = 0
 objectiveStatus.setAttribute('role', 'button')
-objectiveStatus.setAttribute('aria-label', '勝利条件を表示')
 const showObjective = () => flash(`勝利条件：${objectiveDetail(game)}`)
 objectiveStatus.addEventListener('click', showObjective)
 objectiveStatus.addEventListener('keydown', (event) => {
@@ -577,11 +577,25 @@ function flash(message: string) {
   const toast = document.querySelector<HTMLElement>('#toast')!
   toast.textContent = message
   toast.hidden = false
+  document.querySelector('#log')!.textContent = message
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toast.hidden = true
-  }, 2400)
+  toastTimer = setTimeout(
+    () => {
+      toast.hidden = true
+    },
+    Math.min(10000, Math.max(2400, message.length * 120))
+  )
 }
+// A toast is information only; the next press anywhere but the objective puts it away.
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    if (event.target instanceof Element && event.target.closest('#objective')) return
+    clearTimeout(toastTimer)
+    document.querySelector<HTMLElement>('#toast')!.hidden = true
+  },
+  true
+)
 function cancelForecast(restore = true) {
   if (!restore && document.activeElement?.closest('#forecast')) restoreBoardFocus = true
   pending = undefined
@@ -783,7 +797,8 @@ render = () => {
   document.querySelector('#count')!.innerHTML =
     `<span class="ally">味方 <b>${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length}</b></span><span class="sep" aria-hidden="true"> · </span><span class="enemy">敵 <b>${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}</b></span>`
   objectiveStatus.innerHTML = `<span class="hud-label">勝利条件</span> <span class="objective-text">${objectiveText(game)}</span>`
-  objectiveStatus.title = `${objectiveDetail(game)}（タップで表示）`
+  objectiveStatus.title = objectiveDetail(game)
+  objectiveStatus.setAttribute('aria-label', `勝利条件：${objectiveText(game)}（押すと条件の全文を表示）`)
   document.querySelector('#legend')!.innerHTML = legendItems({ game, selected: unit, foe, danger })
     .map(({ kind, label }) => `<span data-kind="${kind}"><i>${kind === 'seize' ? '✦' : ''}</i>${label}</span>`)
     .join('')
