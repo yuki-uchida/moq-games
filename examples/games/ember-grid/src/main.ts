@@ -570,6 +570,22 @@ const statusBar = document.querySelector<HTMLElement>('.status')!
 new ResizeObserver(() =>
   document.documentElement.style.setProperty('--status-h', `${Math.ceil(statusBar.getBoundingClientRect().height)}px`)
 ).observe(statusBar)
+// The tutorial's height (0 when hidden) positions the toast and labels that sit below it.
+const tutorialEl = document.querySelector<HTMLElement>('#tutorial')!
+new ResizeObserver(() =>
+  document.documentElement.style.setProperty(
+    '--tutorial-h',
+    `${tutorialEl.hidden ? 0 : Math.ceil(tutorialEl.getBoundingClientRect().height)}px`
+  )
+).observe(tutorialEl)
+// Side column: the tutorial floats over the board instead of pushing the unit card under the nav.
+const sideColumn = matchMedia('(max-height: 500px) and (min-width: 560px)')
+function placeTutorial() {
+  if (sideColumn.matches) field.prepend(tutorialEl)
+  else consolePanel.prepend(tutorialEl)
+}
+placeTutorial()
+sideColumn.addEventListener('change', placeTutorial)
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 /** Failure feedback visible at every size; the log keeps the screen-reader announcement. */
 function flash(message: string) {
@@ -590,6 +606,17 @@ function flash(message: string) {
 document.addEventListener(
   'pointerdown',
   (event) => {
+    if (event.target instanceof Element && event.target.closest('#objective')) return
+    clearTimeout(toastTimer)
+    document.querySelector<HTMLElement>('#toast')!.hidden = true
+  },
+  true
+)
+// Keyboard use puts a toast away too (modifier presses alone and the objective that opens it do not).
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return
     if (event.target instanceof Element && event.target.closest('#objective')) return
     clearTimeout(toastTimer)
     document.querySelector<HTMLElement>('#toast')!.hidden = true
@@ -767,6 +794,7 @@ render = () => {
     threatened = danger ? dangerZone(game) : new Set<string>()
   const acting = game.phase === 'enemy' ? game.units.find((u) => u.id === actingId && u.hp > 0) : undefined
   if (!acting) actingId = undefined
+  const settled = (u: Unit) => finished(game, u) && !(undo && undo.id === u.id)
   cells.forEach((cell, i) => {
     cell.disabled = busy || !ready
     const x = i % size,
@@ -776,20 +804,22 @@ render = () => {
       canAttack = unit && !unit.heal && u && u.side !== unit.side && !unit.done && distance(unit, u) <= unit.range,
       canHeal = unit && u && unit.heal && healRange(game, unit).has(k) && distance(unit, u) <= 2,
       seize = objective.type === 'seize' && objective.x === x && objective.y === y
-    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${u && finished(game, u) ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''} ${touchMark(y * size + x)} ${u && u === acting ? 'acting' : ''}`
+    const done = u ? settled(u) : false
+    const terrain = game.groves.has(k) ? '木立（受けるダメージ −2）' : '平地'
+    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${game.rocks.has(k) ? 'rock' : ''} ${game.groves.has(k) ? 'grove' : ''} ${legal.has(k) && !u ? 'legal' : ''} ${foeMove.has(k) && !u ? 'enemy-move' : ''} ${reach.has(k) ? 'reach' : ''} ${u?.side ?? ''} ${done ? 'done' : ''} ${u && u.id === selected ? 'selected' : ''} ${canAttack ? 'target' : ''} ${canHeal ? 'healable' : ''} ${seize ? 'seize' : ''} ${touchMark(y * size + x)} ${u && u === acting ? 'acting' : ''}`
     cell.classList.toggle('danger', threatened.has(k))
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
-      ? `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '<span class="crown">♛</span>' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${finished(game, u) ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}</span></span>`
+      ? `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '<span class="crown">♛</span>' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${done ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}</span></span>`
       : ''
     cell.setAttribute(
       'aria-label',
-      `${x + 1},${y + 1} ${u ? `${u.boss ? 'ボス ' : ''}${u.name} HP ${u.hp} ${u.done ? '行動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''}` : game.rocks.has(k) ? (game.stage === 2 ? '崩れた城壁（岩）' : '岩') : game.groves.has(k) ? '木立' : '平地'}${seize ? ' 制圧目標' : ''}${canHeal ? ' 回復可能' : ''}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}${threatened.has(k) ? ' 敵の攻撃範囲' : ''}`
+      `${x + 1},${y + 1} ${u ? `${u.boss ? 'ボス ' : ''}${u.name} HP ${u.hp} ${done ? '行動済' : u.side === 'ally' && u.moved && !u.done ? '移動済' : ''}${canAttack ? ` 攻撃 ${damage(unit!, u, game)} ダメージ` : ''} ${terrain}` : game.rocks.has(k) ? (game.stage === 2 ? '崩れた城壁（岩）' : '岩') : game.groves.has(k) ? terrain : '平地'}${seize ? ' 制圧目標' : ''}${canHeal ? ' 回復可能' : ''}${legal.has(k) && !u ? ' 移動可能' : ''}${foeMove.has(k) && !u ? ' 敵の移動範囲' : ''}${reach.has(k) ? ' 攻撃範囲' : ''}${threatened.has(k) ? ' 敵の攻撃範囲' : ''}`
     )
   })
   tutorial.update()
   requestAnimationFrame(positionTags)
-  if (stageAvailable && playing) stage.sync(game, unit?.id)
+  if (stageAvailable && playing) stage.sync(game, unit?.id, undo?.id)
   followCamera(unit, legal, reach)
   const turnEl = document.querySelector<HTMLElement>('#turn')!
   turnEl.dataset.phase = game.phase
@@ -808,7 +838,15 @@ render = () => {
   const cardUnit = unit ?? game.units.find((u) => u.side === 'enemy' && u.hp > 0 && u.id === (hovered ?? inspected))
   const selectionEl = document.querySelector<HTMLElement>('#selection')!
   const cardHtml = cardUnit
-    ? unitCardHtml(cardUnit, ready ? stage.portrait(cardUnit.role) : '')
+    ? unitCardHtml(
+        cardUnit,
+        ready ? stage.portrait(cardUnit.role) : '',
+        game.groves.has(key(cardUnit.x, cardUnit.y))
+          ? '♣ 木立 −2'
+          : objective.type === 'seize' && objective.x === cardUnit.x && objective.y === cardUnit.y
+            ? '✦ 祠'
+            : undefined
+      )
     : '<p class="unit-empty">ユニットを選ぶと能力を表示</p>'
   // Portraits are data URLs: only replace the card when it changes, and keep the markup out of the DOM.
   if (cardHtml !== selectionHtml) {
@@ -831,8 +869,7 @@ render = () => {
     busy || !ready || !unit || unit.done || game.phase !== 'ally'
   const endButton = document.querySelector<HTMLButtonElement>('#end')!
   endButton.disabled = busy || !ready || game.phase !== 'ally'
-  const left =
-    game.phase === 'ally' ? game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !finished(game, u)).length : 0
+  const left = game.phase === 'ally' ? game.units.filter((u) => u.side === 'ally' && u.hp > 0 && !settled(u)).length : 0
   endButton.innerHTML = `▶ ターン終了${left ? ` <span class="end-left">残り${left}</span>` : ''}`
   const potion = document.querySelector<HTMLButtonElement>('#recover')!
   potion.innerHTML = `✚ <span class="nav-long">回復</span>薬 ${game.potions}`

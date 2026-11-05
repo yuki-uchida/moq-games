@@ -114,7 +114,7 @@ export class Stage {
       selected: new THREE.MeshBasicMaterial({ color: 0xffdf7d, depthWrite: false })
     }
   }
-  private last?: { game: Game; selected?: string }
+  private last?: { game: Game; selected?: string; undoId?: string }
   private layout = { width: 1, height: 1, tile: 1 }
   /** Narrow screens draw figures relatively larger (as the former sprites did) so they stay readable. */
   figure = 1
@@ -308,8 +308,8 @@ export class Stage {
   }
 
   /** Mirror the logical state; actors in a presentation keep their animated pose until it releases them. */
-  sync(game: Game, selected?: string) {
-    this.last = { game, selected }
+  sync(game: Game, selected?: string, undoId?: string) {
+    this.last = { game, selected, undoId }
     this.build(game)
     const alive = new Set<string>()
     for (const u of game.units) {
@@ -321,7 +321,7 @@ export class Stage {
         actor.visual.setPresentation(MODEL_SIZE * this.figure * roleScale(actor.role) * (actor.boss ? 1.25 : 1), 1)
       }
       actor.ring.material = u.id === selected ? this.shared.rings.selected : this.shared.rings[u.side]
-      actor.dim = finished(game, u)
+      actor.dim = finished(game, u) && u.id !== undoId
       if (!actor.track) {
         actor.at = { x: u.x, y: u.y }
         actor.facing = rest(u)
@@ -334,7 +334,7 @@ export class Stage {
     for (const actor of this.actors.values()) actor.track = undefined
     for (const p of this.projectiles) p.removeFromParent()
     this.projectiles.clear()
-    if (this.last) this.sync(this.last.game, this.last.selected)
+    if (this.last) this.sync(this.last.game, this.last.selected, this.last.undoId)
   }
   get(id: string) {
     return this.actors.get(id)

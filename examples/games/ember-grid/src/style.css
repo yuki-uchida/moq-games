@@ -1854,6 +1854,11 @@ button:active:not(:disabled) {
   font-size: 11px;
   color: #ffe47a;
 }
+.uc-terrain {
+  font-size: 11px;
+  color: #bfe3b0;
+  white-space: nowrap;
+}
 .uc-hp {
   display: flex;
   align-items: center;
@@ -2340,7 +2345,7 @@ button:active:not(:disabled) {
     box-shadow: 0 6px 20px #000c;
   }
   body:has(#tutorial:not([hidden])) #toast {
-    top: 64px;
+    top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 12px);
   }
 }
 /* Scroll layout: the status bar stays pinned, so turn, phase and objective never scroll away. */
@@ -2359,7 +2364,7 @@ button:active:not(:disabled) {
     top: 44px;
   }
   body:has(#tutorial:not([hidden])) #toast {
-    top: 100px;
+    top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 12px);
   }
   #terrain,
   #actor {
@@ -2489,7 +2494,7 @@ button:active:not(:disabled) {
     top: calc(var(--status-h, 38px) + 6px);
   }
   body:has(#tutorial:not([hidden])) #toast {
-    top: calc(var(--status-h, 38px) + 62px);
+    top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 12px);
   }
 }
 /* Side column: the status always takes two rows; long text ellipsizes (the full objective is in its tooltip). */
@@ -2614,4 +2619,80 @@ button:active:not(:disabled) {
   outline: 2px solid #fff;
   outline-offset: 1px;
   border-radius: 3px;
+}
+/* Scroll layout: the terrain and acting-enemy labels sit below the floating tutorial; a toast sits below the labels. */
+@media (max-height: 500px) and (max-width: 559px) {
+  body:has(#tutorial:not([hidden])) #terrain,
+  body:has(#tutorial:not([hidden])) #actor {
+    top: calc(var(--tutorial-h, 50px) + 6px);
+  }
+  body:has(#actor:not([hidden])) #toast {
+    top: calc(var(--status-h, 38px) + 62px);
+  }
+  body:has(#tutorial:not([hidden])):has(#actor:not([hidden])) #toast {
+    top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 49px);
+  }
+}
+/* Side column: the tutorial floats over the board's top edge; the labels and toast sit below it. */
+@media (max-height: 500px) and (min-width: 560px) {
+  .field > #tutorial:not([hidden]) {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 8;
+    box-shadow: 0 6px 20px #000c;
+  }
+  .field:has(> #tutorial:not([hidden])) #terrain,
+  .field:has(> #tutorial:not([hidden])) #actor,
+  .field:has(> #tutorial:not([hidden])) #toast {
+    top: calc(var(--tutorial-h, 50px) + 14px);
+  }
+  .field:has(> #tutorial:not([hidden])):has(#actor:not([hidden])) #toast {
+    top: calc(var(--tutorial-h, 50px) + 49px);
+  }
+}
+/* Stacked layouts: an attack forecast opens below the tutorial instead of covering it; nothing else in the
+   console shows through the gap between them. */
+@media not all and (max-height: 500px) and (max-width: 559px) {
+  .console:has(> #tutorial:not([hidden])) > #forecast {
+    top: calc(var(--tutorial-h, 50px) + 14px);
+  }
+  .console:has(> #tutorial:not([hidden])):has(> #forecast:not([hidden])) > :not(#tutorial, #forecast) {
+    visibility: hidden;
+  }
+}
+/* The forecast under the tutorial has less height: lay the modifiers beside the buttons and drop the title line. */
+@media (min-width: 560px) and (not ((max-height: 500px) and (max-width: 559px))) {
+  .console:has(> #tutorial:not([hidden])) > #forecast:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'grid grid' 'mods actions';
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .console:has(> #tutorial:not([hidden])) > #forecast .fc-title {
+    display: none;
+  }
+  .console:has(> #tutorial:not([hidden])) > #forecast .fc-grid {
+    grid-area: grid;
+  }
+  .console:has(> #tutorial:not([hidden])) > #forecast .fc-mods {
+    grid-area: mods;
+  }
+  .console:has(> #tutorial:not([hidden])) > #forecast .fc-actions {
+    grid-area: actions;
+    display: flex;
+    gap: 6px;
+  }
+  .console:has(> #tutorial:not([hidden])) > #forecast button {
+    padding: 0 14px;
+    white-space: nowrap;
+  }
+}
+/* Other layouts: a toast shown while an enemy acts sits below the acting-enemy label. */
+@media not all and (max-height: 500px) and (max-width: 559px) {
+  .field:has(#actor:not([hidden])) #toast {
+    top: 46px;
+  }
 }

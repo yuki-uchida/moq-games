@@ -170,7 +170,7 @@ for (const input of ['keyboard', 'mouse', 'touch'] as const) {
     if (input === 'keyboard') await page.keyboard.press('Enter')
     else if (input === 'mouse') await unit.click()
     else await unit.tap()
-    await expect(page.getByRole('button', { name: /3,4 木立 移動可能/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /3,4 木立（受けるダメージ −2） 移動可能/ })).toBeVisible()
   })
 }
 
@@ -190,7 +190,7 @@ test('closing details before releasing a long press does not select the unit', a
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   await expect(page.locator('.cell.legal')).toHaveCount(0)
   await unit.tap()
-  await expect(page.getByRole('button', { name: /3,4 木立 移動可能/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /3,4 木立（受けるダメージ −2） 移動可能/ })).toBeVisible()
 })
 
 test('last move waits for an explicit action and field tap fast-forwards', async ({ page }) => {
@@ -200,12 +200,12 @@ test('last move waits for an explicit action and field tap fast-forwards', async
     await page.getByRole('button', { name: '✓ 待機' }).click()
   }
   await page.getByRole('button', { name: /2,4 風読み/ }).click()
-  await page.getByRole('button', { name: /3,4 木立 移動可能/ }).click()
+  await page.getByRole('button', { name: /3,4 木立（受けるダメージ −2） 移動可能/ }).click()
   await expect(page.locator('#turn')).toContainText('ターン 1 · 味方')
   await expect(page.locator('#wait')).toHaveClass(/recommended/)
   await page.getByRole('button', { name: '↶ 戻す' }).click()
   await expect(page.getByRole('button', { name: /2,4 風読み/ })).toBeVisible()
-  await page.getByRole('button', { name: /3,4 木立 移動可能/ }).click()
+  await page.getByRole('button', { name: /3,4 木立（受けるダメージ −2） 移動可能/ }).click()
   await page.getByRole('button', { name: '✓ 待機' }).click()
   await expect(page.locator('#phase-banner')).toContainText('敵フェイズ')
   await page.locator('.field').click({ position: { x: 5, y: 5 } })

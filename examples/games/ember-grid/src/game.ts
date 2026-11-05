@@ -421,7 +421,13 @@ export function move(game: Game, unit: Unit, x: number, y: number): boolean {
   unit.x = x
   unit.y = y
   unit.moved = true
-  game.log = `${unit.name} 移動。攻撃、または ✓ 待機`
+  game.log = unit.heal
+    ? healRange(game, unit).size
+      ? `${unit.name} 移動。回復、または ✓ 待機`
+      : `${unit.name} 移動。回復できる味方なし · ✓ 待機`
+    : game.units.some((t) => t.hp > 0 && t.side !== unit.side && distance(unit, t) <= unit.range)
+      ? `${unit.name} 移動。攻撃、または ✓ 待機`
+      : `${unit.name} 移動。攻撃できる敵なし · ✓ 待機`
   return true
 }
 export function attack(game: Game, unit: Unit, target: Unit): boolean {

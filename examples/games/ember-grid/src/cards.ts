@@ -26,10 +26,10 @@ export function unitNotes(unit: Unit): string[] {
 }
 
 /** Compact summary card for the console. */
-export function unitCardHtml(unit: Unit, portraitSrc: string): string {
+export function unitCardHtml(unit: Unit, portraitSrc: string, terrain?: string): string {
   const low = unit.hp <= unit.max / 3
   const note = unitNotes(unit).find((n) => n !== '♛ ボス')
-  return `${img(portraitSrc)}<div class="uc-main"><p class="uc-head"><b class="uc-name">${unit.name}</b> <span class="uc-class">${role(unit)}</span> <span class="uc-lv">Lv${unit.level}</span>${unit.boss ? ' <span class="uc-boss">♛ ボス</span>' : ''}</p><p class="uc-hp${low ? ' low' : ''}"><span class="uc-label">HP</span> <i class="uc-bar"><em style="width:${pct(unit.hp, unit.max)}%"></em></i> <b>${unit.hp}/${unit.max}</b></p></div><dl class="uc-stats"><div><dt>攻撃</dt> <dd>${unit.power}</dd></div> <div><dt>防御</dt> <dd>${unit.def}</dd></div> <div><dt>射程</dt> <dd>${unit.range}</dd></div> <div><dt>移動</dt> <dd>${unit.move}</dd></div>${unit.armor ? ` <div><dt>盾</dt> <dd>${unit.armor}</dd></div>` : ''}${unit.side === 'ally' ? ` <div class="uc-exp"><dt>EXP</dt> <dd>${unit.exp}/100</dd></div>` : ''}</dl>${note ? `<p class="uc-note">${note}</p>` : ''}`
+  return `${img(portraitSrc)}<div class="uc-main"><p class="uc-head"><b class="uc-name">${unit.name}</b> <span class="uc-class">${role(unit)}</span> <span class="uc-lv">Lv${unit.level}</span>${unit.boss ? ' <span class="uc-boss">♛ ボス</span>' : ''}${terrain ? ` <span class="uc-terrain">${terrain}</span>` : ''}</p><p class="uc-hp${low ? ' low' : ''}"><span class="uc-label">HP</span> <i class="uc-bar"><em style="width:${pct(unit.hp, unit.max)}%"></em></i> <b>${unit.hp}/${unit.max}</b></p></div><dl class="uc-stats"><div><dt>攻撃</dt> <dd>${unit.power}</dd></div> <div><dt>防御</dt> <dd>${unit.def}</dd></div> <div><dt>射程</dt> <dd>${unit.range}</dd></div> <div><dt>移動</dt> <dd>${unit.move}</dd></div>${unit.armor ? ` <div><dt>盾</dt> <dd>${unit.armor}</dd></div>` : ''}${unit.side === 'ally' ? ` <div class="uc-exp"><dt>EXP</dt> <dd>${unit.exp}/100</dd></div>` : ''}</dl>${note ? `<p class="uc-note">${note}</p>` : ''}`
 }
 
 export type ForecastCard = {
