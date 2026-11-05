@@ -848,8 +848,11 @@ function draw() {
     if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
-    let fromX = e.turret ? e.from : e.from + (source?.key ? standOff(source) + (e.releaseGlide ?? 0) : 0) + dx
-    let fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
+    const liveShooter = e.ranged && !e.turret && [...units, ...fallen].find((unit) => unit.id === e.sourceId)
+    let fromX = e.turret
+      ? e.from
+      : (liveShooter ? drawX(liveShooter) : e.from + (source?.key ? standOff(source) + (e.releaseGlide ?? 0) : 0)) + dx
+    let fromY = e.turret ? 296 : laneY(liveShooter || source || { id: 0 }) + dy
     if (e.ranged) {
       if (!shotVisuals.has(e)) shotVisuals.set(e, { fromX, fromY, x: fromX })
       ;({ fromX, fromY } = shotVisuals.get(e))

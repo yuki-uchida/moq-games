@@ -1039,6 +1039,7 @@ export function activeVictims(effect, units, time) {
 }
 
 const streamTimes = new WeakMap()
+const streamFronts = new WeakMap()
 
 export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle, laneY, drawnFront) {
   const style = IMPACT_STYLES[effect.attackerKey]
@@ -1087,7 +1088,10 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     const path = [previous]
     const previousTime = streamTimes.get(effect) ?? effect.releasedAt
     const crossed =
-      effect.attackerKey === 'aircon' && points.filter((victim) => previousTime < victim.at && time >= victim.at).at(-1)
+      effect.attackerKey === 'aircon' &&
+      points
+        .filter((victim) => previousTime < victim.at && time >= victim.at)
+        .sort((first, second) => (drawnFront(second.unit).x - drawnFront(first.unit).x) * dir)[0]
     const displayTime = crossed ? crossed.at : time
     let pending = false
     if (effect.attackerKey === 'yoshiki' && !points.length && effect.targetId == null) {
@@ -1097,6 +1101,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     for (const victim of points) {
       const front = drawnFront(victim.unit)
       const next = { x: front.x, y: (front.y - floor) / aspect, at: victim.at }
+      if ((next.x - previous.x) * dir <= 0) continue
       const progress =
         next.at === previous.at
           ? Number(displayTime >= next.at)
@@ -1118,6 +1123,16 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
           y: previous.y
         })
       }
+    }
+    const endPoint = path.at(-1)
+    if (points.length && time < points[0].at) {
+      const nearest = points.reduce((x, victim) => Math.min(x, drawnFront(victim.unit).x * dir), Infinity) * dir
+      if ((endPoint.x - nearest) * dir > 0) endPoint.x = nearest
+    }
+    const furthest = streamFronts.get(effect)
+    if (furthest !== undefined && (endPoint.x - furthest) * dir < 0) endPoint.x = furthest
+    streamFronts.set(effect, endPoint.x)
+    if (effect.attackerKey === 'aircon') {
       const end = path.at(-1).x
       ctx.globalAlpha = 0.3 * (1 - age / 0.3)
       ctx.beginPath()
