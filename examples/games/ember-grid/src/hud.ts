@@ -21,6 +21,25 @@ export const roleNames: Record<string, string> = {
 export const phaseLabel = (phase: Game['phase']) =>
   ({ ally: '味方フェイズ', enemy: '敵フェイズ', won: '勝利', lost: '敗北' })[phase]
 
+/** The complete victory and defeat conditions, for the objective's tooltip and tap. */
+export function objectiveDetail(game: Game): string {
+  const objective = campaign[game.stage].objective
+  const rest = '敵を全滅させても勝利 · 味方が全滅すると敗北'
+  if (game.phase === 'won') return objective.type === 'survive' ? '防衛達成' : '任務達成'
+  switch (objective.type) {
+    case 'rout':
+      return '敵を全滅させると勝利 · 味方が全滅すると敗北'
+    case 'boss': {
+      const boss = game.units.find((u) => u.boss)
+      return `ボス（${boss?.name ?? 'ボス'}）を倒すと勝利 · ${rest}`
+    }
+    case 'seize':
+      return `✦の祠に味方を置いたまま味方フェイズを終えると制圧して勝利 · ${rest}`
+    case 'survive':
+      return `${objective.turns}ターン守り抜く（${objective.turns}ターン目の敵フェイズを耐える）と勝利・残り${Math.max(0, objective.turns - game.turn + 1)}ターン · ${rest}`
+  }
+}
+
 /** The victory condition in words, without a label prefix. */
 export function objectiveText(game: Game): string {
   const objective = campaign[game.stage].objective

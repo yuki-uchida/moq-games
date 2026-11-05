@@ -689,7 +689,8 @@ for (const viewport of [
     await expect(page.locator('#objective')).toContainText('残り6ターン', { timeout: 90000 })
     await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
     const status = (await page.locator('.status').boundingBox())!
-    expect(status.height).toBeLessThan(52)
+    // Two rows, the objective possibly on two lines; never the three-row status that pushed the console under the actions.
+    expect(status.height).toBeLessThan(60)
     const ally = await page.evaluate(() => {
       const game = (
         document.querySelector('.stage') as HTMLCanvasElement & {
@@ -837,4 +838,87 @@ test('on the small scrolling layout a two-finger drag pans the board without scr
   const after = await view()
   expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(0.3)
   expect(Math.abs(after.scroll - before.scroll)).toBeLessThanOrEqual(1)
+})
+
+for (const width of [560, 568, 580])
+  test(`chapter five shows its whole objective and taps reveal the full condition at ${width}x320`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 320 })
+    await enterBattle(page, './?seed=7', true)
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await page.locator('[data-stage="4"]').click()
+    const discard = page.getByRole('button', { name: '↻ 破棄して続ける' })
+    if (await discard.isVisible().catch(() => false)) await discard.click()
+    await expect(page.locator('#objective')).toContainText('残り6ターン（6ターン防衛）', { timeout: 90000 })
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    const clipped = await page
+      .locator('#objective')
+      .evaluate((el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+    expect(clipped).toBe(false)
+    expect(await uncoveredIn(page, '#count .enemy b')).toBe(true)
+    await page.locator('#objective').tap()
+    await expect(page.locator('#toast')).toContainText('6ターン守り抜く')
+  })
+
+/** A first play of chapter one with the tutorial running. */
+async function firstPlay(page: Page, viewport: { width: number; height: number }) {
+  await page.setViewportSize(viewport)
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.goto('./?seed=7')
+  await page.getByRole('button', { name: '✦ はじめから' }).click()
+  await page.getByRole('button', { name: '⚔ クラシック' }).click()
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await expect(page.locator('#tutorial')).toBeVisible()
+  return page.locator('#tutorial')
+}
+
+test('the tutorial follows the danger toggle and the next selected ally', async ({ page }) => {
+  const hint = await firstPlay(page, { width: 1280, height: 800 })
+  await page.getByRole('button', { name: '敵の攻撃範囲', exact: true }).click()
+  await cell(page, 2, 5).click()
+  await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+  await expect(hint).toContainText('いまは表示中')
+  // Another fresh ally gets its own guidance.
+  await cell(page, 2, 4).click()
+  await expect(hint).toContainText('移動可能')
+  await page.keyboard.press('Escape')
+  await expect(hint).toContainText('いまは表示中')
+  await page.getByRole('button', { name: '敵の攻撃範囲', exact: true }).click()
+  await expect(hint).toBeHidden()
+  await expect(page.locator('.cell.danger')).toHaveCount(0)
+})
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 480, height: 320 }
+])
+  test(`the tutorial guides the enemy turn with what is available at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    const hint = await firstPlay(page, viewport)
+    await page.locator('#end').scrollIntoViewIfNeeded()
+    await page.locator('#end').tap()
+    await expect(page.locator('#fast')).toBeVisible({ timeout: 30000 })
+    await expect(hint).toContainText('敵フェイズ中')
+    await expect(hint).toBeInViewport()
+    expect(await uncoveredIn(page, '#fast')).toBe(true)
+    await expect(page.locator('#fast.tutorial-target')).toHaveCount(1)
+    await expect(page.locator('#danger.tutorial-target')).toHaveCount(0)
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
+    await expect(hint).not.toContainText('敵フェイズ中')
+  })
+
+test('the tutorial points at nothing disabled while an attack plays', async ({ page }) => {
+  const hint = await firstPlay(page, { width: 1280, height: 800 })
+  await cell(page, 2, 4).click()
+  await cell(page, 4, 4).click()
+  await expect(page.locator('#undo')).toBeEnabled({ timeout: 30000 })
+  await cell(page, 7, 4).click()
+  await page.getByRole('button', { name: '攻撃', exact: true }).click()
+  await expect(hint).toContainText('行動中')
+  await expect(page.locator('#undo.tutorial-target, #end.tutorial-target, #wait.tutorial-target')).toHaveCount(0)
+  await expect(hint).toContainText('ターン終了', { timeout: 30000 })
+  await expect(page.locator('#end.tutorial-target')).toHaveCount(1)
 })

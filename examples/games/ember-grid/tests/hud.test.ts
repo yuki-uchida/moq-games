@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { campaign } from '../src/campaign'
 import { createGame, type Game, type Unit } from '../src/game'
-import { guideText, legendItems, objectiveText, phaseLabel, roleNames } from '../src/hud'
+import { guideText, legendItems, objectiveDetail, objectiveText, phaseLabel, roleNames } from '../src/hud'
 
 const stageOf = (type: string) => campaign.findIndex((c) => c.objective.type === type)
 const base = { busy: false, ready: true }
@@ -160,5 +160,17 @@ describe('legendItems', () => {
     expect(kinds.slice(0, 2)).toEqual(['move', 'heal'])
     const seize = createGame(stageOf('seize'))
     expect(legendItems({ game: seize, danger: false })).toEqual([{ kind: 'seize', label: '制圧目標' }])
+  })
+})
+
+describe('objectiveDetail', () => {
+  it('states the whole condition for every objective type', () => {
+    const survive = createGame(stageOf('survive'))
+    expect(objectiveDetail(survive)).toContain('6ターン守り抜く')
+    expect(objectiveDetail(survive)).toContain('残り6ターン')
+    expect(objectiveDetail(createGame(stageOf('seize')))).toContain('✦の祠')
+    expect(objectiveDetail(createGame(stageOf('boss')))).toMatch(/ボス（.+）を倒すと勝利/)
+    for (const type of ['rout', 'boss', 'seize', 'survive'])
+      expect(objectiveDetail(createGame(stageOf(type)))).toContain('敗北')
   })
 })

@@ -60,7 +60,7 @@ import { setupHelp } from './help'
 import { createTutorial } from './tutorial'
 import { detailHtml, forecastHtml, terrainText, unitCardHtml } from './cards'
 import { chapterObjective } from './menus'
-import { guideText, legendItems, objectiveText, phaseLabel, roleNames } from './hud'
+import { guideText, legendItems, objectiveDetail, objectiveText, phaseLabel, roleNames } from './hud'
 let busy = false
 let ready = false
 // ?seed=N makes level-up rolls reproducible (tests); otherwise growth is random.
@@ -138,7 +138,9 @@ const tutorial = createTutorial(document.querySelector('.console')!, notice, () 
   selected,
   pending,
   undo: Boolean(undo && undo.id === selected),
-  wait: game.phase === 'ally' && game.units.some((u) => u.id === selected && u.hp > 0 && !u.done)
+  wait: game.phase === 'ally' && game.units.some((u) => u.id === selected && u.hp > 0 && !u.done),
+  busy,
+  danger
 }))
 setStoryEnabled(storyEnabled())
 const settings = () =>
@@ -155,6 +157,18 @@ const settings = () =>
 settingsButton.onclick = settings
 const objectiveStatus = document.createElement('span')
 objectiveStatus.id = 'objective'
+// A tap (or Enter) shows the complete condition, which a narrow status may shorten.
+objectiveStatus.tabIndex = 0
+objectiveStatus.setAttribute('role', 'button')
+objectiveStatus.setAttribute('aria-label', '勝利条件を表示')
+const showObjective = () => flash(`勝利条件：${objectiveDetail(game)}`)
+objectiveStatus.addEventListener('click', showObjective)
+objectiveStatus.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    showObjective()
+  }
+})
 document.querySelector('.status')!.append(objectiveStatus)
 const board = document.querySelector<HTMLDivElement>('#board')!
 const field = document.querySelector<HTMLDivElement>('.field')!
@@ -494,6 +508,8 @@ function lockPresentation() {
     document.activeElement?.closest('#board, nav, #forecast') || document.activeElement === document.body
   )
   busy = true
+  // Guidance must not point at controls a presentation has just disabled.
+  tutorial.update()
   cells.forEach((cell) => (cell.disabled = true))
   document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
   if (restoreBoardFocus && document.activeElement === document.body && !document.querySelector('dialog[open]')) {
@@ -767,10 +783,7 @@ render = () => {
   document.querySelector('#count')!.innerHTML =
     `<span class="ally">味方 <b>${game.units.filter((u) => u.side === 'ally' && u.hp > 0).length}</b></span><span class="sep" aria-hidden="true"> · </span><span class="enemy">敵 <b>${game.units.filter((u) => u.side === 'enemy' && u.hp > 0).length}</b></span>`
   objectiveStatus.innerHTML = `<span class="hud-label">勝利条件</span> <span class="objective-text">${objectiveText(game)}</span>`
-  objectiveStatus.title =
-    objective.type === 'seize'
-      ? '✦の祠に味方を置いたまま味方フェイズを終えると制圧 · 敵を全滅させても勝利 · 味方が全滅すると敗北'
-      : '敵を全滅させても勝利 · 味方が全滅すると敗北'
+  objectiveStatus.title = `${objectiveDetail(game)}（タップで表示）`
   document.querySelector('#legend')!.innerHTML = legendItems({ game, selected: unit, foe, danger })
     .map(({ kind, label }) => `<span data-kind="${kind}"><i>${kind === 'seize' ? '✦' : ''}</i>${label}</span>`)
     .join('')
