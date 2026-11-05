@@ -101,10 +101,10 @@ export function personalitySynergyDetails(
   passives: readonly [string, number][],
   maxHp: number
 ) {
-  const hints = PERSONALITY_SYNERGY_HINTS.filter(
-    (entry) => entry.weapon === id || entry.triggers.some((trigger) => trigger === id)
-  )
   const active = activePersonalitySynergies(weaponIds, passives, maxHp)
+  if (WEAPON_BY_ID.has(id))
+    return active.filter((synergy) => synergy.weapon === id).map((synergy) => `発動中：${synergy.text}`)
+  const hints = PERSONALITY_SYNERGY_HINTS.filter((entry) => entry.triggers.some((trigger) => trigger === id))
   return hints.map((entry) => {
     const bonus = active.find((synergy) => synergy.weapon === entry.weapon)
     return `連携条件：${entry.text}${bonus ? `。発動中：${bonus.text}` : ''}`
