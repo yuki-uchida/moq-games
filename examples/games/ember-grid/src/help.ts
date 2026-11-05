@@ -68,6 +68,8 @@ export function setupHelp(dialog: HTMLDialogElement) {
       panels[current].hidden = current !== index
     })
     tabs[index].focus()
+    // A one-row tab bar scrolls sideways on short screens: bring the chosen tab into view.
+    tabs[index].scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }
   tabs.forEach((tab, index) => {
     tab.onclick = () => select(index)

@@ -1,7 +1,8 @@
 .title-screen {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  /* Above every battle layer, including the status bar pinned on small landscape screens. */
+  z-index: 50;
   overflow: auto;
   background: radial-gradient(ellipse at 68% 80%, #64351e, #101a22 65%);
   color: #fff2d4;
@@ -260,4 +261,32 @@
 .set-check span {
   flex: 1;
   text-align: left;
+}
+/* Short landscape screens: the menu takes two columns so every entry fits without scrolling. */
+@media (max-height: 420px) {
+  .title-content nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .title-content nav > * {
+    grid-column: 1 / -1;
+  }
+  .title-content
+    nav
+    > :is([data-action='new'], [data-action='chapters'], [data-action='settings'], [data-action='help']) {
+    grid-column: auto;
+  }
+}
+/* Scrolling menus keep their way out in view. */
+.shell-dialog .set-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #1b333f;
+  box-shadow: 0 10px 14px #1b333f;
+}
+.shell-dialog > button[data-cancel]:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 -10px 14px #1b333f;
 }

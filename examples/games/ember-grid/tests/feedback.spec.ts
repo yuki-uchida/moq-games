@@ -385,3 +385,94 @@ test('the status bar stays pinned while the small landscape page scrolls (568x32
   expect(status.height).toBeLessThan(50)
   expect(actor.y).toBeGreaterThanOrEqual(status.y + status.height - 1)
 })
+
+for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 640, height: 320 },
+  { width: 568, height: 320 }
+]) {
+  test(`the chapter report keeps its next button in view at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await start(page, viewport)
+    const spots = await page.evaluate(() => {
+      const game = (
+        document.querySelector('.stage') as HTMLCanvasElement & {
+          stage: { last: { game: import('../src/game').Game } }
+        }
+      ).stage.last.game
+      const allies = game.units.filter((u) => u.side === 'ally')
+      const enemies = game.units.filter((u) => u.side === 'enemy')
+      enemies.forEach((e) => (e.hp = 0))
+      Object.assign(enemies[0], { hp: 1, x: allies[1].x + 1, y: allies[1].y })
+      game.rocks.delete(`${enemies[0].x},${enemies[0].y}`)
+      game.groves.delete(`${enemies[0].x},${enemies[0].y}`)
+      return { ally: allies[1].y * 10 + allies[1].x, enemy: enemies[0].y * 10 + enemies[0].x }
+    })
+    await page.locator('.cell').nth(spots.ally).dispatchEvent('click')
+    await page.locator('.cell').nth(spots.enemy).dispatchEvent('click')
+    await page.locator('#confirm').dispatchEvent('click')
+    await expect(page.locator('#result')).toContainText('CHAPTER 1 CLEAR', { timeout: 60000 })
+    await expect(page.locator('#next')).toBeInViewport({ ratio: 0.99 })
+    const next = (await page.locator('#next').boundingBox())!
+    const covered = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('#next') !== null, {
+      x: next.x + next.width / 2,
+      y: next.y + next.height / 2
+    })
+    expect(covered).toBe(true)
+  })
+}
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 320 }
+]) {
+  test(`the title menu fits and covers the battle UI at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'ember-grid:save:v1',
+        JSON.stringify({
+          version: 1,
+          difficulty: 'classic',
+          formation: 'balanced',
+          checkpoints: [],
+          furthest: 2,
+          cleared: [0, 1],
+          bestTurns: { 0: 4, 1: 5 }
+        })
+      )
+    })
+    await page.goto('./?seed=7')
+    const entries = page.locator('.title-content nav > *')
+    await expect(entries).toHaveCount(5)
+    for (const entry of await entries.all()) await expect(entry).toBeInViewport({ ratio: 0.99 })
+    const status = (await page.locator('.status').boundingBox())!
+    const onTop = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.title-screen') !== null,
+      { x: status.x + 20, y: status.y + status.height / 2 }
+    )
+    expect(onTop).toBe(true)
+  })
+}
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 320, height: 568 }
+]) {
+  test(`dialogs keep their title and way out in view at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await start(page, viewport)
+    await page.getByRole('button', { name: /2,4 風読み/ }).dispatchEvent('click')
+    await page.getByRole('button', { name: 'ユニット詳細' }).click()
+    await expect(page.locator('#detail-title')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#detail-close')).toBeInViewport({ ratio: 0.99 })
+    await page.locator('#detail-close').click()
+    await page.getByRole('button', { name: '遊び方' }).click()
+    await expect(page.locator('#help-close')).toBeInViewport({ ratio: 0.99 })
+    await page.keyboard.press('End')
+    await expect(page.getByRole('tab').last()).toBeInViewport({ ratio: 0.99 })
+    await page.locator('#help-close').click()
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await expect(page.locator('#cancel-mission')).toBeInViewport({ ratio: 0.99 })
+    await page.locator('#cancel-mission').click()
+    await expect(page.locator('#expedition')).toBeHidden()
+  })
+}

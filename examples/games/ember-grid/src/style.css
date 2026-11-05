@@ -2368,3 +2368,43 @@ button:active:not(:disabled) {
     display: none;
   }
 }
+/* On short screens the chapter report scrolls; its next-mission button stays in view. */
+#result.chapter #next {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 -12px 16px #142d3a;
+}
+/* Scrolling dialogs keep their way out in view. */
+#detail-close,
+#help-close,
+#cancel-mission {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  box-shadow: 0 -10px 14px #1b333f;
+}
+@media (max-height: 500px) {
+  .dt-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .dt-head .portrait {
+    width: 56px;
+    height: 56px;
+  }
+}
+@media (max-height: 500px) {
+  /* Short screens: one pinned row of help tabs leaves room for the text. */
+  #help-dialog [role='tablist'] {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    background: #1b333f;
+    padding-block: 2px;
+  }
+  #help-dialog [role='tab'] {
+    flex: none;
+  }
+}
