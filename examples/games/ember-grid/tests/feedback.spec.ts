@@ -456,6 +456,16 @@ for (const viewport of [
     await page.locator('#confirm').dispatchEvent('click')
     await expect(page.locator('#result')).toContainText('CHAPTER 1 CLEAR', { timeout: 60000 })
     await expect(page.locator('#next')).toBeInViewport({ ratio: 0.99 })
+    // Each stat keeps its label and number on one line.
+    for (const stat of await page.locator('.report-stats span').all()) {
+      const box = (await stat.boundingBox())!
+      expect(box.height).toBeLessThan(24)
+    }
+    if (viewport.width === 320) {
+      // Stacked layouts give the result the console's room.
+      await expect(page.locator('.console')).toBeHidden()
+      await expect(page.locator('.chapter-units li').first()).toBeInViewport({ ratio: 0.99 })
+    }
     const next = (await page.locator('#next').boundingBox())!
     const covered = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('#next') !== null, {
       x: next.x + next.width / 2,
