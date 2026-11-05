@@ -2176,9 +2176,13 @@ button:active:not(:disabled) {
   left: 50%;
   translate: -50% 0;
   z-index: 7;
+  width: max-content;
   max-width: calc(100% - 24px);
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: 16px;
+  text-wrap: balance;
+  line-break: strict;
+  word-break: auto-phrase;
   border: 1px solid #e9ce8d;
   background: #2a1c12ee;
   color: #ffe9c4;
@@ -2583,7 +2587,7 @@ button:active:not(:disabled) {
     white-space: normal;
     text-overflow: clip;
     line-height: 1.15;
-    cursor: pointer;
+    word-break: auto-phrase;
   }
 }
 /* Short side column: tighter spacing pays for a two-line objective. */
@@ -2597,4 +2601,17 @@ button:active:not(:disabled) {
   .console-side {
     gap: 0;
   }
+}
+/* The objective is pressable in every layout: dotted underline, pointer and a visible keyboard focus. */
+#objective {
+  cursor: pointer;
+}
+#objective .objective-text {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+#objective:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  border-radius: 3px;
 }

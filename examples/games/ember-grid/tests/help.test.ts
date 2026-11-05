@@ -12,6 +12,11 @@ describe('help', () => {
       expect(victory).toMatch(new RegExp(`第(${index + 1}|${wide(index + 1)})章`))
     })
   })
+  it('says the objective can be pressed to show its full text', () => {
+    const top = sections.find((section) => section.join('').includes('画面上部'))!.join('')
+    expect(top).toContain('勝利条件を押すと')
+    expect(top).toContain('全文')
+  })
   it('explains page scrolling and board panning on small screens', () => {
     const controls = sections.find(([label]) => label.includes('操作'))!.join('')
     expect(controls).toContain('1本指の縦スワイプ')

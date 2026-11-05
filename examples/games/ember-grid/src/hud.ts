@@ -115,7 +115,7 @@ export function guideText({ game, selected, inspected, pendingHeal, canUndo, bus
   )
     return '祠を確保中 · ▶ ターン終了で制圧'
   if (!selected && inspected && inspected.side === 'enemy' && inspected.hp > 0)
-    return `${inspected.name}の移動範囲（青）と攻撃範囲（赤）を表示中`
+    return `${inspected.name}の移動範囲（青紫）と攻撃範囲（赤）を表示中`
   if (game.units.some((u) => u.side === 'ally' && u.hp > 0 && !finished(game, u)))
     return '行動する味方（◆）を選んでください'
   return '全員行動済み · ▶ ターン終了'

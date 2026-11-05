@@ -127,7 +127,7 @@ describe('guideText', () => {
   it('falls back to inspection and turn guidance', () => {
     const game = createGame(0)
     const foe = enemy(game)[0]
-    expect(guideText({ ...base, game, inspected: foe })).toBe(`${foe.name}の移動範囲（青）と攻撃範囲（赤）を表示中`)
+    expect(guideText({ ...base, game, inspected: foe })).toBe(`${foe.name}の移動範囲（青紫）と攻撃範囲（赤）を表示中`)
     expect(guideText({ ...base, game })).toBe('行動する味方（◆）を選んでください')
     for (const u of ally(game)) u.done = true
     expect(guideText({ ...base, game })).toBe('全員行動済み · ▶ ターン終了')
