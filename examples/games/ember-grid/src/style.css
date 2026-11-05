@@ -2537,3 +2537,23 @@ button:active:not(:disabled) {
     padding-top: 0;
   }
 }
+/* Chapter report: each stat keeps its label and number together; a narrow report wraps between stats. */
+.report-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+}
+.report-stats span {
+  white-space: nowrap;
+}
+/* While a chapter result is shown the battle controls have nothing to do: give the result their room
+   (stacked layouts only; the landscape side column keeps its fixed board). */
+@media not all and (max-height: 500px) and (min-width: 560px) {
+  .field.reporting ~ .console {
+    display: none;
+  }
+}
+.chapter-units ins,
+.chapter-units .exp-line {
+  white-space: nowrap;
+}
