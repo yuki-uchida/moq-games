@@ -1081,7 +1081,7 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
         unit: units.find((unit) => unit.id === victim.id) ?? effect.victimOrigins?.find((unit) => unit.id === victim.id)
       }))
       .filter((victim) => victim.unit)
-      .sort((first, second) => first.at - second.at)
+      .sort((first, second) => first.at - second.at || (drawnFront(first.unit).x - drawnFront(second.unit).x) * dir)
     let previous = { x: startX, y: startY, at: effect.releasedAt }
     ctx.globalAlpha = Math.min(1, (0.22 - age) / 0.08)
     const path = [previous]
@@ -1097,7 +1097,10 @@ export function drawArea(ctx, effect, type, units, time, aspect, reduced, muzzle
     for (const victim of points) {
       const front = drawnFront(victim.unit)
       const next = { x: front.x, y: (front.y - floor) / aspect, at: victim.at }
-      const progress = Math.max(0, Math.min(1, (displayTime - previous.at) / (next.at - previous.at || 1)))
+      const progress =
+        next.at === previous.at
+          ? Number(displayTime >= next.at)
+          : Math.max(0, Math.min(1, (displayTime - previous.at) / (next.at - previous.at)))
       path.push({ x: previous.x + (next.x - previous.x) * progress, y: previous.y + (next.y - previous.y) * progress })
       if (progress < 1) {
         pending = true
