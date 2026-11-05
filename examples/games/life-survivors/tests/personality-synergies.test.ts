@@ -122,8 +122,10 @@ test('health adds overtime shots, cooking gains pellets, and the status reports 
   const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
   expect(statusModel(view.players[0], 20).personalitySynergies[0].text).toContain('攻撃数 +2')
   expect(statusModel(view.players[0], 20).weapons[0].detail).toContain('発動中：健康志向 × 料理')
+  expect(statusModel(view.players[0], 20).weapons[0].detail).not.toContain('連携条件')
   expect(choiceText(player, 'p:p_healthy').text).toContain('発動中：健康志向 × 料理')
-  expect(choiceText(player, 's:w_sports').text).toContain('器用 × スポーツ')
+  expect(choiceText(player, 'p:p_clever').text).toContain('器用 × スポーツ')
+  expect(choiceText(player, 's:w_sports').text).not.toContain('連携条件')
   expect(view.players[0].talents).toBeUndefined()
 })
 
