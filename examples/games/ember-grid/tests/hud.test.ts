@@ -40,7 +40,7 @@ describe('objectiveText', () => {
     expect(objectiveText(createGame(stageOf('seize')))).toBe('✦ 祠を制圧')
     const survive = createGame(stageOf('survive'))
     const turns = (campaign[survive.stage].objective as { turns: number }).turns
-    expect(objectiveText(survive)).toBe(`${turns}ターン防衛 · 残り${turns}ターン`)
+    expect(objectiveText(survive)).toBe(`残り${turns}ターン（${turns}ターン防衛）`)
     survive.turn = turns + 3
     expect(objectiveText(survive)).toContain('残り0ターン')
   })
@@ -98,7 +98,11 @@ describe('guideText', () => {
     expect(guideText({ ...base, game, selected: unit })).toBe('赤く光る敵を選んで攻撃、または ✓ 待機')
     foe.x = 9
     foe.y = 9
-    expect(guideText({ ...base, game, selected: unit })).toBe('攻撃できる敵がいません · ✓ 待機（↶ 戻すで取消）')
+    expect(guideText({ ...base, game, selected: unit, canUndo: true })).toBe(
+      '攻撃できる敵がいません · ✓ 待機（↶ 戻すで取消）'
+    )
+    // After reselecting a moved ally the move can no longer be taken back: no undo hint.
+    expect(guideText({ ...base, game, selected: unit })).toBe('攻撃できる敵がいません · ✓ 待機')
     unit.done = true
     expect(guideText({ ...base, game, selected: unit })).toBe('行動済み · 別の味方を選ぶか ▶ ターン終了')
   })
@@ -113,7 +117,8 @@ describe('guideText', () => {
     friend.y = 0
     expect(guideText({ ...base, game, selected: healer })).toBe('青いマスへ移動（杖は距離1〜2の味方を回復）')
     healer.moved = true
-    expect(guideText({ ...base, game, selected: healer })).toBe('✓ 待機で行動終了（↶ 戻すで移動を取消）')
+    expect(guideText({ ...base, game, selected: healer, canUndo: true })).toBe('✓ 待機で行動終了（↶ 戻すで移動を取消）')
+    expect(guideText({ ...base, game, selected: healer })).toBe('✓ 待機で行動終了')
     friend.hp = friend.max - 1
     expect(guideText({ ...base, game, selected: healer })).toBe('緑のマスの味方を回復、または ✓ 待機')
     healer.moved = false

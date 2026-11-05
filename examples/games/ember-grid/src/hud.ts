@@ -35,7 +35,7 @@ export function objectiveText(game: Game): string {
     case 'seize':
       return '✦ 祠を制圧'
     case 'survive':
-      return `${objective.turns}ターン防衛 · 残り${Math.max(0, objective.turns - game.turn + 1)}ターン`
+      return `残り${Math.max(0, objective.turns - game.turn + 1)}ターン（${objective.turns}ターン防衛）`
   }
 }
 
@@ -45,12 +45,14 @@ export type GuideState = {
   inspected?: Unit
   /** true: a heal forecast is open; false: an attack forecast; undefined: none. */
   pendingHeal?: boolean
+  /** The selected ally can still take back its move with ↶ 戻す. */
+  canUndo?: boolean
   busy: boolean
   ready: boolean
 }
 
 /** One short sentence on what to do next. */
-export function guideText({ game, selected, inspected, pendingHeal, busy, ready }: GuideState): string {
+export function guideText({ game, selected, inspected, pendingHeal, canUndo, busy, ready }: GuideState): string {
   if (!ready) return '3D モデルを準備中…'
   if (game.phase === 'won') return '勝利！ 結果を確認して次の任務へ'
   if (game.phase === 'lost') return '敗北… 「↻ この章に再挑戦」で章の最初から'
@@ -77,8 +79,14 @@ export function guideText({ game, selected, inspected, pendingHeal, busy, ready 
         return targets ? '青いマスへ移動、または緑のマスの味方を回復' : '青いマスへ移動（杖は距離1〜2の味方を回復）'
       return targets ? '青いマスへ移動、または赤く光る敵を攻撃' : '青いマスへ移動（赤は移動後に攻撃できる範囲）'
     }
-    if (healer) return targets ? '緑のマスの味方を回復、または ✓ 待機' : '✓ 待機で行動終了（↶ 戻すで移動を取消）'
-    return targets ? '赤く光る敵を選んで攻撃、または ✓ 待機' : '攻撃できる敵がいません · ✓ 待機（↶ 戻すで取消）'
+    if (healer)
+      return targets
+        ? '緑のマスの味方を回復、または ✓ 待機'
+        : canUndo
+          ? '✓ 待機で行動終了（↶ 戻すで移動を取消）'
+          : '✓ 待機で行動終了'
+    if (targets) return '赤く光る敵を選んで攻撃、または ✓ 待機'
+    return canUndo ? '攻撃できる敵がいません · ✓ 待機（↶ 戻すで取消）' : '攻撃できる敵がいません · ✓ 待機'
   }
   const goal = campaign[game.stage].objective
   if (

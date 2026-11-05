@@ -133,7 +133,12 @@ settingsButton.title = '設定'
 document.querySelector('header')!.append(settingsButton)
 let previousDanger = dangerZoneDefault()
 let render = () => {}
-const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({ game, selected, pending }))
+const tutorial = createTutorial(document.querySelector('.console')!, notice, () => ({
+  game,
+  selected,
+  pending,
+  undo: Boolean(undo && undo.id === selected)
+}))
 setStoryEnabled(storyEnabled())
 const settings = () =>
   openSettings(() => {
@@ -270,7 +275,7 @@ function clearTouchCells() {
 /** Over the console when it is fully on screen; otherwise a panel fixed to the viewport bottom. */
 function positionTouchChoices() {
   const bounds = consolePanel.getBoundingClientRect()
-  if (matchMedia('(max-height: 500px) and (min-width: 520px)').matches) {
+  if (matchMedia('(max-height: 500px) and (min-width: 560px)').matches) {
     // Side column: cover everything from the status bar down to the console bottom.
     const status = document.querySelector<HTMLElement>('.status')!.getBoundingClientRect()
     const fits = bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth && status.top >= 0
@@ -538,10 +543,16 @@ function updateGuide() {
     selected: game.units.find((u) => u.id === selected),
     inspected: game.units.find((u) => u.id === (hovered ?? inspected)),
     pendingHeal: pending ? pendingHeal : undefined,
+    canUndo: Boolean(undo && undo.id === selected),
     busy,
     ready
   })
 }
+// Floating elements on the scrolling layout sit below the pinned status bar, whatever its height.
+const statusBar = document.querySelector<HTMLElement>('.status')!
+new ResizeObserver(() =>
+  document.documentElement.style.setProperty('--status-h', `${Math.ceil(statusBar.getBoundingClientRect().height)}px`)
+).observe(statusBar)
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 /** Failure feedback visible at every size; the log keeps the screen-reader announcement. */
 function flash(message: string) {
@@ -1060,7 +1071,7 @@ let pendingOpening: boolean | undefined
 /** Chapter title card and intro scenes, then the first ally-phase banner. */
 /** Small landscape screens scroll the page: bring the whole battlefield into view. */
 function showBattlefield() {
-  if (matchMedia('(max-height: 500px) and (max-width: 519px)').matches) field.scrollIntoView({ block: 'end' })
+  if (matchMedia('(max-height: 500px) and (max-width: 559px)').matches) field.scrollIntoView({ block: 'end' })
 }
 async function openChapter(fresh: boolean) {
   const token = generation
