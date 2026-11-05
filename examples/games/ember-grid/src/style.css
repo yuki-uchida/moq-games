@@ -2633,23 +2633,39 @@ button:active:not(:disabled) {
     top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 49px);
   }
 }
-/* Side column: the tutorial floats over the board's top edge; the labels and toast sit below it. */
+/* Side column: the tutorial takes the row beside the header and the board starts below it while it shows. */
 @media (max-height: 500px) and (min-width: 560px) {
-  .field > #tutorial:not([hidden]) {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    z-index: 8;
-    box-shadow: 0 6px 20px #000c;
+  main > #tutorial {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    max-height: 56px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.25;
+    padding: 2px 4px 2px 8px;
+    overflow: hidden;
   }
-  .field:has(> #tutorial:not([hidden])) #terrain,
-  .field:has(> #tutorial:not([hidden])) #actor,
-  .field:has(> #tutorial:not([hidden])) #toast {
-    top: calc(var(--tutorial-h, 50px) + 14px);
+  main:has(> #tutorial:not([hidden])) > .field {
+    grid-row: 2 / 4;
   }
-  .field:has(> #tutorial:not([hidden])):has(#actor:not([hidden])) #toast {
-    top: calc(var(--tutorial-h, 50px) + 49px);
+  main > #tutorial::before {
+    display: none;
+  }
+  main > #tutorial span::before {
+    content: 'チュートリアル';
+    font-size: 10px;
+    font-weight: bold;
+    background: #e9ce8d;
+    color: #2b1d08;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-right: 5px;
+  }
+  main > #tutorial button {
+    min-height: 36px;
+    min-width: 56px;
+    padding: 0 6px;
   }
 }
 /* Stacked layouts: an attack forecast opens below the tutorial instead of covering it; nothing else in the
