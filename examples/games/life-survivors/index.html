@@ -30,13 +30,24 @@
         </div>
         <div class="hud-top">
           <div class="life-card">
-            <div class="age"><b id="age">0</b><span>歳</span> <small id="stage">乳児期</small></div>
-            <div class="clock" aria-label="経過時間"><span id="clock">00:00</span><small>/ 15:00</small></div>
+            <div class="life-row">
+              <div class="age"><b id="age">0</b><span>歳</span> <small id="stage">乳児期</small></div>
+              <div class="clock" aria-label="経過時間"><span id="clock">00:00</span><small>/ 15:00</small></div>
+            </div>
             <div class="life-line" aria-hidden="true"><i id="life-progress"></i></div>
           </div>
           <div class="kills" aria-label="乗り越えた数">🗡 <b id="kills">0</b></div>
           <div class="top-actions">
-            <span id="connection" class="connection">ひとりで</span>
+            <span id="connection" class="connection" role="status"></span>
+            <button
+              id="status-open"
+              class="icon-button"
+              type="button"
+              aria-label="ステータスを表示"
+              aria-haspopup="dialog"
+            >
+              📋
+            </button>
             <button id="mute" class="icon-button" type="button" aria-label="音をミュート" aria-pressed="false">
               🔊
             </button>
@@ -48,8 +59,22 @@
         <div id="stick" class="stick" aria-hidden="true" hidden><i id="stick-knob"></i></div>
         <p id="move-hint" class="move-hint" aria-hidden="true" hidden>画面のどこでもスライドして移動。攻撃は自動。</p>
         <div class="hand" aria-label="人生の手札">
-          <div id="weapons" class="slots"></div>
-          <div id="passives" class="slots passives"></div>
+          <div
+            id="weapons"
+            class="slots hand-open"
+            role="button"
+            tabindex="0"
+            aria-haspopup="dialog"
+            aria-label="所持武器。ステータスを表示"
+          ></div>
+          <div
+            id="passives"
+            class="slots passives hand-open"
+            role="button"
+            tabindex="0"
+            aria-haspopup="dialog"
+            aria-label="性格。ステータスを表示"
+          ></div>
           <details id="synergies">
             <summary id="synergy-count">人生の相乗効果 0/6</summary>
             <p>武器カテゴリで発動、交換後は再判定。各効果は1回。親・性格・家族は対象外。続きはスクロール。</p>
@@ -213,6 +238,23 @@
         </div>
       </section>
 
+      <section id="status" class="dialog-backdrop" aria-labelledby="status-title" hidden>
+        <div class="dialog status-dialog" role="dialog" aria-modal="true" aria-labelledby="status-title">
+          <button id="status-close" class="close" type="button" aria-label="閉じる">×</button>
+          <h2 id="status-title">ステータス</h2>
+          <p id="status-note" class="status-note"></p>
+          <h3>所持武器</h3>
+          <ul id="status-weapons" class="status-list"></ul>
+          <h3>性格</h3>
+          <ul id="status-passives" class="status-list"></ul>
+          <h3 id="status-synergy-title">発動中のシナジー</h3>
+          <ul id="status-synergies" class="status-list status-synergies"></ul>
+          <h3 id="status-personality-title">性格と武器のシナジー</h3>
+          <ul id="status-personality-synergies" class="status-list status-synergies"></ul>
+          <button id="status-done" class="button button-primary" type="button">閉じる</button>
+        </div>
+      </section>
+
       <section id="result" class="dialog-backdrop" aria-labelledby="result-title" hidden>
         <div class="dialog result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
           <p class="overline">人生のふりかえり</p>
@@ -248,6 +290,7 @@
         </div>
       </section>
       <div id="announcements" class="sr-only" aria-live="assertive"></div>
+      <div id="pause-banner" class="pause-banner" role="status" hidden></div>
     </main>
     <script type="module" src="./src/main.ts"></script>
   </body>

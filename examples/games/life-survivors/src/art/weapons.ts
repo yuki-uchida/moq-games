@@ -682,6 +682,47 @@ const coin = (size = 32) =>
 const icon = (src: Raster) => new Raster(32, 32).blit(src, Math.round((32 - src.w) / 2), Math.round((32 - src.h) / 2))
 
 const PASSIVE_ICONS: Record<string, () => Raster> = {
+  p_grand: () =>
+    tiny(32, 32, (l) => {
+      l.poly(
+        [16, 2, 19, 11, 28, 7, 23, 15, 31, 18, 22, 20, 24, 29, 16, 23, 9, 30, 10, 21, 2, 18, 10, 14, 6, 6, 14, 11],
+        R.orange[1]
+      )
+      ball(l, 16, 17, 6, 6, R.yellow)
+    }),
+  p_large: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 9, 6, 6, R.skin)
+      l.poly([8, 15, 24, 15, 28, 28, 4, 28], R.sky[1])
+      l.rect(7, 27, 18, 2, R.navy[1])
+    }),
+  p_small: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 13, 4, 4, R.skin)
+      l.poly([12, 17, 20, 17, 22, 27, 10, 27], R.mint[1])
+      l.rect(11, 27, 10, 2, R.navy[1])
+    }),
+  p_hasty: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 17, 11, 11, R.metal)
+      ball(l, 16, 17, 8, 8, R.paper)
+      l.rect(13, 3, 6, 3, R.metal[2])
+      l.thick(16, 17, 16, 10, 2, R.red[1])
+      l.thick(16, 17, 21, 20, 2, R.red[1])
+    }),
+  p_cautious: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 13, 13, 9, 9, R.metal)
+      ball(l, 13, 13, 6, 6, R.sky)
+      l.thick(19, 19, 27, 27, 4, R.brown[1])
+    }),
+  p_competitive: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 16, 11, 11, R.red)
+      l.thick(9, 13, 13, 15, 2, C.inkWarm)
+      l.thick(23, 13, 19, 15, 2, C.inkWarm)
+      l.thick(11, 22, 21, 22, 2, R.yellow[0])
+    }),
   p_affection: () =>
     tiny(32, 32, (l) => {
       l.ellipse(10, 11, 7, 7, R.pink[1])

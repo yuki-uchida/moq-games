@@ -271,7 +271,7 @@ for (const viewport of [
     expect(hpBox.x + hpBox.width).toBeLessThanOrEqual(xpBox.x + xpBox.width)
     expect(hpBox.y).toBeGreaterThanOrEqual(xpBox.y)
     expect(hpBox.y + hpBox.height).toBeLessThanOrEqual(xpBox.y + xpBox.height)
-    for (const selector of ['.life-card', '#connection', '#mute', '#help-open', '#leave']) {
+    for (const selector of ['.life-card', '#status-open', '#mute', '#help-open', '#leave']) {
       const box = (await page.locator(selector).boundingBox())!
       expect(box.x).toBeGreaterThanOrEqual(0)
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
@@ -716,6 +716,45 @@ test('reading effects render behind local and co-op players', async ({ page }) =
   for (const events of orders) {
     expect(events).toEqual(['groundShot:art', 'groundShot:centred', 'groundShot:art', 'player', 'player'])
   }
+})
+
+test('status dialog lists hand, personalities and synergies and stops solo time', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect(page.locator('#connection')).toBeHidden()
+  await expect(page.locator('#hud')).not.toContainText('ひとりで')
+  const handle = await life(page)
+  await handle.evaluate((life) => {
+    const player = (life.game as unknown as Game).state.players[0]
+    player.birthPick = false
+    player.choices = []
+    player.pending = 0
+    player.weapons = ['w_reading', 'w_invest'].map((id) => ({ id, lv: 1, cd: 100, held: 0, damage: 0 }))
+    player.passives = [
+      { id: 'p_diligent', lv: 2 },
+      { id: 'p_curious', lv: 2 }
+    ]
+  })
+  await expect(page.locator('#weapons .slot')).toHaveCount(2)
+  await page.locator('#weapons').click()
+  const dialog = page.locator('#status')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('#status-weapons li')).toHaveCount(2)
+  await expect(dialog.locator('#status-passives')).toContainText('勤勉')
+  await expect(dialog.locator('#status-personality-synergies')).toContainText('好奇心 × 読書')
+  await expect(dialog.locator('#status-weapons')).toContainText('発動中：好奇心 × 読書')
+  await expect(dialog.locator('#status-synergies')).toContainText('発動中：知識で資産形成')
+  const frozen = await handle.evaluate((life) => (life.game as unknown as Game).state.time)
+  await page.waitForTimeout(700)
+  expect(await handle.evaluate((life) => (life.game as unknown as Game).state.time)).toBe(frozen)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect.poll(() => handle.evaluate((life) => (life.game as unknown as Game).state.time)).toBeGreaterThan(frozen)
+  await page.locator('#status-open').click()
+  await expect(dialog).toBeVisible()
+  await page.locator('#status-done').click()
+  await expect(dialog).toBeHidden()
 })
 
 test('synergy details show activation and release from the local hand', async ({ page }, testInfo) => {
@@ -1351,9 +1390,90 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v13', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v13', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
   expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
+})
+
+test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const spectator = await context.newPage()
+  const errors: string[] = []
+  for (const page of [host, guest]) page.on('pageerror', (error) => errors.push(error.message))
+  for (const page of [host, guest, spectator]) {
+    await page.goto('/')
+    await page.locator('#room').fill('pause-room')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await expect(host.locator('#hud')).toBeVisible()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  await expect(guest.locator('#hud')).toBeVisible()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => hostLife.evaluate((l) => l.game.state.players.length)).toBe(2)
+  await hostLife.evaluate((l) => {
+    for (const p of l.game.state.players as unknown as { choices: string[]; birthPick: boolean; pending: number }[]) {
+      p.choices = []
+      p.birthPick = false
+      p.pending = 0
+    }
+  })
+  const guestId = await guestLife.evaluate((l) => l.localId)
+  const time = () => hostLife.evaluate((l) => l.game.state.time)
+  const frozen = async (page: Page) => {
+    await page.bringToFront()
+    const before = await time()
+    await page.waitForTimeout(800)
+    return (await time()) === before
+  }
+
+  await guest.bringToFront()
+  await guest.locator('#status-open').click()
+  await expect(guest.locator('#status')).toBeVisible()
+  await expect(guest.locator('#status-note')).toContainText('みんなの時間が止まります')
+  await expect(host.locator('#pause-banner')).toBeVisible()
+  await expect(host.locator('#pause-banner')).toContainText('時間停止中')
+  await expect.poll(() => frozen(guest)).toBe(true)
+  expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
+
+  await spectator.evaluate(() => {
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v14', 'pause-room']))
+    channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
+  })
+  expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
+
+  await host.locator('#status-open').click()
+  await expect.poll(() => hostLife.evaluate((l) => l.view?.paused?.length)).toBe(2)
+  await guest.locator('#status-done').click()
+  await expect(guest.locator('#status')).toBeHidden()
+  await expect.poll(() => hostLife.evaluate((l) => l.view?.paused?.length)).toBe(1)
+  await expect.poll(() => frozen(host)).toBe(true)
+  await host.keyboard.press('Escape')
+  await expect(host.locator('#pause-banner')).toBeHidden()
+  const resumed = await time()
+  await expect.poll(time).toBeGreaterThan(resumed)
+
+  await host.bringToFront()
+  await host.locator('#status-open').click()
+  await expect(guest.locator('#pause-banner')).toBeVisible()
+  await expect.poll(() => frozen(host)).toBe(true)
+  await host.keyboard.press('Escape')
+  await expect(guest.locator('#pause-banner')).toBeHidden()
+  const again = await time()
+  await expect.poll(time).toBeGreaterThan(again)
+
+  await guest.bringToFront()
+  await guest.locator('#status-open').click()
+  await expect(host.locator('#pause-banner')).toBeVisible()
+  await guest.close()
+  const stuck = await time()
+  await expect.poll(time, { timeout: 5000 }).toBeGreaterThan(stuck)
+  await expect(host.locator('#pause-banner')).toBeHidden()
+  expect(errors).toEqual([])
 })
 
 test('two players share one life-world: the guest moves and gets their own hand', async ({ context }, testInfo) => {

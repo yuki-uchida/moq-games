@@ -24,6 +24,7 @@ import { petForm, sportsForm, weaponAppearance } from './weapon-life'
 import { LifeAudio } from './audio'
 import { activeSynergies, SYNERGIES } from './synergies'
 import { musicCue } from './music'
+import { statusModel, type StatusItem } from './status'
 import { FX } from './fx'
 import {
   BANNER_MS,
@@ -60,6 +61,7 @@ const startPanel = element<HTMLElement>('#start-panel')
 const levelup = element<HTMLElement>('#levelup')
 const cards = element<HTMLElement>('#cards')
 const help = element<HTMLElement>('#help')
+const statusDialog = element<HTMLElement>('#status')
 const result = element<HTMLElement>('#result')
 const startError = element<HTMLElement>('#start-error')
 const connection = element<HTMLElement>('#connection')
@@ -71,7 +73,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v13'
+const APP = 'life-survivors-v14'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -133,6 +135,25 @@ function movement() {
   }
   const length = Math.hypot(x, y)
   return length > 1 ? { x: x / length, y: y / length } : { x, y }
+}
+
+const PAUSE_STALE_MS = 1000
+const pauseHolds = new Map<string, number>()
+
+function holdPause(id: string, now: number) {
+  pauseHolds.set(id, now)
+}
+
+function activePauses(now: number): string[] {
+  if (!game) return []
+  const ids: string[] = []
+  for (const player of game.state.players) {
+    const hold = pauseHolds.get(player.id)
+    if (hold === undefined) continue
+    if (now - hold > PAUSE_STALE_MS) pauseHolds.delete(player.id)
+    else ids.push(player.id)
+  }
+  return ids
 }
 
 function input(): Input {
@@ -304,6 +325,8 @@ function resetFeel() {
   handKey = ''
   bossShown = undefined
   bossBar.hidden = true
+  pauseShown = ''
+  pauseBanner.hidden = true
 }
 
 async function start(next: 'solo' | 'host' | 'guest') {
@@ -317,6 +340,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
   game?.addPlayer(localId)
   view = game ? toView(game.state) : undefined
   remoteInputAt.clear()
+  pauseHolds.clear()
   seenLog.clear()
   pick = undefined
   shownChoices = ''
@@ -336,7 +360,13 @@ async function start(next: 'solo' | 'host' | 'guest') {
         playerId: localId,
         onInput: (id, value) => {
           if (attempt !== generation || !game) return
-          remoteInputAt.set(id, performance.now())
+          const now = performance.now()
+          remoteInputAt.set(id, now)
+          if (id !== localId) {
+            const wants = typeof value === 'object' && value !== null && (value as { pause?: unknown }).pause === true
+            if (wants && game.state.players.some((player) => player.id === id)) holdPause(id, now)
+            else pauseHolds.delete(id)
+          }
           game.setInput(id, value)
         },
         onSnapshot: (value) => {
@@ -348,7 +378,10 @@ async function start(next: 'solo' | 'host' | 'guest') {
           if (attempt !== generation || next !== 'host' || !game) return
           for (const id of ids) game.addPlayer(id)
           for (const player of [...game.state.players])
-            if (player.id !== localId && !ids.includes(player.id)) game.removePlayer(player.id)
+            if (player.id !== localId && !ids.includes(player.id)) {
+              game.removePlayer(player.id)
+              pauseHolds.delete(player.id)
+            }
         },
         onStatus: (status, message) => {
           if (attempt !== generation || network !== current) return
@@ -374,7 +407,7 @@ async function start(next: 'solo' | 'host' | 'guest') {
       }
       if (attempt !== generation) return
       if (failure) throw new Error(failure)
-    } else setStatus('ひとりで')
+    } else setStatus('')
     started = true
     startPanel.hidden = true
     hud.hidden = false
@@ -420,13 +453,15 @@ async function returnToTitle() {
   levelup.hidden = true
   result.hidden = true
   help.hidden = true
+  statusDialog.hidden = true
+  pauseHolds.clear()
   resetFeel()
   audio.dispose()
   // Still inside the click: a fresh context lets the title theme start without another tap.
   audio.unlock()
   startPanel.hidden = false
   buttons.forEach((button) => (button.disabled = false))
-  setStatus('ひとりで')
+  setStatus('')
   await current?.stop()
 }
 
@@ -618,6 +653,7 @@ function updateHud(current: View) {
     ])
     if (key !== handKey) {
       handKey = key
+      if (!statusDialog.hidden) renderStatus()
       const active = activeSynergies(player.weapons.map(([id]) => id))
       element('#synergy-count').textContent = `人生の相乗効果 ${active.length}/${SYNERGIES.length}`
       element('#synergy-list').replaceChildren(
@@ -786,6 +822,7 @@ function showResult(
 ) {
   resultShown = true
   levelup.hidden = true
+  statusDialog.hidden = true
   audio.setHeartbeat(0)
   element('#result-title').textContent = title
   element('#result-text').textContent = text
@@ -899,6 +936,17 @@ function feel(current: View, now: number) {
   audio.setMuffle(Math.max(levelup.hidden ? 0 : 0.55, beat * 0.5))
 }
 
+const pauseBanner = element<HTMLElement>('#pause-banner')
+let pauseShown = ''
+function renderPauseBanner(current: View) {
+  const names = (current.paused ?? []).flatMap((id) => current.players.find((p) => p.id === id)?.name ?? [])
+  const text = names.length && !resultShown ? `⏸ ${names.join('・')}がステータスを確認中 — 時間停止中` : ''
+  if (text === pauseShown) return
+  pauseShown = text
+  pauseBanner.textContent = text
+  pauseBanner.hidden = !text
+}
+
 function frame(now: number) {
   const dt = Math.min(Math.max((now - lastTime) / 1000, 0), 0.1)
   lastTime = now
@@ -909,15 +957,21 @@ function frame(now: number) {
       for (const player of game.state.players)
         if (player.id !== localId && now - (remoteInputAt.get(player.id) ?? 0) > 500)
           game.setInput(player.id, { x: 0, y: 0, pick: -1, pickSeq: -1 })
-    if (role !== 'solo' || help.hidden) game.step(dt)
-    view = toView(game.state)
+    if (statusDialog.hidden) pauseHolds.delete(localId)
+    else holdPause(localId, now)
+    const paused = role === 'solo' ? [] : activePauses(now)
+    if (role === 'solo' ? help.hidden && statusDialog.hidden : paused.length === 0) game.step(dt)
+    view = toView(game.state, paused)
   }
   const player = me()
   if (pick && player && player.choiceSeq !== pick.seq) pick = undefined
   if (started && network && now - sentAt >= (role === 'host' ? SNAPSHOT_MS : SEND_MS)) {
     sentAt = now
     const link = network
-    const operation = role === 'host' && view ? link.broadcastSnapshot(view) : link.sendInput(current)
+    const operation =
+      role === 'host' && view
+        ? link.broadcastSnapshot(view)
+        : link.sendInput({ ...current, pause: !statusDialog.hidden })
     void operation.catch((cause: unknown) =>
       disconnect(`通信エラー: ${cause instanceof Error ? cause.message : String(cause)}`, link)
     )
@@ -933,6 +987,7 @@ function frame(now: number) {
       updateHud(view)
     }
     if (role === 'guest' && !player && view.players.length >= 8) setStatus('満員のため観戦中')
+    renderPauseBanner(view)
   }
   requestAnimationFrame(frame)
 }
@@ -983,6 +1038,90 @@ help.addEventListener('keydown', (event) => {
   } else if (!event.shiftKey && document.activeElement === helpDone) {
     event.preventDefault()
     helpClose.focus()
+  }
+})
+function renderStatusItems(list: HTMLElement, items: StatusItem[], empty: string) {
+  list.replaceChildren(
+    ...(items.length
+      ? items.map((item) => {
+          const row = el('li', `status-item status-${item.kind}`)
+          const icon = el('span', 'status-icon')
+          icon.append(iconImg(item.icon, item.name, item.kind === 'evolved'))
+          const text = el('span', 'status-text')
+          text.append(el('strong', '', item.name), el('small', '', item.detail))
+          const level = el('b', 'status-level', item.kind === 'parent' ? '親' : `Lv ${item.levelText}`)
+          row.append(icon, text, level)
+          return row
+        })
+      : [el('li', 'status-empty', empty)])
+  )
+}
+
+function renderStatus() {
+  const player = me()
+  if (!player || !view) return
+  const model = statusModel(player, ageAt(Math.min(view.time, RUN_SECONDS)))
+  element('#status-note').textContent =
+    role === 'solo'
+      ? 'この画面を開いている間は時間が止まります。'
+      : 'この画面を開いている間は、みんなの時間が止まります。全員が閉じると再開します。'
+  element('#status-personality-synergies').replaceChildren(
+    ...(model.personalitySynergies.length
+      ? model.personalitySynergies.map((row) => {
+          const item = el('li', 'status-synergy active')
+          item.append(el('strong', '', `発動中：${row.weapon}`), el('small', '', row.text))
+          return item
+        })
+      : [el('li', 'status-empty', '発動中の組み合わせはありません')])
+  )
+  renderStatusItems(element('#status-weapons'), model.weapons, 'まだ武器がありません')
+  renderStatusItems(element('#status-passives'), model.passives, 'まだ性格がありません')
+  element('#status-synergy-title').textContent = `人生の相乗効果 ${model.activeCount}/${model.total}`
+  element('#status-synergies').replaceChildren(
+    ...model.synergies.map((row) => {
+      const item = el('li', `status-synergy ${row.active ? 'active' : ''}`)
+      item.append(el('strong', '', `${row.active ? '発動中' : '未発動'}：${row.name}`), el('small', '', row.text))
+      return item
+    })
+  )
+}
+
+const statusOpen = element<HTMLButtonElement>('#status-open')
+const statusClose = element<HTMLButtonElement>('#status-close')
+const statusDone = element<HTMLButtonElement>('#status-done')
+let statusReturnFocus: HTMLElement = statusOpen
+function openStatus(origin: HTMLElement = statusOpen) {
+  if (!started || resultShown || !statusDialog.hidden || !help.hidden || !me()) return
+  keys.clear()
+  endDrag()
+  statusReturnFocus = origin
+  renderStatus()
+  statusDialog.hidden = false
+  statusClose.focus()
+}
+function closeStatus() {
+  if (statusDialog.hidden) return
+  statusDialog.hidden = true
+  statusReturnFocus.focus()
+}
+statusOpen.addEventListener('click', () => openStatus())
+document.querySelectorAll<HTMLElement>('.hand-open').forEach((target) => {
+  target.addEventListener('click', () => openStatus(target))
+  target.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openStatus(target)
+  })
+})
+for (const button of [statusClose, statusDone]) button.addEventListener('click', closeStatus)
+statusDialog.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return
+  if (event.shiftKey && document.activeElement === statusClose) {
+    event.preventDefault()
+    statusDone.focus()
+  } else if (!event.shiftKey && document.activeElement === statusDone) {
+    event.preventDefault()
+    statusClose.focus()
   }
 })
 // Shared UI cues follow the game's mute / volume; level-up cards have their own cues.
@@ -1039,6 +1178,10 @@ for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] 
 
 const moveKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'])
 window.addEventListener('keydown', (event) => {
+  if (event.code === 'Escape' && !statusDialog.hidden) {
+    closeStatus()
+    return
+  }
   if (event.code === 'Escape' && !help.hidden) {
     closeHelp()
     return
@@ -1047,7 +1190,7 @@ window.addEventListener('keydown', (event) => {
     toggleMute()
     return
   }
-  if (!started || !help.hidden) return
+  if (!started || !help.hidden || !statusDialog.hidden) return
   if (/^Digit[1-8]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
     event.preventDefault()

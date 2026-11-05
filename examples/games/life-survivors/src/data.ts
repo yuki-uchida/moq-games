@@ -721,6 +721,18 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'p_clever', category: 'hobby', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）・威力 +3%' },
   { id: 'p_curious', category: 'hobby', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
   { id: 'p_savvy', category: 'friend', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' },
+  { id: 'p_grand', category: 'sports', name: '豪快', icon: '💥', desc: '弾数 +1（武器による）・クールダウン +10%' },
+  { id: 'p_large', category: 'sports', name: '大柄', icon: '🧍', desc: '最大精神力 +15・体と当たり判定 +5%' },
+  {
+    id: 'p_small',
+    category: 'sports',
+    name: '小柄',
+    icon: '🐭',
+    desc: '最大精神力 -10・体と当たり判定 -5%・移動速度 +3%'
+  },
+  { id: 'p_hasty', category: 'hobby', name: 'せっかち', icon: '⏱️', desc: 'クールダウン -5%・効果時間 -5%' },
+  { id: 'p_cautious', category: 'study', name: '慎重', icon: '🔍', desc: '弾の速さ -5%・範囲 +5%' },
+  { id: 'p_competitive', category: 'love', name: '負けず嫌い', icon: '💪', desc: '精神力が半分以下の間、威力 +10%' },
   {
     id: 'p_petmemory',
     category: 'friend',

@@ -32,7 +32,8 @@ import {
   type WeaponDef
 } from './data'
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
-import { activeSynergies } from './synergies'
+import { activePersonalitySynergies, activeSynergies, diceFloorForLuck, personalitySynergyDetails } from './synergies'
+import { bodyScale } from './body-size'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
 import { PET_LIFESPAN, PET_MEMORY, weaponAppearance } from './weapon-life'
@@ -63,6 +64,7 @@ export function raidReach(t: number) {
   return 1 - (t - RAID.back) / (1 - RAID.back)
 }
 const PLAYER_RADIUS = 14
+const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
 const MAX_ENEMIES = 560
@@ -304,6 +306,8 @@ export const xpForLevel = (level: number) =>
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const passivePower = (player: Player, id: string) =>
   passiveLevel(player, id) * player.talents[PASSIVE_BY_ID.get(id)!.category]
+export const playerRadius = (player: Player) =>
+  PLAYER_RADIUS * bodyScale(passiveLevel(player, 'p_large'), passiveLevel(player, 'p_small'))
 
 export function generateTalents(rng: () => number): Record<TalentCategory, number> {
   const anchors = TALENT_CATEGORIES.map(() => rng())
@@ -355,11 +359,15 @@ export interface PlayerStats {
 export function playerStats(player: Player): PlayerStats {
   const p = (id: string) => passivePower(player, id)
   return {
-    maxHp:
+    maxHp: Math.max(
+      25,
       100 +
-      (p('p_bold') + p('p_acceptance')) * 20 +
-      (player.parent === 'p_gone' ? 60 : 0) +
-      (player.parent === 'p_toxic' ? -10 : 0),
+        (p('p_bold') + p('p_acceptance')) * 20 +
+        p('p_large') * 15 -
+        p('p_small') * 10 +
+        (player.parent === 'p_gone' ? 60 : 0) +
+        (player.parent === 'p_toxic' ? -10 : 0)
+    ),
     armor: p('p_stubborn') + p('p_patience') + (player.parent === 'p_over' ? 1 : 0),
     regen:
       player.parent === 'p_toxic'
@@ -367,16 +375,23 @@ export function playerStats(player: Player): PlayerStats {
         : (p('p_optimist') + p('p_affection') + p(PET_MEMORY)) * 0.4 +
           p('p_kind') * 0.2 +
           (player.parent === 'p_gone' ? 1 : 0),
-    speed: BASE_SPEED * (1 + p('p_healthy') * 0.08),
+    speed: BASE_SPEED * (1 + p('p_healthy') * 0.08 + p('p_small') * 0.03),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
-    might: (1 + (p('p_hot') + p('p_courage')) * 0.1 + p('p_clever') * 0.03) * (player.parent === 'p_toxic' ? 1.25 : 1),
-    cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07),
-    area: 1 + p('p_kind') * 0.08,
+    might:
+      (1 +
+        (p('p_hot') + p('p_courage')) * 0.1 +
+        p('p_clever') * 0.03 +
+        (player.hp <= player.maxHp / 2 ? p('p_competitive') * 0.1 : 0)) *
+      (player.parent === 'p_toxic' ? 1.25 : 1),
+    cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
+    area: 1 + p('p_kind') * 0.08 + p('p_cautious') * 0.05,
     crit: 0.05 + p('p_lucky') * 0.05,
-    amount: passiveLevel(player, 'p_clever') >= 4 ? 2 : passiveLevel(player, 'p_clever') >= 1 ? 1 : 0,
-    shotSpeed: 1 + p('p_curious') * 0.1,
-    duration: 1 + p('p_curious') * 0.1,
+    amount:
+      (passiveLevel(player, 'p_clever') >= 4 ? 2 : passiveLevel(player, 'p_clever') >= 1 ? 1 : 0) +
+      passiveLevel(player, 'p_grand'),
+    shotSpeed: Math.max(0.5, 1 + p('p_curious') * 0.1 - p('p_cautious') * 0.05),
+    duration: Math.max(0.5, 1 + p('p_curious') * 0.1 - p('p_hasty') * 0.05),
     strong: STRONG_MULTIPLIER + p('p_savvy') * 0.25
   }
 }
@@ -399,6 +414,11 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
   const evolved = isEvolved(player, weapon)
   const synergies = def.parent ? [] : activeSynergies(player.weapons.map((owned) => owned.id))
   const bonuses = synergies.filter((synergy) => synergy.target === def.category)
+  const personalityBonuses = activePersonalitySynergies(
+    player.weapons.map((owned) => owned.id),
+    player.passives.map((passive) => [passive.id, passive.lv]),
+    stats.maxHp
+  ).filter((synergy) => synergy.weapon === def.id)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
   if (def.category) damage *= player.talents[def.category]
   if (evolved) damage *= 1.6
@@ -415,20 +435,27 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
       (lv >= 7 ? 0.85 : 1) *
       stats.cooldown *
       (evolved ? 0.8 : 1) *
-      bonuses.reduce((value, synergy) => value * synergy.cooldown, 1),
+      bonuses.reduce((value, synergy) => value * synergy.cooldown, 1) *
+      personalityBonuses.reduce((value, synergy) => value * (synergy.cooldown ?? 1), 1),
     amount:
       def.amount +
       (lv >= 2 ? 1 : 0) +
       (lv >= 5 ? 1 : 0) +
       (lv >= 8 ? 1 : 0) +
       (evolved ? 1 : 0) +
-      (def.behavior === 'none' ? 0 : stats.amount),
+      (def.behavior === 'none' ? 0 : stats.amount) +
+      personalityBonuses.reduce((value, synergy) => value + (synergy.amount ?? 0), 0),
     area:
       (lv >= 4 ? 1.25 : 1) *
       stats.area *
       (evolved ? 1.2 : 1) *
-      bonuses.reduce((value, synergy) => value * synergy.area, 1),
-    duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
+      bonuses.reduce((value, synergy) => value * synergy.area, 1) *
+      personalityBonuses.reduce((value, synergy) => value * (synergy.area ?? 1), 1),
+    duration:
+      def.duration *
+      (evolved ? 1.3 : 1) *
+      stats.duration *
+      personalityBonuses.reduce((value, synergy) => value * (synergy.duration ?? 1), 1),
     speed: stats.shotSpeed,
     crit: stats.crit,
     strong: stats.strong
@@ -453,6 +480,16 @@ export function choiceText(
   if (choice === 'f:no')
     return { icon: '🤝', name: '迎えない', text: '本人の回復は毎秒HP2のまま。今の家族で歩む', tag: '' }
   const [kind, id] = choice.split(':')
+  const detail = (text: string) =>
+    [
+      text,
+      ...personalitySynergyDetails(
+        id,
+        player.weapons.map((weapon) => weapon.id),
+        player.passives.map((passive) => [passive.id, passive.lv]),
+        player.maxHp
+      )
+    ].join(' ')
   if (kind === 's' || kind === 'r') {
     const def = WEAPON_BY_ID.get(id)!
     const appearance =
@@ -462,7 +499,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: kind === 's' ? def.desc : 'この武器と入れ替える',
+      text: detail(kind === 's' ? def.desc : 'この武器と入れ替える'),
       tag: kind === 's' ? 'NEW' : '交換'
     }
   }
@@ -471,7 +508,7 @@ export function choiceText(
     const def = WEAPON_BY_ID.get(id)!
     const owned = player.weapons.find((w) => w.id === id)
     const appearance = age === undefined ? def : weaponAppearance(id, age, age - (owned?.acquiredAge ?? age))
-    if (!owned) return { icon: appearance.icon, name: appearance.name, text: def.desc, tag: 'NEW' }
+    if (!owned) return { icon: appearance.icon, name: appearance.name, text: detail(def.desc), tag: 'NEW' }
     const next = owned.lv + 1
     const evolves =
       next === MAX_WEAPON_LEVEL && def.evolve && passiveLevel(player, def.evolve.passive)
@@ -480,14 +517,14 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${LEVEL_TEXT[next]}${evolves}`,
+      text: detail(`${LEVEL_TEXT[next]}${evolves}`),
       tag: `Lv ${next}`
     }
   }
   if (kind === 'p') {
     const def = PASSIVE_BY_ID.get(id)!
     const lv = passiveLevel(player, id)
-    return { icon: def.icon, name: def.name, text: def.desc, tag: lv ? `Lv ${lv + 1}` : '性格' }
+    return { icon: def.icon, name: def.name, text: detail(def.desc), tag: lv ? `Lv ${lv + 1}` : '性格' }
   }
   return choice === 'x:meal'
     ? { icon: '🍙', name: 'ごはん', text: '精神力を 40 回復', tag: '' }
@@ -1363,7 +1400,7 @@ export class Game {
       for (const player of state.players) {
         if (isRelationshipEnemy(enemy.kind) && player.id !== enemy.targetPlayer) continue
         if (player.downed) continue
-        const reach = radius + PLAYER_RADIUS
+        const reach = radius + playerRadius(player)
         if ((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2 >= reach * reach) continue
         if (enemy.mode === 2 && (def.behavior === 'charger' || def.behavior === 'boss')) {
           // A charge lands as one blow (then the attacker is spent), not as a grinding touch.
@@ -1584,7 +1621,7 @@ export class Game {
       let spent = false
       for (const player of alive) {
         if (player.invuln > 0) continue
-        const reach = bullet.r + PLAYER_RADIUS - 3
+        const reach = bullet.r + playerRadius(player) - 3
         if ((player.x - bullet.x) ** 2 + (player.y - bullet.y) ** 2 < reach * reach) {
           const armor = playerStats(player).armor
           this.damagePlayer(player, Math.max(bullet.damage * 0.25, bullet.damage - armor), bullet.src)
@@ -1976,7 +2013,7 @@ export class Game {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle: rng() * Math.PI * 2,
-            damage: ws.damage * DICE_MULT[face - 1],
+            damage: ws.damage * Math.max(DICE_MULT[face - 1], diceFloorForLuck(passiveLevel(player, 'p_lucky'))),
             v: face,
             crit: face === 6,
             pierce: def.pierce + (weapon.lv >= 4 ? 1 : 0)
@@ -2502,7 +2539,8 @@ export class Game {
     const [kind, id] = choice.split(':')
     const owned =
       kind === 'w' ? player.weapons.some((w) => w.id === id) : player.passives.some((passive) => passive.id === id)
-    return owned ? 2.5 : 1
+    const weight = owned ? 2.5 : 1
+    return kind === 'p' ? (weight * BASE_PASSIVE_COUNT) / (PASSIVES.length - 1) : weight
   }
 
   private offer(player: Player) {
@@ -2648,6 +2686,7 @@ export class Game {
     const stats = playerStats(player)
     if (!player.downed && stats.maxHp > player.maxHp) player.hp += stats.maxHp - player.maxHp
     player.maxHp = stats.maxHp
+    player.hp = Math.min(player.hp, player.maxHp)
   }
 
   private announceEvolution(player: Player, weapon: OwnedWeapon) {

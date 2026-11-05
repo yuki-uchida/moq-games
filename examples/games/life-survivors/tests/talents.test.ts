@@ -87,10 +87,17 @@ test('every passive responds to talent without changing integer levels or evolut
     p_clever: (player) => playerStats(player).might,
     p_curious: (player) => playerStats(player).shotSpeed,
     p_savvy: (player) => playerStats(player).strong,
+    p_grand: (player) => playerStats(player).cooldown,
+    p_large: (player) => playerStats(player).maxHp,
+    p_small: (player) => playerStats(player).maxHp,
+    p_hasty: (player) => playerStats(player).cooldown,
+    p_cautious: (player) => playerStats(player).area,
+    p_competitive: (player) => playerStats(player).might,
     p_petmemory: (player) => playerStats(player).regen
   }
   for (const def of PASSIVES) {
     const player = new Game(1).addPlayer('a', 'p_gone')!
+    player.hp = player.maxHp / 2
     player.passives = [{ id: def.id, lv: 4 }]
     player.weapons = [{ id: 'w_friend', lv: 8, cd: 0, held: 0, damage: 0 }]
     player.talents[def.category] = POOR
@@ -124,7 +131,7 @@ test('every weapon uses its category and extreme passive builds stay finite', ()
     expect(stats.crit).toBeLessThan(1)
     for (const level of [1, 3, 4, 5]) {
       player.passives.find((passive) => passive.id === 'p_clever')!.lv = level
-      expect(playerStats(player).amount).toBe(level >= 4 ? 2 : 1)
+      expect(playerStats(player).amount).toBe((level >= 4 ? 2 : 1) + 5)
     }
   }
 })

@@ -77,6 +77,7 @@ export interface View {
   fx: number[]
   log: { t: number; text: string; to?: string }[]
   reaper: [number, number] | null
+  paused?: string[]
 }
 
 export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 3, popups: 6, fx: FX_STRIDE } as const
@@ -88,7 +89,7 @@ export const POPUP_BIT = { strong: 1, crit: 2 } as const
 export const VIEW_CAPS = { enemies: 600, shots: 600, bullets: 200, gems: 400, items: 40, popups: 100, fx: 160 } as const
 const r = Math.round
 
-export function toView(state: GameState): View {
+export function toView(state: GameState, paused: readonly string[] = []): View {
   const over = state.phase === 'won' || state.phase === 'lost'
   const ownerIndex = new Map(state.players.map((player, index) => [player.id, index]))
   const enemies: number[] = []
@@ -185,7 +186,8 @@ export function toView(state: GameState): View {
     popups,
     fx,
     log: state.log.slice(),
-    reaper: state.reaper ? [r(state.reaper.x), r(state.reaper.y)] : null
+    reaper: state.reaper ? [r(state.reaper.x), r(state.reaper.y)] : null,
+    ...(paused.length ? { paused: [...paused] } : {})
   }
 }
 
@@ -308,7 +310,8 @@ export function readView(value: unknown): View | undefined {
           'popups',
           'fx',
           'log',
-          'reaper'
+          'reaper',
+          'paused'
         ].includes(key)
     )
   )
@@ -336,7 +339,13 @@ export function readView(value: unknown): View | undefined {
     Array.isArray(v.log) &&
     v.log.length <= 12 &&
     v.log.every((e) => record(e) && finite(e.t) && text(e.text) && (e.to === undefined || text(e.to, 64))) &&
-    (v.reaper === null || (Array.isArray(v.reaper) && v.reaper.length === 2 && v.reaper.every((n) => finite(n))))
+    (v.reaper === null || (Array.isArray(v.reaper) && v.reaper.length === 2 && v.reaper.every((n) => finite(n)))) &&
+    (v.paused === undefined ||
+      (Array.isArray(v.paused) &&
+        v.paused.length > 0 &&
+        v.paused.length <= MAX_GAME_PLAYERS &&
+        new Set(v.paused).size === v.paused.length &&
+        v.paused.every((id) => typeof id === 'string' && (v.players as ViewPlayer[]).some((p) => p.id === id))))
   if (!ok) return undefined
   if (new Set((v.players as ViewPlayer[]).map((player) => player.id)).size !== (v.players as ViewPlayer[]).length)
     return undefined

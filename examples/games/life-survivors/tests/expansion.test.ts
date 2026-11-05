@@ -191,8 +191,8 @@ describe('new talent weapons', () => {
       post(game, 'abusive_senpai', player.x + 300, player.y)
       game.tick(1 / 60)
       const staples = game.state.shots.filter((s) => s.weapon === 'w_overtime')
-      expect(staples).toHaveLength(3)
-      expect(staples.map((s) => s.delay > 0)).toEqual([false, true, true])
+      expect(staples).toHaveLength(6)
+      expect(staples.map((s) => s.delay > 0)).toEqual([false, true, true, true, true, true])
       // Staples that have not left yet are not sent.
       const view = toView(game.state)
       expect(view.shots.length / STRIDE.shots).toBe(1)
@@ -258,7 +258,7 @@ describe('passives', () => {
   test('the four new 性格 exist and scale as described', () => {
     const { player } = arena(1)
     for (const id of ['p_lucky', 'p_clever', 'p_curious', 'p_savvy']) expect(PASSIVES.map((p) => p.id)).toContain(id)
-    expect(PASSIVES).toHaveLength(13)
+    expect(PASSIVES).toHaveLength(19)
     const base = playerStats(player)
     expect(base.crit).toBeCloseTo(0.05)
     expect(base.amount).toBe(0)
