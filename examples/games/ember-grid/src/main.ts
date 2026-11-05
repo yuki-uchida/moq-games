@@ -137,7 +137,8 @@ const tutorial = createTutorial(document.querySelector('.console')!, notice, () 
   game,
   selected,
   pending,
-  undo: Boolean(undo && undo.id === selected)
+  undo: Boolean(undo && undo.id === selected),
+  wait: game.phase === 'ally' && game.units.some((u) => u.id === selected && u.hp > 0 && !u.done)
 }))
 setStoryEnabled(storyEnabled())
 const settings = () =>

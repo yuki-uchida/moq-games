@@ -1,8 +1,8 @@
 import { distance, type Game } from './game'
 
 export type TutorialAction = 'select' | 'move' | 'target' | 'attack' | 'turn' | 'danger'
-/** undo: the selected ally can still take back its move with ↶ 戻す. */
-type State = { game: Game; selected?: string; pending?: string; undo?: boolean }
+/** undo: the selected ally can still take back its move with ↶ 戻す; wait: it can still ✓ 待機. */
+type State = { game: Game; selected?: string; pending?: string; undo?: boolean; wait?: boolean }
 export function tutorialStep({ game, selected, pending }: State, turn: boolean): number {
   if (turn) return 5
   if (pending) return 3
@@ -40,16 +40,21 @@ export function createTutorial(container: HTMLElement, notice: () => void, state
     document.querySelectorAll('.tutorial-target').forEach((element) => element.classList.remove('tutorial-target'))
     if (!active || hint.hidden) return
     const current = state()
-    const step = current.pending ? 3 : turn ? 5 : attacked ? 4 : tutorialStep(current, turn)
-    // Mention and highlight ↶ 戻す only while it actually works.
+    // After the first attack the spent ally points to the turn's end or another ally; a fresh ally gets its own steps.
+    const natural = current.pending ? 3 : turn ? 5 : tutorialStep(current, turn)
+    const step = attacked && natural === 0 ? 4 : natural
+    // Mention and highlight only the actions that work right now.
+    const actions = [current.wait ? '✓ 待機' : '', current.undo ? '↶ 戻す' : '', '▶ ターン終了'].filter(Boolean)
     hint.querySelector('span')!.textContent =
-      step === 4 && !current.undo ? '✓ 待機・▶ ターン終了、または別の味方を選ぼう' : messages[step]
+      step === 4 ? `${actions.join('・')}、または別の味方を選ぼう` : messages[step]
     const selectors = [
       '.cell.ally:not(.done)',
       '.cell.legal',
       '.cell.target',
       '#confirm',
-      current.undo ? '#wait, #undo, #end' : '#wait, #end',
+      [current.wait ? '#wait' : '', current.undo ? '#undo' : '', '#end', current.wait ? '' : '.cell.ally:not(.done)']
+        .filter(Boolean)
+        .join(', '),
       '#danger'
     ]
     document.querySelectorAll(selectors[step]).forEach((element) => element.classList.add('tutorial-target'))

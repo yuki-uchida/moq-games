@@ -727,3 +727,114 @@ test('the undo hint only appears while the move can still be taken back', async 
   await expect(page.locator('#undo')).toBeDisabled()
   await expect(guide).not.toContainText('戻す')
 })
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 320 }
+])
+  test(`the side column keeps its guide and info buttons clear in the enemy turn at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await start(page, viewport)
+    await page.locator('#end').click()
+    await expect(page.locator('#fast')).toBeVisible({ timeout: 30000 })
+    await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+    await expect(page.locator('.console > nav')).toBeHidden()
+    for (const id of ['#fast', '#guide', '#detail-button', '#touch-assist'])
+      expect(await uncoveredIn(page, id)).toBe(true)
+    await expect(page.locator('#turn')).toContainText('ターン 2 · 味方', { timeout: 30000 })
+    await expect(page.locator('#end')).toBeVisible()
+  })
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 1280, height: 800 }
+])
+  test(`the title screen does not scroll into empty space at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport)
+    await page.goto('./?seed=7')
+    await expect(page.locator('.title-screen')).toBeVisible()
+    const overflow = await page
+      .locator('.title-screen')
+      .evaluate((title) => [title.scrollHeight - title.clientHeight, title.scrollWidth - title.clientWidth])
+    expect(overflow[0]).toBeLessThanOrEqual(1)
+    expect(overflow[1]).toBeLessThanOrEqual(1)
+  })
+
+for (const width of [560, 568, 580])
+  test(`chapter five keeps the enemy count and the objective apart at ${width}x320`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 320 })
+    await enterBattle(page, './?seed=7', true)
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await page.locator('[data-stage="4"]').click()
+    const discard = page.getByRole('button', { name: '↻ 破棄して続ける' })
+    if (await discard.isVisible().catch(() => false)) await discard.click()
+    await expect(page.locator('#objective')).toContainText('残り6ターン', { timeout: 90000 })
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    const count = (await page.locator('#count').boundingBox())!
+    const objective = (await page.locator('#objective').boundingBox())!
+    // Same row: the objective must start after the count ends.
+    expect(objective.x).toBeGreaterThanOrEqual(count.x + count.width - 1)
+    // The enemy number itself is the topmost element at its own position.
+    const enemyNumber = page.locator('#count .enemy b')
+    expect(await uncoveredIn(page, '#count .enemy b')).toBe(true)
+    await expect(enemyNumber).toHaveText('4')
+  })
+
+test('the tutorial shows only usable actions after an attack and follows the next ally', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  page.on('dialog', (dialog) => void dialog.accept())
+  await page.goto('./?seed=7')
+  await page.getByRole('button', { name: '✦ はじめから' }).click()
+  await page.getByRole('button', { name: '⚔ クラシック' }).click()
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  const hint = page.locator('#tutorial')
+  await cell(page, 2, 4).click()
+  await cell(page, 4, 4).click()
+  await expect(page.locator('#undo')).toBeEnabled({ timeout: 30000 })
+  await cell(page, 7, 4).click()
+  await page.getByRole('button', { name: '攻撃', exact: true }).click()
+  await expect(hint).toContainText('ターン終了', { timeout: 30000 })
+  await expect(hint).not.toContainText('待機')
+  await expect(page.locator('#wait.tutorial-target')).toHaveCount(0)
+  await expect(page.locator('#end.tutorial-target')).toHaveCount(1)
+  await cell(page, 2, 5).click()
+  await expect(hint).toContainText('移動可能')
+})
+
+test('on the small scrolling layout a two-finger drag pans the board without scrolling the page (480x320)', async ({
+  page,
+  context
+}) => {
+  await start(page, { width: 480, height: 320 })
+  await page.getByRole('button', { name: '拡大' }).click()
+  await cameraSettled(page)
+  const view = () =>
+    page.evaluate(() => {
+      const camera = (document.querySelector('.field') as HTMLElement & { camera: { view: { x: number; y: number } } })
+        .camera
+      return { x: camera.view.x, y: camera.view.y, scroll: scrollY }
+    })
+  const before = await view()
+  const field = (await page.locator('.field').boundingBox())!
+  const cx = Math.round(field.x + field.width / 2)
+  const cy = Math.round(field.y + field.height / 2)
+  const client = await context.newCDPSession(page)
+  const points = (dy: number) => [
+    { x: cx - 50, y: cy + dy, id: 1 },
+    { x: cx + 50, y: cy + dy, id: 2 }
+  ]
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(0) })
+  for (let step = 1; step <= 8; step++) {
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(-step * 8) })
+    await page.waitForTimeout(16)
+  }
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(300)
+  const after = await view()
+  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(0.3)
+  expect(Math.abs(after.scroll - before.scroll)).toBeLessThanOrEqual(1)
+})
