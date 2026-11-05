@@ -1,7 +1,8 @@
 import { distance, type Game } from './game'
 
 export type TutorialAction = 'select' | 'move' | 'target' | 'attack' | 'turn' | 'danger'
-type State = { game: Game; selected?: string; pending?: string }
+/** undo: the selected ally can still take back its move with ↶ 戻す. */
+type State = { game: Game; selected?: string; pending?: string; undo?: boolean }
 export function tutorialStep({ game, selected, pending }: State, turn: boolean): number {
   if (turn) return 5
   if (pending) return 3
@@ -40,13 +41,15 @@ export function createTutorial(container: HTMLElement, notice: () => void, state
     if (!active || hint.hidden) return
     const current = state()
     const step = current.pending ? 3 : turn ? 5 : attacked ? 4 : tutorialStep(current, turn)
-    hint.querySelector('span')!.textContent = messages[step]
+    // Mention and highlight ↶ 戻す only while it actually works.
+    hint.querySelector('span')!.textContent =
+      step === 4 && !current.undo ? '✓ 待機・▶ ターン終了、または別の味方を選ぼう' : messages[step]
     const selectors = [
       '.cell.ally:not(.done)',
       '.cell.legal',
       '.cell.target',
       '#confirm',
-      '#wait, #undo, #end',
+      current.undo ? '#wait, #undo, #end' : '#wait, #end',
       '#danger'
     ]
     document.querySelectorAll(selectors[step]).forEach((element) => element.classList.add('tutorial-target'))

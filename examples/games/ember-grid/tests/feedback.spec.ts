@@ -614,3 +614,106 @@ for (const viewport of [
     await expect(page.locator('#next')).toBeInViewport({ ratio: 0.99 })
     for (const id of ['#outcome', '#next']) expect(await uncoveredIn(page, id)).toBe(true)
   })
+
+test('a vertical swipe on the board scrolls the small page to the actions (480x320)', async ({ page, context }) => {
+  await start(page, { width: 480, height: 320 })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  const field = (await page.locator('.field').boundingBox())!
+  const x = Math.round(field.x + field.width / 2)
+  const y = Math.round(field.y + field.height * 0.6)
+  const client = await context.newCDPSession(page)
+  // The swipes start on the board itself, as a player reaching for the actions below it would.
+  const swipeUp = async () => {
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    for (let step = 1; step <= 12; step++) {
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y: Math.max(1, y - step * 15) }]
+      })
+      await page.waitForTimeout(16)
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  }
+  await swipeUp()
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(100)
+  await swipeUp()
+  await expect(page.locator('#end')).toBeInViewport()
+})
+
+for (const viewport of [
+  { width: 360, height: 320 },
+  { width: 480, height: 320 },
+  { width: 520, height: 320 }
+])
+  test(`the first-time tutorial never covers the status bar at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport)
+    page.on('dialog', (dialog) => void dialog.accept())
+    await page.goto('./?seed=7')
+    await page.getByRole('button', { name: '✦ はじめから' }).click()
+    await page.getByRole('button', { name: '⚔ クラシック' }).click()
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await expect(page.locator('#tutorial')).toContainText('味方を選ぼう')
+    const status = (await page.locator('.status').boundingBox())!
+    const tutorial = (await page.locator('#tutorial').boundingBox())!
+    expect(tutorial.y).toBeGreaterThanOrEqual(status.y + status.height - 1)
+    for (const id of ['#turn', '#count', '#objective']) expect(await uncoveredIn(page, id)).toBe(true)
+    await expect(page.locator('#tutorial').getByRole('button', { name: 'スキップ' })).toBeInViewport({ ratio: 1 })
+  })
+
+for (const viewport of [
+  { width: 560, height: 320 },
+  { width: 568, height: 320 }
+])
+  test(`a long objective keeps the stats and touch assist clear at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport)
+    await enterBattle(page, './?seed=7', true)
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await page.locator('[data-stage="4"]').click()
+    const discard = page.getByRole('button', { name: '↻ 破棄して続ける' })
+    if (await discard.isVisible().catch(() => false)) await discard.click()
+    await expect(page.locator('#objective')).toContainText('残り6ターン', { timeout: 90000 })
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    const status = (await page.locator('.status').boundingBox())!
+    expect(status.height).toBeLessThan(52)
+    const ally = await page.evaluate(() => {
+      const game = (
+        document.querySelector('.stage') as HTMLCanvasElement & {
+          stage: { last: { game: import('../src/game').Game } }
+        }
+      ).stage.last.game
+      const unit = game.units.find((u) => u.side === 'ally' && u.hp > 0)!
+      return unit.y * 10 + unit.x
+    })
+    await page.locator('.cell').nth(ally).dispatchEvent('click')
+    for (const id of ['#selection .uc-stats', '#touch-assist', '#detail-button', '#end'])
+      expect(await uncoveredIn(page, id)).toBe(true)
+    await page.locator('#touch-assist').tap()
+    await expect(page.locator('#touch-assist')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+test('the undo hint only appears while the move can still be taken back', async ({ page }) => {
+  await start(page, { width: 1280, height: 800 })
+  const guide = page.locator('#guide')
+  await cell(page, 2, 5).click()
+  await cell(page, 3, 5).click()
+  await expect(page.locator('#undo')).toBeEnabled({ timeout: 30000 })
+  await expect(guide).toContainText('戻す')
+  // Selecting another ally drops the first one's undo record.
+  await cell(page, 2, 4).click()
+  await cell(page, 3, 5).click()
+  await expect(page.locator('#undo')).toBeDisabled()
+  await expect(guide).not.toContainText('戻す')
+  // So does Escape.
+  await cell(page, 2, 4).click()
+  await cell(page, 3, 4).click()
+  await expect(page.locator('#undo')).toBeEnabled({ timeout: 30000 })
+  await page.keyboard.press('Escape')
+  await cell(page, 3, 4).click()
+  await expect(page.locator('#undo')).toBeDisabled()
+  await expect(guide).not.toContainText('戻す')
+})
