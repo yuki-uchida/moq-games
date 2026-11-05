@@ -5,6 +5,8 @@ import { readFile, mkdir } from 'node:fs/promises'
 const url = process.env.LANE_URL || 'http://127.0.0.1:5216/examples/games/lane-battle/'
 const directory = '/tmp/lane-projectile-sync'
 await mkdir(directory, { recursive: true })
+const reviewDirectory = '/tmp/lane-r14-fixes'
+await mkdir(reviewDirectory, { recursive: true })
 const simulation = await readFile(new URL('./simulation.js', import.meta.url), 'utf8')
 const main = (await readFile(new URL('./main.js', import.meta.url), 'utf8'))
   .replace('let resultVisual = null', 'let resultVisual = null; globalThis.syncState = () => state')
@@ -14,9 +16,17 @@ const main = (await readFile(new URL('./main.js', import.meta.url), 'utf8'))
   )
   .replace(
     '        const [fill, edge, radius] =',
-    '        ;(globalThis.syncFrames ||= []).push({kind:"shot",key:e.attackerKey,time:visualTime,x,y:yShot,front:front.x,frontY:front.y});\n        const [fill, edge, radius] ='
+    '        ;(globalThis.syncFrames ||= []).push({kind:"shot",key:e.attackerKey,time:visualTime,x,y:yShot,fromX,fromY,front:front.x,frontY:front.y});\n        const [fill, edge, radius] ='
   )
 const effects = (await readFile(new URL('./visual-effects.js', import.meta.url), 'utf8'))
+  .replace(
+    '        line(x - dir * 10, y, tip, y)',
+    '        ;(globalThis.syncFrames ||= []).push({kind:"streak",time,end,tip,dir});\n        line(x - dir * 10, y, tip, y)'
+  )
+  .replace(
+    '      const end = path.at(-1).x',
+    '      const end = path.at(-1).x\n      ;(globalThis.syncFrames ||= []).push({kind:"aircon",time,age,startX,end,victims:points.map(v => ({at:v.at,front:drawnFront(v.unit)}))})'
+  )
   .replace(
     '    for (const [stroke, width] of [',
     '    (globalThis.syncFrames ||= []).push({kind:"beam",time,path,victims:points.map(v => ({at:v.at,front:drawnFront(v.unit)}))});\n    for (const [stroke, width] of ['
@@ -34,19 +44,34 @@ try {
     ['knockback', 1280, 800, 'korokoro', true],
     ['sake', 1280, 800, 'sake', false],
     ['beam', 1280, 800, 'yoshiki', false],
-    ['beam-miss', 1280, 800, 'yoshiki', false]
+    ['beam-miss', 1280, 800, 'yoshiki', false],
+    ['aircon-85', 1280, 800, 'aircon', false],
+    ['aircon-120', 1280, 800, 'aircon', false],
+    ['aircon-170', 1280, 800, 'aircon', false],
+    ['aircon-empty', 1280, 800, 'aircon', false],
+    ['killed-shooter', 1280, 800, 'sayu', false]
   ]) {
+    if (process.env.SYNC_CASE && name !== process.env.SYNC_CASE) continue
     const beam = key === 'yoshiki'
+    const aircon = key === 'aircon'
+    const empty = name === 'aircon-empty'
+    const killed = name === 'killed-shooter'
     const fixture =
-      simulation.replace('export function createGame(', 'function baseGame(') +
+      (empty
+        ? simulation.replace(
+            '  if (!target) return enqueue(null, 1, effect.ranged ? 0.12 : 0, true)',
+            "  if (src.key === 'aircon') return enqueue(null, 1, 0.12, true)\n  if (!target) return enqueue(null, 1, effect.ranged ? 0.12 : 0, true)"
+          )
+        : simulation
+      ).replace('export function createGame(', 'function baseGame(') +
       `
 export function createGame(stage, deck, seed) {
-  const game = baseGame(stage, [card({uid:1,key:'${beam ? 'katachi' : key}'}), card({uid:2,key:'katachi'})], 1)
+  const game = baseGame(stage, [card({uid:1,key:'${beam || killed ? 'katachi' : key}'}), card({uid:2,key:'katachi'})], 1)
   Object.assign(game, {gold:999, spawn:99999, opened:2, rushes:99, turret:99999})
-  ${beam ? 'summon(game,0); summon(game,1); summon(game,5,-1)' : 'summon(game,0); summon(game,0,-1)'}
-  const shooter = game.units[${beam ? 2 : 0}], target = game.units[${beam ? 0 : 1}]
-  Object.assign(shooter, {x:${beam ? 300 : 850}, speed:0, attack:0.6, phase:shooter.cycle-0.6, motion:'attack'})
-  Object.assign(target, {x:${beam ? 430 : 700}, speed:0, range:0, attack:99999, hp:9999, maxHp:9999})
+  ${beam ? 'summon(game,0); summon(game,1); summon(game,5,-1)' : killed ? 'summon(game,0); summon(game,2,-1)' : 'summon(game,0); summon(game,0,-1)'}
+  const shooter = game.units[${beam ? 2 : killed ? 1 : 0}], target = game.units[${beam || killed ? 0 : 1}]
+  Object.assign(shooter, {x:${beam ? 300 : killed ? 600 : 850}, speed:0, attack:0.6, phase:shooter.cycle-0.6, motion:'attack'})
+  Object.assign(target, {x:${beam ? 430 : killed ? 720 : aircon ? 850 - (empty ? 120 : Number(name.split('-')[1])) : 700}, speed:0, range:0, attack:99999, hp:9999, maxHp:9999})
   ${beam ? 'Object.assign(game.units[1], {x:465,speed:0,range:0,attack:99999,hp:9999,maxHp:9999})' : ''}
   return game
 }`
@@ -79,11 +104,24 @@ export function createGame(stage, deck, seed) {
         const effect = syncState().effects.find((item) => item.attackerKey === attackerKey)
         return effect && { arrived: effect.arrived, releasedAt: effect.releasedAt }
       }, key)
-      if (state && !displaced && (moving || name === 'beam-miss')) {
+      if (state && !displaced && (moving || killed || name === 'beam-miss')) {
         // Right after release: knock the target back with 大放屁, or fell the first beam victim.
-        if (moving) await page.locator('#burst').click()
+        if (moving || killed) await page.locator('#burst').click()
         else await page.evaluate(() => (syncState().units.find((unit) => unit.x === 430).hp = 0))
         displaced = true
+      }
+      if (killed && state) {
+        await page.screenshot({ path: `${reviewDirectory}/${name}-${String(frame).padStart(2, '0')}.png` })
+      }
+      if (aircon && state && ['aircon-85', 'aircon-170'].includes(name)) {
+        const sample = await page.evaluate(() =>
+          (globalThis.syncFrames ?? []).filter((item) => item.kind === 'aircon').at(-1)
+        )
+        if (sample?.victims.length) {
+          if (sample.time < sample.victims[0].at)
+            await page.screenshot({ path: `${reviewDirectory}/${name}-flight.png` })
+          else if (!savedImpact) await page.screenshot({ path: `${reviewDirectory}/${name}-hit.png` })
+        }
       }
       if (state && !state.arrived && !saved) {
         await page.screenshot({ path: `${directory}/${name}-flight.png` })
@@ -92,12 +130,50 @@ export function createGame(stage, deck, seed) {
       if (state?.arrived && !savedImpact) {
         await page.screenshot({ path: `${directory}/${name}-impact.png` })
         savedImpact = true
-        if (!beam) break
+        if (!beam && !aircon) break
       }
     }
     const trace = await page.evaluate(() => globalThis.syncFrames ?? [])
     assert.deepEqual(errors, [], name)
-    if (beam) {
+    if (empty) {
+      const frames = trace.filter((item) => item.kind === 'aircon')
+      assert.ok(frames.length > 2 && frames.every((frame) => frame.victims.length === 0), `${name}: no victims`)
+      for (const frame of frames) {
+        const expected = Math.max(850 - 170, frame.startX - (frame.age * 170) / 0.12)
+        assert.ok(Math.abs(frame.end - expected) < 0.01, `${name}: advances at simulation speed`)
+      }
+    } else if (aircon) {
+      const frames = trace.filter((item) => item.kind === 'aircon' && item.victims.length)
+      assert.ok(frames.length, `${name}: cold air observed`)
+      const at = frames[0].victims[0].at
+      const before = frames.filter((frame) => frame.time < at).at(-1)
+      const after = frames.find((frame) => frame.time >= at)
+      assert.ok(before && after, `${name}: frames straddle hit`)
+      assert.ok(before.end > before.victims[0].front.x, `${name}: does not arrive early`)
+      assert.ok(Math.abs(after.end - after.victims[0].front.x) < 2, `${name}: reaches victim: ${JSON.stringify(after)}`)
+      const streaks = trace.filter((item) => item.kind === 'streak')
+      assert.ok(streaks.length, `${name}: streaks observed`)
+      assert.ok(
+        streaks.every((item) => (item.tip - item.end) * item.dir <= 0),
+        `${name}: streaks stay behind front`
+      )
+      assert.ok(frames.at(-1).end <= Math.min(850 - 170, after.end) + 0.01, `${name}: continues to full reach`)
+    } else if (killed) {
+      const shots = trace.filter((item) => item.kind === 'shot' && item.key === key)
+      assert.ok(displaced && shots.length > 1, `${name}: shot observed`)
+      assert.ok(
+        await page.evaluate(() => !syncState().units.some((unit) => unit.key === 'sayu' && unit.hp > 0)),
+        `${name}: shooter killed`
+      )
+      for (let index = 1; index < shots.length; index++) {
+        assert.equal(shots[index].fromX, shots[0].fromX, `${name}: fixed release x`)
+        assert.equal(shots[index].fromY, shots[0].fromY, `${name}: fixed release y`)
+        assert.ok(
+          Math.abs(shots[index].front - shots[index].x) <= Math.abs(shots[index].front - shots[index - 1].x),
+          `${name}: shot moves toward target`
+        )
+      }
+    } else if (beam) {
       const frames = trace.filter((item) => item.kind === 'beam' && item.victims.length >= 2)
       assert.ok(frames.length, 'beam has two victims')
       for (const victim of frames[0].victims) {

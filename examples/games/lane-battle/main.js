@@ -78,6 +78,7 @@ const heard = new WeakSet()
 const heardImpacts = new WeakSet()
 const fallen = []
 let resultVisual = null
+const shotVisuals = new WeakMap()
 let visualLast = null
 let reconciling = false
 let catchupScheduled = false
@@ -847,8 +848,12 @@ function draw() {
     if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
-    const fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
-    const fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
+    let fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
+    let fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
+    if (e.ranged && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
+      if (!shotVisuals.has(e)) shotVisuals.set(e, { fromX, fromY, x: fromX })
+      ;({ fromX, fromY } = shotVisuals.get(e))
+    }
     if (!e.blast && !e.turret)
       drawArea(
         ctx,
@@ -892,7 +897,10 @@ function draw() {
       const progress = e.arrived ? 1 : Math.min(0.999, Math.max(0, (visualTime - e.releasedAt) / 0.12))
       if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
-        const x = fromX + (front.x - fromX) * progress
+        const shot = shotVisuals.get(e)
+        const candidate = fromX + (front.x - fromX) * progress
+        const x = -e.side > 0 ? Math.max(shot.x, candidate) : Math.min(shot.x, candidate)
+        shot.x = x
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
         const [fill, edge, radius] =
           SHOTS[e.turret ? 'turret' : source?.key] ?? (e.side === -1 ? SHOTS.water : SHOTS.pellet)
