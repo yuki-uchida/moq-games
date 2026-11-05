@@ -6,9 +6,7 @@ This independent checkout owns the tower-defense game, its bot, review tools, as
 
 ## Before starting work
 
-Before starting any user-requested work, fetch the latest `main` branch from `origin` and merge `origin/main` into the working branch. Resolve any merge conflicts before making task-specific changes. Preserve uncommitted changes and do not rewrite published history.
-
-For repository editing requests, read `.claude/skills/create-pr/SKILL.md` at the start and again before the final response, not only when creating a PR. If `main` does not exist, report that blocker; do not silently substitute another branch.
+For repository editing requests, read `.claude/skills/create-pr/SKILL.md` at the start and again before the final response, not only when creating a PR.
 
 ## Commits and pull requests
 
@@ -16,11 +14,11 @@ For user-requested work in this repository, use pull requests instead of pushing
 
 For user-requested work, commit changes, create pull requests and merge them without asking the user for a decision or approval each time, subject to the restrictions below.
 
-An editing request is complete only after validation, commit, push, PR creation, squash merge and successful CI on the merge commit. Before reporting completion, run the skill's read-only completion check for each PR. Questions and explicit user limits (such as no push or no merge) are exceptions. Authentication, permissions, unavailable checks and branch protection are blockers, not success: continue independent permitted steps, then report the exact unfinished steps without retry loops. Never include unrelated existing changes.
+An editing request is complete only after validation, commit, push, PR creation and squash merge. Questions and explicit user limits (such as no push or no merge) are exceptions. Authentication, permissions, unavailable checks and branch protection are blockers, not success: continue independent permitted steps, then report the exact unfinished steps without retry loops. Never include unrelated existing changes.
 
 In each pull request description, briefly describe only the added and removed features in Japanese. Do not explain why the changes were needed.
 
-Before creating or merging a pull request, read and follow `.claude/skills/create-pr/SKILL.md`. Check that it has no merge conflicts, then squash-merge without waiting for pre-merge CI or review. After merging, verify that CI succeeds on `main`; if CI fails, create another pull request to fix it and repeat this process. Do not bypass branch protection or other repository restrictions.
+Before creating or merging a pull request, read and follow `.claude/skills/create-pr/SKILL.md`. Check that it has no merge conflicts, then squash-merge without waiting for pre-merge CI or review. Do not bypass branch protection or other repository restrictions.
 
 Keep each commit a coherent, test-passing unit. Before committing, validate the exact changes being committed with the relevant checks. For affected code, configuration or runtime behavior, run `npm run typecheck`, `npm run lint`, the relevant tests (`npm test` or the applicable focused suites), `npm run build`, and relevant headless E2E. For documentation-only changes, check formatting, links and documented commands. Never call skipped, blocked or unrun checks passing; resolve failures or report the blocker before committing the affected change. Do not bundle unrelated or unverified work into a passing commit.
 
