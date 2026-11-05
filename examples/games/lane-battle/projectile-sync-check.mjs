@@ -9,16 +9,22 @@ const reviewDirectory = '/tmp/lane-r14-fixes'
 await mkdir(reviewDirectory, { recursive: true })
 const review15Directory = '/tmp/lane-r15-fixes'
 await mkdir(review15Directory, { recursive: true })
+const review16Directory = '/tmp/lane-r16-fixes'
+await mkdir(review16Directory, { recursive: true })
 const simulation = await readFile(new URL('./simulation.js', import.meta.url), 'utf8')
 const main = (await readFile(new URL('./main.js', import.meta.url), 'utf8'))
   .replace('let resultVisual = null', 'let resultVisual = null; globalThis.syncState = () => state')
+  .replace(
+    '    models.unit(\n      visual,',
+    '    (globalThis.syncModels ||= {})[u.id] = { x: drawX(u), y };\n    models.unit(\n      visual,'
+  )
   .replace(
     "      if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {",
     "      ;(globalThis.syncFrames ||= []).push({kind:'destination', key:e.attackerKey, time:visualTime, arrived:!!e.arrived, x:front.x, y:front.y, shotX:fromX+(front.x-fromX)*progress, shotY:fromY+(front.y-fromY)*progress-Math.sin(progress*Math.PI)*14});\n      if (progress < 1 && !['aircon', 'yoshiki'].includes(e.attackerKey)) {"
   )
   .replace(
     '        const [fill, edge, radius] =',
-    '        ;(globalThis.syncFrames ||= []).push({kind:"shot",key:e.attackerKey,time:visualTime,x,y:yShot,fromX,fromY,front:front.x,frontY:front.y});\n        const [fill, edge, radius] ='
+    '        ;(globalThis.syncFrames ||= []).push({kind:"shot",key:e.attackerKey,time:visualTime,x,y:yShot,fromX,fromY,front:front.x,frontY:front.y,muzzleX:globalThis.syncModels?.[e.sourceId]?.x+dx,muzzleY:globalThis.syncModels?.[e.sourceId]?.y+dy});\n        const [fill, edge, radius] ='
   )
 const effects = (await readFile(new URL('./visual-effects.js', import.meta.url), 'utf8'))
   .replace(
@@ -214,28 +220,42 @@ export function createGame(stage, deck, seed) {
     console.log(`${name}: PASS`)
     await page.close()
   }
-  let controlRelease
-  for (const name of ['pushback-control', 'pushback-release', 'past-front', 'yoshiki-tie', 'aircon-tie']) {
-    if (
-      process.env.SYNC_CASE &&
-      name !== process.env.SYNC_CASE &&
-      !(process.env.SYNC_CASE === 'pushback-release' && name === 'pushback-control')
-    )
-      continue
-    const pushback = name.startsWith('pushback') || name === 'past-front'
-    const beam = name === 'yoshiki-tie'
+  for (const name of [
+    'pushback-control',
+    'pushback-release',
+    'push-before',
+    'past-front',
+    'yoshiki-tie',
+    'aircon-tie',
+    'air-reverse',
+    'jet-reverse'
+  ]) {
+    if (process.env.SYNC_CASE && name !== process.env.SYNC_CASE) continue
+    const pushback = name.startsWith('pushback') || name === 'push-before' || name === 'past-front'
+    const beam = name === 'yoshiki-tie' || name === 'jet-reverse'
+    const reverse = name.endsWith('-reverse')
     const key = pushback ? 'sayu' : beam ? 'yoshiki' : 'aircon'
+    const attack = name === 'push-before' ? 0.585 : name === 'pushback-release' ? 0.605 : 999
+    const release = name === 'push-before' ? 0.5901 : 0.6001
     const setup = pushback
       ? `summon(game,2,-1); summon(game,0)
          const [shooter, target] = game.units
-         Object.assign(shooter, {x:600, attack:0.6001, phase:shooter.cycle-0.6001, motion:'attack'})
-         Object.assign(target, {x:635, attack:${name === 'pushback-release' ? 0.605 : 999}, phase:target.cycle-${name === 'pushback-release' ? 0.605 : 999}, motion:'attack'})`
-      : beam
-        ? `summon(game,1); summon(game,0); summon(game,5,-1)
+         Object.assign(shooter, {x:600, attack:${release}, phase:shooter.cycle-${release}, motion:'attack'})
+         Object.assign(target, {x:635, attack:${attack}, phase:target.cycle-${attack}, motion:'attack'})`
+      : name === 'jet-reverse'
+        ? `summon(game,5,-1); Object.assign(game.units[0], {x:800, attack:0.2692})
+           summon(game,0,-1); Object.assign(game.units[1], {x:55, speed:0, attack:99999})`
+        : name === 'air-reverse'
+          ? `summon(game,0); summon(game,0,-1); summon(game,3,-1)
+           const [shooter, first, second] = game.units
+           Object.assign(shooter, {x:850, attack:0.6157, phase:shooter.cycle-0.6157, motion:'attack'})
+           first.x = 709.45; second.x = 716.92`
+          : beam
+            ? `summon(game,1); summon(game,0); summon(game,5,-1)
            const [first, second, shooter] = game.units
            Object.assign(shooter, {x:800, speed:0, attack:0.2668, phase:shooter.cycle-0.2668, motion:'attack'})
            for (const target of [first, second]) Object.assign(target, {x:900, speed:0, range:0, attack:99999, hp:9999, maxHp:9999})`
-        : `summon(game,0); summon(game,3,-1); summon(game,0,-1)
+            : `summon(game,0); summon(game,3,-1); summon(game,0,-1)
            const [shooter, first, second] = game.units
            Object.assign(shooter, {x:850, speed:0, attack:0.6, phase:shooter.cycle-0.6, motion:'attack'})
            for (const target of [first, second]) Object.assign(target, {x:730, speed:0, range:0, attack:99999, hp:9999, maxHp:9999})`
@@ -273,6 +293,12 @@ export function createGame(stage, deck, seed) {
       await page.clock.runFor(50)
     await page.getByRole('button', { name: 'ステージ選択へ' }).click()
     await page.getByRole('button', { name: 'ブリッと出撃' }).click()
+    if (name === 'jet-reverse') {
+      await page.clock.runFor(240)
+      await page.locator('#tray button').nth(0).click()
+      await page.clock.runFor(40)
+      await page.locator('#tray button').nth(1).click()
+    }
     let savedHit = false
     for (let frame = 0; frame < 65; frame++) {
       await page.clock.runFor(16)
@@ -287,6 +313,8 @@ export function createGame(stage, deck, seed) {
       )
       if (name === 'pushback-release' && latest)
         await page.screenshot({ path: `${review15Directory}/pushback-${String(frame).padStart(2, '0')}.png` })
+      if ((name === 'push-before' && latest) || (reverse && latest?.victims.length >= 2))
+        await page.screenshot({ path: `${review16Directory}/${name}-${String(frame).padStart(2, '0')}.png` })
       if (!pushback && !savedHit && latest?.victims.length >= 2 && latest.time >= latest.victims[0].at) {
         await page.screenshot({ path: `${review15Directory}/${name}-hit.png` })
         savedHit = true
@@ -300,11 +328,10 @@ export function createGame(stage, deck, seed) {
       const impact = trace.find((item) => item.kind === 'impact' && item.key === key)
       assert.ok(shots.length > 1 && destination && impact, `${name}: flight and hit observed`)
       assert.ok(Math.abs(impact.x - destination.x) < 0.01, `${name}: impact at front`)
-      if (name === 'pushback-control') controlRelease = shots[0].fromX
-      else if (name === 'pushback-release') {
+      if (name !== 'past-front') {
         assert.ok(
-          Math.abs(shots[0].fromX - controlRelease) < 1,
-          `${name}: release ${shots[0].fromX} vs ${controlRelease}`
+          Math.hypot(shots[0].fromX - shots[0].muzzleX, shots[0].fromY - shots[0].muzzleY) < 1,
+          `${name}: release ${shots[0].fromX},${shots[0].fromY} vs muzzle ${shots[0].muzzleX},${shots[0].muzzleY}`
         )
         assert.ok(
           shots.every((shot) => shot.x <= shot.front + 0.01),
@@ -323,16 +350,47 @@ export function createGame(stage, deck, seed) {
       }
     } else {
       const frames = trace.filter((item) => item.kind === (beam ? 'beam' : 'aircon') && item.victims.length >= 2)
-      assert.ok(frames.length && frames[0].victims[0].at === frames[0].victims[1].at, `${name}: simultaneous victims`)
+      assert.ok(
+        frames.length &&
+          (reverse
+            ? Math.abs(frames[0].victims[0].at - frames[0].victims[1].at) < 0.001
+            : frames[0].victims[0].at === frames[0].victims[1].at),
+        `${name}: nearly simultaneous victims`
+      )
       const hit = frames.find((item) => item.time >= item.victims[0].at)
       const dir = beam ? 1 : -1
       const before = frames.filter((item) => item.time < item.victims[0].at).at(-1)
       assert.ok(before, `${name}: frame before hit`)
       const nearest = before.victims.map((victim) => victim.front.x).sort((a, b) => (a - b) * dir)[0]
-      assert.ok(((beam ? before.path.at(-1).x : before.end) - nearest) * dir < 0, `${name}: does not arrive early`)
+      assert.ok(
+        ((beam ? before.path.at(-1).x : before.end) - nearest) * dir < (reverse ? 0.01 : 0),
+        `${name}: does not arrive early ${JSON.stringify(before)}`
+      )
       const end = beam ? hit.path.at(-1).x : hit.end
       const farthest = hit.victims.map((victim) => victim.front.x).sort((a, b) => (b - a) * dir)[0]
-      assert.ok(Math.abs(end - farthest) < 2, `${name}: end ${end} vs farthest ${farthest}`)
+      if (!reverse) assert.ok(Math.abs(end - farthest) < 2, `${name}: end ${end} vs farthest ${farthest}`)
+      if (reverse) {
+        assert.ok(frames[0].victims[1].at > frames[0].victims[0].at, `${name}: distinct hit times`)
+        assert.ok((before.victims[0].front.x - before.victims[1].front.x) * dir > 0, `${name}: later victim is nearer`)
+        assert.ok(
+          frames.some((frame) => Math.abs(frame.victims[0].front.x - frames[0].victims[0].front.x) > 0.1),
+          `${name}: victims move`
+        )
+        for (const frame of frames.filter((item) => item.time < item.victims[0].at)) {
+          const nearestFront = Math.min(...frame.victims.map((victim) => victim.front.x * dir)) * dir
+          assert.ok(((beam ? frame.path.at(-1).x : frame.end) - nearestFront) * dir <= 0.01, `${name}: early front`)
+        }
+        for (let index = 1; index < frames.length; index++) {
+          const prior = beam ? frames[index - 1].path.at(-1).x : frames[index - 1].end
+          const current = beam ? frames[index].path.at(-1).x : frames[index].end
+          assert.ok((current - prior) * dir >= -0.01, `${name}: front retreats ${prior} -> ${current}`)
+        }
+        for (const victim of frames[0].victims) {
+          const frame = frames.find((item) => item.time >= victim.at)
+          const front = frame.victims.find((item) => item.at === victim.at).front.x
+          assert.ok(((beam ? frame.path.at(-1).x : frame.end) - front) * dir >= -0.01, `${name}: front misses victim`)
+        }
+      }
       for (const frame of frames)
         for (let index = 1; index < frame.path.length; index++)
           assert.ok((frame.path[index].x - frame.path[index - 1].x) * dir >= -0.01, `${name}: path reversed`)
