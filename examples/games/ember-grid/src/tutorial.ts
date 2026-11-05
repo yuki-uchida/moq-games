@@ -1,8 +1,19 @@
 import { distance, type Game } from './game'
 
 export type TutorialAction = 'select' | 'move' | 'target' | 'attack' | 'turn' | 'danger'
-/** undo: the selected ally can still take back its move with ↶ 戻す; wait: it can still ✓ 待機. */
-type State = { game: Game; selected?: string; pending?: string; undo?: boolean; wait?: boolean }
+/**
+ * undo: the selected ally can still take back its move with ↶ 戻す; wait: it can still ✓ 待機;
+ * busy: a presentation is running; danger: the enemy attack range is shown.
+ */
+type State = {
+  game: Game
+  selected?: string
+  pending?: string
+  undo?: boolean
+  wait?: boolean
+  busy?: boolean
+  danger?: boolean
+}
 export function tutorialStep({ game, selected, pending }: State, turn: boolean): number {
   if (turn) return 5
   if (pending) return 3
@@ -40,13 +51,28 @@ export function createTutorial(container: HTMLElement, notice: () => void, state
     document.querySelectorAll('.tutorial-target').forEach((element) => element.classList.remove('tutorial-target'))
     if (!active || hint.hidden) return
     const current = state()
-    // After the first attack the spent ally points to the turn's end or another ally; a fresh ally gets its own steps.
-    const natural = current.pending ? 3 : turn ? 5 : tutorialStep(current, turn)
-    const step = attacked && natural === 0 ? 4 : natural
+    const text = hint.querySelector('span')!
+    // Presentations and the enemy phase have no player steps: say what is happening, point at nothing disabled.
+    if (current.busy && current.game.phase === 'ally') {
+      text.textContent = '行動中… 終わると次の操作を案内します'
+      return
+    }
+    if (current.game.phase === 'enemy') {
+      text.textContent = '敵フェイズ中 · 画面タップか ⏩ 早送りで進めます'
+      document.querySelector('#fast')?.classList.add('tutorial-target')
+      return
+    }
+    // A fresh selected ally always gets its own steps; with nothing to act on, point to what comes next.
+    const selectedStep = current.pending ? 3 : tutorialStep(current, false)
+    const step = selectedStep !== 0 ? selectedStep : turn ? 5 : attacked ? 4 : 0
     // Mention and highlight only the actions that work right now.
     const actions = [current.wait ? '✓ 待機' : '', current.undo ? '↶ 戻す' : '', '▶ ターン終了'].filter(Boolean)
-    hint.querySelector('span')!.textContent =
-      step === 4 ? `${actions.join('・')}、または別の味方を選ぼう` : messages[step]
+    text.textContent =
+      step === 4
+        ? `${actions.join('・')}、または別の味方を選ぼう`
+        : step === 5 && current.danger
+          ? '☷ 危険範囲 で敵の攻撃範囲の表示を切り替え（いまは表示中）'
+          : messages[step]
     const selectors = [
       '.cell.ally:not(.done)',
       '.cell.legal',

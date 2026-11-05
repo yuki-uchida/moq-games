@@ -2074,6 +2074,10 @@ button:active:not(:disabled) {
 .legend-list .mk.foe {
   color: #ff8a76;
 }
+.legend-list .mk.heal {
+  color: #9dffad;
+  white-space: nowrap;
+}
 #missions button[aria-current='true'] {
   border-color: #e9ce8d;
 }
@@ -2364,9 +2368,6 @@ button:active:not(:disabled) {
     right: 8px;
     z-index: 36;
   }
-  body:has(#turn[data-phase='enemy']) #tutorial {
-    display: none;
-  }
 }
 /* On short screens the chapter report scrolls; its next-mission button stays in view. */
 #result.chapter #next {
@@ -2563,5 +2564,37 @@ button:active:not(:disabled) {
 @media (max-height: 500px) and (min-width: 560px) {
   body:has(#turn[data-phase='enemy']) .console > nav {
     display: none;
+  }
+}
+/* Scrolling layout: the tutorial keeps its place under the status bar in the enemy turn, so fast-forward
+   floats at the bottom centre (the zoom buttons hold the bottom right). */
+@media (max-height: 500px) and (max-width: 559px) {
+  #fast {
+    top: auto;
+    bottom: 12px;
+    left: 50%;
+    right: auto;
+    translate: -50% 0;
+  }
+}
+/* Side column: the objective may take two lines rather than hide its condition; the rest stays on one. */
+@media (max-height: 500px) and (min-width: 560px) {
+  #objective {
+    white-space: normal;
+    text-overflow: clip;
+    line-height: 1.15;
+    cursor: pointer;
+  }
+}
+/* Short side column: tighter spacing pays for a two-line objective. */
+@media (max-height: 340px) and (min-width: 560px) {
+  .console {
+    padding-block: 0;
+  }
+  .console > nav {
+    gap: 2px;
+  }
+  .console-side {
+    gap: 0;
   }
 }

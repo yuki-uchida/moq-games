@@ -163,3 +163,15 @@ describe('terrainText', () => {
     expect(terrainText(g2, x, y)).toBe('崩れた城壁 · 通れない')
   })
 })
+
+describe('healer detail', () => {
+  it('explains range as healing reach and does not promise attacks', async () => {
+    const { createGame } = await import('../src/game')
+    const game = createGame(3)
+    const healer = game.units.find((u) => u.heal)!
+    const html = detailHtml(healer, '')
+    expect(html).toContain('回復が届くマス数')
+    expect(html).toContain('攻撃はしない')
+    expect(html).not.toContain('攻撃が届くマス数')
+  })
+})
