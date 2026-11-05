@@ -166,7 +166,7 @@ document
   .querySelector('#selection')!
   .insertAdjacentHTML(
     'afterend',
-    '<div class="console-side"><button id="detail-button" aria-label="ユニット詳細" title="ユニット詳細" disabled>ⓘ</button></div>'
+    '<div class="console-side"><button id="detail-button" aria-label="ユニット詳細" title="ユニット詳細" disabled><span aria-hidden="true">ⓘ</span><small aria-hidden="true">詳細</small></button></div>'
   )
 app.insertAdjacentHTML(
   'beforeend',
@@ -241,7 +241,7 @@ document
   .querySelector('.console-side')!
   .insertAdjacentHTML(
     'beforeend',
-    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false" title="タッチ選択補助">⊞</button>'
+    '<button id="touch-assist" aria-label="タッチ選択補助" aria-pressed="false" title="タッチ選択補助"><span aria-hidden="true">⊞</span><small aria-hidden="true">選択補助</small></button>'
   )
 app.insertAdjacentHTML(
   'beforeend',
@@ -270,7 +270,7 @@ function clearTouchCells() {
 /** Over the console when it is fully on screen; otherwise a panel fixed to the viewport bottom. */
 function positionTouchChoices() {
   const bounds = consolePanel.getBoundingClientRect()
-  if (matchMedia('(max-height: 500px) and (min-width: 600px)').matches) {
+  if (matchMedia('(max-height: 500px) and (min-width: 520px)').matches) {
     // Side column: cover everything from the status bar down to the console bottom.
     const status = document.querySelector<HTMLElement>('.status')!.getBoundingClientRect()
     const fits = bounds.bottom <= window.innerHeight && bounds.right <= window.innerWidth && status.top >= 0
@@ -695,6 +695,8 @@ function hover(x: number, y: number) {
 }
 render = () => {
   document.querySelector<HTMLElement>('#app main')!.inert = titleOpen() || !contextAvailable
+  // Guidance ends with the battle: a won or lost chapter has nothing left to point at.
+  if (game.phase === 'won' || game.phase === 'lost') tutorial.hide()
   const focusedControl = document.activeElement as HTMLElement | null
   if (playing) {
     save.checkpoints = checkpoints
@@ -797,14 +799,16 @@ render = () => {
   potion.setAttribute('aria-label', `回復薬 残り${game.potions}`)
   potion.disabled =
     busy || !ready || !unit || unit.done || unit.hp >= unit.max || game.potions === 0 || game.phase !== 'ally'
-  document.querySelector('#mission')!.textContent =
-    `⚑ ${missions[game.stage].name} · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}`
+  document.querySelector('#mission')!.innerHTML =
+    `⚑ ${missions[game.stage].name}<span class="mission-difficulty"> · ${save.difficulty === 'casual' ? 'カジュアル' : 'クラシック'}</span>`
   const result = document.querySelector<HTMLDivElement>('#result')!
   // Wait for the final EXP presentation before revealing the chapter report.
   const wasHidden = result.hidden
   result.hidden = busy || (game.phase !== 'won' && game.phase !== 'lost')
   result.classList.toggle('chapter', game.phase === 'won')
   field.classList.toggle('reporting', !result.hidden)
+  // The result needs the whole battlefield: bring it into view on the scrolling small layout.
+  if (wasHidden && !result.hidden) showBattlefield()
   document.querySelector('#report')!.innerHTML =
     game.phase === 'won' ? chapterReport(game, portrait, save.difficulty === 'casual') : ''
   document.querySelector('#outcome')!.textContent =
@@ -1056,7 +1060,7 @@ let pendingOpening: boolean | undefined
 /** Chapter title card and intro scenes, then the first ally-phase banner. */
 /** Small landscape screens scroll the page: bring the whole battlefield into view. */
 function showBattlefield() {
-  if (matchMedia('(max-height: 500px) and (max-width: 599px)').matches) field.scrollIntoView({ block: 'end' })
+  if (matchMedia('(max-height: 500px) and (max-width: 519px)').matches) field.scrollIntoView({ block: 'end' })
 }
 async function openChapter(fresh: boolean) {
   const token = generation

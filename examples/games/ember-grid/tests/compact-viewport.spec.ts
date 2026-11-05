@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { cameraSettled, enterBattle } from './shell-helper'
 
 for (const viewport of [
+  { width: 480, height: 320 },
   { width: 568, height: 320 },
   { width: 320, height: 568 },
   { width: 390, height: 844 },
@@ -23,7 +24,10 @@ for (const viewport of [
     console.log(JSON.stringify({ viewport, field: bounds }))
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width)
     expect(bounds!.height).toBeGreaterThanOrEqual(200)
-    expect(bounds!.width).toBeGreaterThanOrEqual(viewport.width === 844 ? 500 : viewport.width - 32)
+    // Landscape phones from 520 px wide put the controls beside the board.
+    expect(bounds!.width).toBeGreaterThanOrEqual(
+      viewport.width === 844 ? 500 : viewport.width === 568 ? 280 : viewport.width - 32
+    )
     await page.getByRole('button', { name: /2,4 風読み/ }).tap()
     await expect(page.locator('.cell.legal').first()).toBeVisible()
     const detail = page.getByRole('button', { name: 'ユニット詳細' })
@@ -49,6 +53,12 @@ for (const viewport of [
     await expect(page.locator('#detail')).toBeHidden()
     await expect(detail).toBeFocused()
     if (viewport.width === 568) {
+      // Side column: board, status and controls all fit without scrolling the page.
+      expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1)
+      await expect(page.locator('#end')).toBeInViewport()
+      await expect(field).toBeInViewport({ ratio: 0.99 })
+    }
+    if (viewport.width === 480) {
       await page.locator('#end').scrollIntoViewIfNeeded()
       expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
       await expect(page.locator('#end')).toBeInViewport()

@@ -128,3 +128,27 @@
 .reduce-motion .story-credits {
   overflow-y: auto;
 }
+/* Next-line cue: the line is complete, tap or press Enter to go on. */
+.story-box {
+  position: relative;
+}
+.story-next {
+  position: absolute;
+  right: 14px;
+  bottom: 6px;
+  color: #f4d68b;
+  font-size: 14px;
+  animation: story-next 0.8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes story-next {
+  to {
+    translate: 0 3px;
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-next {
+    animation: none;
+  }
+}
