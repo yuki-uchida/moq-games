@@ -35,6 +35,7 @@ import {
 import { Effects, PK } from './effects'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
+import { bodyScale } from './body-size'
 import { petForm, weaponAppearance } from './weapon-life'
 import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
 
@@ -792,6 +793,10 @@ export class Renderer {
   ) {
     const ctx = this.ctx
     const feet = pos.y + 16
+    const size = bodyScale(
+      player.passives.find(([id]) => id === 'p_large')?.[1] ?? 0,
+      player.passives.find(([id]) => id === 'p_small')?.[1] ?? 0
+    )
     const stage = stageAt(time)
     const body = bodyFor(stage)
     const appearance = appearanceFor(player, body)
@@ -809,7 +814,7 @@ export class Renderer {
       ctx.globalAlpha = Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6)
     ctx.lineWidth = local ? 3 : 2
     ctx.beginPath()
-    ctx.ellipse(pos.x, feet, 17, 6, 0, 0, Math.PI * 2)
+    ctx.ellipse(pos.x, feet, 17 * size, 6 * size, 0, 0, Math.PI * 2)
     ctx.stroke()
     ctx.globalAlpha = 1
     const flip = player.fx < 0
@@ -820,8 +825,8 @@ export class Renderer {
     if (ending) {
       const won = sheet('death:bed').won
       const t = this.wonAt === undefined ? 0 : this.clock - this.wonAt
-      this.shadow(pos.x, feet, 13)
-      this.art(won.frames[this.wonAt === undefined ? 0 : frameAt(won, t)], pos.x, feet, 32, 58, flip)
+      this.shadow(pos.x, feet, 13 * size)
+      this.art(won.frames[this.wonAt === undefined ? 0 : frameAt(won, t)], pos.x, feet, 32, 58, flip, 1, size)
       const soul = this.wonAt === undefined ? undefined : soulAt(t, duration(won), 'halo')
       // Drawn after the reaper (in front of it), so the soul is seen rising to meet it.
       if (soul) this.halo = { x: pos.x + soul.dx, y: feet + soul.dy, t, alpha: soul.alpha }
@@ -841,14 +846,14 @@ export class Renderer {
       const t = this.clock - death.at
       const index = frameAt(anim, t)
       // A lifted body leaves its shadow on the floor, smaller.
-      this.shadow(pos.x, feet, 13 * (1 - (anim.lift?.[index] ?? 0) / 40))
-      this.art(anim.frames[index], pos.x, feet, 32, 58, flip, anim.alpha?.[index] ?? 1)
+      this.shadow(pos.x, feet, 13 * size * (1 - (anim.lift?.[index] ?? 0) / 40))
+      this.art(anim.frames[index], pos.x, feet, 32, 58, flip, anim.alpha?.[index] ?? 1, size)
       // Lettering is never mirrored: drawn unflipped at the mirrored position.
       const text = anim.text?.[index]
       if (text) {
         const box = letterBox(text)
         const ox = flip ? 64 - box.x - box.r.w : box.x
-        this.art(box.r, pos.x, feet, 32 - ox, 58 - box.y, false, anim.alpha?.[index] ?? 1)
+        this.art(box.r, pos.x, feet, 32 - ox, 58 - box.y, false, anim.alpha?.[index] ?? 1, size)
       }
       const soul = soulAt(t, duration(anim), anim.soul)
       if (soul) {
@@ -863,7 +868,7 @@ export class Renderer {
       ctx.stroke()
     } else {
       this.deaths.delete(player.id)
-      this.shadow(pos.x, feet, 13)
+      this.shadow(pos.x, feet, 13 * size)
       this.prewarm(appearance)
       const art = sheet(`player:${appearance}`)
       const anim = player.hurt ? art.hurt : m.speed > 25 ? art.walk : art.idle
@@ -873,7 +878,9 @@ export class Renderer {
         feet,
         32,
         58,
-        flip
+        flip,
+        1,
+        size
       )
       this.world()
     }
@@ -884,7 +891,7 @@ export class Renderer {
     this.blit(
       this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
       pos.x,
-      feet - 64 - tagLift,
+      feet - 64 * size - tagLift,
       0,
       shown
     )

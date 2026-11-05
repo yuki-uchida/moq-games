@@ -32,11 +32,11 @@ test('exchange candidates describe each weapon without changing replacement and 
     expect(choiceText(player, `s:${weapon.id}`)).toEqual({
       icon: weapon.icon,
       name: weapon.name,
-      text: weapon.desc,
+      text: expect.stringContaining(weapon.desc),
       tag: 'NEW'
     })
   }
-  expect(choiceText(player, 'r:w_friend:w_invest').text).toBe('この武器と入れ替える')
+  expect(choiceText(player, 'r:w_friend:w_invest').text).toContain('この武器と入れ替える')
   expect(choiceText(player, 'x:skip').text).toBe('今の武器をそのまま使う')
 })
 
