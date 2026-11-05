@@ -71,8 +71,9 @@
   z-index: 1;
 }
 .title-embers {
-  position: absolute;
-  inset: -50%;
+  /* Fixed to the viewport, so the drifting layer never makes the title screen scroll. */
+  position: fixed;
+  inset: -100px 0;
   pointer-events: none;
   background-image: radial-gradient(#ffba70 1px, transparent 2px), radial-gradient(#fff4d0 1px, transparent 2px);
   background-size:

@@ -109,7 +109,9 @@ for (const width of [1280, 390]) {
     await cell(page, 6, 3).click()
     await expect(hint).toContainText('攻撃予測')
     await page.getByRole('button', { name: '攻撃', exact: true }).click()
-    await expect(hint).toContainText('待機')
+    // The attacker has acted: the hint points to the turn's end or another ally, never the spent 待機.
+    await expect(hint).toContainText('ターン終了')
+    await expect(hint).not.toContainText('待機')
     await shot(4)
     await expect(page.locator('#end')).toBeEnabled({ timeout: 30000 })
     await cell(page, 1, 4).click()

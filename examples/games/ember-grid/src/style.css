@@ -2503,14 +2503,16 @@ button:active:not(:disabled) {
   }
   #turn {
     grid-area: turn;
-    justify-self: end;
+    justify-self: stretch;
+    text-align: right;
   }
   #count {
     grid-area: count;
   }
   #objective {
     grid-area: objective;
-    justify-self: end;
+    justify-self: stretch;
+    text-align: right;
   }
   #fast {
     grid-area: fast;
@@ -2556,4 +2558,10 @@ button:active:not(:disabled) {
 .chapter-units ins,
 .chapter-units .exp-line {
   white-space: nowrap;
+}
+/* Side column, enemy turn: the actions are all unavailable, so fast-forward takes their room. */
+@media (max-height: 500px) and (min-width: 560px) {
+  body:has(#turn[data-phase='enemy']) .console > nav {
+    display: none;
+  }
 }
