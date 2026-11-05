@@ -848,9 +848,9 @@ function draw() {
     if (resultVisual && resultVisual.elapsed >= e.life) continue
     const source = e.source
     const [dx, dy] = source?.key ? models.muzzle(source.key, source.side, source.cycle ?? source.period) : [0, 0]
-    let fromX = e.turret ? e.from : (source?.key ? drawX(source) - source.x : 0) + e.from + dx
+    let fromX = e.turret ? e.from : e.from + (source?.key ? standOff(source) + (e.releaseGlide ?? 0) : 0) + dx
     let fromY = e.turret ? 296 : laneY(source ?? { id: 0 }) + dy
-    if (e.ranged && !['aircon', 'yoshiki'].includes(e.attackerKey)) {
+    if (e.ranged) {
       if (!shotVisuals.has(e)) shotVisuals.set(e, { fromX, fromY, x: fromX })
       ;({ fromX, fromY } = shotVisuals.get(e))
     }
@@ -899,7 +899,7 @@ function draw() {
         // The shooter's own shot (pellet, cold puff, sake, stink, fizz, water, powder) lobbed in a small arc.
         const shot = shotVisuals.get(e)
         const candidate = fromX + (front.x - fromX) * progress
-        const x = -e.side > 0 ? Math.max(shot.x, candidate) : Math.min(shot.x, candidate)
+        const x = front.x >= shot.x ? Math.max(shot.x, candidate) : Math.min(shot.x, candidate)
         shot.x = x
         const yShot = fromY + (targetY - fromY) * progress - Math.sin(progress * Math.PI) * 14
         const [fill, edge, radius] =
@@ -1020,6 +1020,7 @@ function tick(now) {
   reconciling = clock.pending > 0 || (clock.last !== null && now - clock.last > 250)
   // The unit objects as they were before this tick's steps: units that fall keep their final state.
   const previous = state.units.slice()
+  const releaseGlides = new Map(previous.map((unit) => [unit.id, (glides.get(unit.id)?.x ?? unit.x) - unit.x]))
   const elapsed = clock.advance(
     now,
     !paused && !state.result,
@@ -1069,6 +1070,7 @@ function tick(now) {
         }
         if (effect.sourceId != null)
           effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+        effect.releaseGlide = releaseGlides.get(effect.sourceId) ?? 0
         effect.victimOrigins = (effect.victims ?? [])
           .map(({ id }) => previous.find((unit) => unit.id === id))
           .filter(Boolean)
