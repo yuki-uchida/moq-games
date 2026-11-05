@@ -1013,20 +1013,81 @@ for (const viewport of [
     expect(checked).toBe(true)
   })
 
+/** Boxes of the tutorial, the board and every HP tag, plus whether any tag intersects the tutorial. */
+const sideColumnBoxes = (page: Page) =>
+  page.evaluate(() => {
+    const box = (el: Element | null) => {
+      const r = el?.getBoundingClientRect()
+      return r ? { x: r.x, y: r.y, w: r.width, h: r.height, b: r.bottom, r: r.right } : null
+    }
+    const tutorial = box(document.querySelector('#tutorial'))!
+    const tags = [...document.querySelectorAll('#marks .stand .tag')].map((el) => box(el)!)
+    const overlap = tags.some(
+      (t) => t.w > 0 && t.x < tutorial.r && tutorial.x < t.r && t.y < tutorial.b && tutorial.y < t.b
+    )
+    return { tutorial, field: box(document.querySelector('.field')), tags: tags.length, overlap }
+  })
+
 for (const viewport of [
+  { width: 560, height: 320 },
   { width: 568, height: 320 },
   { width: 640, height: 320 }
 ])
-  test(`the side-column tutorial floats over the board and leaves the card and ⊞ reachable at ${viewport.width}x${viewport.height}`, async ({
+  test(`the side-column tutorial takes its own row and covers neither tags, card nor ⊞ at ${viewport.width}x${viewport.height}`, async ({
     page
   }) => {
     await firstPlay(page, viewport)
-    await cell(page, 2, 5).tap()
-    await expect(page.locator('.field > #tutorial')).toBeVisible()
-    expect(await uncoveredIn(page, '#tutorial')).toBe(true)
-    await expect(page.locator('#selection .uc-stats')).toBeVisible()
-    expect(await uncoveredIn(page, '#selection .uc-stats')).toBe(true)
-    expect(await uncoveredIn(page, '#touch-assist')).toBe(true)
+    await expect(page.locator('main > #tutorial')).toBeVisible()
+    const check = async (label: string, selected: boolean) => {
+      const boxes = await sideColumnBoxes(page)
+      expect(boxes.tutorial.h, label).toBeLessThanOrEqual(56)
+      expect(boxes.field!.h, label).toBeGreaterThanOrEqual(200)
+      expect(boxes.field!.y, label).toBeGreaterThanOrEqual(boxes.tutorial.b - 1)
+      expect(boxes.overlap, label).toBe(false)
+      expect(await uncoveredIn(page, '#tutorial'), label).toBe(true)
+      expect(await uncoveredIn(page, '#tutorial button'), label).toBe(true)
+      if (selected) {
+        await expect(page.locator('#selection .uc-stats')).toBeVisible()
+        expect(await uncoveredIn(page, '#selection .uc-stats'), label).toBe(true)
+        expect(await uncoveredIn(page, '#touch-assist'), label).toBe(true)
+      }
+    }
+    await check('start', false)
+    await cell(page, 2, 4).tap()
+    await expect(page.locator('#tutorial')).toContainText('移動可能')
+    await check('selected', true)
+    await cell(page, 4, 4).tap()
+    await expect(cell(page, 4, 4)).toHaveAttribute('aria-label', /移動済|行動済/, { timeout: 15000 })
+    await expect(page.locator('#tutorial')).toContainText('射程内の敵')
+    await check('moved', true)
+    await cell(page, 7, 4).tap()
+    await expect(page.locator('#forecast')).toBeVisible()
+    await expect(page.locator('#tutorial')).toContainText('攻撃予測')
+    await check('forecast', false)
+  })
+
+for (const width of [560, 568])
+  test(`the side-column tutorial fits its row for the longest messages at ${width}x320`, async ({ page }) => {
+    await firstPlay(page, { width, height: 320 })
+    for (const text of [
+      '☷ 危険範囲 で敵の攻撃範囲の表示を切り替え（いまは表示中）',
+      '✓ 待機・↶ 戻す・▶ ターン終了、または別の味方を選ぼう',
+      '敵フェイズ中 · 画面タップか ⏩ 早送りで進めます'
+    ]) {
+      await page.locator('#tutorial span').evaluate((el, t) => (el.textContent = t), text)
+      const { tutorial } = await sideColumnBoxes(page)
+      expect(tutorial.h, text).toBeLessThanOrEqual(56)
+      expect(
+        await page
+          .locator('#tutorial span')
+          .evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.getBoundingClientRect().height <= 56),
+        text
+      ).toBe(true)
+      expect(
+        await page.locator('#tutorial').evaluate((el) => el.scrollHeight <= el.clientHeight),
+        `${text} is not clipped`
+      ).toBe(true)
+    }
   })
 
 for (const viewport of [

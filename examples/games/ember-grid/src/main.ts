@@ -578,10 +578,10 @@ new ResizeObserver(() =>
     `${tutorialEl.hidden ? 0 : Math.ceil(tutorialEl.getBoundingClientRect().height)}px`
   )
 ).observe(tutorialEl)
-// Side column: the tutorial floats over the board instead of pushing the unit card under the nav.
+// Side column: the tutorial takes the row beside the header; elsewhere it leads the console.
 const sideColumn = matchMedia('(max-height: 500px) and (min-width: 560px)')
 function placeTutorial() {
-  if (sideColumn.matches) field.prepend(tutorialEl)
+  if (sideColumn.matches) document.querySelector('main')!.prepend(tutorialEl)
   else consolePanel.prepend(tutorialEl)
 }
 placeTutorial()
