@@ -955,3 +955,150 @@ test('the tutorial points at nothing disabled while an attack plays', async ({ p
   await expect(hint).toContainText('ターン終了', { timeout: 30000 })
   await expect(page.locator('#end.tutorial-target')).toHaveCount(1)
 })
+
+const boxesOverlap = (page: Page, a: string, b: string) =>
+  page.evaluate(
+    ([first, second]) => {
+      const p = document.querySelector(first)!.getBoundingClientRect()
+      const q = document.querySelector(second)!.getBoundingClientRect()
+      return p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom
+    },
+    [a, b]
+  )
+
+for (const width of [480, 360])
+  test(`the acting-enemy label clears the floating tutorial at ${width}x320`, async ({ page }) => {
+    const hint = await firstPlay(page, { width, height: 320 })
+    await page.locator('#end').scrollIntoViewIfNeeded()
+    await page.locator('#end').tap()
+    await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+    await expect(hint).toBeVisible()
+    expect(await boxesOverlap(page, '#actor', '#tutorial')).toBe(false)
+    expect(await uncoveredIn(page, '#actor')).toBe(true)
+  })
+
+test('the terrain label clears the floating tutorial at 480x320', async ({ page }) => {
+  const hint = await firstPlay(page, { width: 480, height: 320 })
+  await cell(page, 2, 4).click()
+  await expect(page.locator('#terrain')).toBeVisible()
+  await expect(hint).toBeVisible()
+  expect(await boxesOverlap(page, '#terrain', '#tutorial')).toBe(false)
+  expect(await uncoveredIn(page, '#terrain')).toBe(true)
+})
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 480, height: 320 }
+])
+  test(`the objective toast does not cover the acting-enemy label at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport)
+    await enterBattle(page, './?seed=7', true)
+    await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+    await page.locator('#end').scrollIntoViewIfNeeded()
+    await page.locator('#end').click()
+    // Enemy actions are short: if one ends before the toast settles, check during the next one.
+    let checked = false
+    for (let attempt = 0; attempt < 5 && !checked; attempt++) {
+      await expect(page.locator('#actor')).toBeVisible({ timeout: 30000 })
+      await page.locator('#objective').dispatchEvent('click')
+      await expect(page.locator('#toast')).toBeVisible()
+      await page.locator('#toast').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
+      if (await page.locator('#actor').isVisible()) {
+        expect(await boxesOverlap(page, '#toast', '#actor')).toBe(false)
+        checked = true
+      }
+    }
+    expect(checked).toBe(true)
+  })
+
+for (const viewport of [
+  { width: 568, height: 320 },
+  { width: 640, height: 320 }
+])
+  test(`the side-column tutorial floats over the board and leaves the card and ⊞ reachable at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await firstPlay(page, viewport)
+    await cell(page, 2, 5).tap()
+    await expect(page.locator('.field > #tutorial')).toBeVisible()
+    expect(await uncoveredIn(page, '#tutorial')).toBe(true)
+    await expect(page.locator('#selection .uc-stats')).toBeVisible()
+    expect(await uncoveredIn(page, '#selection .uc-stats')).toBe(true)
+    expect(await uncoveredIn(page, '#touch-assist')).toBe(true)
+  })
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 390, height: 844 },
+  { width: 320, height: 568 }
+])
+  test(`the attack forecast opens below the tutorial at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await firstPlay(page, viewport)
+    await cell(page, 2, 4).click()
+    await cell(page, 4, 4).click()
+    await expect(cell(page, 4, 4)).toHaveAttribute('aria-label', /移動済|行動済/, { timeout: 15000 })
+    await cell(page, 7, 4).click()
+    await expect(page.locator('#forecast')).toBeVisible()
+    await expect(page.locator('#tutorial')).toBeVisible()
+    for (const selector of ['#tutorial', '#tutorial button', '#forecast #confirm', '#forecast button:not(#confirm)'])
+      expect(await uncoveredIn(page, selector)).toBe(true)
+    expect(await page.locator('#forecast').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true)
+  })
+
+/** Archer from 2,4 onto the grove at 3,4 (no enemy in range afterwards), tutorial skipped. */
+async function archerToGrove(page: Page, viewport: { width: number; height: number }) {
+  await page.setViewportSize(viewport)
+  await enterBattle(page, './?seed=7')
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await cell(page, 2, 4).click()
+  await cell(page, 3, 4).click()
+  await expect(cell(page, 3, 4)).toHaveAttribute('aria-label', /移動済|行動済/, { timeout: 15000 })
+}
+
+test('terrain shows in the cell name and on the unit card at 320x568', async ({ page }) => {
+  await archerToGrove(page, { width: 320, height: 568 })
+  const label = (await cell(page, 3, 4).getAttribute('aria-label')) ?? ''
+  expect(label).toContain('木立')
+  expect(label).toContain('−2')
+  await expect(page.locator('#selection .uc-terrain')).toContainText('木立')
+  expect(await page.locator('#selection .uc-head').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+})
+
+test('a moved ally shows ✓ and 行動済 only once its action is settled', async ({ page }) => {
+  await archerToGrove(page, { width: 1280, height: 800 })
+  const mark = page.locator('#marks .stand.ally:has(.check)')
+  await expect(page.locator('#undo')).toBeEnabled()
+  await expect(page.locator('#marks .check')).toHaveCount(0)
+  const label = (await cell(page, 3, 4).getAttribute('aria-label')) ?? ''
+  expect(label).toContain('移動済')
+  expect(label).not.toContain('行動済')
+  await expect(page.locator('#log')).not.toContainText('攻撃、または')
+  await page.getByRole('button', { name: '✓ 待機', exact: true }).click()
+  await expect(mark).toHaveCount(1)
+  await expect(cell(page, 3, 4)).toHaveAttribute('aria-label', /行動済/)
+})
+
+test('keyboard use closes the toast', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await enterBattle(page, './?seed=7')
+  await expect(page.locator('#end')).toBeEnabled({ timeout: 90000 })
+  await page.locator('#objective').focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#toast')).toBeVisible()
+  await page.getByRole('button', { name: '敵の攻撃範囲', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#toast')).toBeHidden({ timeout: 1000 })
+})
+
+test('the toast clears a wrapped tutorial at 320x320', async ({ page }) => {
+  await firstPlay(page, { width: 320, height: 320 })
+  await cell(page, 2, 4).tap()
+  await cell(page, 3, 4).tap()
+  await expect(page.locator('#tutorial')).toContainText('待機')
+  await page.locator('#objective').dispatchEvent('click')
+  await expect(page.locator('#toast')).toBeVisible()
+  await page.locator('#toast').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)))
+  expect(await boxesOverlap(page, '#toast', '#tutorial')).toBe(false)
+})

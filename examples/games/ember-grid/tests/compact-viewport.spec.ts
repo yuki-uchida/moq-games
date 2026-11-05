@@ -36,7 +36,7 @@ for (const viewport of [
     await page.screenshot({ path: info.outputPath('02-detail.png') })
     await page.getByRole('button', { name: '閉じる' }).tap()
     await expect(page.locator('#detail')).toBeHidden()
-    await page.getByRole('button', { name: /3,4 木立 移動可能/ }).tap()
+    await page.getByRole('button', { name: /3,4 木立（受けるダメージ −2） 移動可能/ }).tap()
     const undo = page.getByRole('button', { name: '↶ 戻す' })
     await expect(undo).toBeEnabled()
     await undo.tap()

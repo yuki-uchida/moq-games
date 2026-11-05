@@ -175,3 +175,12 @@ describe('healer detail', () => {
     expect(html).not.toContain('攻撃が届くマス数')
   })
 })
+
+describe('unitCardHtml terrain chip', () => {
+  it('shows the terrain next to the name only when one is given', () => {
+    expect(unitCardHtml(allies[0], '')).not.toContain('uc-terrain')
+    const html = unitCardHtml(allies[0], '', '♣ 木立 −2')
+    expect(html).toMatch(/<p class="uc-head">.*<span class="uc-terrain">♣ 木立 −2<\/span><\/p>/)
+    expect(t(html)).toContain('♣ 木立 −2')
+  })
+})

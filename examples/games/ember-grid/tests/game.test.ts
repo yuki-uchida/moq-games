@@ -75,6 +75,43 @@ describe('Ember Grid rules', () => {
     expect(recover(g, u)).toBe(false)
     expect(attack(g, u, g.units[3])).toBe(false)
   })
+  it('the move log names the actions still available', () => {
+    const pick = (g: ReturnType<typeof createGame>, role: string) =>
+      g.units.find((u) => u.side === 'ally' && u.role === role)!
+    const dest = (g: ReturnType<typeof createGame>, u: ReturnType<typeof pick>) =>
+      [...reachable(g, u).keys()].map((c) => c.split(',').map(Number)).find(([x, y]) => x !== u.x || y !== u.y)!
+    // No enemy in range: no attack is offered.
+    let g = createGame(0)
+    let archer = pick(g, 'archer')
+    for (const e of g.units.filter((u) => u.side === 'enemy')) e.hp = 0
+    let [x, y] = dest(g, archer)
+    expect(move(g, archer, x, y)).toBe(true)
+    expect(g.log).toBe(`${archer.name} 移動。攻撃できる敵なし · ✓ 待機`)
+    // An enemy in range: attack is offered.
+    g = createGame(0)
+    archer = pick(g, 'archer')
+    const foe = g.units.find((u) => u.side === 'enemy')!
+    ;[x, y] = dest(g, archer)
+    foe.x = x
+    foe.y = y + (y > 0 ? -1 : 1)
+    expect(move(g, archer, x, y)).toBe(true)
+    expect(g.log).toBe(`${archer.name} 移動。攻撃、または ✓ 待機`)
+    // Healer: with and without a wounded ally in reach.
+    g = createGame(5)
+    const healer = pick(g, 'healer')
+    ;[x, y] = dest(g, healer)
+    expect(move(g, healer, x, y)).toBe(true)
+    expect(g.log).toBe(`${healer.name} 移動。回復できる味方なし · ✓ 待機`)
+    g = createGame(5)
+    const healer2 = pick(g, 'healer')
+    const hurt = g.units.find((u) => u.side === 'ally' && u !== healer2)!
+    ;[x, y] = dest(g, healer2)
+    hurt.hp = 1
+    hurt.x = x
+    hurt.y = y + (y > 0 ? -1 : 1)
+    expect(move(g, healer2, x, y)).toBe(true)
+    expect(g.log).toBe(`${healer2.name} 移動。回復、または ✓ 待機`)
+  })
   it('bows counter wolves; magic bypasses armor; map state stays independent', () => {
     const g = createGame(),
       bow = g.units[1],
