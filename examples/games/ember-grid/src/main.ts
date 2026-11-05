@@ -505,7 +505,9 @@ function openDetail(unit: Unit, trigger: HTMLElement) {
   detailTrigger = trigger
   document.querySelector('#detail-content')!.innerHTML = detailHtml(unit, ready ? stage.portrait(unit.role) : '')
   detail.showModal()
-  document.querySelector<HTMLButtonElement>('#detail-close')!.focus()
+  // Open at the top so the unit's name shows first; the close button stays pinned at the bottom.
+  document.querySelector<HTMLButtonElement>('#detail-close')!.focus({ preventScroll: true })
+  detail.scrollTop = 0
 }
 document.querySelector('#detail-close')!.addEventListener('click', () => detail.close())
 detail.addEventListener('close', () => detailTrigger?.focus())
