@@ -1892,6 +1892,9 @@ for (const viewport of [
     const warning = page.locator('.banner-care')
     await expect(warning).toContainText('WARNING', { timeout: 500 })
     await expect(warning).toContainText('親の介護')
+    await warning.locator('.banner-sub').evaluate((subtitle) => {
+      subtitle.style.maxWidth = '100px'
+    })
     await expect(page.locator('#weapons .slot')).toHaveCount(6)
     await expect(page.locator('#passives .slot')).toHaveCount(7)
     await expect(page.locator('#boss-bar')).toBeVisible()
