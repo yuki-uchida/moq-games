@@ -131,6 +131,8 @@ test('multiple changed games are combined without selecting other games', () => 
 test('default Vitest config excludes Playwright specs without narrowing unit test includes', () => {
   const config = readFileSync(new URL('../vitest.config.mts', import.meta.url), 'utf8')
   assert.match(config, /exclude:\s*\[\s*\.\.\.configDefaults\.exclude,\s*'\*\*\/ember-grid\/tests\/\*\*\/\*\.spec\.\*'/)
+  assert.match(config, /'tests\/\*\*\/\*\.spec\.\*'/)
+  assert.match(config, /'\*\*\/\*\.test\.mjs'/)
   assert.doesNotMatch(config, /\binclude\s*:/)
 })
 
@@ -161,5 +163,14 @@ test(
     ).map((entry) => resolve(entry.file))
     assert.ok(expected.length > 0)
     assert.deepEqual(discovered.sort(), expected.sort())
+    const allFiles = JSON.parse(
+      execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'list', '--filesOnly', '--json'], {
+        cwd: root,
+        encoding: 'utf8'
+      })
+    )
+    assert.ok(allFiles.length >= discovered.length)
+    assert.ok(allFiles.every(({ file }) => !/\.test\.mjs$/.test(file) && !/[\\/]tests[\\/].*\.spec\./.test(file)))
+    assert.ok(allFiles.every(({ file }) => !file.endsWith('Actual3DView.test.ts')))
   }
 )
