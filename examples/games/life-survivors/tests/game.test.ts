@@ -269,7 +269,7 @@ describe('end of life', () => {
   })
 
   test('a well-read life survives all 15 minutes, and snapshots stay small and valid', () => {
-    const { game, peak, bytes } = playLife(1, 'smart')
+    const { game, peak, bytes } = playLife(3, 'smart')
     expect(game.state.phase).toBe('reaper')
     expect(peak).toBeGreaterThan(250)
     // Busiest snapshot of the life, with headroom for the JSON envelope and non-ASCII log text.

@@ -684,7 +684,7 @@ describe('enemies', () => {
     const view = toView(game.state)
     expect(view.enemies[6] & ENEMY_FLAG.elite).toBe(0)
     expect(view.enemies[STRIDE.enemies + 6] & ENEMY_FLAG.elite).toBeTruthy()
-    // Kill many: each elite leaves a meal or a chest (60 / 40) and six times the experience.
+    // Kill many: each elite leaves a meal or a chest and six times the experience.
     const kinds = new Set<string>()
     for (let i = 0; i < 40; i++) {
       game.state.items = []
@@ -696,6 +696,21 @@ describe('enemies', () => {
       expect(game.state.gems[0].v).toBe(2 * 6)
     }
     expect(kinds).toEqual(new Set(['meal', 'chest']))
+  })
+
+  test.each([
+    [RUN_SECONDS / 2 - 1, 0.59, 'meal'],
+    [RUN_SECONDS / 2 - 1, 0.6, 'chest'],
+    [RUN_SECONDS / 2, 0.79, 'meal'],
+    [RUN_SECONDS / 2, 0.8, 'chest'],
+    [RUN_SECONDS - 1, 0.79, 'meal']
+  ])('elite drop at %s seconds with roll %s is %s', (time, roll, expected) => {
+    const { game, player } = arena(18)
+    const enemy = game.spawnEnemy('bully', player.x - 500, player.y, { elite: true })!
+    game.state.time = time
+    ;(game as unknown as { rng: () => number }).rng = () => roll
+    ;(game as unknown as { kill(e: Enemy, d: EnemyDef): void }).kill(enemy, ENEMY_BY_ID.get('bully')!)
+    expect(game.state.items.map((item) => item.kind)).toEqual([expected])
   })
 
   test('elites appear on their own after two minutes', () => {

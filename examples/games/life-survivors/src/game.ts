@@ -2382,7 +2382,8 @@ export class Game {
       if (this.tickKills++ < 12) this.emit(FX.KILL, enemy.x, enemy.y, index, enemy.elite ? 1 : 0)
       if (enemy.elite) {
         // Elites always leave something: a meal, or now and then a turning point.
-        this.drop(this.rng() < 0.6 ? 'meal' : 'chest', enemy.x, enemy.y)
+        const mealChance = state.time < RUN_SECONDS / 2 ? 0.6 : 0.8
+        this.drop(this.rng() < mealChance ? 'meal' : 'chest', enemy.x, enemy.y)
       } else if (this.rng() < 0.006 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
       else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
     }
