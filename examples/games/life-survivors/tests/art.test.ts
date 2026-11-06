@@ -111,6 +111,22 @@ describe('pixel art', () => {
     expect(built.fx.impact.frames).toHaveLength(2)
   })
 
+  test('過保護親 has an animated body and a separate shield for its guard state', () => {
+    const guardian = built['weapon:p_over']
+    expect(guardian.fly.frames).toHaveLength(4)
+    expect(guardian.guard.frames).toHaveLength(4)
+    const key = (frame: Sheet[string]['frames'][number]) => Buffer.from(frame.data).toString('hex')
+    expect(new Set(guardian.fly.frames.map(key)).size).toBeGreaterThan(1)
+    for (let index = 0; index < 4; index++) {
+      const body = guardian.fly.frames[index]
+      const shield = guardian.guard.frames[index]
+      expect([body.w, body.h, shield.w, shield.h]).toEqual([32, 32, 32, 32])
+      expect(body.data.some((pixel) => pixel > 0)).toBe(true)
+      expect(shield.data.some((pixel) => pixel > 0)).toBe(true)
+      expect(key(body)).not.toBe(key(shield))
+    }
+  })
+
   test('every stage has a seamless ground (≥3 variants) and four props', () => {
     for (const stage of STAGES) {
       const ground = GROUNDS[stage.name]
