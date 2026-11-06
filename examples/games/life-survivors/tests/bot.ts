@@ -195,10 +195,11 @@ export function playLife(
   seed: number,
   strategy: 'smart' | 'random' | 'bad',
   players = 1,
-  maxSeconds = RUN_SECONDS + 10
+  maxSeconds = RUN_SECONDS + 10,
+  parentId?: string
 ) {
   const game = new Game(seed)
-  for (let i = 0; i < players; i++) game.addPlayer(`p${i}`)
+  for (let i = 0; i < players; i++) game.addPlayer(`p${i}`, parentId)
   let peak = 0
   let bytes = 0
   while (game.state.phase === 'playing' && game.state.time < maxSeconds) {

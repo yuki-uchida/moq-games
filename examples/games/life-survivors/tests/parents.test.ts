@@ -272,6 +272,10 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.damage).toBe(4)
   })
 
+  test('base aura radius is 35', () => {
+    expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.area).toBe(35)
+  })
+
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(
     '%s gains exactly 5% damage without strengthening an ally',
     (id) => {
@@ -300,7 +304,7 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
       const player = game.addPlayer('a', 'p_toxic')!
       if (!toxic) player.parent = 'p_weak'
       player.weapons[0].cd = 0
-      const enemy = game.spawnEnemy('germ', player.x + 60, player.y)!
+      const enemy = game.spawnEnemy('germ', player.x + 30, player.y)!
       enemy.hp = enemy.maxHp = 1000
       game.tick(1 / 60)
       return enemy.maxHp - enemy.hp

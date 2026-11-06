@@ -175,7 +175,7 @@ export const PARENTS: WeaponDef[] = [
     parent: true,
     damage: 4,
     cooldown: 0.5,
-    area: 70,
+    area: 35,
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
