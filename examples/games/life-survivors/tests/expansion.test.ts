@@ -218,6 +218,48 @@ describe('new talent weapons', () => {
     }
   })
 
+  test.each([
+    { lv: 1, passives: [], links: 3 },
+    { lv: 2, passives: [], links: 4 },
+    { lv: 5, passives: [], links: 5 },
+    { lv: 8, passives: [], links: 6 },
+    { lv: 1, passives: [{ id: 'p_clever', lv: 4 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_grand', lv: 5 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 2 }], links: 4 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 5 }], links: 5 },
+    { lv: 1, passives: [{ id: 'p_hasty', lv: 5 }], links: 2 },
+    { lv: 8, passives: [{ id: 'p_savvy', lv: 1 }], links: 9 },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      links: 9
+    },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_curious', lv: 5 }
+      ],
+      links: 14
+    }
+  ])('SNS scales links with duration, not bonus projectiles: %j', ({ lv, passives, links }) => {
+    const { game, player } = arena(2)
+    game.targetPopulation = () => 0
+    player.weapons = [{ id: 'w_sns', lv, cd: 0, held: 0, damage: 0 }]
+    player.passives = passives
+    const posts = Array.from({ length: 16 }, (_, index) =>
+      post(game, 'abusive_senpai', player.x + 100 + index * 30, player.y)
+    )
+    game.tick(1 / 60)
+    const shots = game.state.shots.filter((shot) => shot.weapon === 'w_sns')
+    expect(shots).toHaveLength(links)
+    expect(posts.filter(({ enemy }) => enemy.hp < enemy.maxHp)).toHaveLength(links)
+    expect(shots.map((shot) => shot.v)).toEqual(Array.from({ length: links }, (_, index) => index))
+  })
+
   test('a die rolls its face into the variant and a six always crits', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })

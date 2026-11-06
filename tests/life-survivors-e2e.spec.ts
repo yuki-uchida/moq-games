@@ -15,6 +15,51 @@ const life = async (page: Page) => {
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 }
 
+test('SNS chains scale with duration instead of bonus projectile count', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    player.talents = { friend: 1, love: 1, sports: 1, hobby: 1, study: 1, invest: 1 }
+    return [
+      [],
+      [
+        { id: 'p_clever', lv: 4 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      [{ id: 'p_curious', lv: 5 }],
+      [
+        { id: 'p_curious', lv: 5 },
+        { id: 'p_grand', lv: 5 }
+      ]
+    ].map((passives) => {
+      game.state.enemies = []
+      game.state.shots = []
+      player.passives = passives
+      player.weapons = [{ id: 'w_sns', lv: 1, cd: 0, held: 0, damage: 0 }]
+      const enemies = Array.from({ length: 8 }, (_, index) => {
+        const enemy = game.spawnEnemy('germ', player.x + 100 + index * 30, player.y)!
+        enemy.hp = enemy.maxHp = 1000
+        return enemy
+      })
+      game.tick(1 / 60)
+      return {
+        links: game.state.shots.filter((shot) => shot.weapon === 'w_sns').length,
+        hits: enemies.filter((enemy) => enemy.hp < enemy.maxHp).length
+      }
+    })
+  })
+  expect(result).toEqual([
+    { links: 3, hits: 3 },
+    { links: 3, hits: 3 },
+    { links: 5, hits: 5 },
+    { links: 5, hits: 5 }
+  ])
+})
+
 test('free-parent balloons rise and their burst damages and pushes enemies', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()

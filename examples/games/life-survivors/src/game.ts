@@ -430,7 +430,7 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
       (lv >= 5 ? 1 : 0) +
       (lv >= 8 ? 1 : 0) +
       (evolved ? 1 : 0) +
-      (def.behavior === 'none' ? 0 : stats.amount),
+      (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
     area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
@@ -1862,7 +1862,8 @@ export class Game {
         let fromX = player.x
         let fromY = player.y
         const jump = 170 * ws.area
-        for (let i = 0; i < 2 + n; i++) {
+        const links = Math.round((2 + n) * (ws.duration / def.duration))
+        for (let i = 0; i < links; i++) {
           const target = this.nearestEnemy(fromX, fromY, i === 0 ? 420 * ws.area : jump, hit)
           if (!target) break
           hit.add(target.id)
