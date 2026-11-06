@@ -1217,9 +1217,15 @@ document.addEventListener('visibilitychange', () => {
 // A hidden tab's timers crawl, so the music pauses instead of stuttering.
 document.addEventListener('visibilitychange', () => audio.setHidden(document.hidden))
 window.addEventListener('resize', () => renderer.resize())
-window.addEventListener('pagehide', () => {
-  audio.dispose()
+window.addEventListener('pagehide', (event) => {
+  // A cached page is restored with this script's state, so keep the audio graph it will need again;
+  // without cache the page is really gone and the context is closed.
+  if (!event.persisted) audio.dispose()
   void network?.stop()
+})
+window.addEventListener('pageshow', (event) => {
+  // Back from the back-forward cache: the browser stopped the context while the page was away.
+  if (event.persisted) audio.setHidden(document.hidden)
 })
 function placeStick() {
   if (!drag) return

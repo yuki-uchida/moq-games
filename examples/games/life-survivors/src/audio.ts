@@ -626,6 +626,10 @@ export class LifeAudio {
   /** A hidden tab queues no music (its timers are throttled); effects are untouched. */
   setHidden(hidden: boolean): void {
     this.hidden = hidden
+    // Phones suspend or interrupt the audio context while the tab is away, so ask for it back on
+    // return; a cached page can also come back with a context the browser closed. Only wake audio
+    // the player already unlocked, so a first visit never opens an audio session by itself.
+    if (!hidden && this.ctx) this.unlock()
     this.applyMaster()
   }
   get music(): MusicState {
@@ -641,6 +645,8 @@ export class LifeAudio {
 
   unlock(): void {
     try {
+      // A backgrounded phone tab may lose its context; keep the wanted cue and build the graph again.
+      if (this.ctx && (this.ctx.state === 'closed' || !this.bus)) this.teardown()
       if (!this.ctx) {
         const g = globalThis as unknown as {
           AudioContext?: typeof AudioContext
@@ -659,6 +665,25 @@ export class LifeAudio {
       }
     } catch {
       this.ctx = null
+    }
+  }
+
+  /** Drops the audio graph without forgetting the cue, so the next unlock can rebuild it. */
+  private teardown(): void {
+    if (this.beatTimer !== undefined) clearTimeout(this.beatTimer)
+    this.beatTimer = undefined
+    this.beatLevel = 0
+    this.active = []
+    this.last.clear()
+    this.player?.dispose()
+    this.player = null
+    const ctx = this.ctx
+    this.ctx = this.bus = this.master = this.musicOut = this.noiseBuffer = null
+    if (ctx?.state === 'closed') return
+    try {
+      void ctx?.close().catch(() => {})
+    } catch {
+      /* already closed */
     }
   }
 
@@ -704,21 +729,8 @@ export class LifeAudio {
   }
 
   dispose(): void {
-    if (this.beatTimer !== undefined) clearTimeout(this.beatTimer)
-    this.beatTimer = undefined
-    this.beatLevel = 0
-    this.active = []
-    this.last.clear()
-    this.player?.dispose()
-    this.player = null
+    this.teardown()
     this.wantedMusic = null
-    const ctx = this.ctx
-    this.ctx = this.bus = this.master = this.musicOut = this.noiseBuffer = null
-    try {
-      void ctx?.close().catch(() => {})
-    } catch {
-      /* already closed */
-    }
   }
 
   private build(ctx: AudioContext) {

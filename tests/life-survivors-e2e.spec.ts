@@ -2394,3 +2394,64 @@ test('the music follows a life: title, stages, a boss, the reaper, the ending an
   await expect(page.locator('#music-volume')).toHaveValue('40')
   expect(errors).toEqual([])
 })
+
+test('a phone tab that comes back resumes its music by itself, and a cached page keeps the same audio', async ({
+  page
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  type Music = { theme: string | null; layer: number; live: number; enabled: boolean }
+  type Tracked = { __contexts: AudioContext[] }
+  const music = () => page.evaluate(() => (window as unknown as { __life: { music: Music } }).__life.music)
+  const contexts = () => page.evaluate(() => (window as unknown as Tracked).__contexts.length)
+  const running = () =>
+    page.evaluate(() => (window as unknown as Tracked).__contexts.some((context) => context.state === 'running'))
+  const visibility = (hidden: boolean) =>
+    page.evaluate((hidden) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }, hidden)
+  /** Background tabs lose their audio: the phone suspends every context it finds. */
+  const suspendAll = () =>
+    page.evaluate(async () => {
+      for (const context of (window as unknown as Tracked).__contexts)
+        if (context.state === 'running') await context.suspend()
+    })
+
+  await page.addInitScript(() => {
+    const Native = window.AudioContext
+    const tracked: AudioContext[] = []
+    ;(window as unknown as Tracked).__contexts = tracked
+    const Patched = function (...args: []): AudioContext {
+      const context = new Native(...args)
+      tracked.push(context)
+      return context
+    }
+    Patched.prototype = Native.prototype
+    window.AudioContext = Patched as unknown as typeof AudioContext
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(async () => (await music()).live).toBeGreaterThan(0)
+
+  // Leaving the tab and coming back: the music must restart without another tap.
+  await visibility(true)
+  await suspendAll()
+  await visibility(false)
+  await expect.poll(running).toBe(true)
+  await expect.poll(music).toMatchObject({ enabled: true })
+  expect(await page.locator('#mute').getAttribute('aria-pressed')).toBe('false')
+
+  // iPhones cache the page on a tab switch: it comes back with the same audio graph.
+  await visibility(true)
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })))
+  await suspendAll()
+  const kept = await contexts()
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })))
+  await visibility(false)
+  await expect.poll(running).toBe(true)
+  expect(await contexts()).toBe(kept)
+  await expect.poll(music).toMatchObject({ theme: 'cradle', enabled: true })
+  expect(errors).toEqual([])
+})
