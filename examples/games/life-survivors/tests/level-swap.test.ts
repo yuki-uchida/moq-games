@@ -8,7 +8,7 @@ const setup = (age: number, parent = 'p_edu') => {
   game.state.time = timeAtAge(age) + 0.01
   game.state.eventIndex = EVENTS.findIndex((event) => event.at > game.state.time)
   player.weapons.push(
-    ...TALENT_WEAPONS.filter((def) => def.minAge <= 6)
+    ...TALENT_WEAPONS.filter((def) => def.minAge <= 6 || def.id === 'w_hobby')
       .slice(0, weaponSlots(player))
       .map(({ id }) => ({ id, lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0 }))
   )

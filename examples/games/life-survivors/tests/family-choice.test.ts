@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { EVENTS, RUN_SECONDS } from '../src/data'
-import { Game, type Player } from '../src/game'
+import { EVENTS, RUN_SECONDS, WEAPON_BY_ID } from '../src/data'
+import { Game, weaponSlots, type Player } from '../src/game'
 import { LIFE_OUTCOMES } from '../src/history'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
@@ -291,7 +291,11 @@ test('normal play from birth reaches and answers a family card using ordinary ca
         const [kind, id] = choice.split(':')
         if (kind === 's') return -1
         if (kind === 'r') return id === 'w_love' ? -10 : 10
-        if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 4 : 3
+        if (kind === 'w') {
+          if (player.weapons.some((weapon) => weapon.id === id)) return 4
+          const count = player.weapons.filter((weapon) => !WEAPON_BY_ID.get(weapon.id)?.parent).length
+          return count >= weaponSlots(player) - 1 && !player.weapons.some((weapon) => weapon.id === 'w_love') ? 0 : 3
+        }
         return 1
       })
       input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1

@@ -72,7 +72,7 @@ test.each([
           if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 2
           return 1
         })
-        const input = botInput(game, { ...player, choices: [] }, 'random')
+        const input = botInput(game, { ...player, choices: [] }, 'smart')
         input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
         game.setInput(player.id, input)
         for (let step = 0; step < 6; step++) {
@@ -147,7 +147,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
 
       for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
         if (game.state.phase !== 'playing' || game.state.eventIndex > eventIndex) break
-        const input = botInput(game, { ...player, choices: [] }, 'random')
+        const input = botInput(game, { ...player, choices: [] }, 'smart')
         const scores = player.choices.map(score)
         input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
         game.setInput(player.id, input)

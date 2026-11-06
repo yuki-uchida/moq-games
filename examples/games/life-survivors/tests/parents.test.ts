@@ -1,11 +1,27 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX, WEAPON_SLOTS, ageAt } from '../src/data'
+import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX, WEAPON_SLOTS, ageAt, timeAtAge } from '../src/data'
 import { Game, RAID, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
+
+test.each([
+  ['w_study', 3],
+  ['w_reading', 5],
+  ['w_hobby', 8]
+] as const)(
+  '%s becomes available at age %i',
+  (id, age) => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_edu')!
+    game.state.time = timeAtAge(age - 0.01)
+    expect(game.options(player)).not.toContain(`w:${id}`)
+    game.state.time = timeAtAge(age + 0.01)
+    expect(game.options(player)).toContain(`w:${id}`)
+  }
+)
 
 describe('毒親: 18歳まで親を含めて手札3枠', () => {
   test('two talents plus the parent block new weapons before 18 but still allow upgrades and passives', () => {
@@ -681,6 +697,12 @@ describe('ヤンキー親', () => {
 })
 
 describe('蒸発済み: 自立', () => {
+  test('birth choices include study and reading, but not hobbies', () => {
+    expect(early.has('w_study')).toBe(true)
+    expect(early.has('w_reading')).toBe(true)
+    expect(early.has('w_hobby')).toBe(false)
+  })
+
   test('the first hand at birth is three early talents and picking one gives it at lv 1', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
       const game = new Game(seed)

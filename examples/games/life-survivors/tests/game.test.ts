@@ -211,7 +211,7 @@ describe('turning points', () => {
     const baby = game.options(player)
     expect(baby).not.toContain('w:w_work')
     expect(baby).not.toContain('w:w_invest')
-    expect(baby).toContain('w:w_hobby')
+    expect(baby).not.toContain('w:w_hobby')
     game.state.time = timeAtAge(25) + 0.01
     expect(game.options(player)).toEqual(expect.arrayContaining(['w:w_work', 'w:w_invest', 'w:w_love']))
   })
