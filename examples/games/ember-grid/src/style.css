@@ -672,6 +672,9 @@ dialog {
   color: #eee7d6;
   font-size: 14px;
 }
+dialog:modal {
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
 dialog::backdrop {
   background: #06121bcc;
 }

@@ -1091,6 +1091,31 @@ const simulateInsets = (
     }px;--safe-left:${insets.left ?? 0}px}`
   })
 
+for (const insets of [
+  { left: 59, right: 0, top: 0, bottom: 21 },
+  { left: 0, right: 59, top: 21, bottom: 0 }
+])
+  test(`dialogs stay inside asymmetric safe areas ${JSON.stringify(insets)}`, async ({ page }) => {
+    await start(page, { width: 480, height: 320 })
+    await simulateInsets(page, insets)
+    const checkDialog = async (selector: string) => {
+      const bounds = (await page.locator(selector).boundingBox())!
+      expect(bounds.x).toBeGreaterThanOrEqual(insets.left - 0.5)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(480 - insets.right + 0.5)
+      expect(bounds.y).toBeGreaterThanOrEqual(insets.top - 0.5)
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(320 - insets.bottom + 0.5)
+    }
+    await page.getByRole('button', { name: '遊び方' }).click()
+    await checkDialog('#help-dialog')
+    await page.locator('#help-close').click()
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await checkDialog('#expedition')
+    await page.locator('#cancel-mission').click()
+    await page.getByRole('button', { name: /2,4 風読み/ }).dispatchEvent('click')
+    await page.getByRole('button', { name: 'ユニット詳細' }).click()
+    await checkDialog('#detail')
+  })
+
 test('a notched phone keeps the side column inside its safe area at 844x390', async ({ page }) => {
   const insets = { left: 59, right: 59, bottom: 21 }
   await firstPlay(page, { width: 844, height: 390 })
