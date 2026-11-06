@@ -593,12 +593,12 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     cooldown: 2.7,
     amount: 1,
     area: 170,
-    duration: 0.7,
+    duration: 1.2,
     pierce: Infinity,
     knockback: 60,
     strong: ['work', 'insult'],
     minAge: 12,
-    desc: '歌声が輪になって広がる。仕事・悪口に特攻。',
+    desc: '歌声が前方に扇状に広がる。仕事・悪口に特攻。',
     evolve: { passive: 'p_hot', name: '魂のシャウト' }
   }),
   weapon({

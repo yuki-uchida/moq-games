@@ -718,6 +718,40 @@ test('reading effects render behind local and co-op players', async ({ page }) =
   }
 })
 
+test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const arcs = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 10 })
+    view.enemies = []
+    const karaoke = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_karaoke')
+    view.shots = [karaoke, player.x, player.y, 100, 100, 50, 0, 0, karaoke, player.x + 10, player.y, 100, 100, 50, 1, 0]
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')!
+    const original = context.arc.bind(context)
+    const angles: number[][] = []
+    context.arc = (x, y, radius, start, end, anticlockwise) => {
+      if (radius === 100 || radius === 94) angles.push([start, end])
+      original(x, y, radius, start, end, anticlockwise)
+    }
+    new Renderer(canvas).draw(view, life.localId, 0.016, false)
+    return angles
+  })
+  expect(arcs).toHaveLength(4)
+  for (const [start, end] of arcs) {
+    expect(start).toBeCloseTo(1 - Math.PI / 3)
+    expect(end).toBeCloseTo(1 + Math.PI / 3)
+  }
+})
+
 test('status dialog lists hand and personalities without synergies and stops solo time', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')

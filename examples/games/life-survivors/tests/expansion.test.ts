@@ -129,6 +129,25 @@ describe('new talent weapons', () => {
     expect(popups.size).toBeGreaterThan(0)
   })
 
+  test('karaoke expands slowly in the firing direction only', () => {
+    const { game, player } = arena(7)
+    player.weapons.push({ id: 'w_karaoke', lv: 1, cd: 0, held: 0, damage: 0 })
+    player.fx = 0
+    player.fy = -1
+    const front = post(game, 'abusive_senpai', player.x, player.y - 120)
+    const back = post(game, 'abusive_senpai', player.x, player.y + 120)
+    const side = post(game, 'abusive_senpai', player.x + 120, player.y)
+    run(game, player, 30, () => [front, back, side].forEach((entry) => entry.hold()))
+    const shot = game.state.shots.find((entry) => entry.weapon === 'w_karaoke')!
+    expect(shot.angle).toBeCloseTo(-Math.PI / 2)
+    expect(shot.r).toBeLessThan(100)
+    expect(front.enemy.hp).toBe(front.enemy.maxHp)
+    run(game, player, 45, () => [front, back, side].forEach((entry) => entry.hold()))
+    expect(front.enemy.hp).toBeLessThan(front.enemy.maxHp)
+    expect(back.enemy.hp).toBe(back.enemy.maxHp)
+    expect(side.enemy.hp).toBe(side.enemy.maxHp)
+  })
+
   test('evolved names come from the spec and need the matching passive at level 8', () => {
     const { game, player } = arena(3)
     for (const [id, want] of Object.entries(NEW_WEAPONS)) {

@@ -287,6 +287,9 @@ function clearTouchCells() {
   touchNear = new Set()
   markTouchCells()
 }
+/** A resolved safe-area inset in px, for panels positioned from script. */
+const safeInset = (name: string) =>
+  Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0
 /** Over the console when it is fully on screen; otherwise a panel fixed to the viewport bottom. */
 function positionTouchChoices() {
   const bounds = consolePanel.getBoundingClientRect()
@@ -320,10 +323,11 @@ function positionTouchChoices() {
           height: `${bounds.height}px`
         }
       : {
-          left: '8px',
+          // Keep the panel out of the notch and the home bar.
+          left: `${Math.max(8, safeInset('--safe-left'))}px`,
           top: 'auto',
-          bottom: '8px',
-          width: `${window.innerWidth - 16}px`,
+          bottom: `${Math.max(8, safeInset('--safe-bottom'))}px`,
+          width: `${window.innerWidth - Math.max(8, safeInset('--safe-left')) - Math.max(8, safeInset('--safe-right'))}px`,
           height: `${Math.min(260, window.innerHeight * 0.55)}px`
         }
   )

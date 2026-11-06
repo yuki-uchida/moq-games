@@ -1934,6 +1934,7 @@ export class Game {
         for (let i = 0; i < n; i++)
           this.shot(player, def, ws, {
             r: 10,
+            angle: Math.atan2(player.fy, player.fx),
             w: def.area * ws.area,
             tick: Infinity,
             delay: i * 0.22
@@ -2251,6 +2252,8 @@ export class Game {
         const def = ENEMY_BY_ID.get(enemy.kind)!
         const d = Math.hypot(enemy.x - shot.x, enemy.y - shot.y)
         if (Math.abs(d - shot.r) > 16 + def.radius * enemy.scale) return
+        const direction = Math.atan2(enemy.y - shot.y, enemy.x - shot.x) - shot.angle
+        if (Math.cos(direction) < 0.5) return
         if (shot.hits.has(enemy.id)) return
         shot.hits.set(enemy.id, Infinity)
         this.damage(enemy, def, shot, owner)

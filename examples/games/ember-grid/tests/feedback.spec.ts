@@ -1080,6 +1080,148 @@ test('skipping the side-column tutorial brings the guide line back at 568x320', 
   expect((await sideColumnBoxes(page)).field!.h).toBeGreaterThan(withTutorial.h)
 })
 
+/** Headless Chrome reports no safe areas, so set the CSS insets the way a notched phone would. */
+const simulateInsets = (
+  page: Page,
+  insets: { top?: number; right?: number; bottom?: number; left?: number }
+) =>
+  page.addStyleTag({
+    content: `:root{--safe-top:${insets.top ?? 0}px;--safe-right:${insets.right ?? 0}px;--safe-bottom:${
+      insets.bottom ?? 0
+    }px;--safe-left:${insets.left ?? 0}px}`
+  })
+
+for (const insets of [
+  { left: 59, right: 0, top: 0, bottom: 21 },
+  { left: 0, right: 59, top: 21, bottom: 0 }
+])
+  test(`dialogs stay inside asymmetric safe areas ${JSON.stringify(insets)}`, async ({ page }) => {
+    await start(page, { width: 480, height: 320 })
+    await simulateInsets(page, insets)
+    const checkDialog = async (selector: string) => {
+      const bounds = (await page.locator(selector).boundingBox())!
+      expect(bounds.x).toBeGreaterThanOrEqual(insets.left - 0.5)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(480 - insets.right + 0.5)
+      expect(bounds.y).toBeGreaterThanOrEqual(insets.top - 0.5)
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(320 - insets.bottom + 0.5)
+    }
+    await page.getByRole('button', { name: '遊び方' }).click()
+    await checkDialog('#help-dialog')
+    await page.locator('#help-close').click()
+    await page.getByRole('button', { name: '任務と編成' }).click()
+    await checkDialog('#expedition')
+    await page.locator('#cancel-mission').click()
+    await page.getByRole('button', { name: /2,4 風読み/ }).dispatchEvent('click')
+    await page.getByRole('button', { name: 'ユニット詳細' }).click()
+    await checkDialog('#detail')
+  })
+
+test('a notched phone keeps the side column inside its safe area at 844x390', async ({ page }) => {
+  const insets = { left: 59, right: 59, bottom: 21 }
+  await firstPlay(page, { width: 844, height: 390 })
+  await simulateInsets(page, insets)
+  const boxes = await page.evaluate(() => {
+    const box = (selector: string) => {
+      const r = document.querySelector(selector)!.getBoundingClientRect()
+      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom }
+    }
+    return {
+      header: box('header'),
+      field: box('.field'),
+      console: box('.console'),
+      tutorial: box('#tutorial'),
+      nav: box('.console > nav'),
+      scrollWidth: document.documentElement.scrollWidth,
+      width: innerWidth,
+      height: innerHeight
+    }
+  })
+  for (const [label, edge] of [
+    ['header', boxes.header.x],
+    ['field', boxes.field.x],
+    ['tutorial', boxes.tutorial.x]
+  ] as const)
+    expect(edge, `${label} clears the notch`).toBeGreaterThanOrEqual(insets.left - 0.5)
+  for (const [label, edge] of [
+    ['field', boxes.field.right],
+    ['console', boxes.console.right]
+  ] as const)
+    expect(edge, `${label} clears the notch`).toBeLessThanOrEqual(boxes.width - insets.right + 0.5)
+  expect(boxes.nav.bottom, 'actions clear the home bar').toBeLessThanOrEqual(boxes.height - insets.bottom + 0.5)
+  expect(boxes.scrollWidth, 'no sideways scrolling').toBeLessThanOrEqual(boxes.width)
+})
+
+test('a notched phone keeps the portrait layout inside its safe area at 390x844', async ({ page }) => {
+  const insets = { top: 47, bottom: 34 }
+  await firstPlay(page, { width: 390, height: 844 })
+  await simulateInsets(page, insets)
+  const boxes = await page.evaluate(() => {
+    const box = (selector: string) => {
+      const r = document.querySelector(selector)!.getBoundingClientRect()
+      return { y: r.y, bottom: r.bottom }
+    }
+    return {
+      header: box('header'),
+      nav: box('.console > nav'),
+      height: innerHeight
+    }
+  })
+  expect(boxes.header.y, 'header clears the notch').toBeGreaterThanOrEqual(insets.top - 0.5)
+  expect(boxes.nav.bottom, 'actions clear the home bar').toBeLessThanOrEqual(boxes.height - insets.bottom + 0.5)
+})
+
+for (const viewport of [
+  { width: 844, height: 390 },
+  { width: 480, height: 320 }
+])
+  test(`the help dialog keeps its tabs, text and way out apart at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await firstPlay(page, viewport)
+    await page.getByRole('button', { name: '遊び方' }).click()
+    const boxes = await page.evaluate(() => {
+      const dialog = document.querySelector<HTMLElement>('#help-dialog')!
+      const d = dialog.getBoundingClientRect()
+      const tabs = [...dialog.querySelectorAll<HTMLElement>('[role=tab]')].map((tab) => tab.getBoundingClientRect())
+      const panel = dialog.querySelector<HTMLElement>('[role=tabpanel]:not([hidden])')!
+      const p = panel.getBoundingClientRect()
+      const close = dialog.querySelector<HTMLElement>('#help-close')!.getBoundingClientRect()
+      return {
+        dialog: { bottom: d.bottom, left: d.left, right: d.right, top: d.top },
+        tabs: tabs.length,
+        tabsInside: tabs.every(
+          (tab) => tab.left >= d.left - 0.5 && tab.right <= d.right + 0.5 && tab.top >= d.top - 0.5
+        ),
+        panel: { bottom: p.bottom, scrollHeight: panel.scrollHeight, clientHeight: panel.clientHeight },
+        close: { bottom: close.bottom, top: close.top }
+      }
+    })
+    expect(boxes.tabs).toBe(6)
+    expect(boxes.tabsInside, 'every tab is on screen').toBe(true)
+    // The text scrolls between the tabs and the way out instead of running under them.
+    expect(boxes.panel.bottom, 'text ends above the way out').toBeLessThanOrEqual(boxes.close.top + 0.5)
+    expect(boxes.close.bottom, 'the way out stays inside').toBeLessThanOrEqual(boxes.dialog.bottom + 0.5)
+    expect(boxes.panel.scrollHeight, 'the long tab scrolls').toBeGreaterThan(boxes.panel.clientHeight)
+    await expect(page.locator('#help-close')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.getByRole('tab').last()).toBeInViewport({ ratio: 0.99 })
+  })
+
+test('the scrolling layout keeps its floating tutorial inside the safe area at 480x320', async ({ page }) => {
+  const insets = { left: 24, right: 24, bottom: 12 }
+  await firstPlay(page, { width: 480, height: 320 })
+  await simulateInsets(page, insets)
+  const tutorial = (await page.locator('#tutorial').boundingBox())!
+  expect(tutorial.x).toBeGreaterThanOrEqual(insets.left - 0.5)
+  expect(tutorial.x + tutorial.width).toBeLessThanOrEqual(480 - insets.right + 0.5)
+  const status = await page.evaluate(() => {
+    const r = document.querySelector('.status')!.getBoundingClientRect()
+    return { left: r.left, right: r.right, width: innerWidth }
+  })
+  // The pinned bar still reaches both screen edges; only its content keeps clear of the notch.
+  expect(status.left).toBeLessThanOrEqual(0.5)
+  expect(status.right).toBeGreaterThanOrEqual(status.width - 0.5)
+})
+
 for (const width of [560, 568])
   test(`the side-column tutorial fits its row for the longest messages at ${width}x320`, async ({ page }) => {
     await firstPlay(page, { width, height: 320 })

@@ -85,6 +85,35 @@ function gamePreview(art) {
       </svg>
     </div>`
   }
+  if (art === 'yoru-no-yashiki') {
+    return `<div class="game-preview yoru-no-yashiki" aria-hidden="true">
+      <svg class="yoru-art" viewBox="0 0 220 260" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="yoru-glow" cx="50%" cy="42%" r="62%"><stop stop-color="#3a4a44" stop-opacity=".7"/><stop offset="1" stop-color="#080c10"/></radialGradient>
+        </defs>
+        <rect width="220" height="260" fill="#080c10"/>
+        <rect width="220" height="175" fill="url(#yoru-glow)"/>
+        <rect y="175" width="220" height="85" fill="#141a18"/>
+        <path d="M0 196h220M0 226h220" stroke="#2a322d" stroke-width="2"/>
+        <g fill="#4b534a" stroke="#202923" stroke-width="3">
+          <rect x="8" y="34" width="88" height="128"/><rect x="124" y="34" width="88" height="128"/>
+        </g>
+        <g stroke="#101713" stroke-width="4">
+          <path d="M8 76h88M8 120h88M52 34v128M124 76h88M124 120h88M168 34v128"/>
+        </g>
+        <rect x="98" y="24" width="24" height="22" fill="#c8ad72" opacity=".5"/>
+        <path d="M110 46v10" stroke="#3a3222" stroke-width="2"/>
+        <ellipse cx="110" cy="152" rx="58" ry="74" fill="#a9c3ba" opacity=".07"/>
+        <g opacity=".72" transform="translate(110 150)">
+          <path d="M0-46c-11 0-19 9-20 21l-6 65c-1 10 10 16 26 16s27-6 26-16l-6-65c-1-12-9-21-20-21Z" fill="#c9d6cd" opacity=".55"/>
+          <ellipse cx="0" cy="-48" rx="15" ry="19" fill="#e3e8dc" opacity=".8"/>
+          <path d="M-16-52c-2 20-4 40-1 56M16-52c2 20 4 40 1 56" stroke="#101b19" stroke-width="7" stroke-linecap="round" fill="none" opacity=".85"/>
+          <circle cx="-6" cy="-48" r="2" fill="#131a18"/><circle cx="6" cy="-48" r="2" fill="#131a18"/>
+        </g>
+        <g fill="#b9c7b6" opacity=".35"><circle cx="38" cy="70" r="1.5"/><circle cx="182" cy="102" r="1.2"/><circle cx="72" cy="148" r="1"/><circle cx="154" cy="56" r="1.3"/></g>
+      </svg>
+    </div>`
+  }
   if (art === 'lane-battle') {
     const poop = (
       x,

@@ -5,6 +5,7 @@ import { access, readFile, readdir } from 'node:fs/promises'
 test('Pages includes Rabbiters and its release notices, but not its source artwork', async () => {
   await access('dist/examples/games/rabbiters/index.html')
   await access('dist/examples/games/life-survivors/index.html')
+  await access('dist/examples/games/yoru-no-yashiki/index.html')
   await assert.rejects(access('dist/examples/games/rabbiters/art-source'))
   const assets = await readdir('dist/assets')
   assert.ok(assets.some((asset) => /^moqt_bg-.*\.wasm$/.test(asset)))

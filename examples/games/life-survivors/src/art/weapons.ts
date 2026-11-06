@@ -367,9 +367,7 @@ function sportsBall(kind: string, frame: number) {
   part(raster, (layer) => {
     const shift = frame % 2
     if (kind === 'golf' || kind === 'gateball') {
-      layer.thick(10, 4, 20, 24, 2, R.metal[1])
-      layer.thick(kind === 'golf' ? 17 : 12, 25, 26, 25, 4, kind === 'golf' ? R.metal[2] : R.brown[1])
-      ball(layer, 7, 25, 4, 4, kind === 'golf' ? R.paper : R.red)
+      ball(layer, 16, 16, 10, 10, kind === 'golf' ? R.paper : R.red)
     } else {
       ball(layer, 16, 16, 10, 10, kind === 'basketball' ? R.orange : kind === 'tennis' ? R.green : R.paper)
       const seam = kind === 'baseball' ? R.red[1] : kind === 'tennis' ? R.paper[0] : R.brown[3]
