@@ -22,7 +22,6 @@ import { resultCategories, talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
 import { petForm, sportsForm, weaponAppearance } from './weapon-life'
 import { LifeAudio } from './audio'
-import { activeSynergies, SYNERGIES } from './synergies'
 import { musicCue } from './music'
 import { statusModel, type StatusItem } from './status'
 import { FX } from './fx'
@@ -654,15 +653,6 @@ function updateHud(current: View) {
     if (key !== handKey) {
       handKey = key
       if (!statusDialog.hidden) renderStatus()
-      const active = activeSynergies(player.weapons.map(([id]) => id))
-      element('#synergy-count').textContent = `人生の相乗効果 ${active.length}/${SYNERGIES.length}`
-      element('#synergy-list').replaceChildren(
-        ...SYNERGIES.map((synergy) => {
-          const item = document.createElement('p')
-          item.textContent = `${active.includes(synergy) ? '発動中' : '未発動'}：${synergy.name} — ${synergy.text}`
-          return item
-        })
-      )
       const owner = { passives: player.passives.map(([id, lv]) => ({ id, lv })) }
       const before = new Map(prev.hand)
       prev.hand.clear()
@@ -1065,25 +1055,8 @@ function renderStatus() {
     role === 'solo'
       ? 'この画面を開いている間は時間が止まります。'
       : 'この画面を開いている間は、みんなの時間が止まります。全員が閉じると再開します。'
-  element('#status-personality-synergies').replaceChildren(
-    ...(model.personalitySynergies.length
-      ? model.personalitySynergies.map((row) => {
-          const item = el('li', 'status-synergy active')
-          item.append(el('strong', '', `発動中：${row.weapon}`), el('small', '', row.text))
-          return item
-        })
-      : [el('li', 'status-empty', '発動中の組み合わせはありません')])
-  )
   renderStatusItems(element('#status-weapons'), model.weapons, 'まだ武器がありません')
   renderStatusItems(element('#status-passives'), model.passives, 'まだ性格がありません')
-  element('#status-synergy-title').textContent = `人生の相乗効果 ${model.activeCount}/${model.total}`
-  element('#status-synergies').replaceChildren(
-    ...model.synergies.map((row) => {
-      const item = el('li', `status-synergy ${row.active ? 'active' : ''}`)
-      item.append(el('strong', '', `${row.active ? '発動中' : '未発動'}：${row.name}`), el('small', '', row.text))
-      return item
-    })
-  )
 }
 
 const statusOpen = element<HTMLButtonElement>('#status-open')
@@ -1194,7 +1167,7 @@ window.addEventListener('keydown', (event) => {
   if (/^Digit[1-8]$/.test(event.code) && !levelup.hidden) {
     choose(Number(event.code.slice(5)) - 1)
     event.preventDefault()
-  } else if (moveKeys.has(event.code) && event.target !== element('#synergy-list')) {
+  } else if (moveKeys.has(event.code)) {
     keys.add(event.code)
     event.preventDefault()
   }

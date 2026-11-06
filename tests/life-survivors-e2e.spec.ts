@@ -718,7 +718,7 @@ test('reading effects render behind local and co-op players', async ({ page }) =
   }
 })
 
-test('status dialog lists hand, personalities and synergies and stops solo time', async ({ page }) => {
+test('status dialog lists hand and personalities without synergies and stops solo time', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -742,9 +742,10 @@ test('status dialog lists hand, personalities and synergies and stops solo time'
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('#status-weapons li')).toHaveCount(2)
   await expect(dialog.locator('#status-passives')).toContainText('勤勉')
-  await expect(dialog.locator('#status-personality-synergies')).toContainText('好奇心 × 読書')
-  await expect(dialog.locator('#status-weapons')).toContainText('発動中：好奇心 × 読書')
-  await expect(dialog.locator('#status-synergies')).toContainText('発動中：知識で資産形成')
+  await expect(
+    dialog.locator('#status-personality-synergies, #status-synergies, #status-personality-title, #status-synergy-title')
+  ).toHaveCount(0)
+  await expect(dialog.locator('#status-weapons')).not.toContainText('発動中：')
   const frozen = await handle.evaluate((life) => (life.game as unknown as Game).state.time)
   await page.waitForTimeout(700)
   expect(await handle.evaluate((life) => (life.game as unknown as Game).state.time)).toBe(frozen)
@@ -757,81 +758,24 @@ test('status dialog lists hand, personalities and synergies and stops solo time'
   await expect(dialog).toBeHidden()
 })
 
-test('synergy details show activation and release from the local hand', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 800 })
+test('synergy panels are absent on desktop and mobile', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   const handle = await life(page)
-  await handle.evaluate((life) => {
-    const game = life.game as unknown as Game
-    const player = game.state.players[0]
+  await handle.evaluate((hook) => {
+    const player = (hook.game as unknown as Game).state.players[0]
     player.birthPick = false
-    player.choices = []
     player.pending = 0
+    player.choices = []
     player.weapons = ['w_reading', 'w_invest'].map((id) => ({ id, lv: 1, cd: 100, held: 0, damage: 0 }))
+    player.passives = [{ id: 'p_curious', lv: 1 }]
   })
-  await expect(page.locator('#synergy-count')).toHaveText('人生の相乗効果 1/6')
-  await page.locator('#synergy-count').focus()
-  await page.keyboard.press('Enter')
-  await expect(page.locator('#synergies')).toHaveAttribute('open', '')
-  await expect(page.locator('#synergy-list')).toContainText('発動中：知識で資産形成')
-  await expect(page.locator('#synergy-list p')).toHaveCount(6)
-  await handle.evaluate((life) => {
-    const player = (life.game as unknown as Game).state.players[0]
-    player.weapons = ['w_friend', 'w_love', 'w_sports', 'w_hobby', 'w_reading', 'w_invest'].map((id) => ({
-      id,
-      lv: 1,
-      cd: 100,
-      held: 0,
-      damage: 0
-    }))
-  })
-  await expect(page.locator('#synergy-count')).toHaveText('人生の相乗効果 6/6')
-  for (const name of ['体験が育む表現', '遊びからのひらめき', 'ゆとりが広げる交流']) {
-    await expect(page.locator('#synergy-list')).toContainText(`発動中：${name}`)
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await expect(page.locator('#synergies, #synergy-count, #synergy-list')).toHaveCount(0)
+    await expect(page.locator('#weapons')).toBeVisible()
+    await expect(page.locator('#passives')).toBeVisible()
   }
-  await page.screenshot({ path: testInfo.outputPath('synergies-desktop.png') })
-  await page.setViewportSize({ width: 390, height: 844 })
-  expect(
-    await page.evaluate(() => {
-      const panel = document.querySelector('#synergy-list')!
-      const feed = document.querySelector('#feed p')
-      if (!feed) return true
-      const a = panel.getBoundingClientRect()
-      const b = feed.getBoundingClientRect()
-      const left = Math.max(a.left, b.left)
-      const right = Math.min(a.right, b.right)
-      const top = Math.max(a.top, b.top)
-      const bottom = Math.min(a.bottom, b.bottom)
-      return (
-        right <= left ||
-        bottom <= top ||
-        panel.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2))
-      )
-    })
-  ).toBe(true)
-  await page.screenshot({ path: testInfo.outputPath('synergies-mobile.png') })
-  const list = page.getByRole('region', { name: '人生の相乗効果の一覧' })
-  await list.focus()
-  await page.keyboard.press('End')
-  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-  await expect(list.getByText(/ゆとりが広げる交流/)).toBeInViewport()
-  await page.screenshot({ path: testInfo.outputPath('synergies-mobile-scrolled.png') })
-  await page.keyboard.press('Home')
-  await page.keyboard.press('ArrowDown')
-  await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-  await handle.evaluate((life) => {
-    const game = life.game as unknown as Game
-    const player = game.state.players[0]
-    player.weapons = ['w_reading', 'w_invest'].map((id) => ({ id, lv: 1, cd: 100, held: 0, damage: 0 }))
-    player.choices = ['r:w_reading:w_hobby']
-    game.choose(player, 0)
-  })
-  await expect(page.locator('#synergy-count')).toHaveText('人生の相乗効果 0/6')
-  await expect(page.locator('#synergy-list')).toContainText('未発動：知識で資産形成')
-  await page.locator('#synergy-count').focus()
-  await page.keyboard.press('Enter')
-  await expect(page.locator('#synergies')).not.toHaveAttribute('open')
 })
 
 for (const width of [1280, 390]) {
@@ -1536,10 +1480,6 @@ test('two players share one life-world: the guest moves and gets their own hand'
       player.weapons = ids.map((weapon) => ({ id: weapon, lv: 1, cd: 100, held: 0, damage: 0 }))
     }
   }, guestId)
-  await expect(host.locator('#synergy-count')).toHaveText('人生の相乗効果 0/6')
-  await expect(guest.locator('#synergy-count')).toHaveText('人生の相乗効果 1/6')
-  await guest.locator('#synergy-count').click()
-  await expect(guest.locator('#synergy-list')).toContainText('発動中：ゆとりが広げる交流')
   expect(
     await guestLife.evaluate((hook, id) => hook.view.players.find((player) => player.id === id), guestId)
   ).not.toHaveProperty('talents')
@@ -1549,9 +1489,6 @@ test('two players share one life-world: the guest moves and gets their own hand'
     player.choices = ['r:w_invest:w_sports']
     game.choose(player, 0)
   }, guestId)
-  await expect(guest.locator('#synergy-count')).toHaveText('人生の相乗効果 0/6')
-  await expect(guest.locator('#synergy-list')).toContainText('未発動：ゆとりが広げる交流')
-  await expect(host.locator('#synergy-count')).toHaveText('人生の相乗効果 0/6')
   expect(errors).toEqual([])
 })
 
@@ -1712,10 +1649,8 @@ for (const viewport of [
     await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
     const handle = await life(page)
     await expect(page.locator('.banner-stage')).toBeVisible()
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
     await expect(page.locator('.banner-stage')).toHaveCSS('animation-name', 'stage-slide')
     await expect(page.locator('.banner-stage')).toHaveCSS('display', 'grid')
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect(page.locator('.banner-stage')).toBeHidden()
     await handle.evaluate(async (hook) => {
       const path = '/src/data.ts'
@@ -1772,16 +1707,7 @@ for (const viewport of [
               active: rect(active),
               farewell: rect(farewell),
               weapons: rect(document.querySelector('#weapons')!),
-              passives: rect(document.querySelector('#passives')!),
-              hand: rect(document.querySelector('.hand')!),
-              hud: rect(document.querySelector('.hud-top')!),
-              boss: rect(document.querySelector('#boss-bar')!),
-              synergyList: rect(document.querySelector('#synergy-list')!),
-              synergyItem: rect(document.querySelector('#synergy-list p')!),
-              text: [
-                ...active.querySelectorAll('.banner-title, .banner-sub, .banner-meta'),
-                ...farewell.querySelectorAll('.banner-title, .banner-sub')
-              ].map(rect)
+              passives: rect(document.querySelector('#passives')!)
             })
           }
           farewellAnimation.currentTime = 2000
@@ -1793,16 +1719,8 @@ for (const viewport of [
       )
     const separated = (left: { left: number; right: number; top: number; bottom: number }, right: typeof left) =>
       left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
-    const checkBounds = (positions: Awaited<ReturnType<typeof inspect>>, expanded = false) => {
+    const checkBounds = (positions: Awaited<ReturnType<typeof inspect>>) => {
       for (const position of positions) {
-        if (expanded) {
-          expect(position.hand.top).toBeGreaterThanOrEqual(0)
-          expect(position.hand.bottom).toBeLessThanOrEqual(viewport.height)
-          expect(position.hand.right).toBeLessThanOrEqual(viewport.width)
-          expect(separated(position.hand, position.hud), JSON.stringify(position)).toBe(true)
-          expect(separated(position.hand, position.boss), JSON.stringify(position)).toBe(true)
-          expect(position.synergyItem.top + 12).toBeLessThanOrEqual(position.synergyList.bottom)
-        }
         for (const rect of [position.active, position.farewell]) {
           expect(rect.left).toBeGreaterThanOrEqual(-0.5)
           expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
@@ -1810,35 +1728,13 @@ for (const viewport of [
           expect(rect.bottom).toBeLessThanOrEqual(viewport.height + 0.5)
           expect(separated(rect, position.weapons), JSON.stringify(position)).toBe(true)
           expect(separated(rect, position.passives), JSON.stringify(position)).toBe(true)
-          if (expanded)
-            for (const panel of [position.hand, position.hud, position.boss])
-              expect(separated(rect, panel), JSON.stringify(position)).toBe(true)
         }
-        if (expanded)
-          for (const rect of position.text) {
-            expect(rect.left).toBeGreaterThanOrEqual(-0.5)
-            expect(rect.right).toBeLessThanOrEqual(viewport.width + 0.5)
-            for (const panel of [position.hand, position.hud, position.boss])
-              expect(separated(rect, panel), JSON.stringify(position)).toBe(true)
-          }
         for (const other of positions)
           expect(separated(position.active, other.farewell), JSON.stringify({ position, other })).toBe(true)
       }
     }
     checkBounds(await inspect('.banner-care', 2200))
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
-    checkBounds(await inspect('.banner-care', 2200), true)
-    if (viewport.width < 480 && viewport.height <= 500) {
-      const canScroll = await page.locator('.hand').evaluate((node: HTMLElement) => {
-        node.scrollTop = node.scrollHeight
-        const moved = node.scrollTop > 0
-        node.scrollTop = 0
-        return moved
-      })
-      expect(canScroll).toBe(true)
-    }
-    await page.screenshot({ path: testInfo.outputPath(`farewell-expanded-${viewport.width}.png`) })
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
+    await page.screenshot({ path: testInfo.outputPath(`farewell-layout-${viewport.width}.png`) })
     await expect(page.locator('#announcements')).toContainText('を看取り、親の武器を手放した。')
     await expect(page.locator('#feed')).toContainText('を継承（未所持ならLv1・所持済みならLv+1）')
     await expect(page.locator('#feed')).toHaveCSS('opacity', '0')
@@ -1851,9 +1747,6 @@ for (const viewport of [
     await expect(stage).toBeVisible()
     await expect(stage).toContainText('中年')
     checkBounds(await inspect('.banner-stage', 1800))
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = true))
-    checkBounds(await inspect('.banner-stage', 1800), true)
-    await page.locator('#synergies').evaluate((node: HTMLDetailsElement) => (node.open = false))
     await expect
       .poll(() =>
         page.evaluate(() => {

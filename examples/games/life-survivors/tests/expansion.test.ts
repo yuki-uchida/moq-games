@@ -191,8 +191,8 @@ describe('new talent weapons', () => {
       post(game, 'abusive_senpai', player.x + 300, player.y)
       game.tick(1 / 60)
       const staples = game.state.shots.filter((s) => s.weapon === 'w_overtime')
-      expect(staples).toHaveLength(6)
-      expect(staples.map((s) => s.delay > 0)).toEqual([false, true, true, true, true, true])
+      expect(staples).toHaveLength(3)
+      expect(staples.map((s) => s.delay > 0)).toEqual([false, true, true])
       // Staples that have not left yet are not sent.
       const view = toView(game.state)
       expect(view.shots.length / STRIDE.shots).toBe(1)

@@ -4,73 +4,8 @@ import { Game } from '../src/game'
 import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
-test('normal cards can turn employment at 28 into a creative career at 64', () => {
-  const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
-  const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
-  const competingCareers = [
-    'w_work',
-    'w_study',
-    'w_reading',
-    'w_overtime',
-    'w_sports',
-    'w_muscle',
-    'w_invest',
-    'w_savings',
-    'w_gamble',
-    'w_friend',
-    'w_sns',
-    'w_pet'
-  ]
-  const runs: { seed: number; early?: string; later?: string }[] = []
-  for (const seed of [18, ...Array.from({ length: 20 }, (_, index) => index + 1).filter((value) => value !== 18)]) {
-    const game = new Game(seed)
-    const player = game.addPlayer('p0')!
-    const acquired = new Set<string>()
-    let elapsed = 0
-    for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
-      if (game.state.phase !== 'playing' || elapsed > EVENTS[laterIndex].at + 0.1) break
-      const early = player.history.find((decision) => decision.event === earlyIndex)?.outcome
-      if (early && !LIFE_OUTCOMES.b_shukatsu.slice(0, 2).includes(early)) break
-      const later = elapsed > EVENTS[earlyIndex].at + 0.1
-      const priorities = later ? ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'] : ['w_work', 'w_study']
-      const scores = player.choices.map((choice) => {
-        const [kind, id] = choice.split(':')
-        const priority = priorities.indexOf(id)
-        if (choice === 'f:no') return 10
-        if (choice === 'f:yes') return -10
-        if (kind === 'r') return priority >= 0 ? -1 : later && competingCareers.includes(id) ? 4 : 1
-        if (kind === 's') return priority >= 0 ? 5 : -1
-        if (choice === 'x:skip') return 0
-        if (priority >= 0) return 8 - priority
-        if (kind === 'w') return acquired.has(id) ? (later ? 3 : 0) : 2
-        return 1
-      })
-      const input = botInput(game, { ...player, choices: [] }, 'random')
-      input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
-      if (input.pick >= 0) {
-        const [kind, id, replacement] = player.choices[input.pick].split(':')
-        if (kind === 'w') acquired.add(id)
-        if (kind === 'r') {
-          acquired.delete(id)
-          acquired.add(replacement)
-        }
-      }
-      game.setInput(player.id, input)
-      for (let step = 0; step < 6; step++) {
-        if (!player.choices.length) elapsed += 1 / 60
-        game.tick(1 / 60)
-      }
-    }
-    const early = player.history.find((decision) => decision.event === earlyIndex)?.outcome
-    const later = player.history.find((decision) => decision.event === laterIndex)?.outcome
-    runs.push({ seed, early, later })
-    if (early && LIFE_OUTCOMES.b_shukatsu.slice(0, 2).includes(early) && later === LIFE_OUTCOMES.b_layoff[12]) return
-  }
-  expect.fail(JSON.stringify(runs))
-}, 120_000)
-
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 18],
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 20],
   [['w_friend', 'w_sns', 'w_pet'], 17, 1]
 ] as const)(
   'normal cards can turn an early career into later %s',
@@ -129,6 +64,7 @@ test.each([
       runs.push({ seed, time: game.state.time, early, later })
       if (
         early &&
+        (outcome !== 12 || LIFE_OUTCOMES.b_shukatsu.slice(0, 2).includes(early)) &&
         LIFE_OUTCOMES.b_shukatsu.includes(early) &&
         early !== LIFE_OUTCOMES.b_shukatsu[2] &&
         early !== LIFE_OUTCOMES.b_shukatsu[outcome === 12 ? 5 : 6] &&
