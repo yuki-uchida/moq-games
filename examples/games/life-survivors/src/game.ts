@@ -1761,7 +1761,7 @@ export class Game {
           this.shot(player, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
-            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : def.speed,
+            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * Math.sqrt(ws.area),
             h: def.id === 'p_over' ? (i / n) * Math.PI * 2 : 0,
             tick: 0.45
