@@ -1580,6 +1580,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
       p.pending = 0
     }
   })
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
   const guestId = await guestLife.evaluate((l) => l.localId)
   const time = () => hostLife.evaluate((l) => l.game.state.time)
   const frozen = async (page: Page) => {
