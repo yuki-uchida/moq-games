@@ -13,9 +13,9 @@ export function bindAudioResume(doc: Document, resume: () => void): () => void {
     if (!doc.hidden && (event.type !== 'keydown' || !(event as KeyboardEvent).repeat)) resume()
   }
   const events = ['visibilitychange', 'pointerdown', 'keydown'] as const
-  for (const type of events) doc.addEventListener(type, wake, true)
+  for (const type of events) doc.addEventListener(type, wake, { capture: true })
   return () => {
-    for (const type of events) doc.removeEventListener(type, wake, true)
+    for (const type of events) doc.removeEventListener(type, wake, { capture: true })
   }
 }
 

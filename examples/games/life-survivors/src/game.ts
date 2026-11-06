@@ -319,7 +319,8 @@ export function generateTalents(rng: () => number): Record<TalentCategory, numbe
     })
   ) as Record<TalentCategory, number>
 }
-export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
+export const weaponSlots = (player: Player, age = 18) =>
+  player.parent === 'p_toxic' && age < 18 ? 2 : WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
 const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
   age >= def.minAge && (def.id !== 'w_ring' || player.married) && !player.weapons.some((weapon) => weapon.id === def.id)
@@ -430,7 +431,7 @@ export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerS
       (lv >= 5 ? 1 : 0) +
       (lv >= 8 ? 1 : 0) +
       (evolved ? 1 : 0) +
-      (def.behavior === 'none' ? 0 : stats.amount),
+      (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
     area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
@@ -1761,14 +1762,14 @@ export class Game {
           this.shot(player, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
-            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : def.speed,
+            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * Math.sqrt(ws.area),
             h: def.id === 'p_over' ? (i / n) * Math.PI * 2 : 0,
             tick: 0.45
           })
         break
       case 'aura':
-        this.shot(player, def, ws, { r: def.area * ws.area * (1 + (n - 1) * 0.12), tick: 0.45 })
+        this.shot(player, def, ws, { r: def.area * ws.area, tick: 0.45 })
         break
       case 'aim':
       case 'homing':
@@ -1862,7 +1863,8 @@ export class Game {
         let fromX = player.x
         let fromY = player.y
         const jump = 170 * ws.area
-        for (let i = 0; i < 2 + n; i++) {
+        const links = Math.round((2 + n) * (ws.duration / def.duration))
+        for (let i = 0; i < links; i++) {
           const target = this.nearestEnemy(fromX, fromY, i === 0 ? 420 * ws.area : jump, hit)
           if (!target) break
           hit.add(target.id)
@@ -2392,7 +2394,8 @@ export class Game {
       if (this.tickKills++ < 12) this.emit(FX.KILL, enemy.x, enemy.y, index, enemy.elite ? 1 : 0)
       if (enemy.elite) {
         // Elites always leave something: a meal, or now and then a turning point.
-        this.drop(this.rng() < 0.6 ? 'meal' : 'chest', enemy.x, enemy.y)
+        const mealChance = state.time < RUN_SECONDS / 2 ? 0.6 : 0.8
+        this.drop(this.rng() < mealChance ? 'meal' : 'chest', enemy.x, enemy.y)
       } else if (this.rng() < 0.0015 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
       else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
     }
@@ -2469,7 +2472,7 @@ export class Game {
       for (const player of state.players)
         if (!player.downed) {
           const hasOptions = this.options(player).length > 0
-          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player)))
+          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player, ageAt(state.time))))
             player.swapPending++
           if (hasOptions || state.level % 5 !== 0) player.pending++
           // Growing up also mends the heart a little.
@@ -2544,7 +2547,7 @@ export class Game {
     for (const weapon of player.weapons)
       if (weapon.lv < MAX_WEAPON_LEVEL && !(player.parentDeath && weapon.id === player.parent))
         result.push(`w:${weapon.id}`)
-    if (talentWeaponCount(player) < weaponSlots(player))
+    if (talentWeaponCount(player) < weaponSlots(player, age))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives)
       if (passive.id !== PET_MEMORY && passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)

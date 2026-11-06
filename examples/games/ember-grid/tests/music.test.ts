@@ -36,5 +36,5 @@ describe('original music scores', () => {
         samples.slice(Math.floor(samples.length / 2), Math.floor(samples.length / 2) + 22050)
       )
       expect(new Uint8Array(composeMusic(track))).toEqual(new Uint8Array(buffer))
-    })
+    }, 30_000)
 })

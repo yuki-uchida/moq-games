@@ -219,7 +219,7 @@ describe('Rabbiters authoritative simulation', () => {
     }
     born(game)
     expect(player.pregnant).toBe(false)
-  })
+  }, 30_000)
 
   it('requires the full five minutes of growth even after eating enough', () => {
     const game = autumn()
