@@ -306,7 +306,7 @@ describe('passives', () => {
     const target = post(game, 'overtraining', player.x + 30, player.y)
     const seen = new Set<Game['state']['popups'][number]>()
     let flagged = false
-    run(game, player, 60 * 30, () => {
+    run(game, player, 60 * 60, () => {
       target.hold()
       game.state.popups.forEach((p) => seen.add(p))
       const popups = toView(game.state).popups

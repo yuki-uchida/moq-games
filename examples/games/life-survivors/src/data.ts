@@ -174,7 +174,7 @@ export const PARENTS: WeaponDef[] = [
     behavior: 'aura',
     parent: true,
     damage: 4,
-    cooldown: 0.5,
+    cooldown: 1.0,
     area: 70,
     duration: 0.55,
     pierce: Infinity,

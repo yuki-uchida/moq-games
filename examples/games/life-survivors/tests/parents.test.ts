@@ -272,6 +272,24 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.damage).toBe(4)
   })
 
+  test('toxic aura fires once per second instead of every half second', () => {
+    const game = new Game(72)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_toxic')!
+    player.weapons = [{ id: 'p_toxic', lv: 1, cd: 0, held: 0, damage: 0 }]
+    player.passives = []
+    expect(weaponStats(player, player.weapons[0]).cooldown).toBe(1)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE)).toBe(true)
+    for (let frame = 0; frame < 58; frame++) {
+      game.tick(1 / 60)
+      expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t === game.state.time)).toBe(false)
+    }
+    game.tick(1 / 60)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t >= 0.99)).toBe(true)
+  })
+
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(
     '%s gains exactly 5% damage without strengthening an ally',
     (id) => {
