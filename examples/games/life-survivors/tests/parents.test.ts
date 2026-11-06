@@ -272,6 +272,33 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.damage).toBe(4)
   })
 
+  test.each([1, 2, 4, 5, 8])('aura radius ignores weapon count at level %i', (lv) => {
+    const game = new Game(72)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const weapon = player.weapons[0]
+    weapon.lv = lv
+    const def = WEAPONS.find(({ id }) => id === weapon.id)!
+    for (const passives of [
+      [],
+      [{ id: 'p_clever', lv: 5 }],
+      [{ id: 'p_grand', lv: 5 }],
+      [
+        { id: 'p_clever', lv: 5 },
+        { id: 'p_grand', lv: 5 },
+        { id: 'p_kind', lv: 5 },
+        { id: 'p_cautious', lv: 5 },
+        { id: 'p_acceptance', lv: 1 }
+      ]
+    ]) {
+      player.passives = passives
+      game.state.shots = []
+      const stats = weaponStats(player, weapon)
+      game['fire'](player, weapon, stats)
+      expect(game.state.shots).toHaveLength(1)
+      expect(game.state.shots[0].r).toBeCloseTo(def.area * stats.area)
+    }
+  })
+
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(
     '%s gains exactly 5% damage without strengthening an ally',
     (id) => {
