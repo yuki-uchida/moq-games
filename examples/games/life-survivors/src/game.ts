@@ -1761,8 +1761,9 @@ export class Game {
           this.shot(player, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
-            spin: def.id === 'p_monster' ? 240 * ws.speed : def.speed,
+            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : def.speed,
             r: 20 * Math.sqrt(ws.area),
+            h: def.id === 'p_over' ? (i / n) * Math.PI * 2 : 0,
             tick: 0.45
           })
         break
@@ -2072,6 +2073,7 @@ export class Game {
       switch (shot.kind) {
         case 'orbit':
           if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
+          else if (shot.weapon === 'p_over') this.moveGuardian(shot, owner, dt)
           else {
             shot.angle += shot.spin * dt
             shot.x = owner.x + Math.cos(shot.angle) * shot.orbit
@@ -2192,6 +2194,40 @@ export class Game {
     state.shots = kept
   }
 
+  private moveGuardian(shot: Shot, owner: Player, dt: number) {
+    const range = shot.orbit * 2
+    shot.aux -= dt
+    if (
+      shot.aux <= 0 ||
+      (shot.target && (shot.target.hp <= 0 || Math.hypot(shot.target.x - owner.x, shot.target.y - owner.y) > range))
+    ) {
+      shot.aux = 0.2
+      let best: Enemy | undefined
+      let distance = Infinity
+      this.near(owner.x, owner.y, range, (enemy) => {
+        if (enemy.hp <= 0 || Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > range) return
+        const d = (enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2
+        if (d < distance) {
+          distance = d
+          best = enemy
+        }
+      })
+      shot.target = best
+    }
+    const target = shot.target
+    const goalX = target ? target.x : owner.x + Math.cos(shot.h) * shot.orbit * 0.72
+    const goalY = target ? target.y : owner.y + Math.sin(shot.h) * shot.orbit * 0.72
+    const dx = goalX - shot.x
+    const dy = goalY - shot.y
+    const distance = Math.hypot(dx, dy)
+    shot.angle = target && distance > 0 ? Math.atan2(dy, dx) : shot.h
+    if (distance > 0) {
+      const step = Math.min(distance, shot.spin * dt)
+      shot.x += (dx / distance) * step
+      shot.y += (dy / distance) * step
+    }
+  }
+
   private movePet(shot: Shot, owner: Player, dt: number) {
     shot.aux -= dt
     if (shot.aux <= 0 || (shot.target && shot.target.hp <= 0)) {
@@ -2304,9 +2340,12 @@ export class Game {
     if (shot.weapon === 'w_love') enemy.slow = 1.2
     const knock = shot.knockback * this.knockScale(enemy, def)
     if (knock) {
-      const dx = enemy.x - (origin?.x ?? owner.x)
+      let dx = enemy.x - (origin?.x ?? owner.x)
       let dy = enemy.y - (origin?.y ?? owner.y)
-      if (origin && dx === 0 && dy === 0) dy = -1
+      if (!dx && !dy && shot.weapon === 'p_over') {
+        dx = Math.cos(shot.angle)
+        dy = Math.sin(shot.angle)
+      } else if (origin && !dx && !dy) dy = -1
       const l = Math.hypot(dx, dy) || 1
       enemy.kx += (dx / l) * knock
       enemy.ky += (dy / l) * knock

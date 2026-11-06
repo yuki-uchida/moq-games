@@ -264,6 +264,7 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
 })
 
 for (const [parent, description] of [
+  ['p_over', '親が盾を構えて近くの敵を迎撃し、ダメージを与えて弾き飛ばす'],
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
   ['p_toxic', '全武器の威力 +5%'],
@@ -756,6 +757,66 @@ test('reading effects render behind local and co-op players', async ({ page }) =
   for (const events of orders) {
     expect(events).toEqual(['groundShot:art', 'groundShot:centred', 'groundShot:art', 'player', 'player'])
   }
+})
+
+test('overprotective parents face their target and only their unavailable shields fade for local and co-op views', async ({
+  page
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const draws = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 100 })
+    view.enemies = []
+    const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
+    view.shots = [
+      guardian,
+      player.x + 60,
+      player.y + 20,
+      20,
+      314,
+      100,
+      0,
+      0,
+      guardian,
+      player.x + 40,
+      player.y - 20,
+      20,
+      0,
+      100,
+      1,
+      1
+    ]
+    const renderer = new Renderer(document.createElement('canvas'))
+    const events: { x: number; y: number; alpha: number; flip: boolean }[] = []
+    let drawingShot = false
+    const topShot = renderer.topShot.bind(renderer)
+    renderer.topShot = (...args: unknown[]) => {
+      drawingShot = true
+      topShot(...args)
+      drawingShot = false
+    }
+    const centred = renderer.centred.bind(renderer)
+    renderer.centred = (...args: [unknown, number, number, boolean, number, number, boolean]) => {
+      if (drawingShot) events.push({ x: args[1] - player.x, y: args[2] - player.y, alpha: args[4], flip: args[6] })
+      centred(...args)
+    }
+    renderer.draw(view, life.localId, 0.016, false)
+    return events
+  })
+  expect(draws).toEqual([
+    { x: 60, y: 20, alpha: 1, flip: true },
+    { x: 60, y: 20, alpha: 1, flip: true },
+    { x: 40, y: -20, alpha: 1, flip: false },
+    { x: 40, y: -20, alpha: 0.45, flip: false }
+  ])
 })
 
 test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {

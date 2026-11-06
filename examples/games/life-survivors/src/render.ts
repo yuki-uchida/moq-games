@@ -1215,12 +1215,17 @@ export class Renderer {
         // Re-derive the orbit around the eased owner so it never lags behind them.
         const owner = view.players[view.shots[i + 6]]
         const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
-        const ox = def.id === 'p_monster' ? x : sh.ox + cos * orbit
-        const oy = def.id === 'p_monster' ? y : sh.oy + sin * orbit
+        const independent = def.id === 'p_monster' || def.id === 'p_over'
+        const ox = independent ? x : sh.ox + cos * orbit
+        const oy = independent ? y : sh.oy + sin * orbit
         const art = sheet(`weapon:${def.id}`)
         const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][(i / STRIDE.shots) % 3] : art.fly
-        const guard = def.id === 'p_over' && sh.v === 1 ? 0.45 : 1
-        this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4) * guard)
+        const time = this.clock + i * 0.1
+        const alpha = Math.min(1, life * 4)
+        const flip = def.id === 'p_over' && cos < 0
+        this.centred(pick(anim, time), ox, oy, evolved, alpha, 1, flip)
+        if (def.id === 'p_over')
+          this.centred(pick(art.guard, time), ox, oy, evolved, alpha * (sh.v === 1 ? 0.45 : 1), 1, flip)
         break
       }
       case 'whip':

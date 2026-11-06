@@ -76,17 +76,71 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(player.hp).toBe(0.01)
   })
 
-  test('shields still damage enemies and orbit rather than chase them', () => {
+  test('overprotective parents do not reduce movement speed', () => {
+    const { player } = guarded()
+    const other = new Game(71).addPlayer('b', 'p_edu')!
+    expect(playerStats(player).speed).toBe(playerStats(other).speed)
+    player.passives = other.passives = [
+      { id: 'p_healthy', lv: 2 },
+      { id: 'p_small', lv: 1 }
+    ]
+    expect(playerStats(player).speed).toBe(playerStats(other).speed)
+  })
+
+  test.each([1, -1])('a spent shield intercepts enemies, damages them and knocks them away (%i)', (side) => {
     const { game, player } = guarded()
     game.state.bullets.push({ x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
     game.tick(1 / 60)
     const shield = game.state.shots.find((shot) => shot.v === 1)!
-    const enemy = game.spawnEnemy('germ', shield.x, shield.y)!
+    game.state.shots = [shield]
+    shield.x = player.x + side * 20
+    shield.y = player.y
+    shield.aux = 0
+    const enemy = game.spawnEnemy('germ', player.x + side * 100, player.y)!
+    enemy.hp = enemy.maxHp = 1000
+    enemy.elite = false
+    const start = shield.x
+    for (let frame = 0; frame < 60 && enemy.hp === enemy.maxHp; frame++) game.tick(1 / 60)
+    expect((shield.x - start) * side).toBeGreaterThan(0)
+    expect(enemy.kx * side).toBeGreaterThan(0)
+    expect(enemy.hp).toBeLessThan(1000)
+    expect(player.weapons[0].damage).toBeGreaterThan(0)
+    expect(Math.cos(shield.angle) * side).toBeGreaterThan(0)
+    expect(shield.v).toBe(1)
+    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+  })
+
+  test('guards stay near their owner instead of pursuing distant enemies, then return to their posts', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    game.state.shots = [shield]
+    const distant = game.spawnEnemy('germ', player.x + 250, player.y)!
+    shield.aux = 0
+    game.tick(1 / 60)
+    expect(shield.target).toBeUndefined()
+    expect(distant.hp).toBe(distant.maxHp)
+    game.state.enemies = []
+    shield.x = player.x + 80
+    shield.y = player.y + 30
+    shield.aux = 0
+    for (let frame = 0; frame < 40; frame++) game.tick(1 / 60)
+    expect(shield.x - player.x).toBeCloseTo(shield.orbit * 0.72)
+    expect(shield.y).toBeCloseTo(player.y)
+  })
+
+  test('a shield also pushes an enemy overlapping the owner', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    game.state.shots = [shield]
+    shield.x = player.x
+    shield.y = player.y
+    shield.aux = 0
+    const enemy = game.spawnEnemy('germ', player.x, player.y)!
+    enemy.hp = enemy.maxHp = 1000
+    enemy.elite = false
     game.tick(1 / 60)
     expect(enemy.hp).toBeLessThan(enemy.maxHp)
-    expect(player.weapons[0].damage).toBeGreaterThan(0)
-    expect(Math.hypot(shield.x - player.x, shield.y - player.y)).toBeCloseTo(shield.orbit)
-    expect(game.state.shots).toHaveLength(2)
+    expect(enemy.kx).toBeGreaterThan(0)
   })
 
   test('an unguarded boss hit retains its existing 0.6 second grace', () => {
@@ -131,7 +185,10 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
           game.state.bullets = [
             { x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' }
           ]
-        } else game.spawnEnemy(attack, player.x, player.y)
+        } else {
+          const enemy = game.spawnEnemy(attack, player.x, player.y)!
+          enemy.hp = enemy.maxHp = 1e9
+        }
         const recovery = player.shieldRecovery
         game.tick(1 / 60)
         damageWindows[Math.floor(frame / 180)] += player.maxHp - player.hp

@@ -82,14 +82,39 @@ function balloon(f: number) {
   return r
 }
 
-/** 過保護: a round guardian shield with a heart emblem. */
-function shield(f: number) {
+function guardian(f: number) {
   const r = new Raster(N, N)
+  const step = [1, 0, -1, 0][f]
+  const bob = [0, -1, 0, -1][f]
   part(r, (l) => {
-    ball(l, 16, 16, 12, 12, R.metal)
-    ball(l, 16, 16, 9, 9, R.sky)
-    l.stamp(['.rr.rr.', 'rRRrRRr', 'rRRRRRr', '.rRRRr.', '..rRr..', '...r...'], 13, 13, { r: R.red[2], R: R.red[1] })
-    if (f % 2) for (let k = 0; k < 4; k++) l.set(9 + k, 11 - k, C.white)
+    l.thick(9, 22 + bob, 8 + step, 28, 3, R.navy[1])
+    l.thick(14, 22 + bob, 15 - step, 28, 3, R.navy[2])
+    l.rect(6 + step, 28, 5, 2, R.brown[2])
+    l.rect(13 - step, 28, 5, 2, R.brown[2])
+  })
+  part(r, (l) => {
+    l.poly([6, 14 + bob, 16, 14 + bob, 19, 24 + bob, 6, 24 + bob], R.mint[1])
+    shadeEdges(l, R.mint, 1, true)
+    l.thick(14, 16 + bob, 21, 19 + bob, 3, R.skin[1])
+    l.thick(7, 16 + bob, 5, 21 + bob, 3, R.skin[1])
+  })
+  part(r, (l) => {
+    ball(l, 11, 9 + bob, 5.5, 6, R.skin)
+    l.poly([5, 8 + bob, 6, 4 + bob, 9, 2 + bob, 14, 3 + bob, 17, 7 + bob, 13, 6 + bob, 9, 7 + bob], R.brown[2])
+    l.rect(13, 9 + bob, 2, 2, C.inkWarm)
+    l.set(15, 12 + bob, R.red[2])
+  })
+  return r
+}
+
+function guardianShield(f: number) {
+  const r = new Raster(N, N)
+  const x = 23 + [0, 1, 0, -1][f]
+  part(r, (l) => {
+    ball(l, x, 19, 7, 9, R.metal)
+    ball(l, x, 19, 5, 7, R.sky)
+    l.stamp(['.r.r.', 'rRRRr', 'rRRRr', '.rRr.', '..r..'], x - 2, 16, { r: R.red[2], R: R.red[1] })
+    l.line(x - 4, 15, x - 2, 12, C.white)
   })
   return r
 }
@@ -853,7 +878,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
     ...arsenalSheets(),
     'weapon:p_edu': () => ({ fly: four(book, 10) }),
     'weapon:p_free': () => ({ fly: four(balloon, 4) }),
-    'weapon:p_over': () => ({ fly: loop([0, 1].map(shield), 3) }),
+    'weapon:p_over': () => ({ fly: four(guardian, 7), guard: four(guardianShield, 7) }),
     'weapon:p_monster': () => ({ fly: four(parent, 10) }),
     'weapon:p_yankee': () => ({
       fly: four((f) => yankee(yankeeRun(f)), 14),
@@ -921,7 +946,7 @@ export function weaponSheets(): Record<string, () => Sheet> {
         p_edu: icon(book(0)),
         p_free: icon(balloon(0)),
         p_weak: icon(new Raster(24, 24).blit(hand(0), 2, 6).blit(hand(1), 10, 4).blit(sweat(), 17, 14)),
-        p_over: icon(shield(0)),
+        p_over: icon(guardian(0).blit(guardianShield(0), 0, 0)),
         p_monster: icon(parent(0)),
         p_yankee: icon(yankee(yankeeStrut(0))),
         p_rich: icon(new Raster(28, 28).blit(bills(), 4, 4).blit(coins(1), 0, 10)),
