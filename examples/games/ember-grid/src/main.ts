@@ -510,6 +510,7 @@ function lockPresentation() {
   busy = true
   // Guidance must not point at controls a presentation has just disabled.
   tutorial.update()
+  updateGuide()
   cells.forEach((cell) => (cell.disabled = true))
   document.querySelectorAll<HTMLButtonElement>('nav button').forEach((button) => (button.disabled = true))
   if (restoreBoardFocus && document.activeElement === document.body && !document.querySelector('dialog[open]')) {
