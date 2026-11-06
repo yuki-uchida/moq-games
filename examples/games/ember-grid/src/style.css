@@ -3,6 +3,15 @@
   color: #f3ead4;
   background: #101e27;
   color-scheme: dark;
+  /* Page gutter; narrow screens tighten it, and the pinned status bar bleeds by exactly this much. */
+  --page-pad: 12px;
+  /* Device safe areas (notches, rounded corners, home bars); tests override these. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-vw: calc(100vw - var(--safe-left) - var(--safe-right));
+  --safe-vh: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
 * {
   box-sizing: border-box;
@@ -71,9 +80,30 @@ button:focus-visible {
   width: 100%;
 }
 #help-dialog {
-  max-width: min(680px, 94vw);
-  max-height: 90dvh;
-  overflow: auto;
+  max-width: min(680px, 94vw, calc(var(--safe-vw) - 24px));
+  max-height: min(90dvh, calc(var(--safe-vh) - 24px));
+  overflow: hidden;
+}
+/* Title and tabs stay put, the text scrolls between them, and the way out never covers a line. */
+#help-dialog[open] {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  row-gap: 6px;
+}
+#help-dialog [role='tabpanel'] {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #8dafa5 transparent;
+  /* Fade the cut line at the bottom edge so the rest of the text is obviously below; the padding keeps the
+     last line clear of that fade once the panel is scrolled to the end. */
+  mask-image: linear-gradient(180deg, #000 calc(100% - 14px), transparent);
+  padding-bottom: 14px;
+}
+#help-dialog #help-close {
+  position: static;
+  box-shadow: none;
 }
 #help-dialog [role='tablist'] {
   display: flex;
@@ -132,7 +162,8 @@ main {
   margin: auto;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: max(var(--page-pad), var(--safe-top)) max(var(--page-pad), var(--safe-right))
+    max(var(--page-pad), var(--safe-bottom)) max(var(--page-pad), var(--safe-left));
   gap: 8px;
 }
 header {
@@ -634,12 +665,15 @@ button:disabled {
   display: none;
 }
 dialog {
-  max-width: min(90vw, 470px);
+  max-width: min(90vw, 470px, calc(var(--safe-vw) - 24px));
   border: 1px solid #8dafa5;
   border-radius: 16px;
   background: #1b333f;
   color: #eee7d6;
   font-size: 14px;
+}
+dialog:modal {
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 dialog::backdrop {
   background: #06121bcc;
@@ -653,7 +687,7 @@ dialog button {
 }
 @media (max-width: 500px) {
   main {
-    padding: 8px;
+    --page-pad: 8px;
     gap: 6px;
   }
   .field {
@@ -691,6 +725,10 @@ dialog button {
     grid-template-columns: 1fr clamp(224px, 40vw, 260px);
     grid-template-rows: 56px auto 1fr;
     max-width: 1000px;
+  }
+  /* The spare console height stays with the card, so the actions keep their place at the bottom. */
+  .console {
+    grid-template-rows: auto auto minmax(44px, 1fr) auto auto;
   }
   header {
     grid-column: 2;
@@ -774,7 +812,7 @@ fieldset label {
   font-size: 12px;
 }
 #expedition {
-  max-height: 90dvh;
+  max-height: min(90dvh, calc(var(--safe-vh) - 24px));
   overflow: auto;
 }
 @media (max-width: 500px) {
@@ -1203,7 +1241,7 @@ fieldset label {
   outline: 3px solid #ffe27b;
 }
 #detail {
-  width: min(92vw, 380px);
+  width: min(92vw, 380px, calc(var(--safe-vw) - 24px));
   box-sizing: border-box;
 }
 .dt-head {
@@ -2220,7 +2258,7 @@ body:has(#tutorial:not([hidden])) .console > #guide {
   }
   #forecast {
     position: fixed;
-    inset: auto 8px 8px 8px;
+    inset: auto max(8px, var(--safe-right)) max(8px, var(--safe-bottom)) max(8px, var(--safe-left));
     z-index: 40;
     max-height: 60vh;
     overflow-y: auto;
@@ -2339,10 +2377,17 @@ body:has(#tutorial:not([hidden])) .console > #guide {
   #tutorial:not([hidden]) {
     position: fixed;
     top: 8px;
-    left: 8px;
-    right: 8px;
+    left: max(8px, var(--safe-left));
+    right: max(8px, var(--safe-right));
     z-index: 35;
     box-shadow: 0 6px 20px #000c;
+  }
+  #toast {
+    left: max(8px, var(--safe-left));
+    right: max(8px, var(--safe-right));
+    translate: none;
+    margin-inline: auto;
+    max-width: calc(100% - 24px - var(--safe-left) - var(--safe-right));
   }
   body:has(#tutorial:not([hidden])) #toast {
     top: calc(var(--status-h, 38px) + var(--tutorial-h, 50px) + 12px);
@@ -2354,8 +2399,9 @@ body:has(#tutorial:not([hidden])) .console > #guide {
     position: sticky;
     top: 0;
     z-index: 30;
-    margin-inline: -12px;
-    padding: 4px 12px;
+    margin-inline: calc(-1 * max(var(--page-pad), var(--safe-left)))
+      calc(-1 * max(var(--page-pad), var(--safe-right)));
+    padding: 4px max(var(--page-pad), var(--safe-right)) 4px max(var(--page-pad), var(--safe-left));
     background: #101e27f2;
     box-shadow: 0 4px 10px #0008;
   }
@@ -2374,7 +2420,7 @@ body:has(#tutorial:not([hidden])) .console > #guide {
   #fast {
     position: fixed;
     top: 44px;
-    right: 8px;
+    right: max(8px, var(--safe-right));
     z-index: 36;
   }
 }
@@ -2404,18 +2450,16 @@ body:has(#tutorial:not([hidden])) .console > #guide {
   }
 }
 @media (max-height: 500px) {
-  /* Short screens: one pinned row of help tabs leaves room for the text. */
+  /* Short screens: wrap the tabs so every one of them stays visible. */
   #help-dialog [role='tablist'] {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    background: #1b333f;
-    padding-block: 2px;
+    flex-wrap: wrap;
+    gap: 4px;
   }
   #help-dialog [role='tab'] {
     flex: none;
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 12px;
   }
 }
 /* Icon buttons in the console say what they do; the touch assist shows when it is on. */
@@ -2425,6 +2469,10 @@ body:has(#tutorial:not([hidden])) .console > #guide {
   align-content: center;
   padding: 2px 0;
   line-height: 1.1;
+}
+/* A disabled info button still says what it does; the frame shows it cannot be pressed. */
+.console-side button:disabled {
+  opacity: 0.6;
 }
 .console-side button small {
   font-size: 9px;
@@ -2447,13 +2495,7 @@ body:has(#tutorial:not([hidden])) .console > #guide {
     width: 36px;
   }
 }
-/* The pinned status bar spans the page padding, which is 8 px on narrow screens. */
-@media (max-height: 500px) and (max-width: 500px) {
-  .status {
-    margin-inline: -8px;
-    padding-inline: 8px;
-  }
-}
+/* The pinned status bar bleeds by exactly the page padding, which narrow screens tighten to 8 px. */
 /* Short side column: tighter spacing so the info buttons clear the pinned action buttons. */
 @media (max-height: 340px) and (min-width: 560px) {
   .console {
@@ -2710,5 +2752,12 @@ body:has(#tutorial:not([hidden])) .console > #guide {
 @media not all and (max-height: 500px) and (max-width: 559px) {
   .field:has(#actor:not([hidden])) #toast {
     top: 46px;
+  }
+}
+/* Side column: the empty card keeps its placeholder at the top, with the spare height below it. */
+@media (max-height: 500px) and (min-width: 560px) {
+  #selection:not(.unit-card) {
+    align-items: start;
+    min-height: 0;
   }
 }
