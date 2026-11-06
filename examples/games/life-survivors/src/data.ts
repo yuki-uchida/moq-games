@@ -214,7 +214,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 2.6,
     pierce: 3,
     area: 14,
-    desc: '風船がどこかへ飛んでいく。特攻はないが自由。',
+    desc: '風船が真上に飛び、割れると周囲に爆発ダメージとノックバック。特攻はない。',
     perk: '手札の枠 +1'
   }),
   weapon({

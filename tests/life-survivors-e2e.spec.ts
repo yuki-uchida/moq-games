@@ -15,6 +15,46 @@ const life = async (page: Page) => {
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 }
 
+test('free-parent balloons rise and their burst damages and pushes enemies', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    player.parent = 'p_free'
+    player.weapons = [{ id: 'p_free', lv: 1, cd: 0, held: 0, damage: 0 }]
+    game.tick(1 / 60)
+    const shots = game.state.shots
+    const rising = shots.length >= 2 && shots.every((shot) => shot.vx === 0 && shot.vy < 0 && shot.y < player.y)
+    const shot = shots[0]
+    game.state.shots = [shot]
+    player.weapons[0].cd = 100
+    Object.assign(shot, { x: player.x + 140, y: player.y - 140, vx: 0, vy: 0, pierce: 1 })
+    const target = game.spawnEnemy('germ', shot.x, shot.y)!
+    const neighbor = game.spawnEnemy('germ', shot.x - 50, shot.y)!
+    target.hp = target.maxHp = neighbor.hp = neighbor.maxHp = 1000
+    game.tick(1 / 60)
+    return {
+      rising,
+      targetDamage: target.maxHp - target.hp,
+      neighborDamage: neighbor.maxHp - neighbor.hp,
+      neighborKnockback: neighbor.kx,
+      recordedDamage: player.weapons[0].damage,
+      remainingShots: game.state.shots.length
+    }
+  })
+  expect(result.rising).toBe(true)
+  expect(result.targetDamage).toBeGreaterThan(0)
+  expect(result.neighborDamage).toBeGreaterThan(0)
+  expect(result.neighborKnockback).toBeLessThan(0)
+  expect(result.recordedDamage).toBeCloseTo(result.targetDamage + result.neighborDamage)
+  expect(result.remainingShots).toBe(0)
+})
+
 test('relationship choice uses the game UI and unlocks the personal rival', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS } from '../src/data'
+import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX } from '../src/data'
 import { Game, RAID, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { readView, toView } from '../src/view'
@@ -287,6 +287,97 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     game.gainXp(game.state.xpNext)
     expect(player.hp).toBeCloseTo(50 + player.maxHp * 0.06)
     expect(playerStats(player).regen).toBe(0)
+  })
+})
+
+describe('放任主義: 真上に飛んで割れる風船', () => {
+  function balloons(level = 1) {
+    const game = new Game(74)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_free')!
+    player.weapons[0].lv = level
+    player.weapons[0].cd = 0
+    game.tick(1 / 60)
+    player.weapons[0].cd = 100
+    return { game, player }
+  }
+
+  test.each([1, 8])('level %i balloons rise vertically in separate columns', (level) => {
+    const { game, player } = balloons(level)
+    const shots = game.state.shots
+    const positions = shots.map(({ x, y }) => ({ x, y }))
+    expect(shots.length).toBeGreaterThanOrEqual(2)
+    expect(new Set(shots.map((shot) => shot.x)).size).toBe(shots.length)
+    expect(shots.every((shot) => shot.vx === 0 && shot.vy < 0)).toBe(true)
+    player.x += 100
+    player.y += 100
+    game.tick(0.1)
+    shots.forEach((shot, index) => {
+      expect(shot.x).toBe(positions[index].x)
+      expect(shot.y).toBeLessThan(positions[index].y)
+    })
+  })
+
+  test('the third hit adds a radial blast and knockback to direct damage', () => {
+    const { game, player } = balloons()
+    const shot = game.state.shots[0]
+    game.state.shots = [shot]
+    Object.assign(shot, { x: player.x + 140, y: player.y - 140, vx: 0, vy: 0 })
+    const enemyAt = (offset: number) => {
+      const enemy = game.spawnEnemy('germ', shot.x + offset, shot.y)!
+      enemy.hp = enemy.maxHp = 1000
+      return enemy
+    }
+    for (let hit = 0; hit < 2; hit++) {
+      const enemy = enemyAt(0)
+      game.tick(1 / 60)
+      expect(enemy.hp).toBeLessThan(enemy.maxHp)
+      expect(enemy.kx).toBe(0)
+      expect(enemy.ky).toBe(0)
+      expect(shot.pierce).toBe(2 - hit)
+      expect(game.state.fx.some((event) => event.type === FX.BLAST)).toBe(false)
+      game.state.enemies = []
+    }
+    const target = enemyAt(0)
+    const left = enemyAt(-50)
+    const right = enemyAt(50)
+    const outside = enemyAt(100)
+    const previousDamage = player.weapons[0].damage
+    game.tick(1 / 60)
+    expect(game.state.shots).toHaveLength(0)
+    expect(target.maxHp - target.hp).toBeGreaterThan(shot.damage * 1.79)
+    expect(left.hp).toBeLessThan(left.maxHp)
+    expect(right.hp).toBeLessThan(right.maxHp)
+    expect(outside.hp).toBe(outside.maxHp)
+    expect(left.kx).toBeLessThan(0)
+    expect(right.kx).toBeGreaterThan(0)
+    const total = [target, left, right].reduce((sum, enemy) => sum + enemy.maxHp - enemy.hp, 0)
+    expect(player.weapons[0].damage - previousDamage).toBeCloseTo(total)
+    const blasts = game.state.fx.filter((event) => event.type === FX.BLAST)
+    expect(blasts).toHaveLength(1)
+    expect(blasts[0]).toMatchObject({ x: shot.x, y: shot.y, a: shot.r * 4, b: WEAPON_INDEX.get('p_free') })
+    const view = toView(game.state)
+    expect(view.fx.some((value, index) => index % 6 === 1 && value === FX.BLAST)).toBe(true)
+    expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
+  })
+
+  test('an expired balloon bursts once and respects boss knockback immunity', () => {
+    const { game, player } = balloons()
+    const shot = game.state.shots[0]
+    game.state.shots = [shot]
+    Object.assign(shot, { x: player.x + 140, y: player.y - 140, life: 0 })
+    const enemy = game.spawnEnemy('germ', shot.x, shot.y)!
+    enemy.hp = enemy.maxHp = 1000
+    const boss = game.spawnEnemy('b_hs', shot.x + 50, shot.y)!
+    game.tick(0)
+    expect(game.state.shots).toHaveLength(0)
+    expect(enemy.hp).toBeLessThan(enemy.maxHp)
+    expect(enemy.ky).toBeLessThan(0)
+    expect(boss.hp).toBeLessThan(boss.maxHp)
+    expect(boss.kx).toBe(0)
+    expect(boss.ky).toBe(0)
+    game.tick(0)
+    expect(game.state.fx.filter((event) => event.type === FX.BLAST)).toHaveLength(1)
   })
 })
 
