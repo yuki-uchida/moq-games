@@ -1080,12 +1080,12 @@ export class Renderer {
         ctx.strokeStyle = evolved ? `rgba(255,215,94,${0.32 * fade})` : `rgba(255,170,215,${0.3 * fade})`
         ctx.lineWidth = 4
         ctx.beginPath()
-        ctx.arc(sh.ox, sh.oy, radius, 0, TAU)
+        ctx.arc(sh.ox, sh.oy, radius, sh.angle - Math.PI / 3, sh.angle + Math.PI / 3)
         ctx.stroke()
         ctx.lineWidth = 1.5
         ctx.strokeStyle = `rgba(255,255,255,${0.35 * fade})`
         ctx.beginPath()
-        ctx.arc(sh.ox, sh.oy, Math.max(2, radius - 6), 0, TAU)
+        ctx.arc(sh.ox, sh.oy, Math.max(2, radius - 6), sh.angle - Math.PI / 3, sh.angle + Math.PI / 3)
         ctx.stroke()
         break
       }
@@ -1418,7 +1418,7 @@ export class Renderer {
         const fade = clamp01(life * 2.2) * clamp01(age * 10)
         const n = Math.max(6, Math.min(24, Math.round(radius / 8)))
         for (let j = 0; j < n; j++) {
-          const ang = (j / n) * TAU + this.clock * 1.6
+          const ang = sh.angle + (j / (n - 1) - 0.5) * (TAU / 3)
           const rr = radius + Math.sin(this.clock * 8 + j) * 2.5
           this.art(
             fx.note.frames[j % 3],
@@ -1433,7 +1433,7 @@ export class Renderer {
         }
         if (evolved && radius > 40)
           for (let j = 0; j < Math.floor(n / 2); j++) {
-            const ang = (j / (n / 2)) * TAU - this.clock * 2.2
+            const ang = sh.angle + ((j + 0.5) / Math.floor(n / 2) - 0.5) * (TAU / 3)
             this.art(
               fx.note.frames[(j + 1) % 3],
               sh.ox + Math.cos(ang) * radius * 0.62,
@@ -1445,7 +1445,13 @@ export class Renderer {
             )
           }
         const mic = pick(sheet('weapon:w_karaoke').fly, this.clock)
-        this.centred(mic, sh.ox + 17, sh.oy - 6 + Math.sin(this.clock * 10) * 1.5, evolved, clamp01(life * 6))
+        this.centred(
+          mic,
+          sh.ox + Math.cos(sh.angle) * 17,
+          sh.oy + Math.sin(sh.angle) * 17 - 6 + Math.sin(this.clock * 10) * 1.5,
+          evolved,
+          clamp01(life * 6)
+        )
         break
       }
       case 'sweep': {
