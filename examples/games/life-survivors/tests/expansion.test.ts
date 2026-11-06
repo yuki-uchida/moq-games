@@ -218,6 +218,48 @@ describe('new talent weapons', () => {
     }
   })
 
+  test.each([
+    { lv: 1, passives: [], links: 3 },
+    { lv: 2, passives: [], links: 4 },
+    { lv: 5, passives: [], links: 5 },
+    { lv: 8, passives: [], links: 6 },
+    { lv: 1, passives: [{ id: 'p_clever', lv: 4 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_grand', lv: 5 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 2 }], links: 4 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 5 }], links: 5 },
+    { lv: 1, passives: [{ id: 'p_hasty', lv: 5 }], links: 2 },
+    { lv: 8, passives: [{ id: 'p_savvy', lv: 1 }], links: 9 },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      links: 9
+    },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_curious', lv: 5 }
+      ],
+      links: 14
+    }
+  ])('SNS scales links with duration, not bonus projectiles: %j', ({ lv, passives, links }) => {
+    const { game, player } = arena(2)
+    game.targetPopulation = () => 0
+    player.weapons = [{ id: 'w_sns', lv, cd: 0, held: 0, damage: 0 }]
+    player.passives = passives
+    const posts = Array.from({ length: 16 }, (_, index) =>
+      post(game, 'abusive_senpai', player.x + 100 + index * 30, player.y)
+    )
+    game.tick(1 / 60)
+    const shots = game.state.shots.filter((shot) => shot.weapon === 'w_sns')
+    expect(shots).toHaveLength(links)
+    expect(posts.filter(({ enemy }) => enemy.hp < enemy.maxHp)).toHaveLength(links)
+    expect(shots.map((shot) => shot.v)).toEqual(Array.from({ length: links }, (_, index) => index))
+  })
+
   test('gambling activates different weapons', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
@@ -696,7 +738,7 @@ describe('enemies', () => {
     const view = toView(game.state)
     expect(view.enemies[6] & ENEMY_FLAG.elite).toBe(0)
     expect(view.enemies[STRIDE.enemies + 6] & ENEMY_FLAG.elite).toBeTruthy()
-    // Kill many: each elite leaves a meal or a chest (60 / 40) and six times the experience.
+    // Kill many: each elite leaves a meal or a chest and six times the experience.
     const kinds = new Set<string>()
     for (let i = 0; i < 40; i++) {
       game.state.items = []
@@ -708,6 +750,21 @@ describe('enemies', () => {
       expect(game.state.gems[0].v).toBe(2 * 6)
     }
     expect(kinds).toEqual(new Set(['meal', 'chest']))
+  })
+
+  test.each([
+    [RUN_SECONDS / 2 - 1, 0.59, 'meal'],
+    [RUN_SECONDS / 2 - 1, 0.6, 'chest'],
+    [RUN_SECONDS / 2, 0.79, 'meal'],
+    [RUN_SECONDS / 2, 0.8, 'chest'],
+    [RUN_SECONDS - 1, 0.79, 'meal']
+  ])('elite drop at %s seconds with roll %s is %s', (time, roll, expected) => {
+    const { game, player } = arena(18)
+    const enemy = game.spawnEnemy('bully', player.x - 500, player.y, { elite: true })!
+    game.state.time = time
+    ;(game as unknown as { rng: () => number }).rng = () => roll
+    ;(game as unknown as { kill(e: Enemy, d: EnemyDef): void }).kill(enemy, ENEMY_BY_ID.get('bully')!)
+    expect(game.state.items.map((item) => item.kind)).toEqual([expected])
   })
 
   test('elites appear on their own after two minutes', () => {

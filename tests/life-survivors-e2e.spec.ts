@@ -71,6 +71,51 @@ test('gambling draws the right animation and status for each life stage', async 
   expect(errors).toEqual([])
 })
 
+test('SNS chains scale with duration instead of bonus projectile count', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    player.talents = { friend: 1, love: 1, sports: 1, hobby: 1, study: 1, invest: 1 }
+    return [
+      [],
+      [
+        { id: 'p_clever', lv: 4 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      [{ id: 'p_curious', lv: 5 }],
+      [
+        { id: 'p_curious', lv: 5 },
+        { id: 'p_grand', lv: 5 }
+      ]
+    ].map((passives) => {
+      game.state.enemies = []
+      game.state.shots = []
+      player.passives = passives
+      player.weapons = [{ id: 'w_sns', lv: 1, cd: 0, held: 0, damage: 0 }]
+      const enemies = Array.from({ length: 8 }, (_, index) => {
+        const enemy = game.spawnEnemy('germ', player.x + 100 + index * 30, player.y)!
+        enemy.hp = enemy.maxHp = 1000
+        return enemy
+      })
+      game.tick(1 / 60)
+      return {
+        links: game.state.shots.filter((shot) => shot.weapon === 'w_sns').length,
+        hits: enemies.filter((enemy) => enemy.hp < enemy.maxHp).length
+      }
+    })
+  })
+  expect(result).toEqual([
+    { links: 3, hits: 3 },
+    { links: 3, hits: 3 },
+    { links: 5, hits: 5 },
+    { links: 5, hits: 5 }
+  ])
+})
+
 test('free-parent balloons rise and their burst damages and pushes enemies', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -81,6 +126,9 @@ test('free-parent balloons rise and their burst damages and pushes enemies', asy
     game.targetPopulation = () => 0
     game.state.enemies = []
     game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
     player.parent = 'p_free'
     player.weapons = [{ id: 'p_free', lv: 1, cd: 0, held: 0, damage: 0 }]
     game.tick(1 / 60)
@@ -325,7 +373,7 @@ for (const [parent, description] of [
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
   ['p_toxic', '全武器の威力 +5%'],
   ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
-  ['p_toxic', '18歳未満は才能の手札3枠']
+  ['p_toxic', '18歳未満は親を含めて手札3枠']
 ]) {
   test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {
     await page.goto('/')
@@ -1962,6 +2010,9 @@ for (const viewport of [
     const warning = page.locator('.banner-care')
     await expect(warning).toContainText('WARNING', { timeout: 500 })
     await expect(warning).toContainText('親の介護')
+    await warning.locator('.banner-sub').evaluate((subtitle) => {
+      subtitle.style.maxWidth = '100px'
+    })
     await expect(page.locator('#weapons .slot')).toHaveCount(6)
     await expect(page.locator('#passives .slot')).toHaveCount(7)
     await expect(page.locator('#boss-bar')).toBeVisible()
