@@ -27,6 +27,24 @@ function setup(age = 30) {
   return { game, player, obtain, at }
 }
 
+test('friend orbit speed follows projectile speed', () => {
+  const { game, player, obtain } = setup()
+  obtain('w_friend')
+  const weapon = player.weapons[0]
+  const spins = [[], [{ id: 'p_curious', lv: 2 }], [{ id: 'p_cautious', lv: 2 }]].map((passives) => {
+    player.passives = passives
+    game.state.shots = []
+    weapon.cd = 0
+    game.tick(0)
+    const spin = game.state.shots.find((shot) => shot.weapon === 'w_friend')!.spin
+    expect(spin).toBeCloseTo(2.8 * weaponStats(player, weapon).speed)
+    return spin
+  })
+  expect(spins[0]).toBeCloseTo(2.8)
+  expect(spins[1]).toBeGreaterThan(spins[0])
+  expect(spins[2]).toBeLessThan(spins[0])
+})
+
 test.each(SPORTS_FORMS)('sports switches at age $age to $name without replacing the weapon', (form) => {
   expect(sportsForm(form.age).key).toBe(form.key)
   if (form.age > 0) expect(sportsForm(form.age - 0.001).key).not.toBe(form.key)
