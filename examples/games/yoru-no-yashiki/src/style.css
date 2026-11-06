@@ -1,0 +1,237 @@
+:root {
+  font-family: serif;
+  color: #eee6d6;
+  background: #111713;
+  line-height: 1.8;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: radial-gradient(ellipse at top, #2c382b, #111713 55%);
+}
+header {
+  max-width: 1100px;
+  margin: auto;
+  padding: 3rem 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  border-bottom: 1px solid #70684f;
+}
+.crest {
+  border: 1px solid #b89862;
+  padding: 0.4rem 1rem;
+  font-size: 2rem;
+  color: #d8bb82;
+}
+h1,
+h2,
+p {
+  margin: 0.3rem 0 1rem;
+}
+h1 {
+  font-size: 2.4rem;
+  letter-spacing: 0.2em;
+}
+.eyebrow {
+  font: 600 0.7rem sans-serif;
+  letter-spacing: 0.2em;
+  color: #c0a574;
+}
+.subtitle {
+  margin-left: auto;
+  color: #c9bea7;
+}
+main {
+  max-width: 1100px;
+  margin: auto;
+  padding: 2rem 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.panel {
+  min-width: 0;
+  background: #1b231e;
+  border: 1px solid #68715b;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  box-shadow: 0 0.5rem 1.5rem #0005;
+}
+.intro,
+.play {
+  grid-column: 1/-1;
+}
+.note {
+  color: #d0c6b2;
+  font-size: 0.85rem;
+}
+.voice-preview {
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem;
+  background: #101510;
+  border-left: 3px solid #b39867;
+}
+.voice-preview p {
+  margin: 0.2rem 0;
+}
+.row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-block: 0.75rem;
+}
+button {
+  font: inherit;
+  background: #b39867;
+  color: #171b15;
+  border: 1px solid #b39867;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  min-height: 2.75rem;
+}
+button.secondary {
+  background: transparent;
+  color: #e5dac3;
+}
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+button:not(:disabled):hover {
+  border-color: #f3deb0;
+  filter: brightness(1.12);
+}
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+#world:focus-visible {
+  outline: 3px solid #f6d996;
+  outline-offset: 3px;
+}
+label {
+  display: block;
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+}
+textarea,
+input[type='text'],
+input[type='password'] {
+  display: block;
+  width: 100%;
+  background: #101510;
+  color: #eee;
+  border: 1px solid #59604e;
+  padding: 0.5rem;
+  resize: vertical;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+input[type='range'],
+meter {
+  width: 100%;
+  accent-color: #c2a373;
+}
+input[type='checkbox'] {
+  accent-color: #c2a373;
+}
+.check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 2.75rem;
+}
+.play-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+#timer {
+  font-size: 1.5rem;
+  color: #d8bb82;
+}
+#scores {
+  overflow-wrap: anywhere;
+}
+#world {
+  height: clamp(320px, 68vh, 680px);
+  min-height: 240px;
+  background: #101510;
+  outline: 1px solid #57604b;
+  overflow: hidden;
+}
+#world canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.play:fullscreen {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: #1d241e;
+  padding: clamp(0.75rem, 1.5vw, 1.5rem);
+}
+.play:fullscreen #world {
+  height: clamp(280px, 72vh, 960px);
+}
+.play-sound {
+  max-width: 32rem;
+  margin-bottom: 1rem;
+}
+#ritual {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid #b39867;
+  background: #101510;
+}
+#ritual p,
+#ritual ol {
+  margin: 0;
+}
+#ritual ol:not(:empty) {
+  margin-top: 0.6rem;
+  padding-left: 1.5rem;
+}
+footer {
+  max-width: 1100px;
+  margin: auto;
+  padding: 1rem 1.5rem 3rem;
+  color: #bdc6b2;
+  font-size: 0.75rem;
+}
+@media (max-width: 700px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+  .intro,
+  .play {
+    grid-column: auto;
+  }
+  .subtitle {
+    margin-left: 0;
+  }
+  header {
+    padding-top: 1.5rem;
+    flex-wrap: wrap;
+  }
+  header .subtitle {
+    flex-basis: 100%;
+  }
+  main {
+    padding-inline: 1rem;
+  }
+  #world {
+    height: clamp(240px, 65vw, 480px);
+  }
+  .play:fullscreen #world {
+    height: clamp(240px, 50vh, 600px);
+  }
+  h1 {
+    font-size: 1.8rem;
+  }
+}

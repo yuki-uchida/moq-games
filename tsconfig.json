@@ -16,6 +16,7 @@
     "examples/games/tower_diffence_with_jev/src/**/*.ts",
     "examples/games/rabbiters/src/**/*.ts",
     "examples/games/life-survivors/src/**/*.ts",
+    "examples/games/yoru-no-yashiki/src/**/*.ts",
     "utils/**/*.ts",
     "lib/**/*.ts"
   ],
