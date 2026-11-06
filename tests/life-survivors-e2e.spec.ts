@@ -314,7 +314,7 @@ for (const [parent, description] of [
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
   ['p_toxic', '全武器の威力 +5%'],
   ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
-  ['p_toxic', '18歳未満は才能の手札3枠']
+  ['p_toxic', '18歳未満は親を含めて手札3枠']
 ]) {
   test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {
     await page.goto('/')
