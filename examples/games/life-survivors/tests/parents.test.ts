@@ -211,8 +211,12 @@ describe('通常の被弾猶予は親にかかわらず継続接触を防がな�
 })
 
 describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
+  test('base aura damage is reduced to 4', () => {
+    expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.damage).toBe(4)
+  })
+
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(
-    '%s gains exactly 25% damage without strengthening an ally',
+    '%s gains exactly 5% damage without strengthening an ally',
     (id) => {
       const game = new Game(72)
       const player = game.addPlayer('a', 'p_toxic')!
@@ -226,7 +230,7 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
       const allyDamage = weaponStats(ally, weapon).damage
       player.parent = 'p_weak'
       const base = weaponStats(player, weapon)
-      expect(boosted.damage).toBeCloseTo(base.damage * 1.25)
+      expect(boosted.damage).toBeCloseTo(base.damage * 1.05)
       expect({ ...boosted, damage: 0 }).toEqual({ ...base, damage: 0 })
       expect(weaponStats(ally, weapon).damage).toBe(allyDamage)
     }
@@ -245,7 +249,7 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
       return enemy.maxHp - enemy.hp
     }
     expect(damage(false)).toBeGreaterThan(0)
-    expect(damage(true)).toBeCloseTo(damage(false) * 1.25)
+    expect(damage(true)).toBeCloseTo(damage(false) * 1.05)
   })
 
   test('personality, ally and family regeneration cannot heal toxic children; other parents still heal', () => {
