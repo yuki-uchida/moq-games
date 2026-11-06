@@ -8,6 +8,7 @@ import {
   FxTracker,
   STAGE_LINES,
   choiceRarity,
+  choiceSynergies,
   consumeFx,
   findBoss,
   gainFor,
@@ -19,6 +20,21 @@ import {
 } from '../src/hud'
 import { bodyFor } from '../src/render'
 import { STRIDE } from '../src/view'
+
+it('shows owned evolution partners for weapon and personality choices', () => {
+  const weapons: [string, number, number][] = [
+    ['w_friend', 1, 0],
+    ['w_ring', 8, 0]
+  ]
+  const passives: [string, number][] = [['p_kind', 1]]
+  expect(choiceSynergies(weapons, passives, 'w:w_friend')).toEqual(['p_kind'])
+  expect(choiceSynergies(weapons, passives, 's:w_friend')).toEqual(['p_kind'])
+  expect(choiceSynergies(weapons, passives, 'p:p_kind')).toEqual(['w_friend', 'w_ring'])
+  expect(choiceSynergies(weapons, [], 'w:w_friend')).toEqual([])
+  expect(choiceSynergies([], passives, 'p:p_kind')).toEqual([])
+  expect(choiceSynergies(weapons, passives, 'r:w_friend:w_study')).toEqual([])
+  expect(choiceSynergies(weapons, passives, 'x:meal')).toEqual([])
+})
 
 type Call = [string, string | undefined, Record<string, unknown> | undefined]
 function fakeAudio() {

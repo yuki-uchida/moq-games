@@ -31,6 +31,7 @@ import {
   FxTracker,
   STAGE_LINES,
   choiceRarity,
+  choiceSynergies,
   consumeFx,
   findBoss,
   heartbeatLevel,
@@ -537,6 +538,17 @@ function renderChoices(player: ViewPlayer | undefined) {
             rarity === 'evolve'
           )
         )
+      }
+      const synergies = choiceSynergies(player.weapons, player.passives, choice)
+      if (synergies.length) {
+        const badges = document.createElement('span')
+        badges.className = 'synergy-icons'
+        for (const id of synergies) {
+          const def = WEAPON_BY_ID.get(id) ?? PASSIVE_BY_ID.get(id)!
+          const appearance = WEAPON_BY_ID.has(id) ? weaponAppearance(id, ageAt(view!.time), player.petAge) : def
+          badges.append(iconImg('art' in appearance ? appearance.art : id, `相性: ${appearance.name}`))
+        }
+        icon.append(badges)
       }
       const name = document.createElement('strong')
       name.textContent = info.name

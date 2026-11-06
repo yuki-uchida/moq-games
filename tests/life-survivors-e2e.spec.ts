@@ -15,6 +15,51 @@ const life = async (page: Page) => {
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 }
 
+test('SNS chains scale with duration instead of bonus projectile count', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    player.talents = { friend: 1, love: 1, sports: 1, hobby: 1, study: 1, invest: 1 }
+    return [
+      [],
+      [
+        { id: 'p_clever', lv: 4 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      [{ id: 'p_curious', lv: 5 }],
+      [
+        { id: 'p_curious', lv: 5 },
+        { id: 'p_grand', lv: 5 }
+      ]
+    ].map((passives) => {
+      game.state.enemies = []
+      game.state.shots = []
+      player.passives = passives
+      player.weapons = [{ id: 'w_sns', lv: 1, cd: 0, held: 0, damage: 0 }]
+      const enemies = Array.from({ length: 8 }, (_, index) => {
+        const enemy = game.spawnEnemy('germ', player.x + 100 + index * 30, player.y)!
+        enemy.hp = enemy.maxHp = 1000
+        return enemy
+      })
+      game.tick(1 / 60)
+      return {
+        links: game.state.shots.filter((shot) => shot.weapon === 'w_sns').length,
+        hits: enemies.filter((enemy) => enemy.hp < enemy.maxHp).length
+      }
+    })
+  })
+  expect(result).toEqual([
+    { links: 3, hits: 3 },
+    { links: 3, hits: 3 },
+    { links: 5, hits: 5 },
+    { links: 5, hits: 5 }
+  ])
+})
+
 test('free-parent balloons rise and their burst damages and pushes enemies', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -268,7 +313,8 @@ for (const [parent, description] of [
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
   ['p_toxic', '全武器の威力 +5%'],
-  ['p_toxic', '自然回復なし（性格・仲間・家庭）']
+  ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
+  ['p_toxic', '18歳未満は才能の手札3枠']
 ]) {
   test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {
     await page.goto('/')
@@ -304,10 +350,16 @@ for (const viewport of [
     expect(await page.locator('body').evaluate((body) => getComputedStyle(body).touchAction)).toBe('manipulation')
     await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
     const xp = page.locator('.xp-bar')
+    const xpFill = page.locator('#xp-fill')
     const hp = page.locator('.xp-bar .meter')
     await expect(hp).toBeVisible()
+    await xpFill.evaluate((element) => (element.style.width = '100%'))
     const xpBox = (await xp.boundingBox())!
+    const xpFillBox = (await xpFill.boundingBox())!
     const hpBox = (await hp.boundingBox())!
+    expect(xpFillBox.y).toBeGreaterThanOrEqual(hpBox.y + hpBox.height)
+    expect(hpBox.height).toBeGreaterThan(xpFillBox.height)
+    expect(await xpFill.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('139, 92, 246')
     expect(hpBox.x).toBeGreaterThanOrEqual(xpBox.x)
     expect(hpBox.x + hpBox.width).toBeLessThanOrEqual(xpBox.x + xpBox.width)
     expect(hpBox.y).toBeGreaterThanOrEqual(xpBox.y)
@@ -1086,6 +1138,30 @@ test('trained careers render together for local and co-op participants', async (
   await page.screenshot({ path: testInfo.outputPath('careers-desktop.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: testInfo.outputPath('careers-mobile.png') })
+})
+
+test('turning point cards overlay owned evolution partners', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    const player = (hook.game as unknown as Game).state.players[0]
+    player.birthPick = false
+    player.weapons = [
+      { id: 'w_friend', lv: 1, cd: 100, held: 0, damage: 0 },
+      { id: 'w_ring', lv: 1, cd: 100, held: 0, damage: 0 }
+    ]
+    player.passives = [{ id: 'p_kind', lv: 1 }]
+    player.choices = ['w:w_friend', 'p:p_kind', 'w:w_sports']
+    player.choiceSeq++
+  })
+  const cards = page.locator('#cards .card')
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveCount(1)
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveAttribute('alt', '相性: 友人思い')
+  await expect(cards.nth(1).locator('.synergy-icons img')).toHaveCount(2)
+  await expect(cards.nth(2).locator('.synergy-icons img')).toHaveCount(0)
+  await expect(page.locator('#cards')).not.toContainText('連携条件')
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveCSS('width', '20px')
 })
 
 test('turning point cards show their talent category without revealing talent values', async ({ page }, testInfo) => {

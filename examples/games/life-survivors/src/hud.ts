@@ -289,6 +289,23 @@ export const STAGE_LINES = [
 
 export type Rarity = 'new' | 'level' | 'evolve' | 'passive' | 'plain'
 
+export function choiceSynergies(
+  weapons: readonly (readonly [string, number, ...number[]])[],
+  passives: readonly (readonly [string, number])[],
+  choice: string
+): string[] {
+  const [kind, id] = choice.split(':')
+  if (kind === 'p')
+    return weapons
+      .filter(([weapon, level]) => level > 0 && WEAPON_BY_ID.get(weapon)?.evolve?.passive === id)
+      .map(([weapon]) => weapon)
+  if (kind === 'w' || kind === 's') {
+    const passive = WEAPON_BY_ID.get(id)?.evolve?.passive
+    return passive && passives.some(([owned, level]) => owned === passive && level > 0) ? [passive] : []
+  }
+  return []
+}
+
 /** How a level-up choice should be framed. `evolve` covers both ways of finishing an evolution. */
 export function choiceRarity(
   weapons: readonly (readonly [string, number, ...number[]])[],
