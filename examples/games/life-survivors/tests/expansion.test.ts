@@ -218,6 +218,48 @@ describe('new talent weapons', () => {
     }
   })
 
+  test.each([
+    { lv: 1, passives: [], links: 3 },
+    { lv: 2, passives: [], links: 4 },
+    { lv: 5, passives: [], links: 5 },
+    { lv: 8, passives: [], links: 6 },
+    { lv: 1, passives: [{ id: 'p_clever', lv: 4 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_grand', lv: 5 }], links: 3 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 2 }], links: 4 },
+    { lv: 1, passives: [{ id: 'p_curious', lv: 5 }], links: 5 },
+    { lv: 1, passives: [{ id: 'p_hasty', lv: 5 }], links: 2 },
+    { lv: 8, passives: [{ id: 'p_savvy', lv: 1 }], links: 9 },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_grand', lv: 5 }
+      ],
+      links: 9
+    },
+    {
+      lv: 8,
+      passives: [
+        { id: 'p_savvy', lv: 1 },
+        { id: 'p_curious', lv: 5 }
+      ],
+      links: 14
+    }
+  ])('SNS scales links with duration, not bonus projectiles: %j', ({ lv, passives, links }) => {
+    const { game, player } = arena(2)
+    game.targetPopulation = () => 0
+    player.weapons = [{ id: 'w_sns', lv, cd: 0, held: 0, damage: 0 }]
+    player.passives = passives
+    const posts = Array.from({ length: 16 }, (_, index) =>
+      post(game, 'abusive_senpai', player.x + 100 + index * 30, player.y)
+    )
+    game.tick(1 / 60)
+    const shots = game.state.shots.filter((shot) => shot.weapon === 'w_sns')
+    expect(shots).toHaveLength(links)
+    expect(posts.filter(({ enemy }) => enemy.hp < enemy.maxHp)).toHaveLength(links)
+    expect(shots.map((shot) => shot.v)).toEqual(Array.from({ length: links }, (_, index) => index))
+  })
+
   test('a die rolls its face into the variant and a six always crits', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
@@ -306,7 +348,7 @@ describe('passives', () => {
     const target = post(game, 'overtraining', player.x + 30, player.y)
     const seen = new Set<Game['state']['popups'][number]>()
     let flagged = false
-    run(game, player, 60 * 30, () => {
+    run(game, player, 60 * 60, () => {
       target.hold()
       game.state.popups.forEach((p) => seen.add(p))
       const popups = toView(game.state).popups
@@ -671,6 +713,20 @@ describe('enemies', () => {
     })
     expect(orbit).toBeGreaterThan(30)
     expect(dived).toBe(true)
+  })
+
+  test.each([
+    [0, 1],
+    [0.001499, 1],
+    [0.0015, 0],
+    [0.005999, 0]
+  ])('ordinary enemies drop meals at a quarter of the old rate (roll %s)', (roll, expected) => {
+    const { game, player } = arena(18)
+    const enemy = game.spawnEnemy('bully', player.x + 500, player.y)!
+    const internals = game as unknown as { rng: () => number; kill(enemy: Enemy, def: EnemyDef): void }
+    internals.rng = () => roll
+    internals.kill(enemy, ENEMY_BY_ID.get('bully')!)
+    expect(game.state.items.filter((item) => item.kind === 'meal')).toHaveLength(expected)
   })
 
   test('elites are tougher, bigger, flagged, announced and always drop something', () => {

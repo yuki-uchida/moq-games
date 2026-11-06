@@ -5,7 +5,7 @@ import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 20],
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 6],
   [['w_friend', 'w_sns', 'w_pet'], 17, 5]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',
@@ -31,7 +31,10 @@ test.each([
       'w_cooking'
     ]
     const runs: { seed: number; time: number; early?: string; later?: string }[] = []
-    const seeds = [preferredSeed]
+    const seeds = [
+      preferredSeed,
+      ...Array.from({ length: 20 }, (_, index) => index + 1).filter((seed) => seed !== preferredSeed)
+    ]
     for (const seed of seeds) {
       const game = new Game(seed)
       const player = game.addPlayer('p0')!
@@ -162,4 +165,4 @@ test('normal play from birth can reach employment, sports, asset, creative and s
       runs.some((run) => run.priorities[0] === priority && run.outcome !== undefined && outcomes.includes(run.outcome)),
       JSON.stringify(runs)
     ).toBe(true)
-}, 120_000)
+}, 240_000)

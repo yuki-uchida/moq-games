@@ -1,11 +1,62 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS } from '../src/data'
+import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX, WEAPON_SLOTS, ageAt } from '../src/data'
 import { Game, RAID, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
+
+describe('毒親: 18歳まで才能の手札3枠', () => {
+  test('three talents block new weapons before 18 but still allow upgrades and passives', () => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3)
+    for (const def of talents) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < 18) game.state.time += 0.1
+    game.state.time -= 0.1
+    const options = game.options(player)
+    expect(weaponSlots(player, 17)).toBe(3)
+    expect(options.filter((choice) => choice.startsWith('w:')).sort()).toEqual(
+      player.weapons.map((weapon) => `w:${weapon.id}`).sort()
+    )
+    expect(options.some((choice) => choice.startsWith('p:'))).toBe(true)
+    player.weapons.pop()
+    expect(game.options(player).some((choice) => choice.startsWith('w:') && !options.includes(choice))).toBe(true)
+  })
+
+  test('the normal six slots return at 18 and fill up normally', () => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 18)
+    for (const def of talents.slice(0, 3)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < 18) game.state.time += 0.1
+    expect(weaponSlots(player, 18)).toBe(WEAPON_SLOTS)
+    expect(game.options(player)).toContain(`w:${talents[3].id}`)
+    for (const def of talents.slice(3, WEAPON_SLOTS)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    expect(game.options(player)).not.toContain(`w:${talents[WEAPON_SLOTS].id}`)
+  })
+
+  test.each([[17, 1], [18, 0]])('at age %i, three talents grant %i level-five swaps', (age, swaps) => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    for (const def of TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3))
+      player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < age) game.state.time += 0.1
+    game.state.level = 4
+    game.gainXp(game.state.xpNext)
+    expect(player.swapPending).toBe(swaps)
+  })
+
+  test('other parents keep their normal slots at every age', () => {
+    for (const parent of PARENTS.filter((def) => def.id !== 'p_toxic')) {
+      const game = new Game(1)
+      const player = game.addPlayer('a', parent.id)!
+      for (const age of [0, 17, 18, 80])
+        expect(weaponSlots(player, age)).toBe(WEAPON_SLOTS + (parent.id === 'p_free' ? 1 : 0))
+    }
+  })
+})
 
 describe('過保護: 攻撃と防御を兼ねる盾', () => {
   function guarded() {
@@ -272,6 +323,55 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.damage).toBe(4)
   })
 
+  test.each([1, 2, 4, 5, 8])('aura radius ignores weapon count at level %i', (lv) => {
+    const game = new Game(72)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const weapon = player.weapons[0]
+    weapon.lv = lv
+    const def = WEAPONS.find(({ id }) => id === weapon.id)!
+    for (const passives of [
+      [],
+      [{ id: 'p_clever', lv: 5 }],
+      [{ id: 'p_grand', lv: 5 }],
+      [
+        { id: 'p_clever', lv: 5 },
+        { id: 'p_grand', lv: 5 },
+        { id: 'p_kind', lv: 5 },
+        { id: 'p_cautious', lv: 5 },
+        { id: 'p_acceptance', lv: 1 }
+      ]
+    ]) {
+      player.passives = passives
+      game.state.shots = []
+      const stats = weaponStats(player, weapon)
+      game['fire'](player, weapon, stats)
+      expect(game.state.shots).toHaveLength(1)
+      expect(game.state.shots[0].r).toBeCloseTo(def.area * stats.area)
+    }
+  })
+
+  test('base aura radius is 35', () => {
+    expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.area).toBe(35)
+  })
+
+  test('toxic aura fires once per second instead of every half second', () => {
+    const game = new Game(72)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_toxic')!
+    player.weapons = [{ id: 'p_toxic', lv: 1, cd: 0, held: 0, damage: 0 }]
+    player.passives = []
+    expect(weaponStats(player, player.weapons[0]).cooldown).toBe(1)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE)).toBe(true)
+    for (let frame = 0; frame < 58; frame++) {
+      game.tick(1 / 60)
+      expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t === game.state.time)).toBe(false)
+    }
+    game.tick(1 / 60)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t >= 0.99)).toBe(true)
+  })
+
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(
     '%s gains exactly 5% damage without strengthening an ally',
     (id) => {
@@ -300,7 +400,7 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
       const player = game.addPlayer('a', 'p_toxic')!
       if (!toxic) player.parent = 'p_weak'
       player.weapons[0].cd = 0
-      const enemy = game.spawnEnemy('germ', player.x + 60, player.y)!
+      const enemy = game.spawnEnemy('germ', player.x + 30, player.y)!
       enemy.hp = enemy.maxHp = 1000
       game.tick(1 / 60)
       return enemy.maxHp - enemy.hp
@@ -344,6 +444,97 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     game.gainXp(game.state.xpNext)
     expect(player.hp).toBeCloseTo(50 + player.maxHp * 0.06)
     expect(playerStats(player).regen).toBe(0)
+  })
+})
+
+describe('放任主義: 真上に飛んで割れる風船', () => {
+  function balloons(level = 1) {
+    const game = new Game(74)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_free')!
+    player.weapons[0].lv = level
+    player.weapons[0].cd = 0
+    game.tick(1 / 60)
+    player.weapons[0].cd = 100
+    return { game, player }
+  }
+
+  test.each([1, 8])('level %i balloons rise vertically in separate columns', (level) => {
+    const { game, player } = balloons(level)
+    const shots = game.state.shots
+    const positions = shots.map(({ x, y }) => ({ x, y }))
+    expect(shots.length).toBeGreaterThanOrEqual(2)
+    expect(new Set(shots.map((shot) => shot.x)).size).toBe(shots.length)
+    expect(shots.every((shot) => shot.vx === 0 && shot.vy < 0)).toBe(true)
+    player.x += 100
+    player.y += 100
+    game.tick(0.1)
+    shots.forEach((shot, index) => {
+      expect(shot.x).toBe(positions[index].x)
+      expect(shot.y).toBeLessThan(positions[index].y)
+    })
+  })
+
+  test('the third hit adds a radial blast and knockback to direct damage', () => {
+    const { game, player } = balloons()
+    const shot = game.state.shots[0]
+    game.state.shots = [shot]
+    Object.assign(shot, { x: player.x + 140, y: player.y - 140, vx: 0, vy: 0 })
+    const enemyAt = (offset: number) => {
+      const enemy = game.spawnEnemy('germ', shot.x + offset, shot.y)!
+      enemy.hp = enemy.maxHp = 1000
+      return enemy
+    }
+    for (let hit = 0; hit < 2; hit++) {
+      const enemy = enemyAt(0)
+      game.tick(1 / 60)
+      expect(enemy.hp).toBeLessThan(enemy.maxHp)
+      expect(enemy.kx).toBe(0)
+      expect(enemy.ky).toBe(0)
+      expect(shot.pierce).toBe(2 - hit)
+      expect(game.state.fx.some((event) => event.type === FX.BLAST)).toBe(false)
+      game.state.enemies = []
+    }
+    const target = enemyAt(0)
+    const left = enemyAt(-50)
+    const right = enemyAt(50)
+    const outside = enemyAt(100)
+    const previousDamage = player.weapons[0].damage
+    game.tick(1 / 60)
+    expect(game.state.shots).toHaveLength(0)
+    expect(target.maxHp - target.hp).toBeGreaterThan(shot.damage * 1.79)
+    expect(left.hp).toBeLessThan(left.maxHp)
+    expect(right.hp).toBeLessThan(right.maxHp)
+    expect(outside.hp).toBe(outside.maxHp)
+    expect(left.kx).toBeLessThan(0)
+    expect(right.kx).toBeGreaterThan(0)
+    const total = [target, left, right].reduce((sum, enemy) => sum + enemy.maxHp - enemy.hp, 0)
+    expect(player.weapons[0].damage - previousDamage).toBeCloseTo(total)
+    const blasts = game.state.fx.filter((event) => event.type === FX.BLAST)
+    expect(blasts).toHaveLength(1)
+    expect(blasts[0]).toMatchObject({ x: shot.x, y: shot.y, a: shot.r * 4, b: WEAPON_INDEX.get('p_free') })
+    const view = toView(game.state)
+    expect(view.fx.some((value, index) => index % 6 === 1 && value === FX.BLAST)).toBe(true)
+    expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
+  })
+
+  test('an expired balloon bursts once and respects boss knockback immunity', () => {
+    const { game, player } = balloons()
+    const shot = game.state.shots[0]
+    game.state.shots = [shot]
+    Object.assign(shot, { x: player.x + 140, y: player.y - 140, life: 0 })
+    const enemy = game.spawnEnemy('germ', shot.x, shot.y)!
+    enemy.hp = enemy.maxHp = 1000
+    const boss = game.spawnEnemy('b_hs', shot.x + 50, shot.y)!
+    game.tick(0)
+    expect(game.state.shots).toHaveLength(0)
+    expect(enemy.hp).toBeLessThan(enemy.maxHp)
+    expect(enemy.ky).toBeLessThan(0)
+    expect(boss.hp).toBeLessThan(boss.maxHp)
+    expect(boss.kx).toBe(0)
+    expect(boss.ky).toBe(0)
+    game.tick(0)
+    expect(game.state.fx.filter((event) => event.type === FX.BLAST)).toHaveLength(1)
   })
 })
 
@@ -545,8 +736,8 @@ describe('蒸発済み: 自立', () => {
       report.push(
         `seed ${seed}: kills ${game.state.kills} level ${game.state.level} weapons ${player.weapons.length} best lv ${best}`
       )
-      expect(game.state.phase, `seed ${seed}`).toBe(seed === 4 ? 'lost' : 'playing')
-      expect(game.state.time, `seed ${seed} time`).toBeGreaterThanOrEqual(seed === 4 ? 100 : 180)
+      expect(game.state.phase, `seed ${seed}`).toBe('playing')
+      expect(game.state.time, `seed ${seed} time`).toBeGreaterThanOrEqual(180)
       expect(game.state.kills, `seed ${seed} kills`).toBeGreaterThan(0)
       expect(game.state.level, `seed ${seed} level`).toBeGreaterThan(1)
       expect(talents.length, `seed ${seed} weapons`).toBeGreaterThanOrEqual(1)
