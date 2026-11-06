@@ -81,6 +81,7 @@ export interface View {
 }
 
 export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 3, popups: 6, fx: FX_STRIDE } as const
+export const SHOT_GAMBLE = 64
 /** Bits of an enemy's flags field. */
 export const ENEMY_FLAG = { elite: 1, windup: 2, blink: 4, ghost: 8 } as const
 /** Bits of a popup's third field. */
@@ -121,7 +122,8 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r(s.angle * 100) % 100000,
       r((s.life / s.maxLife) * 100),
       ownerIndex.get(s.owner) ?? 0,
-      s.weapon === 'p_over' && (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : r(s.v)
+      (s.weapon === 'p_over' && (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : r(s.v)) +
+        (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0)
     )
   }
   const bullets: number[] = []

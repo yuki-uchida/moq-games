@@ -26,6 +26,7 @@ import {
   STAGES,
   WEAPONS,
   WEAPON_BY_ID,
+  WEAPON_INDEX,
   ageAt,
   stageAt,
   timeAtAge,
@@ -37,7 +38,16 @@ import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
 import { petForm, weaponAppearance } from './weapon-life'
-import { BULLET_KINDS, ENEMY_FLAG, ITEM_KINDS, POPUP_BIT, STRIDE, type View, type ViewPlayer } from './view'
+import {
+  BULLET_KINDS,
+  ENEMY_FLAG,
+  ITEM_KINDS,
+  POPUP_BIT,
+  SHOT_GAMBLE,
+  STRIDE,
+  type View,
+  type ViewPlayer
+} from './view'
 
 /** Painted player bodies by the stage age they belong to; other stages use the nearest one. */
 const BODIES: Record<string, string> = {
@@ -61,6 +71,12 @@ const appearanceFor = (player: ViewPlayer, body: string) => {
 }
 const GROUND_FADE = 1.5
 const TAU = Math.PI * 2
+const GAMBLE_LABELS: Record<string, string> = {
+  gamble_gacha: 'ガチャ！',
+  gamble_poker: 'ポーカー！',
+  gamble_pachinko: '大当たり！',
+  gamble_horse: '競馬的中！'
+}
 /** Whether a player's weapon has evolved (Lv8 + its matching passive), from the snapshot alone. */
 function isEvolvedView(owner: ViewPlayer | undefined, id: string) {
   const def = WEAPON_BY_ID.get(id)
@@ -934,14 +950,16 @@ export class Renderer {
     sh.angle = s[i + 4] / 100
     sh.life = s[i + 5] / 100
     sh.age = 1 - sh.life
-    sh.v = s[i + 7]
+    const copied = s[i + 7] >= SHOT_GAMBLE
+    sh.v = copied ? s[i + 7] - SHOT_GAMBLE : s[i + 7]
     const origin = origins[ownerIndex]
     sh.ox = origin ? origin.x : sh.x
     sh.oy = origin ? origin.y : sh.y
-    const key = ownerIndex * 64 + s[i]
+    const weaponIndex = copied ? WEAPON_INDEX.get('w_gamble')! : s[i]
+    const key = ownerIndex * 64 + weaponIndex
     let known = key < this.evo.length ? this.evo[key] : 0
     if (!known) {
-      known = isEvolvedView(view.players[ownerIndex], WEAPONS[s[i]].id) ? 2 : 1
+      known = isEvolvedView(view.players[ownerIndex], WEAPONS[weaponIndex].id) ? 2 : 1
       if (key < this.evo.length) this.evo[key] = known
     }
     sh.evolved = known === 2
@@ -1479,46 +1497,6 @@ export class Renderer {
         this.centred(frame, x, y, evolved, 1, 1, flip)
         break
       }
-      case 'dice': {
-        // ギャンブル: a tumbling die that settles on its rolled face; a six glitters gold.
-        const art = sheet('weapon:w_gamble')
-        const face = Math.max(1, Math.min(6, sh.v))
-        const dx = x - sh.ox
-        const dy = y - sh.oy
-        const d = Math.hypot(dx, dy)
-        const shows = life < 0.7
-        if (face === 6) {
-          this.world()
-          this.glowAt(x, y, 22, '#ffd75e', 0.5 + 0.2 * Math.sin(this.clock * 14 + i))
-        }
-        if (shows) {
-          const pop = 1 + 0.3 * clamp01(1 - (0.7 - life) / 0.09)
-          this.centred(art.faces.frames[face - 1], x, y, evolved, 1, 1.1 * pop)
-        } else {
-          if (d > 6 && trails) this.afterimages(pick(art.fly, this.clock), x, y, dx / d, dy / d, 11, evolved, 2)
-          this.centred(
-            pick(art.fly, this.clock * 1.4 + i * 0.3),
-            x,
-            y - Math.abs(Math.sin(this.clock * 7 + i)) * 3,
-            evolved
-          )
-        }
-        if (face === 6)
-          for (let j = 0; j < 3; j++) {
-            const a = this.clock * 5 + (j * TAU) / 3 + i
-            this.art(
-              pick(fx.shine, this.clock * 3 + j),
-              x + Math.cos(a) * 15,
-              y + Math.sin(a) * 12 - 2,
-              4,
-              4,
-              false,
-              1,
-              1.4
-            )
-          }
-        break
-      }
       case 'fan': {
         // 料理: food pellets spinning through the air in a fan.
         const art = sheet('weapon:w_cooking')
@@ -1601,6 +1579,21 @@ export class Renderer {
             : pick(anim, p.age)
           const alpha = p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
           this.art(frame, p.x, p.y, frame.w / 2, frame.h / 2, false, alpha, p.size * (1 + p.size2 * t))
+          if (p.spr.startsWith('gamble_')) {
+            const label =
+              t < 0.65 && (p.spr === 'gamble_horse' || p.spr === 'gamble_pachinko') ? '' : (GAMBLE_LABELS[p.spr] ?? '')
+            this.world()
+            ctx.save()
+            ctx.globalAlpha = alpha
+            ctx.font = 'bold 11px sans-serif'
+            ctx.textAlign = 'center'
+            ctx.lineWidth = 3
+            ctx.strokeStyle = '#34203b'
+            ctx.fillStyle = '#fff2b0'
+            ctx.strokeText(label, p.x, p.y - 24)
+            ctx.fillText(label, p.x, p.y - 24)
+            ctx.restore()
+          }
           break
         }
         case PK.ring: {

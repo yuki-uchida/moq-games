@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { Game } from '../src/game'
 
-test.each(['w_savings', 'w_gamble'])('%s keeps actual damage unchanged when a knowledge weapon is added', (weapon) => {
+test.each(['w_savings'])('%s keeps actual damage unchanged when a knowledge weapon is added', (weapon) => {
   const fire = (seed: number, knowledge: boolean) => {
     const game = new Game(seed)
     const player = game.addPlayer('player', 'p_gone')!

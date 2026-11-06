@@ -16,6 +16,17 @@ export function sportsForm(age: number) {
   return SPORTS_FORMS.findLast((form) => age >= form.age) ?? SPORTS_FORMS[0]
 }
 
+export const GAMBLE_FORMS = [
+  { age: 12, key: 'gacha', name: '課金', icon: '🎁' },
+  { age: 18, key: 'poker', name: 'ポーカー', icon: '🃏' },
+  { age: 23, key: 'pachinko', name: 'パチンコ', icon: '🎰' },
+  { age: 50, key: 'horse', name: '競馬', icon: '🏇' }
+] as const
+
+export function gambleForm(age: number) {
+  return GAMBLE_FORMS.findLast((form) => age >= form.age) ?? GAMBLE_FORMS[0]
+}
+
 export function petForm(years: number) {
   return years < 2
     ? { name: '子犬', scale: 0.65 }
@@ -29,6 +40,10 @@ export function weaponAppearance(id: string, age: number, petAge = 0) {
   if (id === 'w_sports') {
     const form = sportsForm(age)
     return { name: `${def.name}（${form.name}）`, icon: form.icon, art: `w_sports_${form.key}` }
+  }
+  if (id === 'w_gamble') {
+    const form = gambleForm(age)
+    return { name: `${def.name}（${form.name}）`, icon: form.icon, art: `w_gamble_${form.key}` }
   }
   return { name: id === 'w_pet' ? `${def.name}（${petForm(petAge).name}）` : def.name, icon: def.icon, art: id }
 }

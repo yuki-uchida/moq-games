@@ -1,5 +1,6 @@
 import { ENEMIES, TAG_COLORS, WEAPONS } from './data'
 import { FX, FX_STRIDE } from './fx'
+import { GAMBLE_FORMS } from './weapon-life'
 
 /**
  * The "juice" of the renderer, kept free of canvas and DOM so it can be unit tested: the exactly-once fx feed,
@@ -424,6 +425,10 @@ export class Effects {
 
   handle(type: number, x: number, y: number, a: number, b: number, v: FxView) {
     switch (type) {
+      case FX.GAMBLE:
+        if (GAMBLE_FORMS[a] && this.onScreen(x, y, v))
+          this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + 60, y - 55, { life: 1.2, scale: 1.5, important: true })
+        break
       case FX.KILL: {
         const def = ENEMIES[a]
         if (!def || !this.onScreen(x, y, v)) break

@@ -19,6 +19,7 @@ import {
   STAGES,
   TALENT_CATEGORIES,
   TALENT_WEAPONS,
+  WEAPONS,
   WEAPON_BY_ID,
   WEAPON_INDEX,
   WEAPON_SLOTS,
@@ -35,7 +36,7 @@ import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
-import { PET_LIFESPAN, PET_MEMORY, weaponAppearance } from './weapon-life'
+import { GAMBLE_FORMS, PET_LIFESPAN, PET_MEMORY, gambleForm, weaponAppearance } from './weapon-life'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -44,8 +45,7 @@ export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
-/** Damage multiplier of each face of the ギャンブル die. */
-export const DICE_MULT = [0.3, 0.6, 1, 1.5, 2.5, 5]
+const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -187,6 +187,7 @@ export interface Shot {
   id: number
   owner: string
   weapon: string
+  sourceWeapon: string
   kind: WeaponDef['behavior']
   x: number
   y: number
@@ -207,13 +208,13 @@ export interface Shot {
   /** Whip half-extents (x along facing); the full radius of a nova or mine; a raid's hit radius on foot. */
   w: number
   h: number
-  /** Variant for the renderer: dice face, chain link, biting, armed, pellet kind. */
+  /** Variant for the renderer: chain link, biting, armed, pellet kind. */
   v: number
   /** Seconds before the shot exists (staples fired one after another). */
   delay: number
   /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
   aux: number
-  /** Every hit crits (a rolled 6). */
+  /** Every hit crits. */
   crit: boolean
   critChance: number
   strongMult: number
@@ -300,9 +301,7 @@ export function mulberry32(seed: number) {
 }
 
 export const xpForLevel = (level: number) =>
-  Math.round(
-    ((5 + level * 6 + level * level * 0.3) * 1.3 * (1 + Math.min(20, Math.max(0, level - 10)) * 0.0125)) / 0.8
-  )
+  Math.round(((5 + level * 6 + level * level * 0.3) * 1.3 * (1 + Math.min(20, Math.max(0, level - 10)) * 0.0125)) / 0.8)
 
 export const passiveLevel = (player: Player, id: string) => player.passives.find((p) => p.id === id)?.lv ?? 0
 export const passivePower = (player: Player, id: string) =>
@@ -410,15 +409,20 @@ export interface WeaponStats {
 }
 
 /** Everything that multiplies a weapon, including the hidden talent. */
-export function weaponStats(player: Player, weapon: OwnedWeapon, stats = playerStats(player)): WeaponStats {
-  const def = WEAPON_BY_ID.get(weapon.id)!
+export function weaponStats(
+  player: Player,
+  weapon: OwnedWeapon,
+  stats = playerStats(player),
+  def = WEAPON_BY_ID.get(weapon.id)!
+): WeaponStats {
+  const source = WEAPON_BY_ID.get(weapon.id)!
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
-  if (def.category) damage *= player.talents[def.category]
+  if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
-  if (weapon.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
-  if (weapon.id === 'w_invest') {
+  if (def.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
+  if (def.id === 'w_invest') {
     if (player.parent === 'p_rich') damage *= 1.3
     damage *= 1 + weapon.held / 150
   }
@@ -1673,6 +1677,14 @@ export class Game {
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
         this.emit(FX.FIRE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
+        if (weapon.id === 'w_gamble')
+          this.emit(
+            FX.GAMBLE,
+            player.x,
+            player.y,
+            GAMBLE_FORMS.indexOf(gambleForm(ageAt(this.state.time))),
+            this.playerIndex(player)
+          )
         this.fire(player, weapon, ws)
       }
     }
@@ -1686,7 +1698,7 @@ export class Game {
       pet.acquiredAge ??= age
       if (age - pet.acquiredAge < PET_LIFESPAN) continue
       player.weapons = player.weapons.filter((weapon) => weapon !== pet)
-      this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== pet.id)
+      this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.sourceWeapon !== pet.id)
       const refresh = (hand: string[]) => hand.filter((choice) => !choice.startsWith('r:w_pet:'))
       if (player.choices.some((choice) => choice === 'w:w_pet' || choice.startsWith('r:w_pet:'))) {
         player.choices = refresh(player.choices)
@@ -1714,12 +1726,13 @@ export class Game {
     return found.slice(0, count).map((entry) => entry.enemy)
   }
 
-  private shot(player: Player, def: WeaponDef, ws: WeaponStats, extra: Partial<Shot>) {
+  private shot(player: Player, weapon: OwnedWeapon, def: WeaponDef, ws: WeaponStats, extra: Partial<Shot>) {
     const life = extra.life ?? ws.duration
     const shot: Shot = {
       id: this.state.nextId++,
       owner: player.id,
       weapon: def.id,
+      sourceWeapon: weapon.id,
       kind: def.behavior,
       x: player.x,
       y: player.y,
@@ -1751,15 +1764,14 @@ export class Game {
     return shot
   }
 
-  private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats) {
-    const def = WEAPON_BY_ID.get(weapon.id)!
+  private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
     const n = ws.amount
     const rng = this.rng
     const speed = def.speed * ws.speed
     switch (def.behavior) {
       case 'orbit':
         for (let i = 0; i < n; i++)
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
@@ -1769,7 +1781,7 @@ export class Game {
           })
         break
       case 'aura':
-        this.shot(player, def, ws, { r: def.area * ws.area, tick: 0.45 })
+        this.shot(player, weapon, def, ws, { r: def.area * ws.area, tick: 0.45 })
         break
       case 'aim':
       case 'homing':
@@ -1781,7 +1793,7 @@ export class Game {
             ? Math.atan2(target.y - player.y, target.x - player.x)
             : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
           if (def.behavior === 'bounce') angle += (rng() - 0.5) * 0.6
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle,
@@ -1792,7 +1804,7 @@ export class Game {
       }
       case 'wander':
         for (let i = 0; i < n; i++) {
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: player.x + (i - (n - 1) / 2) * def.area * ws.area * 2,
             vy: -speed,
             angle: -Math.PI / 2
@@ -1802,7 +1814,7 @@ export class Game {
       case 'arc':
         for (let i = 0; i < n; i++) {
           const side = (i % 2 ? -1 : 1) * (player.fx < 0 ? -1 : 1)
-          this.shot(player, def, ws, { vx: side * (90 + rng() * 140 + i * 30), vy: -speed - rng() * 80 })
+          this.shot(player, weapon, def, ws, { vx: side * (90 + rng() * 140 + i * 30), vy: -speed - rng() * 80 })
         }
         break
       case 'zone':
@@ -1810,7 +1822,7 @@ export class Game {
           const found = this.targets(player, 8, 360)
           const target = found[Math.floor(rng() * found.length)]
           const angle = rng() * Math.PI * 2
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: target?.x ?? player.x + Math.cos(angle) * 120,
             y: target?.y ?? player.y + Math.sin(angle) * 120,
             tick: 0.5
@@ -1823,7 +1835,7 @@ export class Game {
         for (let i = 0; i < n; i++) {
           const target = found.splice(Math.floor(rng() * found.length), 1)[0]
           if (!target) break
-          this.shot(player, def, ws, { x: target.x, y: target.y, tick: Infinity })
+          this.shot(player, weapon, def, ws, { x: target.x, y: target.y, tick: Infinity })
         }
         break
       }
@@ -1836,7 +1848,7 @@ export class Game {
           if (def.behavior !== 'flail' && i >= 2) angle += (i % 2 ? -1 : 1) * 0.6
           const length = def.area * ws.area
           if (def.behavior === 'beam')
-            this.shot(player, def, ws, {
+            this.shot(player, weapon, def, ws, {
               angle,
               w: length / 2,
               h: 9 * ws.area,
@@ -1846,7 +1858,7 @@ export class Game {
               tick: 0.2
             })
           else
-            this.shot(player, def, ws, {
+            this.shot(player, weapon, def, ws, {
               angle,
               w: length / 2,
               h: 22 * ws.area,
@@ -1870,7 +1882,7 @@ export class Game {
           hit.add(target.id)
           const dx = target.x - fromX
           const dy = target.y - fromY
-          const link = this.shot(player, def, ws, {
+          const link = this.shot(player, weapon, def, ws, {
             x: target.x,
             y: target.y,
             angle: Math.atan2(dy, dx),
@@ -1887,7 +1899,7 @@ export class Game {
       }
       case 'pet': {
         for (let i = 0; i < n; i++)
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: player.x + Math.cos(i * 2.4) * 24,
             y: player.y + Math.sin(i * 2.4) * 24,
             orbit: i * 2.4,
@@ -1898,7 +1910,7 @@ export class Game {
       }
       case 'slam': {
         const radius = def.area * ws.area
-        const slam = this.shot(player, def, ws, { r: radius, tick: Infinity })
+        const slam = this.shot(player, weapon, def, ws, { r: radius, tick: Infinity })
         this.near(player.x, player.y, radius, (enemy) => {
           const edef = ENEMY_BY_ID.get(enemy.kind)!
           const reach = radius + edef.radius * enemy.scale
@@ -1913,7 +1925,7 @@ export class Game {
         const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
         for (let i = 0; i < n * 3; i++) {
           const angle = base + (rng() - 0.5) * 0.08
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle,
@@ -1927,7 +1939,7 @@ export class Game {
         const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
         for (let i = 0; i < n; i++) {
           const angle = base + (i - (n - 1) / 2) * 0.45
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle,
@@ -1938,7 +1950,7 @@ export class Game {
       }
       case 'nova':
         for (let i = 0; i < n; i++)
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             r: 10,
             angle: Math.atan2(player.fy, player.fx),
             w: def.area * ws.area,
@@ -1949,7 +1961,7 @@ export class Game {
       case 'sweep':
         for (let i = 0; i < n; i++) {
           const side = rng() < 0.5 ? -1 : 1
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: player.x - side * (VIEW_HALF.x + 40),
             y: player.y + (rng() * 2 - 1) * 220,
             vx: side * speed,
@@ -1960,10 +1972,11 @@ export class Game {
         break
       case 'mine': {
         let planted = 0
-        for (const shot of this.state.shots) if (shot.owner === player.id && shot.weapon === def.id) planted++
+        for (const shot of this.state.shots)
+          if (shot.owner === player.id && shot.sourceWeapon === weapon.id && shot.weapon === def.id) planted++
         for (let i = 0; i < n && planted + i < 5 + n * 2; i++) {
           const angle = rng() * Math.PI * 2
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: player.x + (i ? Math.cos(angle) * 28 : 0),
             y: player.y + (i ? Math.sin(angle) * 28 : 0),
             r: 16,
@@ -1974,31 +1987,15 @@ export class Game {
         }
         break
       }
-      case 'dice': {
-        const found = this.targets(player, n, 700)
-        const luck = passivePower(player, 'p_lucky')
-        for (let i = 0; i < n; i++) {
-          const target = found[i % Math.max(1, found.length)]
-          const angle = target
-            ? Math.atan2(target.y - player.y, target.x - player.x)
-            : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
-          const face = this.rollFace(luck)
-          this.shot(player, def, ws, {
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            angle: rng() * Math.PI * 2,
-            damage: ws.damage * DICE_MULT[face - 1],
-            v: face,
-            crit: face === 6,
-            pierce: def.pierce + (weapon.lv >= 4 ? 1 : 0)
-          })
-        }
+      case 'gamble': {
+        const copied = GAMBLE_WEAPONS[Math.floor(rng() * GAMBLE_WEAPONS.length)]
+        this.fire(player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
         break
       }
       case 'trail':
         for (let i = 0; i < n; i++) {
           const jitter = i ? 30 : 0
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             x: player.x + (rng() * 2 - 1) * jitter,
             y: player.y + (rng() * 2 - 1) * jitter,
             tick: 0.5
@@ -2011,7 +2008,7 @@ export class Game {
         const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
         for (let i = 0; i < count; i++) {
           const angle = base + (i / (count - 1) - 0.5) * 1.0
-          this.shot(player, def, ws, {
+          this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle,
@@ -2032,22 +2029,11 @@ export class Game {
             ? Math.atan2(target.y - player.y, target.x - player.x)
             : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.7
           const d = target ? Math.hypot(target.x - player.x, target.y - player.y) - 14 : reach * 0.6
-          this.shot(player, def, ws, { angle, orbit: Math.max(48, Math.min(reach, d)), r, w: r, tick: 0.3 })
+          this.shot(player, weapon, def, ws, { angle, orbit: Math.max(48, Math.min(reach, d)), r, w: r, tick: 0.3 })
         }
         break
       }
     }
-  }
-
-  /** The face a die lands on; 運がいい tilts the odds toward the high faces. */
-  private rollFace(luck: number) {
-    const weights = [1, 2, 3, 4, 5, 6].map((face) => Math.max(0.1, 1 + 0.2 * luck * (face - 3.5)))
-    let roll = this.rng() * weights.reduce((sum, w) => sum + w, 0)
-    for (let face = 1; face <= 6; face++) {
-      roll -= weights[face - 1]
-      if (roll <= 0) return face
-    }
-    return 6
   }
 
   private moveShots(dt: number) {
@@ -2137,11 +2123,6 @@ export class Game {
           shot.x = owner.x
           shot.y = owner.y
           shot.r = 10 + (shot.w - 10) * (1 - shot.life / shot.maxLife)
-          break
-        case 'dice':
-          shot.x += shot.vx * dt
-          shot.y += shot.vy * dt
-          shot.angle += dt * 12
           break
         case 'boomerang': {
           shot.aux += dt
@@ -2352,7 +2333,7 @@ export class Game {
       enemy.kx += (dx / l) * knock
       enemy.ky += (dy / l) * knock
     }
-    const weapon = owner.weapons.find((w) => w.id === shot.weapon)
+    const weapon = owner.weapons.find((w) => w.id === shot.sourceWeapon)
     if (weapon) weapon.damage += Math.min(amount, Math.max(0, enemy.hp + amount))
     if (this.state.popups.length < 80)
       this.state.popups.push({
@@ -2472,7 +2453,10 @@ export class Game {
       for (const player of state.players)
         if (!player.downed) {
           const hasOptions = this.options(player).length > 0
-          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player, ageAt(state.time))))
+          if (
+            state.level % 5 === 0 &&
+            (!hasOptions || talentWeaponCount(player) >= weaponSlots(player, ageAt(state.time)))
+          )
             player.swapPending++
           if (hasOptions || state.level % 5 !== 0) player.pending++
           // Growing up also mends the heart a little.
@@ -2514,7 +2498,9 @@ export class Game {
     }
     player.parentDeath = { at: EVENTS[event].at, x: player.x, y: player.y, reward }
     player.weapons = player.weapons.filter((owned) => owned.id !== player.parent)
-    this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== player.parent)
+    this.state.shots = this.state.shots.filter(
+      (shot) => shot.owner !== player.id || shot.sourceWeapon !== player.parent
+    )
     player.shieldGrace = 0
     player.shieldRecovery = 0
     const clean = (hand: string[]) => {
@@ -2660,7 +2646,7 @@ export class Game {
       const index = player.weapons.findIndex((weapon) => weapon.id === id)
       if (index >= 0 && replacement && WEAPON_BY_ID.has(replacement)) {
         if (id === 'w_pet')
-          this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.weapon !== id)
+          this.state.shots = this.state.shots.filter((shot) => shot.owner !== player.id || shot.sourceWeapon !== id)
         player.weapons[index] = {
           id: replacement,
           lv: 1,

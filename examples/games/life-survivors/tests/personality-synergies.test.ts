@@ -118,20 +118,19 @@ test('high maximum health does not add overtime shots and cards show no synergy 
   expect(view.players[0].talents).toBeUndefined()
 })
 
-test('luck does not raise low dice damage and a six still deals maximum damage', () => {
+test('luck does not bias which weapon gambling activates', () => {
   const { game, player, weapon } = setup('w_gamble')
-  Object.defineProperty(game, 'rng', { value: () => 0, configurable: true })
-  for (const lv of [0, 1, 5]) {
-    game.state.shots = []
-    player.passives = lv ? [{ id: 'p_lucky', lv }] : []
-    game['fire'](player, weapon, weaponStats(player, weapon))
-    expect(game.state.shots[0].v).toBe(1)
-    expect(game.state.shots[0].damage / weaponStats(player, weapon).damage).toBeCloseTo(0.3)
+  for (const [roll, expected] of [
+    [0, 'p_toxic'],
+    [0.9999, 'w_cooking']
+  ] as const) {
+    Object.defineProperty(game, 'rng', { value: () => roll, configurable: true })
+    for (const lv of [0, 1, 5]) {
+      game.state.shots = []
+      player.passives = lv ? [{ id: 'p_lucky', lv }] : []
+      game['fire'](player, weapon, weaponStats(player, weapon))
+      expect(game.state.shots[0].weapon).toBe(expected)
+      expect(game.state.shots[0].sourceWeapon).toBe('w_gamble')
+    }
   }
-  Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
-  game.state.shots = []
-  game['fire'](player, weapon, weaponStats(player, weapon))
-  expect(game.state.shots[0].v).toBe(6)
-  expect(game.state.shots[0].damage / weaponStats(player, weapon).damage).toBeCloseTo(5)
-  expect(game.state.shots[0].crit).toBe(true)
 })
