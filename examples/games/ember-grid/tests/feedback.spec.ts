@@ -1046,6 +1046,8 @@ for (const viewport of [
       expect(boxes.overlap, label).toBe(false)
       expect(await uncoveredIn(page, '#tutorial'), label).toBe(true)
       expect(await uncoveredIn(page, '#tutorial button'), label).toBe(true)
+      // The tutorial carries the next step, so the guide line stays away while it shows.
+      await expect(page.locator('#guide'), label).toBeHidden()
       if (selected) {
         await expect(page.locator('#selection .uc-stats')).toBeVisible()
         expect(await uncoveredIn(page, '#selection .uc-stats'), label).toBe(true)
@@ -1065,6 +1067,18 @@ for (const viewport of [
     await expect(page.locator('#tutorial')).toContainText('攻撃予測')
     await check('forecast', false)
   })
+
+test('skipping the side-column tutorial brings the guide line back at 568x320', async ({ page }) => {
+  await firstPlay(page, { width: 568, height: 320 })
+  const withTutorial = (await sideColumnBoxes(page)).field!
+  const skip = (await page.locator('#tutorial button').boundingBox())!
+  expect(skip.height).toBeGreaterThanOrEqual(40)
+  await page.locator('#tutorial button').click()
+  await expect(page.locator('#tutorial')).toBeHidden()
+  await expect(page.locator('#guide')).toBeVisible()
+  expect(await uncoveredIn(page, '#guide')).toBe(true)
+  expect((await sideColumnBoxes(page)).field!.h).toBeGreaterThan(withTutorial.h)
+})
 
 for (const width of [560, 568])
   test(`the side-column tutorial fits its row for the longest messages at ${width}x320`, async ({ page }) => {

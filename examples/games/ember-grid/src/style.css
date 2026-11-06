@@ -1661,7 +1661,7 @@ button:active:not(:disabled) {
   font-size: 10px;
   color: #e9ce8d;
 }
-.console:has(#tutorial:not([hidden])) #guide {
+body:has(#tutorial:not([hidden])) .console > #guide {
   display: none;
 }
 #legend {
@@ -2663,7 +2663,7 @@ button:active:not(:disabled) {
     margin-right: 5px;
   }
   main > #tutorial button {
-    min-height: 36px;
+    min-height: 40px;
     min-width: 56px;
     padding: 0 6px;
   }
