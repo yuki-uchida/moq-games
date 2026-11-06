@@ -545,8 +545,8 @@ describe('蒸発済み: 自立', () => {
       report.push(
         `seed ${seed}: kills ${game.state.kills} level ${game.state.level} weapons ${player.weapons.length} best lv ${best}`
       )
-      expect(game.state.phase, `seed ${seed}`).toBe(seed === 4 ? 'lost' : 'playing')
-      expect(game.state.time, `seed ${seed} time`).toBeGreaterThanOrEqual(seed === 4 ? 100 : 180)
+      expect(game.state.phase, `seed ${seed}`).toBe('playing')
+      expect(game.state.time, `seed ${seed} time`).toBeGreaterThanOrEqual(180)
       expect(game.state.kills, `seed ${seed} kills`).toBeGreaterThan(0)
       expect(game.state.level, `seed ${seed} level`).toBeGreaterThan(1)
       expect(talents.length, `seed ${seed} weapons`).toBeGreaterThanOrEqual(1)

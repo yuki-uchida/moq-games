@@ -2383,7 +2383,7 @@ export class Game {
       if (enemy.elite) {
         // Elites always leave something: a meal, or now and then a turning point.
         this.drop(this.rng() < 0.6 ? 'meal' : 'chest', enemy.x, enemy.y)
-      } else if (this.rng() < 0.006 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
+      } else if (this.rng() < 0.0015 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
       else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
     }
     if (def.child && def.children)

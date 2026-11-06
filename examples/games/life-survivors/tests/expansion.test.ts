@@ -673,6 +673,20 @@ describe('enemies', () => {
     expect(dived).toBe(true)
   })
 
+  test.each([
+    [0, 1],
+    [0.001499, 1],
+    [0.0015, 0],
+    [0.005999, 0]
+  ])('ordinary enemies drop meals at a quarter of the old rate (roll %s)', (roll, expected) => {
+    const { game, player } = arena(18)
+    const enemy = game.spawnEnemy('bully', player.x + 500, player.y)!
+    const internals = game as unknown as { rng: () => number; kill(enemy: Enemy, def: EnemyDef): void }
+    internals.rng = () => roll
+    internals.kill(enemy, ENEMY_BY_ID.get('bully')!)
+    expect(game.state.items.filter((item) => item.kind === 'meal')).toHaveLength(expected)
+  })
+
   test('elites are tougher, bigger, flagged, announced and always drop something', () => {
     const { game, player } = arena(18)
     const plain = game.spawnEnemy('bully', player.x + 500, player.y)!
