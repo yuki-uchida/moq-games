@@ -1791,8 +1791,11 @@ export class Game {
       }
       case 'wander':
         for (let i = 0; i < n; i++) {
-          const angle = rng() * Math.PI * 2
-          this.shot(player, def, ws, { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, angle })
+          this.shot(player, def, ws, {
+            x: player.x + (i - (n - 1) / 2) * def.area * ws.area * 2,
+            vy: -speed,
+            angle: -Math.PI / 2
+          })
         }
         break
       case 'arc':
@@ -2063,7 +2066,10 @@ export class Game {
         continue
       }
       shot.life -= dt
-      if (shot.life <= 0) continue
+      if (shot.life <= 0) {
+        if (shot.weapon === 'p_free') this.burst(shot, owner)
+        continue
+      }
       switch (shot.kind) {
         case 'orbit':
           if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
@@ -2173,7 +2179,7 @@ export class Game {
           } else {
             shot.v = 1
             if (this.mineTouched(shot)) {
-              this.burstMine(shot, owner)
+              this.burst(shot, owner)
               continue
             }
           }
@@ -2183,6 +2189,7 @@ export class Game {
           shot.y += shot.vy * dt
       }
       if (this.collide(shot, owner)) kept.push(shot)
+      else if (shot.weapon === 'p_free') this.burst(shot, owner)
     }
     state.shots = kept
   }
@@ -2266,12 +2273,15 @@ export class Game {
     return touched
   }
 
-  private burstMine(shot: Shot, owner: Player) {
-    const radius = shot.w
+  private burst(shot: Shot, owner: Player) {
+    const balloon = shot.weapon === 'p_free'
+    const radius = balloon ? shot.r * 4 : shot.w
+    const blast = balloon ? { ...shot, knockback: 240 } : shot
     this.near(shot.x, shot.y, radius, (enemy) => {
       const def = ENEMY_BY_ID.get(enemy.kind)!
       const reach = radius + def.radius * enemy.scale
-      if ((enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2 <= reach * reach) this.damage(enemy, def, shot, owner)
+      if ((enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2 <= reach * reach)
+        this.damage(enemy, def, blast, owner, balloon ? shot : undefined)
     })
     this.emit(FX.BLAST, shot.x, shot.y, radius, WEAPON_INDEX.get(shot.weapon)!)
   }
@@ -2320,7 +2330,7 @@ export class Game {
     return alive
   }
 
-  private damage(enemy: Enemy, def: EnemyDef, shot: Shot, owner: Player) {
+  private damage(enemy: Enemy, def: EnemyDef, shot: Shot, owner: Player, origin?: { x: number; y: number }) {
     const strong = shot.strong.includes(def.tag)
     const crit = shot.crit || this.rng() < shot.critChance
     const amount =
@@ -2330,12 +2340,12 @@ export class Game {
     if (shot.weapon === 'w_love') enemy.slow = 1.2
     const knock = shot.knockback * this.knockScale(enemy, def)
     if (knock) {
-      let dx = enemy.x - owner.x
-      let dy = enemy.y - owner.y
+      let dx = enemy.x - (origin?.x ?? owner.x)
+      let dy = enemy.y - (origin?.y ?? owner.y)
       if (!dx && !dy && shot.weapon === 'p_over') {
         dx = Math.cos(shot.angle)
         dy = Math.sin(shot.angle)
-      }
+      } else if (origin && !dx && !dy) dy = -1
       const l = Math.hypot(dx, dy) || 1
       enemy.kx += (dx / l) * knock
       enemy.ky += (dy / l) * knock
@@ -2383,7 +2393,7 @@ export class Game {
       if (enemy.elite) {
         // Elites always leave something: a meal, or now and then a turning point.
         this.drop(this.rng() < 0.6 ? 'meal' : 'chest', enemy.x, enemy.y)
-      } else if (this.rng() < 0.006 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
+      } else if (this.rng() < 0.0015 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
       else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
     }
     if (def.child && def.children)
