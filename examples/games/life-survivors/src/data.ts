@@ -173,14 +173,14 @@ export const PARENTS: WeaponDef[] = [
     color: '#a46be0',
     behavior: 'aura',
     parent: true,
-    damage: 5,
+    damage: 4,
     cooldown: 0.5,
     area: 70,
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
     desc: '身のまわりに毒の空気。悪口や人間関係に特攻。',
-    perk: '全武器の威力 +25%。精神力の最大値 -10・自然回復なし（性格・仲間・家庭）。食事・レベルアップでは回復できる'
+    perk: '全武器の威力 +5%。精神力の最大値 -10・自然回復なし（性格・仲間・家庭）。食事・レベルアップでは回復できる'
   }),
   weapon({
     id: 'p_edu',

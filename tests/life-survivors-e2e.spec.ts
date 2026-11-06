@@ -226,7 +226,7 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
 for (const [parent, description] of [
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
-  ['p_toxic', '全武器の威力 +25%'],
+  ['p_toxic', '全武器の威力 +5%'],
   ['p_toxic', '自然回復なし（性格・仲間・家庭）']
 ]) {
   test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {

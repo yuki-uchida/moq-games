@@ -383,7 +383,7 @@ export function playerStats(player: Player): PlayerStats {
         (p('p_hot') + p('p_courage')) * 0.1 +
         p('p_clever') * 0.03 +
         (player.hp <= player.maxHp / 2 ? p('p_competitive') * 0.1 : 0)) *
-      (player.parent === 'p_toxic' ? 1.25 : 1),
+      (player.parent === 'p_toxic' ? 1.05 : 1),
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
     area: 1 + p('p_kind') * 0.08 + p('p_cautious') * 0.05,
     crit: 0.05 + p('p_lucky') * 0.05,
