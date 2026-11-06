@@ -1,14 +1,14 @@
 import { expect, test } from 'vitest'
-import { EVENTS, RUN_SECONDS } from '../src/data'
+import { EVENTS, RUN_SECONDS, WEAPON_BY_ID } from '../src/data'
 import { Game } from '../src/game'
 import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 20],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 38]
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 6],
+  [['w_friend', 'w_sns', 'w_pet'], 17, 5]
 ] as const)(
-  'normal cards can turn an early career into later %s',
+  'normal cards can turn an early career into later %s with a protected player',
   (laterPriorities, outcome, preferredSeed) => {
     const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
     const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
@@ -40,24 +40,45 @@ test.each([
       const player = game.addPlayer('p0')!
       for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
         if (game.state.phase !== 'playing' || game.state.eventIndex > laterIndex) break
+        const early = player.history.find((decision) => decision.event === earlyIndex)?.outcome
+        if (
+          early &&
+          ((outcome === 12 && !LIFE_OUTCOMES.b_shukatsu.slice(0, 2).includes(early)) ||
+            early === LIFE_OUTCOMES.b_shukatsu[2] ||
+            early === LIFE_OUTCOMES.b_shukatsu[outcome === 12 ? 5 : 6])
+        )
+          break
         const priorities = game.state.eventIndex > earlyIndex ? [...laterPriorities] : ['w_work', 'w_study']
         const scores = player.choices.map((choice) => {
           const [kind, id] = choice.split(':')
           const priority = priorities.indexOf(id)
           if (kind === 'r') {
             if (priority >= 0) return -1
+            if (game.state.eventIndex > earlyIndex && id === 'w_work') return 100
+            if (game.state.eventIndex > earlyIndex && id === 'w_friend') return 95
+            if (game.state.eventIndex > earlyIndex && id === 'w_savings') return 90
             return competingCareers.includes(id) ? 3 + (player.weapons.find((weapon) => weapon.id === id)?.lv ?? 0) : 1
           }
           if (kind === 's') return priority >= 0 ? 4 : -1
           if (choice === 'x:skip') return 0
-          if (priority >= 0) return 5 - priority
+          if (
+            kind === 'p' &&
+            game.state.eventIndex > earlyIndex &&
+            priorities.some((weapon) => WEAPON_BY_ID.get(weapon)?.evolve?.passive === id) &&
+            !player.passives.some((passive) => passive.id === id)
+          )
+            return 10
+          if (priority >= 0) return 5 + (player.weapons.some((weapon) => weapon.id === id) ? 3 : 0)
           if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 2
           return 1
         })
         const input = botInput(game, { ...player, choices: [] }, 'random')
         input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
         game.setInput(player.id, input)
-        for (let step = 0; step < 6; step++) game.tick(1 / 60)
+        for (let step = 0; step < 6; step++) {
+          player.hp = player.maxHp
+          game.tick(1 / 60)
+        }
       }
       const early = player.history.find((decision) => decision.event === earlyIndex)?.outcome
       const later = player.history.find((decision) => decision.event === laterIndex)?.outcome

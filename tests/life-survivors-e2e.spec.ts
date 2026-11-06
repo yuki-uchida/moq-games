@@ -70,6 +70,9 @@ test('free-parent balloons rise and their burst damages and pushes enemies', asy
     game.targetPopulation = () => 0
     game.state.enemies = []
     game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
     player.parent = 'p_free'
     player.weapons = [{ id: 'p_free', lv: 1, cd: 0, held: 0, damage: 0 }]
     game.tick(1 / 60)
