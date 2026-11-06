@@ -350,7 +350,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     color: '#59b56a',
     behavior: 'bounce',
     category: 'sports',
-    damage: 15,
+    damage: 10.5,
     cooldown: 2.4,
     speed: 340,
     duration: 3,
