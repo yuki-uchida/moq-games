@@ -403,6 +403,55 @@ describe('LifeAudio music', () => {
     audio.dispose()
   })
 
+  it('resumes a suspended or interrupted context when the tab comes back, without another tap', () => {
+    const { audio, context } = withAudio()
+    audio.unlock()
+    audio.setMusic({ theme: 'cradle', layer: 0 })
+    advance(context, 1)
+    for (const state of ['suspended', 'interrupted'] as const) {
+      audio.setHidden(true)
+      context.state = state
+      const resumes = context.resume.mock.calls.length
+      audio.setHidden(false)
+      expect(context.resume).toHaveBeenCalledTimes(resumes + 1)
+      context.state = 'running'
+      advance(context, 0.5)
+      const before = context.starts.length
+      advance(context, 2)
+      expect(context.starts.length).toBeGreaterThan(before)
+    }
+    expect(audio.music).toMatchObject({ theme: 'cradle', enabled: true })
+    audio.dispose()
+  })
+
+  it('rebuilds a context the browser closed while the page was away, keeping the theme', () => {
+    vi.useFakeTimers()
+    const first = new Context()
+    const second = new Context()
+    const contexts = [first, second]
+    vi.stubGlobal(
+      'AudioContext',
+      vi.fn(function () {
+        return contexts.shift() ?? second
+      })
+    )
+    const audio = new LifeAudio(memory())
+    audio.unlock()
+    audio.setMusic({ theme: 'school', layer: 0 })
+    advance(first, 1)
+    expect(first.starts.length).toBeGreaterThan(0)
+    first.state = 'closed'
+    second.state = 'suspended'
+    audio.setHidden(true)
+    audio.setHidden(false)
+    expect(second.resume).toHaveBeenCalled()
+    second.state = 'running'
+    advance(second, 1)
+    expect(second.starts.length).toBeGreaterThan(0)
+    expect(audio.music).toMatchObject({ theme: 'school', enabled: true })
+    audio.dispose()
+  })
+
   it('persists the music volume next to the effects, with a default for old saves', () => {
     const old = withAudio(memory({ muted: false, volume: 0.3 }))
     expect(old.audio.musicVolume).toBe(0.5)
