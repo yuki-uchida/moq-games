@@ -7,16 +7,17 @@ import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
 
-describe('毒親: 18歳まで才能の手札3枠', () => {
-  test('three talents block new weapons before 18 but still allow upgrades and passives', () => {
+describe('毒親: 18歳まで親を含めて手札3枠', () => {
+  test('two talents plus the parent block new weapons before 18 but still allow upgrades and passives', () => {
     const game = new Game(1)
     const player = game.addPlayer('a', 'p_toxic')!
-    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3)
+    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 2)
     for (const def of talents) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
     while (ageAt(game.state.time) < 18) game.state.time += 0.1
     game.state.time -= 0.1
     const options = game.options(player)
-    expect(weaponSlots(player, 17)).toBe(3)
+    expect(player.weapons).toHaveLength(3)
+    expect(weaponSlots(player, 17)).toBe(2)
     expect(options.filter((choice) => choice.startsWith('w:')).sort()).toEqual(
       player.weapons.map((weapon) => `w:${weapon.id}`).sort()
     )
@@ -29,18 +30,18 @@ describe('毒親: 18歳まで才能の手札3枠', () => {
     const game = new Game(1)
     const player = game.addPlayer('a', 'p_toxic')!
     const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 18)
-    for (const def of talents.slice(0, 3)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    for (const def of talents.slice(0, 2)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
     while (ageAt(game.state.time) < 18) game.state.time += 0.1
     expect(weaponSlots(player, 18)).toBe(WEAPON_SLOTS)
-    expect(game.options(player)).toContain(`w:${talents[3].id}`)
-    for (const def of talents.slice(3, WEAPON_SLOTS)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    expect(game.options(player)).toContain(`w:${talents[2].id}`)
+    for (const def of talents.slice(2, WEAPON_SLOTS)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
     expect(game.options(player)).not.toContain(`w:${talents[WEAPON_SLOTS].id}`)
   })
 
-  test.each([[17, 1], [18, 0]])('at age %i, three talents grant %i level-five swaps', (age, swaps) => {
+  test.each([[17, 1], [18, 0]])('at age %i, two talents plus the parent grant %i level-five swaps', (age, swaps) => {
     const game = new Game(1)
     const player = game.addPlayer('a', 'p_toxic')!
-    for (const def of TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3))
+    for (const def of TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 2))
       player.weapons.push({ id: def.id, lv: 1, cd: 0 })
     while (ageAt(game.state.time) < age) game.state.time += 0.1
     game.state.level = 4

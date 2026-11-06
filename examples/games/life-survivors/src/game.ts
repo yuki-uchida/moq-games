@@ -320,7 +320,7 @@ export function generateTalents(rng: () => number): Record<TalentCategory, numbe
   ) as Record<TalentCategory, number>
 }
 export const weaponSlots = (player: Player, age = 18) =>
-  player.parent === 'p_toxic' && age < 18 ? 3 : WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
+  player.parent === 'p_toxic' && age < 18 ? 2 : WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
 const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
   age >= def.minAge && (def.id !== 'w_ring' || player.married) && !player.weapons.some((weapon) => weapon.id === def.id)
