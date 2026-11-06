@@ -376,7 +376,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     area: 10,
     pierce: 2,
     strong: ['exam', 'class'],
-    minAge: 6,
+    minAge: 3,
     desc: '鉛筆が一番近い敵を貫く。試験・授業に特攻。',
     evolve: { passive: 'p_diligent', name: '首席合格' }
   }),
@@ -429,7 +429,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     area: 58,
     pierce: Infinity,
     strong: ['work', 'class'],
-    minAge: 0,
+    minAge: 8,
     desc: '夢中になれる場所をつくり、入った敵を削る。仕事・授業に特攻。',
     evolve: { passive: 'p_optimist', name: '一生の趣味' }
   }),
@@ -540,7 +540,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 0.6,
     pierce: Infinity,
     strong: ['class', 'exam'],
-    minAge: 6,
+    minAge: 5,
     desc: '知識の光線が向いた方向を貫く。授業・試験に特攻。',
     evolve: { passive: 'p_curious', name: '博覧強記' }
   }),

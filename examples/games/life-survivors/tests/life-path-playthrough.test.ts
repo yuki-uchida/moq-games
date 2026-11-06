@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
-import { EVENTS, RUN_SECONDS } from '../src/data'
-import { Game } from '../src/game'
+import { EVENTS, RUN_SECONDS, WEAPON_BY_ID } from '../src/data'
+import { Game, weaponSlots } from '../src/game'
 import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
@@ -51,10 +51,19 @@ test.each([
           if (kind === 's') return priority >= 0 ? 4 : -1
           if (choice === 'x:skip') return 0
           if (priority >= 0) return 5 - priority
+          if (kind === 'w' && !player.weapons.some((weapon) => weapon.id === id)) {
+            const count = player.weapons.filter((weapon) => !WEAPON_BY_ID.get(weapon.id)?.parent).length
+            const hasPriority = player.weapons.some((weapon) =>
+              game.state.eventIndex <= earlyIndex ? weapon.id === 'w_work' : priorities.includes(weapon.id)
+            )
+            if (!hasPriority && count >= weaponSlots(player) - 1) return 0
+          }
+          if (game.state.eventIndex <= earlyIndex && laterPriorities.some((weapon) => weapon === id)) return 0
+          if (game.state.eventIndex > earlyIndex && kind === 'w' && competingCareers.includes(id)) return 0
           if (kind === 'w') return player.weapons.some((weapon) => weapon.id === id) ? 3 : 2
           return 1
         })
-        const input = botInput(game, { ...player, choices: [] }, 'random')
+        const input = botInput(game, { ...player, choices: [] }, 'smart')
         input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
         game.setInput(player.id, input)
         for (let step = 0; step < 6; step++) game.tick(1 / 60)
@@ -126,7 +135,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
 
       for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
         if (game.state.phase !== 'playing' || game.state.eventIndex > eventIndex) break
-        const input = botInput(game, { ...player, choices: [] }, 'random')
+        const input = botInput(game, { ...player, choices: [] }, 'smart')
         const scores = player.choices.map(score)
         input.pick = scores.length ? scores.indexOf(Math.max(...scores)) : -1
         game.setInput(player.id, input)

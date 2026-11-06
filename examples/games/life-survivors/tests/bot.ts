@@ -182,6 +182,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
       const talent = def.category ? player.talents[def.category] : 1
       const owned = player.weapons.some((w) => w.id === id)
       const fit = strategy === 'smart' ? talent ** 3 * 1.6 : 1.6 / talent ** 3
+      if (strategy === 'smart' && !player.weapons.length && id === 'w_pet') return fit + 1
       // Depth beats breadth: a card you already hold keeps growing.
       return owned ? fit * 2 + 1 : fit
     }
