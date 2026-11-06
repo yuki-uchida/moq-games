@@ -1,5 +1,4 @@
 import { MAX_WEAPON_LEVEL, PASSIVE_BY_ID, WEAPON_BY_ID } from './data'
-import { activePersonalitySynergies, activeSynergies, personalitySynergyDetails, SYNERGIES } from './synergies'
 import type { ViewPlayer } from './view'
 import { weaponAppearance } from './weapon-life'
 
@@ -12,54 +11,15 @@ export interface StatusItem {
   kind: 'parent' | 'weapon' | 'evolved' | 'passive'
 }
 
-export interface SynergyRow {
-  name: string
-  text: string
-  active: boolean
-}
-
-export interface PersonalitySynergyRow {
-  weapon: string
-  text: string
-}
-
 export interface StatusModel {
-  personalitySynergies: PersonalitySynergyRow[]
   weapons: StatusItem[]
   passives: StatusItem[]
-  synergies: SynergyRow[]
-  activeCount: number
-  total: number
 }
 
-type StatusPlayer = Pick<ViewPlayer, 'weapons' | 'passives' | 'petAge'> & { maxHp?: number }
-
-export function personalitySynergyRows(player: StatusPlayer): PersonalitySynergyRow[] {
-  return activePersonalitySynergies(
-    player.weapons.map(([id]) => id),
-    player.passives,
-    player.maxHp ?? 0
-  ).map(({ weapon, text }) => ({ weapon: WEAPON_BY_ID.get(weapon)?.name ?? weapon, text }))
-}
-
-export function synergyRows(player: Pick<StatusPlayer, 'weapons'>): SynergyRow[] {
-  const active = activeSynergies(player.weapons.map(([id]) => id))
-  return SYNERGIES.map((synergy) => ({
-    name: synergy.name,
-    text: synergy.text,
-    active: active.includes(synergy)
-  }))
-}
+type StatusPlayer = Pick<ViewPlayer, 'weapons' | 'passives' | 'petAge'>
 
 export function statusModel(player: StatusPlayer, age: number): StatusModel {
   const owned = new Set(player.passives.map(([id]) => id))
-  const details = (id: string) =>
-    personalitySynergyDetails(
-      id,
-      player.weapons.map(([weapon]) => weapon),
-      player.passives,
-      player.maxHp ?? 0
-    )
   const weapons = player.weapons.map(([id, lv]): StatusItem => {
     const def = WEAPON_BY_ID.get(id)!
     const appearance = weaponAppearance(id, age, player.petAge)
@@ -72,7 +32,7 @@ export function statusModel(player: StatusPlayer, age: number): StatusModel {
       name,
       level: lv,
       levelText: lv >= MAX_WEAPON_LEVEL ? 'MAX' : String(lv),
-      detail: [def.desc, def.perk, ...details(id)].filter(Boolean).join(' '),
+      detail: [def.desc, def.perk].filter(Boolean).join(' '),
       kind: def.parent ? 'parent' : evolved ? 'evolved' : 'weapon'
     }
   })
@@ -83,17 +43,9 @@ export function statusModel(player: StatusPlayer, age: number): StatusModel {
       name: def.name,
       level: lv,
       levelText: String(lv),
-      detail: [def.desc, ...details(id)].join(' '),
+      detail: def.desc,
       kind: 'passive'
     }
   })
-  const synergies = synergyRows(player)
-  return {
-    personalitySynergies: personalitySynergyRows(player),
-    weapons,
-    passives,
-    synergies,
-    activeCount: synergies.filter((row) => row.active).length,
-    total: synergies.length
-  }
+  return { weapons, passives }
 }

@@ -713,7 +713,7 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'p_stubborn', category: 'sports', name: '頑固', icon: '🗿', desc: '防御 +1' },
   { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +10%' },
   { id: 'p_kind', category: 'friend', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
-  { id: 'p_greedy', category: 'invest', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%・投資 +15%' },
+  { id: 'p_greedy', category: 'invest', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%' },
   { id: 'p_bold', category: 'sports', name: '図太い', icon: '🐘', desc: '精神力の最大値 +20' },
   { id: 'p_optimist', category: 'love', name: '楽天家', icon: '🌈', desc: '精神力の自然回復 +0.4/秒' },
   { id: 'p_healthy', category: 'sports', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' },

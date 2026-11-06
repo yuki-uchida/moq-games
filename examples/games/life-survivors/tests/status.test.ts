@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_WEAPON_LEVEL } from '../src/data'
-import { SYNERGIES } from '../src/synergies'
-import { statusModel, synergyRows } from '../src/status'
+import { statusModel } from '../src/status'
 
 describe('status model', () => {
-  it('lists weapons, personalities and every synergy with its activation', () => {
+  it('lists weapons and personalities without synergy data', () => {
     const model = statusModel(
       {
         weapons: [
@@ -19,12 +18,8 @@ describe('status model', () => {
     expect(model.weapons).toHaveLength(2)
     expect(model.weapons[1].levelText).toBe('MAX')
     expect(model.passives).toEqual([expect.objectContaining({ name: '勤勉', level: 2, kind: 'passive' })])
-    expect(model.total).toBe(SYNERGIES.length)
-    expect(model.activeCount).toBe(1)
-    expect(model.synergies.find((row) => row.active)?.name).toBe('知識で資産形成')
-  })
-
-  it('shows no active synergy for an empty hand', () => {
-    expect(synergyRows({ weapons: [] }).every((row) => !row.active)).toBe(true)
+    expect(model).not.toHaveProperty('synergies')
+    expect(model).not.toHaveProperty('personalitySynergies')
+    expect(model.weapons.every((item) => !item.detail.includes('発動中'))).toBe(true)
   })
 })

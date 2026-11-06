@@ -3,7 +3,6 @@ import { ageAt, EVENTS, MAX_WEAPON_LEVEL, PASSIVES, PASSIVE_SLOTS, timeAtAge } f
 import { Game, choiceText, playerStats, weaponName, weaponStats } from '../src/game'
 import { sheet } from '../src/art/index'
 import { resultCategories } from '../src/result'
-import { activeSynergies } from '../src/synergies'
 import { readView, toView } from '../src/view'
 import { PET_MEMORY, SPORTS_FORMS, petForm, sportsForm, weaponAppearance } from '../src/weapon-life'
 
@@ -147,7 +146,7 @@ test('bonus is outside normal slots, is never offered, and respects toxic-parent
   expect(sheet('icons')[PET_MEMORY].frames[0].data.some(Boolean)).toBe(true)
 })
 
-test('pet death removes only its owner’s shots and synergy, including while downed', () => {
+test('pet death removes only its owner’s shots, including while downed', () => {
   const { game, player, obtain, at } = setup()
   obtain('w_pet')
   obtain('w_love')
@@ -157,11 +156,9 @@ test('pet death removes only its owner’s shots and synergy, including while do
   other.weapons = [{ id: 'w_pet', lv: 1, held: 0, damage: 0, cd: 0, acquiredAge: 40 }]
   game.tick(0)
   expect(game.state.shots.filter((shot) => shot.weapon === 'w_pet')).toHaveLength(2)
-  expect(activeSynergies(player.weapons.map((weapon) => weapon.id))).toHaveLength(1)
   player.downed = true
   at(50)
   expect(player.weapons.map((weapon) => weapon.id)).toEqual(['w_love'])
-  expect(activeSynergies(player.weapons.map((weapon) => weapon.id))).toHaveLength(0)
   expect(game.state.shots.filter((shot) => shot.weapon === 'w_pet').every((shot) => shot.owner === other.id)).toBe(true)
   expect(other.weapons[0].acquiredAge).toBe(40)
   expect(other.passives).not.toContainEqual({ id: PET_MEMORY, lv: 1 })

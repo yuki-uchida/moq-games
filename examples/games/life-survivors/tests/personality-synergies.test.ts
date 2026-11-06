@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import { bodyScale } from '../src/body-size'
 import { PASSIVES, TALENT_CATEGORIES } from '../src/data'
 import { Game, choiceText, playerRadius, playerStats, weaponStats } from '../src/game'
-import { activePersonalitySynergies } from '../src/synergies'
 import { statusModel } from '../src/status'
 import { readView, toView } from '../src/view'
 
@@ -85,61 +84,50 @@ test('size changes enemy projectile collision, and reducing maximum HP clamps cu
 })
 
 test.each([
-  ['w_sports', 'p_clever', 'cooldown', 0.9],
-  ['w_karaoke', 'p_clever', 'cooldown', 0.9],
-  ['w_muscle', 'p_large', 'area', 1.1],
-  ['w_perfume', 'p_small', 'duration', 1.2],
-  ['w_friend', 'p_kind', 'area', 1.16],
-  ['w_reading', 'p_curious', 'duration', 1.2],
-  ['w_savings', 'p_greedy', 'area', 1.2]
-] as const)('%s and %s apply and remove their bonus with the weapon', (id, passive, property, multiplier) => {
+  ['w_sports', 'p_clever'],
+  ['w_karaoke', 'p_clever'],
+  ['w_muscle', 'p_large'],
+  ['w_perfume', 'p_small'],
+  ['w_friend', 'p_kind'],
+  ['w_reading', 'p_curious'],
+  ['w_savings', 'p_greedy'],
+  ['w_invest', 'p_greedy'],
+  ['w_cooking', 'p_healthy'],
+  ['w_overtime', 'p_large']
+])('%s and %s have no weapon-specific bonus', (id, passive) => {
   const { player, weapon } = setup(id)
-  player.passives = [{ id: passive, lv: 2 }]
-  const boosted = weaponStats(player, weapon)
-  player.weapons = []
-  const base = weaponStats(player, weapon)
-  expect(boosted[property]).toBeCloseTo(base[property] * multiplier)
-  expect(activePersonalitySynergies([], [[passive, 2]], player.maxHp)).toHaveLength(0)
+  const stats = playerStats(player)
+  const base = weaponStats(player, weapon, stats)
+  for (const lv of [1, 4, 5]) {
+    player.passives = [{ id: passive, lv }]
+    expect(weaponStats(player, weapon, stats)).toEqual(base)
+  }
 })
 
-test('health adds overtime shots, cooking gains pellets, and the status reports the same effects', () => {
+test('high maximum health does not add overtime shots and cards show no synergy hints', () => {
   const { game, player, weapon } = setup('w_overtime')
-  player.passives = [{ id: 'p_large', lv: 3 }]
-  const boosted = weaponStats(player, weapon)
-  player.weapons = []
   const base = weaponStats(player, weapon)
-  expect(boosted.amount).toBe(base.amount + 2)
-  player.weapons = [weapon]
-  game['fire'](player, weapon, boosted)
-  expect(game.state.shots).toHaveLength(boosted.amount * 3)
-  player.weapons = [{ id: 'w_cooking', lv: 1, cd: 0, held: 0, damage: 0 }]
-  player.passives = [{ id: 'p_healthy', lv: 4 }]
-  const cooking = weaponStats(player, player.weapons[0])
-  expect(cooking.amount).toBe(3)
-  game.state.shots = []
-  game['fire'](player, player.weapons[0], cooking)
-  expect(game.state.shots).toHaveLength(5)
+  player.passives = [{ id: 'p_large', lv: 5 }]
+  expect(weaponStats(player, weapon).amount).toBe(base.amount)
   const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
-  expect(statusModel(view.players[0], 20).personalitySynergies[0].text).toContain('攻撃数 +2')
-  expect(statusModel(view.players[0], 20).weapons[0].detail).toContain('発動中：健康志向 × 料理')
-  expect(statusModel(view.players[0], 20).weapons[0].detail).not.toContain('連携条件')
-  expect(choiceText(player, 'p:p_healthy').text).toContain('発動中：健康志向 × 料理')
-  expect(choiceText(player, 'p:p_clever').text).toContain('器用 × スポーツ')
-  expect(choiceText(player, 's:w_sports').text).not.toContain('連携条件')
+  const model = statusModel(view.players[0], 20)
+  expect(model).not.toHaveProperty('personalitySynergies')
+  for (const id of ['p:p_healthy', 'p:p_clever', 'p:p_greedy', 'w:w_overtime', 's:w_sports']) {
+    expect(choiceText(player, id).text).not.toMatch(/発動中|連携条件|投資 \+15%/)
+  }
   expect(view.players[0].talents).toBeUndefined()
 })
 
-test('luck raises low dice damage without changing a six', () => {
+test('luck does not raise low dice damage and a six still deals maximum damage', () => {
   const { game, player, weapon } = setup('w_gamble')
   Object.defineProperty(game, 'rng', { value: () => 0, configurable: true })
-  game['fire'](player, weapon, weaponStats(player, weapon))
-  const base = game.state.shots[0]
-  expect(base.v).toBe(1)
-  expect(base.damage / weaponStats(player, weapon).damage).toBeCloseTo(0.3)
-  game.state.shots = []
-  player.passives = [{ id: 'p_lucky', lv: 5 }]
-  game['fire'](player, weapon, weaponStats(player, weapon))
-  expect(game.state.shots[0].damage / weaponStats(player, weapon).damage).toBeCloseTo(0.8)
+  for (const lv of [0, 1, 5]) {
+    game.state.shots = []
+    player.passives = lv ? [{ id: 'p_lucky', lv }] : []
+    game['fire'](player, weapon, weaponStats(player, weapon))
+    expect(game.state.shots[0].v).toBe(1)
+    expect(game.state.shots[0].damage / weaponStats(player, weapon).damage).toBeCloseTo(0.3)
+  }
   Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
   game.state.shots = []
   game['fire'](player, weapon, weaponStats(player, weapon))

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { Game } from '../src/game'
 
-test.each(['w_savings', 'w_gamble'])('%s applies knowledge synergy to actual damage', (weapon) => {
+test.each(['w_savings', 'w_gamble'])('%s keeps actual damage unchanged when a knowledge weapon is added', (weapon) => {
   const fire = (seed: number, knowledge: boolean) => {
     const game = new Game(seed)
     const player = game.addPlayer('player', 'p_gone')!
@@ -29,7 +29,7 @@ test.each(['w_savings', 'w_gamble'])('%s applies knowledge synergy to actual dam
     const boosted = fire(seed, true)
     expect(base.damage).toBeGreaterThan(0)
     expect(boosted.face).toBe(base.face)
-    expect(boosted.initialDamage).toBeCloseTo(base.initialDamage * 1.2)
-    expect(boosted.damage).toBeCloseTo(base.damage * 1.2)
+    expect(boosted.initialDamage).toBeCloseTo(base.initialDamage)
+    expect(boosted.damage).toBeCloseTo(base.damage)
   }
 })

@@ -23,7 +23,7 @@ function expectCurrentStats(player: Player, shot: Shot) {
   expect(shot.maxLife).toBeCloseTo(stats.duration)
 }
 
-test('new pets use current synergy without changing existing pets or other owners', () => {
+test('adding or removing asset weapons does not change new pets, existing pets or other owners', () => {
   const game = new Game(5)
   const player = equip(game, 'a')
   const other = equip(game, 'b')
@@ -40,7 +40,7 @@ test('new pets use current synergy without changing existing pets or other owner
     expect(game.state.shots).toContain(pet)
     const newest = game.state.shots.filter((shot) => shot.owner === player.id).at(-1)!
     expect(pet.r).toBeCloseTo(baseRadius)
-    expect(newest.r).toBeCloseTo(baseRadius * (active ? 1.1 : 1))
+    expect(newest.r).toBeCloseTo(baseRadius)
     expectCurrentStats(player, newest)
     expectCurrentStats(other, otherPet)
     expect(otherPet.r).toBeCloseTo(baseRadius)

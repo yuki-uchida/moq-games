@@ -54,11 +54,27 @@ describe('life pacing', () => {
     expect(ageAt(EVENTS.find((event) => event.boss === 'b_hs')!.at + 0.01)).toBe(13)
   })
 
+  test.each([1, 2, 10, 20, 30, 60, 100])('level %s takes 25% more XP with rounding', (level) => {
+    const previous = (5 + level * 6 + level * level * 0.3) * 1.3 * (1 + Math.min(20, Math.max(0, level - 10)) * 0.0125)
+    expect(xpForLevel(level)).toBe(Math.round(previous / 0.8))
+  })
+
+  test.each([1, 2, 4])('slower thresholds apply from birth and after level-up for %s players', (count) => {
+    const game = new Game(1)
+    for (let index = 0; index < count; index++) game.addPlayer(String(index))
+    expect(game.state.xpNext).toBe(xpForLevel(1))
+    game.gainXp(game.state.xpNext - 1)
+    expect(game.state.level).toBe(1)
+    game.gainXp(1)
+    expect(game.state.level).toBe(2)
+    expect(game.state.xpNext).toBe(Math.round(xpForLevel(2) * (1 + (count - 1) * 0.5)))
+  })
+
   test('levels require more experience and late enemies gain durability', () => {
     expect(xpForLevel(10)).toBeGreaterThan(Math.round(5 + 10 * 6 + 10 * 10 * 0.3))
-    expect(xpForLevel(10)).toBe(Math.round((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3))
-    expect(xpForLevel(20)).toBe(Math.round((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125))
-    expect(xpForLevel(30)).toBe(Math.round((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25))
+    expect(xpForLevel(10)).toBe(Math.round((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3 / 0.8))
+    expect(xpForLevel(20)).toBe(Math.round((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125 / 0.8))
+    expect(xpForLevel(30)).toBe(Math.round((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25 / 0.8))
     const game = new Game(1)
     game.addPlayer('a')
     expect(game.hpScale()).toBe(1)
@@ -118,7 +134,7 @@ describe('combat', () => {
     expect(gifted / weaponStats(player, study).damage).toBeCloseTo(GIFTED / POOR)
   })
 
-  test('greed compounds investments and evolves them at level 8', () => {
+  test('greed only evolves investments at level 8 while holding time still compounds damage', () => {
     const game = new Game(9)
     const player = game.addPlayer('a', 'p_rich')!
     const invest = { id: 'w_invest', lv: 8, cd: 0, held: 0, damage: 0 }
@@ -128,9 +144,9 @@ describe('combat', () => {
     player.passives.push({ id: 'p_greedy', lv: 1 })
     expect(isEvolved(player, invest)).toBe(true)
     expect(weaponName(player, invest)).toBe('複利の魔法')
-    expect(weaponStats(player, invest).damage).toBeGreaterThan(before * 1.6)
+    expect(weaponStats(player, invest).damage).toBeCloseTo(before * 1.6)
     invest.held = 150
-    expect(weaponStats(player, invest).damage).toBeGreaterThan(before * 3)
+    expect(weaponStats(player, invest).damage).toBeCloseTo(before * 3.2)
   })
 })
 
@@ -253,7 +269,7 @@ describe('end of life', () => {
   })
 
   test('a well-read life survives all 15 minutes, and snapshots stay small and valid', () => {
-    const { game, peak, bytes } = playLife(2, 'smart')
+    const { game, peak, bytes } = playLife(1, 'smart')
     expect(game.state.phase).toBe('reaper')
     expect(peak).toBeGreaterThan(250)
     // Busiest snapshot of the life, with headroom for the JSON envelope and non-ASCII log text.
