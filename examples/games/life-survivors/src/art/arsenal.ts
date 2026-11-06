@@ -941,6 +941,54 @@ const heal = (f: number) =>
 const heart = (c1: number, c2: number) => (l: Raster, x: number, y: number) =>
   l.stamp(['.hh.hh.', 'hhhhhhh', 'hhhhhhh', '.hhhhh.', '..hhh..', '...h...'], x, y, { h: c1, H: c2 })
 
+function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number) {
+  const r = new Raster(32, 32)
+  if (kind === 'gacha') {
+    r.ellipse(16, 11, 11, 9, C.inkCool).ellipse(16, 10, 9, 7, R.sky[1])
+    for (const [x, y, color] of [
+      [11, 9, R.pink[1]],
+      [17, 7, R.yellow[1]],
+      [21, 11, R.green[1]],
+      [14, 13, R.red[1]]
+    ])
+      r.ellipse(x, y, 2.5, 2.5, color)
+    r.rect(5, 17, 22, 12, C.inkCool).rect(7, 18, 18, 9, R.red[1])
+    r.rect(9, 19, 7, 6, R.paper[1]).ellipse(20, 21, 3, 3, R.yellow[1])
+    r.line(20, 21, 20 + (frame % 2 ? 2 : -2), 23, C.inkWarm)
+    if (frame >= 3) r.ellipse(12, 26 + Math.min(3, frame - 3), 3, 3, R.pink[1]).line(9, 27, 14, 27, C.white)
+  } else if (kind === 'poker') {
+    r.rect(1, 12, 8, 13, C.inkCool).rect(2, 11, 8, 13, R.navy[1]).rect(3, 12, 6, 11, R.paper[1])
+    for (let card = 0; card <= Math.min(frame, 4); card++) {
+      const x = 5 + card * 5
+      const y = 13 - Math.min(card, 4 - card)
+      r.rect(x, y, 9, 14, C.inkCool).rect(x + 1, y + 1, 7, 12, R.paper[0])
+      r.stamp(['.r.r.', 'rrrrr', '.rrr.', '..r..'], x + 2, y + 4, { r: card % 2 ? R.navy[2] : R.red[1] })
+    }
+  } else if (kind === 'pachinko') {
+    r.rect(4, 2, 24, 28, C.inkCool).rect(6, 3, 20, 25, R.yellow[1]).rect(8, 5, 16, 20, R.red[1])
+    r.rect(9, 10, 14, 9, R.paper[0])
+    for (let reel = 0; reel < 3; reel++) {
+      const seven = frame >= 4 || (frame + reel) % 3 === 0
+      r.stamp(seven ? ['rrr', '..r', '.r.', '.r.', '.r.'] : ['rrr', 'r.r', 'r.r', 'r.r', 'rrr'], 10 + reel * 4, 12, {
+        r: R.red[1]
+      })
+    }
+    r.ellipse(16, 23, 2, 2, R.sky[0]).rect(10, 27, 12, 2, R.metal[1])
+    if (frame >= 4) r.line(1, 6, 3, 8, R.yellow[0]).line(28, 8, 30, 6, R.yellow[0])
+  } else {
+    r.rect(0, 27, 32, 2, R.green[2]).rect(28, 3, 2, 24, R.paper[1])
+    for (let y = 3; y < 15; y += 4) r.rect(28, y, 2, 2, C.inkCool)
+    const x = 2 + Math.min(frame, 5) * 2
+    r.ellipse(x + 7, 19, 6, 4, R.brown[1]).poly([x + 10, 18, x + 13, 11, x + 17, 12, x + 15, 18], R.brown[1])
+    r.line(x + 3, 21, x + 2 + (frame % 2) * 3, 26, R.brown[2])
+    r.line(x + 10, 21, x + 12 - (frame % 2) * 3, 26, R.brown[2])
+    r.line(x + 2, 18, x, 15, R.brown[2]).ellipse(x + 7, 12, 2, 2, R.skin[1])
+    r.poly([x + 5, 14, x + 9, 14, x + 11, 19, x + 5, 19], R.red[1])
+    if (frame >= 5) r.stamp(['.y.', 'yyy', '.y.'], 25, 1, { y: R.yellow[1] })
+  }
+  return r
+}
+
 const ICONS: Record<string, () => Raster> = {
   // SNS: a smartphone with a heart notification badge.
   w_sns: () =>
@@ -990,7 +1038,11 @@ const ICONS: Record<string, () => Raster> = {
   w_karaoke: () => mic(0),
   w_travel: () => plane(1),
   w_savings: () => pig(0, false),
-  w_gamble: () => cube(0.25, 13, 17),
+  w_gamble: () => gambleArt('gacha', 5),
+  w_gamble_gacha: () => gambleArt('gacha', 5),
+  w_gamble_poker: () => gambleArt('poker', 5),
+  w_gamble_pachinko: () => gambleArt('pachinko', 5),
+  w_gamble_horse: () => gambleArt('horse', 5),
   // 香水: a pink-lilac perfume bottle with a golden cap and a spritz.
   w_perfume: () =>
     tiny(32, 32, (l) => {
@@ -1155,7 +1207,11 @@ export function arsenalFx(): Record<string, Anim> {
     crit: loop(many(2, crit), 12),
     poof: { frames: many(4, poof), fps: 14, loop: false },
     shine: loop(many(2, shine), 6),
-    heal: loop(many(2, heal), 6)
+    heal: loop(many(2, heal), 6),
+    gamble_gacha: { frames: many(6, (frame) => gambleArt('gacha', frame)), fps: 6, loop: false },
+    gamble_poker: { frames: many(6, (frame) => gambleArt('poker', frame)), fps: 6, loop: false },
+    gamble_pachinko: { frames: many(6, (frame) => gambleArt('pachinko', frame)), fps: 6, loop: false },
+    gamble_horse: { frames: many(6, (frame) => gambleArt('horse', frame)), fps: 6, loop: false }
   }
 }
 

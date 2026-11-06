@@ -105,7 +105,7 @@ export type Behavior =
   | 'nova'
   | 'sweep'
   | 'mine'
-  | 'dice'
+  | 'gamble'
   | 'trail'
   | 'fan'
   | 'raid'
@@ -641,9 +641,9 @@ export const TALENT_WEAPONS: WeaponDef[] = [
   weapon({
     id: 'w_gamble',
     name: 'ギャンブル',
-    icon: '🎲',
+    icon: '🎁',
     color: '#e0b93f',
-    behavior: 'dice',
+    behavior: 'gamble',
     category: 'invest',
     damage: 11,
     cooldown: 1.5,
@@ -653,8 +653,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 1.5,
     pierce: 1,
     strong: ['money'],
-    minAge: 20,
-    desc: 'サイコロを投げる。出目しだいで威力は0.3倍から5倍、6は必ず会心。お金に特攻。',
+    minAge: 12,
+    desc: '発動するたび、ほかの武器の効果をランダムに使う。課金、ポーカー、パチンコ、競馬へと変化。',
     evolve: { passive: 'p_lucky', name: '大穴的中' }
   }),
   weapon({

@@ -44,7 +44,7 @@ const NEW_WEAPONS: Record<string, { name: string; passive: string; behavior: str
   w_karaoke: { name: '魂のシャウト', passive: 'p_hot', behavior: 'nova' },
   w_travel: { name: '世界一周', passive: 'p_curious', behavior: 'sweep' },
   w_savings: { name: '老後の蓄え', passive: 'p_bold', behavior: 'mine' },
-  w_gamble: { name: '大穴的中', passive: 'p_lucky', behavior: 'dice' },
+  w_gamble: { name: '大穴的中', passive: 'p_lucky', behavior: 'gamble' },
   w_perfume: { name: '魅惑のフェロモン', passive: 'p_savvy', behavior: 'trail' },
   w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' }
 }
@@ -218,23 +218,21 @@ describe('new talent weapons', () => {
     }
   })
 
-  test('a die rolls its face into the variant and a six always crits', () => {
+  test('gambling activates different weapons', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
     post(game, 'abusive_senpai', player.x + 400, player.y)
-    const faces = new Set<number>()
-    const crits: boolean[] = []
-    for (let i = 0; i < 60 * 40; i++) {
+    const copied = new Set<string>()
+    for (let i = 0; i < 120; i++) {
       player.weapons[0].cd = 0
       player.hp = player.maxHp
       game.tick(1 / 60)
-      for (const s of game.state.shots) if (s.weapon === 'w_gamble') faces.add(s.v), s.v === 6 && crits.push(s.crit)
-      game.state.shots = game.state.shots.filter((s) => s.weapon !== 'w_gamble' || s.life > 1.4)
+      for (const shot of game.state.shots) if (shot.sourceWeapon === 'w_gamble') copied.add(shot.weapon)
+      game.state.shots = []
     }
-    expect([...faces].every((f) => f >= 1 && f <= 6)).toBe(true)
-    expect(faces.size).toBeGreaterThanOrEqual(5)
-    expect(crits.length).toBeGreaterThan(0)
-    expect(crits.every(Boolean)).toBe(true)
+    expect(copied.size).toBeGreaterThanOrEqual(10)
+    expect(copied.has('w_gamble')).toBe(false)
+    expect(copied.has('p_gone')).toBe(false)
   })
 
   test('pets stay out and return to their owner when nothing is near', () => {
@@ -911,6 +909,9 @@ describe('fx channel', () => {
       const boss = game.spawnEnemy('b_outbreak', player.x + 900, player.y)!
       ;(game as unknown as { kill(e: Enemy, d: EnemyDef): void }).kill(boss, ENEMY_BY_ID.get('b_outbreak')!)
       note(game)
+      player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
+      game['fireWeapons'](0)
+      note(game)
     }
     const names = Object.fromEntries(Object.entries(FX).map(([name, type]) => [type, name]))
     {
@@ -989,12 +990,12 @@ describe('protocol v12', () => {
 
   test('the snapshot carries variants, flags and bullet kinds from the simulation', () => {
     const { game, player } = arena(31)
-    player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
+    player.weapons.push({ id: 'w_cooking', lv: 1, cd: 0, held: 0, damage: 0 })
     post(game, 'abusive_senpai', player.x + 400, player.y)
     game.tick(1 / 60)
     const shot = toView(game.state).shots
-    expect(shot[7]).toBeGreaterThanOrEqual(1)
-    expect(shot[7]).toBeLessThanOrEqual(6)
+    expect(shot[7]).toBeGreaterThanOrEqual(0)
+    expect(shot[7]).toBeLessThanOrEqual(2)
     expect(TALENT_WEAPONS.length).toBeGreaterThan(0)
     expect(ENEMIES.every((e) => e.behavior !== 'shooter' || BULLET_KINDS.includes(e.shot!.bullet as never))).toBe(true)
   })

@@ -5,8 +5,8 @@ import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 20],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 38]
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 39],
+  [['w_friend', 'w_sns', 'w_pet'], 17, 31]
 ] as const)(
   'normal cards can turn an early career into later %s',
   (laterPriorities, outcome, preferredSeed) => {

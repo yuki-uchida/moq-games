@@ -15,6 +15,62 @@ const life = async (page: Page) => {
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 }
 
+test('gambling draws the right animation and status for each life stage', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    const labels: string[] = []
+    Object.assign(window, { gambleLabels: labels })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！'].includes(text)) labels.push(text)
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  for (const [age, name, label] of [
+    [12, '課金', 'ガチャ！'],
+    [18, 'ポーカー', 'ポーカー！'],
+    [23, 'パチンコ', '大当たり！'],
+    [50, '競馬', '競馬的中！']
+  ] as const) {
+    await page.evaluate(() => ((window as unknown as { gambleLabels: string[] }).gambleLabels.length = 0))
+    const copied = await handle.evaluate(async (hook, nextAge) => {
+      const path = '/src/data.ts'
+      const { EVENTS, timeAtAge } = await import(path)
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      game.targetPopulation = () => 0
+      game.state.time = timeAtAge(nextAge) + 0.01
+      game.state.eventIndex = EVENTS.length
+      game.state.enemies = []
+      game.state.shots = []
+      game.state.fx = []
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
+      Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
+      game['fireWeapons'](0)
+      return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_cooking')
+    }, age)
+    expect(copied).toBe(true)
+    await expect
+      .poll(() =>
+        page.evaluate((text) => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes(text), label)
+      )
+      .toBe(true)
+    await page.screenshot({ path: testInfo.outputPath(`gamble-${age}.png`) })
+    await page.locator('#status-open').click()
+    await expect(page.locator('#status-weapons')).toContainText(`ギャンブル（${name}）`)
+    await page.locator('#status-done').click()
+  }
+  expect(errors).toEqual([])
+})
+
 test('free-parent balloons rise and their burst damages and pushes enemies', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -396,7 +452,7 @@ for (const width of [1280, 390]) {
     await expect(cards).toHaveCount(4)
     await expect(cards.nth(0)).toContainText('相場の稲妻')
     await expect(cards.nth(1)).toContainText('貯金箱')
-    await expect(cards.nth(2)).toContainText('サイコロ')
+    await expect(cards.nth(2)).toContainText('ほかの武器の効果をランダム')
     await expect(cards.nth(3)).toContainText('交換しない')
     expect(await page.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`exchange-descriptions-${width}.png`), animations: 'disabled' })
@@ -1455,6 +1511,65 @@ export class CooperativeNetwork {
   async stop() { this.channel?.close(); }
 }`
 
+test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  await context.addInitScript(() => {
+    const labels: string[] = []
+    Object.assign(window, { gambleLabels: labels })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text === '大当たり！') labels.push(text)
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  for (const page of [host, guest]) {
+    await page.goto('/')
+    await page.locator('#room').fill('gamble-animation')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(23) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    game.state.fx = []
+    for (const player of game.state.players) {
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = []
+    }
+    game.state.players[0].weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
+    Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
+    game['fireWeapons'](0)
+  })
+  await expect
+    .poll(() =>
+      guestLife.evaluate((hook) =>
+        (hook.view as unknown as View).shots.some((value, index) => index % 8 === 7 && value >= 64)
+      )
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
+      guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('大当たり！'))
+    )
+    .toBe(true)
+})
+
 test('current and legacy rooms remain separated while current guests receive snapshots', async ({ context }) => {
   await context.addInitScript(() => {
     const Channel = window.BroadcastChannel
@@ -1481,7 +1596,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v12',
+      app: 'life-survivors-v14',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1500,9 +1615,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v12', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -1551,7 +1666,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v14', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v15', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
