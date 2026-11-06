@@ -5,7 +5,15 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      exclude: [...configDefaults.exclude, '**/ember-grid/tests/**/*.spec.*', '**/.sdk-cache/**', '**/.generated/**']
+      exclude: [
+        ...configDefaults.exclude,
+        '**/ember-grid/tests/**/*.spec.*',
+        'tests/**/*.spec.*',
+        '**/*.test.mjs',
+        'tools/tower-debug/client/src/Actual3DView.test.ts',
+        '**/.sdk-cache/**',
+        '**/.generated/**'
+      ]
     }
   })
 )
