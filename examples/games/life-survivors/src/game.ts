@@ -319,7 +319,8 @@ export function generateTalents(rng: () => number): Record<TalentCategory, numbe
     })
   ) as Record<TalentCategory, number>
 }
-export const weaponSlots = (player: Player) => WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
+export const weaponSlots = (player: Player, age = 18) =>
+  player.parent === 'p_toxic' && age < 18 ? 3 : WEAPON_SLOTS + (player.parent === 'p_free' ? 1 : 0)
 const talentWeaponCount = (player: Player) => player.weapons.filter((w) => !WEAPON_BY_ID.get(w.id)?.parent).length
 const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
   age >= def.minAge && (def.id !== 'w_ring' || player.married) && !player.weapons.some((weapon) => weapon.id === def.id)
@@ -2470,7 +2471,7 @@ export class Game {
       for (const player of state.players)
         if (!player.downed) {
           const hasOptions = this.options(player).length > 0
-          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player)))
+          if (state.level % 5 === 0 && (!hasOptions || talentWeaponCount(player) >= weaponSlots(player, ageAt(state.time))))
             player.swapPending++
           if (hasOptions || state.level % 5 !== 0) player.pending++
           // Growing up also mends the heart a little.
@@ -2545,7 +2546,7 @@ export class Game {
     for (const weapon of player.weapons)
       if (weapon.lv < MAX_WEAPON_LEVEL && !(player.parentDeath && weapon.id === player.parent))
         result.push(`w:${weapon.id}`)
-    if (talentWeaponCount(player) < weaponSlots(player))
+    if (talentWeaponCount(player) < weaponSlots(player, age))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives)
       if (passive.id !== PET_MEMORY && passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)

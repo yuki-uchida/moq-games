@@ -313,7 +313,8 @@ for (const [parent, description] of [
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
   ['p_toxic', '全武器の威力 +5%'],
-  ['p_toxic', '自然回復なし（性格・仲間・家庭）']
+  ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
+  ['p_toxic', '18歳未満は才能の手札3枠']
 ]) {
   test(`parent ability is explained in the HUD and result: ${parent}: ${description}`, async ({ page }) => {
     await page.goto('/')
@@ -349,10 +350,16 @@ for (const viewport of [
     expect(await page.locator('body').evaluate((body) => getComputedStyle(body).touchAction)).toBe('manipulation')
     await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
     const xp = page.locator('.xp-bar')
+    const xpFill = page.locator('#xp-fill')
     const hp = page.locator('.xp-bar .meter')
     await expect(hp).toBeVisible()
+    await xpFill.evaluate((element) => (element.style.width = '100%'))
     const xpBox = (await xp.boundingBox())!
+    const xpFillBox = (await xpFill.boundingBox())!
     const hpBox = (await hp.boundingBox())!
+    expect(xpFillBox.y).toBeGreaterThanOrEqual(hpBox.y + hpBox.height)
+    expect(hpBox.height).toBeGreaterThan(xpFillBox.height)
+    expect(await xpFill.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('139, 92, 246')
     expect(hpBox.x).toBeGreaterThanOrEqual(xpBox.x)
     expect(hpBox.x + hpBox.width).toBeLessThanOrEqual(xpBox.x + xpBox.width)
     expect(hpBox.y).toBeGreaterThanOrEqual(xpBox.y)
