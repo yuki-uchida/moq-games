@@ -1769,7 +1769,7 @@ export class Game {
           })
         break
       case 'aura':
-        this.shot(player, def, ws, { r: def.area * ws.area * (1 + (n - 1) * 0.12), tick: 0.45 })
+        this.shot(player, def, ws, { r: def.area * ws.area, tick: 0.45 })
         break
       case 'aim':
       case 'homing':
