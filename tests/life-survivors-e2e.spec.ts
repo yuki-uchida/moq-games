@@ -264,10 +264,16 @@ for (const viewport of [
     expect(await page.locator('body').evaluate((body) => getComputedStyle(body).touchAction)).toBe('manipulation')
     await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
     const xp = page.locator('.xp-bar')
+    const xpFill = page.locator('#xp-fill')
     const hp = page.locator('.xp-bar .meter')
     await expect(hp).toBeVisible()
+    await xpFill.evaluate((element) => (element.style.width = '100%'))
     const xpBox = (await xp.boundingBox())!
+    const xpFillBox = (await xpFill.boundingBox())!
     const hpBox = (await hp.boundingBox())!
+    expect(xpFillBox.y).toBeGreaterThanOrEqual(hpBox.y + hpBox.height)
+    expect(hpBox.height).toBeGreaterThan(xpFillBox.height)
+    expect(await xpFill.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('139, 92, 246')
     expect(hpBox.x).toBeGreaterThanOrEqual(xpBox.x)
     expect(hpBox.x + hpBox.width).toBeLessThanOrEqual(xpBox.x + xpBox.width)
     expect(hpBox.y).toBeGreaterThanOrEqual(xpBox.y)
