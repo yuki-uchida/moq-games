@@ -42,6 +42,7 @@ export default defineConfig({
         laneBattle: resolve(root, 'examples/games/lane-battle/index.html'),
         rabbiters: resolve(root, 'examples/games/rabbiters/index.html'),
         lifeSurvivors: resolve(root, 'examples/games/life-survivors/index.html'),
+        yoruNoYashiki: resolve(root, 'examples/games/yoru-no-yashiki/index.html'),
         game: resolve(root, 'examples/games/tower_diffence_with_jev/index.html'),
         modelReview: resolve(root, 'examples/games/tower_diffence_with_jev/model-review.html'),
         extra: resolve(root, 'examples/games/tower_diffence_with_jev/extra.html')

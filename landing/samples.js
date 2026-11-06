@@ -49,5 +49,16 @@ export const samples = [
     category: 'ACTION',
     tags: ['サバイバー系', '協力プレイ'],
     art: 'life-survivors'
+  },
+  {
+    id: 'yoru-no-yashiki',
+    title: '夜の屋敷',
+    subtitle: 'TWO PLAYER HORROR',
+    description:
+      '声をひそめて、生き残れ。人間と怪異に分かれ、マイクに拾われた声の大きさと長さで減点を競う二人用ホラー。各15分で交代（MoQリレーが必要）。',
+    href: './examples/games/yoru-no-yashiki/index.html',
+    category: 'HORROR',
+    tags: ['二人対戦', 'マイク必須'],
+    art: 'yoru-no-yashiki'
   }
 ]
