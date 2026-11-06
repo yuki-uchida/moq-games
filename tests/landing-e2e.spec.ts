@@ -18,7 +18,7 @@ for (const viewport of [
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'キャッスルナイツ', exact: true })).toBeVisible()
-    await expect(page.getByRole('article')).toHaveCount(5)
+    await expect(page.getByRole('article')).toHaveCount(6)
     await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: デスガイヤ' })).toHaveAttribute(
       'href',
@@ -101,7 +101,8 @@ test('non-JavaScript entry still offers the existing game URL', async ({ browser
 for (const [title, path] of [
   ['デスガイヤ', 'ember-grid'],
   ['うんこ大惨事', 'lane-battle'],
-  ['ジンセイガ・ツライデース', 'life-survivors']
+  ['ジンセイガ・ツライデース', 'life-survivors'],
+  ['夜の屋敷', 'yoru-no-yashiki']
 ]) {
   test(`opens ${title} from the catalog`, async ({ page }) => {
     await page.goto(root)
@@ -110,6 +111,15 @@ for (const [title, path] of [
     await expect(page.locator('body')).not.toBeEmpty()
   })
 }
+
+test('loads 夜の屋敷 runtime through the catalog', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto(root)
+  await page.getByRole('link', { name: 'ゲームをプレイ: 夜の屋敷' }).click()
+  await expect(page.getByRole('heading', { name: '夜の屋敷' })).toBeVisible()
+  expect(errors).toEqual([])
+})
 
 test('starts Lane Battle through the catalog with its runtime assets', async ({ page }) => {
   const errors: string[] = []
