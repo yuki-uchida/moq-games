@@ -1088,6 +1088,30 @@ test('trained careers render together for local and co-op participants', async (
   await page.screenshot({ path: testInfo.outputPath('careers-mobile.png') })
 })
 
+test('turning point cards overlay owned evolution partners', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    const player = (hook.game as unknown as Game).state.players[0]
+    player.birthPick = false
+    player.weapons = [
+      { id: 'w_friend', lv: 1, cd: 100, held: 0, damage: 0 },
+      { id: 'w_ring', lv: 1, cd: 100, held: 0, damage: 0 }
+    ]
+    player.passives = [{ id: 'p_kind', lv: 1 }]
+    player.choices = ['w:w_friend', 'p:p_kind', 'w:w_sports']
+    player.choiceSeq++
+  })
+  const cards = page.locator('#cards .card')
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveCount(1)
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveAttribute('alt', '相性: 友人思い')
+  await expect(cards.nth(1).locator('.synergy-icons img')).toHaveCount(2)
+  await expect(cards.nth(2).locator('.synergy-icons img')).toHaveCount(0)
+  await expect(page.locator('#cards')).not.toContainText('連携条件')
+  await expect(cards.nth(0).locator('.synergy-icons img')).toHaveCSS('width', '20px')
+})
+
 test('turning point cards show their talent category without revealing talent values', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
