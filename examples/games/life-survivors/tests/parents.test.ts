@@ -1,11 +1,62 @@
 import { describe, expect, test } from 'vitest'
-import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX } from '../src/data'
+import { PARENTS, TALENT_CATEGORIES, TALENT_WEAPONS, WEAPONS, WEAPON_INDEX, WEAPON_SLOTS, ageAt } from '../src/data'
 import { Game, RAID, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
+
+describe('毒親: 18歳まで才能の手札3枠', () => {
+  test('three talents block new weapons before 18 but still allow upgrades and passives', () => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3)
+    for (const def of talents) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < 18) game.state.time += 0.1
+    game.state.time -= 0.1
+    const options = game.options(player)
+    expect(weaponSlots(player, 17)).toBe(3)
+    expect(options.filter((choice) => choice.startsWith('w:')).sort()).toEqual(
+      player.weapons.map((weapon) => `w:${weapon.id}`).sort()
+    )
+    expect(options.some((choice) => choice.startsWith('p:'))).toBe(true)
+    player.weapons.pop()
+    expect(game.options(player).some((choice) => choice.startsWith('w:') && !options.includes(choice))).toBe(true)
+  })
+
+  test('the normal six slots return at 18 and fill up normally', () => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    const talents = TALENT_WEAPONS.filter((def) => def.minAge <= 18)
+    for (const def of talents.slice(0, 3)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < 18) game.state.time += 0.1
+    expect(weaponSlots(player, 18)).toBe(WEAPON_SLOTS)
+    expect(game.options(player)).toContain(`w:${talents[3].id}`)
+    for (const def of talents.slice(3, WEAPON_SLOTS)) player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    expect(game.options(player)).not.toContain(`w:${talents[WEAPON_SLOTS].id}`)
+  })
+
+  test.each([[17, 1], [18, 0]])('at age %i, three talents grant %i level-five swaps', (age, swaps) => {
+    const game = new Game(1)
+    const player = game.addPlayer('a', 'p_toxic')!
+    for (const def of TALENT_WEAPONS.filter((def) => def.minAge <= 6).slice(0, 3))
+      player.weapons.push({ id: def.id, lv: 1, cd: 0 })
+    while (ageAt(game.state.time) < age) game.state.time += 0.1
+    game.state.level = 4
+    game.gainXp(game.state.xpNext)
+    expect(player.swapPending).toBe(swaps)
+  })
+
+  test('other parents keep their normal slots at every age', () => {
+    for (const parent of PARENTS.filter((def) => def.id !== 'p_toxic')) {
+      const game = new Game(1)
+      const player = game.addPlayer('a', parent.id)!
+      for (const age of [0, 17, 18, 80])
+        expect(weaponSlots(player, age)).toBe(WEAPON_SLOTS + (parent.id === 'p_free' ? 1 : 0))
+    }
+  })
+})
 
 describe('過保護: 攻撃と防御を兼ねる盾', () => {
   function guarded() {
@@ -274,6 +325,24 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
 
   test('base aura radius is 35', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.area).toBe(35)
+  })
+
+  test('toxic aura fires once per second instead of every half second', () => {
+    const game = new Game(72)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_toxic')!
+    player.weapons = [{ id: 'p_toxic', lv: 1, cd: 0, held: 0, damage: 0 }]
+    player.passives = []
+    expect(weaponStats(player, player.weapons[0]).cooldown).toBe(1)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE)).toBe(true)
+    for (let frame = 0; frame < 58; frame++) {
+      game.tick(1 / 60)
+      expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t === game.state.time)).toBe(false)
+    }
+    game.tick(1 / 60)
+    game.tick(1 / 60)
+    expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t >= 0.99)).toBe(true)
   })
 
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(

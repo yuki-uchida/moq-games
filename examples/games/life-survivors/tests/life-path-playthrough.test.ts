@@ -6,7 +6,7 @@ import { botInput } from './bot'
 
 test.each([
   [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 20],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 1]
+  [['w_friend', 'w_sns', 'w_pet'], 17, 38]
 ] as const)(
   'normal cards can turn an early career into later %s',
   (laterPriorities, outcome, preferredSeed) => {
