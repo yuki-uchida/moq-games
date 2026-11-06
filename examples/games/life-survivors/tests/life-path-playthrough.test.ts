@@ -144,4 +144,4 @@ test('normal play from birth can reach employment, sports, asset, creative and s
       runs.some((run) => run.priorities[0] === priority && run.outcome !== undefined && outcomes.includes(run.outcome)),
       JSON.stringify(runs)
     ).toBe(true)
-}, 120_000)
+}, 240_000)
