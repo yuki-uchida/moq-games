@@ -521,7 +521,11 @@ export class Effects {
           })
         }
         const d = Math.hypot(x - v.px, y - v.py)
-        if (v.local >= 0 && d < 420) this.addTrauma((slam ? 0.3 : 0.22) * (1 - d / 520))
+        if (v.local >= 0 && d < 420) {
+          const amount = (slam ? 0.3 : 0.22) * (1 - d / 520)
+          if (weapon?.id === 'w_savings') this.trauma.atLeast(amount)
+          else this.addTrauma(amount)
+        }
         break
       }
       case FX.HURT: {
