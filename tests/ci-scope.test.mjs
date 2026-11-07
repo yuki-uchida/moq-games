@@ -34,7 +34,7 @@ test('life browser shards run independently and gate publication', () => {
   assert.match(browser, /^    needs: changes$/m)
   assert.match(browser, /^    if: needs\.changes\.outputs\.life == 'true'$/m)
   assert.match(browser, /fail-fast: false/)
-  assert.match(browser, /shard: \[1, 2\]/)
+  assert.match(browser, /shard: \[1, 2, 3, 4, 5, 6\]/)
   assert.match(
     browser,
     /npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/
@@ -70,12 +70,25 @@ test(
         .filter((line) => line.includes(' › '))
         .map((line) => line.trim())
     const all = list()
-    const first = list('--shard=1/2')
-    const second = list('--shard=2/2')
-    assert.ok(first.length > 0 && second.length > 0)
-    assert.ok(Math.abs(first.length - second.length) <= 1)
-    assert.equal(new Set([...first, ...second]).size, all.length)
-    assert.deepEqual([...first, ...second].sort(), all.sort())
+    const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+      '\r\n',
+      '\n'
+    )
+    const browser = workflow.match(/^  life-browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+    assert.ok(browser)
+    const shards = JSON.parse(browser.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
+    assert.ok(Array.isArray(shards))
+    assert.deepEqual(
+      shards,
+      Array.from({ length: shards.length }, (_, index) => index + 1)
+    )
+    const partitions = shards.map((shard) => list(`--shard=${shard}/${shards.length}`))
+    const counts = partitions.map((partition) => partition.length)
+    assert.ok(counts.every((count) => count > 0))
+    assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
+    const selected = partitions.flat()
+    assert.equal(new Set(selected).size, selected.length)
+    assert.deepEqual(selected.sort(), all.sort())
   }
 )
 
