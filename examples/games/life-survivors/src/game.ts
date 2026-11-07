@@ -1604,12 +1604,22 @@ export class Game {
     const state = this.state
     if (!state.bullets.length) return
     const alive = state.players.filter((player) => !player.downed)
+    const blockers = state.shots.filter(
+      (shot) => (shot.sourceWeapon === 'w_friend' || shot.sourceWeapon === 'w_pet') && shot.delay <= 0
+    )
     const kept: Bullet[] = []
     for (const bullet of state.bullets) {
       bullet.life -= dt
       if (bullet.life <= 0) continue
       bullet.x += bullet.vx * dt
       bullet.y += bullet.vy * dt
+      if (
+        blockers.some((shot) => {
+          const reach = shot.r + bullet.r
+          return (shot.x - bullet.x) ** 2 + (shot.y - bullet.y) ** 2 <= reach * reach
+        })
+      )
+        continue
       let spent = false
       for (const player of alive) {
         if (player.invuln > 0) continue
