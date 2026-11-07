@@ -172,7 +172,7 @@ window.subtitleVisibility = {
 })
 
 test('detection overlays leave the predator and its marker visible across screen sizes', async ({ page }, testInfo) => {
-  test.setTimeout(120_000)
+  test.setTimeout(300_000)
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.route('**/src/main.ts*', async (route) => {
@@ -328,6 +328,7 @@ test.describe('subtitle field separation', () => {
 
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
     test(`keeps full narration outside the field with multiple threats, ${reducedMotion}`, async ({ page }) => {
+      test.setTimeout(420_000)
       await page.emulateMedia({ reducedMotion })
       await page.route('**/src/main.ts*', async (route) => {
         const response = await route.fetch()

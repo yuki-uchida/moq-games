@@ -313,7 +313,7 @@ export const script: StageScript = {
     const { title, hint } = ((): { title: string; hint?: string } => {
       switch (state.step) {
         case STEP.alley:
-          return { title: '路地を抜けよう', hint: '段ボールやバケツのそばでしゃがむと、ネコに見つからない' }
+          return { title: '路地を抜けよう', hint: '段ボールやバケツのそばに隠れると、ネコに見つからない' }
         case STEP.ponta:
           return talking ? listen('ポン太') : { title: 'ゴミ置き場のタヌキと話そう', hint: 'ポン太のそばで E' }
         case STEP.net:

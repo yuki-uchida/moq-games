@@ -135,14 +135,14 @@ describe('Rabbiters authoritative simulation', () => {
     expect(game.state.predators[0].targetId).toBeNull()
   })
 
-  it('protects a crouching rabbit in every grass patch, even from a nearby chasing predator', () => {
+  it('protects a rabbit in every grass patch without an action input', () => {
     const game = new Game()
     game.addPlayer('rabbit', 'Rabbit')
     const player = game.state.players[0]
     game.state.foods = []
     game.state.predators = [{ id: 'fox', kind: 'fox', x: 0, y: 0, z: 0, angle: 0, state: 'chase', targetId: player.id }]
     const predator = game.state.predators[0]
-    game.setInput(player.id, { ...idle, crouch: true })
+    game.setInput(player.id, idle)
     for (const patch of GRASS) {
       const x = (patch.ax + patch.bx) / 2
       const z = (patch.az + patch.bz) / 2
@@ -154,7 +154,7 @@ describe('Rabbiters authoritative simulation', () => {
       expect(predator.targetId).toBeNull()
     }
     game.setInput(player.id, idle)
-    Object.assign(player, { x: -105, z: -12, y: 0 })
+    Object.assign(player, { x: -125, z: 8, y: heightAt(-125, 8) })
     Object.assign(predator, { x: player.x, z: player.z, y: 0, state: 'chase' })
     game.step(0.1)
     expect(player.hidden).toBe(false)

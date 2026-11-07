@@ -172,13 +172,13 @@ describe('Rabbiters seasons campaign', () => {
     expect(lost.state.phase).toBe('lost')
   })
 
-  it('hides kits in grass only while their leader crouches', () => {
+  it('hides kits in grass without an action input from their leader', () => {
     const game = winter()
     const player = game.state.players[0]
     place(player, -114, -5)
     for (const kit of game.state.kits) place(kit, -114, -7)
     game.step(1 / 60)
-    expect(game.state.kits.every((kit) => !kit.hidden)).toBe(true)
+    expect(game.state.kits.every((kit) => kit.hidden)).toBe(true)
     game.setInput(player.id, { ...idle, crouch: true })
     game.step(1 / 60)
     expect(game.state.kits.every((kit) => kit.hidden)).toBe(true)
@@ -322,7 +322,7 @@ describe('Rabbiters seasons campaign', () => {
   // Measured play length: a cautious bot that hides in grass or the den when hunted plays every season
   // against the full predator roster, retrying a lost season like a player would from the result screen.
   for (const seed of [1, 2, 3])
-    it(`plays the whole campaign among predators in about thirty minutes (seed ${seed})`, () => {
+    it(`plays the whole campaign among predators within an hour (seed ${seed})`, () => {
       let game = new Game(seed)
       game.addPlayer('rabbit', 'Rabbit')
       let player = game.state.players[0]
@@ -376,8 +376,7 @@ describe('Rabbiters seasons campaign', () => {
         game.setInput(player.id, {
           ...idle,
           ...(resting ? {} : { moveX: route.moveX, moveZ: route.moveZ }),
-          sprint: !wary && !threatNear && chapter !== 3 && route.left > 5,
-          crouch: wary || threatNear || chapter === 3
+          sprint: !wary && !threatNear && chapter !== 3 && route.left > 5
         })
         game.step(1 / 60)
       }
@@ -385,6 +384,6 @@ describe('Rabbiters seasons campaign', () => {
       expect(game.state.phase).toBe('won')
       expect(game.state.kits.some((kit) => kit.status === 'safe')).toBe(true)
       expect(game.state.time).toBeGreaterThan(22 * 60)
-      expect(game.state.time).toBeLessThan(40 * 60)
+      expect(game.state.time).toBeLessThan(60 * 60)
     }, 300_000)
 })

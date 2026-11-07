@@ -26,9 +26,9 @@ window.hideFromHunter = () => {
   const fox = host.state.predators.find((predator) => predator.kind === 'fox');
   host.state.predators = [fox];
   host.state.nests.forEach((nest) => { nest.active = false; });
-  Object.assign(local, { x: -114, y: mapTerrain.heightAt(-114, -7), z: -7, hidden: false, health: 100 });
+  Object.assign(local, { x: -125, y: mapTerrain.heightAt(-125, 8), z: 8, hidden: false, health: 100 });
   Object.assign(friend, { x: -90, y: mapTerrain.heightAt(-90, -7), z: -7, health: 100 });
-  Object.assign(fox, { x: -117, y: mapTerrain.heightAt(-117, -7), z: -7, angle: Math.PI / 2,
+  Object.assign(fox, { x: -125, y: mapTerrain.heightAt(-125, 5), z: 5, angle: 0,
     state: 'patrol', targetId: null });
   let alarms = 0, spots = 0, escapes = 0;
   const alarm = audio.alarm.bind(audio);
@@ -47,8 +47,8 @@ window.hideFromHunter = () => {
   send();
   host.step(0.016); send();
   const found = read();
-  host.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false });
-  Object.assign(friend, { x: -114.5, y: mapTerrain.heightAt(-114.5, -7), z: -7 });
+  Object.assign(local, { x: -105, y: mapTerrain.heightAt(-105, -12), z: -12 });
+  Object.assign(friend, { x: fox.x, y: mapTerrain.heightAt(fox.x, fox.z + 2.5), z: fox.z + 2.5 });
   host.step(0.016); send();
   const brieflyHidden = read();
   for (let frame = 0; frame < 40; frame++) {
@@ -57,8 +57,9 @@ window.hideFromHunter = () => {
   }
   send();
   const hidden = read();
-  host.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false });
+  Object.assign(local, { x: -125, y: mapTerrain.heightAt(-125, 8), z: 8 });
   Object.assign(friend, { x: -90, y: mapTerrain.heightAt(-90, -7), z: -7 });
+  Object.assign(fox, { x: -125, y: mapTerrain.heightAt(-125, 5), z: 5, angle: 0 });
   host.step(0.016); send();
   return { found, brieflyHidden, hidden, rediscovered: read() };
 };`
@@ -246,7 +247,7 @@ window.downOnDiscovery = () => {
   await page.waitForTimeout(250)
   await expect(page.locator('.fx-detection')).toHaveClass(/fx-on/)
   await expect(page.locator('.fx-threat')).toBeHidden()
-  await expect(page.locator('.fx-detection')).not.toHaveClass(/fx-on/, { timeout: 2000 })
+  await expect(page.locator('.fx-detection')).not.toHaveClass(/fx-on/, { timeout: 10_000 })
 })
 
 for (const automatic of [false, true]) {

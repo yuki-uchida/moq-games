@@ -447,7 +447,7 @@ export const script: StageScript = {
           label,
           hint: has(state, FLAG.tamaMet)
             ? 'タマの話を聞こう'
-            : '廊下の先の和室。ソファやテーブルの下（C でしゃがむ）に隠れながら'
+            : '廊下の先の和室。ソファやテーブルの下に隠れながら'
         }
         break
       case 3: {
@@ -480,7 +480,7 @@ export const script: StageScript = {
                 title: '第1章｜玄関の靴箱の下でタグを探そう',
                 progress: at(0.2),
                 label,
-                hint: '土間へおりて、C でしゃがんで靴箱の下へ。上がるときは SPACE'
+                hint: '土間へおりて、靴箱の下へ。上がるときは SPACE'
               }
         break
       default: {
@@ -493,7 +493,7 @@ export const script: StageScript = {
           hint: waiting
             ? 'きょうだいがそろうのを待とう'
             : open
-              ? 'C でしゃがんで、すき間をくぐろう'
+              ? 'すき間をくぐろう'
               : 'ゴンの鎖の届かないところを通ろう。すき間の前で E を長押ししてほる'
         }
       }

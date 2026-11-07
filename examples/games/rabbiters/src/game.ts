@@ -291,13 +291,13 @@ export function canEnter(kind: Kind, body: Body, x: number, z: number, grounded:
     // Only bodies that fit under the roof may walk in; one already underneath may move about.
     const roof = overhangAt(x, z, radius)
     if (roof && roof !== overhangAt(body.x, body.z, radius)) {
-      const clearance = kind === 'rabbit' ? (crouch && grounded ? RABBIT_CROUCH : RABBIT_STAND) : KINDS[kind].height
+      const clearance = kind === 'rabbit' ? (grounded ? RABBIT_CROUCH : RABBIT_STAND) : KINDS[kind].height
       if (clearance > roof.bottom) return false
     }
   }
   const log = logOver(x, z, radius)
   if (!log || kind === 'snake' || logOver(body.x, body.z, radius)) return true
-  return kind === 'rabbit' && ((crouch && grounded) || body.y > logTop(log))
+  return kind === 'rabbit' && (grounded || body.y > logTop(log))
 }
 
 /** Steps a body, sliding along whichever axis is still open when the full step is blocked. */
@@ -350,7 +350,7 @@ export function moveRabbit(
   const sliding = grounded && slopeAt(player.x, player.z) > MAX_STAND
   const speed =
     // A bundle held in the mouth rules out dashing.
-    (input.crouch ? 2.6 : input.sprint && !player.carrying ? 9 : 5.2) *
+    (input.sprint && !player.carrying ? 9 : 5.2) *
     (waterDepth(player.x, player.z) > 0.05 ? 0.55 : 1) *
     pace
   if (sliding) {
@@ -394,10 +394,10 @@ export function coverAt(x: number, y: number, z: number, crouch: boolean): Cover
     if (roof && y - heightAt(x, z) < roof.bottom) return 'under'
   }
   if (y - heightAt(x, z) > 0.6) return 'open'
-  if (crouch && logOver(x, z)) return 'log'
-  if (inBush(x, z)) return crouch ? 'bush' : 'canopy'
-  if (crouch && inGrass(x, z)) return 'grass'
-  if (crouch && waterDepth(x, z) > 0.05) return 'water'
+  if (logOver(x, z)) return 'log'
+  if (inBush(x, z)) return 'bush'
+  if (inGrass(x, z)) return 'grass'
+  if (waterDepth(x, z) > 0.05) return 'water'
   return 'open'
 }
 
@@ -969,10 +969,10 @@ export class Game {
       }
       const cover = coverAt(player.x, player.y, player.z, input.crouch)
       const ground = heightAt(player.x, player.z)
-      const sprinting = input.sprint && !input.crouch && (input.moveX !== 0 || input.moveZ !== 0)
+      const sprinting = input.sprint && (input.moveX !== 0 || input.moveZ !== 0)
       player.hidden = cover !== 'open' && cover !== 'canopy'
       this.cover.set(player.id, {
-        crouch: input.crouch,
+        crouch: false,
         inGrass: inGrass(player.x, player.z) || cover === 'canopy',
         cover,
         sprinting,

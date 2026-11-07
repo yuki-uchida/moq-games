@@ -16,14 +16,15 @@ window.rabbitersSuspicionCoverProbe = {
     const predator = state.predators[0];
     state.predators = [predator];
     Object.assign(player, { x: 7, y: suspicionCoverHeight(7, 9), z: 9, health: 100 });
-    Object.assign(predator, { kind: 'cat', x: 10, y: suspicionCoverHeight(10, 9), z: 9,
+    Object.assign(predator, { kind: 'cat', x: 11, y: suspicionCoverHeight(11, 9), z: 9,
       angle: -Math.PI / 2, state: 'patrol', targetId: null, suspicion: 0 });
-    game.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false });
+    game.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false });
     feel.reset(state, localId);
     spottedUntil = 0;
     alertOverlay.className = 'alert-overlay';
     document.querySelector('.fx-cover').style.transition = 'none';
     step(0.016);
+    Object.assign(predator, { state: 'suspicious', targetId: localId, suspicion: 0.5 });
     feel.update(state, localId);
     updateHud(state);
     return this.read();
@@ -92,8 +93,8 @@ window.rabbitersCoverProbe = () => {
   const predator = state.predators.find((entry) => entry.kind === 'fox');
   state.predators = [predator];
   state.nests.forEach((nest) => { nest.active = false; });
-  Object.assign(player, { x: -105, y: coverProbeHeight(-105, -12), z: -12, health: 100 });
-  Object.assign(predator, { x: -105, y: coverProbeHeight(-105, -9.25), z: -9.25,
+  Object.assign(player, { x: -125, y: coverProbeHeight(-125, 8), z: 8, health: 100 });
+  Object.assign(predator, { x: -125, y: coverProbeHeight(-125, 10.75), z: 10.75,
     angle: Math.PI, state: 'patrol', targetId: null, suspicion: 0 });
   game.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false });
   feel.reset(state, localId);
@@ -104,7 +105,7 @@ window.rabbitersCoverProbe = () => {
   feel.update(state, localId);
   updateHud(state);
   const chase = { state: predator.state, background: getComputedStyle(alertOverlay).backgroundImage };
-  game.setInput(localId, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false });
+  Object.assign(player, { x: -105, y: coverProbeHeight(-105, -12), z: -12 });
   step(0.016);
   feel.update(state, localId);
   updateHud(state);

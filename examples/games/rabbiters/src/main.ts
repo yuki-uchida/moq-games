@@ -70,7 +70,7 @@ const touchInput = matchMedia('(pointer: coarse)')
 const KEY_ICONS: Record<string, [string, string]> = {
   WASD: ['i-move', 'スティック'],
   SPACE: ['i-jump', 'ジャンプ'],
-  C: ['i-crouch', 'しゃがむ'],
+  C: ['i-crouch', '穴にもぐる／砂浴び'],
   E: ['i-act', 'アクション']
 }
 let shownHint = ''
@@ -594,7 +594,7 @@ function updateHud(state: GameState) {
       : forest &&
           state.chapter === 3 &&
           !state.kits.some((kit) => kit.status === 'safe' || kit.status === 'follow' || kit.status === 'wait')
-        ? `子ウサギたちを守りきれませんでした。草むらでしゃがみ、ゆっくり導いてあげよう。（${record}）`
+        ? `子ウサギたちを守りきれませんでした。草むらに隠れながら、ゆっくり導いてあげよう。（${record}）`
         : `ウサギたちは力尽きてしまいました。食べものと隠れ場所を探して、もう一度。（${record}）`
     result.hidden = false
     restart.textContent = 'もう一度あそぶ'
@@ -638,7 +638,7 @@ function updateHud(state: GameState) {
   const nearTrunk = !underground && treesNear(player.x, player.z, 1.5).length > 0
   // Cover reads as a green vignette and a lit hide button; phones show the line only when it is urgent.
   alertOverlay.classList.toggle('covered', player.hidden && !suspected && !hunting)
-  element<HTMLElement>('#touch-crouch').classList.toggle('active', player.hidden)
+  element<HTMLElement>('#touch-crouch').classList.toggle('active', touch.crouch)
   element<HTMLElement>('#condition').classList.toggle('urgent', player.downed)
   element<HTMLElement>('#condition').textContent = player.downed
     ? '倒れています。仲間の助けを待とう'

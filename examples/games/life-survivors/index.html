@@ -57,7 +57,7 @@
         </div>
         <div id="banner" class="banner-layer" aria-hidden="true"></div>
         <div id="stick" class="stick" aria-hidden="true" hidden><i id="stick-knob"></i></div>
-        <p id="move-hint" class="move-hint" aria-hidden="true" hidden>画面のどこでもスライドして移動。攻撃は自動。</p>
+        <p id="move-hint" class="move-hint" aria-hidden="true" hidden>☝ スライドで移動 · 攻撃は自動</p>
         <div class="hand" aria-label="人生の手札">
           <div
             id="weapons"
@@ -93,24 +93,27 @@
         <div class="start-inner">
           <p class="overline">A 15-MINUTE LIFE</p>
           <h1 id="start-title">ジンセイガ・ツライデース<small>人生サバイバー</small></h1>
-          <p class="intro">
-            あなたは赤ちゃんとして生まれる。親は選べない。才能は見えない。<br />
-            押し寄せる出費・悪口・受験・病気を退け、<strong>15分の人生を生き抜こう。</strong>
-          </p>
-          <ul class="rules">
-            <li><b>👶</b>全員が赤ちゃんから。親はランダムに決まる（親ガチャ）</li>
-            <li><b>🔮</b>才能は隠れている。手応えから自分の向き不向きを見極めよう</li>
-            <li><b>🃏</b>友人・勉強・仕事・恋愛・投資…人生の手札を組み、性格で進化</li>
-            <li><b>🛤️</b>育てた手札で進学・進路・結婚が分岐。条件はゲーム中の「?」で確認</li>
-            <li><b>💥</b>敵も弾を撃ってくる。動いてかわそう。手ごわい個体を倒すと転機やごはんが落ちる</li>
-            <li><b>💀</b>15:00、死神が迎えに来たら大往生（クリア）</li>
+          <p class="intro"><strong>15分、生き抜け。</strong></p>
+          <ol class="life-route" aria-label="人生の流れ">
+            <li><span aria-hidden="true">👶</span><b>誕生</b><small>親は運次第</small></li>
+            <li><span aria-hidden="true">🃏</span><b>手札育成</b><small>進路が分岐</small></li>
+            <li>
+              <span aria-hidden="true">💀</span><b>15:00</b><small>大往生<br />クリア</small>
+            </li>
+          </ol>
+          <ul class="rules" aria-label="基本操作">
+            <li>
+              <b aria-hidden="true">↔</b><span><kbd>WASD</kbd> / <kbd>矢印</kbd> / スライドで移動</span>
+            </li>
+            <li><b aria-hidden="true">⚔️</b><span>攻撃は自動 · 弾をかわそう</span></li>
+            <li><b aria-hidden="true">?</b><span>詳しい遊び方・分岐条件はゲーム中の「?」へ</span></li>
           </ul>
           <p class="content-note">※ 死や自死を暗示する表現があります</p>
           <p class="sound-note">
             <button id="mute-title" class="mute-chip" type="button" aria-label="音をミュート" aria-pressed="false">
               🔊
             </button>
-            BGM・効果音あり<span class="key-only">（Mキーでオン／オフ）</span>
+            BGM・効果音<span class="key-only"> · <kbd>M</kbd> で切替</span>
           </p>
           <button id="solo" class="button button-primary" type="button">ひとりで生まれる</button>
           <div class="divider"><span></span> みんなで生きる <span></span></div>
@@ -128,7 +131,7 @@
               <button id="host" class="button button-outline" type="button">ルームを作る</button>
               <button id="join" class="button button-outline" type="button">ルームに参加</button>
             </div>
-            <p class="fine-print">同じルーム名で最大8人まで。ルーム名は認証ではありません。</p>
+            <p class="fine-print">同じ名前で最大8人 · ルーム名は認証ではありません</p>
           </div>
           <p id="start-error" class="error" role="alert"></p>
           <a class="home-link" href="../../../index.html">← ゲーム一覧</a>
@@ -138,88 +141,144 @@
       <section id="help" class="dialog-backdrop" aria-labelledby="help-title" hidden>
         <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
           <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
-          <h2 id="help-title">生き抜くために</h2>
-          <p>ひとりプレイはこの画面を開いている間は一時停止。みんなで遊ぶときは時間が進みます。</p>
-          <figure class="talent-guide">
-            <svg viewBox="0 0 300 240" role="img" aria-labelledby="talent-title talent-desc">
-              <title id="talent-title">秘密の才能の六角形</title>
-              <desc id="talent-desc">
-                対人、恋愛、身体、創造、知性、資産の順に一周します。線でつながる隣の分野は似た才能になりやすく、値は人生の最後まで秘密です。
-              </desc>
-              <polygon points="150,30 250,75 250,165 150,210 50,165 50,75" />
-              <g>
-                <text x="150" y="30">対人</text>
-                <text x="250" y="75">恋愛</text>
-                <text x="250" y="165">身体</text>
-                <text x="150" y="210">創造</text>
-                <text x="50" y="165">知性</text>
-                <text x="50" y="75">資産</text>
-              </g>
-              <text x="150" y="120">才能の値は秘密</text>
-            </svg>
-            <figcaption>
-              線でつながる隣同士は似やすい。武器も性格もこの6分野。仕事は知性、美容は恋愛。手応えと攻撃から探り、最後に全分野をふりかえろう。
-            </figcaption>
-          </figure>
-          <section aria-labelledby="life-path-help-title">
-            <h3 id="life-path-help-title">人生の分岐条件</h3>
-            <ul class="help-list">
-              <li><strong>20歳・進学。</strong>大学受験イベント時に勉強Lv3以上で進学。</li>
-              <li>
-                <strong>28歳・進路。</strong
-                >就職活動イベント時に仕事Lv2以上で就職の候補に。スポーツ・筋トレのどちらかLv4以上で運動の道、投資・貯金のどちらかLv4以上で資産の道、趣味・カラオケ・旅行・料理のいずれかLv4以上で創作の道も候補になります。友人・SNS・ペットのいずれかLv4以上なら、人とのつながりを活かす道も候補になり、転機1回を獲得します。結婚や子どもの有無は条件ではありません。複数候補は手札の育成度と進化で決まり、同点は武器の定義順です。創作の道は転機1回。
-              </li>
-              <li>
-                <strong>64歳・後年の進路。</strong
-                >現在の仕事Lv4以上、運動・資産・創作・対人の資格武器Lv4以上から、28歳と同じ順位で再判定。別分野または未決定なら初就職・新分野への挑戦で転機2回。同分野や資格なしなら従来の継続・過去経験の結果を保ちます。28歳の履歴は変わらず、この時点の初就職だけではリストラボスは出現しません。
-              </li>
-              <li>
-                <strong>結婚。</strong
-                >結婚イベント時に恋愛Lv2以上で結婚。配偶者が本人の精神力を少しずつ回復します（ダウン中を除く）。
-              </li>
-              <li>
-                <strong>家族の選択。</strong
-                >対象時点から参加している既婚者は、子どもを迎える／迎えないを本人が選びます。迎えると本人の回復が毎秒2から3に。迎えない場合は毎秒2を維持。未選択は拒否ではありません。協力では各自が選び、時間は止まりません。
-              </li>
-            </ul>
-            <p>
-              これらは隠れた才能ではなく、各時点の手札で一度だけ決定。過去の結果は変わりませんが、後から育てた手札は64歳の進路に反映されます。
-              仕事は28歳に未決定なら初就職、別分野の履歴があれば仕事への転向。途中参加で過去が不明なら新たな仕事への挑戦とだけ記録します。
-            </p>
-          </section>
-          <ul class="help-list">
+          <h2 id="help-title">遊び方</h2>
+          <p class="help-pause"><span aria-hidden="true">⏸</span> ソロ：この画面で停止 · 協力：時間は進行</p>
+          <ul class="help-basics" aria-label="基本操作">
             <li>
-              <strong>移動だけ。</strong
-              >手札は自動で困難を攻撃します。WASD／矢印キー。スマホは画面のどこでも指を置いてスライド（スティックが出ます）。
+              <span aria-hidden="true">↔</span><strong>かわす</strong
+              ><small><kbd>WASD</kbd> / <kbd>矢印</kbd><br />タッチ：画面のどこでもスライド</small>
             </li>
             <li>
-              <strong>経験値（◆）を集めて転機を迎える。</strong
-              >3枚（運がいいと4枚）から1枚選び、手札を増やす・強化する（1〜4キー）。経験値はチーム共通、選択は各自です。
+              <span aria-hidden="true">⚔️</span><strong>自動で攻撃</strong
+              ><small>移動に集中<br />敵の「!」は突進の予告</small>
             </li>
             <li>
-              <strong>特攻。</strong
-              >手札ごとに得意な相手がいます。モンスターペアレントは人間、お金持ちは出費、勉強は試験に強い。黄色い「!」の数字が特攻です。
+              <span aria-hidden="true">◆</span><strong>集めて強化</strong
+              ><small>経験値 → 転機 → １枚選ぶ<br />クリック / タップ / <kbd>1〜4</kbd></small>
             </li>
-            <li>
-              <strong>才能は見えない。</strong
-              >同じ手札や性格でも才能によって効果が変わります。性格の説明は基準値です。数字の大きさと「手応え」から見極めて。
-            </li>
-            <li>
-              <strong>会心。</strong>攻撃は5％で会心（2倍）になります。運がいいほど出やすく、数字が大きく跳ねます。
-            </li>
-            <li>
-              <strong>敵の弾をかわす。</strong
-              >偏食や断れない飲み会、ボスは弾を撃ち、突進の前には「!」が出ます。動き続けて避けよう。
-            </li>
-            <li>
-              <strong>手ごわい個体。</strong
-              >2:00以降、赤く光る強敵が現れます。倒すと転機（宝箱）かごはんが落ち、宝箱は運次第で転機が3回分になることも。
-            </li>
-            <li>
-              <strong>進化。</strong>手札をLv8にし、相性のよい性格を持つと進化します（例：投資＋がめつい＝複利の魔法）。
-            </li>
-            <li><strong>心が折れても。</strong>仲間がそばに立つと立ち直ります。全員折れたら人生終了。</li>
           </ul>
+          <ul class="help-list help-quick">
+            <li><span aria-hidden="true">🃏</span> 転機は３択、ときどき４択。経験値は共通、選択は各自。</li>
+            <li><span aria-hidden="true">✨</span> 武器Lv8 ＋ 相性のよい性格 → 進化</li>
+            <li><span aria-hidden="true">🤝</span> ダウンした仲間のそばで復活。全員ダウンで終了。</li>
+            <li><span aria-hidden="true">💀</span> 15:00 → 死神のお迎えでクリア</li>
+          </ul>
+          <details class="help-details">
+            <summary><span aria-hidden="true">🔮</span> 才能と攻撃</summary>
+            <figure class="talent-guide">
+              <svg viewBox="0 0 300 240" role="img" aria-labelledby="talent-title talent-desc">
+                <title id="talent-title">秘密の才能の六角形</title>
+                <desc id="talent-desc">
+                  対人、恋愛、身体、創造、知性、資産の順に一周します。線でつながる隣の分野は似た才能になりやすく、値は人生の最後まで秘密です。
+                </desc>
+                <polygon points="150,30 250,75 250,165 150,210 50,165 50,75" />
+                <g>
+                  <text x="150" y="30">対人</text>
+                  <text x="250" y="75">恋愛</text>
+                  <text x="250" y="165">身体</text>
+                  <text x="150" y="210">創造</text>
+                  <text x="50" y="165">知性</text>
+                  <text x="50" y="75">資産</text>
+                </g>
+                <text x="150" y="120">才能の値は秘密</text>
+              </svg>
+              <figcaption>隣の分野は似やすい。才能の値は終幕で公開。</figcaption>
+            </figure>
+            <ul class="help-list">
+              <li><strong>才能：</strong>武器・性格の効果に影響。説明の数値は基準値。数字と手応えで探ろう。</li>
+              <li><strong>６分野：</strong>武器・性格に共通。仕事＝知性、美容＝恋愛。</li>
+              <li>
+                <strong>特攻：</strong>黄色い「!」のダメージ。モンスターペアレント→人間、お金持ち→出費、勉強→試験。
+              </li>
+              <li><strong>会心：</strong>基本5％で威力２倍。運が高いほど発生。</li>
+              <li><strong>進化の例：</strong>投資Lv8 ＋ がめつい → 複利の魔法</li>
+              <li>
+                <strong>🛡️ 親の盾：</strong>接触も防ぐ。防御は本人ごとに最短1.5秒間隔で短縮不可。薄い盾は攻撃のみ。
+              </li>
+              <li><strong>赤く光る強敵：</strong>2:00以降に出現。倒すと宝箱かごはん。宝箱は運次第で転機３回分。</li>
+            </ul>
+          </details>
+          <details class="help-details">
+            <summary><span aria-hidden="true">🛤️</span> 人生の分岐条件</summary>
+            <p class="help-caption">才能ではなく、その時点の手札で各１回判定。過去の結果は変わりません。</p>
+            <table class="help-table">
+              <caption>
+                進学・進路・家族
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">転機</th>
+                  <th scope="col">条件 → 結果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">20歳<br />大学受験</th>
+                  <td>勉強Lv3以上 → 進学</td>
+                </tr>
+                <tr>
+                  <th scope="row">28歳<br />就職活動</th>
+                  <td>仕事Lv2以上 → 就職候補<br />下表の武器Lv4以上 → 各分野の候補<br />創作・対人の道：転機１回</td>
+                </tr>
+                <tr>
+                  <th scope="row">64歳<br />再出発</th>
+                  <td>
+                    仕事・下表の武器Lv4以上で再判定<br />別分野・進路未決定 → 転機２回<br />同分野・資格なし →
+                    継続／過去経験
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">結婚</th>
+                  <td>結婚イベント時に恋愛Lv2以上<br />配偶者：本人の精神力を毎秒２回復</td>
+                </tr>
+                <tr>
+                  <th scope="row">子ども</th>
+                  <td>
+                    対象時点から参加している既婚者が選択<br />迎える → 毎秒３回復／迎えない → 毎秒２を維持<br />未選択 ≠
+                    拒否。協力中は各自で選択・時間は進行。
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <table class="help-table">
+              <caption>
+                進路の資格武器（いずれかLv4以上）
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">分野</th>
+                  <th scope="col">武器</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">運動</th>
+                  <td>スポーツ / 筋トレ</td>
+                </tr>
+                <tr>
+                  <th scope="row">資産</th>
+                  <td>投資 / 貯金</td>
+                </tr>
+                <tr>
+                  <th scope="row">創作</th>
+                  <td>趣味 / カラオケ / 旅行 / 料理</td>
+                </tr>
+                <tr>
+                  <th scope="row">対人</th>
+                  <td>友人 / SNS / ペット</td>
+                </tr>
+              </tbody>
+            </table>
+            <ul class="help-list">
+              <li><strong>候補が複数：</strong>育成度・進化で決定。同点は武器の定義順。64歳も同じ順位。</li>
+              <li><strong>対人の道：</strong>結婚・子どもの有無は不問。</li>
+              <li><strong>64歳：</strong>28歳の履歴は維持。この時点の初就職だけではリストラボスは出現しません。</li>
+              <li>
+                <strong>仕事への進路：</strong>28歳に未決定→初就職、別分野から→転向、途中参加で過去不明→新たな挑戦。
+              </li>
+              <li><strong>家族の回復：</strong>本人のみ。ダウン中・毒親の場合は回復なし。</li>
+            </ul>
+          </details>
           <div class="sound-row">
             <label for="music-volume">BGMの音量</label>
             <input id="music-volume" type="range" min="0" max="100" step="5" value="50" />
@@ -227,7 +286,7 @@
           <div class="sound-row">
             <label for="volume">効果音の音量</label>
             <input id="volume" type="range" min="0" max="100" step="5" value="70" />
-            <span class="sound-key key-only">M キーでミュート</span>
+            <span class="sound-key key-only">M で切替</span>
           </div>
           <button id="help-done" class="button button-primary" type="button">わかった</button>
         </div>

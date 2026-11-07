@@ -25,7 +25,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   ],
   alley_cats: [
     rabbit('大きなネコ……！ 見つかったら、たいへんだ。'),
-    rabbit('段ボールやバケツのかげで、しゃがんでやりすごそう。')
+    rabbit('段ボールやバケツのかげに隠れてやりすごそう。')
   ],
   garbage: [rabbit('ゴミのにおい……。だれか、いる？')],
   ponta_first: [
@@ -60,7 +60,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
   ],
   road_first: [
     rabbit('なんてはやいの……。すきまを待とう。'),
-    rabbit('とまってる車の下なら、しゃがんでかくれられそう。')
+    rabbit('とまってる車の下なら、かくれられそう。')
   ],
   road_crossed: [rabbit('わたれた……！ 心臓がバクバクしてる。')],
   shopping_street: [

@@ -179,8 +179,8 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
-    desc: '身のまわりに毒の空気。悪口や人間関係に特攻。',
-    perk: '全武器の威力 +5%。精神力の最大値 -10・自然回復なし（性格・仲間・家庭）。食事・レベルアップでは回復できる。18歳未満は親を含めて手札3枠'
+    desc: '身のまわりに毒の空気。特攻：悪口・人間関係。',
+    perk: '全武器の威力 +5%・最大精神力 -10。自然回復なし（性格・仲間・家庭）／食事・レベルアップで回復可。18歳未満は親を含めて手札3枠'
   }),
   weapon({
     id: 'p_edu',
@@ -196,7 +196,7 @@ export const PARENTS: WeaponDef[] = [
     area: 13,
     duration: 1.4,
     strong: ['exam', 'class'],
-    desc: '参考書を一番近い敵に投げつける。試験・授業に特攻。',
+    desc: '参考書を一番近い敵に投げつける。特攻：試験・授業。',
     perk: '勉強の威力 +30%'
   }),
   weapon({
@@ -214,7 +214,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 2.6,
     pierce: 3,
     area: 14,
-    desc: '風船が真上に飛び、割れると周囲に爆発ダメージとノックバック。特攻はない。',
+    desc: '風船が真上へ飛び、割れて周囲を爆破・吹き飛ばす。特攻なし。',
     perk: '手札の枠 +1'
   }),
   weapon({
@@ -250,7 +250,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '親が盾を構えて近くの敵を迎撃し、ダメージを与えて弾き飛ばす。盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵（接触も防ぐ）。防御は本人ごとに最短1.5秒間隔で、枚数・勤勉・好奇心では短縮されない。使用済み・再防御待ちの薄い盾も攻撃を続ける。事故・病気に特攻。',
+    desc: '盾で迎撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({
@@ -270,7 +270,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。人間関係・授業に特攻。'
+    desc: '子のそばを離れて近くの敵を追い回す。特攻：人間関係・授業。'
   }),
   weapon({
     id: 'p_rich',
@@ -287,7 +287,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.45,
     pierce: Infinity,
     strong: ['money'],
-    desc: '札束が敵の頭上に降る。各種出費に特攻。',
+    desc: '札束が敵の頭上に降る。特攻：お金。',
     perk: '投資の威力 +30%'
   }),
   weapon({
@@ -306,7 +306,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 300,
     strong: ['people', 'class'],
-    desc: '一番近い敵に殴り込んで飛び蹴りし、肩で風を切って戻ってくる。人間関係・授業に特攻。'
+    desc: '最も近い敵に飛び蹴りし、戻ってくる。特攻：人間関係・授業。'
   }),
   weapon({
     id: 'p_gone',
@@ -317,8 +317,8 @@ export const PARENTS: WeaponDef[] = [
     behavior: 'none',
     parent: true,
     damage: 0,
-    desc: '親はいない。武器はないが、そのぶん心が強く、早くから自分の力を見つける。',
-    perk: '精神力 +60・自然回復 +1/秒・生まれてすぐ幼いころの才能を1枚選べる（自立）'
+    desc: '親の武器なし。強い心と、生まれたときの才能で自立。',
+    perk: '最大精神力 +60・自然回復 +1/秒・誕生時に幼少期の才能を1枚選択'
   })
 ]
 
@@ -340,7 +340,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 120,
     strong: ['people', 'insult'],
     minAge: 3,
-    desc: '友だちが遊びに来て、まわりを駆け回る。人間関係・悪口に特攻。',
+    desc: '友だちが遊びに来て、まわりを駆け回る。特攻：人間関係・悪口。',
     evolve: { passive: 'p_kind', name: '一生の親友' }
   }),
   weapon({
@@ -359,7 +359,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 80,
     strong: ['sickness', 'sports'],
     minAge: 5,
-    desc: '年齢に合わせてサッカー→野球→バスケ→テニス→ゴルフ→ゲートボールに変化。病気・スポーツに特攻。',
+    desc: '年齢で変化：サッカー→野球→バスケ→テニス→ゴルフ→ゲートボール。特攻：病気・スポーツ。',
     evolve: { passive: 'p_hot', name: '全国制覇' }
   }),
   weapon({
@@ -377,7 +377,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 2,
     strong: ['exam', 'class'],
     minAge: 3,
-    desc: '鉛筆が一番近い敵を貫く。試験・授業に特攻。',
+    desc: '鉛筆が一番近い敵を貫く。特攻：試験・授業。',
     evolve: { passive: 'p_diligent', name: '首席合格' }
   }),
   weapon({
@@ -395,7 +395,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['love', 'insult'],
     minAge: 12,
-    desc: 'ハートが追いかけて当たると足止め。恋愛・悪口に特攻。',
+    desc: 'ハートが追いかけて当たると足止め。特攻：恋愛・悪口。',
     evolve: { passive: 'p_stubborn', name: '一途な愛' }
   }),
   weapon({
@@ -413,7 +413,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 60,
     strong: ['love', 'people'],
     minAge: 12,
-    desc: '向いている方向を輝きで薙ぎ払う。恋愛・人間関係に特攻。',
+    desc: '向いている方向を輝きで薙ぎ払う。特攻：恋愛・人間関係。',
     evolve: { passive: 'p_healthy', name: '永遠の美貌' }
   }),
   weapon({
@@ -430,7 +430,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'class'],
     minAge: 8,
-    desc: '夢中になれる場所をつくり、入った敵を削る。仕事・授業に特攻。',
+    desc: '夢中になれる場所をつくり、入った敵を削る。特攻：仕事・授業。',
     evolve: { passive: 'p_optimist', name: '一生の趣味' }
   }),
   weapon({
@@ -449,7 +449,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 40,
     strong: ['work', 'money'],
     minAge: 16,
-    desc: 'カバンを放り投げて叩き落とす。仕事・お金に特攻。',
+    desc: 'カバンを放り投げて叩き落とす。特攻：仕事・お金。',
     evolve: { passive: 'p_bold', name: '出世街道' }
   }),
   weapon({
@@ -467,7 +467,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['money'],
     minAge: 20,
-    desc: '相場の稲妻が敵を撃つ。持っているほど威力が複利で伸びる。お金に特攻。',
+    desc: '稲妻で敵を攻撃。所持時間に応じて威力上昇。特攻：お金。',
     evolve: { passive: 'p_greedy', name: '複利の魔法' }
   }),
   weapon({
@@ -485,7 +485,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'people'],
     minAge: 12,
-    desc: '投稿が次々に伝染し、敵から敵へ飛び移る。悪口・人間関係に特攻。',
+    desc: '投稿が次々に伝染し、敵から敵へ飛び移る。特攻：悪口・人間関係。',
     evolve: { passive: 'p_savvy', name: 'バズの連鎖' }
   }),
   weapon({
@@ -504,7 +504,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'child'],
     minAge: 3,
-    desc: '子犬から成長し、迎えて20年でお別れ。初めてのお別れで性格「愛犬との思い出」を獲得。悪口・子育てに特攻。',
+    desc: '子犬から成長し、迎えて20年でお別れ。初回のみ性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
     evolve: { passive: 'p_optimist', name: '忠犬' }
   }),
   weapon({
@@ -523,7 +523,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 420,
     strong: ['sports', 'accident'],
     minAge: 12,
-    desc: '足もとを叩きつけて衝撃波。近くの敵をまとめて吹き飛ばす。スポーツ・事故に特攻。',
+    desc: '足もとを叩きつけて衝撃波。近くの敵をまとめて吹き飛ばす。特攻：スポーツ・事故。',
     evolve: { passive: 'p_stubborn', name: '鋼の肉体' }
   }),
   weapon({
@@ -541,7 +541,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['class', 'exam'],
     minAge: 5,
-    desc: '知識の光線が向いた方向を貫く。授業・試験に特攻。',
+    desc: '知識の光線が向いた方向を貫く。特攻：授業・試験。',
     evolve: { passive: 'p_curious', name: '博覧強記' }
   }),
   weapon({
@@ -560,7 +560,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['work', 'class'],
     minAge: 22,
-    desc: 'ホチキスの針を連射する。終わらない仕事・授業に特攻。',
+    desc: 'ホチキスの針を連射する。特攻：仕事・授業。',
     evolve: { passive: 'p_clever', name: '社畜の鑑' }
   }),
   weapon({
@@ -579,7 +579,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['love', 'money'],
     minAge: 22,
-    desc: '投げた指輪は必ずあなたの元へ戻ってくる。恋愛・お金に特攻。',
+    desc: '投げた指輪は必ずあなたの元へ戻ってくる。特攻：恋愛・お金。',
     evolve: { passive: 'p_kind', name: '銀婚式' }
   }),
   weapon({
@@ -598,7 +598,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 60,
     strong: ['work', 'insult'],
     minAge: 12,
-    desc: '歌声が前方に扇状に広がる。仕事・悪口に特攻。',
+    desc: '歌声が前方に扇状に広がる。特攻：仕事・悪口。',
     evolve: { passive: 'p_hot', name: '魂のシャウト' }
   }),
   weapon({
@@ -617,7 +617,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'sickness'],
     minAge: 18,
-    desc: '紙飛行機が画面を横切って飛んでいく。仕事・病気に特攻。',
+    desc: '紙飛行機が画面を横切って飛んでいく。特攻：仕事・病気。',
     evolve: { passive: 'p_curious', name: '世界一周' }
   }),
   weapon({
@@ -635,7 +635,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['money', 'accident'],
     minAge: 6,
-    desc: '置いた貯金箱に敵が触れると弾けて大爆発。お金・事故に特攻。',
+    desc: '置いた貯金箱に敵が触れると弾けて大爆発。特攻：お金・事故。',
     evolve: { passive: 'p_bold', name: '老後の蓄え' }
   }),
   weapon({
@@ -654,7 +654,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['money'],
     minAge: 12,
-    desc: '12秒ごとに武器を抽選し、次の抽選まで繰り返し使う。課金、ポーカー、パチンコ、競馬へと変化。',
+    desc: '12秒ごとに武器を抽選し、次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
     evolve: { passive: 'p_lucky', name: '大穴的中' }
   }),
   weapon({
@@ -672,7 +672,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['love', 'people'],
     minAge: 15,
-    desc: '歩いた跡に香りの雲が残り、入った敵を酔わせる。恋愛・人間関係に特攻。',
+    desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。特攻：恋愛・人間関係。',
     evolve: { passive: 'p_savvy', name: '魅惑のフェロモン' }
   }),
   weapon({
@@ -691,7 +691,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['sickness', 'child'],
     minAge: 10,
-    desc: '手料理を扇状にふるまう。病気・子育てに特攻。',
+    desc: '手料理を扇状にふるまう。特攻：病気・子育て。',
     evolve: { passive: 'p_healthy', name: 'おふくろの味' }
   })
 ]
@@ -714,11 +714,17 @@ export const PASSIVES: PassiveDef[] = [
   { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +10%' },
   { id: 'p_kind', category: 'friend', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
   { id: 'p_greedy', category: 'invest', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%' },
-  { id: 'p_bold', category: 'sports', name: '図太い', icon: '🐘', desc: '精神力の最大値 +20' },
+  { id: 'p_bold', category: 'sports', name: '図太い', icon: '🐘', desc: '最大精神力 +20' },
   { id: 'p_optimist', category: 'love', name: '楽天家', icon: '🌈', desc: '精神力の自然回復 +0.4/秒' },
   { id: 'p_healthy', category: 'sports', name: '健康志向', icon: '🥦', desc: '移動速度 +8%' },
   { id: 'p_lucky', category: 'invest', name: '運がいい', icon: '🍀', desc: '会心率 +5%・転機の札が増えることも' },
-  { id: 'p_clever', category: 'hobby', name: '器用', icon: '🧶', desc: '手札の数 +1（Lv1・Lv4）・威力 +3%' },
+  {
+    id: 'p_clever',
+    category: 'hobby',
+    name: '器用',
+    icon: '🧶',
+    desc: '発射・召喚数 +1（Lv1・Lv4／武器による）・威力 +3%'
+  },
   { id: 'p_curious', category: 'hobby', name: '好奇心', icon: '🔭', desc: '効果時間 +10%・弾の速さ +10%' },
   { id: 'p_savvy', category: 'friend', name: '空気が読める', icon: '👀', desc: '特攻の倍率 +0.25' },
   { id: 'p_grand', category: 'sports', name: '豪快', icon: '💥', desc: '弾数 +1（武器による）・クールダウン +10%' },
@@ -738,13 +744,13 @@ export const PASSIVES: PassiveDef[] = [
     category: 'friend',
     name: '愛犬との思い出',
     icon: '🐾',
-    desc: 'お別れで一度だけ獲得。精神力の自然回復 +0.4/秒（通常の性格枠を使わない）'
+    desc: '初めてのお別れで獲得。自然回復 +0.4/秒・性格枠の消費なし'
   }
 ]
 
 export const INHERITED_PASSIVES: PassiveDef[] = [
   { id: 'p_affection', category: 'love', name: '愛情', icon: '💗', desc: '精神力の自然回復 +0.4/秒' },
-  { id: 'p_acceptance', category: 'friend', name: '包容力', icon: '🫂', desc: '精神力の最大値 +20' },
+  { id: 'p_acceptance', category: 'friend', name: '包容力', icon: '🫂', desc: '最大精神力 +20' },
   { id: 'p_patience', category: 'sports', name: '忍耐力', icon: '🪨', desc: '防御 +1' },
   { id: 'p_courage', category: 'sports', name: '勇気', icon: '🦁', desc: '威力 +10%' }
 ]

@@ -9,13 +9,13 @@ export const CONVERSATIONS: Record<string, Line[]> = {
     { who: 'rabbit', text: 'おうちを出て、町と川をこえて来たの。' },
     { who: 'yomogi', text: 'よくがんばったね。ここが森だよ。まずはたくさん食べて、大きくおなり。' },
     { who: 'yomogi', text: 'そこの土の山が巣穴だよ。中で休めば、けがもすぐ治る。' },
-    { who: 'yomogi', text: '外で見つかりそうになったら、草むらでしゃがむか、倒木の下にもぐるんだ。' }
+    { who: 'yomogi', text: '外で見つかりそうになったら、草むらか倒木の下に隠れるんだ。' }
   ],
   'season-1': [{ who: 'yomogi', text: '夏だね。野原の草を巣穴へ運んで、ふかふかの巣をつくろう。' }],
   'season-2': [{ who: 'yomogi', text: '巣ができたね。よく食べて、新しい命を大事にするんだよ。' }],
   'season-3': [{ who: 'yomogi', text: '子どもたちが生まれた！ 小川の向こう、大樫のうろへ連れていっておやり。' }],
   'yomogi-0': [
-    { who: 'yomogi', text: '草むらでしゃがめば、キツネもタカも気づかないよ。' },
+    { who: 'yomogi', text: '草むらに隠れれば、キツネもタカも気づかないよ。' },
     { who: 'yomogi', text: '木の幹のすぐ裏にかくれると、まず見つからない。追われたら木のあいだを抜けるんだ。' }
   ],
   'yomogi-1': [{ who: 'yomogi', text: '巣材をくわえていると目立つ。物かげを選んで運ぶんだよ。' }],
