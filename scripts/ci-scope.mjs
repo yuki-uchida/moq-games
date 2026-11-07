@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle']
+const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle', 'yoru-no-yashiki']
 
 export function selectScope(paths) {
   const selected = new Set()

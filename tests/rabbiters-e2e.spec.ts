@@ -890,6 +890,14 @@ window.rabbitersAudioPriority = {
     const alarm = audio.alarm.bind(audio);
     audio.alarm = () => {
       this.alarms++;
+      if (this.alarms === 2) {
+        const voices = [...audio.voices];
+        this.musicVoices = voices.length;
+        for (const voice of voices) {
+          const stop = voice.stop.bind(voice);
+          voice.stop = (...args) => { this.stopped++; return stop(...args); };
+        }
+      }
       alarm();
       if (this.alarms === 2) {
         const until = audio.context.currentTime + 0.5;
@@ -906,12 +914,6 @@ window.rabbitersAudioPriority = {
       music();
       if (this.localTriggered || audio.previous?.threat !== 'chase' ||
           audio.context.currentTime < audio.musicAfter || !audio.voices.size) return;
-      const voices = [...audio.voices];
-      this.musicVoices = voices.length;
-      for (const voice of voices) {
-        const stop = voice.stop.bind(voice);
-        voice.stop = (...args) => { this.stopped++; return stop(...args); };
-      }
       this.localTriggered = true;
       Object.assign(game.state.predators[1], { state: 'chase', targetId: localId });
       game.state.time += 0.01;

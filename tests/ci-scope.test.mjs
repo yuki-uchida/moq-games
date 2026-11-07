@@ -20,6 +20,42 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
 })
 
+test('unit shards run independently and gate publication', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const check = workflow.match(/^  check:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const deploy = workflow.slice(workflow.indexOf('  deploy:'))
+  assert.ok(check)
+  assert.ok(unit)
+  assert.doesNotMatch(check, /vitest run|name: Unit tests/)
+  for (const command of [
+    'npm run typecheck',
+    'npm run lint',
+    'node --test ${{ needs.changes.outputs.node }}',
+    'npm run typecheck:tower-debug',
+    'npm run test:tower-debug'
+  ])
+    assert.ok(check.includes(command))
+  assert.match(unit, /^    needs: changes$/m)
+  assert.match(unit, /^    if: needs\.changes\.outputs\.unit != ''$/m)
+  assert.match(unit, /fail-fast: false/)
+  assert.match(unit, /shard: \[1, 2, 3, 4, 5, 6, 7, 8\]/)
+  assert.match(unit, /actions\/cache@v4[\s\S]*?\.generated\/moqt-sdk/)
+  assert.match(unit, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
+  assert.match(
+    unit,
+    /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=1/
+  )
+  assert.match(deploy, /needs: \[[^\]\n]*\bunit\b[^\]\n]*\]/)
+  assert.match(
+    deploy,
+    /\(needs\.unit\.result == 'success' \|\| \(needs\.unit\.result == 'skipped' && needs\.changes\.outputs\.unit == ''\)\) &&/
+  )
+})
+
 test('life browser shards run independently and gate publication', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
@@ -105,7 +141,7 @@ test('documentation and instruction changes do not run game checks or publish', 
   assert.equal(scope.node, '')
 })
 
-for (const game of ['rabbiters', 'life-survivors', 'ember-grid']) {
+for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki']) {
   test(game + ' changes select only that game', () => {
     for (const path of [
       'examples/games/' + game + '/src/main.ts',
@@ -186,7 +222,7 @@ test('shared dependencies, CI and unknown paths conservatively check all games',
     'new-runtime.js'
   ]) {
     const scope = selectScope([path])
-    for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid'])
+    for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki'])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
     for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life']) assert.equal(scope[key], true)
   }
@@ -213,9 +249,13 @@ test(
   {
     skip: !existsSync(new URL('../node_modules/vitest/vitest.mjs', import.meta.url)) && 'dependencies are not installed'
   },
-  () => {
+  async () => {
     const root = fileURLToPath(new URL('../', import.meta.url))
     const targets = selectScope(['package.json']).unit.split(' ')
+    for (const game of readdirSync(resolve(root, 'examples/games'), { withFileTypes: true })) {
+      if (game.isDirectory() && existsSync(resolve(root, 'examples/games', game.name, 'tests')))
+        assert.ok(targets.includes(`examples/games/${game.name}/tests`), `${game.name} unit tests are missing from CI`)
+    }
     const expected = targets.flatMap((target) =>
       target.endsWith('/tests')
         ? readdirSync(resolve(root, target), { recursive: true })
@@ -235,6 +275,25 @@ test(
     ).map((entry) => resolve(entry.file))
     assert.ok(expected.length > 0)
     assert.deepEqual(discovered.sort(), expected.sort())
+    const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+      '\r\n',
+      '\n'
+    )
+    const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+    const shards = JSON.parse(unit?.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
+    assert.deepEqual(shards, [1, 2, 3, 4, 5, 6, 7, 8])
+    const { BaseSequencer } = await import('vitest/node')
+    const specifications = discovered.map((moduleId) => ({ moduleId }))
+    const partitions = await Promise.all(
+      shards.map(async (index) => {
+        const sequencer = new BaseSequencer({ config: { root, shard: { index, count: shards.length } } })
+        return (await sequencer.shard(specifications)).map((entry) => entry.moduleId)
+      })
+    )
+    assert.ok(partitions.every((partition) => partition.length > 0))
+    const selected = partitions.flat()
+    assert.equal(new Set(selected).size, selected.length)
+    assert.deepEqual(selected.sort(), discovered.sort())
     const allFiles = JSON.parse(
       execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'list', '--filesOnly', '--json'], {
         cwd: root,
