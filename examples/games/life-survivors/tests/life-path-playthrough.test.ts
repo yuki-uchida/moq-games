@@ -5,11 +5,11 @@ import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 56],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 19]
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 14, 56],
+  [['w_friend', 'w_sns', 'w_pet'], 17, 3, 19]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',
-  (laterPriorities, outcome, preferredSeed) => {
+  (laterPriorities, outcome, successfulSeed, preferredSeed) => {
     const earlyIndex = EVENTS.findIndex((event) => event.boss === 'b_shukatsu')
     const laterIndex = EVENTS.findIndex((event) => event.boss === 'b_layoff')
     const competingCareers = [
@@ -31,10 +31,8 @@ test.each([
       'w_cooking'
     ]
     const runs: { seed: number; time: number; early?: string; later?: string }[] = []
-    const seeds = [
-      preferredSeed,
-      ...Array.from({ length: 20 }, (_, index) => index + 1).filter((seed) => seed !== preferredSeed)
-    ]
+    // Try a known successful seed first without dropping any fallback candidates.
+    const seeds = new Set([successfulSeed, preferredSeed, ...Array.from({ length: 20 }, (_, index) => index + 1)])
     for (const seed of seeds) {
       const game = new Game(seed)
       const player = game.addPlayer('p0')!

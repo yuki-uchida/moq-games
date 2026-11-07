@@ -462,7 +462,7 @@ export function weaponStats(
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-            (def.id === 'w_sports' ? 0 : def.id === 'w_beauty' ? lv - 1 : levelAmount) +
+            (def.id === 'w_sports' ? 0 : def.id === 'w_beauty' || def.id === 'p_weak' ? lv - 1 : levelAmount) +
             (evolved && def.id !== 'w_sports' ? 1 : 0) +
             (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
     ),
@@ -520,7 +520,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : levelText}${evolves}`,
+      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : levelText}${id === 'p_weak' && next !== 2 && next !== 5 && next !== 8 ? '・数 +1' : ''}${evolves}`,
       tag: `Lv ${next}`
     }
   }

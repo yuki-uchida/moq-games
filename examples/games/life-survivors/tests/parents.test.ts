@@ -9,12 +9,24 @@ import {
   ageAt,
   timeAtAge
 } from '../src/data'
-import { Game, RAID, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
+import { Game, RAID, choiceText, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
+
+test.each([1, 2, 3, 4, 5, 6, 7, 8])('weak parent fires one hand per level at level %i', (lv) => {
+  const game = new Game(1)
+  const player = game.addPlayer('a', 'p_weak')!
+  const weapon = player.weapons[0]
+  weapon.lv = lv
+  const stats = weaponStats(player, weapon)
+  expect(stats.amount).toBe(lv)
+  game['fire'](player, weapon, stats)
+  expect(game.state.shots).toHaveLength(lv)
+  if (lv < 8) expect(choiceText(player, 'w:p_weak').text).toContain('数 +1')
+})
 
 test('頼りない親 grants defense alongside its experience bonus', () => {
   const game = new Game(1)
