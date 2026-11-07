@@ -1105,7 +1105,9 @@ for (const width of [1280, 390]) {
     await expect(talentToggle).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(dialog.getByRole('img', { name: '秘密の才能の六角形' })).toBeVisible()
-    await expect(dialog).toContainText('接触も防ぐ。防御は本人ごとに最短1.5秒間隔で短縮不可。薄い盾は攻撃のみ。')
+    await expect(dialog).toContainText(
+      '盾は3.6秒ごとに補充し、被弾や盾に当たる投射物を防ぐ。防御は本人ごとに最短1.5秒間隔。薄い盾は攻撃のみ。'
+    )
     await page.keyboard.press('Enter')
     await expect(dialog.getByRole('img', { name: '秘密の才能の六角形' })).toBeHidden()
     const pausedAt = await handle.evaluate((life) => life.game.state.time)
