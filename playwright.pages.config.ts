@@ -22,7 +22,9 @@ export default defineConfig({
     browserName: 'chromium',
     headless: true,
     // Software WebGL makes the actual mesh review reproducible on hosted runners.
-    launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader'] },
+    launchOptions: {
+      args: ['--use-gl=angle', process.platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
+    },
     viewport: { width: 1440, height: 1000 },
     screenshot: 'only-on-failure',
     // Record the first attempt and retain failures, including with retries: 0.

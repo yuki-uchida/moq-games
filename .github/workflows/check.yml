@@ -270,7 +270,10 @@ jobs:
   browser:
     needs: [changes, build]
     if: needs.changes.outputs.pagesBrowser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 30
     strategy:
       # Keep every report when a shard fails. One WebGL worker per independent runner.
@@ -304,7 +307,7 @@ jobs:
           test -s dist/THIRD-PARTY-NOTICES.txt
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
+          path: ~/AppData/Local/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chromium for public-build browser tests
         run: npx playwright install --with-deps chromium

@@ -22,6 +22,57 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
 })
 
+test('Pages browser uses Windows without rebuilding verified artifacts or weakening the gate', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const browser = workflow.match(/^  browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const deploy = workflow.slice(workflow.indexOf('  deploy:'))
+  assert.ok(browser)
+  assert.match(browser, /^    needs: \[changes, build\]$/m)
+  assert.match(browser, /^    runs-on: windows-latest$/m)
+  assert.match(browser, /defaults:\n\s+run:\n\s+shell: bash/)
+  assert.match(browser, /path: ~\/AppData\/Local\/ms-playwright/)
+  assert.match(browser, /key: playwright-\$\{\{ runner.os \}\}/)
+  assert.match(
+    browser,
+    /name: pages-sdk-\$\{\{ github.sha \}\}\n\s+path: \.generated\/moqt-sdk[\s\S]*?npm ci --ignore-scripts/
+  )
+  assert.match(browser, /name: github-pages\n\s+path: \.pages-artifact/)
+  assert.match(browser, /tar -xf \.pages-artifact\/artifact.tar -C dist\n\s+test -s dist\/THIRD-PARTY-NOTICES.txt/)
+  assert.doesNotMatch(browser, /setup-sdk|npm run build|prepare-pages|upload-pages-artifact/)
+  assert.match(browser, /shard: \$\{\{ fromJSON\(needs.changes.outputs.shards\) \}\}/)
+  assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
+  assert.match(browser, /--config playwright.pages.config.ts --test-list shard-tests.txt/)
+  assert.match(deploy, /needs: \[[^\]\n]*\bbuild\b[^\]\n]*\bbrowser\b[^\]\n]*\]/)
+  assert.match(deploy, /\(needs\.browser\.result == 'success' \|\| needs\.browser\.result == 'skipped'\)/)
+})
+
+test('Pages keeps headless real-mesh coverage and uses WARP only on Windows', () => {
+  const source = readFileSync(new URL('../playwright.pages.config.ts', import.meta.url), 'utf8')
+    .replace(/^import .*\n/m, '')
+    .replace('export default defineConfig(', 'defineConfig(')
+  for (const platform of ['win32', 'linux', 'darwin']) {
+    const config = runInNewContext(source, {
+      defineConfig: (config) => config,
+      process: { platform, env: {} }
+    })
+    assert.equal(config.fullyParallel, true)
+    assert.equal(config.workers, 1)
+    assert.equal(config.retries, 0)
+    assert.equal(config.timeout, 360_000)
+    assert.equal(config.use.headless, true)
+    assert.deepEqual(JSON.parse(JSON.stringify(config.use.viewport)), { width: 1440, height: 1000 })
+    assert.deepEqual(Array.from(config.use.launchOptions.args), [
+      '--use-gl=angle',
+      platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader'
+    ])
+    for (const name of ['tower-model-review', 'tower-real3d-game', 'tower-meshopt-equivalence'])
+      assert.ok(config.testMatch.test(`${name}.spec.ts`))
+  }
+})
+
 test('unit shards run independently and gate publication', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
