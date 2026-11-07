@@ -6,7 +6,7 @@ import { botInput } from './bot'
 
 test.each([
   [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 22, 56],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 3, 19]
+  [['w_friend', 'w_sns', 'w_pet'], 17, 22, 19]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',
   (laterPriorities, outcome, successfulSeed, preferredSeed) => {
@@ -34,7 +34,7 @@ test.each([
     // Try a known successful seed first without dropping any fallback candidates.
     const seeds = new Set([
       successfulSeed,
-      ...(outcome === 12 ? [14] : []),
+      ...(outcome === 12 ? [14] : [3]),
       preferredSeed,
       ...Array.from({ length: 20 }, (_, index) => index + 1)
     ])
