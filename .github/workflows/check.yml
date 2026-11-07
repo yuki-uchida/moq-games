@@ -348,14 +348,7 @@ jobs:
       - name: Install Chromium for public-build browser tests
         run: npx playwright install --with-deps chromium
       - name: Install Mesa and Xvfb
-        run: sudo apt-get install -y libgl1-mesa-dri libegl1 mesa-vulkan-drivers xvfb
-      - name: Select the lavapipe Vulkan ICD
-        shell: bash
-        run: |
-          shopt -s nullglob
-          drivers=(/usr/share/vulkan/icd.d/lvp_icd*.json)
-          test "${#drivers[@]}" -eq 1
-          echo "VK_DRIVER_FILES=${drivers[0]}" >> "$GITHUB_ENV"
+        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb
       # Playwright's --shard splits the ordered list into contiguous blocks, which groups
       # each spec's slow cold-start tests together. Deal tests round-robin instead.
       - name: Select this shard's tests

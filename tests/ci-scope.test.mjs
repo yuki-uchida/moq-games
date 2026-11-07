@@ -96,23 +96,9 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(
     browser,
-    /run: npx playwright install --with-deps chromium\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 mesa-vulkan-drivers xvfb\n/
+    /run: npx playwright install --with-deps chromium\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb\n/
   )
-  const selector = browser.match(
-    /        shell: bash\n        run: \|\n(          shopt -s nullglob\n(?:          .+\n){3})/
-  )?.[1]
-  const benchmark = readFileSync(
-    new URL('../.github/workflows/renderer-benchmark.yml', import.meta.url),
-    'utf8'
-  ).replaceAll('\r\n', '\n')
-  assert.equal(
-    selector,
-    '          shopt -s nullglob\n' +
-      '          drivers=(/usr/share/vulkan/icd.d/lvp_icd*.json)\n' +
-      '          test "${#drivers[@]}" -eq 1\n' +
-      '          echo "VK_DRIVER_FILES=${drivers[0]}" >> "$GITHUB_ENV"\n'
-  )
-  assert.ok(benchmark.includes(selector))
+  assert.doesNotMatch(browser, /vulkan|Vulkan|VK_DRIVER_FILES|VK_ICD_FILENAMES|lvp_icd|lavapipe|shopt -s nullglob/)
   assert.doesNotMatch(browser, /apt-get update|xvfb-run[^\n]*--list/)
   assert.doesNotMatch(
     workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''),
@@ -122,18 +108,18 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(deploy, /\(needs\.browser\.result == 'success' \|\| needs\.browser\.result == 'skipped'\)/)
 })
 
-test('Pages keeps headless real-mesh coverage and uses benchmark Vulkan only on Linux CI', () => {
+test('Pages keeps headless real-mesh coverage and uses benchmark OpenGL only on Linux CI', () => {
   const source = readFileSync(new URL('../playwright.pages.config.ts', import.meta.url), 'utf8')
     .replace(/^import .*\n/m, '')
     .replace('export default defineConfig(', 'defineConfig(')
   const benchmark = readFileSync(new URL('../.github/workflows/renderer-benchmark.yml', import.meta.url), 'utf8')
-  const vulkanArgs = Array.from(runInNewContext(benchmark.match(/args: (\[[^\n]+\])/)[1], { backend: 'vulkan' }))
-  assert.deepEqual(vulkanArgs, [
+  const glArgs = Array.from(runInNewContext(benchmark.match(/args: (\[[^\n]+\])/)[1], { backend: 'gl' }))
+  assert.deepEqual(glArgs, [
     '--enable-gpu',
     '--ignore-gpu-blocklist',
     '--disable-gpu-rasterization',
     '--use-gl=angle',
-    '--use-angle=vulkan',
+    '--use-angle=gl',
     '--use-cmd-decoder=passthrough'
   ])
   for (const platform of ['win32', 'linux', 'darwin']) {
@@ -154,7 +140,7 @@ test('Pages keeps headless real-mesh coverage and uses benchmark Vulkan only on 
       assert.deepEqual(
         Array.from(config.use.launchOptions.args),
         platform === 'linux' && Boolean(CI)
-          ? vulkanArgs
+          ? glArgs
           : ['--use-gl=angle', platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
       )
       for (const name of ['tower-model-review', 'tower-real3d-game', 'tower-meshopt-equivalence'])

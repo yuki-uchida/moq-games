@@ -31,7 +31,7 @@ export default defineConfig({
             '--ignore-gpu-blocklist',
             '--disable-gpu-rasterization',
             '--use-gl=angle',
-            '--use-angle=vulkan',
+            '--use-angle=gl',
             '--use-cmd-decoder=passthrough'
           ]
         : ['--use-gl=angle', process.platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
