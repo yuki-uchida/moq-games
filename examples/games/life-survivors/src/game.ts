@@ -461,9 +461,7 @@ export function weaponStats(
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-            (lv >= 2 ? 1 : 0) +
-            (lv >= 5 ? 1 : 0) +
-            (lv >= 8 ? 1 : 0) +
+            (def.id === 'w_beauty' ? lv - 1 : Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)) +
             (evolved ? 1 : 0) +
             (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
     ),
