@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/yuki-uchida/moq-games/actions/runs/42398134760",
-  "basis": "Successful unit 1-4 file test durations with 2 workers per runner; estimates, not CI wall times. Only files taking at least 10 seconds are listed, rounded up to seconds. Unlisted and new files use the default, not an allowlist.",
+  "basis": "Successful unit 1-4 file test durations with 2 workers per runner; estimates, not CI wall times. Only files taking at least 10 seconds are listed, rounded up to seconds. Unlisted and new files use the default, not an allowlist. Clock split only: successful run 42422348872, constant 53.586s -> 54s, varying 35.467s -> 36s, remainder (90.314 - 53.586 - 35.467)s -> 2s; all other estimates retain the source above.",
   "defaultSeconds": 1,
   "seconds": {
     "examples/games/ember-grid/tests/music.test.ts": 12,
@@ -22,7 +22,9 @@
     "examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts": 12,
     "examples/games/yoru-no-yashiki/tests/exact-score.test.ts": 53,
     "examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts": 51,
-    "examples/games/yoru-no-yashiki/tests/main-clock.test.ts": 49,
+    "examples/games/yoru-no-yashiki/tests/main-clock-constant.test.ts": 54,
+    "examples/games/yoru-no-yashiki/tests/main-clock-varying.test.ts": 36,
+    "examples/games/yoru-no-yashiki/tests/main-clock.test.ts": 2,
     "tests/board-camera-depth.test.ts": 19
   }
 }

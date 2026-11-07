@@ -945,17 +945,17 @@ test(
   async () => {
     const { default: Sequencer } = await import('../scripts/vitest-unit-sequencer.mjs')
     const root = '/repo'
-    const clock = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-clock.test.ts' }
+    const clock = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-clock-constant.test.ts' }
     const audio = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts' }
     const town = { moduleId: 'examples/games/rabbiters/tests/town.test.ts' }
     const light = ['a', 'b', 'c'].map((name) => ({ moduleId: 'tests/' + name + '.test.ts' }))
     const files = [...light].reverse().concat(audio, clock, town)
     const partition = (index, count, input = files) =>
       new Sequencer({ config: { root, shard: { index, count } } }).shard(input)
-    assert.deepEqual(await partition(1, 3), [audio])
-    assert.deepEqual(await partition(2, 3), [town, light[0], light[2]])
-    assert.deepEqual(await partition(3, 3), [clock, light[1]])
-    assert.deepEqual(await partition(1, 1), [audio, town, clock, ...light])
+    assert.deepEqual(await partition(1, 3), [clock])
+    assert.deepEqual(await partition(2, 3), [audio, light[2]])
+    assert.deepEqual(await partition(3, 3), [town, light[0], light[1]])
+    assert.deepEqual(await partition(1, 1), [clock, audio, town, ...light])
     assert.deepEqual(await partition(1, 2, [...light].reverse()), [light[0], light[2]])
     assert.deepEqual(await partition(2, 2, [...light].reverse()), [light[1]])
     assert.deepEqual(await partition(7, 8), [])
@@ -979,8 +979,8 @@ test(
       const project = { name: '', config: { sequence: { groupOrder: 0 }, isolate: true } }
       const paths = [
         'tests/failed.test.ts',
-        'examples/games/yoru-no-yashiki/tests/main-clock.test.ts',
-        'examples/games/rabbiters/tests/town.test.ts',
+        'examples/games/rabbiters/tests/campaign-seed-2.test.ts',
+        'examples/games/rabbiters/tests/campaign-seed-3.test.ts',
         'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts',
         'tests/new-unit.test.ts',
         'tests/larger.test.ts'
@@ -994,7 +994,7 @@ test(
       const cache = {
         getFileTestResults: (key) => {
           if (/new-unit|larger/.test(key)) return undefined
-          return { failed: key.includes('failed'), duration: key.includes('town') ? 100 : 1 }
+          return { failed: key.includes('failed'), duration: key.includes('campaign-seed-3') ? 100 : 1 }
         },
         getFileStats: (key) => (key.includes('new-unit') ? undefined : { size: key.includes('larger') ? 1000 : 1 })
       }
