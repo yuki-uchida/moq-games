@@ -77,8 +77,8 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
     player.choiceSeq++
   })
   const cards = page.locator('#cards .card')
-  await expect(cards.nth(0)).toContainText('効果なし（Lv8で強化）')
-  await expect(cards.nth(1)).toContainText('効果なし（Lv8で強化）')
+  await expect(cards.nth(0)).toContainText('威力 +30%')
+  await expect(cards.nth(1)).toContainText('威力 +30%')
   await expect(cards.nth(2)).toContainText('クールダウン -15%')
   await expect(cards.nth(0).locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
   await expect(cards.nth(3)).toContainText('攻撃速度 +15%')

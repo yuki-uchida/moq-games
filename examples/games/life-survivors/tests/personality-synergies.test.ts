@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { bodyScale } from '../src/body-size'
-import { PASSIVES, TALENT_CATEGORIES, WEAPONS } from '../src/data'
+import { PASSIVES, TALENT_CATEGORIES, WEAPONS, WEAPON_LEVELS } from '../src/data'
 import { Game, choiceText, playerRadius, playerStats, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 import { readView, toView } from '../src/view'
@@ -70,7 +70,7 @@ test.each([['w_perfume', 0.35, 0.5]] as const)('%s keeps its attack interval fix
     }
   }
   weapon.lv = 6
-  expect(choiceText(player, `w:${id}`).text).toBe('効果なし（Lv8で強化）')
+  expect(choiceText(player, `w:${id}`).text).toBe('威力 +30%')
   weapon.lv = 8
   player.passives = [
     { id: 'p_diligent', lv: 5 },
@@ -83,6 +83,43 @@ test.each([['w_perfume', 0.35, 0.5]] as const)('%s keeps its attack interval fix
   expect(game.state.shots).toHaveLength(0)
   game['fireWeapons'](0.02)
   expect(game.state.shots.length).toBeGreaterThan(0)
+})
+
+test('every obtainable weapon describes an upgrade at every level', () => {
+  for (const definition of WEAPONS.filter((entry) => entry.id !== 'p_gone')) {
+    expect(WEAPON_LEVELS[definition.id]).toHaveLength(7)
+    const { player, weapon } = setup(definition.id)
+    for (const [index, upgrade] of WEAPON_LEVELS[definition.id].entries()) {
+      expect(upgrade.text).not.toContain('効果なし')
+      weapon.lv = index + 1
+      const before = weaponStats(player, weapon)
+      weapon.lv++
+      const after = weaponStats(player, weapon)
+      const changesStats = ['damage', 'cooldown', 'amount', 'area', 'duration'].some(
+        (stat) => before[stat as keyof typeof before] !== after[stat as keyof typeof after]
+      )
+      const changesSpecial = definition.id === 'p_over' || (upgrade.foodPower ?? 0) > 0 || (upgrade.targets ?? 0) > 0
+      expect(changesStats || changesSpecial, `${definition.id} Lv${weapon.lv}`).toBe(true)
+    }
+  }
+})
+
+test.each([
+  ['p_yankee', 2],
+  ['p_yankee', 5],
+  ['p_monster', 2],
+  ['p_monster', 5],
+  ['w_muscle', 2],
+  ['w_muscle', 5],
+  ['p_toxic', 7],
+  ['w_perfume', 7]
+] as const)('%s level %i increases damage', (id, level) => {
+  const { player, weapon } = setup(id)
+  weapon.lv = level - 1
+  const previous = weaponStats(player, weapon).damage
+  expect(choiceText(player, `w:${id}`).text).toBe('威力 +30%')
+  weapon.lv = level
+  expect(weaponStats(player, weapon).damage).toBeCloseTo(previous * 1.3)
 })
 
 test.each(['p_toxic', 'w_perfume'])('%s still benefits from area and duration', (id) => {

@@ -808,7 +808,7 @@ const standardLevels = [
 ]
 
 export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
-  p_toxic: ['威力 +30%', '威力 +30%', '範囲 +25%', '威力 +30%', '威力 +30%', '効果なし（Lv8で強化）', '威力 +82%'],
+  p_toxic: ['威力 +30%', '威力 +30%', '範囲 +25%', '威力 +30%', '威力 +30%', '威力 +30%', '威力 +82%'],
   p_edu: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
   p_free: standardLevels,
   p_weak: [
@@ -829,9 +829,9 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
     '攻撃速度 +15%',
     '攻撃速度 +15%・威力 +40%'
   ],
-  p_monster: ['効果なし', '威力 +30%', '範囲 +25%・人数 +1', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  p_monster: ['威力 +30%', '威力 +30%', '範囲 +25%・人数 +1', '威力 +30%', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_rich: standardLevels,
-  p_yankee: ['効果なし', '威力 +30%', '範囲 +40%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  p_yankee: ['威力 +30%', '威力 +30%', '範囲 +40%', '威力 +30%', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_gone: ['効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし'],
   w_friend: standardLevels,
   w_sports: [
@@ -859,7 +859,7 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   w_invest: standardLevels,
   w_sns: ['連鎖数 +1', '威力 +30%', '範囲 +25%', '連鎖数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・連鎖数 +1'],
   w_pet: standardLevels,
-  w_muscle: ['効果なし', '威力 +30%', '範囲 +25%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  w_muscle: ['威力 +30%', '威力 +30%', '範囲 +25%', '威力 +30%', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   w_reading: standardLevels,
   w_overtime: standardLevels,
   w_ring: standardLevels,
@@ -875,7 +875,7 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
     '抽選した武器のクールダウン -15%（武器による）',
     '抽選した武器の威力 +40%・数 +1（武器による）'
   ],
-  w_perfume: ['数 +1', '威力 +30%', '範囲 +25%', '数 +1', '威力 +30%', '効果なし（Lv8で強化）', '威力 +40%・数 +1'],
+  w_perfume: ['数 +1', '威力 +30%', '範囲 +25%', '数 +1', '威力 +30%', '威力 +30%', '威力 +40%・数 +1'],
   w_cooking: Array(7).fill('料理の効果 +10%'),
   w_observe: [
     '対象数 +1',
@@ -938,7 +938,11 @@ const weaponUpgradeProfiles: Record<string, UpgradeProfile> = {
 }
 
 const weaponUpgradeOverrides: Record<string, Record<number, Partial<WeaponLevelUpgrade>>> = {
-  p_toxic: { 2: { damage: 1.3 }, 5: { damage: 1.3 }, 8: { damage: 1.82 } }
+  p_toxic: { 2: { damage: 1.3 }, 5: { damage: 1.3 }, 7: { damage: 1.3 }, 8: { damage: 1.82 } },
+  p_monster: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
+  p_yankee: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
+  w_muscle: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
+  w_perfume: { 7: { damage: 1.3 } }
 }
 
 export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEntries(
