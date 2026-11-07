@@ -529,6 +529,18 @@ export class Renderer {
     this.art(f, x, y, f.w / 2, f.h / 2, flip, alpha, scale)
   }
 
+  /** Traces a rounded rectangle path (no fill). */
+  private roundPath(x: number, y: number, w: number, h: number, r: number) {
+    const ctx = this.ctx
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+  }
+
   private world() {
     this.ctx.setTransform(
       this.scale,
@@ -921,7 +933,36 @@ export class Renderer {
     if (local && !player.downed && player.gambleWeapon) {
       const icon = weaponAppearance(player.gambleWeapon, ageAt(time), player.petAge).art
       const frame = (sheet('icons')[icon] ?? sheet('icons')[player.gambleWeapon]).frames[0]
-      this.art(frame, pos.x + 24 * size, feet - 48 * size, frame.w / 2, frame.h / 2, false, 1, 0.5)
+      const bob = Math.sin(this.clock * 3.2) * 1.6
+      const bx = pos.x + 26 * size
+      const by = feet - 50 * size + bob
+      const ctx = this.ctx
+      this.world()
+      ctx.save()
+      ctx.shadowColor = 'rgba(255, 215, 94, 0.55)'
+      ctx.shadowBlur = 6
+      this.roundPath(bx - 11, by - 11, 22, 22, 6)
+      ctx.fillStyle = '#34203b'
+      ctx.fill()
+      ctx.restore()
+      ctx.save()
+      this.roundPath(bx - 11, by - 11, 22, 22, 6)
+      ctx.strokeStyle = '#ffd75e'
+      ctx.lineWidth = 1.6
+      ctx.stroke()
+      this.roundPath(bx - 9, by - 9, 18, 18, 4.5)
+      ctx.strokeStyle = 'rgba(255, 242, 176, 0.35)'
+      ctx.lineWidth = 0.8
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(bx - 4, by + 10.5)
+      ctx.lineTo(bx - 7, by + 15)
+      ctx.lineTo(bx + 1, by + 10.5)
+      ctx.closePath()
+      ctx.fillStyle = '#ffd75e'
+      ctx.fill()
+      ctx.restore()
+      this.art(frame, bx, by, frame.w / 2, frame.h / 2, false, 1, 0.5)
       this.world()
     }
     if (buffs.length)
@@ -1716,18 +1757,29 @@ export class Renderer {
           const alpha = p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
           this.art(frame, p.x, p.y, frame.w / 2, frame.h / 2, false, alpha, p.size * (1 + p.size2 * t))
           if (p.spr.startsWith('gamble_')) {
-            const label =
-              t < 0.65 && (p.spr === 'gamble_horse' || p.spr === 'gamble_pachinko') ? '' : (GAMBLE_LABELS[p.spr] ?? '')
+            const late = p.spr === 'gamble_horse' || p.spr === 'gamble_pachinko'
+            const label = t < 0.65 && late ? '' : (GAMBLE_LABELS[p.spr] ?? '')
+            const since = late ? t - 0.65 : t
+            const size = 12 * (1 + 0.55 * Math.max(0, 1 - since * 7))
+            const y = p.y - 25 - 2 * Math.min(1, since * 4)
             this.world()
             ctx.save()
             ctx.globalAlpha = alpha
-            ctx.font = 'bold 11px sans-serif'
+            ctx.font = `bold ${size.toFixed(1)}px sans-serif`
             ctx.textAlign = 'center'
-            ctx.lineWidth = 3
+            ctx.lineJoin = 'round'
+            ctx.lineWidth = 4
             ctx.strokeStyle = '#34203b'
-            ctx.fillStyle = '#fff2b0'
-            ctx.strokeText(label, p.x, p.y - 24)
-            ctx.fillText(label, p.x, p.y - 24)
+            ctx.shadowColor = 'rgba(255, 201, 60, 0.7)'
+            ctx.shadowBlur = 5
+            ctx.strokeText(label, p.x, y)
+            ctx.shadowBlur = 0
+            const gold = ctx.createLinearGradient(0, y - size * 0.8, 0, y + size * 0.2)
+            gold.addColorStop(0, '#fffbe0')
+            gold.addColorStop(0.55, '#ffd75e')
+            gold.addColorStop(1, '#f0a53a')
+            ctx.fillStyle = gold
+            ctx.fillText(label, p.x, y)
             ctx.restore()
           }
           break
@@ -1739,23 +1791,62 @@ export class Renderer {
           const dpr = this.canvas.width / this.width
           ctx.save()
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-          ctx.globalAlpha = clamp01((p.life - p.age) / 0.4)
           ctx.font = 'bold 20px sans-serif'
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          const width = Math.min(this.width - 16, ctx.measureText(result).width + 32)
+          const fade = clamp01((p.life - p.age) / 0.4)
+          const intro = clamp01(p.age / 0.22)
+          const ease = 1 - (1 - intro) ** 3
+          const width = Math.min(this.width - 16, ctx.measureText(result).width + 56)
           const x = Math.max(
             width / 2 + 8,
             Math.min(this.width - width / 2 - 8, this.width / 2 + ((p.x - cx) * this.scale) / dpr)
           )
-          const y = Math.max(28, Math.min(this.height - 28, this.height / 2 + ((p.y - cy) * this.scale) / dpr))
-          ctx.fillStyle = '#34203b'
-          ctx.fillRect(x - width / 2, y - 20, width, 40)
+          const y0 = Math.max(30, Math.min(this.height - 30, this.height / 2 + ((p.y - cy) * this.scale) / dpr))
+          const y = y0 + (1 - ease) * 14
+          const left = x - width / 2
+          const top = y - 21
+          ctx.globalAlpha = fade * ease
+          // Glow, gradient plate and the gold double border.
+          ctx.shadowColor = 'rgba(255, 201, 60, 0.6)'
+          ctx.shadowBlur = 16
+          this.roundPath(left, top, width, 42, 12)
+          const plate = ctx.createLinearGradient(0, top, 0, top + 42)
+          plate.addColorStop(0, '#5a3566')
+          plate.addColorStop(1, '#2a1731')
+          ctx.fillStyle = plate
+          ctx.fill()
+          ctx.shadowBlur = 0
+          ctx.lineWidth = 2.2
           ctx.strokeStyle = '#ffd75e'
-          ctx.lineWidth = 2
-          ctx.strokeRect(x - width / 2, y - 20, width, 40)
+          ctx.stroke()
+          this.roundPath(left + 4, top + 4, width - 8, 34, 8.5)
+          ctx.lineWidth = 1
+          ctx.strokeStyle = 'rgba(255, 242, 176, 0.7)'
+          ctx.stroke()
+          // A shine sweeping across the plate, once on arrival.
+          const sweep = clamp01((p.age - 0.12) / 0.7)
+          if (sweep > 0 && sweep < 1) {
+            ctx.save()
+            this.roundPath(left + 2, top + 2, width - 4, 38, 10)
+            ctx.clip()
+            const sx = left - 30 + (width + 60) * sweep
+            const shine = ctx.createLinearGradient(sx - 18, 0, sx + 18, 0)
+            shine.addColorStop(0, 'rgba(255, 255, 255, 0)')
+            shine.addColorStop(0.5, 'rgba(255, 255, 255, 0.38)')
+            shine.addColorStop(1, 'rgba(255, 255, 255, 0)')
+            ctx.fillStyle = shine
+            ctx.fillRect(sx - 18, top, 36, 42)
+            ctx.restore()
+          }
+          // Text: one fillText, outlined with a stroke.
+          ctx.globalAlpha = fade * clamp01(p.age / 0.15)
+          ctx.lineJoin = 'round'
+          ctx.lineWidth = 3
+          ctx.strokeStyle = '#1f1027'
+          ctx.strokeText(result, x, y + 1, width - 24)
           ctx.fillStyle = '#fff2b0'
-          ctx.fillText(result, x, y, width - 16)
+          ctx.fillText(result, x, y + 1, width - 24)
           ctx.restore()
           break
         }

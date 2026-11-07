@@ -1656,52 +1656,402 @@ const heal = (f: number) =>
 const heart = (c1: number, c2: number) => (l: Raster, x: number, y: number) =>
   l.stamp(['.hh.hh.', 'hhhhhhh', 'hhhhhhh', '.hhhhh.', '..hhh..', '...h...'], x, y, { h: c1, H: c2 })
 
-function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number) {
-  const r = new Raster(32, 32)
-  if (kind === 'gacha') {
-    r.ellipse(16, 11, 11, 9, C.inkCool).ellipse(16, 10, 9, 7, R.sky[1])
-    for (const [x, y, color] of [
-      [11, 9, R.pink[1]],
-      [17, 7, R.yellow[1]],
-      [21, 11, R.green[1]],
-      [14, 13, R.red[1]]
-    ])
-      r.ellipse(x, y, 2.5, 2.5, color)
-    r.rect(5, 17, 22, 12, C.inkCool).rect(7, 18, 18, 9, R.red[1])
-    r.rect(9, 19, 7, 6, R.paper[1]).ellipse(20, 21, 3, 3, R.yellow[1])
-    r.line(20, 21, 20 + (frame % 2 ? 2 : -2), 23, C.inkWarm)
-    if (frame >= 3) r.ellipse(12, 26 + Math.min(3, frame - 3), 3, 3, R.pink[1]).line(9, 27, 14, 27, C.white)
-  } else if (kind === 'poker') {
-    r.rect(1, 12, 8, 13, C.inkCool).rect(2, 11, 8, 13, R.navy[1]).rect(3, 12, 6, 11, R.paper[1])
-    for (let card = 0; card <= Math.min(frame, 4); card++) {
-      const x = 5 + card * 5
-      const y = 13 - Math.min(card, 4 - card)
-      r.rect(x, y, 9, 14, C.inkCool).rect(x + 1, y + 1, 7, 12, R.paper[0])
-      r.stamp(['.r.r.', 'rrrrr', '.rrr.', '..r..'], x + 2, y + 4, { r: card % 2 ? R.navy[2] : R.red[1] })
+/** A four-point glint: a cross of `size` arms with a bright core. */
+function glint(r: Raster, cx: number, cy: number, size: number, arm: number, core: number) {
+  for (let i = 1; i <= size; i++) {
+    const c = i === size ? arm : core
+    r.set(cx - i, cy, c)
+    r.set(cx + i, cy, c)
+    r.set(cx, cy - i, c)
+    r.set(cx, cy + i, c)
+  }
+  r.set(cx, cy, core)
+  return r
+}
+
+/** A two-tone capsule: coloured top half, pale bottom half; `gap` pulls the halves apart (popped open). */
+function capsule(l: Raster, cx: number, cy: number, rad: number, ramp: Ramp, gap = 0) {
+  const top = new Raster(l.w, l.h)
+  const bottom = new Raster(l.w, l.h)
+  ball(top, cx - gap, cy - gap, rad, rad, ramp)
+  ball(bottom, cx + gap, cy + gap, rad, rad, R.paper)
+  for (let y = 0; y < l.h; y++)
+    for (let x = 0; x < l.w; x++) {
+      const t = y + 0.5 <= cy - gap + 0.5 ? top.get(x, y) : 0
+      const b = y + 0.5 > cy + gap - 0.5 ? bottom.get(x, y) : 0
+      if (t) l.set(x, y, t)
+      else if (b) l.set(x, y, b)
     }
-  } else if (kind === 'pachinko') {
-    r.rect(4, 2, 24, 28, C.inkCool).rect(6, 3, 20, 25, R.yellow[1]).rect(8, 5, 16, 20, R.red[1])
-    r.rect(9, 10, 14, 9, R.paper[0])
-    for (let reel = 0; reel < 3; reel++) {
-      const seven = frame >= 4 || (frame + reel) % 3 === 0
-      r.stamp(seven ? ['rrr', '..r', '.r.', '.r.', '.r.'] : ['rrr', 'r.r', 'r.r', 'r.r', 'rrr'], 10 + reel * 4, 12, {
-        r: R.red[1]
-      })
-    }
-    r.ellipse(16, 23, 2, 2, R.sky[0]).rect(10, 27, 12, 2, R.metal[1])
-    if (frame >= 4) r.line(1, 6, 3, 8, R.yellow[0]).line(28, 8, 30, 6, R.yellow[0])
+}
+
+/** A card suit centred on (cx, cy), turned by `a`. */
+function suit(
+  l: Raster,
+  kind: 'heart' | 'spade' | 'diamond' | 'club',
+  cx: number,
+  cy: number,
+  a: number,
+  c: number,
+  k = 1
+) {
+  const P = (x: number, y: number) => spin(cx + x * k, cy + y * k, cx, cy, a)
+  const dot = (x: number, y: number, rad: number) => {
+    const [px, py] = P(x, y)
+    l.ellipse(px, py, rad * k, rad * k, c)
+  }
+  const tri = (...p: number[]) =>
+    l.poly(
+      p.flatMap((v, i) => (i % 2 ? [] : P(v, p[i + 1]))),
+      c
+    )
+  if (kind === 'heart') {
+    dot(-1.5, -1.1, 1.9)
+    dot(1.5, -1.1, 1.9)
+    tri(-3.3, -0.3, 3.3, -0.3, 0, 3.4)
+  } else if (kind === 'spade') {
+    dot(-1.5, 0.7, 1.9)
+    dot(1.5, 0.7, 1.9)
+    tri(-3.3, 0.2, 3.3, 0.2, 0, -3.6)
+    tri(0, 0.5, -1.4, 3.6, 1.4, 3.6)
+  } else if (kind === 'diamond') {
+    tri(0, -3.6, 2.7, 0, 0, 3.6)
+    tri(0, -3.6, 0, 3.6, -2.7, 0)
   } else {
-    r.rect(0, 27, 32, 2, R.green[2]).rect(28, 3, 2, 24, R.paper[1])
-    for (let y = 3; y < 15; y += 4) r.rect(28, y, 2, 2, C.inkCool)
-    const x = 2 + Math.min(frame, 5) * 2
-    r.ellipse(x + 7, 19, 6, 4, R.brown[1]).poly([x + 10, 18, x + 13, 11, x + 17, 12, x + 15, 18], R.brown[1])
-    r.line(x + 3, 21, x + 2 + (frame % 2) * 3, 26, R.brown[2])
-    r.line(x + 10, 21, x + 12 - (frame % 2) * 3, 26, R.brown[2])
-    r.line(x + 2, 18, x, 15, R.brown[2]).ellipse(x + 7, 12, 2, 2, R.skin[1])
-    r.poly([x + 5, 14, x + 9, 14, x + 11, 19, x + 5, 19], R.red[1])
-    if (frame >= 5) r.stamp(['.y.', 'yyy', '.y.'], 25, 1, { y: R.yellow[1] })
+    dot(0, -1.9, 1.8)
+    dot(-1.9, 0.9, 1.8)
+    dot(1.9, 0.9, 1.8)
+    tri(0, 0.3, -1.4, 3.6, 1.4, 3.6)
+  }
+}
+
+const GLASS: Ramp = [C.white, R.sky[0], R.sky[1], R.sky[2], R.sky[4]]
+
+function gachaArt(frame: number) {
+  const r = new Raster(N, N)
+  const jostle = frame < 4 ? [0, 1, 0, -1][frame] : 0
+  // Base plinth.
+  part(r, (l) => {
+    l.rect(4, 27, 24, 3, R.navy[1])
+    shadeEdges(l, R.navy, 1, true)
+  })
+  // Glass dome with the capsules inside.
+  part(r, (l) => ball(l, 16, 9, 10, 8.6, GLASS))
+  const inside: [number, number, Ramp][] = [
+    [10.5, 10, R.pink],
+    [16, 12.2, R.red],
+    [21.5, 10, R.green],
+    [13, 5.6, R.yellow],
+    [19.5, 6, R.purple],
+    [16, 8, R.orange]
+  ]
+  inside.forEach(([x, y, ramp], i) =>
+    part(r, (l) => capsule(l, x, y + (i % 2 ? jostle : -jostle) * (i < 3 ? 1 : 0), 2.7, ramp))
+  )
+  // Glass glints over everything inside.
+  r.line(8, 6, 10, 3, C.white).line(11, 2, 13, 2, C.white)
+  r.set(7, 8, C.white)
+  r.line(24, 12, 25, 9, R.sky[0])
+  // Brass collar and the red body.
+  part(r, (l) => {
+    l.rect(7, 15, 18, 3, R.yellow[1])
+    shadeEdges(l, R.yellow, 1, true)
+  })
+  part(r, (l) => {
+    l.rect(5, 18, 22, 9, R.red[1])
+    shadeEdges(l, R.red, 1, true)
+    // Coin slot plate.
+    l.rect(8, 19, 5, 3, R.paper[1])
+    l.rect(8, 21, 5, 1, R.paper[2])
+    l.rect(10, 20, 1, 1, C.inkCool)
+    // Dispensing hatch.
+    l.rect(8, 23, 8, 4, R.hair[3])
+    l.rect(8, 23, 8, 1, C.inkCool)
+    l.rect(8, 26, 8, 1, R.hair[2])
+  })
+  // Crank: a gold wheel with a handle that turns a full circle over frames 0-3.
+  const angle = -Math.PI / 2 + (Math.min(frame, 4) * Math.PI) / 2
+  const [hx, hy] = [22 + Math.cos(angle) * 3.4, 22.5 + Math.sin(angle) * 3.4]
+  part(r, (l) => {
+    ball(l, 22, 22.5, 3.8, 3.8, R.yellow)
+    l.thick(22, 22.5, hx, hy, 1.4, R.metal[1])
+    ball(l, hx, hy, 1.5, 1.5, R.metal)
+  })
+  // The prize: drops through the hatch, lands, pops open with a sparkle.
+  if (frame === 3) part(r, (l) => capsule(l, 12, 24.5, 2.5, R.pink))
+  if (frame === 4) part(r, (l) => capsule(l, 13, 28, 2.7, R.pink))
+  if (frame === 5) {
+    part(r, (l) => capsule(l, 13, 27.6, 2.8, R.pink, 1.4))
+    r.rect(12, 26, 2, 2, R.yellow[0])
+    glint(r, 3, 22, 2, R.yellow[1], C.white)
+    glint(r, 29, 19, 2, R.yellow[1], C.white)
+    r.set(10, 25, R.yellow[0])
+    r.set(17, 26, R.yellow[0])
   }
   return r
+}
+
+const CARD_PIPS = {
+  heart: ['r.r', 'rrr', '.r.'],
+  diamond: ['.r.', 'rrr', '.r.'],
+  spade: ['.k.', 'kkk', 'k.k'],
+  club: ['.k.', 'kkk', '.k.']
+} as const
+
+const ACE = ['.r.', 'r.r', 'rrr', 'r.r', 'r.r']
+
+/** One 11×15 card centred on (cx, cy), tilted by `a`; `ws` squeezes its width for the flip. */
+function pokerCard(r: Raster, cx: number, cy: number, a: number, ws: number, face: 'back' | 'spade' | 'heart') {
+  const hw = Math.max(0.8, 5.5 * ws)
+  const outline = (inset: number) => {
+    const [x0, x1, y0, y1] = [cx - hw + inset, cx + hw - inset, cy - 7.5 + inset, cy + 7.5 - inset]
+    const c = hw > 3 ? 1 : 0
+    return turn(
+      [x0 + c, y0, x1 - c, y0, x1, y0 + c, x1, y1 - c, x1 - c, y1, x0 + c, y1, x0, y1 - c, x0, y0 + c],
+      cx,
+      cy,
+      a
+    )
+  }
+  part(
+    r,
+    (l) => {
+      l.poly(outline(0), C.inkCool)
+      l.poly(outline(1), R.paper[0])
+      if (ws < 0.5) {
+        for (let y = 0; y < l.h; y++)
+          for (let x = 0; x < l.w; x++) if (l.get(x, y) === R.paper[0] && x > cx) l.set(x, y, R.paper[2])
+        return
+      }
+      if (face === 'back') {
+        l.poly(outline(2), R.navy[1])
+        for (let y = 0; y < l.h; y++)
+          for (let x = 0; x < l.w; x++)
+            if (l.get(x, y) === R.navy[1] && ((x + y) % 4 === 0 || (x - y + 64) % 4 === 0)) l.set(x, y, R.red[1])
+        return
+      }
+      const red = face === 'heart'
+      const colour = red ? R.red[1] : C.inkCool
+      const [ix, iy] = spin(cx - 1.5, cy - 3.5, cx, cy, a)
+      l.stamp(ACE, ix - 1, iy - 2, { r: colour })
+      const [sx, sy] = spin(cx + 0.5, cy + 2.5, cx, cy, a)
+      suit(l, face, sx, sy, a, colour, 0.9)
+    },
+    false
+  )
+}
+
+function chips(r: Raster, n: number) {
+  const ramps = [R.red, R.navy, R.yellow, R.red]
+  for (let i = 0; i < n; i++) {
+    const y = 26 - i * 3
+    const ramp = ramps[i]
+    part(r, (l) => {
+      l.ellipse(26, y + 2, 4.5, 2, ramp[2])
+      l.rect(22, y, 9, 2, ramp[2])
+      l.ellipse(26, y, 4.5, 2, ramp[1])
+      l.ellipse(26, y, 2.4, 0.9, ramp[0])
+    })
+    for (const x of [23, 26, 29]) {
+      r.set(x, y + 1, R.paper[0])
+      r.set(x, y + 2, R.paper[0])
+    }
+  }
+}
+
+function pokerArt(frame: number) {
+  const r = new Raster(N, N)
+  const f = Math.min(frame, 5)
+  const dealt = f === 0 ? { dy: -5, dx: -3 } : { dy: 0, dx: 0 }
+  const left = [1, 1, 0.3, 1, 1, 1][f]
+  const right = [1, 1, 1, 0.3, 1, 1][f]
+  const leftFace = f >= 3 ? 'spade' : 'back'
+  const rightFace = f >= 4 ? 'heart' : 'back'
+  pokerCard(r, 8 + dealt.dx, 14 + dealt.dy, (-8 * Math.PI) / 180, left, leftFace)
+  pokerCard(r, 17.5 - dealt.dx, 14 + dealt.dy, (8 * Math.PI) / 180, right, rightFace)
+  if (f >= 4) chips(r, f === 4 ? 3 : 4)
+  if (f === 5) {
+    glint(r, 3, 4, 3, R.yellow[1], C.white)
+    glint(r, 20, 4, 2, R.yellow[1], R.yellow[0])
+    r.set(30, 12, R.yellow[0])
+  }
+  return r
+}
+
+const DIGITS: Record<string, readonly string[]> = {
+  '7': ['rrrr', '...r', '..r.', '..r.', '.r..', '.r..', '.r..'],
+  '0': ['.rr.', 'r..r', 'r..r', 'r..r', 'r..r', 'r..r', '.rr.'],
+  '3': ['rrr.', '...r', '...r', '.rr.', '...r', '...r', 'rrr.'],
+  '8': ['.rr.', 'r..r', 'r..r', '.rr.', 'r..r', 'r..r', '.rr.'],
+  '1': ['.r..', 'rr..', '.r..', '.r..', '.r..', '.r..', 'rrr.'],
+  '5': ['rrrr', 'r...', 'rrr.', '...r', '...r', 'r..r', '.rr.'],
+  '2': ['.rr.', 'r..r', '...r', '..r.', '.r..', 'r...', 'rrrr'],
+  '6': ['.rr.', 'r...', 'rrr.', 'r..r', 'r..r', 'r..r', '.rr.']
+}
+const STRIP = ['3', '8', '1', '5', '0', '2', '6']
+
+function pachinkoArt(frame: number) {
+  const r = new Raster(N, N)
+  const win = frame >= 5
+  // Gold cabinet.
+  part(r, (l) => {
+    l.rect(2, 1, 28, 29, R.yellow[1])
+    shadeEdges(l, R.yellow, 1, true)
+  })
+  // Red display housing with its lamp row.
+  part(r, (l) => {
+    l.rect(4, 3, 24, 14, R.red[1])
+    shadeEdges(l, R.red, 1, true)
+  })
+  for (let i = 0; i < 5; i++) {
+    const lit = frame >= 5 ? 2 : frame === 4 ? 1 : (i + frame) % 2
+    r.rect(7 + i * 4, 4, 2, 2, lit === 2 ? C.white : lit ? R.yellow[0] : R.red[3])
+    if (lit) r.rect(7 + i * 4, 6, 2, 1, R.yellow[2])
+  }
+  // Reel window: three reels that stop one after another on 7-7-7.
+  part(r, (l) => l.rect(7, 7, 18, 9, R.hair[3]))
+  for (let reel = 0; reel < 3; reel++) {
+    const x = 7 + reel * 6
+    const stopped = frame >= 3 + reel
+    const strip = new Raster(N, N)
+    if (stopped) strip.stamp(DIGITS['7'], x + 1, 8, { r: R.red[1] })
+    else {
+      const off = (frame * 5 + reel * 4) % 9
+      for (let g = -1; g < 3; g++) {
+        const key = STRIP[(g + reel * 2 + frame * 2 + 14) % STRIP.length]
+        strip.stamp(DIGITS[key], x + 1, 8 + g * 9 + off, { r: R.red[2] })
+      }
+    }
+    r.rect(x, 7, 6, 9, win && stopped ? R.yellow[0] : stopped ? R.paper[0] : R.paper[1])
+    r.rect(x + 5, 7, 1, 9, R.paper[2])
+    for (let y = 7; y < 16; y++) for (let xx = x; xx < x + 6; xx++) if (strip.get(xx, y)) r.set(xx, y, strip.get(xx, y))
+  }
+  // Pin glass.
+  part(r, (l) => l.rect(5, 18, 22, 8, R.navy[2]))
+  for (const [y, xs] of [
+    [20, [8, 12, 16, 20, 24]],
+    [23, [10, 14, 18, 22]]
+  ] as const)
+    for (const x of xs) r.set(x, y, R.navy[0])
+  for (let k = 0; k < 3; k++) {
+    const y = 19 + ((frame * 3 + k * 3) % 7)
+    const x = 9 + k * 6 + (y % 2 ? 1 : -1) * (k % 2 ? 1 : 2)
+    ball(r, x, y, 1.5, 1.5, R.metal)
+  }
+  // Payout tray filling up with balls.
+  part(r, (l) => {
+    l.rect(5, 26, 22, 3, R.metal[1])
+    shadeEdges(l, R.metal, 1, true)
+  })
+  for (let k = 0; k < Math.min(frame, 5); k++) ball(r, 8 + k * 4, 27, 1.5, 1.5, R.metal)
+  if (win) {
+    glint(r, 3, 2, 2, C.white, R.yellow[0])
+    glint(r, 28, 2, 2, C.white, R.yellow[0])
+  }
+  return r
+}
+
+const BAY: Ramp = [R.brown[0], R.brown[1], R.brown[2], R.brown[3], R.brown[4]]
+
+/** Gallop poses: [knee x, knee y, hoof x, hoof y] of the front and hind leg relative to the body centre. */
+const GALLOP = [
+  { bob: -1, front: [9, 22, 13, 22], hind: [-9, 22, -13, 23] },
+  { bob: 0, front: [9, 24, 11, 28], hind: [-7, 25, -10, 27] },
+  { bob: 1, front: [6, 25, 4, 28], hind: [-2, 25, 2, 28] },
+  { bob: 0, front: [6, 24, 9, 24], hind: [-7, 26, -11, 28] }
+] as const
+
+function horseArt(frame: number, w: number) {
+  const r = new Raster(w, N)
+  const f = Math.min(frame, 5)
+  const cx = 13 + Math.round(((w - 32) * f) / 5)
+  const pose = GALLOP[f % 4]
+  const far = GALLOP[(f + 2) % 4]
+  const cy = 18 + pose.bob
+  const hipY = cy + 3
+  const leg = (l: Raster, p: readonly number[], hipX: number, color: number, hoof: number) => {
+    l.thick(hipX, hipY, cx + p[0], p[1], 2.4, color)
+    l.thick(cx + p[0], p[1], cx + p[2], p[3], 2, color)
+    l.rect(cx + p[2] - 1, p[3] - (p[3] > 26 ? 0 : 1), 2, 1, hoof)
+  }
+  // Track and finish post.
+  part(r, (l) => {
+    l.rect(2, 29, w - 4, 1, R.green[1])
+  })
+  part(r, (l) => {
+    l.rect(w - 8, 5, 2, 24, R.paper[1])
+    for (let y = 7; y < 28; y += 4) l.rect(w - 8, y, 2, 2, R.hair[2])
+    l.poly([w - 6, 2, w - 2, 4, w - 6, 6], R.red[1])
+    l.rect(w - 8, 2, 2, 3, R.yellow[1])
+  })
+  // Tail streaming behind, then the far legs.
+  part(r, (l) => {
+    l.thick(cx - 6, cy - 1, cx - 11, cy - 1 + (f % 2), 2.4, R.hair[2])
+    l.thick(cx - 11, cy - 1 + (f % 2), cx - 14, cy + 1 + (f % 2), 2, R.hair[2])
+  })
+  part(r, (l) => {
+    leg(l, far.front, cx + 4, BAY[2], R.hair[3])
+    leg(l, far.hind, cx - 5, BAY[2], R.hair[3])
+  })
+  // Neck and head, then the body over the shoulder.
+  part(r, (l) => {
+    l.thick(cx + 5, cy - 1, cx + 10, cy - 6, 5, BAY[1])
+    l.thick(cx + 10, cy - 6, cx + 14, cy - 3, 3.6, BAY[1])
+    l.poly([cx + 8, cy - 8, cx + 9, cy - 11, cx + 11, cy - 8], BAY[1])
+    shadeEdges(l, BAY, 1, true)
+    l.set(cx + 13, cy - 4, C.inkCool)
+    l.set(cx + 14, cy - 3, R.paper[1])
+  })
+  part(r, (l) => ball(l, cx, cy, 7.4, 4.8, BAY))
+  // Near legs.
+  part(r, (l) => {
+    leg(l, pose.hind, cx - 5, BAY[1], R.hair[3])
+    leg(l, pose.front, cx + 5, BAY[1], R.hair[3])
+  })
+  // Mane along the neck.
+  part(r, (l) => {
+    l.thick(cx + 4, cy - 3, cx + 8, cy - 8, 1.6, R.hair[2])
+    l.set(cx + 3, cy - 2 + (f % 2), R.hair[2])
+  })
+  // Jockey in purple silks crouched over the withers.
+  part(r, (l) => {
+    l.thick(cx - 1, cy - 3, cx + 2, cy + 2, 2.2, R.paper[1])
+    l.thick(cx - 2, cy - 4, cx + 4, cy - 8, 4, R.purple[1])
+    l.thick(cx + 4, cy - 8, cx + 8, cy - 6, 1.6, R.purple[2])
+    shadeEdges(l, R.purple, 1, true)
+  })
+  part(r, (l) => {
+    ball(l, cx + 5, cy - 10, 2.5, 2.5, R.yellow)
+    l.rect(cx + 7, cy - 9, 2, 1, R.skin[1])
+  })
+  r.set(cx + 7, cy - 6, R.skin[1])
+  // Saddle cloth.
+  r.rect(cx - 2, cy - 2, 3, 2, R.paper[1])
+  // Dust at the hooves.
+  for (const p of [pose.front, pose.hind]) if (p[3] >= 27) r.set(cx + p[2] - 3, 28, R.paper[2])
+  // Finish: rosette and glints.
+  if (f >= 4) {
+    const big = f >= 5
+    const [rx, ry] = [7, 7]
+    part(r, (l) => {
+      l.poly([rx - 2, ry + 1, rx - 4, ry + 8, rx - 1, ry + 6, rx, ry + 8], R.red[2])
+      l.poly([rx + 1, ry + 1, rx + 4, ry + 8, rx + 1, ry + 6, rx, ry + 8], R.red[2])
+      ball(l, rx, ry, big ? 4.4 : 3.2, big ? 4.4 : 3.2, R.red)
+    })
+    r.ellipse(rx, ry, big ? 2 : 1.2, big ? 2 : 1.2, R.yellow[1])
+    r.set(rx - 1, ry - 1, R.yellow[0])
+    if (big) {
+      glint(r, 20, 5, 3, R.yellow[1], C.white)
+      glint(r, 4, 20, 2, R.yellow[1], R.yellow[0])
+    } else r.set(20, 5, R.yellow[0])
+  }
+  return r
+}
+
+function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number, w = 32) {
+  if (kind === 'gacha') return gachaArt(frame)
+  if (kind === 'poker') return pokerArt(frame)
+  if (kind === 'pachinko') return pachinkoArt(frame)
+  return horseArt(frame, w)
 }
 
 /** A sphere-shaded ellipse turned by `a` (the light stays top-left). */
@@ -2012,7 +2362,7 @@ const ICONS: Record<string, () => Raster> = {
   w_gamble_gacha: () => gambleArt('gacha', 5),
   w_gamble_poker: () => gambleArt('poker', 5),
   w_gamble_pachinko: () => gambleArt('pachinko', 5),
-  w_gamble_horse: () => gambleArt('horse', 5),
+  w_gamble_horse: () => gambleArt('horse', 5, 32),
   // 香水: a pink-lilac perfume bottle with a golden cap and a spritz.
   w_perfume: () =>
     tiny(32, 32, (l) => {
@@ -2245,7 +2595,7 @@ export function arsenalFx(): Record<string, Anim> {
     gamble_gacha: { frames: many(6, (frame) => gambleArt('gacha', frame)), fps: 6, loop: false },
     gamble_poker: { frames: many(6, (frame) => gambleArt('poker', frame)), fps: 6, loop: false },
     gamble_pachinko: { frames: many(6, (frame) => gambleArt('pachinko', frame)), fps: 6, loop: false },
-    gamble_horse: { frames: many(6, (frame) => gambleArt('horse', frame)), fps: 6, loop: false }
+    gamble_horse: { frames: many(6, (frame) => gambleArt('horse', frame, 40)), fps: 6, loop: false }
   }
 }
 
