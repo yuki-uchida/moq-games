@@ -1798,6 +1798,20 @@ export class Game {
           continue
         if (weapon.cd > (weapon.id === 'w_cooking' ? 1e-9 : 0) && weapon.id !== 'w_observe') continue
         const ws = weaponStats(player, weapon, stats)
+        const copiedMonster =
+          weapon.id === 'w_gamble' &&
+          weapon.gambleWeapon === 'p_monster' &&
+          weapon.held < (weapon.gambleUntil ?? 0) &&
+          player.weapons.some((owned) => owned.id === 'p_monster')
+        if (weapon.id === 'p_monster' || copiedMonster) {
+          const limit = copiedMonster
+            ? weaponStats(player, weapon, stats, WEAPON_BY_ID.get('p_monster')!).amount
+            : ws.amount
+          const active = this.state.shots.filter(
+            (shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id && shot.weapon === 'p_monster'
+          ).length
+          if (active >= limit) continue
+        }
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
         this.emit(FX.FIRE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
@@ -1892,7 +1906,9 @@ export class Game {
         ? Math.max(
             0,
             ws.amount -
-              this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
+              this.state.shots.filter(
+                (shot) => shot.owner === player.id && shot.weapon === 'p_monster' && shot.sourceWeapon === weapon.id
+              ).length
           )
         : def.id === 'p_over'
           ? Math.max(0, ws.amount - existingGuards)

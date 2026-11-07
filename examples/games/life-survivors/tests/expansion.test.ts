@@ -380,6 +380,7 @@ describe('passives', () => {
   test('空気が読める raises the 特攻 multiplier', () => {
     const mean = (savvy: number) => {
       const { game, player } = arena(33, 'p_monster')
+      game.targetPopulation = () => 0
       if (savvy) player.passives = [{ id: 'p_savvy', lv: savvy }]
       player.weapons[0].damage = 0
       const target = post(game, 'bully', player.x + 115, player.y)

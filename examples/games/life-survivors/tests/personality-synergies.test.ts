@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { bodyScale } from '../src/body-size'
-import { PASSIVES, TALENT_CATEGORIES, WEAPONS } from '../src/data'
+import { PASSIVES, TALENT_CATEGORIES, WEAPONS, WEAPON_BY_ID, WEAPON_LEVELS } from '../src/data'
 import { Game, choiceText, playerRadius, playerStats, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 import { readView, toView } from '../src/view'
@@ -70,7 +70,7 @@ test.each([['w_perfume', 0.35, 0.5]] as const)('%s keeps its attack interval fix
     }
   }
   weapon.lv = 6
-  expect(choiceText(player, `w:${id}`).text).toBe('効果なし（Lv8で強化）')
+  expect(choiceText(player, `w:${id}`).text).toBe('威力 +30%')
   weapon.lv = 8
   player.passives = [
     { id: 'p_diligent', lv: 5 },
@@ -83,6 +83,119 @@ test.each([['w_perfume', 0.35, 0.5]] as const)('%s keeps its attack interval fix
   expect(game.state.shots).toHaveLength(0)
   game['fireWeapons'](0.02)
   expect(game.state.shots.length).toBeGreaterThan(0)
+})
+
+test('every obtainable weapon describes an upgrade at every level', () => {
+  for (const definition of WEAPONS.filter((entry) => entry.id !== 'p_gone')) {
+    expect(WEAPON_LEVELS[definition.id]).toHaveLength(7)
+    const { player, weapon } = setup(definition.id)
+    for (const [index, upgrade] of WEAPON_LEVELS[definition.id].entries()) {
+      expect(upgrade.text).not.toContain('効果なし')
+      weapon.lv = index + 1
+      const before = weaponStats(player, weapon)
+      weapon.lv++
+      const after = weaponStats(player, weapon)
+      const changesStats = ['damage', 'cooldown', 'amount', 'area', 'duration'].some(
+        (stat) => before[stat as keyof typeof before] !== after[stat as keyof typeof after]
+      )
+      const changesSpecial = definition.id === 'p_over' || (upgrade.foodPower ?? 0) > 0 || (upgrade.targets ?? 0) > 0
+      expect(changesStats || changesSpecial, `${definition.id} Lv${weapon.lv}`).toBe(true)
+    }
+  }
+})
+
+test.each([
+  ['p_yankee', 2],
+  ['p_yankee', 5],
+  ['p_monster', 2],
+  ['p_monster', 5],
+  ['w_muscle', 2],
+  ['w_muscle', 5],
+  ['p_toxic', 7],
+  ['w_perfume', 7]
+] as const)('%s level %i increases damage', (id, level) => {
+  const { player, weapon } = setup(id)
+  weapon.lv = level - 1
+  const previous = weaponStats(player, weapon).damage
+  expect(choiceText(player, `w:${id}`).text).toBe('威力 +30%')
+  weapon.lv = level
+  expect(weaponStats(player, weapon).damage).toBeCloseTo(previous * 1.3)
+})
+
+test.each(['p_yankee', 'p_toxic', 'p_monster', 'p_over', 'w_muscle', 'w_sports', 'w_observe'])(
+  'gambling strengthens copied %s even when extra projectiles do not apply',
+  (id) => {
+    const { game, player, weapon } = setup('w_gamble')
+    const copied = WEAPON_BY_ID.get(id)!
+    player.still = 3
+    for (const level of [2, 5]) {
+      weapon.lv = level - 1
+      game['fire'](player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
+      const before = game.state.shots[0].damage
+      game.state.shots = []
+      expect(choiceText(player, 'w:w_gamble').text).toContain('威力 +30%')
+      weapon.lv = level
+      game['fire'](player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
+      expect(game.state.shots[0].damage).toBeCloseTo(before * 1.3)
+      game.state.shots = []
+    }
+  }
+)
+
+test('a copied monster parent is not blocked by the original parent', () => {
+  const { game, player, weapon } = setup('p_monster')
+  const copied = WEAPON_BY_ID.get('p_monster')!
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  const gamble = { id: 'w_gamble', lv: 2, cd: 0, held: 0, damage: 0 }
+  player.weapons.push(gamble)
+  game['fire'](player, gamble, weaponStats(player, gamble, playerStats(player), copied), copied)
+  expect(game.state.shots.map((shot) => shot.sourceWeapon)).toEqual(['p_monster', 'w_gamble'])
+})
+
+test.each(['p_monster', 'w_gamble'])(
+  '%s replenishes monster parents when cooldown is shorter than their life',
+  (id) => {
+    const { game, player, weapon } = setup(id)
+    weapon.lv = 7
+    if (id === 'w_gamble') {
+      player.weapons.push({ id: 'p_monster', lv: 1, cd: 1000, held: 0, damage: 0 })
+      weapon.gambleWeapon = 'p_monster'
+      weapon.gambleUntil = 12
+    }
+    let total = 0
+    for (let tick = 0; tick < 600; tick++) {
+      game['fireWeapons'](1 / 60)
+      game['moveShots'](1 / 60)
+      if (tick >= 60) total += game.state.shots.filter((shot) => shot.sourceWeapon === id).length
+    }
+    expect(total / 540).toBeGreaterThan(1.95)
+  }
+)
+
+test('gambling can redraw while its copied monster parents are still present', () => {
+  const { game, player, weapon } = setup('w_gamble')
+  player.weapons.push({ id: 'p_monster', lv: 1, cd: 1000, held: 0, damage: 0 })
+  const copied = WEAPON_BY_ID.get('p_monster')!
+  weapon.gambleWeapon = 'p_monster'
+  weapon.gambleUntil = 12
+  weapon.held = 12
+  game['fire'](player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
+  game['fireWeapons'](0)
+  expect(weapon.gambleUntil).toBe(24)
+})
+
+test('sports level 4 increases damage and area without claiming infinite pierce increases', () => {
+  const { game, player, weapon } = setup('w_sports')
+  weapon.lv = 3
+  const before = weaponStats(player, weapon)
+  expect(choiceText(player, 'w:w_sports').text).toBe('範囲 +25%・威力 +30%')
+  weapon.lv = 4
+  const after = weaponStats(player, weapon)
+  expect(after.damage).toBeCloseTo(before.damage * 1.3)
+  expect(after.area).toBeCloseTo(before.area * 1.25)
+  game['fire'](player, weapon, after)
+  expect(game.state.shots[0].damage).toBeCloseTo(after.damage)
+  expect(game.state.shots[0].pierce).toBe(Infinity)
 })
 
 test.each(['p_toxic', 'w_perfume'])('%s still benefits from area and duration', (id) => {
