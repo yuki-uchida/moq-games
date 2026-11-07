@@ -5,7 +5,7 @@ import {
   ENEMY_INDEX,
   EVENTS,
   ITEM_KINDS,
-  WEAPON_LEVEL_TEXT,
+  WEAPON_LEVELS,
   MAX_GAME_PLAYERS,
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
@@ -443,9 +443,9 @@ export function weaponStats(
   const source = WEAPON_BY_ID.get(weapon.id)!
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
-  const levelAmount = Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)
-  let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
-  if (source.id === 'p_toxic') damage *= 1.3 ** (Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8))
+  const upgrades = WEAPON_LEVELS[def.id].slice(0, lv - 1)
+  const sourceUpgrades = WEAPON_LEVELS[source.id].slice(0, lv - 1)
+  let damage = def.damage * sourceUpgrades.reduce((value, upgrade) => value * (upgrade.damage ?? 1), 1) * stats.might
   if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
   if (def.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
@@ -457,18 +457,25 @@ export function weaponStats(
     damage,
     cooldown: hasFixedInterval(source.id)
       ? def.cooldown
-      : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
+      : def.cooldown *
+        sourceUpgrades.reduce((value, upgrade) => value * (upgrade.cooldown ?? 1), 1) *
+        stats.cooldown *
+        (evolved ? 0.8 : 1),
     amount: Math.min(
       def.id === 'p_monster' ? 2 : Infinity,
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-            (def.id === 'w_sports' ? 0 : def.id === 'w_beauty' || def.id === 'p_weak' ? lv - 1 : levelAmount) +
+            upgrades.reduce((value, upgrade) => value + (upgrade.amount ?? 0), 0) +
             (evolved && def.id !== 'w_sports' ? 1 : 0) +
             (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
     ),
-    area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
-    duration: def.duration * (def.id === 'w_sports' ? 1 + levelAmount : 1) * (evolved ? 1.3 : 1) * stats.duration,
+    area: upgrades.reduce((value, upgrade) => value * (upgrade.area ?? 1), 1) * stats.area * (evolved ? 1.2 : 1),
+    duration:
+      def.duration *
+      (1 + upgrades.reduce((value, upgrade) => value + (upgrade.duration ?? 0), 0)) *
+      (evolved ? 1.3 : 1) *
+      stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
     strong: stats.strong
@@ -520,7 +527,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${WEAPON_LEVEL_TEXT[id][Math.min(next - 2, MAX_WEAPON_LEVEL - 2)]}${evolves}`,
+      text: `${WEAPON_LEVELS[id][Math.min(next - 2, MAX_WEAPON_LEVEL - 2)].text}${evolves}`,
       tag: `Lv ${next}`
     }
   }
@@ -1879,7 +1886,9 @@ export class Game {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle,
-            pierce: def.pierce + (weapon.lv >= 4 ? 1 : 0)
+            pierce:
+              def.pierce +
+              WEAPON_LEVELS[def.id].slice(0, weapon.lv - 1).reduce((value, upgrade) => value + (upgrade.pierce ?? 0), 0)
           })
         }
         break
@@ -2005,7 +2014,9 @@ export class Game {
         this.shot(player, weapon, def, ws, {
           x: player.x + player.fx * 50,
           y: player.y + player.fy * 50,
-          w: weapon.lv + 1,
+          w:
+            2 +
+            WEAPON_LEVELS[def.id].slice(0, weapon.lv - 1).reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0),
           v: form * 2 + 1,
           tick: 0.5
         })
@@ -2134,7 +2145,12 @@ export class Game {
           x: player.x + player.fx * 60,
           y: player.y + player.fy * 60,
           owner: player.id,
-          power: 1 + (weapon.lv - 1) * 0.1 + (isEvolved(player, weapon) ? 0.3 : 0)
+          power:
+            1 +
+            WEAPON_LEVELS[def.id]
+              .slice(0, weapon.lv - 1)
+              .reduce((value, upgrade) => value + (upgrade.foodPower ?? 0), 0) +
+            (isEvolved(player, weapon) ? 0.3 : 0)
         })
         break
       }
