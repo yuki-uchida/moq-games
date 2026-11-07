@@ -82,6 +82,7 @@ test('a seed arcs, lands without impact damage, then blooms and damages repeated
   expect(shot.life).toBeCloseTo(WEAPON_BY_ID.get('w_garden')!.duration)
   game['moveShots'](0.01)
   expect(enemy.hp).toBeLessThan(enemy.maxHp)
+  expect(enemy.slow).toBeGreaterThan(0)
   const afterImpact = enemy.hp
   game.state.time = 0.49
   game['moveShots'](0.49)

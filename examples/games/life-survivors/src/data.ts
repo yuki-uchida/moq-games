@@ -721,7 +721,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'sickness'],
     minAge: 6,
-    desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃。弾速で早く着地し、効果時間で長く咲く。',
+    desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃し、敵を減速。弾速で早く着地し、効果時間で長く咲く。',
     evolve: { passive: 'p_curious', name: 'ひみつの花園' }
   })
 ]

@@ -2640,6 +2640,7 @@ export class Game {
     enemy.hp -= amount
     enemy.flash = 0.12
     if (shot.weapon === 'w_love') enemy.slow = 1.2
+    else if (shot.kind === 'garden') enemy.slow = Math.max(enemy.slow, 0.6)
     const knock = shot.knockback * this.knockScale(enemy, def)
     if (knock) {
       let dx = enemy.x - (origin?.x ?? owner.x)
