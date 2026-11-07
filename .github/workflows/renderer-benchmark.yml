@@ -185,10 +185,10 @@ jobs:
               : scenario === 'extra'
                 ? /EXTRA (?:exposes every runtime role\/action and never requests sheets, audio or game services|loop boundary repeats the start pose while the interior visibly moves|shares the weak model IBL once across model switches and releases it on pagehide)$/
                 : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
-            outputDir: fileURLToPath(new URL('results', import.meta.url)),
+            outputDir: fileURLToPath(new URL(scenario === 'concurrency' ? `workers-${workers}/results` : 'results', import.meta.url)),
             reporter: [
               ['list'],
-              ['json', { outputFile: fileURLToPath(new URL('report.json', import.meta.url)) }]
+              ['json', { outputFile: fileURLToPath(new URL(scenario === 'concurrency' ? `workers-${workers}/report.json` : 'report.json', import.meta.url)) }]
             ],
             use: {
               headless: true,
@@ -347,7 +347,24 @@ jobs:
           assert.deepEqual(selected.map(spec => spec.title).sort(), expected.sort());
           NODE
       - name: Run the same case under X11 with headless Chromium
-        run: xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts
+        shell: bash
+        run: |
+          if [ "$BENCHMARK_SCENARIO" != concurrency ]; then
+            xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts
+            exit 0
+          fi
+          status=0
+          : > .build/renderer-benchmark-local/passes.jsonl
+          for workers in "$BENCHMARK_WORKERS" "$((3 - BENCHMARK_WORKERS))"; do
+            if BENCHMARK_WORKERS="$workers" xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts; then
+              pass_status=0
+            else
+              pass_status=$?
+            fi
+            printf '{"workers":%s,"exitCode":%s}\n' "$workers" "$pass_status" >> .build/renderer-benchmark-local/passes.jsonl
+            if [ "$status" -eq 0 ]; then status=$pass_status; fi
+          done
+          exit "$status"
       - name: Record run, source and backend settings
         if: always()
         env:
@@ -358,7 +375,7 @@ jobs:
         run: |
           mkdir -p .build/renderer-benchmark-local
           node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
+          import { existsSync, readFileSync, writeFileSync } from 'node:fs';
           import { cpus } from 'node:os';
           import { execFileSync } from 'node:child_process';
           import assert from 'node:assert/strict';
@@ -377,6 +394,12 @@ jobs:
             source: process.env.SOURCE_METADATA ? JSON.parse(process.env.SOURCE_METADATA) : null,
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
             jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, scenario, channel, workers, node: process.version,
+            ...(scenario === 'concurrency' ? {
+              workerOrder: [workers, 3 - workers],
+              passes: existsSync('.build/renderer-benchmark-local/passes.jsonl')
+                ? readFileSync('.build/renderer-benchmark-local/passes.jsonl', 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+                : []
+            } : {}),
             cpu: { logicalCount: cpu.length, model: cpu[0]?.model ?? null },
             playwrightChannel: channel === 'chromium' ? 'chromium' : null,
             headless: true, display: 'xvfb-run -a',
@@ -390,7 +413,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-workers-{0}', matrix.workers) || '' }}
+          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-first-workers-{0}', matrix.workers) || '' }}
           path: .build/renderer-benchmark-local/
           include-hidden-files: true
           if-no-files-found: warn
