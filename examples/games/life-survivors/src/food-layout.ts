@@ -42,6 +42,16 @@ export const FOOD_REACH = 16
 export const PILE_JOIN = 30
 /** Height of one label line. */
 export const LABEL_LINE = 15
+/** Clear space kept around every placed label block, so neighbouring blocks never read as one list. */
+export const BLOCK_GAP = 4
+
+/** A placed block grown by BLOCK_GAP on every side: what later blocks must keep clear of. */
+const spaced = (box: Box): Box => ({
+  left: box.left - BLOCK_GAP,
+  top: box.top - BLOCK_GAP,
+  right: box.right + BLOCK_GAP,
+  bottom: box.bottom + BLOCK_GAP
+})
 
 const CANDIDATES: readonly FoodPoint[] = [{ x: 0, y: 0 }, ...ring(8, 8), ...ring(FOOD_REACH, 12)]
 
@@ -322,15 +332,25 @@ function inside(box: Box, view: Box) {
   return box.left >= view.left && box.right <= view.right && box.top >= view.top && box.bottom <= view.bottom
 }
 
-function clamp(box: Box, view: Box): Box {
-  const w = box.right - box.left
-  const h = box.bottom - box.top
-  const left = Math.max(view.left, Math.min(box.left, view.right - w))
-  const top = Math.max(view.top, Math.min(box.top, view.bottom - h))
-  return { left, top, right: left + w, bottom: top + h }
+function union(boxes: readonly Box[]): Box {
+  return boxes.reduce(
+    (u, b) => ({
+      left: Math.min(u.left, b.left),
+      top: Math.min(u.top, b.top),
+      right: Math.max(u.right, b.right),
+      bottom: Math.max(u.bottom, b.bottom)
+    }),
+    { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }
+  )
 }
 
-/** Candidate boxes of a block, in order of preference. */
+/** Steps a candidate may shift by when the preferred ones are taken. */
+const SHIFT_STEPS = 8
+
+/**
+ * Candidate boxes of a block, nearest first: above, below, right and left of the pile, further up and down, the four
+ * diagonals, then each of those eight shifted up, down, left or right in 15 px steps (up to 8 steps).
+ */
 export function labelCandidates(block: LabelBlock): Box[] {
   const { pile, width, height } = block
   const cx = (pile.left + pile.right) / 2
@@ -338,21 +358,74 @@ export function labelCandidates(block: LabelBlock): Box[] {
   const at = (left: number, top: number): Box => ({ left, top, right: left + width, bottom: top + height })
   const above = pile.top - 4 - height
   const below = pile.bottom + 4
-  const list = [
+  const right = pile.right + 6
+  const left = pile.left - 6 - width
+  const sides = [
     at(cx - width / 2, above),
     at(cx - width / 2, below),
-    at(pile.right + 6, cy - height / 2),
-    at(pile.left - 6 - width, cy - height / 2)
+    at(right, cy - height / 2),
+    at(left, cy - height / 2)
   ]
+  const list = [...sides]
   for (let k = 1; k <= 6; k++) list.push(at(cx - width / 2, above - k * LABEL_LINE))
   for (let k = 1; k <= 6; k++) list.push(at(cx - width / 2, below + k * LABEL_LINE))
-  return list
+  const corners = [at(right, above), at(left, above), at(right, below), at(left, below)]
+  list.push(...corners)
+  const bases = [...sides, ...corners]
+  for (let k = 1; k <= SHIFT_STEPS; k++) {
+    const d = k * LABEL_LINE
+    for (const base of bases)
+      list.push(
+        at(base.left, base.top - d),
+        at(base.left, base.top + d),
+        at(base.left - d, base.top),
+        at(base.left + d, base.top)
+      )
+  }
+  const seen = new Set<string>()
+  return list.filter((box) => {
+    const id = `${box.left},${box.top}`
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
+/**
+ * The first free candidate of a block (the remembered one first): inside the viewport and touching none of `blocked`.
+ * Undefined when every candidate is taken.
+ */
+function placeOne(
+  block: LabelBlock,
+  blocked: readonly Box[],
+  viewport: Box,
+  remembered?: number
+): { box: Box; index: number } | undefined {
+  const candidates = labelCandidates(block)
+  // Only what lies near the candidates can block them.
+  const hull = union(candidates)
+  const near = blocked.filter((o) => overlap(o, hull) > 0)
+  const fits = (box: Box) => inside(box, viewport) && near.every((o) => overlap(box, o) === 0)
+  if (remembered !== undefined && candidates[remembered] && fits(candidates[remembered]))
+    return { box: candidates[remembered], index: remembered }
+  const index = candidates.findIndex(fits)
+  return index < 0 ? undefined : { box: candidates[index], index }
+}
+
+function recall(memory: Map<string, number> | undefined, id: string | undefined) {
+  return id === undefined ? undefined : memory?.get(id)
+}
+
+function remember(memory: Map<string, number> | undefined, chosen: Map<string, number>) {
+  if (!memory) return
+  memory.clear()
+  for (const [id, index] of chosen) memory.set(id, index)
 }
 
 /**
  * Box of each label block, in input order: the candidate remembered for its key when it is still inside the viewport
- * and free, else the first candidate inside the viewport that touches no obstacle and no block placed before, else
- * the clamped candidate with the least overlap. `memory` (candidate index per block key) is read, then replaced by
+ * and free, else the first candidate inside the viewport that touches no obstacle and no block placed before.
+ * Undefined (not drawn) when no candidate is free. `memory` (candidate index per block key) is read, then replaced by
  * this frame's choices.
  */
 export function placeLabelBlocks(
@@ -360,38 +433,91 @@ export function placeLabelBlocks(
   obstacles: readonly Box[],
   viewport: Box,
   memory?: Map<string, number>
-): Box[] {
-  const placed: Box[] = []
-  const chosenIndex: number[] = []
-  for (const block of blocks) {
-    const candidates = labelCandidates(block)
-    const cost = (box: Box) =>
-      obstacles.reduce((sum, o) => sum + overlap(box, o), 0) + placed.reduce((sum, o) => sum + overlap(box, o), 0)
-    const fits = (box: Box) => inside(box, viewport) && cost(box) === 0
-    const remembered = block.key === undefined ? undefined : memory?.get(block.key)
-    let index = remembered !== undefined && candidates[remembered] && fits(candidates[remembered]) ? remembered : -1
-    if (index < 0) index = candidates.findIndex(fits)
-    let chosen = index >= 0 ? candidates[index] : undefined
-    if (!chosen) {
-      let best = Infinity
-      candidates.forEach((candidate, k) => {
-        const box = clamp(candidate, viewport)
-        const c = cost(box)
-        if (c < best) {
-          best = c
-          chosen = box
-          index = k
-        }
-      })
+): (Box | undefined)[] {
+  const blocked = [...obstacles]
+  const chosen = new Map<string, number>()
+  const boxes = blocks.map((block) => {
+    const spot = placeOne(block, blocked, viewport, recall(memory, block.key))
+    if (!spot) return undefined
+    blocked.push(spaced(spot.box))
+    if (block.key !== undefined) chosen.set(block.key, spot.index)
+    return spot.box
+  })
+  remember(memory, chosen)
+  return boxes
+}
+
+/**
+ * The blocks a pile's label may shrink to, longest first: every line (cut to the height by fitFoodLines), then fewer
+ * lines ending with 「…ほかn人」, the local player's line first and the other owners in pile order. The last one is a
+ * single line: 「…ほかn人」, or the only owner's line.
+ */
+export function foodLabelVariants(lines: readonly string[], local: number, height: number): string[][] {
+  const first = fitFoodLines(lines, height)
+  const n = lines.length
+  if (n <= 1) return [first]
+  const variants = first.length > 1 ? [first] : []
+  const ordered = local >= 0 && local < n ? [lines[local], ...lines.filter((_, i) => i !== local)] : [...lines]
+  for (let m = Math.min(first.length, n) - 1; m >= 1; m--)
+    variants.push([...ordered.slice(0, m - 1), `…ほか${n - (m - 1)}人`])
+  if (!variants.length) variants.push([`…ほか${n}人`])
+  return variants
+}
+
+/** A pile to label: the boxes of its shown sprites and one line per owner in pile order. */
+export interface FoodLabelPile {
+  sprites: readonly Box[]
+  lines: readonly string[]
+  /** Index of the local player's line, or -1. */
+  local: number
+  /** Identifies the pile across frames (its candidate choice is remembered under it). */
+  key?: string
+}
+
+export interface FoodLabelPlacement {
+  /** Index of the pile in the input. */
+  pile: number
+  box: Box
+  lines: string[]
+}
+
+/**
+ * Label blocks of the piles, in input order. A pile gets a block only when one of its sprites shows inside `visible`
+ * (the visible world). Each block takes the remembered or first free candidate inside `viewport`, clear of every
+ * obstacle and every block placed before; when none is free it shrinks (foodLabelVariants) and tries again, and when
+ * even its single line finds no room it is not drawn this frame. So blocks never overlap each other or an obstacle and
+ * stay inside the viewport. `measure` gives a text's width; `memory` (candidate index per pile key) is read, then
+ * replaced by this frame's choices.
+ */
+export function placeFoodLabels(
+  piles: readonly FoodLabelPile[],
+  obstacles: readonly Box[],
+  visible: Box,
+  viewport: Box,
+  measure: (text: string) => number,
+  memory?: Map<string, number>
+): FoodLabelPlacement[] {
+  const placed: FoodLabelPlacement[] = []
+  const blocked = [...obstacles]
+  const chosen = new Map<string, number>()
+  piles.forEach((pile, n) => {
+    if (!pile.lines.length || !pile.sprites.some((sprite) => overlap(sprite, visible) > 0)) return
+    const bounds = union(pile.sprites)
+    for (const lines of foodLabelVariants(pile.lines, pile.local, viewport.bottom - viewport.top)) {
+      const block: LabelBlock = {
+        pile: bounds,
+        width: Math.max(...lines.map(measure)) + 4,
+        height: lines.length * LABEL_LINE,
+        key: pile.key
+      }
+      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key))
+      if (!spot) continue
+      placed.push({ pile: n, box: spot.box, lines })
+      blocked.push(spaced(spot.box))
+      if (pile.key !== undefined) chosen.set(pile.key, spot.index)
+      break
     }
-    placed.push(chosen!)
-    chosenIndex.push(index)
-  }
-  if (memory) {
-    memory.clear()
-    blocks.forEach((block, n) => {
-      if (block.key !== undefined) memory.set(block.key, chosenIndex[n])
-    })
-  }
+  })
+  remember(memory, chosen)
   return placed
 }

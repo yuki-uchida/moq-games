@@ -37,14 +37,13 @@ import {
 import { Effects, PK } from './effects'
 import {
   FOOD_BOB,
-  fitFoodLines,
   foodChips,
   foodLabelLines,
   foodPiles,
   foodSpriteBox,
   LABEL_LINE,
   layoutFoods,
-  placeLabelBlocks,
+  placeFoodLabels,
   playerBox,
   type Box,
   type FoodLabelEntry,
@@ -351,14 +350,30 @@ export class Renderer {
   private readonly ents: Ent[] = []
   private entCount = 0
   private readonly winders: Ent[] = []
-  /** Food label lines and key per pile, the pile boxes and every obstacle the labels avoid (sprites, then players). */
-  private readonly foodLabels: { lines: string[][]; keys: string[]; piles: Box[]; sprites: Box[]; players: Box[] } = {
+  /**
+   * Per pile: the label lines, key, owners in line order and shown sprite boxes; plus every obstacle the labels avoid
+   * (sprites, then players).
+   */
+  private readonly foodLabels: {
+    lines: string[][]
+    keys: string[]
+    owners: number[][]
+    piles: Box[][]
+    sprites: Box[]
+    players: Box[]
+    local: number
+  } = {
     lines: [],
     keys: [],
+    owners: [],
     piles: [],
     sprites: [],
-    players: []
+    players: [],
+    local: -1
   }
+  /** Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas; food labels avoid them. */
+  private hudRects: Box[] = []
+  private readonly textWidths = new Map<string, number>()
   /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
   private readonly foodLabelMemory = new Map<string, number>()
   /** Food layout of the last frame, reused while the visible foods stay where they are. */
@@ -568,9 +583,20 @@ export class Renderer {
     ctx.closePath()
   }
 
-  /** Food labels: one block per pile, placed clear of food sprites, players and other blocks. Drawn above the characters. */
+  /**
+   * Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas. Food labels keep clear of
+   * them from the next frame on.
+   */
+  setHudRects(rects: readonly Box[]) {
+    this.hudRects = rects.map((r) => ({ ...r }))
+  }
+
+  /**
+   * Food labels: one block per pile with a sprite on screen, placed clear of food sprites, players, the HUD and other
+   * blocks (shrunk, or left out, when there is no room). Drawn above the characters.
+   */
   private drawFoodLabels() {
-    const { lines, keys, piles, sprites, players } = this.foodLabels
+    const { lines, keys, owners, piles, sprites, players, local } = this.foodLabels
     if (!lines.length) {
       this.foodLabelMemory.clear()
       return
@@ -585,27 +611,79 @@ export class Renderer {
     ctx.fillStyle = '#fff4cf'
     const halfW = this.halfW - 80
     const halfH = this.halfH - 80
-    const viewport = {
-      left: this.camera.x - halfW + 4,
-      top: this.camera.y - halfH + 4,
-      right: this.camera.x + halfW - 4,
-      bottom: this.camera.y + halfH - 4
+    const visible = {
+      left: this.camera.x - halfW,
+      top: this.camera.y - halfH,
+      right: this.camera.x + halfW,
+      bottom: this.camera.y + halfH
     }
-    const shown = lines.map((block) => fitFoodLines(block, viewport.bottom - viewport.top))
-    const blocks = shown.map((block, n) => ({
-      pile: piles[n],
-      width: Math.max(...block.map((text) => ctx.measureText(text).width)) + 4,
-      height: block.length * LABEL_LINE,
+    const viewport = {
+      left: visible.left + 4,
+      top: visible.top + 4,
+      right: visible.right - 4,
+      bottom: visible.bottom - 4
+    }
+    // CSS px → world: the canvas centre is the camera.
+    const k = this.canvas.width / (this.width || 1) / this.scale
+    const toWorldX = (x: number) => this.camera.x + (x - this.width / 2) * k
+    const toWorldY = (y: number) => this.camera.y + (y - this.height / 2) * k
+    const hud = this.hudRects.map((r) => ({
+      left: toWorldX(r.left),
+      top: toWorldY(r.top),
+      right: toWorldX(r.right),
+      bottom: toWorldY(r.bottom)
+    }))
+    if (this.textWidths.size > 400) this.textWidths.clear()
+    const measure = (text: string) => {
+      let width = this.textWidths.get(text)
+      if (width === undefined) this.textWidths.set(text, (width = ctx.measureText(text).width))
+      return width
+    }
+    const labelPiles = lines.map((block, n) => ({
+      sprites: piles[n],
+      lines: block,
+      local: owners[n].findIndex((owner) => owner === local),
       key: keys[n]
     }))
-    placeLabelBlocks(blocks, [...sprites, ...players], viewport, this.foodLabelMemory).forEach((box, n) => {
+    for (const { pile, box, lines: shown } of placeFoodLabels(
+      labelPiles,
+      [...sprites, ...players, ...hud],
+      visible,
+      viewport,
+      measure,
+      this.foodLabelMemory
+    )) {
       const cx = (box.left + box.right) / 2
-      shown[n].forEach((text, j) => {
+      // A block pushed away from its pile gets a thin leader to it, so crowded labels still point at their foods.
+      const own = piles[pile]
+      if (own.length) {
+        const left = Math.min(...own.map((s) => s.left))
+        const right = Math.max(...own.map((s) => s.right))
+        const top = Math.min(...own.map((s) => s.top))
+        const bottom = Math.max(...own.map((s) => s.bottom))
+        const px = Math.max(left, Math.min(right, cx))
+        const py = Math.max(top, Math.min(bottom, (box.top + box.bottom) / 2))
+        const qx = Math.max(box.left, Math.min(box.right, px))
+        const qy = Math.max(box.top, Math.min(box.bottom, py))
+        if (Math.hypot(px - qx, py - qy) > 8) {
+          ctx.save()
+          ctx.lineWidth = 1
+          ctx.strokeStyle = 'rgba(255, 244, 207, 0.55)'
+          ctx.beginPath()
+          ctx.moveTo(qx, qy)
+          ctx.lineTo(px, py)
+          ctx.stroke()
+          ctx.fillStyle = 'rgba(255, 244, 207, 0.8)'
+          ctx.fillRect(px - 1, py - 1, 2, 2)
+          ctx.restore()
+        }
+      }
+      shown.forEach((text, j) => {
         const ly = box.top + 13 + j * LABEL_LINE
         ctx.strokeText(text, cx, ly)
         ctx.fillText(text, cx, ly)
       })
-    })
+    }
     ctx.restore()
   }
 
@@ -2331,12 +2409,9 @@ export class Renderer {
     labels.sprites.length = 0
     labels.players.length = 0
     labels.keys = []
-    labels.piles = Array.from({ length: pileCount }, () => ({
-      left: Infinity,
-      top: Infinity,
-      right: -Infinity,
-      bottom: -Infinity
-    }))
+    labels.owners = Array.from({ length: pileCount }, () => [])
+    labels.piles = Array.from({ length: pileCount }, () => [])
+    labels.local = view.players.findIndex((p) => p.id === localId)
     // Every food bobs with one shared phase, so shown sprites keep their distances while they move.
     const foodBob = Math.round(Math.sin(this.clock * 3) * FOOD_BOB)
     const entries: FoodLabelEntry[] = []
@@ -2354,17 +2429,14 @@ export class Renderer {
         short: food.short
       })
       labels.keys[pileIndex] ??= `${Math.round(it[i + 1] / 4)},${Math.round(it[i + 2] / 4)},${owner}`
+      if (!labels.owners[pileIndex].includes(owner)) labels.owners[pileIndex].push(owner)
       const spot = foodSpots[slot]
       if (!spot.shown) return
       // The label obstacle covers the sprite over its whole bob.
       const sprite = foodSpriteBox(spot)
       const box = { ...sprite, top: sprite.top - FOOD_BOB, bottom: sprite.bottom + FOOD_BOB }
       labels.sprites.push(box)
-      const pile = labels.piles[pileIndex]
-      pile.left = Math.min(pile.left, box.left)
-      pile.top = Math.min(pile.top, box.top)
-      pile.right = Math.max(pile.right, box.right)
-      pile.bottom = Math.max(pile.bottom, box.bottom)
+      labels.piles[pileIndex].push(box)
     })
     // Shadows, glows and rings of every item first, then the sprites, so no decoration covers another food's sprite.
     for (let i = 0; i < it.length; i += STRIDE.items) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { sheet } from '../src/art/index'
 import { COOKING_EFFECTS, COOKING_ITEMS } from '../src/data'
 import {
+  BLOCK_GAP,
   FOOD_ANCHOR,
   FOOD_GAP,
   FOOD_OPAQUE,
@@ -9,21 +10,31 @@ import {
   fitFoodLines,
   foodChips,
   foodLabelLines,
+  foodLabelVariants,
   foodPiles,
   foodSpriteBox,
   labelCandidates,
   LABEL_LINE,
   layoutFoods,
+  placeFoodLabels,
   placeLabelBlocks,
   playerBox,
   type Box,
   type FoodLabelEntry,
+  type FoodLabelPile,
+  type FoodLabelPlacement,
   type FoodPoint,
   type FoodSpot,
   type LabelBlock
 } from '../src/food-layout'
 
 const gap = (a: FoodPoint, b: FoodPoint) => Math.hypot(a.x - b.x, a.y - b.y)
+const grow = (box: Box, by: number): Box => ({
+  left: box.left - by,
+  top: box.top - by,
+  right: box.right + by,
+  bottom: box.bottom + by
+})
 
 function overlaps(a: Box, b: Box) {
   return Math.min(a.right, b.right) > Math.max(a.left, b.left) && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)
@@ -354,14 +365,286 @@ describe('placeLabelBlocks', () => {
       const obstacles = [...sprites, ...players]
       const placed = placeLabelBlocks(blocks, obstacles, viewport)
       placed.forEach((box, n) => {
-        const before = placed.slice(0, n)
+        const before = placed.slice(0, n).filter((b): b is Box => b !== undefined)
         const free = labelCandidates(blocks[n]).some(
           (c) => inside(c, viewport) && ![...obstacles, ...before].some((o) => overlaps(c, o))
         )
-        if (!free) return
-        expect(inside(box, viewport)).toBe(true)
-        for (const o of [...obstacles, ...before]) expect(overlaps(box, o)).toBe(false)
+        // Without a free candidate the block is left out rather than drawn over something.
+        if (!free) return expect(box).toBeUndefined()
+        expect(inside(box!, viewport)).toBe(true)
+        for (const o of [...obstacles, ...before]) expect(overlaps(box!, o)).toBe(false)
       })
     }
+  })
+
+  it('tries the diagonals and shifted spots before giving up', () => {
+    const { sprites, blocks } = blocksFor([{ x: 0, y: 0 }])
+    const candidates = labelCandidates(blocks[0])
+    // Every spot straight above, below, right or left is taken: the block goes to a diagonal or a shifted spot.
+    const taken = candidates.slice(0, 16)
+    const [box] = placeLabelBlocks(blocks, [...sprites, ...taken], wide)
+    expect(box).toBeDefined()
+    expect(candidates.slice(16).some((c) => c.left === box!.left && c.top === box!.top)).toBe(true)
+    for (const o of [...sprites, ...taken]) expect(overlaps(box!, o)).toBe(false)
+    expect(candidates.length).toBeGreaterThan(200)
+  })
+})
+
+/** Rough text width of the 13 px bold label font. */
+const measure = (text: string) => [...text].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 13 : 7.5), 0)
+
+/** World viewport of a W×H screen (visible world, inset by 4 px), centred on the origin. */
+function screen(width: number, height: number) {
+  const scale = Math.max(width / 1280, height / 720)
+  const hw = width / 2 / scale
+  const hh = height / 2 / scale
+  const visible = { left: -hw, top: -hh, right: hw, bottom: hh }
+  const viewport = { left: -hw + 4, top: -hh + 4, right: hw - 4, bottom: hh - 4 }
+  /** A screen rect (CSS px from the top left) in world units. */
+  const css = (left: number, top: number, right: number, bottom: number): Box => ({
+    left: left / scale - hw,
+    top: top / scale - hh,
+    right: right / scale - hw,
+    bottom: bottom / scale - hh
+  })
+  return { visible, viewport, css, width, height }
+}
+
+/** Piles of foods as the renderer hands them to placeFoodLabels (sprite boxes cover the bob). */
+function labelPiles(points: FoodPoint[], owners: number[], local = 0) {
+  const spots = layoutFoods(points)
+  const piles = foodPiles(spots)
+  const count = Math.max(...piles) + 1
+  const effect = (i: number) => COOKING_ITEMS[i % COOKING_ITEMS.length]
+  const lines = foodLabelLines(
+    points.map((_, i) => ({
+      pile: piles[i],
+      owner: owners[i],
+      effect: effect(i),
+      name: `P${owners[i] + 1}`,
+      label: COOKING_EFFECTS[effect(i)].label,
+      short: COOKING_EFFECTS[effect(i)].short
+    })),
+    count
+  )
+  const box = (spot: FoodSpot) => {
+    const b = foodSpriteBox(spot)
+    return { ...b, top: b.top - 2, bottom: b.bottom + 2 }
+  }
+  const sprites = spots.filter((spot) => spot.shown).map(box)
+  const result: FoodLabelPile[] = Array.from({ length: count }, (_, pile) => {
+    const order: number[] = []
+    points.forEach((_, i) => {
+      if (piles[i] === pile && !order.includes(owners[i])) order.push(owners[i])
+    })
+    const first = piles.indexOf(pile)
+    return {
+      sprites: spots.filter((spot, i) => spot.shown && piles[i] === pile).map(box),
+      lines: lines[pile],
+      local: order.indexOf(local),
+      key: `${Math.round(points[first].x / 4)},${Math.round(points[first].y / 4)},${owners[first]}`
+    }
+  })
+  return { sprites, piles: result }
+}
+
+/** Placed blocks stay inside the viewport and clear of every obstacle and of each other. */
+function expectClear(placed: FoodLabelPlacement[], obstacles: Box[], viewport: Box) {
+  placed.forEach((p, n) => {
+    expect(inside(p.box, viewport)).toBe(true)
+    expect(obstacles.some((o) => overlaps(p.box, o))).toBe(false)
+    // Blocks keep BLOCK_GAP of clear space between them, so two piles' labels never read as one list.
+    expect(placed.slice(0, n).some((q) => overlaps(p.box, grow(q.box, BLOCK_GAP)))).toBe(false)
+    expect(p.box.bottom - p.box.top).toBe(p.lines.length * LABEL_LINE)
+    expect(p.box.right - p.box.left).toBeGreaterThanOrEqual(Math.max(...p.lines.map(measure)))
+  })
+}
+
+/** HUD of a phone in portrait: the top bar with the buttons at the right, the team list and the hand panel. */
+function phoneHud(s: ReturnType<typeof screen>) {
+  return [
+    s.css(0, 0, s.width, 25),
+    s.css(12, 32, 190, 80),
+    s.css(s.width - 170, 32, s.width - 12, 70),
+    s.css(s.width - 110, 92, s.width - 12, 200),
+    s.css(12, s.height - 150, 250, s.height - 12)
+  ]
+}
+
+describe('placeFoodLabels', () => {
+  it('labels no pile whose sprites are all off screen', () => {
+    const s = screen(1280, 720)
+    // 690 px right of the player: the sprite is past the right edge (640) of the visible world.
+    const { sprites, piles } = labelPiles(
+      [
+        { x: 690, y: 0 },
+        { x: 100, y: 0 }
+      ],
+      [0, 0]
+    )
+    expect(piles).toHaveLength(2)
+    const placed = placeFoodLabels(piles, sprites, s.visible, s.viewport, measure)
+    expect(placed.map((p) => p.pile)).toEqual([1])
+    // A sprite just inside the edge keeps its label, inside the viewport.
+    const edge = labelPiles([{ x: 630, y: 0 }], [0])
+    const [label] = placeFoodLabels(edge.piles, edge.sprites, s.visible, s.viewport, measure)
+    expect(label).toBeDefined()
+    expect(inside(label.box, s.viewport)).toBe(true)
+  })
+
+  it('keeps labels off a HUD rect over the top-right corner', () => {
+    const s = screen(1280, 720)
+    const hud = s.css(1280 - 200, 0, 1280, 90)
+    const { sprites, piles } = labelPiles([{ x: 560, y: -270 }], [0])
+    const [free] = placeFoodLabels(piles, sprites, s.visible, s.viewport, measure)
+    expect(overlaps(free.box, hud)).toBe(true)
+    const [box] = placeFoodLabels(piles, [...sprites, hud], s.visible, s.viewport, measure)
+    expect(box).toBeDefined()
+    expectClear([box], [...sprites, hud], s.viewport)
+  })
+
+  it('places every block of 8 players dropping foods on 4 spots of a phone apart from everything', () => {
+    const s = screen(390, 844)
+    const spots = [
+      { x: -80, y: -150 },
+      { x: 80, y: -150 },
+      { x: -80, y: 100 },
+      { x: 80, y: 100 }
+    ]
+    const points: FoodPoint[] = []
+    const owners: number[] = []
+    spots.forEach((spot) => {
+      for (let k = 0; k < 8; k++) {
+        points.push({ ...spot })
+        owners.push(k)
+      }
+    })
+    const { sprites, piles } = labelPiles(points, owners)
+    const players = Array.from({ length: 8 }, (_, k) =>
+      playerBox(-120 + (k % 4) * 80, k < 4 ? -30 : 40, 1, 0, { name: 60, buffs: k ? 0 : 130, badge: false })
+    ).flat()
+    const hud = phoneHud(s)
+    const obstacles = [...sprites, ...players, ...hud]
+    const memory = new Map<string, number>()
+    const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure, memory)
+    expectClear(placed, obstacles, s.viewport)
+    expect(placed.map((p) => p.pile)).toEqual([0, 1, 2, 3])
+    // Shortened blocks keep the local player's line first and count the others.
+    for (const p of placed)
+      if (p.lines.length < 8) {
+        expect(p.lines.at(-1)).toMatch(/^…ほか\d+人$/)
+        if (p.lines.length > 1) expect(p.lines[0]).toMatch(/^P1：/)
+      }
+    // The same frame again keeps every block where it was.
+    expect(placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure, memory)).toEqual(placed)
+  })
+
+  it('drops a block only when not even one line has a free spot', () => {
+    const s = screen(1280, 720)
+    const { sprites, piles } = labelPiles(
+      [
+        { x: 0, y: 0 },
+        { x: 26, y: 0 }
+      ],
+      [0, 1]
+    )
+    const [sprite] = sprites
+    // Everything around the pile is covered except the sprites themselves.
+    const walls = [
+      { ...s.visible, bottom: sprite.top },
+      { ...s.visible, top: sprite.bottom + 1 },
+      { ...s.visible, right: sprite.left - 1 },
+      { ...s.visible, left: sprites[1].right + 1 }
+    ]
+    expect(placeFoodLabels(piles, [...sprites, ...walls], s.visible, s.viewport, measure)).toEqual([])
+    // A one-line gap below the pile is enough for 「…ほか2人」.
+    const narrow = [walls[0], { ...walls[1], top: sprite.bottom + 4 + LABEL_LINE }, ...walls.slice(2)]
+    const roomy = [
+      ...narrow.slice(0, 2),
+      { ...s.visible, right: sprite.left - 60 },
+      { ...s.visible, left: sprites[1].right + 60 }
+    ]
+    const [one] = placeFoodLabels(piles, [...sprites, ...roomy], s.visible, s.viewport, measure)
+    expect(one.lines).toEqual(['…ほか2人'])
+    expectClear([one], [...sprites, ...roomy], s.viewport)
+  })
+
+  it('shrinks the local line first, then the others in pile order', () => {
+    const lines = ['P1：攻撃力UP', 'P2：HP回復', 'P3：防御力UP']
+    expect(foodLabelVariants(lines, 1, 1000)).toEqual([lines, ['P2：HP回復', '…ほか2人'], ['…ほか3人']])
+    expect(foodLabelVariants(lines, -1, 1000)[1]).toEqual(['P1：攻撃力UP', '…ほか2人'])
+    expect(foodLabelVariants(['P1：HP回復'], 0, 1000)).toEqual([['P1：HP回復']])
+  })
+
+  it('keeps every drawn block apart from everything across many crowds and screens', () => {
+    let seed = 11
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      return seed / 2147483648
+    }
+    const screens = [screen(390, 844), screen(844, 390), screen(1280, 720), screen(1280, 400)]
+    let visiblePiles = 0
+    let dropped = 0
+    for (let round = 0; round < 160; round++) {
+      const s = screens[round % screens.length]
+      const ownerCount = 2 + Math.floor(random() * 7)
+      const spotCount = 1 + Math.floor(random() * 6)
+      const points: FoodPoint[] = []
+      const owners: number[] = []
+      for (let p = 0; p < spotCount; p++) {
+        const x = s.visible.left - 20 + random() * (s.visible.right - s.visible.left + 40)
+        const y = s.visible.top - 20 + random() * (s.visible.bottom - s.visible.top + 40)
+        const n = 1 + Math.floor(random() * 10)
+        for (let k = 0; k < n && points.length < 40; k++) {
+          points.push({ x: Math.round(x), y: Math.round(y) })
+          owners.push(Math.floor(random() * ownerCount))
+        }
+      }
+      const { sprites, piles } = labelPiles(points, owners)
+      const players = Array.from({ length: Math.floor(random() * 4) }, () =>
+        playerBox(
+          s.visible.left + random() * (s.visible.right - s.visible.left),
+          s.visible.top + random() * (s.visible.bottom - s.visible.top),
+          1,
+          0,
+          { name: 70, buffs: random() < 0.5 ? 130 : 0, badge: random() < 0.3 }
+        )
+      ).flat()
+      const hud = phoneHud(s).slice(0, 1 + Math.floor(random() * 5))
+      const obstacles = [...sprites, ...players, ...hud]
+      const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure)
+      expectClear(placed, obstacles, s.viewport)
+      piles.forEach((pile, n) => {
+        const onScreen = pile.sprites.some((b) => overlaps(b, s.visible))
+        const label = placed.find((p) => p.pile === n)
+        if (!onScreen) return expect(label).toBeUndefined()
+        visiblePiles++
+        if (label) {
+          // Every owner of the pile is on its own line or counted by 「…ほかn人」.
+          const tail = label.lines.at(-1)!.match(/^…ほか(\d+)人$/)
+          const counted = label.lines.length - (tail ? 1 : 0) + (tail ? Number(tail[1]) : 0)
+          expect(counted).toBe(pile.lines.length)
+          return
+        }
+        // Left out: even the single last line had no free candidate next to what was placed before it.
+        dropped++
+        const one = foodLabelVariants(pile.lines, pile.local, s.viewport.bottom - s.viewport.top).at(-1)!
+        const before = placed.filter((p) => p.pile < n).map((p) => grow(p.box, BLOCK_GAP))
+        const bounds = pile.sprites.reduce((u, b) => ({
+          left: Math.min(u.left, b.left),
+          top: Math.min(u.top, b.top),
+          right: Math.max(u.right, b.right),
+          bottom: Math.max(u.bottom, b.bottom)
+        }))
+        const block = { pile: bounds, width: Math.max(...one.map(measure)) + 4, height: one.length * LABEL_LINE }
+        expect(
+          labelCandidates(block).some(
+            (c) => inside(c, s.viewport) && ![...obstacles, ...before].some((o) => overlaps(c, o))
+          )
+        ).toBe(false)
+      })
+    }
+    expect(visiblePiles).toBeGreaterThan(300)
+    expect(dropped / visiblePiles).toBeLessThan(0.03)
   })
 })
