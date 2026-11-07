@@ -51,7 +51,7 @@ test('only uninterrupted movement-free time summons one creature, even after mov
   game.setInput(player.id, { x: 0, y: 0 })
   game.tick(2.1)
   expect(game.state.shots).toEqual([first])
-  game.tick(4)
+  game.tick(10)
   expect(game.state.shots).toHaveLength(0)
   game.tick(0.01)
   expect(game.state.shots).toHaveLength(1)
@@ -161,6 +161,7 @@ test('fields remain active and replace defeated targets throughout their lifetim
 test('bonus projectiles do not increase creatures or targets, while duration extends their lifetime', () => {
   const { game, player, weapon } = setup()
   const base = weaponStats(player, weapon)
+  expect(base.duration).toBe(12)
   player.passives = [
     { id: 'p_clever', lv: 4 },
     { id: 'p_grand', lv: 2 },
@@ -192,7 +193,7 @@ test('cooldown does not affect observation resummoning', () => {
     player.still = 2
     game['fireWeapons'](0)
     const firstId = game.state.shots[0].id
-    for (let step = 1; step <= 100; step++) {
+    for (let step = 1; step <= 300; step++) {
       game['fireWeapons'](0.1)
       game['moveShots'](0.1)
       if (game.state.shots.some((shot) => shot.id !== firstId)) return step
