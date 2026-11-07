@@ -703,7 +703,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 12,
     pierce: Infinity,
     minAge: 3,
-    desc: '2秒止まると生き物を召喚。Lvごとに必要時間が0.125秒短縮。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。',
+    desc: '2秒止まると生き物を召喚。Lvごとに必要時間が0.125秒短縮。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv×5体まで。',
     evolve: { passive: 'p_curious', name: '生き物博士' }
   }),
   weapon({
@@ -878,13 +878,13 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   w_perfume: ['数 +1', '威力 +30%', '範囲 +25%', '数 +1', '威力 +30%', '威力 +30%', '威力 +40%・数 +1'],
   w_cooking: Array(7).fill('料理の効果 +10%'),
   w_observe: [
-    '対象数 +1',
-    '威力 +30%・対象数 +1',
-    '範囲 +25%・対象数 +1',
-    '対象数 +1',
-    '威力 +30%・対象数 +1',
-    '対象数 +1',
-    '威力 +40%・対象数 +1'
+    '対象数 +5',
+    '威力 +30%・対象数 +5',
+    '範囲 +25%・対象数 +5',
+    '対象数 +5',
+    '威力 +30%・対象数 +5',
+    '対象数 +5',
+    '威力 +40%・対象数 +5'
   ],
   w_garden: standardLevels
 }
@@ -961,7 +961,7 @@ export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEn
         cooldown: level === 7 ? 0.85 : 1,
         duration: profile === 'sports' && countLevel ? 1 : 0,
         pierce: profile === 'piercing' && level === 4 ? 1 : 0,
-        targets: profile === 'observe' ? 1 : 0,
+        targets: profile === 'observe' ? 5 : 0,
         foodPower: profile === 'food' ? 0.1 : 0,
         ...weaponUpgradeOverrides[id]?.[level]
       }
