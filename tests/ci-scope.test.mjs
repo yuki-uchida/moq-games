@@ -89,32 +89,76 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.doesNotMatch(browser, /sdk-generated|\.sdk-cache|setup-sdk|npm run build|prepare-pages|upload-pages-artifact/)
   assert.match(browser, /shard: \$\{\{ fromJSON\(needs.changes.outputs.shards\) \}\}/)
   assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
-  assert.match(browser, /--config playwright.pages.config.ts --test-list shard-tests.txt/)
+  assert.match(
+    browser,
+    /run: xvfb-run -a npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt/
+  )
+  assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
+  assert.match(
+    browser,
+    /run: npx playwright install --with-deps chromium\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 mesa-vulkan-drivers xvfb\n/
+  )
+  const selector = browser.match(
+    /        shell: bash\n        run: \|\n(          shopt -s nullglob\n(?:          .+\n){3})/
+  )?.[1]
+  const benchmark = readFileSync(
+    new URL('../.github/workflows/renderer-benchmark.yml', import.meta.url),
+    'utf8'
+  ).replaceAll('\r\n', '\n')
+  assert.equal(
+    selector,
+    '          shopt -s nullglob\n' +
+      '          drivers=(/usr/share/vulkan/icd.d/lvp_icd*.json)\n' +
+      '          test "${#drivers[@]}" -eq 1\n' +
+      '          echo "VK_DRIVER_FILES=${drivers[0]}" >> "$GITHUB_ENV"\n'
+  )
+  assert.ok(benchmark.includes(selector))
+  assert.doesNotMatch(browser, /apt-get update|xvfb-run[^\n]*--list/)
+  assert.doesNotMatch(
+    workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''),
+    /LIBGL_ALWAYS_SOFTWARE|GALLIUM_DRIVER|VK_DRIVER_FILES|xvfb-run|mesa-vulkan-drivers/
+  )
   assert.match(deploy, /needs: \[[^\]\n]*\bbuild\b[^\]\n]*\bbrowser\b[^\]\n]*\]/)
   assert.match(deploy, /\(needs\.browser\.result == 'success' \|\| needs\.browser\.result == 'skipped'\)/)
 })
 
-test('Pages keeps headless real-mesh coverage and uses WARP only on Windows', () => {
+test('Pages keeps headless real-mesh coverage and uses benchmark Vulkan only on Linux CI', () => {
   const source = readFileSync(new URL('../playwright.pages.config.ts', import.meta.url), 'utf8')
     .replace(/^import .*\n/m, '')
     .replace('export default defineConfig(', 'defineConfig(')
+  const benchmark = readFileSync(new URL('../.github/workflows/renderer-benchmark.yml', import.meta.url), 'utf8')
+  const vulkanArgs = Array.from(runInNewContext(benchmark.match(/args: (\[[^\n]+\])/)[1], { backend: 'vulkan' }))
+  assert.deepEqual(vulkanArgs, [
+    '--enable-gpu',
+    '--ignore-gpu-blocklist',
+    '--disable-gpu-rasterization',
+    '--use-gl=angle',
+    '--use-angle=vulkan',
+    '--use-cmd-decoder=passthrough'
+  ])
   for (const platform of ['win32', 'linux', 'darwin']) {
-    const config = runInNewContext(source, {
-      defineConfig: (config) => config,
-      process: { platform, env: {} }
-    })
-    assert.equal(config.fullyParallel, true)
-    assert.equal(config.workers, 1)
-    assert.equal(config.retries, 0)
-    assert.equal(config.timeout, 360_000)
-    assert.equal(config.use.headless, true)
-    assert.deepEqual(JSON.parse(JSON.stringify(config.use.viewport)), { width: 1440, height: 1000 })
-    assert.deepEqual(Array.from(config.use.launchOptions.args), [
-      '--use-gl=angle',
-      platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader'
-    ])
-    for (const name of ['tower-model-review', 'tower-real3d-game', 'tower-meshopt-equivalence'])
-      assert.ok(config.testMatch.test(`${name}.spec.ts`))
+    for (const CI of [undefined, '', 'true', 'false']) {
+      const config = runInNewContext(source, {
+        defineConfig: (config) => config,
+        process: { platform, env: CI === undefined ? {} : { CI } }
+      })
+      assert.equal(config.fullyParallel, true)
+      assert.equal(config.workers, 1)
+      assert.equal(config.retries, 0)
+      assert.equal(config.timeout, 360_000)
+      assert.equal(config.use.headless, true)
+      assert.deepEqual(JSON.parse(JSON.stringify(config.use.viewport)), { width: 1440, height: 1000 })
+      assert.equal(config.forbidOnly, Boolean(CI))
+      assert.equal(config.webServer.reuseExistingServer, !CI)
+      assert.deepEqual(
+        Array.from(config.use.launchOptions.args),
+        platform === 'linux' && Boolean(CI)
+          ? vulkanArgs
+          : ['--use-gl=angle', platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
+      )
+      for (const name of ['tower-model-review', 'tower-real3d-game', 'tower-meshopt-equivalence'])
+        assert.ok(config.testMatch.test(`${name}.spec.ts`))
+    }
   }
 })
 
