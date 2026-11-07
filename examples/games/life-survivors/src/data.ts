@@ -250,7 +250,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '盾で迎撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
+    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({

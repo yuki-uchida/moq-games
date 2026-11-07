@@ -165,27 +165,42 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(playerStats(player).speed).toBe(playerStats(other).speed)
   })
 
-  test.each([1, -1])('a spent shield intercepts enemies, damages them and knocks them away (%i)', (side) => {
+  test.each([1, -1])('a spent shield damages and knocks away enemies on contact (%i)', (side) => {
     const { game, player } = guarded()
     game.state.bullets.push({ x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
     game.tick(1 / 60)
     const shield = game.state.shots.find((shot) => shot.v === 1)!
     game.state.shots = [shield]
-    shield.x = player.x + side * 20
+    shield.h = side === 1 ? 0 : Math.PI
+    shield.x = player.x + side * shield.orbit * 0.72
     shield.y = player.y
     shield.aux = 0
-    const enemy = game.spawnEnemy('germ', player.x + side * 100, player.y)!
+    const enemy = game.spawnEnemy('germ', shield.x + side * 10, player.y)!
     enemy.hp = enemy.maxHp = 1000
     enemy.elite = false
-    const start = shield.x
     for (let frame = 0; frame < 60 && enemy.hp === enemy.maxHp; frame++) game.tick(1 / 60)
-    expect((shield.x - start) * side).toBeGreaterThan(0)
     expect(enemy.kx * side).toBeGreaterThan(0)
     expect(enemy.hp).toBeLessThan(1000)
     expect(player.weapons[0].damage).toBeGreaterThan(0)
     expect(Math.cos(shield.angle) * side).toBeGreaterThan(0)
     expect(shield.v).toBe(1)
     expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+  })
+
+  test('a nearby enemy does not make a shield leave its position', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    game.state.shots = [shield]
+    shield.x = player.x + Math.cos(shield.h) * shield.orbit * 0.72
+    shield.y = player.y + Math.sin(shield.h) * shield.orbit * 0.72
+    const startX = shield.x
+    const startY = shield.y
+    const enemy = game.spawnEnemy('germ', player.x + 100, player.y)!
+    enemy.hp = enemy.maxHp = 1000
+    for (let frame = 0; frame < 10; frame++) game.tick(1 / 60)
+    expect(shield.x).toBeCloseTo(startX)
+    expect(shield.y).toBeCloseTo(startY)
+    expect(enemy.hp).toBe(enemy.maxHp)
   })
 
   test('guards stay near their owner instead of pursuing distant enemies, then return to their posts', () => {

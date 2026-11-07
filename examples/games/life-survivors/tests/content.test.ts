@@ -18,7 +18,7 @@ describe('in-game descriptions', () => {
     const detail = model.weapons[0].detail
     expect(WEAPON_BY_ID.get('p_over')!.desc.length).toBeLessThanOrEqual(60)
     for (const effect of [
-      '盾で迎撃・吹き飛ばす',
+      '敵を追わず盾で接触攻撃・吹き飛ばす',
       '1枚1回防御＋無敵0.5秒',
       '特攻：事故・病気',
       '詳しくは「?」へ',
