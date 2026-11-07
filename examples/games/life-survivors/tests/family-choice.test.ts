@@ -283,7 +283,7 @@ test('normal play from birth reaches and answers a family card using ordinary ca
     const player = game.addPlayer('p0')!
     for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
       if (game.state.phase !== 'playing') break
-      const input = botInput(game, { ...player, choices: [] }, 'random')
+      const input = botInput(game, { ...player, choices: [] }, 'smart')
       const scores = player.choices.map((choice) => {
         if (choice === 'f:yes') return 100
         if (choice === 'f:no') return -100

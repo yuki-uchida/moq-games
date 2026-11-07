@@ -1689,6 +1689,11 @@ export class Game {
       const stats = playerStats(player)
       for (const weapon of player.weapons) {
         weapon.held += dt
+        if (
+          weapon.id === 'w_travel' &&
+          this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
+        )
+          continue
         weapon.cd -= dt
         if (
           weapon.id === 'w_observe' &&
@@ -2001,6 +2006,9 @@ export class Game {
             x: player.x - side * (VIEW_HALF.x + 40),
             y: player.y + (rng() * 2 - 1) * 220,
             vx: side * speed,
+            ...(weapon.id === 'w_travel'
+              ? { aux: player.x + side * (VIEW_HALF.x + 40), life: (2 * (VIEW_HALF.x + 40)) / speed + 1 }
+              : {}),
             angle: side > 0 ? 0 : Math.PI,
             tick: 5
           })
@@ -2134,11 +2142,15 @@ export class Game {
         kept.push(shot)
         continue
       }
-      if (shot.life <= 0) {
+      if (shot.life <= 0 && shot.sourceWeapon !== 'w_travel') {
         if (shot.weapon === 'p_free') this.burst(shot, owner)
         continue
       }
       switch (shot.kind) {
+        case 'sweep':
+          shot.x += shot.vx * dt
+          if (shot.sourceWeapon === 'w_travel' && (shot.x - shot.aux) * shot.vx >= 0) continue
+          break
         case 'orbit':
           if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
           else if (shot.weapon === 'p_over') this.moveGuardian(shot, owner, dt)
