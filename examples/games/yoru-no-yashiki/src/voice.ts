@@ -76,21 +76,23 @@ export function analyzeVoiceFrame(
   sampleRate: number,
   deltaSeconds: number
 ): VoiceFrameAnalysis | undefined {
+  const math = Math
+  const number = Number
   if (
     !(samples instanceof Float32Array) ||
-    !Number.isFinite(sampleRate) ||
+    !number.isFinite(sampleRate) ||
     sampleRate < 8000 ||
     sampleRate > 192000 ||
-    !Number.isFinite(deltaSeconds) ||
+    !number.isFinite(deltaSeconds) ||
     deltaSeconds < 0 ||
     deltaSeconds > 1 ||
     samples.length === 0
   ) {
     return undefined
   }
-  const stride = Math.ceil(sampleRate / 16000)
-  const count = Math.min(MAX_SAMPLES, Math.floor(samples.length / stride))
-  if (count < Math.ceil((sampleRate / stride) * 0.02)) {
+  const stride = math.ceil(sampleRate / 16000)
+  const count = math.min(MAX_SAMPLES, math.floor(samples.length / stride))
+  if (count < math.ceil((sampleRate / stride) * 0.02)) {
     return undefined
   }
   const start = samples.length - count * stride
@@ -98,10 +100,10 @@ export function analyzeVoiceFrame(
   let sum = 0
   for (let index = 0; index < count; index++) {
     const sample = samples[start + index * stride]
-    if (!Number.isFinite(sample)) {
+    if (!number.isFinite(sample)) {
       return undefined
     }
-    window[index] = Math.max(-1, Math.min(1, sample))
+    window[index] = math.max(-1, math.min(1, sample))
     sum += window[index]
   }
   const mean = sum / count
@@ -110,13 +112,13 @@ export function analyzeVoiceFrame(
     window[index] -= mean
     energy += window[index] * window[index]
   }
-  const rms = Math.sqrt(energy / count)
+  const rms = math.sqrt(energy / count)
   if (rms < 0.005) {
     return { rms, confidence: 0, deltaSeconds }
   }
   const effectiveRate = sampleRate / stride
-  const minLag = Math.max(1, Math.floor(effectiveRate / 1000))
-  const maxLag = Math.min(Math.ceil(effectiveRate / 70), Math.floor(count / 2))
+  const minLag = math.max(1, math.floor(effectiveRate / 1000))
+  const maxLag = math.min(math.ceil(effectiveRate / 70), math.floor(count / 2))
   let confidence = 0
   for (let lag = minLag; lag <= maxLag; lag++) {
     let cross = 0
@@ -129,10 +131,10 @@ export function analyzeVoiceFrame(
       leftEnergy += left * left
       rightEnergy += right * right
     }
-    const normalization = Math.sqrt(leftEnergy * rightEnergy)
-    if (normalization > 0) confidence = Math.max(confidence, cross / normalization)
+    const normalization = math.sqrt(leftEnergy * rightEnergy)
+    if (normalization > 0) confidence = math.max(confidence, cross / normalization)
   }
-  confidence = Math.min(1, Math.max(0, confidence))
+  confidence = math.min(1, math.max(0, confidence))
   return { rms, confidence, deltaSeconds }
 }
 
