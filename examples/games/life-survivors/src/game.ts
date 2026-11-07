@@ -2356,10 +2356,21 @@ export class Game {
       shot.aux = 0.2
       let best: Enemy | undefined
       let distance = Infinity
+      let lastHit = Infinity
+      let occupied = Infinity
+      const chasers = new Map<Enemy, number>()
+      if (shot.weapon === 'w_pet')
+        for (const other of this.state.shots)
+          if (other !== shot && other.owner === shot.owner && other.weapon === 'w_pet' && other.target)
+            chasers.set(other.target, (chasers.get(other.target) ?? 0) + 1)
       this.near(owner.x, owner.y, 300, (enemy) => {
         if (Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > 300) return
         const d = (enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2
-        if (d < distance) {
+        const hit = shot.weapon === 'w_pet' ? (shot.hits.get(enemy.id) ?? -Infinity) : 0
+        const count = chasers.get(enemy) ?? 0
+        if (hit < lastHit || (hit === lastHit && (count < occupied || (count === occupied && d < distance)))) {
+          lastHit = hit
+          occupied = count
           distance = d
           best = enemy
         }
