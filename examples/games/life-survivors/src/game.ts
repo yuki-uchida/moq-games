@@ -438,7 +438,7 @@ export function weaponStats(
     damage,
     cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
     amount:
-      def.behavior === 'observe'
+      def.behavior === 'observe' || def.behavior === 'raid'
         ? 1
         : def.amount +
           (lv >= 2 ? 1 : 0) +
@@ -446,7 +446,7 @@ export function weaponStats(
           (lv >= 8 ? 1 : 0) +
           (evolved ? 1 : 0) +
           (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
-    area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
+    area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
