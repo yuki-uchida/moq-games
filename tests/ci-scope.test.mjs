@@ -67,6 +67,35 @@ test('SDK jobs prefer generated-only exact caches and always verify before insta
   }
 })
 
+test('only changes, browser and deploy omit public from checkout without limiting Git history', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  for (const name of ['changes', 'browser', 'deploy']) {
+    const job = workflow.match(new RegExp('^  ' + name + ':\\n([\\s\\S]*?)(?=^  \\S|(?![\\s\\S]))', 'm'))?.[1]
+    assert.ok(job, name)
+    const checkout = job.split(/^      - /m).find((step) => step.startsWith('uses: actions/checkout@v4'))
+    assert.equal(
+      checkout?.trimEnd(),
+      [
+        'uses: actions/checkout@v4',
+        '        with:',
+        ...(name === 'changes' ? ['          fetch-depth: 0'] : []),
+        '          sparse-checkout: |',
+        '            /*',
+        '            !/public/',
+        '          sparse-checkout-cone-mode: false'
+      ].join('\n'),
+      name
+    )
+  }
+  assert.doesNotMatch(
+    workflow.replace(/^  (?:changes|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
+    /sparse-checkout/
+  )
+})
+
 test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakening the gate', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
@@ -77,11 +106,6 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.ok(browser)
   assert.match(browser, /^    needs: \[changes, build\]$/m)
   assert.match(browser, /^    runs-on: ubuntu-latest$/m)
-  assert.match(
-    browser,
-    /uses: actions\/checkout@v4\n        with:\n          sparse-checkout: \|\n            \/\*\n            !\/public\/\n          sparse-checkout-cone-mode: false\n/
-  )
-  assert.doesNotMatch(workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''), /sparse-checkout/)
   assert.doesNotMatch(browser, /defaults:/)
   assert.match(browser, /path: ~\/\.cache\/ms-playwright/)
   assert.match(browser, /key: playwright-\$\{\{ runner.os \}\}/)
