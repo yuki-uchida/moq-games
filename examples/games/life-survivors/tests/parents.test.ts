@@ -17,6 +17,35 @@ test('頼りない親 grants defense alongside its experience bonus', () => {
   expect(playerStats(player).armor).toBe(2)
 })
 
+test.each([1, 4, 8])('weak parent scales only attack length with area at level %i', (lv) => {
+  const game = new Game(1)
+  const player = game.addPlayer('a', 'p_weak')!
+  const weapon = player.weapons[0]
+  weapon.lv = lv
+  const def = WEAPONS.find(({ id }) => id === weapon.id)!
+  for (const passives of [
+    [],
+    [{ id: 'p_kind', lv: 5 }],
+    [
+      { id: 'p_kind', lv: 5 },
+      { id: 'p_cautious', lv: 5 }
+    ]
+  ]) {
+    player.passives = passives
+    game.state.shots = []
+    const stats = weaponStats(player, weapon)
+    game['fire'](player, weapon, stats)
+    expect(game.state.shots).toHaveLength(stats.amount)
+    for (const shot of game.state.shots) {
+      expect(shot.h).toBe(22)
+      expect(shot.w).toBeCloseTo((def.area * stats.area) / 2)
+      expect(shot.r).toBeCloseTo(shot.w)
+      expect(shot.x - player.x).toBeCloseTo(Math.cos(shot.angle) * shot.w)
+      expect(shot.y - player.y).toBeCloseTo(Math.sin(shot.angle) * shot.w)
+    }
+  }
+})
+
 test.each([
   ['w_study', 3],
   ['w_reading', 5],

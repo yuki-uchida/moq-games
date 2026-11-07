@@ -1855,7 +1855,7 @@ export class Game {
             this.shot(player, weapon, def, ws, {
               angle,
               w: length / 2,
-              h: 22 * ws.area,
+              h: def.behavior === 'flail' ? 22 : 22 * ws.area,
               r: length / 2,
               x: player.x + Math.cos(angle) * length * 0.5,
               y: player.y + Math.sin(angle) * length * 0.5,
