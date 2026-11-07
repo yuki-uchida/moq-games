@@ -46,6 +46,7 @@ export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
 const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
+const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -436,7 +437,9 @@ export function weaponStats(
   }
   return {
     damage,
-    cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
+    cooldown: hasFixedInterval(source.id)
+      ? def.cooldown
+      : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
     amount:
       def.behavior === 'observe'
         ? 1
@@ -499,7 +502,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${LEVEL_TEXT[next]}${evolves}`,
+      text: `${next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${evolves}`,
       tag: `Lv ${next}`
     }
   }

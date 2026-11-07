@@ -54,6 +54,82 @@ test('six new personalities change their documented stats and preserve the size 
   expect(playerStats(player).might).toBeCloseTo(base.might * 1.2)
 })
 
+test.each([
+  ['p_toxic', 1, 0.45],
+  ['w_perfume', 0.35, 0.5]
+] as const)('%s keeps its attack interval fixed', (id, interval, tick) => {
+  const { game, player, weapon } = setup(id)
+  for (const level of [1, 6, 7, 8]) {
+    weapon.lv = level
+    for (const passives of [
+      [],
+      [{ id: 'p_diligent', lv: 5 }],
+      [{ id: 'p_hasty', lv: 5 }],
+      [{ id: 'p_grand', lv: 5 }],
+      [{ id: 'p_savvy', lv: 1 }]
+    ]) {
+      player.passives = passives
+      expect(weaponStats(player, weapon).cooldown).toBe(interval)
+    }
+  }
+  weapon.lv = 6
+  expect(choiceText(player, `w:${id}`).text).toBe('効果なし（Lv8で強化）')
+  weapon.lv = 8
+  player.passives = [
+    { id: 'p_diligent', lv: 5 },
+    { id: 'p_savvy', lv: 1 }
+  ]
+  game['fireWeapons'](0)
+  expect(game.state.shots[0].tick).toBe(tick)
+  game.state.shots = []
+  game['fireWeapons'](interval - 0.01)
+  expect(game.state.shots).toHaveLength(0)
+  game['fireWeapons'](0.02)
+  expect(game.state.shots.length).toBeGreaterThan(0)
+})
+
+test.each(['p_toxic', 'w_perfume'])('%s still benefits from area and duration', (id) => {
+  const { game, player, weapon } = setup(id)
+  const base = weaponStats(player, weapon)
+  game['fire'](player, weapon, base)
+  const original = game.state.shots[0]
+  game.state.shots = []
+  player.passives = [
+    { id: 'p_kind', lv: 5 },
+    { id: 'p_curious', lv: 5 }
+  ]
+  const boosted = weaponStats(player, weapon)
+  game['fire'](player, weapon, boosted)
+  expect(game.state.shots[0].r).toBeGreaterThan(original.r)
+  expect(game.state.shots[0].life).toBeGreaterThan(original.life)
+})
+
+test('cooldown still shortens other weapons', () => {
+  const { player, weapon } = setup('w_sports')
+  const base = weaponStats(player, weapon).cooldown
+  player.passives = [{ id: 'p_diligent', lv: 5 }]
+  expect(weaponStats(player, weapon).cooldown).toBeLessThan(base)
+})
+
+test('extra perfume clouds still work without changing their emission interval', () => {
+  const { game, player, weapon } = setup('w_perfume')
+  player.passives = [{ id: 'p_grand', lv: 5 }]
+  game['fireWeapons'](0)
+  expect(game.state.shots).toHaveLength(6)
+  expect(weapon.cd).toBeCloseTo(0.35)
+})
+
+test.each(['p_toxic', 'w_perfume'])('gambling keeps its own cooldown when copying %s', (id) => {
+  const { game, player, weapon } = setup('w_gamble')
+  weapon.gambleWeapon = id
+  weapon.gambleUntil = 12
+  player.passives = [{ id: 'p_diligent', lv: 5 }]
+  game['fireWeapons'](0)
+  expect(weapon.cd).toBeCloseTo(weaponStats(player, weapon).cooldown)
+  expect(weapon.cd).toBeLessThan(1.5)
+  expect(game.state.shots[0].weapon).toBe(id)
+})
+
 test('size changes enemy projectile collision, and reducing maximum HP clamps current HP', () => {
   for (const [id, distance, hit] of [
     ['p_large', 16, true],

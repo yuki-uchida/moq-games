@@ -59,6 +59,35 @@ test('gardening plants visible flowers and describes its upgrades', async ({ pag
   expect(errors).toEqual([])
 })
 
+test('fixed-interval weapons explain their level and cooldown in the UI', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    const player = (hook.game as unknown as Game).state.players[0]
+    player.birthPick = false
+    player.weapons = ['p_toxic', 'w_perfume', 'w_sports'].map((id) => ({
+      id,
+      lv: 6,
+      cd: 100,
+      held: 0,
+      damage: 0
+    }))
+    player.choices = ['w:p_toxic', 'w:w_perfume', 'w:w_sports']
+    player.choiceSeq++
+  })
+  const cards = page.locator('#cards .card')
+  await expect(cards.nth(0)).toContainText('効果なし（Lv8で強化）')
+  await expect(cards.nth(1)).toContainText('効果なし（Lv8で強化）')
+  await expect(cards.nth(2)).toContainText('クールダウン -15%')
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.players[0].choices = []
+  })
+  await page.locator('#status-open').click()
+  await expect(page.locator('#status-weapons li').filter({ hasText: '毒親' })).toContainText('クールダウン無効')
+  await expect(page.locator('#status-weapons li').filter({ hasText: '香水' })).toContainText('クールダウン無効')
+})
+
 test('gambling draws the right animation and status for each life stage', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

@@ -572,6 +572,7 @@ export class LifeAudio {
   private _volume = DEFAULT_VOLUME
   private _musicVolume = DEFAULT_MUSIC_VOLUME
   private beatTimer: ReturnType<typeof setTimeout> | undefined
+  private resumeTimer: ReturnType<typeof setTimeout> | undefined
   private beatLevel = 0
   private readonly storage: Storage2 | undefined
 
@@ -634,6 +635,10 @@ export class LifeAudio {
   /** A hidden tab queues no music (its timers are throttled); effects are untouched. */
   setHidden(hidden: boolean): void {
     this.hidden = hidden
+    if (hidden && this.resumeTimer !== undefined) {
+      clearTimeout(this.resumeTimer)
+      this.resumeTimer = undefined
+    }
     // Phones suspend or interrupt the audio context while the tab is away, so ask for it back on
     // return; a cached page can also come back with a context the browser closed. Only wake audio
     // the player already unlocked, so a first visit never opens an audio session by itself.
@@ -668,7 +673,13 @@ export class LifeAudio {
       const ctx = this.ctx
       // iOS also reports 'interrupted' after calls or app switches; both need a gesture resume.
       if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
-        void ctx.resume().catch(() => {})
+        void ctx.resume().catch(() => {
+          if (this.ctx !== ctx || this.hidden || this.resumeTimer !== undefined) return
+          this.resumeTimer = setTimeout(() => {
+            this.resumeTimer = undefined
+            if (this.ctx === ctx && !this.hidden) this.unlock()
+          }, 2000)
+        })
         this.kick(ctx)
       }
     } catch {
@@ -678,6 +689,8 @@ export class LifeAudio {
 
   /** Drops the audio graph without forgetting the cue, so the next unlock can rebuild it. */
   private teardown(): void {
+    if (this.resumeTimer !== undefined) clearTimeout(this.resumeTimer)
+    this.resumeTimer = undefined
     if (this.beatTimer !== undefined) clearTimeout(this.beatTimer)
     this.beatTimer = undefined
     this.beatLevel = 0
