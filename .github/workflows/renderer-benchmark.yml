@@ -11,7 +11,7 @@ on:
         required: true
         type: choice
         default: normal-game
-        options: [normal-game, meshopt, extra, concurrency]
+        options: [normal-game, meshopt, extra, concurrency, disk-cache]
       channel:
         description: Headless Chromium distribution
         required: true
@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ${{ fromJSON(inputs.scenario == 'concurrency' && '["gl"]' || '["swiftshader","gl","vulkan"]') }}
+        backend: ${{ fromJSON((inputs.scenario == 'concurrency' || inputs.scenario == 'disk-cache') && '["gl"]' || '["swiftshader","gl","vulkan"]') }}
         workers: ${{ fromJSON(inputs.scenario == 'concurrency' && '[1,2]' || '[1]') }}
     env:
       BENCHMARK_WORKERS: ${{ matrix.workers }}
@@ -50,10 +50,11 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(process.env.BENCHMARK_SCENARIO));
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO));
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
+          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated' && process.env.BENCHMARK_WORKERS === '1');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
@@ -180,7 +181,7 @@ jobs:
           const scenario = process.env.BENCHMARK_SCENARIO
           const channel = process.env.BENCHMARK_CHANNEL
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
-          if (!['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario ?? '')) throw new Error('Unknown scenario')
+          if (!['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario ?? '')) throw new Error('Unknown scenario')
           if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
           const browserMode = process.env.BENCHMARK_BROWSER_MODE
           if (!['dedicated', 'shared'].includes(browserMode ?? '')) throw new Error('Unknown browser mode')
@@ -189,6 +190,9 @@ jobs:
           if (browserMode === 'shared' && !process.argv.includes('--list') && !endpoint) throw new Error('Missing shared browser endpoint')
           const address = browserMode === 'shared' && endpoint ? new URL(endpoint) : undefined
           if (address && (address.protocol !== 'ws:' || address.hostname !== '127.0.0.1' || !address.port || address.username || address.password)) throw new Error('Invalid shared browser endpoint')
+          if (scenario === 'disk-cache' && (channel !== 'chromium' || backend !== 'gl' || browserMode !== 'dedicated' || process.env.BENCHMARK_WORKERS !== '1')) throw new Error('Invalid disk cache settings')
+          const diskCachePass = process.env.BENCHMARK_DISK_CACHE_PASS
+          if (scenario === 'disk-cache' && !['cold-a', 'warm-a', 'cold-b', 'warm-b'].includes(diskCachePass ?? '') && !process.argv.includes('--list')) throw new Error('Invalid disk cache pass')
           const workers = Number(process.env.BENCHMARK_WORKERS)
           if (!['1', '2'].includes(process.env.BENCHMARK_WORKERS ?? '') || !Number.isFinite(workers) || !Number.isInteger(workers) || ![1, 2].includes(workers)) throw new Error('Invalid workers')
           if (scenario === 'concurrency' ? channel !== 'chromium' || backend !== 'gl' : workers !== 1) throw new Error('Invalid concurrency settings')
@@ -196,17 +200,17 @@ jobs:
             testDir: fileURLToPath(new URL('.', import.meta.url)),
             testMatch: 'renderer.spec.ts',
             workers,
-            grep: scenario === 'concurrency'
+            grep: ['concurrency', 'disk-cache'].includes(scenario ?? '')
               ? /(?:normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation|same-session Title, Continue and New game retain the completed campaign preparation|advancing prepares the next stage before releasing the result screen)$/
               : scenario === 'meshopt'
               ? /meshopt source equivalence /
               : scenario === 'extra'
                 ? /EXTRA (?:exposes every runtime role\/action and never requests sheets, audio or game services|loop boundary repeats the start pose while the interior visibly moves|shares the weak model IBL once across model switches and releases it on pagehide)$/
                 : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
-            outputDir: fileURLToPath(new URL(scenario === 'concurrency' ? `workers-${workers}/results` : 'results', import.meta.url)),
+            outputDir: fileURLToPath(new URL(scenario === 'disk-cache' ? (diskCachePass ? `disk-cache/${diskCachePass}/results` : 'selection-results') : scenario === 'concurrency' ? `workers-${workers}/results` : 'results', import.meta.url)),
             reporter: [
               ['list'],
-              ['json', { outputFile: fileURLToPath(new URL(scenario === 'concurrency' ? `workers-${workers}/report.json` : 'report.json', import.meta.url)) }]
+              ['json', { outputFile: fileURLToPath(new URL(scenario === 'disk-cache' ? (diskCachePass ? `disk-cache/${diskCachePass}/report.json` : 'selection-report.json') : scenario === 'concurrency' ? `workers-${workers}/report.json` : 'report.json', import.meta.url)) }]
             ],
             use: {
               ...(browserMode === 'shared' && endpoint ? { connectOptions: { wsEndpoint: endpoint } } : {}),
@@ -220,6 +224,130 @@ jobs:
             }
           })
           CONFIG
+          cat > .build/renderer-benchmark-local/disk-cache.mjs <<'DISKCACHE'
+          import assert from 'node:assert/strict'
+          import { spawnSync } from 'node:child_process'
+          import { accessSync, closeSync, constants as fsConstants, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, writeFileSync } from 'node:fs'
+          import { constants, tmpdir } from 'node:os'
+          import { isAbsolute, join, relative, resolve } from 'node:path'
+          import { pathToFileURL } from 'node:url'
+
+          function inventory(directory) {
+            const result = { files: 0, bytes: 0, errors: [] }
+            function visit(path) {
+              try {
+                for (const name of readdirSync(path)) {
+                  const child = join(path, name)
+                  const stat = lstatSync(child)
+                  if (stat.isDirectory()) visit(child)
+                  else if (stat.isFile()) {
+                    result.files++
+                    result.bytes += stat.size
+                  } else result.errors.push({ path: child, error: 'Not a regular file or directory' })
+                }
+              } catch (error) {
+                result.errors.push({ path, error: error.message })
+              }
+            }
+            visit(directory)
+            return result
+          }
+
+          export function runDiskCache({ env = process.env, run = spawnSync, output = '.build/renderer-benchmark-local/disk-cache', temporary = env.RUNNER_TEMP || tmpdir() } = {}) {
+            assert.equal(env.BENCHMARK_SCENARIO, 'disk-cache')
+            assert.equal(env.BENCHMARK_BACKEND, 'gl')
+            assert.equal(env.BENCHMARK_CHANNEL, 'chromium')
+            assert.equal(env.BENCHMARK_BROWSER_MODE, 'dedicated')
+            assert.equal(env.BENCHMARK_WORKERS, '1')
+            const cacheRoot = mkdtempSync(join(temporary, 'renderer-disk-cache-'))
+            const artifactRoot = resolve('.build/renderer-benchmark-local')
+            const cacheRelative = relative(artifactRoot, cacheRoot)
+            assert(cacheRelative.startsWith('..') || isAbsolute(cacheRelative), 'Cache must remain outside the uploaded artifact')
+            const groups = { a: mkdtempSync(join(cacheRoot, 'a-')), b: mkdtempSync(join(cacheRoot, 'b-')) }
+            assert.notEqual(groups.a, groups.b)
+            for (const cache of Object.values(groups)) assert.deepEqual(readdirSync(cache), [])
+            mkdirSync(output)
+            const passes = []
+            let status = 0
+            for (const passID of ['cold-a', 'warm-a', 'cold-b', 'warm-b']) {
+              const [temperature, cacheGroup] = passID.split('-')
+              const cacheDirectory = groups[cacheGroup]
+              const directory = join(output, passID)
+              mkdirSync(directory)
+              const before = inventory(cacheDirectory)
+              if (temperature === 'cold') assert.deepEqual(readdirSync(cacheDirectory), [])
+              let cacheAccessError = null
+              try {
+                accessSync(cacheDirectory, fsConstants.R_OK | fsConstants.W_OK | fsConstants.X_OK)
+              } catch (error) {
+                cacheAccessError = error.message
+              }
+              const childEnv = {
+                ...env, BENCHMARK_DISK_CACHE_PASS: passID,
+                MESA_SHADER_CACHE_DIR: cacheDirectory, MESA_SHADER_CACHE_DISABLE: 'false',
+                MESA_SHADER_CACHE_SHOW_STATS: 'true', DEBUG: 'pw:browser'
+              }
+              const environment = Object.fromEntries([
+                'BENCHMARK_BACKEND', 'BENCHMARK_CHANNEL', 'BENCHMARK_BROWSER_MODE', 'BENCHMARK_WORKERS',
+                'SOURCE_RUN_ID', 'LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', 'VK_DRIVER_FILES',
+                'LP_NUM_THREADS', 'LP_PERF', 'MESA_SHADER_CACHE_DIR', 'MESA_SHADER_CACHE_DISABLE',
+                'MESA_SHADER_CACHE_SHOW_STATS', 'DEBUG'
+              ].map(key => [key, childEnv[key] ?? null]))
+              const metadata = {
+                passID, cacheGroup, temperature, workers: 1, cacheDirectory, environment, before,
+                cacheAccess: { runnerAccessError: cacheAccessError, mode: (lstatSync(cacheDirectory).mode & 0o777).toString(8), uid: process.getuid?.() ?? null, gid: process.getgid?.() ?? null, browserSandboxAccessVerified: false },
+                command: ['xvfb-run', '-a', 'npx', 'playwright', 'test', '--config', '.build/renderer-benchmark-local/playwright.config.ts'],
+                report: `disk-cache/${passID}/report.json`, results: `disk-cache/${passID}/results`,
+                rawLog: `disk-cache/${passID}/driver-and-cli.log`,
+                exitCode: null, state: 'starting'
+              }
+              const metadataPath = join(directory, 'metadata.json')
+              writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), { flag: 'wx' })
+              const log = openSync(join(directory, 'driver-and-cli.log'), 'wx')
+              const startedAt = Date.now()
+              let exitCode = 1
+              let signal = null
+              let launchError = null
+              try {
+                const result = run(metadata.command[0], metadata.command.slice(1), { env: childEnv, stdio: ['ignore', log, log] })
+                signal = result.signal ?? null
+                exitCode = result.status ?? (signal ? 128 + (constants.signals[signal] ?? 1) : 1)
+                launchError = result.error?.message ?? null
+                if (launchError && exitCode === 0) exitCode = 1
+              } catch (error) {
+                launchError = error.message
+              } finally {
+                closeSync(log)
+              }
+              const finishedAt = Date.now()
+              const after = inventory(cacheDirectory)
+              Object.assign(metadata, {
+                state: 'finished', exitCode, signal, launchError, startedAt, finishedAt,
+                wallMs: finishedAt - startedAt, wallScope: 'xvfb-run CLI start through return, including normal cleanup', after,
+                cacheEvidence: {
+                  usable: false, filesObserved: after.files > 0, reuseVerified: false,
+                  reason: after.files === 0 ? 'No cache files observed; test success is not cache-use evidence' : 'Files alone do not prove JIT cache hits; inspect raw Mesa statistics before interpreting timing',
+                  statisticsLog: metadata.rawLog
+                }
+              })
+              writeFileSync(metadataPath, JSON.stringify(metadata, null, 2))
+              passes.push(metadata)
+              writeFileSync(join(output, 'passes.json'), JSON.stringify(passes, null, 2))
+              if (status === 0) status = exitCode
+              console.log(`${passID}: exit=${exitCode} wallMs=${metadata.wallMs} files=${before.files}->${after.files} bytes=${before.bytes}->${after.bytes}`)
+            }
+            return status
+          }
+
+          if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+            try {
+              process.exitCode = runDiskCache()
+            } catch (error) {
+              console.error(error)
+              process.exitCode = 1
+            }
+          }
+          DISKCACHE
           cat > .build/renderer-benchmark-local/shared-browser.mjs <<'SERVER'
           import assert from 'node:assert/strict'
           import { spawn } from 'node:child_process'
@@ -387,7 +515,7 @@ jobs:
           test.afterEach(async ({ page, browser }, testInfo) => {
             const originalFailed = testInfo.status !== testInfo.expectedStatus
             try {
-              const selector = ['normal-game', 'concurrency'].includes(process.env.BENCHMARK_SCENARIO ?? '') ? '#field > canvas' : '#viewer-canvas'
+              const selector = ['normal-game', 'concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO ?? '') ? '#field > canvas' : '#viewer-canvas'
               const renderer = await page.locator(selector).evaluate((canvas: HTMLCanvasElement) => {
                 const context = canvas.getContext('webgl2')
                 if (!context || context.isContextLost()) throw new Error('No live game WebGL2 context')
@@ -441,8 +569,8 @@ jobs:
           const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
           const selected = specs(report.suites);
           const scenario = process.env.BENCHMARK_SCENARIO;
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario));
-          const expected = scenario === 'concurrency'
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
+          const expected = ['concurrency', 'disk-cache'].includes(scenario)
             ? ["normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation","same-session Title, Continue and New game retain the completed campaign preparation","advancing prepares the next stage before releasing the result screen"]
             : scenario === 'meshopt'
             ? ['soldier walk', 'slime walk', 'mage attack', 'tank walk', 'dragon breath'].map(name => `${name} preserves source poses and rendered appearance`)
@@ -461,6 +589,10 @@ jobs:
       - name: Run the same case under X11 with headless Chromium
         shell: bash
         run: |
+          if [ "$BENCHMARK_SCENARIO" = disk-cache ]; then
+            node .build/renderer-benchmark-local/disk-cache.mjs
+            exit 0
+          fi
           if [ "$BENCHMARK_SCENARIO" != concurrency ]; then
             xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts
             exit 0
@@ -501,10 +633,11 @@ jobs:
           const backend = process.env.BENCHMARK_BACKEND;
           const scenario = process.env.BENCHMARK_SCENARIO;
           const channel = process.env.BENCHMARK_CHANNEL;
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario));
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
           assert(['shell', 'chromium'].includes(channel));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
+          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated' && process.env.BENCHMARK_WORKERS === '1');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
@@ -525,6 +658,13 @@ jobs:
               passes: existsSync('.build/renderer-benchmark-local/passes.jsonl')
                 ? readFileSync('.build/renderer-benchmark-local/passes.jsonl', 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
                 : []
+            } : {}),
+            ...(scenario === 'disk-cache' ? {
+              passOrder: ['cold-a', 'warm-a', 'cold-b', 'warm-b'],
+              passes: existsSync('.build/renderer-benchmark-local/disk-cache/passes.json')
+                ? JSON.parse(readFileSync('.build/renderer-benchmark-local/disk-cache/passes.json', 'utf8')) : [],
+              cacheReuseVerified: false,
+              limitations: ['Cancellation or job timeout can interrupt remaining passes', 'Cache file presence and test success do not prove cache hits or speedup']
             } : {}),
             cpu: { logicalCount: cpu.length, model: cpu[0]?.model ?? null },
             playwrightChannel: channel === 'chromium' ? 'chromium' : null,
