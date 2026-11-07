@@ -443,6 +443,7 @@ export function weaponStats(
   const source = WEAPON_BY_ID.get(weapon.id)!
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
+  const levelAmount = Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
   if (source.id === 'p_toxic') damage *= 1.3 ** (Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8))
   if (source.category) damage *= player.talents[source.category]
@@ -462,12 +463,12 @@ export function weaponStats(
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-            (def.id === 'w_beauty' ? lv - 1 : Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)) +
-            (evolved ? 1 : 0) +
+            (def.id === 'w_sports' ? 0 : def.id === 'w_beauty' || def.id === 'p_weak' ? lv - 1 : levelAmount) +
+            (evolved && def.id !== 'w_sports' ? 1 : 0) +
             (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
     ),
     area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
-    duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
+    duration: def.duration * (def.id === 'w_sports' ? 1 + levelAmount : 1) * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
     strong: stats.strong
@@ -1780,8 +1781,10 @@ export class Game {
         const remaining = refresh(familyHand)
         this.familyHands.set(player.id, remaining.length ? remaining : ['x:skip'])
       }
-      if (!passiveLevel(player, PET_MEMORY)) player.passives.push({ id: PET_MEMORY, lv: 1 })
-      this.log(`${player.name}の愛犬が旅立った。「愛犬との思い出」は心に残る。`)
+      if (pet.lv >= MAX_WEAPON_LEVEL && !passiveLevel(player, PET_MEMORY)) {
+        player.passives.push({ id: PET_MEMORY, lv: 1 })
+        this.log(`${player.name}の愛犬が旅立った。「愛犬との思い出」は心に残る。`)
+      } else this.log(`${player.name}の愛犬が旅立った。`)
     }
   }
 
