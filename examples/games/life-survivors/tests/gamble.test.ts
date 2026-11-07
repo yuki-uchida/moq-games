@@ -65,6 +65,19 @@ test('gambling repeats the selected weapon before drawing again', () => {
   expect(game.state.fx.filter((event) => event.type === FX.GAMBLE)).toHaveLength(2)
 })
 
+test('snapshots carry only the currently owned gambling selection', () => {
+  const { game, player, weapon } = setup()
+  expect(toView(game.state).players[0].gambleWeapon).toBeUndefined()
+  choose(game, 'w_love')
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  const view = toView(game.state)
+  expect(view.players[0].gambleWeapon).toBe('w_love')
+  expect(readView(JSON.parse(JSON.stringify(view)))?.players[0].gambleWeapon).toBe('w_love')
+  expect(readView({ ...view, players: [{ ...view.players[0], gambleWeapon: 'invalid' }] })).toBeUndefined()
+  player.weapons = player.weapons.filter((owned) => owned.id !== 'w_love')
+  expect(toView(game.state).players[0].gambleWeapon).toBeUndefined()
+})
+
 test.each(copiedWeapons)('gambling can activate $id with its own behavior and statistics', (def) => {
   const { game, player, weapon } = setup()
   player.still = 2
