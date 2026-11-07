@@ -82,40 +82,140 @@ function balloon(f: number) {
   return r
 }
 
+/**
+ * 過保護親: an anxious mum braced behind her shield — a hair bun, worried brows, a pink cardigan under a
+ * white apron, leaning into the guard with one arm up and her feet planted in a nervous little shuffle,
+ * a sweat drop popping now and then. Side view facing right; the shield is a separate sprite.
+ */
 function guardian(f: number) {
   const r = new Raster(N, N)
   const step = [1, 0, -1, 0][f]
   const bob = [0, -1, 0, -1][f]
+  const hx = 10
+  const hy = 22 + bob
+  const sx = 12
+  const sy = 15 + bob
+  // Far arm braced behind the shield, far leg, a step darker.
   part(r, (l) => {
-    l.thick(9, 22 + bob, 8 + step, 28, 3, R.navy[1])
-    l.thick(14, 22 + bob, 15 - step, 28, 3, R.navy[2])
-    l.rect(6 + step, 28, 5, 2, R.brown[2])
-    l.rect(13 - step, 28, 5, 2, R.brown[2])
+    l.thick(sx - 1, sy + 1, sx + 3, sy + 4, 3, R.pink[2])
+    l.thick(sx + 3, sy + 4, 18, 15 + bob, 3, R.pink[2])
+    l.thick(hx - 1, hy + 4, 7 - step, 28, 3, R.skin[2])
+    l.rect(5 - step, 28, 5, 2, R.brown[2])
+  })
+  // Near leg and shoe, planted.
+  part(r, (l) => {
+    l.thick(hx + 3, hy + 4, 13 + step, 28, 3, R.skin[1])
+    l.rect(11 + step, 28, 6, 2, R.brown[1])
+    l.rect(11 + step, 29, 6, 1, R.brown[2])
+  })
+  // Skirt, cardigan and apron.
+  part(r, (l) => {
+    l.poly([hx - 5, hy - 1, hx + 6, hy - 1, hx + 8, 26, hx - 7, 26], R.navy[1])
+    shadeEdges(l, R.navy, 1, true)
   })
   part(r, (l) => {
-    l.poly([6, 14 + bob, 16, 14 + bob, 19, 24 + bob, 6, 24 + bob], R.mint[1])
-    shadeEdges(l, R.mint, 1, true)
-    l.thick(14, 16 + bob, 21, 19 + bob, 3, R.skin[1])
-    l.thick(7, 16 + bob, 5, 21 + bob, 3, R.skin[1])
+    l.poly([sx - 5, sy - 1, sx + 3, sy - 1, hx + 6, hy + 1, hx - 4, hy + 1], R.pink[1])
+    shadeEdges(l, R.pink, 1, true)
   })
   part(r, (l) => {
-    ball(l, 11, 9 + bob, 5.5, 6, R.skin)
-    l.poly([5, 8 + bob, 6, 4 + bob, 9, 2 + bob, 14, 3 + bob, 17, 7 + bob, 13, 6 + bob, 9, 7 + bob], R.brown[2])
-    l.rect(13, 9 + bob, 2, 2, C.inkWarm)
-    l.set(15, 12 + bob, R.red[2])
+    l.poly([hx, hy - 2, hx + 5, hy - 2, hx + 6, hy + 4, hx - 2, hy + 4], R.paper[1])
+    shadeEdges(l, R.paper, 1, true)
+    l.set(hx + 2, hy + 1, R.red[1])
+    l.set(hx + 3, hy + 1, R.red[1])
+    l.set(hx + 2, hy + 2, R.red[2])
   })
+  // Near arm: sleeve up to the shield's grip, the hand wrapped around it.
+  const hand = 17 + (f === 1 ? -1 : 0)
+  part(r, (l) => {
+    l.thick(sx, sy + 1, sx + 3, sy + 5, 3, R.pink[1])
+    l.thick(sx + 3, sy + 5, 17, hand + bob, 3, R.pink[1])
+    shadeEdges(l, R.pink, 1, true)
+    l.rect(17, hand - 1 + bob, 3, 3, R.skin[1])
+  })
+  // Head, bun and worried face.
+  const hdx = 13
+  const hdy = 9 + bob
+  part(r, (l) => {
+    ball(l, hdx, hdy, 4.5, 4.7, R.skin)
+    l.set(hdx + 2, hdy + 1, C.white)
+    l.set(hdx + 3, hdy + 1, C.inkWarm)
+    l.set(hdx + 3, hdy + 3, R.red[2])
+    l.set(hdx + 2, hdy + 3, R.red[2])
+  })
+  part(r, (l) => {
+    // Hair swept back over the crown into a bun that bobs a pixel behind.
+    l.poly(
+      [
+        hdx - 5,
+        hdy + 1,
+        hdx - 5,
+        hdy - 3,
+        hdx - 2,
+        hdy - 6,
+        hdx + 2,
+        hdy - 6,
+        hdx + 4,
+        hdy - 4,
+        hdx,
+        hdy - 3,
+        hdx - 2,
+        hdy - 1
+      ],
+      R.brown[2]
+    )
+    ball(l, hdx - 6, hdy - 5 - (f % 2), 2.6, 2.6, R.brown)
+    l.set(hdx - 4, hdy - 3, R.red[1])
+  })
+  part(
+    r,
+    (l) => {
+      // Worried brows: the inner ends pulled up.
+      l.set(hdx + 1, hdy - 1, R.brown[3])
+      l.set(hdx + 2, hdy - 2, R.brown[3])
+      l.set(hdx + 3, hdy - 2, R.brown[3])
+    },
+    false
+  )
+  // A cold sweat drop sliding off her temple on two of the four frames.
+  if (f === 1 || f === 2) {
+    part(r, (l) => {
+      l.stamp(['.s.', 'sSs', '.s.'], hdx + 5, hdy - 5 + (f - 1) * 2, { s: R.sky[1], S: R.sky[0] })
+    })
+  }
   return r
 }
 
+/**
+ * The shield: a round metal-rimmed buckler with rivets, a sky-blue face and a red heart, a glint sweeping
+ * across the face over the four frames. Centred on the same point as the body (its grip is on the left).
+ */
 function guardianShield(f: number) {
   const r = new Raster(N, N)
-  const x = 23 + [0, 1, 0, -1][f]
+  const cx = 23.5
+  const cy = 17.5
   part(r, (l) => {
-    ball(l, x, 19, 7, 9, R.metal)
-    ball(l, x, 19, 5, 7, R.sky)
-    l.stamp(['.r.r.', 'rRRRr', 'rRRRr', '.rRr.', '..r..'], x - 2, 16, { r: R.red[2], R: R.red[1] })
-    l.line(x - 4, 15, x - 2, 12, C.white)
+    ball(l, cx, cy, 7, 8.5, R.metal)
   })
+  part(r, (l) => {
+    ball(l, cx + 0.5, cy + 0.5, 4.5, 6, R.sky)
+    // The glint: a bright diagonal band sliding down-right, then gone.
+    const u = [-6, -2, 2, 6][f]
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const d = x - cx + (y - cy) - u
+        const c = l.get(x, y)
+        if ((c === R.sky[1] || c === R.sky[2]) && d >= 0 && d <= 1) l.set(x, y, R.sky[0])
+      }
+    l.stamp(['.r.r.', 'rRRRr', 'rRRRr', '.rRr.', '..r..'], 22, 15, { r: R.red[2], R: R.red[1] })
+  })
+  // Rivets round the rim.
+  for (const [x, y] of [
+    [23, 10],
+    [23, 25],
+    [17, 18],
+    [30, 17]
+  ])
+    if (r.get(x, y)) r.set(x, y, R.yellow[0])
   return r
 }
 
