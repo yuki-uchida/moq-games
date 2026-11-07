@@ -22,7 +22,7 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
 })
 
-test('Pages browser uses Windows without rebuilding verified artifacts or weakening the gate', () => {
+test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakening the gate', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
     '\n'
@@ -31,9 +31,9 @@ test('Pages browser uses Windows without rebuilding verified artifacts or weaken
   const deploy = workflow.slice(workflow.indexOf('  deploy:'))
   assert.ok(browser)
   assert.match(browser, /^    needs: \[changes, build\]$/m)
-  assert.match(browser, /^    runs-on: windows-latest$/m)
-  assert.match(browser, /defaults:\n\s+run:\n\s+shell: bash/)
-  assert.match(browser, /path: ~\/AppData\/Local\/ms-playwright/)
+  assert.match(browser, /^    runs-on: ubuntu-latest$/m)
+  assert.doesNotMatch(browser, /defaults:/)
+  assert.match(browser, /path: ~\/\.cache\/ms-playwright/)
   assert.match(browser, /key: playwright-\$\{\{ runner.os \}\}/)
   assert.match(
     browser,
@@ -95,7 +95,7 @@ test('unit shards run independently and gate publication', () => {
   assert.match(unit, /^    needs: changes$/m)
   assert.match(unit, /^    if: needs\.changes\.outputs\.unit != ''$/m)
   assert.match(unit, /fail-fast: false/)
-  assert.match(unit, /shard: \[1, 2, 3, 4, 5, 6, 7, 8\]/)
+  assert.match(unit, /shard: \[1, 2, 3, 4\]/)
   assert.match(unit, /actions\/cache@v4[\s\S]*?\.generated\/moqt-sdk/)
   assert.match(unit, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
   assert.match(
@@ -104,7 +104,7 @@ test('unit shards run independently and gate publication', () => {
   )
   assert.match(
     unit,
-    /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=1/
+    /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=2/
   )
   assert.match(deploy, /needs: \[[^\]\n]*\bunit\b[^\]\n]*\]/)
   assert.match(
@@ -463,7 +463,7 @@ test(
     )
     const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \S)/m)?.[1]
     const shards = JSON.parse(unit?.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
-    assert.deepEqual(shards, [1, 2, 3, 4, 5, 6, 7, 8])
+    assert.deepEqual(shards, [1, 2, 3, 4])
     const { BaseSequencer, createVitest } = await import('vitest/node')
     const vitest = await createVitest('test', { root })
     const Sequencer = vitest.config.sequence.sequencer
