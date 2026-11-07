@@ -151,6 +151,14 @@ jobs:
           key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
       - run: node scripts/setup-sdk.mjs
       - run: npm ci --ignore-scripts
+      - uses: actions/cache@v4
+        if: contains(needs.changes.outputs.unit, 'examples/games/yoru-no-yashiki/tests')
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium for browser-backed unit tests
+        if: contains(needs.changes.outputs.unit, 'examples/games/yoru-no-yashiki/tests')
+        run: npx playwright install --with-deps chromium
       - name: Unit tests
         run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=1
   life-browser:
