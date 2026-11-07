@@ -438,15 +438,17 @@ export function weaponStats(
     cooldown: hasFixedInterval(source.id)
       ? def.cooldown
       : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
-    amount:
+    amount: Math.min(
+      def.id === 'p_monster' ? 2 : Infinity,
       def.behavior === 'observe' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-          (lv >= 2 ? 1 : 0) +
-          (lv >= 5 ? 1 : 0) +
-          (lv >= 8 ? 1 : 0) +
-          (evolved ? 1 : 0) +
-          (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
+            (lv >= 2 ? 1 : 0) +
+            (lv >= 5 ? 1 : 0) +
+            (lv >= 8 ? 1 : 0) +
+            (evolved ? 1 : 0) +
+            (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
+    ),
     area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
@@ -1600,12 +1602,22 @@ export class Game {
     const state = this.state
     if (!state.bullets.length) return
     const alive = state.players.filter((player) => !player.downed)
+    const blockers = state.shots.filter(
+      (shot) => (shot.sourceWeapon === 'w_friend' || shot.sourceWeapon === 'w_pet') && shot.delay <= 0
+    )
     const kept: Bullet[] = []
     for (const bullet of state.bullets) {
       bullet.life -= dt
       if (bullet.life <= 0) continue
       bullet.x += bullet.vx * dt
       bullet.y += bullet.vy * dt
+      if (
+        blockers.some((shot) => {
+          const reach = shot.r + bullet.r
+          return (shot.x - bullet.x) ** 2 + (shot.y - bullet.y) ** 2 <= reach * reach
+        })
+      )
+        continue
       let spent = false
       for (const player of alive) {
         if (player.invuln > 0) continue
@@ -1790,7 +1802,16 @@ export class Game {
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
-    const n = ws.amount
+    const n =
+      def.id === 'p_monster'
+        ? Math.max(
+            0,
+            Math.min(
+              ws.amount,
+              2 - this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
+            )
+          )
+        : ws.amount
     const rng = this.rng
     const speed = def.speed * ws.speed
     switch (def.behavior) {

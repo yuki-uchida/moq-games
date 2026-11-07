@@ -272,7 +272,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。特攻：人間関係・授業。'
+    desc: '子のそばを離れて近くの敵を追い回す。最大2人。特攻：人間関係・授業。'
   }),
   weapon({
     id: 'p_rich',
@@ -342,7 +342,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 120,
     strong: ['people', 'insult'],
     minAge: 3,
-    desc: '友だちが遊びに来て、まわりを駆け回る。特攻：人間関係・悪口。',
+    desc: '友だちが遊びに来て、まわりを駆け回り、敵の弾を打ち消す。特攻：人間関係・悪口。',
     evolve: { passive: 'p_kind', name: '一生の親友' }
   }),
   weapon({
@@ -506,7 +506,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'child'],
     minAge: 3,
-    desc: '子犬から成長し、迎えて20年でお別れ。初回のみ性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
+    desc: '敵の弾を打ち消す。子犬から成長し、迎えて20年でお別れ。初回のみ性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
     evolve: { passive: 'p_optimist', name: '忠犬' }
   }),
   weapon({
