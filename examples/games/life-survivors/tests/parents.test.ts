@@ -769,19 +769,26 @@ describe('ヤンキー親', () => {
     expect(only.last).toBeLessThan(15)
   })
 
-  test('器用 sends one yankee parent at each of the nearest enemies', () => {
+  test('弾数 bonuses and weapon levels do not add parents, while level 4 expands their reach', () => {
     const { player, watch } = raid(13, [
       [120, 0],
       [0, 150],
       [-300, 0]
     ])
-    player.passives = [{ id: 'p_clever', lv: 1 }]
-    const bearings = watch()
-      .map((path) => path.bearing)
-      .sort((a, b) => a - b)
-    expect(bearings).toHaveLength(2)
-    expect(bearings[0]).toBeCloseTo(0, 1)
-    expect(bearings[1]).toBeCloseTo(Math.PI / 2, 1)
+    const weapon = player.weapons[0]
+    player.passives = [
+      { id: 'p_clever', lv: 4 },
+      { id: 'p_grand', lv: 3 }
+    ]
+    for (const lv of [1, 2, 4, 5, 8]) {
+      weapon.lv = lv
+      const stats = weaponStats(player, weapon)
+      expect(stats.amount).toBe(1)
+      expect(stats.area).toBeCloseTo(lv >= 4 ? 1.4 : 1)
+    }
+    const paths = watch()
+    expect(paths).toHaveLength(1)
+    expect(paths[0].bearing).toBeCloseTo(0, 1)
   })
 })
 
