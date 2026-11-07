@@ -715,7 +715,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     category: 'hobby',
     damage: 3.5,
     cooldown: 2.4,
-    area: 48,
+    area: 24,
     speed: 320,
     duration: 3.2,
     pierce: Infinity,

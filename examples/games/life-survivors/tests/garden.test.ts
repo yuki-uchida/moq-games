@@ -78,6 +78,7 @@ test('a seed arcs, lands without impact damage, then blooms and damages repeated
   expect(shot.v).toBe(2)
   game['moveShots'](0.02)
   expect(shot.v).toBe(1)
+  expect(shot.r).toBe(24)
   expect(shot.life).toBeCloseTo(WEAPON_BY_ID.get('w_garden')!.duration)
   game['moveShots'](0.01)
   expect(enemy.hp).toBeLessThan(enemy.maxHp)
