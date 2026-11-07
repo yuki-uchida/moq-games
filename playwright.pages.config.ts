@@ -21,6 +21,7 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     browserName: 'chromium',
+    ...(linuxCI ? { channel: 'chromium' } : {}),
     headless: true,
     // Software WebGL makes the actual mesh review reproducible on hosted runners.
     launchOptions: {

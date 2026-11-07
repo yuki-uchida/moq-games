@@ -147,6 +147,7 @@ test('Pages keeps headless real-mesh coverage and uses benchmark Vulkan only on 
       assert.equal(config.retries, 0)
       assert.equal(config.timeout, 360_000)
       assert.equal(config.use.headless, true)
+      assert.equal(config.use.channel, platform === 'linux' && Boolean(CI) ? 'chromium' : undefined)
       assert.deepEqual(JSON.parse(JSON.stringify(config.use.viewport)), { width: 1440, height: 1000 })
       assert.equal(config.forbidOnly, Boolean(CI))
       assert.equal(config.webServer.reuseExistingServer, !CI)
