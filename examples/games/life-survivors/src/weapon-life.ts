@@ -2,6 +2,7 @@ import { WEAPON_BY_ID } from './data'
 
 export const PET_LIFESPAN = 20
 export const PET_MEMORY = 'p_petmemory'
+export const PET_TYPES = ['dog', 'cat', 'rabbit', 'parakeet', 'hamster'] as const
 
 export const SPORTS_FORMS = [
   { age: 0, key: 'soccer', name: 'サッカー', icon: '⚽' },
