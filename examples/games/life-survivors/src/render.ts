@@ -932,7 +932,8 @@ export class Renderer {
     m.x = pos.x
     m.y = pos.y
     this.motion.set(player.id, m)
-    this.foodLabels.players.push(playerBox(pos.x, feet, size, tagLift))
+    // The area food labels keep clear of (body, name tag and buff row), handed back to the frame's draw loop.
+    const box = playerBox(pos.x, feet, size, tagLift)
     const buffs = (['food_damage', 'food_defense', 'food_speed'] as const).filter((kind) => player.cookingBuffs?.[kind])
     if (buffs.length) {
       this.world()
@@ -1060,7 +1061,7 @@ export class Renderer {
     // In the finale the name tag and bar fade away so the bed and the rising soul are unobstructed.
     const shown =
       phase === 'reaper' || phase === 'won' ? Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6) : 1
-    if (shown <= 0) return
+    if (shown <= 0) return box
     if (local && !player.downed && player.gambleWeapon) {
       const icon = weaponAppearance(player.gambleWeapon, ageAt(time), player.petAge).art
       const frame = (sheet('icons')[icon] ?? sheet('icons')[player.gambleWeapon]).frames[0]
@@ -1113,6 +1114,7 @@ export class Renderer {
       0,
       shown
     )
+    return box
   }
 
   /** A player's family this frame (kept per player so they ease along between frames). */
@@ -2498,7 +2500,9 @@ export class Renderer {
       if (item.member) this.follower(item.member)
       else if (item.player) {
         const player = item.player
-        this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
+        this.foodLabels.players.push(
+          this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
+        )
       } else this.enemy(item)
     }
     this.world()
