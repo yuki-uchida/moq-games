@@ -59,7 +59,17 @@ export class Trauma {
 }
 
 /** Particle kinds (what the renderer draws). */
-export const PK = { debris: 0, sprite: 1, ring: 2, glow: 3, rays: 4, pillar: 5, pop: 6, warn: 7 } as const
+export const PK = {
+  debris: 0,
+  sprite: 1,
+  ring: 2,
+  glow: 3,
+  rays: 4,
+  pillar: 5,
+  pop: 6,
+  warn: 7,
+  gambleResult: 8
+} as const
 
 export interface Particle {
   kind: number
@@ -433,6 +443,8 @@ export class Effects {
             important: true
           })
           if (particle) particle.n = b
+          const result = this.pool.spawn(PK.gambleResult, x + 60, y + 55, 3, true)
+          if (result) result.n = b
         }
         break
       case FX.KILL: {
