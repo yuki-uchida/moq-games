@@ -70,6 +70,9 @@ test('plays the included RuleAI game through a natural outcome without optional 
   // Assert
   await expect(page.locator('#phase')).toContainText('襲撃')
   await expect(page.locator('#time')).not.toHaveText('00:00')
+  await expect(page.locator('.bhud-speed')).toHaveAttribute('aria-pressed', 'false')
+  await page.locator('.bhud-speed[aria-pressed=false]').click()
+  await expect(page.locator('.bhud-speed')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#result')).toBeVisible({ timeout: 150000 })
   expect(external).toEqual([])
   const feel = await page.evaluate(() => (window as any).__feel)
