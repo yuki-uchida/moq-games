@@ -54,12 +54,13 @@ export function clampPitch(pitch: number, role: WorldFrame['role']): number {
 }
 
 function clearPosition(x: number, z: number): boolean {
+  const math = Math
   return (
-    Math.abs(x) <= 8.5 &&
-    Math.abs(z) <= 8.5 &&
+    math.abs(x) <= 8.5 &&
+    math.abs(z) <= 8.5 &&
     !OBSTACLES.some(
       (wall) =>
-        Math.abs(x - wall.x) < wall.width / 2 + PLAYER_RADIUS && Math.abs(z - wall.z) < wall.depth / 2 + PLAYER_RADIUS
+        math.abs(x - wall.x) < wall.width / 2 + PLAYER_RADIUS && math.abs(z - wall.z) < wall.depth / 2 + PLAYER_RADIUS
     )
   )
 }

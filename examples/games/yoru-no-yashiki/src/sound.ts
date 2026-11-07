@@ -39,13 +39,14 @@ export class YashikiSound {
       context.addEventListener('statechange', this.onStateChange)
       this.noise = context.createBuffer(1, context.sampleRate * 2, context.sampleRate)
       const samples = this.noise.getChannelData(0)
+      const math = Math
       let grain = 0.5
       let target = grain
-      const grainLength = Math.round(context.sampleRate * 0.035)
+      const grainLength = math.round(context.sampleRate * 0.035)
       for (let index = 0; index < samples.length; index++) {
-        if (index % grainLength === 0) target = 0.25 + Math.random() * 0.75
+        if (index % grainLength === 0) target = 0.25 + math.random() * 0.75
         grain += (target - grain) / (context.sampleRate * 0.008)
-        samples[index] = (Math.random() * 2 - 1) * grain
+        samples[index] = (math.random() * 2 - 1) * grain
       }
     } catch (error) {
       if (listenerAttempted) {
