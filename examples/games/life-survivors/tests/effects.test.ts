@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ENEMIES } from '../src/data'
+import { ENEMIES, WEAPONS } from '../src/data'
 import { Effects, FxFeed, ParticlePool, PK, Trauma, shade, type FxView } from '../src/effects'
 import { FX, FX_STRIDE } from '../src/fx'
 
@@ -85,6 +85,16 @@ describe('ParticlePool', () => {
 })
 
 describe('Effects', () => {
+  test('repeated savings blasts do not stack shake or weaken stronger effects', () => {
+    const fx = new Effects(() => 0.5)
+    const savings = WEAPONS.findIndex((weapon) => weapon.id === 'w_savings')
+    for (let seq = 1; seq <= 20; seq++) fx.consume(ev(seq, FX.BLAST, 0, 0, 100, savings), 1, view)
+    expect(fx.trauma.value).toBeCloseTo(0.22)
+    fx.trauma.add(0.4)
+    fx.consume(ev(21, FX.BLAST, 0, 0, 100, savings), 1, view)
+    expect(fx.trauma.value).toBeCloseTo(0.62)
+  })
+
   test('a kill pops the enemy, puffs and throws debris in its colour; a repeated snapshot adds nothing', () => {
     const fx = new Effects(() => 0.5)
     const index = ENEMIES.findIndex((e) => e.id === 'overwork')
