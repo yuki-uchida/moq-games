@@ -371,6 +371,7 @@ test('co-op cards retain focus across birthdays and appearance changes', async (
     player.choices = ['w:w_sports', 'x:skip']
     player.choiceSeq++
   })
+  await expect(page.locator('#cards .card').first()).toContainText('スポーツ（サッカー）')
   const second = page.locator('#cards .card').nth(1)
   await expect(second).toBeVisible()
   await second.focus()
@@ -2037,7 +2038,8 @@ test('guests receive both stages of a copied gardening weapon', async ({ context
       player.weapons = []
     }
     game.state.players[0].weapons = [
-      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 }
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 },
+      { id: 'w_garden', lv: 1, cd: 100, held: 0, damage: 0 }
     ]
     game['buildGrid']()
     game['fireWeapons'](0)
