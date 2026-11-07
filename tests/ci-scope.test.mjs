@@ -442,10 +442,10 @@ test('life browser shards run independently and gate publication', () => {
   assert.match(browser, /^    needs: changes$/m)
   assert.match(browser, /^    if: needs\.changes\.outputs\.life == 'true'$/m)
   assert.match(browser, /fail-fast: false/)
-  assert.match(browser, /shard: \[1, 2, 3, 4, 5, 6\]/)
+  assert.match(browser, /^        shard: \[1, 2, 3\]$/m)
   assert.match(
     browser,
-    /npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/
+    /^        run: npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --workers=2$/m
   )
   assert.match(browser, /name: life-survivors-browser-\$\{\{ github\.sha \}\}-shard-\$\{\{ matrix\.shard \}\}/)
   assert.match(deploy, /needs: \[[^\]\n]*\blife-browser\b[^\]\n]*\]/)
@@ -593,12 +593,8 @@ test(
     const browser = workflow.match(/^  life-browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
     assert.ok(browser)
     const shards = JSON.parse(browser.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
-    assert.ok(Array.isArray(shards))
-    assert.deepEqual(
-      shards,
-      Array.from({ length: shards.length }, (_, index) => index + 1)
-    )
-    const partitions = shards.map((shard) => list(`--shard=${shard}/${shards.length}`))
+    assert.deepEqual(shards, [1, 2, 3])
+    const partitions = shards.map((shard) => list(`--shard=${shard}/${shards.length}`, '--workers=2'))
     const counts = partitions.map((partition) => partition.length)
     assert.ok(counts.every((count) => count > 0))
     assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
