@@ -837,7 +837,7 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   w_sports: [
     '効果時間 +3秒',
     '威力 +30%',
-    '範囲 +25%・貫通 +1',
+    '範囲 +25%・威力 +30%',
     '効果時間 +3秒',
     '威力 +30%',
     'クールダウン -15%',
@@ -867,10 +867,10 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   w_travel: standardLevels,
   w_savings: standardLevels,
   w_gamble: [
-    '抽選した武器の数 +1（武器による）',
+    '抽選した武器の威力 +30%・数 +1（武器による）',
     '抽選した武器の威力 +30%',
     '抽選した武器の範囲 +25%（武器による）',
-    '抽選した武器の数 +1（武器による）',
+    '抽選した武器の威力 +30%・数 +1（武器による）',
     '抽選した武器の威力 +30%',
     '抽選した武器のクールダウン -15%（武器による）',
     '抽選した武器の威力 +40%・数 +1（武器による）'
@@ -938,10 +938,12 @@ const weaponUpgradeProfiles: Record<string, UpgradeProfile> = {
 }
 
 const weaponUpgradeOverrides: Record<string, Record<number, Partial<WeaponLevelUpgrade>>> = {
-  p_toxic: { 2: { damage: 1.3 }, 5: { damage: 1.3 }, 7: { damage: 1.3 }, 8: { damage: 1.82 } },
-  p_monster: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
-  p_yankee: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
-  w_muscle: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
+  p_toxic: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 7: { damage: 1.3, cooldown: 1 }, 8: { damage: 1.82, amount: 0 } },
+  p_monster: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
+  p_yankee: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
+  w_muscle: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
+  w_sports: { 4: { damage: 1.3 } },
+  w_gamble: { 2: { damage: 1.3 }, 5: { damage: 1.3 } },
   w_perfume: { 7: { damage: 1.3 } }
 }
 
@@ -958,7 +960,7 @@ export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEn
         area: level === 4 ? (profile === 'raid' ? 1.4 : 1.25) : 1,
         cooldown: level === 7 ? 0.85 : 1,
         duration: profile === 'sports' && countLevel ? 1 : 0,
-        pierce: (profile === 'piercing' || profile === 'sports') && level === 4 ? 1 : 0,
+        pierce: profile === 'piercing' && level === 4 ? 1 : 0,
         targets: profile === 'observe' ? 1 : 0,
         foodPower: profile === 'food' ? 0.1 : 0,
         ...weaponUpgradeOverrides[id]?.[level]
