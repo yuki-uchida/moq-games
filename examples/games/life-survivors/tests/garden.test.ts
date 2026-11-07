@@ -52,23 +52,34 @@ test('all five upgrades affect garden seeds or flowers', () => {
   expect(clever.game.state.shots).toHaveLength(2)
   expect(diligent.weapon.cd).toBeCloseTo(base.weapon.cd * 0.93)
 
-  for (const arena of [base, curious, kind]) arena.game['moveShots'](0.8)
-  expect(base.shot.v).toBe(1)
+  expect(curious.shot.aux).toBeLessThan(base.shot.aux)
+  for (const arena of [base, curious, kind]) arena.game['moveShots'](0.81)
+  expect(base.shot.v).toBe(2)
   expect(base.shot.x - base.player.x).toBeCloseTo(320 * 0.8)
-  expect(curious.shot.x - curious.player.x).toBeGreaterThan(base.shot.x - base.player.x)
+  expect(curious.shot.x - curious.player.x).toBeCloseTo(base.shot.x - base.player.x)
+  for (const arena of [base, curious, kind]) arena.game['moveShots'](0.5)
   expect(curious.shot.life).toBeCloseTo(base.shot.life * 1.1)
   expect(kind.shot.r).toBeCloseTo(base.shot.r * 1.08)
 })
 
-test('a seed plants on impact, then damages repeatedly and expires', () => {
+test('a seed arcs, lands without impact damage, then blooms and damages repeatedly', () => {
   const { game, player, shot } = garden()
-  const enemy = game.spawnEnemy('germ', player.x + 50, player.y)!
+  expect(shot.damage).toBeCloseTo(3.5)
+  const enemy = game.spawnEnemy('germ', player.x + 256, player.y)!
   enemy.hp = enemy.maxHp = 10000
   game['buildGrid']()
-  game['moveShots'](0.1)
+  game['moveShots'](0.4)
+  expect(toView(game.state).shots[2]).toBe(Math.round(player.y - 48))
+  expect(enemy.hp).toBe(enemy.maxHp)
+  game['moveShots'](0.41)
+  expect(shot.v).toBe(2)
+  expect(enemy.hp).toBe(enemy.maxHp)
+  game['moveShots'](0.49)
+  expect(shot.v).toBe(2)
+  game['moveShots'](0.02)
   expect(shot.v).toBe(1)
-  expect(shot.x - player.x).toBeLessThan(320 * 0.8)
   expect(shot.life).toBeCloseTo(WEAPON_BY_ID.get('w_garden')!.duration)
+  game['moveShots'](0.01)
   expect(enemy.hp).toBeLessThan(enemy.maxHp)
   const afterImpact = enemy.hp
   game.state.time = 0.49
@@ -84,10 +95,11 @@ test('a seed plants on impact, then damages repeatedly and expires', () => {
 test('longer flower duration can produce an additional hit', () => {
   const hits = (passives: string[]) => {
     const { game, player } = garden(passives)
-    const enemy = game.spawnEnemy('germ', player.x + 50, player.y)!
+    const enemy = game.spawnEnemy('germ', player.x + 256, player.y)!
     enemy.hp = enemy.maxHp = 10000
     game['buildGrid']()
-    game['moveShots'](0.1)
+    game['moveShots'](0.81)
+    game['moveShots'](0.5)
     for (let step = 1; step <= 7; step++) {
       game.state.time = step * 0.5
       game['moveShots'](0.5)
@@ -116,7 +128,8 @@ test('evolution and gambling preserve garden ownership, stages and snapshots', (
   expect(readView(JSON.parse(JSON.stringify(seedView)))).toBeDefined()
   expect(seedView.shots[0]).toBe(WEAPON_INDEX.get('w_garden'))
   expect(seedView.shots[7]).toBe(SHOT_GAMBLE)
-  game['moveShots'](0.8)
+  game['moveShots'](0.81)
+  game['moveShots'](0.5)
   const flowerView = toView(game.state)
   expect(readView(JSON.parse(JSON.stringify(flowerView)))).toBeDefined()
   expect(flowerView.shots[7]).toBe(SHOT_GAMBLE + 1)

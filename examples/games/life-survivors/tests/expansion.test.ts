@@ -113,6 +113,7 @@ describe('new talent weapons', () => {
     const { game, player } = arena(7)
     player.weapons.push({ id, lv: 1, cd: 0, held: 0, damage: 0 })
     if (id === 'w_gamble') {
+      player.weapons.push({ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 })
       player.weapons[0].gambleWeapon = 'w_cooking'
       player.weapons[0].gambleUntil = 12
     }
@@ -124,6 +125,7 @@ describe('new talent weapons', () => {
       for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'abusive_senpai', player.x, player.y + y))
     else if (id === 'w_savings' || id === 'w_perfume') posts.push(post(game, 'abusive_senpai', player.x + 36, player.y))
     else if (id === 'w_muscle') posts.push(post(game, 'abusive_senpai', player.x + 70, player.y))
+    else if (id === 'w_garden') posts.push(post(game, 'abusive_senpai', player.x + 256, player.y))
     else posts.push(post(game, 'abusive_senpai', player.x + 120, player.y))
     const popups = new Set<unknown>()
     run(game, player, 60 * 6, () => {
@@ -268,6 +270,8 @@ describe('new talent weapons', () => {
   test('gambling activates different weapons', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
+    player.weapons.push({ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 })
+    player.weapons.push({ id: 'w_sns', lv: 1, cd: 100, held: 0, damage: 0 })
     post(game, 'abusive_senpai', player.x + 400, player.y)
     const copied = new Set<string>()
     for (let i = 0; i < 120; i++) {
@@ -278,7 +282,7 @@ describe('new talent weapons', () => {
       for (const shot of game.state.shots) if (shot.sourceWeapon === 'w_gamble') copied.add(shot.weapon)
       game.state.shots = []
     }
-    expect(copied.size).toBeGreaterThanOrEqual(10)
+    expect(copied).toEqual(new Set(['w_cooking', 'w_sns']))
     expect(copied.has('w_gamble')).toBe(false)
     expect(copied.has('p_gone')).toBe(false)
   })

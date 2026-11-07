@@ -45,7 +45,6 @@ export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
-const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
 const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
@@ -440,16 +439,18 @@ export function weaponStats(
     cooldown: hasFixedInterval(source.id)
       ? def.cooldown
       : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
-    amount:
-      def.behavior === 'observe'
+    amount: Math.min(
+      def.id === 'p_monster' ? 2 : Infinity,
+      def.behavior === 'observe' || def.behavior === 'raid'
         ? 1
         : def.amount +
-          (lv >= 2 ? 1 : 0) +
-          (lv >= 5 ? 1 : 0) +
-          (lv >= 8 ? 1 : 0) +
-          (evolved ? 1 : 0) +
-          (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
-    area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
+            (lv >= 2 ? 1 : 0) +
+            (lv >= 5 ? 1 : 0) +
+            (lv >= 8 ? 1 : 0) +
+            (evolved ? 1 : 0) +
+            (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
+    ),
+    area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
@@ -1602,12 +1603,22 @@ export class Game {
     const state = this.state
     if (!state.bullets.length) return
     const alive = state.players.filter((player) => !player.downed)
+    const blockers = state.shots.filter(
+      (shot) => (shot.sourceWeapon === 'w_friend' || shot.sourceWeapon === 'w_pet') && shot.delay <= 0
+    )
     const kept: Bullet[] = []
     for (const bullet of state.bullets) {
       bullet.life -= dt
       if (bullet.life <= 0) continue
       bullet.x += bullet.vx * dt
       bullet.y += bullet.vy * dt
+      if (
+        blockers.some((shot) => {
+          const reach = shot.r + bullet.r
+          return (shot.x - bullet.x) ** 2 + (shot.y - bullet.y) ** 2 <= reach * reach
+        })
+      )
+        continue
       let spent = false
       for (const player of alive) {
         if (player.invuln > 0) continue
@@ -1786,7 +1797,16 @@ export class Game {
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
-    const n = ws.amount
+    const n =
+      def.id === 'p_monster'
+        ? Math.max(
+            0,
+            Math.min(
+              ws.amount,
+              2 - this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
+            )
+          )
+        : ws.amount
     const rng = this.rng
     const speed = def.speed * ws.speed
     switch (def.behavior) {
@@ -2032,8 +2052,16 @@ export class Game {
         break
       }
       case 'gamble': {
-        if (!weapon.gambleWeapon || weapon.held >= (weapon.gambleUntil ?? 0)) {
-          weapon.gambleWeapon = GAMBLE_WEAPONS[Math.floor(rng() * GAMBLE_WEAPONS.length)].id
+        const candidates = player.weapons.filter((owned) => {
+          const def = WEAPON_BY_ID.get(owned.id)
+          return def && def.id !== 'w_gamble' && def.behavior !== 'none'
+        })
+        if (!candidates.length) {
+          weapon.gambleWeapon = undefined
+          break
+        }
+        if (!candidates.some((owned) => owned.id === weapon.gambleWeapon) || weapon.held >= (weapon.gambleUntil ?? 0)) {
+          weapon.gambleWeapon = candidates[Math.floor(rng() * candidates.length)].id
           weapon.gambleUntil = weapon.held + 12
           this.emit(
             FX.GAMBLE,
@@ -2043,7 +2071,7 @@ export class Game {
             WEAPON_INDEX.get(weapon.gambleWeapon)!
           )
         }
-        const copied = WEAPON_BY_ID.get(weapon.gambleWeapon)!
+        const copied = WEAPON_BY_ID.get(weapon.gambleWeapon!)!
         this.fire(player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
         break
       }
@@ -2083,7 +2111,8 @@ export class Game {
             angle,
             r: 10 * ws.area,
             w: def.area * ws.area,
-            aux: 0.8,
+            aux: (def.speed * 0.8) / speed,
+            orbit: (def.speed * 0.8) / speed,
             pierce: 1,
             tick: 0.5
           })
@@ -2132,8 +2161,16 @@ export class Game {
         shot.x += shot.vx * travel
         shot.y += shot.vy * travel
         shot.aux -= dt
-        const hit = !this.collide(shot, owner)
-        if (hit || shot.aux <= 0) {
+        if (shot.aux <= 0) {
+          shot.v = 2
+          shot.aux = 0.5
+        }
+        kept.push(shot)
+        continue
+      }
+      if (shot.kind === 'garden' && shot.v === 2) {
+        shot.aux -= dt
+        if (shot.aux <= 0) {
           shot.v = 1
           shot.r = shot.w
           shot.life = shot.maxLife
