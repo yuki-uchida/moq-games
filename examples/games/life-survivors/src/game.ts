@@ -152,7 +152,6 @@ export interface Player {
   hurt: number
   /** Seconds of grace after an enemy bullet hit. */
   invuln: number
-  shieldGrace: number
   shieldRecovery: number
   /** Cooldown of the HURT fx and the damage gathered for it. */
   hurtFx: number
@@ -458,7 +457,7 @@ export function weaponStats(
     cooldown: hasFixedInterval(source.id)
       ? def.cooldown
       : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
-    amount: Math.min(
+    amount: def.id === 'p_over' ? (lv >= 4 ? 2 : 1) : Math.min(
       def.id === 'p_monster' ? 2 : Infinity,
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
@@ -638,7 +637,6 @@ export class Game {
       birthPick: parent === 'p_gone',
       hurt: 0,
       invuln: 0,
-      shieldGrace: 0,
       shieldRecovery: 0,
       hurtFx: 0,
       hurtAcc: 0
@@ -804,7 +802,6 @@ export class Game {
       player.maxHp = stats.maxHp
       player.hurt = Math.max(0, player.hurt - dt)
       player.invuln = Math.max(0, player.invuln - dt)
-      player.shieldGrace = Math.max(0, player.shieldGrace - dt)
       player.shieldRecovery = Math.max(0, player.shieldRecovery - dt)
       player.hurtFx = Math.max(0, player.hurtFx - dt)
       if (player.downed) {
@@ -1424,20 +1421,20 @@ export class Game {
           // A charge lands as one blow (then the attacker is spent), not as a grinding touch.
           if (player.invuln > 0) continue
           const armor = playerStats(player).armor
-          this.damagePlayer(
+          const damaged = this.damagePlayer(
             player,
             Math.max(def.damage * 0.25, def.damage * 0.8 - armor) * (enemy.elite ? 1.5 : 1),
             def.id
           )
-          player.invuln = BULLET_IFRAMES
+          if (damaged) player.invuln = BULLET_IFRAMES
           enemy.mode = 3
           enemy.timer = 0.8
         } else if (def.behavior === 'boss') {
           // A life event hits in blows with a moment's grace between, so one clumsy touch is not the end.
           if (player.invuln > 0) continue
           const armor = playerStats(player).armor
-          this.damagePlayer(player, Math.max(def.damage * 0.2, def.damage * 0.6 - armor), def.id)
-          if (player.invuln <= 0) player.invuln = BOSS_IFRAMES
+          const damaged = this.damagePlayer(player, Math.max(def.damage * 0.2, def.damage * 0.6 - armor), def.id)
+          if (damaged && player.invuln <= 0) player.invuln = BOSS_IFRAMES
         } else this.hurt(player, def, dt, enemy.elite ? 1.5 : 1)
       }
       remaining.push(enemy)
@@ -1639,6 +1636,16 @@ export class Game {
       if (bullet.life <= 0) continue
       bullet.x += bullet.vx * dt
       bullet.y += bullet.vy * dt
+      const guard = state.shots.find((shot) => {
+        if (shot.weapon !== 'p_over' || shot.life <= 0 || shot.delay > 0 || shot.v !== 0) return false
+        const owner = alive.find((player) => player.id === shot.owner)
+        return owner && owner.shieldRecovery <= 0 && this.shieldTouches(shot, bullet.x, bullet.y, bullet.r)
+      })
+      if (guard) {
+        guard.v = 1
+        alive.find((player) => player.id === guard.owner)!.shieldRecovery = SHIELD_RECOVERY
+        continue
+      }
       if (
         blockers.some((shot) => {
           const reach = shot.r + bullet.r
@@ -1652,7 +1659,7 @@ export class Game {
         const reach = bullet.r + playerRadius(player) - 3
         if ((player.x - bullet.x) ** 2 + (player.y - bullet.y) ** 2 < reach * reach) {
           const armor = playerStats(player).armor
-          this.damagePlayer(player, Math.max(bullet.damage * 0.25, bullet.damage - armor), bullet.src)
+          this.damagePlayer(player, Math.max(bullet.damage * 0.25, bullet.damage - armor), bullet.src, false)
           player.invuln = BULLET_IFRAMES
           spent = true
           break
@@ -1669,19 +1676,16 @@ export class Game {
     this.damagePlayer(player, Math.max(def.damage * 0.25, def.damage - armor) * dt * 2.2 * mult, def.id)
   }
 
-  private damagePlayer(player: Player, amount: number, killer: string) {
-    if (player.shieldGrace > 0) return
-    if (player.parent === 'p_over' && player.shieldRecovery <= 0) {
+  private damagePlayer(player: Player, amount: number, killer: string, allowGuard = true) {
+    if (allowGuard && player.parent === 'p_over' && player.shieldRecovery <= 0) {
       const shield = this.state.shots.find(
         (shot) =>
           shot.owner === player.id && shot.weapon === 'p_over' && shot.life > 0 && shot.delay <= 0 && shot.v === 0
       )
       if (shield) {
         shield.v = 1
-        player.invuln = BULLET_IFRAMES
-        player.shieldGrace = BULLET_IFRAMES
         player.shieldRecovery = SHIELD_RECOVERY
-        return
+        return false
       }
     }
     player.hp -= amount
@@ -1700,6 +1704,7 @@ export class Game {
       this.emit(FX.DOWN, player.x, player.y, this.playerIndex(player))
       this.log(`${player.name}の心が折れた…（仲間がそばにいると立ち直る）`)
     }
+    return true
   }
 
   private revivePlayers(dt: number) {
@@ -2467,6 +2472,13 @@ export class Game {
     this.emit(FX.BLAST, shot.x, shot.y, radius, WEAPON_INDEX.get(shot.weapon)!)
   }
 
+  private shieldTouches(shot: Shot, x: number, y: number, radius: number) {
+    const centerX = shot.x + (Math.cos(shot.angle) < 0 ? -7 : 7)
+    const dx = Math.max(Math.abs(x - centerX) - 7, 0)
+    const dy = Math.max(Math.abs(y - (shot.y + 3)) - 9, 0)
+    return dx * dx + dy * dy <= radius * radius
+  }
+
   /** Applies hits; returns false once the shot is used up. */
   private collide(shot: Shot, owner: Player) {
     const time = this.state.time
@@ -2495,7 +2507,9 @@ export class Game {
       const radius = def.radius * enemy.scale
       const dx = enemy.x - shot.x
       const dy = enemy.y - shot.y
-      if (rect) {
+      if (shot.weapon === 'p_over') {
+        if (!this.shieldTouches(shot, enemy.x, enemy.y, radius)) return
+      } else if (rect) {
         const along = dx * cos + dy * sin
         const across = -dx * sin + dy * cos
         if (Math.abs(along) > shot.w + radius || Math.abs(across) > shot.h + radius) return
@@ -2710,7 +2724,6 @@ export class Game {
     this.state.shots = this.state.shots.filter(
       (shot) => shot.owner !== player.id || shot.sourceWeapon !== player.parent
     )
-    player.shieldGrace = 0
     player.shieldRecovery = 0
     const clean = (hand: string[]) => {
       const result = hand.filter(
