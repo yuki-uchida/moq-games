@@ -6,6 +6,18 @@ on:
         description: Checks and Pages main push run ID with a successful build
         required: true
         type: string
+      scenario:
+        description: Original test scenario
+        required: true
+        type: choice
+        default: normal-game
+        options: [normal-game, meshopt]
+      channel:
+        description: Headless Chromium distribution
+        required: true
+        type: choice
+        default: shell
+        options: [shell, chromium]
 permissions:
   contents: read
   actions: read
@@ -19,10 +31,19 @@ jobs:
         backend: [swiftshader, gl, vulkan]
     env:
       BENCHMARK_BACKEND: ${{ matrix.backend }}
+      BENCHMARK_SCENARIO: ${{ inputs.scenario }}
+      BENCHMARK_CHANNEL: ${{ inputs.channel }}
       SOURCE_RUN_ID: ${{ inputs.run_id }}
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
     steps:
+      - name: Validate scenario and channel
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          assert(['normal-game', 'meshopt'].includes(process.env.BENCHMARK_SCENARIO));
+          assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
+          NODE
       - name: Verify source run and successful build
         id: source
         uses: actions/github-script@v8
@@ -114,7 +135,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dri libegl1 mesa-vulkan-drivers xvfb
-          npx playwright install --with-deps --only-shell chromium
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          const channel = process.env.BENCHMARK_CHANNEL;
+          assert(['shell', 'chromium'].includes(channel));
+          execFileSync('npx', ['playwright', 'install', '--with-deps', ...(channel === 'shell' ? ['--only-shell'] : []), 'chromium'], { stdio: 'inherit' });
+          NODE
       - name: Select the OS lavapipe ICD for Vulkan only
         if: matrix.backend == 'vulkan'
         shell: bash
@@ -133,17 +160,25 @@ jobs:
           import source from '../../playwright.pages.config'
 
           const backend = process.env.BENCHMARK_BACKEND
+          const scenario = process.env.BENCHMARK_SCENARIO
+          const channel = process.env.BENCHMARK_CHANNEL
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
+          if (!['normal-game', 'meshopt'].includes(scenario ?? '')) throw new Error('Unknown scenario')
+          if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
           export default defineConfig(source, {
             testDir: fileURLToPath(new URL('.', import.meta.url)),
             testMatch: 'renderer.spec.ts',
-            grep: /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
+            grep: scenario === 'meshopt'
+              ? /meshopt source equivalence /
+              : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
             outputDir: fileURLToPath(new URL('results', import.meta.url)),
             reporter: [
               ['list'],
               ['json', { outputFile: fileURLToPath(new URL('report.json', import.meta.url)) }]
             ],
             use: {
+              headless: true,
+              ...(channel === 'chromium' ? { channel: 'chromium' } : {}),
               launchOptions: {
                 // Chromium blocks llvmpipe by default; this diagnostic deliberately measures software drivers.
                 // Isolate 2D rasterization artifacts with CPU rasterization while preserving WebGL2.
@@ -154,12 +189,18 @@ jobs:
           CONFIG
           cat > .build/renderer-benchmark-local/renderer.spec.ts <<'SPEC'
           import { test, expect } from '@playwright/test'
-          import '../../tests/tower-real3d-game.spec'
+
+          if (process.env.BENCHMARK_SCENARIO === 'meshopt') {
+            await import('../../tests/tower-meshopt-equivalence.spec')
+          } else {
+            await import('../../tests/tower-real3d-game.spec')
+          }
 
           test.afterEach(async ({ page, browser }, testInfo) => {
             const originalFailed = testInfo.status !== testInfo.expectedStatus
             try {
-              const renderer = await page.locator('#field > canvas').evaluate((canvas: HTMLCanvasElement) => {
+              const selector = process.env.BENCHMARK_SCENARIO === 'meshopt' ? '#viewer-canvas' : '#field > canvas'
+              const renderer = await page.locator(selector).evaluate((canvas: HTMLCanvasElement) => {
                 const context = canvas.getContext('webgl2')
                 if (!context || context.isContextLost()) throw new Error('No live game WebGL2 context')
                 const debug = context.getExtension('WEBGL_debug_renderer_info')
@@ -202,7 +243,7 @@ jobs:
             }
           })
           SPEC
-      - name: Confirm exactly one original test is selected
+      - name: Confirm exact original tests are selected
         run: |
           npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts --list --reporter=json > .build/renderer-benchmark-local/selection.json
           node --input-type=module <<'NODE'
@@ -211,10 +252,15 @@ jobs:
           const report = JSON.parse(readFileSync('.build/renderer-benchmark-local/selection.json', 'utf8'));
           const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
           const selected = specs(report.suites);
+          const scenario = process.env.BENCHMARK_SCENARIO;
+          assert(['normal-game', 'meshopt'].includes(scenario));
+          const expected = scenario === 'meshopt'
+            ? ['soldier walk', 'slime walk', 'mage attack', 'tank walk', 'dragon breath'].map(name => `${name} preserves source poses and rendered appearance`)
+            : ['normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation'];
           assert.equal(report.errors.length, 0);
-          assert.equal(selected.length, 1);
-          assert.equal(selected[0].tests.length, 1);
-          assert.equal(selected[0].title, 'normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation');
+          assert.equal(selected.length, expected.length);
+          assert(selected.every(spec => spec.tests.length === 1));
+          assert.deepEqual(selected.map(spec => spec.title).sort(), expected.sort());
           NODE
       - name: Run the same case under X11 with headless Chromium
         run: xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts
@@ -230,12 +276,18 @@ jobs:
           node --input-type=module <<'NODE'
           import { writeFileSync } from 'node:fs';
           import { execFileSync } from 'node:child_process';
+          import assert from 'node:assert/strict';
           const backend = process.env.BENCHMARK_BACKEND;
+          const scenario = process.env.BENCHMARK_SCENARIO;
+          const channel = process.env.BENCHMARK_CHANNEL;
+          assert(['normal-game', 'meshopt'].includes(scenario));
+          assert(['shell', 'chromium'].includes(channel));
           const metadata = {
             sourceRunId: process.env.SOURCE_RUN_ID,
             source: process.env.SOURCE_METADATA ? JSON.parse(process.env.SOURCE_METADATA) : null,
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
-            jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, node: process.version,
+            jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, scenario, channel, node: process.version,
+            playwrightChannel: channel === 'chromium' ? 'chromium' : null,
             headless: true, display: 'xvfb-run -a',
             args: ['--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-rasterization', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
             environment: Object.fromEntries(['LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', 'VK_DRIVER_FILES'].map(key => [key, process.env[key] ?? null]))
