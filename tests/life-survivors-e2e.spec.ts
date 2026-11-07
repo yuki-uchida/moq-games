@@ -2309,6 +2309,89 @@ test('foods dropped on the same spot fan out and keep readable labels', async ({
   expect(errors).toEqual([])
 })
 
+test('standing on any drawn sprite of six stacked foods collects it', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const result = await handle.evaluate(async (hook) => {
+    const path = '/src/food-layout.ts'
+    const { layoutFoods } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    game.state.gems = []
+    const kinds = ['food_damage', 'food_speed', 'food_heal', 'food_defense'] as const
+    const spot = { x: player.x + 600, y: player.y + 600 }
+    const foods = Array.from({ length: 6 }, (_, i) => ({
+      kind: kinds[i % kinds.length],
+      owner: player.id,
+      power: 1,
+      x: spot.x,
+      y: spot.y
+    }))
+    game.state.items = [...foods]
+    const drawn = layoutFoods(foods.map((food) => ({ x: food.x, y: food.y })))
+    player.x = drawn[5].x
+    player.y = drawn[5].y
+    game['collectGems'](0)
+    return { sixthLeft: game.state.items.includes(foods[5]), left: game.state.items.length }
+  })
+  expect(result.sixthLeft).toBe(false)
+  expect(result.left).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test('food labels are drawn after the buff rings of the player standing on them', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await expect.poll(() => handle.evaluate((hook) => Boolean(hook.view))).toBe(true)
+  const order = await handle.evaluate(async (hook) => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { ITEM_KINDS } = await import(dataPath)
+    const life = hook as unknown as Life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    player.cookingBuffs = {
+      food_damage: { time: 50, power: 1 },
+      food_defense: { time: 40, power: 1.3 },
+      food_speed: { time: 30, power: 1.5 }
+    }
+    view.enemies = []
+    view.items = [ITEM_KINDS.indexOf('food_heal'), player.x, player.y, 0]
+    const calls: string[] = []
+    const ellipse = CanvasRenderingContext2D.prototype.ellipse
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.ellipse = function (...args) {
+      if (['#ff7b6e', '#79aaff', '#ffcf65'].includes(String(this.strokeStyle))) calls.push('ring')
+      ellipse.apply(this, args)
+    }
+    CanvasRenderingContext2D.prototype.fillText = function (text, ...args: number[]) {
+      if (text.startsWith(`${player.name}：`)) calls.push('label')
+      fillText.call(this, text, ...(args as [number, number]))
+    }
+    try {
+      new Renderer(document.createElement('canvas')).draw(view, life.localId, 0.016, false)
+    } finally {
+      CanvasRenderingContext2D.prototype.ellipse = ellipse
+      CanvasRenderingContext2D.prototype.fillText = fillText
+    }
+    return calls
+  })
+  expect(order.filter((call) => call === 'label')).toHaveLength(1)
+  expect(order.lastIndexOf('ring')).toBeGreaterThanOrEqual(0)
+  expect(order.lastIndexOf('label')).toBeGreaterThan(order.lastIndexOf('ring'))
+  expect(errors).toEqual([])
+})
+
 test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })

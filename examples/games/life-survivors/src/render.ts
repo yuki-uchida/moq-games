@@ -35,6 +35,7 @@ import {
   type Stage
 } from './data'
 import { Effects, PK } from './effects'
+import { layoutFoodClusters } from './food-layout'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
@@ -336,6 +337,7 @@ export class Renderer {
   private readonly ents: Ent[] = []
   private entCount = 0
   private readonly winders: Ent[] = []
+  private readonly foodLabels: { text: string; cluster: number; x: number; y: number; bob: number }[] = []
   private readonly enemySheets: (Sheet | undefined)[] = []
   private readonly evo = new Int8Array(16 * 64)
   private readonly shot: ShotView = {
@@ -539,6 +541,62 @@ export class Renderer {
     ctx.arcTo(x, y + h, x, y, r)
     ctx.arcTo(x, y, x + w, y, r)
     ctx.closePath()
+  }
+
+  /** Food labels: one block per cluster above its sprites, blocks dodging each other upward. Drawn above the characters. */
+  private drawFoodLabels() {
+    const labels = this.foodLabels
+    if (!labels.length) return
+    const ctx = this.ctx
+    this.world()
+    ctx.save()
+    ctx.font = 'bold 13px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = '#34203b'
+    ctx.fillStyle = '#fff4cf'
+    const boxes: number[] = []
+    const clusters = labels.reduce((m, l) => Math.max(m, l.cluster + 1), 0)
+    for (let c = 0; c < clusters; c++) {
+      const block = labels.filter((l) => l.cluster === c)
+      if (!block.length) continue
+      let cx = 0
+      let top = Infinity
+      for (const l of block) {
+        cx += l.x
+        top = Math.min(top, l.y)
+      }
+      cx /= block.length
+      const halves = block.map((l) => ctx.measureText(l.text).width / 2 + 2)
+      const baseline = (j: number, lift: number) => top - 24 + block[0].bob - j * 15 - lift
+      let lift = 0
+      for (let guard = 0; guard < 40; guard++) {
+        let hit = false
+        for (let j = 0; j < block.length && !hit; j++) {
+          const ly = baseline(j, lift)
+          for (let n = 0; n < boxes.length; n += 4) {
+            if (
+              cx - halves[j] < boxes[n + 1] &&
+              cx + halves[j] > boxes[n] &&
+              ly - 13 < boxes[n + 3] &&
+              ly + 2 > boxes[n + 2]
+            ) {
+              hit = true
+              break
+            }
+          }
+        }
+        if (!hit) break
+        lift += 15
+      }
+      block.forEach((l, j) => {
+        const ly = baseline(j, lift)
+        boxes.push(cx - halves[j], cx + halves[j], ly - 13, ly + 2)
+        ctx.strokeText(l.text, cx, ly)
+        ctx.fillText(l.text, cx, ly)
+      })
+    }
+    ctx.restore()
   }
 
   private world() {
@@ -2211,9 +2269,17 @@ export class Renderer {
     }
     this.world()
     const it = view.items
-    // Foods dropped on the same spot fan out sideways; their labels dodge each other upward.
-    const foodSpots: number[] = []
-    const labelBoxes: number[] = []
+    // Foods dropped on the same spot fan out in rows; their labels are drawn later, above the characters.
+    const foodAt: number[] = []
+    const foodPoints: { x: number; y: number }[] = []
+    for (let i = 0; i < it.length; i += STRIDE.items) {
+      if (it[i + 3] >= 0 && visible(it[i + 1], it[i + 2])) {
+        foodAt.push(i)
+        foodPoints.push({ x: it[i + 1], y: it[i + 2] })
+      }
+    }
+    const foodLayout = layoutFoodClusters(foodPoints)
+    this.foodLabels.length = 0
     for (let i = 0; i < it.length; i += STRIDE.items) {
       const kind = ITEM_KINDS[it[i]]
       if (!visible(it[i + 1], it[i + 2])) continue
@@ -2221,24 +2287,22 @@ export class Renderer {
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
       const food = it[i + 3] >= 0 ? COOKING_EFFECTS[kind as keyof typeof COOKING_EFFECTS] : undefined
       let ix = it[i + 1]
+      let iy = it[i + 2]
+      const slot = food ? foodAt.indexOf(i) : -1
       if (food) {
-        let near = 0
-        for (let n = 0; n < foodSpots.length; n += 2) {
-          if (Math.hypot(foodSpots[n] - ix, foodSpots[n + 1] - it[i + 2]) < 18) near++
-        }
-        foodSpots.push(ix, it[i + 2])
-        if (near) ix += (near % 2 ? 1 : -1) * 14 * Math.ceil(near / 2)
+        ix = foodLayout.drawn[slot].x
+        iy = foodLayout.drawn[slot].y
       }
-      this.shadow(ix, it[i + 2] + 8, 6, 0.22)
+      this.shadow(ix, iy + 8, 6, 0.22)
       if (food) {
         const swell = Math.sin(this.clock * 3 * this.fx.motion)
         ctx.save()
-        this.glowEllipse(ix, it[i + 2] + 2, 24 + swell * 3, 20 + swell * 2.5, food.color, 0.5 + 0.12 * swell)
+        this.glowEllipse(ix, iy + 2, 24 + swell * 3, 20 + swell * 2.5, food.color, 0.5 + 0.12 * swell)
         ctx.globalAlpha = 0.75
         ctx.strokeStyle = food.color
         ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.ellipse(ix, it[i + 2] + 7, 13 + swell * 2, 5, 0, 0, TAU)
+        ctx.ellipse(ix, iy + 7, 13 + swell * 2, 5, 0, 0, TAU)
         ctx.stroke()
         // Two twinkles that swell and fade out of step.
         ctx.fillStyle = '#fffbe6'
@@ -2246,7 +2310,7 @@ export class Renderer {
           const t = (this.clock * 0.7 * this.fx.motion + n * 0.5 + i * 0.13) % 1
           const k = Math.sin(t * Math.PI)
           const tx = ix + (n ? 11 : -12)
-          const ty = it[i + 2] - 6 + (n ? 4 : -2) - Math.round(t * 3)
+          const ty = iy - 6 + (n ? 4 : -2) - Math.round(t * 3)
           const arm = 1 + 3 * k
           ctx.globalAlpha = 0.9 * k
           ctx.fillRect(tx - 0.5, ty - arm, 1, arm * 2)
@@ -2254,38 +2318,15 @@ export class Renderer {
         }
         ctx.restore()
       }
-      this.art(anim.frames[0], ix, it[i + 2] + bob, 8, 12, false, 1, food ? 1.5 : 1)
+      this.art(anim.frames[0], ix, iy + bob, 8, 12, false, 1, food ? 1.5 : 1)
       if (food) {
-        this.world()
-        ctx.save()
-        ctx.font = 'bold 13px sans-serif'
-        ctx.textAlign = 'center'
-        ctx.lineWidth = 3
-        ctx.strokeStyle = '#34203b'
-        ctx.fillStyle = '#fff4cf'
-        const label = `${view.players[it[i + 3]].name}：${food.label}`
-        const half = ctx.measureText(label).width / 2 + 2
-        let ly = it[i + 2] - 24 + bob
-        for (let guard = 0; guard < 40; guard++) {
-          let hit = false
-          for (let n = 0; n < labelBoxes.length; n += 4) {
-            if (
-              ix - half < labelBoxes[n + 1] &&
-              ix + half > labelBoxes[n] &&
-              ly - 13 < labelBoxes[n + 3] &&
-              ly + 2 > labelBoxes[n + 2]
-            ) {
-              hit = true
-              break
-            }
-          }
-          if (!hit) break
-          ly -= 15
-        }
-        labelBoxes.push(ix - half, ix + half, ly - 13, ly + 2)
-        ctx.strokeText(label, ix, ly)
-        ctx.fillText(label, ix, ly)
-        ctx.restore()
+        this.foodLabels.push({
+          text: `${view.players[it[i + 3]].name}：${food.label}`,
+          cluster: foodLayout.cluster[slot],
+          x: ix,
+          y: iy,
+          bob
+        })
       }
     }
     this.world()
@@ -2441,6 +2482,7 @@ export class Renderer {
       this.topShot(view, sh, WEAPONS[s[i]])
     }
     this.world()
+    this.drawFoodLabels()
 
     // Enemy bullets: the animated sprite on a pulsing red danger halo (one baked image per bullet).
     const b = view.bullets
