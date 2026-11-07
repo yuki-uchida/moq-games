@@ -79,10 +79,15 @@ export function movePose(pose: Pose, forward: number, strafe: number, deltaSecon
   const distance = (3 * THREE.MathUtils.clamp(finite(deltaSeconds), 0, 0.25)) / length
   const dx = (Math.sin(yaw) * ahead + Math.cos(yaw) * sideways) * distance
   const dz = (-Math.cos(yaw) * ahead + Math.sin(yaw) * sideways) * distance
-  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.1))
-  for (let step = 0; step < steps; step++) {
-    if (clearPosition(x + dx / steps, z)) x += dx / steps
-    if (clearPosition(x, z + dz / steps)) z += dz / steps
+  if (dx === 0 && dz === 0) {
+    x += dx
+    z += dz
+  } else {
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.1))
+    for (let step = 0; step < steps; step++) {
+      if (clearPosition(x + dx / steps, z)) x += dx / steps
+      if (clearPosition(x, z + dz / steps)) z += dz / steps
+    }
   }
   return { x, z, yaw: Math.abs(yaw) <= 2 * Math.PI ? yaw : Math.atan2(Math.sin(yaw), Math.cos(yaw)) }
 }

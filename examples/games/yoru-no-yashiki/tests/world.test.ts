@@ -369,6 +369,59 @@ describe('movePose', () => {
     }
   })
 
+  test.each([
+    {
+      name: 'wall correction and accumulated yaw',
+      pose: { x: 0, z: 5, yaw: 9 * Math.PI },
+      input: [0, 0, 0.25],
+      expected: { ...HUMAN_START, yaw: Math.atan2(Math.sin(9 * Math.PI), Math.cos(9 * Math.PI)) }
+    },
+    {
+      name: 'invalid coordinates and yaw',
+      pose: { x: NaN, z: Infinity, yaw: NaN },
+      input: [Infinity, NaN, Infinity],
+      expected: HUMAN_START
+    },
+    {
+      name: 'finite coordinate retained after partial fallback',
+      pose: { x: NaN, z: -0, yaw: Infinity },
+      input: [NaN, Infinity, 0.25],
+      expected: { x: HUMAN_START.x, z: 0, yaw: 0 }
+    },
+    {
+      name: 'zero duration with clamped movement and accumulated yaw',
+      pose: { ...HUMAN_START, yaw: Number.MAX_VALUE },
+      input: [Number.MAX_VALUE, -Number.MAX_VALUE, -1],
+      expected: {
+        ...HUMAN_START,
+        yaw: Math.atan2(Math.sin(Number.MAX_VALUE), Math.cos(Number.MAX_VALUE))
+      }
+    },
+    {
+      name: 'positive zero additions replace negative coordinates',
+      pose: { x: -0, z: -0, yaw: 0 },
+      input: [0, 0, 0.1],
+      expected: { x: 0, z: 0, yaw: 0 }
+    },
+    {
+      name: 'negative yaw zero retains negative z zero',
+      pose: { x: -0, z: -0, yaw: -0 },
+      input: [0, 0, 0.1],
+      expected: { x: 0, z: -0, yaw: -0 }
+    },
+    {
+      name: 'negative input zeros retain negative x zero',
+      pose: { x: -0, z: -0, yaw: 0 },
+      input: [-0, -0, 0.1],
+      expected: { x: -0, z: 0, yaw: 0 }
+    }
+  ])('preserves stationary normalization: $name', ({ pose, input, expected }) => {
+    const moved = movePose(pose, input[0], input[1], input[2])
+    expect(moved.x).toBe(expected.x)
+    expect(moved.z).toBe(expected.z)
+    expect(moved.yaw).toBe(expected.yaw)
+  })
+
   test('starts in valid space and moves in camera direction', () => {
     expect(movePose(HUMAN_START, 0, 0, 0)).toEqual(HUMAN_START)
     expect(movePose(HAUNTER_START, 0, 0, 0)).toEqual(HAUNTER_START)
