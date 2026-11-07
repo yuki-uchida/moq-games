@@ -181,7 +181,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
-    desc: '身のまわりに毒の空気。特攻：悪口・人間関係。',
+    desc: '身のまわりに毒の空気。クールダウン無効。特攻：悪口・人間関係。',
     perk: '全武器の威力 +5%・最大精神力 -10。自然回復なし（性格・仲間・家庭）／食事・レベルアップで回復可。18歳未満は親を含めて手札3枠'
   }),
   weapon({
@@ -674,7 +674,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['love', 'people'],
     minAge: 15,
-    desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。特攻：恋愛・人間関係。',
+    desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。クールダウン無効。特攻：恋愛・人間関係。',
     evolve: { passive: 'p_savvy', name: '魅惑のフェロモン' }
   }),
   weapon({
