@@ -5,7 +5,7 @@ import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 19],
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 56],
   [['w_friend', 'w_sns', 'w_pet'], 17, 12]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',

@@ -46,6 +46,7 @@ export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
 const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
+const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -436,16 +437,20 @@ export function weaponStats(
   }
   return {
     damage,
-    cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
-    amount:
+    cooldown: hasFixedInterval(source.id)
+      ? def.cooldown
+      : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
+    amount: Math.min(
+      def.id === 'p_monster' ? 2 : Infinity,
       def.behavior === 'observe' || def.behavior === 'raid'
         ? 1
         : def.amount +
-          (lv >= 2 ? 1 : 0) +
-          (lv >= 5 ? 1 : 0) +
-          (lv >= 8 ? 1 : 0) +
-          (evolved ? 1 : 0) +
-          (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
+            (lv >= 2 ? 1 : 0) +
+            (lv >= 5 ? 1 : 0) +
+            (lv >= 8 ? 1 : 0) +
+            (evolved ? 1 : 0) +
+            (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
+    ),
     area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
@@ -499,7 +504,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${LEVEL_TEXT[next]}${evolves}`,
+      text: `${next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${evolves}`,
       tag: `Lv ${next}`
     }
   }
@@ -1778,7 +1783,16 @@ export class Game {
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
-    const n = ws.amount
+    const n =
+      def.id === 'p_monster'
+        ? Math.max(
+            0,
+            Math.min(
+              ws.amount,
+              2 - this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
+            )
+          )
+        : ws.amount
     const rng = this.rng
     const speed = def.speed * ws.speed
     switch (def.behavior) {

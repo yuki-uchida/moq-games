@@ -348,6 +348,7 @@ describe('passives', () => {
 
   test('critical hits appear, hit twice as hard and are flagged all the way into the snapshot', () => {
     const { game, player } = arena(21, 'p_toxic')
+    game.targetPopulation = () => 0
     player.passives = [{ id: 'p_lucky', lv: 5 }]
     const target = post(game, 'overtraining', player.x + 30, player.y)
     const seen = new Set<Game['state']['popups'][number]>()

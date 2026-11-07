@@ -424,6 +424,33 @@ describe('LifeAudio music', () => {
     audio.dispose()
   })
 
+  it('retries a rejected resume only while visible and stops on disposal', async () => {
+    const { audio, context } = withAudio()
+    audio.unlock()
+    audio.setMusic({ theme: 'cradle', layer: 0 })
+    audio.setHidden(true)
+    context.state = 'interrupted'
+    context.resume.mockRejectedValueOnce(new Error('interrupted'))
+    audio.setHidden(false)
+    await Promise.resolve()
+    expect(context.resume).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(2000)
+    expect(context.resume).toHaveBeenCalledTimes(2)
+    context.state = 'running'
+    advance(context, 1)
+    expect(context.starts.length).toBeGreaterThan(0)
+
+    context.state = 'suspended'
+    context.resume.mockRejectedValueOnce(new Error('suspended'))
+    audio.setHidden(false)
+    await Promise.resolve()
+    audio.setHidden(true)
+    vi.advanceTimersByTime(2000)
+    expect(context.resume).toHaveBeenCalledTimes(3)
+    audio.dispose()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('rebuilds a context the browser closed while the page was away, keeping the theme', () => {
     vi.useFakeTimers()
     const first = new Context()
