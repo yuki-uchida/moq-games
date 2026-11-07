@@ -425,5 +425,14 @@ export function observationIcon() {
   icon.blit(rim)
   icon.set(6, 20, C.white)
   icon.set(7, 19, C.white)
+  // A light sticker rim round the whole silhouette: the dark shell would otherwise sink into the dark HUD cards.
+  const solid = icon.clone()
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++)
+      if (
+        !solid.get(x, y) &&
+        (solid.get(x - 1, y) || solid.get(x + 1, y) || solid.get(x, y - 1) || solid.get(x, y + 1))
+      )
+        icon.set(x, y, R.green[0])
   return icon
 }
