@@ -67,7 +67,6 @@ export function selectScope(paths) {
       'tests/tower-model-sidecars.test.mjs'
     )
   if (has('landing')) node.push('tests/landing-catalog.test.mjs')
-  if (has('lane-battle')) node.push('examples/games/lane-battle/*.test.mjs')
   return {
     runtime,
     tower: has('tower'),
@@ -90,6 +89,7 @@ export function selectScope(paths) {
     shards: JSON.stringify(has('tower') ? Array.from({ length: 16 }, (_, index) => index + 1) : [1]),
     pagesBrowser: has('tower') || has('landing') || has('ember-grid') || has('life-survivors'),
     unit: unit.join(' '),
+    laneNode: has('lane-battle') ? 'examples/games/lane-battle/*.test.mjs' : '',
     node: node.join(' ')
   }
 }

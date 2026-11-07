@@ -30,6 +30,7 @@ jobs:
       pagesBrowser: ${{ steps.scope.outputs.pagesBrowser }}
       unit: ${{ steps.scope.outputs.unit }}
       node: ${{ steps.scope.outputs.node }}
+      laneNode: ${{ steps.scope.outputs.laneNode }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,6 +127,33 @@ jobs:
         if: needs.changes.outputs.debug == 'true'
       - run: npm run test:tower-debug
         if: needs.changes.outputs.debug == 'true'
+  lane-node:
+    needs: changes
+    if: needs.changes.outputs.laneNode != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - run: node scripts/setup-sdk.mjs
+      - run: npm ci --ignore-scripts
+      - name: Lane Node tests
+        run: node --test --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} ${{ needs.changes.outputs.laneNode }}
   unit:
     needs: changes
     if: needs.changes.outputs.unit != ''
@@ -309,11 +337,12 @@ jobs:
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.changes.result == 'success' && needs.build.result == 'success' &&
       needs.check.result == 'success' &&
+      (needs.lane-node.result == 'success' || (needs.lane-node.result == 'skipped' && needs.changes.outputs.laneNode == '')) &&
       (needs.unit.result == 'success' || (needs.unit.result == 'skipped' && needs.changes.outputs.unit == '')) &&
       (needs.life-browser.result == 'success' || needs.life-browser.result == 'skipped') &&
       (needs.slow-checks.result == 'success' || needs.slow-checks.result == 'skipped') &&
       (needs.browser.result == 'success' || needs.browser.result == 'skipped')
-    needs: [changes, build, check, unit, life-browser, slow-checks, browser]
+    needs: [changes, build, check, lane-node, unit, life-browser, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
