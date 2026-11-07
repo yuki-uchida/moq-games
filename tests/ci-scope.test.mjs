@@ -780,7 +780,7 @@ test(
     const Sequencer = vitest.config.sequence.sequencer
     await vitest.close()
     assert.equal(Sequencer.name, 'WeightedUnitSequencer')
-    assert.equal(Sequencer.prototype.sort, BaseSequencer.prototype.sort)
+    assert.notEqual(Sequencer.prototype.sort, BaseSequencer.prototype.sort)
     const specifications = discovered.map((moduleId) => ({ moduleId }))
     const partition = (files, scopeRoot = root) =>
       Promise.all(
@@ -857,5 +857,75 @@ test(
     assert.deepEqual(await partition(2, 2, [...light].reverse()), [light[1]])
     assert.deepEqual(await partition(7, 8), [])
     assert.deepEqual(await partition(1, 8, []), [])
+  }
+)
+
+test(
+  'unit shard sorting prioritizes weights within BaseSequencer project groups and preserves base ties',
+  {
+    skip: !existsSync(new URL('../node_modules/vitest/vitest.mjs', import.meta.url)) && 'dependencies are not installed'
+  },
+  async () => {
+    const { BaseSequencer } = await import('vitest/node')
+    const { default: Sequencer } = await import('../scripts/vitest-unit-sequencer.mjs')
+    const orders = []
+    for (const [root, separator] of [
+      ['/home/runner/work/moq-games/moq-games', '/'],
+      ['C:\\checkout\\moq-games', '\\']
+    ]) {
+      const project = { name: '', config: { sequence: { groupOrder: 0 }, isolate: true } }
+      const paths = [
+        'tests/failed.test.ts',
+        'examples/games/yoru-no-yashiki/tests/main-clock.test.ts',
+        'examples/games/rabbiters/tests/town.test.ts',
+        'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts',
+        'tests/new-unit.test.ts',
+        'tests/larger.test.ts'
+      ]
+      const files = Object.freeze(
+        paths.map((path, index) => ({
+          moduleId: (index === 3 ? path : root + '/./' + path).replaceAll('/', separator),
+          project
+        }))
+      )
+      const cache = {
+        getFileTestResults: (key) => {
+          if (/new-unit|larger/.test(key)) return undefined
+          return { failed: key.includes('failed'), duration: key.includes('town') ? 100 : 1 }
+        },
+        getFileStats: (key) => (key.includes('new-unit') ? undefined : { size: key.includes('larger') ? 1000 : 1 })
+      }
+      const ctx = { config: { root }, cache }
+      const base = await new BaseSequencer(ctx).sort(files)
+      assert.ok(base.indexOf(files[0]) < base.indexOf(files[3]))
+      assert.deepEqual(await new Sequencer(ctx).sort(files), base)
+      ctx.config.shard = { index: 1, count: 4 }
+      const sorted = await new Sequencer(ctx).sort(files)
+      assert.deepEqual(sorted.slice(0, 3), [files[3], files[2], files[1]])
+      assert.deepEqual(
+        sorted.slice(3),
+        base.filter((spec) => [files[0], files[4], files[5]].includes(spec))
+      )
+      assert.deepEqual(
+        sorted.filter((spec) => [files[1], files[2]].includes(spec)),
+        base.filter((spec) => [files[1], files[2]].includes(spec))
+      )
+      assert.equal(sorted.length, files.length)
+      assert.ok(files.every((spec) => sorted.filter((entry) => entry === spec).length === 1))
+      assert.deepEqual(
+        files.map((spec) => spec.moduleId),
+        paths.map((path, index) => (index === 3 ? path : root + '/./' + path).replaceAll('/', separator))
+      )
+      orders.push(sorted.map((spec) => files.indexOf(spec)))
+      const grouped = Object.freeze([
+        { ...files[3], project: { name: 'b', config: { sequence: { groupOrder: 0 }, isolate: true } } },
+        { ...files[3], project: { name: 'a', config: { sequence: { groupOrder: 0 }, isolate: false } } },
+        { ...files[0], project: { name: 'a', config: { sequence: { groupOrder: 0 }, isolate: true } } },
+        { ...files[0], project: { name: 'z', config: { sequence: { groupOrder: -1 }, isolate: true } } }
+      ])
+      assert.deepEqual(await new Sequencer(ctx).sort(grouped), [grouped[3], grouped[2], grouped[1], grouped[0]])
+      assert.deepEqual(await new Sequencer(ctx).sort([]), [])
+    }
+    assert.deepEqual(orders[0], orders[1])
   }
 )
