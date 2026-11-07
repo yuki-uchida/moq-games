@@ -47,6 +47,10 @@ test('unit shards run independently and gate publication', () => {
   assert.match(unit, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
   assert.match(
     unit,
+    /name: Install Chromium for browser-backed unit tests\n\s+if: contains\(needs\.changes\.outputs\.unit, 'examples\/games\/yoru-no-yashiki\/tests'\)\n\s+run: npx playwright install --with-deps chromium[\s\S]*?name: Unit tests/
+  )
+  assert.match(
+    unit,
     /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=1/
   )
   assert.match(deploy, /needs: \[[^\]\n]*\bunit\b[^\]\n]*\]/)
