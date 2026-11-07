@@ -1,5 +1,6 @@
 import {
   BULLET_INDEX,
+  COOKING_ITEMS,
   ENEMY_BY_ID,
   ENEMY_INDEX,
   EVENTS,
@@ -53,7 +54,8 @@ export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
-const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume' || id === 'w_observe'
+const hasFixedInterval = (id: string) =>
+  id === 'p_toxic' || id === 'w_perfume' || id === 'w_observe' || id === 'w_cooking'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -138,6 +140,7 @@ export interface Player {
   talents: Record<TalentCategory, number>
   weapons: OwnedWeapon[]
   passives: { id: string; lv: number }[]
+  cookingBuffs?: Partial<Record<Exclude<CookingItemKind, 'food_heal'>, { time: number; power: number }>>
   choices: string[]
   choiceSeq: number
   pending: number
@@ -258,11 +261,10 @@ export interface Gem {
   pull: boolean
 }
 
-export interface Item {
-  kind: 'meal' | 'chest' | 'magnet'
-  x: number
-  y: number
-}
+type CookingItemKind = (typeof COOKING_ITEMS)[number]
+export type Item =
+  | { kind: 'meal' | 'chest' | 'magnet'; x: number; y: number }
+  | { kind: CookingItemKind; x: number; y: number; owner: string; power: number }
 
 export interface Popup {
   x: number
@@ -384,14 +386,21 @@ export function playerStats(player: Player): PlayerStats {
         (player.parent === 'p_gone' ? 60 : 0) +
         (player.parent === 'p_toxic' ? -10 : 0)
     ),
-    armor: p('p_stubborn') + p('p_patience') + (player.parent === 'p_over' || player.parent === 'p_weak' ? 1 : 0),
+    armor:
+      p('p_stubborn') +
+      p('p_patience') +
+      (player.parent === 'p_over' || player.parent === 'p_weak' ? 1 : 0) +
+      2 * (player.cookingBuffs?.food_defense?.power ?? 0),
     regen:
       player.parent === 'p_toxic'
         ? 0
         : (p('p_optimist') + p('p_affection') + p(PET_MEMORY)) * 0.4 +
           p('p_kind') * 0.2 +
           (player.parent === 'p_gone' ? 1 : 0),
-    speed: BASE_SPEED * (1 + p('p_healthy') * 0.08 + p('p_small') * 0.03),
+    speed:
+      BASE_SPEED *
+      (1 + p('p_healthy') * 0.08 + p('p_small') * 0.03) *
+      (1 + 0.2 * (player.cookingBuffs?.food_speed?.power ?? 0)),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
     might:
@@ -399,7 +408,8 @@ export function playerStats(player: Player): PlayerStats {
         (p('p_hot') + p('p_courage')) * 0.1 +
         p('p_clever') * 0.03 +
         (player.hp <= player.maxHp / 2 ? p('p_competitive') * 0.1 : 0)) *
-      (player.parent === 'p_toxic' ? 1.05 : 1),
+      (player.parent === 'p_toxic' ? 1.05 : 1) *
+      (1 + 0.25 * (player.cookingBuffs?.food_damage?.power ?? 0)),
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
     area: 1 + p('p_kind') * 0.08 + p('p_cautious') * 0.05,
     crit: 0.05 + p('p_lucky') * 0.05,
@@ -510,7 +520,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${evolves}`,
+      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${evolves}`,
       tag: `Lv ${next}`
     }
   }
@@ -652,6 +662,7 @@ export class Game {
     this.familyHands.delete(id)
     this.careers.delete(id)
     this.state.shots = this.state.shots.filter((shot) => shot.owner !== id)
+    this.state.items = this.state.items.filter((item) => !('owner' in item) || item.owner !== id)
   }
 
   setInput(id: string, raw: unknown) {
@@ -780,6 +791,15 @@ export class Game {
 
   private movePlayers(dt: number) {
     for (const player of this.state.players) {
+      const buffs = player.cookingBuffs
+      if (buffs) {
+        for (const kind of COOKING_ITEMS) {
+          if (kind === 'food_heal') continue
+          const buff = buffs[kind]
+          if (buff && (buff.time -= dt) <= 1e-9) delete buffs[kind]
+        }
+        if (!buffs.food_damage && !buffs.food_defense && !buffs.food_speed) delete player.cookingBuffs
+      }
       const stats = playerStats(player)
       player.maxHp = stats.maxHp
       player.hurt = Math.max(0, player.hurt - dt)
@@ -1706,6 +1726,7 @@ export class Game {
       if (player.downed) continue
       const stats = playerStats(player)
       for (const weapon of player.weapons) {
+        if (weapon.id === 'w_cooking' && weapon.held === 0) weapon.cd = WEAPON_BY_ID.get(weapon.id)!.cooldown
         weapon.held += dt
         if (
           weapon.id === 'w_travel' &&
@@ -1730,7 +1751,7 @@ export class Game {
             this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id))
         )
           continue
-        if (weapon.cd > 0 && weapon.id !== 'w_observe') continue
+        if (weapon.cd > (weapon.id === 'w_cooking' ? 1e-9 : 0) && weapon.id !== 'w_observe') continue
         const ws = weaponStats(player, weapon, stats)
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
@@ -2073,7 +2094,7 @@ export class Game {
       case 'gamble': {
         const candidates = player.weapons.filter((owned) => {
           const def = WEAPON_BY_ID.get(owned.id)
-          return def && def.id !== 'w_gamble' && def.behavior !== 'none'
+          return def && def.id !== 'w_gamble' && def.behavior !== 'none' && def.behavior !== 'food'
         })
         if (!candidates.length) {
           weapon.gambleWeapon = undefined
@@ -2104,19 +2125,15 @@ export class Game {
           })
         }
         break
-      case 'fan': {
-        const count = n + 2
-        const target = this.nearestEnemy(player.x, player.y, 520)
-        const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
-        for (let i = 0; i < count; i++) {
-          const angle = base + (i / (count - 1) - 0.5) * 1.0
-          this.shot(player, weapon, def, ws, {
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            angle,
-            v: Math.floor(rng() * 3)
-          })
-        }
+      case 'food': {
+        const kind = COOKING_ITEMS[Math.floor(rng() * COOKING_ITEMS.length)]
+        this.drop({
+          kind,
+          x: player.x + player.fx * 60,
+          y: player.y + player.fy * 60,
+          owner: player.id,
+          power: 1 + (weapon.lv - 1) * 0.1 + (isEvolved(player, weapon) ? 0.3 : 0)
+        })
         break
       }
       case 'garden': {
@@ -2532,10 +2549,10 @@ export class Game {
   }
 
   /** Leaves a pickup; the oldest one on the ground makes room when there are too many. */
-  private drop(kind: Item['kind'], x: number, y: number) {
+  private drop(item: Item) {
     const items = this.state.items
     if (items.length >= MAX_ITEMS) items.shift()
-    items.push({ kind, x, y })
+    items.push(item)
   }
 
   private kill(enemy: Enemy, def: EnemyDef) {
@@ -2546,7 +2563,7 @@ export class Game {
     else state.gems[Math.floor(this.rng() * state.gems.length)].v += xp
     const index = ENEMY_INDEX.get(def.id)!
     if (def.behavior === 'boss') {
-      this.drop('chest', enemy.x, enemy.y)
+      this.drop({ kind: 'chest', x: enemy.x, y: enemy.y })
       state.slowmo = SLOWMO_SECONDS
       this.emit(FX.BOSS_KILL, enemy.x, enemy.y, index)
       this.log(`「${def.name}」を乗り越えた！ 転機が訪れる。`)
@@ -2555,9 +2572,9 @@ export class Game {
       if (enemy.elite) {
         // Elites always leave something: a meal, or now and then a turning point.
         const mealChance = state.time < RUN_SECONDS / 2 ? 0.6 : 0.8
-        this.drop(this.rng() < mealChance ? 'meal' : 'chest', enemy.x, enemy.y)
-      } else if (this.rng() < 0.0015 && state.items.length < 20) this.drop('meal', enemy.x, enemy.y)
-      else if (this.rng() < 0.0012 && state.items.length < 20) this.drop('magnet', enemy.x, enemy.y)
+        this.drop({ kind: this.rng() < mealChance ? 'meal' : 'chest', x: enemy.x, y: enemy.y })
+      } else if (this.rng() < 0.0015 && state.items.length < 20) this.drop({ kind: 'meal', x: enemy.x, y: enemy.y })
+      else if (this.rng() < 0.0012 && state.items.length < 20) this.drop({ kind: 'magnet', x: enemy.x, y: enemy.y })
     }
     if (def.child && def.children)
       for (let i = 0; i < def.children; i++) {
@@ -2602,10 +2619,21 @@ export class Game {
       this.emit(FX.GEM, player.x, player.y, count, this.playerIndex(player))
     }
     state.items = state.items.filter((item) => {
-      const taker = alive.find((player) => Math.hypot(player.x - item.x, player.y - item.y) < PLAYER_RADIUS + 16)
+      const taker = alive.find(
+        (player) =>
+          (!('owner' in item) || item.owner === player.id) &&
+          Math.hypot(player.x - item.x, player.y - item.y) < PLAYER_RADIUS + 16
+      )
       if (!taker) return true
       const takerIndex = this.playerIndex(taker)
-      if (item.kind === 'meal') {
+      if ('owner' in item) {
+        if (item.kind === 'food_heal') taker.hp = Math.min(taker.maxHp, taker.hp + 40 * item.power)
+        else {
+          taker.cookingBuffs ??= {}
+          taker.cookingBuffs[item.kind] = { time: 60, power: item.power }
+        }
+        this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf(item.kind), takerIndex)
+      } else if (item.kind === 'meal') {
         taker.hp = Math.min(taker.maxHp, taker.hp + 40)
         this.emit(FX.ITEM, item.x, item.y, ITEM_KINDS.indexOf('meal'), takerIndex)
       } else if (item.kind === 'magnet') {

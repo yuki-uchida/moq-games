@@ -929,7 +929,11 @@ export function weaponSheets(): Record<string, () => Sheet> {
       gem3: four((f) => gem(f, R.red), 5),
       meal: loop([onigiri()], 1),
       chest: loop([gift()], 1),
-      magnet: loop([magnet()], 1)
+      magnet: loop([magnet()], 1),
+      food_damage: loop([onigiri().rect(6, 9, 4, 5, R.red[1])], 1),
+      food_defense: loop([onigiri().rect(6, 9, 4, 5, R.sky[1])], 1),
+      food_speed: loop([onigiri().rect(6, 9, 4, 5, R.yellow[1])], 1),
+      food_heal: loop([onigiri().rect(6, 9, 4, 5, R.green[1])], 1)
     }),
     icons: () => {
       const icons: Record<string, Raster> = {

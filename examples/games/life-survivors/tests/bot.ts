@@ -65,6 +65,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
   let prize: { dx: number; dy: number; d: number } | undefined
   if (strategy === 'smart')
     for (const item of game.state.items) {
+      if ('owner' in item && item.owner !== player.id) continue
       if (item.kind === 'meal' && player.hp > player.maxHp * 0.75) continue
       const dx = item.x - player.x
       const dy = item.y - player.y

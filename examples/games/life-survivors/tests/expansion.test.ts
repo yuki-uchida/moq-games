@@ -46,7 +46,7 @@ const NEW_WEAPONS: Record<string, { name: string; passive: string; behavior: str
   w_savings: { name: '老後の蓄え', passive: 'p_bold', behavior: 'mine' },
   w_gamble: { name: '大穴的中', passive: 'p_lucky', behavior: 'gamble' },
   w_perfume: { name: '魅惑のフェロモン', passive: 'p_savvy', behavior: 'trail' },
-  w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' },
+  w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'food' },
   w_garden: { name: 'ひみつの花園', passive: 'p_curious', behavior: 'garden' }
 }
 const NEW_ENEMY_IDS = [
@@ -109,32 +109,36 @@ describe('new talent weapons', () => {
     expect(Object.keys(TALENT_NAMES).sort()).toEqual([...TALENT_CATEGORIES].sort())
   })
 
-  test.each(Object.keys(NEW_WEAPONS))('%s deals damage to an enemy in its path', (id) => {
-    const { game, player } = arena(7)
-    player.weapons.push({ id, lv: 1, cd: 0, held: 0, damage: 0 })
-    if (id === 'w_gamble') {
-      player.weapons.push({ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 })
-      player.weapons[0].gambleWeapon = 'w_cooking'
-      player.weapons[0].gambleUntil = 12
+  test.each(Object.keys(NEW_WEAPONS).filter((id) => id !== 'w_cooking'))(
+    '%s deals damage to an enemy in its path',
+    (id) => {
+      const { game, player } = arena(7)
+      player.weapons.push({ id, lv: 1, cd: 0, held: 0, damage: 0 })
+      if (id === 'w_gamble') {
+        player.weapons.push({ id: 'w_love', lv: 1, cd: 100, held: 0, damage: 0 })
+        player.weapons[0].gambleWeapon = 'w_love'
+        player.weapons[0].gambleUntil = 12
+      }
+      player.fx = 1
+      player.fy = 0
+      const posts: ReturnType<typeof post>[] = []
+      if (id === 'w_travel')
+        // Planes cross at a random height: a column of posts covers every one.
+        for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'abusive_senpai', player.x, player.y + y))
+      else if (id === 'w_savings' || id === 'w_perfume')
+        posts.push(post(game, 'abusive_senpai', player.x + 36, player.y))
+      else if (id === 'w_muscle') posts.push(post(game, 'abusive_senpai', player.x + 70, player.y))
+      else if (id === 'w_garden') posts.push(post(game, 'abusive_senpai', player.x + 256, player.y))
+      else posts.push(post(game, 'abusive_senpai', player.x + 120, player.y))
+      const popups = new Set<unknown>()
+      run(game, player, 60 * 6, () => {
+        for (const p of posts) p.hold()
+        game.state.popups.forEach((p) => popups.add(p))
+      })
+      expect(posts.some((p) => p.enemy.hp < p.enemy.maxHp)).toBe(true)
+      expect(popups.size).toBeGreaterThan(0)
     }
-    player.fx = 1
-    player.fy = 0
-    const posts: ReturnType<typeof post>[] = []
-    if (id === 'w_travel')
-      // Planes cross at a random height: a column of posts covers every one.
-      for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'abusive_senpai', player.x, player.y + y))
-    else if (id === 'w_savings' || id === 'w_perfume') posts.push(post(game, 'abusive_senpai', player.x + 36, player.y))
-    else if (id === 'w_muscle') posts.push(post(game, 'abusive_senpai', player.x + 70, player.y))
-    else if (id === 'w_garden') posts.push(post(game, 'abusive_senpai', player.x + 256, player.y))
-    else posts.push(post(game, 'abusive_senpai', player.x + 120, player.y))
-    const popups = new Set<unknown>()
-    run(game, player, 60 * 6, () => {
-      for (const p of posts) p.hold()
-      game.state.popups.forEach((p) => popups.add(p))
-    })
-    expect(posts.some((p) => p.enemy.hp < p.enemy.maxHp)).toBe(true)
-    expect(popups.size).toBeGreaterThan(0)
-  })
+  )
 
   test('karaoke expands slowly in the firing direction only', () => {
     const { game, player } = arena(7)
@@ -270,7 +274,7 @@ describe('new talent weapons', () => {
   test('gambling activates different weapons', () => {
     const { game, player } = arena(11)
     player.weapons.push({ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 })
-    player.weapons.push({ id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 })
+    player.weapons.push({ id: 'w_love', lv: 1, cd: 100, held: 0, damage: 0 })
     player.weapons.push({ id: 'w_sns', lv: 1, cd: 100, held: 0, damage: 0 })
     post(game, 'abusive_senpai', player.x + 400, player.y)
     const copied = new Set<string>()
@@ -282,7 +286,7 @@ describe('new talent weapons', () => {
       for (const shot of game.state.shots) if (shot.sourceWeapon === 'w_gamble') copied.add(shot.weapon)
       game.state.shots = []
     }
-    expect(copied).toEqual(new Set(['w_cooking', 'w_sns']))
+    expect(copied).toEqual(new Set(['w_love', 'w_sns']))
     expect(copied.has('w_gamble')).toBe(false)
     expect(copied.has('p_gone')).toBe(false)
   })
@@ -995,7 +999,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v13', () => {
+describe('protocol v14', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -1005,9 +1009,9 @@ describe('protocol v13', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v13 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v14 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(13)
+    expect(view.v).toBe(14)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -1016,7 +1020,7 @@ describe('protocol v13', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v13 field', () => {
+  test('readView rejects old versions and every malformed v14 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
@@ -1027,6 +1031,7 @@ describe('protocol v13', () => {
     expect(readView({ ...view, v: 10 })).toBeUndefined()
     expect(readView({ ...view, v: 11 })).toBeUndefined()
     expect(readView({ ...view, v: 12 })).toBeUndefined()
+    expect(readView({ ...view, v: 13 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
@@ -1059,7 +1064,7 @@ describe('protocol v13', () => {
 
   test('the snapshot carries variants, flags and bullet kinds from the simulation', () => {
     const { game, player } = arena(31)
-    player.weapons.push({ id: 'w_cooking', lv: 1, cd: 0, held: 0, damage: 0 })
+    player.weapons.push({ id: 'w_love', lv: 1, cd: 0, held: 0, damage: 0 })
     post(game, 'abusive_senpai', player.x + 400, player.y)
     game.tick(1 / 60)
     const shot = toView(game.state).shots
