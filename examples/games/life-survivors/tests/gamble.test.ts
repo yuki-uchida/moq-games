@@ -29,6 +29,22 @@ function choose(game: Game, id: string) {
   Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copiedWeapons.length, configurable: true })
 }
 
+test('gambling repeats the selected weapon before drawing again', () => {
+  const { game, weapon } = setup()
+  choose(game, 'w_cooking')
+  game['fireWeapons'](0)
+  expect(weapon.gambleWeapon).toBe('w_cooking')
+  expect(game.state.fx.find((event) => event.type === FX.GAMBLE)?.b).toBe(WEAPON_INDEX.get('w_cooking'))
+  choose(game, 'w_sns')
+  game['fireWeapons'](2)
+  game['fireWeapons'](2)
+  expect(weapon.gambleWeapon).toBe('w_cooking')
+  expect(game.state.fx.filter((event) => event.type === FX.GAMBLE)).toHaveLength(1)
+  game['fireWeapons'](8)
+  expect(weapon.gambleWeapon).toBe('w_sns')
+  expect(game.state.fx.filter((event) => event.type === FX.GAMBLE)).toHaveLength(2)
+})
+
 test.each(copiedWeapons)('gambling can activate $id with its own behavior and statistics', (def) => {
   const { game, player, weapon } = setup()
   const enemy = game.spawnEnemy('germ', player.x + 10, player.y)!

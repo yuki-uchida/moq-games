@@ -23,7 +23,7 @@ test('gambling draws the right animation and status for each life stage', async 
     Object.assign(window, { gambleLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！'].includes(text)) labels.push(text)
+      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '🍳 料理'].includes(text)) labels.push(text)
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -61,6 +61,11 @@ test('gambling draws the right animation and status for each life stage', async 
     await expect
       .poll(() =>
         page.evaluate((text) => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes(text), label)
+      )
+      .toBe(true)
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
       )
       .toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`gamble-${age}.png`) })

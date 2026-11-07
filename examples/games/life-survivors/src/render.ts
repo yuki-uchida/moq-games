@@ -1592,6 +1592,12 @@ export class Renderer {
             ctx.fillStyle = '#fff2b0'
             ctx.strokeText(label, p.x, p.y - 24)
             ctx.fillText(label, p.x, p.y - 24)
+            const weapon = WEAPONS[p.n]
+            if (weapon) {
+              const result = `${weapon.icon} ${weapon.name}`
+              ctx.strokeText(result, p.x, p.y - 38)
+              ctx.fillText(result, p.x, p.y - 38)
+            }
             ctx.restore()
           }
           break

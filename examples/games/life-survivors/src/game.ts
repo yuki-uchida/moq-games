@@ -95,6 +95,8 @@ export interface Input {
 
 export interface OwnedWeapon {
   id: string
+  gambleWeapon?: string
+  gambleUntil?: number
   acquiredAge?: number
   lv: number
   cd: number
@@ -1677,14 +1679,6 @@ export class Game {
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
         this.emit(FX.FIRE, player.x, player.y, WEAPON_INDEX.get(weapon.id)!, this.playerIndex(player))
-        if (weapon.id === 'w_gamble')
-          this.emit(
-            FX.GAMBLE,
-            player.x,
-            player.y,
-            GAMBLE_FORMS.indexOf(gambleForm(ageAt(this.state.time))),
-            this.playerIndex(player)
-          )
         this.fire(player, weapon, ws)
       }
     }
@@ -1988,7 +1982,18 @@ export class Game {
         break
       }
       case 'gamble': {
-        const copied = GAMBLE_WEAPONS[Math.floor(rng() * GAMBLE_WEAPONS.length)]
+        if (!weapon.gambleWeapon || weapon.held >= (weapon.gambleUntil ?? 0)) {
+          weapon.gambleWeapon = GAMBLE_WEAPONS[Math.floor(rng() * GAMBLE_WEAPONS.length)].id
+          weapon.gambleUntil = weapon.held + 12
+          this.emit(
+            FX.GAMBLE,
+            player.x,
+            player.y,
+            GAMBLE_FORMS.indexOf(gambleForm(ageAt(this.state.time))),
+            WEAPON_INDEX.get(weapon.gambleWeapon)!
+          )
+        }
+        const copied = WEAPON_BY_ID.get(weapon.gambleWeapon)!
         this.fire(player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
         break
       }
