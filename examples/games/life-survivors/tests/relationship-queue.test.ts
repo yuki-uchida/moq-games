@@ -47,7 +47,7 @@ test('an expiring pet updates the saved hand without losing the relationship cho
   game.state.time = timeAtAge(26) - 0.01
   game.tick(0.02)
   expect(player.weapons.some((weapon) => weapon.id === 'w_pet')).toBe(false)
-  expect(player.passives).toContainEqual({ id: PET_MEMORY, lv: 1 })
+  expect(player.passives).not.toContainEqual({ id: PET_MEMORY, lv: 1 })
   expect(player.choices).toEqual(['d:yes', 'd:no'])
   game.choose(player, 0)
   expect(player.dating).toBe(true)

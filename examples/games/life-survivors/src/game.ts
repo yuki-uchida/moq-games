@@ -1781,8 +1781,10 @@ export class Game {
         const remaining = refresh(familyHand)
         this.familyHands.set(player.id, remaining.length ? remaining : ['x:skip'])
       }
-      if (!passiveLevel(player, PET_MEMORY)) player.passives.push({ id: PET_MEMORY, lv: 1 })
-      this.log(`${player.name}の愛犬が旅立った。「愛犬との思い出」は心に残る。`)
+      if (pet.lv >= MAX_WEAPON_LEVEL && !passiveLevel(player, PET_MEMORY)) {
+        player.passives.push({ id: PET_MEMORY, lv: 1 })
+        this.log(`${player.name}の愛犬が旅立った。「愛犬との思い出」は心に残る。`)
+      } else this.log(`${player.name}の愛犬が旅立った。`)
     }
   }
 

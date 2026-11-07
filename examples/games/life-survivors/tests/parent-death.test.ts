@@ -81,7 +81,7 @@ describe('parent farewell', () => {
     const game = new Game(11)
     const player = game.addPlayer('a', 'p_over')!
     player.weapons[0].lv = MAX_WEAPON_LEVEL
-    player.weapons.push({ id: 'w_pet', lv: 1, cd: 100, held: 0, damage: 0, acquiredAge: 30 })
+    player.weapons.push({ id: 'w_pet', lv: MAX_WEAPON_LEVEL, cd: 100, held: 0, damage: 0, acquiredAge: 30 })
     player.passives = PASSIVES.filter((passive) => passive.id !== PET_MEMORY)
       .slice(0, PASSIVE_SLOTS)
       .map(({ id }) => ({ id, lv: 1 }))

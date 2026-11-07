@@ -221,12 +221,13 @@ test('a pet ages from acquisition, not firing time; upgrades do not reset its li
   expect(game.state.shots.some((shot) => shot.weapon === 'w_pet')).toBe(false)
   expect(player.choices).toEqual(['w:w_pet', 'x:skip'])
   expect(player.choiceSeq).toBeGreaterThan(seq)
-  expect(player.passives).toEqual([{ id: PET_MEMORY, lv: 1 }])
+  expect(player.passives).toEqual([])
   expect(toView(game.state).players[0].petAge).toBeUndefined()
   expect(game.options(player)).toContain('w:w_pet')
   expect(game.options(player)).not.toContain(`p:${PET_MEMORY}`)
   obtain('w_pet')
   expect(player.weapons[0]).toMatchObject({ lv: 1, acquiredAge: 50, held: 0, damage: 0 })
+  player.weapons[0].lv = MAX_WEAPON_LEVEL
   at(69)
   expect(player.weapons).toHaveLength(1)
   at(70)
@@ -244,6 +245,7 @@ test('bonus is outside normal slots, is never offered, and respects toxic-parent
     .map((def) => ({ id: def.id, lv: 1 }))
   const regen = playerStats(player).regen
   obtain('w_pet')
+  player.weapons[0].lv = MAX_WEAPON_LEVEL
   at(50)
   expect(player.passives).toHaveLength(PASSIVE_SLOTS + 1)
   expect(playerStats(player).regen).toBeCloseTo(regen + 0.4 * player.talents.friend)
@@ -308,7 +310,7 @@ test('exchanging away a pet is not death, and a replacement pet starts at acquis
   at(54)
   expect(player.weapons[0].id).toBe('w_pet')
   at(55)
-  expect(player.passives).toContainEqual({ id: PET_MEMORY, lv: 1 })
+  expect(player.passives).not.toContainEqual({ id: PET_MEMORY, lv: 1 })
 })
 
 test('pause does not age a pet and snapshots reject malformed pet ages', () => {

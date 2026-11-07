@@ -506,7 +506,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'child'],
     minAge: 3,
-    desc: '弾数に応じて犬・猫・ウサギ・インコ・ハムスターが順に登場。敵の弾を打ち消す。子犬から成長し、迎えて20年でお別れ。初回のみ性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
+    desc: '弾数に応じて犬・猫・ウサギ・インコ・ハムスターが順に登場。敵の弾を打ち消す。子犬から成長し、迎えて20年でお別れ。Lv MAXなら性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
     evolve: { passive: 'p_optimist', name: '忠犬' }
   }),
   weapon({
@@ -774,7 +774,7 @@ export const PASSIVES: PassiveDef[] = [
     category: 'friend',
     name: '愛犬との思い出',
     icon: '🐾',
-    desc: '初めてのお別れで獲得。自然回復 +0.4/秒・性格枠の消費なし'
+    desc: 'Lv MAXのペットとのお別れで獲得。自然回復 +0.4/秒・性格枠の消費なし'
   }
 ]
 

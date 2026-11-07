@@ -570,7 +570,7 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
     player.choices = []
     player.weapons = [
       { id: 'w_sports', lv: 8, cd: 0, held: 0, damage: 100 },
-      { id: 'w_pet', lv: 1, cd: 0, held: 0, damage: 0, acquiredAge: 5 }
+      { id: 'w_pet', lv: 8, cd: 0, held: 0, damage: 0, acquiredAge: 5 }
     ]
     player.passives = [{ id: 'p_hot', lv: 1 }]
     game.state.eventIndex = EVENTS.length
