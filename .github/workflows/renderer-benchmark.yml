@@ -11,7 +11,7 @@ on:
         required: true
         type: choice
         default: normal-game
-        options: [normal-game, meshopt]
+        options: [normal-game, meshopt, extra]
       channel:
         description: Headless Chromium distribution
         required: true
@@ -41,7 +41,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          assert(['normal-game', 'meshopt'].includes(process.env.BENCHMARK_SCENARIO));
+          assert(['normal-game', 'meshopt', 'extra'].includes(process.env.BENCHMARK_SCENARIO));
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
           NODE
       - name: Verify source run and successful build
@@ -163,14 +163,16 @@ jobs:
           const scenario = process.env.BENCHMARK_SCENARIO
           const channel = process.env.BENCHMARK_CHANNEL
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
-          if (!['normal-game', 'meshopt'].includes(scenario ?? '')) throw new Error('Unknown scenario')
+          if (!['normal-game', 'meshopt', 'extra'].includes(scenario ?? '')) throw new Error('Unknown scenario')
           if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
           export default defineConfig(source, {
             testDir: fileURLToPath(new URL('.', import.meta.url)),
             testMatch: 'renderer.spec.ts',
             grep: scenario === 'meshopt'
               ? /meshopt source equivalence /
-              : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
+              : scenario === 'extra'
+                ? /EXTRA (?:exposes every runtime role\/action and never requests sheets, audio or game services|loop boundary repeats the start pose while the interior visibly moves|shares the weak model IBL once across model switches and releases it on pagehide)$/
+                : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
             outputDir: fileURLToPath(new URL('results', import.meta.url)),
             reporter: [
               ['list'],
@@ -189,17 +191,79 @@ jobs:
           CONFIG
           cat > .build/renderer-benchmark-local/renderer.spec.ts <<'SPEC'
           import { test, expect } from '@playwright/test'
+          import { appendFileSync, writeFileSync } from 'node:fs'
 
           if (process.env.BENCHMARK_SCENARIO === 'meshopt') {
             await import('../../tests/tower-meshopt-equivalence.spec')
+          } else if (process.env.BENCHMARK_SCENARIO === 'extra') {
+            await import('../../tests/tower-title-e2e.spec')
+            await import('../../tests/tower-real3d-game.spec')
           } else {
             await import('../../tests/tower-real3d-game.spec')
+          }
+
+          if (process.env.BENCHMARK_SCENARIO === 'extra') {
+            test.beforeEach(async ({ page }, testInfo) => {
+              const prefix = 'EXTRA_WEBGL_DIAGNOSTIC:'
+              const eventLimit = 40_000
+              const path = testInfo.outputPath('webgl-calls.jsonl')
+              try {
+                writeFileSync(path, JSON.stringify({ type: 'metadata', eventLimit, callLimitPerDocument: 10_000 }) + '\n')
+              } catch (error) {
+                console.error('WebGL diagnostic initialization failed:', error)
+                return
+              }
+              let received = 0
+              page.on('console', message => {
+                const text = message.text()
+                if (!text.startsWith(prefix) || received > eventLimit) return
+                try {
+                  const event = received === eventLimit
+                    ? { type: 'truncated', scope: 'controller', eventLimit }
+                    : JSON.parse(text.slice(prefix.length))
+                  received++
+                  appendFileSync(path, JSON.stringify(event) + '\n')
+                } catch (error) {
+                  console.error('WebGL diagnostic write failed:', error)
+                }
+              })
+              await page.addInitScript(({ prefix, callLimit }) => {
+                const emit = (event: object) => {
+                  try { console.log(prefix + JSON.stringify({ ...event, time: performance.now() })) } catch {}
+                }
+                let calls = 0
+                let truncated = false
+                emit({ type: 'metadata', timeOrigin: performance.timeOrigin, callLimit })
+                if (typeof WebGL2RenderingContext === 'undefined') return
+                const prototype = WebGL2RenderingContext.prototype as unknown as Record<string, (...args: unknown[]) => unknown>
+                for (const method of ['linkProgram', 'getProgramInfoLog', 'getShaderInfoLog', 'getProgramParameter']) {
+                  const original = prototype[method]
+                  prototype[method] = function (this: WebGL2RenderingContext, ...args: unknown[]) {
+                    const recorded = calls < callLimit
+                    const id = recorded ? ++calls : 0
+                    if (!recorded && !truncated) {
+                      truncated = true
+                      emit({ type: 'truncated', scope: 'document', callLimit })
+                    }
+                    if (recorded) emit({ id, method, phase: 'start' })
+                    let threw = true
+                    try {
+                      const result = Reflect.apply(original, this, args)
+                      threw = false
+                      return result
+                    } finally {
+                      if (recorded) emit({ id, method, phase: 'end', threw })
+                    }
+                  }
+                }
+              }, { prefix, callLimit: 10_000 })
+            })
           }
 
           test.afterEach(async ({ page, browser }, testInfo) => {
             const originalFailed = testInfo.status !== testInfo.expectedStatus
             try {
-              const selector = process.env.BENCHMARK_SCENARIO === 'meshopt' ? '#viewer-canvas' : '#field > canvas'
+              const selector = process.env.BENCHMARK_SCENARIO === 'normal-game' ? '#field > canvas' : '#viewer-canvas'
               const renderer = await page.locator(selector).evaluate((canvas: HTMLCanvasElement) => {
                 const context = canvas.getContext('webgl2')
                 if (!context || context.isContextLost()) throw new Error('No live game WebGL2 context')
@@ -253,10 +317,16 @@ jobs:
           const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
           const selected = specs(report.suites);
           const scenario = process.env.BENCHMARK_SCENARIO;
-          assert(['normal-game', 'meshopt'].includes(scenario));
+          assert(['normal-game', 'meshopt', 'extra'].includes(scenario));
           const expected = scenario === 'meshopt'
             ? ['soldier walk', 'slime walk', 'mage attack', 'tank walk', 'dragon breath'].map(name => `${name} preserves source poses and rendered appearance`)
-            : ['normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation'];
+            : scenario === 'extra'
+              ? [
+                  'EXTRA exposes every runtime role/action and never requests sheets, audio or game services',
+                  'EXTRA loop boundary repeats the start pose while the interior visibly moves',
+                  'EXTRA shares the weak model IBL once across model switches and releases it on pagehide'
+                ]
+              : ['normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation'];
           assert.equal(report.errors.length, 0);
           assert.equal(selected.length, expected.length);
           assert(selected.every(spec => spec.tests.length === 1));
@@ -280,7 +350,7 @@ jobs:
           const backend = process.env.BENCHMARK_BACKEND;
           const scenario = process.env.BENCHMARK_SCENARIO;
           const channel = process.env.BENCHMARK_CHANNEL;
-          assert(['normal-game', 'meshopt'].includes(scenario));
+          assert(['normal-game', 'meshopt', 'extra'].includes(scenario));
           assert(['shell', 'chromium'].includes(channel));
           const metadata = {
             sourceRunId: process.env.SOURCE_RUN_ID,
