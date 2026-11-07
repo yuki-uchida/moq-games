@@ -1,6 +1,6 @@
 import { canvasOf } from './art/atlas'
 import { careerFor } from './art/careers'
-import { BEAM_DIRS, STAPLE_DIRS, beam } from './art/arsenal'
+import { BEAM_DIRS, STAPLE_DIRS, beam, flowerBed, flowerSpots } from './art/arsenal'
 import { deathKind, soulAt } from './art/deaths'
 import {
   NO_FLIP,
@@ -13,7 +13,7 @@ import {
   sheet,
   swing
 } from './art/index'
-import { R } from './art/palette'
+import { PALETTE, R } from './art/palette'
 import { Raster } from './art/raster'
 import { duration, frameAt, type Anim, type Sheet } from './art/sheet'
 import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propsAt } from './art/world'
@@ -1004,43 +1004,84 @@ export class Renderer {
         if (sh.v % 2 === 0) break
         const alpha = clamp01(life * 4)
         this.world()
-        ctx.fillStyle = `rgba(140,204,105,${0.12 * alpha})`
-        ctx.strokeStyle = `rgba(198,245,190,${0.55 * alpha})`
-        ctx.lineWidth = 2
+        // A "nature lens": a soft green pool, a slowly turning dashed rim, ripples and leaves drawn inward.
+        const grow = clamp01(sh.age * 8)
+        const fill = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius)
+        fill.addColorStop(0, `rgba(140,204,105,${0.033 * alpha})`)
+        fill.addColorStop(1, `rgba(140,204,105,${0.13 * alpha})`)
+        ctx.fillStyle = fill
         ctx.beginPath()
         ctx.arc(x, y, radius, 0, TAU)
         ctx.fill()
-        ctx.stroke()
-        ctx.strokeStyle = `rgba(198,245,190,${0.3 * alpha})`
+        ctx.strokeStyle = `rgba(198,245,190,${0.7 * alpha})`
+        ctx.lineWidth = 2
+        ctx.setLineDash([9, 7])
+        ctx.lineDashOffset = -this.clock * 14
         ctx.beginPath()
-        ctx.arc(x, y, radius * (0.45 + 0.25 * ((this.clock * 0.8) % 1)), 0, TAU)
+        ctx.ellipse(x, y, radius * (0.9 + 0.1 * grow), radius * (0.9 + 0.1 * grow), 0, 0, TAU)
         ctx.stroke()
+        ctx.setLineDash([])
+        ctx.lineWidth = 1.5
+        for (let k = 0; k < 3; k++) {
+          const t = (this.clock * 0.5 + k / 3) % 1
+          const rr = radius * (0.92 - 0.8 * t)
+          ctx.strokeStyle = `rgba(214,243,190,${0.42 * alpha * Math.sin(t * Math.PI)})`
+          ctx.beginPath()
+          ctx.ellipse(x, y, rr, rr, 0, 0, TAU)
+          ctx.stroke()
+        }
+        // Seeded by the creature's spot (it never moves), so the swirl does not jump when other shots come and go.
+        const swirl = hash(Math.round(x), Math.round(y)) * TAU
+        for (let k = 0; k < 6; k++) {
+          const t = (this.clock * 0.35 + k / 6) % 1
+          const a = k * 2.4 + t * 2.2 + swirl
+          const rr = radius * (0.95 - 0.85 * t)
+          const px = x + Math.cos(a) * rr
+          const py = y + Math.sin(a) * rr * 0.9
+          this.art(pick(fx.spark, this.clock * 3 + k), px, py, 6, 6, false, alpha * Math.sin(t * Math.PI) * 0.9, 0.6)
+        }
         break
       }
       case 'garden': {
         if (sh.v !== 1) break
         const alpha = Math.min(1, life * 4)
+        const art = sheet('weapon:w_garden')
+        const bed = flowerBed(radius)
+        this.art(bed, x, y, bed.w / 2, bed.h / 2, false, alpha * 0.96)
+        if (evolved) {
+          this.world()
+          ctx.strokeStyle = `rgba(255,209,102,${0.55 * alpha})`
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.arc(x, y, radius - 1, 0, TAU)
+          ctx.stroke()
+        }
+        const kinds = [art.bloom, art.tulip, art.daisy]
+        // Each bed is seeded by its fixed spot: neighbouring beds differ and never reshuffle as other shots expire.
+        const seed = hash(Math.round(x), Math.round(y))
+        for (const spot of flowerSpots(radius, Math.floor(seed * 4))) {
+          // The sprite's stem base sits 14 px below its centre.
+          this.centred(pick(kinds[spot.kind], this.clock + spot.phase), x + spot.x, y + spot.y - 14, evolved, alpha)
+        }
+        // Pollen and petals drifting up out of the bed.
         this.world()
-        ctx.fillStyle = `rgba(78,152,91,${0.22 * alpha})`
-        ctx.strokeStyle = `rgba(214,243,138,${0.65 * alpha})`
-        ctx.lineWidth = 2
+        const dots = [R.yellow[0], R.pink[1], R.paper[0]]
+        for (let j = 0; j < 6; j++) {
+          const t = (this.clock * 0.45 + j / 6 + seed) % 1
+          const a = (j * 2.4 + seed * 7) * 1.7
+          const px = Math.round(x + Math.cos(a) * radius * 0.7 + Math.sin(t * 6 + j) * 3)
+          const py = Math.round(y + Math.sin(a) * radius * 0.5 - 6 - t * 26)
+          ctx.globalAlpha = Math.sin(t * Math.PI) * 0.9 * alpha
+          ctx.fillStyle = PALETTE[dots[j % 3]]
+          ctx.fillRect(px, py, 2, 2)
+        }
+        ctx.globalAlpha = 1
+        // Soft rim (the harvest-green ring the bloom stage is known by).
+        ctx.strokeStyle = `rgba(214,243,138,${0.4 * alpha})`
+        ctx.lineWidth = 1
         ctx.beginPath()
         ctx.arc(x, y, radius, 0, TAU)
-        ctx.fill()
         ctx.stroke()
-        const flowers = sheet('weapon:w_garden').bloom
-        for (let j = 0; j < 5; j++) {
-          const a = (j / 5) * TAU + i
-          const d = j === 0 ? 0 : radius * 0.55
-          this.centred(
-            pick(flowers, this.clock + j * 0.2),
-            x + Math.cos(a) * d,
-            y + Math.sin(a) * d,
-            evolved,
-            alpha,
-            0.8
-          )
-        }
         break
       }
       case 'beam': {
@@ -1295,13 +1336,26 @@ export class Renderer {
     switch (def.behavior) {
       case 'observe': {
         const kind = OBSERVATION_SPRITES[Math.floor(sh.v / 2)] ?? 'ant'
-        const frame = pick(sheet('weapon:w_observe')[kind], this.clock + i * 0.1)
-        this.shadow(x, y + 12, 10, 0.2)
-        this.centred(frame, x, y, evolved, clamp01(life * 4))
+        const frame = pick(sheet('weapon:w_observe')[kind], this.clock + hash(Math.round(x), Math.round(y)))
+        // The summon pops in over the first ~0.5 s of its (12 s at base) stay.
+        const pop = age < 0.04 ? age / 0.04 : 1
+        const swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
+        this.shadow(x, y + 12, 10 * Math.min(1, swell), 0.2)
+        this.centred(frame, x, y, evolved, clamp01(life * 4), swell)
+        if (age < 0.04) {
+          const alpha = 1 - pop
+          this.art(fx.poof.frames[Math.min(3, Math.floor(pop * 4))], x, y + 4, 12, 12, false, alpha, 1.1)
+          this.art(pick(fx.spark, this.clock * 6), x - 10, y - 10, 6, 6, false, alpha)
+          this.art(pick(fx.spark, this.clock * 6 + 2), x + 11, y - 6, 6, 6, false, alpha)
+        }
         break
       }
       case 'garden':
-        if (sh.v !== 1) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
+        if (sh.v === 0) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
+        else if (sh.v === 2) {
+          this.shadow(x, y + 10, 9, 0.2)
+          this.centred(pick(sheet('weapon:w_garden').sprout, this.clock + i * 0.1), x, y, evolved)
+        }
         break
       case 'aura':
       case 'zone':
