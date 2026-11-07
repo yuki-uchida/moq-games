@@ -162,7 +162,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -188,7 +188,7 @@ jobs:
         if: contains(needs.changes.outputs.unit, 'examples/games/yoru-no-yashiki/tests')
         run: npx playwright install --with-deps chromium
       - name: Unit tests
-        run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=1
+        run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=2
   life-browser:
     needs: changes
     if: needs.changes.outputs.life == 'true'
@@ -270,10 +270,7 @@ jobs:
   browser:
     needs: [changes, build]
     if: needs.changes.outputs.pagesBrowser == 'true'
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       # Keep every report when a shard fails. One WebGL worker per independent runner.
@@ -307,7 +304,7 @@ jobs:
           test -s dist/THIRD-PARTY-NOTICES.txt
       - uses: actions/cache@v4
         with:
-          path: ~/AppData/Local/ms-playwright
+          path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chromium for public-build browser tests
         run: npx playwright install --with-deps chromium
