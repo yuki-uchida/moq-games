@@ -27,6 +27,7 @@ const flush = (remaining = 50, didTimeout = false) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.spyOn(performance, 'now').mockReturnValue(0)
   callbacks = []
   request = vi.fn((callback: IdleRequestCallback) => (callbacks.push(callback), callbacks.length))
   vi.stubGlobal('requestIdleCallback', request)
@@ -50,7 +51,10 @@ beforeEach(() => {
   }) as Harness
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 test('only reserves the next stage in the final five seconds, without a timeout', () => {
   view.time = boundary - 5.01
@@ -137,11 +141,17 @@ test('insufficient budget, timeout and stale callbacks do no work', () => {
   renderer.prewarmAppearances(view)
   flush(50, true)
   renderer.prewarmAppearances(view)
-  vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 251)
+  vi.mocked(performance.now).mockReturnValue(251)
   flush()
-  vi.restoreAllMocks()
   expect(sheet).not.toHaveBeenCalled()
   expect(prewarmAppearanceFrame).not.toHaveBeenCalled()
+})
+
+test('accepts an idle callback at the freshness boundary', () => {
+  renderer.prewarmAppearances(view)
+  vi.mocked(performance.now).mockReturnValue(250)
+  flush()
+  expect(prewarmAppearanceFrame).toHaveBeenCalledExactlyOnceWith('player:junior')
 })
 
 test('short real idle budgets advance only one frame until complete', () => {
