@@ -337,7 +337,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 3.6,
     amount: 2,
     area: 88,
-    speed: 2.8,
+    speed: 1.96,
     pierce: Infinity,
     knockback: 120,
     strong: ['people', 'insult'],
