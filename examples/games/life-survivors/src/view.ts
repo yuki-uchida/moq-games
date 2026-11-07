@@ -1,6 +1,7 @@
 import {
   BULLET_INDEX,
   BULLET_KINDS,
+  COOKING_ITEMS,
   ENEMIES,
   ENEMY_BY_ID,
   ENEMY_INDEX,
@@ -38,6 +39,7 @@ export interface ViewPlayer {
   married: boolean
   hasChild: boolean
   hurt: boolean
+  cookingBuffs?: Player['cookingBuffs']
   /** Enemy id of the final blow while downed. */
   killer?: string
   parent: string
@@ -54,7 +56,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 14
+  v: 15
   time: number
   phase: GameState['phase']
   level: number
@@ -148,7 +150,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 14,
+    v: 15,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -171,6 +173,13 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       married: p.married,
       hasChild: p.hasChild,
       hurt: p.hurt > 0,
+      ...(p.cookingBuffs
+        ? {
+            cookingBuffs: Object.fromEntries(
+              Object.entries(p.cookingBuffs).map(([kind, buff]) => [kind, { ...buff, time: Math.ceil(buff.time) }])
+            )
+          }
+        : {}),
       ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
       ...(p.parentDeath ? { parentDeath: { ...p.parentDeath } } : {}),
@@ -240,6 +249,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'choiceSeq',
         'downed',
         'hurt',
+        'cookingBuffs',
         'dating',
         'married',
         'hasChild',
@@ -263,6 +273,18 @@ function playerOk(value: unknown): value is ViewPlayer {
     [p.x, p.y, p.fx, p.fy, p.hp, p.maxHp, p.revive, p.choiceSeq].every((n) => finite(n)) &&
     typeof p.downed === 'boolean' &&
     typeof p.hurt === 'boolean' &&
+    (p.cookingBuffs === undefined ||
+      (record(p.cookingBuffs) &&
+        Object.keys(p.cookingBuffs).length > 0 &&
+        Object.entries(p.cookingBuffs).every(
+          ([kind, buff]) =>
+            COOKING_ITEMS.slice(0, 3).some((item) => item === kind) &&
+            record(buff) &&
+            Object.keys(buff).length === 2 &&
+            Number.isInteger(buff.time) &&
+            finite(buff.time, 1, 60) &&
+            finite(buff.power, 0.01, 10)
+        ))) &&
     typeof p.dating === 'boolean' &&
     typeof p.married === 'boolean' &&
     typeof p.hasChild === 'boolean' &&
@@ -305,7 +327,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 14) return undefined
+  if (!record(value) || value.v !== 15) return undefined
   if (
     Object.keys(value).some(
       (key) =>
