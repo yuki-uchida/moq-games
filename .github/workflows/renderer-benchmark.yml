@@ -18,6 +18,12 @@ on:
         type: choice
         default: shell
         options: [shell, chromium]
+      browser_mode:
+        description: Browser process ownership (shared only for concurrency/chromium/gl)
+        required: true
+        type: choice
+        default: dedicated
+        options: [dedicated, shared]
 permissions:
   contents: read
   actions: read
@@ -35,6 +41,7 @@ jobs:
       BENCHMARK_BACKEND: ${{ matrix.backend }}
       BENCHMARK_SCENARIO: ${{ inputs.scenario }}
       BENCHMARK_CHANNEL: ${{ inputs.channel }}
+      BENCHMARK_BROWSER_MODE: ${{ inputs.browser_mode }}
       SOURCE_RUN_ID: ${{ inputs.run_id }}
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
@@ -45,6 +52,8 @@ jobs:
           import assert from 'node:assert/strict';
           assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(process.env.BENCHMARK_SCENARIO));
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
+          assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
+          assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
@@ -146,6 +155,8 @@ jobs:
           import { execFileSync } from 'node:child_process';
           const channel = process.env.BENCHMARK_CHANNEL;
           assert(['shell', 'chromium'].includes(channel));
+          assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
+          assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
           execFileSync('npx', ['playwright', 'install', '--with-deps', ...(channel === 'shell' ? ['--only-shell'] : []), 'chromium'], { stdio: 'inherit' });
           NODE
       - name: Select the OS lavapipe ICD for Vulkan only
@@ -171,6 +182,13 @@ jobs:
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
           if (!['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario ?? '')) throw new Error('Unknown scenario')
           if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
+          const browserMode = process.env.BENCHMARK_BROWSER_MODE
+          if (!['dedicated', 'shared'].includes(browserMode ?? '')) throw new Error('Unknown browser mode')
+          if (browserMode === 'shared' && (scenario !== 'concurrency' || channel !== 'chromium' || backend !== 'gl')) throw new Error('Invalid shared browser settings')
+          const endpoint = process.env.BENCHMARK_WS_ENDPOINT
+          if (browserMode === 'shared' && !process.argv.includes('--list') && !endpoint) throw new Error('Missing shared browser endpoint')
+          const address = browserMode === 'shared' && endpoint ? new URL(endpoint) : undefined
+          if (address && (address.protocol !== 'ws:' || address.hostname !== '127.0.0.1' || !address.port || address.username || address.password)) throw new Error('Invalid shared browser endpoint')
           const workers = Number(process.env.BENCHMARK_WORKERS)
           if (!['1', '2'].includes(process.env.BENCHMARK_WORKERS ?? '') || !Number.isFinite(workers) || !Number.isInteger(workers) || ![1, 2].includes(workers)) throw new Error('Invalid workers')
           if (scenario === 'concurrency' ? channel !== 'chromium' || backend !== 'gl' : workers !== 1) throw new Error('Invalid concurrency settings')
@@ -191,6 +209,7 @@ jobs:
               ['json', { outputFile: fileURLToPath(new URL(scenario === 'concurrency' ? `workers-${workers}/report.json` : 'report.json', import.meta.url)) }]
             ],
             use: {
+              ...(browserMode === 'shared' && endpoint ? { connectOptions: { wsEndpoint: endpoint } } : {}),
               headless: true,
               ...(channel === 'chromium' ? { channel: 'chromium' } : {}),
               launchOptions: {
@@ -201,6 +220,99 @@ jobs:
             }
           })
           CONFIG
+          cat > .build/renderer-benchmark-local/shared-browser.mjs <<'SERVER'
+          import assert from 'node:assert/strict'
+          import { spawn } from 'node:child_process'
+          import { constants } from 'node:os'
+          import { pathToFileURL } from 'node:url'
+          import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+
+          export async function runShared({ chromium, spawnChild = spawn, parent = process, env = process.env, graceMs = 5000, files = { existsSync, readFileSync, writeFileSync } }) {
+            assert.equal(env.BENCHMARK_BROWSER_MODE, 'shared')
+            assert.equal(env.BENCHMARK_SCENARIO, 'concurrency')
+            assert.equal(env.BENCHMARK_CHANNEL, 'chromium')
+            assert.equal(env.BENCHMARK_BACKEND, 'gl')
+            assert(['1', '2'].includes(env.BENCHMARK_WORKERS))
+            let server
+            let child
+            let receivedSignal
+            let timer
+            let status = 1
+            let endpoint
+            let cleanupFailed = false
+            const signals = ['SIGINT', 'SIGTERM', 'SIGHUP']
+            const signalChild = signal => {
+              if (!child?.pid) return
+              try {
+                parent.kill(-child.pid, signal)
+              } catch (error) {
+                if (error.code !== 'ESRCH') cleanupFailed = true
+              }
+            }
+            const onSignal = signal => {
+              receivedSignal ??= signal
+              if (child) {
+                signalChild(signal)
+                timer ??= setTimeout(() => signalChild('SIGKILL'), graceMs)
+              }
+            }
+            const handlers = signals.map(signal => [signal, () => onSignal(signal)])
+            const onExit = () => {
+              signalChild('SIGKILL')
+              server?.process()?.kill('SIGKILL')
+            }
+            for (const [signal, handler] of handlers) parent.on(signal, handler)
+            parent.on('exit', onExit)
+            try {
+              server = await chromium.launchServer({
+                headless: true, channel: 'chromium', host: '127.0.0.1', port: 0,
+                handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
+                args: ['--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-rasterization', '--use-gl=angle', `--use-angle=${env.BENCHMARK_BACKEND}`, '--use-cmd-decoder=passthrough']
+              })
+              if (receivedSignal) return 128 + constants.signals[receivedSignal]
+              endpoint = server.wsEndpoint()
+              assert.match(endpoint, /^ws:\/\/127\.0\.0\.1:\d+\//)
+              parent.stdout.write('::add-mask::' + endpoint + '\n')
+              child = spawnChild('npx', ['playwright', 'test', '--config', '.build/renderer-benchmark-local/playwright.config.ts'], {
+                stdio: 'inherit', detached: true, env: { ...env, BENCHMARK_WS_ENDPOINT: endpoint }
+              })
+              status = await new Promise(resolve => {
+                child.once('error', () => resolve(1))
+                child.once('close', (code, signal) => resolve(receivedSignal ? 128 + constants.signals[receivedSignal] : code ?? 128 + (constants.signals[signal] ?? 1)))
+              })
+              return status
+            } finally {
+              clearTimeout(timer)
+              signalChild('SIGKILL')
+              try {
+                await server?.close()
+              } catch {
+                server?.process()?.kill('SIGKILL')
+                if (status === 0) throw new Error('Shared browser cleanup failed')
+              } finally {
+                try {
+                  const report = `.build/renderer-benchmark-local/workers-${env.BENCHMARK_WORKERS}/report.json`
+                  if (endpoint && files.existsSync(report)) files.writeFileSync(report, files.readFileSync(report, 'utf8').replaceAll(endpoint, '[benchmark endpoint omitted]'))
+                } catch {
+                  cleanupFailed = true
+                }
+                for (const [signal, handler] of handlers) parent.off(signal, handler)
+                parent.off('exit', onExit)
+                if (cleanupFailed && status === 0) throw new Error('Shared browser process/report cleanup failed')
+              }
+            }
+          }
+
+          if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+            try {
+              const { chromium } = await import('playwright')
+              process.exitCode = await runShared({ chromium })
+            } catch {
+              console.error('Shared browser wrapper failed (endpoint omitted)')
+              process.exitCode = 1
+            }
+          }
+          SERVER
           cat > .build/renderer-benchmark-local/renderer.spec.ts <<'SPEC'
           import { test, expect } from '@playwright/test'
           import { appendFileSync, writeFileSync } from 'node:fs'
@@ -356,12 +468,19 @@ jobs:
           status=0
           : > .build/renderer-benchmark-local/passes.jsonl
           for workers in "$BENCHMARK_WORKERS" "$((3 - BENCHMARK_WORKERS))"; do
-            if BENCHMARK_WORKERS="$workers" xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts; then
+            pass_started=$(node -p 'Date.now()')
+            if [ "$BENCHMARK_BROWSER_MODE" = shared ]; then
+              command=(node .build/renderer-benchmark-local/shared-browser.mjs)
+            else
+              command=(npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts)
+            fi
+            if BENCHMARK_WORKERS="$workers" xvfb-run -a "${command[@]}"; then
               pass_status=0
             else
               pass_status=$?
             fi
-            printf '{"workers":%s,"exitCode":%s}\n' "$workers" "$pass_status" >> .build/renderer-benchmark-local/passes.jsonl
+            pass_finished=$(node -p 'Date.now()')
+            printf '{"workers":%s,"exitCode":%s,"wallMs":%s,"browserMode":"%s"}\n' "$workers" "$pass_status" "$((pass_finished - pass_started))" "$BENCHMARK_BROWSER_MODE" >> .build/renderer-benchmark-local/passes.jsonl
             if [ "$status" -eq 0 ]; then status=$pass_status; fi
           done
           exit "$status"
@@ -384,6 +503,8 @@ jobs:
           const channel = process.env.BENCHMARK_CHANNEL;
           assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario));
           assert(['shell', 'chromium'].includes(channel));
+          assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
+          assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
@@ -394,6 +515,11 @@ jobs:
             source: process.env.SOURCE_METADATA ? JSON.parse(process.env.SOURCE_METADATA) : null,
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
             jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, scenario, channel, workers, node: process.version,
+            browserMode: process.env.BENCHMARK_BROWSER_MODE,
+            browserOwnership: process.env.BENCHMARK_BROWSER_MODE === 'shared' ? 'one-server-per-pass' : 'one-browser-per-worker',
+            ...(process.env.BENCHMARK_BROWSER_MODE === 'shared' ? {
+              browserServer: { host: '127.0.0.1', port: 0, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false }
+            } : {}),
             ...(scenario === 'concurrency' ? {
               workerOrder: [workers, 3 - workers],
               passes: existsSync('.build/renderer-benchmark-local/passes.jsonl')
@@ -413,7 +539,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-first-workers-{0}', matrix.workers) || '' }}
+          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-first-workers-{0}', matrix.workers) || '' }}${{ inputs.browser_mode == 'shared' && '-shared' || '' }}
           path: .build/renderer-benchmark-local/
           include-hidden-files: true
           if-no-files-found: warn
