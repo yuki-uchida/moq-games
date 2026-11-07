@@ -36,7 +36,15 @@ import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
-import { GAMBLE_FORMS, PET_LIFESPAN, PET_MEMORY, gambleForm, observationSprite, weaponAppearance } from './weapon-life'
+import {
+  GAMBLE_FORMS,
+  PET_LIFESPAN,
+  PET_MEMORY,
+  PET_TYPES,
+  gambleForm,
+  observationSprite,
+  weaponAppearance
+} from './weapon-life'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -215,6 +223,7 @@ export interface Shot {
   h: number
   /** Variant for the renderer: chain link, biting, armed, pellet kind. */
   v: number
+  petType?: number
   /** Seconds before the shot exists (staples fired one after another). */
   delay: number
   /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
@@ -1948,6 +1957,7 @@ export class Game {
             x: player.x + Math.cos(i * 2.4) * 24,
             y: player.y + Math.sin(i * 2.4) * 24,
             orbit: i * 2.4,
+            petType: i % PET_TYPES.length,
             spin: speed,
             tick: 0.4
           })

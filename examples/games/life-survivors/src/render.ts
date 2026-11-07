@@ -37,7 +37,7 @@ import { Effects, PK } from './effects'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
-import { OBSERVATION_SPRITES, petForm, weaponAppearance } from './weapon-life'
+import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './weapon-life'
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
@@ -1356,9 +1356,9 @@ export class Renderer {
         break
       }
       case 'pet': {
-        // ペット: the dog runs at its prey and snaps when it arrives; mirrored by where it is heading.
-        const art = sheet('weapon:w_pet')
-        const biting = sh.v === 1
+        const type = PET_TYPES[Math.floor(sh.v / 2)] ?? PET_TYPES[0]
+        const art = sheet(type === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${type}`)
+        const biting = sh.v % 2 === 1
         const years = view.players[view.shots[i + 6]]?.petAge ?? 0
         const form = petForm(years)
         const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)

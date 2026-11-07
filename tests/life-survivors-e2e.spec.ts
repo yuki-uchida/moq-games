@@ -621,6 +621,71 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
   expect(errors).toEqual([])
 })
 
+test('pet shots render five animals in order and repeat', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const variants = await handle.evaluate(async (hook) => {
+    const dataPath = '/src/data.ts'
+    const viewPath = '/src/view.ts'
+    const artPath = '/src/art/index.ts'
+    const atlasPath = '/src/art/atlas.ts'
+    const { EVENTS, timeAtAge } = await import(dataPath)
+    const { STRIDE, toView } = await import(viewPath)
+    const { sheet } = await import(artPath)
+    const { canvasOf } = await import(atlasPath)
+    const names = ['dog', 'cat', 'rabbit', 'parakeet', 'hamster']
+    const canvases = new WeakMap<object, string>()
+    for (const name of names) {
+      const art = sheet(name === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${name}`)
+      for (const animation of [art.fly, art.bite])
+        for (const frame of animation.frames)
+          for (let scale = 1; scale <= 4; scale++) canvases.set(canvasOf(frame, scale), name)
+    }
+    const draws: string[] = []
+    Object.assign(window, { petDraws: draws })
+    const drawImage = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.drawImage = function (image, ...args: number[]) {
+      const name = canvases.get(image as object)
+      if (name && this.canvas.id === 'world') draws.push(name)
+      return Reflect.apply(drawImage, this, [image, ...args])
+    }
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(6) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    player.birthPick = false
+    player.pending = player.swapPending = player.careerPending = 0
+    player.choices = []
+    player.weapons = [{ id: 'w_pet', lv: 8, cd: 0, held: 0, damage: 0, acquiredAge: 4 }]
+    player.passives = [
+      { id: 'p_clever', lv: 1 },
+      { id: 'p_grand', lv: 2 }
+    ]
+    game['buildGrid']()
+    game['fireWeapons'](0)
+    player.weapons[0].cd = 100
+    game.state.shots.forEach((shot, index) => {
+      shot.x = player.x + (index - 3) * 58
+      shot.y = player.y - 80
+      shot.spin = 0
+      shot.life = shot.maxLife = 100
+    })
+    return toView(game.state).shots.filter((_: number, index: number) => index % STRIDE.shots === 7)
+  })
+  expect(variants).toEqual([0, 2, 4, 6, 8, 0, 2])
+  await expect
+    .poll(async () => page.evaluate(() => [...new Set((window as unknown as { petDraws: string[] }).petDraws)].sort()))
+    .toEqual(['cat', 'dog', 'hamster', 'parakeet', 'rabbit'])
+  await page.screenshot({ path: testInfo.outputPath('pet-types.png') })
+  expect(errors).toEqual([])
+})
+
 for (const [parent, description] of [
   ['p_weak', '経験値 +25%、防御 +1'],
   ['p_over', '敵を追わず盾で接触攻撃・吹き飛ばす'],
