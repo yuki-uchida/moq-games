@@ -118,6 +118,7 @@ test('extra perfume clouds still work without changing their emission interval',
 
 test.each(['p_toxic', 'w_perfume'])('gambling keeps its own cooldown when copying %s', (id) => {
   const { game, player, weapon } = setup('w_gamble')
+  player.weapons.push({ id, lv: 1, cd: 100, held: 0, damage: 0 })
   weapon.gambleWeapon = id
   weapon.gambleUntil = 12
   player.passives = [{ id: 'p_diligent', lv: 5 }]
@@ -199,6 +200,7 @@ test('luck does not bias which weapon gambling activates', () => {
   ] as const) {
     for (const lv of [0, 1, 5]) {
       const { game, player, weapon } = setup('w_gamble')
+      player.weapons.push(...pool.map((def) => ({ id: def.id, lv: 1, cd: 100, held: 0, damage: 0 })))
       player.still = 2
       Object.defineProperty(game, 'rng', { value: () => roll, configurable: true })
       player.passives = lv ? [{ id: 'p_lucky', lv }] : []

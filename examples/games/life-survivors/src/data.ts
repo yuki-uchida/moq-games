@@ -719,7 +719,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     color: '#8ccc69',
     behavior: 'garden',
     category: 'hobby',
-    damage: 7,
+    damage: 3.5,
     cooldown: 2.4,
     area: 48,
     speed: 320,
@@ -727,7 +727,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'sickness'],
     minAge: 6,
-    desc: '種が敵に当たるか着地すると花壇になり、継続攻撃。弾速で遠くへ、効果時間で長く咲く。特攻：仕事・病気。',
+    desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃。弾速で早く着地し、効果時間で長く咲く。特攻：仕事・病気。',
     evolve: { passive: 'p_curious', name: 'ひみつの花園' }
   })
 ]
