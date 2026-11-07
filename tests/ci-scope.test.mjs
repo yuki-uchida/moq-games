@@ -135,7 +135,9 @@ test('Pages browser caches only Mesa shaders with exact stable platform and depe
       '        uses: actions/cache@v4',
       '        with:',
       '          path: ${{ runner.temp }}/moq-mesa-shader-cache',
-      "          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}"
+      "          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}-cache",
+      '          restore-keys: |',
+      "            moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-"
     ].join('\n')
   )
   assert.match(platform, /id: mesa-cache-platform\n\s+shell: bash\n\s+run: \|/)
@@ -143,7 +145,7 @@ test('Pages browser caches only Mesa shaders with exact stable platform and depe
   assert.equal(steps.indexOf(platform), install + 1)
   assert.equal(steps.indexOf(cache), install + 2)
   assert.match(steps[install + 3], /^name: Select this shard's tests\n/)
-  assert.doesNotMatch(browser, /cache-hit|restore-keys|LP_NUM_THREADS|LP_PERF/)
+  assert.doesNotMatch(browser, /cache-hit|LP_NUM_THREADS|LP_PERF/)
   assert.doesNotMatch(
     workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''),
     /MESA_SHADER_CACHE|moq-mesa-shader|mesa-cache-platform/
@@ -187,6 +189,54 @@ test('Pages browser caches only Mesa shaders with exact stable platform and depe
   const first = run()
   first.execute()
   assert.match(first.writes.join(''), /^mesa=[a-f0-9]{16}\ncpu=[a-f0-9]{16}\n$/)
+  const outputs = Object.fromEntries(
+    first.writes
+      .join('')
+      .trim()
+      .split('\n')
+      .map((line) => line.split('='))
+  )
+  const values = {
+    'runner.os': 'Linux',
+    'runner.arch': 'X64',
+    'steps.mesa-cache-platform.outputs.mesa': outputs.mesa,
+    'steps.mesa-cache-platform.outputs.cpu': outputs.cpu,
+    "hashFiles('package-lock.json')": createHash('sha256')
+      .update(readFileSync(new URL('../package-lock.json', import.meta.url)))
+      .digest('hex')
+  }
+  const key = cache.match(/^          key: (.+)$/m)[1]
+  const prefix = cache.match(/^          restore-keys: \|\n            (.+)$/m)[1]
+  const evaluate = (template, changes = {}) =>
+    template.replace(/\$\{\{ (.*?) \}\}/g, (_, expression) => {
+      const value = { ...values, ...changes }[expression]
+      assert.notEqual(value, undefined, expression)
+      return value
+    })
+  const restored = evaluate(prefix)
+  const shards = JSON.parse(selectScope(['package-lock.json']).shards)
+  assert.equal(shards.length, 16)
+  const keys = shards.map((shard) => evaluate(key, { 'matrix.shard': shard }))
+  assert.equal(new Set(keys).size, 16)
+  assert.equal(keys[15].startsWith(keys[0]), false)
+  for (const saved of keys) {
+    assert.ok(saved.startsWith(restored))
+    const oldKey = saved.replace(/-cache$/, '')
+    assert.ok(oldKey.startsWith(restored))
+    for (const [expression, value] of Object.entries({
+      'runner.os': 'Windows',
+      'runner.arch': 'ARM64',
+      'steps.mesa-cache-platform.outputs.mesa': '0'.repeat(16),
+      'steps.mesa-cache-platform.outputs.cpu': '0'.repeat(16),
+      "hashFiles('package-lock.json')": '0'.repeat(64)
+    })) {
+      assert.notEqual(value, values[expression])
+      const changed = { [expression]: value }
+      assert.equal(saved.startsWith(evaluate(prefix, changed)), false, expression)
+      assert.equal(oldKey.startsWith(evaluate(prefix, changed)), false, expression)
+      assert.equal(evaluate(key, { ...changed, 'matrix.shard': 1 }).startsWith(restored), false, expression)
+    }
+  }
   const same = run()
   same.execute()
   assert.deepEqual(same.writes, first.writes)
