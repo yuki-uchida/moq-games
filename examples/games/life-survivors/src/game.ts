@@ -36,7 +36,7 @@ import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
-import { GAMBLE_FORMS, PET_LIFESPAN, PET_MEMORY, gambleForm, weaponAppearance } from './weapon-life'
+import { GAMBLE_FORMS, PET_LIFESPAN, PET_MEMORY, gambleForm, observationSprite, weaponAppearance } from './weapon-life'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -78,6 +78,9 @@ const SLOWMO_SCALE = 0.3
 const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
+const OBSERVATION_STILL_SECONDS = 2
+const OBSERVATION_PERIOD = 2
+const OBSERVATION_FIELD_SECONDS = 1
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
 /** Crowd shooters hold their fire while this many bullets are already in the air (bosses ignore it). */
@@ -98,6 +101,7 @@ export interface OwnedWeapon {
   gambleWeapon?: string
   gambleUntil?: number
   acquiredAge?: number
+  observationCount?: number
   lv: number
   cd: number
   /** Seconds held; investments compound with it. */
@@ -111,6 +115,7 @@ export interface Player {
   color: string
   x: number
   y: number
+  still: number
   fx: number
   fy: number
   hp: number
@@ -222,6 +227,7 @@ export interface Shot {
   strongMult: number
   /** What a pet is chasing. */
   target?: Enemy
+  targets?: Enemy[]
 }
 
 export interface Bullet {
@@ -432,12 +438,14 @@ export function weaponStats(
     damage,
     cooldown: def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
     amount:
-      def.amount +
-      (lv >= 2 ? 1 : 0) +
-      (lv >= 5 ? 1 : 0) +
-      (lv >= 8 ? 1 : 0) +
-      (evolved ? 1 : 0) +
-      (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
+      def.behavior === 'observe'
+        ? 1
+        : def.amount +
+          (lv >= 2 ? 1 : 0) +
+          (lv >= 5 ? 1 : 0) +
+          (lv >= 8 ? 1 : 0) +
+          (evolved ? 1 : 0) +
+          (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
     area: (lv >= 4 ? 1.25 : 1) * stats.area * (evolved ? 1.2 : 1),
     duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
@@ -584,6 +592,7 @@ export class Game {
       color: PLAYER_COLORS[index % PLAYER_COLORS.length],
       x: (anchor?.x ?? 0) + (index ? Math.cos(index) * 40 : 0),
       y: (anchor?.y ?? 0) + (index ? Math.sin(index) * 40 : 0),
+      still: 0,
       fx: 1,
       fy: 0,
       hp: 0,
@@ -767,8 +776,12 @@ export class Game {
       player.shieldGrace = Math.max(0, player.shieldGrace - dt)
       player.shieldRecovery = Math.max(0, player.shieldRecovery - dt)
       player.hurtFx = Math.max(0, player.hurtFx - dt)
-      if (player.downed) continue
+      if (player.downed) {
+        player.still = 0
+        continue
+      }
       const input = this.inputs.get(player.id) ?? { x: 0, y: 0, pick: -1, pickSeq: -1 }
+      player.still = input.x || input.y ? 0 : player.still + dt
       // Level-up choices slow you down in co-op so picking is not a death sentence.
       const speed = stats.speed * (player.choices.length ? 0.6 : 1)
       player.x += input.x * speed * dt
@@ -1674,6 +1687,12 @@ export class Game {
       for (const weapon of player.weapons) {
         weapon.held += dt
         weapon.cd -= dt
+        if (
+          weapon.id === 'w_observe' &&
+          (player.still < OBSERVATION_STILL_SECONDS ||
+            this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id))
+        )
+          continue
         if (weapon.cd > 0) continue
         const ws = weaponStats(player, weapon, stats)
         weapon.cd += ws.cooldown
@@ -1900,6 +1919,26 @@ export class Game {
             spin: speed,
             tick: 0.4
           })
+        break
+      }
+      case 'observe': {
+        if (
+          player.still < OBSERVATION_STILL_SECONDS ||
+          this.state.shots.some(
+            (shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id && shot.weapon === def.id
+          ) ||
+          this.state.shots.length >= MAX_SHOTS
+        )
+          break
+        const form = observationSprite(ageAt(this.state.time), weapon.observationCount ?? 0)
+        weapon.observationCount = (weapon.observationCount ?? 0) + 1
+        this.shot(player, weapon, def, ws, {
+          x: player.x + player.fx * 50,
+          y: player.y + player.fy * 50,
+          w: weapon.lv + 1,
+          v: form * 2,
+          tick: 0.5
+        })
         break
       }
       case 'slam': {
@@ -2151,6 +2190,9 @@ export class Game {
         case 'pet':
           this.movePet(shot, owner, dt)
           break
+        case 'observe':
+          this.moveObservation(shot, owner, dt)
+          break
         case 'raid': {
           // Out and back along one line from the owner; the flying kick lands a wider blow than the run.
           const t = 1 - shot.life / shot.maxLife
@@ -2180,6 +2222,44 @@ export class Game {
       else if (shot.weapon === 'p_free') this.burst(shot, owner)
     }
     state.shots = kept
+  }
+
+  private moveObservation(shot: Shot, owner: Player, dt: number) {
+    const previous = Math.floor(shot.aux / OBSERVATION_PERIOD)
+    shot.aux += dt
+    const active = shot.aux % OBSERVATION_PERIOD < OBSERVATION_FIELD_SECONDS
+    shot.v = Math.floor(shot.v / 2) * 2 + (active ? 1 : 0)
+    if (!active) {
+      shot.targets = undefined
+      return
+    }
+    if (!shot.targets || previous !== Math.floor(shot.aux / OBSERVATION_PERIOD)) {
+      const targets: Enemy[] = []
+      this.near(shot.x, shot.y, shot.r, (enemy) => {
+        if (Math.hypot(enemy.x - shot.x, enemy.y - shot.y) <= shot.r) targets.push(enemy)
+      })
+      targets.sort(
+        (first, second) =>
+          (first.x - shot.x) ** 2 + (first.y - shot.y) ** 2 - (second.x - shot.x) ** 2 - (second.y - shot.y) ** 2
+      )
+      shot.targets = targets.slice(0, shot.w)
+    }
+    for (const enemy of shot.targets) {
+      if (enemy.hp <= 0 || !this.state.enemies.includes(enemy)) continue
+      const dx = shot.x - enemy.x
+      const dy = shot.y - enemy.y
+      const distance = Math.hypot(dx, dy)
+      if (distance > shot.r) continue
+      const def = ENEMY_BY_ID.get(enemy.kind)!
+      const pull = Math.min(distance, 28 * this.knockScale(enemy, def) * dt)
+      enemy.x += (dx / (distance || 1)) * pull
+      enemy.y += (dy / (distance || 1)) * pull
+      enemy.slow = Math.max(enemy.slow, 0.12)
+      if ((shot.hits.get(enemy.id) ?? -1) <= this.state.time) {
+        shot.hits.set(enemy.id, this.state.time + shot.tick)
+        this.damage(enemy, def, shot, owner)
+      }
+    }
   }
 
   private moveGuardian(shot: Shot, owner: Player, dt: number) {
@@ -2277,7 +2357,7 @@ export class Game {
   /** Applies hits; returns false once the shot is used up. */
   private collide(shot: Shot, owner: Player) {
     const time = this.state.time
-    if (shot.kind === 'chain' || shot.kind === 'slam' || shot.kind === 'mine') return true
+    if (shot.kind === 'chain' || shot.kind === 'slam' || shot.kind === 'mine' || shot.kind === 'observe') return true
     // Rain falls first and lands at the end of its life; strikes land immediately.
     if (shot.kind === 'rain' && shot.life > shot.maxLife * 0.35) return true
     let alive = true

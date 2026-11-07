@@ -24,6 +24,7 @@ const CAREERS: Record<string, Career> = {
 
 const APPEARANCES: Record<string, Appearance> = {
   ...CAREERS,
+  w_observe: 'creative',
   w_friend: 'social',
   w_sns: 'social',
   w_pet: 'social',

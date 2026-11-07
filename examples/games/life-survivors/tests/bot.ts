@@ -162,6 +162,19 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
         }
       }
     }
+    const observation = player.weapons.find((weapon) => weapon.id === 'w_observe')
+    if (
+      observation &&
+      observation.cd <= 0.1 &&
+      !game.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === observation.id) &&
+      (nearestEnemy?.d ?? Infinity) > 140 &&
+      !prize &&
+      !fallen &&
+      risk(0, 0) === 0
+    ) {
+      x = 0
+      y = 0
+    }
   }
   let pick = -1
   if (player.choices.length) {
@@ -182,6 +195,13 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
       const talent = def.category ? player.talents[def.category] : 1
       const owned = player.weapons.some((w) => w.id === id)
       const fit = strategy === 'smart' ? talent ** 3 * 1.6 : 1.6 / talent ** 3
+      if (
+        strategy === 'smart' &&
+        !player.weapons.length &&
+        id === 'w_observe' &&
+        player.choices.some((option) => option.startsWith('w:') && option !== choice)
+      )
+        return -1
       if (strategy === 'smart' && !player.weapons.length && id === 'w_pet') return fit + 1
       // Depth beats breadth: a card you already hold keeps growing.
       return owned ? fit * 2 + 1 : fit

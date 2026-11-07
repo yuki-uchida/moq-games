@@ -73,7 +73,7 @@ test.each(['dating', 'married'] as const)(
     expect(owner.hp).toBeLessThan(ownerHealth)
     expect(single.hp).toBe(health)
     const view = readView(toView(game.state))!
-    expect(view.v).toBe(12)
+    expect(view.v).toBe(13)
     expect(view.enemies.filter((_, index) => index % STRIDE.enemies === 1)).toContain(ENEMY_INDEX.get(enemy.kind))
   }
 )

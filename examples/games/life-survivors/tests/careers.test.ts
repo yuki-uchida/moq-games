@@ -19,6 +19,7 @@ const appearances: Record<string, string> = {
   w_ring: 'romantic',
   w_perfume: 'romantic',
   w_hobby: 'creative',
+  w_observe: 'creative',
   w_karaoke: 'creative',
   w_travel: 'creative',
   w_cooking: 'creative',
@@ -115,7 +116,7 @@ test.each(['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'])(
   }
 )
 
-test('all twenty talents require owned Lv4; evolution only boosts owned maximum-level weapons', () => {
+test('all talents require owned Lv4; evolution only boosts owned maximum-level weapons', () => {
   expect(Object.keys(appearances).sort()).toEqual(TALENT_WEAPONS.map(({ id }) => id).sort())
   for (const weapon of TALENT_WEAPONS) {
     for (let level = 1; level <= MAX_WEAPON_LEVEL; level++) {

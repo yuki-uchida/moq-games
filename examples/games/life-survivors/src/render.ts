@@ -37,7 +37,7 @@ import { Effects, PK } from './effects'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
-import { petForm, weaponAppearance } from './weapon-life'
+import { OBSERVATION_SPRITES, petForm, weaponAppearance } from './weapon-life'
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
@@ -972,6 +972,23 @@ export class Renderer {
     const fx = sheet('fx')
     const { x, y, r: radius, angle, life, age, evolved, i } = sh
     switch (def.behavior) {
+      case 'observe': {
+        if (sh.v % 2 === 0) break
+        const alpha = clamp01(life * 4)
+        this.world()
+        ctx.fillStyle = `rgba(140,204,105,${0.12 * alpha})`
+        ctx.strokeStyle = `rgba(198,245,190,${0.55 * alpha})`
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(x, y, radius, 0, TAU)
+        ctx.fill()
+        ctx.stroke()
+        ctx.strokeStyle = `rgba(198,245,190,${0.3 * alpha})`
+        ctx.beginPath()
+        ctx.arc(x, y, radius * (0.45 + 0.25 * ((this.clock * 0.8) % 1)), 0, TAU)
+        ctx.stroke()
+        break
+      }
       case 'beam': {
         const cos = Math.cos(angle)
         const sin = Math.sin(angle)
@@ -1222,6 +1239,13 @@ export class Renderer {
     const sin = Math.sin(angle)
     const trails = this.trailBudget > 0
     switch (def.behavior) {
+      case 'observe': {
+        const kind = OBSERVATION_SPRITES[Math.floor(sh.v / 2)] ?? 'ant'
+        const frame = pick(sheet('weapon:w_observe')[kind], this.clock + i * 0.1)
+        this.shadow(x, y + 12, 10, 0.2)
+        this.centred(frame, x, y, evolved, clamp01(life * 4))
+        break
+      }
       case 'aura':
       case 'zone':
       case 'beam':
