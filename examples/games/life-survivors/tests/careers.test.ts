@@ -23,6 +23,7 @@ const appearances: Record<string, string> = {
   w_karaoke: 'creative',
   w_travel: 'creative',
   w_cooking: 'creative',
+  w_garden: 'creative',
   w_sports: 'soccer',
   w_muscle: 'soccer',
   w_study: 'bureaucrat',
@@ -143,6 +144,13 @@ test('all talents require owned Lv4; evolution only boosts owned maximum-level w
     careerFor({ weapons: PARENTS.map(({ id }) => [id, 8, 0]), passives: PASSIVES.map(({ id }) => [id, 5]) })
   ).toBeUndefined()
   expect(careerFor({ weapons: [], passives: PASSIVES.map(({ id }) => [id, 5]) })).toBeUndefined()
+})
+
+test('gardening changes appearance without granting a career qualification', () => {
+  const weapons: [string, number, number][] = [['w_garden', 8, 0]]
+  const passives: [string, number][] = [['p_curious', 1]]
+  expect(careerFor({ weapons, passives })).toBe('creative')
+  expect(rankedCareer(weapons, passives)).toBeUndefined()
 })
 
 test('ties use definition order for every pair, regardless of inventory order', () => {

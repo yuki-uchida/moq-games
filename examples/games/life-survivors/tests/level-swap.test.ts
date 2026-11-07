@@ -17,11 +17,12 @@ const setup = (age: number, parent = 'p_edu') => {
   return { game, player }
 }
 
-const finishGrowth = (game: Game, player: ReturnType<typeof setup>['player']) => {
+const finishGrowth = (game: Game, player: ReturnType<typeof setup>['player'], beforeSwap?: () => void) => {
   game.tick(0.01)
   expect(player.choices.length).toBeGreaterThan(0)
   expect(player.choices.every((choice) => /^[wp]:/.test(choice))).toBe(true)
   game.choose(player, 0)
+  beforeSwap?.()
   game.tick(0.01)
   expect(player.choices[0]).toMatch(/^s:/)
 }
@@ -64,32 +65,35 @@ describe('full talent slots with ordinary growth remaining', () => {
     [12, 'w_love'],
     [16, 'w_work']
   ] as const)('can acquire %s-year unlock %s after ordinary growth', (age, target) => {
-    let acquired = false
-    for (let seed = 1; seed <= 200 && !acquired; seed++) {
-      const { game, player } = setup(age)
-      for (let roll = 0; roll < seed; roll++) game.random()
-      game.gainXp(game.state.xpNext)
-      finishGrowth(game, player)
-      const targetIndex = player.choices.indexOf(`s:${target}`)
-      if (targetIndex < 0) continue
-      const before = structuredClone(player.weapons)
-      game.choose(player, targetIndex)
-      expect(player.choices).not.toContain(`r:p_edu:${target}`)
-      game.choose(player, player.choices.indexOf('x:skip'))
-      expect(player.weapons).toEqual(before)
-      expect(player.swapPending).toBe(0)
-      game.state.level = 9
-      game.gainXp(game.state.xpNext)
-      finishGrowth(game, player)
-      const nextTargetIndex = player.choices.indexOf(`s:${target}`)
-      if (nextTargetIndex < 0) continue
-      game.choose(player, nextTargetIndex)
-      game.choose(player, 0)
-      expect(player.weapons.find((weapon) => weapon.id === target)?.lv).toBe(1)
-      expect(player.weapons).toHaveLength(before.length)
-      acquired = true
+    const { game, player } = setup(age)
+    const selectTarget = () => {
+      const pool = TALENT_WEAPONS.filter(
+        (def) =>
+          def.minAge <= age && (def.id !== 'w_ring' || player.married) && !player.weapons.some((w) => w.id === def.id)
+      )
+      const index = pool.findIndex((def) => def.id === target)
+      expect(index).toBeGreaterThanOrEqual(0)
+      Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / pool.length, configurable: true })
     }
-    expect(acquired).toBe(true)
+    game.gainXp(game.state.xpNext)
+    finishGrowth(game, player, selectTarget)
+    const before = structuredClone(player.weapons)
+    const targetIndex = player.choices.indexOf(`s:${target}`)
+    expect(targetIndex).toBeGreaterThanOrEqual(0)
+    game.choose(player, targetIndex)
+    expect(player.choices).not.toContain(`r:p_edu:${target}`)
+    game.choose(player, player.choices.indexOf('x:skip'))
+    expect(player.weapons).toEqual(before)
+    expect(player.swapPending).toBe(0)
+    game.state.level = 9
+    game.gainXp(game.state.xpNext)
+    finishGrowth(game, player, selectTarget)
+    const nextTargetIndex = player.choices.indexOf(`s:${target}`)
+    expect(nextTargetIndex).toBeGreaterThanOrEqual(0)
+    game.choose(player, nextTargetIndex)
+    game.choose(player, 0)
+    expect(player.weapons.find((weapon) => weapon.id === target)?.lv).toBe(1)
+    expect(player.weapons).toHaveLength(before.length)
   })
 
   test.each(['p_edu', 'p_free'])('does not add exchanges below the %s slot limit or off fifth levels', (parent) => {

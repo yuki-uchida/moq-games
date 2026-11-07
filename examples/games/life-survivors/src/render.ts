@@ -989,6 +989,32 @@ export class Renderer {
         ctx.stroke()
         break
       }
+      case 'garden': {
+        if (sh.v !== 1) break
+        const alpha = Math.min(1, life * 4)
+        this.world()
+        ctx.fillStyle = `rgba(78,152,91,${0.22 * alpha})`
+        ctx.strokeStyle = `rgba(214,243,138,${0.65 * alpha})`
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(x, y, radius, 0, TAU)
+        ctx.fill()
+        ctx.stroke()
+        const flowers = sheet('weapon:w_garden').bloom
+        for (let j = 0; j < 5; j++) {
+          const a = (j / 5) * TAU + i
+          const d = j === 0 ? 0 : radius * 0.55
+          this.centred(
+            pick(flowers, this.clock + j * 0.2),
+            x + Math.cos(a) * d,
+            y + Math.sin(a) * d,
+            evolved,
+            alpha,
+            0.8
+          )
+        }
+        break
+      }
       case 'beam': {
         const cos = Math.cos(angle)
         const sin = Math.sin(angle)
@@ -1246,6 +1272,9 @@ export class Renderer {
         this.centred(frame, x, y, evolved, clamp01(life * 4))
         break
       }
+      case 'garden':
+        if (sh.v === 0) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
+        break
       case 'aura':
       case 'zone':
       case 'beam':

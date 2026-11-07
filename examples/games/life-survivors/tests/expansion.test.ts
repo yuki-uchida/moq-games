@@ -46,7 +46,8 @@ const NEW_WEAPONS: Record<string, { name: string; passive: string; behavior: str
   w_savings: { name: '老後の蓄え', passive: 'p_bold', behavior: 'mine' },
   w_gamble: { name: '大穴的中', passive: 'p_lucky', behavior: 'gamble' },
   w_perfume: { name: '魅惑のフェロモン', passive: 'p_savvy', behavior: 'trail' },
-  w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' }
+  w_cooking: { name: 'おふくろの味', passive: 'p_healthy', behavior: 'fan' },
+  w_garden: { name: 'ひみつの花園', passive: 'p_curious', behavior: 'garden' }
 }
 const NEW_ENEMY_IDS = [
   'mosquito', 'infection', 'biting_dog', 'picky_eating', 'homework', 'unfinished_worksheet', 'ball_impact', 'pimple', 'controlling_partner', 'abusive_senpai', 'forced_drinking',
@@ -95,8 +96,8 @@ function collect(game: Game, into = new Map<number, FxEvent>()) {
 const ofType = (events: Map<number, FxEvent>, type: number) => [...events.values()].filter((e) => e.type === type)
 
 describe('new talent weapons', () => {
-  test('the twelve ids exist with the intended behaviours, categories and evolutions', () => {
-    expect(TALENT_WEAPONS).toHaveLength(8 + 12 + 1)
+  test('the talent ids exist with the intended behaviours, categories and evolutions', () => {
+    expect(TALENT_WEAPONS).toHaveLength(8 + 14)
     for (const [id, want] of Object.entries(NEW_WEAPONS)) {
       const def = WEAPON_BY_ID.get(id)!
       expect([id, def.behavior]).toEqual([id, want.behavior])
