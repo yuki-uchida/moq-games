@@ -648,6 +648,32 @@ describe('親ごとの役割', () => {
     }
   })
 
+  test.each([1, 2, 5, 8])('monster parents stay capped at two with extra projectiles at level %i', (lv) => {
+    const game = new Game(75)
+    const player = game.addPlayer('a', 'p_monster')!
+    const weapon = player.weapons[0]
+    weapon.lv = lv
+    expect(weaponStats(player, weapon).amount).toBe(lv === 1 ? 1 : 2)
+    player.passives = [
+      { id: 'p_clever', lv: 5 },
+      { id: 'p_grand', lv: 5 }
+    ]
+    const stats = weaponStats(player, weapon)
+    expect(stats.amount).toBe(2)
+    game['fire'](player, weapon, stats)
+    game['fire'](player, weapon, stats)
+    expect(game.state.shots).toHaveLength(2)
+    game.state.shots.pop()
+    game['fire'](player, weapon, stats)
+    expect(game.state.shots).toHaveLength(2)
+    const other = game.addPlayer('b', 'p_monster')!
+    other.weapons[0].lv = 8
+    game['fire'](other, other.weapons[0], weaponStats(other, other.weapons[0]))
+    expect(game.state.shots.filter((shot) => shot.owner === other.id)).toHaveLength(2)
+    const friend = { id: 'w_friend', lv: 8, cd: 0, held: 0, damage: 0 }
+    expect(weaponStats(player, friend).amount).toBeGreaterThan(2)
+  })
+
   test('monster parents chase nearby enemies rather than orbiting their child', () => {
     const game = new Game(75)
     game.targetPopulation = () => 0
