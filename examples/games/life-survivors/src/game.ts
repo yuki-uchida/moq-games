@@ -90,7 +90,7 @@ const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
 const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.15)
-const OBSERVATION_STILL_SECONDS = 2
+const observationStillSeconds = (level: number) => 2 - (level - 1) * 0.125
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
 /** Crowd shooters hold their fire while this many bullets are already in the air (bosses ignore it). */
@@ -1795,7 +1795,7 @@ export class Game {
         }
         if (
           weapon.id === 'w_observe' &&
-          (player.still < OBSERVATION_STILL_SECONDS ||
+          (player.still < observationStillSeconds(weapon.lv) ||
             this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id))
         )
           continue
@@ -2050,7 +2050,7 @@ export class Game {
       }
       case 'observe': {
         if (
-          player.still < OBSERVATION_STILL_SECONDS ||
+          player.still < observationStillSeconds(weapon.lv) ||
           this.state.shots.some(
             (shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id && shot.weapon === def.id
           ) ||

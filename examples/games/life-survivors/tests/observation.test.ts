@@ -58,6 +58,21 @@ test('only uninterrupted movement-free time summons one creature, even after mov
   expect(Math.floor(game.state.shots[0].v / 2)).toBe(1)
 })
 
+test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
+  'level %i reduces the still time needed to summon',
+  (level) => {
+    const { game, player, weapon } = setup(3, level)
+    const required = 2 - (level - 1) * 0.125
+    player.still = required - 0.01
+    game['fire'](player, weapon, weaponStats(player, weapon))
+    expect(game.state.shots).toHaveLength(0)
+    game.tick(0.005)
+    expect(game.state.shots).toHaveLength(0)
+    game.tick(0.01)
+    expect(game.state.shots).toHaveLength(1)
+  }
+)
+
 test.each(OBSERVATION_FORMS)('the creature changes to $name at age $age', (form) => {
   const { game, player, weapon } = setup(form.age)
   expect(observationForm(form.age)).toBe(form)
