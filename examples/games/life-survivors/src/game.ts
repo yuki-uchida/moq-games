@@ -2086,7 +2086,8 @@ export class Game {
             angle,
             r: 10 * ws.area,
             w: def.area * ws.area,
-            aux: 0.8,
+            aux: (def.speed * 0.8) / speed,
+            orbit: (def.speed * 0.8) / speed,
             pierce: 1,
             tick: 0.5
           })
@@ -2135,8 +2136,16 @@ export class Game {
         shot.x += shot.vx * travel
         shot.y += shot.vy * travel
         shot.aux -= dt
-        const hit = !this.collide(shot, owner)
-        if (hit || shot.aux <= 0) {
+        if (shot.aux <= 0) {
+          shot.v = 2
+          shot.aux = 0.5
+        }
+        kept.push(shot)
+        continue
+      }
+      if (shot.kind === 'garden' && shot.v === 2) {
+        shot.aux -= dt
+        if (shot.aux <= 0) {
           shot.v = 1
           shot.r = shot.w
           shot.life = shot.maxLife

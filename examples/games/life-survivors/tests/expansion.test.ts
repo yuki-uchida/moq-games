@@ -124,6 +124,7 @@ describe('new talent weapons', () => {
       for (let y = -240; y <= 240; y += 30) posts.push(post(game, 'abusive_senpai', player.x, player.y + y))
     else if (id === 'w_savings' || id === 'w_perfume') posts.push(post(game, 'abusive_senpai', player.x + 36, player.y))
     else if (id === 'w_muscle') posts.push(post(game, 'abusive_senpai', player.x + 70, player.y))
+    else if (id === 'w_garden') posts.push(post(game, 'abusive_senpai', player.x + 256, player.y))
     else posts.push(post(game, 'abusive_senpai', player.x + 120, player.y))
     const popups = new Set<unknown>()
     run(game, player, 60 * 6, () => {

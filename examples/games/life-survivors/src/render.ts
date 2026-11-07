@@ -1273,7 +1273,7 @@ export class Renderer {
         break
       }
       case 'garden':
-        if (sh.v === 0) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
+        if (sh.v !== 1) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
         break
       case 'aura':
       case 'zone':
