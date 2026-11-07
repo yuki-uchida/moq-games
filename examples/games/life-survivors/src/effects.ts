@@ -426,8 +426,14 @@ export class Effects {
   handle(type: number, x: number, y: number, a: number, b: number, v: FxView) {
     switch (type) {
       case FX.GAMBLE:
-        if (GAMBLE_FORMS[a] && this.onScreen(x, y, v))
-          this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + 60, y - 55, { life: 1.2, scale: 1.5, important: true })
+        if (GAMBLE_FORMS[a] && this.onScreen(x, y, v)) {
+          const particle = this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + 60, y - 55, {
+            life: 1.2,
+            scale: 1.5,
+            important: true
+          })
+          if (particle) particle.n = b
+        }
         break
       case FX.KILL: {
         const def = ENEMIES[a]

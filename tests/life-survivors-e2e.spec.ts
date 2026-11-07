@@ -23,7 +23,7 @@ test('gambling draws the right animation and status for each life stage', async 
     Object.assign(window, { gambleLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！'].includes(text)) labels.push(text)
+      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '🍳 料理'].includes(text)) labels.push(text)
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -61,6 +61,11 @@ test('gambling draws the right animation and status for each life stage', async 
     await expect
       .poll(() =>
         page.evaluate((text) => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes(text), label)
+      )
+      .toBe(true)
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
       )
       .toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`gamble-${age}.png`) })
@@ -501,7 +506,7 @@ for (const width of [1280, 390]) {
     await expect(cards).toHaveCount(4)
     await expect(cards.nth(0)).toContainText('稲妻で敵を攻撃')
     await expect(cards.nth(1)).toContainText('貯金箱')
-    await expect(cards.nth(2)).toContainText('他の武器の効果をランダム')
+    await expect(cards.nth(2)).toContainText('12秒ごとに武器を抽選')
     await expect(cards.nth(3)).toContainText('交換しない')
     expect(await page.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`exchange-descriptions-${width}.png`), animations: 'disabled' })

@@ -303,7 +303,7 @@ describe('local threat HUD', () => {
     }
   )
 
-  it('can be suspected while hidden under furniture', () => {
+  it('can be discovered while hidden under furniture', () => {
     const game = new Game(1, undefined, 0)
     game.addPlayer('local', 'Local')
     const player = game.state.players[0]
@@ -311,8 +311,8 @@ describe('local threat HUD', () => {
     Object.assign(player, { x: 7, y: heightAt(7, 9), z: 9, health: 100 })
     Object.assign(predator, {
       kind: 'cat',
-      x: 10,
-      y: heightAt(10, 9),
+      x: 10.5,
+      y: heightAt(10.5, 9),
       z: 9,
       angle: -Math.PI / 2,
       state: 'patrol',
@@ -323,8 +323,8 @@ describe('local threat HUD', () => {
     game.setInput(player.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false })
     game.step(0.016)
     expect(player.hidden).toBe(true)
-    expect(predator).toMatchObject({ state: 'suspicious', targetId: player.id })
-    expect(threatFor(game.state, player.id).mode).toBe('suspicious')
+    expect(predator).toMatchObject({ state: 'chase', targetId: player.id })
+    expect(threatFor(game.state, player.id).mode).toBe('chase')
   })
 
   it('enters cover immediately after a real predator discovery', () => {
@@ -334,11 +334,11 @@ describe('local threat HUD', () => {
     const predator = game.state.predators.find((entry) => entry.kind === 'fox')!
     game.state.predators = [predator]
     game.state.nests.forEach((nest) => (nest.active = false))
-    Object.assign(player, { x: -105, y: heightAt(-105, -12), z: -12, health: 100 })
+    Object.assign(player, { x: -125, y: heightAt(-125, 8), z: 8, health: 100 })
     Object.assign(predator, {
-      x: -105,
-      y: heightAt(-105, -9.25),
-      z: -9.25,
+      x: -125,
+      y: heightAt(-125, 10.75),
+      z: 10.75,
       angle: Math.PI,
       state: 'patrol',
       targetId: null,
@@ -354,7 +354,7 @@ describe('local threat HUD', () => {
     expect(detector.update(game.state, player.id)).toContainEqual(
       expect.objectContaining({ type: 'spotted', you: true })
     )
-    game.setInput(player.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false })
+    Object.assign(player, { x: -105, y: heightAt(-105, -12), z: -12 })
     game.step(0.016)
     tracker.update(game.state)
     expect(player.hidden).toBe(true)
@@ -362,13 +362,16 @@ describe('local threat HUD', () => {
     expect(threatFor(game.state, player.id, tracker).mode).toBe('search')
   })
 
-  it.each(['hawk', 'fox'] as const)('releases a former canopy target behind a %s chasing a teammate away', (kind) => {
+  it.each(['hawk', 'fox'] as const)('releases a hidden target while a %s chases a teammate', (kind) => {
     const game = new Game(1)
     game.addPlayer('local', 'Local')
     game.addPlayer('friend', 'Friend')
     const [local, friend] = game.state.players
     const predator = game.state.predators.find((entry) => entry.kind === kind)!
-    const bush = BUSHES[0]
+    const bush = BUSHES.find((entry) => {
+      const outside = entry.x + entry.r + 2
+      return coverAt(outside, heightAt(outside, entry.z), entry.z, false) === 'open'
+    })!
     const outside = bush.x + bush.r + 2
     game.state.predators = [predator]
     game.state.nests.forEach((nest) => (nest.active = false))
@@ -392,9 +395,9 @@ describe('local threat HUD', () => {
     Object.assign(local, { x: bush.x, y: heightAt(bush.x, bush.z) })
     Object.assign(friend, { x: outside, y: heightAt(outside, bush.z) })
     game.step(0.016)
-    expect(local.hidden).toBe(false)
-    expect(coverAt(local.x, local.y, local.z, false)).toBe('canopy')
-    expect(exposed(predator, local, 'canopy')).toBe(kind === 'fox')
+    expect(local.hidden).toBe(true)
+    expect(coverAt(local.x, local.y, local.z, false)).toBe('bush')
+    expect(exposed(predator, local, 'bush')).toBe(false)
     expect(mapTerrain.sightLine(predator, local)).toBeGreaterThan(0)
     expect(predator.targetId).toBe(friend.id)
     observe()
@@ -521,9 +524,9 @@ describe('local threat HUD', () => {
     const fox = game.state.predators.find((predator) => predator.kind === 'fox')!
     game.state.predators = [fox]
     game.state.nests.forEach((nest) => (nest.active = false))
-    Object.assign(local, { x: -114, y: heightAt(-114, -7), z: -7, hidden: false, health: 100 })
+    Object.assign(local, { x: -125, y: heightAt(-125, 8), z: 8, hidden: false, health: 100 })
     Object.assign(friend, { x: -90, y: heightAt(-90, -7), z: -7, health: 100 })
-    Object.assign(fox, { x: -117, y: heightAt(-117, -7), z: -7, angle: Math.PI / 2, state: 'patrol', targetId: null })
+    Object.assign(fox, { x: -125, y: heightAt(-125, 5), z: 5, angle: 0, state: 'patrol', targetId: null })
 
     const tracker = new ThreatTracker()
     const detector = new JuiceDetector()
@@ -543,15 +546,15 @@ describe('local threat HUD', () => {
       expect(observe().events.filter((event) => event.type === 'spotted' && event.you)).toHaveLength(1)
 
       for (let frame = 0; frame < 5; frame++) {
-        game.setInput(local.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false })
-        Object.assign(friend, { x: -114.5, y: heightAt(-114.5, -7), z: -7 })
+        Object.assign(local, { x: -105, y: heightAt(-105, -12), z: -12 })
+        Object.assign(friend, { x: fox.x, y: heightAt(fox.x, fox.z + 2.5), z: fox.z + 2.5 })
         game.step(0.016)
         expect(fox.targetId).toBe(friend.id)
         const brieflyHidden = observe()
         expect(brieflyHidden.threat.mode).toBe('chase')
         expect(brieflyHidden.events.filter((event) => event.type === 'escaped')).toHaveLength(0)
 
-        game.setInput(local.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false })
+        Object.assign(local, { x: -125, y: heightAt(-125, 8), z: 8 })
         Object.assign(friend, { x: -90, y: heightAt(-90, -7), z: -7 })
         game.step(0.016)
         expect(fox.targetId).toBe(local.id)
@@ -559,8 +562,8 @@ describe('local threat HUD', () => {
       }
       expect(alarm).toHaveBeenCalledTimes(1)
 
-      game.setInput(local.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: true, interact: false })
-      Object.assign(friend, { x: -114.5, y: heightAt(-114.5, -7), z: -7 })
+      Object.assign(local, { x: -105, y: heightAt(-105, -12), z: -12 })
+      Object.assign(friend, { x: fox.x, y: heightAt(fox.x, fox.z + 2.5), z: fox.z + 2.5 })
       game.step(0.016)
       expect(local.hidden).toBe(true)
       expect(fox.state).toBe('chase')
@@ -577,13 +580,14 @@ describe('local threat HUD', () => {
       expect(hidden.threat.mode).not.toBe('chase')
       expect(escaped).toBe(1)
 
-      game.setInput(local.id, { moveX: 0, moveZ: 0, jump: false, sprint: false, crouch: false, interact: false })
+      Object.assign(local, { x: -125, y: heightAt(-125, 8), z: 8 })
       Object.assign(friend, { x: fox.x, y: heightAt(fox.x, fox.z), z: fox.z, health: 100 })
       game.step(0.016)
       expect(local.hidden).toBe(false)
       expect(fox.targetId).toBe(friend.id)
       expect(observe().events.filter((event) => event.type === 'spotted' && event.you)).toHaveLength(0)
       Object.assign(friend, { x: -90, y: heightAt(-90, -7), z: -7 })
+      Object.assign(fox, { x: -125, y: heightAt(-125, 5), z: 5, angle: 0 })
       game.step(0.016)
       expect(fox.targetId).toBe(local.id)
       const rediscovered = observe()
