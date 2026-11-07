@@ -2,8 +2,7 @@
 // crouch under low furniture, keep clear of Gon's chain) with the chapter's objectives, and a cautious policy that
 // hides under furniture or in cover while someone has eyes on it and waits for the family to pass.
 import { canEnter, mapTerrain, type Game, type Input, type Player } from '../src/game'
-import { GATES, activeStage, gateOpen, heightAt, inZone, overhangAt, type Point } from '../src/map'
-import { RABBIT_STAND } from '../src/game'
+import { GATES, activeStage, gateOpen, heightAt, inZone, type Point } from '../src/map'
 import { FLAG, has } from '../src/stages/house/flags'
 import { EXIT, GAP, GATE, GON_LEASH, GON_POST, NIBOSHI, PELLETS, TAMA } from '../src/stages/house/map'
 import { coverSpots, idle } from './bot'
@@ -78,14 +77,9 @@ export function houseSteer(player: Player, goal: Point) {
   const dx = aim.x - player.x
   const dz = aim.z - player.z
   const length = Math.hypot(dx, dz)
-  const low = (x: number, z: number) => {
-    const roof = overhangAt(x, z, 0.45)
-    return !!roof && roof.bottom < RABBIT_STAND
-  }
   return {
     moveX: length > 0.05 ? dx / length : 0,
     moveZ: length > 0.05 ? dz / length : 0,
-    crouch: low(player.x, player.z) || low(aim.x, aim.z),
     jump: heightAt(aim.x, aim.z) - heightAt(player.x, player.z) > 0.3,
     left,
     known: best !== undefined || left < 1
@@ -165,7 +159,6 @@ export class HouseBot {
       ...idle,
       moveX: arrived || goal.wait ? 0 : route.moveX,
       moveZ: arrived || goal.wait ? 0 : route.moveZ,
-      crouch: route.crouch,
       jump: route.jump && this.pulse,
       interact: arrived && (goal.hold || (goal.tap && this.pulse)) === true
     }
@@ -203,9 +196,9 @@ export class HouseBot {
       if (!this.hideAt || !player.hidden)
         this.hideAt = safeHere ? { x: player.x, z: player.z } : this.nearestCover(player)
       const cover = this.hideAt
-      if (!cover || near(cover) < 0.5) return { ...idle, crouch: true }
+      if (!cover || near(cover) < 0.5) return idle
       const route = houseSteer(player, cover)
-      return { ...idle, moveX: route.moveX, moveZ: route.moveZ, crouch: true, jump: route.jump && input.jump }
+      return { ...idle, moveX: route.moveX, moveZ: route.moveZ, jump: route.jump && input.jump }
     }
     // Starving: make a dash for food whatever happens (being carried home to the cage's pellets is fine too).
     if (player.hunger < 12) return input
@@ -218,7 +211,7 @@ export class HouseBot {
     const ahead = { x: player.x + input.moveX * 2.5, z: player.z + input.moveZ * 2.5, y: player.y }
     // A hungry rabbit takes its chances (it only hides once someone is actually onto it).
     if (player.hunger > 25 && (seen(player) || seen(ahead))) return hide('seen')
-    return { ...input, crouch: input.crouch || people.some((person) => near(person) < 18) }
+    return input
   }
 
   private hideAt?: Point

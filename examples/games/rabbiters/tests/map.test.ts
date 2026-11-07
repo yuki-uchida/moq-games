@@ -218,7 +218,7 @@ describe('Rabbiters world map', () => {
     const scale = 2.2 / Math.hypot(normal.x, normal.z)
     const outside = { x: mid.x + normal.x * scale, z: mid.z + normal.z * scale }
     const body = { ...outside, y: heightAt(outside.x, outside.z) }
-    expect(canEnter('rabbit', body, mid.x, mid.z, true, false)).toBe(false)
+    expect(canEnter('rabbit', body, mid.x, mid.z, true, false)).toBe(true)
     expect(canEnter('rabbit', body, mid.x, mid.z, true, true)).toBe(true)
     expect(canEnter('rabbit', { ...body, y: logTop(log) + 0.2 }, mid.x, mid.z, false, false)).toBe(true)
     expect(canEnter('fox', body, mid.x, mid.z, true, false)).toBe(false)

@@ -112,7 +112,7 @@ test('house: cage start, Pisuke, a family member spots Mochi, fence gap to chapt
   await expect.poll(async () => (await state(page)).flags & 2).toBe(2)
   await page.keyboard.up('KeyE')
   await expect(page.locator('#subtitle-name')).toHaveText('インコのピーすけ', { timeout: 30_000 })
-  await expect(page.locator('#subtitle-text')).toContainText('モリ')
+  await expect(page.locator('#subtitle-text')).toContainText('モリ', { timeout: 30_000 })
 
   // Out of the cage (latch gnawed), Mom notices Mochi in the dining room: "?"/"!" over her head and her bark.
   await hooks(page, `patch({ step: 2, flags: ${(1 << 0) | (1 << 1) | (1 << 2) | (1 << 3)}, open: 1, talk: null })`)

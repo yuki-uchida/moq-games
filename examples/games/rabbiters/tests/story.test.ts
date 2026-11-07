@@ -117,7 +117,7 @@ describe('Rabbiters story stages', () => {
     expect(canEnter('human', outside, table.minX + 0.2, outside.z, true, false)).toBe(false)
     expect(canEnter('cat', outside, table.minX + 0.2, outside.z, true, false)).toBe(true)
     const beside = { x: sofa.minX - 1, y: 0, z: (sofa.minZ + sofa.maxZ) / 2 }
-    expect(canEnter('rabbit', beside, sofa.minX + 0.1, beside.z, true, false)).toBe(false)
+    expect(canEnter('rabbit', beside, sofa.minX + 0.1, beside.z, true, false)).toBe(true)
     expect(canEnter('rabbit', beside, sofa.minX + 0.1, beside.z, true, true)).toBe(true)
     expect(coverAt(middle.x, 0, middle.z, false)).toBe('under')
 

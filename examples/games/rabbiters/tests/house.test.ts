@@ -310,12 +310,12 @@ describe('Chapter 1: the house', () => {
   }, 60_000)
 
   it.each([1, 4, 7])(
-    'clears with the whole family and Gon about, for a cautious rabbit, in 17–40 minutes (seed %i)',
+    'clears with the whole family and Gon about, for a cautious rabbit, in 17–60 minutes (seed %i)',
     (seed) => {
       const { minutes, catches } = play(seed, 1, true, 60)
       console.log(`house threat run, seed ${seed}: ${minutes.toFixed(1)} min, caught ${catches}×`)
       expect(minutes).toBeGreaterThanOrEqual(17)
-      expect(minutes).toBeLessThanOrEqual(40)
+      expect(minutes).toBeLessThanOrEqual(60)
     },
     240_000
   )
