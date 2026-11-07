@@ -10,6 +10,7 @@ type Life = {
   view: { time: number; phase: string; players: { id: string; x: number; choices: string[] }[] }
   localId: string
 }
+type GambleResult = { at: number; font: string; x: number; width: number; alpha: number }
 const life = async (page: Page) => {
   await page.waitForFunction(() => Boolean((window as unknown as { __life?: Life }).__life))
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
@@ -20,10 +21,14 @@ test('gambling draws the right animation and status for each life stage', async 
   page.on('pageerror', (error) => errors.push(error.message))
   await page.addInitScript(() => {
     const labels: string[] = []
-    Object.assign(window, { gambleLabels: labels })
+    const results: GambleResult[] = []
+    Object.assign(window, { gambleLabels: labels, gambleResults: results })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
       if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '🍳 料理'].includes(text)) labels.push(text)
+      if (text === '🍳 料理') {
+        results.push({ at: performance.now(), font: this.font, x, width: maxWidth ?? 0, alpha: this.globalAlpha })
+      }
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -37,7 +42,12 @@ test('gambling draws the right animation and status for each life stage', async 
     [23, 'パチンコ', '大当たり！'],
     [50, '競馬', '競馬的中！']
   ] as const) {
-    await page.evaluate(() => ((window as unknown as { gambleLabels: string[] }).gambleLabels.length = 0))
+    if (age === 23) await page.setViewportSize({ width: 390, height: 844 })
+    await page.evaluate(() => {
+      const traces = window as unknown as { gambleLabels: string[]; gambleResults: GambleResult[] }
+      traces.gambleLabels.length = 0
+      traces.gambleResults.length = 0
+    })
     const copied = await handle.evaluate(async (hook, nextAge) => {
       const path = '/src/data.ts'
       const { EVENTS, timeAtAge } = await import(path)
@@ -68,6 +78,21 @@ test('gambling draws the right animation and status for each life stage', async 
         page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
       )
       .toBe(true)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const results = (window as unknown as { gambleResults: GambleResult[] }).gambleResults
+          return results.length > 1 && results.at(-1)!.at - results[0].at > 1500
+        })
+      )
+      .toBe(true)
+    const result = await page.evaluate(
+      () => (window as unknown as { gambleResults: GambleResult[] }).gambleResults.at(-1)!
+    )
+    expect(result.font).toBe('bold 20px sans-serif')
+    expect(result.alpha).toBe(1)
+    expect(result.x - result.width / 2).toBeGreaterThanOrEqual(8)
+    expect(result.x + result.width / 2).toBeLessThanOrEqual(page.viewportSize()!.width - 8)
     await page.screenshot({ path: testInfo.outputPath(`gamble-${age}.png`) })
     await page.locator('#status-open').click()
     await expect(page.locator('#status-weapons')).toContainText(`ギャンブル（${name}）`)
@@ -1618,7 +1643,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     Object.assign(window, { gambleLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (text === '大当たり！') labels.push(text)
+      if (text === '大当たり！' || (text === '🍳 料理' && this.font === 'bold 20px sans-serif')) labels.push(text)
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -1664,6 +1689,11 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
   await expect
     .poll(() =>
       guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('大当たり！'))
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
+      guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
     )
     .toBe(true)
 })

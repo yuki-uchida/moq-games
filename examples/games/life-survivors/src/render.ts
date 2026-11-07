@@ -1592,14 +1592,35 @@ export class Renderer {
             ctx.fillStyle = '#fff2b0'
             ctx.strokeText(label, p.x, p.y - 24)
             ctx.fillText(label, p.x, p.y - 24)
-            const weapon = WEAPONS[p.n]
-            if (weapon) {
-              const result = `${weapon.icon} ${weapon.name}`
-              ctx.strokeText(result, p.x, p.y - 38)
-              ctx.fillText(result, p.x, p.y - 38)
-            }
             ctx.restore()
           }
+          break
+        }
+        case PK.gambleResult: {
+          const weapon = WEAPONS[p.n]
+          if (!weapon) break
+          const result = `${weapon.icon} ${weapon.name}`
+          const dpr = this.canvas.width / this.width
+          ctx.save()
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          ctx.globalAlpha = clamp01((p.life - p.age) / 0.4)
+          ctx.font = 'bold 20px sans-serif'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          const width = Math.min(this.width - 16, ctx.measureText(result).width + 32)
+          const x = Math.max(
+            width / 2 + 8,
+            Math.min(this.width - width / 2 - 8, this.width / 2 + ((p.x - cx) * this.scale) / dpr)
+          )
+          const y = Math.max(28, Math.min(this.height - 28, this.height / 2 + ((p.y - cy) * this.scale) / dpr))
+          ctx.fillStyle = '#34203b'
+          ctx.fillRect(x - width / 2, y - 20, width, 40)
+          ctx.strokeStyle = '#ffd75e'
+          ctx.lineWidth = 2
+          ctx.strokeRect(x - width / 2, y - 20, width, 40)
+          ctx.fillStyle = '#fff2b0'
+          ctx.fillText(result, x, y, width - 16)
+          ctx.restore()
           break
         }
         case PK.ring: {
