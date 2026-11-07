@@ -14,6 +14,14 @@ const NUMBER_SCALE = 1n << 1074n
 const POINT_SCALE = 1000n * NUMBER_SCALE * NUMBER_SCALE
 const ROUND_UNITS = BigInt(ROUND_MS) * NUMBER_SCALE
 const bits = new DataView(new ArrayBuffer(8))
+const denominatorBits = new Map(
+  [NUMBER_SCALE, POINT_SCALE, NUMBER_SCALE * 1000n].map((value) => [value, bitLength(value)])
+)
+
+function bitLength(value: bigint): number {
+  const hex = value.toString(16)
+  return (hex.length - 1) * 4 + 32 - Math.clz32(parseInt(hex[0], 16))
+}
 
 function numberUnits(value: number): bigint {
   bits.setFloat64(0, Math.abs(value))
@@ -26,7 +34,7 @@ function numberUnits(value: number): bigint {
 
 function roundedNumber(numerator: bigint, denominator = POINT_SCALE): number {
   if (numerator === 0n) return 0
-  let exponent = numerator.toString(2).length - denominator.toString(2).length
+  let exponent = bitLength(numerator) - denominatorBits.get(denominator)!
   if (exponent >= 0 ? numerator < denominator << BigInt(exponent) : numerator << BigInt(-exponent) < denominator)
     exponent--
   if (exponent > 1023) return Infinity
