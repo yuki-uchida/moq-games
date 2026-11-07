@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { UNIT_MODEL_CATALOG } from '../src/rendering/models/catalog'
 import provenance from '../src/rendering/models/asset-provenance.json'
+import runtimeManifest from '../../../../public/tower-defense-art/models/runtime-manifest.json'
 import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
 import { ModelUnitLayer } from '../src/rendering/ModelUnitLayer'
 import type { GameState, Unit } from '../src/game/model'
@@ -20,6 +21,7 @@ const expected = {
   crystalSentinel: {
     file: 'crystal-sentinel.glb',
     sha: '5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7',
+    outputSha: '97f881042205ab80633babb3242e7b2c3594054710f99e730511e233a52374e9',
     scale: 40,
     walkDistance: 32,
     idle: 3,
@@ -30,6 +32,7 @@ const expected = {
   koboldLancer: {
     file: 'amber-kobold-lancer.glb',
     sha: '039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed',
+    outputSha: '0d9426cb67d25169a828436ac567692124811af0e221115783b1eb2e862dde4d',
     scale: 32,
     walkDistance: 28,
     idle: 2,
@@ -40,6 +43,7 @@ const expected = {
   clockworkPatchling: {
     file: 'clockwork-patchling-animated.glb',
     sha: '38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5',
+    outputSha: 'eea29defe6665516673ae2a3fc2da16211720fd7fb72fe809fa5630b6f66a389',
     scale: 29,
     walkDistance: 22,
     idle: 2,
@@ -77,7 +81,7 @@ it('discovers all 23 actual model roles while leaving model-only sprite art abse
 })
 
 for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
-  it(`loads source-identical ${role} lazily with real clips, combat timing and bounded board-camera geometry (CPU only)`, async () => {
+  it(`loads source-pinned ${role} derivative lazily with real clips, combat timing and bounded board-camera geometry (CPU only)`, async () => {
     const contract = expected[role]
     const definition = UNIT_MODEL_CATALOG[role]!
     expect(definition.scale).toBe(contract.scale)
@@ -90,7 +94,13 @@ for (const role of Object.keys(expected) as (keyof typeof expected)[]) {
     expect(ATTACK_PROFILES[role].cueMs).toBeCloseTo(contract.cue * 1000)
     for (const spec of Object.values(definition.clips)) expect(spec.adapters).toEqual([])
     const bytes = readFileSync(`public/tower-defense-art/models/${role}/${contract.file}`)
-    expect(createHash('sha256').update(bytes).digest('hex')).toBe(contract.sha)
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(contract.outputSha)
+    const records = runtimeManifest.models.filter((entry) => entry.role === role)
+    expect(records).toHaveLength(1)
+    expect(records[0].file).toBe(`${role}/${contract.file}`)
+    expect(records[0].sourceSha256).toBe(contract.sha)
+    expect(records[0].outputSha256).toBe(contract.outputSha)
+    expect(records[0].bytes).toBe(bytes.length)
     expect(provenance.find((entry) => entry.role === role)?.sha256).toBe(contract.sha)
     const loader = new GLTFLoader()
     // Geometry, rigs and animation are parsed unchanged; no GPU acceptance claim.

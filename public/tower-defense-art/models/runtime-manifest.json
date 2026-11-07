@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three source-identical new Blender GLBs pending runtime visual acceptance",
+  "status": "28 accepted optimized derivatives, material-tuned Slime and color-tuned Brute; three Blender GLB derivatives with 512px textures accepted by CPU preservation and headless WARP visual review",
   "summary": {
     "files": 36,
-    "bytes": 240876152
+    "bytes": 214754680
   },
   "models": [
     {
@@ -188,29 +188,43 @@
       "role": "clockworkPatchling",
       "file": "clockworkPatchling/clockwork-patchling-animated.glb",
       "sourceSha256": "38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5",
-      "outputSha256": "38df8416a26690b5d569928f98dc50fba71a210242fb33be9d115cc9ce796fc5",
-      "bytes": 11763100,
-      "vertices": 53541,
-      "triangles": 74253,
+      "outputSha256": "eea29defe6665516673ae2a3fc2da16211720fd7fb72fe809fa5630b6f66a389",
+      "bytes": 2452848,
+      "vertices": 35851,
+      "triangles": 40619,
       "sourceBytes": 11763100,
       "sourceTriangles": 74253,
-      "config": null,
-      "processing": "Blender spring-punch attack; original geometry, skin, textures, idle and walk preserved",
-      "acceptance": "Three runtime 8-direction frame capture; see docs/patchling-attack-review.md"
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      },
+      "processing": "Reduced polygon derivative with 512px textures; retained vertex attributes, rig and original animation bytes preserved",
+      "acceptance": "CPU preservation and deformation checked; headless WARP original/derivative comparison across three motions and eight directions visually reviewed"
     },
     {
       "role": "crystalSentinel",
       "file": "crystalSentinel/crystal-sentinel.glb",
       "sourceSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
-      "outputSha256": "5570f1e1bce2e5ba5cb944da337313d280f757e2444f8a7adaf53b6b461ffda7",
-      "bytes": 12337800,
-      "vertices": 63634,
-      "triangles": 74000,
+      "outputSha256": "97f881042205ab80633babb3242e7b2c3594054710f99e730511e233a52374e9",
+      "bytes": 3549560,
+      "vertices": 55001,
+      "triangles": 57909,
       "sourceBytes": 12337800,
       "sourceTriangles": 74000,
-      "config": null,
-      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
-      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      },
+      "processing": "Reduced polygon derivative with 512px textures; retained vertex attributes, rig and original animation bytes preserved",
+      "acceptance": "CPU preservation and deformation checked; headless WARP original/derivative comparison across three motions and eight directions visually reviewed"
     },
     {
       "role": "dragon",
@@ -298,15 +312,22 @@
       "role": "koboldLancer",
       "file": "koboldLancer/amber-kobold-lancer.glb",
       "sourceSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
-      "outputSha256": "039f26e6c10a2a6ed15de2524612f805048df83fdefc324bcd9ac0d1a01d7aed",
-      "bytes": 10866388,
-      "vertices": 57612,
-      "triangles": 74998,
+      "outputSha256": "0d9426cb67d25169a828436ac567692124811af0e221115783b1eb2e862dde4d",
+      "bytes": 2843408,
+      "vertices": 43212,
+      "triangles": 47676,
       "sourceBytes": 10866388,
       "sourceTriangles": 74998,
-      "config": null,
-      "processing": "Source-identical final Blender GLB; no runtime geometry or texture optimization",
-      "acceptance": "Blender reimport and Three CPU contracts checked; browser/runtime visual acceptance pending"
+      "config": {
+        "ratio": 0.1,
+        "error": 0.003,
+        "textureSize": 512,
+        "textureQuality": 90,
+        "minTriangles": 1000,
+        "normalWeight": 0.2
+      },
+      "processing": "Reduced polygon derivative with 512px textures; retained vertex attributes, rig and original animation bytes preserved",
+      "acceptance": "CPU preservation and deformation checked; headless WARP original/derivative comparison across three motions and eight directions visually reviewed"
     },
     {
       "role": "mage",
