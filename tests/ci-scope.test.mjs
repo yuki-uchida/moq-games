@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
@@ -105,6 +106,101 @@ test('only changes, browser and deploy omit public from checkout without limitin
     workflow.replace(/^  (?:changes|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
     /sparse-checkout/
   )
+})
+
+test('Pages browser caches only Mesa shaders with exact stable platform and dependency keys', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const browser = workflow.match(/^  browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  assert.ok(browser)
+  assert.match(browser, /MESA_SHADER_CACHE_DIR: \$\{\{ runner.temp \}\}\/moq-mesa-shader-cache/)
+  assert.match(browser, /MESA_SHADER_CACHE_DISABLE: 'false'/)
+  const steps = browser.replace(/^\s*#.*\n/gm, '').split(/^      - /m)
+  const platform = steps.find((step) => step.startsWith('name: Identify Mesa shader cache platform\n'))
+  const cache = steps.find((step) => step.startsWith('name: Restore Mesa shader cache\n'))
+  assert.ok(platform)
+  assert.equal(
+    cache?.trimEnd(),
+    [
+      'name: Restore Mesa shader cache',
+      '        uses: actions/cache@v4',
+      '        with:',
+      '          path: ${{ runner.temp }}/moq-mesa-shader-cache',
+      "          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}"
+    ].join('\n')
+  )
+  assert.match(platform, /id: mesa-cache-platform\n\s+shell: bash\n\s+run: \|/)
+  const install = steps.findIndex((step) => step.startsWith('name: Install Mesa and Xvfb\n'))
+  assert.equal(steps.indexOf(platform), install + 1)
+  assert.equal(steps.indexOf(cache), install + 2)
+  assert.match(steps[install + 3], /^name: Select this shard's tests\n/)
+  assert.doesNotMatch(browser, /cache-hit|restore-keys|LP_NUM_THREADS|LP_PERF/)
+  assert.doesNotMatch(
+    workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''),
+    /MESA_SHADER_CACHE|moq-mesa-shader|mesa-cache-platform/
+  )
+  const source = platform.match(/          node <<'NODE'\n([\s\S]*?)          NODE\n/)[1].replace(/^          /gm, '')
+  const run = ({
+    cpu = 'AMD EPYC 9V74 80-Core Processor',
+    mesa = '25.2.8-0ubuntu0.24.04.1',
+    failure = false,
+    missingCpu = false
+  } = {}) => {
+    const writes = []
+    const execute = () =>
+      runInNewContext(source, {
+        process: { env: { GITHUB_OUTPUT: '/mock/output' } },
+        require: (name) => {
+          if (name === 'node:crypto') return { createHash }
+          if (name === 'node:os') return { cpus: () => (missingCpu ? [] : [{ model: cpu }]) }
+          if (name === 'node:child_process')
+            return {
+              execFileSync: (command, args, options) => {
+                assert.equal(command, 'dpkg-query')
+                assert.deepEqual(Array.from(args), ['-W', '-f=${Version}', 'libgl1-mesa-dri'])
+                assert.equal(options.encoding, 'utf8')
+                if (failure) throw new Error('dpkg failure')
+                return mesa
+              }
+            }
+          if (name === 'node:fs')
+            return {
+              appendFileSync: (path, value) => {
+                assert.equal(path, '/mock/output')
+                writes.push(value)
+              }
+            }
+          throw new Error('Unexpected module: ' + name)
+        }
+      })
+    return { writes, execute }
+  }
+  const first = run()
+  first.execute()
+  assert.match(first.writes.join(''), /^mesa=[a-f0-9]{16}\ncpu=[a-f0-9]{16}\n$/)
+  const same = run()
+  same.execute()
+  assert.deepEqual(same.writes, first.writes)
+  for (const options of [{ cpu: 'Intel Xeon' }, { mesa: '26.0.0-1' }]) {
+    const changed = run(options)
+    changed.execute()
+    assert.notDeepEqual(changed.writes, first.writes)
+  }
+  for (const options of [
+    { cpu: '' },
+    { cpu: 'unknown' },
+    { cpu: 'N/A' },
+    { missingCpu: true },
+    { mesa: '' },
+    { mesa: 'unknown' },
+    { failure: true }
+  ]) {
+    const invalid = run(options)
+    assert.throws(invalid.execute)
+    assert.deepEqual(invalid.writes, [])
+  }
 })
 
 test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakening the gate', () => {
