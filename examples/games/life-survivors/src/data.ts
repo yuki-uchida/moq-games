@@ -700,7 +700,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     damage: 4,
     cooldown: 6,
     area: 135,
-    duration: 6,
+    duration: 12,
     pierce: Infinity,
     minAge: 3,
     desc: '2秒止まると生き物を召喚。Lvごとに必要時間が0.125秒短縮。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。',
