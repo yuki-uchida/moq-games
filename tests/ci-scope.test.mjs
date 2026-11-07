@@ -118,6 +118,13 @@ test('Pages browser caches only Mesa shaders with exact stable platform and depe
   assert.match(browser, /MESA_SHADER_CACHE_DIR: \$\{\{ runner.temp \}\}\/moq-mesa-shader-cache/)
   assert.match(browser, /MESA_SHADER_CACHE_DISABLE: 'false'/)
   const steps = browser.replace(/^\s*#.*\n/gm, '').split(/^      - /m)
+  const jobEnv = browser.match(/^    env:\n([\s\S]*?)(?=^    \S)/m)?.[1]
+  assert.ok(jobEnv)
+  assert.doesNotMatch(jobEnv, /\$\{\{\s*runner\./)
+  assert.match(
+    steps.find((step) => step.startsWith('name: Test the Pages build in Chromium\n')) ?? '',
+    /        env:\n          MESA_SHADER_CACHE_DIR: \$\{\{ runner.temp \}\}\/moq-mesa-shader-cache\n/
+  )
   const platform = steps.find((step) => step.startsWith('name: Identify Mesa shader cache platform\n'))
   const cache = steps.find((step) => step.startsWith('name: Restore Mesa shader cache\n'))
   assert.ok(platform)
