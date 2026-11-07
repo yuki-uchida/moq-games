@@ -125,6 +125,53 @@ test('cooking ownership survives snapshots and disappears with its owner', () =>
   expect(game.state.items).toHaveLength(0)
 })
 
+test('active cooking effects survive snapshots independently and disappear when their time expires', () => {
+  const { game, player } = setup()
+  expect(toView(game.state).players[0].cookingBuffs).toBeUndefined()
+  player.weapons.push(
+    { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_love' },
+    { id: 'w_love', lv: 1, cd: 0, held: 0, damage: 0 }
+  )
+  player.cookingBuffs = {
+    food_damage: { time: 59.1, power: 1.4 },
+    food_speed: { time: 0.01, power: 2 }
+  }
+  const view = toView(game.state)
+  expect(view.players[0].cookingBuffs).toEqual({
+    food_damage: { time: 60, power: 1.4 },
+    food_speed: { time: 1, power: 2 }
+  })
+  expect(readView(JSON.parse(JSON.stringify(view)))?.players[0].cookingBuffs).toEqual(view.players[0].cookingBuffs)
+  expect(readView(JSON.parse(JSON.stringify(view)))?.players[0].gambleWeapon).toBe('w_love')
+  game['movePlayers'](0.02)
+  expect(view.players[0].cookingBuffs?.food_speed?.time).toBe(1)
+  expect(toView(game.state).players[0].cookingBuffs).toEqual({ food_damage: { time: 60, power: 1.4 } })
+  game['movePlayers'](60)
+  expect(toView(game.state).players[0].cookingBuffs).toBeUndefined()
+})
+
+test('snapshots reject malformed or unknown cooking effects', () => {
+  const { game } = setup()
+  const view = toView(game.state)
+  const withBuffs = (cookingBuffs: unknown) => ({
+    ...view,
+    players: [{ ...view.players[0], cookingBuffs }]
+  })
+  for (const bad of [
+    null,
+    {},
+    [],
+    { food_heal: { time: 1, power: 1 } },
+    { food_damage: { time: 0, power: 1 } },
+    { food_damage: { time: 61, power: 1 } },
+    { food_damage: { time: 1.5, power: 1 } },
+    { food_damage: { time: 1, power: -1 } },
+    { food_damage: { time: 1, power: 1, extra: true } }
+  ])
+    expect(readView(withBuffs(bad))).toBeUndefined()
+  expect(readView({ ...view, v: 14 })).toBeUndefined()
+})
+
 test('gambling does not copy non-attacking cooking', () => {
   const { game, player } = setup()
   const gamble = { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }

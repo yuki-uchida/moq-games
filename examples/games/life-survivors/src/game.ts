@@ -1,5 +1,6 @@
 import {
   BULLET_INDEX,
+  COOKING_EFFECTS,
   COOKING_ITEMS,
   ENEMY_BY_ID,
   ENEMY_INDEX,
@@ -389,7 +390,7 @@ export function playerStats(player: Player): PlayerStats {
       p('p_stubborn') +
       p('p_patience') +
       (player.parent === 'p_over' || player.parent === 'p_weak' ? 1 : 0) +
-      2 * (player.cookingBuffs?.food_defense?.power ?? 0),
+      COOKING_EFFECTS.food_defense.amount * (player.cookingBuffs?.food_defense?.power ?? 0),
     regen:
       player.parent === 'p_toxic'
         ? 0
@@ -399,7 +400,7 @@ export function playerStats(player: Player): PlayerStats {
     speed:
       BASE_SPEED *
       (1 + p('p_healthy') * 0.08 + p('p_small') * 0.03) *
-      (1 + 0.2 * (player.cookingBuffs?.food_speed?.power ?? 0)),
+      (1 + COOKING_EFFECTS.food_speed.amount * (player.cookingBuffs?.food_speed?.power ?? 0)),
     magnet: 64 * (1 + p('p_greedy') * 0.25),
     xpGain: (1 + p('p_greedy') * 0.1) * (player.parent === 'p_weak' ? 1.25 : 1),
     might:
@@ -408,7 +409,7 @@ export function playerStats(player: Player): PlayerStats {
         p('p_clever') * 0.03 +
         (player.hp <= player.maxHp / 2 ? p('p_competitive') * 0.1 : 0)) *
       (player.parent === 'p_toxic' ? 1.05 : 1) *
-      (1 + 0.25 * (player.cookingBuffs?.food_damage?.power ?? 0)),
+      (1 + COOKING_EFFECTS.food_damage.amount * (player.cookingBuffs?.food_damage?.power ?? 0)),
     cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
     area: 1 + p('p_kind') * 0.08 + p('p_cautious') * 0.05,
     crit: 0.05 + p('p_lucky') * 0.05,
@@ -2659,7 +2660,8 @@ export class Game {
       if (!taker) return true
       const takerIndex = this.playerIndex(taker)
       if ('owner' in item) {
-        if (item.kind === 'food_heal') taker.hp = Math.min(taker.maxHp, taker.hp + 40 * item.power)
+        if (item.kind === 'food_heal')
+          taker.hp = Math.min(taker.maxHp, taker.hp + COOKING_EFFECTS.food_heal.amount * item.power)
         else {
           taker.cookingBuffs ??= {}
           taker.cookingBuffs[item.kind] = { time: 60, power: item.power }

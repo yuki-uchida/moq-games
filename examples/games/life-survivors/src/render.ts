@@ -18,6 +18,7 @@ import { Raster } from './art/raster'
 import { duration, frameAt, type Anim, type Sheet } from './art/sheet'
 import { FLAT_PROPS, GROUNDS, PROP_CELL, TILE, groundTile, propsAt } from './art/world'
 import {
+  COOKING_EFFECTS,
   ENEMIES,
   ENEMY_BY_ID,
   MAX_WEAPON_LEVEL,
@@ -821,6 +822,20 @@ export class Renderer {
     m.x = pos.x
     m.y = pos.y
     this.motion.set(player.id, m)
+    const buffs = (['food_damage', 'food_defense', 'food_speed'] as const).filter((kind) => player.cookingBuffs?.[kind])
+    if (buffs.length) {
+      this.world()
+      ctx.save()
+      ctx.lineWidth = 3
+      buffs.forEach((kind, index) => {
+        const angle = this.clock * this.fx.motion + index * 2
+        ctx.strokeStyle = COOKING_EFFECTS[kind].color
+        ctx.beginPath()
+        ctx.ellipse(pos.x, feet, (22 + index * 5) * size, (8 + index * 2) * size, 0, angle, angle + Math.PI * 1.7)
+        ctx.stroke()
+      })
+      ctx.restore()
+    }
     // Identity ring at the feet (player colour), drawn under the sprite.
     this.world()
     ctx.strokeStyle = player.color
@@ -908,6 +923,14 @@ export class Renderer {
       this.art(frame, pos.x + 24 * size, feet - 48 * size, frame.w / 2, frame.h / 2, false, 1, 0.5)
       this.world()
     }
+    if (buffs.length)
+      this.blit(
+        this.label(buffs.map((kind) => COOKING_EFFECTS[kind].short).join(' '), 11, '#fff4cf'),
+        pos.x,
+        feet - 80 * size - tagLift,
+        0,
+        shown
+      )
     this.blit(
       this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
       pos.x,
@@ -1978,26 +2001,32 @@ export class Renderer {
     const it = view.items
     for (let i = 0; i < it.length; i += STRIDE.items) {
       const kind = ITEM_KINDS[it[i]]
+      if (!visible(it[i + 1], it[i + 2])) continue
       const anim = items[kind]
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
+      const food = it[i + 3] >= 0 ? COOKING_EFFECTS[kind as keyof typeof COOKING_EFFECTS] : undefined
       this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
-      this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12)
-      if (it[i + 3] >= 0) {
-        const labels: Record<string, string> = {
-          food_damage: '攻撃',
-          food_defense: '防御',
-          food_speed: '移動',
-          food_heal: '回復'
-        }
+      if (food) {
         ctx.save()
-        ctx.font = 'bold 11px sans-serif'
+        ctx.strokeStyle = food.color
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.ellipse(it[i + 1], it[i + 2] + 7, 13 + Math.sin(this.clock * 3) * 2, 5, 0, 0, TAU)
+        ctx.stroke()
+        ctx.restore()
+      }
+      this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12, false, 1, food ? 1.5 : 1)
+      if (food) {
+        this.world()
+        ctx.save()
+        ctx.font = 'bold 13px sans-serif'
         ctx.textAlign = 'center'
         ctx.lineWidth = 3
         ctx.strokeStyle = '#34203b'
-        ctx.fillStyle = view.players[it[i + 3]].color
-        const label = `${view.players[it[i + 3]].name}：${labels[kind]}`
-        ctx.strokeText(label, it[i + 1], it[i + 2] - 18 + bob)
-        ctx.fillText(label, it[i + 1], it[i + 2] - 18 + bob)
+        ctx.fillStyle = '#fff4cf'
+        const label = `${view.players[it[i + 3]].name}：${food.label}`
+        ctx.strokeText(label, it[i + 1], it[i + 2] - 24 + bob)
+        ctx.fillText(label, it[i + 1], it[i + 2] - 24 + bob)
         ctx.restore()
       }
     }
@@ -2079,10 +2108,10 @@ export class Renderer {
     // Name tags of players standing together stack instead of overlapping.
     view.players.forEach((player, i) => {
       const pos = origins[i]
-      const near = view.players.slice(0, i).filter((o) => {
+      const lift = view.players.slice(0, i).reduce((height, o) => {
         const q = positions.get(o.id)!
-        return Math.abs(q.x - pos.x) < 80 && Math.abs(q.y - pos.y) < 24
-      }).length
+        return height + (Math.abs(q.x - pos.x) < 80 && Math.abs(q.y - pos.y) < 24 ? 13 + (o.cookingBuffs ? 16 : 0) : 0)
+      }, 0)
       list.push({
         y: pos.y + 16,
         kind: 0,
@@ -2093,7 +2122,7 @@ export class Renderer {
         hp: 0,
         flash: 0,
         flags: 0,
-        tagLift: near * 13
+        tagLift: lift
       })
       // The family sorts on its own feet, so a step behind the player is drawn behind them.
       for (const member of this.family(player, pos, view.phase, dt))

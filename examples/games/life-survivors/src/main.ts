@@ -3,6 +3,7 @@ import { getPrimaryRelayUrl } from '../../../../utils/relayPresets'
 import { CooperativeNetwork } from '../../rabbiters/src/network'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import {
+  COOKING_EFFECTS,
   ENEMIES,
   ENEMY_BY_ID,
   EVENTS,
@@ -73,7 +74,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v18'
+const APP = 'life-survivors-v19'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -636,6 +637,17 @@ function pulse(target: Element, name: string, ms: number) {
 
 function updateHud(current: View) {
   const player = current.players.find((p) => p.id === localId)
+  const buffLines = (['food_damage', 'food_defense', 'food_speed'] as const).flatMap((kind) => {
+    const buff = player?.cookingBuffs?.[kind]
+    if (!buff) return []
+    const effect = COOKING_EFFECTS[kind]
+    const amount = Number((effect.amount * buff.power * (effect.unit === '%' ? 100 : 1)).toFixed(1))
+    return [`${effect.label} +${amount}${effect.unit}（残り${buff.time}秒）`]
+  })
+  const buffDisplay = element('#cooking-buffs')
+  const buffText = buffLines.length ? `🍙 料理効果\n${buffLines.join('\n')}` : ''
+  if (buffDisplay.textContent !== buffText) buffDisplay.textContent = buffText
+  buffDisplay.hidden = !buffLines.length
   const time = Math.min(current.time, RUN_SECONDS)
   const stage = stageAt(time)
   element('#age').textContent = String(ageAt(time))

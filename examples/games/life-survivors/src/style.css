@@ -254,6 +254,17 @@ button {
   display: grid;
   gap: 6px;
 }
+.cooking-buffs {
+  max-width: min(320px, calc(100vw - 42px));
+  padding: 4px 7px;
+  border: 1px solid #ffcf6588;
+  border-radius: 7px;
+  color: #fff4cf;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: pre-line;
+}
 .slots {
   display: flex;
   gap: 6px;
@@ -1877,6 +1888,12 @@ button {
   .start-inner,
   .dialog {
     padding: 20px;
+  }
+}
+
+@media (max-width: 640px) and (min-height: 501px) {
+  .hud:has(#cooking-buffs:not([hidden])) .feed {
+    bottom: calc(220px + env(safe-area-inset-bottom));
   }
 }
 

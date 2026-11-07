@@ -1177,6 +1177,12 @@ export const BULLET_INDEX = new Map<string, number>(BULLET_KINDS.map((name, inde
 
 /** Item kinds as carried in snapshots (index). */
 export const COOKING_ITEMS = ['food_damage', 'food_defense', 'food_speed', 'food_heal'] as const
+export const COOKING_EFFECTS = {
+  food_damage: { label: '攻撃力UP', short: '攻撃↑', color: '#ff7b6e', amount: 0.25, unit: '%' },
+  food_defense: { label: '防御力UP', short: '防御↑', color: '#79aaff', amount: 2, unit: '' },
+  food_speed: { label: '移動速度UP', short: '移動↑', color: '#ffcf65', amount: 0.2, unit: '%' },
+  food_heal: { label: 'HP回復', short: '回復', color: '#7be495', amount: 40, unit: '' }
+} as const
 export const ITEM_KINDS = ['meal', 'chest', 'magnet', ...COOKING_ITEMS] as const
 
 type PoolEntry = [string, number]
