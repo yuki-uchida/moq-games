@@ -603,8 +603,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
   }),
   weapon({
     id: 'w_travel',
-    name: '旅行',
-    icon: '✈️',
+    name: 'アウトドア',
+    icon: '🚲',
     color: '#5fc2c9',
     behavior: 'sweep',
     category: 'hobby',
@@ -616,8 +616,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 2.7,
     pierce: Infinity,
     strong: ['work', 'sickness'],
-    minAge: 18,
-    desc: '紙飛行機が画面を横切って飛んでいく。特攻：仕事・病気。',
+    minAge: 0,
+    desc: '三輪車→自転車→バイク→車→飛行機と年齢で変化し、画面を横切る。特攻：仕事・病気。',
     evolve: { passive: 'p_curious', name: '世界一周' }
   }),
   weapon({

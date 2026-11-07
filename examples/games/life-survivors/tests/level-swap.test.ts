@@ -65,7 +65,7 @@ describe('full talent slots with ordinary growth remaining', () => {
     [16, 'w_work']
   ] as const)('can acquire %s-year unlock %s after ordinary growth', (age, target) => {
     let acquired = false
-    for (let seed = 1; seed <= 20 && !acquired; seed++) {
+    for (let seed = 1; seed <= 200 && !acquired; seed++) {
       const { game, player } = setup(age)
       for (let roll = 0; roll < seed; roll++) game.random()
       game.gainXp(game.state.xpNext)

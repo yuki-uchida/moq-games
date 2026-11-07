@@ -1478,8 +1478,7 @@ export class Renderer {
         break
       }
       case 'sweep': {
-        // 旅行: a paper plane gliding across, mirrored by its heading, with speed streaks and afterimages.
-        const art = sheet('weapon:w_travel')
+        const art = sheet(`weapon:${weaponAppearance(def.id, ageAt(view.time)).art}`)
         const frame = pick(art.fly, this.clock + i * 0.1)
         const flip = cos < 0
         if (trails) {

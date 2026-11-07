@@ -4,7 +4,15 @@ import { Game, choiceText, playerStats, weaponName, weaponStats } from '../src/g
 import { sheet } from '../src/art/index'
 import { resultCategories } from '../src/result'
 import { readView, toView } from '../src/view'
-import { PET_MEMORY, SPORTS_FORMS, petForm, sportsForm, weaponAppearance } from '../src/weapon-life'
+import {
+  OUTDOOR_FORMS,
+  PET_MEMORY,
+  SPORTS_FORMS,
+  outdoorForm,
+  petForm,
+  sportsForm,
+  weaponAppearance
+} from '../src/weapon-life'
 
 function setup(age = 30) {
   const game = new Game(7)
@@ -78,6 +86,45 @@ test('all sports forms have distinct art and baseball starts at junior high', ()
   expect(sportsForm(80).name).toBe('ゲートボール')
   const frames = SPORTS_FORMS.map((form) => [...sheet(`weapon:w_sports_${form.key}`).fly.frames[0].data].join(','))
   expect(new Set(frames).size).toBe(SPORTS_FORMS.length)
+})
+
+test.each([
+  [0, 'tricycle', '三輪車'],
+  [12, 'bicycle', '自転車'],
+  [15, 'motorcycle', 'バイク'],
+  [18, 'car', '車'],
+  [23, 'plane', '飛行機']
+] as const)('outdoor changes at age %i to %s without changing its weapon', (age, key, name) => {
+  expect(outdoorForm(age)).toMatchObject({ key, name })
+  if (age > 0) expect(outdoorForm(age - 0.001).key).not.toBe(key)
+  const { game, player, obtain } = setup(age)
+  expect(game.options(player)).toContain('w:w_travel')
+  obtain('w_travel')
+  const weapon = player.weapons[0]
+  weapon.lv = MAX_WEAPON_LEVEL
+  weapon.damage = 123
+  weapon.held = 90
+  player.passives = [{ id: 'p_curious', lv: 1 }]
+  const before = { ...weapon }
+  const stats = weaponStats(player, weapon)
+  for (const choice of ['w:w_travel', 's:w_travel', 'r:w_travel:w_pet'])
+    expect(choiceText(player, choice, age).name).toBe(`アウトドア（${name}）`)
+  expect(weaponName(player, weapon, age)).toBe(`世界一周／アウトドア（${name}）`)
+  expect(weapon).toEqual(before)
+  expect(weaponStats(player, weapon)).toEqual(stats)
+  expect(weaponAppearance(weapon.id, age).art).toBe(`w_travel_${key}`)
+  expect(sheet(`weapon:w_travel_${key}`).fly.frames).toHaveLength(4)
+  expect(sheet('icons')[`w_travel_${key}`].frames[0].data.some(Boolean)).toBe(true)
+})
+
+test('outdoor vehicles have distinct art and retain the plane in later life', () => {
+  expect(outdoorForm(11).name).toBe('三輪車')
+  expect(outdoorForm(14).name).toBe('自転車')
+  expect(outdoorForm(17).name).toBe('バイク')
+  expect(outdoorForm(22).name).toBe('車')
+  expect(outdoorForm(80).name).toBe('飛行機')
+  const frames = OUTDOOR_FORMS.map((form) => [...sheet(`weapon:w_travel_${form.key}`).fly.frames[0].data].join(','))
+  expect(new Set(frames).size).toBe(OUTDOOR_FORMS.length)
 })
 
 test('unrelated evolved weapon names retain their existing display', () => {
