@@ -2543,9 +2543,16 @@ export class Renderer {
       if (item.member) this.follower(item.member)
       else if (item.player) {
         const player = item.player
-        this.foodLabels.players.push(
-          ...this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
+        // The boxes food labels keep clear of; a wrapped or stubbed player() (tests, tools) may hand back nothing.
+        const boxes: Box[] | undefined = this.player(
+          player,
+          positions.get(player.id)!,
+          player.id === localId,
+          view.time,
+          view.phase,
+          item.tagLift
         )
+        if (boxes) this.foodLabels.players.push(...boxes)
       } else this.enemy(item)
     }
     this.world()
