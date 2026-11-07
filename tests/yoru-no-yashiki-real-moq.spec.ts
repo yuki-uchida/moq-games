@@ -378,6 +378,7 @@ const test = base.extend<{ pair: Pair; realRendering: boolean }>({
             if (state.realMoqFrames.length > 1200) state.realMoqFrames.shift()
           }
         }, realRendering)
+        await page.getByText('リレーの詳細設定').click()
         await page.locator('#relay-url').fill(environment.relayURL)
       }
       expect(browserPids[0]).toBeGreaterThan(0)
