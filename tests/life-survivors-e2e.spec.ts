@@ -374,6 +374,7 @@ test('co-op cards retain focus across birthdays and appearance changes', async (
     player.choices = ['w:w_sports', 'x:skip']
     player.choiceSeq++
   })
+  await expect(page.locator('#cards .card').first()).toContainText('スポーツ（サッカー）')
   const second = page.locator('#cards .card').nth(1)
   await expect(second).toBeVisible()
   await second.focus()
