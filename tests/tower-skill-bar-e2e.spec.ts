@@ -143,7 +143,10 @@ test('nothing in range: a tap says so on the button, long press and Shift+click 
   await expect(page.locator('#unit-special')).toHaveText('×')
 })
 
-test('one tap casts at the best target once enemies are in range: honest button, time-stop, then the result readout', async ({ page }) => {
+test('one tap casts at the best target once enemies are in range: honest button, time-stop, then the result readout', async ({
+  page
+}) => {
+  await page.clock.install()
   await seed(page)
   await assault(page)
   const archer = page.locator('.skill-btn[data-skill-type="archer"]')
@@ -157,28 +160,58 @@ test('one tap casts at the best target once enemies are in range: honest button,
   // The first-skill coach mark points at a button that will hit.
   await expect(page.locator('.coach[data-step="skills"]')).toBeVisible()
   await expect(page.locator('#skill-cutin')).toHaveCSS('pointer-events', 'none')
-  // Time-stop: tap and measure in the page, so slow software-GPU round trips can't blur it. The
-  // first frame after the tap shows the band and the landing ring; the simulation clock then stands
-  // still for ~0.65 s of real time (slower frames only lengthen the measured stop) and runs again.
-  const stop = await archer.evaluate(async (button: HTMLButtonElement) => {
-    const app = document.getElementById('app')!,
-      read = () => Number(app.dataset.simulationTime),
-      frame = () => new Promise((resolve) => requestAnimationFrame(resolve)),
-      shown = (selector: string) => {
-        const element = document.querySelector<HTMLElement>(selector)
-        return !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
-      }
-    const tappedAt = performance.now()
-    button.click()
-    await frame()
-    const band = shown('#skill-cutin .skill-cutin-band'),
-      ring = shown('#field .skill-target-ring'),
-      frozenAt = read()
-    while (performance.now() - tappedAt < 6000) {
-      await frame()
-      if (read() !== frozenAt) return { band, ring, stoppedMs: performance.now() - tappedAt }
+  const pausedAt = new Date()
+  await page.clock.setFixedTime(pausedAt)
+  await page.clock.pauseAt(pausedAt)
+  await page.clock.setSystemTime(pausedAt)
+  type SkillFrame = {
+    t: number
+    sim: number
+    band: boolean
+    ring: boolean
+    result: { text: string | null; pointerEvents: string } | null
+  }
+  await archer.evaluate((button: HTMLButtonElement) => {
+    const visible = (element: Element | null) => {
+      if (!element || element.closest('[hidden]')) return false
+      const rect = element.getBoundingClientRect()
+      return getComputedStyle(element).visibility === 'visible' && rect.width > 0 && rect.height > 0
     }
-    return { band, ring, stoppedMs: -1 }
+    const log: SkillFrame[] = ((window as any).__singleSkillLog = [])
+    const tick = () => {
+      const readout = document.querySelector('.fx-special, #field .fx-chip.miss')
+      log.push({
+        t: performance.now(),
+        sim: Number(document.getElementById('app')!.dataset.simulationTime),
+        band: visible(document.querySelector('#skill-cutin .skill-cutin-band')),
+        ring: visible(document.querySelector('#field .skill-target-ring')),
+        result:
+          document.getElementById('skill-cutin')!.hidden && visible(readout)
+            ? { text: readout!.textContent, pointerEvents: getComputedStyle(readout!).pointerEvents }
+            : null
+      })
+      requestAnimationFrame(tick)
+    }
+    tick()
+    button.click()
+  })
+  await page.clock.runFor(650)
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(16)
+        return page.evaluate(() => {
+          const log = (window as any).__singleSkillLog as SkillFrame[]
+          return log.find((frame, index) => index > 1 && frame.sim !== log[1].sim)?.t ?? -1
+        })
+      },
+      { timeout: 6000, intervals: [100] }
+    )
+    .not.toBe(-1)
+  const stop = await page.evaluate(() => {
+    const log = (window as any).__singleSkillLog as SkillFrame[],
+      resumed = log.find((frame, index) => index > 1 && frame.sim !== log[1].sim)!
+    return { band: log[1].band, ring: log[1].ring, stoppedMs: resumed.t - log[0].t }
   })
   expect(stop.band).toBe(true)
   expect(stop.ring).toBe(true)
@@ -189,13 +222,24 @@ test('one tap casts at the best target once enemies are in range: honest button,
   await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 3000 })
   // The impact lands after the band is gone and reports what it did.
   // A hit reports itself on a card; a whiff (the target died first) only puffs a small MISS.
-  const readout = page.locator('.fx-special, #field .fx-chip.miss').first()
-  await expect(readout).toBeVisible({ timeout: 5000 })
-  await expect(readout).toContainText(/矢の雨[\s\S]*×\d+ HIT|MISS/)
-  await expect(readout).toHaveCSS('pointer-events', 'none')
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(16)
+        return page.evaluate(() => (window as any).__singleSkillLog.some((frame: SkillFrame) => frame.result))
+      },
+      { timeout: 5000 }
+    )
+    .toBe(true)
+  const readout = await page.evaluate(
+    () => ((window as any).__singleSkillLog as SkillFrame[]).find((frame) => frame.result)!.result!
+  )
+  expect(readout.text).toMatch(/矢の雨[\s\S]*×\d+ HIT|MISS/)
+  expect(readout.pointerEvents).toBe('none')
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(archer).toHaveAttribute('aria-label', /^矢の雨 あと\d+秒$/)
   await expect(archer.locator('.skill-count')).toHaveText(/^\d+$/)
+  await page.clock.resume()
 })
 
 test('two specials cast back-to-back each get their own band one after the other, their own ring, and their own result', async ({
