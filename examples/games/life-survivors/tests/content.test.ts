@@ -1,9 +1,31 @@
 import { describe, expect, test } from 'vitest'
-import { PASSIVE_BY_ID, TAG_NAMES, WEAPONS, WEAPON_BY_ID } from '../src/data'
+import { PASSIVE_BY_ID, TAG_NAMES, WEAPONS, WEAPON_BY_ID, WEAPON_LEVELS } from '../src/data'
 import { choiceText, Game, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 
 describe('in-game descriptions', () => {
+  test('a weapon level configuration independently controls its display and calculation', () => {
+    const player = new Game(1).addPlayer('a', 'p_edu')!
+    const first = { id: 'w_study', lv: 2, cd: 0, held: 0, damage: 0 }
+    const second = { ...first, id: 'w_love' }
+    player.weapons = [first, second]
+    const upgrade = WEAPON_LEVELS.w_study[0]
+    const original = { ...upgrade }
+    const beforeFirst = weaponStats(player, first)
+    const beforeSecond = weaponStats(player, second)
+    try {
+      upgrade.damage = 2
+      upgrade.amount = 4
+      upgrade.text = 'テスト強化'
+      expect(weaponStats(player, first).damage).toBeCloseTo(beforeFirst.damage * 2)
+      expect(weaponStats(player, first).amount).toBe(beforeFirst.amount + 3)
+      expect(weaponStats(player, second)).toEqual(beforeSecond)
+      first.lv = 1
+      expect(choiceText(player, 'w:w_study').text).toBe('テスト強化')
+    } finally {
+      Object.assign(upgrade, original)
+    }
+  })
   test('every weapon has an individual description for each level', () => {
     const player = new Game(1).addPlayer('a', 'p_edu')!
     for (const weapon of WEAPONS) {
