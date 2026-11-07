@@ -45,7 +45,6 @@ export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
-const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
 const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
@@ -2045,8 +2044,16 @@ export class Game {
         break
       }
       case 'gamble': {
-        if (!weapon.gambleWeapon || weapon.held >= (weapon.gambleUntil ?? 0)) {
-          weapon.gambleWeapon = GAMBLE_WEAPONS[Math.floor(rng() * GAMBLE_WEAPONS.length)].id
+        const candidates = player.weapons.filter((owned) => {
+          const def = WEAPON_BY_ID.get(owned.id)
+          return def && def.id !== 'w_gamble' && def.behavior !== 'none'
+        })
+        if (!candidates.length) {
+          weapon.gambleWeapon = undefined
+          break
+        }
+        if (!candidates.some((owned) => owned.id === weapon.gambleWeapon) || weapon.held >= (weapon.gambleUntil ?? 0)) {
+          weapon.gambleWeapon = candidates[Math.floor(rng() * candidates.length)].id
           weapon.gambleUntil = weapon.held + 12
           this.emit(
             FX.GAMBLE,
@@ -2056,7 +2063,7 @@ export class Game {
             WEAPON_INDEX.get(weapon.gambleWeapon)!
           )
         }
-        const copied = WEAPON_BY_ID.get(weapon.gambleWeapon)!
+        const copied = WEAPON_BY_ID.get(weapon.gambleWeapon!)!
         this.fire(player, weapon, weaponStats(player, weapon, playerStats(player), copied), copied)
         break
       }
