@@ -1045,7 +1045,55 @@ function frame(now: number) {
     if (role === 'guest' && !player && view.players.length >= 8) setStatus('満員のため観戦中')
     renderPauseBanner(view)
   }
+  if (now - hudRectsAt >= 250 || hud.hidden !== hudRectsHidden) measureHudRects(now)
   requestAnimationFrame(frame)
+}
+
+let hudRectsAt = -Infinity
+let hudRectsHidden = true
+
+/**
+ * Hands the renderer the screen boxes of the HUD parts drawn over the canvas, so food labels keep clear of them: every
+ * visible part with its own background or border, or with no children. Large transparent containers (the full-screen
+ * overlay, rows and lists) are looked into instead.
+ */
+function measureHudRects(now = performance.now()) {
+  hudRectsAt = now
+  hudRectsHidden = hud.hidden
+  const rects: { left: number; top: number; right: number; bottom: number }[] = []
+  const frame = canvas.getBoundingClientRect()
+  const visit = (parent: Element, depth: number) => {
+    for (const child of Array.from(parent.children)) {
+      if (rects.length >= 40) return
+      const style = getComputedStyle(child)
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue
+      const r = child.getBoundingClientRect()
+      if (r.width < 1 || r.height < 1) continue
+      const screenSized = r.width * r.height >= frame.width * frame.height * 0.5
+      const painted =
+        style.backgroundColor !== 'rgba(0, 0, 0, 0)' ||
+        style.backgroundImage !== 'none' ||
+        ['Top', 'Right', 'Bottom', 'Left'].some(
+          (side) => parseFloat(style.getPropertyValue(`border-${side}-width`)) > 0
+        )
+      if (!screenSized && (painted || child.children.length === 0)) {
+        const box = {
+          left: Math.max(0, r.left - frame.left),
+          top: Math.max(0, r.top - frame.top),
+          right: Math.min(frame.width, r.right - frame.left),
+          bottom: Math.min(frame.height, r.bottom - frame.top)
+        }
+        if (box.right > box.left && box.bottom > box.top) rects.push(box)
+      } else if (depth < 6) visit(child, depth + 1)
+    }
+  }
+  if (!hud.hidden) visit(hud, 0)
+  renderer.setHudRects(rects)
+}
+
+if (typeof ResizeObserver === 'function') {
+  const observer = new ResizeObserver(() => measureHudRects())
+  for (const part of Array.from(hud.children)) observer.observe(part)
 }
 
 /** Behind the title: a self-playing baby so the page is alive before you start. */
@@ -1262,7 +1310,10 @@ document.addEventListener('visibilitychange', () => {
 })
 // A hidden tab's timers crawl, so the music pauses instead of stuttering.
 document.addEventListener('visibilitychange', () => audio.setHidden(document.hidden))
-window.addEventListener('resize', () => renderer.resize())
+window.addEventListener('resize', () => {
+  renderer.resize()
+  measureHudRects()
+})
 window.addEventListener('pagehide', (event) => {
   // A cached page is restored with this script's state, so keep the audio graph it will need again;
   // without cache the page is really gone and the context is closed.
