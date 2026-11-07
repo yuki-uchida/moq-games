@@ -2338,8 +2338,9 @@ test('standing on any drawn sprite of six stacked foods collects it', async ({ p
     player.x = drawn[5].x
     player.y = drawn[5].y
     game['collectGems'](0)
-    return { sixthLeft: game.state.items.includes(foods[5]), left: game.state.items.length }
+    return { sixthShown: drawn[5].shown, sixthLeft: game.state.items.includes(foods[5]), left: game.state.items.length }
   })
+  expect(result.sixthShown).toBe(true)
   expect(result.sixthLeft).toBe(false)
   expect(result.left).toBe(0)
   expect(errors).toEqual([])
