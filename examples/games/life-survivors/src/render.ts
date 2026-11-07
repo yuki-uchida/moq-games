@@ -42,6 +42,7 @@ import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './wea
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
+  GUARD_BASH_STEPS,
   ITEM_KINDS,
   POPUP_BIT,
   SHOT_GAMBLE,
@@ -1322,8 +1323,19 @@ export class Renderer {
         const alpha = Math.min(1, life * 4)
         const flip = def.id === 'p_over' && cos < 0
         this.centred(pick(anim, time), ox, oy, evolved, alpha, 1, flip)
-        if (def.id === 'p_over')
-          this.centred(pick(art.guard, time), ox, oy, evolved, alpha * (sh.v === 1 ? 0.45 : 1), 1, flip)
+        if (def.id === 'p_over') {
+          const progress = Math.floor(sh.v / 2)
+          const thrust = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) * 14 : 0
+          this.centred(
+            pick(art.guard, time),
+            ox + cos * thrust,
+            oy + sin * thrust,
+            evolved,
+            alpha * (sh.v % 2 ? 0.45 : 1),
+            sh.r / 20,
+            flip
+          )
+        }
         break
       }
       case 'whip':

@@ -101,6 +101,7 @@ export function soundForFx(e: FxEv, ctx: FxContext, sink: SoundSink, tracker: Fx
     case FX.FIRE: {
       const def = WEAPONS[e.a]
       if (def && mine(e.b)) sink.fire(def.id, { evolved: ctx.evolved(def.id), pan: 0 })
+      else if (def?.id === 'p_over' && (spectating || dist <= NEAR_SHOT)) sink.fire(def.id, { pan, gain: near })
       break
     }
     case FX.HURT:

@@ -66,14 +66,14 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
   await handle.evaluate((hook) => {
     const player = (hook.game as unknown as Game).state.players[0]
     player.birthPick = false
-    player.weapons = ['p_toxic', 'w_perfume', 'w_sports'].map((id) => ({
+    player.weapons = ['p_toxic', 'w_perfume', 'w_sports', 'p_over'].map((id) => ({
       id,
       lv: 6,
       cd: 100,
       held: 0,
       damage: 0
     }))
-    player.choices = ['w:p_toxic', 'w:w_perfume', 'w:w_sports']
+    player.choices = ['w:p_toxic', 'w:w_perfume', 'w:w_sports', 'w:p_over']
     player.choiceSeq++
   })
   const cards = page.locator('#cards .card')
@@ -81,6 +81,7 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
   await expect(cards.nth(1)).toContainText('効果なし（Lv8で強化）')
   await expect(cards.nth(2)).toContainText('クールダウン -15%')
   await expect(cards.nth(0).locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
+  await expect(cards.nth(3)).toContainText('攻撃速度 +15%')
   await handle.evaluate((hook) => {
     ;(hook.game as unknown as Game).state.players[0].choices = []
   })
@@ -91,6 +92,7 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
   await expect(perfume).not.toContainText('クールダウン無効')
   await expect(toxic.locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
   await expect(perfume.locator('.weapon-strong-label')).toHaveText(['特攻 恋愛', '特攻 人間関係'])
+  await expect(page.locator('#status-weapons li').filter({ hasText: '過保護' })).toContainText('常時・クールダウン無効')
 })
 
 test('gambling draws the right animation and status for each life stage', async ({ page }, testInfo) => {
@@ -697,8 +699,8 @@ test('pet shots render five animals in order and repeat', async ({ page }, testI
 
 for (const [parent, description] of [
   ['p_weak', '経験値 +25%、防御 +1'],
-  ['p_over', '敵を追わず盾で接触攻撃・吹き飛ばす'],
   ['p_over', '盾は敵の投射物も1回防ぐ'],
+  ['p_over', '進行方向で盾を振り敵を弾く'],
   ['p_over', '詳しくは「?」へ'],
   ['p_toxic', '全武器の威力 +5%'],
   ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
@@ -1242,9 +1244,7 @@ test('reading effects render behind local and co-op players', async ({ page }) =
   }
 })
 
-test('overprotective parents face their target and only their unavailable shields fade for local and co-op views', async ({
-  page
-}) => {
+test('overprotective parents swing and fade their shields for local and co-op views', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
@@ -1271,14 +1271,14 @@ test('overprotective parents face their target and only their unavailable shield
       guardian,
       player.x + 40,
       player.y - 20,
-      20,
+      30,
       0,
       100,
       1,
-      1
+      17
     ]
     const renderer = new Renderer(document.createElement('canvas'))
-    const events: { x: number; y: number; alpha: number; flip: boolean }[] = []
+    const events: { x: number; y: number; alpha: number; scale: number; flip: boolean }[] = []
     let drawingShot = false
     const topShot = renderer.topShot.bind(renderer)
     renderer.topShot = (...args: unknown[]) => {
@@ -1288,17 +1288,18 @@ test('overprotective parents face their target and only their unavailable shield
     }
     const centred = renderer.centred.bind(renderer)
     renderer.centred = (...args: [unknown, number, number, boolean, number, number, boolean]) => {
-      if (drawingShot) events.push({ x: args[1] - player.x, y: args[2] - player.y, alpha: args[4], flip: args[6] })
+      if (drawingShot)
+        events.push({ x: args[1] - player.x, y: args[2] - player.y, alpha: args[4], scale: args[5], flip: args[6] })
       centred(...args)
     }
     renderer.draw(view, life.localId, 0.016, false)
     return events
   })
   expect(draws).toEqual([
-    { x: 60, y: 20, alpha: 1, flip: true },
-    { x: 60, y: 20, alpha: 1, flip: true },
-    { x: 40, y: -20, alpha: 1, flip: false },
-    { x: 40, y: -20, alpha: 0.45, flip: false }
+    { x: 60, y: 20, alpha: 1, scale: 1, flip: true },
+    { x: 60, y: 20, alpha: 1, scale: 1, flip: true },
+    { x: 40, y: -20, alpha: 1, scale: 1, flip: false },
+    { x: 54, y: -20, alpha: 0.45, scale: 1.5, flip: false }
   ])
 })
 
@@ -2355,6 +2356,70 @@ test('guests receive both stages of a copied gardening weapon', async ({ context
   expect(errors).toEqual([])
 })
 
+test('guests receive forward-facing guards and their shield-bash motion', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  for (const page of [host, guest]) {
+    await page.goto('/')
+    await page.locator('#room').fill('guard-motion')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  const guardian = await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { WEAPON_INDEX } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    game.state.players.forEach((player, index) => {
+      player.parent = 'p_over'
+      player.weapons = [{ id: 'p_over', lv: 4, cd: 0, held: 0, damage: 0 }]
+      player.passives = []
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.fx = index ? 0 : 1
+      player.fy = index ? -1 : 0
+    })
+    game['buildGrid']()
+    game['fireWeapons'](0)
+    game['moveShots'](0)
+    game.state.shots[0].aux = game.state.shots[0].tick / 2
+    game.state.shots[0].v = 1
+    game.step = () => {}
+    return WEAPON_INDEX.get('p_over') as number
+  })
+  await expect
+    .poll(() =>
+      guestLife.evaluate((hook, index) => {
+        const view = hook.view as unknown as View
+        const guards = []
+        for (let offset = 0; offset < view.shots.length; offset += 8) {
+          if (view.shots[offset] !== index) continue
+          const owner = view.players[view.shots[offset + 6]]
+          guards.push({
+            owner: view.shots[offset + 6],
+            forward: (view.shots[offset + 1] - owner.x) * owner.fx + (view.shots[offset + 2] - owner.y) * owner.fy,
+            variant: view.shots[offset + 7]
+          })
+        }
+        return {
+          owners: guards.map((guard) => guard.owner),
+          forward: guards.every((guard) => guard.forward > 0),
+          variants: guards.map((guard) => guard.variant)
+        }
+      }, guardian)
+    )
+    .toEqual({ owners: [0, 0, 1, 1], forward: true, variants: [17, 0, 0, 0] })
+})
+
 test('current and legacy rooms remain separated while current guests receive snapshots', async ({ context }) => {
   await context.addInitScript(() => {
     const Channel = window.BroadcastChannel
@@ -2381,7 +2446,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v18',
+      app: 'life-survivors-v19',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -2400,9 +2465,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v19', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v19', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v18', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v19', 'version-isolation'])])
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -2452,7 +2517,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v19', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v20', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])

@@ -69,7 +69,8 @@ describe('in-game descriptions', () => {
     const detail = model.weapons[0].detail
     expect(WEAPON_BY_ID.get('p_over')!.desc.length).toBeLessThanOrEqual(60)
     for (const effect of [
-      '敵を追わず盾で接触攻撃・吹き飛ばす',
+      '進行方向で盾を振り敵を弾く',
+      '常時・クールダウン無効',
       '盾は敵の投射物も1回防ぐ',
       '詳しくは「?」へ',
       '防御 +1'

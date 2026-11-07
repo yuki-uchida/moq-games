@@ -131,6 +131,21 @@ describe('fx -> sound', () => {
     expect(calls).toEqual([['fire', id, { evolved: true, pan: 0 }]])
   })
 
+  it('plays nearby shield bashes for other players and spectators', () => {
+    const { calls, sink } = fakeAudio()
+    const guardian = WEAPONS.findIndex((weapon) => weapon.id === 'p_over')
+    consumeFx(
+      fx([1, FX.FIRE, 1100, 500, guardian, 1], [2, FX.FIRE, 1800, 500, guardian, 1]),
+      new FxTracker(),
+      ctx(),
+      sink
+    )
+    expect(calls).toEqual([['fire', 'p_over', { pan: 100 / 640, gain: 1 - 100 / 900 }]])
+    calls.length = 0
+    consumeFx(fx([1, FX.FIRE, 1800, 500, guardian, 1]), new FxTracker(), ctx({ localIndex: -1 }), sink)
+    expect(calls).toEqual([['fire', 'p_over', { pan: 0, gain: 0.6 }]])
+  })
+
   it('keeps personal sounds personal', () => {
     const { calls, sink } = fakeAudio()
     consumeFx(

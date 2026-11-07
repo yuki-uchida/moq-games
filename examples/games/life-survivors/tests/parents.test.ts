@@ -176,7 +176,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(15)
+    expect(view.v).toBe(16)
     expect(view.shots[7]).toBe(1)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
     expect(game.state.bullets).toEqual([])
@@ -184,6 +184,31 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     bullet(player.x, player.y)
     game.tick(1 / 60)
     expect(player.hp).toBe(player.maxHp - 19)
+  })
+
+  test('the enlarged shield intercepts projectiles at its thrust position', () => {
+    const { game, player } = guarded()
+    player.talents.friend = 1
+    player.passives = [{ id: 'p_kind', lv: 5 }]
+    game.tick(0)
+    const shield = game.state.shots[0]
+    shield.angle = 0
+    shield.aux = shield.tick / 2
+    game.state.bullets.push({
+      x: shield.x + 14 * (shield.r / 20) + 14,
+      y: shield.y + 3 * (shield.r / 20),
+      vx: 0,
+      vy: 0,
+      r: 1,
+      damage: 20,
+      life: 2,
+      kind: 0,
+      src: 'germ'
+    })
+    game.tick(0)
+    expect(game.state.bullets).toEqual([])
+    expect(shield.v).toBe(1)
+    expect(player.shieldRecovery).toBe(1.5)
   })
 
   test.each(['germ', 'b_hs'])('blocks %s contact, including a lethal hit, without draining both shields', (kind) => {
@@ -216,12 +241,13 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
   test.each([1, -1])('only enemies overlapping the visible shield are hit (%i)', (side) => {
     const { game, player } = guarded()
     const shield = game.state.shots[0]
-    shield.angle = side === 1 ? 0 : Math.PI
+    player.fx = side
+    game.tick(0)
     const behind = game.spawnEnemy('germ', shield.x - side * 25, shield.y)!
     const inFront = game.spawnEnemy('germ', shield.x + side * 20, shield.y)!
     for (const enemy of [behind, inFront]) enemy.hp = enemy.maxHp = 1000
     game['buildGrid']()
-    game['collide'](shield, player)
+    game['moveGuardian'](shield, player, 0)
     expect(behind.hp).toBe(1000)
     expect(inFront.hp).toBeLessThan(1000)
   })
@@ -229,15 +255,26 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
   test.each([1, -1])('a spent shield damages and knocks away enemies on contact (%i)', (side) => {
     const { game, player } = guarded()
     const first = game.state.shots[0]
-    game.state.bullets.push({ x: first.x + 7, y: first.y + 3, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
+    game.state.bullets.push({
+      x: first.x + 7,
+      y: first.y + 3,
+      vx: 0,
+      vy: 0,
+      r: 7,
+      damage: 20,
+      life: 2,
+      kind: 0,
+      src: 'germ'
+    })
     game.tick(1 / 60)
     const shield = game.state.shots.find((shot) => shot.v === 1)!
     game.state.shots = [shield]
-    shield.h = side === 1 ? 0 : Math.PI
-    shield.x = player.x + side * shield.orbit * 0.72
-    shield.y = player.y
+    player.fx = side
+    player.fy = 0
     shield.aux = 0
-    const enemy = game.spawnEnemy('germ', shield.x + side * 10, player.y)!
+    game.tick(0)
+    for (const other of game.state.shots) if (other !== shield) other.aux = 100
+    const enemy = game.spawnEnemy('germ', shield.x + side * 10, shield.y)!
     enemy.hp = enemy.maxHp = 1000
     enemy.elite = false
     for (let frame = 0; frame < 60 && enemy.hp === enemy.maxHp; frame++) game.tick(1 / 60)
@@ -253,11 +290,9 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     const { game, player } = guarded()
     const shield = game.state.shots[0]
     game.state.shots = [shield]
-    shield.x = player.x + Math.cos(shield.h) * shield.orbit * 0.72
-    shield.y = player.y + Math.sin(shield.h) * shield.orbit * 0.72
     const startX = shield.x
     const startY = shield.y
-    const enemy = game.spawnEnemy('germ', player.x + 100, player.y)!
+    const enemy = game.spawnEnemy('germ', player.x + 200, player.y)!
     enemy.hp = enemy.maxHp = 1000
     for (let frame = 0; frame < 10; frame++) game.tick(1 / 60)
     expect(shield.x).toBeCloseTo(startX)
@@ -278,24 +313,162 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     shield.x = player.x + 80
     shield.y = player.y + 30
     shield.aux = 0
-    for (let frame = 0; frame < 40; frame++) game.tick(1 / 60)
-    expect(shield.x - player.x).toBeCloseTo(shield.orbit * 0.72)
-    expect(shield.y).toBeCloseTo(player.y)
+    game.tick(1 / 60)
+    expect(shield.x - player.x).toBeCloseTo(shield.orbit * 0.48)
+    expect(shield.y - player.y).toBeCloseTo(shield.h * shield.r * 1.5)
   })
 
-  test('a shield also pushes an enemy overlapping the owner', () => {
+  test('each bash hits only one enemy until its motion finishes', () => {
     const { game, player } = guarded()
     const shield = game.state.shots[0]
-    game.state.shots = [shield]
-    shield.x = player.x
-    shield.y = player.y
-    shield.aux = 0
+    game.state.shots[1].aux = 100
+    const first = game.spawnEnemy('germ', shield.x + 5, shield.y)!
+    const second = game.spawnEnemy('germ', shield.x + 10, shield.y)!
+    first.hp = first.maxHp = second.hp = second.maxHp = 1000
+    first.elite = second.elite = false
+    game.tick(0)
+    expect(first.hp).toBeLessThan(first.maxHp)
+    expect(second.hp).toBe(second.maxHp)
+    expect(shield.aux).toBe(shield.tick)
+    expect(
+      game.state.fx.filter((event) => event.type === FX.FIRE && event.a === WEAPON_INDEX.get('p_over'))
+    ).toHaveLength(1)
+    const attacking = readView(JSON.parse(JSON.stringify(toView(game.state))))!
+    expect(attacking.shots[7]).toBeGreaterThanOrEqual(2)
+    game.state.enemies = [second]
+    game.tick(shield.tick / 2)
+    expect(second.hp).toBe(second.maxHp)
+    game.tick(shield.tick)
+    expect(second.hp).toBeLessThan(second.maxHp)
+  })
+
+  test('an enemy overlapping the owner but not the shield is not attacked', () => {
+    const { game, player } = guarded()
+    game.state.shots[1].aux = 100
     const enemy = game.spawnEnemy('germ', player.x, player.y)!
     enemy.hp = enemy.maxHp = 1000
     enemy.elite = false
+    game.tick(0)
+    expect(enemy.hp).toBe(enemy.maxHp)
+  })
+
+  test('guards remain in front of each moving owner, including after they stop', () => {
+    const { game, player } = guarded()
+    const other = game.addPlayer('b', 'p_over')!
+    other.weapons[0].lv = 4
+    other.x += 300
+    for (const [x, y] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, -1]
+    ]) {
+      game.setInput(player.id, { x, y })
+      game.setInput(other.id, { x: -x, y: -y })
+      game.tick(1 / 60)
+      for (const owner of [player, other]) {
+        const guards = game.state.shots.filter((shot) => shot.owner === owner.id)
+        expect(guards).toHaveLength(2)
+        for (const guard of guards)
+          expect((guard.x - owner.x) * owner.fx + (guard.y - owner.y) * owner.fy).toBeGreaterThan(0)
+        const offsets = guards.map((guard) => -(guard.x - owner.x) * owner.fy + (guard.y - owner.y) * owner.fx)
+        expect(offsets[0]).toBeLessThan(0)
+        expect(offsets[1]).toBeGreaterThan(0)
+      }
+      expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
+    }
+    game.setInput(player.id, { x: 0, y: 0 })
     game.tick(1 / 60)
-    expect(enemy.hp).toBeLessThan(enemy.maxHp)
-    expect(enemy.kx).toBeGreaterThan(0)
+    expect(player.fx).toBeCloseTo(-Math.SQRT1_2)
+    expect(player.fy).toBeCloseTo(-Math.SQRT1_2)
+    for (const guard of game.state.shots.filter((shot) => shot.owner === player.id))
+      expect((guard.x - player.x) * player.fx + (guard.y - player.y) * player.fy).toBeGreaterThan(0)
+  })
+
+  test('guards are permanent, replenish at a fixed interval and ignore cooldown reductions', () => {
+    const { game, player } = guarded()
+    const original = [...game.state.shots]
+    player.passives = ['p_diligent', 'p_clever', 'p_curious'].map((id) => ({ id, lv: 5 }))
+    for (let level = 1; level <= 8; level++) {
+      player.weapons[0].lv = level
+      expect(weaponStats(player, player.weapons[0]).cooldown).toBe(3.6)
+    }
+    player.weapons[0].lv = 4
+    original[0].v = 1
+    player.weapons[0].cd = 0.1
+    game.tick(0.2)
+    expect(original[0].v).toBe(0)
+    for (let frame = 0; frame < 360; frame++) game.tick(1 / 60)
+    expect(game.state.shots.slice(0, original.length)).toEqual(original)
+    expect(game.state.shots).toHaveLength(weaponStats(player, player.weapons[0]).amount)
+    expect(game.state.shots.every((shot) => shot.life === shot.maxLife)).toBe(true)
+  })
+
+  test('copied shields remain temporary and serialize their bash and spent state', () => {
+    const { game, player } = guarded()
+    const gamble = { id: 'w_gamble', lv: 1, cd: 100, held: 0, damage: 0 }
+    player.weapons.push(gamble)
+    const def = WEAPONS.find((weapon) => weapon.id === 'p_over')!
+    game['fire'](player, gamble, weaponStats(player, gamble, playerStats(player), def), def)
+    const copy = game.state.shots.find((shot) => shot.sourceWeapon === 'w_gamble')!
+    copy.aux = copy.tick * 0.001
+    copy.v = 1
+    const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
+    expect(view.shots[game.state.shots.indexOf(copy) * 8 + 7]).toBe(95)
+    const life = copy.life
+    game.tick(0.1)
+    expect(copy.life).toBeLessThan(life)
+  })
+
+  test('each level speeds up bashes and the highest level hits more often', () => {
+    const periods: number[] = []
+    const attacks: number[] = []
+    for (let level = 1; level <= 8; level++) {
+      const { game, player } = guarded()
+      player.weapons[0].lv = level
+      game.tick(0)
+      const [guard, ...others] = game.state.shots
+      for (const other of others) other.aux = 100
+      const enemy = game.spawnEnemy('germ', guard.x, guard.y)!
+      enemy.hp = enemy.maxHp = 1e9
+      enemy.elite = false
+      let count = 0
+      for (let frame = 0; frame < 120; frame++) {
+        enemy.x = guard.x
+        enemy.y = guard.y
+        enemy.kx = enemy.ky = 0
+        const before = guard.aux
+        game.tick(1 / 60)
+        if (guard.aux > before) count++
+      }
+      periods.push(guard.tick)
+      attacks.push(count)
+      if (level > 1) expect(periods[level - 1]).toBeLessThan(periods[level - 2])
+    }
+    expect(periods[0]).toBeCloseTo(0.35)
+    expect(attacks[7]).toBeGreaterThan(attacks[0])
+  })
+
+  test('area upgrades expand vertical as well as horizontal shield reach', () => {
+    function hit(withArea: boolean, vertical: boolean) {
+      const { game, player } = guarded()
+      player.talents.friend = 1
+      if (withArea) player.passives = [{ id: 'p_kind', lv: 5 }]
+      game.tick(0)
+      const [guard, other] = game.state.shots
+      other.aux = 100
+      const enemy = game.spawnEnemy('germ', guard.x + (vertical ? 0 : 33), guard.y + (vertical ? 30 : 0))!
+      enemy.hp = enemy.maxHp = 1000
+      enemy.elite = false
+      game.tick(0)
+      return enemy.hp < enemy.maxHp
+    }
+    for (const vertical of [false, true]) {
+      expect(hit(false, vertical)).toBe(false)
+      expect(hit(true, vertical)).toBe(true)
+    }
   })
 
   test('an unguarded boss hit retains its existing 0.6 second grace', () => {
@@ -310,13 +483,14 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
   test('another player cannot use these shields and expired shields cannot block', () => {
     const { game, player } = guarded()
     const other = game.addPlayer('b', 'p_over')!
-    other.weapons[0].cd = 100
+    other.weapons = []
     game.spawnEnemy('germ', other.x, other.y)
     game.tick(1 / 60)
     expect(other.hp).toBeLessThan(other.maxHp)
     expect(player.hp).toBe(player.maxHp)
     expect(game.state.shots).toHaveLength(2)
     game.state.enemies = []
+    player.weapons = []
     for (const shot of game.state.shots) shot.life = 0
     game.spawnEnemy('germ', player.x, player.y)
     game.tick(1 / 60)
@@ -341,7 +515,18 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
             { x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' }
           ]
           const shield = game.state.shots.find((shot) => shot.v === 0)
-          if (shield) game.state.bullets.unshift({ x: shield.x + (Math.cos(shield.angle) < 0 ? -7 : 7), y: shield.y + 3, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
+          if (shield)
+            game.state.bullets.unshift({
+              x: shield.x + (Math.cos(shield.angle) < 0 ? -7 : 7),
+              y: shield.y + 3,
+              vx: 0,
+              vy: 0,
+              r: 7,
+              damage: 20,
+              life: 2,
+              kind: 0,
+              src: 'germ'
+            })
         } else {
           const enemy = game.spawnEnemy(attack, player.x, player.y)!
           enemy.hp = enemy.maxHp = 1e9
@@ -376,13 +561,13 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     }
     game.state.enemies = []
     const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
-    for (let index = 7; index < view.shots.length; index += 8) expect(view.shots[index]).toBe(1)
+    for (let index = 7; index < view.shots.length; index += 8) expect(view.shots[index] % 2).toBe(1)
     game.tick(1.51)
     const ready = readView(JSON.parse(JSON.stringify(toView(game.state))))!
     for (const owner of [0, 1]) {
       const variants = []
       for (let index = 0; index < ready.shots.length; index += 8)
-        if (ready.shots[index + 6] === owner) variants.push(ready.shots[index + 7])
+        if (ready.shots[index + 6] === owner) variants.push(ready.shots[index + 7] % 2)
       expect(variants).toContain(0)
       expect(variants).toContain(1)
     }
@@ -399,6 +584,7 @@ describe('通常の被弾猶予は親にかかわらず継続接触を防がな�
       player.weapons.forEach((weapon) => {
         weapon.cd = 100
       })
+      if (parent === 'p_over') player.weapons = []
       if (source === 'bullet')
         game.state.bullets.push({
           x: player.x,
