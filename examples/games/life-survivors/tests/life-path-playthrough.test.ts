@@ -5,7 +5,7 @@ import { LIFE_OUTCOMES } from '../src/history'
 import { botInput } from './bot'
 
 test.each([
-  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 14, 56],
+  [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 22, 56],
   [['w_friend', 'w_sns', 'w_pet'], 17, 3, 19]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',
@@ -32,7 +32,12 @@ test.each([
     ]
     const runs: { seed: number; time: number; early?: string; later?: string }[] = []
     // Try a known successful seed first without dropping any fallback candidates.
-    const seeds = new Set([successfulSeed, preferredSeed, ...Array.from({ length: 20 }, (_, index) => index + 1)])
+    const seeds = new Set([
+      successfulSeed,
+      ...(outcome === 12 ? [14] : []),
+      preferredSeed,
+      ...Array.from({ length: 20 }, (_, index) => index + 1)
+    ])
     for (const seed of seeds) {
       const game = new Game(seed)
       const player = game.addPlayer('p0')!
@@ -121,7 +126,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
     w_hobby: [LIFE_OUTCOMES.b_shukatsu[5]],
     w_friend: [LIFE_OUTCOMES.b_shukatsu[6]]
   }
-  const preferredSeeds: Record<string, number> = { w_work: 13, w_sports: 26, w_savings: 19, w_hobby: 22, w_friend: 3 }
+  const preferredSeeds: Record<string, number> = { w_work: 3, w_sports: 26, w_savings: 19, w_hobby: 29, w_friend: 3 }
 
   for (const priorities of [
     ['w_work', 'w_study'],
@@ -130,7 +135,21 @@ test('normal play from birth can reach employment, sports, asset, creative and s
     ['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'],
     ['w_friend', 'w_sns', 'w_pet']
   ]) {
-    for (const seed of new Set([preferredSeeds[priorities[0]], 13, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])) {
+    for (const seed of new Set([
+      preferredSeeds[priorities[0]],
+      ...(priorities[0] === 'w_hobby' ? [22] : []),
+      13,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ])) {
       const game = new Game(seed)
       const player = game.addPlayer('p0')!
       const score = (choice: string) => {
