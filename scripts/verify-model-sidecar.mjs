@@ -187,10 +187,8 @@ export async function verifyModelSidecar(sourceBytes, sidecarBytes) {
       // Half a quantization step; meshopt assigns exponent zero to zero inputs.
       // https://github.com/zeux/meshoptimizer/blob/v0.22/src/vertexfilter.cpp#L866-L947
       const tolerance = bits ? 2 ** (exponents[n % width] - bits) : 0
-      assert.ok(
-        Number.isFinite(error) && error <= tolerance,
-        `accessor ${i} ${semantic ?? 'exact'} component ${n}: error ${error} > ${tolerance}`
-      )
+      if (!(Number.isFinite(error) && error <= tolerance))
+        assert.ok(false, `accessor ${i} ${semantic ?? 'exact'} component ${n}: error ${error} > ${tolerance}`)
       if (bits) errors[semantic] = Math.max(errors[semantic] ?? 0, error)
     }
   }
