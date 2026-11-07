@@ -39,6 +39,28 @@ export function gambleForm(age: number) {
   return GAMBLE_FORMS.findLast((form) => age >= form.age) ?? GAMBLE_FORMS[0]
 }
 
+export const OBSERVATION_FORMS = [
+  { age: 3, name: '蟻・ミミズ', icon: '🐜' },
+  { age: 6, name: 'カブトムシ', icon: '🪲' },
+  { age: 12, name: 'ハムスター', icon: '🐹' },
+  { age: 15, name: '鳥', icon: '🐦' },
+  { age: 18, name: '魚', icon: '🐟' }
+] as const
+
+export const OBSERVATION_SPRITES = ['ant', 'worm', 'beetle', 'hamster', 'bird', 'fish'] as const
+
+export function observationForm(age: number) {
+  return OBSERVATION_FORMS.findLast((form) => age >= form.age) ?? OBSERVATION_FORMS[0]
+}
+
+export function observationSprite(age: number, count: number) {
+  if (age < 6) return count % 2
+  if (age < 12) return 2
+  if (age < 15) return 3
+  if (age < 18) return 4
+  return 5
+}
+
 export function petForm(years: number) {
   return years < 2
     ? { name: '子犬', scale: 0.65 }
@@ -60,6 +82,10 @@ export function weaponAppearance(id: string, age: number, petAge = 0) {
   if (id === 'w_gamble') {
     const form = gambleForm(age)
     return { name: `${def.name}（${form.name}）`, icon: form.icon, art: `w_gamble_${form.key}` }
+  }
+  if (id === 'w_observe') {
+    const form = observationForm(age)
+    return { name: `${def.name}（${form.name}）`, icon: form.icon, art: id }
   }
   return { name: id === 'w_pet' ? `${def.name}（${petForm(petAge).name}）` : def.name, icon: def.icon, art: id }
 }

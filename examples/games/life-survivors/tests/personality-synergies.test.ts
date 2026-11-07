@@ -121,10 +121,11 @@ test('high maximum health does not add overtime shots and cards show no synergy 
 test('luck does not bias which weapon gambling activates', () => {
   for (const [roll, expected] of [
     [0, 'p_toxic'],
-    [0.9999, 'w_cooking']
+    [0.9999, 'w_observe']
   ] as const) {
     for (const lv of [0, 1, 5]) {
       const { game, player, weapon } = setup('w_gamble')
+      player.still = 2
       Object.defineProperty(game, 'rng', { value: () => roll, configurable: true })
       player.passives = lv ? [{ id: 'p_lucky', lv }] : []
       game['fire'](player, weapon, weaponStats(player, weapon))

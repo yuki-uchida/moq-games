@@ -50,7 +50,7 @@ test('gambling draws the right animation and status for each life stage', async 
     })
     const copied = await handle.evaluate(async (hook, nextAge) => {
       const path = '/src/data.ts'
-      const { EVENTS, timeAtAge } = await import(path)
+      const { EVENTS, WEAPONS, timeAtAge } = await import(path)
       const game = hook.game as unknown as Game
       const player = game.state.players[0]
       game.targetPopulation = () => 0
@@ -63,7 +63,11 @@ test('gambling draws the right animation and status for each life stage', async 
       player.pending = 0
       player.birthPick = false
       player.weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
-      Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
+      const copied = WEAPONS.filter(
+        (def: { id: string; behavior: string }) => def.id !== 'w_gamble' && def.behavior !== 'none'
+      )
+      const index = copied.findIndex((def: { id: string }) => def.id === 'w_cooking')
+      Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copied.length, configurable: true })
       game['fireWeapons'](0)
       return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_cooking')
     }, age)
@@ -324,6 +328,55 @@ test('co-op cards retain focus across birthdays and appearance changes', async (
   })
   await expect(page.locator('#cards')).toContainText('野球')
   await expect(second).toBeFocused()
+})
+
+test('creature observation updates cards and HUD at every age boundary', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.addPlayer('other', 'p_over')
+    game.targetPopulation = () => 0
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(5) + 0.01
+    game.state.enemies = []
+    const player = game.state.players[0]
+    player.birthPick = false
+    player.pending = 0
+    player.weapons = [{ id: 'w_observe', lv: 1, cd: 100, held: 0, damage: 0 }]
+    player.choices = ['w:w_observe', 'x:skip']
+    player.choiceSeq++
+  })
+  const second = page.locator('#cards .card').nth(1)
+  await expect(second).toBeVisible()
+  await second.focus()
+  for (const [age, name] of [
+    [5, '蟻・ミミズ'],
+    [6, 'カブトムシ'],
+    [12, 'ハムスター'],
+    [15, '鳥'],
+    [18, '魚']
+  ] as const) {
+    await handle.evaluate(async (hook, nextAge) => {
+      const path = '/src/data.ts'
+      const { timeAtAge } = await import(path)
+      ;(hook.game as unknown as Game).state.time = timeAtAge(nextAge) + 0.01
+    }, age)
+    await expect(page.locator('#cards')).toContainText(`生き物観察（${name}）`)
+    await expect(page.locator(`#weapons .slot[title*='生き物観察（${name}）']`)).toHaveCount(1)
+    await expect(second).toBeFocused()
+  }
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.players[0].choices = []
+  })
+  await page.locator('#status-open').click()
+  await expect(page.locator('#status-weapons')).toContainText('生き物観察（魚）')
+  expect(errors).toEqual([])
 })
 
 test('outdoor vehicles update across cards, HUD, status and both players’ shots', async ({ page }) => {
@@ -1735,6 +1788,86 @@ export class CooperativeNetwork {
   async stop() { this.channel?.close(); }
 }`
 
+test('creature observation renders and syncs its bird and active field in co-op', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const errors: string[] = []
+  for (const page of [host, guest]) {
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await page.locator('#room').fill('creature-observation')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  const weaponIndex = await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, WEAPON_INDEX, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(15) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    for (const player of game.state.players) {
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = []
+    }
+    const player = game.state.players[0]
+    player.still = 2
+    player.weapons = [{ id: 'w_observe', lv: 2, cd: 0, held: 0, damage: 0 }]
+    game.tick(0)
+    return WEAPON_INDEX.get('w_observe') as number
+  })
+  const creature = (page: Page) =>
+    page.evaluate((index) => {
+      const view = (window as unknown as { __life: { view: View } }).__life.view
+      for (let offset = 0; offset < (view?.shots.length ?? 0); offset += 8)
+        if (view.shots[offset] === index) return view.shots[offset + 7]
+      return -1
+    }, weaponIndex)
+  await expect.poll(() => creature(host)).toBe(9)
+  await expect.poll(() => creature(guest)).toBe(9)
+  const rendered = await guest.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const artPath = '/src/art/index.ts'
+    const { Renderer } = await import(renderPath)
+    const { sheet } = await import(artPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const renderer = new Renderer(document.createElement('canvas'))
+    const bird = sheet('weapon:w_observe').bird.frames
+    let sprites = 0
+    let fields = 0
+    const centred = renderer.centred.bind(renderer)
+    renderer.centred = (frame: unknown, ...args: unknown[]) => {
+      if (bird.includes(frame)) sprites++
+      centred(frame, ...args)
+    }
+    const arc = renderer.ctx.arc.bind(renderer.ctx)
+    renderer.ctx.arc = (...args: [number, number, number, number, number]) => {
+      if (args[2] === 135) fields++
+      arc(...args)
+    }
+    renderer.draw(view, life.localId, 0.016, false)
+    return { sprites, fields }
+  })
+  expect(rendered.sprites).toBe(1)
+  expect(rendered.fields).toBe(1)
+  await expect(host.locator('#world')).toBeVisible()
+  await expect(guest.locator('#world')).toBeVisible()
+  await host.locator('#status-open').click()
+  await expect(host.locator('#status-weapons')).toContainText('生き物観察（鳥）')
+  expect(errors).toEqual([])
+})
+
 test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
@@ -1762,7 +1895,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
   await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
   await hostLife.evaluate(async (hook) => {
     const path = '/src/data.ts'
-    const { EVENTS, timeAtAge } = await import(path)
+    const { EVENTS, WEAPONS, timeAtAge } = await import(path)
     const game = hook.game as unknown as Game
     game.targetPopulation = () => 0
     game.state.time = timeAtAge(23) + 0.01
@@ -1777,7 +1910,11 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
       player.weapons = []
     }
     game.state.players[0].weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
-    Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
+    const copied = WEAPONS.filter(
+      (def: { id: string; behavior: string }) => def.id !== 'w_gamble' && def.behavior !== 'none'
+    )
+    const index = copied.findIndex((def: { id: string }) => def.id === 'w_cooking')
+    Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copied.length, configurable: true })
     game['fireWeapons'](0)
   })
   await expect
@@ -1825,7 +1962,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v14',
+      app: 'life-survivors-v15',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1844,9 +1981,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v14', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -1896,7 +2033,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v15', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v16', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])

@@ -355,7 +355,7 @@ describe('family healing and wire state', () => {
     const view = JSON.parse(JSON.stringify(toView(game.state)))
     expect(readView(view)?.players[0]).toMatchObject({ married: true, hasChild: true })
     expect(view.players[0].talents).toBeUndefined()
-    for (const v of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13]) expect(readView({ ...view, v })).toBeUndefined()
+    for (const v of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14]) expect(readView({ ...view, v })).toBeUndefined()
     for (const patch of [
       { married: false },
       { married: 1 },

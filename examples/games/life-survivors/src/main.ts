@@ -20,7 +20,7 @@ import {
 } from './data'
 import { resultCategories, talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
-import { gambleForm, outdoorForm, petForm, sportsForm, weaponAppearance } from './weapon-life'
+import { gambleForm, observationForm, outdoorForm, petForm, sportsForm, weaponAppearance } from './weapon-life'
 import { LifeAudio } from './audio'
 import { musicCue } from './music'
 import { statusModel, type StatusItem } from './status'
@@ -73,7 +73,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v15'
+const APP = 'life-survivors-v16'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
@@ -482,7 +482,7 @@ function renderChoices(player: ViewPlayer | undefined) {
       : ''
   const key =
     hand && player && view
-      ? `${hand}:${sportsForm(ageAt(view.time)).key}:${outdoorForm(ageAt(view.time)).key}:${gambleForm(ageAt(view.time)).key}:${petForm(player.petAge ?? 0).name}`
+      ? `${hand}:${sportsForm(ageAt(view.time)).key}:${outdoorForm(ageAt(view.time)).key}:${gambleForm(ageAt(view.time)).key}:${observationForm(ageAt(view.time)).name}:${petForm(player.petAge ?? 0).name}`
       : ''
   if (key === shownChoices) return
   const sameHand = Boolean(shownChoices && hand && hand === shownChoiceHand)
@@ -663,6 +663,7 @@ function updateHud(current: View) {
       player.passives,
       weaponAppearance('w_sports', ageAt(time)).art,
       weaponAppearance('w_travel', ageAt(time)).art,
+      observationForm(ageAt(time)).name,
       player.petAge
     ])
     if (key !== handKey) {

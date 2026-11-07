@@ -96,7 +96,7 @@ const ofType = (events: Map<number, FxEvent>, type: number) => [...events.values
 
 describe('new talent weapons', () => {
   test('the twelve ids exist with the intended behaviours, categories and evolutions', () => {
-    expect(TALENT_WEAPONS).toHaveLength(8 + 12)
+    expect(TALENT_WEAPONS).toHaveLength(8 + 12 + 1)
     for (const [id, want] of Object.entries(NEW_WEAPONS)) {
       const def = WEAPON_BY_ID.get(id)!
       expect([id, def.behavior]).toEqual([id, want.behavior])
@@ -989,7 +989,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v12', () => {
+describe('protocol v13', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -999,9 +999,9 @@ describe('protocol v12', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v12 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v13 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(12)
+    expect(view.v).toBe(13)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -1010,7 +1010,7 @@ describe('protocol v12', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v12 field', () => {
+  test('readView rejects old versions and every malformed v13 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
@@ -1020,6 +1020,7 @@ describe('protocol v12', () => {
     expect(readView({ ...view, v: 9 })).toBeUndefined()
     expect(readView({ ...view, v: 10 })).toBeUndefined()
     expect(readView({ ...view, v: 11 })).toBeUndefined()
+    expect(readView({ ...view, v: 12 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view

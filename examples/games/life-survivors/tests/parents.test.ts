@@ -146,7 +146,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(12)
+    expect(view.v).toBe(13)
     expect(view.shots[7]).toBe(1)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
     expect(game.state.bullets).toEqual([])
@@ -797,6 +797,15 @@ describe('蒸発済み: 自立', () => {
     const input = botInput(game, player, 'smart')
     expect(input.x).toBeCloseTo(1)
     expect(input.y).toBeCloseTo(0)
+  })
+
+  test('the smart bot favors reading as a first weapon when talents are equal', () => {
+    const game = new Game(4)
+    const player = game.addPlayer('a', 'p_gone')!
+    player.talents.friend = 1
+    player.talents.study = 1
+    player.choices = ['w:w_friend', 'w:w_reading']
+    expect(botInput(game, player, 'smart').pick).toBe(1)
   })
 
   test('without injected experience a smart bot levels and builds weapons within 180 s', () => {

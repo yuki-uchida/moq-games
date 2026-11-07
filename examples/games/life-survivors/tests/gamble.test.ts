@@ -47,6 +47,7 @@ test('gambling repeats the selected weapon before drawing again', () => {
 
 test.each(copiedWeapons)('gambling can activate $id with its own behavior and statistics', (def) => {
   const { game, player, weapon } = setup()
+  player.still = 2
   const enemy = game.spawnEnemy('germ', player.x + 10, player.y)!
   enemy.hp = enemy.maxHp = 1_000_000
   game['buildGrid']()

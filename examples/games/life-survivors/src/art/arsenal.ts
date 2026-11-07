@@ -1,6 +1,7 @@
 import { C, R } from './palette'
 import { Raster, ball, part, shadeEdges, type Ramp } from './raster'
 import type { Anim, Sheet } from './sheet'
+import { observationIcon, observationSheet } from './observation'
 
 /**
  * Sprites of the new talent weapons: `weapon:<id>` sheets (32×32 frames, centred), the effect particles merged
@@ -1022,6 +1023,7 @@ function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number
 }
 
 const ICONS: Record<string, () => Raster> = {
+  w_observe: observationIcon,
   // SNS: a smartphone with a heart notification badge.
   w_sns: () =>
     tiny(32, 32, (l) => {
@@ -1193,6 +1195,7 @@ const ICONS: Record<string, () => Raster> = {
 
 export function arsenalSheets(): Record<string, () => Sheet> {
   return {
+    'weapon:w_observe': observationSheet,
     'weapon:w_pet': () => ({
       fly: loop(
         many(4, (f) => dog(f, 'run')),

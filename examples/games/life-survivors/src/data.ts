@@ -98,6 +98,7 @@ export type Behavior =
   | 'flail'
   | 'chain'
   | 'pet'
+  | 'observe'
   | 'slam'
   | 'beam'
   | 'barrage'
@@ -693,6 +694,22 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     minAge: 10,
     desc: '手料理を扇状にふるまう。特攻：病気・子育て。',
     evolve: { passive: 'p_healthy', name: 'おふくろの味' }
+  }),
+  weapon({
+    id: 'w_observe',
+    name: '生き物観察',
+    icon: '🐜',
+    color: '#8ccc69',
+    behavior: 'observe',
+    category: 'hobby',
+    damage: 4,
+    cooldown: 6,
+    area: 135,
+    duration: 6,
+    pierce: Infinity,
+    minAge: 3,
+    desc: '2秒止まると生き物を召喚。周期的に敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。弾数無効、効果時間有効。',
+    evolve: { passive: 'p_curious', name: '生き物博士' }
   })
 ]
 

@@ -449,6 +449,10 @@ const WEAPON_FIRE: Record<string, Recipe> = {
     v.noise(0, 0.3, 0.09, 'highpass', 6000, 4000, 0.7, 0.04)
     v.noise(0.05, 0.25, 0.05, 'bandpass', 2500, 2500, 1)
     v.tone('triangle', 700, 700, 0.2, 0.05, 0.04)
+  },
+  w_observe: (v) => {
+    v.tone('sine', 660, 880, 0, 0.12, 0.06)
+    v.tone('sine', 990, 1100, 0.1, 0.16, 0.04)
   }
 }
 
