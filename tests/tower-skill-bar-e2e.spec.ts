@@ -227,10 +227,19 @@ test('two specials cast back-to-back each get their own band one after the other
   await page.clock.setFixedTime(pausedAt)
   await page.clock.pauseAt(pausedAt)
   await page.clock.setSystemTime(pausedAt)
+  type CutInFrame = {
+    t: number
+    sim: number
+    band: string | null
+    rings: number
+    cutin: number
+    results: Array<{ card: boolean; text: string | null }>
+  }
   // Observe layout visibility at each controlled animation frame, alongside the game's timers.
   await page.evaluate(() => {
-    const visible = (element: Element | null) => !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
-    const log: Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }> = ((window as any).__cutinLog = [])
+    const visible = (element: Element | null) =>
+      !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
+    const log: CutInFrame[] = ((window as any).__cutinLog = [])
     const tick = () => {
       const band = document.querySelector('#skill-cutin .skill-cutin-text b')
       log.push({
@@ -238,7 +247,10 @@ test('two specials cast back-to-back each get their own band one after the other
         sim: Number(document.getElementById('app')!.dataset.simulationTime),
         band: visible(band) ? band!.textContent : null,
         rings: [...document.querySelectorAll('#field .skill-target-ring')].filter(visible).length,
-        cutin: (window as any).towerDefenseAudioDiagnostics().feelPlayed.cutin ?? 0
+        cutin: (window as any).towerDefenseAudioDiagnostics().feelPlayed.cutin ?? 0,
+        results: [...document.querySelectorAll('.fx-special, #field .fx-chip.miss')]
+          .filter(visible)
+          .map((element) => ({ card: element.classList.contains('fx-special'), text: element.textContent }))
       })
       requestAnimationFrame(tick)
     }
@@ -246,9 +258,9 @@ test('two specials cast back-to-back each get their own band one after the other
   })
   const aiming = await page.evaluate((spot) => {
     document.querySelector<HTMLElement>('.skill-btn[data-skill-type="archer"]')!.click()
-    document.querySelector<HTMLElement>('.skill-btn[data-skill-type="soldier"]')!.dispatchEvent(
-      new MouseEvent('click', { bubbles: true, shiftKey: true })
-    )
+    document
+      .querySelector<HTMLElement>('.skill-btn[data-skill-type="soldier"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
     const aiming = document.getElementById('unit-special')!.textContent
     const canvas = document.querySelector<HTMLCanvasElement>('#field canvas')!
     const pointer = { bubbles: true, isPrimary: true, pointerId: 1, button: 0, clientX: spot.x, clientY: spot.y }
@@ -258,12 +270,23 @@ test('two specials cast back-to-back each get their own band one after the other
   }, spot)
   expect(aiming).toBe('×')
   await page.clock.runFor(1500)
-  await page.clock.resume()
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(16)
+        return page.evaluate(() =>
+          Math.max(0, ...(window as any).__cutinLog.map((frame: CutInFrame) => frame.results.length))
+        )
+      },
+      { timeout: 8000, intervals: [100] }
+    )
+    .toBeGreaterThanOrEqual(2)
   await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 5000 })
   await expect(page.locator('#field .skill-target-ring')).toHaveCount(0)
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(soldier).toHaveAttribute('data-state', 'charging')
-  const log = await page.evaluate(() => (window as any).__cutinLog as Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }>)
+  const log = await page.evaluate(() => (window as any).__cutinLog as CutInFrame[])
+  await page.clock.resume()
   const names = log.map((f) => f.band).filter((n, i, all) => n && n !== all[i - 1]),
     first = log.find((f) => f.rings > 0)!,
     resumed = log.find((f) => f.t > first.t && f.sim > first.sim)!
@@ -273,7 +296,8 @@ test('two specials cast back-to-back each get their own band one after the other
   const bandStarts = log.flatMap((f, i) => (f.band && f.band !== log[i - 1]?.band ? [i] : [])),
     soundSteps = log.flatMap((f, i) => (i > 0 ? Array<number>(f.cutin - log[i - 1].cutin).fill(i) : []))
   expect(soundSteps).toHaveLength(bandStarts.length)
-  for (const [n, start] of bandStarts.entries()) expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
+  for (const [n, start] of bandStarts.entries())
+    expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
   expect(Math.max(...log.map((f) => f.rings))).toBe(2)
   // Measure from the frame before the first cast; a single 650 ms stop must still fail.
   const beforeFirst = log[log.indexOf(first) - 1] ?? first
@@ -282,10 +306,10 @@ test('two specials cast back-to-back each get their own band one after the other
   const second = log.filter((f) => f.band === '回転斬撃')
   expect(second.at(-1)!.rings).toBe(1)
   // Each cast reports itself: its own card (named after it) or a MISS puff, never one result for both.
-  await expect
-    .poll(() => page.locator('.fx-special, #field .fx-chip.miss').count(), { timeout: 8000, intervals: [100] })
-    .toBeGreaterThanOrEqual(2)
-  const cards = await page.locator('.fx-special').allTextContents()
+  const cards = log
+    .find((frame) => frame.results.length >= 2)!
+    .results.filter((result) => result.card)
+    .map((result) => result.text!)
   for (const card of cards) expect(card).toMatch(/矢の雨|回転斬撃/)
   expect(new Set(cards.map((card) => (card.includes('矢の雨') ? 'a' : 'b'))).size).toBe(cards.length)
 })
