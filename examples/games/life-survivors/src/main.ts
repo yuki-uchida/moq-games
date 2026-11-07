@@ -20,7 +20,7 @@ import {
 } from './data'
 import { resultCategories, talentRadarPoints } from './result'
 import { Game, choiceText, type Input, type Player } from './game'
-import { gambleForm, petForm, sportsForm, weaponAppearance } from './weapon-life'
+import { gambleForm, outdoorForm, petForm, sportsForm, weaponAppearance } from './weapon-life'
 import { LifeAudio } from './audio'
 import { musicCue } from './music'
 import { statusModel, type StatusItem } from './status'
@@ -482,7 +482,7 @@ function renderChoices(player: ViewPlayer | undefined) {
       : ''
   const key =
     hand && player && view
-      ? `${hand}:${sportsForm(ageAt(view.time)).key}:${gambleForm(ageAt(view.time)).key}:${petForm(player.petAge ?? 0).name}`
+      ? `${hand}:${sportsForm(ageAt(view.time)).key}:${outdoorForm(ageAt(view.time)).key}:${gambleForm(ageAt(view.time)).key}:${petForm(player.petAge ?? 0).name}`
       : ''
   if (key === shownChoices) return
   const sameHand = Boolean(shownChoices && hand && hand === shownChoiceHand)
@@ -662,6 +662,7 @@ function updateHud(current: View) {
       player.weapons.map((w) => w.slice(0, 2)),
       player.passives,
       weaponAppearance('w_sports', ageAt(time)).art,
+      weaponAppearance('w_travel', ageAt(time)).art,
       player.petAge
     ])
     if (key !== handKey) {

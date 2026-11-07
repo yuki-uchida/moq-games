@@ -326,6 +326,107 @@ test('co-op cards retain focus across birthdays and appearance changes', async (
   await expect(second).toBeFocused()
 })
 
+test('outdoor vehicles update across cards, HUD, status and both players’ shots', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(5) + 0.01
+    game.state.enemies = []
+    player.birthPick = false
+    player.pending = player.swapPending = player.careerPending = 0
+    player.weapons = [{ id: 'w_travel', lv: 1, cd: 100, held: 0, damage: 0 }]
+    player.choices = ['w:w_travel']
+    player.choiceSeq++
+  })
+  const icons: string[] = []
+  for (const [age, name] of [
+    [5, '三輪車'],
+    [12, '自転車'],
+    [15, 'バイク'],
+    [18, '車'],
+    [23, '飛行機']
+  ] as const) {
+    await handle.evaluate(async (hook, age) => {
+      const path = '/src/data.ts'
+      const { timeAtAge } = await import(path)
+      ;(hook.game as unknown as Game).state.time = timeAtAge(age) + 0.01
+    }, age)
+    const slot = page.locator(`#weapons .slot[title*='アウトドア（${name}）']`)
+    await expect(slot).toHaveCount(1)
+    await expect(page.locator('#cards')).toContainText(`アウトドア（${name}）`)
+    const icon = await slot.locator('img').getAttribute('src')
+    expect(icon).toBeTruthy()
+    expect(await page.locator('#cards .card img').first().getAttribute('src')).toBe(icon)
+    icons.push(icon!)
+  }
+  expect(new Set(icons).size).toBe(5)
+  const rendered = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const artPath = '/src/art/index.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS, timeAtAge } = await import(dataPath)
+    const { sheet } = await import(artPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const forms = [
+      [5, 'tricycle'],
+      [12, 'bicycle'],
+      [15, 'motorcycle'],
+      [18, 'car'],
+      [23, 'plane']
+    ] as const
+    return forms.map(([age, key]) => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players[0]
+      view.time = timeAtAge(age) + 0.01
+      view.enemies = []
+      view.players.push({ ...structuredClone(player), id: 'guest' })
+      const index = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_travel')
+      view.shots = [index, player.x, player.y, 16, 0, 50, 0, 0, index, player.x, player.y, 16, 314, 50, 1, 0]
+      const renderer = new Renderer(document.createElement('canvas'))
+      const draws: { matches: boolean; flip: boolean }[] = []
+      let inShot = false
+      const topShot = renderer.topShot.bind(renderer)
+      renderer.topShot = (...args: unknown[]) => {
+        inShot = true
+        topShot(...args)
+        inShot = false
+      }
+      const centred = renderer.centred.bind(renderer)
+      renderer.centred = (frame: unknown, ...args: unknown[]) => {
+        if (inShot) draws.push({ matches: sheet(`weapon:w_travel_${key}`).fly.frames.includes(frame), flip: args[5] })
+        centred(frame, ...args)
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return draws
+    })
+  })
+  for (const draws of rendered)
+    expect(draws).toEqual([
+      { matches: true, flip: false },
+      { matches: true, flip: true }
+    ])
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.players[0].choices = []
+  })
+  await page.locator('#status-open').click()
+  await expect(page.locator('#status-weapons')).toContainText('アウトドア（飛行機）')
+  await page.keyboard.press('Escape')
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.phase = 'lost'
+  })
+  await expect(page.locator('#result-build')).toContainText('アウトドア（飛行機）')
+  expect(errors).toEqual([])
+})
+
 test('age-dependent sports and pet life stay consistent in cards, HUD and results', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -824,7 +925,7 @@ for (const width of [1280, 390]) {
     await expect(conditions).toContainText('いずれかLv4以上')
     await expect(conditions).toContainText('スポーツ / 筋トレ')
     await expect(conditions).toContainText('投資 / 貯金')
-    await expect(conditions).toContainText('趣味 / カラオケ / 旅行 / 料理')
+    await expect(conditions).toContainText('趣味 / カラオケ / アウトドア / 料理')
     await expect(conditions).toContainText('友人 / SNS / ペット')
     await expect(conditions).toContainText('64歳')
     await expect(conditions).toContainText('仕事・下表の武器Lv4以上で再判定')
