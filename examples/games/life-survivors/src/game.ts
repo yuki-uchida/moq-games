@@ -2061,6 +2061,24 @@ export class Game {
         }
         break
       }
+      case 'garden': {
+        const target = this.nearestEnemy(player.x, player.y, 700)
+        const base = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.fy, player.fx)
+        for (let i = 0; i < n; i++) {
+          const angle = base + (i - (n - 1) / 2) * 0.35
+          this.shot(player, weapon, def, ws, {
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle,
+            r: 10 * ws.area,
+            w: def.area * ws.area,
+            aux: 0.8,
+            pierce: 1,
+            tick: 0.5
+          })
+        }
+        break
+      }
       case 'raid': {
         // ヤンキー親 storms out at the nearest enemies, one each, stopping a stride short so the sole lands on
         // them; with nobody near it swaggers out ahead.
@@ -2098,6 +2116,21 @@ export class Game {
         continue
       }
       shot.life -= dt
+      if (shot.kind === 'garden' && shot.v === 0) {
+        const travel = Math.min(dt, shot.aux)
+        shot.x += shot.vx * travel
+        shot.y += shot.vy * travel
+        shot.aux -= dt
+        const hit = !this.collide(shot, owner)
+        if (hit || shot.aux <= 0) {
+          shot.v = 1
+          shot.r = shot.w
+          shot.life = shot.maxLife
+          shot.pierce = Infinity
+        }
+        kept.push(shot)
+        continue
+      }
       if (shot.life <= 0) {
         if (shot.weapon === 'p_free') this.burst(shot, owner)
         continue
@@ -2158,6 +2191,7 @@ export class Game {
         case 'chain':
         case 'slam':
         case 'trail':
+        case 'garden':
           break
         case 'beam':
           shot.x = owner.x + Math.cos(shot.angle) * shot.w

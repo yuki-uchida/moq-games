@@ -1022,6 +1022,32 @@ function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number
   return r
 }
 
+function gardenSeed(frame: number) {
+  const r = new Raster(N, N)
+  part(r, (l) => {
+    ball(l, 16, 18, 6, 8, R.brown)
+    l.thick(16, 12, 16 + frame, 7, 2, R.green[2])
+    l.ellipse(12, 8, 4, 2, R.green[1])
+    l.ellipse(20, 6 + frame, 4, 2, R.green[0])
+  })
+  return r
+}
+
+function gardenFlower(frame: number) {
+  const r = new Raster(N, N)
+  part(r, (l) => {
+    l.thick(16, 15, 16, 28, 3, R.green[2])
+    l.ellipse(11, 22, 5, 2.5, R.green[1])
+    l.ellipse(21, 25, 5, 2.5, R.green[1])
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + frame * 0.12
+      l.ellipse(16 + Math.cos(angle) * 6, 10 + Math.sin(angle) * 6, 3.5, 3.5, R.yellow[1])
+    }
+    ball(l, 16, 10, 4, 4, R.brown)
+  })
+  return r
+}
+
 const ICONS: Record<string, () => Raster> = {
   w_observe: observationIcon,
   // SNS: a smartphone with a heart notification badge.
@@ -1077,6 +1103,7 @@ const ICONS: Record<string, () => Raster> = {
   w_travel_car: () => outdoorVehicle('car', 0),
   w_travel_plane: () => outdoorVehicle('plane', 0),
   w_savings: () => pig(0, false),
+  w_garden: () => gardenFlower(0),
   w_gamble: () => gambleArt('gacha', 5),
   w_gamble_gacha: () => gambleArt('gacha', 5),
   w_gamble_poker: () => gambleArt('poker', 5),
@@ -1242,6 +1269,7 @@ export function arsenalSheets(): Record<string, () => Sheet> {
         8
       )
     }),
+    'weapon:w_garden': () => ({ fly: loop(many(2, gardenSeed), 6), bloom: loop(many(2, gardenFlower), 3) }),
     'weapon:w_savings': () => ({
       fly: loop([pig(0, false), pig(1, false)], 3),
       armed: loop([pig(0, true), pig(1, true)], 4)

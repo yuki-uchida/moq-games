@@ -110,6 +110,7 @@ export type Behavior =
   | 'trail'
   | 'fan'
   | 'raid'
+  | 'garden'
   | 'none'
 
 export type TalentCategory = 'friend' | 'love' | 'sports' | 'hobby' | 'study' | 'invest'
@@ -710,6 +711,24 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     minAge: 3,
     desc: '2秒止まると生き物を召喚。周期的に敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。弾数無効、効果時間有効。',
     evolve: { passive: 'p_curious', name: '生き物博士' }
+  }),
+  weapon({
+    id: 'w_garden',
+    name: 'ガーデニング',
+    icon: '🌻',
+    color: '#8ccc69',
+    behavior: 'garden',
+    category: 'hobby',
+    damage: 7,
+    cooldown: 2.4,
+    area: 48,
+    speed: 320,
+    duration: 3.2,
+    pierce: Infinity,
+    strong: ['work', 'sickness'],
+    minAge: 6,
+    desc: '種が敵に当たるか着地すると花壇になり、継続攻撃。弾速で遠くへ、効果時間で長く咲く。特攻：仕事・病気。',
+    evolve: { passive: 'p_curious', name: 'ひみつの花園' }
   })
 ]
 

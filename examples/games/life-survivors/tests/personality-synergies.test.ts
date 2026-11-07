@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { bodyScale } from '../src/body-size'
-import { PASSIVES, TALENT_CATEGORIES } from '../src/data'
+import { PASSIVES, TALENT_CATEGORIES, WEAPONS } from '../src/data'
 import { Game, choiceText, playerRadius, playerStats, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 import { readView, toView } from '../src/view'
@@ -119,9 +119,10 @@ test('high maximum health does not add overtime shots and cards show no synergy 
 })
 
 test('luck does not bias which weapon gambling activates', () => {
+  const pool = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
   for (const [roll, expected] of [
-    [0, 'p_toxic'],
-    [0.9999, 'w_observe']
+    [0, pool[0].id],
+    [0.9999, pool.at(-1)!.id]
   ] as const) {
     for (const lv of [0, 1, 5]) {
       const { game, player, weapon } = setup('w_gamble')

@@ -16,6 +16,49 @@ const life = async (page: Page) => {
   return page.evaluateHandle(() => (window as unknown as { __life: Life }).__life)
 }
 
+test('gardening plants visible flowers and describes its upgrades', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    Object.assign(window, { gardenCircles: 0 })
+    const arc = CanvasRenderingContext2D.prototype.arc
+    CanvasRenderingContext2D.prototype.arc = function (x, y, radius, start, end, counterclockwise) {
+      if (String(this.strokeStyle).startsWith('rgba(214, 243, 138,'))
+        (window as unknown as { gardenCircles: number }).gardenCircles++
+      arc.call(this, x, y, radius, start, end, counterclockwise)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const seed = await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(6) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    player.choices = []
+    player.pending = 0
+    player.birthPick = false
+    player.weapons = [{ id: 'w_garden', lv: 1, cd: 0, held: 0, damage: 0 }]
+    game['buildGrid']()
+    game['fireWeapons'](0)
+    return { kind: game.state.shots[0].kind, stage: game.state.shots[0].v }
+  })
+  expect(seed).toEqual({ kind: 'garden', stage: 0 })
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { gardenCircles: number }).gardenCircles))
+    .toBeGreaterThan(0)
+  await page.locator('#status-open').click()
+  await expect(page.locator('#status-weapons')).toContainText('ガーデニング')
+  await expect(page.locator('#status-weapons')).toContainText('弾速で遠くへ、効果時間で長く咲く')
+  expect(errors).toEqual([])
+})
+
 test('gambling draws the right animation and status for each life stage', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
@@ -1936,6 +1979,55 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     .toBe(true)
 })
 
+test('guests receive both stages of a copied gardening weapon', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const errors: string[] = []
+  guest.on('pageerror', (error) => errors.push(error.message))
+  for (const page of [host, guest]) {
+    await page.goto('/')
+    await page.locator('#room').fill('garden-snapshot')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  const index = await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, WEAPON_INDEX, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(12) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    for (const player of game.state.players) {
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = []
+    }
+    game.state.players[0].weapons = [
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 }
+    ]
+    game['buildGrid']()
+    game['fireWeapons'](0)
+    return WEAPON_INDEX.get('w_garden') as number
+  })
+  const variants = () =>
+    guestLife.evaluate((hook, weaponIndex) => {
+      const shots = (hook.view as unknown as View).shots
+      return shots.filter((_value, position) => position % 8 === 7 && shots[position - 7] === weaponIndex)
+    }, index)
+  await expect.poll(variants).toContain(64)
+  await expect.poll(variants).toContain(65)
+  expect(errors).toEqual([])
+})
+
 test('current and legacy rooms remain separated while current guests receive snapshots', async ({ context }) => {
   await context.addInitScript(() => {
     const Channel = window.BroadcastChannel
@@ -1962,7 +2054,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v15',
+      app: 'life-survivors-v16',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -1981,9 +2073,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v15', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v17', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v17', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -2033,7 +2125,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v16', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v17', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])

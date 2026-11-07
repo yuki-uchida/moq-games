@@ -453,6 +453,10 @@ const WEAPON_FIRE: Record<string, Recipe> = {
   w_observe: (v) => {
     v.tone('sine', 660, 880, 0, 0.12, 0.06)
     v.tone('sine', 990, 1100, 0.1, 0.16, 0.04)
+  },
+  w_garden: (v) => {
+    v.tone('triangle', 620, 950, 0, 0.12, 0.06)
+    v.tone('sine', 1050, 1350, 0.08, 0.16, 0.04)
   }
 }
 

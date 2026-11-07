@@ -168,6 +168,26 @@ test('bonus projectiles do not increase creatures or targets, while duration ext
   expect(weaponStats(player, weapon).amount).toBe(1)
 })
 
+test('cooldown only hastens observation when it exceeds the creature lifetime', () => {
+  const nextSummon = (passives: string[]) => {
+    const { game, player } = setup()
+    player.talents.study = 1
+    player.talents.sports = 1
+    player.passives = passives.map((id) => ({ id, lv: 1 }))
+    player.still = 2
+    game['fireWeapons'](0)
+    const firstId = game.state.shots[0].id
+    for (let step = 1; step <= 100; step++) {
+      game['fireWeapons'](0.1)
+      game['moveShots'](0.1)
+      if (game.state.shots.some((shot) => shot.id !== firstId)) return step
+    }
+    throw new Error('The next creature was not summoned')
+  }
+  expect(nextSummon(['p_diligent'])).toBe(nextSummon([]))
+  expect(nextSummon(['p_grand', 'p_diligent'])).toBeLessThan(nextSummon(['p_grand']))
+})
+
 test('a gambling copy also requires stillness and keeps its own field and snapshot', () => {
   const { game, player } = setup(18)
   const gamble = { id: 'w_gamble', lv: 3, cd: 0, held: 0, damage: 0 }
