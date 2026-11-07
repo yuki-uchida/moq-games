@@ -218,8 +218,8 @@ describe('Rabbiters audio', () => {
       const waterwayCrow = game.state.predators.find((predator) => predator.id === townCrow.id)!
       expect(waterwayCrow).not.toBe(townCrow)
       game.state.predators = [waterwayCrow]
-      Object.assign(waterwayCrow, { x: 0, y: heightAt(0, -2) + 2, z: -2, angle: 0 })
-      Object.assign(local, { x: 0, y: heightAt(0, 8), z: 8, hidden: false })
+      Object.assign(waterwayCrow, { x: 40, y: heightAt(40, -2) + 2, z: -2, angle: 0 })
+      Object.assign(local, { x: 40, y: heightAt(40, 8), z: 8, hidden: false })
       game.step(1 / 60)
       expect(waterwayCrow).toMatchObject({ state: 'suspicious', targetId: local.id })
       const snapshot = receive()
@@ -286,9 +286,9 @@ describe('Rabbiters audio', () => {
       const waterwayCrow = game.state.predators.find((predator) => predator.id === townCrow.id)!
       expect(waterwayCrow).not.toBe(townCrow)
       game.state.predators = [waterwayCrow]
-      Object.assign(waterwayCrow, { x: 0, y: heightAt(0, -2) + 2, z: -2, angle: 0 })
-      Object.assign(local, { x: 0, y: heightAt(0, 5), z: 5, hidden: false })
-      Object.assign(friend, { x: 0, y: heightAt(0, 1), z: 1, hidden: false })
+      Object.assign(waterwayCrow, { x: 40, y: heightAt(40, -2) + 2, z: -2, angle: 0 })
+      Object.assign(local, { x: 40, y: heightAt(40, 5), z: 5, hidden: false })
+      Object.assign(friend, { x: 40, y: heightAt(40, 1), z: 1, hidden: false })
       game.step(1 / 60)
       expect(waterwayCrow).toMatchObject({ state: 'chase', targetId: friend.id })
       audio.update(receive(), local.id)
@@ -298,8 +298,8 @@ describe('Rabbiters audio', () => {
       const beforeVoices = context.voices.length
       game.state.time += 0.6
       context.currentTime += 0.6
-      Object.assign(local, { x: 0, y: heightAt(0, 0), z: 0 })
-      Object.assign(friend, { x: 0, y: heightAt(0, 5), z: 5 })
+      Object.assign(local, { x: 40, y: heightAt(40, 0), z: 0 })
+      Object.assign(friend, { x: 40, y: heightAt(40, 5), z: 5 })
       game.step(1 / 60)
       expect(waterwayCrow).toMatchObject({ state: 'chase', targetId: local.id })
       expect(game.state.discoveries).toEqual(
@@ -354,9 +354,9 @@ describe('Rabbiters audio', () => {
     expect(game.state.stage).toBe(2)
     if (fresh !== 'none') {
       game.state.predators = []
-      Object.assign(player, { x: 0, y: heightAt(0, 0), z: 0, hidden: false })
+      Object.assign(player, { x: 40, y: heightAt(40, 0), z: 0, hidden: false })
       if (fresh === 'instant defeat') player.health = 0.1
-      const nextPredator = game.spawnPredator(fresh === 'instant defeat' ? 'fox' : 'human', 0, -0.9)
+      const nextPredator = game.spawnPredator(fresh === 'instant defeat' ? 'fox' : 'human', 40, -0.9)
       nextPredator.angle = 0
       game.step(1 / 60)
       expect(game.state.discoveries).toMatchObject([{ count: 2, stage: 2 }])

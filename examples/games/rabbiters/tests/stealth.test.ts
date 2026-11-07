@@ -86,16 +86,16 @@ describe('graded detection', () => {
     expect(spottedAt).toBeGreaterThan(1)
   })
 
-  it('only comes to look when the rabbit is far away, and crouching shrinks every band', () => {
+  it('only comes to look when the rabbit is far away, regardless of the action input', () => {
     const { game, predator } = standoff(17)
     ticks(game, 1)
     expect(predator.state).toBe('search')
     expect(predator.suspicion).toBe(0)
     expect(predator.z).toBeGreaterThan(OPEN[1] - 17)
-    const crouched = standoff(10)
-    crouched.game.setInput('rabbit', { ...idle, crouch: true })
-    crouched.game.step(1 / 60)
-    expect(crouched.predator.state).toBe('search')
+    const action = standoff(10)
+    action.game.setInput('rabbit', { ...idle, crouch: true })
+    action.game.step(1 / 60)
+    expect(action.predator.state).toBe('suspicious')
   })
 
   it('treats a nearby tree trunk between eye and rabbit as partial cover', () => {
@@ -130,7 +130,8 @@ describe('graded detection', () => {
       trunk.z + 1
     )
     expect(mapTerrain.sightLine(side, { x: trunk.x, z: trunk.z + 1 })).toBe(open ? 1 : 0)
-    const [x, z] = OPEN
+    const [x, openZ] = OPEN
+    const z = openZ - 1
     const tree = { x, z }
     const terrain: Terrain = {
       heightAt,
@@ -187,32 +188,32 @@ describe('trees slow a chase', () => {
         )
     )!
     const [x, z] = OPEN
-    expect(distanceRun(trunk.x + 1.2, trunk.z)).toBeLessThan(distanceRun(x, z) * 0.75)
+    expect(distanceRun(trunk.x + 1.2, trunk.z)).toBeLessThan(distanceRun(x, z - 6) * 0.75)
   })
 })
 
 describe('suspicion falls away when the rabbit hides in time', () => {
   it('decays without spotting, checks the last sighting, then gives up', () => {
     const { ax: x, az: z } = GRASS[0]
-    const { game, rabbit, predator } = standoff(8, 'fox', [x, z])
+    const { game, rabbit, predator } = standoff(8, 'fox')
     // Droppings have their own tests; fresh pellets beside the hidden rabbit would re-arm the search here.
     ;(game as unknown as { dropIn: Map<string, number> }).dropIn.set(rabbit.id, Infinity)
     ticks(game, 0.6)
     expect(predator.state).toBe('suspicious')
     const peak = predator.suspicion
-    game.setInput('rabbit', { ...idle, crouch: true })
+    Object.assign(rabbit, { x, z, y: heightAt(x, z) })
     let spotted = false
     let closest = Infinity
     ticks(game, 1, () => {
       spotted ||= predator.state === 'chase'
-      closest = Math.min(closest, Math.hypot(predator.x - x, predator.z - z))
+      closest = Math.min(closest, Math.hypot(predator.x - OPEN[0], predator.z - OPEN[1]))
     })
     expect(rabbit.hidden).toBe(true)
     expect(predator.state).toBe('search')
     expect(predator.suspicion).toBeLessThan(peak)
     ticks(game, 14, () => {
       spotted ||= predator.state === 'chase'
-      closest = Math.min(closest, Math.hypot(predator.x - x, predator.z - z))
+      closest = Math.min(closest, Math.hypot(predator.x - OPEN[0], predator.z - OPEN[1]))
     })
     expect(spotted).toBe(false)
     expect(closest).toBeLessThan(3)
@@ -399,7 +400,7 @@ describe('dropping trails', () => {
 describe('flying predator motion', () => {
   it('never teleports in height or position when its prey dives into grass', () => {
     const { ax: x, az: z } = GRASS[3]
-    const { game, predator, rabbit } = standoff(4, 'hawk', [x, z])
+    const { game, predator, rabbit } = standoff(4, 'hawk')
     let previous = { ...predator }
     let maxClimb = 0
     let maxStep = 0
@@ -413,7 +414,7 @@ describe('flying predator motion', () => {
     ticks(game, 1.2, record)
     expect(predator.state).toBe('chase')
     expect(lowest).toBeLessThan(4)
-    game.setInput('rabbit', { ...idle, crouch: true })
+    Object.assign(rabbit, { x, z, y: heightAt(x, z) })
     ticks(game, 0.2, record)
     expect(rabbit.hidden).toBe(true)
     expect(predator.state).toBe('search')
@@ -425,7 +426,7 @@ describe('flying predator motion', () => {
     expect(predator.y).toBeGreaterThan(HAWK_ALTITUDE.patrol)
     expect(maxClimb).toBeLessThanOrEqual(5.01)
     expect(maxStep).toBeLessThanOrEqual(8.01)
-    expect(Math.hypot(predator.x - x, predator.z - z)).toBeLessThan(12)
+    expect(Math.hypot(predator.x - OPEN[0], predator.z - OPEN[1])).toBeLessThan(12)
   })
 })
 

@@ -72,9 +72,9 @@ it.each([
       game.step(1 / 60)
       expect(game.state.stage).toBe(2)
       game.state.predators = []
-      Object.assign(player, { x: 0, y: heightAt(0, 0), z: 0, hidden: false })
+      Object.assign(player, { x: 40, y: heightAt(40, 0), z: 0, hidden: false })
       if (outcome === 'lost') player.health = 0.1
-      const nextHunter = game.spawnPredator(outcome === 'lost' ? 'fox' : 'human', 0, outcome === 'chase' ? -2 : -0.9)
+      const nextHunter = game.spawnPredator(outcome === 'lost' ? 'fox' : 'human', 40, outcome === 'chase' ? -2 : -0.9)
       nextHunter.angle = 0
       game.step(1 / 60)
       expect(game.state.discoveries).toMatchObject([{ count: 2, stage: 2 }])
@@ -82,7 +82,7 @@ it.each([
         expect(nextHunter.state).toBe('chase')
         expect(nextHunter.targetId).toBe('local')
       } else if (outcome === 'lost') expect(game.state.phase).toBe('lost')
-      else expect(Math.hypot(player.x, player.z)).toBeGreaterThan(3)
+      else expect(Math.hypot(player.x - 40, player.z)).toBeGreaterThan(3)
       const next = receive()
       feel.update(next, 'local')
       audio.update(next, 'local')
@@ -172,14 +172,14 @@ it.each([
   }
   expect(received.discoveries?.[0].count).toBe(1)
   game.state.predators = []
-  Object.assign(player, { x: 0, y: heightAt(0, 0), z: 0, hidden: false })
+  Object.assign(player, { x: 40, y: heightAt(40, 0), z: 0, hidden: false })
   if (guest === 'missed chapter lost') player.health = 0.1
-  const nextPredator = game.spawnPredator(guest === 'missed chapter lost' ? 'fox' : 'human', 0, -0.9)
+  const nextPredator = game.spawnPredator(guest === 'missed chapter lost' ? 'fox' : 'human', 40, -0.9)
   nextPredator.angle = 0
   game.step(1 / 60)
   expect(game.state.discoveries).toMatchObject([{ count: 2, stage: 2 }])
   if (guest === 'missed chapter lost') expect(game.state.phase).toBe('lost')
-  else expect(Math.hypot(player.x, player.z)).toBeGreaterThan(3)
+  else expect(Math.hypot(player.x - 40, player.z)).toBeGreaterThan(3)
   const captured = receive()
   const initialAudio = new RabbitersAudio()
   const initialAlarm = vi.spyOn(initialAudio as unknown as { alarm(): void }, 'alarm').mockImplementation(() => {})

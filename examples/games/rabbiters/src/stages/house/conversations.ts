@@ -65,7 +65,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
     { who: 'tama', text: '洗面所の勝手口に、わし専用の猫ドアがある。' },
     { who: 'tama', text: 'ただし首輪のタグがないと開かん。古いタグが、玄関の靴箱の下に落ちとるはずじゃ。' }
   ],
-  tama_tag: [{ who: 'tama', text: '靴箱の下じゃ。しゃがまんと、もぐれんぞ。' }],
+  tama_tag: [{ who: 'tama', text: '靴箱の下じゃ。もぐりこむんじゃ。' }],
   tama_bye: [{ who: 'tama', text: 'まだおったのかい。さっさとお行き。' }],
   hinata_home: [
     { who: 'hinata', text: 'ただいまー！ ……あれ？ {rabbits}がいない！' },
@@ -89,7 +89,7 @@ export const CONVERSATIONS: Record<string, Line[]> = {
     { who: 'narrator', text: '外の世界は、思っていたよりずっと広かった。' }
   ],
   dig_start: [{ who: 'rabbit', text: 'すき間がせまい……。ほって広げよう。' }],
-  dug: [{ who: 'rabbit', text: 'これで通れる！ しゃがんで、くぐろう。' }],
+  dug: [{ who: 'rabbit', text: 'これで通れる！ くぐろう。' }],
   'caught-mom': [{ who: 'mom', text: 'はい、おうちに戻ろうね。' }],
   'caught-dad': [{ who: 'dad', text: 'こらこら、脱走はダメだぞ。' }],
   'caught-hinata': [{ who: 'hinata', text: 'つかまえた！ もう、{name}ったら。' }]

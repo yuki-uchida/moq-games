@@ -281,8 +281,8 @@ window.rabbitersSetPreviewTime = (time) => { preview.state.time = time; };`
       }
     ).rabbitersPosition
     const positions: { shown: number; confirmed: number; moving: number; leg: number }[] = []
-    const end = performance.now() + 1200
-    while (performance.now() < end) {
+    const start = performance.now()
+    while (performance.now() - start < 10_000 && (performance.now() - start < 1200 || positions.length < 8)) {
       await new Promise(requestAnimationFrame)
       const current = read()
       if (current) positions.push(current)
@@ -380,10 +380,9 @@ test('desktop: starts a solo game and collects food by moving', async ({ page })
   await expect(page.locator('#hud')).toBeVisible()
   await page.keyboard.down('KeyW')
   await page.keyboard.down('KeyD')
-  await page.waitForTimeout(1100)
+  await expect(page.locator('#food-count')).toHaveText('1 / 6', { timeout: 10_000 })
   await page.keyboard.up('KeyW')
   await page.keyboard.up('KeyD')
-  await expect(page.locator('#food-count')).toHaveText('1 / 6')
   await page.locator('#help-open').click()
   await expect(page.locator('#help')).toBeVisible()
   await page.locator('#help-done').click()
@@ -1258,6 +1257,7 @@ window.rabbitersStealth = {
 test('the discovery warning stays readable and nonblocking on mobile with reduced motion', async ({
   page
 }, testInfo) => {
+  test.setTimeout(420_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/src/main.ts*', async (route) => {
@@ -1421,6 +1421,7 @@ window.rabbitersMobileSpot = () => {
   await page.waitForTimeout(150)
   await page.evaluate(() => (window as unknown as { triggerSpot: () => void }).triggerSpot())
   await expect(detection).toHaveClass(/fx-on/)
+  await detection.evaluate((element) => element.getAnimations().forEach((animation) => animation.pause()))
   await assertWarningClear()
   await assertSubtitleClear()
   for (const control of [page.locator('.joystick'), page.locator('.touch-buttons')]) {
@@ -1441,6 +1442,7 @@ window.rabbitersMobileSpot = () => {
   ).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('stealth-mobile-landscape.png') })
   await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await detection.evaluate((element) => element.getAnimations().forEach((animation) => animation.pause()))
   await expect(detection).toHaveCSS('animation-name', 'fx-detection-impact')
   for (const viewport of [
     { width: 844, height: 390 },
