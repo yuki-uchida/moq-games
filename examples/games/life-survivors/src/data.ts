@@ -797,10 +797,7 @@ export const PARENT_LEGACIES: Record<string, string> = {
   p_yankee: 'p_hot'
 }
 
-/** Weapon-level upgrades; index = new level. */
-export const LEVEL_TEXT = [
-  '',
-  '',
+const standardLevels = [
   '数 +1',
   '威力 +30%',
   '範囲 +25%',
@@ -809,6 +806,64 @@ export const LEVEL_TEXT = [
   'クールダウン -15%',
   '威力 +40%・数 +1'
 ]
+
+export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
+  p_toxic: ['威力 +30%', '威力 +30%', '範囲 +25%', '威力 +30%', '威力 +30%', '効果なし（Lv8で強化）', '威力 +82%'],
+  p_edu: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
+  p_free: standardLevels,
+  p_weak: standardLevels,
+  p_over: standardLevels,
+  p_monster: ['数 +1（最大2体）', '威力 +30%', '範囲 +25%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  p_rich: standardLevels,
+  p_yankee: ['効果なし', '威力 +30%', '範囲 +40%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  p_gone: ['効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし'],
+  w_friend: standardLevels,
+  w_sports: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
+  w_study: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
+  w_love: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
+  w_beauty: [
+    '数 +1',
+    '威力 +30%・数 +1',
+    '範囲 +25%・数 +1',
+    '数 +1',
+    '威力 +30%・数 +1',
+    'クールダウン -15%・数 +1',
+    '威力 +40%・数 +1'
+  ],
+  w_hobby: standardLevels,
+  w_work: standardLevels,
+  w_invest: standardLevels,
+  w_sns: ['連鎖数 +1', '威力 +30%', '範囲 +25%', '連鎖数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・連鎖数 +1'],
+  w_pet: standardLevels,
+  w_muscle: ['効果なし', '威力 +30%', '範囲 +25%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  w_reading: standardLevels,
+  w_overtime: standardLevels,
+  w_ring: standardLevels,
+  w_karaoke: standardLevels,
+  w_travel: standardLevels,
+  w_savings: standardLevels,
+  w_gamble: [
+    '抽選した武器の数 +1（武器による）',
+    '抽選した武器の威力 +30%',
+    '抽選した武器の範囲 +25%（武器による）',
+    '抽選した武器の数 +1（武器による）',
+    '抽選した武器の威力 +30%',
+    '抽選した武器のクールダウン -15%（武器による）',
+    '抽選した武器の威力 +40%・数 +1（武器による）'
+  ],
+  w_perfume: ['数 +1', '威力 +30%', '範囲 +25%', '数 +1', '威力 +30%', '効果なし（Lv8で強化）', '威力 +40%・数 +1'],
+  w_cooking: Array(7).fill('料理の効果 +10%'),
+  w_observe: [
+    '対象数 +1',
+    '威力 +30%・対象数 +1',
+    '範囲 +25%・対象数 +1',
+    '対象数 +1',
+    '威力 +30%・対象数 +1',
+    '対象数 +1',
+    '威力 +40%・対象数 +1'
+  ],
+  w_garden: standardLevels
+}
 
 export type EnemyBehavior =
   | 'chase'

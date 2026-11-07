@@ -5,7 +5,7 @@ import {
   ENEMY_INDEX,
   EVENTS,
   ITEM_KINDS,
-  LEVEL_TEXT,
+  WEAPON_LEVEL_TEXT,
   MAX_GAME_PLAYERS,
   MAX_PASSIVE_LEVEL,
   MAX_WEAPON_LEVEL,
@@ -444,6 +444,7 @@ export function weaponStats(
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
+  if (source.id === 'p_toxic') damage *= 1.3 ** (Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8))
   if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
   if (def.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
@@ -518,7 +519,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${evolves}`,
+      text: `${WEAPON_LEVEL_TEXT[id][Math.min(next - 2, MAX_WEAPON_LEVEL - 2)]}${evolves}`,
       tag: `Lv ${next}`
     }
   }

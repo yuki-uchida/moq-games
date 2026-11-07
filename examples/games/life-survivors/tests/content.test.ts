@@ -1,9 +1,38 @@
 import { describe, expect, test } from 'vitest'
 import { PASSIVE_BY_ID, TAG_NAMES, WEAPONS, WEAPON_BY_ID } from '../src/data'
-import { choiceText, Game } from '../src/game'
+import { choiceText, Game, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 
 describe('in-game descriptions', () => {
+  test('every weapon has an individual description for each level', () => {
+    const player = new Game(1).addPlayer('a', 'p_edu')!
+    for (const weapon of WEAPONS) {
+      player.weapons = [{ id: weapon.id, lv: 1, cd: 0, held: 0, damage: 0 }]
+      for (let level = 1; level < 8; level++) {
+        player.weapons[0].lv = level
+        expect(choiceText(player, `w:${weapon.id}`).text).toBeTruthy()
+        expect(choiceText(player, `w:${weapon.id}`).text).not.toContain('undefined')
+      }
+    }
+  })
+
+  test('toxic parent gains damage instead of projectiles at levels 2, 5 and 8', () => {
+    const player = new Game(1).addPlayer('a', 'p_toxic')!
+    const weapon = player.weapons.find((entry) => entry.id === 'p_toxic')!
+    for (const [level, factor] of [
+      [2, 1.3],
+      [5, 1.3],
+      [8, 1.82]
+    ] as const) {
+      weapon.lv = level - 1
+      const before = weaponStats(player, weapon)
+      expect(choiceText(player, 'w:p_toxic').text).toBe(`威力 +${Math.round((factor - 1) * 100)}%`)
+      weapon.lv = level
+      const after = weaponStats(player, weapon)
+      expect(after.amount).toBe(1)
+      expect(after.damage / before.damage).toBeCloseTo(factor)
+    }
+  })
   test.each(WEAPONS.filter((weapon) => weapon.strong.length && weapon.behavior !== 'gamble'))(
     '$id labels every effective target',
     (weapon) => {
