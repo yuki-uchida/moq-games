@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, globSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 test('workflow runs on main pushes only and gates dependent jobs by scope', () => {
@@ -84,6 +86,114 @@ test('life browser shards run independently and gate publication', () => {
   assert.match(deploy, /\(needs\.life-browser\.result == 'success' \|\| needs\.life-browser\.result == 'skipped'\) &&/)
 })
 
+test('Lane Node shards run independently and are required for publication', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const lane = workflow.match(/^  lane-node:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const deploy = workflow.slice(workflow.indexOf('  deploy:'))
+  assert.ok(lane)
+  assert.match(workflow, /laneNode: \$\{\{ steps\.scope\.outputs\.laneNode \}\}/)
+  assert.match(lane, /^    needs: changes$/m)
+  assert.match(lane, /^    if: needs\.changes\.outputs\.laneNode != ''$/m)
+  assert.match(lane, /fail-fast: false/)
+  assert.match(lane, /shard: \[1, 2, 3, 4, 5\]/)
+  assert.match(
+    lane,
+    /node --test --test-shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} \$\{\{ needs\.changes\.outputs\.laneNode \}\}/
+  )
+  assert.match(lane, /actions\/cache@v4[\s\S]*?\.generated\/moqt-sdk/)
+  assert.match(lane, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
+  assert.doesNotMatch(lane, /artifact|npm run build/)
+  assert.match(deploy, /needs: \[[^\]\n]*\blane-node\b[^\]\n]*\]/)
+  assert.match(
+    deploy,
+    /\(needs\.lane-node\.result == 'success' \|\| \(needs\.lane-node\.result == 'skipped' && needs\.changes\.outputs\.laneNode == ''\)\) &&/
+  )
+  const gate = deploy
+    .match(/^      (\(needs\.lane-node\.result.*) &&$/m)[1]
+    .replaceAll('needs.lane-node.result', 'result')
+    .replaceAll('needs.changes.outputs.laneNode', 'scope')
+  for (const scope of ['', 'examples/games/lane-battle/*.test.mjs']) {
+    for (const result of ['success', 'skipped', 'failure', 'cancelled']) {
+      assert.equal(
+        runInNewContext(gate, { result, scope }),
+        result === 'success' || (result === 'skipped' && scope === '')
+      )
+    }
+  }
+})
+
+test('Lane Node discovery shards every file and all ten realistic cases exactly once', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const files = globSync(selectScope(['package.json']).laneNode, { cwd: root })
+    .map((file) => file.replaceAll('\\', '/'))
+    .sort()
+  const battles = files.filter((file) => /realistic-battles.*\.test\.mjs$/.test(file))
+  assert.equal(battles.length, 5)
+  const helper = readFileSync(
+    new URL('../examples/games/lane-battle/realistic-battle-tests.mjs', import.meta.url),
+    'utf8'
+  )
+  const stripImports = (source) => source.replace(/^import .*\r?\n/gm, '').replace('export function ', 'function ')
+  const casesByFile = new Map()
+  for (const file of battles) {
+    const cases = []
+    const pending = []
+    const samples = Symbol('samples')
+    runInNewContext(stripImports(helper) + '\n' + stripImports(readFileSync(resolve(root, file), 'utf8')), {
+      test(name, options, callback) {
+        assert.equal(name, 'realistic formations meet all bars')
+        assert.equal(options.concurrency, true)
+        pending.push(callback({}))
+      },
+      collectRealisticSamples(stages, clearStages) {
+        assert.deepEqual(Array.from(stages), [8, 15, 22])
+        assert.deepEqual(Array.from(clearStages), [22])
+        return samples
+      },
+      testRealistic(_parent, actualSamples, stage, policy, group) {
+        assert.equal(actualSamples, samples)
+        cases.push(`${stage}:${policy}:${group}`)
+      }
+    })
+    await Promise.all(pending)
+    assert.equal(pending.length, 1)
+    assert.equal(cases.length, 2)
+    casesByFile.set(file, cases)
+  }
+  const expected = [8, 15, 22].flatMap((stage) =>
+    ['keep', 'casual'].flatMap((policy) =>
+      (stage === 8 ? ['fresh'] : ['fresh', 'old']).map((group) => `${stage}:${policy}:${group}`)
+    )
+  )
+  assert.deepEqual([...casesByFile.values()].flat().sort(), expected.sort())
+  const directory = mkdtempSync(join(tmpdir(), 'lane-node-shards-'))
+  const env = { ...process.env }
+  delete env.NODE_TEST_CONTEXT
+  try {
+    for (const file of [...files, 'new-suite.test.mjs']) {
+      const name = file.split('/').at(-1)
+      writeFileSync(join(directory, name), `import { test } from 'node:test'; test(${JSON.stringify(file)}, () => {})`)
+    }
+    const partitions = [1, 2, 3, 4, 5].map((shard) =>
+      execFileSync(process.execPath, ['--test', '--test-reporter=tap', `--test-shard=${shard}/5`, '*.test.mjs'], {
+        cwd: directory,
+        encoding: 'utf8',
+        env
+      })
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('# Subtest: '))
+        .map((line) => line.slice('# Subtest: '.length))
+    )
+    assert.deepEqual(partitions.flat().sort(), [...files, 'new-suite.test.mjs'].sort())
+    for (const partition of partitions) assert.equal(partition.filter((file) => battles.includes(file)).length, 1)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test(
   'life browser shards partition every test without duplicates',
   {
@@ -143,6 +253,7 @@ test('documentation and instruction changes do not run game checks or publish', 
   for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug']) assert.equal(scope[key], false)
   assert.equal(scope.unit, '')
   assert.equal(scope.node, '')
+  assert.equal(scope.laneNode, '')
 })
 
 for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki']) {
@@ -155,6 +266,7 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashik
       const scope = selectScope([path, 'README.md'])
       assert.equal(scope.unit, 'examples/games/' + game + '/tests')
       assert.equal(scope.node, '')
+      assert.equal(scope.laneNode, '')
       assert.equal(scope.pages, true)
       assert.equal(scope.pagesBrowser, game === 'ember-grid' || game === 'life-survivors')
       assert.equal(scope.life, game === 'life-survivors')
@@ -167,7 +279,9 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashik
 test('lane battle selects its Node suites rather than unrelated Vitest suites', () => {
   const scope = selectScope(['examples/games/lane-battle/main.js'])
   assert.equal(scope.unit, '')
-  assert.equal(scope.node, 'examples/games/lane-battle/*.test.mjs')
+  assert.equal(scope.node, '')
+  assert.equal(scope.laneNode, 'examples/games/lane-battle/*.test.mjs')
+  assert.deepEqual(selectScope(['tests/lane-battle-new.test.mjs']), scope)
 })
 
 test('tower assets and supporting tools include tower contracts, browser and bot checks', () => {
@@ -183,6 +297,7 @@ test('tower assets and supporting tools include tower contracts, browser and bot
     assert.equal(scope.pagesBrowser, true)
     assert.equal(scope.bot, true)
     assert.equal(scope.debug, false)
+    assert.equal(scope.laneNode, '')
   }
 })
 
@@ -195,12 +310,15 @@ test('standalone bot and debug changes do not rebuild or publish games', () => {
   assert.equal(debug.debug, true)
   assert.equal(debug.runtime, false)
   assert.equal(debug.pages, false)
+  assert.equal(bot.laneNode, '')
+  assert.equal(debug.laneNode, '')
 })
 
 test('landing changes run landing contracts and browser checks only', () => {
   const scope = selectScope(['index.html'])
   assert.equal(scope.unit, '')
   assert.equal(scope.node, 'tests/landing-catalog.test.mjs')
+  assert.equal(scope.laneNode, '')
   assert.equal(scope.browser, 'landing-e2e.spec.ts')
   assert.equal(scope.pagesBrowser, true)
   assert.deepEqual(JSON.parse(scope.shards), [1])
@@ -226,6 +344,15 @@ test('shared dependencies, CI and unknown paths conservatively check all games',
     'new-runtime.js'
   ]) {
     const scope = selectScope([path])
+    assert.equal(scope.laneNode, 'examples/games/lane-battle/*.test.mjs')
+    assert.deepEqual(scope.node.split(' '), [
+      'tests/published-motion-verification.test.mjs',
+      'tests/published-refined-motions.test.mjs',
+      'tests/tower-viewer-catalog.test.mjs',
+      'tests/forecast-reference-catalog.test.mjs',
+      'tests/tower-model-sidecars.test.mjs',
+      'tests/landing-catalog.test.mjs'
+    ])
     for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki'])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
     for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life']) assert.equal(scope[key], true)
