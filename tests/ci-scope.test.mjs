@@ -20,6 +20,65 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
 })
 
+test('life browser shards run independently and gate publication', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const check = workflow.match(/^  check:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const browser = workflow.match(/^  life-browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  const deploy = workflow.slice(workflow.indexOf('  deploy:'))
+  assert.ok(check)
+  assert.ok(browser)
+  assert.doesNotMatch(check, /e2e:life-survivors/)
+  assert.match(browser, /^    needs: changes$/m)
+  assert.match(browser, /^    if: needs\.changes\.outputs\.life == 'true'$/m)
+  assert.match(browser, /fail-fast: false/)
+  assert.match(browser, /shard: \[1, 2\]/)
+  assert.match(
+    browser,
+    /npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/
+  )
+  assert.match(browser, /name: life-survivors-browser-\$\{\{ github\.sha \}\}-shard-\$\{\{ matrix\.shard \}\}/)
+  assert.match(deploy, /needs: \[[^\]\n]*\blife-browser\b[^\]\n]*\]/)
+  assert.match(deploy, /\(needs\.life-browser\.result == 'success' \|\| needs\.life-browser\.result == 'skipped'\) &&/)
+})
+
+test(
+  'life browser shards partition every test without duplicates',
+  {
+    skip:
+      !existsSync(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)) &&
+      'dependencies are not installed'
+  },
+  () => {
+    const root = fileURLToPath(new URL('../', import.meta.url))
+    const list = (...args) =>
+      execFileSync(
+        process.execPath,
+        [
+          'node_modules/@playwright/test/cli.js',
+          'test',
+          '--config=playwright.life-survivors.config.ts',
+          '--list',
+          '--reporter=list',
+          ...args
+        ],
+        { cwd: root, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } }
+      )
+        .split(/\r?\n/)
+        .filter((line) => line.includes(' › '))
+        .map((line) => line.trim())
+    const all = list()
+    const first = list('--shard=1/2')
+    const second = list('--shard=2/2')
+    assert.ok(first.length > 0 && second.length > 0)
+    assert.ok(Math.abs(first.length - second.length) <= 1)
+    assert.equal(new Set([...first, ...second]).size, all.length)
+    assert.deepEqual([...first, ...second].sort(), all.sort())
+  }
+)
+
 test('documentation and instruction changes do not run game checks or publish', () => {
   const scope = selectScope([
     'README.md',
