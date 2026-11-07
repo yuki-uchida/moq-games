@@ -24,10 +24,28 @@ function setup() {
 }
 
 function choose(game: Game, id: string) {
-  const index = copiedWeapons.findIndex((def) => def.id === id)
+  const player = game.state.players[0]
+  if (!player.weapons.some((weapon) => weapon.id === id))
+    player.weapons.push({ id, lv: 1, cd: 100, held: 0, damage: 0 })
+  const candidates = player.weapons.filter((weapon) => copiedWeapons.some((def) => def.id === weapon.id))
+  const index = candidates.findIndex((weapon) => weapon.id === id)
   expect(index).toBeGreaterThanOrEqual(0)
-  Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copiedWeapons.length, configurable: true })
+  Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / candidates.length, configurable: true })
 }
+
+test('gambling waits for an owned attack weapon and redraws when it is lost', () => {
+  const { game, player, weapon } = setup()
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  expect(weapon.gambleWeapon).toBeUndefined()
+  expect(game.state.fx.some((event) => event.type === FX.GAMBLE)).toBe(false)
+  choose(game, 'w_pet')
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  expect(weapon.gambleWeapon).toBe('w_pet')
+  player.weapons = player.weapons.filter((owned) => owned.id !== 'w_pet')
+  choose(game, 'w_cooking')
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  expect(weapon.gambleWeapon).toBe('w_cooking')
+})
 
 test('gambling repeats the selected weapon before drawing again', () => {
   const { game, weapon } = setup()

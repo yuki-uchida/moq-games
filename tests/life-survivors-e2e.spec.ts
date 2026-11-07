@@ -122,7 +122,7 @@ test('gambling draws the right animation and status for each life stage', async 
     })
     const copied = await handle.evaluate(async (hook, nextAge) => {
       const path = '/src/data.ts'
-      const { EVENTS, WEAPONS, timeAtAge } = await import(path)
+      const { EVENTS, timeAtAge } = await import(path)
       const game = hook.game as unknown as Game
       const player = game.state.players[0]
       game.targetPopulation = () => 0
@@ -134,12 +134,10 @@ test('gambling draws the right animation and status for each life stage', async 
       player.choices = []
       player.pending = 0
       player.birthPick = false
-      player.weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
-      const copied = WEAPONS.filter(
-        (def: { id: string; behavior: string }) => def.id !== 'w_gamble' && def.behavior !== 'none'
-      )
-      const index = copied.findIndex((def: { id: string }) => def.id === 'w_cooking')
-      Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copied.length, configurable: true })
+      player.weapons = [
+        { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
+        { id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }
+      ]
       game['fireWeapons'](0)
       return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_cooking')
     }, age)
@@ -1967,7 +1965,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
   await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
   await hostLife.evaluate(async (hook) => {
     const path = '/src/data.ts'
-    const { EVENTS, WEAPONS, timeAtAge } = await import(path)
+    const { EVENTS, timeAtAge } = await import(path)
     const game = hook.game as unknown as Game
     game.targetPopulation = () => 0
     game.state.time = timeAtAge(23) + 0.01
@@ -1981,12 +1979,10 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
       player.birthPick = false
       player.weapons = []
     }
-    game.state.players[0].weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 }]
-    const copied = WEAPONS.filter(
-      (def: { id: string; behavior: string }) => def.id !== 'w_gamble' && def.behavior !== 'none'
-    )
-    const index = copied.findIndex((def: { id: string }) => def.id === 'w_cooking')
-    Object.defineProperty(game, 'rng', { value: () => (index + 0.5) / copied.length, configurable: true })
+    game.state.players[0].weapons = [
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
+      { id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }
+    ]
     game['fireWeapons'](0)
   })
   await expect
