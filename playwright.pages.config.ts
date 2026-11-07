@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
 const port = Number(process.env.PAGES_PORT || 4174)
+const linuxCI = process.platform === 'linux' && Boolean(process.env.CI)
 
 // Verify the actual Pages output, not Vite's development-only module routes.
 export default defineConfig({
@@ -23,7 +24,16 @@ export default defineConfig({
     headless: true,
     // Software WebGL makes the actual mesh review reproducible on hosted runners.
     launchOptions: {
-      args: ['--use-gl=angle', process.platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
+      args: linuxCI
+        ? [
+            '--enable-gpu',
+            '--ignore-gpu-blocklist',
+            '--disable-gpu-rasterization',
+            '--use-gl=angle',
+            '--use-angle=vulkan',
+            '--use-cmd-decoder=passthrough'
+          ]
+        : ['--use-gl=angle', process.platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
     },
     viewport: { width: 1440, height: 1000 },
     screenshot: 'only-on-failure',
