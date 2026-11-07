@@ -463,19 +463,16 @@ export function weaponStats(
         stats.cooldown *
         (evolved ? 0.8 : 1),
     amount:
-      def.id === 'p_over'
+      def.id === 'p_over' || def.id === 'p_monster'
         ? lv >= 4
           ? 2
           : 1
-        : Math.min(
-            def.id === 'p_monster' ? 2 : Infinity,
-            def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
-              ? 1
-              : def.amount +
-                  upgrades.reduce((value, upgrade) => value + (upgrade.amount ?? 0), 0) +
-                  (evolved && def.id !== 'w_sports' ? 1 : 0) +
-                  (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
-          ),
+        : def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
+          ? 1
+          : def.amount +
+            upgrades.reduce((value, upgrade) => value + (upgrade.amount ?? 0), 0) +
+            (evolved && def.id !== 'w_sports' ? 1 : 0) +
+            (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount),
     area: upgrades.reduce((value, upgrade) => value * (upgrade.area ?? 1), 1) * stats.area * (evolved ? 1.2 : 1),
     duration:
       def.duration *
@@ -1893,10 +1890,8 @@ export class Game {
       def.id === 'p_monster'
         ? Math.max(
             0,
-            Math.min(
-              ws.amount,
-              2 - this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
-            )
+            ws.amount -
+              this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
           )
         : def.id === 'p_over'
           ? Math.max(0, ws.amount - existingGuards)
@@ -1911,7 +1906,16 @@ export class Game {
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
-            h: def.id === 'p_over' ? i + existingGuards - (ws.amount - 1) / 2 : 0,
+            h:
+              def.id === 'p_over'
+                ? i + existingGuards - (ws.amount - 1) / 2
+                : def.id === 'p_monster'
+                  ? Number(
+                      this.state.shots.some(
+                        (shot) => shot.owner === player.id && shot.weapon === def.id && shot.h === 0
+                      )
+                    )
+                  : 0,
             tick: def.id === 'p_over' ? guardianBashDuration(weapon.lv) : 0.45
           })
         break
@@ -2484,9 +2488,9 @@ export class Game {
       let lastHit = Infinity
       let occupied = Infinity
       const chasers = new Map<Enemy, number>()
-      if (shot.weapon === 'w_pet')
+      if (shot.weapon === 'w_pet' || shot.weapon === 'p_monster')
         for (const other of this.state.shots)
-          if (other !== shot && other.owner === shot.owner && other.weapon === 'w_pet' && other.target)
+          if (other !== shot && other.owner === shot.owner && other.weapon === shot.weapon && other.target)
             chasers.set(other.target, (chasers.get(other.target) ?? 0) + 1)
       this.near(owner.x, owner.y, 300, (enemy) => {
         if (Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > 300) return
@@ -2504,8 +2508,9 @@ export class Game {
     }
     const target = shot.target
     // With nothing to chase the dog trots back to its spot beside the owner.
-    const goalX = target ? target.x : owner.x + Math.cos(shot.orbit) * 34
-    const goalY = target ? target.y : owner.y + Math.sin(shot.orbit) * 34
+    const restAngle = shot.weapon === 'p_monster' ? shot.h * Math.PI : shot.orbit
+    const goalX = target ? target.x : owner.x + Math.cos(restAngle) * 34
+    const goalY = target ? target.y : owner.y + Math.sin(restAngle) * 34
     const dx = goalX - shot.x
     const dy = goalY - shot.y
     const d = Math.hypot(dx, dy)
