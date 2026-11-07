@@ -307,7 +307,9 @@ test('EXTRA loop boundary repeats the start pose while the interior visibly move
       return (window as any).__extraViewerDiagnostics().renderCount
     }, phase)
     await expect.poll(async () => (await diagnostics(page)).renderCount).toBeGreaterThan(count)
-    return page.locator('#viewer-canvas').screenshot()
+    const frame = await page.locator('#viewer-canvas').screenshot()
+    await test.info().attach(`loop-boundary-phase-${phase}`, { body: frame, contentType: 'image/png' })
+    return frame
   }
   const start = await frameAt(0)
   expect((await frameAt(1)).equals(start)).toBe(true)
