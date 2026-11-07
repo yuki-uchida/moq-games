@@ -94,7 +94,7 @@ test.each(OBSERVATION_FORMS)('the creature changes to $name at age $age', (form)
 test('every creature and the weapon icon have distinct generated art', () => {
   const art = sheet('weapon:w_observe')
   const pictures = OBSERVATION_SPRITES.map((kind) => {
-    expect(art[kind].frames).toHaveLength(2)
+    expect(art[kind].frames).toHaveLength(4)
     expect(art[kind].frames[0].data.some(Boolean)).toBe(true)
     return Array.from(art[kind].frames[0].data).join(',')
   })

@@ -18,7 +18,7 @@ describe('arsenal art', () => {
       w_overtime: { fly: STAPLE_DIRS },
       w_ring: { fly: 4 },
       w_travel: { fly: 4 },
-      w_garden: { fly: 2, bloom: 2 },
+      w_garden: { fly: 4, sprout: 4, bloom: 4, tulip: 4, daisy: 4 },
       w_savings: { fly: 2, armed: 2 },
       w_gamble: { fly: 4, faces: 6 },
       w_cooking: { fly: 4, alt: 4, alt2: 4 },

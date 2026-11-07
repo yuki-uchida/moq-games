@@ -1,5 +1,5 @@
 import { C, R } from './palette'
-import { Raster, ball, part, shadeEdges, type Ramp } from './raster'
+import { Raster, ball, part, rng, shadeEdges, type Ramp } from './raster'
 import type { Anim, Sheet } from './sheet'
 import { observationIcon, observationSheet } from './observation'
 
@@ -1083,28 +1083,250 @@ function gambleArt(kind: 'gacha' | 'poker' | 'pachinko' | 'horse', frame: number
   return r
 }
 
+/** A sphere-shaded ellipse turned by `a` (the light stays top-left). */
+function turnedBall(l: Raster, cx: number, cy: number, rx: number, ry: number, a: number, ramp: Ramp) {
+  const cs = Math.cos(a)
+  const sn = Math.sin(a)
+  const reach = Math.ceil(Math.max(rx, ry)) + 1
+  for (let y = Math.floor(cy) - reach; y <= Math.ceil(cy) + reach; y++)
+    for (let x = Math.floor(cx) - reach; x <= Math.ceil(cx) + reach; x++) {
+      const dx = x + 0.5 - cx
+      const dy = y + 0.5 - cy
+      const lx = (dx * cs + dy * sn) / rx
+      const ly = (-dx * sn + dy * cs) / ry
+      const q = lx * lx + ly * ly
+      if (q > 1.0001) continue
+      const nz = Math.sqrt(Math.max(0, 1 - q))
+      // Normal back in screen space: turning the surface does not move the light.
+      const wx = lx * cs - ly * sn
+      const wy = lx * sn + ly * cs
+      const d = wx * -0.55 + wy * -0.7 + nz * 0.55
+      l.set(x, y, d > 0.8 ? ramp[0] : d > 0.25 ? ramp[1] : d > -0.12 ? ramp[2] : ramp[3])
+    }
+}
+
+/** A plump seed pod tumbling in the air: four quarter turns, each drawn from primitives. */
 function gardenSeed(frame: number) {
   const r = new Raster(N, N)
+  const a = 0.5 + (frame * Math.PI) / 2
+  const cx = 16
+  const cy = 16
+  // Local axes: u across the seed, v along it (tip towards -v).
+  const at = (u: number, v: number): [number, number] => spin(cx + u, cy + v, cx, cy, a)
   part(r, (l) => {
-    ball(l, 16, 18, 6, 8, R.brown)
-    l.thick(16, 12, 16 + frame, 7, 2, R.green[2])
-    l.ellipse(12, 8, 4, 2, R.green[1])
-    l.ellipse(20, 6 + frame, 4, 2, R.green[0])
+    const [tx, ty] = at(0, -10)
+    const [bx, by] = at(0, -6)
+    l.thick(bx, by, tx, ty, 2, R.green[2])
+    const [lx, ly] = at(3.5, -10)
+    const [mx, my] = at(-3.5, -11)
+    l.ellipse(lx, ly, 3.4, 1.9, R.green[1])
+    l.ellipse(mx, my, 3.2, 1.8, R.green[0])
+  })
+  part(r, (l) => {
+    turnedBall(l, cx, cy + 1, 6.5, 8.5, a, R.brown)
+    // Seed-coat stripes follow the long axis.
+    for (const u of [-2.5, 0.5, 3]) {
+      const [x0, y0] = at(u, -3)
+      const [x1, y1] = at(u, 6)
+      l.line(x0, y0, x1, y1, u < 0 ? R.brown[1] : R.brown[2])
+    }
   })
   return r
 }
 
-function gardenFlower(frame: number) {
+/** A ring of `n` petals (round-brush strokes from `r0` to `r1`), lit from the top-left by their direction. */
+function petals(
+  l: Raster,
+  cx: number,
+  cy: number,
+  n: number,
+  r0: number,
+  r1: number,
+  width: number,
+  ramp: Ramp,
+  turn0: number
+) {
+  l.ellipse(cx, cy, r0 + 0.5, r0 + 0.5, ramp[1])
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + turn0
+    const lit = -Math.cos(a) * 0.55 - Math.sin(a) * 0.7
+    const col = lit > 0.55 ? ramp[0] : lit < -0.35 ? ramp[2] : ramp[1]
+    l.thick(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, width, col)
+  }
+}
+
+/** Layer of the flower stem and its two leaves; the head sways by `hx`. */
+function stemLayer(l: Raster, hx: number, hy: number, frame: number) {
+  const bob = [0, -1, 0, 0][frame]
+  l.thick(16, 30, 16 + hx * 0.4, 21, 2, R.green[1])
+  l.thick(16 + hx * 0.4, 21, 16 + hx, hy + 3, 2, R.green[1])
+  l.poly([16, 27, 10, 24 + bob, 7, 25 + bob, 10, 28, 16, 29], R.green[1])
+  l.poly([16, 25, 22, 22 - bob, 25, 23 - bob, 22, 26, 16, 27], R.green[1])
+  shadeEdges(l, R.green, 1, true)
+}
+
+type FlowerKind = 'sunflower' | 'tulip' | 'daisy'
+
+/** One bedding flower (32×32, base at y=30, head swaying over 4 frames). */
+function flower(kind: FlowerKind, frame: number) {
   const r = new Raster(N, N)
+  const hx = [-1, 0, 1, 0][frame]
+  const hy = kind === 'sunflower' ? 11 : kind === 'tulip' ? 12 : 13
+  part(r, (l) => stemLayer(l, hx, hy, frame))
+  const cx = 16 + hx
+  if (kind === 'sunflower') {
+    part(r, (l) => {
+      petals(l, cx, hy, 9, 4, 7.4, 3.2, R.yellow, 0.2)
+    })
+    part(r, (l) => {
+      ball(l, cx, hy, 4.6, 4.6, R.brown)
+    })
+  } else if (kind === 'tulip') {
+    part(r, (l) => {
+      l.poly(
+        [cx - 5, hy - 1, cx - 5, hy - 7, cx - 2, hy - 3, cx, hy - 8, cx + 2, hy - 3, cx + 5, hy - 7, cx + 5, hy - 1],
+        R.red[1]
+      )
+      ball(l, cx, hy + 1, 5.2, 6, R.red)
+      l.line(cx - 1, hy - 4, cx - 1, hy, R.red[2])
+      l.line(cx + 2, hy - 3, cx + 2, hy + 1, R.red[2])
+    })
+  } else {
+    part(r, (l) => {
+      petals(l, cx, hy, 10, 3, 7.4, 2.3, R.paper, 0.3)
+    })
+    part(r, (l) => {
+      ball(l, cx, hy, 3, 3, R.yellow)
+    })
+  }
+  return r
+}
+
+/** Landed seed: a soil mound with crumbs, a sprout popping up and wiggling (4 frames). */
+function gardenSprout(frame: number) {
+  const r = new Raster(N, N)
+  const lean = [-1, 0, 1, 0][frame]
+  const grow = [0, 1, 2, 1][frame]
   part(r, (l) => {
-    l.thick(16, 15, 16, 28, 3, R.green[2])
-    l.ellipse(11, 22, 5, 2.5, R.green[1])
-    l.ellipse(21, 25, 5, 2.5, R.green[1])
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2 + frame * 0.12
-      l.ellipse(16 + Math.cos(angle) * 6, 10 + Math.sin(angle) * 6, 3.5, 3.5, R.yellow[1])
+    l.thick(16, 24, 16 + lean * 0.5, 17 - grow, 2, R.green[1])
+    l.thick(16 + lean * 0.5, 17 - grow, 16 + lean, 13 - grow, 2, R.green[1])
+    l.ellipse(11 + lean * 0.5, 13 - grow + (frame === 2 ? -1 : 0), 4.2, 2.2, R.green[1])
+    l.ellipse(21 + lean, 12 - grow + (frame === 0 ? 1 : 0), 4.2, 2.2, R.green[1])
+    shadeEdges(l, R.green, 1, true)
+  })
+  part(r, (l) => {
+    ball(l, 16, 27, 9, 5.5, R.brown)
+  })
+  // Crumbs hopping around the mound.
+  const hop = [
+    [8, 22, 22, 21],
+    [7, 20, 23, 19],
+    [6, 22, 24, 21],
+    [7, 24, 23, 23]
+  ][frame]
+  part(r, (l) => l.rect(hop[0], hop[1], 2, 2, R.brown[1]))
+  part(r, (l) => l.rect(hop[2], hop[3], 2, 2, R.brown[2]))
+  return r
+}
+
+/** Cached tilled flower-bed soil at world scale: dark disc, furrows, crumbs, pebbles and a soft edge. */
+const beds = new Map<number, Raster>()
+export function flowerBed(radius: number) {
+  const rr = Math.max(16, Math.round(radius / 4) * 4)
+  let r = beds.get(rr)
+  if (r) return r
+  r = new Raster(rr * 2 + 2, rr * 2 + 2)
+  const rand = rng(rr * 31 + 7)
+  const c = rr + 1
+  for (let y = 0; y < r.h; y++)
+    for (let x = 0; x < r.w; x++) {
+      const dx = x + 0.5 - c
+      const dy = y + 0.5 - c
+      const d = Math.hypot(dx, dy)
+      if (d > rr) continue
+      // Soft edge: a dithered crumbly rim over the last 3 px.
+      if (d > rr - 3 && (x + y + (d > rr - 1.5 ? 1 : 0)) % 2) continue
+      const row = (y + Math.floor(Math.sin(x / 9) * 1.5) + 80) % 7
+      let col: number = R.brown[2]
+      if (row === 0) col = R.brown[3]
+      else if (row === 1 && (x * 5 + y * 3) % 9 > 3) col = R.brown[1]
+      if (d > rr - 3) col = dx + dy < -rr * 0.3 ? R.brown[1] : R.brown[3]
+      r.set(x, y, col)
     }
-    ball(l, 16, 10, 4, 4, R.brown)
+  // Soil clumps and pebbles.
+  const n = Math.round(rr / 6)
+  for (let i = 0; i < n; i++) {
+    const a = rand() * Math.PI * 2
+    const d = Math.sqrt(rand()) * (rr - 8)
+    const x = Math.round(c + Math.cos(a) * d)
+    const y = Math.round(c + Math.sin(a) * d)
+    if (i % 3 === 0) {
+      r.rect(x, y, 2, 2, R.metal[1])
+      r.set(x + 1, y + 1, R.metal[2])
+      r.set(x, y, R.metal[0])
+    } else {
+      r.rect(x, y, 2, 1, R.brown[1])
+      r.set(x + 1, y + 1, R.brown[3])
+    }
+  }
+  beds.set(rr, r)
+  return r
+}
+
+export type BedSpot = { x: number; y: number; kind: 0 | 1 | 2; phase: number }
+const spotCache = new Map<string, BedSpot[]>()
+/** Deterministic flower positions for a bed (the flower base relative to the bed centre), back to front. */
+export function flowerSpots(radius: number, variant: number): BedSpot[] {
+  const rr = Math.max(16, Math.round(radius / 4) * 4)
+  const key = `${rr}:${variant & 3}`
+  let spots = spotCache.get(key)
+  if (spots) return spots
+  const n = Math.max(4, Math.round(rr / 7))
+  const rand = rng(rr * 17 + (variant & 3) * 101 + 5)
+  spots = []
+  for (let k = 0; k < n; k++) {
+    const a = k * 2.39996 + (variant & 3) * 1.3
+    const d = (rr - 10) * Math.sqrt((k + 0.5) / n)
+    spots.push({
+      x: Math.round(Math.cos(a) * d),
+      y: Math.round(Math.sin(a) * d * 0.9 + 4),
+      kind: ((k + (variant & 3)) % 3) as 0 | 1 | 2,
+      phase: rand() * 1.2
+    })
+  }
+  spots.sort((p, q) => p.y - q.y)
+  spotCache.set(key, spots)
+  return spots
+}
+
+/** HUD icon: a sunflower with a little watering can. */
+function gardenIcon() {
+  const r = new Raster(32, 32)
+  part(r, (l) => {
+    l.thick(22, 29, 22, 15, 2, R.green[1])
+    l.poly([22, 26, 28, 22, 31, 23, 28, 27, 22, 28], R.green[1])
+    shadeEdges(l, R.green, 1, true)
+  })
+  part(r, (l) => {
+    petals(l, 22, 10, 9, 3.5, 7, 3.2, R.yellow, 0.2)
+  })
+  part(r, (l) => ball(l, 22, 10, 4.3, 4.3, R.brown))
+  // Watering can: handle, spout with a rose, body.
+  part(r, (l) => {
+    l.thick(4, 19, 2, 21, 2, R.metal[2])
+    l.thick(2, 21, 2, 25, 2, R.metal[2])
+    l.thick(2, 25, 4, 27, 2, R.metal[2])
+  })
+  part(r, (l) => {
+    l.thick(13, 25, 17, 21, 2, R.mint[1])
+    l.ellipse(18, 20, 1.6, 2.4, R.mint[2])
+  })
+  part(r, (l) => {
+    l.rect(4, 17, 10, 12, R.mint[1])
+    shadeEdges(l, R.mint, 1, true)
+    l.rect(4, 17, 10, 2, R.mint[0])
+    l.rect(5, 22, 8, 1, R.mint[2])
+    l.rect(5, 26, 8, 1, R.mint[2])
   })
   return r
 }
@@ -1164,7 +1386,7 @@ const ICONS: Record<string, () => Raster> = {
   w_travel_car: () => outdoorVehicle('car', 0),
   w_travel_plane: () => outdoorVehicle('plane', 0),
   w_savings: () => pig(0, false),
-  w_garden: () => gardenFlower(0),
+  w_garden: gardenIcon,
   w_gamble: () => gambleArt('gacha', 5),
   w_gamble_gacha: () => gambleArt('gacha', 5),
   w_gamble_poker: () => gambleArt('poker', 5),
@@ -1342,7 +1564,22 @@ export function arsenalSheets(): Record<string, () => Sheet> {
         8
       )
     }),
-    'weapon:w_garden': () => ({ fly: loop(many(2, gardenSeed), 6), bloom: loop(many(2, gardenFlower), 3) }),
+    'weapon:w_garden': () => ({
+      fly: loop(many(4, gardenSeed), 10),
+      sprout: loop(many(4, gardenSprout), 6),
+      bloom: loop(
+        many(4, (f) => flower('sunflower', f)),
+        4
+      ),
+      tulip: loop(
+        many(4, (f) => flower('tulip', f)),
+        4
+      ),
+      daisy: loop(
+        many(4, (f) => flower('daisy', f)),
+        4
+      )
+    }),
     'weapon:w_savings': () => ({
       fly: loop([pig(0, false), pig(1, false)], 3),
       armed: loop([pig(0, true), pig(1, true)], 4)
