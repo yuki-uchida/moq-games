@@ -145,7 +145,8 @@ jobs:
             ],
             use: {
               launchOptions: {
-                args: ['--enable-gpu', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough']
+                // Chromium blocks llvmpipe by default; this diagnostic deliberately measures software drivers.
+                args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough']
               }
             }
           })
@@ -223,7 +224,7 @@ jobs:
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
             jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, node: process.version,
             headless: true, display: 'xvfb-run -a',
-            args: ['--enable-gpu', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
+            args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
             environment: Object.fromEntries(['LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', 'VK_DRIVER_FILES'].map(key => [key, process.env[key] ?? null]))
           };
           writeFileSync('.build/renderer-benchmark-local/metadata.json', JSON.stringify(metadata, null, 2));
