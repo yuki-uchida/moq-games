@@ -77,6 +77,11 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.ok(browser)
   assert.match(browser, /^    needs: \[changes, build\]$/m)
   assert.match(browser, /^    runs-on: ubuntu-latest$/m)
+  assert.match(
+    browser,
+    /uses: actions\/checkout@v4\n        with:\n          sparse-checkout: \|\n            \/\*\n            !\/public\/\n          sparse-checkout-cone-mode: false\n/
+  )
+  assert.doesNotMatch(workflow.replace(/^  browser:\n[\s\S]*?(?=^  \S)/m, ''), /sparse-checkout/)
   assert.doesNotMatch(browser, /defaults:/)
   assert.match(browser, /path: ~\/\.cache\/ms-playwright/)
   assert.match(browser, /key: playwright-\$\{\{ runner.os \}\}/)
