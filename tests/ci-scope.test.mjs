@@ -419,7 +419,7 @@ test('unit shards run independently and gate publication', () => {
   )
   assert.match(
     unit,
-    /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=2/
+    /npx vitest run \$\{\{ needs\.changes\.outputs\.unit \}\} --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --maxWorkers=4/
   )
   assert.match(deploy, /needs: \[[^\]\n]*\bunit\b[^\]\n]*\]/)
   assert.match(

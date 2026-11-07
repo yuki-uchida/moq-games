@@ -216,7 +216,7 @@ jobs:
         if: contains(needs.changes.outputs.unit, 'examples/games/yoru-no-yashiki/tests')
         run: npx playwright install --with-deps chromium
       - name: Unit tests
-        run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=2
+        run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=4
   life-browser:
     needs: changes
     if: needs.changes.outputs.life == 'true'
