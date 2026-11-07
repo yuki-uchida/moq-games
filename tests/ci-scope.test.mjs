@@ -629,9 +629,11 @@ test(
     const partition = (index, count, input = files) =>
       new Sequencer({ config: { root, shard: { index, count } } }).shard(input)
     assert.deepEqual(await partition(1, 3), [clock])
-    assert.deepEqual(await partition(2, 3), [town, light[0], light[2]])
-    assert.deepEqual(await partition(3, 3), [audio, light[1]])
-    assert.deepEqual(await partition(1, 1), [clock, town, audio, ...light])
+    assert.deepEqual(await partition(2, 3), [audio])
+    assert.deepEqual(await partition(3, 3), [town, ...light])
+    assert.deepEqual(await partition(1, 1), [clock, audio, town, ...light])
+    assert.deepEqual(await partition(1, 2, [...light].reverse()), [light[0], light[2]])
+    assert.deepEqual(await partition(2, 2, [...light].reverse()), [light[1]])
     assert.deepEqual(await partition(7, 8), [])
     assert.deepEqual(await partition(1, 8, []), [])
   }
