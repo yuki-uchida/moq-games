@@ -107,6 +107,67 @@ function dog(f: number, mode: 'run' | 'closed' | 'open') {
   return r
 }
 
+function smallPet(kind: 'cat' | 'rabbit' | 'parakeet' | 'hamster', frame: number, mode: 'run' | 'closed' | 'open') {
+  const sprite = new Raster(N, N)
+  const bob = mode === 'run' ? [0, -1, 0, -1][frame] : mode === 'open' ? 1 : 0
+  const step = mode === 'run' ? [2, -1, -2, 1][frame] : 0
+  if (kind === 'parakeet') {
+    part(sprite, (layer) => {
+      layer.poly([10, 18 + bob, 1, 26 + bob, 8, 17 + bob], R.green[2])
+      layer.line(13, 22 + bob, 12 + step, 27, R.orange[2])
+      layer.line(18, 22 + bob, 19 - step, 27, R.orange[2])
+    })
+    part(sprite, (layer) => {
+      ball(layer, 15, 17 + bob, 9, 6.5, R.green)
+      layer.ellipse(14, 17 + bob - Math.abs(step), 5, 3.5, R.green[2])
+      layer.line(11, 15 + bob - Math.abs(step), 17, 17 + bob - Math.abs(step), R.green[3])
+      ball(layer, 22, 11 + bob, 6, 6, R.yellow)
+      layer.line(18, 7 + bob, 21, 9 + bob, R.green[3])
+      layer.line(18, 10 + bob, 20, 11 + bob, R.green[3])
+      layer.poly([27, 12 + bob, 31, 14 + bob, 27, 16 + bob], R.orange[1])
+      layer.set(23, 10 + bob, C.inkCool)
+      layer.set(20, 14 + bob, R.sky[2])
+      if (mode === 'open') layer.set(29, 15 + bob, C.inkWarm)
+    })
+    return sprite
+  }
+
+  const fur = kind === 'cat' ? R.metal : kind === 'rabbit' ? R.paper : R.brown
+  part(sprite, (layer) => {
+    if (kind === 'cat') {
+      layer.thick(8, 19 + bob, 4, 13 + bob, 2, fur[1])
+      layer.thick(4, 13 + bob, 6, 9 + bob, 2, fur[1])
+    } else if (kind === 'rabbit') ball(layer, 6, 18 + bob, 3, 3, R.paper)
+    else layer.ellipse(6, 20 + bob, 2, 2, R.pink[1])
+  })
+  part(sprite, (layer) => {
+    layer.thick(10, 21 + bob, 9 + step, 26, 3, fur[2])
+    layer.thick(21, 21 + bob, 22 - step, 26, 3, fur[2])
+    ball(layer, 15, 18 + bob, kind === 'hamster' ? 10 : 9, kind === 'hamster' ? 8 : 6, fur)
+    layer.ellipse(15, 22 + bob, 6, 2, R.paper[1])
+  })
+  part(sprite, (layer) => {
+    if (kind === 'rabbit') {
+      layer.ellipse(20, 6 + bob, 2.5, 6, fur[1])
+      layer.ellipse(25, 6 + bob, 2.5, 6, fur[1])
+      layer.ellipse(25, 6 + bob, 1, 4, R.pink[1])
+    } else if (kind === 'cat') {
+      layer.poly([18, 11 + bob, 19, 3 + bob, 23, 8 + bob], fur[2])
+      layer.poly([23, 8 + bob, 28, 3 + bob, 28, 12 + bob], fur[1])
+    } else {
+      ball(layer, 19, 10 + bob, 3, 3, fur)
+      ball(layer, 26, 10 + bob, 3, 3, fur)
+    }
+    ball(layer, 23, 15 + bob, kind === 'hamster' ? 7 : 6, 5.5, fur)
+    layer.ellipse(27, 18 + bob, kind === 'hamster' ? 4 : 3, 2.5, R.paper[1])
+    layer.set(23, 13 + bob, C.inkCool)
+    layer.set(29, 16 + bob, kind === 'cat' ? R.pink[2] : C.inkWarm)
+    if (kind === 'hamster') layer.ellipse(22, 19 + bob, 3, 2, R.pink[1])
+    if (mode === 'open') layer.ellipse(27, 20 + bob, 2, 1, R.red[2])
+  })
+  return sprite
+}
+
 // ---------------------------------------------------------------------------------------------
 // 読書: an open, glowing book with a page flipping across.
 
@@ -1230,6 +1291,18 @@ export function arsenalSheets(): Record<string, () => Sheet> {
       ),
       bite: loop([dog(0, 'closed'), dog(0, 'open')], 6)
     }),
+    ...Object.fromEntries(
+      (['cat', 'rabbit', 'parakeet', 'hamster'] as const).map((kind) => [
+        `weapon:w_pet_${kind}`,
+        () => ({
+          fly: loop(
+            many(4, (frame) => smallPet(kind, frame, 'run')),
+            12
+          ),
+          bite: loop([smallPet(kind, 0, 'closed'), smallPet(kind, 0, 'open')], 6)
+        })
+      ])
+    ),
     'weapon:w_reading': () => ({ fly: loop(many(4, openBook), 6) }),
     'weapon:w_overtime': () => ({ fly: loop(many(STAPLE_DIRS, staple), 1) }),
     'weapon:w_ring': () => ({ fly: loop(many(4, ring), 12) }),

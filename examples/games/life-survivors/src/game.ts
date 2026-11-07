@@ -37,7 +37,15 @@ import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
-import { GAMBLE_FORMS, PET_LIFESPAN, PET_MEMORY, gambleForm, observationSprite, weaponAppearance } from './weapon-life'
+import {
+  GAMBLE_FORMS,
+  PET_LIFESPAN,
+  PET_MEMORY,
+  PET_TYPES,
+  gambleForm,
+  observationSprite,
+  weaponAppearance
+} from './weapon-life'
 
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
@@ -218,6 +226,7 @@ export interface Shot {
   h: number
   /** Variant for the renderer: chain link, biting, armed, pellet kind. */
   v: number
+  petType?: number
   /** Seconds before the shot exists (staples fired one after another). */
   delay: number
   /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
@@ -1719,6 +1728,11 @@ export class Game {
       for (const weapon of player.weapons) {
         if (weapon.id === 'w_cooking' && weapon.held === 0) weapon.cd = WEAPON_BY_ID.get(weapon.id)!.cooldown
         weapon.held += dt
+        if (
+          weapon.id === 'w_travel' &&
+          this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
+        )
+          continue
         weapon.cd -= dt
         if (weapon.id === 'p_toxic') {
           const aura = this.state.shots.find((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
@@ -1969,6 +1983,7 @@ export class Game {
             x: player.x + Math.cos(i * 2.4) * 24,
             y: player.y + Math.sin(i * 2.4) * 24,
             orbit: i * 2.4,
+            petType: i % PET_TYPES.length,
             spin: speed,
             tick: 0.4
           })
@@ -2051,6 +2066,9 @@ export class Game {
             x: player.x - side * (VIEW_HALF.x + 40),
             y: player.y + (rng() * 2 - 1) * 220,
             vx: side * speed,
+            ...(weapon.id === 'w_travel'
+              ? { aux: player.x + side * (VIEW_HALF.x + 40), life: (2 * (VIEW_HALF.x + 40)) / speed + 1 }
+              : {}),
             angle: side > 0 ? 0 : Math.PI,
             tick: 5
           })
@@ -2203,11 +2221,15 @@ export class Game {
         kept.push(shot)
         continue
       }
-      if (shot.life <= 0) {
+      if (shot.life <= 0 && shot.sourceWeapon !== 'w_travel') {
         if (shot.weapon === 'p_free') this.burst(shot, owner)
         continue
       }
       switch (shot.kind) {
+        case 'sweep':
+          shot.x += shot.vx * dt
+          if (shot.sourceWeapon === 'w_travel' && (shot.x - shot.aux) * shot.vx >= 0) continue
+          break
         case 'orbit':
           if (shot.weapon === 'p_monster') this.movePet(shot, owner, dt)
           else if (shot.weapon === 'p_over') this.moveGuardian(shot, owner, dt)
@@ -2380,10 +2402,21 @@ export class Game {
       shot.aux = 0.2
       let best: Enemy | undefined
       let distance = Infinity
+      let lastHit = Infinity
+      let occupied = Infinity
+      const chasers = new Map<Enemy, number>()
+      if (shot.weapon === 'w_pet')
+        for (const other of this.state.shots)
+          if (other !== shot && other.owner === shot.owner && other.weapon === 'w_pet' && other.target)
+            chasers.set(other.target, (chasers.get(other.target) ?? 0) + 1)
       this.near(owner.x, owner.y, 300, (enemy) => {
         if (Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > 300) return
         const d = (enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2
-        if (d < distance) {
+        const hit = shot.weapon === 'w_pet' ? (shot.hits.get(enemy.id) ?? -Infinity) : 0
+        const count = chasers.get(enemy) ?? 0
+        if (hit < lastHit || (hit === lastHit && (count < occupied || (count === occupied && d < distance)))) {
+          lastHit = hit
+          occupied = count
           distance = d
           best = enemy
         }

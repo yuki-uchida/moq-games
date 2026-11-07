@@ -123,6 +123,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((s.life / s.maxLife) * 100),
       ownerIndex.get(s.owner) ?? 0,
       (s.weapon === 'p_over' && (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : r(s.v)) +
+        (s.kind === 'pet' ? (s.petType ?? 0) * 2 : 0) +
         (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0)
     )
   }

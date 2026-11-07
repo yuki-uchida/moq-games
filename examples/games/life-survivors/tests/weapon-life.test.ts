@@ -3,10 +3,11 @@ import { ageAt, EVENTS, MAX_WEAPON_LEVEL, PASSIVES, PASSIVE_SLOTS, timeAtAge } f
 import { Game, choiceText, playerStats, weaponName, weaponStats } from '../src/game'
 import { sheet } from '../src/art/index'
 import { resultCategories } from '../src/result'
-import { readView, toView } from '../src/view'
+import { readView, SHOT_GAMBLE, STRIDE, toView } from '../src/view'
 import {
   OUTDOOR_FORMS,
   PET_MEMORY,
+  PET_TYPES,
   SPORTS_FORMS,
   outdoorForm,
   petForm,
@@ -145,6 +146,36 @@ test.each([
 ] as const)('pet appearance at %i years is %s', (years, name) => {
   expect(petForm(years).name).toBe(name)
   expect(weaponAppearance('w_pet', 30 + years, years).name).toContain(name)
+})
+
+test('pet shots cycle through five types and keep their type in snapshots', () => {
+  const { game, player, obtain } = setup()
+  obtain('w_pet')
+  player.weapons[0].lv = 8
+  player.weapons[0].cd = 0
+  player.passives = [
+    { id: 'p_clever', lv: 1 },
+    { id: 'p_grand', lv: 2 }
+  ]
+  game.tick(0)
+  const pets = game.state.shots.filter((shot) => shot.weapon === 'w_pet')
+  expect(pets.map((shot) => PET_TYPES[shot.petType!])).toEqual([
+    'dog',
+    'cat',
+    'rabbit',
+    'parakeet',
+    'hamster',
+    'dog',
+    'cat'
+  ])
+  pets.forEach((shot, index) => (shot.v = index % 2))
+  pets[1].sourceWeapon = 'w_gamble'
+  const view = toView(game.state)
+  expect(readView(view)).toBeDefined()
+  expect(pets.map((_, index) => view.shots[index * STRIDE.shots + 7])).toEqual([0, SHOT_GAMBLE + 3, 4, 7, 8, 1, 2])
+  game.state.shots = [pets[6], pets[3]]
+  const reordered = toView(game.state)
+  expect([reordered.shots[7], reordered.shots[STRIDE.shots + 7]]).toEqual([2, 7])
 })
 
 test('a pet ages from acquisition, not firing time; upgrades do not reset its life', () => {
