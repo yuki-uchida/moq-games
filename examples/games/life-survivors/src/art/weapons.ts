@@ -163,8 +163,8 @@ function guardian(f: number) {
       ],
       R.brown[2]
     )
-    ball(l, hdx - 6, hdy - 5 - (f % 2), 2.6, 2.6, R.brown)
-    l.set(hdx - 4, hdy - 3, R.red[1])
+    ball(l, hdx - 6, hdy - 4 - (f % 2), 2.6, 2.6, R.brown)
+    l.set(hdx - 4, hdy - 2, R.red[1])
   })
   part(
     r,

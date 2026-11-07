@@ -2242,6 +2242,73 @@ test('cooking labels stay on the map and buffs remain readable on a phone', asyn
   expect(errors).toEqual([])
 })
 
+test('foods dropped on the same spot fan out and keep readable labels', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    const labels: Record<string, { x: number; y: number }> = {}
+    Object.assign(window, { stackedFoodLabels: labels })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.startsWith('P1：')) {
+        const matrix = this.getTransform()
+        labels[text] = {
+          x: matrix.a * x + matrix.c * y + matrix.e,
+          y: matrix.b * x + matrix.d * y + matrix.f
+        }
+      }
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
+    player.weapons = []
+    // Far enough that the player never collects them, still inside the screen.
+    game.state.items = (['food_damage', 'food_speed', 'food_heal'] as const).map((kind) => ({
+      kind,
+      owner: player.id,
+      power: 1,
+      x: player.x + 150,
+      y: player.y + 40
+    }))
+  })
+  const expected = ['P1：攻撃力UP', 'P1：移動速度UP', 'P1：HP回復']
+  type Labels = Record<string, { x: number; y: number }>
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (names) =>
+          names.every((name) => name in (window as unknown as { stackedFoodLabels: Labels }).stackedFoodLabels),
+        expected
+      )
+    )
+    .toBe(true)
+  const labels = await page.evaluate(() => (window as unknown as { stackedFoodLabels: Labels }).stackedFoodLabels)
+  for (let a = 0; a < expected.length; a++) {
+    for (let b = a + 1; b < expected.length; b++) {
+      const first = labels[expected[a]]
+      const second = labels[expected[b]]
+      // Each label is about 90 px wide, so labels with overlapping x ranges must be stacked.
+      if (Math.abs(first.x - second.x) < 90) expect(Math.abs(first.y - second.y)).toBeGreaterThanOrEqual(12)
+      expect(first.x !== second.x || first.y !== second.y).toBe(true)
+    }
+  }
+  expect(await handle.evaluate((hook) => (hook.game as unknown as Game).state.items.length)).toBe(3)
+  await page.screenshot({ path: testInfo.outputPath('cooking-stacked.png') })
+  expect(errors).toEqual([])
+})
+
 test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })

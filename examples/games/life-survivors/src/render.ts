@@ -2211,29 +2211,41 @@ export class Renderer {
     }
     this.world()
     const it = view.items
+    // Foods dropped on the same spot fan out sideways; their labels dodge each other upward.
+    const foodSpots: number[] = []
+    const labelBoxes: number[] = []
     for (let i = 0; i < it.length; i += STRIDE.items) {
       const kind = ITEM_KINDS[it[i]]
       if (!visible(it[i + 1], it[i + 2])) continue
       const anim = items[kind]
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
       const food = it[i + 3] >= 0 ? COOKING_EFFECTS[kind as keyof typeof COOKING_EFFECTS] : undefined
-      this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
+      let ix = it[i + 1]
+      if (food) {
+        let near = 0
+        for (let n = 0; n < foodSpots.length; n += 2) {
+          if (Math.hypot(foodSpots[n] - ix, foodSpots[n + 1] - it[i + 2]) < 18) near++
+        }
+        foodSpots.push(ix, it[i + 2])
+        if (near) ix += (near % 2 ? 1 : -1) * 14 * Math.ceil(near / 2)
+      }
+      this.shadow(ix, it[i + 2] + 8, 6, 0.22)
       if (food) {
         const swell = Math.sin(this.clock * 3 * this.fx.motion)
         ctx.save()
-        this.glowEllipse(it[i + 1], it[i + 2] + 2, 24 + swell * 3, 20 + swell * 2.5, food.color, 0.5 + 0.12 * swell)
+        this.glowEllipse(ix, it[i + 2] + 2, 24 + swell * 3, 20 + swell * 2.5, food.color, 0.5 + 0.12 * swell)
         ctx.globalAlpha = 0.75
         ctx.strokeStyle = food.color
         ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.ellipse(it[i + 1], it[i + 2] + 7, 13 + swell * 2, 5, 0, 0, TAU)
+        ctx.ellipse(ix, it[i + 2] + 7, 13 + swell * 2, 5, 0, 0, TAU)
         ctx.stroke()
         // Two twinkles that swell and fade out of step.
         ctx.fillStyle = '#fffbe6'
         for (let n = 0; n < 2; n++) {
           const t = (this.clock * 0.7 * this.fx.motion + n * 0.5 + i * 0.13) % 1
           const k = Math.sin(t * Math.PI)
-          const tx = it[i + 1] + (n ? 11 : -12)
+          const tx = ix + (n ? 11 : -12)
           const ty = it[i + 2] - 6 + (n ? 4 : -2) - Math.round(t * 3)
           const arm = 1 + 3 * k
           ctx.globalAlpha = 0.9 * k
@@ -2242,7 +2254,7 @@ export class Renderer {
         }
         ctx.restore()
       }
-      this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12, false, 1, food ? 1.5 : 1)
+      this.art(anim.frames[0], ix, it[i + 2] + bob, 8, 12, false, 1, food ? 1.5 : 1)
       if (food) {
         this.world()
         ctx.save()
@@ -2252,8 +2264,27 @@ export class Renderer {
         ctx.strokeStyle = '#34203b'
         ctx.fillStyle = '#fff4cf'
         const label = `${view.players[it[i + 3]].name}：${food.label}`
-        ctx.strokeText(label, it[i + 1], it[i + 2] - 24 + bob)
-        ctx.fillText(label, it[i + 1], it[i + 2] - 24 + bob)
+        const half = ctx.measureText(label).width / 2 + 2
+        let ly = it[i + 2] - 24 + bob
+        for (let guard = 0; guard < 40; guard++) {
+          let hit = false
+          for (let n = 0; n < labelBoxes.length; n += 4) {
+            if (
+              ix - half < labelBoxes[n + 1] &&
+              ix + half > labelBoxes[n] &&
+              ly - 13 < labelBoxes[n + 3] &&
+              ly + 2 > labelBoxes[n + 2]
+            ) {
+              hit = true
+              break
+            }
+          }
+          if (!hit) break
+          ly -= 15
+        }
+        labelBoxes.push(ix - half, ix + half, ly - 13, ly + 2)
+        ctx.strokeText(label, ix, ly)
+        ctx.fillText(label, ix, ly)
         ctx.restore()
       }
     }

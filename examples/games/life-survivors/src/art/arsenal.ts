@@ -873,7 +873,7 @@ function outdoorVehicle(vehicle: OutdoorVehicle, f: number) {
     // Smoke puffs drifting back from the muffler.
     for (const k of [0, 2]) {
       const p = ((f + k) % 4) / 4
-      r.ellipse(2 - p * 2, 26 - p * 3, 0.9 + p * 0.9, 0.9 + p * 0.9, p < 0.5 ? R.paper[1] : R.paper[2])
+      r.ellipse(3.6 - p * 1.6, 26 - p * 3, 0.9 + p * 0.9, 0.9 + p * 0.9, p < 0.5 ? R.paper[1] : R.paper[2])
     }
     return r
   }
@@ -910,7 +910,7 @@ function outdoorVehicle(vehicle: OutdoorVehicle, f: number) {
     vehicleWheel(r, 23, 4, f, { rays: 5, tyre: 1, dish: false })
     for (const k of [0, 2]) {
       const p = ((f + k) % 4) / 4
-      r.ellipse(2 - p * 2, 26 - p * 3, 0.9 + p * 0.8, 0.9 + p * 0.8, p < 0.5 ? R.paper[1] : R.paper[2])
+      r.ellipse(3.6 - p * 1.6, 26 - p * 3, 0.9 + p * 0.8, 0.9 + p * 0.8, p < 0.5 ? R.paper[1] : R.paper[2])
     }
     return r
   }
@@ -1861,12 +1861,12 @@ function chips(r: Raster, n: number) {
 function pokerArt(frame: number) {
   const r = new Raster(N, N)
   const f = Math.min(frame, 5)
-  const dealt = f === 0 ? { dy: -5, dx: -3 } : { dy: 0, dx: 0 }
+  const dealt = f === 0 ? { dy: -5, dx: -2 } : { dy: 0, dx: 0 }
   const left = [1, 1, 0.3, 1, 1, 1][f]
   const right = [1, 1, 1, 0.3, 1, 1][f]
   const leftFace = f >= 3 ? 'spade' : 'back'
   const rightFace = f >= 4 ? 'heart' : 'back'
-  pokerCard(r, 8 + dealt.dx, 14 + dealt.dy, (-8 * Math.PI) / 180, left, leftFace)
+  pokerCard(r, 9 + dealt.dx, 14 + dealt.dy, (-8 * Math.PI) / 180, left, leftFace)
   pokerCard(r, 17.5 - dealt.dx, 14 + dealt.dy, (8 * Math.PI) / 180, right, rightFace)
   if (f >= 4) chips(r, f === 4 ? 3 : 4)
   if (f === 5) {
@@ -1888,6 +1888,8 @@ const DIGITS: Record<string, readonly string[]> = {
   '6': ['.rr.', 'r...', 'rrr.', 'r..r', 'r..r', 'r..r', '.rr.']
 }
 const STRIP = ['3', '8', '1', '5', '0', '2', '6']
+
+const SO = 16
 
 function pachinkoArt(frame: number) {
   const r = new Raster(N, N)
@@ -1912,18 +1914,20 @@ function pachinkoArt(frame: number) {
   for (let reel = 0; reel < 3; reel++) {
     const x = 7 + reel * 6
     const stopped = frame >= 3 + reel
-    const strip = new Raster(N, N)
-    if (stopped) strip.stamp(DIGITS['7'], x + 1, 8, { r: R.red[1] })
+    // The scrolling strip is taller than the window (offset by SO) so no scratch write leaves it.
+    const strip = new Raster(N, N + 2 * SO)
+    if (stopped) strip.stamp(DIGITS['7'], x + 1, 8 + SO, { r: R.red[1] })
     else {
       const off = (frame * 5 + reel * 4) % 9
       for (let g = -1; g < 3; g++) {
         const key = STRIP[(g + reel * 2 + frame * 2 + 14) % STRIP.length]
-        strip.stamp(DIGITS[key], x + 1, 8 + g * 9 + off, { r: R.red[2] })
+        strip.stamp(DIGITS[key], x + 1, 8 + SO + g * 9 + off, { r: R.red[2] })
       }
     }
     r.rect(x, 7, 6, 9, win && stopped ? R.yellow[0] : stopped ? R.paper[0] : R.paper[1])
     r.rect(x + 5, 7, 1, 9, R.paper[2])
-    for (let y = 7; y < 16; y++) for (let xx = x; xx < x + 6; xx++) if (strip.get(xx, y)) r.set(xx, y, strip.get(xx, y))
+    for (let y = 7; y < 16; y++)
+      for (let xx = x; xx < x + 6; xx++) if (strip.get(xx, y + SO)) r.set(xx, y, strip.get(xx, y + SO))
   }
   // Pin glass.
   part(r, (l) => l.rect(5, 18, 22, 8, R.navy[2]))
@@ -1963,7 +1967,7 @@ const GALLOP = [
 function horseArt(frame: number, w: number) {
   const r = new Raster(w, N)
   const f = Math.min(frame, 5)
-  const cx = 13 + Math.round(((w - 32) * f) / 5)
+  const cx = 14 + Math.round(((w - 32) * f) / 5)
   const pose = GALLOP[f % 4]
   const far = GALLOP[(f + 2) % 4]
   const cy = 18 + pose.bob
@@ -1985,8 +1989,8 @@ function horseArt(frame: number, w: number) {
   })
   // Tail streaming behind, then the far legs.
   part(r, (l) => {
-    l.thick(cx - 6, cy - 1, cx - 11, cy - 1 + (f % 2), 2.4, R.hair[2])
-    l.thick(cx - 11, cy - 1 + (f % 2), cx - 14, cy + 1 + (f % 2), 2, R.hair[2])
+    l.thick(cx - 6, cy - 1, cx - 10, cy - 1 + (f % 2), 2.4, R.hair[2])
+    l.thick(cx - 10, cy - 1 + (f % 2), cx - 13, cy + 1 + (f % 2), 2, R.hair[2])
   })
   part(r, (l) => {
     leg(l, far.front, cx + 4, BAY[2], R.hair[3])
@@ -2579,6 +2583,11 @@ export function arsenalSheets(): Record<string, () => Sheet> {
 }
 
 /** Extra effect sprites merged into the shared `fx` sheet. */
+/** The six frames of a gamble animation (the horse race is wider). */
+export function gambleFrames(kind: 'gacha' | 'poker' | 'pachinko' | 'horse') {
+  return many(6, (frame) => gambleArt(kind, frame, kind === 'horse' ? 40 : 32))
+}
+
 export function arsenalFx(): Record<string, Anim> {
   return {
     like: loop(many(3, like), 10),
@@ -2592,10 +2601,10 @@ export function arsenalFx(): Record<string, Anim> {
     poof: { frames: many(4, poof), fps: 14, loop: false },
     shine: loop(many(2, shine), 6),
     heal: loop(many(2, heal), 6),
-    gamble_gacha: { frames: many(6, (frame) => gambleArt('gacha', frame)), fps: 6, loop: false },
-    gamble_poker: { frames: many(6, (frame) => gambleArt('poker', frame)), fps: 6, loop: false },
-    gamble_pachinko: { frames: many(6, (frame) => gambleArt('pachinko', frame)), fps: 6, loop: false },
-    gamble_horse: { frames: many(6, (frame) => gambleArt('horse', frame, 40)), fps: 6, loop: false }
+    gamble_gacha: { frames: gambleFrames('gacha'), fps: 6, loop: false },
+    gamble_poker: { frames: gambleFrames('poker'), fps: 6, loop: false },
+    gamble_pachinko: { frames: gambleFrames('pachinko'), fps: 6, loop: false },
+    gamble_horse: { frames: gambleFrames('horse'), fps: 6, loop: false }
   }
 }
 
