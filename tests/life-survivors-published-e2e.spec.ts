@@ -24,7 +24,7 @@ for (const viewport of [
       })
       .not.toBe('00:00')
     await page.getByRole('button', { name: '遊び方を表示' }).click()
-    await expect(page.getByRole('heading', { name: '生き抜くために' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '遊び方', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '閉じる', exact: true }).click()
     expect(errors).toEqual([])
   })

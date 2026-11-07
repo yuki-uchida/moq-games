@@ -374,9 +374,9 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
 
 for (const [parent, description] of [
   ['p_weak', '経験値 +25%、防御 +1'],
-  ['p_over', '親が盾を構えて近くの敵を迎撃し、ダメージを与えて弾き飛ばす'],
-  ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
-  ['p_over', '防御は本人ごとに最短1.5秒間隔'],
+  ['p_over', '盾で迎撃・吹き飛ばす'],
+  ['p_over', '1枚1回防御＋無敵0.5秒'],
+  ['p_over', '詳しくは「?」へ'],
   ['p_toxic', '全武器の威力 +5%'],
   ['p_toxic', '自然回復なし（性格・仲間・家庭）'],
   ['p_toxic', '18歳未満は親を含めて手札3枠']
@@ -504,9 +504,9 @@ for (const width of [1280, 390]) {
     })
     const cards = page.locator('#cards .card')
     await expect(cards).toHaveCount(4)
-    await expect(cards.nth(0)).toContainText('相場の稲妻')
+    await expect(cards.nth(0)).toContainText('稲妻で敵を攻撃')
     await expect(cards.nth(1)).toContainText('貯金箱')
-    await expect(cards.nth(2)).toContainText('ほかの武器の効果をランダム')
+    await expect(cards.nth(2)).toContainText('12秒ごとに武器を抽選')
     await expect(cards.nth(3)).toContainText('交換しない')
     expect(await page.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`exchange-descriptions-${width}.png`), animations: 'disabled' })
@@ -763,32 +763,52 @@ for (const width of [1280, 390]) {
       player.pending = 0
     })
     const trigger = page.getByRole('button', { name: '遊び方を表示' })
-    const dialog = page.getByRole('dialog', { name: '生き抜くために' })
+    const dialog = page.getByRole('dialog', { name: '遊び方', exact: true })
     const close = dialog.getByRole('button', { name: '閉じる' })
     const done = dialog.getByRole('button', { name: 'わかった' })
     await trigger.click()
     await expect(dialog).toHaveAttribute('aria-modal', 'true')
     await expect(close).toBeFocused()
-    await expect(dialog).toContainText('ひとりプレイはこの画面を開いている間は一時停止')
-    await expect(dialog).toContainText('偏食や断れない飲み会、ボスは弾を撃ち')
-    await expect(dialog).not.toContainText('ピーマンや先輩、ボスは弾を撃ち')
+    await expect(dialog).toContainText('ソロ：この画面で停止 · 協力：時間は進行')
+    await expect(dialog.locator('.help-basics > li')).toHaveCount(3)
+    await expect(dialog.locator('.help-basics')).toContainText('WASD')
+    await expect(dialog.locator('.help-basics')).toContainText('画面のどこでもスライド')
+    await expect(dialog.locator('.help-basics')).toContainText('1〜4')
+    await expect(dialog.locator('details[open]')).toHaveCount(0)
+    await page.keyboard.press('Tab')
+    const talentToggle = dialog.locator('summary').filter({ hasText: '才能と攻撃' })
+    await expect(talentToggle).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(dialog.getByRole('img', { name: '秘密の才能の六角形' })).toBeVisible()
+    await expect(dialog).toContainText('接触も防ぐ。防御は本人ごとに最短1.5秒間隔で短縮不可。薄い盾は攻撃のみ。')
+    await page.keyboard.press('Enter')
+    await expect(dialog.getByRole('img', { name: '秘密の才能の六角形' })).toBeHidden()
     const pausedAt = await handle.evaluate((life) => life.game.state.time)
     await page.waitForTimeout(250)
     expect(await handle.evaluate((life) => life.game.state.time)).toBe(pausedAt)
     await page.screenshot({ path: testInfo.outputPath(`help-${width}-top.png`) })
-    const conditions = page.getByRole('region', { name: '人生の分岐条件' })
-    await conditions.scrollIntoViewIfNeeded()
-    await expect(conditions).toContainText('大学受験イベント時に勉強Lv3以上')
+    const conditionToggle = dialog.locator('summary').filter({ hasText: '人生の分岐条件' })
+    await conditionToggle.focus()
+    await page.keyboard.press('Space')
+    const conditions = dialog.locator('details').filter({ hasText: '人生の分岐条件' })
+    await expect(conditions).toHaveAttribute('open', '')
+    await expect(conditions.getByRole('table')).toHaveCount(2)
+    await expect(conditions).toContainText('大学受験')
+    await expect(conditions).toContainText('勉強Lv3以上')
     await expect(conditions).toContainText('仕事Lv2以上')
-    await expect(conditions).toContainText('スポーツ・筋トレのどちらかLv4以上')
-    await expect(conditions).toContainText('投資・貯金のどちらかLv4以上')
-    await expect(conditions).toContainText('趣味・カラオケ・旅行・料理のいずれかLv4以上')
+    await expect(conditions).toContainText('いずれかLv4以上')
+    await expect(conditions).toContainText('スポーツ / 筋トレ')
+    await expect(conditions).toContainText('投資 / 貯金')
+    await expect(conditions).toContainText('趣味 / カラオケ / 旅行 / 料理')
+    await expect(conditions).toContainText('友人 / SNS / ペット')
     await expect(conditions).toContainText('64歳')
-    await expect(conditions).toContainText('後から育てた手札は64歳の進路に反映')
-    await expect(conditions).toContainText('複数候補は手札の育成度と進化')
+    await expect(conditions).toContainText('仕事・下表の武器Lv4以上で再判定')
+    await expect(conditions).toContainText('育成度・進化で決定')
     await expect(conditions).toContainText('結婚イベント時に恋愛Lv2以上')
     await expect(conditions).toContainText('本人の精神力')
-    await expect(conditions).toContainText('一度だけ決定')
+    await expect(conditions).toContainText('各１回判定')
+    await expect(conditions).toContainText('未選択 ≠ 拒否')
+    await expect(conditions).toContainText('ダウン中・毒親の場合は回復なし')
     await expect(conditions).not.toContainText('手応え')
     await expect(conditions).not.toContainText('0.55')
     await expect(conditions).not.toContainText('1.7')
@@ -814,6 +834,29 @@ for (const width of [1280, 390]) {
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
     await expect(trigger).toBeFocused()
+  })
+}
+
+for (const viewport of [
+  { width: 320, height: 740 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 }
+]) {
+  test(`title gives a compact visual guide at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport)
+    await page.goto('/')
+    const title = page.locator('#start-panel')
+    await expect(title.locator('.intro')).toHaveText('15分、生き抜け。')
+    await expect(title.getByRole('list', { name: '人生の流れ' }).getByRole('listitem')).toHaveCount(3)
+    await expect(title.getByRole('list', { name: '基本操作' }).getByRole('listitem')).toHaveCount(3)
+    await expect(title).toContainText('死や自死を暗示する表現があります')
+    await expect(title).toContainText('ルーム名は認証ではありません')
+    const start = title.getByRole('button', { name: 'ひとりで生まれる' })
+    await start.scrollIntoViewIfNeeded()
+    await expect(start).toBeInViewport()
+    await expect(title.locator('.content-note')).toBeInViewport()
+    expect(await title.evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath('title-guide.png') })
   })
 }
 
@@ -1258,8 +1301,9 @@ test('turning point cards show their talent category without revealing talent va
   await page.screenshot({ path: testInfo.outputPath('talent-cards-mobile.png') })
   await page.locator('#cards .card').first().click()
   await page.getByRole('button', { name: '遊び方を表示' }).click()
-  await expect(page.getByRole('img', { name: '秘密の才能の六角形' })).toBeVisible()
   await expect(page.locator('#help-close')).toBeFocused()
+  await page.locator('#help summary').filter({ hasText: '才能と攻撃' }).click()
+  await expect(page.getByRole('img', { name: '秘密の才能の六角形' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('talent-guide-mobile.png') })
 })
 
@@ -1790,7 +1834,7 @@ test('two players share one life-world: the guest moves and gets their own hand'
   await host.getByRole('button', { name: '遊び方を表示' }).click()
   const helpTime = await hostLife.evaluate((l) => l.game.state.time)
   await expect.poll(() => hostLife.evaluate((l) => l.game.state.time)).toBeGreaterThan(helpTime)
-  await host.getByRole('dialog', { name: '生き抜くために' }).getByRole('button', { name: '閉じる' }).click()
+  await host.getByRole('dialog', { name: '遊び方', exact: true }).getByRole('button', { name: '閉じる' }).click()
 
   const start = await hostLife.evaluate((l, id) => l.game.state.players.find((p) => p.id === id)!.x, guestId)
   await guest.bringToFront()
