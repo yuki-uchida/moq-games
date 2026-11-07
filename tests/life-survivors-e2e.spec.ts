@@ -2247,15 +2247,24 @@ test('foods dropped on the same spot fan out and keep readable labels', async ({
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.addInitScript(() => {
-    const labels: Record<string, { x: number; y: number }> = {}
+    const labels: Record<
+      string,
+      { x: number; y: number; width: number; scale: number; e: number; f: number; cw: number; ch: number }
+    > = {}
     Object.assign(window, { stackedFoodLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
       if (text.startsWith('P1：')) {
         const matrix = this.getTransform()
         labels[text] = {
-          x: matrix.a * x + matrix.c * y + matrix.e,
-          y: matrix.b * x + matrix.d * y + matrix.f
+          x,
+          y,
+          width: this.measureText(text).width,
+          scale: matrix.a,
+          e: matrix.e,
+          f: matrix.f,
+          cw: this.canvas.width,
+          ch: this.canvas.height
         }
       }
       if (maxWidth === undefined) fillText.call(this, text, x, y)
@@ -2284,33 +2293,57 @@ test('foods dropped on the same spot fan out and keep readable labels', async ({
       y: player.y + 40
     }))
   })
-  const expected = ['P1：攻撃力UP', 'P1：移動速度UP', 'P1：HP回復']
-  type Labels = Record<string, { x: number; y: number }>
+  // Three foods of one owner read as one line with each short effect name.
+  const expected = 'P1：攻撃↑・移動↑・回復'
+  type Labels = Record<
+    string,
+    { x: number; y: number; width: number; scale: number; e: number; f: number; cw: number; ch: number }
+  >
   await expect
     .poll(() =>
-      page.evaluate(
-        (names) =>
-          names.every((name) => name in (window as unknown as { stackedFoodLabels: Labels }).stackedFoodLabels),
-        expected
-      )
+      page.evaluate((name) => name in (window as unknown as { stackedFoodLabels: Labels }).stackedFoodLabels, expected)
     )
     .toBe(true)
   const labels = await page.evaluate(() => (window as unknown as { stackedFoodLabels: Labels }).stackedFoodLabels)
-  for (let a = 0; a < expected.length; a++) {
-    for (let b = a + 1; b < expected.length; b++) {
-      const first = labels[expected[a]]
-      const second = labels[expected[b]]
-      // Each label is about 90 px wide, so labels with overlapping x ranges must be stacked.
-      if (Math.abs(first.x - second.x) < 90) expect(Math.abs(first.y - second.y)).toBeGreaterThanOrEqual(12)
-      expect(first.x !== second.x || first.y !== second.y).toBe(true)
-    }
+  expect(Object.keys(labels)).toEqual([expected])
+  const label = labels[expected]
+  // The line's box in world units (centred text, baseline 13 px below the line top), then on the canvas.
+  const line = {
+    left: label.x - label.width / 2,
+    top: label.y - 13,
+    right: label.x + label.width / 2,
+    bottom: label.y + 2
+  }
+  const toCanvas = (x: number, y: number) => ({ x: x * label.scale + label.e, y: y * label.scale + label.f })
+  const topLeft = toCanvas(line.left, line.top)
+  const bottomRight = toCanvas(line.right, line.bottom)
+  expect(topLeft.x).toBeGreaterThanOrEqual(0)
+  expect(topLeft.y).toBeGreaterThanOrEqual(0)
+  expect(bottomRight.x).toBeLessThanOrEqual(label.cw)
+  expect(bottomRight.y).toBeLessThanOrEqual(label.ch)
+  const sprites = await handle.evaluate(async (hook) => {
+    const path = '/src/food-layout.ts'
+    const { FOOD_BOB, foodSpriteBox, layoutFoods } = await import(path)
+    const items = (hook.game as unknown as Game).state.items
+    return (layoutFoods(items.map((item) => ({ x: item.x, y: item.y }))) as { x: number; y: number; shown: boolean }[])
+      .filter((spot) => spot.shown)
+      .map((spot) => {
+        const box = foodSpriteBox(spot)
+        return { ...box, top: box.top - FOOD_BOB, bottom: box.bottom + FOOD_BOB }
+      })
+  })
+  expect(sprites.length).toBeGreaterThanOrEqual(2)
+  for (const sprite of sprites) {
+    const apart =
+      line.right <= sprite.left || line.left >= sprite.right || line.bottom <= sprite.top || line.top >= sprite.bottom
+    expect(apart).toBe(true)
   }
   expect(await handle.evaluate((hook) => (hook.game as unknown as Game).state.items.length)).toBe(3)
   await page.screenshot({ path: testInfo.outputPath('cooking-stacked.png') })
   expect(errors).toEqual([])
 })
 
-test('standing on any drawn sprite of six stacked foods collects it', async ({ page }) => {
+test('standing on the shown sprite next to a hidden food of six stacked foods collects it', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
@@ -2335,13 +2368,17 @@ test('standing on any drawn sprite of six stacked foods collects it', async ({ p
       y: spot.y
     }))
     game.state.items = [...foods]
-    const drawn = layoutFoods(foods.map((food) => ({ x: food.x, y: food.y })))
-    player.x = drawn[5].x
-    player.y = drawn[5].y
+    type Spot = { x: number; y: number; shown: boolean }
+    const drawn = layoutFoods(foods.map((food) => ({ x: food.x, y: food.y }))) as Spot[]
+    // The sixth food is hidden; its "+n" chip sits on the shown sprite nearest to it.
+    const distance = (spot: Spot) => Math.hypot(spot.x - foods[5].x, spot.y - foods[5].y)
+    const target = drawn.filter((spot) => spot.shown).sort((a, b) => distance(a) - distance(b))[0]
+    player.x = target.x
+    player.y = target.y
     game['collectGems'](0)
     return { sixthShown: drawn[5].shown, sixthLeft: game.state.items.includes(foods[5]), left: game.state.items.length }
   })
-  expect(result.sixthShown).toBe(true)
+  expect(result.sixthShown).toBe(false)
   expect(result.sixthLeft).toBe(false)
   expect(result.left).toBe(0)
   expect(errors).toEqual([])

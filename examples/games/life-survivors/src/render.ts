@@ -36,6 +36,8 @@ import {
 } from './data'
 import { Effects, PK } from './effects'
 import {
+  FOOD_BOB,
+  fitFoodLines,
   foodChips,
   foodLabelLines,
   foodPiles,
@@ -45,7 +47,8 @@ import {
   placeLabelBlocks,
   playerBox,
   type Box,
-  type FoodLabelEntry
+  type FoodLabelEntry,
+  type FoodSpot
 } from './food-layout'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
@@ -348,13 +351,18 @@ export class Renderer {
   private readonly ents: Ent[] = []
   private entCount = 0
   private readonly winders: Ent[] = []
-  /** Food label lines per pile, the pile boxes and every obstacle the labels avoid (sprites, then players). */
-  private readonly foodLabels: { lines: string[][]; piles: Box[]; sprites: Box[]; players: Box[] } = {
+  /** Food label lines and key per pile, the pile boxes and every obstacle the labels avoid (sprites, then players). */
+  private readonly foodLabels: { lines: string[][]; keys: string[]; piles: Box[]; sprites: Box[]; players: Box[] } = {
     lines: [],
+    keys: [],
     piles: [],
     sprites: [],
     players: []
   }
+  /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
+  private readonly foodLabelMemory = new Map<string, number>()
+  /** Food layout of the last frame, reused while the visible foods stay where they are. */
+  private foodLayout: { key: string; spots: FoodSpot[] } = { key: '', spots: [] }
   private readonly enemySheets: (Sheet | undefined)[] = []
   private readonly evo = new Int8Array(16 * 64)
   private readonly shot: ShotView = {
@@ -562,8 +570,11 @@ export class Renderer {
 
   /** Food labels: one block per pile, placed clear of food sprites, players and other blocks. Drawn above the characters. */
   private drawFoodLabels() {
-    const { lines, piles, sprites, players } = this.foodLabels
-    if (!lines.length) return
+    const { lines, keys, piles, sprites, players } = this.foodLabels
+    if (!lines.length) {
+      this.foodLabelMemory.clear()
+      return
+    }
     const ctx = this.ctx
     this.world()
     ctx.save()
@@ -572,11 +583,6 @@ export class Renderer {
     ctx.lineWidth = 3
     ctx.strokeStyle = '#34203b'
     ctx.fillStyle = '#fff4cf'
-    const blocks = lines.map((block, n) => ({
-      pile: piles[n],
-      width: Math.max(...block.map((text) => ctx.measureText(text).width)) + 4,
-      height: block.length * LABEL_LINE
-    }))
     const halfW = this.halfW - 80
     const halfH = this.halfH - 80
     const viewport = {
@@ -585,9 +591,16 @@ export class Renderer {
       right: this.camera.x + halfW - 4,
       bottom: this.camera.y + halfH - 4
     }
-    placeLabelBlocks(blocks, [...sprites, ...players], viewport).forEach((box, n) => {
+    const shown = lines.map((block) => fitFoodLines(block, viewport.bottom - viewport.top))
+    const blocks = shown.map((block, n) => ({
+      pile: piles[n],
+      width: Math.max(...block.map((text) => ctx.measureText(text).width)) + 4,
+      height: block.length * LABEL_LINE,
+      key: keys[n]
+    }))
+    placeLabelBlocks(blocks, [...sprites, ...players], viewport, this.foodLabelMemory).forEach((box, n) => {
       const cx = (box.left + box.right) / 2
-      lines[n].forEach((text, j) => {
+      shown[n].forEach((text, j) => {
         const ly = box.top + 13 + j * LABEL_LINE
         ctx.strokeText(text, cx, ly)
         ctx.fillText(text, cx, ly)
@@ -596,16 +609,22 @@ export class Renderer {
     ctx.restore()
   }
 
-  /** "+n" chip on the top-right of a food sprite standing for the foods hidden under it. */
-  private foodChip(x: number, y: number, count: number) {
+  /**
+   * "+n" chip inside the bottom-right corner of a food sprite's box, standing for the foods hidden next to it. The
+   * bottom keeps the badge (top right) and the topping (top centre) that tell the foods apart in view.
+   */
+  private foodChip(box: Box, count: number) {
     const ctx = this.ctx
     const text = `+${count}`
     ctx.save()
-    ctx.font = 'bold 10px sans-serif'
-    const w = Math.max(14, Math.ceil(ctx.measureText(text).width) + 6)
-    const left = Math.round(x + 16 - w)
-    const top = Math.round(y - 24)
-    this.roundPath(left, top, w, 12, 3)
+    // At most the sprite box less a 1 px inset on each side, so the chip never reaches a neighbouring sprite.
+    const room = box.right - box.left - 2
+    ctx.font = 'bold 9px sans-serif'
+    if (ctx.measureText(text).width + 4 > room) ctx.font = 'bold 7px sans-serif'
+    const w = Math.min(room, Math.max(12, Math.ceil(ctx.measureText(text).width) + 4))
+    const left = box.right - 1 - w
+    const top = box.bottom - 1 - 11
+    this.roundPath(left, top, w, 11, 3)
     ctx.fillStyle = '#3a2140'
     ctx.fill()
     ctx.strokeStyle = '#ffd75e'
@@ -614,7 +633,7 @@ export class Renderer {
     ctx.fillStyle = '#fff4cf'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(text, left + w / 2, top + 6.5)
+    ctx.fillText(text, left + w / 2, top + 6)
     ctx.restore()
   }
 
@@ -932,9 +951,18 @@ export class Renderer {
     m.x = pos.x
     m.y = pos.y
     this.motion.set(player.id, m)
-    // The area food labels keep clear of (body, name tag and buff row), handed back to the frame's draw loop.
-    const box = playerBox(pos.x, feet, size, tagLift)
     const buffs = (['food_damage', 'food_defense', 'food_speed'] as const).filter((kind) => player.cookingBuffs?.[kind])
+    // Name tag and buff labels as drawn below; their measured widths shape the area food labels keep clear of.
+    const logical = (canvas?: HTMLCanvasElement) => (canvas ? canvas.width / ((canvas as Label).res || 1) : 0)
+    const nameTag = this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color)
+    const tags = buffs.map((kind) => this.label(COOKING_EFFECTS[kind].short, 11, COOKING_EFFECTS[kind].color))
+    const tagWidths = tags.map((tag) => logical(tag) - 6)
+    const rowWidth = tags.length ? tagWidths.reduce((sum, w) => sum + w, 0) + 6 : 0
+    const box = playerBox(pos.x, feet, size, tagLift, {
+      name: logical(nameTag),
+      buffs: rowWidth,
+      badge: local && !player.downed && Boolean(player.gambleWeapon)
+    })
     if (buffs.length) {
       this.world()
       ctx.save()
@@ -1099,21 +1127,13 @@ export class Renderer {
     }
     if (buffs.length) {
       // One label per buff in its own colour, laid out side by side and centred on the player.
-      const tags = buffs.map((kind) => this.label(COOKING_EFFECTS[kind].short, 11, COOKING_EFFECTS[kind].color))
-      const widths = tags.map((tag) => tag.width / ((tag as Label).res || 1) - 6)
-      let x = pos.x - widths.reduce((sum, w) => sum + w, 0) / 2
+      let x = pos.x - tagWidths.reduce((sum, w) => sum + w, 0) / 2
       tags.forEach((tag, index) => {
-        this.blit(tag, x + widths[index] / 2, feet - 80 * size - tagLift, 0, shown)
-        x += widths[index]
+        this.blit(tag, x + tagWidths[index] / 2, feet - 80 * size - tagLift, 0, shown)
+        x += tagWidths[index]
       })
     }
-    this.blit(
-      this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
-      pos.x,
-      feet - 64 * size - tagLift,
-      0,
-      shown
-    )
+    this.blit(nameTag, pos.x, feet - 64 * size - tagLift, 0, shown)
     return box
   }
 
@@ -2291,7 +2311,8 @@ export class Renderer {
     }
     this.world()
     const it = view.items
-    // Foods dropped on the same spot fan out (the overflow shows as a "+n" chip); labels are drawn after the characters.
+    // Foods dropped on the same spot fan out without overlapping (the overflow shows as a "+n" chip on the shown sprite
+    // next to it); labels are drawn after the characters.
     const foodAt: number[] = []
     const foodPoints: { x: number; y: number }[] = []
     for (let i = 0; i < it.length; i += STRIDE.items) {
@@ -2300,48 +2321,59 @@ export class Renderer {
         foodPoints.push({ x: it[i + 1], y: it[i + 2] })
       }
     }
-    const foodSpots = layoutFoods(foodPoints)
+    const layoutKey = foodPoints.map((p) => `${p.x},${p.y}`).join(';')
+    if (this.foodLayout.key !== layoutKey) this.foodLayout = { key: layoutKey, spots: layoutFoods(foodPoints) }
+    const foodSpots = this.foodLayout.spots
     const chips = foodChips(foodSpots)
     const pileOf = foodPiles(foodSpots)
     const pileCount = pileOf.reduce((m, p) => Math.max(m, p + 1), 0)
     const labels = this.foodLabels
     labels.sprites.length = 0
     labels.players.length = 0
+    labels.keys = []
     labels.piles = Array.from({ length: pileCount }, () => ({
       left: Infinity,
       top: Infinity,
       right: -Infinity,
       bottom: -Infinity
     }))
+    // Every food bobs with one shared phase, so shown sprites keep their distances while they move.
+    const foodBob = Math.round(Math.sin(this.clock * 3) * FOOD_BOB)
     const entries: FoodLabelEntry[] = []
+    foodAt.forEach((i, slot) => {
+      const kind = ITEM_KINDS[it[i]] as keyof typeof COOKING_EFFECTS
+      const food = COOKING_EFFECTS[kind]
+      const owner = it[i + 3]
+      const pileIndex = pileOf[slot]
+      entries.push({
+        pile: pileIndex,
+        owner,
+        effect: kind,
+        name: view.players[owner]?.name ?? '',
+        label: food.label,
+        short: food.short
+      })
+      labels.keys[pileIndex] ??= `${Math.round(it[i + 1] / 4)},${Math.round(it[i + 2] / 4)},${owner}`
+      const spot = foodSpots[slot]
+      if (!spot.shown) return
+      // The label obstacle covers the sprite over its whole bob.
+      const sprite = foodSpriteBox(spot)
+      const box = { ...sprite, top: sprite.top - FOOD_BOB, bottom: sprite.bottom + FOOD_BOB }
+      labels.sprites.push(box)
+      const pile = labels.piles[pileIndex]
+      pile.left = Math.min(pile.left, box.left)
+      pile.top = Math.min(pile.top, box.top)
+      pile.right = Math.max(pile.right, box.right)
+      pile.bottom = Math.max(pile.bottom, box.bottom)
+    })
+    // Shadows, glows and rings of every item first, then the sprites, so no decoration covers another food's sprite.
     for (let i = 0; i < it.length; i += STRIDE.items) {
-      const kind = ITEM_KINDS[it[i]]
       if (!visible(it[i + 1], it[i + 2])) continue
-      const anim = items[kind]
-      const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
-      const food = it[i + 3] >= 0 ? COOKING_EFFECTS[kind as keyof typeof COOKING_EFFECTS] : undefined
-      let ix = it[i + 1]
-      let iy = it[i + 2]
-      const slot = food ? foodAt.indexOf(i) : -1
-      if (food) {
-        entries.push({
-          pile: pileOf[slot],
-          owner: it[i + 3],
-          effect: kind,
-          name: view.players[it[i + 3]].name,
-          label: food.label
-        })
-        if (!foodSpots[slot].shown) continue
-        ix = foodSpots[slot].x
-        iy = foodSpots[slot].y
-        const box = foodSpriteBox(foodSpots[slot])
-        labels.sprites.push(box)
-        const pile = labels.piles[pileOf[slot]]
-        pile.left = Math.min(pile.left, box.left)
-        pile.top = Math.min(pile.top, box.top)
-        pile.right = Math.max(pile.right, box.right)
-        pile.bottom = Math.max(pile.bottom, box.bottom)
-      }
+      const food = it[i + 3] >= 0 ? COOKING_EFFECTS[ITEM_KINDS[it[i]] as keyof typeof COOKING_EFFECTS] : undefined
+      const spot = food ? foodSpots[foodAt.indexOf(i)] : undefined
+      if (spot && !spot.shown) continue
+      const ix = spot ? spot.x : it[i + 1]
+      const iy = spot ? spot.y : it[i + 2]
       this.shadow(ix, iy + 8, 6, 0.22)
       if (food) {
         const swell = Math.sin(this.clock * 3 * this.fx.motion)
@@ -2367,11 +2399,22 @@ export class Renderer {
         }
         ctx.restore()
       }
-      this.art(anim.frames[0], ix, iy + bob, 8, 12, false, 1, food ? 1.5 : 1)
+    }
+    for (let i = 0; i < it.length; i += STRIDE.items) {
+      if (!visible(it[i + 1], it[i + 2])) continue
+      const frame = items[ITEM_KINDS[it[i]]].frames[0]
+      if (it[i + 3] < 0) {
+        this.art(frame, it[i + 1], it[i + 2] + Math.round(Math.sin(this.clock * 3 + i) * 2), 8, 12)
+        continue
+      }
+      const spot = foodSpots[foodAt.indexOf(i)]
+      if (spot.shown) this.art(frame, spot.x, spot.y + foodBob, 8, 12, false, 1, 1.5)
     }
     this.world()
     foodSpots.forEach((spot, slot) => {
-      if (chips[slot] > 0) this.foodChip(spot.x, spot.y, chips[slot])
+      if (!chips[slot]) return
+      const box = foodSpriteBox(spot)
+      this.foodChip({ ...box, top: box.top + foodBob, bottom: box.bottom + foodBob }, chips[slot])
     })
     labels.lines = foodLabelLines(entries, pileCount)
 
@@ -2500,9 +2543,16 @@ export class Renderer {
       if (item.member) this.follower(item.member)
       else if (item.player) {
         const player = item.player
-        this.foodLabels.players.push(
-          this.player(player, positions.get(player.id)!, player.id === localId, view.time, view.phase, item.tagLift)
+        // The boxes food labels keep clear of; a wrapped or stubbed player() (tests, tools) may hand back nothing.
+        const boxes: Box[] | undefined = this.player(
+          player,
+          positions.get(player.id)!,
+          player.id === localId,
+          view.time,
+          view.phase,
+          item.tagLift
         )
+        if (boxes) this.foodLabels.players.push(...boxes)
       } else this.enemy(item)
     }
     this.world()
