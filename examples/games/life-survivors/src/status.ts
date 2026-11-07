@@ -1,4 +1,5 @@
 import { MAX_WEAPON_LEVEL, PASSIVE_BY_ID, WEAPON_BY_ID } from './data'
+import type { Tag } from './data'
 import type { ViewPlayer } from './view'
 import { weaponAppearance } from './weapon-life'
 
@@ -8,6 +9,7 @@ export interface StatusItem {
   level: number
   levelText: string
   detail: string
+  strong?: Tag[]
   kind: 'parent' | 'weapon' | 'evolved' | 'passive'
 }
 
@@ -33,6 +35,7 @@ export function statusModel(player: StatusPlayer, age: number): StatusModel {
       level: lv,
       levelText: lv >= MAX_WEAPON_LEVEL ? 'MAX' : String(lv),
       detail: [def.desc, def.perk].filter(Boolean).join(' '),
+      strong: def.strong,
       kind: def.parent ? 'parent' : evolved ? 'evolved' : 'weapon'
     }
   })

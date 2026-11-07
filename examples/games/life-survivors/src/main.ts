@@ -574,6 +574,9 @@ function renderChoices(player: ViewPlayer | undefined) {
       }
       const text = document.createElement('span')
       text.textContent = kind === 'p' ? `${info.text}（基準値）` : info.text
+      if (kind === 'w' || kind === 's' || kind === 'r') {
+        text.append(strongLabels(WEAPON_BY_ID.get(id)!.strong))
+      }
       const hint = document.createElement('kbd')
       hint.textContent = String(index + 1)
       button.append(icon, name, text, hint)
@@ -1046,6 +1049,12 @@ help.addEventListener('keydown', (event) => {
     helpClose.focus()
   }
 })
+function strongLabels(tags: (keyof typeof TAG_NAMES)[]) {
+  const labels = el('span', 'weapon-strong-labels')
+  for (const tag of tags) labels.append(el('span', 'weapon-strong-label', `特攻 ${TAG_NAMES[tag]}`))
+  return labels
+}
+
 function renderStatusItems(list: HTMLElement, items: StatusItem[], empty: string) {
   list.replaceChildren(
     ...(items.length
@@ -1055,6 +1064,7 @@ function renderStatusItems(list: HTMLElement, items: StatusItem[], empty: string
           icon.append(iconImg(item.icon, item.name, item.kind === 'evolved'))
           const text = el('span', 'status-text')
           text.append(el('strong', '', item.name), el('small', '', item.detail))
+          if (item.strong?.length) text.append(strongLabels(item.strong))
           const level = el('b', 'status-level', item.kind === 'parent' ? '親' : `Lv ${item.levelText}`)
           row.append(icon, text, level)
           return row
