@@ -146,6 +146,39 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     return { game, player }
   }
 
+  test('guardians keep their distance and move smoothly around a turning player', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    const heading = shield.guardianHeading!
+    expect(Math.hypot(shield.x - player.x, shield.y - player.y)).toBeGreaterThan(shield.orbit * 0.65)
+    player.fx = -Math.cos(heading)
+    player.fy = -Math.sin(heading)
+    const start = { x: shield.x, y: shield.y }
+    game['moveGuardian'](shield, player, 1 / 60)
+    expect(Math.hypot(shield.x - start.x, shield.y - start.y)).toBeLessThan(shield.orbit * 0.3)
+    expect(Math.abs(shield.guardianHeading! - heading)).toBeGreaterThan(0)
+    for (let step = 0; step < 120; step++) game['moveGuardian'](shield, player, 1 / 60)
+    expect(Math.cos(shield.guardianHeading!)).toBeCloseTo(player.fx, 3)
+    expect(Math.sin(shield.guardianHeading!)).toBeCloseTo(player.fy, 3)
+  })
+
+  test('guardians turn and attack enemies overlapping a nearby ally', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    const ally = game.addPlayer('ally', 'p_edu')!
+    ally.x = player.x - 10
+    ally.y = player.y
+    const enemy = game.spawnEnemy('germ', ally.x, ally.y)!
+    enemy.hp = enemy.maxHp = 1000
+    shield.aux = 0
+    game['buildGrid']()
+    game['moveGuardian'](shield, player, 0)
+    expect(enemy.hp).toBeLessThan(1000)
+    expect(Math.cos(shield.angle)).toBeCloseTo(
+      (enemy.x - shield.x) / Math.hypot(enemy.x - shield.x, enemy.y - shield.y)
+    )
+  })
+
   test.each([1, 2, 3, 4, 5, 8])('level %i controls guardian count independently of bonuses', (level) => {
     const { player } = guarded()
     player.weapons[0].lv = level
@@ -271,6 +304,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game.state.shots = [shield]
     player.fx = side
     player.fy = 0
+    shield.guardianHeading = Math.atan2(player.fy, player.fx)
     shield.aux = 0
     game.tick(0)
     for (const other of game.state.shots) if (other !== shield) other.aux = 100
@@ -314,7 +348,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     shield.y = player.y + 30
     shield.aux = 0
     game.tick(1 / 60)
-    expect(shield.x - player.x).toBeCloseTo(shield.orbit * 0.48)
+    expect(shield.x - player.x).toBeCloseTo(shield.orbit * 0.65)
     expect(shield.y - player.y).toBeCloseTo(shield.h * shield.r * 1.5)
   })
 
@@ -342,17 +376,17 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(second.hp).toBeLessThan(second.maxHp)
   })
 
-  test('an enemy overlapping the owner but not the shield is not attacked', () => {
+  test('an enemy overlapping the owner is attacked even away from the shield', () => {
     const { game, player } = guarded()
     game.state.shots[1].aux = 100
     const enemy = game.spawnEnemy('germ', player.x, player.y)!
     enemy.hp = enemy.maxHp = 1000
     enemy.elite = false
     game.tick(0)
-    expect(enemy.hp).toBe(enemy.maxHp)
+    expect(enemy.hp).toBeLessThan(enemy.maxHp)
   })
 
-  test('guards remain in front of each moving owner, including after they stop', () => {
+  test('guards keep formation around each moving owner, including after they stop', () => {
     const { game, player } = guarded()
     const other = game.addPlayer('b', 'p_over')!
     other.weapons[0].lv = 4
@@ -372,15 +406,22 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
         const guards = game.state.shots.filter((shot) => shot.owner === owner.id)
         expect(guards).toHaveLength(2)
         for (const guard of guards)
-          expect((guard.x - owner.x) * owner.fx + (guard.y - owner.y) * owner.fy).toBeGreaterThan(0)
-        const offsets = guards.map((guard) => -(guard.x - owner.x) * owner.fy + (guard.y - owner.y) * owner.fx)
+          expect(
+            (guard.x - owner.x) * Math.cos(guard.guardianHeading!) +
+              (guard.y - owner.y) * Math.sin(guard.guardianHeading!)
+          ).toBeCloseTo(guard.orbit * 0.65)
+        const offsets = guards.map(
+          (guard) =>
+            -(guard.x - owner.x) * Math.sin(guard.guardianHeading!) +
+            (guard.y - owner.y) * Math.cos(guard.guardianHeading!)
+        )
         expect(offsets[0]).toBeLessThan(0)
         expect(offsets[1]).toBeGreaterThan(0)
       }
       expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
     }
     game.setInput(player.id, { x: 0, y: 0 })
-    game.tick(1 / 60)
+    for (let frame = 0; frame < 120; frame++) game.tick(1 / 60)
     expect(player.fx).toBeCloseTo(-Math.SQRT1_2)
     expect(player.fy).toBeCloseTo(-Math.SQRT1_2)
     for (const guard of game.state.shots.filter((shot) => shot.owner === player.id))

@@ -212,6 +212,7 @@ export interface Shot {
   vy: number
   r: number
   angle: number
+  guardianHeading?: number
   orbit: number
   spin: number
   life: number
@@ -1908,6 +1909,7 @@ export class Game {
         for (let i = 0; i < n; i++)
           this.shot(player, weapon, def, ws, {
             angle: (i / n) * Math.PI * 2,
+            guardianHeading: def.id === 'p_over' ? Math.atan2(player.fy, player.fx) : undefined,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
@@ -2447,20 +2449,32 @@ export class Game {
   }
 
   private moveGuardian(shot: Shot, owner: Player, dt: number) {
+    const targetHeading = Math.atan2(owner.fy, owner.fx)
+    const heading = shot.guardianHeading ?? targetHeading
+    const difference = Math.atan2(Math.sin(targetHeading - heading), Math.cos(targetHeading - heading))
+    shot.guardianHeading = heading + difference * (1 - Math.exp(-8 * dt))
+    const forwardX = Math.cos(shot.guardianHeading)
+    const forwardY = Math.sin(shot.guardianHeading)
     const side = shot.h * shot.r * 1.5
-    shot.x = owner.x + owner.fx * shot.orbit * 0.48 - owner.fy * side
-    shot.y = owner.y + owner.fy * shot.orbit * 0.48 + owner.fx * side
+    shot.x = owner.x + forwardX * shot.orbit * 0.65 - forwardY * side
+    shot.y = owner.y + forwardY * shot.orbit * 0.65 + forwardX * side
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)
     let target: Enemy | undefined
     let distance = Infinity
-    this.near(shot.x, shot.y, shot.r, (enemy) => {
+    this.near(owner.x, owner.y, shot.orbit + shot.r + PLAYER_RADIUS, (enemy) => {
       const dx = enemy.x - shot.x
       const dy = enemy.y - shot.y
       const d = dx * dx + dy * dy
       const radius = ENEMY_BY_ID.get(enemy.kind)!.radius * enemy.scale
-      if (this.shieldTouches(shot, enemy.x, enemy.y, radius) && d < distance) {
+      const overlappingAlly = this.state.players.some(
+        (player) =>
+          !player.downed &&
+          Math.hypot(player.x - owner.x, player.y - owner.y) <= shot.orbit &&
+          Math.hypot(enemy.x - player.x, enemy.y - player.y) <= playerRadius(player) + radius
+      )
+      if ((overlappingAlly || this.shieldTouches(shot, enemy.x, enemy.y, radius)) && d < distance) {
         target = enemy
         distance = d
       }
