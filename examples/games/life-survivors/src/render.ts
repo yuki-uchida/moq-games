@@ -552,6 +552,26 @@ export class Renderer {
     )
   }
 
+  /** A soft elliptical glow: a radial gradient from the colour to transparent, squashed into an ellipse. */
+  private glowEllipse(x: number, y: number, rx: number, ry: number, hex: string, alpha: number) {
+    const ctx = this.ctx
+    const r = parseInt(hex.slice(1, 3), 16)
+    const g = parseInt(hex.slice(3, 5), 16)
+    const b = parseInt(hex.slice(5, 7), 16)
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(1, ry / rx)
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, rx)
+    gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`)
+    gradient.addColorStop(0.55, `rgba(${r},${g},${b},${alpha * 0.45})`)
+    gradient.addColorStop(1, `rgba(${r},${g},${b},0)`)
+    ctx.fillStyle = gradient
+    ctx.beginPath()
+    ctx.arc(0, 0, rx, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
   private shadow(x: number, y: number, rx: number, alpha = 0.28, flat = 0.36) {
     const ctx = this.ctx
     this.world()
@@ -839,13 +859,46 @@ export class Renderer {
     if (buffs.length) {
       this.world()
       ctx.save()
-      ctx.lineWidth = 3
+      // Soft aura under the feet in every buff colour, then the rotating rings and rising arrows.
+      const pulse = 0.5 + 0.5 * Math.sin(this.clock * 2.4 * this.fx.motion)
+      buffs.forEach((kind, index) => {
+        this.glowEllipse(
+          pos.x,
+          feet,
+          (30 + index * 4) * size,
+          (11 + index * 1.5) * size,
+          COOKING_EFFECTS[kind].color,
+          0.5 + 0.15 * pulse
+        )
+      })
+      ctx.lineWidth = 2.5
       buffs.forEach((kind, index) => {
         const angle = this.clock * this.fx.motion + index * 2
-        ctx.strokeStyle = COOKING_EFFECTS[kind].color
+        const color = COOKING_EFFECTS[kind].color
+        ctx.globalAlpha = 0.9
+        ctx.strokeStyle = color
         ctx.beginPath()
         ctx.ellipse(pos.x, feet, (22 + index * 5) * size, (8 + index * 2) * size, 0, angle, angle + Math.PI * 1.7)
         ctx.stroke()
+        ctx.globalAlpha = 1
+        ctx.fillStyle = color
+        for (let n = 0; n < 2; n++) {
+          const t = (this.clock * 0.55 * this.fx.motion + n * 0.5 + index * 0.31) % 1
+          const px = pos.x + Math.sin(index * 2.1 + n * 3.7) * (14 + index * 3) * size
+          const py = feet - 4 * size - t * 46 * size
+          const a = Math.sin(t * Math.PI)
+          ctx.globalAlpha = 0.85 * a
+          ctx.beginPath()
+          ctx.moveTo(px, py - 3 * size)
+          ctx.lineTo(px + 3 * size, py + 1 * size)
+          ctx.lineTo(px + 1 * size, py + 1 * size)
+          ctx.lineTo(px + 1 * size, py + 3 * size)
+          ctx.lineTo(px - 1 * size, py + 3 * size)
+          ctx.lineTo(px - 1 * size, py + 1 * size)
+          ctx.lineTo(px - 3 * size, py + 1 * size)
+          ctx.closePath()
+          ctx.fill()
+        }
       })
       ctx.restore()
     }
@@ -965,14 +1018,16 @@ export class Renderer {
       this.art(frame, bx, by, frame.w / 2, frame.h / 2, false, 1, 0.5)
       this.world()
     }
-    if (buffs.length)
-      this.blit(
-        this.label(buffs.map((kind) => COOKING_EFFECTS[kind].short).join(' '), 11, '#fff4cf'),
-        pos.x,
-        feet - 80 * size - tagLift,
-        0,
-        shown
-      )
+    if (buffs.length) {
+      // One label per buff in its own colour, laid out side by side and centred on the player.
+      const tags = buffs.map((kind) => this.label(COOKING_EFFECTS[kind].short, 11, COOKING_EFFECTS[kind].color))
+      const widths = tags.map((tag) => tag.width / ((tag as Label).res || 1) - 6)
+      let x = pos.x - widths.reduce((sum, w) => sum + w, 0) / 2
+      tags.forEach((tag, index) => {
+        this.blit(tag, x + widths[index] / 2, feet - 80 * size - tagLift, 0, shown)
+        x += widths[index]
+      })
+    }
     this.blit(
       this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
       pos.x,
@@ -2164,12 +2219,27 @@ export class Renderer {
       const food = it[i + 3] >= 0 ? COOKING_EFFECTS[kind as keyof typeof COOKING_EFFECTS] : undefined
       this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
       if (food) {
+        const swell = Math.sin(this.clock * 3 * this.fx.motion)
         ctx.save()
+        this.glowEllipse(it[i + 1], it[i + 2] + 2, 24 + swell * 3, 20 + swell * 2.5, food.color, 0.5 + 0.12 * swell)
+        ctx.globalAlpha = 0.75
         ctx.strokeStyle = food.color
         ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.ellipse(it[i + 1], it[i + 2] + 7, 13 + Math.sin(this.clock * 3) * 2, 5, 0, 0, TAU)
+        ctx.ellipse(it[i + 1], it[i + 2] + 7, 13 + swell * 2, 5, 0, 0, TAU)
         ctx.stroke()
+        // Two twinkles that swell and fade out of step.
+        ctx.fillStyle = '#fffbe6'
+        for (let n = 0; n < 2; n++) {
+          const t = (this.clock * 0.7 * this.fx.motion + n * 0.5 + i * 0.13) % 1
+          const k = Math.sin(t * Math.PI)
+          const tx = it[i + 1] + (n ? 11 : -12)
+          const ty = it[i + 2] - 6 + (n ? 4 : -2) - Math.round(t * 3)
+          const arm = 1 + 3 * k
+          ctx.globalAlpha = 0.9 * k
+          ctx.fillRect(tx - 0.5, ty - arm, 1, arm * 2)
+          ctx.fillRect(tx - arm, ty - 0.5, arm * 2, 1)
+        }
         ctx.restore()
       }
       this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12, false, 1, food ? 1.5 : 1)
