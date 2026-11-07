@@ -11,7 +11,7 @@ on:
         required: true
         type: choice
         default: normal-game
-        options: [normal-game, meshopt, extra]
+        options: [normal-game, meshopt, extra, concurrency]
       channel:
         description: Headless Chromium distribution
         required: true
@@ -28,8 +28,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: [swiftshader, gl, vulkan]
+        backend: ${{ fromJSON(inputs.scenario == 'concurrency' && '["gl"]' || '["swiftshader","gl","vulkan"]') }}
+        workers: ${{ fromJSON(inputs.scenario == 'concurrency' && '[1,2]' || '[1]') }}
     env:
+      BENCHMARK_WORKERS: ${{ matrix.workers }}
       BENCHMARK_BACKEND: ${{ matrix.backend }}
       BENCHMARK_SCENARIO: ${{ inputs.scenario }}
       BENCHMARK_CHANNEL: ${{ inputs.channel }}
@@ -41,8 +43,12 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          assert(['normal-game', 'meshopt', 'extra'].includes(process.env.BENCHMARK_SCENARIO));
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(process.env.BENCHMARK_SCENARIO));
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
+          const workers = Number(process.env.BENCHMARK_WORKERS);
+          assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
+          assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
+          assert(process.env.BENCHMARK_SCENARIO === 'concurrency' ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
           NODE
       - name: Verify source run and successful build
         id: source
@@ -163,12 +169,18 @@ jobs:
           const scenario = process.env.BENCHMARK_SCENARIO
           const channel = process.env.BENCHMARK_CHANNEL
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
-          if (!['normal-game', 'meshopt', 'extra'].includes(scenario ?? '')) throw new Error('Unknown scenario')
+          if (!['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario ?? '')) throw new Error('Unknown scenario')
           if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
+          const workers = Number(process.env.BENCHMARK_WORKERS)
+          if (!['1', '2'].includes(process.env.BENCHMARK_WORKERS ?? '') || !Number.isFinite(workers) || !Number.isInteger(workers) || ![1, 2].includes(workers)) throw new Error('Invalid workers')
+          if (scenario === 'concurrency' ? channel !== 'chromium' || backend !== 'gl' : workers !== 1) throw new Error('Invalid concurrency settings')
           export default defineConfig(source, {
             testDir: fileURLToPath(new URL('.', import.meta.url)),
             testMatch: 'renderer.spec.ts',
-            grep: scenario === 'meshopt'
+            workers,
+            grep: scenario === 'concurrency'
+              ? /(?:normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation|same-session Title, Continue and New game retain the completed campaign preparation|advancing prepares the next stage before releasing the result screen)$/
+              : scenario === 'meshopt'
               ? /meshopt source equivalence /
               : scenario === 'extra'
                 ? /EXTRA (?:exposes every runtime role\/action and never requests sheets, audio or game services|loop boundary repeats the start pose while the interior visibly moves|shares the weak model IBL once across model switches and releases it on pagehide)$/
@@ -263,7 +275,7 @@ jobs:
           test.afterEach(async ({ page, browser }, testInfo) => {
             const originalFailed = testInfo.status !== testInfo.expectedStatus
             try {
-              const selector = process.env.BENCHMARK_SCENARIO === 'normal-game' ? '#field > canvas' : '#viewer-canvas'
+              const selector = ['normal-game', 'concurrency'].includes(process.env.BENCHMARK_SCENARIO ?? '') ? '#field > canvas' : '#viewer-canvas'
               const renderer = await page.locator(selector).evaluate((canvas: HTMLCanvasElement) => {
                 const context = canvas.getContext('webgl2')
                 if (!context || context.isContextLost()) throw new Error('No live game WebGL2 context')
@@ -317,8 +329,10 @@ jobs:
           const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
           const selected = specs(report.suites);
           const scenario = process.env.BENCHMARK_SCENARIO;
-          assert(['normal-game', 'meshopt', 'extra'].includes(scenario));
-          const expected = scenario === 'meshopt'
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario));
+          const expected = scenario === 'concurrency'
+            ? ["normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation","same-session Title, Continue and New game retain the completed campaign preparation","advancing prepares the next stage before releasing the result screen"]
+            : scenario === 'meshopt'
             ? ['soldier walk', 'slime walk', 'mage attack', 'tank walk', 'dragon breath'].map(name => `${name} preserves source poses and rendered appearance`)
             : scenario === 'extra'
               ? [
@@ -345,18 +359,25 @@ jobs:
           mkdir -p .build/renderer-benchmark-local
           node --input-type=module <<'NODE'
           import { writeFileSync } from 'node:fs';
+          import { cpus } from 'node:os';
           import { execFileSync } from 'node:child_process';
           import assert from 'node:assert/strict';
           const backend = process.env.BENCHMARK_BACKEND;
           const scenario = process.env.BENCHMARK_SCENARIO;
           const channel = process.env.BENCHMARK_CHANNEL;
-          assert(['normal-game', 'meshopt', 'extra'].includes(scenario));
+          assert(['normal-game', 'meshopt', 'extra', 'concurrency'].includes(scenario));
           assert(['shell', 'chromium'].includes(channel));
+          const workers = Number(process.env.BENCHMARK_WORKERS);
+          assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
+          assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
+          assert(process.env.BENCHMARK_SCENARIO === 'concurrency' ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
+          const cpu = cpus();
           const metadata = {
             sourceRunId: process.env.SOURCE_RUN_ID,
             source: process.env.SOURCE_METADATA ? JSON.parse(process.env.SOURCE_METADATA) : null,
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
-            jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, scenario, channel, node: process.version,
+            jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, scenario, channel, workers, node: process.version,
+            cpu: { logicalCount: cpu.length, model: cpu[0]?.model ?? null },
             playwrightChannel: channel === 'chromium' ? 'chromium' : null,
             headless: true, display: 'xvfb-run -a',
             args: ['--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-rasterization', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
@@ -369,7 +390,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}
+          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-workers-{0}', matrix.workers) || '' }}
           path: .build/renderer-benchmark-local/
           include-hidden-files: true
           if-no-files-found: warn
