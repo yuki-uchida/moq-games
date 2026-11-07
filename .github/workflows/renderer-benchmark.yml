@@ -35,7 +35,7 @@ jobs:
       fail-fast: false
       matrix:
         backend: ${{ fromJSON((inputs.scenario == 'concurrency' || inputs.scenario == 'disk-cache') && '["gl"]' || '["swiftshader","gl","vulkan"]') }}
-        workers: ${{ fromJSON(inputs.scenario == 'concurrency' && '[1,2]' || '[1]') }}
+        workers: ${{ fromJSON((inputs.scenario == 'concurrency' || inputs.scenario == 'disk-cache') && '[1,2]' || '[1]') }}
     env:
       BENCHMARK_WORKERS: ${{ matrix.workers }}
       BENCHMARK_BACKEND: ${{ matrix.backend }}
@@ -54,11 +54,11 @@ jobs:
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
-          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated' && process.env.BENCHMARK_WORKERS === '1');
+          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
-          assert(process.env.BENCHMARK_SCENARIO === 'concurrency' ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
+          assert(['concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO) ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
           NODE
       - name: Verify source run and successful build
         id: source
@@ -190,12 +190,12 @@ jobs:
           if (browserMode === 'shared' && !process.argv.includes('--list') && !endpoint) throw new Error('Missing shared browser endpoint')
           const address = browserMode === 'shared' && endpoint ? new URL(endpoint) : undefined
           if (address && (address.protocol !== 'ws:' || address.hostname !== '127.0.0.1' || !address.port || address.username || address.password)) throw new Error('Invalid shared browser endpoint')
-          if (scenario === 'disk-cache' && (channel !== 'chromium' || backend !== 'gl' || browserMode !== 'dedicated' || process.env.BENCHMARK_WORKERS !== '1')) throw new Error('Invalid disk cache settings')
+          if (scenario === 'disk-cache' && (channel !== 'chromium' || backend !== 'gl' || browserMode !== 'dedicated')) throw new Error('Invalid disk cache settings')
           const diskCachePass = process.env.BENCHMARK_DISK_CACHE_PASS
           if (scenario === 'disk-cache' && !['cold-a', 'warm-a', 'cold-b', 'warm-b'].includes(diskCachePass ?? '') && !process.argv.includes('--list')) throw new Error('Invalid disk cache pass')
           const workers = Number(process.env.BENCHMARK_WORKERS)
           if (!['1', '2'].includes(process.env.BENCHMARK_WORKERS ?? '') || !Number.isFinite(workers) || !Number.isInteger(workers) || ![1, 2].includes(workers)) throw new Error('Invalid workers')
-          if (scenario === 'concurrency' ? channel !== 'chromium' || backend !== 'gl' : workers !== 1) throw new Error('Invalid concurrency settings')
+          if (['concurrency', 'disk-cache'].includes(scenario ?? '') ? channel !== 'chromium' || backend !== 'gl' : workers !== 1) throw new Error('Invalid concurrency settings')
           export default defineConfig(source, {
             testDir: fileURLToPath(new URL('.', import.meta.url)),
             testMatch: 'renderer.spec.ts',
@@ -258,7 +258,8 @@ jobs:
             assert.equal(env.BENCHMARK_BACKEND, 'gl')
             assert.equal(env.BENCHMARK_CHANNEL, 'chromium')
             assert.equal(env.BENCHMARK_BROWSER_MODE, 'dedicated')
-            assert.equal(env.BENCHMARK_WORKERS, '1')
+            assert(['1', '2'].includes(env.BENCHMARK_WORKERS))
+            const firstWorkers = Number(env.BENCHMARK_WORKERS)
             const cacheRoot = mkdtempSync(join(temporary, 'renderer-disk-cache-'))
             const artifactRoot = resolve('.build/renderer-benchmark-local')
             const cacheRelative = relative(artifactRoot, cacheRoot)
@@ -271,6 +272,7 @@ jobs:
             let status = 0
             for (const passID of ['cold-a', 'warm-a', 'cold-b', 'warm-b']) {
               const [temperature, cacheGroup] = passID.split('-')
+              const workers = cacheGroup === 'a' ? firstWorkers : 3 - firstWorkers
               const cacheDirectory = groups[cacheGroup]
               const directory = join(output, passID)
               mkdirSync(directory)
@@ -283,7 +285,7 @@ jobs:
                 cacheAccessError = error.message
               }
               const childEnv = {
-                ...env, BENCHMARK_DISK_CACHE_PASS: passID,
+                ...env, BENCHMARK_DISK_CACHE_PASS: passID, BENCHMARK_WORKERS: String(workers),
                 MESA_SHADER_CACHE_DIR: cacheDirectory, MESA_SHADER_CACHE_DISABLE: 'false',
                 MESA_SHADER_CACHE_SHOW_STATS: 'true', DEBUG: 'pw:browser'
               }
@@ -294,7 +296,7 @@ jobs:
                 'MESA_SHADER_CACHE_SHOW_STATS', 'DEBUG'
               ].map(key => [key, childEnv[key] ?? null]))
               const metadata = {
-                passID, cacheGroup, temperature, workers: 1, cacheDirectory, environment, before,
+                passID, cacheGroup, temperature, workers, cacheDirectory, environment, before,
                 cacheAccess: { runnerAccessError: cacheAccessError, mode: (lstatSync(cacheDirectory).mode & 0o777).toString(8), uid: process.getuid?.() ?? null, gid: process.getgid?.() ?? null, browserSandboxAccessVerified: false },
                 command: ['xvfb-run', '-a', 'npx', 'playwright', 'test', '--config', '.build/renderer-benchmark-local/playwright.config.ts'],
                 report: `disk-cache/${passID}/report.json`, results: `disk-cache/${passID}/results`,
@@ -637,11 +639,11 @@ jobs:
           assert(['shell', 'chromium'].includes(channel));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
-          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated' && process.env.BENCHMARK_WORKERS === '1');
+          assert(process.env.BENCHMARK_SCENARIO !== 'disk-cache' || process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' && process.env.BENCHMARK_BROWSER_MODE === 'dedicated');
           const workers = Number(process.env.BENCHMARK_WORKERS);
           assert(['1', '2'].includes(process.env.BENCHMARK_WORKERS));
           assert(Number.isFinite(workers) && Number.isInteger(workers) && [1, 2].includes(workers));
-          assert(process.env.BENCHMARK_SCENARIO === 'concurrency' ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
+          assert(['concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO) ? process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl' : workers === 1);
           const cpu = cpus();
           const metadata = {
             sourceRunId: process.env.SOURCE_RUN_ID,
@@ -660,6 +662,8 @@ jobs:
                 : []
             } : {}),
             ...(scenario === 'disk-cache' ? {
+              firstWorkers: workers,
+              workerOrder: [workers, workers, 3 - workers, 3 - workers],
               passOrder: ['cold-a', 'warm-a', 'cold-b', 'warm-b'],
               passes: existsSync('.build/renderer-benchmark-local/disk-cache/passes.json')
                 ? JSON.parse(readFileSync('.build/renderer-benchmark-local/disk-cache/passes.json', 'utf8')) : [],
@@ -679,7 +683,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ inputs.scenario == 'concurrency' && format('-first-workers-{0}', matrix.workers) || '' }}${{ inputs.browser_mode == 'shared' && '-shared' || '' }}
+          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}${{ (inputs.scenario == 'concurrency' || inputs.scenario == 'disk-cache') && format('-first-workers-{0}', matrix.workers) || '' }}${{ inputs.browser_mode == 'shared' && '-shared' || '' }}
           path: .build/renderer-benchmark-local/
           include-hidden-files: true
           if-no-files-found: warn
