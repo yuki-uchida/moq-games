@@ -26,7 +26,8 @@ export class MoqtClientWrapper {
     }
   }
   async connect(url) {
-    if (url !== 'https://127.0.0.1:4433/') throw new Error('Mock accepts only its local relay URL')
+    if (!['https://127.0.0.1:4433/', 'https://relay.moqt.research.skyway.io/'].includes(url))
+      throw new Error('Mock accepts only its test relay URLs')
     this.events = new EventSource('/__yoru_moq/events?id=' + encodeURIComponent(this.id))
     await new Promise((resolve, reject) => {
       this.events.onmessage = (event) => {

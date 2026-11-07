@@ -115,6 +115,10 @@ test('MoQリレーと部屋コードの検証', async ({ browser }) => {
   try {
     await Promise.all([host.goto('/'), guest.goto('/')])
     await disableWorldRendering(host, guest)
+    await expect(host.locator('#relay-url')).toHaveValue('https://relay.moqt.research.skyway.io')
+    await expect(host.locator('#relay-url')).toBeHidden()
+    await host.getByText('リレーの詳細設定').click()
+    await guest.getByText('リレーの詳細設定').click()
     await host.locator('#relay-url').fill('http://example.invalid')
     await host.locator('#host').click()
     await expect(host.locator('#connection')).toContainText('HTTPS')
@@ -122,6 +126,7 @@ test('MoQリレーと部屋コードの検証', async ({ browser }) => {
     await guest.locator('#guest').click()
     await expect(guest.locator('#connection')).toContainText('32文字')
     await host.locator('#relay-url').fill('https://127.0.0.1:4433')
+    await guest.locator('#relay-url').fill('https://127.0.0.1:4433')
     await connectPlayers(host, guest)
     for (const page of [host, guest]) {
       await expect(page.locator('#relay-url')).toBeDisabled()
