@@ -231,7 +231,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.2,
     pierce: Infinity,
     desc: 'あたふたと手をふりまわす。',
-    perk: '自立が早い：経験値 +25%'
+    perk: '自立が早い：経験値 +25%、防御 +1'
   }),
   weapon({
     id: 'p_over',

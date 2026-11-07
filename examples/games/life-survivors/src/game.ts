@@ -369,7 +369,7 @@ export function playerStats(player: Player): PlayerStats {
         (player.parent === 'p_gone' ? 60 : 0) +
         (player.parent === 'p_toxic' ? -10 : 0)
     ),
-    armor: p('p_stubborn') + p('p_patience') + (player.parent === 'p_over' ? 1 : 0),
+    armor: p('p_stubborn') + p('p_patience') + (player.parent === 'p_over' || player.parent === 'p_weak' ? 1 : 0),
     regen:
       player.parent === 'p_toxic'
         ? 0

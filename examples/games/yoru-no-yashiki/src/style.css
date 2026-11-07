@@ -68,6 +68,14 @@ main {
   color: #d0c6b2;
   font-size: 0.85rem;
 }
+.relay-settings {
+  margin: 1rem 0;
+  color: #d0c6b2;
+}
+.relay-settings summary {
+  cursor: pointer;
+  color: #c0a574;
+}
 .voice-preview {
   margin-top: 0.8rem;
   padding: 0.8rem 1rem;
