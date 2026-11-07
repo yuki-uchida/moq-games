@@ -399,7 +399,7 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
 
 for (const [parent, description] of [
   ['p_weak', '経験値 +25%、防御 +1'],
-  ['p_over', '盾で迎撃・吹き飛ばす'],
+  ['p_over', '敵を追わず盾で接触攻撃・吹き飛ばす'],
   ['p_over', '1枚1回防御＋無敵0.5秒'],
   ['p_over', '詳しくは「?」へ'],
   ['p_toxic', '全武器の威力 +5%'],
