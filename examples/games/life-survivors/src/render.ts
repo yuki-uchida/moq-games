@@ -902,6 +902,12 @@ export class Renderer {
     const shown =
       phase === 'reaper' || phase === 'won' ? Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6) : 1
     if (shown <= 0) return
+    if (local && !player.downed && player.gambleWeapon) {
+      const icon = weaponAppearance(player.gambleWeapon, ageAt(time), player.petAge).art
+      const frame = (sheet('icons')[icon] ?? sheet('icons')[player.gambleWeapon]).frames[0]
+      this.art(frame, pos.x + 24 * size, feet - 48 * size, frame.w / 2, frame.h / 2, false, 1, 0.5)
+      this.world()
+    }
     this.blit(
       this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color),
       pos.x,

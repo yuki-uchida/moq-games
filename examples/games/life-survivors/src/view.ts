@@ -43,6 +43,7 @@ export interface ViewPlayer {
   parent: string
   parentDeath?: Player['parentDeath']
   weapons: [string, number, number][]
+  gambleWeapon?: string
   petAge?: number
   passives: [string, number][]
   choices: string[]
@@ -174,6 +175,10 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       parent: p.parent,
       ...(p.parentDeath ? { parentDeath: { ...p.parentDeath } } : {}),
       weapons: p.weapons.map((w) => [w.id, w.lv, r(w.damage)]),
+      ...(p.weapons.find((w) => w.id === 'w_gamble')?.gambleWeapon &&
+      p.weapons.some((w) => w.id === p.weapons.find((entry) => entry.id === 'w_gamble')?.gambleWeapon)
+        ? { gambleWeapon: p.weapons.find((w) => w.id === 'w_gamble')!.gambleWeapon }
+        : {}),
       ...(p.weapons.some((w) => w.id === 'w_pet')
         ? { petAge: ageAt(state.time) - (p.weapons.find((w) => w.id === 'w_pet')!.acquiredAge ?? ageAt(state.time)) }
         : {}),
@@ -242,6 +247,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'parent',
         'parentDeath',
         'weapons',
+        'gambleWeapon',
         'petAge',
         'passives',
         'choices',
@@ -272,6 +278,12 @@ function playerOk(value: unknown): value is ViewPlayer {
         finite(p.parentDeath.y) &&
         ['none', 'passive', 'choice'].includes(p.parentDeath.reward as string))) &&
     Array.isArray(p.weapons) &&
+    (p.gambleWeapon === undefined ||
+      (text(p.gambleWeapon, 40) &&
+        p.gambleWeapon !== 'w_gamble' &&
+        WEAPON_BY_ID.has(p.gambleWeapon) &&
+        p.weapons.some((weapon) => Array.isArray(weapon) && weapon[0] === 'w_gamble') &&
+        p.weapons.some((weapon) => Array.isArray(weapon) && weapon[0] === p.gambleWeapon))) &&
     (p.petAge === undefined ||
       (finite(p.petAge, 0, 20) && p.weapons.some((weapon) => Array.isArray(weapon) && weapon[0] === 'w_pet'))) &&
     p.weapons.length <= 12 &&
