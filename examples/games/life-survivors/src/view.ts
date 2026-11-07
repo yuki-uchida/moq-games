@@ -117,7 +117,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
     shots.push(
       WEAPON_INDEX.get(s.weapon)!,
       r(s.x),
-      r(s.y),
+      r(s.y - (s.kind === 'garden' && s.v === 0 ? 48 * Math.sin(Math.PI * (1 - s.aux / s.orbit)) : 0)),
       r(s.r),
       r(s.angle * 100) % 100000,
       r((s.life / s.maxLife) * 100),

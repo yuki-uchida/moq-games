@@ -55,7 +55,7 @@ test('gardening plants visible flowers and describes its upgrades', async ({ pag
     .toBeGreaterThan(0)
   await page.locator('#status-open').click()
   await expect(page.locator('#status-weapons')).toContainText('ガーデニング')
-  await expect(page.locator('#status-weapons')).toContainText('弾速で遠くへ、効果時間で長く咲く')
+  await expect(page.locator('#status-weapons')).toContainText('弾速で早く着地し、効果時間で長く咲く')
   expect(errors).toEqual([])
 })
 
