@@ -22,6 +22,51 @@ test('workflow runs on main pushes only and gates dependent jobs by scope', () =
   assert.match(workflow, /needs\.browser\.result == 'skipped'/)
 })
 
+test('SDK jobs prefer generated-only exact caches and always verify before installing dependencies', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const keySuffix =
+    "${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}"
+  for (const name of ['build', 'check', 'lane-node', 'unit', 'life-browser', 'slow-checks']) {
+    const job = workflow.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  \\S)`, 'm'))?.[1]
+    assert.ok(job, name)
+    const steps = job
+      .split(/^      - /m)
+      .slice(1)
+      .map((step) => step.trimEnd())
+    const cacheIndex = steps.findIndex((step) => step.includes('id: sdk-generated'))
+    assert.ok(cacheIndex >= 0, name)
+    assert.deepEqual(
+      steps.slice(cacheIndex, cacheIndex + 4),
+      [
+        [
+          'uses: actions/cache@v4',
+          '        id: sdk-generated',
+          '        with:',
+          '          path: .generated/moqt-sdk',
+          `          key: sdk-generated-v1-${keySuffix}`
+        ].join('\n'),
+        [
+          'uses: actions/cache@v4',
+          "        if: steps.sdk-generated.outputs.cache-hit != 'true'",
+          '        with:',
+          '          path: |',
+          '            .sdk-cache',
+          '            .generated/moqt-sdk',
+          '            ~/.cargo/registry',
+          '            ~/.cargo/git',
+          `          key: sdk-${keySuffix}`
+        ].join('\n'),
+        'run: node scripts/setup-sdk.mjs',
+        'run: npm ci --ignore-scripts'
+      ],
+      name
+    )
+  }
+})
+
 test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakening the gate', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
@@ -41,7 +86,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   )
   assert.match(browser, /name: github-pages\n\s+path: \.pages-artifact/)
   assert.match(browser, /tar -xf \.pages-artifact\/artifact.tar -C dist\n\s+test -s dist\/THIRD-PARTY-NOTICES.txt/)
-  assert.doesNotMatch(browser, /setup-sdk|npm run build|prepare-pages|upload-pages-artifact/)
+  assert.doesNotMatch(browser, /sdk-generated|\.sdk-cache|setup-sdk|npm run build|prepare-pages|upload-pages-artifact/)
   assert.match(browser, /shard: \$\{\{ fromJSON\(needs.changes.outputs.shards\) \}\}/)
   assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
   assert.match(browser, /--config playwright.pages.config.ts --test-list shard-tests.txt/)
