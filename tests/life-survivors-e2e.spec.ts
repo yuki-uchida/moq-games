@@ -80,12 +80,17 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
   await expect(cards.nth(0)).toContainText('効果なし（Lv8で強化）')
   await expect(cards.nth(1)).toContainText('効果なし（Lv8で強化）')
   await expect(cards.nth(2)).toContainText('クールダウン -15%')
+  await expect(cards.nth(0).locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
   await handle.evaluate((hook) => {
     ;(hook.game as unknown as Game).state.players[0].choices = []
   })
   await page.locator('#status-open').click()
-  await expect(page.locator('#status-weapons li').filter({ hasText: '毒親' })).toContainText('クールダウン無効')
-  await expect(page.locator('#status-weapons li').filter({ hasText: '香水' })).toContainText('クールダウン無効')
+  const toxic = page.locator('#status-weapons li').filter({ hasText: '毒親' })
+  const perfume = page.locator('#status-weapons li').filter({ hasText: '香水' })
+  await expect(toxic).not.toContainText('クールダウン無効')
+  await expect(perfume).not.toContainText('クールダウン無効')
+  await expect(toxic.locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
+  await expect(perfume.locator('.weapon-strong-label')).toHaveText(['特攻 恋愛', '特攻 人間関係'])
 })
 
 test('gambling draws the right animation and status for each life stage', async ({ page }, testInfo) => {

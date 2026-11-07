@@ -181,7 +181,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
-    desc: '身のまわりに常時毒の空気。クールダウン無効、弾数・効果時間無効。特攻：悪口・人間関係。',
+    desc: '身のまわりに常時毒の空気。',
     perk: '全武器の威力 +5%・最大精神力 -10。自然回復なし（性格・仲間・家庭）／食事・レベルアップで回復可。18歳未満は親を含めて手札3枠'
   }),
   weapon({
@@ -198,7 +198,7 @@ export const PARENTS: WeaponDef[] = [
     area: 13,
     duration: 1.4,
     strong: ['exam', 'class'],
-    desc: '参考書を一番近い敵に投げつける。特攻：試験・授業。',
+    desc: '参考書を一番近い敵に投げつける。',
     perk: '勉強の威力 +30%'
   }),
   weapon({
@@ -216,7 +216,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 2.6,
     pierce: 3,
     area: 14,
-    desc: '風船が真上へ飛び、割れて周囲を爆破・吹き飛ばす。特攻なし。',
+    desc: '風船が真上へ飛び、割れて周囲を爆破・吹き飛ばす。',
     perk: '手札の枠 +1'
   }),
   weapon({
@@ -252,7 +252,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
+    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({
@@ -272,7 +272,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。最大2人。特攻：人間関係・授業。'
+    desc: '子のそばを離れて近くの敵を追い回す。最大2人。'
   }),
   weapon({
     id: 'p_rich',
@@ -289,7 +289,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.45,
     pierce: Infinity,
     strong: ['money'],
-    desc: '札束が敵の頭上に降る。特攻：お金。',
+    desc: '札束が敵の頭上に降る。',
     perk: '投資の威力 +30%'
   }),
   weapon({
@@ -308,7 +308,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 300,
     strong: ['people', 'class'],
-    desc: '最も近い敵に飛び蹴りし、戻ってくる。特攻：人間関係・授業。'
+    desc: '最も近い敵に飛び蹴りし、戻ってくる。'
   }),
   weapon({
     id: 'p_gone',
@@ -342,7 +342,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 120,
     strong: ['people', 'insult'],
     minAge: 3,
-    desc: '友だちが遊びに来て、まわりを駆け回り、敵の弾を打ち消す。特攻：人間関係・悪口。',
+    desc: '友だちが遊びに来て、まわりを駆け回り、敵の弾を打ち消す。',
     evolve: { passive: 'p_kind', name: '一生の親友' }
   }),
   weapon({
@@ -361,7 +361,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 80,
     strong: ['sickness', 'sports'],
     minAge: 5,
-    desc: '年齢で変化：サッカー→野球→バスケ→テニス→ゴルフ→ゲートボール。特攻：病気・スポーツ。',
+    desc: '年齢で変化：サッカー→野球→バスケ→テニス→ゴルフ→ゲートボール。',
     evolve: { passive: 'p_hot', name: '全国制覇' }
   }),
   weapon({
@@ -379,7 +379,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 2,
     strong: ['exam', 'class'],
     minAge: 3,
-    desc: '鉛筆が一番近い敵を貫く。特攻：試験・授業。',
+    desc: '鉛筆が一番近い敵を貫く。',
     evolve: { passive: 'p_diligent', name: '首席合格' }
   }),
   weapon({
@@ -397,7 +397,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['love', 'insult'],
     minAge: 12,
-    desc: 'ハートが追いかけて当たると足止め。特攻：恋愛・悪口。',
+    desc: 'ハートが追いかけて当たると足止め。',
     evolve: { passive: 'p_stubborn', name: '一途な愛' }
   }),
   weapon({
@@ -415,7 +415,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 60,
     strong: ['love', 'people'],
     minAge: 12,
-    desc: '向いている方向を輝きで薙ぎ払う。特攻：恋愛・人間関係。',
+    desc: '向いている方向を輝きで薙ぎ払う。',
     evolve: { passive: 'p_healthy', name: '永遠の美貌' }
   }),
   weapon({
@@ -432,7 +432,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'class'],
     minAge: 8,
-    desc: '夢中になれる場所をつくり、入った敵を削る。特攻：仕事・授業。',
+    desc: '夢中になれる場所をつくり、入った敵を削る。',
     evolve: { passive: 'p_optimist', name: '一生の趣味' }
   }),
   weapon({
@@ -451,7 +451,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 40,
     strong: ['work', 'money'],
     minAge: 16,
-    desc: 'カバンを放り投げて叩き落とす。特攻：仕事・お金。',
+    desc: 'カバンを放り投げて叩き落とす。',
     evolve: { passive: 'p_bold', name: '出世街道' }
   }),
   weapon({
@@ -469,7 +469,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['money'],
     minAge: 20,
-    desc: '稲妻で敵を攻撃。所持時間に応じて威力上昇。特攻：お金。',
+    desc: '稲妻で敵を攻撃。所持時間に応じて威力上昇。',
     evolve: { passive: 'p_greedy', name: '複利の魔法' }
   }),
   weapon({
@@ -487,7 +487,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'people'],
     minAge: 12,
-    desc: '投稿が次々に伝染し、敵から敵へ飛び移る。特攻：悪口・人間関係。',
+    desc: '投稿が次々に伝染し、敵から敵へ飛び移る。',
     evolve: { passive: 'p_savvy', name: 'バズの連鎖' }
   }),
   weapon({
@@ -506,7 +506,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['insult', 'child'],
     minAge: 3,
-    desc: '弾数に応じて犬・猫・ウサギ・インコ・ハムスターが順に登場。敵の弾を打ち消す。子犬から成長し、迎えて20年でお別れ。Lv MAXなら性格「愛犬との思い出」を獲得。特攻：悪口・子育て。',
+    desc: '弾数に応じて犬・猫・ウサギ・インコ・ハムスターが順に登場。敵の弾を打ち消す。子犬から成長し、迎えて20年でお別れ。Lv MAXなら性格「愛犬との思い出」を獲得。',
     evolve: { passive: 'p_optimist', name: '忠犬' }
   }),
   weapon({
@@ -525,7 +525,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 420,
     strong: ['sports', 'accident'],
     minAge: 12,
-    desc: '足もとを叩きつけて衝撃波。近くの敵をまとめて吹き飛ばす。特攻：スポーツ・事故。',
+    desc: '足もとを叩きつけて衝撃波。近くの敵をまとめて吹き飛ばす。',
     evolve: { passive: 'p_stubborn', name: '鋼の肉体' }
   }),
   weapon({
@@ -543,7 +543,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['class', 'exam'],
     minAge: 5,
-    desc: '知識の光線が向いた方向を貫く。特攻：授業・試験。',
+    desc: '知識の光線が向いた方向を貫く。',
     evolve: { passive: 'p_curious', name: '博覧強記' }
   }),
   weapon({
@@ -562,7 +562,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['work', 'class'],
     minAge: 22,
-    desc: 'ホチキスの針を連射する。特攻：仕事・授業。',
+    desc: 'ホチキスの針を連射する。',
     evolve: { passive: 'p_clever', name: '社畜の鑑' }
   }),
   weapon({
@@ -581,7 +581,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['love', 'money'],
     minAge: 22,
-    desc: '投げた指輪は必ずあなたの元へ戻ってくる。特攻：恋愛・お金。',
+    desc: '投げた指輪は必ずあなたの元へ戻ってくる。',
     evolve: { passive: 'p_kind', name: '銀婚式' }
   }),
   weapon({
@@ -600,7 +600,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     knockback: 60,
     strong: ['work', 'insult'],
     minAge: 12,
-    desc: '歌声が前方に扇状に広がる。特攻：仕事・悪口。',
+    desc: '歌声が前方に扇状に広がる。',
     evolve: { passive: 'p_hot', name: '魂のシャウト' }
   }),
   weapon({
@@ -619,7 +619,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'sickness'],
     minAge: 0,
-    desc: '三輪車→自転車→バイク→車→飛行機と年齢で変化し、画面を横切る。特攻：仕事・病気。',
+    desc: '三輪車→自転車→バイク→車→飛行機と年齢で変化し、画面を横切る。',
     evolve: { passive: 'p_curious', name: '世界一周' }
   }),
   weapon({
@@ -637,7 +637,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['money', 'accident'],
     minAge: 6,
-    desc: '置いた貯金箱に敵が触れると弾けて大爆発。特攻：お金・事故。',
+    desc: '置いた貯金箱に敵が触れると弾けて大爆発。',
     evolve: { passive: 'p_bold', name: '老後の蓄え' }
   }),
   weapon({
@@ -674,7 +674,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['love', 'people'],
     minAge: 15,
-    desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。クールダウン無効。特攻：恋愛・人間関係。',
+    desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。',
     evolve: { passive: 'p_savvy', name: '魅惑のフェロモン' }
   }),
   weapon({
@@ -703,7 +703,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 6,
     pierce: Infinity,
     minAge: 3,
-    desc: '2秒止まると生き物を召喚。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。クールダウン・弾数無効、効果時間有効。',
+    desc: '2秒止まると生き物を召喚。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。',
     evolve: { passive: 'p_curious', name: '生き物博士' }
   }),
   weapon({
@@ -721,7 +721,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['work', 'sickness'],
     minAge: 6,
-    desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃。弾速で早く着地し、効果時間で長く咲く。特攻：仕事・病気。',
+    desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃。弾速で早く着地し、効果時間で長く咲く。',
     evolve: { passive: 'p_curious', name: 'ひみつの花園' }
   })
 ]

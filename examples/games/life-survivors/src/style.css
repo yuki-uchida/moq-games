@@ -2184,6 +2184,21 @@ button {
   font-size: 12px;
   line-height: 1.4;
 }
+.weapon-strong-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.card .weapon-strong-label,
+.weapon-strong-label {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 207, 77, 0.16);
+  color: #ffcf4d;
+  font-size: 11px;
+}
 .status-level {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
