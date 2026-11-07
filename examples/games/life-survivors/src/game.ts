@@ -56,7 +56,7 @@ export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
 const hasFixedInterval = (id: string) =>
-  id === 'p_toxic' || id === 'w_perfume' || id === 'w_observe' || id === 'w_cooking'
+  id === 'p_toxic' || id === 'p_over' || id === 'w_perfume' || id === 'w_observe' || id === 'w_cooking'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -89,6 +89,7 @@ const SLOWMO_SCALE = 0.3
 const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
+const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.15)
 const OBSERVATION_STILL_SECONDS = 2
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
@@ -461,15 +462,20 @@ export function weaponStats(
         sourceUpgrades.reduce((value, upgrade) => value * (upgrade.cooldown ?? 1), 1) *
         stats.cooldown *
         (evolved ? 0.8 : 1),
-    amount: def.id === 'p_over' ? (lv >= 4 ? 2 : 1) : Math.min(
-      def.id === 'p_monster' ? 2 : Infinity,
-      def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
-        ? 1
-        : def.amount +
-            upgrades.reduce((value, upgrade) => value + (upgrade.amount ?? 0), 0) +
-            (evolved && def.id !== 'w_sports' ? 1 : 0) +
-            (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
-    ),
+    amount:
+      def.id === 'p_over'
+        ? lv >= 4
+          ? 2
+          : 1
+        : Math.min(
+            def.id === 'p_monster' ? 2 : Infinity,
+            def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
+              ? 1
+              : def.amount +
+                  upgrades.reduce((value, upgrade) => value + (upgrade.amount ?? 0), 0) +
+                  (evolved && def.id !== 'w_sports' ? 1 : 0) +
+                  (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
+          ),
     area: upgrades.reduce((value, upgrade) => value * (upgrade.area ?? 1), 1) * stats.area * (evolved ? 1.2 : 1),
     duration:
       def.duration *
@@ -1747,6 +1753,34 @@ export class Game {
         )
           continue
         weapon.cd -= dt
+        if (weapon.id === 'p_over') {
+          const ws = weaponStats(player, weapon, stats)
+          let guards = this.state.shots.filter((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
+          if (!guards.length) weapon.cd = ws.cooldown
+          if (guards.length > ws.amount) {
+            const extra = new Set(guards.slice(ws.amount))
+            this.state.shots = this.state.shots.filter((shot) => !extra.has(shot))
+            guards = guards.slice(0, ws.amount)
+          }
+          if (guards.length < ws.amount) {
+            this.fire(player, weapon, ws)
+            guards = this.state.shots.filter((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
+          }
+          if (weapon.cd <= 0) {
+            for (const guard of guards) guard.v = 0
+            weapon.cd = ws.cooldown
+          }
+          for (const [index, guard] of guards.entries()) {
+            guard.h = index - (guards.length - 1) / 2
+            guard.orbit = WEAPON_BY_ID.get(weapon.id)!.area * ws.area
+            guard.r = 20 * ws.area
+            guard.damage = ws.damage
+            guard.critChance = ws.crit
+            guard.strongMult = ws.strong
+            guard.tick = guardianBashDuration(weapon.lv)
+          }
+          continue
+        }
         if (weapon.id === 'p_toxic') {
           const aura = this.state.shots.find((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
           if (aura) {
@@ -1851,6 +1885,10 @@ export class Game {
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
+    const existingGuards =
+      def.id === 'p_over' && weapon.id === 'p_over'
+        ? this.state.shots.filter((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id).length
+        : 0
     const n =
       def.id === 'p_monster'
         ? Math.max(
@@ -1860,7 +1898,9 @@ export class Game {
               2 - this.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_monster').length
             )
           )
-        : ws.amount
+        : def.id === 'p_over'
+          ? Math.max(0, ws.amount - existingGuards)
+          : ws.amount
     const rng = this.rng
     const speed = def.speed * ws.speed
     switch (def.behavior) {
@@ -1870,9 +1910,9 @@ export class Game {
             angle: (i / n) * Math.PI * 2,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
-            r: 20 * Math.sqrt(ws.area),
-            h: def.id === 'p_over' ? (i / n) * Math.PI * 2 : 0,
-            tick: 0.45
+            r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
+            h: def.id === 'p_over' ? i + existingGuards - (ws.amount - 1) / 2 : 0,
+            tick: def.id === 'p_over' ? guardianBashDuration(weapon.lv) : 0.45
           })
         break
       case 'aura':
@@ -2216,9 +2256,9 @@ export class Game {
         continue
       }
       if (
-        shot.weapon === 'p_toxic' &&
-        shot.sourceWeapon === 'p_toxic' &&
-        owner.weapons.some((weapon) => weapon.id === 'p_toxic')
+        (shot.weapon === 'p_toxic' || shot.weapon === 'p_over') &&
+        shot.sourceWeapon === shot.weapon &&
+        owner.weapons.some((weapon) => weapon.id === shot.weapon)
       )
         shot.life = shot.maxLife
       else shot.life -= dt
@@ -2370,7 +2410,7 @@ export class Game {
           shot.x += shot.vx * dt
           shot.y += shot.vy * dt
       }
-      if (this.collide(shot, owner)) kept.push(shot)
+      if (shot.weapon === 'p_over' || this.collide(shot, owner)) kept.push(shot)
       else if (shot.weapon === 'p_free') this.burst(shot, owner)
     }
     state.shots = kept
@@ -2407,17 +2447,32 @@ export class Game {
   }
 
   private moveGuardian(shot: Shot, owner: Player, dt: number) {
-    const goalX = owner.x + Math.cos(shot.h) * shot.orbit * 0.72
-    const goalY = owner.y + Math.sin(shot.h) * shot.orbit * 0.72
-    const dx = goalX - shot.x
-    const dy = goalY - shot.y
-    const distance = Math.hypot(dx, dy)
-    shot.angle = shot.h
-    if (distance > 0) {
-      const step = Math.min(distance, shot.spin * dt)
-      shot.x += (dx / distance) * step
-      shot.y += (dy / distance) * step
-    }
+    const side = shot.h * shot.r * 1.5
+    shot.x = owner.x + owner.fx * shot.orbit * 0.48 - owner.fy * side
+    shot.y = owner.y + owner.fy * shot.orbit * 0.48 + owner.fx * side
+    shot.aux = Math.max(0, shot.aux - dt)
+    if (shot.aux > 0) return
+    shot.angle = Math.atan2(owner.fy, owner.fx)
+    let target: Enemy | undefined
+    let distance = Infinity
+    this.near(shot.x, shot.y, shot.r, (enemy) => {
+      const dx = enemy.x - shot.x
+      const dy = enemy.y - shot.y
+      const d = dx * dx + dy * dy
+      const radius = ENEMY_BY_ID.get(enemy.kind)!.radius * enemy.scale
+      if (this.shieldTouches(shot, enemy.x, enemy.y, radius) && d < distance) {
+        target = enemy
+        distance = d
+      }
+    })
+    if (!target) return
+    const enemy: Enemy = target
+    const dx = enemy.x - shot.x
+    const dy = enemy.y - shot.y
+    if (dx || dy) shot.angle = Math.atan2(dy, dx)
+    shot.aux = shot.tick
+    this.emit(FX.FIRE, shot.x, shot.y, WEAPON_INDEX.get(shot.weapon)!, this.playerIndex(owner))
+    this.damage(enemy, ENEMY_BY_ID.get(enemy.kind)!, shot, owner)
   }
 
   private movePet(shot: Shot, owner: Player, dt: number) {
@@ -2490,9 +2545,11 @@ export class Game {
   }
 
   private shieldTouches(shot: Shot, x: number, y: number, radius: number) {
-    const centerX = shot.x + (Math.cos(shot.angle) < 0 ? -7 : 7)
-    const dx = Math.max(Math.abs(x - centerX) - 7, 0)
-    const dy = Math.max(Math.abs(y - (shot.y + 3)) - 9, 0)
+    const scale = shot.r / 20
+    const thrust = shot.aux > 0 ? Math.sin(Math.PI * (1 - Math.min(1, shot.aux / shot.tick))) * 14 : 0
+    const centerX = shot.x + (Math.cos(shot.angle) < 0 ? -7 : 7) * scale + Math.cos(shot.angle) * thrust
+    const dx = Math.max(Math.abs(x - centerX) - 7 * scale, 0)
+    const dy = Math.max(Math.abs(y - (shot.y + 3 * scale + Math.sin(shot.angle) * thrust)) - 9 * scale, 0)
     return dx * dx + dy * dy <= radius * radius
   }
 
@@ -2524,9 +2581,7 @@ export class Game {
       const radius = def.radius * enemy.scale
       const dx = enemy.x - shot.x
       const dy = enemy.y - shot.y
-      if (shot.weapon === 'p_over') {
-        if (!this.shieldTouches(shot, enemy.x, enemy.y, radius)) return
-      } else if (rect) {
+      if (rect) {
         const along = dx * cos + dy * sin
         const across = -dx * sin + dy * cos
         if (Math.abs(along) > shot.w + radius || Math.abs(across) > shot.h + radius) return
@@ -2555,8 +2610,8 @@ export class Game {
       let dx = enemy.x - (origin?.x ?? owner.x)
       let dy = enemy.y - (origin?.y ?? owner.y)
       if (!dx && !dy && shot.weapon === 'p_over') {
-        dx = Math.cos(shot.angle)
-        dy = Math.sin(shot.angle)
+        dx = owner.fx
+        dy = owner.fy
       } else if (origin && !dx && !dy) dy = -1
       const l = Math.hypot(dx, dy) || 1
       enemy.kx += (dx / l) * knock

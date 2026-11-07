@@ -165,7 +165,7 @@ test('reacquiring a lower-level pet lets excess dogs expire', () => {
   expect(game.state.shots.filter((shot) => shot.weapon === 'w_pet')).toHaveLength(1)
 })
 
-test.each(['w_pet', 'w_friend', 'p_over'])(
+test.each(['w_pet', 'w_friend'])(
   '%s overlaps activations when duration exceeds cooldown, then old shots expire',
   (id) => {
     const game = new Game(5)

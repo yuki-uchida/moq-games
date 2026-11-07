@@ -337,9 +337,9 @@ const WEAPON_FIRE: Record<string, Recipe> = {
     v.tone('sawtooth', 1800, 900, 0.1, 0.08, 0.05, 2500)
   },
   p_over: (v) => {
-    v.tone('sine', 1100, 1100, 0, 0.3, 0.1)
-    v.tone('sine', 1100 * 2.76, 1100 * 2.76, 0, 0.12, 0.05)
-    v.noise(0, 0.03, 0.08, 'highpass', 3000)
+    v.tone('triangle', 420, 180, 0, 0.12, 0.12)
+    v.tone('sine', 1280, 940, 0, 0.16, 0.07)
+    v.noise(0, 0.06, 0.09, 'bandpass', 1800)
   },
   p_monster: (v) => {
     v.tone('sine', 120, 45, 0, 0.18, 0.28)
