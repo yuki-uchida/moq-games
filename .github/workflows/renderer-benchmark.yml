@@ -1,0 +1,240 @@
+name: Renderer benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Checks and Pages main push run ID with a successful build
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [swiftshader, gl, vulkan]
+    env:
+      BENCHMARK_BACKEND: ${{ matrix.backend }}
+      SOURCE_RUN_ID: ${{ inputs.run_id }}
+      LIBGL_ALWAYS_SOFTWARE: 'true'
+      GALLIUM_DRIVER: llvmpipe
+    steps:
+      - name: Verify source run and successful build
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const assert = require('node:assert/strict');
+            function validateRunId(value) {
+              assert.equal(value, value.trim());
+              assert.match(value, /^\d+$/);
+            }
+            function verifySource(run, jobs, repository, workflowId, runId) {
+              validateRunId(runId);
+              assert.equal(String(run.id), runId);
+              assert.equal(run.repository.full_name, repository);
+              assert.equal(run.head_repository.full_name, repository);
+              assert.equal(run.event, 'push');
+              assert.equal(run.head_branch, 'main');
+              assert.equal(run.workflow_id, workflowId);
+              assert.equal(run.path, '.github/workflows/check.yml');
+              assert.match(run.head_sha, /^[a-f0-9]{40}$/);
+              assert(jobs.some(job => job.name === 'build' && job.run_id === run.id &&
+                job.head_sha === run.head_sha && job.status === 'completed' && job.conclusion === 'success'));
+              return run.head_sha;
+            }
+            const fixture = {
+              id: 123, repository: { full_name: 'owner/repo' }, head_repository: { full_name: 'owner/repo' },
+              event: 'push', head_branch: 'main', workflow_id: 456, path: '.github/workflows/check.yml',
+              head_sha: 'a'.repeat(40), conclusion: 'cancelled'
+            };
+            const build = { name: 'build', run_id: 123, head_sha: fixture.head_sha, status: 'completed', conclusion: 'success' };
+            const verify = (run = fixture, jobs = [build]) => verifySource(run, jobs, 'owner/repo', 456, '123');
+            assert.equal(verify(), fixture.head_sha);
+            assert.equal(verify({ ...fixture, conclusion: 'success' }), fixture.head_sha);
+            for (const value of ['', '1;echo bad', '-1', '1.2', '123\n']) assert.throws(() => validateRunId(value));
+            for (const patch of [
+              { id: 124 }, { repository: { full_name: 'other/repo' } }, { head_repository: { full_name: 'other/repo' } },
+              { event: 'pull_request' }, { head_branch: 'other' }, { workflow_id: 457 },
+              { path: '.github/workflows/other.yml' }, { head_sha: 'invalid' }
+            ]) assert.throws(() => verify({ ...fixture, ...patch }));
+            assert.throws(() => verify(fixture, []));
+            for (const patch of [
+              { name: 'check' }, { run_id: 124 }, { head_sha: 'b'.repeat(40) },
+              { status: 'in_progress' }, { conclusion: 'failure' }, { conclusion: 'cancelled' }, { conclusion: 'skipped' }
+            ]) assert.throws(() => verify(fixture, [{ ...build, ...patch }]));
+            console.log('Source verification self-check passed (including cancelled run / successful build)');
+            const runId = process.env.SOURCE_RUN_ID;
+            validateRunId(runId);
+            const repo = context.repo;
+            const { data: workflow } = await github.rest.actions.getWorkflow({ ...repo, workflow_id: 'check.yml' });
+            const { data: run } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: runId });
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...repo, run_id: runId, filter: 'latest', per_page: 100
+            });
+            const sha = verifySource(run, jobs, `${repo.owner}/${repo.repo}`, workflow.id, runId);
+            core.setOutput('sha', sha);
+            core.setOutput('run', JSON.stringify({ id: run.id, url: run.html_url, sha, conclusion: run.conclusion,
+              attempt: run.run_attempt, workflowId: workflow.id, build: jobs.find(job => job.name === 'build') }));
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Restore source run SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-sdk-${{ steps.source.outputs.sha }}
+          path: .generated/moqt-sdk
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Restore source run Pages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: .pages-artifact
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - run: npm ci --ignore-scripts
+      - name: Restore prepared output without rebuilding
+        run: |
+          mkdir -p dist
+          tar -xf .pages-artifact/artifact.tar -C dist
+          test -s dist/THIRD-PARTY-NOTICES.txt
+          test -s .generated/moqt-sdk/provenance.json
+          node -e "const p = require('./node_modules/@playwright/test/package.json'); if (p.version !== '1.59.1') throw Error('Unexpected Playwright pin: ' + p.version)"
+      - name: Install identical headless and Mesa dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dri libegl1 mesa-vulkan-drivers xvfb
+          npx playwright install --with-deps --only-shell chromium
+      - name: Select the OS lavapipe ICD for Vulkan only
+        if: matrix.backend == 'vulkan'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          drivers=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          test "${#drivers[@]}" -eq 1
+          echo "VK_DRIVER_FILES=${drivers[0]}" >> "$GITHUB_ENV"
+      - name: Generate isolated config and import the existing case
+        shell: bash
+        run: |
+          mkdir -p .build/renderer-benchmark-local
+          cat > .build/renderer-benchmark-local/playwright.config.ts <<'CONFIG'
+          import { defineConfig } from '@playwright/test'
+          import { fileURLToPath } from 'node:url'
+          import source from '../../playwright.pages.config'
+
+          const backend = process.env.BENCHMARK_BACKEND
+          if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
+          export default defineConfig(source, {
+            testDir: fileURLToPath(new URL('.', import.meta.url)),
+            testMatch: 'renderer.spec.ts',
+            grep: /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
+            outputDir: fileURLToPath(new URL('results', import.meta.url)),
+            reporter: [
+              ['list'],
+              ['json', { outputFile: fileURLToPath(new URL('report.json', import.meta.url)) }]
+            ],
+            use: {
+              launchOptions: {
+                args: ['--enable-gpu', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough']
+              }
+            }
+          })
+          CONFIG
+          cat > .build/renderer-benchmark-local/renderer.spec.ts <<'SPEC'
+          import { test, expect } from '@playwright/test'
+          import '../../tests/tower-real3d-game.spec'
+
+          test.afterEach(async ({ page }, testInfo) => {
+            const originalFailed = testInfo.status !== testInfo.expectedStatus
+            try {
+              const renderer = await page.locator('#field > canvas').evaluate((canvas: HTMLCanvasElement) => {
+                const context = canvas.getContext('webgl2')
+                if (!context || context.isContextLost()) throw new Error('No live game WebGL2 context')
+                const debug = context.getExtension('WEBGL_debug_renderer_info')
+                if (!debug) throw new Error('WEBGL_debug_renderer_info unavailable on the game canvas')
+                return {
+                  renderer: String(context.getParameter(debug.UNMASKED_RENDERER_WEBGL)),
+                  vendor: String(context.getParameter(debug.UNMASKED_VENDOR_WEBGL))
+                }
+              }, undefined, { timeout: 10_000 })
+              const evidence = { backend: process.env.BENCHMARK_BACKEND, ...renderer }
+              console.log('Game renderer:', JSON.stringify(evidence))
+              await testInfo.attach('renderer', { body: JSON.stringify(evidence, null, 2), contentType: 'application/json' })
+              if (evidence.backend === 'swiftshader') {
+                expect(renderer.renderer).toMatch(/SwiftShader/i)
+              } else if (evidence.backend === 'gl') {
+                expect(renderer.renderer).toMatch(/llvmpipe/i)
+                expect(renderer.renderer).toMatch(/OpenGL/i)
+                expect(renderer.renderer).not.toMatch(/Vulkan|SwiftShader/i)
+              } else {
+                expect(evidence.backend).toBe('vulkan')
+                expect(renderer.renderer).toMatch(/Vulkan/i)
+                expect(renderer.renderer).toMatch(/llvmpipe|lavapipe/i)
+                expect(renderer.renderer).not.toMatch(/SwiftShader/i)
+              }
+            } catch (error) {
+              console.error('Renderer verification failed:', error)
+              if (!originalFailed) throw error
+            }
+          })
+          SPEC
+      - name: Confirm exactly one original test is selected
+        run: |
+          npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts --list --reporter=json > .build/renderer-benchmark-local/selection.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('.build/renderer-benchmark-local/selection.json', 'utf8'));
+          const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
+          const selected = specs(report.suites);
+          assert.equal(report.errors.length, 0);
+          assert.equal(selected.length, 1);
+          assert.equal(selected[0].tests.length, 1);
+          assert.equal(selected[0].title, 'normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation');
+          NODE
+      - name: Run the same case under X11 with headless Chromium
+        run: xvfb-run -a npx playwright test --config .build/renderer-benchmark-local/playwright.config.ts
+      - name: Record run, source and backend settings
+        if: always()
+        env:
+          SOURCE_METADATA: ${{ steps.source.outputs.run }}
+          BENCHMARK_RUN_ID: ${{ github.run_id }}
+          BENCHMARK_RUN_ATTEMPT: ${{ github.run_attempt }}
+          BENCHMARK_JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p .build/renderer-benchmark-local
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const backend = process.env.BENCHMARK_BACKEND;
+          const metadata = {
+            sourceRunId: process.env.SOURCE_RUN_ID,
+            source: process.env.SOURCE_METADATA ? JSON.parse(process.env.SOURCE_METADATA) : null,
+            benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
+            jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, node: process.version,
+            headless: true, display: 'xvfb-run -a',
+            args: ['--enable-gpu', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
+            environment: Object.fromEntries(['LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', 'VK_DRIVER_FILES'].map(key => [key, process.env[key] ?? null]))
+          };
+          writeFileSync('.build/renderer-benchmark-local/metadata.json', JSON.stringify(metadata, null, 2));
+          writeFileSync('.build/renderer-benchmark-local/mesa-packages.txt', execFileSync('dpkg-query', ['-W', 'libgl1-mesa-dri', 'libegl1', 'mesa-vulkan-drivers', 'xvfb'], { encoding: 'utf8' }));
+          NODE
+      - name: Preserve report, renderer, traces and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-benchmark-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}
+          path: .build/renderer-benchmark-local/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
