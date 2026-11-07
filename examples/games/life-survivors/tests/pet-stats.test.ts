@@ -23,6 +23,33 @@ function expectCurrentStats(player: Player, shot: Shot) {
   expect(shot.maxLife).toBeCloseTo(stats.duration)
 }
 
+test('pets spread across enemies and seek a different enemy after a hit', () => {
+  const game = new Game(10)
+  const player = equip(game, 'a')
+  const weapon = player.weapons[0]
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  game['fire'](player, weapon, weaponStats(player, weapon))
+  const [first, second] = game.state.shots
+  const enemy = game.spawnEnemy('exam', player.x + 100, player.y)!
+  const other = game.spawnEnemy('exam', player.x - 100, player.y)!
+  game['buildGrid']()
+
+  game['movePet'](first, player, 0)
+  game['movePet'](second, player, 0)
+  expect(new Set([first.target, second.target])).toEqual(new Set([enemy, other]))
+
+  const previous = first.target!
+  first.hits.set(previous.id, game.state.time + first.tick)
+  first.aux = 0
+  game['movePet'](first, player, 0)
+  expect(first.target).not.toBe(previous)
+
+  first.target!.hp = 0
+  first.aux = 0
+  game['movePet'](first, player, 0)
+  expect(first.target).toBe(previous)
+})
+
 test('adding or removing asset weapons does not change new pets, existing pets or other owners', () => {
   const game = new Game(5)
   const player = equip(game, 'a')
