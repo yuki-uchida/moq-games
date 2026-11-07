@@ -613,7 +613,7 @@ export class Effects {
         break
       }
       case FX.ITEM: {
-        if (a === 0) {
+        if (a === 0 || a === 6) {
           this.glow(x, y, 50, 0.6, '#7be495', { alpha: 0.6 })
           for (let i = 0; i < 5; i++)
             this.sprite('heal', x + this.r(-14, 14), y + this.r(-6, 10), {
@@ -627,6 +627,10 @@ export class Effects {
           this.ring(x, y, 12, 340, 0.7, '#6fd6ff', { width: 5, flat: 0.8 })
           this.ring(x, y, 8, 300, 0.6, '#ffffff', { width: 2, flat: 0.8, delay: 0.1 })
           this.glow(x, y, 90, 0.5, '#6fd6ff')
+        } else if (a >= 3 && a <= 5) {
+          const color = ['#ff7b6e', '#79aaff', '#ffcf65'][a - 3]
+          this.ring(x, y, 8, 45, 0.6, color, { width: 3, flat: 0.8 })
+          this.glow(x, y, 50, 0.6, color, { alpha: 0.6 })
         }
         break
       }

@@ -37,7 +37,7 @@ import { Effects, PK } from './effects'
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
-import { OBSERVATION_SPRITES, petForm, weaponAppearance } from './weapon-life'
+import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './weapon-life'
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
@@ -1356,9 +1356,9 @@ export class Renderer {
         break
       }
       case 'pet': {
-        // ペット: the dog runs at its prey and snaps when it arrives; mirrored by where it is heading.
-        const art = sheet('weapon:w_pet')
-        const biting = sh.v === 1
+        const type = PET_TYPES[Math.floor(sh.v / 2)] ?? PET_TYPES[0]
+        const art = sheet(type === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${type}`)
+        const biting = sh.v % 2 === 1
         const years = view.players[view.shots[i + 6]]?.petAge ?? 0
         const form = petForm(years)
         const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
@@ -1547,15 +1547,6 @@ export class Renderer {
           ctx.fillRect(Math.round(cos > 0 ? x - 14 - len : x + 14), Math.round(y - 5 + k * 5), len, 1)
         }
         this.centred(frame, x, y, evolved, 1, 1, flip)
-        break
-      }
-      case 'fan': {
-        // 料理: food pellets spinning through the air in a fan.
-        const art = sheet('weapon:w_cooking')
-        const anim = [art.fly, art.alt, art.alt2][sh.v % 3]
-        const frame = pick(anim, this.clock + i * 0.07)
-        if (trails) this.afterimages(frame, x, y, cos, sin, 8, evolved, 2)
-        this.centred(frame, x, y, evolved, 1, 0.85)
         break
       }
       default: {
@@ -1982,10 +1973,29 @@ export class Renderer {
     this.world()
     const it = view.items
     for (let i = 0; i < it.length; i += STRIDE.items) {
-      const anim = items[ITEM_KINDS[it[i]]]
+      const kind = ITEM_KINDS[it[i]]
+      const anim = items[kind]
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
       this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
       this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12)
+      if (it[i + 3] >= 0) {
+        const labels: Record<string, string> = {
+          food_damage: '攻撃',
+          food_defense: '防御',
+          food_speed: '移動',
+          food_heal: '回復'
+        }
+        ctx.save()
+        ctx.font = 'bold 11px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.lineWidth = 3
+        ctx.strokeStyle = '#34203b'
+        ctx.fillStyle = view.players[it[i + 3]].color
+        const label = `${view.players[it[i + 3]].name}：${labels[kind]}`
+        ctx.strokeText(label, it[i + 1], it[i + 2] - 18 + bob)
+        ctx.fillText(label, it[i + 1], it[i + 2] - 18 + bob)
+        ctx.restore()
+      }
     }
     this.world()
 

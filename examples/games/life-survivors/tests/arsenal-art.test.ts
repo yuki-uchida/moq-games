@@ -10,6 +10,10 @@ describe('arsenal art', () => {
   test('weapon sheets have the stated frames, 32×32, looping', () => {
     const expected: Record<string, Record<string, number>> = {
       w_pet: { fly: 4, bite: 2 },
+      w_pet_cat: { fly: 4, bite: 2 },
+      w_pet_rabbit: { fly: 4, bite: 2 },
+      w_pet_parakeet: { fly: 4, bite: 2 },
+      w_pet_hamster: { fly: 4, bite: 2 },
       w_reading: { fly: 4 },
       w_overtime: { fly: STAPLE_DIRS },
       w_ring: { fly: 4 },
@@ -28,6 +32,15 @@ describe('arsenal art', () => {
         expect(frames(id, name)).toHaveLength(n)
         for (const f of frames(id, name)) expect([f.w, f.h]).toEqual([32, 32])
       }
+  })
+
+  test('each pet has distinct running and biting sprites', () => {
+    const ids = ['w_pet', 'w_pet_cat', 'w_pet_rabbit', 'w_pet_parakeet', 'w_pet_hamster']
+    for (const animation of ['fly', 'bite']) {
+      const images = ids.map((id) => [...frames(id, animation)[0].data].join(','))
+      expect(new Set(images).size).toBe(ids.length)
+    }
+    for (const id of ids) expect(frames(id, 'bite')[0].data).not.toEqual(frames(id, 'bite')[1].data)
   })
 
   test('fx particles exist with sizes and frame counts', () => {

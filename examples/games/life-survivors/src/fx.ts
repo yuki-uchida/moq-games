@@ -20,7 +20,7 @@ export const FX = {
   CHEST: 8,
   /** x, y = collector, a = gems collected this tick, b = collector index — at most 1 per player per tick */
   GEM: 9,
-  /** x, y, a = ITEM_KINDS index (meal / magnet), b = taker index */
+  /** x, y, a = ITEM_KINDS index (meal / magnet / cooking), b = taker index */
   ITEM: 10,
   /** x, y, a = player index */
   DOWN: 11,

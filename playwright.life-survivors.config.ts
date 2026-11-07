@@ -6,6 +6,8 @@ const port = Number(process.env.E2E_PORT || 5194)
 export default defineConfig({
   testDir: './tests',
   testMatch: 'life-survivors-e2e.spec.ts',
+  // Split the single spec by test across CI shards; keep one worker per runner.
+  fullyParallel: true,
   workers: 1,
   timeout: 30_000,
   use: {

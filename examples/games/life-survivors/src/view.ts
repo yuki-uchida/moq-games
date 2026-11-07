@@ -53,7 +53,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 13
+  v: 14
   time: number
   phase: GameState['phase']
   level: number
@@ -69,7 +69,7 @@ export interface View {
   bullets: number[]
   /** Flat: x, y, value */
   gems: number[]
-  /** Flat: kind index, x, y */
+  /** Flat: kind index, x, y, owner index (-1 for shared items) */
   items: number[]
   /** Flat: x, y, value, bits (POPUP_BIT), owner index, life % */
   popups: number[]
@@ -80,7 +80,7 @@ export interface View {
   paused?: string[]
 }
 
-export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 3, popups: 6, fx: FX_STRIDE } as const
+export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
 export const SHOT_GAMBLE = 64
 /** Bits of an enemy's flags field. */
 export const ENEMY_FLAG = { elite: 1, windup: 2, blink: 4, ghost: 8 } as const
@@ -123,6 +123,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((s.life / s.maxLife) * 100),
       ownerIndex.get(s.owner) ?? 0,
       (s.weapon === 'p_over' && (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : r(s.v)) +
+        (s.kind === 'pet' ? (s.petType ?? 0) * 2 : 0) +
         (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0)
     )
   }
@@ -133,7 +134,8 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
   const gems: number[] = []
   for (const g of state.gems) gems.push(r(g.x), r(g.y), r(g.v))
   const items: number[] = []
-  for (const i of state.items) items.push(ITEM_KINDS.indexOf(i.kind), r(i.x), r(i.y))
+  for (const i of state.items)
+    items.push(ITEM_KINDS.indexOf(i.kind), r(i.x), r(i.y), 'owner' in i ? (ownerIndex.get(i.owner) ?? -1) : -1)
   const popups: number[] = []
   for (const p of state.popups)
     popups.push(
@@ -145,7 +147,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 13,
+    v: 14,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -291,7 +293,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 13) return undefined
+  if (!record(value) || value.v !== 14) return undefined
   if (
     Object.keys(value).some(
       (key) =>
@@ -405,6 +407,15 @@ export function readView(value: unknown): View | undefined {
     last = fx[i]
   }
   const items = v.items as number[]
-  for (let i = 0; i < items.length; i += STRIDE.items) if (!ITEM_KINDS[items[i]]) return undefined
+  for (let i = 0; i < items.length; i += STRIDE.items) {
+    const kind = ITEM_KINDS[items[i]]
+    const owner = items[i + 3]
+    if (
+      !kind ||
+      !Number.isInteger(owner) ||
+      (kind.startsWith('food_') ? owner < 0 || owner >= (v.players as ViewPlayer[]).length : owner !== -1)
+    )
+      return undefined
+  }
   return v as unknown as View
 }

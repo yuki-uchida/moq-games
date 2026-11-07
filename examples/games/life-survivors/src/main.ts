@@ -73,7 +73,7 @@ const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButton
 // Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
 const SEND_MS = 66
 const SNAPSHOT_MS = 100
-const APP = 'life-survivors-v17'
+const APP = 'life-survivors-v18'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000
 
