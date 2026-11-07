@@ -314,6 +314,8 @@ jobs:
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
+      MESA_SHADER_CACHE_DIR: ${{ runner.temp }}/moq-mesa-shader-cache
+      MESA_SHADER_CACHE_DISABLE: 'false'
     timeout-minutes: 30
     strategy:
       # Keep every report when a shard fails. One WebGL worker per independent runner.
@@ -358,6 +360,28 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Install Mesa and Xvfb
         run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb
+      - name: Identify Mesa shader cache platform
+        id: mesa-cache-platform
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process')
+          const { createHash } = require('node:crypto')
+          const { appendFileSync } = require('node:fs')
+          const { cpus } = require('node:os')
+          const mesa = execFileSync('dpkg-query', ['-W', '-f=${Version}', 'libgl1-mesa-dri'], { encoding: 'utf8' }).trim()
+          const cpu = cpus()[0]?.model?.trim()
+          if (!/^[0-9][^\s]*$/.test(mesa)) throw new Error('Missing or invalid Mesa package version')
+          if (!cpu || /unknown|unidentified|not specified|^n\/a$/i.test(cpu)) throw new Error('Missing or unknown CPU model')
+          const hash = (value) => createHash('sha256').update(value).digest('hex').slice(0, 16)
+          appendFileSync(process.env.GITHUB_OUTPUT, 'mesa=' + hash(mesa) + '\ncpu=' + hash(cpu) + '\n')
+          NODE
+      - name: Restore Mesa shader cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/moq-mesa-shader-cache
+          # Each shard retains its own shaders instead of racing to save one shared cache.
+          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}
       # Balance collected tests by measured duration so cold starts do not bunch up.
       - name: Select this shard's tests
         id: shard
