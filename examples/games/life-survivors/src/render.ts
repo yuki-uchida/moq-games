@@ -1549,15 +1549,6 @@ export class Renderer {
         this.centred(frame, x, y, evolved, 1, 1, flip)
         break
       }
-      case 'fan': {
-        // 料理: food pellets spinning through the air in a fan.
-        const art = sheet('weapon:w_cooking')
-        const anim = [art.fly, art.alt, art.alt2][sh.v % 3]
-        const frame = pick(anim, this.clock + i * 0.07)
-        if (trails) this.afterimages(frame, x, y, cos, sin, 8, evolved, 2)
-        this.centred(frame, x, y, evolved, 1, 0.85)
-        break
-      }
       default: {
         // aim, homing, bounce, arc, wander: the weapon's own flying frames; fast ones leave afterimages.
         const art = sheet(`weapon:${def.id === 'w_sports' ? weaponAppearance(def.id, ageAt(view.time)).art : def.id}`)
@@ -1982,10 +1973,29 @@ export class Renderer {
     this.world()
     const it = view.items
     for (let i = 0; i < it.length; i += STRIDE.items) {
-      const anim = items[ITEM_KINDS[it[i]]]
+      const kind = ITEM_KINDS[it[i]]
+      const anim = items[kind]
       const bob = Math.round(Math.sin(this.clock * 3 + i) * 2)
       this.shadow(it[i + 1], it[i + 2] + 8, 6, 0.22)
       this.art(anim.frames[0], it[i + 1], it[i + 2] + bob, 8, 12)
+      if (it[i + 3] >= 0) {
+        const labels: Record<string, string> = {
+          food_damage: '攻撃',
+          food_defense: '防御',
+          food_speed: '移動',
+          food_heal: '回復'
+        }
+        ctx.save()
+        ctx.font = 'bold 11px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.lineWidth = 3
+        ctx.strokeStyle = '#34203b'
+        ctx.fillStyle = view.players[it[i + 3]].color
+        const label = `${view.players[it[i + 3]].name}：${labels[kind]}`
+        ctx.strokeText(label, it[i + 1], it[i + 2] - 18 + bob)
+        ctx.fillText(label, it[i + 1], it[i + 2] - 18 + bob)
+        ctx.restore()
+      }
     }
     this.world()
 

@@ -97,8 +97,8 @@ test('gambling draws the right animation and status for each life stage', async 
     Object.assign(window, { gambleLabels: labels, gambleResults: results })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '🍳 料理'].includes(text)) labels.push(text)
-      if (text === '🍳 料理') {
+      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '💘 恋愛'].includes(text)) labels.push(text)
+      if (text === '💘 恋愛') {
         results.push({ at: performance.now(), font: this.font, x, width: maxWidth ?? 0, alpha: this.globalAlpha })
       }
       if (maxWidth === undefined) fillText.call(this, text, x, y)
@@ -136,10 +136,10 @@ test('gambling draws the right animation and status for each life stage', async 
       player.birthPick = false
       player.weapons = [
         { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
-        { id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }
+        { id: 'w_love', lv: 1, cd: 100, held: 0, damage: 0 }
       ]
       game['fireWeapons'](0)
-      return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_cooking')
+      return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_love')
     }, age)
     expect(copied).toBe(true)
     await expect
@@ -149,7 +149,7 @@ test('gambling draws the right animation and status for each life stage', async 
       .toBe(true)
     await expect
       .poll(() =>
-        page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
+        page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('💘 恋愛'))
       )
       .toBe(true)
     await expect
@@ -755,7 +755,7 @@ for (const width of [1280, 390]) {
     await expect(cards).toHaveCount(4)
     await expect(cards.nth(0)).toContainText('稲妻で敵を攻撃')
     await expect(cards.nth(1)).toContainText('貯金箱')
-    await expect(cards.nth(2)).toContainText('12秒ごとに武器を抽選')
+    await expect(cards.nth(2)).toContainText('12秒ごとに攻撃武器を抽選')
     await expect(cards.nth(3)).toContainText('交換しない')
     expect(await page.locator('#levelup').evaluate((panel) => panel.scrollWidth <= panel.clientWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`exchange-descriptions-${width}.png`), animations: 'disabled' })
@@ -1938,6 +1938,87 @@ test('creature observation renders and syncs its bird and active field in co-op'
   expect(errors).toEqual([])
 })
 
+test('cooking items appear for both players but only their owner can collect them', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  await context.addInitScript(() => {
+    const labels: string[] = []
+    Object.assign(window, { cookingLabels: labels })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.includes('：攻撃')) labels.push(text)
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  const errors: string[] = []
+  for (const page of [host, guest]) {
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await page.locator('#room').fill('cooking-items')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  const hostLife = await life(host)
+  const guestLife = await life(guest)
+  await expect.poll(() => guestLife.evaluate((hook) => hook.view?.players.length ?? 0)).toBe(2)
+  const placed = await hostLife.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS } = await import(path)
+    const game = hook.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    for (const player of game.state.players) {
+      player.choices = []
+      player.pending = 0
+      player.birthPick = false
+      player.weapons = []
+    }
+    const owner = game.state.players[0]
+    owner.fx = 1
+    owner.fy = 0
+    owner.weapons = [{ id: 'w_cooking', lv: 1, cd: 0, held: 0, damage: 0 }]
+    Object.defineProperty(game, 'rng', { value: () => 0.125, configurable: true })
+    game['fireWeapons'](59)
+    const before = game.state.items.length
+    game['fireWeapons'](1)
+    return { before, kind: game.state.items[0].kind, shots: game.state.shots.length }
+  })
+  expect(placed).toEqual({ before: 0, kind: 'food_damage', shots: 0 })
+  await expect.poll(() => guestLife.evaluate((hook) => (hook.view as unknown as View).items.length)).toBe(4)
+  await expect
+    .poll(() =>
+      guest.evaluate(() => (window as unknown as { cookingLabels: string[] }).cookingLabels.includes('P1：攻撃'))
+    )
+    .toBe(true)
+  const collected = await hostLife.evaluate(async (hook) => {
+    const path = '/src/game.ts'
+    const { playerStats } = await import(path)
+    const game = hook.game as unknown as Game
+    const [owner, other] = game.state.players
+    const item = game.state.items[0]
+    const before = playerStats(owner).might
+    other.x = item.x
+    other.y = item.y
+    game['collectGems'](0)
+    const afterOther = game.state.items.length
+    owner.x = item.x
+    owner.y = item.y
+    game['collectGems'](0)
+    return { afterOther, afterOwner: game.state.items.length, multiplier: playerStats(owner).might / before }
+  })
+  expect(collected).toEqual({ afterOther: 1, afterOwner: 0, multiplier: 1.25 })
+  await expect.poll(() => guestLife.evaluate((hook) => (hook.view as unknown as View).items.length)).toBe(0)
+  await host.locator('#status-open').click()
+  await expect(host.locator('#status-weapons')).toContainText('60秒ごとに自分専用の料理')
+  expect(errors).toEqual([])
+})
+
 test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
@@ -1947,7 +2028,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     Object.assign(window, { gambleLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (text === '大当たり！' || (text === '🍳 料理' && this.font === 'bold 20px sans-serif')) labels.push(text)
+      if (text === '大当たり！' || (text === '💘 恋愛' && this.font === 'bold 20px sans-serif')) labels.push(text)
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -1981,7 +2062,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     }
     game.state.players[0].weapons = [
       { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
-      { id: 'w_cooking', lv: 1, cd: 100, held: 0, damage: 0 }
+      { id: 'w_love', lv: 1, cd: 100, held: 0, damage: 0 }
     ]
     game['fireWeapons'](0)
   })
@@ -1999,7 +2080,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     .toBe(true)
   await expect
     .poll(() =>
-      guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('🍳 料理'))
+      guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('💘 恋愛'))
     )
     .toBe(true)
 })
@@ -2037,7 +2118,8 @@ test('guests receive both stages of a copied gardening weapon', async ({ context
       player.weapons = []
     }
     game.state.players[0].weapons = [
-      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 }
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 },
+      { id: 'w_garden', lv: 1, cd: 100, held: 0, damage: 0 }
     ]
     game['buildGrid']()
     game['fireWeapons'](0)
@@ -2079,7 +2161,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v16',
+      app: 'life-survivors-v17',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -2098,9 +2180,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v17', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v17', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v16', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v18', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v18', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v17', 'version-isolation'])])
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -2150,7 +2232,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v17', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v18', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])

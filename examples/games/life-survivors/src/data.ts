@@ -108,7 +108,7 @@ export type Behavior =
   | 'mine'
   | 'gamble'
   | 'trail'
-  | 'fan'
+  | 'food'
   | 'raid'
   | 'garden'
   | 'none'
@@ -656,7 +656,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 1,
     strong: ['money'],
     minAge: 12,
-    desc: '12秒ごとに武器を抽選し、次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
+    desc: '12秒ごとに攻撃武器を抽選し、次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
     evolve: { passive: 'p_lucky', name: '大穴的中' }
   }),
   weapon({
@@ -682,18 +682,12 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     name: '料理',
     icon: '🍳',
     color: '#e0704f',
-    behavior: 'fan',
+    behavior: 'food',
     category: 'love',
-    damage: 8,
-    cooldown: 1.4,
-    amount: 1,
-    area: 11,
-    speed: 420,
-    duration: 0.55,
-    pierce: 1,
-    strong: ['sickness', 'child'],
+    damage: 0,
+    cooldown: 60,
     minAge: 10,
-    desc: '手料理を扇状にふるまう。特攻：病気・子育て。',
+    desc: '60秒ごとに自分専用の料理を1個設置。取得すると攻撃+25%・防御+2・移動速度+20%のいずれかが60秒続くか、HPを40回復。Lvで効果上昇。',
     evolve: { passive: 'p_healthy', name: 'おふくろの味' }
   }),
   weapon({
@@ -1037,7 +1031,8 @@ export const BULLET_KINDS = [
 export const BULLET_INDEX = new Map<string, number>(BULLET_KINDS.map((name, index) => [name, index]))
 
 /** Item kinds as carried in snapshots (index). */
-export const ITEM_KINDS = ['meal', 'chest', 'magnet'] as const
+export const COOKING_ITEMS = ['food_damage', 'food_defense', 'food_speed', 'food_heal'] as const
+export const ITEM_KINDS = ['meal', 'chest', 'magnet', ...COOKING_ITEMS] as const
 
 type PoolEntry = [string, number]
 

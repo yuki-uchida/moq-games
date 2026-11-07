@@ -7,7 +7,9 @@ import { Game, playerStats, weaponStats } from '../src/game'
 import { SHOT_GAMBLE, readView, toView } from '../src/view'
 import { GAMBLE_FORMS, gambleForm, weaponAppearance } from '../src/weapon-life'
 
-const copiedWeapons = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
+const copiedWeapons = WEAPONS.filter(
+  (def) => def.id !== 'w_gamble' && def.behavior !== 'none' && def.behavior !== 'food'
+)
 const fxView: FxView = { local: 0, px: 0, py: 0, cx: 0, cy: 0, hw: 640, hh: 360 }
 
 function setup() {
@@ -42,21 +44,21 @@ test('gambling waits for an owned attack weapon and redraws when it is lost', ()
   game['fire'](player, weapon, weaponStats(player, weapon))
   expect(weapon.gambleWeapon).toBe('w_pet')
   player.weapons = player.weapons.filter((owned) => owned.id !== 'w_pet')
-  choose(game, 'w_cooking')
+  choose(game, 'w_love')
   game['fire'](player, weapon, weaponStats(player, weapon))
-  expect(weapon.gambleWeapon).toBe('w_cooking')
+  expect(weapon.gambleWeapon).toBe('w_love')
 })
 
 test('gambling repeats the selected weapon before drawing again', () => {
   const { game, weapon } = setup()
-  choose(game, 'w_cooking')
+  choose(game, 'w_love')
   game['fireWeapons'](0)
-  expect(weapon.gambleWeapon).toBe('w_cooking')
-  expect(game.state.fx.find((event) => event.type === FX.GAMBLE)?.b).toBe(WEAPON_INDEX.get('w_cooking'))
+  expect(weapon.gambleWeapon).toBe('w_love')
+  expect(game.state.fx.find((event) => event.type === FX.GAMBLE)?.b).toBe(WEAPON_INDEX.get('w_love'))
   choose(game, 'w_sns')
   game['fireWeapons'](2)
   game['fireWeapons'](2)
-  expect(weapon.gambleWeapon).toBe('w_cooking')
+  expect(weapon.gambleWeapon).toBe('w_love')
   expect(game.state.fx.filter((event) => event.type === FX.GAMBLE)).toHaveLength(1)
   game['fireWeapons'](8)
   expect(weapon.gambleWeapon).toBe('w_sns')
@@ -141,7 +143,7 @@ test.each(GAMBLE_FORMS)('gambling becomes $name at age $age', (form) => {
 test('a delayed snapshot preserves the age of the gambling activation', () => {
   const { game } = setup()
   game.state.time = timeAtAge(18) - 0.01
-  choose(game, 'w_cooking')
+  choose(game, 'w_love')
   game['fireWeapons'](0)
   const view = toView(game.state)
   const effects = new Effects()
@@ -152,11 +154,11 @@ test('a delayed snapshot preserves the age of the gambling activation', () => {
 test('copied shots and gambling fire events survive a multiplayer snapshot', () => {
   const { game, player } = setup()
   game.state.time = timeAtAge(18) + 0.01
-  choose(game, 'w_cooking')
+  choose(game, 'w_love')
   game['fireWeapons'](0)
   const view = toView(game.state)
   expect(readView(JSON.parse(JSON.stringify(view)))).toBeDefined()
-  expect(view.shots[0]).toBe(WEAPON_INDEX.get('w_cooking'))
+  expect(view.shots[0]).toBe(WEAPON_INDEX.get('w_love'))
   expect(view.shots[7]).toBeGreaterThanOrEqual(SHOT_GAMBLE)
   expect(view.fx).toContain(WEAPON_INDEX.get('w_gamble'))
   expect(view.fx).toContain(FX.GAMBLE)
