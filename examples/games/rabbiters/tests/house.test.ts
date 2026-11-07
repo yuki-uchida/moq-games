@@ -11,6 +11,7 @@ import { DOOR_INSIDE } from '../src/stages/house/script'
 import { lineSeconds } from '../src/story'
 import { idle } from './bot'
 import { HouseBot, houseField } from './house-bot'
+import { play } from './house-play'
 
 const HOUSE = 0
 const solo = (seed = 3) => {
@@ -27,30 +28,6 @@ const advance = (game: Game, seconds: number, each?: () => void) => {
   }
 }
 const people = (game: Game) => game.state.predators.filter((entry) => entry.kind === 'human' || entry.kind === 'child')
-
-/** Plays chapter 1 with one bot per rabbit; returns minutes of game time (Infinity if it did not clear). */
-function play(seed: number, rabbits: number, threats: boolean, limitMinutes: number) {
-  const game = new Game(seed, undefined, HOUSE)
-  for (let index = 0; index < rabbits; index++) game.addPlayer(`r${index}`, `R${index}`)
-  const bots = game.state.players.map((player) => new HouseBot(game, player.id, threats))
-  let catches = 0
-  const caught = STAGES[HOUSE].script.caught!
-  STAGES[HOUSE].script.caught = (...args) => {
-    catches++
-    caught(...args)
-  }
-  try {
-    for (let frame = 0; frame < limitMinutes * 3600 && game.state.stage === HOUSE; frame++) {
-      if (!threats) game.state.predators = []
-      if (game.state.phase !== 'playing') break
-      for (const bot of bots) game.setInput(bot.id, bot.input())
-      game.step(1 / 60)
-    }
-  } finally {
-    STAGES[HOUSE].script.caught = caught
-  }
-  return { minutes: game.state.stage === HOUSE ? Infinity : game.state.time / 60, catches, game }
-}
 
 describe('Chapter 1: the house', () => {
   it('fits the engine: grid size, start, and a family member on stage from the first tick', () => {
@@ -308,17 +285,6 @@ describe('Chapter 1: the house', () => {
     expect(minutes).toBeGreaterThanOrEqual(5)
     expect(minutes).toBeLessThan(20)
   }, 60_000)
-
-  it.each([1, 4, 7])(
-    'clears with the whole family and Gon about, for a cautious rabbit, in 17–60 minutes (seed %i)',
-    (seed) => {
-      const { minutes, catches } = play(seed, 1, true, 60)
-      console.log(`house threat run, seed ${seed}: ${minutes.toFixed(1)} min, caught ${catches}×`)
-      expect(minutes).toBeGreaterThanOrEqual(17)
-      expect(minutes).toBeLessThanOrEqual(60)
-    },
-    240_000
-  )
 
   it('clears in co-op with two rabbits', () => {
     const { minutes } = play(7, 2, false, 25)

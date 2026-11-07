@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { PASSIVE_BY_ID, TAG_NAMES, WEAPONS, WEAPON_BY_ID, WEAPON_LEVELS } from '../src/data'
+import { PASSIVE_BY_ID, WEAPONS, WEAPON_BY_ID, WEAPON_LEVELS } from '../src/data'
 import { choiceText, Game, weaponStats } from '../src/game'
 import { statusModel } from '../src/status'
 
@@ -58,9 +58,9 @@ describe('in-game descriptions', () => {
   test.each(WEAPONS.filter((weapon) => weapon.strong.length && weapon.behavior !== 'gamble'))(
     '$id labels every effective target',
     (weapon) => {
-      const targets = weapon.desc.split('特攻：')[1]
-      expect(targets).toBeTruthy()
-      for (const tag of weapon.strong) expect(targets).toContain(TAG_NAMES[tag])
+      const model = statusModel({ weapons: [[weapon.id, 1, 0]], passives: [], petAge: undefined }, 0)
+      expect(model.weapons[0].strong).toEqual(weapon.strong)
+      expect(model.weapons[0].detail).not.toContain('特攻：')
     }
   )
 
@@ -70,8 +70,7 @@ describe('in-game descriptions', () => {
     expect(WEAPON_BY_ID.get('p_over')!.desc.length).toBeLessThanOrEqual(60)
     for (const effect of [
       '敵を追わず盾で接触攻撃・吹き飛ばす',
-      '1枚1回防御＋無敵0.5秒',
-      '特攻：事故・病気',
+      '盾は敵の投射物も1回防ぐ',
       '詳しくは「?」へ',
       '防御 +1'
     ])

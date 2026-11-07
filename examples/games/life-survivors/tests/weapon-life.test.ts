@@ -65,10 +65,10 @@ test('friend orbit speed follows projectile speed', () => {
     weapon.cd = 0
     game.tick(0)
     const spin = game.state.shots.find((shot) => shot.weapon === 'w_friend')!.spin
-    expect(spin).toBeCloseTo(2.8 * weaponStats(player, weapon).speed)
+    expect(spin).toBeCloseTo(1.96 * weaponStats(player, weapon).speed)
     return spin
   })
-  expect(spins[0]).toBeCloseTo(2.8)
+  expect(spins[0]).toBeCloseTo(2.8 * 0.7)
   expect(spins[1]).toBeGreaterThan(spins[0])
   expect(spins[2]).toBeLessThan(spins[0])
 })

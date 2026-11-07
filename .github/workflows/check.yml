@@ -119,9 +119,6 @@ jobs:
         if: needs.changes.outputs.ember == 'true'
       - run: npm run lint
         if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true'
-      - name: Unit tests
-        if: needs.changes.outputs.unit != ''
-        run: npx vitest run ${{ needs.changes.outputs.unit }} --maxWorkers=1
       - name: Node contract tests
         if: needs.changes.outputs.node != ''
         run: node --test ${{ needs.changes.outputs.node }}
@@ -129,6 +126,33 @@ jobs:
         if: needs.changes.outputs.debug == 'true'
       - run: npm run test:tower-debug
         if: needs.changes.outputs.debug == 'true'
+  unit:
+    needs: changes
+    if: needs.changes.outputs.unit != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - run: node scripts/setup-sdk.mjs
+      - run: npm ci --ignore-scripts
+      - name: Unit tests
+        run: npx vitest run ${{ needs.changes.outputs.unit }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --maxWorkers=1
   life-browser:
     needs: changes
     if: needs.changes.outputs.life == 'true'
@@ -277,10 +301,11 @@ jobs:
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.changes.result == 'success' && needs.build.result == 'success' &&
       needs.check.result == 'success' &&
+      (needs.unit.result == 'success' || (needs.unit.result == 'skipped' && needs.changes.outputs.unit == '')) &&
       (needs.life-browser.result == 'success' || needs.life-browser.result == 'skipped') &&
       (needs.slow-checks.result == 'success' || needs.slow-checks.result == 'skipped') &&
       (needs.browser.result == 'success' || needs.browser.result == 'skipped')
-    needs: [changes, build, check, life-browser, slow-checks, browser]
+    needs: [changes, build, check, unit, life-browser, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
