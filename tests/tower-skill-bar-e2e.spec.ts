@@ -201,6 +201,7 @@ test('one tap casts at the best target once enemies are in range: honest button,
 test('two specials cast back-to-back each get their own band one after the other, their own ring, and their own result', async ({
   page
 }) => {
+  await page.clock.install()
   await seed(page)
   await assault(page)
   const archer = page.locator('.skill-btn[data-skill-type="archer"]'),
@@ -208,6 +209,8 @@ test('two specials cast back-to-back each get their own band one after the other
   await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
   await expect(archer).toHaveAttribute('data-state', 'ready')
   await expect(soldier).toHaveAttribute('data-state', 'ready')
+  await expect(archer).toBeVisible()
+  await expect(soldier).toBeVisible()
   // Where the soldier stands, on screen: the second cast is aimed there by hand.
   const spot = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
@@ -219,7 +222,12 @@ test('two specials cast back-to-back each get their own band one after the other
       y: box.y + (unit.y / (Number(field.dataset.worldHeight) || 920)) * box.height
     }
   })
-  // Record every rendered frame in the page, so slow round trips can't blur what was on screen.
+  // Freeze wall time first so a slow round trip cannot put the pause target in the past.
+  const pausedAt = new Date()
+  await page.clock.setFixedTime(pausedAt)
+  await page.clock.pauseAt(pausedAt)
+  await page.clock.setSystemTime(pausedAt)
+  // Observe layout visibility at each controlled animation frame, alongside the game's timers.
   await page.evaluate(() => {
     const visible = (element: Element | null) => !!element && !element.closest('[hidden]') && element.getClientRects().length > 0
     const log: Array<{ t: number; sim: number; band: string | null; rings: number; cutin: number }> = ((window as any).__cutinLog = [])
@@ -236,10 +244,21 @@ test('two specials cast back-to-back each get their own band one after the other
     }
     tick()
   })
-  await archer.click()
-  await soldier.click({ modifiers: ['Shift'] })
-  await expect(page.locator('#unit-special')).toHaveText('×')
-  await page.mouse.click(spot.x, spot.y)
+  const aiming = await page.evaluate((spot) => {
+    document.querySelector<HTMLElement>('.skill-btn[data-skill-type="archer"]')!.click()
+    document.querySelector<HTMLElement>('.skill-btn[data-skill-type="soldier"]')!.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, shiftKey: true })
+    )
+    const aiming = document.getElementById('unit-special')!.textContent
+    const canvas = document.querySelector<HTMLCanvasElement>('#field canvas')!
+    const pointer = { bubbles: true, isPrimary: true, pointerId: 1, button: 0, clientX: spot.x, clientY: spot.y }
+    canvas.dispatchEvent(new PointerEvent('pointerdown', pointer))
+    canvas.dispatchEvent(new PointerEvent('pointerup', pointer))
+    return aiming
+  }, spot)
+  expect(aiming).toBe('×')
+  await page.clock.runFor(1500)
+  await page.clock.resume()
   await expect(page.locator('#skill-cutin')).toBeHidden({ timeout: 5000 })
   await expect(page.locator('#field .skill-target-ring')).toHaveCount(0)
   await expect(archer).toHaveAttribute('data-state', 'charging')
@@ -256,8 +275,7 @@ test('two specials cast back-to-back each get their own band one after the other
   expect(soundSteps).toHaveLength(bandStarts.length)
   for (const [n, start] of bandStarts.entries()) expect(Math.abs(soundSteps[n] - start), `band ${n}`).toBeLessThanOrEqual(1)
   expect(Math.max(...log.map((f) => f.rings))).toBe(2)
-  // The first cast happened after the frame before `first` (a software GPU can render ~200 ms apart), so time
-  // that frame: a single 650 ms stop would still fail this, a chained one passes however slow the frames are.
+  // Measure from the frame before the first cast; a single 650 ms stop must still fail.
   const beforeFirst = log[log.indexOf(first) - 1] ?? first
   expect(resumed.t - beforeFirst.t).toBeGreaterThanOrEqual(1100)
   // Each ring goes when its own band ends: one ring is left during the second band.
