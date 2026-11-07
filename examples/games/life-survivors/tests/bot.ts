@@ -202,7 +202,7 @@ export function botInput(game: Game, player: Player, strategy: 'smart' | 'random
         player.choices.some((option) => option.startsWith('w:') && option !== choice)
       )
         return -1
-      if (strategy === 'smart' && !player.weapons.length && id === 'w_pet') return fit + 1
+      if (strategy === 'smart' && !player.weapons.length && (id === 'w_pet' || id === 'w_reading')) return fit + 1
       // Depth beats breadth: a card you already hold keeps growing.
       return owned ? fit * 2 + 1 : fit
     }

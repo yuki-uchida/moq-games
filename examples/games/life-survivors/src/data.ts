@@ -251,7 +251,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '盾で迎撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
+    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({
@@ -604,8 +604,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
   }),
   weapon({
     id: 'w_travel',
-    name: '旅行',
-    icon: '✈️',
+    name: 'アウトドア',
+    icon: '🚲',
     color: '#5fc2c9',
     behavior: 'sweep',
     category: 'hobby',
@@ -617,8 +617,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 2.7,
     pierce: Infinity,
     strong: ['work', 'sickness'],
-    minAge: 18,
-    desc: '紙飛行機が画面を横切って飛んでいく。特攻：仕事・病気。',
+    minAge: 0,
+    desc: '三輪車→自転車→バイク→車→飛行機と年齢で変化し、画面を横切る。特攻：仕事・病気。',
     evolve: { passive: 'p_curious', name: '世界一周' }
   }),
   weapon({

@@ -234,35 +234,67 @@ function ring(f: number) {
   return r
 }
 
-// ---------------------------------------------------------------------------------------------
-// 旅行: a paper airplane flying right with a little wobble.
+type OutdoorVehicle = 'tricycle' | 'bicycle' | 'motorcycle' | 'car' | 'plane'
 
-function plane(f: number) {
+function outdoorVehicle(vehicle: OutdoorVehicle, f: number) {
   const r = new Raster(N, N)
-  const a = [-0.1, 0, 0.1, 0][f]
-  const bob = [0, -1, 0, 1][f]
-  part(
-    r,
-    (l) => {
-      l.line(0, 12 + bob, 6, 12 + bob, R.paper[2])
-      l.line(1, 16 + bob, 8, 16 + bob, C.white)
-      l.line(0, 20 + bob, 5, 20 + bob, R.paper[2])
-    },
-    false
-  )
-  const P = (pts: number[]) =>
-    turn(
-      pts.map((v, i) => (i % 2 ? v + bob : v)),
-      18,
-      16,
-      a
-    )
+  const wheel = (x: number, y: number, radius: number) =>
+    part(r, (l) => {
+      l.ellipse(x, y, radius, radius, R.hair[3])
+      l.ellipse(x, y, radius - 1.5, radius - 1.5, R.metal[1])
+      if (f % 2) l.line(x - radius + 2, y, x + radius - 2, y, C.white)
+      else l.line(x, y - radius + 2, x, y + radius - 2, C.white)
+      l.ellipse(x, y, 1, 1, R.hair[2])
+    })
+  if (vehicle === 'plane') {
+    const bob = [0, -1, 0, 1][f]
+    part(r, (l) => {
+      l.poly([3, 16 + bob, 1, 8 + bob, 5, 8 + bob, 10, 15 + bob], R.sky[2])
+      l.poly([13, 15 + bob, 10, 5 + bob, 14, 5 + bob, 21, 15 + bob], R.sky[1])
+      l.poly([3, 15 + bob, 24, 14 + bob, 30, 16 + bob, 28, 20 + bob, 6, 20 + bob], R.paper[1])
+      l.line(6, 16 + bob, 27, 16 + bob, C.white)
+      l.poly([12, 18 + bob, 8, 26 + bob, 12, 26 + bob, 22, 18 + bob], R.sky[1])
+      for (const x of [12, 16, 20, 24]) l.rect(x, 16 + bob, 2, 2, R.navy[1])
+    })
+    return r
+  }
+  if (vehicle === 'car') {
+    part(r, (l) => {
+      l.poly([3, 18, 7, 17, 11, 10, 21, 10, 25, 17, 28, 18, 29, 24, 3, 24], R.red[1])
+      l.poly([12, 12, 16, 12, 16, 17, 9, 17], R.sky[0])
+      l.poly([18, 12, 20, 12, 23, 17, 18, 17], R.sky[1])
+      l.line(4, 21, 28, 21, R.red[2])
+      l.rect(26, 19, 3, 2, R.yellow[0])
+    })
+    wheel(9, 24, 4)
+    wheel(23, 24, 4)
+    return r
+  }
+  if (vehicle === 'tricycle') wheel(5, 24, 3)
+  wheel(vehicle === 'tricycle' ? 10 : 7, 24, vehicle === 'tricycle' ? 3 : 5)
+  wheel(24, 23, 5)
   part(r, (l) => {
-    l.poly(P([8, 20, 30, 16, 6, 24]), R.sky[1])
-    l.poly(P([9, 9, 30, 16, 12, 18]), C.white)
-    l.poly(P([12, 18, 30, 16, 8, 20]), R.paper[2])
-    l.poly(P([9, 9, 30, 16, 20, 15]), R.paper[1])
-    l.line(...(P([12, 18]) as [number, number]), ...(P([30, 16]) as [number, number]), R.sky[2])
+    if (vehicle === 'motorcycle') {
+      l.poly([7, 20, 11, 15, 19, 15, 23, 20, 19, 23, 11, 23], R.red[1])
+      l.poly([13, 17, 19, 17, 20, 20, 13, 20], R.red[0])
+      l.rect(9, 13, 7, 2, R.hair[2])
+      l.ellipse(16, 22, 3, 2, R.metal[1])
+      l.line(20, 16, 22, 11, R.metal[1])
+      l.line(21, 11, 25, 11, R.hair[2])
+      l.rect(24, 16, 2, 2, R.yellow[0])
+    } else {
+      const back = vehicle === 'tricycle' ? 10 : 7
+      const saddle = vehicle === 'tricycle' ? 13 : 12
+      l.thick(back, 24, saddle, 15, 2, R.red[1])
+      l.thick(saddle, 15, 18, 23, 2, R.red[1])
+      l.thick(18, 23, back, 24, 2, R.red[2])
+      l.thick(saddle, 15, 21, 15, 2, R.red[1])
+      l.thick(21, 15, 24, 23, 2, R.metal[1])
+      l.line(21, 15, 22, 10, R.metal[1])
+      l.rect(20, 9, 5, 2, R.hair[2])
+      l.rect(saddle - 2, 12, 5, 2, R.hair[2])
+      l.ellipse(18, 23, 2, 2, R.yellow[1])
+    }
   })
   return r
 }
@@ -1038,7 +1070,12 @@ const ICONS: Record<string, () => Raster> = {
     }),
   w_ring: () => ring(0),
   w_karaoke: () => mic(0),
-  w_travel: () => plane(1),
+  w_travel: () => outdoorVehicle('tricycle', 0),
+  w_travel_tricycle: () => outdoorVehicle('tricycle', 0),
+  w_travel_bicycle: () => outdoorVehicle('bicycle', 0),
+  w_travel_motorcycle: () => outdoorVehicle('motorcycle', 0),
+  w_travel_car: () => outdoorVehicle('car', 0),
+  w_travel_plane: () => outdoorVehicle('plane', 0),
   w_savings: () => pig(0, false),
   w_gamble: () => gambleArt('gacha', 5),
   w_gamble_gacha: () => gambleArt('gacha', 5),
@@ -1169,7 +1206,42 @@ export function arsenalSheets(): Record<string, () => Sheet> {
     'weapon:w_reading': () => ({ fly: loop(many(4, openBook), 6) }),
     'weapon:w_overtime': () => ({ fly: loop(many(STAPLE_DIRS, staple), 1) }),
     'weapon:w_ring': () => ({ fly: loop(many(4, ring), 12) }),
-    'weapon:w_travel': () => ({ fly: loop(many(4, plane), 8) }),
+    'weapon:w_travel': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('tricycle', f)),
+        8
+      )
+    }),
+    'weapon:w_travel_tricycle': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('tricycle', f)),
+        8
+      )
+    }),
+    'weapon:w_travel_bicycle': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('bicycle', f)),
+        8
+      )
+    }),
+    'weapon:w_travel_motorcycle': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('motorcycle', f)),
+        8
+      )
+    }),
+    'weapon:w_travel_car': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('car', f)),
+        8
+      )
+    }),
+    'weapon:w_travel_plane': () => ({
+      fly: loop(
+        many(4, (f) => outdoorVehicle('plane', f)),
+        8
+      )
+    }),
     'weapon:w_savings': () => ({
       fly: loop([pig(0, false), pig(1, false)], 3),
       armed: loop([pig(0, true), pig(1, true)], 4)

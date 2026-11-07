@@ -1874,7 +1874,7 @@ export class Game {
             this.shot(player, weapon, def, ws, {
               angle,
               w: length / 2,
-              h: 22 * ws.area,
+              h: def.behavior === 'flail' ? 22 : 22 * ws.area,
               r: length / 2,
               x: player.x + Math.cos(angle) * length * 0.5,
               y: player.y + Math.sin(angle) * length * 0.5,
@@ -2263,32 +2263,12 @@ export class Game {
   }
 
   private moveGuardian(shot: Shot, owner: Player, dt: number) {
-    const range = shot.orbit * 2
-    shot.aux -= dt
-    if (
-      shot.aux <= 0 ||
-      (shot.target && (shot.target.hp <= 0 || Math.hypot(shot.target.x - owner.x, shot.target.y - owner.y) > range))
-    ) {
-      shot.aux = 0.2
-      let best: Enemy | undefined
-      let distance = Infinity
-      this.near(owner.x, owner.y, range, (enemy) => {
-        if (enemy.hp <= 0 || Math.hypot(enemy.x - owner.x, enemy.y - owner.y) > range) return
-        const d = (enemy.x - shot.x) ** 2 + (enemy.y - shot.y) ** 2
-        if (d < distance) {
-          distance = d
-          best = enemy
-        }
-      })
-      shot.target = best
-    }
-    const target = shot.target
-    const goalX = target ? target.x : owner.x + Math.cos(shot.h) * shot.orbit * 0.72
-    const goalY = target ? target.y : owner.y + Math.sin(shot.h) * shot.orbit * 0.72
+    const goalX = owner.x + Math.cos(shot.h) * shot.orbit * 0.72
+    const goalY = owner.y + Math.sin(shot.h) * shot.orbit * 0.72
     const dx = goalX - shot.x
     const dy = goalY - shot.y
     const distance = Math.hypot(dx, dy)
-    shot.angle = target && distance > 0 ? Math.atan2(dy, dx) : shot.h
+    shot.angle = shot.h
     if (distance > 0) {
       const step = Math.min(distance, shot.spin * dt)
       shot.x += (dx / distance) * step

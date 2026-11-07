@@ -16,6 +16,18 @@ export function sportsForm(age: number) {
   return SPORTS_FORMS.findLast((form) => age >= form.age) ?? SPORTS_FORMS[0]
 }
 
+export const OUTDOOR_FORMS = [
+  { age: 0, key: 'tricycle', name: '三輪車', icon: '🚲' },
+  { age: 12, key: 'bicycle', name: '自転車', icon: '🚲' },
+  { age: 15, key: 'motorcycle', name: 'バイク', icon: '🏍️' },
+  { age: 18, key: 'car', name: '車', icon: '🚗' },
+  { age: 23, key: 'plane', name: '飛行機', icon: '✈️' }
+] as const
+
+export function outdoorForm(age: number) {
+  return OUTDOOR_FORMS.findLast((form) => age >= form.age) ?? OUTDOOR_FORMS[0]
+}
+
 export const GAMBLE_FORMS = [
   { age: 12, key: 'gacha', name: '課金', icon: '🎁' },
   { age: 18, key: 'poker', name: 'ポーカー', icon: '🃏' },
@@ -62,6 +74,10 @@ export function weaponAppearance(id: string, age: number, petAge = 0) {
   if (id === 'w_sports') {
     const form = sportsForm(age)
     return { name: `${def.name}（${form.name}）`, icon: form.icon, art: `w_sports_${form.key}` }
+  }
+  if (id === 'w_travel') {
+    const form = outdoorForm(age)
+    return { name: `${def.name}（${form.name}）`, icon: form.icon, art: `w_travel_${form.key}` }
   }
   if (id === 'w_gamble') {
     const form = gambleForm(age)
