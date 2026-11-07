@@ -36,6 +36,25 @@ function setup(age = 30) {
   return { game, player, obtain, at }
 }
 
+test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
+  'beauty fires one slash per level at level %i',
+  (level) => {
+    const { game, player, obtain } = setup()
+    obtain('w_beauty')
+    const weapon = player.weapons[0]
+    weapon.lv = level
+    weapon.cd = 0
+    expect(weaponStats(player, weapon).amount).toBe(level)
+    game.tick(0)
+    expect(game.state.shots.filter((shot) => shot.weapon === 'w_beauty')).toHaveLength(level)
+    player.passives = [{ id: 'p_healthy', lv: 1 }]
+    expect(weaponStats(player, weapon).amount).toBe(level + Number(level >= MAX_WEAPON_LEVEL))
+    expect(weaponStats(player, weapon, { ...playerStats(player), amount: 2 }).amount).toBe(
+      level + Number(level >= MAX_WEAPON_LEVEL) + 2
+    )
+  }
+)
+
 test('friend orbit speed follows projectile speed', () => {
   const { game, player, obtain } = setup()
   obtain('w_friend')
