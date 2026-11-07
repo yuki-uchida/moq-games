@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
-import { existsSync, globSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
+import {
+  copyFileSync,
+  existsSync,
+  globSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
@@ -117,6 +128,13 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(browser, /tar -xf \.pages-artifact\/artifact.tar -C dist\n\s+test -s dist\/THIRD-PARTY-NOTICES.txt/)
   assert.doesNotMatch(browser, /sdk-generated|\.sdk-cache|setup-sdk|npm run build|prepare-pages|upload-pages-artifact/)
   assert.match(browser, /shard: \$\{\{ fromJSON\(needs.changes.outputs.shards\) \}\}/)
+  assert.match(browser, /- name: Select this shard's tests\n\s+id: shard\n\s+shell: bash\n\s+run: \|/)
+  assert.match(
+    browser,
+    /--list \|\n\s+node scripts\/ci-pages-shard.mjs \$\{\{ matrix.shard \}\} \$\{\{ strategy.job-total \}\} > shard-tests.txt/
+  )
+  assert.match(browser, /if test -s shard-tests.txt; then echo 'has-tests=true' >> "\$GITHUB_OUTPUT"; fi/)
+  assert.doesNotMatch(browser, /grep ' › '|awk 'NR %|sed -E/)
   assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
   assert.match(
     browser,
@@ -177,6 +195,198 @@ test('Pages keeps headless real-mesh coverage and uses benchmark OpenGL only on 
     }
   }
 })
+
+test('Pages list parsing preserves spec/describe/title identity and rejects incomplete collection', () => {
+  const listing = (path) =>
+    `Listing tests:\n  ${path}:12:3 › suite › same title:42:5 › detail  \nTotal: 1 test in 1 file\n`
+  const expected = ['nested/a.spec.ts › suite › same title:42:5 › detail  ']
+  for (const path of [
+    'nested/a.spec.ts',
+    'tests/nested/a.spec.ts',
+    '/home/runner/repo/tests/nested/a.spec.ts',
+    'C:\\repo\\tests\\nested\\a.spec.ts'
+  ])
+    assert.deepEqual(parsePagesList(listing(path).replaceAll('\n', '\r\n')), expected)
+  assert.deepEqual(parsePagesList('Listing tests:\nTotal: 0 tests in 0 files\n'), [])
+  assert.deepEqual(parsePagesList(listing('nested/tests/a.spec.ts')), [
+    'nested/tests/a.spec.ts › suite › same title:42:5 › detail  '
+  ])
+  for (const source of [
+    '',
+    'Error: No tests found',
+    'Listing tests:\n',
+    listing('a.spec.ts').replace('Total: 1 test', 'Total: 2 tests'),
+    listing('a.spec.ts').replace('  a.spec.ts', 'unexpected a.spec.ts'),
+    listing('[chromium] › a.spec.ts'),
+    listing('/outside/a.spec.ts'),
+    listing('../a.spec.ts'),
+    listing('a.spec.ts') + 'collection warning\n'
+  ])
+    assert.throws(() => parsePagesList(source))
+})
+
+test('Pages LPT uses only collected names with stable ties, defaults and shard boundaries', () => {
+  const weights = { defaultSeconds: 5, seconds: { 'tests/heavy': 20, 'tests/medium': 10, 'tests/uncollected': 1000 } }
+  const names = ['new', 'b', 'medium', 'heavy', 'a']
+  const partition = (index, count, input = names) => selectPagesShard(input, index, count, weights)
+  assert.deepEqual(partition(1, 2), ['heavy', 'new'])
+  assert.deepEqual(partition(2, 2), ['medium', 'a', 'b'])
+  assert.deepEqual(partition(1, 1), ['heavy', 'medium', 'a', 'b', 'new'])
+  for (let index = 1; index <= 8; index++) {
+    assert.deepEqual(partition(index, 8), partition(index, 8, [...names].reverse()))
+    assert.deepEqual(partition(index, 8, []), [])
+  }
+  assert.deepEqual(partition(8, 8), [])
+  const distinct = ['tests/a.spec.ts › one › same', 'tests/a.spec.ts › two › same', 'tests/b.spec.ts › one › same']
+  assert.deepEqual([1, 2].flatMap((index) => partition(index, 2, distinct)).sort(), [...distinct].sort())
+  assert.deepEqual(partition(1, 1, ['duplicate', 'duplicate']), ['duplicate', 'duplicate'])
+  for (const [index, count] of [
+    [0, 1],
+    [2, 1],
+    [1, 0],
+    [1.5, 2],
+    [1, 2.5],
+    [1, NaN],
+    [1, Infinity],
+    [1, Number.MAX_SAFE_INTEGER + 1]
+  ])
+    assert.throws(() => partition(index, count))
+  for (const invalid of [null, {}, { defaultSeconds: 0, seconds: {} }, { defaultSeconds: 5, seconds: { a: -1 } }])
+    assert.throws(() => selectPagesShard(names, 1, 2, invalid))
+})
+
+test('Pages shard CLI emits only test-list names and fails invalid arguments, input or weight reads', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const source = 'Listing tests:\n  new.spec.ts:1:1 › new test\nTotal: 1 test in 1 file\n'
+  const run = (args, input = source, script = 'scripts/ci-pages-shard.mjs') =>
+    spawnSync(process.execPath, [script, ...args], { cwd: root, input, encoding: 'utf8' })
+  const success = run(['1', '1'])
+  assert.equal(success.status, 0, success.stderr)
+  assert.equal(success.stderr, '')
+  assert.equal(success.stdout, 'new.spec.ts › new test\n')
+  assert.equal(run(['2', '2']).stdout, '')
+  const empty = run(['1', '1'], 'Listing tests:\nTotal: 0 tests in 0 files\n')
+  assert.equal(empty.status, 0, empty.stderr)
+  assert.equal(empty.stdout, '')
+  for (const args of [
+    [],
+    ['1'],
+    ['1', '1', 'extra'],
+    ['0', '1'],
+    ['2', '1'],
+    ['1', '0'],
+    ['1.0', '2'],
+    ['1e0', '2'],
+    [' 1', '2'],
+    ['01', '2'],
+    ['-1', '2'],
+    ['1', '9007199254740992']
+  ]) {
+    const result = run(args)
+    assert.equal(result.status, 1, JSON.stringify(args))
+    assert.equal(result.stdout, '')
+    assert.ok(result.stderr)
+  }
+  for (const input of ['', 'Error: collection failed\n', source.replace('Total: 1', 'Total: 2')]) {
+    const result = run(['1', '1'], input)
+    assert.equal(result.status, 1)
+    assert.equal(result.stdout, '')
+  }
+  const artifacts = join(root, '.build/pages-balanced-sharding')
+  mkdirSync(artifacts, { recursive: true })
+  const directory = mkdtempSync(join(artifacts, 'missing-weights-'))
+  const script = join(directory, 'ci-pages-shard.mjs')
+  copyFileSync(join(root, 'scripts/ci-pages-shard.mjs'), script)
+  const unreadable = run(['1', '1'], source, script)
+  assert.equal(unreadable.status, 1)
+  assert.equal(unreadable.stdout, '')
+  assert.match(unreadable.stderr, /ENOENT/)
+})
+
+test(
+  'Pages LPT test-list recollection preserves every selected test across all shards and game scopes',
+  {
+    skip:
+      !existsSync(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)) &&
+      'dependencies are not installed'
+  },
+  () => {
+    const root = fileURLToPath(new URL('../', import.meta.url))
+    const artifacts = join(root, '.build/pages-balanced-sharding')
+    mkdirSync(join(artifacts, 'node_modules'), { recursive: true })
+    const directory = mkdtempSync(join(artifacts, 'node_modules/pages-fixture-'))
+    const weights = JSON.parse(readFileSync(join(root, 'scripts/ci-pages-weights.json'), 'utf8'))
+    const sources = new WeakMap()
+    let invocation = 0
+    const list = (args = [], config = 'playwright.pages.config.ts') => {
+      const output = execFileSync(
+        process.execPath,
+        ['node_modules/@playwright/test/cli.js', 'test', '--config', config, '--list', '--reporter=list', ...args],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...process.env, FORCE_COLOR: '0' }
+        }
+      )
+      writeFileSync(join(directory, `collection-${++invocation}.txt`), output)
+      const names = parsePagesList(output)
+      sources.set(names, output)
+      return names
+    }
+    const recollect = (names, count, config) => {
+      const selected = []
+      for (let index = 1; index <= count; index++) {
+        const partition = selectPagesShard(names, index, count, weights)
+        assert.deepEqual(partition, selectPagesShard([...names].reverse(), index, count, weights))
+        const output = execFileSync(process.execPath, ['scripts/ci-pages-shard.mjs', String(index), String(count)], {
+          cwd: root,
+          encoding: 'utf8',
+          input: sources.get(names)
+        })
+        assert.equal(output, partition.length ? partition.join('\n') + '\n' : '')
+        if (!partition.length) continue
+        const path = join(directory, `shard-${invocation}-${index}.txt`)
+        writeFileSync(path, output)
+        const actual = list(['--test-list', path], config)
+        assert.deepEqual([...actual].sort(), [...partition].sort())
+        selected.push(...actual)
+      }
+      assert.deepEqual(selected.sort(), [...names].sort())
+    }
+    const all = list()
+    assert.ok(all.length > 0)
+    recollect(all, 16)
+    assert.deepEqual(list().sort(), [...all].sort())
+    for (const game of [
+      'tower_diffence_with_jev',
+      'rabbiters',
+      'life-survivors',
+      'ember-grid',
+      'lane-battle',
+      'yoru-no-yashiki',
+      'landing'
+    ]) {
+      const scope = selectScope([game === 'landing' ? 'landing/main.ts' : `examples/games/${game}/main.ts`])
+      if (scope.pagesBrowser) recollect(list(scope.browser.split(' ').filter(Boolean)), JSON.parse(scope.shards).length)
+      else assert.equal(scope.pagesBrowser, false)
+    }
+    writeFileSync(join(directory, 'fixture.config.mjs'), `export default { testDir: '.', testMatch: '*.spec.mjs' }\n`)
+    writeFileSync(
+      join(directory, 'new.spec.mjs'),
+      `import { test } from '@playwright/test'\ntest.describe('one', () => { test('same title', () => {}) })\ntest.describe('two', () => { test('same title', () => {}) })\n`
+    )
+    writeFileSync(
+      join(directory, 'other.spec.mjs'),
+      `import { test } from '@playwright/test'\ntest.describe('one', () => { test('same title', () => {}) })\n`
+    )
+    const config = join(directory, 'fixture.config.mjs')
+    const fresh = list([], config)
+    assert.equal(fresh.length, 3)
+    assert.equal(new Set(fresh).size, 3)
+    assert.ok(fresh.every((name) => weights.seconds[`tests/${name}`] === undefined))
+    recollect(fresh, 8, config)
+  }
+)
 
 test('unit shards run independently and gate publication', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
