@@ -314,7 +314,6 @@ jobs:
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe
-      MESA_SHADER_CACHE_DIR: ${{ runner.temp }}/moq-mesa-shader-cache
       MESA_SHADER_CACHE_DISABLE: 'false'
     timeout-minutes: 30
     strategy:
@@ -393,6 +392,8 @@ jobs:
           if test -s shard-tests.txt; then echo 'has-tests=true' >> "$GITHUB_OUTPUT"; fi
       - name: Test the Pages build in Chromium
         if: steps.shard.outputs.has-tests == 'true'
+        env:
+          MESA_SHADER_CACHE_DIR: ${{ runner.temp }}/moq-mesa-shader-cache
         run: xvfb-run -a npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt
       - name: Upload shard report and failure evidence
         if: always()
