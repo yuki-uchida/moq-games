@@ -642,11 +642,46 @@ function updateHud(current: View) {
     if (!buff) return []
     const effect = COOKING_EFFECTS[kind]
     const amount = Number((effect.amount * buff.power * (effect.unit === '%' ? 100 : 1)).toFixed(1))
-    return [`${effect.label} +${amount}${effect.unit}（残り${buff.time}秒）`]
+    return [{ kind, color: effect.color, name: `${effect.label} +${amount}${effect.unit}`, time: buff.time }]
   })
   const buffDisplay = element('#cooking-buffs')
-  const buffText = buffLines.length ? `🍙 料理効果\n${buffLines.join('\n')}` : ''
-  if (buffDisplay.textContent !== buffText) buffDisplay.textContent = buffText
+  // The rows are rebuilt only when the set of effects or an amount changes; each second just updates time and bar.
+  const layout = buffLines.map((line) => `${line.kind}:${line.name}`).join('|')
+  if (buffDisplay.dataset.layout !== layout) {
+    buffDisplay.dataset.layout = layout
+    buffDisplay.replaceChildren()
+    if (buffLines.length) {
+      const head = document.createElement('div')
+      head.className = 'cooking-head'
+      head.textContent = '🍙 料理効果'
+      buffDisplay.append(head)
+      for (const line of buffLines) {
+        const row = document.createElement('div')
+        row.className = 'cooking-row'
+        row.style.setProperty('--buff', line.color)
+        const name = document.createElement('span')
+        name.className = 'cooking-name'
+        name.textContent = line.name
+        const left = document.createElement('b')
+        left.className = 'cooking-left'
+        const bar = document.createElement('i')
+        bar.className = 'cooking-bar'
+        bar.append(document.createElement('i'))
+        row.append(name, left, bar)
+        buffDisplay.append(row)
+      }
+    }
+  }
+  buffLines.forEach((line, index) => {
+    const row = buffDisplay.children[index + 1] as HTMLElement
+    const text = `残り${line.time}秒`
+    const left = row.children[1]
+    if (left.textContent !== text) {
+      left.textContent = text
+      ;(row.children[2].firstElementChild as HTMLElement).style.width =
+        `${Math.max(0, Math.min(1, line.time / 60)) * 100}%`
+    }
+  })
   buffDisplay.hidden = !buffLines.length
   const time = Math.min(current.time, RUN_SECONDS)
   const stage = stageAt(time)

@@ -774,6 +774,61 @@ const onigiri = (size = 16) =>
     shadeEdges(l, [R.paper[0], C.white, R.paper[2], R.paper[3], R.paper[4]], 1)
     l.rect(6 * s, 9 * s, 4 * s, 5 * s, R.hair[3])
   })
+/** Cooking drops: a white onigiri whose filling and badge (top right, effect colour) tell the four effects apart. */
+function foodOnigiri(kind: 'damage' | 'defense' | 'speed' | 'heal') {
+  const rice: Ramp = [R.paper[0], C.white, R.paper[2], R.paper[3], R.paper[4]]
+  const nori = R.green[3]
+  const noriShade = R.green[4]
+  const r = new Raster(16, 16)
+  part(r, (l) => {
+    l.poly([6, 3, 12, 13, 1, 13], rice[1])
+    l.ellipse(6.5, 12, 5.5, 2.5, rice[1])
+    shadeEdges(l, rice, 1)
+    if (kind === 'defense') {
+      // Wrapped in nori from the shoulders down; only the tip shows rice.
+      l.poly([6, 7, 12, 13, 1, 13], nori)
+      l.ellipse(6.5, 12, 5.5, 2.5, nori)
+      l.rect(2, 14, 9, 1, noriShade)
+      l.rect(10, 11, 2, 3, noriShade)
+      l.set(5, 9, R.green[2])
+      l.set(4, 10, R.green[2])
+    } else {
+      l.rect(5, 10, 4, 4, nori)
+      l.rect(5, 13, 4, 1, noriShade)
+      l.rect(8, 10, 1, 4, noriShade)
+      l.set(5, 10, R.green[2])
+    }
+    if (kind === 'damage') ball(l, 6, 7, 2, 2, R.red, true)
+    if (kind === 'speed') {
+      // Egg yolk, like the umeboshi on the attack onigiri.
+      ball(l, 6, 7, 2, 2, R.yellow, true)
+    }
+    if (kind === 'heal') {
+      for (const [x, y] of [
+        [5, 6],
+        [7, 8],
+        [3, 11],
+        [10, 10],
+        [4, 9]
+      ])
+        l.set(x, y, R.green[1])
+    }
+  })
+  const badge = {
+    damage: [['...R.', '..RR.', '.RRRR', 'RRYRR', 'RYYYD', '.RRD.'], { R: R.red[1], D: R.red[2], Y: R.yellow[1] }],
+    defense: [
+      ['HHHHH', 'HBWBD', 'HBWBD', 'HBWBD', '.BBD.', '..D..'],
+      { H: R.sky[0], B: R.sky[1], D: R.sky[2], W: C.white }
+    ],
+    speed: [
+      ['..HHH', '.HBBD', 'HBBD.', 'HBBBB', '..BD.', '.BD..', '.D...'],
+      { H: R.yellow[0], B: R.yellow[1], D: R.yellow[2] }
+    ],
+    heal: [['HB.BB', 'BBBBB', 'BBBBD', '.BBD.', '..D..'], { H: R.green[0], B: R.green[1], D: R.green[2] }]
+  }[kind] as [string[], Record<string, number>]
+  part(r, (l) => l.stamp(badge[0], 10, 1, badge[1]))
+  return r
+}
 const gift = (size = 16) =>
   tiny(size, size, (l) => {
     const s = size / 16
@@ -1030,10 +1085,10 @@ export function weaponSheets(): Record<string, () => Sheet> {
       meal: loop([onigiri()], 1),
       chest: loop([gift()], 1),
       magnet: loop([magnet()], 1),
-      food_damage: loop([onigiri().rect(6, 9, 4, 5, R.red[1])], 1),
-      food_defense: loop([onigiri().rect(6, 9, 4, 5, R.sky[1])], 1),
-      food_speed: loop([onigiri().rect(6, 9, 4, 5, R.yellow[1])], 1),
-      food_heal: loop([onigiri().rect(6, 9, 4, 5, R.green[1])], 1)
+      food_damage: loop([foodOnigiri('damage')], 1),
+      food_defense: loop([foodOnigiri('defense')], 1),
+      food_speed: loop([foodOnigiri('speed')], 1),
+      food_heal: loop([foodOnigiri('heal')], 1)
     }),
     icons: () => {
       const icons: Record<string, Raster> = {
