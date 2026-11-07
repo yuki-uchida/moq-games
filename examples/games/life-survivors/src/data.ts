@@ -881,6 +881,80 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   w_garden: standardLevels
 }
 
+export interface WeaponLevelUpgrade {
+  text: string
+  damage?: number
+  amount?: number
+  area?: number
+  cooldown?: number
+  duration?: number
+  pierce?: number
+  targets?: number
+  foodPower?: number
+}
+
+type UpgradeProfile = 'standard' | 'piercing' | 'everyCount' | 'raid' | 'sports' | 'observe' | 'food'
+
+const weaponUpgradeProfiles: Record<string, UpgradeProfile> = {
+  p_toxic: 'standard',
+  p_edu: 'piercing',
+  p_free: 'standard',
+  p_weak: 'everyCount',
+  p_over: 'standard',
+  p_monster: 'standard',
+  p_rich: 'standard',
+  p_yankee: 'raid',
+  p_gone: 'standard',
+  w_friend: 'standard',
+  w_sports: 'sports',
+  w_study: 'piercing',
+  w_love: 'piercing',
+  w_beauty: 'everyCount',
+  w_hobby: 'standard',
+  w_work: 'standard',
+  w_invest: 'standard',
+  w_sns: 'standard',
+  w_pet: 'standard',
+  w_muscle: 'standard',
+  w_reading: 'standard',
+  w_overtime: 'standard',
+  w_ring: 'standard',
+  w_karaoke: 'standard',
+  w_travel: 'standard',
+  w_savings: 'standard',
+  w_gamble: 'standard',
+  w_perfume: 'standard',
+  w_cooking: 'food',
+  w_observe: 'observe',
+  w_garden: 'standard'
+}
+
+const weaponUpgradeOverrides: Record<string, Record<number, Partial<WeaponLevelUpgrade>>> = {
+  p_toxic: { 2: { damage: 1.3 }, 5: { damage: 1.3 }, 8: { damage: 1.82 } }
+}
+
+export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEntries(
+  Object.entries(weaponUpgradeProfiles).map(([id, profile]) => [
+    id,
+    WEAPON_LEVEL_TEXT[id].map((text, index) => {
+      const level = index + 2
+      const countLevel = level === 2 || level === 5 || level === 8
+      return {
+        text,
+        damage: level === 3 || level === 6 ? 1.3 : level === 8 ? 1.4 : 1,
+        amount: profile === 'sports' ? 0 : profile === 'everyCount' ? 1 : countLevel ? 1 : 0,
+        area: level === 4 ? (profile === 'raid' ? 1.4 : 1.25) : 1,
+        cooldown: level === 7 ? 0.85 : 1,
+        duration: profile === 'sports' && countLevel ? 1 : 0,
+        pierce: (profile === 'piercing' || profile === 'sports') && level === 4 ? 1 : 0,
+        targets: profile === 'observe' ? 1 : 0,
+        foodPower: profile === 'food' ? 0.1 : 0,
+        ...weaponUpgradeOverrides[id]?.[level]
+      }
+    })
+  ])
+)
+
 export type EnemyBehavior =
   | 'chase'
   | 'dash'
