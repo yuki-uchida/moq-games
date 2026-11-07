@@ -183,6 +183,9 @@ test('SNS chains scale with duration instead of bonus projectile count', async (
     const game = hook.game as unknown as Game
     const player = game.state.players[0]
     game.targetPopulation = () => 0
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
     player.talents = { friend: 1, love: 1, sports: 1, hobby: 1, study: 1, invest: 1 }
     return [
       [],
@@ -2037,7 +2040,8 @@ test('guests receive both stages of a copied gardening weapon', async ({ context
       player.weapons = []
     }
     game.state.players[0].weapons = [
-      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 }
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 },
+      { id: 'w_garden', lv: 1, cd: 100, held: 0, damage: 0 }
     ]
     game['buildGrid']()
     game['fireWeapons'](0)

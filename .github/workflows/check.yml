@@ -125,24 +125,51 @@ jobs:
       - name: Node contract tests
         if: needs.changes.outputs.node != ''
         run: node --test ${{ needs.changes.outputs.node }}
-      - name: Install Chromium for life-survivors
-        if: needs.changes.outputs.life == 'true'
-        run: npx playwright install --with-deps chromium
-      - name: Test life-survivors in Chromium
-        if: needs.changes.outputs.life == 'true'
-        run: npm run e2e:life-survivors
-      - name: Upload life-survivors browser failure evidence
-        if: failure() && needs.changes.outputs.life == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: life-survivors-browser-${{ github.sha }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
       - run: npm run typecheck:tower-debug
         if: needs.changes.outputs.debug == 'true'
       - run: npm run test:tower-debug
         if: needs.changes.outputs.debug == 'true'
+  life-browser:
+    needs: changes
+    if: needs.changes.outputs.life == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .sdk-cache
+            .generated/moqt-sdk
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - run: node scripts/setup-sdk.mjs
+      - run: npm ci --ignore-scripts
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium for life-survivors
+        run: npx playwright install --with-deps chromium
+      - name: Test life-survivors in Chromium
+        run: npm run e2e:life-survivors -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - name: Upload life-survivors browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: life-survivors-browser-${{ github.sha }}-shard-${{ matrix.shard }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
   slow-checks:
     needs: changes
     if: needs.changes.outputs.tower == 'true' || needs.changes.outputs.bot == 'true' || needs.changes.outputs.audit == 'true'
@@ -250,9 +277,10 @@ jobs:
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.changes.result == 'success' && needs.build.result == 'success' &&
       needs.check.result == 'success' &&
+      (needs.life-browser.result == 'success' || needs.life-browser.result == 'skipped') &&
       (needs.slow-checks.result == 'success' || needs.slow-checks.result == 'skipped') &&
       (needs.browser.result == 'success' || needs.browser.result == 'skipped')
-    needs: [changes, build, check, slow-checks, browser]
+    needs: [changes, build, check, life-browser, slow-checks, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
