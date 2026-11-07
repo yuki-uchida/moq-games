@@ -58,6 +58,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
@@ -104,6 +110,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
@@ -143,6 +155,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
@@ -170,6 +188,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
@@ -205,6 +229,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
@@ -243,6 +273,12 @@ jobs:
           node-version: '24'
           cache: npm
       - uses: actions/cache@v4
+        id: sdk-generated
+        with:
+          path: .generated/moqt-sdk
+          key: sdk-generated-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/source.json', 'sdk/package.json', 'scripts/setup-sdk.mjs', 'scripts/sdk-source-text.mjs') }}
+      - uses: actions/cache@v4
+        if: steps.sdk-generated.outputs.cache-hit != 'true'
         with:
           path: |
             .sdk-cache
