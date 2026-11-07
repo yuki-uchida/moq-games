@@ -46,7 +46,7 @@ export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
 const GAMBLE_WEAPONS = WEAPONS.filter((def) => def.id !== 'w_gamble' && def.behavior !== 'none')
-const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume'
+const hasFixedInterval = (id: string) => id === 'p_toxic' || id === 'w_perfume' || id === 'w_observe'
 /** A critical hit hits this much harder. */
 export const CRIT_MULTIPLIER = 2
 /**
@@ -80,8 +80,6 @@ const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
 const OBSERVATION_STILL_SECONDS = 2
-const OBSERVATION_PERIOD = 2
-const OBSERVATION_FIELD_SECONDS = 1
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
 /** Crowd shooters hold their fire while this many bullets are already in the air (bosses ignore it). */
@@ -441,7 +439,7 @@ export function weaponStats(
       ? def.cooldown
       : def.cooldown * (lv >= 7 ? 0.85 : 1) * stats.cooldown * (evolved ? 0.8 : 1),
     amount:
-      def.behavior === 'observe'
+      def.behavior === 'observe' || def.id === 'p_toxic'
         ? 1
         : def.amount +
           (lv >= 2 ? 1 : 0) +
@@ -1690,13 +1688,24 @@ export class Game {
       for (const weapon of player.weapons) {
         weapon.held += dt
         weapon.cd -= dt
+        if (weapon.id === 'p_toxic') {
+          const aura = this.state.shots.find((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id)
+          if (aura) {
+            const ws = weaponStats(player, weapon, stats)
+            aura.r = WEAPON_BY_ID.get(weapon.id)!.area * ws.area
+            aura.damage = ws.damage
+            aura.critChance = ws.crit
+            aura.strongMult = ws.strong
+            continue
+          }
+        }
         if (
           weapon.id === 'w_observe' &&
           (player.still < OBSERVATION_STILL_SECONDS ||
             this.state.shots.some((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id))
         )
           continue
-        if (weapon.cd > 0) continue
+        if (weapon.cd > 0 && weapon.id !== 'w_observe') continue
         const ws = weaponStats(player, weapon, stats)
         weapon.cd += ws.cooldown
         if (weapon.cd < 0) weapon.cd = ws.cooldown
@@ -1939,7 +1948,7 @@ export class Game {
           x: player.x + player.fx * 50,
           y: player.y + player.fy * 50,
           w: weapon.lv + 1,
-          v: form * 2,
+          v: form * 2 + 1,
           tick: 0.5
         })
         break
@@ -2118,7 +2127,13 @@ export class Game {
         kept.push(shot)
         continue
       }
-      shot.life -= dt
+      if (
+        shot.weapon === 'p_toxic' &&
+        shot.sourceWeapon === 'p_toxic' &&
+        owner.weapons.some((weapon) => weapon.id === 'p_toxic')
+      )
+        shot.life = shot.maxLife
+      else shot.life -= dt
       if (shot.kind === 'garden' && shot.v === 0) {
         const travel = Math.min(dt, shot.aux)
         shot.x += shot.vx * travel
@@ -2262,18 +2277,10 @@ export class Game {
   }
 
   private moveObservation(shot: Shot, owner: Player, dt: number) {
-    const previous = Math.floor(shot.aux / OBSERVATION_PERIOD)
-    shot.aux += dt
-    const active = shot.aux % OBSERVATION_PERIOD < OBSERVATION_FIELD_SECONDS
-    shot.v = Math.floor(shot.v / 2) * 2 + (active ? 1 : 0)
-    if (!active) {
-      shot.targets = undefined
-      return
-    }
-    if (!shot.targets || previous !== Math.floor(shot.aux / OBSERVATION_PERIOD)) {
+    {
       const targets: Enemy[] = []
       this.near(shot.x, shot.y, shot.r, (enemy) => {
-        if (Math.hypot(enemy.x - shot.x, enemy.y - shot.y) <= shot.r) targets.push(enemy)
+        if (enemy.hp > 0 && Math.hypot(enemy.x - shot.x, enemy.y - shot.y) <= shot.r) targets.push(enemy)
       })
       targets.sort(
         (first, second) =>
@@ -2288,7 +2295,7 @@ export class Game {
       const distance = Math.hypot(dx, dy)
       if (distance > shot.r) continue
       const def = ENEMY_BY_ID.get(enemy.kind)!
-      const pull = Math.min(distance, 28 * this.knockScale(enemy, def) * dt)
+      const pull = Math.min(distance, 35 * this.knockScale(enemy, def) * dt)
       enemy.x += (dx / (distance || 1)) * pull
       enemy.y += (dy / (distance || 1)) * pull
       enemy.slow = Math.max(enemy.slow, 0.12)

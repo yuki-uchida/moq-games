@@ -110,7 +110,7 @@ test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
   }
 )
 
-test('fields pulse, lock their targets per pulse, and do not hit during the interval', () => {
+test('fields remain active and replace defeated targets throughout their lifetime', () => {
   const { game, player, weapon } = setup()
   const enemies = Array.from({ length: 3 }, (_, index) => {
     const enemy = game.spawnEnemy('germ', 70 + index * 10, 0)!
@@ -128,15 +128,15 @@ test('fields pulse, lock their targets per pulse, and do not hit during the inte
   enemies[0].hp = 0
   game.state.time += 0.6
   game['moveShots'](0.5)
-  expect(shot.targets).toEqual(enemies.slice(0, 2))
+  expect(shot.targets).toEqual(enemies.slice(1))
   expect(enemies[1].hp).toBeLessThan(initialHp[1])
-  expect(enemies[2].hp).toBe(initialHp[2])
+  expect(enemies[2].hp).toBeLessThan(initialHp[2])
   game['moveShots'](0.5)
-  expect(shot.v % 2).toBe(0)
+  expect(shot.v % 2).toBe(1)
   const duringPause = enemies[1].hp
   game.state.time += 1
   game['moveShots'](0.3)
-  expect(enemies[1].hp).toBe(duringPause)
+  expect(enemies[1].hp).toBeLessThan(duringPause)
   game['moveShots'](0.7)
   expect(shot.v % 2).toBe(1)
   expect(shot.targets).toEqual(enemies.slice(1))
@@ -168,7 +168,7 @@ test('bonus projectiles do not increase creatures or targets, while duration ext
   expect(weaponStats(player, weapon).amount).toBe(1)
 })
 
-test('cooldown only hastens observation when it exceeds the creature lifetime', () => {
+test('cooldown does not affect observation resummoning', () => {
   const nextSummon = (passives: string[]) => {
     const { game, player } = setup()
     player.talents.study = 1
@@ -185,7 +185,7 @@ test('cooldown only hastens observation when it exceeds the creature lifetime', 
     throw new Error('The next creature was not summoned')
   }
   expect(nextSummon(['p_diligent'])).toBe(nextSummon([]))
-  expect(nextSummon(['p_grand', 'p_diligent'])).toBeLessThan(nextSummon(['p_grand']))
+  expect(nextSummon(['p_grand', 'p_diligent'])).toBe(nextSummon(['p_grand']))
 })
 
 test('a gambling copy also requires stillness and keeps its own field and snapshot', () => {

@@ -434,7 +434,7 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(WEAPONS.find(({ id }) => id === 'p_toxic')!.area).toBe(35)
   })
 
-  test('toxic aura fires once per second instead of every half second', () => {
+  test('toxic aura stays active without additional projectiles', () => {
     const game = new Game(72)
     game.targetPopulation = () => 0
     const player = game.addPlayer('a', 'p_toxic')!
@@ -443,13 +443,19 @@ describe('毒親: 攻撃力と引き換えに自然回復なし', () => {
     expect(weaponStats(player, player.weapons[0]).cooldown).toBe(1)
     game.tick(1 / 60)
     expect(game.state.fx.some((event) => event.type === FX.FIRE)).toBe(true)
-    for (let frame = 0; frame < 58; frame++) {
+    const aura = game.state.shots[0]
+    player.passives = [{ id: 'p_grand', lv: 5 }]
+    expect(weaponStats(player, player.weapons[0]).amount).toBe(1)
+    player.weapons[0].lv = 4
+    game.tick(1 / 60)
+    expect(aura.r).toBeGreaterThan(35)
+    for (let frame = 0; frame < 180; frame++) {
       game.tick(1 / 60)
-      expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t === game.state.time)).toBe(false)
+      expect(game.state.shots).toEqual([aura])
     }
-    game.tick(1 / 60)
-    game.tick(1 / 60)
-    expect(game.state.fx.some((event) => event.type === FX.FIRE && event.t >= 0.99)).toBe(true)
+    player.weapons = []
+    game.tick(1)
+    expect(game.state.shots).toHaveLength(0)
   })
 
   test.each(WEAPONS.filter(({ behavior }) => behavior !== 'none').map(({ id }) => id))(

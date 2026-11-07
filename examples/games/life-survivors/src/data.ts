@@ -181,7 +181,7 @@ export const PARENTS: WeaponDef[] = [
     duration: 0.55,
     pierce: Infinity,
     strong: ['insult', 'people'],
-    desc: '身のまわりに毒の空気。クールダウン無効。特攻：悪口・人間関係。',
+    desc: '身のまわりに常時毒の空気。クールダウン無効、弾数・効果時間無効。特攻：悪口・人間関係。',
     perk: '全武器の威力 +5%・最大精神力 -10。自然回復なし（性格・仲間・家庭）／食事・レベルアップで回復可。18歳未満は親を含めて手札3枠'
   }),
   weapon({
@@ -709,7 +709,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 6,
     pierce: Infinity,
     minAge: 3,
-    desc: '2秒止まると生き物を召喚。周期的に敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。弾数無効、効果時間有効。',
+    desc: '2秒止まると生き物を召喚。効果時間中は敵を引き寄せて減速・小ダメージ。対象はLv+1体まで。クールダウン・弾数無効、効果時間有効。',
     evolve: { passive: 'p_curious', name: '生き物博士' }
   }),
   weapon({
