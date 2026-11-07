@@ -254,7 +254,7 @@ test(
     skip: !existsSync(new URL('../node_modules/vitest/vitest.mjs', import.meta.url)) && 'dependencies are not installed'
   },
   async () => {
-    const root = fileURLToPath(new URL('../', import.meta.url))
+    const root = resolve(fileURLToPath(new URL('../', import.meta.url)))
     const targets = selectScope(['package.json']).unit.split(' ')
     for (const game of readdirSync(resolve(root, 'examples/games'), { withFileTypes: true })) {
       if (game.isDirectory() && existsSync(resolve(root, 'examples/games', game.name, 'tests')))
@@ -286,18 +286,53 @@ test(
     const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \S)/m)?.[1]
     const shards = JSON.parse(unit?.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
     assert.deepEqual(shards, [1, 2, 3, 4, 5, 6, 7, 8])
-    const { BaseSequencer } = await import('vitest/node')
+    const { BaseSequencer, createVitest } = await import('vitest/node')
+    const vitest = await createVitest('test', { root })
+    const Sequencer = vitest.config.sequence.sequencer
+    await vitest.close()
+    assert.equal(Sequencer.name, 'WeightedUnitSequencer')
+    assert.equal(Sequencer.prototype.sort, BaseSequencer.prototype.sort)
     const specifications = discovered.map((moduleId) => ({ moduleId }))
-    const partitions = await Promise.all(
-      shards.map(async (index) => {
-        const sequencer = new BaseSequencer({ config: { root, shard: { index, count: shards.length } } })
-        return (await sequencer.shard(specifications)).map((entry) => entry.moduleId)
-      })
-    )
+    const partition = (files, scopeRoot = root) =>
+      Promise.all(
+        shards.map(async (index) => {
+          const sequencer = new Sequencer({ config: { root: scopeRoot, shard: { index, count: shards.length } } })
+          return (await sequencer.shard(files)).map((entry) => entry.moduleId)
+        })
+      )
+    const partitions = await partition(specifications)
     assert.ok(partitions.every((partition) => partition.length > 0))
     const selected = partitions.flat()
     assert.equal(new Set(selected).size, selected.length)
     assert.deepEqual(selected.sort(), discovered.sort())
+    assert.deepEqual(await partition([...specifications].reverse()), partitions)
+    assert.deepEqual(await new Sequencer({ config: { root } }).shard(specifications), specifications)
+    for (const target of targets.filter((target) => target.endsWith('/tests'))) {
+      const scoped = specifications.filter(({ moduleId }) => moduleId.startsWith(resolve(root, target)))
+      const selected = (await partition(scoped)).flat()
+      assert.equal(new Set(selected).size, selected.length)
+      assert.deepEqual(selected.sort(), scoped.map(({ moduleId }) => moduleId).sort())
+    }
+    const newFile = { moduleId: resolve(root, 'examples/games/rabbiters/tests/new-unit.test.ts') }
+    const withNewFile = (await partition([...specifications, newFile])).flat()
+    assert.equal(withNewFile.filter((moduleId) => moduleId === newFile.moduleId).length, 1)
+    assert.equal(new Set(withNewFile).size, discovered.length + 1)
+    const relative = specifications.map(({ moduleId }) => moduleId.slice(root.length).replaceAll('\\', '/'))
+    const portablePartitions = async (prefix, separator) =>
+      (
+        await partition(
+          relative.map((path) => ({ moduleId: (prefix + path).replaceAll('/', separator) })),
+          prefix.replaceAll('/', separator)
+        )
+      ).map((files) => files.map((path) => path.replaceAll('\\', '/').slice(prefix.length)))
+    assert.deepEqual(
+      await portablePartitions('/home/runner/work/moq-games/moq-games', '/'),
+      await portablePartitions('C:/checkout/moq-games', '\\')
+    )
+    assert.deepEqual(
+      await portablePartitions('/home/runner/work/moq-games/moq-games', '/'),
+      partitions.map((files) => files.map((path) => path.slice(root.length).replaceAll('\\', '/')))
+    )
     const allFiles = JSON.parse(
       execFileSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'list', '--filesOnly', '--json'], {
         cwd: root,
@@ -307,5 +342,29 @@ test(
     assert.ok(allFiles.length >= discovered.length)
     assert.ok(allFiles.every(({ file }) => !/\.test\.mjs$/.test(file) && !/[\\/]tests[\\/].*\.spec\./.test(file)))
     assert.ok(allFiles.every(({ file }) => !file.endsWith('Actual3DView.test.ts')))
+  }
+)
+
+test(
+  'unit sharding uses LPT with stable path and shard ties, including small and empty scopes',
+  {
+    skip: !existsSync(new URL('../node_modules/vitest/vitest.mjs', import.meta.url)) && 'dependencies are not installed'
+  },
+  async () => {
+    const { default: Sequencer } = await import('../scripts/vitest-unit-sequencer.mjs')
+    const root = '/repo'
+    const clock = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-clock.test.ts' }
+    const audio = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts' }
+    const town = { moduleId: 'examples/games/rabbiters/tests/town.test.ts' }
+    const light = ['a', 'b', 'c'].map((name) => ({ moduleId: 'tests/' + name + '.test.ts' }))
+    const files = [...light].reverse().concat(audio, clock, town)
+    const partition = (index, count, input = files) =>
+      new Sequencer({ config: { root, shard: { index, count } } }).shard(input)
+    assert.deepEqual(await partition(1, 3), [clock])
+    assert.deepEqual(await partition(2, 3), [town, light[0], light[2]])
+    assert.deepEqual(await partition(3, 3), [audio, light[1]])
+    assert.deepEqual(await partition(1, 1), [clock, town, audio, ...light])
+    assert.deepEqual(await partition(7, 8), [])
+    assert.deepEqual(await partition(1, 8, []), [])
   }
 )
