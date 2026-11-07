@@ -433,6 +433,7 @@ test('creature observation updates cards and HUD at every age boundary', async (
     player.choices = ['w:w_observe', 'x:skip']
     player.choiceSeq++
   })
+  await expect(page.locator('#cards .card').first()).toContainText('生き物観察（蟻・ミミズ）')
   const second = page.locator('#cards .card').nth(1)
   await expect(second).toBeVisible()
   await second.focus()
