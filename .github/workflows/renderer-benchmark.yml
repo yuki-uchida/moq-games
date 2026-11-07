@@ -146,7 +146,8 @@ jobs:
             use: {
               launchOptions: {
                 // Chromium blocks llvmpipe by default; this diagnostic deliberately measures software drivers.
-                args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough']
+                // Isolate 2D rasterization artifacts with CPU rasterization while preserving WebGL2.
+                args: ['--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-rasterization', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough']
               }
             }
           })
@@ -155,7 +156,7 @@ jobs:
           import { test, expect } from '@playwright/test'
           import '../../tests/tower-real3d-game.spec'
 
-          test.afterEach(async ({ page }, testInfo) => {
+          test.afterEach(async ({ page, browser }, testInfo) => {
             const originalFailed = testInfo.status !== testInfo.expectedStatus
             try {
               const renderer = await page.locator('#field > canvas').evaluate((canvas: HTMLCanvasElement) => {
@@ -186,6 +187,18 @@ jobs:
             } catch (error) {
               console.error('Renderer verification failed:', error)
               if (!originalFailed) throw error
+            } finally {
+              try {
+                const session = await browser.newBrowserCDPSession()
+                try {
+                  const { gpu } = await session.send('SystemInfo.getInfo')
+                  await testInfo.attach('gpu-feature-status', { body: JSON.stringify(gpu.featureStatus, null, 2), contentType: 'application/json' })
+                } finally {
+                  await session.detach()
+                }
+              } catch (error) {
+                console.error('GPU feature status diagnostic failed:', error)
+              }
             }
           })
           SPEC
@@ -224,7 +237,7 @@ jobs:
             benchmarkRunId: process.env.BENCHMARK_RUN_ID, attempt: process.env.BENCHMARK_RUN_ATTEMPT,
             jobStatus: process.env.BENCHMARK_JOB_STATUS, backend, node: process.version,
             headless: true, display: 'xvfb-run -a',
-            args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
+            args: ['--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-rasterization', '--use-gl=angle', `--use-angle=${backend}`, '--use-cmd-decoder=passthrough'],
             environment: Object.fromEntries(['LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', 'VK_DRIVER_FILES'].map(key => [key, process.env[key] ?? null]))
           };
           writeFileSync('.build/renderer-benchmark-local/metadata.json', JSON.stringify(metadata, null, 2));
