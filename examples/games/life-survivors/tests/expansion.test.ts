@@ -111,6 +111,10 @@ describe('new talent weapons', () => {
   test.each(Object.keys(NEW_WEAPONS))('%s deals damage to an enemy in its path', (id) => {
     const { game, player } = arena(7)
     player.weapons.push({ id, lv: 1, cd: 0, held: 0, damage: 0 })
+    if (id === 'w_gamble') {
+      player.weapons[0].gambleWeapon = 'w_cooking'
+      player.weapons[0].gambleUntil = 12
+    }
     player.fx = 1
     player.fy = 0
     const posts: ReturnType<typeof post>[] = []
@@ -267,6 +271,7 @@ describe('new talent weapons', () => {
     const copied = new Set<string>()
     for (let i = 0; i < 120; i++) {
       player.weapons[0].cd = 0
+      player.weapons[0].held += 12
       player.hp = player.maxHp
       game.tick(1 / 60)
       for (const shot of game.state.shots) if (shot.sourceWeapon === 'w_gamble') copied.add(shot.weapon)
