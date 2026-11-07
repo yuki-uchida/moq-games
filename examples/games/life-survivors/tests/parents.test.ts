@@ -907,24 +907,25 @@ describe('親ごとの役割', () => {
     }
   })
 
-  test.each([1, 2, 5, 8])('monster parents stay capped at two with extra projectiles at level %i', (lv) => {
+  test.each([1, 2, 3, 4, 5, 8])('monster parents stay capped at two with extra projectiles at level %i', (lv) => {
     const game = new Game(75)
     const player = game.addPlayer('a', 'p_monster')!
     const weapon = player.weapons[0]
     weapon.lv = lv
-    expect(weaponStats(player, weapon).amount).toBe(lv === 1 ? 1 : 2)
+    const amount = lv < 4 ? 1 : 2
+    expect(weaponStats(player, weapon).amount).toBe(amount)
     player.passives = [
       { id: 'p_clever', lv: 5 },
       { id: 'p_grand', lv: 5 }
     ]
     const stats = weaponStats(player, weapon)
-    expect(stats.amount).toBe(2)
+    expect(stats.amount).toBe(amount)
     game['fire'](player, weapon, stats)
     game['fire'](player, weapon, stats)
-    expect(game.state.shots).toHaveLength(2)
+    expect(game.state.shots).toHaveLength(amount)
     game.state.shots.pop()
     game['fire'](player, weapon, stats)
-    expect(game.state.shots).toHaveLength(2)
+    expect(game.state.shots).toHaveLength(amount)
     const other = game.addPlayer('b', 'p_monster')!
     other.weapons[0].lv = 8
     game['fire'](other, other.weapons[0], weaponStats(other, other.weapons[0]))
@@ -944,6 +945,23 @@ describe('親ごとの役割', () => {
     expect(shot.target).toBeDefined()
     expect(shot.x).toBeGreaterThan(player.x)
     expect(Math.hypot(shot.x - player.x, shot.y - player.y)).toBeLessThan(shot.orbit)
+  })
+
+  test('two monster parents chase different enemies when possible', () => {
+    const game = new Game(75)
+    game.targetPopulation = () => 0
+    const player = game.addPlayer('a', 'p_monster')!
+    player.weapons[0].lv = 4
+    player.weapons[0].cd = 0
+    game.spawnEnemy('bully', player.x + 200, player.y)
+    game.spawnEnemy('bully', player.x - 200, player.y)
+    game.tick(1 / 60)
+    const parents = game.state.shots.filter((shot) => shot.weapon === 'p_monster')
+    expect(parents).toHaveLength(2)
+    expect(parents[0].target).toBeDefined()
+    expect(parents[1].target).toBeDefined()
+    expect(parents[0].target).not.toBe(parents[1].target)
+    expect((parents[0].x - player.x) * (parents[1].x - player.x)).toBeLessThan(0)
   })
 })
 

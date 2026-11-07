@@ -272,7 +272,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。最大2人。'
+    desc: '子のそばを離れて近くの敵を追い回す。Lv4で2人になり、別の敵を狙う。'
   }),
   weapon({
     id: 'p_rich',
@@ -829,7 +829,7 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
     '攻撃速度 +15%',
     '攻撃速度 +15%・威力 +40%'
   ],
-  p_monster: ['数 +1（最大2体）', '威力 +30%', '範囲 +25%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
+  p_monster: ['効果なし', '威力 +30%', '範囲 +25%・人数 +1', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_rich: standardLevels,
   p_yankee: ['効果なし', '威力 +30%', '範囲 +40%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_gone: ['効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし'],
