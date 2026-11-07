@@ -246,13 +246,13 @@ export const PARENTS: WeaponDef[] = [
     damage: 7,
     cooldown: 3.6,
     duration: 3.2,
-    amount: 2,
+    amount: 1,
     area: 58,
     speed: 3.4,
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。1枚1回防御＋無敵0.5秒。特攻：事故・病気。詳しくは「?」へ。',
+    desc: '敵を追わず盾で接触攻撃・吹き飛ばす。盾は敵の投射物も1回防ぐ。特攻：事故・病気。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({
@@ -820,7 +820,7 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
     'クールダウン -15%・数 +1',
     '威力 +40%・数 +1'
   ],
-  p_over: standardLevels,
+  p_over: ['効果なし', '威力 +30%', '範囲 +25%・人数 +1', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_monster: ['数 +1（最大2体）', '威力 +30%', '範囲 +25%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_rich: standardLevels,
   p_yankee: ['効果なし', '威力 +30%', '範囲 +40%', '効果なし', '威力 +30%', 'クールダウン -15%', '威力 +40%'],

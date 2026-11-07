@@ -140,17 +140,26 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     const game = new Game(71)
     const player = game.addPlayer('a', 'p_over')!
     game.targetPopulation = () => 0
+    player.weapons[0].lv = 4
     player.weapons[0].cd = 0
     game.tick(1 / 60)
     return { game, player }
   }
 
-  test('each shield blocks one bullet; grace preserves the next shield, then damage resumes', () => {
+  test.each([1, 2, 3, 4, 5, 8])('level %i controls guardian count independently of bonuses', (level) => {
+    const { player } = guarded()
+    player.weapons[0].lv = level
+    player.passives = [{ id: 'p_curious', lv: 5 }]
+    expect(weaponStats(player, player.weapons[0]).amount).toBe(level >= 4 ? 2 : 1)
+  })
+
+  test('a shield intercepts a projectile without granting invulnerability', () => {
     const { game, player } = guarded()
-    const bullet = () =>
+    const shield = game.state.shots[0]
+    const bullet = (x: number, y: number) =>
       game.state.bullets.push({
-        x: player.x,
-        y: player.y,
+        x,
+        y,
         vx: 0,
         vy: 0,
         r: 7,
@@ -160,10 +169,10 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
         src: 'germ'
       })
     expect(game.state.shots).toHaveLength(2)
-    bullet()
+    bullet(shield.x + 7, shield.y + 3)
     game.tick(1 / 60)
     expect(player.hp).toBe(player.maxHp)
-    expect(player.invuln).toBe(0.5)
+    expect(player.invuln).toBe(0)
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
@@ -172,22 +181,9 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
     expect(game.state.bullets).toEqual([])
     expect(game.state.fx.some((event) => event.type === FX.HURT || event.type === FX.DOWN)).toBe(false)
-    bullet()
-    game.tick(0.1)
-    expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
-    expect(player.hp).toBe(player.maxHp)
-    game.tick(0.5)
-    expect(player.hp).toBe(player.maxHp - 19)
-    expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
-    game.tick(0.91)
-    bullet()
+    bullet(player.x, player.y)
     game.tick(1 / 60)
-    expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(0)
     expect(player.hp).toBe(player.maxHp - 19)
-    bullet()
-    game.tick(0.51)
-    expect(player.hp).toBe(player.maxHp - 38)
-    expect(readView(JSON.parse(JSON.stringify(toView(game.state))))).toBeTruthy()
   })
 
   test.each(['germ', 'b_hs'])('blocks %s contact, including a lethal hit, without draining both shields', (kind) => {
@@ -197,11 +193,13 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game.tick(1 / 60)
     expect(player.hp).toBe(0.01)
     expect(player.downed).toBe(false)
-    expect(player.invuln).toBe(0.5)
+    expect(player.invuln).toBe(0)
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
+    game.state.enemies = []
+    game.spawnEnemy(kind, player.x, player.y)
     game.tick(1 / 60)
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
-    expect(player.hp).toBe(0.01)
+    expect(player.hp).toBeLessThan(0.01)
   })
 
   test('overprotective parents do not reduce movement speed', () => {
@@ -215,9 +213,23 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(playerStats(player).speed).toBe(playerStats(other).speed)
   })
 
+  test.each([1, -1])('only enemies overlapping the visible shield are hit (%i)', (side) => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    shield.angle = side === 1 ? 0 : Math.PI
+    const behind = game.spawnEnemy('germ', shield.x - side * 25, shield.y)!
+    const inFront = game.spawnEnemy('germ', shield.x + side * 20, shield.y)!
+    for (const enemy of [behind, inFront]) enemy.hp = enemy.maxHp = 1000
+    game['buildGrid']()
+    game['collide'](shield, player)
+    expect(behind.hp).toBe(1000)
+    expect(inFront.hp).toBeLessThan(1000)
+  })
+
   test.each([1, -1])('a spent shield damages and knocks away enemies on contact (%i)', (side) => {
     const { game, player } = guarded()
-    game.state.bullets.push({ x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
+    const first = game.state.shots[0]
+    game.state.bullets.push({ x: first.x + 7, y: first.y + 3, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
     game.tick(1 / 60)
     const shield = game.state.shots.find((shot) => shot.v === 1)!
     game.state.shots = [shield]
@@ -328,6 +340,8 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
           game.state.bullets = [
             { x: player.x, y: player.y, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' }
           ]
+          const shield = game.state.shots.find((shot) => shot.v === 0)
+          if (shield) game.state.bullets.unshift({ x: shield.x + (Math.cos(shield.angle) < 0 ? -7 : 7), y: shield.y + 3, vx: 0, vy: 0, r: 7, damage: 20, life: 2, kind: 0, src: 'germ' })
         } else {
           const enemy = game.spawnEnemy(attack, player.x, player.y)!
           enemy.hp = enemy.maxHp = 1e9
@@ -351,6 +365,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     const { game, player } = guarded()
     const other = game.addPlayer('b', 'p_over')!
     other.x = player.x + 300
+    other.weapons[0].lv = 4
     other.weapons[0].cd = 0
     game.tick(1 / 60)
     for (const owner of [player, other]) {
@@ -399,7 +414,6 @@ describe('通常の被弾猶予は親にかかわらず継続接触を防がな�
       else game.spawnEnemy('b_hs', player.x, player.y)
       game.tick(1 / 60)
       expect(player.invuln).toBe(source === 'bullet' ? 0.5 : 0.6)
-      expect(player.shieldGrace).toBe(0)
       game.state.enemies = []
       game.spawnEnemy('germ', player.x, player.y)
       const hp = player.hp

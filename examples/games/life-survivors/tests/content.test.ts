@@ -70,7 +70,7 @@ describe('in-game descriptions', () => {
     expect(WEAPON_BY_ID.get('p_over')!.desc.length).toBeLessThanOrEqual(60)
     for (const effect of [
       '敵を追わず盾で接触攻撃・吹き飛ばす',
-      '1枚1回防御＋無敵0.5秒',
+      '盾は敵の投射物も1回防ぐ',
       '特攻：事故・病気',
       '詳しくは「?」へ',
       '防御 +1'
