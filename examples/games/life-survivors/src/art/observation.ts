@@ -275,7 +275,7 @@ function bird(f: number) {
   const hop = f === 3
   const lean = [0, 1, 3, 0][f]
   const bodyY = (hop ? 14 : 17) + (f === 1 ? 1 : f === 2 ? 2 : 0)
-  const head = { x: 22 + lean * 1.2, y: bodyY - 6 + lean * 1.6 }
+  const head = { x: 20 + lean * 0.9, y: bodyY - 6 + lean * 1.6 }
   const flick = hop ? 1 : 0
   // Legs.
   part(
