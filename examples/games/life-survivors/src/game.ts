@@ -443,6 +443,7 @@ export function weaponStats(
   const source = WEAPON_BY_ID.get(weapon.id)!
   const lv = weapon.lv
   const evolved = isEvolved(player, weapon)
+  const levelAmount = Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)
   let damage = def.damage * (lv >= 3 ? 1.3 : 1) * (lv >= 6 ? 1.3 : 1) * (lv >= 8 ? 1.4 : 1) * stats.might
   if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
@@ -461,14 +462,12 @@ export function weaponStats(
       def.behavior === 'observe' || def.behavior === 'raid' || def.id === 'p_toxic'
         ? 1
         : def.amount +
-            (def.id === 'w_beauty' || def.id === 'p_weak'
-              ? lv - 1
-              : Number(lv >= 2) + Number(lv >= 5) + Number(lv >= 8)) +
-            (evolved ? 1 : 0) +
+            (def.id === 'w_sports' ? 0 : def.id === 'w_beauty' || def.id === 'p_weak' ? lv - 1 : levelAmount) +
+            (evolved && def.id !== 'w_sports' ? 1 : 0) +
             (def.behavior === 'none' || def.behavior === 'chain' ? 0 : stats.amount)
     ),
     area: (lv >= 4 ? (def.behavior === 'raid' ? 1.4 : 1.25) : 1) * stats.area * (evolved ? 1.2 : 1),
-    duration: def.duration * (evolved ? 1.3 : 1) * stats.duration,
+    duration: def.duration * (def.id === 'w_sports' ? 1 + levelAmount : 1) * (evolved ? 1.3 : 1) * stats.duration,
     speed: stats.shotSpeed,
     crit: stats.crit,
     strong: stats.strong
@@ -513,6 +512,7 @@ export function choiceText(
     const appearance = age === undefined ? def : weaponAppearance(id, age, age - (owned?.acquiredAge ?? age))
     if (!owned) return { icon: appearance.icon, name: appearance.name, text: def.desc, tag: 'NEW' }
     const next = owned.lv + 1
+    const levelText = id === 'w_sports' ? LEVEL_TEXT[next]?.replace('数 +1', '効果時間 +3秒') : LEVEL_TEXT[next]
     const evolves =
       next === MAX_WEAPON_LEVEL && def.evolve && passiveLevel(player, def.evolve.passive)
         ? `・${def.evolve.name}に進化！`
@@ -520,7 +520,7 @@ export function choiceText(
     return {
       icon: appearance.icon,
       name: appearance.name,
-      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : LEVEL_TEXT[next]}${id === 'p_weak' && next !== 2 && next !== 5 && next !== 8 ? '・数 +1' : ''}${evolves}`,
+      text: `${id === 'w_cooking' ? '料理の効果 +10%' : next === 7 && hasFixedInterval(id) ? '効果なし（Lv8で強化）' : levelText}${id === 'p_weak' && next !== 2 && next !== 5 && next !== 8 ? '・数 +1' : ''}${evolves}`,
       tag: `Lv ${next}`
     }
   }
