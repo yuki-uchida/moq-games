@@ -7,6 +7,16 @@ import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
 
+test('頼りない親 grants defense alongside its experience bonus', () => {
+  const game = new Game(1)
+  const player = game.addPlayer('a', 'p_weak')!
+  expect(playerStats(player).armor).toBe(1)
+  expect(playerStats(player).xpGain).toBe(1.25)
+  player.talents.sports = 1
+  player.passives.push({ id: 'p_stubborn', lv: 1 })
+  expect(playerStats(player).armor).toBe(2)
+})
+
 test.each([
   ['w_study', 3],
   ['w_reading', 5],

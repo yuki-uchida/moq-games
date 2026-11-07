@@ -368,6 +368,7 @@ test('age-dependent sports and pet life stay consistent in cards, HUD and result
 })
 
 for (const [parent, description] of [
+  ['p_weak', '経験値 +25%、防御 +1'],
   ['p_over', '親が盾を構えて近くの敵を迎撃し、ダメージを与えて弾き飛ばす'],
   ['p_over', '盾1枚につき1回だけ被ダメージを防ぎ、0.5秒間無敵'],
   ['p_over', '防御は本人ごとに最短1.5秒間隔'],
