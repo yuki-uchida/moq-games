@@ -769,8 +769,6 @@ export class Renderer {
     }
     if (elite) {
       const w = def.radius * 2 * scale
-      const wob = Math.sin(this.clock * 5 + id) * 1.5
-      this.blit(this.label('強', 11, GOLD), x, top - 12 + wob, 0, 1, 1 + 0.06 * Math.sin(this.clock * 6))
       bar.push(x - w / 2, top, w, (w * e.hp) / 100, 3, 2)
     } else if (boss || e.hp < 100) {
       // Life bars are collected and drawn together after the crowd.
