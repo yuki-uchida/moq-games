@@ -107,65 +107,392 @@ function dog(f: number, mode: 'run' | 'closed' | 'open') {
   return r
 }
 
-function smallPet(kind: 'cat' | 'rabbit' | 'parakeet' | 'hamster', frame: number, mode: 'run' | 'closed' | 'open') {
-  const sprite = new Raster(N, N)
-  const bob = mode === 'run' ? [0, -1, 0, -1][frame] : mode === 'open' ? 1 : 0
-  const step = mode === 'run' ? [2, -1, -2, 1][frame] : 0
-  if (kind === 'parakeet') {
-    part(sprite, (layer) => {
-      layer.poly([10, 18 + bob, 1, 26 + bob, 8, 17 + bob], R.green[2])
-      layer.line(13, 22 + bob, 12 + step, 27, R.orange[2])
-      layer.line(18, 22 + bob, 19 - step, 27, R.orange[2])
-    })
-    part(sprite, (layer) => {
-      ball(layer, 15, 17 + bob, 9, 6.5, R.green)
-      layer.ellipse(14, 17 + bob - Math.abs(step), 5, 3.5, R.green[2])
-      layer.line(11, 15 + bob - Math.abs(step), 17, 17 + bob - Math.abs(step), R.green[3])
-      ball(layer, 22, 11 + bob, 6, 6, R.yellow)
-      layer.line(18, 7 + bob, 21, 9 + bob, R.green[3])
-      layer.line(18, 10 + bob, 20, 11 + bob, R.green[3])
-      layer.poly([27, 12 + bob, 31, 14 + bob, 27, 16 + bob], R.orange[1])
-      layer.set(23, 10 + bob, C.inkCool)
-      layer.set(20, 14 + bob, R.sky[2])
-      if (mode === 'open') layer.set(29, 15 + bob, C.inkWarm)
-    })
-    return sprite
-  }
+type PetMode = 'run' | 'closed' | 'open'
 
-  const fur = kind === 'cat' ? R.metal : kind === 'rabbit' ? R.paper : R.brown
-  part(sprite, (layer) => {
-    if (kind === 'cat') {
-      layer.thick(8, 19 + bob, 4, 13 + bob, 2, fur[1])
-      layer.thick(4, 13 + bob, 6, 9 + bob, 2, fur[1])
-    } else if (kind === 'rabbit') ball(layer, 6, 18 + bob, 3, 3, R.paper)
-    else layer.ellipse(6, 20 + bob, 2, 2, R.pink[1])
+/** Paints a line only where the layer already has pixels (stripes, bars). */
+function paintLine(l: Raster, x0: number, y0: number, x1: number, y1: number, c: number) {
+  const m = new Raster(N, N)
+  m.line(x0, y0, x1, y1, 1)
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (m.get(x, y)) l.paint(x, y, c)
+}
+
+/** Grey tabby: a bounding gallop in which the spine stretches and compresses. */
+function cat(f: number, mode: PetMode) {
+  const r = new Raster(N, N)
+  const run = mode === 'run'
+  const open = mode === 'open'
+  const M = R.metal
+  const foot = 27
+  const bob = run ? [-1, 0, 0, -1][f] : 0
+  const sx = run ? [1.5, 0.5, -1.5, 0.5][f] : 0
+  const pose = (k: number) => ({
+    fx: run ? [4, 2, -1, 2][k] : open ? 2 : 1,
+    rx: run ? [-4, -1, 2, -2][k] : -1,
+    fl: run ? [2, 0, 0, 1][k] : 0,
+    rl: run ? [1, 1, 0, 0][k] : 0
   })
-  part(sprite, (layer) => {
-    layer.thick(10, 21 + bob, 9 + step, 26, 3, fur[2])
-    layer.thick(21, 21 + bob, 22 - step, 26, 3, fur[2])
-    ball(layer, 15, 18 + bob, kind === 'hamster' ? 10 : 9, kind === 'hamster' ? 8 : 6, fur)
-    layer.ellipse(15, 22 + bob, 6, 2, R.paper[1])
+  const near = pose(f)
+  const farP = pose((f + 2) % 4)
+  const sw = run ? [-1, 0, 1, 0][f] : 0
+  const hip = 9 - Math.round(sx)
+  const sh = 20
+  const hy = 14 + bob + (open ? 1 : 0)
+  const leg = (l: Raster, x: number, dx: number, lift: number, col: number) => {
+    l.thick(x, 21 + bob, x + dx, foot - lift - 1, col === M[1] ? 3.2 : 2.8, col)
+    l.ellipse(x + dx + 0.5, foot - lift - 0.5, 2.2, 1.3, R.paper[1])
+  }
+  // Far legs.
+  part(r, (l) => {
+    leg(l, hip + 1, farP.rx, farP.rl, M[2])
+    leg(l, sh + 1, farP.fx, farP.fl, M[2])
   })
-  part(sprite, (layer) => {
-    if (kind === 'rabbit') {
-      layer.ellipse(20, 6 + bob, 2.5, 6, fur[1])
-      layer.ellipse(25, 6 + bob, 2.5, 6, fur[1])
-      layer.ellipse(25, 6 + bob, 1, 4, R.pink[1])
-    } else if (kind === 'cat') {
-      layer.poly([18, 11 + bob, 19, 3 + bob, 23, 8 + bob], fur[2])
-      layer.poly([23, 8 + bob, 28, 3 + bob, 28, 12 + bob], fur[1])
-    } else {
-      ball(layer, 19, 10 + bob, 3, 3, fur)
-      ball(layer, 26, 10 + bob, 3, 3, fur)
+  // Tail: a long curve that sways, ringed with stripes.
+  part(r, (l) => {
+    l.thick(hip - 2, 18 + bob, 3 + sw, 14 + bob, 2.4, M[1])
+    l.thick(3 + sw, 14 + bob, 5 + sw * 2, 8 + bob, 2.2, M[1])
+    l.thick(5 + sw * 2, 8 + bob, 6 + sw * 2, 6 + bob, 1.6, M[1])
+    for (const y of [7, 10, 13]) paintLine(l, 0, y + bob, 12, y + bob, M[2])
+  })
+  // Body.
+  part(r, (l) => {
+    ball(l, 14, 18 + bob, 8.5 + sx, 5.6, M)
+    l.ellipse(15, 22 + bob, 5 + sx * 0.4, 1.4, M[0])
+    l.ellipse(20, 20 + bob, 3, 3, R.paper[1])
+    for (const x of [8, 11, 14, 17]) paintLine(l, x, 11 + bob, x + 1, 16 + bob, M[2])
+    paintLine(l, 7, 13 + bob, 18, 12 + bob, M[2])
+  })
+  // Near legs.
+  part(r, (l) => {
+    leg(l, hip + 2, near.rx, near.rl, M[1])
+    leg(l, sh + 2, near.fx, near.fl, M[1])
+    if (open) {
+      l.thick(sh + 3, 21 + bob, 27, 24 + bob, 3, M[1])
+      l.ellipse(27.5, 24.5 + bob, 2.2, 1.5, R.paper[1])
     }
-    ball(layer, 23, 15 + bob, kind === 'hamster' ? 7 : 6, 5.5, fur)
-    layer.ellipse(27, 18 + bob, kind === 'hamster' ? 4 : 3, 2.5, R.paper[1])
-    layer.set(23, 13 + bob, C.inkCool)
-    layer.set(29, 16 + bob, kind === 'cat' ? R.pink[2] : C.inkWarm)
-    if (kind === 'hamster') layer.ellipse(22, 19 + bob, 3, 2, R.pink[1])
-    if (mode === 'open') layer.ellipse(27, 20 + bob, 2, 1, R.red[2])
   })
-  return sprite
+  if (open)
+    for (const [x0, y0, x1, y1] of [
+      [30, 20, 31, 22],
+      [30, 23, 31, 25],
+      [29, 26, 31, 27]
+    ])
+      r.line(x0, y0 + bob, x1, y1 + bob, C.white)
+  // Head with pointed ears.
+  part(r, (l) => {
+    l.poly([19.5, hy - 4, 20.5, hy - 10, 24, hy - 6], M[2])
+    l.poly([24, hy - 6, 28, hy - 11, 28.8, hy - 3], M[1])
+    l.poly([25.2, hy - 6, 27.4, hy - 9, 27.8, hy - 4.5], R.pink[1])
+    ball(l, 24, hy, 5.6, 5, M)
+    paintLine(l, 22, hy - 4, 22, hy - 3, M[3])
+    paintLine(l, 24, hy - 5, 24, hy - 3, M[3])
+    l.ellipse(27.5, hy + 2, 2.6, 2.1, R.paper[1])
+  })
+  if (open) {
+    r.set(27, hy + 4, R.red[3])
+    r.set(28, hy + 4, C.white)
+    r.set(27, hy + 5, R.red[3])
+    r.set(28, hy + 5, R.red[3])
+  }
+  // Almond eye with iris and pupil.
+  r.set(25, hy - 2, C.inkCool)
+  r.set(26, hy - 2, C.inkCool)
+  r.set(27, hy - 1, C.inkCool)
+  r.set(25, hy - 1, R.yellow[1])
+  r.set(26, hy - 1, R.green[1])
+  r.set(25, hy, R.yellow[2])
+  r.set(26, hy, C.inkCool)
+  r.set(29, hy + 1, R.pink[2])
+  r.set(29, hy + 2, R.pink[2])
+  // Whiskers.
+  r.set(30, hy + 2, C.white)
+  r.set(31, hy + 1, C.white)
+  r.set(30, hy + 3, C.white)
+  r.set(31, hy + 4, C.white)
+  return r
+}
+
+/** White rabbit: crouch, push-off stretch, airborne, land. */
+function rabbit(f: number, mode: PetMode) {
+  const r = new Raster(N, N)
+  const run = mode === 'run'
+  const open = mode === 'open'
+  const P = R.paper
+  const dy = run ? [1, -1, -4, 0][f] : 0
+  const hd = run ? [0, -1, 0, 1][f] : open ? 1 : 0
+  const sx = run ? [0, 2.5, 1.5, -1.5][f] : 0
+  const ry = run ? [6.5, 5.6, 5.8, 6.8][f] : 6.5
+  const ear = run
+    ? [
+        [-1, -8],
+        [-5, -6],
+        [-8, -4],
+        [-4, -7]
+      ][f]
+    : open
+      ? [-3, -7]
+      : [-1, -8]
+  const hx = 23
+  const hy = 15 + dy + hd
+  // Ankle and toe of the hind foot (long, flat, white).
+  const ankle = run
+    ? [
+        [7, 25],
+        [5, 24],
+        [9, 24],
+        [5, 23]
+      ][f]
+    : [7, 25]
+  const toe = run
+    ? [
+        [15, 26.5],
+        [1, 26.5],
+        [15, 25],
+        [9, 26.5]
+      ][f]
+    : [15, 26.5]
+  const paw = run
+    ? [
+        [22, 27],
+        [24, 24],
+        [25, 23],
+        [24, 27]
+      ][f]
+    : [23, 27]
+  const earPart = (l: Raster, bx: number, by: number, col: number, pink: number) => {
+    const tx = bx + ear[0]
+    const ty = by + ear[1]
+    const mx = bx + ear[0] * 0.55
+    const my = by + ear[1] * 0.55
+    l.thick(bx, by, mx, my, 3.2, col)
+    l.thick(mx, my, tx, ty, 2.2, col)
+    l.thick(bx + ear[0] * 0.15, by + ear[1] * 0.15, bx + ear[0] * 0.85, by + ear[1] * 0.85, 1, pink)
+  }
+  // Far ear and far front leg (short).
+  part(r, (l) => {
+    earPart(l, hx + 1, hy - 4, P[2], R.pink[2])
+    l.thick(21, 23 + dy, paw[0] + 1.5, paw[1] - 0.5, 2.2, P[2])
+  })
+  // Cotton tail.
+  part(r, (l) => ball(l, 4.5, 18 + dy, 2.6, 2.6, P))
+  // Body.
+  part(r, (l) => ball(l, 13, 19 + dy, 8 + sx, ry, P))
+  // Big round haunch with a long flat hind foot.
+  part(r, (l) => {
+    l.thick(ankle[0], ankle[1], toe[0], toe[1] - 0.5, 2.4, P[0])
+    l.thick(10, 21 + dy, ankle[0], ankle[1], 3, P[1])
+    ball(l, 10, 21 + dy, 5.2, 5.6, P)
+  })
+  // Near front leg.
+  part(r, (l) => {
+    l.thick(19.5, 23 + dy, paw[0], paw[1] - 0.5, 2.4, P[1])
+    l.ellipse(paw[0] + 0.5, paw[1] - 0.5, 1.8, 1, P[1])
+  })
+  // Near ear, then the head.
+  part(r, (l) => earPart(l, hx - 2, hy - 4, P[1], R.pink[1]))
+  part(r, (l) => {
+    ball(l, hx, hy, 5.6, 5, P)
+    l.ellipse(26.5, hy + 2, 2.4, 1.8, P[0])
+  })
+  r.set(28, hy + 1, R.pink[1])
+  r.set(28, hy + 2, R.pink[2])
+  r.set(29, hy + 1, R.pink[2])
+  r.rect(25, hy - 1, 2, 2, C.inkCool)
+  r.set(25, hy - 1, C.white)
+  r.set(26, hy, R.red[2])
+  // Mouth with two buck teeth.
+  if (open) {
+    r.rect(25, hy + 3, 4, 2, R.red[3])
+    r.rect(26, hy + 3, 1, 3, C.white)
+    r.rect(28, hy + 3, 1, 3, C.white)
+    r.set(26, hy + 6, P[3])
+    r.set(28, hy + 6, P[3])
+  } else {
+    r.rect(25, hy + 3, 4, 1, P[3])
+    r.rect(26, hy + 4, 3, 1, C.white)
+    r.set(27, hy + 4, P[3])
+  }
+  return r
+}
+
+/** Budgerigar: low flight, 4-frame wing flap with a body bob; on bite it pecks. */
+function parakeet(f: number, mode: PetMode) {
+  const r = new Raster(N, N)
+  const run = mode === 'run'
+  const open = mode === 'open'
+  const G = R.green
+  const bob = run ? [1, 0, -1, 0][f] : 0
+  const lx = open ? 2 : 0
+  const ly = open ? 3 : 0
+  const bx = 15 + (open ? 1 : 0)
+  const by = 17 + bob + (open ? 1 : 0)
+  const hx = 21 + lx
+  const hy = 10 + bob + ly
+  const tipY = run ? [0, 2, 4, 2][f] : 1
+  // Feet: tucked in flight, planted when perched.
+  if (!run) {
+    part(r, (l) => {
+      l.thick(bx - 2, by + 5, bx - 3 - (open ? 1 : 0), 26, 1.6, R.orange[2])
+      l.thick(bx + 2, by + 5, bx + 1 - (open ? 1 : 0), 26, 1.6, R.orange[2])
+      l.rect(bx - 5 - (open ? 1 : 0), 26, 3, 1, R.orange[2])
+      l.rect(bx - 1 - (open ? 1 : 0), 26, 3, 1, R.orange[2])
+    })
+  }
+  // Long tapered tail.
+  part(r, (l) => {
+    const ty = 22 + bob + tipY + (run ? 0 : 2)
+    l.poly([bx - 5, by - 1, bx - 4, by + 3, 1, ty + 1, 0, ty - 1], R.mint[2])
+    paintLine(l, bx - 6, by + 1, 3, ty, R.mint[1])
+    for (let y = ty - 2; y <= ty + 2; y++) for (let x = 0; x <= 2; x++) l.paint(x, y, R.navy[1])
+  })
+  // Body.
+  part(r, (l) => {
+    ball(l, bx, by, 8.5, 5.6, G)
+    l.ellipse(bx + 3, by + 3, 4, 1.8, G[0])
+    for (const x of [bx - 4, bx - 1]) l.paint(x, by + 4, G[2])
+  })
+  if (run) {
+    part(r, (l) => {
+      l.ellipse(bx, by + 5, 1.8, 1.2, R.orange[2])
+    })
+  }
+  // Wing: raised, level, lowered.
+  part(r, (l) => {
+    const tips: number[] = run
+      ? [
+          [10, 3],
+          [3, 21],
+          [9, 26],
+          [3, 11]
+        ][f]
+      : [4, 16]
+    const [tx, ty] = tips
+    const ax = tx - bx
+    const ay = ty - by
+    const len = Math.hypot(ax, ay) || 1
+    const nx = -ay / len
+    const ny = ax / len
+    l.poly(
+      [
+        bx + 3,
+        by - 3,
+        tx + nx * 3.5,
+        ty + ny * 3.5,
+        tx + (ax / len) * 2,
+        ty + (ay / len) * 2,
+        tx - nx * 3.5,
+        ty - ny * 3.5,
+        bx - 4,
+        by - 1
+      ],
+      G[2]
+    )
+    l.thick(bx + 2, by - 3, tx + nx * 3, ty + ny * 3, 1, G[1])
+    for (const t of [0.55, 0.8]) {
+      const cx = bx + ax * t
+      const cy = by + ay * t
+      paintLine(
+        l,
+        cx - (ay / len) * 2.5,
+        cy + (ax / len) * 2.5,
+        cx + (ay / len) * 2.5,
+        cy - (ax / len) * 2.5,
+        C.inkGreen
+      )
+    }
+  })
+  // Head: yellow face, barred green nape.
+  part(r, (l) => {
+    ball(l, hx, hy, 5, 5, [R.yellow[0], R.yellow[1], R.yellow[2], R.yellow[2], R.yellow[3]])
+    const to = new Map([
+      [R.yellow[0], G[0]],
+      [R.yellow[1], G[1]],
+      [R.yellow[2], G[2]]
+    ])
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < hx - 2; x++) {
+        const c = to.get(l.get(x, y))
+        if (c) l.set(x, y, c)
+      }
+    for (let y = hy - 4; y <= hy + 3; y += 3) {
+      l.paint(hx - 5, y, C.inkGreen)
+      l.paint(hx - 4, y, C.inkGreen)
+      l.paint(hx - 3, y + 1, C.inkGreen)
+      l.paint(hx - 2, y + 1, C.inkGreen)
+    }
+  })
+  // Cere and hooked beak.
+  part(r, (l) => {
+    l.poly([hx + 3.5, hy - 2, hx + 6, hy - 1, hx + 5.5, hy + 1, hx + 3.5, hy + 1], R.sky[2])
+    if (open) {
+      l.poly([hx + 4, hy + 1, hx + 8, hy + 1.5, hx + 6.5, hy + 3, hx + 5, hy + 2.5], R.yellow[1])
+      l.poly([hx + 4, hy + 3.5, hx + 7, hy + 4, hx + 5.5, hy + 5.5, hx + 3.5, hy + 5], R.yellow[1])
+    } else l.poly([hx + 4, hy + 1, hx + 7.5, hy + 2, hx + 6.5, hy + 4, hx + 4, hy + 3.5], R.yellow[1])
+  })
+  r.set(hx + 1, hy - 1, C.inkCool)
+  r.set(hx + 1, hy - 2, C.white)
+  r.set(hx, hy - 1, C.white)
+  r.set(hx, hy + 2, R.purple[1])
+  r.set(hx + 1, hy + 2, R.purple[1])
+  return r
+}
+
+/** Golden hamster: round head over a round body, puffed cream cheeks, scurrying pink feet. */
+function hamster(f: number, mode: PetMode) {
+  const r = new Raster(N, N)
+  const run = mode === 'run'
+  const open = mode === 'open'
+  const HAM: Ramp = [R.yellow[1], R.yellow[2], R.orange[2], R.brown[2], R.brown[3]]
+  const bob = run ? [0, -1, 0, -1][f] : open ? 1 : 0
+  const px = run ? [3, 0, -3, 0] : [0, 0, 0, 0]
+  const pl = run ? [0, 0, 0, 2] : [0, 0, 0, 0]
+  const hy = 16 + bob
+  const foot = (l: Raster, x: number, k: number, col: number) => {
+    const lift = pl[k % 4]
+    l.ellipse(x + px[k % 4] + 0.5, 25.5 - lift, 2.2, 1.6, col)
+  }
+  part(r, (l) => {
+    foot(l, 22, f + 2, R.pink[2])
+    foot(l, 8, f + 3, R.pink[2])
+  })
+  part(r, (l) => ball(l, 3.5, 19 + bob, 2, 2, HAM))
+  part(r, (l) => {
+    ball(l, 11.5, 18 + bob, 9.5, 7.5, HAM)
+    ball(l, 12, 23 + bob, 6, 2.6, R.paper)
+    paintLine(l, 4, 14 + bob, 15, 11 + bob, HAM[2])
+  })
+  part(r, (l) => {
+    foot(l, 22, f, R.pink[1])
+    foot(l, 8, f + 1, R.pink[1])
+  })
+  // Ears sit on top of the head.
+  part(r, (l) => {
+    ball(l, 19, hy - 5, 2.8, 2.8, HAM)
+    ball(l, 25, hy - 5, 2.8, 2.8, HAM)
+    l.ellipse(19.5, hy - 4.3, 1.2, 1.2, R.pink[1])
+    l.ellipse(24.5, hy - 4.3, 1.2, 1.2, R.pink[1])
+  })
+  // Round head, pointed snout and cheek pouch bulging over the neck.
+  part(r, (l) => {
+    ball(l, 22, hy, 6.2, 5.6, HAM)
+    l.poly([26, hy - 2, 31, hy + 2, 26, hy + 4], HAM[1])
+    ball(l, 22.5, hy + 4.5, open ? 4.2 : 5, open ? 3.2 : 4, R.paper)
+  })
+  r.rect(25, hy - 2, 2, 2, C.inkCool)
+  r.set(25, hy - 2, C.white)
+  r.set(26, hy - 1, C.inkCool)
+  r.set(30, hy + 2, R.pink[1])
+  r.set(30, hy + 3, R.pink[2])
+  // Front teeth.
+  if (open) {
+    r.rect(27, hy + 4, 3, 1, R.red[3])
+    r.rect(28, hy + 4, 2, 2, C.white)
+    r.set(29, hy + 4, R.paper[3])
+  } else r.rect(28, hy + 4, 2, 1, C.white)
+  return r
+}
+
+function smallPet(kind: 'cat' | 'rabbit' | 'parakeet' | 'hamster', frame: number, mode: PetMode) {
+  return { cat, rabbit, parakeet, hamster }[kind](frame, mode)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -297,65 +624,359 @@ function ring(f: number) {
 
 type OutdoorVehicle = 'tricycle' | 'bicycle' | 'motorcycle' | 'car' | 'plane'
 
+const dim = (ramp: Ramp): Ramp => [ramp[1], ramp[2], ramp[3], ramp[3], ramp[4]]
+
+/**
+ * One vehicle wheel standing on y = 28: a dark tyre, a metal rim and `rays` spokes that turn a quarter of
+ * their symmetry per frame (so the 4-frame loop closes without flicker).
+ */
+function vehicleWheel(
+  r: Raster,
+  cx: number,
+  rad: number,
+  f: number,
+  opts: { rays: number; tyre?: number; dish?: boolean; far?: boolean }
+) {
+  const { rays, tyre = 2, dish = true, far = false } = opts
+  const cy = 28 - rad
+  const e = rad + 0.4
+  const tyreRamp: Ramp = far ? dim(dim(R.hair)) : [R.hair[2], R.hair[2], R.hair[3], R.hair[3], R.hair[4]]
+  const metal = far ? dim(R.metal) : R.metal
+  const a0 = (f * Math.PI * 2) / (rays * 4)
+  const ri = rad - tyre + 0.4
+  // A thin tyre and rim ring; open wheels show the ground between the spokes, capped ones are solid metal.
+  const t = new Raster(N, N)
+  const tyreTones = far ? [R.hair[3], R.hair[3], R.hair[3]] : [R.hair[2], R.hair[3], R.hair[3]]
+  const rimTones = far ? [metal[1], metal[2], metal[2]] : [metal[0], metal[1], metal[1]]
+  part(t, (l) => {
+    for (let y = Math.floor(cy - e); y <= Math.ceil(cy + e); y++)
+      for (let x = Math.floor(cx - e); x <= Math.ceil(cx + e); x++) {
+        const d = Math.hypot(x - cx, y - cy)
+        if (d > e) continue
+        const lit = d ? (-(x - cx) * 0.6 - (y - cy) * 0.8) / d : 0
+        const tones = d > e - tyre ? tyreTones : d > ri - 1 || !dish ? rimTones : [metal[1], metal[2], metal[2]]
+        l.set(x, y, lit > 0.35 ? tones[0] : lit > -0.35 ? tones[1] : tones[2])
+      }
+  })
+  const inner = ri - 1
+  if (dish)
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (Math.hypot(x - cx, y - cy) <= inner) t.set(x, y, 0)
+  for (let k = 0; k < rays; k++) {
+    const a = a0 + (k * Math.PI * 2) / rays
+    t.line(
+      cx,
+      cy,
+      cx + Math.cos(a) * (dish ? inner : ri - 0.5),
+      cy + Math.sin(a) * (dish ? inner : ri - 0.5),
+      dish ? (far ? metal[1] : metal[0]) : metal[3]
+    )
+  }
+  if (dish) {
+    t.rect(cx - 1, cy, 3, 1, metal[1])
+    t.rect(cx, cy - 1, 1, 3, metal[1])
+    t.set(cx, cy, R.hair[3])
+  } else t.set(cx, cy, metal[0])
+  r.blit(t)
+}
+
+/** A 1 px arc (a mudguard) over a wheel between two angles (radians, 0 = right, clockwise). */
+const arc = (l: Raster, cx: number, cy: number, rad: number, a0: number, a1: number, c: number) => {
+  for (let a = a0; a <= a1; a += 0.04) l.set(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, c)
+}
+
+/** Horizontal band shading of a lengthwise silhouette (light on top, shade underneath). */
+function bandShade(l: Raster, ramp: Ramp) {
+  const src = l.clone()
+  for (let x = 0; x < l.w; x++) {
+    let top = -1
+    let bottom = -1
+    for (let y = 0; y < l.h; y++)
+      if (src.get(x, y) === ramp[1]) {
+        if (top < 0) top = y
+        bottom = y
+      }
+    if (top < 0) continue
+    const h = bottom - top + 1
+    for (let y = top; y <= bottom; y++) {
+      const t = (y - top + 0.5) / h
+      l.set(x, y, t < 0.2 ? ramp[0] : t < 0.58 ? ramp[1] : t < 0.84 ? ramp[2] : ramp[3])
+    }
+  }
+}
+
 function outdoorVehicle(vehicle: OutdoorVehicle, f: number) {
   const r = new Raster(N, N)
-  const wheel = (x: number, y: number, radius: number) =>
+  const turnA = (f * Math.PI) / 4
+  if (vehicle === 'tricycle') {
+    const b = [0, -1, -1, 0][f]
+    vehicleWheel(r, 5, 3, f, { rays: 2, tyre: 1, dish: false, far: true })
+    // Low step deck, frame tube and a small seat.
     part(r, (l) => {
-      l.ellipse(x, y, radius, radius, R.hair[3])
-      l.ellipse(x, y, radius - 1.5, radius - 1.5, R.metal[1])
-      if (f % 2) l.line(x - radius + 2, y, x + radius - 2, y, C.white)
-      else l.line(x, y - radius + 2, x, y + radius - 2, C.white)
-      l.ellipse(x, y, 1, 1, R.hair[2])
+      l.poly([4, 20, 16, 19, 18, 21, 5, 22], R.red[1])
+      l.thick(14, 20, 21, 14 + b, 1.6, R.red[1])
+      shadeEdges(l, R.red, 1, true)
     })
-  if (vehicle === 'plane') {
-    const bob = [0, -1, 0, 1][f]
     part(r, (l) => {
-      l.poly([3, 16 + bob, 1, 8 + bob, 5, 8 + bob, 10, 15 + bob], R.sky[2])
-      l.poly([13, 15 + bob, 10, 5 + bob, 14, 5 + bob, 21, 15 + bob], R.sky[1])
-      l.poly([3, 15 + bob, 24, 14 + bob, 30, 16 + bob, 28, 20 + bob, 6, 20 + bob], R.paper[1])
-      l.line(6, 16 + bob, 27, 16 + bob, C.white)
-      l.poly([12, 18 + bob, 8, 26 + bob, 12, 26 + bob, 22, 18 + bob], R.sky[1])
-      for (const x of [12, 16, 20, 24]) l.rect(x, 16 + bob, 2, 2, R.navy[1])
+      l.line(9, 16 + b, 9, 19, R.metal[2])
+      l.rect(7, 14 + b, 5, 2, R.yellow[1])
+      l.line(7, 14 + b, 11, 14 + b, R.yellow[0])
+    })
+    vehicleWheel(r, 9, 3, f, { rays: 2, tyre: 1, dish: false })
+    // Front wheel with the crank and pedals on its hub.
+    vehicleWheel(r, 23, 6, f, { rays: 2, tyre: 1.4 })
+    const px = 23 + Math.cos(turnA) * 3.4
+    const py = 22 + Math.sin(turnA) * 3.4
+    const qx = 23 - Math.cos(turnA) * 3.4
+    const qy = 22 - Math.sin(turnA) * 3.4
+    part(r, (l) => {
+      l.line(23, 22, qx, qy, R.metal[3])
+      l.rect(Math.round(qx) - 1, Math.round(qy), 3, 2, R.yellow[2])
+    })
+    part(r, (l) => {
+      l.thick(23, 22, 21, 14 + b, 1.6, R.metal[1])
+      l.line(21, 14 + b, 21, 11 + b, R.metal[1])
+    })
+    part(r, (l) => {
+      l.line(23, 22, px, py, R.metal[2])
+      l.rect(Math.round(px) - 1, Math.round(py), 3, 2, R.yellow[1])
+    })
+    // Thin handlebar with small grips.
+    part(r, (l) => {
+      l.line(18, 10 + b, 24, 10 + b, R.metal[2])
+      l.rect(17, 9 + b, 2, 2, R.red[1])
+      l.rect(24, 9 + b, 2, 2, R.red[1])
+    })
+    // Streamers fluttering back.
+    const ribbons = [R.pink[1], R.mint[1], R.yellow[0]]
+    ribbons.forEach((c, k) => {
+      for (let i = 1; i <= 8; i++) {
+        const wave = Math.sin(i * 0.85 - f * Math.PI * 0.5 + k * 1.3) * (0.4 + i * 0.12)
+        r.set(16 - i, 10 + b + (k - 1) * i * 0.45 + wave, c)
+      }
     })
     return r
   }
-  if (vehicle === 'car') {
+
+  if (vehicle === 'bicycle') {
+    const b = [0, -1, 0, -1][f]
+    const MINT = R.mint
+    const cxr = 7
+    const cxf = 24
+    vehicleWheel(r, cxr, 6, f, { rays: 3, tyre: 1 })
+    vehicleWheel(r, cxf, 6, f, { rays: 3, tyre: 1 })
+    const bbx = 15
+    const bby = 23
+    const fx = Math.cos(turnA) * 3
+    const fy = Math.sin(turnA) * 3
+    // Far pedal.
     part(r, (l) => {
-      l.poly([3, 18, 7, 17, 11, 10, 21, 10, 25, 17, 28, 18, 29, 24, 3, 24], R.red[1])
-      l.poly([12, 12, 16, 12, 16, 17, 9, 17], R.sky[0])
-      l.poly([18, 12, 20, 12, 23, 17, 18, 17], R.sky[1])
-      l.line(4, 21, 28, 21, R.red[2])
-      l.rect(26, 19, 3, 2, R.yellow[0])
+      l.line(bbx, bby, bbx - fx, bby - fy, R.metal[3])
+      l.rect(Math.round(bbx - fx) - 1, Math.round(bby - fy), 3, 2, R.hair[2])
     })
-    wheel(9, 24, 4)
-    wheel(23, 24, 4)
+    // Step-through frame.
+    part(r, (l) => {
+      l.thick(cxr, 22, bbx, bby, 2, MINT[1])
+      l.thick(bbx, bby, 11, 13 + b, 2, MINT[1])
+      l.thick(bbx, bby, 21, 14 + b, 2, MINT[1])
+      shadeEdges(l, MINT, 1, true)
+    })
+    // Fork, stem, handlebar and basket.
+    part(r, (l) => {
+      l.thick(cxf, 22, 22, 13 + b, 1.6, R.metal[1])
+      l.thick(22, 13 + b, 21, 10 + b, 1.6, R.metal[1])
+      l.thick(21, 10 + b, 17, 9 + b, 1.6, R.metal[1])
+      l.rect(15, 8 + b, 3, 2, R.hair[2])
+    })
+    part(r, (l) => {
+      l.poly([22, 6 + b, 30, 6 + b, 29, 13 + b, 23, 13 + b], R.hair[3])
+      for (const x of [24, 26, 28]) l.line(x, 7 + b, x, 12 + b, R.metal[2])
+      l.line(23, 10 + b, 29, 10 + b, R.metal[2])
+      l.line(22, 6 + b, 30, 6 + b, R.metal[0])
+    })
+    // Saddle.
+    part(r, (l) => {
+      l.line(11, 14 + b, 11, 12 + b, R.metal[2])
+      l.rect(8, 11 + b, 5, 2, R.brown[1])
+      l.line(8, 11 + b, 12, 11 + b, R.brown[0])
+    })
+    // Chainring and near pedal.
+    part(r, (l) => {
+      l.ellipse(bbx + 0.5, bby + 0.5, 2.4, 2.4, R.metal[1])
+      l.line(bbx, bby, bbx + fx, bby + fy, R.metal[2])
+    })
+    part(r, (l) => {
+      l.rect(Math.round(bbx + fx) - 1, Math.round(bby + fy), 3, 2, R.hair[1])
+    })
     return r
   }
-  if (vehicle === 'tricycle') wheel(5, 24, 3)
-  wheel(vehicle === 'tricycle' ? 10 : 7, 24, vehicle === 'tricycle' ? 3 : 5)
-  wheel(24, 23, 5)
-  part(r, (l) => {
-    if (vehicle === 'motorcycle') {
-      l.poly([7, 20, 11, 15, 19, 15, 23, 20, 19, 23, 11, 23], R.red[1])
-      l.poly([13, 17, 19, 17, 20, 20, 13, 20], R.red[0])
-      l.rect(9, 13, 7, 2, R.hair[2])
-      l.ellipse(16, 22, 3, 2, R.metal[1])
-      l.line(20, 16, 22, 11, R.metal[1])
-      l.line(21, 11, 25, 11, R.hair[2])
-      l.rect(24, 16, 2, 2, R.yellow[0])
-    } else {
-      const back = vehicle === 'tricycle' ? 10 : 7
-      const saddle = vehicle === 'tricycle' ? 13 : 12
-      l.thick(back, 24, saddle, 15, 2, R.red[1])
-      l.thick(saddle, 15, 18, 23, 2, R.red[1])
-      l.thick(18, 23, back, 24, 2, R.red[2])
-      l.thick(saddle, 15, 21, 15, 2, R.red[1])
-      l.thick(21, 15, 24, 23, 2, R.metal[1])
-      l.line(21, 15, 22, 10, R.metal[1])
-      l.rect(20, 9, 5, 2, R.hair[2])
-      l.rect(saddle - 2, 12, 5, 2, R.hair[2])
-      l.ellipse(18, 23, 2, 2, R.yellow[1])
+
+  if (vehicle === 'motorcycle') {
+    const b = [0, -1, 0, -1][f]
+    const RD = R.red
+    vehicleWheel(r, 8, 5, f, { rays: 3, tyre: 1.7 })
+    vehicleWheel(r, 25, 5, f, { rays: 3, tyre: 1.7 })
+    // Rear shock with a spring.
+    part(r, (l) => {
+      for (let i = 0; i <= 6; i++) l.rect(10, 15 + i, 2, 1, i % 2 ? R.yellow[1] : R.metal[1])
+    })
+    // Exhaust running under the body to the rear wheel, then the engine block with fins.
+    part(r, (l) => {
+      l.thick(15, 22, 10, 25, 2, R.metal[2])
+      l.ellipse(7.5, 25.5, 3.2, 1.4, R.metal[1])
+      l.line(5, 25, 9, 25, R.metal[0])
+    })
+    part(r, (l) => {
+      l.rect(13, 16, 7, 7, R.metal[1])
+      shadeEdges(l, R.metal, 1, true)
+      for (const y of [18, 20]) l.line(13, y, 19, y, R.metal[2])
+    })
+    // One flowing body: tail, seat and tank.
+    part(r, (l) => {
+      l.poly(
+        [
+          3,
+          13.5 + b,
+          5,
+          12 + b,
+          13,
+          12 + b,
+          15,
+          10 + b,
+          21,
+          9.5 + b,
+          23,
+          12 + b,
+          21,
+          15.5 + b,
+          14,
+          16 + b,
+          4,
+          15.5 + b
+        ],
+        RD[1]
+      )
+      shadeEdges(l, RD, 1, true)
+      l.line(15, 11 + b, 19, 10.5 + b, C.white)
+      l.poly([6, 11 + b, 13, 11 + b, 14, 13 + b, 6, 13 + b], R.hair[2])
+      l.line(7, 11 + b, 12, 11 + b, R.hair[0])
+    })
+    // Raked fork, handlebar, mirror and round headlight.
+    part(r, (l) => {
+      l.thick(25, 23, 22.5, 12 + b, 1.8, R.metal[1])
+      l.line(22, 11 + b, 19, 10 + b, R.hair[2])
+      l.line(19, 10 + b, 19, 7 + b, R.metal[2])
+      l.rect(18, 6 + b, 3, 1, R.metal[0])
+    })
+    part(r, (l) => {
+      ball(l, 25.5, 13.5 + b, 2.4, 2.4, R.yellow)
+    })
+    // Smoke puffs drifting back from the muffler.
+    for (const k of [0, 2]) {
+      const p = ((f + k) % 4) / 4
+      r.ellipse(2 - p * 2, 26 - p * 3, 0.9 + p * 0.9, 0.9 + p * 0.9, p < 0.5 ? R.paper[1] : R.paper[2])
     }
+    return r
+  }
+
+  if (vehicle === 'car') {
+    const b = [0, -1, -1, 0][f]
+    const S = R.sky
+    part(r, (l) => {
+      l.poly([3, 25 + b, 3, 19 + b, 6, 17 + b, 26, 17 + b, 29, 18 + b, 30, 21 + b, 30, 25 + b], S[1])
+      l.poly([8, 17 + b, 11, 10 + b, 21, 10 + b, 25, 17 + b], S[1])
+      // Windows.
+      l.poly([10, 16 + b, 12.5, 11.5 + b, 15, 11.5 + b, 15, 16 + b], R.navy[1])
+      l.poly([17, 16 + b, 17, 11.5 + b, 20.5, 11.5 + b, 23.5, 16 + b], R.navy[1])
+      l.line(12, 15 + b, 14, 12 + b, R.sky[0])
+      l.line(19, 15 + b, 20, 12 + b, R.sky[0])
+      shadeEdges(l, S, 1, true)
+      l.line(5, 18 + b, 25, 18 + b, S[0])
+      l.line(4, 23 + b, 29, 23 + b, S[2])
+      l.line(16, 17 + b, 16, 24 + b, S[3])
+      l.rect(13, 19 + b, 2, 1, R.metal[0])
+      l.rect(28, 19 + b, 2, 2, R.yellow[0])
+      l.rect(3, 19 + b, 2, 2, R.red[1])
+      l.rect(29, 23 + b, 1, 2, R.metal[1])
+      l.rect(3, 24 + b, 1, 1, R.metal[1])
+      // Wheel arches.
+      for (const cx of [9, 23])
+        for (let y = 18; y < 27; y++)
+          for (let x = cx - 6; x <= cx + 6; x++) if ((x - cx) ** 2 + (y - 24) ** 2 <= 5.4 ** 2) l.paint(x, y, R.hair[3])
+    })
+    part(r, (l) => {
+      l.rect(24, 16 + b, 3, 2, S[2])
+    })
+    vehicleWheel(r, 9, 4, f, { rays: 5, tyre: 1, dish: false })
+    vehicleWheel(r, 23, 4, f, { rays: 5, tyre: 1, dish: false })
+    for (const k of [0, 2]) {
+      const p = ((f + k) % 4) / 4
+      r.ellipse(2 - p * 2, 26 - p * 3, 0.9 + p * 0.8, 0.9 + p * 0.8, p < 0.5 ? R.paper[1] : R.paper[2])
+    }
+    return r
+  }
+
+  // Plane.
+  const b = [1, 0, 1, 2][f]
+  const tip = [0, -1, 0, 1][f]
+  const P = R.paper
+  // Contrail.
+  for (const [y, len] of [
+    [16, 5],
+    [18, 4]
+  ])
+    for (let x = 0; x < len; x++) if ((x + f) % 4 < 3) r.set(x, y + b, x < 2 ? P[2] : P[1])
+  // Far wing and far tail plane.
+  part(r, (l) => {
+    l.poly([21, 13 + b, 15, 5 + b + tip, 11, 5 + b + tip, 14, 13 + b], P[3])
+    l.poly([5, 12 + b, 1.5, 8 + b, 3, 8 + b, 8, 12 + b], P[3])
+  })
+  // Fuselage.
+  part(r, (l) => {
+    l.poly(
+      [
+        30,
+        17 + b,
+        28,
+        13.5 + b,
+        24,
+        12 + b,
+        10,
+        12 + b,
+        5,
+        10 + b,
+        5,
+        13.5 + b,
+        10,
+        19.5 + b,
+        24,
+        20.5 + b,
+        28,
+        19.5 + b
+      ],
+      P[1]
+    )
+    bandShade(l, P)
+    l.poly([25, 13.8 + b, 28, 15 + b, 28, 16.6 + b, 25, 16.6 + b], R.navy[1])
+    l.line(26, 14 + b, 27, 14.6 + b, R.sky[0])
+    for (const x of [9, 12, 15, 18, 21]) {
+      l.rect(x, 15 + b, 2, 2, R.navy[1])
+      l.set(x, 15 + b, R.sky[1])
+    }
+  })
+  // Tail fin with a stripe.
+  part(r, (l) => {
+    l.poly([5, 11 + b, 4, 4.5 + b, 8, 4.5 + b, 13, 12 + b], R.sky[1])
+    l.poly([4.4, 7.6 + b, 4.1, 5.5 + b, 7.4, 5.5 + b, 8.8, 7.6 + b], R.red[1])
+    shadeEdges(l, R.sky, 1, true)
+  })
+  // Near wing and engine pod.
+  part(r, (l) => {
+    l.poly([22, 17.5 + b, 14, 17.5 + b, 8, 25.5 + b + tip, 13, 25.5 + b + tip], P[1])
+    shadeEdges(l, P, 1, true)
+  })
+  part(r, (l) => {
+    ball(l, 19.5, 22 + b, 3.4, 2.2, R.metal)
+    l.rect(22, 21 + b, 1, 2, R.hair[3])
   })
   return r
 }

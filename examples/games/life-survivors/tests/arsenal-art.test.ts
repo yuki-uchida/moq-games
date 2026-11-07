@@ -106,7 +106,12 @@ describe('arsenal art', () => {
   test('palette-only, deterministic', () => {
     const all: Anim[] = [...Object.values(arsenalFx()), ...Object.values(sheets).flatMap((s) => Object.values(s))]
     const rasters = [...all.flatMap((a) => a.frames), ...Object.values(arsenalIcons()), beam(64, 3), beam(64, 11)]
-    for (const r of rasters) for (const c of r.data) expect(c).toBeLessThan(PALETTE.length)
+    // One assertion per raster on its highest index (a per-pixel expect made this test the slowest in the file).
+    for (const r of rasters) {
+      let top = 0
+      for (const c of r.data) if (c > top) top = c
+      expect(top).toBeLessThan(PALETTE.length)
+    }
     const again = arsenalSheets()['weapon:w_gamble']()
     expect(again.faces.frames[5].data).toEqual(frames('w_gamble', 'faces')[5].data)
     expect(arsenalFx().boom.frames[2].data).toEqual(arsenalFx().boom.frames[2].data)
