@@ -120,7 +120,10 @@ test('evolution and gambling preserve garden ownership, stages and snapshots', (
   expect(sheet('icons').w_garden.frames[0].data.some(Boolean)).toBe(true)
   expect(sheet('weapon:w_garden').bloom.frames[0].data.some(Boolean)).toBe(true)
 
-  player.weapons = [{ id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 }]
+  player.weapons = [
+    { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_garden', gambleUntil: 12 },
+    { id: 'w_garden', lv: 1, cd: 0, held: 0, damage: 0 }
+  ]
   const gamble = player.weapons[0]
   game.state.shots = []
   game['fire'](player, gamble, weaponStats(player, gamble))

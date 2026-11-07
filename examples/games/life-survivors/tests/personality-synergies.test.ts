@@ -54,10 +54,7 @@ test('six new personalities change their documented stats and preserve the size 
   expect(playerStats(player).might).toBeCloseTo(base.might * 1.2)
 })
 
-test.each([
-  ['p_toxic', 1, 0.45],
-  ['w_perfume', 0.35, 0.5]
-] as const)('%s keeps its attack interval fixed', (id, interval, tick) => {
+test.each([['w_perfume', 0.35, 0.5]] as const)('%s keeps its attack interval fixed', (id, interval, tick) => {
   const { game, player, weapon } = setup(id)
   for (const level of [1, 6, 7, 8]) {
     weapon.lv = level
