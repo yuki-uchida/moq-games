@@ -103,11 +103,11 @@ test('every creature and the weapon icon have distinct generated art', () => {
 })
 
 test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
-  'level %i limits each field to that level plus one enemy',
+  'level %i limits each field to five enemies per level',
   (level) => {
     const { game, player, weapon } = setup(18, level)
-    const enemies = Array.from({ length: 12 }, (_, index) => {
-      const enemy = game.spawnEnemy('germ', 60 + index * 7, 0)!
+    const enemies = Array.from({ length: MAX_WEAPON_LEVEL * 5 + 1 }, (_, index) => {
+      const enemy = game.spawnEnemy('germ', 60 + index, 0)!
       enemy.hp = enemy.maxHp = 10000
       return enemy
     })
@@ -117,17 +117,17 @@ test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
     const shot = game.state.shots[0]
     const positions = enemies.map((enemy) => enemy.x)
     game['moveShots'](0.1)
-    expect(shot.targets).toHaveLength(level + 1)
-    expect(enemies.filter((enemy) => enemy.hp < enemy.maxHp)).toHaveLength(level + 1)
-    expect(enemies.filter((enemy) => enemy.slow > 0)).toHaveLength(level + 1)
-    expect(enemies.slice(0, level + 1).every((enemy, index) => enemy.x < positions[index])).toBe(true)
-    expect(enemies.slice(level + 1).every((enemy, index) => enemy.x === positions[index + level + 1])).toBe(true)
+    expect(shot.targets).toHaveLength(level * 5)
+    expect(enemies.filter((enemy) => enemy.hp < enemy.maxHp)).toHaveLength(level * 5)
+    expect(enemies.filter((enemy) => enemy.slow > 0)).toHaveLength(level * 5)
+    expect(enemies.slice(0, level * 5).every((enemy, index) => enemy.x < positions[index])).toBe(true)
+    expect(enemies.slice(level * 5).every((enemy, index) => enemy.x === positions[index + level * 5])).toBe(true)
   }
 )
 
 test('fields remain active and replace defeated targets throughout their lifetime', () => {
   const { game, player, weapon } = setup()
-  const enemies = Array.from({ length: 3 }, (_, index) => {
+  const enemies = Array.from({ length: 6 }, (_, index) => {
     const enemy = game.spawnEnemy('germ', 70 + index * 10, 0)!
     enemy.hp = enemy.maxHp = 10000
     return enemy
@@ -138,14 +138,14 @@ test('fields remain active and replace defeated targets throughout their lifetim
   const shot = game.state.shots[0]
   game['moveShots'](0.1)
   expect(shot.v % 2).toBe(1)
-  expect(shot.targets).toEqual(enemies.slice(0, 2))
+  expect(shot.targets).toEqual(enemies.slice(0, 5))
   const initialHp = enemies.map((enemy) => enemy.hp)
   enemies[0].hp = 0
   game.state.time += 0.6
   game['moveShots'](0.5)
   expect(shot.targets).toEqual(enemies.slice(1))
   expect(enemies[1].hp).toBeLessThan(initialHp[1])
-  expect(enemies[2].hp).toBeLessThan(initialHp[2])
+  expect(enemies[5].hp).toBeLessThan(initialHp[5])
   game['moveShots'](0.5)
   expect(shot.v % 2).toBe(1)
   const duringPause = enemies[1].hp
@@ -174,7 +174,7 @@ test('bonus projectiles do not increase creatures or targets, while duration ext
   player.still = 2
   game['fire'](player, weapon, boosted)
   expect(game.state.shots).toHaveLength(1)
-  expect(game.state.shots[0].w).toBe(2)
+  expect(game.state.shots[0].w).toBe(5)
   expect(game.state.shots[0].maxLife).toBe(boosted.duration)
   game['moveShots'](base.duration + 0.01)
   expect(game.state.shots).toHaveLength(1)
@@ -216,7 +216,7 @@ test('a gambling copy also requires stillness and keeps its own field and snapsh
   game['fire'](player, gamble, stats, def)
   game['fire'](player, gamble, stats, def)
   expect(game.state.shots).toHaveLength(1)
-  expect(game.state.shots[0]).toMatchObject({ sourceWeapon: 'w_gamble', w: 4 })
+  expect(game.state.shots[0]).toMatchObject({ sourceWeapon: 'w_gamble', w: 15 })
   const view = toView(game.state)
   expect(view.shots[7]).toBeGreaterThanOrEqual(SHOT_GAMBLE)
   expect(readView(view)).toBeDefined()

@@ -2083,7 +2083,7 @@ export class Game {
           x: player.x + player.fx * 50,
           y: player.y + player.fy * 50,
           w:
-            2 +
+            5 +
             WEAPON_LEVELS[def.id].slice(0, weapon.lv - 1).reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0),
           v: form * 2 + 1,
           tick: 0.5
