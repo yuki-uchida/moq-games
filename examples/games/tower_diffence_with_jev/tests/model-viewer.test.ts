@@ -7,6 +7,7 @@ import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
 import { UNIT_MODEL_CATALOG } from '../src/rendering/models/catalog'
 import { ModelViewerSession, viewerMotions, viewerRoleLabel, viewerRoles } from '../src/ui/ModelViewerSession'
 import type { ModelMotion } from '../src/rendering/ModelUnitVisual'
+import type { UnitType } from '../src/game/model'
 
 function fixture(): GLTF {
   const scene = new THREE.Group()
@@ -220,6 +221,112 @@ describe('EXTRA shared real model playback', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(disposeLast).toHaveBeenCalledTimes(1)
     expect(session.state).toBe('disposed')
+  })
+  it('reuses one loaded cache but rebuilds the actor and resets playback for valid same-role selections', async () => {
+    const load = vi.fn(async () => fixture())
+    const cache = new ModelAssetCache(load)
+    const dispose = vi.spyOn(cache, 'dispose')
+    const createCache = vi.fn(() => cache)
+    const session = new ModelViewerSession(createCache)
+    session.speed = 2
+    let previousRoot: THREE.Object3D | undefined
+    for (const motion of ['idle', 'walk', 'attack', 'death', 'idle', 'walk'] as const) {
+      session.select('slime', motion)
+      expect(session.seconds).toBe(0)
+      expect(session.duration).toBe(0)
+      expect(session.paused).toBe(false)
+      expect(session.speed).toBe(2)
+      expect(session.root.children).toHaveLength(1)
+      expect(session.root.children[0]).not.toBe(previousRoot)
+      if (previousRoot) {
+        expect(previousRoot.parent).toBeNull()
+        expect(previousRoot.visible).toBe(false)
+      }
+      previousRoot = session.root.children[0]
+      await ready(session)
+      expect(session.duration).toBe(1)
+      expect(session.diagnostics().actor?.seconds).toBe(0)
+      expect(session.diagnostics().actor?.rigs).toBe(1)
+      expect(cache.diagnostics().entries.reduce((sum, entry) => sum + entry.references, 0)).toBe(1)
+      const scene = session.root.getObjectByProperty('type', 'Mesh')!.parent!
+      expect(scene.position.x).toBe(0)
+      session.seek(0.6)
+      expect(scene.position.x).toBeCloseTo(0.6)
+    }
+    expect(createCache).toHaveBeenCalledTimes(1)
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(dispose).not.toHaveBeenCalled()
+    session.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(cache.diagnostics().entries).toEqual([])
+    expect(session.root.children).toHaveLength(0)
+  })
+  it.each([
+    ['slime', 'heal'],
+    ['crystalSentinel', 'idle'],
+    ['missing-role', 'idle']
+  ] as const)('discards the ready cache when selecting %s/%s', async (role, motion) => {
+    const caches: ModelAssetCache[] = []
+    const session = new ModelViewerSession(() => {
+      const cache = new ModelAssetCache(async () => fixture())
+      vi.spyOn(cache, 'dispose')
+      caches.push(cache)
+      return cache
+    })
+    session.select('slime', 'idle')
+    await ready(session)
+    session.select(role as UnitType, motion)
+    expect(caches[0].dispose).toHaveBeenCalledTimes(1)
+    expect(caches[0].diagnostics().entries).toEqual([])
+    if (role === 'crystalSentinel') {
+      await ready(session)
+      expect(caches).toHaveLength(2)
+      expect(session.root.children).toHaveLength(1)
+      expect(session.diagnostics().cache?.entries.reduce((sum, entry) => sum + entry.references, 0)).toBe(1)
+    } else {
+      expect(session.state).toBe('error')
+      expect(session.error).toBe('この動作の3Dモデルはありません。')
+      expect(session.diagnostics().cache).toBeUndefined()
+      expect(session.root.children).toHaveLength(0)
+      expect(caches).toHaveLength(1)
+    }
+    session.dispose()
+    for (const cache of caches) expect(cache.dispose).toHaveBeenCalledTimes(1)
+  })
+  it('creates fresh caches for same-role loading reselection and error retry', async () => {
+    const load = vi
+      .fn<() => Promise<GLTF>>()
+      .mockResolvedValueOnce(fixture())
+      .mockRejectedValueOnce(new Error('network failure'))
+      .mockResolvedValueOnce(fixture())
+    const caches: ModelAssetCache[] = []
+    const session = new ModelViewerSession(() => {
+      const cache = new ModelAssetCache(load)
+      vi.spyOn(cache, 'dispose')
+      caches.push(cache)
+      return cache
+    })
+    session.select('slime', 'idle')
+    expect(session.state).toBe('loading')
+    session.select('slime', 'walk')
+    expect(caches).toHaveLength(2)
+    expect(caches[0].dispose).toHaveBeenCalledTimes(1)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    session.tick(0)
+    expect(session.state).toBe('error')
+    expect(session.error).toBe('3Dモデルを読み込めませんでした。Retry で再試行できます。')
+    session.select('slime', 'idle')
+    expect(caches).toHaveLength(3)
+    expect(caches[1].dispose).toHaveBeenCalledTimes(1)
+    await ready(session)
+    expect(session.error).toBe('')
+    expect(session.root.children).toHaveLength(1)
+    expect(session.diagnostics().cache?.entries.reduce((sum, entry) => sum + entry.references, 0)).toBe(1)
+    session.dispose()
+    for (const cache of caches) {
+      expect(cache.dispose).toHaveBeenCalledTimes(1)
+      expect(cache.diagnostics().entries).toEqual([])
+    }
   })
   for (const role of viewerRoles()) {
     it(`${role}: every available action uses the shipped runtime GLB and gameplay adapters (CPU)`, async () => {

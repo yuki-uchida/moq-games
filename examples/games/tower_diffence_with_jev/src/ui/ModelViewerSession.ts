@@ -31,19 +31,21 @@ export class ModelViewerSession {
 
   select(role: UnitType, motion: ModelMotion): void {
     if (this.disposed) return
-    this.releaseActor()
+    const definition = UNIT_MODEL_CATALOG[role]
+    const validMotion = !!definition && viewerMotions(definition).includes(motion)
+    this.releaseActor(this.state === 'ready' && this.role === role && validMotion)
     this.role = role
     this.motion = motion
     this.seconds = this.duration = 0
     this.paused = false
     this.error = ''
-    this.definition = UNIT_MODEL_CATALOG[role]
-    if (!this.definition || !viewerMotions(this.definition).includes(motion)) {
+    this.definition = definition
+    if (!this.definition || !validMotion) {
       this.state = 'error'
       this.error = 'この動作の3Dモデルはありません。'
       return
     }
-    this.cache = this.createCache()
+    this.cache ??= this.createCache()
     this.visual = new ModelUnitVisual(this.definition, this.cache)
     // Undo only the board's presentation tilt for an upright inspection space.
     // The actor still owns normalization, facing, clip time scales and adapters.
@@ -143,11 +145,13 @@ export class ModelViewerSession {
       cache: this.cache?.diagnostics()
     }
   }
-  private releaseActor(): void {
+  private releaseActor(reuseCache = false): void {
     this.visual?.dispose()
-    this.cache?.dispose()
     this.visual = undefined
-    this.cache = undefined
+    if (!reuseCache) {
+      this.cache?.dispose()
+      this.cache = undefined
+    }
     this.root.clear()
   }
   dispose(): void {
