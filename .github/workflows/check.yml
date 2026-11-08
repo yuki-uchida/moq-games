@@ -30,6 +30,7 @@ jobs:
       shards: ${{ steps.scope.outputs.shards }}
       pagesBrowser: ${{ steps.scope.outputs.pagesBrowser }}
       unit: ${{ steps.scope.outputs.unit }}
+      unitShards: ${{ steps.scope.outputs.unitShards }}
       node: ${{ steps.scope.outputs.node }}
       laneNode: ${{ steps.scope.outputs.laneNode }}
     steps:
@@ -189,7 +190,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: ${{ fromJSON(needs.changes.outputs.unitShards) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
