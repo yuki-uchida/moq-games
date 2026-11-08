@@ -1002,17 +1002,18 @@ test(
   async () => {
     const { default: Sequencer } = await import('../scripts/vitest-unit-sequencer.mjs')
     const root = '/repo'
+    // Listed weights 54, 53 and 51: two unlisted 1-second files lift the third shard to a 53/53 tie with the second.
     const clock = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-clock-constant.test.ts' }
+    const score = { moduleId: 'examples/games/yoru-no-yashiki/tests/exact-score.test.ts' }
     const audio = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts' }
-    const town = { moduleId: 'examples/games/rabbiters/tests/town.test.ts' }
     const light = ['a', 'b', 'c'].map((name) => ({ moduleId: 'tests/' + name + '.test.ts' }))
-    const files = [...light].reverse().concat(audio, clock, town)
+    const files = [...light].reverse().concat(score, clock, audio)
     const partition = (index, count, input = files) =>
       new Sequencer({ config: { root, shard: { index, count } } }).shard(input)
     assert.deepEqual(await partition(1, 3), [clock])
-    assert.deepEqual(await partition(2, 3), [audio, light[2]])
-    assert.deepEqual(await partition(3, 3), [town, light[0], light[1]])
-    assert.deepEqual(await partition(1, 1), [clock, audio, town, ...light])
+    assert.deepEqual(await partition(2, 3), [score, light[2]])
+    assert.deepEqual(await partition(3, 3), [audio, light[0], light[1]])
+    assert.deepEqual(await partition(1, 1), [clock, score, audio, ...light])
     assert.deepEqual(await partition(1, 2, [...light].reverse()), [light[0], light[2]])
     assert.deepEqual(await partition(2, 2, [...light].reverse()), [light[1]])
     assert.deepEqual(await partition(7, 8), [])

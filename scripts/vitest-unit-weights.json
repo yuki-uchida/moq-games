@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/yuki-uchida/moq-games/actions/runs/42398134760",
-  "basis": "Successful unit 1-4 file test durations with 2 workers per runner; estimates, not CI wall times. Only files taking at least 10 seconds are listed, rounded up to seconds. Unlisted and new files use the default, not an allowlist. Clock split only: successful run 42422348872, constant 53.586s -> 54s, varying 35.467s -> 36s, remainder (90.314 - 53.586 - 35.467)s -> 2s; all other estimates retain the source above.",
+  "basis": "Successful unit 1-4 file test durations with 2 workers per runner; estimates, not CI wall times. Only files taking at least 10 seconds are listed, rounded up to seconds. Unlisted and new files use the default, not an allowlist. Clock split only: successful run 42422348872, constant 53.586s -> 54s, varying 35.467s -> 36s, remainder (90.314 - 53.586 - 35.467)s -> 2s; all other estimates retain the source above. Town split only: run 42435367660 spent 125.879s of town.test.ts 146.407s on the three cautious seeds, which took 30.9/28.6/45.5 game minutes in run 42453816490; scaling the 49s estimate gives seeds 13/12/19 and leaves 7s for town.test.ts, which drops below the 10s listing threshold.",
   "defaultSeconds": 1,
   "seconds": {
     "examples/games/ember-grid/tests/music.test.ts": 12,
@@ -16,7 +16,9 @@
     "examples/games/rabbiters/tests/house-seed-1.test.ts": 40,
     "examples/games/rabbiters/tests/house-seed-4.test.ts": 32,
     "examples/games/rabbiters/tests/house-seed-7.test.ts": 57,
-    "examples/games/rabbiters/tests/town.test.ts": 49,
+    "examples/games/rabbiters/tests/town-seed-1.test.ts": 13,
+    "examples/games/rabbiters/tests/town-seed-2.test.ts": 12,
+    "examples/games/rabbiters/tests/town-seed-3.test.ts": 19,
     "examples/games/rabbiters/tests/waterway.test.ts": 19,
     "examples/games/tower_diffence_with_jev/tests/difficulty-curve.test.ts": 26,
     "examples/games/tower_diffence_with_jev/tests/model-catalog.test.ts": 12,
