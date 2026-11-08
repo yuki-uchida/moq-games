@@ -1596,6 +1596,34 @@ export class Renderer {
     ctx.globalAlpha = 1
   }
 
+  /** 過保護 tucked behind its (still) owner: it sits within its own size of them instead of ahead. */
+  private guardianBehind(view: View, sh: ShotView) {
+    const owner = view.players[view.shots[sh.i + 6]]
+    return !!owner && Math.hypot(sh.x - owner.x, sh.y - owner.y) < sh.r
+  }
+
+  /** 過保護親 and her shield, which thrusts along the bash and fades while spent. */
+  private guardian(sh: ShotView, x: number, y: number) {
+    const art = sheet('weapon:p_over')
+    const cos = Math.cos(sh.angle)
+    const sin = Math.sin(sh.angle)
+    const time = this.clock + sh.i * 0.1
+    const alpha = Math.min(1, sh.life * 4)
+    const flip = cos < 0
+    this.centred(pick(art.fly, time), x, y, sh.evolved, alpha, 1, flip)
+    const progress = Math.floor(sh.v / 2)
+    const thrust = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) * 14 : 0
+    this.centred(
+      pick(art.guard, time),
+      x + cos * thrust,
+      y + sin * thrust,
+      sh.evolved,
+      alpha * (sh.v % 2 ? 0.45 : 1),
+      sh.r / 20,
+      flip
+    )
+  }
+
   /** Weapon sprites and bolts, above the characters. */
   private topShot(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
     const ctx = this.ctx
@@ -1640,28 +1668,17 @@ export class Renderer {
         // Re-derive the orbit around the eased owner so it never lags behind them.
         const owner = view.players[view.shots[i + 6]]
         const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
-        const independent = def.id === 'p_monster' || def.id === 'p_over'
+        if (def.id === 'p_over') {
+          // A parent standing behind a still child is drawn under them in the character pass instead.
+          if (!this.guardianBehind(view, sh)) this.guardian(sh, x, y)
+          break
+        }
+        const independent = def.id === 'p_monster'
         const ox = independent ? x : sh.ox + cos * orbit
         const oy = independent ? y : sh.oy + sin * orbit
         const art = sheet(`weapon:${def.id}`)
         const anim = def.id === 'w_friend' ? [art.fly, art.alt, art.alt2][(i / STRIDE.shots) % 3] : art.fly
-        const time = this.clock + i * 0.1
-        const alpha = Math.min(1, life * 4)
-        const flip = def.id === 'p_over' && cos < 0
-        this.centred(pick(anim, time), ox, oy, evolved, alpha, 1, flip)
-        if (def.id === 'p_over') {
-          const progress = Math.floor(sh.v / 2)
-          const thrust = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) * 14 : 0
-          this.centred(
-            pick(art.guard, time),
-            ox + cos * thrust,
-            oy + sin * thrust,
-            evolved,
-            alpha * (sh.v % 2 ? 0.45 : 1),
-            sh.r / 20,
-            flip
-          )
-        }
+        this.centred(pick(anim, this.clock + i * 0.1), ox, oy, evolved, Math.min(1, life * 4))
         break
       }
       case 'whip':
@@ -2613,10 +2630,17 @@ export class Renderer {
       if (item.member) this.follower(item.member)
       else if (item.player) {
         const player = item.player
+        const pos = positions.get(player.id)!
+        // A still child's 過保護親 stands right behind them, so draw her first, riding the eased position.
+        for (let i = 0; i < s.length; i += STRIDE.shots) {
+          if (s[i + 6] !== item.id || WEAPONS[s[i]].id !== 'p_over') continue
+          const sh = this.load(view, origins, i)
+          if (this.guardianBehind(view, sh)) this.guardian(sh, pos.x + sh.x - player.x, pos.y + sh.y - player.y)
+        }
         // The boxes food labels keep clear of; a wrapped or stubbed player() (tests, tools) may hand back nothing.
         const boxes: Box[] | undefined = this.player(
           player,
-          positions.get(player.id)!,
+          pos,
           player.id === localId,
           view.time,
           view.phase,
