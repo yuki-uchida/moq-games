@@ -380,7 +380,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: 2,
     strong: ['exam', 'class'],
     minAge: 3,
-    desc: '鉛筆が一番近い敵を貫く。数が増えると後ろ・左右・その間へも飛ぶ。',
+    desc: '鉛筆が一番近い敵を貫く。',
     evolve: { passive: 'p_diligent', name: '首席合格' }
   }),
   weapon({
@@ -544,7 +544,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     strong: ['class', 'exam'],
     minAge: 5,
-    desc: '知識の光線が向いた方向を貫く。',
+    desc: '知識の光線が向いた方向を貫く。数が増えると後ろ・左右・その間へも伸びる。',
     evolve: { passive: 'p_curious', name: '博覧強記' }
   }),
   weapon({
