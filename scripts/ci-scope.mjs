@@ -4,45 +4,72 @@ import { pathToFileURL } from 'node:url'
 
 const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle', 'yoru-no-yashiki']
 
+// Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports.
+const dependents = [
+  [
+    'ember-grid',
+    /^(examples\/games\/tower_diffence_with_jev\/src\/(game|progression|rendering)\/|public\/tower-defense-art\/)/
+  ],
+  ['life-survivors', /^examples\/games\/rabbiters\/src\/network\.ts$/],
+  [
+    'landing',
+    /^(examples\/games\/tower_diffence_with_jev\/extra\.html|public\/tower-defense-art\/[^/]+\/portrait\.png)$/
+  ]
+]
+
+// Test selection and distribution data, which tests/ci-scope.test.mjs runs against the real suites.
+const ciOnly = new Set([
+  '.github/workflows/renderer-benchmark.yml',
+  'scripts/ci-pages-shard.mjs',
+  'scripts/ci-pages-weights.json',
+  'scripts/ci-scope.mjs',
+  'scripts/vitest-unit-weights.json',
+  'tests/ci-scope.test.mjs'
+])
+
+/** The scopes a changed path selects, its owner first; empty for documentation and agent instructions. */
+export function classify(path) {
+  if (/\.md$/i.test(path) || /^(\.claude|\.agents|\.codex)\//.test(path)) return []
+  if (ciOnly.has(path)) return ['ci']
+  if (path.startsWith('examples/games/tower_diffence_with_jev/bot/') || path.startsWith('tests/bot/')) return ['bot']
+  if (path.startsWith('tools/tower-debug/') || /^(playwright|vitest|vite)(\.config)?\.tower-debug/.test(path))
+    return ['debug']
+  const users = dependents.filter(([, pattern]) => pattern.test(path)).map(([game]) => game)
+  if (
+    /^(examples\/games\/tower_diffence_with_jev\/|public\/tower-|docs\/animation-repair-audit\.json$|tests\/(tower-|caster-|runtime-model|board-camera|model-adapters|glb-fixture|published-|forecast-|performance\/)|scripts\/(lib\/|import-local-assets\.mjs$|(refine|record-refined)-|.*(?:tower|caster|motion|forecast|interception|model|patchling|roster|ogre|paladin|wolf|-walk-v2-provenance|combat-v2-provenance)))/.test(
+      path
+    ) ||
+    /^(playwright|vitest|vite)\.(tower|caster|compact|model|proximal\.|real3d-game\.|refined-motions\.|road-placement\.|ui\.)/.test(
+      path
+    )
+  )
+    return ['tower', ...users]
+  const game = games
+    .slice(1)
+    .find(
+      (name) =>
+        path.startsWith('examples/games/' + name + '/') ||
+        path.startsWith('public/' + name + '/') ||
+        path.startsWith('public/' + name + '-') ||
+        path.startsWith('tests/' + name + '-') ||
+        path.startsWith('scripts/' + name + '-') ||
+        new RegExp('^(playwright|vitest|vite)(\\.config)?\\.' + name + '[.-]').test(path)
+    )
+  if (game) return [game, ...users]
+  if (path.startsWith('docs/')) return []
+  if (
+    path === 'index.html' ||
+    path.startsWith('landing/') ||
+    path === 'tests/landing-catalog.test.mjs' ||
+    path === 'tests/landing-e2e.spec.ts' ||
+    path === 'playwright.landing.config.ts'
+  )
+    return ['landing']
+  return ['shared']
+}
+
 export function selectScope(paths) {
-  const selected = new Set()
-  for (const path of paths) {
-    if (/\.md$/i.test(path) || /^(docs|\.claude|\.agents)\//.test(path)) continue
-    if (path.startsWith('examples/games/tower_diffence_with_jev/bot/') || path.startsWith('tests/bot/')) {
-      selected.add('bot')
-    } else if (path.startsWith('tools/tower-debug/') || /^(playwright|vitest|vite)\.tower-debug/.test(path)) {
-      selected.add('debug')
-    } else if (
-      /^(examples\/games\/tower_diffence_with_jev\/|public\/tower-|tests\/(tower-|caster-|runtime-model|board-camera|model-adapters|glb-fixture|published-|forecast-)|scripts\/(lib\/|.*(?:tower|caster|motion|forecast|interception|model|patchling|roster|ogre|paladin|wolf)))/.test(
-        path
-      ) ||
-      /^(playwright|vitest|vite)\.(tower|caster|compact|model)/.test(path)
-    ) {
-      selected.add('tower')
-    } else {
-      const game = games
-        .slice(1)
-        .find(
-          (name) =>
-            path.startsWith('examples/games/' + name + '/') ||
-            path.startsWith('public/' + name + '/') ||
-            path.startsWith('public/' + name + '-') ||
-            path.startsWith('tests/' + name + '-') ||
-            path.startsWith('scripts/' + name + '-') ||
-            new RegExp('^(playwright|vitest|vite)\\.' + name + '\\.').test(path)
-        )
-      if (game) selected.add(game)
-      else if (
-        path === 'index.html' ||
-        path.startsWith('landing/') ||
-        path === 'tests/landing-catalog.test.mjs' ||
-        path === 'tests/landing-e2e.spec.ts' ||
-        path === 'playwright.landing.config.ts'
-      )
-        selected.add('landing')
-      else selected.add('shared')
-    }
-  }
+  const selected = new Set(paths.flatMap(classify))
   const shared = selected.has('shared')
   const has = (scope) => shared || selected.has(scope)
   const runtime = shared || games.some((game) => selected.has(game)) || selected.has('landing')
@@ -75,6 +102,7 @@ export function selectScope(paths) {
     debug: has('debug'),
     bot: has('bot') || has('tower'),
     audit: shared,
+    ci: has('ci'),
     pages: runtime,
     browser: shared
       ? ''
