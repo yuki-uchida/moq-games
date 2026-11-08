@@ -335,7 +335,7 @@ jobs:
       MESA_SHADER_CACHE_DISABLE: 'false'
     timeout-minutes: 30
     strategy:
-      # Keep every report when a shard fails. Two WebGL workers per independent runner.
+      # Keep every report when a shard fails. Three WebGL workers per independent runner.
       # Cold software-GPU starts prepare the full roster, so use small independent shards:
       # the longest single test runs about 3.5 minutes, the whole suite 52-58 minutes, and a slow
       # runner stretches a shard by half again, so keep the per-shard load near 3.5 minutes.
@@ -407,14 +407,14 @@ jobs:
         shell: bash
         run: |
           npx playwright test --config playwright.pages.config.ts ${{ needs.changes.outputs.browser }} --list |
-            node scripts/ci-pages-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }} > shard-tests.txt
+            node scripts/ci-pages-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }} --workers=3 > shard-tests.txt
           cat shard-tests.txt
           if test -s shard-tests.txt; then echo 'has-tests=true' >> "$GITHUB_OUTPUT"; fi
       - name: Test the Pages build in Chromium
         if: steps.shard.outputs.has-tests == 'true'
         env:
           MESA_SHADER_CACHE_DIR: ${{ runner.temp }}/moq-mesa-shader-cache
-        run: xvfb-run -a npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt --workers=2
+        run: xvfb-run -a npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt --workers=3
       - name: Upload shard report and failure evidence
         if: always()
         uses: actions/upload-artifact@v4

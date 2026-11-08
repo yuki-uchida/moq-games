@@ -20,7 +20,8 @@ export function parsePagesList(source) {
   return names
 }
 
-// Must match `--workers=2` in .github/workflows/check.yml (browser and life-browser jobs).
+// Default worker count; must match `--workers=2` of the life-browser job in .github/workflows/check.yml.
+// The Pages browser job passes its own `--workers=<n>` to this script and to Playwright.
 export const PAGES_WORKERS = 2
 
 // Playwright runs a shard's tests in collection order, each worker taking the next test when it frees up.
@@ -80,14 +81,23 @@ export function selectPagesShard(names, index, count, weights, workers = PAGES_W
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const args = process.argv.slice(2)
-    if (args.length !== 2 || args.some((arg) => !/^[1-9]\d*$/.test(arg)))
-      throw new Error('Usage: node scripts/ci-pages-shard.mjs <index> <count> < playwright-list.txt')
+    const usage = 'Usage: node scripts/ci-pages-shard.mjs <index> <count> [--workers=<n>] < playwright-list.txt'
+    const option = args[2]
+    if (
+      args.length < 2 ||
+      args.length > 3 ||
+      args.slice(0, 2).some((arg) => !/^[1-9]\d*$/.test(arg)) ||
+      (option !== undefined && !/^--workers=[1-9]\d*$/.test(option))
+    )
+      throw new Error(usage)
+    const workers = option === undefined ? PAGES_WORKERS : Number(option.slice('--workers='.length))
     const weights = JSON.parse(readFileSync(new URL('./ci-pages-weights.json', import.meta.url), 'utf8'))
     const selected = selectPagesShard(
       parsePagesList(readFileSync(0, 'utf8')),
       Number(args[0]),
       Number(args[1]),
-      weights
+      weights,
+      workers
     )
     if (selected.length) process.stdout.write(selected.join('\n') + '\n')
   } catch (error) {
