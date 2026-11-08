@@ -8,7 +8,9 @@ import {
   TALENT_CATEGORIES,
   TALENT_WEAPONS,
   WEAPONS,
+  WEAPON_BY_ID,
   WEAPON_INDEX,
+  WEAPON_LEVELS,
   WEAPON_SLOTS,
   ageAt,
   timeAtAge
@@ -194,6 +196,25 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game['buildGrid']()
     game['moveGuardian'](shield, player, 0)
     expect(enemy.hp).toBeLessThan(1000)
+  })
+
+  test('every level widens the guardian reach and speeds up its bash', () => {
+    const { game, player } = guarded()
+    const weapon = player.weapons[0]
+    let previous: { area: number; tick: number } | undefined
+    for (let level = 1; level <= 8; level++) {
+      weapon.lv = level
+      weapon.cd = 1
+      game.tick(0)
+      const shield = game.state.shots[0]
+      const current = { area: weaponStats(player, weapon).area, tick: shield.tick }
+      expect(shield.orbit).toBeCloseTo(WEAPON_BY_ID.get('p_over')!.area * current.area)
+      if (previous) {
+        expect(current.area, `Lv${level}`).toBeGreaterThan(previous.area)
+        expect(current.tick, `Lv${level}`).toBeLessThan(previous.tick)
+      }
+      previous = current
+    }
   })
 
   test.each([1, 2, 3, 4, 5, 8])('level %i controls guardian count independently of bonuses', (level) => {
@@ -568,7 +589,13 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
       game.tick(0)
       const [guard, other] = [...game.state.shots].sort((a, b) => b.y - a.y)
       other.aux = 100
-      const enemy = game.spawnEnemy('germ', guard.x + (vertical ? 0 : 33), guard.y + (vertical ? 30 : 0))!
+      // Lv2 and Lv3 already widen the shield before the Lv4 pair arrives.
+      const grown = WEAPON_LEVELS.p_over.slice(0, 2).reduce((value, upgrade) => value * (upgrade.area ?? 1), 1)
+      const enemy = game.spawnEnemy(
+        'germ',
+        guard.x + (vertical ? 0 : 33 * grown),
+        guard.y + (vertical ? 30 * grown : 0)
+      )!
       enemy.hp = enemy.maxHp = 1000
       enemy.elite = false
       game.tick(0)
