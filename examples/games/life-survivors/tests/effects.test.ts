@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import { ENEMIES, WEAPONS } from '../src/data'
-import { Effects, FxFeed, ParticlePool, PK, Trauma, shade, type FxView } from '../src/effects'
+import {
+  Effects,
+  FxFeed,
+  GAMBLE_SPRITE_LIFE,
+  ParticlePool,
+  PK,
+  Trauma,
+  gambleTiming,
+  shade,
+  type FxView
+} from '../src/effects'
 import { FX, FX_STRIDE } from '../src/fx'
 
 const view: FxView = { local: 0, px: 0, py: 0, cx: 0, cy: 0, hw: 640, hh: 360 }
@@ -163,5 +173,28 @@ describe('shade', () => {
     expect(shade('#808080', 1)).toBe('#ffffff')
     expect(shade('#808080', -1)).toBe('#000000')
     expect(shade('#ff0000', 0)).toBe('#ff0000')
+  })
+})
+
+describe('gambleTiming', () => {
+  test('plays the reels in the first 60 % and holds the result frame opaque', () => {
+    expect(gambleTiming('gamble_gacha', 0, 6).frame).toBe(0)
+    expect(gambleTiming('gamble_gacha', 0.49, 6).frame).toBe(4)
+    expect(gambleTiming('gamble_gacha', 0.5, 6).frame).toBe(5)
+    expect(gambleTiming('gamble_gacha', 0.99, 6).frame).toBe(5)
+    expect(gambleTiming('gamble_gacha', 0.79, 6).alpha).toBe(1)
+    expect(gambleTiming('gamble_gacha', 0.9, 6).alpha).toBeCloseTo(0.5)
+    expect(gambleTiming('gamble_gacha', 1, 6).alpha).toBe(0)
+    // The result frame is fully opaque for 0.3 s or more.
+    expect((0.8 - 0.5) * GAMBLE_SPRITE_LIFE).toBeGreaterThanOrEqual(0.4)
+  })
+
+  test('pachinko and horse labels wait for their frame; the others show at once', () => {
+    expect(gambleTiming('gamble_pachinko', 0.49, 6).label).toBe(false)
+    expect(gambleTiming('gamble_pachinko', 0.5, 6)).toMatchObject({ label: true, frame: 5 })
+    expect(gambleTiming('gamble_horse', 0.39, 6).label).toBe(false)
+    expect(gambleTiming('gamble_horse', 0.4, 6)).toMatchObject({ label: true, frame: 4 })
+    expect(gambleTiming('gamble_gacha', 0, 6).label).toBe(true)
+    expect(gambleTiming('gamble_poker', 0, 6).label).toBe(true)
   })
 })

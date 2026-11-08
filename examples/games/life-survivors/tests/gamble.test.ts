@@ -140,8 +140,8 @@ test.each(GAMBLE_FORMS)('gambling becomes $name at age $age', (form) => {
   const event = [1, FX.GAMBLE, 0, 0, GAMBLE_FORMS.indexOf(form), 0]
   effects.consume(event, timeAtAge(form.age) + 0.01, fxView)
   expect(effects.pool.items).toEqual([
-    expect.objectContaining({ kind: PK.sprite, spr: `gamble_${form.key}`, life: 1.2 }),
-    expect.objectContaining({ kind: PK.gambleResult, x: 60, y: 55, n: 0, life: 3 })
+    expect.objectContaining({ kind: PK.sprite, spr: `gamble_${form.key}`, life: 1.6 }),
+    expect.objectContaining({ kind: PK.gambleResult, x: 60, y: 55, n: 0, life: 3.8 })
   ])
   effects.update(0.6)
   expect(effects.pool.items[0].age).toBeGreaterThan(0)
@@ -149,7 +149,7 @@ test.each(GAMBLE_FORMS)('gambling becomes $name at age $age', (form) => {
   expect(effects.pool.items).toEqual([expect.objectContaining({ kind: PK.gambleResult, n: 0 })])
   effects.consume(event, timeAtAge(form.age) + 1.6, fxView)
   expect(effects.pool.items).toHaveLength(1)
-  effects.update(1.5)
+  effects.update(2.3)
   expect(effects.pool.items).toHaveLength(0)
 })
 

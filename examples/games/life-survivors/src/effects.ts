@@ -10,6 +10,24 @@ import { GAMBLE_FORMS } from './weapon-life'
 
 /** Hard cap of live particles. */
 export const PARTICLE_CAP = 700
+/** Lifetime of the gamble reel sprite, and how long the result banner / badge wait for the final frame. */
+export const GAMBLE_SPRITE_LIFE = 1.6
+export const GAMBLE_RESULT_DELAY = 0.8
+const GAMBLE_SPIN = 0.6
+/** The frame (and so the time) from which the pachinko / horse label appears. */
+const GAMBLE_LABEL_FRAME: Record<string, number> = { gamble_pachinko: 5, gamble_horse: 4 }
+
+/**
+ * Timing of a gamble reel sprite at life fraction t: the frames play over the first 60 % and the
+ * last one is held; fully opaque until 80 %, then fading. A late label appears with its frame.
+ */
+export function gambleTiming(spr: string, t: number, frames: number) {
+  const frame = Math.max(0, Math.min(frames - 1, Math.floor((t / GAMBLE_SPIN) * frames)))
+  const alpha = Math.max(0, Math.min(1, (1 - t) / 0.2))
+  const late = GAMBLE_LABEL_FRAME[spr]
+  const start = late === undefined ? 0 : (GAMBLE_SPIN * late) / frames
+  return { frame, alpha, label: t >= start, since: t - start }
+}
 
 /** Hands out each fx event of a snapshot sequence exactly once, by `seq`. */
 export class FxFeed {
@@ -438,12 +456,12 @@ export class Effects {
       case FX.GAMBLE:
         if (GAMBLE_FORMS[a] && this.onScreen(x, y, v)) {
           const particle = this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + 60, y - 55, {
-            life: 1.2,
+            life: GAMBLE_SPRITE_LIFE,
             scale: 1.5,
             important: true
           })
           if (particle) particle.n = b
-          const result = this.pool.spawn(PK.gambleResult, x + 60, y + 55, 3, true)
+          const result = this.pool.spawn(PK.gambleResult, x + 60, y + 55, GAMBLE_RESULT_DELAY + 3, true)
           if (result) result.n = b
         }
         break

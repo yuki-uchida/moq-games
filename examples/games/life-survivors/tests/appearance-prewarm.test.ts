@@ -40,6 +40,7 @@ beforeEach(() => {
     appearancePending: false,
     motion: new Map(),
     deaths: new Map(),
+    gambleBadges: new Map(),
     clock: 0,
     ctx: new Proxy({}, { get: () => vi.fn() }),
     world: vi.fn(),

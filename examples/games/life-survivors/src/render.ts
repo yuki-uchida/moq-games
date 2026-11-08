@@ -34,7 +34,7 @@ import {
   type EnemyDef,
   type Stage
 } from './data'
-import { Effects, PK } from './effects'
+import { Effects, GAMBLE_RESULT_DELAY, PK, gambleTiming } from './effects'
 import {
   FOOD_BOB,
   foodChips,
@@ -335,6 +335,8 @@ export class Renderer {
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly families = new Map<string, Follower[]>()
+  /** Per player: the badge being shown, the newest result and when it changed (the reels need time to stop). */
+  private readonly gambleBadges = new Map<string, { shown?: string; next?: string; at: number }>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
   private parentMemorialTime?: number
@@ -574,6 +576,26 @@ export class Renderer {
   private centred(frame: Raster, x: number, y: number, evolved: boolean, alpha = 1, scale = 1, flip = false) {
     const f = evolved ? evolve(frame) : frame
     this.art(f, x, y, f.w / 2, f.h / 2, flip, alpha, scale)
+  }
+
+  /** The gamble result to badge: a new result only appears once the reels have stopped. */
+  private gambleBadge(player: ViewPlayer) {
+    const id = player.gambleWeapon
+    if (!id) {
+      this.gambleBadges.delete(player.id)
+      return undefined
+    }
+    let st = this.gambleBadges.get(player.id)
+    if (!st) {
+      st = { at: this.clock }
+      this.gambleBadges.set(player.id, st)
+    }
+    if (st.next !== id) {
+      st.next = id
+      st.at = this.clock
+    }
+    if (st.shown !== id && this.clock - st.at >= GAMBLE_RESULT_DELAY) st.shown = id
+    return st.shown
   }
 
   /** Traces a rounded rectangle path (no fill). */
@@ -1182,9 +1204,10 @@ export class Renderer {
     const shown =
       phase === 'reaper' || phase === 'won' ? Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6) : 1
     if (shown <= 0) return box
-    if (local && !player.downed && player.gambleWeapon) {
-      const icon = weaponAppearance(player.gambleWeapon, ageAt(time), player.petAge).art
-      const frame = (sheet('icons')[icon] ?? sheet('icons')[player.gambleWeapon]).frames[0]
+    const gambleShown = local && !player.downed ? this.gambleBadge(player) : undefined
+    if (gambleShown) {
+      const icon = weaponAppearance(gambleShown, ageAt(time), player.petAge).art
+      const frame = (sheet('icons')[icon] ?? sheet('icons')[gambleShown]).frames[0]
       const bob = Math.sin(this.clock * 3.2) * 1.6
       const bx = pos.x + 26 * size
       const by = feet - 50 * size + bob
@@ -2015,15 +2038,17 @@ export class Renderer {
         case PK.sprite: {
           const anim = fx[p.spr]
           if (!anim) break
-          const frame = p.once
-            ? anim.frames[Math.min(anim.frames.length - 1, Math.floor(t * anim.frames.length))]
-            : pick(anim, p.age)
-          const alpha = p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
+          const gamble = p.spr.startsWith('gamble_') ? gambleTiming(p.spr, t, anim.frames.length) : undefined
+          const frame = gamble
+            ? anim.frames[gamble.frame]
+            : p.once
+              ? anim.frames[Math.min(anim.frames.length - 1, Math.floor(t * anim.frames.length))]
+              : pick(anim, p.age)
+          const alpha = gamble ? p.alpha * gamble.alpha : p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
           this.art(frame, p.x, p.y, frame.w / 2, frame.h / 2, false, alpha, p.size * (1 + p.size2 * t))
-          if (p.spr.startsWith('gamble_')) {
-            const late = p.spr === 'gamble_horse' || p.spr === 'gamble_pachinko'
-            const label = t < 0.65 && late ? '' : (GAMBLE_LABELS[p.spr] ?? '')
-            const since = late ? t - 0.65 : t
+          if (gamble) {
+            const label = gamble.label ? (GAMBLE_LABELS[p.spr] ?? '') : ''
+            const since = gamble.since
             const size = 12 * (1 + 0.55 * Math.max(0, 1 - since * 7))
             const y = p.y - 25 - 2 * Math.min(1, since * 4)
             this.world()
@@ -2051,6 +2076,8 @@ export class Renderer {
         case PK.gambleResult: {
           const weapon = WEAPONS[p.n]
           if (!weapon) break
+          const age = p.age - GAMBLE_RESULT_DELAY
+          if (age < 0) break
           const result = `${weapon.icon} ${weapon.name}`
           const dpr = this.canvas.width / this.width
           ctx.save()
@@ -2059,7 +2086,7 @@ export class Renderer {
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           const fade = clamp01((p.life - p.age) / 0.4)
-          const intro = clamp01(p.age / 0.22)
+          const intro = clamp01(age / 0.22)
           const ease = 1 - (1 - intro) ** 3
           const width = Math.min(this.width - 16, ctx.measureText(result).width + 56)
           const x = Math.max(
@@ -2089,7 +2116,7 @@ export class Renderer {
           ctx.strokeStyle = 'rgba(255, 242, 176, 0.7)'
           ctx.stroke()
           // A shine sweeping across the plate, once on arrival.
-          const sweep = clamp01((p.age - 0.12) / 0.7)
+          const sweep = clamp01((age - 0.12) / 0.7)
           if (sweep > 0 && sweep < 1) {
             ctx.save()
             this.roundPath(left + 2, top + 2, width - 4, 38, 10)
@@ -2104,7 +2131,7 @@ export class Renderer {
             ctx.restore()
           }
           // Text: one fillText, outlined with a stroke.
-          ctx.globalAlpha = fade * clamp01(p.age / 0.15)
+          ctx.globalAlpha = fade * clamp01(age / 0.15)
           ctx.lineJoin = 'round'
           ctx.lineWidth = 3
           ctx.strokeStyle = '#1f1027'
