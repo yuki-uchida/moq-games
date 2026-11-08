@@ -1114,6 +1114,47 @@ for (const width of [1280, 390]) {
   })
 }
 
+test('a new life stage keeps the screen-reader line over a message from the same moment', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await page.evaluate(() => {
+    const lines: string[] = []
+    ;(window as unknown as { announced: string[] }).announced = lines
+    const region = document.querySelector('#announcements')!
+    new MutationObserver(() => lines.push(region.textContent ?? '')).observe(region, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    })
+  })
+  await handle.evaluate(async (hook) => {
+    const dataPath = '/src/data.ts'
+    const { EVENTS, PEOPLE_FEAR, timeAtAge } = await import(dataPath)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    player.birthPick = false
+    player.choices = []
+    player.pending = 0
+    // 人間への恐怖 ends at 20, so jumping to 23 ends it in the tick that enters 成人期.
+    player.passives = [{ id: PEOPLE_FEAR, lv: 1 }]
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.log = []
+    game.state.time = timeAtAge(23) + 0.01
+  })
+  await expect(page.locator('#stage')).toHaveText('成人期')
+  await expect(page.locator('#feed')).toContainText('「人間への恐怖」が消えた。')
+  await expect(page.locator('#announcements')).toHaveText('成人期、23歳')
+  expect(await page.evaluate(() => (window as unknown as { announced: string[] }).announced)).not.toContainEqual(
+    expect.stringContaining('人間への恐怖')
+  )
+  // A message from a later moment still takes the line.
+  await handle.evaluate((hook) => (hook.game as unknown as { log(text: string): void }).log('次の出来事'))
+  await expect(page.locator('#announcements')).toHaveText('次の出来事')
+})
+
 for (const width of [1280, 390]) {
   test(`life path help is readable, scrollable and keyboard accessible at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 })

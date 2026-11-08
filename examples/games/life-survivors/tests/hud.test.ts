@@ -3,6 +3,8 @@ import { ENEMIES, ITEM_KINDS, STAGES, WEAPONS, WEAPON_BY_ID, stageAt, timeAtAge 
 import { GROUNDS } from '../src/art/world'
 import { FX, FX_STRIDE } from '../src/fx'
 import {
+  ANNOUNCE_RANK,
+  Announcer,
   BANNER_MS,
   BannerQueue,
   FxTracker,
@@ -294,6 +296,42 @@ describe('BannerQueue', () => {
       if (step.show) shown.push(step.show.title)
     }
     expect(shown).toEqual(['k0', 'k1', 'k2', 'k3'])
+  })
+})
+
+describe('screen-reader announcements', () => {
+  // The game logs at its raw tick time, while views (and so stage announcements) round time to 0.01 s.
+  const tick = timeAtAge(23) + 0.01 + 2 / 60
+  const viewTime = Math.round(tick * 100) / 100
+
+  it('keeps a stage over messages from the same or an earlier moment, not from a later one', () => {
+    expect(tick).toBeGreaterThan(viewTime)
+    const announcer = new Announcer()
+    expect(announcer.take(ANNOUNCE_RANK.message, tick - 1)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.stage, viewTime)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick)).toBe(false)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick - 0.5)).toBe(false)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick + 1 / 60)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick + 1 / 60)).toBe(true)
+  })
+
+  it('ranks a farewell over a stage from the same moment, and a later stage over both', () => {
+    const announcer = new Announcer()
+    expect(announcer.take(ANNOUNCE_RANK.stage, viewTime)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.farewell, viewTime)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.stage, viewTime)).toBe(false)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick)).toBe(false)
+    expect(announcer.take(ANNOUNCE_RANK.stage, viewTime + 30)).toBe(true)
+  })
+
+  it('lets equal lines of one moment replace each other and forgets the previous game on reset', () => {
+    const announcer = new Announcer()
+    expect(announcer.take(ANNOUNCE_RANK.message, tick)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.message, tick)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.stage, viewTime)).toBe(true)
+    expect(announcer.take(ANNOUNCE_RANK.message, 1)).toBe(false)
+    announcer.reset()
+    expect(announcer.take(ANNOUNCE_RANK.message, 1)).toBe(true)
   })
 })
 

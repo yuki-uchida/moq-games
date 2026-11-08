@@ -28,6 +28,8 @@ import { musicCue } from './music'
 import { statusModel, type StatusItem } from './status'
 import { FX } from './fx'
 import {
+  ANNOUNCE_RANK,
+  Announcer,
   BANNER_MS,
   BannerQueue,
   FxTracker,
@@ -114,6 +116,11 @@ let lostAt = 0
 let wonAt = 0
 let pick: { index: number; seq: number } | undefined
 const seenLog = new Set<string>()
+const announcer = new Announcer()
+/** Writes the assertive screen-reader line unless a higher-ranked line from the same moment holds it. */
+const announce = (text: string, time: number, rank: number = ANNOUNCE_RANK.message) => {
+  if (announcer.take(rank, time)) element('#announcements').textContent = text
+}
 const remoteInputAt = new Map<string, number>()
 const keys = new Set<string>()
 let drag: { id: number; x: number; y: number; dx: number; dy: number } | undefined
@@ -224,9 +231,8 @@ function mountBanner(banner: Banner) {
 }
 
 /** Translates an fx event into a cinematic banner. Log-backed lines (elite, evolve text) stay in the feed. */
-function bannerFor(e: FxEv, localIndex: number, now: number) {
+function bannerFor(e: FxEv, localIndex: number, now: number, time: number) {
   const push = (banner: Omit<Banner, 'duration'>) => banners.push({ ...banner, duration: BANNER_MS[banner.kind] }, now)
-  const announce = (text: string) => (element('#announcements').textContent = text)
   switch (e.type) {
     case FX.BOSS_SPAWN: {
       const def = ENEMIES[e.a]
@@ -242,7 +248,7 @@ function bannerFor(e: FxEv, localIndex: number, now: number) {
       const stage = STAGES[e.a]
       if (!stage) break
       push({ kind: 'stage', meta: `${stage.age}歳`, title: stage.name, sub: STAGE_LINES[e.a] ?? '', emoji: stage.icon })
-      announce(`${stage.name}、${stage.age}歳`)
+      announce(`${stage.name}、${stage.age}歳`, time, ANNOUNCE_RANK.stage)
       break
     }
     case FX.SWARM: {
@@ -262,7 +268,7 @@ function bannerFor(e: FxEv, localIndex: number, now: number) {
     case FX.CHEST:
       if (e.b === localIndex) {
         push({ kind: 'chest', title: e.a >= 3 ? '転機 ×3！' : '転機！' })
-        announce(e.a >= 3 ? '転機が3回分' : '転機')
+        announce(e.a >= 3 ? '転機が3回分' : '転機', time)
       }
       break
     case FX.EVOLVE: {
@@ -317,6 +323,7 @@ function resetFeel() {
   farewellEl = undefined
   farewellUntil = 0
   tracker.reset()
+  announcer.reset()
   banners.clear()
   unmountBanner()
   prevPhase = undefined
@@ -791,7 +798,7 @@ function updateHud(current: View) {
     line.textContent = entry.text
     if (entry.to) line.className = 'private'
     feed.prepend(line)
-    element('#announcements').textContent = entry.text
+    announce(entry.text, entry.t)
     setTimeout(() => line.remove(), 5000)
     while (feed.children.length > 4) feed.lastElementChild?.remove()
   }
@@ -980,9 +987,9 @@ function feel(current: View, now: number) {
       },
       audio
     )
-    for (const e of events) bannerFor(e, index, now)
+    for (const e of events) bannerFor(e, index, now, current.time)
   }
-  if (farewellText) element('#announcements').textContent = farewellText
+  if (farewellText) announce(farewellText, current.time, ANNOUNCE_RANK.farewell)
   const cue = phaseCue(prevPhase, current.phase)
   prevPhase = current.phase
   if (cue) audio.play(cue)
