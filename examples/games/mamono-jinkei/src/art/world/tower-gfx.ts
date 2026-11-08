@@ -54,35 +54,118 @@ export function field(ox: number, oy: number, cw: number, ch: number, seed: numb
 }
 
 const skyCache = new Map<string, Raster>()
+const BAYER = Float32Array.from({ length: 16 }, (_, i) => bayer(i & 3, i >> 2))
+/** The sky repeats every 32×24 tiles (2048×1536 px), wider than any view. */
+export const SKY_W = 32
+export const SKY_H = 24
+const PX = SKY_W * T
+const PY = SKY_H * T
+const skyLattices = new Map<string, Float32Array>()
+function skyLattice(cell: number, seed: number) {
+  const nx = PX / cell
+  const ny = PY / cell
+  const key = `${cell},${seed}`
+  let l = skyLattices.get(key)
+  if (!l) {
+    l = new Float32Array(nx * ny)
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) l[j * nx + i] = ih(i, j, seed)
+    skyLattices.set(key, l)
+  }
+  return l
+}
+function skyNoise(l: Float32Array, wx: number, wy: number, cell: number) {
+  const nx = PX / cell
+  const ny = PY / cell
+  const gx = Math.floor(wx / cell)
+  const gy = Math.floor(wy / cell)
+  const fx = (wx - gx * cell) / cell
+  const fy = (wy - gy * cell) / cell
+  const sx = fx * fx * (3 - 2 * fx)
+  const sy = fy * fy * (3 - 2 * fy)
+  const x0 = mod(gx, nx)
+  const y0 = mod(gy, ny)
+  const x1 = (x0 + 1) % nx
+  const y1 = (y0 + 1) % ny
+  const p = l[y0 * nx + x0]
+  const q = l[y0 * nx + x1]
+  const r = l[y1 * nx + x0]
+  const s = l[y1 * nx + x1]
+  return p + (q - p) * sx + (r - p) * sy + (p - q - r + s) * sx * sy
+}
 
-/** The cloud sea at tile (a, b) of the 8×8 period: wind-stretched puffs lit from the top-left over deep blue. */
+/**
+ * The cloud sea at tile (a, b) of the 32×24 sky period: wide, soft cloud masses in pale blue with lit crests on the
+ * top-left, soft blue-grey undersides and a few tiny distant wisps. Kept calm and low-contrast so platforms pop.
+ */
 export function skyBase(a: number, b: number): Raster {
   const key = `${a},${b}`
   let r = skyCache.get(key)
   if (r) return r
-  const pad = 2
+  const pad = 3
   const n = T + pad * 2
   const ox = a * T
   const oy = b * T
-  const f1 = field(ox, oy, 64, 64, 301, pad)
-  const f2 = field(ox, oy, 32, 32, 302, pad)
-  const f3 = field(ox, oy, 16, 16, 303, pad)
-  const f4 = field(ox, oy, 128, 128, 305, pad)
+  // height sampled on an 8 px grid, then bilinearly smoothed up to pixels
+  const L1 = skyLattice(256, 311)
+  const L2 = skyLattice(128, 312)
+  const L3 = skyLattice(64, 313)
+  const L4 = skyLattice(32, 314)
+  const cn = Math.ceil(n / 8) + 2
+  const coarse = new Float32Array(cn * cn)
+  for (let j = 0; j < cn; j++)
+    for (let i = 0; i < cn; i++) {
+      const wx = ox - pad + (i - 1) * 8
+      const wy = oy - pad + (j - 1) * 8
+      coarse[j * cn + i] =
+        skyNoise(L1, wx, wy, 256) * 0.3 +
+        skyNoise(L2, wx, wy, 128) * 0.36 +
+        skyNoise(L3, wx, wy, 64) * 0.24 +
+        skyNoise(L4, wx, wy, 32) * 0.1
+    }
   const h = new Float32Array(n * n)
-  for (let i = 0; i < h.length; i++) h[i] = f4[i] * 0.2 + f1[i] * 0.38 + f2[i] * 0.27 + f3[i] * 0.15
+  for (let y = 0; y < n; y++) {
+    const v = y / 8 + 1
+    const j = Math.floor(v)
+    const fy = v - j
+    for (let x = 0; x < n; x++) {
+      const u = x / 8 + 1
+      const i = Math.floor(u)
+      const fx = u - i
+      const p = coarse[j * cn + i]
+      const q = coarse[j * cn + i + 1]
+      const s = coarse[(j + 1) * cn + i]
+      const t = coarse[(j + 1) * cn + i + 1]
+      h[y * n + x] = p + (q - p) * fx + (s - p) * fy + (p - q - s + t) * fx * fy
+    }
+  }
   const at = (x: number, y: number) => h[(y + pad) * n + x + pad]
   r = new Raster(T, T)
   for (let y = 0; y < T; y++)
     for (let x = 0; x < T; x++) {
-      const v = at(x, y) + (bayer(x, y) - 0.5) * 0.04
-      const d = at(x - 1, y - 1) - at(x + 1, y + 1)
-      const ramp = [SK[3], SK[2], SK[1], SK[0], R.paper[0]]
-      let tier = v < 0.45 ? 0 : v < 0.52 ? 1 : v < 0.64 ? 2 : v < 0.73 ? 3 : 4
-      if (d > 0.05 && tier > 0 && tier < 4) tier++
-      else if (d < -0.045 && tier > 1) tier--
-      const c = ramp[tier]
+      const v = at(x, y)
+      const d = at(x - 3, y - 3) - at(x + 3, y + 3)
+      const z = BAYER[(y & 3) * 4 + (x & 3)]
+      let c: number = SK[1]
+      // crests catch the light, mostly where the surface faces the top-left
+      if (v + d * 1.8 > 0.545 + (z - 0.5) * 0.1) c = SK[0]
+      // blue-grey undersides on the lower-right flanks of the masses
+      if (d < -0.02 && v > 0.44 && z < Math.min(0.9, (-d - 0.02) * 16 + 0.3)) c = SK[2]
+      // broad shallow hollows
+      if (v < 0.43 && z < Math.min(0.5, (0.43 - v) * 5)) c = SK[2]
       r.data[y * T + x] = c
     }
+  // a few tiny distant wisps
+  for (let k = 0; k < 2; k++) {
+    if (ih(a, b, 330 + k) > 0.3) continue
+    const wx = 12 + Math.floor(ih(a, b, 335 + k) * 40)
+    const wy = 8 + Math.floor(ih(a, b, 340 + k) * 48)
+    const len = 6 + Math.floor(ih(a, b, 345 + k) * 8)
+    for (let i = 0; i < len; i++) {
+      const yy = wy + (i > len * 0.6 ? 1 : 0)
+      r.set(wx + i, yy, i < 2 || i > len - 3 ? SK[1] : SK[0])
+      if (i > 1 && i < len - 2) r.set(wx + i, yy + 1, SK[2])
+    }
+  }
   skyCache.set(key, r)
   return r
 }
@@ -105,4 +188,16 @@ export function ropeV(r: Raster, x: number, y: number, h: number, thick = 2) {
     const twist = (i >> 1) % 2
     for (let k = 0; k < thick; k++) r.set(x + k, y + i, k === 0 ? (twist ? D[1] : D[2]) : twist ? D[3] : D[3])
   }
+}
+
+/** The sky of the tile at map position (tx, ty) (shared, do not modify). */
+export const skyAt = (tx: number, ty: number) => skyBase(mod(tx, SKY_W), mod(ty, SKY_H))
+
+/** A copy of the sky of tile (tx, ty) with the painted pixels of `layer` on top. */
+export function overSky(tx: number, ty: number, layer: Raster) {
+  const out = skyAt(tx, ty).clone()
+  const d = out.data
+  const l = layer.data
+  for (let i = 0; i < l.length; i++) if (l[i]) d[i] = l[i]
+  return out
 }

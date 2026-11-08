@@ -4,7 +4,7 @@ import type { TileQuery } from '../index'
 import { C, DARKER, R } from '../palette'
 import { Raster, bayer, rng } from '../raster'
 import { D, G, GD, S, T, WOOD, GOLD, ih, mod, tile, vn1 } from './gfx'
-import { RK, RT, SK, rope, skyBase } from './tower-gfx'
+import { RK, RT, SK, overSky, rope, skyAt } from './tower-gfx'
 import {
   cliffTop,
   faceAt,
@@ -56,9 +56,9 @@ function skyTile(q: TileQuery) {
   const north = a[N]
   const faceKind = north && isGround(north) && north !== 'bridge' && north !== 'roof' ? north : undefined
   const sig = faceKind ? `${faceKind},${code(a[NW], 'sky')},${code(a[NE], 'sky')}` : ''
-  return memo(`sky${mod(q.tx, 8)},${mod(q.ty, 8)},${sig}`, () => {
-    const r = skyBase(mod(q.tx, 8), mod(q.ty, 8)).clone()
-    if (!faceKind) return r
+  if (!faceKind) return skyAt(q.tx, q.ty)
+  const layer = memo(`sky${mod(q.tx, 8)},${mod(q.ty, 8)},${sig}`, () => {
+    const r = new Raster(T, T)
     const fam = famOf(faceKind)
     const ramp = FAM_RAMP[fam]
     const ox = mod(q.tx, 8) * T
@@ -86,7 +86,7 @@ function skyTile(q: TileQuery) {
         if (!left && x > 0 && a[NW] === 'sky') r.set(x, y, line)
         else if (!right && x < T - 1 && a[NE] === 'sky') r.set(x, y, line)
       }
-    // shadow cast onto the clouds below the face
+    // deep blue haze in the clouds right under the face, fading out below it
     for (let x = 0; x < T; x++) {
       let last = -1
       for (let y = T - 1; y >= 0; y--)
@@ -95,11 +95,18 @@ function skyTile(q: TileQuery) {
           break
         }
       if (last < 0 || last >= T - 1) continue
-      for (let k = 1; k <= 5 && last + k < T; k++)
-        if (k < 3 || bayer(x, last + k) < 0.5) r.set(x, last + k, r.get(x, last + k) === SK[3] ? SK[3] : SK[2])
+      for (let k = 1; k <= 26 && last + k < T; k++) {
+        const dens = 1 - k / 26
+        const y = last + k
+        if (solid[y * T + x]) continue
+        const z = bayer(x, y)
+        if (k <= 3) r.set(x, y, SK[3])
+        else if (z < dens * 1.05) r.set(x, y, k < 13 && z < dens * 0.6 ? SK[3] : SK[2])
+      }
     }
     return r
   })
+  return overSky(q.tx, q.ty, layer)
 }
 
 // ---------------------------------------------------------------- ground (cliff, grass, rock, floor, wall)
@@ -155,6 +162,11 @@ const GROUND: Partial<Record<TileKind, GroundSpec>> = {
 }
 
 function groundTile(q: TileQuery) {
+  const layer = groundLayer(q)
+  return q.around.some((k) => k === 'sky') ? overSky(q.tx, q.ty, layer) : layer
+}
+
+function groundLayer(q: TileQuery) {
   const spec = GROUND[q.kind]!
   const a = q.around
   const kind = q.kind
@@ -181,7 +193,7 @@ function groundTile(q: TileQuery) {
     const hasFace = sk(Sx) || (spec.raised && !same(Sx))
     const fade = sk(Sx)
     const bg = spec.bg ? spec.bg(ta, tb) : undefined
-    const out = anySky ? skyBase(ta, tb).clone() : bg ? bg.clone() : new Raster(T, T)
+    const out = !anySky && bg ? bg.clone() : new Raster(T, T)
     // insets of open edges
     const inset = (w: number, i: number, seed: number) =>
       sk(i) ? 2 + Math.floor(vn1(w, 8, seed) * 3) : spec.raised && !same(i) ? 1 + Math.floor(vn1(w, 6, seed) * 2) : 0
@@ -288,16 +300,21 @@ function groundTile(q: TileQuery) {
 // ---------------------------------------------------------------- wall (a tall masonry facade)
 
 function wallTile(q: TileQuery) {
+  const layer = wallLayer(q)
+  return q.around[Wx] === 'sky' || q.around[E] === 'sky' ? overSky(q.tx, q.ty, layer) : layer
+}
+
+function wallLayer(q: TileQuery) {
   const a = q.around
   const same = (i: number) => a[i] === 'wall'
   const sig = [N, E, Sx, Wx].map((i) => code(a[i], 'wall')).join('')
+  const wallSky = a[Wx] === 'sky' || a[E] === 'sky'
   return memo(`wall${mod(q.tx, 8)},${mod(q.ty, 8)},${sig}`, () => {
     const ta = mod(q.tx, 8)
     const tb = mod(q.ty, 8)
     const ox = ta * T
     const oy = tb * T
-    const bg = a[Wx] === 'sky' || a[E] === 'sky' ? skyBase(ta, tb) : floorTop(ta, tb)
-    const r = bg.clone()
+    const r = wallSky ? new Raster(T, T) : floorTop(ta, tb).clone()
     const topRow = !same(N)
     const CORN = 14
     const inset = (w: number, i: number, seed: number) => (same(i) ? 0 : 1 + Math.floor(vn1(w, 6, seed) * 2))
@@ -406,6 +423,10 @@ function roofTile(q: TileQuery) {
 // ---------------------------------------------------------------- planks
 
 function planksTile(q: TileQuery) {
+  return overSky(q.tx, q.ty, planksLayer(q))
+}
+
+function planksLayer(q: TileQuery) {
   const a = q.around
   const sk = (i: number) => a[i] === 'sky'
   const sig = [N, Wx, E, Sx, NW, NE].map((i) => (sk(i) ? 1 : 0)).join('')
@@ -413,7 +434,7 @@ function planksTile(q: TileQuery) {
     const ta = mod(q.tx, 8)
     const tb = mod(q.ty, 8)
     const ox = ta * T
-    const r = skyBase(ta, tb).clone()
+    const r = new Raster(T, T)
     const stringers = [5, 51]
     // stringers underneath, seen through the gaps
     for (const sx of stringers)
@@ -482,7 +503,7 @@ function planksTile(q: TileQuery) {
         }
     }
     // outline the walkway where it borders the clouds
-    if (sk(N)) for (let x = 0; x < T; x++) if (r.get(x, 2) !== SK[2]) r.set(x, 1, WOOD[4])
+    if (sk(N)) for (let x = 0; x < T; x++) if (r.get(x, 2)) r.set(x, 1, WOOD[4])
     return r
   })
 }
@@ -490,6 +511,10 @@ function planksTile(q: TileQuery) {
 // ---------------------------------------------------------------- bridge
 
 function bridgeTile(q: TileQuery) {
+  return overSky(q.tx, q.ty, bridgeLayer(q))
+}
+
+function bridgeLayer(q: TileQuery) {
   const a = q.around
   const sky = (i: number) => a[i] === 'sky'
   let vertical = false
@@ -502,7 +527,6 @@ function bridgeTile(q: TileQuery) {
   return memo(`br${mod(q.tx, 8)},${mod(q.ty, 8)},${vertical},${sA},${sB}`, () => {
     const ta = mod(q.tx, 8)
     const tb = mod(q.ty, 8)
-    const base = skyBase(ta, tb).clone()
     const r = new Raster(T, T)
     // work in a horizontal frame (travel along x) and rotate at the end
     const wpos = vertical ? tb * T : ta * T
@@ -573,7 +597,7 @@ function bridgeTile(q: TileQuery) {
       // rotate the horizontal drawing so travel runs north-south; rails come out on the west / east edges
       rr = r.rot90(1)
     }
-    return base.blit(rr)
+    return rr
   })
 }
 
