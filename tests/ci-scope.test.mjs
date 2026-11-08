@@ -289,6 +289,11 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   const deploy = workflow.slice(workflow.indexOf('  deploy:'))
   assert.ok(browser)
   assert.match(browser, /^    needs: \[changes, build\]$/m)
+  assert.match(browser, /^    if: needs\.changes\.outputs\.pagesBrowser == 'true'$/m)
+  const build = workflow.match(/^  build:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  assert.ok(build)
+  assert.doesNotMatch(build, /^    needs:/m)
+  assert.doesNotMatch(build, /^    if:/m)
   assert.match(browser, /^    runs-on: ubuntu-latest$/m)
   assert.doesNotMatch(browser, /defaults:/)
   assert.match(browser, /path: ~\/\.cache\/ms-playwright/)
@@ -721,6 +726,61 @@ test('Lane Node shards run independently and are required for publication', () =
   }
 })
 
+test('deploy publishes only when the scope has Pages output and every selected check succeeded', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  const deploy = workflow.slice(workflow.indexOf('  deploy:'))
+  const condition = deploy.match(/^    if: >-\n([\s\S]*?)\n    needs:/m)?.[1]
+  assert.ok(condition)
+  assert.match(condition, /needs\.changes\.outputs\.pages == 'true'/)
+  const expression = condition
+    .replace(/\s+/g, ' ')
+    .replaceAll(/needs\.([a-z-]+)\.result/g, (_, name) => `r_${name.replaceAll('-', '_')}`)
+    .replaceAll(/needs\.changes\.outputs\.(\w+)/g, 'o_$1')
+    .replaceAll('github.event_name', 'event')
+    .replaceAll('github.ref', 'ref')
+    .replaceAll('always()', 'true')
+    .replaceAll('cancelled()', 'cancelledNow')
+  const skipped = {
+    r_lane_node: 'skipped',
+    r_unit: 'skipped',
+    r_life_browser: 'skipped',
+    r_slow_checks: 'skipped',
+    r_browser: 'skipped'
+  }
+  const evaluate = (overrides = {}, outputs = {}) =>
+    runInNewContext(expression, {
+      cancelledNow: false,
+      event: 'push',
+      ref: 'refs/heads/main',
+      r_changes: 'success',
+      r_build: 'success',
+      r_check: 'success',
+      r_lane_node: 'success',
+      r_unit: 'success',
+      r_life_browser: 'success',
+      r_slow_checks: 'success',
+      r_browser: 'success',
+      o_pages: 'true',
+      o_laneNode: 'x',
+      o_unit: 'x',
+      ...outputs,
+      ...overrides
+    })
+  assert.equal(evaluate(), true)
+  assert.equal(evaluate(skipped, { o_laneNode: '', o_unit: '' }), true)
+  // CI-only scope: build still ran, but nothing is published.
+  assert.equal(evaluate(skipped, { o_pages: 'false', o_laneNode: '', o_unit: '' }), false)
+  for (const result of ['failure', 'cancelled']) {
+    for (const job of ['r_build', 'r_check', 'r_lane_node', 'r_unit', 'r_life_browser', 'r_slow_checks', 'r_browser']) {
+      assert.equal(evaluate({ [job]: result }), false, `${job} ${result}`)
+    }
+  }
+  assert.equal(evaluate({ cancelledNow: true }), false)
+})
+
 test('Lane Node discovery shards every file and all ten realistic cases exactly once', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url))
   const files = globSync(selectScope(['package.json']).laneNode, { cwd: root })
@@ -926,7 +986,7 @@ test('tower assets and supporting tools include tower contracts, browser and bot
   }
 })
 
-test('standalone bot and debug changes do not rebuild or publish games', () => {
+test('standalone bot and debug changes run no game checks and publish nothing', () => {
   const bot = selectScope(['tests/bot/test_contract.py'])
   assert.equal(bot.bot, true)
   assert.equal(bot.runtime, false)
