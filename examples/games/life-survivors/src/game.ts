@@ -139,6 +139,8 @@ export interface Player {
   hasChild: boolean
   parent: string
   parentDeath?: { at: number; x: number; y: number; reward: ParentReward }
+  /** Total damage dealt by the parent weapon, kept after the parent dies. */
+  parentDamage?: number
   talents: Record<TalentCategory, number>
   weapons: OwnedWeapon[]
   passives: { id: string; lv: number }[]
@@ -2654,7 +2656,9 @@ export class Game {
       enemy.ky += (dy / l) * knock
     }
     const weapon = owner.weapons.find((w) => w.id === shot.sourceWeapon)
-    if (weapon) weapon.damage += Math.min(amount, Math.max(0, enemy.hp + amount))
+    const dealt = Math.min(amount, Math.max(0, enemy.hp + amount))
+    if (weapon) weapon.damage += dealt
+    if (weapon && weapon.id === owner.parent) owner.parentDamage = (owner.parentDamage ?? 0) + dealt
     if (this.state.popups.length < 80)
       this.state.popups.push({
         x: enemy.x,
