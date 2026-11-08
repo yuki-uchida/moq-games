@@ -457,6 +457,7 @@ export function weaponStats(
   let damage = def.damage * sourceUpgrades.reduce((value, upgrade) => value * (upgrade.damage ?? 1), 1) * stats.might
   if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
+  if (source.id === 'w_gamble') damage *= 0.5
   if (def.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
   if (def.id === 'w_invest') {
     if (player.parent === 'p_rich') damage *= 1.3

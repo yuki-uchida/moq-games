@@ -116,7 +116,7 @@ test('gambling draws the right animation and status for each life stage', async 
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
   const handle = await life(page)
   for (const [age, name, label] of [
-    [12, '課金', 'ガチャ！'],
+    [15, '課金', 'ガチャ！'],
     [18, 'ポーカー', 'ポーカー！'],
     [23, 'パチンコ', '大当たり！'],
     [50, '競馬', '競馬的中！']
