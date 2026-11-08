@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { selectScope } from '../scripts/ci-scope.mjs'
+import { classify, selectScope } from '../scripts/ci-scope.mjs'
 import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
@@ -22,7 +22,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
@@ -86,12 +86,12 @@ test('SDK jobs prefer generated-only exact caches and always verify before insta
   }
 })
 
-test('only changes, browser and deploy omit public from checkout without limiting Git history', () => {
+test('only jobs that never read public assets omit public from checkout without limiting Git history', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
     '\n'
   )
-  for (const name of ['changes', 'browser', 'deploy']) {
+  for (const name of ['changes', 'lane-node', 'life-browser', 'browser', 'deploy']) {
     const job = workflow.match(new RegExp('^  ' + name + ':\\n([\\s\\S]*?)(?=^  \\S|(?![\\s\\S]))', 'm'))?.[1]
     assert.ok(job, name)
     const checkout = job.split(/^      - /m).find((step) => step.startsWith('uses: actions/checkout@v4'))
@@ -110,9 +110,22 @@ test('only changes, browser and deploy omit public from checkout without limitin
     )
   }
   assert.doesNotMatch(
-    workflow.replace(/^  (?:changes|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
+    workflow.replace(/^  (?:changes|lane-node|life-browser|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
     /sparse-checkout/
   )
+  // Lane Battle and life-survivors serve their own folders; neither suite nor its imports reads the public assets.
+  for (const scope of ['lane-battle', 'life-survivors']) {
+    const files = new Set(importEdges(scope).flatMap(({ file, target }) => [file, target].filter(Boolean)))
+    for (const file of [...files, `examples/games/${scope}/index.html`]) {
+      assert.doesNotMatch(file, /^public\//, scope)
+      if (/\.([cm]?[jt]sx?|html)$/.test(file))
+        assert.doesNotMatch(
+          readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'),
+          /\bpublic\/|tower-defense-/,
+          `${scope}: ${file}`
+        )
+    }
+  }
 })
 
 test('Pages browser caches only Mesa shaders with exact stable platform and dependency keys', () => {
@@ -602,11 +615,23 @@ test('life browser shards run independently and gate publication', () => {
   assert.match(browser, /^    needs: changes$/m)
   assert.match(browser, /^    if: needs\.changes\.outputs\.life == 'true'$/m)
   assert.match(browser, /fail-fast: false/)
-  assert.match(browser, /^        shard: \[1, 2, 3\]$/m)
-  assert.match(
-    browser,
-    /^        run: npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --workers=2$/m
+  assert.match(browser, /^        shard: \[1, 2, 3, 4\]$/m)
+  assert.ok(
+    browser.includes(
+      [
+        "      - name: Select this shard's life-survivors tests",
+        '        shell: bash',
+        '        run: |',
+        '          npx playwright test --config playwright.life-survivors.config.ts --list |',
+        '            node scripts/ci-pages-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }} > shard-tests.txt',
+        '          cat shard-tests.txt',
+        '          test -s shard-tests.txt',
+        '      - name: Test life-survivors in Chromium',
+        '        run: npm run e2e:life-survivors -- --test-list shard-tests.txt --workers=2\n'
+      ].join('\n')
+    )
   )
+  assert.doesNotMatch(browser, /--shard=/)
   assert.match(browser, /name: life-survivors-browser-\$\{\{ github\.sha \}\}-shard-\$\{\{ matrix\.shard \}\}/)
   assert.match(deploy, /needs: \[[^\]\n]*\blife-browser\b[^\]\n]*\]/)
   assert.match(deploy, /\(needs\.life-browser\.result == 'success' \|\| needs\.life-browser\.result == 'skipped'\) &&/)
@@ -721,7 +746,7 @@ test('Lane Node discovery shards every file and all ten realistic cases exactly 
 })
 
 test(
-  'life browser shards partition every test without duplicates',
+  'life browser shards deal sorted tests in turn and recollect each exactly once',
   {
     skip:
       !existsSync(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)) &&
@@ -742,10 +767,9 @@ test(
         ],
         { cwd: root, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } }
       )
-        .split(/\r?\n/)
-        .filter((line) => line.includes(' › '))
-        .map((line) => line.trim())
-    const all = list()
+    const source = list()
+    const all = parsePagesList(source)
+    assert.ok(all.length > 0)
     const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
       '\r\n',
       '\n'
@@ -753,14 +777,39 @@ test(
     const browser = workflow.match(/^  life-browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
     assert.ok(browser)
     const shards = JSON.parse(browser.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
-    assert.deepEqual(shards, [1, 2, 3])
-    const partitions = shards.map((shard) => list(`--shard=${shard}/${shards.length}`, '--workers=2'))
-    const counts = partitions.map((partition) => partition.length)
-    assert.ok(counts.every((count) => count > 0))
-    assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
-    const selected = partitions.flat()
-    assert.equal(new Set(selected).size, selected.length)
-    assert.deepEqual(selected.sort(), all.sort())
+    assert.deepEqual(shards, [1, 2, 3, 4])
+    // Equal weights deal the sorted titles in turn, which spreads each family of viewport or stage variants.
+    const weights = JSON.parse(readFileSync(join(root, 'scripts/ci-pages-weights.json'), 'utf8'))
+    assert.ok(all.every((name) => weights.seconds[`tests/${name}`] === undefined))
+    const directory = mkdtempSync(join(tmpdir(), 'life-browser-shards-'))
+    try {
+      const partitions = shards.map((shard) => {
+        const output = execFileSync(
+          process.execPath,
+          ['scripts/ci-pages-shard.mjs', String(shard), String(shards.length)],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            input: source
+          }
+        )
+        const names = output.trimEnd().split('\n')
+        assert.deepEqual(names, selectPagesShard(all, shard, shards.length, weights))
+        const path = join(directory, `shard-${shard}.txt`)
+        writeFileSync(path, output)
+        const recollected = parsePagesList(list('--test-list', path))
+        assert.deepEqual([...recollected].sort(), [...names].sort())
+        return recollected
+      })
+      const counts = partitions.map((partition) => partition.length)
+      assert.ok(Math.min(...counts) > 0)
+      assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
+      const selected = partitions.flat()
+      assert.equal(new Set(selected).size, selected.length)
+      assert.deepEqual(selected.sort(), [...all].sort())
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   }
 )
 
@@ -770,12 +819,21 @@ test('documentation and instruction changes do not run game checks or publish', 
     'docs/diagram.png',
     'examples/games/rabbiters/STORY.md',
     '.claude/skills/review/SKILL.md',
-    '.agents/config.json'
+    '.agents/config.json',
+    '.codex/config.toml'
   ])
-  for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug']) assert.equal(scope[key], false)
+  for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug', 'ci']) assert.equal(scope[key], false)
   assert.equal(scope.unit, '')
   assert.equal(scope.node, '')
   assert.equal(scope.laneNode, '')
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  assert.match(
+    workflow,
+    /^    paths-ignore:\n      - '\*\*\/\*\.md'\n      - '\.claude\/\*\*'\n      - '\.agents\/\*\*'\n      - '\.codex\/\*\*'\npermissions:/m
+  )
 })
 
 for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki']) {
@@ -855,14 +913,17 @@ test('tower-only browser checks exclude unrelated landing tests', () => {
   assert.equal(selectScope(['index.html', 'tests/tower-title-e2e.spec.ts']).browser, 'tower- landing-e2e.spec.ts')
 })
 
-test('shared dependencies, CI and unknown paths conservatively check all games', () => {
+test('shared dependencies, CI jobs and runners, and unknown paths conservatively check all games', () => {
   for (const path of [
     'package-lock.json',
     'lib/moqt/moqtClient.ts',
     'examples/games/shared/audio.ts',
     '.github/workflows/check.yml',
-    'scripts/ci-scope.mjs',
-    'tests/ci-scope.test.mjs',
+    'scripts/ci-install-chromium.mjs',
+    'scripts/vitest-unit-sequencer.mjs',
+    'vitest.config.mts',
+    'playwright.pages.config.ts',
+    'vite.config.mjs',
     'new-runtime.js'
   ]) {
     const scope = selectScope([path])
@@ -877,8 +938,208 @@ test('shared dependencies, CI and unknown paths conservatively check all games',
     ])
     for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki'])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
-    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life']) assert.equal(scope[key], true)
+    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life', 'ci']) assert.equal(scope[key], true)
   }
+})
+
+test('CI selection and distribution files run only the CI contracts', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  assert.match(workflow, /^      ci: \$\{\{ steps\.scope\.outputs\.ci \}\}$/m)
+  const check = workflow.match(/^  check:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  assert.ok(check)
+  assert.match(
+    check,
+    /^    if: needs\.changes\.outputs\.runtime == 'true' \|\| needs\.changes\.outputs\.debug == 'true' \|\| needs\.changes\.outputs\.ci == 'true'$/m
+  )
+  assert.match(
+    check,
+    /^      - run: node --test tests\/ci-scope\.test\.mjs\n      - run: npm run typecheck\n        if: /m
+  )
+  for (const path of [
+    '.github/workflows/renderer-benchmark.yml',
+    'scripts/ci-pages-shard.mjs',
+    'scripts/ci-pages-weights.json',
+    'scripts/ci-scope.mjs',
+    'scripts/vitest-unit-weights.json',
+    'tests/ci-scope.test.mjs'
+  ]) {
+    const scope = selectScope([path, 'README.md'])
+    assert.equal(scope.ci, true, path)
+    for (const key of ['runtime', 'pages', 'pagesBrowser', 'tower', 'ember', 'life', 'debug', 'bot', 'audit'])
+      assert.equal(scope[key], false, `${path} ${key}`)
+    for (const key of ['browser', 'unit', 'laneNode', 'node']) assert.equal(scope[key], '', `${path} ${key}`)
+    const life = selectScope([path, 'examples/games/life-survivors/tests/new-seed.test.ts'])
+    assert.equal(life.ci, true, path)
+    assert.equal(life.unit, 'examples/games/life-survivors/tests', path)
+    assert.equal(life.browser, 'life-survivors-published-e2e.spec.ts', path)
+    assert.equal(life.laneNode, '', path)
+    assert.equal(life.tower, false, path)
+  }
+})
+
+test('games that use another game’s code or runtime assets are checked with it', () => {
+  // ember-grid renders tower units with tower's game, progression and rendering code, and loads their models.
+  for (const path of [
+    'examples/games/tower_diffence_with_jev/src/game/AttackProfiles.ts',
+    'examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem.ts',
+    'examples/games/tower_diffence_with_jev/src/rendering/ModelUnitVisual.ts',
+    'public/tower-defense-art/models/runtime-manifest.json',
+    'public/tower-defense-art/archer/forest-archer-attack-e.json'
+  ]) {
+    assert.deepEqual(classify(path), ['tower', 'ember-grid'], path)
+    const scope = selectScope([path])
+    assert.equal(scope.ember, true, path)
+    assert.equal(
+      scope.unit,
+      'examples/games/tower_diffence_with_jev/tests examples/games/ember-grid/tests tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts',
+      path
+    )
+    assert.equal(scope.browser, 'tower- ember-grid-e2e.spec.ts', path)
+    assert.equal(scope.life, false, path)
+  }
+  for (const path of [
+    'examples/games/tower_diffence_with_jev/src/main.ts',
+    'examples/games/tower_diffence_with_jev/src/ui/TitleAttract.ts',
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts',
+    'public/tower-defense-sfx/hit.ogg'
+  ])
+    assert.deepEqual(classify(path), ['tower'], path)
+  // life-survivors plays co-op over the rabbiters network session.
+  assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), ['rabbiters', 'life-survivors'])
+  const network = selectScope(['examples/games/rabbiters/src/network.ts'])
+  assert.equal(network.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
+  assert.equal(network.life, true)
+  assert.equal(network.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.deepEqual(classify('examples/games/rabbiters/src/main.ts'), ['rabbiters'])
+  // The catalog links the tower model viewer, which links back, and shows tower portraits.
+  assert.deepEqual(classify('examples/games/tower_diffence_with_jev/extra.html'), ['tower', 'landing'])
+  assert.deepEqual(classify('public/tower-defense-art/soldier/portrait.png'), ['tower', 'ember-grid', 'landing'])
+  const viewer = selectScope(['examples/games/tower_diffence_with_jev/extra.html'])
+  assert.equal(viewer.browser, 'tower- landing-e2e.spec.ts')
+  assert.ok(viewer.node.split(' ').includes('tests/landing-catalog.test.mjs'))
+  assert.deepEqual(classify('examples/games/tower_diffence_with_jev/index.html'), ['tower'])
+  // A tower unit test reads this audit, so it is not ignored like the rest of docs.
+  assert.deepEqual(classify('docs/animation-repair-audit.json'), ['tower'])
+  assert.deepEqual(classify('docs/animation-repair-audit.md'), [])
+})
+
+/** Each import from a scope's own code files, followed through every tracked code file they reach. */
+function importEdges(scope) {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  importEdges.tracked ??= new Set(
+    execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
+  )
+  importEdges.imports ??= new Map()
+  const { tracked, imports } = importEdges
+  const code = /\.[cm]?[jt]sx?$/
+  const specifiers =
+    /\b(?:import|export)\s+(?:type\s+)?[^'"`;]*?\bfrom\s*['"]([^'"\n]+)['"]|\bimport\s*\(\s*['"]([^'"\n]+)['"]\s*\)|\bimport\s+['"]([^'"\n]+)['"]|\bnew\s+URL\(\s*['"]([^'"\n]+)['"]\s*,\s*import\.meta\.url/g
+  const resolveSpecifier = (from, specifier) => {
+    if (!specifier.startsWith('.')) return undefined
+    const base = posix.normalize(posix.join(posix.dirname(from), specifier.split('?')[0]))
+    return [
+      base,
+      base.replace(/\.js$/, '.ts'),
+      ...['.ts', '.tsx', '.mts', '.js', '.mjs', '.json'].map((ext) => base + ext)
+    ]
+      .concat(['/index.ts', '/index.js'].map((index) => base + index))
+      .find((path) => tracked.has(path))
+  }
+  const importsOf = (file) => {
+    if (!imports.has(file))
+      imports.set(
+        file,
+        [...readFileSync(join(root, file), 'utf8').matchAll(specifiers)]
+          .map((match) => resolveSpecifier(file, match.slice(1).find(Boolean)))
+          .filter(Boolean)
+      )
+    return imports.get(file)
+  }
+  const queue = [...tracked].filter((file) => code.test(file) && classify(file)[0] === scope)
+  assert.ok(queue.length > 0, scope)
+  const edges = queue.map((file) => ({ file }))
+  const seen = new Set(queue)
+  while (queue.length) {
+    const file = queue.pop()
+    for (const target of importsOf(file)) {
+      edges.push({ file, target })
+      if (code.test(target) && !seen.has(target)) {
+        seen.add(target)
+        queue.push(target)
+      }
+    }
+  }
+  return edges
+}
+
+test('every file a game imports from outside its folder also selects that game', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const workflow = readFileSync(join(root, '.github/workflows/check.yml'), 'utf8').replaceAll('\r\n', '\n')
+  const ignored = [...workflow.match(/^    paths-ignore:\n((?:      - .*\n)+)/m)[1].matchAll(/- '([^']+)'/g)].map(
+    ([, glob]) =>
+      new RegExp(
+        '^' +
+          glob
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replaceAll('**/', '(?:.*/)?')
+            .replaceAll('**', '.*')
+            .replace(/(?<!\.)\*/g, '[^/]*') +
+          '$'
+      )
+  )
+  assert.ok(ignored.some((pattern) => pattern.test('docs/notes.md')))
+  assert.ok(ignored.some((pattern) => pattern.test('.codex/config.toml')))
+  let crossings = 0
+  for (const scope of [
+    'tower',
+    'rabbiters',
+    'life-survivors',
+    'ember-grid',
+    'lane-battle',
+    'yoru-no-yashiki',
+    'landing'
+  ]) {
+    for (const { file, target } of importEdges(scope)) {
+      if (!target) continue
+      const selected = classify(target)
+      if (selected[0] !== scope) crossings++
+      assert.ok(
+        selected.includes(scope) || selected.includes('shared'),
+        `${scope} uses ${target} (from ${file}), but changing it selects ${selected.join(', ') || 'nothing'}`
+      )
+      assert.ok(!ignored.some((pattern) => pattern.test(target)), `${target} is used by ${scope} but never runs CI`)
+    }
+  }
+  assert.ok(crossings > 0)
+})
+
+test('per-game build, browser and asset tool files select only their game', () => {
+  for (const [path, scope] of [
+    ['vite.config.life-survivors.mjs', 'life-survivors'],
+    ['vite.config.rabbiters.mjs', 'rabbiters'],
+    ['vite.config.yoru-no-yashiki.mjs', 'yoru-no-yashiki'],
+    ['playwright.yoru-no-yashiki-real-moq.config.ts', 'yoru-no-yashiki'],
+    ['playwright.life-survivors.config.ts', 'life-survivors'],
+    ['vite.config.tower-debug.mjs', 'debug'],
+    ['vitest.tower-debug-assets.config.mts', 'debug'],
+    ['playwright.proximal.config.ts', 'tower'],
+    ['playwright.real3d-game.config.ts', 'tower'],
+    ['playwright.refined-motions.config.ts', 'tower'],
+    ['playwright.road-placement.config.ts', 'tower'],
+    ['playwright.ui.config.ts', 'tower'],
+    ['playwright.casters.config.ts', 'tower'],
+    ['tests/performance/forecast-baseline/model.ts', 'tower'],
+    ['tests/performance/interception-equivalence.template.ts', 'tower'],
+    ['scripts/refine-tank-walk.mjs', 'tower'],
+    ['scripts/record-refined-game.mjs', 'tower'],
+    ['scripts/humanoid-walk-v2-provenance.json', 'tower'],
+    ['scripts/combat-v2-provenance.json', 'tower'],
+    ['scripts/import-local-assets.mjs', 'tower']
+  ])
+    assert.deepEqual(classify(path), [scope], path)
 })
 
 test('multiple changed games are combined without selecting other games', () => {

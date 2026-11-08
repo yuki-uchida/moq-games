@@ -107,6 +107,8 @@ export class BattleAnimation {
           }
           await pause(step)
         }
+        // A cancelled walk must not move a figure that a later sync has already placed.
+        if (!live()) return
         actor.at = { x: acting.x, y: acting.y }
         actor.track = undefined
       }
