@@ -367,6 +367,27 @@ dialog[open] {
 dialog::backdrop {
   background: #1e0f05aa;
 }
+/* Boot title: the battle played by the demo (attract.js) shows through the sheet and the backdrop. */
+dialog.title {
+  background: #2b160899;
+  box-shadow: 0 10px 60px #0006;
+}
+dialog.title::backdrop {
+  background: linear-gradient(#1e0f0522, #1e0f0555);
+}
+/* The real battle's header, notice and tray stay out of the way of the demo until the game starts. */
+main:has(dialog.title[open]) :is(header, footer, #notice) {
+  visibility: hidden;
+}
+dialog.title h2,
+dialog.title p,
+dialog.title h3 {
+  text-shadow: 0 1px 4px #000c;
+}
+dialog.title .actions {
+  background: #2b1608cc;
+  border-radius: 0 0 19px 19px;
+}
 .sheet {
   overflow-y: auto;
   padding: 20px 22px 8px;
