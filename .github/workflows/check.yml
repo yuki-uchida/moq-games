@@ -47,8 +47,7 @@ jobs:
       - id: scope
         run: node scripts/ci-scope.mjs
   build:
-    needs: changes
-    if: needs.changes.outputs.pages == 'true'
+    # Starts beside the change scoping; the scope only decides whether its output is tested and published.
     # Only the prepared Pages output and SDK gate the browser shards, so produce them first and
     # run the typecheck, lint and unit suites beside them instead of ahead of them.
     runs-on: ubuntu-latest
@@ -430,7 +429,7 @@ jobs:
     if: >-
       always() && !cancelled() &&
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-      needs.changes.result == 'success' && needs.build.result == 'success' &&
+      needs.changes.result == 'success' && needs.changes.outputs.pages == 'true' && needs.build.result == 'success' &&
       needs.check.result == 'success' &&
       (needs.lane-node.result == 'success' || (needs.lane-node.result == 'skipped' && needs.changes.outputs.laneNode == '')) &&
       (needs.unit.result == 'success' || (needs.unit.result == 'skipped' && needs.changes.outputs.unit == '')) &&
