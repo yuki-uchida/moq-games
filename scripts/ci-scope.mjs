@@ -2,13 +2,22 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle', 'yoru-no-yashiki', 'mamono-jinkei']
+export const games = [
+  'tower',
+  'rabbiters',
+  'life-survivors',
+  'ember-grid',
+  'lane-battle',
+  'yoru-no-yashiki',
+  'mamono-jinkei'
+]
 
-// Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports.
+// Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports
+// and scans their runtime asset URLs. The landing E2E also starts these games (see launchedByLanding).
 const dependents = [
   [
     'ember-grid',
-    /^(examples\/games\/tower_diffence_with_jev\/src\/(game|progression|rendering)\/|public\/tower-defense-art\/)/
+    /^(examples\/games\/tower_diffence_with_jev\/src\/(game|progression|rendering)\/|public\/tower-defense-(art|sfx)\/)/
   ],
   ['life-survivors', /^examples\/games\/rabbiters\/src\/network\.ts$/],
   ['mamono-jinkei', /^examples\/games\/rabbiters\/src\/network\.ts$/],
@@ -27,6 +36,9 @@ const ciOnly = new Set([
   'scripts/vitest-unit-weights.json',
   'tests/ci-scope.test.mjs'
 ])
+
+// Games that tests/landing-e2e.spec.ts starts, so every path they own also selects landing.
+const launchedByLanding = ['rabbiters', 'lane-battle', 'yoru-no-yashiki']
 
 /** The scopes a changed path selects, its owner first; empty for documentation and agent instructions. */
 export function classify(path) {
@@ -56,7 +68,8 @@ export function classify(path) {
         path.startsWith('scripts/' + name + '-') ||
         new RegExp('^(playwright|vitest|vite)(\\.config)?\\.' + name + '[.-]').test(path)
     )
-  if (game) return [game, ...users]
+  if (game)
+    return [game, ...users, ...(launchedByLanding.includes(game) && !users.includes('landing') ? ['landing'] : [])]
   if (Object.hasOwn(sharedUsers, path)) return sharedUsers[path]
   if (path.startsWith('docs/')) return []
   if (
@@ -194,17 +207,22 @@ export function changedWorkflowJobs(before, after) {
     .sort()
 }
 
-export function selectScope(paths, { workflowJobs } = {}) {
+export function selectScope(paths, { workflowJobs, deleted = [] } = {}) {
   const jobsOnly =
     paths.includes(workflowPath) &&
     Array.isArray(workflowJobs) &&
     workflowJobs.every((job) => Object.hasOwn(workflowJobChecks, job))
   const requirements = jobsOnly ? workflowJobs.map((job) => workflowJobChecks[job]) : []
   const selected = new Set()
+  // A deleted test file cannot be run, so the push checks the whole tower scope instead.
+  const deletedSet = new Set(deleted)
+  const towerTestDeleted = paths.some(
+    (path) => deletedSet.has(path) && classify(path)[0] === 'tower' && towerTestKind(path)
+  )
   const targeted = { spec: new Set(), unit: new Set(), node: new Set(), other: false }
   for (const path of jobsOnly ? paths.filter((path) => path !== workflowPath) : paths) {
     const scopes = classify(path)
-    const kind = scopes[0] === 'tower' ? towerTestKind(path) : null
+    const kind = scopes[0] === 'tower' && !towerTestDeleted ? towerTestKind(path) : null
     if (kind === 'spec') {
       targeted.other = true
       if (pagesTestMatch.test(path.slice('tests/'.length))) targeted.spec.add(path.slice('tests/'.length))
@@ -295,6 +313,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       : execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', before, after], { encoding: 'utf8' })
           .split('\0')
           .filter(Boolean)
+  const deleted =
+    paths.length && before && !/^0+$/.test(before)
+      ? execFileSync('git', ['diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', before, after], {
+          encoding: 'utf8'
+        })
+          .split('\0')
+          .filter(Boolean)
+      : []
   let workflowJobs
   if (paths.includes(workflowPath) && before && !/^0+$/.test(before)) {
     const show = (commit) => {
@@ -306,7 +332,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     workflowJobs = changedWorkflowJobs(show(before), show(after))
   }
-  const scope = selectScope(paths, { workflowJobs })
+  const scope = selectScope(paths, { workflowJobs, deleted })
   appendFileSync(
     process.env.GITHUB_OUTPUT,
     Object.entries(scope)
