@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
-const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle', 'yoru-no-yashiki']
+const games = ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle', 'yoru-no-yashiki', 'mamono-jinkei']
 
 // Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports.
 const dependents = [
@@ -11,6 +11,7 @@ const dependents = [
     /^(examples\/games\/tower_diffence_with_jev\/src\/(game|progression|rendering)\/|public\/tower-defense-art\/)/
   ],
   ['life-survivors', /^examples\/games\/rabbiters\/src\/network\.ts$/],
+  ['mamono-jinkei', /^examples\/games\/rabbiters\/src\/network\.ts$/],
   [
     'landing',
     /^(examples\/games\/tower_diffence_with_jev\/extra\.html|public\/tower-defense-art\/[^/]+\/portrait\.png)$/
@@ -76,7 +77,7 @@ const workflowPath = '.github/workflows/check.yml'
 const sharedUsers = {
   'examples/games/shared/UiSound.ts': ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle'],
   'examples/games/shared/ImpactArt.ts': ['tower', 'ember-grid'],
-  'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors'],
+  'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei'],
   'utils/media/objectStatus.ts': ['tower', 'yoru-no-yashiki'],
   'utils/moqJson.ts': ['tower'],
   'lib/moqt/moqtClient.ts': ['tower', 'yoru-no-yashiki']
@@ -193,13 +194,19 @@ export function selectScope(paths, { workflowJobs } = {}) {
             has('tower') && 'tower-',
             has('landing') && 'landing-e2e.spec.ts',
             has('ember-grid') && 'ember-grid-e2e.spec.ts',
-            has('life-survivors') && 'life-survivors-published-e2e.spec.ts'
+            has('life-survivors') && 'life-survivors-published-e2e.spec.ts',
+            has('mamono-jinkei') && 'mamono-jinkei-published-e2e.spec.ts'
           ]
             .filter(Boolean)
             .join(' '),
     shards: JSON.stringify(shared || required('shards') ? fullRunShards : has('tower') ? towerShards : [1]),
     pagesBrowser:
-      has('tower') || has('landing') || has('ember-grid') || has('life-survivors') || required('pagesBrowser'),
+      has('tower') ||
+      has('landing') ||
+      has('ember-grid') ||
+      has('life-survivors') ||
+      has('mamono-jinkei') ||
+      required('pagesBrowser'),
     unit: merged(unitFor(has), 'unit'),
     laneNode: has('lane-battle') || required('laneNode') ? laneNodeGlob : '',
     node: merged(nodeFor(has), 'node')

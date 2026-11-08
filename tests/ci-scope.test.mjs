@@ -583,6 +583,7 @@ test(
       'ember-grid',
       'lane-battle',
       'yoru-no-yashiki',
+      'mamono-jinkei',
       'landing'
     ]) {
       const scope = selectScope([game === 'landing' ? 'landing/main.ts' : `examples/games/${game}/main.ts`])
@@ -941,7 +942,7 @@ test('documentation and instruction changes do not run game checks or publish', 
   )
 })
 
-for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki']) {
+for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki', 'mamono-jinkei']) {
   test(game + ' changes select only that game', () => {
     for (const path of [
       'examples/games/' + game + '/src/main.ts',
@@ -953,9 +954,10 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashik
       assert.equal(scope.node, '')
       assert.equal(scope.laneNode, '')
       assert.equal(scope.pages, true)
-      assert.equal(scope.pagesBrowser, game === 'ember-grid' || game === 'life-survivors')
+      assert.equal(scope.pagesBrowser, game === 'ember-grid' || game === 'life-survivors' || game === 'mamono-jinkei')
       assert.equal(scope.life, game === 'life-survivors')
       if (game === 'life-survivors') assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts')
+      if (game === 'mamono-jinkei') assert.equal(scope.browser, 'mamono-jinkei-published-e2e.spec.ts')
       for (const key of ['bot', 'debug']) assert.equal(scope[key], false)
     }
   })
@@ -1042,7 +1044,14 @@ test('shared dependencies, CI jobs and runners, and unknown paths conservatively
       'tests/tower-model-sidecars.test.mjs',
       'tests/landing-catalog.test.mjs'
     ])
-    for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki'])
+    for (const game of [
+      'tower_diffence_with_jev',
+      'rabbiters',
+      'life-survivors',
+      'ember-grid',
+      'yoru-no-yashiki',
+      'mamono-jinkei'
+    ])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
     for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life', 'ci']) assert.equal(scope[key], true)
   }
@@ -1052,7 +1061,7 @@ test('shared code checks only the games that use the changed file', () => {
   const table = {
     'examples/games/shared/UiSound.ts': ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle'],
     'examples/games/shared/ImpactArt.ts': ['tower', 'ember-grid'],
-    'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors'],
+    'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei'],
     'utils/media/objectStatus.ts': ['tower', 'yoru-no-yashiki'],
     'utils/moqJson.ts': ['tower'],
     'lib/moqt/moqtClient.ts': ['tower', 'yoru-no-yashiki']
@@ -1239,12 +1248,19 @@ test('games that use another game’s code or runtime assets are checked with it
     'public/tower-defense-sfx/hit.ogg'
   ])
     assert.deepEqual(classify(path), ['tower'], path)
-  // life-survivors plays co-op over the rabbiters network session.
-  assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), ['rabbiters', 'life-survivors'])
+  // life-survivors and mamono-jinkei play co-op over the rabbiters network session.
+  assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), [
+    'rabbiters',
+    'life-survivors',
+    'mamono-jinkei'
+  ])
   const network = selectScope(['examples/games/rabbiters/src/network.ts'])
-  assert.equal(network.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
+  assert.equal(
+    network.unit,
+    'examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/mamono-jinkei/tests'
+  )
   assert.equal(network.life, true)
-  assert.equal(network.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.equal(network.browser, 'life-survivors-published-e2e.spec.ts mamono-jinkei-published-e2e.spec.ts')
   assert.deepEqual(classify('examples/games/rabbiters/src/main.ts'), ['rabbiters'])
   // The catalog links the tower model viewer, which links back, and shows tower portraits.
   assert.deepEqual(classify('examples/games/tower_diffence_with_jev/extra.html'), ['tower', 'landing'])

@@ -1,0 +1,313 @@
+/**
+ * Tile collision shared by the host world and the guest predictor: terrain walk/air flags, static solid decoration,
+ * dynamic solid props (rebuilt every tick from prop states), circle movement with push-out, line tests and A*.
+ */
+import { TILE, TILE_KINDS, type TileKind } from '../vocab'
+import { SOLID_DECOR, footOf } from './stage-data'
+import type { PropView, StageInfo } from './types'
+
+export class Grid {
+  readonly w: number
+  readonly h: number
+  readonly walk: Uint8Array
+  readonly air: Uint8Array
+  /** Water/pit tiles a block can sink into. */
+  readonly sink: Uint8Array
+  readonly staticSolid: Uint8Array
+  /** Dynamic solid props (count per tile). */
+  readonly solid: Uint8Array
+  /** Bounce mushroom tiles. */
+  readonly bounce: Uint8Array
+  /** Filled water/pit tile indices (sunk blocks). */
+  readonly fills = new Set<number>()
+
+  constructor(info: StageInfo) {
+    this.w = info.w
+    this.h = info.h
+    const n = info.w * info.h
+    this.walk = new Uint8Array(n)
+    this.air = new Uint8Array(n)
+    this.sink = new Uint8Array(n)
+    this.staticSolid = new Uint8Array(n)
+    this.solid = new Uint8Array(n)
+    this.bounce = new Uint8Array(n)
+    info.tiles.forEach((k: TileKind, i) => {
+      this.walk[i] = TILE_KINDS[k].walk ? 1 : 0
+      this.air[i] = TILE_KINDS[k].air ? 1 : 0
+      this.sink[i] = k === 'water' || k === 'pit' ? 1 : 0
+    })
+    const mark = (kind: string, x: number, y: number) => {
+      const [fw, fh] = footOf(kind)
+      const tx0 = Math.round((x - (fw * TILE) / 2) / TILE)
+      const ty0 = Math.round((y - (fh * TILE) / 2) / TILE)
+      for (let j = 0; j < fh; j++) for (let i = 0; i < fw; i++) this.staticSolid[this.idx(tx0 + i, ty0 + j)] = 1
+    }
+    for (const d of info.decor) if (SOLID_DECOR.has(d.kind)) mark(d.kind, d.x, d.y)
+    for (const npc of info.npcs) mark('npc', npc.x, npc.y)
+  }
+
+  idx(tx: number, ty: number): number {
+    return ty * this.w + tx
+  }
+  inside(tx: number, ty: number): boolean {
+    return tx >= 0 && ty >= 0 && tx < this.w && ty < this.h
+  }
+
+  fill(i: number): void {
+    this.fills.add(i)
+    this.walk[i] = 1
+    this.sink[i] = 0
+  }
+
+  /** Terrain walkable (ignoring props). */
+  walkable(tx: number, ty: number): boolean {
+    return this.inside(tx, ty) && this.walk[this.idx(tx, ty)] === 1
+  }
+
+  /** Blocked for a circle at this height (airborne passes over `air` terrain but never over solids). */
+  blocked(tx: number, ty: number, airborne: boolean): boolean {
+    if (!this.inside(tx, ty)) return true
+    const i = this.idx(tx, ty)
+    if (this.staticSolid[i] || this.solid[i]) return true
+    if (this.walk[i]) return false
+    return !(airborne && this.air[i])
+  }
+
+  /** Free ground tile: walkable terrain without solids. */
+  free(tx: number, ty: number): boolean {
+    return !this.blocked(tx, ty, false)
+  }
+
+  /** Projectiles fly over air tiles and stop at walls and solids. */
+  shotBlocked(x: number, y: number): boolean {
+    const tx = Math.floor(x / TILE)
+    const ty = Math.floor(y / TILE)
+    if (!this.inside(tx, ty)) return true
+    const i = this.idx(tx, ty)
+    return !!(this.staticSolid[i] || this.solid[i]) || (!this.walk[i] && !this.air[i])
+  }
+
+  /** Rebuilds the dynamic solid layer from prop views (host: its own props; guest: the latest snapshot). */
+  setSolidProps(props: readonly Pick<PropView, 'kind' | 'state' | 'x' | 'y' | 'from' | 'to'>[]): void {
+    this.solid.fill(0)
+    this.bounce.fill(0)
+    for (const p of props) {
+      if (p.kind === 'bounce') {
+        const tx = Math.floor(p.x / TILE)
+        const ty = Math.floor(p.y / TILE)
+        if (this.inside(tx, ty)) this.bounce[this.idx(tx, ty)] = 1
+        continue
+      }
+      if (!propSolid(p.kind, p.state)) continue
+      const [fw, fh] = footOf(p.kind)
+      const centres = p.from && p.to ? [p.from, p.to] : [[p.x, p.y] as [number, number]]
+      for (const [cx, cy] of centres) {
+        const tx0 = Math.round((cx - (fw * TILE) / 2) / TILE)
+        const ty0 = Math.round((cy - (fh * TILE) / 2) / TILE)
+        for (let j = 0; j < fh; j++)
+          for (let i = 0; i < fw; i++) if (this.inside(tx0 + i, ty0 + j)) this.solid[this.idx(tx0 + i, ty0 + j)]++
+      }
+    }
+  }
+
+  /** True when a circle overlaps any blocked tile. */
+  overlaps(x: number, y: number, r: number, airborne: boolean): boolean {
+    const x0 = Math.floor((x - r) / TILE)
+    const x1 = Math.floor((x + r - 0.001) / TILE)
+    const y0 = Math.floor((y - r) / TILE)
+    const y1 = Math.floor((y + r - 0.001) / TILE)
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) {
+        if (!this.blocked(tx, ty, airborne)) continue
+        const nx = Math.max(tx * TILE, Math.min(x, tx * TILE + TILE))
+        const ny = Math.max(ty * TILE, Math.min(y, ty * TILE + TILE))
+        if ((nx - x) ** 2 + (ny - y) ** 2 < r * r - 0.01) return true
+      }
+    return false
+  }
+
+  /**
+   * Moves a circle by (dx, dy) in sub-steps, pushing it out of blocked tiles (slides along walls and corners).
+   * Returns the new position and whether the movement was obstructed.
+   */
+  move(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    r: number,
+    airborne: boolean
+  ): { x: number; y: number; hit: boolean } {
+    const dist = Math.hypot(dx, dy)
+    const steps = Math.max(1, Math.ceil(dist / 8))
+    let hit = false
+    for (let s = 0; s < steps; s++) {
+      const tx = x + dx / steps
+      const ty = y + dy / steps
+      const out = this.pushOut(tx, ty, r, airborne)
+      if (out.moved) hit = true
+      x = out.x
+      y = out.y
+    }
+    return { x, y, hit }
+  }
+
+  pushOut(x: number, y: number, r: number, airborne: boolean): { x: number; y: number; moved: boolean } {
+    let moved = false
+    for (let iter = 0; iter < 3; iter++) {
+      let any = false
+      const x0 = Math.floor((x - r) / TILE)
+      const x1 = Math.floor((x + r) / TILE)
+      const y0 = Math.floor((y - r) / TILE)
+      const y1 = Math.floor((y + r) / TILE)
+      for (let ty = y0; ty <= y1; ty++)
+        for (let tx = x0; tx <= x1; tx++) {
+          if (!this.blocked(tx, ty, airborne)) continue
+          const left = tx * TILE
+          const top = ty * TILE
+          const nx = Math.max(left, Math.min(x, left + TILE))
+          const ny = Math.max(top, Math.min(y, top + TILE))
+          let ddx = x - nx
+          let ddy = y - ny
+          const d2 = ddx * ddx + ddy * ddy
+          if (d2 >= r * r) continue
+          if (d2 > 1e-6) {
+            const d = Math.sqrt(d2)
+            x += (ddx / d) * (r - d)
+            y += (ddy / d) * (r - d)
+          } else {
+            // Centre inside the tile: leave through the nearest free side.
+            const opts: [number, number, number][] = [
+              [x - left + r, -1, 0],
+              [left + TILE - x + r, 1, 0],
+              [y - top + r, 0, -1],
+              [top + TILE - y + r, 0, 1]
+            ]
+            opts.sort((a, b) => a[0] - b[0])
+            const pick = opts.find(([, ox, oy]) => !this.blocked(tx + ox, ty + oy, airborne)) ?? opts[0]
+            ddx = pick[1] * pick[0]
+            ddy = pick[2] * pick[0]
+            x += ddx
+            y += ddy
+          }
+          any = true
+          moved = true
+        }
+      if (!any) break
+    }
+    return { x, y, moved }
+  }
+
+  /** Clear straight line for walking (sampled every 16 px with a radius). */
+  lineClear(x0: number, y0: number, x1: number, y1: number, r = 14): boolean {
+    const d = Math.hypot(x1 - x0, y1 - y0)
+    const n = Math.max(1, Math.ceil(d / 16))
+    for (let i = 1; i <= n; i++) {
+      const x = x0 + ((x1 - x0) * i) / n
+      const y = y0 + ((y1 - y0) * i) / n
+      if (this.overlaps(x, y, r, false)) return false
+    }
+    return true
+  }
+
+  /**
+   * A* on the tile grid (4-neighbour, plus diagonals without corner cutting). `jump` adds slime hops over one
+   * air tile (water, pit, fence, spikes). Returns tile indices from start (exclusive) to goal, with jump hops
+   * marked negative (−(index + 1)). Undefined when unreachable within `limit` expansions.
+   */
+  path(sx: number, sy: number, gx: number, gy: number, jump: boolean, limit = 4000): number[] | undefined {
+    if (!this.inside(sx, sy) || !this.inside(gx, gy)) return undefined
+    const start = this.idx(sx, sy)
+    const goal = this.idx(gx, gy)
+    if (start === goal) return []
+    const g = new Map<number, number>([[start, 0]])
+    const came = new Map<number, number>()
+    const hop = new Set<number>()
+    const open: [number, number][] = [[0, start]]
+    const hcost = (i: number) => Math.hypot((i % this.w) - gx, Math.floor(i / this.w) - gy)
+    let expanded = 0
+    while (open.length && expanded++ < limit) {
+      let bi = 0
+      for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i
+      const [, cur] = open[bi]
+      open[bi] = open[open.length - 1]
+      open.pop()
+      if (cur === goal) {
+        const out: number[] = []
+        let c = goal
+        while (c !== start) {
+          out.push(hop.has(c) ? -(c + 1) : c)
+          c = came.get(c)!
+        }
+        return out.reverse()
+      }
+      const cx = cur % this.w
+      const cy = Math.floor(cur / this.w)
+      const gc = g.get(cur)!
+      const tryNode = (nx: number, ny: number, cost: number, isHop: boolean) => {
+        const ni = this.idx(nx, ny)
+        const ng = gc + cost
+        if (ng >= (g.get(ni) ?? Infinity)) return
+        g.set(ni, ng)
+        came.set(ni, cur)
+        if (isHop) hop.add(ni)
+        else hop.delete(ni)
+        open.push([ng + hcost(ni), ni])
+      }
+      for (const [dx, dy] of DIR8) {
+        const nx = cx + dx
+        const ny = cy + dy
+        const goalTile = nx === gx && ny === gy
+        if (!this.free(nx, ny) && !goalTile) {
+          // Slime hop over a single air tile.
+          if (jump && dx * dy === 0 && this.inside(nx, ny)) {
+            const mid = this.idx(nx, ny)
+            const hx = cx + 2 * dx
+            const hy = cy + 2 * dy
+            if (!this.walk[mid] && this.air[mid] && !this.staticSolid[mid] && !this.solid[mid] && this.free(hx, hy))
+              tryNode(hx, hy, 3, true)
+          }
+          continue
+        }
+        if (dx && dy && (!this.free(cx + dx, cy) || !this.free(cx, cy + dy))) continue
+        tryNode(nx, ny, dx && dy ? 1.414 : 1, false)
+      }
+    }
+    return undefined
+  }
+}
+
+const DIR8: [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1]
+]
+
+/** Whether a prop in this state blocks movement (shared by host and predictor). */
+export function propSolid(kind: string, state: string): boolean {
+  switch (kind) {
+    case 'block':
+    case 'boulder':
+    case 'acorn':
+      return state === 'idle' || state === 'sliding'
+    case 'pot':
+      return state === 'idle'
+    case 'gate':
+    case 'bossdoor':
+      return state !== 'open'
+    case 'crackrock':
+      return state === 'idle'
+    case 'chest':
+    case 'crystal':
+    case 'lever':
+    case 'pedestal':
+      return true
+    default:
+      return false
+  }
+}

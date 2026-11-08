@@ -7,7 +7,7 @@ const linuxCI = process.platform === 'linux' && Boolean(process.env.CI)
 export default defineConfig({
   testDir: './tests',
   testMatch:
-    /(?:(?:landing|ember-grid|life-survivors-published|tower-title|tower-title-attract|tower-standalone|tower-special-abilities|tower-skill-bar|tower-pause|tower-stage-intel|tower-all-out|tower-music)-e2e|tower-model-review|tower-sidecar-e2e|tower-meshopt-equivalence|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement|tower-proximal-game)\.spec\.ts/,
+    /(?:(?:landing|ember-grid|life-survivors-published|mamono-jinkei-published|tower-title|tower-title-attract|tower-standalone|tower-special-abilities|tower-skill-bar|tower-pause|tower-stage-intel|tower-all-out|tower-music)-e2e|tower-model-review|tower-sidecar-e2e|tower-meshopt-equivalence|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement|tower-proximal-game)\.spec\.ts/,
   // Shard independent page fixtures at test granularity; CI overrides the local one-worker default.
   fullyParallel: true,
   workers: 1,
