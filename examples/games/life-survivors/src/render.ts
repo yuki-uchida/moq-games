@@ -423,6 +423,12 @@ export class Renderer {
     this.scale = Math.max(this.width / (VIEW_HALF.x * 2), this.height / (VIEW_HALF.y * 2)) * dpr
   }
 
+  /** Half size of the world area shown on screen (without the off-screen culling margin). */
+  get viewHalf() {
+    const k = this.scale || 1
+    return { x: this.canvas.width / 2 / k, y: this.canvas.height / 2 / k }
+  }
+
   private sprite(key: string, draw: (ctx: CanvasRenderingContext2D) => void, w: number, h: number) {
     let canvas = this.sprites.get(key)
     if (!canvas) {
