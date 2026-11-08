@@ -6,13 +6,13 @@ import { pointOnVisibleMap, towerPath } from './tower-defense-e2e-arrange'
 
 test.use({ hasTouch: true })
 
-async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true) {
+async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true, sandbagPathStart = 1) {
   const save = freshSave()
   if (!['soldier', 'archer', 'runner', 'tank'].includes(type)) save.purchased.push(type)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0)
   engine.place(type, FIELDS.meadow.slots[0].id)
   const bagPoint = engine.state.units[0]
-  for (const point of FIELDS.meadow.path.slice(1, -1)) if (engine.placeSandbag(point).valid) break
+  for (const point of FIELDS.meadow.path.slice(sandbagPathStart, -1)) if (engine.placeSandbag(point).valid) break
   const unit = engine.state.units[0],
     checkpoint = engine.exportCheckpoint()!
   expect(checkpoint).not.toBeNull()
@@ -52,7 +52,7 @@ for (const mobile of [false, true])
     page
   }, info) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 })
-    const { unit, bag } = await seed(page)
+    const { unit, bag } = await seed(page, 'soldier', true, 5)
     const handle = page.locator(`.defender-handle[data-unit-id="${unit.id}"]`)
     await pointOnVisibleMap(page, unit)
     if (mobile) await handle.tap()

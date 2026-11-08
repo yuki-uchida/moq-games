@@ -8,7 +8,7 @@ export default defineConfig({
   testDir: './tests',
   testMatch:
     /(?:(?:landing|ember-grid|life-survivors-published|tower-title|tower-standalone|tower-special-abilities|tower-skill-bar|tower-pause|tower-stage-intel|tower-all-out|tower-music)-e2e|tower-model-review|tower-sidecar-e2e|tower-meshopt-equivalence|tower-published-audio|tower-real3d-game|tower-compact-field|tower-road-placement|tower-proximal-game)\.spec\.ts/,
-  // Shard independent page fixtures at test granularity; each runner still uses one worker.
+  // Shard independent page fixtures at test granularity; CI overrides the local one-worker default.
   fullyParallel: true,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
