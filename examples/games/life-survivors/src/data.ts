@@ -742,7 +742,7 @@ export interface PassiveDef {
 export const PASSIVES: PassiveDef[] = [
   { id: 'p_diligent', category: 'study', name: '勤勉', icon: '📖', desc: 'クールダウン -5%' },
   { id: 'p_stubborn', category: 'sports', name: '頑固', icon: '🗿', desc: '防御 +1' },
-  { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +10%' },
+  { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +5%' },
   { id: 'p_kind', category: 'friend', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
   { id: 'p_greedy', category: 'invest', name: 'がめつい', icon: '🤑', desc: '経験値 +10%・回収範囲 +25%' },
   { id: 'p_bold', category: 'sports', name: '図太い', icon: '🐘', desc: '最大精神力 +20' },

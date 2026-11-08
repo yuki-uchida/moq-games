@@ -154,3 +154,15 @@ test('serialized public views hide all live talents and reveal all six only at t
     }
   }
 })
+
+test('hot passive raises might by half as much as courage', () => {
+  const might = (id: string) => {
+    const player = new Game(1).addPlayer('a', 'p_gone')!
+    player.talents.love = player.talents.sports
+    const base = playerStats(player).might
+    player.passives = [{ id, lv: 1 }]
+    return playerStats(player).might / base - 1
+  }
+  expect(might('p_hot')).toBeGreaterThan(0)
+  expect(might('p_hot')).toBeCloseTo(might('p_courage') / 2)
+})
