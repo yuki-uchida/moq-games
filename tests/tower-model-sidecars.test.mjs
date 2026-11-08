@@ -121,3 +121,42 @@ test('rejects a vertex reorder that changes a shared animation accessor', async 
   const derived = await compressGlb(source, createHash('sha256').update(source).digest('hex'))
   await assert.rejects(verifyModelSidecar(source, derived), /animation\/bind data must remain exact/)
 })
+
+test('worker pool keeps manifest order and rejects with the original error when one model fails', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'moq-sidecars-pool-'))
+  try {
+    const dir = resolve(root, 'public/tower-defense-art/models/role')
+    await mkdir(dir, { recursive: true })
+    await mkdir(resolve(root, 'dist/tower-defense-art/models/role'), { recursive: true })
+    const models = []
+    for (let i = 0; i < 7; i++) {
+      const bytes = quadGlb()
+      await writeFile(resolve(dir, `m${i}.glb`), bytes)
+      models.push({
+        file: `role/m${i}.glb`,
+        bytes: bytes.length,
+        outputSha256: createHash('sha256').update(bytes).digest('hex')
+      })
+    }
+    const manifestPath = resolve(root, 'public/tower-defense-art/models/runtime-manifest.json')
+    const plugin = towerModelSidecars(root)
+    plugin.configResolved({ root, build: { outDir: 'dist' } })
+    await writeFile(manifestPath, JSON.stringify({ models }))
+    await plugin.closeBundle()
+    const digests = JSON.parse(await readFile(resolve(root, '.build/model-sidecar-digests.json'), 'utf8'))
+    assert.deepEqual(
+      digests.models.map((m) => m.file),
+      models.map((m) => m.file)
+    )
+
+    await writeFile(manifestPath, JSON.stringify({ models: models.map((m, i) => (i === 4 ? { ...m, bytes: 1 } : m)) }))
+    await assert.rejects(plugin.closeBundle(), /^Error: Model sidecar source mismatch: role[\\/]m4\.glb$/)
+    await writeFile(
+      manifestPath,
+      JSON.stringify({ models: models.map((m, i) => (i === 2 ? { ...m, file: '../x.glb' } : m)) })
+    )
+    await assert.rejects(plugin.closeBundle(), /^Error: Invalid model sidecar path$/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
