@@ -47,6 +47,7 @@ import {
   playerBox,
   type Box,
   type FoodLabelEntry,
+  type LabelMemory,
   type FoodSpot
 } from './food-layout'
 import { parentMemorialAt } from './hud'
@@ -375,7 +376,9 @@ export class Renderer {
   private hudRects: (Box & { opaque?: boolean })[] = []
   private readonly textWidths = new Map<string, number>()
   /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
-  private readonly foodLabelMemory = new Map<string, number>()
+  private readonly foodLabelMemory: LabelMemory = new Map()
+  /** Opacity of the food labels: dimmed with the world while your own death plays. */
+  private foodLabelAlpha = 1
   /** Food layout of the last frame, reused while the visible foods stay where they are. */
   private foodLayout: { key: string; spots: FoodSpot[] } = { key: '', spots: [] }
   private readonly enemySheets: (Sheet | undefined)[] = []
@@ -604,6 +607,7 @@ export class Renderer {
     const ctx = this.ctx
     this.world()
     ctx.save()
+    ctx.globalAlpha = this.foodLabelAlpha
     ctx.font = 'bold 13px sans-serif'
     ctx.textAlign = 'center'
     ctx.lineWidth = 3
@@ -649,12 +653,14 @@ export class Renderer {
     }))
     for (const { box, lines: shown, leader } of placeFoodLabels(
       labelPiles,
-      [...sprites, ...players, ...hud],
+      [...sprites, ...hud],
       visible,
       viewport,
       measure,
       this.foodLabelMemory,
-      occluders
+      occluders,
+      players,
+      this.clock * 1000
     )) {
       const cx = (box.left + box.right) / 2
       // A block pushed away from its pile gets a thin leader to it, so crowded labels still point at their foods.
@@ -2624,9 +2630,11 @@ export class Renderer {
     // While your own death plays, the world dims around a spotlight on the body (others' deaths don't).
     const mine = view.players.find((p) => p.id === localId)
     const dying = mine?.downed ? this.deaths.get(mine.id) : undefined
+    this.foodLabelAlpha = 1
     if (mine && dying) {
       const pos = positions.get(mine.id)!
       const k = Math.min(1, (this.clock - dying.at) / 0.6)
+      this.foodLabelAlpha = 1 - 0.75 * k
       const grad = ctx.createRadialGradient(pos.x, pos.y - 8, 26, pos.x, pos.y - 8, 240)
       grad.addColorStop(0, 'rgba(8,5,14,0)')
       grad.addColorStop(0.25, `rgba(8,5,14,${0.5 * k})`)

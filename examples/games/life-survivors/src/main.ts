@@ -827,7 +827,13 @@ function reflection(player: ViewPlayer) {
   const parent = WEAPON_BY_ID.get(player.parent)!
   add(
     `親${player.parentDeath ? '（他界）' : ''}：${parent.name}`,
-    [parent.desc, parent.perk].filter(Boolean).join(' '),
+    [
+      parent.desc,
+      parent.perk,
+      player.parent === 'p_gone' ? '' : `与えた力 ${(player.parentDamage ?? 0).toLocaleString()}`
+    ]
+      .filter(Boolean)
+      .join(' '),
     '',
     player.parent
   )

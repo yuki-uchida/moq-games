@@ -723,10 +723,13 @@ for (const [parent, description] of [
     await expect.poll(() => page.locator('#weapons .parent').getAttribute('title')).toContain(description)
     await handle.evaluate((hook) => {
       const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      player.parentDamage = 12345.4
       game.state.phase = 'lost'
     })
     await expect(page.locator('#result')).toBeVisible({ timeout: 8000 })
     await expect(page.locator('#result-build')).toContainText(description)
+    await expect(page.locator('#result-build > div').first()).toContainText('与えた力 12,345')
   })
 }
 

@@ -15,6 +15,8 @@ import {
   foodSpriteBox,
   labelCandidates,
   LABEL_LINE,
+  LABEL_PATIENCE_MS,
+  LABEL_RETURN_MS,
   layoutFoods,
   leaderLine,
   LEADER_MIN,
@@ -32,6 +34,7 @@ import {
   type FoodPoint,
   type FoodSpot,
   type LabelBlock,
+  type LabelMemory,
   type Segment
 } from '../src/food-layout'
 
@@ -338,7 +341,7 @@ describe('placeLabelBlocks', () => {
       { x: 60, y: 10 }
     ])
     const player = playerBox(10, -20, 1, 0, { name: 70, buffs: 120, badge: false })
-    const memory = new Map<string, number>()
+    const memory: LabelMemory = new Map()
     const first = placeLabelBlocks(blocks, [...sprites, ...player], viewport, memory)
     expect(placeLabelBlocks(blocks, [...sprites, ...player], viewport, memory)).toEqual(first)
     // The player moves 2 px: the first block's preferred spot changes, but the remembered one is still free.
@@ -565,7 +568,7 @@ describe('placeFoodLabels', () => {
     ).flat()
     const hud = phoneHud(s)
     const obstacles = [...sprites, ...players, ...hud]
-    const memory = new Map<string, number>()
+    const memory: LabelMemory = new Map()
     const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure, memory)
     expectClear(placed, obstacles, s.viewport)
     expect(placed.map((p) => p.pile)).toEqual([0, 1, 2, 3])
@@ -825,5 +828,97 @@ describe('hidden foods and leader lines in placeFoodLabels', () => {
       expectNamed(placed, piles)
       expect(placed.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('placeFoodLabels over time', () => {
+  const s = screen(1280, 720)
+  const one = labelPiles([{ x: 0, y: 0 }], [0])
+  const place = (
+    obstacles: Box[],
+    memory?: LabelMemory,
+    now = 0,
+    players: Box[] = []
+  ): FoodLabelPlacement | undefined =>
+    placeFoodLabels(
+      one.piles,
+      [...one.sprites, ...obstacles],
+      s.visible,
+      s.viewport,
+      measure,
+      memory,
+      [],
+      players,
+      now
+    )[0]
+  const home = place([])!
+  /** A banner over the preferred spot only. */
+  const banner: Box = { ...home.box, left: home.box.left - 2, right: home.box.right + 2 }
+
+  it('puts the preferred spot back only after it has stayed free for LABEL_RETURN_MS', () => {
+    const memory: LabelMemory = new Map()
+    const pushed = place([banner], memory, 0)!
+    expect(pushed.box).not.toEqual(home.box)
+    const t0 = 5000
+    expect(place([], memory, t0)!.box).toEqual(pushed.box)
+    expect(place([], memory, t0 + LABEL_RETURN_MS - 1)!.box).toEqual(pushed.box)
+    expect(place([], memory, t0 + LABEL_RETURN_MS)!.box).toEqual(home.box)
+  })
+
+  it('restarts the wait when the spot is taken again', () => {
+    const memory: LabelMemory = new Map()
+    const pushed = place([banner], memory, 0)!
+    const t0 = 5000
+    expect(place([], memory, t0)!.box).toEqual(pushed.box)
+    expect(place([banner], memory, t0 + 200)!.box).toEqual(pushed.box)
+    expect(place([], memory, t0 + 300)!.box).toEqual(pushed.box)
+    expect(place([], memory, t0 + 699)!.box).toEqual(pushed.box)
+    expect(place([], memory, t0 + 700)!.box).toEqual(home.box)
+  })
+
+  it('keeps a spot a passing player covers, and moves once, only after LABEL_PATIENCE_MS', () => {
+    const memory: LabelMemory = new Map()
+    const first = place([], memory, 0)!
+    expect(first.box).toEqual(home.box)
+    const cover = [{ ...home.box }]
+    const t0 = 1000
+    for (const dt of [0, 300, LABEL_PATIENCE_MS - 1]) {
+      const kept = place([], memory, t0 + dt, cover)!
+      expect(kept.box).toEqual(first.box)
+      expect(kept.leader).toEqual(first.leader)
+    }
+    // The player leaves in time: nothing ever moved.
+    expect(place([], memory, t0 + LABEL_PATIENCE_MS + 5, [])!.box).toEqual(first.box)
+    // Covered for good: one move to the first spot clear of the player.
+    const memory2: LabelMemory = new Map()
+    place([], memory2, 0)
+    for (const dt of [0, 400, LABEL_PATIENCE_MS - 1]) place([], memory2, t0 + dt, cover)
+    const moved = place([], memory2, t0 + LABEL_PATIENCE_MS, cover)!
+    expect(moved.box).toEqual(place([], undefined, 0, cover)!.box)
+    expect(moved.box).not.toEqual(first.box)
+    expect(place([], memory2, t0 + LABEL_PATIENCE_MS + 16, cover)!.box).toEqual(moved.box)
+  })
+
+  it('does not jitter while a player walks up to the label from below', () => {
+    const memory: LabelMemory = new Map()
+    const tags = { name: 60, buffs: 140, badge: false }
+    let last: Box | undefined
+    let changes = 0
+    let now = 0
+    for (let feet = 260; feet >= -260; feet -= 2) {
+      const players = playerBox(home.box.left + 20, feet, 1, 0, tags)
+      const placed = place([], memory, now, players)
+      if (placed && last && !sameBox(placed.box, last)) changes++
+      if (placed) last = placed.box
+      now += 16
+    }
+    expect(changes).toBeLessThanOrEqual(1)
+  })
+
+  it('does not move a settled block while time passes with the same obstacles', () => {
+    const memory: LabelMemory = new Map()
+    const players = playerBox(home.box.left + 400, 100, 1, 0, { name: 60, buffs: 0, badge: false })
+    const settled = place([banner], memory, 0, players)!
+    for (let now = 16; now < 5000; now += 16) expect(place([banner], memory, now, players)!.box).toEqual(settled.box)
   })
 })
