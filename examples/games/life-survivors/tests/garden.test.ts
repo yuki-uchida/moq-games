@@ -50,7 +50,7 @@ test('all five upgrades affect garden seeds or flowers', () => {
   expect(Math.hypot(curious.shot.vx, curious.shot.vy)).toBeCloseTo(Math.hypot(base.shot.vx, base.shot.vy) * 1.1)
   expect(kind.shot.r).toBeCloseTo(base.shot.r * 1.08)
   expect(clever.game.state.shots).toHaveLength(2)
-  expect(diligent.weapon.cd).toBeCloseTo(base.weapon.cd * 0.93)
+  expect(diligent.weapon.cd).toBeCloseTo(base.weapon.cd * 0.95)
 
   expect(curious.shot.aux).toBeLessThan(base.shot.aux)
   for (const arena of [base, curious, kind]) arena.game['moveShots'](0.81)

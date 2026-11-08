@@ -37,13 +37,13 @@ test.each([1, 2, 3, 4, 5, 6, 7, 8])('sports level %s extends duration instead of
   const game = new Game(1)
   const player = game.addPlayer('a', 'p_gone')!
   const weapon = { id: 'w_sports', lv: level, cd: 0, held: 0, damage: 0 }
-  const duration = 3 * (1 + Number(level >= 2) + Number(level >= 5) + Number(level >= 8))
+  const duration = 3 + 2 * (Number(level >= 2) + Number(level >= 5) + Number(level >= 8))
   player.passives = []
   expect(weaponStats(player, weapon).amount).toBe(1)
-  expect(weaponStats(player, weapon).duration).toBe(duration)
+  expect(weaponStats(player, weapon).duration).toBeCloseTo(duration)
   player.weapons = [weapon]
   if ([1, 4, 7].includes(level)) {
-    expect(choiceText(player, 'w:w_sports').text).toContain('効果時間 +3秒')
+    expect(choiceText(player, 'w:w_sports').text).toContain('効果時間 +2秒')
     expect(choiceText(player, 'w:w_sports').text).not.toContain('数 +1')
   }
   player.passives = [{ id: 'p_clever', lv: 4 }, { id: 'p_curious', lv: 5 }]
