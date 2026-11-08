@@ -74,6 +74,9 @@ export function raidReach(t: number) {
   return 1 - (t - RAID.back) / (1 - RAID.back)
 }
 const PLAYER_RADIUS = 14
+/** 過保護: how far a standing parent sits above (behind) the child, and how far apart two of them stand. */
+const GUARDIAN_STILL_LIFT = 5
+const GUARDIAN_STILL_SPREAD = 0.6
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -215,6 +218,8 @@ export interface Shot {
   r: number
   angle: number
   guardianHeading?: number
+  /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (tucked behind them, guarding all round). */
+  guardianStill?: number
   orbit: number
   spin: number
   life: number
@@ -1923,6 +1928,7 @@ export class Game {
           this.shot(player, weapon, def, ws, {
             angle: (i / n) * Math.PI * 2,
             guardianHeading: def.id === 'p_over' ? Math.atan2(player.fy, player.fx) : undefined,
+            guardianStill: def.id === 'p_over' ? Number(player.still > 0) : undefined,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
@@ -2477,9 +2483,17 @@ export class Game {
     shot.guardianHeading = heading + difference * (1 - Math.exp(-8 * dt))
     const forwardX = Math.cos(shot.guardianHeading)
     const forwardY = Math.sin(shot.guardianHeading)
+    const still =
+      (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
+    shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
+    const walking = 1 - shot.guardianStill
     const side = shot.h * shot.r * 1.5
-    shot.x = owner.x + forwardX * shot.orbit * 0.65 - forwardY * side
-    shot.y = owner.y + forwardY * shot.orbit * 0.65 + forwardX * side
+    shot.x =
+      owner.x +
+      (forwardX * shot.orbit * 0.65 - forwardY * side) * walking +
+      shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
+    shot.y =
+      owner.y + (forwardY * shot.orbit * 0.65 + forwardX * side) * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)
@@ -2583,6 +2597,13 @@ export class Game {
 
   private shieldTouches(shot: Shot, x: number, y: number, radius: number) {
     const scale = shot.r / 20
+    // Standing still the parent stands right behind the child and covers every side.
+    if ((shot.guardianStill ?? 0) >= 0.5) {
+      const reach = shot.orbit * 0.65 + 7 * scale + radius
+      const dx = x - (shot.x - shot.h * shot.r * GUARDIAN_STILL_SPREAD)
+      const dy = y - (shot.y + GUARDIAN_STILL_LIFT)
+      return dx * dx + dy * dy <= reach * reach
+    }
     const thrust = shot.aux > 0 ? Math.sin(Math.PI * (1 - Math.min(1, shot.aux / shot.tick))) * 14 : 0
     const centerX = shot.x + (Math.cos(shot.angle) < 0 ? -7 : 7) * scale + Math.cos(shot.angle) * thrust
     const dx = Math.max(Math.abs(x - centerX) - 7 * scale, 0)

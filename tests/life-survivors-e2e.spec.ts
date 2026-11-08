@@ -1309,6 +1309,47 @@ test('overprotective parents swing and fade their shields for local and co-op vi
   ])
 })
 
+test('overprotective parents of a still child are drawn behind them at their eased position', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const draws = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.enemies = []
+    const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
+    view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0]
+    const renderer = new Renderer(document.createElement('canvas'))
+    const events: string[] = []
+    let drawingShot = false
+    const topShot = renderer.topShot.bind(renderer)
+    renderer.topShot = (...args: unknown[]) => {
+      drawingShot = true
+      topShot(...args)
+      drawingShot = false
+    }
+    const drawPlayer = renderer.player.bind(renderer)
+    renderer.player = (...args: unknown[]) => {
+      events.push('player')
+      return drawPlayer(...args)
+    }
+    const centred = renderer.centred.bind(renderer)
+    renderer.centred = (...args: [unknown, number, number]) => {
+      if (Math.abs(args[1] - player.x - 6) < 0.01 && Math.abs(args[2] - player.y + 5) < 0.01)
+        events.push(drawingShot ? 'top' : 'guardian')
+      centred(...args)
+    }
+    renderer.draw(view, life.localId, 0.016, false)
+    return events
+  })
+  expect(draws).toEqual(['guardian', 'guardian', 'player'])
+})
+
 test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
@@ -2701,6 +2742,7 @@ test('guests receive forward-facing guards and their shield-bash motion', async 
       player.birthPick = false
       player.fx = index ? 0 : 1
       player.fy = index ? -1 : 0
+      player.still = 0
     })
     game['buildGrid']()
     game['fireWeapons'](0)

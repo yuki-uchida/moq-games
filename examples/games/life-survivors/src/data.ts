@@ -252,7 +252,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '進行方向で盾を振り敵を弾く。常時・クールダウン無効。盾は敵の投射物も1回防ぐ。詳しくは「?」へ。',
+    desc: '進行方向で盾を振り敵を弾く（停止中は全方位）。常時・クールダウン無効。盾は敵の投射物も1回防ぐ。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({

@@ -136,12 +136,14 @@ describe('毒親: 18歳まで親を含めて手札3枠', () => {
 })
 
 describe('過保護: 攻撃と防御を兼ねる盾', () => {
-  function guarded() {
+  /** A walking (→) owner with both guardians ahead; pass false for a child standing still. */
+  function guarded(walking = true) {
     const game = new Game(71)
     const player = game.addPlayer('a', 'p_over')!
     game.targetPopulation = () => 0
     player.weapons[0].lv = 4
     player.weapons[0].cd = 0
+    if (walking) game.setInput(player.id, { x: 1, y: 0 })
     game.tick(1 / 60)
     return { game, player }
   }
@@ -274,7 +276,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
   test.each([1, -1])('only enemies overlapping the visible shield are hit (%i)', (side) => {
     const { game, player } = guarded()
     const shield = game.state.shots[0]
-    player.fx = side
+    game.setInput(player.id, { x: side, y: 0 })
     game.tick(0)
     const behind = game.spawnEnemy('germ', shield.x - side * 25, shield.y)!
     const inFront = game.spawnEnemy('germ', shield.x + side * 20, shield.y)!
@@ -302,8 +304,8 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game.tick(1 / 60)
     const shield = game.state.shots.find((shot) => shot.v === 1)!
     game.state.shots = [shield]
-    player.fx = side
-    player.fy = 0
+    game.setInput(player.id, { x: side, y: 0 })
+    game.tick(0)
     shield.guardianHeading = Math.atan2(player.fy, player.fx)
     shield.aux = 0
     game.tick(0)
@@ -324,13 +326,13 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     const { game, player } = guarded()
     const shield = game.state.shots[0]
     game.state.shots = [shield]
-    const startX = shield.x
-    const startY = shield.y
+    const startX = shield.x - player.x
+    const startY = shield.y - player.y
     const enemy = game.spawnEnemy('germ', player.x + 200, player.y)!
     enemy.hp = enemy.maxHp = 1000
     for (let frame = 0; frame < 10; frame++) game.tick(1 / 60)
-    expect(shield.x).toBeCloseTo(startX)
-    expect(shield.y).toBeCloseTo(startY)
+    expect(shield.x - player.x).toBeCloseTo(startX)
+    expect(shield.y - player.y).toBeCloseTo(startY)
     expect(enemy.hp).toBe(enemy.maxHp)
   })
 
@@ -424,8 +426,59 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     for (let frame = 0; frame < 120; frame++) game.tick(1 / 60)
     expect(player.fx).toBeCloseTo(-Math.SQRT1_2)
     expect(player.fy).toBeCloseTo(-Math.SQRT1_2)
-    for (const guard of game.state.shots.filter((shot) => shot.owner === player.id))
-      expect((guard.x - player.x) * player.fx + (guard.y - player.y) * player.fy).toBeGreaterThan(0)
+    const stopped = game.state.shots.filter((shot) => shot.owner === player.id)
+    for (const guard of stopped) {
+      expect(guard.guardianStill).toBe(1)
+      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.r)
+    }
+    expect(stopped[0].x).toBeLessThan(stopped[1].x)
+    for (const guard of game.state.shots.filter((shot) => shot.owner === other.id))
+      expect((guard.x - other.x) * other.fx + (guard.y - other.y) * other.fy).toBeCloseTo(guard.orbit * 0.65)
+  })
+
+  test('a still child is guarded from every side, and the parents step ahead again once they walk', () => {
+    const { game, player } = guarded(false)
+    const guards = game.state.shots.filter((shot) => shot.owner === player.id)
+    expect(guards).toHaveLength(2)
+    for (const guard of guards) {
+      expect(guard.guardianStill).toBe(1)
+      expect(guard.y).toBeLessThan(player.y)
+      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.r)
+    }
+    const reach = guards[0].orbit * 0.65
+    for (const [x, y] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [-Math.SQRT1_2, Math.SQRT1_2]
+    ]) {
+      game.state.enemies = []
+      for (const guard of guards) guard.aux = 0
+      const enemy = game.spawnEnemy('germ', player.x + x * reach, player.y + y * reach)!
+      enemy.hp = enemy.maxHp = 1000
+      enemy.elite = false
+      game.tick(0)
+      expect(enemy.hp).toBeLessThan(1000)
+      expect(enemy.kx * x + enemy.ky * y).toBeGreaterThan(0)
+    }
+    game.state.enemies = []
+    for (const guard of guards) guard.aux = 0
+    const bullet = { x: player.x - reach, y: player.y, vx: 0, vy: 0, r: 4, damage: 20, life: 2, kind: 0, src: 'germ' }
+    game.state.bullets.push(bullet)
+    game.tick(0)
+    expect(game.state.bullets).toEqual([])
+    expect(player.hp).toBe(player.maxHp)
+    const far = game.spawnEnemy('germ', player.x - reach * 2, player.y)!
+    game.tick(0)
+    expect(far.hp).toBe(far.maxHp)
+    game.state.enemies = []
+    game.setInput(player.id, { x: 0, y: -1 })
+    for (let frame = 0; frame < 120; frame++) game.tick(1 / 60)
+    for (const guard of guards) {
+      expect(guard.guardianStill).toBe(0)
+      expect(-(guard.y - player.y)).toBeCloseTo(guard.orbit * 0.65)
+    }
   })
 
   test('guards are permanent, replenish at a fixed interval and ignore cooldown reductions', () => {
