@@ -379,8 +379,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/moq-mesa-shader-cache
-          # Each shard retains its own shaders instead of racing to save one shared cache.
-          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}
+          # Reuse compatible shards (including old keys), but save each shard separately.
+          key: moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-${{ matrix.shard }}-cache
+          restore-keys: |
+            moq-mesa-shader-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.mesa-cache-platform.outputs.mesa }}-${{ steps.mesa-cache-platform.outputs.cpu }}-${{ hashFiles('package-lock.json') }}-
       # Balance collected tests by measured duration so cold starts do not bunch up.
       - name: Select this shard's tests
         id: shard
