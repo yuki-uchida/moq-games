@@ -375,6 +375,14 @@ export function isEvolved(player: Player, weapon: OwnedWeapon) {
   return Boolean(def?.evolve && weapon.lv >= MAX_WEAPON_LEVEL && passiveLevel(player, def.evolve.passive) > 0)
 }
 
+/** 生き物観察 holds 10 enemies at Lv1, 10 more per level (80 at Lv8) and 100 once evolved. */
+export function observationTargets(player: Player, weapon: OwnedWeapon) {
+  const levels = WEAPON_LEVELS.w_observe.slice(0, weapon.lv - 1)
+  return (
+    10 + levels.reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0) + (isEvolved(player, weapon) ? 20 : 0)
+  )
+}
+
 export function weaponName(player: Player, weapon: OwnedWeapon, age?: number) {
   const def = WEAPON_BY_ID.get(weapon.id)!
   const name = age === undefined ? def.name : weaponAppearance(weapon.id, age, age - (weapon.acquiredAge ?? age)).name
@@ -2119,9 +2127,7 @@ export class Game {
         this.shot(player, weapon, def, ws, {
           x: player.x + player.fx * 50,
           y: player.y + player.fy * 50,
-          w:
-            5 +
-            WEAPON_LEVELS[def.id].slice(0, weapon.lv - 1).reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0),
+          w: observationTargets(player, weapon),
           v: form * 2 + 1,
           tick: 0.5
         })
