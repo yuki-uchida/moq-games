@@ -241,8 +241,8 @@ Stage outlines:
 4. **月影の森と白銀の砦** (wolf, light `night`): a moonlit snowy forest, then the guild's silver fortress.
    - **Darkness**: each hero lights ~110 px; howls flash a big light for a moment; braziers and lit moonstones
      light their surroundings. Enemies in the dark are drawn only near light.
-   - **Moonstones** (`moonstone`): a howl within 160 px lights one for 6 s; a gate opens while all stones of a set
-     are lit (split: dark clearings each need their own wolf). **Big moonstones** (`bigmoon`) need 共鳴 (two
+   - **Moonstones** (`moonstone`): a howl within 160 px lights one for 6 s; the set latches open once all of its stones
+     are lit at the same time (split: dark clearings each need their own wolf). **Big moonstones** (`bigmoon`) need 共鳴 (two
      howls within 0.6 s) or the pack technique (tier ≥ 3).
    - **Ice** floor slides; **ice blocks** (`iceblock`, weight 2) slide until blocked (sliding puzzles);
      **ice walls** (`icewall`) only shatter under the pack technique (月下群狼陣).
