@@ -655,8 +655,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 1.5,
     pierce: 1,
     strong: ['money'],
-    minAge: 12,
-    desc: '12秒ごとに攻撃武器を抽選し、次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
+    minAge: 15,
+    desc: '12秒ごとに攻撃武器を抽選し、威力半分で次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
     evolve: { passive: 'p_lucky', name: '大穴的中' }
   }),
   weapon({

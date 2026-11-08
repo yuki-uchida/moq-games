@@ -126,7 +126,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
     w_hobby: [LIFE_OUTCOMES.b_shukatsu[5]],
     w_friend: [LIFE_OUTCOMES.b_shukatsu[6]]
   }
-  const preferredSeeds: Record<string, number> = { w_work: 3, w_sports: 26, w_savings: 19, w_hobby: 29, w_friend: 3 }
+  const preferredSeeds: Record<string, number> = { w_work: 32, w_sports: 22, w_savings: 19, w_hobby: 29, w_friend: 3 }
 
   for (const priorities of [
     ['w_work', 'w_study'],

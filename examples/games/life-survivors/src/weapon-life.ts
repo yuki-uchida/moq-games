@@ -30,7 +30,7 @@ export function outdoorForm(age: number) {
 }
 
 export const GAMBLE_FORMS = [
-  { age: 12, key: 'gacha', name: '課金', icon: '🎁' },
+  { age: 15, key: 'gacha', name: '課金', icon: '🎁' },
   { age: 18, key: 'poker', name: 'ポーカー', icon: '🃏' },
   { age: 23, key: 'pachinko', name: 'パチンコ', icon: '🎰' },
   { age: 50, key: 'horse', name: '競馬', icon: '🏇' }

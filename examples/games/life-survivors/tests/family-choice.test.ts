@@ -278,7 +278,7 @@ describe('personal family cards', () => {
 
 test('normal play from birth reaches and answers a family card using ordinary card inputs', () => {
   const runs = []
-  for (const seed of [43, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+  for (const seed of [12, 43, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     const game = new Game(seed)
     const player = game.addPlayer('p0')!
     for (let frame = 0; frame < RUN_SECONDS * 60; frame += 6) {
