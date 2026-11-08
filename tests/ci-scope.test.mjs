@@ -86,12 +86,12 @@ test('SDK jobs prefer generated-only exact caches and always verify before insta
   }
 })
 
-test('only changes, browser and deploy omit public from checkout without limiting Git history', () => {
+test('only jobs that never read public assets omit public from checkout without limiting Git history', () => {
   const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
     '\r\n',
     '\n'
   )
-  for (const name of ['changes', 'browser', 'deploy']) {
+  for (const name of ['changes', 'lane-node', 'life-browser', 'browser', 'deploy']) {
     const job = workflow.match(new RegExp('^  ' + name + ':\\n([\\s\\S]*?)(?=^  \\S|(?![\\s\\S]))', 'm'))?.[1]
     assert.ok(job, name)
     const checkout = job.split(/^      - /m).find((step) => step.startsWith('uses: actions/checkout@v4'))
@@ -110,9 +110,22 @@ test('only changes, browser and deploy omit public from checkout without limitin
     )
   }
   assert.doesNotMatch(
-    workflow.replace(/^  (?:changes|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
+    workflow.replace(/^  (?:changes|lane-node|life-browser|browser|deploy):\n[\s\S]*?(?=^  \S|(?![\s\S]))/gm, ''),
     /sparse-checkout/
   )
+  // Lane Battle and life-survivors serve their own folders; neither suite nor its imports reads the public assets.
+  for (const scope of ['lane-battle', 'life-survivors']) {
+    const files = new Set(importEdges(scope).flatMap(({ file, target }) => [file, target].filter(Boolean)))
+    for (const file of [...files, `examples/games/${scope}/index.html`]) {
+      assert.doesNotMatch(file, /^public\//, scope)
+      if (/\.([cm]?[jt]sx?|html)$/.test(file))
+        assert.doesNotMatch(
+          readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'),
+          /\bpublic\/|tower-defense-/,
+          `${scope}: ${file}`
+        )
+    }
+  }
 })
 
 test('Pages browser caches only Mesa shaders with exact stable platform and dependency keys', () => {
@@ -602,11 +615,23 @@ test('life browser shards run independently and gate publication', () => {
   assert.match(browser, /^    needs: changes$/m)
   assert.match(browser, /^    if: needs\.changes\.outputs\.life == 'true'$/m)
   assert.match(browser, /fail-fast: false/)
-  assert.match(browser, /^        shard: \[1, 2, 3\]$/m)
-  assert.match(
-    browser,
-    /^        run: npm run e2e:life-survivors -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --workers=2$/m
+  assert.match(browser, /^        shard: \[1, 2, 3, 4\]$/m)
+  assert.ok(
+    browser.includes(
+      [
+        "      - name: Select this shard's life-survivors tests",
+        '        shell: bash',
+        '        run: |',
+        '          npx playwright test --config playwright.life-survivors.config.ts --list |',
+        '            node scripts/ci-pages-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }} > shard-tests.txt',
+        '          cat shard-tests.txt',
+        '          test -s shard-tests.txt',
+        '      - name: Test life-survivors in Chromium',
+        '        run: npm run e2e:life-survivors -- --test-list shard-tests.txt --workers=2\n'
+      ].join('\n')
+    )
   )
+  assert.doesNotMatch(browser, /--shard=/)
   assert.match(browser, /name: life-survivors-browser-\$\{\{ github\.sha \}\}-shard-\$\{\{ matrix\.shard \}\}/)
   assert.match(deploy, /needs: \[[^\]\n]*\blife-browser\b[^\]\n]*\]/)
   assert.match(deploy, /\(needs\.life-browser\.result == 'success' \|\| needs\.life-browser\.result == 'skipped'\) &&/)
@@ -721,7 +746,7 @@ test('Lane Node discovery shards every file and all ten realistic cases exactly 
 })
 
 test(
-  'life browser shards partition every test without duplicates',
+  'life browser shards deal sorted tests in turn and recollect each exactly once',
   {
     skip:
       !existsSync(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)) &&
@@ -742,10 +767,9 @@ test(
         ],
         { cwd: root, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } }
       )
-        .split(/\r?\n/)
-        .filter((line) => line.includes(' › '))
-        .map((line) => line.trim())
-    const all = list()
+    const source = list()
+    const all = parsePagesList(source)
+    assert.ok(all.length > 0)
     const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
       '\r\n',
       '\n'
@@ -753,14 +777,39 @@ test(
     const browser = workflow.match(/^  life-browser:\n([\s\S]*?)(?=^  \S)/m)?.[1]
     assert.ok(browser)
     const shards = JSON.parse(browser.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
-    assert.deepEqual(shards, [1, 2, 3])
-    const partitions = shards.map((shard) => list(`--shard=${shard}/${shards.length}`, '--workers=2'))
-    const counts = partitions.map((partition) => partition.length)
-    assert.ok(counts.every((count) => count > 0))
-    assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
-    const selected = partitions.flat()
-    assert.equal(new Set(selected).size, selected.length)
-    assert.deepEqual(selected.sort(), all.sort())
+    assert.deepEqual(shards, [1, 2, 3, 4])
+    // Equal weights deal the sorted titles in turn, which spreads each family of viewport or stage variants.
+    const weights = JSON.parse(readFileSync(join(root, 'scripts/ci-pages-weights.json'), 'utf8'))
+    assert.ok(all.every((name) => weights.seconds[`tests/${name}`] === undefined))
+    const directory = mkdtempSync(join(tmpdir(), 'life-browser-shards-'))
+    try {
+      const partitions = shards.map((shard) => {
+        const output = execFileSync(
+          process.execPath,
+          ['scripts/ci-pages-shard.mjs', String(shard), String(shards.length)],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            input: source
+          }
+        )
+        const names = output.trimEnd().split('\n')
+        assert.deepEqual(names, selectPagesShard(all, shard, shards.length, weights))
+        const path = join(directory, `shard-${shard}.txt`)
+        writeFileSync(path, output)
+        const recollected = parsePagesList(list('--test-list', path))
+        assert.deepEqual([...recollected].sort(), [...names].sort())
+        return recollected
+      })
+      const counts = partitions.map((partition) => partition.length)
+      assert.ok(Math.min(...counts) > 0)
+      assert.ok(Math.max(...counts) - Math.min(...counts) <= 1)
+      const selected = partitions.flat()
+      assert.equal(new Set(selected).size, selected.length)
+      assert.deepEqual(selected.sort(), [...all].sort())
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   }
 )
 
@@ -977,11 +1026,14 @@ test('games that use another game’s code or runtime assets are checked with it
   assert.deepEqual(classify('docs/animation-repair-audit.md'), [])
 })
 
-test('every file a game imports from outside its folder also selects that game', () => {
+/** Each import from a scope's own code files, followed through every tracked code file they reach. */
+function importEdges(scope) {
   const root = fileURLToPath(new URL('../', import.meta.url))
-  const tracked = new Set(
+  importEdges.tracked ??= new Set(
     execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
   )
+  importEdges.imports ??= new Map()
+  const { tracked, imports } = importEdges
   const code = /\.[cm]?[jt]sx?$/
   const specifiers =
     /\b(?:import|export)\s+(?:type\s+)?[^'"`;]*?\bfrom\s*['"]([^'"\n]+)['"]|\bimport\s*\(\s*['"]([^'"\n]+)['"]\s*\)|\bimport\s+['"]([^'"\n]+)['"]|\bnew\s+URL\(\s*['"]([^'"\n]+)['"]\s*,\s*import\.meta\.url/g
@@ -996,17 +1048,35 @@ test('every file a game imports from outside its folder also selects that game',
       .concat(['/index.ts', '/index.js'].map((index) => base + index))
       .find((path) => tracked.has(path))
   }
-  const imported = new Map()
   const importsOf = (file) => {
-    if (!imported.has(file))
-      imported.set(
+    if (!imports.has(file))
+      imports.set(
         file,
         [...readFileSync(join(root, file), 'utf8').matchAll(specifiers)]
           .map((match) => resolveSpecifier(file, match.slice(1).find(Boolean)))
           .filter(Boolean)
       )
-    return imported.get(file)
+    return imports.get(file)
   }
+  const queue = [...tracked].filter((file) => code.test(file) && classify(file)[0] === scope)
+  assert.ok(queue.length > 0, scope)
+  const edges = queue.map((file) => ({ file }))
+  const seen = new Set(queue)
+  while (queue.length) {
+    const file = queue.pop()
+    for (const target of importsOf(file)) {
+      edges.push({ file, target })
+      if (code.test(target) && !seen.has(target)) {
+        seen.add(target)
+        queue.push(target)
+      }
+    }
+  }
+  return edges
+}
+
+test('every file a game imports from outside its folder also selects that game', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
   const workflow = readFileSync(join(root, '.github/workflows/check.yml'), 'utf8').replaceAll('\r\n', '\n')
   const ignored = [...workflow.match(/^    paths-ignore:\n((?:      - .*\n)+)/m)[1].matchAll(/- '([^']+)'/g)].map(
     ([, glob]) =>
@@ -1032,24 +1102,15 @@ test('every file a game imports from outside its folder also selects that game',
     'yoru-no-yashiki',
     'landing'
   ]) {
-    const queue = [...tracked].filter((file) => code.test(file) && classify(file)[0] === scope)
-    assert.ok(queue.length > 0, scope)
-    const seen = new Set(queue)
-    while (queue.length) {
-      const file = queue.pop()
-      for (const target of importsOf(file)) {
-        const selected = classify(target)
-        if (selected[0] !== scope) crossings++
-        assert.ok(
-          selected.includes(scope) || selected.includes('shared'),
-          `${scope} uses ${target} (from ${file}), but changing it selects ${selected.join(', ') || 'nothing'}`
-        )
-        assert.ok(!ignored.some((pattern) => pattern.test(target)), `${target} is used by ${scope} but never runs CI`)
-        if (code.test(target) && !seen.has(target)) {
-          seen.add(target)
-          queue.push(target)
-        }
-      }
+    for (const { file, target } of importEdges(scope)) {
+      if (!target) continue
+      const selected = classify(target)
+      if (selected[0] !== scope) crossings++
+      assert.ok(
+        selected.includes(scope) || selected.includes('shared'),
+        `${scope} uses ${target} (from ${file}), but changing it selects ${selected.join(', ') || 'nothing'}`
+      )
+      assert.ok(!ignored.some((pattern) => pattern.test(target)), `${target} is used by ${scope} but never runs CI`)
     }
   }
   assert.ok(crossings > 0)
