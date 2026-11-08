@@ -562,6 +562,43 @@ test('outdoor vehicles update across cards, HUD, status and both players’ shot
   expect(errors).toEqual([])
 })
 
+test('モンスターペアレントの子は人間への恐怖を性格欄に持ち、20歳で消える', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, PEOPLE_FEAR, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    player.parent = 'p_monster'
+    player.weapons = [{ id: 'p_monster', lv: 1, cd: 100, held: 0, damage: 0 }]
+    player.passives = [{ id: PEOPLE_FEAR, lv: 1 }]
+    player.birthPick = false
+    player.pending = player.swapPending = player.careerPending = 0
+    player.choices = []
+    game.targetPopulation = () => 0
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(19) + 0.01
+    game.state.enemies = []
+  })
+  const flaw = page.locator('#passives .slot.flaw')
+  await expect(flaw).toHaveCount(1)
+  await expect(flaw).toHaveAttribute('title', '人間への恐怖（デメリット・20歳で消える）')
+  await expect(page.locator('#passives .slot')).toHaveCount(1)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    game.state.time = timeAtAge(20) + 0.01
+    game.state.enemies = []
+  })
+  await expect(page.locator('#passives .slot')).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
 test('age-dependent sports and pet life stay consistent in cards, HUD and results', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

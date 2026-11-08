@@ -15,6 +15,8 @@ import {
   PASSIVES,
   PASSIVE_BY_ID,
   PASSIVE_SLOTS,
+  PEOPLE_FEAR,
+  PEOPLE_FEAR_UNTIL_AGE,
   PLAYER_COLORS,
   POOLS,
   RUN_SECONDS,
@@ -335,6 +337,12 @@ export const passivePower = (player: Player, id: string) =>
 export const playerRadius = (player: Player) =>
   PLAYER_RADIUS * bodyScale(passiveLevel(player, 'p_large'), passiveLevel(player, 'p_small'))
 
+/** 人間への恐怖 (モンスターペアレント's child) rarely draws 対人 cards: 50% at birth, +2.5% a year, normal at 20. */
+export const peopleFearFriendRate = (player: Pick<Player, 'passives'>, age: number) =>
+  player.passives.some((passive) => passive.id === PEOPLE_FEAR)
+    ? Math.min(1, 0.5 + (0.5 * Math.max(0, age)) / PEOPLE_FEAR_UNTIL_AGE)
+    : 1
+
 export function generateTalents(rng: () => number): Record<TalentCategory, number> {
   const anchors = TALENT_CATEGORIES.map(() => rng())
   return Object.fromEntries(
@@ -647,7 +655,7 @@ export class Game {
       parent,
       talents,
       weapons: parent === 'p_gone' ? [] : [{ id: parent, lv: 1, cd: 0.5, held: 0, damage: 0 }],
-      passives: [],
+      passives: parent === 'p_monster' && ageAt(state.time) < PEOPLE_FEAR_UNTIL_AGE ? [{ id: PEOPLE_FEAR, lv: 1 }] : [],
       choices: [],
       choiceSeq: 0,
       pending: parent === 'p_gone' ? 1 : 0,
@@ -1831,6 +1839,10 @@ export class Game {
   private ageWeapons() {
     const age = ageAt(this.state.time)
     for (const player of this.state.players) {
+      if (age >= PEOPLE_FEAR_UNTIL_AGE && player.passives.some((passive) => passive.id === PEOPLE_FEAR)) {
+        player.passives = player.passives.filter((passive) => passive.id !== PEOPLE_FEAR)
+        this.log(`${player.name}は20歳になり、「人間への恐怖」が消えた。`, player.id)
+      }
       const pet = player.weapons.find((weapon) => weapon.id === 'w_pet')
       if (!pet) continue
       pet.acquiredAge ??= age
@@ -2893,7 +2905,8 @@ export class Game {
     if (talentWeaponCount(player) < weaponSlots(player, age))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives)
-      if (passive.id !== PET_MEMORY && passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
+      if (passive.id !== PET_MEMORY && passive.id !== PEOPLE_FEAR && passive.lv < MAX_PASSIVE_LEVEL)
+        result.push(`p:${passive.id}`)
     if (player.passives.filter((passive) => passive.id !== PET_MEMORY).length < PASSIVE_SLOTS)
       for (const def of PASSIVES)
         if (def.id !== PET_MEMORY && !player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
@@ -2905,7 +2918,10 @@ export class Game {
     const [kind, id] = choice.split(':')
     const owned =
       kind === 'w' ? player.weapons.some((w) => w.id === id) : player.passives.some((passive) => passive.id === id)
-    const weight = owned ? 2.5 : 1
+    const weapon = kind === 'w' ? WEAPON_BY_ID.get(id) : undefined
+    const category = kind === 'w' ? weapon?.category : PASSIVE_BY_ID.get(id)?.category
+    const friend = category === 'friend' && !weapon?.parent
+    const weight = (owned ? 2.5 : 1) * (friend ? peopleFearFriendRate(player, ageAt(this.state.time)) : 1)
     return kind === 'p' ? (weight * BASE_PASSIVE_COUNT) / (PASSIVES.length - 1) : weight
   }
 

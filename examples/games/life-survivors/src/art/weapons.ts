@@ -860,6 +860,22 @@ const coin = (size = 32) =>
 const icon = (src: Raster) => new Raster(32, 32).blit(src, Math.round((32 - src.w) / 2), Math.round((32 - src.h) / 2))
 
 const PASSIVE_ICONS: Record<string, () => Raster> = {
+  // 人間への恐怖: a pale face hiding behind both hands in cold sweat, peeking through the fingers.
+  p_peoplefear: () =>
+    tiny(32, 32, (l) => {
+      ball(l, 16, 17, 11, 11, R.skin)
+      l.ellipse(9, 20, 3, 2, R.sky[0])
+      l.ellipse(23, 20, 3, 2, R.sky[0])
+      for (const side of [-1, 1]) {
+        const x = 16 + side * 6
+        l.poly([x - 5, 9, x + 4, 9, x + 4, 18, x - 5, 18], R.skin[1])
+        for (let k = 0; k < 3; k++) l.line(x - 4 + k * 3, 10, x - 4 + k * 3, 17, R.skin[2])
+      }
+      l.rect(12, 14, 2, 2, C.inkWarm)
+      l.rect(18, 14, 2, 2, C.inkWarm)
+      l.thick(13, 25, 19, 25, 1, R.skin[3])
+      l.poly([27, 5, 29, 9, 27, 11, 25, 9], R.sky[1])
+    }),
   p_grand: () =>
     tiny(32, 32, (l) => {
       l.poly(

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
   PARENTS,
+  PASSIVES,
+  PASSIVE_BY_ID,
+  PASSIVE_SLOTS,
+  PEOPLE_FEAR,
   TALENT_CATEGORIES,
   TALENT_WEAPONS,
   WEAPONS,
@@ -1206,4 +1210,68 @@ describe('蒸発済み: 自立', () => {
     expect(upgraded).toBe(true)
     process.stderr.write(report.join('\n'))
   }, 20_000)
+})
+
+describe('モンスターペアレントの対人の手札', () => {
+  const friendCards = [...TALENT_WEAPONS, ...PASSIVES]
+    .filter((def) => def.category === 'friend' && def.id !== 'p_petmemory')
+    .map((def) => `${'behavior' in def ? 'w' : 'p'}:${def.id}`)
+
+  test.each([
+    [0, 0.5],
+    [1, 0.525],
+    [10, 0.75],
+    [19, 0.975],
+    [20, 1],
+    [50, 1]
+  ])('at age %i the 対人 draw weight is %f of normal', (age, rate) => {
+    const monster = new Game(5)
+    const child = monster.addPlayer('a', 'p_monster')!
+    const normal = new Game(5)
+    const other = normal.addPlayer('a', 'p_weak')!
+    monster.state.time = normal.state.time = timeAtAge(age) + 0.001
+    expect(ageAt(monster.state.time)).toBe(age)
+    for (const card of friendCards)
+      expect(monster['cardWeight'](child, card)).toBeCloseTo(normal['cardWeight'](other, card) * rate)
+    expect(monster['cardWeight'](child, 'w:w_study')).toBe(normal['cardWeight'](other, 'w:w_study'))
+    expect(monster['cardWeight'](child, 'w:p_monster')).toBe(2.5)
+  })
+
+  test('the flaw 人間への恐怖 fills a personality slot, never levels up and fades at 20', () => {
+    const game = new Game(5)
+    const child = game.addPlayer('a', 'p_monster')!
+    expect(child.passives).toEqual([{ id: PEOPLE_FEAR, lv: 1 }])
+    expect(PASSIVE_BY_ID.get(PEOPLE_FEAR)!.name).toBe('人間への恐怖')
+    expect(game.options(child)).not.toContain(`p:${PEOPLE_FEAR}`)
+    child.passives.push(...PASSIVES.slice(0, PASSIVE_SLOTS - 2).map(({ id }) => ({ id, lv: 1 })))
+    expect(game.options(child).some((choice) => choice === `p:${PASSIVES[PASSIVE_SLOTS].id}`)).toBe(true)
+    child.passives.push({ id: PASSIVES[PASSIVE_SLOTS - 2].id, lv: 1 })
+    expect(game.options(child).some((choice) => choice === `p:${PASSIVES[PASSIVE_SLOTS].id}`)).toBe(false)
+    game.state.time = timeAtAge(19) + 0.001
+    game['ageWeapons']()
+    expect(child.passives.some(({ id }) => id === PEOPLE_FEAR)).toBe(true)
+    game.state.time = timeAtAge(20) + 0.001
+    game['ageWeapons']()
+    expect(child.passives.some(({ id }) => id === PEOPLE_FEAR)).toBe(false)
+    expect(game['cardWeight'](child, 'p:p_kind')).toBe(game['cardWeight'](child, 'p:p_diligent'))
+    expect(game.options(child).some((choice) => choice === `p:${PASSIVES[PASSIVE_SLOTS].id}`)).toBe(true)
+    expect(game.state.log.some((entry) => entry.text.includes('「人間への恐怖」が消えた'))).toBe(true)
+  })
+
+  test('only a モンスターペアレント child born before 20 gets 人間への恐怖', () => {
+    const game = new Game(5)
+    for (const parent of PARENTS.filter(({ id }) => id !== 'p_monster'))
+      expect(game.addPlayer(parent.id, parent.id)!.passives).toEqual([])
+    const late = new Game(5)
+    late.state.time = timeAtAge(20) + 0.001
+    expect(late.addPlayer('late', 'p_monster')!.passives).toEqual([])
+  })
+
+  test('other parents keep the normal 対人 weight', () => {
+    const game = new Game(5)
+    const player = game.addPlayer('a', 'p_over')!
+    player.weapons.push({ id: 'w_friend', lv: 1, cd: 0, held: 0, damage: 0 })
+    expect(game['cardWeight'](player, 'w:w_friend')).toBe(2.5)
+    expect(game['cardWeight'](player, 'p:p_kind')).toBe(game['cardWeight'](player, 'p:p_diligent'))
+  })
 })

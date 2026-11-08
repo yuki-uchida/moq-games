@@ -323,6 +323,11 @@ button {
   border-color: #c7d9ef;
   box-shadow: 0 0 8px #c7d9ef80;
 }
+.slot.flaw {
+  border-color: #b14b40;
+  border-style: dashed;
+  box-shadow: 0 0 8px #e1464a66;
+}
 .slot.evolved {
   border-color: var(--accent);
   box-shadow: 0 0 12px #ffcf4d77;
