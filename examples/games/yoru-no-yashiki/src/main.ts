@@ -6,6 +6,7 @@ import { HumanFootsteps } from './footsteps'
 import { cameraHeading } from './heading'
 import { VoiceGate, analyzeVoiceFrame, isCurrentVoice, isFreshVoiceHealth, parseVoiceHealth } from './voice'
 import { previewStatus } from './preview'
+import { startAttract } from './attract'
 import { HorrorWorld, HUMAN_START, HAUNTER_START, clampPitch, movePose, type Pose, type WorldFrame } from './world'
 import {
   RITUAL_RADIUS,
@@ -1692,6 +1693,13 @@ try {
   } catch {}
   throw error
 }
+try {
+  startAttract({
+    host: document.querySelector<HTMLElement>('.intro')!,
+    active: () => peer === undefined && !connected && !finished,
+    stopOn: [button('host'), button('guest'), button('microphone'), button('fullscreen'), container]
+  })
+} catch {}
 function scheduleFrame() {
   if (!worldInitialized || finished) return
   try {
