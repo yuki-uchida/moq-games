@@ -323,7 +323,8 @@ test('stage 1 end to end: every puzzle and the boss to the results screen', () =
     'kill'
   ])
     expect(s.seen.has(k), `event kind ${k}`).toBe(true)
-  // Results → next: stage 2 has no data yet, back to the lobby with stage 1 cleared.
+  // Results → next: stage 2 is released, so the party moves on to it.
   world.command('host', { type: 'next' })
-  expect(world.view().phase).toBe('lobby')
+  expect(world.view().stage).toBe('sewer')
+  expect(['intro', 'play']).toContain(world.view().phase)
 })
