@@ -17,6 +17,7 @@
     "examples/games/rabbiters/src/**/*.ts",
     "examples/games/life-survivors/src/**/*.ts",
     "examples/games/yoru-no-yashiki/src/**/*.ts",
+    "examples/games/mamono-jinkei/src/**/*.ts",
     "utils/**/*.ts",
     "lib/**/*.ts"
   ],

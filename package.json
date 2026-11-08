@@ -37,7 +37,12 @@
     "dev:yoru-no-yashiki": "vite --config vite.config.yoru-no-yashiki.mjs",
     "build:yoru-no-yashiki": "vite build --config vite.config.yoru-no-yashiki.mjs",
     "test:yoru-no-yashiki": "vitest run examples/games/yoru-no-yashiki/tests --maxWorkers=1",
-    "e2e:yoru-no-yashiki": "playwright test --config playwright.yoru-no-yashiki.config.ts"
+    "e2e:yoru-no-yashiki": "playwright test --config playwright.yoru-no-yashiki.config.ts",
+    "dev:mamono-jinkei": "vite --config vite.config.mamono-jinkei.mjs",
+    "build:mamono-jinkei": "vite build --config vite.config.mamono-jinkei.mjs",
+    "test:mamono-jinkei": "vitest run examples/games/mamono-jinkei/tests --maxWorkers=1",
+    "e2e:mamono-jinkei": "playwright test --config playwright.mamono-jinkei.config.ts",
+    "art:mamono-jinkei": "node scripts/mamono-jinkei-art.mjs"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",
