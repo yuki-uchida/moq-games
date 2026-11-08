@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { selectScope } from '../scripts/ci-scope.mjs'
+import { classify, selectScope } from '../scripts/ci-scope.mjs'
 import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
@@ -22,7 +22,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
@@ -770,12 +770,21 @@ test('documentation and instruction changes do not run game checks or publish', 
     'docs/diagram.png',
     'examples/games/rabbiters/STORY.md',
     '.claude/skills/review/SKILL.md',
-    '.agents/config.json'
+    '.agents/config.json',
+    '.codex/config.toml'
   ])
-  for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug']) assert.equal(scope[key], false)
+  for (const key of ['runtime', 'pages', 'pagesBrowser', 'life', 'bot', 'debug', 'ci']) assert.equal(scope[key], false)
   assert.equal(scope.unit, '')
   assert.equal(scope.node, '')
   assert.equal(scope.laneNode, '')
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  assert.match(
+    workflow,
+    /^    paths-ignore:\n      - '\*\*\/\*\.md'\n      - '\.claude\/\*\*'\n      - '\.agents\/\*\*'\n      - '\.codex\/\*\*'\npermissions:/m
+  )
 })
 
 for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki']) {
@@ -855,14 +864,17 @@ test('tower-only browser checks exclude unrelated landing tests', () => {
   assert.equal(selectScope(['index.html', 'tests/tower-title-e2e.spec.ts']).browser, 'tower- landing-e2e.spec.ts')
 })
 
-test('shared dependencies, CI and unknown paths conservatively check all games', () => {
+test('shared dependencies, CI jobs and runners, and unknown paths conservatively check all games', () => {
   for (const path of [
     'package-lock.json',
     'lib/moqt/moqtClient.ts',
     'examples/games/shared/audio.ts',
     '.github/workflows/check.yml',
-    'scripts/ci-scope.mjs',
-    'tests/ci-scope.test.mjs',
+    'scripts/ci-install-chromium.mjs',
+    'scripts/vitest-unit-sequencer.mjs',
+    'vitest.config.mts',
+    'playwright.pages.config.ts',
+    'vite.config.mjs',
     'new-runtime.js'
   ]) {
     const scope = selectScope([path])
@@ -877,8 +889,196 @@ test('shared dependencies, CI and unknown paths conservatively check all games',
     ])
     for (const game of ['tower_diffence_with_jev', 'rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki'])
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
-    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life']) assert.equal(scope[key], true)
+    for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life', 'ci']) assert.equal(scope[key], true)
   }
+})
+
+test('CI selection and distribution files run only the CI contracts', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  assert.match(workflow, /^      ci: \$\{\{ steps\.scope\.outputs\.ci \}\}$/m)
+  const check = workflow.match(/^  check:\n([\s\S]*?)(?=^  \S)/m)?.[1]
+  assert.ok(check)
+  assert.match(
+    check,
+    /^    if: needs\.changes\.outputs\.runtime == 'true' \|\| needs\.changes\.outputs\.debug == 'true' \|\| needs\.changes\.outputs\.ci == 'true'$/m
+  )
+  assert.match(
+    check,
+    /^      - run: node --test tests\/ci-scope\.test\.mjs\n      - run: npm run typecheck\n        if: /m
+  )
+  for (const path of [
+    '.github/workflows/renderer-benchmark.yml',
+    'scripts/ci-pages-shard.mjs',
+    'scripts/ci-pages-weights.json',
+    'scripts/ci-scope.mjs',
+    'scripts/vitest-unit-weights.json',
+    'tests/ci-scope.test.mjs'
+  ]) {
+    const scope = selectScope([path, 'README.md'])
+    assert.equal(scope.ci, true, path)
+    for (const key of ['runtime', 'pages', 'pagesBrowser', 'tower', 'ember', 'life', 'debug', 'bot', 'audit'])
+      assert.equal(scope[key], false, `${path} ${key}`)
+    for (const key of ['browser', 'unit', 'laneNode', 'node']) assert.equal(scope[key], '', `${path} ${key}`)
+    const life = selectScope([path, 'examples/games/life-survivors/tests/new-seed.test.ts'])
+    assert.equal(life.ci, true, path)
+    assert.equal(life.unit, 'examples/games/life-survivors/tests', path)
+    assert.equal(life.browser, 'life-survivors-published-e2e.spec.ts', path)
+    assert.equal(life.laneNode, '', path)
+    assert.equal(life.tower, false, path)
+  }
+})
+
+test('games that use another game’s code or runtime assets are checked with it', () => {
+  // ember-grid renders tower units with tower's game, progression and rendering code, and loads their models.
+  for (const path of [
+    'examples/games/tower_diffence_with_jev/src/game/AttackProfiles.ts',
+    'examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem.ts',
+    'examples/games/tower_diffence_with_jev/src/rendering/ModelUnitVisual.ts',
+    'public/tower-defense-art/models/runtime-manifest.json',
+    'public/tower-defense-art/archer/forest-archer-attack-e.json'
+  ]) {
+    assert.deepEqual(classify(path), ['tower', 'ember-grid'], path)
+    const scope = selectScope([path])
+    assert.equal(scope.ember, true, path)
+    assert.equal(
+      scope.unit,
+      'examples/games/tower_diffence_with_jev/tests examples/games/ember-grid/tests tests/board-camera-depth.test.ts tests/runtime-model-optimization.test.ts tests/caster-motion-v3.test.ts',
+      path
+    )
+    assert.equal(scope.browser, 'tower- ember-grid-e2e.spec.ts', path)
+    assert.equal(scope.life, false, path)
+  }
+  for (const path of [
+    'examples/games/tower_diffence_with_jev/src/main.ts',
+    'examples/games/tower_diffence_with_jev/src/ui/TitleAttract.ts',
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts',
+    'public/tower-defense-sfx/hit.ogg'
+  ])
+    assert.deepEqual(classify(path), ['tower'], path)
+  // life-survivors plays co-op over the rabbiters network session.
+  assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), ['rabbiters', 'life-survivors'])
+  const network = selectScope(['examples/games/rabbiters/src/network.ts'])
+  assert.equal(network.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
+  assert.equal(network.life, true)
+  assert.equal(network.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.deepEqual(classify('examples/games/rabbiters/src/main.ts'), ['rabbiters'])
+  // The catalog links the tower model viewer, which links back, and shows tower portraits.
+  assert.deepEqual(classify('examples/games/tower_diffence_with_jev/extra.html'), ['tower', 'landing'])
+  assert.deepEqual(classify('public/tower-defense-art/soldier/portrait.png'), ['tower', 'ember-grid', 'landing'])
+  const viewer = selectScope(['examples/games/tower_diffence_with_jev/extra.html'])
+  assert.equal(viewer.browser, 'tower- landing-e2e.spec.ts')
+  assert.ok(viewer.node.split(' ').includes('tests/landing-catalog.test.mjs'))
+  assert.deepEqual(classify('examples/games/tower_diffence_with_jev/index.html'), ['tower'])
+  // A tower unit test reads this audit, so it is not ignored like the rest of docs.
+  assert.deepEqual(classify('docs/animation-repair-audit.json'), ['tower'])
+  assert.deepEqual(classify('docs/animation-repair-audit.md'), [])
+})
+
+test('every file a game imports from outside its folder also selects that game', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const tracked = new Set(
+    execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
+  )
+  const code = /\.[cm]?[jt]sx?$/
+  const specifiers =
+    /\b(?:import|export)\s+(?:type\s+)?[^'"`;]*?\bfrom\s*['"]([^'"\n]+)['"]|\bimport\s*\(\s*['"]([^'"\n]+)['"]\s*\)|\bimport\s+['"]([^'"\n]+)['"]|\bnew\s+URL\(\s*['"]([^'"\n]+)['"]\s*,\s*import\.meta\.url/g
+  const resolveSpecifier = (from, specifier) => {
+    if (!specifier.startsWith('.')) return undefined
+    const base = posix.normalize(posix.join(posix.dirname(from), specifier.split('?')[0]))
+    return [
+      base,
+      base.replace(/\.js$/, '.ts'),
+      ...['.ts', '.tsx', '.mts', '.js', '.mjs', '.json'].map((ext) => base + ext)
+    ]
+      .concat(['/index.ts', '/index.js'].map((index) => base + index))
+      .find((path) => tracked.has(path))
+  }
+  const imported = new Map()
+  const importsOf = (file) => {
+    if (!imported.has(file))
+      imported.set(
+        file,
+        [...readFileSync(join(root, file), 'utf8').matchAll(specifiers)]
+          .map((match) => resolveSpecifier(file, match.slice(1).find(Boolean)))
+          .filter(Boolean)
+      )
+    return imported.get(file)
+  }
+  const workflow = readFileSync(join(root, '.github/workflows/check.yml'), 'utf8').replaceAll('\r\n', '\n')
+  const ignored = [...workflow.match(/^    paths-ignore:\n((?:      - .*\n)+)/m)[1].matchAll(/- '([^']+)'/g)].map(
+    ([, glob]) =>
+      new RegExp(
+        '^' +
+          glob
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replaceAll('**/', '(?:.*/)?')
+            .replaceAll('**', '.*')
+            .replace(/(?<!\.)\*/g, '[^/]*') +
+          '$'
+      )
+  )
+  assert.ok(ignored.some((pattern) => pattern.test('docs/notes.md')))
+  assert.ok(ignored.some((pattern) => pattern.test('.codex/config.toml')))
+  let crossings = 0
+  for (const scope of [
+    'tower',
+    'rabbiters',
+    'life-survivors',
+    'ember-grid',
+    'lane-battle',
+    'yoru-no-yashiki',
+    'landing'
+  ]) {
+    const queue = [...tracked].filter((file) => code.test(file) && classify(file)[0] === scope)
+    assert.ok(queue.length > 0, scope)
+    const seen = new Set(queue)
+    while (queue.length) {
+      const file = queue.pop()
+      for (const target of importsOf(file)) {
+        const selected = classify(target)
+        if (selected[0] !== scope) crossings++
+        assert.ok(
+          selected.includes(scope) || selected.includes('shared'),
+          `${scope} uses ${target} (from ${file}), but changing it selects ${selected.join(', ') || 'nothing'}`
+        )
+        assert.ok(!ignored.some((pattern) => pattern.test(target)), `${target} is used by ${scope} but never runs CI`)
+        if (code.test(target) && !seen.has(target)) {
+          seen.add(target)
+          queue.push(target)
+        }
+      }
+    }
+  }
+  assert.ok(crossings > 0)
+})
+
+test('per-game build, browser and asset tool files select only their game', () => {
+  for (const [path, scope] of [
+    ['vite.config.life-survivors.mjs', 'life-survivors'],
+    ['vite.config.rabbiters.mjs', 'rabbiters'],
+    ['vite.config.yoru-no-yashiki.mjs', 'yoru-no-yashiki'],
+    ['playwright.yoru-no-yashiki-real-moq.config.ts', 'yoru-no-yashiki'],
+    ['playwright.life-survivors.config.ts', 'life-survivors'],
+    ['vite.config.tower-debug.mjs', 'debug'],
+    ['vitest.tower-debug-assets.config.mts', 'debug'],
+    ['playwright.proximal.config.ts', 'tower'],
+    ['playwright.real3d-game.config.ts', 'tower'],
+    ['playwright.refined-motions.config.ts', 'tower'],
+    ['playwright.road-placement.config.ts', 'tower'],
+    ['playwright.ui.config.ts', 'tower'],
+    ['playwright.casters.config.ts', 'tower'],
+    ['tests/performance/forecast-baseline/model.ts', 'tower'],
+    ['tests/performance/interception-equivalence.template.ts', 'tower'],
+    ['scripts/refine-tank-walk.mjs', 'tower'],
+    ['scripts/record-refined-game.mjs', 'tower'],
+    ['scripts/humanoid-walk-v2-provenance.json', 'tower'],
+    ['scripts/combat-v2-provenance.json', 'tower'],
+    ['scripts/import-local-assets.mjs', 'tower']
+  ])
+    assert.deepEqual(classify(path), [scope], path)
 })
 
 test('multiple changed games are combined without selecting other games', () => {

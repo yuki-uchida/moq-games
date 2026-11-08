@@ -4,9 +4,9 @@ on:
     branches: [main]
     paths-ignore:
       - '**/*.md'
-      - 'docs/**'
       - '.claude/**'
       - '.agents/**'
+      - '.codex/**'
 permissions:
   contents: read
 # A newer push to the same ref supersedes the running checks; Pages still publishes only a fully passing run.
@@ -24,6 +24,7 @@ jobs:
       debug: ${{ steps.scope.outputs.debug }}
       bot: ${{ steps.scope.outputs.bot }}
       audit: ${{ steps.scope.outputs.audit }}
+      ci: ${{ steps.scope.outputs.ci }}
       pages: ${{ steps.scope.outputs.pages }}
       browser: ${{ steps.scope.outputs.browser }}
       shards: ${{ steps.scope.outputs.shards }}
@@ -104,7 +105,7 @@ jobs:
           path: dist
   check:
     needs: changes
-    if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true'
+    if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
