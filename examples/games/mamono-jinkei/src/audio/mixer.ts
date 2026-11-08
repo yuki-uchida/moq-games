@@ -157,8 +157,15 @@ export function createMixer(ctx: BaseAudioContext): Mixer {
 
   // SFX path.
   const sfx = gain(1)
+  // Keep the 2-6 kHz zone of the effects gentle (they are short and bright; this avoids harshness without dulling them).
+  const sfxPres = ctx.createBiquadFilter()
+  sfxPres.type = 'peaking'
+  sfxPres.frequency.value = 3600
+  sfxPres.Q.value = 0.8
+  sfxPres.gain.value = -3
   const sfxVolume = gain(0.9)
-  sfx.connect(sfxVolume)
+  sfx.connect(sfxPres)
+  sfxPres.connect(sfxVolume)
   sfxVolume.connect(master)
   const sfxReverb = gain(1)
   const sfxConv = ctx.createConvolver()

@@ -1,11 +1,11 @@
-import { transpose, type SongDef } from '../notation'
+import { type SongDef } from '../notation'
 import { m4, motif, motifHead, r4, rep, seq, withFill } from './util'
 
 /**
  * 「陣形のテーマ」 D major, 100 bpm. Intro (4) then the loop: A (the motif in horn + strings, answered by flute and
  * oboe) / B (a lyrical new tune) / A' (full orchestra, chip sparkle) / bridge (the motif's first bar climbing).
  */
-const answer = m4('o5 d4 f+4 b4. a8 | g4 f+8 e8 d4 e4 | f+4 a4 g4 e4 | c+4 e4 a2')
+const answer = m4('o5 d4 f+4 b4. a8 | g4 f+8 e8 d4 e4 | f+4 a4 g4 e4 | e4 c+4 d2')
 const counter = m4('o4 f+2 a2 | b2 >d2 | <a2 g2 | e2 a2')
 const lyric = m4('v6 o5 d2 g4 b4 | a2. f+4 | e2 g4 b4 | a2. e4 | d2 f+4 a4 | c+2. e4 | b2 a4 g4 | f+4 e4 c+2')
 
@@ -60,12 +60,12 @@ export const TITLE: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'D | Gmaj7 | Bm A | D | Bm | G | D/F# Em | A',
+      chords: 'D | Gmaj7 | Bm Bm Bm A | D | Bm | G | D/F# Em | A D',
       parts: {
         str: 'x---------------',
         harp: '12345432',
         hn: seq(motif(50, 'major', { vel: 0.8 }), m4('o3 b1 | g1 | f+2 e2 | a1')),
-        vln: seq(motif(62, 'major', { vel: 0.62 }), transpose(answer, -12)),
+        vln: seq(motif(62, 'major', { vel: 0.62 }), m4('o4 f+1 | g1 | a2 g2 | e2 f+2')),
         fl: seq(r4(4), answer),
         ob: seq(r4(4), counter),
         bass: 'r-r-f-a-',
@@ -94,7 +94,7 @@ export const TITLE: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'D | Gmaj7 | Bm A | D | Bm | G | D/F# Em | A',
+      chords: 'D | Gmaj7 | Bm Bm Bm A | D | Bm | G | D/F# Em | A D',
       parts: {
         str: 'x---------------',
         choir: 'x---------------',
@@ -102,9 +102,9 @@ export const TITLE: SongDef = {
         cel: '1.3.5.3.1.3.5.3.',
         chip: '1234543212345432',
         hn: seq(motif(50, 'major', { vel: 0.9 }), m4('o3 b1 | g1 | f+2 e2 | a1')),
-        br: seq(motif(50, 'major', { vel: 0.8 }), transpose(answer, -24)),
-        vln: seq(motif(62, 'major', { vel: 0.75 }), transpose(answer, -12)),
-        fl: seq(motif(74, 'major', { vel: 0.65 }), answer),
+        br: seq(motif(62, 'major', { vel: 0.8 }), answer),
+        vln: m4('o4 a1 | b1 | f+1 | f+1 | f+1 | g1 | a2 g2 | e2 f+2'),
+        fl: seq(motif(74, 'major', { vel: 0.65 }), r4(4)),
         ob: seq(r4(4), counter),
         bass: 'r-r-f-a-',
         tim: 'r...r.r.',
@@ -121,18 +121,8 @@ export const TITLE: SongDef = {
         choir: 'x---------------',
         harp: '1234543212345432',
         chip: '1234543212345432',
-        vln: seq(
-          motifHead(62, 'major', 1),
-          motifHead(62, 'major', 2),
-          motifHead(62, 'major', 3),
-          motifHead(62, 'major', 4)
-        ),
-        br: seq(
-          motifHead(50, 'major', 1),
-          motifHead(50, 'major', 2),
-          motifHead(50, 'major', 3),
-          motifHead(50, 'major', 4)
-        ),
+        vln: m4('o4 g1 | a1 | b1 | c+1'),
+        br: seq(r4(1), motifHead(50, 'major', 2), motifHead(50, 'major', 3), motifHead(50, 'major', 4)),
         fl: seq(
           motifHead(62, 'major', 1),
           motifHead(62, 'major', 2),

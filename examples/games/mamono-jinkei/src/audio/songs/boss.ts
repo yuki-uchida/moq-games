@@ -7,13 +7,13 @@ import { m4, motif, r4, seq, withFill } from './util'
  * Form: intro (2) then A (8) / B (8) / C (8) / A' (8) / D (8). Layer 1 adds the choir; layer 2 adds hammering horns.
  */
 const answer = m4(
-  'o4 d8 d8 f8 a8 o5 d4 c4 | o4 b-8 b-8 o5 d8 f8 b-4 a4 | o4 g8 g8 b-8 o5 d8 o4 a8 a8 o5 c+8 e8 | o5 d2 r4 d8 f8'
+  'o4 d8 d8 f8 a8 o5 d4 c4 | o4 b-8 b-8 o5 d8 d8 c4 d4 | o4 g8 g8 b-8 o5 d8 o4 a8 a8 o5 c+8 c+8 | o5 d2 r4 d8 d8'
 )
 const verse = m4(
-  'o5 d4. f8 a2 | o5 g4 f4 e4 d4 | o5 d4. f8 b-2 | o5 c4 o5 b-4 g4 e4 | o5 d4. f8 a2 | o5 b-4 a4 g4 f4 | o5 c+4. e8 a2 | o5 g4 e4 c+4 e4'
+  'o5 d4. f8 a2 | o5 g4 f4 a4 d4 | o5 d4. f8 b-2 | o5 c4 o5 b-4 g4 e4 | o5 d4. f8 a2 | o5 b-4 a4 g4 f4 | o5 c+4. e8 a2 | o5 g4 e4 c+4 e4'
 )
 const finale = m4(
-  'o5 d4. d8 f4 a4 | o5 b-4. b-8 a4 f4 | o5 c4. c8 e4 g4 | o5 a4 g4 e4 c+4 | o5 d4. d8 f4 a4 | o5 b-2 a4 f4 | o5 c+4 e4 g4 a4 | o5 a1'
+  'o5 d4. d8 f4 a4 | o5 b-4. b-8 g4 f4 | o5 c4. c8 e4 g4 | o5 a4 g4 e4 c+4 | o5 d4. d8 f4 a4 | o5 b-2 g4 f4 | o5 c+4 e4 g4 a4 | o5 a1'
 )
 const OST = 'rrRrrRrrrrRrrRfr'
 
@@ -83,7 +83,7 @@ export const BOSS: SongDef = {
         stab: 'x.......x.......|x...x...x.x.x.x.',
         tim: 'r.r.r.r.r.r.r.r.|r.r.r.rrrrrrrrrr',
         tk: 'D.......D.......|D...D...D.D.D.DD',
-        sub: 'r-------',
+        sub: 'r---r---',
         cym: 'c...............|................'
       }
     },
@@ -91,17 +91,17 @@ export const BOSS: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'Dm | Bb | Gm C | Dm | Dm | Bb | Gm A | Dm',
+      chords: 'Dm | Dm Dm Dm Cm | Gm C | Dm | Dm | Bb | Gm A | Dm',
       parts: {
         ost: OST,
         stab: 'x..x..x.........',
-        br: seq(motif(50, 'minor', { twist: true, vel: 0.9, gate: 0.85 }), answer),
-        vln: seq(motif(62, 'minor', { twist: true, vel: 0.7, gate: 0.85 }), r4(4)),
-        hn: seq(motif(38, 'minor', { twist: true, vel: 0.9 }), r4(4)),
+        br: seq(motif(62, 'minor', { twist: true, vel: 0.9, gate: 0.85 }), r4(4)),
+        vln: m4('o5 a1 | a1 | b-2 g2 | f1 | a1 | f1 | d2 e2 | a1'),
+        hn: seq(motif(50, 'minor', { twist: true, vel: 0.9 }), answer),
         hnhit: 'r..r..r.r..r..r.',
         choir: 'x---------------',
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r...r...r...r.rr',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
@@ -112,17 +112,17 @@ export const BOSS: SongDef = {
     {
       name: 'B',
       bars: 8,
-      chords: 'Dm | Dm | Bb | C | Dm | Gm | A | A',
+      chords: 'Dm | Dm | Bb | C | Dm | Gm | A7 | A7',
       parts: {
         ost: OST,
         stab: 'x..x..x.x.......',
         br: verse,
         vln: seq(r4(4), m4('o4 a2 f2 | b-1 | a2 e2 | a1')),
-        hn: m4('o3 d1 | d1 | b-1 | c1 | d1 | g1 | a1 | a1'),
+        hn: m4('o4 d1 | d1 | o3 b-1 | o4 c1 | d1 | o3 g1 | a1 | a1'),
         hnhit: 'r..r..r.r..r..r.',
         choir: 'x---------------',
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r...r...r...r.rr',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.k.s.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
@@ -132,14 +132,14 @@ export const BOSS: SongDef = {
     {
       name: 'C',
       bars: 8,
-      chords: 'Dm | Dm | Bb | Bb | Gm | C | Dm | Dm',
+      chords: 'Dm | Dm | Dm | Dm Cm | Gm7 | Gm7 C | Dm | Asus4',
       parts: {
         ost: OST,
         chm: motif(50, 'minor', { twist: true, stretch: 2, vel: 0.85, gate: 0.97 }),
         choir: 'x---------------',
-        vln: seq(r4(4), m4('o5 a1 | f1 | d1 | d1')),
+        vln: seq(r4(4), m4('o5 d1 | d2 e2 | f1 | e1')),
         bass: 'r.r.r.r.r.r.r.r.',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|rrrrrrrrrrrrrrrr',
         tk: 'D.......D.......',
         hat: '....h.......h...',
@@ -149,17 +149,17 @@ export const BOSS: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'Dm | Bb | Gm C | Dm | Dm | Bb | Gm A | Dm',
+      chords: 'Dm | Dm Dm Dm Cm | Gm C | Dm | Dm | Bb | Gm A | Dm',
       parts: {
         ost: OST,
         stab: 'x..x..x.........',
-        br: seq(motif(50, 'minor', { twist: true, vel: 0.95, gate: 0.85 }), answer),
-        vln: seq(motif(62, 'minor', { twist: true, vel: 0.8, gate: 0.85 }), answer),
-        hn: seq(motif(38, 'minor', { twist: true, vel: 0.95 }), r4(4)),
+        br: seq(motif(62, 'minor', { twist: true, vel: 0.95, gate: 0.85 }), r4(4)),
+        vln: m4('o5 a1 | a1 | b-2 g2 | f1 | a1 | f1 | d2 e2 | a1'),
+        hn: seq(motif(50, 'minor', { twist: true, vel: 0.95 }), answer),
         hnhit: 'r..r..r.r..r..r.',
         choir: 'x---------------',
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r...r...r...r.rr',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
@@ -170,17 +170,17 @@ export const BOSS: SongDef = {
     {
       name: 'D',
       bars: 8,
-      chords: 'Dm | Bb | C | A | Dm | Bb | A | A',
+      chords: 'Dm | Bb | C | A | Dm | Bb | A7 | A7',
       parts: {
         ost: OST,
         stab: 'x.x.x.x.x.x.x.x.',
         br: finale,
         vln: seq(m4('o5 d1 | b-1 | c1 | a1 | d1 | b-1 | a1 | a1')),
-        hn: m4('o3 d1 | b-1 | c1 | a1 | d1 | b-1 | a1 | a1'),
+        hn: m4('o4 d1 | o3 b-1 | o4 c1 | o3 a1 | o4 d1 | o3 b-1 | a1 | a1'),
         hnhit: 'r.r.r.r.r.r.r.r.',
         choir: 'x---------------',
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r.r.r.r.r.r.r.r.',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'ssssssssssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',

@@ -7,7 +7,7 @@ import { m4, motif, motifHead, r4, rep, seq, withFill } from './util'
  * Form (loop from A): A (motif + answer) / B (playful tune) / A' / bridge (the motif's first bar climbing C-Dm-Em-F-G).
  */
 const answer = m4(
-  'o5 e8 a8 o6 c8 o5 a8 e4 a4 | o5 f8 a8 o6 c8 o5 a8 f4 c4 | o5 d8 f8 a8 f8 g8 b8 o6 d8 o5 b8 | o6 c4 o5 g4 e4 c4'
+  'o5 e8 a8 o6 c8 o5 a8 e4 a4 | o5 f8 a8 o6 c8 o5 a8 f4 a4 | o5 d8 f8 a8 f8 g8 b8 o6 d8 o5 b8 | o6 c4 o5 g4 e2'
 )
 const tune = m4(
   'o5 a4 a8 f8 a4 o6 c4 | o6 c4 o5 g8 e8 g2 | o5 d4 f8 a8 o6 d4 c4 | o5 b4. g8 b2 | o5 a4 a8 f8 a4 o6 f4 | o6 e4 o5 b4 a4 e4 | o5 f4 d8 f8 a4 f4 | o5 g8 b8 o6 d8 o5 b8 g2'
@@ -57,6 +57,19 @@ export const MEADOW: SongDef = {
     },
     { id: 'hn', inst: 'horn', role: 'melody', vol: 0.8, pan: -0.25, send: 0.3, layer: 2 },
     { id: 'chip', inst: 'pulse', role: 'chord', vol: 0.22, pan: 0.1, center: 76, vel: 0.5, gate: 0.5, layer: 2 },
+    {
+      id: 'pad0',
+      inst: 'strings',
+      role: 'chord',
+      vol: 0.45,
+      pan: 0.0,
+      send: 0.4,
+      chorus: 0.5,
+      center: 62,
+      vel: 0.45,
+      gate: 0.99,
+      maxLayer: 0
+    },
     { id: 'tim', inst: 'timpani', role: 'bass', vol: 0.6, center: 36, vel: 0.75, layer: 2 }
   ],
   sections: [
@@ -75,11 +88,11 @@ export const MEADOW: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'C | F G | C G | C | Am | F | Dm G | C',
+      chords: 'C | F G | C C C G | C | Am | F | Dm G | C',
       parts: {
         pz: '.x.x.x.x',
         fl: seq(motif(72, 'major', { vel: 0.7, gate: 0.85 }), answer),
-        gl: seq(motif(72, 'major', { vel: 0.4, gate: 0.5 }), r4(4)),
+        gl: seq(motif(84, 'major', { vel: 0.4, gate: 0.5 }), r4(4)),
         harp: '12345432',
         bass: 'r.R.r.f.',
         dr0: 'k...p...k...p...|k...p...k...p...',
@@ -87,7 +100,7 @@ export const MEADOW: SongDef = {
         tb: 'a.a.a.a.a.a.a.a.',
         str: 'x---------------',
         br: 'x.......x.......|x.......x.x.....',
-        hn: seq(motif(48, 'major', { vel: 0.8 }), m4('o3 a1 | f1 | d2 g2 | c1')),
+        hn: seq(motif(48, 'major', { vel: 0.8 }), m4('o3 a1 | f1 | d2 g2 | o4 c1')),
         chip: '1.3.5.3.1.3.5.3.',
         tim: 'r.......r.r.....'
       }
@@ -115,7 +128,7 @@ export const MEADOW: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'C | F G | C G | C | Am | F | Dm G | C',
+      chords: 'C | F G | C C C G | C | Am | F | Dm G | C',
       parts: {
         pz: '.x.x.x.x',
         fl: seq(motif(72, 'major', { vel: 0.62, gate: 0.85 }), answer),
@@ -127,7 +140,7 @@ export const MEADOW: SongDef = {
         tb: 'a.a.a.a.a.a.a.a.',
         str: 'x---------------',
         br: 'x.......x.......|x.......x.x.....',
-        hn: seq(motif(48, 'major', { vel: 0.8 }), m4('o3 a1 | f1 | d2 g2 | c1')),
+        hn: seq(motif(48, 'major', { vel: 0.8 }), m4('o3 a1 | f1 | d2 g2 | o4 c1')),
         chip: '1.3.5.3.1.3.5.3.',
         tim: 'r.......r.r.....'
       }
@@ -146,6 +159,7 @@ export const MEADOW: SongDef = {
         dr1: withFill('k.k.s.k.k.k.s.s.', 8, 'ssssssssssssssss'),
         tb: 'c...............|' + rep('a.a.a.a.a.a.a.a.', 7),
         str: 'x---------------',
+        pad0: '........|........|........|........|........|........|x---------------|x---------------',
         br: 'x...x...x...x...',
         hn: heads(48, [0, 1, 2, 3, 4, 5, 3, 4]),
         chip: '1234543212345432',

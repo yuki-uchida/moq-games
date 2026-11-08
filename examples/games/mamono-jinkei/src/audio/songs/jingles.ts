@@ -28,11 +28,11 @@ export const CLEAR: SongDef = {
     {
       name: 'clear',
       bars: 5,
-      chords: 'D | D | Gmaj7 | Bm A | D',
+      chords: 'D | D | Gmaj7 | Bm Bm Bm A | D',
       parts: {
-        br: seq(m4('o4 a12 a12 a12 o5 d4 o4 a4 o5 f+4'), motif(50, 'major', { vel: 0.9 })),
-        hn: seq(r4(1), motif(38, 'major', { vel: 0.9 })),
-        vln: seq(r4(1), motif(62, 'major', { vel: 0.75 })),
+        br: seq(m4('o4 a12 a12 a12 o5 d4 o4 a4 o5 d4'), motif(62, 'major', { vel: 0.9 })),
+        hn: seq(r4(1), motif(50, 'major', { vel: 0.9 })),
+        vln: seq(r4(1), m4('o4 a1 | b1 | f+1 | f+1')),
         fl: seq(r4(1), motif(74, 'major', { vel: 0.6 })),
         str: 'x---------------',
         choir: '................|x---------------',
@@ -73,7 +73,7 @@ export const GAMEOVER: SongDef = {
       chords: 'Dm Bb | Gm Dm',
       parts: {
         ob: m4('o5 f4 d4 o4 b-4 a4 | o4 g4 f4 d2'),
-        vln: m4('o4 a2 f2 | e2 d2'),
+        vln: m4('o4 a2 f2 | g2 d2'),
         hn: m4('o3 d2 b-2 | g2 d2'),
         str: 'x---------------',
         harp: '1.2.3.2.1.2.3.2.',

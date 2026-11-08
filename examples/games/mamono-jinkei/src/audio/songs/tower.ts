@@ -1,4 +1,4 @@
-import type { SongDef } from '../notation'
+import { transpose, type SongDef } from '../notation'
 import { m3, motif, motifHead, r3, seq } from './util'
 
 /**
@@ -14,10 +14,14 @@ const LAYERS = {
   dr1: 'k...s...s...',
   ost: 'rrrrrr',
   stab: 'x.x.x.',
-  chip: '123454321234'
+  chip: '123454321234',
+  tim2: 'r.r.r.',
+  cym: 'c.....'
 }
 const heads = (tonic: number, shifts: number[]) =>
   seq(...shifts.map((s) => motifHead(tonic, 'major', s, { meter: 3, gate: 0.7 })))
+
+const bridgeLead = seq(heads(69, [0, 1, 2, 3, 4]), m3('o6 a4 f+4 d4 | o5 b4 g+4 e4 | o5 b2.'))
 
 export const TOWER: SongDef = {
   name: 'tower',
@@ -75,14 +79,16 @@ export const TOWER: SongDef = {
       gate: 0.4,
       layer: 1
     },
-    { id: 'chip', inst: 'pulse', role: 'chord', vol: 0.2, pan: 0.15, center: 76, vel: 0.5, gate: 0.4, layer: 2 },
+    { id: 'chip', inst: 'pulse', role: 'chord', vol: 0.3, pan: 0.15, center: 76, vel: 0.55, gate: 0.4, layer: 2 },
+    { id: 'tim2', inst: 'timpani', role: 'bass', vol: 0.6, center: 40, vel: 0.8, send: 0.25, layer: 2 },
+    { id: 'cym', inst: 'kit', role: 'drum', vol: 0.5, vel: 0.7, pan: -0.2, layer: 2 },
     { id: 'pc', inst: 'kit', role: 'drum', vol: 0.4, vel: 0.5, pan: -0.2 }
   ],
   sections: [
     {
       name: 'intro',
       bars: 4,
-      chords: 'A | Dmaj7 | F#m | E',
+      chords: 'A | Dmaj7 | A | E',
       parts: {
         harp: '123454|123454|123454|123454',
         str: 'x-----',
@@ -133,7 +139,7 @@ export const TOWER: SongDef = {
         ...LAYERS,
         harp: '123454',
         str: 'x-----',
-        hn: seq(motif(57, 'major', { meter: 3, vel: 0.85 }), m3('o3 d2. | e2. | f+4 e2 | a2.')),
+        hn: seq(motif(57, 'major', { meter: 3, vel: 0.85 }), m3('o4 d2. | e2. | f+4 e2 | a2.')),
         fl: seq(r3(4), answer),
         vln: seq(motif(69, 'major', { meter: 3, vel: 0.55, gate: 0.9 }), r3(4)),
         bell: '1.....|......|1.....|......|1.....|......|1.....|......',
@@ -153,12 +159,8 @@ export const TOWER: SongDef = {
         str: 'x-----',
         bellm: seq(motif(69, 'major', { meter: 3, vel: 0.7, gate: 0.9 }), answer),
         fl: seq(r3(4), m3('o6 a2. | g+2. | f+2. | e2.')),
-        vln: seq(r3(4), m3('o5 d2. | e2. | c+2. | a2.')),
-        mb: '1.....|......|1.....|......',
-        bass: 'r.....',
-        tim: 'r.....',
-        pc: 'g.....|..z.z.',
-        dr: '..p...'
+        vln: seq(r3(4), m3('o5 d2. | e2. | c+2. | o4 a2.')),
+        bass: 'r.....'
       }
     },
     {
@@ -169,10 +171,10 @@ export const TOWER: SongDef = {
         ...LAYERS,
         harp: '123454',
         str: 'x-----',
-        fl: seq(heads(69, [0, 1, 2, 3, 4, 3, 4]), m3('o5 b2.')),
-        hn: seq(heads(45, [0, 1, 2, 3, 4, 3, 4]), m3('o3 e2.')),
-        vln: seq(heads(69, [0, 1, 2, 3, 4, 3, 4]), m3('o5 e2.')),
-        br: seq(r3(4), heads(57, [3, 4, 3, 4])),
+        fl: bridgeLead,
+        hn: transpose(bridgeLead, -24),
+        vln: transpose(bridgeLead, -12),
+        br: seq(r3(4), m3('o4 g+2. | f+2. | g+2. | b2.')),
         bell: '1.....',
         bass: 'r.....',
         tim: 'r.....|r.....|r.....|r.....|r.....|r.....|r.r.r.|rrrrrr',
