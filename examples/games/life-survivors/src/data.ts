@@ -835,13 +835,13 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   p_gone: ['効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし'],
   w_friend: standardLevels,
   w_sports: [
-    '効果時間 +3秒',
+    '効果時間 +2秒',
     '威力 +30%',
     '範囲 +25%・威力 +30%',
-    '効果時間 +3秒',
+    '効果時間 +2秒',
     '威力 +30%',
     'クールダウン -15%',
-    '威力 +40%・効果時間 +3秒'
+    '威力 +40%・効果時間 +2秒'
   ],
   w_study: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
   w_love: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
@@ -959,7 +959,8 @@ export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEn
         amount: profile === 'sports' ? 0 : profile === 'everyCount' ? 1 : countLevel ? 1 : 0,
         area: level === 4 ? (profile === 'raid' ? 1.4 : 1.25) : 1,
         cooldown: level === 7 ? 0.85 : 1,
-        duration: profile === 'sports' && countLevel ? 1 : 0,
+        // Sports' base duration is 3 s, so 2/3 of it adds 2 s.
+        duration: profile === 'sports' && countLevel ? 2 / 3 : 0,
         pierce: profile === 'piercing' && level === 4 ? 1 : 0,
         targets: profile === 'observe' ? 5 : 0,
         foodPower: profile === 'food' ? 0.1 : 0,
