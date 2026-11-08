@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -303,10 +303,44 @@ export function selectScope(paths, { workflowJobs, deleted = [] } = {}) {
   }
 }
 
+// The newest commit of a successful run that is an ancestor of `after`; changes of cancelled or failed runs stay in the diff.
+export function verifiedBase(successfulShas, after, isAncestor) {
+  for (const sha of successfulShas) if (sha && sha !== after && isAncestor(sha, after)) return sha
+  return null
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
-  const before = event.before
   const after = process.env.GITHUB_SHA
+  let before = null
+  let baseNote
+  if (!event.before || /^0+$/.test(event.before)) baseNote = 'no previous commit'
+  else {
+    try {
+      const successful = execFileSync(
+        'gh',
+        [
+          'api',
+          // The status filter of this listing can leave out finished runs, so filter by conclusion here.
+          'repos/' + process.env.GITHUB_REPOSITORY + '/actions/workflows/check.yml/runs?branch=main&per_page=50',
+          '--jq',
+          '.workflow_runs[] | select(.conclusion == "success") | .head_sha'
+        ],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+      )
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+      before = verifiedBase(
+        successful,
+        after,
+        (sha, tip) => spawnSync('git', ['merge-base', '--is-ancestor', sha, tip], { stdio: 'ignore' }).status === 0
+      )
+      if (!before) baseNote = 'no successful ancestor run'
+    } catch (error) {
+      baseNote = 'successful runs unavailable: ' + String(error.message).split(/\r?\n/)[0]
+    }
+  }
   const paths =
     !before || /^0+$/.test(before)
       ? ['package.json']
@@ -339,5 +373,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       .map(([key, value]) => key + '=' + value + '\n')
       .join('')
   )
-  console.log(JSON.stringify({ paths, workflowJobs, scope }, null, 2))
+  console.log(JSON.stringify({ base: before, fallback: baseNote, paths, workflowJobs, scope }, null, 2))
 }

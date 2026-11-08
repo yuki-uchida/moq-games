@@ -16,6 +16,9 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       runtime: ${{ steps.scope.outputs.runtime }}
       tower: ${{ steps.scope.outputs.tower }}
@@ -46,6 +49,8 @@ jobs:
           node-version: '24'
       - run: node --test tests/ci-scope.test.mjs
       - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/ci-scope.mjs
   build:
     # Starts beside the change scoping; the scope only decides whether its output is tested and published.

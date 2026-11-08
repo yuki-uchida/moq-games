@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { changedWorkflowJobs, classify, games, selectScope, workflowJobChecks } from '../scripts/ci-scope.mjs'
+import {
+  changedWorkflowJobs,
+  classify,
+  games,
+  selectScope,
+  verifiedBase,
+  workflowJobChecks
+} from '../scripts/ci-scope.mjs'
 import { parsePagesList, PAGES_WORKERS, selectPagesShard, simulateMakespan } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
@@ -1295,6 +1302,28 @@ test('changedWorkflowJobs reports only the jobs whose definitions differ', () =>
   assert.equal(changedWorkflowJobs('', base), 'all')
   assert.equal(changedWorkflowJobs(base, undefined), 'all')
   assert.equal(changedWorkflowJobs('no jobs here', base), 'all')
+})
+
+test('verifiedBase picks the newest successful ancestor of the pushed commit', () => {
+  const ancestors = new Set(['b', 'c', 'd'])
+  const isAncestor = (sha) => ancestors.has(sha)
+  assert.equal(verifiedBase(['b', 'c'], 'z', isAncestor), 'b')
+  assert.equal(verifiedBase(['x', 'z', 'c', 'd'], 'z', isAncestor), 'c')
+  assert.equal(verifiedBase(['x', 'y'], 'z', isAncestor), null)
+  assert.equal(verifiedBase([], 'z', isAncestor), null)
+  assert.equal(
+    verifiedBase(['z'], 'z', () => true),
+    null
+  )
+})
+
+test('the changes job may read workflow runs and passes the token to the scope step', () => {
+  const job = checkWorkflow.split('\n  changes:\n')[1].split(/\n  [a-z][\w-]*:\n/)[0]
+  assert.match(job, /\n    permissions:\n      contents: read\n      actions: read\n/)
+  assert.match(
+    job,
+    /- id: scope\n {8}env:\n {10}GH_TOKEN: \$\{\{ github\.token \}\}\n {8}run: node scripts\/ci-scope\.mjs/
+  )
 })
 
 test('a workflow change runs only the jobs whose definitions changed', () => {
