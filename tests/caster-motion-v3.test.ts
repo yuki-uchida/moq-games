@@ -4,9 +4,10 @@ import { Object3D, Quaternion, Vector3 } from 'three'
 // @ts-expect-error audited repository GLB utility has no declaration file
 import { readGlb, accessorArray } from '../scripts/optimize-tower-models.mjs'
 const records = JSON.parse(fs.readFileSync('scripts/caster-v3-provenance.json', 'utf8'))
+// Each role compares two whole GLBs: about 3 s on a shared 4-worker CI runner, past the 5 s default when busier.
 describe('caster derivatives preserve source data and joint continuity', () => {
   for (const record of records)
-    it(record.role, () => {
+    it(record.role, { timeout: 120_000 }, () => {
       const a = readGlb(fs.readFileSync(record.input)),
         b = readGlb(fs.readFileSync(record.output))
       expect(b.json).toEqual(a.json)
