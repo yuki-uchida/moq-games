@@ -44,6 +44,7 @@ export interface ViewPlayer {
   killer?: string
   parent: string
   parentDeath?: Player['parentDeath']
+  parentDamage?: number
   weapons: [string, number, number][]
   gambleWeapon?: string
   petAge?: number
@@ -187,6 +188,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       ...(p.downed && p.killer ? { killer: p.killer } : {}),
       parent: p.parent,
       ...(p.parentDeath ? { parentDeath: { ...p.parentDeath } } : {}),
+      ...(p.parentDamage ? { parentDamage: r(p.parentDamage) } : {}),
       weapons: p.weapons.map((w) => [w.id, w.lv, r(w.damage)]),
       ...(p.weapons.find((w) => w.id === 'w_gamble')?.gambleWeapon &&
       p.weapons.some((w) => w.id === p.weapons.find((entry) => entry.id === 'w_gamble')?.gambleWeapon)
@@ -260,6 +262,7 @@ function playerOk(value: unknown): value is ViewPlayer {
         'killer',
         'parent',
         'parentDeath',
+        'parentDamage',
         'weapons',
         'gambleWeapon',
         'petAge',
@@ -303,6 +306,8 @@ function playerOk(value: unknown): value is ViewPlayer {
         finite(p.parentDeath.x) &&
         finite(p.parentDeath.y) &&
         ['none', 'passive', 'choice'].includes(p.parentDeath.reward as string))) &&
+    (p.parentDamage === undefined ||
+      (p.parent !== 'p_gone' && Number.isSafeInteger(p.parentDamage) && (p.parentDamage as number) >= 0)) &&
     Array.isArray(p.weapons) &&
     (p.gambleWeapon === undefined ||
       (text(p.gambleWeapon, 40) &&
