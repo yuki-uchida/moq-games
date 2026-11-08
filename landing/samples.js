@@ -51,6 +51,17 @@ export const samples = [
     art: 'life-survivors'
   },
   {
+    id: 'mamono-jinkei',
+    title: 'マモノ陣形',
+    subtitle: 'CO-OP FORMATION ACTION',
+    description:
+      'スライム、ネズミ、カラス、ウルフ。ステージごとに姿を変える4匹のマモノが陣形を組み、協力技と謎解きで冒険者ギルドに挑む。最大4人。',
+    href: './examples/games/mamono-jinkei/index.html',
+    category: 'ACTION',
+    tags: ['アクション', '協力プレイ', '最大4人'],
+    art: 'mamono-jinkei'
+  },
+  {
     id: 'yoru-no-yashiki',
     title: '夜の屋敷',
     subtitle: 'TWO PLAYER HORROR',

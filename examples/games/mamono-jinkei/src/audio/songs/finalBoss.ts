@@ -3,7 +3,7 @@ import { m4, motif, r4, seq, withFill } from './util'
 
 /**
  * 「終焉の陣形」 A minor, 144 bpm. The final battle: choir and full orchestra. The motif is sung in augmentation
- * by the choir (B) and hammered out by brass and strings (A, A'). Form: intro (2) then A (8) / B (8) / C (8) / A' (8).
+ * by the choir (B) and hammered out by brass and strings (A, A'), and in the bridge the title motif is heard in major, plain and heroic, before the duel resumes. Form: intro (2) then A (8) / B (8) / C (8) / A' (8).
  */
 const answer = m4('o4 a8 a8 c8 e8 o5 a4 g4 | o4 g8 g8 b8 o5 d8 g4 f4 | o4 a8 a8 c8 e8 o5 a4 e4 | o5 b2 g+2')
 const climb = m4(
@@ -126,6 +126,26 @@ export const FINAL_BOSS: SongDef = {
         tim: 'r.r.r.r.r.r.r.r.',
         tk: 'D...D...D...D...',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'ssssssssssssssss'),
+        cym: 'c...............|................'
+      }
+    },
+    {
+      name: 'bridge',
+      bars: 8,
+      chords: 'C | Fmaj7 | Am G | C | F | G | Am | E',
+      parts: {
+        str: 'x---------------',
+        choir: 'x---------------',
+        harp: '1234543212345432',
+        bell: '1...3...5...3...',
+        chm: seq(motif(60, 'major', { vel: 0.8, gate: 0.95 }), m4('o5 e2 a2 | g1 | e2 c2 | e1')),
+        hn: seq(motif(48, 'major', { vel: 0.85 }), m4('o3 f1 | g1 | a1 | e1')),
+        vln: seq(motif(72, 'major', { vel: 0.6 }), r4(4)),
+        br: seq(r4(4), answer),
+        bass: 'r---r---',
+        sub: 'r-------',
+        tim: 'r.......|........|r.......|........|r.......|r.......|r.r.r.r.|rrrrrrrr',
+        tk: 'D.......|........|D.......|........|D...D...|D...D...|D.D.D.D.|DDDDDDDD',
         cym: 'c...............|................'
       }
     },
