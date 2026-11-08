@@ -193,7 +193,7 @@ export class Script {
     this.pad.release()
     this.wait(0.05)
     if (!this.W.techs.length) this.fail('no technique started')
-    this.until(() => !this.W.techs.length, 2, 'technique end')
+    this.until(() => !this.W.techs.length, 4, 'technique end')
   }
 
   /** Gathers the party around the controlled hero (follow mode) before a press. */

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { flicker } from '../src/render/lighting'
 import { validateNetInput } from '../src/net/validate'
 import type { HeroView, StageInfo, View } from '../src/sim/types'
-import { currentAt, hintsFor, nearHole } from '../src/ui/hints'
+import { currentAt, hintsFor, nearHole, windAt } from '../src/ui/hints'
 
 const info: StageInfo = {
   id: 'sewer',
@@ -113,4 +113,61 @@ test('guest inputs keep E held for valves; lamp flicker stays gentle', () => {
     expect(f).toBeGreaterThan(0.85)
     expect(f).toBeLessThan(1.15)
   }
+})
+
+describe('crow hints (stage 3)', () => {
+  const tower: StageInfo = { ...info, id: 'tower', winds: [{ x: 0, y: 0, w: 2, h: 3, dx: 1, dy: 0, strength: 90 }] }
+  test('wind zones, vents, lock doors and bells', () => {
+    expect(windAt(tower, hero(64, 64))?.strength).toBe(90)
+    expect(windAt(tower, hero(300, 64))).toBeUndefined()
+    const v = (h: HeroView, props: View['props'], keys = 0) =>
+      hintsFor(
+        {
+          ...view(h, { props }),
+          species: 'crow',
+          stage: 'tower',
+          party: { gems: 0, keys, techs: 0, kos: 0, time: 0, wipes: 0 }
+        },
+        tower,
+        'me'
+      )
+    expect(v(hero(64, 64), []).some((x) => x.text.startsWith('陣形なら風に負けない'))).toBe(true)
+    expect(
+      v(hero(300, 160), [{ id: 1, kind: 'vent', x: 330, y: 160, state: 'idle', st: 0 }]).some(
+        (x) => x.text === '上昇気流で回復'
+      )
+    ).toBe(true)
+    expect(
+      v(hero(300, 160), [{ id: 2, kind: 'lockdoor', x: 330, y: 160, state: 'closed', st: 0 }], 1)[0].text
+    ).toContain('鍵で扉')
+    expect(
+      v(hero(300, 160), [{ id: 3, kind: 'bell', x: 330, y: 160, state: 'idle', st: 0 }]).some((x) => x.key === 'F')
+    ).toBe(true)
+  })
+})
+
+describe('wolf hints (stage 4)', () => {
+  const forest: StageInfo = {
+    ...info,
+    id: 'forest',
+    light: 'night',
+    tiles: info.tiles.map((k, i) => (i === 13 ? 'ice' : k))
+  }
+  const v = (h: HeroView, props: View['props']) =>
+    hintsFor({ ...view(h, { props }), species: 'wolf', stage: 'forest' }, forest, 'me')
+  test('moonstones, resonance, ice walls and ice', () => {
+    expect(v(hero(300, 160), [{ id: 1, kind: 'moonstone', x: 330, y: 160, state: 'off', st: 0 }])[0].text).toBe(
+      '遠吠えで月石を灯す'
+    )
+    expect(v(hero(300, 160), [{ id: 2, kind: 'bigmoon', x: 330, y: 160, state: 'off', st: 0 }])[0].text).toContain(
+      '共鳴'
+    )
+    expect(
+      v(hero(300, 160), [{ id: 3, kind: 'icewall', x: 330, y: 160, state: 'idle', st: 0 }]).some((x) =>
+        x.text.includes('氷の壁')
+      )
+    ).toBe(true)
+    expect(v(hero(96, 160), []).some((x) => x.text === '氷の上はすべる')).toBe(true)
+    expect(v(hero(352, 32), []).some((x) => x.key === 'Space' && x.text === '遠吠え')).toBe(true)
+  })
 })

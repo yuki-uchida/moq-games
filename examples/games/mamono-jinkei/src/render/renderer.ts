@@ -36,6 +36,8 @@ export interface RenderInput {
   showCursor: boolean
   shake: boolean
   reducedMotion: boolean
+  /** 0..1 black fade over the frame (attract-mode stage changes). */
+  fade?: number
   /** Attract mode: slower camera, no in-world UI. */
   demo?: boolean
   /** Shifts the followed hero right by this fraction of the view width (title layout). */
@@ -63,9 +65,10 @@ const LINK = 110
 const FLAT_PROPS = new Set(['plate', 'plate2', 'bigplate'])
 /** Light sources among the props and decoration (animation base or `${kind}_${state}`). */
 const WARM_DECOR = new Set(['lamp', 'torch', 'brazier'])
+const MOON_PROPS = new Set(['moonstone', 'bigmoon'])
 const COOL_PROPS = new Set(['crystal_on', 'scale_on', 'moonstone_on', 'bigmoon_on', 'pedestal_on', 'hook_on'])
 
-type DrawKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+type DrawKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 const K_DECOR = 0
 const K_NPC = 1
 const K_PROP = 2
@@ -75,6 +78,9 @@ const K_BOSS = 5
 const K_PICKUP = 6
 const K_TECH = 7
 const K_PET = 8
+const K_MINION = 9
+/** Techniques whose members stay visible (running or flying) instead of merging into one sprite. */
+const SHOWN_TECHS = new Set(['stampede', 'tornado', 'pack'])
 interface DrawItem {
   y: number
   kind: DrawKind
@@ -115,6 +121,28 @@ export class Renderer {
   /** Recent positions of dashing heroes (afterimages). */
   private trails = new Map<number, { x: number; y: number; z: number; t: number }[]>()
   private lastFollow?: { x: number; y: number; slot: number }
+  /** Prop states last frame (transition effects: dust, bell rings). */
+  private propStates = new Map<number, string>()
+  private bellRings = new Map<number, number>()
+  private heroZ = new Map<number, number>()
+  /** Estimated flight stamina of crows (the view does not carry it): seconds left of 1.5. */
+  private stamina = new Map<number, number>()
+  private bossZ = 0
+  /** A solved puzzle draws the camera toward it for a moment. */
+  private look?: { x: number; y: number; until: number }
+  private ventGlow?: HTMLCanvasElement
+  /** Full-screen colour washes (technique dims, moon flashes, the awakening), in real time (ms). */
+  private washes: { color: string; a: number; t0: number; dur: number }[] = []
+  /** Brief zoom-in for dramatic moments (Leon's awakening). */
+  private punchUntil = 0
+  private bossAnim = ''
+  /** Per-hero motion memory for sprint dust and ice skids. */
+  private moving = new Map<number, { x: number; y: number; run: number; puff: number }>()
+  private fade = 0
+  /** 0..1 wind zones under the view (audio loop level). */
+  get wind() {
+    return this.ambience.wind
+  }
   private catchUntil = 0
   private items: DrawItem[] = []
   private itemCount = 0
@@ -129,7 +157,7 @@ export class Renderer {
   private chargeWas = new Map<number, number>()
   private flashes: { x: number; y: number; t0: number; color: string }[] = []
   private shadowCache = new Map<number, HTMLCanvasElement>()
-  private vignette?: { w: number; h: number; c: HTMLCanvasElement }
+  private vignette?: { w: number; h: number; c: HTMLCanvasElement; light: string }
   private cssW = 1
   private cssH = 1
   private dpr = 1
@@ -176,6 +204,7 @@ export class Renderer {
         // Directionless sheets (dust trails, dash afterimages) mirror for leftward motion.
         if (a) this.fx.add(a, e.x, e.y, t, !turned && e.a !== undefined && Math.cos(e.a) < -0.2)
         this.fxLight(name, e.x, e.y, t)
+        if (name === 'howl' && shake) this.shakeAmp = Math.min(14, this.shakeAmp + (reduced ? 0.5 : 2))
         if (name === 'gnaw_chips') {
           // A barricade gives way: heavy shake and a burst of splinters.
           if (shake) this.shakeAmp = Math.min(16, this.shakeAmp + (reduced ? 4 : 11))
@@ -226,11 +255,26 @@ export class Renderer {
         break
       case 'tech':
         this.lighting.flash(e.x, e.y, 360, 'white', t, 0.5)
+        // 月下群狼陣: the night darkens, then the moon flares.
+        if (this.view?.species === 'wolf') {
+          this.wash('rgb(8, 12, 40)', reduced ? 0.25 : 0.5, 0, 700)
+          this.wash('rgb(230, 240, 255)', reduced ? 0.1 : 0.28, 260, 450)
+        }
+        if (shake) this.shakeAmp = Math.min(14, this.shakeAmp + (reduced ? 1 : 3))
+        break
+      case 'solve':
+        this.look = { x: e.x, y: e.y, until: performance.now() + 1400 }
         break
       case 'form':
         if ((e.a ?? 0) >= 2) this.flashes.push({ x: e.x, y: e.y, t0: t, color: '#fff2b0' })
         break
     }
+  }
+
+  /** Queues a full-screen colour wash starting `delay` ms from now. */
+  private wash(color: string, a: number, delay: number, dur: number) {
+    if (this.washes.length > 8) this.washes.shift()
+    this.washes.push({ color, a, t0: performance.now() + delay, dur })
   }
 
   /** Effects that light up the dark. */
@@ -310,6 +354,7 @@ export class Renderer {
       return this.camera
     }
 
+    this.fade = input.fade ?? 0
     this.updateCamera(input, realDt)
     const ctx = this.wctx
     const { ox, oy, artW, artH } = this
@@ -330,6 +375,7 @@ export class Renderer {
     this.particles.update(dt)
     this.particles.draw(ctx, ox, oy, artW, artH)
     if (info.light !== 'day') this.drawLighting(view, info, t)
+    this.particles.draw(ctx, ox, oy, artW, artH, true)
     this.numbers.draw(ctx, ox, oy, t)
     if (!input.demo) this.drawOverheads(view, info, t, input)
     this.composite()
@@ -356,7 +402,13 @@ export class Renderer {
     const htx = tx / TILE
     const hty = ty / TILE
     const room = info.rooms.find((r) => htx >= r.x && htx < r.x + r.w && hty >= r.y && hty < r.y + r.h)
-    const wantZoom = room?.zoom ?? BASE_VIEW_H
+    const wantZoom = (room?.zoom ?? BASE_VIEW_H) - (performance.now() < this.punchUntil ? 150 : 0)
+    // A puzzle just solved nearby (a drawbridge lowering, a door opening): glance toward it.
+    const look = this.look
+    if (look && hero && !tech && performance.now() < look.until && Math.hypot(look.x - tx, look.y - ty) < 12 * TILE) {
+      tx += (look.x - tx) * 0.45
+      ty += (look.y - 40 - ty) * 0.45
+    }
     // In a boss arena, frame the boss too: lean the camera a third of the way toward it.
     const boss = view.boss
     if (boss && room?.zoom && hero && !tech) {
@@ -462,6 +514,17 @@ export class Renderer {
     for (const e of view.enemies) if (e.tele && e.state !== 'death') this.drawTele(e.tele, t)
     if (view.boss?.tele) for (const tl of view.boss.tele) this.drawTele(tl, t)
     if (view.bossPet?.tele) for (const tl of view.bossPet.tele) this.drawTele(tl, t)
+    if (view.minions) for (const m of view.minions) if (m.tele && m.state !== 'death') this.drawTele(m.tele, t)
+    // Updraft vents breathe a soft glow.
+    for (const p of view.props) {
+      if (p.kind !== 'vent' || !this.visible(p.x, p.y, 80)) continue
+      const g = this.ventSprite()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = 0.28 + 0.12 * Math.sin(t * 3 + p.id)
+      ctx.drawImage(g, Math.round(p.x - this.ox - g.width / 2), Math.round(p.y - this.oy - g.height / 2 - 6))
+      ctx.globalAlpha = 1
+      ctx.globalCompositeOperation = 'source-over'
+    }
     // Rat-catcher snares lie on the ground; a sprung one holds its hero.
     if (view.snares) {
       const idle = findAnim('fx', 'snare')
@@ -484,12 +547,20 @@ export class Renderer {
       if (h.state !== 'tech' && this.visible(h.x, h.y, 64)) this.drawShadow(h.x, h.y + 1, 15, h.z)
     for (const e of view.enemies)
       if (e.state !== 'death' && this.visible(e.x, e.y, 64)) this.drawShadow(e.x, e.y + 1, 15, e.z ?? 0)
-    if (view.boss) this.drawShadow(view.boss.x, view.boss.y + 2, 38, view.boss.z)
+    if (view.boss) {
+      // A wyvern high in the air still throws a broad shadow so you can read where it is.
+      const big = (findAnim(`boss:${view.boss.kind}`, view.boss.animKey ?? view.boss.anim)?.frames[0].w ?? 128) > 128
+      if (big) this.drawShadow(view.boss.x, view.boss.y + 2, 70 * Math.max(0.6, 1 - view.boss.z / 260), 0)
+      else this.drawShadow(view.boss.x, view.boss.y + 2, 38, view.boss.z)
+    }
+    if (view.minions)
+      for (const m of view.minions)
+        if (m.state !== 'death' && this.visible(m.x, m.y, 64)) this.drawShadow(m.x, m.y + 1, 12, m.z)
     if (view.bossPet) this.drawShadow(view.bossPet.x, view.bossPet.y + 2, 44, view.bossPet.z)
     for (const p of view.pickups) if (this.visible(p.x, p.y, 32)) this.drawShadow(p.x, p.y + 1, 7, 0)
     for (const x of view.techs) if (x.kind === 'jumbo') this.drawShadow(x.x, x.y, 30 + x.tier * 12, x.z)
     for (const h of view.heroes)
-      if (h.state === 'tech' && this.stampeding(h, view)) this.drawShadow(h.x, h.y + 1, 15, 0)
+      if (h.state === 'tech' && this.stampeding(h, view)) this.drawShadow(h.x, h.y + 1, 15, h.z)
     for (const s of view.shots)
       if (this.visible(s.x, s.y, 32))
         this.drawShadow(s.x, s.y, s.kind === 'pot' || s.kind === 'barrel' ? 12 : s.kind === 'bomb' ? 8 : 5, s.z)
@@ -666,6 +737,10 @@ export class Renderer {
     })
     if (view.boss) this.push(view.boss.y, K_BOSS, 0)
     if (view.bossPet) this.push(view.bossPet.y, K_PET, 0)
+    view.minions?.forEach((m, i) => {
+      if (this.visible(m.x, m.y, 64)) this.push(m.y, K_MINION, i)
+    })
+    this.transitions(view)
     view.pickups.forEach((p, i) => {
       if (this.visible(p.x, p.y, 32)) this.push(p.y, K_PICKUP, i)
     })
@@ -703,7 +778,11 @@ export class Renderer {
           const name = propName(propSheet, d.kind, 'idle')
           const a = name && findAnim(propSheet, name)
           // Desynchronise swaying canopies and flickering torches.
-          if (a) blitAnim(ctx, a, t + ((d.x * 13 + d.y * 7) % 97) / 10, d.x - this.ox, d.y - this.oy, !!d.flip)
+          const seed = ((d.x * 13 + d.y * 7) % 97) / 10
+          // Clouds drift lazily over the sky sea.
+          const dx = d.kind === 'cloud' ? Math.sin(t * 0.07 + seed) * 28 : 0
+          const dy = d.kind === 'cloud' ? Math.sin(t * 0.05 + seed * 2) * 5 : 0
+          if (a) blitAnim(ctx, a, t + seed, d.x - this.ox + dx, d.y - this.oy + dy, !!d.flip)
           break
         }
         case K_NPC: {
@@ -731,6 +810,9 @@ export class Renderer {
         case K_PET:
           if (view.bossPet) this.drawBoss(view.bossPet, `boss:${view.bossPet.kind}`, t)
           break
+        case K_MINION:
+          if (view.minions) this.drawMinion(view.minions[it.i], t)
+          break
         case K_PICKUP:
           this.drawPickup(view.pickups[it.i], t)
           break
@@ -750,11 +832,127 @@ export class Renderer {
     // Lifted things bob gently with the carrier's steps.
     const bob = z > 0 ? Math.round(Math.sin(t * 9) * 1) : 0
     blitAnim(this.wctx, a, t - p.st, at.x - this.ox, at.y - z - this.oy + bob)
+    if (MOON_PROPS.has(p.kind) && p.state === 'on') {
+      const glow = findAnim('fx', 'moonlight')
+      if (glow)
+        blitAnim(
+          this.wctx,
+          glow,
+          t + p.id * 0.13,
+          at.x - this.ox,
+          at.y - this.oy - (p.kind === 'bigmoon' ? 56 : 34),
+          false,
+          0.85
+        )
+    }
+    if (p.kind === 'iceblock' && p.state === 'sliding' && Math.random() < 0.6) {
+      this.particles.spawn('skid', at.x + (Math.random() - 0.5) * 40, at.y + 26, 0, 0, 0, 0, 1.4)
+      if (Math.random() < 0.3) this.particles.burst('snowball', at.x, at.y + 20, 1)
+    }
+    const rang = this.bellRings.get(p.id)
+    if (rang !== undefined && t - rang < 0.9) this.drawRing(at.x, at.y - 56, t - rang)
+  }
+
+  /** Sound lines spreading from a ringing bell. */
+  private drawRing(x: number, y: number, age: number) {
+    const ctx = this.wctx
+    ctx.lineWidth = 2
+    for (let k = 0; k < 3; k++) {
+      const a = age - k * 0.14
+      if (a <= 0 || a > 0.6) continue
+      const r = 16 + a * 70
+      ctx.globalAlpha = (1 - a / 0.6) * 0.9
+      ctx.strokeStyle = k === 0 ? '#fff6c8' : '#ffd96a'
+      for (const side of [0, Math.PI]) {
+        ctx.beginPath()
+        ctx.arc(x - this.ox, y - this.oy, r, side - 0.6, side + 0.6)
+        ctx.stroke()
+      }
+    }
+    ctx.globalAlpha = 1
+  }
+
+  /** Effects on prop state changes: bells ring, drawbridges and doors raise dust, windmills kick up a gust. */
+  private transitions(view: View) {
+    for (const p of view.props) {
+      const prev = this.propStates.get(p.id)
+      if (prev === p.state) continue
+      this.propStates.set(p.id, p.state)
+      if (prev === undefined) continue
+      if (p.state === 'ring') this.bellRings.set(p.id, view.t)
+      else if (p.state === 'lowering' || p.state === 'opening') {
+        this.particles.burst('dust', p.x, p.y + 10, 14)
+        if (p.kind === 'drawbridge' || p.kind === 'lockdoor') this.particles.burst('rubble', p.x, p.y, 6)
+      } else if (p.kind === 'moonstone' && p.state === 'on') {
+        this.particles.burst('spark', p.x, p.y - 30, 8)
+        this.lighting.flash(p.x, p.y - 30, 220, 'cool', view.t, 0.6)
+      } else if (p.kind === 'bigmoon' && p.state === 'on') {
+        // Resonance: two howl rings close in on the great moonstone, then it blazes.
+        const howl = findAnim('fx', 'howl')
+        if (howl) for (const dx of [-70, 70]) this.fx.add(howl, p.x + dx, p.y - 30, view.t)
+        this.lighting.flash(p.x, p.y - 40, 560, 'cool', view.t + 0.2, 1.2)
+        this.particles.burst('spark', p.x, p.y - 40, 24)
+        this.shakeAmp = Math.min(14, this.shakeAmp + 8)
+        this.wash('rgb(220, 236, 255)', 0.4, 200, 600)
+      } else if (p.kind === 'iceblock' && p.state === 'sliding') {
+        this.particles.burst('dust', p.x, p.y + 20, 6)
+        this.particles.burst('snowball', p.x, p.y, 6)
+      } else if (p.kind === 'icewall' && p.state === 'break') {
+        this.particles.burst('shard', p.x, p.y - 40, 24)
+        this.particles.burst('snowball', p.x, p.y - 30, 20)
+        this.lighting.flash(p.x, p.y - 40, 300, 'cool', view.t, 0.5)
+        this.shakeAmp = Math.min(16, this.shakeAmp + 9)
+      } else if (p.kind === 'ramslot' && p.state === 'on') {
+        // The battering ram hits the fortress gate.
+        this.particles.burst('rubble', p.x, p.y - 30, 24)
+        this.particles.burst('dust', p.x, p.y, 18)
+        this.shakeAmp = 16
+        this.wash('rgb(255, 250, 235)', 0.3, 0, 300)
+      } else if (p.kind === 'snowpile' && p.state === 'dig') {
+        this.particles.burst('snowball', p.x, p.y - 10, 18)
+        this.particles.burst('dust', p.x, p.y, 6)
+      } else if (p.state === 'spin') {
+        this.particles.burst('dust', p.x, p.y + 20, 10)
+        this.particles.burst('feather', p.x, p.y - 80, 6)
+      }
+    }
+  }
+
+  private ventSprite(): HTMLCanvasElement {
+    if (this.ventGlow) return this.ventGlow
+    const c = document.createElement('canvas')
+    c.width = 96
+    c.height = 48
+    const g = c.getContext('2d')!
+    const grad = g.createRadialGradient(48, 24, 0, 48, 24, 48)
+    grad.addColorStop(0, 'rgba(210, 245, 255, 0.9)')
+    grad.addColorStop(0.5, 'rgba(160, 220, 255, 0.35)')
+    grad.addColorStop(1, 'rgba(160, 220, 255, 0)')
+    g.setTransform(1, 0, 0, 0.5, 0, 12)
+    g.fillStyle = grad
+    g.fillRect(0, 0, 96, 96)
+    return (this.ventGlow = c)
+  }
+
+  private drawMinion(m: NonNullable<View['minions']>[number], t: number) {
+    const sheetId = `minion:${m.kind}`
+    const { dir, flip } = dirOf(m.facing)
+    const name = pickName(sheetId, `${m.state}_${dir}`, m.state, `fly_${dir}`)
+    const a = name && findAnim(sheetId, name)
+    if (!a || !name) return
+    const mirror = name.endsWith('_side') && flip
+    const x = m.x - this.ox
+    const y = m.y - this.oy - m.z
+    blitAnim(this.wctx, a, t - m.st, x, y, mirror, 1, m.z > 0.5)
+    if (m.hitAt !== undefined && t - m.hitAt < 0.1 && t >= m.hitAt) {
+      const fa = findFlash(sheetId, name)
+      if (fa) blitAnim(this.wctx, fa, t - m.st, x, y, mirror, 0.85, m.z > 0.5)
+    }
   }
 
   /** A hero inside a stampede is drawn running (other techniques hide their members). */
   private stampeding(h: HeroView, view: View): boolean {
-    return view.techs.some((x) => x.kind === 'stampede' && x.slots.includes(h.slot))
+    return view.techs.some((x) => SHOWN_TECHS.has(x.kind) && x.slots.includes(h.slot))
   }
 
   private heroAnim(h: HeroView, species: string): { sheet: string; name: string; flip: boolean } {
@@ -788,10 +986,26 @@ export class Renderer {
     // A snared hero struggles in place.
     const shakeX = (h.snared ?? 0) > t ? (Math.floor(t * 24) % 2 ? 1 : -1) : 0
     const x = h.x - this.ox + shakeX
-    const y = h.y - this.oy - h.z
-    const dashing = h.state === 'tech' || (h.state === 'action' && view.species === 'rat')
+    let y = h.y - this.oy - h.z
+    // Falling into a pit or the sky: drop away and fade.
+    if (h.state === 'fall') {
+      alpha *= Math.max(0, 1 - at / 0.7)
+      y += at * at * 180
+    }
+    // Crows kick up dust and a feather as they take off.
+    const pz = this.heroZ.get(h.slot) ?? 0
+    if (view.species === 'crow' && pz < 1 && h.z > 3 && h.state !== 'tech') {
+      this.particles.burst('dust', h.x, h.y, 6)
+      this.particles.burst('feather', h.x, h.y - 20, 2)
+    }
+    this.heroZ.set(h.slot, h.z)
+    this.footwork(h, view, t)
+    const running = view.techs.some(
+      (q) => (q.kind === 'stampede' || (q.kind === 'pack' && q.stage === 'lunge')) && q.slots.includes(h.slot)
+    )
+    const dashing = running || (h.state === 'action' && view.species === 'rat')
     this.drawTrail(h, a, at, flip, dashing, t)
-    if (h.state === 'tech') {
+    if (running && view.species === 'rat') {
       const aura = findAnim(`tech:${view.species}`, 'rush_aura')
       if (aura) blitAnim(this.wctx, aura, t + h.slot * 0.07, x, y, flip, 0.9)
     }
@@ -808,6 +1022,33 @@ export class Renderer {
       const soul = findAnim('fx', 'soul')
       if (soul) blitAnim(this.wctx, soul, t, x, y - 34)
     }
+  }
+
+  /** Wolves kick up snow when sprinting; anyone skids on ice. */
+  private footwork(h: HeroView, view: View, t: number) {
+    const m = this.moving.get(h.slot) ?? { x: h.x, y: h.y, run: 0, puff: 0 }
+    const d = Math.hypot(h.x - m.x, h.y - m.y)
+    const moving = d > 0.6 && d < 40 && h.z < 1
+    const dt = 1 / 60
+    m.run = moving ? m.run + dt : 0
+    m.puff -= dt
+    const info = this.info
+    const tile = info ? info.tiles[Math.floor(h.y / TILE) * info.w + Math.floor(h.x / TILE)] : undefined
+    if (moving && m.puff <= 0) {
+      if (tile === 'ice') {
+        this.particles.spawn('skid', h.x + (Math.random() - 0.5) * 8, h.y + 1, 0, 0, 0, 0, 1.6)
+        if (Math.random() < 0.25) this.particles.spawn('chargeSpark', h.x, h.y, 2, 0, 0, 20, 0.4)
+        m.puff = 0.05
+      } else if (view.species === 'wolf' && m.run > 0.6) {
+        this.particles.spawn('dust', h.x - (h.x - m.x) * 3, h.y + 2, 2, -(h.x - m.x) * 10, -(h.y - m.y) * 10, 8, 0.4)
+        if (tile === 'snow') this.particles.burst('snowball', h.x, h.y, 1)
+        m.puff = 0.1
+      }
+    }
+    m.x = h.x
+    m.y = h.y
+    this.moving.set(h.slot, m)
+    void t
   }
 
   /** Afterimages behind a dashing rat (and the stampede line): fading copies at recent positions. */
@@ -843,6 +1084,11 @@ export class Renderer {
 
   private drawEnemy(e: EnemyView, t: number) {
     const sheetId = `enemy:${e.kind}`
+    // Caught in a tornado: spun round and round.
+    const spun = this.view?.techs.some(
+      (x) => x.kind === 'tornado' && x.stage === 'spin' && Math.hypot(e.x - x.x, e.y - x.y) < 200
+    )
+    if (spun && e.state !== 'death') e = { ...e, facing: t * 14 + e.id }
     const { name, flip } = this.enemyName(e, sheetId)
     if (!name) return
     const flash = e.hitAt !== undefined && t - e.hitAt < 0.1 && t >= e.hitAt
@@ -856,6 +1102,32 @@ export class Renderer {
       const fa = findFlash(sheetId, name)
       if (fa) blitAnim(this.wctx, fa, at, x, y, flip, 0.9)
     }
+    if ((e.ward ?? 0) > t && e.state !== 'death') this.drawWard(x, y, t, e.ward! - t)
+  }
+
+  /** The bell monk's ward: a soft golden bubble with a shimmer sweeping over it. */
+  private drawWard(x: number, y: number, t: number, left: number) {
+    const ctx = this.wctx
+    const fade = Math.min(1, left * 2)
+    ctx.save()
+    ctx.translate(x, y - 26)
+    ctx.globalAlpha = 0.16 * fade
+    ctx.fillStyle = '#ffe9a0'
+    ctx.beginPath()
+    ctx.ellipse(0, 0, 24, 30, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = (0.5 + 0.25 * Math.sin(t * 6)) * fade
+    ctx.strokeStyle = '#ffd96a'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    const a = (t * 2.4) % (Math.PI * 2)
+    ctx.globalAlpha = 0.85 * fade
+    ctx.strokeStyle = '#fffbe8'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.ellipse(0, 0, 24, 30, 0, a, a + 0.7)
+    ctx.stroke()
+    ctx.restore()
   }
 
   private drawBoss(b: Omit<BossView, 'kind'>, sheetId: string, t: number) {
@@ -873,10 +1145,62 @@ export class Renderer {
       const fa = findFlash(sheetId, name)
       if (fa) blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.8)
     }
-    if ((b.broken ?? 0) > t) {
+    // Leon's parry stance: a pulsing golden outline (attacks bounce off).
+    if ((b.parry ?? 0) > t) {
+      const fa = findFlash(sheetId, name)
+      if (fa) {
+        this.wctx.globalCompositeOperation = 'lighter'
+        blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.25 + 0.2 * Math.sin(t * 18))
+        this.wctx.globalCompositeOperation = 'source-over'
+      }
+      this.label(b.x, b.y - b.z - 132, '受け流しの構え', '#fff1a8', 12, 1, 'rgba(60,40,10,0.75)')
+    }
+    if (b.anim === 'shield') this.drawHolyShield(x, y, t)
+    if (sheetId === `boss:${this.view?.boss?.kind}`) {
+      if (b.anim === 'awaken' && this.bossAnim !== 'awaken') {
+        this.punchUntil = performance.now() + 1500
+        this.wash('rgb(255, 248, 220)', 0.65, 0, 700)
+        this.lighting.flash(b.x, b.y - 60, 600, 'white', t, 1.2)
+        this.shakeAmp = Math.min(16, this.shakeAmp + 8)
+      }
+      this.bossAnim = b.anim
+      if (this.bossZ > 20 && b.z < 4) {
+        this.particles.burst('dust', b.x, b.y, 16)
+        this.particles.burst('feather', b.x, b.y - 40, 4)
+        this.shakeAmp = Math.min(14, this.shakeAmp + 4)
+      }
+      this.bossZ = b.z
+    }
+    if ((b.broken ?? 0) > t || b.anim === 'downed') {
       const stun = findAnim('fx', 'stun')
       if (stun) blitAnim(this.wctx, stun, t, x, y - (a.frames[0].h > 128 ? 150 : 104))
     }
+  }
+
+  /** The holy shield bubble: immune until the pack technique shatters it. */
+  private drawHolyShield(x: number, y: number, t: number) {
+    const ctx = this.wctx
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5)
+    ctx.save()
+    ctx.translate(x, y - 56)
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = 0.16 + 0.06 * pulse
+    ctx.fillStyle = '#ffe9a8'
+    ctx.beginPath()
+    ctx.ellipse(0, 0, 66, 78, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 0.7 + 0.3 * pulse
+    ctx.strokeStyle = '#fff4c0'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    // Runes orbiting the bubble.
+    ctx.fillStyle = '#fffbe8'
+    for (let i = 0; i < 6; i++) {
+      const a = t * 1.4 + (i / 6) * Math.PI * 2
+      ctx.fillRect(Math.round(Math.cos(a) * 66) - 1, Math.round(Math.sin(a) * 78) - 1, 3, 3)
+    }
+    ctx.restore()
   }
 
   private drawPickup(p: PickupView, t: number) {
@@ -888,6 +1212,8 @@ export class Renderer {
   }
 
   private drawTech(x: TechView, view: View, t: number) {
+    if (x.kind === 'tornado') return this.drawTornado(x, view, t)
+    if (x.kind === 'pack') return this.drawPack(x, t)
     if (x.kind !== 'jumbo') return
     const stage = x.stage === 'form' || x.stage === 'jump' || x.stage === 'land' ? x.stage : undefined
     if (!stage) return
@@ -895,6 +1221,67 @@ export class Renderer {
     const a = findAnim(sheetId, `jumbo_${x.tier}_${stage}`)
     if (!a) return
     blitAnim(this.wctx, a, t - x.st, x.x - this.ox, x.y - x.z - this.oy, false, 1, x.z > 0.5)
+  }
+
+  /** 月下群狼陣: moonlit streaks along the lunges (the howl, moon and crescent come as fx events). */
+  private drawPack(x: TechView, t: number) {
+    if (x.stage !== 'lunge' || !x.points?.length) return
+    const ctx = this.wctx
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.lineCap = 'round'
+    const upTo = Math.min(x.points.length - 1, x.index ?? 0)
+    let px = x.x
+    let py = x.y
+    for (let i = 0; i <= upTo; i++) {
+      const [qx, qy] = x.points[i]
+      const fresh = i === upTo
+      ctx.globalAlpha = fresh ? 0.85 : 0.3
+      ctx.strokeStyle = '#bfe4ff'
+      ctx.lineWidth = fresh ? 5 : 2
+      ctx.beginPath()
+      ctx.moveTo(px - this.ox, py - this.oy - 20)
+      ctx.lineTo(qx - this.ox, qy - this.oy - 20)
+      ctx.stroke()
+      if (fresh) {
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+      px = qx
+      py = qy
+    }
+    ctx.restore()
+    void t
+  }
+
+  /** 黒羽の大旋風: the whirlwind sprite with black feathers spiralling up around it. */
+  private drawTornado(x: TechView, view: View, t: number) {
+    if (x.stage !== 'spin' && x.stage !== 'end') return
+    const sheetId = `tech:${view.species}`
+    const a = findAnim(sheetId, `tornado_${x.tier}`)
+    const fade = x.stage === 'end' ? Math.max(0, 1 - (t - x.st) / 0.5) : Math.min(1, (t - x.st) / 0.2)
+    const cx = x.x - this.ox
+    const cy = x.y - this.oy
+    if (a) blitAnim(this.wctx, a, t, cx, cy, false, 0.92 * fade)
+    const feather = findAnim(sheetId, 'feather')
+    if (!feather) return
+    const r = [0, 0, 80, 100, 130][x.tier] ?? 100
+    for (let i = 0; i < 14; i++) {
+      const k = ((i * 37) % 14) / 14
+      const ang = t * (5 + k * 3) + (i / 14) * Math.PI * 2
+      const h = ((t * 60 + i * 23) % 150) + 6
+      const rad = r * (0.25 + 0.55 * k) * (0.7 + h / 300)
+      blitAnim(
+        this.wctx,
+        feather,
+        t + i * 0.1,
+        cx + Math.cos(ang) * rad,
+        cy + Math.sin(ang) * rad * 0.4 - h,
+        i % 2 === 0,
+        fade
+      )
+    }
   }
 
   /* ------------------------------------------------------------------------------------------------ shots */
@@ -912,6 +1299,8 @@ export class Renderer {
         a = findAnim(sheet, s.prop ?? s.kind) ?? findAnim(sheet, 'pot')
       } else a = findAnim('fx', s.kind)
       if (!a) continue
+      if (s.kind === 'gust' && Math.random() < 0.35)
+        this.particles.spawn('dust', s.x, s.y, 2, -s.vx * 0.1, -s.vy * 0.1, 6, 0.45)
       blitAnim(ctx, a, t + s.id * 0.07, s.x - this.ox, s.y - s.z - this.oy, false, 1, true)
     }
   }
@@ -1016,6 +1405,7 @@ export class Renderer {
             0.7
           )
       }
+      if (view.species === 'crow' && h.ctrl && h.owner === input.myId) this.drawStamina(h, view, x, y, t)
       if (h.state === 'down' && (h.revive ?? 0) > 0) this.drawGauge(x, y - 46, h.revive ?? 0, '#9ff0a0', t)
       const owner = view.players.find((p) => p.id === h.owner)
       if (h.ctrl && owner && (multi || owner.id !== input.myId)) {
@@ -1127,6 +1517,32 @@ export class Renderer {
       for (let c = 0; c < 5; c++) if (rows[r][c] === '#') ctx.fillRect(x - 2 + c, y - 2 + r, 1, 1)
   }
 
+  /** Flight stamina of the controlled crow (estimated: 1.5 s in the air, refilled on the ground and by vents). */
+  private drawStamina(h: HeroView, view: View, x: number, y: number, t: number) {
+    const last = this.stamina.get(h.slot) ?? 1.5
+    const dt = Math.min(0.05, Math.max(0, t - (this.staminaT ?? t)))
+    const flying = h.z > 1 && h.state !== 'tech'
+    const overVent = view.props.some((p) => p.kind === 'vent' && Math.hypot(p.x - h.x, p.y - h.y) < 52)
+    const exact = (h as HeroView & { stamina?: number }).stamina
+    const s =
+      exact !== undefined
+        ? exact * 1.5
+        : Math.max(0, Math.min(1.5, flying && !overVent ? last - dt : last + (overVent ? 3 : 1) * dt))
+    this.stamina.set(h.slot, s)
+    this.staminaT = t
+    if (s >= 1.5 && !flying) return
+    const v = s / 1.5
+    this.drawGauge(x - 14, y - 52, v, v < 0.3 ? '#ff8a70' : '#9fd8f2', t)
+    // A tiny feather beside the gauge.
+    const ctx = this.wctx
+    ctx.fillStyle = '#2a1d2e'
+    ctx.fillRect(x - 25, y - 56, 2, 7)
+    ctx.fillStyle = '#e8f6ff'
+    ctx.fillRect(x - 24, y - 57, 2, 6)
+  }
+
+  private staminaT?: number
+
   /** Height of a prop's sprite above its anchor (where the strain meter sits). */
   private propTop(p: PropView, stage: string): number {
     const sheet = `props:${stage}`
@@ -1177,11 +1593,28 @@ export class Renderer {
     const night = info.light === 'night'
     L.begin()
     const heroR = night ? 130 : 190
-    for (const h of view.heroes) L.add(h.x, h.y - 20 - h.z, heroR * flicker(t, h.slot * 3.1, 0.6), 'hero', 0.5)
+    for (const h of view.heroes)
+      L.add(h.x, h.y - 20 - h.z, heroR * flicker(t, h.slot * 3.1, 0.6), 'hero', night ? 0.38 : 0.5)
     // Enemies keep a faint pool so they read in the dark.
     for (const e of view.enemies)
       if (e.state !== 'death' && this.visible(e.x, e.y, 80)) L.add(e.x, e.y - 24, 64, 'faint', 0.7)
-    if (view.boss) L.add(view.boss.x, view.boss.y - 50 - view.boss.z, 120, 'faint', 0.8)
+    // The boss is always readable; telegraphs glow red through the dark.
+    if (view.boss)
+      L.add(
+        view.boss.x,
+        view.boss.y - 50 - view.boss.z,
+        night ? 200 : 120,
+        night ? 'hero' : 'faint',
+        night ? 0.45 : 0.8
+      )
+    const teles = (tl: Telegraph | undefined) => {
+      if (tl && tl.until > view.t) L.add(tl.x, tl.y, Math.min(300, tl.r * 1.4 + 40), 'fire', 0.55)
+    }
+    for (const e of view.enemies) {
+      teles(e.tele)
+      if (e.state === 'heal') L.add(e.x, e.y - 30, 120, 'cool', 0.9)
+    }
+    for (const tl of view.boss?.tele ?? []) teles(tl)
     if (view.bossPet) L.add(view.bossPet.x, view.bossPet.y - 40, 120, 'faint', 0.7)
     for (const d of info.decor) {
       if (!WARM_DECOR.has(d.kind) || !this.visible(d.x, d.y, 200)) continue
@@ -1191,7 +1624,8 @@ export class Renderer {
     for (const p of view.props) {
       if (!this.visible(p.x, p.y, 160)) continue
       const key = `${p.kind}_${p.state}`
-      if (COOL_PROPS.has(key)) L.add(p.x, p.y - 40, 150 * flicker(t, p.id, 0.4), 'cool', 0.9)
+      if (COOL_PROPS.has(key))
+        L.add(p.x, p.y - 40, (p.kind === 'bigmoon' ? 320 : 170) * flicker(t, p.id, 0.4), 'cool', 1)
       else if (p.kind === 'torch') L.add(p.x, p.y - 40, 160 * flicker(t, p.id), 'warm', 0.9)
     }
     for (const p of view.pickups) {
@@ -1228,25 +1662,59 @@ export class Renderer {
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(this.up, 0, 0, artW * k, artH * k, 0, 0, artW * this.camera.scale, artH * this.camera.scale)
-    if (this.info?.light === 'day') this.drawVignette()
+    this.drawVignette(this.info?.light ?? 'day')
+    const now = performance.now()
+    let keep = 0
+    for (const w of this.washes) {
+      const p = (now - w.t0) / w.dur
+      if (p >= 1) continue
+      this.washes[keep++] = w
+      if (p < 0) continue
+      ctx.globalAlpha = w.a * (p < 0.15 ? p / 0.15 : 1 - (p - 0.15) / 0.85)
+      ctx.fillStyle = w.color
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    }
+    this.washes.length = keep
+    if (this.fade > 0) {
+      ctx.globalAlpha = Math.min(1, this.fade)
+      ctx.fillStyle = '#0d0a16'
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    }
+    ctx.globalAlpha = 1
   }
 
-  private drawVignette() {
+  private drawVignette(light: 'day' | 'dim' | 'night') {
+    if (light === 'dim') return
     const w = this.canvas.width
     const h = this.canvas.height
-    if (!this.vignette || this.vignette.w !== w || this.vignette.h !== h) {
+    if (!this.vignette || this.vignette.w !== w || this.vignette.h !== h || this.vignette.light !== light) {
       const c = document.createElement('canvas')
       c.width = w
       c.height = h
       const g = c.getContext('2d')!
       const r = Math.hypot(w, h) / 2
       const grad = g.createRadialGradient(w / 2, h / 2, r * 0.45, w / 2, h / 2, r)
-      grad.addColorStop(0, 'rgba(255, 214, 150, 0)')
-      grad.addColorStop(0.7, 'rgba(120, 60, 30, 0.12)')
-      grad.addColorStop(1, 'rgba(60, 24, 20, 0.34)')
-      g.fillStyle = grad
-      g.fillRect(0, 0, w, h)
-      this.vignette = { w, h, c }
+      if (light === 'night') {
+        // Deep blue edges and a faint moon glow from the upper right.
+        grad.addColorStop(0, 'rgba(10, 16, 48, 0)')
+        grad.addColorStop(0.7, 'rgba(8, 12, 40, 0.22)')
+        grad.addColorStop(1, 'rgba(4, 6, 24, 0.55)')
+        g.fillStyle = grad
+        g.fillRect(0, 0, w, h)
+        const moon = g.createRadialGradient(w * 0.86, -h * 0.1, 0, w * 0.86, -h * 0.1, h * 0.9)
+        moon.addColorStop(0, 'rgba(200, 220, 255, 0.22)')
+        moon.addColorStop(1, 'rgba(200, 220, 255, 0)')
+        g.globalCompositeOperation = 'screen'
+        g.fillStyle = moon
+        g.fillRect(0, 0, w, h)
+      } else {
+        grad.addColorStop(0, 'rgba(255, 214, 150, 0)')
+        grad.addColorStop(0.7, 'rgba(120, 60, 30, 0.12)')
+        grad.addColorStop(1, 'rgba(60, 24, 20, 0.34)')
+        g.fillStyle = grad
+        g.fillRect(0, 0, w, h)
+      }
+      this.vignette = { w, h, c, light }
     }
     this.ctx.drawImage(this.vignette.c, 0, 0)
   }

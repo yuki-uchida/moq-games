@@ -1,14 +1,17 @@
 /** Builds the JSON snapshot (View) from the world state: rounded numbers, dynamic props only, bounded events. */
 import { BOSS_NAMES, STAGE_SPECIES, dirOf, type StageId } from '../vocab'
 import { CAT_DIR_ANIMS, MILDA_DIR_ANIMS } from './boss2'
+import { VALK_DIR_ANIMS } from './boss3'
+import { LEON_DIR_ANIMS } from './boss4'
 import { BOSS_DIR_ANIMS } from './boss'
 import { r1, r2 } from './core'
 import { GRIPPABLE, PUSHABLE } from './stage-data'
 import { holdSpeed } from './props'
+import { CROW_FLIGHT } from './move'
 import { ownedSlots } from './party'
 import type { WorldState } from './state'
 import { CHARGE, CHARGE_SPEED, GUARDED } from './tables'
-import type { BossView, EnemyView, HeroView, PetView, PlayerView, PropView, SnareView, View } from './types'
+import type { BossView, EnemyView, HeroView, MinionView, PetView, PlayerView, PropView, SnareView, View } from './types'
 
 export function buildView(W: WorldState, unlocked: StageId[]): View {
   const t = W.t
@@ -40,6 +43,7 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (h.form >= 0) v.form = h.form
     if (h.stun > t) v.stun = r2(h.stun)
     if (h.snared > t) v.snared = r2(h.snared)
+    if (W.species === 'crow') v.stamina = r2(h.body.stamina / CROW_FLIGHT.stamina)
     if (h.state === 'down') v.revive = r2(Math.min(1, h.revive / 1.5))
     if (h.force) v.force = h.force
     const speed = (h.charging ? CHARGE_SPEED : 1) * (W.grid ? holdSpeed(W, h) : 1)
@@ -63,6 +67,7 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (e.stun > t) v.stun = r2(e.stun)
     if (e.alertAt !== undefined) v.alertAt = r2(e.alertAt)
     if (e.tele) v.tele = e.tele
+    if (e.ward > t) v.ward = r2(e.ward)
     return v
   })
   let boss: BossView | undefined
@@ -77,7 +82,16 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
       z: r1(b.z),
       facing: r2(b.facing),
       anim: b.anim,
-      animKey: (b.kind === 'milda' ? MILDA_DIR_ANIMS : BOSS_DIR_ANIMS).has(b.anim) ? `${b.anim}_${dir}` : b.anim,
+      animKey: (b.kind === 'milda'
+        ? MILDA_DIR_ANIMS
+        : b.kind === 'valk'
+          ? VALK_DIR_ANIMS
+          : b.kind === 'leon'
+            ? LEON_DIR_ANIMS
+            : BOSS_DIR_ANIMS
+      ).has(b.anim)
+        ? `${b.anim}_${dir}`
+        : b.anim,
       st: r2(b.st),
       hp: r1(b.hp),
       maxHp: b.maxHp,
@@ -85,7 +99,8 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
       guard: b.active && b.broken <= t && b.act !== 'death'
     }
     if (b.broken > t) boss.broken = r2(b.broken)
-    if (b.steel > t) boss.steel = r2(b.steel)
+    if (b.steel > t && b.kind !== 'leon') boss.steel = r2(b.steel)
+    if (b.kind === 'leon' && b.act === 'parry') boss.parry = r2(b.until)
     if (b.hitAt !== undefined) boss.hitAt = r2(b.hitAt)
     if (b.tele.length) boss.tele = b.tele
     if (b.dead) boss = undefined
@@ -176,20 +191,25 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
       return v
     }),
     pickups: W.pickups.map((p) => ({ id: p.id, kind: p.kind, x: r1(p.x), y: r1(p.y), st: r2(p.st) })),
-    techs: W.techs.map((x) => ({
-      id: x.id,
-      kind: x.kind,
-      tier: x.tier,
-      slots: x.slots,
-      stage: x.stage,
-      st: r2(x.st),
-      x: r1(x.x),
-      y: r1(x.y),
-      z: r1(x.z),
-      tx: r1(x.tx),
-      ty: r1(x.ty),
-      a: r2(x.a)
-    })),
+    techs: W.techs.map((x) => {
+      const v: View['techs'][number] = {
+        id: x.id,
+        kind: x.kind,
+        tier: x.tier,
+        slots: x.slots,
+        stage: x.stage,
+        st: r2(x.st),
+        x: r1(x.x),
+        y: r1(x.y),
+        z: r1(x.z),
+        tx: r1(x.tx),
+        ty: r1(x.ty),
+        a: r2(x.a)
+      }
+      if (x.points) v.points = x.points.map(([px, py]) => [r1(px), r1(py)] as [number, number])
+      if (x.index !== undefined) v.index = x.index
+      return v
+    }),
     formations: W.formations.map((f) => ({
       slots: f.slots,
       x: r1(f.x),
@@ -204,6 +224,24 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
   }
   if (boss) view.boss = boss
   if (pet) view.bossPet = pet
+  if (W.minions.length)
+    view.minions = W.minions.map((m) => {
+      const v: MinionView = {
+        id: m.id,
+        kind: m.kind,
+        x: r1(m.x),
+        y: r1(m.y),
+        z: r1(m.z),
+        facing: r2(m.facing),
+        state: m.state,
+        st: r2(m.st),
+        hp: r1(m.hp),
+        maxHp: m.maxHp
+      }
+      if (m.hitAt !== undefined) v.hitAt = r2(m.hitAt)
+      if (m.tele) v.tele = m.tele
+      return v
+    })
   if (W.signal) view.signal = { at: r2(W.signal.at), slot: W.signal.slot }
   if (W.leaderRoom) view.room = W.leaderRoom
   if (W.phase === 'lobby') view.lobby = { stage: W.lobbyStage, unlocked }

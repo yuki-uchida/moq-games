@@ -18,7 +18,7 @@ const RGB: Record<LightColor, [number, number, number]> = {
 }
 
 /** Ambient light multiplied over the world: dim ≈ 50 % with a cool tint, night ≈ 30 % and blue. */
-const AMBIENT: Record<'dim' | 'night', string> = { dim: 'rgb(112, 112, 146)', night: 'rgb(56, 66, 116)' }
+const AMBIENT: Record<'dim' | 'night', string> = { dim: 'rgb(112, 112, 146)', night: 'rgb(74, 86, 146)' }
 
 export const LIGHT_SCALE = 4
 

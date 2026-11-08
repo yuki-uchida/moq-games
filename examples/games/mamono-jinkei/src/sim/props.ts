@@ -5,6 +5,7 @@
 import { TILE } from '../vocab'
 import { banner, burst, dist, emit, freeSpotNear, fx, heroBy, pop, sfx, shake, tileOf, warpHero } from './core'
 import { hitBoss, hitEnemy, hurtHero, setState } from './combat'
+import { propSolid } from './grid'
 import { ACCEPTORS, GRIPPABLE, LIFTABLE, PUSHABLE, footOf, tileCentre, type Cond } from './stage-data'
 import { dropItems, rollDrop } from './items'
 import type { Enemy, Hero, Prop, Shot, WorldState } from './state'
@@ -61,6 +62,20 @@ export function hitProp(W: WorldState, p: Prop, slot: number, tech: boolean): bo
   }
   if (p.kind === 'crystal') {
     hitCrystal(W, p)
+    return true
+  }
+  if (p.kind === 'bell') {
+    ringBell(W, p)
+    return true
+  }
+  if (p.kind === 'snowpile' && p.state === 'idle') {
+    p.state = 'dig'
+    p.st = W.t
+    p.goneAt = W.t + 5 / 14
+    sfx(W, 'grassCut', p.x, p.y)
+    emit(W, 'burst', p.x, p.y - 10, { s: 'dust', a: 8 })
+    if (p.drop.length) dropItems(W, p.x, p.y, p.drop)
+    else rollDrop(W, p.x, p.y, 'grass')
     return true
   }
   void slot
@@ -271,7 +286,7 @@ function startGrip(W: WorldState, h: Hero, p: Prop): boolean {
     sfx(W, 'lift', p.x, p.y)
     pop(W, 'もちあげた！', p.x, p.y - 90, h.slot)
   } else if (p.state === 'lifted') setState(W, h, 'carry')
-  else pop(W, `おもい！ ${p.grips.length}/${p.weight}`, p.x, p.y - 80, -1)
+  else sfx(W, 'pushStrain', p.x, p.y)
   return true
 }
 
@@ -354,6 +369,8 @@ export function interact(W: WorldState, h: Hero): string {
       return 'lift'
     case 'acorn':
     case 'cheese':
+    case 'goldbell':
+    case 'log':
       return startGrip(W, h, p) ? 'grip' : 'none'
     case 'valve':
       startValve(W, h, p)
@@ -483,7 +500,8 @@ export function updateHeld(W: WorldState): void {
 
 function tryDeliverLifted(W: WorldState, p: Prop): boolean {
   const ped = W.props.find((q) => ACCEPTORS.has(q.kind) && !q.on && (!q.accepts || q.accepts === p.part))
-  if (!ped || dist(p.x, p.y, ped.x, ped.y) > 56) return false
+  // Close enough: the carried object's centre within 96 px of the pedestal's footprint.
+  if (!ped || !circleRect(p.x, p.y, 96, propRect(ped))) return false
   for (const s of p.grips) {
     const m = heroBy(W, s)
     if (m) {
@@ -492,7 +510,7 @@ function tryDeliverLifted(W: WorldState, p: Prop): boolean {
       setState(W, m, 'idle')
     }
   }
-  return tryDeliver(W, p, 64)
+  return tryDeliver(W, p, 100)
 }
 
 /** Speed multiplier of a hero from what it holds. */
@@ -535,6 +553,8 @@ export function updatePush(W: WorldState, dt: number): void {
           fx(W, 'splash', p.x, p.y)
           burst(W, 'splash', p.x, p.y, 12)
           emit(W, 'solve', p.x, p.y, { s: '岩が沈んで道ができた！' })
+        } else if (p.kind === 'iceblock' && iceSlide(W, p, s.to[0] - s.from[0], s.to[1] - s.from[1])) {
+          // Keeps sliding.
         } else {
           p.state = 'idle'
           // A pushed crate springs any mousetrap it lands on.
@@ -589,7 +609,6 @@ export function updatePush(W: WorldState, dt: number): void {
       p.pushT = 0
       if (W.t - p.strainAt > 1) {
         p.strainAt = W.t
-        pop(W, `おもい！ ${bestStr}/${p.weight}`, p.x, p.y - 80, -1)
         sfx(W, 'pushStrain', p.x, p.y)
       }
       continue
@@ -632,6 +651,7 @@ const canPush = (h: Hero) =>
 
 export function updatePuzzles(W: WorldState): void {
   const t = W.t
+  if (W.seq % 30 === 0) resetStuck(W, 0.5)
   for (const p of W.props) {
     if (p.gone) continue
     if (p.goneAt > 0 && t >= p.goneAt) {
@@ -696,6 +716,26 @@ export function updatePuzzles(W: WorldState): void {
         break
       case 'mousetrap':
         if (p.state === 'idle') updateMousetrap(W, p)
+        break
+      case 'bell':
+        if (p.state === 'ring' && t - p.st >= 6 / 14) p.state = 'idle'
+        if (p.on && t > p.onUntil) p.on = false
+        break
+      case 'drawbridge':
+        updateDrawbridge(W, p)
+        break
+      case 'lockdoor':
+        updateLockdoor(W, p)
+        break
+      case 'moonstone':
+        if (p.on && t > p.onUntil) {
+          p.on = false
+          p.state = 'off'
+          p.st = t
+          sfx(W, 'crystalOff', p.x, p.y)
+        }
+        break
+      case 'icewall':
         break
     }
   }
@@ -775,6 +815,268 @@ export { banner }
 /* ------------------------------------------------------------------------------------------- stage 2 parts */
 
 export const VALVE = { turn: 1, window: 1.5 }
+
+/* ------------------------------------------------------------------------------------------- fairness */
+
+/** Seconds a pushable may stay unmovable (or a heavy object ungrippable) before it returns to its start. */
+export const STUCK_RESET = 3
+
+/** Can this pushable still be pushed in some direction (a hero can stand behind it and the way ahead is open)? */
+export function pushableFree(W: WorldState, p: Prop): boolean {
+  const g = W.grid!
+  const own = new Set(footTiles(p.kind, p.x, p.y).map(([a, b]) => `${a},${b}`))
+  const solidAt = (tx: number, ty: number) => {
+    if (!g.inside(tx, ty)) return true
+    const i = g.idx(tx, ty)
+    if (g.staticSolid[i]) return true
+    if (own.has(`${tx},${ty}`)) return false
+    return g.solid[i] > 0
+  }
+  for (const [dx, dy] of CARD) {
+    const ahead = footTiles(p.kind, p.x + dx * TILE, p.y + dy * TILE).filter(([a, b]) => !own.has(`${a},${b}`))
+    const behind = footTiles(p.kind, p.x - dx * TILE, p.y - dy * TILE).filter(([a, b]) => !own.has(`${a},${b}`))
+    let sink = 0
+    let ok = true
+    for (const [tx, ty] of ahead) {
+      if (solidAt(tx, ty)) ok = false
+      else if (g.sink[g.idx(tx, ty)]) sink++
+      else if (!g.walk[g.idx(tx, ty)]) ok = false
+    }
+    if (!ok || (sink > 0 && sink < ahead.length)) continue
+    if (behind.some(([tx, ty]) => !solidAt(tx, ty) && g.walk[g.idx(tx, ty)])) return true
+  }
+  return false
+}
+
+function homeFree(W: WorldState, p: Prop): boolean {
+  const g = W.grid!
+  const R = propRect({ kind: p.kind, x: p.homeX, y: p.homeY })
+  if (W.heroes.some((h) => circleRect(h.body.x, h.body.y, 16, R))) return false
+  return footTiles(p.kind, p.homeX, p.homeY).every(
+    ([tx, ty]) =>
+      g.inside(tx, ty) &&
+      !g.staticSolid[g.idx(tx, ty)] &&
+      g.walk[g.idx(tx, ty)] &&
+      !W.props.some(
+        (q) =>
+          q !== p &&
+          !q.gone &&
+          propSolid(q.kind, q.state) &&
+          footTiles(q.kind, q.x, q.y).some(([a, b]) => a === tx && b === ty)
+      )
+  )
+}
+
+/**
+ * No softlocks: a pushable that can no longer be pushed anywhere, or a heavy object nobody can grip, goes back to
+ * where it started (unless it rests on a plate on purpose).
+ */
+function resetStuck(W: WorldState, dt: number): void {
+  for (const p of W.props) {
+    if (p.gone || p.state !== 'idle' || p.delivered) continue
+    const push = PUSHABLE.has(p.kind)
+    const grip = GRIPPABLE.has(p.kind) && !p.grips.length
+    if (!push && !grip) continue
+    if (p.x === p.homeX && p.y === p.homeY) {
+      p.stuckT = 0
+      continue
+    }
+    const onPlate = W.props.some(
+      (q) =>
+        !q.gone &&
+        (q.kind === 'plate' || q.kind === 'plate2' || q.kind === 'bigplate') &&
+        circleRect(p.x, p.y, 8, propRect(q))
+    )
+    const stuck = push
+      ? !pushableFree(W, p)
+      : [0, 1, 2, 3].every((k) => W.grid!.overlaps(p.x + [0, -46, 46, 0][k], p.y + [46, 0, 0, -46][k], 14, false))
+    p.stuckT = stuck && !onPlate ? p.stuckT + dt : 0
+    if (p.stuckT < STUCK_RESET || !homeFree(W, p)) continue
+    fx(W, 'smoke', p.x, p.y)
+    p.x = p.homeX
+    p.y = p.homeY
+    p.stuckT = 0
+    fx(W, 'smoke', p.x, p.y)
+    sfx(W, 'secret', p.x, p.y)
+    emit(W, 'notice', p.x, p.y, { s: '動かせなくなったので、元の場所にもどった' })
+  }
+}
+
+/* ------------------------------------------------------------------------------------------- stage 3 parts */
+
+export const BELL_WINDOW = 1.2
+
+/* ------------------------------------------------------------------------------------------- stage 4 parts */
+
+export const MOON = { lit: 6, resonance: 0.6, resonanceR: 220 }
+
+/** An ice block that just slid one tile keeps going while it is on ice and the next tile is free (or water). */
+function iceSlide(W: WorldState, p: Prop, dx: number, dy: number): boolean {
+  const g = W.grid!
+  const tx = tileOf(p.x)
+  const ty = tileOf(p.y)
+  if (!g.ice[g.idx(tx, ty)]) return false
+  const sx = Math.sign(dx)
+  const sy = Math.sign(dy)
+  const nx = tx + sx
+  const ny = ty + sy
+  if (!g.inside(nx, ny)) return false
+  const i = g.idx(nx, ny)
+  if (
+    g.staticSolid[i] ||
+    W.props.some(
+      (q) =>
+        q !== p &&
+        !q.gone &&
+        q.kind !== 'mousetrap' &&
+        propSolid(q.kind, q.state) &&
+        footTiles(q.kind, q.x, q.y).some(([a, b]) => a === nx && b === ny)
+    )
+  )
+    return false
+  const sink = g.sink[i] === 1
+  if (!sink && !g.walk[i]) return false
+  p.state = 'sliding'
+  p.st = W.t
+  p.slide = { from: [p.x, p.y], to: [p.x + sx * TILE, p.y + sy * TILE], t0: W.t, dur: 0.18, sink }
+  return true
+}
+
+/** A howl at (x, y): lights moonstones within r for 6 s; two howls near a big moonstone resonate. */
+export function howlAt(W: WorldState, x: number, y: number, r: number, slot: number): void {
+  for (const p of W.props) {
+    if (p.gone) continue
+    if (p.kind === 'moonstone' && dist(p.x, p.y, x, y) <= r) lightMoonstone(W, p)
+  }
+  W.howls.push({ t: W.t, x, y, slot })
+  W.howls = W.howls.filter((q) => W.t - q.t <= MOON.resonance)
+  for (const p of W.props) {
+    if (p.gone || p.kind !== 'bigmoon' || p.on) continue
+    const near = W.howls.filter((q) => dist(q.x, q.y, p.x, p.y) <= MOON.resonanceR)
+    if (new Set(near.map((q) => q.slot)).size >= 2) lightBigmoon(W, p, '共鳴！')
+  }
+}
+
+export function lightMoonstone(W: WorldState, p: Prop): void {
+  if (!p.on) sfx(W, 'crystalOn', p.x, p.y)
+  p.on = true
+  p.state = 'on'
+  p.st = W.t
+  p.onUntil = p.latched ? Infinity : W.t + MOON.lit
+  fx(W, 'moonlight', p.x, p.y - 40)
+  if (p.group === undefined) return
+  const group = W.props.filter((q) => q.kind === 'moonstone' && q.group === p.group)
+  if (group.every((q) => q.on) && !W.flags.has(`moons:${p.group}`)) {
+    W.flags.add(`moons:${p.group}`)
+    for (const q of group) (q.onUntil = Infinity), (q.latched = true)
+    emit(W, 'solve', p.x, p.y, { s: '月石がそろって光った！' })
+    sfx(W, 'secret', p.x, p.y)
+  }
+}
+
+export function lightBigmoon(W: WorldState, p: Prop, text: string): void {
+  if (p.on) return
+  p.on = true
+  p.latched = true
+  p.state = 'on'
+  p.st = W.t
+  fx(W, 'moonlight', p.x, p.y - 60)
+  emit(W, 'banner', p.x, p.y, { s: text })
+  emit(W, 'solve', p.x, p.y, { s: '大きな月石が目覚めた！' })
+  sfx(W, 'secret', p.x, p.y)
+}
+
+/** The pack technique: shatters ice walls within r of (x, y) and wakes big moonstones (tier ≥ 3). */
+export function packImpact(W: WorldState, x: number, y: number, r: number, tier: number): void {
+  for (const p of W.props) {
+    if (p.gone) continue
+    if (p.kind === 'icewall' && p.state === 'idle' && circleRect(x, y, r, propRect(p))) {
+      p.state = 'break'
+      p.st = W.t
+      p.goneAt = W.t + 7 / 14
+      sfx(W, 'rockBreak', p.x, p.y)
+      emit(W, 'burst', p.x, p.y, { s: 'shard', a: 16 })
+      shake(W, 8)
+      emit(W, 'solve', p.x, p.y, { s: '氷の壁がくだけた！' })
+    }
+    if (p.kind === 'moonstone' && dist(p.x, p.y, x, y) <= r) lightMoonstone(W, p)
+    if (p.kind === 'bigmoon' && tier >= 3 && circleRect(x, y, r, propRect(p))) lightBigmoon(W, p, '月下の共鳴！')
+  }
+}
+
+function ringBell(W: WorldState, p: Prop): void {
+  p.state = 'ring'
+  p.st = W.t
+  sfx(W, 'bell', p.x, p.y)
+  fx(W, 'hit', p.x, p.y - 60)
+  const solved = p.group !== undefined && W.flags.has(`bells:${p.group}`)
+  if (solved) return
+  p.on = true
+  p.onUntil = W.t + BELL_WINDOW
+  if (p.group === undefined) return
+  const group = W.props.filter((q) => q.kind === 'bell' && q.group === p.group)
+  if (group.every((q) => q.on)) {
+    W.flags.add(`bells:${p.group}`)
+    for (const q of group) q.onUntil = Infinity
+    emit(W, 'solve', p.x, p.y, { s: '鐘がそろって鳴りひびいた！' })
+    sfx(W, 'secret', p.x, p.y)
+  }
+}
+
+/** The tornado spins windmills within r of (x, y). */
+export function spinWindmills(W: WorldState, x: number, y: number, r: number): void {
+  for (const p of W.props) {
+    if (p.gone || p.kind !== 'windmill' || p.on) continue
+    if (!circleRect(x, y, r + 32, propRect(p))) continue
+    p.on = true
+    p.latched = true
+    p.state = 'spin'
+    p.st = W.t
+    sfx(W, 'tornado', p.x, p.y)
+    emit(W, 'solve', p.x, p.y, { s: '風車がまわりだした！' })
+  }
+}
+
+function updateDrawbridge(W: WorldState, p: Prop): void {
+  const want = p.latched || (p.cond ? evalCond(W, p.cond) : false)
+  if (want && p.latch) p.latched = true
+  if (want && p.state === 'up') {
+    p.state = 'lowering'
+    p.st = W.t
+    sfx(W, 'gateOpen', p.x, p.y)
+  } else if (p.state === 'lowering' && W.t - p.st >= 5 / 10) {
+    p.state = 'down'
+    p.st = W.t
+    p.on = true
+    fx(W, 'dust', p.x, p.y)
+  }
+}
+
+/** A hero touching a lock door with a party key opens it (the key is used up). */
+function updateLockdoor(W: WorldState, p: Prop): void {
+  if (p.state === 'opening') {
+    if (W.t - p.st >= 5 / 10) (p.state = 'open'), (p.st = W.t), (p.on = true)
+    return
+  }
+  if (p.state !== 'closed') return
+  const R = propRect(p)
+  const touch = W.heroes.find(
+    (h) => h.state !== 'down' && h.state !== 'tech' && circleRect(h.body.x, h.body.y, 16 + 6, R)
+  )
+  if (!touch) return
+  if (W.party.keys <= 0) {
+    if (W.t - p.strainAt > 2) {
+      p.strainAt = W.t
+      pop(W, 'カギがかかっている', p.x, p.y - 80, -1)
+    }
+    return
+  }
+  W.party.keys--
+  p.state = 'opening'
+  p.st = W.t
+  sfx(W, 'unlock', p.x, p.y)
+  emit(W, 'solve', p.x, p.y, { s: 'カギをあけた！' })
+}
 
 /** E on a valve: the hero turns it for 1 s (moving away or letting go cancels). */
 function startValve(W: WorldState, h: Hero, p: Prop): void {

@@ -97,6 +97,8 @@ export interface StageData {
   rooms: RoomData[]
   /** Pages of each sign in reading order (row-major). */
   signs: string[][]
+  /** Wind zones (tile rects) pushing flyers hard and walkers gently. */
+  winds?: { x: number; y: number; w: number; h: number; dx: number; dy: number; strength: number }[]
   light: 'day' | 'dim' | 'night'
 }
 
@@ -112,14 +114,21 @@ export const FOOT: Partial<Record<string, [number, number]>> = {
   altar: [2, 1],
   bigcrate: [2, 2],
   barricade: [2, 1],
-  scale: [2, 1]
+  scale: [2, 1],
+  hook: [2, 1],
+  windmill: [2, 1],
+  icewall: [2, 2],
+  ramslot: [2, 1],
+  bigmoon: [2, 2]
 }
 
 /** Prop families shared by several stages. */
-export const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate'])
+export const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate', 'iceblock'])
 export const LIFTABLE = new Set(['pot', 'barrel'])
-export const GRIPPABLE = new Set(['acorn', 'cheese'])
-export const ACCEPTORS = new Set(['pedestal', 'scale'])
+export const GRIPPABLE = new Set(['acorn', 'cheese', 'goldbell', 'log'])
+export const ACCEPTORS = new Set(['pedestal', 'scale', 'hook', 'ramslot'])
+/** Props that may sit over sky/pit (not on walkable ground). */
+export const AIR_PROPS = new Set(['vent', 'drawbridge'])
 export const footOf = (kind: string): [number, number] => FOOT[kind] ?? [1, 1]
 
 export interface ParsedProp {
@@ -150,7 +159,21 @@ export interface ParsedStage {
 }
 
 /** Static decoration kinds that block movement. */
-export const SOLID_DECOR = new Set(['tree', 'rock', 'bush', 'pillar', 'sign', 'sack', 'haybale', 'shelf'])
+export const SOLID_DECOR = new Set([
+  'tree',
+  'rock',
+  'bush',
+  'pillar',
+  'sign',
+  'sack',
+  'haybale',
+  'shelf',
+  'gear',
+  'pine',
+  'deadtree',
+  'tent',
+  'brazier'
+])
 
 export const tileCentre = (t: number) => t * TILE + TILE / 2
 
@@ -309,6 +332,7 @@ export function parseStage(data: StageData): ParsedStage {
     rooms,
     light: data.light,
     ...(currents.length ? { currents } : {}),
+    ...(data.winds?.length ? { winds: data.winds } : {}),
     ...(holePairs.size ? { holes: [...holePairs.values()].map((l) => [l[0], l[1]] as [number, number]) } : {})
   }
   return { data, info, props, enemies, boss, spawn, checkpoints, signs, npcs, pickups, staticSolid }

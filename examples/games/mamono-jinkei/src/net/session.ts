@@ -316,11 +316,11 @@ export function soloSession(progress: Progress, name: string, stage?: StageId): 
 }
 
 /** The attract-mode world behind the title (stage 1, already playing). */
-export function demoSession(): Session & { world: World } {
+export function demoSession(stage: StageId = 'meadow'): Session & { world: World } {
   return new LocalSession(
     'demo',
     'demo-player',
-    { seed: 20240607, progress: { cleared: [] }, stage: 'meadow', skipIntro: true },
+    { seed: 20240607, progress: { cleared: [] }, stage, skipIntro: true },
     'demo'
   ) as Session & { world: World }
 }

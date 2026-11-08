@@ -22,6 +22,9 @@ import {
 import { dropItems, rollDrop } from './items'
 import { hitSnares } from './enemies'
 import { hitMilda, hitPet } from './boss2'
+import { hitValk } from './boss3'
+import { hitLeon } from './boss4'
+import { hitMinion, hitMinions } from './minions'
 import { hitProp } from './props'
 import type { Boss, Enemy, Hero, Shot, WorldState } from './state'
 import {
@@ -31,6 +34,7 @@ import {
   ENEMY_HURT,
   GARUD,
   GUARDED,
+  GUST,
   HERO_HIT,
   HURT_TIME,
   JOB_STATS,
@@ -63,7 +67,6 @@ export function hurtHero(W: WorldState, h: Hero, dmg: number, sx: number, sy: nu
   const a = Math.atan2(h.body.y - sy, h.body.x - sx)
   if (kb > 0) impulseHero(h, Math.cos(a) * kb, Math.sin(a) * kb)
   emit(W, 'hit', h.body.x, h.body.y - 20, { a: d, s: 'hero' })
-  pop(W, `${d}`, h.body.x, h.body.y - 48, -1)
   sfx(W, 'heroHurt', h.body.x, h.body.y)
   if (h.hp <= 0) heroDown(W, h)
   else if (h.state !== 'grip' && h.state !== 'carry') setState(W, h, 'hurt', HURT_TIME)
@@ -119,13 +122,15 @@ export interface HitOpts {
   tech?: boolean
   heavy?: boolean
   stun?: number
+  /** From a projectile (reaches a flying boss). */
+  ranged?: boolean
 }
 
 /** Damage to an enemy; returns 'blocked' when the shield caught it. */
 export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked' | 'none' {
   if (e.dead || e.state === 'death') return 'none'
   // A spear guard's guard is down while it recovers from a thrust.
-  const open = e.kind === 'spearguard' && e.state === 'attack'
+  const open = (e.kind === 'spearguard' || e.kind === 'heavy') && e.state === 'attack'
   if (GUARDED.has(e.kind) && !open && !o.tech && e.guardOff <= W.t && e.stun <= W.t) {
     const from = Math.atan2(o.sy - e.y, o.sx - e.x)
     if (Math.abs(angleDiff(from, e.facing)) <= Math.PI / 3) {
@@ -139,18 +144,18 @@ export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked'
     e.guardOff = W.t + 3
     pop(W, 'ガードブレイク！', e.x, e.y - 60, -1)
   }
-  e.hp -= o.dmg
+  const dmg = o.dmg * (e.ward > W.t ? 0.5 : 1)
+  e.hp -= dmg
   e.hitAt = W.t
   e.alertAt ??= W.t
   const hero = heroBy(W, o.slot)
-  if (hero) hero.stats.dmg += o.dmg
+  if (hero) hero.stats.dmg += dmg
   const a = Math.atan2(e.y - o.sy, e.x - o.sx)
   const kbMul = GUARDED.has(e.kind) ? 0.4 : 1
   e.kx += Math.cos(a) * o.kb * kbMul
   e.ky += Math.sin(a) * o.kb * kbMul
   if (o.stun) e.stun = Math.max(e.stun, W.t + o.stun)
-  emit(W, 'hit', e.x, e.y - 24, { a: r1(o.dmg), b: o.heavy ? 1 : 0, s: 'enemy' })
-  pop(W, `${Math.round(o.dmg * 10) / 10}`, e.x, e.y - 52, o.slot)
+  emit(W, 'hit', e.x, e.y - 24, { a: r1(dmg), b: o.heavy ? 1 : 0, s: 'enemy' })
   fx(W, 'hit', e.x, e.y - 24)
   sfx(W, o.heavy ? 'hitHeavy' : 'hit', e.x, e.y)
   if (o.heavy) stop(W, 70)
@@ -194,6 +199,8 @@ export function finishEnemyDeath(W: WorldState, e: Enemy): void {
 
 export function hitBoss(W: WorldState, b: Boss, o: HitOpts): 'hit' | 'blocked' | 'none' {
   if (b.kind === 'milda') return hitMilda(W, b, o)
+  if (b.kind === 'valk') return hitValk(W, b, o)
+  if (b.kind === 'leon') return hitLeon(W, b, o)
   if (b.dead || !b.active || b.act === 'death') return 'none'
   const broken = b.broken > W.t
   // Heavy plate: normal hits are reduced; techniques are what really hurts him.
@@ -237,7 +244,6 @@ export function hitBoss(W: WorldState, b: Boss, o: HitOpts): 'hit' | 'blocked' |
   const hero = heroBy(W, o.slot)
   if (hero) hero.stats.dmg += dmg
   emit(W, 'hit', b.x, b.y - 50, { a: r1(dmg), b: o.heavy || o.tech ? 1 : 0, s: 'boss' })
-  pop(W, `${Math.round(dmg * 10) / 10}`, b.x, b.y - 100, o.slot)
   fx(W, 'hit', b.x, b.y - 50)
   sfx(W, o.tech || o.heavy ? 'hitHeavy' : 'hit', b.x, b.y)
   return 'hit'
@@ -257,8 +263,14 @@ export function hitArc(W: WorldState, x: number, y: number, r: number, a: number
   const b = W.boss
   if (b && !b.dead && inArc(b.x, b.y, b.r)) hitBoss(W, b, o) === 'hit' && n++
   for (const p of W.props)
-    if (!p.gone && (p.kind === 'grass' || p.kind === 'crystal') && inArc(p.x, p.y, 20)) hitProp(W, p, o.slot, !!o.tech)
+    if (
+      !p.gone &&
+      (p.kind === 'grass' || p.kind === 'crystal' || p.kind === 'bell' || p.kind === 'snowpile') &&
+      inArc(p.x, p.y, 20)
+    )
+      hitProp(W, p, o.slot, !!o.tech)
   if (o.slot >= 0 && W.snares.length) hitSnares(W, x, y, Math.min(r, 120), o.slot)
+  if (o.slot >= 0 && W.minions.length) n += hitMinions(W, x, y, r, o)
   if (W.pet) hitPetArc(W, inArc, o)
   return n
 }
@@ -436,7 +448,8 @@ function shotBurst(W: WorldState, s: Shot): void {
     kb: big ? 220 : 120,
     sx: s.x,
     sy: s.y,
-    heavy: big
+    heavy: big,
+    ranged: true
   })
   fx(W, big ? 'bigburst' : 'burst', s.x, s.y - 12)
   sfx(W, big ? 'orbBurst' : 'magicHit', s.x, s.y)
@@ -492,9 +505,24 @@ export function updateShots(W: WorldState, dt: number, onPotBreak: (W: WorldStat
 }
 
 function shotVsTargets(W: WorldState, s: Shot): void {
-  const o = (): HitOpts => ({ slot: s.slot, dmg: s.dmg, kb: 120, sx: s.x - s.vx * 0.05, sy: s.y - s.vy * 0.05 })
+  const o = (): HitOpts => ({
+    slot: s.slot,
+    dmg: s.dmg,
+    kb: 120,
+    sx: s.x - s.vx * 0.05,
+    sy: s.y - s.vy * 0.05,
+    ranged: true
+  })
+  for (const m of W.minions) {
+    if (m.dead || m.state === 'death' || s.hits.has(m.id)) continue
+    if (dist(s.x, s.y, m.x, m.y) > 26) continue
+    s.hits.add(m.id)
+    if (s.burst) return void ((s.dead = true), shotBurst(W, s))
+    hitMinion(W, m, o())
+    if (s.pierce-- <= 0) return impact(W, s)
+  }
   for (const p of W.props) {
-    if (p.gone || p.kind !== 'crystal' || s.hits.has(-p.id)) continue
+    if (p.gone || (p.kind !== 'crystal' && p.kind !== 'bell') || s.hits.has(-p.id)) continue
     if (dist(s.x, s.y, p.x, p.y) < 36 || dist(s.x, s.y, p.x, p.y - 24) < 26) {
       s.hits.add(-p.id)
       hitProp(W, p, s.slot, false)
@@ -542,11 +570,24 @@ function impact(W: WorldState, s: Shot): void {
 function shotVsHeroes(W: WorldState, s: Shot): void {
   for (const h of W.heroes) {
     if (h.state === 'down' || h.state === 'fall' || h.state === 'tech') continue
-    if (h.body.z > 14) continue
-    if (dist(s.x, s.y, h.body.x, h.body.y - 8) > 22) continue
-    if (hurtHero(W, h, s.dmg, s.x - s.vx * 0.05, s.y - s.vy * 0.05)) {
+    if (h.body.z > 14 && s.kind !== 'gust') continue
+    if (s.hits.has(-1000 - h.slot)) continue
+    if (dist(s.x, s.y, h.body.x, h.body.y - 8) > (s.kind === 'gust' ? 30 : 22)) continue
+    s.hits.add(-1000 - h.slot)
+    if (s.kind === 'gust') {
+      // The gust shoves even through invulnerability; walkers can be blown off a cliff.
+      const sp = Math.hypot(s.vx, s.vy) || 1
+      impulseHero(h, (s.vx / sp) * GUST.push, (s.vy / sp) * GUST.push)
+      h.body.blown = GUST.blown
+      hurtHero(W, h, s.dmg, s.x - s.vx * 0.05, s.y - s.vy * 0.05, 0)
       s.dead = true
+      fx(W, 'gust', h.body.x, h.body.y)
+      return
+    }
+    if (hurtHero(W, h, s.dmg, s.x - s.vx * 0.05, s.y - s.vy * 0.05)) {
       fx(W, 'hit', s.x, s.y)
+      if (s.pierce-- > 0) continue
+      s.dead = true
       return
     }
   }

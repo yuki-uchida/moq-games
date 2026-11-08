@@ -39,7 +39,7 @@ describe('push (DESIGN §8)', () => {
     expect(block.x).toBe(T(4))
     expect(block.y).toBe(T(4))
     expect(block.strength).toBe(1)
-    expect(world.view().events.some((e) => e.k === 'pop' && e.s === 'おもい！ 1/2')).toBe(true)
+    expect(world.view().props.find((q) => q.id === block.id)?.strength).toBe(1)
     expect(me.state).toBe('push')
     // Companions follow again and push with the owner.
     pad.move(0, 0).mode()

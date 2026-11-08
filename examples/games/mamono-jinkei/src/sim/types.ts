@@ -144,6 +144,8 @@ export interface HeroView {
   force?: { seq: number; kind: 'warp' | 'impulse'; x: number; y: number; vx: number; vy: number }
   /** Speed multiplier the owner's prediction must use (carrying, charging, snow). */
   speed?: number
+  /** Optional (crow): flight stamina 0..1 (1 = full, 1.5 s of flight). */
+  stamina?: number
 }
 
 /** 'dash' is the thief's hit-and-run dash (`dash_<dir>` in its sheet). */
@@ -183,6 +185,8 @@ export interface EnemyView {
   /** When it noticed a hero (the "!" pops for 0.6 s). */
   alertAt?: number
   tele?: Telegraph
+  /** Optional: protected by a bell monk's bell (damage halved) until. */
+  ward?: number
 }
 
 export interface BossView {
@@ -204,6 +208,8 @@ export interface BossView {
   broken?: number
   hitAt?: number
   tele?: Telegraph[]
+  /** Optional (leon): parry stance until — attacks into it are blocked and the attacker is knocked back. */
+  parry?: number
   /** Optional: 鉄壁 until — after a guard break the shield resists techniques for a while (draw a shield glow). */
   steel?: number
   /** Optional: the exact BOSS_SPEC animation key to draw (`anim` plus `_<dir>` for directional animations). */
@@ -258,6 +264,35 @@ export type PropKind =
   | 'haybale'
   | 'shelf'
   | 'cobweb'
+  // Stage 3 (props:tower). States: vent 'idle' (an updraft; sits over sky); windmill 'idle'|'spin';
+  // drawbridge 'up'|'lowering'|'down' (a down piece is walkable); bell 'idle'|'ring'; goldbell 'idle'|'gripped'|
+  // 'lifted'; hook 'off'|'on'; lockdoor 'closed'|'opening'|'open'. Decoration only: gear, flag, cloud.
+  | 'vent'
+  | 'windmill'
+  | 'drawbridge'
+  | 'bell'
+  | 'goldbell'
+  | 'hook'
+  | 'lockdoor'
+  | 'gear'
+  | 'flag'
+  | 'cloud'
+  // Stage 4 (props:forest). States: moonstone 'off'|'on' (lit by a howl for 6 s); bigmoon 'off'|'on' (resonance,
+  // latched); iceblock 'idle'|'sliding' (pushable, keeps sliding on ice); icewall 'idle'|'break' (pack technique
+  // only); log 'idle'|'gripped'|'lifted'; ramslot 'off'|'on'; snowpile 'idle'|'dig'. Decoration only: brazier
+  // (a light source), pine, deadtree, banner, tent.
+  | 'moonstone'
+  | 'bigmoon'
+  | 'iceblock'
+  | 'icewall'
+  | 'log'
+  | 'ramslot'
+  | 'snowpile'
+  | 'brazier'
+  | 'pine'
+  | 'deadtree'
+  | 'banner'
+  | 'tent'
 
 /** A prop whose state can change (static decoration lives in StageInfo.decor). */
 export interface PropView {
@@ -285,7 +320,19 @@ export interface PropView {
  * Shots. Stage 2 adds 'bomb' (the alchemist's lobbed flask: z arc, lands on its circle telegraph and bursts),
  * 'hex' (the cat witch's homing bolt; fx sheet 'hex') and 'barrel' (a thrown barrel, `prop: 'barrel'`).
  */
-export type ShotKind = 'arrow' | 'bolt' | 'orb' | 'enemy_arrow' | 'fireball' | 'pot' | 'bomb' | 'hex' | 'barrel'
+export type ShotKind =
+  | 'arrow'
+  | 'bolt'
+  | 'orb'
+  | 'enemy_arrow'
+  | 'fireball'
+  | 'pot'
+  | 'bomb'
+  | 'hex'
+  | 'barrel'
+  /** Stage 3: the wind mage's gust (fx 'gust', shoves heroes) and the wyvern's breath puffs (fx 'fire_breath'). */
+  | 'gust'
+  | 'fire_breath'
 
 export interface ShotView {
   id: number
@@ -328,6 +375,10 @@ export interface TechView {
   tx: number
   ty: number
   a: number
+  /** Optional (pack): the lunge targets in order; the member lunging during 'lunge' is at points[index]. */
+  points?: [number, number][]
+  /** Optional (pack): index of the current lunge in `points`. */
+  index?: number
 }
 
 export interface FormationView {
@@ -445,6 +496,8 @@ export interface View {
    * uses BOSS_EXTRA_SPEC.cat base names, `animKey` the exact key; `broken` = stunned until.
    */
   bossPet?: PetView
+  /** Optional: summoned minions (stage 3: the falconer's hawks, sheet `minion:hawk`). */
+  minions?: MinionView[]
 }
 
 export interface StageResults {
@@ -462,6 +515,22 @@ export interface StageResults {
 /* ------------------------------------------------------------------------------------------------- static */
 
 /** The static part of a stage, built identically on every client from the stage data. */
+export interface MinionView {
+  id: number
+  kind: 'hawk'
+  x: number
+  y: number
+  z: number
+  facing: number
+  /** 'fly' | 'swoop' | 'hurt' | 'death' (MINION_SPEC.hawk: fly_<dir>, swoop_<dir>, hurt, death). */
+  state: string
+  st: number
+  hp: number
+  maxHp: number
+  hitAt?: number
+  tele?: Telegraph
+}
+
 export interface SnareView {
   id: number
   x: number
@@ -499,6 +568,11 @@ export interface StageInfo {
   currents?: { channel: string; dx: number; dy: number; speed: number; tiles: number[]; strong?: boolean }[]
   /** Optional: mouse-hole pairs (tile indices of two `hole` tiles); a dashing rat goes in one and out the other. */
   holes?: [number, number][]
+  /**
+   * Optional: wind zones (tile rects). Flyers are pushed along (dx, dy) at `strength` px/s, walkers at 30% of it;
+   * a formation of 3+ resists. Draw wind streaks (fx 'wind') along the direction.
+   */
+  winds?: { x: number; y: number; w: number; h: number; dx: number; dy: number; strength: number }[]
 }
 
 /** Sound helper type for events whose s is a sound name. */

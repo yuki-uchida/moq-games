@@ -27,6 +27,15 @@ export class Grid {
   readonly channels: { channel: string; dx: number; dy: number; speed: number; tiles: number[]; strong?: boolean }[]
   /** Strong current tiles (formations do not resist them). */
   readonly flowStrong: Uint8Array
+  /** Wind push per tile (px/s at full strength, for flyers). */
+  readonly windX: Float32Array
+  readonly windY: Float32Array
+  /** Vent tiles (updrafts) and drawbridge tiles that are down (walkable). */
+  readonly vent: Uint8Array
+  readonly bridged: Uint8Array
+  /** Ice floor (slippery; ice blocks keep sliding on it). */
+  readonly ice: Uint8Array
+  private readonly baseWalk: Uint8Array
   /** Mouse holes: hole tile → exit tile next to its partner; exit tile → direction out of the hole. */
   readonly holeExit = new Map<number, number>()
   readonly holeDir = new Map<number, [number, number]>()
@@ -40,6 +49,7 @@ export class Grid {
     this.walk = new Uint8Array(n)
     this.air = new Uint8Array(n)
     this.sink = new Uint8Array(n)
+    this.ice = new Uint8Array(n)
     this.staticSolid = new Uint8Array(n)
     this.solid = new Uint8Array(n)
     this.bounce = new Uint8Array(n)
@@ -47,11 +57,24 @@ export class Grid {
       this.walk[i] = TILE_KINDS[k].walk ? 1 : 0
       this.air[i] = TILE_KINDS[k].air ? 1 : 0
       this.sink[i] = k === 'water' || k === 'pit' || k === 'sludge' ? 1 : 0
+      this.ice[i] = k === 'ice' ? 1 : 0
     })
     this.flowX = new Float32Array(n)
     this.flowY = new Float32Array(n)
     this.flowChan = new Int16Array(n).fill(-1)
     this.flowStrong = new Uint8Array(n)
+    this.windX = new Float32Array(n)
+    this.windY = new Float32Array(n)
+    for (const wz of info.winds ?? [])
+      for (let y = wz.y; y < wz.y + wz.h; y++)
+        for (let x = wz.x; x < wz.x + wz.w; x++)
+          if (this.inside(x, y)) {
+            this.windX[this.idx(x, y)] = wz.dx * wz.strength
+            this.windY[this.idx(x, y)] = wz.dy * wz.strength
+          }
+    this.vent = new Uint8Array(n)
+    this.bridged = new Uint8Array(n)
+    this.baseWalk = this.walk.slice()
     this.channels = info.currents ?? []
     this.setStopped([])
     for (const [a, b] of info.holes ?? []) {
@@ -112,6 +135,7 @@ export class Grid {
   }
 
   fill(i: number): void {
+    this.baseWalk[i] = 1
     this.fills.add(i)
     this.walk[i] = 1
     this.sink[i] = 0
@@ -149,7 +173,19 @@ export class Grid {
   setSolidProps(props: readonly Pick<PropView, 'kind' | 'state' | 'x' | 'y' | 'from' | 'to'>[]): void {
     this.solid.fill(0)
     this.bounce.fill(0)
+    this.vent.fill(0)
+    this.bridged.fill(0)
+    this.walk.set(this.baseWalk)
     for (const p of props) {
+      if (p.kind === 'vent' || p.kind === 'drawbridge') {
+        const tx = Math.floor(p.x / TILE)
+        const ty = Math.floor(p.y / TILE)
+        if (!this.inside(tx, ty)) continue
+        const i = this.idx(tx, ty)
+        if (p.kind === 'vent') this.vent[i] = 1
+        else if (p.state === 'down') (this.bridged[i] = 1), (this.walk[i] = 1)
+        continue
+      }
       if (p.kind === 'bounce') {
         const tx = Math.floor(p.x / TILE)
         const ty = Math.floor(p.y / TILE)
@@ -281,7 +317,8 @@ export class Grid {
     gy: number,
     jump: boolean,
     limit = 4000,
-    holes = false
+    holes = false,
+    fly = false
   ): number[] | undefined {
     if (!this.inside(sx, sy) || !this.inside(gx, gy)) return undefined
     const start = this.idx(sx, sy)
@@ -289,7 +326,7 @@ export class Grid {
     if (start === goal) return []
     const g = new Map<number, number>([[start, 0]])
     const came = new Map<number, number>()
-    const hop = new Map<number, 'hop' | 'hole'>()
+    const hop = new Map<number, 'hop' | 'hole' | 'fly'>()
     const open: [number, number][] = [[0, start]]
     const hcost = (i: number) => Math.hypot((i % this.w) - gx, Math.floor(i / this.w) - gy)
     let expanded = 0
@@ -304,7 +341,7 @@ export class Grid {
         let c = goal
         while (c !== start) {
           const k = hop.get(c)
-          out.push(k === 'hop' ? -(c + 1) : k === 'hole' ? HOLE_STEP - c : c)
+          out.push(k === 'hop' ? -(c + 1) : k === 'hole' ? HOLE_STEP - c : k === 'fly' ? FLY_STEP - c : c)
           c = came.get(c)!
         }
         return out.reverse()
@@ -312,7 +349,7 @@ export class Grid {
       const cx = cur % this.w
       const cy = Math.floor(cur / this.w)
       const gc = g.get(cur)!
-      const tryNode = (nx: number, ny: number, cost: number, isHop: false | 'hop' | 'hole') => {
+      const tryNode = (nx: number, ny: number, cost: number, isHop: false | 'hop' | 'hole' | 'fly') => {
         const ni = this.idx(nx, ny)
         const ng = gc + cost
         if (ng >= (g.get(ni) ?? Infinity)) return
@@ -344,6 +381,21 @@ export class Grid {
         for (const [, exit] of this.holeEntry.get(cur) ?? [])
           if (this.free(exit % this.w, Math.floor(exit / this.w)))
             tryNode(exit % this.w, Math.floor(exit / this.w), 3, 'hole')
+      // Crow flight: straight hops of up to FLY_TILES over air tiles, landing on ground or on a vent (which refills).
+      if (fly && (this.free(cx, cy) || this.vent[cur]))
+        for (const [dx, dy] of DIR8)
+          for (let k = 2; k <= FLY_TILES; k++) {
+            const mx = cx + dx * (k - 1)
+            const my = cy + dy * (k - 1)
+            if (this.blocked(mx, my, true)) break
+            const nx = cx + dx * k
+            const ny = cy + dy * k
+            if (!this.inside(nx, ny) || this.blocked(nx, ny, true)) break
+            let gap = false
+            for (let j = 1; j < k; j++) if (!this.walk[this.idx(cx + dx * j, cy + dy * j)]) gap = true
+            if (!gap) continue
+            if (this.free(nx, ny) || this.vent[this.idx(nx, ny)]) tryNode(nx, ny, k * (dx && dy ? 1.7 : 1.2) + 1, 'fly')
+          }
     }
     return undefined
   }
@@ -351,6 +403,10 @@ export class Grid {
 
 /** Path steps at or below this value are mouse-hole dashes (see Grid.path). */
 export const HOLE_STEP = -10_000_000
+/** Path steps at or below this value are crow flights (FLY_STEP − landing index). */
+export const FLY_STEP = -20_000_000
+/** Longest crow flight edge for path-finding (tiles, centre to centre). */
+export const FLY_TILES = 5
 
 const DIR8: [number, number][] = [
   [1, 0],
@@ -368,6 +424,8 @@ export function propSolid(kind: string, state: string): boolean {
   switch (kind) {
     case 'block':
     case 'boulder':
+    case 'iceblock':
+    case 'log':
     case 'crate':
     case 'bigcrate':
     case 'acorn':
@@ -381,7 +439,21 @@ export function propSolid(kind: string, state: string): boolean {
     case 'sluice':
     case 'valve':
     case 'scale':
+    case 'windmill':
+    case 'bell':
+    case 'hook':
       return true
+    case 'goldbell':
+      return state === 'idle' || state === 'gripped'
+    case 'lockdoor':
+      return state !== 'open'
+    case 'icewall':
+      return state === 'idle'
+    case 'moonstone':
+    case 'bigmoon':
+    case 'ramslot':
+    case 'snowpile':
+      return kind !== 'snowpile' || state === 'idle'
     case 'gate':
     case 'bossdoor':
       return state !== 'open'

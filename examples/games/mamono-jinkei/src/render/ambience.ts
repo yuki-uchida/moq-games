@@ -21,6 +21,10 @@ interface Channel {
 export class Ambience {
   /** 0..1: running water near the view centre (for the 'water' loop). */
   water = 0
+  /** 0..1: wind zones under the view (for the 'wind' loop). */
+  wind = 0
+  private winds: NonNullable<StageInfo['winds']> = []
+  private sky: number[] = []
   private info?: StageInfo
   private channels: Channel[] = []
   private pipes: { x: number; y: number; next: number }[] = []
@@ -47,6 +51,11 @@ export class Ambience {
     this.pipes = info.decor.filter((d) => d.kind === 'pipe').map((d) => ({ x: d.x, y: d.y, next: Math.random() * 3 }))
     this.lamps = info.decor.filter((d) => d.kind === 'lamp' || d.kind === 'torch' || d.kind === 'brazier')
     this.drip = findAnim('fx', 'drip')
+    this.winds = info.winds ?? []
+    this.sky = []
+    info.tiles.forEach((k, i) => {
+      if (k === 'sky') this.sky.push(i)
+    })
   }
 
   update(dt: number, t: number, view: View, ox: number, oy: number, w: number, h: number) {
@@ -66,10 +75,11 @@ export class Ambience {
       this.water = 0
       return
     }
-    if (info.id !== 'sewer') {
-      this.water = 0
-      return
-    }
+    this.water = 0
+    this.wind = 0
+    if (info.id === 'tower') return this.tower(dt, view, ox, oy, w, h)
+    if (info.id === 'forest') return this.forest(dt, ox, oy, w, h)
+    if (info.id !== 'sewer') return
     // Dust motes drifting in the light around lamps and heroes.
     while (this.timer > 0.09) {
       this.timer -= 0.09
@@ -131,6 +141,97 @@ export class Ambience {
       if (p.next > 0) continue
       p.next = 1.4 + Math.random() * 2.6
       if (this.drip && inView(p.x, p.y, 40)) this.fx.add(this.drip, p.x + (Math.random() - 0.5) * 4, p.y + 26, t)
+    }
+  }
+
+  /** Cliffs over the cloud sea: wind streaks in wind zones, cloud wisps over the sky, updrafts over vents. */
+  private tower(dt: number, view: View, ox: number, oy: number, w: number, h: number) {
+    const info = this.info!
+    let wind = 0
+    for (const z of this.winds) {
+      const x0 = Math.max(z.x * TILE, ox - 64)
+      const x1 = Math.min((z.x + z.w) * TILE, ox + w + 64)
+      const y0 = Math.max(z.y * TILE, oy - 64)
+      const y1 = Math.min((z.y + z.h) * TILE, oy + h + 64)
+      if (x1 <= x0 || y1 <= y0) continue
+      const area = ((x1 - x0) * (y1 - y0)) / (TILE * TILE)
+      wind = Math.max(wind, Math.min(1, (z.strength / 110) * Math.min(1, area / 30)))
+      const rate = Math.min(60, area * (z.strength / 110) * 1.5) * dt
+      let n = Math.floor(rate) + (Math.random() < rate % 1 ? 1 : 0)
+      while (n-- > 0) {
+        const sp = z.strength * (1.6 + Math.random() * 0.8)
+        this.particles.spawn(
+          'gale',
+          x0 + Math.random() * (x1 - x0),
+          y0 + Math.random() * (y1 - y0),
+          0,
+          z.dx * sp,
+          z.dy * sp,
+          0,
+          0.7 + Math.random() * 0.5
+        )
+      }
+    }
+    this.wind = wind
+    // Wisps of cloud drift over the sky tiles in view (they move slower than the ground: depth).
+    while (this.timer > 0.05) {
+      this.timer -= 0.05
+      const i = this.sky[(Math.random() * this.sky.length) | 0]
+      if (i === undefined) break
+      const x = (i % info.w) * TILE + Math.random() * TILE
+      const y = Math.floor(i / info.w) * TILE + Math.random() * TILE
+      if (x < ox - 40 || x > ox + w + 40 || y < oy - 20 || y > oy + h + 20) continue
+      this.particles.spawn(
+        'wisp',
+        x,
+        y,
+        0,
+        -10 - Math.random() * 10,
+        (Math.random() - 0.5) * 2,
+        0,
+        5 + Math.random() * 4
+      )
+    }
+    // Updrafts rise over the vents.
+    for (const p of view.props) {
+      if (p.kind !== 'vent' || p.x < ox - 64 || p.x > ox + w + 64 || p.y < oy - 64 || p.y > oy + h + 96) continue
+      if (Math.random() < dt * 14)
+        this.particles.spawn(
+          'updraft',
+          p.x + (Math.random() - 0.5) * 44,
+          p.y + 8,
+          4,
+          (Math.random() - 0.5) * 6,
+          0,
+          70 + Math.random() * 50,
+          0.8 + Math.random() * 0.4
+        )
+    }
+  }
+
+  /** The moonlit forest: snow drifting across the whole view, embers rising from braziers. */
+  private forest(dt: number, ox: number, oy: number, w: number, h: number) {
+    while (this.timer > 0.055) {
+      this.timer -= 0.055
+      // Spawn along the top edge and the right edge (the wind blows the snow to the left).
+      const top = Math.random() < w / (w + h)
+      const x = top ? ox + Math.random() * (w + 120) : ox + w + 10
+      const y = top ? oy - 10 : oy + Math.random() * h
+      this.particles.spawn('snow', x, y, 0, -18 - Math.random() * 14, 34 + Math.random() * 26, 0, 9 + Math.random() * 5)
+    }
+    for (const d of this.lamps) {
+      if (d.x < ox - 64 || d.x > ox + w + 64 || d.y < oy - 64 || d.y > oy + h + 120) continue
+      if (Math.random() < dt * 9)
+        this.particles.spawn(
+          'ember',
+          d.x + (Math.random() - 0.5) * 14,
+          d.y - 4,
+          34,
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 4,
+          30 + Math.random() * 30,
+          1 + Math.random() * 0.8
+        )
     }
   }
 }

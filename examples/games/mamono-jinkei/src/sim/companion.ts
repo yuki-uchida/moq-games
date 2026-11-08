@@ -5,10 +5,10 @@
 import { TILE } from '../vocab'
 import { angleDiff, dist, fx, heroBy, sfx, tileOf, warpHero, freeSpotNear } from './core'
 import { tileCentre } from './stage-data'
-import { HOLE_STEP } from './grid'
+import { FLY_STEP, HOLE_STEP } from './grid'
 
 /** Tile index of a path step (walk, slime hop or mouse-hole exit). */
-const stepTile = (p: number) => (p <= HOLE_STEP ? HOLE_STEP - p : p < 0 ? -p - 1 : p)
+const stepTile = (p: number) => (p <= FLY_STEP ? FLY_STEP - p : p <= HOLE_STEP ? HOLE_STEP - p : p < 0 ? -p - 1 : p)
 import type { Hero, Human, Intent, WorldState } from './state'
 import type { Telegraph } from './types'
 import { NO_INTENT } from './state'
@@ -23,8 +23,11 @@ const SPOTS: [number, number][] = [
 const RANGE: Record<Hero['job'], number> = { sword: 70, cleric: 62, mage: 5 * TILE, archer: 6 * TILE }
 
 /** Queues the owner's attack/charge onto its following companions (staggered 0.04 s each). */
-export function mimic(W: WorldState, owner: Hero, kind: 'attack' | 'hold' | 'release', aim: number): void {
+export function mimic(W: WorldState, owner: Hero, kind: 'attack' | 'hold' | 'release' | 'howl', aim: number): void {
   const comps = companionsOf(W, owner.owner).filter((c) => c !== owner)
+  const human = W.humans.find((q) => q.id === owner.owner)
+  // Howls are echoed only by following companions (a pack answers its leader).
+  if (kind === 'howl' && human?.mode !== 'follow') return
   comps.forEach((c, i) => {
     if (dist(c.body.x, c.body.y, owner.body.x, owner.body.y) > 6 * TILE) return
     c.ai.queue.push({ at: W.t + 0.04 * (i + 1), kind, aim })
@@ -42,6 +45,11 @@ function nearestEnemy(W: WorldState, h: Hero, range: number): { x: number; y: nu
     if (e.dead || e.state === 'death') continue
     const d = dist(e.x, e.y, h.body.x, h.body.y)
     if (d < range && (!best || d < best.d)) best = { x: e.x, y: e.y, d }
+  }
+  for (const m of W.minions) {
+    if (m.dead || m.state === 'death') continue
+    const d = dist(m.x, m.y, h.body.x, h.body.y)
+    if (d < range && (!best || d < best.d)) best = { x: m.x, y: m.y, d }
   }
   const b = W.boss
   if (b && b.active && !b.dead) {
@@ -62,6 +70,7 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
       if (q.kind === 'attack') it.press = true
       if (q.kind === 'hold') (it.press = true), (h.ai.ownerHeld = true)
       if (q.kind === 'release') (it.release = true), (h.ai.ownerHeld = false)
+      if (q.kind === 'howl') it.action = true
     }
   h.ai.queue = h.ai.queue.filter((q) => q.at > t)
   it.held = h.ai.ownerHeld
@@ -74,7 +83,17 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
         ((p.kind === 'valve' && p.state === 'off') || (p.kind === 'lever' && p.state === 'off')) &&
         dist(p.x, p.y, h.body.x, h.body.y) < 84
     )
+    const stone =
+      W.species === 'wolf' &&
+      W.props.some(
+        (p) =>
+          !p.gone &&
+          (p.kind === 'moonstone' || p.kind === 'bigmoon') &&
+          !p.on &&
+          dist(p.x, p.y, h.body.x, h.body.y) < 160
+      )
     if (part) it.interact = true
+    else if (stone) it.action = true
     else {
       it.press = true
       it.aim = h.aim
@@ -171,7 +190,8 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
       tileOf(owner.body.y),
       W.species === 'slime',
       6000,
-      W.species === 'rat'
+      W.species === 'rat',
+      W.species === 'crow'
     )
     if (reachable || dOwner > 12 * TILE) {
       if (reachable) {
@@ -210,6 +230,7 @@ export function escapeTelegraph(W: WorldState, x: number, y: number): [number, n
   for (const e of W.enemies) if (e.tele && !e.dead) teles.push(e.tele)
   if (W.boss?.active && !W.boss.dead) teles.push(...W.boss.tele)
   if (W.pet && !W.pet.dead) teles.push(...W.pet.tele)
+  for (const m of W.minions) if (m.tele && !m.dead) teles.push(m.tele)
   for (const tl of teles) {
     if (W.t < tl.from || W.t > tl.until) continue
     const pad = 18
@@ -260,7 +281,11 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
     return
   }
   const goal = g.idx(tileOf(x), tileOf(y))
-  if (!h.ai.path || h.ai.goalTile !== goal || W.t - h.ai.pathAt > 0.6) {
+  // Over a gap: keep flying (and keep the current route).
+  const overGap = !g.walkable(tileOf(body.x), tileOf(body.y))
+  if (overGap && W.species === 'crow') it.actionHeld = true
+  const aloft = overGap || body.flying
+  if ((!h.ai.path || h.ai.goalTile !== goal || W.t - h.ai.pathAt > 0.6) && !aloft) {
     h.ai.path =
       g.path(
         tileOf(body.x),
@@ -269,12 +294,13 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
         tileOf(y),
         W.species === 'slime',
         4000,
-        W.species === 'rat' && h.hold === undefined
+        W.species === 'rat' && h.hold === undefined,
+        W.species === 'crow' && h.hold === undefined
       ) ?? []
     h.ai.goalTile = goal
     h.ai.pathAt = W.t
   }
-  const path = h.ai.path
+  const path = h.ai.path ?? []
   const here = g.idx(tileOf(body.x), tileOf(body.y))
   while (path.length && stepTile(path[0]) === here) path.shift()
   // Skip ahead when a later waypoint is in straight view.
@@ -292,6 +318,12 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
   const nx = tileCentre(ni % g.w)
   const ny = tileCentre(Math.floor(ni / g.w))
   if (next >= 0) {
+    set(nx, ny)
+    return
+  }
+  if (next <= FLY_STEP) {
+    // Crow flight: hold Space and head for the landing tile (or vent).
+    it.actionHeld = true
     set(nx, ny)
     return
   }

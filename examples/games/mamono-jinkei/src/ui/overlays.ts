@@ -2,6 +2,7 @@
 import type { StageResults, View } from '../sim/types'
 import { JOBS, JOB_COLORS, JOB_NAMES, SPECIES, SPECIES_NAMES, STAGES, STAGE_NAMES, STAGE_SPECIES } from '../vocab'
 import { clearChildren, clock, el, focusables, icon, menuKeys, setText, show } from './dom'
+import { EndingScene } from './ending'
 import { howToPlay, settingsForm, type SettingsHandlers } from './panels'
 
 export interface OverlayActions {
@@ -25,6 +26,7 @@ export class PhaseOverlays {
   private readonly ending: HTMLElement
   private readonly endingActions: HTMLElement
   private readonly endingWait: HTMLElement
+  private readonly endingScene: EndingScene
   private phase = ''
   private resultsKey = ''
 
@@ -75,34 +77,8 @@ export class PhaseOverlays {
       el('button.btn', { type: 'button', onclick: () => (a.sound('menuSelect'), a.title()) }, 'タイトルへ')
     )
     this.endingWait = el('p.waiting', { text: 'ホストの選択を待っています…' })
-    const roll = el(
-      'div.roll',
-      {},
-      el('h2', { text: 'マモノ陣形' }),
-      el('p.roll-lead', { text: '4匹のマモノは、陣形のちからで冒険者ギルドとわかりあえた。' }),
-      ...[
-        ['ゲームデザイン', 'マモノ陣形 制作チーム'],
-        ['ドット絵', 'コードで描かれたピクセルたち'],
-        ['音楽・効果音', 'Web Audio シンセサイザー楽団'],
-        ['通信', 'MoQ リレー'],
-        ['主演', 'スライム ・ ネズミ ・ カラス ・ ウルフ'],
-        ['友情出演', '冒険者ギルドのみなさん'],
-        ['スペシャルサンクス', 'いっしょに陣形を組んだ、あなた']
-      ].map(([k, v]) => el('div.credit', {}, el('span.credit-role', { text: k }), el('span.credit-name', { text: v }))),
-      el('p.roll-end', { text: 'おしまい ― ありがとう！' })
-    )
-    const party = el(
-      'div.ending-party',
-      {},
-      ...JOBS.map((j, i) => icon(`hero:${SPECIES[i]}:${j}`, 'victory', 64, 'px-icon', 2))
-    )
-    this.ending = el(
-      'div.ending',
-      { hidden: true },
-      el('div.roll-wrap', {}, roll),
-      party,
-      el('div.ending-foot', {}, this.endingActions, this.endingWait)
-    )
+    this.endingScene = new EndingScene(el('div', {}, this.endingActions, this.endingWait))
+    this.ending = this.endingScene.root
     menuKeys(this.endingActions, () => a.sound('menuMove'))
     this.root = el('div.overlays', {}, this.intro, this.wipe, this.results, this.ending)
   }
@@ -115,6 +91,8 @@ export class PhaseOverlays {
     show(this.wipe, phase === 'wipe')
     show(this.results, phase === 'clear')
     show(this.ending, phase === 'ending')
+    if (changed && phase === 'ending') this.endingScene.start()
+    else if (changed && this.phase !== 'ending') this.endingScene.stop()
     if (!view) return
     if (phase === 'intro' && changed) {
       const i = STAGES.indexOf(view.stage)

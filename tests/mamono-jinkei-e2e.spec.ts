@@ -41,7 +41,7 @@ type Hook = {
   myId?: string
   role?: string
   screen: string
-  camera: { heroCss?: { x: number; y: number } }
+  camera: { heroCss?: { x: number; y: number }; scale: number }
   warp(to: string): void
 }
 
@@ -364,5 +364,159 @@ test('stage 2 (rat): dash through a mouse hole and gnaw a barricade with the sta
       timeout: 4000
     })
     .toBe('break')
+  expect(errors).toEqual([])
+})
+
+test('stage 3 (crow): fly over a gap; the tornado spins the windmill and the drawbridges lower', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await page.goto('/')
+  await page.waitForFunction(() => !!(window.__mamono as unknown as { startStage?: unknown }).startStage)
+  await page.evaluate(() => (window.__mamono as unknown as { startStage(s: string): void }).startStage('tower'))
+  await expect(page.locator('.intro-name')).toHaveText('風鳴りの崖と時計塔')
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 6000 }).toBe('play')
+  const meX = () =>
+    page.evaluate(() => {
+      const W = window.__mamono.W
+      return W.heroes.find((h) => h.slot === W.humans[0].ctrl)!.body.x / 64
+    })
+  // Gap A→B1: sky tiles 25..27 on row 57.
+  await place(page, T(23), T(57), true)
+  await page.waitForTimeout(800)
+  await page.keyboard.down('KeyD')
+  await page.keyboard.down('Space')
+  await expect.poll(meX, { timeout: 3000 }).toBeGreaterThan(28.2)
+  await page.keyboard.up('Space')
+  await page.keyboard.up('KeyD')
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.heroes.find((h) => h.ctrl)?.state)).not.toBe('fall')
+
+  // 黒羽の大旋風 on the windmill.
+  await page.evaluate(() => window.__mamono.warp('C'))
+  await page.waitForTimeout(300)
+  await place(page, T(60) + 32, T(43), true)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const W = window.__mamono.W
+          return W.heroes.find((h) => h.slot === W.humans[0].ctrl)!.form >= 0
+        }),
+      { timeout: 8000 }
+    )
+    .toBe(true)
+  await page.waitForTimeout(1500)
+  const aim = await page.evaluate(() => {
+    const m = window.__mamono
+    const W = m.W
+    const mill = W.props.find((p) => p.part === 'windmillC')!
+    const me = W.heroes.find((h) => h.slot === W.humans[0].ctrl)!
+    const k = m.camera.scale / devicePixelRatio
+    return { x: m.camera.heroCss!.x + (mill.x - me.body.x) * k, y: m.camera.heroCss!.y + (mill.y - me.body.y + 14) * k }
+  })
+  await page.mouse.move(aim.x, Math.max(5, aim.y))
+  await page.mouse.down()
+  await page.waitForTimeout(1150)
+  await page.mouse.up()
+  await expect(page.locator('.banner.on')).toContainText('黒羽の大旋風！')
+  await expect
+    .poll(() => page.evaluate(() => window.__mamono.W.props.find((p) => p.part === 'windmillC')!.state), {
+      timeout: 4000
+    })
+    .toBe('spin')
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          window.__mamono.W.props.filter((p) => p.kind === 'drawbridge').every((p) => p.state === 'down')
+        ),
+      { timeout: 4000 }
+    )
+    .toBe(true)
+  expect(errors).toEqual([])
+})
+
+async function startStage(page: Page, stage: string, name: string) {
+  await page.goto('/')
+  await page.waitForFunction(() => !!(window.__mamono as unknown as { startStage?: unknown }).startStage)
+  await page.evaluate((s) => (window.__mamono as unknown as { startStage(s: string): void }).startStage(s), stage)
+  await expect(page.locator('.intro-name')).toHaveText(name)
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 6000 }).toBe('play')
+}
+
+/** CSS position of a world point, relative to the controlled hero's on-screen position. */
+const screenOf = (page: Page, x: number, y: number) =>
+  page.evaluate(
+    ([x, y]) => {
+      const m = window.__mamono
+      const W = m.W
+      const me = W.heroes.find((h) => h.slot === W.humans[0].ctrl)!
+      const k = m.camera.scale / devicePixelRatio
+      return {
+        x: m.camera.heroCss!.x + (x - me.body.x) * k,
+        y: Math.max(4, m.camera.heroCss!.y + (y - me.body.y + 14) * k)
+      }
+    },
+    [x, y] as const
+  )
+
+test('stage 4 (wolf): a howl lights a moonstone; 月下群狼陣 shatters the ice wall', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await startStage(page, 'forest', '月影の森と白銀の砦')
+  const part = (id: string) =>
+    page.evaluate((id) => {
+      const p = window.__mamono.W.props.find((q) => q.part === id)!
+      return { x: p.x, y: p.y, state: p.state }
+    }, id)
+  const moon = await part('moonA')
+  await place(page, moon.x, moon.y + 70, true)
+  await page.waitForTimeout(600)
+  await page.keyboard.press('Space')
+  await expect.poll(async () => (await part('moonA')).state, { timeout: 3000 }).toBe('on')
+
+  await page.evaluate(() => window.__mamono.warp('G'))
+  await page.waitForTimeout(300)
+  const wall = await part('icewallG')
+  await place(page, wall.x, wall.y + 170, true)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const W = window.__mamono.W
+          return W.heroes.find((h) => h.slot === W.humans[0].ctrl)!.form >= 0
+        }),
+      { timeout: 8000 }
+    )
+    .toBe(true)
+  await page.waitForTimeout(1500)
+  const aim = await screenOf(page, wall.x, wall.y)
+  await page.mouse.move(aim.x, aim.y)
+  await page.mouse.down()
+  await page.waitForTimeout(1150)
+  await page.mouse.up()
+  await expect(page.locator('.banner.on')).toContainText('月下群狼陣！')
+  await expect.poll(async () => (await part('icewallG')).state, { timeout: 5000 }).toBe('break')
+  expect(errors).toEqual([])
+})
+
+test('finale: stage 4 results → ending scene and staff roll → title', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await startStage(page, 'forest', '月影の森と白銀の砦')
+  await page.evaluate(() => {
+    const W = window.__mamono.W as unknown as Record<string, unknown> & { t: number }
+    W.results = { stage: 'forest', time: 640, gems: 40, techs: 7, kos: 50, wipes: 0, rank: 'S', badges: [] }
+    W.phase = 'clear'
+    W.phaseAt = W.t
+  })
+  await page.getByRole('button', { name: 'エンディングへ' }).click()
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase)).toBe('ending')
+  await expect(page.locator('.epi-orbs')).toContainText('陣の宝珠')
+  await expect(page.locator('.form-card')).toHaveCount(4)
+  await expect(page.locator('.roll')).toContainText('スペシャルサンクス')
+  expect(await page.locator('.marcher').count()).toBeGreaterThan(15)
+  await page.getByRole('button', { name: 'タイトルへ' }).click()
+  await expect.poll(() => page.evaluate(() => window.__mamono.screen)).toBe('title')
+  await expect(page.getByRole('heading', { name: 'マモノ陣形' })).toBeVisible()
   expect(errors).toEqual([])
 })

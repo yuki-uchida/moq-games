@@ -2267,3 +2267,332 @@ input:focus-visible,
   color: #fff1a8;
   animation: pulse 0.5s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------------------ stage 3 */
+
+.boss-pet[data-kind='valk']::before {
+  content: '🐉 ';
+}
+
+.bell-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.9em;
+  border-radius: 99em;
+  background: rgba(36, 22, 40, 0.82);
+  border: 0.12em solid #e8c15a;
+  font-weight: 900;
+  font-size: 0.85em;
+  animation: pop-in 0.2s ease both;
+}
+
+.bc-label {
+  color: #fff1a8;
+  letter-spacing: 0.1em;
+}
+
+.bc-bell {
+  filter: grayscale(1) brightness(0.6);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.bc-bell.on {
+  filter: none;
+  transform: scale(1.2) rotate(-8deg);
+  animation: nudge 0.3s ease-in-out infinite;
+}
+
+.bc-count {
+  color: #f7e7c0;
+  font-size: 0.85em;
+}
+
+/* ------------------------------------------------------------------ stage 4 */
+
+.bc-icon {
+  width: 1.7em;
+  height: 1.7em;
+}
+
+.moon-chip {
+  border-color: #9fc4ff;
+}
+
+.boss-pet[data-kind='leon']::before {
+  content: '✦ ';
+  color: #fff1a8;
+}
+
+/* ------------------------------------------------------------------ finale */
+
+.ending {
+  display: block;
+  overflow: hidden;
+}
+
+.ending-sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ending-moon {
+  position: absolute;
+  right: 12%;
+  top: 8%;
+  width: calc(var(--u) * 6);
+  height: calc(var(--u) * 6);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 38%, #fffdf0, #f2e6c0 55%, #d8c99a);
+  box-shadow:
+    0 0 2em rgba(255, 244, 200, 0.6),
+    0 0 6em rgba(200, 220, 255, 0.35);
+  opacity: 0.85;
+}
+
+.epi {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1.2em;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.epi-text {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.3em;
+  color: #ffe8c0;
+  text-shadow: 0 0.08em 0 #000;
+  text-align: center;
+}
+
+.ending.play .epi-orbs {
+  animation: epi 6s ease both 0.3s;
+}
+
+.ending.play .epi-forms {
+  animation: epi 6.6s ease both 6.4s;
+}
+
+.ending.play .epi-orbs .late {
+  animation: fade-in 1s ease both 2.6s;
+}
+
+.orbs {
+  position: relative;
+  width: calc(var(--u) * 14);
+  height: calc(var(--u) * 10);
+}
+
+.orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--u) * 4.4);
+  height: calc(var(--u) * 4.4);
+  margin: calc(var(--u) * -2.2) 0 0 calc(var(--u) * -2.2);
+  filter: drop-shadow(0 0 0.8em rgba(180, 220, 255, 0.8));
+}
+
+.ending.play .orb {
+  animation: orb-gather 2.6s cubic-bezier(0.5, 0, 0.3, 1) both 0.6s;
+}
+
+.orb:nth-child(1) {
+  --dx: -260%;
+  --dy: -120%;
+}
+
+.orb:nth-child(2) {
+  --dx: 260%;
+  --dy: -120%;
+}
+
+.orb:nth-child(3) {
+  --dx: -260%;
+  --dy: 120%;
+}
+
+.orb:nth-child(4) {
+  --dx: 260%;
+  --dy: 120%;
+}
+
+.orb-flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1em;
+  height: 1em;
+  margin: -0.5em;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4em 2em rgba(220, 236, 255, 0.9);
+  opacity: 0;
+}
+
+.ending.play .orb-flash {
+  animation: orb-flash 1.4s ease-out both 3.1s;
+}
+
+.forms-row {
+  display: flex;
+  gap: 1.6em;
+}
+
+.form-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.3em;
+}
+
+.form-plate {
+  display: grid;
+  place-items: center;
+  width: calc(var(--u) * 6.4);
+  height: calc(var(--u) * 6.4);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 40%,
+    color-mix(in srgb, var(--job) 55%, #fff),
+    color-mix(in srgb, var(--job) 70%, #1a1026)
+  );
+  box-shadow:
+    0 0 0 0.18em #fff4d0,
+    0 0 1.6em color-mix(in srgb, var(--job) 70%, transparent);
+}
+
+.form-sprite {
+  width: calc(var(--u) * 5.6);
+  height: calc(var(--u) * 5.6);
+}
+
+.form-job {
+  font-weight: 900;
+  color: #fff4dc;
+}
+
+.form-species {
+  font-size: 0.8em;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--job) 60%, #fff);
+}
+
+.roll-wrap {
+  position: absolute;
+  inset: 0 0 8em;
+}
+
+.roll {
+  animation: none;
+  opacity: 0;
+}
+
+.ending.play .roll {
+  opacity: 1;
+  animation: roll 30s linear 13.2s both;
+}
+
+.parade {
+  position: absolute;
+  left: 0;
+  bottom: 4.6em;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.8em;
+  white-space: nowrap;
+  transform: translateX(100vw);
+}
+
+.ending.play .parade {
+  animation: parade 40s linear 13.2s both;
+}
+
+.marcher {
+  width: calc(var(--u) * 3.6);
+  height: calc(var(--u) * 3.6);
+  transform: scaleX(-1);
+}
+
+.marcher.big {
+  width: calc(var(--u) * 6.4);
+  height: calc(var(--u) * 6.4);
+}
+
+.ending-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.6em;
+  opacity: 0;
+}
+
+.ending.play .ending-foot {
+  animation: fade-in 1s ease both 13s;
+}
+
+@keyframes epi {
+  0% {
+    opacity: 0;
+    transform: translateY(0.6em);
+  }
+  12%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes orb-gather {
+  from {
+    transform: translate(var(--dx), var(--dy)) scale(0.8);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes orb-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(9);
+  }
+}
+
+@keyframes parade {
+  from {
+    transform: translateX(100vw);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ending.play .roll {
+    animation: none;
+    position: relative;
+    top: 0;
+  }
+  .epi {
+    display: none;
+  }
+}

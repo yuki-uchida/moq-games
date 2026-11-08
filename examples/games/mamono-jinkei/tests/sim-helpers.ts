@@ -196,3 +196,58 @@ export function parkCompanions(world: WorldImpl, W: WorldState, pad: Pad, spots?
       h.anchor = { x: T(tx), y: T(ty) }
     })
 }
+
+/** A world on a small custom tower map (crow species): `.` cliff, `#` rock, `~` sky, `@` spawn. */
+export function customTower(
+  map: string[],
+  extra: Partial<StageData> = {},
+  players = ['host']
+): { world: WorldImpl; W: WorldState } {
+  const data: StageData = {
+    id: 'tower',
+    map,
+    light: 'day',
+    winds: extra.winds,
+    legend: {
+      '.': { tile: 'cliff' },
+      '#': { tile: 'rock' },
+      '~': { tile: 'sky' },
+      '@': { tile: 'cliff', ent: { type: 'spawn' } },
+      ...extra.legend
+    },
+    rooms: extra.rooms ?? [{ id: 'A', name: 'A', x: 0, y: 0, w: map[0].length, h: map.length, objective: '' }],
+    signs: extra.signs ?? []
+  }
+  const world = new WorldImpl({ seed: 9, progress: { cleared: [] }, stage: 'tower', skipIntro: true }, { tower: data })
+  world.setPlayers(players.map((id) => ({ id, name: id })))
+  return { world, W: world.W }
+}
+
+/** A world on a small custom forest map (wolf species): `.` snow, `#` thicket, `~` water, `i` ice, `@` spawn. */
+export function customForest(
+  map: string[],
+  extra: Partial<StageData> = {},
+  players = ['host']
+): { world: WorldImpl; W: WorldState } {
+  const data: StageData = {
+    id: 'forest',
+    map,
+    light: 'night',
+    legend: {
+      '.': { tile: 'snow' },
+      '#': { tile: 'thicket' },
+      '~': { tile: 'water' },
+      i: { tile: 'ice' },
+      '@': { tile: 'snow', ent: { type: 'spawn' } },
+      ...extra.legend
+    },
+    rooms: extra.rooms ?? [{ id: 'A', name: 'A', x: 0, y: 0, w: map[0].length, h: map.length, objective: '' }],
+    signs: extra.signs ?? []
+  }
+  const world = new WorldImpl(
+    { seed: 4, progress: { cleared: [] }, stage: 'forest', skipIntro: true },
+    { forest: data }
+  )
+  world.setPlayers(players.map((id) => ({ id, name: id })))
+  return { world, W: world.W }
+}
