@@ -20,25 +20,25 @@ function garden(passives: string[] = []) {
   return { game, player, weapon: player.weapons[0], shot: game.state.shots[0] }
 }
 
-test('gardening is normally offered from age six and can be equipped', () => {
+test('gardening is offered from age eight and can be equipped', () => {
   const game = new Game(41)
   const player = game.addPlayer('gardener', 'p_gone')!
   player.weapons = []
-  game.state.time = timeAtAge(5) + 0.01
+  game.state.time = timeAtAge(7) + 0.01
   expect(game.options(player)).not.toContain('w:w_garden')
-  game.state.time = timeAtAge(6) + 0.01
+  game.state.time = timeAtAge(8) + 0.01
   expect(game.options(player)).toContain('w:w_garden')
   player.choices = ['w:w_garden']
   game.choose(player, 0)
   expect(player.weapons.map((weapon) => weapon.id)).toContain('w_garden')
 })
 
-test('the absent-parent birth hand can offer gardening earlier', () => {
+test('the absent-parent birth hand does not offer gardening', () => {
   const game = new Game(41)
   const player = game.addPlayer('gardener', 'p_gone')!
   Object.defineProperty(game, 'rng', { value: () => 0.9999, configurable: true })
   game['offer'](player)
-  expect(player.choices).toContain('w:w_garden')
+  expect(player.choices).not.toContain('w:w_garden')
 })
 
 test('all five upgrades affect garden seeds or flowers', () => {

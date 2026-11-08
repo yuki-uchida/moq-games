@@ -397,7 +397,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     area: 14,
     pierce: 1,
     strong: ['love', 'insult'],
-    minAge: 12,
+    minAge: 10,
     desc: 'ハートが追いかけて当たると足止め。',
     evolve: { passive: 'p_stubborn', name: '一途な愛' }
   }),
@@ -415,7 +415,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 60,
     strong: ['love', 'people'],
-    minAge: 12,
+    minAge: 10,
     desc: '向いている方向を輝きで薙ぎ払う。',
     evolve: { passive: 'p_healthy', name: '永遠の美貌' }
   }),
@@ -469,7 +469,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 0.3,
     pierce: Infinity,
     strong: ['money'],
-    minAge: 20,
+    minAge: 18,
     desc: '稲妻で敵を攻撃。所持時間に応じて威力上昇。',
     evolve: { passive: 'p_greedy', name: '複利の魔法' }
   }),
@@ -487,7 +487,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 0.25,
     pierce: Infinity,
     strong: ['insult', 'people'],
-    minAge: 12,
+    minAge: 10,
     desc: '投稿が次々に伝染し、敵から敵へ飛び移る。',
     evolve: { passive: 'p_savvy', name: 'バズの連鎖' }
   }),
@@ -600,7 +600,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 60,
     strong: ['work', 'insult'],
-    minAge: 12,
+    minAge: 10,
     desc: '歌声が前方に扇状に広がる。',
     evolve: { passive: 'p_hot', name: '魂のシャウト' }
   }),
@@ -674,7 +674,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 2,
     pierce: Infinity,
     strong: ['love', 'people'],
-    minAge: 15,
+    minAge: 13,
     desc: '歩いた跡に香りが残り、触れた敵に継続ダメージ。',
     evolve: { passive: 'p_savvy', name: '魅惑のフェロモン' }
   }),
@@ -721,7 +721,7 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 3.2,
     pierce: Infinity,
     strong: ['work', 'sickness'],
-    minAge: 6,
+    minAge: 8,
     desc: '種を弧を描いて投げ、着地後に花壇が咲き継続攻撃し、敵を減速。弾速で早く着地し、効果時間で長く咲く。',
     evolve: { passive: 'p_curious', name: 'ひみつの花園' }
   })
