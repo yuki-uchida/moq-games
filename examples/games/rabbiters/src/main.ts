@@ -22,6 +22,7 @@ import { GuestView, type InputAck } from './guest-view'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
 import { CooperativeNetwork, MAX_PLAYERS } from './network'
 import { RabbitersScene } from './scene'
+import { AttractDemo } from './attract'
 import { isFoodKind } from './food'
 import {
   FOODS,
@@ -120,6 +121,46 @@ let checkpoint: GameState | undefined
 
 const preview = new Game()
 preview.addPlayer('preview', '旅するウサギ')
+
+// Title attract mode: a separate self-playing Game (see attract.ts). It is created while the title is showing and
+// dropped when a run starts; any failure falls back to the still preview above.
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
+let demo: AttractDemo | undefined
+let demoFailed = false
+function stepDemo(dt: number) {
+  if (demoFailed || startPanel.hidden || started) return undefined
+  try {
+    demo ??= new AttractDemo()
+    if (!document.hidden) {
+      demo.speed = reducedMotion.matches ? 0 : 1
+      demo.step(dt)
+    }
+    return demo
+  } catch {
+    demoFailed = true
+    demo = undefined
+    return undefined
+  }
+}
+let viewCenter = ''
+/** Keeps the title rabbit in the part of the screen the start panel leaves free. */
+function frameTitleRabbit() {
+  let x = 0.5
+  let y = 0.5
+  if (!started && !startPanel.hidden) {
+    const field = world.getBoundingClientRect()
+    const panel = startPanel.getBoundingClientRect()
+    if (field.width > 0 && field.height > 0) {
+      if (panel.width > field.width * 0.9)
+        y = Math.max(0.1, Math.min(0.5, (panel.top - field.top) / field.height / 2 - 0.1))
+      else x = Math.max(0.2, Math.min(0.5, (panel.left - field.left) / field.width / 2))
+    }
+  }
+  const next = x.toFixed(3) + ',' + y.toFixed(3)
+  if (next === viewCenter) return
+  viewCenter = next
+  scene.setViewCenter(x, y)
+}
 
 // "Continue": the furthest chapter reached on this browser. `?chapter=N` (1–4) preselects one for testing.
 const REACHED_KEY = 'rabbiters.reached'
@@ -491,6 +532,7 @@ async function start(nextRole: 'solo' | 'host' | 'guest') {
     clearInput()
     connectionLost = false
     started = true
+    demo = undefined
     updateLookHint()
     startPanel.hidden = true
     shownChapter = -1
@@ -525,6 +567,7 @@ async function returnToTitle() {
   checkpoint = undefined
   retry.hidden = true
   started = false
+  demo = undefined
   updateLookHint()
   connectionLost = false
   audio.stop()
@@ -845,8 +888,10 @@ function frame(now: number) {
         if (inputInFlight === current) inputInFlight = undefined
       })
   }
-  const current = snapshot ?? preview.state
-  if (!started) preview.state.time = now / 1000
+  const titleDemo = stepDemo(dt)
+  const current = snapshot ?? titleDemo?.state ?? preview.state
+  if (!started && !titleDemo) preview.state.time = now / 1000
+  frameTitleRabbit()
   const visual =
     started && !connectionLost && guestView && snapshot ? guestView.render(snapshot, localId, input, dt, now) : current
   scene.render(visual, started ? localId : 'preview', dt)
