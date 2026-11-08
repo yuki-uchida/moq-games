@@ -1014,8 +1014,10 @@ test('landing changes run landing contracts and browser checks only', () => {
 test('tower-only browser checks exclude unrelated landing tests', () => {
   const scope = selectScope(['tests/tower-title-e2e.spec.ts'])
   assert.equal(scope.browser, 'tower-')
-  assert.equal(JSON.parse(scope.shards).length, 16)
-  assert.equal(selectScope(['index.html', 'tests/tower-title-e2e.spec.ts']).browser, 'tower- landing-e2e.spec.ts')
+  assert.equal(JSON.parse(scope.shards).length, 18)
+  const combined = selectScope(['index.html', 'tests/tower-title-e2e.spec.ts'])
+  assert.equal(combined.browser, 'tower- landing-e2e.spec.ts')
+  assert.equal(JSON.parse(combined.shards).length, 18)
 })
 
 test('shared dependencies, CI jobs and runners, and unknown paths conservatively check all games', () => {
@@ -1152,6 +1154,8 @@ test('a workflow change runs only the jobs whose definitions changed', () => {
   assert.equal(browser.pagesBrowser, true)
   assert.equal(browser.browser, '')
   assert.equal(browser.shards, full.shards)
+  assert.equal(JSON.parse(browser.shards).length, 16)
+  assert.equal(JSON.parse(selectScope([workflowFile], { workflowJobs: ['build'] }).shards).length, 16)
   assert.equal(browser.unit, '')
   assert.deepEqual(selectScope([workflowFile], { workflowJobs: ['unit', 'changes'] }), full)
   assert.deepEqual(

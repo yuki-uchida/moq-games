@@ -114,9 +114,11 @@ function nodeFor(has) {
 const fullUnit = unitFor(() => true)
 const fullNode = nodeFor(() => true)
 const fullOrder = [...fullUnit, ...fullNode]
-const allShards = Array.from({ length: 16 }, (_, index) => index + 1)
+// A full run keeps ~15 CPU jobs busy, so more shards only add setup; a tower-only run leaves room for 18 within the 20 concurrent-job limit.
+const fullRunShards = Array.from({ length: 16 }, (_, index) => index + 1)
+const towerShards = Array.from({ length: 18 }, (_, index) => index + 1)
 const laneNodeGlob = 'examples/games/lane-battle/*.test.mjs'
-const pagesChecks = { pagesBrowser: true, browser: '', shards: JSON.stringify(allShards), pages: true }
+const pagesChecks = { pagesBrowser: true, browser: '', shards: JSON.stringify(fullRunShards), pages: true }
 
 /** The check outputs that exercise each workflow job; a job not listed here makes a change to it check everything. */
 export const workflowJobChecks = {
@@ -195,7 +197,7 @@ export function selectScope(paths, { workflowJobs } = {}) {
           ]
             .filter(Boolean)
             .join(' '),
-    shards: JSON.stringify(has('tower') || required('shards') ? allShards : [1]),
+    shards: JSON.stringify(shared || required('shards') ? fullRunShards : has('tower') ? towerShards : [1]),
     pagesBrowser:
       has('tower') || has('landing') || has('ember-grid') || has('life-survivors') || required('pagesBrowser'),
     unit: merged(unitFor(has), 'unit'),
