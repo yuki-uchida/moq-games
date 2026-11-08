@@ -1,4 +1,4 @@
-import type { SongDef } from '../notation'
+import { transpose, type SongDef } from '../notation'
 import { m4, motif, r4, seq, withFill } from './util'
 
 /**
@@ -57,7 +57,7 @@ export const ENDING: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'F | Bb Gm | F C | F | Dm | Bb | Gm C | F',
+      chords: 'F | Dm7 Dm7 Dm7 C | F F F C | F | Dm | Bb | Gm C | F',
       parts: {
         str: 'x---------------',
         harp: '12345432',
@@ -89,7 +89,7 @@ export const ENDING: SongDef = {
     {
       name: 'C',
       bars: 8,
-      chords: 'F | Bb Gm | F C | F | Dm | Bb | Gm C | F',
+      chords: 'F | Dm7 Dm7 Dm7 C | F F F C | F | Dm | Bb | Gm C | F',
       parts: {
         str: 'x---------------',
         choir: 'x---------------',
@@ -98,7 +98,7 @@ export const ENDING: SongDef = {
         hn: seq(motif(41, 'major', { vel: 0.95 }), m4('o3 d1 | b-1 | g2 c2 | f1')),
         br: seq(motif(53, 'major', { vel: 0.8 }), m4('o4 a2 f2 | d2 f2 | b-2 g2 | f1')),
         vln: seq(motif(65, 'major', { vel: 0.8 }), answer),
-        fl: seq(r4(4), answer),
+        fl: seq(r4(4), transpose(answer, 12)),
         gl: seq(motif(77, 'major', { vel: 0.5, gate: 0.6 }), r4(4)),
         bass: 'r-r-f-a-',
         tim: 'r...r...r...r.rr',
@@ -109,7 +109,7 @@ export const ENDING: SongDef = {
     {
       name: 'tag',
       bars: 4,
-      chords: 'F | Bb Gm | F C | F',
+      chords: 'F | Dm7 Dm7 Dm7 C | F F F C | F',
       parts: {
         str: 'x---------------',
         choir: 'x---------------',

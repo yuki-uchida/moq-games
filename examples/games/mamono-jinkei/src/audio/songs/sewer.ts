@@ -7,7 +7,7 @@ import { m4, motif, motifHead, r4, seq } from './util'
  */
 const answer = m4('o5 c8 e8 a4 e8 c8 o4 a4 | o4 b4 o5 e4 g4 f+4 | o5 e8 g8 o6 c4 o5 g8 e8 c4 | o4 b8 o5 d+8 f+4 a2')
 const lines = m4(
-  'o4 e4 g4 b4 g4 | o4 a4 o5 c4 e4 c4 | o4 g4 f+4 e4 d+4 | o4 e2 a2 | o5 e4 g4 e4 c4 | o5 f+4 a4 f+4 d4 | o4 b4 o5 d+4 f+4 a4 | o5 a4 f+4 d+2'
+  'o5 e4 g4 b4 g4 | o5 a4 e4 c4 e4 | o5 g4 f+4 e4 d+4 | o5 e2 a2 | o5 e4 g4 e4 c4 | o5 f+4 a4 f+4 d4 | o4 b4 o5 d+4 f+4 a4 | o5 a4 f+4 d+4 o4 b4'
 )
 
 const heads = (tonic: number, shifts: number[], gate = 0.45) =>
@@ -25,9 +25,9 @@ export const SEWER: SongDef = {
   swing: 2,
   gain: 1.4,
   parts: [
-    { id: 'pz', inst: 'pizz', role: 'melody', vol: 0.9, pan: -0.2, send: 0.3 },
-    { id: 'cl', inst: 'clarinet', role: 'melody', vol: 0.8, pan: 0.2, send: 0.3 },
-    { id: 'comp', inst: 'pizz', role: 'chord', vol: 0.5, pan: 0.35, send: 0.2, center: 62, vel: 0.5, gate: 0.5 },
+    { id: 'pz', inst: 'pizz', role: 'melody', vol: 0.9, pan: -0.5, send: 0.3 },
+    { id: 'cl', inst: 'clarinet', role: 'melody', vol: 0.8, pan: 0.45, send: 0.3 },
+    { id: 'comp', inst: 'pizz', role: 'chord', vol: 0.5, pan: 0.65, send: 0.2, center: 62, vel: 0.5, gate: 0.5 },
     {
       id: 'str',
       inst: 'strings',
@@ -40,8 +40,8 @@ export const SEWER: SongDef = {
       vel: 0.45,
       gate: 0.99
     },
-    { id: 'cel', inst: 'celesta', role: 'chord', vol: 0.4, pan: 0.5, send: 0.45, center: 84, vel: 0.5 },
-    { id: 'drip', inst: 'musicbox', role: 'chord', vol: 0.45, pan: -0.55, send: 0.6, center: 84, vel: 0.55 },
+    { id: 'cel', inst: 'celesta', role: 'chord', vol: 0.4, pan: 0.75, send: 0.45, center: 84, vel: 0.5 },
+    { id: 'drip', inst: 'musicbox', role: 'chord', vol: 0.45, pan: -0.8, send: 0.6, center: 84, vel: 0.55 },
     { id: 'bass', inst: 'bass', role: 'bass', vol: 0.6, center: 40, vel: 0.7, gate: 0.85 },
     { id: 'dr', inst: 'kit', role: 'drum', vol: 0.5, vel: 0.6, pan: 0.05, maxLayer: 0 },
     { id: 'rd', inst: 'kit', role: 'drum', vol: 0.4, vel: 0.5, pan: -0.15, maxLayer: 0 },
@@ -82,7 +82,7 @@ export const SEWER: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'Em | Em D | C Em | Em | Am | Em | C | B7',
+      chords: 'Em | Em Em Em D | C Em | Em | Am | Em | C | B7',
       parts: {
         pz: seq(motif(64, 'minor', { vel: 0.72, gate: 0.4 }), r4(4)),
         cl: seq(r4(4), answer),
@@ -114,7 +114,7 @@ export const SEWER: SongDef = {
         dr1: SWING,
         rd1: 'h.hhh.hh',
         mb: STAB,
-        br: seq(r4(4), m4('o4 e2 g2 | a2 c2 | b2 d+2 | f+1')),
+        br: seq(r4(4), m4('o4 e2 g2 | a2 f+2 | b2 d+2 | f+1')),
         chip: '1.2.3.2.',
         tim: 'r.......'
       }
@@ -122,10 +122,10 @@ export const SEWER: SongDef = {
     {
       name: 'bridge',
       bars: 8,
-      chords: 'Em | F#dim | G | Am | Bm | C | B7 | B7',
+      chords: 'Em | F#dim | G | Am | Bm | C | Bm | B7',
       parts: {
         pz: seq(heads(64, [0, 1, 2, 3, 4, 5, 4]), r4(1)),
-        cl: seq(heads(52, [0, 1, 2, 3, 4, 5, 4], 0.9), m4('o5 d+1')),
+        cl: seq(heads(52, [0, 1, 2, 3, 4, 5, 4], 0.9), m4('o4 d+1')),
         comp: '.x...x..',
         str: 'x---------------',
         drip: DRIP_A,
@@ -135,7 +135,7 @@ export const SEWER: SongDef = {
         dr1: 'k..sk.s.|k..sk.s.|k..sk.s.|k..sk.s.|k..sk.s.|k..sk.s.|k.s.k.s.|ssssssss',
         rd1: 'h.hhh.hh',
         mb: STAB,
-        br: heads(52, [0, 1, 2, 3, 4, 5, 4, 4], 0.8),
+        br: m4('o4 e1 | a1 | b1 | c1 | d1 | e1 | f+1 | f+1'),
         chip: '1.2.3.2.',
         tim: 'r.......|r.......|r.......|r.......|r.......|r.......|r.r.....|rrrrrrrr'
       }
@@ -143,20 +143,18 @@ export const SEWER: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'Em | Em D | C Em | Em | Am | Em | C | B7',
+      chords: 'Em | Em Em Em D | C Em | Em | Am | Em | C | B7',
       parts: {
         cl: seq(motif(52, 'minor', { vel: 0.75, gate: 0.5 }), r4(4)),
         pz: seq(r4(4), answer),
         comp: '.x...x..',
-        str: 'x---------------',
-        cel: '1.......',
+        str: '........|........|........|........|........|........|........|x---------------',
         drip: DRIP_B,
         bass: 'rtfa',
         dr: 'k.p.k.p.|k.p.k.p.|k.p.k.p.|k.p.k.p.|k.p.k.p.|k.p.k.p.|k.p.k.p.|k.p.kkp.',
         rd: 'h.hhh.hh',
         dr1: SWING,
         rd1: 'h.hhh.hh',
-        mb: STAB,
         chip: '1.2.3.2.',
         tim: 'r.......'
       }

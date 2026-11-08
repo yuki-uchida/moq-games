@@ -441,8 +441,8 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     0.2,
     1,
     (b) => {
-      b.run('square', [79, 84, 88, 91], 0.05, 0.14, 0.1, { rev: 0.3 })
-      b.bells([91, 96], 0.07, 0.8, 0.28)
+      b.run('square', [72, 76, 79, 84], 0.05, 0.14, 0.1, { rev: 0.3 })
+      b.bells([84, 91], 0.07, 0.8, 0.28)
       b.sparkle(5, 0.1, 0.3, 96, 108, 0.06)
     },
     { vary: 0.02, rev: 0.25 }
@@ -659,7 +659,7 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     { rev: 0.25, duck: [0.4, 0.9] }
   ),
   ratDash: D(2, 0.1, 1, (b) => {
-    b.ticks(7, 0, 0.028, 3200, 0.3, 0.02)
+    b.ticks(7, 0, 0.028, 2200, 0.3, 0.02)
     whoosh(b, 0, 0.18, 1000, 3000, 0.2)
   }),
   ratSqueak: D(
@@ -667,8 +667,10 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     0.12,
     1,
     (b) => {
-      b.tone('sine', 1900, 2700, 0.1, 0.22, { vib: [28, 80] })
-      b.tone('sine', 2700, 1900, 0.09, 0.2, { at: 0.12, vib: [28, 80] })
+      b.tone('sine', 1100, 1600, 0.1, 0.22, { vib: [28, 80] })
+      b.tone('triangle', 550, 800, 0.1, 0.12)
+      b.tone('sine', 1600, 1100, 0.09, 0.2, { at: 0.12, vib: [28, 80] })
+      b.tone('triangle', 800, 550, 0.09, 0.12, { at: 0.12 })
     },
     { vary: 0.08 }
   ),
@@ -777,8 +779,8 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     boom(b, 0, 200, 90, 0.1, 0.4)
   }),
   grassCut: D(4, 0.05, 1, (b) => {
-    b.nz('bandpass', 3800, 6000, 0.1, 0.34, { a: 0.03, q: 0.8 })
-    b.nz('highpass', 5000, 5000, 0.05, 0.12, { at: 0.04 })
+    b.nz('bandpass', 2200, 3600, 0.1, 0.34, { a: 0.03, q: 0.7 })
+    b.nz('lowpass', 1500, 900, 0.06, 0.15, { at: 0.03 })
   }),
   plateOn: D(2, 0.1, 1, (b) => {
     b.tone('square', 300, 190, 0.035, 0.1)
@@ -887,9 +889,9 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     0.08,
     1,
     (b) => {
-      b.run('triangle', [76, 79, 83, 88, 91, 95], 0.05, 0.3, 0.2)
-      b.run('square', [83, 88, 91, 95, 100], 0.05, 0.08, 0.06, { at: 0.02 })
-      b.bell(100, 1, 0.22)
+      b.run('triangle', [72, 76, 79, 83, 88, 91], 0.05, 0.3, 0.2)
+      b.run('square', [76, 79, 83, 88, 91], 0.05, 0.08, 0.06, { at: 0.02 })
+      b.bell(91, 1, 0.22)
       b.sparkle(5, 0.1, 0.3, 98, 108, 0.05)
     },
     { vary: 0.02, rev: 0.3 }
@@ -910,8 +912,8 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     0.1,
     1,
     (b) => {
-      b.bells([91, 96, 100], 0.06, 0.6, 0.24, { ratio: 4.1, index: 0.7 })
-      b.ticks(3, 0, 0.05, 5000, 0.12, 0.015)
+      b.bells([84, 88, 91], 0.06, 0.6, 0.24, { ratio: 4.1, index: 0.7 })
+      b.ticks(3, 0, 0.05, 3000, 0.12, 0.015)
     },
     { vary: 0.02, rev: 0.25 }
   ),
@@ -1106,9 +1108,9 @@ export const SFX_DEFS: Record<SfxName, SfxDef> = {
     0.3,
     1,
     (b) => {
-      b.tone('sawtooth', mtof(74), mtof(74), 0.2, 0.14, { lp: [600, 3000] })
-      b.tone('sawtooth', mtof(86), mtof(86), 0.35, 0.16, { at: 0.1, lp: [800, 3500] })
-      b.bell(98, 0.6, 0.15, { at: 0.1 })
+      b.tone('sawtooth', mtof(74), mtof(74), 0.2, 0.14, { lp: [500, 1800] })
+      b.tone('sawtooth', mtof(86), mtof(86), 0.35, 0.16, { at: 0.1, lp: [700, 2200] })
+      b.bell(79, 0.6, 0.15, { at: 0.1 })
     },
     { vary: 0.01, rev: 0.25 }
   ),

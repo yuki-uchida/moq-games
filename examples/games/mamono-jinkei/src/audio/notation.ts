@@ -497,12 +497,21 @@ function chordSegments(sec: SectionDef, barTicks: number, center: number): Seg[]
     const names = bar.split(/\s+/).filter(Boolean)
     const len = barTicks / names.length
     if (!Number.isInteger(len)) throw new Error(`${sec.name}: bar ${b} chord split`)
-    names.forEach((nm, k) => {
-      const chord = parseChord(nm)
+    // Identical neighbours inside one bar are one chord (so `Bm Bm Bm A` is Bm for three beats, then A).
+    const groups: Array<{ nm: string; count: number }> = []
+    for (const nm of names) {
+      const g = groups[groups.length - 1]
+      if (g && g.nm === nm) g.count++
+      else groups.push({ nm, count: 1 })
+    }
+    let at = 0
+    for (const g of groups) {
+      const chord = parseChord(g.nm)
       const voicing = voice(chord, prev, center)
       prev = voicing
-      segs.push({ start: b * barTicks + k * len, len, chord, voicing })
-    })
+      segs.push({ start: b * barTicks + at * len, len: g.count * len, chord, voicing })
+      at += g.count
+    }
   })
   return segs
 }

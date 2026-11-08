@@ -5,9 +5,9 @@ import { m4, motif, r4, seq, withFill } from './util'
  * 「終焉の陣形」 A minor, 144 bpm. The final battle: choir and full orchestra. The motif is sung in augmentation
  * by the choir (B) and hammered out by brass and strings (A, A'), and in the bridge the title motif is heard in major, plain and heroic, before the duel resumes. Form: intro (2) then A (8) / B (8) / C (8) / A' (8).
  */
-const answer = m4('o4 a8 a8 c8 e8 o5 a4 g4 | o4 g8 g8 b8 o5 d8 g4 f4 | o4 a8 a8 c8 e8 o5 a4 e4 | o5 b2 g+2')
+const answer = m4('o4 a8 a8 o5 c8 e8 a4 g4 | o4 g8 g8 b8 o5 d8 g4 f4 | o4 a8 a8 o5 c8 e8 a4 e4 | o4 e2 g+2')
 const climb = m4(
-  'o4 a2 o5 c4 f4 | o5 d2 g4 b4 | o5 c2 e4 a4 | o5 a2. g4 | o5 f2 a4 o6 c4 | o5 b2 g4 d4 | o5 b4 g+4 e2 | o5 e4 g+4 b2'
+  'o4 a2 o5 c4 f4 | o5 d2 g4 b4 | o5 c2 e4 a4 | o5 a2. g4 | o5 f2 a4 o6 c4 | o5 b2 g4 d4 | o5 b4 g+4 e2 | o5 d4 g4 b2'
 )
 const OST = 'rrRrrRrrrrRrrRfr'
 
@@ -74,7 +74,7 @@ export const FINAL_BOSS: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'Am | F G | Am | Am | F | G | Am | E',
+      chords: 'Am | Am Am Am G | Am | Am | F | G | Am | E',
       parts: {
         ost: OST,
         str: 'x---------------',
@@ -83,8 +83,8 @@ export const FINAL_BOSS: SongDef = {
         br: seq(motif(57, 'minor', { vel: 0.9, gate: 0.85 }), answer),
         hn: seq(motif(45, 'minor', { vel: 0.9 }), r4(4)),
         vln: seq(motif(69, 'minor', { vel: 0.7, gate: 0.85 }), r4(4)),
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r...r...r...r.rr',
         tk: 'D.......D.......',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),
@@ -94,7 +94,7 @@ export const FINAL_BOSS: SongDef = {
     {
       name: 'B',
       bars: 8,
-      chords: 'Am | Am | F | G | Am | Am | Am | E',
+      chords: 'Am | Am | Am | Am G | Am7 | Am7 | Am | Esus4',
       parts: {
         ost: OST,
         str: 'x---------------',
@@ -103,7 +103,7 @@ export const FINAL_BOSS: SongDef = {
         harp: '1234543212345432',
         bell: '1...3...5...3...',
         bass: 'r.r.r.r.r.r.r.r.',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|rrrrrrrrrrrrrrrr',
         tk: 'D...............|........D.......',
         dr: '................|................|................|................|................|................|................|s.s.s.s.ssssssss'
@@ -112,17 +112,17 @@ export const FINAL_BOSS: SongDef = {
     {
       name: 'C',
       bars: 8,
-      chords: 'F | G | Am | Am | F | G | E | E',
+      chords: 'F | G | Am | Am | F | G | E | G',
       parts: {
         ost: OST,
         str: 'x---------------',
         choir: 'x---------------',
         stab: 'x.x.x.x.x.x.x.x.',
         br: climb,
-        hn: m4('o3 f1 | g1 | a1 | a1 | f1 | g1 | e1 | e1'),
+        hn: m4('o3 f1 | g1 | a1 | a1 | f1 | g1 | e1 | g1'),
         vln: m4('o5 a1 | b1 | c1 | c1 | a1 | b1 | b1 | b1'),
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r.r.r.r.r.r.r.r.',
         tk: 'D...D...D...D...',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'ssssssssssssssss'),
@@ -132,18 +132,18 @@ export const FINAL_BOSS: SongDef = {
     {
       name: 'bridge',
       bars: 8,
-      chords: 'C | Fmaj7 | Am G | C | F | G | Am | E',
+      chords: 'C | C C C G | C C C G | C | F | G | Am | E',
       parts: {
         str: 'x---------------',
         choir: 'x---------------',
         harp: '1234543212345432',
         bell: '1...3...5...3...',
-        chm: seq(motif(60, 'major', { vel: 0.8, gate: 0.95 }), m4('o5 e2 a2 | g1 | e2 c2 | e1')),
+        chm: seq(motif(60, 'major', { vel: 0.8, gate: 0.95 }), m4('o5 a2 f2 | g1 | e2 c2 | e1')),
         hn: seq(motif(48, 'major', { vel: 0.85 }), m4('o3 f1 | g1 | a1 | e1')),
         vln: seq(motif(72, 'major', { vel: 0.6 }), r4(4)),
         br: seq(r4(4), answer),
         bass: 'r---r---',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r.......|........|r.......|........|r.......|r.......|r.r.r.r.|rrrrrrrr',
         tk: 'D.......|........|D.......|........|D...D...|D...D...|D.D.D.D.|DDDDDDDD',
         cym: 'c...............|................'
@@ -152,7 +152,7 @@ export const FINAL_BOSS: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'Am | F G | Am | Am | F | G | Am | E',
+      chords: 'Am | Am Am Am G | Am | Am | F | G | Am | E',
       parts: {
         ost: OST,
         str: 'x---------------',
@@ -160,12 +160,12 @@ export const FINAL_BOSS: SongDef = {
         stab: 'x..x..x.........',
         br: seq(motif(57, 'minor', { vel: 0.95, gate: 0.85 }), answer),
         hn: seq(motif(45, 'minor', { vel: 0.95 }), r4(4)),
-        vln: seq(motif(69, 'minor', { vel: 0.8, gate: 0.85 }), answer),
-        chm: seq(r4(4), m4('o5 e2 a2 | g1 | e2 c2 | e1')),
+        vln: seq(motif(69, 'minor', { vel: 0.8, gate: 0.85 }), m4('o5 a1 | b1 | c1 | b1')),
+        chm: seq(r4(4), m4('o5 a2 f2 | g1 | e2 c2 | e1')),
         bell: '1...3...5...3...',
         harp: '1234543212345432',
-        bass: 'r.rrr.rrr.rrr.fr',
-        sub: 'r-------',
+        bass: 'r.rrr.rrr.rrr.Fr',
+        sub: 'r---r---',
         tim: 'r...r.r.r...r.rr',
         tk: 'D.......D.D.....',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),

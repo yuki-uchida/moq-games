@@ -1,4 +1,4 @@
-import type { SongDef } from '../notation'
+import { transpose, type SongDef } from '../notation'
 import { m4, motif, motifHead, r4, seq, withFill } from './util'
 
 /**
@@ -19,6 +19,7 @@ const LAYERS = {
 }
 const heads = (tonic: number, shifts: number[]) =>
   seq(...shifts.map((n) => motifHead(tonic, 'minor', n, { gate: 0.85 })))
+const answerC2 = m4('o4 b2 g4 b4 | o4 e4 a4 o5 c+2 | o5 e4 o4 b4 a+4 f+4 | o5 f+1')
 const answerC = m4('o5 b2 g4 d4 | o5 c+4 e4 a2 | o6 e4 o5 b4 a+4 f+4 | o5 c+1')
 
 export const FOREST: SongDef = {
@@ -118,23 +119,23 @@ export const FOREST: SongDef = {
         choir: 'x---------------',
         harp: '........|........|1.2.3.2.|1.2.3.2.',
         fl: seq(r4(2), motifHead(59, 'minor', 0, { vel: 0.5 }), r4(1)),
-        sub: 'r-------'
+        sub: 'r---r---'
       }
     },
     {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'Bm | Em A | Bm7 | Bm | G | D | Em | F#',
+      chords: 'Bm | Bm Bm Bm A | Bm7 | Bm | G | D | Em | F#',
       parts: {
         ...LAYERS,
         str: 'x---------------',
         bass: 'r---r---',
         cel: '1...3...5...3...',
         pad: 'x---------------',
-        fl: seq(motif(59, 'minor', { vel: 0.6, gate: 0.9 }), answerA),
+        fl: seq(motif(59, 'minor', { vel: 0.6, gate: 0.9 }), transpose(answerA, -12)),
         harp: '1.2.3.2.',
-        sub: 'r-------'
+        sub: 'r---r---'
       }
     },
     {
@@ -149,7 +150,7 @@ export const FOREST: SongDef = {
         ob: lineB,
         hn: m4('o3 g1 | f+1 | e1 | b1 | g1 | f+1 | e1 | f+1'),
         bass: 'r---r---',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r.......|........|r.......|........|r.......|........|r.r.r.r.|rrrrrrrr',
         pc: '........|........|........|........|z.z.z.z.|z.z.z.z.|z.z.z.z.|z.z.z.zz'
       }
@@ -157,18 +158,18 @@ export const FOREST: SongDef = {
     {
       name: 'bridge',
       bars: 8,
-      chords: 'Bm | C#dim | D | Em | F#m | G | A | F#',
+      chords: 'Bm | C#dim | D | Em | F#m | G | A | A',
       parts: {
         ...LAYERS,
         cel: '1.3.5.3.1.3.5.3.',
         harp: '12345432',
         str: 'x---------------',
         choir: 'x---------------',
-        fl: seq(heads(59, [0, 1, 2, 3, 4, 5, 6]), m4('o5 c+1')),
-        vln: seq(heads(59, [0, 1, 2, 3, 4, 5, 6]), m4('o5 f+1')),
-        hn: seq(heads(47, [0, 1, 2, 3, 4, 5, 6]), m4('o3 f+1')),
+        fl: seq(heads(59, [0, 1, 2, 3, 4, 5]), m4('o5 c+1 | e1')),
+        vln: seq(heads(47, [0, 1, 2, 3, 4, 5]), m4('o4 c+1 | e1')),
+        hn: m4('o3 b1 | o4 c+1 | d1 | e1 | f+1 | g1 | a1 | a1'),
         bass: 'r---r---',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r.......|........|r.......|........|r.......|r.......|r.r.r.r.|rrrrrrrr',
         pc: '........|........|........|........|z.z.z.z.|z.z.z.z.|z.z.z.z.|z.z.z.zz'
       }
@@ -176,19 +177,19 @@ export const FOREST: SongDef = {
     {
       name: 'C',
       bars: 8,
-      chords: 'D | Gmaj7 | Bm A | D | G | A | Em F# | F#',
+      chords: 'D | Gmaj7 | Bm Bm Bm A | D | G | A | Em F# | F#',
       parts: {
         ...LAYERS,
         cel: '1.3.5.3.1.3.5.3.',
         harp: '12345432',
         str: 'x---------------',
         choir: 'x---------------',
-        hn: seq(motif(50, 'major', { vel: 0.9 }), m4('o3 b1 | c+1 | e2 a+2 | c+1')),
-        br: seq(motif(50, 'major', { vel: 0.75 }), r4(4)),
-        vln: seq(motif(62, 'major', { vel: 0.7 }), answerC),
+        hn: seq(motif(50, 'major', { vel: 0.9 }), m4('o4 b1 | c+1 | e2 a+2 | c+1')),
+        br: seq(motif(62, 'major', { vel: 0.75 }), r4(4)),
+        vln: seq(m4('o4 a1 | b1 | f+1 | f+1'), answerC2),
         fl: seq(r4(4), answerC),
         bass: 'r-r-f-a-',
-        sub: 'r-------',
+        sub: 'r---r---',
         tim: 'r...r...r...r.rr',
         dr: withFill('k.h.s.h.k.h.s.h.', 8, 'k.s.k.s.ssssssss'),
         pc: 'c...............|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.'

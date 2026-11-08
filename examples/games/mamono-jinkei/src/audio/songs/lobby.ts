@@ -41,7 +41,7 @@ export const LOBBY: SongDef = {
       name: 'A',
       bars: 8,
       loop: true,
-      chords: 'G | Cmaj7 | Em D | G | Em | C | Am7 D | G',
+      chords: 'G | Cmaj7 | Em Em Em D | G | Em | C | Am7 D | G',
       parts: {
         harp: '1.23.23.',
         lute: '.x.x.x.x',
@@ -71,7 +71,7 @@ export const LOBBY: SongDef = {
     {
       name: "A'",
       bars: 8,
-      chords: 'G | Cmaj7 | Em D | G | Em | C | Am7 D | G',
+      chords: 'G | Cmaj7 | Em Em Em D | G | Em | C | Am7 D | G',
       parts: {
         harp: '12345432',
         lute: '.x.x.x.x',
