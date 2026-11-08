@@ -618,11 +618,14 @@ export class Renderer {
     ctx.fillStyle = '#fff4cf'
     const halfW = this.halfW - 80
     const halfH = this.halfH - 80
+    // What is fixed to the screen (HUD boxes, the view) is placed against the focus, not the shaking camera, so a shake
+    // does not flip which labels the boxes cover. The drawing below still shakes with the world.
+    const base = this.focus
     const visible = {
-      left: this.camera.x - halfW,
-      top: this.camera.y - halfH,
-      right: this.camera.x + halfW,
-      bottom: this.camera.y + halfH
+      left: base.x - halfW,
+      top: base.y - halfH,
+      right: base.x + halfW,
+      bottom: base.y + halfH
     }
     const viewport = {
       left: visible.left + 4,
@@ -630,10 +633,10 @@ export class Renderer {
       right: visible.right - 4,
       bottom: visible.bottom - 4
     }
-    // CSS px → world: the canvas centre is the camera.
+    // CSS px → world: the canvas centre is the focus (the camera without the shake).
     const k = this.canvas.width / (this.width || 1) / this.scale
-    const toWorldX = (x: number) => this.camera.x + (x - this.width / 2) * k
-    const toWorldY = (y: number) => this.camera.y + (y - this.height / 2) * k
+    const toWorldX = (x: number) => base.x + (x - this.width / 2) * k
+    const toWorldY = (y: number) => base.y + (y - this.height / 2) * k
     const toWorld = (r: Box): Box => ({
       left: toWorldX(r.left),
       top: toWorldY(r.top),
