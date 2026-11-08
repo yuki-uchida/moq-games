@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { classify, selectScope } from '../scripts/ci-scope.mjs'
+import { changedWorkflowJobs, classify, selectScope, workflowJobChecks } from '../scripts/ci-scope.mjs'
 import { parsePagesList, PAGES_WORKERS, selectPagesShard, simulateMakespan } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
@@ -1021,7 +1021,6 @@ test('tower-only browser checks exclude unrelated landing tests', () => {
 test('shared dependencies, CI jobs and runners, and unknown paths conservatively check all games', () => {
   for (const path of [
     'package-lock.json',
-    'lib/moqt/moqtClient.ts',
     'examples/games/shared/audio.ts',
     '.github/workflows/check.yml',
     'scripts/ci-install-chromium.mjs',
@@ -1045,6 +1044,130 @@ test('shared dependencies, CI jobs and runners, and unknown paths conservatively
       assert.ok(scope.unit.includes('examples/games/' + game + '/tests'))
     for (const key of ['debug', 'bot', 'audit', 'pagesBrowser', 'life', 'ci']) assert.equal(scope[key], true)
   }
+})
+
+test('shared code checks only the games that use the changed file', () => {
+  const table = {
+    'examples/games/shared/UiSound.ts': ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle'],
+    'examples/games/shared/ImpactArt.ts': ['tower', 'ember-grid'],
+    'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors'],
+    'utils/media/objectStatus.ts': ['tower', 'yoru-no-yashiki'],
+    'utils/moqJson.ts': ['tower'],
+    'lib/moqt/moqtClient.ts': ['tower', 'yoru-no-yashiki']
+  }
+  const dirs = { tower: 'tower_diffence_with_jev' }
+  for (const [path, users] of Object.entries(table)) {
+    assert.deepEqual(classify(path), users, path)
+    const scope = selectScope([path])
+    const units = users
+      .filter((user) => user !== 'lane-battle')
+      .map((user) => 'examples/games/' + (dirs[user] ?? user) + '/tests')
+    for (const unit of units) assert.ok(scope.unit.includes(unit), `${path} ${unit}`)
+    assert.equal(scope.unit.split(' ').filter((unit) => unit.endsWith('/tests')).length, units.length, path)
+    assert.equal(scope.laneNode, users.includes('lane-battle') ? 'examples/games/lane-battle/*.test.mjs' : '', path)
+    assert.equal(scope.life, users.includes('life-survivors'), path)
+    assert.equal(scope.ember, users.includes('ember-grid'), path)
+    assert.equal(scope.tower, users.includes('tower'), path)
+    assert.equal(scope.audit, false, path)
+    assert.equal(scope.debug, false, path)
+    assert.ok(!scope.browser.includes('landing'), path)
+    if (!users.includes('tower')) assert.equal(scope.node, '', path)
+    assert.equal(scope.browser.includes('tower-'), users.includes('tower'), path)
+    assert.equal(scope.browser.includes('ember-grid'), users.includes('ember-grid'), path)
+    assert.equal(scope.browser.includes('life-survivors'), users.includes('life-survivors'), path)
+  }
+  for (const path of ['utils/newHelper.ts', 'lib/moqt/other.ts', 'examples/games/shared/NewThing.ts'])
+    assert.deepEqual(classify(path), ['shared'], path)
+})
+
+const checkWorkflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+  '\r\n',
+  '\n'
+)
+
+test('changedWorkflowJobs reports only the jobs whose definitions differ', () => {
+  const base =
+    'name: x\non:\n  push:\n    paths-ignore:\n      - a\njobs:\n  one:\n    steps:\n      - run: a\n  two:\n    steps:\n      - run: b\n'
+  assert.deepEqual(changedWorkflowJobs(base, base), [])
+  assert.deepEqual(changedWorkflowJobs(base, base.replaceAll('\n', '\r\n')), [])
+  assert.equal(changedWorkflowJobs(base, base.replace('- a\n', '- z\n')), 'all')
+  assert.deepEqual(changedWorkflowJobs(base, base.replace('run: b', 'run: c')), ['two'])
+  assert.deepEqual(changedWorkflowJobs(base, base + '  three:\n    steps: []\n'), ['three'])
+  assert.deepEqual(changedWorkflowJobs(base + '  three:\n    steps: []\n', base), ['three'])
+  assert.deepEqual(changedWorkflowJobs(base, base.replace('run: a', 'run: q').replace('run: b', 'run: r')), [
+    'one',
+    'two'
+  ])
+  assert.equal(changedWorkflowJobs('', base), 'all')
+  assert.equal(changedWorkflowJobs(base, undefined), 'all')
+  assert.equal(changedWorkflowJobs('no jobs here', base), 'all')
+})
+
+test('a workflow change runs only the jobs whose definitions changed', () => {
+  const workflowFile = '.github/workflows/check.yml'
+  const full = selectScope(['package.json'])
+  const jobNames = [...checkWorkflow.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*$/gm)].map(([, name]) => name)
+  assert.ok(jobNames.includes('deploy') && jobNames.includes('changes'))
+  assert.deepEqual(selectScope([workflowFile]), full)
+  assert.deepEqual(selectScope([workflowFile], { workflowJobs: 'all' }), full)
+  const isFull = (scope) =>
+    scope.audit && scope.life && scope.laneNode !== '' && scope.debug && scope.unit === full.unit
+  const evaluate = (job, scope) => {
+    const block = checkWorkflow.match(new RegExp(`^  ${job}:\n([\s\S]*?)(?=^  [A-Za-z0-9_-]+:|(?![\s\S]))`, 'm'))[1]
+    const condition = block.match(/^    if: (.*)$/m)?.[1]
+    if (!condition) return true
+    const context = Object.fromEntries(
+      Object.entries(scope).map(([key, value]) => ['o_' + key, typeof value === 'boolean' ? String(value) : value])
+    )
+    return runInNewContext(condition.replaceAll(/needs\.changes\.outputs\.(\w+)/g, 'o_$1'), context)
+  }
+  for (const job of jobNames) {
+    const scope = selectScope([workflowFile], { workflowJobs: [job] })
+    if (!Object.hasOwn(workflowJobChecks, job)) {
+      assert.deepEqual(scope, full, job)
+      continue
+    }
+    assert.ok(!isFull(scope), job)
+    assert.equal(scope.ci, true, job)
+    assert.equal(evaluate(job, scope), true, job)
+    if (job !== 'slow-checks') assert.equal(scope.audit, false, job)
+  }
+  const life = selectScope([workflowFile], { workflowJobs: ['life-browser'] })
+  assert.equal(life.life, true)
+  for (const key of ['unit', 'laneNode', 'node']) assert.equal(life[key], '', key)
+  for (const key of ['pagesBrowser', 'pages', 'runtime', 'tower', 'audit']) assert.equal(life[key], false, key)
+  const check = selectScope([workflowFile], { workflowJobs: ['check'] })
+  assert.equal(check.runtime, true)
+  assert.equal(check.pages, false)
+  assert.equal(check.node, full.node)
+  for (const key of ['unit', 'laneNode']) assert.equal(check[key], '', key)
+  assert.equal(check.life, false)
+  const slow = selectScope([workflowFile], { workflowJobs: ['slow-checks'] })
+  assert.equal(slow.tower, true)
+  assert.equal(slow.unit, '')
+  assert.equal(slow.browser, '')
+  assert.equal(slow.pagesBrowser, false)
+  const browser = selectScope([workflowFile], { workflowJobs: ['browser'] })
+  assert.equal(browser.pages, true)
+  assert.equal(browser.pagesBrowser, true)
+  assert.equal(browser.browser, '')
+  assert.equal(browser.shards, full.shards)
+  assert.equal(browser.unit, '')
+  assert.deepEqual(selectScope([workflowFile], { workflowJobs: ['unit', 'changes'] }), full)
+  assert.deepEqual(
+    selectScope([workflowFile, 'examples/games/life-survivors/src/game.ts'], { workflowJobs: ['unit'] }),
+    {
+      ...selectScope(['examples/games/life-survivors/src/game.ts']),
+      ci: true,
+      unit: full.unit
+    }
+  )
+  const combined = selectScope([workflowFile, 'examples/games/life-survivors/src/game.ts'], { workflowJobs: ['unit'] })
+  assert.equal(combined.unit, full.unit)
+  assert.equal(combined.life, true)
+  assert.equal(combined.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.equal(combined.laneNode, '')
+  assert.equal(combined.audit, false)
 })
 
 test('CI selection and distribution files run only the CI contracts', () => {
