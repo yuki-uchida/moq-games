@@ -48,6 +48,7 @@ import { choiceIcon, iconImg } from './art/icons'
 import { sheet } from './art/index'
 import { duration } from './art/sheet'
 import { Renderer, bodyFor } from './render'
+import type { Box } from './food-layout'
 import { hidesBehind } from './hud-occlusion'
 import { readView, toView, type View, type ViewPlayer } from './view'
 
@@ -219,6 +220,7 @@ function mountBanner(banner: Banner) {
     bannerEl = node
     bannerLayer.replaceChildren(node)
   }
+  measureHudRects()
 }
 
 /** Translates an fx event into a cinematic banner. Log-backed lines (elite, evolve text) stay in the feed. */
@@ -1056,29 +1058,38 @@ function frame(now: number) {
     if (role === 'guest' && !player && view.players.length >= 8) setStatus('満員のため観戦中')
     renderPauseBanner(view)
   }
-  if (now - hudRectsAt >= 250 || hud.hidden !== hudRectsHidden) measureHudRects(now)
+  // While a banner is on screen its boxes move every frame, so they are measured every frame.
+  const bannerUp = (bannerEl?.isConnected ?? false) || (farewellEl?.isConnected ?? false)
+  if (bannerUp || now - hudRectsAt >= 250 || hud.hidden !== hudRectsHidden) measureHudRects(now)
   requestAnimationFrame(frame)
 }
 
 let hudRectsAt = -Infinity
 let hudRectsHidden = true
+/** Where each part of a banner has been while it shows (CSS px from the canvas's top left). */
+const bannerPaths = new WeakMap<Element, Box>()
 
 /**
  * Hands the renderer the screen boxes of the HUD parts drawn over the canvas, so food labels keep clear of them: every
  * visible part with its own background or border, or with no children. Large transparent containers (the full-screen
  * overlay, rows and lists) are looked into instead. A box is `opaque` when it hides what lies under it (hidesBehind);
- * foods under opaque boxes get no label.
+ * foods under opaque boxes get no label. Parts of a banner (it animates all the while it shows) go to a separate list
+ * of transient boxes instead: each one is the union of every place that part has been, so the labels it crosses are
+ * hidden for as long as the banner shows, not moved.
  */
 function measureHudRects(now = performance.now()) {
   hudRectsAt = now
   hudRectsHidden = hud.hidden
-  const rects: { left: number; top: number; right: number; bottom: number; opaque: boolean }[] = []
+  const rects: (Box & { opaque: boolean })[] = []
+  const transient: Box[] = []
   const frame = canvas.getBoundingClientRect()
-  const visit = (parent: Element, depth: number) => {
+  const visit = (parent: Element, depth: number, inBanner: boolean) => {
     for (const child of Array.from(parent.children)) {
-      if (rects.length >= 40) return
+      if ((inBanner ? transient : rects).length >= 40) return
+      const banner = inBanner || child.classList.contains('banner')
       const style = getComputedStyle(child)
-      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue
+      if (style.display === 'none') continue
+      if (!banner && (style.visibility === 'hidden' || Number(style.opacity) === 0)) continue
       const r = child.getBoundingClientRect()
       if (r.width < 1 || r.height < 1) continue
       const screenSized = r.width * r.height >= frame.width * frame.height * 0.5
@@ -1093,15 +1104,29 @@ function measureHudRects(now = performance.now()) {
           left: Math.max(0, r.left - frame.left),
           top: Math.max(0, r.top - frame.top),
           right: Math.min(frame.width, r.right - frame.left),
-          bottom: Math.min(frame.height, r.bottom - frame.top),
-          opaque: hidesBehind(style)
+          bottom: Math.min(frame.height, r.bottom - frame.top)
         }
-        if (box.right > box.left && box.bottom > box.top) rects.push(box)
-      } else if (depth < 6) visit(child, depth + 1)
+        if (box.right > box.left && box.bottom > box.top) {
+          if (banner) {
+            const seen = bannerPaths.get(child)
+            const path = seen
+              ? {
+                  left: Math.min(seen.left, box.left),
+                  top: Math.min(seen.top, box.top),
+                  right: Math.max(seen.right, box.right),
+                  bottom: Math.max(seen.bottom, box.bottom)
+                }
+              : box
+            bannerPaths.set(child, path)
+            // The labels are drawn with the boxes of the frame before: a margin covers the way a banner moves meanwhile.
+            transient.push({ left: path.left - 8, top: path.top - 8, right: path.right + 8, bottom: path.bottom + 8 })
+          } else rects.push({ ...box, opaque: hidesBehind(style) })
+        }
+      } else if (depth < 6) visit(child, depth + 1, banner)
     }
   }
-  if (!hud.hidden) visit(hud, 0)
-  renderer.setHudRects(rects)
+  if (!hud.hidden) visit(hud, 0, false)
+  renderer.setHudRects(rects, transient)
 }
 
 if (typeof ResizeObserver === 'function') {

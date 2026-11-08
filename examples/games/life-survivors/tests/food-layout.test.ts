@@ -922,3 +922,67 @@ describe('placeFoodLabels over time', () => {
     for (let now = 16; now < 5000; now += 16) expect(place([banner], memory, now, players)!.box).toEqual(settled.box)
   })
 })
+
+describe('placeFoodLabels with transient boxes (banners)', () => {
+  const s = screen(1280, 720)
+  const setup = () =>
+    labelPiles(
+      [
+        { x: 0, y: -240 },
+        { x: 20, y: -200 },
+        { x: -300, y: 100 }
+      ],
+      [0, 1, 0]
+    )
+  const run = (transient: Box[], memory: LabelMemory, now: number, extra: { piles: FoodLabelPile[]; sprites: Box[] }) =>
+    placeFoodLabels(extra.piles, extra.sprites, s.visible, s.viewport, measure, memory, [], [], now, transient)
+
+  it('hides a block crossing a transient box but keeps its box, leader and memory', () => {
+    const food = setup()
+    const baseMemory: LabelMemory = new Map()
+    const base = run([], baseMemory, 0, food)
+    const first = base[0]
+    const band = grow(first.box, -1)
+    const memory: LabelMemory = new Map()
+    const placed = run([band], memory, 0, food)
+    expect(placed).toHaveLength(base.length)
+    expect(placed[0].hidden).toBe(true)
+    expect(placed.filter((p) => p.hidden).length).toBeLessThan(placed.length)
+    placed.forEach((p, i) => {
+      expect(p.box).toEqual(base[i].box)
+      expect(p.leader).toEqual(base[i].leader)
+      expect(p.lines).toEqual(base[i].lines)
+    })
+    expect(memory).toEqual(baseMemory)
+    for (const p of base) expect(p.hidden).toBeUndefined()
+  })
+
+  it('never moves a shown label while a transient box keeps sliding, and comes back unchanged afterwards', () => {
+    const food = setup()
+    const memory: LabelMemory = new Map()
+    const base = run([], memory, 0, food)
+    const shown = base.map((p) => p.box)
+    let path: Box | undefined
+    let now = 16
+    for (let step = 0; step < 120; step++, now += 16) {
+      const slide: Box = { left: -300 + step * 8, top: -300, right: -100 + step * 8, bottom: -170 }
+      path = path ? boundsOf([path, slide]) : slide
+      const placed = run([path], memory, now, food)
+      expect(placed).toHaveLength(base.length)
+      placed.forEach((p, i) => expect(p.box).toEqual(shown[i]))
+    }
+    const after = run([], memory, now, food)
+    after.forEach((p, i) => {
+      expect(p.box).toEqual(shown[i])
+      expect(p.hidden).toBeUndefined()
+    })
+  })
+
+  it('does not let other blocks take the spot of a hidden block', () => {
+    const food = setup()
+    const base = run([], new Map(), 0, food)
+    const placed = run([grow(base[0].box, -1)], new Map(), 0, food)
+    expect(placed[0].hidden).toBe(true)
+    placed.slice(1).forEach((p) => expect(overlaps(p.box, grow(placed[0].box, BLOCK_GAP))).toBe(false))
+  })
+})
