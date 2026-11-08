@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { classify, selectScope } from '../scripts/ci-scope.mjs'
-import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
+import { parsePagesList, PAGES_WORKERS, selectPagesShard, simulateMakespan } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
   installChromium,
@@ -313,6 +313,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
     browser,
     /^        run: xvfb-run -a npx playwright test --config playwright\.pages\.config\.ts --test-list shard-tests\.txt --workers=2$/m
   )
+  assert.equal(Number(browser.match(/--test-list shard-tests\.txt --workers=(\d+)/)?.[1]), PAGES_WORKERS)
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(
     browser,
@@ -398,18 +399,28 @@ test('Pages list parsing preserves spec/describe/title identity and rejects inco
     assert.throws(() => parsePagesList(source))
 })
 
-test('Pages LPT uses only collected names with stable ties, defaults and shard boundaries', () => {
+test('Pages LPT uses only collected names with stable ties, defaults, execution order and shard boundaries', () => {
   const weights = { defaultSeconds: 5, seconds: { 'tests/heavy': 20, 'tests/medium': 10, 'tests/uncollected': 1000 } }
   const names = ['new', 'b', 'medium', 'heavy', 'a']
-  const partition = (index, count, input = names) => selectPagesShard(input, index, count, weights)
-  assert.deepEqual(partition(1, 2), ['heavy', 'new'])
-  assert.deepEqual(partition(2, 2), ['medium', 'a', 'b'])
-  assert.deepEqual(partition(1, 1), ['heavy', 'medium', 'a', 'b', 'new'])
+  const partition = (index, count, input = names, workers) => selectPagesShard(input, index, count, weights, workers)
+  // heavy (20) goes alone; medium (10) then 5s tests fill the other shard, each in execution (input) order.
+  assert.deepEqual(partition(1, 2), ['heavy'])
+  assert.deepEqual(partition(2, 2), ['new', 'b', 'medium', 'a'])
+  assert.deepEqual(partition(1, 1), names)
   for (let index = 1; index <= 8; index++) {
-    assert.deepEqual(partition(index, 8), partition(index, 8, [...names].reverse()))
+    assert.deepEqual(partition(index, 8), partition(index, 8))
     assert.deepEqual(partition(index, 8, []), [])
   }
   assert.deepEqual(partition(8, 8), [])
+  for (const count of [1, 2, 3, 8]) {
+    for (const input of [names, [...names].reverse()])
+      assert.deepEqual(
+        Array.from({ length: count }, (_, index) => partition(index + 1, count, input))
+          .flat()
+          .sort(),
+        [...names].sort()
+      )
+  }
   const distinct = ['tests/a.spec.ts › one › same', 'tests/a.spec.ts › two › same', 'tests/b.spec.ts › one › same']
   assert.deepEqual([1, 2].flatMap((index) => partition(index, 2, distinct)).sort(), [...distinct].sort())
   assert.deepEqual(partition(1, 1, ['duplicate', 'duplicate']), ['duplicate', 'duplicate'])
@@ -424,8 +435,35 @@ test('Pages LPT uses only collected names with stable ties, defaults and shard b
     [1, Number.MAX_SAFE_INTEGER + 1]
   ])
     assert.throws(() => partition(index, count))
+  for (const workers of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '2', null])
+    assert.throws(() => partition(1, 2, names, workers))
   for (const invalid of [null, {}, { defaultSeconds: 0, seconds: {} }, { defaultSeconds: 5, seconds: { a: -1 } }])
     assert.throws(() => selectPagesShard(names, 1, 2, invalid))
+})
+
+test('Pages LPT places tests by simulated worker makespan in execution order', () => {
+  assert.equal(simulateMakespan([2, 1, 4], 2), 5)
+  assert.equal(simulateMakespan([2, 4, 1, 2], 2), 5)
+  assert.equal(simulateMakespan([3, 3], 1), 6)
+  assert.equal(simulateMakespan([], 2), 0)
+  // The 4s test runs last. Sum-balancing would give it c(2)+d(1) in front of it (makespan 5 on 2 workers).
+  // Order-aware assignment pairs it with c alone (2 and 4 run in parallel) and keeps every shard at 4s.
+  const weights = { defaultSeconds: 2, seconds: { 'tests/d': 1, 'tests/long': 4 } }
+  const names = ['a', 'b', 'c', 'd', 'e', 'long']
+  assert.deepEqual(selectPagesShard(names, 1, 2, weights), ['c', 'long'])
+  assert.deepEqual(selectPagesShard(names, 2, 2, weights), ['a', 'b', 'd', 'e'])
+  const shards = [1, 2].map((index) => selectPagesShard(names, index, 2, weights))
+  for (const shard of shards)
+    assert.equal(
+      simulateMakespan(
+        shard.map((name) => weights.seconds[`tests/${name}`] ?? 2),
+        2
+      ),
+      4
+    )
+  // One worker degenerates to sum balancing: total 13s splits 7s and 6s.
+  assert.deepEqual(selectPagesShard(names, 1, 2, weights, 1), ['c', 'd', 'long'])
+  assert.deepEqual(selectPagesShard(names, 2, 2, weights, 1), ['a', 'b', 'e'])
 })
 
 test('Pages shard CLI emits only test-list names and fails invalid arguments, input or weight reads', () => {
@@ -508,9 +546,11 @@ test(
     }
     const recollect = (names, count, config) => {
       const selected = []
+      const reversed = []
       for (let index = 1; index <= count; index++) {
         const partition = selectPagesShard(names, index, count, weights)
-        assert.deepEqual(partition, selectPagesShard([...names].reverse(), index, count, weights))
+        assert.deepEqual(partition, selectPagesShard(names, index, count, weights))
+        reversed.push(...selectPagesShard([...names].reverse(), index, count, weights))
         const output = execFileSync(process.execPath, ['scripts/ci-pages-shard.mjs', String(index), String(count)], {
           cwd: root,
           encoding: 'utf8',
@@ -525,6 +565,7 @@ test(
         selected.push(...actual)
       }
       assert.deepEqual(selected.sort(), [...names].sort())
+      assert.deepEqual(reversed.sort(), [...names].sort())
     }
     const all = list()
     assert.ok(all.length > 0)
@@ -632,6 +673,10 @@ test('life browser shards run independently and gate publication', () => {
     )
   )
   assert.doesNotMatch(browser, /--shard=/)
+  assert.equal(
+    Number(browser.match(/npm run e2e:life-survivors -- --test-list shard-tests\.txt --workers=(\d+)/)?.[1]),
+    PAGES_WORKERS
+  )
   assert.match(browser, /name: life-survivors-browser-\$\{\{ github\.sha \}\}-shard-\$\{\{ matrix\.shard \}\}/)
   assert.match(deploy, /needs: \[[^\]\n]*\blife-browser\b[^\]\n]*\]/)
   assert.match(deploy, /\(needs\.life-browser\.result == 'success' \|\| needs\.life-browser\.result == 'skipped'\) &&/)
