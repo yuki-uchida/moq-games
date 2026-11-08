@@ -272,7 +272,8 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。Lv4で2人になり、別の敵を狙う。'
+    desc: '子のそばを離れて近くの敵を追い回す。Lv4で2人になり、別の敵を狙う。',
+    perk: '誕生時にデメリット性格「人間への恐怖」が付く（20歳で消える）'
   }),
   weapon({
     id: 'p_rich',
@@ -784,7 +785,19 @@ export const INHERITED_PASSIVES: PassiveDef[] = [
   { id: 'p_patience', category: 'sports', name: '忍耐力', icon: '🪨', desc: '防御 +1' },
   { id: 'p_courage', category: 'sports', name: '勇気', icon: '🦁', desc: '威力 +10%' }
 ]
-export const PASSIVE_BY_ID = new Map([...PASSIVES, ...INHERITED_PASSIVES].map((def) => [def.id, def]))
+/** モンスターペアレント's child starts with this flaw: it fills a personality slot and fades by 20. */
+export const PEOPLE_FEAR = 'p_peoplefear'
+export const PEOPLE_FEAR_UNTIL_AGE = 20
+export const PARENT_FLAWS: PassiveDef[] = [
+  {
+    id: PEOPLE_FEAR,
+    category: 'friend',
+    name: '人間への恐怖',
+    icon: '😨',
+    desc: 'デメリット性格（モンスターペアレントの子）。対人の手札の出現率 -50%、1歳ごとに2.5%ずつ戻る。性格枠を1つ使い、20歳で消える'
+  }
+]
+export const PASSIVE_BY_ID = new Map([...PASSIVES, ...INHERITED_PASSIVES, ...PARENT_FLAWS].map((def) => [def.id, def]))
 
 export const PARENT_LEGACIES: Record<string, string> = {
   p_over: 'p_affection',

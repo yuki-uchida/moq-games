@@ -9,6 +9,7 @@ import {
   EVENTS,
   MAX_WEAPON_LEVEL,
   PARENT_LEGACIES,
+  PEOPLE_FEAR,
   PASSIVE_BY_ID,
   RUN_SECONDS,
   STAGES,
@@ -755,8 +756,11 @@ function updateHud(current: View) {
         ...player.passives.map(([id, lv]) => {
           const def = PASSIVE_BY_ID.get(id)!
           const inherited = player.parentDeath?.reward === 'passive' && PARENT_LEGACIES[player.parent] === id
-          const item = slot(def.id, lv, 'passive', `${def.name}${inherited ? '（親の看取りで継承）' : ''}`)
+          const flaw = id === PEOPLE_FEAR
+          const note = inherited ? '（親の看取りで継承）' : flaw ? '（デメリット・20歳で消える）' : ''
+          const item = slot(def.id, lv, 'passive', `${def.name}${note}`)
           item.classList.toggle('inherited', inherited)
+          item.classList.toggle('flaw', flaw)
           return mark(item, id, String(lv))
         })
       )
