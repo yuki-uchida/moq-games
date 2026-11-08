@@ -101,6 +101,7 @@ export class Ground {
         if (tileFrames(kind) > 1) c.animated.push(ty * this.info.w + tx)
         const r = tile({ stage: this.info.id, kind, around: this.queryAround(tx, ty), tx, ty, frame: 0 })
         const rgba = r.rgba()
+        if (kind === 'sky') shadeSky(rgba, this.kindAt(tx, ty - 1), this.kindAt(tx, ty - 2))
         for (let row = 0; row < TILE; row++)
           data.set(rgba.subarray(row * TILE * 4, (row + 1) * TILE * 4), (y * TILE + row) * rowBytes + x * TILE * 4)
       }
@@ -162,5 +163,32 @@ export class Ground {
           ctx.drawImage(this.tileFrame(i, tick % frames), tx - x0, ty - y0)
         }
       }
+  }
+}
+
+const OPEN_SKY = new Set<TileKind | undefined>(['sky', undefined])
+
+/**
+ * Platforms cast a soft shadow onto the cloud sea below them, so the drop reads as height: the top rows of a sky
+ * tile under solid ground are darkened (stronger right under the edge, fading over ~1.3 tiles).
+ */
+function shadeSky(rgba: Uint8Array, north: TileKind | undefined, north2: TileKind | undefined) {
+  const start = OPEN_SKY.has(north) ? (OPEN_SKY.has(north2) ? -1 : -TILE) : 0
+  if (start === -1) return
+  const reach = 84
+  for (let row = 0; row < TILE; row++) {
+    const d = row - start
+    if (d >= reach) break
+    // Ease-out darkening with a dithered edge (keeps the pixel-art feel).
+    const k = 1 - d / reach
+    const dark = 0.5 * k * k
+    for (let col = 0; col < TILE; col++) {
+      const dither = ((row + col) & 1) * 0.04 * k
+      const f = 1 - dark - dither
+      const i = (row * TILE + col) * 4
+      rgba[i] = rgba[i] * f
+      rgba[i + 1] = rgba[i + 1] * f
+      rgba[i + 2] = rgba[i + 2] * (f * 0.92 + 0.08)
+    }
   }
 }

@@ -117,7 +117,7 @@ export interface CompanionMemory {
   lastX: number
   lastY: number
   /** Pending mimic actions (time to perform). */
-  queue: { at: number; kind: 'attack' | 'hold' | 'release' | 'interact'; aim: number }[]
+  queue: { at: number; kind: 'attack' | 'hold' | 'release' | 'interact' | 'howl'; aim: number }[]
   ownerHeld: boolean
   goPending: boolean
 }
@@ -214,6 +214,10 @@ export interface Enemy {
   /** Thief: gems carried (returned on KO); fleeing until. */
   carry: number
   fleeUntil: number
+  /** Bell monk's ward (damage halved) until; healer timers. */
+  ward: number
+  healAt: number
+  ringAt: number
   dead: boolean
   /** Strike point (melee) or cast point. */
   px: number
@@ -256,6 +260,9 @@ export interface Boss {
   dead: boolean
   homeX: number
   homeY: number
+  /** Valk: landing spot. */
+  px?: number
+  py?: number
 }
 
 /** The boss's companion (stage 2: milda's giant cat). It is never damaged; techniques stun it. */
@@ -350,7 +357,33 @@ export interface Tech {
   /** Stampede: run order (releaser first), run time and the ids already hit. */
   line?: number[]
   dur?: number
+  /** Pack: lunge targets (enemy or boss ids) and their points. */
+  targets?: number[]
+  points?: [number, number][]
+  index?: number
   hit?: Set<number>
+}
+
+/** A summoned minion (stage 3: the falconer's hawk). */
+export interface Minion {
+  id: number
+  kind: 'hawk'
+  owner: number
+  x: number
+  y: number
+  z: number
+  facing: number
+  state: string
+  st: number
+  until: number
+  hp: number
+  maxHp: number
+  hitAt?: number
+  tele?: Telegraph
+  aimA: number
+  cd: number
+  struck: boolean
+  dead: boolean
 }
 
 export interface Snare {
@@ -424,6 +457,9 @@ export interface WorldState {
   /** Current channels stopped by open sluices. */
   currentsOff: string[]
   snares: Snare[]
+  minions: Minion[]
+  /** Recent howls (for moonstone resonance). */
+  howls: { t: number; x: number; y: number; slot: number }[]
 }
 
 export type Emit = (k: EventKind, x: number, y: number, extra?: { a?: number; b?: number; s?: string }) => void

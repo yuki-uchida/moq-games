@@ -102,6 +102,13 @@ export function currentAt(info: StageInfo | undefined, h: HeroView, off: readonl
   return info.currents.find((c) => !off.includes(c.channel) && c.tiles.includes(i))
 }
 
+/** The wind zone the hero stands in, if any. */
+export function windAt(info: StageInfo | undefined, h: HeroView) {
+  const tx = h.x / TILE
+  const ty = h.y / TILE
+  return info?.winds?.find((z) => tx >= z.x && tx < z.x + z.w && ty >= z.y && ty < z.y + z.h)
+}
+
 export interface Hint {
   key: string
   text: string
@@ -144,11 +151,35 @@ export function hintsFor(view: View, info: StageInfo | undefined, myId: string):
           ? { key: '陣形', text: '陣形なら流されない！' }
           : { key: '陣形', text: '陣形なら流されない', hot: true }
     )
+  // Stage 3: wind, vents, lock doors and bells.
+  if (view.species === 'crow') {
+    const wind = windAt(info, h)
+    if (wind)
+      out.push(
+        formSize >= 3
+          ? { key: '陣形', text: '陣形なら風に負けない！' }
+          : { key: '陣形', text: '陣形なら風に負けない', hot: true }
+      )
+    if (view.props.some((p) => p.kind === 'vent' && Math.hypot(p.x - h.x, p.y - h.y) < 110))
+      out.push({ key: 'ベント', text: '上昇気流で回復' })
+    const door = view.props.find(
+      (p) => p.kind === 'lockdoor' && p.state === 'closed' && Math.hypot(p.x - h.x, p.y - h.y) < 140
+    )
+    if (door)
+      out.push(
+        view.party.keys > 0
+          ? { key: 'カギ', text: '鍵で扉を開ける（ふれる）', hot: true }
+          : { key: 'カギ', text: 'カギをさがそう' }
+      )
+    const bell = view.props.find((p) => p.kind === 'bell' && Math.hypot(p.x - h.x, p.y - h.y) < 120)
+    if (bell) out.push({ key: 'クリック', text: '鐘を鳴らす' }, { key: 'F', text: 'せーので同時に！', hot: true })
+  }
   if (formSize && !held) out.push({ key: '長押し', text: '協力技！', hot: true })
   if (!held) {
     if (view.species === 'rat' && nearHole(info, h)) out.push({ key: 'Space', text: 'ネズミ穴へダッシュ', hot: true })
     else if (view.species === 'slime' && nearGap(info, h, view.fills)) out.push({ key: 'Space', text: 'ジャンプ' })
-    else if (view.species === 'crow' && nearGap(info, h, view.fills)) out.push({ key: 'Space長押し', text: '羽ばたき' })
+    else if (view.species === 'crow' && (nearGap(info, h, view.fills) || h.z > 1))
+      out.push({ key: 'Space長押し', text: '飛ぶ' })
   }
   if ((h.snared ?? 0) > view.t) out.unshift({ key: 'ワナ', text: '仲間にワナをこわしてもらおう！', hot: true })
   const me = view.players.find((p) => p.id === myId)

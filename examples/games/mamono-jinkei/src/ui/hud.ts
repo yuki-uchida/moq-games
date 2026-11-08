@@ -110,6 +110,10 @@ export class Hud {
   private readonly bossLag: HTMLElement
   private readonly bossState: HTMLElement
   private readonly bossPet: HTMLElement
+  private readonly bells: HTMLElement
+  private bellRang = new Map<number, number>()
+  private bellState = new Map<number, string>()
+  private bellKey = ''
   private readonly status: HTMLElement
   private readonly spectator: HTMLElement
   private readonly muteBtn: HTMLButtonElement
@@ -148,6 +152,7 @@ export class Hud {
     this.bossLag = el('span.boss-lag')
     this.bossState = el('span.boss-state')
     this.bossPet = el('span.boss-pet', { hidden: true })
+    this.bells = el('div.bell-chip', { hidden: true, 'aria-label': '鐘' })
     this.boss = el(
       'div.boss-bar',
       { hidden: true },
@@ -183,7 +188,7 @@ export class Hud {
           '☰'
         )
       ),
-      el('div.top-center', {}, this.objective, this.boss, this.formation),
+      el('div.top-center', {}, this.objective, this.boss, this.formation, this.bells),
       this.hints,
       this.countdown,
       this.banner,
@@ -299,8 +304,32 @@ export class Hud {
       this.bannerUntil = now + (b.kind === 'big' ? 2.0 : 2.4)
     } else if (now > this.bannerUntil && this.banner.classList.contains('on')) this.banner.className = 'banner'
 
+    this.updateBells(view)
     this.updateDialog(view, now)
     this.updateBoss(view, info, mine)
+  }
+
+  /** Bell puzzle progress: each bell lights while it is within the 1.2 s window after ringing. */
+  private updateBells(view: View) {
+    const bells = view.props.filter((p) => p.kind === 'bell')
+    for (const b of bells) {
+      if (b.state === 'ring' && this.bellState.get(b.id) !== 'ring') this.bellRang.set(b.id, view.t)
+      this.bellState.set(b.id, b.state)
+    }
+    const recent = bells.some((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 3)
+    const lit = bells.map((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 1.2)
+    const key = recent ? lit.map((x) => (x ? 1 : 0)).join('') : ''
+    if (key === this.bellKey) return
+    this.bellKey = key
+    show(this.bells, recent)
+    clearChildren(this.bells)
+    if (!recent) return
+    const n = lit.filter(Boolean).length
+    this.bells.append(
+      el('span.bc-label', { text: '鐘' }),
+      ...lit.map((on) => el('span.bc-bell' + (on ? '.on' : ''), { text: '🔔' })),
+      el('span.bc-count', { text: n >= bells.length ? 'そろった！' : `${n}/${bells.length}` })
+    )
   }
 
   private updateDialog(view: View, now: number) {
@@ -352,19 +381,30 @@ export class Hud {
     // Milda's giant cat guards her: the witch is untouchable while it is awake.
     const pet = view.bossPet
     const petDizzy = !!pet && (pet.broken ?? 0) > view.t
+    // The dragoon flies out of reach until the tornado pulls him down.
+    const flyingBoss = b.kind === 'valk' && ['fly', 'dive', 'breath'].includes(b.anim)
     const guarded = pet ? !petDizzy && !broken : b.guard
     setText(
       this.bossState,
       broken
         ? `ガードブレイク！ ${Math.ceil((b.broken ?? 0) - view.t)}`
-        : guarded
-          ? pet
-            ? '🛡 大猫が守っている'
-            : '🛡 ガード中 ― 協力技でくずせ！'
-          : ''
+        : b.kind === 'valk'
+          ? b.anim === 'downed'
+            ? '大ダメージのチャンス'
+            : ''
+          : guarded
+            ? pet
+              ? '🛡 大猫が守っている'
+              : '🛡 ガード中 ― 協力技でくずせ！'
+            : ''
     )
-    show(this.bossPet, !!pet)
-    if (pet) {
+    show(this.bossPet, !!pet || b.kind === 'valk')
+    if (b.kind === 'valk') {
+      const downed = b.anim === 'downed'
+      setText(this.bossPet, downed ? '墜落！ いまだ！' : flyingBoss ? '空中 ― 大旋風で引きずり下ろせ！' : '着地中')
+      this.bossPet.classList.toggle('dizzy', downed)
+      this.bossPet.dataset.kind = 'valk'
+    } else if (pet) {
       setText(this.bossPet, petDizzy ? '大猫：目を回している！ いまだ！' : '大猫：見張り中 ― 大行進でぶつかれ！')
       this.bossPet.classList.toggle('dizzy', petDizzy)
     }

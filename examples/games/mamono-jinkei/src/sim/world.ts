@@ -37,12 +37,14 @@ import {
 } from './core'
 import { spawnEnemy, updateBombs, updateEnemies, updateSnares } from './enemies'
 import { updateFormations } from './formation'
+import { updateMinions } from './minions'
 import { Grid } from './grid'
 import { dropItems, updatePickups } from './items'
-import { airborne, MAX_SPEED, newBody, RAT_DASH, stepBody } from './move'
+import { airborne, MAX_SPEED, newBody, RAT_DASH, stepBody, WOLF } from './move'
 import { assignSlots, newHuman, pickJob, switchHero, syncPlayers, toggleMode } from './party'
 import {
   bounceAt,
+  howlAt,
   holdSpeed,
   interact,
   potShotEnd,
@@ -57,7 +59,7 @@ import { createRng } from './rng'
 import { GRIPPABLE, parseStage, type ParsedStage, type StageData } from './stage-data'
 import type { Hero, Human, Prop, WorldState } from './state'
 import { NO_INTENT } from './state'
-import { CHARGE, CHARGE_SPEED, DOWN, FALL, JOB_STATS } from './tables'
+import { CHARGE, CHARGE_SPEED, DOWN, FALL, HOWL, JOB_STATS } from './tables'
 import { startTech, updateTechs } from './tech'
 import type { NetInput, InputState, View } from './types'
 import { buildView } from './view'
@@ -114,7 +116,9 @@ export class WorldImpl implements World {
       cleared: [...options.progress.cleared],
       orbTaken: false,
       currentsOff: [],
-      snares: []
+      snares: [],
+      minions: [],
+      howls: []
     }
     if (options.stage) this.pendingStart = options.stage
   }
@@ -254,6 +258,8 @@ export class WorldImpl implements World {
     W.orb = undefined
     W.currentsOff = []
     W.snares = []
+    W.minions = []
+    W.howls = []
     W.props = P.props.map(
       (p): Prop => ({
         id: p.id,
@@ -366,6 +372,7 @@ export class WorldImpl implements World {
       }
     resetBoss(W)
     W.enemies = W.enemies.filter((e) => !e.summoned)
+    W.minions = []
     for (const h of W.heroes) {
       h.hp = h.maxHp
       h.hold = undefined
@@ -416,6 +423,7 @@ export class WorldImpl implements World {
     updatePush(W, dt)
     updateEnemies(W, dt)
     updateBoss(W, dt)
+    updateMinions(W, dt)
     updateBombs(W)
     updateShots(W, dt, (W2, s) => potShotEnd(W2, s))
     updateSnares(W)
@@ -444,7 +452,8 @@ export class WorldImpl implements World {
       if (['tech', 'grip', 'down', 'fall', 'victory'].includes(h.state)) continue
       const base = h.accepted ?? { x: h.body.x, y: h.body.y, t: W.t - 0.1 }
       const elapsed = Math.max(1 / 60, W.t - base.t)
-      const maxD = MAX_SPEED[W.species] * elapsed * 1.5 + 24
+      // Generous slack: landing push-outs and wind can add a few px per tick.
+      const maxD = MAX_SPEED[W.species] * elapsed * 1.5 + 48
       // A mouse hole near the last accepted position may have carried the hero to its partner.
       const g = W.grid!
       const viaHole = [...g.holeExit].some(([hole, exit]) => {
@@ -542,7 +551,8 @@ export class WorldImpl implements World {
     const W = this.W
     const it = h.intent
     const t = W.t
-    if (h.until > 0 && t >= h.until && ['attack', 'skill', 'hurt', 'revive'].includes(h.state)) setState(W, h, 'idle')
+    if (h.until > 0 && t >= h.until && ['attack', 'skill', 'hurt', 'revive', 'action'].includes(h.state))
+      setState(W, h, 'idle')
     if (['down', 'fall', 'tech', 'victory'].includes(h.state)) return
     const stunned = h.stun > t
     if (it.interact && !stunned) interact(W, h)
@@ -656,11 +666,33 @@ export class WorldImpl implements World {
       setState(W, h, 'action')
     }
     if (res.landed) {
-      sfx(W, 'slimeLand', h.body.x, h.body.y)
       fx(W, 'dust', h.body.x, h.body.y)
-      hitArc(W, h.body.x, h.body.y, 40, 0, Math.PI, { slot: h.slot, dmg: 1, kb: 200, sx: h.body.x, sy: h.body.y })
+      if (W.species === 'slime') {
+        sfx(W, 'slimeLand', h.body.x, h.body.y)
+        hitArc(W, h.body.x, h.body.y, 40, 0, Math.PI, { slot: h.slot, dmg: 1, kb: 200, sx: h.body.x, sy: h.body.y })
+      } else sfx(W, 'step', h.body.x, h.body.y)
       if (h.state === 'action') setState(W, h, 'idle')
     }
+    if (res.howled) {
+      setState(W, h, 'action', WOLF.howlTime)
+      fx(W, 'howl', h.body.x, h.body.y - 20)
+      sfx(W, 'wolfHowl', h.body.x, h.body.y)
+      for (const e of W.enemies)
+        if (!e.dead && e.state !== 'death' && dist(e.x, e.y, h.body.x, h.body.y) <= HOWL.stunR) {
+          e.stun = Math.max(e.stun, t + HOWL.stun)
+          e.tele = undefined
+          if (e.state === 'windup') e.state = 'idle'
+        }
+      for (const m of W.minions) if (dist(m.x, m.y, h.body.x, h.body.y) <= HOWL.stunR) m.tele = undefined
+      howlAt(W, h.body.x, h.body.y, HOWL.lightR, h.slot)
+      const human = W.humans.find((q) => q.id === h.owner)
+      if (human?.ctrl === h.slot) mimic(W, h, 'howl', h.aim)
+    }
+    if (res.flew) {
+      sfx(W, 'crowFlap', h.body.x, h.body.y)
+      setState(W, h, 'action')
+    }
+    if (res.vented && W.seq % 20 === 0) emit(W, 'burst', h.body.x, h.body.y, { s: 'feather', a: 3 })
     const guestAir = h.accepted !== undefined && h.reportAirborne
     if (res.fell && !guestAir) {
       releaseHold(W, h)
@@ -870,7 +902,16 @@ function initialState(kind: Prop['kind']): string {
     case 'pedestal':
     case 'scale':
     case 'valve':
+    case 'hook':
       return 'off'
+    case 'drawbridge':
+      return 'up'
+    case 'moonstone':
+    case 'bigmoon':
+    case 'ramslot':
+      return 'off'
+    case 'lockdoor':
+      return 'closed'
     case 'gate':
     case 'bossdoor':
     case 'chest':
@@ -882,7 +923,21 @@ function initialState(kind: Prop['kind']): string {
 }
 
 function defaultWeight(kind: Prop['kind']): number {
-  return { block: 2, boulder: 4, acorn: 3, pot: 1, crate: 1, bigcrate: 4, cheese: 3, barrel: 1 }[kind as string] ?? 0
+  return (
+    {
+      block: 2,
+      boulder: 4,
+      acorn: 3,
+      pot: 1,
+      crate: 1,
+      bigcrate: 4,
+      cheese: 3,
+      barrel: 1,
+      goldbell: 4,
+      iceblock: 2,
+      log: 4
+    }[kind as string] ?? 0
+  )
 }
 
 export function newHero(slot: number, job: Hero['job'], x: number, y: number): Hero {

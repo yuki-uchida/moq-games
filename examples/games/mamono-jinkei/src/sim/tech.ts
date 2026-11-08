@@ -3,13 +3,16 @@
  * plug into TECHS with the same start/update shape.
  */
 import { TILE } from '../vocab'
-import { dist, emit, fx, heroBy, newId, sfx, shake, stop, warpHero } from './core'
+import { dist, emit, freeSpotNear, fx, heroBy, newId, sfx, shake, stop, turnOf, warpHero } from './core'
 import { healHero, hitArc, hitBoss, hitEnemy, setState } from './combat'
-import { gnawAt, propRect, releaseHold, techImpact } from './props'
+import { gnawAt, packImpact, propRect, releaseHold, spinWindmills, techImpact } from './props'
+import { packBoss } from './boss4'
+import { pullDown } from './boss3'
+import { hitMinions } from './minions'
 import { hitPet } from './boss2'
 import { hitSnares } from './enemies'
 import type { Hero, Tech, WorldState } from './state'
-import { CHARGE, JUMBO, SPECIES_TECH, STAMPEDE, TECH_NAMES } from './tables'
+import { CHARGE, JUMBO, PACK, SPECIES_TECH, STAMPEDE, TECH_NAMES, TORNADO } from './tables'
 import type { TechKind } from './types'
 
 interface TechImpl {
@@ -80,7 +83,12 @@ export function startTech(W: WorldState, h: Hero, aim: number, aimDist: number):
   emit(W, 'tech', f.x, f.y, { a: tier, s: TECH_NAMES[kind] })
   emit(W, 'banner', f.x, f.y, { s: TECH_NAMES[kind] })
   sfx(W, 'coopStart', f.x, f.y)
-  sfx(W, kind === 'stampede' ? 'ratSqueak' : 'jumboForm', f.x, f.y)
+  sfx(
+    W,
+    kind === 'stampede' ? 'ratSqueak' : kind === 'tornado' ? 'crowCaw' : kind === 'pack' ? 'wolfHowl' : 'jumboForm',
+    f.x,
+    f.y
+  )
   return true
 }
 
@@ -379,4 +387,297 @@ function finishStampede(W: WorldState, t: Tech, members: Hero[]): void {
   sfx(W, 'coopFinish', t.x, t.y)
 }
 
-const TECHS: Partial<Record<TechKind, TechImpl>> = { jumbo, stampede }
+const tornado: TechImpl = {
+  aim(W, fx0, fy0, _h, aim, aimDist) {
+    // Centred on the aim point ≤ 5 tiles away (it may hang over the sky); walls stop the ray.
+    const g = W.grid!
+    const want = Math.max(TILE, Math.min(TORNADO.range, aimDist))
+    let tx = fx0
+    let ty = fy0
+    for (let d = 8; d <= want; d += 8) {
+      const x = fx0 + Math.cos(aim) * d
+      const y = fy0 + Math.sin(aim) * d
+      if (g.shotBlocked(x, y)) break
+      tx = x
+      ty = y
+    }
+    return { cx: fx0, cy: fy0, tx, ty }
+  },
+  update(W, t) {
+    const el = W.t - t.st
+    const members = t.slots.map((s) => heroBy(W, s)).filter((m): m is Hero => !!m)
+    const r = TORNADO.radius[t.tier]
+    const circle = (k: number, z: number) =>
+      members.forEach((m, i) => {
+        const a = W.t * 8 + (i / members.length) * Math.PI * 2
+        m.body.x = t.tx + Math.cos(a) * r * 0.5 * k
+        m.body.y = t.ty + Math.sin(a) * r * 0.5 * k
+        m.body.z = z
+      })
+    if (t.stage === 'form') {
+      // 'rise': members fly up and gather around the aim point.
+      t.stage = 'rise'
+    }
+    if (t.stage === 'rise') {
+      const k = Math.min(1, el / TORNADO.rise)
+      t.x = t.cx + (t.tx - t.cx) * k
+      t.y = t.cy + (t.ty - t.cy) * k
+      members.forEach((m) => {
+        const s = t.starts.find((q) => q.slot === m.slot)!
+        m.body.x = s.x + (t.tx - s.x) * k
+        m.body.y = s.y + (t.ty - s.y) * k
+        m.body.z = 40 * k
+      })
+      if (el >= TORNADO.rise) {
+        t.stage = 'spin'
+        t.st = W.t
+        t.x = t.tx
+        t.y = t.ty
+        t.hit = new Set()
+        sfx(W, 'tornado', t.x, t.y)
+      }
+    } else if (t.stage === 'spin') {
+      circle(1, 40)
+      const ticks = Math.floor(el / TORNADO.tick)
+      if (ticks > (t.hit!.size ? Math.max(...[...t.hit!]) : -1)) {
+        t.hit!.add(ticks)
+        tornadoTick(W, t, members, r, ticks === 0)
+      }
+      // Pull enemies in.
+      for (const e of W.enemies) {
+        if (e.dead || e.state === 'death') continue
+        const d = dist(e.x, e.y, t.x, t.y)
+        if (d > r * 1.8 || d < 8) continue
+        e.kx += ((t.x - e.x) / d) * TORNADO.pull * (1 / 60) * 6
+        e.ky += ((t.y - e.y) / d) * TORNADO.pull * (1 / 60) * 6
+      }
+      if (W.seq % 5 === 0) emit(W, 'burst', t.x, t.y - 40, { s: 'feather', a: 4 })
+      if (el >= TORNADO.spin[t.tier]) {
+        t.stage = 'end'
+        t.st = W.t
+      }
+    } else {
+      circle(1 + el / TORNADO.end, 40 * (1 - el / TORNADO.end))
+      if (el >= TORNADO.end) {
+        finishTornado(W, t, members)
+        return false
+      }
+    }
+    return true
+  }
+}
+
+function tornadoTick(W: WorldState, t: Tech, members: Hero[], r: number, first: boolean): void {
+  const jobs = new Set(members.map((m) => m.job))
+  const dmg = TORNADO.dmg * (jobs.has('sword') ? 1.2 : 1)
+  hitArc(W, t.x, t.y, r, 0, Math.PI, { slot: t.slots[0], dmg, kb: 0, sx: t.x, sy: t.y + 1, tech: true, heavy: first })
+  hitMinions(W, t.x, t.y, r, { slot: t.slots[0], dmg, kb: 0, sx: t.x, sy: t.y, tech: true })
+  spinWindmills(W, t.x, t.y, r)
+  pullDown(W, t.x, t.y, r)
+  if (W.snares.length) hitSnares(W, t.x, t.y, r, -2)
+}
+
+function finishTornado(W: WorldState, t: Tech, members: Hero[]): void {
+  const jobs = new Set(members.map((m) => m.job))
+  if (jobs.has('mage')) {
+    hitArc(W, t.x, t.y, 70, 0, Math.PI, {
+      slot: heroOf(members, 'mage'),
+      dmg: 3,
+      kb: 160,
+      sx: t.x,
+      sy: t.y,
+      tech: true
+    })
+    fx(W, 'burst', t.x, t.y - 20)
+    sfx(W, 'magicHit', t.x, t.y)
+  }
+  if (jobs.has('archer')) {
+    const targets = W.enemies
+      .filter((e) => !e.dead && e.state !== 'death' && dist(e.x, e.y, t.x, t.y) < 6 * TILE)
+      .slice(0, 4)
+    for (const e of targets) {
+      hitEnemy(W, e, { slot: heroOf(members, 'archer'), dmg: 2, kb: 60, sx: e.x, sy: e.y - 1, tech: true })
+      fx(W, 'arrow_4', e.x, e.y - 30)
+    }
+  }
+  // Land around the centre on solid ground.
+  members.forEach((m, i) => {
+    const a = (i / members.length) * Math.PI * 2
+    const spot = freeSpotNear(W, t.x + Math.cos(a) * 40, t.y + Math.sin(a) * 40, 6)
+    warpHero(m, spot.x, spot.y)
+    m.body.z = 0
+    m.body.flying = false
+    m.chargeLock = W.t + CHARGE.lockout
+    m.inv = Math.max(m.inv, W.t + 0.4)
+    setState(W, m, 'idle')
+  })
+  if (jobs.has('cleric')) {
+    const c = members.find((m) => m.job === 'cleric')
+    for (const m of members) healHero(W, m, 2, c)
+    sfx(W, 'heal', t.x, t.y)
+  }
+  sfx(W, 'coopFinish', t.x, t.y)
+}
+
+const pack: TechImpl = {
+  aim(_W, fx0, fy0, _h, aim, aimDist) {
+    const d = Math.max(TILE, Math.min(PACK.range, aimDist))
+    return { cx: fx0, cy: fy0, tx: fx0 + Math.cos(aim) * d, ty: fy0 + Math.sin(aim) * d }
+  },
+  update(W, t) {
+    const el = W.t - t.st
+    const members = t.slots.map((s) => heroBy(W, s)).filter((m): m is Hero => !!m)
+    const jobs = new Set(members.map((m) => m.job))
+    const bonus = jobs.has('sword') ? 1.2 : 1
+    const home = (m: Hero) => t.starts.find((q) => q.slot === m.slot)!
+    if (t.stage === 'form') {
+      // 'howl': the joint howl at the centroid.
+      t.stage = 'howl'
+      for (const e of W.enemies)
+        if (!e.dead && e.state !== 'death' && dist(e.x, e.y, t.cx, t.cy) <= PACK.range) {
+          e.stun = Math.max(e.stun, W.t + PACK.stun)
+          e.tele = undefined
+        }
+      for (const m of W.minions) if (dist(m.x, m.y, t.cx, t.cy) <= PACK.range) m.tele = undefined
+      packImpact(W, t.cx, t.cy, PACK.range, t.tier)
+      packBoss(W, t.cx, t.cy)
+      emit(W, 'fx', t.cx, t.cy, { s: 'howl_wave' })
+      emit(W, 'fx', t.cx, t.cy - 60, { s: 'moon' })
+      sfx(W, 'packHowl', t.cx, t.cy)
+      shake(W, 6)
+      // Lunge targets: up to n distinct enemies in range, nearest first (the boss counts as one).
+      const cands: { id: number; x: number; y: number; d: number }[] = []
+      for (const e of W.enemies)
+        if (!e.dead && e.state !== 'death') {
+          const d = dist(e.x, e.y, t.cx, t.cy)
+          if (d <= PACK.range) cands.push({ id: e.id, x: e.x, y: e.y, d })
+        }
+      const b = W.boss
+      if (b && b.active && !b.dead && dist(b.x, b.y, t.cx, t.cy) <= PACK.range)
+        cands.push({ id: b.id, x: b.x, y: b.y, d: dist(b.x, b.y, t.cx, t.cy) - 1000 })
+      cands.sort((p, q) => p.d - q.d)
+      const pick = cands.slice(0, t.tier)
+      t.targets = pick.map((c) => c.id)
+      t.points = pick.map((c) => [c.x, c.y])
+      t.hit = new Set()
+    }
+    if (t.stage === 'howl') {
+      if (el >= PACK.howl) {
+        t.stage = t.points!.length ? 'lunge' : 'wave'
+        t.st = W.t
+        t.index = 0
+      }
+      return true
+    }
+    if (t.stage === 'lunge') {
+      const i = Math.min(t.points!.length - 1, Math.floor(el / PACK.lunge))
+      const k = (el - i * PACK.lunge) / PACK.lunge
+      t.index = i
+      const m = members[i % members.length]
+      const [px, py] = t.points![i]
+      const s = home(m)
+      m.body.x = s.x + (px - s.x) * Math.min(1, k)
+      m.body.y = s.y + (py - s.y) * Math.min(1, k)
+      m.body.facing = Math.atan2(py - s.y, px - s.x)
+      // Arrival: strike the target.
+      for (let j = 0; j <= i; j++) {
+        if (t.hit!.has(j) || (j === i && k < 1)) continue
+        t.hit!.add(j)
+        const id = t.targets![j]
+        const o = {
+          slot: members[j % members.length].slot,
+          dmg: PACK.lungeDmg[t.tier] * bonus,
+          kb: 200,
+          sx: t.cx,
+          sy: t.cy,
+          tech: true,
+          heavy: true
+        }
+        const e = W.enemies.find((q) => q.id === id)
+        if (e) hitEnemy(W, e, o)
+        else if (W.boss && W.boss.id === id) hitBoss(W, W.boss, o)
+        const [tx, ty] = t.points![j]
+        emit(W, 'fx', tx, ty - 20, {
+          s: `lunge_${turnOf(Math.atan2(ty - home(members[j % members.length]).y, tx - home(members[j % members.length]).x))}`
+        })
+        sfx(W, 'lunge', tx, ty)
+      }
+      if (el >= PACK.lunge * t.points!.length) {
+        t.stage = 'wave'
+        t.st = W.t
+        for (const q of members) {
+          const s2 = home(q)
+          q.body.x = s2.x
+          q.body.y = s2.y
+        }
+      }
+      return true
+    }
+    if (t.stage === 'wave') {
+      if (!t.landed) {
+        t.landed = true
+        const o = {
+          slot: t.slots[0],
+          dmg: PACK.waveDmg[t.tier] * bonus,
+          kb: 240,
+          sx: t.cx,
+          sy: t.cy,
+          tech: true,
+          heavy: true
+        }
+        hitArc(W, t.cx, t.cy, PACK.waveR, t.a, PACK.waveSpread, o)
+        packImpact(W, t.cx + Math.cos(t.a) * 60, t.cy + Math.sin(t.a) * 60, PACK.waveR, t.tier)
+        emit(W, 'fx', t.cx + Math.cos(t.a) * 80, t.cy + Math.sin(t.a) * 80 - 20, { s: `crescent_${turnOf(t.a)}` })
+        sfx(W, 'crescent', t.cx, t.cy)
+      }
+      if (el >= PACK.wave) {
+        t.stage = 'end'
+        t.st = W.t
+      }
+      return true
+    }
+    if (el >= PACK.end) {
+      finishPack(W, t, members)
+      return false
+    }
+    return true
+  }
+}
+
+function finishPack(W: WorldState, t: Tech, members: Hero[]): void {
+  const jobs = new Set(members.map((m) => m.job))
+  if (jobs.has('mage')) {
+    const x = t.cx + Math.cos(t.a) * 80
+    const y = t.cy + Math.sin(t.a) * 80
+    hitArc(W, x, y, 70, 0, Math.PI, { slot: heroOf(members, 'mage'), dmg: 3, kb: 160, sx: x, sy: y, tech: true })
+    fx(W, 'burst', x, y - 20)
+    sfx(W, 'magicHit', x, y)
+  }
+  if (jobs.has('archer')) {
+    const targets = W.enemies
+      .filter((e) => !e.dead && e.state !== 'death' && dist(e.x, e.y, t.cx, t.cy) < 6 * TILE)
+      .slice(0, 4)
+    for (const e of targets) {
+      hitEnemy(W, e, { slot: heroOf(members, 'archer'), dmg: 2, kb: 60, sx: e.x, sy: e.y - 1, tech: true })
+      fx(W, 'arrow_4', e.x, e.y - 30)
+    }
+  }
+  const g = W.grid!
+  for (const m of members) {
+    const s = t.starts.find((q) => q.slot === m.slot)!
+    const out = g.pushOut(s.x, s.y, 16, false)
+    warpHero(m, out.x, out.y)
+    m.body.facing = t.a
+    m.chargeLock = W.t + CHARGE.lockout
+    m.inv = Math.max(m.inv, W.t + 0.4)
+    setState(W, m, 'idle')
+  }
+  if (jobs.has('cleric')) {
+    const c = members.find((m) => m.job === 'cleric')
+    for (const m of members) healHero(W, m, 2, c)
+    sfx(W, 'heal', t.cx, t.cy)
+  }
+  sfx(W, 'coopFinish', t.cx, t.cy)
+}
+
+const TECHS: Partial<Record<TechKind, TechImpl>> = { jumbo, stampede, tornado, pack }

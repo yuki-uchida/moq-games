@@ -20,7 +20,10 @@ export const PARTICLE_KINDS = [
   'drop',
   'chargeSpark',
   'mote',
-  'debris'
+  'debris',
+  'gale',
+  'wisp',
+  'updraft'
 ] as const
 export type ParticleKind = (typeof PARTICLE_KINDS)[number]
 const KIND_INDEX = Object.fromEntries(PARTICLE_KINDS.map((k, i) => [k, i])) as Record<ParticleKind, number>
@@ -45,9 +48,11 @@ export class Particles {
   readonly seed = new Uint8Array(MAX)
   count = 0
   private anims: (Anim | undefined)[] = []
+  private galeAnim?: Anim
 
   constructor() {
     // Kinds with an fx-sheet animation use it; the rest (rubble, feather, drops, petals, pollen) are pixels.
+    this.galeAnim = findAnim('fx', 'wind')
     this.anims = PARTICLE_KINDS.map((k) => findAnim('fx', k === 'chargeSpark' ? 'spark' : k))
   }
 
@@ -144,7 +149,7 @@ export class Particles {
           ? 30
           : k === 'pollen' || k === 'smoke' || k === 'chargeSpark'
             ? -8
-            : k === 'dust' || k === 'mote' || k === 'debris'
+            : k === 'dust' || k === 'mote' || k === 'debris' || k === 'gale' || k === 'wisp' || k === 'updraft'
               ? 0
               : 380
       this.vz[i] -= grav * dt
@@ -153,7 +158,14 @@ export class Particles {
         this.vz[i] = Math.max(this.vz[i], -18)
         this.vx[i] += Math.sin(this.age[i] * 4 + this.seed[i]) * 30 * dt
       }
-      const drag = k === 'dust' || k === 'smoke' ? 3 : k === 'spark' ? 2 : k === 'debris' || k === 'mote' ? 0 : 0.6
+      const drag =
+        k === 'dust' || k === 'smoke'
+          ? 3
+          : k === 'spark'
+            ? 2
+            : k === 'debris' || k === 'mote' || k === 'gale' || k === 'wisp' || k === 'updraft'
+              ? 0
+              : 0.6
       this.vx[i] -= this.vx[i] * drag * dt
       this.vy[i] -= this.vy[i] * drag * dt
       this.x[i] += this.vx[i] * dt
@@ -194,6 +206,23 @@ export class Particles {
       const p = this.age[i] / this.life[i]
       const anim = this.anims[k]
       const fade = p > 0.7 ? (1 - p) / 0.3 : 1
+      if (kind === 'gale') {
+        // Wind streaks fade in and out and point along the wind.
+        const a = this.galeAnim
+        const alpha = Math.sin(Math.min(1, p) * Math.PI)
+        if (a && alpha > 0.02) {
+          const f = canvasOf(a.frames[frameAt(a, this.age[i] + this.seed[i] / 50)])
+          const ang = Math.atan2(this.vy[i], this.vx[i])
+          ctx.globalAlpha = alpha
+          ctx.setTransform(Math.cos(ang), Math.sin(ang), -Math.sin(ang), Math.cos(ang), x, y)
+          ctx.drawImage(f, -f.width / 2, -f.height / 2)
+          // A second, offset pass thickens the streak so it reads over pale clouds.
+          ctx.globalAlpha = alpha * 0.5
+          ctx.drawImage(f, -f.width / 2 + 1, -f.height / 2 + 1)
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+        }
+        continue
+      }
       if (anim) {
         // One-shot anims (dust, smoke) play over the life; loops spin at their own fps.
         const t = anim.loop ? this.age[i] + this.seed[i] / 40 : p * duration(anim)
@@ -226,6 +255,18 @@ export class Particles {
         ctx.globalAlpha = fade * Math.min(1, p * 4) * (0.35 + 0.35 * Math.sin(this.age[i] * 2.3 + s))
         ctx.fillStyle = '#fff2d0'
         ctx.fillRect(x, y, 1, 1)
+      } else if (kind === 'wisp') {
+        // A soft scrap of cloud drifting over the sky sea.
+        ctx.globalAlpha = Math.sin(Math.min(1, p) * Math.PI) * 0.22
+        ctx.fillStyle = '#ffffff'
+        const w = 18 + (s % 24)
+        ctx.fillRect(x - w / 2, y, w, 3)
+        ctx.fillRect(x - w / 2 + 4, y - 2, w - 8, 2)
+        ctx.fillRect(x - w / 2 + 3, y + 3, w - 10, 1)
+      } else if (kind === 'updraft') {
+        ctx.globalAlpha = Math.sin(Math.min(1, p) * Math.PI) * 0.7
+        ctx.fillStyle = s & 1 ? '#ffffff' : '#d6f0ff'
+        ctx.fillRect(x, y, 1, 4 + (s & 3))
       } else if (kind === 'debris') {
         // Half foam streaks along the flow, half floating bits of straw and leaf.
         ctx.globalAlpha = fade * Math.min(1, p * 5)

@@ -2267,3 +2267,45 @@ input:focus-visible,
   color: #fff1a8;
   animation: pulse 0.5s ease-in-out infinite;
 }
+
+/* ------------------------------------------------------------------ stage 3 */
+
+.boss-pet[data-kind='valk']::before {
+  content: '🐉 ';
+}
+
+.bell-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.9em;
+  border-radius: 99em;
+  background: rgba(36, 22, 40, 0.82);
+  border: 0.12em solid #e8c15a;
+  font-weight: 900;
+  font-size: 0.85em;
+  animation: pop-in 0.2s ease both;
+}
+
+.bc-label {
+  color: #fff1a8;
+  letter-spacing: 0.1em;
+}
+
+.bc-bell {
+  filter: grayscale(1) brightness(0.6);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
+
+.bc-bell.on {
+  filter: none;
+  transform: scale(1.2) rotate(-8deg);
+  animation: nudge 0.3s ease-in-out infinite;
+}
+
+.bc-count {
+  color: #f7e7c0;
+  font-size: 0.85em;
+}

@@ -52,6 +52,7 @@ export class App {
   frames: number[] = []
   private chargeLoop = false
   private waterLoop = false
+  private windLoop = false
   private generation = 0
 
   constructor(root: HTMLElement) {
@@ -218,6 +219,7 @@ export class App {
     this.controls.releaseAll()
     this.audio.loop('charge', null)
     this.audio.loop('water', null)
+    this.audio.loop('wind', null)
     this.audio.setDuck(0)
     this.renderer.reset()
     if (!this.attract) this.attract = new Attract()
@@ -513,6 +515,15 @@ export class App {
     } else if (this.waterLoop) {
       this.audio.loop('water', null)
       this.waterLoop = false
+    }
+    // Wind zones whistle (tower).
+    const wind = view?.phase === 'play' && !this.pause.open ? this.renderer.wind : 0
+    if (wind > 0.05) {
+      this.audio.loop('wind', 'wind', { volume: wind * 0.55 })
+      this.windLoop = true
+    } else if (this.windLoop) {
+      this.audio.loop('wind', null)
+      this.windLoop = false
     }
   }
 }

@@ -71,6 +71,35 @@ export const JUMBO = {
 }
 
 /** チューチュー大行進 (DESIGN §7.2). */
+/** 遠吠え (DESIGN §7): stun radius/time, moonstone light radius. */
+export const HOWL = { stunR: 120, stun: 0.8, lightR: 160 }
+
+/** 月下群狼陣 (DESIGN §7.4). */
+export const PACK = {
+  howl: 0.6,
+  lunge: 0.18,
+  wave: 0.3,
+  end: 0.25,
+  range: 5 * TILE,
+  stun: 1.2,
+  lungeDmg: { 2: 5, 3: 6, 4: 8 } as Record<number, number>,
+  waveDmg: { 2: 4, 3: 6, 4: 8 } as Record<number, number>,
+  waveR: 170,
+  waveSpread: (60 * Math.PI) / 180
+}
+
+/** 黒羽の大旋風 (DESIGN §7.3). */
+export const TORNADO = {
+  rise: 0.3,
+  end: 0.3,
+  range: 5 * TILE,
+  tick: 0.2,
+  dmg: 1,
+  pull: 220,
+  spin: { 2: 1.6, 3: 2.0, 4: 2.6 } as Record<number, number>,
+  radius: { 2: 80, 3: 100, 4: 130 } as Record<number, number>
+}
+
 export const STAMPEDE = {
   form: 0.25,
   end: 0.3,
@@ -86,7 +115,23 @@ export interface EnemyStats {
   r: number
   speed: number
   /** Archetype (DESIGN §10). */
-  type: 'melee' | 'ranged' | 'caster' | 'shield' | 'dasher' | 'thrower' | 'trapper' | 'spear'
+  type:
+    | 'melee'
+    | 'ranged'
+    | 'caster'
+    | 'shield'
+    | 'dasher'
+    | 'thrower'
+    | 'trapper'
+    | 'spear'
+    | 'summoner'
+    | 'sniper'
+    | 'gust'
+    | 'healer'
+    | 'hunter'
+    | 'paladin'
+    | 'icewitch'
+    | 'heavy'
 }
 export const ENEMY_STATS: Partial<Record<EnemyKind, EnemyStats>> = {
   rookie: { hp: 4, r: 14, speed: 100, type: 'melee' },
@@ -96,10 +141,23 @@ export const ENEMY_STATS: Partial<Record<EnemyKind, EnemyStats>> = {
   thief: { hp: 4, r: 13, speed: 120, type: 'dasher' },
   alchemist: { hp: 4, r: 13, speed: 60, type: 'thrower' },
   ratcatcher: { hp: 5, r: 14, speed: 70, type: 'trapper' },
-  spearguard: { hp: 6, r: 16, speed: 60, type: 'spear' }
+  spearguard: { hp: 6, r: 16, speed: 60, type: 'spear' },
+  falconer: { hp: 4, r: 13, speed: 65, type: 'summoner' },
+  crossbow: { hp: 4, r: 13, speed: 55, type: 'sniper' },
+  windmage: { hp: 4, r: 13, speed: 60, type: 'gust' },
+  bellmonk: { hp: 5, r: 14, speed: 55, type: 'healer' },
+  hunter: { hp: 5, r: 14, speed: 70, type: 'hunter' },
+  paladin: { hp: 8, r: 16, speed: 60, type: 'paladin' },
+  icewitch: { hp: 5, r: 13, speed: 60, type: 'icewitch' },
+  heavy: { hp: 9, r: 18, speed: 42, type: 'heavy' }
 }
+export const HEAVY = { windup: 1.0, r: 92, spread: (50 * Math.PI) / 180, dmg: 3, kb: 320, recover: 1.2 }
+export const ICESPIKE = { windup: 1.0, r: 56, dmg: 2 }
+export const SNIPER = { aim: 0.8, speed: 720, dmg: 2, pierce: 2, len: 11 * TILE }
+export const GUST = { windup: 0.7, speed: 300, range: 6 * TILE, dmg: 1, push: 1300, blown: 0.35, width: 48 }
+export const MONK = { healEvery: 3, heal: 2, ringEvery: 7, ward: 4, wardR: 160 }
 /** Enemies with a frontal guard (120°): only flanks and techniques get through. */
-export const GUARDED = new Set<string>(['shieldman', 'spearguard'])
+export const GUARDED = new Set<string>(['shieldman', 'spearguard', 'paladin', 'heavy'])
 export const THIEF = { windup: 0.35, dash: 0.3, speed: 430, flee: 3, range: 170 }
 export const BOMB = { windup: 0.4, flight: 0.8, r: 56, dmg: 2, height: 70 }
 export const SNARE = { windup: 0.5, hold: 1.5, life: 20, perCatcher: 3 }
@@ -112,7 +170,7 @@ export const ENEMY_DEATH = 5 / 10
 export const NOTICE_RANGE = 5 * TILE
 
 export const GARUD = {
-  hp: 300,
+  hp: 260,
   r: 40,
   speed: 62,
   /** Frontal guard half-angle (140° total): blocks everything but techniques. */

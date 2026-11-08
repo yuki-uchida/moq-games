@@ -4,6 +4,8 @@
  */
 import { BOSS_NAMES, TILE, type BossKind } from '../vocab'
 import { createMilda, resetMilda, updateMilda } from './boss2'
+import { createValk, resetValk, updateValk } from './boss3'
+import { createLeon, resetLeon, updateLeon } from './boss4'
 import { angleDiff, banner, dist, emit, freeSpotNear, fx, newId, sfx, shake } from './core'
 import { hurtHero } from './combat'
 import { spawnEnemy } from './enemies'
@@ -15,6 +17,8 @@ export const BOSS_DIR_ANIMS = new Set(['idle', 'walk', 'guard', 'windup', 'charg
 
 export function createBoss(W: WorldState, kind: BossKind, x: number, y: number): Boss {
   if (kind === 'milda') return createMilda(W, x, y)
+  if (kind === 'valk') return createValk(W, x, y)
+  if (kind === 'leon') return createLeon(W, x, y)
   return {
     id: newId(W),
     kind,
@@ -70,6 +74,8 @@ export function updateBoss(W: WorldState, dt: number): void {
   const b = W.boss
   if (!b || b.dead || !b.active) return
   if (b.kind === 'milda') return updateMilda(W, dt)
+  if (b.kind === 'valk') return updateValk(W, dt)
+  if (b.kind === 'leon') return updateLeon(W, dt)
   const t = W.t
   if (b.act === 'death') {
     if (t >= b.until) {
@@ -323,5 +329,7 @@ export function resetBoss(W: WorldState): void {
   const b = W.boss
   if (!b || b.dead) return
   if (b.kind === 'milda') return resetMilda(W)
+  if (b.kind === 'valk') return resetValk(W)
+  if (b.kind === 'leon') return resetLeon(W)
   Object.assign(b, createBoss(W, b.kind, b.homeX, b.homeY), { id: b.id })
 }

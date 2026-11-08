@@ -3,7 +3,21 @@ import { TILE, type EnemyKind } from '../vocab'
 import { angleDiff, dist, emit, fx, newId, pop, roomOf, sfx } from './core'
 import { enemyShot, finishEnemyDeath, hurtHero } from './combat'
 import type { Enemy, Hero, WorldState } from './state'
-import { BOMB, DEFAULT_ENEMY, ENEMY_STATS, NOTICE_RANGE, SNARE, SPEAR, THIEF } from './tables'
+import {
+  BOMB,
+  DEFAULT_ENEMY,
+  ENEMY_STATS,
+  GUST,
+  HEAVY,
+  ICESPIKE,
+  MONK,
+  NOTICE_RANGE,
+  SNARE,
+  SNIPER,
+  SPEAR,
+  THIEF
+} from './tables'
+import { spawnHawk } from './minions'
 
 export function spawnEnemy(W: WorldState, kind: EnemyKind, x: number, y: number, wave?: number): Enemy {
   const s = ENEMY_STATS[kind] ?? DEFAULT_ENEMY
@@ -32,6 +46,9 @@ export function spawnEnemy(W: WorldState, kind: EnemyKind, x: number, y: number,
     dead: false,
     carry: 0,
     fleeUntil: 0,
+    ward: 0,
+    healAt: W.t + 2,
+    ringAt: W.t + 4,
     px: 0,
     py: 0,
     striking: false
@@ -74,6 +91,8 @@ function updateEnemy(W: WorldState, e: Enemy, dt: number): void {
     e.alertAt = t
     sfx(W, 'enemyAlert', e.x, e.y)
     fx(W, 'alert', e.x, e.y - 60)
+    // A beat after the "!" before the first attack (no surprise hits out of the dark).
+    e.cd = Math.max(e.cd, t + 0.6)
   }
   let mx = 0
   let my = 0
@@ -83,7 +102,7 @@ function updateEnemy(W: WorldState, e: Enemy, dt: number): void {
     const h = near.h
     const a = Math.atan2(h.body.y - e.y, h.body.x - e.x)
     // Shield bearers turn slowly; others face their target at once.
-    if (s.type === 'shield' || s.type === 'spear') {
+    if (s.type === 'shield' || s.type === 'spear' || s.type === 'paladin' || s.type === 'heavy') {
       const d = angleDiff(a, e.facing)
       e.facing += Math.sign(d) * Math.min(Math.abs(d), 2.4 * dt)
     } else if (e.state !== 'windup' && e.state !== 'attack') e.facing = a
@@ -109,6 +128,30 @@ function updateEnemy(W: WorldState, e: Enemy, dt: number): void {
         break
       case 'spear':
         ;[mx, my] = spear(W, e, h, near.d, a)
+        break
+      case 'summoner':
+        ;[mx, my] = summoner(W, e, h, near.d, a)
+        break
+      case 'sniper':
+        ;[mx, my] = sniper(W, e, h, near.d, a)
+        break
+      case 'gust':
+        ;[mx, my] = gustMage(W, e, h, near.d, a)
+        break
+      case 'healer':
+        ;[mx, my] = healer(W, e, h, near.d, a)
+        break
+      case 'hunter':
+        ;[mx, my] = hunter(W, e, h, near.d, a)
+        break
+      case 'paladin':
+        ;[mx, my] = paladin(W, e, h, near.d, a)
+        break
+      case 'icewitch':
+        ;[mx, my] = caster(W, e, h, near.d, a)
+        break
+      case 'heavy':
+        ;[mx, my] = heavy(W, e, h, near.d, a)
         break
     }
   }
@@ -255,11 +298,12 @@ function caster(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number
   const t = W.t
   if (e.state === 'windup') {
     if (t >= e.until) {
-      const r = 48
+      const ice = e.kind === 'icewitch'
+      const r = ice ? ICESPIKE.r : 48
       for (const m of W.heroes)
         if (targetable(m) && m.body.z < 10 && dist(m.body.x, m.body.y, e.px, e.py) < r + 8)
-          hurtHero(W, m, 2, e.px, e.py)
-      fx(W, 'burst', e.px, e.py - 10)
+          hurtHero(W, m, ice ? ICESPIKE.dmg : 2, e.px, e.py)
+      fx(W, ice ? 'icespike' : 'burst', e.px, e.py - 10)
       emit(W, 'burst', e.px, e.py, { s: 'spark', a: 10 })
       sfx(W, 'fireballHit', e.px, e.py)
       setEnemy(e, 'attack', t, t + 0.25)
@@ -276,7 +320,14 @@ function caster(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number
     e.px = h.body.x
     e.py = h.body.y
     setEnemy(e, 'windup', t, t + 1.0)
-    e.tele = { kind: 'circle', x: Math.round(e.px), y: Math.round(e.py), r: 48, from: t, until: t + 1.0 }
+    e.tele = {
+      kind: 'circle',
+      x: Math.round(e.px),
+      y: Math.round(e.py),
+      r: e.kind === 'icewitch' ? ICESPIKE.r : 48,
+      from: t,
+      until: t + 1.0
+    }
     sfx(W, 'enemyCast', e.x, e.y)
     return [0, 0]
   }
@@ -560,4 +611,254 @@ function spear(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number,
   }
   if (d < SPEAR.reach - 10) return [-Math.cos(a) * 0.5, -Math.sin(a) * 0.5]
   return [Math.cos(a), Math.sin(a)]
+}
+
+/* ------------------------------------------------------------------------------------------- stage 3 */
+
+/** Keeps its distance: [mx, my] for a preferred band (tiles). */
+const keepBand = (d: number, a: number, near: number, far: number): [number, number] =>
+  d < near * TILE ? [-Math.cos(a), -Math.sin(a)] : d > far * TILE ? [Math.cos(a), Math.sin(a)] : [0, 0]
+
+/** Falconer: sends its hawk (one at a time) and keeps 4–6 tiles away. */
+function summoner(W: WorldState, e: Enemy, _h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      spawnHawk(W, e.id, e.x, e.y - 10)
+      setEnemy(e, 'attack', t, t + 0.3)
+      e.cd = t + 4
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  if (t >= e.cd && d < 7 * TILE && !W.minions.some((m) => m.owner === e.id && !m.dead)) {
+    setEnemy(e, 'windup', t, t + 0.6)
+    sfx(W, 'crowCaw', e.x, e.y)
+    return [0, 0]
+  }
+  return keepBand(d, a, 4, 6)
+}
+
+/** Crossbowman: a long 0.8 s aim line, then a fast bolt that pierces two heroes. */
+function sniper(W: WorldState, e: Enemy, _h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      enemyShot(
+        W,
+        e.x + Math.cos(e.aimA) * 16,
+        e.y - 4 + Math.sin(e.aimA) * 16,
+        e.aimA,
+        'enemy_arrow',
+        SNIPER.speed,
+        SNIPER.dmg,
+        SNIPER.len
+      )
+      const shot = W.shots[W.shots.length - 1]
+      shot.pierce = SNIPER.pierce
+      sfx(W, 'enemyShot', e.x, e.y)
+      setEnemy(e, 'attack', t, t + 0.3)
+      e.tele = undefined
+      e.cd = t + 2.4 + W.rng.range(0, 0.8)
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  if (t >= e.cd && d < 9 * TILE) {
+    e.aimA = a
+    setEnemy(e, 'windup', t, t + SNIPER.aim)
+    e.tele = {
+      kind: 'line',
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      r: 10,
+      a: Math.round(a * 100) / 100,
+      len: SNIPER.len,
+      from: t,
+      until: t + SNIPER.aim
+    }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  return keepBand(d, a, 5, 8)
+}
+
+/** Wind mage: a telegraphed gust that shoves heroes (toward the edges is the danger). */
+function gustMage(W: WorldState, e: Enemy, _h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      enemyShot(
+        W,
+        e.x + Math.cos(e.aimA) * 20,
+        e.y + Math.sin(e.aimA) * 20,
+        e.aimA,
+        'gust',
+        GUST.speed,
+        GUST.dmg,
+        GUST.range
+      )
+      sfx(W, 'tornado', e.x, e.y)
+      setEnemy(e, 'attack', t, t + 0.3)
+      e.tele = undefined
+      e.cd = t + 2.8 + W.rng.range(0, 0.8)
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  if (t >= e.cd && d < 6 * TILE) {
+    e.aimA = a
+    setEnemy(e, 'windup', t, t + GUST.windup)
+    e.tele = {
+      kind: 'line',
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      r: GUST.width,
+      a: Math.round(a * 100) / 100,
+      len: GUST.range,
+      from: t,
+      until: t + GUST.windup
+    }
+    sfx(W, 'enemyCast', e.x, e.y)
+    return [0, 0]
+  }
+  return keepBand(d, a, 3, 5)
+}
+
+/** Bell monk: heals the most hurt ally every 3 s; rings its bell to ward nearby allies (damage halved, 4 s). */
+function healer(W: WorldState, e: Enemy, _h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'heal') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  const allies = W.enemies.filter((o) => !o.dead && o.state !== 'death' && dist(o.x, o.y, e.x, e.y) < 6 * TILE)
+  if (t >= e.healAt) {
+    e.healAt = t + MONK.healEvery
+    const hurt = allies.filter((o) => o.hp < o.maxHp).sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0]
+    if (hurt) {
+      hurt.hp = Math.min(hurt.maxHp, hurt.hp + MONK.heal)
+      setEnemy(e, 'heal', t, t + 0.4)
+      emit(W, 'heal', hurt.x, hurt.y, { a: MONK.heal })
+      fx(W, 'heal', hurt.x, hurt.y)
+      sfx(W, 'heal', e.x, e.y)
+      return [0, 0]
+    }
+  }
+  if (t >= e.ringAt) {
+    e.ringAt = t + MONK.ringEvery
+    for (const o of allies) if (dist(o.x, o.y, e.x, e.y) < MONK.wardR) o.ward = t + MONK.ward
+    setEnemy(e, 'heal', t, t + 0.4)
+    fx(W, 'holy', e.x, e.y - 16)
+    sfx(W, 'bell', e.x, e.y)
+    emit(W, 'notice', e.x, e.y, { s: '鐘の守り：まわりの敵のダメージ半減' })
+    return [0, 0]
+  }
+  return keepBand(d, a, 4, 6)
+}
+
+/* ------------------------------------------------------------------------------------------- stage 4 */
+
+/** Hunter: sets up to two snares now and then; otherwise shoots arrows after an aim line. */
+function hunter(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  // target: 1 = about to set a snare, 2 = setting it.
+  if (e.target === 1) {
+    const r = trapper(W, e, h, d, a)
+    if (e.state === 'windup' || e.state === 'attack') e.target = 2
+    return r
+  }
+  if (e.target === 2) {
+    const r = trapper(W, e, h, d, a)
+    if (e.state === 'idle' || e.state === 'walk') e.target = 0
+    return r
+  }
+  const mine = W.snares.filter((q) => q.owner === e.id).length
+  if ((e.state === 'idle' || e.state === 'walk') && t >= e.healAt && mine < 2 && d < 6 * TILE) {
+    e.target = 1
+    e.healAt = t + 6
+    e.cd = t
+    const r = trapper(W, e, h, d, a)
+    if ((e.state as string) === 'windup') e.target = 2
+    return r
+  }
+  return ranged(W, e, h, d, a)
+}
+
+/** Paladin: a guarded shield bearer that heals the most hurt ally every 3 s. */
+function paladin(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'heal') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  if ((e.state === 'idle' || e.state === 'walk') && t >= e.healAt) {
+    e.healAt = t + MONK.healEvery
+    const hurt = W.enemies
+      .filter((o) => !o.dead && o.state !== 'death' && o.hp < o.maxHp && dist(o.x, o.y, e.x, e.y) < 6 * TILE)
+      .sort((p, q) => p.hp / p.maxHp - q.hp / q.maxHp)[0]
+    if (hurt) {
+      hurt.hp = Math.min(hurt.maxHp, hurt.hp + MONK.heal)
+      setEnemy(e, 'heal', t, t + 0.4)
+      emit(W, 'heal', hurt.x, hurt.y, { a: MONK.heal })
+      fx(W, 'heal', hurt.x, hurt.y)
+      sfx(W, 'heal', e.x, e.y)
+      return [0, 0]
+    }
+  }
+  return melee(W, e, h, d, a)
+}
+
+/** Heavy: slow and guarded; a long-windup overhead smash (3 dmg), then a long recovery with the guard open. */
+function heavy(W: WorldState, e: Enemy, _h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      setEnemy(e, 'attack', t, t + HEAVY.recover)
+      e.tele = undefined
+      sfx(W, 'bossSlam', e.x, e.y)
+      fx(W, 'shock', e.x + Math.cos(e.aimA) * 50, e.y + Math.sin(e.aimA) * 50)
+      for (const m of W.heroes) {
+        if (!targetable(m) || m.body.z > 10) continue
+        const dd = dist(m.body.x, m.body.y, e.x, e.y)
+        const aa = Math.atan2(m.body.y - e.y, m.body.x - e.x)
+        if (dd < HEAVY.r + 16 && Math.abs(angleDiff(aa, e.aimA)) <= HEAVY.spread)
+          hurtHero(W, m, HEAVY.dmg, e.x, e.y, HEAVY.kb)
+      }
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) {
+      setEnemy(e, 'idle', t)
+      e.cd = t + 1.4 + W.rng.range(0, 0.6)
+    }
+    return [0, 0]
+  }
+  if (d < HEAVY.r && t >= e.cd) {
+    e.aimA = e.facing
+    setEnemy(e, 'windup', t, t + HEAVY.windup)
+    e.tele = {
+      kind: 'cone',
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      r: HEAVY.r,
+      a: Math.round(e.aimA * 100) / 100,
+      spread: Math.round(HEAVY.spread * 100) / 100,
+      from: t,
+      until: t + HEAVY.windup
+    }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  return d > 60 ? [Math.cos(a), Math.sin(a)] : [0, 0]
 }
