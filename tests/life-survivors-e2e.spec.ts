@@ -81,7 +81,7 @@ test('fixed-interval weapons explain their level and cooldown in the UI', async 
   await expect(cards.nth(1)).toContainText('威力 +30%')
   await expect(cards.nth(2)).toContainText('クールダウン -15%')
   await expect(cards.nth(0).locator('.weapon-strong-label')).toHaveText(['特攻 悪口', '特攻 人間関係'])
-  await expect(cards.nth(3)).toContainText('攻撃速度 +15%')
+  await expect(cards.nth(3)).toContainText('攻撃速度 +25%')
   await handle.evaluate((hook) => {
     ;(hook.game as unknown as Game).state.players[0].choices = []
   })
