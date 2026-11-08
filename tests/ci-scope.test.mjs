@@ -1106,15 +1106,22 @@ test('Chromium installs reuse Playwright packages and refresh apt lists only on 
     [{ linux: { chromium: ['libnss3;reboot'], tools: ['xvfb'] } }, 'linux']
   ])
     assert.throws(() => chromiumPackages(deps, platform))
-  // ubuntu-latest resolves the installed Playwright's own Ubuntu 24.04 table, fonts included.
-  const ubuntu = chromiumPackages(playwrightDependencies().deps, 'ubuntu24.04-x64')
-  for (const name of ['libnss3', 'xvfb', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-noto-color-emoji'])
-    assert.ok(ubuntu.includes(name), name)
-  if (process.platform === 'linux')
-    assert.deepEqual(
-      playwrightPackages(),
-      chromiumPackages(playwrightDependencies().deps, playwrightDependencies().hostPlatform)
-    )
+  // ubuntu-latest resolves the installed Playwright's own Ubuntu 24.04 table, fonts included. The changes job runs
+  // these contracts before npm ci, so the table is checked wherever Playwright is installed (the check job, locally).
+  let installed
+  try {
+    installed = playwrightDependencies()
+  } catch (error) {
+    assert.equal(error.code, 'MODULE_NOT_FOUND')
+    assert.equal(existsSync('node_modules/playwright-core'), false)
+  }
+  if (installed) {
+    const ubuntu = chromiumPackages(installed.deps, 'ubuntu24.04-x64')
+    for (const name of ['libnss3', 'xvfb', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-noto-color-emoji'])
+      assert.ok(ubuntu.includes(name), name)
+    if (process.platform === 'linux')
+      assert.deepEqual(playwrightPackages(), chromiumPackages(installed.deps, installed.hostPlatform))
+  }
   const attempt = async (fails = [], packages = () => ['xvfb', 'libnss3']) => {
     const calls = []
     const run = async (command, args) => {
