@@ -6,7 +6,7 @@ import { botInput } from './bot'
 
 test.each([
   [['w_hobby', 'w_karaoke', 'w_travel', 'w_cooking'], 12, 80, 56],
-  [['w_friend', 'w_sns', 'w_pet'], 17, 22, 19]
+  [['w_friend', 'w_sns', 'w_pet'], 17, 29, 19]
 ] as const)(
   'normal cards can turn an early career into later %s with a protected player',
   (laterPriorities, outcome, successfulSeed, preferredSeed) => {
@@ -126,7 +126,7 @@ test('normal play from birth can reach employment, sports, asset, creative and s
     w_hobby: [LIFE_OUTCOMES.b_shukatsu[5]],
     w_friend: [LIFE_OUTCOMES.b_shukatsu[6]]
   }
-  const preferredSeeds: Record<string, number> = { w_work: 32, w_sports: 22, w_savings: 19, w_hobby: 29, w_friend: 3 }
+  const preferredSeeds: Record<string, number> = { w_work: 3, w_sports: 29, w_savings: 19, w_hobby: 29, w_friend: 10 }
 
   for (const priorities of [
     ['w_work', 'w_study'],

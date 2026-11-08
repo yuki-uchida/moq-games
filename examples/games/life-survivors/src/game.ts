@@ -1943,7 +1943,7 @@ export class Game {
             guardianHeading: def.id === 'p_over' ? Math.atan2(player.fy, player.fx) : undefined,
             guardianStill: def.id === 'p_over' ? Number(player.still > 0) : undefined,
             orbit: def.area * ws.area,
-            spin: def.id === 'p_monster' || def.id === 'p_over' ? 240 * ws.speed : speed,
+            spin: def.id === 'p_monster' ? 192 * ws.speed : def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
             h:
               def.id === 'p_over'
