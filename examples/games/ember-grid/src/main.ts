@@ -1426,12 +1426,18 @@ async function prepareBattle() {
     retry.hidden = false
   }
 }
+/** Save-Data or a 2G connection: the demo would download a whole chapter's models, so the title stays still. */
+function savingData() {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+    .connection
+  return !!connection?.saveData || /(^|-)2g$/.test(connection?.effectiveType ?? '')
+}
 /**
  * Title demo: once the likely next chapter's models are ready, a self-playing battle (its own Game and RNG)
  * runs on the board behind the translucent title. Any failure leaves today's static title.
  */
 async function startAttract() {
-  if (attract || !stageAvailable || !titleOpen() || playing) return
+  if (attract || !stageAvailable || !titleOpen() || playing || savingData()) return
   const token = ++attractToken
   const live = () => token === attractToken && titleOpen() && !playing
   let game = attractGame(saved, 0)

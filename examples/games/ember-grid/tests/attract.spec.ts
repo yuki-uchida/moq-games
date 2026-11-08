@@ -182,6 +182,25 @@ test('reduced motion holds the demo still', async ({ page }) => {
   await expect(page.locator('html')).not.toHaveClass(/attract-demo/)
 })
 
+test('Save-Data keeps the still title and downloads no models', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'connection', {
+      configurable: true,
+      value: { saveData: true, effectiveType: '4g' }
+    })
+  })
+  const models: string[] = []
+  page.on('request', (request) => {
+    if (/\.(glb|gltf)(\?|$|\.)/.test(request.url())) models.push(request.url())
+  })
+  await page.goto('./')
+  await expect(page.getByRole('button', { name: '✦ はじめから' })).toBeVisible()
+  await page.waitForTimeout(5000)
+  await expect(page.locator('html')).not.toHaveClass(/attract-demo/)
+  expect(models).toEqual([])
+  expect(await page.locator('.title-screen').evaluate((title) => getComputedStyle(title, '::before').opacity)).toBe('1')
+})
+
 test('without WebGL the static title remains', async ({ page }) => {
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext
