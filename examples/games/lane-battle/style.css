@@ -367,9 +367,9 @@ dialog[open] {
 dialog::backdrop {
   background: #1e0f05aa;
 }
-/* Boot title: the battle played by the demo (attract.js) shows through the sheet and the backdrop. */
+/* Boot title: the battle played by the demo (attract.js) shows around the sheet and faintly through it. */
 dialog.title {
-  background: #2b160899;
+  background: #2b1608db;
   box-shadow: 0 10px 60px #0006;
 }
 dialog.title::backdrop {
