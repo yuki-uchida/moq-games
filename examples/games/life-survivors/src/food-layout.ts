@@ -640,17 +640,19 @@ const segmentBox = (s: Segment): Box => ({
 /**
  * Label blocks of the piles, in input order. A pile gets a block only when one of its sprites shows (spriteShows): some
  * of it lies inside `visible` (the visible world) and outside every `occluders` box (opaque parts drawn over the
- * canvas, which should also be among the obstacles). `obstacles` (food sprites, HUD) are hard: no block ever
- * overlaps them. `players` are soft (see placeOne): a block avoids them when it chooses a spot, keeps a spot one covers
- * for LABEL_PATIENCE_MS, and moves back to a better spot once it has been free for LABEL_RETURN_MS (`now` in ms). Each
- * block takes the remembered or first free candidate inside `viewport`, clear of every obstacle and every block placed
- * before; when none is free it shrinks (foodLabelVariants) and tries again, and when even its single line finds no
- * room it is not drawn this frame. So blocks never overlap each other or an obstacle and stay inside the viewport.
+ * canvas, which should also be among the obstacles); a pile left out for that reason keeps its remembered candidate for
+ * the next frame, so its label comes back in the same spot once its sprites show again. `obstacles` (food sprites,
+ * HUD) are hard: no block ever overlaps them. `players` are soft (see placeOne): a block avoids them when it chooses a
+ * spot, keeps a spot one covers for LABEL_PATIENCE_MS, and moves back to a better spot once it has been free for
+ * LABEL_RETURN_MS (`now` in ms). Each block takes the remembered or first free candidate inside `viewport`, clear of
+ * every obstacle and every block placed before; when none is free it shrinks (foodLabelVariants) and tries again, and
+ * when even its single line finds no room it is not drawn this frame. So blocks never overlap each other or an
+ * obstacle and stay inside the viewport.
  * No block sits on an earlier leader. A block further from its pile than LEADER_MIN gets a `leader` line, kept clear
  * of every placed block, every obstacle but the pile's own sprites and every earlier leader; a nearer block must
  * plainly name its pile (namesPile). `measure` gives a text's width; `memory` (candidate choice per pile key) is
- * read, then replaced by this frame's choices. `transient` boxes (the paths of banners, which animate while they show)
- * take no part in choosing: blocks are placed as if they were absent, and a block that then overlaps one is marked
+ * read, then replaced by this frame's choices. `transient` boxes (the paths of banners and feed lines, which come and
+ * go) take no part in choosing: blocks are placed as if they were absent, and a block that then overlaps one is marked
  * `hidden` (still placed, still blocking later blocks and remembered), so it comes back in the same spot afterwards.
  */
 export function placeFoodLabels(
@@ -671,7 +673,12 @@ export function placeFoodLabels(
   const leaders: Segment[] = []
   const chosen = new Map<string, LabelMemoryEntry>()
   piles.forEach((pile, n) => {
-    if (!pile.lines.length || !pile.sprites.some((sprite) => spriteShows(sprite, visible, occluders))) return
+    if (!pile.lines.length || !pile.sprites.some((sprite) => spriteShows(sprite, visible, occluders))) {
+      // Left out because nothing of it shows: it keeps its remembered candidate, so its label returns to the same spot.
+      const kept = recall(memory, pile.key)
+      if (pile.key !== undefined && kept) chosen.set(pile.key, kept)
+      return
+    }
     const bounds = union(pile.sprites)
     const isOwn = (o: Box) =>
       pile.sprites.some((s) => s.left === o.left && s.top === o.top && s.right === o.right && s.bottom === o.bottom)

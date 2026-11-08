@@ -1066,6 +1066,7 @@ function frame(now: number) {
     renderPauseBanner(view)
   }
   // While a banner is on screen its boxes move every frame, so they are measured every frame.
+  // Feed lines only move when one is added or removed, which the observer below measures at once.
   const bannerUp = (bannerEl?.isConnected ?? false) || (farewellEl?.isConnected ?? false)
   if (bannerUp || now - hudRectsAt >= 250 || hud.hidden !== hudRectsHidden) measureHudRects(now)
   requestAnimationFrame(frame)
@@ -1090,13 +1091,15 @@ const bannerMargin = (path: Box): Box => ({
  * overlay, rows and lists) are looked into instead. A box is `opaque` when it hides what lies under it (hidesBehind);
  * foods under opaque boxes get no label. Parts of a banner (it animates all the while it shows) go to a separate list
  * of transient boxes instead: each one is the union of every place that part has been, so the labels it crosses are
- * hidden for as long as the banner shows, not moved.
+ * hidden for as long as the banner shows, not moved. Lines of the feed (#feed) are handled the same way. The current
+ * box of an opaque transient part also goes to `covers`, so foods under it count as out of sight.
  */
 function measureHudRects(now = performance.now()) {
   hudRectsAt = now
   hudRectsHidden = hud.hidden
   const rects: (Box & { opaque: boolean })[] = []
   const transient: Box[] = []
+  const covers: Box[] = []
   const frame = canvas.getBoundingClientRect()
   const emitted = new Set<Element>()
   const visit = (parent: Element, depth: number, inBanner: boolean) => {
@@ -1104,7 +1107,7 @@ function measureHudRects(now = performance.now()) {
       if ((inBanner ? transient : rects).length >= 40) return
       // The halo is see-through: the labels under it can still be read.
       if (inBanner && child.classList.contains('rays')) continue
-      const banner = inBanner || child.classList.contains('banner')
+      const banner = inBanner || child.classList.contains('banner') || child.parentElement?.id === 'feed'
       const style = getComputedStyle(child)
       if (style.display === 'none') continue
       if (!banner && (style.visibility === 'hidden' || Number(style.opacity) === 0)) continue
@@ -1138,6 +1141,7 @@ function measureHudRects(now = performance.now()) {
             bannerPaths.set(child, path)
             bannerParts.add(child)
             emitted.add(child)
+            if (hidesBehind(style)) covers.push(box)
             // The labels are drawn with the boxes of the frame before: a margin covers the way a banner moves meanwhile.
             transient.push(bannerMargin(path))
           } else rects.push({ ...box, opaque: hidesBehind(style) })
@@ -1154,8 +1158,12 @@ function measureHudRects(now = performance.now()) {
       if (path) transient.push(bannerMargin(path))
     }
   }
-  renderer.setHudRects(rects, transient)
+  renderer.setHudRects(rects, transient, covers)
 }
+
+// Feed lines come and go: measure right after one is added or removed, so a new line is a path from its first frame.
+if (typeof MutationObserver === 'function')
+  new MutationObserver(() => measureHudRects()).observe(feed, { childList: true })
 
 if (typeof ResizeObserver === 'function') {
   const observer = new ResizeObserver(() => measureHudRects())

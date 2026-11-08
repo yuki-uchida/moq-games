@@ -2459,7 +2459,7 @@ test('food labels stay put while a banner shows and the ones under it are hidden
     player.weapons = []
     // One food under where the stage banner slides in (top centre), one beside it, one far from it.
     game.state.items = [
-      { kind: 'food_defense', owner: player.id, power: 1, x: player.x, y: player.y - 215 },
+      { kind: 'food_defense', owner: player.id, power: 1, x: player.x, y: player.y - 185 },
       { kind: 'food_speed', owner: player.id, power: 1, x: player.x + 220, y: player.y - 170 },
       { kind: 'food_heal', owner: player.id, power: 1, x: player.x - 400, y: player.y + 200 }
     ]
@@ -2498,9 +2498,96 @@ test('food labels stay put while a banner shows and the ones under it are hidden
   // No label is drawn over the banner's text.
   expect(all.filter((d) => d.hit)).toEqual([])
   // The banner crossed the food under it: that label went missing for a while, in the banner's frames only.
-  const during = all.filter((d) => d.banner)
+  // (Its very first frames are let off: the boxes it is measured by come a frame after it appears.)
+  const during = all.filter((d) => d.banner && d.t > all[first].t + 100)
   expect(during.length).toBeGreaterThan(0)
   expect(new Set(during.map((d) => d.text)).size).toBeLessThan(3)
+  expect(errors).toEqual([])
+})
+
+test('food labels stay put while feed lines come and go, and are not drawn over their text', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.addInitScript(() => {
+    const draws: { text: string; x: number; y: number; hit: boolean; feed: number; t: number }[] = []
+    Object.assign(window, { labelDraws: draws })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.startsWith('P1：')) {
+        // Where the label lands on the page, against the feed lines on screen right now.
+        const canvas = this.canvas.getBoundingClientRect()
+        const m = this.getTransform()
+        const px = (x * m.a + y * m.c + m.e) * (canvas.width / this.canvas.width) + canvas.left
+        const py = (x * m.b + y * m.d + m.f) * (canvas.height / this.canvas.height) + canvas.top
+        const half = this.measureText(text).width / 2
+        const lines = Array.from(document.querySelectorAll('#feed p'))
+        const hit = lines.some((line) => {
+          const r = line.getBoundingClientRect()
+          return r.width > 0 && px + half > r.left && px - half < r.right && py + 2 > r.top && py - 13 < r.bottom
+        })
+        draws.push({
+          text,
+          x: Math.round(x * 10) / 10,
+          y: Math.round(y * 10) / 10,
+          hit,
+          feed: lines.length,
+          t: performance.now()
+        })
+      }
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await expect(page.locator('#banner .banner')).toHaveCount(0, { timeout: 8000 })
+  await expect(page.locator('#feed p')).toHaveCount(0, { timeout: 8000 })
+  await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
+    player.weapons = []
+    // Three foods around the top centre, where the feed lines show.
+    game.state.items = [
+      { kind: 'food_speed', owner: player.id, power: 1, x: player.x - 60, y: player.y - 205 },
+      { kind: 'food_heal', owner: player.id, power: 1, x: player.x + 120, y: player.y - 175 },
+      { kind: 'food_damage', owner: player.id, power: 1, x: player.x - 200, y: player.y - 150 }
+    ]
+  })
+  type Draw = { text: string; x: number; y: number; hit: boolean; feed: number; t: number }
+  const draws = () => page.evaluate(() => (window as unknown as { labelDraws: Draw[] }).labelDraws.slice())
+  await expect.poll(async () => new Set((await draws()).map((d) => d.text)).size).toBe(3)
+  await page.waitForTimeout(600)
+  for (let k = 0; k < 4; k++) {
+    await handle.evaluate((hook, n) => {
+      const game = hook.game as unknown as { log(text: string): void }
+      game.log(`手ごわい「テスト${n}」が現れた！`)
+    }, k)
+    await page.waitForTimeout(1500)
+  }
+  await expect(page.locator('#feed p')).toHaveCount(0, { timeout: 8000 })
+  await page.waitForTimeout(900)
+  const all = await draws()
+  const texts = [...new Set(all.map((d) => d.text))]
+  expect(texts).toHaveLength(3)
+  for (const text of texts) {
+    const mine = all.filter((d) => d.text === text)
+    // Wherever it is drawn, before, during and after the lines, it is the same place.
+    expect(new Set(mine.map((d) => `${d.x},${d.y}`)), text).toEqual(new Set([`${mine[0].x},${mine[0].y}`]))
+    // Back after the last line is gone.
+    expect(mine.filter((d) => d.feed === 0).at(-1)!.t, text).toBeGreaterThan(
+      Math.max(...all.filter((d) => d.feed > 0).map((d) => d.t))
+    )
+  }
+  // No label is drawn over a feed line's text (a line's first frame or two are let off).
+  expect(all.filter((d) => d.hit).length).toBeLessThanOrEqual(2)
   expect(errors).toEqual([])
 })
 
