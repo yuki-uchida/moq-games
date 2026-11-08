@@ -437,7 +437,11 @@ test('viewer loops attack and shows the same held ally death as gameplay', async
   await page.screenshot({ path: 'test-results/viewer-ally-death.png' })
 })
 
-test('campaign models are not fetched on the title but start downloading on the launch screen', async ({ page }) => {
+test('campaign models are not fetched on the still title but start downloading on the launch screen', async ({
+  page
+}) => {
+  // The animated title demo downloads its own battle (tower-title-attract-e2e); the still title fetches nothing.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const modelRequests: string[] = []
   page.on('request', (request) => {
     if (/\.(glb|gltf)(\?|$)/.test(request.url())) modelRequests.push(request.url())
