@@ -50,8 +50,8 @@ import {
   weaponAppearance
 } from './weapon-life'
 
-/** 勉強: pencil i fans out from the aim — back, then left/right, then halving the gaps. */
-export function studySpread(i: number): number {
+/** 読書: beam i fans out from the facing — back, then left/right, then halving the gaps. */
+export function beamSpread(i: number): number {
   if (i <= 0) return 0
   const level = Math.floor(Math.log2(i))
   return ((2 * (i - 2 ** level) + 1) * Math.PI) / 2 ** level
@@ -104,6 +104,8 @@ const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
 const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.25)
+/** Pixels per second the creature draws each caught enemy toward itself, before knockback resistance. */
+export const OBSERVATION_PULL_SPEED = 105
 const observationStillSeconds = (level: number) => 2 - (level - 1) * 0.125
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
@@ -373,6 +375,14 @@ const canObtainWeapon = (player: Player, def: WeaponDef, age: number) =>
 export function isEvolved(player: Player, weapon: OwnedWeapon) {
   const def = WEAPON_BY_ID.get(weapon.id)
   return Boolean(def?.evolve && weapon.lv >= MAX_WEAPON_LEVEL && passiveLevel(player, def.evolve.passive) > 0)
+}
+
+/** 生き物観察 holds 10 enemies at Lv1, 10 more per level (80 at Lv8) and 100 once evolved. */
+export function observationTargets(player: Player, weapon: OwnedWeapon) {
+  const levels = WEAPON_LEVELS.w_observe.slice(0, weapon.lv - 1)
+  return (
+    10 + levels.reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0) + (isEvolved(player, weapon) ? 20 : 0)
+  )
 }
 
 export function weaponName(player: Player, weapon: OwnedWeapon, age?: number) {
@@ -1981,12 +1991,11 @@ export class Game {
       case 'bounce': {
         const found = this.targets(player, n, 700)
         for (let i = 0; i < n; i++) {
-          const target = def.id === 'w_study' ? found[0] : found[i % Math.max(1, found.length)]
+          const target = found[i % Math.max(1, found.length)]
           let angle = target
             ? Math.atan2(target.y - player.y, target.x - player.x)
             : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
           if (def.behavior === 'bounce') angle += (rng() - 0.5) * 0.6
-          if (def.id === 'w_study') angle = (target ? angle : Math.atan2(player.fy, player.fx)) + studySpread(i)
           this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
@@ -2041,7 +2050,8 @@ export class Game {
         for (let i = 0; i < n; i++) {
           let angle =
             def.behavior === 'flail' ? rng() * Math.PI * 2 : Math.atan2(player.fy, player.fx) + (i % 2 ? Math.PI : 0)
-          if (def.behavior !== 'flail' && i >= 2) angle += (i % 2 ? -1 : 1) * 0.6
+          if (def.behavior === 'whip' && i >= 2) angle += (i % 2 ? -1 : 1) * 0.6
+          if (def.behavior === 'beam') angle = Math.atan2(player.fy, player.fx) + beamSpread(i)
           const length = def.area * ws.area
           if (def.behavior === 'beam')
             this.shot(player, weapon, def, ws, {
@@ -2119,9 +2129,7 @@ export class Game {
         this.shot(player, weapon, def, ws, {
           x: player.x + player.fx * 50,
           y: player.y + player.fy * 50,
-          w:
-            5 +
-            WEAPON_LEVELS[def.id].slice(0, weapon.lv - 1).reduce((value, upgrade) => value + (upgrade.targets ?? 0), 0),
+          w: observationTargets(player, weapon),
           v: form * 2 + 1,
           tick: 0.5
         })
@@ -2502,7 +2510,7 @@ export class Game {
       const distance = Math.hypot(dx, dy)
       if (distance > shot.r) continue
       const def = ENEMY_BY_ID.get(enemy.kind)!
-      const pull = Math.min(distance, 35 * this.knockScale(enemy, def) * dt)
+      const pull = Math.min(distance, OBSERVATION_PULL_SPEED * this.knockScale(enemy, def) * dt)
       enemy.x += (dx / (distance || 1)) * pull
       enemy.y += (dy / (distance || 1)) * pull
       enemy.slow = Math.max(enemy.slow, 0.12)

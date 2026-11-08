@@ -45,3 +45,16 @@ npm run art:mamono-jinkei        # ドット絵の確認用PNGを .build/mamono-
 ```
 
 ドット絵（64×64）・音楽・効果音はすべてコードで生成しており、画像や音声のファイルはありません。設計は [DESIGN.md](DESIGN.md) にあります。
+
+### 実際のMoQリレーでの4人テスト（任意・CI外）
+
+ローカルのMoQリレー（moq-relay 0.17.2、ループバックのみ、自己署名証明書）を立て、ホスト・ゲスト3人・5人目（観戦）を別々のChromeで接続して、4人が遊べることを確かめます。
+
+```sh
+MOQ_RELAY_EXECUTABLE_PATH=/path/to/moq-relay.exe \
+OPENSSL_EXECUTABLE_PATH=/path/to/openssl.exe \
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chrome.exe \
+npx playwright test --config playwright.mamono-jinkei-real-moq.config.ts
+```
+
+3つの環境変数のどれかが無いと、スキップせずに失敗します。

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { sheet } from '../src/art/index'
 import { EVENTS, MAX_WEAPON_LEVEL, WEAPON_BY_ID, WEAPON_INDEX, timeAtAge } from '../src/data'
-import { Game, playerStats, weaponStats } from '../src/game'
+import { Game, OBSERVATION_PULL_SPEED, observationTargets, playerStats, weaponStats } from '../src/game'
 import { SHOT_GAMBLE, readView, toView } from '../src/view'
 import { OBSERVATION_FORMS, OBSERVATION_SPRITES, observationForm, weaponAppearance } from '../src/weapon-life'
 import { botInput } from './bot'
@@ -103,10 +103,10 @@ test('every creature and the weapon icon have distinct generated art', () => {
 })
 
 test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
-  'level %i limits each field to five enemies per level',
+  'level %i limits each field to ten enemies per level',
   (level) => {
     const { game, player, weapon } = setup(18, level)
-    const enemies = Array.from({ length: MAX_WEAPON_LEVEL * 5 + 1 }, (_, index) => {
+    const enemies = Array.from({ length: MAX_WEAPON_LEVEL * 10 + 1 }, (_, index) => {
       const enemy = game.spawnEnemy('germ', 60 + index, 0)!
       enemy.hp = enemy.maxHp = 10000
       return enemy
@@ -117,17 +117,17 @@ test.each(Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => index + 1))(
     const shot = game.state.shots[0]
     const positions = enemies.map((enemy) => enemy.x)
     game['moveShots'](0.1)
-    expect(shot.targets).toHaveLength(level * 5)
-    expect(enemies.filter((enemy) => enemy.hp < enemy.maxHp)).toHaveLength(level * 5)
-    expect(enemies.filter((enemy) => enemy.slow > 0)).toHaveLength(level * 5)
-    expect(enemies.slice(0, level * 5).every((enemy, index) => enemy.x < positions[index])).toBe(true)
-    expect(enemies.slice(level * 5).every((enemy, index) => enemy.x === positions[index + level * 5])).toBe(true)
+    expect(shot.targets).toHaveLength(level * 10)
+    expect(enemies.filter((enemy) => enemy.hp < enemy.maxHp)).toHaveLength(level * 10)
+    expect(enemies.filter((enemy) => enemy.slow > 0)).toHaveLength(level * 10)
+    expect(enemies.slice(0, level * 10).every((enemy, index) => enemy.x < positions[index])).toBe(true)
+    expect(enemies.slice(level * 10).every((enemy, index) => enemy.x === positions[index + level * 10])).toBe(true)
   }
 )
 
 test('fields remain active and replace defeated targets throughout their lifetime', () => {
   const { game, player, weapon } = setup()
-  const enemies = Array.from({ length: 6 }, (_, index) => {
+  const enemies = Array.from({ length: 11 }, (_, index) => {
     const enemy = game.spawnEnemy('germ', 70 + index * 10, 0)!
     enemy.hp = enemy.maxHp = 10000
     return enemy
@@ -138,14 +138,14 @@ test('fields remain active and replace defeated targets throughout their lifetim
   const shot = game.state.shots[0]
   game['moveShots'](0.1)
   expect(shot.v % 2).toBe(1)
-  expect(shot.targets).toEqual(enemies.slice(0, 5))
+  expect(shot.targets).toEqual(enemies.slice(0, 10))
   const initialHp = enemies.map((enemy) => enemy.hp)
   enemies[0].hp = 0
   game.state.time += 0.6
   game['moveShots'](0.5)
   expect(shot.targets).toEqual(enemies.slice(1))
   expect(enemies[1].hp).toBeLessThan(initialHp[1])
-  expect(enemies[5].hp).toBeLessThan(initialHp[5])
+  expect(enemies[10].hp).toBeLessThan(initialHp[10])
   game['moveShots'](0.5)
   expect(shot.v % 2).toBe(1)
   const duringPause = enemies[1].hp
@@ -174,7 +174,7 @@ test('bonus projectiles do not increase creatures or targets, while duration ext
   player.still = 2
   game['fire'](player, weapon, boosted)
   expect(game.state.shots).toHaveLength(1)
-  expect(game.state.shots[0].w).toBe(5)
+  expect(game.state.shots[0].w).toBe(10)
   expect(game.state.shots[0].maxLife).toBe(boosted.duration)
   game['moveShots'](base.duration + 0.01)
   expect(game.state.shots).toHaveLength(1)
@@ -182,6 +182,20 @@ test('bonus projectiles do not increase creatures or targets, while duration ext
   expect(game.state.shots).toHaveLength(0)
   weapon.lv = MAX_WEAPON_LEVEL
   expect(weaponStats(player, weapon).amount).toBe(1)
+})
+
+test.each([
+  [1, false, 10],
+  [2, false, 20],
+  [MAX_WEAPON_LEVEL, false, 80],
+  [MAX_WEAPON_LEVEL, true, 100]
+])('observation at level %s (evolved: %s) holds up to %s enemies', (level, evolved, cap) => {
+  const { game, player, weapon } = setup(18, level)
+  player.passives = evolved ? [{ id: 'p_curious', lv: 1 }] : []
+  expect(observationTargets(player, weapon)).toBe(cap)
+  player.still = 2
+  game['fireWeapons'](0)
+  expect(game.state.shots.find((shot) => shot.weapon === 'w_observe')?.w).toBe(cap)
 })
 
 test('cooldown does not affect observation resummoning', () => {
@@ -216,7 +230,7 @@ test('a gambling copy also requires stillness and keeps its own field and snapsh
   game['fire'](player, gamble, stats, def)
   game['fire'](player, gamble, stats, def)
   expect(game.state.shots).toHaveLength(1)
-  expect(game.state.shots[0]).toMatchObject({ sourceWeapon: 'w_gamble', w: 15 })
+  expect(game.state.shots[0]).toMatchObject({ sourceWeapon: 'w_gamble', w: 30 })
   const view = toView(game.state)
   expect(view.shots[7]).toBeGreaterThanOrEqual(SHOT_GAMBLE)
   expect(readView(view)).toBeDefined()
@@ -234,4 +248,18 @@ test('the smart bot prefers an active first weapon when another option is availa
   player.weapons = []
   player.choices = ['w:w_observe', 'w:w_friend']
   expect(botInput(game, player, 'smart').pick).toBe(1)
+})
+
+test('the creature pulls a nearby enemy strongly toward itself', () => {
+  const { game, player } = setup()
+  player.still = 2
+  game['fireWeapons'](0)
+  const creature = game.state.shots[0]
+  game.spawnEnemy('germ', creature.x + 100, creature.y)
+  const enemy = game.state.enemies.at(-1)!
+  game['buildGrid']()
+  const start = enemy.x - creature.x
+  game['moveShots'](0.5)
+  expect(start - (enemy.x - creature.x)).toBeGreaterThan(OBSERVATION_PULL_SPEED * 0.5 * 0.9)
+  expect(OBSERVATION_PULL_SPEED).toBeGreaterThanOrEqual(100)
 })

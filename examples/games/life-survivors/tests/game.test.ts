@@ -20,7 +20,7 @@ import {
   choiceText,
   playerStats,
   POOR,
-  studySpread,
+  beamSpread,
   REAPER_SECONDS,
   STRONG_MULTIPLIER,
   isEvolved,
@@ -191,20 +191,19 @@ describe('combat', () => {
     expect(gifted / weaponStats(player, study).damage).toBeCloseTo(GIFTED / POOR)
   })
 
-  test('study pencils fan out back, then left and right, then fill the gaps', () => {
+  test('reading beams fan out back, then left and right, then fill the gaps', () => {
     const quarter = Math.PI / 2
-    expect([0, 1, 2, 3].map(studySpread)).toEqual([0, 2 * quarter, quarter, 3 * quarter])
-    expect([4, 5, 6, 7].map((i) => studySpread(i) / (Math.PI / 4))).toEqual([1, 3, 5, 7])
+    expect([0, 1, 2, 3].map(beamSpread)).toEqual([0, 2 * quarter, quarter, 3 * quarter])
+    expect([4, 5, 6, 7].map((i) => beamSpread(i) / (Math.PI / 4))).toEqual([1, 3, 5, 7])
     const game = new Game(5)
     const player = game.addPlayer('a', 'p_edu')!
-    game.state.enemies = []
     player.fx = 1
     player.fy = 0
-    player.weapons = [{ id: 'w_study', lv: 8, cd: 0, held: 0, damage: 0 }]
+    player.weapons = [{ id: 'w_reading', lv: 8, cd: 0, held: 0, damage: 0 }]
     game.tick(1 / 60)
     const angles = game.state.shots
-      .filter((shot) => shot.weapon === 'w_study')
-      .map((shot) => Math.round(((Math.atan2(shot.vy, shot.vx) + 2 * Math.PI) % (2 * Math.PI)) / quarter))
+      .filter((shot) => shot.weapon === 'w_reading')
+      .map((shot) => Math.round((((shot.angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / quarter) % 4)
       .sort()
     expect(angles).toEqual([0, 1, 2, 3])
   })
