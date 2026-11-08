@@ -140,6 +140,7 @@ export class RabbitersScene {
   private readonly beddingPile = new THREE.Group()
   /** Whether the conversation's current line shows in a speaker's bubble (the HUD subtitle then stays hidden). */
   voiced = false
+  private viewCenter = { x: 0.5, y: 0.5 }
   private yaw = 0
   private arm = Infinity // current camera arm length (see render)
   private pitch = 0
@@ -1039,8 +1040,22 @@ export class RabbitersScene {
     const width = Math.max(1, this.container.clientWidth)
     const height = Math.max(1, this.container.clientHeight)
     this.camera.aspect = width / height
-    this.camera.updateProjectionMatrix()
+    this.applyView(width, height)
     this.renderer.setSize(width, height, false)
+  }
+
+  /** Where on the canvas (0..1) the followed rabbit appears; (0.5, 0.5) is the usual centre. */
+  setViewCenter(x: number, y: number): void {
+    if (this.disposed) return
+    this.viewCenter = { x, y }
+    this.applyView(Math.max(1, this.container.clientWidth), Math.max(1, this.container.clientHeight))
+  }
+
+  private applyView(width: number, height: number): void {
+    const { x, y } = this.viewCenter
+    if (x === 0.5 && y === 0.5) this.camera.clearViewOffset()
+    else this.camera.setViewOffset(width, height, (0.5 - x) * width, (0.5 - y) * height, width, height)
+    this.camera.updateProjectionMatrix()
   }
 
   private release(root: THREE.Object3D): void {

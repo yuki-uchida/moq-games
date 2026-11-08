@@ -159,7 +159,8 @@ test('a guest moves and receives suspicion and discovery through mocked host sna
   browser,
   baseURL
 }) => {
-  test.setTimeout(60_000)
+  // Two pages render the 3D field (each title also plays its demo) before the guest joins; ~1 min under load.
+  test.setTimeout(120_000)
   const context = await browser.newContext({ baseURL })
   const network = `
     export const MAX_PLAYERS = 16;
