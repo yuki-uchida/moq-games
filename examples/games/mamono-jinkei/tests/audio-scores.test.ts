@@ -86,20 +86,47 @@ describe('every theme has a valid score', () => {
         expect(c.seconds, theme).toBeLessThanOrEqual(7)
       } else {
         expect(c.loopSeconds, theme).toBeGreaterThanOrEqual(45)
-        expect(c.loopSeconds, theme).toBeLessThanOrEqual(120)
+        expect(c.loopSeconds, theme).toBeLessThanOrEqual(100)
       }
     }
-    for (const theme of ['title', 'lobby', 'meadow', 'boss', 'ending'] as const)
+    for (const theme of [
+      'title',
+      'lobby',
+      'meadow',
+      'sewer',
+      'tower',
+      'forest',
+      'boss',
+      'finalBoss',
+      'ending'
+    ] as const)
       expect(compileSong(SONGS[theme]).loopSeconds, theme).toBeGreaterThanOrEqual(60)
     expect(compileSong(SONGS.clear).seconds).toBeGreaterThanOrEqual(5)
     expect(compileSong(SONGS.gameover).seconds).toBeLessThanOrEqual(6)
   })
 
-  test('layered themes only gate parts, never change the beat', () => {
-    const meadow = SONGS.meadow
-    expect(meadow.parts.some((p) => (p.layer ?? 0) === 1)).toBe(true)
-    expect(meadow.parts.some((p) => (p.layer ?? 0) === 2)).toBe(true)
-    expect(meadow.parts.filter((p) => (p.layer ?? 0) === 0).length).toBeGreaterThan(3)
+  test('every stage theme has intensity layers 0-2 that gate parts and carry notes', () => {
+    for (const theme of ['meadow', 'sewer', 'tower', 'forest'] as const) {
+      const song = SONGS[theme]
+      const c = compileSong(song)
+      for (const layer of [1, 2]) {
+        const parts = song.parts.map((p, i) => ({ p, i })).filter(({ p }) => (p.layer ?? 0) === layer)
+        expect(parts.length, `${theme} layer ${layer}`).toBeGreaterThan(0)
+        expect(
+          c.events.some((e) => parts.some(({ i }) => i === e.part)),
+          `${theme} layer ${layer} has notes`
+        ).toBe(true)
+      }
+      expect(song.parts.filter((p) => (p.layer ?? 0) === 0).length, theme).toBeGreaterThan(3)
+    }
+  })
+
+  test('long themes have an intro, several sections and a bridge', () => {
+    for (const theme of ['title', 'meadow', 'sewer', 'tower', 'forest', 'finalBoss'] as const) {
+      const names = SONGS[theme].sections.map((s) => s.name)
+      expect(names.length, theme).toBeGreaterThanOrEqual(4)
+      expect(names, theme).toContain('bridge')
+    }
   })
 
   test('the leitmotif (5-8-10 rise) opens the title, meadow and ending', () => {
@@ -118,5 +145,9 @@ describe('every theme has a valid score', () => {
     expect(rise('title', 2)).toBe(true)
     expect(rise('meadow', 0)).toBe(true)
     expect(rise('ending', 5)).toBe(true)
+    expect(rise('sewer', 4)).toBe(true)
+    expect(rise('tower', 9)).toBe(true)
+    expect(rise('forest', 11)).toBe(true)
+    expect(rise('finalBoss', 9)).toBe(true)
   })
 })

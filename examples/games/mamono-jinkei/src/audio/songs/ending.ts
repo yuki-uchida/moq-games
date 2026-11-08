@@ -3,7 +3,7 @@ import { m4, motif, r4, seq, withFill } from './util'
 
 /**
  * 「みんなの陣形」 F major, 72 bpm. The credits: the motif opens tenderly (A), a lyrical middle tune (B), then the whole
- * orchestra and choir restate the motif triumphantly (C). Form: intro (2) then A (8) / B (8) / C (8).
+ * orchestra and choir restate the motif triumphantly (C). Form: intro (2) then A (8) / B (8) / C (8) / tag (4, a hushed music-box and choir remembrance of the motif that settles before the loop returns to A).
  */
 const answer = m4('o5 a4 f4 d2 | o5 d4 f4 b-2 | o5 d4 g4 e4 c4 | o5 c2. a4')
 const lyric = m4('o5 d2. f4 | o5 c2. o4 a4 | o4 b-2 o5 d2 | o5 e1 | o5 d2. f4 | o5 a2 g4 f4 | o5 g4 b-4 c2 | o5 f1')
@@ -34,6 +34,7 @@ export const ENDING: SongDef = {
     { id: 'hn', inst: 'horn', role: 'melody', vol: 0.9, pan: -0.25, send: 0.4 },
     { id: 'br', inst: 'brass', role: 'melody', vol: 0.7, pan: 0.3, send: 0.35 },
     { id: 'choir', inst: 'choir', role: 'chord', vol: 0.7, send: 0.55, chorus: 0.3, center: 60, vel: 0.6, gate: 0.99 },
+    { id: 'mbox', inst: 'musicbox', role: 'melody', vol: 0.6, pan: 0.35, send: 0.55 },
     { id: 'gl', inst: 'glock', role: 'melody', vol: 0.5, pan: 0.5, send: 0.45 },
     { id: 'cel', inst: 'celesta', role: 'chord', vol: 0.4, pan: 0.45, send: 0.5, center: 84, vel: 0.5 },
     { id: 'bass', inst: 'bass', role: 'bass', vol: 0.85, center: 34, vel: 0.65, gate: 0.9 },
@@ -103,6 +104,19 @@ export const ENDING: SongDef = {
         tim: 'r...r...r...r.rr',
         dr: withFill('k...s...k...s...', 8, 'k.k.s.s.ssssssss'),
         pc: 'c...............|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|a.a.a.a.a.a.a.a.|c.......g.......'
+      }
+    },
+    {
+      name: 'tag',
+      bars: 4,
+      chords: 'F | Bb Gm | F C | F',
+      parts: {
+        str: 'x---------------',
+        choir: 'x---------------',
+        harp: '1.2.3.2.',
+        mbox: motif(65, 'major', { vel: 0.55, gate: 0.97 }),
+        hn: m4('o3 f1 | d1 | c1 | f1'),
+        tim: 'r.......|........|........|r.......'
       }
     }
   ]

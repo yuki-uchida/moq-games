@@ -114,6 +114,70 @@ function gamePreview(art) {
       </svg>
     </div>`
   }
+  if (art === 'mamono-jinkei') {
+    // Pixel art from character maps: the four slime heroes in formation around a glowing ring.
+    const pixels = (rows, colors, ox, oy, k) =>
+      rows
+        .flatMap((row, y) =>
+          [...row].map((ch, x) =>
+            ch === '.'
+              ? ''
+              : `<rect x="${ox + x * k}" y="${oy + y * k}" width="${k}" height="${k}" fill="${colors[ch]}"/>`
+          )
+        )
+        .join('')
+    const body = [
+      '....HHbbbb....',
+      '..bHHbbbbbbb..',
+      '.bHbbbbbbbbbb.',
+      '.bbbKwbbbKwbb.',
+      'bbbbKKbbbKKbbb',
+      'bbbpbbbmbbbpbb',
+      'bbbbbbbbbbbbbs',
+      '.bbbbbbbbbbbs.',
+      '..sssssssss...'
+    ]
+    const hats = {
+      sword: ['....rr..', '...rr...', '..mmmm..', '.mmmmmm.', '.MMMMMM.'],
+      mage: ['.......n', '......n.', '....nn..', '...nnn..', '..yyyyy.', '.nnnnnnn'],
+      archer: ['......w.', '.....w..', '..eeee..', '.eeeeee.', 'EEEEEEEE'],
+      cleric: ['...yy...', '..WWWW..', '..WyyW..', '.WWWWWW.', '.yyyyyy.']
+    }
+    const slime = (x, y, job, base, hi, shade) =>
+      pixels(body, { b: base, H: hi, s: shade, K: '#1a1626', w: '#ffffff', p: '#ff8f9a', m: '#5a1c36' }, x, y, 5) +
+      pixels(
+        hats[job],
+        {
+          r: '#ec5b50',
+          m: '#c7ccd6',
+          M: '#7d8698',
+          n: '#3f509a',
+          y: '#f2c84a',
+          e: '#4f8f52',
+          E: '#356a45',
+          w: '#ffffff',
+          W: '#f3f0ea'
+        },
+        x + 15,
+        y - hats[job].length * 5 + 5,
+        5
+      )
+    return `<div class="game-preview mamono-jinkei" aria-hidden="true">
+      <svg class="mamono-art" viewBox="0 0 220 260" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+        <defs><radialGradient id="mamono-sky" cx="50%" cy="38%" r="70%"><stop stop-color="#a9cf72"/><stop offset="1" stop-color="#4f7a3c"/></radialGradient></defs>
+        <rect width="220" height="260" fill="url(#mamono-sky)"/>
+        <g fill="#628d45">${[18, 62, 150, 196, 34, 178, 120].map((x, i) => `<rect x="${x}" y="${30 + ((i * 53) % 190)}" width="4" height="8"/><rect x="${x + 5}" y="${33 + ((i * 53) % 190)}" width="4" height="5"/>`).join('')}</g>
+        <ellipse cx="110" cy="150" rx="78" ry="40" fill="#fff3b8" opacity=".22" shape-rendering="geometricPrecision"/>
+        <ellipse cx="110" cy="150" rx="78" ry="40" fill="none" stroke="#f2c84a" stroke-width="3" stroke-dasharray="8 6" shape-rendering="geometricPrecision"/>
+        <path d="M110 108 L46 150 L110 192 L174 150 Z" fill="none" stroke="#fff3b8" stroke-width="2" opacity=".7" shape-rendering="geometricPrecision"/>
+        ${slime(75, 74, 'cleric', '#f2c84a', '#fff3b8', '#cf8e2e')}
+        ${slime(11, 116, 'mage', '#4f8fe8', '#a6dcff', '#3858b8')}
+        ${slime(139, 116, 'archer', '#6cc95a', '#d4f59a', '#3a9455')}
+        ${slime(75, 158, 'sword', '#ec5b50', '#ffb59a', '#b8344a')}
+        <text x="110" y="246" text-anchor="middle" font-size="15" font-weight="800" fill="#fff3b8" stroke="#2e1820" stroke-width="3" paint-order="stroke" shape-rendering="geometricPrecision">四方陣！</text>
+      </svg>
+    </div>`
+  }
   if (art === 'lane-battle') {
     const poop = (
       x,

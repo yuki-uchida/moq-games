@@ -1,14 +1,24 @@
 import type { SongDef } from '../notation'
-import { m4, motif, r4, seq, withFill } from './util'
+import { m4, motif, motifHead, r4, seq, withFill } from './util'
 
 /**
  * 「月夜の森」 B minor, 84 bpm. Celesta and flute under a moon, strings gather (B), and the third part turns
- * epic in the relative major (D): the motif in horn, brass and strings over timpani. Form: A (8) / B (8) / C (8).
+ * epic in the relative major (D): the motif in horn, brass and strings over timpani. Form: intro (4) then A (8) / B (8) / bridge (8, the motif's first bar climbing) / C (8). Layer 1 adds taiko, string drive and brass stabs; layer 2 adds timpani and horn hits.
  */
 const answerA = m4('o5 b4 g4 d2 | o5 f+4 a4 o6 d2 | o6 e2 o5 b4 g4 | o5 f+4 a+4 o6 c+2')
 const lineB = m4(
   'o5 d4. e8 g2 | o5 f+4. e8 d2 | o5 e4. g8 b2 | o5 a4. f+8 b2 | o6 d2 o5 b4 g4 | o5 a4 f+4 o6 d2 | o6 e4. d8 o5 b2 | o5 f+4 a+4 o6 c+2'
 )
+const LAYERS = {
+  dr1: 'k.h.s.h.k.h.s.h.',
+  tk: 'D.......D.......',
+  ost: 'rrRrrRrrrrRrrRfr',
+  stab: 'x..x..x.........',
+  tim2: 'r...r...r...r.rr',
+  hnhit: 'r..r..r.r..r..r.'
+}
+const heads = (tonic: number, shifts: number[]) =>
+  seq(...shifts.map((n) => motifHead(tonic, 'minor', n, { gate: 0.85 })))
 const answerC = m4('o5 b2 g4 d4 | o5 c+4 e4 a2 | o6 e4 o5 b4 a+4 f+4 | o5 c+1')
 
 export const FOREST: SongDef = {
@@ -54,15 +64,72 @@ export const FOREST: SongDef = {
     { id: 'sub', inst: 'sub', role: 'bass', vol: 0.3, center: 30, vel: 0.6, gate: 0.99 },
     { id: 'tim', inst: 'timpani', role: 'bass', vol: 0.7, center: 38, vel: 0.75, send: 0.3 },
     { id: 'dr', inst: 'kit', role: 'drum', vol: 0.6, vel: 0.65, pan: 0.05 },
+    { id: 'dr1', inst: 'kit', role: 'drum', vol: 0.6, vel: 0.7, pan: 0.05, layer: 1 },
+    { id: 'tk', inst: 'kit', role: 'drum', vol: 0.55, vel: 0.75, pan: -0.1, send: 0.2, layer: 1 },
+    {
+      id: 'ost',
+      inst: 'strings',
+      role: 'bass',
+      vol: 0.55,
+      pan: -0.2,
+      send: 0.25,
+      chorus: 0.3,
+      center: 47,
+      vel: 0.55,
+      gate: 0.45,
+      layer: 1
+    },
+    {
+      id: 'stab',
+      inst: 'brass',
+      role: 'chord',
+      vol: 0.5,
+      pan: 0.3,
+      send: 0.3,
+      center: 60,
+      vel: 0.7,
+      gate: 0.4,
+      layer: 1
+    },
+    { id: 'tim2', inst: 'timpani', role: 'bass', vol: 0.55, center: 38, vel: 0.8, send: 0.25, layer: 2 },
+    {
+      id: 'hnhit',
+      inst: 'horn',
+      role: 'bass',
+      vol: 0.5,
+      pan: -0.3,
+      send: 0.3,
+      center: 47,
+      vel: 0.85,
+      gate: 0.5,
+      layer: 2
+    },
     { id: 'pc', inst: 'kit', role: 'drum', vol: 0.4, vel: 0.5, pan: -0.15 }
   ],
   sections: [
+    {
+      name: 'intro',
+      bars: 4,
+      chords: 'Bm | Bm | Bm | F#',
+      parts: {
+        cel: '1...3...5...3...|1...3...5...3...|1.3.5.3.1.3.5.3.|1.3.5.3.1.3.5.3.',
+        pad: 'x---------------',
+        str: 'x---------------',
+        choir: 'x---------------',
+        harp: '........|........|1.2.3.2.|1.2.3.2.',
+        fl: seq(r4(2), motifHead(59, 'minor', 0, { vel: 0.5 }), r4(1)),
+        sub: 'r-------'
+      }
+    },
     {
       name: 'A',
       bars: 8,
       loop: true,
       chords: 'Bm | Em A | Bm7 | Bm | G | D | Em | F#',
       parts: {
+        ...LAYERS,
+        str: 'x---------------',
+        bass: 'r---r---',
         cel: '1...3...5...3...',
         pad: 'x---------------',
         fl: seq(motif(59, 'minor', { vel: 0.6, gate: 0.9 }), answerA),
@@ -75,6 +142,7 @@ export const FOREST: SongDef = {
       bars: 8,
       chords: 'G | D | Em | Bm | G | D/F# | Em | F#',
       parts: {
+        ...LAYERS,
         cel: '1.3.5.3.',
         harp: '12345432',
         str: 'x---------------',
@@ -87,10 +155,30 @@ export const FOREST: SongDef = {
       }
     },
     {
+      name: 'bridge',
+      bars: 8,
+      chords: 'Bm | C#dim | D | Em | F#m | G | A | F#',
+      parts: {
+        ...LAYERS,
+        cel: '1.3.5.3.1.3.5.3.',
+        harp: '12345432',
+        str: 'x---------------',
+        choir: 'x---------------',
+        fl: seq(heads(59, [0, 1, 2, 3, 4, 5, 6]), m4('o5 c+1')),
+        vln: seq(heads(59, [0, 1, 2, 3, 4, 5, 6]), m4('o5 f+1')),
+        hn: seq(heads(47, [0, 1, 2, 3, 4, 5, 6]), m4('o3 f+1')),
+        bass: 'r---r---',
+        sub: 'r-------',
+        tim: 'r.......|........|r.......|........|r.......|r.......|r.r.r.r.|rrrrrrrr',
+        pc: '........|........|........|........|z.z.z.z.|z.z.z.z.|z.z.z.z.|z.z.z.zz'
+      }
+    },
+    {
       name: 'C',
       bars: 8,
       chords: 'D | Gmaj7 | Bm A | D | G | A | Em F# | F#',
       parts: {
+        ...LAYERS,
         cel: '1.3.5.3.1.3.5.3.',
         harp: '12345432',
         str: 'x---------------',
