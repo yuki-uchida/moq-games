@@ -309,20 +309,16 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(browser, /- name: Select this shard's tests\n\s+id: shard\n\s+shell: bash\n\s+run: \|/)
   assert.match(
     browser,
-    /--list \|\n\s+node scripts\/ci-pages-shard.mjs \$\{\{ matrix.shard \}\} \$\{\{ strategy.job-total \}\} --workers=\d+ > shard-tests.txt/
+    /--list \|\n\s+node scripts\/ci-pages-shard.mjs \$\{\{ matrix.shard \}\} \$\{\{ strategy.job-total \}\} > shard-tests.txt/
   )
   assert.match(browser, /if test -s shard-tests.txt; then echo 'has-tests=true' >> "\$GITHUB_OUTPUT"; fi/)
   assert.doesNotMatch(browser, /grep ' › '|awk 'NR %|sed -E/)
   assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
   assert.match(
     browser,
-    /^        run: xvfb-run -a npx playwright test --config playwright\.pages\.config\.ts --test-list shard-tests\.txt --workers=\d+$/m
+    /^        run: xvfb-run -a npx playwright test --config playwright\.pages\.config\.ts --test-list shard-tests\.txt --workers=2$/m
   )
-  // The sharding script must simulate the same worker count Playwright runs with.
-  const shardWorkers = Number(browser.match(/ci-pages-shard\.mjs [^\n]* --workers=(\d+) >/)?.[1])
-  const playwrightWorkers = Number(browser.match(/--test-list shard-tests\.txt --workers=(\d+)/)?.[1])
-  assert.equal(shardWorkers, playwrightWorkers)
-  assert.equal(playwrightWorkers, 3)
+  assert.equal(Number(browser.match(/--test-list shard-tests\.txt --workers=(\d+)/)?.[1]), PAGES_WORKERS)
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(
     browser,
@@ -485,23 +481,6 @@ test('Pages shard CLI emits only test-list names and fails invalid arguments, in
   assert.equal(success.stderr, '')
   assert.equal(success.stdout, 'new.spec.ts › new test\n')
   assert.equal(run(['2', '2']).stdout, '')
-  const threeWorkers = run(['1', '1', '--workers=3'])
-  assert.equal(threeWorkers.status, 0, threeWorkers.stderr)
-  assert.equal(threeWorkers.stderr, '')
-  const realWeights = JSON.parse(readFileSync(join(root, 'scripts/ci-pages-weights.json'), 'utf8'))
-  const wide = [
-    'Listing tests:',
-    ...[...'abcdefg'].map((n) => `  ${n}.spec.ts:1:1 › t`),
-    'Total: 7 tests in 7 files',
-    ''
-  ].join('\n')
-  const wideNames = parsePagesList(wide)
-  for (const workers of [2, 3]) {
-    const flag = workers === 2 ? [] : [`--workers=${workers}`]
-    const out = run(['2', '3', ...flag], wide)
-    assert.equal(out.status, 0, out.stderr)
-    assert.equal(out.stdout, selectPagesShard(wideNames, 2, 3, realWeights, workers).join('\n') + '\n')
-  }
   const empty = run(['1', '1'], 'Listing tests:\nTotal: 0 tests in 0 files\n')
   assert.equal(empty.status, 0, empty.stderr)
   assert.equal(empty.stdout, '')
@@ -509,12 +488,6 @@ test('Pages shard CLI emits only test-list names and fails invalid arguments, in
     [],
     ['1'],
     ['1', '1', 'extra'],
-    ['1', '1', '--workers=0'],
-    ['1', '1', '--workers=-1'],
-    ['1', '1', '--workers=1.5'],
-    ['1', '1', '--workers=x'],
-    ['1', '1', '--workers'],
-    ['1', '1', '--workers=3', 'extra'],
     ['0', '1'],
     ['2', '1'],
     ['1', '0'],
@@ -576,28 +549,18 @@ test(
       sources.set(names, output)
       return names
     }
-    const browserWorkers = Number(
-      readFileSync(join(root, '.github/workflows/check.yml'), 'utf8').match(
-        /ci-pages-shard\.mjs [^\n]* --workers=(\d+) >/
-      )?.[1]
-    )
-    assert.equal(browserWorkers, 3)
     const recollect = (names, count, config) => {
       const selected = []
       const reversed = []
       for (let index = 1; index <= count; index++) {
-        const partition = selectPagesShard(names, index, count, weights, browserWorkers)
-        assert.deepEqual(partition, selectPagesShard(names, index, count, weights, browserWorkers))
-        reversed.push(...selectPagesShard([...names].reverse(), index, count, weights, browserWorkers))
-        const output = execFileSync(
-          process.execPath,
-          ['scripts/ci-pages-shard.mjs', String(index), String(count), `--workers=${browserWorkers}`],
-          {
-            cwd: root,
-            encoding: 'utf8',
-            input: sources.get(names)
-          }
-        )
+        const partition = selectPagesShard(names, index, count, weights)
+        assert.deepEqual(partition, selectPagesShard(names, index, count, weights))
+        reversed.push(...selectPagesShard([...names].reverse(), index, count, weights))
+        const output = execFileSync(process.execPath, ['scripts/ci-pages-shard.mjs', String(index), String(count)], {
+          cwd: root,
+          encoding: 'utf8',
+          input: sources.get(names)
+        })
         assert.equal(output, partition.length ? partition.join('\n') + '\n' : '')
         if (!partition.length) continue
         const path = join(directory, `shard-${invocation}-${index}.txt`)
