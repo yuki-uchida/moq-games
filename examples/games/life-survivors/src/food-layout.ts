@@ -344,6 +344,101 @@ function union(boxes: readonly Box[]): Box {
   )
 }
 
+/**
+ * True when some part of a sprite can be seen: a point of a 5×5 grid inside its box (at (i+0.5)/5 of its width and
+ * height) lies inside `visible` and inside none of `occluders` (opaque parts drawn over the canvas).
+ */
+export function spriteShows(sprite: Box, visible: Box, occluders: readonly Box[]): boolean {
+  const w = sprite.right - sprite.left
+  const h = sprite.bottom - sprite.top
+  for (let i = 0; i < 5; i++) {
+    const x = sprite.left + ((i + 0.5) / 5) * w
+    if (x < visible.left || x > visible.right) continue
+    for (let j = 0; j < 5; j++) {
+      const y = sprite.top + ((j + 0.5) / 5) * h
+      if (y < visible.top || y > visible.bottom) continue
+      if (!occluders.some((o) => x >= o.left && x <= o.right && y >= o.top && y <= o.bottom)) return true
+    }
+  }
+  return false
+}
+
+export interface Segment {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+/** A block closer than this to its pile gets no leader line. */
+export const LEADER_MIN = 8
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+
+/**
+ * Leader from a block to its pile: from the block's nearest edge point (x1, y1) to the pile (x2, y2). Undefined when
+ * the block is no further than LEADER_MIN from the pile.
+ */
+export function leaderLine(pile: Box, box: Box): Segment | undefined {
+  const cx = (box.left + box.right) / 2
+  const px = clamp(cx, pile.left, pile.right)
+  const py = clamp((box.top + box.bottom) / 2, pile.top, pile.bottom)
+  const qx = clamp(px, box.left, box.right)
+  const qy = clamp(py, box.top, box.bottom)
+  return Math.hypot(px - qx, py - qy) > LEADER_MIN ? { x1: qx, y1: qy, x2: px, y2: py } : undefined
+}
+
+/** True when some part of the segment runs through the open inside of the box (touching its edge does not count). */
+export function segmentHitsBox(s: Segment, b: Box): boolean {
+  const dx = s.x2 - s.x1
+  const dy = s.y2 - s.y1
+  if (dx === 0 && dy === 0) return false
+  let t0 = 0
+  let t1 = 1
+  const clip = (p: number, q: number) => {
+    if (p === 0) return q >= 0
+    const t = q / p
+    if (p < 0) {
+      if (t > t1) return false
+      if (t > t0) t0 = t
+    } else {
+      if (t < t0) return false
+      if (t < t1) t1 = t
+    }
+    return true
+  }
+  if (!clip(-dx, s.x1 - b.left) || !clip(dx, b.right - s.x1) || !clip(-dy, s.y1 - b.top) || !clip(dy, b.bottom - s.y1))
+    return false
+  if (!(t1 > t0)) return false
+  const t = (t0 + t1) / 2
+  const x = s.x1 + dx * t
+  const y = s.y1 + dy * t
+  return x > b.left && x < b.right && y > b.top && y < b.bottom
+}
+
+/** True when two segments properly cross: each lies strictly on both sides of the other. Shared points do not count. */
+export function segmentsCross(a: Segment, b: Segment): boolean {
+  const side = (s: Segment, x: number, y: number) => Math.sign((s.x2 - s.x1) * (y - s.y1) - (s.y2 - s.y1) * (x - s.x1))
+  return side(a, b.x1, b.y1) * side(a, b.x2, b.y2) < 0 && side(b, a.x1, a.y1) * side(b, a.x2, a.y2) < 0
+}
+
+/** Distance between two boxes; 0 when they touch or overlap. */
+function gap(a: Box, b: Box) {
+  return Math.hypot(Math.max(0, a.left - b.right, b.left - a.right), Math.max(0, a.top - b.bottom, b.top - a.bottom))
+}
+
+/**
+ * True when a block without a leader plainly names its pile: its centre is above or below the pile's span, or level
+ * with it beside the pile, and no other pile's sprite (`others`) is nearer to the block than the pile.
+ */
+export function namesPile(box: Box, pile: Box, others: readonly Box[]): boolean {
+  const cx = (box.left + box.right) / 2
+  const cy = (box.top + box.bottom) / 2
+  if (!(cx >= pile.left && cx <= pile.right) && !(cy >= pile.top && cy <= pile.bottom)) return false
+  const own = gap(box, pile)
+  return others.every((o) => gap(box, o) >= own)
+}
+
 /** Steps a candidate may shift by when the preferred ones are taken. */
 const SHIFT_STEPS = 8
 
@@ -392,20 +487,23 @@ export function labelCandidates(block: LabelBlock): Box[] {
 }
 
 /**
- * The first free candidate of a block (the remembered one first): inside the viewport and touching none of `blocked`.
+ * The first free candidate of a block (the remembered one first): inside the viewport, touching none of `blocked` and
+ * accepted by `accept` (asked only of candidates passing those cheaper tests; it also gets the hull of all candidates).
  * Undefined when every candidate is taken.
  */
 function placeOne(
   block: LabelBlock,
   blocked: readonly Box[],
   viewport: Box,
-  remembered?: number
+  remembered?: number,
+  accept?: (box: Box, hull: Box) => boolean
 ): { box: Box; index: number } | undefined {
   const candidates = labelCandidates(block)
   // Only what lies near the candidates can block them.
   const hull = union(candidates)
   const near = blocked.filter((o) => overlap(o, hull) > 0)
-  const fits = (box: Box) => inside(box, viewport) && near.every((o) => overlap(box, o) === 0)
+  const fits = (box: Box) =>
+    inside(box, viewport) && near.every((o) => overlap(box, o) === 0) && (!accept || accept(box, hull))
   if (remembered !== undefined && candidates[remembered] && fits(candidates[remembered]))
     return { box: candidates[remembered], index: remembered }
   const index = candidates.findIndex(fits)
@@ -479,15 +577,29 @@ export interface FoodLabelPlacement {
   pile: number
   box: Box
   lines: string[]
+  /** Thin line from the block to its pile, when the block is further away than LEADER_MIN. */
+  leader?: Segment
 }
 
+const reaches = (b: Box, hull: Box) =>
+  b.left <= hull.right && b.right >= hull.left && b.top <= hull.bottom && b.bottom >= hull.top
+const segmentBox = (s: Segment): Box => ({
+  left: Math.min(s.x1, s.x2),
+  top: Math.min(s.y1, s.y2),
+  right: Math.max(s.x1, s.x2),
+  bottom: Math.max(s.y1, s.y2)
+})
+
 /**
- * Label blocks of the piles, in input order. A pile gets a block only when one of its sprites shows inside `visible`
- * (the visible world). Each block takes the remembered or first free candidate inside `viewport`, clear of every
- * obstacle and every block placed before; when none is free it shrinks (foodLabelVariants) and tries again, and when
- * even its single line finds no room it is not drawn this frame. So blocks never overlap each other or an obstacle and
- * stay inside the viewport. `measure` gives a text's width; `memory` (candidate index per pile key) is read, then
- * replaced by this frame's choices.
+ * Label blocks of the piles, in input order. A pile gets a block only when one of its sprites shows (spriteShows): some
+ * of it lies inside `visible` (the visible world) and outside every `occluders` box (opaque parts drawn over the
+ * canvas, which should also be among the obstacles). Each block takes the remembered or first free candidate inside
+ * `viewport`, clear of every obstacle and every block placed before; when none is free it shrinks (foodLabelVariants)
+ * and tries again, and when even its single line finds no room it is not drawn this frame. So blocks never overlap
+ * each other or an obstacle and stay inside the viewport. No block sits on an earlier leader. A block further from its
+ * pile than LEADER_MIN gets a `leader` line, kept clear of every placed block, every obstacle but the pile's own
+ * sprites and every earlier leader; a nearer block must plainly name its pile (namesPile). `measure` gives a text's
+ * width; `memory` (candidate index per pile key) is read, then replaced by this frame's choices.
  */
 export function placeFoodLabels(
   piles: readonly FoodLabelPile[],
@@ -495,14 +607,19 @@ export function placeFoodLabels(
   visible: Box,
   viewport: Box,
   measure: (text: string) => number,
-  memory?: Map<string, number>
+  memory?: Map<string, number>,
+  occluders: readonly Box[] = []
 ): FoodLabelPlacement[] {
   const placed: FoodLabelPlacement[] = []
   const blocked = [...obstacles]
+  const rawBoxes: Box[] = []
+  const leaders: Segment[] = []
   const chosen = new Map<string, number>()
   piles.forEach((pile, n) => {
-    if (!pile.lines.length || !pile.sprites.some((sprite) => overlap(sprite, visible) > 0)) return
+    if (!pile.lines.length || !pile.sprites.some((sprite) => spriteShows(sprite, visible, occluders))) return
     const bounds = union(pile.sprites)
+    const isOwn = (o: Box) =>
+      pile.sprites.some((s) => s.left === o.left && s.top === o.top && s.right === o.right && s.bottom === o.bottom)
     for (const lines of foodLabelVariants(pile.lines, pile.local, viewport.bottom - viewport.top)) {
       const block: LabelBlock = {
         pile: bounds,
@@ -510,9 +627,28 @@ export function placeFoodLabels(
         height: lines.length * LABEL_LINE,
         key: pile.key
       }
-      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key))
+      // What a leader or a block could meet near this block's candidates, found on the first candidate asked about.
+      let near: { boxes: Box[]; lines: Segment[]; others: Box[] } | undefined
+      const accept = (box: Box, hull: Box) => {
+        if (!near) {
+          const area = union([hull, bounds])
+          near = {
+            boxes: [...rawBoxes, ...obstacles.filter((o) => !isOwn(o))].filter((o) => reaches(o, area)),
+            lines: leaders.filter((l) => reaches(segmentBox(l), area)),
+            others: piles.flatMap((other, m) => (m === n ? [] : other.sprites)).filter((o) => reaches(o, area))
+          }
+        }
+        if (near.lines.some((l) => segmentHitsBox(l, box))) return false
+        const line = leaderLine(bounds, box)
+        if (!line) return namesPile(box, bounds, near.others)
+        return !near.boxes.some((o) => segmentHitsBox(line, o)) && !near.lines.some((l) => segmentsCross(line, l))
+      }
+      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key), accept)
       if (!spot) continue
-      placed.push({ pile: n, box: spot.box, lines })
+      const leader = leaderLine(bounds, spot.box)
+      placed.push(leader ? { pile: n, box: spot.box, lines, leader } : { pile: n, box: spot.box, lines })
+      rawBoxes.push(spot.box)
+      if (leader) leaders.push(leader)
       blocked.push(spaced(spot.box))
       if (pile.key !== undefined) chosen.set(pile.key, spot.index)
       break

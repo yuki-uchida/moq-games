@@ -47,6 +47,7 @@ import { choiceIcon, iconImg } from './art/icons'
 import { sheet } from './art/index'
 import { duration } from './art/sheet'
 import { Renderer, bodyFor } from './render'
+import { hidesBehind } from './hud-occlusion'
 import { readView, toView, type View, type ViewPlayer } from './view'
 
 function element<T extends HTMLElement>(selector: string): T {
@@ -1055,12 +1056,13 @@ let hudRectsHidden = true
 /**
  * Hands the renderer the screen boxes of the HUD parts drawn over the canvas, so food labels keep clear of them: every
  * visible part with its own background or border, or with no children. Large transparent containers (the full-screen
- * overlay, rows and lists) are looked into instead.
+ * overlay, rows and lists) are looked into instead. A box is `opaque` when it hides what lies under it (hidesBehind);
+ * foods under opaque boxes get no label.
  */
 function measureHudRects(now = performance.now()) {
   hudRectsAt = now
   hudRectsHidden = hud.hidden
-  const rects: { left: number; top: number; right: number; bottom: number }[] = []
+  const rects: { left: number; top: number; right: number; bottom: number; opaque: boolean }[] = []
   const frame = canvas.getBoundingClientRect()
   const visit = (parent: Element, depth: number) => {
     for (const child of Array.from(parent.children)) {
@@ -1081,7 +1083,8 @@ function measureHudRects(now = performance.now()) {
           left: Math.max(0, r.left - frame.left),
           top: Math.max(0, r.top - frame.top),
           right: Math.min(frame.width, r.right - frame.left),
-          bottom: Math.min(frame.height, r.bottom - frame.top)
+          bottom: Math.min(frame.height, r.bottom - frame.top),
+          opaque: hidesBehind(style)
         }
         if (box.right > box.left && box.bottom > box.top) rects.push(box)
       } else if (depth < 6) visit(child, depth + 1)

@@ -16,16 +16,23 @@ import {
   labelCandidates,
   LABEL_LINE,
   layoutFoods,
+  leaderLine,
+  LEADER_MIN,
+  namesPile,
   placeFoodLabels,
   placeLabelBlocks,
   playerBox,
+  segmentHitsBox,
+  segmentsCross,
+  spriteShows,
   type Box,
   type FoodLabelEntry,
   type FoodLabelPile,
   type FoodLabelPlacement,
   type FoodPoint,
   type FoodSpot,
-  type LabelBlock
+  type LabelBlock,
+  type Segment
 } from '../src/food-layout'
 
 const gap = (a: FoodPoint, b: FoodPoint) => Math.hypot(a.x - b.x, a.y - b.y)
@@ -460,6 +467,39 @@ function expectClear(placed: FoodLabelPlacement[], obstacles: Box[], viewport: B
   })
 }
 
+const sameBox = (a: Box, b: Box) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom
+
+/** Leaders stay off every other block, every obstacle but their pile's own sprites, and each other. */
+function expectLeadersClear(placed: FoodLabelPlacement[], piles: readonly FoodLabelPile[], obstacles: Box[]) {
+  placed.forEach((p, n) => {
+    if (!p.leader) return
+    const own = piles[p.pile].sprites
+    placed.forEach((q, m) => {
+      if (m !== n) expect(segmentHitsBox(p.leader!, q.box)).toBe(false)
+      if (m > n && q.leader) expect(segmentsCross(p.leader!, q.leader)).toBe(false)
+    })
+    for (const o of obstacles) if (!own.some((b) => sameBox(b, o))) expect(segmentHitsBox(p.leader, o)).toBe(false)
+  })
+}
+
+const boundsOf = (boxes: readonly Box[]): Box =>
+  boxes.reduce((u, b) => ({
+    left: Math.min(u.left, b.left),
+    top: Math.min(u.top, b.top),
+    right: Math.max(u.right, b.right),
+    bottom: Math.max(u.bottom, b.bottom)
+  }))
+
+/** Sprites of every pile but the n-th. */
+const otherSprites = (piles: readonly FoodLabelPile[], n: number) =>
+  piles.flatMap((pile, m) => (m === n ? [] : pile.sprites))
+
+/** A block without a leader plainly names its pile. */
+function expectNamed(placed: FoodLabelPlacement[], piles: readonly FoodLabelPile[]) {
+  for (const p of placed)
+    if (!p.leader) expect(namesPile(p.box, boundsOf(piles[p.pile].sprites), otherSprites(piles, p.pile))).toBe(true)
+}
+
 /** HUD of a phone in portrait: the top bar with the buttons at the right, the team list and the hand panel. */
 function phoneHud(s: ReturnType<typeof screen>) {
   return [
@@ -611,11 +651,14 @@ describe('placeFoodLabels', () => {
         )
       ).flat()
       const hud = phoneHud(s).slice(0, 1 + Math.floor(random() * 5))
+      const occluders = hud.filter(() => random() < 0.5)
       const obstacles = [...sprites, ...players, ...hud]
-      const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure)
+      const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure, undefined, occluders)
       expectClear(placed, obstacles, s.viewport)
+      expectLeadersClear(placed, piles, obstacles)
+      expectNamed(placed, piles)
       piles.forEach((pile, n) => {
-        const onScreen = pile.sprites.some((b) => overlaps(b, s.visible))
+        const onScreen = pile.sprites.some((b) => spriteShows(b, s.visible, occluders))
         const label = placed.find((p) => p.pile === n)
         if (!onScreen) return expect(label).toBeUndefined()
         visiblePiles++
@@ -629,22 +672,158 @@ describe('placeFoodLabels', () => {
         // Left out: even the single last line had no free candidate next to what was placed before it.
         dropped++
         const one = foodLabelVariants(pile.lines, pile.local, s.viewport.bottom - s.viewport.top).at(-1)!
-        const before = placed.filter((p) => p.pile < n).map((p) => grow(p.box, BLOCK_GAP))
-        const bounds = pile.sprites.reduce((u, b) => ({
-          left: Math.min(u.left, b.left),
-          top: Math.min(u.top, b.top),
-          right: Math.max(u.right, b.right),
-          bottom: Math.max(u.bottom, b.bottom)
-        }))
+        const earlier = placed.filter((p) => p.pile < n)
+        const before = earlier.map((p) => grow(p.box, BLOCK_GAP))
+        const bounds = boundsOf(pile.sprites)
         const block = { pile: bounds, width: Math.max(...one.map(measure)) + 4, height: one.length * LABEL_LINE }
         expect(
-          labelCandidates(block).some(
-            (c) => inside(c, s.viewport) && ![...obstacles, ...before].some((o) => overlaps(c, o))
-          )
+          labelCandidates(block).some((c) => {
+            if (!inside(c, s.viewport) || [...obstacles, ...before].some((o) => overlaps(c, o))) return false
+            if (earlier.some((e) => e.leader && segmentHitsBox(e.leader, c))) return false
+            const line = leaderLine(bounds, c)
+            if (!line) return namesPile(c, bounds, otherSprites(piles, n))
+            const others = obstacles.filter((o) => !pile.sprites.some((b) => sameBox(b, o)))
+            return !(
+              [...earlier.map((e) => e.box), ...others].some((o) => segmentHitsBox(line, o)) ||
+              earlier.some((e) => e.leader && segmentsCross(line, e.leader))
+            )
+          })
         ).toBe(false)
       })
     }
     expect(visiblePiles).toBeGreaterThan(300)
-    expect(dropped / visiblePiles).toBeLessThan(0.03)
+    expect(dropped / visiblePiles).toBeLessThan(0.08)
+  })
+})
+
+describe('spriteShows', () => {
+  const visible: Box = { left: 0, top: 0, right: 100, bottom: 100 }
+  const sprite: Box = { left: 40, top: 40, right: 60, bottom: 60 }
+  it('is false when one occluder covers the sprite and true when a part sticks out', () => {
+    expect(spriteShows(sprite, visible, [])).toBe(true)
+    expect(spriteShows(sprite, visible, [{ left: 30, top: 30, right: 70, bottom: 70 }])).toBe(false)
+    expect(spriteShows(sprite, visible, [{ left: 30, top: 30, right: 55, bottom: 70 }])).toBe(true)
+  })
+  it('is false when two occluders together cover the sprite', () => {
+    const halves = [
+      { left: 30, top: 30, right: 50, bottom: 70 },
+      { left: 50, top: 30, right: 70, bottom: 70 }
+    ]
+    expect(spriteShows(sprite, visible, halves)).toBe(false)
+    expect(spriteShows(sprite, visible, [halves[0]])).toBe(true)
+  })
+  it('is false outside the visible box and true when only part of it is inside', () => {
+    expect(spriteShows({ left: 120, top: 40, right: 140, bottom: 60 }, visible, [])).toBe(false)
+    expect(spriteShows({ left: 90, top: 40, right: 110, bottom: 60 }, visible, [])).toBe(true)
+  })
+})
+
+describe('leader lines', () => {
+  const pile: Box = { left: 0, top: 0, right: 24, bottom: 24 }
+  it('has none for a block touching the pile', () => {
+    expect(leaderLine(pile, { left: -10, top: 28, right: 40, bottom: 43 })).toBeUndefined()
+    expect(LEADER_MIN).toBe(8)
+  })
+  it('runs from the block edge to the pile box for a distant block', () => {
+    const box: Box = { left: 100, top: 60, right: 190, bottom: 75 }
+    const l = leaderLine(pile, box)!
+    expect(l).toBeDefined()
+    // Block end on the block's edge, pile end on the pile's box.
+    expect(l.x1 >= box.left && l.x1 <= box.right && l.y1 >= box.top && l.y1 <= box.bottom).toBe(true)
+    expect(l.x1 === box.left || l.x1 === box.right || l.y1 === box.top || l.y1 === box.bottom).toBe(true)
+    expect(l.x2 >= pile.left && l.x2 <= pile.right && l.y2 >= pile.top && l.y2 <= pile.bottom).toBe(true)
+    expect(l.x2 === pile.left || l.x2 === pile.right || l.y2 === pile.top || l.y2 === pile.bottom).toBe(true)
+  })
+})
+
+describe('namesPile', () => {
+  const pile: Box = { left: 0, top: 0, right: 24, bottom: 24 }
+  const above = (left: number): Box => ({ left, top: -19, right: left + 90, bottom: -4 })
+  it('takes a block centred above, below or level beside its pile', () => {
+    expect(namesPile(above(-33), pile, [])).toBe(true)
+    expect(namesPile({ left: -33, top: 28, right: 57, bottom: 43 }, pile, [])).toBe(true)
+    expect(namesPile({ left: 30, top: 4.5, right: 120, bottom: 19.5 }, pile, [])).toBe(true)
+  })
+  it('refuses a block whose centre is off the pile both ways, as at a corner or shifted along a row', () => {
+    expect(namesPile(above(-63), pile, [])).toBe(false)
+    expect(namesPile({ left: 30, top: -19, right: 120, bottom: -4 }, pile, [])).toBe(false)
+  })
+  it('refuses a block nearer to another pile than to its own', () => {
+    // A row neighbour as near as the pile is fine; one nearer is not.
+    expect(namesPile(above(-33), pile, [{ left: 31, top: 0, right: 55, bottom: 24 }])).toBe(true)
+    expect(namesPile(above(-33), pile, [{ left: 0, top: -40, right: 24, bottom: -21 }])).toBe(false)
+  })
+})
+
+describe('segmentHitsBox and segmentsCross', () => {
+  const box: Box = { left: 10, top: 10, right: 20, bottom: 20 }
+  const seg = (x1: number, y1: number, x2: number, y2: number): Segment => ({ x1, y1, x2, y2 })
+  it('hits a box only through its open inside', () => {
+    expect(segmentHitsBox(seg(0, 15, 30, 15), box)).toBe(true)
+    expect(segmentHitsBox(seg(0, 0, 30, 30), box)).toBe(true)
+    expect(segmentHitsBox(seg(12, 12, 14, 14), box)).toBe(true)
+    expect(segmentHitsBox(seg(0, 5, 30, 5), box)).toBe(false)
+    expect(segmentHitsBox(seg(0, 10, 30, 10), box)).toBe(false)
+    expect(segmentHitsBox(seg(10, 0, 10, 30), box)).toBe(false)
+    expect(segmentHitsBox(seg(0, 0, 10, 10), box)).toBe(false)
+    expect(segmentHitsBox(seg(20, 20, 30, 30), box)).toBe(false)
+    expect(segmentHitsBox(seg(0, 15, 9, 15), box)).toBe(false)
+    expect(segmentHitsBox(seg(15, 15, 15, 15), box)).toBe(false)
+  })
+  it('crosses only when each segment passes through the other', () => {
+    expect(segmentsCross(seg(0, 0, 10, 10), seg(0, 10, 10, 0))).toBe(true)
+    expect(segmentsCross(seg(0, 0, 10, 0), seg(0, 5, 10, 5))).toBe(false)
+    expect(segmentsCross(seg(0, 0, 10, 10), seg(10, 10, 20, 0))).toBe(false)
+    expect(segmentsCross(seg(0, 0, 10, 0), seg(5, 0, 5, 10))).toBe(false)
+    expect(segmentsCross(seg(0, 0, 10, 0), seg(12, 0, 20, 0))).toBe(false)
+    expect(segmentsCross(seg(0, 0, 10, 0), seg(5, 0, 15, 0))).toBe(false)
+  })
+})
+
+describe('hidden foods and leader lines in placeFoodLabels', () => {
+  it('labels no pile hidden behind an opaque box, and one that shows in part', () => {
+    const s = screen(1280, 720)
+    const { sprites, piles } = labelPiles(
+      [
+        { x: 0, y: 0 },
+        { x: 200, y: 0 }
+      ],
+      [0, 1]
+    )
+    const cover = grow(sprites[0], 6)
+    const hidden = placeFoodLabels(piles, [...sprites, cover], s.visible, s.viewport, measure, undefined, [cover])
+    expect(hidden.map((p) => p.pile)).toEqual([1])
+    // A second sprite of the pile sticks out of the cover: the pile keeps its label.
+    const two = labelPiles(
+      [
+        { x: 0, y: 0 },
+        { x: 26, y: 0 }
+      ],
+      [0, 0]
+    )
+    const part = grow(two.sprites[0], 6)
+    const shown = placeFoodLabels(two.piles, [...two.sprites, part], s.visible, s.viewport, measure, undefined, [part])
+    expect(shown.map((p) => p.pile)).toEqual([0])
+    // Without occluders the covered pile is labelled as before.
+    expect(placeFoodLabels(piles, [...sprites, cover], s.visible, s.viewport, measure)).toHaveLength(2)
+  })
+
+  it('keeps the leader of a pushed-away label off the labels of piles in between', () => {
+    for (const [width, height, x0, y0] of [
+      [1280, 720, 80, 60],
+      [390, 844, -80, 90]
+    ]) {
+      const s = screen(width, height)
+      const points = Array.from({ length: 6 }, (_, i) => ({ x: x0 + 31 * i, y: y0 }))
+      const { sprites, piles } = labelPiles(points, [0, 0, 0, 0, 0, 0])
+      expect(piles).toHaveLength(6)
+      const players = playerBox(0, 0, 1, 0, { name: 60, buffs: 0, badge: false })
+      const obstacles = [...sprites, ...players]
+      const placed = placeFoodLabels(piles, obstacles, s.visible, s.viewport, measure)
+      expectClear(placed, obstacles, s.viewport)
+      expectLeadersClear(placed, piles, obstacles)
+      expectNamed(placed, piles)
+      expect(placed.length).toBeGreaterThan(0)
+    }
   })
 })

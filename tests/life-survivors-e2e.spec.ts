@@ -2284,6 +2284,85 @@ test('a food just past the right edge of the screen gets no label', async ({ pag
   expect(errors).toEqual([])
 })
 
+test('a food completely under the opaque hand panel gets no label', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.addInitScript(() => {
+    const labels: string[] = []
+    Object.assign(window, { foodLabels: labels })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.startsWith('P1：') || text.startsWith('…ほか')) labels.push(text)
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    // Keep the HUD boxes the renderer is handed.
+    const renderPath = '/src/render.ts'
+    const { Renderer } = await import(renderPath)
+    const seen = window as unknown as { hudRects: unknown[] }
+    seen.hudRects = []
+    const original = Renderer.prototype.setHudRects
+    Renderer.prototype.setHudRects = function (rects: unknown[]) {
+      seen.hudRects = rects
+      return original.call(this, rects)
+    }
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
+    player.weapons = [{ id: 'w_garden', lv: 1, cd: 0, held: 0, damage: 0 }]
+  })
+  const hand = page.locator('.hand')
+  await expect(hand).toBeVisible()
+  // The renderer re-measures the HUD every 250 ms: let it learn the panel before any food is dropped under it.
+  await page.waitForTimeout(600)
+  const handBox = (await hand.boundingBox())!
+  const canvasBox = (await page.locator('canvas').first().boundingBox())!
+  // The hand panel reaches the renderer as an opaque box: its solid, blurred background hides the field under it.
+  const rects = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          hudRects: { left: number; top: number; right: number; bottom: number; opaque?: boolean }[]
+        }
+      ).hudRects
+  )
+  const handRect = rects.find(
+    (r) => Math.abs(r.left - (handBox.x - canvasBox.x)) < 1.5 && Math.abs(r.top - (handBox.y - canvasBox.y)) < 1.5
+  )
+  expect(handRect?.opaque).toBe(true)
+  // At 1280×720 one CSS px is one world unit, and the camera sits on the player at the canvas centre.
+  const dx = handBox.x + handBox.width / 2 - (canvasBox.x + canvasBox.width / 2)
+  const dy = handBox.y + handBox.height / 2 - (canvasBox.y + canvasBox.height / 2)
+  await handle.evaluate(
+    (hook, offset) => {
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      game.state.items = [
+        { kind: 'food_heal', owner: player.id, power: 1, x: player.x + offset.dx, y: player.y + offset.dy },
+        { kind: 'food_damage', owner: player.id, power: 1, x: player.x + 100, y: player.y + 60 }
+      ]
+    },
+    { dx, dy }
+  )
+  const drawn = () => page.evaluate(() => (window as unknown as { foodLabels: string[] }).foodLabels)
+  await expect.poll(async () => (await drawn()).includes('P1：攻撃力UP')).toBe(true)
+  await page.waitForTimeout(500)
+  expect(await handle.evaluate((hook) => (hook.game as unknown as Game).state.items.length)).toBe(2)
+  expect((await drawn()).filter((text) => text !== 'P1：攻撃力UP')).toEqual([])
+  expect(errors).toEqual([])
+})
+
 test('foods dropped on the same spot fan out and keep readable labels', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
