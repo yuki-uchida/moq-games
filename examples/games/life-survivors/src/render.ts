@@ -375,6 +375,7 @@ export class Renderer {
   /** Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas; food labels avoid them. */
   private hudRects: (Box & { opaque?: boolean })[] = []
   private transientRects: Box[] = []
+  private coverRects: Box[] = []
   private readonly textWidths = new Map<string, number>()
   /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
   private readonly foodLabelMemory: LabelMemory = new Map()
@@ -590,11 +591,17 @@ export class Renderer {
   /**
    * Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas. Food labels keep clear of
    * them from the next frame on, and foods hidden behind `opaque` parts get no label. `transient` are the paths of
-   * parts that come and go (banners): labels they cross are not drawn while they last, but never move for them.
+   * parts that come and go (banners, feed lines): labels they cross are not drawn while they last, but never move for
+   * them. `covers` are the current boxes of those of them that are opaque: foods under them count as out of sight.
    */
-  setHudRects(rects: readonly (Box & { opaque?: boolean })[], transient: readonly Box[] = []) {
+  setHudRects(
+    rects: readonly (Box & { opaque?: boolean })[],
+    transient: readonly Box[] = [],
+    covers: readonly Box[] = []
+  ) {
     this.hudRects = rects.map((r) => ({ ...r }))
     this.transientRects = transient.map((r) => ({ ...r }))
+    this.coverRects = covers.map((r) => ({ ...r }))
   }
 
   /**
@@ -644,7 +651,7 @@ export class Renderer {
       bottom: toWorldY(r.bottom)
     })
     const hud = this.hudRects.map(toWorld)
-    const occluders = this.hudRects.filter((r) => r.opaque).map(toWorld)
+    const occluders = [...this.hudRects.filter((r) => r.opaque).map(toWorld), ...this.coverRects.map(toWorld)]
     const transient = this.transientRects.map(toWorld)
     if (this.textWidths.size > 400) this.textWidths.clear()
     const measure = (text: string) => {

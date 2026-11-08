@@ -986,3 +986,38 @@ describe('placeFoodLabels with transient boxes (banners)', () => {
     placed.slice(1).forEach((p) => expect(overlaps(p.box, grow(placed[0].box, BLOCK_GAP))).toBe(false))
   })
 })
+
+describe('placeFoodLabels memory of a pile that is out of sight', () => {
+  it('keeps the remembered candidate while a cover hides the sprites, and places there again afterwards', () => {
+    const s = screen(1280, 720)
+    const { sprites, piles } = labelPiles([{ x: 0, y: 0 }], [0])
+    const keyed = piles.map((p) => ({ ...p, key: 'pile' }))
+    const wall = { left: -200, top: sprites[0].top - 80, right: 200, bottom: sprites[0].top - 1 }
+    const memory: LabelMemory = new Map()
+    // A wall over the usual spot above the pile: the block takes a later candidate, which is remembered.
+    const [first] = placeFoodLabels(keyed, [...sprites, wall], s.visible, s.viewport, measure, memory, [], [], 0)
+    const [plain] = placeFoodLabels(keyed, sprites, s.visible, s.viewport, measure, undefined, [], [], 0)
+    expect(first.box).not.toEqual(plain.box)
+    const index = memory.get('pile')!.index
+    // A cover over the sprites: no label, but the memory stays.
+    const cover = grow(sprites[0], 6)
+    expect(
+      placeFoodLabels(keyed, [...sprites, cover], s.visible, s.viewport, measure, memory, [cover], [], 16)
+    ).toEqual([])
+    expect(memory.get('pile')).toEqual({ index })
+    // The cover and the wall are gone: the label is back at the remembered box, not at the first candidate.
+    const [back] = placeFoodLabels(keyed, sprites, s.visible, s.viewport, measure, memory, [], [], 32)
+    expect(back.box).toEqual(first.box)
+    // Without the memory the block would sit elsewhere.
+    expect(back.box).not.toEqual(plain.box)
+  })
+
+  it('keeps nothing for a pile without a key or a memory entry', () => {
+    const s = screen(1280, 720)
+    const { sprites, piles } = labelPiles([{ x: 0, y: 0 }], [0])
+    const cover = grow(sprites[0], 6)
+    const memory: LabelMemory = new Map()
+    placeFoodLabels(piles, [...sprites, cover], s.visible, s.viewport, measure, memory, [cover])
+    expect(memory.size).toBe(0)
+  })
+})
