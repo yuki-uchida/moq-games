@@ -372,7 +372,7 @@ export class Renderer {
     local: -1
   }
   /** Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas; food labels avoid them. */
-  private hudRects: Box[] = []
+  private hudRects: (Box & { opaque?: boolean })[] = []
   private readonly textWidths = new Map<string, number>()
   /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
   private readonly foodLabelMemory = new Map<string, number>()
@@ -585,9 +585,9 @@ export class Renderer {
 
   /**
    * Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas. Food labels keep clear of
-   * them from the next frame on.
+   * them from the next frame on, and foods hidden behind `opaque` parts get no label.
    */
-  setHudRects(rects: readonly Box[]) {
+  setHudRects(rects: readonly (Box & { opaque?: boolean })[]) {
     this.hudRects = rects.map((r) => ({ ...r }))
   }
 
@@ -627,12 +627,14 @@ export class Renderer {
     const k = this.canvas.width / (this.width || 1) / this.scale
     const toWorldX = (x: number) => this.camera.x + (x - this.width / 2) * k
     const toWorldY = (y: number) => this.camera.y + (y - this.height / 2) * k
-    const hud = this.hudRects.map((r) => ({
+    const toWorld = (r: Box): Box => ({
       left: toWorldX(r.left),
       top: toWorldY(r.top),
       right: toWorldX(r.right),
       bottom: toWorldY(r.bottom)
-    }))
+    })
+    const hud = this.hudRects.map(toWorld)
+    const occluders = this.hudRects.filter((r) => r.opaque).map(toWorld)
     if (this.textWidths.size > 400) this.textWidths.clear()
     const measure = (text: string) => {
       let width = this.textWidths.get(text)
@@ -645,38 +647,28 @@ export class Renderer {
       local: owners[n].findIndex((owner) => owner === local),
       key: keys[n]
     }))
-    for (const { pile, box, lines: shown } of placeFoodLabels(
+    for (const { box, lines: shown, leader } of placeFoodLabels(
       labelPiles,
       [...sprites, ...players, ...hud],
       visible,
       viewport,
       measure,
-      this.foodLabelMemory
+      this.foodLabelMemory,
+      occluders
     )) {
       const cx = (box.left + box.right) / 2
       // A block pushed away from its pile gets a thin leader to it, so crowded labels still point at their foods.
-      const own = piles[pile]
-      if (own.length) {
-        const left = Math.min(...own.map((s) => s.left))
-        const right = Math.max(...own.map((s) => s.right))
-        const top = Math.min(...own.map((s) => s.top))
-        const bottom = Math.max(...own.map((s) => s.bottom))
-        const px = Math.max(left, Math.min(right, cx))
-        const py = Math.max(top, Math.min(bottom, (box.top + box.bottom) / 2))
-        const qx = Math.max(box.left, Math.min(box.right, px))
-        const qy = Math.max(box.top, Math.min(box.bottom, py))
-        if (Math.hypot(px - qx, py - qy) > 8) {
-          ctx.save()
-          ctx.lineWidth = 1
-          ctx.strokeStyle = 'rgba(255, 244, 207, 0.55)'
-          ctx.beginPath()
-          ctx.moveTo(qx, qy)
-          ctx.lineTo(px, py)
-          ctx.stroke()
-          ctx.fillStyle = 'rgba(255, 244, 207, 0.8)'
-          ctx.fillRect(px - 1, py - 1, 2, 2)
-          ctx.restore()
-        }
+      if (leader) {
+        ctx.save()
+        ctx.lineWidth = 1
+        ctx.strokeStyle = 'rgba(255, 244, 207, 0.55)'
+        ctx.beginPath()
+        ctx.moveTo(leader.x1, leader.y1)
+        ctx.lineTo(leader.x2, leader.y2)
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(255, 244, 207, 0.8)'
+        ctx.fillRect(leader.x2 - 1, leader.y2 - 1, 2, 2)
+        ctx.restore()
       }
       shown.forEach((text, j) => {
         const ly = box.top + 13 + j * LABEL_LINE
