@@ -4,6 +4,10 @@ export const MAX_PAYLOAD_BYTES = 64 * 1024
 export const MAX_PLAYERS = 16
 const identifier = /^[a-zA-Z0-9_-]{1,64}$/
 const admissionTimeoutMs = 15_000
+/** Guests also subscribe to the host track directly, in case the relay never reports the host's announcement. */
+const hostProbeDelayMs = 750
+const hostProbeRetryMs = 1_500
+const hostProbeTimeoutMs = 3_000
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
 
@@ -56,6 +60,8 @@ export class CooperativeNetwork {
   private hasSubscriber = false
   private joined = false
   private admissionTimer?: ReturnType<typeof setTimeout>
+  private probeTimer?: ReturnType<typeof setTimeout>
+  private probing = false
 
   constructor(private readonly options: CooperativeNetworkOptions) {
     this.playerId = options.playerId ?? crypto.randomUUID()
@@ -110,6 +116,7 @@ export class CooperativeNetwork {
         this.options.role === 'host' ? 'Hosting room' : 'Waiting for host presence'
       )
       void this.discover(watch).catch((error) => this.fail(error))
+      if (this.options.role === 'guest') this.scheduleHostProbe(hostProbeDelayMs)
     } catch (error) {
       this.fail(error)
       await this.stop(false)
@@ -169,17 +176,78 @@ export class CooperativeNetwork {
       } else if (event.kind === 'announced' && !this.peers.has(peerId) && this.peers.size < MAX_PLAYERS - 1) {
         const peer: Peer = { sequences: new Map() }
         this.peers.set(peerId, peer)
-        if (this.options.role === 'guest')
-          this.admissionTimer = setTimeout(
-            () => this.fail(new Error('Host did not admit this player; the room may be full')),
-            admissionTimeoutMs
-          )
+        if (this.options.role === 'guest') this.startAdmissionTimer()
         void this.follow(namespace, peerId, peer).catch((error) => {
           void this.removePeer(peerId, peer, error).catch((cause) => this.fail(cause))
         })
       }
     }
     if (this.active) this.fail(new Error('Namespace discovery ended'))
+  }
+
+  private startAdmissionTimer(): void {
+    clearTimeout(this.admissionTimer)
+    this.admissionTimer = setTimeout(
+      () => this.fail(new Error('Host did not admit this player; the room may be full')),
+      admissionTimeoutMs
+    )
+  }
+
+  private scheduleHostProbe(delayMs: number): void {
+    clearTimeout(this.probeTimer)
+    this.probeTimer = undefined
+    if (!this.active || this.peers.has('host')) return
+    this.probeTimer = setTimeout(() => {
+      this.probeTimer = undefined
+      void this.probeHost()
+    }, delayMs)
+  }
+
+  /**
+   * Subscribes to the host's track without waiting for its announcement. A successful probe registers the host
+   * exactly like an announcement would; a probe that loses the race (or arrives after its timeout) is closed.
+   * Failed probes are retried and never fail the session.
+   */
+  private async probeHost(): Promise<void> {
+    if (!this.active || this.probing || this.peers.has('host') || !this.session) return
+    this.probing = true
+    let subscription: MoqSubscription | undefined
+    try {
+      const pending = this.session.subscribe([...this.prefix, 'host'], 'data', {
+        filter: 'nextGroupStart',
+        forward: true
+      })
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timedOut = Symbol('timeout')
+      const result = await Promise.race([
+        pending,
+        new Promise<typeof timedOut>((done) => {
+          timer = setTimeout(() => done(timedOut), hostProbeTimeoutMs)
+        })
+      ]).finally(() => clearTimeout(timer))
+      if (result === timedOut) {
+        // Close a subscription that only resolves after the timeout.
+        void pending.then((late) => late.close()).catch(() => {})
+      } else subscription = result
+    } catch {
+      subscription = undefined
+    } finally {
+      this.probing = false
+    }
+    if (!subscription) {
+      this.scheduleHostProbe(hostProbeRetryMs)
+      return
+    }
+    if (!this.active || this.peers.has('host')) {
+      await subscription.close().catch(() => {})
+      return
+    }
+    const peer: Peer = { sequences: new Map(), subscription }
+    this.peers.set('host', peer)
+    this.startAdmissionTimer()
+    void this.read('host', peer, subscription).catch((error) => {
+      void this.removePeer('host', peer, error).catch((cause) => this.fail(cause))
+    })
   }
 
   private async follow(namespace: string[], peerId: string, peer: Peer): Promise<void> {
@@ -195,6 +263,11 @@ export class CooperativeNetwork {
       return
     }
     peer.subscription = subscription
+    await this.read(peerId, peer, subscription)
+  }
+
+  /** Reads a followed peer's track until it ends (shared by announcements and the host probe). */
+  private async read(peerId: string, peer: Peer, subscription: MoqSubscription): Promise<void> {
     void subscription.done.catch((error) => {
       void this.removePeer(peerId, peer, error).catch((cause) => this.fail(cause))
     })
@@ -317,6 +390,8 @@ export class CooperativeNetwork {
     this.active = false
     clearTimeout(this.admissionTimer)
     this.admissionTimer = undefined
+    clearTimeout(this.probeTimer)
+    this.probeTimer = undefined
     this.session?.close()
     const cleanup: Promise<unknown>[] = []
     if (this.publishingTask) cleanup.push(this.publishingTask)

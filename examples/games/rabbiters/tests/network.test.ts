@@ -441,3 +441,108 @@ describe('host authoritative cooperative MoQ transport', () => {
     ).toThrow('Invalid')
   })
 })
+
+describe('guest host probe (relays that never report the host announcement)', () => {
+  async function guestWithTimers() {
+    vi.useFakeTimers()
+    const guest = await setup('guest')
+    return guest
+  }
+  const presence = () => object(packet('presence', 'alice', 1, ['alice', 'bob']))
+
+  it('follows the host by probing when no announcement ever arrives', async () => {
+    const guest = await guestWithTimers()
+    expect(guest.session.subscribe).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(800)
+    expect(guest.session.subscribe).toHaveBeenCalledExactlyOnceWith([...prefix, 'host'], 'data', {
+      filter: 'nextGroupStart',
+      forward: true
+    })
+    guest.subscription.push(presence())
+    guest.subscription.push(object(packet('snapshot', 'alice', 2, { t: 1 })))
+    await flush()
+    expect(guest.onPresence).toHaveBeenLastCalledWith(['alice', 'bob'])
+    expect(guest.onSnapshot).toHaveBeenCalledExactlyOnceWith({ t: 1 })
+    expect(guest.onStatus).toHaveBeenLastCalledWith('ready', 'Connected to host')
+    // No more probes once the host is followed.
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
+    await guest.network.stop()
+  })
+
+  it('retries a probe that fails without failing the session', async () => {
+    const guest = await guestWithTimers()
+    guest.session.subscribe.mockImplementationOnce(async () => {
+      throw new Error('no such namespace')
+    })
+    await vi.advanceTimersByTimeAsync(800)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
+    expect(guest.onStatus).not.toHaveBeenCalledWith('error', expect.anything())
+    await vi.advanceTimersByTimeAsync(1_600)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(2)
+    guest.subscription.push(presence())
+    await flush()
+    expect(guest.onStatus).toHaveBeenLastCalledWith('ready', 'Connected to host')
+    await guest.network.stop()
+  })
+
+  it('closes a probe that resolves after its timeout and retries', async () => {
+    const guest = await guestWithTimers()
+    const late = deferred<Queue<ReceivedObject>>()
+    guest.session.subscribe.mockImplementationOnce(() => late.promise)
+    await vi.advanceTimersByTimeAsync(800 + 3_100)
+    const stale = new Queue<ReceivedObject>()
+    late.resolve(stale)
+    await flush()
+    expect(stale.close).toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1_600)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(2)
+    await guest.network.stop()
+  })
+
+  it('closes a late probe when the announcement path already follows the host (no duplicate)', async () => {
+    const guest = await guestWithTimers()
+    const late = deferred<Queue<ReceivedObject>>()
+    guest.session.subscribe.mockImplementationOnce(() => late.promise)
+    await vi.advanceTimersByTimeAsync(800)
+    guest.watch.push({ kind: 'announced', namespace: [...prefix, 'host'] })
+    await flush()
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(2)
+    const probe = new Queue<ReceivedObject>()
+    late.resolve(probe)
+    await flush()
+    expect(probe.close).toHaveBeenCalled()
+    guest.subscription.push(presence())
+    await flush()
+    expect(guest.onPresence).toHaveBeenCalledTimes(1)
+    await guest.network.stop()
+  })
+
+  it('ignores an announcement that arrives after a successful probe', async () => {
+    const guest = await guestWithTimers()
+    await vi.advanceTimersByTimeAsync(800)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
+    guest.watch.push({ kind: 'announced', namespace: [...prefix, 'host'] })
+    await flush()
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
+    guest.subscription.push(presence())
+    await flush()
+    expect(guest.onPresence).toHaveBeenCalledTimes(1)
+    await guest.network.stop()
+  })
+
+  it('stop() during a pending probe cleans up and never follows', async () => {
+    const guest = await guestWithTimers()
+    const late = deferred<Queue<ReceivedObject>>()
+    guest.session.subscribe.mockImplementationOnce(() => late.promise)
+    await vi.advanceTimersByTimeAsync(800)
+    await guest.network.stop()
+    const probe = new Queue<ReceivedObject>()
+    late.resolve(probe)
+    await flush()
+    expect(probe.close).toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
+    expect(guest.onPresence).not.toHaveBeenCalled()
+  })
+})
