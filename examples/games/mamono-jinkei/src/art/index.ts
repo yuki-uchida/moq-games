@@ -38,20 +38,39 @@ export const hasArt = (id: string) => id in REAL
 /** Every sheet id the game may ask for. */
 export const sheetIds = () => [...new Set([...Object.keys((specs ??= allSheetSpecs())), ...Object.keys(REAL)])]
 
-/** The sheet with this id (real art when registered, else a placeholder). Throws for unknown ids. */
+const filled = new Map<string, string[]>()
+
+/**
+ * The sheet with this id: real art when registered, with any contract animation the art does not draw yet filled
+ * by a placeholder (see `missingAnims`), else a whole placeholder sheet. Throws for unknown ids.
+ */
 export function sheet(id: string): Sheet {
   let s = cache.get(id)
   if (s) return s
   const make = REAL[id]
-  if (make) s = make()
-  else {
-    const contract = spec(id)
+  const contract = spec(id)
+  if (make) {
+    s = make()
+    const missing = Object.fromEntries(Object.entries(contract ?? {}).filter(([name]) => !s![name]))
+    filled.set(id, Object.keys(missing))
+    if (Object.keys(missing).length) s = { ...placeholderSheet(id, missing), ...s }
+  } else {
     if (!contract) throw new Error(`Unknown sheet: ${id}`)
+    filled.set(id, Object.keys(contract))
     s = placeholderSheet(id, contract)
   }
   cache.set(id, s)
   return s
 }
+
+/** Contract animations of a sheet that are still placeholders (all of them when the sheet has no real art). */
+export function missingAnims(id: string): string[] {
+  sheet(id)
+  return filled.get(id) ?? []
+}
+
+/** True when the stage's terrain painter exists (its tiles are not placeholders). */
+export const hasTiles = (stage: StageId) => Boolean(tileProviders[stage])
 
 const flashCache = new Map<string, Sheet>()
 /** White silhouettes of every frame of a sheet (hit flash). */
@@ -99,4 +118,5 @@ export const textRaster = (text: string, style: TextStyle): Raster | undefined =
 export function clearArtCache() {
   cache.clear()
   flashCache.clear()
+  filled.clear()
 }
