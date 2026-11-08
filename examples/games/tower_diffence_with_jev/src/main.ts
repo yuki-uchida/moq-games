@@ -37,6 +37,7 @@ import { getPrimaryRelayUrl, DEFAULT_LOCAL_RELAY_A_URL } from '../../../../utils
 import './style.css'
 import './ui/title-screen.css'
 import { titleScreenMarkup, titleSaveStatus } from './ui/TitleScreen'
+import { TitleAttract } from './ui/TitleAttract'
 import './ui/games-home-link.css'
 import './ui/battle-feel.css'
 import { BattleFeedback } from './ui/BattleFeedback'
@@ -618,6 +619,16 @@ window.addEventListener('keydown', (event) => {
 const saveConfirm = new PanelDialog($<HTMLDialogElement>('save-confirm'), [$('save-reset')], $('save-confirm-cancel'))
 const launchDialog = $<HTMLDialogElement>('launch')
 const titleDialog = $<HTMLDialogElement>('title-screen')
+// Self-playing battle behind the title: its own engine and renderer, never this page's game.
+const titleAttract = new TitleAttract(titleDialog, artBase, () => ({
+  models: UNIT_MODEL_CATALOG,
+  clips: { ...authoredRosterClips(artBase), ...dragonBreathBodyClips(artBase) },
+  deathClips: authoredDeathClips(artBase),
+  effectClips: authoredEffectClips(artBase),
+  pixelRatio: 1
+}))
+titleDialog.addEventListener('close', () => titleAttract.stop())
+Object.assign(window, { towerTitleAttractDiagnostics: () => titleAttract.diagnostics() })
 function openTitle() {
   battleMusic.setBattle(false)
   history.replaceState({ towerScreen: 'title' }, '', location.pathname + location.search)
@@ -628,9 +639,10 @@ function openTitle() {
   $<HTMLButtonElement>('title-continue').disabled = !pendingRun
   if (!titleDialog.open) titleDialog.showModal()
   $('title-new').focus({ preventScroll: true })
+  titleAttract.start()
 }
 /** Open the 出撃 screen and start downloading the likely battle while it is read.
- * Not done on the title, so leaving from there fetches nothing. */
+ * Not done by the game renderer on the title; only the delayed title demo fetches its own small battle there. */
 function showLaunch() {
   launchDialog.showModal()
   setTimeout(() => launchDialog.open && prefetchLikelyCampaign(), 300)
@@ -2829,6 +2841,7 @@ function visibilityChanged() {
   }
 }
 function pageHidden(event: PageTransitionEvent) {
+  titleAttract.stop()
   cancelPlacementGestures()
   cancelArtMode()
   persist()
@@ -2859,6 +2872,7 @@ function pageShown(event: PageTransitionEvent) {
   battleMusic.setSuspended(campaignLoading.open || paused)
   soundPlayer.setEnabled(soundPreferences.enabled)
   resumedAfterSuspension = true
+  if (titleDialog.open) titleAttract.start()
   initializeClock()
   if (started && engine.state.phase === 'assault') battleClock?.start()
   visibilityChanged()

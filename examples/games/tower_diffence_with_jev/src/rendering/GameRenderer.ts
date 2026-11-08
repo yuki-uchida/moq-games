@@ -135,6 +135,8 @@ export interface AuthoredAtlasOptions {
   readonly deathClips?: Readonly<Record<string, string>>
   readonly soldierTrial?: SoldierTrialArt
   readonly unitTrials?: UnitTrials
+  /** Device pixel ratio cap; the decorative title demo draws at 1. */
+  readonly pixelRatio?: number
 }
 export interface DefenderPlacementPreview {
   readonly battle?: boolean
@@ -331,8 +333,9 @@ export class GameRenderer {
     for (const url of new Set(Object.values(this.effectClips))) this.atlasCache.get(url, false)
     void this.specialAbilities.preload(base).catch(() => {})
   }
-  async prepareCampaign(base: URL, state: CampaignPreparationState, signal: AbortSignal, progress: (done: number, total: number) => void): Promise<void> {
-    const types = campaignRequiredTypes(state)
+  /** `only` narrows preparation to a known set of roles (the title demo); campaigns always omit it. */
+  async prepareCampaign(base: URL, state: CampaignPreparationState, signal: AbortSignal, progress: (done: number, total: number) => void, only?: ReadonlySet<UnitType>): Promise<void> {
+    const types = only ?? campaignRequiredTypes(state)
     if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) return
     if (this.campaignPreparing) throw new Error('準備は既に実行中です。')
     // A new stage is not ready until its GPU fence and shared effects also succeed.
@@ -455,7 +458,7 @@ export class GameRenderer {
         throw error
       }
       check()
-      for (const type of ALLY_TYPES) this.preparedDefenders.add(type)
+      for (const type of ALLY_TYPES) if (types.has(type)) this.preparedDefenders.add(type)
       this.campaignPrepared = true
       progress(++done, total)
     } finally { this.campaignPreparing = false }
@@ -747,7 +750,7 @@ export class GameRenderer {
       }
     }
     this.renderer.setSize(this.field.width, this.field.height, false)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, authored.pixelRatio ?? 2))
     this.renderer.domElement.setAttribute(
       'aria-label',
       '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
