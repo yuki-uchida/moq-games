@@ -92,137 +92,160 @@ function bombBurstFrame(f: number): Raster {
   return t > 0.8 ? dissolve(r, 1 - (t - 0.8) * 3) : r
 }
 
+/** A rope ring lying on the ground: `rx`/`ry` outer radii, thick twisted bands, dark rim. */
+function ropeLoop(r: Raster, cx: number, cy: number, rx: number, ry: number, thick = 3) {
+  const layer = new Raster(r.w, r.h)
+  for (let y = 0; y < r.h; y++)
+    for (let x = 0; x < r.w; x++) {
+      const dx = x + 0.5 - cx
+      const dy = y + 0.5 - cy
+      const q = (dx / rx) ** 2 + (dy / ry) ** 2
+      const qi = (dx / Math.max(0.5, rx - thick)) ** 2 + (dy / Math.max(0.5, ry - thick * 0.75)) ** 2
+      if (q > 1 || qi < 1) continue
+      const seg = Math.floor(((Math.atan2(dy, dx) + Math.PI) * 9) / TAU) % 2
+      layer.set(x, y, dy < 0 ? (seg ? R.hay[0] : R.hay[1]) : seg ? R.hay[1] : R.hay[2])
+    }
+  outlineWith(layer, C.inkWarm, false)
+  r.blit(layer)
+}
+
+/** A wooden stake with a steel ring through its head, standing at (cx, base). */
+function stake(r: Raster, cx: number, base: number, h: number, lean = 0) {
+  const l = new Raster(r.w, r.h)
+  const x0 = cx - 3 + lean
+  l.rect(x0, base - h, 6, h, R.wood[1])
+  l.rect(x0, base - h, 2, h, R.wood[0])
+  l.rect(x0 + 4, base - h, 2, h, R.wood[2])
+  l.rect(x0, base - h, 6, 2, R.wood[0])
+  l.rect(x0 + 4, base - h + 2, 2, 1, R.wood[3])
+  for (const y of [base - h + 5, base - h + 9]) l.rect(x0 + 1, y, 3, 1, R.wood[2])
+  l.poly([x0, base, x0 + 6, base, cx + lean, base + 4], R.wood[2])
+  outlineWith(l, C.inkWarm, false)
+  l.ring(cx + lean, base - h + 3, 2.2, 4.1, R.steel[1])
+  l.ring(cx + lean, base - h + 3, 3.2, 4.1, R.steel[2], 0, Math.PI)
+  l.paint(cx - 3 + lean, base - h + 1, C.white)
+  r.blit(l)
+}
+
 function snareFrame(f: number): Raster {
   const r = new Raster(48, 48)
-  const cx = 24
-  const cy = 32
-  // Rope loop lying on the ground, with a small knot and a stake behind it.
-  const rx = 15 + f
-  const ry = 7.5 + f * 0.5
-  for (let y = 0; y < 48; y++)
-    for (let x = 0; x < 48; x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1 || q < 0.62) continue
-      r.set(x, y, q > 0.88 ? R.leather[3] : ny < -0.1 ? R.leather[0] : R.leather[1])
-    }
-  // Twist marks along the rope.
-  for (let i = 0; i < 12; i++) {
-    const a = (i * TAU) / 12 + 0.2
-    const x = cx + Math.cos(a) * rx * 0.88
-    const y = cy + Math.sin(a) * ry * 0.88
-    r.paint(x, y, R.leather[2])
-  }
+  r.ellipse(24, 31, 7, 2.6, R.dirt[2])
+  r.ellipse(24, 30.5, 5.5, 1.8, R.dirt[1])
+  ropeLoop(r, 24, 38, 16 + f, 7.5 + f * 0.4)
+  r.rect(23, 28, 3, 6, R.hay[1])
+  r.rect(25, 28, 1, 6, R.hay[2])
   outlineWith(r, C.inkWarm, false)
-  // Stake.
-  r.rect(22, 12, 5, 12, R.wood[1])
-  r.rect(25, 12, 2, 12, R.wood[2])
-  r.rect(22, 12, 1, 12, R.wood[0])
-  r.rect(22, 11, 5, 1, R.wood[0])
-  r.poly([22, 24, 27, 24, 24.5, 28], R.wood[2])
-  outlineWith(r, C.inkWarm, false)
-  // Rope tying the stake to the loop and a glint that pulses.
-  r.rect(21, 20, 7, 2, R.leather[1])
-  r.rect(21, 22, 7, 1, R.leather[2])
-  r.set(f ? 30 : 17, f ? 31 : 29, C.white)
-  r.set(f ? 30 : 17, f ? 30 : 28, R.leather[0])
+  stake(r, 24, 30, 20)
+  if (f) {
+    sparkle(r, 21, 12, 2, C.white, C.white, R.steel[0])
+    r.set(35, 36, C.white)
+  } else r.set(12, 37, R.hay[0])
   return r
 }
 
 function snareSnapFrame(f: number): Raster {
   const r = new Raster(48, 48)
-  const cx = 24
-  const cy = 32
   const rx = [11, 6.5, 3.5][f]
-  const ry = [6, 3.6, 2][f]
-  for (let y = 0; y < 48; y++)
-    for (let x = 0; x < 48; x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1 || q < (f === 2 ? 0 : 0.4)) continue
-      r.set(x, y, q > 0.85 ? R.leather[3] : ny < 0 ? R.leather[0] : R.leather[1])
-    }
+  const ry = [5.6, 3.4, 2][f]
+  const cy = [38, 36, 34][f]
+  r.ellipse(24, 31, 7, 2.6, R.dirt[2])
+  r.ellipse(24, 30.5, 5.5, 1.8, R.dirt[1])
+  if (f < 2) ropeLoop(r, 24, cy, rx, ry, f ? 2.4 : 3)
+  else {
+    r.ellipse(24, cy, 4.5, 3.2, R.hay[2])
+    r.ellipse(23.5, cy - 0.5, 3.3, 2.2, R.hay[0])
+    outlineWith(r, C.inkWarm, false)
+  }
+  r.rect(23, 28, 3, Math.max(2, cy - 30), R.hay[1])
   outlineWith(r, C.inkWarm, false)
-  // Snap lines and dust flying outward from the cinch.
+  stake(r, 24, 30, 20, f === 1 ? 1 : f === 2 ? -1 : 0)
   const g = rng(70 + f)
-  for (let i = 0; i < 8; i++) {
-    const a = (i * TAU) / 8 + 0.3
-    const d0 = 4 + f * 6 + g() * 2
+  for (let i = 0; i < 9; i++) {
+    const a = (i * TAU) / 9 + 0.3
+    const d0 = 6 + f * 5 + g() * 2
+    const len = 5 - f
     r.line(
-      cx + Math.cos(a) * d0,
-      cy + Math.sin(a) * d0 * 0.55,
-      cx + Math.cos(a) * (d0 + 5),
-      cy + Math.sin(a) * (d0 + 5) * 0.55,
-      i % 2 ? C.white : R.dirt[0]
+      24 + Math.cos(a) * d0,
+      cy + Math.sin(a) * d0 * 0.5,
+      24 + Math.cos(a) * (d0 + len),
+      cy + Math.sin(a) * (d0 + len) * 0.5,
+      i % 2 ? C.white : R.hay[0]
     )
   }
-  r.rect(22, 12 + f, 5, 12 - f, R.wood[1])
-  r.rect(25, 12 + f, 2, 12 - f, R.wood[2])
-  outlineWith(r, C.inkWarm, false)
-  if (f === 0) sparkle(r, cx, cy - 2, 4, C.white, C.white, R.holy[0])
-  return f === 2 ? r : r
+  if (f === 0) sparkle(r, 24, 12, 5, C.white, C.white, R.steel[0])
+  if (f === 1) sparkle(r, 24, 12, 3, C.white, R.steel[0], R.steel[1])
+  return r
 }
 
 function dashTrailFrame(f: number): Raster {
   const r = new Raster(64, 64)
-  const cover = [1, 0.7, 0.42][f]
-  const lay = (dx: number, c: number, c2: number, k: number) => {
-    const l = new Raster(64, 64)
-    l.ellipse(30 + dx, 46, 11, 6.5, c)
-    l.ellipse(41 + dx, 43, 5.5, 4.5, c)
-    l.ellipse(44 + dx, 38, 2, 2.5, c2)
-    l.ellipse(39 + dx, 38, 2, 2.5, c2)
-    l.line(19 + dx, 46, 8 + dx, 40, c2)
-    l.line(19 + dx, 47, 9 + dx, 43, c2)
-    l.rect(24 + dx, 51, 3, 2, c2)
-    l.rect(34 + dx, 51, 3, 2, c2)
-    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (l.get(x, y) && keep(x, y, k)) r.set(x, y, l.get(x, y))
-  }
-  lay(-10 - f * 3, R.ratFur[3], R.ratFur[3], cover * 0.6)
-  lay(-5 - f * 2, R.ratFur[2], R.ratFur[3], cover * 0.8)
-  lay(0, R.ratFur[1], R.ratFur[2], cover)
-  // Speed streaks.
-  for (const [y, len] of [
-    [41, 16],
-    [47, 20],
-    [52, 12]
+  // Three discrete steps of a pale silhouette: bright, mid, faint (the renderer fades the whole frame too).
+  const body = [R.paper[1], R.ratFur[0], R.ratFur[1]][f]
+  const edge = [R.paper[2], R.ratFur[1], R.ratFur[2]][f]
+  const dx = -f * 3
+  const l = new Raster(64, 64)
+  l.ellipse(30 + dx, 46, 12, 5.6, edge)
+  l.ellipse(30 + dx, 45, 11.5, 5, body)
+  l.ellipse(42 + dx, 42.5, 5.6, 4.6, body)
+  l.poly([46 + dx, 40, 52 + dx, 43, 46 + dx, 46], body)
+  l.ellipse(40 + dx, 37.5, 2.4, 3, edge)
+  l.ellipse(40 + dx, 37.5, 1.5, 2, body)
+  l.line(19 + dx, 45, 10 + dx, 41, edge)
+  l.line(19 + dx, 46, 9 + dx, 44, edge)
+  l.line(9 + dx, 44, 5 + dx, 41, edge)
+  l.thick(37 + dx, 49, 46 + dx, 53, 2.2, body)
+  l.thick(22 + dx, 49, 14 + dx, 53, 2.2, body)
+  l.thick(34 + dx, 50, 30 + dx, 54, 2, edge)
+  r.blit(l)
+  r.set(44 + dx, 41, edge)
+  for (const [y, len, x0] of [
+    [38, 14, 18],
+    [47, 20, 6],
+    [55, 12, 16]
   ] as const)
-    r.line(30 - len - f * 4, y, 30 - 3 - f * 2, y, f < 2 ? R.ratFur[0] : R.ratFur[2])
+    r.rect(x0 - len + dx - f * 2, y, len, 1, body)
   return r
 }
 
 function dripFrame(f: number): Raster {
   const r = new Raster(16, 32)
-  const drop = (cx: number, cy: number, s: number) => {
-    r.poly([cx, cy - 4 * s, cx + 2.4 * s, cy, cx, cy + 2.4 * s, cx - 2.4 * s, cy], R.sludge[1])
-    r.ellipse(cx, cy + 0.4, 2.4 * s, 2.2 * s, R.sludge[1])
-    r.paint(cx - 1, cy - 1, R.sludge[0])
-    r.paint(cx - 1, cy, R.sludge[0])
-    r.paint(cx + 1, cy + 1, R.sludge[2])
+  const drop = (cy: number, stretch: number) => {
+    r.poly([8, cy - 5 - stretch, 10.6, cy, 5.4, cy], R.sludge[1])
+    r.ellipse(8, cy + 1, 3, 3, R.sludge[1])
+    r.rect(7, cy + 2, 3, 1, R.sludge[2])
+    r.set(10, cy + 1, R.sludge[2])
+    r.set(6, cy, R.sludge[0])
+    r.set(6, cy + 1, R.sludge[0])
+    r.set(7, cy - 2, R.sludge[0])
   }
-  if (f === 0) drop(8, 10, 1)
-  if (f === 1) drop(8, 22, 1.05)
-  const sy = 30
+  const sy = 29
+  if (f === 0) drop(9, 0)
+  if (f === 1) drop(19, 2)
   if (f >= 2) {
-    const e = [0.4, 0.7, 1, 1][f - 2]
-    const rx = [4, 6.5, 7][f - 2]
-    for (let x = 0; x < 16; x++)
-      for (let y = 26; y < 32; y++) {
+    const rx = [4.5, 6, 7][f - 2]
+    for (let y = 25; y < 32; y++)
+      for (let x = 0; x < 16; x++) {
         const nx = (x + 0.5 - 8) / rx
         const ny = (y + 0.5 - sy) / (rx * 0.38)
         const q = nx * nx + ny * ny
-        if (q <= 1 && q > 0.45 && keep(x, y, f === 4 ? 0.55 : 1)) r.set(x, y, q > 0.8 ? R.sludge[2] : R.sludge[1])
+        if (q <= 1 && (f === 4 ? q > 0.55 : q > 0.2)) r.set(x, y, q > 0.7 ? R.sludge[2] : R.sludge[1])
       }
-    if (f < 4) {
-      const h = [7, 9, 4][f - 2]
-      for (const s of [-1, 1]) {
-        r.line(8 + s * 1, sy - 1, 8 + s * (2 + e * 2), sy - h, R.sludge[1])
-        r.rect(8 + s * (3 + e * 3), sy - h - 1 + (f === 3 ? 2 : 0), 2, 2, R.sludge[0])
+    if (f <= 3) {
+      const hh = f === 2 ? 5 : 8
+      for (const [dx, h] of [
+        [-4, hh - 2],
+        [0, hh + 1],
+        [4, hh - 2]
+      ] as const) {
+        const x = 8 + dx * (f === 3 ? 1.2 : 0.8)
+        r.rect(x - 0.5, sy - h, 1, h - 1, R.sludge[1])
+        r.rect(x - 1, sy - h - 2, 2, 2, R.sludge[0])
       }
-      r.rect(7, sy - h + 2, 2, h - 2, R.sludge[1])
-      r.set(7, sy - h + 2, R.sludge[0])
+      r.rect(6, sy - 3, 4, 3, R.sludge[1])
+      r.set(7, sy - 3, R.sludge[0])
+    } else {
+      r.set(3, 22, R.sludge[1])
+      r.set(13, 23, R.sludge[1])
     }
   }
   outlineWith(r, R.sludge[4], false)
@@ -425,27 +448,22 @@ function pillarFrame(f: number): Raster {
   const by = 176
   const hw = [3, 13, 15, 12, 8, 3][f]
   const reach = [1, 1, 1, 1, 0.9, 0.6][f]
-  const life = [1, 1, 1, 0.9, 0.6, 0.3][f]
+  // Solid bands: the beam narrows in steps toward the top instead of dithering away.
   for (let y = 0; y <= by; y++) {
-    const topFade = clamp01(y / 50)
-    const bottom = y > by - 4 ? 1.2 : 1
+    if (y < (1 - reach) * by) continue
+    const taper = Math.min(1, 0.3 + y / 70)
+    const half = hw * taper * (0.88 + 0.12 * (y / by))
     for (let x = 0; x < W; x++) {
       const d = Math.abs(x + 0.5 - 32)
-      const half = hw * (0.85 + 0.15 * (y / by)) * bottom
-      if (d > half + 2) continue
-      if (y < (1 - reach) * by) continue
-      const a = topFade * life * (d < half * 0.5 ? 1 : d < half ? 0.9 : 0.35)
-      if (!keep(x, y, a)) continue
-      // Falling streaks inside the beam.
-      const streak = (x * 7 + y * 2 + f * 17) % 11 === 0
+      if (d > half + 1.5) continue
+      const streak = (x * 7 + y * 2 + f * 17) % 13 === 0
       r.set(
         x,
         y,
-        d < half * 0.35 ? C.white : d < half * 0.7 ? (streak ? C.white : R.holy[0]) : d < half ? R.holy[1] : R.holy[2]
+        d < half * 0.35 ? C.white : d < half * 0.68 ? (streak ? C.white : R.holy[0]) : d < half ? R.holy[1] : R.holy[2]
       )
     }
   }
-  // Impact ring on the ground.
   const e = [0.2, 0.6, 1, 1, 0.9, 0.8][f]
   const rx = 10 + 20 * e
   const ry = rx * 0.33
@@ -455,10 +473,10 @@ function pillarFrame(f: number): Raster {
       const ny = (y + 0.5 - by) / ry
       const q = nx * nx + ny * ny
       if (q > 1) continue
-      if (q > 0.62 && keep(x, y, life)) r.set(x, y, q > 0.9 ? R.holy[2] : q > 0.78 ? R.holy[1] : C.white)
-      else if (q <= 0.62 && keep(x, y, 0.25 * life)) r.set(x, y, R.holy[1])
+      if (q > 0.66) r.set(x, y, q > 0.92 ? R.holy[2] : q > 0.8 ? R.holy[1] : C.white)
+      else if (q > 0.5) r.set(x, y, R.holy[0])
     }
-  // Runes climbing the beam.
+  r.ellipse(32, by, 5 + e * 5, 2 + e * 1.6, C.white)
   const runes = [
     ['.#.', '###', '.#.', '.#.', '.#.'],
     ['###', '#.#', '.#.', '#.#', '###'],
@@ -469,8 +487,7 @@ function pillarFrame(f: number): Raster {
       const y = by - 14 - ((i * 30 + f * 18) % 150)
       const x = 32 + (i % 2 ? 12 : -14) - 1
       runes[i % 3].forEach((row, j) => {
-        for (let k = 0; k < 3; k++)
-          if (row[k] === '#' && keep(x + k, y + j, life)) r.set(x + k, y + j, i % 2 ? C.white : R.holy[0])
+        for (let k = 0; k < 3; k++) if (row[k] === '#') r.set(x + k, y + j, i % 2 ? C.white : R.holy[0])
       })
     }
   const g = rng(808)
@@ -564,24 +581,34 @@ function moonlightFrame(f: number): Raster {
   const r = new Raster(96, 96)
   const c = 48
   const pulse = [0, 1.5, 2.5, 1.5][f]
-  glowDisc(r, c, c, 44 + pulse, R.sky[0], 0.06)
-  glowDisc(r, c, c, 36 + pulse, R.ice[1], 0.1)
-  glowDisc(r, c, c, 27 + pulse, R.ice[0], 0.24)
-  glowDisc(r, c, c, 17 + pulse * 0.6, R.ice[0], 0.45)
-  glowDisc(r, c, c, 9, C.white, 0.7)
-  r.ellipse(c, c, 3.4, 3.4, C.white)
+  // Solid concentric bands (Anim.alpha makes the whole frame translucent); each seam is a one pixel checker.
+  const bands: [number, number][] = [
+    [45 + pulse, R.sky[0]],
+    [37 + pulse, R.ice[1]],
+    [28 + pulse, R.ice[0]],
+    [18 + pulse * 0.6, R.paper[1]],
+    [9, C.white]
+  ]
+  for (let y = 0; y < 96; y++)
+    for (let x = 0; x < 96; x++) {
+      const d = hyp(x + 0.5 - c, y + 0.5 - c)
+      let band = -1
+      for (let i = 0; i < bands.length; i++) if (d <= bands[i][0]) band = i
+      if (band < 0) continue
+      const seam = d > bands[band][0] - 1.2 && (x + y) % 2 === 0
+      r.set(x, y, seam && band > 0 ? bands[band - 1][1] : bands[band][1])
+    }
   for (let k = 0; k < 6; k++) {
     const a = (k * TAU) / 6 + 0.4 + (f * TAU) / 24
     const d = 18 + (k % 3) * 9
     const tw = (f + k) % 4
-    sparkle(r, c + Math.cos(a) * d, c + Math.sin(a) * d, tw === 0 ? 3 : tw === 1 ? 2 : 1, C.white, R.ice[0], R.sky[0])
+    sparkle(r, c + Math.cos(a) * d, c + Math.sin(a) * d, tw === 0 ? 3 : tw === 1 ? 2 : 1, C.white, R.sky[1], R.sky[2])
   }
   sparkle(r, c, c, 4 + (f % 2) * 3, C.white, C.white, R.ice[0])
   return r
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Reworked effects
 
 /** The 360° whirl: a red blade and a pale-gold blade chase each other, each with a white leading edge. */
 function spinFrame(f: number, t: number): Raster {
@@ -746,16 +773,16 @@ export function buildFx2(): Sheet {
     snare: make('snare', frames(2, snareFrame)),
     snare_snap: make('snare_snap', frames(3, snareSnapFrame)),
     hex: make('hex', frames(4, hexFrame)),
-    dash_trail: make('dash_trail', frames(3, dashTrailFrame), { alpha: [0.9, 0.7, 0.45] }),
+    dash_trail: make('dash_trail', frames(3, dashTrailFrame), { alpha: [0.85, 0.6, 0.38] }),
     drip: make('drip', frames(5, dripFrame)),
     gust: make('gust', frames(4, gustFrame), { alpha: [0.92, 0.95, 0.92, 0.95] }),
     fire_breath: make('fire_breath', frames(4, fireBreathFrame)),
     wind: make('wind', frames(4, windFrame), { alpha: [0.85, 0.85, 0.85, 0.85] }),
     icespike: make('icespike', frames(6, iceSpikeFrame)),
-    pillar: make('pillar', frames(6, pillarFrame), { alpha: [0.95, 1, 1, 0.95, 0.85, 0.7] }),
+    pillar: make('pillar', frames(6, pillarFrame), { alpha: [0.9, 0.85, 0.85, 0.78, 0.6, 0.42] }),
     howl: make('howl', frames(5, howlFrame), { alpha: [0.95, 0.95, 0.9, 0.8, 0.65] }),
     snow: make('snow', frames(4, snowFrame)),
     ember: make('ember', frames(4, emberFrame)),
-    moonlight: make('moonlight', frames(4, moonlightFrame), { alpha: [0.85, 1, 0.95, 1] })
+    moonlight: make('moonlight', frames(4, moonlightFrame), { alpha: [0.42, 0.5, 0.46, 0.5] })
   }
 }

@@ -146,11 +146,14 @@ export function renderWolf(job: JobId, dir: Dir, p: WolfPose = {}): Raster {
   const { gx, hipY, footY, hx, hy, shoulderR: sR, shoulderL: sL } = a
   const gear = !p.noGear
   const legs = p.legs ?? LEGS0
-  const ang = p.ang ?? REST_ANG[job]
+  const staffBack = side && (job === 'mage' || job === 'cleric') && p.ang === undefined
+  const ang = staffBack ? -1.95 : (p.ang ?? REST_ANG[job])
   const fx: WeaponFx = p.wfx ?? {}
   const armR = p.armR === undefined ? ([0, 0] as V) : p.armR
   const armL = p.armL === undefined ? ([0, 0] as V) : p.armL
-  const handR: V = armR ? [sR[0] + REST_HAND[0] + armR[0], sR[1] + REST_HAND[1] + armR[1]] : [sR[0], sR[1] + 6]
+  const handR: V = armR
+    ? [sR[0] + REST_HAND[0] + (staffBack ? -8 : 0) + armR[0], sR[1] + REST_HAND[1] + armR[1]]
+    : [sR[0], sR[1] + 6]
   let handL: V | null = armL ? [sL[0] - REST_HAND[0] + armL[0], sL[1] + REST_HAND[1] + armL[1]] : null
   if (side && handL) handL = [sL[0] + 3.5 + armL![0], handL[1]]
   const hand = { x: handR[0], y: handR[1], ang, dir }
@@ -203,9 +206,9 @@ export function renderWolf(job: JobId, dir: Dir, p: WolfPose = {}): Raster {
   const tx = gx + (p.lean ?? 0) * (side ? 0.4 : 0.2) - (side ? 1 : 0)
   torso(r, { x: tx, y: a.torsoY, rx: side ? 6.8 : 7.5, ry: 8, dir, puff: p.chest })
   if (job === 'archer' && gear && back) drawQuiver(r, { x: tx + 4, y: a.torsoY - 7, dir })
-  if (gear) bandana(r, job, tx, hipY, dir, p.sway ?? 0)
+  if (gear && !back) bandana(r, job, tx, hipY, dir, p.sway ?? 0)
   if (back)
-    tail(r, [gx - 1, hipY - 2], [gx - 11 + sw * 4, hipY + 3], [gx - 10 + sw * 6, hipY - 10 - up * 4], 1.15 * tailSize)
+    tail(r, [gx - 2, hipY - 1], [gx - 16 + sw * 3, hipY + 4], [gx - 12 + sw * 5, hipY - 11 - up * 4], 1.5 * tailSize)
   if (gear && job === 'sword' && !p.slung && handL && !side) {
     arm(r, sL[0], sL[1], handL[0], handL[1], false)
     drawBuckler(r, handL[0] - 1, handL[1])
@@ -224,8 +227,10 @@ export function renderWolf(job: JobId, dir: Dir, p: WolfPose = {}): Raster {
     blush: p.blush,
     open: p.open
   }
-  if (back) headBack(r, hs)
-  else if (side) headSide(r, hs)
+  if (back) {
+    headBack(r, hs)
+    if (gear) bandana(r, job, tx, hipY + 1, dir, p.sway ?? 0)
+  } else if (side) headSide(r, hs)
   else headFront(r, hs)
   if (hatOn)
     drawHeadgear(
@@ -291,7 +296,7 @@ function bandana(r: Raster, job: JobId, cx: number, hipY: number, dir: Dir, sway
       l.poly([cx + 0.5, y + 2, cx + 6.5, y + 2, cx + 5, y + 7.5, cx + 2, y + 6], rp[1])
       l.thick(cx - 5, y + 1.5, cx - 9 - sway * 0.4, y + 4.5, 2.2, rp[1])
     } else {
-      l.poly([cx - 6.5, y, cx + 6.5, y, cx + 6, y + 2.6, cx - 6, y + 2.6], rp[1])
+      l.poly([cx - 7.5, y, cx + 7.5, y, cx + 7, y + 3.2, cx - 7, y + 3.2], rp[1])
       l.poly([cx - 1.5, y + 2, cx + 2.5, y + 2, cx + 3, y + 7, cx - 0.5, y + 5.5], rp[1])
     }
     edgeShade(l, rp)

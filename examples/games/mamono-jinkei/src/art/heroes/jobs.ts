@@ -33,6 +33,8 @@ export interface HeadAnchor {
   w: number
   dir: Dir
   k?: number
+  /** Height multiplier of the helmet / hood dome (default 1). */
+  dome?: number
 }
 
 export interface HandAnchor {
@@ -125,7 +127,7 @@ function helmet(r: Raster, h: HeadAnchor, sway: number) {
     }
   })
   part(r, (l) => {
-    ball(l, x + side * 0.15, y + 5 * k, 10.5 * k, 6.8 * k, R.steel)
+    ball(l, x + side * 0.15, y + 5 * k, 10.5 * k, 6.8 * k * (h.dome ?? 1), R.steel)
     for (let yy = rd(y + 6.5 * k); yy < l.h; yy++) for (let xx = 0; xx < l.w; xx++) l.set(xx, yy, 0)
     // Brim band and visor slit.
     const by = rd(y + 6 * k)
@@ -227,7 +229,7 @@ function hood(r: Raster, h: HeadAnchor, sway: number) {
     l.paint(rd(fx + 1 * k - sway * 0.2), rd(fy - 6 * k), R.paper[3])
   })
   part(r, (l) => {
-    ball(l, x + side * 0.15, y + 5.2 * k, 11 * k, 7 * k, cf, false)
+    ball(l, x + side * 0.15, y + 5.2 * k, 11 * k, 7 * k * (h.dome ?? 1), cf, false)
     for (let yy = rd(y + 6.5 * k); yy < l.h; yy++) for (let xx = 0; xx < l.w; xx++) l.set(xx, yy, 0)
     // Folded-up brim band, lighter.
     const by = rd(y + 5 * k)
@@ -302,29 +304,52 @@ function clericHat(r: Raster, h: HeadAnchor, sway: number) {
     r.paint(xx, rd(y + 8 * k), R.shadow[2])
 }
 
-/** Cleric's white stole with gold ends, draped over the upper third of the dome like shoulders. */
+/** Cleric's white stole with gold ends: a clear white drape with a fold shadow, draped over the upper body like shoulders. */
 export function drawStole(r: Raster, cx: number, top: number, w: number, h: number, dir: Dir) {
   const cw = R.clothWhite
+  const sw = Math.max(3.4, w * 0.115)
   const strip = (l: Raster, x0: number, y0: number, x1: number, y1: number) => {
-    l.thick(x0, y0, x1, y1, 3.2, cw[1])
+    const at = (t: number): [number, number] => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]
+    const [gx, gy] = at(0.78)
+    l.thick(x0, y0, gx, gy, sw, cw[1])
     edgeShade(l, cw)
-    const gx = x0 + (x1 - x0) * 0.8
-    const gy = y0 + (y1 - y0) * 0.8
-    l.thick(gx, gy, x1, y1, 3.2, R.gold[1])
-    l.paint(rd(x1), rd(y1) + 2, R.gold[2])
+    // Fold shadow running down the inner side of the drape.
+    const [fx0, fy0] = at(0.1)
+    const [fx1, fy1] = at(0.74)
+    const dx = x1 >= x0 ? -1 : 1
+    const steps = Math.max(2, Math.round(Math.hypot(fx1 - fx0, fy1 - fy0)))
+    for (let i = 0; i <= steps; i++) {
+      const px = rd(fx0 + ((fx1 - fx0) * i) / steps + dx * sw * 0.2)
+      const py = rd(fy0 + ((fy1 - fy0) * i) / steps)
+      if (l.get(px, py) === cw[1]) l.set(px, py, cw[2])
+    }
+    // Gold end: a flared tip with a lit top edge and a shaded bottom.
+    l.thick(gx, gy, x1, y1, sw + 0.6, R.gold[1])
+    const b = boxOf(l)
+    if (!b) return
+    const src = l.clone()
+    for (let yy = b.y; yy < b.y + b.h; yy++)
+      for (let xx = b.x; xx < b.x + b.w; xx++) {
+        if (src.get(xx, yy) !== R.gold[1]) continue
+        if (!src.get(xx, yy + 1)) l.set(xx, yy, R.gold[2])
+        else if (src.get(xx, yy - 1) === cw[1] || src.get(xx, yy - 1) === cw[2] || src.get(xx, yy - 1) === cw[0])
+          l.set(xx, yy, R.gold[0])
+      }
+    l.set(rd(x1) - 1, rd(y1) + 2, R.gold[2])
+    l.set(rd(x1) + 1, rd(y1) + 2, R.gold[2])
   }
   part(r, (l) => {
     if (dir === 'down') {
-      strip(l, cx - 0.31 * w, top + 0.3 * h, cx - 0.4 * w, top + 0.66 * h)
-      strip(l, cx + 0.31 * w, top + 0.3 * h, cx + 0.4 * w, top + 0.66 * h)
+      strip(l, cx - 0.31 * w, top + 0.28 * h, cx - 0.38 * w, top + 0.7 * h)
+      strip(l, cx + 0.31 * w, top + 0.28 * h, cx + 0.38 * w, top + 0.7 * h)
     } else if (dir === 'up') {
-      l.thick(cx - 0.34 * w, top + 0.28 * h, cx, top + 0.38 * h, 3.2, cw[1])
-      l.thick(cx, top + 0.38 * h, cx + 0.34 * w, top + 0.28 * h, 3.2, cw[1])
+      l.thick(cx - 0.33 * w, top + 0.28 * h, cx, top + 0.36 * h, sw, cw[1])
+      l.thick(cx, top + 0.36 * h, cx + 0.33 * w, top + 0.28 * h, sw, cw[1])
       edgeShade(l, cw)
-      l.thick(cx - 0.34 * w, top + 0.28 * h, cx - 0.38 * w, top + 0.56 * h, 3.2, R.gold[1])
-      l.thick(cx + 0.34 * w, top + 0.28 * h, cx + 0.38 * w, top + 0.56 * h, 3.2, R.gold[1])
+      strip(l, cx - 0.31 * w, top + 0.3 * h, cx - 0.38 * w, top + 0.7 * h)
+      strip(l, cx + 0.31 * w, top + 0.3 * h, cx + 0.38 * w, top + 0.7 * h)
     } else {
-      strip(l, cx - 0.2 * w, top + 0.22 * h, cx - 0.3 * w, top + 0.6 * h)
+      strip(l, cx - 0.2 * w, top + 0.24 * h, cx - 0.3 * w, top + 0.7 * h)
     }
   })
 }
@@ -434,26 +459,43 @@ export function bowNock(hand: HandAnchor, draw: number): [number, number] {
 function sword(r: Raster, h: HandAnchor) {
   const k = h.k ?? 1
   const { x, y, ang } = h
-  const L = 13 * k
+  const L = 14 * k
+  const px = -Math.sin(ang)
+  const py = Math.cos(ang)
   part(r, (l) => {
-    // Blade, guard, grip, pommel.
-    const [bx, by] = polar(x, y, ang, 2.5 * k)
-    const [tx, ty] = polar(x, y, ang, 2.5 * k + L)
-    l.thick(bx, by, tx, ty, 3 * k, R.steel[1])
+    // Blade: a 3-4 px wide steel strip, bright on the lit edge, dark spine down the middle, pointed tip.
+    const [bx, by] = polar(x, y, ang, 3 * k)
+    const [tx, ty] = polar(x, y, ang, 3 * k + L)
+    l.thick(bx, by, tx, ty, 3.6 * k, R.steel[1])
     edgeShade(l, R.steel)
-    // Blade tip taper: remove the corner pixel behind the very tip.
+    const [sx0, sy0] = polar(x, y, ang, 4.5 * k)
+    const [sx1, sy1] = polar(x, y, ang, 3 * k + L - 3.5 * k)
+    const steps = Math.max(2, Math.round(Math.hypot(sx1 - sx0, sy1 - sy0)))
+    for (let i = 0; i <= steps; i++) {
+      const qx = rd(sx0 + ((sx1 - sx0) * i) / steps)
+      const qy = rd(sy0 + ((sy1 - sy0) * i) / steps)
+      if (l.get(qx, qy) === R.steel[1]) l.set(qx, qy, R.steel[2])
+    }
+    // Crossguard.
     const [gx, gy] = polar(x, y, ang, 2 * k)
-    const px = -Math.sin(ang)
-    const py = Math.cos(ang)
-    l.line(gx + px * 3 * k, gy + py * 3 * k, gx - px * 3 * k, gy - py * 3 * k, R.gold[1])
-    const [ex, ey] = polar(x, y, ang, -2 * k)
+    l.line(gx + px * 3.4 * k, gy + py * 3.4 * k, gx - px * 3.4 * k, gy - py * 3.4 * k, R.gold[1])
+    l.line(
+      gx + px * 3.4 * k + Math.cos(ang),
+      gy + py * 3.4 * k + Math.sin(ang),
+      gx - px * 3.4 * k + Math.cos(ang),
+      gy - py * 3.4 * k + Math.sin(ang),
+      R.gold[2]
+    )
+    // Grip and pommel.
+    const [ex, ey] = polar(x, y, ang, -2.5 * k)
     l.thick(ex, ey, x, y, 2 * k, R.leather[1])
-    l.set(rd(ex - Math.cos(ang)), rd(ey - Math.sin(ang)), R.gold[2])
-    // Fuller shine.
-    const [sx, sy] = polar(x, y, ang, 6 * k)
-    l.paint(sx, sy, R.steel[0])
+    l.set(rd(ex - Math.cos(ang)), rd(ey - Math.sin(ang)), R.gold[1])
+    l.set(rd(ex - Math.cos(ang) * 2), rd(ey - Math.sin(ang) * 2), R.gold[2])
   })
-  return { tip: polar(x, y, ang, 2.5 * k + L) }
+  // Bright glint on the lit edge near the tip.
+  const [hx, hy] = polar(x, y, ang, 3 * k + L * 0.7)
+  r.paint(rd(hx - px), rd(hy - py), R.steel[0])
+  return { tip: polar(x, y, ang, 3 * k + L) }
 }
 
 function crystal(r: Raster, cx: number, cy: number, glow: number, k: number, ramp: Ramp, holy: boolean) {

@@ -180,13 +180,14 @@ export function ratFrame(job: JobId, dir: Dir, p: RP): Raster {
   // Shoulders (where limbs grow) and the slime-like nominal hand bases that weapon tables are written for.
   const shR: V = [tx + (side ? u(2) : u(6)), tTop + u(4)]
   const shL: V = [tx - (side ? u(2) : u(6)), tTop + u(4)]
-  const nomR: V = [tx + (side ? u(10) : u(13)), tTop + (side ? u(8) : u(5))]
+  const nomR: V = [tx + (side ? (job === 'sword' ? u(8) : u(3)) : u(13)), tTop + (side ? u(12) : u(5))]
   const nomL: V = side ? [nomR[0] - 5, nomR[1] + 1] : [tx - u(13), tTop + u(5)]
   const armR = p.armR === undefined ? ([3, 2] as V) : p.armR
   const armL = p.armL === undefined ? ([-3, 2] as V) : p.armL
   const handR: V = armR ? [nomR[0] + armR[0], nomR[1] + armR[1]] : [nomR[0] + 3, nomR[1] + 2]
   let handL: V | null = armL ? [nomL[0] + armL[0], nomL[1] + armL[1]] : null
-  const ang = p.ang ?? REST_ANG[job]
+  // In the side view the resting weapon leans back over the shoulder so the snout and whiskers stay clear.
+  const ang = p.ang ?? (side && job !== 'archer' ? (job === 'sword' ? 0.5 : REST_ANG[job] - 1.0) : REST_ANG[job])
   const handA = { x: handR[0], y: handR[1], ang, dir }
   const wfx = p.wfx ?? {}
   if (job === 'archer' && (wfx.draw ?? 0) > 0.1) handL = bowNock(handA, wfx.draw ?? 0)
@@ -219,7 +220,9 @@ export function ratFrame(job: JobId, dir: Dir, p: RP): Raster {
       l.thick(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 2.4 - i * 0.3, PINK[1])
     edgeShade(l, PINK)
   })
-  // Gear behind the body.
+  // Gear behind the body. A resting weapon in the side view is held behind the head, clear of the face.
+  const restBehind = side && job !== 'sword' && gear && !p.slung && p.ang === undefined && !!armR
+  if (restBehind) drawWeapon(r, job, handA, wfx)
   if (gear && job === 'archer' && !up) drawQuiver(r, { x: tx + (side ? -8 : 8), y: tTop - 1, dir })
   if (gear && p.slung)
     drawWeapon(r, job, { x: tx + (side ? -2 : 3), y: tcy, ang: job === 'archer' ? -0.75 : -0.95, dir }, {})
@@ -320,7 +323,7 @@ export function ratFrame(job: JobId, dir: Dir, p: RP): Raster {
     if (side) drawBuckler(r, tx - 1, tTop + 9)
     else drawBuckler(r, handL[0] - 1, handL[1])
   }
-  if (gear && !p.slung && armR) drawWeapon(r, job, handA, wfx)
+  if (gear && !p.slung && armR && !restBehind) drawWeapon(r, job, handA, wfx)
   if (!p.noHat)
     drawHeadgear(r, job, { x: hx + (side ? 2 : 0), y: rd(crown + u(1)), w: 24, dir }, p.sway ?? 0, p.tilt ?? 0)
   p.fx?.(r, a, handR, jr)

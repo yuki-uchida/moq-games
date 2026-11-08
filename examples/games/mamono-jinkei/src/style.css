@@ -2429,13 +2429,19 @@ input:focus-visible,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 1em;
-  height: 1em;
-  margin: -0.5em;
+  width: 36em;
+  height: 36em;
+  margin: -18em;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 4em 2em rgba(220, 236, 255, 0.9);
+  background: radial-gradient(
+    circle,
+    #fff 0%,
+    rgba(230, 240, 255, 0.85) 12%,
+    rgba(200, 220, 255, 0.35) 35%,
+    transparent 70%
+  );
   opacity: 0;
+  pointer-events: none;
 }
 
 .ending.play .orb-flash {
@@ -2487,7 +2493,7 @@ input:focus-visible,
 
 .roll-wrap {
   position: absolute;
-  inset: 0 0 8em;
+  inset: 0 0 calc(var(--u) * 11);
 }
 
 .roll {
@@ -2535,6 +2541,7 @@ input:focus-visible,
 }
 
 .ending.play .ending-foot {
+  opacity: 1;
   animation: fade-in 1s ease both 13s;
 }
 
@@ -2565,15 +2572,15 @@ input:focus-visible,
 @keyframes orb-flash {
   0% {
     opacity: 0;
-    transform: scale(0.2);
+    transform: scale(0.05);
   }
-  25% {
+  20% {
     opacity: 1;
-    transform: scale(4);
+    transform: scale(0.6);
   }
   100% {
     opacity: 0;
-    transform: scale(9);
+    transform: scale(1.2);
   }
 }
 

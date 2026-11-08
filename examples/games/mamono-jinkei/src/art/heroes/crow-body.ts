@@ -241,8 +241,38 @@ export function fan(
 }
 
 /** A folded wing used as an arm, ending in a rounded wing-tip "fist" at the wrist. */
-export function wingArm(r: Raster, sx: number, sy: number, hx: number, hy: number, tips = false) {
+export function wingArm(r: Raster, sx: number, sy: number, hx: number, hy: number, tips = false, out = 1) {
   part(r, (l) => {
+    // Stepped flight feathers fanning off the outer / lower edge: the wing reads as a wing, not a tube.
+    {
+      const dx0 = hx - sx
+      const dy0 = hy - sy
+      const d0 = Math.hypot(dx0, dy0) || 1
+      const ux = dx0 / d0
+      const uy = dy0 / d0
+      let nx = -uy
+      let ny = ux
+      if (Math.abs(uy) > Math.abs(ux)) {
+        nx = out
+        ny = 0
+      } else if (ny < 0) {
+        nx = -nx
+        ny = -ny
+      }
+      ;[
+        [0.34, 5],
+        [0.56, 6.5],
+        [0.78, 6],
+        [1.0, 5]
+      ].forEach(([t, len]) => {
+        const bx = sx + dx0 * t + nx * 1.2
+        const by = sy + dy0 * t + ny * 1.2
+        const ex = ux * 0.5 + nx * 0.85
+        const ey = uy * 0.5 + ny * 0.85
+        const el = Math.hypot(ex, ey) || 1
+        leaf(l, bx, by, ex / el, ey / el, Math.min(len, d0 * 0.55 + 2), 2.8, W)
+      })
+    }
     const mx = sx + (hx - sx) * 0.5
     const my = sy + (hy - sy) * 0.5
     l.thick(sx, sy, mx, my, 6, W)
@@ -267,7 +297,7 @@ export function wingArm(r: Raster, sx: number, sy: number, hx: number, hy: numbe
 }
 
 function drawWing(r: Raster, w: Wing, sx: number, sy: number, mir: boolean, s: number) {
-  if ('arm' in w) wingArm(r, sx, sy, sx + w.arm[0] * s, sy + w.arm[1] * s, w.tips)
+  if ('arm' in w) wingArm(r, sx, sy, sx + w.arm[0] * s, sy + w.arm[1] * s, w.tips, mir ? -1 : 1)
   else fan(r, sx, sy, w.fan, w.len * s, mir, w.n ?? 5, w.spread ?? 0.17, 4.8 * Math.max(0.6, s), true, W)
 }
 
@@ -414,9 +444,9 @@ function drawTail(r: Raster, a: A, p: CPose, after: boolean) {
       leaf(l, a.cx + 3, a.bcy + 3, 0.55, 0.83, 13 * a.s, 4.2, F[1])
       shadeFeather(l)
     })
-  } else if (after) {
-    // Seen from the back: the tail fan hangs below the rump.
-    fan(r, a.cx, rd(a.bcy + 3 * a.s), Math.PI / 2, 11 * a.s, false, 7, 0.2, 4.4, false)
+  } else if (!after) {
+    // Seen from the back: five tail feathers fan out below the rump, the middle one longest.
+    fan(r, a.cx, rd(a.bcy + 5 * a.s), Math.PI / 2, 12.5 * a.s, false, 5, 0.34, 4.6, false)
   }
 }
 
@@ -430,8 +460,21 @@ function drawBody(r: Raster, a: A, p: CPose) {
   part(r, (l) => {
     blob(l, lx, a.bcy, rx, ry, BODY, shear)
     if (a.dir === 'up') {
-      // Back: shoulder-line contour and a violet shine along the mantle.
-      for (let i = -3; i <= 3; i++) l.paint(rd(lx + i * 2.2), rd(a.bcy - ry * 0.5 + Math.abs(i) * 0.7), F[2])
+      // Back: nape-to-shoulder feather rows (scallops) over the mantle.
+      for (const [oy, n] of [
+        [-4, 3],
+        [-1, 4]
+      ] as const)
+        for (let i = 0; i < n; i++) {
+          const vx = rd(lx + (i - (n - 1) / 2) * 5 * s)
+          const vy = rd(a.bcy + oy * s)
+          for (const [dx, dy] of [
+            [-1, -1],
+            [0, 0],
+            [1, -1]
+          ])
+            if (l.get(vx + dx, vy + dy)) l.set(vx + dx, vy + dy, F[2])
+        }
     } else {
       // Fluffy lighter chest patch.
       const pcx = a.dir === 'side' ? lx + 4.5 * s : lx
@@ -465,18 +508,82 @@ function drawBody(r: Raster, a: A, p: CPose) {
   })
 }
 
+/** Back view: the folded wings lie over the rump, primaries crossing above the tail. */
+function drawMantle(r: Raster, a: A) {
+  const s = a.s
+  for (const sg of [-1, 1]) {
+    part(r, (l) => {
+      const sx = a.cx + sg * 6.5 * s
+      const sy = a.bcy - 6 * s
+      const ex = a.cx - sg * 1.5 * s
+      const ey = a.bcy + 9.5 * s
+      const ang = Math.atan2(ey - sy, ex - sx)
+      leaf(l, sx, sy, Math.cos(ang), Math.sin(ang), Math.hypot(ex - sx, ey - sy), 7.4 * s, W)
+      shadeFeather(l, true, W)
+      // Primaries: separation lines along the lower half, a violet sheen on the shoulder.
+      for (const o of [-1.6, 0, 1.6]) {
+        const nx = -Math.sin(ang) * o
+        const ny = Math.cos(ang) * o
+        for (let t = 0.5; t < 0.92; t += 0.04) l.paint(rd(sx + (ex - sx) * t + nx), rd(sy + (ey - sy) * t + ny), F[2])
+      }
+      l.paint(rd(sx + (ex - sx) * 0.18 - sg), rd(sy + (ey - sy) * 0.18), S[1])
+      l.paint(rd(sx + (ex - sx) * 0.3 - sg), rd(sy + (ey - sy) * 0.3), S[2])
+    })
+  }
+}
+
 function drawHead(r: Raster, a: A, p: CPose) {
   part(r, (l) => {
     blob(l, a.hx, a.hcy, a.hrx, a.hry, HEAD)
     if (a.dir === 'up') {
-      // Nape ruffle: two darker feather notches under the crown.
-      for (const dx of [-5, 0, 5]) l.paint(rd(a.hx + dx * a.s), rd(a.hcy + 5 * a.s), F[2])
+      // Back of the head: feather rows sweeping down from the crown to the nape, a violet sheen streak on the left.
+      for (const [oy, n] of [
+        [1.5, 4],
+        [4.5, 5],
+        [7.5, 4]
+      ] as const)
+        for (let i = 0; i < n; i++) {
+          const vx = rd(a.hx + (i - (n - 1) / 2) * 5.2 * a.s)
+          const vy = rd(a.hcy + oy * a.s)
+          for (const [dx, dy] of [
+            [-1, -1],
+            [0, 0],
+            [1, -1]
+          ])
+            if (l.get(vx + dx, vy + dy)) l.set(vx + dx, vy + dy, S[3])
+        }
+      for (let i = 0; i < 5; i++) l.paint(rd(a.hx - 7 * a.s + i * 0.6), rd(a.hcy - 1 * a.s + i * 1.5), S[2])
     }
   })
   void p
 }
 
 /* ------------------------------------------------------------------ whole frame */
+
+/**
+ * Rim light: the first plumage pixel inside the silhouette outline picks up a 1px blue-violet reflection on the
+ * upper-left edges (and a faint one on the lower-right), so the black bird still reads on night backgrounds.
+ */
+const RIM_BODY = new Uint8Array(256)
+const RIM_DARK = new Uint8Array(256)
+for (const c of [F[1], F[2], F[3], S[3]]) RIM_BODY[c] = 1
+for (const c of [F[3], F[4], C.inkCool]) RIM_DARK[c] = 1
+
+function rimLight(r: Raster) {
+  const w = r.w
+  const src = r.data.slice()
+  for (let y = 2; y < r.h - 2; y++)
+    for (let x = 2; x < w - 2; x++) {
+      const i = y * w + x
+      const c = src[i]
+      if (!RIM_BODY[c]) continue
+      const upEdge = RIM_DARK[src[i - w]] && !src[i - 2 * w]
+      const leftEdge = RIM_DARK[src[i - 1]] && !src[i - 2]
+      if (upEdge || leftEdge) r.data[i] = upEdge && leftEdge ? S[1] : S[2]
+      else if (c !== S[3] && ((RIM_DARK[src[i + w]] && !src[i + 2 * w]) || (RIM_DARK[src[i + 1]] && !src[i + 2])))
+        r.data[i] = S[3]
+    }
+}
 
 export function renderCrow(job: JobId, dir: Dir, p: CPose): Raster {
   const r = new Raster(64, 64)
@@ -505,12 +612,18 @@ export function renderCrow(job: JobId, dir: Dir, p: CPose): Raster {
     const hx = a.cx + (side ? -2 : 3)
     drawWeapon(r, job, { x: hx, y: rd(a.bcy - 3 * s), ang: job === 'archer' ? -0.75 : -0.95, dir }, {})
   }
-  drawTail(r, a, p, false)
-  drawLegs(r, a, p)
+  if (dir === 'up') {
+    drawLegs(r, a, p)
+    drawTail(r, a, p, false)
+  } else {
+    drawTail(r, a, p, false)
+    drawLegs(r, a, p)
+  }
   // Far wing in side view hides behind the body.
   if (side && wL && !p.wingsBack) drawWing(r, wL, a.shL[0], a.shL[1], true, s)
 
   drawBody(r, a, p)
+  if (dir === 'up') drawMantle(r, a)
   if (job === 'archer' && gear && dir === 'up') drawQuiver(r, { x: a.cx + 4, y: rd(a.bcy - 5 * s), dir })
   if (job === 'cleric' && gear && s > 0.5) drawStole(r, a.cx, rd(a.bcy - 9.5 * s), 24 * s, 18 * s, dir)
   drawTail(r, a, p, true)
@@ -527,6 +640,7 @@ export function renderCrow(job: JobId, dir: Dir, p: CPose): Raster {
   p.mid?.(r, a, handR ?? [a.cx, a.feet])
   if (front) wings()
 
+  rimLight(r)
   // Off hand gear.
   if (gear && job === 'sword' && !p.slung && handL && wL && 'arm' in wL) {
     if (side) drawBuckler(r, a.cx - 4, handL[1] - 1)

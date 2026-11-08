@@ -8,7 +8,7 @@ import { C } from '../palette'
 import { glint, sparkle } from './body'
 import { JOB_RAMP, drawHeadgear, drawWeapon, edgeShade, type JobId } from './jobs'
 import { part } from './layer'
-import { CR, F, earsSide, headSide, tail } from './wolf-parts'
+import { CR, F, earsSide, headSide, mitt, tail } from './wolf-parts'
 
 /** `variant` 0 = just dropped (head lifted, tongue out), 1 = settled (head down, tail across). */
 export function lyingFrame(job: JobId, variant: 0 | 1, reviving = false): Raster {
@@ -24,7 +24,7 @@ export function lyingFrame(job: JobId, variant: 0 | 1, reviving = false): Raster
     const crop = hat.crop(hb.x, hb.y, hb.w, hb.h)
     r.blit(crop, 3, 45 - crop.h + (v ? 2 : 0) + (job === 'mage' ? 4 : 0))
   }
-  const hx = 45
+  const hx = 47
   const hy = 49 + v * 1.5
   // Far legs.
   const far = new Raster(64, 64)
@@ -36,10 +36,10 @@ export function lyingFrame(job: JobId, variant: 0 | 1, reviving = false): Raster
   r.blit(far.map((c) => (c ? R.wolfFur[c === F[1] ? 2 : 3] : c)))
   // Body.
   part(r, (l) => {
-    ball(l, 27, 49.5, 14, 6.6, F, true)
+    ball(l, 25, 49.5, 13, 6.8, F, true)
     edgeShade(l, F)
     // Cream chest on the visible front and a light belly line.
-    l.ellipse(36, 52.5, 4.4, 3.2, CR[1])
+    l.ellipse(33, 52.5, 4, 3, CR[1])
     for (let y = 46; y < 58; y++)
       for (let x = 30; x < 46; x++) {
         if (l.get(x, y) === CR[1] && (!l.get(x, y + 1) || !l.get(x + 1, y))) l.set(x, y, CR[2])
@@ -59,8 +59,15 @@ export function lyingFrame(job: JobId, variant: 0 | 1, reviving = false): Raster
   const th = v ? 0.38 : 0.12
   earsSide(r, hx, hy, th, 1, { spread: 0, dy: 2.5, lean: 0.3, hole: 0, scale: 0.95 })
   headSide(r, { x: hx, y: hy, eyes: reviving ? 'half' : 'x', mouth: v ? 'frown' : 'pant', tilt: -th, open: v ? 0 : 2 })
+  // Job-coloured neckerchief between body and head, and the paws under the chin.
+  part(r, (l) => {
+    l.poly([36, 43, 40, 42, 41, 55, 37, 55], ramp[1])
+    edgeShade(l, ramp)
+  })
+  mitt(r, 50, 55.5)
+  mitt(r, 55, 56)
   // Tail curled over the belly.
-  tail(r, [17, 48], [6, 58 - v], [27 + v * 3, 56], 1.15)
+  tail(r, [14, 48], [3, 59 - v], [30 + v * 3, 56], 1.3)
   // Weapon dropped in front.
   const wl = new Raster(64, 64)
   const bow = job === 'archer'
