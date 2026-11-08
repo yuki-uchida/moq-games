@@ -287,6 +287,9 @@ export class WorldImpl implements World {
         pushDir: -1,
         strainAt: -10,
         onUntil: 0,
+        homeX: p.x,
+        homeY: p.y,
+        stuckT: 0,
         grips: [],
         delivered: false
       })
@@ -352,7 +355,16 @@ export class WorldImpl implements World {
       h.body.z = 0
     }
     W.techs = []
+    W.shots = []
+    // A skipped arena fight starts over; the objective follows the new room.
+    for (const [id, a] of W.arenas)
+      if (a.state === 'active' && id !== to) {
+        a.state = 'idle'
+        a.wave = 0
+        W.enemies = W.enemies.filter((e) => e.room !== id || e.wave === undefined)
+      }
     this.placeParty(x, y, true)
+    W.leaderRoom = roomOf(W, x, y)?.id
     if (cp) W.checkpoint = to
     if (W.phase === 'intro') this.setPhase('play')
   }
@@ -614,7 +626,7 @@ export class WorldImpl implements World {
         warpHero(h, h.safeX, h.safeY)
         h.hp -= FALL.dmg
         h.stats.hurt += FALL.dmg
-        pop(W, `${FALL.dmg}`, h.safeX, h.safeY - 48, -1)
+        emit(W, 'hit', h.safeX, h.safeY - 20, { a: FALL.dmg, s: 'hero' })
         if (h.hp <= 0) heroDown(W, h)
         else {
           setState(W, h, 'idle')
@@ -712,7 +724,10 @@ export class WorldImpl implements World {
     if (!airborne(h.body)) {
       const tx = tileOf(h.body.x)
       const ty = tileOf(h.body.y)
-      if (g.free(tx, ty)) (h.safeX = tx * TILE + TILE / 2), (h.safeY = ty * TILE + TILE / 2)
+      // A safe tile to come back to after a fall: solid ground that does not push you (currents, bounce pads).
+      const i = g.idx(tx, ty)
+      if (g.free(tx, ty) && !g.flowX[i] && !g.flowY[i] && !g.bounce[i])
+        (h.safeX = tx * TILE + TILE / 2), (h.safeY = ty * TILE + TILE / 2)
     }
     // Locomotion state.
     if (['idle', 'walk', 'push', 'carry', 'charge'].includes(h.state)) {

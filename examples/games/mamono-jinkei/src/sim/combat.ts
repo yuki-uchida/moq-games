@@ -67,7 +67,6 @@ export function hurtHero(W: WorldState, h: Hero, dmg: number, sx: number, sy: nu
   const a = Math.atan2(h.body.y - sy, h.body.x - sx)
   if (kb > 0) impulseHero(h, Math.cos(a) * kb, Math.sin(a) * kb)
   emit(W, 'hit', h.body.x, h.body.y - 20, { a: d, s: 'hero' })
-  pop(W, `${d}`, h.body.x, h.body.y - 48, -1)
   sfx(W, 'heroHurt', h.body.x, h.body.y)
   if (h.hp <= 0) heroDown(W, h)
   else if (h.state !== 'grip' && h.state !== 'carry') setState(W, h, 'hurt', HURT_TIME)
@@ -157,7 +156,6 @@ export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked'
   e.ky += Math.sin(a) * o.kb * kbMul
   if (o.stun) e.stun = Math.max(e.stun, W.t + o.stun)
   emit(W, 'hit', e.x, e.y - 24, { a: r1(dmg), b: o.heavy ? 1 : 0, s: 'enemy' })
-  pop(W, `${Math.round(dmg * 10) / 10}`, e.x, e.y - 52, o.slot)
   fx(W, 'hit', e.x, e.y - 24)
   sfx(W, o.heavy ? 'hitHeavy' : 'hit', e.x, e.y)
   if (o.heavy) stop(W, 70)
@@ -246,7 +244,6 @@ export function hitBoss(W: WorldState, b: Boss, o: HitOpts): 'hit' | 'blocked' |
   const hero = heroBy(W, o.slot)
   if (hero) hero.stats.dmg += dmg
   emit(W, 'hit', b.x, b.y - 50, { a: r1(dmg), b: o.heavy || o.tech ? 1 : 0, s: 'boss' })
-  pop(W, `${Math.round(dmg * 10) / 10}`, b.x, b.y - 100, o.slot)
   fx(W, 'hit', b.x, b.y - 50)
   sfx(W, o.tech || o.heavy ? 'hitHeavy' : 'hit', b.x, b.y)
   return 'hit'

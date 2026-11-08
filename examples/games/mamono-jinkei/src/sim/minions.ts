@@ -1,5 +1,5 @@
 /** Summoned minions (stage 3: the falconer's hawk, sheet `minion:hawk`). */
-import { dist, emit, fx, newId, pop, r1, sfx } from './core'
+import { dist, emit, fx, newId, r1, sfx } from './core'
 import { hurtHero, type HitOpts } from './combat'
 import type { Hero, Minion, WorldState } from './state'
 
@@ -128,7 +128,6 @@ export function hitMinion(W: WorldState, m: Minion, o: HitOpts): boolean {
   m.hp -= o.dmg
   m.hitAt = W.t
   emit(W, 'hit', m.x, m.y - m.z, { a: r1(o.dmg), s: 'enemy' })
-  pop(W, `${Math.round(o.dmg * 10) / 10}`, m.x, m.y - m.z - 30, o.slot)
   fx(W, 'hit', m.x, m.y - m.z)
   sfx(W, 'hit', m.x, m.y)
   m.tele = undefined

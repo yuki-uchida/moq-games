@@ -7,6 +7,7 @@ import { BOSS_DIR_ANIMS } from './boss'
 import { r1, r2 } from './core'
 import { GRIPPABLE, PUSHABLE } from './stage-data'
 import { holdSpeed } from './props'
+import { CROW_FLIGHT } from './move'
 import { ownedSlots } from './party'
 import type { WorldState } from './state'
 import { CHARGE, CHARGE_SPEED, GUARDED } from './tables'
@@ -42,6 +43,7 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (h.form >= 0) v.form = h.form
     if (h.stun > t) v.stun = r2(h.stun)
     if (h.snared > t) v.snared = r2(h.snared)
+    if (W.species === 'crow') v.stamina = r2(h.body.stamina / CROW_FLIGHT.stamina)
     if (h.state === 'down') v.revive = r2(Math.min(1, h.revive / 1.5))
     if (h.force) v.force = h.force
     const speed = (h.charging ? CHARGE_SPEED : 1) * (W.grid ? holdSpeed(W, h) : 1)

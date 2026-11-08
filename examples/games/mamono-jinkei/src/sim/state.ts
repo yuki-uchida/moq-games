@@ -176,6 +176,10 @@ export interface Prop {
   strainAt: number
   /** Crystal on until. */
   onUntil: number
+  /** Where it started (stuck pushables and lost heavy objects return here) and how long it has been stuck. */
+  homeX: number
+  homeY: number
+  stuckT: number
   /** Gripping heroes (slots). */
   grips: number[]
   holder?: number

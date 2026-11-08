@@ -144,6 +144,8 @@ export interface HeroView {
   force?: { seq: number; kind: 'warp' | 'impulse'; x: number; y: number; vx: number; vy: number }
   /** Speed multiplier the owner's prediction must use (carrying, charging, snow). */
   speed?: number
+  /** Optional (crow): flight stamina 0..1 (1 = full, 1.5 s of flight). */
+  stamina?: number
 }
 
 /** 'dash' is the thief's hit-and-run dash (`dash_<dir>` in its sheet). */

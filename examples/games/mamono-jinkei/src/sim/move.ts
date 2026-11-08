@@ -230,7 +230,13 @@ export function stepBody(
   if (Math.abs(b.ky) < 1) b.ky = 0
   const air = airborne(b)
   // A gust's shove carries even walkers over the edge.
-  const out = grid.move(b.x, b.y, (b.vx + b.kx) * dt, (b.vy + b.ky) * dt, HERO_R, air || b.blown > 0)
+  // On a current that pushes you, nothing holds you back at the edge: you can be carried into the sludge.
+  const fti = grid.inside(Math.floor(b.x / TILE), Math.floor(b.y / TILE))
+    ? grid.idx(Math.floor(b.x / TILE), Math.floor(b.y / TILE))
+    : -1
+  const carried =
+    fti >= 0 && (grid.flowX[fti] !== 0 || grid.flowY[fti] !== 0) && (!opts.resist || grid.flowStrong[fti] === 1)
+  const out = grid.move(b.x, b.y, (b.vx + b.kx) * dt, (b.vy + b.ky) * dt, HERO_R, air || b.blown > 0 || carried)
   if (b.blown > 0) b.blown = Math.max(0, b.blown - dt)
   if (out.hit && !air) {
     // Lose the velocity component into the wall.

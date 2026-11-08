@@ -100,7 +100,6 @@ export function hitValk(W: WorldState, b: Boss, o: HitOpts): 'hit' | 'blocked' |
   b.hp = Math.max(0, b.hp - dmg)
   b.hitAt = W.t
   emit(W, 'hit', b.x, b.y - 60, { a: r1(dmg), b: o.tech || o.heavy ? 1 : 0, s: 'boss' })
-  pop(W, `${Math.round(dmg * 10) / 10}`, b.x, b.y - 120, o.slot)
   fx(W, 'hit', b.x, b.y - 60 - (valkFlying(b) ? b.z : 0))
   sfx(W, o.tech || o.heavy ? 'hitHeavy' : 'hit', b.x, b.y)
   return 'hit'

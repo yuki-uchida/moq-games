@@ -286,7 +286,7 @@ function startGrip(W: WorldState, h: Hero, p: Prop): boolean {
     sfx(W, 'lift', p.x, p.y)
     pop(W, 'もちあげた！', p.x, p.y - 90, h.slot)
   } else if (p.state === 'lifted') setState(W, h, 'carry')
-  else pop(W, `おもい！ ${p.grips.length}/${p.weight}`, p.x, p.y - 80, -1)
+  else sfx(W, 'pushStrain', p.x, p.y)
   return true
 }
 
@@ -609,7 +609,6 @@ export function updatePush(W: WorldState, dt: number): void {
       p.pushT = 0
       if (W.t - p.strainAt > 1) {
         p.strainAt = W.t
-        pop(W, `おもい！ ${bestStr}/${p.weight}`, p.x, p.y - 80, -1)
         sfx(W, 'pushStrain', p.x, p.y)
       }
       continue
@@ -652,6 +651,7 @@ const canPush = (h: Hero) =>
 
 export function updatePuzzles(W: WorldState): void {
   const t = W.t
+  if (W.seq % 30 === 0) resetStuck(W, 0.5)
   for (const p of W.props) {
     if (p.gone) continue
     if (p.goneAt > 0 && t >= p.goneAt) {
@@ -815,6 +815,92 @@ export { banner }
 /* ------------------------------------------------------------------------------------------- stage 2 parts */
 
 export const VALVE = { turn: 1, window: 1.5 }
+
+/* ------------------------------------------------------------------------------------------- fairness */
+
+/** Seconds a pushable may stay unmovable (or a heavy object ungrippable) before it returns to its start. */
+export const STUCK_RESET = 3
+
+/** Can this pushable still be pushed in some direction (a hero can stand behind it and the way ahead is open)? */
+export function pushableFree(W: WorldState, p: Prop): boolean {
+  const g = W.grid!
+  const own = new Set(footTiles(p.kind, p.x, p.y).map(([a, b]) => `${a},${b}`))
+  const solidAt = (tx: number, ty: number) => {
+    if (!g.inside(tx, ty)) return true
+    const i = g.idx(tx, ty)
+    if (g.staticSolid[i]) return true
+    if (own.has(`${tx},${ty}`)) return false
+    return g.solid[i] > 0
+  }
+  for (const [dx, dy] of CARD) {
+    const ahead = footTiles(p.kind, p.x + dx * TILE, p.y + dy * TILE).filter(([a, b]) => !own.has(`${a},${b}`))
+    const behind = footTiles(p.kind, p.x - dx * TILE, p.y - dy * TILE).filter(([a, b]) => !own.has(`${a},${b}`))
+    let sink = 0
+    let ok = true
+    for (const [tx, ty] of ahead) {
+      if (solidAt(tx, ty)) ok = false
+      else if (g.sink[g.idx(tx, ty)]) sink++
+      else if (!g.walk[g.idx(tx, ty)]) ok = false
+    }
+    if (!ok || (sink > 0 && sink < ahead.length)) continue
+    if (behind.some(([tx, ty]) => !solidAt(tx, ty) && g.walk[g.idx(tx, ty)])) return true
+  }
+  return false
+}
+
+function homeFree(W: WorldState, p: Prop): boolean {
+  const g = W.grid!
+  const R = propRect({ kind: p.kind, x: p.homeX, y: p.homeY })
+  if (W.heroes.some((h) => circleRect(h.body.x, h.body.y, 16, R))) return false
+  return footTiles(p.kind, p.homeX, p.homeY).every(
+    ([tx, ty]) =>
+      g.inside(tx, ty) &&
+      !g.staticSolid[g.idx(tx, ty)] &&
+      g.walk[g.idx(tx, ty)] &&
+      !W.props.some(
+        (q) =>
+          q !== p &&
+          !q.gone &&
+          propSolid(q.kind, q.state) &&
+          footTiles(q.kind, q.x, q.y).some(([a, b]) => a === tx && b === ty)
+      )
+  )
+}
+
+/**
+ * No softlocks: a pushable that can no longer be pushed anywhere, or a heavy object nobody can grip, goes back to
+ * where it started (unless it rests on a plate on purpose).
+ */
+function resetStuck(W: WorldState, dt: number): void {
+  for (const p of W.props) {
+    if (p.gone || p.state !== 'idle' || p.delivered) continue
+    const push = PUSHABLE.has(p.kind)
+    const grip = GRIPPABLE.has(p.kind) && !p.grips.length
+    if (!push && !grip) continue
+    if (p.x === p.homeX && p.y === p.homeY) {
+      p.stuckT = 0
+      continue
+    }
+    const onPlate = W.props.some(
+      (q) =>
+        !q.gone &&
+        (q.kind === 'plate' || q.kind === 'plate2' || q.kind === 'bigplate') &&
+        circleRect(p.x, p.y, 8, propRect(q))
+    )
+    const stuck = push
+      ? !pushableFree(W, p)
+      : [0, 1, 2, 3].every((k) => W.grid!.overlaps(p.x + [0, -46, 46, 0][k], p.y + [46, 0, 0, -46][k], 14, false))
+    p.stuckT = stuck && !onPlate ? p.stuckT + dt : 0
+    if (p.stuckT < STUCK_RESET || !homeFree(W, p)) continue
+    fx(W, 'smoke', p.x, p.y)
+    p.x = p.homeX
+    p.y = p.homeY
+    p.stuckT = 0
+    fx(W, 'smoke', p.x, p.y)
+    sfx(W, 'secret', p.x, p.y)
+    emit(W, 'notice', p.x, p.y, { s: '動かせなくなったので、元の場所にもどった' })
+  }
+}
 
 /* ------------------------------------------------------------------------------------------- stage 3 parts */
 

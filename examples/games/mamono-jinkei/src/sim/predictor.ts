@@ -5,7 +5,7 @@
  */
 import { TILE } from '../vocab'
 import { Grid } from './grid'
-import { newBody, stepBody, type Body } from './move'
+import { CROW_FLIGHT, newBody, stepBody, type Body } from './move'
 import type { HeroPredictor } from './api'
 import type { HeroReport, InputState, StageInfo, View } from './types'
 
@@ -46,6 +46,7 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
       }
       if (!body || slot !== hv.slot) {
         body = newBody(hv.x, hv.y, hv.facing)
+        if (hv.stamina !== undefined) body.stamina = hv.stamina * CROW_FLIGHT.stamina
         slot = hv.slot
         applied = hv.force?.seq ?? 0
         seenAction = input.actionPresses
