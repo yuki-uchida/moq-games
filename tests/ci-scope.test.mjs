@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { changedWorkflowJobs, classify, selectScope, workflowJobChecks } from '../scripts/ci-scope.mjs'
+import { changedWorkflowJobs, classify, games, selectScope, workflowJobChecks } from '../scripts/ci-scope.mjs'
 import { parsePagesList, PAGES_WORKERS, selectPagesShard, simulateMakespan } from '../scripts/ci-pages-shard.mjs'
 import {
   chromiumPackages,
@@ -947,6 +947,8 @@ test('documentation and instruction changes do not run game checks or publish', 
 
 for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashiki', 'mamono-jinkei']) {
   test(game + ' changes select only that game', () => {
+    // The landing E2E starts rabbiters and yoru-no-yashiki, so they also select landing.
+    const landing = game === 'rabbiters' || game === 'yoru-no-yashiki'
     for (const path of [
       'examples/games/' + game + '/src/main.ts',
       'playwright.' + game + '.config.ts',
@@ -954,11 +956,15 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashik
     ]) {
       const scope = selectScope([path, 'README.md'])
       assert.equal(scope.unit, 'examples/games/' + game + '/tests')
-      assert.equal(scope.node, '')
+      assert.equal(scope.node, landing ? 'tests/landing-catalog.test.mjs' : '')
       assert.equal(scope.laneNode, '')
       assert.equal(scope.pages, true)
-      assert.equal(scope.pagesBrowser, game === 'ember-grid' || game === 'life-survivors' || game === 'mamono-jinkei')
+      assert.equal(
+        scope.pagesBrowser,
+        landing || game === 'ember-grid' || game === 'life-survivors' || game === 'mamono-jinkei'
+      )
       assert.equal(scope.life, game === 'life-survivors')
+      if (landing) assert.equal(scope.browser, 'landing-e2e.spec.ts')
       if (game === 'life-survivors') assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts')
       if (game === 'mamono-jinkei') assert.equal(scope.browser, 'mamono-jinkei-published-e2e.spec.ts')
       for (const key of ['bot', 'debug']) assert.equal(scope[key], false)
@@ -969,7 +975,9 @@ for (const game of ['rabbiters', 'life-survivors', 'ember-grid', 'yoru-no-yashik
 test('lane battle selects its Node suites rather than unrelated Vitest suites', () => {
   const scope = selectScope(['examples/games/lane-battle/main.js'])
   assert.equal(scope.unit, '')
-  assert.equal(scope.node, '')
+  // The landing E2E starts lane-battle and clicks its simulation's unit cost.
+  assert.equal(scope.node, 'tests/landing-catalog.test.mjs')
+  assert.equal(scope.browser, 'landing-e2e.spec.ts')
   assert.equal(scope.laneNode, 'examples/games/lane-battle/*.test.mjs')
   assert.deepEqual(selectScope(['tests/lane-battle-new.test.mjs']), scope)
 })
@@ -1135,6 +1143,26 @@ test('tower unit and Node contract test files are the only unit and Node targets
   const fixture = selectScope(['examples/games/tower_diffence_with_jev/tests/fixtures/difficulty-v1/assault.json'])
   assert.equal(fixture.tower, true)
   assert.equal(selectScope(['package-lock.json']).unitShards, '[1,2,3,4]')
+})
+
+test('a push that deletes a tower test file checks the whole tower scope instead of naming it', () => {
+  const full = selectScope([towerSourceFile])
+  assert.equal(full.tower, true)
+  for (const path of [
+    'tests/tower-music-e2e.spec.ts',
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts',
+    'tests/tower-viewer-catalog.test.mjs'
+  ]) {
+    assert.deepEqual(selectScope([path], { deleted: [path] }), full, path)
+    // Another modified test file in the same push no longer narrows it.
+    assert.deepEqual(selectScope([path, 'tests/tower-title-e2e.spec.ts'], { deleted: [path] }), full, path)
+    assert.deepEqual(selectScope([path], { deleted: [] }), selectScope([path]), path)
+    assert.notDeepEqual(selectScope([path]), full, path)
+    // The Node contract list is static, so only a deleted spec or unit test must not be named.
+    if (!path.endsWith('.mjs'))
+      for (const value of Object.values(selectScope([path], { deleted: [path] })))
+        assert.ok(!String(value).includes(path), path)
+  }
 })
 
 test('tower test files are added to what other changed games select', () => {
@@ -1399,15 +1427,20 @@ test('games that use another game’s code or runtime assets are checked with it
   for (const path of [
     'examples/games/tower_diffence_with_jev/src/main.ts',
     'examples/games/tower_diffence_with_jev/src/ui/TitleAttract.ts',
-    'examples/games/tower_diffence_with_jev/tests/game.test.ts',
-    'public/tower-defense-sfx/hit.ogg'
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts'
   ])
     assert.deepEqual(classify(path), ['tower'], path)
+  // ember-grid fetches the attack sounds at run time, and its E2E fails on any 4xx response.
+  for (const path of ['public/tower-defense-sfx/hit.ogg', 'public/tower-defense-sfx/archer_attack.wav']) {
+    assert.deepEqual(classify(path), ['tower', 'ember-grid'], path)
+    assert.equal(selectScope([path]).browser, 'tower- ember-grid-e2e.spec.ts', path)
+  }
   // life-survivors and mamono-jinkei play co-op over the rabbiters network session.
   assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), [
     'rabbiters',
     'life-survivors',
-    'mamono-jinkei'
+    'mamono-jinkei',
+    'landing'
   ])
   const network = selectScope(['examples/games/rabbiters/src/network.ts'])
   assert.equal(
@@ -1415,8 +1448,11 @@ test('games that use another game’s code or runtime assets are checked with it
     'examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/mamono-jinkei/tests'
   )
   assert.equal(network.life, true)
-  assert.equal(network.browser, 'life-survivors-published-e2e.spec.ts mamono-jinkei-published-e2e.spec.ts')
-  assert.deepEqual(classify('examples/games/rabbiters/src/main.ts'), ['rabbiters'])
+  assert.equal(
+    network.browser,
+    'landing-e2e.spec.ts life-survivors-published-e2e.spec.ts mamono-jinkei-published-e2e.spec.ts'
+  )
+  assert.deepEqual(classify('examples/games/rabbiters/src/main.ts'), ['rabbiters', 'landing'])
   // The catalog links the tower model viewer, which links back, and shows tower portraits.
   assert.deepEqual(classify('examples/games/tower_diffence_with_jev/extra.html'), ['tower', 'landing'])
   assert.deepEqual(classify('public/tower-defense-art/soldier/portrait.png'), ['tower', 'ember-grid', 'landing'])
@@ -1496,15 +1532,7 @@ test('every file a game imports from outside its folder also selects that game',
   assert.ok(ignored.some((pattern) => pattern.test('docs/notes.md')))
   assert.ok(ignored.some((pattern) => pattern.test('.codex/config.toml')))
   let crossings = 0
-  for (const scope of [
-    'tower',
-    'rabbiters',
-    'life-survivors',
-    'ember-grid',
-    'lane-battle',
-    'yoru-no-yashiki',
-    'landing'
-  ]) {
+  for (const scope of [...games, 'landing']) {
     for (const { file, target } of importEdges(scope)) {
       if (!target) continue
       const selected = classify(target)
@@ -1519,12 +1547,58 @@ test('every file a game imports from outside its folder also selects that game',
   assert.ok(crossings > 0)
 })
 
+test('runtime asset URLs built from the base URL select every game that loads them', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
+  const publicDirs = new Set(tracked.filter((path) => path.startsWith('public/')).map((path) => path.split('/')[1]))
+  const baseUrl = /BASE_URL\}\/?([A-Za-z0-9_-]+)\//g
+  const found = []
+  for (const file of tracked) {
+    const game = classify(file)[0]
+    // The changes job checks out without public/, so only game sources outside it are read.
+    if (!games.includes(game) || file.startsWith('public/') || !/\.[cm]?[jt]sx?$/.test(file)) continue
+    for (const [, segment] of readFileSync(join(root, file), 'utf8').matchAll(baseUrl)) {
+      if (!publicDirs.has(segment)) continue
+      const owner = classify(`public/${segment}/x`)
+      found.push(`${file} -> public/${segment}/ (${owner.join(', ')})`)
+      assert.ok(
+        owner.includes(game),
+        `${game} loads public/${segment}/ (from ${file}), but changing it selects ${owner.join(', ')}`
+      )
+    }
+  }
+  assert.ok(
+    found.some((line) => line.startsWith('examples/games/ember-grid/src/audio.ts -> public/tower-defense-sfx/')),
+    found.join(String.fromCharCode(10))
+  )
+  console.log(found.join(String.fromCharCode(10)))
+})
+
+test('landing runs when a game its E2E starts changes', () => {
+  for (const path of [
+    'examples/games/lane-battle/simulation.js',
+    'examples/games/rabbiters/src/main.ts',
+    'examples/games/yoru-no-yashiki/src/main.ts',
+    'tests/rabbiters-e2e.spec.ts'
+  ]) {
+    assert.equal(classify(path).at(-1), 'landing', path)
+    assert.ok(selectScope([path]).browser.split(' ').includes('landing-e2e.spec.ts'), path)
+  }
+  for (const game of ['ember-grid', 'life-survivors', 'mamono-jinkei'])
+    assert.ok(!classify(`examples/games/${game}/src/main.ts`).includes('landing'), game)
+  // Only the ones the landing E2E starts add the catalog contract test and nothing else beyond their own checks.
+  const lane = selectScope(['examples/games/lane-battle/simulation.js'])
+  assert.equal(lane.node, 'tests/landing-catalog.test.mjs')
+  assert.equal(lane.laneNode, 'examples/games/lane-battle/*.test.mjs')
+  assert.equal(lane.tower, false)
+})
+
 test('per-game build, browser and asset tool files select only their game', () => {
-  for (const [path, scope] of [
+  for (const [path, scope, ...rest] of [
     ['vite.config.life-survivors.mjs', 'life-survivors'],
-    ['vite.config.rabbiters.mjs', 'rabbiters'],
-    ['vite.config.yoru-no-yashiki.mjs', 'yoru-no-yashiki'],
-    ['playwright.yoru-no-yashiki-real-moq.config.ts', 'yoru-no-yashiki'],
+    ['vite.config.rabbiters.mjs', 'rabbiters', 'landing'],
+    ['vite.config.yoru-no-yashiki.mjs', 'yoru-no-yashiki', 'landing'],
+    ['playwright.yoru-no-yashiki-real-moq.config.ts', 'yoru-no-yashiki', 'landing'],
     ['playwright.life-survivors.config.ts', 'life-survivors'],
     ['vite.config.tower-debug.mjs', 'debug'],
     ['vitest.tower-debug-assets.config.mts', 'debug'],
@@ -1542,14 +1616,14 @@ test('per-game build, browser and asset tool files select only their game', () =
     ['scripts/combat-v2-provenance.json', 'tower'],
     ['scripts/import-local-assets.mjs', 'tower']
   ])
-    assert.deepEqual(classify(path), [scope], path)
+    assert.deepEqual(classify(path), [scope, ...rest], path)
 })
 
 test('multiple changed games are combined without selecting other games', () => {
   const scope = selectScope(['tests/rabbiters-e2e.spec.ts', 'public/life-survivors/hero.png'])
   assert.equal(scope.unit, 'examples/games/rabbiters/tests examples/games/life-survivors/tests')
   assert.equal(scope.tower, false)
-  assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts')
+  assert.equal(scope.browser, 'landing-e2e.spec.ts life-survivors-published-e2e.spec.ts')
   assert.equal(scope.life, true)
 })
 
