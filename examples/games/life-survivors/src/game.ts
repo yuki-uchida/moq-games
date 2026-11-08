@@ -50,6 +50,13 @@ import {
   weaponAppearance
 } from './weapon-life'
 
+/** 勉強: pencil i fans out from the aim — back, then left/right, then halving the gaps. */
+export function studySpread(i: number): number {
+  if (i <= 0) return 0
+  const level = Math.floor(Math.log2(i))
+  return ((2 * (i - 2 ** level) + 1) * Math.PI) / 2 ** level
+}
+
 export const STRONG_MULTIPLIER = 2.5
 export const GIFTED = 1.7
 export const POOR = 0.55
@@ -1974,11 +1981,12 @@ export class Game {
       case 'bounce': {
         const found = this.targets(player, n, 700)
         for (let i = 0; i < n; i++) {
-          const target = found[i % Math.max(1, found.length)]
+          const target = def.id === 'w_study' ? found[0] : found[i % Math.max(1, found.length)]
           let angle = target
             ? Math.atan2(target.y - player.y, target.x - player.x)
             : Math.atan2(player.fy, player.fx) + (i - (n - 1) / 2) * 0.25
           if (def.behavior === 'bounce') angle += (rng() - 0.5) * 0.6
+          if (def.id === 'w_study') angle = (target ? angle : Math.atan2(player.fy, player.fx)) + studySpread(i)
           this.shot(player, weapon, def, ws, {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
