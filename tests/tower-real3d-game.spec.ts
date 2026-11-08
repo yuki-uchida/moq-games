@@ -256,8 +256,11 @@ test('prepares summonable models before a drag and draws a committed unit on the
     await held
     await route.continue()
   })
+  // Keep the title demo off so its own model downloads do not duplicate the campaign's GLB requests.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto(towerPath)
   await page.locator('#title-new').click()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.locator('#start').click()
   await expect(page.locator('#campaign-loading')).toBeVisible()
   expect(await page.evaluate(() => (window as any).towerDefenseDiagnostics().campaignPreparation.ready)).toBe(false)
