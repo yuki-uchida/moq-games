@@ -1076,9 +1076,15 @@ function frame(now: number) {
 let hudRectsAt = -Infinity
 let hudRectsHidden = true
 /** Where each part of a banner has been while it shows (CSS px from the canvas's top left). */
-const bannerPaths = new WeakMap<Element, Box>()
+let bannerPaths = new WeakMap<Element, Box>()
+/** The canvas size the paths were measured at: a resize starts them afresh, as the old places no longer apply. */
+let bannerPathsFor = ''
 /** The banner parts that have a path, so one that is skipped in a frame keeps its box while it stays on the page. */
 const bannerParts = new Set<Element>()
+/** Whether an element can be seen: shown, not hidden and not fully transparent, itself and its ancestors. */
+const seen = (element: Element) =>
+  typeof element.checkVisibility !== 'function' ||
+  element.checkVisibility({ opacityProperty: true, visibilityProperty: true })
 const bannerMargin = (path: Box): Box => ({
   left: path.left - 8,
   top: path.top - 8,
@@ -1102,6 +1108,12 @@ function measureHudRects(now = performance.now()) {
   const transient: Box[] = []
   const covers: Box[] = []
   const frame = canvas.getBoundingClientRect()
+  const size = `${Math.round(frame.width)}x${Math.round(frame.height)}`
+  if (size !== bannerPathsFor) {
+    bannerPathsFor = size
+    bannerPaths = new WeakMap()
+    bannerParts.clear()
+  }
   const emitted = new Set<Element>()
   const visit = (parent: Element, depth: number, inBanner: boolean) => {
     for (const child of Array.from(parent.children)) {
@@ -1151,10 +1163,11 @@ function measureHudRects(now = performance.now()) {
     }
   }
   if (!hud.hidden) visit(hud, 0, false)
-  // A part not picked up this frame (screen sized, or under 1px for a moment) keeps its path while it is on the page.
+  // A part not picked up this frame (screen sized, or under 1px for a moment) keeps its path while it is on the page and
+  // can be seen (the feed is see-through while a farewell shows, and its lines then hide nothing).
   for (const part of Array.from(bannerParts)) {
     if (!part.isConnected) bannerParts.delete(part)
-    else if (!emitted.has(part)) {
+    else if (!emitted.has(part) && seen(part)) {
       const path = bannerPaths.get(part)
       if (path) transient.push(bannerMargin(path))
     }
