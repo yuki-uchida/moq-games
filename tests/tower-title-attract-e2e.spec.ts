@@ -41,7 +41,16 @@ test('the title plays a real, silent battle behind a usable title without touchi
 
   await waitForDemo(page)
   const first = await attract(page)
-  await page.waitForTimeout(3000)
+  // It keeps drawing and its battle keeps running; busy software-WebGL runners draw only a few frames a second.
+  await expect
+    .poll(
+      async () => {
+        const now = await attract(page)
+        return now.frames > first.frames + 10 && now.time > first.time + 0.5
+      },
+      { timeout: 30_000, intervals: [250] }
+    )
+    .toBe(true)
   const later = await attract(page)
   // The demo is the real engine, assaulting stage 1 with the starter formation.
   expect(first).toMatchObject({ loop: 0, stage: 1, failure: '' })
