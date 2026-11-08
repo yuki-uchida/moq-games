@@ -182,6 +182,80 @@ test('gambling draws the right animation and status for each life stage', async 
   expect(errors).toEqual([])
 })
 
+test('pachinko shows the 7-7-7 frame, opaque, before and while the jackpot text appears', async ({ page }) => {
+  await page.addInitScript(() => {
+    type Rec = { at: number; image: unknown; text: string; alpha: number }
+    const records: Rec[] = []
+    Object.assign(window, { pachinkoDraws: records })
+    let last: unknown
+    const drawImage = CanvasRenderingContext2D.prototype.drawImage as (...args: unknown[]) => void
+    CanvasRenderingContext2D.prototype.drawImage = function (...args: unknown[]) {
+      last = args[0]
+      drawImage.apply(this, args)
+    } as typeof CanvasRenderingContext2D.prototype.drawImage
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      // The reel sprite is drawn, then its label (empty until the last frame) in the same pass.
+      if ((text === '' || text === '大当たり！') && /^bold [\d.]+px sans-serif$/.test(this.font)) {
+        records.push({ at: performance.now(), image: last, text, alpha: this.globalAlpha })
+      }
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(23) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    game.state.fx = []
+    player.choices = []
+    player.pending = 0
+    player.birthPick = false
+    player.weapons = [
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
+      { id: 'w_love', lv: 1, cd: 100, held: 0, damage: 0 }
+    ]
+    game['fireWeapons'](0)
+  })
+  type Rec = { at: number; image: unknown; text: string; alpha: number }
+  const read = () => page.evaluate(() => (window as unknown as { pachinkoDraws: Rec[] }).pachinkoDraws)
+  await expect
+    .poll(async () => {
+      const draws = await read()
+      const jackpot = draws.findIndex((d) => d.text === '大当たり！')
+      return jackpot >= 0 && draws.at(-1)!.at - draws[jackpot].at > 600
+    })
+    .toBe(true)
+  // Evaluate in page: canvases do not serialise, so map them to reel indexes there.
+  const summary = await page.evaluate(() => {
+    const draws = (window as unknown as { pachinkoDraws: Rec[] }).pachinkoDraws
+    const images: unknown[] = []
+    const rows = draws.map((d) => {
+      let index = images.indexOf(d.image)
+      if (index < 0) index = images.push(d.image) - 1
+      return { at: d.at, index, text: d.text, alpha: d.alpha }
+    })
+    return { frames: images.length, rows }
+  })
+  expect(summary.frames).toBe(6)
+  const jackpot = summary.rows.find((row) => row.text === '大当たり！')!
+  expect(jackpot.index).toBe(5)
+  expect(jackpot.alpha).toBe(1)
+  const finals = summary.rows.filter((row) => row.index === 5 && row.alpha === 1)
+  expect(finals.at(-1)!.at - finals[0].at).toBeGreaterThanOrEqual(300)
+  // The last reel never shows before the jackpot text does.
+  expect(summary.rows.findIndex((row) => row.index === 5)).toBe(summary.rows.indexOf(jackpot))
+})
+
 test('SNS chains scale with duration instead of bonus projectile count', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
