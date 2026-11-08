@@ -1075,6 +1075,14 @@ let hudRectsAt = -Infinity
 let hudRectsHidden = true
 /** Where each part of a banner has been while it shows (CSS px from the canvas's top left). */
 const bannerPaths = new WeakMap<Element, Box>()
+/** The banner parts that have a path, so one that is skipped in a frame keeps its box while it stays on the page. */
+const bannerParts = new Set<Element>()
+const bannerMargin = (path: Box): Box => ({
+  left: path.left - 8,
+  top: path.top - 8,
+  right: path.right + 8,
+  bottom: path.bottom + 8
+})
 
 /**
  * Hands the renderer the screen boxes of the HUD parts drawn over the canvas, so food labels keep clear of them: every
@@ -1090,9 +1098,12 @@ function measureHudRects(now = performance.now()) {
   const rects: (Box & { opaque: boolean })[] = []
   const transient: Box[] = []
   const frame = canvas.getBoundingClientRect()
+  const emitted = new Set<Element>()
   const visit = (parent: Element, depth: number, inBanner: boolean) => {
     for (const child of Array.from(parent.children)) {
       if ((inBanner ? transient : rects).length >= 40) return
+      // The halo is see-through: the labels under it can still be read.
+      if (inBanner && child.classList.contains('rays')) continue
       const banner = inBanner || child.classList.contains('banner')
       const style = getComputedStyle(child)
       if (style.display === 'none') continue
@@ -1125,14 +1136,24 @@ function measureHudRects(now = performance.now()) {
                 }
               : box
             bannerPaths.set(child, path)
+            bannerParts.add(child)
+            emitted.add(child)
             // The labels are drawn with the boxes of the frame before: a margin covers the way a banner moves meanwhile.
-            transient.push({ left: path.left - 8, top: path.top - 8, right: path.right + 8, bottom: path.bottom + 8 })
+            transient.push(bannerMargin(path))
           } else rects.push({ ...box, opaque: hidesBehind(style) })
         }
       } else if (depth < 6) visit(child, depth + 1, banner)
     }
   }
   if (!hud.hidden) visit(hud, 0, false)
+  // A part not picked up this frame (screen sized, or under 1px for a moment) keeps its path while it is on the page.
+  for (const part of Array.from(bannerParts)) {
+    if (!part.isConnected) bannerParts.delete(part)
+    else if (!emitted.has(part)) {
+      const path = bannerPaths.get(part)
+      if (path) transient.push(bannerMargin(path))
+    }
+  }
   renderer.setHudRects(rects, transient)
 }
 

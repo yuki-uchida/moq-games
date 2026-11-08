@@ -2504,6 +2504,106 @@ test('food labels stay put while a banner shows and the ones under it are hidden
   expect(errors).toEqual([])
 })
 
+for (const kind of ['chest', 'bossKill'] as const) {
+  test(`food labels do not flicker or move through the ${kind} banner`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.addInitScript(() => {
+      const draws: { text: string; x: number; y: number; frame: number }[] = []
+      const state = { frame: 0, banner: [] as number[] }
+      Object.assign(window, { labelDraws: draws, labelFrames: state })
+      const tick = () => {
+        state.frame++
+        if (document.querySelector('#banner .banner')) state.banner.push(state.frame)
+        requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+      const fillText = CanvasRenderingContext2D.prototype.fillText
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+        if (text.startsWith('P1：'))
+          draws.push({ text, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, frame: state.frame })
+        if (maxWidth === undefined) fillText.call(this, text, x, y)
+        else fillText.call(this, text, x, y, maxWidth)
+      }
+    })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+    const handle = await life(page)
+    await expect(page.locator('#banner .banner')).toHaveCount(0, { timeout: 8000 })
+    await handle.evaluate((hook) => {
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      game.targetPopulation = () => 0
+      game.state.enemies = []
+      game.state.shots = []
+      player.birthPick = false
+      player.pending = 0
+      player.choices = []
+      player.weapons = []
+      // Around where the banner shows: some under its text, some beside it, one far away.
+      game.state.items = [
+        { kind: 'food_defense', owner: player.id, power: 1, x: player.x + 160, y: player.y - 185 },
+        { kind: 'food_speed', owner: player.id, power: 1, x: player.x - 220, y: player.y - 165 },
+        { kind: 'food_heal', owner: player.id, power: 1, x: player.x + 160, y: player.y - 106 },
+        { kind: 'food_damage', owner: player.id, power: 1, x: player.x - 400, y: player.y + 200 }
+      ]
+    })
+    type Draw = { text: string; x: number; y: number; frame: number }
+    const draws = () => page.evaluate(() => (window as unknown as { labelDraws: Draw[] }).labelDraws.slice())
+    await expect.poll(async () => new Set((await draws()).map((d) => d.text)).size).toBe(4)
+    await page.waitForTimeout(600)
+    await handle.evaluate(async (hook, which) => {
+      const dataPath = '/src/data.ts'
+      const fxPath = '/src/fx.ts'
+      const { ENEMY_INDEX } = await import(dataPath)
+      const { FX } = await import(fxPath)
+      const game = hook.game as unknown as Game
+      const player = game.state.players[0]
+      // Only the frames of this banner count, not the stage banner from before.
+      ;(window as unknown as { labelFrames: { banner: number[] } }).labelFrames.banner.length = 0
+      if (which === 'chest') game.emit(FX.CHEST, player.x, player.y, 1, 0)
+      else game.emit(FX.BOSS_KILL, player.x, player.y, ENEMY_INDEX.get('b_hs'))
+    }, kind)
+    await expect(page.locator('#banner .banner')).toHaveCount(1, { timeout: 4000 })
+    await expect(page.locator('#banner .banner')).toHaveCount(0, { timeout: 8000 })
+    await page.waitForTimeout(600)
+    const all = await draws()
+    const frames = await page.evaluate(() => (window as unknown as { labelFrames: { banner: number[] } }).labelFrames)
+    const start = frames.banner[0]
+    const end = frames.banner.at(-1)!
+    expect(end - start).toBeGreaterThan(20)
+    let hiddenSome = false
+    for (const text of ['P1：防御力UP', 'P1：移動速度UP', 'P1：HP回復', 'P1：攻撃力UP']) {
+      const mine = all.filter((d) => d.text === text)
+      const shown = new Set(mine.map((d) => d.frame))
+      const home = mine.filter((d) => d.frame < start).at(-1)!
+      // Frame by frame through the banner: shown, then hidden, and never shown again until the banner is gone.
+      let hidden = false
+      let reappeared = 0
+      for (let f = start; f <= end; f++) {
+        if (!shown.has(f)) hidden = true
+        else if (hidden) reappeared++
+      }
+      hiddenSome ||= hidden
+      expect(reappeared, `${text} reappeared during the banner`).toBe(0)
+      expect(
+        new Set(mine.filter((d) => d.frame >= start - 5 && d.frame <= end).map((d) => `${d.x},${d.y}`)),
+        text
+      ).toEqual(new Set([`${home.x},${home.y}`]))
+      // Back after the banner, in the same place.
+      const after = mine.filter((d) => d.frame > end)
+      expect(after.length, text).toBeGreaterThan(0)
+      expect(
+        after.every((d) => d.x === home.x && d.y === home.y),
+        text
+      ).toBe(true)
+    }
+    expect(hiddenSome).toBe(true)
+    expect(errors).toEqual([])
+  })
+}
+
 test('a food completely under the opaque hand panel gets no label', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
