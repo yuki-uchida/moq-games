@@ -9,7 +9,7 @@ import { openOfflineCampaign, towerPath } from './tower-defense-e2e-arrange'
 // Seeds a campaign already in the assault with a soldier (optionally down) and an archer.
 async function seed(
   page: Page,
-  { soldierDown = false, far = false, tough = false, wolf = false, spawn = false, casters = ['soldier', 'archer'] as AllyType[] } = {},
+  { soldierDown = false, far = false, tough = false, wolf = false, spawn = false, slot = 0, casters = ['soldier', 'archer'] as AllyType[] } = {},
   beforeContinue?: () => Promise<void>
 ) {
   const save = wolf ? freshRunFromProfile({ version: 1, purchased: [] }, 2, 1) : freshSave()
@@ -26,7 +26,7 @@ async function seed(
   }
   for (const type of wolf ? [] : casters) {
     const slots = getField('meadow', 2, 4).slots.filter((p) => engine.previewPlacement(type, p).valid),
-      point = far ? slots.at(-1) : slots[0]
+      point = far ? slots.at(-1) : slots[slot]
     expect(point).toBeTruthy()
     expect(engine.place(type, point!)).toBe(true)
   }
@@ -56,6 +56,32 @@ async function seed(
     profile: checkpoint!.profile,
     run: { version: 1, progress: checkpoint!.progress, engine: checkpoint }
   })
+  if (tough) {
+    // The click window has to open after the battle-start stall, which the clock catches up by up to 2 s,
+    // and stay open for several slow frames.
+    const enemyId = engine.state.units.find((u) => u.owner === 'ai')!.id
+    let opened = -1,
+      closed = -1
+    for (let tick = 0; tick < 20 * 60 && closed < 0; tick++) {
+      const enemy = engine.state.units.find((u) => u.id === enemyId)
+      const open =
+        !!enemy &&
+        engine.state.units
+          .filter((u) => u.owner === 'player')
+          .every((caster) => {
+            const special = SPECIALS[caster.type as 'soldier' | 'archer']
+            return (
+              enemy.hp > special.power * caster.attack &&
+              Math.hypot(enemy.x - caster.x, enemy.y - caster.y) <= special.range
+            )
+          })
+      if (open && opened < 0) opened = engine.state.time
+      else if (!open && opened >= 0) closed = engine.state.time
+      engine.update(1 / 60)
+    }
+    expect(opened, 'tough window opens').toBeGreaterThan(3)
+    expect(closed - opened, 'tough window length').toBeGreaterThan(1.5)
+  }
   await page.goto(towerPath)
   await page.evaluate((raw) => {
     localStorage.setItem('tower-jev-v3', raw)
@@ -363,7 +389,7 @@ test('two specials cast back-to-back each get their own band one after the other
 test('two skills tapped back to back on one tough enemy are both cast: a special that cannot finish it does not hide it', async ({
   page
 }) => {
-  await seed(page, { tough: true }, async () => {
+  await seed(page, { tough: true, slot: 3 }, async () => {
     await page.evaluate((specials) => {
       const initial = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
         enemy = initial.units.find((unit: any) => unit.owner === 'ai'),
