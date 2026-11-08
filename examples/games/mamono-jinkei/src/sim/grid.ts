@@ -20,6 +20,18 @@ export class Grid {
   readonly bounce: Uint8Array
   /** Filled water/pit tile indices (sunk blocks). */
   readonly fills = new Set<number>()
+  /** Current push per tile (px/s) and its channel index (−1 = none). */
+  readonly flowX: Float32Array
+  readonly flowY: Float32Array
+  readonly flowChan: Int16Array
+  readonly channels: { channel: string; dx: number; dy: number; speed: number; tiles: number[]; strong?: boolean }[]
+  /** Strong current tiles (formations do not resist them). */
+  readonly flowStrong: Uint8Array
+  /** Mouse holes: hole tile → exit tile next to its partner; exit tile → direction out of the hole. */
+  readonly holeExit = new Map<number, number>()
+  readonly holeDir = new Map<number, [number, number]>()
+  /** Entry tile (walkable, next to a hole) → [hole tile, exit tile]. */
+  readonly holeEntry = new Map<number, [number, number][]>()
 
   constructor(info: StageInfo) {
     this.w = info.w
@@ -34,8 +46,29 @@ export class Grid {
     info.tiles.forEach((k: TileKind, i) => {
       this.walk[i] = TILE_KINDS[k].walk ? 1 : 0
       this.air[i] = TILE_KINDS[k].air ? 1 : 0
-      this.sink[i] = k === 'water' || k === 'pit' ? 1 : 0
+      this.sink[i] = k === 'water' || k === 'pit' || k === 'sludge' ? 1 : 0
     })
+    this.flowX = new Float32Array(n)
+    this.flowY = new Float32Array(n)
+    this.flowChan = new Int16Array(n).fill(-1)
+    this.flowStrong = new Uint8Array(n)
+    this.channels = info.currents ?? []
+    this.setStopped([])
+    for (const [a, b] of info.holes ?? []) {
+      for (const [from, to] of [
+        [a, b],
+        [b, a]
+      ]) {
+        const out = this.holeOut(to)
+        const inn = this.holeOut(from)
+        if (!out || !inn) continue
+        this.holeExit.set(from, out[0])
+        this.holeDir.set(out[0], [out[1], out[2]])
+        const list = this.holeEntry.get(inn[0]) ?? []
+        list.push([from, out[0]])
+        this.holeEntry.set(inn[0], list)
+      }
+    }
     const mark = (kind: string, x: number, y: number) => {
       const [fw, fh] = footOf(kind)
       const tx0 = Math.round((x - (fw * TILE) / 2) / TILE)
@@ -44,6 +77,31 @@ export class Grid {
     }
     for (const d of info.decor) if (SOLID_DECOR.has(d.kind)) mark(d.kind, d.x, d.y)
     for (const npc of info.npcs) mark('npc', npc.x, npc.y)
+  }
+
+  /** The walkable 4-neighbour of a hole tile and the direction out of it. */
+  private holeOut(hole: number): [number, number, number] | undefined {
+    const hx = hole % this.w
+    const hy = Math.floor(hole / this.w)
+    for (const [dx, dy] of DIR8.slice(0, 4))
+      if (this.inside(hx + dx, hy + dy) && this.walk[this.idx(hx + dx, hy + dy)])
+        return [this.idx(hx + dx, hy + dy), dx, dy]
+    return undefined
+  }
+
+  /** Stops the listed current channels (sluices); the others push again. */
+  setStopped(ids: readonly string[]): void {
+    this.flowX.fill(0)
+    this.flowY.fill(0)
+    this.channels.forEach((c, ci) => {
+      for (const i of c.tiles) {
+        this.flowChan[i] = ci
+        this.flowStrong[i] = c.strong ? 1 : 0
+        if (ids.includes(c.channel)) continue
+        this.flowX[i] = c.dx * c.speed
+        this.flowY[i] = c.dy * c.speed
+      }
+    })
   }
 
   idx(tx: number, ty: number): number {
@@ -213,16 +271,25 @@ export class Grid {
   /**
    * A* on the tile grid (4-neighbour, plus diagonals without corner cutting). `jump` adds slime hops over one
    * air tile (water, pit, fence, spikes). Returns tile indices from start (exclusive) to goal, with jump hops
-   * marked negative (−(index + 1)). Undefined when unreachable within `limit` expansions.
+   * marked negative (−(index + 1)). `holes` adds rat dashes through mouse holes, marked ≤ HOLE_STEP
+   * (HOLE_STEP − exit index). Undefined when unreachable within `limit` expansions.
    */
-  path(sx: number, sy: number, gx: number, gy: number, jump: boolean, limit = 4000): number[] | undefined {
+  path(
+    sx: number,
+    sy: number,
+    gx: number,
+    gy: number,
+    jump: boolean,
+    limit = 4000,
+    holes = false
+  ): number[] | undefined {
     if (!this.inside(sx, sy) || !this.inside(gx, gy)) return undefined
     const start = this.idx(sx, sy)
     const goal = this.idx(gx, gy)
     if (start === goal) return []
     const g = new Map<number, number>([[start, 0]])
     const came = new Map<number, number>()
-    const hop = new Set<number>()
+    const hop = new Map<number, 'hop' | 'hole'>()
     const open: [number, number][] = [[0, start]]
     const hcost = (i: number) => Math.hypot((i % this.w) - gx, Math.floor(i / this.w) - gy)
     let expanded = 0
@@ -236,7 +303,8 @@ export class Grid {
         const out: number[] = []
         let c = goal
         while (c !== start) {
-          out.push(hop.has(c) ? -(c + 1) : c)
+          const k = hop.get(c)
+          out.push(k === 'hop' ? -(c + 1) : k === 'hole' ? HOLE_STEP - c : c)
           c = came.get(c)!
         }
         return out.reverse()
@@ -244,13 +312,13 @@ export class Grid {
       const cx = cur % this.w
       const cy = Math.floor(cur / this.w)
       const gc = g.get(cur)!
-      const tryNode = (nx: number, ny: number, cost: number, isHop: boolean) => {
+      const tryNode = (nx: number, ny: number, cost: number, isHop: false | 'hop' | 'hole') => {
         const ni = this.idx(nx, ny)
         const ng = gc + cost
         if (ng >= (g.get(ni) ?? Infinity)) return
         g.set(ni, ng)
         came.set(ni, cur)
-        if (isHop) hop.add(ni)
+        if (isHop) hop.set(ni, isHop)
         else hop.delete(ni)
         open.push([ng + hcost(ni), ni])
       }
@@ -265,17 +333,24 @@ export class Grid {
             const hx = cx + 2 * dx
             const hy = cy + 2 * dy
             if (!this.walk[mid] && this.air[mid] && !this.staticSolid[mid] && !this.solid[mid] && this.free(hx, hy))
-              tryNode(hx, hy, 3, true)
+              tryNode(hx, hy, 3, 'hop')
           }
           continue
         }
         if (dx && dy && (!this.free(cx + dx, cy) || !this.free(cx, cy + dy))) continue
         tryNode(nx, ny, dx && dy ? 1.414 : 1, false)
       }
+      if (holes)
+        for (const [, exit] of this.holeEntry.get(cur) ?? [])
+          if (this.free(exit % this.w, Math.floor(exit / this.w)))
+            tryNode(exit % this.w, Math.floor(exit / this.w), 3, 'hole')
     }
     return undefined
   }
 }
+
+/** Path steps at or below this value are mouse-hole dashes (see Grid.path). */
+export const HOLE_STEP = -10_000_000
 
 const DIR8: [number, number][] = [
   [1, 0],
@@ -293,10 +368,20 @@ export function propSolid(kind: string, state: string): boolean {
   switch (kind) {
     case 'block':
     case 'boulder':
+    case 'crate':
+    case 'bigcrate':
     case 'acorn':
-      return state === 'idle' || state === 'sliding'
+    case 'cheese':
+      return state === 'idle' || state === 'sliding' || state === 'gripped'
     case 'pot':
+    case 'barrel':
       return state === 'idle'
+    case 'barricade':
+      return state === 'idle'
+    case 'sluice':
+    case 'valve':
+    case 'scale':
+      return true
     case 'gate':
     case 'bossdoor':
       return state !== 'open'

@@ -70,19 +70,40 @@ export const JUMBO = {
   stun: 1
 }
 
+/** チューチュー大行進 (DESIGN §7.2). */
+export const STAMPEDE = {
+  form: 0.25,
+  end: 0.3,
+  spacing: 36,
+  len: { 2: 6 * TILE, 3: 8 * TILE, 4: 10 * TILE } as Record<number, number>,
+  dur: { 2: 0.7, 3: 0.9, 4: 1.1 } as Record<number, number>,
+  width: { 2: 48, 3: 56, 4: 64 } as Record<number, number>,
+  dmg: { 2: 4, 3: 6, 4: 9 } as Record<number, number>
+}
+
 export interface EnemyStats {
   hp: number
   r: number
   speed: number
   /** Archetype (DESIGN §10). */
-  type: 'melee' | 'ranged' | 'caster' | 'shield'
+  type: 'melee' | 'ranged' | 'caster' | 'shield' | 'dasher' | 'thrower' | 'trapper' | 'spear'
 }
 export const ENEMY_STATS: Partial<Record<EnemyKind, EnemyStats>> = {
   rookie: { hp: 4, r: 14, speed: 100, type: 'melee' },
   bowman: { hp: 3, r: 13, speed: 70, type: 'ranged' },
   apprentice: { hp: 3, r: 13, speed: 60, type: 'caster' },
-  shieldman: { hp: 6, r: 16, speed: 65, type: 'shield' }
+  shieldman: { hp: 6, r: 16, speed: 65, type: 'shield' },
+  thief: { hp: 4, r: 13, speed: 120, type: 'dasher' },
+  alchemist: { hp: 4, r: 13, speed: 60, type: 'thrower' },
+  ratcatcher: { hp: 5, r: 14, speed: 70, type: 'trapper' },
+  spearguard: { hp: 6, r: 16, speed: 60, type: 'spear' }
 }
+/** Enemies with a frontal guard (120°): only flanks and techniques get through. */
+export const GUARDED = new Set<string>(['shieldman', 'spearguard'])
+export const THIEF = { windup: 0.35, dash: 0.3, speed: 430, flee: 3, range: 170 }
+export const BOMB = { windup: 0.4, flight: 0.8, r: 56, dmg: 2, height: 70 }
+export const SNARE = { windup: 0.5, hold: 1.5, life: 20, perCatcher: 3 }
+export const SPEAR = { windup: 0.55, reach: 80, width: 26, dmg: 2, recover: 0.8 }
 export const DEFAULT_ENEMY: EnemyStats = { hp: 4, r: 14, speed: 70, type: 'melee' }
 
 /** Enemy animation timings matching the art (hurt 2 @ 12 fps, death 5 @ 10 fps). */

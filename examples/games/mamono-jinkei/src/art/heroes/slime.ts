@@ -62,7 +62,7 @@ interface Pose {
   bubbles?: boolean
 }
 
-const REST_ANG: Record<JobId, number> = { sword: -1.35, mage: -1.52, archer: 0, cleric: -1.52 }
+export const REST_ANG: Record<JobId, number> = { sword: -1.35, mage: -1.52, archer: 0, cleric: -1.52 }
 
 const mirrorY = (p: Pose): Pose => ({
   ...p,
@@ -153,7 +153,7 @@ export function renderFrame(job: JobId, dir: Dir, p: Pose): Raster {
 /* ------------------------------------------------------------------ effect helpers */
 
 /** A crescent smear (sword swing) around (cx, cy) between angles a0 and a1, tapering at both ends. */
-function smear(r: Raster, cx: number, cy: number, rad: number, a0: number, a1: number, width: number) {
+export function smear(r: Raster, cx: number, cy: number, rad: number, a0: number, a1: number, width: number) {
   const steps = 28
   const outer: number[] = []
   const inner: number[] = []
@@ -268,7 +268,7 @@ const ATTACK: Record<JobId, { down: Hold[]; side: Hold[] }> = {
   }
 }
 
-const hold = (job: JobId, dir: Dir, i: number): Hold => {
+export const hold = (job: JobId, dir: Dir, i: number): Hold => {
   const t = ATTACK[job][dir === 'side' ? 'side' : 'down'][i]
   return dir === 'up' ? { ...t, armR: [t.armR[0], -t.armR[1]], ang: -t.ang } : t
 }

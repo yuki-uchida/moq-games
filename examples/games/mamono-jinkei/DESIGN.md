@@ -206,14 +206,53 @@ Stage outlines:
 
 1. **ぷるぷる草原と古城跡** (slime): meadow tutorial (jump a water channel, cut grass, pots) → stone block
    (weight 2) and boulder (weight 4) → arena → twin plates in a hedge maze (two must stand, the others pull the
-   lever behind the gate) → giant acorn (grip weight 3) onto the ruins pedestal → cracked floor (King Slime press)
+   lever behind the gate) → giant acorn (grip weight 3) onto the ruins pedestal → cracked rock (ジャンボ・プレス)
    → four crystals in four alcoves (せーの) → boss ガルド.
-2. **地下水路と穀物庫** (rat): sewer with water currents and valves; mouse holes into side rooms (split); crates;
-   cheese wheel (grip weight 3) across moving water; snare traps; barricades only the stampede gnaws → witch.
-3. **風鳴りの崖と時計塔** (crow): pits to fly over, updraft vents, wind gusts; four tower bells to ring together;
-   windmills spun by the tornado to raise bridges; shiny keys → dragoon.
-4. **月影の森と白銀の砦** (wolf): darkness with per-hero light, moonstones (howl, resonance), ice floor and ice
-   blocks, log sled (grip weight 4), dark clearings that need one wolf each → hero Leon.
+2. **地下水路と穀物庫** (rat, light `dim`): stone sewers lit by lamps, rising into a wooden granary.
+   - **Currents** (`current` tiles, a direction per channel) push walking heroes 120 px/s downstream; a formation
+     of 3+ walks against them at full speed (「陣形なら流されない」). `sludge` is deep water (fall).
+   - **Mouse holes** (`hole` wall tiles in pairs): dashing into one comes out of its partner; nothing carried fits.
+     Holes lead into small side rooms — split puzzles: e.g. two **valves** (`valve`, hold E 1 s) in two hole-rooms
+     must be turned within 1.5 s of each other to open the **sluice** that stops a current; a lever room behind a
+     hole opens a gate for the others.
+   - **Crates** (`crate` weight 1, `bigcrate` 2×2 weight 4) and liftable **barrels**; **mousetraps** snap shut
+     (1 dmg, snared 1.5 s) when stepped on unless a pot/barrel is thrown on them first.
+   - **Cheese wheel** (`cheese`, grip weight 3) carried across a current (carriers in formation resist it) onto the
+     granary **scale** (`scale`) → the granary door opens.
+   - **Barricades** (`barricade`, 2×1): only the stampede (チューチュー大行進) gnaws through; one hides a shortcut.
+   - Enemies: 盗賊 (dashes in, steals a gem on hit, flees), 錬金術師 (lobbed potion bombs with ground markers),
+     ネズミ捕り (sets snares; a snared hero is freed when an ally hits the snare), 槍衛兵 (long-reach thrust, guard).
+   - Boss **猫使いの魔女ミルダ** + her **giant cat**: the cat guards the witch (she is untouchable while the cat is
+     awake) with pounces and swipes; a stampede into the cat stuns it (5 s) and knocks the witch off her broom
+     (broken: vulnerable). She casts homing hex bolts and summons thieves; phase 2: the cat pounces twice.
+3. **風鳴りの崖と時計塔** (crow, light `day`, windy): cliff platforms over a sea of clouds, up to a clocktower.
+   - **Sky** gaps (`sky` tiles): fly over (1.5 s stamina, ~5 tiles); landing on sky = fall. **Vents** (`vent`)
+     refill stamina and lift you — chains of vents cross long gaps.
+   - **Wind zones** (regions with a direction and strength): flying crows are pushed hard, walking ones gently; a
+     formation of 3+ resists. Wind streak particles show direction.
+   - **Windmills** (`windmill`): spun by the tornado (黒羽の大旋風) → lowers **drawbridge** pieces over the sky
+     (latched). **Bells** (`bell`) in four towers: all rung within 1.2 s opens the clocktower (split + せーの).
+   - Crows pick up **keys** and carry them over gaps to **lock doors** (`lockdoor`); the heavy **gold bell**
+     (`goldbell`, grip weight 4) must be carried to its **hook** (`hook`) on the belfry.
+   - Enemies: 鷹匠 (sends a hawk minion that swoops), 弩兵 (long aim line, piercing bolt), 風の魔導士 (gusts that
+     push heroes toward edges), 鐘番の修道士 (heals allies, rings a bell that shields them).
+   - Boss **竜騎士ヴァルク** on his wyvern: flies out of reach (only arrows/bolts hit, ×0.5), dives along a line
+     telegraph, sweeps fire breath; the tornado pulls him down (downed 5 s: full damage). Phase 2: double dives.
+4. **月影の森と白銀の砦** (wolf, light `night`): a moonlit snowy forest, then the guild's silver fortress.
+   - **Darkness**: each hero lights ~110 px; howls flash a big light for a moment; braziers and lit moonstones
+     light their surroundings. Enemies in the dark are drawn only near light.
+   - **Moonstones** (`moonstone`): a howl within 160 px lights one for 6 s; a gate opens while all stones of a set
+     are lit (split: dark clearings each need their own wolf). **Big moonstones** (`bigmoon`) need 共鳴 (two
+     howls within 0.6 s) or the pack technique (tier ≥ 3).
+   - **Ice** floor slides; **ice blocks** (`iceblock`, weight 2) slide until blocked (sliding puzzles);
+     **ice walls** (`icewall`) only shatter under the pack technique (月下群狼陣).
+   - **Battering log** (`log`, grip weight 4) carried to the fortress gate's **ram slot** (`ramslot`) breaks it.
+     **Snow piles** (`snowpile`) are dug with attacks (gems, keys, hearts).
+   - Enemies: 狩人 (snares + arrows), 聖騎士 (shield + heals allies), 氷の魔女 (ice spikes erupting under heroes
+     after a telegraph), 重装兵 (heavy guard, slow, big hits).
+   - Final boss **勇者レオン**: phase 1 sword combos, dashes and a parry stance (attacks into it are reflected);
+     phase 2 (awaken): holy pillars rain on telegraphs and a holy shield bubble that only the pack technique breaks.
+     Defeat → the last orb → the ending.
 
 ## 13. Network model
 

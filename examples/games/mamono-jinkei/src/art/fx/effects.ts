@@ -3,6 +3,7 @@ import { FX_SPEC, TURNS } from '../contract'
 import { C, R } from '../palette'
 import { Raster, ball, outlineWith, rng } from '../raster'
 import { anim, type Anim, type Sheet } from '../sheet'
+import { buildFx2 } from './effects2'
 import { TAU, clamp01, dissolve, easeOut, glowDisc, keep, plus, smooth, sparkle } from './util'
 
 const hyp = (a: number, b: number) => Math.sqrt(a * a + b * b)
@@ -729,70 +730,6 @@ function shockFrame(f: number): Raster {
   return r
 }
 
-function soulFrame(f: number): Raster {
-  const r = new Raster(32, 48)
-  const bob = [0, -1, -1, 0][f]
-  const cx = 16
-  const cy = 21 + bob
-  const rad = 12
-  for (let y = 0; y < 48; y++)
-    for (let x = 0; x < 32; x++) {
-      const nx = (x + 0.5 - cx) / rad
-      const ny = (y + 0.5 - cy) / rad
-      const q = nx * nx + ny * ny
-      if (q > 1) continue
-      if (q > 0.72) r.set(x, y, nx + ny < 0 ? C.white : R.ice[1])
-      else r.set(x, y, keep(x, y, 0.38) ? R.ice[0] : R.sky[0])
-    }
-  const gy = cy + 1
-  r.ellipse(cx, gy - 1, 5.2, 5.4, C.white)
-  r.poly(
-    [
-      cx - 5,
-      gy - 1,
-      cx + 5,
-      gy - 1,
-      cx + 5,
-      gy + 5,
-      cx + 3,
-      gy + 3.5,
-      cx + 1,
-      gy + 5.5,
-      cx - 1,
-      gy + 3.5,
-      cx - 3,
-      gy + 5.5,
-      cx - 5,
-      gy + 4
-    ],
-    C.white
-  )
-  r.rect(cx - 3, gy - 2, 2, 2, C.black)
-  r.rect(cx + 1, gy - 2, 2, 2, C.black)
-  r.set(cx, gy + 1, R.ratPink[2])
-  r.set(cx - 5, gy + 1, R.paper[2])
-  r.set(cx + 4, gy + 1, R.paper[2])
-  outlineWith(r, R.sky[3], false)
-  r.rect(cx - 8, cy - 7, 3, 1, C.white)
-  r.rect(cx - 9, cy - 6, 1, 3, C.white)
-  r.set(cx + 7, cy + 6, R.sky[2])
-  // The thread of bubbles down to the fallen hero.
-  r.set(cx + 1, 37 + bob, R.ice[0])
-  r.set(cx + 1, 38 + bob, R.ice[0])
-  r.set(cx, 38 + bob, R.ice[0])
-  r.set(cx, 37 + bob, R.ice[0])
-  outlineWith(r, R.sky[3], false)
-  r.set(cx - 2, 42, R.ice[0])
-  for (const [dx, dy] of [
-    [-1, 0],
-    [1, 0],
-    [0, -1],
-    [0, 1]
-  ])
-    r.set(cx - 2 + dx, 42 + dy, R.sky[3])
-  return r
-}
-
 function reviveFrame(f: number): Raster {
   const r = new Raster(96, 96)
   const t = f / 5
@@ -839,47 +776,6 @@ function reviveFrame(f: number): Raster {
   return r
 }
 
-function telegraphFrame(f: number): Raster {
-  const r = new Raster(64, 64)
-  const lo = f === 0
-  const edge = lo ? R.jobRed[2] : R.jobRed[1]
-  const hot = lo ? R.jobRed[1] : R.jobRed[0]
-  for (let y = 4; y < 60; y++)
-    for (let x = 4; x < 60; x++) {
-      const stripe = ((x + y + (lo ? 0 : 6)) >> 3) & 1
-      if (stripe && keep(x, y, lo ? 0.5 : 0.65)) r.set(x, y, lo ? R.jobRed[3] : R.jobRed[2])
-      else if (!stripe && keep(x, y, 0.18)) r.set(x, y, R.jobRed[2])
-    }
-  r.rect(3, 3, 58, 2, edge)
-  r.rect(3, 59, 58, 2, edge)
-  r.rect(3, 3, 2, 58, edge)
-  r.rect(59, 3, 2, 58, edge)
-  // Brighter corner brackets.
-  for (const [x0, y0, dx, dy] of [
-    [3, 3, 1, 1],
-    [60, 3, -1, 1],
-    [3, 60, 1, -1],
-    [60, 60, -1, -1]
-  ] as const)
-    for (let k = 0; k < 12; k++) {
-      const hx = dx > 0 ? x0 + k : x0 - k
-      const vy = dy > 0 ? y0 + k : y0 - k
-      r.rect(hx, dy > 0 ? y0 : y0 - 2, 1, 3, hot)
-      r.rect(dx > 0 ? x0 : x0 - 2, vy, 3, 1, hot)
-    }
-  const m = lo ? R.jobRed[1] : R.jobRed[0]
-  r.ellipse(32, 32, 9, 9, R.jobRed[3])
-  r.ellipse(32, 32, 7.5, 7.5, edge)
-  r.rect(31, 26, 3, 7, m)
-  r.rect(31, 35, 3, 3, m)
-  if (!lo) {
-    r.rect(31, 26, 1, 7, C.white)
-    r.rect(31, 35, 1, 3, C.white)
-  }
-  outlineWith(r, R.jobRed[4], false)
-  return r
-}
-
 function gemSparkleFrame(f: number): Raster {
   const r = new Raster(16, 16)
   sparkle(r, 8, 8, [2, 5, 7, 3][f], C.white, C.white, C.spark)
@@ -896,58 +792,6 @@ function gemSparkleFrame(f: number): Raster {
   return f === 3 ? dissolve(r, 0.6) : r
 }
 
-/** The 360° whirl: two crescent blades chasing each other around a ring that spins and thins out. */
-function spinFrame(f: number, t: number): Raster {
-  const size = 192
-  const r = new Raster(size, size)
-  const c = size / 2
-  const rad = 60 + 24 * easeOut(Math.min(1, t * 1.3))
-  const spin = f * 1.15
-  const fade = [1, 1, 1, 0.9, 0.7, 0.45][f]
-  const width = [8, 15, 16, 13, 9, 5][f]
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const dx = x + 0.5 - c
-      const dy = y + 0.5 - c
-      const d = hyp(dx, dy)
-      if (Math.abs(d - rad) > width) continue
-      const th = Math.atan2(dy, dx) - spin
-      // Distance behind each leading tip (0 = tip, 1 = far tail), two blades per turn.
-      const u = (((-th % Math.PI) + Math.PI) % Math.PI) / Math.PI
-      const w = Math.max(0.9, width * (1 - u * 0.97) ** 0.9 * (u < 0.02 ? u / 0.02 : 1))
-      const inner = rad - w * 0.45
-      const outer = rad + w * 0.55
-      if (d < inner || d > outer) continue
-      if (!keep(x, y, fade)) continue
-      const p = (d - inner) / (outer - inner)
-      if (u > 0.82 && !keep(x, y, (1 - u) * 5)) continue
-      r.set(
-        x,
-        y,
-        p > 0.78
-          ? C.white
-          : p > 0.5
-            ? u < 0.5
-              ? C.white
-              : R.jobRed[0]
-            : p > 0.3
-              ? R.jobRed[0]
-              : p > 0.13
-                ? R.jobRed[1]
-                : R.jobRed[2]
-      )
-    }
-  r.ring(c, c, rad - 20, rad - 18, R.jobRed[2], spin - 0.4, spin + 1.3)
-  r.ring(c, c, rad - 20, rad - 18, R.jobRed[2], spin + Math.PI - 0.4, spin + Math.PI + 1.3)
-  for (let k = 0; k < 2; k++) {
-    const a = spin + k * Math.PI
-    sparkle(r, c + Math.cos(a) * (rad + 3), c + Math.sin(a) * (rad + 3), f < 3 ? 3 : 1, C.white, C.white, R.jobRed[0])
-  }
-  return r
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-
 export function buildFx(): Sheet {
   const s: Sheet = {}
   for (let a = 0; a < TURNS; a++) {
@@ -959,11 +803,6 @@ export function buildFx(): Sheet {
     s[`arrow_${a}`] = make(`arrow_${a}`, [arrowRaster(a, false)])
     s[`enemy_arrow_${a}`] = make(`enemy_arrow_${a}`, [arrowRaster(a, true)])
   }
-  s.spin = make(
-    'spin',
-    frames(6, (f, t) => spinFrame(f, t)),
-    { alpha: [1, 1, 1, 0.95, 0.8, 0.55] }
-  )
   s.bonk = make('bonk', frames(4, bonkFrame))
   s.bolt = make('bolt', frames(4, boltFrame))
   s.orb = make('orb', frames(4, orbFrame))
@@ -990,9 +829,7 @@ export function buildFx(): Sheet {
   s.spark = make('spark', frames(4, sparkFrame))
   s.charge_full = make('charge_full', frames(4, chargeFullFrame), { alpha: [0.85, 1, 0.9, 1] })
   s.shock = make('shock', frames(6, shockFrame))
-  s.soul = make('soul', frames(4, soulFrame), { alpha: [0.92, 0.96, 0.92, 0.88] })
   s.revive = make('revive', frames(6, reviveFrame))
-  s.telegraph = make('telegraph', frames(2, telegraphFrame), { alpha: [0.72, 0.92] })
   s.gem_sparkle = make('gem_sparkle', frames(4, gemSparkleFrame))
-  return s
+  return Object.assign(s, buildFx2())
 }

@@ -215,7 +215,7 @@ export type HairStyle = 'short' | 'spiky' | 'long' | 'bob' | 'none'
 export type Brow = 'eager' | 'stern' | 'calm' | 'sly'
 
 export interface Overlay {
-  kind: 'vest' | 'belt' | 'mail' | 'robe' | 'tabard' | 'apron' | 'collar' | 'plate'
+  kind: 'vest' | 'belt' | 'mail' | 'robe' | 'tabard' | 'apron' | 'collar' | 'plate' | (string & {})
   ramp: Ramp
   /** Trim / buckle colour. */
   trim?: Ramp

@@ -157,3 +157,42 @@ export function walkTo(world: WorldImpl, pad: Pad, h: Hero, x: number, y: number
     }
   )
 }
+
+/** A world on a small custom sewer map (rat species): `.` sewer, `#` brick, `~` sludge, `@` spawn. */
+export function customSewer(
+  map: string[],
+  extra: Partial<StageData> = {},
+  players = ['host']
+): { world: WorldImpl; W: WorldState } {
+  const data: StageData = {
+    id: 'sewer',
+    map,
+    light: 'dim',
+    legend: {
+      '.': { tile: 'sewer' },
+      '#': { tile: 'brick' },
+      '~': { tile: 'sludge' },
+      '@': { tile: 'sewer', ent: { type: 'spawn' } },
+      ...extra.legend
+    },
+    rooms: extra.rooms ?? [{ id: 'A', name: 'A', x: 0, y: 0, w: map[0].length, h: map.length, objective: '' }],
+    signs: extra.signs ?? []
+  }
+  const world = new WorldImpl({ seed: 5, progress: { cleared: [] }, stage: 'sewer', skipIntro: true }, { sewer: data })
+  world.setPlayers(players.map((id) => ({ id, name: id })))
+  return { world, W: world.W }
+}
+
+/** Puts the human's companions in stay mode, parked at the given tiles (default: far corner row 1). */
+export function parkCompanions(world: WorldImpl, W: WorldState, pad: Pad, spots?: [number, number][]): void {
+  pad.mode()
+  run(world, 1 / 60)
+  const me = ctrlHero(W, pad.id)
+  W.heroes
+    .filter((h) => h !== me && h.owner === pad.id)
+    .forEach((h, i) => {
+      const [tx, ty] = spots?.[i] ?? [1 + i, 1]
+      place(h, T(tx), T(ty))
+      h.anchor = { x: T(tx), y: T(ty) }
+    })
+}

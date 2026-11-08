@@ -1,7 +1,7 @@
 /**
  * The host world: phases, the fixed-step update order and commands. See api.ts for the public surface.
  */
-import { JOBS, STAGES, STAGE_NAMES, STAGE_SPECIES, TILE, type StageId } from '../vocab'
+import { JOBS, RELEASED_STAGES, STAGES, STAGE_NAMES, STAGE_SPECIES, TILE, type StageId } from '../vocab'
 import { STAGE_DATA } from '../stages'
 import { activateBoss, createBoss, resetBoss, updateBoss } from './boss'
 import {
@@ -24,6 +24,7 @@ import {
   dist,
   emit,
   freeSpotNear,
+  formSize,
   fx,
   heroBy,
   leader,
@@ -34,11 +35,11 @@ import {
   tileOf,
   warpHero
 } from './core'
-import { spawnEnemy, updateEnemies } from './enemies'
+import { spawnEnemy, updateBombs, updateEnemies, updateSnares } from './enemies'
 import { updateFormations } from './formation'
 import { Grid } from './grid'
 import { dropItems, updatePickups } from './items'
-import { airborne, MAX_SPEED, newBody, stepBody } from './move'
+import { airborne, MAX_SPEED, newBody, RAT_DASH, stepBody } from './move'
 import { assignSlots, newHuman, pickJob, switchHero, syncPlayers, toggleMode } from './party'
 import {
   bounceAt,
@@ -53,7 +54,7 @@ import {
   updatePush
 } from './props'
 import { createRng } from './rng'
-import { parseStage, type ParsedStage, type StageData } from './stage-data'
+import { GRIPPABLE, parseStage, type ParsedStage, type StageData } from './stage-data'
 import type { Hero, Human, Prop, WorldState } from './state'
 import { NO_INTENT } from './state'
 import { CHARGE, CHARGE_SPEED, DOWN, FALL, JOB_STATS } from './tables'
@@ -111,7 +112,9 @@ export class WorldImpl implements World {
       roomsSeen: new Set(),
       bigFormRooms: new Set(),
       cleared: [...options.progress.cleared],
-      orbTaken: false
+      orbTaken: false,
+      currentsOff: [],
+      snares: []
     }
     if (options.stage) this.pendingStart = options.stage
   }
@@ -155,7 +158,7 @@ export class WorldImpl implements World {
       const i = STAGES.indexOf(W.stage)
       const next = STAGES[i + 1]
       if (!next) this.setPhase('ending')
-      else if (this.stages[next]) this.startStage(next)
+      else if (this.stages[next] && RELEASED_STAGES.includes(next)) this.startStage(next)
       else this.toLobby()
     } else if (c.type === 'lobby' && (W.phase === 'clear' || W.phase === 'ending' || W.phase === 'play')) this.toLobby()
   }
@@ -193,7 +196,10 @@ export class WorldImpl implements World {
   /* ------------------------------------------------------------------------------------------- phases */
 
   unlocked(): StageId[] {
-    return STAGES.filter((s, i) => this.stages[s] && (i === 0 || this.W.cleared.includes(STAGES[i - 1])))
+    // Selectable: has data, is released, and the previous stage is cleared.
+    return STAGES.filter(
+      (s, i) => this.stages[s] && RELEASED_STAGES.includes(s) && (i === 0 || this.W.cleared.includes(STAGES[i - 1]))
+    )
   }
 
   private setPhase(p: WorldState['phase']): void {
@@ -210,6 +216,7 @@ export class WorldImpl implements World {
     W.pickups = []
     W.techs = []
     W.boss = undefined
+    W.pet = undefined
     W.parsed = undefined
     W.grid = undefined
     W.results = undefined
@@ -245,6 +252,8 @@ export class WorldImpl implements World {
     W.results = undefined
     W.orbTaken = false
     W.orb = undefined
+    W.currentsOff = []
+    W.snares = []
     W.props = P.props.map(
       (p): Prop => ({
         id: p.id,
@@ -264,6 +273,7 @@ export class WorldImpl implements World {
         drop: p.spec.drop ?? [],
         group: p.spec.group,
         accepts: p.spec.accepts,
+        stops: p.spec.stops ?? [],
         on: false,
         gone: false,
         goneAt: 0,
@@ -277,6 +287,7 @@ export class WorldImpl implements World {
     )
     W.enemies = []
     for (const e of P.enemies) spawnEnemy(W, e.kind, e.x, e.y)
+    W.pet = undefined
     W.boss = P.boss ? createBoss(W, P.boss.kind, P.boss.x, P.boss.y) : undefined
     for (const p of P.pickups) dropItems(W, p.x, p.y, [p.kind])
     for (const p of W.pickups) (p.vx = 0), (p.vy = 0)
@@ -367,7 +378,7 @@ export class WorldImpl implements World {
       setState(W, h, 'idle')
     }
     for (const p of W.props)
-      if (p.kind === 'acorn' && p.state === 'lifted') {
+      if (GRIPPABLE.has(p.kind) && p.state === 'lifted') {
         p.grips = []
         p.state = 'idle'
         p.z = 0
@@ -405,7 +416,9 @@ export class WorldImpl implements World {
     updatePush(W, dt)
     updateEnemies(W, dt)
     updateBoss(W, dt)
+    updateBombs(W)
     updateShots(W, dt, (W2, s) => potShotEnd(W2, s))
+    updateSnares(W)
     updatePickups(W, dt)
     updatePuzzles(W)
     this.downs(dt)
@@ -432,10 +445,19 @@ export class WorldImpl implements World {
       const base = h.accepted ?? { x: h.body.x, y: h.body.y, t: W.t - 0.1 }
       const elapsed = Math.max(1 / 60, W.t - base.t)
       const maxD = MAX_SPEED[W.species] * elapsed * 1.5 + 24
+      // A mouse hole near the last accepted position may have carried the hero to its partner.
+      const g = W.grid!
+      const viaHole = [...g.holeExit].some(([hole, exit]) => {
+        const hx = (hole % g.w) * TILE + TILE / 2
+        const hy = Math.floor(hole / g.w) * TILE + TILE / 2
+        const ex = (exit % g.w) * TILE + TILE / 2
+        const ey = Math.floor(exit / g.w) * TILE + TILE / 2
+        return dist(base.x, base.y, hx, hy) <= maxD + 48 && dist(r.x, r.y, ex, ey) <= maxD + 48
+      })
       const ok =
         Number.isFinite(r.x) &&
         Number.isFinite(r.y) &&
-        dist(r.x, r.y, base.x, base.y) <= maxD &&
+        (dist(r.x, r.y, base.x, base.y) <= maxD || viaHole) &&
         !W.grid!.overlaps(r.x, r.y, 15, r.airborne || airborne(h.body))
       if (ok) {
         h.body.x = r.x
@@ -599,7 +621,7 @@ export class WorldImpl implements World {
     const stunned = h.stun > t
     let mul = holdSpeed(W, h)
     if (h.charging) mul *= CHARGE_SPEED
-    if (stunned) mul = 0
+    if (stunned || h.snared > t) mul = 0
     const human = W.humans.find((q) => q.id === h.owner)
     if (!human || human.ctrl !== h.slot) mul *= h.ai.boost
     const res = stepBody(
@@ -609,8 +631,22 @@ export class WorldImpl implements World {
       W.species,
       mul,
       dt,
-      h.hold === undefined && !stunned
+      h.hold === undefined && !stunned,
+      { resist: formSize(W, h) >= 3, carrying: h.hold !== undefined }
     )
+    if (res.dashed) {
+      sfx(W, 'ratDash', h.body.x, h.body.y)
+      fx(W, 'dash_trail', h.body.x, h.body.y, h.body.dashA)
+      setState(W, h, 'action')
+    }
+    if (res.holed) {
+      fx(W, 'smoke', res.holed.fromX, res.holed.fromY)
+      fx(W, 'smoke', res.holed.toX, res.holed.toY)
+      sfx(W, 'ratSqueak', res.holed.toX, res.holed.toY)
+      h.accepted = undefined
+    }
+    if (h.state === 'action' && W.species === 'rat' && !(h.body.dashT >= 0 && h.body.dashT <= RAT_DASH.time))
+      setState(W, h, 'idle')
     if (res.jumped) {
       sfx(W, 'slimeJump', h.body.x, h.body.y)
       setState(W, h, 'action')
@@ -635,7 +671,7 @@ export class WorldImpl implements World {
       h.body.vx = h.body.vy = h.body.kx = h.body.ky = 0
       sfx(W, 'fall', h.body.x, h.body.y)
       const tile = W.parsed!.info.tiles[g.idx(tileOf(h.body.x), tileOf(h.body.y))]
-      if (tile === 'water') {
+      if (tile === 'water' || tile === 'sludge') {
         fx(W, 'splash', h.body.x, h.body.y)
         sfx(W, 'splash', h.body.x, h.body.y)
       }
@@ -832,10 +868,13 @@ function initialState(kind: Prop['kind']): string {
     case 'crystal':
     case 'lever':
     case 'pedestal':
+    case 'scale':
+    case 'valve':
       return 'off'
     case 'gate':
     case 'bossdoor':
     case 'chest':
+    case 'sluice':
       return 'closed'
     default:
       return 'idle'
@@ -843,7 +882,7 @@ function initialState(kind: Prop['kind']): string {
 }
 
 function defaultWeight(kind: Prop['kind']): number {
-  return { block: 2, boulder: 4, acorn: 3, pot: 1 }[kind as string] ?? 0
+  return { block: 2, boulder: 4, acorn: 3, pot: 1, crate: 1, bigcrate: 4, cheese: 3, barrel: 1 }[kind as string] ?? 0
 }
 
 export function newHero(slot: number, job: Hero['job'], x: number, y: number): Hero {
@@ -866,6 +905,7 @@ export function newHero(slot: number, job: Hero['job'], x: number, y: number): H
     chargeLock: 0,
     inv: 0,
     stun: 0,
+    snared: 0,
     downAt: 0,
     revive: 0,
     fallUntil: 0,

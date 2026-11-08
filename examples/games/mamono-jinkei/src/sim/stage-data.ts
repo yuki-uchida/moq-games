@@ -42,8 +42,10 @@ export type EntitySpec =
       drop?: PickupKind[]
       /** Crystal group (all hit within the window → flag `crystals:<group>`). */
       group?: string
-      /** Pedestal: the prop id (part id) it accepts. */
+      /** Pedestal/scale: the prop id (part id) it accepts. */
       accepts?: string
+      /** Sluice: the current channels it stops once open. */
+      stops?: string[]
     }
   | { type: 'enemy'; kind: EnemyKind }
   | { type: 'boss'; kind: BossKind }
@@ -51,6 +53,10 @@ export type EntitySpec =
   /** A sign; its pages come from StageData.signs in reading order. */
   | { type: 'sign' }
   | { type: 'pickup'; kind: PickupKind }
+  /** A current tile of a channel flowing along (dx, dy) at `speed` px/s (default 120). */
+  | { type: 'current'; channel: string; dx: number; dy: number; speed?: number; strong?: boolean }
+  /** A mouse-hole tile; the two tiles with the same `pair` are linked. */
+  | { type: 'hole'; pair: string }
 
 export interface LegendEntry {
   /** Terrain under the marker; omitted → taken from a walkable neighbour. */
@@ -103,8 +109,17 @@ export const FOOT: Partial<Record<string, [number, number]>> = {
   bigplate: [2, 2],
   pedestal: [2, 1],
   bossdoor: [3, 1],
-  altar: [2, 1]
+  altar: [2, 1],
+  bigcrate: [2, 2],
+  barricade: [2, 1],
+  scale: [2, 1]
 }
+
+/** Prop families shared by several stages. */
+export const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate'])
+export const LIFTABLE = new Set(['pot', 'barrel'])
+export const GRIPPABLE = new Set(['acorn', 'cheese'])
+export const ACCEPTORS = new Set(['pedestal', 'scale'])
 export const footOf = (kind: string): [number, number] => FOOT[kind] ?? [1, 1]
 
 export interface ParsedProp {
@@ -135,7 +150,7 @@ export interface ParsedStage {
 }
 
 /** Static decoration kinds that block movement. */
-export const SOLID_DECOR = new Set(['tree', 'rock', 'bush', 'pillar', 'sign'])
+export const SOLID_DECOR = new Set(['tree', 'rock', 'bush', 'pillar', 'sign', 'sack', 'haybale', 'shelf'])
 
 export const tileCentre = (t: number) => t * TILE + TILE / 2
 
@@ -189,6 +204,8 @@ export function parseStage(data: StageData): ParsedStage {
   const signs: ParsedStage['signs'] = []
   const pickups: ParsedStage['pickups'] = []
   const staticSolid = new Uint8Array(w * h)
+  const currents: NonNullable<StageInfo['currents']> = []
+  const holePairs = new Map<string, number[]>()
   let boss: ParsedStage['boss']
   let spawn = { x: 0, y: 0 }
   const cpTiles: { x: number; y: number }[] = []
@@ -247,11 +264,35 @@ export function parseStage(data: StageData): ParsedStage {
           npcs.push({ kind: ent.kind, x: cx, y: cy, pages: ent.pages })
           staticSolid[y * w + x] = 1
           break
+        case 'current': {
+          let c = currents.find((q) => q.channel === ent.channel)
+          if (!c)
+            currents.push(
+              (c = {
+                channel: ent.channel,
+                dx: ent.dx,
+                dy: ent.dy,
+                speed: ent.speed ?? 120,
+                tiles: [],
+                ...(ent.strong ? { strong: true } : {})
+              })
+            )
+          c.tiles.push(y * w + x)
+          break
+        }
+        case 'hole': {
+          const list = holePairs.get(ent.pair) ?? []
+          list.push(y * w + x)
+          holePairs.set(ent.pair, list)
+          break
+        }
         case 'pickup':
           pickups.push({ kind: ent.kind, x: cx, y: cy })
           break
       }
     }
+  for (const [pair, list] of holePairs)
+    if (list.length !== 2) throw new Error(`${data.id}: hole pair ${pair} has ${list.length} tiles`)
   const rooms = data.rooms.map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.w, h: r.h, zoom: r.zoom, name: r.name }))
   const checkpoints: Record<string, { x: number; y: number }> = {}
   for (const cp of cpTiles) {
@@ -266,7 +307,9 @@ export function parseStage(data: StageData): ParsedStage {
     decor,
     npcs: npcs.map((n) => ({ kind: n.kind, x: n.x, y: n.y, name: npcName(n.kind) })),
     rooms,
-    light: data.light
+    light: data.light,
+    ...(currents.length ? { currents } : {}),
+    ...(holePairs.size ? { holes: [...holePairs.values()].map((l) => [l[0], l[1]] as [number, number]) } : {})
   }
   return { data, info, props, enemies, boss, spawn, checkpoints, signs, npcs, pickups, staticSolid }
 }

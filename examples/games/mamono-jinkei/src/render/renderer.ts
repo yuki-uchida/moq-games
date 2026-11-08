@@ -22,7 +22,9 @@ import { JOBS, JOB_COLORS, TILE, dirOf } from '../vocab'
 import { interactTarget } from '../ui/hints'
 import { BASE_VIEW_H, clampCamera, cursorLead, scalingFor, smoothing, turnOf, viewOrigin } from './camera'
 import { FxAnims, Numbers, Particles } from './effects'
+import { Ambience } from './ambience'
 import { Ground } from './ground'
+import { Lighting, flicker, type LightColor } from './lighting'
 import { blitAnim, findAnim, findFlash, pickName, propName, tinted } from './sprites'
 
 export interface RenderInput {
@@ -59,7 +61,9 @@ const MODE_FOLLOW = ['..#..', '.#.#.', '#.#.#', '.#.#.', '#...#']
 const FORMATION_NAMES: Record<number, string> = { 2: 'ペア陣', 3: '三角陣', 4: '四方陣' }
 const LINK = 110
 const FLAT_PROPS = new Set(['plate', 'plate2', 'bigplate'])
-const PROP_TOPS: Record<string, number> = { block: 66, boulder: 98, acorn: 82 }
+/** Light sources among the props and decoration (animation base or `${kind}_${state}`). */
+const WARM_DECOR = new Set(['lamp', 'torch', 'brazier'])
+const COOL_PROPS = new Set(['crystal_on', 'scale_on', 'moonstone_on', 'bigmoon_on', 'pedestal_on', 'hook_on'])
 
 type DrawKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 const K_DECOR = 0
@@ -70,6 +74,7 @@ const K_ENEMY = 4
 const K_BOSS = 5
 const K_PICKUP = 6
 const K_TECH = 7
+const K_PET = 8
 interface DrawItem {
   y: number
   kind: DrawKind
@@ -101,6 +106,16 @@ export class Renderer {
   private readonly particles = new Particles()
   private readonly fx = new FxAnims()
   private readonly numbers = new Numbers()
+  private readonly lighting = new Lighting()
+  private readonly ambience = new Ambience(this.particles, this.fx)
+  /** 0..1 running water near the view (audio loop level). */
+  get water() {
+    return this.ambience.water
+  }
+  /** Recent positions of dashing heroes (afterimages). */
+  private trails = new Map<number, { x: number; y: number; z: number; t: number }[]>()
+  private lastFollow?: { x: number; y: number; slot: number }
+  private catchUntil = 0
   private items: DrawItem[] = []
   private itemCount = 0
   private labels: Label[] = []
@@ -115,8 +130,6 @@ export class Renderer {
   private flashes: { x: number; y: number; t0: number; color: string }[] = []
   private shadowCache = new Map<number, HTMLCanvasElement>()
   private vignette?: { w: number; h: number; c: HTMLCanvasElement }
-  private light?: HTMLCanvasElement
-  private glow?: HTMLCanvasElement
   private cssW = 1
   private cssH = 1
   private dpr = 1
@@ -126,7 +139,6 @@ export class Renderer {
   private oy = 0
   private artW = 1
   private artH = 1
-  private petalTimer = 0
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d', { alpha: false })!
@@ -144,6 +156,8 @@ export class Renderer {
     this.camReady = false
     this.shakeAmp = 0
     this.stopUntil = 0
+    this.lighting.clear()
+    this.trails.clear()
   }
 
   /** Feeds a visual event. Sounds and HUD texts are handled elsewhere. */
@@ -155,8 +169,19 @@ export class Renderer {
         break
       case 'fx': {
         const name = e.s ?? ''
-        const a = findAnim('fx', name) ?? findAnim('fx', `${name}_${turnOf(e.a ?? 0)}`)
-        if (a) this.fx.add(a, e.x, e.y, t)
+        const turn = turnOf(e.a ?? 0)
+        const tech = `tech:${this.view?.species ?? 'slime'}`
+        const turned = findAnim('fx', `${name}_${turn}`) ?? findAnim(tech, `${name}_${turn}`)
+        const a = findAnim('fx', name) ?? findAnim(tech, name) ?? turned
+        // Directionless sheets (dust trails, dash afterimages) mirror for leftward motion.
+        if (a) this.fx.add(a, e.x, e.y, t, !turned && e.a !== undefined && Math.cos(e.a) < -0.2)
+        this.fxLight(name, e.x, e.y, t)
+        if (name === 'gnaw_chips') {
+          // A barricade gives way: heavy shake and a burst of splinters.
+          if (shake) this.shakeAmp = Math.min(16, this.shakeAmp + (reduced ? 4 : 11))
+          this.particles.burst('rubble', e.x, e.y - 20, 16)
+          this.particles.burst('dust', e.x, e.y, 10)
+        } else if (name === 'smoke' && this.view?.species === 'rat') this.particles.burst('dust', e.x, e.y + 8, 6)
         break
       }
       case 'hit': {
@@ -186,6 +211,12 @@ export class Renderer {
         // Numeric pops duplicate the 'hit' damage numbers drawn in the bitmap font.
         if ((e.x || e.y) && !e.s?.startsWith('おもい') && !/^[\d.]+$/.test(e.s ?? ''))
           this.popText(e.s ?? '', e.x, e.y, e.a ?? -1, t)
+        // A thief stole gems: a few of them glint away.
+        if (e.s?.includes('とられた')) {
+          const g = findAnim('fx', 'gem_sparkle')
+          for (let i = 0; i < 4; i++) if (g) this.fx.add(g, e.x + (i - 1.5) * 12, e.y + 30 - (i % 2) * 10, t + i * 0.05)
+          this.particles.burst('spark', e.x, e.y + 40, 6)
+        }
         break
       case 'shake':
         if (shake) this.shakeAmp = Math.min(14, this.shakeAmp + (e.a ?? 3) * (reduced ? 0.35 : 1))
@@ -193,10 +224,30 @@ export class Renderer {
       case 'stop':
         if (!reduced) this.stopUntil = Math.max(this.stopUntil, now + Math.min(120, e.a ?? 60))
         break
+      case 'tech':
+        this.lighting.flash(e.x, e.y, 360, 'white', t, 0.5)
+        break
       case 'form':
         if ((e.a ?? 0) >= 2) this.flashes.push({ x: e.x, y: e.y, t0: t, color: '#fff2b0' })
         break
     }
+  }
+
+  /** Effects that light up the dark. */
+  private fxLight(name: string, x: number, y: number, t: number) {
+    const l: [number, LightColor, number] | undefined =
+      name === 'howl' || name === 'howl_wave'
+        ? [520, 'white', 0.8]
+        : name === 'bomb_burst' || name === 'bigburst' || name === 'fire_breath'
+          ? [220, 'fire', 0.45]
+          : name === 'burst' || name === 'holy' || name === 'spin' || name === 'shock'
+            ? [200, 'cool', 0.35]
+            : name === 'hit' || name === 'clang'
+              ? [90, 'warm', 0.15]
+              : name === 'revive' || name === 'heal' || name === 'checkpoint'
+                ? [140, 'cool', 0.5]
+                : undefined
+    if (l) this.lighting.flash(x, y, l[0], l[1], t, l[2])
   }
 
   private pops: { text: string; x: number; y: number; t0: number; color: string }[] = []
@@ -242,6 +293,7 @@ export class Renderer {
     if (info.id !== this.groundStage || !this.ground) {
       this.ground = new Ground(info)
       this.groundStage = info.id
+      this.ambience.setStage(info)
       this.reset()
     }
     this.ground.setFills(view.fills)
@@ -274,12 +326,12 @@ export class Renderer {
     this.drawShots(view.shots, t)
     this.fx.draw(ctx, ox, oy, t)
     this.drawFlashes(t)
+    this.ambience.update(dt, t, view, ox, oy, artW, artH)
     this.particles.update(dt)
     this.particles.draw(ctx, ox, oy, artW, artH)
+    if (info.light !== 'day') this.drawLighting(view, info, t)
     this.numbers.draw(ctx, ox, oy, t)
     if (!input.demo) this.drawOverheads(view, info, t, input)
-    if (info.light === 'day') this.ambient(dt)
-    else this.drawLighting(view, info)
     this.composite()
     this.screenOverlay(input)
     this.lastMs = performance.now() - started
@@ -305,6 +357,16 @@ export class Renderer {
     const hty = ty / TILE
     const room = info.rooms.find((r) => htx >= r.x && htx < r.x + r.w && hty >= r.y && hty < r.y + r.h)
     const wantZoom = room?.zoom ?? BASE_VIEW_H
+    // In a boss arena, frame the boss too: lean the camera a third of the way toward it.
+    const boss = view.boss
+    if (boss && room?.zoom && hero && !tech) {
+      const bx = boss.x / TILE
+      const by = boss.y / TILE
+      if (bx >= room.x && bx < room.x + room.w && by >= room.y && by < room.y + room.h) {
+        tx += (boss.x - tx) * 0.33
+        ty += (boss.y - boss.z - 40 - ty) * 0.33
+      }
+    }
     this.zoom += (wantZoom - this.zoom) * (this.camReady ? smoothing(2.2, dt) : 1)
     if (Math.abs(wantZoom - this.zoom) < 0.5) this.zoom = wantZoom
     const sc = scalingFor(this.canvas.width, this.canvas.height, this.zoom)
@@ -330,10 +392,15 @@ export class Renderer {
       cam.y = want.y
       this.camReady = true
     } else {
-      const k = smoothing(input.demo ? 1.6 : 7, dt)
+      // A long jump of the followed hero (mouse hole, respawn): glide over instead of snapping.
+      const last = this.lastFollow
+      if (hero && last?.slot === hero.slot && Math.hypot(hero.x - last.x, hero.y - last.y) > 3 * TILE)
+        this.catchUntil = performance.now() + 900
+      const k = smoothing(input.demo ? 1.6 : performance.now() < this.catchUntil ? 3.2 : 7, dt)
       cam.x += (want.x - cam.x) * k
       cam.y += (want.y - cam.y) * k
     }
+    if (hero) this.lastFollow = { x: hero.x, y: hero.y, slot: hero.slot }
     const c = clampCamera(cam.x, cam.y, sc.artW, sc.artH, info.w * TILE, info.h * TILE)
     cam.x = c.x
     cam.y = c.y
@@ -394,8 +461,23 @@ export class Renderer {
     // Telegraphs.
     for (const e of view.enemies) if (e.tele && e.state !== 'death') this.drawTele(e.tele, t)
     if (view.boss?.tele) for (const tl of view.boss.tele) this.drawTele(tl, t)
+    if (view.bossPet?.tele) for (const tl of view.bossPet.tele) this.drawTele(tl, t)
+    // Rat-catcher snares lie on the ground; a sprung one holds its hero.
+    if (view.snares) {
+      const idle = findAnim('fx', 'snare')
+      const snap = findAnim('fx', 'snare_snap')
+      for (const sn of view.snares) {
+        if (!this.visible(sn.x, sn.y, 40)) continue
+        const a = sn.slot !== undefined ? snap : idle
+        if (a) blitAnim(ctx, a, t - sn.st, sn.x - this.ox, sn.y - this.oy)
+      }
+    }
     // Technique landing marker.
-    for (const x of view.techs) if (x.stage === 'form' || x.stage === 'jump') this.drawTarget(x, t)
+    for (const x of view.techs) {
+      if (x.kind === 'stampede') {
+        if (x.stage === 'form' || x.stage === 'run') this.drawPath(x, t)
+      } else if (x.stage === 'form' || x.stage === 'jump') this.drawTarget(x, t)
+    }
     if (!input.demo) for (const f of view.formations) this.drawFormation(f, view, t)
     // Shadows of everything standing on the ground.
     for (const h of view.heroes)
@@ -403,11 +485,16 @@ export class Renderer {
     for (const e of view.enemies)
       if (e.state !== 'death' && this.visible(e.x, e.y, 64)) this.drawShadow(e.x, e.y + 1, 15, e.z ?? 0)
     if (view.boss) this.drawShadow(view.boss.x, view.boss.y + 2, 38, view.boss.z)
+    if (view.bossPet) this.drawShadow(view.bossPet.x, view.bossPet.y + 2, 44, view.bossPet.z)
     for (const p of view.pickups) if (this.visible(p.x, p.y, 32)) this.drawShadow(p.x, p.y + 1, 7, 0)
-    for (const x of view.techs) this.drawShadow(x.x, x.y, 30 + x.tier * 12, x.z)
+    for (const x of view.techs) if (x.kind === 'jumbo') this.drawShadow(x.x, x.y, 30 + x.tier * 12, x.z)
+    for (const h of view.heroes)
+      if (h.state === 'tech' && this.stampeding(h, view)) this.drawShadow(h.x, h.y + 1, 15, 0)
     for (const s of view.shots)
-      if (this.visible(s.x, s.y, 32)) this.drawShadow(s.x, s.y, s.kind === 'pot' ? 12 : 5, s.z)
-    for (const p of view.props) if ((p.z ?? 0) > 0) this.drawShadow(p.x, p.y, p.kind === 'acorn' ? 30 : 13, p.z ?? 0)
+      if (this.visible(s.x, s.y, 32))
+        this.drawShadow(s.x, s.y, s.kind === 'pot' || s.kind === 'barrel' ? 12 : s.kind === 'bomb' ? 8 : 5, s.z)
+    for (const p of view.props)
+      if ((p.z ?? 0) > 0) this.drawShadow(p.x, p.y, p.kind === 'acorn' || p.kind === 'cheese' ? 30 : 13, p.z ?? 0)
   }
 
   private drawTele(tl: Telegraph, t: number) {
@@ -572,12 +659,13 @@ export class Renderer {
       this.push(y, K_PROP, i)
     })
     view.heroes.forEach((h, i) => {
-      if (h.state !== 'tech' && this.visible(h.x, h.y, 64)) this.push(h.y, K_HERO, i)
+      if ((h.state !== 'tech' || this.stampeding(h, view)) && this.visible(h.x, h.y, 64)) this.push(h.y, K_HERO, i)
     })
     view.enemies.forEach((e, i) => {
       if (this.visible(e.x, e.y, 64)) this.push(e.y, K_ENEMY, i)
     })
     if (view.boss) this.push(view.boss.y, K_BOSS, 0)
+    if (view.bossPet) this.push(view.bossPet.y, K_PET, 0)
     view.pickups.forEach((p, i) => {
       if (this.visible(p.x, p.y, 32)) this.push(p.y, K_PICKUP, i)
     })
@@ -638,7 +726,10 @@ export class Renderer {
           this.drawEnemy(view.enemies[it.i], t)
           break
         case K_BOSS:
-          if (view.boss) this.drawBoss(view.boss, t)
+          if (view.boss) this.drawBoss(view.boss, `boss:${view.boss.kind}`, t)
+          break
+        case K_PET:
+          if (view.bossPet) this.drawBoss(view.bossPet, `boss:${view.bossPet.kind}`, t)
           break
         case K_PICKUP:
           this.drawPickup(view.pickups[it.i], t)
@@ -661,11 +752,19 @@ export class Renderer {
     blitAnim(this.wctx, a, t - p.st, at.x - this.ox, at.y - z - this.oy + bob)
   }
 
+  /** A hero inside a stampede is drawn running (other techniques hide their members). */
+  private stampeding(h: HeroView, view: View): boolean {
+    return view.techs.some((x) => x.kind === 'stampede' && x.slots.includes(h.slot))
+  }
+
   private heroAnim(h: HeroView, species: string): { sheet: string; name: string; flip: boolean } {
     const sheetId = `hero:${species}:${h.job}`
     const { dir, flip } = dirOf(h.facing)
     let name: string
     switch (h.state) {
+      case 'tech':
+        name = pickName(sheetId, `action_${dir}`, `walk_${dir}`) ?? `idle_${dir}`
+        break
       case 'down':
       case 'revive':
       case 'victory':
@@ -686,8 +785,16 @@ export class Renderer {
     if (!a) return
     let alpha = 1
     if (h.inv > t && h.state !== 'down' && Math.floor(t * 18) % 2 === 0) alpha = 0.35
-    const x = h.x - this.ox
+    // A snared hero struggles in place.
+    const shakeX = (h.snared ?? 0) > t ? (Math.floor(t * 24) % 2 ? 1 : -1) : 0
+    const x = h.x - this.ox + shakeX
     const y = h.y - this.oy - h.z
+    const dashing = h.state === 'tech' || (h.state === 'action' && view.species === 'rat')
+    this.drawTrail(h, a, at, flip, dashing, t)
+    if (h.state === 'tech') {
+      const aura = findAnim(`tech:${view.species}`, 'rush_aura')
+      if (aura) blitAnim(this.wctx, aura, t + h.slot * 0.07, x, y, flip, 0.9)
+    }
     if (h.state === 'charge' && h.charge >= 1) {
       const aura = findAnim('fx', 'charge_full')
       if (aura) blitAnim(this.wctx, aura, t, x, h.y - this.oy, false, 0.85)
@@ -700,6 +807,30 @@ export class Renderer {
     if (h.state === 'down') {
       const soul = findAnim('fx', 'soul')
       if (soul) blitAnim(this.wctx, soul, t, x, y - 34)
+    }
+  }
+
+  /** Afterimages behind a dashing rat (and the stampede line): fading copies at recent positions. */
+  private drawTrail(h: HeroView, a: Anim, at: number, flip: boolean, dashing: boolean, t: number) {
+    let list = this.trails.get(h.slot)
+    if (!dashing) {
+      if (list?.length) list.length = 0
+      return
+    }
+    if (!list) this.trails.set(h.slot, (list = []))
+    const last = list[list.length - 1]
+    if (!last || t - last.t >= 1 / 30) list.push({ x: h.x, y: h.y, z: h.z, t })
+    while (list.length > 5 || (list.length && t - list[0].t > 0.2)) list.shift()
+    const ghost = findFlash(
+      `hero:${this.view?.species ?? 'rat'}:${h.job}`,
+      this.heroAnim(h, this.view?.species ?? 'rat').name
+    )
+    for (let i = 0; i < list.length - 1; i++) {
+      const p = list[i]
+      const k = (i + 1) / list.length
+      this.wctx.globalCompositeOperation = 'lighter'
+      blitAnim(this.wctx, ghost ?? a, at, p.x - this.ox, p.y - p.z - this.oy, flip, 0.12 + 0.2 * k, true)
+      this.wctx.globalCompositeOperation = 'source-over'
     }
   }
 
@@ -727,8 +858,7 @@ export class Renderer {
     }
   }
 
-  private drawBoss(b: BossView, t: number) {
-    const sheetId = `boss:${b.kind}`
+  private drawBoss(b: Omit<BossView, 'kind'>, sheetId: string, t: number) {
     const { dir, flip } = dirOf(b.facing)
     const name = pickName(sheetId, b.animKey ?? '', b.anim, `${b.anim}_${dir}`, `idle_${dir}`, 'idle_down')
     if (!name) return
@@ -736,6 +866,7 @@ export class Renderer {
     if (!a) return
     const mirror = name.endsWith('_side') && flip
     const x = b.x - this.ox
+    // Hovering bosses (milda on her broom) bob with their own lift on top of the hover height.
     const y = b.y - this.oy - b.z
     blitAnim(this.wctx, a, t - b.st, x, y, mirror)
     if (b.hitAt !== undefined && t - b.hitAt < 0.1 && t >= b.hitAt) {
@@ -744,7 +875,7 @@ export class Renderer {
     }
     if ((b.broken ?? 0) > t) {
       const stun = findAnim('fx', 'stun')
-      if (stun) blitAnim(this.wctx, stun, t, x, y - 112)
+      if (stun) blitAnim(this.wctx, stun, t, x, y - (a.frames[0].h > 128 ? 150 : 104))
     }
   }
 
@@ -775,11 +906,45 @@ export class Renderer {
       let a: Anim | undefined
       if (s.kind === 'arrow' || s.kind === 'enemy_arrow')
         a = findAnim('fx', `${s.kind}_${turnOf(Math.atan2(s.vy, s.vx))}`)
-      else if (s.kind === 'pot') a = findAnim(`props:${this.view?.stage ?? 'meadow'}`, s.prop ?? 'pot')
-      else a = findAnim('fx', s.kind)
+      else if (s.kind === 'pot' || s.kind === 'barrel') {
+        // Thrown props tumble along their arc.
+        const sheet = `props:${this.view?.stage ?? 'meadow'}`
+        a = findAnim(sheet, s.prop ?? s.kind) ?? findAnim(sheet, 'pot')
+      } else a = findAnim('fx', s.kind)
       if (!a) continue
       blitAnim(ctx, a, t + s.id * 0.07, s.x - this.ox, s.y - s.z - this.oy, false, 1, true)
     }
+  }
+
+  /** The stampede's path: a dusty band from the line toward the end point. */
+  private drawPath(x: TechView, t: number) {
+    const ctx = this.wctx
+    const w = [0, 0, 48, 56, 64][x.tier] ?? 56
+    const len = Math.hypot(x.tx - x.x, x.ty - x.y)
+    if (len < 4) return
+    ctx.save()
+    ctx.translate(x.x - this.ox, x.y - this.oy)
+    ctx.rotate(Math.atan2(x.ty - x.y, x.tx - x.x))
+    ctx.fillStyle = 'rgba(255, 226, 150, 0.12)'
+    ctx.fillRect(0, -w / 2, len, w)
+    ctx.setLineDash([10, 6])
+    ctx.lineDashOffset = -t * 60
+    ctx.strokeStyle = 'rgba(255, 236, 170, 0.75)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(0, -w / 2, len, w)
+    ctx.setLineDash([])
+    // Chevrons racing toward the end.
+    ctx.fillStyle = 'rgba(255, 244, 200, 0.8)'
+    for (let d = ((t * 160) % 40) + 10; d < len - 6; d += 40) {
+      ctx.beginPath()
+      ctx.moveTo(d, -8)
+      ctx.lineTo(d + 8, 0)
+      ctx.lineTo(d, 8)
+      ctx.lineTo(d + 3, 0)
+      ctx.closePath()
+      ctx.fill()
+    }
+    ctx.restore()
   }
 
   private drawFlashes(t: number) {
@@ -881,16 +1046,16 @@ export class Renderer {
     }
     // Heavy objects: strain meter.
     for (const p of view.props) {
-      if (!p.weight || !p.strength || !(p.kind in PROP_TOPS)) continue
-      if (p.kind === 'acorn' && p.state === 'lifted') continue
+      if (!p.weight || !p.strength || p.weight < 2 || p.state === 'lifted') continue
       const at = this.propPos(p)
       if (!this.visible(at.x, at.y, 64)) continue
-      this.drawPips(at.x, at.y - (p.z ?? 0) - PROP_TOPS[p.kind], p.strength, p.weight)
+      const top = this.propTop(p, view.stage)
+      this.drawPips(at.x, at.y - (p.z ?? 0) - top, p.strength, p.weight)
       if (p.strength < p.weight) {
         const wob = Math.sin(t * 16) * 1.5
         this.label(
           at.x + wob,
-          at.y - (p.z ?? 0) - PROP_TOPS[p.kind] - 22,
+          at.y - (p.z ?? 0) - top - 22,
           `おもい！ ${p.strength}/${p.weight}`,
           '#ffe0a0',
           13,
@@ -962,6 +1127,14 @@ export class Renderer {
       for (let c = 0; c < 5; c++) if (rows[r][c] === '#') ctx.fillRect(x - 2 + c, y - 2 + r, 1, 1)
   }
 
+  /** Height of a prop's sprite above its anchor (where the strain meter sits). */
+  private propTop(p: PropView, stage: string): number {
+    const sheet = `props:${stage}`
+    const name = propName(sheet, p.kind, p.state)
+    const a = name ? findAnim(sheet, name) : undefined
+    return a ? anchorOf(a)[1] + 2 : 66
+  }
+
   private drawGauge(x: number, y: number, v: number, color: string, t: number) {
     const ctx = this.wctx
     const full = v >= 1
@@ -999,52 +1172,46 @@ export class Renderer {
 
   /* ---------------------------------------------------------------------------------------------- ambient */
 
-  private ambient(dt: number) {
-    if (this.view?.stage !== 'meadow') return
-    this.petalTimer += dt
-    while (this.petalTimer > 0.12) {
-      this.petalTimer -= 0.12
-      const x = this.ox + Math.random() * (this.artW + 200) - 100
-      const y = this.oy + Math.random() * this.artH
-      if (Math.random() < 0.4)
-        this.particles.spawn('petal', x, y, 60 + Math.random() * 60, 18 + Math.random() * 14, 6, -6, 5)
-      else this.particles.spawn('pollen', x, y, 10 + Math.random() * 30, 6 + Math.random() * 6, -2, 2, 4)
+  private drawLighting(view: View, info: StageInfo, t: number) {
+    const L = this.lighting
+    const night = info.light === 'night'
+    L.begin()
+    const heroR = night ? 130 : 190
+    for (const h of view.heroes) L.add(h.x, h.y - 20 - h.z, heroR * flicker(t, h.slot * 3.1, 0.6), 'hero', 0.5)
+    // Enemies keep a faint pool so they read in the dark.
+    for (const e of view.enemies)
+      if (e.state !== 'death' && this.visible(e.x, e.y, 80)) L.add(e.x, e.y - 24, 64, 'faint', 0.7)
+    if (view.boss) L.add(view.boss.x, view.boss.y - 50 - view.boss.z, 120, 'faint', 0.8)
+    if (view.bossPet) L.add(view.bossPet.x, view.bossPet.y - 40, 120, 'faint', 0.7)
+    for (const d of info.decor) {
+      if (!WARM_DECOR.has(d.kind) || !this.visible(d.x, d.y, 200)) continue
+      const seed = d.x * 0.013 + d.y * 0.007
+      L.add(d.x, d.y - 40, 240 * flicker(t, seed), 'warm', 1)
     }
-  }
-
-  private drawLighting(view: View, info: StageInfo) {
-    const w = this.artW
-    const h = this.artH
-    const light = (this.light ??= document.createElement('canvas'))
-    if (light.width < w || light.height < h) {
-      light.width = Math.max(light.width, w)
-      light.height = Math.max(light.height, h)
+    for (const p of view.props) {
+      if (!this.visible(p.x, p.y, 160)) continue
+      const key = `${p.kind}_${p.state}`
+      if (COOL_PROPS.has(key)) L.add(p.x, p.y - 40, 150 * flicker(t, p.id, 0.4), 'cool', 0.9)
+      else if (p.kind === 'torch') L.add(p.x, p.y - 40, 160 * flicker(t, p.id), 'warm', 0.9)
     }
-    const g = light.getContext('2d')!
-    g.globalCompositeOperation = 'source-over'
-    g.clearRect(0, 0, w, h)
-    g.fillStyle = info.light === 'night' ? 'rgba(8, 10, 32, 0.86)' : 'rgba(16, 14, 40, 0.5)'
-    g.fillRect(0, 0, w, h)
-    g.globalCompositeOperation = 'destination-out'
-    const glow = this.glowSprite()
-    const hole = (x: number, y: number, r: number) => g.drawImage(glow, x - this.ox - r, y - this.oy - r, r * 2, r * 2)
-    for (const hv of view.heroes) hole(hv.x, hv.y - 20, 150)
-    for (const d of info.decor) if (d.kind === 'torch' && this.visible(d.x, d.y, 140)) hole(d.x, d.y - 30, 120)
-    this.wctx.drawImage(light, 0, 0, w, h, 0, 0, w, h)
-  }
-
-  private glowSprite() {
-    if (this.glow) return this.glow
-    const c = document.createElement('canvas')
-    c.width = c.height = 128
-    const g = c.getContext('2d')!
-    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64)
-    grad.addColorStop(0, 'rgba(0,0,0,1)')
-    grad.addColorStop(0.55, 'rgba(0,0,0,0.75)')
-    grad.addColorStop(1, 'rgba(0,0,0,0)')
-    g.fillStyle = grad
-    g.fillRect(0, 0, 128, 128)
-    return (this.glow = c)
+    for (const p of view.pickups) {
+      if (!this.visible(p.x, p.y, 120)) continue
+      if (p.kind === 'orb') L.add(p.x, p.y - 30, 150, 'cool', 1)
+      else if (p.kind === 'gem' || p.kind === 'gem_big') L.add(p.x, p.y - 10, 40, 'cool', 0.6)
+    }
+    for (const s of view.shots) {
+      if (!this.visible(s.x, s.y, 80)) continue
+      const c: LightColor | undefined =
+        s.kind === 'fireball' || s.kind === 'bomb'
+          ? 'fire'
+          : s.kind === 'hex'
+            ? 'violet'
+            : s.kind === 'orb' || s.kind === 'bolt'
+              ? 'cool'
+              : undefined
+      if (c) L.add(s.x, s.y - s.z, s.kind === 'bomb' ? 44 : 80, c, 0.9)
+    }
+    L.apply(this.wctx, this.ox, this.oy, this.artW, this.artH, night ? 'night' : 'dim', t)
   }
 
   /* ---------------------------------------------------------------------------------------------- output */

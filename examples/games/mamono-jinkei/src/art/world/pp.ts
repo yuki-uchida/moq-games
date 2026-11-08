@@ -15,8 +15,12 @@ export function mk(name: string, frames: Raster[], extra: Partial<Anim> = {}): A
   return anim(frames, s.fps, s.loop, { ...(s.anchor ? { anchor: s.anchor } : {}), ...extra })
 }
 
+/** Stage themes may replace the ground-shadow colours of every prop drawn while it is set (core, rim). */
+export const theme: { shadow?: readonly [number, number] } = {}
+
 /** Soft ground shadow: a core with a dithered rim. */
 export function shadow(r: Raster, cx: number, cy: number, rx: number, ry: number, core: number, rim = core) {
+  if (theme.shadow) [core, rim] = theme.shadow
   for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
     for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
       const nx = (x + 0.5 - cx) / rx

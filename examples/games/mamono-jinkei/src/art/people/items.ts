@@ -29,7 +29,7 @@ const pt = (c: ItemCtx, p: V3): Pt => c.cam.px(p)
 const along = (hand: V3, d: V3, k: number) => vadd(hand, vscale(d, k))
 
 /** A three-tone blade (light top-left, shade bottom-right) between two screen points. */
-function blade(l: Raster, a: Pt, b: Pt, ramp: Ramp, w = 3) {
+export function blade(l: Raster, a: Pt, b: Pt, ramp: Ramp, w = 3) {
   bar(l, a, b, w, ramp[1])
   const dx = Math.abs(b[0] - a[0])
   const dy = Math.abs(b[1] - a[1])

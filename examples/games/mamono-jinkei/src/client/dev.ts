@@ -1,6 +1,6 @@
 /** Dev-only test hook `window.__mamono` (imported only when import.meta.env.DEV). */
 import type { Command } from '../sim/api'
-import type { Job } from '../vocab'
+import type { Job, StageId } from '../vocab'
 import type { App } from './app'
 
 export function installDevHook(app: App) {
@@ -48,6 +48,10 @@ export function installDevHook(app: App) {
       },
       startSolo() {
         app.startSolo()
+      },
+      /** Solo straight into a stage (e.g. 'sewer'). */
+      startStage(stage: StageId) {
+        app.devStart(stage)
       },
       setJob(job: Job) {
         app.job = job

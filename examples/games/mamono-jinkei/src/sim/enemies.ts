@@ -1,9 +1,9 @@
 /** Stage enemies (DESIGN §10): melee, ranged, caster and shield archetypes. */
 import { TILE, type EnemyKind } from '../vocab'
-import { angleDiff, dist, emit, fx, newId, roomOf, sfx } from './core'
+import { angleDiff, dist, emit, fx, newId, pop, roomOf, sfx } from './core'
 import { enemyShot, finishEnemyDeath, hurtHero } from './combat'
 import type { Enemy, Hero, WorldState } from './state'
-import { DEFAULT_ENEMY, ENEMY_STATS, NOTICE_RANGE } from './tables'
+import { BOMB, DEFAULT_ENEMY, ENEMY_STATS, NOTICE_RANGE, SNARE, SPEAR, THIEF } from './tables'
 
 export function spawnEnemy(W: WorldState, kind: EnemyKind, x: number, y: number, wave?: number): Enemy {
   const s = ENEMY_STATS[kind] ?? DEFAULT_ENEMY
@@ -30,6 +30,8 @@ export function spawnEnemy(W: WorldState, kind: EnemyKind, x: number, y: number,
     room: roomOf(W, x, y)?.id,
     wave,
     dead: false,
+    carry: 0,
+    fleeUntil: 0,
     px: 0,
     py: 0,
     striking: false
@@ -81,7 +83,7 @@ function updateEnemy(W: WorldState, e: Enemy, dt: number): void {
     const h = near.h
     const a = Math.atan2(h.body.y - e.y, h.body.x - e.x)
     // Shield bearers turn slowly; others face their target at once.
-    if (s.type === 'shield') {
+    if (s.type === 'shield' || s.type === 'spear') {
       const d = angleDiff(a, e.facing)
       e.facing += Math.sign(d) * Math.min(Math.abs(d), 2.4 * dt)
     } else if (e.state !== 'windup' && e.state !== 'attack') e.facing = a
@@ -96,13 +98,30 @@ function updateEnemy(W: WorldState, e: Enemy, dt: number): void {
       case 'caster':
         ;[mx, my] = caster(W, e, h, near.d, a)
         break
+      case 'dasher':
+        ;[mx, my] = dasher(W, e, h, near.d, a)
+        break
+      case 'thrower':
+        ;[mx, my] = thrower(W, e, h, near.d, a)
+        break
+      case 'trapper':
+        ;[mx, my] = trapper(W, e, h, near.d, a)
+        break
+      case 'spear':
+        ;[mx, my] = spear(W, e, h, near.d, a)
+        break
     }
   }
   // Movement with tile collision, knockback and separation.
   const sp = s.speed
   const k = 1 - Math.exp(-8 * dt)
-  e.vx += (mx * sp - e.vx) * k
-  e.vy += (my * sp - e.vy) * k
+  if (e.state === 'dash') {
+    e.vx = Math.cos(e.aimA) * THIEF.speed
+    e.vy = Math.sin(e.aimA) * THIEF.speed
+  } else {
+    e.vx += (mx * sp - e.vx) * k
+    e.vy += (my * sp - e.vy) * k
+  }
   e.kx *= Math.exp(-9 * dt)
   e.ky *= Math.exp(-9 * dt)
   for (const o of W.enemies)
@@ -264,4 +283,281 @@ function caster(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number
   if (d < 3 * TILE) return [-Math.cos(a), -Math.sin(a)]
   if (d > 5 * TILE) return [Math.cos(a), Math.sin(a)]
   return [0, 0]
+}
+
+/* ------------------------------------------------------------------------------------------- stage 2 */
+
+/** Thief: dashes in (short line telegraph), steals 1–3 gems on a hit, flees, comes back. */
+function dasher(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.fleeUntil > t) return [-Math.cos(a), -Math.sin(a)]
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      setEnemy(e, 'dash', t, t + THIEF.dash)
+      e.striking = true
+      e.tele = undefined
+      sfx(W, 'ratDash', e.x, e.y)
+    }
+    return [0, 0]
+  }
+  if (e.state === 'dash') {
+    if (e.striking)
+      for (const m of W.heroes) {
+        if (!targetable(m) || m.body.z > 10 || dist(m.body.x, m.body.y, e.x, e.y) > e.r + 18) continue
+        if (!hurtHero(W, m, 1, e.x, e.y, 180)) continue
+        e.striking = false
+        const n = Math.min(W.party.gems, 1 + Math.floor(W.rng.next() * 3))
+        if (n > 0) {
+          W.party.gems -= n
+          e.carry += n
+          pop(W, `ジェムを${n}こ とられた！`, m.body.x, m.body.y - 70, -1)
+          sfx(W, 'gem', e.x, e.y)
+        }
+        e.fleeUntil = t + THIEF.flee
+        break
+      }
+    if (t >= e.until) {
+      setEnemy(e, 'idle', t)
+      e.cd = t + 1.4 + W.rng.range(0, 0.6)
+      if (e.striking) e.fleeUntil = t + 0.8
+      e.striking = false
+    }
+    return [0, 0]
+  }
+  if (d < THIEF.range && t >= e.cd) {
+    e.aimA = a
+    e.facing = a
+    setEnemy(e, 'windup', t, t + THIEF.windup)
+    e.tele = {
+      kind: 'line',
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      r: 26,
+      a: Math.round(a * 100) / 100,
+      len: THIEF.speed * THIEF.dash,
+      from: t,
+      until: t + THIEF.windup
+    }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  return d > 110 ? [Math.cos(a), Math.sin(a)] : [Math.cos(a + 1.3) * 0.7, Math.sin(a + 1.3) * 0.7]
+}
+
+/** Alchemist: keeps 3–5 tiles away, lobs a flask onto a ground marker; it bursts on landing. */
+function thrower(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      setEnemy(e, 'attack', t, t + 0.25)
+      W.shots.push({
+        id: newId(W),
+        kind: 'bomb',
+        x: e.x,
+        y: e.y,
+        z: 30,
+        z0: 30,
+        vx: (e.px - e.x) / BOMB.flight,
+        vy: (e.py - e.y) / BOMB.flight,
+        range: 1e9,
+        dmg: BOMB.dmg,
+        pierce: 0,
+        hits: new Set(),
+        from: 'enemy',
+        slot: -1,
+        burst: BOMB.r,
+        burstDmg: BOMB.dmg,
+        dist: 0,
+        dead: false,
+        lob: { x0: e.x, y0: e.y, tx: e.px, ty: e.py, t0: t, dur: BOMB.flight }
+      })
+      e.tele = {
+        kind: 'circle',
+        x: Math.round(e.px),
+        y: Math.round(e.py),
+        r: BOMB.r,
+        from: e.st,
+        until: t + BOMB.flight
+      }
+      sfx(W, 'throw', e.x, e.y)
+      e.cd = t + 2.6 + W.rng.range(0, 0.8)
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  if (e.tele && t > e.tele.until) e.tele = undefined
+  if (t >= e.cd && d < 6 * TILE) {
+    e.px = h.body.x + h.body.vx * 0.4
+    e.py = h.body.y + h.body.vy * 0.4
+    setEnemy(e, 'windup', t, t + BOMB.windup)
+    e.tele = {
+      kind: 'circle',
+      x: Math.round(e.px),
+      y: Math.round(e.py),
+      r: BOMB.r,
+      from: t,
+      until: t + BOMB.windup + BOMB.flight
+    }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  if (d < 3 * TILE) return [-Math.cos(a), -Math.sin(a)]
+  if (d > 5 * TILE) return [Math.cos(a), Math.sin(a)]
+  return [0, 0]
+}
+
+/** Lobbed bombs fly along an arc and burst on their marker. */
+export function updateBombs(W: WorldState): void {
+  for (const s of W.shots) {
+    if (!s.lob || s.dead) continue
+    const k = Math.min(1, (W.t - s.lob.t0) / s.lob.dur)
+    s.x = s.lob.x0 + (s.lob.tx - s.lob.x0) * k
+    s.y = s.lob.y0 + (s.lob.ty - s.lob.y0) * k
+    s.z = 30 * (1 - k) + 4 * BOMB.height * k * (1 - k)
+    if (k < 1) continue
+    s.dead = true
+    for (const m of W.heroes)
+      if (targetable(m) && m.body.z < 10 && dist(m.body.x, m.body.y, s.x, s.y) < s.burst + 10)
+        hurtHero(W, m, s.burstDmg, s.x, s.y)
+    fx(W, 'bomb_burst', s.x, s.y - 10)
+    emit(W, 'burst', s.x, s.y, { s: 'smoke', a: 10 })
+    sfx(W, 'fireballHit', s.x, s.y)
+  }
+}
+
+/** Rat-catcher: keeps its distance and sets snares where heroes walk. */
+function trapper(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      W.snares.push({ id: newId(W), x: e.px, y: e.py, st: t, owner: e.id, until: t + SNARE.life })
+      setEnemy(e, 'attack', t, t + 0.25)
+      e.tele = undefined
+      e.cd = t + 3.2 + W.rng.range(0, 0.8)
+      sfx(W, 'putDown', e.px, e.py)
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) setEnemy(e, 'idle', t)
+    return [0, 0]
+  }
+  const mine = W.snares.filter((q) => q.owner === e.id).length
+  if (t >= e.cd && d < 6 * TILE && mine < SNARE.perCatcher) {
+    const g = W.grid!
+    const px = h.body.x + h.body.vx * 0.6
+    const py = h.body.y + h.body.vy * 0.6
+    const ok = g.free(Math.floor(px / TILE), Math.floor(py / TILE))
+    e.px = ok ? px : h.body.x
+    e.py = ok ? py : h.body.y
+    setEnemy(e, 'windup', t, t + SNARE.windup)
+    e.tele = { kind: 'circle', x: Math.round(e.px), y: Math.round(e.py), r: 24, from: t, until: t + SNARE.windup }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  if (d < 3 * TILE) return [-Math.cos(a), -Math.sin(a)]
+  if (d > 5 * TILE) return [Math.cos(a), Math.sin(a)]
+  return [0, 0]
+}
+
+/** Snares hold the hero who steps on them 1.5 s; an ally's hit on the snare frees them sooner. */
+export function updateSnares(W: WorldState): void {
+  const t = W.t
+  for (const sn of W.snares) {
+    if (sn.slot !== undefined) {
+      if (t >= sn.until) {
+        const h = W.heroes.find((m) => m.slot === sn.slot)
+        if (h) h.snared = 0
+        sn.until = -1
+      }
+      continue
+    }
+    if (t >= sn.until) {
+      sn.until = -1
+      continue
+    }
+    for (const h of W.heroes) {
+      if (!targetable(h) || h.body.z > 0.01 || (h.body.dashT >= 0 && h.body.dashT <= 0.22)) continue
+      if (dist(h.body.x, h.body.y, sn.x, sn.y) > 20) continue
+      sn.slot = h.slot
+      sn.st = t
+      sn.until = t + SNARE.hold
+      h.snared = sn.until
+      h.body.vx = h.body.vy = 0
+      fx(W, 'snare_snap', sn.x, sn.y)
+      sfx(W, 'stun', sn.x, sn.y)
+      pop(W, 'つかまった！', h.body.x, h.body.y - 70, -1)
+      break
+    }
+  }
+  W.snares = W.snares.filter((q) => q.until >= 0)
+}
+
+/** A hero's attack reaches snares at (x, y) within r: an ally frees a held hero; empty snares break. */
+export function hitSnares(W: WorldState, x: number, y: number, r: number, slot: number): void {
+  for (const sn of W.snares) {
+    if (dist(sn.x, sn.y, x, y) > r + 16 || sn.slot === slot) continue
+    if (sn.slot !== undefined) {
+      const h = W.heroes.find((m) => m.slot === sn.slot)
+      if (h) {
+        h.snared = 0
+        pop(W, 'たすかった！', h.body.x, h.body.y - 70, slot)
+      }
+    }
+    sn.until = -1
+    fx(W, 'hit', sn.x, sn.y)
+    sfx(W, 'hit', sn.x, sn.y)
+  }
+  W.snares = W.snares.filter((q) => q.until >= 0)
+}
+
+/** Spear guard: guarded front, slow turn, long-reach thrust after a line telegraph. */
+function spear(W: WorldState, e: Enemy, h: Hero, d: number, a: number): [number, number] {
+  const t = W.t
+  if (e.state === 'windup') {
+    if (t >= e.until) {
+      // The thrust, then a long recovery with the guard down (the opening).
+      setEnemy(e, 'attack', t, t + SPEAR.recover)
+      e.tele = undefined
+      sfx(W, 'swing', e.x, e.y)
+      for (const m of W.heroes) {
+        if (!targetable(m) || m.body.z > 10) continue
+        const dx = m.body.x - e.x
+        const dy = m.body.y - e.y
+        const along = dx * Math.cos(e.aimA) + dy * Math.sin(e.aimA)
+        const side = Math.abs(-dx * Math.sin(e.aimA) + dy * Math.cos(e.aimA))
+        if (along > 0 && along < SPEAR.reach + e.r + 16 && side < SPEAR.width / 2 + 16)
+          hurtHero(W, m, SPEAR.dmg, e.x, e.y, 220)
+      }
+    }
+    return [0, 0]
+  }
+  if (e.state === 'attack') {
+    if (t >= e.until) {
+      setEnemy(e, 'idle', t)
+      e.cd = t + 1.2 + W.rng.range(0, 0.6)
+    }
+    return [0, 0]
+  }
+  if (d < SPEAR.reach + 30 && t >= e.cd) {
+    e.aimA = e.facing
+    setEnemy(e, 'windup', t, t + SPEAR.windup)
+    e.tele = {
+      kind: 'line',
+      x: Math.round(e.x),
+      y: Math.round(e.y),
+      r: SPEAR.width,
+      a: Math.round(e.aimA * 100) / 100,
+      len: SPEAR.reach + e.r,
+      from: t,
+      until: t + SPEAR.windup
+    }
+    sfx(W, 'enemyWindup', e.x, e.y)
+    return [0, 0]
+  }
+  if (d < SPEAR.reach - 10) return [-Math.cos(a) * 0.5, -Math.sin(a) * 0.5]
+  return [Math.cos(a), Math.sin(a)]
 }

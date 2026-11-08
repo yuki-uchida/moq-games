@@ -38,6 +38,8 @@ export interface InputState {
   modePresses: number
   /** F pressed: せーの signal. */
   signalPresses: number
+  /** Optional: E is held (valves need it held for 1 s; when omitted, standing still counts as holding). */
+  interactHeld?: boolean
   /** Optional: distance from the controlled hero to the cursor (art px); the co-op technique aim point uses it
    * (clamped to the technique range; default 4 tiles). */
   aimDist?: number
@@ -144,7 +146,8 @@ export interface HeroView {
   speed?: number
 }
 
-export type EnemyState = 'idle' | 'walk' | 'windup' | 'attack' | 'hurt' | 'guard' | 'heal' | 'death'
+/** 'dash' is the thief's hit-and-run dash (`dash_<dir>` in its sheet). */
+export type EnemyState = 'idle' | 'walk' | 'windup' | 'attack' | 'hurt' | 'guard' | 'heal' | 'death' | 'dash'
 
 /** A danger marker drawn on the ground before an attack lands. */
 export interface Telegraph {
@@ -235,6 +238,26 @@ export type PropKind =
   | 'pillar'
   | 'torch'
   | 'altar'
+  // Stage 2 (props:sewer). States: crate/bigcrate 'idle'|'sliding'; barrel 'idle'|'lifted'|'break';
+  // cheese 'idle'|'gripped'|'lifted'; scale 'off'|'on'; valve 'off'|'turn'|'on'; sluice 'closed'|'opening'|'open';
+  // barricade 'idle'|'break'; mousetrap 'idle'|'snap'. Decoration only: lamp, sack, grate, pipe, haybale, shelf,
+  // cobweb.
+  | 'crate'
+  | 'bigcrate'
+  | 'barrel'
+  | 'cheese'
+  | 'scale'
+  | 'valve'
+  | 'sluice'
+  | 'barricade'
+  | 'mousetrap'
+  | 'lamp'
+  | 'sack'
+  | 'grate'
+  | 'pipe'
+  | 'haybale'
+  | 'shelf'
+  | 'cobweb'
 
 /** A prop whose state can change (static decoration lives in StageInfo.decor). */
 export interface PropView {
@@ -258,7 +281,11 @@ export interface PropView {
   dur?: number
 }
 
-export type ShotKind = 'arrow' | 'bolt' | 'orb' | 'enemy_arrow' | 'fireball' | 'pot'
+/**
+ * Shots. Stage 2 adds 'bomb' (the alchemist's lobbed flask: z arc, lands on its circle telegraph and bursts),
+ * 'hex' (the cat witch's homing bolt; fx sheet 'hex') and 'barrel' (a thrown barrel, `prop: 'barrel'`).
+ */
+export type ShotKind = 'arrow' | 'bolt' | 'orb' | 'enemy_arrow' | 'fireball' | 'pot' | 'bomb' | 'hex' | 'barrel'
 
 export interface ShotView {
   id: number
@@ -409,6 +436,15 @@ export interface View {
   results?: StageResults
   /** Optional: water/pit tile indices (ty * w + tx) filled by sunk blocks; draw and walk them as 'floor'. */
   fills?: number[]
+  /** Optional: current channels stopped by an open sluice (StageInfo.currents channel ids). */
+  currentsOff?: string[]
+  /** Optional: snares set by rat-catchers (fx 'snare'; 'snare_snap' when one catches a hero). */
+  snares?: SnareView[]
+  /**
+   * Optional: the boss's companion drawn as its own entity (stage 2: milda's giant cat, sheet `boss:cat`). `anim`
+   * uses BOSS_EXTRA_SPEC.cat base names, `animKey` the exact key; `broken` = stunned until.
+   */
+  bossPet?: PetView
 }
 
 export interface StageResults {
@@ -426,6 +462,20 @@ export interface StageResults {
 /* ------------------------------------------------------------------------------------------------- static */
 
 /** The static part of a stage, built identically on every client from the stage data. */
+export interface SnareView {
+  id: number
+  x: number
+  y: number
+  st: number
+  /** Slot of the hero it holds, while it holds one. */
+  slot?: number
+}
+
+/** A boss companion (same fields as BossView with its own kind). */
+export interface PetView extends Omit<BossView, 'kind'> {
+  kind: 'cat'
+}
+
 export interface StageInfo {
   id: StageId
   /** Size in tiles. */
@@ -441,6 +491,14 @@ export interface StageInfo {
   rooms: { id: string; x: number; y: number; w: number; h: number; zoom?: number; name?: string }[]
   /** Lighting: 'day' | 'dim' | 'night' (stage 4 darkness). */
   light: 'day' | 'dim' | 'night'
+  /**
+   * Optional: water currents. Each channel pushes walking heroes on its tiles (indices ty * w + tx) along (dx, dy)
+   * at `speed` px/s unless it is listed in View.currentsOff. A formation of 3+ walks against normal currents;
+   * `strong` ones push everyone (until a sluice stops them).
+   */
+  currents?: { channel: string; dx: number; dy: number; speed: number; tiles: number[]; strong?: boolean }[]
+  /** Optional: mouse-hole pairs (tile indices of two `hole` tiles); a dashing rat goes in one and out the other. */
+  holes?: [number, number][]
 }
 
 /** Sound helper type for events whose s is a sound name. */

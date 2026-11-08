@@ -25,6 +25,7 @@ import {
   vn1
 } from './gfx'
 
+const VARIANTS = 8
 const cache = new Map<string, Raster>()
 const BRICK_TONE = Array.from({ length: 256 }, (_, i) => ih(i, 3, 77))
 const memo = (key: string, make: () => Raster) => {
@@ -94,24 +95,73 @@ function grassTone(a: number, b: number) {
     const r = tile()
     const n1 = noisePatch(a * T, b * T, 64, 1)
     const n2 = noisePatch(a * T, b * T, 32, 2)
+    const n3 = noisePatch(a * T, b * T, 16, 5)
+    // One base tone with a barely lighter second tone; the soft edge is a short ordered dither.
     for (let i = 0; i < T * T; i++) {
-      const n = n1[i] * 0.6 + n2[i] * 0.4
-      r.data[i] = n > 0.76 ? G[0] : n < 0.37 ? G[2] : G[1]
+      const n = n1[i] * 0.4 + n2[i] * 0.35 + n3[i] * 0.25 + (bayer(i % T, (i / T) | 0) - 0.5) * 0.08
+      r.data[i] = n > 0.56 ? GD[0] : G[1]
     }
     return r
   })
 }
 
+/** Small ground details that break up wide meadows: pebbles, bare soil, clover, leaf piles, tiny flowers. */
+function pebble(r: Raster, x: number, y: number) {
+  r.rect(x, y + 2, 4, 1, GD[2])
+  r.rect(x, y, 3, 2, S[1])
+  r.set(x, y, S[0])
+  r.set(x + 1, y, S[0])
+  r.set(x + 2, y + 1, S[2])
+  r.set(x + 3, y + 1, GD[2])
+}
+
+function soil(r: Raster, x: number, y: number) {
+  r.rect(x, y, 4, 2, D[1])
+  r.rect(x + 1, y - 1, 2, 1, D[0])
+  r.rect(x + 1, y + 2, 3, 1, D[2])
+  r.set(x - 1, y + 1, GD[1])
+  r.set(x + 4, y, GD[1])
+}
+
+function clover(r: Raster, x: number, y: number) {
+  for (const [dx, dy] of [
+    [0, 0],
+    [2, 0],
+    [1, -1],
+    [1, 1]
+  ] as const)
+    r.set(x + dx, y + dy, GD[1])
+  r.set(x + 1, y, GD[0])
+}
+
+function leafPile(r: Raster, x: number, y: number) {
+  r.ellipse(x + 3, y + 3, 4, 2, GD[2])
+  r.ellipse(x + 2.5, y + 2, 3.5, 1.8, GD[1])
+  r.rect(x + 1, y + 1, 2, 1, GD[0])
+  r.set(x + 5, y + 2, G[0])
+}
+
+function tinyFlower(r: Raster, x: number, y: number, c: number) {
+  r.set(x, y, c)
+  r.set(x, y + 1, GD[1])
+}
+
 function grassBase(tx: number, ty: number, withFlowers: boolean): Raster {
   const a = mod(tx, 8)
   const b = mod(ty, 8)
-  const v = Math.floor(ih(tx, ty, 99) * 4)
+  const v = Math.floor(ih(tx, ty, 99) * VARIANTS)
   return memo(`g${a},${b},${v},${withFlowers ? 1 : 0}`, () => {
     const r = grassTone(a, b).clone()
-    const rnd = rng(v * 7919 + 13)
+    const rnd = rng(v * 7919 + a * 104729 + b * 1299709 + 13)
     const pick = () => 8 + Math.floor(rnd() * 46)
-    const n = withFlowers ? 4 : 9
+    const n = withFlowers ? 5 : 10
     for (let i = 0; i < n; i++) tuft(r, pick(), pick())
+    for (let i = 0; i < 2; i++) leafPile(r, pick(), pick())
+    clover(r, pick(), pick())
+    if (v % 3 !== 2) clover(r, pick(), pick())
+    if (v % 2 === 0) pebble(r, pick(), pick())
+    if (v % 3 === 1) soil(r, pick(), pick())
+    if (!withFlowers) for (let i = 0; i < 2; i++) tinyFlower(r, pick(), pick(), i ? R.jobGold[1] : R.paper[0])
     if (withFlowers) {
       for (let i = 0; i < 5; i++) {
         const cx = 12 + Math.floor(rnd() * 40)
@@ -176,7 +226,7 @@ function addBank(r: Raster, q: TileQuery) {
 
 function grassTile(q: TileQuery, flowers: boolean) {
   const wet = [N, E, Sx, Wx].map((i) => (isWater(q.around[i]) ? 1 : 0)).join('')
-  return memo(`G${flowers}${mod(q.tx, 8)},${mod(q.ty, 8)},${Math.floor(ih(q.tx, q.ty, 99) * 4)},${wet}`, () => {
+  return memo(`G${flowers}${mod(q.tx, 8)},${mod(q.ty, 8)},${Math.floor(ih(q.tx, q.ty, 99) * VARIANTS)},${wet}`, () => {
     const r = grassBase(q.tx, q.ty, flowers).clone()
     if (wet !== '0000') addBank(r, q)
     return r
@@ -194,22 +244,63 @@ function dirtBase(tx: number, ty: number): Raster {
     const oy = b * T
     const n1 = noisePatch(ox, oy, 64, 21)
     const n2 = noisePatch(ox, oy, 32, 22)
-    for (let i = 0; i < T * T; i++) {
-      const n = n1[i] * 0.6 + n2[i] * 0.4
-      r.data[i] = n > 0.62 ? D[0] : n < 0.36 ? D[2] : D[1]
-    }
-    const rnd = rng(a * 91 + b * 17 + 3)
-    for (let i = 0; i < 7; i++) {
-      const x = 6 + Math.floor(rnd() * 50)
-      const y = 6 + Math.floor(rnd() * 50)
-      if (i < 3) {
-        r.rect(x, y, 3, 2, S[1])
-        r.rect(x, y, 2, 1, S[0])
-        r.rect(x + 1, y + 2, 3, 1, D[3])
-      } else {
-        r.rect(x, y, 3, 1, D[2])
-        r.set(x + 1, y + 1, D[2])
+    // One packed-earth tone; light and dark grains thicken gently instead of forming patches (world-hashed, so
+    // they run on across tile borders).
+    for (let y = 0; y < T; y++)
+      for (let x = 0; x < T; x++) {
+        const i = y * T + x
+        const v = n1[i] * 0.6 + n2[i] * 0.4
+        const h = ih(ox + x, oy + y, 23)
+        let c = D[1]
+        if (v > 0.5 && h < (v - 0.5) * 0.5) c = D[0]
+        else if (v < 0.5 && h < (0.5 - v) * 0.5) c = D[2]
+        r.data[i] = c
       }
+    const rnd = rng(a * 91 + b * 17 + 3)
+    const spot = () => 6 + Math.floor(rnd() * 50)
+    // pebbles with a lit top and a cast shadow
+    for (let i = 0; i < 5; i++) {
+      const x = spot()
+      const y = spot()
+      const big = i < 2
+      r.rect(x, y + 1, big ? 5 : 3, 1, D[3])
+      r.rect(x, y, big ? 4 : 3, big ? 3 : 2, S[1])
+      r.rect(x, y, big ? 3 : 2, 1, S[0])
+      r.set(x + (big ? 3 : 2), y + 1, S[2])
+      if (big) r.rect(x + 1, y + 3, 4, 1, D[2])
+    }
+    // wheel ruts: thin broken streaks with a lit lip
+    const horizontal = ih(a, b, 31) < 0.5
+    for (let k = 0; k < 1 + (ih(a, b, 35) < 0.5 ? 1 : 0); k++) {
+      let x = 5 + Math.floor(rnd() * 20)
+      let y = 8 + Math.floor(rnd() * 44)
+      const len = 14 + Math.floor(rnd() * 22)
+      for (let i = 0; i < len; i++) {
+        if (i % 9 === 8) {
+          if (horizontal) x += 2
+          else y += 2
+          continue
+        }
+        const [px, py] = horizontal ? [x + i, y + Math.round(Math.sin(i * 0.2 + k) * 1)] : [y, x + i]
+        r.set(px, py, D[2])
+        if (i % 3 === 0) r.set(horizontal ? px : px + 1, horizontal ? py - 1 : py, D[0])
+      }
+    }
+    // footprint dents
+    for (let i = 0; i < 3; i++) {
+      const x = spot()
+      const y = spot()
+      r.rect(x, y, 3, 2, D[2])
+      r.set(x, y, D[3])
+      r.rect(x + 1, y + 2, 3, 1, D[0])
+    }
+    // a dry crack or two and a tuft that pushed through
+    if (ih(a, b, 33) < 0.5) crack(r, spot(), spot(), 1, 1, 6, rnd, D[3])
+    if (ih(a, b, 34) < 0.35) {
+      const x = spot()
+      const y = spot()
+      blade(r, x, y, 3, 0)
+      blade(r, x + 2, y, 2, 1)
     }
     return r
   })
@@ -341,7 +432,7 @@ function mossAt(r: Raster, x: number, y: number, rn: () => number, size = 1) {
     )
 }
 
-function floorTile(q: TileQuery) {
+export function floorTile(q: TileQuery) {
   const wet = [N, E, Sx, Wx].map((i) => (isWater(q.around[i]) ? 1 : 0)).join('')
   return memo(`F${mod(q.tx, 8)},${mod(q.ty, 8)},${wet}`, () => {
     const r = tile()
@@ -458,7 +549,7 @@ function bridgeTile(q: TileQuery) {
 
 // ---------------------------------------------------------------- wall and hedge
 
-function massTile(q: TileQuery, kind: 'wall' | 'hedge') {
+export function massTile(q: TileQuery, kind: 'wall' | 'hedge') {
   const a = q.around
   const same = (i: number) => a[i] === kind
   const sig = [N, E, Sx, Wx, NE, SE, SW, NW].map((i) => (same(i) ? 1 : 0)).join('')
@@ -760,7 +851,7 @@ const PER = 512
 
 // ---------------------------------------------------------------- pit and spikes
 
-function pitTile(q: TileQuery) {
+export function pitTile(q: TileQuery) {
   const a = q.around
   const pit = (i: number) => a[i] === 'pit'
   const sig = [N, E, Sx, Wx, NE, NW].map((i) => (pit(i) ? 1 : 0)).join('')

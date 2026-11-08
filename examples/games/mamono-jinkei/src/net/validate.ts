@@ -72,6 +72,7 @@ export function validateNetInput(raw: unknown): NetInput | undefined {
     modePresses: count(r.modePresses),
     signalPresses: count(r.signalPresses)
   }
+  if (r.interactHeld !== undefined) input.interactHeld = bool(r.interactHeld)
   if (r.aimDist !== undefined) input.aimDist = num(r.aimDist, 0, 4000)
   const hero = report(r.hero)
   if (hero) input.hero = hero

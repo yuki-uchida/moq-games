@@ -9,7 +9,18 @@
  * - Bosses are 128×128 with the feet on (64, 116). Larger effects are listed with their size and anchor.
  * - Frame 0 of every `attack_*` is the anticipation, the listed `hit` frame is the moment of contact.
  */
-import { DIRS, ENEMIES, JOBS, SPECIES, STAGES, type BossKind, type Dir, type NpcKind, type Species } from '../vocab'
+import {
+  DIRS,
+  ENEMIES,
+  JOBS,
+  SPECIES,
+  STAGES,
+  type BossKind,
+  type Dir,
+  type NpcKind,
+  type Species,
+  type StageId
+} from '../vocab'
 
 export interface AnimSpec {
   frames: number
@@ -23,6 +34,8 @@ export interface AnimSpec {
   /** Frame index of the contact/release moment (attacks), for the simulation's timing. */
   hit?: number
   fps: number
+  /** Shared-sheet entries introduced for one stage: only required once that stage is released. */
+  stage?: StageId
 }
 
 const perDir = (prefix: string, spec: AnimSpec, dirs: readonly Dir[] = DIRS) =>
@@ -71,7 +84,19 @@ export function enemySpec(kind: string): Record<string, AnimSpec> {
   if (['shieldman', 'spearguard', 'paladin', 'heavy'].includes(kind))
     Object.assign(spec, perDir('guard', { ...C64, frames: 2, loop: true, fps: 6 }))
   if (['bellmonk', 'paladin'].includes(kind)) spec.heal = { ...C64, frames: 4, loop: false, fps: 10 }
+  // The thief's hit-and-run dash (low, fast, a dust trail in the sprite).
+  if (kind === 'thief') Object.assign(spec, perDir('dash', { ...C64, frames: 3, loop: true, fps: 14 }))
   return spec
+}
+
+/** Small summoned creatures `minion:<kind>` (the falconer's hawk). */
+export const MINION_SPEC: Record<string, Record<string, AnimSpec>> = {
+  hawk: {
+    ...perDir('fly', { ...C64, frames: 4, loop: true, fps: 12, lift: true }),
+    ...perDir('swoop', { ...C64, frames: 3, loop: false, fps: 14, hit: 1 }),
+    hurt: { ...C64, frames: 2, loop: false, fps: 12 },
+    death: { ...C64, frames: 4, loop: false, fps: 10 }
+  }
 }
 
 /** Friendly NPC monsters `npc:<kind>` (front-facing). */
@@ -96,10 +121,53 @@ export const BOSS_SPEC: Record<BossKind, Record<string, AnimSpec>> = {
     ...perDir('hurt', { ...C128, frames: 2, loop: false, fps: 12 }),
     death: { ...C128, frames: 8, loop: false, fps: 8 }
   },
-  // Stages 2–4 are specified when those stages are built.
-  milda: {},
-  valk: {},
-  leon: {}
+  // Stage 2: the cat witch rides a broom (hovering, never touches the ground) behind her giant cat.
+  milda: {
+    ...perDir('idle', { ...C128, frames: 4, loop: true, fps: 6, lift: true }), // hovering on the broom
+    ...perDir('cast', { ...C128, frames: 4, loop: false, fps: 10, hit: 2, lift: true }), // spell at a hero
+    summon: { ...C128, frames: 4, loop: false, fps: 8, lift: true }, // calls kittens / thieves
+    ...perDir('hurt', { ...C128, frames: 2, loop: false, fps: 12, lift: true }),
+    broken: { ...C128, frames: 4, loop: true, fps: 6 }, // knocked off the broom, dizzy on the floor
+    death: { ...C128, frames: 8, loop: false, fps: 8 }
+  },
+  // Stage 3: the dragoon rides a wyvern (192×192 frames, feet/shadow point at (96, 176)).
+  valk: {
+    ...perDir('fly', { w: 192, h: 192, anchor: [96, 176], frames: 6, loop: true, fps: 10, lift: true }),
+    ...perDir('dive', { w: 192, h: 192, anchor: [96, 176], frames: 4, loop: false, fps: 12, hit: 2, lift: true }),
+    ...perDir('breath', { w: 192, h: 192, anchor: [96, 176], frames: 4, loop: true, fps: 10, lift: true }),
+    ...perDir('ground', { w: 192, h: 192, anchor: [96, 176], frames: 4, loop: true, fps: 6 }), // landed
+    downed: { w: 192, h: 192, anchor: [96, 176], frames: 4, loop: true, fps: 6 }, // pulled down by the tornado
+    ...perDir('hurt', { w: 192, h: 192, anchor: [96, 176], frames: 2, loop: false, fps: 12 }),
+    death: { w: 192, h: 192, anchor: [96, 176], frames: 8, loop: false, fps: 8 }
+  },
+  // Stage 4: the guild's hero, two phases (phase 2 glows with holy light).
+  leon: {
+    ...perDir('idle', { ...C128, frames: 4, loop: true, fps: 5 }),
+    ...perDir('walk', { ...C128, frames: 6, loop: true, fps: 10 }),
+    ...perDir('windup', { ...C128, frames: 3, loop: false, fps: 10 }),
+    ...perDir('slash', { ...C128, frames: 5, loop: false, fps: 16, hit: 2 }), // sword combo hit
+    ...perDir('dash', { ...C128, frames: 3, loop: true, fps: 14 }),
+    pillar: { ...C128, frames: 6, loop: false, fps: 10, hit: 4 }, // sword raised: holy pillars fall
+    shield: { ...C128, frames: 4, loop: true, fps: 8 }, // inside the holy shield bubble
+    awaken: { ...C128, frames: 8, loop: false, fps: 8 }, // phase 2 transformation
+    broken: { ...C128, frames: 4, loop: true, fps: 6 },
+    ...perDir('hurt', { ...C128, frames: 2, loop: false, fps: 12 }),
+    death: { ...C128, frames: 8, loop: false, fps: 8 }
+  }
+}
+
+/** Boss companions drawn as their own entity: `boss:cat` (milda's giant cat). */
+export const BOSS_EXTRA_SPEC: Record<string, Record<string, AnimSpec>> = {
+  cat: {
+    ...perDir('idle', { ...C128, frames: 4, loop: true, fps: 5 }),
+    ...perDir('walk', { ...C128, frames: 6, loop: true, fps: 10 }),
+    ...perDir('crouch', { ...C128, frames: 2, loop: true, fps: 8 }), // pounce windup, tail lashing
+    ...perDir('pounce', { ...C128, frames: 4, loop: false, fps: 12, hit: 2, lift: true }),
+    ...perDir('swipe', { ...C128, frames: 4, loop: false, fps: 14, hit: 1 }),
+    stunned: { ...C128, frames: 4, loop: true, fps: 6 }, // dizzy after the stampede
+    ...perDir('hurt', { ...C128, frames: 2, loop: false, fps: 12 }),
+    flee: { ...C128, frames: 4, loop: true, fps: 12 } // runs off when the witch falls
+  }
 }
 
 /** Co-op technique sprites `tech:<species>`. */
@@ -114,9 +182,30 @@ export const TECH_SPEC: Record<Species, Record<string, AnimSpec>> = {
       ]
     })
   ),
-  rat: {},
-  crow: {},
-  wolf: {}
+  // チューチュー大行進: the heroes run in their dash frames; these are the trail and the gnawed debris.
+  rat: {
+    stampede_dust: { w: 96, h: 64, frames: 6, loop: true, fps: 14 }, // billowing dust behind the line
+    gnaw_chips: { w: 64, h: 64, frames: 5, loop: false, fps: 14 }, // wood chips flying from a barricade
+    rush_aura: { w: 64, h: 64, frames: 4, loop: true, fps: 14, anchor: [32, 56] } // speed lines around a rat
+  },
+  // 黒羽の大旋風: a whirlwind of black feathers (sizes per tier), crows circle inside it.
+  crow: {
+    tornado_2: { w: 192, h: 192, anchor: [96, 176], frames: 6, loop: true, fps: 14 },
+    tornado_3: { w: 224, h: 224, anchor: [112, 208], frames: 6, loop: true, fps: 14 },
+    tornado_4: { w: 256, h: 256, anchor: [128, 240], frames: 6, loop: true, fps: 14 },
+    feather: { w: 16, h: 16, frames: 4, loop: true, fps: 10 }
+  },
+  // 月下群狼陣: the joint howl, the lunge streak and the closing crescent wave.
+  wolf: {
+    howl_wave: { w: 320, h: 320, frames: 5, loop: false, fps: 12 },
+    moon: { w: 256, h: 256, frames: 6, loop: false, fps: 10 }, // a full moon flaring behind the pack
+    ...Object.fromEntries(
+      Array.from({ length: 16 }, (_, a) => [`lunge_${a}`, { w: 96, h: 96, frames: 4, loop: false, fps: 18 }])
+    ),
+    ...Object.fromEntries(
+      Array.from({ length: 16 }, (_, a) => [`crescent_${a}`, { w: 160, h: 160, frames: 4, loop: false, fps: 16 }])
+    )
+  }
 }
 
 /** Directional effects come in 16 turns (index a = angle / 22.5°, 0 = right, clockwise on screen). */
@@ -153,7 +242,24 @@ export const FX_SPEC: Record<string, AnimSpec> = {
   soul: { w: 32, h: 48, frames: 4, loop: true, fps: 6, anchor: [16, 44] }, // downed hero's spirit bubble
   revive: { w: 96, h: 96, frames: 6, loop: false, fps: 14, anchor: [48, 80] },
   telegraph: { w: 64, h: 64, frames: 2, loop: true, fps: 8 }, // red ground warning tile for casters
-  gem_sparkle: { w: 16, h: 16, frames: 4, loop: false, fps: 16 }
+  gem_sparkle: { w: 16, h: 16, frames: 4, loop: false, fps: 16 },
+  // Stage 2–4 hazards and projectiles.
+  bomb: { w: 32, h: 32, frames: 2, loop: true, fps: 8, stage: 'sewer' }, // alchemist's lobbed potion flask (fuse glint)
+  bomb_burst: { w: 96, h: 96, frames: 6, loop: false, fps: 18, stage: 'sewer' }, // green-purple potion explosion
+  hex: { w: 32, h: 32, frames: 4, loop: true, fps: 12, stage: 'sewer' }, // the cat witch's homing violet hex bolt
+  snare: { w: 48, h: 48, frames: 2, loop: true, fps: 4, anchor: [24, 30], stage: 'sewer' }, // rat-catcher's snare on the ground
+  snare_snap: { w: 48, h: 48, frames: 3, loop: false, fps: 16, anchor: [24, 30], stage: 'sewer' },
+  gust: { w: 64, h: 64, frames: 4, loop: true, fps: 12, stage: 'tower' }, // wind mage's travelling gust
+  icespike: { w: 64, h: 96, frames: 6, loop: false, fps: 16, anchor: [32, 80], stage: 'forest' }, // ice witch spikes erupting
+  pillar: { w: 64, h: 192, frames: 6, loop: false, fps: 14, anchor: [32, 176], stage: 'forest' }, // the hero's holy pillar
+  fire_breath: { w: 64, h: 64, frames: 4, loop: true, fps: 14, stage: 'tower' }, // one puff of the wyvern's breath
+  dash_trail: { w: 64, h: 64, frames: 3, loop: false, fps: 16, anchor: [32, 56], stage: 'sewer' }, // rat dash afterimage
+  howl: { w: 128, h: 128, frames: 5, loop: false, fps: 14, stage: 'forest' }, // a wolf's howl ring
+  wind: { w: 64, h: 16, frames: 4, loop: true, fps: 12, stage: 'tower' }, // ambient wind streak
+  snow: { w: 8, h: 8, frames: 4, loop: true, fps: 6, stage: 'forest' }, // snowflake particle
+  ember: { w: 8, h: 8, frames: 4, loop: true, fps: 10, stage: 'forest' }, // brazier ember particle
+  drip: { w: 16, h: 32, frames: 5, loop: false, fps: 12, anchor: [8, 30], stage: 'sewer' }, // sewer drip splash
+  moonlight: { w: 96, h: 96, frames: 4, loop: true, fps: 8, stage: 'forest' } // glow over a lit moonstone
 }
 
 /** Pick-ups `items` (anchor = where it rests on the ground). */
@@ -182,11 +288,123 @@ export const UI_SPEC: Record<string, AnimSpec> = {
   bubble: { w: 32, h: 32, frames: 2, loop: true, fps: 3 } // interaction prompt bubble
 }
 
+const prop = (w: number, h: number, frames: number, anchor: readonly [number, number], loop = false, fps = 1) => ({
+  w,
+  h,
+  frames,
+  anchor,
+  loop,
+  fps: frames > 1 && fps === 1 ? 12 : fps
+})
+
+/**
+ * Puzzle and furniture props every stage sheet draws in its own style, so the simulation's generic parts (plates,
+ * levers, gates, chests, pushable blocks, liftable pots, crystals, the orb altar) work in any stage.
+ */
+const COMMON_PROPS: Record<string, AnimSpec> = {
+  block: prop(64, 96, 1, [32, 64]), // pushable, weight 2, 1×1
+  pot: prop(64, 64, 1, [32, 56]), // liftable and throwable
+  pot_break: prop(64, 64, 5, [32, 56], false, 16),
+  rock: prop(64, 64, 1, [32, 32]),
+  plate_off: prop(64, 64, 1, [32, 32]),
+  plate_on: prop(64, 64, 1, [32, 32]),
+  plate2_off: prop(64, 64, 1, [32, 32]),
+  plate2_on: prop(64, 64, 1, [32, 32]),
+  crystal_off: prop(64, 96, 2, [32, 72], true, 3),
+  crystal_on: prop(64, 96, 4, [32, 72], true, 8),
+  crystal_hit: prop(64, 96, 4, [32, 72], false, 16),
+  lever_off: prop(64, 64, 1, [32, 40]),
+  lever_on: prop(64, 64, 1, [32, 40]),
+  lever_pull: prop(64, 64, 4, [32, 40], false, 12),
+  gate_closed: prop(64, 96, 1, [32, 64]),
+  gate_opening: prop(64, 96, 5, [32, 64], false, 12),
+  gate_open: prop(64, 96, 1, [32, 64]),
+  bossdoor_closed: prop(192, 192, 1, [96, 160]),
+  bossdoor_opening: prop(192, 192, 6, [96, 160], false, 8),
+  bossdoor_open: prop(192, 192, 1, [96, 160]),
+  sign: prop(64, 64, 1, [32, 48]),
+  chest_closed: prop(64, 64, 1, [32, 48]),
+  chest_opening: prop(64, 64, 4, [32, 48], false, 10),
+  chest_open: prop(64, 64, 1, [32, 48]),
+  torch: prop(32, 64, 4, [16, 56], true, 10),
+  altar: prop(128, 128, 1, [64, 80])
+}
+
 /**
  * Stage props `props:<stage>`. Anchors map to the entity position: for grid props that is the centre of the
- * footprint, for standing props (pots, crystals) the base.
+ * footprint, for standing props (pots, crystals) the base. Stages 2–4 draw COMMON_PROPS plus their own gimmicks.
  */
-export const PROPS_SPEC: Record<'meadow', Record<string, AnimSpec>> = {
+export const PROPS_SPEC: Record<'meadow' | 'sewer' | 'tower' | 'forest', Record<string, AnimSpec>> = {
+  // Stage 2 地下水路と穀物庫: sewers (dim, torch-lit) leading up into a wooden granary.
+  sewer: {
+    ...COMMON_PROPS,
+    crate: prop(64, 96, 1, [32, 64]), // pushable, weight 1
+    bigcrate: prop(128, 160, 1, [64, 96]), // pushable, weight 4, 2×2
+    barrel: prop(64, 64, 1, [32, 56]), // liftable
+    barrel_break: prop(64, 64, 5, [32, 56], false, 16),
+    cheese: prop(96, 96, 1, [48, 80]), // giant cheese wheel, grip weight 3
+    scale_off: prop(128, 96, 1, [64, 64]), // the cheese's pedestal (a big grain scale)
+    scale_on: prop(128, 96, 4, [64, 64], true, 8),
+    valve_off: prop(64, 64, 1, [32, 40]), // turned with E
+    valve_on: prop(64, 64, 1, [32, 40]),
+    valve_turn: prop(64, 64, 6, [32, 40], false, 12),
+    sluice_closed: prop(64, 96, 1, [32, 64]), // gate piece across a water channel
+    sluice_opening: prop(64, 96, 5, [32, 64], false, 10),
+    sluice_open: prop(64, 96, 1, [32, 64]),
+    barricade: prop(128, 128, 1, [64, 96]), // 2×1 wooden barricade, only the stampede gnaws through
+    barricade_break: prop(128, 128, 7, [64, 96], false, 14),
+    mousetrap_idle: prop(64, 64, 1, [32, 40]),
+    mousetrap_snap: prop(64, 64, 4, [32, 40], false, 16),
+    lamp: prop(32, 64, 4, [16, 56], true, 8), // hanging lantern on a post
+    sack: prop(64, 64, 1, [32, 52]),
+    grate: prop(64, 64, 1, [32, 32]), // floor drain (decoration)
+    pipe: prop(64, 96, 2, [32, 80], true, 3), // wall outlet dripping into the channel
+    haybale: prop(64, 80, 1, [32, 56]),
+    shelf: prop(128, 128, 1, [64, 112]),
+    cobweb: prop(64, 64, 1, [32, 32])
+  },
+  // Stage 3 風鳴りの崖と時計塔: windy cliffs over the clouds and a clocktower.
+  tower: {
+    ...COMMON_PROPS,
+    vent: prop(64, 64, 4, [32, 32], true, 12), // updraft vent: refills flight
+    windmill: prop(128, 192, 1, [64, 160]),
+    windmill_spin: prop(128, 192, 6, [64, 160], true, 14), // spun by the tornado
+    drawbridge_up: prop(64, 64, 1, [32, 32]), // a bridge piece over the sky; 'up' shows only the anchors
+    drawbridge_lowering: prop(64, 64, 5, [32, 32], false, 10),
+    drawbridge_down: prop(64, 64, 1, [32, 32]),
+    bell: prop(64, 96, 1, [32, 80]),
+    bell_ring: prop(64, 96, 6, [32, 80], false, 14),
+    goldbell: prop(96, 96, 1, [48, 80]), // grip weight 4
+    hook_off: prop(128, 96, 1, [64, 64]), // the gold bell's frame
+    hook_on: prop(128, 96, 4, [64, 64], true, 8),
+    lockdoor_closed: prop(64, 96, 1, [32, 64]), // opened with a key
+    lockdoor_opening: prop(64, 96, 5, [32, 64], false, 10),
+    lockdoor_open: prop(64, 96, 1, [32, 64]),
+    gear: prop(64, 64, 4, [32, 32], true, 8), // decoration
+    flag: prop(64, 96, 4, [32, 88], true, 10),
+    cloud: prop(192, 96, 2, [96, 48], true, 1)
+  },
+  // Stage 4 月影の森と白銀の砦: a moonlit snowy forest and the guild's silver fortress (dark: lights matter).
+  forest: {
+    ...COMMON_PROPS,
+    moonstone_off: prop(64, 96, 1, [32, 72]), // lit by a howl
+    moonstone_on: prop(64, 96, 4, [32, 72], true, 8),
+    bigmoon_off: prop(128, 160, 1, [64, 128]), // needs a resonant howl or the pack technique
+    bigmoon_on: prop(128, 160, 4, [64, 128], true, 8),
+    iceblock: prop(64, 96, 1, [32, 64]), // pushable, slides until blocked
+    icewall: prop(128, 160, 1, [64, 96]), // 2×2, only the pack technique shatters it
+    icewall_break: prop(128, 160, 7, [64, 96], false, 14),
+    log: prop(128, 96, 1, [64, 64]), // battering-ram log, grip weight 4
+    ramslot_off: prop(128, 96, 1, [64, 64]),
+    ramslot_on: prop(128, 96, 4, [64, 64], true, 8),
+    snowpile: prop(64, 64, 1, [32, 40]),
+    snowpile_dig: prop(64, 64, 5, [32, 40], false, 14),
+    brazier: prop(64, 96, 4, [32, 80], true, 10),
+    pine: prop(128, 192, 2, [64, 160], true, 1),
+    deadtree: prop(128, 192, 1, [64, 160]),
+    banner: prop(64, 128, 4, [32, 120], true, 8),
+    tent: prop(128, 128, 1, [64, 112])
+  },
   meadow: {
     block: { w: 64, h: 96, frames: 1, loop: false, fps: 1, anchor: [32, 64] }, // stone block, weight 2, 1×1
     boulder: { w: 128, h: 160, frames: 1, loop: false, fps: 1, anchor: [64, 96] }, // boulder, weight 4, 2×2
@@ -246,6 +464,8 @@ export function allSheetSpecs(): Record<string, Record<string, AnimSpec>> {
   for (const stage of STAGES) for (const kind of ENEMIES[stage]) out[`enemy:${kind}`] = enemySpec(kind)
   for (const kind of ['elder', 'smith', 'seer', 'bard'] satisfies NpcKind[]) out[`npc:${kind}`] = NPC_SPEC
   for (const [kind, spec] of Object.entries(BOSS_SPEC)) if (Object.keys(spec).length) out[`boss:${kind}`] = spec
+  for (const [kind, spec] of Object.entries(BOSS_EXTRA_SPEC)) out[`boss:${kind}`] = spec
+  for (const [kind, spec] of Object.entries(MINION_SPEC)) out[`minion:${kind}`] = spec
   for (const [species, spec] of Object.entries(TECH_SPEC)) if (Object.keys(spec).length) out[`tech:${species}`] = spec
   out.fx = FX_SPEC
   out.items = ITEMS_SPEC

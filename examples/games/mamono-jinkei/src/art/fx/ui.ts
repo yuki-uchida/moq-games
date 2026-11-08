@@ -265,12 +265,26 @@ function offscreenArrow(turn: number): Raster {
   const a = (turn * TAU) / TURNS
   const ux = Math.cos(a)
   const uy = Math.sin(a)
-  const P = (u: number, v: number): [number, number] => [8 + ux * u - uy * v, 8 + uy * u + ux * v]
-  const pts = [P(7.4, 0), P(-3.6, 6), P(-1.2, 0), P(-3.6, -6)]
-  // Shaded half (lower-right of the light) in a second layer.
-  r.poly(pts.flat(), C.white)
+  const P = (u: number, v: number): [number, number] => [8 + ux * (u - 1) - uy * v, 8 + uy * (u - 1) + ux * v]
+  const chev = (tip: number, back: number, half: number, thick: number) =>
+    [
+      P(tip, 0),
+      P(back, -half),
+      P(back - thick, -half),
+      P(tip - thick * 1.3, 0),
+      P(back - thick, half),
+      P(back, half)
+    ].flat()
+  r.poly(chev(7, -1.5, 5.6, 3.4), C.white)
+  const core = new Raster(16, 16)
+  core.poly(chev(5.4, -1.2, 4.2, 2.2), R.jobGold[1])
   for (let y = 0; y < 16; y++)
-    for (let x = 0; x < 16; x++) if (r.get(x, y) && (x - 7.5) * 0.6 + (y - 7.5) * 0.8 > 2.2) r.set(x, y, R.paper[2])
+    for (let x = 0; x < 16; x++)
+      if (core.get(x, y)) r.set(x, y, (x + y) % 2 === 0 && x + y > 15 ? R.jobGold[2] : R.jobGold[1])
+  // Light from the top-left: the lower right of the white rim is in shade.
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++)
+      if (r.get(x, y) === C.white && (x - 7.5) * 0.6 + (y - 7.5) * 0.8 > 1.4) r.set(x, y, R.paper[2])
   outlineWith(r, C.inkCool, false)
   return r
 }

@@ -15,6 +15,13 @@ export interface HudActions {
   blip(): void
 }
 
+const TECH_TITLES = new Set([
+  'ジャンボ・プレス',
+  'キングスライム・プレス',
+  'チューチュー大行進',
+  '黒羽の大旋風',
+  '月下群狼陣'
+])
 const FORMATION_NAMES: Record<number, string> = { 2: 'ペア陣', 3: '三角陣', 4: '四方陣' }
 
 class HeroCard {
@@ -102,6 +109,7 @@ export class Hud {
   private readonly bossFill: HTMLElement
   private readonly bossLag: HTMLElement
   private readonly bossState: HTMLElement
+  private readonly bossPet: HTMLElement
   private readonly status: HTMLElement
   private readonly spectator: HTMLElement
   private readonly muteBtn: HTMLButtonElement
@@ -139,11 +147,13 @@ export class Hud {
     this.bossFill = el('span.boss-fill')
     this.bossLag = el('span.boss-lag')
     this.bossState = el('span.boss-state')
+    this.bossPet = el('span.boss-pet', { hidden: true })
     this.boss = el(
       'div.boss-bar',
       { hidden: true },
       el('div.boss-top', {}, this.bossName, this.bossState),
-      el('div.boss-track', {}, this.bossLag, this.bossFill)
+      el('div.boss-track', {}, this.bossLag, this.bossFill),
+      this.bossPet
     )
     this.status = el('span.net-status', { hidden: true })
     this.spectator = el('div.spectator-note', { hidden: true, text: '満員のため観戦中' })
@@ -196,7 +206,8 @@ export class Hud {
 
   /** Events that become HUD texts. */
   event(e: EventView) {
-    if (e.k === 'banner' && e.s) this.queueBanner(e.s, 'big')
+    // Technique names shout with an exclamation mark.
+    if (e.k === 'banner' && e.s) this.queueBanner(TECH_TITLES.has(e.s) ? `${e.s}！` : e.s, 'big')
     else if (e.k === 'solve' && e.s) this.queueBanner(e.s, 'solve')
     else if (e.k === 'notice' && e.s) this.notice(e.s)
   }
@@ -338,15 +349,26 @@ export class Hud {
     this.bossFill.style.width = `${(v * 100).toFixed(2)}%`
     this.bossLag.style.width = `${(this.bossLagV * 100).toFixed(2)}%`
     const broken = (b.broken ?? 0) > view.t
+    // Milda's giant cat guards her: the witch is untouchable while it is awake.
+    const pet = view.bossPet
+    const petDizzy = !!pet && (pet.broken ?? 0) > view.t
+    const guarded = pet ? !petDizzy && !broken : b.guard
     setText(
       this.bossState,
       broken
         ? `ガードブレイク！ ${Math.ceil((b.broken ?? 0) - view.t)}`
-        : b.guard
-          ? '🛡 ガード中 ― 協力技でくずせ！'
+        : guarded
+          ? pet
+            ? '🛡 大猫が守っている'
+            : '🛡 ガード中 ― 協力技でくずせ！'
           : ''
     )
+    show(this.bossPet, !!pet)
+    if (pet) {
+      setText(this.bossPet, petDizzy ? '大猫：目を回している！ いまだ！' : '大猫：見張り中 ― 大行進でぶつかれ！')
+      this.bossPet.classList.toggle('dizzy', petDizzy)
+    }
     this.boss.classList.toggle('broken', broken)
-    this.boss.classList.toggle('guard', b.guard && !broken)
+    this.boss.classList.toggle('guard', guarded && !broken)
   }
 }

@@ -18,6 +18,9 @@ export interface Style {
   hurt: PoseSpec[]
   death: PoseSpec[]
   guard?: PoseSpec[]
+  /** Optional extra move sets (thief dash, ...) looked up by animation name. */
+  dash?: PoseSpec[]
+  heal?: PoseSpec[]
 }
 
 /** Contact / passing walk cycle (4 frames). `amp` scales the stride. */

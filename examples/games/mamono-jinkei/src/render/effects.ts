@@ -18,7 +18,9 @@ export const PARTICLE_KINDS = [
   'petal',
   'pollen',
   'drop',
-  'chargeSpark'
+  'chargeSpark',
+  'mote',
+  'debris'
 ] as const
 export type ParticleKind = (typeof PARTICLE_KINDS)[number]
 const KIND_INDEX = Object.fromEntries(PARTICLE_KINDS.map((k, i) => [k, i])) as Record<ParticleKind, number>
@@ -27,6 +29,7 @@ const MAX = 900
 const RUBBLE = ['#8a7a68', '#6d604f', '#a89880', '#5a4e40']
 const FEATHER = ['#f4f1ea', '#d9d2c4', '#bfb6a4']
 const DROP = ['#9fd8f2', '#d8f2fb', '#6ab4dc']
+const DEBRIS = ['#8a6a3a', '#5f7a3a', '#b89a62', '#4e3e2a']
 const PETAL = ['#f7c6d9', '#fde3ec', '#fff3c4', '#f9b4c8']
 
 export class Particles {
@@ -141,15 +144,16 @@ export class Particles {
           ? 30
           : k === 'pollen' || k === 'smoke' || k === 'chargeSpark'
             ? -8
-            : k === 'dust'
+            : k === 'dust' || k === 'mote' || k === 'debris'
               ? 0
               : 380
       this.vz[i] -= grav * dt
+      if (k === 'mote') this.vx[i] += Math.sin(this.age[i] * 1.3 + this.seed[i]) * 6 * dt
       if (k === 'feather' || k === 'petal') {
         this.vz[i] = Math.max(this.vz[i], -18)
         this.vx[i] += Math.sin(this.age[i] * 4 + this.seed[i]) * 30 * dt
       }
-      const drag = k === 'dust' || k === 'smoke' ? 3 : k === 'spark' ? 2 : 0.6
+      const drag = k === 'dust' || k === 'smoke' ? 3 : k === 'spark' ? 2 : k === 'debris' || k === 'mote' ? 0 : 0.6
       this.vx[i] -= this.vx[i] * drag * dt
       this.vy[i] -= this.vy[i] * drag * dt
       this.x[i] += this.vx[i] * dt
@@ -217,6 +221,25 @@ export class Particles {
         ctx.fillStyle = PETAL[s & 3]
         const flip = Math.sin(this.age[i] * 5 + s) > 0
         ctx.fillRect(x, y, flip ? 3 : 2, flip ? 2 : 3)
+      } else if (kind === 'mote') {
+        // Dust motes twinkle as they drift through lamp light.
+        ctx.globalAlpha = fade * Math.min(1, p * 4) * (0.35 + 0.35 * Math.sin(this.age[i] * 2.3 + s))
+        ctx.fillStyle = '#fff2d0'
+        ctx.fillRect(x, y, 1, 1)
+      } else if (kind === 'debris') {
+        // Half foam streaks along the flow, half floating bits of straw and leaf.
+        ctx.globalAlpha = fade * Math.min(1, p * 5)
+        const along = Math.abs(this.vx[i]) >= Math.abs(this.vy[i])
+        if (s & 1) {
+          ctx.globalAlpha *= 0.75
+          ctx.fillStyle = '#e8fbff'
+          if (along) ctx.fillRect(x - 2, y, 5, 1)
+          else ctx.fillRect(x, y - 2, 1, 5)
+        } else {
+          ctx.fillStyle = DEBRIS[(s >> 1) & 3]
+          if (along) ctx.fillRect(x - 1, y, 4, 2)
+          else ctx.fillRect(x, y - 1, 2, 4)
+        }
       } else if (kind === 'pollen') {
         ctx.globalAlpha = fade * (0.5 + 0.5 * Math.sin(this.age[i] * 3 + s))
         ctx.fillStyle = '#fff6c8'

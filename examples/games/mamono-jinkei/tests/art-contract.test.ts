@@ -1,8 +1,19 @@
 import { describe, expect, test } from 'vitest'
 import { allSheetSpecs } from '../src/art/contract'
-import { anchorOf, sheet, tile } from '../src/art/index'
+import { anchorOf, hasTiles, missingAnims, sheet, tile } from '../src/art/index'
 import { PALETTE } from '../src/art/palette'
-import { STAGES, STAGE_TILES, TILE } from '../src/vocab'
+import {
+  BOSSES,
+  ENEMIES,
+  JOBS,
+  NPCS,
+  RELEASED_STAGES,
+  STAGES,
+  STAGE_SPECIES,
+  STAGE_TILES,
+  TILE,
+  type StageId
+} from '../src/vocab'
 
 const specs = allSheetSpecs()
 
@@ -42,4 +53,36 @@ test('every stage tileset draws every listed kind next to every other kind', () 
         expect([r.w, r.h]).toEqual([TILE, TILE])
         expect(r.count(), `${stage} ${kind} beside ${other}`).toBeGreaterThan(0)
       }
+})
+
+/** Every sheet a stage shows, and the stage tag filter for shared sheets. */
+function stageSheets(stage: StageId): string[] {
+  const species = STAGE_SPECIES[stage]
+  const ids = [
+    ...JOBS.map((job) => `hero:${species}:${job}`),
+    `tech:${species}`,
+    ...ENEMIES[stage].map((kind) => `enemy:${kind}`),
+    `boss:${BOSSES[stage]}`,
+    `npc:${NPCS[stage]}`,
+    `props:${stage}`
+  ]
+  if (stage === 'sewer') ids.push('boss:cat')
+  if (stage === 'tower') ids.push('minion:hawk')
+  return ids
+}
+
+describe('released stages are fully drawn (no placeholders)', () => {
+  const shared = ['fx', 'items', 'ui']
+  for (const id of shared)
+    test(id, () => {
+      const pending = missingAnims(id).filter((name) => {
+        const tag = specs[id][name]?.stage
+        return !tag || RELEASED_STAGES.includes(tag)
+      })
+      expect(pending, `${id} placeholders`).toEqual([])
+    })
+  for (const stage of RELEASED_STAGES) {
+    for (const id of stageSheets(stage)) test(id, () => expect(missingAnims(id), `${id} placeholders`).toEqual([]))
+    test(`tiles:${stage}`, () => expect(hasTiles(stage)).toBe(true))
+  }
 })

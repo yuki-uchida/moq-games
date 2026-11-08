@@ -15,7 +15,7 @@ import { LobbyScreen } from '../ui/lobby'
 import { PauseMenu, PhaseOverlays } from '../ui/overlays'
 import { modal } from '../ui/panels'
 import { TitleScreen } from '../ui/title'
-import { JOBS, TILE, type Job, type StageId } from '../vocab'
+import { JOBS, STAGES, TILE, type Job, type StageId } from '../vocab'
 import { Attract } from './attract'
 import { loadSave, storeSave, type SaveData, type Settings } from './save'
 
@@ -51,6 +51,7 @@ export class App {
   private savedClear = ''
   frames: number[] = []
   private chargeLoop = false
+  private waterLoop = false
   private generation = 0
 
   constructor(root: HTMLElement) {
@@ -140,6 +141,11 @@ export class App {
     this.begin(soloSession(this.save.progress, this.name()))
   }
 
+  /** Dev/test: solo straight into a stage (all stages unlocked for this session only). */
+  devStart(stage: StageId) {
+    this.begin(soloSession({ cleared: [...STAGES] }, this.name(), stage))
+  }
+
   private async startHost(room: string) {
     const gen = ++this.generation
     this.title.setBusy('ルームを作成中…')
@@ -211,6 +217,7 @@ export class App {
     this.pause.hide()
     this.controls.releaseAll()
     this.audio.loop('charge', null)
+    this.audio.loop('water', null)
     this.audio.setDuck(0)
     this.renderer.reset()
     if (!this.attract) this.attract = new Attract()
@@ -497,6 +504,15 @@ export class App {
     } else if (this.chargeLoop) {
       this.audio.loop('charge', null)
       this.chargeLoop = false
+    }
+    // Running water near the camera (sewer currents).
+    const water = view?.phase === 'play' && !this.pause.open ? this.renderer.water : 0
+    if (water > 0.05) {
+      this.audio.loop('water', 'water', { volume: water * 0.6 })
+      this.waterLoop = true
+    } else if (this.waterLoop) {
+      this.audio.loop('water', null)
+      this.waterLoop = false
     }
   }
 }
