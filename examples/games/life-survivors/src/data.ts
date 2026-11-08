@@ -834,13 +834,13 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
     '威力 +40%・数 +1'
   ],
   p_over: [
-    '攻撃速度 +25%',
-    '攻撃速度 +25%・威力 +30%',
+    '攻撃速度 +25%・範囲 +10%',
+    '攻撃速度 +25%・範囲 +10%・威力 +30%',
     '攻撃速度 +25%・範囲 +25%・人数 +1',
-    '攻撃速度 +25%',
-    '攻撃速度 +25%・威力 +30%',
-    '攻撃速度 +25%',
-    '攻撃速度 +25%・威力 +40%'
+    '攻撃速度 +25%・範囲 +10%',
+    '攻撃速度 +25%・範囲 +10%・威力 +30%',
+    '攻撃速度 +25%・範囲 +10%',
+    '攻撃速度 +25%・範囲 +10%・威力 +40%'
   ],
   p_monster: ['威力 +30%', '威力 +30%', '範囲 +25%・人数 +1', '威力 +30%', '威力 +30%', 'クールダウン -15%', '威力 +40%'],
   p_rich: standardLevels,
@@ -952,6 +952,14 @@ const weaponUpgradeProfiles: Record<string, UpgradeProfile> = {
 
 const weaponUpgradeOverrides: Record<string, Record<number, Partial<WeaponLevelUpgrade>>> = {
   p_toxic: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 7: { damage: 1.3, cooldown: 1 }, 8: { damage: 1.82, amount: 0 } },
+  p_over: {
+    2: { area: 1.1 },
+    3: { area: 1.1 },
+    5: { area: 1.1 },
+    6: { area: 1.1 },
+    7: { area: 1.1 },
+    8: { area: 1.1 }
+  },
   p_monster: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
   p_yankee: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
   w_muscle: { 2: { damage: 1.3, amount: 0 }, 5: { damage: 1.3, amount: 0 }, 8: { amount: 0 } },
