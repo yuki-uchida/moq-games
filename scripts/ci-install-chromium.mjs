@@ -1,44 +1,52 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { aptInstall, runCommand } from './ci-apt-install.mjs'
 
-const INSTALL = 'apt-get update&& apt-get install -y --no-install-recommends '
+const require = createRequire(import.meta.url)
 
-/** Playwright's own exact Linux package set for Chromium, read from its dry run. */
-export function chromiumPackages(dryRun) {
-  const lines = dryRun.split('\n').filter((line) => line.includes(INSTALL))
-  if (lines.length !== 1) throw new Error(`Unexpected Playwright dependency command:\n${dryRun}`)
-  const packages = lines[0]
-    .slice(lines[0].indexOf(INSTALL) + INSTALL.length)
-    .replace(/"\s*$/, '')
-    .trim()
-    .split(/\s+/)
-  if (!packages.length || packages.some((name) => !/^[a-z0-9][a-z0-9.+-]+$/.test(name)))
+/** The Linux package set `playwright install --with-deps chromium` installs: its Chromium group, then tools. */
+export function chromiumPackages(deps, platform) {
+  const info = deps[platform]
+  if (!info?.chromium?.length || !info.tools?.length)
+    throw new Error(`No Playwright Chromium dependencies for ${platform}`)
+  const packages = [...new Set([...info.chromium, ...info.tools])]
+  if (packages.some((name) => typeof name !== 'string' || !/^[a-z0-9][a-z0-9.+-]+$/.test(name)))
     throw new Error(`Unexpected Playwright dependency packages: ${packages.join(' ')}`)
   return packages
 }
 
-/** Install the same packages as `--with-deps`, refreshing package lists only when the image cannot satisfy them. */
-export function installChromium({ run, read }) {
-  if (!run('npx', ['playwright', 'install', 'chromium'])) return false
-  let packages
-  try {
-    packages = chromiumPackages(read('npx', ['playwright', 'install-deps', '--dry-run', 'chromium']))
-  } catch (error) {
-    console.log(
-      `${error instanceof Error ? error.message : error}\nFalling back to Playwright's own dependency install.`
-    )
-    return run('npx', ['playwright', 'install-deps', 'chromium'])
+/** The installed Playwright's own Linux dependency table and host platform (as `install-deps` reads them). */
+export function playwrightDependencies() {
+  const root = dirname(require.resolve('playwright-core/package.json'))
+  return {
+    deps: require(join(root, 'lib/server/registry/nativeDeps.js')).deps,
+    hostPlatform: require(join(root, 'lib/server/utils/hostPlatform.js')).hostPlatform
   }
-  const install = () => run('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', ...packages])
-  if (install()) return true
-  console.log('Package lists could not satisfy Playwright dependencies; refreshing them once.')
-  return run('sudo', ['apt-get', 'update']) && install()
+}
+
+export function playwrightPackages() {
+  const { deps, hostPlatform } = playwrightDependencies()
+  return chromiumPackages(deps, hostPlatform)
+}
+
+/** Same browser and packages as `--with-deps`, without refreshing package lists unless the image cannot satisfy them. */
+export async function installChromium({ run = runCommand, packages = playwrightPackages } = {}) {
+  let list
+  try {
+    list = packages()
+  } catch (error) {
+    console.log(`${error instanceof Error ? error.message : error}\nFalling back to Playwright's own install.`)
+    return run('npx', ['playwright', 'install', '--with-deps', 'chromium'])
+  }
+  // The browser download and the system packages are independent.
+  const [browser, system] = await Promise.all([
+    run('npx', ['playwright', 'install', 'chromium']),
+    aptInstall(['-y', '--no-install-recommends', ...list], run)
+  ])
+  return browser && system
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const ok = installChromium({
-    run: (command, args) => spawnSync(command, args, { stdio: 'inherit' }).status === 0,
-    read: (command, args) => execFileSync(command, args, { encoding: 'utf8' })
-  })
-  if (!ok) process.exit(1)
+  if (!(await installChromium())) process.exit(1)
 }

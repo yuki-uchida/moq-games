@@ -358,7 +358,7 @@ jobs:
       - name: Install Chromium for public-build browser tests
         run: node scripts/ci-install-chromium.mjs
       - name: Install Mesa and Xvfb
-        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb
+        run: node scripts/ci-apt-install.mjs -y libgl1-mesa-dri libegl1 xvfb
       - name: Identify Mesa shader cache platform
         id: mesa-cache-platform
         shell: bash
