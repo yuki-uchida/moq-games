@@ -374,9 +374,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chromium for public-build browser tests
-        run: node scripts/ci-install-chromium.mjs
-      - name: Install Mesa and Xvfb
-        run: node scripts/ci-apt-install.mjs -y libgl1-mesa-dri libegl1 xvfb
+        run: node scripts/ci-install-chromium.mjs libgl1-mesa-dri libegl1 libegl-mesa0
       - name: Identify Mesa shader cache platform
         id: mesa-cache-platform
         shell: bash
@@ -465,6 +463,8 @@ jobs:
           path: .verified-model-sidecars
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          reporting_interval: 1000
       - name: Verify published motion assets and pages
         if: needs.changes.outputs.tower == 'true'
         run: node scripts/verify-published-motions.mjs '${{ steps.deployment.outputs.page_url }}' .verified-model-sidecars/model-sidecar-digests.json
