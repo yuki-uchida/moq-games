@@ -130,7 +130,8 @@ export class HorrorWorld {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly onLost?: () => void
+    private readonly onLost?: () => void,
+    maxPixelRatio = 2
   ) {
     try {
       this.boxGeometry = new THREE.BoxGeometry(1, 1, 1)
@@ -138,7 +139,7 @@ export class HorrorWorld {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
       this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost)
       this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored)
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio))
       this.renderer.outputColorSpace = THREE.SRGBColorSpace
       this.renderer.setClearColor(0x090e14)
       container.appendChild(this.renderer.domElement)

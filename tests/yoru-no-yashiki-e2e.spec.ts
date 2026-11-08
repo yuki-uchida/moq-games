@@ -2031,3 +2031,223 @@ test('準備中の鈴試聴は一度だけ鳴り、ミュートとマイク停�
   await expect(preview).toBeDisabled()
   expect((await readAudit()).starts).toHaveLength(4)
 })
+
+test.describe('ロビーの無音デモ', () => {
+  const installDemoAudit = (page: Page) =>
+    page.addInitScript(() => {
+      const audit = { microphone: 0, audioContexts: 0, mediaPlays: 0 }
+      Object.assign(window, { demoAudit: audit })
+      const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+      navigator.mediaDevices.getUserMedia = (constraints) => {
+        audit.microphone++
+        return getUserMedia(constraints)
+      }
+      for (const name of ['AudioContext', 'webkitAudioContext', 'OfflineAudioContext']) {
+        const Original = (window as unknown as Record<string, typeof AudioContext | undefined>)[name]
+        if (!Original) continue
+        Object.defineProperty(window, name, {
+          configurable: true,
+          value: new Proxy(Original, {
+            construct(target, args) {
+              audit.audioContexts++
+              return Reflect.construct(target, args)
+            }
+          })
+        })
+      }
+      const play = HTMLMediaElement.prototype.play
+      HTMLMediaElement.prototype.play = function () {
+        audit.mediaPlays++
+        return play.call(this)
+      }
+    })
+  const readDemoAudit = (page: Page) =>
+    page.evaluate(() => (window as unknown as { demoAudit: Record<string, number> }).demoAudit)
+  const lobbyText = (page: Page) =>
+    page.evaluate(() =>
+      [
+        ...['connection', 'mic-status', 'notice', 'phase', 'timer', 'role', 'scores', 'preview-status'].map(
+          (id) => document.getElementById(id)?.textContent
+        ),
+        ...[...document.querySelectorAll('[role=status]')].map((element) => element.textContent),
+        location.href,
+        JSON.stringify(Object.entries(localStorage)),
+        JSON.stringify(Object.entries(sessionStorage)),
+        history.length
+      ].join('\n')
+    )
+  const demoCanvas = (page: Page) => page.locator('.intro .attract canvas')
+  const demoShot = async (page: Page) => {
+    const clip = await demoCanvas(page).boundingBox()
+    expect(clip).not.toBeNull()
+    return page.screenshot({ clip: clip! })
+  }
+
+  test('接続前のロビーで実際の屋敷を無音で自動再生し、ロビーの表示と操作を妨げない', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await installDemoAudit(page)
+    const relayRequests: string[] = []
+    page.on('request', (request) => {
+      const url = new URL(request.url())
+      if (url.hostname !== '127.0.0.1' || url.pathname.startsWith('/__yoru_moq')) relayRequests.push(request.url())
+    })
+    await page.goto('/')
+    const before = await lobbyText(page)
+    await expect(demoCanvas(page)).toHaveCount(1)
+    await expect(page.locator('#world canvas')).toHaveCount(1)
+    await expect(page.locator('.intro .attract')).toHaveAttribute('aria-hidden', 'true')
+    const first = await demoShot(page)
+    await page.waitForTimeout(3000)
+    const second = await demoShot(page)
+    expect(await averagePixelDifference(first, second)).toBeGreaterThan(1)
+    expect(await lobbyText(page)).toBe(before)
+    expect(await readDemoAudit(page)).toEqual({ microphone: 0, audioContexts: 0, mediaPlays: 0 })
+    expect(relayRequests).toEqual([])
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
+    const point = await page.locator('.intro h2').evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+    })
+    expect(
+      await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.attract') ?? null, point)
+    ).toBeNull()
+    await page.locator('#room-code').fill('a'.repeat(32))
+    await expect(page.locator('#room-code')).toBeFocused()
+    await page.getByText('リレーの詳細設定').click()
+    await expect(page.locator('#relay-url')).toBeVisible()
+    await expect(demoCanvas(page)).toHaveCount(1)
+  })
+
+  for (const role of ['host', 'guest'] as const) {
+    test(`${role === 'host' ? '主催' : '参加'}の操作でデモを止め、実際の画面だけを描く`, async ({ browser }) => {
+      const context = await browser.newContext({ viewport: { width: 640, height: 720 }, deviceScaleFactor: 0.5 })
+      const host = await context.newPage()
+      const guest = await context.newPage()
+      try {
+        await Promise.all([host.goto('/'), guest.goto('/')])
+        const page = role === 'host' ? host : guest
+        for (const each of [host, guest]) await expect(demoCanvas(each)).toHaveCount(1)
+        await page.evaluate(async () => {
+          const modulePath = '/src/world.ts'
+          const { HorrorWorld } = await import(/* @vite-ignore */ modulePath)
+          const render = HorrorWorld.prototype.render
+          const probe = { worlds: new Set<unknown>(), frames: [] as WorldFrame[] }
+          Object.assign(window, { demoRenderProbe: probe })
+          HorrorWorld.prototype.render = function (frame: WorldFrame) {
+            probe.worlds.add(this)
+            if (probe.frames.length < 400) probe.frames.push(structuredClone(frame))
+            return render.call(this, frame)
+          }
+        })
+        if (role === 'host') {
+          await host.locator('#host').click()
+          await expect(demoCanvas(host)).toHaveCount(0)
+          await expect(host.locator('.intro .attract')).toHaveClass(/stopped/)
+          await expect(demoCanvas(guest)).toHaveCount(1)
+          await guest.locator('#room-code').fill(await host.locator('#room-code').inputValue())
+          await guest.locator('#guest').click()
+        } else {
+          await connectPlayers(host, guest)
+        }
+        for (const each of [host, guest]) {
+          await expect(each.locator('#connection')).toHaveText('MoQで相手と接続しました', { timeout: 15_000 })
+          await expect(demoCanvas(each)).toHaveCount(0)
+          await expect(each.locator('canvas')).toHaveCount(1)
+          await expect(each.locator('#world canvas')).toHaveCount(1)
+          await expect(each.locator('#phase')).toHaveText('準備を整えてください')
+        }
+        await page.waitForTimeout(500)
+        const probe = await page.evaluate(() => {
+          const value = (window as unknown as { demoRenderProbe: { worlds: Set<unknown>; frames: WorldFrame[] } })
+            .demoRenderProbe
+          return { worlds: value.worlds.size, frames: value.frames }
+        })
+        expect(probe.worlds).toBe(1)
+        expect(probe.frames.length).toBeGreaterThan(0)
+        for (const frame of probe.frames) {
+          expect(frame.human).toEqual({ x: -5, z: 5, yaw: 0 })
+          expect(frame.haunter).toEqual({ x: 5, z: -5, yaw: Math.PI })
+          expect(frame.effect).toBeNull()
+          expect(frame.ritual).toBeNull()
+        }
+      } finally {
+        await context.close()
+      }
+    })
+  }
+
+  test('屋敷の画面を押すとデモを止め、従来どおり視点操作へ進む', async ({ page }) => {
+    await page.goto('/')
+    await expect(demoCanvas(page)).toHaveCount(1)
+    await page.locator('#world').click()
+    await expect.poll(() => page.evaluate(() => document.pointerLockElement?.id)).toBe('world')
+    await expect(page.locator('.intro .attract')).toHaveClass(/stopped/)
+    await expect(demoCanvas(page)).toHaveCount(0)
+    await expect(page.locator('#world canvas')).toHaveCount(1)
+    await expect(page.locator('#notice')).toHaveText('')
+  })
+
+  test('動きを減らす設定では静止画にする', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 640, height: 600 },
+      deviceScaleFactor: 0.5,
+      reducedMotion: 'reduce'
+    })
+    try {
+      const page = await context.newPage()
+      await page.goto('/')
+      await expect(demoCanvas(page)).toHaveCount(1)
+      await page.waitForTimeout(1500)
+      const first = await demoShot(page)
+      await page.waitForTimeout(2500)
+      const second = await demoShot(page)
+      expect(await averagePixelDifference(first, second)).toBeLessThan(0.5)
+      const stats = await sharp(second).stats()
+      expect(Math.max(...stats.channels.map((channel) => channel.mean))).toBeGreaterThan(8)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('デモ用の描画を作れなくても従来どおりのロビーで続けられる', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext
+      let first: HTMLCanvasElement | undefined
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, ...args: unknown[]) {
+        if (/webgl/.test(String(args[0]))) {
+          first ??= this
+          if (this !== first) return null
+        }
+        return (getContext as (...values: unknown[]) => unknown).apply(this, args)
+      } as typeof getContext
+    })
+    await page.goto('/')
+    await expect(page.locator('.intro .attract')).toHaveClass(/stopped/)
+    await expect(demoCanvas(page)).toHaveCount(0)
+    await expect(page.locator('#world canvas')).toHaveCount(1)
+    await expect(page.locator('#notice')).toHaveText('')
+    await expect(page.locator('#host')).toBeEnabled()
+    await expect(page.locator('#ready')).toBeDisabled()
+    expect(errors).toEqual([])
+  })
+
+  for (const [width, height] of [
+    [1280, 720],
+    [390, 844],
+    [320, 568]
+  ] as const) {
+    test(`${width}×${height} でデモが見え、ロビーは横にはみ出さず操作できる`, async ({ page }) => {
+      await page.setViewportSize({ width, height })
+      await page.goto('/')
+      await expect(demoCanvas(page)).toHaveCount(1)
+      const box = await page.locator('.intro .attract').boundingBox()
+      expect(box?.height).toBeGreaterThan(120)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      for (const id of ['host', 'guest', 'microphone', 'fullscreen', 'reset'])
+        await page.locator('#' + id).click({ trial: true })
+      await expect(page.locator('.intro h2')).toBeVisible()
+    })
+  }
+})
