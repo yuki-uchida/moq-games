@@ -77,6 +77,8 @@ export interface Hero {
   chargeLock: number
   inv: number
   stun: number
+  /** Snared (mousetrap, rat-catcher snare) until: cannot move. */
+  snared: number
   /** Held prop id and how. */
   hold?: number
   holdKind?: 'lift' | 'grip'
@@ -123,7 +125,7 @@ export interface CompanionMemory {
 export interface Human {
   id: string
   name: string
-  input: InputState & { aimDist?: number }
+  input: InputState & { aimDist?: number; interactHeld?: boolean }
   seen: {
     attackPresses: number
     attackReleases: number
@@ -162,6 +164,8 @@ export interface Prop {
   drop: PickupKind[]
   group?: string
   accepts?: string
+  /** Sluice: current channels stopped while open. */
+  stops: string[]
   on: boolean
   gone: boolean
   goneAt: number
@@ -207,6 +211,9 @@ export interface Enemy {
   wave?: number
   /** Called in by a boss (removed on a wipe). */
   summoned?: boolean
+  /** Thief: gems carried (returned on KO); fleeing until. */
+  carry: number
+  fleeUntil: number
   dead: boolean
   /** Strike point (melee) or cast point. */
   px: number
@@ -233,7 +240,8 @@ export interface Boss {
   hitAt?: number
   tele: Telegraph[]
   cd: number
-  act: 'idle' | 'walk' | 'windup' | 'charge' | 'sweep' | 'slam' | 'call' | 'broken' | 'hurt' | 'death'
+  /** Current action (garud: idle/walk/windup/charge/sweep/slam/call/broken/death; milda: idle/cast/summon/broken/death). */
+  act: string
   next?: 'charge' | 'sweep' | 'slam'
   aimA: number
   chargeLeft: number
@@ -245,6 +253,38 @@ export interface Boss {
   steel: number
   steelNext: boolean
   hitSet: Set<number>
+  dead: boolean
+  homeX: number
+  homeY: number
+}
+
+/** The boss's companion (stage 2: milda's giant cat). It is never damaged; techniques stun it. */
+export interface Pet {
+  id: number
+  kind: 'cat'
+  x: number
+  y: number
+  z: number
+  r: number
+  facing: number
+  anim: string
+  st: number
+  until: number
+  act: string
+  cd: number
+  /** Stunned until; wary (techniques don't stun) until. */
+  stun: number
+  wary: number
+  aimA: number
+  /** Pounce target and start. */
+  px: number
+  py: number
+  sx: number
+  sy: number
+  second: boolean
+  hitAt?: number
+  hitSet: Set<number>
+  tele: Telegraph[]
   dead: boolean
   homeX: number
   homeY: number
@@ -269,6 +309,10 @@ export interface Shot {
   burstDmg: number
   prop?: number
   burstAtEnd?: boolean
+  /** Lobbed shot (alchemist bomb): from, target, start time and flight time. */
+  lob?: { x0: number; y0: number; tx: number; ty: number; t0: number; dur: number }
+  /** Homing shot (hex): turn rate (rad/s) and life end. */
+  homing?: { rate: number; until: number }
   z0: number
   dist: number
   dead: boolean
@@ -290,7 +334,8 @@ export interface Tech {
   kind: TechKind
   tier: 2 | 3 | 4
   slots: number[]
-  stage: 'form' | 'jump' | 'land'
+  /** jumbo: form → jump → land; stampede: form → run → end. */
+  stage: string
   st: number
   x: number
   y: number
@@ -302,6 +347,21 @@ export interface Tech {
   a: number
   starts: { slot: number; x: number; y: number }[]
   landed: boolean
+  /** Stampede: run order (releaser first), run time and the ids already hit. */
+  line?: number[]
+  dur?: number
+  hit?: Set<number>
+}
+
+export interface Snare {
+  id: number
+  x: number
+  y: number
+  st: number
+  owner: number
+  /** Slot held and until when. */
+  slot?: number
+  until: number
 }
 
 export interface Formation {
@@ -337,6 +397,7 @@ export interface WorldState {
   heroes: Hero[]
   enemies: Enemy[]
   boss?: Boss
+  pet?: Pet
   props: Prop[]
   shots: Shot[]
   pickups: Pickup[]
@@ -360,6 +421,9 @@ export interface WorldState {
   leaderRoom?: string
   orb?: number
   orbTaken: boolean
+  /** Current channels stopped by open sluices. */
+  currentsOff: string[]
+  snares: Snare[]
 }
 
 export type Emit = (k: EventKind, x: number, y: number, extra?: { a?: number; b?: number; s?: string }) => void

@@ -20,6 +20,7 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
   let applied = 0
   let seenAction = -1
   let fills = 0
+  let stopped = ''
   return {
     update(view: View, input: InputState, dt: number): HeroReport | undefined {
       if (view.stage !== info.id || view.phase === 'lobby') {
@@ -36,6 +37,8 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
       if (view.seq !== lastSeq) {
         lastSeq = view.seq
         grid.setSolidProps(view.props)
+        const off = (view.currentsOff ?? []).join()
+        if (off !== stopped) grid.setStopped((stopped = off) ? off.split(',') : [])
         if ((view.fills?.length ?? 0) !== fills) {
           for (const i of view.fills ?? []) grid.fill(i)
           fills = view.fills?.length ?? 0
@@ -70,7 +73,8 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
         body.vx = body.vy = body.kx = body.ky = 0
         body.jt = -1
       } else {
-        const stunned = (hv.stun ?? 0) > view.t
+        const stunned = (hv.stun ?? 0) > view.t || (hv.snared ?? 0) > view.t
+        const form = hv.form !== undefined ? view.formations[hv.form] : undefined
         const res = stepBody(
           body,
           { mx: input.mx, my: input.my, action, actionHeld: input.actionHeld },
@@ -78,7 +82,8 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
           view.species,
           stunned ? 0 : (hv.speed ?? 1),
           dt,
-          hv.hold === undefined && !stunned
+          hv.hold === undefined && !stunned,
+          { resist: (form?.slots.length ?? 0) >= 3, carrying: hv.hold !== undefined }
         )
         if (res.fell) {
           // Wait for the host's fall and respawn warp.

@@ -2,7 +2,8 @@
  * 盾騎士団長ガルド (`garud`, DESIGN §10): permanent frontal guard toward the nearest hero, shield charge, sweep,
  * slam below 60% HP, reinforcements at 50% and 25%. Any co-op technique hit breaks the guard for 5 s.
  */
-import { TILE, type BossKind } from '../vocab'
+import { BOSS_NAMES, TILE, type BossKind } from '../vocab'
+import { createMilda, resetMilda, updateMilda } from './boss2'
 import { angleDiff, banner, dist, emit, freeSpotNear, fx, newId, sfx, shake } from './core'
 import { hurtHero } from './combat'
 import { spawnEnemy } from './enemies'
@@ -13,6 +14,7 @@ import { GARUD } from './tables'
 export const BOSS_DIR_ANIMS = new Set(['idle', 'walk', 'guard', 'windup', 'charge', 'sweep', 'hurt'])
 
 export function createBoss(W: WorldState, kind: BossKind, x: number, y: number): Boss {
+  if (kind === 'milda') return createMilda(W, x, y)
   return {
     id: newId(W),
     kind,
@@ -48,7 +50,7 @@ export function createBoss(W: WorldState, kind: BossKind, x: number, y: number):
 
 const targetable = (h: Hero) => h.state !== 'down' && h.state !== 'fall' && h.state !== 'tech'
 
-function setAct(W: WorldState, b: Boss, act: Boss['act'], anim: string, dur: number): void {
+function setAct(W: WorldState, b: Boss, act: string, anim: string, dur: number): void {
   b.act = act
   if (b.anim !== anim || dur > 0) b.st = W.t
   b.anim = anim
@@ -59,7 +61,7 @@ export function activateBoss(W: WorldState, b: Boss): void {
   if (b.active || b.dead) return
   b.active = true
   b.cd = W.t + 1.5
-  banner(W, '盾騎士団長ガルド')
+  banner(W, BOSS_NAMES[b.kind])
   sfx(W, 'bossRoar', b.x, b.y)
   shake(W, 6)
 }
@@ -67,6 +69,7 @@ export function activateBoss(W: WorldState, b: Boss): void {
 export function updateBoss(W: WorldState, dt: number): void {
   const b = W.boss
   if (!b || b.dead || !b.active) return
+  if (b.kind === 'milda') return updateMilda(W, dt)
   const t = W.t
   if (b.act === 'death') {
     if (t >= b.until) {
@@ -319,5 +322,6 @@ function moveBoss(W: WorldState, b: Boss, dx: number, dy: number): void {
 export function resetBoss(W: WorldState): void {
   const b = W.boss
   if (!b || b.dead) return
+  if (b.kind === 'milda') return resetMilda(W)
   Object.assign(b, createBoss(W, b.kind, b.homeX, b.homeY), { id: b.id })
 }

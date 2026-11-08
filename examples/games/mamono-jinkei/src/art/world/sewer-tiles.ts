@@ -362,51 +362,121 @@ function currentTile(q: TileQuery) {
   })
 }
 
+/** Elliptical ring outline (outer radii rx, ry; thickness t) for ripples. */
+function ripple(r: Raster, cx: number, cy: number, rx: number, ry: number, c: number) {
+  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
+    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+      const q = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2
+      if (q <= 1 && q > ((rx - 1.1) / rx) ** 2) r.paint(x, y, c)
+    }
+}
+
+/** Deep, murky sludge: a dark brown-green body, slow rings, oily glints, bubbles and drifting junk. */
 function sludgeTile(q: TileQuery) {
   const a = q.around
-  const sig = [N, W6, E, S4]
-    .map((i) => (a[i] === undefined || liquid(a[i]) || a[i] === 'pit' ? 0 : a[i] === 'bridge' ? 2 : 1))
-    .join('')
+  const type = (i: number) => (a[i] === undefined || liquid(a[i]) || a[i] === 'pit' ? 0 : a[i] === 'bridge' ? 2 : 1)
+  const sig = [N, W6, E, S4, 1, 3, 5, 7].map(type).join('')
   return memo(`u${mod(q.tx, 8)},${mod(q.ty, 8)},${q.frame},${sig}`, () => {
     const ox = mod(q.tx, 8) * 64
     const oy = mod(q.ty, 8) * 64
     const f = q.frame
     const r = tile()
-    const n1 = noisePatch(ox, oy, 32, 53)
-    const n2 = noisePatch(ox, oy, 16, 54)
+    const n1 = noisePatch(ox, oy, 64, 53)
+    const n2 = noisePatch(ox, oy, 32, 54)
     for (let i = 0; i < 4096; i++) {
-      const v = n1[i] * 0.65 + n2[i] * 0.35
-      r.data[i] = v < 0.34 ? SL[2] : SL[1]
+      const v = n1[i] * 0.6 + n2[i] * 0.4
+      r.data[i] = v > 0.72 + (bayer(i % 64, (i / 64) | 0) - 0.5) * 0.05 ? SL[2] : SL[3]
     }
-    // slow oily swirls drifting left
-    for (let y = 0; y < 64; y += 7) {
-      const cy = Math.floor((oy + y) / 7)
-      const sx = Math.floor(ih(mod(cy, 73), 1, 77) * 64)
-      for (let i = 0; i < 18; i++) {
-        const x = mod(sx + i - f * 4 + ox, 64)
-        r.set(x, y + Math.round(Math.sin((i + f) * 0.5)), SL[0])
+    // slow rings spreading over the surface
+    for (let cy = Math.floor(oy / 32) - 1; cy <= Math.floor((oy + 63) / 32) + 1; cy++)
+      for (let cx = Math.floor(ox / 32) - 1; cx <= Math.floor((ox + 63) / 32) + 1; cx++) {
+        const mx = mod(cx, 16)
+        const my = mod(cy, 16)
+        if (ih(mx, my, 55) > 0.7) continue
+        const phase = (f + Math.floor(ih(mx, my, 56) * 4)) & 3
+        const px = cx * 32 + 8 + Math.floor(ih(mx, my, 57) * 16) - ox
+        const py = cy * 32 + 8 + Math.floor(ih(mx, my, 58) * 16) - oy
+        const rad = 3 + phase * 3.4
+        ripple(r, px, py, rad, rad * 0.42, phase === 3 ? SL[3] : SL[1])
+        if (phase < 3) ripple(r, px, py, rad + 1.6, (rad + 1.6) * 0.42, SL[2])
       }
+    // oily glints: long thin highlights sliding slowly to the left
+    for (let y = 3; y < 64; y += 9) {
+      const wy = oy + y
+      const cyy = Math.floor(wy / 9)
+      const sx = Math.floor(ih(mod(cyy, 57), 3, 59) * 64)
+      const len = 8 + Math.floor(ih(mod(cyy, 57), 4, 59) * 10)
+      for (let i = 0; i < len; i++) {
+        const x = mod(sx + i - f * 4 - ox + ox, 64)
+        r.set(x, y, i < 2 || i > len - 3 ? SL[2] : SL[1])
+        if (i > 2 && i < len - 4) r.set(x, y + 1, SL[2])
+      }
+      r.set(mod(sx + 3 - f * 4, 64), y, SL[0])
     }
-    // bubbles swell and pop
+    // bubbles with a dark rim, and the odd piece of junk floating by
     for (let cy = Math.floor(oy / 32); cy <= Math.floor((oy + 63) / 32); cy++)
       for (let cx = Math.floor(ox / 32); cx <= Math.floor((ox + 63) / 32); cx++) {
         const mx = mod(cx, 16)
         const my = mod(cy, 16)
-        if (ih(mx, my, 55) > 0.6) continue
-        const phase = (f + Math.floor(ih(mx, my, 56) * 4)) & 3
-        const px = cx * 32 + 5 + Math.floor(ih(mx, my, 57) * 22) - ox
-        const py = cy * 32 + 5 + Math.floor(ih(mx, my, 58) * 22) - oy
-        if (phase === 0) r.set(px, py, SL[0])
-        else if (phase === 1) {
-          r.ellipse(px + 0.5, py + 0.5, 2.2, 1.6, SL[0])
-          r.set(px, py, C.white)
-        } else if (phase === 2) {
-          r.ring(px + 0.5, py + 0.5, 2, 3.4, SL[0])
-          r.set(px, py - 1, C.white)
-        } else r.ring(px + 0.5, py + 0.5, 3.4, 4.6, SL[3])
+        const px = cx * 32 + 4 + Math.floor(ih(mx, my, 60) * 24) - ox
+        const py = cy * 32 + 4 + Math.floor(ih(mx, my, 61) * 24) - oy
+        if (ih(mx, my, 62) < 0.4) {
+          const phase = (f + Math.floor(ih(mx, my, 63) * 4)) & 3
+          if (phase === 0) r.set(px, py, SL[1])
+          else if (phase === 1) {
+            r.ellipse(px + 0.5, py + 0.5, 2.6, 2, C.inkGreen)
+            r.ellipse(px + 0.5, py + 0.5, 1.8, 1.3, SL[1])
+            r.set(px, py, SL[0])
+          } else if (phase === 2) {
+            r.ellipse(px + 0.5, py + 0.5, 3.4, 2.6, C.inkGreen)
+            r.ellipse(px + 0.5, py + 0.5, 2.6, 1.8, SL[1])
+            r.rect(px - 1, py - 1, 2, 1, SL[0])
+          } else ripple(r, px + 0.5, py + 0.5, 4.5, 2, SL[2])
+        } else if (ih(mx, my, 62) > 0.9) {
+          const bob = f === 1 || f === 3 ? 1 : 0
+          const kind = Math.floor(ih(mx, my, 64) * 2)
+          if (kind === 0) {
+            // a bobbing plank
+            r.rect(px - 5, py + bob, 11, 3, C.inkWarm)
+            r.rect(px - 5, py + bob, 11, 2, WOOD[2])
+            r.rect(px - 4, py + bob, 6, 1, WOOD[1])
+            r.set(px + 5, py + bob + 1, WOOD[3])
+          } else {
+            // a drowned leaf
+            r.ellipse(px, py + bob, 3.4, 2, MOSS[2])
+            r.ellipse(px - 0.5, py + bob - 0.5, 2.4, 1.2, MOSS[1])
+            r.set(px - 1, py + bob - 1, MOSS[0])
+          }
+        }
       }
-    return shoreOnto(r, q, f)
+    return sludgeShore(r, q, f, sig)
   })
+}
+
+/** Dark banks and a ring of pale scum where the sludge touches stone. */
+function sludgeShore(r: Raster, q: TileQuery, f: number, sig: string) {
+  const [tN, tW, tE, tS] = [0, 1, 2, 3].map((i) => Number(sig[i]))
+  if (!tN && !tW && !tE && !tS) return r
+  const ox = mod(q.tx, 8) * 64
+  const oy = mod(q.ty, 8) * 64
+  const src = r.clone()
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 64; x++) {
+      let c = src.get(x, y)
+      const dist = (t: number, d: number, seed: number, w: number) => (t ? d - vn1(w, 10, seed) * 2 : 99)
+      const dn = dist(tN, y, 66, ox + x)
+      const dw = dist(tW, x, 67, oy + y)
+      const de = dist(tE, 63 - x, 68, oy + y)
+      const ds = dist(tS, 63 - y, 69, ox + x)
+      const dmin = Math.min(dn, dw, de, ds)
+      if (dmin < 2.2) c = C.inkGreen
+      else if (dmin < 4.6) c = bayer(x, y) < 0.6 ? C.inkGreen : SL[3]
+      else if (dmin < 6.4) c = SL[3]
+      // pale scum creeping along the edge, drifting with the frames
+      if (dmin >= 2.2 && dmin < 3.4 && ((x + y * 2 + f * 3) & 7) < 3 && c !== C.inkGreen) c = SL[1]
+      r.set(x, y, c)
+    }
+  return r
 }
 
 // ---------------------------------------------------------------- provider

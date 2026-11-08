@@ -1,4 +1,6 @@
 /** Hero attacks and skills, damage to heroes/enemies/boss, guards and projectiles (DESIGN §4, §10, §11). */
+/** Thrown props travel as shots of these kinds. */
+const THROWN = new Set(['pot', 'barrel'])
 import { TILE } from '../vocab'
 import {
   angleDiff,
@@ -17,7 +19,9 @@ import {
   stop,
   turnOf
 } from './core'
-import { rollDrop } from './items'
+import { dropItems, rollDrop } from './items'
+import { hitSnares } from './enemies'
+import { hitMilda, hitPet } from './boss2'
 import { hitProp } from './props'
 import type { Boss, Enemy, Hero, Shot, WorldState } from './state'
 import {
@@ -26,6 +30,7 @@ import {
   ENEMY_DEATH,
   ENEMY_HURT,
   GARUD,
+  GUARDED,
   HERO_HIT,
   HURT_TIME,
   JOB_STATS,
@@ -119,7 +124,9 @@ export interface HitOpts {
 /** Damage to an enemy; returns 'blocked' when the shield caught it. */
 export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked' | 'none' {
   if (e.dead || e.state === 'death') return 'none'
-  if (e.kind === 'shieldman' && !o.tech && e.guardOff <= W.t && e.stun <= W.t) {
+  // A spear guard's guard is down while it recovers from a thrust.
+  const open = e.kind === 'spearguard' && e.state === 'attack'
+  if (GUARDED.has(e.kind) && !open && !o.tech && e.guardOff <= W.t && e.stun <= W.t) {
     const from = Math.atan2(o.sy - e.y, o.sx - e.x)
     if (Math.abs(angleDiff(from, e.facing)) <= Math.PI / 3) {
       emit(W, 'clang', e.x, e.y - 24)
@@ -128,7 +135,7 @@ export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked'
       return 'blocked'
     }
   }
-  if (o.tech && e.kind === 'shieldman') {
+  if (o.tech && GUARDED.has(e.kind)) {
     e.guardOff = W.t + 3
     pop(W, 'ガードブレイク！', e.x, e.y - 60, -1)
   }
@@ -138,7 +145,7 @@ export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked'
   const hero = heroBy(W, o.slot)
   if (hero) hero.stats.dmg += o.dmg
   const a = Math.atan2(e.y - o.sy, e.x - o.sx)
-  const kbMul = e.kind === 'shieldman' ? 0.4 : 1
+  const kbMul = GUARDED.has(e.kind) ? 0.4 : 1
   e.kx += Math.cos(a) * o.kb * kbMul
   e.ky += Math.sin(a) * o.kb * kbMul
   if (o.stun) e.stun = Math.max(e.stun, W.t + o.stun)
@@ -169,12 +176,24 @@ export function hitEnemy(W: WorldState, e: Enemy, o: HitOpts): 'hit' | 'blocked'
 
 export function finishEnemyDeath(W: WorldState, e: Enemy): void {
   e.dead = true
+  // A thief returns what it stole.
+  if (e.carry > 0) {
+    dropItems(
+      W,
+      e.x,
+      e.y,
+      Array.from({ length: e.carry }, () => 'gem' as const)
+    )
+    pop(W, 'ジェムをとりかえした！', e.x, e.y - 60, -1)
+    e.carry = 0
+  }
   fx(W, 'smoke', e.x, e.y)
   burst(W, 'smoke', e.x, e.y, 6)
   rollDrop(W, e.x, e.y, 'enemy')
 }
 
 export function hitBoss(W: WorldState, b: Boss, o: HitOpts): 'hit' | 'blocked' | 'none' {
+  if (b.kind === 'milda') return hitMilda(W, b, o)
   if (b.dead || !b.active || b.act === 'death') return 'none'
   const broken = b.broken > W.t
   // Heavy plate: normal hits are reduced; techniques are what really hurts him.
@@ -239,6 +258,8 @@ export function hitArc(W: WorldState, x: number, y: number, r: number, a: number
   if (b && !b.dead && inArc(b.x, b.y, b.r)) hitBoss(W, b, o) === 'hit' && n++
   for (const p of W.props)
     if (!p.gone && (p.kind === 'grass' || p.kind === 'crystal') && inArc(p.x, p.y, 20)) hitProp(W, p, o.slot, !!o.tech)
+  if (o.slot >= 0 && W.snares.length) hitSnares(W, x, y, Math.min(r, 120), o.slot)
+  if (W.pet) hitPetArc(W, inArc, o)
   return n
 }
 
@@ -425,20 +446,43 @@ function shotBurst(W: WorldState, s: Shot): void {
 export function updateShots(W: WorldState, dt: number, onPotBreak: (W: WorldState, s: Shot) => void): void {
   const g = W.grid!
   for (const s of W.shots) {
-    if (s.dead) continue
+    if (s.dead || s.lob) continue
+    if (s.homing) {
+      // Homing hex: turns toward the nearest hero, fades after its life.
+      if (W.t > s.homing.until) {
+        s.dead = true
+        fx(W, 'hit', s.x, s.y)
+        continue
+      }
+      let best: Hero | undefined
+      let bd = Infinity
+      for (const h of W.heroes) {
+        if (h.state === 'down' || h.state === 'fall' || h.state === 'tech') continue
+        const d = dist(h.body.x, h.body.y, s.x, s.y)
+        if (d < bd) (bd = d), (best = h)
+      }
+      if (best) {
+        const sp = Math.hypot(s.vx, s.vy)
+        const cur = Math.atan2(s.vy, s.vx)
+        const want = Math.atan2(best.body.y - 8 - s.y, best.body.x - s.x)
+        const turn = Math.max(-s.homing.rate * dt, Math.min(s.homing.rate * dt, angleDiff(want, cur)))
+        s.vx = Math.cos(cur + turn) * sp
+        s.vy = Math.sin(cur + turn) * sp
+      }
+    }
     const step = Math.hypot(s.vx, s.vy) * dt
     const n = Math.max(1, Math.ceil(step / 12))
     for (let i = 0; i < n && !s.dead; i++) {
       s.x += (s.vx * dt) / n
       s.y += (s.vy * dt) / n
       s.dist += step / n
-      if (s.kind === 'pot') s.z = s.z0 * (1 - s.dist / s.range) + 30 * Math.sin((Math.PI * s.dist) / s.range)
+      if (THROWN.has(s.kind)) s.z = s.z0 * (1 - s.dist / s.range) + 30 * Math.sin((Math.PI * s.dist) / s.range)
       if (s.from === 'hero') shotVsTargets(W, s)
       else shotVsHeroes(W, s)
       if (s.dead) break
       if (g.shotBlocked(s.x, s.y) || s.dist >= s.range) {
         s.dead = true
-        if (s.kind === 'pot') onPotBreak(W, s)
+        if (THROWN.has(s.kind)) onPotBreak(W, s)
         else if (s.burst && (s.burstAtEnd || g.shotBlocked(s.x, s.y))) shotBurst(W, s)
         else if (s.kind === 'arrow' || s.kind === 'enemy_arrow') fx(W, 'dust', s.x, s.y)
       }
@@ -462,16 +506,23 @@ function shotVsTargets(W: WorldState, s: Shot): void {
     if (e.dead || e.state === 'death' || s.hits.has(e.id)) continue
     if (dist(s.x, s.y, e.x, e.y - 12) > e.r + 10) continue
     s.hits.add(e.id)
-    if (s.kind === 'pot') return void ((s.dead = true), potHit(W, s, e))
+    if (THROWN.has(s.kind)) return void ((s.dead = true), potHit(W, s, e))
     const res = s.burst ? 'hit' : hitEnemy(W, e, o())
     if (s.burst) return void ((s.dead = true), shotBurst(W, s))
     if (res === 'blocked' || s.pierce-- <= 0) return impact(W, s)
     if (s.kind === 'arrow') sfx(W, 'arrowHit', s.x, s.y)
   }
+  const c = W.pet
+  if (c && !c.dead && !s.hits.has(c.id) && dist(s.x, s.y, c.x, c.y - 30) < c.r + 10) {
+    s.hits.add(c.id)
+    if (THROWN.has(s.kind)) return void ((s.dead = true), potHit(W, s, undefined))
+    hitPet(W, c, o())
+    return impact(W, s)
+  }
   const b = W.boss
   if (b && !b.dead && b.active && !s.hits.has(b.id) && dist(s.x, s.y, b.x, b.y - 30) < b.r + 10) {
     s.hits.add(b.id)
-    if (s.kind === 'pot') return void ((s.dead = true), potHit(W, s, undefined))
+    if (THROWN.has(s.kind)) return void ((s.dead = true), potHit(W, s, undefined))
     if (s.burst) return void ((s.dead = true), shotBurst(W, s))
     hitBoss(W, b, o())
     impact(W, s)
@@ -499,4 +550,9 @@ function shotVsHeroes(W: WorldState, s: Shot): void {
       return
     }
   }
+}
+
+function hitPetArc(W: WorldState, inArc: (x: number, y: number, r: number) => boolean, o: HitOpts): void {
+  const p = W.pet!
+  if (!p.dead && inArc(p.x, p.y, p.r)) hitPet(W, p, o)
 }

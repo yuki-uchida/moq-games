@@ -3,9 +3,14 @@
  * catch-up puff) and stay (hold position, defend, act on the せーの GO).
  */
 import { TILE } from '../vocab'
-import { dist, fx, heroBy, sfx, tileOf, warpHero, freeSpotNear } from './core'
+import { angleDiff, dist, fx, heroBy, sfx, tileOf, warpHero, freeSpotNear } from './core'
 import { tileCentre } from './stage-data'
+import { HOLE_STEP } from './grid'
+
+/** Tile index of a path step (walk, slime hop or mouse-hole exit). */
+const stepTile = (p: number) => (p <= HOLE_STEP ? HOLE_STEP - p : p < 0 ? -p - 1 : p)
 import type { Hero, Human, Intent, WorldState } from './state'
+import type { Telegraph } from './types'
 import { NO_INTENT } from './state'
 import { JOB_STATS } from './tables'
 
@@ -61,11 +66,30 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
   h.ai.queue = h.ai.queue.filter((q) => q.at > t)
   it.held = h.ai.ownerHeld
   if (h.ai.goPending) {
+    // GO: turn a valve or pull a lever right here, otherwise attack once in the facing direction.
     h.ai.goPending = false
-    it.press = true
-    it.aim = h.aim
+    const part = W.props.find(
+      (p) =>
+        !p.gone &&
+        ((p.kind === 'valve' && p.state === 'off') || (p.kind === 'lever' && p.state === 'off')) &&
+        dist(p.x, p.y, h.body.x, h.body.y) < 84
+    )
+    if (part) it.interact = true
+    else {
+      it.press = true
+      it.aim = h.aim
+    }
   }
   if (h.state === 'down' || h.state === 'fall' || h.state === 'tech') return it
+  // Step out of danger markers (unless busy with a heavy object or a valve).
+  if (h.state !== 'grip' && h.state !== 'carry') {
+    const esc = escapeTelegraph(W, h.body.x, h.body.y)
+    if (esc) {
+      it.mx = esc[0]
+      it.my = esc[1]
+      return it
+    }
+  }
   const owner = human ? heroBy(W, human.ctrl) : undefined
   const mode = human?.mode ?? 'stay'
   const ready = t >= h.atkReady
@@ -146,7 +170,8 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
       tileOf(owner.body.x),
       tileOf(owner.body.y),
       W.species === 'slime',
-      6000
+      6000,
+      W.species === 'rat'
     )
     if (reachable || dOwner > 12 * TILE) {
       if (reachable) {
@@ -176,6 +201,41 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
   return it
 }
 
+/**
+ * The direction out of the nearest active danger marker covering (x, y) (enemy, boss and pet telegraphs), or
+ * undefined when the spot is safe.
+ */
+export function escapeTelegraph(W: WorldState, x: number, y: number): [number, number] | undefined {
+  const teles: Telegraph[] = []
+  for (const e of W.enemies) if (e.tele && !e.dead) teles.push(e.tele)
+  if (W.boss?.active && !W.boss.dead) teles.push(...W.boss.tele)
+  if (W.pet && !W.pet.dead) teles.push(...W.pet.tele)
+  for (const tl of teles) {
+    if (W.t < tl.from || W.t > tl.until) continue
+    const pad = 18
+    if (tl.kind === 'circle') {
+      const d = dist(x, y, tl.x, tl.y)
+      if (d < tl.r + pad) return d > 1 ? [(x - tl.x) / d, (y - tl.y) / d] : [1, 0]
+    } else if (tl.kind === 'cone') {
+      const d = dist(x, y, tl.x, tl.y)
+      const a = Math.atan2(y - tl.y, x - tl.x)
+      if (d < tl.r + pad && Math.abs(angleDiff(a, tl.a ?? 0)) <= (tl.spread ?? 0) + 0.3)
+        return [Math.cos(a), Math.sin(a)]
+    } else {
+      const a = tl.a ?? 0
+      const dx = x - tl.x
+      const dy = y - tl.y
+      const along = dx * Math.cos(a) + dy * Math.sin(a)
+      const side = -dx * Math.sin(a) + dy * Math.cos(a)
+      if (along > -pad && along < (tl.len ?? 0) + pad && Math.abs(side) < tl.r / 2 + pad) {
+        const s = side >= 0 ? 1 : -1
+        return [-Math.sin(a) * s, Math.cos(a) * s]
+      }
+    }
+  }
+  return undefined
+}
+
 /** Steers toward (x, y): straight when clear, else along an A* path with slime hops. */
 export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent): void {
   const g = W.grid!
@@ -190,8 +250,7 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
   if (body.jt >= 0) {
     // Keep the hop going toward its target.
     const p = h.ai.path?.[0]
-    if (p !== undefined)
-      set(tileCentre(Math.abs(p < 0 ? -p - 1 : p) % g.w), tileCentre(Math.floor(Math.abs(p < 0 ? -p - 1 : p) / g.w)))
+    if (p !== undefined) set(tileCentre(stepTile(p) % g.w), tileCentre(Math.floor(stepTile(p) / g.w)))
     else set(x, y)
     return
   }
@@ -202,13 +261,22 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
   }
   const goal = g.idx(tileOf(x), tileOf(y))
   if (!h.ai.path || h.ai.goalTile !== goal || W.t - h.ai.pathAt > 0.6) {
-    h.ai.path = g.path(tileOf(body.x), tileOf(body.y), tileOf(x), tileOf(y), W.species === 'slime') ?? []
+    h.ai.path =
+      g.path(
+        tileOf(body.x),
+        tileOf(body.y),
+        tileOf(x),
+        tileOf(y),
+        W.species === 'slime',
+        4000,
+        W.species === 'rat' && h.hold === undefined
+      ) ?? []
     h.ai.goalTile = goal
     h.ai.pathAt = W.t
   }
   const path = h.ai.path
   const here = g.idx(tileOf(body.x), tileOf(body.y))
-  while (path.length && (path[0] < 0 ? -path[0] - 1 : path[0]) === here) path.shift()
+  while (path.length && stepTile(path[0]) === here) path.shift()
   // Skip ahead when a later waypoint is in straight view.
   while (path.length > 1 && path[0] >= 0 && path[1] >= 0) {
     const n = path[1]
@@ -220,11 +288,34 @@ export function steer(W: WorldState, h: Hero, x: number, y: number, it: Intent):
     set(x, y)
     return
   }
-  const ni = next < 0 ? -next - 1 : next
+  const ni = stepTile(next)
   const nx = tileCentre(ni % g.w)
   const ny = tileCentre(Math.floor(ni / g.w))
   if (next >= 0) {
     set(nx, ny)
+    return
+  }
+  if (next <= HOLE_STEP) {
+    // Mouse hole: line up with the hole next to this tile and dash into it.
+    const hole = (g.holeEntry.get(here) ?? []).find(([, exit]) => exit === ni)?.[0]
+    if (hole === undefined) {
+      h.ai.path = undefined
+      return
+    }
+    const hx = tileCentre(hole % g.w)
+    const hy = tileCentre(Math.floor(hole / g.w))
+    const ox = tileCentre(tileOf(body.x))
+    const oy = tileCentre(tileOf(body.y))
+    const ddx = Math.sign(hx - ox)
+    const ddy = Math.sign(hy - oy)
+    const lateral = ddx !== 0 ? body.y - oy : body.x - ox
+    if (Math.abs(lateral) > 6) {
+      set(ddx !== 0 ? body.x : ox, ddy !== 0 ? body.y : oy)
+      return
+    }
+    it.mx = ddx
+    it.my = ddy
+    if (dist(hx, hy, body.x, body.y) < 70 && body.dashT < 0) it.action = true
     return
   }
   // Slime hop: line up on the take-off tile, then jump toward the landing tile.

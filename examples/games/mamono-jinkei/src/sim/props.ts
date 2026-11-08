@@ -4,8 +4,8 @@
  */
 import { TILE } from '../vocab'
 import { banner, burst, dist, emit, freeSpotNear, fx, heroBy, pop, sfx, shake, tileOf, warpHero } from './core'
-import { hitBoss, hitEnemy, setState } from './combat'
-import { footOf, tileCentre, type Cond } from './stage-data'
+import { hitBoss, hitEnemy, hurtHero, setState } from './combat'
+import { ACCEPTORS, GRIPPABLE, LIFTABLE, PUSHABLE, footOf, tileCentre, type Cond } from './stage-data'
 import { dropItems, rollDrop } from './items'
 import type { Enemy, Hero, Prop, Shot, WorldState } from './state'
 import { CARRY_SPEED } from './tables'
@@ -74,7 +74,8 @@ function cutGrass(W: WorldState, p: Prop): void {
   p.goneAt = W.t + 4 / 14
   sfx(W, 'grassCut', p.x, p.y)
   burst(W, 'leaf', p.x, p.y - 16, 6)
-  rollDrop(W, p.x, p.y, 'grass')
+  if (p.drop.length) dropItems(W, p.x, p.y, p.drop)
+  else rollDrop(W, p.x, p.y, 'grass')
 }
 
 function hitCrystal(W: WorldState, p: Prop): void {
@@ -136,6 +137,8 @@ export function breakPotAt(W: WorldState, p: Prop, x: number, y: number): void {
   p.goneAt = W.t + 5 / 16
   p.holder = undefined
   sfx(W, 'potBreak', x, y)
+  // Thrown on a mousetrap: it snaps shut harmlessly.
+  for (const q of W.props) if (q.kind === 'mousetrap' && q.state === 'idle' && dist(q.x, q.y, x, y) < 48) snapTrap(W, q)
   burst(W, 'shard', x, y, 8)
   if (p.drop.length) dropItems(W, x, y, p.drop)
   else rollDrop(W, x, y, 'pot')
@@ -205,7 +208,7 @@ function dropHeavy(W: WorldState, p: Prop): void {
 
 function tryDeliver(W: WorldState, p: Prop, margin: number): boolean {
   for (const ped of W.props) {
-    if (ped.kind !== 'pedestal' || ped.on) continue
+    if (!ACCEPTORS.has(ped.kind) || ped.on) continue
     if (ped.accepts && ped.accepts !== p.part) continue
     const R = propRect(ped)
     if (p.x < R.x0 - margin || p.x > R.x1 + margin || p.y < R.y0 - margin || p.y > R.y1 + margin) continue
@@ -321,8 +324,9 @@ export function interact(W: WorldState, h: Hero): string {
     const ok =
       (p.kind === 'lever' && p.state === 'off' && d < 80) ||
       (p.kind === 'chest' && p.state === 'closed' && !p.cond && d < 80) ||
-      (p.kind === 'pot' && p.state === 'idle' && d < 76) ||
-      (p.kind === 'acorn' && !p.delivered && p.grips.length < 4 && d < 96)
+      (LIFTABLE.has(p.kind) && p.state === 'idle' && d < 76) ||
+      (GRIPPABLE.has(p.kind) && !p.delivered && p.grips.length < 4 && d < 96) ||
+      (p.kind === 'valve' && p.state === 'off' && d < 84)
     if (ok && d < bd) (bd = d), (best = p)
   }
   if (!best) return 'none'
@@ -336,6 +340,7 @@ export function interact(W: WorldState, h: Hero): string {
     case 'chest':
       openChest(W, p)
       return 'chest'
+    case 'barrel':
     case 'pot':
       p.state = 'lifted'
       p.st = W.t
@@ -348,7 +353,11 @@ export function interact(W: WorldState, h: Hero): string {
       sfx(W, 'lift', p.x, p.y)
       return 'lift'
     case 'acorn':
+    case 'cheese':
       return startGrip(W, h, p) ? 'grip' : 'none'
+    case 'valve':
+      startValve(W, h, p)
+      return 'valve'
   }
   return 'none'
 }
@@ -397,7 +406,7 @@ export function throwPot(W: WorldState, h: Hero, aim: number): void {
   p.holder = undefined
   W.shots.push({
     id: p.id + 100000,
-    kind: 'pot',
+    kind: p.kind === 'barrel' ? 'barrel' : 'pot',
     x: h.body.x + Math.cos(aim) * 10,
     y: h.body.y + Math.sin(aim) * 10,
     z: 40,
@@ -426,7 +435,7 @@ export function throwPot(W: WorldState, h: Hero, aim: number): void {
 export function updateHeld(W: WorldState): void {
   for (const p of W.props) {
     if (p.gone) continue
-    if (p.kind === 'pot' && p.state === 'lifted' && p.holder !== undefined) {
+    if (LIFTABLE.has(p.kind) && p.state === 'lifted' && p.holder !== undefined) {
       const h = heroBy(W, p.holder)
       if (!h || h.hold !== p.id) {
         p.holder = undefined
@@ -437,7 +446,7 @@ export function updateHeld(W: WorldState): void {
       p.y = h.body.y
       p.z = 40 + h.body.z
     }
-    if (p.kind !== 'acorn' || p.delivered || !p.grips.length) continue
+    if (!GRIPPABLE.has(p.kind) || p.delivered || !p.grips.length) continue
     // Drop out carriers who went down or strayed.
     for (const s of [...p.grips]) {
       const m = heroBy(W, s)
@@ -473,7 +482,7 @@ export function updateHeld(W: WorldState): void {
 }
 
 function tryDeliverLifted(W: WorldState, p: Prop): boolean {
-  const ped = W.props.find((q) => q.kind === 'pedestal' && !q.on && (!q.accepts || q.accepts === p.part))
+  const ped = W.props.find((q) => ACCEPTORS.has(q.kind) && !q.on && (!q.accepts || q.accepts === p.part))
   if (!ped || dist(p.x, p.y, ped.x, ped.y) > 56) return false
   for (const s of p.grips) {
     const m = heroBy(W, s)
@@ -508,7 +517,7 @@ export function updatePush(W: WorldState, dt: number): void {
   const g = W.grid!
   for (const h of W.heroes) h.pushing = false
   for (const p of W.props) {
-    if (p.gone || (p.kind !== 'block' && p.kind !== 'boulder')) continue
+    if (p.gone || !PUSHABLE.has(p.kind)) continue
     if (p.state === 'sliding') {
       const s = p.slide!
       const k = Math.min(1, (W.t - s.t0) / s.dur)
@@ -526,7 +535,12 @@ export function updatePush(W: WorldState, dt: number): void {
           fx(W, 'splash', p.x, p.y)
           burst(W, 'splash', p.x, p.y, 12)
           emit(W, 'solve', p.x, p.y, { s: '岩が沈んで道ができた！' })
-        } else p.state = 'idle'
+        } else {
+          p.state = 'idle'
+          // A pushed crate springs any mousetrap it lands on.
+          for (const q of W.props)
+            if (q.kind === 'mousetrap' && q.state === 'idle' && circleRect(q.x, q.y, 8, propRect(p))) snapTrap(W, q)
+        }
       }
       continue
     }
@@ -672,7 +686,25 @@ export function updatePuzzles(W: WorldState): void {
       case 'bounce':
         if (p.state === 'boing' && t - p.st >= 0.25) p.state = 'idle'
         break
+      case 'valve':
+        updateValve(W, p)
+        break
+      case 'sluice':
+        updateSluice(W, p)
+        break
+      case 'scale':
+        break
+      case 'mousetrap':
+        if (p.state === 'idle') updateMousetrap(W, p)
+        break
     }
+  }
+  // Open sluices stop their current channels.
+  const off = W.props.filter((p) => p.kind === 'sluice' && p.state === 'open').flatMap((p) => p.stops)
+  const key = [...new Set(off)].sort().join()
+  if (key !== W.currentsOff.join()) {
+    W.currentsOff = key ? key.split(',') : []
+    W.grid!.setStopped(W.currentsOff)
   }
 }
 
@@ -685,7 +717,7 @@ function platePressed(W: WorldState, p: Prop): boolean {
   }
   let block = 0
   for (const q of W.props) {
-    if (q.gone || q === p || !['block', 'boulder', 'acorn'].includes(q.kind) || q.state === 'lifted') continue
+    if (q.gone || q === p || !(PUSHABLE.has(q.kind) || GRIPPABLE.has(q.kind)) || q.state === 'lifted') continue
     if (q.x > R.x0 && q.x < R.x1 && q.y > R.y0 && q.y < R.y1) block = Math.max(block, q.weight)
   }
   if (p.kind === 'plate') return heroes > 0 || block > 0
@@ -739,3 +771,122 @@ export function bounceAt(W: WorldState, x: number, y: number): void {
 }
 
 export { banner }
+
+/* ------------------------------------------------------------------------------------------- stage 2 parts */
+
+export const VALVE = { turn: 1, window: 1.5 }
+
+/** E on a valve: the hero turns it for 1 s (moving away or letting go cancels). */
+function startValve(W: WorldState, h: Hero, p: Prop): void {
+  p.state = 'turn'
+  p.st = W.t
+  p.holder = h.slot
+  h.holdAt = -1
+  h.charging = h.chargeFull = false
+  h.body.vx = h.body.vy = 0
+  h.body.facing = Math.atan2(p.y - h.body.y, p.x - h.body.x)
+  setState(W, h, 'grip')
+  sfx(W, 'lever', p.x, p.y)
+}
+
+function updateValve(W: WorldState, p: Prop): void {
+  const t = W.t
+  if (p.state === 'turn') {
+    const h = p.holder !== undefined ? heroBy(W, p.holder) : undefined
+    const human = h ? W.humans.find((q) => q.id === h.owner) : undefined
+    const letGo = human && human.ctrl === h!.slot && human.input.interactHeld === false
+    if (!h || h.state !== 'grip' || Math.hypot(h.intent.mx, h.intent.my) > 0.5 || letGo) {
+      p.state = 'off'
+      p.st = t
+      p.holder = undefined
+      if (h && h.state === 'grip' && h.hold === undefined) setState(W, h, 'idle')
+      return
+    }
+    if (t - p.st >= VALVE.turn) {
+      p.state = 'on'
+      p.st = t
+      p.on = true
+      p.onUntil = p.group ? t + VALVE.window : Infinity
+      p.holder = undefined
+      setState(W, h, 'idle')
+      sfx(W, 'lever', p.x, p.y)
+      fx(W, 'drip', p.x, p.y)
+      if (p.group) {
+        const group = W.props.filter((q) => q.kind === 'valve' && q.group === p.group)
+        if (group.every((q) => q.on)) {
+          W.flags.add(`valves:${p.group}`)
+          for (const q of group) q.onUntil = Infinity
+          emit(W, 'solve', p.x, p.y, { s: 'バルブがそろった！' })
+          sfx(W, 'secret', p.x, p.y)
+        }
+      } else emit(W, 'solve', p.x, p.y, { s: 'バルブをまわした！' })
+    }
+    return
+  }
+  if (p.state === 'on' && t > p.onUntil) {
+    p.state = 'off'
+    p.st = t
+    p.on = false
+    sfx(W, 'crystalOff', p.x, p.y)
+  }
+}
+
+function updateSluice(W: WorldState, p: Prop): void {
+  const want = p.latched || (p.cond ? evalCond(W, p.cond) : false)
+  if (want && p.latch) p.latched = true
+  if (want && p.state === 'closed') {
+    p.state = 'opening'
+    p.st = W.t
+    sfx(W, 'gateOpen', p.x, p.y)
+    emit(W, 'solve', p.x, p.y, { s: '水門がひらいて流れが止まった！' })
+    burst(W, 'splash', p.x, p.y, 10)
+  } else if (p.state === 'opening' && W.t - p.st >= 5 / 10) {
+    p.state = 'open'
+    p.st = W.t
+  } else if (!want && p.state === 'open') {
+    p.state = 'closed'
+    p.st = W.t
+    sfx(W, 'gateClose', p.x, p.y)
+  }
+}
+
+function snapTrap(W: WorldState, p: Prop): void {
+  p.state = 'snap'
+  p.st = W.t
+  sfx(W, 'stun', p.x, p.y)
+  fx(W, 'snare_snap', p.x, p.y)
+}
+
+function updateMousetrap(W: WorldState, p: Prop): void {
+  const R = propRect(p)
+  for (const h of W.heroes) {
+    if (h.state === 'tech' || h.state === 'down' || h.state === 'fall' || h.body.z > 0.01) continue
+    if (h.body.dashT >= 0 && h.body.dashT <= 0.22) continue
+    const { x, y } = h.body
+    if (x < R.x0 + 8 || x > R.x1 - 8 || y < R.y0 + 8 || y > R.y1 - 8) continue
+    snapTrap(W, p)
+    h.inv = 0
+    hurtHero(W, h, 1, p.x, p.y - 10, 0)
+    h.snared = Math.max(h.snared, W.t + 1.5)
+    pop(W, 'パチン！', p.x, p.y - 60, -1)
+    return
+  }
+}
+
+/** The stampede's head at (x, y): gnaws through barricades within r. Returns true when one broke. */
+export function gnawAt(W: WorldState, x: number, y: number, r: number): boolean {
+  let any = false
+  for (const p of W.props) {
+    if (p.gone || p.kind !== 'barricade' || p.state !== 'idle') continue
+    if (!circleRect(x, y, r, propRect(p))) continue
+    p.state = 'break'
+    p.st = W.t
+    p.goneAt = W.t + 7 / 14
+    sfx(W, 'gnaw', p.x, p.y)
+    emit(W, 'fx', p.x, p.y, { s: 'gnaw_chips' })
+    burst(W, 'rubble', p.x, p.y, 12)
+    emit(W, 'solve', p.x, p.y, { s: 'バリケードをかじりやぶった！' })
+    any = true
+  }
+  return any
+}

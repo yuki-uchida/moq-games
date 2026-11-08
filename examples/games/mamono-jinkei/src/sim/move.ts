@@ -29,6 +29,8 @@ export interface Body {
   stamina: number
   flying: boolean
   dashT: number
+  /** Dash direction. */
+  dashA: number
 }
 
 export function newBody(x: number, y: number, facing = Math.PI / 2): Body {
@@ -48,7 +50,8 @@ export function newBody(x: number, y: number, facing = Math.PI / 2): Body {
     moveT: 0,
     stamina: 1.5,
     flying: false,
-    dashT: -1
+    dashT: -1,
+    dashA: 0
   }
 }
 
@@ -89,7 +92,17 @@ export interface MoveResult {
   fell: boolean
   dashed: boolean
   flew: boolean
+  /** Went through a mouse hole: entrance and exit centres. */
+  holed?: { fromX: number; fromY: number; toX: number; toY: number }
 }
+
+/** Extra movement context: a formation of 3+ resists currents; nothing carried fits through a mouse hole. */
+export interface MoveOptions {
+  resist?: boolean
+  carrying?: boolean
+}
+
+export const RAT_DASH = { time: 0.22, mul: 3, cooldown: 0.6 }
 
 export const airborne = (b: Body) => b.z > 0.01 || b.jt >= 0 || b.flying
 
@@ -104,7 +117,8 @@ export function stepBody(
   species: Species,
   speedMul: number,
   dt: number,
-  canAct = true
+  canAct = true,
+  opts: MoveOptions = {}
 ): MoveResult {
   const res: MoveResult = { jumped: false, bounced: false, landed: false, fell: false, dashed: false, flew: false }
   const spec = SPECIES_MOVE[species]
@@ -128,8 +142,9 @@ export function stepBody(
   if (species === 'rat' && input.action && canAct && b.dashT < 0) {
     b.dashT = 0
     const a = len > 0.1 ? Math.atan2(my, mx) : b.facing
-    b.vx = Math.cos(a) * spec.speed * 3
-    b.vy = Math.sin(a) * spec.speed * 3
+    b.dashA = a
+    b.vx = Math.cos(a) * spec.speed * RAT_DASH.mul
+    b.vy = Math.sin(a) * spec.speed * RAT_DASH.mul
     res.dashed = true
   }
   if (species === 'crow') {
@@ -148,9 +163,9 @@ export function stepBody(
   // Velocity.
   if (b.dashT >= 0) {
     b.dashT += dt
-    if (b.dashT > 0.22) b.dashT = b.dashT > 0.6 ? -1 : b.dashT
+    if (b.dashT > RAT_DASH.time) b.dashT = b.dashT > RAT_DASH.cooldown ? -1 : b.dashT
   }
-  const dashing = b.dashT >= 0 && b.dashT <= 0.22
+  const dashing = b.dashT >= 0 && b.dashT <= RAT_DASH.time
   if (b.jt >= 0) {
     if (!b.jfix) {
       const k = 1 - Math.exp(-spec.airAccel * dt)
@@ -182,6 +197,36 @@ export function stepBody(
   }
   b.x = out.x
   b.y = out.y
+  // Mouse holes: dashing into one comes out of its partner (nothing carried fits).
+  if (dashing && !opts.carrying) {
+    const hx = Math.floor((b.x + Math.cos(b.dashA) * (HERO_R + 8)) / TILE)
+    const hy = Math.floor((b.y + Math.sin(b.dashA) * (HERO_R + 8)) / TILE)
+    const exit = grid.inside(hx, hy) ? grid.holeExit.get(grid.idx(hx, hy)) : undefined
+    if (exit !== undefined) {
+      const toX = (exit % grid.w) * TILE + TILE / 2
+      const toY = Math.floor(exit / grid.w) * TILE + TILE / 2
+      res.holed = { fromX: hx * TILE + TILE / 2, fromY: hy * TILE + TILE / 2, toX, toY }
+      const [ex, ey] = grid.holeDir.get(exit) ?? [0, 0]
+      b.x = toX
+      b.y = toY
+      b.dashT = RAT_DASH.time + 0.01
+      b.vx = ex * spec.speed
+      b.vy = ey * spec.speed
+      b.kx = b.ky = 0
+      b.dashA = Math.atan2(ey, ex)
+    }
+  }
+  // Currents push walking heroes downstream (into sludge if they let it); a formation of 3+ resists.
+  if (!air && !dashing) {
+    const ctx = Math.floor(b.x / TILE)
+    const cty = Math.floor(b.y / TILE)
+    const ti = grid.inside(ctx, cty) ? grid.idx(ctx, cty) : -1
+    if (ti >= 0 && (grid.flowX[ti] || grid.flowY[ti]) && (!opts.resist || grid.flowStrong[ti])) {
+      const f = grid.move(b.x, b.y, grid.flowX[ti] * dt, grid.flowY[ti] * dt, HERO_R, true)
+      b.x = f.x
+      b.y = f.y
+    }
+  }
   const sp = Math.hypot(b.vx, b.vy)
   if (len > 0.1) b.facing = Math.atan2(my, mx)
   else if (sp > 30 && b.jt < 0) b.facing = Math.atan2(b.vy, b.vx)
