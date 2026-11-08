@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
 import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
+import { chromiumPackages, installChromium } from '../scripts/ci-install-chromium.mjs'
 import {
   copyFileSync,
   existsSync,
@@ -296,7 +297,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(
     browser,
-    /run: npx playwright install --with-deps chromium\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb\n/
+    /run: node scripts\/ci-install-chromium\.mjs\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb\n/
   )
   assert.doesNotMatch(browser, /vulkan|Vulkan|VK_DRIVER_FILES|VK_ICD_FILENAMES|lvp_icd|lavapipe|shopt -s nullglob/)
   assert.doesNotMatch(browser, /apt-get update|xvfb-run[^\n]*--list/)
@@ -568,7 +569,7 @@ test('unit shards run independently and gate publication', () => {
   assert.match(unit, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
   assert.match(
     unit,
-    /name: Install Chromium for browser-backed unit tests\n\s+if: contains\(needs\.changes\.outputs\.unit, 'examples\/games\/yoru-no-yashiki\/tests'\)\n\s+run: npx playwright install --with-deps chromium[\s\S]*?name: Unit tests/
+    /name: Install Chromium for browser-backed unit tests\n\s+if: contains\(needs\.changes\.outputs\.unit, 'examples\/games\/yoru-no-yashiki\/tests'\)\n\s+run: node scripts\/ci-install-chromium\.mjs[\s\S]*?name: Unit tests/
   )
   assert.match(
     unit,
@@ -1082,3 +1083,47 @@ test(
     assert.deepEqual(orders[0], orders[1])
   }
 )
+
+test('Chromium installs reuse Playwright packages and refresh apt lists only on failure', () => {
+  const packages = 'xvfb fonts-noto-color-emoji fonts-ipafont-gothic libatk-bridge2.0-0t64 libnss3'
+  const sudo = `sudo -- sh -c "apt-get update&& apt-get install -y --no-install-recommends ${packages}"\n`
+  assert.deepEqual(chromiumPackages(sudo), packages.split(' '))
+  assert.deepEqual(
+    chromiumPackages(`sh -c "apt-get update&& apt-get install -y --no-install-recommends ${packages}"`),
+    packages.split(' ')
+  )
+  for (const output of ['', 'apt-get install -y xvfb', `${sudo}${sudo}`, sudo.replace('libnss3', 'libnss3;reboot')])
+    assert.throws(() => chromiumPackages(output))
+  const attempt = (results, output = sudo) => {
+    const calls = []
+    const ok = installChromium({
+      run: (command, args) => (calls.push([command, ...args].join(' ')), results.shift()),
+      read: (command, args) => (calls.push([command, ...args].join(' ')), output)
+    })
+    return { ok, calls }
+  }
+  const install = `sudo apt-get install -y --no-install-recommends ${packages}`
+  const browser = 'npx playwright install chromium'
+  const dryRun = 'npx playwright install-deps --dry-run chromium'
+  assert.deepEqual(attempt([true, true]), { ok: true, calls: [browser, dryRun, install] })
+  assert.deepEqual(attempt([true, false, true, true]), {
+    ok: true,
+    calls: [browser, dryRun, install, 'sudo apt-get update', install]
+  })
+  assert.deepEqual(attempt([true, false, true, false]).ok, false)
+  assert.deepEqual(attempt([false]), { ok: false, calls: [browser] })
+  assert.deepEqual(attempt([true, true], 'unexpected'), {
+    ok: true,
+    calls: [browser, dryRun, 'npx playwright install-deps chromium']
+  })
+  const workflow = readFileSync('.github/workflows/check.yml', 'utf8')
+  assert.doesNotMatch(workflow, /--with-deps/)
+  assert.equal(workflow.match(/^        run: node scripts\/ci-install-chromium\.mjs$/gm)?.length, 3)
+  for (const name of ['browser-backed unit tests', 'life-survivors', 'public-build browser tests'])
+    assert.match(
+      workflow,
+      new RegExp(
+        `- name: Install Chromium for ${name}\\n(?:        if: .*\\n)?        run: node scripts/ci-install-chromium\\.mjs\\n`
+      )
+    )
+})
