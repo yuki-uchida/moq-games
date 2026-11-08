@@ -15,6 +15,8 @@ import {
   PASSIVES,
   PASSIVE_BY_ID,
   PASSIVE_SLOTS,
+  PEOPLE_FEAR,
+  PEOPLE_FEAR_UNTIL_AGE,
   PLAYER_COLORS,
   POOLS,
   RUN_SECONDS,
@@ -74,6 +76,9 @@ export function raidReach(t: number) {
   return 1 - (t - RAID.back) / (1 - RAID.back)
 }
 const PLAYER_RADIUS = 14
+/** 過保護: how far a standing parent sits above (behind) the child, and how far apart two of them stand. */
+const GUARDIAN_STILL_LIFT = 5
+const GUARDIAN_STILL_SPREAD = 0.6
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -139,6 +144,8 @@ export interface Player {
   hasChild: boolean
   parent: string
   parentDeath?: { at: number; x: number; y: number; reward: ParentReward }
+  /** Total damage dealt by the parent weapon, kept after the parent dies. */
+  parentDamage?: number
   talents: Record<TalentCategory, number>
   weapons: OwnedWeapon[]
   passives: { id: string; lv: number }[]
@@ -213,6 +220,8 @@ export interface Shot {
   r: number
   angle: number
   guardianHeading?: number
+  /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (tucked behind them, guarding all round). */
+  guardianStill?: number
   orbit: number
   spin: number
   life: number
@@ -328,6 +337,12 @@ export const passivePower = (player: Player, id: string) =>
 export const playerRadius = (player: Player) =>
   PLAYER_RADIUS * bodyScale(passiveLevel(player, 'p_large'), passiveLevel(player, 'p_small'))
 
+/** 人間への恐怖 (モンスターペアレント's child) rarely draws 対人 cards: 50% at birth, +2.5% a year, normal at 20. */
+export const peopleFearFriendRate = (player: Pick<Player, 'passives'>, age: number) =>
+  player.passives.some((passive) => passive.id === PEOPLE_FEAR)
+    ? Math.min(1, 0.5 + (0.5 * Math.max(0, age)) / PEOPLE_FEAR_UNTIL_AGE)
+    : 1
+
 export function generateTalents(rng: () => number): Record<TalentCategory, number> {
   const anchors = TALENT_CATEGORIES.map(() => rng())
   return Object.fromEntries(
@@ -412,7 +427,7 @@ export function playerStats(player: Player): PlayerStats {
         (player.hp <= player.maxHp / 2 ? p('p_competitive') * 0.1 : 0)) *
       (player.parent === 'p_toxic' ? 1.05 : 1) *
       (1 + COOKING_EFFECTS.food_damage.amount * (player.cookingBuffs?.food_damage?.power ?? 0)),
-    cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.07 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
+    cooldown: Math.max(0.5, 1 - p('p_diligent') * 0.05 - p('p_hasty') * 0.05 + p('p_grand') * 0.1),
     area: 1 + p('p_kind') * 0.08 + p('p_cautious') * 0.05,
     crit: 0.05 + p('p_lucky') * 0.05,
     amount:
@@ -450,6 +465,7 @@ export function weaponStats(
   let damage = def.damage * sourceUpgrades.reduce((value, upgrade) => value * (upgrade.damage ?? 1), 1) * stats.might
   if (source.category) damage *= player.talents[source.category]
   if (evolved) damage *= 1.6
+  if (source.id === 'w_gamble') damage *= 0.5
   if (def.id === 'w_study' && player.parent === 'p_edu') damage *= 1.3
   if (def.id === 'w_invest') {
     if (player.parent === 'p_rich') damage *= 1.3
@@ -639,7 +655,7 @@ export class Game {
       parent,
       talents,
       weapons: parent === 'p_gone' ? [] : [{ id: parent, lv: 1, cd: 0.5, held: 0, damage: 0 }],
-      passives: [],
+      passives: parent === 'p_monster' && ageAt(state.time) < PEOPLE_FEAR_UNTIL_AGE ? [{ id: PEOPLE_FEAR, lv: 1 }] : [],
       choices: [],
       choiceSeq: 0,
       pending: parent === 'p_gone' ? 1 : 0,
@@ -1823,6 +1839,10 @@ export class Game {
   private ageWeapons() {
     const age = ageAt(this.state.time)
     for (const player of this.state.players) {
+      if (age >= PEOPLE_FEAR_UNTIL_AGE && player.passives.some((passive) => passive.id === PEOPLE_FEAR)) {
+        player.passives = player.passives.filter((passive) => passive.id !== PEOPLE_FEAR)
+        this.log(`${player.name}は20歳になり、「人間への恐怖」が消えた。`, player.id)
+      }
       const pet = player.weapons.find((weapon) => weapon.id === 'w_pet')
       if (!pet) continue
       pet.acquiredAge ??= age
@@ -1921,6 +1941,7 @@ export class Game {
           this.shot(player, weapon, def, ws, {
             angle: (i / n) * Math.PI * 2,
             guardianHeading: def.id === 'p_over' ? Math.atan2(player.fy, player.fx) : undefined,
+            guardianStill: def.id === 'p_over' ? Number(player.still > 0) : undefined,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' ? 192 * ws.speed : def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
@@ -2475,9 +2496,17 @@ export class Game {
     shot.guardianHeading = heading + difference * (1 - Math.exp(-8 * dt))
     const forwardX = Math.cos(shot.guardianHeading)
     const forwardY = Math.sin(shot.guardianHeading)
+    const still =
+      (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
+    shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
+    const walking = 1 - shot.guardianStill
     const side = shot.h * shot.r * 1.5
-    shot.x = owner.x + forwardX * shot.orbit * 0.65 - forwardY * side
-    shot.y = owner.y + forwardY * shot.orbit * 0.65 + forwardX * side
+    shot.x =
+      owner.x +
+      (forwardX * shot.orbit * 0.65 - forwardY * side) * walking +
+      shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
+    shot.y =
+      owner.y + (forwardY * shot.orbit * 0.65 + forwardX * side) * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)
@@ -2581,6 +2610,13 @@ export class Game {
 
   private shieldTouches(shot: Shot, x: number, y: number, radius: number) {
     const scale = shot.r / 20
+    // Standing still the parent stands right behind the child and covers every side.
+    if ((shot.guardianStill ?? 0) >= 0.5) {
+      const reach = shot.orbit * 0.65 + 7 * scale + radius
+      const dx = x - (shot.x - shot.h * shot.r * GUARDIAN_STILL_SPREAD)
+      const dy = y - (shot.y + GUARDIAN_STILL_LIFT)
+      return dx * dx + dy * dy <= reach * reach
+    }
     const thrust = shot.aux > 0 ? Math.sin(Math.PI * (1 - Math.min(1, shot.aux / shot.tick))) * 14 : 0
     const centerX = shot.x + (Math.cos(shot.angle) < 0 ? -7 : 7) * scale + Math.cos(shot.angle) * thrust
     const dx = Math.max(Math.abs(x - centerX) - 7 * scale, 0)
@@ -2654,7 +2690,9 @@ export class Game {
       enemy.ky += (dy / l) * knock
     }
     const weapon = owner.weapons.find((w) => w.id === shot.sourceWeapon)
-    if (weapon) weapon.damage += Math.min(amount, Math.max(0, enemy.hp + amount))
+    const dealt = Math.min(amount, Math.max(0, enemy.hp + amount))
+    if (weapon) weapon.damage += dealt
+    if (weapon && weapon.id === owner.parent) owner.parentDamage = (owner.parentDamage ?? 0) + dealt
     if (this.state.popups.length < 80)
       this.state.popups.push({
         x: enemy.x,
@@ -2867,7 +2905,8 @@ export class Game {
     if (talentWeaponCount(player) < weaponSlots(player, age))
       for (const def of TALENT_WEAPONS) if (canObtainWeapon(player, def, age)) result.push(`w:${def.id}`)
     for (const passive of player.passives)
-      if (passive.id !== PET_MEMORY && passive.lv < MAX_PASSIVE_LEVEL) result.push(`p:${passive.id}`)
+      if (passive.id !== PET_MEMORY && passive.id !== PEOPLE_FEAR && passive.lv < MAX_PASSIVE_LEVEL)
+        result.push(`p:${passive.id}`)
     if (player.passives.filter((passive) => passive.id !== PET_MEMORY).length < PASSIVE_SLOTS)
       for (const def of PASSIVES)
         if (def.id !== PET_MEMORY && !player.passives.some((p) => p.id === def.id)) result.push(`p:${def.id}`)
@@ -2879,7 +2918,10 @@ export class Game {
     const [kind, id] = choice.split(':')
     const owned =
       kind === 'w' ? player.weapons.some((w) => w.id === id) : player.passives.some((passive) => passive.id === id)
-    const weight = owned ? 2.5 : 1
+    const weapon = kind === 'w' ? WEAPON_BY_ID.get(id) : undefined
+    const category = kind === 'w' ? weapon?.category : PASSIVE_BY_ID.get(id)?.category
+    const friend = category === 'friend' && !weapon?.parent
+    const weight = (owned ? 2.5 : 1) * (friend ? peopleFearFriendRate(player, ageAt(this.state.time)) : 1)
     return kind === 'p' ? (weight * BASE_PASSIVE_COUNT) / (PASSIVES.length - 1) : weight
   }
 

@@ -23,6 +23,7 @@ import {
   MAX_UNITS,
   BURST_COOLDOWN
 } from './simulation.js'
+import { createAttract, stepAttract } from './attract.js'
 import { SLOTS, MAX_LEVEL, expToNext, load, save, erase, deckOf, toggle, buy, settle } from './campaign.js'
 const $ = (id) => document.getElementById(id)
 const canvas = document.querySelector('#field canvas'),
@@ -76,7 +77,7 @@ const audio = new BattleAudio()
 let muted = false
 const heard = new WeakSet()
 const heardImpacts = new WeakSet()
-const fallen = []
+let fallen = []
 let resultVisual = null
 const shotVisuals = new WeakMap()
 let visualLast = null
@@ -149,6 +150,7 @@ function buildTray() {
   })
 }
 function start(stage) {
+  endTitle()
   selected = stage
   state = createGame(stage, deckOf(campaign), seed())
   shown = false
@@ -247,6 +249,7 @@ function renderStages() {
       .join('')}</span><small>${stage.hint}</small>`
 }
 function showMap() {
+  endTitle()
   dialog.close()
   renderStages()
   $('map').hidden = false
@@ -563,8 +566,8 @@ const standOff = (u) => models.offset(u.key, u.side, 2 - (u.id % 3))
  * Drawn lane x follows the simulation closely but glides through sudden jumps (knockback, 大放屁) on the
  * battle clock, so a knocked-back unit slides instead of teleporting and nothing moves while paused.
  */
-const glides = new Map()
-const contacts = new Map()
+let glides = new Map()
+let contacts = new Map()
 function glideX(u) {
   let g = glides.get(u.id)
   if (!g || Math.abs(u.x - g.x) > 300) glides.set(u.id, (g = { x: u.x, t: state.time }))
@@ -607,7 +610,8 @@ function lead(u) {
   const closing = (u.speed + (target?.motion === 'walk' ? target.speed : 0)) * WALK_PACE
   return Math.max(0, gap) / closing
 }
-function draw() {
+/** The battlefield canvas for the current scene (the real battle, or the title demo while it is swapped in). */
+function drawScene() {
   const visualTime = state.time + (resultVisual?.elapsed ?? 0)
   for (const ghost of fallen) {
     if (!ghost.visualStarted) {
@@ -965,6 +969,13 @@ function draw() {
       }
     }
   }
+}
+function draw() {
+  drawScene()
+  drawHud()
+}
+/** Header, notice, tray and buttons: always the real battle's, never the title demo's. */
+function drawHud() {
   $('gold').textContent = Math.floor(state.gold)
   const allies = allyCount()
   const full = allies >= MAX_UNITS
@@ -1011,6 +1022,56 @@ function finish(report) {
   modal(report.victory ? `${STAGES[state.stage].sub}、大惨事！` : 'うんこ塔が流された…', message)
   tone(state.result)
 }
+/** Per-step visual bookkeeping for the current scene; returns which sounds the real battle should make. */
+function digest(previous, releaseGlides) {
+  fallen.push(...state.deaths.splice(0))
+  for (let index = fallen.length - 1; index >= 0; index--)
+    if (
+      fallen[index].visualStarted &&
+      fallen[index].visualAge > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
+    )
+      fallen.splice(index, 1)
+  let impact = false,
+    shot = false
+  for (const effect of state.effects)
+    if (!heard.has(effect)) {
+      heard.add(effect)
+      // Splashes land on the front of the recipient's drawn body, on its own row.
+      const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
+      const attacker = state.units.find((u) => u.id === effect.sourceId)
+      if (attacker && !effect.ranged && !effect.explosion) {
+        if (target)
+          contacts.set(attacker.id, {
+            target,
+            at: effect.releasedAt,
+            cycle: attacker.cycle,
+            strikes: attacker.strikes
+          })
+        else contacts.delete(attacker.id)
+      }
+      if (target) {
+        effect.targetY = laneY(target) - 35 * models.presentation[1]
+        const height = 35 / (models.presentation[0] * modelSize(target.key))
+        effect.dx = standOff(target) - target.side * models.front(target.key, height)
+      }
+      if (effect.sourceId != null)
+        effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
+      effect.releaseGlide = releaseGlides.get(effect.sourceId) ?? 0
+      effect.victimOrigins = (effect.victims ?? [])
+        .map(({ id }) => previous.find((unit) => unit.id === id))
+        .filter(Boolean)
+      if (!effect.blast) {
+        impact ||= !effect.ranged
+        shot ||= effect.ranged
+      }
+    }
+  for (const effect of state.effects)
+    if (effect.ranged && effect.arrived && !effect.missed && !heardImpacts.has(effect)) {
+      heardImpacts.add(effect)
+      impact = true
+    }
+  return { impact, shot }
+}
 function tick(now) {
   // Death motions age with real visible time, so they keep real speed down to 4 fps; a longer stall
   // advances them by at most 0.25 s, so a death the player has barely seen still plays out.
@@ -1041,52 +1102,7 @@ function tick(now) {
     resultVisual = { report, elapsed: 0 }
   }
   if (!paused) {
-    fallen.push(...state.deaths.splice(0))
-    for (let index = fallen.length - 1; index >= 0; index--)
-      if (
-        fallen[index].visualStarted &&
-        fallen[index].visualAge > Math.max(fallen[index].flushed ? 0.8 : 0, koSeconds(fallen[index].key))
-      )
-        fallen.splice(index, 1)
-    let impact = false,
-      shot = false
-    for (const effect of state.effects)
-      if (!heard.has(effect)) {
-        heard.add(effect)
-        // Splashes land on the front of the recipient's drawn body, on its own row.
-        const target = [...state.units, ...previous].find((u) => u.id === effect.targetId)
-        const attacker = state.units.find((u) => u.id === effect.sourceId)
-        if (attacker && !effect.ranged && !effect.explosion) {
-          if (target)
-            contacts.set(attacker.id, {
-              target,
-              at: effect.releasedAt,
-              cycle: attacker.cycle,
-              strikes: attacker.strikes
-            })
-          else contacts.delete(attacker.id)
-        }
-        if (target) {
-          effect.targetY = laneY(target) - 35 * models.presentation[1]
-          const height = 35 / (models.presentation[0] * modelSize(target.key))
-          effect.dx = standOff(target) - target.side * models.front(target.key, height)
-        }
-        if (effect.sourceId != null)
-          effect.source = { ...[...state.units, ...previous].find((u) => u.id === effect.sourceId) }
-        effect.releaseGlide = releaseGlides.get(effect.sourceId) ?? 0
-        effect.victimOrigins = (effect.victims ?? [])
-          .map(({ id }) => previous.find((unit) => unit.id === id))
-          .filter(Boolean)
-        if (!effect.blast) {
-          impact ||= !effect.ranged
-          shot ||= effect.ranged
-        }
-      }
-    for (const effect of state.effects)
-      if (effect.ranged && effect.arrived && !effect.missed && !heardImpacts.has(effect)) {
-        heardImpacts.add(effect)
-        impact = true
-      }
+    const { impact, shot } = digest(previous, releaseGlides)
     if (impact) tone('hit')
     if (shot) tone('shot')
   }
@@ -1106,7 +1122,10 @@ function tick(now) {
       ) + (calm.matches ? 0.05 : 0.15)
   if (audio.running !== (!paused && !document.hidden)) syncAudio()
   audio.tick()
-  if (!document.hidden) draw()
+  if (!document.hidden) {
+    if (demoShowing()) drawHud()
+    else draw()
+  }
   if (
     state.result &&
     !shown &&
@@ -1128,8 +1147,72 @@ function tick(now) {
     }
   }
 }
+// ── Title demo: while the boot 作戦室 is up, a bot plays a separate battle (attract.js) on the same canvas. ──
+// It has its own state and visual buffers, swapped in only while it is stepped and drawn; it makes no sound, writes
+// no storage and leaves the real battle, header, tray and notices alone. rAF drives it (never the worker heartbeat).
+const DEMO_DELAY = 400
+let titleUp = false
+let demo = null
+let demoFailed = false
+let demoReadyAt = 0
+const demoRunning = () => titleUp && !demoFailed && dialog.open
+const demoShowing = () => !!demo && demoRunning()
+function endTitle() {
+  titleUp = false
+  demo = null
+  dialog.classList.remove('title')
+}
+dialog.addEventListener('close', endTitle)
+function runDemo(now) {
+  if (!demoRunning() || document.hidden) {
+    if (demo) demo.last = null
+    return
+  }
+  try {
+    if (!demo) {
+      if (now < demoReadyAt) return
+      demo = {
+        attract: createAttract(0),
+        generation: 0,
+        last: null,
+        fallen: [],
+        glides: new Map(),
+        contacts: new Map()
+      }
+    }
+    const dt = demo.last === null ? 0 : Math.min(0.05, Math.max(0, (now - demo.last) / 1000)) * (calm.matches ? 0.4 : 1)
+    demo.last = now
+    const saved = { state, fallen, glides, contacts, resultVisual }
+    try {
+      state = demo.attract.state
+      ;({ fallen, glides, contacts } = demo)
+      resultVisual = null
+      const previous = state.units.slice()
+      const releaseGlides = new Map(previous.map((unit) => [unit.id, (glides.get(unit.id)?.x ?? unit.x) - unit.x]))
+      stepAttract(demo.attract, dt)
+      if (demo.attract.generation !== demo.generation) {
+        demo.generation = demo.attract.generation
+        demo.fallen = fallen = []
+        demo.glides = glides = new Map()
+        demo.contacts = contacts = new Map()
+        state = demo.attract.state
+      } else {
+        for (const ghost of fallen) if (ghost.visualStarted) ghost.visualAge += dt
+        digest(previous, releaseGlides)
+      }
+      drawScene()
+    } finally {
+      ;({ state, fallen, glides, contacts, resultVisual } = saved)
+    }
+  } catch {
+    // Anything unexpected: forget the demo; the title falls back to today's empty battlefield.
+    demoFailed = true
+    demo = null
+  }
+}
 function frame(now) {
   tick(now)
+  runDemo(now)
   requestAnimationFrame(frame)
 }
 // rAF stops for hidden or occluded windows, so a 250ms heartbeat keeps the battle running. A worker's
@@ -1142,6 +1225,9 @@ try {
 }
 buildTray()
 $('stage-name').textContent = `${selected + 1}. ${STAGES[selected].sub}`
+dialog.classList.add('title')
+titleUp = true
+demoReadyAt = performance.now() + DEMO_DELAY
 modal(
   'うんこ大惨事',
   campaign.cleared

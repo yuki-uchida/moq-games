@@ -108,7 +108,7 @@ test('copied immediate damage belongs to gambling, including when the copied wea
   expect(weapon.damage).toBeGreaterThan(0)
   expect(weapon.damage).toBeCloseTo(enemy.maxHp - enemy.hp)
   expect(actual.damage).toBe(0)
-  expect(game.state.shots[0].damage).toBeCloseTo(WEAPON_BY_ID.get('w_sns')!.damage * 1.5)
+  expect(game.state.shots[0].damage).toBeCloseTo(WEAPON_BY_ID.get('w_sns')!.damage * 1.5 * 0.5)
   expect(ENEMY_BY_ID.get(enemy.kind)).toBeDefined()
 })
 
@@ -127,7 +127,7 @@ test('a real pet leaving does not remove a copied pet', () => {
 
 test.each(GAMBLE_FORMS)('gambling becomes $name at age $age', (form) => {
   expect(gambleForm(form.age)).toBe(form)
-  if (form.age > 12) expect(gambleForm(form.age - 1).key).not.toBe(form.key)
+  if (form.age > 15) expect(gambleForm(form.age - 1).key).not.toBe(form.key)
   expect(weaponAppearance('w_gamble', form.age)).toMatchObject({
     name: `ギャンブル（${form.name}）`,
     art: `w_gamble_${form.key}`

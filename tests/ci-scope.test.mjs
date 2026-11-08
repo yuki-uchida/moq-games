@@ -3,7 +3,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { selectScope } from '../scripts/ci-scope.mjs'
 import { parsePagesList, selectPagesShard } from '../scripts/ci-pages-shard.mjs'
-import { chromiumPackages, installChromium } from '../scripts/ci-install-chromium.mjs'
+import {
+  chromiumPackages,
+  installChromium,
+  playwrightDependencies,
+  playwrightPackages
+} from '../scripts/ci-install-chromium.mjs'
+import { aptInstall } from '../scripts/ci-apt-install.mjs'
 import {
   copyFileSync,
   existsSync,
@@ -297,7 +303,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(
     browser,
-    /run: node scripts\/ci-install-chromium\.mjs\n      - name: Install Mesa and Xvfb\n        run: sudo apt-get install -y libgl1-mesa-dri libegl1 xvfb\n/
+    /run: node scripts\/ci-install-chromium\.mjs\n      - name: Install Mesa and Xvfb\n        run: node scripts\/ci-apt-install\.mjs -y libgl1-mesa-dri libegl1 xvfb\n/
   )
   assert.doesNotMatch(browser, /vulkan|Vulkan|VK_DRIVER_FILES|VK_ICD_FILENAMES|lvp_icd|lavapipe|shopt -s nullglob/)
   assert.doesNotMatch(browser, /apt-get update|xvfb-run[^\n]*--list/)
@@ -996,17 +1002,18 @@ test(
   async () => {
     const { default: Sequencer } = await import('../scripts/vitest-unit-sequencer.mjs')
     const root = '/repo'
+    // Listed weights 54, 53 and 51: two unlisted 1-second files lift the third shard to a 53/53 tie with the second.
     const clock = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-clock-constant.test.ts' }
+    const score = { moduleId: 'examples/games/yoru-no-yashiki/tests/exact-score.test.ts' }
     const audio = { moduleId: 'examples/games/yoru-no-yashiki/tests/main-audio-safety.test.ts' }
-    const town = { moduleId: 'examples/games/rabbiters/tests/town.test.ts' }
     const light = ['a', 'b', 'c'].map((name) => ({ moduleId: 'tests/' + name + '.test.ts' }))
-    const files = [...light].reverse().concat(audio, clock, town)
+    const files = [...light].reverse().concat(score, clock, audio)
     const partition = (index, count, input = files) =>
       new Sequencer({ config: { root, shard: { index, count } } }).shard(input)
     assert.deepEqual(await partition(1, 3), [clock])
-    assert.deepEqual(await partition(2, 3), [audio, light[2]])
-    assert.deepEqual(await partition(3, 3), [town, light[0], light[1]])
-    assert.deepEqual(await partition(1, 1), [clock, audio, town, ...light])
+    assert.deepEqual(await partition(2, 3), [score, light[2]])
+    assert.deepEqual(await partition(3, 3), [audio, light[0], light[1]])
+    assert.deepEqual(await partition(1, 1), [clock, score, audio, ...light])
     assert.deepEqual(await partition(1, 2, [...light].reverse()), [light[0], light[2]])
     assert.deepEqual(await partition(2, 2, [...light].reverse()), [light[1]])
     assert.deepEqual(await partition(7, 8), [])
@@ -1084,40 +1091,81 @@ test(
   }
 )
 
-test('Chromium installs reuse Playwright packages and refresh apt lists only on failure', () => {
-  const packages = 'xvfb fonts-noto-color-emoji fonts-ipafont-gothic libatk-bridge2.0-0t64 libnss3'
-  const sudo = `sudo -- sh -c "apt-get update&& apt-get install -y --no-install-recommends ${packages}"\n`
-  assert.deepEqual(chromiumPackages(sudo), packages.split(' '))
-  assert.deepEqual(
-    chromiumPackages(`sh -c "apt-get update&& apt-get install -y --no-install-recommends ${packages}"`),
-    packages.split(' ')
-  )
-  for (const output of ['', 'apt-get install -y xvfb', `${sudo}${sudo}`, sudo.replace('libnss3', 'libnss3;reboot')])
-    assert.throws(() => chromiumPackages(output))
-  const attempt = (results, output = sudo) => {
+test('Chromium installs reuse Playwright packages and refresh apt lists only on failure', async () => {
+  const table = {
+    linux: { chromium: ['libnss3', 'libatk-bridge2.0-0t64', 'xvfb'], tools: ['xvfb', 'fonts-ipafont-gothic'] }
+  }
+  assert.deepEqual(chromiumPackages(table, 'linux'), [
+    'libnss3',
+    'libatk-bridge2.0-0t64',
+    'xvfb',
+    'fonts-ipafont-gothic'
+  ])
+  for (const [deps, platform] of [
+    [table, 'win64'],
+    [{ linux: { chromium: [], tools: ['xvfb'] } }, 'linux'],
+    [{ linux: { chromium: ['libnss3;reboot'], tools: ['xvfb'] } }, 'linux']
+  ])
+    assert.throws(() => chromiumPackages(deps, platform))
+  // ubuntu-latest resolves the installed Playwright's own Ubuntu 24.04 table, fonts included. The changes job runs
+  // these contracts before npm ci, so the table is checked wherever Playwright is installed (the check job, locally).
+  let installed
+  try {
+    installed = playwrightDependencies()
+  } catch (error) {
+    assert.equal(error.code, 'MODULE_NOT_FOUND')
+    assert.equal(existsSync('node_modules/playwright-core'), false)
+  }
+  if (installed) {
+    const ubuntu = chromiumPackages(installed.deps, 'ubuntu24.04-x64')
+    for (const name of ['libnss3', 'xvfb', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-noto-color-emoji'])
+      assert.ok(ubuntu.includes(name), name)
+    if (process.platform === 'linux')
+      assert.deepEqual(playwrightPackages(), chromiumPackages(installed.deps, installed.hostPlatform))
+  }
+  const attempt = async (fails = [], packages = () => ['xvfb', 'libnss3']) => {
     const calls = []
-    const ok = installChromium({
-      run: (command, args) => (calls.push([command, ...args].join(' ')), results.shift()),
-      read: (command, args) => (calls.push([command, ...args].join(' ')), output)
+    const run = async (command, args) => {
+      const call = [command, ...args].join(' ')
+      calls.push(call)
+      const index = fails.indexOf(call)
+      if (index < 0) return true
+      fails.splice(index, 1)
+      return false
+    }
+    return { ok: await installChromium({ run, packages }), calls }
+  }
+  const browser = 'npx playwright install chromium'
+  const install = 'sudo apt-get install -y --no-install-recommends xvfb libnss3'
+  assert.deepEqual(await attempt(), { ok: true, calls: [browser, install] })
+  assert.deepEqual(await attempt([install]), { ok: true, calls: [browser, install, 'sudo apt-get update', install] })
+  assert.deepEqual((await attempt([install, 'sudo apt-get update'])).calls, [browser, install, 'sudo apt-get update'])
+  assert.equal((await attempt([install, 'sudo apt-get update'])).ok, false)
+  assert.equal((await attempt([install, install])).ok, false)
+  assert.deepEqual(await attempt([browser]), { ok: false, calls: [browser, install] })
+  assert.deepEqual(
+    await attempt([], () => {
+      throw new Error('moved')
+    }),
+    { ok: true, calls: ['npx playwright install --with-deps chromium'] }
+  )
+  const apt = async (fails) => {
+    const calls = []
+    const ok = await aptInstall(['-y', 'libegl1'], async (command, args) => {
+      const call = [command, ...args].join(' ')
+      calls.push(call)
+      return !fails.includes(call)
     })
     return { ok, calls }
   }
-  const install = `sudo apt-get install -y --no-install-recommends ${packages}`
-  const browser = 'npx playwright install chromium'
-  const dryRun = 'npx playwright install-deps --dry-run chromium'
-  assert.deepEqual(attempt([true, true]), { ok: true, calls: [browser, dryRun, install] })
-  assert.deepEqual(attempt([true, false, true, true]), {
-    ok: true,
-    calls: [browser, dryRun, install, 'sudo apt-get update', install]
-  })
-  assert.deepEqual(attempt([true, false, true, false]).ok, false)
-  assert.deepEqual(attempt([false]), { ok: false, calls: [browser] })
-  assert.deepEqual(attempt([true, true], 'unexpected'), {
-    ok: true,
-    calls: [browser, dryRun, 'npx playwright install-deps chromium']
+  assert.deepEqual(await apt([]), { ok: true, calls: ['sudo apt-get install -y libegl1'] })
+  assert.deepEqual(await apt(['sudo apt-get update']), { ok: true, calls: ['sudo apt-get install -y libegl1'] })
+  assert.deepEqual(await apt(['sudo apt-get install -y libegl1', 'sudo apt-get update']), {
+    ok: false,
+    calls: ['sudo apt-get install -y libegl1', 'sudo apt-get update']
   })
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8')
-  assert.doesNotMatch(workflow, /--with-deps/)
+  assert.doesNotMatch(workflow, /--with-deps|apt-get update/)
   assert.equal(workflow.match(/^        run: node scripts\/ci-install-chromium\.mjs$/gm)?.length, 3)
   for (const name of ['browser-backed unit tests', 'life-survivors', 'public-build browser tests'])
     assert.match(
@@ -1126,4 +1174,9 @@ test('Chromium installs reuse Playwright packages and refresh apt lists only on 
         `- name: Install Chromium for ${name}\\n(?:        if: .*\\n)?        run: node scripts/ci-install-chromium\\.mjs\\n`
       )
     )
+  assert.equal(
+    workflow.match(/^        run: node scripts\/ci-apt-install\.mjs -y libgl1-mesa-dri libegl1 xvfb$/gm)?.length,
+    1
+  )
+  assert.doesNotMatch(workflow, /run: sudo apt-get/)
 })

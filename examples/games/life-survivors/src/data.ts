@@ -252,7 +252,7 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 260,
     strong: ['accident', 'sickness'],
-    desc: '進行方向で盾を振り敵を弾く。常時・クールダウン無効。盾は敵の投射物も1回防ぐ。詳しくは「?」へ。',
+    desc: '進行方向で盾を振り敵を弾く（停止中は全方位）。常時・クールダウン無効。盾は敵の投射物も1回防ぐ。詳しくは「?」へ。',
     perk: '防御 +1'
   }),
   weapon({
@@ -272,7 +272,8 @@ export const PARENTS: WeaponDef[] = [
     pierce: Infinity,
     knockback: 340,
     strong: ['people', 'class'],
-    desc: '子のそばを離れて近くの敵を追い回す。Lv4で2人になり、別の敵を狙う。'
+    desc: '子のそばを離れて近くの敵を追い回す。Lv4で2人になり、別の敵を狙う。',
+    perk: '誕生時にデメリット性格「人間への恐怖」が付く（20歳で消える）'
   }),
   weapon({
     id: 'p_rich',
@@ -655,8 +656,8 @@ export const TALENT_WEAPONS: WeaponDef[] = [
     duration: 1.5,
     pierce: 1,
     strong: ['money'],
-    minAge: 12,
-    desc: '12秒ごとに攻撃武器を抽選し、次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
+    minAge: 15,
+    desc: '12秒ごとに攻撃武器を抽選し、威力半分で次の抽選まで使用。年齢で変化：課金→ポーカー→パチンコ→競馬。',
     evolve: { passive: 'p_lucky', name: '大穴的中' }
   }),
   weapon({
@@ -739,7 +740,7 @@ export interface PassiveDef {
 }
 
 export const PASSIVES: PassiveDef[] = [
-  { id: 'p_diligent', category: 'study', name: '勤勉', icon: '📖', desc: 'クールダウン -7%' },
+  { id: 'p_diligent', category: 'study', name: '勤勉', icon: '📖', desc: 'クールダウン -5%' },
   { id: 'p_stubborn', category: 'sports', name: '頑固', icon: '🗿', desc: '防御 +1' },
   { id: 'p_hot', category: 'love', name: '熱い', icon: '🔥', desc: '威力 +10%' },
   { id: 'p_kind', category: 'friend', name: '友人思い', icon: '💞', desc: '範囲 +8%・近くの仲間の精神力を癒す' },
@@ -784,7 +785,19 @@ export const INHERITED_PASSIVES: PassiveDef[] = [
   { id: 'p_patience', category: 'sports', name: '忍耐力', icon: '🪨', desc: '防御 +1' },
   { id: 'p_courage', category: 'sports', name: '勇気', icon: '🦁', desc: '威力 +10%' }
 ]
-export const PASSIVE_BY_ID = new Map([...PASSIVES, ...INHERITED_PASSIVES].map((def) => [def.id, def]))
+/** モンスターペアレント's child starts with this flaw: it fills a personality slot and fades by 20. */
+export const PEOPLE_FEAR = 'p_peoplefear'
+export const PEOPLE_FEAR_UNTIL_AGE = 20
+export const PARENT_FLAWS: PassiveDef[] = [
+  {
+    id: PEOPLE_FEAR,
+    category: 'friend',
+    name: '人間への恐怖',
+    icon: '😨',
+    desc: 'デメリット性格（モンスターペアレントの子）。対人の手札の出現率 -50%、1歳ごとに2.5%ずつ戻る。性格枠を1つ使い、20歳で消える'
+  }
+]
+export const PASSIVE_BY_ID = new Map([...PASSIVES, ...INHERITED_PASSIVES, ...PARENT_FLAWS].map((def) => [def.id, def]))
 
 export const PARENT_LEGACIES: Record<string, string> = {
   p_over: 'p_affection',
@@ -835,13 +848,13 @@ export const WEAPON_LEVEL_TEXT: Record<string, readonly string[]> = {
   p_gone: ['効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし', '効果なし'],
   w_friend: standardLevels,
   w_sports: [
-    '効果時間 +3秒',
+    '効果時間 +2秒',
     '威力 +30%',
     '範囲 +25%・威力 +30%',
-    '効果時間 +3秒',
+    '効果時間 +2秒',
     '威力 +30%',
     'クールダウン -15%',
-    '威力 +40%・効果時間 +3秒'
+    '威力 +40%・効果時間 +2秒'
   ],
   w_study: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
   w_love: ['数 +1', '威力 +30%', '範囲 +25%・貫通 +1', '数 +1', '威力 +30%', 'クールダウン -15%', '威力 +40%・数 +1'],
@@ -959,7 +972,8 @@ export const WEAPON_LEVELS: Record<string, WeaponLevelUpgrade[]> = Object.fromEn
         amount: profile === 'sports' ? 0 : profile === 'everyCount' ? 1 : countLevel ? 1 : 0,
         area: level === 4 ? (profile === 'raid' ? 1.4 : 1.25) : 1,
         cooldown: level === 7 ? 0.85 : 1,
-        duration: profile === 'sports' && countLevel ? 1 : 0,
+        // Sports' base duration is 3 s, so 2/3 of it adds 2 s.
+        duration: profile === 'sports' && countLevel ? 2 / 3 : 0,
         pierce: profile === 'piercing' && level === 4 ? 1 : 0,
         targets: profile === 'observe' ? 5 : 0,
         foodPower: profile === 'food' ? 0.1 : 0,

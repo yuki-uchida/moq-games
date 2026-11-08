@@ -498,21 +498,44 @@ for (const [name, viewport] of [
     const types = ['frost', 'ranger', 'healer']
     for (const type of types) await expect(page.locator(`.skill-btn[data-skill-type="${type}"]`)).toHaveAttribute('data-state', 'ready', { timeout: 120_000 })
     // Aim each cast by hand next to the caster (not on its handle), so the three cards want nearly the same spot on screen.
-    for (const type of types) {
-      const spot = await page.evaluate((type) => {
-        const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
-          unit = state.units.find((u: any) => u.type === type),
-          field = document.getElementById('field')!,
-          box = field.querySelector('canvas')!.getBoundingClientRect()
-        return {
-          x: box.x + ((unit.x + 20) / (Number(field.dataset.worldWidth) || 1280)) * box.width,
-          y: box.y + ((unit.y + 140) / (Number(field.dataset.worldHeight) || 920)) * box.height
-        }
-      }, type)
-      await page.locator(`.skill-btn[data-skill-type="${type}"]`).click({ modifiers: ['Shift'] })
-      await expect(page.locator('#unit-special')).toHaveText('×')
-      await page.mouse.click(spot.x, spot.y)
-    }
+    // A card stays 1.9 s after its field opens, so the three Shift+click aims and ground taps go out in one page task,
+    // back to back: on a loaded runner, separate input round trips let the first card expire before the third appeared.
+    const aims = await page.evaluate((types) => {
+      const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
+        field = document.getElementById('field')!,
+        box = field.querySelector('canvas')!.getBoundingClientRect()
+      return types.map((type) => {
+        const unit = state.units.find((u: any) => u.type === type),
+          x = box.x + ((unit.x + 20) / (Number(field.dataset.worldWidth) || 1280)) * box.width,
+          y = box.y + ((unit.y + 140) / (Number(field.dataset.worldHeight) || 920)) * box.height
+        document
+          .querySelector(`.skill-btn[data-skill-type="${type}"]`)!
+          .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }))
+        const aiming = document.getElementById('unit-special')!.textContent,
+          target = document.elementFromPoint(x, y)!
+        for (const name of ['pointerdown', 'pointerup'])
+          target.dispatchEvent(
+            new PointerEvent(name, {
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: name === 'pointerdown' ? 1 : 0,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true
+            })
+          )
+        // A fired cast is saved at once; its caster starts the cooldown.
+        const saved = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state
+        return { type, aiming, cooldown: saved.units.find((u: any) => u.id === unit.id).specialCooldown }
+      })
+    }, types)
+    // Each Shift+click opened hand aiming (×) and its ground tap next to the caster fired that special.
+    for (const aim of aims) expect(aim).toEqual({ type: aim.type, aiming: '×', cooldown: expect.any(Number) })
+    for (const aim of aims) expect(aim.cooldown).toBeGreaterThan(0)
     await expect.poll(() => page.locator('.fx-special').count(), { timeout: 20_000, intervals: [50] }).toBe(3)
     const result = await page.evaluate(() => {
       const rect = (el: Element) => {
@@ -548,6 +571,8 @@ for (const [name, viewport] of [
       } else expect(card.bottom - card.top).toBeGreaterThan(60)
     }
     await page.screenshot({ path: test.info().outputPath(`result-cards-${viewport.width}x${viewport.height}.png`) })
+    // All three buttons show their own cooldown.
+    for (const type of types) await expect(page.locator(`.skill-btn[data-skill-type="${type}"]`)).toHaveAttribute('data-state', 'charging')
   })
 
 test('a downed ally shows a disabled greyed button', async ({ page }, info) => {

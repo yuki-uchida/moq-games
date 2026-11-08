@@ -1,10 +1,9 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
-import { gzipSync } from 'node:zlib'
-import { resolve, relative, isAbsolute } from 'node:path'
+import { availableParallelism } from 'node:os'
+import { resolve } from 'node:path'
+import { Worker } from 'node:worker_threads'
 import { createRequire } from 'node:module'
 import { readGlb } from './optimize-tower-models.mjs'
-import { verifyModelSidecar } from './verify-model-sidecar.mjs'
 const { MeshoptEncoder } = createRequire(import.meta.url)('meshoptimizer')
 
 const EXT = 'EXT_meshopt_compression'
@@ -173,6 +172,44 @@ export async function compressGlb(source, sourceSha256) {
   return Buffer.concat([header.subarray(0, 20), jsonChunk, header.subarray(20), binChunk])
 }
 
+/** Runs the per-model build in a small worker pool; results keep manifest order and any failure rejects. */
+export function runWorkers(sourceDir, targetDir, manifestModels) {
+  const results = new Array(manifestModels.length)
+  const size = Math.max(1, Math.min(4, availableParallelism(), manifestModels.length))
+  const workers = []
+  return new Promise((resolvePool, rejectPool) => {
+    let next = 0,
+      done = 0,
+      settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      Promise.allSettled(workers.map((w) => w.terminate())).then(() =>
+        error ? rejectPool(error) : resolvePool(results)
+      )
+    }
+    if (!manifestModels.length) return finish()
+    const dispatch = (worker) => {
+      if (next >= manifestModels.length) return
+      const id = next++
+      worker.postMessage({ id, sourceDir, targetDir, model: manifestModels[id] })
+    }
+    for (let i = 0; i < size; i++) {
+      const worker = new Worker(new URL('./tower-model-sidecar-worker.mjs', import.meta.url))
+      workers.push(worker)
+      worker.on('error', finish)
+      worker.on('exit', (code) => code && finish(new Error(`Model sidecar worker exited with code ${code}`)))
+      worker.on('message', ({ id, result, error }) => {
+        if (error !== undefined) return finish(new Error(error))
+        results[id] = result
+        if (++done === manifestModels.length) finish()
+        else dispatch(worker)
+      })
+      dispatch(worker)
+    }
+  })
+}
+
 /** Deterministic sidecars are build artifacts; original GLBs remain available for fallback. */
 export function towerModelSidecars(root) {
   let outDir
@@ -186,27 +223,7 @@ export function towerModelSidecars(root) {
       const sourceDir = resolve(root, 'public/tower-defense-art/models')
       const targetDir = resolve(outDir, 'tower-defense-art/models')
       const manifest = JSON.parse(await readFile(resolve(sourceDir, 'runtime-manifest.json'), 'utf8'))
-      const models = []
-      for (const model of manifest.models) {
-        const source = resolve(sourceDir, model.file)
-        const rel = relative(sourceDir, source)
-        if (!rel || rel.startsWith('..') || isAbsolute(rel) || !rel.endsWith('.glb'))
-          throw new Error('Invalid model sidecar path')
-        const bytes = await readFile(source)
-        if (bytes.length !== model.bytes || createHash('sha256').update(bytes).digest('hex') !== model.outputSha256)
-          throw new Error(`Model sidecar source mismatch: ${rel}`)
-        const derivative = await compressGlb(bytes, model.outputSha256)
-        const verification = await verifyModelSidecar(bytes, derivative)
-        const compressed = gzipSync(derivative, { level: 6, mtime: 0 })
-        await writeFile(resolve(targetDir, `${rel}.${model.outputSha256}.gz.bin`), compressed)
-        models.push({
-          file: model.file,
-          sourceSha256: model.outputSha256,
-          sha256: createHash('sha256').update(derivative).digest('hex'),
-          bytes: derivative.length,
-          verification
-        })
-      }
+      const models = await runWorkers(sourceDir, targetDir, manifest.models)
       await mkdir(resolve(root, '.build'), { recursive: true })
       await writeFile(
         resolve(root, '.build/model-sidecar-digests.json'),
