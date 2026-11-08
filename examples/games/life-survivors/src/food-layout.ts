@@ -486,59 +486,101 @@ export function labelCandidates(block: LabelBlock): Box[] {
   })
 }
 
+/** How long a better (earlier) candidate must stay free before a block moves back to it (ms). */
+export const LABEL_RETURN_MS = 400
+/** How long a block keeps its spot while a player's box covers it (ms). */
+export const LABEL_PATIENCE_MS = 1200
+
+/** What a block remembers between frames, by pile key. */
+export interface LabelMemoryEntry {
+  /** Candidate index the block took. */
+  index: number
+  /** When a player's box first covered the spot (ms), while one does. */
+  coveredSince?: number
+  /** When an earlier candidate first showed free (ms), while one does. */
+  betterSince?: number
+}
+export type LabelMemory = Map<string, LabelMemoryEntry>
+
 /**
- * The first free candidate of a block (the remembered one first): inside the viewport, touching none of `blocked` and
- * accepted by `accept` (asked only of candidates passing those cheaper tests; it also gets the hull of all candidates).
- * Undefined when every candidate is taken.
+ * The candidate of a block. Hard fits: inside the viewport, touching none of `blocked` and accepted by `accept` (asked
+ * only of candidates passing those cheaper tests; it also gets the hull of all candidates). Soft fits: also clear of
+ * every `players` box and, when the block has a leader, with the leader clear of them. A remembered candidate that still
+ * hard fits is kept, except that it moves back to an earlier candidate that has fit for LABEL_RETURN_MS and gives way
+ * to the first fitting candidate once a player has covered it for LABEL_PATIENCE_MS. Otherwise the first fitting
+ * candidate is taken. Undefined when every candidate is taken. `entry` is what to remember for the next frame.
  */
 function placeOne(
   block: LabelBlock,
   blocked: readonly Box[],
   viewport: Box,
-  remembered?: number,
-  accept?: (box: Box, hull: Box) => boolean
-): { box: Box; index: number } | undefined {
+  remembered?: LabelMemoryEntry,
+  accept?: (box: Box, hull: Box) => boolean,
+  players: readonly Box[] = [],
+  now = 0
+): { box: Box; index: number; entry: LabelMemoryEntry } | undefined {
   const candidates = labelCandidates(block)
   // Only what lies near the candidates can block them.
   const hull = union(candidates)
   const near = blocked.filter((o) => overlap(o, hull) > 0)
-  const fits = (box: Box) =>
+  const hardFits = (box: Box) =>
     inside(box, viewport) && near.every((o) => overlap(box, o) === 0) && (!accept || accept(box, hull))
-  if (remembered !== undefined && candidates[remembered] && fits(candidates[remembered]))
-    return { box: candidates[remembered], index: remembered }
+  const softFits = (box: Box) => {
+    if (!players.length) return true
+    if (players.some((p) => overlap(box, p) > 0)) return false
+    const line = leaderLine(block.pile, box)
+    return !line || !players.some((p) => segmentHitsBox(line, p))
+  }
+  const fits = (box: Box) => hardFits(box) && softFits(box)
+  const r = remembered?.index
+  if (remembered && r !== undefined && candidates[r] && hardFits(candidates[r])) {
+    const covered = !softFits(candidates[r])
+    const coveredSince = covered ? (remembered.coveredSince ?? now) : undefined
+    let better = -1
+    for (let i = 0; i < r && better < 0; i++) if (fits(candidates[i])) better = i
+    const betterSince = better >= 0 ? (remembered.betterSince ?? now) : undefined
+    if (better >= 0 && now - betterSince! >= LABEL_RETURN_MS)
+      return { box: candidates[better], index: better, entry: { index: better } }
+    if (!covered || now - coveredSince! < LABEL_PATIENCE_MS) {
+      const entry: LabelMemoryEntry = { index: r }
+      if (coveredSince !== undefined) entry.coveredSince = coveredSince
+      if (betterSince !== undefined) entry.betterSince = betterSince
+      return { box: candidates[r], index: r, entry }
+    }
+  }
   const index = candidates.findIndex(fits)
-  return index < 0 ? undefined : { box: candidates[index], index }
+  return index < 0 ? undefined : { box: candidates[index], index, entry: { index } }
 }
 
-function recall(memory: Map<string, number> | undefined, id: string | undefined) {
+function recall(memory: LabelMemory | undefined, id: string | undefined) {
   return id === undefined ? undefined : memory?.get(id)
 }
 
-function remember(memory: Map<string, number> | undefined, chosen: Map<string, number>) {
+function remember(memory: LabelMemory | undefined, chosen: Map<string, LabelMemoryEntry>) {
   if (!memory) return
   memory.clear()
-  for (const [id, index] of chosen) memory.set(id, index)
+  for (const [id, entry] of chosen) memory.set(id, entry)
 }
 
 /**
  * Box of each label block, in input order: the candidate remembered for its key when it is still inside the viewport
  * and free, else the first candidate inside the viewport that touches no obstacle and no block placed before.
- * Undefined (not drawn) when no candidate is free. `memory` (candidate index per block key) is read, then replaced by
+ * Undefined (not drawn) when no candidate is free. `memory` (candidate choice per block key) is read, then replaced by
  * this frame's choices.
  */
 export function placeLabelBlocks(
   blocks: readonly LabelBlock[],
   obstacles: readonly Box[],
   viewport: Box,
-  memory?: Map<string, number>
+  memory?: LabelMemory
 ): (Box | undefined)[] {
   const blocked = [...obstacles]
-  const chosen = new Map<string, number>()
+  const chosen = new Map<string, LabelMemoryEntry>()
   const boxes = blocks.map((block) => {
     const spot = placeOne(block, blocked, viewport, recall(memory, block.key))
     if (!spot) return undefined
     blocked.push(spaced(spot.box))
-    if (block.key !== undefined) chosen.set(block.key, spot.index)
+    if (block.key !== undefined) chosen.set(block.key, spot.entry)
     return spot.box
   })
   remember(memory, chosen)
@@ -593,13 +635,16 @@ const segmentBox = (s: Segment): Box => ({
 /**
  * Label blocks of the piles, in input order. A pile gets a block only when one of its sprites shows (spriteShows): some
  * of it lies inside `visible` (the visible world) and outside every `occluders` box (opaque parts drawn over the
- * canvas, which should also be among the obstacles). Each block takes the remembered or first free candidate inside
- * `viewport`, clear of every obstacle and every block placed before; when none is free it shrinks (foodLabelVariants)
- * and tries again, and when even its single line finds no room it is not drawn this frame. So blocks never overlap
- * each other or an obstacle and stay inside the viewport. No block sits on an earlier leader. A block further from its
- * pile than LEADER_MIN gets a `leader` line, kept clear of every placed block, every obstacle but the pile's own
- * sprites and every earlier leader; a nearer block must plainly name its pile (namesPile). `measure` gives a text's
- * width; `memory` (candidate index per pile key) is read, then replaced by this frame's choices.
+ * canvas, which should also be among the obstacles). `obstacles` (food sprites, HUD) are hard: no block ever
+ * overlaps them. `players` are soft (see placeOne): a block avoids them when it chooses a spot, keeps a spot one covers
+ * for LABEL_PATIENCE_MS, and moves back to a better spot once it has been free for LABEL_RETURN_MS (`now` in ms). Each
+ * block takes the remembered or first free candidate inside `viewport`, clear of every obstacle and every block placed
+ * before; when none is free it shrinks (foodLabelVariants) and tries again, and when even its single line finds no
+ * room it is not drawn this frame. So blocks never overlap each other or an obstacle and stay inside the viewport.
+ * No block sits on an earlier leader. A block further from its pile than LEADER_MIN gets a `leader` line, kept clear
+ * of every placed block, every obstacle but the pile's own sprites and every earlier leader; a nearer block must
+ * plainly name its pile (namesPile). `measure` gives a text's width; `memory` (candidate choice per pile key) is
+ * read, then replaced by this frame's choices.
  */
 export function placeFoodLabels(
   piles: readonly FoodLabelPile[],
@@ -607,14 +652,16 @@ export function placeFoodLabels(
   visible: Box,
   viewport: Box,
   measure: (text: string) => number,
-  memory?: Map<string, number>,
-  occluders: readonly Box[] = []
+  memory?: LabelMemory,
+  occluders: readonly Box[] = [],
+  players: readonly Box[] = [],
+  now = 0
 ): FoodLabelPlacement[] {
   const placed: FoodLabelPlacement[] = []
   const blocked = [...obstacles]
   const rawBoxes: Box[] = []
   const leaders: Segment[] = []
-  const chosen = new Map<string, number>()
+  const chosen = new Map<string, LabelMemoryEntry>()
   piles.forEach((pile, n) => {
     if (!pile.lines.length || !pile.sprites.some((sprite) => spriteShows(sprite, visible, occluders))) return
     const bounds = union(pile.sprites)
@@ -643,14 +690,14 @@ export function placeFoodLabels(
         if (!line) return namesPile(box, bounds, near.others)
         return !near.boxes.some((o) => segmentHitsBox(line, o)) && !near.lines.some((l) => segmentsCross(line, l))
       }
-      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key), accept)
+      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key), accept, players, now)
       if (!spot) continue
       const leader = leaderLine(bounds, spot.box)
       placed.push(leader ? { pile: n, box: spot.box, lines, leader } : { pile: n, box: spot.box, lines })
       rawBoxes.push(spot.box)
       if (leader) leaders.push(leader)
       blocked.push(spaced(spot.box))
-      if (pile.key !== undefined) chosen.set(pile.key, spot.index)
+      if (pile.key !== undefined) chosen.set(pile.key, spot.entry)
       break
     }
   })
