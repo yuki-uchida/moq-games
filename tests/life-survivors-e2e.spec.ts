@@ -1426,9 +1426,10 @@ test('overprotective parents swing and fade their shields for local and co-op vi
       100,
       0,
       0,
+      // Below its owner, so it is drawn with the shots (one further up the screen is drawn under its child).
       guardian,
       player.x + 40,
-      player.y - 20,
+      player.y + 20,
       30,
       0,
       100,
@@ -1456,8 +1457,8 @@ test('overprotective parents swing and fade their shields for local and co-op vi
   expect(draws).toEqual([
     { x: 60, y: 20, alpha: 1, scale: 1, flip: true },
     { x: 60, y: 20, alpha: 1, scale: 1, flip: true },
-    { x: 40, y: -20, alpha: 1, scale: 1, flip: false },
-    { x: 54, y: -20, alpha: 0.45, scale: 1.5, flip: false }
+    { x: 40, y: 20, alpha: 1, scale: 1, flip: false },
+    { x: 54, y: 20, alpha: 0.45, scale: 1.5, flip: false }
   ])
 })
 
@@ -1500,6 +1501,56 @@ test('overprotective parents of a still child are drawn behind them at their eas
     return events
   })
   expect(draws).toEqual(['guardian', 'guardian', 'player'])
+})
+
+test('overprotective parents walking ahead are drawn behind a child heading up and in front of one heading down', async ({
+  page
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const orders = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
+    // The parent walks 38 px ahead of the child (past its own size, so not tucked in): up the screen, then down it.
+    const order = (dy: number) => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players[0]
+      view.enemies = []
+      view.shots = [guardian, player.x, player.y + dy, 20, 0, 100, 0, 0]
+      const renderer = new Renderer(document.createElement('canvas'))
+      const events: string[] = []
+      let drawingShot = false
+      const topShot = renderer.topShot.bind(renderer)
+      renderer.topShot = (...args: unknown[]) => {
+        drawingShot = true
+        topShot(...args)
+        drawingShot = false
+      }
+      const drawPlayer = renderer.player.bind(renderer)
+      renderer.player = (...args: unknown[]) => {
+        events.push('player')
+        return drawPlayer(...args)
+      }
+      const centred = renderer.centred.bind(renderer)
+      renderer.centred = (...args: [unknown, number, number]) => {
+        if (Math.abs(args[1] - player.x) < 0.01 && Math.abs(args[2] - player.y - dy) < 0.01)
+          events.push(drawingShot ? 'top' : 'guardian')
+        centred(...args)
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return events
+    }
+    return { up: order(-38), down: order(38) }
+  })
+  // Further up the screen: drawn first, under the child and their name tag.
+  expect(orders.up).toEqual(['guardian', 'guardian', 'player'])
+  // Further down: drawn after the child, in the shots pass.
+  expect(orders.down).toEqual(['player', 'top', 'top'])
 })
 
 test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {

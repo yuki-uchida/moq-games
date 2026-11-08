@@ -1641,10 +1641,14 @@ export class Renderer {
     ctx.globalAlpha = 1
   }
 
-  /** 過保護 tucked behind its (still) owner: it sits within its own size of them instead of ahead. */
+  /**
+   * 過保護 drawn under its owner in the character pass: tucked behind a still owner (within its own size of them), or
+   * standing further up the screen than them, as when it walks ahead of a child heading up. Depth then reads right and
+   * the parent never seems to stand on the child's head or over their name tag.
+   */
   private guardianBehind(view: View, sh: ShotView) {
     const owner = view.players[view.shots[sh.i + 6]]
-    return !!owner && Math.hypot(sh.x - owner.x, sh.y - owner.y) < sh.r
+    return !!owner && (Math.hypot(sh.x - owner.x, sh.y - owner.y) < sh.r || sh.y < owner.y)
   }
 
   /** 過保護親 and her shield, which thrusts along the bash and fades while spent. */
