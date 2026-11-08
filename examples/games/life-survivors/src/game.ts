@@ -104,6 +104,8 @@ const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
 const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.25)
+/** Pixels per second the creature draws each caught enemy toward itself, before knockback resistance. */
+export const OBSERVATION_PULL_SPEED = 105
 const observationStillSeconds = (level: number) => 2 - (level - 1) * 0.125
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
@@ -2508,7 +2510,7 @@ export class Game {
       const distance = Math.hypot(dx, dy)
       if (distance > shot.r) continue
       const def = ENEMY_BY_ID.get(enemy.kind)!
-      const pull = Math.min(distance, 35 * this.knockScale(enemy, def) * dt)
+      const pull = Math.min(distance, OBSERVATION_PULL_SPEED * this.knockScale(enemy, def) * dt)
       enemy.x += (dx / (distance || 1)) * pull
       enemy.y += (dy / (distance || 1)) * pull
       enemy.slow = Math.max(enemy.slow, 0.12)

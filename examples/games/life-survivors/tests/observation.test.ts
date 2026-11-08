@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { sheet } from '../src/art/index'
 import { EVENTS, MAX_WEAPON_LEVEL, WEAPON_BY_ID, WEAPON_INDEX, timeAtAge } from '../src/data'
-import { Game, observationTargets, playerStats, weaponStats } from '../src/game'
+import { Game, OBSERVATION_PULL_SPEED, observationTargets, playerStats, weaponStats } from '../src/game'
 import { SHOT_GAMBLE, readView, toView } from '../src/view'
 import { OBSERVATION_FORMS, OBSERVATION_SPRITES, observationForm, weaponAppearance } from '../src/weapon-life'
 import { botInput } from './bot'
@@ -248,4 +248,18 @@ test('the smart bot prefers an active first weapon when another option is availa
   player.weapons = []
   player.choices = ['w:w_observe', 'w:w_friend']
   expect(botInput(game, player, 'smart').pick).toBe(1)
+})
+
+test('the creature pulls a nearby enemy strongly toward itself', () => {
+  const { game, player } = setup()
+  player.still = 2
+  game['fireWeapons'](0)
+  const creature = game.state.shots[0]
+  game.spawnEnemy('germ', creature.x + 100, creature.y)
+  const enemy = game.state.enemies.at(-1)!
+  game['buildGrid']()
+  const start = enemy.x - creature.x
+  game['moveShots'](0.5)
+  expect(start - (enemy.x - creature.x)).toBeGreaterThan(OBSERVATION_PULL_SPEED * 0.5 * 0.9)
+  expect(OBSERVATION_PULL_SPEED).toBeGreaterThanOrEqual(100)
 })
