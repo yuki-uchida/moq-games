@@ -272,6 +272,32 @@ export class BannerQueue {
   }
 }
 
+/** Fixed order for screen-reader lines from one moment: a parent's farewell, a new life stage, then the rest. */
+export const ANNOUNCE_RANK = { message: 0, stage: 1, farewell: 2 } as const
+
+/**
+ * The single assertive line. A line from a later moment always replaces it; one from the same or an earlier
+ * moment replaces it only at an equal or higher rank. Times are game seconds, compared at the 0.01 s views use.
+ */
+export class Announcer {
+  private rank = 0
+  private moment = -Infinity
+
+  /** Whether a line of this rank and game time replaces the current one; records it when it does. */
+  take(rank: number, time: number) {
+    const moment = Math.round(time * 100) / 100
+    if (moment <= this.moment && rank < this.rank) return false
+    this.rank = rank
+    this.moment = Math.max(this.moment, moment)
+    return true
+  }
+
+  reset() {
+    this.rank = 0
+    this.moment = -Infinity
+  }
+}
+
 export const STAGE_LINES = [
   '泣くのが仕事',
   'なんでも口に入れたい',
