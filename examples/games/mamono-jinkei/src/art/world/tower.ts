@@ -4,6 +4,9 @@
 import type { TileQuery } from '../index'
 import type { Raster } from '../raster'
 import type { Sheet } from '../sheet'
+import { propsA } from './tower-props-a'
+import { propsB } from './tower-props-b'
+import { towerTileImpl } from './tower-tiles'
 
-export const towerProps: Record<string, () => Sheet> = {}
-export const towerTile: ((q: TileQuery) => Raster | undefined) | undefined = undefined
+export const towerProps: Record<string, () => Sheet> = { 'props:tower': () => ({ ...propsA(), ...propsB() }) }
+export const towerTile: ((q: TileQuery) => Raster | undefined) | undefined = towerTileImpl

@@ -4,6 +4,8 @@
 import type { TileQuery } from '../index'
 import type { Raster } from '../raster'
 import type { Sheet } from '../sheet'
+import { sewerSheet } from './sewer-props'
+import { sewerTile as paintTile } from './sewer-tiles'
 
-export const sewerProps: Record<string, () => Sheet> = {}
-export const sewerTile: ((q: TileQuery) => Raster | undefined) | undefined = undefined
+export const sewerProps: Record<string, () => Sheet> = { 'props:sewer': sewerSheet }
+export const sewerTile: ((q: TileQuery) => Raster | undefined) | undefined = paintTile

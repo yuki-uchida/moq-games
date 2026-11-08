@@ -308,8 +308,8 @@ export function drawStole(r: Raster, cx: number, top: number, w: number, h: numb
   const strip = (l: Raster, x0: number, y0: number, x1: number, y1: number) => {
     l.thick(x0, y0, x1, y1, 3.2, cw[1])
     edgeShade(l, cw)
-    const gx = x0 + (x1 - x0) * 0.7
-    const gy = y0 + (y1 - y0) * 0.7
+    const gx = x0 + (x1 - x0) * 0.8
+    const gy = y0 + (y1 - y0) * 0.8
     l.thick(gx, gy, x1, y1, 3.2, R.gold[1])
     l.paint(rd(x1), rd(y1) + 2, R.gold[2])
   }

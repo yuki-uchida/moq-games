@@ -246,6 +246,7 @@ export const FX_SPEC: Record<string, AnimSpec> = {
   // Stage 2–4 hazards and projectiles.
   bomb: { w: 32, h: 32, frames: 2, loop: true, fps: 8, stage: 'sewer' }, // alchemist's lobbed potion flask (fuse glint)
   bomb_burst: { w: 96, h: 96, frames: 6, loop: false, fps: 18, stage: 'sewer' }, // green-purple potion explosion
+  hex: { w: 32, h: 32, frames: 4, loop: true, fps: 12, stage: 'sewer' }, // the cat witch's homing violet hex bolt
   snare: { w: 48, h: 48, frames: 2, loop: true, fps: 4, anchor: [24, 30], stage: 'sewer' }, // rat-catcher's snare on the ground
   snare_snap: { w: 48, h: 48, frames: 3, loop: false, fps: 16, anchor: [24, 30], stage: 'sewer' },
   gust: { w: 64, h: 64, frames: 4, loop: true, fps: 12, stage: 'tower' }, // wind mage's travelling gust
