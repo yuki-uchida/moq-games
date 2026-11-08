@@ -621,6 +621,11 @@ export interface FoodLabelPlacement {
   lines: string[]
   /** Thin line from the block to its pile, when the block is further away than LEADER_MIN. */
   leader?: Segment
+  /**
+   * True when the block crosses a transient box (a banner's path): it keeps its place, leader and memory but is not
+   * drawn while that lasts.
+   */
+  hidden?: boolean
 }
 
 const reaches = (b: Box, hull: Box) =>
@@ -644,7 +649,9 @@ const segmentBox = (s: Segment): Box => ({
  * No block sits on an earlier leader. A block further from its pile than LEADER_MIN gets a `leader` line, kept clear
  * of every placed block, every obstacle but the pile's own sprites and every earlier leader; a nearer block must
  * plainly name its pile (namesPile). `measure` gives a text's width; `memory` (candidate choice per pile key) is
- * read, then replaced by this frame's choices.
+ * read, then replaced by this frame's choices. `transient` boxes (the paths of banners, which animate while they show)
+ * take no part in choosing: blocks are placed as if they were absent, and a block that then overlaps one is marked
+ * `hidden` (still placed, still blocking later blocks and remembered), so it comes back in the same spot afterwards.
  */
 export function placeFoodLabels(
   piles: readonly FoodLabelPile[],
@@ -655,7 +662,8 @@ export function placeFoodLabels(
   memory?: LabelMemory,
   occluders: readonly Box[] = [],
   players: readonly Box[] = [],
-  now = 0
+  now = 0,
+  transient: readonly Box[] = []
 ): FoodLabelPlacement[] {
   const placed: FoodLabelPlacement[] = []
   const blocked = [...obstacles]
@@ -693,7 +701,11 @@ export function placeFoodLabels(
       const spot = placeOne(block, blocked, viewport, recall(memory, pile.key), accept, players, now)
       if (!spot) continue
       const leader = leaderLine(bounds, spot.box)
-      placed.push(leader ? { pile: n, box: spot.box, lines, leader } : { pile: n, box: spot.box, lines })
+      const placement: FoodLabelPlacement = leader
+        ? { pile: n, box: spot.box, lines, leader }
+        : { pile: n, box: spot.box, lines }
+      if (transient.some((t) => overlap(spot.box, t) > 0)) placement.hidden = true
+      placed.push(placement)
       rawBoxes.push(spot.box)
       if (leader) leaders.push(leader)
       blocked.push(spaced(spot.box))

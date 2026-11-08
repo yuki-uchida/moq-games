@@ -2365,6 +2365,104 @@ test('a food just past the right edge of the screen gets no label', async ({ pag
   expect(errors).toEqual([])
 })
 
+test('food labels stay put while a banner shows and the ones under it are hidden', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.addInitScript(() => {
+    const draws: { text: string; x: number; y: number; banner: boolean; hit: boolean; t: number }[] = []
+    Object.assign(window, { labelDraws: draws })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.startsWith('P1：')) {
+        // Where the label lands on the page, against the text parts of the banner on screen right now.
+        const canvas = this.canvas.getBoundingClientRect()
+        const m = this.getTransform()
+        const px = (x * m.a + y * m.c + m.e) * (canvas.width / this.canvas.width) + canvas.left
+        const py = (x * m.b + y * m.d + m.f) * (canvas.height / this.canvas.height) + canvas.top
+        const half = this.measureText(text).width / 2
+        const parts = Array.from(
+          document.querySelectorAll('#banner .banner-meta, #banner .banner-title, #banner .banner-sub')
+        )
+        const hit = parts.some((part) => {
+          const r = part.getBoundingClientRect()
+          return r.width > 0 && px + half > r.left && px - half < r.right && py + 2 > r.top && py - 13 < r.bottom
+        })
+        draws.push({
+          text,
+          x: Math.round(x * 10) / 10,
+          y: Math.round(y * 10) / 10,
+          banner: parts.length > 0,
+          hit,
+          t: performance.now()
+        })
+      }
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  // The banner of the first life stage comes first: let it go before the foods are dropped.
+  await expect(page.locator('#banner .banner')).toHaveCount(0, { timeout: 8000 })
+  await handle.evaluate((hook) => {
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.enemies = []
+    game.state.shots = []
+    player.birthPick = false
+    player.pending = 0
+    player.choices = []
+    player.weapons = []
+    // One food under where the stage banner slides in (top centre), one beside it, one far from it.
+    game.state.items = [
+      { kind: 'food_defense', owner: player.id, power: 1, x: player.x, y: player.y - 215 },
+      { kind: 'food_speed', owner: player.id, power: 1, x: player.x + 220, y: player.y - 170 },
+      { kind: 'food_heal', owner: player.id, power: 1, x: player.x - 400, y: player.y + 200 }
+    ]
+  })
+  type Draw = { text: string; x: number; y: number; banner: boolean; hit: boolean; t: number }
+  const draws = () => page.evaluate(() => (window as unknown as { labelDraws: Draw[] }).labelDraws.slice())
+  await expect.poll(async () => new Set((await draws()).map((d) => d.text)).size).toBe(3)
+  await page.waitForTimeout(600)
+  await handle.evaluate(async (hook) => {
+    const dataPath = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(dataPath)
+    const game = hook.game as unknown as Game
+    game.state.eventIndex = EVENTS.length
+    game.state.time = timeAtAge(6) + 0.01
+  })
+  await expect(page.locator('#banner .banner-title')).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('#banner .banner')).toHaveCount(0, { timeout: 8000 })
+  await page.waitForTimeout(600)
+  const all = await draws()
+  // From the banner's first frame to 300 ms after its last one, every label that is drawn sits where it sat before it.
+  const first = all.findIndex((d) => d.banner)
+  const end = Math.max(...all.filter((d) => d.banner).map((d) => d.t)) + 300
+  expect(first).toBeGreaterThan(0)
+  const texts = ['P1：防御力UP', 'P1：移動速度UP', 'P1：HP回復']
+  for (const text of texts) {
+    const before = all.slice(0, first).filter((d) => d.text === text)
+    const home = before.at(-1)!
+    const window = all.slice(first).filter((d) => d.text === text && d.t <= end)
+    expect(window.length, text).toBeGreaterThan(0)
+    expect(new Set([...before.slice(-5), ...window].map((d) => `${d.x},${d.y}`)), text).toEqual(
+      new Set([`${home.x},${home.y}`])
+    )
+    // Back after the banner, in the same place.
+    expect(all.filter((d) => d.text === text && !d.banner && d.t > end - 300).length, text).toBeGreaterThan(0)
+  }
+  // No label is drawn over the banner's text.
+  expect(all.filter((d) => d.hit)).toEqual([])
+  // The banner crossed the food under it: that label went missing for a while, in the banner's frames only.
+  const during = all.filter((d) => d.banner)
+  expect(during.length).toBeGreaterThan(0)
+  expect(new Set(during.map((d) => d.text)).size).toBeLessThan(3)
+  expect(errors).toEqual([])
+})
+
 test('a food completely under the opaque hand panel gets no label', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))

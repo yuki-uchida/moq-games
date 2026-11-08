@@ -374,6 +374,7 @@ export class Renderer {
   }
   /** Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas; food labels avoid them. */
   private hudRects: (Box & { opaque?: boolean })[] = []
+  private transientRects: Box[] = []
   private readonly textWidths = new Map<string, number>()
   /** Candidate each food label block took last frame, by pile key (keeps labels from jumping between spots). */
   private readonly foodLabelMemory: LabelMemory = new Map()
@@ -588,10 +589,12 @@ export class Renderer {
 
   /**
    * Screen boxes (CSS px from the canvas's top left) of the HUD parts drawn over the canvas. Food labels keep clear of
-   * them from the next frame on, and foods hidden behind `opaque` parts get no label.
+   * them from the next frame on, and foods hidden behind `opaque` parts get no label. `transient` are the paths of
+   * parts that come and go (banners): labels they cross are not drawn while they last, but never move for them.
    */
-  setHudRects(rects: readonly (Box & { opaque?: boolean })[]) {
+  setHudRects(rects: readonly (Box & { opaque?: boolean })[], transient: readonly Box[] = []) {
     this.hudRects = rects.map((r) => ({ ...r }))
+    this.transientRects = transient.map((r) => ({ ...r }))
   }
 
   /**
@@ -639,6 +642,7 @@ export class Renderer {
     })
     const hud = this.hudRects.map(toWorld)
     const occluders = this.hudRects.filter((r) => r.opaque).map(toWorld)
+    const transient = this.transientRects.map(toWorld)
     if (this.textWidths.size > 400) this.textWidths.clear()
     const measure = (text: string) => {
       let width = this.textWidths.get(text)
@@ -651,7 +655,7 @@ export class Renderer {
       local: owners[n].findIndex((owner) => owner === local),
       key: keys[n]
     }))
-    for (const { box, lines: shown, leader } of placeFoodLabels(
+    for (const { box, lines: shown, leader, hidden } of placeFoodLabels(
       labelPiles,
       [...sprites, ...hud],
       visible,
@@ -660,8 +664,10 @@ export class Renderer {
       this.foodLabelMemory,
       occluders,
       players,
-      this.clock * 1000
+      this.clock * 1000,
+      transient
     )) {
+      if (hidden) continue
       const cx = (box.left + box.right) / 2
       // A block pushed away from its pile gets a thin leader to it, so crowded labels still point at their foods.
       if (leader) {
