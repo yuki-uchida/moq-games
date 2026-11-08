@@ -11,6 +11,7 @@ import {
   type Job,
   type StageId
 } from '../vocab'
+import { iconUrl } from '../render/sprites'
 import { clearChildren, el, icon, menuKeys, setText, show } from './dom'
 
 export interface LobbyActions {
@@ -41,6 +42,8 @@ export class LobbyScreen {
   private readonly note: HTMLElement
   private key = ''
   private jobButtons = new Map<Job, HTMLButtonElement>()
+  private jobSprites = new Map<Job, HTMLImageElement>()
+  private spriteSpecies = 'slime'
   private stageButtons = new Map<StageId, HTMLButtonElement>()
 
   constructor(private readonly a: LobbyActions) {
@@ -72,7 +75,7 @@ export class LobbyScreen {
           style: `--job:${JOB_COLORS[job]}`,
           onclick: () => (a.sound('menuSelect'), a.pickJob(job))
         },
-        el('span.job-sprite', {}, icon(`hero:slime:${job}`, 'idle_down', 64, 'px-icon hero')),
+        el('span.job-sprite', {}, this.sprite(job)),
         el('span.job-name', {}, icon('ui', `job_${job}`, 24), el('span', { text: JOB_NAMES[job] })),
         el('span.job-desc', { text: JOB_TEXT[job][0] }),
         el('span.job-skill', { text: JOB_TEXT[job][1] }),
@@ -167,6 +170,12 @@ export class LobbyScreen {
         ? 'えらばなかった3匹は仲間としてついてきます。Tabでいつでも交代できます。'
         : 'だれもえらばなかったマモノは仲間（コンピューター）が動かします。'
     )
+    // The job cards show the heroes in the selected stage's body.
+    const species = STAGE_SPECIES[view.lobby?.stage ?? 'meadow']
+    if (species !== this.spriteSpecies) {
+      this.spriteSpecies = species
+      for (const [job, img] of this.jobSprites) img.src = iconUrl(`hero:${species}:${job}`, 'idle_down') || img.src
+    }
     const key = JSON.stringify([players.map((p) => [p.id, p.name, p.job]), view.lobby, o.job, o.role])
     if (key === this.key) return
     this.key = key
@@ -200,6 +209,12 @@ export class LobbyScreen {
       b.classList.toggle('selected', selected)
       b.setAttribute('aria-checked', String(selected))
     }
+  }
+
+  private sprite(job: Job): HTMLImageElement {
+    const img = icon(`hero:slime:${job}`, 'idle_down', 64, 'px-icon hero')
+    this.jobSprites.set(job, img)
+    return img
   }
 
   focus() {

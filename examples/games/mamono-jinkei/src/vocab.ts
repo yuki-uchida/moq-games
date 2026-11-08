@@ -28,7 +28,7 @@ export const SPECIES_NAMES: Record<Species, string> = {
 export const STAGES = ['meadow', 'sewer', 'tower', 'forest'] as const
 export type StageId = (typeof STAGES)[number]
 /** Stages players can reach; their art must be complete (no placeholders, see tests/art-contract.test.ts). */
-export const RELEASED_STAGES: readonly StageId[] = ['meadow']
+export const RELEASED_STAGES: readonly StageId[] = ['meadow', 'sewer']
 export const STAGE_SPECIES: Record<StageId, Species> = { meadow: 'slime', sewer: 'rat', tower: 'crow', forest: 'wolf' }
 export const STAGE_NAMES: Record<StageId, string> = {
   meadow: 'ぷるぷる草原と古城跡',

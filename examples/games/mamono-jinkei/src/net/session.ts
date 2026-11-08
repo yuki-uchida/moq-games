@@ -310,8 +310,9 @@ class GuestSession implements Session {
   }
 }
 
-export function soloSession(progress: Progress, name: string): Session {
-  return new LocalSession('solo', localId('solo'), { seed: (Math.random() * 2 ** 31) | 0, progress }, name)
+/** Solo play; `stage` starts that stage directly (dev/test), skipping the lobby and the release gate. */
+export function soloSession(progress: Progress, name: string, stage?: StageId): Session {
+  return new LocalSession('solo', localId('solo'), { seed: (Math.random() * 2 ** 31) | 0, progress, stage }, name)
 }
 
 /** The attract-mode world behind the title (stage 1, already playing). */

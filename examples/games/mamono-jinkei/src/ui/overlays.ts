@@ -1,6 +1,6 @@
 /** Phase overlays (intro card, wipe, results, ending) and the pause menu. */
 import type { StageResults, View } from '../sim/types'
-import { JOBS, JOB_COLORS, JOB_NAMES, SPECIES_NAMES, STAGES, STAGE_NAMES, STAGE_SPECIES } from '../vocab'
+import { JOBS, JOB_COLORS, JOB_NAMES, SPECIES, SPECIES_NAMES, STAGES, STAGE_NAMES, STAGE_SPECIES } from '../vocab'
 import { clearChildren, clock, el, focusables, icon, menuKeys, setText, show } from './dom'
 import { howToPlay, settingsForm, type SettingsHandlers } from './panels'
 
@@ -91,7 +91,11 @@ export class PhaseOverlays {
       ].map(([k, v]) => el('div.credit', {}, el('span.credit-role', { text: k }), el('span.credit-name', { text: v }))),
       el('p.roll-end', { text: 'おしまい ― ありがとう！' })
     )
-    const party = el('div.ending-party', {}, ...JOBS.map((j) => icon(`hero:slime:${j}`, 'victory', 64, 'px-icon', 2)))
+    const party = el(
+      'div.ending-party',
+      {},
+      ...JOBS.map((j, i) => icon(`hero:${SPECIES[i]}:${j}`, 'victory', 64, 'px-icon', 2))
+    )
     this.ending = el(
       'div.ending',
       { hidden: true },

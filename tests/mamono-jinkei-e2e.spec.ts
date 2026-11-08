@@ -309,3 +309,60 @@ test('host + guests: prediction, shared world and a spectator beyond four', asyn
   await expect.poll(hostY, { timeout: 4000 }).toBeGreaterThan(hy0 + 40)
   expect(errors).toEqual([])
 })
+
+test('stage 2 (rat): dash through a mouse hole and gnaw a barricade with the stampede', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await page.goto('/')
+  await page.waitForFunction(() => !!(window.__mamono as unknown as { startStage?: unknown }).startStage)
+  await page.evaluate(() => (window.__mamono as unknown as { startStage(s: string): void }).startStage('sewer'))
+  await expect(page.locator('.intro-name')).toHaveText('地下水路と穀物庫')
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 6000 }).toBe('play')
+  const me = () =>
+    page.evaluate(() => {
+      const W = window.__mamono.W
+      const h = W.heroes.find((q) => q.slot === W.humans[0].ctrl)!
+      return { x: h.body.x / 64, y: h.body.y / 64 }
+    })
+  // The hole pair 'jj' (64,46)–(65,46): dash in from the left, come out on the right.
+  await place(page, T(62), T(46))
+  await page.keyboard.down('KeyD')
+  await page.waitForTimeout(250)
+  await page.keyboard.press('Space')
+  await expect.poll(async () => (await me()).x, { timeout: 3000 }).toBeGreaterThan(66)
+  await page.keyboard.up('KeyD')
+  await expect(page.locator('.hint').first()).toBeVisible()
+
+  // チューチュー大行進 up the granary stairs through the barricade.
+  await page.evaluate(() => window.__mamono.warp('G'))
+  await page.waitForTimeout(300)
+  await place(page, T(41) + 10, T(23), true)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const W = window.__mamono.W
+          return W.heroes.find((h) => h.slot === W.humans[0].ctrl)!.form >= 0
+        }),
+      { timeout: 8000 }
+    )
+    .toBe(true)
+  // Let the camera glide over from the warp before aiming at the screen.
+  await page.waitForTimeout(1500)
+  const at = (await page.evaluate(() => window.__mamono.camera.heroCss))!
+  await page.mouse.move(at.x, Math.max(5, at.y - 300))
+  await page.mouse.down()
+  await expect
+    .poll(() => page.evaluate(() => window.__mamono.view?.formations.some((f) => (f as { ready?: boolean }).ready)), {
+      timeout: 3000
+    })
+    .toBe(true)
+  await page.mouse.up()
+  await expect(page.locator('.banner.on')).toContainText('チューチュー大行進！')
+  await expect
+    .poll(() => page.evaluate(() => window.__mamono.W.props.find((p) => p.part === 'barricadeG')!.state), {
+      timeout: 4000
+    })
+    .toBe('break')
+  expect(errors).toEqual([])
+})

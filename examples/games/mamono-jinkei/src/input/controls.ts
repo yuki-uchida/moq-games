@@ -60,10 +60,12 @@ export class Controls {
       if (!e.repeat && !typing) this.hooks.onMenu()
       return
     }
-    if (!this.enabled || typing) return
+    if (typing) return
+    // Held directions are tracked even while disabled (intro, menus) so a key held into play keeps working.
+    if (!e.repeat) this.held.add(a)
+    if (!this.enabled) return
     if (PREVENT.has(e.code)) e.preventDefault()
     if (e.repeat) return
-    this.held.add(a)
     const s = this.state
     if (a === 'action') s.actionPresses++
     else if (a === 'interact') s.interactPresses++
@@ -128,6 +130,7 @@ export class Controls {
     }
     this.state.mx = this.state.my = 0
     this.state.actionHeld = false
+    this.state.interactHeld = false
     this.state.attackHeld = false
   }
 
@@ -167,6 +170,7 @@ export class Controls {
     s.mx = mx
     s.my = my
     s.actionHeld = actionHeld
+    s.interactHeld = this.enabled && (this.held.has('interact') || (!!pad && !!pad.buttons[PAD.x]?.pressed))
     s.attackHeld = this.enabled && (this.mouseHeld || this.padHeld)
     const padAiming = this.padAimAt > this.mouseAt
     if (padAiming) {

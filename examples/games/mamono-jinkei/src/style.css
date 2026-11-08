@@ -2249,3 +2249,21 @@ input:focus-visible,
     gap: 0.22em;
   }
 }
+
+/* ------------------------------------------------------------------ stage 2 */
+
+.boss-pet {
+  font-size: 0.75em;
+  font-weight: 900;
+  color: #ffd2a8;
+  text-shadow: 0 1px 0 #000;
+}
+
+.boss-pet::before {
+  content: '🐈 ';
+}
+
+.boss-pet.dizzy {
+  color: #fff1a8;
+  animation: pulse 0.5s ease-in-out infinite;
+}
