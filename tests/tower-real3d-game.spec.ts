@@ -288,7 +288,25 @@ test('prepares summonable models before a drag and draws a committed unit on the
     requestAnimationFrame(sample)
   })
   for (const type of ['soldier', 'archer', 'runner', 'tank']) await expect(page.locator(`#unit-${type}`)).toBeEnabled()
-  const programs = await page.evaluate(() => (window as any).towerDefenseDiagnostics().gpu.programs)
+  // three.js releases unused programs a few frames after preparation, so take the baseline only once the count is stable.
+  const programs = await page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const read = () => (window as any).towerDefenseDiagnostics().gpu.programs as number
+        const deadline = performance.now() + 10_000
+        let last = read()
+        let stable = 0
+        const tick = () => {
+          const current = read()
+          stable = current === last ? stable + 1 : 0
+          last = current
+          if (stable >= 10) resolve(current)
+          else if (performance.now() > deadline) reject(new Error(`gpu.programs did not settle (last ${current})`))
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+  )
   await beginUnitDragToWorld(page, 'archer', getField('meadow', 2, 4).slots[0])
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
