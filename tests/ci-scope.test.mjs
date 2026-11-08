@@ -632,7 +632,8 @@ test('unit shards run independently and gate publication', () => {
   assert.match(unit, /^    needs: changes$/m)
   assert.match(unit, /^    if: needs\.changes\.outputs\.unit != ''$/m)
   assert.match(unit, /fail-fast: false/)
-  assert.match(unit, /shard: \[1, 2, 3, 4\]/)
+  assert.match(unit, /shard: \$\{\{ fromJSON\(needs\.changes\.outputs\.unitShards\) \}\}/)
+  assert.match(workflow, /^ {6}unitShards: \$\{\{ steps\.scope\.outputs\.unitShards \}\}$/m)
   assert.match(unit, /actions\/cache@v4[\s\S]*?\.generated\/moqt-sdk/)
   assert.match(unit, /node scripts\/setup-sdk\.mjs[\s\S]*?npm ci --ignore-scripts/)
   assert.match(
@@ -977,7 +978,7 @@ test('tower assets and supporting tools include tower contracts, browser and bot
   for (const path of [
     'public/tower-defense-art/hero.glb',
     'scripts/tower-model-sidecars.mjs',
-    'tests/tower-title-e2e.spec.ts',
+    'examples/games/tower_diffence_with_jev/src/main.ts',
     'examples/games/tower_diffence_with_jev/main.ts'
   ]) {
     const scope = selectScope([path])
@@ -1016,13 +1017,165 @@ test('landing changes run landing contracts and browser checks only', () => {
 })
 
 test('tower-only browser checks exclude unrelated landing tests', () => {
-  const scope = selectScope(['tests/tower-title-e2e.spec.ts'])
+  const towerSource = 'examples/games/tower_diffence_with_jev/src/main.ts'
+  const scope = selectScope([towerSource])
   assert.equal(scope.browser, 'tower-')
   assert.equal(JSON.parse(scope.shards).length, 18)
-  const combined = selectScope(['index.html', 'tests/tower-title-e2e.spec.ts'])
+  const combined = selectScope(['index.html', towerSource])
   assert.equal(combined.browser, 'tower- landing-e2e.spec.ts')
   assert.equal(JSON.parse(combined.shards).length, 18)
 })
+
+const pagesConfig = readFileSync(new URL('../playwright.pages.config.ts', import.meta.url), 'utf8')
+const pagesWeightData = JSON.parse(readFileSync(new URL('../scripts/ci-pages-weights.json', import.meta.url), 'utf8'))
+const pagesPattern = (() => {
+  const match = pagesConfig.match(/testMatch:\s*\/((?:[^/\\\n]|\\.)+)\/([a-z]*)/)
+  assert.ok(match)
+  return new RegExp(match[1], match[2])
+})()
+const pagesTowerSpecs = readdirSync(new URL('../tests/', import.meta.url))
+  .filter((name) => name.endsWith('.spec.ts') && classify('tests/' + name)[0] === 'tower' && pagesPattern.test(name))
+  .sort()
+const weightedShards = (specs) => {
+  const sum = specs.reduce((total, spec) => {
+    const seconds = Object.entries(pagesWeightData.seconds)
+      .filter(([key]) => key.startsWith('tests/' + spec + ' › '))
+      .reduce((subtotal, [, value]) => subtotal + value, 0)
+    return total + Math.max(pagesWeightData.defaultSeconds, seconds)
+  }, 0)
+  return Math.min(18, Math.max(1, Math.ceil(sum / 180)))
+}
+const towerSourceFile = 'examples/games/tower_diffence_with_jev/src/main.ts'
+
+test('a push that changes only Pages tower specs runs just those specs without publishing', () => {
+  assert.ok(pagesTowerSpecs.length > 10)
+  assert.ok(pagesTowerSpecs.includes('tower-title-e2e.spec.ts'))
+  for (const spec of pagesTowerSpecs) {
+    const scope = selectScope(['tests/' + spec])
+    assert.equal(scope.browser, spec)
+    assert.equal(scope.pagesBrowser, true, spec)
+    assert.equal(scope.pages, false, spec)
+    assert.equal(scope.ci, true, spec)
+    assert.equal(scope.tower, false, spec)
+    assert.equal(scope.bot, false, spec)
+    for (const key of ['unit', 'node', 'laneNode']) assert.equal(scope[key], '', spec)
+    const expected = Array.from({ length: weightedShards([spec]) }, (_, index) => index + 1)
+    assert.deepEqual(JSON.parse(scope.shards), expected, spec)
+  }
+  const both = selectScope(['tests/tower-title-e2e.spec.ts', 'tests/tower-pause-e2e.spec.ts'])
+  assert.equal(both.browser, 'tower-pause-e2e.spec.ts tower-title-e2e.spec.ts')
+  assert.equal(JSON.parse(both.shards).length, weightedShards(['tower-pause-e2e.spec.ts', 'tower-title-e2e.spec.ts']))
+  assert.equal(both.pages, false)
+})
+
+test('tower test-only pushes fall back to the full tower scope with helpers, sources or assets', () => {
+  for (const other of [
+    'tests/tower-defense-e2e-arrange.ts',
+    'tests/glb-fixture.mjs',
+    towerSourceFile,
+    'public/tower-defense-art/hero.glb'
+  ]) {
+    const scope = selectScope(['tests/tower-title-e2e.spec.ts', other])
+    assert.match(scope.browser, /^tower-/, other)
+    assert.equal(JSON.parse(scope.shards).length, 18, other)
+    assert.equal(scope.tower, true, other)
+    assert.equal(scope.bot, true, other)
+    assert.equal(scope.pages, true, other)
+    assert.match(scope.unit, /tower_diffence_with_jev\/tests/, other)
+  }
+  const unitWithSource = selectScope([
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts',
+    'tests/tower-viewer-catalog.test.mjs',
+    towerSourceFile
+  ])
+  assert.equal(unitWithSource.tower, true)
+  assert.match(unitWithSource.unit, /^examples\/games\/tower_diffence_with_jev\/tests tests\/board-camera-depth/)
+  assert.equal(unitWithSource.unitShards, '[1,2,3,4]')
+})
+
+test('a tower spec that Pages does not run selects no browser checks', () => {
+  for (const path of ['tests/tower-ui-layout-e2e.spec.ts', 'tests/tower-title-attract-flow-e2e.spec.ts']) {
+    assert.equal(classify(path)[0], 'tower')
+    assert.equal(pagesPattern.test(path.slice('tests/'.length)), false, path)
+    const scope = selectScope([path])
+    assert.equal(scope.pagesBrowser, false, path)
+    assert.equal(scope.pages, false, path)
+    assert.equal(scope.tower, false, path)
+    assert.equal(scope.ci, true, path)
+    assert.deepEqual(JSON.parse(scope.shards), [1], path)
+  }
+})
+
+test('tower unit and Node contract test files are the only unit and Node targets of a test-only push', () => {
+  const one = selectScope(['examples/games/tower_diffence_with_jev/tests/game.test.ts'])
+  assert.equal(one.unit, 'examples/games/tower_diffence_with_jev/tests/game.test.ts')
+  assert.equal(one.unitShards, '[1]')
+  assert.equal(one.pagesBrowser, false)
+  assert.equal(one.pages, false)
+  assert.equal(one.ci, true)
+  assert.equal(one.tower, false)
+  assert.equal(one.node, '')
+  const two = selectScope([
+    'tests/caster-motion-v3.test.ts',
+    'examples/games/tower_diffence_with_jev/tests/game.test.ts'
+  ])
+  assert.equal(two.unit, 'examples/games/tower_diffence_with_jev/tests/game.test.ts tests/caster-motion-v3.test.ts')
+  assert.equal(two.unitShards, '[1,2]')
+  const node = selectScope(['tests/tower-viewer-catalog.test.mjs'])
+  assert.equal(node.node, 'tests/tower-viewer-catalog.test.mjs')
+  assert.equal(node.unit, '')
+  assert.equal(node.unitShards, '[1,2,3,4]')
+  assert.equal(node.pagesBrowser, false)
+  assert.equal(node.ci, true)
+  // A directory target keeps every unit shard.
+  const mixed = selectScope(['examples/games/life-survivors/src/main.ts', 'tests/caster-motion-v3.test.ts'])
+  assert.equal(mixed.unit, 'examples/games/life-survivors/tests tests/caster-motion-v3.test.ts')
+  assert.equal(mixed.unitShards, '[1,2,3,4]')
+  // Fixtures are not test files, so they keep the full tower scope.
+  const fixture = selectScope(['examples/games/tower_diffence_with_jev/tests/fixtures/difficulty-v1/assault.json'])
+  assert.equal(fixture.tower, true)
+  assert.equal(selectScope(['package-lock.json']).unitShards, '[1,2,3,4]')
+})
+
+test('tower test files are added to what other changed games select', () => {
+  const scope = selectScope(['tests/tower-title-e2e.spec.ts', 'examples/games/life-survivors/src/main.ts'])
+  assert.equal(scope.life, true)
+  assert.equal(scope.tower, false)
+  assert.equal(scope.pages, true)
+  assert.equal(scope.pagesBrowser, true)
+  assert.equal(scope.browser, 'life-survivors-published-e2e.spec.ts tower-title-e2e.spec.ts')
+  assert.equal(scope.unit, 'examples/games/life-survivors/tests')
+  assert.equal(scope.unitShards, '[1,2,3,4]')
+})
+
+test(
+  'the Pages spec pattern selects exactly the spec files Playwright lists',
+  {
+    skip:
+      !existsSync(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)) &&
+      'dependencies are not installed'
+  },
+  () => {
+    const root = fileURLToPath(new URL('../', import.meta.url))
+    const output = execFileSync(
+      process.execPath,
+      [
+        'node_modules/@playwright/test/cli.js',
+        'test',
+        '--config',
+        'playwright.pages.config.ts',
+        '--list',
+        '--reporter=list'
+      ],
+      { cwd: root, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } }
+    )
+    const listed = new Set([...output.matchAll(/([A-Za-z0-9._-]+\.spec\.ts)(?=:\d+:\d+ ›)/g)].map((match) => match[1]))
+    const expected = readdirSync(resolve(root, 'tests')).filter(
+      (name) => name.endsWith('.spec.ts') && pagesPattern.test(name)
+    )
+    assert.deepEqual([...listed].sort(), expected.sort())
+  }
+)
 
 test('shared dependencies, CI jobs and runners, and unknown paths conservatively check all games', () => {
   for (const path of [
@@ -1443,8 +1596,7 @@ test(
       '\r\n',
       '\n'
     )
-    const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \S)/m)?.[1]
-    const shards = JSON.parse(unit?.match(/shard: (\[[^\]\n]+\])/)?.[1] ?? 'null')
+    const shards = JSON.parse(selectScope(['package.json']).unitShards)
     assert.deepEqual(shards, [1, 2, 3, 4])
     const { BaseSequencer, createVitest } = await import('vitest/node')
     const vitest = await createVitest('test', { root })
