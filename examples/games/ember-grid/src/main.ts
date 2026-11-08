@@ -22,6 +22,7 @@ import {
   seeded,
   size,
   staffHeal,
+  type Game,
   type Roster,
   type Unit
 } from './game'
@@ -56,6 +57,7 @@ import {
   tutorialEnabled
 } from './settings'
 import { showTitle } from './title'
+import { attractGame, playAttract } from './attract'
 import { setupHelp } from './help'
 import { createTutorial } from './tutorial'
 import { detailHtml, forecastHtml, terrainText, unitCardHtml } from './cards'
@@ -196,10 +198,16 @@ field.style.setProperty('--grid-size', String(size))
 let stage: Stage
 let animation: BattleAnimation
 let stageAvailable = false
+/** The self-playing title demo's own battle while it is on the board (never the player's game). */
+let attract: { game: Game } | undefined
+let attractToken = 0
 function createStage() {
   try {
     stage = new Stage(field, board)
-    animation = new BattleAnimation(stage, field, (role) => audio.cue(role))
+    // The title demo is silent: only the player's battle cues sound effects.
+    animation = new BattleAnimation(stage, field, (role) => {
+      if (!attract) audio.cue(role)
+    })
     stageAvailable = true
   } catch {
     stageAvailable = false
@@ -767,8 +775,26 @@ function hover(x: number, y: number) {
   if (!busy) render()
   else updateTerrain()
 }
+/** A unit's floating status row: side, boss and shield marks, HP number and bar, then `extra` chips. */
+const standHtml = (u: Unit, extra = '') =>
+  `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '<span class="crown">♛</span>' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${extra}</span></span>`
+/** The title demo draws only the board (terrain, figures, HP tags); the battle HUD keeps the player's state. */
+function renderAttract(view: Game) {
+  field.dataset.mission = String(view.stage)
+  cells.forEach((cell, i) => {
+    const x = i % size,
+      y = Math.floor(i / size),
+      k = key(x, y),
+      u = view.units.find((u) => u.x === x && u.y === y && u.hp > 0)
+    cell.className = `cell ${(x + y) % 2 ? 'odd' : ''} ${view.rocks.has(k) ? 'rock' : ''} ${view.groves.has(k) ? 'grove' : ''} ${u?.side ?? ''}`
+    marks[i].innerHTML = u ? standHtml(u) : ''
+  })
+  requestAnimationFrame(positionTags)
+  if (stageAvailable) stage.sync(view)
+}
 render = () => {
   document.querySelector<HTMLElement>('#app main')!.inert = titleOpen() || !contextAvailable
+  if (attract) return renderAttract(attract.game)
   // Guidance ends with the battle: a won or lost chapter has nothing left to point at.
   if (game.phase === 'won' || game.phase === 'lost') tutorial.hide()
   const focusedControl = document.activeElement as HTMLElement | null
@@ -815,7 +841,10 @@ render = () => {
     cell.classList.toggle('danger', threatened.has(k))
     // Billboard layer: undoes the floor projection so the status row stands upright above the model.
     marks[i].innerHTML = u
-      ? `<span class="stand ${u.side} ${u.boss ? 'boss' : ''}"><span class="tag">${u.boss ? '<span class="crown">♛</span>' : ''}${u.armor ? '<span class="armor">⬡</span>' : ''}<span class="badge">${u.side === 'ally' ? '◆' : '▼'} ${u.hp}<span class="hpbar"><span style="width:${(u.hp / u.max) * 100}%"></span></span></span>${done ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}</span></span>`
+      ? standHtml(
+          u,
+          `${done ? '<span class="check">✓</span>' : ''}${canAttack ? `<span class="hit">−${damage(unit!, u, game)}</span>` : ''}${canHeal ? `<span class="healing-preview">✚ +${healForecast(unit!, u).after - u.hp}</span>` : ''}`
+        )
       : ''
     cell.setAttribute(
       'aria-label',
@@ -1397,8 +1426,96 @@ async function prepareBattle() {
     retry.hidden = false
   }
 }
+/**
+ * Title demo: once the likely next chapter's models are ready, a self-playing battle (its own Game and RNG)
+ * runs on the board behind the translucent title. Any failure leaves today's static title.
+ */
+async function startAttract() {
+  if (attract || !stageAvailable || !titleOpen() || playing) return
+  const token = ++attractToken
+  const live = () => token === attractToken && titleOpen() && !playing
+  let game = attractGame(saved, 0)
+  try {
+    await animation.prepare(chapterRoles(game), () => {})
+  } catch {
+    return
+  }
+  if (!live()) return
+  // Waits while the tab is hidden or motion is reduced (the board then holds still), and ends with the demo.
+  const settle = () =>
+    new Promise<void>((resolve) => {
+      const check = () => (!live() || (!document.hidden && !reducedMotion()) ? resolve() : setTimeout(check, 400))
+      check()
+    })
+  try {
+    for (let loop = 0; live(); loop++) {
+      if (loop) game = attractGame(saved, loop)
+      attract = { game }
+      document.documentElement.classList.add('attract-demo')
+      placeAttract()
+      camera.frameAll(game.units.filter((u) => u.hp > 0))
+      renderAttract(game)
+      const started = performance.now(),
+        noise = loop ? seeded(loop) : undefined
+      await playAttract(
+        game,
+        {
+          // A loop also ends after three minutes; each wait is short, so a stop is noticed quickly.
+          live: () => live() && performance.now() - started < 180000,
+          show: (view) => renderAttract(view),
+          present: async (view, before, unit, action) => {
+            const moved = before.find((old) => old.id === unit.id)!
+            camera.reveal([moved, unit, ...(action ? [action.target] : [])], 280)
+            await animation.present(view, before, unit, action)
+          },
+          rest: async (ms) => {
+            await settle()
+            if (live()) await pause(ms)
+          }
+        },
+        noise && (() => noise() * 12)
+      )
+      await settle()
+      if (live()) await pause(2400)
+    }
+  } catch (error) {
+    console.warn('Ember title demo unavailable', error)
+    if (token === attractToken) stopAttract()
+  }
+}
+/**
+ * Shifts the field (board, figures and tags together) into the title's open area: beside the menu on wide
+ * screens, above it on portrait ones. Only a visual offset; layout and the camera are untouched.
+ */
+function placeAttract() {
+  field.style.translate = ''
+  const content = document.querySelector('.title-content')?.getBoundingClientRect()
+  if (!attract || !content) return
+  const box = field.getBoundingClientRect(),
+    beside = innerWidth - content.right > content.top,
+    x = beside ? (content.right + innerWidth) / 2 : innerWidth / 2,
+    y = beside ? innerHeight * 0.42 : content.top / 2
+  field.style.translate = `${Math.round(x - box.left - box.width / 2)}px ${Math.round(y - box.top - box.height / 2)}px`
+}
+window.addEventListener('resize', placeAttract)
+/**
+ * Ends the demo. `handOver`: the player's battle syncs the stage in this same task, which repositions the
+ * demo's figures it shares (same unit and role) and removes the rest, so their compiled models are reused.
+ * Otherwise the stage is emptied, as before any battle was shown.
+ */
+function stopAttract(handOver = false) {
+  attractToken++
+  if (!attract) return
+  attract = undefined
+  document.documentElement.classList.remove('attract-demo')
+  field.style.translate = ''
+  animation.cancel()
+  if (!handOver) stage.reset()
+  framed = -1
+}
 const titleProgress = showTitle(saved, {
   start: (difficulty) => {
+    stopAttract(true)
     save = freshSave(difficulty)
     checkpoints = save.checkpoints
     playing = true
@@ -1406,6 +1523,7 @@ const titleProgress = showTitle(saved, {
     startMission(0)
   },
   continue: (stage) => {
+    stopAttract(true)
     playing = true
     audio.setTitle(false)
     document.querySelector<HTMLInputElement>(`input[name=formation][value=${save.formation}]`)!.checked = true
@@ -1427,6 +1545,7 @@ const titleProgress = showTitle(saved, {
     }
   },
   ending: () => {
+    stopAttract()
     generation++
     replayingEnding = true
     game = save.finale ? restoreGame(save.finale) : newGame(missions.length - 1, save.formation)
@@ -1456,5 +1575,9 @@ if (!stageAvailable) {
     retryRenderer.remove()
     title.querySelector<HTMLButtonElement>('nav button:not(:disabled)')!.focus()
     render()
+    void startAttract()
   }
 }
+// The demo's models load a moment after the title art, so they never compete with the title or a quick first choice.
+else if (document.readyState === 'complete') setTimeout(() => void startAttract(), 1500)
+else window.addEventListener('load', () => setTimeout(() => void startAttract(), 1500), { once: true })
