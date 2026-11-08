@@ -185,6 +185,17 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     )
   })
 
+  test('walking guardians also bash an enemy right behind the child', () => {
+    const { game, player } = guarded()
+    const shield = game.state.shots[0]
+    const enemy = game.spawnEnemy('germ', player.x - 30, player.y)!
+    enemy.hp = enemy.maxHp = 1000
+    shield.aux = 0
+    game['buildGrid']()
+    game['moveGuardian'](shield, player, 0)
+    expect(enemy.hp).toBeLessThan(1000)
+  })
+
   test.each([1, 2, 3, 4, 5, 8])('level %i controls guardian count independently of bonuses', (level) => {
     const { player } = guarded()
     player.weapons[0].lv = level
@@ -555,7 +566,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
       player.talents.friend = 1
       if (withArea) player.passives = [{ id: 'p_kind', lv: 5 }]
       game.tick(0)
-      const [guard, other] = game.state.shots
+      const [guard, other] = [...game.state.shots].sort((a, b) => b.y - a.y)
       other.aux = 100
       const enemy = game.spawnEnemy('germ', guard.x + (vertical ? 0 : 33), guard.y + (vertical ? 30 : 0))!
       enemy.hp = enemy.maxHp = 1000

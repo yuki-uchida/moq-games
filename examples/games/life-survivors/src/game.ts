@@ -79,6 +79,8 @@ const PLAYER_RADIUS = 14
 /** 過保護: how far a standing parent sits above (behind) the child, and how far apart two of them stand. */
 const GUARDIAN_STILL_LIFT = 5
 const GUARDIAN_STILL_SPREAD = 0.6
+/** Reach around the child within which a walking guardian can also bash enemies right behind. */
+const GUARDIAN_CLOSE_REACH = 26
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -94,7 +96,7 @@ const SLOWMO_SCALE = 0.3
 const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
-const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.15)
+const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.25)
 const observationStillSeconds = (level: number) => 2 - (level - 1) * 0.125
 /** Share of max HP a level-up restores. */
 const LEVEL_HEAL = 0.06
@@ -2523,7 +2525,9 @@ export class Game {
           Math.hypot(player.x - owner.x, player.y - owner.y) <= shot.orbit &&
           Math.hypot(enemy.x - player.x, enemy.y - player.y) <= playerRadius(player) + radius
       )
-      if ((overlappingAlly || this.shieldTouches(shot, enemy.x, enemy.y, radius)) && d < distance) {
+      const closeReach = PLAYER_RADIUS + GUARDIAN_CLOSE_REACH * (shot.r / 20) + radius
+      const close = (enemy.x - owner.x) ** 2 + (enemy.y - owner.y) ** 2 <= closeReach * closeReach
+      if ((overlappingAlly || close || this.shieldTouches(shot, enemy.x, enemy.y, radius)) && d < distance) {
         target = enemy
         distance = d
       }
