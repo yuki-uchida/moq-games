@@ -78,6 +78,7 @@ export class Ambience {
     this.water = 0
     this.wind = 0
     if (info.id === 'tower') return this.tower(dt, view, ox, oy, w, h)
+    if (info.id === 'forest') return this.forest(dt, ox, oy, w, h)
     if (info.id !== 'sewer') return
     // Dust motes drifting in the light around lamps and heroes.
     while (this.timer > 0.09) {
@@ -204,6 +205,32 @@ export class Ambience {
           0,
           70 + Math.random() * 50,
           0.8 + Math.random() * 0.4
+        )
+    }
+  }
+
+  /** The moonlit forest: snow drifting across the whole view, embers rising from braziers. */
+  private forest(dt: number, ox: number, oy: number, w: number, h: number) {
+    while (this.timer > 0.055) {
+      this.timer -= 0.055
+      // Spawn along the top edge and the right edge (the wind blows the snow to the left).
+      const top = Math.random() < w / (w + h)
+      const x = top ? ox + Math.random() * (w + 120) : ox + w + 10
+      const y = top ? oy - 10 : oy + Math.random() * h
+      this.particles.spawn('snow', x, y, 0, -18 - Math.random() * 14, 34 + Math.random() * 26, 0, 9 + Math.random() * 5)
+    }
+    for (const d of this.lamps) {
+      if (d.x < ox - 64 || d.x > ox + w + 64 || d.y < oy - 64 || d.y > oy + h + 120) continue
+      if (Math.random() < dt * 9)
+        this.particles.spawn(
+          'ember',
+          d.x + (Math.random() - 0.5) * 14,
+          d.y - 4,
+          34,
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 4,
+          30 + Math.random() * 30,
+          1 + Math.random() * 0.8
         )
     }
   }

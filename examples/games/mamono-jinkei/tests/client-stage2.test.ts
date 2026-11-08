@@ -145,3 +145,29 @@ describe('crow hints (stage 3)', () => {
     ).toBe(true)
   })
 })
+
+describe('wolf hints (stage 4)', () => {
+  const forest: StageInfo = {
+    ...info,
+    id: 'forest',
+    light: 'night',
+    tiles: info.tiles.map((k, i) => (i === 13 ? 'ice' : k))
+  }
+  const v = (h: HeroView, props: View['props']) =>
+    hintsFor({ ...view(h, { props }), species: 'wolf', stage: 'forest' }, forest, 'me')
+  test('moonstones, resonance, ice walls and ice', () => {
+    expect(v(hero(300, 160), [{ id: 1, kind: 'moonstone', x: 330, y: 160, state: 'off', st: 0 }])[0].text).toBe(
+      '遠吠えで月石を灯す'
+    )
+    expect(v(hero(300, 160), [{ id: 2, kind: 'bigmoon', x: 330, y: 160, state: 'off', st: 0 }])[0].text).toContain(
+      '共鳴'
+    )
+    expect(
+      v(hero(300, 160), [{ id: 3, kind: 'icewall', x: 330, y: 160, state: 'idle', st: 0 }]).some((x) =>
+        x.text.includes('氷の壁')
+      )
+    ).toBe(true)
+    expect(v(hero(96, 160), []).some((x) => x.text === '氷の上はすべる')).toBe(true)
+    expect(v(hero(352, 32), []).some((x) => x.key === 'Space' && x.text === '遠吠え')).toBe(true)
+  })
+})

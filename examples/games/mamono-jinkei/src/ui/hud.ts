@@ -111,6 +111,8 @@ export class Hud {
   private readonly bossState: HTMLElement
   private readonly bossPet: HTMLElement
   private readonly bells: HTMLElement
+  private readonly moons: HTMLElement
+  private moonKey = ''
   private bellRang = new Map<number, number>()
   private bellState = new Map<number, string>()
   private bellKey = ''
@@ -153,6 +155,7 @@ export class Hud {
     this.bossState = el('span.boss-state')
     this.bossPet = el('span.boss-pet', { hidden: true })
     this.bells = el('div.bell-chip', { hidden: true, 'aria-label': '鐘' })
+    this.moons = el('div.bell-chip.moon-chip', { hidden: true, 'aria-label': '月石' })
     this.boss = el(
       'div.boss-bar',
       { hidden: true },
@@ -188,7 +191,7 @@ export class Hud {
           '☰'
         )
       ),
-      el('div.top-center', {}, this.objective, this.boss, this.formation, this.bells),
+      el('div.top-center', {}, this.objective, this.boss, this.formation, this.bells, this.moons),
       this.hints,
       this.countdown,
       this.banner,
@@ -305,6 +308,7 @@ export class Hud {
     } else if (now > this.bannerUntil && this.banner.classList.contains('on')) this.banner.className = 'banner'
 
     this.updateBells(view)
+    this.updateMoons(view, mine)
     this.updateDialog(view, now)
     this.updateBoss(view, info, mine)
   }
@@ -327,8 +331,42 @@ export class Hud {
     const n = lit.filter(Boolean).length
     this.bells.append(
       el('span.bc-label', { text: '鐘' }),
-      ...lit.map((on) => el('span.bc-bell' + (on ? '.on' : ''), { text: '🔔' })),
+      ...lit.map((on) =>
+        el(
+          'span.bc-bell' + (on ? '.on' : ''),
+          {},
+          icon('props:tower', on ? 'bell_ring' : 'bell', 32, 'px-icon bc-icon', on ? 2 : 0)
+        )
+      ),
       el('span.bc-count', { text: n >= bells.length ? 'そろった！' : `${n}/${bells.length}` })
+    )
+  }
+
+  /** Moonstone progress: the stones near you (a set of four in the clearing), lit ones glowing. */
+  private updateMoons(view: View, me: HeroView | undefined) {
+    const ref = me ?? view.heroes[0]
+    const stones = ref
+      ? view.props.filter((p) => p.kind === 'moonstone' && Math.hypot(p.x - ref.x, p.y - ref.y) < 9 * TILE)
+      : []
+    const shown = view.phase === 'play' && stones.length >= 2
+    const lit = stones.map((p) => p.state === 'on')
+    const key = shown ? lit.map((x) => (x ? 1 : 0)).join('') : ''
+    if (key === this.moonKey) return
+    this.moonKey = key
+    show(this.moons, shown)
+    clearChildren(this.moons)
+    if (!shown) return
+    const n = lit.filter(Boolean).length
+    this.moons.append(
+      el('span.bc-label', { text: '月石' }),
+      ...lit.map((on) =>
+        el(
+          'span.bc-bell' + (on ? '.on' : ''),
+          {},
+          icon('props:forest', on ? 'moonstone_on' : 'moonstone_off', 32, 'px-icon bc-icon')
+        )
+      ),
+      el('span.bc-count', { text: n >= stones.length ? 'ぜんぶ灯った！' : `${n}/${stones.length}` })
     )
   }
 
@@ -388,18 +426,39 @@ export class Hud {
       this.bossState,
       broken
         ? `ガードブレイク！ ${Math.ceil((b.broken ?? 0) - view.t)}`
-        : b.kind === 'valk'
-          ? b.anim === 'downed'
-            ? '大ダメージのチャンス'
-            : ''
-          : guarded
-            ? pet
-              ? '🛡 大猫が守っている'
-              : '🛡 ガード中 ― 協力技でくずせ！'
-            : ''
+        : b.kind === 'leon'
+          ? b.anim === 'shield'
+            ? '無敵'
+            : (b.parry ?? 0) > view.t
+              ? '受け流しの構え'
+              : ''
+          : b.kind === 'valk'
+            ? b.anim === 'downed'
+              ? '大ダメージのチャンス'
+              : ''
+            : guarded
+              ? pet
+                ? '🛡 大猫が守っている'
+                : '🛡 ガード中 ― 協力技でくずせ！'
+              : ''
     )
-    show(this.bossPet, !!pet || b.kind === 'valk')
-    if (b.kind === 'valk') {
+    show(this.bossPet, !!pet || b.kind === 'valk' || b.kind === 'leon')
+    if (b.kind === 'leon') {
+      const shield = b.anim === 'shield'
+      const awaken = b.anim === 'awaken'
+      setText(
+        this.bossPet,
+        shield
+          ? '聖なる盾 ― 月下群狼陣でくだけ！'
+          : awaken
+            ? '覚醒中…'
+            : b.phase >= 2
+              ? '覚醒 ― 光の柱に注意！'
+              : '剣の構え ― 受け流しに注意'
+      )
+      this.bossPet.classList.toggle('dizzy', broken)
+      this.bossPet.dataset.kind = 'leon'
+    } else if (b.kind === 'valk') {
       const downed = b.anim === 'downed'
       setText(this.bossPet, downed ? '墜落！ いまだ！' : flyingBoss ? '空中 ― 大旋風で引きずり下ろせ！' : '着地中')
       this.bossPet.classList.toggle('dizzy', downed)

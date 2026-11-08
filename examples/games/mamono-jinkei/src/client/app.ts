@@ -356,6 +356,7 @@ export class App {
           shake: false,
           reducedMotion: this.reduced,
           demo: true,
+          fade: this.attract.fade,
           shiftX: !s && innerWidth > 900 && innerWidth / innerHeight > 1.25 ? 0.2 : 0
         })
         this.attract.session.takeEvents(this.events)

@@ -28,8 +28,8 @@ const TOPS: Record<string, number> = {
   npc: 58
 }
 const LIFTABLE = new Set(['pot', 'barrel'])
-const GRIPPABLE = new Set(['acorn', 'cheese', 'goldbell'])
-const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate'])
+const GRIPPABLE = new Set(['acorn', 'cheese', 'goldbell', 'log'])
+const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate', 'iceblock'])
 
 export function controlled(view: View, myId: string): HeroView | undefined {
   const me = view.players.find((p) => p.id === myId)
@@ -173,6 +173,16 @@ export function hintsFor(view: View, info: StageInfo | undefined, myId: string):
       )
     const bell = view.props.find((p) => p.kind === 'bell' && Math.hypot(p.x - h.x, p.y - h.y) < 120)
     if (bell) out.push({ key: 'クリック', text: '鐘を鳴らす' }, { key: 'F', text: 'せーので同時に！', hot: true })
+  }
+  // Stage 4: moonstones, resonance, ice.
+  if (view.species === 'wolf' && info) {
+    const near = (kind: string, r: number, state?: string) =>
+      view.props.find((p) => p.kind === kind && (!state || p.state === state) && Math.hypot(p.x - h.x, p.y - h.y) < r)
+    if (near('bigmoon', 220, 'off')) out.push({ key: 'Space', text: 'ふたり同時に遠吠え＝共鳴', hot: true })
+    else if (near('moonstone', 170, 'off')) out.push({ key: 'Space', text: '遠吠えで月石を灯す', hot: true })
+    if (near('icewall', 200, 'idle')) out.push({ key: '協力技', text: '協力技で氷の壁をくだく', hot: true })
+    if (info.tiles[Math.floor(h.y / TILE) * info.w + Math.floor(h.x / TILE)] === 'ice')
+      out.push({ key: '氷', text: '氷の上はすべる' })
   }
   if (formSize && !held) out.push({ key: '長押し', text: '協力技！', hot: true })
   if (!held) {

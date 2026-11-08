@@ -23,9 +23,20 @@ export const PARTICLE_KINDS = [
   'debris',
   'gale',
   'wisp',
-  'updraft'
+  'updraft',
+  'snow',
+  'ember',
+  'skid',
+  'snowball'
 ] as const
+const LATE = new Set<number>(['snow', 'ember'].map((k) => KIND_INDEX_OF(k)))
+const FLOATY = new Set<string>(['feather', 'petal'])
+const RISING = new Set<string>(['pollen', 'smoke', 'chargeSpark', 'ember'])
+const WEIGHTLESS = new Set<string>(['dust', 'mote', 'debris', 'gale', 'wisp', 'updraft', 'snow', 'skid'])
 export type ParticleKind = (typeof PARTICLE_KINDS)[number]
+function KIND_INDEX_OF(k: string) {
+  return (PARTICLE_KINDS as readonly string[]).indexOf(k)
+}
 const KIND_INDEX = Object.fromEntries(PARTICLE_KINDS.map((k, i) => [k, i])) as Record<ParticleKind, number>
 
 const MAX = 900
@@ -144,28 +155,17 @@ export class Particles {
         continue
       }
       const k = PARTICLE_KINDS[this.kind[i]]
-      const grav =
-        k === 'feather' || k === 'petal'
-          ? 30
-          : k === 'pollen' || k === 'smoke' || k === 'chargeSpark'
-            ? -8
-            : k === 'dust' || k === 'mote' || k === 'debris' || k === 'gale' || k === 'wisp' || k === 'updraft'
-              ? 0
-              : 380
+      const grav = FLOATY.has(k) ? 30 : RISING.has(k) ? -8 : WEIGHTLESS.has(k) ? 0 : 380
       this.vz[i] -= grav * dt
       if (k === 'mote') this.vx[i] += Math.sin(this.age[i] * 1.3 + this.seed[i]) * 6 * dt
+      // Snowflakes sway as they fall; embers wobble as they rise.
+      if (k === 'snow') this.x[i] += Math.sin(this.age[i] * 1.7 + this.seed[i]) * 14 * dt
+      if (k === 'ember') this.vx[i] += Math.sin(this.age[i] * 6 + this.seed[i]) * 40 * dt
       if (k === 'feather' || k === 'petal') {
         this.vz[i] = Math.max(this.vz[i], -18)
         this.vx[i] += Math.sin(this.age[i] * 4 + this.seed[i]) * 30 * dt
       }
-      const drag =
-        k === 'dust' || k === 'smoke'
-          ? 3
-          : k === 'spark'
-            ? 2
-            : k === 'debris' || k === 'mote' || k === 'gale' || k === 'wisp' || k === 'updraft'
-              ? 0
-              : 0.6
+      const drag = k === 'dust' || k === 'smoke' ? 3 : k === 'spark' ? 2 : WEIGHTLESS.has(k) ? 0 : 0.6
       this.vx[i] -= this.vx[i] * drag * dt
       this.vy[i] -= this.vy[i] * drag * dt
       this.x[i] += this.vx[i] * dt
@@ -196,8 +196,10 @@ export class Particles {
     this.seed[to] = this.seed[from]
   }
 
-  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, w: number, h: number) {
+  /** Draws particles; `late` draws only the self-lit kinds (snow, embers) that go above the night darkness. */
+  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, w: number, h: number, late = false) {
     for (let i = 0; i < this.count; i++) {
+      if (LATE.has(this.kind[i]) !== late) continue
       const x = Math.round(this.x[i] - ox)
       const y = Math.round(this.y[i] - this.z[i] - oy)
       if (x < -24 || y < -24 || x > w + 24 || y > h + 24) continue
@@ -263,6 +265,15 @@ export class Particles {
         ctx.fillRect(x - w / 2, y, w, 3)
         ctx.fillRect(x - w / 2 + 4, y - 2, w - 8, 2)
         ctx.fillRect(x - w / 2 + 3, y + 3, w - 10, 1)
+      } else if (kind === 'skid') {
+        // Skid marks on ice fade slowly.
+        ctx.globalAlpha = (1 - p) * 0.55
+        ctx.fillStyle = '#eaf8ff'
+        ctx.fillRect(x - 2, y, 4, 1)
+      } else if (kind === 'snowball') {
+        ctx.globalAlpha = fade
+        ctx.fillStyle = s & 1 ? '#ffffff' : '#dbeeff'
+        ctx.fillRect(x, y, 2, 2)
       } else if (kind === 'updraft') {
         ctx.globalAlpha = Math.sin(Math.min(1, p) * Math.PI) * 0.7
         ctx.fillStyle = s & 1 ? '#ffffff' : '#d6f0ff'
