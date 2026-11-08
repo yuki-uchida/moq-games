@@ -46,7 +46,10 @@ test.each([1, 2, 3, 4, 5, 6, 7, 8])('sports level %s extends duration instead of
     expect(choiceText(player, 'w:w_sports').text).toContain('効果時間 +2秒')
     expect(choiceText(player, 'w:w_sports').text).not.toContain('数 +1')
   }
-  player.passives = [{ id: 'p_clever', lv: 4 }, { id: 'p_curious', lv: 5 }]
+  player.passives = [
+    { id: 'p_clever', lv: 4 },
+    { id: 'p_curious', lv: 5 }
+  ]
   expect(weaponStats(player, weapon).amount).toBe(3)
   expect(weaponStats(player, weapon).duration).toBeCloseTo(duration * playerStats(player).duration)
   if (level === MAX_WEAPON_LEVEL) {
@@ -54,6 +57,34 @@ test.each([1, 2, 3, 4, 5, 6, 7, 8])('sports level %s extends duration instead of
     expect(weaponStats(player, weapon).amount).toBe(3)
     expect(weaponStats(player, weapon).duration).toBeCloseTo(duration * 1.3 * playerStats(player).duration)
   }
+})
+
+test.each([
+  ['portrait', 180, 360],
+  ['ultrawide', 640, 270]
+])('sports balls bounce inside the %s screen of their owner', (_, viewX, viewY) => {
+  const game = new Game(5)
+  const player = game.addPlayer('a', 'p_gone')!
+  player.passives = []
+  player.weapons = [{ id: 'w_sports', lv: 1, cd: 0, held: 0, damage: 0 }]
+  game.setInput('a', { ...idle, viewX, viewY })
+  let seen = 0
+  for (let frame = 0; frame < 240; frame++) {
+    game.tick(1 / 60)
+    for (const shot of game.state.shots.filter((entry) => entry.weapon === 'w_sports')) {
+      seen++
+      expect(Math.abs(shot.x - player.x) + shot.r).toBeLessThanOrEqual(viewX + 1e-6)
+      expect(Math.abs(shot.y - player.y) + shot.r).toBeLessThanOrEqual(viewY + 1e-6)
+    }
+  }
+  expect(seen).toBeGreaterThan(0)
+})
+
+test('sports balls fall back to the full view when a client sends no screen size', () => {
+  const game = new Game(5)
+  game.setInput('a', { ...idle, viewX: 'wide', viewY: 99999 })
+  const input = (game as unknown as { inputs: Map<string, { viewX: number; viewY: number }> }).inputs.get('a')!
+  expect(input).toMatchObject({ viewX: 640, viewY: 360 })
 })
 
 test('a monster parent chases the nearest enemy', () => {
@@ -97,9 +128,9 @@ describe('life pacing', () => {
 
   test('levels require more experience and late enemies gain durability', () => {
     expect(xpForLevel(10)).toBeGreaterThan(Math.round(5 + 10 * 6 + 10 * 10 * 0.3))
-    expect(xpForLevel(10)).toBe(Math.round((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3 / 0.8))
-    expect(xpForLevel(20)).toBe(Math.round((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125 / 0.8))
-    expect(xpForLevel(30)).toBe(Math.round((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25 / 0.8))
+    expect(xpForLevel(10)).toBe(Math.round(((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3) / 0.8))
+    expect(xpForLevel(20)).toBe(Math.round(((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125) / 0.8))
+    expect(xpForLevel(30)).toBe(Math.round(((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25) / 0.8))
     const game = new Game(1)
     game.addPlayer('a')
     expect(game.hpScale()).toBe(1)

@@ -111,6 +111,9 @@ export interface Input {
   /** Index of the chosen level-up card, valid only for the matching choiceSeq. */
   pick: number
   pickSeq: number
+  /** Half size of the world area this player's screen shows; sports balls bounce at its edges. */
+  viewX?: number
+  viewY?: number
 }
 
 export interface OwnedWeapon {
@@ -708,7 +711,9 @@ export class Game {
     }
     const pick = Number.isSafeInteger(value.pick) ? (value.pick as number) : -1
     const pickSeq = Number.isSafeInteger(value.pickSeq) ? (value.pickSeq as number) : -1
-    this.inputs.set(id, { x, y, pick, pickSeq })
+    const viewX = num(value.viewX, 80, VIEW_HALF.x, VIEW_HALF.x)
+    const viewY = num(value.viewY, 80, VIEW_HALF.y, VIEW_HALF.y)
+    this.inputs.set(id, { x, y, pick, pickSeq, viewX, viewY })
     const player = this.state.players.find((p) => p.id === id)
     if (
       this.state.phase === 'playing' &&
@@ -2368,19 +2373,27 @@ export class Game {
           shot.y += shot.vy * dt
           break
         }
-        case 'bounce':
+        case 'bounce': {
           shot.x += shot.vx * dt
           shot.y += shot.vy * dt
-          if (Math.abs(shot.x - owner.x) > VIEW_HALF.x - 20) {
-            shot.vx = -Math.sign(shot.x - owner.x) * Math.abs(shot.vx)
-            shot.x = owner.x + Math.sign(shot.x - owner.x) * (VIEW_HALF.x - 20)
+          // Walls are the owner's own screen edges, so the ball stays fully visible on any aspect ratio.
+          const screen = this.inputs.get(owner.id)
+          const margin = Math.max(20, shot.r)
+          const wallX = Math.max(0, (screen?.viewX ?? VIEW_HALF.x) - margin)
+          const wallY = Math.max(0, (screen?.viewY ?? VIEW_HALF.y) - margin)
+          if (Math.abs(shot.x - owner.x) > wallX) {
+            const side = Math.sign(shot.x - owner.x)
+            shot.vx = -side * Math.abs(shot.vx)
+            shot.x = owner.x + side * wallX
           }
-          if (Math.abs(shot.y - owner.y) > VIEW_HALF.y - 20) {
-            shot.vy = -Math.sign(shot.y - owner.y) * Math.abs(shot.vy)
-            shot.y = owner.y + Math.sign(shot.y - owner.y) * (VIEW_HALF.y - 20)
+          if (Math.abs(shot.y - owner.y) > wallY) {
+            const side = Math.sign(shot.y - owner.y)
+            shot.vy = -side * Math.abs(shot.vy)
+            shot.y = owner.y + side * wallY
           }
           shot.angle += dt * 10
           break
+        }
         case 'arc':
           shot.vy += 900 * dt
           shot.x += shot.vx * dt

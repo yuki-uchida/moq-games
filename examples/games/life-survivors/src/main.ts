@@ -169,7 +169,8 @@ function activePauses(now: number): string[] {
 
 function input(): Input {
   const move = movement()
-  return { ...move, pick: pick?.index ?? -1, pickSeq: pick?.seq ?? -1 }
+  const screen = renderer.viewHalf
+  return { ...move, pick: pick?.index ?? -1, pickSeq: pick?.seq ?? -1, viewX: screen.x, viewY: screen.y }
 }
 
 function setStatus(text: string) {
@@ -1180,7 +1181,14 @@ const attract = (() => {
       const step = Math.min(0.05, (now - last) / 1000)
       last = now
       const p = demo.state.players[0]
-      demo.setInput('attract', { x: Math.cos(now / 2400), y: Math.sin(now / 3100), pick: 0, pickSeq: p.choiceSeq })
+      demo.setInput('attract', {
+        x: Math.cos(now / 2400),
+        y: Math.sin(now / 3100),
+        pick: 0,
+        pickSeq: p.choiceSeq,
+        viewX: renderer.viewHalf.x,
+        viewY: renderer.viewHalf.y
+      })
       if (p.downed || demo.state.time > 200) {
         demo.state = new Game(now).state
         demo.addPlayer('attract', 'p_monster')
