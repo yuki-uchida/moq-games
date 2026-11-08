@@ -336,6 +336,16 @@ export class Stage {
     this.projectiles.clear()
     if (this.last) this.sync(this.last.game, this.last.selected, this.last.undoId)
   }
+  /** Forget every figure and the terrain, as before the first sync (the title demo hands the stage back). */
+  reset() {
+    for (const actor of [...this.actors.values()]) this.remove(actor)
+    for (const p of this.projectiles) p.removeFromParent()
+    this.projectiles.clear()
+    this.terrain.clear()
+    this.terrainKey = ''
+    this.last = undefined
+    this.draw(true)
+  }
   get(id: string) {
     return this.actors.get(id)
   }

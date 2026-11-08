@@ -4,11 +4,46 @@
   /* Above every battle layer, including the status bar pinned on small landscape screens. */
   z-index: 50;
   overflow: auto;
-  background: radial-gradient(ellipse at 68% 80%, #64351e, #101a22 65%);
+  /* Scrim for the title demo: darkest behind the menu column, open over the board and the art. */
+  background:
+    linear-gradient(90deg, #0c141bf0 0%, #0c141bd0 34%, #0c141b70 62%, #0c141b40 100%),
+    radial-gradient(ellipse at 68% 80%, #64351e66, transparent 65%);
   color: #fff2d4;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: center;
+}
+/* Today's opaque backdrop; it fades out only while the demo battle plays behind the title. */
+.title-screen::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 68% 80%, #64351e, #101a22 65%);
+  transition: opacity 1.2s ease;
+}
+.attract-demo .title-screen::before {
+  opacity: 0;
+}
+.reduce-motion .title-screen::before {
+  transition: none;
+}
+.title-content > small,
+.title-content > p,
+.title-content nav > p {
+  text-shadow: 0 1px 3px #000c;
+}
+/* The demo shows only the board through the title; the battle HUD behind it stays out of sight. */
+html.attract-demo .field {
+  background: none;
+  box-shadow: none;
+  /* Soft edges instead of the field's clipped rectangle. */
+  mask-image: radial-gradient(closest-side, #000 62%, transparent 100%);
+}
+.attract-demo #app main > :not(.field),
+.attract-demo .field > :not(#board, #marks, canvas.stage, .fx) {
+  visibility: hidden;
 }
 .title-content {
   position: relative;
@@ -120,6 +155,9 @@
     grid-template-columns: 1fr;
     grid-template-rows: minmax(170px, 32vh) auto;
     align-content: center;
+    background:
+      linear-gradient(180deg, #0c141b40 0%, #0c141b80 30%, #0c141be0 48%, #0c141bf0 100%),
+      radial-gradient(ellipse at 68% 80%, #64351e66, transparent 65%);
   }
   .title-art {
     grid-column: 1;
