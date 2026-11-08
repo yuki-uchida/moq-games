@@ -134,6 +134,11 @@ function body(r: Raster, tier: 2 | 3 | 4, look: Look) {
         const th = fastAtan(dy, dx) * INV_TAU + rr * look.tw * 0.2 + 0.08 * Math.sin(rr * 7 + look.tw)
         j = Math.floor((th + 4) * 4) & 3
       }
+      if (look.face) {
+        const px = (x + 0.5 - cx) / (w * 0.36)
+        const py = (y + 0.5 - (top + h * 0.56)) / (h * 0.3)
+        if (px * px + py * py < 1) j = 1
+      }
       sector[y * SIZE + x] = j
       const ramp = RAMPS[j]
       const s = p.u * 0.55 + p.v * 0.8
@@ -190,7 +195,7 @@ function body(r: Raster, tier: 2 | 3 | 4, look: Look) {
   // Hats and weapons go behind/over the body; compose in order.
   const out = r
   const mainTop = blobs.reduce((m, b) => Math.min(m, b.cy - b.ry), SIZE)
-  const hatK = Math.min(k, (mainTop + 2) / 16)
+  const hatK = Math.min(k * 0.82, (mainTop + 2) / 16)
   if (look.hats) {
     const rx = w / 2
     const ry = h / 2
@@ -208,18 +213,23 @@ function body(r: Raster, tier: 2 | 3 | 4, look: Look) {
       drawWeapon(out, job, { x, y, ang, dir: 'down', k: wk }, { glow: job === 'mage' || job === 'cleric' ? 1 : 0 })
     }
     out.blit(layer)
-    const outer = Math.min(0.8, (92 - 11 * hatK) / rx)
+    const outer = Math.min(0.78, (92 - 11 * hatK) / rx)
     const hpos: [JobId, number][] = [
       ['sword', -outer],
       ['archer', outer],
-      ['mage', -0.34],
-      ['cleric', 0.36]
+      ['mage', -0.3],
+      ['cleric', 0.32]
     ]
     for (const [job, fx] of hpos) {
       const x = cx + rx * fx
       const sy = mainTop + ry * (1 - Math.sqrt(Math.max(0, 1 - fx * fx))) + 2.5 * hatK
       const sway = (look.sway ?? 0) * hatK
-      drawHeadgear(out, job, { x: Math.round(x), y: Math.round(sy), w: 24 * hatK, dir: 'down', k: hatK }, sway)
+      drawHeadgear(
+        out,
+        job,
+        { x: Math.round(x), y: Math.round(sy), w: 24 * hatK, dir: 'down', k: hatK, dome: 1.7 },
+        sway
+      )
     }
   } else out.blit(layer)
   if (look.face) face(out, cx, top, w, h, tier, look)
@@ -257,20 +267,41 @@ function face(r: Raster, cx: number, top: number, w: number, h: number, tier: 2 
     // Blush.
     r.ellipse(ex + side * rxE * 1.4, ey + ry + 2 * k + 1, 3 * k, 1.1 * k, C.blush)
   }
-  // Mouth.
-  const my = ey + Math.round(ryE + 4 * k)
-  const mw = Math.round(5 * k)
+  // Mouth: a bold rounded shape on the single colour patch.
+  const my = ey + Math.round(ryE + 5 * k)
+  const mw = 5.2 * k
+  const blob = (x: number, y: number, rx: number, ry: number, c: number) => r.ellipse(x, y, rx, ry, c)
   if (look.mouth === 'grit') {
-    r.rect(cx - mw, my, mw * 2, Math.round(3 * k), C.black)
-    r.rect(cx - mw + 1, my + 1, mw * 2 - 2, 1, C.white)
-    for (let x = cx - mw + 2; x < cx + mw - 1; x += 3) r.set(x, my + 1, C.black)
+    blob(cx, my + 1.6 * k, mw, 2.3 * k, C.black)
+    r.rect(
+      Math.round(cx - mw + 1),
+      Math.round(my + 0.2 * k),
+      Math.round(mw * 2 - 2),
+      Math.max(2, Math.round(1.4 * k)),
+      C.white
+    )
+    for (let x = Math.round(cx - mw + 3 * k); x < cx + mw - 1; x += Math.max(3, Math.round(2.8 * k)))
+      r.rect(x, Math.round(my + 0.2 * k), 1, Math.max(2, Math.round(1.4 * k)), C.black)
+    blob(cx, my + 2.6 * k, mw * 0.5, 0.8 * k, R.ratPink[2])
   } else if (look.mouth === 'o') {
-    r.ellipse(cx, my + 2 * k, 2.6 * k, 2.8 * k, C.black)
-    r.ellipse(cx, my + 3 * k, 1.5 * k, 1.1 * k, R.ratPink[2])
+    blob(cx, my + 2 * k, 2.8 * k, 3.2 * k, C.black)
+    blob(cx, my + 3.2 * k, 1.7 * k, 1.2 * k, R.ratPink[2])
   } else if (look.mouth === 'open') {
-    r.ellipse(cx, my + 2 * k, mw * 0.9, 3 * k, C.black)
-    r.ellipse(cx, my + 3.2 * k, mw * 0.55, 1.4 * k, R.ratPink[2])
-  } else r.rect(cx - mw, my + 1, mw * 2, Math.max(1, Math.round(k)), C.black)
+    blob(cx, my + 1.8 * k, mw, 3.2 * k, C.black)
+    r.rect(
+      Math.round(cx - mw * 0.7),
+      Math.round(my - 0.8 * k),
+      Math.round(mw * 1.4),
+      Math.max(1, Math.round(k)),
+      C.white
+    )
+    blob(cx, my + 3.4 * k, mw * 0.55, 1.5 * k, R.ratPink[2])
+  } else {
+    // Flat determined mouth with down-turned corners.
+    r.rect(Math.round(cx - mw), my + 1, Math.round(mw * 2), Math.max(2, Math.round(1.3 * k)), C.black)
+    r.rect(Math.round(cx - mw) - 1, my + 2, 1, Math.max(1, Math.round(k)), C.black)
+    r.rect(Math.round(cx + mw), my + 2, 1, Math.max(1, Math.round(k)), C.black)
+  }
 }
 
 const shapes = (tier: 2 | 3 | 4) => {

@@ -151,11 +151,12 @@ function frames(job: JobId, dir: Dir, name: string): Raster[] {
           ]
       return [0, 1, 2, 3].map((i) => {
         const t = hold(job, dir, i)
+        const windUp = job === 'sword' && i === 0 && !side
         return W({
           ...B[i],
           legs: L[i],
-          armR: fromSlime(t.armR),
-          ang: t.ang,
+          armR: windUp ? [fromSlime(t.armR)[0] + 3, fromSlime(t.armR)[1]] : fromSlime(t.armR),
+          ang: windUp ? -1.45 : t.ang,
           wfx: t.wfx,
           armL: job === 'sword' && i === 1 ? [2, -2] : [0, 0],
           sway: [-1, 3, 4, 1][i],
@@ -183,7 +184,7 @@ function frames(job: JobId, dir: Dir, name: string): Raster[] {
           tail: i ? 1 : -1,
           tailUp: 0.5,
           armR: fromSlime([t.armR[0] - (i ? 1 : 0), t.armR[1]]),
-          ang: t.ang + (i ? 0.08 : -0.08),
+          ang: (job === 'sword' && !side ? -1.45 : t.ang) + (i ? 0.08 : -0.08),
           wfx: job === 'archer' ? { draw: 0.7 } : { glow: job === 'mage' || job === 'cleric' ? 1 : 0 },
           sway: i ? 2 : -1,
           fx: (rr, a) => {
@@ -211,7 +212,7 @@ function frames(job: JobId, dir: Dir, name: string): Raster[] {
           legs: i === 1 || i === 2 ? legsAir : [L0, L0]
         }
         if (job === 'sword') {
-          const angs = [-2.6, -0.1, 1.5, -1.2]
+          const angs = [side ? -2.6 : -1.6, -0.1, 1.5, -1.2]
           const arms: V[] = [
             [-2, -6],
             [11, -2],
@@ -432,9 +433,9 @@ function frames(job: JobId, dir: Dir, name: string): Raster[] {
           crouch: s.crouch,
           tailUp: s.tailUp,
           tail: [-0.5, 0.8, -0.6, 0.3][i],
-          hdy: side ? -s.tilt * 0.5 : back ? s.tilt * 1.2 : -s.tilt * 2.2,
-          hdx: side ? -s.tilt * 1.2 : 0,
-          lean: side ? -s.tilt * 1.5 : 0,
+          hdy: side ? -1.5 - s.tilt * 2.2 : back ? s.tilt * 1.2 : -s.tilt * 2.2,
+          hdx: side ? -s.tilt * 0.4 : 0,
+          lean: side ? s.tilt * 0.5 : 0,
           sway: [0, 3, 4, 2][i],
           fx: (rr, a) => {
             if (!s.arcs) return

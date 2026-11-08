@@ -90,6 +90,101 @@ function needle(r: Raster, x: number, y: number, dir: number, c: number) {
   r.set(x + 2 * dir, y + 1, c)
 }
 
+/** Scatters small details on world-aligned cells so they continue across tile borders. */
+function scatter(
+  ox: number,
+  oy: number,
+  cell: number,
+  seed: number,
+  prob: number,
+  draw: (x: number, y: number, h: number) => void
+) {
+  const n = 512 / cell
+  for (let cy = Math.floor((oy - 10) / cell); cy <= Math.floor((oy + T + 10) / cell); cy++)
+    for (let cx = Math.floor((ox - 10) / cell); cx <= Math.floor((ox + T + 10) / cell); cx++) {
+      const mx = mod(cx, n)
+      const my = mod(cy, n)
+      if (ih(mx, my, seed) > prob) continue
+      const px = cx * cell + 2 + Math.floor(ih(mx, my, seed + 1) * (cell - 4)) - ox
+      const py = cy * cell + 2 + Math.floor(ih(mx, my, seed + 2) * (cell - 4)) - oy
+      draw(px, py, ih(mx, my, seed + 3))
+    }
+}
+
+/** A small rounded snow mound: lit crest, shaded foot. `cast` adds a ground shadow for dark floors. */
+function mound(r: Raster, x: number, y: number, rx: number, ry: number, cast: number) {
+  if (cast) r.ellipse(x + 1.5, y + 1.6, rx, ry, cast)
+  r.ellipse(x + 0.5, y + 0.8, rx, ry, SN[2])
+  r.ellipse(x, y, rx, ry, SN[1])
+  r.ellipse(x - rx * 0.3, y - ry * 0.35, rx * 0.5, ry * 0.45, SN[0])
+  r.set(x + rx - 1, y + 1, SN[2])
+}
+
+function twig(r: Raster, x: number, y: number, h: number, snowTop: boolean) {
+  const len = 5 + Math.floor(h * 4)
+  const dir = h < 0.5 ? 1 : -1
+  for (let i = 0; i < len; i++) {
+    r.set(x + i * dir, y + (i > 2 ? 1 : 0), WD[2])
+    r.set(x + i * dir, y + (i > 2 ? 2 : 1), NG[3])
+  }
+  r.set(x + 2 * dir, y - 1, WD[2])
+  r.set(x + 3 * dir, y - 2, WD[2])
+  r.set(x + 1 * dir, y, WD[2])
+  if (snowTop) {
+    r.set(x + 1 * dir, y - 1, SN[0])
+    r.set(x + 3 * dir, y - 3, SN[1])
+    r.set(x + 4 * dir, y, SN[0])
+  }
+}
+
+function glint(r: Raster, x: number, y: number, big: boolean) {
+  r.set(x, y, C.white)
+  if (big)
+    for (const [dx, dy] of [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1]
+    ] as const)
+      r.set(x + dx, y + dy, IC[1])
+}
+
+function pebble(r: Raster, x: number, y: number) {
+  r.rect(x, y + 1, 4, 2, NG[0])
+  r.rect(x, y, 3, 2, ST[2])
+  r.set(x, y, ST[1])
+  r.set(x + 1, y, ST[0])
+  r.set(x + 3, y + 2, NG[3])
+  r.set(x, y - 1, SN[0])
+  r.set(x + 1, y - 1, SN[1])
+  r.set(x + 2, y - 1, SN[0])
+}
+
+function print(r: Raster, x: number, y: number) {
+  r.ellipse(x + 0.5, y + 0.8, 1.7, 2.3, SN[0])
+  r.ellipse(x, y, 1.7, 2.3, SN[2])
+  r.set(x, y - 1, SN[3])
+}
+
+function fern(r: Raster, x: number, y: number) {
+  for (const [dx, dy, c] of [
+    [0, 0, NL[2]],
+    [1, 0, NL[1]],
+    [2, 0, NL[2]],
+    [-1, -1, NL[1]],
+    [0, -1, NL[0]],
+    [1, -1, NL[1]],
+    [2, -1, NL[0]],
+    [3, -1, NL[1]],
+    [0, -2, NL[1]],
+    [2, -2, NL[0]],
+    [1, 1, NL[3]],
+    [2, 1, NL[3]],
+    [0, 1, NL[3]]
+  ] as const)
+    r.set(x + dx, y + dy, c)
+}
+
 function forestBase(tx: number, ty: number) {
   const a = mod(tx, 8)
   const b = mod(ty, 8)
@@ -97,73 +192,61 @@ function forestBase(tx: number, ty: number) {
     const ox = a * T
     const oy = b * T
     const r = new Raster(T, T)
+    // a calm, low-contrast ground: a wide dithered drift between two close tones, and fine mottling
     const soil = field(ox, oy, [
-      [64, 1, 0.55],
-      [16, 2, 0.45]
+      [64, 1, 0.25],
+      [32, 3, 0.3],
+      [8, 2, 0.45]
     ])
     const moss = field(ox, oy, [
-      [32, 7, 0.6],
-      [8, 8, 0.4]
-    ])
-    const snow = field(ox, oy, [
-      [64, 9, 0.6],
-      [16, 10, 0.4]
+      [16, 7, 0.55],
+      [8, 8, 0.45]
     ])
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
-        const d = (bayer(x, y) - 0.5) * 0.05
-        const s = soil(x, y) + d
-        let c = s < 0.4 ? NG[2] : s > 0.62 ? NG[0] : NG[1]
-        const m = moss(x, y) + d
-        if (m > 0.66) c = m > 0.76 ? NL[1] : NL[2]
-        const sn = snow(x, y)
-        if (sn > 0.7) {
-          c = SN[1]
-          if (snow(x + 1, y + 1) <= 0.7 || snow(x + 1, y) <= 0.7) c = SN[2]
-          else if (snow(x - 1, y - 1) <= 0.7 || snow(x, y - 1) <= 0.7) c = SN[0]
-          else if (sn > 0.78 && bayer(x, y) < 0.3) c = SN[0]
-        } else if (sn > 0.67 && bayer(x, y) < 0.5 && snow(x + 1, y + 1) > 0.7) c = NG[3]
+        const s = soil(x, y) + (bayer(x, y) - 0.5) * 0.3
+        let c: number = s < 0.36 ? NG[2] : NG[1]
+        if (s > 0.68) c = NG[0]
+        if (moss(x, y) > 0.8 && bayer(x + 1, y) < 0.6) c = NL[2]
         r.set(x, y, c)
       }
-    // roots: short curved dark strands with a lit underside
-    for (let cy = Math.floor((oy - 8) / 64); cy <= Math.floor((oy + T) / 64); cy++)
-      for (let cx = Math.floor((ox - 20) / 64); cx <= Math.floor((ox + T) / 64); cx++) {
-        const mx = mod(cx, 8)
-        const my = mod(cy, 8)
-        if (ih(mx, my, 31) > 0.42) continue
-        const px = cx * 64 + 8 + Math.floor(ih(mx, my, 32) * 40) - ox
-        const py = cy * 64 + 10 + Math.floor(ih(mx, my, 33) * 40) - oy
-        const dir = ih(mx, my, 34) < 0.5 ? 1 : -1
-        for (let i = 0; i < 18; i++) {
-          const x = px + i * dir
-          const y = py + Math.round(Math.sin(i * 0.38) * 3) + (i > 12 ? 1 : 0)
-          const under = r.get(x, y)
-          if (under === SN[0] || under === SN[1] || under === SN[2]) continue
-          const w = i < 3 || i > 14 ? 1 : 2
-          for (let k = 0; k < w; k++) r.set(x, y + k, k === 0 ? NG[3] : NG[4])
-          r.set(x, y + w, NG[0])
-        }
+    // roots with snow lying on top
+    scatter(ox, oy, 64, 31, 0.5, (px, py, h) => {
+      const dir = h < 0.5 ? 1 : -1
+      for (let i = 0; i < 18; i++) {
+        const x = px + i * dir
+        const y = py + Math.round(Math.sin(i * 0.38) * 3) + (i > 12 ? 1 : 0)
+        const w = i < 3 || i > 14 ? 1 : 2
+        for (let k = 0; k < w; k++) r.set(x, y + k, k === 0 ? NG[3] : NG[4])
+        r.set(x, y + w, NG[0])
+        if (i > 2 && i < 15 && i % 3 !== 2) r.set(x, y - 1, i % 2 ? SN[1] : SN[0])
       }
-    // needles
-    const rn = rng(a * 71 + b * 13 + 5)
-    for (let i = 0; i < 20; i++) {
-      const x = 2 + Math.floor(rn() * 58)
-      const y = 2 + Math.floor(rn() * 58)
-      const under = r.get(x, y)
-      if (under === SN[0] || under === SN[1] || under === SN[2]) continue
-      const dir = rn() < 0.5 ? 1 : -1
-      needle(r, x, y, dir, rn() < 0.55 ? NG[3] : rn() < 0.5 ? NL[3] : NG[0])
-    }
-    // little pine cones and pebbles
-    for (let i = 0; i < 2; i++) {
-      const x = 6 + Math.floor(rn() * 48)
-      const y = 6 + Math.floor(rn() * 48)
-      if (r.get(x, y) === SN[0] || r.get(x, y) === SN[1]) continue
-      r.rect(x, y, 3, 2, WD[4])
-      r.set(x, y, WD[3])
-      r.set(x + 1, y + 2, NG[4])
-      r.set(x + 2, y + 2, NG[4])
-    }
+    })
+    scatter(ox, oy, 64, 41, 0.45, (px, py, h) => mound(r, px, py, 2.2 + h * 2.6, 1.3 + h * 1.1, NG[3]))
+    scatter(ox, oy, 32, 51, 0.34, (px, py, h) => twig(r, px, py, h, h > 0.4))
+    scatter(ox, oy, 16, 61, 0.55, (px, py, h) => {
+      const dir = h < 0.5 ? 1 : -1
+      needle(r, px, py, dir, h < 0.4 ? NG[3] : h < 0.7 ? NL[3] : NG[0])
+      needle(r, px + 3 * dir, py + 2, -dir, NG[3])
+      r.set(px - dir, py + 2, NG[0])
+    })
+    scatter(ox, oy, 32, 71, 0.4, (px, py) => fern(r, px, py))
+    scatter(ox, oy, 32, 81, 0.3, (px, py, h) => {
+      if (h < 0.5) pebble(r, px, py)
+      else {
+        r.rect(px, py, 3, 2, WD[4])
+        r.set(px, py, WD[3])
+        r.set(px + 1, py + 2, NG[4])
+      }
+    })
+    scatter(ox, oy, 16, 91, 0.5, (px, py, h) => {
+      r.set(px, py, h < 0.5 ? SN[1] : SN[0])
+      if (h > 0.7) r.set(px + 1, py, SN[2])
+    })
+    scatter(ox, oy, 64, 101, 0.45, (px, py) => {
+      for (let i = 0; i < 6; i++) r.set(px + i, py + (i % 2), NL[3])
+      r.set(px + 2, py - 1, NL[2])
+    })
     return r
   })
 }
@@ -177,40 +260,45 @@ function snowBase(tx: number, ty: number) {
     const ox = a * T
     const oy = b * T
     const r = new Raster(T, T)
+    // a gentle drift: two close tones blended by a wide dither, hollows only a hint darker
     const n = field(ox, oy, [
-      [64, 21, 0.55],
-      [32, 22, 0.45]
+      [64, 21, 0.45],
+      [32, 22, 0.35],
+      [16, 23, 0.2]
     ])
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
-        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.045
-        let c = SN[1]
-        if (v > 0.65) c = SN[0]
-        else if (v < 0.33) c = SN[2]
-        // a crisp shadow line under each drift crest
-        if (n(x, y) <= 0.65 && n(x, y - 1) > 0.65 && n(x + 1, y - 1) > 0.65) c = SN[2]
-        if (n(x, y) < 0.34 && n(x, y - 1) >= 0.34 && n(x - 1, y) < 0.34) c = SN[3]
+        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.2
+        let c: number = SN[1]
+        if (v > 0.66) c = SN[0]
+        else if (v < 0.3) c = SN[2]
         r.set(x, y, c)
       }
-    // sparkle glints
-    for (let cy = Math.floor((oy - 3) / 32); cy <= Math.floor((oy + T + 3) / 32); cy++)
-      for (let cx = Math.floor((ox - 3) / 32); cx <= Math.floor((ox + T + 3) / 32); cx++) {
-        const mx = mod(cx, 16)
-        const my = mod(cy, 16)
-        if (ih(mx, my, 91) > 0.5) continue
-        const px = cx * 32 + 3 + Math.floor(ih(mx, my, 93) * 26) - ox
-        const py = cy * 32 + 3 + Math.floor(ih(mx, my, 94) * 26) - oy
-        if (r.get(px, py) === SN[0]) continue
-        r.set(px, py, C.white)
-        if (ih(mx, my, 95) < 0.45)
-          for (const [dx, dy] of [
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1]
-          ] as const)
-            r.set(px + dx, py + dy, IC[1])
+    // wind ripples: thin curved lines with a lit edge
+    scatter(ox, oy, 32, 111, 0.55, (px, py, h) => {
+      const len = 8 + Math.floor(h * 10)
+      for (let i = 0; i < len; i++) {
+        const yy = py + Math.round(Math.sin(i * 0.45) * 1.2)
+        r.set(px + i, yy, SN[2])
+        if (i % 3 !== 1) r.set(px + i, yy - 1, SN[0])
       }
+    })
+    scatter(ox, oy, 32, 121, 0.55, (px, py, h) => mound(r, px, py, 3 + h * 4, 1.8 + h * 1.6, 0))
+    scatter(ox, oy, 64, 131, 0.5, (px, py, h) => {
+      const dx = h < 0.5 ? 5 : -5
+      print(r, px, py)
+      print(r, px + dx, py + 5)
+      print(r, px + dx * 2, py + 2)
+    })
+    scatter(ox, oy, 64, 141, 0.4, (px, py, h) => twig(r, px, py, h, true))
+    scatter(ox, oy, 32, 151, 0.4, (px, py, h) => {
+      needle(r, px, py, h < 0.5 ? 1 : -1, NL[3])
+      needle(r, px + 4, py + 3, h < 0.5 ? -1 : 1, NG[3])
+    })
+    scatter(ox, oy, 64, 161, 0.4, (px, py, h) => {
+      if (h < 0.6) pebble(r, px, py)
+    })
+    scatter(ox, oy, 16, 171, 0.5, (px, py, h) => glint(r, px, py, h > 0.5))
     return r
   })
 }

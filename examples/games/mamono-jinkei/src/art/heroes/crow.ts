@@ -320,9 +320,9 @@ function frames(job: JobId, dir: Dir, name: string): Raster[] {
     }
     case 'action': {
       // Flapping flight: wings fully spread, body pitched forward, feet tucked.
-      const fans = side ? [-1.15, -0.25, 0.95, 0.25] : [-0.95, -0.2, 0.5, 0.1]
+      const fans = side ? [-1.25, -0.3, 0.6, 0.1] : [-0.95, -0.2, 0.5, 0.1]
       return fans.map((f, i) => {
-        const w: Wing = { fan: f, len: side ? 21 : 22, n: 6, spread: 0.15 }
+        const w: Wing = { fan: f, len: side ? 24 : 22, n: 6, spread: 0.15 }
         const wFar: Wing = { fan: side ? f + 0.35 : f, len: side ? 17 : 22, n: 6, spread: 0.15 }
         return R_({
           dy: 3,
