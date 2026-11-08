@@ -46,7 +46,10 @@ test.each([1, 2, 3, 4, 5, 6, 7, 8])('sports level %s extends duration instead of
     expect(choiceText(player, 'w:w_sports').text).toContain('効果時間 +2秒')
     expect(choiceText(player, 'w:w_sports').text).not.toContain('数 +1')
   }
-  player.passives = [{ id: 'p_clever', lv: 4 }, { id: 'p_curious', lv: 5 }]
+  player.passives = [
+    { id: 'p_clever', lv: 4 },
+    { id: 'p_curious', lv: 5 }
+  ]
   expect(weaponStats(player, weapon).amount).toBe(3)
   expect(weaponStats(player, weapon).duration).toBeCloseTo(duration * playerStats(player).duration)
   if (level === MAX_WEAPON_LEVEL) {
@@ -125,9 +128,9 @@ describe('life pacing', () => {
 
   test('levels require more experience and late enemies gain durability', () => {
     expect(xpForLevel(10)).toBeGreaterThan(Math.round(5 + 10 * 6 + 10 * 10 * 0.3))
-    expect(xpForLevel(10)).toBe(Math.round((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3 / 0.8))
-    expect(xpForLevel(20)).toBe(Math.round((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125 / 0.8))
-    expect(xpForLevel(30)).toBe(Math.round((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25 / 0.8))
+    expect(xpForLevel(10)).toBe(Math.round(((5 + 10 * 6 + 10 * 10 * 0.3) * 1.3) / 0.8))
+    expect(xpForLevel(20)).toBe(Math.round(((5 + 20 * 6 + 20 * 20 * 0.3) * 1.3 * 1.125) / 0.8))
+    expect(xpForLevel(30)).toBe(Math.round(((5 + 30 * 6 + 30 * 30 * 0.3) * 1.3 * 1.25) / 0.8))
     const game = new Game(1)
     game.addPlayer('a')
     expect(game.hpScale()).toBe(1)
