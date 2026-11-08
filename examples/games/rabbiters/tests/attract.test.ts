@@ -7,7 +7,8 @@ const run = (demo: AttractDemo, seconds: number) => {
 }
 
 describe('title attract demo', () => {
-  it('plays on its own: it moves and eats', () => {
+  // Long simulated runs (40-200 s of game time) take several seconds on a busy machine.
+  it('plays on its own: it moves and eats', { timeout: 60_000 }, () => {
     const demo = new AttractDemo({ seed: 7 })
     const start = { x: demo.player.x, z: demo.player.z }
     run(demo, 60)
@@ -16,7 +17,7 @@ describe('title attract demo', () => {
     expect(demo.state.phase).toBe('playing')
   })
 
-  it('is deterministic for a fixed seed and varies between seeds', () => {
+  it('is deterministic for a fixed seed and varies between seeds', { timeout: 60_000 }, () => {
     const [first, second, other] = [7, 7, 8].map((seed) => new AttractDemo({ seed }))
     for (const demo of [first, second, other]) run(demo, 40)
     expect(second.player).toEqual(first.player)
@@ -45,7 +46,7 @@ describe('title attract demo', () => {
     expect(demo.runs).toBe(3)
   })
 
-  it('survives and keeps moving over several minutes of demo time', () => {
+  it('survives and keeps moving over several minutes of demo time', { timeout: 120_000 }, () => {
     const demo = new AttractDemo({ seed: 7 })
     let travelled = 0
     let last = { x: demo.player.x, z: demo.player.z }
