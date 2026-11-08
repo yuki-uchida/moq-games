@@ -146,7 +146,7 @@ export function hintsFor(view: View, info: StageInfo | undefined, myId: string):
   if (current)
     out.push(
       current.strong
-        ? { key: '水門', text: '流れが強すぎる！ 水門を止めよう', hot: true }
+        ? { key: '水門', text: '流れが強すぎる！ 水門をひらいて止めよう', hot: true }
         : formSize >= 3
           ? { key: '陣形', text: '陣形なら流されない！' }
           : { key: '陣形', text: '陣形なら流されない', hot: true }
@@ -168,7 +168,7 @@ export function hintsFor(view: View, info: StageInfo | undefined, myId: string):
     if (door)
       out.push(
         view.party.keys > 0
-          ? { key: 'カギ', text: '鍵で扉を開ける（ふれる）', hot: true }
+          ? { key: 'カギ', text: 'カギで扉をあける（ふれる）', hot: true }
           : { key: 'カギ', text: 'カギをさがそう' }
       )
     const bell = view.props.find((p) => p.kind === 'bell' && Math.hypot(p.x - h.x, p.y - h.y) < 120)

@@ -139,7 +139,7 @@ describe('crow hints (stage 3)', () => {
     ).toBe(true)
     expect(
       v(hero(300, 160), [{ id: 2, kind: 'lockdoor', x: 330, y: 160, state: 'closed', st: 0 }], 1)[0].text
-    ).toContain('鍵で扉')
+    ).toContain('カギで扉')
     expect(
       v(hero(300, 160), [{ id: 3, kind: 'bell', x: 330, y: 160, state: 'idle', st: 0 }]).some((x) => x.key === 'F')
     ).toBe(true)

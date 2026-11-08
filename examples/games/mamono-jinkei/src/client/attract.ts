@@ -24,6 +24,11 @@ const WAYPOINTS: [number, number][] = [
 const STAGE_TIME = 26
 const FADE = 0.8
 const ORDER: StageId[] = ['meadow', 'sewer', 'tower', 'forest']
+/**
+ * Where each later stage's demo plays: an open room away from the map's left edge, so the camera can keep the party
+ * in the clear right part of the screen beside the title menu.
+ */
+const DEMO_ROOM: Partial<Record<StageId, string>> = { sewer: 'B', tower: 'C', forest: 'B' }
 
 export class Attract {
   session!: Session & { world: World }
@@ -59,6 +64,8 @@ export class Attract {
   private restart() {
     this.session?.dispose()
     this.session = demoSession(this.stage)
+    const room = DEMO_ROOM[this.stage]
+    if (room) this.session.world.command(this.session.myId, { type: 'warp', to: room })
     this.home = undefined
     this.goal = undefined
     this.input = { ...NO_INPUT }
@@ -172,8 +179,13 @@ export class Attract {
     const info = this.session.info
     if (!this.goal && info) {
       for (let k = 0; k < 20 && !this.goal; k++) {
-        const tx = Math.floor(this.home.x / TILE) + Math.round((Math.random() - 0.5) * 9)
-        const ty = Math.floor(this.home.y / TILE) + Math.round((Math.random() - 0.5) * 7)
+        const room = info.rooms.find((r) => r.id === DEMO_ROOM[this.stage])
+        let tx = Math.floor(this.home.x / TILE) + Math.round((Math.random() - 0.5) * 9)
+        let ty = Math.floor(this.home.y / TILE) + Math.round((Math.random() - 0.5) * 7)
+        if (room) {
+          tx = Math.max(room.x + 1, Math.min(room.x + room.w - 2, tx))
+          ty = Math.max(room.y + 1, Math.min(room.y + room.h - 2, ty))
+        }
         const kind = info.tiles[ty * info.w + tx]
         // Only solid, walkable ground with walkable neighbours (no falls into the sky or sludge).
         const ok = (i: number) => {

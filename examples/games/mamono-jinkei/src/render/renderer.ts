@@ -186,6 +186,7 @@ export class Renderer {
     this.stopUntil = 0
     this.lighting.clear()
     this.trails.clear()
+    this.lunges.length = 0
   }
 
   /** Feeds a visual event. Sounds and HUD texts are handled elsewhere. */
@@ -371,6 +372,7 @@ export class Renderer {
     this.drawShots(view.shots, t)
     this.fx.draw(ctx, ox, oy, t)
     this.drawFlashes(t)
+    this.drawLunges(t)
     this.ambience.update(dt, t, view, ox, oy, artW, artH)
     this.particles.update(dt)
     this.particles.draw(ctx, ox, oy, artW, artH)
@@ -398,6 +400,14 @@ export class Renderer {
     const tech = hero?.state === 'tech' ? view.techs.find((x) => x.slots.includes(hero.slot)) : undefined
     let tx = tech ? tech.x : (hero?.x ?? (info.w * TILE) / 2)
     let ty = tech ? tech.y - 24 - tech.z * 0.5 : hero ? hero.y - 24 : (info.h * TILE) / 2
+    // 月下群狼陣: frame the pack and the enemies it lunges at.
+    if (tech?.kind === 'pack' && tech.points?.length) {
+      let sx = 0
+      let sy = 0
+      for (const [px, py] of tech.points) (sx += px), (sy += py)
+      tx = (tx + sx / tech.points.length) / 2
+      ty = (ty + sy / tech.points.length) / 2 - 24
+    }
     // The room the followed hero is in decides the zoom.
     const htx = tx / TILE
     const hty = ty / TILE
@@ -1223,36 +1233,61 @@ export class Renderer {
     blitAnim(this.wctx, a, t - x.st, x.x - this.ox, x.y - x.z - this.oy, false, 1, x.z > 0.5)
   }
 
-  /** 月下群狼陣: moonlit streaks along the lunges (the howl, moon and crescent come as fx events). */
+  /**
+   * 月下群狼陣: each lunge leaves a moonlit streak from the pack's centre to its target that lingers and fades,
+   * with a burst of sparks where it lands (the howl, moon and crescent come as fx events).
+   */
   private drawPack(x: TechView, t: number) {
     if (x.stage !== 'lunge' || !x.points?.length) return
-    const ctx = this.wctx
-    ctx.save()
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.lineCap = 'round'
     const upTo = Math.min(x.points.length - 1, x.index ?? 0)
-    let px = x.x
-    let py = x.y
     for (let i = 0; i <= upTo; i++) {
+      const key = x.id * 16 + i
+      if (this.lungeSeen.has(key)) continue
+      this.lungeSeen.add(key)
       const [qx, qy] = x.points[i]
-      const fresh = i === upTo
-      ctx.globalAlpha = fresh ? 0.85 : 0.3
-      ctx.strokeStyle = '#bfe4ff'
-      ctx.lineWidth = fresh ? 5 : 2
-      ctx.beginPath()
-      ctx.moveTo(px - this.ox, py - this.oy - 20)
-      ctx.lineTo(qx - this.ox, qy - this.oy - 20)
-      ctx.stroke()
-      if (fresh) {
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
-      px = qx
-      py = qy
+      const [px, py] = i > 0 ? x.points[i - 1] : [x.x, x.y]
+      this.lunges.push({ x0: px, y0: py, x1: qx, y1: qy, t0: t })
+      this.particles.burst('spark', qx, qy - 20, 12)
+      this.particles.burst('snowball', qx, qy, 8)
+      const hit = findAnim('fx', 'hit')
+      if (hit) this.fx.add(hit, qx, qy - 24, t)
+      this.lighting.flash(qx, qy - 20, 180, 'cool', t, 0.4)
     }
-    ctx.restore()
-    void t
+    if (this.lungeSeen.size > 200) this.lungeSeen.clear()
+  }
+
+  private lunges: { x0: number; y0: number; x1: number; y1: number; t0: number }[] = []
+  private lungeSeen = new Set<number>()
+
+  /** Lingering lunge streaks (drawn after the actors). */
+  private drawLunges(t: number) {
+    const ctx = this.wctx
+    let keep = 0
+    for (const l of this.lunges) {
+      const age = t - l.t0
+      if (age > 0.7 || age < -1) continue
+      this.lunges[keep++] = l
+      const k = Math.min(1, age / 0.08)
+      const fade = 1 - age / 0.7
+      const ex = l.x0 + (l.x1 - l.x0) * k
+      const ey = l.y0 + (l.y1 - l.y0) * k
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(l.x0 - this.ox, l.y0 - this.oy - 20)
+      ctx.lineTo(ex - this.ox, ey - this.oy - 20)
+      ctx.globalAlpha = 0.45 * fade
+      ctx.strokeStyle = '#8fc8ff'
+      ctx.lineWidth = 12 * fade + 2
+      ctx.stroke()
+      ctx.globalAlpha = 0.95 * fade
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 3
+      ctx.stroke()
+      ctx.restore()
+    }
+    this.lunges.length = keep
   }
 
   /** 黒羽の大旋風: the whirlwind sprite with black feathers spiralling up around it. */
