@@ -291,7 +291,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.equal(JSON.parse(selectScope(['package-lock.json']).shards).length, 16)
   assert.match(
     browser,
-    /run: xvfb-run -a npx playwright test --config playwright.pages.config.ts --test-list shard-tests.txt/
+    /^        run: xvfb-run -a npx playwright test --config playwright\.pages\.config\.ts --test-list shard-tests\.txt --workers=2$/m
   )
   assert.match(browser, /env:\n      LIBGL_ALWAYS_SOFTWARE: 'true'\n      GALLIUM_DRIVER: llvmpipe\n/)
   assert.match(

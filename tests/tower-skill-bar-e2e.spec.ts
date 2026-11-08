@@ -9,7 +9,8 @@ import { openOfflineCampaign, towerPath } from './tower-defense-e2e-arrange'
 // Seeds a campaign already in the assault with a soldier (optionally down) and an archer.
 async function seed(
   page: Page,
-  { soldierDown = false, far = false, tough = false, wolf = false, spawn = false, casters = ['soldier', 'archer'] as AllyType[] } = {}
+  { soldierDown = false, far = false, tough = false, wolf = false, spawn = false, casters = ['soldier', 'archer'] as AllyType[] } = {},
+  beforeContinue?: () => Promise<void>
 ) {
   const save = wolf ? freshRunFromProfile({ version: 1, purchased: [] }, 2, 1) : freshSave()
   save.economyVersion = 2
@@ -62,6 +63,7 @@ async function seed(
     localStorage.removeItem('tower-jev-coach-aim-v1')
   }, raw)
   await page.reload()
+  if (beforeContinue) await beforeContinue()
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
 }
@@ -361,17 +363,102 @@ test('two specials cast back-to-back each get their own band one after the other
 test('two skills tapped back to back on one tough enemy are both cast: a special that cannot finish it does not hide it', async ({
   page
 }) => {
-  await seed(page, { tough: true })
+  await seed(page, { tough: true }, async () => {
+    await page.evaluate((specials) => {
+      const initial = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
+        enemy = initial.units.find((unit: any) => unit.owner === 'ai'),
+        casters = ['archer', 'soldier'].map((type) => initial.units.find((unit: any) => unit.type === type)),
+        app = document.querySelector<HTMLElement>('#app')!,
+        result = ((window as any).toughTargetCast = { done: false } as any)
+      const observer = new MutationObserver(() => {
+        if (
+          app.dataset.phase !== 'assault' ||
+          document.querySelector<HTMLElement>('#campaign-loading')?.checkVisibility() ||
+          (window as any).towerDefenseDiagnostics().specialAbilities.loaded !== 10
+        )
+          return
+        try {
+          const label = document.querySelector<HTMLElement>(`.unit-health[data-unit-id="${enemy.id}"]`),
+            hp = label ? Number(label.style.getPropertyValue('--hp')) * enemy.maxHp : 0,
+            buttons = casters.map((caster: any) =>
+              document.querySelector<HTMLButtonElement>(`.skill-btn[data-skill-type="${caster.type}"]`)
+            ),
+            snapshot = {
+              time: Number(app.dataset.simulationTime),
+              enemyId: enemy.id,
+              casterIds: casters.map((caster: any) => caster.id),
+              hp,
+              buttons: buttons.map((button: HTMLButtonElement | null) => ({
+                state: button?.dataset.state,
+                targets: Number(button?.dataset.targetCount)
+              }))
+            }
+          result.snapshot = snapshot
+          if (
+            !label ||
+            casters.some((caster: any) => hp <= caster.attack * specials[caster.type as 'archer' | 'soldier'].power)
+          )
+            throw new Error('Original tough enemy missed the nonlethal frame')
+          if (!snapshot.buttons.every((button: any) => button.state === 'ready' && button.targets > 0)) return
+          if (
+            !casters.every((caster: any) => {
+              const casterLabel = document.querySelector<HTMLElement>(`.unit-health[data-unit-id="${caster.id}"]`)
+              return (
+                casterLabel &&
+                Math.hypot(
+                  Number(label.dataset.worldX) - Number(casterLabel.dataset.worldX),
+                  Number(label.dataset.worldY) - Number(casterLabel.dataset.worldY)
+                ) <= specials[caster.type as 'archer' | 'soldier'].range
+              )
+            })
+          )
+            return
+          observer.disconnect()
+          buttons[0]!.click()
+          result.afterFirst = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state
+          buttons[1]!.click()
+          result.afterSecond = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state
+          result.done = true
+        } catch (error) {
+          observer.disconnect()
+          result.error = String(error)
+          result.done = true
+        }
+      })
+      observer.observe(app, { attributes: true, attributeFilter: ['data-simulation-time'] })
+    }, SPECIALS)
+  })
   await assault(page)
   const archer = page.locator('.skill-btn[data-skill-type="archer"]'),
     soldier = page.locator('.skill-btn[data-skill-type="soldier"]')
-  await expect(archer).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
-  await expect(soldier).not.toHaveAttribute('data-target-count', '0', { timeout: 120_000 })
-  await expect(archer).toHaveAttribute('data-state', 'ready')
-  await expect(soldier).toHaveAttribute('data-state', 'ready')
-  // Two taps in the same task: the second one sees the first cast still pending.
-  await page.evaluate(() => {
-    for (const type of ['archer', 'soldier']) document.querySelector<HTMLElement>(`.skill-btn[data-skill-type="${type}"]`)!.click()
+  await expect.poll(() => page.evaluate(() => (window as any).toughTargetCast.done), { timeout: 120_000 }).toBe(true)
+  const cast = await page.evaluate(() => (window as any).toughTargetCast)
+  expect(cast.error).toBeUndefined()
+  expect(cast.snapshot.buttons.map((button: any) => button.state)).toEqual(['ready', 'ready'])
+  for (const button of cast.snapshot.buttons) expect(button.targets).toBeGreaterThan(0)
+  const first = cast.afterFirst,
+    enemy = first.units.find((unit: any) => unit.id === cast.snapshot.enemyId),
+    firstArcher = first.units.find((unit: any) => unit.type === 'archer'),
+    firstSoldier = first.units.find((unit: any) => unit.type === 'soldier')
+  expect(first.time).toBe(cast.snapshot.time)
+  expect(cast.afterSecond.time).toBe(first.time)
+  expect(cast.afterSecond.units.find((unit: any) => unit.id === enemy.id).hp).toBe(enemy.hp)
+  expect([firstArcher.id, firstSoldier.id]).toEqual(cast.snapshot.casterIds)
+  expect(enemy.hp).toBeCloseTo(cast.snapshot.hp, 8)
+  expect(firstArcher.specialCast.startedAt).toBe(first.time)
+  expect(firstArcher.specialCooldown).toBe(60)
+  expect(firstSoldier.specialCooldown ?? 0).toBeLessThanOrEqual(1e-9)
+  for (const caster of [firstArcher, firstSoldier]) {
+    const special = SPECIALS[caster.type as 'archer' | 'soldier']
+    expect(caster.hp).toBeGreaterThan(0)
+    expect(enemy.hp).toBeGreaterThan(caster.attack * special.power)
+    expect(Math.hypot(enemy.x - caster.x, enemy.y - caster.y)).toBeLessThanOrEqual(special.range)
+  }
+  expect(first.specialEffects.map((effect: any) => effect.type)).toEqual(['archer'])
+  expect(first.specialEffects[0]).toMatchObject({
+    sourceId: firstArcher.id,
+    power: firstArcher.attack * SPECIALS.archer.power,
+    applied: false
   })
   await expect(archer).toHaveAttribute('data-state', 'charging')
   await expect(soldier).toHaveAttribute('data-state', 'charging')
