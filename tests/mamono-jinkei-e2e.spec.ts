@@ -140,6 +140,12 @@ test('title renders with the attract demo and no errors', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '陣形をくもう' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeVisible()
+  // Esc also closes the settings while a volume slider has the focus.
+  await page.getByRole('button', { name: /設定/ }).click()
+  await expect(page.getByRole('heading', { name: '設定' })).toBeVisible()
+  await page.locator('input[type=range]:visible').first().focus()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeVisible()
   expect(errors).toEqual([])
 })
 

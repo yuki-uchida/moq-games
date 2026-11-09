@@ -8,7 +8,7 @@ import { BOSS_SPEC } from '../contract'
 import { C, LIGHTER, R } from '../palette'
 import { Raster, ball, bayer, despeckle, outline, shadeEdges, shadeIndex, type Ramp } from '../raster'
 import { anim, type Sheet } from '../sheet'
-import { Cam, Painter, V, aimDir, ik, vadd, vlerp, vscale, type Pt, type V3, type View } from './rig'
+import { Cam, Painter, V, aimDir, farRamp, ik, vadd, vlerp, vscale, type Pt, type V3, type View } from './rig'
 
 const W = 192
 const SC = R.clothForest // wyvern scales
@@ -148,11 +148,15 @@ function renderValk(view: View, p: VP): Raster {
   const paint = new Painter(W, W)
   const side = view === 'side'
   const px = (v: V3): Pt => cam.px(v)
-  // Wings are fanned back (3/4 view) from the side so their span stays readable.
+  // Wing projection. From the side the span leans toward the viewer (near wing lower, far wing above the back)
+  // like the 3/4 camera; from the front, trailing parts drop lower on screen instead of collapsing onto the
+  // leading edge.
+  const qs = cam.place(V(6, 0, 54))
   const wpx = (v: V3): Pt => {
-    if (!side) return cam.px(v)
     const q = cam.place(v)
-    return [96 + q.f - 0.6 * Math.max(0, Math.abs(q.r) - 10), 176 - q.u + 0.16 * q.r]
+    if (side) return [96 + q.f - 0.15 * Math.max(0, Math.abs(q.r) - 11), 176 - q.u + 0.45 * q.r]
+    if (view === 'down') return [96 - q.r, 176 - q.u + qs.f * 0.5 - 0.4 * (q.f - qs.f)]
+    return cam.px(v)
   }
   const dz = (s: number, down: number, up: number) => (side ? s : view === 'down' ? down : up)
   const tuck = p.legs
@@ -221,21 +225,43 @@ function renderValk(view: View, p: VP): Raster {
     })
   }
 
-  // ---- Wings.
+  // ---- Wings: broad bat-like membranes (dark leather) stretched between light finger bones, with a light
+  // leading edge along the arm and first finger and a scalloped trailing edge.
   const wingState = (s: number) => {
-    const g = lerp(rad(76), rad(-42), (p.wing + 1) / 2) - p.droop
+    const g = lerp(rad(72), rad(side ? -24 : -27), (p.wing + 1) / 2) - p.droop
     const S0 = V(6, s * 11, 54)
-    const L1 = 23
-    const Wr = vadd(S0, V(-6, s * L1 * Math.cos(g), L1 * Math.sin(g)))
-    const lens = [46, 50, 45, 36]
-    const fo = [22, 6, -12, -30].map((v) => (side ? v : v * 1.5))
-    const tips = lens.map((len, i) => {
-      const gi = g + 0.3 - 0.4 * i - p.droop * 0.5 - (p.wing > 0.3 ? 0.12 : 0)
-      return vadd(Wr, V(fo[i], s * len * Math.cos(gi), len * Math.sin(gi)))
-    })
-    const Wf = vadd(S0, V(-4, s * 11, 7))
-    const tipsF = [0, 1, 2, 3].map((i) => vadd(S0, V(-28 - i * 9, s * (13 - i * 1.4), 8 - i * 4.5)))
-    const k = p.fold
+    const L1 = 24
+    const lens = side ? [52, 55, 49, 41] : [52, 55, 49, 40]
+    let Wr: V3
+    let tips: V3[]
+    if (side) {
+      // From the side the fingers fan in the wing plane (span rotated about the body axis by the stroke, chord
+      // pointing back), so the chord lies along the screen and the membrane stays broad through the whole beat.
+      const e1 = V(-0.22, s * Math.cos(g), Math.sin(g))
+      Wr = vadd(S0, vscale(e1, L1))
+      tips = lens.map((len, i) => {
+        const ph = -0.3 + i * 0.6
+        const c = Math.cos(ph) * len
+        return vadd(Wr, V(e1.f * c - Math.sin(ph) * len, e1.r * c, e1.u * c - p.droop * len * 0.12 * (i + 1)))
+      })
+    } else {
+      // From the front and back the fingers fan in the screen plane; on the downstroke they close a little so the
+      // trailing ones do not fold under the body.
+      Wr = vadd(S0, V(-6, s * L1 * Math.cos(g), L1 * Math.sin(g)))
+      const fo = [20, 4, -14, -30]
+      const step = lerp(0.52, 0.38, Math.max(0, p.wing))
+      tips = lens.map((len, i) => {
+        const gi = g + 0.32 - step * i - p.droop * 0.5
+        return vadd(Wr, V(fo[i], s * len * Math.cos(gi), len * Math.sin(gi)))
+      })
+    }
+    // Folded: the wrist stands up beside the shoulder and the fingers sweep back and down along the flank, so
+    // the membrane still reads as a tall, scalloped cloak.
+    const Wf = vadd(S0, side ? V(-14, s * 15, 26) : V(-14, s * 15, 18))
+    const tipsF = [0, 1, 2, 3].map((i) =>
+      vadd(S0, side ? V(-26 - i * 11, s * (18 + i * 3), 30 - i * 7) : V(-22 - i * 9, s * (19 + i * 3.5), 24 - i * 13))
+    )
+    const k = side ? Math.min(1, p.fold * 1.25) : p.fold
     return {
       S0,
       Wr: vlerp(Wr, Wf, k),
@@ -243,47 +269,58 @@ function renderValk(view: View, p: VP): Raster {
       back: V(-24, s * 13, 38)
     }
   }
+  // Membrane: the darkest leather with a lit rim; the far wing has no rim.
+  const MEMR: Ramp = [MEM[2], MEM[3], MEM[3], MEM[3], MEM[4]]
+  const BONE: Ramp = [SC[0], SC[0], SC[1], SC[2], SC[4]]
   for (const s of [-1, 1]) {
     const w = wingState(s)
     const sp = wpx(w.S0)
     const wr = wpx(w.Wr)
     const tipsP = w.tips.map(wpx)
-    const dep = dz(s > 0 ? 5 : -8, -10, -3)
+    const bk = wpx(w.back)
+    const far = side && s < 0
+    const mem: Ramp = far ? [MEM[3], MEM[3], MEM[3], MEM[3], MEM[4]] : MEMR
+    // From the side the near wing lies over the flank but under the rider, and passes in front of the hind leg on
+    // the downstroke.
+    const dep = dz(s > 0 ? (p.wing > 0.2 && p.fold < 0.5 ? 9.5 : 6.9) : -8, -10, -3)
     paint.add(dep, (l) => {
       const pts: number[] = [sp[0], sp[1], wr[0], wr[1]]
-      for (let i = 0; i < tipsP.length; i++) {
-        pts.push(tipsP[i][0], tipsP[i][1])
-        const nx = tipsP[i + 1]
+      const edge = [...tipsP, bk]
+      for (let i = 0; i < edge.length; i++) {
+        pts.push(edge[i][0], edge[i][1])
+        const nx = edge[i + 1]
         if (nx) {
-          const mx = (tipsP[i][0] + nx[0]) / 2
-          const my = (tipsP[i][1] + nx[1]) / 2
-          pts.push(lerp(mx, wr[0], 0.18), lerp(my, wr[1], 0.18))
+          // Scallop: the trailing edge between two fingers sags toward the wrist.
+          const mx = (edge[i][0] + nx[0]) / 2
+          const my = (edge[i][1] + nx[1]) / 2
+          const pull = i === edge.length - 2 ? 0.16 : 0.26
+          pts.push(lerp(mx, wr[0], pull), lerp(my, wr[1], pull))
         }
       }
-      const bk = wpx(w.back)
-      pts.push(bk[0], bk[1])
-      l.poly(pts, MEM[1])
-      // Membrane creases between the finger bones, a lit rim and a shaded trailing edge.
-      for (const t of tipsP) {
-        const a: Pt = [lerp(wr[0], t[0], 0.35), lerp(wr[1], t[1], 0.35)]
-        l.line(a[0], a[1], lerp(t[0], bk[0], 0.12), lerp(t[1], bk[1], 0.12), MEM[2])
-      }
-      shadeEdges(l, MEM, 1, true)
-      // Translucent look: dark near the arm, lighter toward the trailing edge (ordered dither).
-      for (let y = 0; y < W; y++)
-        for (let x = 0; x < W; x++) {
-          if (l.get(x, y) !== MEM[1]) continue
-          const d = Math.hypot(x - wr[0], y - wr[1]) / 50
-          const b = bayer(x, y)
-          if (d < 0.5 && b < (0.5 - d) * 1.6) l.set(x, y, MEM[2])
-          else if (d > 0.62 && b < (d - 0.62) * 2.2) l.set(x, y, MEM[0])
-        }
+      l.poly(pts, mem[1])
+      shadeEdges(l, mem, 1, true)
+      // Thin, sunlit membrane toward the finger tips (2×2 ordered dither that survives despeckle).
+      if (!far)
+        for (let y = 0; y < W; y++)
+          for (let x = 0; x < W; x++) {
+            if (l.get(x, y) !== mem[1]) continue
+            const d = Math.hypot(x - wr[0], y - wr[1]) / 46
+            if (d > 0.72 && bayer(x >> 1, y >> 1) < (d - 0.72) * 0.8) l.set(x, y, MEM[2])
+          }
     })
-    paint.add(dep + 0.05, (l) => {
-      // Arm and finger bones in scale green, with a bronze claw at the wrist.
-      tube(l, [sp, wr], [4.4, 3.2], SC)
-      for (let i = 0; i < tipsP.length; i++) tube(l, [wr, tipsP[i]], [2.5 - i * 0.2, 0.9], SC)
-      tube(l, [wr, [wr[0] + (side ? 3 : 0), wr[1] - 5]], [2.2, 0.8], BRZ)
+    paint.add(
+      dep + 0.05,
+      (l) => {
+        // Finger bones (light), drawn without their own outline so they read as ribs inside the membrane.
+        for (let i = 1; i < tipsP.length; i++) tube(l, [wr, tipsP[i]], [2.2 - i * 0.2, 0.9], far ? SC : BONE)
+      },
+      false
+    )
+    paint.add(dep + 0.06, (l) => {
+      // Arm and first finger: the light leading edge, with a bronze claw at the wrist.
+      tube(l, [sp, wr], [4.6, 3.2], far ? SC : BONE)
+      tube(l, [wr, tipsP[0]], [2.8, 1], far ? SC : BONE)
+      tube(l, [wr, [wr[0] + (side ? 3 : 0), wr[1] - 6]], [2.2, 0.8], BRZ)
     })
   }
 
@@ -641,7 +678,7 @@ const DIVE: VP[] = [
   }),
   vp({
     wing: 0.5,
-    fold: 0.92,
+    fold: 0.8,
     legs: 1,
     tilt: -46,
     at: V(4, 0, 10),
@@ -707,9 +744,9 @@ const groundPose = (i: number): VP => {
 
 const DOWNED: VP[] = [0, 1, 2, 3].map((i) =>
   vp({
-    wing: -0.1,
-    fold: 0,
-    droop: 0.05,
+    wing: 0.2,
+    fold: 0.5,
+    droop: 0.3,
     legs: 2,
     at: V(0, 0, -15),
     head: V(48 + (i % 2) * 2, 0, 33),
@@ -787,8 +824,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.8,
-    fold: 0.1,
-    droop: 0.5,
+    fold: 0.3,
+    droop: 0.4,
     tilt: -14,
     at: V(0, 0, -16),
     head: V(48, 0, 38),
@@ -803,7 +840,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.9,
-    droop: 0.7,
+    fold: 0.45,
+    droop: 0.5,
     tilt: -4,
     at: V(0, 0, -20),
     head: V(50, 0, 34),
@@ -818,7 +856,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.95,
-    droop: 0.9,
+    fold: 0.55,
+    droop: 0.55,
     at: V(0, 0, -22),
     head: V(52, 0, 30),
     hpitch: -22,
@@ -832,7 +871,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.95,
-    droop: 1,
+    fold: 0.6,
+    droop: 0.6,
     at: V(0, 0, -24),
     head: V(54, 0, 28),
     hpitch: -20,
@@ -846,7 +886,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.95,
-    droop: 1,
+    fold: 0.6,
+    droop: 0.6,
     at: V(0, 0, -24),
     head: V(54, 0, 28),
     hpitch: -20,
@@ -860,7 +901,8 @@ const DEATH: VP[] = [
   }),
   vp({
     wing: 0.95,
-    droop: 1,
+    fold: 0.6,
+    droop: 0.6,
     at: V(0, 0, -24),
     head: V(54, 0, 28),
     hpitch: -20,
