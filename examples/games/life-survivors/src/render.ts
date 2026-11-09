@@ -269,6 +269,8 @@ interface Ent {
   def?: EnemyDef
   player?: ViewPlayer
   member?: Follower
+  /** view.shots index of a companion (生き物観察, garden sprout, pet, 過保護親). */
+  shot?: number
   id: number
   x: number
   yy: number
@@ -1642,13 +1644,90 @@ export class Renderer {
   }
 
   /**
-   * 過保護 drawn under its owner in the character pass: tucked behind a still owner (within its own size of them), or
-   * standing further up the screen than them, as when it walks ahead of a child heading up. Depth then reads right and
-   * the parent never seems to stand on the child's head or over their name tag.
+   * Feet offset below the shot of a companion standing in the world (生き物観察's creature, a garden sprout, a pet,
+   * 過保護親), or undefined for any other shot. Companions sort with the characters on these feet (where their shadow
+   * falls), so one further up the screen than its owner is drawn behind them and never over their head or name tag.
    */
-  private guardianBehind(view: View, sh: ShotView) {
-    const owner = view.players[view.shots[sh.i + 6]]
-    return !!owner && (Math.hypot(sh.x - owner.x, sh.y - owner.y) < sh.r || sh.y < owner.y)
+  private companionFeet(sh: ShotView, def: (typeof WEAPONS)[number]) {
+    switch (def.behavior) {
+      case 'observe':
+        return 12
+      case 'garden':
+        return sh.v === 2 ? 10 : undefined
+      case 'pet':
+        return 7
+      case 'orbit':
+        return def.id === 'p_over' ? 14 : undefined
+      default:
+        return undefined
+    }
+  }
+
+  /** Where a companion is drawn: 過保護親 rides her owner's eased position like the characters do. */
+  private companionAt(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const owner = def.id === 'p_over' ? view.players[view.shots[sh.i + 6]] : undefined
+    return owner ? { x: sh.ox + sh.x - owner.x, y: sh.oy + sh.y - owner.y } : { x: sh.x, y: sh.y }
+  }
+
+  /** A companion with its shadow and effects, drawn in the Y-sorted character pass. */
+  private companion(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const fx = sheet('fx')
+    const { angle, life, evolved, i } = sh
+    const { x, y } = this.companionAt(view, sh, def)
+    const age = sh.age
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    switch (def.behavior) {
+      case 'observe': {
+        const kind = OBSERVATION_SPRITES[Math.floor(sh.v / 2)] ?? 'ant'
+        const frame = pick(sheet('weapon:w_observe')[kind], this.clock + hash(Math.round(x), Math.round(y)))
+        // The summon pops in over the first ~0.5 s of its (12 s at base) stay.
+        const pop = age < 0.04 ? age / 0.04 : 1
+        const swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
+        this.shadow(x, y + 12, 10 * Math.min(1, swell), 0.2)
+        this.centred(frame, x, y, evolved, clamp01(life * 4), swell)
+        if (age < 0.04) {
+          const alpha = 1 - pop
+          this.art(fx.poof.frames[Math.min(3, Math.floor(pop * 4))], x, y + 4, 12, 12, false, alpha, 1.1)
+          this.art(pick(fx.spark, this.clock * 6), x - 10, y - 10, 6, 6, false, alpha)
+          this.art(pick(fx.spark, this.clock * 6 + 2), x + 11, y - 6, 6, 6, false, alpha)
+        }
+        break
+      }
+      case 'garden':
+        this.shadow(x, y + 10, 9, 0.2)
+        this.centred(pick(sheet('weapon:w_garden').sprout, this.clock + i * 0.1), x, y, evolved)
+        break
+      case 'orbit':
+        this.guardian(sh, x, y)
+        break
+      case 'pet': {
+        const type = PET_TYPES[Math.floor(sh.v / 2)] ?? PET_TYPES[0]
+        const art = sheet(type === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${type}`)
+        const biting = sh.v % 2 === 1
+        const years = view.players[view.shots[i + 6]]?.petAge ?? 0
+        const form = petForm(years)
+        const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
+        const flip = cos < 0
+        const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
+        this.shadow(x, y + 7, 10, 0.24)
+        const f = evolved ? evolve(frame) : frame
+        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale)
+        if (biting) {
+          const sp = pick(fx.spark, this.clock * 2 + i)
+          this.art(sp, x + cos * 14, y + sin * 6 - 6, 6, 6, false, 0.9)
+        }
+        if (evolved)
+          this.art(
+            pick(fx.star, this.clock * 2 + i),
+            x + Math.cos(this.clock * 6 + i) * 10,
+            y - 14 + Math.sin(this.clock * 6 + i) * 4,
+            4,
+            4
+          )
+        break
+      }
+    }
   }
 
   /** 過保護親 and her shield, which thrusts along the bash and fades while spent. */
@@ -1683,29 +1762,12 @@ export class Renderer {
     const sin = Math.sin(angle)
     const trails = this.trailBudget > 0
     switch (def.behavior) {
-      case 'observe': {
-        const kind = OBSERVATION_SPRITES[Math.floor(sh.v / 2)] ?? 'ant'
-        const frame = pick(sheet('weapon:w_observe')[kind], this.clock + hash(Math.round(x), Math.round(y)))
-        // The summon pops in over the first ~0.5 s of its (12 s at base) stay.
-        const pop = age < 0.04 ? age / 0.04 : 1
-        const swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
-        this.shadow(x, y + 12, 10 * Math.min(1, swell), 0.2)
-        this.centred(frame, x, y, evolved, clamp01(life * 4), swell)
-        if (age < 0.04) {
-          const alpha = 1 - pop
-          this.art(fx.poof.frames[Math.min(3, Math.floor(pop * 4))], x, y + 4, 12, 12, false, alpha, 1.1)
-          this.art(pick(fx.spark, this.clock * 6), x - 10, y - 10, 6, 6, false, alpha)
-          this.art(pick(fx.spark, this.clock * 6 + 2), x + 11, y - 6, 6, 6, false, alpha)
-        }
-        break
-      }
+      // Companions (生き物観察's creatures, garden sprouts, pets, 過保護親) are drawn with the characters instead.
       case 'garden':
         if (sh.v === 0) this.centred(pick(sheet('weapon:w_garden').fly, this.clock + i * 0.1), x, y, evolved)
-        else if (sh.v === 2) {
-          this.shadow(x, y + 10, 9, 0.2)
-          this.centred(pick(sheet('weapon:w_garden').sprout, this.clock + i * 0.1), x, y, evolved)
-        }
         break
+      case 'observe':
+      case 'pet':
       case 'aura':
       case 'zone':
       case 'beam':
@@ -1714,14 +1776,10 @@ export class Renderer {
       case 'none':
         break
       case 'orbit': {
+        if (def.id === 'p_over') break
         // Re-derive the orbit around the eased owner so it never lags behind them.
         const owner = view.players[view.shots[i + 6]]
         const orbit = Math.hypot(x - (owner?.x ?? x), y - (owner?.y ?? y))
-        if (def.id === 'p_over') {
-          // A parent standing behind a still child is drawn under them in the character pass instead.
-          if (!this.guardianBehind(view, sh)) this.guardian(sh, x, y)
-          break
-        }
         const independent = def.id === 'p_monster'
         const ox = independent ? x : sh.ox + cos * orbit
         const oy = independent ? y : sh.oy + sin * orbit
@@ -1784,32 +1842,6 @@ export class Renderer {
           this.art(pick(fx.spark, this.clock * 3 + sh.v), x, y, 6, 6, false, alpha)
         }
         if (sh.v === 0) this.art(pick(fx.spark, this.clock * 3), x0, y0, 6, 6, false, alpha)
-        break
-      }
-      case 'pet': {
-        const type = PET_TYPES[Math.floor(sh.v / 2)] ?? PET_TYPES[0]
-        const art = sheet(type === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${type}`)
-        const biting = sh.v % 2 === 1
-        const years = view.players[view.shots[i + 6]]?.petAge ?? 0
-        const form = petForm(years)
-        const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
-        const flip = cos < 0
-        const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
-        this.shadow(x, y + 7, 10, 0.24)
-        const f = evolved ? evolve(frame) : frame
-        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale)
-        if (biting) {
-          const sp = pick(fx.spark, this.clock * 2 + i)
-          this.art(sp, x + cos * 14, y + sin * 6 - 6, 6, 6, false, 0.9)
-        }
-        if (evolved)
-          this.art(
-            pick(fx.star, this.clock * 2 + i),
-            x + Math.cos(this.clock * 6 + i) * 10,
-            y - 14 + Math.sin(this.clock * 6 + i) * 4,
-            4,
-            4
-          )
         break
       }
       case 'slam': {
@@ -2631,6 +2663,17 @@ export class Renderer {
 
     // Characters: enemies and players Y-sorted so overlaps read correctly.
     const list: Ent[] = this.ents.slice(0, this.entCount)
+    // Companions sort on their own feet too, so one standing further up than its owner is drawn behind them (and,
+    // listed before the players, one level with their feet is too).
+    for (let i = 0; i < s.length; i += STRIDE.shots) {
+      const def = WEAPONS[s[i]]
+      const sh = this.load(view, origins, i)
+      const feet = this.companionFeet(sh, def)
+      if (feet === undefined) continue
+      if (Math.abs(sh.x - this.camera.x) > halfW + 400 && Math.abs(sh.ox - this.camera.x) > halfW + 400) continue
+      const at = this.companionAt(view, sh, def)
+      list.push({ y: at.y + feet, kind: 0, shot: i, id: 0, x: at.x, yy: at.y, hp: 0, flash: 0, flags: 0, tagLift: 0 })
+    }
     // Name tags of players standing together stack instead of overlapping.
     view.players.forEach((player, i) => {
       const pos = origins[i]
@@ -2681,15 +2724,10 @@ export class Renderer {
     this.bars.length = 0
     for (const item of list) {
       if (item.member) this.follower(item.member)
+      else if (item.shot !== undefined) this.companion(view, this.load(view, origins, item.shot), WEAPONS[s[item.shot]])
       else if (item.player) {
         const player = item.player
         const pos = positions.get(player.id)!
-        // A still child's 過保護親 stands right behind them, so draw her first, riding the eased position.
-        for (let i = 0; i < s.length; i += STRIDE.shots) {
-          if (s[i + 6] !== item.id || WEAPONS[s[i]].id !== 'p_over') continue
-          const sh = this.load(view, origins, i)
-          if (this.guardianBehind(view, sh)) this.guardian(sh, pos.x + sh.x - player.x, pos.y + sh.y - player.y)
-        }
         // The boxes food labels keep clear of; a wrapped or stubbed player() (tests, tools) may hand back nothing.
         const boxes: Box[] | undefined = this.player(
           player,
