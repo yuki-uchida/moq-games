@@ -23,10 +23,10 @@ export interface LobbyActions {
 }
 
 const JOB_TEXT: Record<Job, [string, string]> = {
-  sword: ['近くの敵をなぎはらう', 'ため：回転斬り'],
-  mage: ['魔弾でとおくからうつ', 'ため：大魔弾'],
-  archer: ['矢で2体までつらぬく', 'ため：三連矢'],
-  cleric: ['杖でたたいて仲間を回復', 'ため：聖なる輪']
+  sword: ['近くの敵を\u200bなぎはらう', 'ため：回転斬り'],
+  mage: ['魔弾で\u200bとおくからうつ', 'ため：大魔弾'],
+  archer: ['矢で\u200b2体までつらぬく', 'ため：三連矢'],
+  cleric: ['杖でたたいて\u200b仲間を\u200b回復', 'ため：聖なる輪']
 }
 
 export class LobbyScreen {

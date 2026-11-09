@@ -21,6 +21,7 @@ import type {
 import { JOBS, JOB_COLORS, TILE, dirOf } from '../vocab'
 import { interactTarget } from '../ui/hints'
 import { BASE_VIEW_H, clampCamera, cursorLead, scalingFor, smoothing, turnOf, viewOrigin } from './camera'
+import { BarrierWalls } from './barrier'
 import { FxAnims, Numbers, Particles } from './effects'
 import { Ambience } from './ambience'
 import { Ground } from './ground'
@@ -119,6 +120,9 @@ export class Renderer {
   private groundStage = ''
   private readonly particles = new Particles()
   private readonly fx = new FxAnims()
+  private readonly barrier = new BarrierWalls()
+  /** Staggered one-shot fx waiting for their start time (sim seconds). */
+  private delayedFx: { a: Anim; x: number; y: number; at: number; flip: boolean; alpha: number }[] = []
   private readonly numbers = new Numbers()
   private readonly lighting = new Lighting()
   private readonly ambience = new Ambience(this.particles, this.fx)
@@ -198,6 +202,7 @@ export class Renderer {
     this.lighting.clear()
     this.trails.clear()
     this.lunges.length = 0
+    this.delayedFx.length = 0
   }
 
   /** Feeds a visual event. Sounds and HUD texts are handled elsewhere. */
@@ -213,6 +218,7 @@ export class Renderer {
         const tech = `tech:${this.view?.species ?? 'slime'}`
         const turned = findAnim('fx', `${name}_${turn}`) ?? findAnim(tech, `${name}_${turn}`)
         const a = findAnim('fx', name) ?? findAnim(tech, name) ?? turned
+        if (name === 'dust' && a && this.bridgeDust(a, e.x, e.y, t)) break
         // Directionless sheets (dust trails, dash afterimages) mirror for leftward motion.
         if (a) this.fx.add(a, e.x, e.y, t, !turned && e.a !== undefined && Math.cos(e.a) < -0.2)
         this.fxLight(name, e.x, e.y, t)
@@ -284,6 +290,33 @@ export class Renderer {
   }
 
   /** Queues a full-screen colour wash starting `delay` ms from now. */
+  /**
+   * A drawbridge settling down sends one 'dust' fx per deck piece at the same instant; stamped on every tile that
+   * reads as a grid. Thin them out (mostly along the hinge and the free end), scatter them and stagger them a little.
+   * Returns false when (x, y) is not a drawbridge piece.
+   */
+  private bridgeDust(a: Anim, x: number, y: number, t: number): boolean {
+    const p = this.view?.props.find((q) => q.kind === 'drawbridge' && Math.abs(q.x - x) < 2 && Math.abs(q.y - y) < 2)
+    const b = p && this.bridges.get(p.id)
+    if (!b) return false
+    const keep = b.col === 'm' ? 0.2 : b.n === 1 ? 1 : 0.6
+    if (Math.random() >= keep) return true
+    const at = t + Math.random() * 0.28
+    const dx = (Math.random() - 0.5) * 30 + (b.col === 'h' ? -b.dir * 10 : b.col === 'e' ? b.dir * 10 : 0)
+    const dy = (Math.random() - 0.5) * 22
+    if (Math.random() < 0.35) this.particles.burst('dust', x + dx, y + dy + 8, 3 + ((Math.random() * 4) | 0))
+    else
+      this.delayedFx.push({
+        a,
+        x: x + dx,
+        y: y + dy,
+        at,
+        flip: Math.random() < 0.5,
+        alpha: 0.55 + Math.random() * 0.45
+      })
+    return true
+  }
+
   private wash(color: string, a: number, delay: number, dur: number) {
     if (this.washes.length > 8) this.washes.shift()
     this.washes.push({ color, a, t0: performance.now() + delay, dur })
@@ -378,9 +411,17 @@ export class Renderer {
 
     this.labelCount = 0
     this.drawFloor(view, t, input)
+    this.barrier.draw(ctx, view, info, ox, oy, artW, artH, t, this.particles)
     this.collect(view, info)
     this.drawSorted(view, info, t)
     this.drawShots(view.shots, t)
+    if (this.delayedFx.length) {
+      this.delayedFx = this.delayedFx.filter((d) => {
+        if (d.at > t && d.at - t < 2) return true
+        if (d.at <= t) this.fx.add(d.a, d.x, d.y, d.at, d.flip, d.alpha)
+        return false
+      })
+    }
     this.fx.draw(ctx, ox, oy, t)
     this.drawFlashes(t)
     this.drawLunges(t)

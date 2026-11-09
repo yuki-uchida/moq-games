@@ -38,7 +38,7 @@ import {
 import { spawnEnemy, updateBombs, updateEnemies, updateSnares } from './enemies'
 import { updateFormations } from './formation'
 import { updateMinions } from './minions'
-import { Grid } from './grid'
+import { Grid, inRoom } from './grid'
 import { dropItems, updatePickups } from './items'
 import { airborne, MAX_SPEED, newBody, RAT_DASH, stepBody, WOLF } from './move'
 import { assignSlots, newHuman, pickJob, switchHero, syncPlayers, toggleMode } from './party'
@@ -69,6 +69,10 @@ setReleaseHold(releaseHold)
 setPotHit((W, s, e) => potShotEnd(W, s, e))
 
 const parsedCache = new Map<StageData, ParsedStage>()
+/** Seconds an active arena tolerates having no standing hero inside (or one left outside) before acting. */
+const ARENA_AWAY = 1
+/** Hero states whose position the host's own code is moving (not puffed back into an arena mid-move). */
+const HOST_MOVED = new Set(['tech', 'grip', 'fall', 'victory'])
 export function parsedOf(data: StageData): ParsedStage {
   let p = parsedCache.get(data)
   if (!p) parsedCache.set(data, (p = parseStage(data)))
@@ -357,12 +361,8 @@ export class WorldImpl implements World {
     W.techs = []
     W.shots = []
     // A skipped arena fight starts over; the objective follows the new room.
-    for (const [id, a] of W.arenas)
-      if (a.state === 'active' && id !== to) {
-        a.state = 'idle'
-        a.wave = 0
-        W.enemies = W.enemies.filter((e) => e.room !== id || e.wave === undefined)
-      }
+    for (const [id, a] of W.arenas) if (a.state === 'active' && id !== to) this.resetArena(id)
+    this.syncBarrier()
     this.placeParty(x, y, true)
     W.leaderRoom = roomOf(W, x, y)?.id
     if (cp) W.checkpoint = to
@@ -376,12 +376,8 @@ export class WorldImpl implements World {
     W.techs = []
     W.shots = []
     // Arenas that were not cleared start over; the boss fight resets.
-    for (const [id, a] of W.arenas)
-      if (a.state === 'active') {
-        a.state = 'idle'
-        a.wave = 0
-        W.enemies = W.enemies.filter((e) => e.room !== id || e.wave === undefined)
-      }
+    for (const [id, a] of W.arenas) if (a.state === 'active') this.resetArena(id)
+    this.syncBarrier()
     resetBoss(W)
     W.enemies = W.enemies.filter((e) => !e.summoned)
     W.minions = []
@@ -418,6 +414,7 @@ export class WorldImpl implements World {
     const W = this.W
     W.party.time += dt
     rebuildSolids(W)
+    this.syncBarrier()
     updateFormations(W, dt)
     this.applyReports()
     // Intents.
@@ -479,7 +476,8 @@ export class WorldImpl implements World {
         Number.isFinite(r.x) &&
         Number.isFinite(r.y) &&
         (dist(r.x, r.y, base.x, base.y) <= maxD || viaHole) &&
-        !W.grid!.overlaps(r.x, r.y, 15, r.airborne || airborne(h.body))
+        !W.grid!.overlaps(r.x, r.y, 15, r.airborne || airborne(h.body)) &&
+        !g.crossesBarrier(h.body.x, h.body.y, r.x, r.y)
       if (ok) {
         h.body.x = r.x
         h.body.y = r.y
@@ -821,6 +819,7 @@ export class WorldImpl implements World {
         this.gather(room.id, h)
       }
     }
+    this.watchArenas()
     for (const [id, a] of W.arenas) {
       if (a.state !== 'active') continue
       const left = W.enemies.filter((e) => e.room === id && e.wave === a.wave && !e.dead)
@@ -836,6 +835,66 @@ export class WorldImpl implements World {
         emit(W, 'solve', cx, cy, { s: '広場を制圧した！' })
         banner(W, 'クリア！')
         if (data.checkpointOnClear) this.reachCheckpoint(id)
+      }
+    }
+    this.syncBarrier()
+  }
+
+  /** Raises the barrier around every active arena room (and lowers it once none is active). */
+  private syncBarrier(): void {
+    const W = this.W
+    if (!W.grid || !W.parsed) return
+    const ids = [...W.arenas].filter(([, a]) => a.state === 'active').map(([id]) => id)
+    W.grid.setBarrier(ids, W.parsed.info.rooms)
+  }
+
+  /** An unfinished arena fight starts over: its wave enemies vanish and the gates and barrier open. */
+  private resetArena(id: string): void {
+    const W = this.W
+    const a = W.arenas.get(id)
+    if (!a) return
+    a.state = 'idle'
+    a.wave = 0
+    a.emptyAt = a.strayAt = undefined
+    W.enemies = W.enemies.filter((e) => e.room !== id || e.wave === undefined)
+  }
+
+  /**
+   * Safety net for an active arena: when no standing hero has been inside its room for about a second (a glitch
+   * carried everyone out), the fight resets as if skipped by a warp; a standing hero left outside while the others
+   * fight (revived outside, carried out) is puffed back in after the same delay.
+   */
+  private watchArenas(): void {
+    const W = this.W
+    const P = W.parsed!
+    for (const [id, a] of W.arenas) {
+      if (a.state !== 'active') continue
+      const room = P.info.rooms.find((r) => r.id === id)
+      if (!room) continue
+      const standing = W.heroes.filter((h) => h.state !== 'down')
+      const inside = standing.filter((h) => inRoom(room, h.body.x, h.body.y))
+      if (!inside.length) {
+        a.strayAt = undefined
+        a.emptyAt ??= W.t
+        if (W.t - a.emptyAt >= ARENA_AWAY) this.resetArena(id)
+        continue
+      }
+      a.emptyAt = undefined
+      const strays = standing.filter((h) => !inside.includes(h) && !HOST_MOVED.has(h.state))
+      if (!strays.length) {
+        a.strayAt = undefined
+        continue
+      }
+      a.strayAt ??= W.t
+      if (W.t - a.strayAt < ARENA_AWAY) continue
+      a.strayAt = undefined
+      const anchor = inside[0]
+      for (const h of strays) {
+        releaseHold(W, h)
+        const s = freeSpotNear(W, anchor.body.x, anchor.body.y, 3)
+        fx(W, 'smoke', h.body.x, h.body.y)
+        warpHero(h, s.x, s.y)
+        fx(W, 'smoke', s.x, s.y)
       }
     }
   }
@@ -857,6 +916,8 @@ export class WorldImpl implements World {
     const a = W.arenas.get(id)!
     a.state = 'active'
     a.wave = 0
+    a.emptyAt = a.strayAt = undefined
+    this.syncBarrier()
     this.gather(id, trigger)
     this.spawnWave(id, 0)
     banner(W, '敵があらわれた！')

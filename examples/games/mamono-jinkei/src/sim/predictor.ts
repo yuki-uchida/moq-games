@@ -39,6 +39,7 @@ export function createPredictorImpl(info: StageInfo, playerId: string): HeroPred
         grid.setSolidProps(view.props)
         const off = (view.currentsOff ?? []).join()
         if (off !== stopped) grid.setStopped((stopped = off) ? off.split(',') : [])
+        grid.setBarrier(view.barrier ?? [], info.rooms)
         if ((view.fills?.length ?? 0) !== fills) {
           for (const i of view.fills ?? []) grid.fill(i)
           fills = view.fills?.length ?? 0

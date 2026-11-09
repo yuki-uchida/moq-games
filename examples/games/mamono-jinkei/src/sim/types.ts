@@ -489,6 +489,11 @@ export interface View {
   fills?: number[]
   /** Optional: current channels stopped by an open sluice (StageInfo.currents channel ids). */
   currentsOff?: string[]
+  /**
+   * Optional: room ids (StageInfo.rooms) of active arena fights. The ring of tiles just outside each room is blocked
+   * for walkers and flyers until the fight ends (Grid.setBarrier); draw a wind wall along its open edges.
+   */
+  barrier?: string[]
   /** Optional: snares set by rat-catchers (fx 'snare'; 'snare_snap' when one catches a hero). */
   snares?: SnareView[]
   /**
