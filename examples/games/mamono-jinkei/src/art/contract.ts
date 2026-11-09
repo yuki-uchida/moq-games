@@ -369,9 +369,25 @@ export const PROPS_SPEC: Record<'meadow' | 'sewer' | 'tower' | 'forest', Record<
     vent: prop(64, 64, 4, [32, 32], true, 12), // updraft vent: refills flight
     windmill: prop(128, 192, 1, [64, 160]),
     windmill_spin: prop(128, 192, 6, [64, 160], true, 14), // spun by the tornado
-    drawbridge_up: prop(64, 64, 1, [32, 32]), // a bridge piece over the sky; 'up' shows only the anchors
-    drawbridge_lowering: prop(64, 64, 5, [32, 32], false, 10),
-    drawbridge_down: prop(64, 64, 1, [32, 32]),
+    // Drawbridge pieces (one per sky tile; 64×80 with the tile in the lower 64 rows). A run of pieces reads as one
+    // bridge: the renderer draws `_up_<row>` only on the hinge column (the raised leaf, posts and chains), the
+    // `_lowering_<row>` free edge at the end of the deck it unrolls from the hinge, and `_down_<row><col>` with
+    // row n/m/s/o (north edge, inside, south edge, one tile wide) and col h/m/e (hinge end, inside, free end).
+    // The plain names are the stand-alone one-tile bridge.
+    drawbridge_up: prop(80, 80, 1, [40, 48]),
+    drawbridge_lowering: prop(80, 80, 5, [40, 48], false, 10),
+    drawbridge_down: prop(80, 80, 1, [40, 48]),
+    ...Object.fromEntries(
+      (['n', 'm', 's'] as const).flatMap((row) => [
+        [`drawbridge_up_${row}`, prop(80, 80, 1, [40, 48])],
+        [`drawbridge_lowering_${row}`, prop(80, 80, 5, [40, 48], false, 10)]
+      ])
+    ),
+    ...Object.fromEntries(
+      (['n', 'm', 's', 'o'] as const).flatMap((row) =>
+        (['h', 'm', 'e'] as const).map((col) => [`drawbridge_down_${row}${col}`, prop(80, 80, 1, [40, 48])])
+      )
+    ),
     bell: prop(64, 96, 1, [32, 80]),
     bell_ring: prop(64, 96, 6, [32, 80], false, 14),
     goldbell: prop(96, 96, 1, [48, 80]), // grip weight 4

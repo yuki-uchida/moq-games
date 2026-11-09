@@ -5,6 +5,9 @@
 import { NO_INPUT, type InputState } from '../sim/types'
 import { PAD, PREVENT, actionOf, aimFrom, edge, moveVector, stick, type Action } from './map'
 
+/** Inputs that never take typed text, so Esc may close the menu around them. */
+const NON_TEXT_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'])
+
 export interface ControlHooks {
   /** Esc / Start: open or close the menu. */
   onMenu(): void
@@ -56,8 +59,11 @@ export class Controls {
     if (!a) return
     const target = e.target as HTMLElement | null
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
+    // Esc still closes menus from sliders and checkboxes; only text fields keep it.
+    const inputType = target?.tagName === 'INPUT' ? (target as HTMLInputElement).type : ''
+    const textEntry = typing && !NON_TEXT_INPUTS.has(inputType)
     if (a === 'menu') {
-      if (!e.repeat && !typing) this.hooks.onMenu()
+      if (!e.repeat && !textEntry) this.hooks.onMenu()
       return
     }
     if (typing) return

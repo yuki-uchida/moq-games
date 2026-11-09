@@ -5,19 +5,20 @@
  * Phase 2 (awaken) adds an aura, eyes aglow and wings of light feathers.
  */
 import { BOSS_SPEC } from '../contract'
-import { C, R, toneTable } from '../palette'
-import { LIGHTER } from '../palette'
+import { C, LIGHTER, OUTLINE_OF, R, toneTable } from '../palette'
 import { Raster, bayer, despeckle, hash, rng, type Ramp } from '../raster'
 import { anim, type Anim, type Sheet } from '../sheet'
 import { sun } from './s4-parts'
 import { Cam, Painter, V, aimDir, bar, ik, pose, vadd, vscale, type Pose, type Pt, type View } from './rig'
 
-const COAT = R.clothWhite
+// The whites sit one step below paper white so the night light and the heroes' lamps never burn them out:
+// a cream coat (pure white only in small highlights), silver hair with real shadow, steel with dark seams.
+const COAT: Ramp = [R.wolfCream[1], R.rock[0], R.wolfCream[2], R.wolfCream[3], R.wolfCream[4]]
 const GOLD = R.gold
 const PLATE = R.steel
 const SCARF = R.jobBlue
 const NAVY = R.clothNavy
-const HAIR = [C.white, R.hairSilver[0], R.hairSilver[1], R.hairSilver[2], R.hairSilver[4]] as const
+const HAIR: Ramp = R.hairSilver
 const SKIN = R.skinLight
 const BOOT = R.leather
 
@@ -52,6 +53,34 @@ function shadeEdges(r: Raster, ramp: Ramp, depth = 1, rim = false) {
       else if (rim && (!src.get(x - 1, y) || !src.get(x, y - 1))) r.set(x, y, ramp[0])
     }
   return r
+}
+
+/** Light that should keep glowing on the silhouette edge (wings, halos, motes, smears). */
+const GLOWS = new Set<number>([C.white, C.glow, ...R.holy.slice(0, 4), R.steel[0]])
+
+/**
+ * Darker selective outline on the finished body: the parts' own lit-side outlines are two ramp steps down,
+ * which on a cream and silver knight is still pale; the outer ring drops to each material's deep shade so
+ * the silhouette holds against the lamp-lit floor.
+ */
+function selout(r: Raster) {
+  const src = r.clone()
+  const b = src.bounds()
+  if (!b) return r
+  for (let y = b.y; y < b.y + b.h; y++)
+    for (let x = b.x; x < b.x + b.w; x++) {
+      const c = src.get(x, y)
+      if (!c || GLOWS.has(c)) continue
+      if (src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1)) continue
+      r.set(x, y, OUTLINE_OF[c].deep)
+    }
+  return r
+}
+
+/** A line painted only over pixels already drawn (strands and creases that never leave their part). */
+function strand(l: Raster, x0: number, y0: number, x1: number, y1: number, c: number) {
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)))
+  for (let i = 0; i <= n; i++) l.paint(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), c)
 }
 
 const dither = (l: Raster, x: number, y: number, t: number, c: number) => {
@@ -189,7 +218,7 @@ function renderLeon(view: View, p: LeonPose): Raster {
         const hw = 7 + t * 1.5
         const c0 = hxx - 2 - t * 2 + sh
         for (let x = Math.round(c0 - hw); x < Math.round(c0 + hw); x++) {
-          if (k > len - 3 && (x + y) % 5 === 0) continue
+          if (k > len - 2 && (x + y) % 5 === 0) continue
           l.set(x, y, COAT[1])
         }
       } else {
@@ -198,12 +227,18 @@ function renderLeon(view: View, p: LeonPose): Raster {
         const c0 = hxx + sh
         for (let x = Math.round(c0 - hw); x < Math.round(c0 + hw); x++) {
           if (Math.abs(x + 0.5 - c0) < slit) continue
-          if (k > len - 3 && (x * 2 + y) % 6 === 0) continue
+          if (k > len - 2 && (x * 2 + y) % 6 === 0) continue
           l.set(x, y, COAT[1])
         }
       }
     }
     shadeEdges(l, COAT, 2, true)
+    // Cloth folds: a few shaded creases that swing with the flow.
+    for (const f of side ? [-3, 2] : view === 'up' ? [-6, 6] : [-6, 5])
+      for (let y = hyy + 6; y < hyy + 15; y++) {
+        const x = Math.round(hxx + f + flow * ((y - hyy) / 19) ** 2 * (side ? -3.4 : 2) + (side ? -2 : 0))
+        if (l.get(x, y) === COAT[1]) l.set(x, y, COAT[2])
+      }
     // Gold hem and slit trim, a seam on the back.
     for (let x = 0; x < 128; x++) {
       if (l.get(x, hyy + 17) === COAT[1] || l.get(x, hyy + 17) === COAT[2]) l.set(x, hyy + 17, GOLD[1])
@@ -265,13 +300,28 @@ function renderLeon(view: View, p: LeonPose): Raster {
         for (let x = Math.round(cx) - hw; x < Math.round(cx) + hw; x++) if (front(x + 0.5 - cx)) l.set(x, y, PLATE[1])
       }
       shadeEdges(l, PLATE, 2, true)
+      // plate seams: the chest plate over two lames above the belt
+      const lames = [sy + 14, sy + 17].filter((y) => y < hyy - 6)
       if (view === 'down') {
-        for (let y = sy + 3; y < hyy - 6; y++) l.paint(sx - 1, y, PLATE[0])
+        for (let y = sy + 3; y < (lames[0] ?? hyy - 6); y++) {
+          l.paint(sx - 1, y, PLATE[0])
+          l.paint(sx, y, PLATE[2])
+        }
+        for (const y of lames)
+          for (let x = sx - 8; x <= sx + 8; x++) {
+            if (l.get(x, y) === PLATE[1] || l.get(x, y) === PLATE[0]) l.set(x, y, PLATE[2])
+            if (l.get(x, y + 1) === PLATE[1] && x < sx) l.set(x, y + 1, PLATE[0])
+          }
         sun(l, sx, sy + 9, 2.4, GOLD)
         l.rect(sx - 6, sy + 1, 12, 1, GOLD[1])
       } else {
-        l.rect(Math.round(sx) - 2, sy + 1, 9, 1, GOLD[1])
-        l.rect(Math.round(sx) + 1, sy + 4, 4, 5, GOLD[1])
+        const x0 = Math.round(sx)
+        for (const y of lames)
+          for (let x = x0 - 8; x <= x0 + 8; x++) if (l.get(x, y) === PLATE[1]) l.set(x, y, PLATE[2])
+        for (let y = sy + 3; y < (lames[0] ?? hyy - 6); y++) l.paint(x0 - 1, y, PLATE[0])
+        l.rect(x0 - 2, sy + 1, 9, 1, GOLD[1])
+        l.rect(x0 + 1, sy + 4, 4, 5, GOLD[1])
+        l.rect(x0 + 1, sy + 8, 4, 1, GOLD[2])
       }
     })
   paint.add(0.12, (l) => {
@@ -295,9 +345,17 @@ function renderLeon(view: View, p: LeonPose): Raster {
       const big = sgn === 1
       l.ellipse(px, py, side ? 6 : big ? 8 : 6.5, big ? 5.4 : 4.4, big ? PLATE[1] : COAT[1])
       shadeEdges(l, big ? PLATE : COAT, 1, true)
+      if (big) {
+        // a raised ridge over the dome and a seam to the lower lame
+        for (let x = px - 6; x <= px + 6; x++) if (l.get(x, py + 1) === PLATE[1]) l.set(x, py + 1, PLATE[2])
+        l.set(px - 3, py - 2, PLATE[0])
+        l.set(px - 2, py - 2, C.white)
+        l.set(px - 1, py - 3, PLATE[0])
+      } else {
+        l.set(px - 2, py - 2, COAT[0])
+        l.set(px - 3, py - 2, COAT[0])
+      }
       l.rect(px - (big ? 6 : 5), py + 3, big ? 12 : 10, 1, GOLD[1])
-      l.set(px - 2, py - 2, big ? PLATE[0] : COAT[0])
-      l.set(px - 3, py - 2, big ? PLATE[0] : COAT[0])
     })
   }
 
@@ -361,19 +419,17 @@ function renderLeon(view: View, p: LeonPose): Raster {
       const w = L > 8 ? 3 : 1.5
       const P = (t: number, s: number): Pt => [base[0] + u[0] * L * t + n[0] * s, base[1] + u[1] * L * t + n[1] * s]
       const pts = (a: Pt[]) => a.flatMap((q) => q)
-      // blade body, lit half (top-left) and shaded half
+      // blade body: a steel flat, a pale lit bevel, and dark edge lines so the blade keeps its shape in any light
       l.poly(pts([P(0, w), P(0.8, w), P(1, 0), P(0.8, -w), P(0, -w)]), PLATE[1])
-      l.poly(pts([P(0, w), P(0.8, w), P(1, 0), P(0.85, 0.2), P(0, 0.4)]), PLATE[0])
-      l.line(...P(0, -w), ...P(0.8, -w), PLATE[2])
-      l.line(...P(0.8, -w), ...P(1, 0), PLATE[2])
-      // glowing edges
-      const edge = glow > 0.5 ? C.white : PLATE[0]
-      l.line(...P(0.02, w), ...P(0.8, w), edge)
-      l.line(...P(0.8, w), ...P(1, 0), edge)
-      if (glow > 0.3) {
-        l.line(...P(0.02, -w + 0.4), ...P(0.8, -w + 0.4), R.holy[1])
-        l.line(...P(0.1, 0.2), ...P(0.92, 0.1), glow > 1 ? C.glow : R.holy[0])
-      }
+      if (L > 8) l.poly(pts([P(0, w - 0.6), P(0.8, w - 0.6), P(0.97, 0), P(0, 0)]), PLATE[0])
+      l.line(...P(0, -w), ...P(0.8, -w), PLATE[3])
+      l.line(...P(0.8, -w), ...P(1, 0), PLATE[3])
+      l.line(...P(0.02, w), ...P(0.8, w), PLATE[2])
+      l.line(...P(0.8, w), ...P(1, 0), PLATE[2])
+      // the glowing fuller down the middle (the holy light lives inside the blade, not on its rim)
+      const fuller = glow > 1 ? C.glow : glow > 0.5 ? R.holy[0] : PLATE[0]
+      if (L > 8) l.line(...P(0.06, 0), ...P(0.9, 0), fuller)
+      if (glow > 0.5) l.set(...P(0.94, 0), C.white)
       // sun emblem on the blade
       const e = P(0.2, 0)
       l.ellipse(e[0], e[1], 1.7, 1.7, GOLD[1])
@@ -555,10 +611,41 @@ function renderLeon(view: View, p: LeonPose): Raster {
         if (on) l.set(x, y, HAIR[1])
       }
     shadeEdges(l, HAIR, 1, true)
+    // Volume: the lower-right of the head falls into shade, and locks part the mass into strands.
+    const lit = (dx: number, dy: number) => dx * 0.55 + (dy + 1.6) * 0.85
+    for (let y = hcy - 13; y <= hcy + 8; y++)
+      for (let x = hcx - 12; x <= hcx + 12; x++) {
+        if (l.get(x, y) !== HAIR[1]) continue
+        const dx = x + 0.5 - hcx
+        const dy = y + 0.5 - hcy
+        const v = lit(dx, dy)
+        if (v > 5.2 || (v > 3.4 && bayer(x, y) < 0.5)) l.set(x, y, HAIR[2])
+      }
+    if (view === 'up') {
+      // strands sweeping back to the tie
+      for (const ox of [-7, -4, -1, 3, 6])
+        strand(l, hcx + ox, hcy - 10 + Math.abs(ox) * 0.4, hcx + ox * 0.25, hcy - 4, HAIR[2])
+      for (let x = hcx - 6; x <= hcx + 6; x++) if (l.get(x, hcy + 3)) l.set(x, hcy + 3, HAIR[3])
+    } else {
+      // the crown's parting strands
+      for (const [ax, ay, bx, by] of side
+        ? [
+            [-6, -9, -8, -2],
+            [-2, -11, -5, -4],
+            [2, -11, 0, -6]
+          ]
+        : [
+            [-3, -11, -6, -5],
+            [1, -11, 2, -6],
+            [4, -10, 6, -5]
+          ])
+        strand(l, hcx + ax, hcy + ay, hcx + bx, hcy + by, HAIR[2])
+    }
     for (const [dx, dy, c] of [
       [-5, -8, HAIR[0]],
-      [-4, -9, HAIR[0]],
-      [-6, -6, HAIR[0]],
+      [-4, -9, C.white],
+      [-3, -9, HAIR[0]],
+      [-6, -7, HAIR[0]],
       [1, -9, HAIR[2]],
       [3, -7, HAIR[2]],
       [-1, -6, HAIR[2]],
@@ -569,7 +656,7 @@ function renderLeon(view: View, p: LeonPose): Raster {
     if (view !== 'down') l.rect(side ? hcx - 9 : hcx - 1, side ? hcy - 4 : hcy - 3, side ? 2 : 3, side ? 3 : 2, GOLD[1])
   })
 
-  const body = paint.render()
+  const body = selout(paint.render())
   const out = new Raster(128, 128)
 
   // ---- aura under the body (phase 2)

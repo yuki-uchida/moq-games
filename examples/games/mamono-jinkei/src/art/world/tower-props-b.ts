@@ -2,7 +2,7 @@
 import { Raster, ball } from '../raster'
 import type { Sheet } from '../sheet'
 import { solid } from './pp'
-import { vn1 } from './gfx'
+import { mod, vn1 } from './gfx'
 import {
   C,
   D,
@@ -189,133 +189,271 @@ function windmill(spin: number) {
 }
 
 // ------------------------------------------------------------------ drawbridge
+//
+// A drawbridge is a run of tile-sized pieces (one prop per tile) that has to read as one bridge, so every piece
+// draws the variant for its place in the run: row `n` / `m` / `s` (north edge, inside, south edge) or `o` (a
+// one-tile-wide bridge), and column `h` / `m` / `e` (hinge end, inside, free end). Frames are drawn hinged on the
+// left; the renderer (render/drawbridges.ts) picks the variants, mirrors them for a bridge hinged on its east side
+// and unrolls the deck from the hinge while it lowers. Frames are 80×80: the tile is the lower 64 rows between
+// 8 px margins, so rails and the raised leaf can stand up out of their tile and the end beams rest on the banks.
 
-/** `lift` 0 = flat, up to 1 = standing on its hinge; `posts` draws the anchor posts. */
-function drawbridge(lift: number, posts: boolean) {
-  const r = frame('drawbridge_up')
-  const len = lift >= 1 ? 0 : Math.round(60 * Math.cos(lift * 1.45))
-  const posts_ = () => {
-    for (const y of [4, 50]) {
-      part(r, (l) => {
-        post(l, 1, y, y + 14, 8)
-        l.rect(0, y, 10, 2, WOOD[0])
-        l.rect(0, y + 12, 10, 3, WOOD[3])
-        rivet(l, 3, y + 5)
-      })
-      r.rect(2, y + 1, 6, 1, GOLD[0])
-      r.rect(2, y + 11, 6, 2, STEEL[2])
+type BridgeRow = 'n' | 'm' | 's' | 'o'
+const BRIDGE_ROWS: BridgeRow[] = ['n', 'm', 's', 'o']
+/** The tile inside a drawbridge frame: left edge and top. */
+const OX = 8
+const TY = 16
+const northEdge = (row: BridgeRow) => row === 'n' || row === 'o'
+const southEdge = (row: BridgeRow) => row === 's' || row === 'o'
+/** Plank deck rows of a piece (frame y, end exclusive). */
+const deckTop = (row: BridgeRow) => TY + (northEdge(row) ? 10 : 0)
+const deckBot = (row: BridgeRow) => TY + (southEdge(row) ? 52 : 64)
+/** The bridge's full extent including its edge beams. */
+const leafTop = (row: BridgeRow) => TY + (northEdge(row) ? 4 : 0)
+const leafBot = (row: BridgeRow) => TY + (southEdge(row) ? 58 : 64)
+
+/**
+ * Crosswise planks, 16 px wide, from frame x `x0` to `x1`, with butt joints and grain that repeat every tile so
+ * the rows and columns of a run join up.
+ */
+function bridgeDeck(l: Raster, row: BridgeRow, x0: number, x1: number) {
+  for (let x = x0; x < x1; x++) {
+    const tx = mod(x - OX, 64)
+    const px = tx % 16
+    const pi = tx >> 4
+    // a one-tile-wide bridge is spanned by single planks; wider decks have staggered butt joints
+    const joint = row === 'o' ? -9 : [9, 41, 25, 57][pi]
+    for (let y = deckTop(row); y < deckBot(row); y++) {
+      const ty = y - TY
+      let c = WOOD[1]
+      if (px === 0) c = WOOD[0]
+      else if (px === 1 && pi % 2 === 0) c = WOOD[0]
+      else if (px === 14) c = WOOD[2]
+      else if (px === 15) c = WOOD[3]
+      else if ((px === 5 && mod(ty + pi * 17, 32) < 12) || (px === 10 && mod(ty + pi * 29, 40) < 9)) c = WOOD[2]
+      if (ty === joint && px < 15) c = WOOD[3]
+      else if (ty === joint + 1 && px < 15) c = WOOD[0]
+      if ((px === 3 || px === 11) && (ty === joint + 3 || ty === joint - 2)) c = STEEL[1]
+      l.set(x, y, c)
     }
   }
-  if (posts) posts_()
-  // chains from the post tops to the free end
-  const endX = 4 + len
-  const chain = (y0: number, y1: number) => {
-    const n = Math.max(2, Math.abs(endX - 6))
-    for (let i = 0; i <= n; i += 2) {
-      const t = i / n
-      const x = 6 + (endX - 6) * t
-      const y = y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * (lift > 0.9 ? 8 : 4) * (1 - lift * 0.5)
-      r.set(x, y, STEEL[0])
-      r.set(x + 1, y, STEEL[2])
-      r.set(x, y + 1, STEEL[3])
-    }
+}
+
+/** Long iron bands near the outer edges, riveted every 16 px. */
+function bridgeBands(r: Raster, row: BridgeRow, x0: number, x1: number) {
+  const ys: number[] = []
+  if (northEdge(row)) ys.push(TY + 13)
+  if (southEdge(row)) ys.push(TY + 47)
+  for (const y of ys) {
+    r.rect(x0, y, x1 - x0, 2, STEEL[2])
+    r.rect(x0, y, x1 - x0, 1, STEEL[1])
+    for (let x = x0 + 4; x < x1; x += 16) r.set(x, y, STEEL[0])
   }
-  if (lift >= 1) {
-    // raised: the leaf stands up out of the picture; chains run taut up and away
-    for (const y of [8, 54]) {
-      for (let i = 0; i < 6; i++) {
-        r.set(8, y - i * 2, i % 2 ? STEEL[2] : STEEL[0])
-        r.set(9, y - i * 2, STEEL[3])
-      }
-    }
-    for (const y of [4, 50]) rivet(r, 3, y + 5)
-    return r
+}
+
+/** A short rail post standing on an edge beam (`foot` = frame y of its foot). */
+function railPost(l: Raster, x: number, foot: number, h: number) {
+  post(l, x, foot - h, foot, 4)
+  l.rect(x, foot - h, 4, 1, WOOD[0])
+}
+
+/** A tall hinge post on the bank (10 px wide, its right side on the tile edge). */
+function hingePost(l: Raster, top: number, foot: number) {
+  post(l, OX - 8, top, foot, 10)
+  l.rect(OX - 8, top, 10, 2, WOOD[0])
+  l.rect(OX - 8, top + 2, 10, 1, WOOD[3])
+}
+
+/** The hinge post's brass cap, winch drum and bolt. */
+function hingeCap(r: Raster, top: number) {
+  r.rect(OX - 7, top, 8, 1, GOLD[0])
+  r.rect(OX - 7, top + 1, 8, 1, GOLD[2])
+  r.ellipse(OX - 3, top + 7, 2.6, 2.6, STEEL[2])
+  r.set(OX - 4, top + 6, STEEL[0])
+  r.set(OX - 2, top + 8, STEEL[3])
+  rivet(r, OX - 4, top + 13)
+}
+
+/** A chain from (x0, y0) to (x1, y1) with `sag` px of droop. */
+function chain(r: Raster, x0: number, y0: number, x1: number, y1: number, sag: number) {
+  const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0)))
+  for (let i = 0; i <= n; i += 2) {
+    const t = i / n
+    const x = x0 + (x1 - x0) * t
+    const y = y0 + (y1 - y0) * t + Math.sin(t * Math.PI) * sag
+    r.set(x, y, (i >> 1) % 2 ? STEEL[2] : STEEL[0])
+    r.set(x + 1, y, STEEL[3])
   }
-  // plank leaf (perspective: shorter and thicker while it stands up)
-  const thick = Math.round(lift * 12)
-  const x0 = 10
-  const x1 = Math.max(x0 + 4, x0 + len - 2)
+}
+
+/** The lowered deck piece; `hinge` / `free` draw the end beams of the run, resting 6 px onto the banks. */
+function bridgeDown(name: string, row: BridgeRow, hinge: boolean, free: boolean) {
+  const r = frame(name)
+  const x0 = hinge ? OX - 6 : OX
+  const x1 = free ? OX + 70 : OX + 64
+  // rail posts every 32 px; the hinge post and the free end replace the outermost ones
+  const posts = [12, free ? 50 : 44].filter((x) => !(hinge && x < 20)).map((x) => x + OX)
+  const ends = [hinge ? OX - 3 : OX - 20, ...posts, free ? OX + 58 : OX + 76]
   part(r, (l) => {
-    for (let x = x0; x < x1; x++) {
-      const px = (x - x0) % 10
-      const pi = Math.floor((x - x0) / 10)
-      for (let y = 8; y < 56; y++) {
-        let c = WOOD[1]
-        if (px === 0) c = WOOD[0]
-        else if (px === 9) c = WOOD[3]
-        else if (px === 8) c = WOOD[2]
-        if (pi % 3 === 1 && px > 1 && px < 8 && (y * 3 + pi) % 13 === 0) c = WOOD[2]
-        if (y === 8) c = WOOD[0]
-        if (y >= 55 - 0) c = WOOD[3]
-        l.set(x, y - Math.round(thick * 0.5), c)
+    bridgeDeck(l, row, x0, x1)
+    if (northEdge(row)) beam(l, x0, x1, TY + 4, 6)
+    if (southEdge(row)) {
+      beam(l, x0, x1, TY + 52, 6)
+      // the deck's front face over the drop
+      l.rect(x0, TY + 58, x1 - x0, 3, WOOD[3])
+      for (let x = x0 + 2; x < x1; x += 8) l.set(x, TY + 59, WOOD[2])
+    }
+    if (hinge) {
+      // the hinge beam straddles the bank's edge, its iron knuckles on the bank side
+      post(l, OX - 6, leafTop(row), leafBot(row), 10)
+      for (let y = TY + 6; y < leafBot(row) - 6; y += 16) {
+        l.rect(OX - 6, y, 6, 6, STEEL[2])
+        l.rect(OX - 6, y, 6, 1, STEEL[0])
+        l.rect(OX - 6, y + 5, 6, 1, STEEL[3])
       }
     }
-    // front thickness
-    for (let x = x0; x < x1; x++)
-      for (let k = 0; k < thick; k++) l.set(x, 56 - Math.round(thick * 0.5) + k, k === thick - 1 ? WOOD[3] : WOOD[2])
-    // iron straps
-    for (const xs of [x0 + 6, x1 - 12])
-      if (xs > x0 && xs + 3 < x1)
-        for (let y = 9; y < 55; y++) {
-          l.set(xs, y - Math.round(thick * 0.5), STEEL[0])
-          l.set(xs + 1, y - Math.round(thick * 0.5), STEEL[1])
-          l.set(xs + 2, y - Math.round(thick * 0.5), STEEL[3])
-        }
-    // hinge beam
-    post(l, 8, 6, 58, 4)
+    if (free) {
+      post(l, OX + 58, leafTop(row), leafBot(row), 12)
+      l.rect(OX + 68, leafTop(row), 2, leafBot(row) - leafTop(row), STEEL[2])
+      l.rect(OX + 68, leafTop(row), 1, leafBot(row) - leafTop(row), STEEL[1])
+    }
+    if (northEdge(row)) {
+      for (const x of posts) railPost(l, x, TY + 8, 16)
+      if (hinge) hingePost(l, TY - 16, TY + 12)
+    }
+    if (southEdge(row)) {
+      for (const x of posts) railPost(l, x, TY + 56, 18)
+      if (hinge) hingePost(l, TY + 32, TY + 62)
+    }
   })
-  if (posts) posts_()
-  chain(10, 14)
-  chain(52, 48)
-  // free-end handrail knobs
-  if (lift < 0.3) {
-    r.set(60, 9, WOOD[0])
-    r.set(60, 54, WOOD[0])
+  // pieces join their neighbours: no outline across an inner seam
+  if (!northEdge(row)) for (let x = 0; x < r.w; x++) r.set(x, TY - 1, 0)
+  for (let y = 0; y < r.h; y++) {
+    if (!hinge) r.set(OX - 1, y, 0)
+    if (!free) r.set(OX + 64, y, 0)
+  }
+  bridgeBands(r, row, hinge ? OX + 4 : x0, free ? OX + 58 : x1)
+  if (hinge) for (let y = TY + 6; y < leafBot(row) - 6; y += 16) rivet(r, OX - 4, y + 2)
+  if (free) for (let y = leafTop(row) + 6; y < leafBot(row) - 4; y += 16) rivet(r, OX + 62, y)
+  // rope rails between the posts
+  for (let i = 0; i + 1 < ends.length; i++) {
+    const a = ends[i] + 2
+    const b = ends[i + 1] + 2
+    if (northEdge(row)) rope(r, a, TY - 6, b, TY - 6, 2)
+    if (southEdge(row)) rope(r, a, TY + 40, b, TY + 40, 3)
+  }
+  if (hinge) {
+    // the lifting chains lie slack from the hinge posts to rings on the edge beams
+    if (northEdge(row)) {
+      hingeCap(r, TY - 16)
+      chain(r, OX + 1, TY - 10, OX + 24, TY + 6, 3)
+      r.ring(OX + 25, TY + 7, 1, 2.2, GOLD[2])
+    }
+    if (southEdge(row)) {
+      hingeCap(r, TY + 32)
+      chain(r, OX + 1, TY + 38, OX + 24, TY + 54, 3)
+      r.ring(OX + 25, TY + 55, 1, 2.2, GOLD[2])
+    }
   }
   return r
 }
 
-function drawbridgeDown() {
-  const r = frame('drawbridge_down')
+/**
+ * The raised bridge from above: only the hinge piece shows anything, the upright leaf seen end-on (its free-end
+ * beam) along the hinge with the hinge posts and taut chains; the gap stays open sky.
+ */
+function bridgeUp(name: string, row: BridgeRow) {
+  const r = frame(name)
+  const top = northEdge(row) ? TY - 12 : TY
+  const bot = leafBot(row) + (southEdge(row) ? 2 : 0)
+  const lx = OX - 2
+  // the leaf's shadow on the clouds
+  for (let y = top + 8; y < bot + 3; y++)
+    for (let x = lx + 9; x < lx + 22; x++) if (bayer(x, y) < 0.7 - (x - lx - 9) * 0.05) r.set(x, y, SK[3])
   part(r, (l) => {
-    // deck
-    for (let x = 0; x < 64; x++) {
-      const px = x % 13
-      const pi = Math.floor(x / 13)
-      for (let y = 7; y < 57; y++) {
-        let c = pi % 2 ? WOOD[0] : WOOD[1]
-        if (px === 0) c = WOOD[0]
-        else if (px === 12) c = WOOD[3]
-        else if (px === 11) c = WOOD[2]
-        if (px > 1 && px < 11 && (y + pi * 5) % 17 === 0) c = WOOD[2]
-        if (y === 7 || y === 56) c = WOOD[3]
-        l.set(x, y, c)
-      }
-    }
-    // side beams
-    beam(l, 0, 64, 4, 5)
-    beam(l, 0, 64, 54, 6)
-    for (const x of [8, 50]) {
-      l.rect(x, 7, 3, 49, STEEL[2])
-      l.rect(x, 7, 1, 49, STEEL[0])
-      l.rect(x + 2, 7, 1, 49, STEEL[3])
-    }
+    post(l, lx, top, bot, 9)
+    l.rect(lx, top, 9, 2, WOOD[0])
+    if (southEdge(row)) l.rect(lx, bot - 3, 9, 3, WOOD[3])
+    if (northEdge(row)) hingePost(l, 0, TY + 10)
+    if (southEdge(row)) hingePost(l, TY + 32, TY + 62)
   })
-  for (const x of [4, 59]) {
-    r.rect(x, 20, 2, 2, GOLD[0])
-    r.rect(x, 40, 2, 2, GOLD[0])
+  if (!northEdge(row)) for (let x = 0; x < r.w; x++) if (x < lx || x >= lx + 9) r.set(x, TY - 1, 0)
+  // iron caps across the leaf's top edge and the plank ends between them
+  for (let y = top + (northEdge(row) ? 10 : 4); y < bot - 5; y += 12) {
+    r.rect(lx + 1, y, 7, 2, STEEL[2])
+    r.rect(lx + 1, y, 7, 1, STEEL[1])
+    r.set(lx + 4, y + 6, WOOD[3])
+    r.set(lx + 4, y + 7, WOOD[3])
   }
-  for (const x of [4, 59]) for (const y of [8, 49]) rivet(r, x, y)
-  // rope rails with posts
-  part(r, (l) => {
-    post(l, 29, 38, 60, 6)
-    post(l, 29, 0, 9, 6)
-  })
-  rope(r, 0, 42, 29, 42, 3)
-  rope(r, 35, 42, 63, 42, 3)
-  rope(r, 0, 2, 29, 2, 2)
-  rope(r, 35, 2, 63, 2, 2)
+  if (northEdge(row)) {
+    hingeCap(r, 0)
+    chain(r, OX + 1, 8, lx + 8, top + 2, -1)
+  }
+  if (southEdge(row)) {
+    hingeCap(r, TY + 32)
+    chain(r, OX + 1, TY + 40, lx + 8, TY + 26, 1)
+  }
+  if (!northEdge(row) && !southEdge(row))
+    for (let y = TY + 8; y < TY + 64; y += 16) {
+      r.rect(OX - 6, y, 4, 6, STEEL[2])
+      r.rect(OX - 6, y, 4, 1, STEEL[0])
+    }
   return r
+}
+
+/**
+ * The free end of the leaf as it swings down (`k` 0 → 1): its end beam ending at the anchor (the renderer unrolls
+ * the deck up to it), still lifted and throwing a shadow ahead onto the clouds that shrinks as it lands.
+ */
+function bridgeEdge(name: string, row: BridgeRow, k: number) {
+  const r = frame(name)
+  const ax = OX + 32
+  const lift = Math.round(16 * (1 - k))
+  const top = leafTop(row) - (northEdge(row) ? lift : 0)
+  const bot = leafBot(row) - (southEdge(row) ? lift : 0)
+  const reach = Math.round(4 + 24 * (1 - k))
+  for (let y = leafTop(row); y < leafBot(row) + 2; y++)
+    for (let x = ax + 1; x < ax + 1 + reach; x++) {
+      const fade = (x - ax - 1) / reach
+      if (bayer(x, y) < 0.75 - fade * 0.55) r.set(x, y, SK[3])
+    }
+  part(r, (l) => {
+    post(l, ax - 8, top, bot, 9)
+    l.rect(ax - 8, top, 9, 2, WOOD[0])
+    if (southEdge(row) && lift > 0) l.rect(ax - 8, bot, 9, lift, WOOD[3])
+  })
+  if (!northEdge(row)) for (let x = 0; x < r.w; x++) if (x < ax - 8 || x > ax) r.set(x, TY - 1, 0)
+  for (let y = top + 6; y < bot - 4; y += 16) {
+    r.rect(ax - 7, y, 7, 2, STEEL[2])
+    r.rect(ax - 7, y, 7, 1, STEEL[1])
+  }
+  return r
+}
+
+const BRIDGE_COLS = [
+  ['h', true, false],
+  ['m', false, false],
+  ['e', false, true]
+] as const
+
+/** Every drawbridge animation: the stand-alone piece plus the variants for each place in a run. */
+function drawbridgeAnims(): Sheet {
+  const out: Sheet = {}
+  const edgeFrames = (name: string, row: BridgeRow) => [0.1, 0.3, 0.5, 0.7, 0.9].map((k) => bridgeEdge(name, row, k))
+  out.drawbridge_up = mk('drawbridge_up', [bridgeUp('drawbridge_up', 'o')])
+  out.drawbridge_lowering = mk('drawbridge_lowering', edgeFrames('drawbridge_lowering', 'o'))
+  out.drawbridge_down = mk('drawbridge_down', [bridgeDown('drawbridge_down', 'o', true, true)])
+  for (const row of BRIDGE_ROWS) {
+    if (row !== 'o') {
+      out[`drawbridge_up_${row}`] = mk(`drawbridge_up_${row}`, [bridgeUp(`drawbridge_up_${row}`, row)])
+      const lowering = `drawbridge_lowering_${row}`
+      out[lowering] = mk(lowering, edgeFrames(lowering, row))
+    }
+    for (const [col, hinge, free] of BRIDGE_COLS) {
+      const name = `drawbridge_down_${row}${col}`
+      out[name] = mk(name, [bridgeDown(name, row, hinge, free)])
+    }
+  }
+  return out
 }
 
 // ------------------------------------------------------------------ bells
@@ -841,12 +979,7 @@ export const propsB = (): Sheet => ({
     'windmill_spin',
     [0, 1, 2, 3, 4, 5].map((k) => windmill((k * Math.PI) / 2 / 6))
   ),
-  drawbridge_up: mk('drawbridge_up', [drawbridge(1, true)]),
-  drawbridge_lowering: mk(
-    'drawbridge_lowering',
-    [0.9, 0.7, 0.45, 0.22, 0.06].map((l) => drawbridge(l, true))
-  ),
-  drawbridge_down: mk('drawbridge_down', [drawbridgeDown()]),
+  ...drawbridgeAnims(),
   bell: mk('bell', [bell(0, false)]),
   bell_ring: mk(
     'bell_ring',

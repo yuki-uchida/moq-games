@@ -26,6 +26,7 @@ import { Ambience } from './ambience'
 import { Ground } from './ground'
 import { Lighting, flicker, type LightColor } from './lighting'
 import { blitAnim, findAnim, findFlash, pickName, propName, tinted } from './sprites'
+import { bridgeReach, downName, edgeName, layoutBridges, upName, type BridgePiece } from './drawbridges'
 
 export interface RenderInput {
   view: View
@@ -63,6 +64,13 @@ const MODE_FOLLOW = ['..#..', '.#.#.', '#.#.#', '.#.#.', '#...#']
 const FORMATION_NAMES: Record<number, string> = { 2: 'ペア陣', 3: '三角陣', 4: '四方陣' }
 const LINK = 110
 const FLAT_PROPS = new Set(['plate', 'plate2', 'bigplate'])
+/** One-pixel offsets that trace a silhouette's rim (Leon's parry glow). */
+const RIM_OFFSETS = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1]
+] as const
 /** Light sources among the props and decoration (animation base or `${kind}_${state}`). */
 const WARM_DECOR = new Set(['lamp', 'torch', 'brazier'])
 const MOON_PROPS = new Set(['moonstone', 'bigmoon'])
@@ -123,6 +131,9 @@ export class Renderer {
   private lastFollow?: { x: number; y: number; slot: number }
   /** Prop states last frame (transition effects: dust, bell rings). */
   private propStates = new Map<number, string>()
+  /** Drawbridge pieces laid out as runs (per stage and set of pieces). */
+  private bridges = new Map<number, BridgePiece>()
+  private bridgesKey = ''
   private bellRings = new Map<number, number>()
   private heroZ = new Map<number, number>()
   /** Estimated flight stamina of crows (the view does not carry it): seconds left of 1.5. */
@@ -513,6 +524,7 @@ export class Renderer {
   private drawFloor(view: View, t: number, input: RenderInput) {
     const ctx = this.wctx
     const sheetId = `props:${view.stage}`
+    this.drawBridges(view, t)
     for (const p of view.props) {
       if (!FLAT_PROPS.has(p.kind)) continue
       if (!this.visible(p.x, p.y, 80)) continue
@@ -576,6 +588,60 @@ export class Renderer {
         this.drawShadow(s.x, s.y, s.kind === 'pot' || s.kind === 'barrel' ? 12 : s.kind === 'bomb' ? 8 : 5, s.z)
     for (const p of view.props)
       if ((p.z ?? 0) > 0) this.drawShadow(p.x, p.y, p.kind === 'acorn' || p.kind === 'cheese' ? 30 : 13, p.z ?? 0)
+  }
+
+  /**
+   * Drawbridges lie flat under everything: whole runs of decking when down, only the raised leaf on the hinge
+   * column when up, and while lowering the deck unrolled from the hinge up to the leaf's falling free edge.
+   */
+  private drawBridges(view: View, t: number) {
+    const sheetId = `props:${view.stage}`
+    let key = ''
+    for (const p of view.props) if (p.kind === 'drawbridge') key += `${p.id},`
+    if (!key || !this.info) return
+    key = `${view.stage}:${key}`
+    if (key !== this.bridgesKey) {
+      this.bridges = layoutBridges(view.props, this.info)
+      this.bridgesKey = key
+    }
+    const ctx = this.wctx
+    for (const p of view.props) {
+      if (p.kind !== 'drawbridge' || !this.visible(p.x, p.y, 96)) continue
+      const b = this.bridges.get(p.id)
+      if (!b) continue
+      const flip = b.dir < 0
+      const x = p.x - this.ox
+      const y = p.y - this.oy
+      if (p.state === 'up') {
+        const a = b.col === 'h' && findAnim(sheetId, upName(b))
+        if (a) blitAnim(ctx, a, 0, x, y, flip)
+        continue
+      }
+      const deck = findAnim(sheetId, downName(b))
+      if (!deck) continue
+      if (p.state !== 'lowering') {
+        blitAnim(ctx, deck, 0, x, y, flip)
+        continue
+      }
+      // The deck reaches `reach` px out from the hinge; the leaf's free edge rides its front.
+      const age = t - p.st
+      const reach = bridgeReach(b, age)
+      const cover = Math.min(TILE, reach - b.i * TILE)
+      if (cover <= 0) continue
+      // (the hinge column's beam and posts stand 8 px out on the bank)
+      const back = b.col === 'h' ? 8 : 0
+      const left = b.dir > 0 ? p.x - TILE / 2 - back : p.x + TILE / 2 - cover
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(Math.round(left - this.ox), Math.round(y - 64), Math.round(cover + back), 128)
+      ctx.clip()
+      blitAnim(ctx, deck, 0, x, y, flip)
+      ctx.restore()
+      if (cover < TILE) {
+        const edge = findAnim(sheetId, edgeName(b))
+        if (edge) blitAnim(ctx, edge, age, b.hingeX + b.dir * reach - this.ox, y, flip)
+      }
+    }
   }
 
   private drawTele(tl: Telegraph, t: number) {
@@ -732,7 +798,7 @@ export class Renderer {
       if (this.visible(n.x, n.y, 64)) this.push(n.y, K_NPC, i)
     })
     view.props.forEach((p, i) => {
-      if (FLAT_PROPS.has(p.kind)) return
+      if (FLAT_PROPS.has(p.kind) || p.kind === 'drawbridge') return
       const at = this.propPos(p)
       if (!this.visible(at.x, at.y, 140)) return
       // Carried things float above their carriers; open gates sink into the floor.
@@ -891,6 +957,9 @@ export class Renderer {
       if (prev === undefined) continue
       if (p.state === 'ring') this.bellRings.set(p.id, view.t)
       else if (p.state === 'lowering' || p.state === 'opening') {
+        // A drawbridge shakes its dust off at the hinge, not over the open sky.
+        const b = p.kind === 'drawbridge' ? this.bridges.get(p.id) : undefined
+        if (b && b.col !== 'h') continue
         this.particles.burst('dust', p.x, p.y + 10, 14)
         if (p.kind === 'drawbridge' || p.kind === 'lockdoor') this.particles.burst('rubble', p.x, p.y, 6)
       } else if (p.kind === 'moonstone' && p.state === 'on') {
@@ -1150,17 +1219,28 @@ export class Renderer {
     const x = b.x - this.ox
     // Hovering bosses (milda on her broom) bob with their own lift on top of the hover height.
     const y = b.y - this.oy - b.z
+    // Leon's parry stance (attacks bounce off): a pulsing bright rim behind the body, so his face, armour and sword
+    // stay readable instead of washing out to a white silhouette.
+    const parrying = (b.parry ?? 0) > t
+    if (parrying) {
+      const fh = findFlash(sheetId, name)
+      if (fh) {
+        const k = 0.55 + 0.3 * Math.sin(t * 18)
+        this.wctx.globalCompositeOperation = 'lighter'
+        for (const [dx, dy] of RIM_OFFSETS) blitAnim(this.wctx, fh, t - b.st, x + dx, y + dy, mirror, k)
+        this.wctx.globalCompositeOperation = 'source-over'
+      }
+    }
     blitAnim(this.wctx, a, t - b.st, x, y, mirror)
     if (b.hitAt !== undefined && t - b.hitAt < 0.1 && t >= b.hitAt) {
       const fa = findFlash(sheetId, name)
       if (fa) blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.8)
     }
-    // Leon's parry stance: a pulsing golden outline (attacks bounce off).
-    if ((b.parry ?? 0) > t) {
+    if (parrying) {
       const fa = findFlash(sheetId, name)
       if (fa) {
         this.wctx.globalCompositeOperation = 'lighter'
-        blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.25 + 0.2 * Math.sin(t * 18))
+        blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.06 + 0.04 * Math.sin(t * 18))
         this.wctx.globalCompositeOperation = 'source-over'
       }
       this.label(b.x, b.y - b.z - 132, '受け流しの構え', '#fff1a8', 12, 1, 'rgba(60,40,10,0.75)')
