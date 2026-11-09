@@ -137,6 +137,7 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (p.state === 'thrown') continue
     const v: PropView = { id: p.id, kind: p.kind, x: r1(p.x), y: r1(p.y), state: p.state, st: r2(p.st) }
     if (p.z) v.z = r1(p.z)
+    if (p.kind === 'moonstone' && p.group !== undefined) v.group = p.group
     if (PUSHABLE.has(p.kind)) {
       v.weight = p.weight
       v.strength = p.strength

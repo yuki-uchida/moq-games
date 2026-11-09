@@ -7,6 +7,7 @@ import type { EventView, HeroView, View } from '../sim/types'
 import { BOSS_NAMES, JOBS, JOB_COLORS, JOB_NAMES, TILE, type BossKind } from '../vocab'
 import { clearChildren, el, icon, setText, show } from './dom'
 import { hintsFor, type Hint } from './hints'
+import { moonProgress } from './moons'
 import type { StageInfo } from '../sim/types'
 
 export interface HudActions {
@@ -222,6 +223,13 @@ export class Hud {
 
   private queueBanner(text: string, kind: string) {
     if (this.bannerQueue.some((b) => b.text === text)) return
+    // A technique name cuts a formation banner short and goes first, so it shows the moment it is released.
+    if (kind === 'big' && TECH_TITLES.has(text.replace(/！$/, ''))) {
+      this.bannerQueue.unshift({ text, kind })
+      if (this.bannerQueue.length > 3) this.bannerQueue.pop()
+      this.bannerUntil = 0
+      return
+    }
     this.bannerQueue.push({ text, kind })
     if (this.bannerQueue.length > 3) this.bannerQueue.shift()
   }
@@ -308,7 +316,7 @@ export class Hud {
     } else if (now > this.bannerUntil && this.banner.classList.contains('on')) this.banner.className = 'banner'
 
     this.updateBells(view)
-    this.updateMoons(view, mine)
+    this.updateMoons(view, info, mine)
     this.updateDialog(view, now)
     this.updateBoss(view, info, mine)
   }
@@ -342,31 +350,26 @@ export class Hud {
     )
   }
 
-  /** Moonstone progress: the stones near you (a set of four in the clearing), lit ones glowing. */
-  private updateMoons(view: View, me: HeroView | undefined) {
+  /** Moonstone progress: every stone of the puzzle group (not only the ones near you), lit ones glowing. */
+  private updateMoons(view: View, info: StageInfo | undefined, me: HeroView | undefined) {
     const ref = me ?? view.heroes[0]
-    const stones = ref
-      ? view.props.filter((p) => p.kind === 'moonstone' && Math.hypot(p.x - ref.x, p.y - ref.y) < 9 * TILE)
-      : []
-    const shown = view.phase === 'play' && stones.length >= 2
-    const lit = stones.map((p) => p.state === 'on')
-    const key = shown ? lit.map((x) => (x ? 1 : 0)).join('') : ''
+    const prog = view.phase === 'play' ? moonProgress(view.props, info?.rooms, ref) : undefined
+    const key = prog ? `${prog.group}:${prog.lit.map((x) => (x ? 1 : 0)).join('')}` : ''
     if (key === this.moonKey) return
     this.moonKey = key
-    show(this.moons, shown)
+    show(this.moons, !!prog)
     clearChildren(this.moons)
-    if (!shown) return
-    const n = lit.filter(Boolean).length
+    if (!prog) return
     this.moons.append(
       el('span.bc-label', { text: '月石' }),
-      ...lit.map((on) =>
+      ...prog.lit.map((on) =>
         el(
           'span.bc-bell' + (on ? '.on' : ''),
           {},
           icon('props:forest', on ? 'moonstone_on' : 'moonstone_off', 32, 'px-icon bc-icon')
         )
       ),
-      el('span.bc-count', { text: n >= stones.length ? 'ぜんぶ灯った！' : `${n}/${stones.length}` })
+      el('span.bc-count', { text: prog.complete ? 'ぜんぶ灯った！' : `${prog.n}/${prog.total}` })
     )
   }
 
