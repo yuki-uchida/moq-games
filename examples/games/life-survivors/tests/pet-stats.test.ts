@@ -82,6 +82,8 @@ test('new pets use current level and passive stats without changing existing pet
   const original = { r: pet.r, damage: pet.damage, spin: pet.spin, maxLife: pet.maxLife }
   expect(game.state.enemies.length).toBeGreaterThan(0)
   pet.target = game.state.enemies[0]
+  // Biting it: standing where it bites, facing it.
+  Object.assign(pet, game['petContact'](pet, player, pet.target))
   pet.angle = Math.atan2(pet.target.y - pet.y, pet.target.x - pet.x)
   pet.hits.set(-1, 100)
   pet.aux = 0.15

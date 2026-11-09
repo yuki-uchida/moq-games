@@ -57,7 +57,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 16
+  v: 17
   time: number
   phase: GameState['phase']
   level: number
@@ -86,6 +86,9 @@ export interface View {
 
 export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
 export const SHOT_GAMBLE = 64
+/** Added to a pet's variant while it stands (unmoved for PET_STILL_SECONDS and not biting): the renderer stands it. */
+export const PET_STILL = 16
+const PET_STILL_SECONDS = 0.15
 export const GUARD_BASH_STEPS = 14
 /** Bits of an enemy's flags field. */
 export const ENEMY_FLAG = { elite: 1, windup: 2, blink: 4, ghost: 8 } as const
@@ -131,7 +134,9 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
         ? (s.v === 1 || (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : 0) +
           (s.aux > 0 ? 2 * (1 + Math.round((1 - Math.min(1, s.aux / s.tick)) * GUARD_BASH_STEPS)) : 0)
         : r(s.v)) +
-        (s.kind === 'pet' ? (s.petType ?? 0) * 2 : 0) +
+        (s.kind === 'pet'
+          ? (s.petType ?? 0) * 2 + ((s.petStill ?? 0) >= PET_STILL_SECONDS && s.v !== 1 ? PET_STILL : 0)
+          : 0) +
         (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0)
     )
   }
@@ -155,7 +160,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 16,
+    v: 17,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -336,7 +341,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 16) return undefined
+  if (!record(value) || value.v !== 17) return undefined
   if (
     Object.keys(value).some(
       (key) =>

@@ -247,7 +247,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(16)
+    expect(view.v).toBe(17)
     expect(view.shots[7]).toBe(1)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
     expect(game.state.bullets).toEqual([])

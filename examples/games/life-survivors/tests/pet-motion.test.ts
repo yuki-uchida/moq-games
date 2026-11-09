@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { EVENTS, timeAtAge } from '../src/data'
-import { Game, weaponStats, type Player, type Shot } from '../src/game'
+import { Game, PET_SPOTS, weaponStats, type Player, type Shot } from '../src/game'
 import { PET_TYPES } from '../src/weapon-life'
 
 const DT = 1 / 60
@@ -81,19 +81,47 @@ test('a pet coming back from a bite runs facing the way it goes and keeps its fa
   expect(pet.angle).toBe(facing)
 })
 
-/** Pairs of pets of one kind (any round, the child's own or a gamble's copy) less than 20 px apart, while resting. */
+/** Pets settled out for at least this long (s) count as resting among the others. */
+const SETTLED = 0.3
+
+/**
+ * Pairs of resting pets (no enemy to chase, out for SETTLED) less than 20 px apart: any kinds, rounds and sources (the
+ * child's own or a gamble's copy).
+ */
 function crowded(out: Shot[]) {
   const close: string[] = []
-  for (const a of out)
-    for (const b of out)
-      if (a.id < b.id && a.petType === b.petType && !a.target && !b.target) {
+  const resting = out.filter((pet) => !pet.target && pet.maxLife - pet.life >= SETTLED)
+  for (const a of resting)
+    for (const b of resting)
+      if (a.id < b.id) {
         const d = Math.hypot(a.x - b.x, a.y - b.y)
-        if (d < 20) close.push(`${a.sourceWeapon}#${a.id} ${b.sourceWeapon}#${b.id} ${d.toFixed(1)} px`)
+        if (d < 20)
+          close.push(`${a.sourceWeapon}#${a.id}:${a.petType} ${b.sourceWeapon}#${b.id}:${b.petType} ${d.toFixed(1)} px`)
       }
   return close
 }
 
-test('a new round of pets joins the last one on the other ring, doubling the pets without stacking them', () => {
+test('resting spots: 6, 10, 14 and 17 on rings of 34, 56, 78 and 100 px from -20° to 200°, no two within 22 px', () => {
+  const rings = [34, 56, 78, 100].map(
+    (radius) => PET_SPOTS.filter((spot) => Math.abs(Math.hypot(spot.x, spot.y) - radius) < 1e-9).length
+  )
+  expect(rings).toEqual([6, 10, 14, 17])
+  expect(PET_SPOTS).toHaveLength(47)
+  for (const spot of PET_SPOTS) {
+    const angle = Math.atan2(spot.y, spot.x)
+    // -20° to 200°: never more than 20° above the horizon on either side.
+    expect(spot.y).toBeGreaterThanOrEqual(-Math.sin(degrees(20)) * Math.hypot(spot.x, spot.y) - 1e-9)
+    if (spot.y < 0) expect(Math.abs(Math.cos(angle))).toBeGreaterThan(Math.cos(degrees(20)) - 1e-9)
+  }
+  for (let a = 0; a < PET_SPOTS.length; a++)
+    for (let b = a + 1; b < PET_SPOTS.length; b++)
+      expect(
+        Math.hypot(PET_SPOTS[a].x - PET_SPOTS[b].x, PET_SPOTS[a].y - PET_SPOTS[b].y),
+        `${a}, ${b}`
+      ).toBeGreaterThanOrEqual(22 - 1e-9)
+})
+
+test('a new round of pets joins the last one on free spots, doubling the pets without stacking or moving them', () => {
   const { game, player } = setup([
     { id: 'w_pet', lv: 8, cd: 100, held: 0, damage: 0 },
     { id: 'w_gamble', lv: 8, cd: 100, held: 0, damage: 0, gambleWeapon: 'w_pet', gambleUntil: 1e9 }
@@ -103,34 +131,44 @@ test('a new round of pets joins the last one on the other ring, doubling the pet
   game['fire'](player, gamble, weaponStats(player, gamble))
   const first = pets(game, player)
   expect(first.some((pet) => pet.sourceWeapon === 'w_gamble')).toBe(true)
-  // The first round appears on the inner ring's resting spots.
+  // The first round appears on resting spots of its own, the nearest ones round the child.
+  expect(new Set(first.map((pet) => pet.restSpot)).size).toBe(first.length)
   for (const pet of first) {
-    expect(pet.petRing).toBe(0)
-    expect(Math.hypot(pet.x - player.x, pet.y - player.y)).toBeCloseTo(34)
+    const spot = PET_SPOTS[pet.restSpot!]
+    expect(pet.x - player.x).toBeCloseTo(spot.x)
+    expect(pet.y - player.y).toBeCloseTo(spot.y)
+    expect(Math.hypot(spot.x, spot.y)).toBeLessThanOrEqual(56 + 1e-9)
   }
   for (let frame = 0; frame < 120; frame++) game.tick(DT)
+  const settled = new Map(first.map((pet) => [pet, { x: pet.x - player.x, y: pet.y - player.y }]))
   game['fire'](player, own, weaponStats(player, own))
   game['fire'](player, gamble, weaponStats(player, gamble))
   const both = pets(game, player)
-  // Both rounds are out: twice the pets, the first round untouched.
+  // Both rounds are out: twice the pets, every one on a spot of its own, the first round untouched.
   expect(both).toHaveLength(first.length * 2)
   expect(first.every((pet) => both.includes(pet))).toBe(true)
-  // The second round appears on the outer ring's resting spots.
+  expect(new Set(both.map((pet) => pet.restSpot)).size).toBe(both.length)
   for (const pet of both.filter((pet) => !first.includes(pet))) {
-    expect(pet.petRing).toBe(1)
-    expect(Math.hypot(pet.x - player.x, pet.y - player.y)).toBeCloseTo(56)
+    const spot = PET_SPOTS[pet.restSpot!]
+    expect(pet.x - player.x).toBeCloseTo(spot.x)
+    expect(pet.y - player.y).toBeCloseTo(spot.y)
   }
   for (let frame = 0; frame < 120; frame++) {
     game.tick(DT)
+    for (const pet of first) {
+      const at = settled.get(pet)!
+      expect(Math.hypot(pet.x - player.x - at.x, pet.y - player.y - at.y), `frame ${frame}`).toBeLessThan(1e-6)
+    }
     expect(crowded(pets(game, player)), `frame ${frame}`).toEqual([])
   }
-  // The third round goes back to the inner ring, next to the second.
+  // Once the first round has gone the third takes the spots near the child it left.
+  const inner = new Set(first.map((pet) => pet.restSpot))
   for (const pet of first) pet.life = 0
   game.tick(DT)
   game['fire'](player, own, weaponStats(player, own))
-  expect(pets(game, player).filter((pet) => pet.sourceWeapon === 'w_pet' && !pet.petRing)).toHaveLength(
-    weaponStats(player, own).amount
-  )
+  const third = pets(game, player).filter((pet) => !both.includes(pet))
+  expect(third).toHaveLength(weaponStats(player, own).amount)
+  expect(third.every((pet) => inner.has(pet.restSpot))).toBe(true)
 })
 
 test('the first pets appear on their resting spots, not on the child', () => {
@@ -138,30 +176,35 @@ test('the first pets appear on their resting spots, not on the child', () => {
   game['fire'](player, player.weapons[0], weaponStats(player, player.weapons[0]))
   const out = pets(game, player)
   expect(out.length).toBeGreaterThan(1)
-  for (const pet of out) expect(Math.hypot(pet.x - player.x, pet.y - player.y)).toBeCloseTo(34)
+  for (const pet of out) {
+    expect(Math.hypot(pet.x - player.x, pet.y - player.y)).toBeCloseTo(34)
+    const spot = PET_SPOTS[pet.restSpot!]
+    expect(pet.x - player.x).toBeCloseTo(spot.x)
+    expect(pet.y - player.y).toBeCloseTo(spot.y)
+  }
 })
 
-test('resting pets of one kind never stand within 20 px: rounds of the child’s own and a gamble’s copies', () => {
-  for (const lv of [1, 5, 8])
-    for (const heading of [undefined, 0, 90, 180, -90]) {
-      const { game, player } = setup([
-        { id: 'w_pet', lv, cd: 0, held: 0, damage: 0 },
-        { id: 'w_gamble', lv, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_pet', gambleUntil: 1e9 }
-      ])
-      if (heading !== undefined)
-        game.setInput(player.id, { x: Math.cos(degrees(heading)), y: Math.sin(degrees(heading)) })
-      let overlapping = 0
-      for (let frame = 0; frame < 1200; frame++) {
-        game.tick(DT)
-        const out = pets(game, player)
-        if (out.filter((pet) => pet.sourceWeapon === 'w_pet').length > weaponStats(player, player.weapons[0]).amount)
-          overlapping++
-        if (frame < 90) continue
-        expect(crowded(out), `Lv${lv}, heading ${heading}, frame ${frame}`).toEqual([])
+test('resting pets never stand within 20 px of each other: any kinds, rounds, the child’s own and a gamble’s copies', () => {
+  for (const own of [1, 3, 5, 8])
+    for (const copied of [1, 2, 5, 8])
+      for (const heading of [undefined, 0, 45, 90, 135, 180, -135, -90, -45]) {
+        const { game, player } = setup([
+          { id: 'w_pet', lv: own, cd: 0, held: 0, damage: 0 },
+          { id: 'w_gamble', lv: copied, cd: 0, held: 0, damage: 0, gambleWeapon: 'w_pet', gambleUntil: 1e9 }
+        ])
+        if (heading !== undefined)
+          game.setInput(player.id, { x: Math.cos(degrees(heading)), y: Math.sin(degrees(heading)) })
+        let overlapping = 0
+        for (let frame = 0; frame < 720; frame++) {
+          game.tick(DT)
+          const out = pets(game, player)
+          if (out.filter((pet) => pet.sourceWeapon === 'w_pet').length > weaponStats(player, player.weapons[0]).amount)
+            overlapping++
+          expect(crowded(out), `own Lv${own}, gamble Lv${copied}, heading ${heading}, frame ${frame}`).toEqual([])
+        }
+        // Rounds did overlap (both out at once) along the way.
+        expect(overlapping, `own Lv${own}, gamble Lv${copied}`).toBeGreaterThan(0)
       }
-      // Rounds did overlap (both out at once) along the way.
-      expect(overlapping, `Lv${lv}`).toBeGreaterThan(0)
-    }
 })
 
 test('a gamble’s copy of 生き物観察 appears across the child from their own creature', () => {

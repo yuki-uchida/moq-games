@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { EVENTS, timeAtAge } from '../src/data'
-import { Game, petRestRadius, weaponStats } from '../src/game'
+import { Game, PET_SPOTS, weaponStats } from '../src/game'
 
 /** The fan straight above the owner (up ± 35°), where a companion would sit on their head, hat or name tag. */
 const overHead = (dx: number, dy: number) => dy < 0 && Math.abs(Math.atan2(dx, -dy)) < (35 * Math.PI) / 180
@@ -19,13 +19,18 @@ test('idle pets rest beside and below their owner, never in the fan above the he
   pets.forEach((pet, i) => (pet.orbit = i * 2.4))
   expect(pets).toHaveLength(9)
   for (let frame = 0; frame < 600; frame++) for (const pet of pets) game['movePet'](pet, player, 1 / 60)
+  // Each holds a spot of its own.
+  expect(new Set(pets.map((pet) => pet.restSpot)).size).toBe(pets.length)
   for (const pet of pets) {
     expect(pet.target).toBeUndefined()
-    // Pets settle within a few pixels of their resting spot: 34 px out, or 56 px on the outer ring a pet takes while
-    // an earlier one of its number is still out.
-    expect(Math.abs(Math.hypot(pet.x - player.x, pet.y - player.y) - petRestRadius(pet.petRing))).toBeLessThan(5)
+    // Pets settle on their resting spot, 34 to 100 px out.
+    const spot = PET_SPOTS[pet.restSpot!]
+    expect(Math.hypot(pet.x - player.x - spot.x, pet.y - player.y - spot.y)).toBeLessThanOrEqual(0.5)
+    expect(Math.hypot(spot.x, spot.y)).toBeGreaterThanOrEqual(34 - 1e-9)
     expect(overHead(pet.x - player.x, pet.y - player.y)).toBe(false)
   }
+  // No resting spot at all lies in the fan above the head.
+  for (const spot of PET_SPOTS) expect(overHead(spot.x, spot.y)).toBe(false)
 })
 
 /** A walking Lv1 過保護親 (a lone parent) and her child, with no enemies about. */

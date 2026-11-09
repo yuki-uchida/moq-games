@@ -53,12 +53,14 @@ import {
 import { parentMemorialAt } from './hud'
 import { RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
+import { FAMILY_SCALE, FAMILY_SLOTS } from './family-slots'
 import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './weapon-life'
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
   GUARD_BASH_STEPS,
   ITEM_KINDS,
+  PET_STILL,
   POPUP_BIT,
   SHOT_GAMBLE,
   STRIDE,
@@ -286,16 +288,7 @@ export function holdBadgeSide(
 export const easeBadgeSide = (side: number, target: number, dt: number) =>
   target + (side - target) * Math.exp(-BADGE_SIDE_RATE * Math.max(0, dt))
 
-/**
- * The family are support, not units: drawn smaller than the player and walking behind them — on the side away
- * from the way the player faces and a step further back. Slots are offsets from the player's position.
- */
-export const FAMILY_SCALE = 0.75
-export const FAMILY_SLOTS = [
-  { sheet: 'family:spouse', dx: 16, dy: -7 },
-  { sheet: 'player:kid', dx: 28, dy: -1 }
-] as const
-/** How quickly (1/s) they close in on their slot, and the farthest (world px) they ever trail behind it. */
+/** How quickly (1/s) the family (FAMILY_SLOTS) close in on their slot, and the farthest (world px) they ever trail behind it. */
 const FAMILY_FOLLOW = 7
 export const FAMILY_LAG = 40
 /** Seconds between the small healing pluses that rise off them while their player is hurt. */
@@ -395,8 +388,9 @@ interface ShotView {
 }
 
 const BOSS_AURA = '#a02850'
-/** How long a new pet takes to pop in (s). */
+/** How long a new pet takes to pop in, and a leaving one to fade out in a puff (s). */
 const PET_POP_SECONDS = 0.2
+const PET_FADE_SECONDS = 0.3
 /** How long a food label takes to fade back in once no player covers it (s). */
 const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
@@ -1877,24 +1871,37 @@ export class Renderer {
         this.guardian(sh, x, y)
         break
       case 'pet': {
-        const type = PET_TYPES[Math.floor(sh.v / 2)] ?? PET_TYPES[0]
+        const standing = sh.v >= PET_STILL
+        const variant = standing ? sh.v - PET_STILL : sh.v
+        const type = PET_TYPES[Math.floor(variant / 2)] ?? PET_TYPES[0]
         const art = sheet(type === 'dog' ? 'weapon:w_pet' : `weapon:w_pet_${type}`)
-        const biting = sh.v % 2 === 1
+        const biting = variant % 2 === 1
         const years = view.players[view.shots[i + 6]]?.petAge ?? 0
         const form = petForm(years)
-        const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
+        // Standing, it stands in its bite sheet's first (mouth shut) frame, breathing 1 px about once a second; running
+        // or biting, it plays the run or bite.
+        const frame = standing
+          ? art.bite.frames[0]
+          : pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
         const flip = cos < 0
-        const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
-        // A new pet pops in over its first ~0.2 s, like a summoned creature.
+        const bob = biting
+          ? 0
+          : standing
+            ? -Number((this.clock + i * 0.37) % 1 < 0.5)
+            : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
+        // A new pet pops in over its first ~0.2 s, like a summoned creature; it leaves in a puff over its last ~0.3 s.
         const popTime = PET_POP_SECONDS / def.duration
         const pop = age < popTime ? age / popTime : 1
+        const fadeTime = PET_FADE_SECONDS / def.duration
+        const fade = life < fadeTime ? 1 - Math.max(0, life) / fadeTime : 0
         const swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
-        this.shadow(x, y + 7, 10 * Math.min(1, swell), 0.24)
+        this.shadow(x, y + 7, 10 * Math.min(1, swell) * (1 - fade), 0.24)
         const f = evolved ? evolve(frame) : frame
-        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale * swell)
-        if (pop < 1) {
-          const alpha = 1 - pop
-          this.art(fx.poof.frames[Math.min(3, Math.floor(pop * 4))], x, y + 3, 12, 12, false, alpha, 1.1)
+        this.art(f, x, y + bob, 16, 22, flip, 1 - fade, form.scale * swell)
+        const puff = pop < 1 ? pop : fade > 0 ? fade : -1
+        if (puff >= 0) {
+          const alpha = pop < 1 ? 1 - pop : 1 - fade * 0.6
+          this.art(fx.poof.frames[Math.min(3, Math.floor(puff * 4))], x, y + 3, 12, 12, false, alpha, 1.1)
           this.art(pick(fx.spark, this.clock * 6), x - 10, y - 10, 6, 6, false, alpha)
           this.art(pick(fx.spark, this.clock * 6 + 2), x + 11, y - 6, 6, 6, false, alpha)
         }
