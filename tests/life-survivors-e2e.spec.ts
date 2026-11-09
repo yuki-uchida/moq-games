@@ -1505,6 +1505,59 @@ test('overprotective parents of a still child are drawn behind them at their eas
   expect(draws).toEqual(['guardian', 'guardian', 'player'])
 })
 
+test('overprotective parents of a still child stay behind them while an enemy touches the child', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const orders = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS, ENEMIES } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
+    const germ = ENEMIES.findIndex((enemy: { id: string }) => enemy.id === 'germ')
+    // The parent tucked in behind the still child while an enemy touches the child in front, to either side or behind.
+    const order = (ex: number, ey: number) => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players[0]
+      view.enemies = [1, germ, player.x + ex, player.y + ey, 100, 0, 0]
+      view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0]
+      const renderer = new Renderer(document.createElement('canvas'))
+      const events: string[] = []
+      let layer = ''
+      for (const method of ['companion', 'topShot']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          layer = method
+          original(...args)
+          layer = ''
+        }
+      }
+      const drawPlayer = renderer.player.bind(renderer)
+      renderer.player = (...args: unknown[]) => {
+        events.push('player')
+        return drawPlayer(...args)
+      }
+      const centred = renderer.centred.bind(renderer)
+      renderer.centred = (...args: [unknown, number, number]) => {
+        if (Math.abs(args[1] - player.x - 6) < 0.01 && Math.abs(args[2] - player.y + 5) < 0.01)
+          events.push(layer === 'companion' ? 'guardian' : layer || 'stray')
+        centred(...args)
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return events
+    }
+    return {
+      front: order(0, 18),
+      right: order(18, 8),
+      left: order(-16, 12),
+      behind: order(0, -14)
+    }
+  })
+  for (const events of Object.values(orders)) expect(events).toEqual(['guardian', 'guardian', 'player'])
+})
+
 test('overprotective parents walking ahead are drawn behind a child heading up and in front of one heading down', async ({
   page
 }) => {
