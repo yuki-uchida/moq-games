@@ -124,6 +124,31 @@ function freqStart(o: OscillatorNode, t: number, f: number, from?: number): void
   }
 }
 
+/** A stereo panner feeding `c.out`; returns the node to connect a voice into. */
+function panTo(c: VoiceEnv, pan: number, out: AudioNode = c.out): AudioNode {
+  const p = c.ctx.createStereoPanner()
+  p.pan.value = Math.max(-1, Math.min(1, pan))
+  p.connect(out)
+  return p
+}
+
+/** Keyboard-position pan for plucked and bell-like voices: low notes lean left, high notes right. */
+const keyPan = (m: number, centre: number, width: number): number =>
+  Math.max(-1, Math.min(1, ((m - centre) / 24) * width))
+
+/** A short filtered noise tick that gives plucked voices a fingernail/pick transient. */
+function pluckTick(c: VoiceEnv, t: number, freq: number, level: number, out: AudioNode): void {
+  const n = noiseSrc(c, t, t + 0.06)
+  const bp = filter(c, 'bandpass', freq, 0.9)
+  const g = gain(c)
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.linearRampToValueAtTime(level, t + 0.001)
+  g.gain.setTargetAtTime(0.0001, t + 0.002, 0.006)
+  n.connect(bp)
+  bp.connect(g)
+  g.connect(out)
+}
+
 type Voice = (c: VoiceEnv, t: number, dur: number, midi: number, vel: number, glideFrom?: number) => void
 
 const amp = (v: number) => 0.1 + 0.2 * v * v
@@ -131,14 +156,14 @@ const amp = (v: number) => 0.1 + 0.2 * v * v
 const strings: Voice = (c, t, dur, m, v, gf) => {
   const f = mtof(m)
   const g = gain(c)
-  const lp = filter(c, 'lowpass', Math.min(7000, f * 3 + 700 + v * 1200), 0.5)
+  const lp = filter(c, 'lowpass', Math.min(9000, f * 3.6 + 1000 + v * 1500), 0.5)
   const stop = adsr(g.gain, t, amp(v) * 0.5, 0.17, 0.4, 0.85, dur, 0.4)
   lp.connect(g)
   g.connect(c.out)
   for (const d of [-11, 0, 11]) {
     const o = osc(c, 'sawtooth', f, t, stop, d)
     freqStart(o, t, f, gf ? mtof(gf) : undefined)
-    o.connect(lp)
+    o.connect(panTo(c, d * 0.05, lp))
     if (d === 0) vibrato(c, o.detune, t, stop, 5.1, 6, 0.3)
   }
 }
@@ -146,9 +171,9 @@ const strings: Voice = (c, t, dur, m, v, gf) => {
 const pizz: Voice = (c, t, _dur, m, v) => {
   const f = mtof(m)
   const g = gain(c)
-  const lp = filter(c, 'lowpass', Math.min(5000, f * 5 + 400), 0.8)
-  lp.frequency.setValueAtTime(Math.min(5000, f * 7 + 600), t)
-  lp.frequency.exponentialRampToValueAtTime(Math.min(1800, f * 2 + 300), t + 0.18)
+  const lp = filter(c, 'lowpass', Math.min(8500, f * 5 + 400), 0.8)
+  lp.frequency.setValueAtTime(Math.min(9500, f * 8 + 800), t)
+  lp.frequency.exponentialRampToValueAtTime(Math.min(2600, f * 2.4 + 400), t + 0.18)
   const stop = t + 0.7
   g.gain.setValueAtTime(0.0001, t)
   g.gain.linearRampToValueAtTime(amp(v) * 0.8, t + 0.003)
@@ -159,15 +184,17 @@ const pizz: Voice = (c, t, _dur, m, v) => {
   tr.connect(tg)
   tg.connect(lp)
   lp.connect(g)
-  g.connect(c.out)
+  const pn = panTo(c, keyPan(m, 60, 0.6))
+  g.connect(pn)
+  pluckTick(c, t, 5200, 0.05 * amp(v) * 2, pn)
 }
 
 const harp: Voice = (c, t, _dur, m, v) => {
   const f = mtof(m)
   const g = gain(c)
-  const lp = filter(c, 'lowpass', 6000, 0.4)
-  lp.frequency.setValueAtTime(Math.min(7000, f * 6), t)
-  lp.frequency.setTargetAtTime(Math.min(2200, f * 2 + 200), t, 0.25)
+  const lp = filter(c, 'lowpass', 9000, 0.4)
+  lp.frequency.setValueAtTime(Math.min(10000, f * 8), t)
+  lp.frequency.setTargetAtTime(Math.min(3000, f * 2.4 + 300), t, 0.25)
   const stop = t + 2.4
   g.gain.setValueAtTime(0.0001, t)
   g.gain.linearRampToValueAtTime(amp(v) * 0.85, t + 0.003)
@@ -178,8 +205,15 @@ const harp: Voice = (c, t, _dur, m, v) => {
   hg.gain.setTargetAtTime(0, t, 0.12)
   h.connect(hg)
   hg.connect(lp)
+  const h3 = osc(c, 'sine', f * 3, t, stop)
+  const h3g = gain(c, 0.12)
+  h3g.gain.setTargetAtTime(0, t, 0.07)
+  h3.connect(h3g)
+  h3g.connect(lp)
   lp.connect(g)
-  g.connect(c.out)
+  const pn = panTo(c, keyPan(m, 66, 0.7))
+  g.connect(pn)
+  pluckTick(c, t, 4600, 0.035 * amp(v) * 2, pn)
 }
 
 const flute: Voice = (c, t, dur, m, v, gf) => {
@@ -187,7 +221,7 @@ const flute: Voice = (c, t, dur, m, v, gf) => {
   const stop = t + Math.max(dur, 0.1) + 0.5
   const g = gain(c)
   adsr(g.gain, t, 0.07 + 0.17 * v, gf ? 0.03 : 0.07, 0.2, 0.9, dur, 0.14)
-  g.connect(c.out)
+  g.connect(panTo(c, keyPan(m, 78, 0.5)))
   const mix = gain(c, 1)
   mix.connect(g)
   const o1 = osc(c, 'sine', f, t, stop)
@@ -201,13 +235,26 @@ const flute: Voice = (c, t, dur, m, v, gf) => {
   const h3g = gain(c, 0.05)
   h3.connect(h3g)
   h3g.connect(mix)
+  const h4 = osc(c, 'sine', f * 4, t, stop)
+  const h4g = gain(c, 0.025)
+  h4.connect(h4g)
+  h4g.connect(mix)
   vibrato(c, o1.detune, t, stop, 5.3, 13, 0.28)
   const n = noiseSrc(c, t, stop)
   const bp = filter(c, 'bandpass', Math.min(9000, f * 2.2), 2.5)
   const ng = gain(c, 0.0)
   ng.gain.setValueAtTime(0.0001, t)
   ng.gain.linearRampToValueAtTime(0.1, t + 0.03)
-  ng.gain.setTargetAtTime(0.012, t + 0.05, 0.08)
+  ng.gain.setTargetAtTime(0.02, t + 0.05, 0.08)
+  // Airy breath above the harmonics.
+  const n2 = noiseSrc(c, t, stop)
+  const bp2 = filter(c, 'bandpass', 6200, 0.8)
+  const ng2 = gain(c, 0.0001)
+  ng2.gain.linearRampToValueAtTime(0.03, t + 0.04)
+  ng2.gain.setTargetAtTime(0.012, t + 0.06, 0.1)
+  n2.connect(bp2)
+  bp2.connect(ng2)
+  ng2.connect(mix)
   n.connect(bp)
   bp.connect(ng)
   ng.connect(mix)
@@ -280,9 +327,9 @@ const horn: Voice = (c, t, dur, m, v, gf) => {
   const g = gain(c)
   adsr(g.gain, t, 0.07 + 0.17 * v, 0.1, 0.3, 0.9, dur, 0.22)
   g.connect(c.out)
-  const lp = filter(c, 'lowpass', Math.min(2400, f * 2.6 + 250), 0.6)
+  const lp = filter(c, 'lowpass', Math.min(3200, f * 3.2 + 300), 0.6)
   lp.frequency.setValueAtTime(f * 1.2 + 150, t)
-  lp.frequency.exponentialRampToValueAtTime(Math.min(2400, f * 2.6 + 250 + v * 400), t + 0.18)
+  lp.frequency.exponentialRampToValueAtTime(Math.min(3200, f * 3.2 + 300 + v * 500), t + 0.18)
   lp.connect(g)
   for (const [type, d, k] of [
     ['sawtooth', -4, 0.7],
@@ -293,7 +340,7 @@ const horn: Voice = (c, t, dur, m, v, gf) => {
     freqStart(o, t, f, gf ? mtof(gf) : undefined)
     const og = gain(c, k)
     o.connect(og)
-    og.connect(lp)
+    og.connect(panTo(c, d * 0.08, lp))
     if (d > 0) vibrato(c, o.detune, t, stop, 4.8, 6, 0.5)
   }
 }
@@ -323,7 +370,7 @@ function fmBell(ratio: number, index: number, decay: number, level: number, hold
       p.connect(pg)
       pg.connect(g)
     }
-    g.connect(c.out)
+    g.connect(panTo(c, keyPan(m, 84, 0.7)))
   }
 }
 
@@ -340,7 +387,7 @@ const musicbox: Voice = (c, t, _dur, m, v) => {
   hg.gain.setTargetAtTime(0, t, 0.05)
   h.connect(hg)
   hg.connect(g)
-  g.connect(c.out)
+  g.connect(panTo(c, keyPan(m, 84, 0.7)))
 }
 
 const choir: Voice = (c, t, dur, m, v) => {
@@ -369,7 +416,7 @@ const choir: Voice = (c, t, dur, m, v) => {
       const o = osc(c, 'sawtooth', f, t, stop, d)
       const og = gain(c, 0.33)
       o.connect(og)
-      og.connect(bp)
+      og.connect(panTo(c, d * 0.035, bp))
       if (d === 0) vibrato(c, o.detune, t, stop, 5.2, 9, 0.35)
     }
   }
@@ -386,7 +433,7 @@ const pad: Voice = (c, t, dur, m, v) => {
   const g = gain(c)
   adsr(g.gain, t, 0.07 + 0.1 * v, 0.45, 0.7, 0.9, dur, 0.8)
   g.connect(c.out)
-  const lp = filter(c, 'lowpass', Math.min(2600, f * 3 + 300), 0.4)
+  const lp = filter(c, 'lowpass', Math.min(3600, f * 3.4 + 400), 0.4)
   lp.connect(g)
   for (const [type, d] of [
     ['sawtooth', -9],
@@ -396,7 +443,7 @@ const pad: Voice = (c, t, dur, m, v) => {
     const o = osc(c, type, f, t, stop, d)
     const og = gain(c, 0.38)
     o.connect(og)
-    og.connect(lp)
+    og.connect(panTo(c, d * 0.08, lp))
   }
 }
 
