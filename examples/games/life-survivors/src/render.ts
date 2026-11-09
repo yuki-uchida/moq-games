@@ -351,6 +351,8 @@ interface Ent {
   member?: Follower
   /** view.shots index of a companion (生き物観察, garden sprout, pet, 過保護親). */
   shot?: number
+  /** view.shots index of a ground vehicle (アウトドア's tricycle ... car), sorted on its wheels. */
+  vehicle?: number
   id: number
   x: number
   yy: number
@@ -1530,26 +1532,79 @@ export class Renderer {
         }
         break
       }
+      case 'sweep': {
+        // A plane flies above everything: only a small, faint shadow falls on the ground far below it.
+        if (this.isPlane(view, def)) this.shadow(x, y + 27, 9, 0.14)
+        break
+      }
       case 'garden': {
         if (sh.v !== 1) break
         const alpha = Math.min(1, life * 4)
         const art = sheet('weapon:w_garden')
+        // The bed grows in over ~0.35 s from when it is first seen blooming. A bed already well into its life when
+        // first seen (the page opened on it) is drawn fully grown.
+        const key = Math.round(x) * 1e6 + Math.round(y)
+        let bloom = this.blooms.get(key)
+        if (!bloom) {
+          bloom = { at: sh.age > 0.1 ? this.clock - 10 : this.clock, frame: this.frame }
+          this.blooms.set(key, bloom)
+        }
+        bloom.frame = this.frame
+        const since = this.clock - bloom.at
+        if (since < 0.1) {
+          // The sprout it grew from fades out in place as the bed appears.
+          this.shadow(x, y + 10, 9, 0.2 * (1 - since * 10))
+          this.centred(pick(art.sprout, this.clock + sh.i * 0.1), x, y, evolved, 1 - since * 10)
+        }
+        const grow = clamp01(since / 0.15)
+        const back = 1 + 2.70158 * Math.pow(grow - 1, 3) + 1.70158 * Math.pow(grow - 1, 2)
+        const bedScale = grow >= 1 ? 1 : 0.6 + 0.4 * back
+        const bedAlpha = alpha * (grow >= 1 ? 1 : clamp01(grow * 3))
         const bed = flowerBed(radius)
-        this.art(bed, x, y, bed.w / 2, bed.h / 2, false, alpha * 0.96)
+        this.art(bed, x, y, bed.w / 2, bed.h / 2, false, bedAlpha * 0.96, bedScale)
         if (evolved) {
           this.world()
-          ctx.strokeStyle = `rgba(255,209,102,${0.55 * alpha})`
+          ctx.strokeStyle = `rgba(255,209,102,${0.55 * bedAlpha})`
           ctx.lineWidth = 1
           ctx.beginPath()
-          ctx.arc(x, y, radius - 1, 0, TAU)
+          ctx.arc(x, y, (radius - 1) * bedScale, 0, TAU)
           ctx.stroke()
         }
         const kinds = [art.bloom, art.tulip, art.daisy]
         // Each bed is seeded by its fixed spot: neighbouring beds differ and never reshuffle as other shots expire.
         const seed = hash(Math.round(x), Math.round(y))
-        for (const spot of flowerSpots(radius, Math.floor(seed * 4))) {
-          // The sprite's stem base sits 14 px below its centre.
-          this.centred(pick(kinds[spot.kind], this.clock + spot.phase), x + spot.x, y + spot.y - 14, evolved, alpha)
+        flowerSpots(radius, Math.floor(seed * 4)).forEach((spot, n) => {
+          // Each flower shoots up from its stem base in turn: 0 -> 1.1 -> 1 tall.
+          const u = clamp01((since - Math.min(n * 0.045, 0.2)) / 0.15)
+          if (u <= 0.02) return
+          const frame = pick(kinds[spot.kind], this.clock + spot.phase)
+          if (u >= 1) {
+            // The sprite's stem base sits 14 px below its centre.
+            this.centred(frame, x + spot.x, y + spot.y - 14, evolved, alpha)
+          } else {
+            const tall = u < 0.6 ? (1.1 * u) / 0.6 : 1.1 - (0.1 * (u - 0.6)) / 0.4
+            const f = evolved ? evolve(frame) : frame
+            this.art(f, x + spot.x, y + spot.y, f.w / 2, f.h / 2 + 14, false, alpha, 1, tall)
+          }
+        })
+        // A few sparkles scatter as it blooms.
+        if (since < 0.4) {
+          const t = since / 0.4
+          for (let k = 0; k < 5; k++) {
+            const a = k * 2.4 + seed * 6
+            const reach = radius * (0.25 + 0.65 * t) * (0.75 + 0.1 * (k % 3))
+            const sa = Math.sin(t * Math.PI) * 0.9 * alpha
+            this.art(
+              pick(fx.spark, this.clock * 6 + k),
+              x + Math.cos(a) * reach,
+              y + Math.sin(a) * reach * 0.6 - 8 - 10 * t,
+              6,
+              6,
+              false,
+              sa,
+              0.8
+            )
+          }
         }
         // Pollen and petals drifting up out of the bed.
         this.world()
@@ -1565,10 +1620,10 @@ export class Renderer {
         }
         ctx.globalAlpha = 1
         // Soft rim (the harvest-green ring the bloom stage is known by).
-        ctx.strokeStyle = `rgba(214,243,138,${0.4 * alpha})`
+        ctx.strokeStyle = `rgba(214,243,138,${0.4 * bedAlpha})`
         ctx.lineWidth = 1
         ctx.beginPath()
-        ctx.arc(x, y, radius, 0, TAU)
+        ctx.arc(x, y, radius * bedScale, 0, TAU)
         ctx.stroke()
         break
       }
@@ -1759,6 +1814,9 @@ export class Renderer {
   /** Afterimages left to draw this frame (fast projectiles only leave trails while the screen is not flooded). */
   private trailBudget = 0
 
+  /** When each garden bed was first seen in bloom (keyed by its fixed spot), to time its growing-in. */
+  private blooms = new Map<number, { at: number; frame: number }>()
+
   private afterimages(
     frame: Raster,
     x: number,
@@ -1942,6 +2000,44 @@ export class Renderer {
       sh.r / 20,
       flip
     )
+  }
+
+  private isPlane(view: View, def: (typeof WEAPONS)[number]) {
+    return weaponAppearance(def.id, ageAt(view.time)).art === 'w_travel_plane'
+  }
+
+  /**
+   * Where a ground vehicle's wheels meet the ground below its sprite centre (its lowest pixels are 14 px down): its
+   * shadow centres here, so it shows just under the wheels, and it sorts with the characters on this line.
+   */
+  private static readonly VEHICLE_FEET = 13
+
+  /** A sweeping vehicle's afterimages, speed lines and body. */
+  private sweepBody(frame: Raster, x: number, cos: number, y: number, evolved: boolean, trails: boolean) {
+    const ctx = this.ctx
+    const flip = cos < 0
+    if (trails) {
+      const f = evolved ? evolve(frame) : frame
+      const n = Math.min(3, this.trailBudget)
+      this.trailBudget -= n
+      for (let k = n; k >= 1; k--) this.art(f, x - cos * 12 * k, y, 16, 16, flip, 0.3 - k * 0.07)
+    }
+    this.world()
+    ctx.fillStyle = 'rgba(255,255,255,.5)'
+    for (let k = 0; k < 3; k++) {
+      const len = 16 + k * 6
+      ctx.fillRect(Math.round(cos > 0 ? x - 14 - len : x + 14), Math.round(y - 5 + k * 5), len, 1)
+    }
+    this.centred(frame, x, y, evolved, 1, 1, flip)
+  }
+
+  /** A ground vehicle with its shadow, drawn in the Y-sorted character pass. */
+  private vehicle(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const art = weaponAppearance(def.id, ageAt(view.time)).art
+    const frame = pick(sheet(`weapon:${art}`).fly, this.clock + sh.i * 0.1)
+    const rx = art === 'w_travel_car' ? 17 : art === 'w_travel_motorcycle' ? 13 : 10
+    this.shadow(sh.x, sh.y + Renderer.VEHICLE_FEET, rx, 0.26)
+    this.sweepBody(frame, sh.x, Math.cos(sh.angle), sh.y, sh.evolved, this.trailBudget > 0)
   }
 
   /** Weapon sprites and bolts, above the characters. */
@@ -2186,22 +2282,10 @@ export class Renderer {
         break
       }
       case 'sweep': {
+        // Only the plane flies over everything; ground vehicles are Y-sorted with the characters.
+        if (!this.isPlane(view, def)) break
         const art = sheet(`weapon:${weaponAppearance(def.id, ageAt(view.time)).art}`)
-        const frame = pick(art.fly, this.clock + i * 0.1)
-        const flip = cos < 0
-        if (trails) {
-          const f = evolved ? evolve(frame) : frame
-          const n = Math.min(3, this.trailBudget)
-          this.trailBudget -= n
-          for (let k = n; k >= 1; k--) this.art(f, x - cos * 12 * k, y, 16, 16, flip, 0.3 - k * 0.07)
-        }
-        this.world()
-        ctx.fillStyle = 'rgba(255,255,255,.5)'
-        for (let k = 0; k < 3; k++) {
-          const len = 16 + k * 6
-          ctx.fillRect(Math.round(cos > 0 ? x - 14 - len : x + 14), Math.round(y - 5 + k * 5), len, 1)
-        }
-        this.centred(frame, x, y, evolved, 1, 1, flip)
+        this.sweepBody(pick(art.fly, this.clock + i * 0.1), x, cos, y, evolved, trails)
         break
       }
       default: {
@@ -2867,6 +2951,13 @@ export class Renderer {
     for (let i = 0; i < s.length; i += STRIDE.shots) {
       const def = WEAPONS[s[i]]
       const sh = this.load(view, origins, i)
+      if (def.behavior === 'sweep' && !this.isPlane(view, def)) {
+        // A ground vehicle sorts on its wheels alone, with no companion adjustments.
+        if (Math.abs(sh.x - this.camera.x) > halfW + 400) continue
+        const y = sh.y + Renderer.VEHICLE_FEET
+        list.push({ y, kind: 0, vehicle: i, id: 0, x: sh.x, yy: sh.y, hp: 0, flash: 0, flags: 0, tagLift: 0 })
+        continue
+      }
       const feet = this.companionFeet(sh, def)
       if (feet === undefined) continue
       if (Math.abs(sh.x - this.camera.x) > halfW + 400 && Math.abs(sh.ox - this.camera.x) > halfW + 400) continue
@@ -2923,6 +3014,8 @@ export class Renderer {
           tagLift: 0
         })
     })
+    if (this.frame % 60 === 0)
+      for (const [key, bloom] of this.blooms) if (bloom.frame < this.frame) this.blooms.delete(key)
     if (this.frame % 60 === 0) for (const id of this.families.keys()) if (!positions.has(id)) this.families.delete(id)
     list.sort((a, b) => a.y - b.y)
     // Every enemy's shadow in one path (ghosts cast none), under all the sprites.
@@ -2940,6 +3033,8 @@ export class Renderer {
     this.easeBadgeSide(view, origins, local, dt)
     for (const item of list) {
       if (item.member) this.follower(item.member)
+      else if (item.vehicle !== undefined)
+        this.vehicle(view, this.load(view, origins, item.vehicle), WEAPONS[s[item.vehicle]])
       else if (item.shot !== undefined) this.companion(view, this.load(view, origins, item.shot), WEAPONS[s[item.shot]])
       else if (item.player) {
         const player = item.player
