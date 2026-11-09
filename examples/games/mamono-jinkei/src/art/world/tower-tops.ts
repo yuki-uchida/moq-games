@@ -138,18 +138,22 @@ const pointsOf = (cell: number, seed: number) => {
   return t
 }
 
-const voronoi = (ox: number, oy: number, cell: number, seed: number) => {
+/** Voronoi cells (512 px periodic) over the (T + 2·pad)² patch whose top-left world pixel is (ox - pad, oy - pad). */
+const voronoi = (ox0: number, oy0: number, cell: number, seed: number, pad = 0) => {
+  const ox = ox0 - pad
+  const oy = oy0 - pad
+  const NS = T + pad * 2
   const n = 512 / cell
   const pts = pointsOf(cell, seed)
-  const id = new Int32Array(T * T)
-  const d1 = new Float32Array(T * T)
-  const d2 = new Float32Array(T * T)
-  const cx = new Float32Array(T * T)
-  const cy = new Float32Array(T * T)
+  const id = new Int32Array(NS * NS)
+  const d1 = new Float32Array(NS * NS)
+  const d2 = new Float32Array(NS * NS)
+  const cx = new Float32Array(NS * NS)
+  const cy = new Float32Array(NS * NS)
   const gi0 = Math.floor(ox / cell) - 1
   const gj0 = Math.floor(oy / cell) - 1
-  const nw = Math.floor((ox + T) / cell) + 2 - gi0 + 1
-  const nh = Math.floor((oy + T) / cell) + 2 - gj0 + 1
+  const nw = Math.floor((ox + NS) / cell) + 2 - gi0 + 1
+  const nh = Math.floor((oy + NS) / cell) + 2 - gj0 + 1
   const lx = new Float32Array(nw * nh)
   const ly = new Float32Array(nw * nh)
   const lid = new Int32Array(nw * nh)
@@ -162,8 +166,8 @@ const voronoi = (ox: number, oy: number, cell: number, seed: number) => {
       ly[j * nw + i] = (gj + pts[pi + 1]) * cell
       lid[j * nw + i] = mod(gi, n) * n + mod(gj, n)
     }
-  for (let y = 0; y < T; y++)
-    for (let x = 0; x < T; x++) {
+  for (let y = 0; y < NS; y++)
+    for (let x = 0; x < NS; x++) {
       const wx = ox + x + 0.5
       const wy = oy + y + 0.5
       const gi = Math.floor(wx / cell) - gi0
@@ -187,7 +191,7 @@ const voronoi = (ox: number, oy: number, cell: number, seed: number) => {
             by = py
           } else if (d < b2) b2 = d
         }
-      const k = y * T + x
+      const k = y * NS + x
       id[k] = bi
       d1[k] = b1
       d2[k] = b2
@@ -222,48 +226,135 @@ function tuft(r: Raster, x: number, y: number, lean: number) {
   blade(x + 3, 3, lean + 1)
 }
 
-/** Weathered cracked rock plateau: broad plates, a few hairline cracks, lichen, pebbles, a tuft or two. */
+/** Lightness ramp of the cliff flagstones, dark to light: two rock tones with the stone greys between them. */
+const FLAG = [RK[3], RK[2], S[2], RK[1], S[1], RK[0]] as const
+
+/**
+ * Weathered flagstones of the windy plateau: hand-sized stones (about 20–44 px) with a lit top-left rim, a shaded
+ * bottom-right rim, thin grout, speckled grain, the odd hairline crack and a little moss and grass in the joints.
+ * Everything stays within a few steps of the rock base so heroes and enemies read on top.
+ */
 export function cliffTop(a: number, b: number): Raster {
   return memo(`ct${a},${b}`, () => {
     const r = tile()
     const ox = a * T
     const oy = b * T
-    const v = voronoi(ox, oy, 64, 321)
-    const w = voronoi(ox, oy, 32, 325)
-    const speck = field(ox, oy, 32, 32, 322)
-    const crk = new Uint8Array(T * T)
-    for (let i = 0; i < T * T; i++) {
-      const sh = ih(v.id[i], 9, 323)
-      const sub = ih(w.id[i], 10, 326)
-      let c = sh < 0.1 ? RK[0] : sh > 0.92 ? RK[2] : RK[1]
-      if (c === RK[1] && sub < 0.05) c = RK[0]
-      if (c === RK[1] && speck[i] < 0.2 && bayer(i % T, (i / T) | 0) < 0.3) c = RK[2]
-      r.data[i] = c
-      if (v.d2[i] - v.d1[i] < 1.6) crk[i] = 1
-      else if (w.d2[i] - w.d1[i] < 1.2 && ih(w.id[i], 11, 327) < 0.35) crk[i] = 2
+    const P = 3
+    const n = T + P * 2
+    const v = voronoi(ox, oy, 32, 321, P)
+    // split about a third of the stones in two along a random line through their site: a mix of sizes
+    const id = new Int32Array(n * n)
+    for (let i = 0; i < n * n; i++) {
+      const s = v.id[i]
+      let k = s * 4
+      if (ih(s, 2, 324) < 0.36) {
+        const an = ih(s, 3, 325) * Math.PI
+        const px = (i % n) + 0.5 - v.cx[i]
+        const py = ((i / n) | 0) + 0.5 - v.cy[i]
+        if (px * Math.cos(an) + py * Math.sin(an) > (ih(s, 4, 326) - 0.5) * 8) k += 1
+      }
+      id[i] = k
     }
+    const at = (x: number, y: number) => id[(y + P) * n + x + P]
+    const low = field(ox, oy, 128, 128, 322)
+    const moss = field(ox, oy, 64, 64, 327)
+    const lv = new Float32Array(T * T)
+    const joint = new Uint8Array(T * T)
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
         const i = y * T + x
-        if (crk[i]) {
-          r.data[i] = crk[i] === 1 ? RK[3] : RK[2]
+        const k = at(x, y)
+        const wx = ox + x
+        const wy = oy + y
+        const grain = ih(mod(wx, 512), mod(wy, 512), 328)
+        // grout: the bottom / right pixel of each stone, plus a fillet where three stones meet
+        let others = 0
+        for (const [dx, dy] of [
+          [1, 0],
+          [0, 1],
+          [1, 1]
+        ])
+          if (at(x + dx, y + dy) !== k) others++
+        const corner =
+          at(x - 1, y - 1) !== k && at(x + 1, y + 1) !== k && at(x - 1, y - 1) !== at(x + 1, y + 1) && others > 0
+        if (at(x + 1, y) !== k || at(x, y + 1) !== k || corner) {
+          joint[i] = 1
+          lv[i] = 1.25 + grain * 0.9 + (low[i] - 0.5) * 0.6
           continue
         }
-        if ((x > 0 && crk[i - 1] === 1) || (y > 0 && crk[i - T] === 1)) r.data[i] = r.data[i] === RK[2] ? RK[1] : RK[0]
-        else if ((x < T - 1 && crk[i + 1] === 1) || (y < T - 1 && crk[i + T] === 1))
-          r.data[i] = r.data[i] === RK[0] ? RK[1] : RK[2]
+        const sid = k >> 2
+        const tone = ih(k, 7, 329)
+        // per-stone base a little lighter or darker, tilted toward the light on the top-left
+        let l = 3.05 + (tone - 0.5) * 0.7 + (low[i] - 0.5) * 0.5
+        l -= (x + P - v.cx[(y + P) * n + x + P] + (y + P - v.cy[(y + P) * n + x + P])) * 0.006
+        if (at(x - 1, y) !== k || at(x, y - 1) !== k) l += 1.05
+        else if (at(x - 2, y) !== k || at(x, y - 2) !== k) l += 0.45
+        if (at(x + 2, y) !== k || at(x, y + 2) !== k || at(x + 2, y + 2) !== k) l -= 0.95
+        else if (at(x + 3, y) !== k || at(x, y + 3) !== k) l -= 0.35
+        // weathered pits and grain
+        if (ih(mod(wx, 512) >> 1, mod(wy, 512) >> 1, 330 + (sid & 3)) < 0.035) l -= 0.9
+        lv[i] = l + (grain - 0.5) * 0.55
       }
+    for (let i = 0; i < T * T; i++) {
+      const q = Math.floor(lv[i] + 0.5)
+      r.data[i] = FLAG[Math.max(1, Math.min(5, q))]
+    }
     const rn = rng(a * 97 + b * 13 + 5)
-    for (let i = 0; i < 3; i++) if (rn() < 0.4) lichen(r, 6 + Math.floor(rn() * 52), 6 + Math.floor(rn() * 52), rn)
-    for (let i = 0; i < 2; i++) if (rn() < 0.3) tuft(r, 6 + Math.floor(rn() * 50), 8 + Math.floor(rn() * 50), 1)
-    for (let i = 0; i < 5; i++) {
+    // hairline cracks: short wandering dark lines with a lit pixel below, kept inside one stone
+    for (let c = 0; c < 4; c++) {
+      if (rn() < 0.35) continue
+      let x = 6 + Math.floor(rn() * 52)
+      let y = 6 + Math.floor(rn() * 52)
+      const k = at(x, y)
+      let dx = rn() < 0.5 ? 1 : -1
+      const len = 4 + Math.floor(rn() * 8)
+      for (let s = 0; s < len; s++) {
+        if (x < 1 || y < 1 || x > T - 2 || y > T - 3 || at(x, y) !== k || joint[y * T + x]) break
+        if (at(x + 1, y) !== k || at(x, y + 1) !== k || at(x - 1, y) !== k || at(x, y - 1) !== k) break
+        r.set(x, y, DARKER[r.get(x, y)] === RK[3] ? RK[2] : DARKER[r.get(x, y)])
+        if (!joint[(y + 1) * T + x] && at(x, y + 1) === k && rn() < 0.6) r.set(x, y + 1, S[1])
+        if (rn() < 0.55) x += dx
+        else y += 1
+        if (rn() < 0.15) dx = -dx
+      }
+    }
+    // small chips knocked off a stone's lit edge
+    for (let c = 0; c < 3; c++) {
+      const x = 3 + Math.floor(rn() * 58)
+      const y = 3 + Math.floor(rn() * 58)
+      const k = at(x, y)
+      if (joint[y * T + x] || at(x - 1, y) === k || rn() < 0.3) continue
+      r.set(x, y, RK[2])
+      r.set(x + 1, y, S[2])
+      r.set(x, y + 1, S[2])
+    }
+    // moss and grass blades living in the grout, more of them in the damp low-frequency patches
+    for (let y = 2; y < T; y++)
+      for (let x = 0; x < T; x++) {
+        const i = y * T + x
+        if (!joint[i]) continue
+        const h = ih(mod(ox + x, 512), mod(oy + y, 512), 331)
+        const wet = moss[i]
+        if (h < (wet - 0.45) * 0.22) {
+          r.set(x, y, h < 0.012 ? GD[2] : R.sludge[2])
+          if (h < (wet - 0.45) * 0.08) r.set(x, y - 1, R.sludge[1])
+        } else if (h > 0.985 && wet > 0.4) {
+          r.set(x, y, GD[2])
+          r.set(x, y - 1, GD[1])
+          r.set(x + 1, y - 2, G[1])
+        }
+      }
+    for (let i = 0; i < 2; i++) if (rn() < 0.35) lichen(r, 6 + Math.floor(rn() * 52), 6 + Math.floor(rn() * 52), rn)
+    if (rn() < 0.2) tuft(r, 6 + Math.floor(rn() * 50), 8 + Math.floor(rn() * 50), 1)
+    // pebbles
+    for (let i = 0; i < 3; i++) {
       const x = 4 + Math.floor(rn() * 56)
       const y = 4 + Math.floor(rn() * 56)
-      if (rn() < 0.6) {
-        r.set(x, y, RK[0])
+      if (rn() < 0.5) {
+        r.set(x, y, S[1])
         r.set(x + 1, y, RK[1])
-        r.set(x + 1, y + 1, RK[3])
         r.set(x, y + 1, RK[2])
+        r.set(x + 1, y + 1, RK[2])
       }
     }
     return r
@@ -280,8 +371,10 @@ export function grassTop(a: number, b: number): Raster {
     const n2 = field(ox, oy, 32, 16, 332)
     const n3 = field(ox, oy, 16, 8, 333)
     for (let i = 0; i < T * T; i++) {
-      const n = n1[i] * 0.45 + n2[i] * 0.35 + n3[i] * 0.2 + (bayer(i % T, (i / T) | 0) - 0.5) * 0.07
-      r.data[i] = n > 0.6 ? G[0] : n < 0.34 ? GD[0] : G[1]
+      // mostly the base green; the lighter and darker patches only come in as soft, sparse speckle
+      const n = n1[i] * 0.45 + n2[i] * 0.35 + n3[i] * 0.2
+      const z = ih(mod(ox + (i % T), 512), mod(oy + ((i / T) | 0), 512), 334)
+      r.data[i] = z < (n - 0.56) * 2.2 ? G[0] : z < (0.4 - n) * 2.2 ? GD[0] : G[1]
     }
     const rn = rng(a * 71 + b * 29 + 9)
     // wind streaks
@@ -301,7 +394,7 @@ export function grassTop(a: number, b: number): Raster {
       const y = 4 + Math.floor(rn() * 58)
       const h = 3 + Math.floor(rn() * 3)
       for (let k = 0; k < h; k++)
-        r.set(x + (k > 0 ? 1 : 0) + (k > 2 ? 1 : 0), y - k, k === h - 1 ? G[0] : k === 0 ? GD[3] : GD[2])
+        r.set(x + (k > 0 ? 1 : 0) + (k > 2 ? 1 : 0), y - k, k === h - 1 ? G[0] : k === 0 ? GD[2] : GD[1])
     }
     for (let i = 0; i < 3; i++) tuft(r, 6 + Math.floor(rn() * 52), 10 + Math.floor(rn() * 48), 1)
     // wildflowers bent by the wind
