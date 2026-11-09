@@ -5,7 +5,7 @@
  */
 import { LEGATO, VOICES, type VoiceEnv } from './instruments'
 import type { Mixer } from './mixer'
-import { compileSong, type CompiledSong, type SongDef } from './notation'
+import { compileSong, type CompiledSong, type InstName, type SongDef } from './notation'
 
 const compiled = new Map<SongDef, CompiledSong>()
 export function compiledSong(def: SongDef): CompiledSong {
@@ -15,6 +15,24 @@ export function compiledSong(def: SongDef): CompiledSong {
     compiled.set(def, c)
   }
   return c
+}
+
+/** Extra stereo width per instrument: a pan multiplier and a default chorus send for parts that set none. */
+const WIDTH: Partial<Record<InstName, { pan: number; chorus: number }>> = {
+  strings: { pan: 1.8, chorus: 0.33 },
+  pad: { pan: 1.8, chorus: 0.39 },
+  choir: { pan: 1.8, chorus: 0.26 },
+  harp: { pan: 1.8, chorus: 0.39 },
+  pizz: { pan: 1.8, chorus: 0.39 },
+  celesta: { pan: 1.7, chorus: 0.33 },
+  glock: { pan: 1.7, chorus: 0.33 },
+  bell: { pan: 1.7, chorus: 0.33 },
+  musicbox: { pan: 1.7, chorus: 0.33 },
+  flute: { pan: 1.8, chorus: 0.2 },
+  oboe: { pan: 1.8, chorus: 0.2 },
+  clarinet: { pan: 1.8, chorus: 0.2 },
+  horn: { pan: 1.7, chorus: 0.2 },
+  brass: { pan: 1.7, chorus: 0.13 }
 }
 
 interface PartRuntime {
@@ -63,7 +81,10 @@ export class MusicPlayer {
       const g = ctx.createGain()
       g.gain.value = this.active(p.layer, p.maxLayer) ? p.vol : 0
       const pan = ctx.createStereoPanner()
-      pan.pan.value = p.pan ?? 0
+      const w = WIDTH[p.inst]
+      // Widen modest pans, but never push a part further out than 0.55 (already-wide parts keep their own pan).
+      const base = p.pan ?? 0
+      pan.pan.value = Math.sign(base) * Math.min(Math.max(Math.abs(base), 0.55), Math.abs(base) * (w?.pan ?? 1))
       g.connect(pan)
       pan.connect(this.out)
       if (p.send) {
@@ -72,9 +93,10 @@ export class MusicPlayer {
         pan.connect(s)
         s.connect(this.revBus)
       }
-      if (p.chorus) {
+      const chorus = p.chorus ?? w?.chorus ?? 0
+      if (chorus) {
         const s = ctx.createGain()
-        s.gain.value = p.chorus
+        s.gain.value = chorus
         pan.connect(s)
         s.connect(this.choBus)
       }

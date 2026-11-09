@@ -107,12 +107,17 @@ export function createMixer(ctx: BaseAudioContext): Mixer {
     return n
   }
   const eqLow = eq('lowshelf', 140, 0.7, -3)
-  const eqPres = eq('peaking', 3200, 0.8, 4)
-  const eqAir = eq('highshelf', 7000, 0.7, 4.5)
+  const eqPres = eq('peaking', 3000, 0.8, 2.5)
+  const eqAir = eq('highshelf', 5200, 0.7, 8)
+  // Offsets the level the air shelves add so the overall music level stays where it was.
+  const trim = gain(0.85)
+  const eqTop = eq('highshelf', 9000, 0.7, 4.5)
   music.connect(eqLow)
   eqLow.connect(eqPres)
   eqPres.connect(eqAir)
-  eqAir.connect(muffle)
+  eqAir.connect(eqTop)
+  eqTop.connect(trim)
+  trim.connect(muffle)
   muffle.connect(menuDuck)
   menuDuck.connect(sfxDuck)
   sfxDuck.connect(musicVolume)
@@ -120,8 +125,8 @@ export function createMixer(ctx: BaseAudioContext): Mixer {
 
   const musicReverb = gain(1)
   const musicConv = ctx.createConvolver()
-  musicConv.buffer = makeImpulse(ctx, 2.6, 2.4, 0.8)
-  const musicWet = gain(0.55)
+  musicConv.buffer = makeImpulse(ctx, 2.6, 2.4, 0.5)
+  const musicWet = gain(0.62)
   musicReverb.connect(musicConv)
   musicConv.connect(musicWet)
   musicWet.connect(music)

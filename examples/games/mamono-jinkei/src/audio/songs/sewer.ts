@@ -23,7 +23,7 @@ export const SEWER: SongDef = {
   bpm: 108,
   barTicks: 48,
   swing: 2,
-  gain: 1.4,
+  gain: 1.5,
   parts: [
     { id: 'pz', inst: 'pizz', role: 'melody', vol: 0.9, pan: -0.5, send: 0.3 },
     { id: 'cl', inst: 'clarinet', role: 'melody', vol: 0.8, pan: 0.45, send: 0.3 },
