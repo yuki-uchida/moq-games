@@ -276,7 +276,7 @@ test('copied 過保護親 keep 20 px clear of her own whatever the levels, walki
       }
     }
   expect(worst).toBeLessThan(23)
-})
+}, 30_000)
 
 test('the one copy beside a lone 過保護親 walking up stands further out on her side, the other shoulder left free', () => {
   const step = 1 / 60

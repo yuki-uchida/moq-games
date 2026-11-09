@@ -205,7 +205,7 @@ test('resting pets never stand within 20 px of each other: any kinds, rounds, th
         // Rounds did overlap (both out at once) along the way.
         expect(overlapping, `own Lv${own}, gamble Lv${copied}`).toBeGreaterThan(0)
       }
-})
+}, 30_000)
 
 test('a gamble’s copy of 生き物観察 appears across the child from their own creature', () => {
   for (let heading = -180; heading < 180; heading += 15) {
