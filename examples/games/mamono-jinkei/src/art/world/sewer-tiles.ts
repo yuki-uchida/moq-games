@@ -1,7 +1,7 @@
 /** Stage 2 terrain: 地下水路と穀物庫. Lit by lamps ('dim'), so values stay on the bright side. */
 import type { TileKind } from '../../vocab'
 import type { TileQuery } from '../index'
-import { C, R } from '../palette'
+import { C, R, nearest } from '../palette'
 import { Raster, bayer, rng } from '../raster'
 import { crack, ih, mod, noisePatch, paintSlabs, slabLayout, tile, vn1 } from './gfx'
 import { floorTile, massTile, pitTile } from './meadow-tiles'
@@ -39,11 +39,73 @@ export function recolour(r: Raster, pairs: readonly (readonly [readonly number[]
 
 // ---------------------------------------------------------------- stone floors
 
-function puddle(r: Raster, cx: number, cy: number, rx: number, ry: number) {
-  r.ellipse(cx, cy + 0.6, rx + 1, ry + 0.8, SS[3])
-  r.ellipse(cx, cy, rx, ry, W[2])
-  r.ellipse(cx - 0.5, cy - 0.5, rx - 1.2, ry - 0.9, W[1])
-  r.rect(Math.round(cx - rx * 0.5), Math.round(cy - ry * 0.5), Math.max(2, Math.round(rx * 0.7)), 1, W[0])
+/** Dim reflective water: just off the wet-stone value. [sheen, body, rim, glint] */
+const POOL = [nearest(125, 134, 152), R.nightGround[0], R.nightGround[1], nearest(154, 164, 188)]
+
+/** An irregular puddle: 2-3 merged blobs, a wet dark stone halo, a deeper rim, a lit reflection and a tiny ripple. */
+function puddle(r: Raster, cx: number, cy: number, rx: number, ry: number, rn: () => number) {
+  const blobs: [number, number, number, number][] = [[cx, cy, rx, ry]]
+  const extra = 1 + Math.floor(rn() * 2)
+  const ph = rn() * 6.28
+  for (let i = 0; i < extra; i++) {
+    const side = rn() < 0.5 ? -1 : 1
+    blobs.push([
+      cx + side * rx * (0.7 + rn() * 0.45),
+      cy + (rn() - 0.4) * ry * 1.6,
+      rx * (0.4 + rn() * 0.3),
+      ry * (0.6 + rn() * 0.35)
+    ])
+  }
+  const inside = (x: number, y: number) => {
+    for (const [bx, by, brx, bry] of blobs) {
+      const dx = (x - bx) / brx
+      const dy = (y - by) / bry
+      const wob = 1 + 0.16 * Math.sin(Math.atan2(dy, dx) * 3 + ph + bx)
+      if (dx * dx + dy * dy <= wob * wob) return true
+    }
+    return false
+  }
+  const m = (x: number, y: number) => x >= 0 && y >= 0 && x < 64 && y < 64 && inside(x, y)
+  const reach = (x: number, y: number, k: number) => {
+    for (let j = -k; j <= k; j++)
+      for (let i = -k; i <= k; i++) if (Math.abs(i) + Math.abs(j) <= k && m(x + i, y + j)) return true
+    return false
+  }
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 64; x++) {
+      if (m(x, y)) continue
+      // wet stone halo, heavier below the pool
+      if (reach(x, y - 1, 1) || reach(x, y, 1)) r.set(x, y, SS[3])
+    }
+  // dim wet stone with a slight blue-grey tint; a thin dark rim; one small soft highlight
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 64; x++) {
+      if (!m(x, y)) continue
+      const edge = !m(x - 1, y) || !m(x + 1, y) || !m(x, y - 1) || !m(x, y + 1)
+      let c: number = POOL[1]
+      if (edge) c = POOL[2]
+      else if (!m(x, y + 2) || !m(x + 2, y)) c = POOL[2]
+      else if (!m(x, y - 2) && bayer(x, y) < 0.5) c = POOL[0]
+      r.set(x, y, c)
+    }
+  const hx = Math.round(cx - rx * 0.35)
+  const hy = Math.round(cy - ry * 0.3)
+  for (let i = 0; i < (rx > 7 ? 3 : 2); i++) if (m(hx + i, hy) && m(hx + i, hy - 1)) r.set(hx + i, hy, POOL[3])
+  // a tiny ripple ring
+  if (rx > 7 && rn() < 0.6) {
+    const rxp = Math.round(cx + rx * 0.25)
+    const ryp = Math.round(cy + ry * 0.25)
+    for (const [dx, dy] of [
+      [-2, 0],
+      [2, 0],
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+      [1, 1]
+    ] as const) {
+      if (m(rxp + dx * 2, ryp + dy * 2) && m(rxp + dx, ryp + dy)) r.set(rxp + dx, ryp + dy, POOL[0])
+    }
+  }
 }
 
 function mossPatch(r: Raster, x: number, y: number, rn: () => number) {
@@ -86,8 +148,19 @@ function sewerFloor(q: TileQuery) {
         }
       }
     }
-    if (ih(a, b, 9) < 0.3)
-      puddle(r, 16 + Math.floor(rn() * 32), 18 + Math.floor(rn() * 28), 7 + rn() * 5, 3.4 + rn() * 2)
+    // puddles cluster: only some 2x2 tile groups hold water, and then one to a few pools of mixed sizes
+    if (ih(a >> 1, b >> 1, 9) < 0.2 && ih(a, b, 10) < 0.6) {
+      const big = ih(a, b, 11) < 0.2
+      const n = big ? 1 : 1 + Math.floor(rn() * 2)
+      for (let i = 0; i < n; i++) {
+        const rx = big ? 8 + rn() * 3 : 3.5 + rn() * 3
+        const ry = big ? 4.4 + rn() * 1.8 : 2.4 + rn() * 1.6
+        const px =
+          n === 1 ? 20 + Math.floor(rn() * 24) : i === 0 ? 14 + Math.floor(rn() * 12) : 36 + Math.floor(rn() * 14)
+        const py = 14 + Math.floor(rn() * 36)
+        puddle(r, px, py, rx, ry, rn)
+      }
+    }
     return r
   })
 }

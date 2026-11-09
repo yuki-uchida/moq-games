@@ -260,42 +260,43 @@ function snowBase(tx: number, ty: number) {
     const ox = a * T
     const oy = b * T
     const r = new Raster(T, T)
-    // a gentle drift: two close tones blended by a wide dither, hollows only a hint darker
+    // a calm snowfield: broad drifts, hollows only a faint blue-grey, a narrow dithered seam between the tones
     const n = field(ox, oy, [
-      [64, 21, 0.45],
-      [32, 22, 0.35],
-      [16, 23, 0.2]
+      [128, 21, 0.5],
+      [64, 22, 0.3],
+      [32, 23, 0.2]
     ])
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
-        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.2
+        const v = n(x, y)
+        const d = (bayer(x, y) - 0.5) * 0.12
         let c: number = SN[1]
-        if (v > 0.66) c = SN[0]
-        else if (v < 0.3) c = SN[2]
+        if (v + d > 0.7) c = SN[0]
+        else if (v + d < 0.3) c = SN[2]
         r.set(x, y, c)
       }
-    // wind ripples: thin curved lines with a lit edge
-    scatter(ox, oy, 32, 111, 0.55, (px, py, h) => {
-      const len = 8 + Math.floor(h * 10)
+    // faint wind ripples: short, sparse, a lit edge only
+    scatter(ox, oy, 32, 111, 0.22, (px, py, h) => {
+      const len = 7 + Math.floor(h * 8)
       for (let i = 0; i < len; i++) {
-        const yy = py + Math.round(Math.sin(i * 0.45) * 1.2)
-        r.set(px + i, yy, SN[2])
-        if (i % 3 !== 1) r.set(px + i, yy - 1, SN[0])
+        const yy = py + Math.round(Math.sin(i * 0.4) * 1)
+        if (i % 2 === 0) r.set(px + i, yy, SN[0])
       }
     })
-    scatter(ox, oy, 32, 121, 0.55, (px, py, h) => mound(r, px, py, 3 + h * 4, 1.8 + h * 1.6, 0))
-    scatter(ox, oy, 64, 131, 0.5, (px, py, h) => {
+    // small soft drift humps
+    scatter(ox, oy, 64, 121, 0.3, (px, py, h) => mound(r, px, py, 3 + h * 3, 1.4 + h, 0))
+    scatter(ox, oy, 128, 131, 0.5, (px, py, h) => {
       const dx = h < 0.5 ? 5 : -5
       print(r, px, py)
       print(r, px + dx, py + 5)
       print(r, px + dx * 2, py + 2)
     })
-    scatter(ox, oy, 64, 141, 0.4, (px, py, h) => twig(r, px, py, h, true))
-    scatter(ox, oy, 32, 151, 0.4, (px, py, h) => {
-      needle(r, px, py, h < 0.5 ? 1 : -1, NL[3])
-      needle(r, px + 4, py + 3, h < 0.5 ? -1 : 1, NG[3])
+    scatter(ox, oy, 64, 141, 0.28, (px, py, h) => twig(r, px, py, h, true))
+    scatter(ox, oy, 64, 151, 0.18, (px, py, h) => {
+      needle(r, px, py, h < 0.5 ? 1 : -1, NG[2])
+      needle(r, px + 4, py + 3, h < 0.5 ? -1 : 1, NG[2])
     })
-    scatter(ox, oy, 64, 161, 0.4, (px, py, h) => {
+    scatter(ox, oy, 64, 161, 0.3, (px, py, h) => {
       if (h < 0.6) pebble(r, px, py)
     })
     scatter(ox, oy, 16, 171, 0.5, (px, py, h) => glint(r, px, py, h > 0.5))
@@ -312,36 +313,40 @@ function pathBase(tx: number, ty: number) {
     const ox = a * T
     const oy = b * T
     const r = new Raster(T, T)
+    // trodden snow: one calm mid tone, broad lighter packed areas, a dithered seam, only the ruts and prints go darker
     const n = field(ox, oy, [
-      [32, 41, 0.6],
-      [16, 42, 0.4]
-    ])
-    const mud = field(ox, oy, [
-      [32, 43, 0.6],
-      [8, 44, 0.4]
+      [128, 41, 0.5],
+      [64, 42, 0.3],
+      [32, 45, 0.2]
     ])
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
-        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.05
-        let c = SN[2]
-        if (v > 0.5) c = SN[1]
-        else if (v < 0.24) c = SN[3]
-        const m = mud(x, y)
-        if (m > 0.8) c = SN[3]
-        r.set(x, y, c)
+        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.12
+        r.set(x, y, v > 0.62 ? SN[1] : SN[2])
       }
-    // footprints: paired oval dents with a lit lower rim
+    // two faint wheel ruts running along the path
+    for (const [row, seed] of [
+      [14, 47],
+      [44, 48]
+    ] as const)
+      for (let x = 0; x < T; x++) {
+        const yy = row + Math.round((vn1(ox + x, 24, seed) - 0.5) * 5)
+        if ((x + yy) % 3 === 0) r.set(x, yy, SN[3])
+        else r.set(x, yy, SN[2])
+        if (x % 2 === 0) r.set(x, yy + 1, SN[1])
+      }
+    // footprints: sparse paired dents with a lit lower rim
     for (let cy = Math.floor((oy - 6) / 32); cy <= Math.floor((oy + T + 6) / 32); cy++)
       for (let cx = Math.floor((ox - 6) / 32); cx <= Math.floor((ox + T + 6) / 32); cx++) {
         const mx = mod(cx, 16)
         const my = mod(cy, 16)
-        if (ih(mx, my, 51) > 0.38) continue
+        if (ih(mx, my, 51) > 0.2) continue
         const px = cx * 32 + 6 + Math.floor(ih(mx, my, 52) * 18) - ox
         const py = cy * 32 + 6 + Math.floor(ih(mx, my, 53) * 18) - oy
         const step = (x: number, y: number) => {
-          r.ellipse(x + 0.5, y + 1.5, 2.6, 3.4, SN[1])
-          r.ellipse(x, y + 0.6, 2.6, 3.4, SN[3])
-          r.ellipse(x - 0.3, y - 0.2, 1.7, 2.6, SN[2])
+          r.ellipse(x + 0.5, y + 1.2, 2, 2.8, SN[1])
+          r.ellipse(x, y + 0.4, 2, 2.8, SN[3])
+          r.ellipse(x - 0.3, y - 0.2, 1.3, 2, SN[2])
         }
         step(px, py)
         step(px + 7, py + 4)
@@ -374,7 +379,7 @@ function iceBase(tx: number, ty: number) {
     const fade = field(ox, oy, [[64, 63, 1]])
     for (let y = 0; y < T; y++)
       for (let x = 0; x < T; x++) {
-        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.05
+        const v = n(x, y) + (bayer(x, y) - 0.5) * 0.12
         let c = IC[1]
         if (v < 0.36) c = IC[2]
         else if (v > 0.66) c = IC[0]
@@ -569,7 +574,8 @@ function groundTile(q: TileQuery) {
           // the neighbour's lip: its south and east faces are shaded, its north and west faces lit
           const [lit, dark] = RIM[k]
           r.set(x, y, side === 0 || side === 3 ? dark : lit)
-        } else if (best < 2.2 && (side === 0 || side === 3)) r.set(x, y, DARKER[own.get(x, y)])
+        } else if (best < 2.2 && (side === 0 || side === 3) && k !== 'snow' && k !== 'path')
+          r.set(x, y, DARKER[own.get(x, y)])
       }
     // walls throw their shadow onto the ground south and east of them
     if (m[0] === '1')
@@ -727,16 +733,39 @@ function thicketTile(q: TileQuery) {
       for (let cx = Math.floor((ox - 10) / 32); cx <= Math.floor((ox + T + 10) / 32); cx++) {
         const mx = mod(cx, 16)
         const tx0 = Math.round(cx * 32 + 2 + ih(mx, 4, 161) * 22 - ox)
-        const w = 7 + Math.floor(ih(mx, 5, 162) * 5)
+        const w = 7 + Math.floor(ih(mx, 5, 162) * 6)
         if (ih(mx, 6, 163) < 0.22) continue
-        for (let y = TH - 10; y < T; y++)
+        // each trunk is a rounded log: lit left flank, shaded right flank, bark furrows, its own tone
+        const tone = ih(mx, 7, 164) < 0.3 ? 1 : 0
+        const top = TH - 10 + Math.floor(ih(mx, 8, 165) * 4)
+        const roped = ih(mx, 9, 166) < 0.4
+        const ropeY = TH + 5 + Math.floor(ih(mx, 10, 167) * 6)
+        for (let y = top; y < T; y++)
           for (let x = 0; x < w; x++) {
-            let c = x === 0 ? WD[1] : x < 3 ? WD[2] : x < w - 2 ? WD[3] : WD[3]
-            if (x === 1 || (x === 3 && (y + mx) % 5 < 2)) c = x === 1 ? WD[1] : WD[2]
-            if ((y * 3 + x * 7 + mx) % 11 === 0 && x > 2) c = WD[4]
+            const u = x / (w - 1)
+            let c: number = WD[Math.min(4, 2 + tone)]
+            if (u < 0.2) c = WD[1 + tone]
+            else if (u < 0.34) c = WD[Math.min(4, 1 + tone + 1)]
+            else if (u > 0.78) c = WD[3]
+            if (x === 0) c = WD[Math.min(4, 2 + tone)]
             if (x === w - 1) c = WD[4]
+            // bark furrows: broken vertical lines
+            if (x > 1 && x < w - 1 && (x * 5 + mx) % 3 === 0 && (y * 3 + x + mx) % 9 < 6)
+              c = c === WD[1 + tone] ? WD[2] : WD[4]
+            else if ((y * 3 + x * 7 + mx) % 11 === 0 && x > 2) c = WD[4]
+            if (y === top) c = WD[4]
+            if (roped && y >= ropeY && y < ropeY + 3) c = y === ropeY ? R.hay[0] : y === ropeY + 1 ? R.hay[1] : R.hay[2]
             m.set(tx0 + x, y, c)
           }
+        if (roped) {
+          m.set(tx0 + Math.floor(w / 2), ropeY + 3, R.hay[2])
+          m.set(tx0 + Math.floor(w / 2) + 1, ropeY + 4, R.hay[2])
+        }
+        // snow capping the cut top of the log
+        for (let x = -1; x <= w; x++) {
+          m.set(tx0 + x, top - 1, x === 0 || x === w - 1 ? SN[1] : SN[0])
+          if (x > 0 && x < w - 1) m.set(tx0 + x, top, SN[1])
+        }
         // flared root foot
         m.rect(tx0 - 2, T - 6, w + 4, 6, WD[3])
         m.rect(tx0 - 2, T - 6, 2, 2, WD[2])
