@@ -3,7 +3,8 @@ import { describe, expect, test } from 'vitest'
 import { SHEETS, sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
-import { FAMILY_LAG, FAMILY_SCALE, FAMILY_SLOTS, followFamily, type Follower } from '../src/render'
+import { FAMILY_SCALE, FAMILY_SLOTS } from '../src/family-slots'
+import { FAMILY_LAG, followFamily, type Follower } from '../src/render'
 
 const key = (frame: Raster) => createHash('sha1').update(frame.data).digest('hex')
 const married = { fx: 1, married: true, hasChild: true, downed: false, hp: 50, maxHp: 100 }

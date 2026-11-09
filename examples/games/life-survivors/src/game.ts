@@ -38,6 +38,7 @@ import {
 } from './data'
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
+import { FAMILY_SLOTS } from './family-slots'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
 import {
@@ -98,32 +99,147 @@ const GUARDIAN_COPY_GLIDE = 900
 const GUARDIAN_CLOSE_REACH = 26
 /** 生き物観察: the steepest angle above the horizon at which a creature appears in front of an upward-facing player. */
 const OBSERVATION_MAX_ELEVATION = (20 * Math.PI) / 180
-/** How far from their owner idle pets rest: the inner ring, and the outer one (odd `petRing`). */
-const PET_REST_RINGS = [34, 56] as const
-
-/** How far from its owner an idle pet on ring `ring` (Shot.petRing) rests. */
-export function petRestRadius(ring = 0) {
-  return PET_REST_RINGS[ring % 2]
-}
-
-/** Pairs of rings (see petRestAngle): steps of 1.2 along the arc from a pet's spot, alternately later and earlier. */
-const PET_SPOT_STEPS = [0, 2, -2, 4] as const
+/** How far from their owner a new pet's first choice of resting spot lies (see petRestAngle), and モンスターペアレント rests. */
+const PET_REST_RADIUS = 34
+/** The rings of idle pets' resting spots round their owner (px), and the most room (px along the arc) each spot takes. */
+const PET_SPOT_RADII = [34, 56, 78, 100] as const
+const PET_SPOT_ROOM = 23
+/** The arc the spots lie along: -20° to 200° (screen y down), round the sides and below, never above the head. */
+const PET_SPOT_FROM = (-20 * Math.PI) / 180
+const PET_SPOT_ARC = (220 * Math.PI) / 180
 
 /**
- * Where an idle pet rests round its owner (radians). The monster parent's own `h` slot; other pets spread their
- * `orbit` over the lower half and the sides (-20° to 200°), never in the fan above the owner's head and hat. A gamble's
- * copied pet takes the slot between its owner's own pets (`orbit` + 1.2), so the two never rest on one spot. Rounds
- * of one number out at once take rings `ring` 0 and 1 (inner and outer, petRestRadius) on that spot; further ones (a
- * gamble refires faster than its pets leave) take the next pair of spots for their own kind two steps of 1.2 along
- * the arc, alternately later and earlier, between the spots of the other source.
+ * Idle pets' resting spots: offsets from their owner, evenly along the arc on each ring, `1 + floor(arc / 23)` to a
+ * ring (6, 10, 14 and 17), no two closer than 22 px. Each pet holds one (Shot.restSpot), see Game.assignPetSpots.
  */
-export function petRestAngle(weapon: string, source: string, orbit: number, h: number, ring = 0) {
+export const PET_SPOTS: readonly { x: number; y: number }[] = PET_SPOT_RADII.flatMap((radius) => {
+  const count = 1 + Math.floor((radius * PET_SPOT_ARC) / PET_SPOT_ROOM)
+  return Array.from({ length: count }, (_, j) => {
+    const angle = PET_SPOT_FROM + (PET_SPOT_ARC * j) / (count - 1)
+    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+  })
+})
+
+/**
+ * Half-sizes (px) of the boxes round other companions where no resting pet may stand: a spot with |dx| < x and
+ * |dy| < y from one is blocked. 過保護親 (where she stands and where she is heading) and モンスターペアレント, 生き物観察's creature,
+ * and the family's places behind a married owner.
+ */
+const PET_CLEAR_GUARDIAN = { x: 22, y: 26 } as const
+const PET_CLEAR_CREATURE = { x: 22, y: 22 } as const
+const PET_CLEAR_FAMILY = { x: 20, y: 24 } as const
+/** How much (px) wider every box is for a pet choosing a new spot, so it is not pushed off again straight away. */
+const PET_SPOT_SLACK = 8
+
+/** Another companion a resting pet keeps clear of: its offset from the owner and the half-size of its box. */
+interface PetObstacle {
+  x: number
+  y: number
+  bx: number
+  by: number
+}
+
+const petSpotBlocked = (spot: { x: number; y: number }, obstacles: readonly PetObstacle[], slack = 0) =>
+  obstacles.some((o) => Math.abs(spot.x - o.x) < o.bx + slack && Math.abs(spot.y - o.y) < o.by + slack)
+
+/** How far apart (px) the points are that a pet checks along its run to a new spot. */
+const PET_PATH_STEP = 4
+
+/**
+ * Whether a pet can run straight from `from` to `to` (offsets from the owner) without crossing an obstacle's box, other
+ * than one it already stands in (it is leaving that one).
+ */
+function petPathClear(from: { x: number; y: number }, to: { x: number; y: number }, obstacles: readonly PetObstacle[]) {
+  const ahead = obstacles.filter((o) => !petSpotBlocked(from, [o]))
+  const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / PET_PATH_STEP)
+  for (let j = 1; j < steps; j++) {
+    const t = j / steps
+    if (petSpotBlocked({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }, ahead)) return false
+  }
+  return true
+}
+
+/**
+ * 同じ敵を追うペット: where around their target the pets after the first go, as turns (radians) from the side the first
+ * one bites from. Twelve places all round, all touching it; a thirteenth goes round again.
+ */
+const PET_CHASE_TURNS = [0, 1.1, -1.1, 2.2, -2.2, Math.PI, 0.55, -0.55, 1.65, -1.65, 2.75, -2.75] as const
+/** Nearer (px) than this to the enemy's centre, the first chaser gives no way to bite from. */
+const PET_CHASE_CENTRED = 0.5
+/** How much faster than it runs a pet pushed off its resting spot goes to its new one. */
+const PET_RELOCATE_SPEED = 2
+/** 過保護親: how far ahead (s) a resting pet looks along her swing, and the points along it a pet moving on avoids. */
+const PET_GUARDIAN_LOOKAHEAD = 0.15
+const PET_GUARDIAN_PATH_SAMPLES = 6
+/** The moments (s) ahead, up to PET_GUARDIAN_LOOKAHEAD, at which a resting pet already keeps clear of 過保護親. */
+const PET_GUARDIAN_SOON = [1 / 60, 0.05, 0.1, PET_GUARDIAN_LOOKAHEAD] as const
+/** A pet that has moved no more than this (px) in a step is standing still. */
+const PET_STILL_STEP = 0.3
+
+/**
+ * Which way (radians) an idle pet would rest from its owner. The monster parent's own `h` slot; other pets spread their
+ * `orbit` over the lower half and the sides (-20° to 200°), never in the fan above the owner's head and hat. A gamble's
+ * copied pet takes the slot between its owner's own pets (`orbit` + 1.2). A pet looks for its resting spot from here
+ * (see Game.assignPetSpots).
+ */
+export function petRestAngle(weapon: string, source: string, orbit: number, h: number) {
   if (weapon === 'p_monster') return h * Math.PI
-  const pair = Math.floor(ring / 2)
-  const step = PET_SPOT_STEPS[pair % PET_SPOT_STEPS.length]
-  const slot = orbit + (source !== 'w_pet' ? 1.2 : 0) + 1.2 * step
+  const slot = orbit + (source !== 'w_pet' ? 1.2 : 0)
   return -0.35 + ((((slot % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI)) * (Math.PI + 0.7)
 }
+
+/**
+ * 過保護親's offset (px) from her child while the child walks facing (`forwardX`, `forwardY`), before she tucks in
+ * behind a standing child and before a copy is pushed clear of the others; and the way (`leanX`, `leanY`) a copy steps
+ * clear. `side` is a lone parent's (h = 0) shoulder; `lone`, for a copy, the lone parent beside her (see
+ * Game.loneGuardian) and her shoulder.
+ */
+export function guardianWalkOffset(
+  forwardX: number,
+  forwardY: number,
+  guard: { h: number; orbit: number; r: number },
+  side: number,
+  lone?: { orbit: number; side: number }
+) {
+  let offsetX: number
+  let offsetY: number
+  if (guard.h === 0) {
+    // A lone parent (Lv1) walking up the screen steps beside her child's shoulder instead of standing on her hat. She
+    // keeps to the side she last faced and, while crossing over (less than 26 px to the side), ducks below the head.
+    const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
+    offsetX = forwardX * guard.orbit * 0.65 + 26 * up * side
+    const crossing = Math.min(1, Math.max(0, (26 - Math.abs(offsetX)) / 10))
+    offsetY = forwardY * guard.orbit * 0.65 * (1 - 0.7 * up * crossing)
+  } else {
+    const across = guard.h * guard.r * 1.5
+    offsetX = forwardX * guard.orbit * 0.65 - forwardY * across
+    offsetY = forwardY * guard.orbit * 0.65 + forwardX * across
+  }
+  // Which way a copy steps clear of the others: out to her own side of the child.
+  const sign = guard.h < 0 ? -1 : 1
+  let leanX = -forwardY * sign
+  let leanY = forwardX * sign
+  if (lone) {
+    // The one copy beside a lone parent walking up stands a shoulder further out on her side, leaving the other
+    // shoulder free for the gamble badge. While her parent crosses over she passes below her, never through her.
+    const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
+    const parentX = forwardX * lone.orbit * 0.65 + 26 * up * lone.side
+    const crossing = Math.min(1, Math.max(0, (26 - Math.abs(parentX)) / 10))
+    const parentY = forwardY * lone.orbit * 0.65 * (1 - 0.7 * up * crossing)
+    const below = 1 - Math.min(1, Math.abs(lone.side))
+    offsetX += (parentX + 26 * lone.side - offsetX) * up
+    offsetY += (parentY + GUARDIAN_COPY_GAP * below - offsetY) * up
+    // She steps clear of her parent outward, away from the child, so she rounds her parent rather than through her.
+    const reach = Math.hypot(parentX, parentY) || 1
+    leanX += (parentX / reach - leanX) * up
+    leanY += (parentY / reach - leanY) * up
+  }
+  return { x: offsetX, y: offsetY, leanX, leanY }
+}
+
+/** The shoulder a lone 過保護親 (now on `side`) heads for while her child faces `forwardX` across. */
+const guardianTargetSide = (forwardX: number, side: number) =>
+  forwardX > 0.25 ? 1 : forwardX < -0.25 ? -1 : Math.sign(side) || 1
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -294,11 +410,12 @@ export interface Shot {
   /** Variant for the renderer: chain link, biting, armed, pellet kind. */
   v: number
   petType?: number
-  /**
-   * Pet: where it rests among the rounds of its number out at once: the lowest one free when it came (even inner, odd
-   * outer ring; 2 and up a spot further along, see petRestAngle).
-   */
-  petRing?: number
+  /** Pet: which of PET_SPOTS it rests on (see Game.assignPetSpots); none while every spot is taken. */
+  restSpot?: number
+  /** Pet: seconds since it last moved more than PET_STILL_STEP in a step. */
+  petStill?: number
+  /** Pet: pushed off its resting spot and on its way to a new one (see assignPetSpots). */
+  relocating?: boolean
   /** Seconds before the shot exists (staples fired one after another). */
   delay: number
   /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
@@ -2156,28 +2273,21 @@ export class Game {
       case 'pet': {
         for (let i = 0; i < n; i++) {
           const orbit = i * 2.4
-          // Earlier rounds' pets of the same number from this source may still be out (the duration outlasts the
-          // cooldown): the new one takes the lowest ring none of them rests on, so no two stand on one spot. It
-          // appears on its resting spot, not on the child.
-          const taken = new Set<number>()
+          // It appears on a free resting spot near its own way out from the child (not on the child), clear of the pets
+          // already out (an earlier round's stay outlasts the cooldown) and of the other companions.
+          const base = this.petBase(def.id, weapon.id, orbit, 0)
+          const used = new Set<number>()
           for (const shot of this.state.shots)
-            if (
-              shot.owner === player.id &&
-              shot.sourceWeapon === weapon.id &&
-              shot.weapon === def.id &&
-              shot.orbit === orbit &&
-              shot.delay <= 0
-            )
-              taken.add(shot.petRing ?? 0)
-          let petRing = 0
-          while (taken.has(petRing)) petRing++
-          const rest = petRestAngle(def.id, weapon.id, orbit, 0, petRing)
+            if (shot.owner === player.id && shot.weapon === 'w_pet' && shot.delay <= 0 && shot.restSpot !== undefined)
+              used.add(shot.restSpot)
+          const restSpot = this.pickPetSpot(base, used, this.petObstacles(player).avoid)
+          const rest = restSpot === undefined ? base : PET_SPOTS[restSpot]
           this.shot(player, weapon, def, ws, {
-            x: player.x + Math.cos(rest) * petRestRadius(petRing),
-            y: player.y + Math.sin(rest) * petRestRadius(petRing),
+            x: player.x + rest.x,
+            y: player.y + rest.y,
             // It starts out facing the way the child faces.
             angle: Math.atan2(player.fy, player.fx),
-            petRing,
+            restSpot,
             orbit,
             petType: i % PET_TYPES.length,
             spin: speed,
@@ -2199,17 +2309,15 @@ export class Game {
         weapon.observationCount = (weapon.observationCount ?? 0) + 1
         // Facing up, the creature appears no more than 20° above the horizon, clear of the name tag and buff labels
         // stacked over the head; straight up it goes to the right.
-        // A gamble's copy appears across the child from their own creature (when one is out), so the two fields of view
-        // do not lie on top of each other; the same limit on rising above the horizon applies.
-        const own =
-          weapon.id !== 'w_observe'
-            ? this.state.shots.find(
-                (shot) => shot.owner === player.id && shot.sourceWeapon === 'w_observe' && shot.weapon === def.id
-              )
-            : undefined
-        const ownDistance = own ? Math.hypot(own.x - player.x, own.y - player.y) : 0
-        const facingX = own && ownDistance > 1e-6 ? -(own.x - player.x) / ownDistance : player.fx
-        const facingY = own && ownDistance > 1e-6 ? -(own.y - player.y) / ownDistance : player.fy
+        // The child's own creature and a gamble's copy appear across the child from each other (whichever comes
+        // first, or comes again while the other is out), so the two fields of view do not lie on top of each other;
+        // the same limit on rising above the horizon applies.
+        const other = this.state.shots.find(
+          (shot) => shot.owner === player.id && shot.weapon === def.id && shot.sourceWeapon !== weapon.id
+        )
+        const otherDistance = other ? Math.hypot(other.x - player.x, other.y - player.y) : 0
+        const facingX = other && otherDistance > 1e-6 ? -(other.x - player.x) / otherDistance : player.fx
+        const facingY = other && otherDistance > 1e-6 ? -(other.y - player.y) / otherDistance : player.fy
         let appearX = facingX
         let appearY = facingY
         if (facingY < 0) {
@@ -2400,6 +2508,7 @@ export class Game {
   private moveShots(dt: number) {
     const state = this.state
     const players = new Map(state.players.map((player) => [player.id, player]))
+    for (const player of state.players) this.assignPetSpots(player)
     const kept: Shot[] = []
     for (const shot of state.shots) {
       const owner = players.get(shot.owner)
@@ -2624,44 +2733,24 @@ export class Game {
       (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
     shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
     const walking = 1 - shot.guardianStill
-    let offsetX: number
-    let offsetY: number
     if (shot.h === 0) {
-      // A lone parent (Lv1) walking up the screen steps beside her child's shoulder instead of standing on her hat. She
-      // keeps to the side she last faced and, while crossing over (less than 26 px to the side), ducks below the head.
       const side = shot.guardianSide ?? 1
-      const targetSide = forwardX > 0.25 ? 1 : forwardX < -0.25 ? -1 : Math.sign(side) || 1
-      shot.guardianSide = side + (targetSide - side) * (1 - Math.exp(-10 * dt))
-      const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
-      offsetX = forwardX * shot.orbit * 0.65 + 26 * up * shot.guardianSide
-      const crossing = Math.min(1, Math.max(0, (26 - Math.abs(offsetX)) / 10))
-      offsetY = forwardY * shot.orbit * 0.65 * (1 - 0.7 * up * crossing)
-    } else {
-      const side = shot.h * shot.r * 1.5
-      offsetX = forwardX * shot.orbit * 0.65 - forwardY * side
-      offsetY = forwardY * shot.orbit * 0.65 + forwardX * side
+      shot.guardianSide = side + (guardianTargetSide(forwardX, side) - side) * (1 - Math.exp(-10 * dt))
     }
-    // Which way a copy steps clear of the others: out to her own side of the child.
-    const sign = shot.h < 0 ? -1 : 1
-    let leanX = -forwardY * sign
-    let leanY = forwardX * sign
     const lone = shot.sourceWeapon !== 'p_over' ? this.loneGuardian(shot) : undefined
-    if (lone) {
-      // The one copy beside a lone parent walking up stands a shoulder further out on her side, leaving the other
-      // shoulder free for the gamble badge. While her parent crosses over she passes below her, never through her.
-      const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
-      const side = lone.guardianSide ?? 1
-      const parentX = forwardX * lone.orbit * 0.65 + 26 * up * side
-      const crossing = Math.min(1, Math.max(0, (26 - Math.abs(parentX)) / 10))
-      const parentY = forwardY * lone.orbit * 0.65 * (1 - 0.7 * up * crossing)
-      const below = 1 - Math.min(1, Math.abs(side))
-      offsetX += (parentX + 26 * side - offsetX) * up
-      offsetY += (parentY + GUARDIAN_COPY_GAP * below - offsetY) * up
-      // She steps clear of her parent outward, away from the child, so she rounds her parent rather than through her.
-      const reach = Math.hypot(parentX, parentY) || 1
-      leanX += (parentX / reach - leanX) * up
-      leanY += (parentY / reach - leanY) * up
-    }
+    const {
+      x: offsetX,
+      y: offsetY,
+      leanX,
+      leanY
+    } = guardianWalkOffset(
+      forwardX,
+      forwardY,
+      shot,
+      shot.guardianSide ?? 1,
+      lone && { orbit: lone.orbit, side: lone.guardianSide ?? 1 }
+    )
+    const sign = shot.h < 0 ? -1 : 1
     shot.x = owner.x + offsetX * walking + shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
     shot.y = owner.y + offsetY * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
     if (shot.sourceWeapon !== 'p_over') {
@@ -2741,31 +2830,239 @@ export class Game {
       shot.target = best
     }
     const target = shot.target
-    // With nothing to chase the dog trots back to its spot beside the owner.
-    const restAngle = petRestAngle(shot.weapon, shot.sourceWeapon, shot.orbit, shot.h, shot.petRing)
-    const restRadius = petRestRadius(shot.petRing)
-    const goalX = target ? target.x : owner.x + Math.cos(restAngle) * restRadius
-    const goalY = target ? target.y : owner.y + Math.sin(restAngle) * restRadius
-    const dx = goalX - shot.x
-    const dy = goalY - shot.y
-    const d = Math.hypot(dx, dy)
+    const fromX = shot.x
+    const fromY = shot.y
     if (target) {
-      if (d > 4) {
+      shot.relocating = false
+      // Pets after the first on one enemy bite it from their own side, around it, not on top of one another.
+      const contact = shot.weapon === 'w_pet' ? this.petContact(shot, owner, target) : target
+      const dx = contact.x - shot.x
+      const dy = contact.y - shot.y
+      const d = Math.hypot(dx, dy)
+      // A pet keeps right on its place round the enemy (no dead zone, so it never lurches after a walking enemy);
+      // the monster parent stops within 4 px of its target's centre.
+      if (d > (contact === target ? 4 : 0.5)) {
         const step = Math.min(d, shot.spin * dt)
         shot.x += (dx / d) * step
         shot.y += (dy / d) * step
-        if (d > 8) shot.angle = Math.atan2(dy, dx)
       }
-    } else if (d > 0.5) {
-      // Following (or settling) it keeps up every step and stops right on its spot, so it never trails back and forth
-      // behind a walking owner; it faces the way it moves and keeps its last facing once it stands.
-      const step = Math.min(d, shot.spin * dt)
-      shot.x += (dx / d) * step
-      shot.y += (dy / d) * step
-      if (step > 0.3) shot.angle = Math.atan2(dy, dx)
+      if (d > 8) shot.angle = Math.atan2(dy, dx)
+      else if (contact !== target && (target.x !== shot.x || target.y !== shot.y))
+        shot.angle = Math.atan2(target.y - shot.y, target.x - shot.x)
+      const reach = shot.r + (ENEMY_BY_ID.get(target.kind)?.radius ?? 12) * target.scale + 6
+      shot.v = Math.hypot(target.x - fromX, target.y - fromY) < reach ? 1 : 0
+    } else {
+      // With nothing to chase the dog trots back to its spot beside the owner.
+      const rest =
+        shot.weapon === 'w_pet' && shot.restSpot !== undefined
+          ? PET_SPOTS[shot.restSpot]
+          : this.petBase(shot.weapon, shot.sourceWeapon, shot.orbit, shot.h)
+      const dx = owner.x + rest.x - shot.x
+      const dy = owner.y + rest.y - shot.y
+      const d = Math.hypot(dx, dy)
+      if (d > 0.5) {
+        // Following (or settling) it keeps up every step and stops right on its spot, so it never trails back and
+        // forth behind a walking owner; it faces the way it moves and keeps its last facing once it stands. Pushed off
+        // its spot (see assignPetSpots), it hurries to the new one.
+        const step = Math.min(d, shot.spin * (shot.relocating ? PET_RELOCATE_SPEED : 1) * dt)
+        shot.x += (dx / d) * step
+        shot.y += (dy / d) * step
+        if (step > PET_STILL_STEP) shot.angle = Math.atan2(dy, dx)
+        if (step >= d) shot.relocating = false
+      } else shot.relocating = false
+      shot.v = 0
     }
-    const reach = target ? shot.r + (ENEMY_BY_ID.get(target.kind)?.radius ?? 12) * target.scale + 6 : 0
-    shot.v = target && d < reach ? 1 : 0
+    shot.petStill = Math.hypot(shot.x - fromX, shot.y - fromY) > PET_STILL_STEP ? 0 : (shot.petStill ?? 0) + dt
+  }
+
+  /**
+   * Where pet `shot` bites `target`. The first of its owner's pets on that enemy (by id) bites from the side it comes
+   * from; the next ones take places round the enemy (PET_CHASE_TURNS) from the first one's side, so they keep their
+   * places however the enemy and the child move about each other. All of them touch it, close enough to bite.
+   */
+  private petContact(shot: Shot, owner: Player, target: Enemy) {
+    let k = 0
+    let first = shot
+    for (const other of this.state.shots)
+      if (
+        other.id < shot.id &&
+        other.target === target &&
+        other.owner === shot.owner &&
+        other.weapon === 'w_pet' &&
+        other.delay <= 0
+      ) {
+        k++
+        if (other.id < first.id) first = other
+      }
+    let angle: number
+    if (Math.hypot(first.x - target.x, first.y - target.y) > PET_CHASE_CENTRED)
+      angle = Math.atan2(first.y - target.y, first.x - target.x)
+    else if (owner.x !== target.x || owner.y !== target.y) angle = Math.atan2(owner.y - target.y, owner.x - target.x)
+    else angle = first.angle + Math.PI
+    angle += PET_CHASE_TURNS[k % PET_CHASE_TURNS.length]
+    const reach = (ENEMY_BY_ID.get(target.kind)?.radius ?? 12) * target.scale + shot.r - 4
+    return { x: target.x + Math.cos(angle) * reach, y: target.y + Math.sin(angle) * reach }
+  }
+
+  /** Where (offset from the owner) an idle pet rests without a spot: PET_REST_RADIUS out along petRestAngle. */
+  private petBase(weapon: string, source: string, orbit: number, h: number) {
+    const angle = petRestAngle(weapon, source, orbit, h)
+    return { x: Math.cos(angle) * PET_REST_RADIUS, y: Math.sin(angle) * PET_REST_RADIUS }
+  }
+
+  /**
+   * The other companions a resting pet of `owner` keeps clear of, as offsets from the owner: each 過保護親 where she
+   * stands, where she will be in PET_GUARDIAN_LOOKAHEAD and where she is heading, モンスターペアレント, 生き物観察's
+   * creatures, and the spouse and child walking behind a married owner (FAMILY_SLOTS, whenever the renderer draws them).
+   * `hold` blocks a pet's own spot; `avoid`, for a pet choosing a new one, adds points along each 過保護親's swing, so
+   * a pet moved on is not pushed off again by the same swing.
+   */
+  private petObstacles(owner: Player) {
+    const hold: PetObstacle[] = []
+    const avoid: PetObstacle[] = []
+    const guardian = PET_CLEAR_GUARDIAN
+    const creature = PET_CLEAR_CREATURE
+    const both = (x: number, y: number, bx: number, by: number) => {
+      hold.push({ x, y, bx, by })
+      avoid.push({ x, y, bx, by })
+    }
+    for (const shot of this.state.shots) {
+      if (shot.owner !== owner.id || shot.delay > 0) continue
+      if (shot.weapon === 'p_over') {
+        const at = shot.guardianOffset ?? { x: shot.x - owner.x, y: shot.y - owner.y }
+        both(at.x, at.y, guardian.x, guardian.y)
+        // A copy pushed clear of the others (keepCopyApart) stays pushed about as far while she swings.
+        const now = this.guardianOffsetAhead(shot, owner, 0, 0, 0)
+        const pushX = shot.sourceWeapon !== 'p_over' ? at.x - now.x : 0
+        const pushY = shot.sourceWeapon !== 'p_over' ? at.y - now.y : 0
+        const ahead = (turn: number, settle: number, shift: number) => {
+          const on = this.guardianOffsetAhead(shot, owner, turn, settle, shift)
+          return { x: on.x + pushX, y: on.y + pushY }
+        }
+        // Where she will be over the next PET_GUARDIAN_LOOKAHEAD, eased as moveGuardian eases her.
+        for (const seconds of PET_GUARDIAN_SOON) {
+          const soon = ahead(1 - Math.exp(-8 * seconds), 1 - Math.exp(-12 * seconds), 1 - Math.exp(-10 * seconds))
+          both(soon.x, soon.y, guardian.x, guardian.y)
+        }
+        const heading = ahead(1, 1, 1)
+        both(heading.x, heading.y, guardian.x, guardian.y)
+        for (let j = 1; j < PET_GUARDIAN_PATH_SAMPLES; j++) {
+          const t = j / PET_GUARDIAN_PATH_SAMPLES
+          const on = ahead(t, t, t)
+          avoid.push({ x: on.x, y: on.y, bx: guardian.x, by: guardian.y })
+        }
+      } else if (shot.weapon === 'p_monster') both(shot.x - owner.x, shot.y - owner.y, guardian.x, guardian.y)
+      else if (shot.weapon === 'w_observe') both(shot.x - owner.x, shot.y - owner.y, creature.x, creature.y)
+    }
+    if (owner.married && !owner.downed && this.state.phase === 'playing') {
+      const back = owner.fx < 0 ? 1 : -1
+      for (const slot of FAMILY_SLOTS.slice(0, owner.hasChild ? 2 : 1))
+        both(back * slot.dx, slot.dy, PET_CLEAR_FAMILY.x, PET_CLEAR_FAMILY.y)
+    }
+    return { hold, avoid }
+  }
+
+  /**
+   * Where 過保護親 `shot` stands relative to her child once her facing, standing and shoulder have gone the shares
+   * `turn`, `settle` and `shift` of the way from where they are now to where the child now faces and stands, as she
+   * eases them in moveGuardian (1, 1, 1: where she is heading; leaving out the push that keeps a copy clear, and her
+   * glide).
+   */
+  private guardianOffsetAhead(shot: Shot, owner: Player, turn: number, settle: number, shift: number) {
+    const targetHeading = Math.atan2(owner.fy, owner.fx)
+    const heading = shot.guardianHeading ?? targetHeading
+    const along = heading + Math.atan2(Math.sin(targetHeading - heading), Math.cos(targetHeading - heading)) * turn
+    const forwardX = Math.cos(along)
+    const forwardY = Math.sin(along)
+    const now = shot.guardianStill ?? Number(owner.still > 0)
+    const still = now + (Number(owner.still > 0) - now) * settle
+    const eased = (side: number) => side + (guardianTargetSide(forwardX, side) - side) * shift
+    const lone = shot.sourceWeapon !== 'p_over' ? this.loneGuardian(shot) : undefined
+    const offset = guardianWalkOffset(
+      forwardX,
+      forwardY,
+      shot,
+      eased(shot.guardianSide ?? 1),
+      lone && { orbit: lone.orbit, side: eased(lone.guardianSide ?? 1) }
+    )
+    return {
+      x: offset.x * (1 - still) + shot.h * shot.r * GUARDIAN_STILL_SPREAD * still,
+      y: offset.y * (1 - still) - GUARDIAN_STILL_LIFT * still
+    }
+  }
+
+  /**
+   * The free spot (index into PET_SPOTS, not in `used`) for a pet that would rest at `base` (offset from its owner):
+   * the nearest one clear of every obstacle with PET_SPOT_SLACK to spare; failing that the free one furthest from the
+   * obstacles; none once every spot is taken.
+   */
+  private pickPetSpot(
+    base: { x: number; y: number },
+    used: ReadonlySet<number>,
+    obstacles: readonly PetObstacle[],
+    from?: { x: number; y: number }
+  ) {
+    let best: number | undefined
+    let cost = Infinity
+    // A pet already out first looks for a spot it can run to straight without crossing another companion.
+    for (const straight of from ? [true, false] : [false]) {
+      for (let i = 0; i < PET_SPOTS.length; i++) {
+        if (used.has(i) || petSpotBlocked(PET_SPOTS[i], obstacles, PET_SPOT_SLACK)) continue
+        if (straight && from && !petPathClear(from, PET_SPOTS[i], obstacles)) continue
+        const d = Math.hypot(PET_SPOTS[i].x - base.x, PET_SPOTS[i].y - base.y)
+        if (d < cost) {
+          best = i
+          cost = d
+        }
+      }
+      if (best !== undefined) return best
+    }
+    let clearance = -Infinity
+    for (let i = 0; i < PET_SPOTS.length; i++) {
+      if (used.has(i)) continue
+      const spot = PET_SPOTS[i]
+      let clear = Infinity
+      for (const o of obstacles)
+        clear = Math.min(clear, Math.max(Math.abs(spot.x - o.x) - o.bx, Math.abs(spot.y - o.y) - o.by))
+      const d = Math.hypot(spot.x - base.x, spot.y - base.y)
+      if (clear > clearance || (clear === clearance && d < cost)) {
+        best = i
+        clearance = clear
+        cost = d
+      }
+    }
+    return best
+  }
+
+  /**
+   * Hands out the resting spots (PET_SPOTS) among all of `owner`'s pets, oldest first, whatever their source, round or
+   * kind and whether chasing or not. Each keeps its spot while no older pet holds it and no obstacle (petObstacles)
+   * blocks it; the others, oldest first, take the nearest free spot clear of the obstacles with room to spare — nearest
+   * to where a pet pushed off its spot stands now, or for a new one to its own way out (petRestAngle).
+   */
+  private assignPetSpots(owner: Player) {
+    const pets = this.state.shots.filter(
+      (shot) => shot.owner === owner.id && shot.weapon === 'w_pet' && shot.delay <= 0 && shot.life > 0
+    )
+    if (!pets.length) return
+    pets.sort((first, second) => first.id - second.id)
+    const { hold, avoid } = this.petObstacles(owner)
+    const used = new Set<number>()
+    const moving: Shot[] = []
+    for (const pet of pets) {
+      const spot = pet.restSpot
+      if (spot !== undefined && !used.has(spot) && !petSpotBlocked(PET_SPOTS[spot], hold)) used.add(spot)
+      else moving.push(pet)
+    }
+    for (const pet of moving) {
+      const pushed = pet.restSpot !== undefined
+      const base = pushed
+        ? { x: pet.x - owner.x, y: pet.y - owner.y }
+        : this.petBase(pet.weapon, pet.sourceWeapon, pet.orbit, pet.h)
+      pet.restSpot = this.pickPetSpot(base, used, avoid, pushed ? base : undefined)
+      if (pet.restSpot !== undefined) used.add(pet.restSpot)
+      if (pushed && !pet.target) pet.relocating = true
+    }
   }
 
   private mineTouched(shot: Shot) {

@@ -1000,7 +1000,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v16', () => {
+describe('protocol v17', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -1010,9 +1010,9 @@ describe('protocol v16', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v16 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v17 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(16)
+    expect(view.v).toBe(17)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -1021,7 +1021,7 @@ describe('protocol v16', () => {
     expect(readView(view)).toBeTruthy()
   })
 
-  test('readView rejects old versions and every malformed v16 field', () => {
+  test('readView rejects old versions and every malformed v17 field', () => {
     const view = sample()
     expect(readView({ ...view, v: 1 })).toBeUndefined()
     expect(readView({ ...view, v: 2 })).toBeUndefined()
@@ -1035,6 +1035,7 @@ describe('protocol v16', () => {
     expect(readView({ ...view, v: 13 })).toBeUndefined()
     expect(readView({ ...view, v: 14 })).toBeUndefined()
     expect(readView({ ...view, v: 15 })).toBeUndefined()
+    expect(readView({ ...view, v: 16 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
