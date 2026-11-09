@@ -233,6 +233,8 @@ export interface PlayerTags {
   buffs: number
   /** Whether the gamble badge is drawn. */
   badge: boolean
+  /** Side of the head the badge floats on, -1 (left) to +1 (right, the default); it eases between the two. */
+  badgeSide?: number
 }
 
 /**
@@ -251,7 +253,7 @@ export function playerBox(x: number, feet: number, size: number, tagLift: number
   ]
   if (tags.buffs > 0) boxes.push(row(tags.buffs + 4, feet - 80 * size - tagLift))
   if (tags.badge) {
-    const bx = x + 26 * size
+    const bx = x + 26 * size * (tags.badgeSide ?? 1)
     const by = feet - 50 * size
     boxes.push({ left: bx - 13, top: by - 14, right: bx + 13, bottom: by + 17 })
   }

@@ -337,8 +337,11 @@ export class Renderer {
   private groundShown?: { stage: Stage; from?: Stage; at: number }
   private readonly motion = new Map<string, { x: number; y: number; speed: number }>()
   private readonly families = new Map<string, Follower[]>()
-  /** Per player: the badge being shown, the newest result and when it changed (the reels need time to stop). */
-  private readonly gambleBadges = new Map<string, { shown?: string; next?: string; at: number }>()
+  /**
+   * Per player: the badge being shown, the newest result and when it changed (the reels need time to stop), and the
+   * side of the head it floats on (-1 left .. +1 right, eased).
+   */
+  private readonly gambleBadges = new Map<string, { shown?: string; next?: string; at: number; side: number }>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
   private parentMemorialTime?: number
@@ -595,7 +598,7 @@ export class Renderer {
     }
     let st = this.gambleBadges.get(player.id)
     if (!st) {
-      st = { at: this.clock }
+      st = { at: this.clock, side: 1 }
       this.gambleBadges.set(player.id, st)
     }
     if (st.next !== id) {
@@ -604,6 +607,39 @@ export class Renderer {
     }
     if (st.shown !== id && this.clock - st.at >= GAMBLE_RESULT_DELAY) st.shown = id
     return st.shown
+  }
+
+  /**
+   * Eases the side of the head a player's gamble badge floats on: the left while her lone 過保護親 (her own, the
+   * h = 0 one) stands at her upper right — beside the shoulder of a child walking up — so the badge never hides her,
+   * the right otherwise.
+   */
+  private easeBadgeSide(view: View, origins: { x: number; y: number }[], index: number, dt: number, smooth: boolean) {
+    const player = view.players[index]
+    if (!player?.gambleWeapon) return
+    const s = view.shots
+    const guard = WEAPON_INDEX.get('p_over')!
+    let count = 0
+    for (let i = 0; i < s.length; i += STRIDE.shots)
+      if (s[i] === guard && s[i + 6] === index && s[i + 7] < SHOT_GAMBLE) count++
+    let target = 1
+    if (count % 2) {
+      // Her parents are listed in slot order, so the middle one stands at h = 0.
+      let seen = 0
+      for (let i = 0; i < s.length; i += STRIDE.shots) {
+        if (s[i] !== guard || s[i + 6] !== index || s[i + 7] >= SHOT_GAMBLE || seen++ !== (count - 1) / 2) continue
+        const sh = this.load(view, origins, i)
+        const at = this.companionAt(view, sh, WEAPONS[guard])
+        if (at.x - sh.ox > 8 && at.y - sh.oy < -16) target = -1
+        break
+      }
+    }
+    let st = this.gambleBadges.get(player.id)
+    if (!st) {
+      st = { at: this.clock, side: target }
+      this.gambleBadges.set(player.id, st)
+    }
+    st.side = smooth ? target + (st.side - target) * Math.exp(-12 * dt) : target
   }
 
   /** Traces a rounded rectangle path (no fill). */
@@ -1080,10 +1116,12 @@ export class Renderer {
     const tags = buffs.map((kind) => this.label(COOKING_EFFECTS[kind].short, 11, COOKING_EFFECTS[kind].color))
     const tagWidths = tags.map((tag) => logical(tag) - 6)
     const rowWidth = tags.length ? tagWidths.reduce((sum, w) => sum + w, 0) + 6 : 0
+    const badge = local && !player.downed && Boolean(player.gambleWeapon)
     const box = playerBox(pos.x, feet, size, tagLift, {
       name: logical(nameTag),
       buffs: rowWidth,
-      badge: local && !player.downed && Boolean(player.gambleWeapon)
+      badge,
+      badgeSide: badge ? this.gambleBadges.get(player.id)?.side : undefined
     })
     if (buffs.length) {
       this.world()
@@ -1217,7 +1255,10 @@ export class Renderer {
       const icon = weaponAppearance(gambleShown, ageAt(time), player.petAge).art
       const frame = (sheet('icons')[icon] ?? sheet('icons')[gambleShown]).frames[0]
       const bob = Math.sin(this.clock * 3.2) * 1.6
-      const bx = pos.x + 26 * size
+      // Above the shoulder away from a lone 過保護親 at the upper right; the tail points back toward the head.
+      const side = this.gambleBadges.get(player.id)?.side ?? 1
+      const tail = side < 0 ? -1 : 1
+      const bx = pos.x + 26 * size * side
       const by = feet - 50 * size + bob
       const ctx = this.ctx
       this.world()
@@ -1238,9 +1279,9 @@ export class Renderer {
       ctx.lineWidth = 0.8
       ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(bx - 4, by + 10.5)
-      ctx.lineTo(bx - 7, by + 15)
-      ctx.lineTo(bx + 1, by + 10.5)
+      ctx.moveTo(bx - 4 * tail, by + 10.5)
+      ctx.lineTo(bx - 7 * tail, by + 15)
+      ctx.lineTo(bx + tail, by + 10.5)
       ctx.closePath()
       ctx.fillStyle = '#ffd75e'
       ctx.fill()
@@ -2741,6 +2782,7 @@ export class Renderer {
     }
     ctx.fill()
     this.bars.length = 0
+    this.easeBadgeSide(view, origins, local, dt, smooth)
     for (const item of list) {
       if (item.member) this.follower(item.member)
       else if (item.shot !== undefined) this.companion(view, this.load(view, origins, item.shot), WEAPONS[s[item.shot]])

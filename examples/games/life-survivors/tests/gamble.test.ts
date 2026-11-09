@@ -177,3 +177,45 @@ test('copied shots and gambling fire events survive a multiplayer snapshot', () 
   expect(view.fx).toContain(FX.GAMBLE)
   expect(game.state.shots.every((shot) => shot.owner === player.id && shot.sourceWeapon === 'w_gamble')).toBe(true)
 })
+
+/** 過保護親 of one source: her own skill or gambling's copy. */
+const guardiansFrom = (game: Game, source: string) =>
+  game.state.shots.filter((shot) => shot.weapon === 'p_over' && shot.sourceWeapon === source)
+
+test('gambling never stacks more copied 過保護親 than its amount, however often it fires', () => {
+  for (const [gambleLv, overLv] of [
+    [1, 1],
+    [4, 4],
+    [7, 8]
+  ]) {
+    const { game, player, weapon } = setup()
+    weapon.lv = gambleLv
+    choose(game, 'p_over')
+    player.weapons.find((owned) => owned.id === 'p_over')!.lv = overLv
+    const ws = weaponStats(player, weapon, playerStats(player), WEAPON_BY_ID.get('p_over'))
+    for (let k = 0; k < 8; k++) game['fire'](player, weapon, weaponStats(player, weapon))
+    expect(guardiansFrom(game, 'w_gamble')).toHaveLength(ws.amount)
+  }
+})
+
+test("copied 過保護親 stand one slot further out than the player's own, never on them", () => {
+  for (const overLv of [1, 4, 8]) {
+    const { game, player, weapon } = setup()
+    weapon.lv = 4
+    choose(game, 'p_over')
+    const own = player.weapons.find((owned) => owned.id === 'p_over')!
+    own.lv = overLv
+    own.cd = 0
+    game['fireWeapons'](0)
+    game['fire'](player, weapon, weaponStats(player, weapon))
+    const mine = guardiansFrom(game, 'p_over').map((shot) => shot.h)
+    const copies = guardiansFrom(game, 'w_gamble').map((shot) => shot.h)
+    expect(mine).toEqual(overLv >= 4 ? [-0.5, 0.5] : [0])
+    expect(copies.length).toBeGreaterThan(0)
+    for (const h of copies) {
+      expect(Math.abs(h)).toBeGreaterThanOrEqual(1)
+      for (const m of mine) expect(Math.abs(h - m)).toBeGreaterThanOrEqual(1)
+    }
+    if (copies.length === 2) expect(copies).toEqual([-1.5, 1.5])
+  }
+})

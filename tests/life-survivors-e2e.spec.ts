@@ -1612,6 +1612,82 @@ test('overprotective parents walking ahead are drawn behind a child heading up a
   expect(orders.near).toEqual(['player', 'guardian', 'guardian'])
 })
 
+test('the gamble badge floats over the other shoulder from a lone overprotective parent at the upper right', async ({
+  page
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const result = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
+    type Box = { left: number; top: number; right: number; bottom: number }
+    // A lone parent beside the shoulder of a child walking up (as #313 places her), on either side, or none at all.
+    const badge = (dx?: number) => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players.find((p) => p.id === life.localId)!
+      player.gambleWeapon = 'w_love'
+      player.downed = false
+      view.enemies = []
+      view.shots = dx === undefined ? [] : [guardian, player.x + dx, player.y - 42, 20, -157, 100, 0, 0]
+      const renderer = new Renderer(document.createElement('canvas'))
+      const drawn: { x: number; y: number }[] = []
+      let boxes: Box[] = []
+      let parent: Box | undefined
+      let drawingCompanion = false
+      const companion = renderer.companion.bind(renderer)
+      renderer.companion = (...args: unknown[]) => {
+        drawingCompanion = true
+        companion(...args)
+        drawingCompanion = false
+      }
+      const centred = renderer.centred.bind(renderer)
+      renderer.centred = (...args: [{ w: number; h: number }, number, number, boolean, number, number]) => {
+        if (drawingCompanion && !parent) {
+          const [frame, x, y] = args
+          parent = { left: x - frame.w / 2, top: y - frame.h / 2, right: x + frame.w / 2, bottom: y + frame.h / 2 }
+        }
+        centred(...args)
+      }
+      const drawPlayer = renderer.player.bind(renderer)
+      renderer.player = (...args: unknown[]) => {
+        const out = drawPlayer(...args)
+        if ((args[0] as { id: string }).id === life.localId) boxes = out
+        return out
+      }
+      const roundPath = renderer.roundPath.bind(renderer)
+      renderer.roundPath = (...args: [number, number, number, number, number]) => {
+        if (args[2] === 22 && args[3] === 22) drawn.push({ x: args[0] + 11 - player.x, y: args[1] + 11 - player.y })
+        roundPath(...args)
+      }
+      // The badge waits for the reels to stop before it shows.
+      renderer.draw(view, life.localId, 0.016, false)
+      drawn.length = 0
+      parent = undefined
+      renderer.draw(view, life.localId, 1, false)
+      const shown = drawn[0]
+      const box = boxes[boxes.length - 1]
+      const covers = (a: Box, b?: Box) =>
+        Boolean(b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)
+      return { x: shown?.x, boxX: box && (box.left + box.right) / 2 - player.x, overParent: covers(box, parent) }
+    }
+    return { right: badge(26), left: badge(-26), none: badge() }
+  })
+  // Parent at the upper right: the badge (and the box food labels keep clear of) moves over the left shoulder.
+  expect(result.right.x).toBeCloseTo(-26, 0)
+  expect(result.right.boxX).toBeCloseTo(-26, 0)
+  expect(result.right.overParent).toBe(false)
+  // Parent at the upper left, or none: the badge keeps to the right.
+  expect(result.left.x).toBeCloseTo(26, 0)
+  expect(result.left.boxX).toBeCloseTo(26, 0)
+  expect(result.left.overParent).toBe(false)
+  expect(result.none.x).toBeCloseTo(26, 0)
+})
+
 test('pets, observed creatures and sprouts further up than their owner are drawn behind them, lower ones in front', async ({
   page
 }) => {

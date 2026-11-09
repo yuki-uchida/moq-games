@@ -106,6 +106,8 @@ const BULLET_IFRAMES = 0.5
 const BOSS_IFRAMES = 0.6
 const SHIELD_RECOVERY = 1.5
 const guardianBashDuration = (level: number) => 0.35 / (1 + (level - 1) * 0.25)
+/** Side slot of a new 過保護親: the gamble's copy stands one slot further out than her own, never on them. */
+const guardianSlot = (h: number, copied: boolean) => (copied ? h + (h >= 0 ? 1 : -1) : h)
 /** Pixels per second the creature draws each caught enemy toward itself, before knockback resistance. */
 export const OBSERVATION_PULL_SPEED = 105
 const observationStillSeconds = (level: number) => 2 - (level - 1) * 0.125
@@ -1946,9 +1948,12 @@ export class Game {
   }
 
   private fire(player: Player, weapon: OwnedWeapon, ws: WeaponStats, def = WEAPON_BY_ID.get(weapon.id)!) {
+    // 過保護親 alive from this source (her own skill or the gamble's copy): neither tops up beyond its amount.
     const existingGuards =
-      def.id === 'p_over' && weapon.id === 'p_over'
-        ? this.state.shots.filter((shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id).length
+      def.id === 'p_over'
+        ? this.state.shots.filter(
+            (shot) => shot.owner === player.id && shot.sourceWeapon === weapon.id && shot.weapon === def.id
+          ).length
         : 0
     const n =
       def.id === 'p_monster'
@@ -1976,7 +1981,7 @@ export class Game {
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
             h:
               def.id === 'p_over'
-                ? i + existingGuards - (ws.amount - 1) / 2
+                ? guardianSlot(i + existingGuards - (ws.amount - 1) / 2, weapon.id !== def.id)
                 : def.id === 'p_monster'
                   ? Number(
                       this.state.shots.some(

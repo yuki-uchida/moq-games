@@ -267,6 +267,17 @@ describe('playerBox', () => {
     expect(badge.right).toBeGreaterThanOrEqual(26 + 12)
     expect(playerBox(0, 16, 1, 0, NO_TAGS)).toHaveLength(2)
   })
+
+  it('puts the gamble badge box on the side the badge is drawn', () => {
+    const tags = { name: 80, buffs: 0, badge: true }
+    const right = playerBox(0, 16, 1, 0, { ...tags, badgeSide: 1 })[2]
+    const left = playerBox(0, 16, 1, 0, { ...tags, badgeSide: -1 })[2]
+    expect(playerBox(0, 16, 1, 0, tags)[2]).toEqual(right)
+    expect(right.left).toBeLessThanOrEqual(26 - 12)
+    expect(right.right).toBeGreaterThanOrEqual(26 + 12)
+    expect(left).toEqual({ ...right, left: -right.right, right: -right.left })
+    expect(left.right).toBeLessThan(0)
+  })
 })
 
 describe('placeLabelBlocks', () => {
