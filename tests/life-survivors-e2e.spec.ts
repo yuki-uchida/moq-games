@@ -656,11 +656,14 @@ test('outdoor vehicles update across cards, HUD, status and both players’ shot
       const renderer = new Renderer(document.createElement('canvas'))
       const draws: { matches: boolean; flip: boolean }[] = []
       let inShot = false
-      const topShot = renderer.topShot.bind(renderer)
-      renderer.topShot = (...args: unknown[]) => {
-        inShot = true
-        topShot(...args)
-        inShot = false
+      // Ground vehicles draw in the Y-sorted character pass, the plane in the top shot pass.
+      for (const name of ['vehicle', 'topShot']) {
+        const original = renderer[name].bind(renderer)
+        renderer[name] = (...args: unknown[]) => {
+          inShot = true
+          original(...args)
+          inShot = false
+        }
       }
       const centred = renderer.centred.bind(renderer)
       renderer.centred = (frame: unknown, ...args: unknown[]) => {
@@ -686,6 +689,95 @@ test('outdoor vehicles update across cards, HUD, status and both players’ shot
     ;(hook.game as unknown as Game).state.phase = 'lost'
   })
   await expect(page.locator('#result-build')).toContainText('アウトドア（飛行機）')
+  expect(errors).toEqual([])
+})
+
+test('ground vehicles sort with the characters by their wheels while the plane flies over them', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.enemies = []
+  })
+  const orders = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS, timeAtAge } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const index = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_travel')
+    const order = (age: number, dy: number) => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players[0]
+      view.time = timeAtAge(age) + 0.01
+      view.enemies = []
+      view.shots = [index, player.x, player.y + dy, 16, 0, 50, 0, 0]
+      const renderer = new Renderer(document.createElement('canvas'))
+      const events: string[] = []
+      for (const [name, label] of [
+        ['player', 'player'],
+        ['vehicle', 'vehicle'],
+        ['topShot', 'vehicle']
+      ]) {
+        const original = renderer[name].bind(renderer)
+        renderer[name] = (...args: unknown[]) => {
+          events.push(label)
+          return original(...args)
+        }
+      }
+      renderer.draw(view, life.localId, 0.016, false)
+      return events
+    }
+    return { behind: order(5, -20), front: order(5, 20), planeHigh: order(23, -20), planeLow: order(23, 20) }
+  })
+  expect(orders.behind.indexOf('vehicle')).toBeLessThan(orders.behind.indexOf('player'))
+  expect(orders.front.indexOf('vehicle')).toBeGreaterThan(orders.front.indexOf('player'))
+  expect(orders.planeHigh.indexOf('vehicle')).toBeGreaterThan(orders.planeHigh.indexOf('player'))
+  expect(orders.planeLow.indexOf('vehicle')).toBeGreaterThan(orders.planeLow.indexOf('player'))
+  expect(errors).toEqual([])
+})
+
+test('a garden bed grows in after blooming instead of appearing fully open', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await handle.evaluate((hook) => {
+    ;(hook.game as unknown as Game).state.enemies = []
+  })
+  const rims = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const index = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_garden')
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.enemies = []
+    view.shots = [index, player.x + 60, player.y, 24, 0, 95, 0, 1]
+    const canvas = document.createElement('canvas')
+    const renderer = new Renderer(canvas)
+    const ctx = renderer.ctx
+    const radii: number[] = []
+    const arc = ctx.arc.bind(ctx)
+    ctx.arc = (x: number, y: number, r: number, ...rest: [number, number, boolean?]) => {
+      if (String(ctx.strokeStyle).startsWith('rgba(214, 243, 138,')) radii.push(r)
+      arc(x, y, r, ...rest)
+    }
+    const rim: number[] = []
+    for (const dt of [0.016, 0.05, 0.3, 0.3]) {
+      radii.length = 0
+      renderer.draw(view, life.localId, dt, false)
+      rim.push(radii[0])
+    }
+    return rim
+  })
+  expect(rims[0]).toBeLessThan(rims[2])
+  expect(rims[3]).toBe(24)
   expect(errors).toEqual([])
 })
 
