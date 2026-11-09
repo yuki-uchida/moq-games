@@ -6,6 +6,7 @@
 import { findAnim, iconUrl } from '../render/sprites'
 import { ENEMIES, JOBS, JOB_COLORS, JOB_NAMES, SPECIES, SPECIES_NAMES, STAGES } from '../vocab'
 import { el } from './dom'
+import { buildEndingBackdrop } from './ending-backdrop'
 
 interface Animated {
   img: HTMLImageElement
@@ -80,6 +81,8 @@ export class EndingScene {
   private build() {
     if (this.built) return
     this.built = true
+    // 0. The layered backdrop (drawn once; its motion is CSS).
+    this.root.prepend(buildEndingBackdrop())
     // 1. The four orb shards (one per stage) fly together and become one.
     const orb = frameUrls('items', 'orb')
     const shards = el(
@@ -111,19 +114,20 @@ export class EndingScene {
     })
     this.formsBox.append(row, el('p.epi-text', { text: 'すがたは変わっても、陣形はひとつ。' }))
     // 3. The parade: every guild member and boss marching under the credits.
-    const marchers: { sheet: string; names: string[]; big?: boolean }[] = []
+    const marchers: { sheet: string; names: string[]; big?: boolean; fly?: boolean }[] = []
     for (const stage of STAGES) {
       for (const kind of ENEMIES[stage]) marchers.push({ sheet: `enemy:${kind}`, names: ['walk_side', 'idle_side'] })
       const boss = { meadow: 'garud', sewer: 'milda', tower: 'valk', forest: 'leon' }[stage]
       marchers.push({ sheet: `boss:${boss}`, names: ['walk_side', 'fly_side', 'idle_side', 'idle_down'], big: true })
       if (stage === 'sewer') marchers.push({ sheet: 'boss:cat', names: ['walk_side', 'idle_side'], big: true })
-      if (stage === 'tower') marchers.push({ sheet: 'minion:hawk', names: ['fly_side'] })
+      if (stage === 'tower') marchers.push({ sheet: 'minion:hawk', names: ['fly_side'], fly: true })
     }
     for (const m of marchers) {
       const urls = frameUrls(m.sheet, ...m.names)
       if (!urls.length) continue
       // The art faces right; the parade walks left.
-      this.parade.append(this.animate(el(`img.px-icon.marcher${m.big ? '.big' : ''}`, { alt: '' }), urls, 2))
+      const img = this.animate(el(`img.px-icon.marcher${m.big ? '.big' : ''}`, { alt: '' }), urls, 2)
+      this.parade.append(el(`span.march${m.fly ? '.fly' : ''}`, {}, el('span.march-shadow'), img))
     }
   }
 
@@ -150,6 +154,9 @@ export class EndingScene {
     this.root.classList.remove('play')
     void this.root.offsetWidth
     this.root.classList.add('play')
+    // A steady walking pace (px/s) whatever the size of the procession.
+    const run = this.parade.scrollWidth + window.innerWidth
+    this.root.style.setProperty('--parade-dur', `${Math.max(40, Math.round(run / 110))}s`)
     clearInterval(this.timer)
     this.timer = setInterval(this.step, 125)
   }
