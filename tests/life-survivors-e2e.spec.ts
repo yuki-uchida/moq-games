@@ -1679,7 +1679,8 @@ test('the gamble badge glides over the other shoulder from an overprotective par
         Boolean(b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)
       return { x: shown?.x, boxX: box && (box.left + box.right) / 2 - player.x, overParent: covers(box, parent) }
     }
-    // Solo (no network smoothing): a parent arriving at the upper right moves the shown badge over frame by frame.
+    // Solo (no network smoothing): a parent staying at the upper right moves the shown badge over frame by frame, once
+    // she has stayed there for the hold.
     const glide = () => {
       const view = structuredClone(life.view) as unknown as View
       const player = view.players.find((p) => p.id === life.localId)!
@@ -1699,7 +1700,7 @@ test('the gamble badge glides over the other shoulder from an overprotective par
       renderer.draw(view, life.localId, 1, false)
       view.shots = [guardian, player.x + 26, player.y - 42, 20, -157, 100, 0, 0]
       const frames: number[] = []
-      for (let k = 0; k < 40; k++) {
+      for (let k = 0; k < 80; k++) {
         xs.length = 0
         renderer.draw(view, life.localId, 1 / 60, false)
         frames.push(xs[0])
@@ -1720,9 +1721,12 @@ test('the gamble badge glides over the other shoulder from an overprotective par
   // The gamble's copy of the parent counts too.
   expect(result.copy.x).toBeCloseTo(-26, 0)
   expect(result.copy.overParent).toBe(false)
-  // It takes several frames to cross over, never a jump, and then rests on the left.
-  expect(result.glide[0]).toBeGreaterThan(0)
-  expect(result.glide.findIndex((x) => x < -23)).toBeGreaterThanOrEqual(4)
+  // It waits out the hold (0.4 s, 24 frames) on the right, then takes several frames to cross over.
+  for (let k = 0; k < 20; k++) expect(result.glide[k]).toBeCloseTo(26, 0)
+  const leaving = result.glide.findIndex((x) => x < 25.5)
+  expect(leaving).toBeGreaterThanOrEqual(22)
+  expect(result.glide[leaving]).toBeGreaterThan(0)
+  expect(result.glide.findIndex((x) => x < -23) - leaving).toBeGreaterThanOrEqual(4)
   for (let k = 1; k < result.glide.length; k++) expect(result.glide[k]).toBeLessThanOrEqual(result.glide[k - 1] + 0.01)
   expect(result.glide[result.glide.length - 1]).toBeCloseTo(-26, 0)
 })

@@ -90,6 +90,8 @@ const GUARDIAN_STILL_SPREAD = 0.6
 const GUARDIAN_COPY_GAP = 22
 /** How far (px) the push that keeps a copy clear leans toward her own side of the child. */
 const GUARDIAN_COPY_LEAN = 8
+/** How far (px) inside the gap a copy may stand before she is pushed again, so rounding never re-pushes her. */
+const GUARDIAN_COPY_SLACK = 0.01
 /** The fastest (px/s) a copy moves around her child, so she glides rather than jumps when the push changes side. */
 const GUARDIAN_COPY_GLIDE = 900
 /** Reach around the child within which a walking guardian can also bash enemies right behind. */
@@ -2756,7 +2758,9 @@ export class Game {
         if (other === shot || other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
         const x = other.guardianOffset ? owner.x + other.guardianOffset.x : other.x
         const y = other.guardianOffset ? owner.y + other.guardianOffset.y : other.y
-        if (Math.hypot(shot.x - x, shot.y - y) >= GUARDIAN_COPY_GAP) continue
+        // A copy already pushed to the gap may land a rounding error inside it; pushing her again (with the lean) would
+        // throw her back and forth between two spots from tick to tick.
+        if (Math.hypot(shot.x - x, shot.y - y) >= GUARDIAN_COPY_GAP - GUARDIAN_COPY_SLACK) continue
         const dx = shot.x - x + outX
         const dy = shot.y - y + outY
         const distance = Math.hypot(dx, dy) || 1

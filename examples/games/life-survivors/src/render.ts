@@ -248,6 +248,40 @@ export function badgeSideTarget(
   return onLeft > onRight + margin ? 1 : -1
 }
 
+/** Seconds the badge must keep wanting the other side before it heads there: a passing overlap never moves it. */
+export const BADGE_SWITCH_HOLD = 0.4
+
+/**
+ * The other side the gamble badge wants: how long (renderer seconds) it has clearly wanted it so far, and the renderer
+ * time of the last frame that was counted.
+ */
+export interface BadgePending {
+  side: number
+  wanted: number
+  at: number
+}
+
+/**
+ * Holds the badge on `target` until it has clearly wanted the other side for `BADGE_SWITCH_HOLD` seconds of renderer
+ * time `now`. `desired` comes from `badgeSideTarget` judged from the pending side when there is one, else from
+ * `target`: once it asks for `target` again the wait starts over. `ready` says whether, judged from `target`, the other
+ * side is clearly better right now; only such frames count toward the wait, while frames with a parent in between
+ * (neither side clearly better) pause it. Returns the side to head for and what is still pending.
+ */
+export function holdBadgeSide(
+  target: number,
+  desired: number,
+  pending: BadgePending | undefined,
+  now: number,
+  ready = true,
+  hold = BADGE_SWITCH_HOLD
+): { target: number; pending?: BadgePending } {
+  if (desired === target) return { target }
+  if (pending?.side !== desired) return { target, pending: { side: desired, wanted: 0, at: now } }
+  const wanted = pending.wanted + (ready ? Math.max(0, now - pending.at) : 0)
+  return wanted >= hold ? { target: desired } : { target, pending: { side: desired, wanted, at: now } }
+}
+
 /** Eases the badge's side `dt` real seconds toward `target`, the same for every role, so it glides over, never jumps. */
 export const easeBadgeSide = (side: number, target: number, dt: number) =>
   target + (side - target) * Math.exp(-BADGE_SIDE_RATE * Math.max(0, dt))
@@ -392,11 +426,19 @@ export class Renderer {
   private readonly families = new Map<string, Follower[]>()
   /**
    * Per player: the badge being shown, the newest result and when it changed (the reels need time to stop), and the
-   * side of the head it floats on (-1 left .. +1 right, eased) and the side it is easing toward.
+   * side of the head it floats on (-1 left .. +1 right, eased), the side it is easing toward and the other side it has
+   * been wanting, for how long (see `holdBadgeSide`).
    */
   private readonly gambleBadges = new Map<
     string,
-    { shown?: string; next?: string; at: number; side: number; target?: number }
+    {
+      shown?: string
+      next?: string
+      at: number
+      side: number
+      target?: number
+      pending?: BadgePending
+    }
   >()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
@@ -667,7 +709,8 @@ export class Renderer {
 
   /**
    * Eases the side of the head a player's gamble badge floats on toward the side that hides fewer of her 過保護親 (her
-   * own and the gamble's copies) as drawn, so the badge never covers them; see `badgeSideTarget`.
+   * own and the gamble's copies) as drawn, so the badge never covers them; see `badgeSideTarget`. It heads over only
+   * once that side has been wanted for a while (`holdBadgeSide`), so a passing overlap leaves it be.
    */
   private easeBadgeSide(view: View, origins: { x: number; y: number }[], index: number, dt: number) {
     const player = view.players[index]
@@ -690,7 +733,14 @@ export class Renderer {
       st = { at: this.clock, side: badgeSideTarget(1, parents, size) }
       this.gambleBadges.set(player.id, st)
     }
-    st.target = badgeSideTarget(st.target ?? (st.side < 0 ? -1 : 1), parents, size)
+    const target = st.target ?? (st.side < 0 ? -1 : 1)
+    // While a move is pending it is judged from the side it would move to, so a parent in between (neither side clearly
+    // better) only pauses the wait, and the old side turning clearly better again restarts it.
+    const desired = badgeSideTarget(st.pending?.side ?? target, parents, size)
+    const ready = badgeSideTarget(target, parents, size) !== target
+    const held = holdBadgeSide(target, desired, st.pending, this.clock, ready)
+    st.target = held.target
+    st.pending = held.pending
     st.side = easeBadgeSide(st.side, st.target, dt)
   }
 

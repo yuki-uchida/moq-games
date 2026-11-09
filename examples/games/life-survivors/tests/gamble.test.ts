@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { sheet } from '../src/art/index'
 import { ENEMY_BY_ID, EVENTS, TALENT_CATEGORIES, WEAPONS, WEAPON_BY_ID, WEAPON_INDEX, timeAtAge } from '../src/data'
 import { Effects, PK, type FxView } from '../src/effects'
@@ -336,4 +336,56 @@ test('the one copy beside a lone 過保護親 walking up stands further out on h
           }
         }
       }
+})
+
+describe('copied 過保護親 hold still beside a child walking steadily, wherever in the world she starts', () => {
+  const step = 1 / 60
+  const sticks = [
+    ...Array.from({ length: 36 }, (_, k) => ({ x: Math.cos((k * Math.PI) / 18), y: Math.sin((k * Math.PI) / 18) })),
+    // The keyboard's eight directions, diagonals unnormalized.
+    ...[-1, 0, 1].flatMap((x) => [-1, 0, 1].filter((y) => x || y).map((y) => ({ x, y })))
+  ]
+  const starts = [
+    [0, 0],
+    [137.31, 71.17],
+    [-412.9, 233.4],
+    [1021.77, -555.03]
+  ]
+  test.each([1, 2, 3, 4, 5, 6, 7, 8])(
+    '過保護 Lv%i',
+    (overLv) => {
+      for (let gambleLv = 1; gambleLv <= 8; gambleLv++)
+        for (const stick of sticks)
+          for (const [sx, sy] of starts) {
+            const { game, player, weapon } = setup()
+            player.x += sx
+            player.y += sy
+            weapon.lv = gambleLv
+            const random = game['rng']
+            choose(game, 'p_over')
+            const own = player.weapons.find((owned) => owned.id === 'p_over')!
+            own.lv = overLv
+            game['fire'](player, weapon, weaponStats(player, weapon))
+            Object.defineProperty(game, 'rng', { value: random, configurable: true })
+            weapon.cd = Infinity
+            own.cd = 0
+            game['fireWeapons'](0)
+            const copies = guardiansFrom(game, 'w_gamble')
+            for (const copy of copies) copy.life = copy.maxLife = Infinity
+            let last: { x: number; y: number }[] = []
+            let worst = 0
+            for (let tick = 0; tick < 120; tick++) {
+              game.setInput(player.id, stick)
+              game.tick(step)
+              const at = copies.map((copy) => ({ x: copy.x - player.x, y: copy.y - player.y }))
+              if (tick > 90)
+                at.forEach((p, j) => (worst = Math.max(worst, Math.hypot(p.x - last[j].x, p.y - last[j].y))))
+              last = at
+            }
+            const label = `gamble Lv${gambleLv}, stick ${stick.x.toFixed(2)},${stick.y.toFixed(2)}, start ${sx},${sy}`
+            expect(worst, label).toBeLessThan(0.5)
+          }
+    },
+    120_000
+  )
 })
