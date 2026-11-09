@@ -4,7 +4,7 @@ import type { TileQuery } from '../index'
 import { C, DARKER, R } from '../palette'
 import { Raster, bayer, rng } from '../raster'
 import { D, G, GD, S, T, WOOD, GOLD, ih, mod, tile, vn1 } from './gfx'
-import { RK, RT, SK, overSky, rope, skyAt } from './tower-gfx'
+import { RK, RT, SK, field, overSky, rope, skyAt } from './tower-gfx'
 import {
   cliffTop,
   faceAt,
@@ -111,38 +111,85 @@ function skyTile(q: TileQuery) {
 
 // ---------------------------------------------------------------- ground (cliff, grass, rock, floor, wall)
 
-const wobble = (w: number, seed: number) => Math.round((vn1(w, 16, seed) - 0.5) * 14 + (vn1(w, 4, seed + 1) - 0.5) * 5)
+/** How grassy a neighbouring tile counts for the cliff / grass blend (other ground keeps the tile's own value). */
+const grassy = (k: TileKind | undefined, self: number) =>
+  k === 'grass' ? 1 : k === 'cliff' || k === 'rock' || k === 'wall' ? 0 : self
+/** Neighbour index of the tile at offset (di, dj) in -1..1 (the tile itself is -1). */
+const AROUND = [NW, N, NE, Wx, -1, E, SW, Sx, SE]
 
-/** Blends the cliff / grass transition into a tile's top using a boundary both tiles agree on. */
+/**
+ * Blends the cliff / grass transition into a tile's top. Grassiness is interpolated between the centres of the 3×3
+ * tiles and pushed around by world-aligned noise, so neighbouring tiles agree on one organic boundary with round
+ * corners. The grass edge gets a lit fringe on top and a dark lip below, blades spill onto the stone and the odd
+ * flagstone peeks through near the border.
+ */
 function mixTop(q: TileQuery, top: Raster, a: number, b: number): Raster {
   const kind = q.kind
   if (kind !== 'cliff' && kind !== 'grass') return top
   const partner: TileKind = kind === 'cliff' ? 'grass' : 'cliff'
-  const sides = [N, E, Sx, Wx].filter((i) => q.around[i] === partner)
-  if (!sides.length) return top
-  const other = partner === 'grass' ? grassTop(a, b) : cliffTop(a, b)
-  const out = top.clone()
-  const ox = mod(q.tx, 8) * T
-  const oy = mod(q.ty, 8) * T
-  for (const s of sides) {
-    const horizontal = s === N || s === Sx
-    for (let i = 0; i < T; i++) {
-      const bo = wobble((horizontal ? ox : oy) + i, horizontal ? 401 : 402)
-      const limit = kind === 'cliff' ? bo : -bo
-      for (let p = 0; p <= Math.min(T - 1, limit); p++) {
-        const x = horizontal ? i : s === Wx ? p : T - 1 - p
-        const y = horizontal ? (s === N ? p : T - 1 - p) : i
-        if (p < limit) out.set(x, y, other.get(x, y))
-        else if (kind === 'grass') out.set(x, y, GD[2])
-      }
-      if (kind === 'cliff' && limit >= 1 && limit - 1 < T) {
-        const p = limit - 1
-        const x = horizontal ? i : s === Wx ? p : T - 1 - p
-        const y = horizontal ? (s === N ? p : T - 1 - p) : i
-        out.set(x, y, GD[2])
-      }
+  if (!q.around.some((k) => k === partner)) return top
+  const self = kind === 'grass' ? 1 : 0
+  const g = AROUND.map((i) => (i < 0 ? self : grassy(q.around[i], self)))
+  const grass = grassTop(a, b)
+  const cliff = cliffTop(a, b)
+  const ox = a * T
+  const oy = b * T
+  const P = 4
+  const n = T + P * 2
+  const f1 = field(ox, oy, 64, 64, 411, P)
+  const f2 = field(ox, oy, 32, 32, 412, P)
+  const f3 = field(ox, oy, 8, 8, 413, P)
+  const m = new Uint8Array(n * n)
+  const val = new Float32Array(n * n)
+  for (let y = 0; y < n; y++) {
+    const v = (y - P + 0.5 - 32) / T
+    const j0 = v < 0 ? 0 : 1
+    const fy = Math.min(1, Math.max(0, v + 1 - j0))
+    for (let x = 0; x < n; x++) {
+      const u = (x - P + 0.5 - 32) / T
+      const i0 = u < 0 ? 0 : 1
+      const fx = Math.min(1, Math.max(0, u + 1 - i0))
+      const p00 = g[j0 * 3 + i0]
+      const p10 = g[j0 * 3 + i0 + 1]
+      const p01 = g[(j0 + 1) * 3 + i0]
+      const p11 = g[(j0 + 1) * 3 + i0 + 1]
+      const bil = p00 + (p10 - p00) * fx + (p01 - p00) * fy + (p00 - p10 - p01 + p11) * fx * fy
+      const k = y * n + x
+      val[k] = bil + (f1[k] - 0.5) * 0.8 + (f2[k] - 0.5) * 0.45 + (f3[k] - 0.5) * 0.1
+      m[k] = val[k] > 0.5 ? 1 : 0
     }
   }
+  const at = (x: number, y: number) => m[(y + P) * n + x + P]
+  const out = top.clone()
+  for (let y = 0; y < T; y++)
+    for (let x = 0; x < T; x++) {
+      const wx = ox + x
+      const wy = oy + y
+      const h = ih(mod(wx, 512), mod(wy, 512), 414)
+      const col = ih(mod(wx, 512), 3, 415)
+      if (at(x, y)) {
+        let c = grass.get(x, y)
+        const edge = val[(y + P) * n + x + P] - 0.5
+        if (!at(x, y + 1)) c = GD[2]
+        else if (!at(x, y + 2) && h < 0.6) c = GD[1]
+        else if (!at(x, y - 1)) c = col < 0.5 ? G[0] : G[1]
+        else if (!at(x - 1, y) || !at(x + 1, y)) c = GD[1]
+        else if (edge < 0.05 && h < 0.07) c = cliff.get(x, y) // a stone peeks through near the border
+        out.set(x, y, c)
+        continue
+      }
+      let c = cliff.get(x, y)
+      // grass blades spill onto the stone from the grass below, in little clumps along the edge
+      const tall = col < 0.42 ? 1 + Math.floor(ih(mod(wx, 512), 4, 416) * 4) : col < 0.6 ? 1 : 0
+      let below = 0
+      for (let k = 1; k <= 4 && !below; k++) if (at(x, y + k)) below = k
+      if (below && below <= tall) c = below === tall ? G[0] : below === 1 ? GD[2] : G[1]
+      else if (at(x, y - 1))
+        c = DARKER[c] // the grass casts a thin shadow onto the stone below it
+      else if ((at(x - 1, y) || at(x + 1, y)) && h < 0.35) c = GD[2]
+      else if ((at(x - 2, y) || at(x + 2, y) || at(x, y - 2)) && h < 0.12) c = GD[1]
+      out.set(x, y, c)
+    }
   return out
 }
 
@@ -172,7 +219,7 @@ function groundLayer(q: TileQuery) {
   const kind = q.kind
   const sk = (i: number) => a[i] === 'sky'
   const same = (i: number) => a[i] === kind
-  const sig = a.map((k, i) => (i % 2 ? (k === 'sky' ? 's' : '.') : code(k, kind))).join('')
+  const sig = a.map((k) => code(k, kind)).join('')
   return memo(`g${kind}${mod(q.tx, 8)},${mod(q.ty, 8)},${sig}`, () => {
     const ta = mod(q.tx, 8)
     const tb = mod(q.ty, 8)
@@ -426,6 +473,11 @@ function planksTile(q: TileQuery) {
   return overSky(q.tx, q.ty, planksLayer(q))
 }
 
+/**
+ * A calm plank deck: 14 px boards in staggered 128 px lengths with a soft dark seam between rows, faint grain, nails
+ * over the joists and a rare broken board. Kept within the wood ramp's middle so the heroes, the wyvern's shadow and
+ * the attack telegraphs stay the loudest things on it.
+ */
 function planksLayer(q: TileQuery) {
   const a = q.around
   const sk = (i: number) => a[i] === 'sky'
@@ -435,64 +487,90 @@ function planksLayer(q: TileQuery) {
     const tb = mod(q.ty, 8)
     const ox = ta * T
     const r = new Raster(T, T)
-    const stringers = [5, 51]
-    // stringers underneath, seen through the gaps
-    for (const sx of stringers)
-      for (let y = 0; y < T; y++)
-        for (let k = 0; k < 8; k++) r.set(sx + k, y, k === 0 ? WOOD[1] : k < 5 ? WOOD[2] : WOOD[3])
+    const joists = [8, 56]
     const hasFace = sk(Sx)
     const rows = hasFace ? 3 : 4
-    for (let k = 0; k < rows; k++) {
+    const span = (wb: number) => [
+      sk(Wx) ? 1 + Math.floor(ih(mod(wb, 64), 5, 502) * 5) : 0,
+      sk(E) ? 1 + Math.floor(ih(mod(wb, 64), 6, 503) * 5) : 0
+    ]
+    for (let k = 0; k <= rows; k++) {
       const wb = tb * 4 + k
       const y0 = k * 16 + 2
-      const endL = sk(Wx) ? 1 + Math.floor(ih(wb, 5, 502) * 5) : 0
-      const endR = sk(E) ? 1 + Math.floor(ih(wb, 6, 503) * 5) : 0
+      const [endL, endR] = span(wb)
+      const shift = Math.floor(ih(mod(wb, 64), 1, 501) * 16) * 8
+      // the seam above this board: a dark line in a soft shadow
+      if (!(k === 0 && sk(N)))
+        for (let x = endL; x < T - endR; x++) {
+          r.set(x, y0 - 2, ih(mod(ox + x, 512), mod(wb, 64), 509) < 0.5 ? WOOD[2] : WOOD[3])
+          r.set(x, y0 - 1, WOOD[3])
+        }
+      if (k === rows) break
       for (let x = endL; x < T - endR; x++) {
         const wx = ox + x
-        const seg = Math.floor((wx + Math.floor(ih(mod(wb, 16), 1, 501) * 16) * 8) / 128)
-        const missing = ih(mod(wb, 16) * 7 + mod(seg, 8), 3, 504) < 0.07
-        if (missing) {
-          // broken board: only a few splintered stubs hang at the edges of the hole
+        const pos = mod(wx + shift, 128)
+        const seg = mod(Math.floor((wx + shift) / 128), 4)
+        const id = mod(wb, 64) * 8 + seg
+        const tone = ih(id, 9, 505)
+        // a rare broken stretch of one board: the dark loft and a joist show through
+        const hole = (mod(wb, 32) * 5 + seg * 11 + 3) % 37 === 0 // three spread-out boards per 8×8 tiles
+        const hs = 30 + Math.floor(ih(id, 4, 510) * 60)
+        const hl = 12 + Math.floor(ih(id, 5, 511) * 10)
+        if (hole && pos >= hs && pos < hs + hl) {
+          const end = pos === hs || pos === hs + hl - 1
+          const rag = end ? 3 + Math.floor(ih(mod(wx, 512), wb, 512) * 6) : 0
+          const joist = mod(wx + 6, 16) < 4
+          for (let v = 0; v < 14; v++) {
+            let c = v < 3 ? WOOD[4] : joist ? (mod(wx + 6, 16) === 0 ? WOOD[2] : WOOD[3]) : v < 7 ? WOOD[4] : WOOD[3]
+            if (v >= 14 - rag) c = v === 14 - rag ? WOOD[0] : WOOD[2]
+            r.set(x, y0 + v, c)
+          }
           continue
         }
-        const tone = ih(mod(wb, 16) * 11 + mod(seg, 8), 9, 505)
-        const joint = mod(wx + Math.floor(ih(mod(wb, 16), 1, 501) * 16) * 8, 128) === 0
         for (let v = 0; v < 14; v++) {
-          let c = tone < 0.22 ? WOOD[0] : WOOD[1]
-          if (tone > 0.8) c = WOOD[1]
-          if (v === 0) c = tone < 0.22 ? WOOD[0] : WOOD[0]
-          else if (v === 12) c = WOOD[2]
-          else if (v === 13) c = WOOD[3]
-          else if (v === 1 && tone >= 0.22) c = WOOD[0]
-          const grain = vn1(wx, 12, 506 + (k % 2)) > 0.62 && (v === 4 || v === 8)
-          if (grain && v > 1 && v < 12) c = c === WOOD[0] ? WOOD[1] : WOOD[2]
-          if (joint) c = WOOD[3]
+          const h = ih(mod(wx, 512), mod(wb * 16 + v, 512), 506)
+          // long grain streaks: a few lighter ones on pale boards, darker ones on weathered boards
+          const streak = vn1(wx + v * 37, 10, 514 + (wb % 3))
+          let c = WOOD[1]
+          if (tone < 0.25 && streak > 0.62 && h < 0.8) c = WOOD[2]
+          else if (tone > 0.75 && streak > 0.66 && h < 0.7) c = WOOD[0]
+          if (v === 0) c = h < 0.55 ? WOOD[0] : WOOD[1]
+          else if (v === 12) c = h < 0.5 ? WOOD[2] : WOOD[1]
+          else if (v === 13) c = WOOD[2]
+          else {
+            // faint dashed grain
+            const line = vn1(wx, 24, 506 + ((wb + v) % 5)) > 0.7 && (v === 4 || v === 9) && h < 0.7
+            if (line) c = WOOD[2]
+          }
+          if (pos === 0) c = v === 13 ? WOOD[3] : WOOD[2]
+          else if (pos === 1 && v < 13) c = WOOD[0]
           r.set(x, y0 + v, c)
         }
-        // nails near the joints
-        if (
-          mod(wx + Math.floor(ih(mod(wb, 16), 1, 501) * 16) * 8, 128) === 6 ||
-          mod(wx + Math.floor(ih(mod(wb, 16), 1, 501) * 16) * 8, 128) === 122
-        ) {
-          r.set(x, y0 + 3, WOOD[3])
-          r.set(x, y0 + 9, WOOD[3])
-          r.set(x - 1, y0 + 2, WOOD[0])
+        // knots
+        if (ih(mod(wx, 512), mod(wb, 64), 513) < 0.004 && x > 2 && x < T - 3) {
+          r.set(x, y0 + 6, WOOD[2])
+          r.set(x + 1, y0 + 6, WOOD[3])
+          r.set(x, y0 + 7, WOOD[3])
+          r.set(x + 1, y0 + 7, WOOD[2])
+          r.set(x - 1, y0 + 5, WOOD[0])
         }
       }
-      // rope lashings where boards meet the stringers
-      for (const sx of stringers)
-        if (ih(wb, sx, 508) < 0.7) {
-          for (let v = 0; v < 14; v++)
-            for (let u = 1; u < 7; u++) {
-              const x = sx + u
-              if (x < endL || x >= T - endR) continue
-              const diag = (u + v) % 4
-              r.set(x, y0 + v, diag < 2 ? D[0] : D[1])
-              if (diag === 3) r.set(x, y0 + v, D[2])
-              if (u === 1 || u === 6) r.set(x, y0 + v, D[3])
-            }
+      // nails where the board crosses a joist; a thin rope lashing on very few of them
+      for (const jx of joists) {
+        if (jx < endL + 2 || jx > T - endR - 3) continue
+        if (ih(mod(wb, 64), jx, 508) < 0.05) {
+          for (let v = 1; v < 13; v++) {
+            r.set(jx - 1, y0 + v, (v & 1) === 0 ? D[1] : D[2])
+            r.set(jx, y0 + v, (v & 1) === 0 ? D[2] : D[3])
+          }
+          continue
         }
-      // dark shadow of the board in the gap below
+        if (r.get(jx, y0 + 3) !== WOOD[1] && r.get(jx, y0 + 3) !== WOOD[0]) continue
+        for (const v of [3, 10]) {
+          r.set(jx, y0 + v, WOOD[3])
+          r.set(jx - 1, y0 + v - 1, WOOD[0])
+        }
+      }
     }
     if (hasFace) {
       for (let y = 50; y < T; y++)
