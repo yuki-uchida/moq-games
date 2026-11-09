@@ -86,6 +86,12 @@ const PLAYER_RADIUS = 14
 /** 過保護: how far a standing parent sits above (behind) the child, and how far apart two of them stand. */
 const GUARDIAN_STILL_LIFT = 5
 const GUARDIAN_STILL_SPREAD = 0.6
+/** 過保護: the least distance between the centres of a gamble's copied parent and any other parent of the same child. */
+const GUARDIAN_COPY_GAP = 22
+/** How far (px) the push that keeps a copy clear leans toward her own side of the child. */
+const GUARDIAN_COPY_LEAN = 8
+/** The fastest (px/s) a copy moves around her child, so she glides rather than jumps when the push changes side. */
+const GUARDIAN_COPY_GLIDE = 900
 /** Reach around the child within which a walking guardian can also bash enemies right behind. */
 const GUARDIAN_CLOSE_REACH = 26
 /** 生き物観察: the steepest angle above the horizon at which a creature appears in front of an upward-facing player. */
@@ -242,6 +248,8 @@ export interface Shot {
   guardianSide?: number
   /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (tucked behind them, guarding all round). */
   guardianStill?: number
+  /** 過保護: where she stood relative to her owner when last moved, so a copy can keep clear of her before her turn. */
+  guardianOffset?: { x: number; y: number }
   orbit: number
   spin: number
   life: number
@@ -2568,8 +2576,45 @@ export class Game {
       offsetX = forwardX * shot.orbit * 0.65 - forwardY * side
       offsetY = forwardY * shot.orbit * 0.65 + forwardX * side
     }
+    // Which way a copy steps clear of the others: out to her own side of the child.
+    const sign = shot.h < 0 ? -1 : 1
+    let leanX = -forwardY * sign
+    let leanY = forwardX * sign
+    const lone = shot.sourceWeapon !== 'p_over' ? this.loneGuardian(shot) : undefined
+    if (lone) {
+      // The one copy beside a lone parent walking up stands a shoulder further out on her side, leaving the other
+      // shoulder free for the gamble badge. While her parent crosses over she passes below her, never through her.
+      const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
+      const side = lone.guardianSide ?? 1
+      const parentX = forwardX * lone.orbit * 0.65 + 26 * up * side
+      const crossing = Math.min(1, Math.max(0, (26 - Math.abs(parentX)) / 10))
+      const parentY = forwardY * lone.orbit * 0.65 * (1 - 0.7 * up * crossing)
+      const below = 1 - Math.min(1, Math.abs(side))
+      offsetX += (parentX + 26 * side - offsetX) * up
+      offsetY += (parentY + GUARDIAN_COPY_GAP * below - offsetY) * up
+      // She steps clear of her parent outward, away from the child, so she rounds her parent rather than through her.
+      const reach = Math.hypot(parentX, parentY) || 1
+      leanX += (parentX / reach - leanX) * up
+      leanY += (parentY / reach - leanY) * up
+    }
     shot.x = owner.x + offsetX * walking + shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
     shot.y = owner.y + offsetY * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
+    if (shot.sourceWeapon !== 'p_over') {
+      this.keepCopyApart(shot, owner, leanX * walking + sign * shot.guardianStill, leanY * walking)
+      // Where the push flips to the far side of a parent she glides round instead of jumping.
+      const last = shot.guardianOffset
+      if (last) {
+        const dx = shot.x - owner.x - last.x
+        const dy = shot.y - owner.y - last.y
+        const moved = Math.hypot(dx, dy)
+        const most = GUARDIAN_COPY_GLIDE * dt
+        if (moved > most) {
+          shot.x = owner.x + last.x + (dx / moved) * most
+          shot.y = owner.y + last.y + (dy / moved) * most
+        }
+      }
+    }
+    shot.guardianOffset = { x: shot.x - owner.x, y: shot.y - owner.y }
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)
@@ -2675,6 +2720,49 @@ export class Game {
         this.damage(enemy, def, blast, owner, balloon ? shot : undefined)
     })
     this.emit(FX.BLAST, shot.x, shot.y, radius, WEAPON_INDEX.get(shot.weapon)!)
+  }
+
+  /**
+   * The child's own parent beside a gamble's copy `shot` when each is the only one of her kind there: her lone
+   * 過保護親 (h = 0) and this one copy from its source. Undefined otherwise.
+   */
+  private loneGuardian(shot: Shot) {
+    let parent: Shot | undefined
+    let parents = 0
+    let copies = 0
+    for (const other of this.state.shots) {
+      if (other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
+      if (other.sourceWeapon === 'p_over') {
+        parent = other
+        parents++
+      } else if (other.sourceWeapon === shot.sourceWeapon) copies++
+    }
+    return parents === 1 && copies === 1 && parent!.h === 0 ? parent : undefined
+  }
+
+  /**
+   * Pushes a gamble's copied 過保護親 away from her child's own parents and the other copies until their centres are
+   * `GUARDIAN_COPY_GAP` apart, so no two stand drawn over each other. A parent not yet moved this step counts where she
+   * stood relative to the child last step. The push runs from the other parent to the copy, leaning a little along
+   * (`leanX`, `leanY`) toward the copy's own (outer) side, so a copy that starts right on top of a parent, or between
+   * two, steps outward; it follows the positions continuously.
+   */
+  private keepCopyApart(shot: Shot, owner: Player, leanX: number, leanY: number) {
+    const lean = Math.hypot(leanX, leanY) || 1
+    const outX = (leanX / lean) * GUARDIAN_COPY_LEAN
+    const outY = (leanY / lean) * GUARDIAN_COPY_LEAN
+    for (let pass = 0; pass < 2; pass++)
+      for (const other of this.state.shots) {
+        if (other === shot || other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
+        const x = other.guardianOffset ? owner.x + other.guardianOffset.x : other.x
+        const y = other.guardianOffset ? owner.y + other.guardianOffset.y : other.y
+        if (Math.hypot(shot.x - x, shot.y - y) >= GUARDIAN_COPY_GAP) continue
+        const dx = shot.x - x + outX
+        const dy = shot.y - y + outY
+        const distance = Math.hypot(dx, dy) || 1
+        shot.x = x + (dx / distance) * GUARDIAN_COPY_GAP
+        shot.y = y + (dy / distance) * GUARDIAN_COPY_GAP
+      }
   }
 
   private shieldTouches(shot: Shot, x: number, y: number, radius: number) {

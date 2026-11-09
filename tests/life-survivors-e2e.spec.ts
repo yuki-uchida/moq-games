@@ -1612,7 +1612,7 @@ test('overprotective parents walking ahead are drawn behind a child heading up a
   expect(orders.near).toEqual(['player', 'guardian', 'guardian'])
 })
 
-test('the gamble badge floats over the other shoulder from a lone overprotective parent at the upper right', async ({
+test('the gamble badge glides over the other shoulder from an overprotective parent (or its copy) at the upper right', async ({
   page
 }) => {
   await page.goto('/')
@@ -1621,19 +1621,23 @@ test('the gamble badge floats over the other shoulder from a lone overprotective
   const result = await page.evaluate(async () => {
     const renderPath = '/src/render.ts'
     const dataPath = '/src/data.ts'
+    const viewPath = '/src/view.ts'
     const { Renderer } = await import(renderPath)
     const { WEAPONS } = await import(dataPath)
+    const { SHOT_GAMBLE } = await import(viewPath)
     const life = (window as unknown as { __life: Life }).__life
     const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
     type Box = { left: number; top: number; right: number; bottom: number }
-    // A lone parent beside the shoulder of a child walking up (as #313 places her), on either side, or none at all.
-    const badge = (dx?: number) => {
+    // A lone parent beside the shoulder of a child walking up (as #313 places her), on either side, or none at all;
+    // `copied` makes her the gamble's copy instead of the child's own.
+    const badge = (dx?: number, copied = false) => {
       const view = structuredClone(life.view) as unknown as View
       const player = view.players.find((p) => p.id === life.localId)!
       player.gambleWeapon = 'w_love'
       player.downed = false
       view.enemies = []
-      view.shots = dx === undefined ? [] : [guardian, player.x + dx, player.y - 42, 20, -157, 100, 0, 0]
+      view.shots =
+        dx === undefined ? [] : [guardian, player.x + dx, player.y - 42, 20, -157, 100, 0, copied ? SHOT_GAMBLE : 0]
       const renderer = new Renderer(document.createElement('canvas'))
       const drawn: { x: number; y: number }[] = []
       let boxes: Box[] = []
@@ -1675,7 +1679,34 @@ test('the gamble badge floats over the other shoulder from a lone overprotective
         Boolean(b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)
       return { x: shown?.x, boxX: box && (box.left + box.right) / 2 - player.x, overParent: covers(box, parent) }
     }
-    return { right: badge(26), left: badge(-26), none: badge() }
+    // Solo (no network smoothing): a parent arriving at the upper right moves the shown badge over frame by frame.
+    const glide = () => {
+      const view = structuredClone(life.view) as unknown as View
+      const player = view.players.find((p) => p.id === life.localId)!
+      player.gambleWeapon = 'w_love'
+      player.downed = false
+      view.enemies = []
+      view.shots = []
+      const renderer = new Renderer(document.createElement('canvas'))
+      const xs: number[] = []
+      const roundPath = renderer.roundPath.bind(renderer)
+      renderer.roundPath = (...args: [number, number, number, number, number]) => {
+        if (args[2] === 22 && args[3] === 22) xs.push(args[0] + 11 - player.x)
+        roundPath(...args)
+      }
+      // The badge waits for the reels to stop before it shows.
+      renderer.draw(view, life.localId, 0.016, false)
+      renderer.draw(view, life.localId, 1, false)
+      view.shots = [guardian, player.x + 26, player.y - 42, 20, -157, 100, 0, 0]
+      const frames: number[] = []
+      for (let k = 0; k < 40; k++) {
+        xs.length = 0
+        renderer.draw(view, life.localId, 1 / 60, false)
+        frames.push(xs[0])
+      }
+      return frames
+    }
+    return { right: badge(26), left: badge(-26), none: badge(), copy: badge(26, true), glide: glide() }
   })
   // Parent at the upper right: the badge (and the box food labels keep clear of) moves over the left shoulder.
   expect(result.right.x).toBeCloseTo(-26, 0)
@@ -1686,6 +1717,14 @@ test('the gamble badge floats over the other shoulder from a lone overprotective
   expect(result.left.boxX).toBeCloseTo(26, 0)
   expect(result.left.overParent).toBe(false)
   expect(result.none.x).toBeCloseTo(26, 0)
+  // The gamble's copy of the parent counts too.
+  expect(result.copy.x).toBeCloseTo(-26, 0)
+  expect(result.copy.overParent).toBe(false)
+  // It takes several frames to cross over, never a jump, and then rests on the left.
+  expect(result.glide[0]).toBeGreaterThan(0)
+  expect(result.glide.findIndex((x) => x < -23)).toBeGreaterThanOrEqual(4)
+  for (let k = 1; k < result.glide.length; k++) expect(result.glide[k]).toBeLessThanOrEqual(result.glide[k - 1] + 0.01)
+  expect(result.glide[result.glide.length - 1]).toBeCloseTo(-26, 0)
 })
 
 test('pets, observed creatures and sprouts further up than their owner are drawn behind them, lower ones in front', async ({

@@ -4,6 +4,7 @@ import { ENEMY_BY_ID, EVENTS, TALENT_CATEGORIES, WEAPONS, WEAPON_BY_ID, WEAPON_I
 import { Effects, PK, type FxView } from '../src/effects'
 import { FX } from '../src/fx'
 import { Game, playerStats, weaponStats } from '../src/game'
+import { badgeBoxAt } from '../src/render'
 import { SHOT_GAMBLE, readView, toView } from '../src/view'
 import { GAMBLE_FORMS, gambleForm, weaponAppearance } from '../src/weapon-life'
 
@@ -218,4 +219,121 @@ test("copied 過保護親 stand one slot further out than the player's own, neve
     }
     if (copies.length === 2) expect(copies).toEqual([-1.5, 1.5])
   }
+})
+
+test('copied 過保護親 keep 20 px clear of her own whatever the levels, walking any way, standing or turning', () => {
+  const step = 1 / 60
+  const directions = Array.from({ length: 8 }, (_, k) => (k * Math.PI) / 4)
+  // Each motion: seconds to run and the stick at time t (undefined: standing still).
+  const motions: [string, number, (t: number) => { x: number; y: number }][] = [
+    ...directions.map((angle): [string, number, (t: number) => { x: number; y: number }] => [
+      `walk ${Math.round((angle * 180) / Math.PI)}°`,
+      2,
+      () => ({ x: Math.cos(angle), y: Math.sin(angle) })
+    ]),
+    ['still', 2, () => ({ x: 0, y: 0 })],
+    // A full turn of the stick at 90°/s.
+    [
+      'turn',
+      4,
+      (t) => ({ x: Math.cos(-Math.PI / 2 + (t * Math.PI) / 2), y: Math.sin(-Math.PI / 2 + (t * Math.PI) / 2) })
+    ]
+  ]
+  let worst = Infinity
+  for (let overLv = 1; overLv <= 8; overLv++)
+    for (let gambleLv = 1; gambleLv <= 8; gambleLv++) {
+      const { game, player, weapon } = setup()
+      weapon.lv = gambleLv
+      const random = game['rng']
+      choose(game, 'p_over')
+      const own = player.weapons.find((owned) => owned.id === 'p_over')!
+      own.lv = overLv
+      // The copies come first in the list, so they keep clear of parents not yet moved this step.
+      game['fire'](player, weapon, weaponStats(player, weapon))
+      Object.defineProperty(game, 'rng', { value: random, configurable: true })
+      weapon.cd = Infinity
+      own.cd = 0
+      game['fireWeapons'](0)
+      const mine = guardiansFrom(game, 'p_over')
+      const copies = guardiansFrom(game, 'w_gamble')
+      expect(mine.length).toBeGreaterThan(0)
+      expect(copies.length).toBeGreaterThan(0)
+      for (const copy of copies) copy.life = copy.maxLife = Infinity
+      for (const [name, seconds, stick] of motions) {
+        const frames = Math.round(seconds / step)
+        for (let frame = 0; frame < frames; frame++) {
+          game.setInput(player.id, stick(frame * step))
+          game.tick(step)
+          if (frame < frames - 30) continue
+          expect(game.state.shots).toEqual(expect.arrayContaining([...mine, ...copies]))
+          for (const copy of copies)
+            for (const parent of [...mine, ...copies.filter((other) => other !== copy)]) {
+              const distance = Math.hypot(copy.x - parent.x, copy.y - parent.y)
+              worst = Math.min(worst, distance)
+              expect(distance, `過保護 Lv${overLv} × gamble Lv${gambleLv}, ${name}`).toBeGreaterThanOrEqual(20)
+            }
+        }
+      }
+    }
+  expect(worst).toBeLessThan(23)
+})
+
+test('the one copy beside a lone 過保護親 walking up stands further out on her side, the other shoulder left free', () => {
+  const step = 1 / 60
+  for (let overLv = 1; overLv <= 3; overLv++)
+    for (let gambleLv = 1; gambleLv <= 3; gambleLv++)
+      for (const from of [1, -1]) {
+        const { game, player, weapon } = setup()
+        weapon.lv = gambleLv
+        const random = game['rng']
+        choose(game, 'p_over')
+        const own = player.weapons.find((owned) => owned.id === 'p_over')!
+        own.lv = overLv
+        game['fire'](player, weapon, weaponStats(player, weapon))
+        Object.defineProperty(game, 'rng', { value: random, configurable: true })
+        weapon.cd = Infinity
+        own.cd = 0
+        game['fireWeapons'](0)
+        const [mine] = guardiansFrom(game, 'p_over')
+        const copies = guardiansFrom(game, 'w_gamble')
+        expect(guardiansFrom(game, 'p_over')).toHaveLength(1)
+        expect(copies).toHaveLength(1)
+        const [copy] = copies
+        copy.life = copy.maxLife = Infinity
+        const label = `過保護 Lv${overLv} × gamble Lv${gambleLv}, up after facing ${from > 0 ? 'right' : 'left'}`
+        game.setInput(player.id, { x: from, y: 0 })
+        for (let frame = 0; frame < 60; frame++) game.tick(step)
+        game.setInput(player.id, { x: 0, y: -1 })
+        for (let frame = 0; frame < 120; frame++) {
+          game.tick(step)
+          if (frame < 90) continue
+          const parent = { x: mine.x - player.x, y: mine.y - player.y }
+          const twin = { x: copy.x - player.x, y: copy.y - player.y }
+          // Both on the side she last faced, the copy further out.
+          expect(Math.sign(parent.x), label).toBe(from)
+          expect(twin.x * from, label).toBeGreaterThan(parent.x * from)
+          expect(Math.hypot(twin.x - parent.x, twin.y - parent.y), label).toBeGreaterThanOrEqual(20)
+          // The badge box over the other shoulder is clear of both.
+          const free = badgeBoxAt(-from, 1)
+          for (const at of [parent, twin]) {
+            const clear =
+              at.x + 12 <= free.left || at.x - 12 >= free.right || at.y + 12 <= free.top || at.y - 12 >= free.bottom
+            expect(clear, `${label}: ${at.x.toFixed(0)},${at.y.toFixed(0)}`).toBe(true)
+          }
+        }
+        // Crossing over to the other shoulder (and on round to walking the other way) she moves without a jump.
+        let last = { x: copy.x - player.x, y: copy.y - player.y }
+        for (const stick of [
+          { x: -from * 0.5, y: -1 },
+          { x: -from, y: 0 }
+        ]) {
+          game.setInput(player.id, stick)
+          for (let frame = 0; frame < 60; frame++) {
+            game.tick(step)
+            const at = { x: copy.x - player.x, y: copy.y - player.y }
+            expect(Math.hypot(at.x - last.x, at.y - last.y), label).toBeLessThanOrEqual(15.01)
+            last = at
+          }
+        }
+      }
 })
