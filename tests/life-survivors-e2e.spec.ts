@@ -1426,7 +1426,7 @@ test('overprotective parents swing and fade their shields for local and co-op vi
       100,
       0,
       0,
-      // Below its owner, so it is drawn with the shots (one further up the screen is drawn under its child).
+      // The guest's parent, drawn at the guest's eased position.
       guardian,
       player.x + 40,
       player.y + 20,
@@ -1438,16 +1438,16 @@ test('overprotective parents swing and fade their shields for local and co-op vi
     ]
     const renderer = new Renderer(document.createElement('canvas'))
     const events: { x: number; y: number; alpha: number; scale: number; flip: boolean }[] = []
-    let drawingShot = false
-    const topShot = renderer.topShot.bind(renderer)
-    renderer.topShot = (...args: unknown[]) => {
-      drawingShot = true
-      topShot(...args)
-      drawingShot = false
+    let drawingCompanion = false
+    const companion = renderer.companion.bind(renderer)
+    renderer.companion = (...args: unknown[]) => {
+      drawingCompanion = true
+      companion(...args)
+      drawingCompanion = false
     }
     const centred = renderer.centred.bind(renderer)
     renderer.centred = (...args: [unknown, number, number, boolean, number, number, boolean]) => {
-      if (drawingShot)
+      if (drawingCompanion)
         events.push({ x: args[1] - player.x, y: args[2] - player.y, alpha: args[4], scale: args[5], flip: args[6] })
       centred(...args)
     }
@@ -1479,12 +1479,14 @@ test('overprotective parents of a still child are drawn behind them at their eas
     view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0]
     const renderer = new Renderer(document.createElement('canvas'))
     const events: string[] = []
-    let drawingShot = false
-    const topShot = renderer.topShot.bind(renderer)
-    renderer.topShot = (...args: unknown[]) => {
-      drawingShot = true
-      topShot(...args)
-      drawingShot = false
+    let layer = ''
+    for (const method of ['companion', 'topShot']) {
+      const original = renderer[method].bind(renderer)
+      renderer[method] = (...args: unknown[]) => {
+        layer = method
+        original(...args)
+        layer = ''
+      }
     }
     const drawPlayer = renderer.player.bind(renderer)
     renderer.player = (...args: unknown[]) => {
@@ -1494,7 +1496,7 @@ test('overprotective parents of a still child are drawn behind them at their eas
     const centred = renderer.centred.bind(renderer)
     renderer.centred = (...args: [unknown, number, number]) => {
       if (Math.abs(args[1] - player.x - 6) < 0.01 && Math.abs(args[2] - player.y + 5) < 0.01)
-        events.push(drawingShot ? 'top' : 'guardian')
+        events.push(layer === 'companion' ? 'guardian' : layer || 'stray')
       centred(...args)
     }
     renderer.draw(view, life.localId, 0.016, false)
@@ -1524,12 +1526,14 @@ test('overprotective parents walking ahead are drawn behind a child heading up a
       view.shots = [guardian, player.x, player.y + dy, 20, 0, 100, 0, 0]
       const renderer = new Renderer(document.createElement('canvas'))
       const events: string[] = []
-      let drawingShot = false
-      const topShot = renderer.topShot.bind(renderer)
-      renderer.topShot = (...args: unknown[]) => {
-        drawingShot = true
-        topShot(...args)
-        drawingShot = false
+      let layer = ''
+      for (const method of ['companion', 'topShot']) {
+        const original = renderer[method].bind(renderer)
+        renderer[method] = (...args: unknown[]) => {
+          layer = method
+          original(...args)
+          layer = ''
+        }
       }
       const drawPlayer = renderer.player.bind(renderer)
       renderer.player = (...args: unknown[]) => {
@@ -1539,18 +1543,81 @@ test('overprotective parents walking ahead are drawn behind a child heading up a
       const centred = renderer.centred.bind(renderer)
       renderer.centred = (...args: [unknown, number, number]) => {
         if (Math.abs(args[1] - player.x) < 0.01 && Math.abs(args[2] - player.y - dy) < 0.01)
-          events.push(drawingShot ? 'top' : 'guardian')
+          events.push(layer === 'companion' ? 'guardian' : layer || 'stray')
         centred(...args)
       }
       renderer.draw(view, life.localId, 0.016, false)
       return events
     }
-    return { up: order(-38), down: order(38) }
+    return { up: order(-38), down: order(38), near: order(6) }
   })
   // Further up the screen: drawn first, under the child and their name tag.
   expect(orders.up).toEqual(['guardian', 'guardian', 'player'])
-  // Further down: drawn after the child, in the shots pass.
-  expect(orders.down).toEqual(['player', 'top', 'top'])
+  // Further down: drawn after the child, sorted on her own feet with the characters.
+  expect(orders.down).toEqual(['player', 'guardian', 'guardian'])
+  // Still tucked in close but a step lower (stopping or setting off downwards): still in front of the child.
+  expect(orders.near).toEqual(['player', 'guardian', 'guardian'])
+})
+
+test('pets, observed creatures and sprouts further up than their owner are drawn behind them, lower ones in front', async ({
+  page
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const result = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    view.enemies = []
+    const index = (id: string) => WEAPONS.findIndex((weapon: { id: string }) => weapon.id === id)
+    // A creature summoned at a name tag's height, a pet waiting on the head, a sprout behind them; then a pet and a
+    // creature below the feet.
+    const placed: [string, number, number][] = [
+      ['w_pet', 30, 0],
+      ['w_observe', -50, 0],
+      ['w_observe', 30, 2],
+      ['w_pet', -34, 0],
+      ['w_garden', -30, 2]
+    ]
+    view.shots = placed.flatMap(([id, dy, v]) => [index(id), player.x, player.y + dy, 20, 0, 100, 0, v])
+    const renderer = new Renderer(document.createElement('canvas'))
+    const events: string[] = []
+    let topDraws = 0
+    let inTop = false
+    const companion = renderer.companion.bind(renderer)
+    renderer.companion = (...args: [unknown, { y: number }, { id: string }]) => {
+      events.push(`${args[2].id}:${Math.round(args[1].y - player.y)}`)
+      companion(...args)
+    }
+    const topShot = renderer.topShot.bind(renderer)
+    renderer.topShot = (...args: unknown[]) => {
+      inTop = true
+      topShot(...args)
+      inTop = false
+    }
+    for (const method of ['art', 'centred', 'shadow']) {
+      const original = renderer[method].bind(renderer)
+      renderer[method] = (...args: unknown[]) => {
+        if (inTop) topDraws++
+        original(...args)
+      }
+    }
+    const drawPlayer = renderer.player.bind(renderer)
+    renderer.player = (...args: unknown[]) => {
+      events.push('player')
+      return drawPlayer(...args)
+    }
+    renderer.draw(view, life.localId, 0.016, false)
+    return { events, topDraws }
+  })
+  expect(result.events).toEqual(['w_observe:-50', 'w_pet:-34', 'w_garden:-30', 'player', 'w_pet:30', 'w_observe:30'])
+  // Each is drawn once, in the character pass, never again over the characters.
+  expect(result.topDraws).toBe(0)
 })
 
 test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {
