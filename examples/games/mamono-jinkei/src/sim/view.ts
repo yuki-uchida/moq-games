@@ -13,6 +13,14 @@ import type { WorldState } from './state'
 import { CHARGE, CHARGE_SPEED, GUARDED } from './tables'
 import type { BossView, EnemyView, HeroView, MinionView, PetView, PlayerView, PropView, SnareView, View } from './types'
 
+/** Flag prefix the sim latches when a puzzle group of this prop kind is solved. */
+const SOLVED_FLAG: Partial<Record<string, string>> = {
+  moonstone: 'moons',
+  crystal: 'crystals',
+  valve: 'valves',
+  bell: 'bells'
+}
+
 export function buildView(W: WorldState, unlocked: StageId[]): View {
   const t = W.t
   const heroes: HeroView[] = W.heroes.map((h) => {
@@ -139,6 +147,8 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (p.z) v.z = r1(p.z)
     if ((p.kind === 'moonstone' || p.kind === 'crystal' || p.kind === 'valve') && p.group !== undefined)
       v.group = p.group
+    const flag = SOLVED_FLAG[p.kind]
+    if (flag && p.group !== undefined && W.flags.has(`${flag}:${p.group}`)) v.solved = true
     if (PUSHABLE.has(p.kind)) {
       v.weight = p.weight
       v.strength = p.strength

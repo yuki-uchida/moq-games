@@ -32,9 +32,20 @@ export function moonProgress(
 }
 
 /** Whether a prop of a grouped puzzle currently counts as solved-in-progress ('hit' crystals have just been lit). */
-const isLit = (p: PropView) => p.state === 'on' || (p.kind === 'crystal' && p.state === 'hit')
+const isLit = (p: PropView) => p.solved === true || p.state === 'on' || (p.kind === 'crystal' && p.state === 'hit')
 
 /** Crystals (stage 1) and valves (stage 2) work like moonstones: the sim latches the group when all are lit at once. */
+/** Bell chip (stage 3): lit bells of a group; a solved group is complete and stays complete whatever rings later. */
+export function bellProgress(
+  bells: readonly PropView[],
+  litNow: readonly boolean[]
+): { lit: boolean[]; n: number; complete: boolean } {
+  const solved = bells.some((b) => b.solved)
+  const lit = bells.map((_, i) => solved || litNow[i])
+  const n = lit.filter(Boolean).length
+  return { lit, n, complete: solved || (n > 0 && n === bells.length) }
+}
+
 export function groupProgress(
   kind: 'moonstone' | 'crystal' | 'valve',
   props: readonly PropView[],

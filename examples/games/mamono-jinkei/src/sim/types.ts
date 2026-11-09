@@ -316,6 +316,8 @@ export interface PropView {
   dur?: number
   /** Moonstones, crystals and valves: the puzzle group; the group is solved when all its members are lit at once. */
   group?: string
+  /** The puzzle group this prop belongs to has been solved (latched; set for moonstones, crystals, valves and bells). */
+  solved?: boolean
 }
 
 /**

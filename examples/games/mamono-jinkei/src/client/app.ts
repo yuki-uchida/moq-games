@@ -467,12 +467,14 @@ export class App {
               (r) =>
                 r.zoom && b.x / TILE >= r.x && b.x / TILE < r.x + r.w && b.y / TILE >= r.y && b.y / TILE < r.y + r.h
             )
+            // While the fight's barrier holds the boss room the theme stays, even if my hero is briefly outside.
             if (
               room &&
-              me.x / TILE >= room.x &&
-              me.x / TILE < room.x + room.w &&
-              me.y / TILE >= room.y &&
-              me.y / TILE < room.y + room.h
+              (view.barrier?.includes(room.id) ||
+                (me.x / TILE >= room.x &&
+                  me.x / TILE < room.x + room.w &&
+                  me.y / TILE >= room.y &&
+                  me.y / TILE < room.y + room.h))
             )
               theme = view.stage === 'forest' ? 'finalBoss' : 'boss'
           }

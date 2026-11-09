@@ -107,8 +107,16 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
     if (part) it.interact = true
     else if (stone) it.action = true
     else {
+      // Crystals and bells within reach: face the nearest one so the strike lands (else the left-behind facing).
+      let strike: { x: number; y: number } | undefined
+      let best = RANGE[h.job] + 24
+      for (const p of W.props) {
+        if (p.gone || (p.kind !== 'crystal' && p.kind !== 'bell')) continue
+        const d = dist(p.x, p.y, h.body.x, h.body.y)
+        if (d < best) (best = d), (strike = p)
+      }
       it.press = true
-      it.aim = h.aim
+      it.aim = strike ? Math.atan2(strike.y - h.body.y, strike.x - h.body.x) : h.aim
     }
   }
   if (h.state === 'down' || h.state === 'fall' || h.state === 'tech') return it

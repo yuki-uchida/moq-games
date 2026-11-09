@@ -286,4 +286,6 @@ test('stage 3 end to end: every puzzle and the boss to the results screen', () =
   expect(s.solves).toContain('金の鐘をかけ金にかけた！')
   for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
   for (const msg of s.solves) expect(msg).not.toContain('岩')
+  expect(s.solves).toContain('鷹匠の見張り台を制圧した！')
+  for (const msg of s.solves) expect(msg).not.toContain('広場')
 })

@@ -295,4 +295,6 @@ test('stage 2 end to end: every puzzle and the boss to the results screen', () =
   expect(s.solves).toContain('木箱が汚水に沈んで足場になった！')
   for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
   for (const msg of s.solves) expect(msg).not.toContain('岩')
+  expect(s.solves).toContain('番兵の詰所を制圧した！')
+  for (const msg of s.solves) expect(msg).not.toContain('広場')
 })

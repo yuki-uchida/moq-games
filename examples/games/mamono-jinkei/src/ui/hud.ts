@@ -7,7 +7,7 @@ import type { EventView, HeroView, View } from '../sim/types'
 import { BOSS_NAMES, JOBS, JOB_COLORS, JOB_NAMES, TILE, type BossKind } from '../vocab'
 import { clearChildren, el, icon, setText, show } from './dom'
 import { hintsFor, type Hint } from './hints'
-import { groupProgress, type MoonProgress } from './moons'
+import { bellProgress, groupProgress, type MoonProgress } from './moons'
 import type { StageInfo } from '../sim/types'
 
 export interface HudActions {
@@ -346,14 +346,16 @@ export class Hud {
       this.bellState.set(b.id, b.state)
     }
     const recent = bells.some((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 3)
-    const lit = bells.map((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 1.2)
+    const { lit, n, complete } = bellProgress(
+      bells,
+      bells.map((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 1.2)
+    )
     const key = recent ? lit.map((x) => (x ? 1 : 0)).join('') : ''
     if (key === this.bellKey) return
     this.bellKey = key
     show(this.bells, recent)
     clearChildren(this.bells)
     if (!recent) return
-    const n = lit.filter(Boolean).length
     this.bells.append(
       el('span.bc-label', { text: '鐘' }),
       ...lit.map((on) =>
@@ -363,7 +365,7 @@ export class Hud {
           icon('props:tower', on ? 'bell_ring' : 'bell', 32, 'px-icon bc-icon', on ? 2 : 0)
         )
       ),
-      el('span.bc-count', { text: n >= bells.length ? 'そろった！' : `${n}/${bells.length}` })
+      el('span.bc-count', { text: complete ? 'そろった！' : `${n}/${bells.length}` })
     )
   }
 
@@ -469,10 +471,11 @@ export class Hud {
               : ''
             : guarded
               ? pet
-                ? '🛡 大猫が守っている'
-                : '🛡 ガード中 ― 協力技でくずせ！'
+                ? '大猫が守っている'
+                : 'ガード中 ― 協力技でくずせ！'
               : ''
     )
+    this.bossState.classList.toggle('guard', !broken && guarded && b.kind !== 'leon' && b.kind !== 'valk')
     show(this.bossPet, !!pet || b.kind === 'valk' || b.kind === 'leon')
     if (b.kind === 'leon') {
       const shield = b.anim === 'shield'

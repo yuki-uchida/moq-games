@@ -286,6 +286,8 @@ test('stage 4 end to end: every puzzle, the hero Leon, the results and the endin
   expect(s.solves).toContain('氷のブロックが湖に沈んで道ができた！')
   for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
   for (const msg of s.solves) expect(msg).not.toContain('岩')
+  expect(s.solves).toContain('狩人の野営地を制圧した！')
+  for (const msg of s.solves) expect(msg).not.toContain('広場')
   // The last stage: next → the ending.
   world.command('host', { type: 'next' })
   expect(world.view().phase).toBe('ending')
