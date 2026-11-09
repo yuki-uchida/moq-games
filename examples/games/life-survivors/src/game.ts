@@ -98,6 +98,32 @@ const GUARDIAN_COPY_GLIDE = 900
 const GUARDIAN_CLOSE_REACH = 26
 /** 生き物観察: the steepest angle above the horizon at which a creature appears in front of an upward-facing player. */
 const OBSERVATION_MAX_ELEVATION = (20 * Math.PI) / 180
+/** How far from their owner idle pets rest: the inner ring, and the outer one (odd `petRing`). */
+const PET_REST_RINGS = [34, 56] as const
+
+/** How far from its owner an idle pet on ring `ring` (Shot.petRing) rests. */
+export function petRestRadius(ring = 0) {
+  return PET_REST_RINGS[ring % 2]
+}
+
+/** Pairs of rings (see petRestAngle): steps of 1.2 along the arc from a pet's spot, alternately later and earlier. */
+const PET_SPOT_STEPS = [0, 2, -2, 4] as const
+
+/**
+ * Where an idle pet rests round its owner (radians). The monster parent's own `h` slot; other pets spread their
+ * `orbit` over the lower half and the sides (-20° to 200°), never in the fan above the owner's head and hat. A gamble's
+ * copied pet takes the slot between its owner's own pets (`orbit` + 1.2), so the two never rest on one spot. Rounds
+ * of one number out at once take rings `ring` 0 and 1 (inner and outer, petRestRadius) on that spot; further ones (a
+ * gamble refires faster than its pets leave) take the next pair of spots for their own kind two steps of 1.2 along
+ * the arc, alternately later and earlier, between the spots of the other source.
+ */
+export function petRestAngle(weapon: string, source: string, orbit: number, h: number, ring = 0) {
+  if (weapon === 'p_monster') return h * Math.PI
+  const pair = Math.floor(ring / 2)
+  const step = PET_SPOT_STEPS[pair % PET_SPOT_STEPS.length]
+  const slot = orbit + (source !== 'w_pet' ? 1.2 : 0) + 1.2 * step
+  return -0.35 + ((((slot % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI)) * (Math.PI + 0.7)
+}
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -268,6 +294,11 @@ export interface Shot {
   /** Variant for the renderer: chain link, biting, armed, pellet kind. */
   v: number
   petType?: number
+  /**
+   * Pet: where it rests among the rounds of its number out at once: the lowest one free when it came (even inner, odd
+   * outer ring; 2 and up a spot further along, see petRestAngle).
+   */
+  petRing?: number
   /** Seconds before the shot exists (staples fired one after another). */
   delay: number
   /** Per-behaviour scratch: elapsed time, arming time, retarget timer. */
@@ -2123,15 +2154,36 @@ export class Game {
         break
       }
       case 'pet': {
-        for (let i = 0; i < n; i++)
+        for (let i = 0; i < n; i++) {
+          const orbit = i * 2.4
+          // Earlier rounds' pets of the same number from this source may still be out (the duration outlasts the
+          // cooldown): the new one takes the lowest ring none of them rests on, so no two stand on one spot. It
+          // appears on its resting spot, not on the child.
+          const taken = new Set<number>()
+          for (const shot of this.state.shots)
+            if (
+              shot.owner === player.id &&
+              shot.sourceWeapon === weapon.id &&
+              shot.weapon === def.id &&
+              shot.orbit === orbit &&
+              shot.delay <= 0
+            )
+              taken.add(shot.petRing ?? 0)
+          let petRing = 0
+          while (taken.has(petRing)) petRing++
+          const rest = petRestAngle(def.id, weapon.id, orbit, 0, petRing)
           this.shot(player, weapon, def, ws, {
-            x: player.x + Math.cos(i * 2.4) * 24,
-            y: player.y + Math.sin(i * 2.4) * 24,
-            orbit: i * 2.4,
+            x: player.x + Math.cos(rest) * petRestRadius(petRing),
+            y: player.y + Math.sin(rest) * petRestRadius(petRing),
+            // It starts out facing the way the child faces.
+            angle: Math.atan2(player.fy, player.fx),
+            petRing,
+            orbit,
             petType: i % PET_TYPES.length,
             spin: speed,
             tick: 0.4
           })
+        }
         break
       }
       case 'observe': {
@@ -2147,11 +2199,22 @@ export class Game {
         weapon.observationCount = (weapon.observationCount ?? 0) + 1
         // Facing up, the creature appears no more than 20° above the horizon, clear of the name tag and buff labels
         // stacked over the head; straight up it goes to the right.
-        let appearX = player.fx
-        let appearY = player.fy
-        if (player.fy < 0) {
-          const elevation = Math.min(Math.atan2(-player.fy, Math.abs(player.fx)), OBSERVATION_MAX_ELEVATION)
-          const sideways = Math.abs(player.fx) >= 0.2 ? Math.sign(player.fx) : 1
+        // A gamble's copy appears across the child from their own creature (when one is out), so the two fields of view
+        // do not lie on top of each other; the same limit on rising above the horizon applies.
+        const own =
+          weapon.id !== 'w_observe'
+            ? this.state.shots.find(
+                (shot) => shot.owner === player.id && shot.sourceWeapon === 'w_observe' && shot.weapon === def.id
+              )
+            : undefined
+        const ownDistance = own ? Math.hypot(own.x - player.x, own.y - player.y) : 0
+        const facingX = own && ownDistance > 1e-6 ? -(own.x - player.x) / ownDistance : player.fx
+        const facingY = own && ownDistance > 1e-6 ? -(own.y - player.y) / ownDistance : player.fy
+        let appearX = facingX
+        let appearY = facingY
+        if (facingY < 0) {
+          const elevation = Math.min(Math.atan2(-facingY, Math.abs(facingX)), OBSERVATION_MAX_ELEVATION)
+          const sideways = Math.abs(facingX) >= 0.2 ? Math.sign(facingX) : 1
           appearX = Math.cos(elevation) * sideways
           appearY = -Math.sin(elevation)
         }
@@ -2678,22 +2741,28 @@ export class Game {
       shot.target = best
     }
     const target = shot.target
-    // With nothing to chase the dog trots back to its spot beside the owner. Other pets spread their orbit over the
-    // lower half and the sides (-20° to 200°), never in the fan above the owner's head and hat.
-    const restAngle =
-      shot.weapon === 'p_monster'
-        ? shot.h * Math.PI
-        : -0.35 + ((((shot.orbit % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI)) * (Math.PI + 0.7)
-    const goalX = target ? target.x : owner.x + Math.cos(restAngle) * 34
-    const goalY = target ? target.y : owner.y + Math.sin(restAngle) * 34
+    // With nothing to chase the dog trots back to its spot beside the owner.
+    const restAngle = petRestAngle(shot.weapon, shot.sourceWeapon, shot.orbit, shot.h, shot.petRing)
+    const restRadius = petRestRadius(shot.petRing)
+    const goalX = target ? target.x : owner.x + Math.cos(restAngle) * restRadius
+    const goalY = target ? target.y : owner.y + Math.sin(restAngle) * restRadius
     const dx = goalX - shot.x
     const dy = goalY - shot.y
     const d = Math.hypot(dx, dy)
-    if (d > 4) {
+    if (target) {
+      if (d > 4) {
+        const step = Math.min(d, shot.spin * dt)
+        shot.x += (dx / d) * step
+        shot.y += (dy / d) * step
+        if (d > 8) shot.angle = Math.atan2(dy, dx)
+      }
+    } else if (d > 0.5) {
+      // Following (or settling) it keeps up every step and stops right on its spot, so it never trails back and forth
+      // behind a walking owner; it faces the way it moves and keeps its last facing once it stands.
       const step = Math.min(d, shot.spin * dt)
       shot.x += (dx / d) * step
       shot.y += (dy / d) * step
-      if (d > 8) shot.angle = Math.atan2(dy, dx)
+      if (step > 0.3) shot.angle = Math.atan2(dy, dx)
     }
     const reach = target ? shot.r + (ENEMY_BY_ID.get(target.kind)?.radius ?? 12) * target.scale + 6 : 0
     shot.v = target && d < reach ? 1 : 0

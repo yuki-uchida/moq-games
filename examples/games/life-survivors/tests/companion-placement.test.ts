@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { EVENTS, timeAtAge } from '../src/data'
-import { Game, weaponStats } from '../src/game'
+import { Game, petRestRadius, weaponStats } from '../src/game'
 
 /** The fan straight above the owner (up ± 35°), where a companion would sit on their head, hat or name tag. */
 const overHead = (dx: number, dy: number) => dy < 0 && Math.abs(Math.atan2(dx, -dy)) < (35 * Math.PI) / 180
@@ -21,8 +21,9 @@ test('idle pets rest beside and below their owner, never in the fan above the he
   for (let frame = 0; frame < 600; frame++) for (const pet of pets) game['movePet'](pet, player, 1 / 60)
   for (const pet of pets) {
     expect(pet.target).toBeUndefined()
-    // Pets settle within a few pixels of their 34 px resting spot.
-    expect(Math.abs(Math.hypot(pet.x - player.x, pet.y - player.y) - 34)).toBeLessThan(5)
+    // Pets settle within a few pixels of their resting spot: 34 px out, or 56 px on the outer ring a pet takes while
+    // an earlier one of its number is still out.
+    expect(Math.abs(Math.hypot(pet.x - player.x, pet.y - player.y) - petRestRadius(pet.petRing))).toBeLessThan(5)
     expect(overHead(pet.x - player.x, pet.y - player.y)).toBe(false)
   }
 })
