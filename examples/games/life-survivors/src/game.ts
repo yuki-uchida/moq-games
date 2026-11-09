@@ -2126,9 +2126,11 @@ export class Game {
           break
         const form = observationSprite(ageAt(this.state.time), weapon.observationCount ?? 0)
         weapon.observationCount = (weapon.observationCount ?? 0) + 1
+        // Facing up, the creature appears further out, above the name tag rather than behind it.
+        const reach = 50 + 28 * Math.max(0, -player.fy)
         this.shot(player, weapon, def, ws, {
-          x: player.x + player.fx * 50,
-          y: player.y + player.fy * 50,
+          x: player.x + player.fx * reach,
+          y: player.y + player.fy * reach,
           w: observationTargets(player, weapon),
           v: form * 2 + 1,
           tick: 0.5
@@ -2532,7 +2534,8 @@ export class Game {
       (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
     shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
     const walking = 1 - shot.guardianStill
-    const side = shot.h * shot.r * 1.5
+    // A lone parent (Lv1) walking up the screen steps aside to her right instead of standing on her child's hat.
+    const side = shot.h * shot.r * 1.5 + (shot.h === 0 ? 16 * Math.max(0, -forwardY) : 0)
     shot.x =
       owner.x +
       (forwardX * shot.orbit * 0.65 - forwardY * side) * walking +
@@ -2600,8 +2603,12 @@ export class Game {
       shot.target = best
     }
     const target = shot.target
-    // With nothing to chase the dog trots back to its spot beside the owner.
-    const restAngle = shot.weapon === 'p_monster' ? shot.h * Math.PI : shot.orbit
+    // With nothing to chase the dog trots back to its spot beside the owner. Other pets spread their orbit over the
+    // lower half and the sides (-20° to 200°), never in the fan above the owner's head and hat.
+    const restAngle =
+      shot.weapon === 'p_monster'
+        ? shot.h * Math.PI
+        : -0.35 + ((((shot.orbit % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI)) * (Math.PI + 0.7)
     const goalX = target ? target.x : owner.x + Math.cos(restAngle) * 34
     const goalY = target ? target.y : owner.y + Math.sin(restAngle) * 34
     const dx = goalX - shot.x

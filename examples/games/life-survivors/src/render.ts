@@ -2664,7 +2664,9 @@ export class Renderer {
     // Characters: enemies and players Y-sorted so overlaps read correctly.
     const list: Ent[] = this.ents.slice(0, this.entCount)
     // Companions sort on their own feet too, so one standing further up than its owner is drawn behind them (and,
-    // listed before the players, one level with their feet is too).
+    // listed before the players, one level with their feet is too). One overlapping an enemy — a pet biting it, a
+    // creature that pulled it in, 過保護親 shoving it — is drawn just in front of that enemy instead of under it.
+    const enemies = this.entCount
     for (let i = 0; i < s.length; i += STRIDE.shots) {
       const def = WEAPONS[s[i]]
       const sh = this.load(view, origins, i)
@@ -2672,7 +2674,15 @@ export class Renderer {
       if (feet === undefined) continue
       if (Math.abs(sh.x - this.camera.x) > halfW + 400 && Math.abs(sh.ox - this.camera.x) > halfW + 400) continue
       const at = this.companionAt(view, sh, def)
-      list.push({ y: at.y + feet, kind: 0, shot: i, id: 0, x: at.x, yy: at.y, hp: 0, flash: 0, flags: 0, tagLift: 0 })
+      let key = at.y + feet
+      for (let k = 0; k < enemies; k++) {
+        const ent = this.ents[k]
+        const reach = (ent.def?.radius ?? 0) + 12
+        const dx = ent.x - at.x
+        const dy = ent.yy - at.y
+        if (ent.y + 0.01 > key && dx * dx + dy * dy <= reach * reach) key = ent.y + 0.01
+      }
+      list.push({ y: key, kind: 0, shot: i, id: 0, x: at.x, yy: at.y, hp: 0, flash: 0, flags: 0, tagLift: 0 })
     }
     // Name tags of players standing together stack instead of overlapping.
     view.players.forEach((player, i) => {

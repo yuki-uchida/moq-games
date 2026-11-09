@@ -1620,6 +1620,61 @@ test('pets, observed creatures and sprouts further up than their owner are drawn
   expect(result.topDraws).toBe(0)
 })
 
+test('a biting pet and a creature pulling an enemy in are drawn over that enemy; free companions sort on their feet', async ({
+  page
+}) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __life: Life }).__life.view))).toBe(true)
+  const events = await page.evaluate(async () => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { WEAPONS, ENEMIES } = await import(dataPath)
+    const life = (window as unknown as { __life: Life }).__life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    const index = (id: string) => WEAPONS.findIndex((weapon: { id: string }) => weapon.id === id)
+    const germ = ENEMIES.findIndex((enemy: { id: string }) => enemy.id === 'germ')
+    // An enemy on a biting pet (odd v) to the right, one pulled onto a creature to the left; a pet waiting behind the
+    // owner's head with no enemy near it.
+    view.enemies = [1, germ, player.x + 100, player.y, 100, 0, 0, 2, germ, player.x - 100, player.y + 6, 100, 0, 0]
+    const placed: [string, number, number, number][] = [
+      ['w_pet', 100, 0, 1],
+      ['w_observe', -100, 0, 1],
+      ['w_pet', 0, -34, 0]
+    ]
+    view.shots = placed.flatMap(([id, dx, dy, v]) => [index(id), player.x + dx, player.y + dy, 20, 0, 100, 0, v])
+    const renderer = new Renderer(document.createElement('canvas'))
+    const events: string[] = []
+    const companion = renderer.companion.bind(renderer)
+    renderer.companion = (...args: [unknown, { x: number; y: number }, { id: string }]) => {
+      events.push(`${args[2].id}:${Math.round(args[1].x - player.x)},${Math.round(args[1].y - player.y)}`)
+      companion(...args)
+    }
+    const enemy = renderer.enemy.bind(renderer)
+    renderer.enemy = (...args: [{ x: number }]) => {
+      events.push(`enemy:${Math.round(args[0].x - player.x)}`)
+      enemy(...args)
+    }
+    const drawPlayer = renderer.player.bind(renderer)
+    renderer.player = (...args: unknown[]) => {
+      events.push('player')
+      return drawPlayer(...args)
+    }
+    renderer.draw(view, life.localId, 0.016, false)
+    return events
+  })
+  expect(events).toHaveLength(6)
+  expect(events.indexOf('w_pet:100,0')).toBeGreaterThan(events.indexOf('enemy:100'))
+  expect(events.indexOf('w_observe:-100,0')).toBeGreaterThan(events.indexOf('enemy:-100'))
+  expect(events.indexOf('enemy:100')).toBeGreaterThanOrEqual(0)
+  expect(events.indexOf('enemy:-100')).toBeGreaterThanOrEqual(0)
+  // With no enemy on it, the pet behind the head still sorts on its own feet, behind its owner.
+  expect(events.indexOf('w_pet:0,-34')).toBeLessThan(events.indexOf('player'))
+  expect(events.indexOf('w_pet:0,-34')).toBe(0)
+})
+
 test('karaoke draws a forward soundwave for local and co-op views', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
