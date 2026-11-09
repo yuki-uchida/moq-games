@@ -88,6 +88,8 @@ const GUARDIAN_STILL_LIFT = 5
 const GUARDIAN_STILL_SPREAD = 0.6
 /** Reach around the child within which a walking guardian can also bash enemies right behind. */
 const GUARDIAN_CLOSE_REACH = 26
+/** 生き物観察: the steepest angle above the horizon at which a creature appears in front of an upward-facing player. */
+const OBSERVATION_MAX_ELEVATION = (20 * Math.PI) / 180
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -234,6 +236,8 @@ export interface Shot {
   r: number
   angle: number
   guardianHeading?: number
+  /** 過保護 Lv1: which shoulder (+1 right, -1 left, eased) she steps beside while her child walks up the screen. */
+  guardianSide?: number
   /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (tucked behind them, guarding all round). */
   guardianStill?: number
   orbit: number
@@ -2126,11 +2130,19 @@ export class Game {
           break
         const form = observationSprite(ageAt(this.state.time), weapon.observationCount ?? 0)
         weapon.observationCount = (weapon.observationCount ?? 0) + 1
-        // Facing up, the creature appears further out, above the name tag rather than behind it.
-        const reach = 50 + 28 * Math.max(0, -player.fy)
+        // Facing up, the creature appears no more than 20° above the horizon, clear of the name tag and buff labels
+        // stacked over the head; straight up it goes to the right.
+        let appearX = player.fx
+        let appearY = player.fy
+        if (player.fy < 0) {
+          const elevation = Math.min(Math.atan2(-player.fy, Math.abs(player.fx)), OBSERVATION_MAX_ELEVATION)
+          const sideways = Math.abs(player.fx) >= 0.2 ? Math.sign(player.fx) : 1
+          appearX = Math.cos(elevation) * sideways
+          appearY = -Math.sin(elevation)
+        }
         this.shot(player, weapon, def, ws, {
-          x: player.x + player.fx * reach,
-          y: player.y + player.fy * reach,
+          x: player.x + appearX * 50,
+          y: player.y + appearY * 50,
           w: observationTargets(player, weapon),
           v: form * 2 + 1,
           tick: 0.5
@@ -2534,14 +2546,25 @@ export class Game {
       (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
     shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
     const walking = 1 - shot.guardianStill
-    // A lone parent (Lv1) walking up the screen steps aside to her right instead of standing on her child's hat.
-    const side = shot.h * shot.r * 1.5 + (shot.h === 0 ? 16 * Math.max(0, -forwardY) : 0)
-    shot.x =
-      owner.x +
-      (forwardX * shot.orbit * 0.65 - forwardY * side) * walking +
-      shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
-    shot.y =
-      owner.y + (forwardY * shot.orbit * 0.65 + forwardX * side) * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
+    let offsetX: number
+    let offsetY: number
+    if (shot.h === 0) {
+      // A lone parent (Lv1) walking up the screen steps beside her child's shoulder instead of standing on her hat. She
+      // keeps to the side she last faced and, while crossing over (less than 26 px to the side), ducks below the head.
+      const side = shot.guardianSide ?? 1
+      const targetSide = forwardX > 0.25 ? 1 : forwardX < -0.25 ? -1 : Math.sign(side) || 1
+      shot.guardianSide = side + (targetSide - side) * (1 - Math.exp(-10 * dt))
+      const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
+      offsetX = forwardX * shot.orbit * 0.65 + 26 * up * shot.guardianSide
+      const crossing = Math.min(1, Math.max(0, (26 - Math.abs(offsetX)) / 10))
+      offsetY = forwardY * shot.orbit * 0.65 * (1 - 0.7 * up * crossing)
+    } else {
+      const side = shot.h * shot.r * 1.5
+      offsetX = forwardX * shot.orbit * 0.65 - forwardY * side
+      offsetY = forwardY * shot.orbit * 0.65 + forwardX * side
+    }
+    shot.x = owner.x + offsetX * walking + shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
+    shot.y = owner.y + offsetY * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)

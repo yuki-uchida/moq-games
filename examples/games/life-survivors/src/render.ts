@@ -2664,8 +2664,9 @@ export class Renderer {
     // Characters: enemies and players Y-sorted so overlaps read correctly.
     const list: Ent[] = this.ents.slice(0, this.entCount)
     // Companions sort on their own feet too, so one standing further up than its owner is drawn behind them (and,
-    // listed before the players, one level with their feet is too). One overlapping an enemy — a pet biting it, a
-    // creature that pulled it in, 過保護親 shoving it — is drawn just in front of that enemy instead of under it.
+    // listed before the players, one level with their feet is too). One fighting an enemy it overlaps — a pet biting
+    // it, a creature that pulled it in, 過保護親 shoving it — is drawn just in front of that enemy instead of under it,
+    // but one standing behind its owner and overlapping their body stays behind them whatever it is fighting.
     const enemies = this.entCount
     for (let i = 0; i < s.length; i += STRIDE.shots) {
       const def = WEAPONS[s[i]]
@@ -2675,12 +2676,20 @@ export class Renderer {
       if (Math.abs(sh.x - this.camera.x) > halfW + 400 && Math.abs(sh.ox - this.camera.x) > halfW + 400) continue
       const at = this.companionAt(view, sh, def)
       let key = at.y + feet
-      for (let k = 0; k < enemies; k++) {
-        const ent = this.ents[k]
-        const reach = (ent.def?.radius ?? 0) + 12
-        const dx = ent.x - at.x
-        const dy = ent.yy - at.y
-        if (ent.y + 0.01 > key && dx * dx + dy * dy <= reach * reach) key = ent.y + 0.01
+      if (def.behavior !== 'garden')
+        for (let k = 0; k < enemies; k++) {
+          const ent = this.ents[k]
+          const reach = (ent.def?.radius ?? 0) + 12
+          const dx = ent.x - at.x
+          const dy = ent.yy - at.y
+          if (ent.y + 0.01 > key && dx * dx + dy * dy <= reach * reach) key = ent.y + 0.01
+        }
+      const owner = origins[s[i + 6]]
+      if (owner) {
+        const ownerKey = owner.y + 16
+        const dx = at.x - owner.x
+        const dy = at.y - owner.y
+        if (at.y + feet < ownerKey && Math.abs(dx) < 22 && dy > -44 && dy < 8) key = Math.min(key, ownerKey - 0.01)
       }
       list.push({ y: key, kind: 0, shot: i, id: 0, x: at.x, yy: at.y, hp: 0, flash: 0, flags: 0, tagLift: 0 })
     }
