@@ -199,6 +199,59 @@ export interface Follower {
   heal: boolean
 }
 
+/** Half the width and height (px) of a 過保護親's figure around her centre, for keeping the gamble badge off her. */
+const BADGE_PARENT_HALF = 12
+/** Overlap (px²) the badge's current side must cover beyond the other before it moves over: no flicker on the edge. */
+export const BADGE_SIDE_MARGIN = 60
+/** Rate (1/s) at which the badge eases across to its new side. */
+const BADGE_SIDE_RATE = 12
+
+/** The gamble badge's box with its tail, relative to the player's drawn position, on `side` (+1 right, -1 left). */
+export function badgeBoxAt(side: number, size: number): Box {
+  const x = 26 * size * side
+  const y = 16 - 50 * size
+  return { left: x - 11, top: y - 11, right: x + 11, bottom: y + 15 }
+}
+
+const overlapArea = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+  Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+
+/**
+ * The side of the head (+1 right, -1 left) the gamble badge should float on, given the one it is heading for now
+ * (`current`) and the centres of the player's 過保護親 relative to her drawn position (her own and the gamble's
+ * copies). It moves over only once its side covers more of them than the other side would by `BADGE_SIDE_MARGIN`,
+ * so a parent jittering on the edge by a rounded pixel never flips it; clear of all of them it returns to the right.
+ */
+export function badgeSideTarget(
+  current: number,
+  parents: readonly { x: number; y: number }[],
+  size: number,
+  margin = BADGE_SIDE_MARGIN
+) {
+  const right = badgeBoxAt(1, size)
+  const left = badgeBoxAt(-1, size)
+  let onRight = 0
+  let onLeft = 0
+  for (const { x, y } of parents) {
+    const box = {
+      left: x - BADGE_PARENT_HALF,
+      top: y - BADGE_PARENT_HALF,
+      right: x + BADGE_PARENT_HALF,
+      bottom: y + BADGE_PARENT_HALF
+    }
+    onRight += overlapArea(box, right)
+    onLeft += overlapArea(box, left)
+  }
+  if (current >= 0) return onRight > onLeft + margin ? -1 : 1
+  if (!onRight && !onLeft) return 1
+  return onLeft > onRight + margin ? 1 : -1
+}
+
+/** Eases the badge's side `dt` real seconds toward `target`, the same for every role, so it glides over, never jumps. */
+export const easeBadgeSide = (side: number, target: number, dt: number) =>
+  target + (side - target) * Math.exp(-BADGE_SIDE_RATE * Math.max(0, dt))
+
 /**
  * The family are support, not units: drawn smaller than the player and walking behind them — on the side away
  * from the way the player faces and a step further back. Slots are offsets from the player's position.
@@ -339,9 +392,12 @@ export class Renderer {
   private readonly families = new Map<string, Follower[]>()
   /**
    * Per player: the badge being shown, the newest result and when it changed (the reels need time to stop), and the
-   * side of the head it floats on (-1 left .. +1 right, eased).
+   * side of the head it floats on (-1 left .. +1 right, eased) and the side it is easing toward.
    */
-  private readonly gambleBadges = new Map<string, { shown?: string; next?: string; at: number; side: number }>()
+  private readonly gambleBadges = new Map<
+    string,
+    { shown?: string; next?: string; at: number; side: number; target?: number }
+  >()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
   private parentMemorialTime?: number
@@ -610,36 +666,32 @@ export class Renderer {
   }
 
   /**
-   * Eases the side of the head a player's gamble badge floats on: the left while her lone 過保護親 (her own, the
-   * h = 0 one) stands at her upper right — beside the shoulder of a child walking up — so the badge never hides her,
-   * the right otherwise.
+   * Eases the side of the head a player's gamble badge floats on toward the side that hides fewer of her 過保護親 (her
+   * own and the gamble's copies) as drawn, so the badge never covers them; see `badgeSideTarget`.
    */
-  private easeBadgeSide(view: View, origins: { x: number; y: number }[], index: number, dt: number, smooth: boolean) {
+  private easeBadgeSide(view: View, origins: { x: number; y: number }[], index: number, dt: number) {
     const player = view.players[index]
     if (!player?.gambleWeapon) return
     const s = view.shots
     const guard = WEAPON_INDEX.get('p_over')!
-    let count = 0
-    for (let i = 0; i < s.length; i += STRIDE.shots)
-      if (s[i] === guard && s[i + 6] === index && s[i + 7] < SHOT_GAMBLE) count++
-    let target = 1
-    if (count % 2) {
-      // Her parents are listed in slot order, so the middle one stands at h = 0.
-      let seen = 0
-      for (let i = 0; i < s.length; i += STRIDE.shots) {
-        if (s[i] !== guard || s[i + 6] !== index || s[i + 7] >= SHOT_GAMBLE || seen++ !== (count - 1) / 2) continue
-        const sh = this.load(view, origins, i)
-        const at = this.companionAt(view, sh, WEAPONS[guard])
-        if (at.x - sh.ox > 8 && at.y - sh.oy < -16) target = -1
-        break
-      }
+    const parents: { x: number; y: number }[] = []
+    for (let i = 0; i < s.length; i += STRIDE.shots) {
+      if (s[i] !== guard || s[i + 6] !== index) continue
+      const sh = this.load(view, origins, i)
+      const at = this.companionAt(view, sh, WEAPONS[guard])
+      parents.push({ x: at.x - sh.ox, y: at.y - sh.oy })
     }
+    const size = bodyScale(
+      player.passives.find(([id]) => id === 'p_large')?.[1] ?? 0,
+      player.passives.find(([id]) => id === 'p_small')?.[1] ?? 0
+    )
     let st = this.gambleBadges.get(player.id)
     if (!st) {
-      st = { at: this.clock, side: target }
+      st = { at: this.clock, side: badgeSideTarget(1, parents, size) }
       this.gambleBadges.set(player.id, st)
     }
-    st.side = smooth ? target + (st.side - target) * Math.exp(-12 * dt) : target
+    st.target = badgeSideTarget(st.target ?? (st.side < 0 ? -1 : 1), parents, size)
+    st.side = easeBadgeSide(st.side, st.target, dt)
   }
 
   /** Traces a rounded rectangle path (no fill). */
@@ -1255,7 +1307,7 @@ export class Renderer {
       const icon = weaponAppearance(gambleShown, ageAt(time), player.petAge).art
       const frame = (sheet('icons')[icon] ?? sheet('icons')[gambleShown]).frames[0]
       const bob = Math.sin(this.clock * 3.2) * 1.6
-      // Above the shoulder away from a lone 過保護親 at the upper right; the tail points back toward the head.
+      // Above the shoulder that hides fewer of her 過保護親 (see easeBadgeSide); the tail points back toward the head.
       const side = this.gambleBadges.get(player.id)?.side ?? 1
       const tail = side < 0 ? -1 : 1
       const bx = pos.x + 26 * size * side
@@ -2782,7 +2834,7 @@ export class Renderer {
     }
     ctx.fill()
     this.bars.length = 0
-    this.easeBadgeSide(view, origins, local, dt, smooth)
+    this.easeBadgeSide(view, origins, local, dt)
     for (const item of list) {
       if (item.member) this.follower(item.member)
       else if (item.shot !== undefined) this.companion(view, this.load(view, origins, item.shot), WEAPONS[s[item.shot]])
