@@ -248,6 +248,7 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
   if (W.results) view.results = W.results
   if (W.grid?.fills.size) view.fills = [...W.grid.fills]
   if (W.currentsOff.length) view.currentsOff = [...W.currentsOff]
+  if (W.grid?.barrierKey) view.barrier = W.grid.barrierKey.split(',')
   if (W.snares.length)
     view.snares = W.snares.map((q) => {
       const v: SnareView = { id: q.id, x: r1(q.x), y: r1(q.y), st: r2(q.st) }

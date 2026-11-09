@@ -810,6 +810,9 @@ input:focus-visible,
   text-align: center;
   line-height: 1.4;
   min-height: 2.8em;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: balance;
 }
 
 .job-skill {

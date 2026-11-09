@@ -35,6 +35,14 @@ export class Grid {
   readonly bridged: Uint8Array
   /** Ice floor (slippery; ice blocks keep sliding on it). */
   readonly ice: Uint8Array
+  /**
+   * Arena barrier: the ring of tiles just outside each active arena room, blocked for walkers and flyers alike
+   * (shots still fly over it). Set from the arena state on the host and from View.barrier on guests.
+   */
+  readonly barrier: Uint8Array
+  /** Rooms (tile rects) whose barrier is up, and their ids joined (change key). */
+  barrierRooms: readonly { x: number; y: number; w: number; h: number }[] = []
+  barrierKey = ''
   private readonly baseWalk: Uint8Array
   /** Mouse holes: hole tile → exit tile next to its partner; exit tile → direction out of the hole. */
   readonly holeExit = new Map<number, number>()
@@ -53,6 +61,7 @@ export class Grid {
     this.staticSolid = new Uint8Array(n)
     this.solid = new Uint8Array(n)
     this.bounce = new Uint8Array(n)
+    this.barrier = new Uint8Array(n)
     info.tiles.forEach((k: TileKind, i) => {
       this.walk[i] = TILE_KINDS[k].walk ? 1 : 0
       this.air[i] = TILE_KINDS[k].air ? 1 : 0
@@ -127,6 +136,25 @@ export class Grid {
     })
   }
 
+  /** Raises the barrier around these rooms (ids from `rooms`; empty lowers it). */
+  setBarrier(
+    ids: readonly string[],
+    rooms: readonly { id: string; x: number; y: number; w: number; h: number }[]
+  ): void {
+    const key = ids.join()
+    if (key === this.barrierKey) return
+    this.barrierKey = key
+    this.barrier.fill(0)
+    this.barrierRooms = ids.flatMap((id) => rooms.filter((r) => r.id === id))
+    for (const r of this.barrierRooms)
+      for (const [tx, ty] of ringOf(r)) if (this.inside(tx, ty)) this.barrier[this.idx(tx, ty)] = 1
+  }
+
+  /** Whether (x, y) and (x2, y2) lie on opposite sides of a raised barrier. */
+  crossesBarrier(x: number, y: number, x2: number, y2: number): boolean {
+    return this.barrierRooms.some((r) => inRoom(r, x, y) !== inRoom(r, x2, y2))
+  }
+
   idx(tx: number, ty: number): number {
     return ty * this.w + tx
   }
@@ -150,7 +178,7 @@ export class Grid {
   blocked(tx: number, ty: number, airborne: boolean): boolean {
     if (!this.inside(tx, ty)) return true
     const i = this.idx(tx, ty)
-    if (this.staticSolid[i] || this.solid[i]) return true
+    if (this.staticSolid[i] || this.solid[i] || this.barrier[i]) return true
     if (this.walk[i]) return false
     return !(airborne && this.air[i])
   }
@@ -369,7 +397,14 @@ export class Grid {
             const mid = this.idx(nx, ny)
             const hx = cx + 2 * dx
             const hy = cy + 2 * dy
-            if (!this.walk[mid] && this.air[mid] && !this.staticSolid[mid] && !this.solid[mid] && this.free(hx, hy))
+            if (
+              !this.walk[mid] &&
+              this.air[mid] &&
+              !this.staticSolid[mid] &&
+              !this.solid[mid] &&
+              !this.barrier[mid] &&
+              this.free(hx, hy)
+            )
               tryNode(hx, hy, 3, 'hop')
           }
           continue
@@ -399,6 +434,23 @@ export class Grid {
     }
     return undefined
   }
+}
+
+/** Tiles of the ring just outside a room rect (clockwise from the north-west corner). */
+export function ringOf(r: { x: number; y: number; w: number; h: number }): [number, number][] {
+  const out: [number, number][] = []
+  for (let x = r.x - 1; x <= r.x + r.w; x++) out.push([x, r.y - 1])
+  for (let y = r.y; y < r.y + r.h; y++) out.push([r.x + r.w, y])
+  for (let x = r.x + r.w; x >= r.x - 1; x--) out.push([x, r.y + r.h])
+  for (let y = r.y + r.h - 1; y >= r.y; y--) out.push([r.x - 1, y])
+  return out
+}
+
+/** Whether a world position (px) lies inside a room's tile rect. */
+export function inRoom(r: { x: number; y: number; w: number; h: number }, x: number, y: number): boolean {
+  const tx = Math.floor(x / TILE)
+  const ty = Math.floor(y / TILE)
+  return tx >= r.x && ty >= r.y && tx < r.x + r.w && ty < r.y + r.h
 }
 
 /** Path steps at or below this value are mouse-hole dashes (see Grid.path). */

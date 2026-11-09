@@ -416,6 +416,10 @@ export interface Dialog extends DialogView {
 export interface ArenaState {
   state: 'idle' | 'active' | 'cleared'
   wave: number
+  /** While active: when no standing hero was first seen inside the room (safety net), and when one was first seen
+   * left outside while others fight. */
+  emptyAt?: number
+  strayAt?: number
 }
 
 export interface WorldState {

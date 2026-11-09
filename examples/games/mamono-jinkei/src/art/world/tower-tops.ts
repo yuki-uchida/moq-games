@@ -442,7 +442,10 @@ export function rockTop(a: number, b: number): Raster {
   })
 }
 
-/** Tower interior floor: 32 px flagstones with brass inlay lines and the odd brass clock dial. */
+/**
+ * Tower interior floor: 32 px flagstones. Thin dim-brass lines run along every fourth slab seam in a regular grid
+ * (riveted where they cross) and a rare, worn brass clock dial is set into the slab grid.
+ */
 export function floorTop(a: number, b: number): Raster {
   return memo(`ft${a},${b}`, () => {
     const r = tile()
@@ -450,7 +453,10 @@ export function floorTop(a: number, b: number): Raster {
     for (let sj = 0; sj < 2; sj++)
       for (let si = 0; si < 2; si++) {
         const id = (b * 2 + sj) * 16 + a * 2 + si
-        const tone = ih(id, 3, 351)
+        const gx = a * 2 + si
+        const gy = b * 2 + sj
+        const lineX = mod(gx, 4) === 1
+        const lineY = mod(gy, 4) === 1
         for (let v = 0; v < 32; v++)
           for (let u = 0; u < 32; u++) {
             let c = S[1]
@@ -459,27 +465,17 @@ export function floorTop(a: number, b: number): Raster {
             if (u === 31 || v === 31) c = S[3]
             else if (u === 0 || v === 0) c = S[0]
             else if (u === 30 || v === 30) c = S[2]
+            // brass seam: one dim pixel line with a gap every 8 px, like inlaid wire
+            if (lineY && v === 31 && mod(u, 8) !== 7) c = GOLD[2]
+            if (lineX && u === 31 && mod(v, 8) !== 7) c = GOLD[2]
             r.set(si * 32 + u, sj * 32 + v, c)
           }
-        // brass inlay square
-        if (ih(id, 8, 352) < 0.24) {
-          const x0 = si * 32 + 5
-          const y0 = sj * 32 + 5
-          for (let k = 0; k < 21; k++) {
-            r.set(x0 + k, y0, GOLD[1])
-            r.set(x0 + k, y0 + 20, GOLD[2])
-            r.set(x0, y0 + k, GOLD[1])
-            r.set(x0 + 20, y0 + k, GOLD[2])
-          }
-          for (const [dx, dy] of [
-            [0, 0],
-            [20, 0],
-            [0, 20],
-            [20, 20]
-          ])
-            r.rect(x0 + dx - 1, y0 + dy - 1, 3, 3, GOLD[1]),
-              r.set(x0 + dx - 1, y0 + dy - 1, GOLD[0]),
-              r.set(x0 + dx, y0 + dy, GOLD[3])
+        // rivet where two brass seams cross
+        if (lineX && lineY) {
+          const x = si * 32 + 31
+          const y = sj * 32 + 31
+          r.rect(x - 1, y - 1, 3, 3, GOLD[3])
+          r.set(x, y, GOLD[1])
         }
         for (let i = 0; i < 2; i++) {
           const x = si * 32 + 4 + Math.floor(rn() * 22)
@@ -492,27 +488,25 @@ export function floorTop(a: number, b: number): Raster {
         if (rn() < 0.22)
           crack(r, si * 32 + 6 + Math.floor(rn() * 18), sj * 32 + 5, 1, 1, 7 + Math.floor(rn() * 8), rn, S[3])
       }
-    // clock dial
-    if (ih(a, b, 353) > 0.88) {
+    // rare worn clock dial centred on a slab corner
+    if (mod(a, 5) === 2 && mod(b, 4) === 1) {
+      const d = tile()
       const cx = 32
       const cy = 32
-      r.ring(cx, cy, 21, 23, GOLD[2])
-      r.ring(cx, cy, 22, 23, GOLD[3])
-      r.ring(cx, cy, 21, 22, GOLD[1])
-      r.ring(cx, cy, 9, 10.5, GOLD[2])
+      d.ring(cx, cy, 20, 21.5, GOLD[3])
+      d.ring(cx, cy, 20, 21, GOLD[2])
+      d.ring(cx, cy, 8, 9.5, GOLD[3])
       for (let k = 0; k < 12; k++) {
         const an = (k / 12) * Math.PI * 2
-        const r0 = k % 3 === 0 ? 14 : 17
-        r.line(
-          cx + Math.cos(an) * r0,
-          cy + Math.sin(an) * r0,
-          cx + Math.cos(an) * 20,
-          cy + Math.sin(an) * 20,
-          k % 3 === 0 ? GOLD[0] : GOLD[1]
-        )
+        const r0 = k % 3 === 0 ? 13 : 16
+        d.line(cx + Math.cos(an) * r0, cy + Math.sin(an) * r0, cx + Math.cos(an) * 18, cy + Math.sin(an) * 18, GOLD[2])
       }
-      r.ellipse(cx, cy, 2.5, 2.5, GOLD[1])
-      r.set(cx - 1, cy - 1, GOLD[0])
+      d.ellipse(cx, cy, 2, 2, GOLD[2])
+      for (let y = 0; y < T; y++)
+        for (let x = 0; x < T; x++) {
+          const c = d.get(x, y)
+          if (c && ih(x, y, 356 + a * 7 + b) > 0.2) r.set(x, y, c)
+        }
     }
     return r
   })
