@@ -18,21 +18,23 @@ type BossPose = Pose
 function renderBoss(view: View, p: BossPose): Raster {
   const cam = new Cam(view, 64, 116, p.tilt, p.at)
   const paint = new Painter(128, 128)
-  const hipU = 33 + p.bob - p.crouch
-  const shU = hipU + 29 - p.crouch * 0.15
+  const hipU = 37 + p.bob - p.crouch
+  const shU = hipU + 30 - p.crouch * 0.15
   const side = view === 'side'
-  const shR = side ? 7 : 15.5
+  const shR = side ? 7.5 : 20
   const [shx, shy] = cam.px(V(p.lean, p.sway, shU))
   const [hx, hy] = cam.px(V(0, 0, hipU))
-  const ws = side ? 12 : 16
-  const wh = side ? 10 : 12
+  const ws = side ? 16 : 21
+  const wh = side ? 13 : 15
   const sy = Math.round(shy) - 2
   const hyy = Math.round(hy)
   const sx = side ? shx + 0.5 : Math.round(shx)
   const hxx = side ? hx + 0.5 : Math.round(hx)
   const rowOf = (y: number) => {
     const t = Math.min(1, Math.max(0, (y - sy) / Math.max(1, hyy - sy)))
-    return { cx: sx + (hxx - sx) * t, hw: ws + (wh - ws) * t }
+    // barrel chest: full at the breastplate, pinched a little at the waist
+    const chest = Math.sin(Math.min(1, t * 1.6) * Math.PI) * (side ? 1.5 : 1.5)
+    return { cx: sx + (hxx - sx) * t, hw: ws + (wh - ws) * t + chest }
   }
   const fill = (
     l: Raster,
@@ -54,9 +56,9 @@ function renderBoss(view: View, p: BossPose): Raster {
     const hem = 98 + Math.round(p.at.u * -0) - (p.crouch > 6 ? 6 : 0)
     for (let y = sy + 2; y < hem; y++) {
       const t = (y - sy) / (hem - sy)
-      const hw = (side ? 4.5 : ws + 1) + t * (side ? 2 : 7)
+      const hw = (side ? 7 : ws + 2) + t * (side ? 5 : 8)
       const shift = p.flow * t * t * (side ? -2.6 : 1.2)
-      const c0 = (side ? sx - 8 : sx) + shift
+      const c0 = (side ? sx - 10 - t * 2 : sx) + shift
       for (let x = Math.round(c0 - hw); x < Math.round(c0 + hw); x++) {
         if (y > hem - 4 && (x + y) % 5 === 0) continue
         l.set(x, y, CAPE[1])
@@ -72,31 +74,40 @@ function renderBoss(view: View, p: BossPose): Raster {
   // ---- legs
   for (const sgn of [1, -1] as const) {
     const foot = sgn === 1 ? p.mainFoot : p.offFoot
-    const end0 = V(foot.f, sgn * foot.r * 1.9, foot.u)
-    const hip = V(0, sgn * 6, hipU)
-    const { mid, end } = ik(hip, end0, 15.5, 15.5, V(1, 0, 0.1))
+    const end0 = V(foot.f, sgn * foot.r * 2.5, foot.u)
+    const hip = V(0, sgn * 8, hipU)
+    const { mid, end } = ik(hip, end0, 17.5, 17.5, V(1, 0, 0.1))
     const far = side && sgn < 0
     const ramp: Ramp = far ? DARK : STEEL
     const a = cam.px(hip)
     const m = cam.px(mid)
     const e = cam.px(end)
     paint.add(side ? cam.depth(end) - 0.2 : -1, (l) => {
-      bar(l, a, m, 11, ramp[1])
-      bar(l, m, e, 9, ramp[1])
+      // cuisse (thigh plate) and a greave that flares into the sabaton
+      bar(l, a, m, side ? 13 : 15, ramp[1])
+      bar(l, m, e, side ? 10 : 12, ramp[1])
+      bar(l, [m[0] + (e[0] - m[0]) * 0.55, m[1] + (e[1] - m[1]) * 0.55], e, side ? 11 : 13, ramp[1])
       shadeEdges(l, ramp, 2, true)
-      // knee cop
-      const kx = Math.round(m[0]) + (side ? 3 : 0)
+      // greave ridge
+      if (!side)
+        for (let y = Math.round(m[1]) + 4; y < Math.round(e[1]) - 6; y++)
+          l.paint(Math.round(m[0] + ((e[0] - m[0]) * (y - m[1])) / Math.max(1, e[1] - m[1])) - 1, y, ramp[0])
+      // knee cop with a fan
+      const kx = Math.round(m[0]) + (side ? 4 : 0)
       const ky = Math.round(m[1])
-      l.ellipse(kx, ky, 4.5, 4, GOLD[1])
-      l.ellipse(kx - 0.5, ky - 0.5, 3, 2.6, GOLD[0])
-      l.rect(kx - 3, ky + 2, 6, 1, GOLD[2])
-      // sabaton
+      l.ellipse(kx, ky, 6, 5, GOLD[2])
+      l.ellipse(kx, ky - 0.5, 5, 4, GOLD[1])
+      l.ellipse(kx - 1, ky - 1.5, 2.6, 2, GOLD[0])
+      l.rect(kx - 4, ky + 4, 8, 1, GOLD[2])
+      // sabaton: broad, layered steel toe
       const bx = Math.round(e[0])
       const by = Math.round(e[1])
-      l.rect(bx - 5, by - 6, 10, 6, DARK[1])
-      l.rect(bx - 6, by - 3, side ? 15 : 12, 4, DARK[1])
-      l.rect(bx - 5, by - 7, 10, 1, GOLD[1])
+      const toe = side ? 19 : 15
+      l.rect(bx - 7, by - 7, 14, 7, DARK[1])
+      l.rect(bx - (side ? 7 : 8), by - 4, toe, 5, DARK[1])
+      l.rect(bx - 7, by - 8, 14, 1, GOLD[1])
       shadeEdges(l, DARK, 1, true)
+      l.rect(bx - (side ? 6 : 7), by - 4, toe - 2, 1, DARK[0])
     })
   }
 
@@ -112,21 +123,27 @@ function renderBoss(view: View, p: BossPose): Raster {
       }
       for (let k = -1; k <= 1; k += 2)
         for (let y = sy + 4; y < hyy - 8; y++)
-          l.paint(sx + k * 7 + (k < 0 ? -1 : 0), y - (Math.abs(k) ? 0 : 0), y % 6 < 3 ? STEEL[2] : STEEL[1])
+          l.paint(sx + k * 10 + (k < 0 ? -1 : 0), y, y % 6 < 3 ? STEEL[2] : STEEL[1])
+      // plackart: a lower belly plate with a gold rim
+      fill(l, hyy - 13, hyy - 12, GOLD[2], (dx, y, hw) => Math.abs(dx) < hw - 4)
+      fill(l, hyy - 12, hyy - 6, STEEL[2], (dx, y, hw) => Math.abs(dx) < hw - 5)
+      fill(l, hyy - 12, hyy - 11, STEEL[1], (dx, y, hw) => Math.abs(dx) < hw - 5)
     } else {
       for (let y = sy + 6; y < hyy - 3; y++) l.paint(Math.round(sx) + 2, y, STEEL[2])
     }
     // gorget
-    fill(l, sy, sy + 3, GOLD[1], (dx, y, hw) => Math.abs(dx) < hw - 3)
+    fill(l, sy, sy + 4, GOLD[1], (dx, y, hw) => Math.abs(dx) < hw - 5)
+    fill(l, sy + 3, sy + 4, GOLD[2], (dx, y, hw) => Math.abs(dx) < hw - 5)
     // belt with a gold buckle
     fill(l, hyy - 5, hyy - 1, CAPE[2])
     fill(l, hyy - 5, hyy - 4, CAPE[1])
-    if (!side) l.rect(hxx - 3, hyy - 6, 6, 5, GOLD[1])
-    if (!side) l.rect(hxx - 2, hyy - 5, 4, 3, GOLD[0])
+    if (!side) l.rect(hxx - 4, hyy - 6, 8, 6, GOLD[1])
+    if (!side) l.rect(hxx - 3, hyy - 5, 6, 4, GOLD[0])
+    if (!side) l.rect(hxx - 1, hyy - 4, 2, 2, GOLD[2])
     // faulds: scalloped plates under the belt
     for (let y = hyy - 1; y < hyy + 9; y++) {
       const t = (y - hyy + 1) / 9
-      const hw = (side ? 9 : 13) + t * 1.5
+      const hw = (side ? 12 : 17) + t * 2
       for (let x = Math.round(hxx - hw); x < Math.round(hxx + hw); x++) {
         const seg = side ? 0 : Math.floor((x - hxx + hw) / 5)
         if (y > hyy + 6 && (x - Math.round(hxx)) % 5 === 0 && !side) continue
@@ -134,7 +151,26 @@ function renderBoss(view: View, p: BossPose): Raster {
       }
     }
     shadeEdges(l, STEEL, 1, false)
-    for (let x = Math.round(hxx - 12); x < Math.round(hxx + 12); x++) l.paint(x, hyy + 8, GOLD[2])
+    for (let x = Math.round(hxx - 16); x < Math.round(hxx + 16); x++) l.paint(x, hyy + 8, GOLD[2])
+    // crimson tabard hanging between the faulds, with a gold hem and the guild's crossed swords
+    if (view !== 'up') {
+      const tx = side ? hxx + 7 : hxx
+      const tw = side ? 3 : 6
+      const tb = hyy + 19
+      for (let y = hyy - 1; y < tb; y++) {
+        const t = (y - hyy) / (tb - hyy)
+        const fl = Math.round(p.flow * t * t * (side ? -1.2 : 0.6))
+        const w = tw + t * 1.5
+        for (let x = Math.round(tx - w) + fl; x < Math.round(tx + w) + fl; x++)
+          l.set(x, y, y >= tb - 2 ? GOLD[1] : Math.abs(x - fl - tx) >= w - 1 ? CAPE[2] : CAPE[1])
+      }
+      if (!side) {
+        for (let k = -3; k <= 3; k++) {
+          l.set(tx + k, hyy + 7 + k, GOLD[1])
+          l.set(tx - k - 1, hyy + 7 + k, GOLD[1])
+        }
+      }
+    }
   })
 
   // ---- pauldrons
@@ -142,18 +178,39 @@ function renderBoss(view: View, p: BossPose): Raster {
     if (side && sgn < 0) continue
     const c = cam.px(V(p.lean, p.sway + sgn * (side ? 4 : shR - 1), shU - 1))
     paint.add(side ? 4 : 0.35, (l) => {
-      const px = Math.round(c[0])
-      const py = Math.round(c[1]) - 1
-      l.ellipse(px, py, side ? 8 : 10.5, 7.5, STEEL[1])
+      // big layered pauldron: a dome over two lames, pushed outwards past the chest
+      const px = Math.round(c[0]) + (side ? 0 : sgn * 2)
+      const py = Math.round(c[1]) - 2
+      const rx = side ? 11.5 : 13
+      l.ellipse(px, py + 6, rx - 0.5, 5, STEEL[2])
+      l.ellipse(px, py + 2.5, rx + 0.5, 6.5, STEEL[1])
+      l.ellipse(px, py - 1, rx, 8.5, STEEL[1])
       shadeEdges(l, STEEL, 2, true)
-      // gold rim and rivet
-      for (let a = 0; a < 20; a++) {
-        const t = (a / 19) * Math.PI
-        l.set(px + Math.cos(t + Math.PI) * (side ? 8 : 10.5), py + Math.sin(t) * 6.5 - 0.5, GOLD[1])
+      // lame seams
+      for (const [dy, r] of [
+        [4.5, rx + 0.5],
+        [8.5, rx - 0.5]
+      ] as const)
+        for (let a = 2; a < 18; a++) {
+          const t = (a / 19) * Math.PI
+          l.paint(px + Math.cos(t + Math.PI) * (r - 1), py + dy + Math.sin(t) * 1.5, STEEL[3])
+        }
+      // gold rim along the lowest lame, with a dark underside to lift it off the arm
+      for (let a = 0; a < 28; a++) {
+        const t = (a / 27) * Math.PI
+        const x = px + Math.cos(t + Math.PI) * (rx - 1)
+        const y = py + 6 + Math.sin(t) * 4.5
+        l.set(x, y, GOLD[1])
+        l.set(x, y + 1, STEEL[4])
       }
-      l.set(px - 2, py - 3, STEEL[0])
-      l.set(px - 3, py - 3, STEEL[0])
-      l.rect(px - 1, py, 2, 2, GOLD[1])
+      for (let a = 3; a < 17; a++) {
+        const t = (a / 19) * Math.PI
+        l.set(px + Math.cos(t + Math.PI) * rx, py - Math.sin(t) * 8 + 0.5, STEEL[0])
+      }
+      l.rect(px - 4, py - 5, 3, 1, STEEL[0])
+      l.set(px - 5, py - 4, STEEL[0])
+      l.rect(px - 1, py, 3, 2, GOLD[1])
+      l.set(px - 1, py, GOLD[0])
     })
   }
 
@@ -163,7 +220,7 @@ function renderBoss(view: View, p: BossPose): Raster {
     const isMain = sgn === 1
     const off = isMain ? p.mainHand : p.offHand
     const sh = V(p.lean, p.sway + sgn * (side ? 5 : shR), shU - 4)
-    const { mid, end } = ik(sh, vadd(sh, V(off.f, sgn * off.r, off.u)), 15, 15, V(-0.3, sgn * 0.9, -0.6))
+    const { mid, end } = ik(sh, vadd(sh, V(off.f, sgn * off.r, off.u)), 15.5, 15.5, V(-0.3, sgn * 0.9, -0.6))
     hands[sgn] = { end, mid }
     const far = side && sgn < 0
     const rs: Ramp = far ? DARK : STEEL
@@ -173,18 +230,32 @@ function renderBoss(view: View, p: BossPose): Raster {
     const handFront = view === 'down' ? end.f > 6 : view === 'up' ? -end.f > 6 : false
     const depth = side ? cam.depth(end) + (sgn > 0 ? 0.8 : -0.8) : handFront ? 0.9 : 0.4
     paint.add(depth, (l) => {
-      bar(l, a, m, 8, rs[1])
-      bar(l, m, e, 7, rs[1])
+      bar(l, a, m, 11, rs[1])
+      bar(l, m, e, 9, rs[1])
+      // flared vambrace cuff just above the gauntlet
+      bar(
+        l,
+        [m[0] + (e[0] - m[0]) * 0.6, m[1] + (e[1] - m[1]) * 0.6],
+        [m[0] + (e[0] - m[0]) * 0.85, m[1] + (e[1] - m[1]) * 0.85],
+        11,
+        rs[1]
+      )
       shadeEdges(l, rs, 2, true)
-      l.ellipse(Math.round(m[0]), Math.round(m[1]), 3.4, 3.4, GOLD[1])
-      l.set(Math.round(m[0]) - 1, Math.round(m[1]) - 1, GOLD[0])
+      l.ellipse(Math.round(m[0]), Math.round(m[1]), 4.4, 4.4, GOLD[2])
+      l.ellipse(Math.round(m[0]), Math.round(m[1]) - 0.5, 3.4, 3.4, GOLD[1])
+      l.set(Math.round(m[0]) - 1, Math.round(m[1]) - 2, GOLD[0])
     })
     paint.add(depth + 0.004, (l) => {
       const fx = Math.round(e[0])
       const fy = Math.round(e[1])
-      l.rect(fx - 3, fy - 3, 6, 6, DARK[1])
+      // heavy gauntlet: a blocky fist with a gold cuff and knuckle plate
+      l.rect(fx - 5, fy - 4, 10, 9, DARK[1])
+      l.rect(fx - 4, fy + 5, 8, 1, DARK[1])
       shadeEdges(l, DARK, 1, true)
-      l.rect(fx - 3, fy - 3, 6, 1, GOLD[2])
+      l.rect(fx - 5, fy - 4, 10, 2, GOLD[1])
+      l.rect(fx - 5, fy - 3, 10, 1, GOLD[2])
+      l.rect(fx - 3, fy + 1, 6, 1, DARK[0])
+      l.rect(fx - 3, fy + 3, 6, 1, DARK[3])
     })
   }
 
@@ -195,11 +266,11 @@ function renderBoss(view: View, p: BossPose): Raster {
     const depth = (side ? cam.depth(hand) + 0.8 : view === 'down' && hand.f > 6 ? 0.9 : 0.4) + 0.002
     const g = vadd(hand, vscale(d, 2))
     const base = cam.px(vadd(hand, vscale(d, 4)))
-    const tip = cam.px(vadd(hand, vscale(d, 44)))
+    const tip = cam.px(vadd(hand, vscale(d, 48)))
     paint.add(view === 'up' && hand.f > 6 ? -0.3 : depth, (l) => {
-      const back = cam.px(vadd(hand, vscale(d, -6)))
+      const back = cam.px(vadd(hand, vscale(d, -7)))
       bar(l, back, cam.px(g), 4, R.leather[1])
-      l.ellipse(Math.round(back[0]), Math.round(back[1]), 3, 3, GOLD[1])
+      l.ellipse(Math.round(back[0]), Math.round(back[1]), 3.5, 3.5, GOLD[1])
       // crossguard
       const dx = tip[0] - base[0]
       const dy = tip[1] - base[1]
@@ -207,11 +278,11 @@ function renderBoss(view: View, p: BossPose): Raster {
       const nx = -dy / L
       const ny = dx / L
       const gp = cam.px(vadd(hand, vscale(d, 3)))
-      bar(l, [gp[0] - nx * 8, gp[1] - ny * 8], [gp[0] + nx * 8, gp[1] + ny * 8], 3, GOLD[1])
-      l.set(gp[0] - nx * 8, gp[1] - ny * 8, GOLD[0])
-      // blade: 5 wide, lit left/top, shaded right/bottom, centre fuller
+      bar(l, [gp[0] - nx * 10, gp[1] - ny * 10], [gp[0] + nx * 10, gp[1] + ny * 10], 4, GOLD[1])
+      l.set(gp[0] - nx * 10, gp[1] - ny * 10, GOLD[0])
+      // blade: 6 wide, lit left/top, shaded right/bottom, centre fuller
       if (L > 6) {
-        bar(l, base, tip, 5, STEEL[1])
+        bar(l, base, tip, 6, STEEL[1])
         const horiz = Math.abs(dx) >= Math.abs(dy)
         for (const [o, c] of [
           [-2, STEEL[0]],
@@ -238,7 +309,7 @@ function renderBoss(view: View, p: BossPose): Raster {
           for (let i = Math.round(n * 0.2); i <= n; i++) {
             const t = i / n
             const aim = { p: s.p + (p.main!.aim.p - s.p) * t, y: (s.y ?? 0) + ((p.main!.aim.y ?? 0) - (s.y ?? 0)) * t }
-            const pt = cam.px(vadd(hand, vscale(aimDir(aim), 48)))
+            const pt = cam.px(vadd(hand, vscale(aimDir(aim), 52)))
             if (prev) bar(l, prev, pt, i < n * 0.6 ? 2 : i < n * 0.85 ? 3 : 4, i > n * 0.7 ? C.white : STEEL[0])
             prev = pt
           }
@@ -253,14 +324,14 @@ function renderBoss(view: View, p: BossPose): Raster {
     const hand = hands[-1].end
     const turn = side ? Math.max(p.off.turn ?? 0, 50) : (p.off.turn ?? 0)
     const yaw = (turn * Math.PI) / 180
-    const center = vadd(hand, V(6, 0, -2 + (p.off.aim.p ? p.off.aim.p / 10 : 0)))
+    const center = vadd(hand, V(6, -3, -2 + (p.off.aim.p ? p.off.aim.p / 10 : 0)))
     const o = cam.px(center)
     const hv = cam.dir(V(-Math.sin(yaw), Math.cos(yaw), 0))
     const uv = cam.dir(V(0, 0, 1))
     const n = V(Math.cos(yaw), Math.sin(yaw), 0)
     const facing = view === 'down' ? n.f : view === 'up' ? -n.f : n.r
-    const W = 34
-    const H = 56
+    const W = 42
+    const H = 64
     const map = (a: number, b: number): Pt => [
       o[0] + a * (W / 2) * hv[0] - b * (H / 2) * uv[0],
       o[1] + a * (W / 2) * hv[1] - b * (H / 2) * uv[1]
@@ -502,7 +573,7 @@ const MOVES: Record<string, Maker> = {
     })
   },
   slam: (i) => {
-    const up = [0, 5, 8, 0, 0, 0][i]
+    const up = [0, 4, 6, 0, 0, 0][i]
     return P({
       crouch: [10, 2, 0, 8, 7, 3][i],
       lean: [0, -2, -2, 7, 4, 2][i],

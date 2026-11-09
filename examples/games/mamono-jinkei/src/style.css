@@ -1810,17 +1810,7 @@ input:focus-visible,
 }
 
 .ending {
-  background:
-    radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 32% 8%, #ffe9b0 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 58% 22%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 76% 12%, #cfe0ff 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 88% 30%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 22% 40%, #fff 50%, transparent 51%),
-    radial-gradient(1px 1px at 68% 44%, #ffe9b0 50%, transparent 51%),
-    radial-gradient(1px 1px at 44% 34%, #fff 50%, transparent 51%),
-    radial-gradient(ellipse at 50% 120%, rgba(242, 200, 74, 0.25), transparent 60%),
-    linear-gradient(#120c1e, #2a1730 60%, #3a1f2a);
+  background: linear-gradient(#0b0717, #1d1133 50%, #3a1d46);
   display: grid;
   grid-template-rows: 1fr auto auto;
   pointer-events: auto;
@@ -2331,6 +2321,17 @@ input:focus-visible,
 .ending {
   display: block;
   overflow: hidden;
+  /* Backdrop canvas scale (screen px per canvas px) and the parade's whole-number sprite scales. */
+  --bs: calc(max(100vw, 177.78vh) / 480);
+  --sp: 2;
+  --spb: 3;
+}
+
+@media (min-height: 900px) {
+  .ending {
+    --sp: 3;
+    --spb: 4;
+  }
 }
 
 .ending-sky {
@@ -2369,7 +2370,10 @@ input:focus-visible,
   font-weight: 800;
   font-size: 1.3em;
   color: #ffe8c0;
-  text-shadow: 0 0.08em 0 #000;
+  text-shadow:
+    0 0.08em 0 #000,
+    0 0 0.5em rgba(8, 4, 18, 0.95),
+    0 0 1.2em rgba(8, 4, 18, 0.8);
   text-align: center;
 }
 
@@ -2493,12 +2497,18 @@ input:focus-visible,
 
 .roll-wrap {
   position: absolute;
-  inset: 0 0 calc(var(--u) * 11);
+  inset: 0 0 calc(var(--bs) * 30 + 64px * var(--spb) * 0.85);
 }
 
 .roll {
   animation: none;
   opacity: 0;
+  padding-block: 1.4em;
+  /* A soft dark band so the credits stay readable over the scenery. */
+  background: linear-gradient(90deg, transparent, rgba(10, 6, 22, 0.62) 20%, rgba(10, 6, 22, 0.62) 80%, transparent);
+  text-shadow:
+    0 0.08em 0 #000,
+    0 0 0.6em rgba(0, 0, 0, 0.8);
 }
 
 .ending.play .roll {
@@ -2509,27 +2519,147 @@ input:focus-visible,
 .parade {
   position: absolute;
   left: 0;
-  bottom: 4.6em;
+  /* The feet stand on the backdrop's path. */
+  bottom: calc(var(--bs) * 30);
   display: flex;
   align-items: flex-end;
-  gap: 0.8em;
+  gap: calc(64px * var(--sp) * 0.3);
   white-space: nowrap;
   transform: translateX(100vw);
 }
 
 .ending.play .parade {
-  animation: parade 40s linear 13.2s both;
+  animation: parade var(--parade-dur, 60s) linear 13.2s both;
+}
+
+.march {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+
+.march-shadow {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: calc(var(--sp) * -1px);
+  height: calc(var(--sp) * 5px);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.38);
 }
 
 .marcher {
-  width: calc(var(--u) * 3.6);
-  height: calc(var(--u) * 3.6);
+  position: relative;
+  /* Whole-number scale of the 64 px art keeps the pixels square. */
+  width: calc(64px * var(--sp));
+  height: calc(64px * var(--sp));
   transform: scaleX(-1);
 }
 
 .marcher.big {
-  width: calc(var(--u) * 6.4);
-  height: calc(var(--u) * 6.4);
+  width: calc(64px * var(--spb));
+  height: calc(64px * var(--spb));
+}
+
+.march.fly .marcher {
+  transform: scaleX(-1) translateY(-40%);
+}
+
+.ending-back {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ending-layer {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: max(100vw, 177.78vh);
+  height: auto;
+  aspect-ratio: 16 / 9;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+}
+
+.ending-stars.a {
+  animation: twinkle-a 5.5s ease-in-out infinite;
+}
+
+.ending-stars.b {
+  opacity: 0.4;
+  animation: twinkle-b 5.5s ease-in-out infinite;
+}
+
+.firefly {
+  position: absolute;
+  left: var(--x);
+  bottom: var(--y);
+  width: calc(var(--bs) * 1.2);
+  height: calc(var(--bs) * 1.2);
+  background: #ffe88a;
+  box-shadow: 0 0 calc(var(--bs) * 3) rgba(255, 220, 110, 0.85);
+  opacity: 0.8;
+  animation:
+    firefly-drift var(--d) ease-in-out var(--s) infinite alternate,
+    firefly-blink var(--b) ease-in-out var(--s) infinite;
+}
+
+.petal {
+  position: absolute;
+  left: var(--x);
+  top: -4%;
+  width: calc(var(--bs) * 1.6);
+  height: calc(var(--bs) * 1);
+  background: var(--c);
+  opacity: 0.55;
+  animation: petal-fall var(--d) linear var(--s) infinite;
+}
+
+@keyframes twinkle-a {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes twinkle-b {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes firefly-drift {
+  to {
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+
+@keyframes firefly-blink {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes petal-fall {
+  from {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(var(--dx), 108vh) rotate(540deg);
+  }
 }
 
 .ending-foot {
@@ -2594,6 +2724,21 @@ input:focus-visible,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ending-stars.a,
+  .ending-stars.b,
+  .firefly {
+    animation: none;
+  }
+  .ending-stars.b {
+    opacity: 0.55;
+  }
+  .petal {
+    display: none;
+  }
+  .ending.play .parade {
+    animation: none;
+    transform: translateX(2vw);
+  }
   .ending.play .roll {
     animation: none;
     position: relative;
