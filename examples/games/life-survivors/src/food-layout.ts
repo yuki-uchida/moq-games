@@ -628,6 +628,11 @@ export interface FoodLabelPlacement {
    * drawn while that lasts.
    */
   hidden?: boolean
+  /**
+   * True while the block overlaps a `players` box (a body, name tag, buff row or badge), as when it keeps its spot for
+   * LABEL_PATIENCE_MS under a passing player: the renderer leaves it out then, so it is never drawn over them.
+   */
+  onPlayer?: boolean
 }
 
 const reaches = (b: Box, hull: Box) =>
@@ -714,6 +719,7 @@ export function placeFoodLabels(
         ? { pile: n, box: spot.box, lines, leader }
         : { pile: n, box: spot.box, lines }
       if (transient.some((t) => overlap(spot.box, t) > 0)) placement.hidden = true
+      if (players.some((p) => overlap(spot.box, p) > 0)) placement.onPlayer = true
       placed.push(placement)
       rawBoxes.push(spot.box)
       if (leader) leaders.push(leader)

@@ -182,6 +182,59 @@ test('gambling draws the right animation and status for each life stage', async 
   expect(errors).toEqual([])
 })
 
+test('the gamble result names the weapon as it looks at this age', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript(() => {
+    const results: { text: string; font: string }[] = []
+    Object.assign(window, { gambleSports: results })
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text.includes('スポーツ') && maxWidth !== undefined) results.push({ text, font: this.font })
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  const copied = await handle.evaluate(async (hook) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = hook.game as unknown as Game
+    const player = game.state.players[0]
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(20) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.enemies = []
+    game.state.shots = []
+    game.state.fx = []
+    player.choices = []
+    player.pending = 0
+    player.birthPick = false
+    player.weapons = [
+      { id: 'w_gamble', lv: 1, cd: 0, held: 0, damage: 0 },
+      { id: 'w_sports', lv: 1, cd: 100, held: 0, damage: 0 }
+    ]
+    game['fireWeapons'](0)
+    return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_sports')
+  })
+  expect(copied).toBe(true)
+  type Result = { text: string; font: string }
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as { gambleSports: Result[] }).gambleSports.some(
+          (r) => r.text === '🎾 スポーツ（テニス）' && r.font === 'bold 20px sans-serif'
+        )
+      )
+    )
+    .toBe(true)
+  const results = await page.evaluate(() => (window as unknown as { gambleSports: Result[] }).gambleSports)
+  expect(results.filter((r) => r.font === 'bold 20px sans-serif').map((r) => r.text)).not.toContain('⚽ スポーツ')
+  expect(errors).toEqual([])
+})
+
 test('pachinko shows the 7-7-7 frame, opaque, before and while the jackpot text appears', async ({ page }) => {
   await page.addInitScript(() => {
     type Rec = { at: number; image: unknown; text: string; alpha: number }
@@ -3374,6 +3427,120 @@ test('food labels are drawn after the buff rings of the player standing on them'
   expect(order.filter((call) => call === 'label')).toHaveLength(1)
   expect(order.lastIndexOf('ring')).toBeGreaterThanOrEqual(0)
   expect(order.lastIndexOf('label')).toBeGreaterThan(order.lastIndexOf('ring'))
+  expect(errors).toEqual([])
+})
+
+test('a food label kept in place is not drawn over a passing player’s name tag and fades back in', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'ひとりで生まれる' }).click()
+  const handle = await life(page)
+  await expect.poll(() => handle.evaluate((hook) => Boolean(hook.view))).toBe(true)
+  const frames = await handle.evaluate(async (hook) => {
+    const renderPath = '/src/render.ts'
+    const dataPath = '/src/data.ts'
+    const { Renderer } = await import(renderPath)
+    const { ITEM_KINDS } = await import(dataPath)
+    const life = hook as unknown as Life
+    const view = structuredClone(life.view) as unknown as View
+    const player = view.players[0]
+    delete player.cookingBuffs
+    view.enemies = []
+    view.shots = []
+    view.fx = []
+    const home = { x: player.x, y: player.y }
+    // A food ahead and a little above the feet, as when the child walks on past it.
+    view.items = [ITEM_KINDS.indexOf('food_speed'), player.x + 110, player.y - 26, 0]
+    type Rect = { left: number; top: number; right: number; bottom: number }
+    const tagText = `${player.name}（あなた）`
+    const tagCanvases = new WeakSet<HTMLCanvasElement>()
+    let frame: { labels: (Rect & { alpha: number; scale: number })[]; tags: Rect[] } = { labels: [], tags: [] }
+    const fillText = CanvasRenderingContext2D.prototype.fillText
+    const drawImage = CanvasRenderingContext2D.prototype.drawImage
+    const device = (ctx: CanvasRenderingContext2D, left: number, top: number, right: number, bottom: number) => {
+      const m = ctx.getTransform()
+      return { left: m.a * left + m.e, top: m.d * top + m.f, right: m.a * right + m.e, bottom: m.d * bottom + m.f }
+    }
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+      if (text === tagText) tagCanvases.add(this.canvas as HTMLCanvasElement)
+      if (text.startsWith(`${player.name}：`)) {
+        const half = this.measureText(text).width / 2
+        frame.labels.push({
+          ...device(this, x - half, y - 13, x + half, y + 3),
+          alpha: this.globalAlpha,
+          scale: this.getTransform().a
+        })
+      }
+      if (maxWidth === undefined) fillText.call(this, text, x, y)
+      else fillText.call(this, text, x, y, maxWidth)
+    }
+    CanvasRenderingContext2D.prototype.drawImage = function (source: CanvasImageSource, ...args: number[]) {
+      if (source instanceof HTMLCanvasElement && tagCanvases.has(source) && args.length === 4) {
+        const [x, y, w, h] = args
+        frame.tags.push(device(this, x, y, x + w, y + h))
+      }
+      Reflect.apply(drawImage, this, [source, ...args])
+    }
+    const frames: { step: string; labels: (Rect & { alpha: number })[]; tags: Rect[] }[] = []
+    const renderer = new Renderer(document.createElement('canvas'))
+    const draw = (step: string, dt = 0.05) => {
+      frame = { labels: [], tags: [] }
+      renderer.draw(view, life.localId, dt, false)
+      frames.push({ step, ...frame })
+      return frame
+    }
+    try {
+      let settled = draw('home')
+      for (let i = 0; i < 4; i++) settled = draw('home')
+      const label = settled.labels[0]
+      const tag = settled.tags[0]
+      if (label && tag) {
+        // Walk the child over so their name tag sits on the label (the camera follows them): well within the time a
+        // covered label keeps its place.
+        const scale = label.scale
+        player.x += ((label.left + label.right) / 2 - (tag.left + tag.right) / 2) / scale
+        player.y += ((label.top + label.bottom) / 2 - (tag.top + tag.bottom) / 2) / scale
+        for (let i = 0; i < 8; i++) draw('covered')
+        player.x = home.x
+        player.y = home.y
+        for (let i = 0; i < 6; i++) draw('clear')
+      }
+    } finally {
+      CanvasRenderingContext2D.prototype.fillText = fillText
+      CanvasRenderingContext2D.prototype.drawImage = drawImage
+    }
+    return frames
+  })
+  const home = frames.filter((f) => f.step === 'home')
+  expect(home.at(-1)!.labels).toHaveLength(1)
+  expect(home.at(-1)!.tags).toHaveLength(1)
+  const covered = frames.filter((f) => f.step === 'covered')
+  expect(covered).toHaveLength(8)
+  // The tag is drawn where the label stood, and the label is left out meanwhile.
+  for (const f of covered) {
+    expect(f.tags).toHaveLength(1)
+    expect(f.labels).toEqual([])
+  }
+  // No frame draws a label over a name tag.
+  const overlaps = (a: { left: number; top: number; right: number; bottom: number }, b: typeof a) =>
+    a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1
+  for (const f of frames) for (const l of f.labels) for (const t of f.tags) expect(overlaps(l, t), f.step).toBe(false)
+  // Once the child has walked on it comes back in the same spot, fading in over ~0.15 s.
+  const clear = frames.filter((f) => f.step === 'clear')
+  const before = home.at(-1)!.labels[0]
+  const back = clear.findIndex((f) => f.labels.length > 0)
+  expect(back).toBeGreaterThanOrEqual(0)
+  expect(back).toBeLessThanOrEqual(1)
+  expect(clear[back].labels).toHaveLength(1)
+  expect(clear[back].labels[0].alpha).toBeGreaterThan(0)
+  expect(clear[back].labels[0].alpha).toBeLessThan(1)
+  expect(clear.at(-1)!.labels[0].alpha).toBe(1)
+  for (const f of clear.slice(back)) {
+    expect(f.labels[0].left).toBeCloseTo(before.left, 1)
+    expect(f.labels[0].top).toBeCloseTo(before.top, 1)
+  }
   expect(errors).toEqual([])
 })
 

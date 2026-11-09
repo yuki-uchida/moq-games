@@ -893,13 +893,18 @@ describe('placeFoodLabels over time', () => {
     expect(first.box).toEqual(home.box)
     const cover = [{ ...home.box }]
     const t0 = 1000
+    expect(first.onPlayer).toBeUndefined()
     for (const dt of [0, 300, LABEL_PATIENCE_MS - 1]) {
       const kept = place([], memory, t0 + dt, cover)!
       expect(kept.box).toEqual(first.box)
       expect(kept.leader).toEqual(first.leader)
+      // Kept in place under the player, it is marked so the renderer leaves it out meanwhile.
+      expect(kept.onPlayer).toBe(true)
     }
     // The player leaves in time: nothing ever moved.
-    expect(place([], memory, t0 + LABEL_PATIENCE_MS + 5, [])!.box).toEqual(first.box)
+    const left = place([], memory, t0 + LABEL_PATIENCE_MS + 5, [])!
+    expect(left.box).toEqual(first.box)
+    expect(left.onPlayer).toBeUndefined()
     // Covered for good: one move to the first spot clear of the player.
     const memory2: LabelMemory = new Map()
     place([], memory2, 0)
@@ -907,6 +912,7 @@ describe('placeFoodLabels over time', () => {
     const moved = place([], memory2, t0 + LABEL_PATIENCE_MS, cover)!
     expect(moved.box).toEqual(place([], undefined, 0, cover)!.box)
     expect(moved.box).not.toEqual(first.box)
+    expect(moved.onPlayer).toBeUndefined()
     expect(place([], memory2, t0 + LABEL_PATIENCE_MS + 16, cover)!.box).toEqual(moved.box)
   })
 

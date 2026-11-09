@@ -390,9 +390,15 @@ interface ShotView {
   ox: number
   oy: number
   evolved: boolean
+  /** Fired by the gamble as a copy of another weapon. */
+  copied: boolean
 }
 
 const BOSS_AURA = '#a02850'
+/** How long a new pet takes to pop in (s). */
+const PET_POP_SECONDS = 0.2
+/** How long a food label takes to fade back in once no player covers it (s). */
+const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
 
 /** Canvas renderer: generated pixel art for everything in the world; labels are rasterised once and reused. */
@@ -486,6 +492,14 @@ export class Renderer {
   private readonly foodLabelMemory: LabelMemory = new Map()
   /** Opacity of the food labels: dimmed with the world while your own death plays. */
   private foodLabelAlpha = 1
+  /**
+   * Per food label (pile key): the clock time it last stopped overlapping a player's body, name tag, buff row or badge.
+   * A label over a player is not drawn and fades back in over FOOD_LABEL_FADE_IN once clear. Infinity while covered.
+   */
+  private readonly foodLabelClear = new Map<string, number>()
+  /** Age and the local player's pet age at this frame, for the gamble result's per-age weapon name. */
+  private viewAge = 0
+  private localPetAge?: number
   /** Food layout of the last frame, reused while the visible foods stay where they are. */
   private foodLayout: { key: string; spots: FoodSpot[] } = { key: '', spots: [] }
   private readonly enemySheets: (Sheet | undefined)[] = []
@@ -501,7 +515,8 @@ export class Renderer {
     v: 0,
     ox: 0,
     oy: 0,
-    evolved: false
+    evolved: false,
+    copied: false
   }
   private readonly beamWarm = new Set<number>()
   private halfW = 0
@@ -780,6 +795,7 @@ export class Renderer {
     const { lines, keys, owners, piles, sprites, players, local } = this.foodLabels
     if (!lines.length) {
       this.foodLabelMemory.clear()
+      this.foodLabelClear.clear()
       return
     }
     const ctx = this.ctx
@@ -833,7 +849,8 @@ export class Renderer {
       local: owners[n].findIndex((owner) => owner === local),
       key: keys[n]
     }))
-    for (const { box, lines: shown, leader, hidden } of placeFoodLabels(
+    const seen = new Set<string>()
+    for (const { pile, box, lines: shown, leader, hidden, onPlayer } of placeFoodLabels(
       labelPiles,
       [...sprites, ...hud],
       visible,
@@ -845,7 +862,19 @@ export class Renderer {
       this.clock * 1000,
       transient
     )) {
-      if (hidden) continue
+      // A label kept in place while a player passes over it is not drawn over them (their name tag, face or buffs),
+      // and fades back in once they are clear.
+      const key = keys[pile]
+      let fade = 1
+      if (key !== undefined) {
+        seen.add(key)
+        const clear = onPlayer ? Infinity : this.foodLabelClear.get(key)
+        const since = clear === Infinity && !onPlayer ? this.clock : (clear ?? -Infinity)
+        this.foodLabelClear.set(key, since)
+        fade = onPlayer ? 0 : clamp01((this.clock - since) / FOOD_LABEL_FADE_IN)
+      }
+      if (hidden || fade <= 0) continue
+      ctx.globalAlpha = this.foodLabelAlpha * fade
       const cx = (box.left + box.right) / 2
       // A block pushed away from its pile gets a thin leader to it, so crowded labels still point at their foods.
       if (leader) {
@@ -866,6 +895,7 @@ export class Renderer {
         ctx.fillText(text, cx, ly)
       })
     }
+    for (const key of this.foodLabelClear.keys()) if (!seen.has(key)) this.foodLabelClear.delete(key)
     ctx.restore()
   }
 
@@ -1441,6 +1471,7 @@ export class Renderer {
     sh.life = s[i + 5] / 100
     sh.age = 1 - sh.life
     const copied = s[i + 7] >= SHOT_GAMBLE
+    sh.copied = copied
     sh.v = copied ? s[i + 7] - SHOT_GAMBLE : s[i + 7]
     const origin = origins[ownerIndex]
     sh.ox = origin ? origin.x : sh.x
@@ -1475,7 +1506,8 @@ export class Renderer {
         ctx.beginPath()
         ctx.arc(x, y, radius, 0, TAU)
         ctx.fill()
-        ctx.strokeStyle = `rgba(198,245,190,${0.7 * alpha})`
+        // A gamble's copy rims its field in the gamble's gold, telling it from the child's own.
+        ctx.strokeStyle = sh.copied ? `rgba(255,215,94,${0.85 * alpha})` : `rgba(198,245,190,${0.7 * alpha})`
         ctx.lineWidth = 2
         ctx.setLineDash([9, 7])
         ctx.lineDashOffset = -this.clock * 14
@@ -1853,9 +1885,19 @@ export class Renderer {
         const frame = pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
         const flip = cos < 0
         const bob = biting ? 0 : Math.abs(Math.sin(this.clock * 12 + i)) * -1.5
-        this.shadow(x, y + 7, 10, 0.24)
+        // A new pet pops in over its first ~0.2 s, like a summoned creature.
+        const popTime = PET_POP_SECONDS / def.duration
+        const pop = age < popTime ? age / popTime : 1
+        const swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
+        this.shadow(x, y + 7, 10 * Math.min(1, swell), 0.24)
         const f = evolved ? evolve(frame) : frame
-        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale)
+        this.art(f, x, y + bob, 16, 22, flip, clamp01(life * 4), form.scale * swell)
+        if (pop < 1) {
+          const alpha = 1 - pop
+          this.art(fx.poof.frames[Math.min(3, Math.floor(pop * 4))], x, y + 3, 12, 12, false, alpha, 1.1)
+          this.art(pick(fx.spark, this.clock * 6), x - 10, y - 10, 6, 6, false, alpha)
+          this.art(pick(fx.spark, this.clock * 6 + 2), x + 11, y - 6, 6, 6, false, alpha)
+        }
         if (biting) {
           const sp = pick(fx.spark, this.clock * 2 + i)
           this.art(sp, x + cos * 14, y + sin * 6 - 6, 6, 6, false, 0.9)
@@ -2263,7 +2305,9 @@ export class Renderer {
           if (!weapon) break
           const age = p.age - GAMBLE_RESULT_DELAY
           if (age < 0) break
-          const result = `${weapon.icon} ${weapon.name}`
+          // The weapon as it looks at this age (a tennis ball for sports at 20), like the HUD and the badge.
+          const shown = weaponAppearance(weapon.id, this.viewAge, this.localPetAge)
+          const result = `${shown.icon} ${shown.name}`
           const dpr = this.canvas.width / this.width
           ctx.save()
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -2573,6 +2617,8 @@ export class Renderer {
     }
     this.clock += dt
     const stage = stageAt(view.time)
+    this.viewAge = ageAt(view.time)
+    this.localPetAge = me?.petAge
     this.halfW = this.canvas.width / 2 / this.scale + 80
     this.halfH = this.canvas.height / 2 / this.scale + 80
     const halfW = this.halfW
