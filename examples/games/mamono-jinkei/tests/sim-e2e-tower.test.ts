@@ -279,6 +279,11 @@ test('stage 3 end to end: every puzzle and the boss to the results screen', () =
   expect(world.progress().cleared).toEqual(['meadow', 'sewer', 'tower'])
   console.log(s.log.join('\n'), `\nresults ${JSON.stringify(v.results)}`)
   for (const name of s.seen.get('fx') ?? []) expect(FX_SPEC[name] ?? TECH_SPEC.crow[name], `fx ${name}`).toBeDefined()
+
   for (const name of s.seen.get('sfx') ?? [])
     expect((SFX as readonly string[]).includes(name), `sfx ${name}`).toBe(true)
+  // The solve banners name this stage's own items and places.
+  expect(s.solves).toContain('金の鐘をかけ金にかけた！')
+  for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
+  for (const msg of s.solves) expect(msg).not.toContain('岩')
 })

@@ -8,7 +8,10 @@ import { Pad, ctrlHero } from './sim-helpers'
 export class Script {
   readonly log: string[] = []
   readonly seen = new Map<string, Set<string>>()
+  /** Every 'solve' banner emitted during the run, in order (scanned each step so none is evicted). */
+  readonly solves: string[] = []
   private lastEvent = 0
+  private lastSolve = 0
   constructor(
     readonly world: WorldImpl,
     readonly W: WorldState,
@@ -19,6 +22,11 @@ export class Script {
   }
   step(): void {
     this.world.step(DT)
+    const evs = this.W.events
+    let i = evs.length
+    while (i > 0 && evs[i - 1].id > this.lastSolve) i--
+    for (; i < evs.length; i++) if (evs[i].k === 'solve') this.solves.push(evs[i].s ?? '')
+    if (evs.length) this.lastSolve = evs[evs.length - 1].id
     if (this.W.seq % 20) return
     for (const e of this.world.view().events) {
       if (e.id <= this.lastEvent) continue

@@ -303,8 +303,11 @@ test('stage 1 end to end: every puzzle and the boss to the results screen', () =
   console.log(s.log.join('\n'), `\nresults ${JSON.stringify(v.results)}`)
   // Every effect and sound the run produced exists in the art and audio contracts.
   for (const name of s.seen.get('fx') ?? []) expect(FX_SPEC[name], `fx ${name}`).toBeDefined()
+
   for (const name of s.seen.get('sfx') ?? [])
     expect((SFX as readonly string[]).includes(name), `sfx ${name}`).toBe(true)
+  // The solve banners name this stage's own items and places.
+  expect(s.solves).toContain('どんぐりを台座にのせた！')
   const burstKinds = ['dust', 'leaf', 'shard', 'splash', 'smoke', 'spark', 'feather', 'rubble']
   for (const name of s.seen.get('burst') ?? []) expect(burstKinds).toContain(name)
   for (const k of [

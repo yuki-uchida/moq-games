@@ -22,6 +22,7 @@ import { JOBS, JOB_COLORS, TILE, dirOf } from '../vocab'
 import { interactTarget } from '../ui/hints'
 import { BASE_VIEW_H, clampCamera, cursorLead, scalingFor, smoothing, turnOf, viewOrigin } from './camera'
 import { BarrierWalls } from './barrier'
+import { hiddenDelivered } from './delivered'
 import { FxAnims, Numbers, Particles } from './effects'
 import { Ambience } from './ambience'
 import { Ground } from './ground'
@@ -838,8 +839,10 @@ export class Renderer {
     info.npcs.forEach((n, i) => {
       if (this.visible(n.x, n.y, 64)) this.push(n.y, K_NPC, i)
     })
+    // A delivered bell or log is pictured by its hook or ram cradle; drawing the item too would show it twice.
+    const delivered = hiddenDelivered(view.props)
     view.props.forEach((p, i) => {
-      if (FLAT_PROPS.has(p.kind) || p.kind === 'drawbridge') return
+      if (FLAT_PROPS.has(p.kind) || p.kind === 'drawbridge' || delivered.has(p.id)) return
       const at = this.propPos(p)
       if (!this.visible(at.x, at.y, 140)) return
       // Carried things float above their carriers; open gates sink into the floor.

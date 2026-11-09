@@ -278,8 +278,14 @@ test('stage 4 end to end: every puzzle, the hero Leon, the results and the endin
   expect(world.progress().cleared).toEqual(['meadow', 'sewer', 'tower', 'forest'])
   console.log(s.log.join('\n'), `\nresults ${JSON.stringify(v.results)}`)
   for (const name of s.seen.get('fx') ?? []) expect(FX_SPEC[name] ?? TECH_SPEC.wolf[name], `fx ${name}`).toBeDefined()
+
   for (const name of s.seen.get('sfx') ?? [])
     expect((SFX as readonly string[]).includes(name), `sfx ${name}`).toBe(true)
+  // The solve banners name this stage's own items and places.
+  expect(s.solves).toContain('丸太を破城槌の台にのせた！')
+  expect(s.solves).toContain('氷のブロックが湖に沈んで道ができた！')
+  for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
+  for (const msg of s.solves) expect(msg).not.toContain('岩')
   // The last stage: next → the ending.
   world.command('host', { type: 'next' })
   expect(world.view().phase).toBe('ending')

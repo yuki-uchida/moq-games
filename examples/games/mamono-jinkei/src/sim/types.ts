@@ -314,7 +314,7 @@ export interface PropView {
   from?: [number, number]
   to?: [number, number]
   dur?: number
-  /** Moonstones: the puzzle group; the group is solved when all its stones glow at once. */
+  /** Moonstones, crystals and valves: the puzzle group; the group is solved when all its members are lit at once. */
   group?: string
 }
 

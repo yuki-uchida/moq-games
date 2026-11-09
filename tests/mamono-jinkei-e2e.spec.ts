@@ -149,6 +149,45 @@ test('title renders with the attract demo and no errors', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('Esc leaves the room-code fields of the create and join panels', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await page.goto('/')
+  for (const name of [/ルームを作る/, /ルームに参加/]) {
+    await page.getByRole('button', { name }).click()
+    const field = page.locator('.room-input:visible')
+    await field.click()
+    await field.fill('abc')
+    await expect(field).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeVisible()
+    await expect(page.locator('.room-input:visible')).toHaveCount(0)
+  }
+  expect(errors).toEqual([])
+})
+
+test('solo: the せーの countdown shows 3, 2, 1 and GO!', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await startSolo(page)
+  await page.keyboard.press('KeyF')
+  const t0 = Date.now()
+  const countdown = page.locator('.countdown')
+  // Each step is read by polling around its time slot; the animation must restart for every number.
+  for (const [n, from] of [
+    ['2', 1.1],
+    ['1', 2.1]
+  ] as const) {
+    const wait = from * 1000 - (Date.now() - t0)
+    if (wait > 0) await page.waitForTimeout(wait)
+    await expect(countdown).toHaveText(n, { timeout: 1500 })
+    await expect
+      .poll(() => countdown.evaluate((e) => Number(getComputedStyle(e).opacity)), { timeout: 800 })
+      .toBeGreaterThanOrEqual(0.5)
+  }
+  expect(errors).toEqual([])
+})
+
 test('solo: move, attack, charge, formation technique', async ({ page }) => {
   const errors: string[] = []
   watchErrors(page, errors)
@@ -283,6 +322,11 @@ test('host + guests: prediction, shared world and a spectator beyond four', asyn
   await host.getByRole('button', { name: '出発！' }).click()
   for (const p of pages)
     await expect.poll(() => p.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+
+  // Players without a chosen name get distinct defaults by join order.
+  const names = await host.evaluate(() => window.__mamono.view!.players.map((p) => p.name))
+  expect(new Set(names).size).toBe(names.length)
+  expect(names[0]).toBe('プレイヤー1')
 
   // The guest sees the host's hero and controls its own.
   const hostId = await host.evaluate(() => window.__mamono.myId)

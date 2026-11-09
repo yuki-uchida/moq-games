@@ -153,3 +153,79 @@ describe('arena barrier on every stage', () => {
     })
   }
 })
+
+describe('heroes pulled into an arena (stage 3 room D)', () => {
+  /** The party waits in C (companions told to stay), then the controlled hero steps into D alone. */
+  function pullIn() {
+    const world = createWorld({ seed: 11, progress: { cleared: [] }, stage: 'tower', skipIntro: true }) as WorldImpl
+    world.setPlayers([{ id: 'host', name: 'host' }])
+    const W = world.W
+    const pad = new Pad(world)
+    world.command('host', { type: 'warp', to: 'C' })
+    run(world, 0.5)
+    pad.mode()
+    run(world, 0.3)
+    expect(W.humans[0].mode).toBe('stay')
+    const me = ctrlHero(W)
+    const comps = W.heroes.filter((h) => h !== me)
+    for (const h of comps) expect(insideD(h.body.x, h.body.y), `companion ${h.slot} starts outside D`).toBe(false)
+    const old = comps.map((h) => ({ ...h.anchor! }))
+    place(me, 33 * TILE + TILE / 2, 43 * TILE + TILE / 2)
+    const started = until(world, () => W.arenas.get('D')?.state === 'active', 1)
+    expect(started).toBe(true)
+    return { world, W, pad, me, comps, old }
+  }
+
+  test('pulled-in heroes land on distinct spots inside the room', () => {
+    const { W } = pullIn()
+    const tiles = W.heroes.map((h) => `${Math.floor(h.body.x / TILE)},${Math.floor(h.body.y / TILE)}`)
+    expect(new Set(tiles).size).toBe(W.heroes.length)
+    for (const h of W.heroes) expect(insideD(h.body.x, h.body.y), `hero ${h.slot}`).toBe(true)
+    for (let i = 0; i < W.heroes.length; i++)
+      for (let j = i + 1; j < W.heroes.length; j++) {
+        const a = W.heroes[i].body
+        const b = W.heroes[j].body
+        expect(Math.hypot(a.x - b.x, a.y - b.y), `heroes ${i}/${j}`).toBeGreaterThanOrEqual(TILE - 1)
+      }
+  })
+
+  test('a waiting companion pulled into the arena fights inside it, then waits where the fight ended', () => {
+    const { world, W, comps, old } = pullIn()
+    const attacked = new Set<number>()
+    const minFoe = new Map<number, number>()
+    run(world, 8, () => {
+      for (const h of comps) {
+        if (h.state === 'attack') attacked.add(h.slot)
+        let d = Infinity
+        for (const e of W.enemies)
+          if (!e.dead && e.room === 'D') d = Math.min(d, Math.hypot(e.x - h.body.x, e.y - h.body.y))
+        minFoe.set(h.slot, Math.min(minFoe.get(h.slot) ?? Infinity, d))
+      }
+    })
+    for (const h of comps) {
+      expect(insideD(h.body.x, h.body.y), `companion ${h.slot} inside D`).toBe(true)
+      // Engaged: swung at a foe or closed in to melee reach (a cleric chasing a kiting falconer may not land a swing).
+      const engaged = attacked.has(h.slot) || (minFoe.get(h.slot) ?? Infinity) <= 96
+      expect(engaged, `companion ${h.slot} engaged (closest foe ${minFoe.get(h.slot)?.toFixed(0)})`).toBe(true)
+    }
+    // After the fight the companions stay in wait mode, anchored inside the room rather than back outside.
+    for (const e of W.enemies) if (e.room === 'D') e.hp = 0
+    W.enemies = W.enemies.filter((e) => e.room !== 'D')
+    until(
+      world,
+      () => W.arenas.get('D')?.state !== 'active',
+      20,
+      () => {
+        for (const e of W.enemies) if (e.room === 'D') e.hp = 0
+        W.enemies = W.enemies.filter((e) => e.room !== 'D')
+      }
+    )
+    expect(W.arenas.get('D')?.state).toBe('cleared')
+    run(world, 2)
+    expect(W.humans[0].mode).toBe('stay')
+    comps.forEach((h, i) => {
+      expect(insideD(h.body.x, h.body.y), `companion ${h.slot} waits inside D`).toBe(true)
+      expect(Math.hypot(h.body.x - old[i].x, h.body.y - old[i].y)).toBeGreaterThan(2 * TILE)
+    })
+  })
+})

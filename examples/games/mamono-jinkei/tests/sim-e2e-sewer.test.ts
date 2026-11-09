@@ -287,6 +287,12 @@ test('stage 2 end to end: every puzzle and the boss to the results screen', () =
   console.log(s.log.join('\n'), `\nresults ${JSON.stringify(v.results)}`)
   // Every effect and sound exists in the art and audio contracts (technique effects live in tech:rat).
   for (const name of s.seen.get('fx') ?? []) expect(FX_SPEC[name] ?? TECH_SPEC.rat[name], `fx ${name}`).toBeDefined()
+
   for (const name of s.seen.get('sfx') ?? [])
     expect((SFX as readonly string[]).includes(name), `sfx ${name}`).toBe(true)
+  // The solve banners name this stage's own items and places.
+  expect(s.solves).toContain('チーズを天秤にのせた！')
+  expect(s.solves).toContain('木箱が汚水に沈んで足場になった！')
+  for (const msg of s.solves) expect(msg).not.toContain('どんぐり')
+  for (const msg of s.solves) expect(msg).not.toContain('岩')
 })
