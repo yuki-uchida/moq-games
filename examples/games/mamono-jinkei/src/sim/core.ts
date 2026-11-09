@@ -81,7 +81,13 @@ export const dist = (ax: number, ay: number, bx: number, by: number) => Math.hyp
 export const tileOf = (v: number) => Math.floor(v / TILE)
 
 /** Nearest free ground tile centre to (x, y) (spiral search). */
-export function freeSpotNear(W: WorldState, x: number, y: number, maxR = 6): { x: number; y: number } {
+export function freeSpotNear(
+  W: WorldState,
+  x: number,
+  y: number,
+  maxR = 6,
+  ok?: (tx: number, ty: number) => boolean
+): { x: number; y: number } {
   const g = W.grid!
   const tx = tileOf(x)
   const ty = tileOf(y)
@@ -89,7 +95,8 @@ export function freeSpotNear(W: WorldState, x: number, y: number, maxR = 6): { x
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-        if (g.free(tx + dx, ty + dy)) return { x: (tx + dx) * TILE + TILE / 2, y: (ty + dy) * TILE + TILE / 2 }
+        if (g.free(tx + dx, ty + dy) && (!ok || ok(tx + dx, ty + dy)))
+          return { x: (tx + dx) * TILE + TILE / 2, y: (ty + dy) * TILE + TILE / 2 }
       }
   return { x, y }
 }

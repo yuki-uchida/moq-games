@@ -28,8 +28,21 @@ export function moonProgress(
   rooms: StageInfo['rooms'] | undefined,
   ref: { x: number; y: number } | undefined
 ): MoonProgress | undefined {
+  return groupProgress('moonstone', props, rooms, ref)
+}
+
+/** Whether a prop of a grouped puzzle currently counts as solved-in-progress ('hit' crystals have just been lit). */
+const isLit = (p: PropView) => p.state === 'on' || (p.kind === 'crystal' && p.state === 'hit')
+
+/** Crystals (stage 1) and valves (stage 2) work like moonstones: the sim latches the group when all are lit at once. */
+export function groupProgress(
+  kind: 'moonstone' | 'crystal' | 'valve',
+  props: readonly PropView[],
+  rooms: StageInfo['rooms'] | undefined,
+  ref: { x: number; y: number } | undefined
+): MoonProgress | undefined {
   if (!ref) return undefined
-  const grouped = props.filter((p) => p.kind === 'moonstone' && p.group !== undefined)
+  const grouped = props.filter((p) => p.kind === kind && p.group !== undefined)
   if (!grouped.length) return undefined
   // The smallest room containing the hero, as the sim's room lookup does.
   let room: StageInfo['rooms'][number] | undefined
@@ -40,7 +53,7 @@ export function moonProgress(
   const pick = pool.reduce<PropView | undefined>((best, p) => (!best || d(p) < d(best) ? p : best), undefined)
   if (!pick) return undefined
   const stones = grouped.filter((p) => p.group === pick.group).sort((a, b) => a.x - b.x || a.y - b.y)
-  const lit = stones.map((p) => p.state === 'on')
+  const lit = stones.map(isLit)
   const n = lit.filter(Boolean).length
   return { group: pick.group!, lit, n, total: stones.length, complete: n === stones.length }
 }

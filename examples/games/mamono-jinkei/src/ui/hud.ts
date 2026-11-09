@@ -7,7 +7,7 @@ import type { EventView, HeroView, View } from '../sim/types'
 import { BOSS_NAMES, JOBS, JOB_COLORS, JOB_NAMES, TILE, type BossKind } from '../vocab'
 import { clearChildren, el, icon, setText, show } from './dom'
 import { hintsFor, type Hint } from './hints'
-import { moonProgress } from './moons'
+import { groupProgress, type MoonProgress } from './moons'
 import type { StageInfo } from '../sim/types'
 
 export interface HudActions {
@@ -16,13 +16,26 @@ export interface HudActions {
   blip(): void
 }
 
-const TECH_TITLES = new Set([
-  'ジャンボ・プレス',
-  'キングスライム・プレス',
-  'チューチュー大行進',
-  '黒羽の大旋風',
-  '月下群狼陣'
-])
+const TECH_TITLES = new Set(['ジャンボ・プレス', 'チューチュー大行進', '黒羽の大旋風', '月下群狼陣'])
+const GROUP_CHIPS = [
+  {
+    kind: 'moonstone',
+    label: '月石',
+    sheet: 'props:forest',
+    on: 'moonstone_on',
+    off: 'moonstone_off',
+    done: 'ぜんぶ灯った！'
+  },
+  { kind: 'crystal', label: '水晶', sheet: 'props:meadow', on: 'crystal_on', off: 'crystal_off', done: 'そろった！' },
+  { kind: 'valve', label: 'バルブ', sheet: 'props:sewer', on: 'valve_on', off: 'valve_off', done: 'そろった！' }
+] as const
+/** What the boss bar says while the boss is open to attack. */
+const BROKEN_TEXT: Partial<Record<BossKind, string>> = {
+  garud: 'ガードブレイク！',
+  milda: '魔女が落ちた！ 大ダメージのチャンス',
+  valk: '墜落！ 大ダメージのチャンス',
+  leon: '聖なる盾がくだけた！ 大ダメージのチャンス'
+}
 const FORMATION_NAMES: Record<number, string> = { 2: 'ペア陣', 3: '三角陣', 4: '四方陣' }
 
 class HeroCard {
@@ -126,6 +139,7 @@ export class Hud {
   private bannerQueue: { text: string; kind: string }[] = []
   private bannerUntil = 0
   private dialogKey = ''
+  private dialogClosed = ''
   private dialogShown = 0
   private dialogAt = 0
   private bossLagV = 1
@@ -299,6 +313,9 @@ export class Hud {
     if (count !== this.countKey) {
       this.countKey = count
       this.countdown.textContent = count
+      // Drop the class and force a reflow so the same animation restarts for every step (3, 2, 1).
+      this.countdown.className = 'countdown'
+      void this.countdown.offsetWidth
       this.countdown.className = 'countdown' + (count ? ' on' : '') + (count === 'GO!' ? ' go' : '')
       if (count && count !== 'GO!' && view.signal) {
         const slot = view.signal.slot
@@ -317,7 +334,7 @@ export class Hud {
 
     this.updateBells(view)
     this.updateMoons(view, info, mine)
-    this.updateDialog(view, now)
+    this.updateDialog(view, now, mine ?? view.heroes[0])
     this.updateBoss(view, info, mine)
   }
 
@@ -350,31 +367,42 @@ export class Hud {
     )
   }
 
-  /** Moonstone progress: every stone of the puzzle group (not only the ones near you), lit ones glowing. */
+  /** Grouped puzzle progress (moonstones, crystals, valves): every member of the group, lit ones glowing. */
   private updateMoons(view: View, info: StageInfo | undefined, me: HeroView | undefined) {
     const ref = me ?? view.heroes[0]
-    const prog = view.phase === 'play' ? moonProgress(view.props, info?.rooms, ref) : undefined
-    const key = prog ? `${prog.group}:${prog.lit.map((x) => (x ? 1 : 0)).join('')}` : ''
+    let prog: MoonProgress | undefined
+    let kind: (typeof GROUP_CHIPS)[number] | undefined
+    if (view.phase === 'play')
+      for (const k of GROUP_CHIPS) {
+        prog = groupProgress(k.kind, view.props, info?.rooms, ref)
+        if (prog) {
+          kind = k
+          break
+        }
+      }
+    const key = prog && kind ? `${kind.kind}:${prog.group}:${prog.lit.map((x) => (x ? 1 : 0)).join('')}` : ''
     if (key === this.moonKey) return
     this.moonKey = key
     show(this.moons, !!prog)
     clearChildren(this.moons)
-    if (!prog) return
+    if (!prog || !kind) return
     this.moons.append(
-      el('span.bc-label', { text: '月石' }),
+      el('span.bc-label', { text: kind.label }),
       ...prog.lit.map((on) =>
-        el(
-          'span.bc-bell' + (on ? '.on' : ''),
-          {},
-          icon('props:forest', on ? 'moonstone_on' : 'moonstone_off', 32, 'px-icon bc-icon')
-        )
+        el('span.bc-bell' + (on ? '.on' : ''), {}, icon(kind.sheet, on ? kind.on : kind.off, 32, 'px-icon bc-icon'))
       ),
-      el('span.bc-count', { text: prog.complete ? 'ぜんぶ灯った！' : `${prog.n}/${prog.total}` })
+      el('span.bc-count', { text: prog.complete ? kind.done : `${prog.n}/${prog.total}` })
     )
   }
 
-  private updateDialog(view: View, now: number) {
-    const d = view.dialogs[0]
+  private updateDialog(view: View, now: number, ref: HeroView | undefined) {
+    let d: View['dialogs'][number] | undefined = view.dialogs[0]
+    // Walking away from the speaker closes the dialog page (a new page re-checks the distance).
+    const id = d ? `${d.speaker}@${d.x},${d.y}|${d.text}` : ''
+    if (!d) this.dialogClosed = ''
+    else if (ref && Math.hypot(ref.x - d.x, ref.y - (d.y + 64)) > TILE * 2.2) this.dialogClosed = id
+    if (d && this.dialogClosed === id) d = undefined
+    this.root.classList.toggle('talking', !!d)
     const key = d ? `${d.speaker}|${d.text}` : ''
     if (key !== this.dialogKey) {
       this.dialogKey = key
@@ -428,7 +456,7 @@ export class Hud {
     setText(
       this.bossState,
       broken
-        ? `ガードブレイク！ ${Math.ceil((b.broken ?? 0) - view.t)}`
+        ? `${BROKEN_TEXT[b.kind as BossKind] ?? 'ガードブレイク！'} ${Math.ceil((b.broken ?? 0) - view.t)}`
         : b.kind === 'leon'
           ? b.anim === 'shield'
             ? '無敵'

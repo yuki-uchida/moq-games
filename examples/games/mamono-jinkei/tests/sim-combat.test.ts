@@ -246,6 +246,8 @@ describe('boss phase 2 and stage-1 enemies', () => {
     let untelegraphed = 0
     const lastTele = new Map<number, number>()
     run(world, 12, () => {
+      // Careless: nobody swings back (waiting companions would otherwise fight the arena out).
+      for (const h of W.heroes) h.atkReady = W.t + 1
       for (const e of W.enemies) if (e.tele) teles.add(e.tele.kind), lastTele.set(e.id, W.t)
       for (const ev of world.view().events)
         if (

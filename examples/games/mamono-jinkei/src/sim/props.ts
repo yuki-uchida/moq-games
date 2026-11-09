@@ -221,6 +221,33 @@ function dropHeavy(W: WorldState, p: Prop): void {
   }
 }
 
+/** The solve banner for an item set on its acceptor (acorn → pedestal, cheese → scale, …). */
+export function deliverText(kind: string): string {
+  switch (kind) {
+    case 'cheese':
+      return 'チーズを天秤にのせた！'
+    case 'goldbell':
+      return '金の鐘をかけ金にかけた！'
+    case 'log':
+      return '丸太を破城槌の台にのせた！'
+    default:
+      return 'どんぐりを台座にのせた！'
+  }
+}
+
+/** The solve banner for a pushable sunk into a pit, sludge or lake. */
+export function sinkText(kind: string): string {
+  switch (kind) {
+    case 'crate':
+    case 'bigcrate':
+      return '木箱が汚水に沈んで足場になった！'
+    case 'iceblock':
+      return '氷のブロックが湖に沈んで道ができた！'
+    default:
+      return '岩が沈んで道ができた！'
+  }
+}
+
 function tryDeliver(W: WorldState, p: Prop, margin: number): boolean {
   for (const ped of W.props) {
     if (!ACCEPTORS.has(ped.kind) || ped.on) continue
@@ -238,7 +265,7 @@ function tryDeliver(W: WorldState, p: Prop, margin: number): boolean {
     ped.st = W.t
     sfx(W, 'secret', ped.x, ped.y)
     burst(W, 'spark', ped.x, ped.y, 12)
-    emit(W, 'solve', ped.x, ped.y, { s: 'どんぐりを台座にのせた！' })
+    emit(W, 'solve', ped.x, ped.y, { s: deliverText(p.kind) })
     return true
   }
   return false
@@ -552,7 +579,7 @@ export function updatePush(W: WorldState, dt: number): void {
           sfx(W, 'blockSink', p.x, p.y)
           fx(W, 'splash', p.x, p.y)
           burst(W, 'splash', p.x, p.y, 12)
-          emit(W, 'solve', p.x, p.y, { s: '岩が沈んで道ができた！' })
+          emit(W, 'solve', p.x, p.y, { s: sinkText(p.kind) })
         } else if (p.kind === 'iceblock' && iceSlide(W, p, s.to[0] - s.from[0], s.to[1] - s.from[1])) {
           // Keeps sliding.
         } else {

@@ -889,9 +889,10 @@ export class WorldImpl implements World {
       if (W.t - a.strayAt < ARENA_AWAY) continue
       a.strayAt = undefined
       const anchor = inside[0]
+      const spot = this.pullSpots(room, inside)
       for (const h of strays) {
         releaseHold(W, h)
-        const s = freeSpotNear(W, anchor.body.x, anchor.body.y, 3)
+        const s = spot(anchor.body.x, anchor.body.y)
         fx(W, 'smoke', h.body.x, h.body.y)
         warpHero(h, s.x, s.y)
         fx(W, 'smoke', s.x, s.y)
@@ -926,15 +927,40 @@ export class WorldImpl implements World {
   /** Puffs heroes outside a locking room in next to the hero who entered it. */
   private gather(id: string, trigger: Hero): void {
     const W = this.W
+    const room = W.parsed!.info.rooms.find((r) => r.id === id)
+    const outside = (h: Hero) => roomOf(W, h.body.x, h.body.y)?.id !== id
+    const spot = this.pullSpots(room, [trigger, ...W.heroes.filter((h) => h !== trigger && !outside(h))])
     for (const h of W.heroes) {
       if (h === trigger || h.state === 'down') continue
-      if (roomOf(W, h.body.x, h.body.y)?.id === id) continue
+      if (!outside(h)) continue
       releaseHold(W, h)
-      const s = freeSpotNear(W, trigger.body.x, trigger.body.y, 3)
+      const s = spot(trigger.body.x, trigger.body.y)
       fx(W, 'smoke', h.body.x, h.body.y)
       if (h.state === 'fall') setState(W, h, 'idle')
       warpHero(h, s.x, s.y)
       fx(W, 'smoke', s.x, s.y)
+    }
+  }
+
+  /**
+   * Picks free tiles for heroes puffed into an arena room: inside the room, one hero per tile, never on a tile a
+   * hero already stands on (falls back to any free tile near the point when the room has none left).
+   */
+  private pullSpots(
+    room: { x: number; y: number; w: number; h: number } | undefined,
+    present: readonly Hero[]
+  ): (x: number, y: number) => { x: number; y: number } {
+    const W = this.W
+    const taken = new Set(present.map((h) => `${tileOf(h.body.x)},${tileOf(h.body.y)}`))
+    return (x, y) => {
+      const ok = (tx: number, ty: number) =>
+        !taken.has(`${tx},${ty}`) &&
+        (!room || (tx >= room.x && ty >= room.y && tx < room.x + room.w && ty < room.y + room.h))
+      let s = freeSpotNear(W, x, y, 3, ok)
+      if (!ok(tileOf(s.x), tileOf(s.y))) s = freeSpotNear(W, x, y, 6, ok)
+      if (!ok(tileOf(s.x), tileOf(s.y))) s = freeSpotNear(W, x, y, 3)
+      taken.add(`${tileOf(s.x)},${tileOf(s.y)}`)
+      return s
     }
   }
 

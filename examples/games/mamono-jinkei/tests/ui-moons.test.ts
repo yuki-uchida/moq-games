@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { createWorld, stageInfo } from '../src/sim/api'
 import { lightMoonstone } from '../src/sim/props'
 import type { WorldImpl } from '../src/sim/world'
-import { moonProgress } from '../src/ui/moons'
+import { groupProgress, moonProgress } from '../src/ui/moons'
 import { T } from './sim-helpers'
 
 function forest() {
@@ -58,4 +58,29 @@ test('the lone guide stone in room B has no counter', () => {
   expect(props.filter((p) => p.kind === 'moonstone' && p.group === undefined).length).toBe(lone.length)
   // Standing by each guide stone (room B) shows nothing.
   for (const p of lone) expect(moonProgress(props, rooms, { x: p.x, y: p.y + 60 })).toBeUndefined()
+})
+
+test('crystals and valves get a group counter that agrees with the sim', () => {
+  for (const [stage, kind, flag] of [
+    ['meadow', 'crystal', 'crystals:G'],
+    ['sewer', 'valve', 'valves:C']
+  ] as const) {
+    const world = createWorld({ seed: 5, progress: { cleared: [] }, stage, skipIntro: true }) as WorldImpl
+    world.setPlayers([{ id: 'host', name: 'host' }])
+    const rooms = stageInfo(stage).rooms
+    const members = world.W.props.filter((p) => p.kind === kind && p.group !== undefined)
+    expect(members.length).toBeGreaterThan(1)
+    const ref = { x: members[0].x, y: members[0].y + 40 }
+    const at = () => groupProgress(kind, world.view().props, rooms, ref)
+    expect(at()).toMatchObject({ n: 0, total: members.length, complete: false })
+    members[0].state = 'on'
+    members[0].on = true
+    expect(at()).toMatchObject({ n: 1, complete: false })
+    for (const p of members) {
+      p.state = 'on'
+      p.on = true
+    }
+    world.W.flags.add(flag)
+    expect(at()).toMatchObject({ n: members.length, complete: true })
+  }
 })

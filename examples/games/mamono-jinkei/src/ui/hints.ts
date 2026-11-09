@@ -21,6 +21,7 @@ const TOPS: Record<string, number> = {
   acorn: 84,
   cheese: 84,
   goldbell: 84,
+  log: 42,
   lever: 40,
   valve: 44,
   chest: 42,
@@ -30,6 +31,14 @@ const TOPS: Record<string, number> = {
 const LIFTABLE = new Set(['pot', 'barrel'])
 const GRIPPABLE = new Set(['acorn', 'cheese', 'goldbell', 'log'])
 const PUSHABLE = new Set(['block', 'boulder', 'crate', 'bigcrate', 'iceblock'])
+const ACCEPTORS = new Set(['pedestal', 'scale', 'hook', 'ramslot'])
+
+/** A grippable set onto a filled acceptor has been delivered (placed on its centre); it can no longer be gripped. */
+export function delivered(props: readonly PropView[], p: PropView): boolean {
+  return props.some(
+    (q) => ACCEPTORS.has(q.kind) && q.state === 'on' && Math.abs(q.x - p.x) <= 4 && Math.abs(q.y - p.y) <= 4
+  )
+}
 
 export function controlled(view: View, myId: string): HeroView | undefined {
   const me = view.players.find((p) => p.id === myId)
@@ -52,7 +61,8 @@ export function interactTarget(view: View, info: StageInfo | undefined, h: HeroV
   for (const p of view.props) {
     const top = TOPS[p.kind] ?? 46
     if (LIFTABLE.has(p.kind) && p.state === 'idle') consider(p.x, p.y, top, '持ち上げる', 76)
-    else if (GRIPPABLE.has(p.kind) && p.state !== 'lifted') consider(p.x, p.y, top, 'つかむ', 96)
+    else if (GRIPPABLE.has(p.kind) && p.state !== 'lifted' && !delivered(view.props, p))
+      consider(p.x, p.y, top, 'つかむ', 96)
     else if (p.kind === 'lever' && p.state === 'off') consider(p.x, p.y, top, '引く', 80)
     else if (p.kind === 'valve' && p.state === 'off') consider(p.x, p.y, top, 'バルブをまわす', 84, 'E長押し')
     else if (p.kind === 'chest' && p.state === 'closed') consider(p.x, p.y, top, 'あける', 80)

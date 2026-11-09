@@ -7,6 +7,7 @@ import { Controls } from '../input/controls'
 import { guestSession, hostSession, soloSession, type Session, type SessionStatus } from '../net/session'
 import { Renderer } from '../render/renderer'
 import type { Command } from '../sim/api'
+import { STAGE_DATA } from '../stages'
 import type { EventView, StageInfo, View } from '../sim/types'
 import { el, show } from '../ui/dom'
 import { controlled } from '../ui/hints'
@@ -17,6 +18,7 @@ import { modal } from '../ui/panels'
 import { TitleScreen } from '../ui/title'
 import { JOBS, STAGES, TILE, type Job, type StageId } from '../vocab'
 import { Attract } from './attract'
+import { arenaRemaining, createMusicState, resetMusicState, selectMusicLayer } from './music-select'
 import { loadSave, storeSave, type SaveData, type Settings } from './save'
 
 type Screen = 'title' | 'session'
@@ -51,6 +53,7 @@ export class App {
   private savedClear = ''
   frames: number[] = []
   private chargeLoop = false
+  private readonly musicState = createMusicState()
   private waterLoop = false
   private windLoop = false
   private generation = 0
@@ -135,7 +138,7 @@ export class App {
   }
 
   private name() {
-    return this.save.name || 'プレイヤー'
+    return this.save.name
   }
 
   startSolo() {
@@ -448,12 +451,14 @@ export class App {
     let theme: ThemeName | null = null
     let layer = 0
     let duck = 0
+    let playing = false
     if (!this.session) theme = 'title'
     else if (demo || !view) theme = 'lobby'
     else {
       switch (view.phase) {
         case 'intro':
         case 'play': {
+          playing = true
           theme = STAGE_THEME[view.stage]
           const me = controlled(view, this.session.myId) ?? view.heroes[0]
           if (view.boss && me && info) {
@@ -471,12 +476,28 @@ export class App {
             )
               theme = view.stage === 'forest' ? 'finalBoss' : 'boss'
           }
-          if (theme !== 'boss' && theme !== 'finalBoss' && me) {
-            const alerted = view.enemies.some(
+          const bossFight = theme === 'boss' || theme === 'finalBoss'
+          const alerted =
+            !!me &&
+            !bossFight &&
+            view.enemies.some(
               (e) => e.state !== 'death' && e.alertAt !== undefined && Math.hypot(e.x - me.x, e.y - me.y) < 10 * TILE
             )
-            if (alerted || view.objective.startsWith('敵をぜんぶ')) layer = 1
-          }
+          const arenaId = view.objective.startsWith('敵をぜんぶ') ? (view.barrier?.[0] ?? '') : undefined
+          layer = selectMusicLayer(this.musicState, {
+            t: view.t,
+            boss: bossFight ? view.boss : undefined,
+            alerted,
+            arena:
+              arenaId !== undefined && !bossFight
+                ? {
+                    id: arenaId,
+                    remaining: arenaRemaining(view.objective),
+                    waves: STAGE_DATA[view.stage]?.rooms.find((r) => r.id === arenaId)?.waves?.length ?? 0
+                  }
+                : undefined,
+            heroes: view.heroes.map((h) => ({ hp: h.hp, maxHp: h.maxHp, down: h.state === 'down' }))
+          })
           break
         }
         case 'wipe':
@@ -494,6 +515,7 @@ export class App {
       if (view.dialogs.length) duck = 0.3
     }
     if (this.pause.open) duck = 0.65
+    if (!playing) resetMusicState(this.musicState)
     this.audio.setMusic(theme, layer)
     this.audio.setDuck(duck)
   }

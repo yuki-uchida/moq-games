@@ -59,9 +59,11 @@ export class Controls {
     if (!a) return
     const target = e.target as HTMLElement | null
     const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')
-    // Esc still closes menus from sliders and checkboxes; only text fields keep it.
+    // Esc still closes menus from sliders and checkboxes; text fields keep it (an IME composition cancels with it),
+    // except the title's room-code fields, where Esc goes back to the main menu once no composition is running.
     const inputType = target?.tagName === 'INPUT' ? (target as HTMLInputElement).type : ''
-    const textEntry = typing && !NON_TEXT_INPUTS.has(inputType)
+    const roomField = !!target?.classList.contains('room-input') && !e.isComposing
+    const textEntry = typing && !NON_TEXT_INPUTS.has(inputType) && !roomField
     if (a === 'menu') {
       if (!e.repeat && !textEntry) this.hooks.onMenu()
       return

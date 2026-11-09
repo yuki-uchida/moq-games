@@ -5,7 +5,7 @@
 import { TILE } from '../vocab'
 import { angleDiff, dist, fx, heroBy, sfx, tileOf, warpHero, freeSpotNear } from './core'
 import { tileCentre } from './stage-data'
-import { FLY_STEP, HOLE_STEP } from './grid'
+import { FLY_STEP, HOLE_STEP, inRoom } from './grid'
 
 /** Tile index of a path step (walk, slime hop or mouse-hole exit). */
 const stepTile = (p: number) => (p <= FLY_STEP ? FLY_STEP - p : p <= HOLE_STEP ? HOLE_STEP - p : p < 0 ? -p - 1 : p)
@@ -37,6 +37,18 @@ export function mimic(W: WorldState, owner: Hero, kind: 'attack' | 'hold' | 'rel
 export function companionsOf(W: WorldState, ownerId: string): Hero[] {
   const human = W.humans.find((h) => h.id === ownerId)
   return W.heroes.filter((h) => h.owner === ownerId && (!human || human.ctrl !== h.slot))
+}
+
+/** True while the hero stands in an arena room whose fight is on. */
+function inActiveArena(W: WorldState, h: Hero): boolean {
+  const rooms = W.parsed?.info.rooms
+  if (!rooms) return false
+  for (const [id, a] of W.arenas) {
+    if (a.state !== 'active') continue
+    const r = rooms.find((q) => q.id === id)
+    if (r && inRoom(r, h.body.x, h.body.y)) return true
+  }
+  return false
 }
 
 function nearestEnemy(W: WorldState, h: Hero, range: number): { x: number; y: number; d: number } | undefined {
@@ -113,6 +125,18 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
   const mode = human?.mode ?? 'stay'
   const ready = t >= h.atkReady
   if (mode === 'stay' || !owner) {
+    // Puffed into a locked arena: fight it out inside (no walking back to a wait spot behind the wind wall), then
+    // wait wherever the fight ends.
+    if (inActiveArena(W, h)) {
+      h.anchor = undefined
+      const foe = nearestEnemy(W, h, 16 * TILE)
+      if (foe) {
+        it.aim = Math.atan2(foe.y - h.body.y, foe.x - h.body.x)
+        if (foe.d > RANGE[h.job]) steer(W, h, foe.x, foe.y, it)
+        else if (ready && !it.press && h.hold === undefined && t - h.st > JOB_STATS[h.job].cooldown) it.press = true
+      }
+      return it
+    }
     const anchor = h.anchor ?? { x: h.body.x, y: h.body.y }
     h.anchor = anchor
     const foe = nearestEnemy(W, h, 1.5 * TILE + 16)

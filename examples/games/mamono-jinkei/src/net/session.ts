@@ -98,7 +98,7 @@ class LocalSession implements Session {
     this.world = createWorld(options)
     this.name = name
     this.presence = [myId]
-    this.world.setPlayers([{ id: myId, name }])
+    this.syncPlayers()
     this.view = this.world.view()
     this.refreshInfo()
   }
@@ -130,8 +130,12 @@ class LocalSession implements Session {
   }
 
   private syncPlayers() {
+    // Players who chose no name get プレイヤー1…4 by join order.
     this.world.setPlayers(
-      this.presence.map((id) => ({ id, name: id === this.myId ? this.name : (this.names.get(id) ?? 'なかま') }))
+      this.presence.map((id, i) => ({
+        id,
+        name: (id === this.myId ? this.name : this.names.get(id)) || `プレイヤー${i + 1}`
+      }))
     )
   }
 
@@ -143,8 +147,8 @@ class LocalSession implements Session {
   }
 
   frame(dt: number, input: InputState, extra: SessionExtra): View | undefined {
-    if (extra.name && extra.name !== this.name) {
-      this.name = extra.name
+    if ((extra.name ?? '') !== this.name) {
+      this.name = extra.name ?? ''
       this.syncPlayers()
     }
     const net: NetInput = { ...input, menu: extra.menu, name: extra.name || undefined }
