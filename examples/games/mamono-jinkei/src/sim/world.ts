@@ -83,6 +83,8 @@ export class WorldImpl implements World {
   readonly W: WorldState
   private readonly stages: Partial<Record<StageId, StageData>>
   private readonly skipIntro: boolean
+  /** Since when a standing hero has been outside the boss room during the fight (see watchBoss). */
+  private bossStrayAt: number | undefined
 
   constructor(options: WorldOptions, stages: Partial<Record<StageId, StageData>> = STAGE_DATA) {
     this.stages = stages
@@ -362,6 +364,7 @@ export class WorldImpl implements World {
     W.shots = []
     // A skipped arena fight starts over; the objective follows the new room.
     for (const [id, a] of W.arenas) if (a.state === 'active' && id !== to) this.resetArena(id)
+    if (W.boss?.active && to !== this.bossRoom()?.id) resetBoss(W)
     this.syncBarrier()
     this.placeParty(x, y, true)
     W.leaderRoom = roomOf(W, x, y)?.id
@@ -377,8 +380,8 @@ export class WorldImpl implements World {
     W.shots = []
     // Arenas that were not cleared start over; the boss fight resets.
     for (const [id, a] of W.arenas) if (a.state === 'active') this.resetArena(id)
-    this.syncBarrier()
     resetBoss(W)
+    this.syncBarrier()
     W.enemies = W.enemies.filter((e) => !e.summoned)
     W.minions = []
     for (const h of W.heroes) {
@@ -820,6 +823,7 @@ export class WorldImpl implements World {
       }
     }
     this.watchArenas()
+    this.watchBoss()
     for (const [id, a] of W.arenas) {
       if (a.state !== 'active') continue
       const left = W.enemies.filter((e) => e.room === id && e.wave === a.wave && !e.dead)
@@ -832,7 +836,7 @@ export class WorldImpl implements World {
         a.state = 'cleared'
         const cx = (data.x + data.w / 2) * TILE
         const cy = (data.y + data.h / 2) * TILE
-        emit(W, 'solve', cx, cy, { s: '広場を制圧した！' })
+        emit(W, 'solve', cx, cy, { s: `${data.name ?? '部屋'}を制圧した！` })
         banner(W, 'クリア！')
         if (data.checkpointOnClear) this.reachCheckpoint(id)
       }
@@ -840,12 +844,77 @@ export class WorldImpl implements World {
     this.syncBarrier()
   }
 
-  /** Raises the barrier around every active arena room (and lowers it once none is active). */
+  /**
+   * Raises the barrier around every active arena room and around the boss room while the boss fight is on (and
+   * lowers it once none is active).
+   */
   private syncBarrier(): void {
     const W = this.W
     if (!W.grid || !W.parsed) return
     const ids = [...W.arenas].filter(([, a]) => a.state === 'active').map(([id]) => id)
+    const boss = this.bossFight()
+    if (boss) ids.push(boss.id)
     W.grid.setBarrier(ids, W.parsed.info.rooms)
+  }
+
+  /** The stage's boss room (tile rect). */
+  private bossRoom() {
+    const P = this.W.parsed
+    const id = P?.data.rooms.find((r) => r.boss)?.id
+    return id === undefined ? undefined : P!.info.rooms.find((r) => r.id === id)
+  }
+
+  /** The boss room while its fight is on (boss active and not yet dead). */
+  private bossFight() {
+    const b = this.W.boss
+    return b?.active && !b.dead ? this.bossRoom() : undefined
+  }
+
+  /**
+   * Safety net for the boss fight, like watchArenas but never resetting the fight: the boss (and its pet) is put
+   * back inside the room if anything carried it out, and standing heroes outside are puffed back in after about a
+   * second (next to a hero inside, or just inside the boss door when nobody is).
+   */
+  private watchBoss(): void {
+    const W = this.W
+    const room = this.bossFight()
+    if (!room) {
+      this.bossStrayAt = undefined
+      return
+    }
+    for (const m of [W.boss, W.pet]) {
+      if (!m || inRoom(room, m.x, m.y)) continue
+      const s = this.pullSpots(room, [])(
+        Math.min((room.x + room.w - 1) * TILE, Math.max(room.x * TILE + TILE, m.x)),
+        Math.min((room.y + room.h - 1) * TILE, Math.max(room.y * TILE + TILE, m.y))
+      )
+      m.x = s.x
+      m.y = s.y
+    }
+    const standing = W.heroes.filter((h) => h.state !== 'down')
+    const inside = standing.filter((h) => inRoom(room, h.body.x, h.body.y))
+    const strays = standing.filter((h) => !inside.includes(h) && !HOST_MOVED.has(h.state))
+    if (!strays.length) {
+      this.bossStrayAt = undefined
+      return
+    }
+    this.bossStrayAt ??= W.t
+    if (W.t - this.bossStrayAt < ARENA_AWAY) return
+    this.bossStrayAt = undefined
+    const door = W.props.find((p) => p.kind === 'bossdoor')
+    const anchor = inside[0]
+      ? { x: inside[0].body.x, y: inside[0].body.y }
+      : door && inRoom(room, door.x, door.y - 2 * TILE)
+        ? { x: door.x, y: door.y - 2 * TILE }
+        : { x: (room.x + room.w / 2) * TILE, y: (room.y + room.h / 2) * TILE }
+    const spot = this.pullSpots(room, inside)
+    for (const h of strays) {
+      releaseHold(W, h)
+      const s = spot(anchor.x, anchor.y)
+      fx(W, 'smoke', h.body.x, h.body.y)
+      warpHero(h, s.x, s.y)
+      fx(W, 'smoke', s.x, s.y)
+    }
   }
 
   /** An unfinished arena fight starts over: its wave enemies vanish and the gates and barrier open. */

@@ -23,6 +23,7 @@ import { interactTarget } from '../ui/hints'
 import { BASE_VIEW_H, clampCamera, cursorLead, scalingFor, smoothing, turnOf, viewOrigin } from './camera'
 import { BarrierWalls } from './barrier'
 import { hiddenDelivered } from './delivered'
+import { propSortY } from './depth'
 import { FxAnims, Numbers, Particles } from './effects'
 import { Ambience } from './ambience'
 import { Ground } from './ground'
@@ -845,9 +846,7 @@ export class Renderer {
       if (FLAT_PROPS.has(p.kind) || p.kind === 'drawbridge' || delivered.has(p.id)) return
       const at = this.propPos(p)
       if (!this.visible(at.x, at.y, 140)) return
-      // Carried things float above their carriers; open gates sink into the floor.
-      const y = (p.z ?? 0) > 0 ? at.y + 30 : p.kind === 'gate' && p.state === 'open' ? at.y - 40 : at.y
-      this.push(y, K_PROP, i)
+      this.push(propSortY(p, at.y), K_PROP, i)
     })
     view.heroes.forEach((h, i) => {
       if ((h.state !== 'tech' || this.stampeding(h, view)) && this.visible(h.x, h.y, 64)) this.push(h.y, K_HERO, i)

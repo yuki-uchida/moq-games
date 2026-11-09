@@ -1540,6 +1540,18 @@ input:focus-visible,
   color: #cfe0ff;
 }
 
+.boss-state.guard::before {
+  content: '';
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.35em;
+  vertical-align: -0.2em;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%208%208'%20shape-rendering%3D'crispEdges'%3E%3Cpath%20fill%3D'%231a2440'%20d%3D'M0%200h8v1H0zM0%201h1v4H0zM7%201h1v4H7zM1%205h1v1H1zM6%205h1v1H6zM2%206h1v1H2zM5%206h1v1H5zM3%207h2v1H3z'%2F%3E%3Cpath%20fill%3D'%239fc4ff'%20d%3D'M1%201h6v4H1zM2%205h4v1H2zM3%206h2v1H3z'%2F%3E%3Cpath%20fill%3D'%23e8f2ff'%20d%3D'M2%202h1v2H2z'%2F%3E%3Cpath%20fill%3D'%235f86d6'%20d%3D'M4%201h1v5H4z'%2F%3E%3C%2Fsvg%3E")
+    center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+}
+
 .boss-bar.broken .boss-state {
   color: #fff1a8;
   animation: pulse 0.5s ease-in-out infinite;

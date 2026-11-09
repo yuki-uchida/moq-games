@@ -170,21 +170,24 @@ test('solo: the せーの countdown shows 3, 2, 1 and GO!', async ({ page }) => 
   const errors: string[] = []
   watchErrors(page, errors)
   await startSolo(page)
+  // Sample the countdown inside the page on every frame and keep the highest opacity each number reaches, so a
+  // slow test process cannot miss a step. The animation must restart for every number (it used to stay at 0).
+  await page.evaluate(() => {
+    const seen: Record<string, number> = {}
+    ;(window as unknown as { __countdownSeen: Record<string, number> }).__countdownSeen = seen
+    const start = performance.now()
+    const tick = () => {
+      const e = document.querySelector<HTMLElement>('.countdown')
+      const text = e?.textContent?.trim()
+      if (e && text) seen[text] = Math.max(seen[text] ?? 0, Number(getComputedStyle(e).opacity))
+      if (performance.now() - start < 10_000) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
   await page.keyboard.press('KeyF')
-  const t0 = Date.now()
-  const countdown = page.locator('.countdown')
-  // Each step is read by polling around its time slot; the animation must restart for every number.
-  for (const [n, from] of [
-    ['2', 1.1],
-    ['1', 2.1]
-  ] as const) {
-    const wait = from * 1000 - (Date.now() - t0)
-    if (wait > 0) await page.waitForTimeout(wait)
-    await expect(countdown).toHaveText(n, { timeout: 1500 })
-    await expect
-      .poll(() => countdown.evaluate((e) => Number(getComputedStyle(e).opacity)), { timeout: 800 })
-      .toBeGreaterThanOrEqual(0.5)
-  }
+  const peak = (n: string) =>
+    page.evaluate((k) => (window as unknown as { __countdownSeen: Record<string, number> }).__countdownSeen[k] ?? 0, n)
+  for (const n of ['3', '2', '1']) await expect.poll(() => peak(n), { timeout: 8000 }).toBeGreaterThanOrEqual(0.5)
   expect(errors).toEqual([])
 })
 
