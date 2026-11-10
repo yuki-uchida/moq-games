@@ -197,4 +197,53 @@ describe('gambleTiming', () => {
     expect(gambleTiming('gamble_gacha', 0, 6).label).toBe(true)
     expect(gambleTiming('gamble_poker', 0, 6).label).toBe(true)
   })
+
+  test('the label always agrees with the drawn frame, even at float boundaries', () => {
+    const nextDown = (x: number) => {
+      const buf = new Float64Array([x])
+      new BigUint64Array(buf.buffer)[0] -= 1n
+      return buf[0]
+    }
+    const nextUp = (x: number) => {
+      const buf = new Float64Array([x])
+      new BigUint64Array(buf.buffer)[0] += 1n
+      return buf[0]
+    }
+    for (const [spr, late] of [
+      ['gamble_pachinko', 5],
+      ['gamble_horse', 4]
+    ] as const) {
+      const ts: number[] = []
+      for (let i = 0; i <= 2000; i++) ts.push(i / 2000)
+      const edge = (0.6 * late) / 6
+      let lo = edge
+      let hi = edge
+      for (let i = 0; i < 4; i++) {
+        lo = nextDown(lo)
+        hi = nextUp(hi)
+        ts.push(lo, hi)
+      }
+      ts.push(edge)
+      for (const step of [1 / 60, 0.05]) {
+        let t = 0
+        for (let i = 0; i < 100 && t <= 1; i++) {
+          ts.push(t)
+          t += step
+        }
+      }
+      for (const t of ts) {
+        const r = gambleTiming(spr, t, 6)
+        expect(r.label).toBe(r.frame >= late)
+        expect(r.since).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  test('pachinko one ulp below the label time already shows frame 5 with its label', () => {
+    expect(gambleTiming('gamble_pachinko', 0.49999999999999994, 6)).toMatchObject({
+      frame: 5,
+      label: true
+    })
+    expect(gambleTiming('gamble_pachinko', 0.49999999999999994, 6).since).toBe(0)
+  })
 })
