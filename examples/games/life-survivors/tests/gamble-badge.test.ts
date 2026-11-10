@@ -7,6 +7,8 @@ import {
   badgeBoxAt,
   badgeSideTarget,
   easeBadgeSide,
+  gambleOwner,
+  GAMBLE_OWNER_REACH,
   holdBadgeSide,
   type BadgePending
 } from '../src/render'
@@ -299,4 +301,26 @@ test('walking steadily, the badge settles on the side that hides less of her par
         covered(-side) + BADGE_SIDE_MARGIN
       )
     }
+})
+
+describe('gambleOwner', () => {
+  const a = { id: 'a', x: 0, y: 0, gambleWeapon: 'w_love' }
+  const b = { id: 'b', x: 6, y: 0, gambleWeapon: 'w_sports' }
+  test('ties a gamble event to the player standing on it', () => {
+    expect(gambleOwner([a, { ...b, x: 300 }], 0, 0, 'w_love')).toBe('a')
+    expect(gambleOwner([{ ...a, x: 300 }, b], 6, 0, 'w_sports')).toBe('b')
+  })
+
+  test('tells two players standing together apart by the weapon each drew', () => {
+    expect(gambleOwner([a, b], 3, 0, 'w_love')).toBe('a')
+    expect(gambleOwner([a, b], 3, 0, 'w_sports')).toBe('b')
+    expect(gambleOwner([b, a], 4, 0, 'w_love')).toBe('a')
+    // Both drew the same weapon: the nearer one.
+    expect(gambleOwner([a, { ...b, gambleWeapon: 'w_love' }], 5, 0, 'w_love')).toBe('b')
+  })
+
+  test('falls back to the nearest player, and to nobody far away', () => {
+    expect(gambleOwner([a, b], 5, 0, 'w_work')).toBe('b')
+    expect(gambleOwner([a, b], 0, GAMBLE_OWNER_REACH + 10, 'w_love')).toBeUndefined()
+  })
 })

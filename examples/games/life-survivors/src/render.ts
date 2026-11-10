@@ -34,13 +34,14 @@ import {
   type EnemyDef,
   type Stage
 } from './data'
-import { Effects, GAMBLE_RESULT_DELAY, PK, gambleTiming } from './effects'
+import { Effects, GAMBLE_OFFSET, GAMBLE_RESULT_DELAY, PK, gambleTiming, type Particle } from './effects'
 import {
   FOOD_BOB,
   foodChips,
   foodLabelLines,
   foodPiles,
   foodSpriteBox,
+  labelClearance,
   LABEL_LINE,
   layoutFoods,
   placeFoodLabels,
@@ -250,6 +251,42 @@ export function badgeSideTarget(
   return onLeft > onRight + margin ? 1 : -1
 }
 
+/** Farthest (world px) a gamble event may lie from the snapshot position of the player it is tied to. */
+export const GAMBLE_OWNER_REACH = 96
+/** Clear space (world px) between a gamble reel (with its label) and the top of its owner's stack of tags. */
+export const GAMBLE_REEL_GAP = 4
+/** Clear space (CSS px) between the bottom of the gambling player's body and the result banner. */
+export const GAMBLE_RESULT_GAP = 6
+/** Rate (1/s) at which a gamble reel eases down when its owner's stack of tags gets lower (it rises at once). */
+const GAMBLE_REEL_SETTLE = 10
+
+/**
+ * The id of the player a gamble event at (x, y) belongs to: the nearest player now holding the drawn weapon `weapon`
+ * as their gamble result (the event comes with the snapshot that set it), else the nearest player; none further than
+ * GAMBLE_OWNER_REACH. Two players standing together are told apart by what they drew, then by distance.
+ */
+export function gambleOwner(
+  players: readonly { id: string; x: number; y: number; gambleWeapon?: string }[],
+  x: number,
+  y: number,
+  weapon?: string
+): string | undefined {
+  const near = (list: readonly (typeof players)[number][]) => {
+    let best: string | undefined
+    let bestD = GAMBLE_OWNER_REACH ** 2
+    for (const p of list) {
+      const d = (p.x - x) ** 2 + (p.y - y) ** 2
+      if (d <= bestD) {
+        bestD = d
+        best = p.id
+      }
+    }
+    return best
+  }
+  const holding = weapon ? players.filter((p) => p.gambleWeapon === weapon) : []
+  return near(holding) ?? near(players)
+}
+
 /** Seconds the badge must keep wanting the other side before it heads there: a passing overlap never moves it. */
 export const BADGE_SWITCH_HOLD = 0.4
 
@@ -390,6 +427,16 @@ interface ShotView {
 }
 
 const BOSS_AURA = '#a02850'
+/** Height (world px) of a garden seed's arc at its top, as the view draws it. */
+const SEED_ARC = 48
+/** A seed first seen this close (world px) to its owner was seen at its launch, so its flight can be followed. */
+const SEED_FIRST_SEEN = 28
+/** How far (world px, at body size 1) the buff aura and identity ring reach below a player's feet. */
+const FEET_RINGS = 14
+/** Size (CSS px) of the weapon's pixel icon on the gamble result banner, and the space after it. */
+const GAMBLE_ICON = 24
+const GAMBLE_ICON_GAP = 6
+const isGamble = (p: Particle) => p.kind === PK.gambleResult || (p.kind === PK.sprite && p.spr.startsWith('gamble_'))
 /** How long a new pet takes to pop in, and a leaving one to fade out in a puff (s). */
 const PET_POP_SECONDS = 0.2
 const PET_FADE_SECONDS = 0.3
@@ -408,6 +455,8 @@ export class Renderer {
   private readonly bars: number[] = []
   private readonly numbers = new Map<string, Label>()
   private frame = 0
+  /** Seconds since the previous frame (capped), for easing done while drawing. */
+  private frameDt = 0
   private width = 1
   private height = 1
   private scale = 1
@@ -442,6 +491,12 @@ export class Renderer {
       pending?: BadgePending
     }
   >()
+  /**
+   * Per player drawn this frame: the centre x of their body, the top of everything stacked on their head (name tag,
+   * buff row, badge, lifted by the tags of players standing together) and the bottom of their body (with the rings
+   * at the feet). The gamble reel floats above the top, its result banner below the bottom.
+   */
+  private readonly stacks = new Map<string, { x: number; top: number; bottom: number }>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
   private parentMemorialTime?: number
@@ -593,6 +648,23 @@ export class Renderer {
       ctx.fillStyle = color
       ctx.fillText(text, w / 2, h / 2)
     })
+  }
+
+  /** Drawn width (world px) of a `label` text with its outline. */
+  private labelWidth(text: string, size: number) {
+    const px = Math.round(size)
+    const key = `l:${px}:${text}`
+    // Without a measuring canvas (a stripped-down renderer in tests), the label canvas's own width.
+    const widths = this.textWidths as Map<string, number> | undefined
+    const measure = this.measure as CanvasRenderingContext2D | null | undefined
+    let width = widths?.get(key)
+    if (width === undefined) {
+      if (!widths || !measure) return px * (text.length + 1.2)
+      measure.font = `700 ${px}px "Hiragino Sans","Noto Sans JP",system-ui,sans-serif`
+      width = measure.measureText(text).width + Math.max(2, px / 4)
+      widths.set(key, width)
+    }
+    return width
   }
 
   /** A whole damage number as one sprite; a small FIFO cache keeps the number of canvases bounded. */
@@ -755,6 +827,19 @@ export class Renderer {
     st.side = easeBadgeSide(st.side, st.target, dt)
   }
 
+  /**
+   * Ties every gamble reel and result banner spawned by this view's events to the player who gambled, so they follow
+   * her (see `gambleOwner`); one nobody matches stays where it spawned.
+   */
+  private claimGambles(view: View) {
+    for (const p of this.fx.pool.items) {
+      if (p.owner || !isGamble(p)) continue
+      const x = p.x - GAMBLE_OFFSET.x
+      const y = p.kind === PK.gambleResult ? p.y - GAMBLE_OFFSET.y : p.y + GAMBLE_OFFSET.y
+      p.owner = gambleOwner(view.players, x, y, WEAPONS[p.n]?.id) ?? '-'
+    }
+  }
+
   /** Traces a rounded rectangle path (no fill). */
   private roundPath(x: number, y: number, w: number, h: number, r: number) {
     const ctx = this.ctx
@@ -869,6 +954,8 @@ export class Renderer {
         this.foodLabelClear.set(key, since)
         fade = onPlayer ? 0 : clamp01((this.clock - since) / FOOD_LABEL_FADE_IN)
       }
+      // It fades out as a player closes in on it, gone before anything of theirs touches it.
+      fade *= labelClearance(box, players)
       if (hidden || fade <= 0) continue
       ctx.globalAlpha = this.foodLabelAlpha * fade
       const cx = (box.left + box.right) / 2
@@ -1243,10 +1330,17 @@ export class Renderer {
     const nameTag = this.label(local ? `${player.name}（あなた）` : player.name, 11, player.color)
     const tags = buffs.map((kind) => this.label(COOKING_EFFECTS[kind].short, 11, COOKING_EFFECTS[kind].color))
     const tagWidths = tags.map((tag) => logical(tag) - 6)
-    const rowWidth = tags.length ? tagWidths.reduce((sum, w) => sum + w, 0) + 6 : 0
+    // The texts as drawn (the tag canvases are padded): the name, and the row from the first buff's text to the last's.
+    const name = this.labelWidth(local ? `${player.name}（あなた）` : player.name, 11)
+    const texts = buffs.map((kind) => this.labelWidth(COOKING_EFFECTS[kind].short, 11))
+    const rowWidth = tags.length
+      ? tagWidths.reduce((sum, w) => sum + w, 0) -
+        (tagWidths[0] - texts[0]) / 2 -
+        (tagWidths[tags.length - 1] - texts[tags.length - 1]) / 2
+      : 0
     const badge = local && !player.downed && Boolean(player.gambleWeapon)
     const box = playerBox(pos.x, feet, size, tagLift, {
-      name: logical(nameTag),
+      name,
       buffs: rowWidth,
       badge,
       badgeSide: badge ? this.gambleBadges.get(player.id)?.side : undefined
@@ -1538,6 +1632,7 @@ export class Renderer {
         break
       }
       case 'garden': {
+        if (sh.v === 0) this.seedShadow(view, sh, def)
         if (sh.v !== 1) break
         const alpha = Math.min(1, life * 4)
         const art = sheet('weapon:w_garden')
@@ -1814,6 +1909,14 @@ export class Renderer {
   /** Afterimages left to draw this frame (fast projectiles only leave trails while the screen is not flooded). */
   private trailBudget = 0
 
+  /**
+   * Garden seeds in the air, by owner, weapon and throw direction: where each was first seen (its launch point when
+   * `known`), its ground point and progress along its arc (0..1) last frame, and the frame it was last seen.
+   */
+  private readonly seeds = new Map<
+    string,
+    { sx: number; sy: number; gx: number; gy: number; p: number; frame: number; known: boolean }
+  >()
   /** When each garden bed was first seen in bloom (keyed by its fixed spot), to time its growing-in. */
   private blooms = new Map<number, { at: number; frame: number }>()
 
@@ -1936,10 +2039,11 @@ export class Renderer {
         const biting = variant % 2 === 1
         const years = view.players[view.shots[i + 6]]?.petAge ?? 0
         const form = petForm(years)
-        // Standing, it stands in its bite sheet's first (mouth shut) frame, breathing 1 px about once a second; running
-        // or biting, it plays the run or bite.
+        // Standing, it stands in its bite sheet's first (mouth shut) frame (a rabbit, whose bite lunges forward, sits
+        // in its run's first, tucked-up frame), breathing 1 px about once a second; running or biting, it plays the run
+        // or bite.
         const frame = standing
-          ? art.bite.frames[0]
+          ? (type === 'rabbit' ? art.fly : art.bite).frames[0]
           : pick(biting ? art.bite : art.fly, this.clock * (years >= 12 ? 0.7 : 1) + i * 0.13)
         const flip = cos < 0
         const bob = biting
@@ -2307,6 +2411,82 @@ export class Renderer {
     }
   }
 
+  /**
+   * Moves a gamble reel or result banner onto the player who gambled, as drawn this frame: the reel (its frame and
+   * label) centred above everything stacked on her head, the banner's top anchor at the bottom of her body. The reel
+   * rises at once when her stack grows (a buff row, a neighbour's tag lifting hers) and settles back down gently.
+   */
+  private followOwner(p: Particle) {
+    const st = this.stacks.get(p.owner)
+    if (!st) return
+    p.x = st.x
+    if (p.kind === PK.gambleResult) {
+      p.y = st.bottom
+      p.lift = 0
+      return
+    }
+    const anim = sheet('fx')[p.spr]
+    if (!anim) return
+    const half = (Math.max(...anim.frames.map((f) => f.h)) / 2) * p.size * (1 + Math.max(0, p.size2))
+    const lift = st.top - GAMBLE_REEL_GAP - half - st.bottom
+    if (Number.isNaN(p.lift) || lift < p.lift) p.lift = lift
+    else p.lift += (lift - p.lift) * (1 - Math.exp(-GAMBLE_REEL_SETTLE * this.frameDt))
+    p.y = st.bottom + p.lift
+  }
+
+  /**
+   * The small shadow under a garden seed in flight. The view gives only where the seed is drawn, up on its arc
+   * (SEED_ARC high at the top, over 0.8 × the weapon speed of ground along its throw), so its flight is followed from
+   * where it was first seen next to its owner: the ground point is where its throw line and its arc meet the drawn
+   * spot. The shadow shrinks and fades the higher it is. A seed first seen away from its owner (already in the air)
+   * casts none.
+   */
+  private seedShadow(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
+    const s = view.shots
+    const key = `${s[sh.i + 6]}:${s[sh.i]}:${s[sh.i + 4]}`
+    let seed = this.seeds.get(key)
+    if (!seed || seed.frame < this.frame - 2) {
+      const known = Math.hypot(sh.x - sh.ox, sh.y - sh.oy) <= SEED_FIRST_SEEN
+      seed = { sx: sh.x, sy: sh.y, gx: sh.x, gy: sh.y, p: 0, frame: this.frame, known }
+      this.seeds.set(key, seed)
+    }
+    seed.frame = this.frame
+    if (!seed.known) return
+    const flight = def.speed * 0.8
+    const c = Math.cos(sh.angle)
+    const n = Math.sin(sh.angle)
+    const miss = (d: number) =>
+      (seed.sx + d * c - sh.x) ** 2 + (seed.sy + d * n - SEED_ARC * Math.sin((Math.PI * d) / flight) - sh.y) ** 2
+    let best = 0
+    for (let k = 1; k <= 32; k++) if (miss((k / 32) * flight) < miss(best)) best = (k / 32) * flight
+    for (let k = -8; k <= 8; k++) {
+      const d = Math.max(0, Math.min(flight, best + (k / 8) * (flight / 32)))
+      if (miss(d) < miss(best)) best = d
+    }
+    seed.p = best / flight
+    const height = SEED_ARC * Math.sin(Math.PI * seed.p)
+    seed.gx = sh.x
+    seed.gy = sh.y + height
+    const up = height / SEED_ARC
+    this.shadow(seed.gx, seed.gy + 10, 6 * (1 - 0.45 * up), 0.24 * (1 - 0.6 * up))
+  }
+
+  /** A seed gone from the air near the end of its arc has landed: a small puff of soil where it came down. */
+  private landSeeds() {
+    for (const [key, seed] of this.seeds) {
+      if (seed.frame === this.frame) continue
+      this.seeds.delete(key)
+      if (!seed.known || seed.p < 0.75 || seed.frame < this.frame - 2) continue
+      this.fx.sprite('poof', seed.gx, seed.gy + 8, { life: 0.3, scale: 0.75, fade: false })
+      this.fx.debris(seed.gx, seed.gy + 9, 4, ['#8a6a46', '#a7845a', '#6f5238'], {
+        speed: 60,
+        up: 50,
+        size: 2,
+        life: 0.5
+      })
+    }
+  }
+
   /** Builds every direction of a beam length in idle time so turning around never hitches. */
   private warmBeam(radius: number) {
     const key = Math.max(16, Math.round(radius / 8) * 8)
@@ -2334,6 +2514,7 @@ export class Renderer {
     for (let n = 0; n < items.length; n++) {
       const p = items[n]
       if (p.layer !== layer || p.delay > 0) continue
+      if (p.owner && isGamble(p)) this.followOwner(p)
       const reach = p.kind === PK.debris || p.kind === PK.sprite || p.kind === PK.pop ? 40 : 360
       if (Math.abs(p.x - cx) > this.halfW + reach || Math.abs(p.y - cy) > this.halfH + reach) continue
       const t = p.age / p.life
@@ -2397,8 +2578,11 @@ export class Renderer {
           const age = p.age - GAMBLE_RESULT_DELAY
           if (age < 0) break
           // The weapon as it looks at this age (a tennis ball for sports at 20), like the HUD and the badge.
+          // Its pixel icon (the HUD slot's) goes before the name.
           const shown = weaponAppearance(weapon.id, this.viewAge, this.localPetAge)
-          const result = `${shown.icon} ${shown.name}`
+          const result = shown.name
+          const icon = (sheet('icons')[shown.art] ?? sheet('icons')[weapon.id])?.frames[0]
+          const iconRoom = icon ? GAMBLE_ICON + GAMBLE_ICON_GAP : 0
           const dpr = this.canvas.width / this.width
           ctx.save()
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -2408,12 +2592,21 @@ export class Renderer {
           const fade = clamp01((p.life - p.age) / 0.4)
           const intro = clamp01(age / 0.22)
           const ease = 1 - (1 - intro) ** 3
-          const width = Math.min(this.width - 16, ctx.measureText(result).width + 56)
+          const textWidth = ctx.measureText(result).width
+          const width = Math.min(this.width - 16, textWidth + iconRoom + 56)
           const x = Math.max(
             width / 2 + 8,
             Math.min(this.width - width / 2 - 8, this.width / 2 + ((p.x - cx) * this.scale) / dpr)
           )
-          const y0 = Math.max(30, Math.min(this.height - 30, this.height / 2 + ((p.y - cy) * this.scale) / dpr))
+          // Under the feet of the player who gambled (followOwner keeps p at them), else where it spawned.
+          const below = p.lift === 0
+          const y0 = Math.max(
+            30,
+            Math.min(
+              this.height - 30,
+              this.height / 2 + ((p.y - cy) * this.scale) / dpr + (below ? GAMBLE_RESULT_GAP + 21 : 0)
+            )
+          )
           const y = y0 + (1 - ease) * 14
           const left = x - width / 2
           const top = y - 21
@@ -2450,14 +2643,29 @@ export class Renderer {
             ctx.fillRect(sx - 18, top, 36, 42)
             ctx.restore()
           }
-          // Text: one fillText, outlined with a stroke.
+          // Icon and text centred together; the text is one fillText, outlined with a stroke.
           ctx.globalAlpha = fade * clamp01(age / 0.15)
+          const room = width - 24 - iconRoom
+          const shownWidth = Math.min(room, textWidth)
+          const tx = x + iconRoom / 2
+          if (icon) {
+            const ix = Math.round((tx - shownWidth / 2 - iconRoom) * dpr) / dpr
+            const iy = Math.round((y - GAMBLE_ICON / 2) * dpr) / dpr
+            ctx.imageSmoothingEnabled = false
+            ctx.drawImage(
+              canvasOf(icon, Math.max(1, Math.ceil((GAMBLE_ICON * dpr) / icon.w))),
+              ix,
+              iy,
+              GAMBLE_ICON,
+              GAMBLE_ICON
+            )
+          }
           ctx.lineJoin = 'round'
           ctx.lineWidth = 3
           ctx.strokeStyle = '#1f1027'
-          ctx.strokeText(result, x, y + 1, width - 24)
+          ctx.strokeText(result, tx, y + 1, room)
           ctx.fillStyle = '#fff2b0'
-          ctx.fillText(result, x, y + 1, width - 24)
+          ctx.fillText(result, tx, y + 1, room)
           ctx.restore()
           break
         }
@@ -2707,6 +2915,7 @@ export class Renderer {
       this.focus.y = p.y
     }
     this.clock += dt
+    this.frameDt = Math.min(dt, 0.1)
     const stage = stageAt(view.time)
     this.viewAge = ageAt(view.time)
     this.localPetAge = me?.petAge
@@ -2726,6 +2935,7 @@ export class Renderer {
     fv.hw = halfW - 80
     fv.hh = halfH - 80
     this.fx.consume(view.fx, view.time, fv)
+    this.claimGambles(view)
     this.fx.update(Math.min(dt, 0.1))
     this.evo.fill(0)
     // Shake: a camera offset snapped to device pixels so the whole picture moves rigidly.
@@ -2939,6 +3149,7 @@ export class Renderer {
     this.particles(0)
     this.world()
     for (let i = 0; i < s.length; i += STRIDE.shots) this.groundShot(view, this.load(view, origins, i), WEAPONS[s[i]])
+    this.landSeeds()
     this.world()
 
     // Characters: enemies and players Y-sorted so overlaps read correctly.
@@ -3030,6 +3241,7 @@ export class Renderer {
     }
     ctx.fill()
     this.bars.length = 0
+    this.stacks.clear()
     this.easeBadgeSide(view, origins, local, dt)
     for (const item of list) {
       if (item.member) this.follower(item.member)
@@ -3048,7 +3260,16 @@ export class Renderer {
           view.phase,
           item.tagLift
         )
-        if (boxes) this.foodLabels.players.push(...boxes)
+        if (boxes?.length) {
+          this.foodLabels.players.push(...boxes)
+          // The body box first, then the tags above it; the rings at the feet reach FEET_RINGS below them.
+          const size = (boxes[0].right - boxes[0].left) / 28
+          this.stacks.set(player.id, {
+            x: pos.x,
+            top: Math.min(...boxes.map((b) => b.top)),
+            bottom: Math.max(...boxes.map((b) => b.bottom), pos.y + 16 + FEET_RINGS * size)
+          })
+        }
       } else this.enemy(item)
     }
     this.world()

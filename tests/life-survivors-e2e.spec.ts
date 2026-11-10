@@ -104,8 +104,9 @@ test('gambling draws the right animation and status for each life stage', async 
     Object.assign(window, { gambleLabels: labels, gambleResults: results })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！', '💘 恋愛'].includes(text)) labels.push(text)
-      if (text === '💘 恋愛') {
+      const result = text === '恋愛' && this.font === 'bold 20px sans-serif'
+      if (['ガチャ！', 'ポーカー！', '大当たり！', '競馬的中！'].includes(text) || result) labels.push(text)
+      if (result) {
         results.push({ at: performance.now(), font: this.font, x, width: maxWidth ?? 0, alpha: this.globalAlpha })
       }
       if (maxWidth === undefined) fillText.call(this, text, x, y)
@@ -155,9 +156,7 @@ test('gambling draws the right animation and status for each life stage', async 
       )
       .toBe(true)
     await expect
-      .poll(() =>
-        page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('💘 恋愛'))
-      )
+      .poll(() => page.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('恋愛')))
       .toBe(true)
     await expect
       .poll(() =>
@@ -186,11 +185,24 @@ test('the gamble result names the weapon as it looks at this age', async ({ page
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.addInitScript(() => {
-    const results: { text: string; font: string }[] = []
-    Object.assign(window, { gambleSports: results })
+    type Drawn = { source: CanvasImageSource; x: number; y: number; w: number; h: number }
+    const results: { text: string; font: string; left: number; icon?: Drawn }[] = []
+    const icons: CanvasImageSource[] = []
+    let last: Drawn | undefined
+    Object.assign(window, { gambleSports: results, gambleIcons: icons })
     const fillText = CanvasRenderingContext2D.prototype.fillText
+    const drawImage = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.drawImage = function (source: CanvasImageSource, ...args: number[]) {
+      if (args.length === 4) last = { source, x: args[0], y: args[1], w: args[2], h: args[3] }
+      Reflect.apply(drawImage, this, [source, ...args])
+    }
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (text.includes('スポーツ') && maxWidth !== undefined) results.push({ text, font: this.font })
+      if (text.includes('スポーツ') && maxWidth !== undefined) {
+        const left = x - Math.min(maxWidth, this.measureText(text).width) / 2
+        results.push({ text, font: this.font, left, icon: last ? { ...last, source: icons.length } : undefined })
+        if (last) icons.push(last.source)
+        last = undefined
+      }
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -220,18 +232,37 @@ test('the gamble result names the weapon as it looks at this age', async ({ page
     return game.state.shots.some((shot) => shot.sourceWeapon === 'w_gamble' && shot.weapon === 'w_sports')
   })
   expect(copied).toBe(true)
-  type Result = { text: string; font: string }
+  type Drawn = { source: number; x: number; y: number; w: number; h: number }
+  type Result = { text: string; font: string; left: number; icon?: Drawn }
   await expect
     .poll(() =>
       page.evaluate(() =>
         (window as unknown as { gambleSports: Result[] }).gambleSports.some(
-          (r) => r.text === '🎾 スポーツ（テニス）' && r.font === 'bold 20px sans-serif'
+          (r) => r.text === 'スポーツ（テニス）' && r.font === 'bold 20px sans-serif'
         )
       )
     )
     .toBe(true)
   const results = await page.evaluate(() => (window as unknown as { gambleSports: Result[] }).gambleSports)
-  expect(results.filter((r) => r.font === 'bold 20px sans-serif').map((r) => r.text)).not.toContain('⚽ スポーツ')
+  const banner = results.filter((r) => r.font === 'bold 20px sans-serif')
+  // Only the name: the weapon's pixel icon as it looks at this age (the HUD slot's tennis ball) is drawn before it.
+  expect(banner.map((r) => r.text)).not.toContain('スポーツ')
+  expect(banner.every((r) => !/\p{Extended_Pictographic}/u.test(r.text))).toBe(true)
+  const tennis = banner.find((r) => r.text === 'スポーツ（テニス）')!
+  expect(tennis.icon).toMatchObject({ w: 24, h: 24 })
+  expect(tennis.icon!.x + tennis.icon!.w).toBeLessThanOrEqual(tennis.left)
+  const icon = await page.evaluate(async (index) => {
+    const atlas = '/src/art/atlas.ts'
+    const art = '/src/art/index.ts'
+    const life = '/src/weapon-life.ts'
+    const { canvasOf } = await import(atlas)
+    const { sheet } = await import(art)
+    const { weaponAppearance } = await import(life)
+    const source = (window as unknown as { gambleIcons: HTMLCanvasElement[] }).gambleIcons[index]
+    const frame = sheet('icons')[weaponAppearance('w_sports', 20).art].frames[0]
+    return { art: weaponAppearance('w_sports', 20).art, same: source === canvasOf(frame, source.width / frame.w) }
+  }, tennis.icon!.source)
+  expect(icon).toEqual({ art: 'w_sports_tennis', same: true })
   expect(errors).toEqual([])
 })
 
@@ -3648,7 +3679,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     Object.assign(window, { gambleLabels: labels })
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-      if (text === '大当たり！' || (text === '💘 恋愛' && this.font === 'bold 20px sans-serif')) labels.push(text)
+      if (text === '大当たり！' || (text === '恋愛' && this.font === 'bold 20px sans-serif')) labels.push(text)
       if (maxWidth === undefined) fillText.call(this, text, x, y)
       else fillText.call(this, text, x, y, maxWidth)
     }
@@ -3699,9 +3730,7 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
     )
     .toBe(true)
   await expect
-    .poll(() =>
-      guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('💘 恋愛'))
-    )
+    .poll(() => guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('恋愛')))
     .toBe(true)
 })
 

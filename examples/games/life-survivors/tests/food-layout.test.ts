@@ -3,6 +3,7 @@ import { sheet } from '../src/art/index'
 import { COOKING_EFFECTS, COOKING_ITEMS } from '../src/data'
 import {
   BLOCK_GAP,
+  boxGap,
   FOOD_ANCHOR,
   FOOD_GAP,
   FOOD_OPAQUE,
@@ -14,6 +15,8 @@ import {
   foodPiles,
   foodSpriteBox,
   labelCandidates,
+  LABEL_CLEARANCE,
+  labelClearance,
   LABEL_LINE,
   LABEL_PATIENCE_MS,
   LABEL_RETURN_MS,
@@ -277,6 +280,35 @@ describe('playerBox', () => {
     expect(right.right).toBeGreaterThanOrEqual(26 + 12)
     expect(left).toEqual({ ...right, left: -right.right, right: -right.left })
     expect(left.right).toBeLessThan(0)
+  })
+})
+
+describe('labelClearance', () => {
+  const label: Box = { left: 0, top: 0, right: 40, bottom: 15 }
+  it('measures the space between boxes, 0 when they touch or overlap', () => {
+    expect(boxGap(label, { left: 50, top: 0, right: 60, bottom: 10 })).toBe(10)
+    expect(boxGap(label, { left: 43, top: 19, right: 60, bottom: 30 })).toBe(5)
+    expect(boxGap(label, { left: 40, top: 15, right: 60, bottom: 30 })).toBe(0)
+    expect(boxGap(label, { left: 10, top: 5, right: 20, bottom: 10 })).toBe(0)
+  })
+
+  it('fades a label out as the nearest player box closes in, gone before they touch', () => {
+    const at = (gap: number) => labelClearance(label, [{ left: 40 + gap, top: 0, right: 80 + gap, bottom: 15 }])
+    expect(labelClearance(label, [])).toBe(1)
+    expect(at(LABEL_CLEARANCE + 30)).toBe(1)
+    expect(at(LABEL_CLEARANCE)).toBe(1)
+    expect(at(LABEL_CLEARANCE / 2)).toBeCloseTo(0.5)
+    expect(at(0)).toBe(0)
+    expect(at(-10)).toBe(0)
+    // Smooth: no step between neighbouring distances.
+    for (let gap = 0; gap < LABEL_CLEARANCE; gap += 0.5) expect(at(gap + 0.5) - at(gap)).toBeLessThanOrEqual(0.05)
+    // The nearest of several players decides.
+    expect(
+      labelClearance(label, [
+        { left: 100, top: 0, right: 120, bottom: 15 },
+        { left: 43, top: 0, right: 60, bottom: 15 }
+      ])
+    ).toBeCloseTo(3 / LABEL_CLEARANCE)
   })
 })
 
@@ -930,6 +962,36 @@ describe('placeFoodLabels over time', () => {
       now += 16
     }
     expect(changes).toBeLessThanOrEqual(1)
+  })
+
+  it('places a label outside the fade of a player standing next to it, so it reads opaque', () => {
+    // The player's tags stand just right of the preferred spot: clear of it, but inside the fade.
+    const width = home.box.right - home.box.left
+    const near: Box[] = [{ ...home.box, left: home.box.right + 5, right: home.box.right + 5 + width }]
+    expect(labelClearance(home.box, near)).toBeLessThan(1)
+    const fresh = place([], undefined, 0, near)!
+    expect(labelClearance(fresh.box, near)).toBe(1)
+    // One already there gives way once the player has stood by it for LABEL_PATIENCE_MS.
+    const memory: LabelMemory = new Map()
+    expect(place([], memory, 0)!.box).toEqual(home.box)
+    for (const dt of [0, 400, LABEL_PATIENCE_MS - 1]) expect(place([], memory, 1000 + dt, near)!.box).toEqual(home.box)
+    const moved = place([], memory, 1000 + LABEL_PATIENCE_MS, near)!
+    expect(labelClearance(moved.box, near)).toBe(1)
+    expect(moved.onPlayer).toBeUndefined()
+  })
+
+  it('still labels a pile with no spot outside the fade, on a spot merely clear of the players', () => {
+    const player: Box[] = [
+      { left: home.box.right + 5, top: home.box.top, right: home.box.right + 60, bottom: home.box.bottom }
+    ]
+    const args = [one.piles, one.sprites, s.visible, s.viewport, measure, undefined, [], player, 0, []] as const
+    // Grown by the whole screen, the player leaves no spot outside the fade.
+    const [crowded] = placeFoodLabels(...args, 2000)
+    expect(crowded).toBeDefined()
+    expect(overlaps(crowded.box, player[0])).toBe(false)
+    expect(crowded.onPlayer).toBeUndefined()
+    const [roomy] = placeFoodLabels(...args)
+    expect(labelClearance(roomy.box, player)).toBe(1)
   })
 
   it('does not move a settled block while time passes with the same obstacles', () => {
