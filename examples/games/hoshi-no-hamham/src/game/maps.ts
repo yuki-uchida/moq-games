@@ -28,10 +28,15 @@ export class MapBuilder {
   }
 
   readonly overwritten: string[] = []
+  readonly shifted: string[] = []
   set(ch: string, x: number, y: number) {
     // Props never replace terrain or each other: they stack on top of the first free cell.
     // Terrain writes ('#' and '.') are exact, so pits and ground always land where they were drawn.
-    if (ch !== '#' && ch !== '.') while (y > 0 && this.get(x, y) !== '.') y -= 1
+    if (ch !== '#' && ch !== '.') {
+      const target = y
+      while (y > 0 && this.get(x, y) !== '.') y -= 1
+      if (y !== target) this.shifted.push(`${ch} ${x},${target} -> ${x},${y}`)
+    }
     const existing = this.get(x, y)
     if (existing !== '.' && existing !== '#') this.overwritten.push(`${existing} -> ${ch} at ${x},${y}`)
     if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.grid[y][x] = ch
@@ -122,6 +127,26 @@ export class MapBuilder {
   rows(): string[] {
     return this.grid.map((row) => row.join(''))
   }
+
+  /** True when the whole column is empty from the ceiling down to the surface. */
+  columnFree(x: number, top = 8, bottom = SURFACE - 1) {
+    if (x < 1 || x >= this.w - 1) return false
+    for (let y = top; y <= bottom; y++) if (this.get(x, y) !== '.') return false
+    return true
+  }
+}
+
+/**
+ * Finds the closest column to `preferred` that is completely empty from the ceiling to the surface,
+ * so a full-height diggable wall or door can be placed without disturbing platforms or props.
+ */
+function freeColumn(m: MapBuilder, preferred: number) {
+  for (let offset = 0; offset < 60; offset++) {
+    for (const x of [preferred + offset, preferred - offset]) {
+      if (m.columnFree(x)) return x
+    }
+  }
+  return preferred
 }
 
 function stage1() {
@@ -134,7 +159,7 @@ function stage1() {
   m.platform(93, 97, 13)
   m.ground(58, 72, 14)
   m.dirt(18, 21, 1)
-  m.dirt(46, 50, 2)
+  m.dirt(46, 50, 1)
   m.dirt(80, 83, 1)
   m.platform(19, 25, 13)
   m.platform(44, 48, 13)
@@ -196,11 +221,9 @@ function stage2() {
   m.platform(87, 91, 13)
   m.ground(44, 54, 14)
   m.ground(74, 84, 14)
-  // A diggable wall blocks the road: bite through it.
-  m.fill('D', 60, 12, 60, 14)
   m.dirt(14, 17, 1)
   m.dirt(38, 41, 1)
-  m.dirt(68, 71, 2)
+  m.dirt(68, 71, 1)
   m.dirt(98, 101, 1)
   m.platform(8, 20, 13)
   m.platform(30, 40, 13)
@@ -250,6 +273,8 @@ function stage2() {
   m.set('G', 117, 14)
   m.set('h', 114, 14)
   m.set('@', 3, 14)
+  const wall = freeColumn(m, 66)
+  m.fill('D', wall, 10, wall, 14)
   m.border()
   return m
 }
@@ -273,11 +298,10 @@ function stage3() {
   m.ground(34, 42, 14)
   m.ground(56, 64, 14)
   m.ground(78, 86, 14)
-  m.fill('D', 50, 12, 50, 14)
   m.dirt(12, 15, 1)
-  m.dirt(30, 33, 2)
+  m.dirt(30, 33, 1)
   m.dirt(52, 55, 1)
-  m.dirt(74, 77, 2)
+  m.dirt(74, 77, 1)
   m.dirt(96, 99, 1)
   m.platform(6, 18, 13)
   m.platforms(28, 40, HILLS)
@@ -337,6 +361,8 @@ function stage3() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
+  const wall = freeColumn(m, 66)
+  m.fill('D', wall, 10, wall, 14)
   m.border()
   return m
 }
@@ -353,8 +379,6 @@ function stage4() {
   m.ground(40, 50, 14)
   m.ground(70, 80, 14)
   m.fill('#', 0, 0, 119, 3)
-  m.fill('D', 30, 12, 30, 14)
-  m.fill('D', 74, 12, 74, 14)
   m.set('R', 12, 14)
   m.set('R', 13, 14)
   m.set('R', 12, 13)
@@ -374,9 +398,7 @@ function stage4() {
   m.set('T', 82, 14)
   m.set('T', 104, 14)
   m.set('1', 22, 14)
-  m.door('x', 38, 12)
   m.set('2', 56, 14)
-  m.door('y', 72, 11)
   m.set('A', 48, 14)
   m.set('A', 92, 14)
   m.set('*', 18, 12)
@@ -401,6 +423,14 @@ function stage4() {
   m.set('B', 112, 13)
   m.set('G', 117, 14)
   m.set('@', 3, 14)
+  const wallA = freeColumn(m, 35)
+  m.fill('D', wallA, 10, wallA, 14)
+  const doorA = freeColumn(m, 38)
+  m.door('x', doorA, 8)
+  const wallB = freeColumn(m, 84)
+  m.fill('D', wallB, 10, wallB, 14)
+  const doorB = freeColumn(m, 82)
+  m.door('y', doorB, 8)
   m.border()
   return m
 }
@@ -416,7 +446,8 @@ function stage5() {
   m.ground(0, 129)
   m.pit(18, 20)
   m.pit(38, 40)
-  m.pit(58, 60)
+  // Too wide to jump: the player has to fell the tree at x=57 to bridge it.
+  m.pit(58, 61)
   m.pit(78, 80)
   m.pit(98, 100)
   m.platform(17, 21, 13)
@@ -424,17 +455,17 @@ function stage5() {
   m.platform(57, 61, 13)
   m.platform(77, 81, 13)
   m.platform(97, 101, 13)
+  m.set('T', 57, 14)
   m.ground(28, 36, 14)
   m.ground(48, 56, 14)
   m.ground(68, 76, 14)
   m.ground(88, 96, 14)
   m.dirt(10, 13, 1)
   m.dirt(24, 27, 1)
-  m.dirt(34, 37, 2)
+  m.dirt(34, 37, 1)
   m.dirt(54, 57, 1)
-  m.dirt(74, 77, 2)
+  m.dirt(74, 77, 1)
   m.dirt(94, 97, 1)
-  m.fill('D', 44, 12, 44, 14)
   m.set('R', 64, 14)
   m.set('R', 64, 13)
   m.set('R', 64, 12)
@@ -501,6 +532,10 @@ function stage5() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
+  const wallA = freeColumn(m, 42)
+  m.fill('D', wallA, 10, wallA, 14)
+  const wallB = freeColumn(m, 82)
+  m.fill('D', wallB, 10, wallB, 14)
   m.border()
   return m
 }
@@ -522,11 +557,11 @@ function stage6() {
   m.ground(36, 46, 14)
   m.ground(66, 76, 14)
   m.dirt(10, 14, 1)
-  m.dirt(20, 24, 2)
+  m.dirt(20, 24, 1)
   m.dirt(40, 44, 1)
-  m.dirt(50, 54, 2)
+  m.dirt(50, 54, 1)
   m.dirt(70, 74, 1)
-  m.dirt(90, 94, 2)
+  m.dirt(90, 94, 1)
   m.platform(6, 18, 13)
   m.platforms(26, 40, HILLS)
   m.platforms(46, 60, HILLS)
@@ -644,9 +679,7 @@ function stage7() {
   m.set('R', 46, 14)
   m.set('R', 76, 14)
   m.set('1', 22, 14)
-  m.door('x', 36, 12)
   m.set('2', 60, 14)
-  m.door('y', 66, 12)
   m.set('*', 12, 13)
   m.set('*', 44, 13)
   m.set('*', 72, 12)
@@ -670,6 +703,10 @@ function stage7() {
   m.set('B', 90, 12)
   m.set('G', 95, 14)
   m.set('@', 6, 14)
+  const doorA = freeColumn(m, 42)
+  m.door('x', doorA, 8)
+  const doorB = freeColumn(m, 64)
+  m.door('y', doorB, 8)
   m.border()
   return m
 }
@@ -708,7 +745,7 @@ function stage8() {
   m.set('R', 58, 14)
   m.set('R', 78, 14)
   m.set('R', 96, 14)
-  m.set('P', 8, 14)
+  m.set('P', 6, 14)
   m.set('P', 26, 14)
   m.set('P', 46, 14)
   m.set('P', 66, 14)
@@ -717,7 +754,6 @@ function stage8() {
   m.set('H', 40, 11)
   m.set('H', 60, 11)
   m.set('H', 80, 11)
-  m.set('T', 10, 14)
   m.set('T', 32, 14)
   m.set('T', 52, 14)
   m.set('T', 72, 14)
@@ -729,7 +765,6 @@ function stage8() {
   m.set('*', 44, 13)
   m.set('*', 72, 13)
   m.set('*', 98, 13)
-  m.set('E', 8, 14)
   m.set('E', 18, 14)
   m.set('E', 36, 14)
   m.set('E', 56, 14)
@@ -743,9 +778,9 @@ function stage8() {
   m.set('K', 40, 14)
   m.set('K', 80, 14)
   m.set('U', 100, 14)
-  m.set('c', 102, 14)
+  m.set('c', 103, 14)
   m.set('B', 100, 12)
-  m.set('G', 102, 14)
+  m.set('G', 101, 14)
   m.set('@', 8, 14)
   m.border()
   return m
@@ -772,16 +807,16 @@ function stage9() {
   m.ground(62, 74, 14)
   m.ground(92, 100, 14)
   m.dirt(10, 14, 1)
-  m.dirt(20, 22, 2)
+  m.dirt(20, 22, 1)
   m.dirt(38, 42, 1)
-  m.dirt(58, 60, 2)
+  m.dirt(58, 60, 1)
   m.dirt(76, 78, 1)
-  m.dirt(96, 98, 2)
+  m.dirt(96, 98, 1)
   m.dirt(112, 116, 1)
-  m.fill('D', 60, 12, 60, 14)
   m.set('R', 104, 14)
   m.set('R', 104, 13)
   m.set('R', 104, 12)
+  m.set('R', 104, 11)
   m.set('R', 8, 14)
   m.set('R', 18, 14)
   m.set('R', 36, 14)
@@ -815,9 +850,7 @@ function stage9() {
   m.set('N', 66, 14)
   m.set('N', 112, 14)
   m.set('1', 14, 14)
-  m.door('x', 44, 11)
   m.set('2', 60, 14)
-  m.door('y', 76, 11)
   m.set('A', 24, 14)
   m.set('A', 50, 14)
   m.set('A', 94, 14)
@@ -833,7 +866,7 @@ function stage9() {
   m.set('*', 70, 12)
   m.set('*', 94, 13)
   m.set('*', 122, 13)
-  m.set('E', 8, 14)
+  m.set('E', 16, 14)
   m.set('E', 22, 14)
   m.set('E', 34, 13)
   m.set('E', 52, 14)
@@ -855,6 +888,12 @@ function stage9() {
   m.set('B', 122, 12)
   m.set('G', 127, 14)
   m.set('@', 3, 14)
+  const wall = freeColumn(m, 84)
+  m.fill('D', wall, 10, wall, 14)
+  const doorA = freeColumn(m, 46)
+  m.door('x', doorA, 8)
+  const doorB = freeColumn(m, 104)
+  m.door('y', doorB, 8)
   m.border()
   return m
 }
@@ -880,12 +919,10 @@ function stage10() {
   m.ground(54, 64, 14)
   m.ground(80, 90, 14)
   m.dirt(10, 14, 1)
-  m.dirt(30, 34, 2)
+  m.dirt(30, 34, 1)
   m.dirt(50, 52, 1)
-  m.dirt(66, 68, 2)
+  m.dirt(66, 68, 1)
   m.dirt(84, 88, 1)
-  m.fill('D', 30, 12, 30, 14)
-  m.fill('D', 64, 12, 64, 14)
   m.set('R', 8, 14)
   m.set('R', 18, 14)
   m.set('R', 40, 14)
@@ -902,7 +939,7 @@ function stage10() {
   m.set('H', 50, 11)
   m.set('H', 64, 11)
   m.set('H', 86, 11)
-  m.set('T', 6, 14)
+  m.set('T', 5, 14)
   m.set('T', 24, 14)
   m.set('T', 42, 13)
   m.set('T', 56, 14)
@@ -912,13 +949,11 @@ function stage10() {
   m.set('N', 48, 14)
   m.set('N', 80, 14)
   m.set('1', 22, 14)
-  m.door('x', 46, 11)
   m.set('2', 62, 14)
-  m.door('y', 76, 11)
   m.set('A', 18, 14)
   m.set('A', 54, 14)
   m.set('A', 84, 14)
-  m.platform(4, 16, 13)
+  m.platform(5, 16, 13)
   m.platforms(26, 40, HILLS)
   m.platforms(44, 58, HILLS)
   m.platforms(62, 78, HILLS)
@@ -927,7 +962,7 @@ function stage10() {
   m.set('*', 40, 13)
   m.set('*', 64, 12)
   m.set('*', 88, 13)
-  m.set('E', 8, 14)
+  m.set('E', 16, 14)
   m.set('E', 22, 14)
   m.set('E', 32, 13)
   m.set('E', 52, 14)
@@ -947,6 +982,14 @@ function stage10() {
   m.set('B', 90, 12)
   m.set('G', 94, 14)
   m.set('@', 6, 14)
+  const wallA = freeColumn(m, 42)
+  m.fill('D', wallA, 10, wallA, 14)
+  const wallB = freeColumn(m, 60)
+  m.fill('D', wallB, 10, wallB, 14)
+  const doorA = freeColumn(m, 66)
+  m.door('x', doorA, 8)
+  const doorB = freeColumn(m, 79)
+  m.door('y', doorB, 8)
   m.border()
   return m
 }

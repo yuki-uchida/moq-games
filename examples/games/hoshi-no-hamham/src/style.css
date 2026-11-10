@@ -384,6 +384,18 @@ body {
   font-weight: 700;
 }
 
+.ending-card {
+  text-align: center;
+}
+
+.ending-art {
+  display: block;
+  width: min(100%, 320px);
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  image-rendering: pixelated;
+}
+
 .row-center {
   display: flex;
   gap: 10px;

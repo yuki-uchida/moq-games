@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { MAPS, SURFACE } from '../src/game/maps'
+import { MAP_BUILDERS, SURFACE } from '../src/game/maps'
 import { STAGES } from '../src/game/stages'
+import { World, emptyInput } from '../src/game/sim'
 
 const PROP_CHARS = new Set(['T', 'N', 'P', 'H', 'A', 'R', '1', '2', 'x', 'y', '*', 't', 'b', 's', 'G', 'n', '@', 'E', 'F', 'J', 'K', 'U', 'B'])
 const SOLID_CHARS = new Set(['#'])
@@ -78,6 +79,37 @@ describe('map integrity', () => {
       const needed = ['stage-2', 'stage-3', 'stage-4', 'stage-6', 'stage-8', 'stage-10'].includes(stage.id)
       if (needed && !present) problems.push(`${stage.id}: the princess never appears`)
       if (!needed && present) problems.push(`${stage.id}: unexpected princess`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('never stacks a prop more than four cells above where it was drawn', () => {
+    const problems: string[] = []
+    for (const [id, builder] of Object.entries(MAP_BUILDERS)) {
+      for (const entry of builder.shifted) {
+        const match = entry.match(/^(\S+) (\d+),(\d+) -> (\d+),(\d+)$/)
+        if (!match) continue
+        const [, , , from, , to] = match.map(Number)
+        if (Math.abs((from ?? 0) - (to ?? 0)) > 4) problems.push(`${id}: ${entry}`)
+      }
+      for (const entry of builder.shifted) {
+        if (/^[@Gn] /.test(entry)) problems.push(`${id}: the exit or the player start moved: ${entry}`)
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('starts every stage without an enemy on top of the player', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const world = new World(stage, { seed: 3 })
+      world.step(1 / 60, emptyInput())
+      const p = world.player
+      for (const enemy of world.enemies) {
+        if (Math.abs(enemy.x - p.x) < 60 && Math.abs(enemy.y - p.y) < 60) {
+          problems.push(`${stage.id}: enemy starts ${Math.round(enemy.x - p.x)}px from the player`)
+        }
+      }
     }
     expect(problems).toEqual([])
   })
