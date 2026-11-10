@@ -5,7 +5,7 @@
 import { createAudio, type GameAudio, type SfxName, type ThemeName } from '../audio/index'
 import { Controls } from '../input/controls'
 import { PadNav, firstGamepad } from '../input/padnav'
-import { hostSilence } from '../net/liveness'
+import { ROOM_SEARCH, hostSilence } from '../net/liveness'
 import { guestSession, hostSession, soloSession, type Session, type SessionStatus } from '../net/session'
 import { Renderer } from '../render/renderer'
 import type { Command } from '../sim/api'
@@ -15,7 +15,7 @@ import { el, show } from '../ui/dom'
 import { controlled } from '../ui/hints'
 import { Hud } from '../ui/hud'
 import { LobbyScreen, defaultLobbyStage } from '../ui/lobby'
-import { HostWait, PauseMenu, PhaseOverlays } from '../ui/overlays'
+import { HostWait, PauseMenu, PhaseOverlays, RoomSearch } from '../ui/overlays'
 import { modal } from '../ui/panels'
 import { escapeModal, navigate } from '../ui/padmenu'
 import { TitleScreen } from '../ui/title'
@@ -42,6 +42,13 @@ export class App {
   private readonly overlays: PhaseOverlays
   private readonly pause: PauseMenu
   private readonly hostWait: HostWait
+  private readonly roomSearch: RoomSearch
+  /** Seconds a joining guest has gone without hearing from any host (see ROOM_SEARCH). */
+  private searching = 0
+  /** Seconds before a joining guest is told the room was not found (tests may shorten it). */
+  roomSearchAfter = ROOM_SEARCH
+  /** The session whose connection error is (or was) on screen: one error dialog per session. */
+  private errorShownFor?: Session
   private readonly layer: HTMLElement
   /** Steps a hosted world while the tab is hidden (no animation frames then). */
   private readonly hostClock = new HostClock((dt) => this.backgroundTick(dt))
@@ -127,6 +134,11 @@ export class App {
       this.hostWait.root
     )
     root.append(this.layer)
+    this.roomSearch = new RoomSearch(this.layer, {
+      retry: () => (this.searching = 0),
+      leave: () => this.toTitle(),
+      sound
+    })
     this.applySettings()
     window.addEventListener('keydown', (e) => {
       const t = e.target as HTMLElement | null
@@ -174,7 +186,9 @@ export class App {
     const gen = ++this.generation
     this.title.setBusy('ルームを作成中…')
     try {
-      const s = await hostSession(room, this.save.progress, this.name(), { onStatus: (st) => this.onStatus(st) })
+      const s = await hostSession(room, this.save.progress, this.name(), {
+        onStatus: (st) => gen === this.generation && this.onStatus(st)
+      })
       if (gen !== this.generation) return s.dispose()
       this.room = room
       this.begin(s)
@@ -190,7 +204,7 @@ export class App {
     const gen = ++this.generation
     this.title.setBusy('ルームに接続中…')
     try {
-      const s = await guestSession(room, { onStatus: (st) => this.onStatus(st) })
+      const s = await guestSession(room, { onStatus: (st) => gen === this.generation && this.onStatus(st) })
       if (gen !== this.generation) return s.dispose()
       this.room = room
       this.begin(s)
@@ -210,6 +224,8 @@ export class App {
     this.lastPhase = ''
     this.lastStage = ''
     this.savedClear = ''
+    this.searching = 0
+    this.roomSearch.hide()
     this.renderer.reset()
     this.setScreen('session')
     this.hud.setStatus(s.role === 'solo' ? '' : s.status.text, s.status.kind)
@@ -237,6 +253,8 @@ export class App {
     ++this.generation
     this.hostClock.stop()
     this.hostWait.update('live')
+    this.roomSearch.hide()
+    this.searching = 0
     this.session?.dispose()
     this.session = undefined
     this.view = undefined
@@ -262,11 +280,14 @@ export class App {
     }
   }
 
+  /** Network status of the current session; a connection error opens one dialog per session, never a second. */
   private onStatus(st: SessionStatus) {
-    if (!this.session) return
+    const s = this.session
+    if (!s || this.errorShownFor === s) return
     this.hud.setStatus(st.text, st.kind)
     if (st.kind === 'error') {
-      const s = this.session
+      this.errorShownFor = s
+      this.roomSearch.hide()
       void this.ask('通信エラー', st.text, ['タイトルへ']).then(() => {
         if (this.session === s) this.toTitle()
       })
@@ -278,7 +299,7 @@ export class App {
   }
 
   private onMenu() {
-    if (this.modalOpen) return
+    if (this.modalOpen || this.roomSearch.open) return
     if (this.screen === 'title') {
       if (this.title.escape()) return
       return
@@ -366,6 +387,8 @@ export class App {
       this.hostClock.stop()
       // The next frame measures from now: hidden time was already stepped (host) or is skipped (solo, guest).
       this.last = 0
+      // A guest skips the effects and sounds that piled up while hidden (the host skips its own the same way).
+      this.session?.resume?.()
     }
   }
 
@@ -496,13 +519,26 @@ export class App {
     }
     const inGame = !!s && !inLobby && (phase === 'play' || phase === 'wipe')
     show(this.hud.root, inGame)
-    if (view && !inLobby) this.hud.update(view, info, s!.myId, now)
+    if (view && !inLobby) this.hud.update(view, info, s!.myId, now, this.controls.inputDevice)
     this.overlays.update(inLobby ? undefined : view, s?.role === 'host' || s?.role === 'solo')
     this.hostWait.update(s?.hostSilence ? hostSilence(s.hostSilence()) : 'live')
+    this.searchRoom(s, dt)
     if (phase && phase !== this.lastPhase) this.phaseChanged(phase)
     if (view && view.stage !== this.lastStage) this.lastStage = view.stage
     this.music(view, info, demo)
     this.chargeSound(view)
+  }
+
+  /** A joining guest that hears no host for a while is told the room was not found; a host turning up still joins. */
+  private searchRoom(s: Session | undefined, dt: number) {
+    if (s?.role !== 'guest' || s.latest() || s.status.kind === 'error') {
+      this.searching = 0
+      this.roomSearch.hide()
+      return
+    }
+    if (this.roomSearch.open || this.modalOpen) return
+    this.searching += dt
+    if (this.searching >= this.roomSearchAfter) this.roomSearch.show(this.room ?? '')
   }
 
   private phaseChanged(phase: string) {

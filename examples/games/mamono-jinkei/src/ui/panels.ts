@@ -2,6 +2,7 @@
 import type { Settings } from '../client/save'
 import { cleanName } from '../net/validate'
 import { JOBS, JOB_COLORS, JOB_NAMES } from '../vocab'
+import { splitPadKey } from '../input/device'
 import { el, icon } from './dom'
 
 /** A 40×40 pixel crest: the four slimes in formation (job colours) on a gold-rimmed medallion, scaled crisp by CSS. */
@@ -97,6 +98,37 @@ const KEYS: [string, string][] = [
   ['Esc', 'メニュー']
 ]
 
+const PAD_KEYS: [string, string][] = [
+  ['左スティック', '移動'],
+  ['右スティック', 'ねらう（そのままだと歩く向き）'],
+  ['Ⓐ', 'こうげき（長押しでためこうげき・陣形なら協力技！）'],
+  ['B', 'ジャンプ・ダッシュ・羽ばたき・遠吠え'],
+  ['X', '持ち上げる・つかむ・話す・レバー（バルブは長押し）'],
+  ['Y', '「せーの！」の合図'],
+  ['LB/RB', '操作するマモノを交代'],
+  ['Back', '仲間に「待て」⇄「ついてこい」'],
+  ['Start', 'メニュー'],
+  ['十字キー', 'メニューの移動（Ⓐ決定・B戻る）']
+]
+
+/** A small gamepad button glyph: round and colour-coded for the face buttons, a pill for shoulder and system keys. */
+export function padGlyph(label: string): HTMLElement {
+  const g = label === 'Ⓐ' ? 'A' : label
+  const cls = ['A', 'B', 'X', 'Y'].includes(g) ? `face-${g.toLowerCase()}` : 'wide'
+  return el(`kbd.pad-glyph.${cls}`, { text: g })
+}
+
+/** A key cap for either device: pad labels become glyphs (with any suffix as text), keyboard labels stay `kbd`. */
+export function keyCap(key: string, pad: boolean): HTMLElement {
+  const parts = pad ? splitPadKey(key) : undefined
+  if (!parts) return el('kbd', { text: key })
+  const wrap = el('span.keycap-pad', {}, padGlyph(parts.glyph))
+  if (parts.rest) wrap.append(el('span.keycap-rest', { text: parts.rest }))
+  return wrap
+}
+
+const PAD_GLYPHS = new Set(['Ⓐ', 'B', 'X', 'Y', 'LB/RB', 'Back', 'Start'])
+
 export function howToPlay(): HTMLElement {
   return el(
     'div.howto',
@@ -108,7 +140,20 @@ export function howToPlay(): HTMLElement {
       el('dl.keys', {}, ...KEYS.flatMap(([k, v]) => [el('dt', {}, el('kbd', { text: k })), el('dd', { text: v })]))
     ),
     el(
-      'section.howto-block',
+      'section.howto-block.howto-pad',
+      {},
+      el('h3', { text: 'ゲームパッド' }),
+      el(
+        'dl.keys',
+        {},
+        ...PAD_KEYS.flatMap(([k, v]) => [
+          el('dt', {}, PAD_GLYPHS.has(k) ? padGlyph(k) : el('kbd', { text: k })),
+          el('dd', { text: v })
+        ])
+      )
+    ),
+    el(
+      'section.howto-block.howto-formation',
       {},
       el('h3', { text: '陣形をくもう' }),
       el('p', {

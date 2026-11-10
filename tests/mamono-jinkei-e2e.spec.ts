@@ -62,14 +62,25 @@ export class CooperativeNetwork {
       if (o.role === 'host' && data.type === 'hello') { this.players.add(data.id); o.onPresence([...this.players]); }
       if (o.role === 'host' && data.type === 'input') o.onInput(data.id, data.input);
       if (o.role === 'guest' && data.type === 'snapshot') o.onSnapshot(data.state);
+      // A host that opens the room later still finds the guests already waiting in it.
+      if (o.role === 'guest' && data.type === 'host-up') this.channel.postMessage({ type: 'hello', id: this.playerId });
+      // The host left: like the real network, the cause comes first and then the failed cleanup of the closed session.
+      if (o.role === 'guest' && data.type === 'bye') {
+        o.onStatus('error', 'Error: Host left the room. Create a new connection to retry.');
+        o.onStatus('error', 'Relay cleanup failed. Reload before reconnecting.');
+      }
     };
     this.players = new Set([this.playerId]);
     if (o.role === 'guest') this.channel.postMessage({ type: 'hello', id: this.playerId });
+    if (o.role === 'host') this.channel.postMessage({ type: 'host-up' });
     o.onStatus('ready', 'ok');
   }
   async sendInput(input) { this.channel.postMessage({ type: 'input', id: this.playerId, input }); }
   async broadcastSnapshot(state) { this.channel.postMessage({ type: 'snapshot', state }); }
-  async stop() { this.channel?.close(); }
+  async stop() {
+    if (this.options.role === 'host') this.channel?.postMessage({ type: 'bye' });
+    this.channel?.close();
+  }
 }`
 
 function watchErrors(page: Page, errors: string[]) {
@@ -392,6 +403,51 @@ test('gamepad: d-pad, A, B and Start drive the menus; the left stick aims', asyn
   expect(errors).toEqual([])
 })
 
+test('gamepad: how to play lists the pad, and the in-game hints follow the last-used device', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await fakePad(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'マモノ陣形' })).toBeVisible()
+  await page.getByRole('button', { name: /遊び方/ }).click()
+  await expect(page.getByRole('heading', { name: 'ゲームパッド' })).toBeVisible()
+  const padBlock = page.locator('.howto-pad:visible')
+  for (const glyph of ['A', 'B', 'X', 'Y', 'LB/RB', 'Back', 'Start'])
+    await expect(
+      padBlock.locator('kbd.pad-glyph', { hasText: new RegExp(`^${glyph.replace('/', '\/')}$`) })
+    ).toBeVisible()
+  await expect(padBlock).toContainText('「せーの！」の合図')
+  if (process.env.HOWTO_SHOT) await page.screenshot({ path: process.env.HOWTO_SHOT })
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: /ひとりで遊ぶ/ }).click()
+  await page.getByRole('button', { name: '出発！' }).click()
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 8000 }).toBe('play')
+  await expect(page.locator('.hud')).toBeVisible()
+  const hintText = () => page.locator('.hints').innerText()
+  // Keyboard first: Q / Tab.
+  await page.keyboard.press('KeyD')
+  await expect(page.locator('.hints kbd', { hasText: /^Tab$/ })).toBeVisible()
+  if (process.env.HINT_KB_SHOT) await page.screenshot({ path: process.env.HINT_KB_SHOT })
+  // Pad input: Back / LB/RB glyphs.
+  await page.evaluate(() => {
+    ;(window as unknown as { __pad: { axes: number[] } }).__pad.axes = [0.9, 0, 0, 0]
+  })
+  await expect(page.locator('.hints kbd.pad-glyph', { hasText: /^LB\/RB$/ })).toBeVisible()
+  await expect(page.locator('.hints kbd.pad-glyph', { hasText: /^Back$/ })).toBeVisible()
+  expect(await hintText()).toContain('操作キャラ交代')
+  await expect(page.locator('.hints kbd:not(.pad-glyph)')).toHaveCount(0)
+  if (process.env.HINT_PAD_SHOT) await page.screenshot({ path: process.env.HINT_PAD_SHOT })
+  // Back to the keyboard.
+  await page.evaluate(() => {
+    ;(window as unknown as { __pad: { axes: number[] } }).__pad.axes = [0, 0, 0, 0]
+  })
+  await page.keyboard.press('KeyD')
+  await expect(page.locator('.hints kbd', { hasText: /^Tab$/ })).toBeVisible()
+  await expect(page.locator('.hints kbd.pad-glyph')).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
 test('lobby pre-selects the newest unlocked stage', async ({ page }) => {
   const errors: string[] = []
   watchErrors(page, errors)
@@ -654,6 +710,174 @@ test('a silent host makes guests wait (no fatal dialog) and play resumes by itse
   await expect(guest.locator('.host-wait')).toBeHidden({ timeout: 5000 })
   await expect(guest.locator('.net-status')).toHaveText('オンライン')
   expect(await guestState(guest)).toMatchObject({ screen: 'session', dialogs: 0, waiting: false })
+  expect(errors).toEqual([])
+})
+
+/** The dialogs on a page, by their text. */
+const dialogsOf = (page: Page) =>
+  page.evaluate(() => Array.from(document.querySelectorAll('[role=alertdialog]'), (d) => d.textContent ?? ''))
+
+/** The host left: the guest shows exactly one dialog naming the host, and nothing after タイトルへ. */
+async function expectOneHostLeftDialog(guest: Page) {
+  await expect(guest.getByRole('alertdialog')).toBeVisible({ timeout: 5000 })
+  // The closed session's failed cleanup is reported right after the cause: give a second dialog time to show.
+  await guest.waitForTimeout(500)
+  const dialogs = await dialogsOf(guest)
+  expect(dialogs).toHaveLength(1)
+  expect(dialogs[0]).toContain('ホストがルームを閉じました。')
+  expect(dialogs[0]).not.toContain('リレー')
+  await guest.getByRole('alertdialog').getByRole('button', { name: 'タイトルへ' }).click()
+  await expect.poll(() => guest.evaluate(() => window.__mamono.screen)).toBe('title')
+  await guest.waitForTimeout(300)
+  expect(await dialogsOf(guest)).toEqual([])
+}
+
+test('host leaves the lobby: the guest gets one dialog naming the host, and none after タイトルへ', async ({
+  context
+}) => {
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-host-left-lobby', errors, false)
+  await host.locator('.lobby-foot .back').click()
+  await host.getByRole('alertdialog').getByRole('button', { name: 'もどる' }).click()
+  await expect.poll(() => host.evaluate(() => window.__mamono.screen)).toBe('title')
+  await expectOneHostLeftDialog(guest)
+  expect(await dialogsOf(host)).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('host leaves during play: the guest gets one dialog naming the host, and none after タイトルへ', async ({
+  context
+}) => {
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-host-left-play', errors, false)
+  await host.getByRole('button', { name: '出発！' }).click()
+  for (const p of [host, guest])
+    await expect.poll(() => p.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  await host.bringToFront()
+  await host.keyboard.press('Escape')
+  await host.getByRole('button', { name: 'タイトルへ' }).click()
+  await host.getByRole('alertdialog').getByRole('button', { name: 'もどる' }).click()
+  await expect.poll(() => host.evaluate(() => window.__mamono.screen)).toBe('title')
+  await guest.bringToFront()
+  await expectOneHostLeftDialog(guest)
+  expect(errors).toEqual([])
+})
+
+test('joining a room nobody hosts: "not found" after a while, retry keeps waiting, a late host still joins', async ({
+  context
+}) => {
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const room = 'mamono-no-such-room'
+  const guest = await context.newPage()
+  watchErrors(guest, errors)
+  await guest.goto('/')
+  await guest.getByRole('button', { name: /ルームに参加/ }).click()
+  await guest.locator('.room-input:visible').fill(room)
+  const joined = Date.now()
+  await guest.getByRole('button', { name: '参加する' }).click()
+  await expect(guest.locator('.lobby-screen')).toBeVisible()
+  const notFound = guest.getByRole('alertdialog', { name: 'ルームが見つかりません' })
+  await expect(notFound).toBeVisible({ timeout: 25_000 })
+  expect(Date.now() - joined).toBeGreaterThan(11_000)
+  await expect(notFound).toContainText(room)
+  await expect(notFound).toContainText('ルームコード')
+  expect(await dialogsOf(guest)).toHaveLength(1)
+  // Retry: the dialog closes and the guest goes on waiting in the room.
+  await notFound.getByRole('button', { name: 'もう一度さがす' }).click()
+  await expect(notFound).toHaveCount(0)
+  expect(await guest.evaluate(() => window.__mamono.screen)).toBe('session')
+  // The host opens the room now: the guest joins as usual.
+  const host = await context.newPage()
+  watchErrors(host, errors)
+  await host.goto('/')
+  await host.getByRole('button', { name: /ルームを作る/ }).click()
+  await host.locator('.room-input:visible').fill(room)
+  await host.locator('form:visible button[type=submit]').click()
+  await expect(host.locator('.player')).toHaveCount(2, { timeout: 10_000 })
+  await expect.poll(() => guest.evaluate(() => window.__mamono.view?.players.length ?? 0)).toBe(2)
+  await guest.waitForTimeout(500)
+  expect(await dialogsOf(guest)).toEqual([])
+  // Another search that finds nothing offers going back, which returns to the title.
+  const lone = await context.newPage()
+  watchErrors(lone, errors)
+  await lone.goto('/')
+  await lone.waitForFunction(() => !!window.__mamono)
+  await lone.evaluate(() => {
+    ;(window.__mamono as unknown as { app: { roomSearchAfter: number } }).app.roomSearchAfter = 2
+  })
+  await lone.getByRole('button', { name: /ルームに参加/ }).click()
+  await lone.locator('.room-input:visible').fill('mamono-nobody-here')
+  await lone.getByRole('button', { name: '参加する' }).click()
+  const loneNotFound = lone.getByRole('alertdialog', { name: 'ルームが見つかりません' })
+  await expect(loneNotFound).toBeVisible({ timeout: 8000 })
+  await loneNotFound.getByRole('button', { name: 'タイトルへ' }).click()
+  await expect.poll(() => lone.evaluate(() => window.__mamono.screen)).toBe('title')
+  expect(await dialogsOf(lone)).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('guest back after 12 s hidden: the effects and sounds of the hidden time are not replayed at once', async ({
+  context
+}) => {
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-hidden-backlog', errors, false)
+  await host.getByRole('button', { name: '出発！' }).click()
+  for (const p of [host, guest])
+    await expect.poll(() => p.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  // Count what the guest plays (sounds and drawn events) with the time they were played.
+  await guest.evaluate(() => {
+    const app = (window.__mamono as unknown as { app: Record<string, Record<string, unknown>> }).app
+    const log: number[] = []
+    Object.assign(window, { __played: log })
+    for (const [owner, method] of [
+      ['audio', 'sfx'],
+      ['renderer', 'event']
+    ] as const) {
+      const target = app[owner]
+      const real = (target[method] as (...a: unknown[]) => unknown).bind(target)
+      target[method] = (...a: unknown[]) => {
+        log.push(performance.now())
+        return real(...a)
+      }
+    }
+  })
+  await hide(guest, true)
+  // The host keeps swinging while the guest is away (each swing is a sound and an effect).
+  await host.bringToFront()
+  const at = (await host.evaluate(() => window.__mamono.camera.heroCss))!
+  for (let i = 0; i < 24; i++) {
+    await host.mouse.move(at.x + 80, at.y)
+    await host.mouse.down()
+    await host.waitForTimeout(80)
+    await host.mouse.up()
+    await host.waitForTimeout(420)
+  }
+  // The backlog is real: many events wait on the hidden guest.
+  const pending = await guest.evaluate(
+    () =>
+      (window.__mamono as unknown as { app: { session: { queue: { pending: unknown[] } } } }).app.session.queue.pending
+        .length
+  )
+  expect(pending).toBeGreaterThan(20)
+  const shown = await guest.evaluate(() => performance.now())
+  await hide(guest, false)
+  await guest.waitForTimeout(400)
+  const burst = await guest.evaluate(
+    (from) => (window as unknown as { __played: number[] }).__played.filter((t) => t >= from && t < from + 300).length,
+    shown
+  )
+  expect(burst).toBeLessThan(10)
+  // The guest shows the host's current state.
+  const [hostT, guestT] = await Promise.all([
+    host.evaluate(() => window.__mamono.view!.t),
+    guest.evaluate(() => (window.__mamono as unknown as { latest: { t: number } }).latest.t)
+  ])
+  expect(Math.abs(hostT - guestT)).toBeLessThan(1)
   expect(errors).toEqual([])
 })
 

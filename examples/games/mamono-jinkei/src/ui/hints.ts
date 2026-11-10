@@ -1,5 +1,6 @@
 /** What the controlled hero can do right now: the thing to interact with and the contextual key hints. Pure. */
 import type { HeroView, PropView, StageInfo, View } from '../sim/types'
+import { deviceKey, type InputDevice } from '../input/device'
 import { TILE, TILE_KINDS, type TileKind } from '../vocab'
 
 export interface Target {
@@ -152,7 +153,17 @@ export interface Hint {
 const SPECIES_ACTION: Record<string, string> = { slime: 'ジャンプ', rat: 'ダッシュ', crow: '羽ばたき', wolf: '遠吠え' }
 
 /** Contextual hints for the HUD, most relevant first (at most four). */
-export function hintsFor(view: View, info: StageInfo | undefined, myId: string): Hint[] {
+export function hintsFor(
+  view: View,
+  info: StageInfo | undefined,
+  myId: string,
+  device: InputDevice = 'keyboard'
+): Hint[] {
+  const hints = keyboardHints(view, info, myId)
+  return device === 'pad' ? hints.map((h) => ({ ...h, key: deviceKey(h.key, device) })) : hints
+}
+
+function keyboardHints(view: View, info: StageInfo | undefined, myId: string): Hint[] {
   const h = controlled(view, myId)
   if (!h || view.phase !== 'play') return []
   const out: Hint[] = []

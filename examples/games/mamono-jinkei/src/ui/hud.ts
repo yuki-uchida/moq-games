@@ -6,7 +6,9 @@
 import type { EventView, HeroView, View } from '../sim/types'
 import { BOSS_NAMES, JOBS, JOB_COLORS, JOB_NAMES, TILE, type BossKind } from '../vocab'
 import { clearChildren, el, icon, setText, show } from './dom'
+import type { InputDevice } from '../input/device'
 import { hintsFor, type Hint } from './hints'
+import { keyCap } from './panels'
 import { bellProgress, groupProgress, type MoonProgress } from './moons'
 import type { StageInfo } from '../sim/types'
 
@@ -134,6 +136,8 @@ export class Hud {
   private readonly spectator: HTMLElement
   private readonly muteBtn: HTMLButtonElement
   private hintKey = ''
+  private readonly dialogKeyCap: HTMLElement
+  private device: InputDevice = 'keyboard'
   private formKey = ''
   private countKey = ''
   private bannerQueue: { text: string; kind: string }[] = []
@@ -157,12 +161,13 @@ export class Hud {
     this.notices = el('ul.notices')
     this.dialogSpeaker = el('span.dialog-speaker')
     this.dialogText = el('p.dialog-text')
+    this.dialogKeyCap = el('span.keycap', {}, keyCap('E', false))
     this.dialog = el(
       'div.dialog.parchment',
       { hidden: true, role: 'dialog', 'aria-live': 'polite' },
       this.dialogSpeaker,
       this.dialogText,
-      el('span.dialog-next', {}, el('kbd', { text: 'E' }), ' つぎへ')
+      el('span.dialog-next', {}, this.dialogKeyCap, ' つぎへ')
     )
     this.bossName = el('span.boss-name')
     this.bossFill = el('span.boss-fill')
@@ -258,7 +263,7 @@ export class Hud {
     setTimeout(() => li.remove(), 4400)
   }
 
-  update(view: View, info: StageInfo | undefined, myId: string, now: number) {
+  update(view: View, info: StageInfo | undefined, myId: string, now: number, device: InputDevice = 'keyboard') {
     const me = view.players.find((p) => p.id === myId)
     for (const c of this.cards)
       c.update(
@@ -294,14 +299,18 @@ export class Hud {
     }
 
     // Key hints.
-    const hints: Hint[] = view.phase === 'play' && !me?.spectator ? hintsFor(view, info, myId) : []
-    const hKey = hints.map((h) => h.key + h.text + (h.hot ? '!' : '')).join('|')
+    const hints: Hint[] = view.phase === 'play' && !me?.spectator ? hintsFor(view, info, myId, device) : []
+    if (device !== this.device) {
+      this.device = device
+      this.dialogKeyCap.replaceChildren(keyCap(device === 'pad' ? 'X' : 'E', device === 'pad'))
+    }
+    const hKey = device + hints.map((h) => h.key + h.text + (h.hot ? '!' : '')).join('|')
     if (hKey !== this.hintKey) {
       this.hintKey = hKey
       clearChildren(this.hints)
       for (const h of hints)
         this.hints.append(
-          el('span.hint' + (h.hot ? '.hot' : ''), {}, el('kbd', { text: h.key }), el('span', { text: h.text }))
+          el('span.hint' + (h.hot ? '.hot' : ''), {}, keyCap(h.key, device === 'pad'), el('span', { text: h.text }))
         )
     }
 

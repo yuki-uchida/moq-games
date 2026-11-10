@@ -17,6 +17,8 @@ export const BACKGROUND_BACKLOG = 1
 export const HOST_STALL = 3
 /** …and offers going back to the title after this long (still resuming if the host returns). */
 export const HOST_LONG_STALL = 60
+/** A joining guest that has not heard from any host this long is told the room was not found (it keeps searching). */
+export const ROOM_SEARCH = 13
 /** The host treats a guest whose input has not been refreshed for this long as letting go of everything. */
 export const INPUT_EXPIRY = 0.5
 

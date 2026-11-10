@@ -21,6 +21,12 @@ export const NAV_REPEAT = 0.14
 /** A stick counts as a direction press beyond this deflection (after the dead zone). */
 const STICK_PRESS = 0.5
 
+/** True when the pad is being used right now: any button held or a stick pushed past its dead zone. */
+export function padActive(p: PadSample): boolean {
+  if (p.buttons.some(Boolean)) return true
+  return stick(p.axes[0] ?? 0, p.axes[1] ?? 0).m > 0 || stick(p.axes[2] ?? 0, p.axes[3] ?? 0, 0.3).m > 0
+}
+
 /** The direction a pad is holding: the d-pad first, else the left stick's dominant axis. */
 export function navDirection(p: PadSample): 'up' | 'down' | 'left' | 'right' | undefined {
   if (p.buttons[DPAD.up]) return 'up'

@@ -33,6 +33,61 @@ declare global {
   }
 }
 
+type RealMoq = Awaited<ReturnType<typeof startRealMoq>>
+
+/** Opens the game in its own Chrome (one browser per player) and collects its errors. */
+function opener(env: RealMoq, browsers: Browser[], errors: string[]) {
+  return async (name: string): Promise<Page> => {
+    const browser = await chromium.launch({
+      executablePath: env.chrome,
+      headless: true,
+      args: [
+        `--ignore-certificate-errors-spki-list=${env.spki}`,
+        `--origin-to-force-quic-on=${new URL(env.relayURL).host}`,
+        '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows'
+      ]
+    })
+    browsers.push(browser)
+    const page = await browser.newPage({ viewport: { width: 1024, height: 600 } })
+    page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`))
+    page.on('console', (m) => {
+      // The browser's favicon request is the only expected 404.
+      if (
+        m.type() === 'error' &&
+        !/favicon|Failed to load resource: the server responded with a status of 404/.test(m.text())
+      )
+        errors.push(`${name}: ${m.text()}`)
+    })
+    page.on('response', (r) => {
+      if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) errors.push(`${name}: HTTP ${r.status()} ${r.url()}`)
+    })
+    await page.goto(`${env.baseURL}/?relayUrl=${encodeURIComponent(env.relayURL)}`)
+    await page.waitForFunction(() => !!window.__mamono)
+    return page
+  }
+}
+
+/** The dialogs on a page, by their text. */
+const dialogsOf = (page: Page) =>
+  page.evaluate(() => Array.from(document.querySelectorAll('[role=alertdialog]'), (d) => d.textContent ?? ''))
+
+/** A guest whose host left shows exactly one dialog naming the host, and nothing after タイトルへ. */
+async function expectOneHostLeftDialog(page: Page, timeout: number) {
+  await expect(page.getByRole('alertdialog')).toBeVisible({ timeout })
+  // Cleanup errors of the closed session follow the cause: give a second dialog time to show.
+  await page.waitForTimeout(1500)
+  const dialogs = await dialogsOf(page)
+  expect(dialogs).toHaveLength(1)
+  expect(dialogs[0]).toContain('ホストがルームを閉じました。')
+  await page.getByRole('alertdialog').getByRole('button', { name: 'タイトルへ' }).click()
+  await expect.poll(() => page.evaluate(() => window.__mamono.screen)).toBe('title')
+  await page.waitForTimeout(500)
+  expect(await dialogsOf(page)).toEqual([])
+}
+
 const ROOM = `real-${Date.now().toString(36)}`
 
 test('host + 3 guests + a spectator play together through a real MoQ relay', async () => {
@@ -40,38 +95,7 @@ test('host + 3 guests + a spectator play together through a real MoQ relay', asy
   const browsers: Browser[] = []
   const errors: string[] = []
   try {
-    const open = async (name: string): Promise<Page> => {
-      const browser = await chromium.launch({
-        executablePath: env.chrome,
-        headless: true,
-        args: [
-          `--ignore-certificate-errors-spki-list=${env.spki}`,
-          `--origin-to-force-quic-on=${new URL(env.relayURL).host}`,
-          '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows'
-        ]
-      })
-      browsers.push(browser)
-      const page = await browser.newPage({ viewport: { width: 1024, height: 600 } })
-      page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`))
-      page.on('console', (m) => {
-        // The browser's favicon request is the only expected 404.
-        if (
-          m.type() === 'error' &&
-          !/favicon|Failed to load resource: the server responded with a status of 404/.test(m.text())
-        )
-          errors.push(`${name}: ${m.text()}`)
-      })
-      page.on('response', (r) => {
-        if (r.status() >= 400 && !r.url().endsWith('/favicon.ico'))
-          errors.push(`${name}: HTTP ${r.status()} ${r.url()}`)
-      })
-      await page.goto(`${env.baseURL}/?relayUrl=${encodeURIComponent(env.relayURL)}`)
-      await page.waitForFunction(() => !!window.__mamono)
-      return page
-    }
+    const open = opener(env, browsers, errors)
 
     // Host creates the room.
     const host = await open('host')
@@ -160,6 +184,50 @@ test('host + 3 guests + a spectator play together through a real MoQ relay', asy
         .poll(() => page.evaluate(() => window.__mamono.view!.party.techs), { timeout: 10_000 })
         .toBeGreaterThan(techsBefore)
 
+    // The host leaves through the menu: every guest (and the spectator) gets one dialog that names the host.
+    await host.keyboard.press('Escape')
+    await host.getByRole('button', { name: 'タイトルへ' }).click()
+    await host.getByRole('alertdialog').getByRole('button', { name: 'もどる' }).click()
+    await expect.poll(() => host.evaluate(() => window.__mamono.screen)).toBe('title')
+    for (const page of [...guests, fifth]) await expectOneHostLeftDialog(page, 20_000)
+    expect(await dialogsOf(host)).toEqual([])
+
+    expect(errors).toEqual([])
+  } catch (error) {
+    console.error(
+      'relay diagnostics',
+      JSON.stringify({ ...env.diagnostics(), log: env.diagnostics().log.slice(-4000) })
+    )
+    throw error
+  } finally {
+    for (const b of browsers) await b.close().catch(() => {})
+    await env.stop()
+  }
+})
+
+test('closing the host browser: the guest gets one dialog naming the host, and none after タイトルへ', async () => {
+  const env = await startRealMoq()
+  const browsers: Browser[] = []
+  const errors: string[] = []
+  try {
+    const open = opener(env, browsers, errors)
+    const room = `${ROOM}-close`
+    const host = await open('host')
+    await host.getByRole('button', { name: /ルームを作る/ }).click()
+    await host.locator('.room-input:visible').fill(room)
+    await host.locator('form:visible button[type=submit]').click()
+    await expect(host.locator('.room-code')).toHaveText(room, { timeout: 30_000 })
+    const guest = await open('guest')
+    await guest.getByRole('button', { name: /ルームに参加/ }).click()
+    await guest.locator('.room-input:visible').fill(room)
+    await guest.getByRole('button', { name: '参加する' }).click()
+    await expect(host.locator('.player')).toHaveCount(2, { timeout: 45_000 })
+    await expect
+      .poll(() => guest.evaluate(() => window.__mamono.view?.players.length ?? 0), { timeout: 45_000 })
+      .toBe(2)
+    // The host's whole browser goes away without leaving the room first.
+    await host.context().browser()!.close()
+    await expectOneHostLeftDialog(guest, 90_000)
     expect(errors).toEqual([])
   } catch (error) {
     console.error(

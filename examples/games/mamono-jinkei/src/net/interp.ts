@@ -178,6 +178,11 @@ export class EventQueue<E extends { id: number; t: number }> {
     }
   }
 
+  /** Drops pending events older than host time `t` (their ids stay seen, so they never come back). */
+  skipBefore(t: number): void {
+    this.pending = this.pending.filter((e) => e.t >= t)
+  }
+
   /** Removes and returns the events due at time `t`. */
   take(t: number, out: E[]): E[] {
     out.length = 0

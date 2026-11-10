@@ -173,7 +173,10 @@ export class TitleScreen {
     for (const [k, p] of Object.entries(this.panels)) show(p, k === panel)
     this.hostError.textContent = ''
     this.joinError.textContent = ''
-    if (focus) requestAnimationFrame(() => focusables(this.panels[panel])[panel === 'main' ? 0 : 0]?.focus())
+    if (focus)
+      requestAnimationFrame(() =>
+        focusables(this.panels[panel])[panel === 'main' ? 0 : 0]?.focus({ preventScroll: panel === 'howto' })
+      )
   }
 
   /** Esc on the title: back to the main menu. Returns true when handled. */
