@@ -57,7 +57,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 20
+  v: 21
   time: number
   phase: GameState['phase']
   level: number
@@ -92,14 +92,15 @@ const PET_STILL_SECONDS = 0.15
 export const GUARD_BASH_STEPS = 14
 /**
  * Added to 過保護親's field while she walks over the ground (the renderer plays her walk): GUARD_WALK at a walk,
- * GUARD_FAST fast (her walk twice as fast), both stepping back (her walk backwards, slower). Her field runs up to 255.
+ * GUARD_FAST fast, both stepping back (going against the way she faces). Her field runs up to 255.
  */
 export const GUARD_WALK = 32
 export const GUARD_FAST = 128
 export const GUARD_BACK = GUARD_WALK + GUARD_FAST
 /**
- * 過保護親's angle field also carries the frame her walk is on (Shot.guardianStride, whole frames): her angle
- * (radians × 100, -315..315) plus GUARD_STEP times it.
+ * 過保護親's angle field also carries the frame her walk is on (Shot.guardianStride, whole frames; it goes on a frame
+ * for each stretch of ground she goes over, and back a frame as she steps back): her angle (radians × 100, -315..315)
+ * plus GUARD_STEP times it.
  */
 export const GUARD_STEP = 1000
 export const GUARD_STEPS = 60
@@ -183,7 +184,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 20,
+    v: 21,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -364,7 +365,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 20) return undefined
+  if (!record(value) || value.v !== 21) return undefined
   if (
     Object.keys(value).some(
       (key) =>

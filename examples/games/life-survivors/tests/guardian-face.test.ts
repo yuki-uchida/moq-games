@@ -259,7 +259,7 @@ describe('過保護親 step back slowly, playing her walk backwards', () => {
 })
 
 describe('過保護親 walk a frame every 14 px over the ground, and step off the family no faster than 360 px/s', () => {
-  test('her walk goes on as far as she goes, and the view carries its frame with her angle', () => {
+  test('her walk goes on (back, stepping back) as far as she goes, and the view carries its frame with her angle', () => {
     const { game, player } = setup(8, 8)
     for (let f = 0; f < 30; f++) game.tick(DT)
     let checked = 0
@@ -276,8 +276,10 @@ describe('過保護親 walk a frame every 14 px over the ground, and step off th
         for (const guard of guardsOf(game, player)) {
           const was = before.get(guard)
           if (!was || !guard.guardianWalking) continue
+          // (On as she goes, back as she steps back.)
           const went = (Math.hypot(guard.x - was.x, guard.y - was.y) / 14) % 60
-          expect(((guard.guardianStride ?? 0) - was.stride + 60) % 60).toBeCloseTo(went, 6)
+          const moved = (guard.guardianStride ?? 0) - was.stride
+          expect(((guard.guardianPace === 'back' ? -moved : moved) + 60) % 60).toBeCloseTo(went, 6)
           const field = view.shots[live.indexOf(guard) * STRIDE.shots + 4]
           const step = Math.round(field / GUARD_STEP) + 0
           expect(step).toBe(Math.floor(guard.guardianStride ?? 0) % GUARD_STEPS)
@@ -308,5 +310,95 @@ describe('過保護親 walk a frame every 14 px over the ground, and step off th
       }
     }
     expect(fastest).toBeLessThanOrEqual(360 + 1e-6)
+  }, 30_000)
+})
+
+describe('過保護親 in one line walking up the screen and across, and her walk stepping back and on again', () => {
+  /** Pairs of parents in one line facing each other (within 50 px across, 14 px up or down). */
+  const faceToFace = (game: Game, player: Player) => {
+    const guards = guardsOf(game, player).map((guard) => ({
+      x: guard.x - player.x,
+      y: guard.y - player.y,
+      left: Math.cos(guard.guardianFace ?? guard.angle) < 0
+    }))
+    let pairs = 0
+    for (const a of guards)
+      for (const b of guards)
+        if (!a.left && b.left && b.x > a.x && b.x - a.x <= 50 && Math.abs(b.y - a.y) <= 14) pairs++
+    return pairs
+  }
+
+  for (const [name, level, gamble, married] of [
+    ['Lv4 and the gamble Lv5', 4, 5, false],
+    ['Lv8 and the gamble Lv8', 8, 8, false],
+    ['married, Lv8 and the gamble Lv8', 8, 8, true]
+  ] as const)
+    test(`${name}: walking up and right or left on, no two in a line face each other`, () => {
+      for (const way of [
+        [S, -S],
+        [-S, -S]
+      ])
+        for (const from of [
+          [0, 0],
+          [1, 0],
+          [-1, 0]
+        ]) {
+          const { game, player } = setup(level, gamble, married)
+          const run = (input: number[], frames: number, check = 0) => {
+            for (let f = 0; f < frames; f++) {
+              game.setInput(player.id, { x: input[0], y: input[1] })
+              game.tick(DT)
+              player.hp = player.maxHp
+              // (Once they have come round to their places in the line: going there, two may pass each other.)
+              if (f >= check) expect(faceToFace(game, player)).toBe(0)
+            }
+          }
+          run([0, 0], 60, Infinity)
+          run(from, 60, Infinity)
+          run(way, 180, 60)
+        }
+    }, 30_000)
+
+  test('her walk as drawn goes on or back a frame at most each step, stepping back and on again', () => {
+    const { game, player } = setup(8, 8)
+    for (let f = 0; f < 30; f++) game.tick(DT)
+    const last = new Map<Shot, { step: number; back: boolean }>()
+    let checked = 0
+    let switches = 0
+    let seed = 99
+    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    const all = Object.values(DIRS)
+    const steps: [number, number][] = [
+      ...plan.map(([way, frames]): [number, number] => [all.indexOf(DIRS[way]), frames])
+    ]
+    for (let k = 0; k < 40; k++) steps.push([Math.floor(random() * all.length), 10 + Math.floor(random() * 60)])
+    for (const [way, frames] of steps) {
+      for (let f = 0; f < frames; f++) {
+        game.setInput(player.id, { x: all[way][0], y: all[way][1] })
+        game.tick(DT)
+        player.hp = player.maxHp
+        const live = game.state.shots.filter((shot) => shot.delay <= 0)
+        const view = toView(game.state)
+        for (const guard of guardsOf(game, player)) {
+          const field = view.shots[live.indexOf(guard) * STRIDE.shots + 4]
+          const step = Math.round(field / GUARD_STEP)
+          const back = (view.shots[live.indexOf(guard) * STRIDE.shots + 7] & GUARD_BACK) === GUARD_BACK
+          const was = last.get(guard)
+          if (!guard.guardianWalking) {
+            last.delete(guard)
+            continue
+          }
+          if (was) {
+            // (Drawn on the frame it carries at every pace: back a frame stepping back, on one otherwise.)
+            expect([0, back ? GUARD_STEPS - 1 : 1]).toContain((step - was.step + GUARD_STEPS) % GUARD_STEPS)
+            if (back !== was.back) switches++
+            checked++
+          }
+          last.set(guard, { step, back })
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000)
+    expect(switches).toBeGreaterThan(10)
   }, 30_000)
 })

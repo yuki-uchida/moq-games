@@ -2269,8 +2269,8 @@ export class Renderer {
     const time = this.clock + sh.i * 0.1
     const flip = cos < 0
     const scale = sh.r / 20
-    const pace = sh.v & GUARD_BACK
-    const walking = pace !== 0
+    // (Walking at any pace: GUARD_WALK, GUARD_FAST or both, stepping back.)
+    const walking = (sh.v & GUARD_BACK) !== 0
     const progress = Math.floor((sh.v % GUARD_WALK) / 2)
     const swing = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) : 0
     let thrust = 0
@@ -2321,10 +2321,10 @@ export class Renderer {
       popping = pop < 1
     }
     // (Her walk, while there is one in her sheet; her stepping in place until then.) Walking, her walk is on the frame
-    // the game counts by how far she goes over the ground (GUARD_STEP), forwards, or backwards as she steps back.
+    // the game counts by how far she goes over the ground (GUARD_STEP): on through it, or back through it as she steps
+    // back (the game counts down), so stepping back or on again she stays on the same frame.
     const walk = art.walk ?? art.fly
-    const n = walk.frames.length
-    const body = !walking ? pick(art.fly, time) : walk.frames[pace === GUARD_BACK ? n - 1 - (sh.step % n) : sh.step % n]
+    const body = !walking ? pick(art.fly, time) : walk.frames[sh.step % walk.frames.length]
     this.centred(body, x, y, sh.evolved, alpha, swell, flip)
     this.centred(
       pick(art.guard, time),

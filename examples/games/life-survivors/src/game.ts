@@ -137,8 +137,8 @@ const GUARDIAN_WALK_ON = 40
 const GUARDIAN_WALK_OFF = 25
 const GUARDIAN_WALK_HOLD = 0.12
 /**
- * How far (px over the ground) 過保護親 goes for each frame of her walk (forwards, fast, or backwards as she steps
- * back), and how many frames her count of them runs to before it starts again (a whole number of walks).
+ * How far (px over the ground) 過保護親 goes for each frame of her walk (counted on, walking or fast, and back as she
+ * steps back), and how many frames her count of them runs to before it starts again (a whole number of walks).
  */
 const GUARDIAN_STRIDE = 14
 const GUARDIAN_STRIDE_LOOP = 60
@@ -179,6 +179,12 @@ const GUARDIAN_FACE_HOLD = 0.25
 const GUARDIAN_FACE_LEAST = 0.18
 const GUARDIAN_FACE_TURN = 40
 const GUARDIAN_FACE_KEEP = 30
+/**
+ * The parent next in from 過保護親 in her line (walking with the child): on the same side of the child, within `y` px up
+ * or down (`keep` px, should she face out already, so one knocked a little out of the line does not turn her round)
+ * and `x` px across of her, and at least `in` px nearer the child.
+ */
+const GUARDIAN_LINE_NEXT = { x: 56, y: 16, keep: 28, in: 4 } as const
 /** How many points (one a frame at 60 fps) on her way over GUARDIAN_FACE_HOLD 過保護親 looks at as she turns. */
 const GUARDIAN_FACE_STEPS = 15
 /**
@@ -188,6 +194,11 @@ const GUARDIAN_FACE_STEPS = 15
  */
 const GUARDIAN_BACK_SPEED = 90
 const GUARDIAN_BACK_ACROSS = 30
+/**
+ * Stepping back slower than GUARDIAN_WALK_FAST, 過保護親 goes on stepping back till she goes under this (px/s across),
+ * so she does not flick between stepping back and walking on.
+ */
+const GUARDIAN_BACK_STAY = 20
 const GUARDIAN_BACK_ROOM = 3 * GUARDIAN_GAP
 const GUARDIAN_WALK_FAST = 200
 /** How long (s) the way 過保護親 goes over the ground takes to tell which way she faces as she goes. */
@@ -3851,7 +3862,7 @@ export class Game {
     // (Not knowing her way round the child to the other side, she keeps facing out from her until she knows it.)
     const wary = blind && Math.abs(at.x) > 4 && Math.sign(place.x) !== Math.sign(at.x)
     this.faceGuardian(shot, at, last, dt, owner, there ? goal : place, soon, settling, wary)
-    this.paceGuardian(shot)
+    this.paceGuardian(shot, was && dt > 0 ? Math.hypot(shot.x - was.x, shot.y - was.y) : 0)
     if (this.guardianPass) this.guardiansMoved.add(shot)
   }
 
@@ -3863,8 +3874,10 @@ export class Game {
    * beside a standing child (even as the child takes a step or two), facing out from her, and on her way to her place
    * beside the child (`settling`) on the side she is on, facing out to that side; otherwise the way she faced.
    * Wherever she faces, she faces the way that holds less of her shield over the child, what is over her head and her
-   * family, now and on her way soon; and she keeps to the side she faces for GUARDIAN_FACE_HOLD before she turns to
-   * the other (GUARDIAN_FACE_LEAST to take her shield off them).
+   * family, now and on her way soon; walking with the child near her place, she faces out as the parent next in from
+   * her in her line does, should that one face out to her (guardianFacedIn); and she keeps to the side she faces for
+   * GUARDIAN_FACE_HOLD before she turns to the other (GUARDIAN_FACE_LEAST to take her shield off them, or to face out
+   * as the parent next in from her does).
    */
   private faceGuardian(
     shot: Shot,
@@ -3906,9 +3919,6 @@ export class Game {
       shot.guardianSlow = (shot.guardianSlow ?? 0) + dt
       if (shot.guardianSlow >= GUARDIAN_WALK_HOLD) shot.guardianWalking = false
     }
-    // Walking, her walk goes on a frame every GUARDIAN_STRIDE px she goes over the ground.
-    if (shot.guardianWalking)
-      shot.guardianStride = ((shot.guardianStride ?? 0) + (speed * dt) / GUARDIAN_STRIDE) % GUARDIAN_STRIDE_LOOP
     // Bashing, she faces the enemy she bashes (see moveGuardian).
     if (shot.aux > 0 && shot.guardianFace === shot.angle && this.guardianBashClear(shot, owner, at)) return
     const boxes = this.guardianShieldBoxes(owner)
@@ -3936,6 +3946,8 @@ export class Game {
     }
     const facing = (sign: number) => (sign > 0 ? 0 : Math.PI)
     let face: number
+    // (Facing out as the parent next in from her does, she need not hold the other way first.)
+    let along = false
     if (shot.guardianWalking && speed > 1 && (moving || !standing)) {
       // The way she goes over the ground, of late (not the way a step aside to keep clear of another took her).
       // (Which side she goes to, by the way she has gone of late, but up or down the screen as she goes now.)
@@ -3951,7 +3963,26 @@ export class Game {
       if (settling && !far) face = rather(facing(there), facing(-there))
       else if (standing && !far) face = rather(facing(out), facing(-out))
       else if (wary) face = rather(Math.atan2(wy, out * Math.abs(across)), Math.atan2(wy, -out * Math.abs(across)))
-      else face = rather(Math.atan2(wy, across), Math.atan2(wy, -across))
+      else {
+        face = rather(Math.atan2(wy, across), Math.atan2(wy, -across))
+        // Walking with her child near her place, she does not face the parent next in from her in her line who faces
+        // out to her (their shields would meet): she faces out as that one does, unless more of her shield lies over
+        // the child, what is over her head or her family that way. (Not on her way to a place further off: passing
+        // each other there, each faces the way she goes.)
+        if (
+          !standing &&
+          off <= GUARDIAN_FACE_KEEP &&
+          Math.abs(at.x) > 4 &&
+          Math.sign(Math.cos(face)) !== Math.sign(at.x) &&
+          this.guardianFacedIn(shot, owner, at, side === Math.sign(at.x))
+        ) {
+          const turned = Math.PI - face
+          if (over(turned) <= over(face)) {
+            face = turned
+            along = true
+          }
+        }
+      }
     } else if (standing) face = facing(out)
     else return
     // She keeps to the side she faces for a while, unless her shield lies over the child (or what is over her head,
@@ -3960,7 +3991,8 @@ export class Game {
     if ((Math.cos(face) < 0 ? -1 : 1) !== side) {
       if (
         shot.guardianTurned < GUARDIAN_FACE_LEAST - 1e-6 ||
-        (shot.guardianTurned < GUARDIAN_FACE_HOLD - 1e-6 &&
+        (!along &&
+          shot.guardianTurned < GUARDIAN_FACE_HOLD - 1e-6 &&
           !(
             this.guardianCovered(shot, owner, at, now, boxes) > 0 &&
             [at, ...soon].every((p) => this.guardianCovered(shot, owner, p, face, boxes) === 0)
@@ -3973,17 +4005,49 @@ export class Game {
   }
 
   /**
-   * How 過保護親 `shot` walks, for the view (GUARD_WALK bits): stepping back while she goes against the way she faces
-   * (GUARDIAN_BACK_ACROSS), fast from GUARDIAN_WALK_FAST px/s over the ground, otherwise at a walk.
+   * Whether another parent of 過保護親 `shot`'s child (at `at` from her) stands next in from her in her line, on the
+   * same side of the child (GUARDIAN_LINE_NEXT; further up or down, should she face out already, `keep`), facing out
+   * to her: where that one was last moved, this step or the last.
    */
-  private paceGuardian(shot: Shot) {
+  private guardianFacedIn(shot: Shot, owner: Player, at: { x: number; y: number }, keep = false) {
+    const out = Math.sign(at.x)
+    const reach = Math.hypot(at.x, at.y)
+    const high = keep ? GUARDIAN_LINE_NEXT.keep : GUARDIAN_LINE_NEXT.y
+    for (const other of this.state.shots) {
+      if (other === shot || other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
+      const o = other.guardianOffset ?? { x: other.x - owner.x, y: other.y - owner.y }
+      if (
+        Math.sign(o.x) === out &&
+        Math.abs(o.y - at.y) <= high &&
+        Math.abs(o.x - at.x) <= GUARDIAN_LINE_NEXT.x &&
+        Math.hypot(o.x, o.y) <= reach - GUARDIAN_LINE_NEXT.in &&
+        Math.sign(Math.cos(other.guardianFace ?? other.angle)) === out
+      )
+        return true
+    }
+    return false
+  }
+
+  /**
+   * How 過保護親 `shot` walks, for the view (GUARD_WALK bits), and how far on her walk is after she went `ground` px
+   * over the ground: stepping back while she goes against the way she faces (from GUARDIAN_BACK_ACROSS px/s across the
+   * screen, and on till under GUARDIAN_BACK_STAY while not fast), her walk counting down; fast from GUARDIAN_WALK_FAST
+   * px/s over the ground, otherwise at a walk, counting up.
+   */
+  private paceGuardian(shot: Shot, ground: number) {
     const drift = shot.guardianDrift
     if (!shot.guardianWalking || !drift) {
       shot.guardianPace = undefined
       return
     }
-    const back = Math.abs(drift.x) >= GUARDIAN_BACK_ACROSS && drift.x < 0 !== Math.cos(shot.guardianFace ?? 0) < 0
-    shot.guardianPace = back ? 'back' : Math.hypot(drift.x, drift.y) >= GUARDIAN_WALK_FAST ? 'fast' : 'walk'
+    const fast = Math.hypot(drift.x, drift.y) >= GUARDIAN_WALK_FAST
+    // (Going fast, though, she stops stepping back as soon as she goes under GUARDIAN_BACK_ACROSS: she would only glide.)
+    const across = shot.guardianPace === 'back' && !fast ? GUARDIAN_BACK_STAY : GUARDIAN_BACK_ACROSS
+    const back = Math.abs(drift.x) >= across && drift.x < 0 !== Math.cos(shot.guardianFace ?? 0) < 0
+    shot.guardianPace = back ? 'back' : fast ? 'fast' : 'walk'
+    // Her walk goes on a frame every GUARDIAN_STRIDE px she goes over the ground (back a frame, stepping back).
+    const stride = (shot.guardianStride ?? 0) + ((back ? -1 : 1) * ground) / GUARDIAN_STRIDE
+    shot.guardianStride = ((stride % GUARDIAN_STRIDE_LOOP) + GUARDIAN_STRIDE_LOOP) % GUARDIAN_STRIDE_LOOP
   }
 
   /**
