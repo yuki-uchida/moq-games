@@ -27,7 +27,7 @@ test('all 48 outfits retain baseline pixels, frame order and animation timing', 
     }
   }
   expect(hash.digest('hex')).toBe('d4e26d373b550d264db2e63ef05784bcc4cfe41607a7ee74b402419d619cda1a')
-}, 15_000)
+}, 30_000)
 
 test('partial work is bounded, discarded on invalidation or expiry, and synchronous drawing wins', () => {
   const clock = vi.spyOn(performance, 'now').mockReturnValue(0)

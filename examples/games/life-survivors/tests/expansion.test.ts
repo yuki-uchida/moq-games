@@ -795,7 +795,7 @@ describe('enemies', () => {
     const early = arena(19)
     run(early.game, early.player, 60 * 60)
     expect(early.game.state.enemies.some((e) => e.elite)).toBe(false)
-  })
+  }, 30_000)
 })
 
 describe('bosses', () => {

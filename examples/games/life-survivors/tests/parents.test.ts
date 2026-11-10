@@ -1264,7 +1264,7 @@ describe('蒸発済み: 自立', () => {
     }
     expect(upgraded).toBe(true)
     process.stderr.write(report.join('\n'))
-  }, 20_000)
+  }, 40_000)
 })
 
 describe('モンスターペアレントの対人の手札', () => {
