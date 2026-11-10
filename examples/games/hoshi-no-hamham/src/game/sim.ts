@@ -731,8 +731,8 @@ export class World {
     // spikes
     if (this.touchingTile(p, T.SPIKE)) this.hurtPlayer(1, p.x + (p.facing > 0 ? -40 : 40))
 
-    // pit fall
-    if (p.y > this.h * TILE + 80) {
+    // pit fall: below the last ground row the player is out of the world
+    if (p.y > (this.h - 1) * TILE) {
       this.hurtPlayer(1, p.x)
       if (!p.dead) {
         p.x = p.lastSafeX
