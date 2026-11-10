@@ -785,13 +785,12 @@ function foodOnigiri(kind: 'damage' | 'defense' | 'speed' | 'heal') {
     l.ellipse(6.5, 12, 5.5, 2.5, rice[1])
     shadeEdges(l, rice, 1)
     if (kind === 'defense') {
-      // Wrapped in nori from the shoulders down; only the tip shows rice.
-      l.poly([6, 7, 12, 13, 1, 13], nori)
-      l.ellipse(6.5, 12, 5.5, 2.5, nori)
-      l.rect(2, 14, 9, 1, noriShade)
-      l.rect(10, 11, 2, 3, noriShade)
-      l.set(5, 9, R.green[2])
-      l.set(4, 10, R.green[2])
+      // A nori belt across the middle with rice showing above and below, so it reads as a band like the others.
+      l.rect(4, 8, 5, 1, R.green[2])
+      l.rect(3, 9, 7, 1, nori)
+      l.rect(3, 10, 8, 1, nori)
+      l.rect(2, 11, 9, 1, noriShade)
+      l.set(5, 8, R.green[1])
     } else {
       l.rect(5, 10, 4, 4, nori)
       l.rect(5, 13, 4, 1, noriShade)
