@@ -116,7 +116,10 @@ export interface Boss extends Body {
   maxStamina: number
   phase: number
   dead: boolean
+  /** False while the boss waits in its arena for the player to arrive. */
   active: boolean
+  /** Player x where the arena door slams shut and the fight begins. */
+  arenaX: number
   minionTimer: number
   shotTimer: number
   diveTimer: number
@@ -204,6 +207,7 @@ export interface SimEvent {
     | 'hurt'
     | 'enemy-down'
     | 'boss-hit'
+    | 'boss-awake'
     | 'boss-down'
     | 'clear'
     | 'dead'
@@ -270,6 +274,8 @@ export class World {
   particles: Particle[] = []
   floaters: Floater[] = []
   boss: Boss | null = null
+  /** The temporary barrier that seals the boss arena while the fight is on. */
+  bossGate: { x: number; top: number; bottom: number; cells: number[] } | null = null
   time = 0
   state: 'play' | 'clear' | 'dead' = 'play'
   clearTimer = 0
@@ -434,7 +440,9 @@ export class World {
           maxStamina: 100,
           phase: 1,
           dead: false,
-          active: true,
+          // The chasing parent starts the stage already on the move; every other boss waits in its arena.
+          active: Boolean(def.stamina),
+          arenaX: center(w) - 10 * TILE,
           minionTimer: 4,
           shotTimer: 2,
           diveTimer: 3,
@@ -1038,6 +1046,51 @@ export class World {
     }
   }
 
+  /**
+   * Seals the boss arena. The barrier sits two tiles behind the player so it can never appear on
+   * top of them, and it rises from the ground to three tiles up, too high to jump over.
+   */
+  private raiseBossGate() {
+    if (this.bossGate) return
+    const p = this.player
+    const tx = Math.max(1, Math.min(this.w - 2, Math.floor((p.x + p.w / 2) / TILE) - 2))
+    const top = Math.max(0, Math.floor((p.y + p.h) / TILE) - 3)
+    const cells: number[] = []
+    let bottom = top - 1
+    for (let y = top; y < this.h; y++) {
+      const i = y * this.w + tx
+      if (this.tiles[i] === T.SOLID || this.tiles[i] === T.DIRT) break
+      this.dynamic[i] = 1
+      cells.push(i)
+      bottom = y
+    }
+    if (!cells.length) return
+    this.bossGate = { x: tx, top, bottom, cells }
+    this.burst(tx * TILE + TILE / 2, top * TILE + TILE / 2, 18, '#ffd45e', 210, 0.6)
+  }
+
+  private lowerBossGate() {
+    const gate = this.bossGate
+    if (!gate) return
+    for (const i of gate.cells) this.dynamic[i] = 0
+    this.burst(gate.x * TILE + TILE / 2, (gate.top + 1) * TILE, 16, '#ffd45e', 220, 0.7)
+    this.bossGate = null
+  }
+
+  private awakeBoss(boss: Boss) {
+    boss.active = true
+    this.raiseBossGate()
+    this.shake = Math.max(this.shake, 0.7)
+    this.floaters.push({
+      x: boss.x + boss.w / 2,
+      y: boss.y - 10,
+      text: `${boss.def.name} が たちはだかった！`,
+      life: 1.8,
+      color: '#ffd45e'
+    })
+    this.events.push({ type: 'boss-awake', x: boss.x, y: boss.y })
+  }
+
   collect(prop: Prop) {
     prop.state = 'collected'
     const x = prop.x + 32
@@ -1093,6 +1146,7 @@ export class World {
       phase: 1,
       dead: false,
       active: true,
+      arenaX: x - 10 * TILE,
       minionTimer: 3,
       shotTimer: 2,
       diveTimer: 3,
@@ -1100,6 +1154,8 @@ export class World {
       targetY: 0,
       invuln: 0
     }
+    // The nest stage summoned the boss where the player stands, so seal the arena right away.
+    this.raiseBossGate()
     this.shake = 0.8
   }
 
@@ -1206,9 +1262,22 @@ export class World {
   private updateBoss(dt: number) {
     const boss = this.boss!
     if (boss.dead) return
-    boss.stateTime += dt
     boss.hitFlash = Math.max(0, boss.hitFlash - dt)
     boss.invuln = Math.max(0, boss.invuln - dt)
+    if (!boss.active) {
+      // The boss waits inside its arena until the player steps across the line.
+      if (this.player.x + this.player.w >= boss.arenaX) this.awakeBoss(boss)
+      else {
+        boss.facing = -1
+        boss.vx = 0
+        if (boss.def.kind !== 'flyer') {
+          boss.vy = Math.min(MAX_FALL, boss.vy + GRAVITY * dt)
+          boss.onGround = this.moveBody(boss, dt).grounded
+        }
+        return
+      }
+    }
+    boss.stateTime += dt
     const p = this.player
     const dx = p.x - boss.x
     const dir: 1 | -1 = dx > 0 ? 1 : -1
@@ -1624,7 +1693,7 @@ export class World {
 
   damageBoss(amount: number) {
     const boss = this.boss
-    if (!boss || boss.dead || boss.invuln > 0) return
+    if (!boss || boss.dead || !boss.active || boss.invuln > 0) return
     if (boss.def.stamina) {
       // A chasing parent is never defeated: hits only tire her out faster.
       boss.stamina = Math.max(0, boss.stamina - amount * 9)
@@ -1657,6 +1726,7 @@ export class World {
     this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 24, '#ff9ecb', 260, 0.9)
     this.floaters.push({ x: boss.x + boss.w / 2, y: boss.y, text: 'ボス撃破！', life: 1.6, color: '#ffd45e' })
     this.events.push({ type: 'boss-down', x: boss.x, y: boss.y })
+    this.lowerBossGate()
     if (this.stage.objective === 'boss' || this.stage.objective === 'collect') this.goalOpen = true
     // Free every caged princess once her captor is down.
     for (const prop of this.props) {
