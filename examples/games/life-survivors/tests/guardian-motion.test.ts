@@ -235,3 +235,77 @@ describe('standing, no parent stands inside another’s shield', () => {
         }
       })
 })
+
+/** Walking and standing in turn, turning and stopping short, as a player does (direction, seconds). */
+const SCRIPT: [keyof typeof STICKS, number][] = [
+  ['R', 1],
+  ['still', 5],
+  ['L', 0.6],
+  ['still', 5],
+  ['U', 0.8],
+  ['still', 4],
+  ['D', 0.5],
+  ['still', 4],
+  ['UL', 0.7],
+  ['still', 3],
+  ['R', 0.25],
+  ['L', 0.25],
+  ['R', 0.25],
+  ['still', 0.3],
+  ['DR', 0.4],
+  ['still', 5],
+  ['L', 0.15],
+  ['still', 0.15],
+  ['U', 0.15],
+  ['still', 4]
+]
+
+describe('過保護親 never cross what is drawn over the child’s head nor her family, and stand near her', () => {
+  for (const level of [1, 4, 8])
+    for (const gamble of [0, 8])
+      test(`Lv${level}${gamble ? ' with the gamble’s copies coming and going' : ''}: plain, watching a creature, married`, () => {
+        const faults: string[] = []
+        let frames = 0
+        for (const mod of ['plain', 'observe', 'married'] as const) {
+          const { game, player } = setup(level, 'none', [
+            ...(gamble
+              ? [{ id: 'w_gamble', lv: gamble, cd: 0, held: 0, damage: 0, gambleWeapon: 'p_over', gambleUntil: 1e9 }]
+              : []),
+            ...(mod === 'observe' ? [{ id: 'w_observe', lv: 3, cd: 0, held: 0, damage: 0 }] : [])
+          ])
+          player.married = player.hasChild = mod === 'married'
+          const name = boxAbout(0, OVERHEAD.feet - OVERHEAD.nameLift, OVERHEAD.nameHalf)
+          let stood = 0
+          let t = 0
+          for (const [way, seconds] of SCRIPT) {
+            game.setInput(player.id, STICKS[way])
+            for (let f = 0; f < Math.round(seconds * 60); f++) {
+              game.tick(DT)
+              player.hp = player.maxHp
+              frames++
+              t += DT
+              stood = way === 'still' ? stood + DT : 0
+              const label = `${mod} t${t.toFixed(2)} ${way}`
+              const back = player.fx < 0 ? 1 : -1
+              for (const guard of guardsOf(game, player)) {
+                const at = offset(guard, player)
+                const body = boxAbout(at.x, at.y, GUARDIAN_BODY)
+                if (boxesOverlap(body, name))
+                  faults.push(`${label}: #${guard.id} on the name tag at (${at.x.toFixed(0)}, ${at.y.toFixed(0)})`)
+                if (stood < 1) continue
+                if (player.married)
+                  for (const slot of FAMILY_SLOTS)
+                    if (boxesOverlap(body, familyBox(back * slot.dx, slot.dy)))
+                      faults.push(`${label}: #${guard.id} on the family at (${at.x.toFixed(0)}, ${at.y.toFixed(0)})`)
+                // Near the child: her own parents within about 60 px, every one in a phone's view (±150 px).
+                const reach = guard.sourceWeapon === 'p_over' ? 62 : 150
+                if (stood > 2 && Math.hypot(at.x, at.y) > reach)
+                  faults.push(`${label}: #${guard.id} far off at (${at.x.toFixed(0)}, ${at.y.toFixed(0)})`)
+              }
+            }
+          }
+        }
+        expect(frames).toBeGreaterThan(0)
+        expect(faults.slice(0, 10)).toEqual([])
+      }, 30_000)
+})

@@ -505,6 +505,13 @@ const isGamble = (p: Particle) => p.kind === PK.gambleResult || (p.kind === PK.s
 /** How long a new pet takes to pop in, and a leaving one to fade out in a puff (s). */
 const PET_POP_SECONDS = 0.2
 const PET_FADE_SECONDS = 0.3
+/**
+ * 過保護親's dash at an enemy she bashes: only one within this cosine of the bash's way, stopping this far (px, times
+ * her shield's scale) short of it, and no further than this (px).
+ */
+const GUARD_DASH_COS = Math.cos((35 * Math.PI) / 180)
+const GUARD_DASH_SHORT = 18
+const GUARD_DASH_MOST = 160
 /** How long a food label takes to fade back in once no player covers it (s). */
 const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
@@ -2161,7 +2168,7 @@ export class Renderer {
         this.centred(pick(sheet('weapon:w_garden').sprout, this.clock + i * 0.1), x, y, evolved)
         break
       case 'orbit':
-        this.guardian(sh, x, y)
+        this.guardian(view, sh, x, y)
         break
       case 'pet': {
         const standing = sh.v >= PET_STILL
@@ -2216,26 +2223,66 @@ export class Renderer {
     }
   }
 
-  /** 過保護親 and her shield, which thrusts along the bash and fades while spent. */
-  private guardian(sh: ShotView, x: number, y: number) {
+  /**
+   * 過保護親 and her shield, which thrusts along the bash and fades while spent. Bashing an enemy further off than her
+   * shield reaches (a standing child's parents guard all round her), she dashes over to it and back. The gamble's copy
+   * of her pops in (swelling, in a puff and sparkles) and leaves in a puff, as a pet does.
+   */
+  private guardian(view: View, sh: ShotView, x: number, y: number) {
     const art = sheet('weapon:p_over')
     const cos = Math.cos(sh.angle)
     const sin = Math.sin(sh.angle)
     const time = this.clock + sh.i * 0.1
-    const alpha = Math.min(1, sh.life * 4)
     const flip = cos < 0
-    this.centred(pick(art.fly, time), x, y, sh.evolved, alpha, 1, flip)
+    const scale = sh.r / 20
     const progress = Math.floor(sh.v / 2)
-    const thrust = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) * 14 : 0
+    const swing = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) : 0
+    let dash = 0
+    if (swing > 0) {
+      // The nearest enemy ahead of her along the bash.
+      let nearest = Infinity
+      const enemies = view.enemies
+      for (let k = 0; k < enemies.length; k += STRIDE.enemies) {
+        const dx = enemies[k + 2] - x
+        const dy = enemies[k + 3] - y
+        const d = Math.hypot(dx, dy)
+        if (d < nearest && dx * cos + dy * sin >= d * GUARD_DASH_COS) nearest = d
+      }
+      if (nearest < Infinity) dash = Math.min(GUARD_DASH_MOST, Math.max(0, nearest - GUARD_DASH_SHORT * scale)) * swing
+    }
+    const bodyX = x + cos * dash
+    const bodyY = y + sin * dash
+    let alpha = Math.min(1, sh.life * 4)
+    let swell = 1
+    let puff = -1
+    let popping = false
+    if (sh.copied) {
+      const duration = WEAPON_BY_ID.get('p_over')!.duration
+      const pop = sh.age * duration < PET_POP_SECONDS ? (sh.age * duration) / PET_POP_SECONDS : 1
+      const fade = sh.life * duration < PET_FADE_SECONDS ? 1 - Math.max(0, sh.life * duration) / PET_FADE_SECONDS : 0
+      swell = pop < 1 ? 0.55 + 0.45 * pop + 0.35 * Math.sin(pop * Math.PI) : 1
+      alpha = 1 - fade
+      puff = pop < 1 ? pop : fade > 0 ? fade : -1
+      popping = pop < 1
+    }
+    this.centred(pick(art.fly, time), bodyX, bodyY, sh.evolved, alpha, swell, flip)
+    const thrust = swing * 14
     this.centred(
       pick(art.guard, time),
-      x + cos * thrust,
-      y + sin * thrust,
+      bodyX + cos * thrust * swell,
+      bodyY + sin * thrust * swell,
       sh.evolved,
       alpha * (sh.v % 2 ? 0.45 : 1),
-      sh.r / 20,
+      scale * swell,
       flip
     )
+    if (puff >= 0) {
+      const fx = sheet('fx')
+      const shown = popping ? 1 - puff : 1 - puff * 0.6
+      this.art(fx.poof.frames[Math.min(3, Math.floor(puff * 4))], x, y + 4, 12, 12, false, shown, 1.2)
+      this.art(pick(fx.spark, this.clock * 6), x - 11, y - 12, 6, 6, false, shown)
+      this.art(pick(fx.spark, this.clock * 6 + 2), x + 12, y - 7, 6, 6, false, shown)
+    }
   }
 
   private isPlane(view: View, def: (typeof WEAPONS)[number]) {
