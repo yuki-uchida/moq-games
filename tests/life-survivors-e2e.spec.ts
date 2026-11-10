@@ -2361,14 +2361,14 @@ test('a full build skips ordinary level-ups and offers an optional weapon swap',
   const handle = await life(page)
   await handle.evaluate(async (l) => {
     const dataPath = '/src/data.ts'
-    const { EVENTS } = await import(dataPath)
+    const { EVENTS, PEOPLE_FEAR } = await import(dataPath)
     const game = l.game as unknown as {
       state: {
         time: number
         eventIndex: number
         level: number
         xpNext: number
-        players: { choices: string[]; pending: number; birthPick: boolean }[]
+        players: { choices: string[]; pending: number; birthPick: boolean; passives: { id: string }[] }[]
       }
       options(player: unknown): string[]
       choose(player: unknown, index: number): void
@@ -2379,6 +2379,9 @@ test('a full build skips ordinary level-ups and offers an optional weapon swap',
     const player = game.state.players[0]
     player.birthPick = false
     player.pending = 0
+    // A child of モンスターペアレント is born afraid of people; at 45 that wears off on the next tick and would free a
+    // personality slot, so the build would no longer be full.
+    player.passives = player.passives.filter((passive) => passive.id !== PEOPLE_FEAR)
     for (let i = 0; i < 200; i++) {
       const option = game.options(player)[0]
       if (!option) break
