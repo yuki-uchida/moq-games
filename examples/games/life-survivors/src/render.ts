@@ -259,6 +259,10 @@ export const GAMBLE_REEL_GAP = 4
 export const GAMBLE_RESULT_GAP = 6
 /** Rate (1/s) at which a gamble reel eases down when its owner's stack of tags gets lower (it rises at once). */
 const GAMBLE_REEL_SETTLE = 10
+/** How much wider (world px, each side) a name tag or buff image is than the text its box is measured from. */
+const GAMBLE_TAG_PAD = 6
+/** Rate (1/s) at which a gamble reel or result banner glides over to a new spot. */
+const GAMBLE_GLIDE = 9
 
 /**
  * The id of the player a gamble event at (x, y) belongs to: the nearest player now holding the drawn weapon `weapon`
@@ -324,6 +328,67 @@ export function holdBadgeSide(
 /** Eases the badge's side `dt` real seconds toward `target`, the same for every role, so it glides over, never jumps. */
 export const easeBadgeSide = (side: number, target: number, dt: number) =>
   target + (side - target) * Math.exp(-BADGE_SIDE_RATE * Math.max(0, dt))
+
+/**
+ * Least clear space between any of `boxes` (shifted by `dx`, `dy`) and any of `obstacles`: along whichever axis they
+ * are apart, negative when they overlap (Infinity with no obstacles).
+ */
+export function boxClearance(boxes: readonly Box[], obstacles: readonly Box[], dx = 0, dy = 0) {
+  let least = Infinity
+  for (const a of boxes) {
+    const left = a.left + dx
+    const right = a.right + dx
+    const top = a.top + dy
+    const bottom = a.bottom + dy
+    for (const b of obstacles)
+      least = Math.min(least, Math.max(b.left - right, left - b.right, b.top - bottom, top - b.bottom))
+  }
+  return least
+}
+
+const boxUnion = (a: Box, b: Box): Box => ({
+  left: Math.min(a.left, b.left),
+  top: Math.min(a.top, b.top),
+  right: Math.max(a.right, b.right),
+  bottom: Math.max(a.bottom, b.bottom)
+})
+
+/** A spot a gamble reel or result banner may take: its offset from where it goes by default, and how much less wanted. */
+export interface GambleSpot {
+  dx: number
+  dy: number
+  cost: number
+}
+/** Clear space (world px for reels, CSS px for the banner) a spot needs to be taken. */
+export const GAMBLE_SPOT_CLEAR = 3.5
+/** How much cheaper (cost) a free spot must be to leave the free spot already taken for it. */
+export const GAMBLE_SPOT_HOLD = 24
+
+/**
+ * Index of the spot among `spots` for `boxes` (about their default place) to take, clear of `obstacles` by `clear`:
+ * the cheapest free one, but the spot taken so far (`current`) while it stays free and not `hold` dearer. With no
+ * free spot it stays on `current` (the default spot at first) and fades there until one frees up.
+ */
+export function pickGambleSpot(
+  spots: readonly GambleSpot[],
+  boxes: readonly Box[],
+  obstacles: readonly Box[],
+  current?: number,
+  clear = GAMBLE_SPOT_CLEAR,
+  hold = GAMBLE_SPOT_HOLD
+) {
+  let best = -1
+  const free = spots.map((s) => boxClearance(boxes, obstacles, s.dx, s.dy) >= clear)
+  spots.forEach((s, i) => {
+    if (free[i] && (best < 0 || s.cost < spots[best].cost)) best = i
+  })
+  const now = current !== undefined && current < spots.length ? current : undefined
+  if (now !== undefined && free[now] && (best < 0 || spots[now].cost <= spots[best].cost + hold)) return now
+  return best >= 0 ? best : (now ?? 0)
+}
+
+/** How visible a gamble reel or banner is with `clearance` (px) to what it must not cover: gone before touching. */
+export const gambleVisibility = (clearance: number) => clamp01((clearance - 1) / 2)
 
 /** How quickly (1/s) the family (FAMILY_SLOTS) close in on their slot, and the farthest (world px) they ever trail behind it. */
 const FAMILY_FOLLOW = 7
@@ -497,6 +562,33 @@ export class Renderer {
    * at the feet). The gamble reel floats above the top, its result banner below the bottom.
    */
   private readonly stacks = new Map<string, { x: number; top: number; bottom: number }>()
+  /**
+   * Per player drawn this frame: what gamble reels and result banners must not cover (world px): the body, name tag,
+   * buff row and badge (the tags as wide as the images they are drawn from) and the rings at the feet.
+   */
+  private readonly playerAreas = new Map<string, Box[]>()
+  /**
+   * Per gamble reel or result banner: the spot it has taken (index into its spots), its eased offset from its default
+   * place, how visible it is (it fades out where it would cover something), whether it is not shown at all (the result
+   * of another player), the banner's centre this frame (CSS px) and the particle's age (a recycled one starts afresh).
+   */
+  private readonly gamblePlaces = new Map<
+    Particle,
+    {
+      kind: number
+      age: number
+      spot?: number
+      started: boolean
+      dx: number
+      dy: number
+      vis: number
+      hidden: boolean
+      x: number
+      y: number
+    }
+  >()
+  /** Measured boxes of the gamble reel labels at their largest, about the reel's centre (by label text). */
+  private readonly gambleLabelBoxes = new Map<string, Box>()
   private readonly deaths = new Map<string, { at: number; body: string; kind: string }>()
   private readonly parentMemorials = new Map<string, { key: string; age: number }>()
   private parentMemorialTime?: number
@@ -2418,20 +2510,213 @@ export class Renderer {
    */
   private followOwner(p: Particle) {
     const st = this.stacks.get(p.owner)
-    if (!st) return
+    if (!st) return false
     p.x = st.x
     if (p.kind === PK.gambleResult) {
       p.y = st.bottom
       p.lift = 0
-      return
+      return true
     }
     const anim = sheet('fx')[p.spr]
-    if (!anim) return
+    if (!anim) return false
     const half = (Math.max(...anim.frames.map((f) => f.h)) / 2) * p.size * (1 + Math.max(0, p.size2))
     const lift = st.top - GAMBLE_REEL_GAP - half - st.bottom
     if (Number.isNaN(p.lift) || lift < p.lift) p.lift = lift
     else p.lift += (lift - p.lift) * (1 - Math.exp(-GAMBLE_REEL_SETTLE * this.frameDt))
     p.y = st.bottom + p.lift
+    return true
+  }
+
+  /**
+   * Boxes (world px) of a gamble reel about its centre: its frame, and its label at its largest (as `particles` draws
+   * it: 25 px above the centre, popping in at up to 1.55 × 12 px and rising 2 px, outlined 4 px wide).
+   */
+  private reelFootprint(p: Particle): Box[] {
+    const anim = sheet('fx')[p.spr]
+    if (!anim) return []
+    const k = p.size * (1 + Math.max(0, p.size2))
+    const w = (Math.max(...anim.frames.map((f) => f.w)) / 2) * k
+    const h = (Math.max(...anim.frames.map((f) => f.h)) / 2) * k
+    const boxes: Box[] = [{ left: -w, top: -h, right: w, bottom: h }]
+    const text = GAMBLE_LABELS[p.spr]
+    if (text) {
+      let label = this.gambleLabelBoxes.get(text)
+      if (!label) {
+        const ctx = this.ctx
+        ctx.save()
+        ctx.font = `bold ${(12 * 1.55).toFixed(1)}px sans-serif`
+        const m = ctx.measureText(text)
+        ctx.restore()
+        const ascent = m.actualBoundingBoxAscent || 12 * 1.55 * 0.9
+        const descent = m.actualBoundingBoxDescent || 12 * 1.55 * 0.2
+        label = { left: -m.width / 2 - 3, top: -27 - ascent - 3, right: m.width / 2 + 3, bottom: -25 + descent + 3 }
+        this.gambleLabelBoxes.set(text, label)
+      }
+      boxes.push(label)
+    }
+    return boxes
+  }
+
+  /** The result banner's text, pixel icon and sizes (CSS px), as `particles` draws it. */
+  private bannerLayout(p: Particle) {
+    const weapon = WEAPONS[p.n]
+    if (!weapon) return undefined
+    // The weapon as it looks at this age (a tennis ball for sports at 20), like the HUD and the badge.
+    const shown = weaponAppearance(weapon.id, this.viewAge, this.localPetAge)
+    const icon = (sheet('icons')[shown.art] ?? sheet('icons')[weapon.id])?.frames[0]
+    const iconRoom = icon ? GAMBLE_ICON + GAMBLE_ICON_GAP : 0
+    const ctx = this.ctx
+    ctx.save()
+    ctx.font = 'bold 20px sans-serif'
+    const textWidth = ctx.measureText(shown.name).width
+    ctx.restore()
+    const width = Math.min(this.width - 16, textWidth + iconRoom + 56)
+    return { text: shown.name, icon, iconRoom, textWidth, width }
+  }
+
+  /**
+   * Places this frame's gamble reels (with their labels) and the local player's result banners, each following the
+   * player who gambled. Reels go above everything stacked on her head, banners under her feet; where that would cover
+   * another player's body, name tag, buff row or badge, another reel, label or banner, or (banners) an opaque part of
+   * the HUD, they glide over to the nearest free spot beside or further from her (spots are kept while they stay free,
+   * so they never flick back and forth), and fade out while no spot is free. Other players' results get no banner:
+   * their reel and the attack it copies tell them. Reels are placed the local player's first, then her banners, then
+   * the others'.
+   */
+  private placeGambles(localId: string, single: boolean) {
+    const items = this.fx.pool.items
+    const places = this.gamblePlaces
+    const live = new Set<Particle>()
+    const reels: Particle[] = []
+    const banners: Particle[] = []
+    const glide = 1 - Math.exp(-GAMBLE_GLIDE * this.frameDt)
+    for (const p of items) {
+      if (!isGamble(p) || p.delay > 0) continue
+      live.add(p)
+      let place = places.get(p)
+      if (!place || place.kind !== p.kind || place.age > p.age) {
+        place = { kind: p.kind, age: p.age, started: false, dx: 0, dy: 0, vis: 1, hidden: false, x: NaN, y: NaN }
+        places.set(p, place)
+      }
+      place.age = p.age
+      const followed = p.owner !== '' && p.owner !== '-' && this.followOwner(p)
+      if (p.kind === PK.gambleResult) {
+        // One nobody was matched to is shown where it spawned, when you play alone (it can only be yours).
+        place.hidden = p.owner === '-' ? !single : p.owner !== localId
+        place.x = NaN
+        if (!place.hidden && followed && p.age >= GAMBLE_RESULT_DELAY) banners.push(p)
+      } else if (followed) reels.push(p)
+      else place.vis = 1
+    }
+    for (const p of places.keys()) if (!live.has(p)) places.delete(p)
+    reels.sort((a, b) => Number(b.owner === localId) - Number(a.owner === localId) || b.age - a.age)
+
+    const players = [...this.playerAreas.values()].flat()
+    /** What reels and banners already placed cover as drawn (world px), and where they are heading. */
+    const drawn: Box[] = []
+    const heading: Box[] = []
+    const shift = (boxes: readonly Box[], dx: number, dy: number) =>
+      boxes.map((b) => ({ left: b.left + dx, top: b.top + dy, right: b.right + dx, bottom: b.bottom + dy }))
+
+    const placeReel = (p: Particle) => {
+      const place = places.get(p)!
+      const fp = shift(this.reelFootprint(p), p.x, p.y)
+      if (!fp.length) return
+      const own = (this.playerAreas.get(p.owner) ?? []).slice(0, -1)
+      const left = Math.min(...fp.map((b) => b.left)) - p.x
+      const right = Math.max(...fp.map((b) => b.right)) - p.x
+      const top = Math.min(...fp.map((b) => b.top)) - p.y
+      const bottom = Math.max(...fp.map((b) => b.bottom)) - p.y
+      const w = right - left
+      const h = bottom - top
+      const ownLeft = Math.min(p.x, ...own.map((b) => b.left)) - p.x
+      const ownRight = Math.max(p.x, ...own.map((b) => b.right)) - p.x
+      // Above her stack (shifted aside), beside it or her body, a little higher.
+      const xs = [0, -w / 2, w / 2, ownLeft - 6 - right, ownRight + 6 - left]
+      xs.push(xs[3] - w * 0.6, xs[4] + w * 0.6)
+      const ys = [0, h * 0.5, h, h * 1.5, -h * 0.75]
+      const spots: GambleSpot[] = []
+      for (const dy of ys)
+        for (const dx of xs) spots.push({ dx, dy, cost: Math.abs(dx) + (dy > 0 ? dy * 1.2 : -dy * 2) })
+      place.spot = pickGambleSpot(spots, fp, [...players, ...drawn, ...heading], place.spot)
+      const to = spots[place.spot]
+      place.dx = place.started ? place.dx + (to.dx - place.dx) * glide : to.dx
+      place.dy = place.started ? place.dy + (to.dy - place.dy) * glide : to.dy
+      place.started = true
+      const now = shift(fp, place.dx, place.dy)
+      place.vis = gambleVisibility(boxClearance(now, [...players, ...drawn]))
+      p.x += place.dx
+      p.y += place.dy
+      drawn.push(...now)
+      heading.push(...shift(fp, to.dx, to.dy))
+    }
+
+    for (const p of reels) if (p.owner === localId) placeReel(p)
+
+    // Banners: in CSS px, against the screen (shaking with the world) and the HUD drawn over it.
+    const dpr = this.canvas.width / (this.width || 1)
+    const kc = this.scale / dpr
+    const cam = this.camera
+    const toCss = (b: Box): Box => ({
+      left: this.width / 2 + (b.left - cam.x) * kc,
+      top: this.height / 2 + (b.top - cam.y) * kc,
+      right: this.width / 2 + (b.right - cam.x) * kc,
+      bottom: this.height / 2 + (b.bottom - cam.y) * kc
+    })
+    const toWorld = (b: Box): Box => ({
+      left: cam.x + (b.left - this.width / 2) / kc,
+      top: cam.y + (b.top - this.height / 2) / kc,
+      right: cam.x + (b.right - this.width / 2) / kc,
+      bottom: cam.y + (b.bottom - this.height / 2) / kc
+    })
+    const hud = this.hudRects.filter((r) => r.opaque)
+    for (const p of banners) {
+      const place = places.get(p)!
+      const layout = this.bannerLayout(p)
+      const st = this.stacks.get(p.owner)
+      if (!layout || !st) continue
+      const half = layout.width / 2
+      const clampX = (x: number) => Math.max(half + 8, Math.min(this.width - half - 8, x))
+      const clampY = (y: number) => Math.max(30, Math.min(this.height - 30, y))
+      const ax = this.width / 2 + (st.x - cam.x) * kc
+      const ay = this.height / 2 + (st.bottom - cam.y) * kc + GAMBLE_RESULT_GAP + 21
+      const box: Box = { left: -half, top: -21, right: half, bottom: 21 }
+      // Under her feet (shifted aside), further down, or above her stack and her reel.
+      const reelTop = drawn.length ? Math.min(...drawn.map((b) => toCss(b).top)) : Infinity
+      const above = Math.min(this.height / 2 + (st.top - cam.y) * kc, reelTop) - GAMBLE_RESULT_GAP - 21 - ay
+      const xs = [0, -half / 2, half / 2, -half, half, -half - 40, half + 40, -2 * half, 2 * half]
+      const ys = [0, 46, above, above - 46, 92]
+      const spots: GambleSpot[] = []
+      const seen = new Set<string>()
+      for (const [row, dy0] of ys.entries())
+        for (const dx0 of xs) {
+          const dx = clampX(ax + dx0) - ax
+          const dy = clampY(ay + dy0) - ay
+          const key = `${Math.round(dx)}:${Math.round(dy)}`
+          // Clamped to the same place as a cheaper one: kept (indexes stay stable) but never preferred.
+          const cost = Math.abs(dx) + Math.abs(dy) * 1.5 + (row >= 2 ? 30 : 0) + (seen.has(key) ? 1e6 : 0)
+          seen.add(key)
+          spots.push({ dx, dy, cost })
+        }
+      const others = [...players, ...drawn, ...heading].map(toCss)
+      const at = shift([box], ax, ay)
+      place.spot = pickGambleSpot(spots, at, [...others, ...hud], place.spot)
+      const to = spots[place.spot]
+      place.dx = place.started ? place.dx + (to.dx - place.dx) * glide : to.dx
+      place.dy = place.started ? place.dy + (to.dy - place.dy) * glide : to.dy
+      place.started = true
+      // Kept inside the margins while it glides (the anchor shakes with the world).
+      place.x = clampX(ax + place.dx)
+      place.y = clampY(ay + place.dy)
+      const age = p.age - GAMBLE_RESULT_DELAY
+      const slide = (1 - (1 - clamp01(age / 0.22)) ** 3) * -14 + 14
+      const now = shift([box], place.x, place.y + slide)
+      place.vis = gambleVisibility(boxClearance(now, [...[...players, ...drawn].map(toCss), ...hud]))
+      drawn.push(...now.map(toWorld))
+      heading.push(...shift([box], ax + to.dx, ay + to.dy).map(toWorld))
+    }
+
+    for (const p of reels) if (p.owner !== localId) placeReel(p)
   }
 
   /**
@@ -2514,7 +2799,6 @@ export class Renderer {
     for (let n = 0; n < items.length; n++) {
       const p = items[n]
       if (p.layer !== layer || p.delay > 0) continue
-      if (p.owner && isGamble(p)) this.followOwner(p)
       const reach = p.kind === PK.debris || p.kind === PK.sprite || p.kind === PK.pop ? 40 : 360
       if (Math.abs(p.x - cx) > this.halfW + reach || Math.abs(p.y - cy) > this.halfH + reach) continue
       const t = p.age / p.life
@@ -2543,7 +2827,10 @@ export class Renderer {
             : p.once
               ? anim.frames[Math.min(anim.frames.length - 1, Math.floor(t * anim.frames.length))]
               : pick(anim, p.age)
-          const alpha = gamble ? p.alpha * gamble.alpha : p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
+          // A reel fades out while it would cover another player or another gamble's reel or banner (placeGambles).
+          const vis = gamble ? (this.gamblePlaces.get(p)?.vis ?? 1) : 1
+          if (vis <= 0) break
+          const alpha = gamble ? p.alpha * gamble.alpha * vis : p.alpha * (p.fade ? clamp01((1 - t) * 3) : 1)
           this.art(frame, p.x, p.y, frame.w / 2, frame.h / 2, false, alpha, p.size * (1 + p.size2 * t))
           if (gamble) {
             const label = gamble.label ? (GAMBLE_LABELS[p.spr] ?? '') : ''
@@ -2573,16 +2860,17 @@ export class Renderer {
           break
         }
         case PK.gambleResult: {
-          const weapon = WEAPONS[p.n]
-          if (!weapon) break
+          // Only your own result; placeGambles picks its spot and fades it while no spot is free.
+          const place = this.gamblePlaces.get(p)
+          if (place?.hidden || place?.vis === 0) break
+          const vis = place?.vis ?? 1
           const age = p.age - GAMBLE_RESULT_DELAY
           if (age < 0) break
-          // The weapon as it looks at this age (a tennis ball for sports at 20), like the HUD and the badge.
-          // Its pixel icon (the HUD slot's) goes before the name.
-          const shown = weaponAppearance(weapon.id, this.viewAge, this.localPetAge)
-          const result = shown.name
-          const icon = (sheet('icons')[shown.art] ?? sheet('icons')[weapon.id])?.frames[0]
-          const iconRoom = icon ? GAMBLE_ICON + GAMBLE_ICON_GAP : 0
+          // The weapon as it looks at this age (a tennis ball for sports at 20), like the HUD and the badge; its pixel
+          // icon (the HUD slot's) goes before the name.
+          const layout = this.bannerLayout(p)
+          if (!layout) break
+          const { text: result, icon, iconRoom, textWidth, width } = layout
           const dpr = this.canvas.width / this.width
           ctx.save()
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -2592,25 +2880,21 @@ export class Renderer {
           const fade = clamp01((p.life - p.age) / 0.4)
           const intro = clamp01(age / 0.22)
           const ease = 1 - (1 - intro) ** 3
-          const textWidth = ctx.measureText(result).width
-          const width = Math.min(this.width - 16, textWidth + iconRoom + 56)
-          const x = Math.max(
-            width / 2 + 8,
-            Math.min(this.width - width / 2 - 8, this.width / 2 + ((p.x - cx) * this.scale) / dpr)
-          )
-          // Under the feet of the player who gambled (followOwner keeps p at them), else where it spawned.
-          const below = p.lift === 0
-          const y0 = Math.max(
-            30,
-            Math.min(
-              this.height - 30,
-              this.height / 2 + ((p.y - cy) * this.scale) / dpr + (below ? GAMBLE_RESULT_GAP + 21 : 0)
-            )
-          )
+          // Where placeGambles put it (by the player who gambled), else where it spawned.
+          const placed = place !== undefined && !Number.isNaN(place.x)
+          const x = placed
+            ? place.x
+            : Math.max(
+                width / 2 + 8,
+                Math.min(this.width - width / 2 - 8, this.width / 2 + ((p.x - cx) * this.scale) / dpr)
+              )
+          const y0 = placed
+            ? place.y
+            : Math.max(30, Math.min(this.height - 30, this.height / 2 + ((p.y - cy) * this.scale) / dpr))
           const y = y0 + (1 - ease) * 14
           const left = x - width / 2
           const top = y - 21
-          ctx.globalAlpha = fade * ease
+          ctx.globalAlpha = fade * ease * vis
           // Glow, gradient plate and the gold double border.
           ctx.shadowColor = 'rgba(255, 201, 60, 0.6)'
           ctx.shadowBlur = 16
@@ -2644,7 +2928,7 @@ export class Renderer {
             ctx.restore()
           }
           // Icon and text centred together; the text is one fillText, outlined with a stroke.
-          ctx.globalAlpha = fade * clamp01(age / 0.15)
+          ctx.globalAlpha = fade * clamp01(age / 0.15) * vis
           const room = width - 24 - iconRoom
           const shownWidth = Math.min(room, textWidth)
           const tx = x + iconRoom / 2
@@ -3242,6 +3526,7 @@ export class Renderer {
     ctx.fill()
     this.bars.length = 0
     this.stacks.clear()
+    this.playerAreas.clear()
     this.easeBadgeSide(view, origins, local, dt)
     for (const item of list) {
       if (item.member) this.follower(item.member)
@@ -3269,6 +3554,24 @@ export class Renderer {
             top: Math.min(...boxes.map((b) => b.top)),
             bottom: Math.max(...boxes.map((b) => b.bottom), pos.y + 16 + FEET_RINGS * size)
           })
+          // As drawn: the body's whole frame (64 × 64 about her feet), the tag images (wider than their texts) and
+          // the rings (the buff aura with buffs) round the feet.
+          const buffs = Object.values(player.cookingBuffs ?? {}).filter(Boolean).length
+          const rx = (buffs ? 30 + 4 * (buffs - 1) : 18) * size
+          const ry = (buffs ? 11 + 1.5 * (buffs - 1) : 7) * size
+          const feet = pos.y + 16
+          const body = {
+            left: pos.x - 32 * size,
+            top: feet - 58 * size,
+            right: pos.x + 32 * size,
+            bottom: feet + 6 * size
+          }
+          this.playerAreas.set(player.id, [
+            ...boxes.map((b, i) =>
+              i ? { ...b, left: b.left - GAMBLE_TAG_PAD, right: b.right + GAMBLE_TAG_PAD } : boxUnion(b, body)
+            ),
+            { left: pos.x - rx, top: feet - ry, right: pos.x + rx, bottom: feet + ry }
+          ])
         }
       } else this.enemy(item)
     }
@@ -3393,6 +3696,7 @@ export class Renderer {
     this.drawParentMemorials(view, dt, smooth)
 
     // Hits, deaths, level-ups ... : the particles of the fx events.
+    this.placeGambles(localId, view.players.length <= 1)
     this.particles(1)
     this.world()
 

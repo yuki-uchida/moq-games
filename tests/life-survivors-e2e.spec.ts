@@ -3670,7 +3670,9 @@ test('a food label kept in place is not drawn over a passing player’s name tag
   expect(errors).toEqual([])
 })
 
-test('a guest sees the host gambling animation and copied attack', async ({ context }) => {
+test('a guest sees the host gambling animation and copied attack, and only the host gets the result banner', async ({
+  context
+}) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
   )
@@ -3729,9 +3731,14 @@ test('a guest sees the host gambling animation and copied attack', async ({ cont
       guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('大当たり！'))
     )
     .toBe(true)
+  // The result banner is the gambler's own: the host gets it; the guest sees the host's reel and copied attack instead.
   await expect
-    .poll(() => guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('恋愛')))
+    .poll(() => host.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('恋愛')))
     .toBe(true)
+  await guest.waitForTimeout(1500)
+  expect(
+    await guest.evaluate(() => (window as unknown as { gambleLabels: string[] }).gambleLabels.includes('恋愛'))
+  ).toBe(false)
 })
 
 test('guests receive both stages of a copied gardening weapon', async ({ context }) => {
