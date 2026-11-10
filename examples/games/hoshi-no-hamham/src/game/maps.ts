@@ -64,9 +64,15 @@ export class MapBuilder {
     return this.fill('#', x0, surface, x1, this.h - 1)
   }
 
-  /** A pit: opens the top two ground rows, leaving a floor the player can jump out of. */
+  /** A shallow pit with spikes on its floor: falling in costs health, but the player can jump back out. */
   pit(x0: number, x1: number) {
-    return this.fill('.', x0, SURFACE, x1, this.h - 2)
+    this.fill('.', x0, SURFACE, x1, this.h - 2)
+    return this.fill('^', x0, this.h - 2, x1, this.h - 2)
+  }
+
+  /** A bottomless chasm: falling in costs health and puts the player back on the ledge before it. */
+  chasm(x0: number, x1: number) {
+    return this.fill('.', x0, SURFACE, x1, this.h - 1)
   }
 
   platform(x0: number, x1: number, row: number) {
@@ -128,33 +134,20 @@ export class MapBuilder {
     return this.grid.map((row) => row.join(''))
   }
 
-  /** True when the whole column is empty from the ceiling down to the surface. */
-  columnFree(x: number, top = 8, bottom = SURFACE - 1) {
-    if (x < 1 || x >= this.w - 1) return false
-    for (let y = top; y <= bottom; y++) if (this.get(x, y) !== '.') return false
-    return true
+  /** Writes cells directly, bypassing prop stacking. Used for full-height walls and doors. */
+  forceFill(ch: string, x0: number, y0: number, x1: number, y1: number) {
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.grid[y][x] = ch
+    return this
   }
-}
-
-/**
- * Finds the closest column to `preferred` that is completely empty from the ceiling to the surface,
- * so a full-height diggable wall or door can be placed without disturbing platforms or props.
- */
-function freeColumn(m: MapBuilder, preferred: number) {
-  for (let offset = 0; offset < 60; offset++) {
-    for (const x of [preferred + offset, preferred - offset]) {
-      if (m.columnFree(x)) return x
-    }
-  }
-  return preferred
 }
 
 function stage1() {
   const m = new MapBuilder(120, MAP_H)
   m.ground(0, 119)
-  m.pit(34, 36)
-  m.pit(64, 66)
-  m.pit(94, 96)
+  m.pit(34, 35)
+  m.pit(64, 65)
+  m.pit(94, 95)
   m.platform(33, 37, 13)
   m.platform(93, 97, 13)
   m.ground(58, 72, 14)
@@ -213,9 +206,9 @@ function stage2() {
     [74, 84]
   ]
   m.ground(0, 119)
-  m.pit(28, 30)
-  m.pit(58, 60)
-  m.pit(88, 90)
+  m.pit(28, 29)
+  m.pit(58, 59)
+  m.pit(88, 89)
   m.platform(27, 31, 13)
   m.platform(57, 61, 13)
   m.platform(87, 91, 13)
@@ -273,8 +266,7 @@ function stage2() {
   m.set('G', 117, 14)
   m.set('h', 114, 14)
   m.set('@', 3, 14)
-  const wall = freeColumn(m, 66)
-  m.fill('D', wall, 10, wall, 14)
+  m.forceFill('D', 66, 10, 66, 14)
   m.border()
   return m
 }
@@ -287,10 +279,10 @@ function stage3() {
     [78, 86]
   ]
   m.ground(0, 129)
-  m.pit(22, 24)
-  m.pit(44, 46)
-  m.pit(66, 68)
-  m.pit(88, 90)
+  m.pit(22, 23)
+  m.pit(44, 45)
+  m.pit(66, 67)
+  m.pit(88, 89)
   m.platform(21, 25, 13)
   m.platform(43, 47, 13)
   m.platform(65, 69, 13)
@@ -361,8 +353,7 @@ function stage3() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
-  const wall = freeColumn(m, 66)
-  m.fill('D', wall, 10, wall, 14)
+  m.forceFill('D', 66, 10, 66, 14)
   m.border()
   return m
 }
@@ -370,9 +361,9 @@ function stage3() {
 function stage4() {
   const m = new MapBuilder(120, MAP_H)
   m.ground(0, 119)
-  m.pit(30, 32)
-  m.pit(60, 62)
-  m.pit(90, 92)
+  m.pit(30, 31)
+  m.pit(60, 61)
+  m.pit(90, 91)
   m.platform(29, 33, 13)
   m.platform(59, 63, 13)
   m.platform(89, 93, 13)
@@ -423,14 +414,10 @@ function stage4() {
   m.set('B', 112, 13)
   m.set('G', 117, 14)
   m.set('@', 3, 14)
-  const wallA = freeColumn(m, 35)
-  m.fill('D', wallA, 10, wallA, 14)
-  const doorA = freeColumn(m, 38)
-  m.door('x', doorA, 8)
-  const wallB = freeColumn(m, 84)
-  m.fill('D', wallB, 10, wallB, 14)
-  const doorB = freeColumn(m, 82)
-  m.door('y', doorB, 8)
+  m.forceFill('D', 35, 10, 35, 14)
+  m.forceFill('x', 38, 8, 38, 14)
+  m.forceFill('D', 83, 10, 83, 14)
+  m.forceFill('y', 82, 8, 82, 14)
   m.border()
   return m
 }
@@ -444,12 +431,12 @@ function stage5() {
     [88, 96]
   ]
   m.ground(0, 129)
-  m.pit(18, 20)
-  m.pit(38, 40)
+  m.pit(18, 19)
+  m.pit(38, 39)
   // Too wide to jump: the player has to fell the tree at x=57 to bridge it.
-  m.pit(58, 61)
-  m.pit(78, 80)
-  m.pit(98, 100)
+  m.chasm(58, 61)
+  m.pit(78, 79)
+  m.pit(98, 99)
   m.platform(17, 21, 13)
   m.platform(37, 41, 13)
   m.platform(57, 61, 13)
@@ -532,10 +519,8 @@ function stage5() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
-  const wallA = freeColumn(m, 42)
-  m.fill('D', wallA, 10, wallA, 14)
-  const wallB = freeColumn(m, 82)
-  m.fill('D', wallB, 10, wallB, 14)
+  m.forceFill('D', 42, 10, 42, 14)
+  m.forceFill('D', 82, 10, 82, 14)
   m.border()
   return m
 }
@@ -548,9 +533,9 @@ function stage6() {
     [92, 100]
   ]
   m.ground(0, 109)
-  m.pit(26, 28)
-  m.pit(56, 58)
-  m.pit(82, 84)
+  m.pit(26, 27)
+  m.pit(56, 57)
+  m.pit(82, 83)
   m.platform(25, 29, 13)
   m.platform(55, 59, 13)
   m.platform(81, 85, 13)
@@ -640,8 +625,8 @@ function stage7() {
   m.ground(4, 30, 15)
   m.ground(38, 60, 15)
   m.ground(68, 95, 15)
-  m.pit(31, 33)
-  m.pit(61, 63)
+  m.pit(31, 32)
+  m.pit(61, 62)
   m.platform(30, 34, 13)
   m.platform(60, 64, 13)
   m.ground(12, 24, 14)
@@ -703,10 +688,8 @@ function stage7() {
   m.set('B', 90, 12)
   m.set('G', 95, 14)
   m.set('@', 6, 14)
-  const doorA = freeColumn(m, 42)
-  m.door('x', doorA, 8)
-  const doorB = freeColumn(m, 64)
-  m.door('y', doorB, 8)
+  m.forceFill('x', 42, 8, 42, 14)
+  m.forceFill('y', 64, 8, 64, 14)
   m.border()
   return m
 }
@@ -726,10 +709,10 @@ function stage8() {
   m.set('1', 50, 14)
   m.set('2', 70, 14)
   m.ground(6, 103, 15)
-  m.pit(24, 26)
-  m.pit(44, 46)
-  m.pit(64, 66)
-  m.pit(84, 86)
+  m.pit(24, 25)
+  m.pit(44, 45)
+  m.pit(64, 65)
+  m.pit(84, 85)
   m.platform(23, 27, 13)
   m.platform(43, 47, 13)
   m.platform(63, 67, 13)
@@ -795,10 +778,10 @@ function stage9() {
   ]
   m.ground(0, 129)
   m.fill('#', 0, 0, 129, 3)
-  m.pit(24, 26)
-  m.pit(52, 54)
-  m.pit(80, 82)
-  m.pit(104, 106)
+  m.pit(24, 25)
+  m.pit(52, 53)
+  m.pit(80, 81)
+  m.pit(104, 105)
   m.platform(23, 27, 13)
   m.platform(51, 55, 13)
   m.platform(79, 83, 13)
@@ -888,12 +871,9 @@ function stage9() {
   m.set('B', 122, 12)
   m.set('G', 127, 14)
   m.set('@', 3, 14)
-  const wall = freeColumn(m, 84)
-  m.fill('D', wall, 10, wall, 14)
-  const doorA = freeColumn(m, 46)
-  m.door('x', doorA, 8)
-  const doorB = freeColumn(m, 104)
-  m.door('y', doorB, 8)
+  m.forceFill('D', 84, 10, 84, 14)
+  m.forceFill('x', 46, 8, 46, 14)
+  m.forceFill('y', 104, 8, 104, 14)
   m.border()
   return m
 }
@@ -909,9 +889,9 @@ function stage10() {
   m.fill('#', 0, 0, 99, 3)
   m.fill('#', 0, 0, 4, 17)
   m.fill('#', 95, 0, 99, 17)
-  m.pit(20, 22)
-  m.pit(44, 46)
-  m.pit(70, 72)
+  m.pit(20, 21)
+  m.pit(44, 45)
+  m.pit(70, 71)
   m.platform(19, 23, 13)
   m.platform(43, 47, 13)
   m.platform(69, 73, 13)
@@ -982,14 +962,10 @@ function stage10() {
   m.set('B', 90, 12)
   m.set('G', 94, 14)
   m.set('@', 6, 14)
-  const wallA = freeColumn(m, 42)
-  m.fill('D', wallA, 10, wallA, 14)
-  const wallB = freeColumn(m, 60)
-  m.fill('D', wallB, 10, wallB, 14)
-  const doorA = freeColumn(m, 66)
-  m.door('x', doorA, 8)
-  const doorB = freeColumn(m, 79)
-  m.door('y', doorB, 8)
+  m.forceFill('D', 41, 10, 41, 14)
+  m.forceFill('D', 59, 10, 59, 14)
+  m.forceFill('x', 68, 8, 68, 14)
+  m.forceFill('y', 93, 8, 93, 14)
   m.border()
   return m
 }

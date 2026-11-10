@@ -114,6 +114,36 @@ describe('map integrity', () => {
     expect(problems).toEqual([])
   })
 
+  it('puts every door after the switch that opens it, with no gap above it', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      const width = map[0].length
+      const switches: { x: number; id: number }[] = []
+      const doors: { x: number; id: number }[] = []
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < width; x++) {
+          const ch = map[y][x]
+          if (ch === '1' || ch === '2') switches.push({ x, id: Number(ch) })
+          if (ch === 'x' || ch === 'y') doors.push({ x, id: ch === 'x' ? 1 : 2 })
+        }
+      }
+      for (const door of doors) {
+        const before = switches.filter((sw) => sw.id === door.id && sw.x < door.x)
+        if (!before.length) problems.push(`${stage.id}: door ${door.id} at x=${door.x} has no switch before it`)
+      }
+      // A door must be a solid run from row 8 to the surface, so it cannot be jumped over.
+      for (let x = 0; x < width; x++) {
+        const ch = map[8][x]
+        if (ch !== 'x' && ch !== 'y') continue
+        for (let y = 8; y <= SURFACE - 1; y++) {
+          if (map[y][x] !== ch) problems.push(`${stage.id}: door at x=${x} has a gap at row ${y}`)
+        }
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
   it('cuts real pits into the surface of every stage', () => {
     const problems: string[] = []
     for (const stage of STAGES) {
