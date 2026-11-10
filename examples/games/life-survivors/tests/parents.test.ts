@@ -344,6 +344,11 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game.setInput(player.id, { x: side, y: 0 })
     game.tick(0)
     shield.guardianHeading = Math.atan2(player.fy, player.fx)
+    // She glides (no faster than GUARDIAN_SPEED) to her place ahead of the child.
+    for (let frame = 0; frame < 30; frame++) {
+      shield.aux = 100
+      game.tick(1 / 60)
+    }
     shield.aux = 0
     game.tick(0)
     for (const other of game.state.shots) if (other !== shield) other.aux = 100
@@ -440,7 +445,8 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     ]) {
       game.setInput(player.id, { x, y })
       game.setInput(other.id, { x: -x, y: -y })
-      game.tick(1 / 60)
+      // Turning, they glide round the child (no faster than GUARDIAN_SPEED) into the formation.
+      for (let frame = 0; frame < 45; frame++) game.tick(1 / 60)
       for (const owner of [player, other]) {
         const guards = game.state.shots.filter((shot) => shot.owner === owner.id)
         expect(guards).toHaveLength(2)
