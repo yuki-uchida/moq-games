@@ -27,11 +27,46 @@ export function scalingFor(screenW: number, screenH: number, viewH: number): Sca
   return { scale, up, artW: Math.ceil(w / scale), artH: Math.ceil(h / scale) }
 }
 
-/** Clamps a camera centre so the view stays inside the map; a map smaller than the view is centred. */
-export function clampCamera(cx: number, cy: number, viewW: number, viewH: number, mapW: number, mapH: number) {
+/**
+ * Clamps a camera centre so the view stays inside the map; a map smaller than the view is centred. `inset` lets the
+ * view extend that many art px beyond the map's top / bottom edge (the void is painted by the renderer).
+ */
+export function clampCamera(
+  cx: number,
+  cy: number,
+  viewW: number,
+  viewH: number,
+  mapW: number,
+  mapH: number,
+  inset: { top?: number; bottom?: number } = {}
+) {
+  const top = Math.max(0, inset.top ?? 0)
+  const bottom = Math.max(0, inset.bottom ?? 0)
   const x = mapW <= viewW ? mapW / 2 : Math.min(mapW - viewW / 2, Math.max(viewW / 2, cx))
-  const y = mapH <= viewH ? mapH / 2 : Math.min(mapH - viewH / 2, Math.max(viewH / 2, cy))
+  const y =
+    mapH + top + bottom <= viewH
+      ? (mapH + bottom - top) / 2
+      : Math.min(mapH + bottom - viewH / 2, Math.max(viewH / 2 - top, cy))
   return { x, y }
+}
+
+/**
+ * The camera centre y closest to `cy` that keeps the box `boxTop..boxBottom` (art px, world y) inside the view's safe
+ * area: below `topBand` art px from the view top and above `bottomBand` px from the view bottom. When both cannot be
+ * met, the top band wins.
+ */
+export function keepClearY(
+  cy: number,
+  viewH: number,
+  boxTop: number,
+  boxBottom: number,
+  topBand: number,
+  bottomBand: number
+) {
+  const hi = boxTop + viewH / 2 - Math.max(0, topBand)
+  const lo = boxBottom - viewH / 2 + Math.max(0, bottomBand)
+  if (lo > hi) return hi
+  return Math.min(hi, Math.max(lo, cy))
 }
 
 /** Frame-rate independent exponential smoothing factor for a rate in 1/s. */

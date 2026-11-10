@@ -147,6 +147,10 @@ export class Hud {
   private dialogShown = 0
   private dialogAt = 0
   private bossLagV = 1
+  private bandObserver?: ResizeObserver
+  private bandRects: { l: number; r: number; b: number }[] = []
+  private bandStale = true
+  private bandAt = 0
 
   constructor(private readonly a: HudActions) {
     this.cards = JOBS.map((_, i) => new HeroCard(i))
@@ -219,6 +223,40 @@ export class Hud {
       this.dialog,
       this.spectator
     )
+  }
+
+  /**
+   * Bottom edge (CSS px from the HUD's top, which overlays the canvas) of the visible top HUD blocks (top-centre
+   * stack, party cards, top-right) that horizontally overlap `x ± halfW`; 0 when none, or the HUD is hidden. Rects are
+   * cached: refreshed when a ResizeObserver fires or at most every 250 ms, never forcing layout every frame.
+   */
+  topBand(x: number, halfW: number, nowMs = performance.now()): number {
+    if (this.root.hidden) return 0
+    if (!this.bandObserver && typeof ResizeObserver !== 'undefined') {
+      this.bandObserver = new ResizeObserver(() => (this.bandStale = true))
+      this.bandObserver.observe(this.root)
+      for (const sel of ['.top-center', '.party', '.top-right'])
+        for (const n of Array.from(this.root.querySelectorAll(sel))) this.bandObserver.observe(n)
+    }
+    if (this.bandStale || nowMs - this.bandAt > 250) {
+      this.bandStale = false
+      this.bandAt = nowMs
+      const origin = this.root.getBoundingClientRect()
+      const rects: { l: number; r: number; b: number }[] = []
+      if (origin.width > 0) {
+        const nodes = Array.from(this.root.querySelectorAll<HTMLElement>('.top-center > *, .party > *, .top-right > *'))
+        for (const n of nodes) {
+          if (n.hidden) continue
+          const r = n.getBoundingClientRect()
+          if (r.width > 0 && r.height > 0)
+            rects.push({ l: r.left - origin.left, r: r.right - origin.left, b: r.bottom - origin.top })
+        }
+      }
+      this.bandRects = rects
+    }
+    let band = 0
+    for (const r of this.bandRects) if (r.r > x - halfW && r.l < x + halfW && r.b > band) band = r.b
+    return band
   }
 
   setMuted(muted: boolean) {

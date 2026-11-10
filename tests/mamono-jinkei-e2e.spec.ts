@@ -1114,3 +1114,83 @@ test('finale: stage 4 results → ending scene and staff roll → title', async 
   await expect(page.getByRole('heading', { name: 'マモノ陣形' })).toBeVisible()
   expect(errors).toEqual([])
 })
+
+/** The controlled hero's sprite stays clear of the top HUD at the north wall of every boss room. */
+for (const size of [
+  { width: 1280, height: 720 },
+  { width: 1024, height: 600 }
+]) {
+  test.describe(`boss room north wall ${size.width}x${size.height}`, () => {
+    test.use({ viewport: size })
+    for (const stage of ['meadow', 'sewer', 'tower', 'forest']) {
+      test(`${stage}: the hero is not hidden by the top HUD`, async ({ page }) => {
+        const errors: string[] = []
+        watchErrors(page, errors)
+        await page.goto('/')
+        await page.waitForFunction(() => !!(window.__mamono as unknown as { startStage?: unknown }).startStage)
+        await page.evaluate((s) => (window.__mamono as unknown as { startStage(s: string): void }).startStage(s), stage)
+        await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 8000 }).toBe('play')
+        await page.evaluate(() => window.__mamono.warp('H'))
+        await page.waitForTimeout(150)
+        await page.evaluate(() => {
+          const W = window.__mamono.W as unknown as {
+            grid: { walkable(x: number, y: number): boolean; blocked(x: number, y: number, a: boolean): boolean }
+            heroes: { slot: number; body: { x: number; y: number; vx: number; vy: number } }[]
+            humans: { ctrl: number }[]
+            parsed: { data: { rooms: { id: string; x: number; y: number; w: number; h: number }[] } }
+          }
+          const r = W.parsed.data.rooms.find((q) => q.id === 'H')!
+          const cx = r.x + r.w / 2
+          let best: { tx: number; ty: number } | undefined
+          for (let ty = r.y; ty < r.y + r.h && !best; ty++) {
+            for (const tx of Array.from({ length: r.w }, (_, i) => r.x + i).sort(
+              (a, b) => Math.abs(a + 0.5 - cx) - Math.abs(b + 0.5 - cx)
+            ))
+              if (W.grid.walkable(tx, ty) && !W.grid.blocked(tx, ty, false)) {
+                best = { tx, ty }
+                break
+              }
+          }
+          const h = W.heroes.find((q) => q.slot === W.humans[0].ctrl)!
+          h.body.x = best!.tx * 64 + 32
+          h.body.y = best!.ty * 64 + 32
+          h.body.vx = h.body.vy = 0
+        })
+        // Wait for the camera to settle.
+        let last = ''
+        await expect
+          .poll(
+            async () => {
+              const c = JSON.stringify(await page.evaluate(() => window.__mamono.camera.heroCss))
+              const same = c === last
+              last = c
+              return same
+            },
+            { timeout: 8000, intervals: [250] }
+          )
+          .toBe(true)
+        const r = await page.evaluate(() => {
+          const m = window.__mamono
+          const W = m.W
+          const me = W.heroes.find((h) => h.slot === W.humans[0].ctrl) as unknown as { body: { z?: number } }
+          const k = m.camera.scale / devicePixelRatio
+          const c = m.camera.heroCss!
+          const feet = c.y + (14 + (me.body.z ?? 0)) * k
+          const box = { l: c.x - 28 * k, r: c.x + 28 * k, t: feet - 68 * k, b: feet }
+          const hits: string[] = []
+          for (const sel of ['.boss-bar', '.objective', '.party', '.top-right']) {
+            const e = document.querySelector<HTMLElement>(sel)
+            if (!e || e.hidden) continue
+            const q = e.getBoundingClientRect()
+            if (q.width > 0 && q.height > 0 && box.l < q.right && box.r > q.left && box.t < q.bottom && box.b > q.top)
+              hits.push(`${sel} ${JSON.stringify([q.left, q.top, q.right, q.bottom])}`)
+          }
+          return { box, hits }
+        })
+        expect(r.hits, JSON.stringify(r.box)).toEqual([])
+        expect(r.box.t).toBeGreaterThanOrEqual(0)
+        expect(errors).toEqual([])
+      })
+    }
+  })
+}

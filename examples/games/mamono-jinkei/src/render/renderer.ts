@@ -23,6 +23,7 @@ import { interactTarget } from '../ui/hints'
 import {
   BASE_VIEW_H,
   clampCamera,
+  keepClearY,
   cursorLead,
   edgeMarker,
   glanceOffset,
@@ -56,6 +57,8 @@ export interface RenderInput {
   demo?: boolean
   /** Shifts the followed hero right by this fraction of the view width (title layout). */
   shiftX?: number
+  /** CSS px from the canvas top to the bottom of the top HUD the controlled hero could sit under; 0/absent = none. */
+  hud?: { top: number }
 }
 
 export interface CameraInfo {
@@ -72,6 +75,9 @@ export interface CameraInfo {
   artPerCss: number
 }
 
+/** Margin below the top HUD, and the hero sprite's height above its feet (frame 56 + overhead icons), art px. */
+const HUD_MARGIN = 8
+const HERO_BOX_UP = 68
 const MODE_STAY = ['##.##', '##.##', '##.##', '##.##', '##.##']
 const MODE_FOLLOW = ['..#..', '.#.#.', '#.#.#', '.#.#.', '#...#']
 const FORMATION_NAMES: Record<number, string> = { 2: 'ペア陣', 3: '三角陣', 4: '四方陣' }
@@ -177,6 +183,8 @@ export class Renderer {
   private labelCount = 0
   private zoom = BASE_VIEW_H
   private camReady = false
+  /** Eased top-HUD band (art px) the followed hero is kept below. */
+  private hudBand = 0
   private shakeAmp = 0
   private stopUntil = 0
   private lastT = 0
@@ -209,6 +217,7 @@ export class Renderer {
     this.flashes.length = 0
     this.chargeWas.clear()
     this.camReady = false
+    this.hudBand = 0
     this.shakeAmp = 0
     this.stopUntil = 0
     this.lighting.clear()
@@ -515,7 +524,16 @@ export class Renderer {
       ty += lead.y
     }
     if (input.shiftX) tx -= sc.artW * input.shiftX
-    const want = clampCamera(tx, ty, sc.artW, sc.artH, info.w * TILE, info.h * TILE)
+    // Keep the controlled hero's sprite clear of the top HUD (the band is eased so HUD animations do not jerk the view).
+    const bandWant = hero && !tech && !input.demo && input.hud ? Math.max(0, input.hud.top) * cam.artPerCss : 0
+    this.hudBand += (bandWant - this.hudBand) * (this.camReady ? smoothing(10, dt) : 1)
+    if (Math.abs(bandWant - this.hudBand) < 0.25) this.hudBand = bandWant
+    const band = hero && !tech && !input.demo && this.hudBand > 0.5 ? this.hudBand + HUD_MARGIN : 0
+    // Sprite box: 64×64 frame with the feet at y 56 (drawn at hero.y - hero.z), plus room for overhead icons.
+    const boxBottom = hero ? hero.y - hero.z : 0
+    const boxTop = boxBottom - HERO_BOX_UP
+    if (band > 0) ty = keepClearY(ty, sc.artH, boxTop, boxBottom, band, 0)
+    const want = clampCamera(tx, ty, sc.artW, sc.artH, info.w * TILE, info.h * TILE, { top: band })
     if (!this.camReady) {
       cam.x = want.x
       cam.y = want.y
@@ -530,9 +548,9 @@ export class Renderer {
       cam.y += (want.y - cam.y) * k
     }
     if (hero) this.lastFollow = { x: hero.x, y: hero.y, slot: hero.slot }
-    const c = clampCamera(cam.x, cam.y, sc.artW, sc.artH, info.w * TILE, info.h * TILE)
+    const c = clampCamera(cam.x, cam.y, sc.artW, sc.artH, info.w * TILE, info.h * TILE, { top: band })
     cam.x = c.x
-    cam.y = c.y
+    cam.y = band > 0 ? keepClearY(c.y, sc.artH, boxTop, boxBottom, band, 0) : c.y
     const o = viewOrigin(cam.x, cam.y, sc.artW, sc.artH)
     this.shakeAmp *= Math.exp(-dt * 9)
     if (this.shakeAmp < 0.3) this.shakeAmp = 0
