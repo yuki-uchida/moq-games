@@ -240,10 +240,11 @@ test('walking at any fixed heading, the badge settles and stays on one side', ()
       expect(flips(sides.slice(60)), `${copy ? 'with' : 'without'} the copy, age ${age}, ${degrees}°`).toBe(0)
       settled.add(sides[sides.length - 1])
     }
-    // Some headings (walking up and to the right) do send it over the left shoulder.
-    expect([...settled].sort()).toEqual([-1, 1])
+    // Walking, her parents keep outside the badge on either side of the head (see the 過保護親 overhead tests in
+    // companion-overhead.test.ts), so it always settles over the right shoulder.
+    expect([...settled].sort()).toEqual([1])
   }
-})
+}, 30_000)
 
 test('setting off, stopping and turning never sends the badge over and straight back', () => {
   for (const overLv of [1, 2, 4, 8])

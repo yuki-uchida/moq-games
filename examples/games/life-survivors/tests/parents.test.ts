@@ -17,6 +17,7 @@ import {
 } from '../src/data'
 import { Game, RAID, choiceText, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
+import { GUARDIAN_BODY, boxAbout, boxesOverlap, overheadBoxes } from '../src/overhead'
 import { readView, toView } from '../src/view'
 import { botInput } from './bot'
 
@@ -443,6 +444,14 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
       for (const owner of [player, other]) {
         const guards = game.state.shots.filter((shot) => shot.owner === owner.id)
         expect(guards).toHaveLength(2)
+        // Facing up the screen they go to the shoulder instead (see companion-overhead.test.ts): fully up, clear of
+        // what is drawn over the child's head.
+        const facing = Math.sin(guards[0].guardianHeading!)
+        if (facing <= -0.65)
+          for (const guard of guards)
+            for (const box of overheadBoxes(1))
+              expect(boxesOverlap(boxAbout(guard.x - owner.x, guard.y - owner.y, GUARDIAN_BODY), box)).toBe(false)
+        if (facing < 0) continue
         for (const guard of guards)
           expect(
             (guard.x - owner.x) * Math.cos(guard.guardianHeading!) +
@@ -465,9 +474,14 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     const stopped = game.state.shots.filter((shot) => shot.owner === player.id)
     for (const guard of stopped) {
       expect(guard.guardianStill).toBe(1)
-      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.r)
+      // Beside the child, not hidden behind her, and close by.
+      expect(Math.abs(guard.x - player.x)).toBeGreaterThanOrEqual(20)
+      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.orbit * 0.65)
     }
-    expect(stopped[0].x).toBeLessThan(stopped[1].x)
+    // In a row on the shoulder (left) they walked up at, the first nearest the child, apart.
+    expect(stopped[0].x).toBeGreaterThan(stopped[1].x)
+    expect(stopped[0].x).toBeLessThan(player.x)
+    expect(Math.hypot(stopped[0].x - stopped[1].x, stopped[0].y - stopped[1].y)).toBeGreaterThanOrEqual(20)
     for (const guard of game.state.shots.filter((shot) => shot.owner === other.id))
       expect((guard.x - other.x) * other.fx + (guard.y - other.y) * other.fy).toBeCloseTo(guard.orbit * 0.65)
   })
@@ -479,7 +493,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     for (const guard of guards) {
       expect(guard.guardianStill).toBe(1)
       expect(guard.y).toBeLessThan(player.y)
-      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.r)
+      expect(Math.hypot(guard.x - player.x, guard.y - player.y)).toBeLessThan(guard.orbit * 0.65)
     }
     const reach = guards[0].orbit * 0.65
     for (const [x, y] of [
@@ -511,9 +525,12 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     game.state.enemies = []
     game.setInput(player.id, { x: 0, y: -1 })
     for (let frame = 0; frame < 120; frame++) game.tick(1 / 60)
+    // Walking up they go to her shoulder, clear of what is drawn over her head.
     for (const guard of guards) {
       expect(guard.guardianStill).toBe(0)
-      expect(-(guard.y - player.y)).toBeCloseTo(guard.orbit * 0.65)
+      expect(guard.y).toBeLessThan(player.y)
+      for (const box of overheadBoxes(1))
+        expect(boxesOverlap(boxAbout(guard.x - player.x, guard.y - player.y, GUARDIAN_BODY), box)).toBe(false)
     }
   })
 
