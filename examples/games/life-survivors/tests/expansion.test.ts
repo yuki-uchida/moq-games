@@ -995,12 +995,23 @@ describe('fx channel', () => {
       game.tick(0.01)
       note(game)
     }
+    // GUARD: 過保護親 bashes an enemy by her standing child, within her all-round reach.
+    {
+      const { game, player } = arena(30, 'p_over')
+      game.targetPopulation = () => 0
+      player.choices = []
+      game.state.time = timeAtAge(30) + 1
+      game.state.eventIndex = EVENTS.length
+      run(game, player, 60)
+      game.spawnEnemy('expense', player.x - 40, player.y + 6)
+      for (let i = 0; i < 120 && !seen.has(FX.GUARD); i++) run(game, player, 1, () => note(game))
+    }
     const missing = Object.values(FX).filter((type) => !seen.has(type))
     expect(missing.map((type) => names[type])).toEqual([])
   })
 })
 
-describe('protocol v18', () => {
+describe('protocol v19', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -1010,9 +1021,9 @@ describe('protocol v18', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v18 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v19 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(18)
+    expect(view.v).toBe(19)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)

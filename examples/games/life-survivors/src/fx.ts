@@ -39,8 +39,20 @@ export const FX = {
   /** x, y, a = enemy index (an elite appeared) */
   ELITE: 18,
   PARENT_DEATH: 19,
-  GAMBLE: 20
+  GAMBLE: 20,
+  /**
+   * x, y = the enemy 過保護親 bashed within her all-round reach of her child, a = the child (owner index), b = bits:
+   * 1 when her shield itself strikes it (the renderer thrusts it then), her bash's length in hundredths of a second
+   * (at most 127) times 2, and her shield's radius (r, rounded) times 256 (see guardBits)
+   */
+  GUARD: 21
 } as const
+
+/** FX.GUARD's b: whether her shield strikes the enemy itself, how long her bash lasts (s), her shield's radius. */
+export const guardBits = (shield: boolean, seconds: number, radius: number) =>
+  (shield ? 1 : 0) + 2 * Math.min(127, Math.round(seconds * 100)) + 256 * Math.round(radius)
+/** FX.GUARD's b, read back (see guardBits). */
+export const readGuardBits = (b: number) => ({ shield: (b & 1) === 1, seconds: ((b >> 1) & 127) / 100, radius: b >> 8 })
 
 export type FxType = (typeof FX)[keyof typeof FX]
 export const FX_TYPES = Object.values(FX) as number[]

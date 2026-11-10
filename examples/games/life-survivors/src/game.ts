@@ -36,10 +36,19 @@ import {
   type Tag,
   type WeaponDef
 } from './data'
-import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
+import { FX, FX_CAP, FX_WINDOW, guardBits, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { FAMILY_SLOTS } from './family-slots'
-import { GUARDIAN_BODY, OVERHEAD, boxAbout, boxesOverlap, overheadBoxes, type OverheadBox } from './overhead'
+import {
+  GUARDIAN_BODY,
+  OVERHEAD,
+  CHILD_DRAWN,
+  boxAbout,
+  boxesOverlap,
+  childDrawnBox,
+  overheadBoxes,
+  type OverheadBox
+} from './overhead'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
 import {
@@ -142,11 +151,50 @@ export const GUARDIAN_OVERLAP = { x: 12, y: 18 } as const
 export const GUARDIAN_CHILD = { x: 12, top: -30, bottom: 14 } as const
 const GUARDIAN_CHILD_MARGIN = 3
 /**
- * The child's body as drawn (|dx| < x·size, top·size < dy < bottom), which no parent's figure or shield reaches more
- * than GUARDIAN_DRAWN_CLEAR px into as she goes round the child.
+ * The room her way round the child keeps (|dx| < x·size, top·size < dy < bottom about the child's centre): no
+ * parent's figure or shield reaches more than GUARDIAN_DRAWN_CLEAR px into it as she goes round the child.
  */
-const GUARDIAN_DRAWN = { x: 11, top: -30, bottom: 16 } as const
+const GUARDIAN_ROUTE = { x: 11, top: -30, bottom: 16 } as const
 const GUARDIAN_DRAWN_CLEAR = 4
+/**
+ * The child's body as drawn (CHILD_DRAWN, scaled about her feet by her body size: childDrawnBox): the way a parent
+ * faces never holds her shield GUARDIAN_SHIELD_CLEAR px or more into it, across and up and down.
+ */
+const GUARDIAN_DRAWN = CHILD_DRAWN
+const GUARDIAN_SHIELD_CLEAR = 1
+/**
+ * The side (left or right) 過保護親 is drawn facing holds GUARDIAN_FACE_HOLD s before she turns to the other, unless
+ * her shield would lie over her child, her head or her family where she faces (and not the other way); and holds
+ * GUARDIAN_FACE_LEAST s (over ten frames at 60 fps) whatever her shield lies over. Beside a standing child she turns to
+ * face the way she goes only on her way to a place more than GUARDIAN_FACE_TURN px off (and keeps facing it while
+ * more than GUARDIAN_FACE_KEEP px off); on a shorter way (back to her place, say) she keeps facing out from the child.
+ */
+const GUARDIAN_FACE_HOLD = 0.25
+const GUARDIAN_FACE_LEAST = 0.18
+const GUARDIAN_FACE_TURN = 40
+const GUARDIAN_FACE_KEEP = 30
+/** How many points (one a frame at 60 fps) on her way over GUARDIAN_FACE_HOLD 過保護親 looks at as she turns. */
+const GUARDIAN_FACE_STEPS = 15
+/**
+ * 過保護親 going against the way she faces (at least GUARDIAN_BACK_ACROSS px/s across the screen over the ground) steps
+ * back: no faster than GUARDIAN_BACK_SPEED px/s relative to her child (two thirds of the child's walk). Walking (the
+ * view's GUARD_WALK bits), from GUARDIAN_WALK_FAST px/s over the ground on she plays her walk twice as fast.
+ */
+const GUARDIAN_BACK_SPEED = 90
+const GUARDIAN_BACK_ACROSS = 30
+const GUARDIAN_BACK_ROOM = 3 * GUARDIAN_GAP
+const GUARDIAN_WALK_FAST = 200
+/** How long (s) the way 過保護親 goes over the ground takes to tell which way she faces as she goes. */
+const GUARDIAN_FACE_DRIFT = 0.05
+/** How much less (a share a step) what lies a step further on her way counts as she weighs which way to face. */
+const GUARDIAN_FACE_FADE = 0.8
+/** How far (px) clear of the child, what is over her head and her family 過保護親 would hold her shield as she turns. */
+const GUARDIAN_FACE_PAD = 6
+const GUARDIAN_FACE_CHILD = 3
+/** How far into what she keeps out of round the child (its share) a way she looks along may go before she trusts it no more. */
+const GUARDIAN_FACE_THROUGH = 0.9
+/** How much further (px) than her thrust shield reaches the renderer still thrusts it at an enemy. */
+const GUARDIAN_STRIKE_SLACK = 16
 /** How far (px, times the shield's size) the renderer thrusts 過保護親's shield out at the enemy she bashes. */
 const GUARDIAN_THRUST = 14
 /** How far out (px, times body size) from the child anything a parent's shield could be drawn over reaches. */
@@ -423,7 +471,7 @@ function guardianOverhead(size: number, badge = true) {
 /**
  * What 過保護親's centre keeps out of round her child of body size `size`, her shield `shield` times its size: wide
  * and low enough that neither her figure (GUARDIAN_BODY) nor her shield (GUARDIAN_SHIELD_ART, held the way she goes)
- * reaches GUARDIAN_DRAWN_CLEAR px into the child's drawn body (GUARDIAN_DRAWN), and never less than GUARDIAN_CHILD
+ * reaches GUARDIAN_DRAWN_CLEAR px into the room kept round the child (GUARDIAN_ROUTE), and never less than GUARDIAN_CHILD
  * with GUARDIAN_CHILD_MARGIN round it: its middle and half-size.
  */
 function guardianChildBox(size: number, shield = 1) {
@@ -432,11 +480,11 @@ function guardianChildBox(size: number, shield = 1) {
   const top = GUARDIAN_CHILD.top * size - GUARDIAN_CHILD_MARGIN
   const bottom = Math.max(
     GUARDIAN_CHILD.bottom + GUARDIAN_CHILD_MARGIN,
-    GUARDIAN_DRAWN.bottom + Math.max(GUARDIAN_BODY.y, -GUARDIAN_SHIELD_ART.top * shield) - GUARDIAN_DRAWN_CLEAR + 1
+    GUARDIAN_ROUTE.bottom + Math.max(GUARDIAN_BODY.y, -GUARDIAN_SHIELD_ART.top * shield) - GUARDIAN_DRAWN_CLEAR + 1
   )
   const hx = Math.max(
     GUARDIAN_CHILD.x * size + GUARDIAN_CHILD_MARGIN,
-    GUARDIAN_DRAWN.x * size + GUARDIAN_BODY.x - GUARDIAN_DRAWN_CLEAR + 1
+    GUARDIAN_ROUTE.x * size + GUARDIAN_BODY.x - GUARDIAN_DRAWN_CLEAR + 1
   )
   const box = { cy: (top + bottom) / 2, hx, hy: (bottom - top) / 2 }
   guardianChildBoxLast = { size, shield, box }
@@ -847,6 +895,71 @@ function guardianAlong(from: { x: number; y: number }, points: readonly { x: num
 }
 
 /**
+ * Points on the way (`points`, the last her goal) from `from`: the first `skip` px on, then every `step` px, up to
+ * GUARDIAN_FACE_STEPS of them (where she is still, once she is there).
+ */
+function guardianSamples(
+  from: { x: number; y: number },
+  points: readonly { x: number; y: number }[],
+  skip: number,
+  step: number
+) {
+  const out: { x: number; y: number }[] = []
+  let at = from
+  let left = skip + step
+  for (const point of points) {
+    let d = Math.hypot(point.x - at.x, point.y - at.y)
+    while (d >= left && out.length < GUARDIAN_FACE_STEPS) {
+      at = { x: at.x + ((point.x - at.x) * left) / d, y: at.y + ((point.y - at.y) * left) / d }
+      out.push(at)
+      d -= left
+      left = step
+    }
+    if (out.length >= GUARDIAN_FACE_STEPS) return out
+    at = point
+    left -= d
+  }
+  while (out.length < GUARDIAN_FACE_STEPS) out.push({ ...at })
+  return out
+}
+
+/**
+ * How much (px²) of 過保護親's shield (GUARDIAN_SHIELD_ART, `scale` times its size), at `at` from her child of body
+ * size `size` and facing `face`, lies over `boxes` (Game.guardianShieldBoxes): the child's drawn body, the first,
+ * counted once it reaches GUARDIAN_SHIELD_CLEAR px into it each way; the others once it reaches GUARDIAN_DRAWN_CLEAR
+ * (each of them `pad` px wider all round), what lies over the child counting `child` times.
+ */
+function guardianShieldOn(
+  boxes: readonly OverheadBox[],
+  scale: number,
+  size: number,
+  at: { x: number; y: number },
+  face: number,
+  pad = 0,
+  child = 1
+) {
+  const side = Math.cos(face) < 0 ? -1 : 1
+  const a = at.x + side * GUARDIAN_SHIELD_ART.near * scale
+  const b = at.x + side * GUARDIAN_SHIELD_ART.far * scale
+  const left = Math.min(a, b)
+  const right = Math.max(a, b)
+  const top = at.y + GUARDIAN_SHIELD_ART.top * scale
+  const bottom = at.y + GUARDIAN_SHIELD_ART.bottom * scale
+  // (Nothing of that reaches further out than GUARDIAN_SHIELD_NEAR px, nor further down than the family's feet.)
+  if (left > GUARDIAN_SHIELD_NEAR * size || right < -GUARDIAN_SHIELD_NEAR * size) return 0
+  if (top > FAMILY_SLOTS[1].dy + FAMILY_BODY.bottom) return 0
+  let over = 0
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i]
+    const clear = i ? GUARDIAN_DRAWN_CLEAR : GUARDIAN_SHIELD_CLEAR
+    const across = Math.min(right, box.right + pad) - Math.max(left, box.left - pad)
+    const down = Math.min(bottom, box.bottom + pad) - Math.max(top, box.top - pad)
+    if (across >= clear && down >= clear) over += across * down * (i ? 1 : child)
+  }
+  return over
+}
+
+/**
  * `at` (offset from the child of body size `size`) after her step from `from`, made to keep `GUARDIAN_GAP` clear of
  * each of `others` (the parents before her in her line, where they now stand), out of the child's body, walking up
  * (`duck` over 0.5) out of the boxes over her head unless she already stood in them, and no more than `most` px from
@@ -1160,6 +1273,12 @@ export interface Shot {
    * over the ground while walking, and the way she bashes while she bashes facing out or walking.
    */
   guardianFace?: number
+  /** 過保護: how long (s) since she last turned to face the other side (see GUARDIAN_FACE_HOLD). */
+  guardianTurned?: number
+  /** 過保護: the way (px/s) she has gone over the ground of late (see GUARDIAN_FACE_DRIFT). */
+  guardianDrift?: { x: number; y: number }
+  /** 過保護: how she walks, for the view (see Game.paceGuardian); none while she does not walk. */
+  guardianPace?: 'walk' | 'fast' | 'back'
   /** 過保護: whether she walks (over the ground, see GUARDIAN_WALK_ON), how long she has been slow, and where she was. */
   guardianWalking?: boolean
   guardianSlow?: number
@@ -3597,8 +3716,9 @@ export class Game {
     const blocks = this.guardianBlocks(owner)
     const scale = shot.r / 20
     // Standing where the family has just come to walk (the child turned), she steps off them as fast as she dodges.
-    if (last && this.familyOut(owner) && guardianInBlock(last, blocks.slice(0, owner.hasChild ? 2 : 1)))
-      most = Math.max(most, Math.min(GUARDIAN_DODGE, (GUARDIAN_DODGE / STEP) * dt) - 1e-6)
+    const dodging =
+      last !== undefined && this.familyOut(owner) && guardianInBlock(last, blocks.slice(0, owner.hasChild ? 2 : 1))
+    if (dodging) most = Math.max(most, Math.min(GUARDIAN_DODGE, (GUARDIAN_DODGE / STEP) * dt) - 1e-6)
     // While she gambles, the badge floats over either side of her head.
     const badge = owner.weapons.some((weapon) => weapon.id === 'w_gamble')
     // (The same as last time for the same aim, place, parents before her and obstacles.)
@@ -3646,29 +3766,106 @@ export class Game {
     const routeBlocks = wide.map((box, i) =>
       goal.x > box.left && goal.x < box.right && goal.y > box.top && goal.y < box.bottom ? blocks[i] : box
     )
-    const next = last
-      ? guardianStep(last, goal, most, duck, size, line.length - 1, around, [...routeBlocks, ...pets], badge, scale)
-      : goal
+    // (As guardianStep: her way there, and how far along it she goes this step.)
+    const way =
+      last && most > 0
+        ? guardianWay(last, goal, duck, size, line.length - 1, around, [...routeBlocks, ...pets], badge, scale)
+        : undefined
+    let next = last ? (way ? guardianAlong(last, way, most) : { ...last }) : goal
+    // Going against the way she faces beside her standing child (back to her place, say), she steps back no faster
+    // than GUARDIAN_BACK_SPEED; but not as she dodges, nor out of what she keeps out of round the child, nor with
+    // another parent of the child within GUARDIAN_BACK_ROOM (who would catch her up and stand over her). (Walking with
+    // the child, she goes over the ground as the child goes: slower, she would only fall behind.)
+    const was = shot.guardianGround
+    if (
+      last &&
+      way &&
+      was &&
+      dt > 0 &&
+      owner.still > 0 &&
+      !dodging &&
+      guardianBoxReach(last, guardianChildBox(size, scale)) >= 1 &&
+      around.every((o) => Math.hypot(o.x - last.x, o.y - last.y) >= GUARDIAN_BACK_ROOM)
+    ) {
+      const gx = (owner.x + next.x - was.x) / dt
+      const back = Math.max(0, GUARDIAN_BACK_SPEED * dt - 1e-6)
+      if (Math.abs(gx) >= GUARDIAN_BACK_ACROSS && gx < 0 !== Math.cos(shot.guardianFace ?? 0) < 0 && back < most) {
+        // (Only where that keeps her clear of the others as it is: hemmed in, she goes on as before.)
+        const slow = guardianAlong(last, way, back)
+        const kept = guardianKeepApart(slow, last, others, back, size, duck, blocks, badge, scale)
+        if (Math.hypot(kept.x - slow.x, kept.y - slow.y) < 1e-6) next = slow
+      }
+    }
     const at = guardianKeepApart(next, last, others, most, size, duck, blocks, badge, scale)
     shot.x = owner.x + at.x
     shot.y = owner.y + at.y
     shot.guardianOffset = at
-    this.faceGuardian(shot, at, last, dt, owner)
+    // Where she will be over the next GUARDIAN_FACE_HOLD, going on as fast as she may: on her way to her place beside
+    // the child once the child has stopped, or to her place walking once the child walks (though her goal may still
+    // lie between the two as the child comes to stand or sets off); on her way to her goal, should that way to her
+    // place go through the child; nowhere, should that way too (as one does from inside what she keeps out of).
+    const settling = Boolean(shot.guardianRest) && owner.still > 0
+    // (Walking, where she will walk once she has turned with the child.)
+    const place =
+      settling && shot.guardianRest
+        ? shot.guardianRest
+        : this.guardianWalk(
+            shot,
+            owner,
+            Math.cos(targetHeading),
+            Math.sin(targetHeading),
+            guardianTargetSide(Math.cos(targetHeading), shot.guardianSide),
+            line
+          )
+    const step = (GUARDIAN_SPEED * GUARDIAN_FACE_HOLD) / GUARDIAN_FACE_STEPS
+    const box = guardianChildBox(size, scale)
+    const through = (points: readonly { x: number; y: number }[]) =>
+      points.some((p) => guardianBoxReach(p, box) < GUARDIAN_FACE_THROUGH)
+    let there = Math.hypot(place.x - goal.x, place.y - goal.y) <= GUARDIAN_GRAZE
+    let soon: { x: number; y: number }[] = []
+    let blind = false
+    if (!there && last) {
+      soon = guardianSamples(
+        at,
+        guardianWay(at, place, duck, size, line.length - 1, around, [...routeBlocks, ...pets], badge, scale),
+        0,
+        step
+      )
+      if (through(soon)) there = blind = true
+    }
+    if (there) soon = way && last ? guardianSamples(last, way, most, step) : []
+    if (through(soon)) {
+      soon = []
+      blind = true
+    }
+    // (Not knowing her way round the child to the other side, she keeps facing out from her until she knows it.)
+    const wary = blind && Math.abs(at.x) > 4 && Math.sign(place.x) !== Math.sign(at.x)
+    this.faceGuardian(shot, at, last, dt, owner, there ? goal : place, soon, settling, wary)
+    this.paceGuardian(shot)
     if (this.guardianPass) this.guardiansMoved.add(shot)
   }
 
   /**
-   * How 過保護親 `shot` (now `at` from her child, `last` before) is drawn after a step of `dt`: walking while she goes
-   * over the ground (GUARDIAN_WALK_ON), facing the way she goes (and out to her side while she goes up or down the
-   * screen) as she walks with her child or over to a new place; standing beside a standing child (even as the child
-   * takes a step or two), facing out from her; otherwise the way she faced.
+   * How 過保護親 `shot` (now `at` from her child, `last` before, heading for `goal`, and `soon` where she will be over
+   * the next GUARDIAN_FACE_HOLD) is drawn after a step of `dt`: walking while she goes over the ground
+   * (GUARDIAN_WALK_ON), facing the way she goes (and out to her side while she goes up or down the screen) as she
+   * walks with her child or over to a place further off (GUARDIAN_FACE_TURN) on the child's other side; standing
+   * beside a standing child (even as the child takes a step or two), facing out from her, and on her way to her place
+   * beside the child (`settling`) on the side she is on, facing out to that side; otherwise the way she faced.
+   * Wherever she faces, she faces the way that holds less of her shield over the child, what is over her head and her
+   * family, now and on her way soon; and she keeps to the side she faces for GUARDIAN_FACE_HOLD before she turns to
+   * the other (GUARDIAN_FACE_LEAST to take her shield off them).
    */
   private faceGuardian(
     shot: Shot,
     at: { x: number; y: number },
     last: { x: number; y: number } | undefined,
     dt: number,
-    owner: Player
+    owner: Player,
+    goal: { x: number; y: number },
+    soon: readonly { x: number; y: number }[] = [],
+    settling = false,
+    wary = false
   ) {
     const was = shot.guardianGround
     shot.guardianGround = { x: shot.x, y: shot.y }
@@ -3683,9 +3880,15 @@ export class Game {
             : Math.atan2(owner.fy, Math.sign(at.x) * Math.max(Math.abs(owner.fx), GUARDIAN_FACE_SIDE))
       return
     }
+    shot.guardianTurned = (shot.guardianTurned ?? GUARDIAN_FACE_HOLD) + dt
     const vx = (shot.x - was.x) / dt
     const vy = (shot.y - was.y) / dt
     const speed = Math.hypot(vx, vy)
+    const ease = 1 - Math.exp(-dt / GUARDIAN_FACE_DRIFT)
+    const drift = shot.guardianDrift ?? { x: vx, y: vy }
+    drift.x += (vx - drift.x) * ease
+    drift.y += (vy - drift.y) * ease
+    shot.guardianDrift = drift
     if (speed >= GUARDIAN_WALK_ON) {
       shot.guardianWalking = true
       shot.guardianSlow = 0
@@ -3695,30 +3898,112 @@ export class Game {
     }
     // Bashing, she faces the enemy she bashes (see moveGuardian).
     if (shot.aux > 0 && shot.guardianFace === shot.angle && this.guardianBashClear(shot, owner, at)) return
-    const out = Math.abs(at.x) > 4 ? Math.sign(at.x) : Math.cos(shot.guardianFace ?? 0) < 0 ? -1 : 1
+    const boxes = this.guardianShieldBoxes(owner)
+    const now = shot.guardianFace ?? 0
+    const side = Math.cos(now) < 0 ? -1 : 1
+    const out = Math.abs(at.x) > 4 ? Math.sign(at.x) : side
+    const standing = (shot.guardianStill ?? 0) >= 0.5
     // (Going over to a new place beside her child, or walking with the child; not standing by her as she shuffles.)
     const moving = last ? Math.hypot(at.x - last.x, at.y - last.y) / dt >= GUARDIAN_WALK_OFF : false
-    if (shot.guardianWalking && speed > 1 && (moving || (shot.guardianStill ?? 0) < 0.5)) {
-      const across = Math.abs(vx) >= GUARDIAN_FACE_SIDE * speed ? vx : out * GUARDIAN_FACE_SIDE * speed
-      const face = Math.atan2(vy, across)
-      // Beside the child, she turns her shield away from her (and from what is over her head and her family) rather
-      // than hold it over her as she goes.
-      // (Bashing, the renderer thrusts her shield out the way she faces: that too.)
-      const reach = shot.aux > 0 ? GUARDIAN_THRUST * (shot.r / 20) : 0
-      const covered = (way: number) =>
-        this.guardianShieldOver(shot, owner, at, way) +
-        (reach
-          ? this.guardianShieldOver(
-              shot,
-              owner,
-              { x: at.x + Math.cos(way) * reach, y: at.y + Math.sin(way) * reach },
-              way
-            )
-          : 0)
-      const over = covered(face)
-      const back = over > 0 ? Math.atan2(vy, -across) : face
-      shot.guardianFace = over > 0 && covered(back) < over ? back : face
-    } else if ((shot.guardianStill ?? 0) >= 0.5) shot.guardianFace = out > 0 ? 0 : Math.PI
+    // How much of her shield, facing `way`, lies over the child, what is over her head and her family, where she is
+    // and on her way soon, all told (what lies further on counting for less, GUARDIAN_FACE_FADE a step), with
+    // GUARDIAN_FACE_PAD px to spare, and what lies over the child herself counting GUARDIAN_FACE_CHILD times.
+    const over = (way: number) =>
+      soon.reduce(
+        (sum, p, k) =>
+          sum +
+          this.guardianCovered(shot, owner, p, way, boxes, GUARDIAN_FACE_PAD, GUARDIAN_FACE_CHILD) *
+            GUARDIAN_FACE_FADE ** (k + 1),
+        this.guardianCovered(shot, owner, at, way, boxes, GUARDIAN_FACE_PAD, GUARDIAN_FACE_CHILD)
+      )
+    // Facing `way` (or `other`, if less of her shield lies over them that way).
+    const rather = (way: number, other: number) => {
+      const keep = over(way)
+      return keep > 0 && over(other) < keep ? other : way
+    }
+    const facing = (sign: number) => (sign > 0 ? 0 : Math.PI)
+    let face: number
+    if (shot.guardianWalking && speed > 1 && (moving || !standing)) {
+      // The way she goes over the ground, of late (not the way a step aside to keep clear of another took her).
+      // (Which side she goes to, by the way she has gone of late, but up or down the screen as she goes now.)
+      const going = Math.hypot(drift.x, drift.y)
+      const to = Math.abs(drift.x) >= GUARDIAN_FACE_SIDE * going ? Math.sign(drift.x) : out
+      const across = to * Math.max(Math.abs(vx), GUARDIAN_FACE_SIDE * speed)
+      const wy = vy
+      // She faces the way she goes only on her way to a place further off: on the child's other side, if the child
+      // stands.
+      const off = Math.hypot(goal.x - at.x, goal.y - at.y)
+      const far = off > ((across < 0 ? -1 : 1) === side ? GUARDIAN_FACE_KEEP : GUARDIAN_FACE_TURN)
+      const there = Math.abs(goal.x) > 4 ? Math.sign(goal.x) : out
+      if (settling && !far) face = rather(facing(there), facing(-there))
+      else if (standing && !far) face = rather(facing(out), facing(-out))
+      else if (wary) face = rather(Math.atan2(wy, out * Math.abs(across)), Math.atan2(wy, -out * Math.abs(across)))
+      else face = rather(Math.atan2(wy, across), Math.atan2(wy, -across))
+    } else if (standing) face = facing(out)
+    else return
+    // She keeps to the side she faces for a while, unless her shield lies over the child (or what is over her head,
+    // or her family) there and would lie over none of them the other way (to spare), now or on her way soon; but not at
+    // once.
+    if ((Math.cos(face) < 0 ? -1 : 1) !== side) {
+      if (
+        shot.guardianTurned < GUARDIAN_FACE_LEAST - 1e-6 ||
+        (shot.guardianTurned < GUARDIAN_FACE_HOLD - 1e-6 &&
+          !(
+            this.guardianCovered(shot, owner, at, now, boxes) > 0 &&
+            [at, ...soon].every((p) => this.guardianCovered(shot, owner, p, face, boxes) === 0)
+          ))
+      )
+        return
+      shot.guardianTurned = 0
+    }
+    shot.guardianFace = face
+  }
+
+  /**
+   * How 過保護親 `shot` walks, for the view (GUARD_WALK bits): stepping back while she goes against the way she faces
+   * (GUARDIAN_BACK_ACROSS), fast from GUARDIAN_WALK_FAST px/s over the ground, otherwise at a walk.
+   */
+  private paceGuardian(shot: Shot) {
+    const drift = shot.guardianDrift
+    if (!shot.guardianWalking || !drift) {
+      shot.guardianPace = undefined
+      return
+    }
+    const back = Math.abs(drift.x) >= GUARDIAN_BACK_ACROSS && drift.x < 0 !== Math.cos(shot.guardianFace ?? 0) < 0
+    shot.guardianPace = back ? 'back' : Math.hypot(drift.x, drift.y) >= GUARDIAN_WALK_FAST ? 'fast' : 'walk'
+  }
+
+  /**
+   * How much of 過保護親 `shot`'s shield, at `at` from her child `owner` facing `face`, lies over the child, what is over
+   * her head or her family (`boxes`, guardianShieldBoxes; see guardianShieldOn); bashing, also where the renderer
+   * thrusts it out that way (GUARDIAN_THRUST).
+   */
+  private guardianCovered(
+    shot: Shot,
+    owner: Player,
+    at: { x: number; y: number },
+    face: number,
+    boxes = this.guardianShieldBoxes(owner),
+    pad = 0,
+    child = 1
+  ) {
+    const scale = shot.r / 20
+    const size = this.bodySize(owner)
+    const reach = shot.aux > 0 ? GUARDIAN_THRUST * scale : 0
+    return (
+      guardianShieldOn(boxes, scale, size, at, face, pad, child) +
+      (reach
+        ? guardianShieldOn(
+            boxes,
+            scale,
+            size,
+            { x: at.x + Math.cos(face) * reach, y: at.y + Math.sin(face) * reach },
+            face,
+            pad,
+            child
+          )
+        : 0)
+    )
   }
 
   /**
@@ -3729,41 +4014,25 @@ export class Game {
   private guardianBashClear(shot: Shot, owner: Player, at: { x: number; y: number }) {
     const side = Math.sign(at.x)
     if ((shot.guardianStill ?? 0) >= 0.5 && side && Math.cos(shot.angle) * side < 0) return false
-    const reach = GUARDIAN_THRUST * (shot.r / 20)
+    const scale = shot.r / 20
+    const reach = GUARDIAN_THRUST * scale
     const thrust = { x: at.x + Math.cos(shot.angle) * reach, y: at.y + Math.sin(shot.angle) * reach }
+    const boxes = this.guardianShieldBoxes(owner)
+    const size = this.bodySize(owner)
     return (
-      this.guardianShieldOver(shot, owner, at, shot.angle) === 0 &&
-      this.guardianShieldOver(shot, owner, thrust, shot.angle) === 0
+      guardianShieldOn(boxes, scale, size, at, shot.angle) === 0 &&
+      guardianShieldOn(boxes, scale, size, thrust, shot.angle) === 0
     )
   }
 
   /**
-   * How much (px², counting only what reaches GUARDIAN_DRAWN_CLEAR px in each way) of 過保護親 `shot`'s shield
-   * (GUARDIAN_SHIELD_ART), at `at` from her child `owner` and facing `face`, lies over the child's drawn body
-   * (GUARDIAN_DRAWN), what is drawn over her head and her family.
+   * What 過保護親's shields keep off round her child `owner` (offsets from her): first the child's drawn body
+   * (childDrawnBox), then what is drawn over her head and, walking behind a married child, her family.
    */
-  private guardianShieldOver(shot: Shot, owner: Player, at: { x: number; y: number }, face: number) {
-    const scale = shot.r / 20
+  private guardianShieldBoxes(owner: Player): OverheadBox[] {
     const size = this.bodySize(owner)
-    const side = Math.cos(face) < 0 ? -1 : 1
-    const a = at.x + side * GUARDIAN_SHIELD_ART.near * scale
-    const b = at.x + side * GUARDIAN_SHIELD_ART.far * scale
-    const shield: OverheadBox = {
-      left: Math.min(a, b),
-      right: Math.max(a, b),
-      top: at.y + GUARDIAN_SHIELD_ART.top * scale,
-      bottom: at.y + GUARDIAN_SHIELD_ART.bottom * scale
-    }
-    // (Nothing of that reaches further out than GUARDIAN_SHIELD_NEAR px, nor further down than the family's feet.)
-    if (shield.left > GUARDIAN_SHIELD_NEAR * size || shield.right < -GUARDIAN_SHIELD_NEAR * size) return 0
-    if (shield.top > FAMILY_SLOTS[1].dy + FAMILY_BODY.bottom) return 0
     const boxes: OverheadBox[] = [
-      {
-        left: -GUARDIAN_DRAWN.x * size,
-        right: GUARDIAN_DRAWN.x * size,
-        top: GUARDIAN_DRAWN.top * size,
-        bottom: GUARDIAN_DRAWN.bottom
-      },
+      childDrawnBox(size, GUARDIAN_DRAWN),
       ...overheadBoxes(
         size,
         OVERHEAD.rows,
@@ -3780,13 +4049,7 @@ export class Game {
           bottom: slot.dy + FAMILY_BODY.bottom
         })
     }
-    let over = 0
-    for (const box of boxes) {
-      const across = Math.min(shield.right, box.right) - Math.max(shield.left, box.left)
-      const down = Math.min(shield.bottom, box.bottom) - Math.max(shield.top, box.top)
-      if (across >= GUARDIAN_DRAWN_CLEAR && down >= GUARDIAN_DRAWN_CLEAR) over += across * down
-    }
-    return over
+    return boxes
   }
 
   /**
@@ -3874,9 +4137,26 @@ export class Game {
     const dy = enemy.y - shot.y
     if (dx || dy) shot.angle = Math.atan2(dy, dx)
     shot.aux = shot.tick
-    // She turns her shield to the enemy where she may (guardianBashClear).
+    // She turns her shield to the enemy where she may (guardianBashClear), if her shield reaches it (the renderer
+    // thrusts it out at the enemy) and she has faced the way she faces for long enough to turn (GUARDIAN_FACE_HOLD).
+    const scale = shot.r / 20
     const at = shot.guardianOffset ?? { x: shot.x - owner.x, y: shot.y - owner.y }
-    if (this.guardianBashClear(shot, owner, at)) shot.guardianFace = shot.angle
+    const reaches = Math.hypot(dx, dy) <= (GUARDIAN_SHIELD_ART.far + GUARDIAN_THRUST) * scale + GUARDIAN_STRIKE_SLACK
+    const turns = Math.cos(shot.angle) < 0 !== Math.cos(shot.guardianFace ?? 0) < 0
+    const shield =
+      reaches &&
+      (!turns || (shot.guardianTurned ?? GUARDIAN_FACE_HOLD) >= GUARDIAN_FACE_HOLD - 1e-6) &&
+      this.guardianBashClear(shot, owner, at)
+    if (shield) {
+      if (turns) shot.guardianTurned = 0
+      shot.guardianFace = shot.angle
+    }
+    // Within her all-round reach of the child, the ring round the child lights up towards it (where her shield does
+    // not strike it).
+    const ring = shot.orbit * 0.65 + 7 * scale
+    const radius = ENEMY_BY_ID.get(enemy.kind)!.radius * enemy.scale
+    if (Math.hypot(enemy.x - owner.x, enemy.y - owner.y) <= ring + radius)
+      this.emit(FX.GUARD, enemy.x, enemy.y, this.playerIndex(owner), guardBits(shield, shot.tick, shot.r))
     this.emit(FX.FIRE, shot.x, shot.y, WEAPON_INDEX.get(shot.weapon)!, this.playerIndex(owner))
     this.damage(enemy, ENEMY_BY_ID.get(enemy.kind)!, shot, owner)
   }

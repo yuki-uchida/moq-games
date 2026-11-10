@@ -11,7 +11,15 @@ import {
   type Player,
   type Shot
 } from '../src/game'
-import { GUARDIAN_BODY, OVERHEAD, boxAbout, boxesOverlap, overheadBoxes, type OverheadBox } from '../src/overhead'
+import {
+  GUARDIAN_BODY,
+  OVERHEAD,
+  boxAbout,
+  boxesOverlap,
+  childDrawnBox,
+  overheadBoxes,
+  type OverheadBox
+} from '../src/overhead'
 
 const DT = 1 / 60
 const S = Math.SQRT1_2
@@ -338,6 +346,10 @@ function drawn(guard: Shot, player: Player) {
 }
 /** Frames after a married child turns that a parent standing where her family comes may take to step off them. */
 const FAMILY_TURN_GRACE = 20
+/** Frames (at 60 fps) 過保護親 keeps to the side she faces before she turns to the other (GUARDIAN_FACE_HOLD). */
+const FACE_HOLD = 15
+/** How far (px) clear of them 過保護親 would hold her shield as she goes by (GUARDIAN_FACE_PAD). */
+const FACE_PAD = 6
 /** The family walking behind a married child, where the game keeps them (FAMILY_SLOTS, offsets from her). */
 const familyBoxes = (player: Player) => {
   if (!player.married) return []
@@ -382,6 +394,10 @@ describe('standing, 過保護親 face out with their shields off the child and e
       let walking = 0
       let last = new Map<Shot, { x: number; y: number }>()
       let turned = Infinity
+      // Each parent's offsets and drawn side frame by frame, and the frames she walked against the way she faces.
+      const tracks = new Map<Shot, { at: { x: number; y: number }; left: boolean }[]>()
+      const backwards: { label: string; guard: Shot; frame: number; way: number; settling: boolean }[] = []
+      let count = 0
       // Walk, stop, turn on the spot (a three-frame tap), walk up and down.
       const plan: [keyof typeof STICKS, number][] = [
         ['L', 60],
@@ -406,6 +422,9 @@ describe('standing, 過保護親 face out with their shields off the child and e
           const figures = new Map(guards.map((guard) => [guard, drawn(guard, player)]))
           for (const guard of guards) {
             const at = offset(guard, player)
+            const track = tracks.get(guard) ?? []
+            track[count] = { at, left: Math.cos(guard.guardianFace ?? guard.angle) < 0 }
+            tracks.set(guard, track)
             const label = `${way} frame ${f} #${guard.id} (${at.x.toFixed(0)}, ${at.y.toFixed(0)})`
             const was = last.get(guard)
             if (was) {
@@ -418,21 +437,18 @@ describe('standing, 過保護親 face out with their shields off the child and e
                 walking++
                 if (!guard.guardianWalking) faults.push(`${label}: moving ${ground.toFixed(0)} px/s, not walking`)
                 const face = guard.guardianFace ?? guard.angle
-                // (Standing by the child as she takes a step or two, she faces out: carried along, not walking. Right
-                // by the child, her shield held the way she goes would lie over the child, what is over her head or
-                // her family: she holds it the other way.)
-                const ahead = drawn({ ...guard, guardianFace: Math.atan2(gy, gx) } as Shot, player).shield
-                const over = [child, ...overheadBoxes(1, OVERHEAD.rows, true), ...familyBoxes(player)].some(
-                  (box) =>
-                    Math.min(ahead.right, box.right) - Math.max(ahead.left, box.left) >= 4 &&
-                    Math.min(ahead.bottom, box.bottom) - Math.max(ahead.top, box.top) >= 4
-                )
+                // (Standing by the child as she takes a step or two, she faces out: carried along, not walking.)
                 if (
-                  !over &&
                   (guard.guardianStill ?? 0) < 0.5 &&
                   gx * Math.cos(face) + gy * Math.sin(face) < -0.3 * Math.hypot(gx, gy)
                 )
-                  faults.push(`${label}: walking backwards`)
+                  backwards.push({
+                    label,
+                    guard,
+                    frame: count,
+                    way: Math.atan2(gy, gx),
+                    settling: player.still > 0 && guard.guardianRest !== undefined && guard.guardianRest.x * at.x > 0
+                  })
               }
             }
             // At all times, her figure and shield as drawn keep off the child, what is over her head and her family.
@@ -459,7 +475,31 @@ describe('standing, 過保護親 face out with their shields off the child and e
               faults.push(`${label}: ${((100 * hidden) / area(body, body)).toFixed(0)}% under shields`)
           }
           last = new Map(guards.map((guard) => [guard, offset(guard, player)]))
+          count++
         }
+      }
+      // Walking against the way she faces only: as the child comes to stand, on her way to her place on the side she
+      // is on (facing out to it); within GUARDIAN_FACE_HOLD of turning (she does not turn back and forth); or where her
+      // shield, held the way she goes, would come within FACE_PAD of the child as drawn, what is over her head or her
+      // family, now or on her way over the next GUARDIAN_FACE_HOLD (she holds it the other way as she goes by them).
+      for (const { label, guard, frame, way, settling } of backwards) {
+        const track = tracks.get(guard)!
+        const turned = track
+          .slice(Math.max(0, frame - FACE_HOLD), frame + 1)
+          .some((t, i, all) => i && t && all[i - 1] && t.left !== all[i - 1].left)
+        const over = track.slice(frame, frame + FACE_HOLD + 1).some((t) => {
+          if (!t) return false
+          const ahead = drawn(
+            { ...guard, guardianFace: way, x: player.x + t.at.x, y: player.y + t.at.y } as Shot,
+            player
+          ).shield
+          return [childDrawnBox(1), ...overheadBoxes(1, OVERHEAD.rows, true), ...familyBoxes(player)].some(
+            (box, i) =>
+              Math.min(ahead.right, box.right + FACE_PAD) - Math.max(ahead.left, box.left - FACE_PAD) >= (i ? 4 : 1) &&
+              Math.min(ahead.bottom, box.bottom + FACE_PAD) - Math.max(ahead.top, box.top - FACE_PAD) >= (i ? 4 : 1)
+          )
+        })
+        if (!settling && !turned && !over) faults.push(`${label}: walking backwards`)
       }
       expect(standing).toBeGreaterThan(0)
       expect(walking).toBeGreaterThan(0)

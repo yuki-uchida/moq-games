@@ -34,7 +34,7 @@ import {
   type EnemyDef,
   type Stage
 } from './data'
-import { Effects, GAMBLE_OFFSET, GAMBLE_RESULT_DELAY, PK, gambleTiming, type Particle } from './effects'
+import { Effects, FxFeed, GAMBLE_OFFSET, GAMBLE_RESULT_DELAY, PK, gambleTiming, type Particle } from './effects'
 import {
   FOOD_BOB,
   foodChips,
@@ -54,12 +54,16 @@ import {
 import { parentMemorialAt } from './hud'
 import { GUARDIAN_SHIELD_ART, RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
+import { FX, readGuardBits } from './fx'
+import { CHILD_DRAWN, childDrawnBox } from './overhead'
 import { FAMILY_SCALE, FAMILY_SLOTS } from './family-slots'
 import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './weapon-life'
 import {
   BULLET_KINDS,
   ENEMY_FLAG,
   GUARD_BASH_STEPS,
+  GUARD_BACK,
+  GUARD_FAST,
   GUARD_WALK,
   ITEM_KINDS,
   PET_STILL,
@@ -508,18 +512,27 @@ const PET_POP_SECONDS = 0.2
 const PET_FADE_SECONDS = 0.3
 /**
  * 過保護親's bash: her shield goes out this far (px, times its scale) at an enemy within this cosine of its way and
- * within its reach (and this many px more); one further off, the ring round her child (GUARD_RING_PER_R times her
- * shield's radius: the game's all-round reach, 0.65 × the orbit (2.9 r) plus 7 px a scale) lights up GUARD_RING_ARC
- * radians either way of it. Walking, her walk plays this many times as fast as her standing.
+ * within its reach (and this many px more); for an enemy she bashes off her shield's reach within her all-round reach
+ * of her child (FX.GUARD), the ring round the child (GUARD_RING_PER_R times her shield's radius: the game's all-round
+ * reach, 0.65 × the orbit (2.9 r) plus 7 px a scale) lights up GUARD_RING_ARC radians either way of it as long as her
+ * bash (GUARD_RING_SECONDS at most). Walking, her walk plays this many times as fast as her standing.
  */
 const GUARD_THRUST = 14
-/** The child as drawn (half-width, reach up and down from her centre): a thrust never takes the shield over her. */
-const GUARD_CHILD_BOX = { x: 11, top: -30, bottom: 16 } as const
+/**
+ * The child as drawn (CHILD_DRAWN, scaled about her feet by her body size): a thrust never takes the shield
+ * GUARD_CHILD_CLEAR px or more over her, across and up and down.
+ */
+const GUARD_CHILD_BOX = CHILD_DRAWN
+const GUARD_CHILD_CLEAR = 1
 const GUARD_THRUST_COS = Math.cos((50 * Math.PI) / 180)
 const GUARD_STRIKE_SLACK = 16
 const GUARD_RING_PER_R = 0.65 * 2.9 + 7 / 20
 const GUARD_RING_ARC = 0.45
+const GUARD_RING_SECONDS = 0.25
 const GUARD_WALK_RATE = 1
+/** Her walk, fast (GUARD_FAST: from 200 px/s over the ground) and stepping back (no faster than 90 px/s). */
+const GUARD_FAST_RATE = 2
+const GUARD_BACK_RATE = 2 / 3
 /** How long a food label takes to fade back in once no player covers it (s). */
 const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
@@ -614,6 +627,11 @@ export class Renderer {
   private appearancePending = false
   /** Particles, trauma and flashes driven by the fx events of the views drawn so far. */
   readonly fx = new Effects()
+  /** The FX.GUARD events not yet seen, and the rings they light round the children: whose, towards where, since when. */
+  private readonly guardFeed = new FxFeed()
+  private readonly guardRings: { owner: number; x: number; y: number; r: number; at: number; life: number }[] = []
+  /** While the characters are drawn: what is drawn over the players' heads, to draw after them (and the rings). */
+  private overheads: (() => void)[] | undefined
   private readonly fxView = { local: -1, px: 0, py: 0, cx: 0, cy: 0, hw: 0, hh: 0 }
   private readonly measure =
     typeof document === 'undefined' ? undefined : document.createElement('canvas').getContext('2d')
@@ -1583,54 +1601,60 @@ export class Renderer {
     const shown =
       phase === 'reaper' || phase === 'won' ? Math.max(0, 1 - (this.clock - (this.beamAt ?? this.clock)) / 0.6) : 1
     if (shown <= 0) return box
-    const gambleShown = local && !player.downed ? this.gambleBadge(player) : undefined
-    if (gambleShown) {
-      const icon = weaponAppearance(gambleShown, ageAt(time), player.petAge).art
-      const frame = (sheet('icons')[icon] ?? sheet('icons')[gambleShown]).frames[0]
-      const bob = Math.sin(this.clock * 3.2) * 1.6
-      // Above the shoulder that hides fewer of her 過保護親 (see easeBadgeSide); the tail points back toward the head.
-      const side = this.gambleBadges.get(player.id)?.side ?? 1
-      const tail = side < 0 ? -1 : 1
-      const bx = pos.x + 26 * size * side
-      const by = feet - 50 * size + bob
-      const ctx = this.ctx
-      this.world()
-      ctx.save()
-      ctx.shadowColor = 'rgba(255, 215, 94, 0.55)'
-      ctx.shadowBlur = 6
-      this.roundPath(bx - 11, by - 11, 22, 22, 6)
-      ctx.fillStyle = '#34203b'
-      ctx.fill()
-      ctx.restore()
-      ctx.save()
-      this.roundPath(bx - 11, by - 11, 22, 22, 6)
-      ctx.strokeStyle = '#ffd75e'
-      ctx.lineWidth = 1.6
-      ctx.stroke()
-      this.roundPath(bx - 9, by - 9, 18, 18, 4.5)
-      ctx.strokeStyle = 'rgba(255, 242, 176, 0.35)'
-      ctx.lineWidth = 0.8
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(bx - 4 * tail, by + 10.5)
-      ctx.lineTo(bx - 7 * tail, by + 15)
-      ctx.lineTo(bx + tail, by + 10.5)
-      ctx.closePath()
-      ctx.fillStyle = '#ffd75e'
-      ctx.fill()
-      ctx.restore()
-      this.art(frame, bx, by, frame.w / 2, frame.h / 2, false, 1, 0.5)
-      this.world()
+    // What is drawn over her head: her gamble badge, buff rows and name tag.
+    const overhead = () => {
+      const gambleShown = local && !player.downed ? this.gambleBadge(player) : undefined
+      if (gambleShown) {
+        const icon = weaponAppearance(gambleShown, ageAt(time), player.petAge).art
+        const frame = (sheet('icons')[icon] ?? sheet('icons')[gambleShown]).frames[0]
+        const bob = Math.sin(this.clock * 3.2) * 1.6
+        // Above the shoulder that hides fewer of her 過保護親 (see easeBadgeSide); the tail points back toward the head.
+        const side = this.gambleBadges.get(player.id)?.side ?? 1
+        const tail = side < 0 ? -1 : 1
+        const bx = pos.x + 26 * size * side
+        const by = feet - 50 * size + bob
+        const ctx = this.ctx
+        this.world()
+        ctx.save()
+        ctx.shadowColor = 'rgba(255, 215, 94, 0.55)'
+        ctx.shadowBlur = 6
+        this.roundPath(bx - 11, by - 11, 22, 22, 6)
+        ctx.fillStyle = '#34203b'
+        ctx.fill()
+        ctx.restore()
+        ctx.save()
+        this.roundPath(bx - 11, by - 11, 22, 22, 6)
+        ctx.strokeStyle = '#ffd75e'
+        ctx.lineWidth = 1.6
+        ctx.stroke()
+        this.roundPath(bx - 9, by - 9, 18, 18, 4.5)
+        ctx.strokeStyle = 'rgba(255, 242, 176, 0.35)'
+        ctx.lineWidth = 0.8
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(bx - 4 * tail, by + 10.5)
+        ctx.lineTo(bx - 7 * tail, by + 15)
+        ctx.lineTo(bx + tail, by + 10.5)
+        ctx.closePath()
+        ctx.fillStyle = '#ffd75e'
+        ctx.fill()
+        ctx.restore()
+        this.art(frame, bx, by, frame.w / 2, frame.h / 2, false, 1, 0.5)
+        this.world()
+      }
+      if (buffs.length) {
+        // One label per buff in its own colour, laid out side by side and centred on the player.
+        let x = pos.x - tagWidths.reduce((sum, w) => sum + w, 0) / 2
+        tags.forEach((tag, index) => {
+          this.blit(tag, x + tagWidths[index] / 2, feet - 80 * size - tagLift, 0, shown)
+          x += tagWidths[index]
+        })
+      }
+      this.blit(nameTag, pos.x, feet - 64 * size - tagLift, 0, shown)
     }
-    if (buffs.length) {
-      // One label per buff in its own colour, laid out side by side and centred on the player.
-      let x = pos.x - tagWidths.reduce((sum, w) => sum + w, 0) / 2
-      tags.forEach((tag, index) => {
-        this.blit(tag, x + tagWidths[index] / 2, feet - 80 * size - tagLift, 0, shown)
-        x += tagWidths[index]
-      })
-    }
-    this.blit(nameTag, pos.x, feet - 64 * size - tagLift, 0, shown)
+    // (While the characters are drawn, after them all: see draw.)
+    if (this.overheads) this.overheads.push(overhead)
+    else overhead()
     return box
   }
 
@@ -1671,9 +1695,9 @@ export class Renderer {
     sh.angle = s[i + 4] / 100
     sh.life = s[i + 5] / 100
     sh.age = 1 - sh.life
-    const copied = s[i + 7] >= SHOT_GAMBLE
+    const copied = (s[i + 7] & SHOT_GAMBLE) !== 0
     sh.copied = copied
-    sh.v = copied ? s[i + 7] - SHOT_GAMBLE : s[i + 7]
+    sh.v = s[i + 7] & ~SHOT_GAMBLE
     const origin = origins[ownerIndex]
     sh.ox = origin ? origin.x : sh.x
     sh.oy = origin ? origin.y : sh.y
@@ -2234,9 +2258,8 @@ export class Renderer {
   /**
    * 過保護親 and her shield, which thrusts (GUARD_THRUST px) at an enemy in front of her as she bashes and fades while
    * spent; walking over the ground (GUARD_WALK) she plays her walk. Bashing an enemy off her shield's reach (a standing
-   * child's parents guard all round her), she stays put: the ring round the child that her bash reaches lights up
-   * towards the enemy, with a sparkle where it strikes. The gamble's copy of her pops in (swelling, in a puff and
-   * sparkles) and leaves in a puff, as a pet does.
+   * child's parents guard all round her), she stays put (the ring round the child lights up towards it: drawGuardRings).
+   * The gamble's copy of her pops in (swelling, in a puff and sparkles) and leaves in a puff, as a pet does.
    */
   private guardian(view: View, sh: ShotView, x: number, y: number) {
     const art = sheet('weapon:p_over')
@@ -2245,7 +2268,8 @@ export class Renderer {
     const time = this.clock + sh.i * 0.1
     const flip = cos < 0
     const scale = sh.r / 20
-    const walking = (sh.v & GUARD_WALK) !== 0
+    const pace = sh.v & GUARD_BACK
+    const walking = pace !== 0
     const progress = Math.floor((sh.v % GUARD_WALK) / 2)
     const swing = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) : 0
     let thrust = 0
@@ -2253,35 +2277,34 @@ export class Renderer {
       // Her shield goes out at an enemy in front of her within its reach; one further off, the ring strikes.
       const reach = (GUARDIAN_SHIELD_ART.far + GUARD_THRUST) * scale + GUARD_STRIKE_SLACK
       let ahead = false
-      let nearest = Infinity
-      let hitX = 0
-      let hitY = 0
       const enemies = view.enemies
-      for (let k = 0; k < enemies.length; k += STRIDE.enemies) {
+      for (let k = 0; k < enemies.length && !ahead; k += STRIDE.enemies) {
         const dx = enemies[k + 2] - x
         const dy = enemies[k + 3] - y
         const d = Math.hypot(dx, dy)
         if (d <= reach && dx * cos + dy * sin >= d * GUARD_THRUST_COS) ahead = true
-        const fromChild = Math.hypot(enemies[k + 2] - sh.ox, enemies[k + 3] - sh.oy)
-        if (fromChild < nearest) {
-          nearest = fromChild
-          hitX = enemies[k + 2]
-          hitY = enemies[k + 3]
-        }
       }
-      // (Not over the child, though: her body as drawn, GUARD_CHILD_BOX about her.)
+      // (Not over the child, though: her body as drawn, GUARD_CHILD_BOX about her feet.)
       const tx = x + cos * swing * GUARD_THRUST
       const ty = y + sin * swing * GUARD_THRUST
       const left = tx + (flip ? -GUARDIAN_SHIELD_ART.far : GUARDIAN_SHIELD_ART.near) * scale
       const right = tx + (flip ? -GUARDIAN_SHIELD_ART.near : GUARDIAN_SHIELD_ART.far) * scale
-      const box = GUARD_CHILD_BOX
+      const owner = view.players[view.shots[sh.i + 6]]
+      const box = childDrawnBox(
+        owner
+          ? bodyScale(
+              owner.passives.find(([id]) => id === 'p_large')?.[1] ?? 0,
+              owner.passives.find(([id]) => id === 'p_small')?.[1] ?? 0
+            )
+          : 1,
+        GUARD_CHILD_BOX
+      )
       const onChild =
-        Math.min(right, sh.ox + box.x) - Math.max(left, sh.ox - box.x) >= 4 &&
+        Math.min(right, sh.ox + box.right) - Math.max(left, sh.ox + box.left) >= GUARD_CHILD_CLEAR &&
         Math.min(ty + GUARDIAN_SHIELD_ART.bottom * scale, sh.oy + box.bottom) -
           Math.max(ty + GUARDIAN_SHIELD_ART.top * scale, sh.oy + box.top) >=
-          4
+          GUARD_CHILD_CLEAR
       if (ahead && !onChild) thrust = swing * GUARD_THRUST
-      else if (nearest < Infinity) this.guardRing(sh, hitX, hitY, swing)
     }
     let alpha = Math.min(1, sh.life * 4)
     let swell = 1
@@ -2297,7 +2320,13 @@ export class Renderer {
       popping = pop < 1
     }
     // (Her walk, while there is one in her sheet; her stepping in place until then.)
-    const body = walking ? pick(art.walk ?? art.fly, time * GUARD_WALK_RATE) : pick(art.fly, time)
+    // (Her walk, twice as fast going fast; stepping back, backwards and slower, so her feet go back.)
+    const walk = art.walk ?? art.fly
+    const body = !walking
+      ? pick(art.fly, time)
+      : pace === GUARD_BACK
+        ? walk.frames[walk.frames.length - 1 - frameIndex(walk, time * GUARD_BACK_RATE)]
+        : pick(walk, time * (pace === GUARD_FAST ? GUARD_FAST_RATE : GUARD_WALK_RATE))
     this.centred(body, x, y, sh.evolved, alpha, swell, flip)
     this.centred(
       pick(art.guard, time),
@@ -2318,15 +2347,33 @@ export class Renderer {
   }
 
   /**
-   * The ring round 過保護親 `sh`'s child that her all-round bash reaches (the game's reach about the child, from the
-   * shield's size), lit `swing` (0..1) along an arc towards the enemy at (`hitX`, `hitY`), with a sparkle where it
-   * strikes. Drawn in the characters' pass, under the name tags and badges.
+   * The rings round the children lit by their 過保護親's all-round bashes (FX.GUARD events, a ring each, but not where
+   * her shield itself strikes the enemy), each for as long as her bash (GUARD_RING_SECONDS at most): round the child
+   * as drawn now, swelling in and fading out. Drawn over the characters, under the name tags and badges.
    */
-  private guardRing(sh: ShotView, hitX: number, hitY: number, swing: number) {
+  private drawGuardRings(origins: readonly { x: number; y: number }[]) {
+    const rings = this.guardRings
+    for (let k = rings.length - 1; k >= 0; k--) if (this.clock - rings[k].at >= rings[k].life - 1e-6) rings.splice(k, 1)
+    rings.forEach((ring, k) => {
+      const origin = origins[ring.owner]
+      if (!origin) return
+      const age = (this.clock - ring.at) / ring.life
+      const swing = age < 0.2 ? 0.6 + 2 * age : (1 - age) / 0.8
+      this.guardRing({ ox: origin.x, oy: origin.y, r: ring.r, i: k }, ring.x, ring.y, swing)
+    })
+  }
+
+  /**
+   * The ring round the child (drawn at (`ox`, `oy`)) that her 過保護親's all-round bash reaches (the game's reach
+   * about the child, from her shield's radius `r`), lit `swing` (0..1) along an arc towards the enemy she bashed at
+   * (`hitX`, `hitY`), with a sparkle where it strikes (on the ring, or on the enemy within it).
+   */
+  private guardRing(sh: { ox: number; oy: number; r: number; i: number }, hitX: number, hitY: number, swing: number) {
     const radius = sh.r * GUARD_RING_PER_R
     const cx = sh.ox
     const cy = sh.oy
     const toward = Math.atan2(hitY - cy, hitX - cx)
+    const strike = Math.min(radius, Math.hypot(hitX - cx, hitY - cy))
     const ctx = this.ctx
     this.world()
     ctx.save()
@@ -2344,8 +2391,8 @@ export class Renderer {
     ctx.stroke()
     ctx.restore()
     const fx = sheet('fx')
-    const sx = cx + Math.cos(toward) * radius
-    const sy = cy + Math.sin(toward) * radius
+    const sx = cx + Math.cos(toward) * strike
+    const sy = cy + Math.sin(toward) * strike
     this.art(pick(fx.spark, this.clock * 8 + sh.i), sx, sy, 6, 6, false, swing, 1.3)
   }
 
@@ -3370,6 +3417,19 @@ export class Renderer {
     fv.hw = halfW - 80
     fv.hh = halfH - 80
     this.fx.consume(view.fx, view.time, fv)
+    for (const i of this.guardFeed.take(view.fx, view.time)) {
+      if (view.fx[i + 1] !== FX.GUARD || this.guardRings.length >= 32) continue
+      const { shield, seconds, radius } = readGuardBits(view.fx[i + 5])
+      if (!shield)
+        this.guardRings.push({
+          owner: view.fx[i + 4],
+          x: view.fx[i + 2],
+          y: view.fx[i + 3],
+          r: radius,
+          at: this.clock,
+          life: Math.min(GUARD_RING_SECONDS, seconds || GUARD_RING_SECONDS)
+        })
+    }
     this.claimGambles(view)
     this.fx.update(Math.min(dt, 0.1))
     this.evo.fill(0)
@@ -3687,6 +3747,8 @@ export class Renderer {
     this.stacks.clear()
     this.playerAreas.clear()
     this.easeBadgeSide(view, origins, local, dt)
+    const overheads: (() => void)[] = []
+    this.overheads = overheads
     for (const item of list) {
       if (item.member) this.follower(item.member)
       else if (item.vehicle !== undefined)
@@ -3734,6 +3796,12 @@ export class Renderer {
         }
       } else this.enemy(item)
     }
+    this.overheads = undefined
+    this.world()
+    // Over the characters, the rings 過保護親 light round their children; over those, what is over the players' heads.
+    this.drawGuardRings(origins)
+    this.world()
+    for (const overhead of overheads) overhead()
     this.world()
     this.lifeBars()
     // While your own death plays, the world dims around a spotlight on the body (others' deaths don't).
