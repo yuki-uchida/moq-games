@@ -8,6 +8,7 @@ import { r1, r2 } from './core'
 import { GRIPPABLE, PUSHABLE } from './stage-data'
 import { holdSpeed } from './props'
 import { CROW_FLIGHT } from './move'
+import { evalCond } from './props'
 import { ownedSlots } from './party'
 import type { WorldState } from './state'
 import { CHARGE, CHARGE_SPEED, GUARDED } from './tables'
@@ -270,6 +271,9 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
   return view
 }
 
+/** Generic follow-up once a room's puzzle is solved. */
+export const DONE_OBJECTIVE = '扉がひらいた！ 先へすすもう'
+
 function objective(W: WorldState): string {
   if (W.phase === 'lobby') return 'ステージをえらんで出発しよう'
   if (W.phase === 'clear') return 'ステージクリア！'
@@ -285,5 +289,6 @@ function objective(W: WorldState): string {
       return `敵をぜんぶたおせ！ のこり ${n}`
     }
   const room = W.parsed.data.rooms.find((r) => r.id === W.leaderRoom)
+  if (room?.done && evalCond(W, room.done)) return room.objectiveDone ?? DONE_OBJECTIVE
   return room?.objective ?? ''
 }

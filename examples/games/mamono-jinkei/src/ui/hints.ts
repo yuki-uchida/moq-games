@@ -112,6 +112,29 @@ export function currentAt(info: StageInfo | undefined, h: HeroView, off: readonl
   return info.currents.find((c) => !off.includes(c.channel) && c.tiles.includes(i))
 }
 
+/**
+ * The running current under the hero or within `margin` px of its feet. A hero swept to the downstream rim of a channel
+ * rests just outside its last tile, so the hint keeps showing while the current is still pulling on them.
+ */
+export function currentNear(
+  info: StageInfo | undefined,
+  h: HeroView,
+  off: readonly string[] = [],
+  margin = TILE * 0.25
+) {
+  if (!info?.currents) return undefined
+  const at = (x: number, y: number) => {
+    const tx = Math.floor(x / TILE)
+    const ty = Math.floor(y / TILE)
+    if (tx < 0 || ty < 0 || tx >= info.w || ty >= info.h) return undefined
+    const i = ty * info.w + tx
+    return info.currents!.find((c) => !off.includes(c.channel) && c.tiles.includes(i))
+  }
+  return (
+    at(h.x, h.y) ?? at(h.x, h.y - margin) ?? at(h.x, h.y + margin) ?? at(h.x - margin, h.y) ?? at(h.x + margin, h.y)
+  )
+}
+
 /** The wind zone the hero stands in, if any. */
 export function windAt(info: StageInfo | undefined, h: HeroView) {
   const tx = h.x / TILE
@@ -152,7 +175,7 @@ export function hintsFor(view: View, info: StageInfo | undefined, myId: string):
     if (block) out.push({ key: '陣形', text: 'みんなでおそう！', hot: true })
   }
   // Currents push walkers downstream unless they walk as a formation of three or more.
-  const current = currentAt(info, h, view.currentsOff)
+  const current = currentNear(info, h, view.currentsOff)
   if (current)
     out.push(
       current.strong

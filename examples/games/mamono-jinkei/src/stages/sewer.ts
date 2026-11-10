@@ -6,7 +6,7 @@
  * Legend: terrain `#` brick `w` wall `.` sewer `:` floor `p` planks `~` sludge; currents `>` (B, fast toward the
  * start bank and the sludge), `{` (C, a torrent south that only the sluice stops), `v` (E canal, south); mouse holes
  * `a`/`j`/`k` (pairs).
- * Decoration `P` pipe `L` lamp `R` grate `Y` cobweb `X` sack `H` haybale `F` shelf `A` altar.
+ * Decoration `P` pipe `L`/`l` lamp (`l`: on the sewer bank beside a channel) `R` grate `Y` cobweb `X` sack `H` haybale `F` shelf `A` altar.
  * Props `c` crate `O` big crate `r` barrel `q` pot `m` mousetrap `V` valve (group C) `Z` sluice `C` cheese `U` scale
  * `B`/`n` barricades `T`/`t` chests `x`/`y`/`G` gates `W` boss door. Others: `@` spawn `K` checkpoint `E` smith
  * `S` sign `i` gem `e` thief `f` alchemist `u` rat-catcher `g` spear guard `J` boss.
@@ -45,13 +45,13 @@ const MAP = [
   '########################################wpppppppppppppppppppppppppppppp#',
   '########################################wwwwwwwwwwwwwwOOwwwwwwwwwwwwwww#',
   '#Y...P......P....vvv....P........P....Y#wwwwwwwwwwwwwwOOwwwwwwwwwwwwwww#',
-  '#...H......rr...LvvvL.....H............#YppppLppppppppppppppLpppppppppY#',
+  '#...H......rr...Lvvvl.....H............#YppppLppppppppppppppLpppppppppY#',
   '#.....i..........vvv...........r....X..#pHpppppprpppppppppppSpppppuppHp#',
   '#................vvv.....u.............Gppppppppppppppppppppppppppppppp#',
   '#.X......UU......vvv..............R....#ppppSppppppppmpppppppppppmppppp#',
   '#.X..............vvv...................#ppppppmpppppppppppppppppppppppp#',
   '#................vvv........C..........#ppppppppppppppppppmpppppppppppp#',
-  '#.......e....S..LvvvL..................#ppppppppppmpppppppppppppppppppp#',
+  '#.......e....S..Lvvvl..................#ppppppppppmpppppppppppppppppppp#',
   '#...H..R.........~~~....S..........H...#pprrpppppppppRppppppupmpppppppp#',
   '#................~~~..........K........#pppppppppppppppppppppppppppppHp#',
   '#Y..............Y~~~Y.................Y#YppppppFppppFppppFppppFppppFppY#',
@@ -101,6 +101,7 @@ export const SEWER: StageData = {
     k: { tile: 'hole', ent: { type: 'hole', pair: 'C2' } },
     P: { tile: 'brick', ent: { type: 'decor', kind: 'pipe' } },
     L: { ent: { type: 'decor', kind: 'lamp' } },
+    l: { tile: 'sewer', ent: { type: 'decor', kind: 'lamp' } },
     R: { ent: { type: 'decor', kind: 'grate' } },
     Y: { ent: { type: 'decor', kind: 'cobweb' } },
     X: { ent: { type: 'decor', kind: 'sack' } },
@@ -171,10 +172,22 @@ export const SEWER: StageData = {
       y: 16,
       w: 33,
       h: 12,
-      objective: 'バリケードをチューチュー大行進でやぶろう'
+      objective: 'バリケードをチューチュー大行進でやぶろう',
+      done: { broken: 'barricadeG' },
+      objectiveDone: 'バリケードがやぶれた！ 先へすすもう'
     },
     { id: 'F', name: '穀物庫', x: 39, y: 28, w: 33, h: 12, objective: '大きな木箱を4人で押して上へ' },
-    { id: 'E', name: 'チーズの運河', x: 0, y: 29, w: 39, h: 12, objective: 'チーズを天秤へはこぼう' },
+    {
+      id: 'E',
+      name: 'チーズの運河',
+      x: 0,
+      y: 29,
+      w: 39,
+      h: 12,
+      objective: 'チーズを天秤へはこぼう',
+      done: { on: 'scaleE' },
+      objectiveDone: 'チーズがのった！ 扉がひらいた、先へすすもう'
+    },
     {
       id: 'D',
       name: '番兵の詰所',
@@ -207,7 +220,9 @@ export const SEWER: StageData = {
       y: 40,
       w: 25,
       h: 12,
-      objective: '2つのバルブを同時にまわそう（せーの：F）'
+      objective: '2つのバルブを同時にまわそう（せーの：F）',
+      done: { flag: 'valves:C' },
+      objectiveDone: 'バルブがそろった！ 水門がひらいた、先へすすもう'
     },
     { id: 'B', name: '流れる水路', x: 36, y: 52, w: 36, h: 12, objective: '陣形を組んで水路をわたろう' },
     {

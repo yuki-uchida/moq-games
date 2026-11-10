@@ -308,6 +308,108 @@ test('solo: a wipe shows 全滅 exactly once', async ({ page }) => {
   await page.screenshot({ path: process.env.WIPE_SHOT ?? 'test-results/mj-wipe.png' })
 })
 
+/** A fake standard-mapping gamepad: `navigator.getGamepads()` returns `window.__pad`, which tests poke. */
+async function fakePad(page: Page) {
+  await page.addInitScript(() => {
+    const pad = {
+      connected: true,
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }))
+    }
+    Object.assign(window, { __pad: pad })
+    navigator.getGamepads = () => [pad as unknown as Gamepad]
+  })
+}
+
+/** Presses and releases one pad button (long enough for a frame to see it). */
+async function tapPad(page: Page, button: number) {
+  const set = (down: boolean) =>
+    page.evaluate(
+      ([b, d]) => {
+        ;(window as unknown as { __pad: { buttons: { pressed: boolean }[] } }).__pad.buttons[b].pressed = d
+      },
+      [button, down] as const
+    )
+  await set(true)
+  await page.waitForTimeout(120)
+  await set(false)
+  await page.waitForTimeout(120)
+}
+
+const PAD_BUTTON = { a: 0, b: 1, start: 9, up: 12, down: 13 }
+
+test('gamepad: d-pad, A, B and Start drive the menus; the left stick aims', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await fakePad(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'マモノ陣形' })).toBeVisible()
+  await page.getByRole('button', { name: /ひとりで遊ぶ/ }).focus()
+  // Title: d-pad moves the focus, A presses the button.
+  await tapPad(page, PAD_BUTTON.down)
+  await expect(page.getByRole('button', { name: /ルームを作る/ })).toBeFocused()
+  await tapPad(page, PAD_BUTTON.up)
+  await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeFocused()
+  await tapPad(page, PAD_BUTTON.a)
+  await expect(page.getByRole('button', { name: '出発！' })).toBeVisible()
+  // Lobby: B asks to go back (a dialog), A on its first button returns to the title.
+  await tapPad(page, PAD_BUTTON.b)
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await tapPad(page, PAD_BUTTON.b)
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await tapPad(page, PAD_BUTTON.b)
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await tapPad(page, PAD_BUTTON.a)
+  await expect(page.getByRole('heading', { name: 'マモノ陣形' })).toBeVisible()
+  // Into the game with the pad only: the lobby's focus is on a job card, a stick press reaches the start button.
+  await page.getByRole('button', { name: /ひとりで遊ぶ/ }).focus()
+  await tapPad(page, PAD_BUTTON.a)
+  await page.getByRole('button', { name: '出発！' }).focus()
+  await tapPad(page, PAD_BUTTON.a)
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 8000 }).toBe('play')
+  // Play: Start opens the pause menu and closes it again.
+  await tapPad(page, PAD_BUTTON.start)
+  await expect(page.getByRole('dialog', { name: 'メニュー' })).toBeVisible()
+  await tapPad(page, PAD_BUTTON.start)
+  await expect(page.getByRole('dialog', { name: 'メニュー' })).toBeHidden()
+  // With the right stick idle the aim follows the left stick.
+  const aim = () =>
+    page.evaluate(
+      () => (window.__mamono as unknown as { app: { controls: { state: { aim: number } } } }).app.controls.state.aim
+    )
+  const stickTo = (x: number, y: number) =>
+    page.evaluate(
+      ([x, y]) => {
+        ;(window as unknown as { __pad: { axes: number[] } }).__pad.axes = [x, y, 0, 0]
+      },
+      [x, y] as const
+    )
+  await stickTo(0, 1)
+  await expect.poll(aim).toBeCloseTo(Math.PI / 2, 1)
+  await stickTo(-1, 0)
+  await expect.poll(async () => Math.abs(await aim())).toBeCloseTo(Math.PI, 1)
+  await stickTo(0, 0)
+  expect(errors).toEqual([])
+})
+
+test('lobby pre-selects the newest unlocked stage', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await page.addInitScript(() => {
+    localStorage.setItem('mamono-jinkei-v1', JSON.stringify({ progress: { cleared: ['meadow'] } }))
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: /ひとりで遊ぶ/ }).click()
+  await expect(page.getByRole('button', { name: '出発！' })).toBeVisible()
+  await expect(page.locator('.stage-card.selected .stage-no')).toHaveText('ステージ 2')
+  // The host can still pick another stage; it stays picked.
+  await page.locator('.stage-card').first().click()
+  await expect(page.locator('.stage-card.selected .stage-no')).toHaveText('ステージ 1')
+  await page.waitForTimeout(400)
+  await expect(page.locator('.stage-card.selected .stage-no')).toHaveText('ステージ 1')
+  expect(errors).toEqual([])
+})
+
 test('Esc opens the menu, pauses solo and returns to the title', async ({ page }) => {
   const errors: string[] = []
   watchErrors(page, errors)

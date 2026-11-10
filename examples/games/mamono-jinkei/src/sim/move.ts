@@ -23,6 +23,8 @@ export interface Body {
   jh: number
   /** Jump velocity is fixed (bounce pads). */
   jfix: boolean
+  /** Hop assist speed factor of the current slime hop (1 = a plain hop). */
+  ja: number
   /** Continuous movement time (wolf sprint). */
   moveT: number
   /** Crow flight stamina (s) and flying flag; rat dash end time. */
@@ -51,6 +53,7 @@ export function newBody(x: number, y: number, facing = Math.PI / 2): Body {
     jd: 0,
     jh: 0,
     jfix: false,
+    ja: 1,
     moveT: 0,
     stamina: 1.5,
     flying: false,
@@ -89,6 +92,20 @@ export const ICE_ACCEL = 1.2
 export const WIND_WALK = 0.3
 
 export const SLIME_HOP = { dur: 0.5, height: 36, boost: 1.2 }
+/**
+ * Slime hop assist. A hop aimed across a gap no wider than `maxGap` (one water/pit/fence tile, crossed square or a
+ * little slanted) whose far side lies within `reach` is stretched to land `margin` px past the far edge: first
+ * longer and higher (up to `maxDur` × the hop time), then faster, at most `maxDist` × the plain hop distance.
+ * Wider gaps (two tiles and more) get no help. On landing over a gap, the hop also snaps to ground within `snap` px.
+ */
+export const HOP_ASSIST = {
+  reach: 3 * TILE,
+  maxGap: 1.25 * TILE,
+  margin: HERO_R + 6,
+  maxDur: 1.3,
+  maxDist: 2.1,
+  snap: 20
+}
 export const BOUNCE_HOP = { dur: 0.9, height: 80, dist: 3 * TILE }
 
 export interface MoveInput {
@@ -156,6 +173,8 @@ export function stepBody(
     const s = spec.speed * speedMul * SLIME_HOP.boost
     if (len > 0.1) (b.vx = (mx / len) * s), (b.vy = (my / len) * s)
     else (b.vx *= SLIME_HOP.boost), (b.vy *= SLIME_HOP.boost)
+    b.ja = 1
+    hopAssist(b, grid)
     res.jumped = true
   }
   // Feet in a current that pushes you (no formation of 3+ holding you): no grip for a dash.
@@ -217,7 +236,7 @@ export function stepBody(
   if (b.jt >= 0) {
     if (!b.jfix) {
       const k = 1 - Math.exp(-spec.airAccel * dt)
-      const s = spec.speed * speedMul * SLIME_HOP.boost
+      const s = spec.speed * speedMul * SLIME_HOP.boost * b.ja
       if (len > 0.1) {
         b.vx += (mx * s - b.vx) * k
         b.vy += (my * s - b.vy) * k
@@ -313,8 +332,10 @@ export function stepBody(
       b.jfix = false
       res.landed = true
       if (species === 'slime') {
-        b.vx /= SLIME_HOP.boost
-        b.vy /= SLIME_HOP.boost
+        b.vx /= SLIME_HOP.boost * b.ja
+        b.vy /= SLIME_HOP.boost * b.ja
+        b.ja = 1
+        landingSnap(b, grid)
       }
     }
   }
@@ -340,4 +361,64 @@ export function stepBody(
     } else if (!grid.walkable(tx, ty)) res.fell = true
   }
   return res
+}
+
+/** Ground tile a body may stand on (walkable terrain, no solid). */
+const standable = (grid: Grid, x: number, y: number) => {
+  const tx = Math.floor(x / TILE)
+  const ty = Math.floor(y / TILE)
+  return grid.walkable(tx, ty) && !grid.blocked(tx, ty, false)
+}
+
+/** Stretches a slime hop that would fall short of the far side of a one-tile gap (HOP_ASSIST). */
+function hopAssist(b: Body, grid: Grid): void {
+  const v = Math.hypot(b.vx, b.vy)
+  if (v < 20) return
+  const ux = b.vx / v
+  const uy = b.vy / v
+  let gapStart = -1
+  let gapEnd = -1
+  for (let d = 4; d <= HOP_ASSIST.reach; d += 4) {
+    const tx = Math.floor((b.x + ux * d) / TILE)
+    const ty = Math.floor((b.y + uy * d) / TILE)
+    // Solids and walls stop a hop anyway: no help.
+    if (grid.blocked(tx, ty, true)) return
+    const walk = grid.walkable(tx, ty)
+    if (gapStart < 0) {
+      if (!walk) gapStart = d
+    } else if (walk) {
+      gapEnd = d
+      break
+    }
+  }
+  if (gapEnd < 0 || gapEnd - gapStart > HOP_ASSIST.maxGap) return
+  const need = gapEnd + HOP_ASSIST.margin
+  const plain = v * b.jd
+  if (need <= plain || need > plain * HOP_ASSIST.maxDist) return
+  if (!standable(grid, b.x + ux * need, b.y + uy * need)) return
+  const k = need / plain
+  const dk = Math.min(HOP_ASSIST.maxDur, k)
+  b.jd *= dk
+  b.jh *= dk
+  b.ja = k / dk
+  b.vx *= b.ja
+  b.vy *= b.ja
+}
+
+/** A slime hop landing just over a gap's edge snaps onto the ground within HOP_ASSIST.snap px (ahead first). */
+function landingSnap(b: Body, grid: Grid): void {
+  if (standable(grid, b.x, b.y)) return
+  const v = Math.hypot(b.vx, b.vy)
+  const a = v > 1 ? Math.atan2(b.vy, b.vx) : b.facing
+  for (let d = 4; d <= HOP_ASSIST.snap; d += 4)
+    for (const da of [0, Math.PI, Math.PI / 2, -Math.PI / 2]) {
+      const x = b.x + Math.cos(a + da) * d
+      const y = b.y + Math.sin(a + da) * d
+      if (!standable(grid, x, y)) continue
+      const out = grid.pushOut(x, y, HERO_R, false)
+      if (!standable(grid, out.x, out.y)) continue
+      b.x = out.x
+      b.y = out.y
+      return
+    }
 }

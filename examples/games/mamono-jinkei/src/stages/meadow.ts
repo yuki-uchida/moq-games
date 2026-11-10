@@ -191,11 +191,43 @@ export const MEADOW: StageData = {
       y: 16,
       w: 44,
       h: 13,
-      objective: '4つの水晶を同時にたたこう（せーの：F）'
+      objective: '4つの水晶を同時にたたこう（せーの：F）',
+      done: { flag: 'crystals:G' },
+      objectiveDone: '水晶がそろった！ 扉がひらいた、先へすすもう'
     },
-    { id: 'F', name: '古城跡の入口', x: 39, y: 29, w: 33, h: 11, objective: 'ひび割れた岩を協力技でこわそう' },
-    { id: 'E', name: 'どんぐりの丘', x: 0, y: 29, w: 39, h: 12, objective: '巨大どんぐりを台座へはこぼう' },
-    { id: 'D', name: '生け垣の迷路', x: 0, y: 41, w: 47, h: 10, objective: '2つのスイッチを同時にふもう' },
+    {
+      id: 'F',
+      name: '古城跡の入口',
+      x: 39,
+      y: 29,
+      w: 33,
+      h: 11,
+      objective: 'ひび割れた岩を協力技でこわそう',
+      done: { broken: 'crackF' },
+      objectiveDone: '岩がくだけた！ 先へすすもう'
+    },
+    {
+      id: 'E',
+      name: 'どんぐりの丘',
+      x: 0,
+      y: 29,
+      w: 39,
+      h: 12,
+      objective: '巨大どんぐりを台座へはこぼう',
+      done: { on: 'pedestalE' },
+      objectiveDone: 'どんぐりがはまった！ 扉がひらいた、先へすすもう'
+    },
+    {
+      id: 'D',
+      name: '生け垣の迷路',
+      x: 0,
+      y: 41,
+      w: 47,
+      h: 10,
+      objective: '2つのスイッチを同時にふもう',
+      done: { any: [{ all: [{ on: 'plateD1' }, { on: 'plateD2' }] }, { on: 'leverD' }] },
+      objectiveDone: 'スイッチがはたらいた！ 扉がひらいた、先へすすもう'
+    },
     {
       id: 'C',
       name: '見張りの広場',

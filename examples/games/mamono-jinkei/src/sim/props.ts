@@ -40,6 +40,10 @@ export function evalCond(W: WorldState, c: Cond): boolean {
   if ('all' in c) return c.all.every((x) => evalCond(W, x))
   if ('any' in c) return c.any.some((x) => evalCond(W, x))
   if ('on' in c) return !!partOf(W, c.on)?.on
+  if ('broken' in c) {
+    const p = partOf(W, c.broken)
+    return !!p && (p.gone || p.state === 'break')
+  }
   if ('bells' in c) return W.flags.has(`bells:${c.bells}`)
   if ('clear' in c) return W.arenas.get(c.clear)?.state === 'cleared'
   return W.flags.has(c.flag)

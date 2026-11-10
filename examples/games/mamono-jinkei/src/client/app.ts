@@ -4,6 +4,7 @@
  */
 import { createAudio, type GameAudio, type SfxName, type ThemeName } from '../audio/index'
 import { Controls } from '../input/controls'
+import { PadNav, firstGamepad } from '../input/padnav'
 import { guestSession, hostSession, soloSession, type Session, type SessionStatus } from '../net/session'
 import { Renderer } from '../render/renderer'
 import type { Command } from '../sim/api'
@@ -12,9 +13,10 @@ import type { EventView, StageInfo, View } from '../sim/types'
 import { el, show } from '../ui/dom'
 import { controlled } from '../ui/hints'
 import { Hud } from '../ui/hud'
-import { LobbyScreen } from '../ui/lobby'
+import { LobbyScreen, defaultLobbyStage } from '../ui/lobby'
 import { PauseMenu, PhaseOverlays } from '../ui/overlays'
 import { modal } from '../ui/panels'
+import { escapeModal, navigate } from '../ui/padmenu'
 import { TitleScreen } from '../ui/title'
 import { JOBS, STAGES, TILE, type Job, type StageId } from '../vocab'
 import { Attract } from './attract'
@@ -57,6 +59,9 @@ export class App {
   private waterLoop = false
   private windLoop = false
   private generation = 0
+  /** The lobby's default stage was chosen for this visit. */
+  private lobbyPreset = false
+  private readonly padNav = new PadNav()
 
   constructor(root: HTMLElement) {
     this.app = root
@@ -274,6 +279,28 @@ export class App {
     }
   }
 
+  /**
+   * Gamepad in the menus (title, lobby, pause, settings, results, dialogs): d-pad / left stick move focus, A activates,
+   * B goes back like Esc, Start closes the pause menu. During play the controls read the pad themselves.
+   */
+  private padMenu(dt: number) {
+    const playing = this.controls.enabled
+    const actions = this.padNav.update(firstGamepad(), dt)
+    if (playing || !actions.length) return
+    const skip = [this.hud.root]
+    for (const a of actions) {
+      if (a === 'back') {
+        if (!escapeModal(this.layer)) this.onMenu()
+      } else if (a === 'start') {
+        if (!this.modalOpen && this.pause.open) this.closeMenu()
+      } else {
+        if (navigate(a, this.layer, skip) && a === 'ok') this.audio.unlock()
+      }
+    }
+    // Whatever closed a menu must not also act in the game this frame.
+    this.controls.swallowPad()
+  }
+
   private closeMenu() {
     this.uiSound('menuBack')
     this.pause.hide()
@@ -323,6 +350,7 @@ export class App {
   }
 
   private tick(dt: number, now: number) {
+    this.padMenu(dt)
     const s = this.session
     let view: View | undefined
     let info: StageInfo | undefined
@@ -387,10 +415,19 @@ export class App {
     }
     this.app.dataset.phase = phase ?? (s ? 'lobby' : 'title')
     // Screens.
+    if (!s || !inLobby) this.lobbyPreset = false
     show(this.lobby.root, !!s && inLobby)
     if (s && inLobby) {
       if (!this.job && view && s.role === 'guest')
         this.job = JOBS.find((j) => !view!.players.some((p) => p.id !== s.myId && p.job === j))
+      if (view?.lobby && (s.role === 'host' || s.role === 'solo')) {
+        // Entering the lobby pre-selects the newest unlocked stage (once; the host can still pick another).
+        if (!this.lobbyPreset) {
+          this.lobbyPreset = true
+          const next = defaultLobbyStage(view.lobby.unlocked)
+          if (next !== view.lobby.stage) this.command({ type: 'stage', stage: next })
+        }
+      }
       this.lobby.update(view, { myId: s.myId, role: s.role, room: this.room, job: this.job, status: s.status.text })
     }
     const inGame = !!s && !inLobby && (phase === 'play' || phase === 'wipe')

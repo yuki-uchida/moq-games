@@ -20,7 +20,17 @@ import type {
 } from '../sim/types'
 import { JOBS, JOB_COLORS, TILE, dirOf } from '../vocab'
 import { interactTarget } from '../ui/hints'
-import { BASE_VIEW_H, clampCamera, cursorLead, scalingFor, smoothing, turnOf, viewOrigin } from './camera'
+import {
+  BASE_VIEW_H,
+  clampCamera,
+  cursorLead,
+  edgeMarker,
+  glanceOffset,
+  scalingFor,
+  smoothing,
+  turnOf,
+  viewOrigin
+} from './camera'
 import { BarrierWalls } from './barrier'
 import { hiddenDelivered } from './delivered'
 import { propSortY } from './depth'
@@ -434,6 +444,7 @@ export class Renderer {
     this.particles.draw(ctx, ox, oy, artW, artH, true)
     this.numbers.draw(ctx, ox, oy, t)
     if (!input.demo) this.drawOverheads(view, info, t, input)
+    if (!input.demo) this.drawLookArrow()
     this.composite()
     this.screenOverlay(input)
     this.lastMs = performance.now() - started
@@ -467,12 +478,6 @@ export class Renderer {
     const hty = ty / TILE
     const room = info.rooms.find((r) => htx >= r.x && htx < r.x + r.w && hty >= r.y && hty < r.y + r.h)
     const wantZoom = (room?.zoom ?? BASE_VIEW_H) - (performance.now() < this.punchUntil ? 150 : 0)
-    // A puzzle just solved nearby (a drawbridge lowering, a door opening): glance toward it.
-    const look = this.look
-    if (look && hero && !tech && performance.now() < look.until && Math.hypot(look.x - tx, look.y - ty) < 12 * TILE) {
-      tx += (look.x - tx) * 0.45
-      ty += (look.y - 40 - ty) * 0.45
-    }
     // In a boss arena, frame the boss too: lean the camera a third of the way toward it.
     const boss = view.boss
     if (boss && room?.zoom && hero && !tech) {
@@ -493,6 +498,14 @@ export class Renderer {
     cam.viewW = sc.artW
     cam.viewH = sc.artH
     cam.artPerCss = this.dpr / sc.scale
+    // A puzzle just solved nearby (a drawbridge lowering, a door opening): glance toward it, never so far that the
+    // controlled hero leaves the screen (a farther target gets an arrow at the screen edge, drawLookArrow).
+    const look = this.look
+    if (look && hero && !tech && performance.now() < look.until && Math.hypot(look.x - tx, look.y - ty) < 12 * TILE) {
+      const g = glanceOffset(look.x - tx, look.y - 40 - ty, sc.artW, sc.artH)
+      tx += g.x
+      ty += g.y
+    }
     if (!input.demo && input.cursor.inside && hero) {
       const lead = cursorLead(
         (input.cursor.x - this.cssW / 2) * cam.artPerCss,
@@ -1875,6 +1888,36 @@ export class Renderer {
       this.vignette = { w, h, c, light }
     }
     this.ctx.drawImage(this.vignette.c, 0, 0)
+  }
+
+  /** While a solve glance lasts, an arrow at the screen edge points at the solved thing when it is off screen. */
+  private drawLookArrow() {
+    const look = this.look
+    const now = performance.now()
+    if (!look || now >= look.until) return
+    const m = edgeMarker(look.x - this.ox, look.y - 24 - this.oy, this.artW, this.artH)
+    if (!m) return
+    const ctx = this.wctx
+    const left = look.until - now
+    const a = Math.min(1, left / 250, (1400 - left) / 150) * (0.75 + 0.25 * Math.sin(now / 90))
+    if (a <= 0) return
+    const bob = Math.sin(now / 120) * 3
+    ctx.save()
+    ctx.globalAlpha = a
+    ctx.translate(Math.round(m.x - Math.cos(m.angle) * bob), Math.round(m.y - Math.sin(m.angle) * bob))
+    ctx.rotate(m.angle)
+    ctx.beginPath()
+    ctx.moveTo(16, 0)
+    ctx.lineTo(-10, -14)
+    ctx.lineTo(-4, 0)
+    ctx.lineTo(-10, 14)
+    ctx.closePath()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = '#2a1f14'
+    ctx.stroke()
+    ctx.fillStyle = '#ffe9a0'
+    ctx.fill()
+    ctx.restore()
   }
 
   private screenOverlay(input: RenderInput) {
