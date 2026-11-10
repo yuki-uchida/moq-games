@@ -46,12 +46,13 @@ export function bellProgress(
   return { lit, n, complete: solved || (n > 0 && n === bells.length) }
 }
 
-export function groupProgress(
-  kind: 'moonstone' | 'crystal' | 'valve',
+/** The stones of the group the hero is working on, left to right (empty when none): the room's nearest, else nearby outside rooms. */
+function nearestGroup(
+  kind: 'moonstone' | 'crystal' | 'valve' | 'bell',
   props: readonly PropView[],
   rooms: StageInfo['rooms'] | undefined,
   ref: { x: number; y: number } | undefined
-): MoonProgress | undefined {
+): { group: string; stones: PropView[] } | undefined {
   if (!ref) return undefined
   const grouped = props.filter((p) => p.kind === kind && p.group !== undefined)
   if (!grouped.length) return undefined
@@ -64,7 +65,45 @@ export function groupProgress(
   const pick = pool.reduce<PropView | undefined>((best, p) => (!best || d(p) < d(best) ? p : best), undefined)
   if (!pick) return undefined
   const stones = grouped.filter((p) => p.group === pick.group).sort((a, b) => a.x - b.x || a.y - b.y)
-  const lit = stones.map(isLit)
+  return { group: pick.group!, stones }
+}
+
+export function groupProgress(
+  kind: 'moonstone' | 'crystal' | 'valve',
+  props: readonly PropView[],
+  rooms: StageInfo['rooms'] | undefined,
+  ref: { x: number; y: number } | undefined
+): MoonProgress | undefined {
+  const g = nearestGroup(kind, props, rooms, ref)
+  if (!g) return undefined
+  const lit = g.stones.map(isLit)
   const n = lit.filter(Boolean).length
-  return { group: pick.group!, lit, n, total: stones.length, complete: n === stones.length }
+  return { group: g.group, lit, n, total: g.stones.length, complete: n === g.stones.length }
+}
+
+/** How long the solved bell chip ("そろった！") stays after the group was solved, in seconds. */
+export const BELL_DONE_SHOW = 3
+
+/**
+ * The bell chip: shown while the hero works on a bell group that is not solved yet (same room / nearby rule as the other
+ * group chips), with the bells currently ringing lit. A solved group shows complete for BELL_DONE_SHOW seconds after
+ * `solvedAt` (the time the HUD saw it solved; undefined or -Infinity: already solved earlier, never shown).
+ */
+export function bellChip(
+  bells: readonly PropView[],
+  rooms: StageInfo['rooms'] | undefined,
+  ref: { x: number; y: number } | undefined,
+  ringing: (b: PropView) => boolean,
+  solvedAt: (group: string) => number | undefined,
+  now: number
+): (MoonProgress & { solved: boolean }) | undefined {
+  const g = nearestGroup('bell', bells, rooms, ref)
+  if (!g) return undefined
+  const { lit, n, complete } = bellProgress(g.stones, g.stones.map(ringing))
+  const solved = g.stones.some((b) => b.solved)
+  if (solved) {
+    const at = solvedAt(g.group)
+    if (at === undefined || now - at >= BELL_DONE_SHOW) return undefined
+  }
+  return { group: g.group, lit, n, total: g.stones.length, complete, solved }
 }

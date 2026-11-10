@@ -1,7 +1,7 @@
 /** Shared panels: how to play, settings, the pixel emblem, and modal dialogs. */
 import type { Settings } from '../client/save'
 import { cleanName } from '../net/validate'
-import { JOBS, JOB_COLORS, JOB_NAMES } from '../vocab'
+import { JOBS, JOB_COLORS, JOB_NAMES, SPECIES_NAMES, STAGE_NAMES, STAGE_SPECIES, STAGES, type Species } from '../vocab'
 import { splitPadKey } from '../input/device'
 import { el, icon } from './dom'
 
@@ -90,7 +90,7 @@ const KEYS: [string, string][] = [
   ['マウス', 'ねらう'],
   ['クリック', 'こうげき'],
   ['長押し', 'ためこうげき（陣形なら協力技！）'],
-  ['Space', 'ジャンプ（スライム）'],
+  ['Space', 'マモノのわざ（上の表）'],
   ['E', '持ち上げる・つかむ・話す・レバー'],
   ['Q', '仲間に「待て」⇄「ついてこい」'],
   ['Tab', '操作するマモノを交代'],
@@ -102,7 +102,7 @@ const PAD_KEYS: [string, string][] = [
   ['左スティック', '移動'],
   ['右スティック', 'ねらう（そのままだと歩く向き）'],
   ['Ⓐ', 'こうげき（長押しでためこうげき・陣形なら協力技！）'],
-  ['B', 'ジャンプ・ダッシュ・羽ばたき・遠吠え'],
+  ['B', 'マモノのわざ（Spaceと同じ）'],
   ['X', '持ち上げる・つかむ・話す・レバー（バルブは長押し）'],
   ['Y', '「せーの！」の合図'],
   ['LB/RB', '操作するマモノを交代'],
@@ -127,12 +127,43 @@ export function keyCap(key: string, pad: boolean): HTMLElement {
   return wrap
 }
 
+/**
+ * What Space does for each hero and what the charged attack becomes in formation, by stage (README table). The
+ * zero-width spaces are the only places these lines may wrap (`word-break: keep-all`), so no name breaks mid-word.
+ */
+const HERO_MOVES: Record<Species, [space: string, tech: string]> = {
+  slime: ['ジャンプ', 'ジャンボ・​プレス'],
+  rat: ['ダッシュ​（ネズミ穴を​くぐる）', 'チューチュー​大行進'],
+  crow: ['長押しで​飛ぶ', '黒羽の​大旋風'],
+  wolf: ['遠吠え', '月下​群狼陣']
+}
+
 const PAD_GLYPHS = new Set(['Ⓐ', 'B', 'X', 'Y', 'LB/RB', 'Back', 'Start'])
 
 export function howToPlay(): HTMLElement {
   return el(
     'div.howto',
     {},
+    el(
+      'section.howto-block.howto-moves',
+      {},
+      el('h3', { text: 'マモノのわざ（ステージごとに主人公が変わります）' }),
+      el(
+        'ul.moves',
+        {},
+        ...STAGES.map((st, i) => {
+          const sp = STAGE_SPECIES[st]
+          const [space, tech] = HERO_MOVES[sp]
+          return el(
+            'li',
+            { title: STAGE_NAMES[st] },
+            el('b.moves-name', {}, el('i', { text: String(i + 1) }), el('span', { text: SPECIES_NAMES[sp] })),
+            el('span.moves-row', {}, el('kbd', { text: 'Space' }), el('span', { text: space })),
+            el('span.moves-row', {}, el('em', { text: '陣形で長押し' }), el('span', { text: tech }))
+          )
+        })
+      )
+    ),
     el(
       'section.howto-block',
       {},
