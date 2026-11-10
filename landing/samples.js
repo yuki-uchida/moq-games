@@ -71,5 +71,16 @@ export const samples = [
     category: 'HORROR',
     tags: ['二人対戦', 'マイク必須'],
     art: 'yoru-no-yashiki'
+  },
+  {
+    id: 'hoshi-no-hamham',
+    title: '星のハムハム',
+    subtitle: 'GIMMICK PIXEL ACTION',
+    description:
+      '歩く・ジャンプ・かじるの3つだけ。木を倒し、地面を掘り、配管を破き、蜂を怒らせて、全10ステージのギミックを切り抜ける2Dアクション。',
+    href: './examples/games/hoshi-no-hamham/index.html',
+    category: 'ACTION',
+    tags: ['アクション', 'ギミック', 'ブラウザでプレイ'],
+    art: 'hoshi-no-hamham'
   }
 ]

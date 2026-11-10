@@ -18,7 +18,7 @@ for (const viewport of [
     await page.goto(root)
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'キャッスルナイツ', exact: true })).toBeVisible()
-    await expect(page.getByRole('article')).toHaveCount(7)
+    await expect(page.getByRole('article')).toHaveCount(8)
     await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: デスガイヤ' })).toHaveAttribute(
       'href',

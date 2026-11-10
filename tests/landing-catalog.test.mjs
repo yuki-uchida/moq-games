@@ -4,7 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 import { samples } from '../landing/samples.js'
 
 test('catalog exposes only real, unique, playable samples with local entrypoints', async () => {
-  assert.equal(samples.length, 7)
+  assert.equal(samples.length, 8)
   assert.ok(samples.some((sample) => sample.id === 'mamono-jinkei'))
   assert.ok(samples.some((sample) => sample.id === 'yoru-no-yashiki'))
   assert.equal(samples[0].title, 'キャッスルナイツ')

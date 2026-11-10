@@ -9,7 +9,8 @@ export const games = [
   'ember-grid',
   'lane-battle',
   'yoru-no-yashiki',
-  'mamono-jinkei'
+  'mamono-jinkei',
+  'hoshi-no-hamham'
 ]
 
 // Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports
@@ -80,6 +81,7 @@ export function classify(path) {
     path === 'playwright.landing.config.ts'
   )
     return ['landing']
+  if (path === 'tests/hoshi-no-hamham-e2e.spec.ts') return ['hoshi-no-hamham']
   return ['shared']
 }
 
