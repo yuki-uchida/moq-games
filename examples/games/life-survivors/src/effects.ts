@@ -21,14 +21,16 @@ const GAMBLE_LABEL_FRAME: Record<string, number> = { gamble_pachinko: 5, gamble_
 
 /**
  * Timing of a gamble reel sprite at life fraction t: the frames play over the first 60 % and the
- * last one is held; fully opaque until 80 %, then fading. A late label appears with its frame.
+ * last one is held; fully opaque until 80 %, then fading. A late label is decided by the drawn
+ * frame itself (frame >= late), so the label and the frame never disagree by a float rounding step.
  */
 export function gambleTiming(spr: string, t: number, frames: number) {
   const frame = Math.max(0, Math.min(frames - 1, Math.floor((t / GAMBLE_SPIN) * frames)))
   const alpha = Math.max(0, Math.min(1, (1 - t) / 0.2))
   const late = GAMBLE_LABEL_FRAME[spr]
   const start = late === undefined ? 0 : (GAMBLE_SPIN * late) / frames
-  return { frame, alpha, label: t >= start, since: t - start }
+  const label = late === undefined ? t >= 0 : frame >= late
+  return { frame, alpha, label, since: Math.max(0, t - start) }
 }
 
 /** Hands out each fx event of a snapshot sequence exactly once, by `seq`. */
