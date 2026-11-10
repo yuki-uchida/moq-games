@@ -279,6 +279,19 @@ export class Renderer {
         case 'nest':
           this.drawGoal(this.art.tiles[world.theme].nest, prop, world)
           break
+        case 'princess': {
+          const princess = this.art.characters.princess.idle[0]
+          const bob = Math.sin(world.time * 2 + prop.id) * 3
+          ctx_draw(this.ctx, princess, prop.x, prop.y + bob)
+          if (prop.data === 1) {
+            const ctx = this.ctx
+            ctx.fillStyle = PAL.ink
+            for (let i = 0; i < 4; i++) ctx.fillRect(prop.x + 8 + i * 14, prop.y - 4, 4, 72)
+            ctx.fillRect(prop.x + 2, prop.y - 6, 60, 6)
+            ctx.fillRect(prop.x + 2, prop.y + 62, 60, 6)
+          }
+          break
+        }
         default:
           break
       }

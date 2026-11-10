@@ -20,6 +20,7 @@ export type PropKind =
   | 'star'
   | 'goal'
   | 'nest'
+  | 'princess'
 
 export interface BossDef {
   kind: BossKind

@@ -481,9 +481,12 @@ export class World {
           data: 0
         })
         break
-      case 'R':
+      case 'R': {
         this.props.push({ id, kind: 'rock', x: px, y: py, w: 1, h: 1, hp: 2, state: 'idle', timer: 0, dir: 1, data: 0 })
+        // A rock is a real obstacle: it blocks the path until it is broken.
+        this.dynamic[(py / TILE) * cols + px / TILE] = 1
         break
+      }
       case '1':
       case '2':
         this.props.push({
@@ -553,6 +556,23 @@ export class World {
         })
         this.goalX = px
         this.goalY = py
+        break
+      case 'h':
+      case 'c':
+        // ハム姫。'c'（data=1）は囚われの身で檻を描く。
+        this.props.push({
+          id,
+          kind: 'princess',
+          x: px,
+          y: py,
+          w: 1,
+          h: 1,
+          hp: 1,
+          state: 'idle',
+          timer: 0,
+          dir: 1,
+          data: ch === 'c' ? 1 : 0
+        })
         break
       default:
         break
@@ -750,6 +770,15 @@ export class World {
 
   /** Moves a body through the tile grid. Returns whether it touched the ground and whether a wall stopped it. */
   private moveBody(b: Body, dt: number): { grounded: boolean; hitWall: boolean } {
+    // Safety net: a body must never rest inside terrain (guards against respawns and falling props).
+    const midTx = Math.floor((b.x + b.w / 2) / TILE)
+    const midTy = Math.floor((b.y + b.h / 2) / TILE)
+    if (this.solidAt(midTx, midTy)) {
+      let row = midTy
+      while (row > 0 && this.solidAt(midTx, row - 1)) row--
+      b.y = row * TILE - b.h - 0.01
+      if (b.vy > 0) b.vy = 0
+    }
     let hitWall = false
     // X axis
     b.x += b.vx * dt
@@ -852,6 +881,12 @@ export class World {
     this.tiles[ty * this.w + tx] = T.EMPTY
     this.events.push({ type: 'dig', x: tx * TILE, y: ty * TILE })
     this.burst(tx * TILE + 32, ty * TILE + 32, 8, '#c98b4b', 130, 0.5)
+    // Open the tile above too, so a dug tunnel is tall enough to jump out of.
+    if (ty > 0 && this.tileAt(tx, ty - 1) === T.DIRT) {
+      this.tiles[(ty - 1) * this.w + tx] = T.EMPTY
+      this.burst(tx * TILE + 32, (ty - 1) * TILE + 32, 6, '#c98b4b', 110, 0.45)
+      if (this.rng.next() > 0.5) this.dropMaterial(tx * TILE, (ty - 1) * TILE)
+    }
     // collapse dirt directly below, up to a few tiles
     let below = ty + 1
     let count = 0
@@ -901,6 +936,7 @@ export class World {
         this.burst(px, py, 6, '#a8a0b8', 110, 0.4)
         if (prop.hp <= 0) {
           prop.state = 'broken'
+          this.dynamic[(prop.y / TILE) * this.w + prop.x / TILE] = 0
           this.burst(px, py, 14, '#a8a0b8', 190, 0.6)
           if (this.rng.next() > 0.55) this.dropFruit(prop.x, prop.y)
         }
@@ -935,6 +971,24 @@ export class World {
     this.props.push({
       id: this.nextId++,
       kind: 'fruit',
+      x: x + 16,
+      y: y + 16,
+      w: 0.5,
+      h: 0.5,
+      hp: 1,
+      state: 'idle',
+      timer: 0,
+      dir: 1,
+      data: 0
+    })
+  }
+
+  /** On the nest stage, digging and felled trees also yield building material. */
+  private dropMaterial(x: number, y: number) {
+    if (this.stage.objective !== 'collect') return
+    this.props.push({
+      id: this.nextId++,
+      kind: this.rng.next() > 0.5 ? 'twig' : 'berry',
       x: x + 16,
       y: y + 16,
       w: 0.5,
@@ -1178,7 +1232,7 @@ export class World {
       boss.y = 0
       boss.vy = 0
     }
-    if (this.overlaps(p, boss) && !p.dead && boss.state !== 'stunned') {
+    if (this.overlaps(p, boss) && !p.dead && boss.state !== 'stunned' && boss.state !== 'tired') {
       this.hurtPlayer(1, boss.x + boss.w / 2)
     }
     if (boss.hp <= 0 && !boss.dead) this.defeatBoss()
@@ -1197,7 +1251,8 @@ export class World {
       this.floaters.push({ x: boss.x, y: boss.y, text: 'ハム代はつかれた…', life: 1.6, color: '#ffd45e' })
       return
     }
-    const speed = boss.def.speed * (0.82 + 0.3 * (1 - boss.stamina / 100))
+    // She starts fast and visibly fades as her stamina runs out.
+    const speed = boss.def.speed * (1.06 - 0.42 * (1 - boss.stamina / 100))
     boss.facing = dir
     boss.vx = dir * speed
     // hop over obstacles
@@ -1659,6 +1714,7 @@ export class World {
     this.events.push({ type: 'tree', x: cx, y: cy })
     this.shake = Math.max(this.shake, 0.4)
     this.burst(cx, cy + 40, 14, '#c98b4b', 220, 0.6)
+    if (this.rng.next() > 0.35) this.dropMaterial(prop.x * 1, prop.y)
     // Never leave the player buried under the fallen trunk: slide them out to the nearer side.
     const startTx = Math.min(baseTx, baseTx + prop.dir * 2)
     const endTx = Math.max(baseTx, baseTx + prop.dir * 2)
