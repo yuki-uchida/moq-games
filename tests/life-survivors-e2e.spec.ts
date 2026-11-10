@@ -1400,8 +1400,13 @@ test('a new life stage keeps the screen-reader line over a message from the same
   expect(await page.evaluate(() => (window as unknown as { announced: string[] }).announced)).not.toContainEqual(
     expect.stringContaining('人間への恐怖')
   )
-  // A message from a later moment still takes the line.
-  await handle.evaluate((hook) => (hook.game as unknown as { log(text: string): void }).log('次の出来事'))
+  // A message from a later moment still takes the line: step the clock past the stage line first, so the message is
+  // never stamped in the same tick (lines are compared at 1/100 s).
+  await handle.evaluate((hook) => {
+    const game = hook.game as unknown as { state: { time: number }; log(text: string): void }
+    game.state.time += 0.05
+    game.log('次の出来事')
+  })
   await expect(page.locator('#announcements')).toHaveText('次の出来事')
 })
 
