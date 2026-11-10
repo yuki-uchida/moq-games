@@ -186,6 +186,111 @@ function guardian(f: number) {
 }
 
 /**
+ * 過保護親 walking: the same mum in a six-frame stride — feet alternate planted, lifting and stepping
+ * forward (±3px), the body bobbing a pixel at the passing frames, the skirt swaying and the far arm swinging,
+ * while the near hand stays on the shield's grip. The shield is drawn separately in the same spot.
+ */
+function guardianWalk(f: number) {
+  const r = new Raster(N, N)
+  // Six-frame stride: each foot's x offset and lift (the far leg is the near leg half a cycle on).
+  const FOOT = [3, 1, -2, -3, 0, 2]
+  const LIFT = [0, 0, 0, 2, 2, 1]
+  const nx = FOOT[f]
+  const nl = LIFT[f]
+  const fx = FOOT[(f + 3) % 6]
+  const fl = LIFT[(f + 3) % 6]
+  const bob = [0, -1, 0, 0, -1, 0][f]
+  const sway = [1, 0, -1, -1, 0, 1][f]
+  const swing = [0, 1, 1, 0, -1, -1][f]
+  const hx = 10
+  const hy = 22 + bob
+  const sx = 12
+  const sy = 15 + bob
+  // Far arm braced behind the shield, far leg, a step darker.
+  part(r, (l) => {
+    l.thick(sx - 1, sy + 1, sx + 3, sy + 4, 3, R.pink[2])
+    l.thick(sx + 3, sy + 4, 18, 15 + bob + swing, 3, R.pink[2])
+    l.thick(hx - 1, hy + 4, 9 + fx, 28 - fl, 3, R.skin[2])
+    l.rect(7 + fx, 28 - fl, 5, 2, R.brown[2])
+  })
+  // Near leg and shoe.
+  part(r, (l) => {
+    l.thick(hx + 3, hy + 4, 13 + nx, 28 - nl, 3, R.skin[1])
+    l.rect(11 + nx, 28 - nl, 6, 2, R.brown[1])
+    l.rect(11 + nx, 29 - nl, 6, 1, R.brown[2])
+  })
+  // Skirt, cardigan and apron.
+  part(r, (l) => {
+    l.poly([hx - 5, hy - 1, hx + 6, hy - 1, hx + 8 + sway, 26, hx - 7 + sway, 26], R.navy[1])
+    shadeEdges(l, R.navy, 1, true)
+  })
+  part(r, (l) => {
+    l.poly([sx - 5, sy - 1, sx + 3, sy - 1, hx + 6, hy + 1, hx - 4, hy + 1], R.pink[1])
+    shadeEdges(l, R.pink, 1, true)
+  })
+  part(r, (l) => {
+    l.poly([hx, hy - 2, hx + 5, hy - 2, hx + 6, hy + 4, hx - 2, hy + 4], R.paper[1])
+    shadeEdges(l, R.paper, 1, true)
+    l.set(hx + 2, hy + 1, R.red[1])
+    l.set(hx + 3, hy + 1, R.red[1])
+    l.set(hx + 2, hy + 2, R.red[2])
+  })
+  // Near arm: sleeve up to the shield's grip, the hand wrapped around it.
+  const hand = 17
+  part(r, (l) => {
+    l.thick(sx, sy + 1, sx + 3, sy + 5, 3, R.pink[1])
+    l.thick(sx + 3, sy + 5, 17, hand + bob, 3, R.pink[1])
+    shadeEdges(l, R.pink, 1, true)
+    l.rect(17, hand - 1 + bob, 3, 3, R.skin[1])
+  })
+  // Head, bun and worried face.
+  const hdx = 13
+  const hdy = 9 + bob
+  part(r, (l) => {
+    ball(l, hdx, hdy, 4.5, 4.7, R.skin)
+    l.set(hdx + 2, hdy + 1, C.white)
+    l.set(hdx + 3, hdy + 1, C.inkWarm)
+    l.set(hdx + 3, hdy + 3, R.red[2])
+    l.set(hdx + 2, hdy + 3, R.red[2])
+  })
+  part(r, (l) => {
+    // Hair swept back over the crown into a bun that bobs a pixel behind.
+    l.poly(
+      [
+        hdx - 5,
+        hdy + 1,
+        hdx - 5,
+        hdy - 3,
+        hdx - 2,
+        hdy - 6,
+        hdx + 2,
+        hdy - 6,
+        hdx + 4,
+        hdy - 4,
+        hdx,
+        hdy - 3,
+        hdx - 2,
+        hdy - 1
+      ],
+      R.brown[2]
+    )
+    ball(l, hdx - 6, hdy - 4 - (f % 3 === 1 ? 1 : 0), 2.6, 2.6, R.brown)
+    l.set(hdx - 4, hdy - 2, R.red[1])
+  })
+  part(
+    r,
+    (l) => {
+      // Worried brows: the inner ends pulled up.
+      l.set(hdx + 1, hdy - 1, R.brown[3])
+      l.set(hdx + 2, hdy - 2, R.brown[3])
+      l.set(hdx + 3, hdy - 2, R.brown[3])
+    },
+    false
+  )
+  return r
+}
+
+/**
  * The shield: a round metal-rimmed buckler with rivets, a sky-blue face and a red heart, a glint sweeping
  * across the face over the four frames. Centred on the same point as the body (its grip is on the left).
  */
@@ -1048,7 +1153,11 @@ export function weaponSheets(): Record<string, () => Sheet> {
     ...arsenalSheets(),
     'weapon:p_edu': () => ({ fly: four(book, 10) }),
     'weapon:p_free': () => ({ fly: four(balloon, 4) }),
-    'weapon:p_over': () => ({ fly: four(guardian, 7), guard: four(guardianShield, 7) }),
+    'weapon:p_over': () => ({
+      fly: four(guardian, 7),
+      guard: four(guardianShield, 7),
+      walk: loop([0, 1, 2, 3, 4, 5].map(guardianWalk), 10)
+    }),
     'weapon:p_monster': () => ({ fly: four(parent, 10) }),
     'weapon:p_yankee': () => ({
       fly: four((f) => yankee(yankeeRun(f)), 14),
