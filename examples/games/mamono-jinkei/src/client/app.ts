@@ -318,6 +318,13 @@ export class App {
     }
   }
 
+  /** CSS px from the canvas top to the bottom of the top HUD the controlled hero could sit under (0 = none). */
+  private heroHudBand(): number {
+    const cam = this.renderer.camera
+    if (!cam.heroCss) return 0
+    return this.hud.topBand(cam.heroCss.x, 28 / cam.artPerCss)
+  }
+
   /**
    * Gamepad in the menus (title, lobby, pause, settings, results, dialogs): d-pad / left stick move focus, A activates,
    * B goes back like Esc, Start closes the pause menu. During play the controls read the pad themselves.
@@ -495,7 +502,8 @@ export class App {
           cursor: { x: c.cursorX, y: c.cursorY, inside: c.cursorIn },
           showCursor: phase === 'play' && !this.pause.open,
           shake: this.save.settings.shake,
-          reducedMotion: this.reduced
+          reducedMotion: this.reduced,
+          hud: { top: this.heroHudBand() }
         })
         for (const e of s!.takeEvents(this.events)) this.handleEvent(e, now)
       }
