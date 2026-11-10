@@ -1,5 +1,5 @@
 /** Builds the JSON snapshot (View) from the world state: rounded numbers, dynamic props only, bounded events. */
-import { BOSS_NAMES, STAGE_SPECIES, dirOf, type StageId } from '../vocab'
+import { BOSS_NAMES, STAGE_SPECIES, TILE, dirOf, type StageId } from '../vocab'
 import { CAT_DIR_ANIMS, MILDA_DIR_ANIMS } from './boss2'
 import { VALK_DIR_ANIMS } from './boss3'
 import { LEON_DIR_ANIMS } from './boss4'
@@ -146,7 +146,10 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
     if (p.state === 'thrown') continue
     const v: PropView = { id: p.id, kind: p.kind, x: r1(p.x), y: r1(p.y), state: p.state, st: r2(p.st) }
     if (p.z) v.z = r1(p.z)
-    if ((p.kind === 'moonstone' || p.kind === 'crystal' || p.kind === 'valve') && p.group !== undefined)
+    if (
+      (p.kind === 'moonstone' || p.kind === 'crystal' || p.kind === 'valve' || p.kind === 'bell') &&
+      p.group !== undefined
+    )
       v.group = p.group
     const flag = SOLVED_FLAG[p.kind]
     if (flag && p.group !== undefined && W.flags.has(`${flag}:${p.group}`)) v.solved = true
@@ -274,11 +277,31 @@ export function buildView(W: WorldState, unlocked: StageId[]): View {
 /** Generic follow-up once a room's puzzle is solved. */
 export const DONE_OBJECTIVE = '扉がひらいた！ 先へすすもう'
 
+/** Generic text while the stage-end orb waits on the altar. */
+export const ORB_OBJECTIVE = '祭壇の宝珠にふれよう'
+
+/** The orb text comes from the smallest room around the orb when the stage data gives it one, else the generic text. */
+function orbObjective(W: WorldState): string {
+  const orb = W.pickups.find((p) => p.id === W.orb)
+  if (!orb || !W.parsed) return ORB_OBJECTIVE
+  let room: (typeof W.parsed.data.rooms)[number] | undefined
+  for (const r of W.parsed.data.rooms)
+    if (
+      orb.x >= r.x * TILE &&
+      orb.y >= r.y * TILE &&
+      orb.x < (r.x + r.w) * TILE &&
+      orb.y < (r.y + r.h) * TILE &&
+      (!room || r.w * r.h < room.w * room.h)
+    )
+      room = r
+  return room?.objective || ORB_OBJECTIVE
+}
+
 function objective(W: WorldState): string {
   if (W.phase === 'lobby') return 'ステージをえらんで出発しよう'
   if (W.phase === 'clear') return 'ステージクリア！'
   if (!W.parsed) return ''
-  if (W.orb !== undefined && !W.orbTaken) return '祭壇の宝珠にふれよう'
+  if (W.orb !== undefined && !W.orbTaken) return orbObjective(W)
   if (W.boss?.active && !W.boss.dead)
     return W.boss.kind === 'milda' && W.boss.broken <= W.t && W.pet && !W.pet.dead
       ? 'チューチュー大行進でねこを止めて、ミルダをたたこう！'

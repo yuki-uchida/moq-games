@@ -9,7 +9,7 @@ import { clearChildren, el, icon, setText, show } from './dom'
 import type { InputDevice } from '../input/device'
 import { hintsFor, type Hint } from './hints'
 import { keyCap } from './panels'
-import { bellProgress, groupProgress, type MoonProgress } from './moons'
+import { bellChip, groupProgress, type MoonProgress } from './moons'
 import type { StageInfo } from '../sim/types'
 
 export interface HudActions {
@@ -132,6 +132,10 @@ export class Hud {
   private bellRang = new Map<number, number>()
   private bellState = new Map<number, string>()
   private bellKey = ''
+  /** Bell groups seen unsolved, and the time each was seen solved (-Infinity: it was already solved on sight). */
+  private bellOpen = new Set<string>()
+  private bellSolvedAt = new Map<string, number>()
+  private bellLastT = 0
   private readonly status: HTMLElement
   private readonly spectator: HTMLElement
   private readonly muteBtn: HTMLButtonElement
@@ -381,40 +385,55 @@ export class Hud {
       this.bannerUntil = now + (b.kind === 'big' ? 2.0 : 2.4)
     } else if (now > this.bannerUntil && this.banner.classList.contains('on')) this.banner.className = 'banner'
 
-    this.updateBells(view)
+    this.updateBells(view, info, mine)
     this.updateMoons(view, info, mine)
     this.updateDialog(view, now, mine ?? view.heroes[0])
     this.updateBoss(view, info, mine)
   }
 
-  /** Bell puzzle progress: each bell lights while it is within the 1.2 s window after ringing. */
-  private updateBells(view: View) {
+  /** Bell puzzle chip: while the hero works on an unsolved bell group (bells light for 1.2 s after ringing); "そろった！" for a moment once solved. */
+  private updateBells(view: View, info: StageInfo | undefined, me: HeroView | undefined) {
+    if (view.t < this.bellLastT) {
+      this.bellOpen.clear()
+      this.bellSolvedAt.clear()
+    }
+    this.bellLastT = view.t
     const bells = view.props.filter((p) => p.kind === 'bell')
     for (const b of bells) {
       if (b.state === 'ring' && this.bellState.get(b.id) !== 'ring') this.bellRang.set(b.id, view.t)
       this.bellState.set(b.id, b.state)
+      if (b.group === undefined) continue
+      if (!b.solved) this.bellOpen.add(b.group)
+      else if (!this.bellSolvedAt.has(b.group))
+        this.bellSolvedAt.set(b.group, this.bellOpen.has(b.group) ? view.t : -Infinity)
     }
-    const recent = bells.some((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 3)
-    const { lit, n, complete } = bellProgress(
-      bells,
-      bells.map((b) => view.t - (this.bellRang.get(b.id) ?? -99) < 1.2)
-    )
-    const key = recent ? lit.map((x) => (x ? 1 : 0)).join('') : ''
+    const chip =
+      view.phase === 'play'
+        ? bellChip(
+            bells,
+            info?.rooms,
+            me ?? view.heroes[0],
+            (b) => view.t - (this.bellRang.get(b.id) ?? -99) < 1.2,
+            (g) => this.bellSolvedAt.get(g),
+            view.t
+          )
+        : undefined
+    const key = chip ? `${chip.group}:${chip.lit.map((x) => (x ? 1 : 0)).join('')}${chip.complete ? 'c' : ''}` : ''
     if (key === this.bellKey) return
     this.bellKey = key
-    show(this.bells, recent)
+    show(this.bells, !!chip)
     clearChildren(this.bells)
-    if (!recent) return
+    if (!chip) return
     this.bells.append(
       el('span.bc-label', { text: '鐘' }),
-      ...lit.map((on) =>
+      ...chip.lit.map((on) =>
         el(
           'span.bc-bell' + (on ? '.on' : ''),
           {},
           icon('props:tower', on ? 'bell_ring' : 'bell', 32, 'px-icon bc-icon', on ? 2 : 0)
         )
       ),
-      el('span.bc-count', { text: complete ? 'そろった！' : `${n}/${bells.length}` })
+      el('span.bc-count', { text: chip.complete ? 'そろった！' : `${chip.n}/${chip.total}` })
     )
   }
 

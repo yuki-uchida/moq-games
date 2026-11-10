@@ -149,6 +149,9 @@ test('title renders with the attract demo and no errors', async ({ page }) => {
   await expect(page.getByRole('button', { name: /ルームを作る/ })).toBeFocused()
   await page.getByRole('button', { name: /遊び方/ }).click()
   await expect(page.getByRole('heading', { name: '陣形をくもう' })).toBeVisible()
+  // The how-to names what Space and the charge do for all four heroes.
+  for (const hero of ['スライム', 'ネズミ', 'カラス', 'ウルフ'])
+    await expect(page.locator('.howto-moves:visible').getByText(hero, { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeVisible()
   // Esc also closes the settings while a volume slider has the focus.

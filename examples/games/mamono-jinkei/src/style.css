@@ -1578,12 +1578,16 @@ input:focus-visible,
   bottom: 0;
 }
 
+/* The recently lost HP: a bright warm-white segment, far lighter than the track and every fill colour. */
 .boss-lag {
-  background: #ffe2a0;
+  background: linear-gradient(#fffdf0, #fff1b0 55%, #ffd45c);
 }
 
+/* A crisp dark divider on the fill's right edge keeps the boundary readable against the lag segment. */
 .boss-fill {
+  z-index: 1;
   background: linear-gradient(#ff8a70, #d9352b 55%, #9c1f1a);
+  box-shadow: 0.16em 0 0 #12060a;
   transition: width 0.12s linear;
 }
 
@@ -2213,6 +2217,10 @@ input:focus-visible,
 @media (max-width: 900px), (max-aspect-ratio: 5/4) {
   .title-col {
     margin-inline: auto;
+  }
+  /* The wide how-to panel is centred on the screen, not hung from the column's left edge. */
+  .title-body {
+    grid-template-columns: minmax(0, 1fr);
   }
   .title-screen {
     background:
@@ -2879,6 +2887,75 @@ input:focus-visible,
   font-weight: 800;
 }
 
-.howto-formation {
+.howto-formation,
+.howto-moves {
   grid-column: 1 / -1;
+}
+
+.moves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5em, 1fr));
+  gap: 0.4em 0.6em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.moves li {
+  display: grid;
+  gap: 0.2em;
+  padding: 0.3em 0.5em;
+  border-radius: 0.5em;
+  background: rgba(107, 66, 38, 0.1);
+}
+
+.moves-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.moves-name i {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff8e8;
+  font-size: 0.8em;
+  font-style: normal;
+}
+
+.moves-row kbd {
+  flex: none;
+}
+
+.moves-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  line-height: 1.35;
+  gap: 0.3em;
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 0.85em;
+}
+
+.moves-row em {
+  flex: none;
+  white-space: nowrap;
+  line-height: 1.5;
+  font-style: normal;
+  font-size: 0.85em;
+  padding: 0 0.4em;
+  border-radius: 99em;
+  background: var(--ink-soft);
+  color: #fff8e8;
+}
+
+/* Wrap only at the zero-width spaces in the move names (a too-long piece may still break anywhere). */
+.moves-row > span {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
