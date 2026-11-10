@@ -18,6 +18,7 @@
     "examples/games/life-survivors/src/**/*.ts",
     "examples/games/yoru-no-yashiki/src/**/*.ts",
     "examples/games/mamono-jinkei/src/**/*.ts",
+    "examples/games/hoshi-no-hamham/src/**/*.ts",
     "utils/**/*.ts",
     "lib/**/*.ts"
   ],

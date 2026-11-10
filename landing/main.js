@@ -205,6 +205,47 @@ function gamePreview(art) {
       </svg>
     </div>`
   }
+  if (art === 'hoshi-no-hamham') {
+    const px = (rows, colors, ox, oy, k) =>
+      rows
+        .flatMap((row, y) =>
+          [...row].map((ch, x) =>
+            ch === '.'
+              ? ''
+              : `<rect x="${ox + x * k}" y="${oy + y * k}" width="${k}" height="${k}" fill="${colors[ch]}"/>`
+          )
+        )
+        .join('')
+    const hamster = [
+      '..kk................kk..',
+      '.kBBk..............kBBk.',
+      '.kBBBBkkkkkkkkkkkBBBBk..',
+      '..kBBBBBBBBBBBBBBBBBBk..',
+      '.kBBBBBBBBBBBBBBBBBBBBk.',
+      'kBBBwwBBBBBBBBBBwwBBBk..',
+      'kBBwkkwBBBBBBBBBwkkwBBk.',
+      'kBBwkBBBBBBBBBBBwkBBBBk.',
+      'kBBBwBBBBBBBBBBBwBBBBBk.',
+      '.kBBBBBBpppppBBBBBBBk..',
+      '.kBBBBBBpKKKpBBBBBBBk..',
+      '..kBBBBBBpppBBBBBBBk...',
+      '...kBBBBBBBBBBBBBBk....',
+      '....kkBBBBBBBBBBkk.....',
+      '......kkkkkkkkkk.......'
+    ]
+    return `<div class="game-preview hoshi-no-hamham" aria-hidden="true">
+      <svg class="hamham-art" viewBox="0 0 220 260" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+        <defs><radialGradient id="hamham-sky" cx="50%" cy="30%" r="80%"><stop stop-color="#3b2a6d"/><stop offset="1" stop-color="#120a26"/></radialGradient></defs>
+        <rect width="220" height="260" fill="url(#hamham-sky)"/>
+        <g fill="#fff3b8"><path d="M30 26l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M182 44l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M162 96l2 4 4 2-4 2-2 4-2-4-4-2 4-2z"/><path d="M44 116l2 4 4 2-4 2-2 4-2-4-4-2 4-2z"/></g>
+        <path d="M0 208q40-26 80-8t80 4 60-14v70H0z" fill="#2f6b4f"/>
+        <path d="M0 224q60-16 110-2t110-6v44H0z" fill="#3f8f5f"/>
+        ${px(hamster, { k: '#5a3a22', B: '#ff9ecb', w: '#fff6fb', K: '#2a1230', p: '#ffd1e8' }, 66, 78, 5)}
+        <g fill="#ffd45e"><path d="M110 22l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/></g>
+        <text x="110" y="252" text-anchor="middle" font-size="16" font-weight="800" fill="#fff3b8" stroke="#1b1035" stroke-width="4" paint-order="stroke" shape-rendering="geometricPrecision">かじって進め！</text>
+      </svg>
+    </div>`
+  }
   const units = ['mage', 'soldier', 'goblin']
   return `<div class="game-preview ${escape(art)}" aria-hidden="true">
     <div class="preview-board"></div>

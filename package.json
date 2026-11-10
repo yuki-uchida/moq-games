@@ -42,7 +42,12 @@
     "build:mamono-jinkei": "vite build --config vite.config.mamono-jinkei.mjs",
     "test:mamono-jinkei": "vitest run examples/games/mamono-jinkei/tests --maxWorkers=1",
     "e2e:mamono-jinkei": "playwright test --config playwright.mamono-jinkei.config.ts",
-    "art:mamono-jinkei": "node scripts/mamono-jinkei-art.mjs"
+    "art:mamono-jinkei": "node scripts/mamono-jinkei-art.mjs",
+    "dev:hoshi-no-hamham": "vite --config vite.config.hoshi-no-hamham.mjs",
+    "build:hoshi-no-hamham": "vite build --config vite.config.hoshi-no-hamham.mjs",
+    "test:hoshi-no-hamham": "vitest run examples/games/hoshi-no-hamham/tests --maxWorkers=1",
+    "e2e:hoshi-no-hamham": "playwright test --config playwright.hoshi-no-hamham.config.ts",
+    "art:hoshi-no-hamham": "node scripts/hoshi-no-hamham-art.mjs"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",
