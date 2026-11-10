@@ -15,7 +15,7 @@ export const MAX_FALL = 900
 export const RUN_SPEED = 215
 export const RUN_ACCEL = 1900
 export const AIR_ACCEL = 1300
-export const JUMP_VELOCITY = -575
+export const JUMP_VELOCITY = -720
 export const COYOTE = 0.09
 export const JUMP_BUFFER = 0.12
 export const BITE_TIME = 0.22
@@ -62,6 +62,8 @@ export interface Rect {
 export interface Body extends Rect {
   vx: number
   vy: number
+  /** While positive, one-way platforms are ignored so the player can drop through. */
+  dropTimer?: number
 }
 
 export interface Player extends Body {
@@ -81,6 +83,7 @@ export interface Player extends Body {
   lastSafeX: number
   lastSafeY: number
   knockX: number
+  dropTimer: number
 }
 
 export interface Enemy extends Body {
@@ -366,7 +369,8 @@ export class World {
       dead: false,
       lastSafeX: startX,
       lastSafeY: startY,
-      knockX: 0
+      knockX: 0,
+      dropTimer: 0
     }
     this.goalOpen = stage.objective === 'reach'
     if (stage.objective === 'collect') this.goalOpen = false
@@ -626,6 +630,18 @@ export class World {
     p.biteCooldown = Math.max(0, p.biteCooldown - dt)
     p.biteTimer = Math.max(0, p.biteTimer - dt)
     p.invuln = Math.max(0, p.invuln - dt)
+    p.dropTimer = Math.max(0, p.dropTimer - dt)
+
+    // Press down on a one-way platform to drop through it.
+    if (input.down && p.onGround) {
+      const belowTy = Math.floor((p.y + p.h + 2) / TILE)
+      const tx = Math.floor((p.x + p.w / 2) / TILE)
+      if (this.tileAt(tx, belowTy) === T.PLATFORM) {
+        p.dropTimer = 0.28
+        p.y += 4
+        p.onGround = false
+      }
+    }
     p.coyote = Math.max(0, p.coyote - dt)
     p.jumpBuffer = Math.max(0, p.jumpBuffer - dt)
 
@@ -768,7 +784,8 @@ export class World {
       const ty = Math.floor((b.y + b.h) / TILE)
       for (let tx = left; tx <= right; tx++) {
         const solid = this.solidAt(tx, ty)
-        const platform = this.tileAt(tx, ty) === T.PLATFORM && prevBottom <= ty * TILE + 1
+        const platform =
+          this.tileAt(tx, ty) === T.PLATFORM && prevBottom <= ty * TILE + 1 && (b.dropTimer ?? 0) <= 0
         if (solid || platform) {
           b.y = ty * TILE - b.h
           b.vy = 0
@@ -1254,7 +1271,8 @@ export class World {
   }
 
   private updateFlyerBoss(boss: Boss, dt: number, dir: 1 | -1, distance: number) {
-    const targetY = this.player.y - 120 + Math.sin(this.time * 2) * 30
+    // Cruise low enough that a jump and a bite can reach it; the dive is the bigger opening.
+    const targetY = this.player.y - 78 + Math.sin(this.time * 2) * 22
     switch (boss.state) {
       case 'idle':
         boss.vx += (dir * boss.def.speed - boss.vx) * Math.min(1, dt * 2)
@@ -1641,6 +1659,15 @@ export class World {
     this.events.push({ type: 'tree', x: cx, y: cy })
     this.shake = Math.max(this.shake, 0.4)
     this.burst(cx, cy + 40, 14, '#c98b4b', 220, 0.6)
+    // Never leave the player buried under the fallen trunk: slide them out to the nearer side.
+    const startTx = Math.min(baseTx, baseTx + prop.dir * 2)
+    const endTx = Math.max(baseTx, baseTx + prop.dir * 2)
+    const logRect: Rect = { x: startTx * TILE, y: baseTy * TILE, w: (endTx - startTx + 1) * TILE, h: 2 * TILE }
+    if (this.overlaps(this.player, logRect)) {
+      const leftDist = this.player.x + this.player.w - logRect.x
+      const rightDist = logRect.x + logRect.w - this.player.x
+      this.player.x = leftDist < rightDist ? logRect.x - this.player.w - 1 : logRect.x + logRect.w + 1
+    }
   }
 
   // ------------------------------------------------------------------ bees & shots
