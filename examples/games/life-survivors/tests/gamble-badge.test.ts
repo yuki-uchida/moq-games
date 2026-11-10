@@ -6,11 +6,15 @@ import {
   BADGE_SWITCH_HOLD,
   badgeBoxAt,
   badgeSideTarget,
+  boxClearance,
   easeBadgeSide,
   gambleOwner,
   GAMBLE_OWNER_REACH,
+  gambleVisibility,
   holdBadgeSide,
-  type BadgePending
+  pickGambleSpot,
+  type BadgePending,
+  type GambleSpot
 } from '../src/render'
 import { STRIDE, toView } from '../src/view'
 
@@ -322,5 +326,48 @@ describe('gambleOwner', () => {
   test('falls back to the nearest player, and to nobody far away', () => {
     expect(gambleOwner([a, b], 5, 0, 'w_work')).toBe('b')
     expect(gambleOwner([a, b], 0, GAMBLE_OWNER_REACH + 10, 'w_love')).toBeUndefined()
+  })
+})
+
+describe('where a gamble reel or result banner goes', () => {
+  const box = { left: -10, top: -10, right: 10, bottom: 10 }
+  const spots: GambleSpot[] = [
+    { dx: 0, dy: 0, cost: 0 },
+    { dx: -40, dy: 0, cost: 40 },
+    { dx: 40, dy: 0, cost: 40 },
+    { dx: 0, dy: -60, cost: 120 }
+  ]
+  const at = (x: number, y: number) => ({ left: x - 5, top: y - 5, right: x + 5, bottom: y + 5 })
+
+  test('clearance is the gap along the axis they are apart, negative when they overlap', () => {
+    expect(boxClearance([box], [at(30, 0)])).toBe(15)
+    expect(boxClearance([box], [at(0, -20)])).toBe(5)
+    expect(boxClearance([box], [at(12, 0)])).toBe(-3)
+    expect(boxClearance([box], [at(30, 0)], 10, 0)).toBe(5)
+    expect(boxClearance([box], [])).toBe(Infinity)
+  })
+
+  test('takes its own spot when free, else the cheapest free one', () => {
+    expect(pickGambleSpot(spots, [box], [at(0, 40)])).toBe(0)
+    expect(pickGambleSpot(spots, [box], [at(0, 0)])).toBe(1)
+    expect(pickGambleSpot(spots, [box], [at(0, 0), at(-40, 0)])).toBe(2)
+  })
+
+  test('keeps a free spot it has taken unless another is much cheaper', () => {
+    // Once the way back home is free it returns, but it holds a spot as good as the best.
+    expect(pickGambleSpot(spots, [box], [at(-40, 0)], 2)).toBe(0)
+    expect(pickGambleSpot(spots, [box], [at(0, 0)], 2)).toBe(2)
+    expect(pickGambleSpot([...spots, { dx: 0, dy: 60, cost: 50 }], [box], [at(0, 0)], 4)).toBe(4)
+  })
+
+  test('stays put with no free spot, and fades out before it touches anything', () => {
+    const everywhere = spots.map((s) => at(s.dx, s.dy))
+    expect(pickGambleSpot(spots, [box], everywhere, 2)).toBe(2)
+    expect(pickGambleSpot(spots, [box], everywhere)).toBe(0)
+    expect(gambleVisibility(-2)).toBe(0)
+    expect(gambleVisibility(1)).toBe(0)
+    expect(gambleVisibility(2)).toBeCloseTo(0.5)
+    expect(gambleVisibility(3)).toBe(1)
+    expect(gambleVisibility(Infinity)).toBe(1)
   })
 })
