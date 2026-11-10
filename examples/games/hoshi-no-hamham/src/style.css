@@ -703,6 +703,10 @@ body {
   display: none;
 }
 
+.touch-controls[hidden] {
+  display: none;
+}
+
 .touch-dpad,
 .touch-actions {
   display: flex;
