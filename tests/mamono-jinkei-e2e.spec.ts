@@ -279,6 +279,35 @@ test('solo: heroes push the stone block together', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('solo: a wipe shows 全滅 exactly once', async ({ page }) => {
+  await startSolo(page)
+  // Let the opening banner finish so a wipe banner would show at once.
+  await expect(page.locator('.banner.on')).toHaveCount(0, { timeout: 8000 })
+  await page.evaluate(() => {
+    for (const h of window.__mamono.W.heroes) (h as { hp?: number }).hp = 0
+    for (const h of window.__mamono.W.heroes) h.state = 'down'
+  })
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 6000 }).toBe('wipe')
+  const visible = () =>
+    page.evaluate(
+      () =>
+        [...document.querySelectorAll<HTMLElement>('body *')].filter(
+          (e) =>
+            e.children.length === 0 &&
+            e.textContent?.includes('全滅') &&
+            e.getClientRects().length > 0 &&
+            getComputedStyle(e).visibility !== 'hidden'
+        ).length
+    )
+  await expect(page.locator('.wipe-title')).toBeVisible()
+  // Sample over the whole wipe: the banner would appear a frame or two after the phase change.
+  for (let i = 0; i < 8; i++) {
+    expect(await visible()).toBe(1)
+    await page.waitForTimeout(150)
+  }
+  await page.screenshot({ path: process.env.WIPE_SHOT ?? 'test-results/mj-wipe.png' })
+})
+
 test('Esc opens the menu, pauses solo and returns to the title', async ({ page }) => {
   const errors: string[] = []
   watchErrors(page, errors)

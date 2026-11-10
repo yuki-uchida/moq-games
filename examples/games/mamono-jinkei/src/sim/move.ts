@@ -158,7 +158,17 @@ export function stepBody(
     else (b.vx *= SLIME_HOP.boost), (b.vy *= SLIME_HOP.boost)
     res.jumped = true
   }
-  if (species === 'rat' && input.action && canAct && b.dashT < 0) {
+  // Feet in a current that pushes you (no formation of 3+ holding you): no grip for a dash.
+  const footTile = grid.inside(Math.floor(b.x / TILE), Math.floor(b.y / TILE))
+    ? grid.idx(Math.floor(b.x / TILE), Math.floor(b.y / TILE))
+    : -1
+  const inFlow =
+    b.z <= 0.01 &&
+    b.jt < 0 &&
+    footTile >= 0 &&
+    (grid.flowX[footTile] !== 0 || grid.flowY[footTile] !== 0) &&
+    (!opts.resist || grid.flowStrong[footTile] === 1)
+  if (species === 'rat' && input.action && canAct && b.dashT < 0 && !inFlow) {
     b.dashT = 0
     const a = len > 0.1 ? Math.atan2(my, mx) : b.facing
     b.dashA = a
@@ -266,8 +276,8 @@ export function stepBody(
       b.dashA = Math.atan2(ey, ex)
     }
   }
-  // Currents push walking heroes downstream (into sludge if they let it); a formation of 3+ resists.
-  if (!air && !dashing) {
+  // Currents push walking (and dashing) heroes downstream (into sludge if they let it); a formation of 3+ resists.
+  if (!air) {
     const ctx = Math.floor(b.x / TILE)
     const cty = Math.floor(b.y / TILE)
     const ti = grid.inside(ctx, cty) ? grid.idx(ctx, cty) : -1

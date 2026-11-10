@@ -3,8 +3,9 @@
  * A 下水の入口 → B 流れる水路 → C 鼠穴の小部屋 → D 番兵の詰所 → E チーズの運河 → F 穀物庫 → G 穀物庫の上階 →
  * H 屋根裏のボス部屋 (I 祭壇).
  *
- * Legend: terrain `#` brick `w` wall `.` sewer `:` floor `p` planks `~` sludge; currents `>` (B, east),
- * `{` (C, a torrent south that only the sluice stops), `v` (E canal, south); mouse holes `a`/`j`/`k` (pairs).
+ * Legend: terrain `#` brick `w` wall `.` sewer `:` floor `p` planks `~` sludge; currents `>` (B, fast toward the
+ * start bank and the sludge), `{` (C, a torrent south that only the sluice stops), `v` (E canal, south); mouse holes
+ * `a`/`j`/`k` (pairs).
  * Decoration `P` pipe `L` lamp `R` grate `Y` cobweb `X` sack `H` haybale `F` shelf `A` altar.
  * Props `c` crate `O` big crate `r` barrel `q` pot `m` mousetrap `V` valve (group C) `Z` sluice `C` cheese `U` scale
  * `B`/`n` barricades `T`/`t` chests `x`/`y`/`G` gates `W` boss door. Others: `@` spawn `K` checkpoint `E` smith
@@ -91,7 +92,8 @@ export const SEWER: StageData = {
     ':': { tile: 'floor' },
     p: { tile: 'planks' },
     '~': { tile: 'sludge' },
-    '>': { tile: 'current', ent: { type: 'current', channel: 'B', dx: 1, dy: 0 } },
+    // B runs fast down toward the start bank and the sludge: only a formation of 3+ wades across.
+    '>': { tile: 'current', ent: { type: 'current', channel: 'B', dx: 0.6, dy: 1, speed: 240 } },
     '{': { tile: 'current', ent: { type: 'current', channel: 'C', dx: 0, dy: 1, speed: 400, strong: true } },
     v: { tile: 'current', ent: { type: 'current', channel: 'E', dx: 0, dy: 1 } },
     a: { tile: 'hole', ent: { type: 'hole', pair: 'A' } },

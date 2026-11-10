@@ -746,12 +746,16 @@ export class WorldImpl implements World {
     }
   }
 
-  /** Heroes don't block each other: soft separation (host-simulated heroes only). */
+  /**
+   * Heroes don't block each other: soft separation (host-simulated heroes only). Two humans' heroes (or two
+   * companions) share the push; a companion always yields to a human-controlled hero, which is never moved.
+   */
   private separate(): void {
     const W = this.W
     const hs = W.heroes.filter(
       (h) => !['tech', 'grip', 'down', 'fall'].includes(h.state) && h.body.z <= 0 && !h.accepted
     )
+    const ctrl = hs.map((h) => W.humans.some((q) => q.id === h.owner && q.ctrl === h.slot))
     for (let i = 0; i < hs.length; i++)
       for (let j = i + 1; j < hs.length; j++) {
         const a = hs[i].body
@@ -761,12 +765,19 @@ export class WorldImpl implements World {
         const k = ((24 - d) / d) * 0.15
         const ox = (a.x - b.x) * k
         const oy = (a.y - b.y) * k
-        const pa = W.grid!.pushOut(a.x + ox, a.y + oy, 16, false)
-        const pb = W.grid!.pushOut(b.x - ox, b.y - oy, 16, false)
-        a.x = pa.x
-        a.y = pa.y
-        b.x = pb.x
-        b.y = pb.y
+        // Shares of the push: a companion takes all of it next to a controlled hero.
+        const ka = ctrl[i] === ctrl[j] ? 1 : ctrl[i] ? 0 : 2
+        const kb = 2 - ka
+        if (ka) {
+          const pa = W.grid!.pushOut(a.x + ox * ka, a.y + oy * ka, 16, false)
+          a.x = pa.x
+          a.y = pa.y
+        }
+        if (kb) {
+          const pb = W.grid!.pushOut(b.x - ox * kb, b.y - oy * kb, 16, false)
+          b.x = pb.x
+          b.y = pb.y
+        }
       }
   }
 
