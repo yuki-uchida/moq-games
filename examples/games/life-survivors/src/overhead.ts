@@ -60,3 +60,21 @@ export const boxAbout = (x: number, y: number, half: { x: number; y: number }): 
 /** Whether two boxes overlap (touching edges do not). */
 export const boxesOverlap = (a: OverheadBox, b: OverheadBox) =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+
+/**
+ * A player's body as drawn (render.ts draws her 64 px frame about her feet, OVERHEAD.feet below her centre), relative
+ * to her centre at body size 1: the widest and tallest of her standing and walking frames over her ages (an adult's
+ * walk spans x −15..16, flipped −16..15, and reaches 37 px above her centre and 1 px below her feet).
+ */
+export const CHILD_DRAWN = { x: 16, top: -37, bottom: 17 } as const
+
+/** `drawn` (CHILD_DRAWN) for a player of body size `size` (scaled about her feet, as the renderer scales her frame). */
+export const childDrawnBox = (
+  size: number,
+  drawn: { x: number; top: number; bottom: number } = CHILD_DRAWN
+): OverheadBox => ({
+  left: -drawn.x * size,
+  top: OVERHEAD.feet + (drawn.top - OVERHEAD.feet) * size,
+  right: drawn.x * size,
+  bottom: OVERHEAD.feet + (drawn.bottom - OVERHEAD.feet) * size
+})

@@ -57,7 +57,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 18
+  v: 19
   time: number
   phase: GameState['phase']
   level: number
@@ -90,8 +90,13 @@ export const SHOT_GAMBLE = 64
 export const PET_STILL = 16
 const PET_STILL_SECONDS = 0.15
 export const GUARD_BASH_STEPS = 14
-/** Added to 過保護親's field while she walks over the ground (the renderer plays her walk). */
+/**
+ * Added to 過保護親's field while she walks over the ground (the renderer plays her walk): GUARD_WALK at a walk,
+ * GUARD_FAST fast (her walk twice as fast), both stepping back (her walk backwards, slower). Her field runs up to 255.
+ */
 export const GUARD_WALK = 32
+export const GUARD_FAST = 128
+export const GUARD_BACK = GUARD_WALK + GUARD_FAST
 /** Bits of an enemy's flags field. */
 export const ENEMY_FLAG = { elite: 1, windup: 2, blink: 4, ghost: 8 } as const
 /** Bits of a popup's third field. */
@@ -135,7 +140,13 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       (s.weapon === 'p_over'
         ? (s.v === 1 || (state.players[ownerIndex.get(s.owner) ?? -1]?.shieldRecovery ?? 0) > 0 ? 1 : 0) +
           (s.aux > 0 ? 2 * (1 + Math.round((1 - Math.min(1, s.aux / s.tick)) * GUARD_BASH_STEPS)) : 0) +
-          (s.guardianWalking ? GUARD_WALK : 0)
+          (s.guardianWalking
+            ? s.guardianPace === 'back'
+              ? GUARD_BACK
+              : s.guardianPace === 'fast'
+                ? GUARD_FAST
+                : GUARD_WALK
+            : 0)
         : r(s.v)) +
         (s.kind === 'pet'
           ? (s.petType ?? 0) * 2 + ((s.petStill ?? 0) >= PET_STILL_SECONDS && s.v !== 1 ? PET_STILL : 0)
@@ -163,7 +174,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 18,
+    v: 19,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -344,7 +355,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 18) return undefined
+  if (!record(value) || value.v !== 19) return undefined
   if (
     Object.keys(value).some(
       (key) =>
@@ -445,7 +456,12 @@ export function readView(value: unknown): View | undefined {
       return undefined
   const shots = v.shots as number[]
   for (let i = 0; i < shots.length; i += STRIDE.shots)
-    if (!WEAPONS[shots[i]] || !Number.isInteger(shots[i + 7]) || shots[i + 7] < 0 || shots[i + 7] > 127)
+    if (
+      !WEAPONS[shots[i]] ||
+      !Number.isInteger(shots[i + 7]) ||
+      shots[i + 7] < 0 ||
+      shots[i + 7] > (WEAPONS[shots[i]].id === 'p_over' ? 255 : 127)
+    )
       return undefined
   const bullets = v.bullets as number[]
   for (let i = 0; i < bullets.length; i += STRIDE.bullets) if (!BULLET_KINDS[bullets[i + 2]]) return undefined
