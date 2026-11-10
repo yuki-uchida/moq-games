@@ -326,8 +326,8 @@ export class Hud {
       }
     }
 
-    // Banners (one at a time).
-    if (now > this.bannerUntil && this.bannerQueue.length) {
+    // Banners (one at a time). They wait while the せーの countdown / GO! is on screen so the two never overlap.
+    if (now > this.bannerUntil && this.bannerQueue.length && !count) {
       const b = this.bannerQueue.shift()!
       this.banner.textContent = b.text
       this.banner.className = `banner on ${b.kind}`

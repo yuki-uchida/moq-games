@@ -375,7 +375,6 @@ function choose(W: WorldState, b: Boss, near: Hero, d: number): void {
   }
   if (W.rng.chance(0.35)) {
     setAct(W, b, 'parry', 'windup', LEON.parryTime)
-    pop(W, '構え…', b.x, b.y - 130, -1)
     sfx(W, 'guardClang', b.x, b.y)
     return
   }

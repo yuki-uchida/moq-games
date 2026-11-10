@@ -2,7 +2,7 @@
  * マモノ陣形 browser tests: title, solo play (move, attack, charge, formation technique, pushing), the pause menu,
  * and host + guests through a BroadcastChannel stand-in for CooperativeNetwork (prediction, spectators).
  */
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 
 type Hook = {
   W: {
@@ -491,6 +491,192 @@ test('host + guests: prediction, shared world and a spectator beyond four', asyn
   // Predicted locally at once, then accepted by the host.
   expect(await guestY()).toBeGreaterThan(gy0 + 40)
   await expect.poll(hostY, { timeout: 4000 }).toBeGreaterThan(hy0 + 40)
+  expect(errors).toEqual([])
+})
+
+/**
+ * Makes a page able to act like a hidden tab: `__hide(true)` reports hidden, fires blur + visibilitychange and parks
+ * requestAnimationFrame callbacks (hidden tabs get no frames); worker timers keep running as in a real hidden tab.
+ * `__hide(false)` shows it again and replays the parked frames.
+ */
+async function hideable(page: Page) {
+  await page.addInitScript(() => {
+    const raf = window.requestAnimationFrame.bind(window)
+    const parked: FrameRequestCallback[] = []
+    let hidden = false
+    Object.assign(window, {
+      __hide(on: boolean) {
+        hidden = on
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => on })
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => (on ? 'hidden' : 'visible')
+        })
+        if (on) window.dispatchEvent(new Event('blur'))
+        document.dispatchEvent(new Event('visibilitychange'))
+        if (!on) while (parked.length) raf(parked.shift()!)
+      }
+    })
+    window.requestAnimationFrame = (cb) => {
+      if (hidden) {
+        parked.push(cb)
+        return 0
+      }
+      return raf(cb)
+    }
+  })
+}
+
+const hide = (page: Page, on: boolean) =>
+  page.evaluate((on) => (window as unknown as { __hide(on: boolean): void }).__hide(on), on)
+
+/** Host + one guest in a fresh room through the BroadcastChannel stand-in; one of the two pages can be hidden. */
+async function hostAndGuest(context: BrowserContext, room: string, errors: string[], hideHost: boolean) {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  await hideable(hideHost ? host : guest)
+  for (const p of [host, guest]) {
+    watchErrors(p, errors)
+    await p.goto('/')
+  }
+  await host.getByRole('button', { name: /ルームを作る/ }).click()
+  await host.locator('.room-input:visible').fill(room)
+  await host.locator('form:visible button[type=submit]').click()
+  await expect(host.locator('.room-code')).toHaveText(room)
+  await guest.getByRole('button', { name: /ルームに参加/ }).click()
+  await guest.locator('.room-input:visible').fill(room)
+  await guest.getByRole('button', { name: '参加する' }).click()
+  await expect(guest.locator('.lobby-screen')).toBeVisible()
+  await expect(host.locator('.player')).toHaveCount(2)
+  return { host, guest }
+}
+
+/** What the guest shows: its screen, any dialog, the waiting card and the newest snapshot time. */
+const guestState = (guest: Page) =>
+  guest.evaluate(() => ({
+    screen: window.__mamono.screen,
+    dialogs: document.querySelectorAll('[role=alertdialog]').length,
+    waiting: !(document.querySelector('.host-wait') as HTMLElement | null)?.hidden,
+    t: (window.__mamono as unknown as { latest?: { t: number } }).latest?.t ?? -1
+  }))
+
+/** Hides the host for 15 s: the guest stays in the room, the world keeps advancing and no fatal dialog appears. */
+async function hideHostFor15s(host: Page, guest: Page) {
+  const before = await guestState(guest)
+  expect(before).toMatchObject({ screen: 'session', dialogs: 0, waiting: false })
+  await hide(host, true)
+  let lastT = before.t
+  let advanced = 0
+  for (let i = 0; i < 15; i++) {
+    await guest.waitForTimeout(1000)
+    const st = await guestState(guest)
+    expect(st.screen).toBe('session')
+    expect(st.dialogs).toBe(0)
+    if (st.t > lastT) advanced++
+    else expect(st.waiting).toBe(true)
+    lastT = Math.max(lastT, st.t)
+  }
+  // The worker pulse keeps the hidden host stepping and broadcasting, so the world ran the whole time.
+  expect(advanced).toBeGreaterThanOrEqual(14)
+  expect(lastT - before.t).toBeGreaterThan(13)
+  await hide(host, false)
+  await expect.poll(async () => (await guestState(guest)).t, { timeout: 5000 }).toBeGreaterThan(lastT)
+  expect(await guestState(guest)).toMatchObject({ screen: 'session', dialogs: 0, waiting: false })
+}
+
+const mySlot = (guest: Page) =>
+  guest.evaluate(() => window.__mamono.view!.players.find((p) => p.id === window.__mamono.myId)!.ctrl)
+
+const heroOnHost = (host: Page, slot: number) =>
+  host.evaluate((slot) => {
+    const b = window.__mamono.W.heroes.find((h) => h.slot === slot)!.body
+    return { x: b.x, y: b.y }
+  }, slot)
+
+test('host hidden 15 s during play: guests keep playing and never get a fatal dialog', async ({ context }) => {
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-hidden-play', errors, true)
+  await host.getByRole('button', { name: '出発！' }).click()
+  for (const p of [host, guest])
+    await expect.poll(() => p.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  await hideHostFor15s(host, guest)
+  // Play continues: the guest's walk reaches the host.
+  const slot = await mySlot(guest)
+  const y0 = (await heroOnHost(host, slot)).y
+  await guest.bringToFront()
+  await guest.keyboard.down('KeyS')
+  await guest.waitForTimeout(700)
+  await guest.keyboard.up('KeyS')
+  await expect.poll(async () => (await heroOnHost(host, slot)).y, { timeout: 4000 }).toBeGreaterThan(y0 + 40)
+  expect(errors).toEqual([])
+})
+
+test('host hidden 15 s in the lobby: guests stay in the room and the start still works', async ({ context }) => {
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-hidden-lobby', errors, true)
+  await hideHostFor15s(host, guest)
+  await expect(guest.locator('.lobby-screen')).toBeVisible()
+  await expect(host.locator('.player')).toHaveCount(2)
+  await host.getByRole('button', { name: '出発！' }).click()
+  await expect.poll(() => guest.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  expect(errors).toEqual([])
+})
+
+test('a silent host makes guests wait (no fatal dialog) and play resumes by itself', async ({ context }) => {
+  test.setTimeout(60_000)
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-quiet-host', errors, true)
+  await host.getByRole('button', { name: '出発！' }).click()
+  await expect.poll(() => guest.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  // Snapshots stop (a stalled network or a frozen tab) while the host itself carries on.
+  await host.evaluate(() => {
+    const net = (window.__mamono as unknown as { app: { session: { network: Record<string, unknown> } } }).app.session
+      .network
+    net.realBroadcast = net.broadcastSnapshot
+    net.broadcastSnapshot = async () => undefined
+  })
+  await expect(guest.locator('.host-wait')).toBeVisible({ timeout: 6000 })
+  await expect(guest.locator('.host-wait')).toContainText('ホストを待っています')
+  await expect(guest.locator('.host-wait-leave')).toBeHidden()
+  await expect(guest.locator('.net-status')).toHaveText('ホストを待っています…')
+  await guest.waitForTimeout(2000)
+  expect(await guestState(guest)).toMatchObject({ screen: 'session', dialogs: 0, waiting: true })
+  await host.evaluate(() => {
+    const net = (window.__mamono as unknown as { app: { session: { network: Record<string, unknown> } } }).app.session
+      .network
+    net.broadcastSnapshot = net.realBroadcast
+  })
+  await expect(guest.locator('.host-wait')).toBeHidden({ timeout: 5000 })
+  await expect(guest.locator('.net-status')).toHaveText('オンライン')
+  expect(await guestState(guest)).toMatchObject({ screen: 'session', dialogs: 0, waiting: false })
+  expect(errors).toEqual([])
+})
+
+test('guest hidden while holding D: its hero stops on the host within a second', async ({ context }) => {
+  test.setTimeout(60_000)
+  const errors: string[] = []
+  const { host, guest } = await hostAndGuest(context, 'mamono-hidden-guest', errors, false)
+  await host.getByRole('button', { name: '出発！' }).click()
+  for (const p of [host, guest])
+    await expect.poll(() => p.evaluate(() => window.__mamono.view?.phase), { timeout: 10000 }).toBe('play')
+  const slot = await mySlot(guest)
+  const x0 = (await heroOnHost(host, slot)).x
+  await guest.bringToFront()
+  await guest.keyboard.down('KeyD')
+  await expect.poll(async () => (await heroOnHost(host, slot)).x, { timeout: 4000 }).toBeGreaterThan(x0 + 20)
+  await hide(guest, true)
+  await host.waitForTimeout(1000)
+  const stopped = await heroOnHost(host, slot)
+  await host.waitForTimeout(1000)
+  const later = await heroOnHost(host, slot)
+  expect(Math.hypot(later.x - stopped.x, later.y - stopped.y)).toBeLessThan(2)
+  await guest.keyboard.up('KeyD')
+  await hide(guest, false)
   expect(errors).toEqual([])
 })
 

@@ -1,6 +1,6 @@
 /**
  * The attract demo behind the title: a real World on stage 1 with a scripted leader that wanders the starting
- * meadow, cuts grass, fights the rookies and now and then fires the King Slime press with its formation.
+ * meadow, cuts grass, fights the rookies and now and then fires the ジャンボ・プレス with its formation.
  */
 import { demoSession, type Session } from '../net/session'
 import type { World } from '../sim/api'

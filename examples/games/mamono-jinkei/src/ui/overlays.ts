@@ -253,3 +253,54 @@ export class PauseMenu {
     return true
   }
 }
+
+/**
+ * A guest's non-blocking "waiting for the host" card: shown while the host is quiet (hidden tab, network hiccup) and
+ * gone as soon as snapshots return. After a long wait it also offers going back to the title. Styled inline (the
+ * shared parchment and button classes) so it needs no stylesheet of its own.
+ */
+export class HostWait {
+  readonly root: HTMLElement
+  private readonly leave: HTMLButtonElement
+  private readonly note: HTMLElement
+
+  constructor(onLeave: () => void) {
+    this.note = el('p.host-wait-note', { text: 'ホストがもどると自動で再開します。' })
+    this.leave = el(
+      'button.btn.host-wait-leave',
+      { type: 'button', hidden: true, onclick: () => onLeave() },
+      'タイトルへ'
+    )
+    this.root = el(
+      'div.host-wait.parchment',
+      { role: 'status', 'aria-live': 'polite', hidden: true, 'data-menu': true },
+      el('strong.host-wait-title', { text: 'ホストを待っています…' }),
+      this.note,
+      this.leave
+    )
+    Object.assign(this.root.style, {
+      position: 'absolute',
+      left: '50%',
+      top: '22%',
+      transform: 'translateX(-50%)',
+      zIndex: '9',
+      width: 'min(22em, 88vw)',
+      padding: '0.9em 1.2em',
+      textAlign: 'center',
+      boxSizing: 'border-box'
+    })
+    this.leave.style.marginTop = '0.5em'
+  }
+
+  /** `state`: live (hidden), waiting, or long (the leave button appears). */
+  update(state: 'live' | 'waiting' | 'long') {
+    show(this.root, state !== 'live')
+    show(this.leave, state === 'long')
+    setText(
+      this.note,
+      state === 'long'
+        ? 'ホストからの通信が長くとだえています。もどってくると自動で再開します。'
+        : 'ホストがもどると自動で再開します。'
+    )
+  }
+}
