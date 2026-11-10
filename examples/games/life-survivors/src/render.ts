@@ -52,7 +52,7 @@ import {
   type FoodSpot
 } from './food-layout'
 import { parentMemorialAt } from './hud'
-import { RAID, VIEW_HALF } from './game'
+import { GUARDIAN_SHIELD_ART, RAID, VIEW_HALF } from './game'
 import { bodyScale } from './body-size'
 import { FAMILY_SCALE, FAMILY_SLOTS } from './family-slots'
 import { OBSERVATION_SPRITES, PET_TYPES, petForm, weaponAppearance } from './weapon-life'
@@ -60,6 +60,7 @@ import {
   BULLET_KINDS,
   ENEMY_FLAG,
   GUARD_BASH_STEPS,
+  GUARD_WALK,
   ITEM_KINDS,
   PET_STILL,
   POPUP_BIT,
@@ -506,12 +507,19 @@ const isGamble = (p: Particle) => p.kind === PK.gambleResult || (p.kind === PK.s
 const PET_POP_SECONDS = 0.2
 const PET_FADE_SECONDS = 0.3
 /**
- * 過保護親's dash at an enemy she bashes: only one within this cosine of the bash's way, stopping this far (px, times
- * her shield's scale) short of it, and no further than this (px).
+ * 過保護親's bash: her shield goes out this far (px, times its scale) at an enemy within this cosine of its way and
+ * within its reach (and this many px more); one further off, the ring round her child (GUARD_RING_PER_R times her
+ * shield's radius: the game's all-round reach, 0.65 × the orbit (2.9 r) plus 7 px a scale) lights up GUARD_RING_ARC
+ * radians either way of it. Walking, her walk plays this many times as fast as her standing.
  */
-const GUARD_DASH_COS = Math.cos((35 * Math.PI) / 180)
-const GUARD_DASH_SHORT = 18
-const GUARD_DASH_MOST = 160
+const GUARD_THRUST = 14
+/** The child as drawn (half-width, reach up and down from her centre): a thrust never takes the shield over her. */
+const GUARD_CHILD_BOX = { x: 11, top: -30, bottom: 16 } as const
+const GUARD_THRUST_COS = Math.cos((50 * Math.PI) / 180)
+const GUARD_STRIKE_SLACK = 16
+const GUARD_RING_PER_R = 0.65 * 2.9 + 7 / 20
+const GUARD_RING_ARC = 0.45
+const GUARD_WALK_RATE = 1
 /** How long a food label takes to fade back in once no player covers it (s). */
 const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
@@ -2224,9 +2232,11 @@ export class Renderer {
   }
 
   /**
-   * 過保護親 and her shield, which thrusts along the bash and fades while spent. Bashing an enemy further off than her
-   * shield reaches (a standing child's parents guard all round her), she dashes over to it and back. The gamble's copy
-   * of her pops in (swelling, in a puff and sparkles) and leaves in a puff, as a pet does.
+   * 過保護親 and her shield, which thrusts (GUARD_THRUST px) at an enemy in front of her as she bashes and fades while
+   * spent; walking over the ground (GUARD_WALK) she plays her walk. Bashing an enemy off her shield's reach (a standing
+   * child's parents guard all round her), she stays put: the ring round the child that her bash reaches lights up
+   * towards the enemy, with a sparkle where it strikes. The gamble's copy of her pops in (swelling, in a puff and
+   * sparkles) and leaves in a puff, as a pet does.
    */
   private guardian(view: View, sh: ShotView, x: number, y: number) {
     const art = sheet('weapon:p_over')
@@ -2235,23 +2245,44 @@ export class Renderer {
     const time = this.clock + sh.i * 0.1
     const flip = cos < 0
     const scale = sh.r / 20
-    const progress = Math.floor(sh.v / 2)
+    const walking = (sh.v & GUARD_WALK) !== 0
+    const progress = Math.floor((sh.v % GUARD_WALK) / 2)
     const swing = progress ? Math.sin((Math.PI * (progress - 1)) / GUARD_BASH_STEPS) : 0
-    let dash = 0
+    let thrust = 0
     if (swing > 0) {
-      // The nearest enemy ahead of her along the bash.
+      // Her shield goes out at an enemy in front of her within its reach; one further off, the ring strikes.
+      const reach = (GUARDIAN_SHIELD_ART.far + GUARD_THRUST) * scale + GUARD_STRIKE_SLACK
+      let ahead = false
       let nearest = Infinity
+      let hitX = 0
+      let hitY = 0
       const enemies = view.enemies
       for (let k = 0; k < enemies.length; k += STRIDE.enemies) {
         const dx = enemies[k + 2] - x
         const dy = enemies[k + 3] - y
         const d = Math.hypot(dx, dy)
-        if (d < nearest && dx * cos + dy * sin >= d * GUARD_DASH_COS) nearest = d
+        if (d <= reach && dx * cos + dy * sin >= d * GUARD_THRUST_COS) ahead = true
+        const fromChild = Math.hypot(enemies[k + 2] - sh.ox, enemies[k + 3] - sh.oy)
+        if (fromChild < nearest) {
+          nearest = fromChild
+          hitX = enemies[k + 2]
+          hitY = enemies[k + 3]
+        }
       }
-      if (nearest < Infinity) dash = Math.min(GUARD_DASH_MOST, Math.max(0, nearest - GUARD_DASH_SHORT * scale)) * swing
+      // (Not over the child, though: her body as drawn, GUARD_CHILD_BOX about her.)
+      const tx = x + cos * swing * GUARD_THRUST
+      const ty = y + sin * swing * GUARD_THRUST
+      const left = tx + (flip ? -GUARDIAN_SHIELD_ART.far : GUARDIAN_SHIELD_ART.near) * scale
+      const right = tx + (flip ? -GUARDIAN_SHIELD_ART.near : GUARDIAN_SHIELD_ART.far) * scale
+      const box = GUARD_CHILD_BOX
+      const onChild =
+        Math.min(right, sh.ox + box.x) - Math.max(left, sh.ox - box.x) >= 4 &&
+        Math.min(ty + GUARDIAN_SHIELD_ART.bottom * scale, sh.oy + box.bottom) -
+          Math.max(ty + GUARDIAN_SHIELD_ART.top * scale, sh.oy + box.top) >=
+          4
+      if (ahead && !onChild) thrust = swing * GUARD_THRUST
+      else if (nearest < Infinity) this.guardRing(sh, hitX, hitY, swing)
     }
-    const bodyX = x + cos * dash
-    const bodyY = y + sin * dash
     let alpha = Math.min(1, sh.life * 4)
     let swell = 1
     let puff = -1
@@ -2265,12 +2296,13 @@ export class Renderer {
       puff = pop < 1 ? pop : fade > 0 ? fade : -1
       popping = pop < 1
     }
-    this.centred(pick(art.fly, time), bodyX, bodyY, sh.evolved, alpha, swell, flip)
-    const thrust = swing * 14
+    // (Her walk, while there is one in her sheet; her stepping in place until then.)
+    const body = walking ? pick(art.walk ?? art.fly, time * GUARD_WALK_RATE) : pick(art.fly, time)
+    this.centred(body, x, y, sh.evolved, alpha, swell, flip)
     this.centred(
       pick(art.guard, time),
-      bodyX + cos * thrust * swell,
-      bodyY + sin * thrust * swell,
+      x + cos * thrust * swell,
+      y + sin * thrust * swell,
       sh.evolved,
       alpha * (sh.v % 2 ? 0.45 : 1),
       scale * swell,
@@ -2283,6 +2315,38 @@ export class Renderer {
       this.art(pick(fx.spark, this.clock * 6), x - 11, y - 12, 6, 6, false, shown)
       this.art(pick(fx.spark, this.clock * 6 + 2), x + 12, y - 7, 6, 6, false, shown)
     }
+  }
+
+  /**
+   * The ring round 過保護親 `sh`'s child that her all-round bash reaches (the game's reach about the child, from the
+   * shield's size), lit `swing` (0..1) along an arc towards the enemy at (`hitX`, `hitY`), with a sparkle where it
+   * strikes. Drawn in the characters' pass, under the name tags and badges.
+   */
+  private guardRing(sh: ShotView, hitX: number, hitY: number, swing: number) {
+    const radius = sh.r * GUARD_RING_PER_R
+    const cx = sh.ox
+    const cy = sh.oy
+    const toward = Math.atan2(hitY - cy, hitX - cx)
+    const ctx = this.ctx
+    this.world()
+    ctx.save()
+    ctx.globalAlpha = 0.85 * swing
+    ctx.strokeStyle = '#bfe3ff'
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, toward - GUARD_RING_ARC, toward + GUARD_RING_ARC)
+    ctx.stroke()
+    ctx.globalAlpha = 0.35 * swing
+    ctx.lineWidth = 6
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, toward - GUARD_RING_ARC * 0.6, toward + GUARD_RING_ARC * 0.6)
+    ctx.stroke()
+    ctx.restore()
+    const fx = sheet('fx')
+    const sx = cx + Math.cos(toward) * radius
+    const sy = cy + Math.sin(toward) * radius
+    this.art(pick(fx.spark, this.clock * 8 + sh.i), sx, sy, 6, 6, false, swing, 1.3)
   }
 
   private isPlane(view: View, def: (typeof WEAPONS)[number]) {

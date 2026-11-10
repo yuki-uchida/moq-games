@@ -1591,7 +1591,8 @@ test('overprotective parents swing and fade their shields for local and co-op vi
     const view = structuredClone(life.view) as unknown as View
     const player = view.players[0]
     view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 100 })
-    view.enemies = []
+    // An enemy right in front of the guest's parent, which her shield thrusts out at.
+    view.enemies = [1, 0, player.x + 70, player.y + 20, 100, 0, 0]
     const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
     view.shots = [
       guardian,
