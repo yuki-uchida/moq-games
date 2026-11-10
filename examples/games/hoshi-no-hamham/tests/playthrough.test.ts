@@ -70,6 +70,23 @@ function botInput(world: World, memory: { x: number; stuck: number; reverse: num
   const wallAhead = world.solidAt(aheadTx, footTy) || world.solidAt(aheadTx, footTy - 1)
   const belowTy = Math.floor((p.y + p.h + 16) / TILE)
   const pitAhead = !world.solidAt(aheadTx, belowTy) && !world.waterAt(aheadTx, belowTy)
+  // A pit too wide to jump: fell a nearby tree so its trunk bridges the gap.
+  if (pitAhead && p.onGround) {
+    const tree = world.props.find(
+      (prop) =>
+        (prop.kind === 'tree' || prop.kind === 'pine') &&
+        prop.state === 'idle' &&
+        prop.x > p.x - 60 &&
+        prop.x < p.x + 340 &&
+        Math.abs(prop.y - p.y) < 110
+    )
+    if (tree) {
+      input.bite = true
+      input.bitePressed = true
+      input[moveDir > 0 ? 'right' : 'left'] = true
+      return input
+    }
+  }
   if ((wallAhead || pitAhead) && p.onGround) {
     input.jumpPressed = true
   }
@@ -124,6 +141,33 @@ describe('stage traversability', () => {
         )
       }
       expect(world.state).toBe('clear')
+    })
+  }
+})
+
+describe('biting is required', () => {
+  /** The same bot with biting disabled: it may still jump and walk, but never use a gimmick. */
+  function playWithoutBiting(stageId: string, seed = 11) {
+    const stage = STAGES.find((entry) => entry.id === stageId)!
+    const world = new World(stage, { seed })
+    for (const enemy of world.enemies) enemy.dead = true
+    if (world.boss) world.boss.dead = true
+    world.goalOpen = true
+    const memory = { x: world.player.x, stuck: 0, reverse: 0 }
+    let frames = 0
+    while (frames++ < 60 * 120 && world.state === 'play') {
+      const input = botInput(world, memory)
+      input.bite = false
+      input.bitePressed = false
+      world.step(1 / 60, input)
+    }
+    return world
+  }
+
+  for (const stageId of ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-7', 'stage-9', 'stage-10']) {
+    it(`${stageId} cannot be cleared without biting`, () => {
+      const world = playWithoutBiting(stageId)
+      expect(world.state, `${stageId} was cleared without a single bite`).not.toBe('clear')
     })
   }
 })

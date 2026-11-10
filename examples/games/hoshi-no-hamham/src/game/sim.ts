@@ -949,6 +949,14 @@ export class World {
         this.burst(px, py, 8, '#ffd45e', 130, 0.4)
         break
       }
+      case 'princess':
+        if (prop.data === 1) {
+          prop.data = 0
+          this.events.push({ type: 'switch', x: px, y: py })
+          this.burst(px, py, 14, '#ffd45e', 180, 0.6)
+          this.floaters.push({ x: px, y: py - 20, text: 'ハム姫を救出！', life: 1.8, color: '#ffd45e' })
+        }
+        break
       case 'fruit':
       case 'twig':
       case 'berry':
@@ -1220,7 +1228,7 @@ export class World {
       this.updateBruteBoss(boss, dt, dir, distance)
     }
 
-    boss.vy = Math.min(MAX_FALL, boss.vy + GRAVITY * dt)
+    if (boss.def.kind !== 'flyer') boss.vy = Math.min(MAX_FALL, boss.vy + GRAVITY * dt)
     const move = this.moveBody(boss, dt)
     boss.onGround = move.grounded
     if (move.hitWall && boss.state === 'charge') {
@@ -1244,6 +1252,12 @@ export class World {
       boss.vx *= 0.9
       return
     }
+    if (boss.state === 'stunned') {
+      // Wedged into a tree or a rock: she has to smash through, which buys the player time.
+      boss.vx *= 0.6
+      if (boss.stateTime > 0.9) this.setBossState(boss, 'idle')
+      return
+    }
     boss.stamina -= dt * 4
     if (boss.stamina <= 0) {
       boss.stamina = 0
@@ -1262,12 +1276,13 @@ export class World {
       if (this.solidAt(aheadTx, footTy)) boss.vy = -560
       if (this.solidAt(aheadTx, footTy - 1)) boss.vy = -620
     }
-    // smash through props
+    // smash through props (this takes a moment, which is exactly what the player needs)
     for (const prop of this.props) {
       if (prop.state !== 'idle') continue
       if (!this.overlaps(boss, propRect(prop))) continue
       if (prop.kind === 'tree' || prop.kind === 'pine' || prop.kind === 'rock') {
         this.biteProp(prop, dir)
+        this.setBossState(boss, 'stunned')
       }
     }
     // dig through dirt
@@ -1643,6 +1658,14 @@ export class World {
     this.floaters.push({ x: boss.x + boss.w / 2, y: boss.y, text: 'ボス撃破！', life: 1.6, color: '#ffd45e' })
     this.events.push({ type: 'boss-down', x: boss.x, y: boss.y })
     if (this.stage.objective === 'boss' || this.stage.objective === 'collect') this.goalOpen = true
+    // Free every caged princess once her captor is down.
+    for (const prop of this.props) {
+      if (prop.kind === 'princess' && prop.data === 1) {
+        prop.data = 0
+        this.burst(prop.x + 32, prop.y + 32, 16, '#ffd45e', 200, 0.7)
+        this.floaters.push({ x: prop.x + 32, y: prop.y, text: 'ハム姫を救出！', life: 1.8, color: '#ffd45e' })
+      }
+    }
   }
 
   // ------------------------------------------------------------------ props
@@ -1692,7 +1715,7 @@ export class World {
     prop.state = 'fallen'
     const baseTx = Math.floor((prop.x + TILE / 2) / TILE)
     const baseTy = Math.floor((prop.y + TILE) / TILE) - 1
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const tx = baseTx + prop.dir * i
       for (let j = 0; j < 2; j++) {
         const ty = baseTy + j
@@ -1716,8 +1739,8 @@ export class World {
     this.burst(cx, cy + 40, 14, '#c98b4b', 220, 0.6)
     if (this.rng.next() > 0.35) this.dropMaterial(prop.x * 1, prop.y)
     // Never leave the player buried under the fallen trunk: slide them out to the nearer side.
-    const startTx = Math.min(baseTx, baseTx + prop.dir * 2)
-    const endTx = Math.max(baseTx, baseTx + prop.dir * 2)
+    const startTx = Math.min(baseTx, baseTx + prop.dir * 3)
+    const endTx = Math.max(baseTx, baseTx + prop.dir * 3)
     const logRect: Rect = { x: startTx * TILE, y: baseTy * TILE, w: (endTx - startTx + 1) * TILE, h: 2 * TILE }
     if (this.overlaps(this.player, logRect)) {
       const leftDist = this.player.x + this.player.w - logRect.x
