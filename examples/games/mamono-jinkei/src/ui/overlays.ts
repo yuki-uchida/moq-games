@@ -1,7 +1,7 @@
 /** Phase overlays (intro card, wipe, results, ending) and the pause menu. */
 import type { StageResults, View } from '../sim/types'
 import { JOBS, JOB_COLORS, JOB_NAMES, SPECIES, SPECIES_NAMES, STAGES, STAGE_NAMES, STAGE_SPECIES } from '../vocab'
-import { clearChildren, clock, el, focusables, icon, menuKeys, setText, show } from './dom'
+import { clearChildren, clock, el, focusables, icon, menuKeys, scrollArea, setText, show } from './dom'
 import { EndingScene } from './ending'
 import { howToPlay, settingsForm, type SettingsHandlers } from './panels'
 
@@ -213,7 +213,7 @@ export class PauseMenu {
       'div.pause-howto',
       { 'data-menu': true, hidden: true },
       el('h2', { text: '遊び方' }),
-      howToPlay(),
+      scrollArea(howToPlay()),
       el('button.btn.back', { type: 'button', onclick: () => this.view('main', true) }, '← もどる')
     )
     menuKeys(this.main, () => a.sound('menuMove'))

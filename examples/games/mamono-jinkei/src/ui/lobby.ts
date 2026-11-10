@@ -12,7 +12,7 @@ import {
   type StageId
 } from '../vocab'
 import { iconUrl } from '../render/sprites'
-import { clearChildren, el, icon, menuKeys, setText, show } from './dom'
+import { clearChildren, el, icon, menuKeys, scrollArea, setText, show } from './dom'
 
 export interface LobbyActions {
   pickJob(job: Job): void
@@ -131,17 +131,20 @@ export class LobbyScreen {
         'div.lobby-card.parchment',
         { 'data-menu': true },
         el('header.lobby-head', {}, this.heading, this.roomBox),
-        el(
-          'div.lobby-cols',
-          {},
-          el('section.lobby-col', {}, el('h3', { text: 'あなたのマモノをえらぶ' }), this.jobs, this.note),
+        scrollArea(
           el(
-            'section.lobby-col.side',
+            'div.lobby-cols',
             {},
-            el('div.players-block', {}, el('h3', { text: 'なかま' }), this.players),
-            el('h3', { text: 'ステージ' }),
-            this.stages
-          )
+            el('section.lobby-col', {}, el('h3', { text: 'あなたのマモノをえらぶ' }), this.jobs, this.note),
+            el(
+              'section.lobby-col.side',
+              {},
+              el('div.players-block', {}, el('h3', { text: 'なかま' }), this.players),
+              el('h3', { text: 'ステージ' }),
+              this.stages
+            )
+          ),
+          'lobby-scroll'
         ),
         el('footer.lobby-foot', {}, back, this.waiting, this.start)
       )
