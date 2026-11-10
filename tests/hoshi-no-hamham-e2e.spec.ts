@@ -82,3 +82,35 @@ test('pause and mute controls respond', async ({ page }) => {
   await expect(page.locator('#mute')).toHaveText('🔇')
   expect(errors).toEqual([])
 })
+
+test('the ending pages through to the credits', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('hoshi-no-hamham-v1')
+    const save = raw
+      ? JSON.parse(raw)
+      : { version: 1, cleared: [], unlocked: 10, best: {}, muted: true, seenOpening: false }
+    save.cleared = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    save.unlocked = 10
+    localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
+  })
+  await page.reload()
+  await page.waitForTimeout(400)
+  await page.evaluate(() => (window as unknown as { __hamham: { openEnding(): void } }).__hamham.openEnding())
+  await expect(page.locator('#ending-screen')).toBeVisible()
+  const pages: string[] = []
+  for (let i = 0; i < 10; i++) {
+    await expect(page.locator('#ending-pages p')).toBeVisible()
+    pages.push((await page.locator('#ending-pages p').textContent()) ?? '')
+    const next = page.locator('#ending-next')
+    if (!(await next.isVisible())) break
+    await next.click()
+  }
+  expect(pages.length).toBeGreaterThan(3)
+  expect(pages.join('')).toContain('おしまい')
+  await expect(page.locator('#ending-stats')).toBeVisible()
+  await expect(page.locator('#ending-select')).toBeVisible()
+  expect(errors).toEqual([])
+})
