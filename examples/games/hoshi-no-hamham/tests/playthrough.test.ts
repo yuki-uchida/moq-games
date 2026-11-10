@@ -164,7 +164,7 @@ describe('biting is required', () => {
     return world
   }
 
-  for (const stageId of ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-7', 'stage-9', 'stage-10']) {
+  for (const stageId of ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-7', 'stage-8', 'stage-9', 'stage-10']) {
     it(`${stageId} cannot be cleared without biting`, () => {
       const world = playWithoutBiting(stageId)
       expect(world.state, `${stageId} was cleared without a single bite`).not.toBe('clear')
