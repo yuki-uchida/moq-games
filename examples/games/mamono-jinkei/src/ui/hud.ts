@@ -230,6 +230,8 @@ export class Hud {
   /** Events that become HUD texts. */
   event(e: EventView) {
     // Technique names shout with an exclamation mark.
+    // The wipe overlay already shows 全滅…, so the banner is not repeated.
+    if (e.k === 'banner' && e.s === '全滅…') return
     if (e.k === 'banner' && e.s) this.queueBanner(TECH_TITLES.has(e.s) ? `${e.s}！` : e.s, 'big')
     else if (e.k === 'solve' && e.s) this.queueBanner(e.s, 'solve')
     else if (e.k === 'notice' && e.s) this.notice(e.s)
@@ -398,7 +400,8 @@ export class Hud {
   }
 
   private updateDialog(view: View, now: number, ref: HeroView | undefined) {
-    let d: View['dialogs'][number] | undefined = view.dialogs[0]
+    // Dialogs only live during play: a wipe, the intro, the results and the ending close them.
+    let d: View['dialogs'][number] | undefined = view.phase === 'play' ? view.dialogs[0] : undefined
     // Walking away from the speaker closes the dialog page (a new page re-checks the distance).
     const id = d ? `${d.speaker}@${d.x},${d.y}|${d.text}` : ''
     if (!d) this.dialogClosed = ''

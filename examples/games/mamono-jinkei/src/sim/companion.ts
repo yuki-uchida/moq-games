@@ -3,7 +3,7 @@
  * catch-up puff) and stay (hold position, defend, act on the せーの GO).
  */
 import { TILE } from '../vocab'
-import { angleDiff, dist, fx, heroBy, sfx, tileOf, warpHero, freeSpotNear } from './core'
+import { angleDiff, dist, fx, heroBy, roomOf, sfx, tileOf, warpHero, freeSpotNear } from './core'
 import { tileCentre } from './stage-data'
 import { FLY_STEP, HOLE_STEP, inRoom } from './grid'
 
@@ -12,7 +12,7 @@ const stepTile = (p: number) => (p <= FLY_STEP ? FLY_STEP - p : p <= HOLE_STEP ?
 import type { Hero, Human, Intent, WorldState } from './state'
 import type { Telegraph } from './types'
 import { NO_INTENT } from './state'
-import { JOB_STATS } from './tables'
+import { DOWN, JOB_STATS } from './tables'
 
 const SPOTS: [number, number][] = [
   [-36, -32],
@@ -126,6 +126,21 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
     if (esc) {
       it.mx = esc[0]
       it.my = esc[1]
+      // Regrouping for the owner's charge: leave the marker on the owner's side (sideways when it lies beyond).
+      const lead = human?.mode === 'follow' ? heroBy(W, human.ctrl) : undefined
+      if (lead && lead !== h && lead.holdAt >= 0 && lead.intent.held) {
+        const d = dist(lead.body.x, lead.body.y, h.body.x, h.body.y) || 1
+        const ox = (lead.body.x - h.body.x) / d
+        const oy = (lead.body.y - h.body.y) / d
+        const side = -esc[1] * ox + esc[0] * oy >= 0 ? 1 : -1
+        let vx = esc[0] + ox
+        let vy = esc[1] + oy
+        if (vx * esc[0] + vy * esc[1] < 0.3) (vx = esc[0] * 0.3 - esc[1] * side), (vy = esc[1] * 0.3 + esc[0] * side)
+        const n = Math.hypot(vx, vy) || 1
+        it.mx = vx / n
+        it.my = vy / n
+        if (!(lead.form >= 0 && h.form === lead.form)) h.ai.boost = 2
+      }
       return it
     }
   }
@@ -179,15 +194,24 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
     it.my = owner.intent.my
     return it
   }
+  // The owner is charging and this companion is out of its formation: regroup so the technique can go off (a revive
+  // under way comes first). Companions already in the formation carry on as usual.
+  const rally =
+    owner.holdAt >= 0 &&
+    owner.intent.held &&
+    owner.hold === undefined &&
+    h.hold === undefined &&
+    !(owner.form >= 0 && h.form === owner.form)
   // Revive a downed ally nearby when no enemy threatens.
   const downed = W.heroes.find((m) => m.state === 'down' && dist(m.body.x, m.body.y, h.body.x, h.body.y) < 6 * TILE)
-  if (downed && !nearestEnemy(W, h, 3 * TILE)) {
+  const reviving = !!downed && dist(downed.body.x, downed.body.y, h.body.x, h.body.y) <= DOWN.reviveDist + 8
+  if (downed && (!rally || reviving) && !nearestEnemy(W, h, 3 * TILE)) {
     if (dist(downed.body.x, downed.body.y, h.body.x, h.body.y) > 20) steer(W, h, downed.body.x, downed.body.y, it)
     return it
   }
-  // Self-defence when the owner is idle.
+  // Self-defence when the owner is idle (not while regrouping for a charge).
   const ownerIdle = Math.hypot(owner.intent.mx, owner.intent.my) < 0.1
-  if (ownerIdle && h.hold === undefined) {
+  if (ownerIdle && h.hold === undefined && !rally) {
     const foe = nearestEnemy(W, h, 2 * TILE + (h.job === 'mage' || h.job === 'archer' ? 3 * TILE : 0))
     if (foe) {
       it.aim = Math.atan2(foe.y - h.body.y, foe.x - h.body.x)
@@ -196,19 +220,18 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
       return it
     }
   }
-  // Formation spot behind the owner.
+  // Formation spot behind the owner (tile spots around it where the open-room spots do not fit).
   const comps = companionsOf(W, owner.owner)
     .filter((c) => c !== owner)
     .sort((a, b) => a.slot - b.slot)
-  const i = Math.max(0, comps.indexOf(h)) % SPOTS.length
-  const f = owner.body.facing
-  const [bx, by] = SPOTS[i]
-  const sx = owner.body.x + Math.cos(f) * bx - Math.sin(f) * by
-  const sy = owner.body.y + Math.sin(f) * bx + Math.cos(f) * by
   const dOwner = dist(owner.body.x, owner.body.y, h.body.x, h.body.y)
-  // Catch-up puff when far (or stuck) and the owner is reachable.
-  const moved = dist(h.ai.lastX, h.ai.lastY, h.body.x, h.body.y)
-  if (moved > 24 || dOwner < 2 * TILE) {
+  // Regrouping from afar for a charge: the nearest way into the formation (just inside its reach, on this side).
+  const { x: sx, y: sy } =
+    rally && dOwner > 2 * TILE ? rallySpot(W, owner, h, comps.indexOf(h)) : followSpot(W, owner, comps, h)
+  // Catch-up puff when far, or stuck (no headway toward the spot for 3 s) and the owner is reachable on foot (or the
+  // companion is cut off in the owner's room, e.g. left on a ledge the owner bounced off).
+  const headway = dist(h.ai.lastX, h.ai.lastY, sx, sy) - dist(h.body.x, h.body.y, sx, sy)
+  if (headway > 24 || dOwner < 2 * TILE || dist(sx, sy, h.body.x, h.body.y) < 30) {
     h.ai.stuckT = 0
     h.ai.lastX = h.body.x
     h.ai.lastY = h.body.y
@@ -225,8 +248,11 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
       W.species === 'rat',
       W.species === 'crow'
     )
-    if (reachable || dOwner > 12 * TILE) {
-      if (reachable) {
+    const ownerRoom = roomOf(W, owner.body.x, owner.body.y)
+    const cutOff =
+      !reachable && h.ai.stuckT > 3 && ownerRoom !== undefined && roomOf(W, h.body.x, h.body.y)?.id === ownerRoom.id
+    if (reachable || cutOff || dOwner > 12 * TILE) {
+      if (reachable || cutOff) {
         const spot = g.overlaps(sx, sy, 16, false) ? freeSpotNear(W, owner.body.x, owner.body.y, 2) : { x: sx, y: sy }
         fx(W, 'smoke', h.body.x, h.body.y)
         warpHero(h, spot.x, spot.y)
@@ -242,15 +268,143 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
   }
   const dSpot = dist(sx, sy, h.body.x, h.body.y)
   h.ai.boost = dSpot > 90 ? 1.45 : dSpot > 30 ? 1.25 : 1
-  if (dSpot > 14) {
-    // Aim the spot at the owner when the spot itself is inside a wall.
-    const g = W.grid!
-    const tx = g.overlaps(sx, sy, 15, false) ? owner.body.x : sx
-    const ty = g.overlaps(sx, sy, 15, false) ? owner.body.y : sy
-    if (dist(tx, ty, h.body.x, h.body.y) > (tx === sx ? 14 : 40)) steer(W, h, tx, ty, it)
+  if (rally) {
+    // Run back first: no swings and no slow echoed charge on the way.
+    it.press = false
+    it.held = false
+    h.ai.boost = 2
   }
+  if (dSpot > 14) steer(W, h, sx, sy, it)
   if (Math.hypot(it.mx, it.my) < 0.1 && !it.press) it.aim = owner.aim
   return it
+}
+
+/** Where a far companion heads while the owner charges: 60 px from the owner toward it (spread a little). */
+function rallySpot(W: WorldState, owner: Hero, h: Hero, i: number): { x: number; y: number } {
+  const a = Math.atan2(h.body.y - owner.body.y, h.body.x - owner.body.x) + (i - 1) * 0.5
+  const x = owner.body.x + Math.cos(a) * 60
+  const y = owner.body.y + Math.sin(a) * 60
+  return W.grid!.overlaps(x, y, 15, false) ? holdBack(owner, h) : { x, y }
+}
+
+/** A point 48 px from the owner on the companion's side (it stops there instead of walking into the owner). */
+function holdBack(owner: Hero, h: Hero): { x: number; y: number } {
+  const d = dist(owner.body.x, owner.body.y, h.body.x, h.body.y)
+  if (d <= 48) return { x: h.body.x, y: h.body.y }
+  return {
+    x: owner.body.x + ((h.body.x - owner.body.x) / d) * 48,
+    y: owner.body.y + ((h.body.y - owner.body.y) / d) * 48
+  }
+}
+
+/** The open-room formation spot of the i-th following companion (rotated with the owner's facing). */
+function openSpot(owner: Hero, i: number): { x: number; y: number } {
+  const f = owner.body.facing
+  const [bx, by] = SPOTS[i % SPOTS.length]
+  return {
+    x: owner.body.x + Math.cos(f) * bx - Math.sin(f) * by,
+    y: owner.body.y + Math.sin(f) * bx + Math.cos(f) * by
+  }
+}
+
+/**
+ * Where a following companion stands. In the open: its spot of the formation behind the owner. Where two of those
+ * spots are in a wall or out of the owner's sight (corridors, bridges, doorways), the companions near the owner
+ * instead share the free tiles nearest to it (walking distance), each keeping to its own side so that nobody walks
+ * through (and shoves) the owner. Pure in the positions, so every companion of the owner computes the same
+ * assignment.
+ */
+export function followSpot(W: WorldState, owner: Hero, comps: readonly Hero[], h: Hero): { x: number; y: number } {
+  const g = W.grid!
+  const i = Math.max(0, comps.indexOf(h))
+  const open = openSpot(owner, i)
+  const n = Math.min(comps.length, SPOTS.length)
+  let blocked = 0
+  for (let k = 0; k < n; k++) {
+    const s = openSpot(owner, k)
+    if (g.overlaps(s.x, s.y, 15, false) || !g.lineClear(owner.body.x, owner.body.y, s.x, s.y, 15)) blocked++
+  }
+  // One spot against a wall is fine (that companion just stays clear of the owner); two or more: narrow ground.
+  if (blocked < Math.min(2, n)) return g.overlaps(open.x, open.y, 15, false) ? holdBack(owner, h) : open
+  // Breadth-first over free tiles around the owner (4-neighbour); each tile remembers its first step (its side).
+  const ox = tileOf(owner.body.x)
+  const oy = tileOf(owner.body.y)
+  if (!g.free(ox, oy)) return open
+  const start = g.idx(ox, oy)
+  const depth = new Map<number, number>([[start, 0]])
+  const side = new Map<number, number>([[start, -1]])
+  const tiles: number[] = []
+  const queue = [start]
+  const DIRS: [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ]
+  while (queue.length) {
+    const cur = queue.shift()!
+    const d = depth.get(cur)!
+    if (d >= 4) continue
+    const cx = cur % g.w
+    const cy = Math.floor(cur / g.w)
+    for (const [dx, dy] of DIRS) {
+      const nx = cx + dx
+      const ny = cy + dy
+      if (!g.free(nx, ny)) continue
+      const ni = g.idx(nx, ny)
+      if (depth.has(ni)) continue
+      depth.set(ni, d + 1)
+      side.set(ni, cur === start ? ni : side.get(cur)!)
+      queue.push(ni)
+      // Never park on a current or a bounce pad.
+      if (!g.flowX[ni] && !g.flowY[ni] && !g.bounce[ni]) tiles.push(ni)
+    }
+  }
+  const centre = (t: number) => ({ x: tileCentre(t % g.w), y: tileCentre(Math.floor(t / g.w)) })
+  const tileHere = (c: Hero) => g.idx(tileOf(c.body.x), tileOf(c.body.y))
+  // A companion outside this neighbourhood (far behind, or cut off) first walks up to the owner as in the open.
+  if (!depth.has(tileHere(h)) || !tiles.length) return g.overlaps(open.x, open.y, 15, false) ? holdBack(owner, h) : open
+  const near = comps.filter((c) => depth.has(tileHere(c)))
+  // A companion's side: that of its tile (on the owner's tile: of the nearest tile around).
+  const sideOf = (c: Hero) => {
+    const own = side.get(tileHere(c))!
+    if (own >= 0) return own
+    let best = -1
+    let bd = Infinity
+    for (const t of tiles) {
+      const p = centre(t)
+      const d = dist(p.x, p.y, c.body.x, c.body.y)
+      if (d < bd) (bd = d), (best = side.get(t)!)
+    }
+    return best
+  }
+  const fx0 = Math.cos(owner.body.facing)
+  const fy0 = Math.sin(owner.body.facing)
+  const pairs: { c: number; t: number; cost: number }[] = []
+  const sides = near.map(sideOf)
+  near.forEach((c, ci) => {
+    for (const t of tiles) {
+      const p = centre(t)
+      const ahead = (p.x - owner.body.x) * fx0 + (p.y - owner.body.y) * fy0 > 8 ? 12 : 0
+      const cost =
+        depth.get(t)! * TILE +
+        dist(p.x, p.y, c.body.x, c.body.y) * 0.25 +
+        (side.get(t) !== sides[ci] ? 3 * TILE : 0) +
+        ahead +
+        ci * 0.01
+      pairs.push({ c: ci, t, cost })
+    }
+  })
+  pairs.sort((a, b) => a.cost - b.cost || a.c - b.c || a.t - b.t)
+  const doneC = new Set<number>()
+  const doneT = new Set<number>()
+  for (const p of pairs) {
+    if (doneC.has(p.c) || doneT.has(p.t)) continue
+    doneC.add(p.c)
+    doneT.add(p.t)
+    if (near[p.c] === h) return centre(p.t)
+  }
+  return open
 }
 
 /**

@@ -16,13 +16,23 @@ const finale = m4(
   'o5 d4. d8 f4 a4 | o5 b-4. b-8 g4 f4 | o5 c4. c8 e4 g4 | o5 a4 g4 e4 c+4 | o5 d4. d8 f4 a4 | o5 b-2 g4 f4 | o5 c+4 e4 g4 a4 | o5 a1'
 )
 const OST = 'rrRrrRrrrrRrrRfr'
+/** Layer 2 brass counter-melody in chord tones (quarter notes; chord tones on every beat). */
+const counterA = m4(
+  'o5 d4 f4 a4 f4 | o5 f4 a4 f4 g4 | o5 b-4 g4 e4 g4 | o5 a4 f4 a4 d4 | o5 a4 f4 d4 f4 | o5 d4 f4 b-4 f4 | o5 b-4 g4 a4 e4 | o5 f2 a2'
+)
+const counterD = m4(
+  'o5 d4 f4 a4 f4 | o5 d4 f4 b-4 f4 | o5 e4 g4 o6 c4 o5 g4 | o5 c+4 e4 a4 e4 | o5 a4 f4 d4 f4 | o5 b-4 f4 d4 f4 | o5 c+4 e4 g4 e4 | o5 a4 g4 e4 c+4'
+)
+/** A timpani roll (16ths) in the given 0-based bars of an 8-bar section. */
+const roll = (bars: number[]): string =>
+  Array.from({ length: 8 }, (_, i) => (bars.includes(i) ? 'rrrrrrrrrrrrrrrr' : '................')).join('|')
 
 export const BOSS: SongDef = {
   name: 'boss',
   key: 'D minor',
   bpm: 160,
   barTicks: 48,
-  gain: 0.83,
+  gain: 0.76,
   parts: [
     {
       id: 'ost',
@@ -52,6 +62,48 @@ export const BOSS: SongDef = {
       gate: 0.5,
       layer: 2
     },
+    {
+      id: 'brs',
+      inst: 'brass',
+      role: 'chord',
+      vol: 0.95,
+      pan: 0.15,
+      send: 0.3,
+      center: 64,
+      vel: 0.85,
+      gate: 0.5,
+      layer: 2
+    },
+    { id: 'cm', inst: 'brass', role: 'melody', vol: 0.9, pan: 0.4, send: 0.3, layer: 2 },
+    {
+      id: 'ost2',
+      inst: 'strings',
+      role: 'bass',
+      vol: 0.9,
+      pan: -0.15,
+      send: 0.25,
+      chorus: 0.4,
+      center: 50,
+      vel: 0.6,
+      gate: 0.99,
+      layer: 2
+    },
+    { id: 'tim2', inst: 'timpani', role: 'bass', vol: 0.6, center: 38, vel: 0.75, send: 0.25, layer: 2 },
+    { id: 'tk2', inst: 'kit', role: 'drum', vol: 0.5, vel: 0.75, pan: 0.1, layer: 2 },
+    { id: 'hat2', inst: 'kit', role: 'drum', vol: 0.4, vel: 0.55, pan: 0.2, layer: 2 },
+    {
+      id: 'hpad',
+      inst: 'horn',
+      role: 'chord',
+      vol: 0.9,
+      pan: -0.35,
+      send: 0.4,
+      center: 52,
+      vel: 0.55,
+      gate: 0.99,
+      layer: 1
+    },
+    { id: 'ride', inst: 'kit', role: 'drum', vol: 0.4, vel: 0.6, pan: 0.25, layer: 1 },
     {
       id: 'choir',
       inst: 'choir',
@@ -106,7 +158,15 @@ export const BOSS: SongDef = {
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
         tk: 'D.......D.......',
-        cym: 'c...............|................'
+        cym: 'c...............|................',
+        hpad: 'x---------------',
+        ride: 'r.r.r.r.r.r.r.r.',
+        brs: 'x..x..x.x..x..x.',
+        cm: counterA,
+        ost2: 'rRrRrRrRrRrRrRrR',
+        tim2: roll([3, 7]),
+        tk2: 'K.D.K.D.K.D.K.D.',
+        hat2: 'h.h.h.h.h.h.h.h.'
       }
     },
     {
@@ -126,7 +186,13 @@ export const BOSS: SongDef = {
         tim: 'r...r...r...r.rr',
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.k.s.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
-        tk: 'D...D...D.D.D...'
+        tk: 'D...D...D.D.D...',
+        hpad: 'x---------------',
+        ride: 'r...r...r...r...',
+        brs: 'x-------x-------',
+        ost2: 'r.R.r.R.r.R.r.R.',
+        tim2: roll([3, 7]),
+        tk2: 'D.......D.......'
       }
     },
     {
@@ -143,7 +209,13 @@ export const BOSS: SongDef = {
         tim: 'r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|r.......r.......|rrrrrrrrrrrrrrrr',
         tk: 'D.......D.......',
         hat: '....h.......h...',
-        dr: '................|................|................|................|................|................|................|s.s.s.s.ssssssss'
+        dr: '................|................|................|................|................|................|................|s.s.s.s.ssssssss',
+        hpad: 'x---------------',
+        ride: 'r...r...r...r...',
+        brs: 'x-------x-------',
+        ost2: 'r.R.r.R.r.R.r.R.',
+        tim2: roll([3, 5, 7]),
+        tk2: 'D.......D.......'
       }
     },
     {
@@ -164,7 +236,15 @@ export const BOSS: SongDef = {
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'k.s.k.s.ssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
         tk: 'D.......D.D.....',
-        cym: 'c...............|................'
+        cym: 'c...............|................',
+        hpad: 'x---------------',
+        ride: 'r.r.r.r.r.r.r.r.',
+        brs: 'x..x..x.x..x..x.',
+        cm: counterA,
+        ost2: 'rRrRrRrRrRrRrRrR',
+        tim2: roll([3, 7]),
+        tk2: 'K.D.K.D.K.D.K.D.',
+        hat2: 'h.h.h.h.h.h.h.h.'
       }
     },
     {
@@ -185,7 +265,15 @@ export const BOSS: SongDef = {
         dr: withFill('k.k.s.k.k.k.s.k.', 8, 'ssssssssssssssss'),
         hat: 'h.h.h.h.h.h.h.o.',
         tk: 'D...D...D...D...',
-        cym: 'c...............|................'
+        cym: 'c...............|................',
+        hpad: 'x---------------',
+        ride: 'r.r.r.r.r.r.r.r.',
+        brs: 'x.xx.xx.x.xx.xx.',
+        cm: counterD,
+        ost2: 'rRrRrRrRrRrRrRrR',
+        tim2: roll([1, 3, 5, 7]),
+        tk2: 'K.D.K.D.K.D.K.D.',
+        hat2: 'hhhhhhhhhhhhhhhh'
       }
     }
   ]
