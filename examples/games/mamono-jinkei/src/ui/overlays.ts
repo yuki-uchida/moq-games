@@ -304,3 +304,65 @@ export class HostWait {
     )
   }
 }
+
+/**
+ * A guest that has not heard from the room's host for a while (wrong code, or the host has not opened it yet):
+ * says so, and offers to keep searching or to go back. Shown like a dialog, but the search goes on underneath, so a
+ * host that turns up later still lets the guest in (the app then closes this).
+ */
+export class RoomSearch {
+  private root?: HTMLElement
+
+  constructor(
+    private readonly layer: HTMLElement,
+    private readonly actions: {
+      retry(): void
+      leave(): void
+      sound(name: 'menuSelect' | 'menuBack'): void
+    }
+  ) {}
+
+  get open() {
+    return !!this.root
+  }
+
+  show(room: string) {
+    if (this.root) return
+    const pick = (retry: boolean) => {
+      this.actions.sound(retry ? 'menuSelect' : 'menuBack')
+      this.hide()
+      if (retry) this.actions.retry()
+      else this.actions.leave()
+    }
+    const retry = el('button.btn.primary', { type: 'button', onclick: () => pick(true) }, 'もう一度さがす')
+    const leave = el('button.btn', { type: 'button', onclick: () => pick(false) }, 'タイトルへ')
+    const box = el(
+      'div.modal-box.parchment.room-search',
+      { role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'room-search-title' },
+      el('h2#room-search-title', { text: 'ルームが見つかりません' }),
+      el('p', {
+        text: `ルーム「${room}」のホストが見つかりませんでした。ルームコードがまちがっていないか確かめてください。`
+      }),
+      el('p.room-search-note', { text: 'さがし続けるあいだにホストが来れば、そのまま参加します。' }),
+      el('div.modal-actions', { 'data-menu': true }, retry, leave)
+    )
+    const root = el('div.modal', {}, box)
+    root.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        pick(false)
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        ;(document.activeElement === retry ? leave : retry).focus()
+        e.preventDefault()
+      }
+    })
+    this.root = root
+    this.layer.append(root)
+    retry.focus()
+  }
+
+  hide() {
+    this.root?.remove()
+    this.root = undefined
+  }
+}

@@ -62,6 +62,8 @@ export interface Session {
   hostSilence?(): number
   /** Guest: reports my input with everything let go at once (tab hidden or unfocused). */
   sendNeutral?(input: InputState, extra: SessionExtra): void
+  /** Guest: the tab is visible again; events that piled up while it was hidden are skipped. */
+  resume?(): void
   dispose(): void
 }
 
@@ -95,6 +97,8 @@ class LocalSession implements Session {
   private readonly queue = new EventQueue<EventView>()
   private infoStage?: StageId
   network?: CooperativeNetwork
+  /** Set by dispose(): network reports after this are ignored. */
+  disposed = false
   private names = new Map<string, string>()
   private presence: string[] = []
   private sendAcc = 0
@@ -211,6 +215,7 @@ class LocalSession implements Session {
   }
 
   dispose() {
+    this.disposed = true
     void this.network?.stop().catch(() => undefined)
     this.network = undefined
   }
@@ -222,6 +227,8 @@ class GuestSession implements Session {
   status: SessionStatus = { kind: 'connecting', text: 'リレーに接続中…' }
   info?: StageInfo
   network?: CooperativeNetwork
+  /** Set by dispose(): network reports after this are ignored. */
+  disposed = false
   private readonly buffer = new SnapshotBuffer()
   private readonly queue = new EventQueue<EventView>()
   private predictor?: HeroPredictor
@@ -273,6 +280,7 @@ class GuestSession implements Session {
   }
 
   private updateStatus(v: View) {
+    if (this.status.kind === 'error' || this.disposed) return
     const i = v.players.findIndex((p) => p.id === this.myId)
     const me = v.players[i]
     const full = (me?.spectator ?? false) || (v.phase === 'lobby' && i >= 4)
@@ -350,11 +358,21 @@ class GuestSession implements Session {
     return this.queue.take(this.renderT, out)
   }
 
+  /**
+   * Back from a hidden tab: snapshots kept arriving while no frame ran, so their effects and sounds would all fire
+   * at once. They are dropped (as a hidden host drops its own); the state comes from the newest snapshot as usual.
+   */
+  resume() {
+    const latest = this.buffer.latest
+    if (latest) this.queue.skipBefore(latest.t - RENDER_DELAY)
+  }
+
   command() {
     // Guests cannot command the world.
   }
 
   dispose() {
+    this.disposed = true
     void this.network?.stop().catch(() => undefined)
     this.network = undefined
   }
@@ -375,13 +393,43 @@ export function demoSession(stage: StageId = 'meadow'): Session & { world: World
   ) as Session & { world: World }
 }
 
-function translateError(message: string): string {
+/**
+ * Errors raised while a connection is torn down ("Relay cleanup failed", "The session is closed"): they follow the
+ * real cause (or our own leave) and never describe what went wrong.
+ */
+export function isCleanupError(message: string): boolean {
+  return /cleanup failed|session is closed|network is not active/i.test(message)
+}
+
+export function translateError(message: string): string {
+  if (isCleanupError(message)) return 'ルームとの接続が切れました。'
   if (/full/i.test(message)) return 'ルームが満員のため参加できませんでした。'
-  if (/host left|host stopped|withdrawn/i.test(message)) return 'ホストがルームを閉じました。'
+  if (/host left|host stopped|withdrawn|peer track ended: host/i.test(message)) return 'ホストがルームを閉じました。'
   if (/timeout|タイムアウト/i.test(message)) return 'リレーに接続できませんでした（タイムアウト）。'
   if (/relay|connect|fetch|network|webtransport/i.test(message))
     return 'リレーに接続できませんでした。通信環境を確認してください。'
   return `通信エラーが起きました。（${message.slice(0, 80)}）`
+}
+
+/**
+ * Network status → session status, reported once per failure: the first error names the cause; anything after it
+ * (cleanup errors of the same disconnect, a second report) and anything after dispose() is ignored.
+ */
+function statusReporter(s: { status: SessionStatus; disposed: boolean }, cb: SessionCallbacks) {
+  let failed = ''
+  return {
+    get failed() {
+      return failed
+    },
+    /** Returns false when the status was ignored. */
+    report(next: SessionStatus | undefined, message = ''): boolean {
+      if (!next || s.disposed || s.status.kind === 'error') return false
+      if (next.kind === 'error') failed = message
+      s.status = next
+      cb.onStatus(next)
+      return true
+    }
+  }
 }
 
 async function startWithTimeout(network: CooperativeNetwork, ms = 15000) {
@@ -408,7 +456,7 @@ export async function hostSession(
   const id = crypto.randomUUID()
   const s = new LocalSession('host', id, { seed: (Math.random() * 2 ** 31) | 0, progress }, name)
   s.status = { kind: 'connecting', text: 'リレーに接続中…' }
-  let failed = ''
+  const reporter = statusReporter(s, cb)
   const network = new CooperativeNetwork({
     app: APP_ID,
     relayUrl: getPrimaryRelayUrl('https://relay.moqt.research.skyway.io'),
@@ -421,21 +469,22 @@ export async function hostSession(
     },
     onSnapshot: () => undefined,
     onPresence: (ids) => s.setPresence(ids),
-    onStatus: (status, message) => {
-      if (status === 'ready') s.status = { kind: 'ready', text: `ルーム ${room}` }
-      else if (status === 'error') {
-        failed = message
-        s.status = { kind: 'error', text: translateError(message) }
-      } else return
-      cb.onStatus(s.status)
-    }
+    onStatus: (status, message) =>
+      reporter.report(
+        status === 'ready'
+          ? { kind: 'ready', text: `ルーム ${room}` }
+          : status === 'error'
+            ? { kind: 'error', text: translateError(message) }
+            : undefined,
+        message
+      )
   })
   s.network = network
   try {
     await startWithTimeout(network)
   } catch (e) {
     s.dispose()
-    throw new Error(translateError(failed || String(e)))
+    throw new Error(translateError(reporter.failed || String(e)))
   }
   if (s.status.kind === 'connecting') s.status = { kind: 'ready', text: `ルーム ${room}` }
   return s
@@ -445,7 +494,7 @@ export async function hostSession(
 export async function guestSession(room: string, cb: SessionCallbacks): Promise<Session> {
   const id = crypto.randomUUID()
   const s = new GuestSession(id, cb)
-  let failed = ''
+  const reporter = statusReporter(s, cb)
   const network = new CooperativeNetwork({
     app: APP_ID,
     relayUrl: getPrimaryRelayUrl('https://relay.moqt.research.skyway.io'),
@@ -455,22 +504,24 @@ export async function guestSession(room: string, cb: SessionCallbacks): Promise<
     onInput: () => undefined,
     onSnapshot: (raw) => s.snapshot(raw),
     onPresence: (ids) => s.setPresence(ids),
-    onStatus: (status, message) => {
-      if (status === 'waiting-for-host') s.status = { kind: 'waiting', text: 'ホストをさがしています…' }
-      else if (status === 'ready' && s.status.kind !== 'spectating') s.status = { kind: 'ready', text: 'オンライン' }
-      else if (status === 'error') {
-        failed = message
-        s.status = { kind: 'error', text: translateError(message) }
-      } else return
-      cb.onStatus(s.status)
-    }
+    onStatus: (status, message) =>
+      reporter.report(
+        status === 'waiting-for-host'
+          ? { kind: 'waiting', text: 'ホストをさがしています…' }
+          : status === 'ready' && s.status.kind !== 'spectating'
+            ? { kind: 'ready', text: 'オンライン' }
+            : status === 'error'
+              ? { kind: 'error', text: translateError(message) }
+              : undefined,
+        message
+      )
   })
   s.network = network
   try {
     await startWithTimeout(network)
   } catch (e) {
     s.dispose()
-    throw new Error(translateError(failed || String(e)))
+    throw new Error(translateError(reporter.failed || String(e)))
   }
   return s
 }

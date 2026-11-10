@@ -4,7 +4,8 @@
  */
 import { NO_INPUT, type InputState } from '../sim/types'
 import { PAD, PREVENT, actionOf, aimFrom, edge, moveVector, padAimDir, stick, type Action } from './map'
-import { firstGamepad, type PadSample } from './padnav'
+import { firstGamepad, padActive, type PadSample } from './padnav'
+import type { InputDevice } from './device'
 
 /** Inputs that never take typed text, so Esc may close the menu around them. */
 const NON_TEXT_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'])
@@ -22,6 +23,8 @@ export class Controls {
   cursorX = 0
   cursorY = 0
   cursorIn = false
+  /** Which device was used last (keyboard and mouse count as one); the HUD hints follow it. */
+  inputDevice: InputDevice = 'keyboard'
   /** True while gameplay should receive keys (no menu or dialog field focused). */
   enabled = false
   /** Seconds since the last mouse movement (gamepad aim takes over when the mouse is idle). */
@@ -58,6 +61,7 @@ export class Controls {
 
   private keydown = (e: KeyboardEvent) => {
     this.hooks.onGesture()
+    if (actionOf(e.code)) this.inputDevice = 'keyboard'
     const a = actionOf(e.code)
     if (!a) return
     const target = e.target as HTMLElement | null
@@ -92,6 +96,7 @@ export class Controls {
 
   private pointerdown = (e: PointerEvent) => {
     this.hooks.onGesture()
+    this.inputDevice = 'keyboard'
     this.trackPointer(e)
     if (!this.enabled || e.button !== 0) return
     e.preventDefault()
@@ -126,6 +131,7 @@ export class Controls {
     this.cursorY = e.clientY - r.top
     this.cursorIn = this.cursorX >= 0 && this.cursorY >= 0 && this.cursorX < r.width && this.cursorY < r.height
     this.mouseAt = performance.now()
+    if (e.pointerType !== 'touch') this.inputDevice = 'keyboard'
   }
 
   /** Releases every held key and button (blur, menu, focus loss). */
@@ -165,6 +171,7 @@ export class Controls {
     )
     let actionHeld = this.held.has('action')
     const sample = firstGamepad()
+    if (sample && padActive(sample)) this.inputDevice = 'pad'
     if (!this.enabled) this.swallowPad(sample)
     const pad = this.enabled ? sample : undefined
     if (pad) {
