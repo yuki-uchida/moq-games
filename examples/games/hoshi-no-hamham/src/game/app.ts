@@ -27,6 +27,7 @@ const EVENT_SFX: Record<SimEvent['type'], Parameters<AudioEngine['play']>[0]> = 
   hurt: 'hurt',
   'enemy-down': 'enemy-down',
   'boss-hit': 'boss-hit',
+  'boss-awake': 'shock',
   'boss-down': 'boss-down',
   clear: 'clear',
   dead: 'dead',
@@ -343,7 +344,7 @@ export class App {
         this.handleEvents()
         this.renderer.draw(this.world, frame)
         this.hud.update(this.world, frame)
-        if (this.world.boss && !this.world.boss.dead && !this.bossBarShown) {
+        if (this.world.boss && !this.world.boss.dead && this.world.boss.active && !this.bossBarShown) {
           this.bossBarShown = true
           this.hud.showBoss(this.world.boss.def.name, this.world.boss.def.title)
           if (this.world.boss.state !== 'tired') this.hud.showToast(`${this.world.boss.def.name} が現れた！`)

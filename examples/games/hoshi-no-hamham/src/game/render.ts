@@ -121,6 +121,7 @@ export class Renderer {
     ctx.save()
     ctx.translate(-camX, -camY)
     this.drawTiles(world, camX, camY, w, h)
+    this.drawBossGate(world)
     this.drawProps(world)
     this.drawBees(world)
     this.drawShots(world)
@@ -135,8 +136,32 @@ export class Renderer {
     void dt
   }
 
-  // ------------------------------------------------------------------ background
+  private drawBossGate(world: World) {
+    const gate = world.bossGate
+    if (!gate) return
+    const ctx = this.ctx
+    const x = gate.x * TILE + 9
+    const w = TILE - 18
+    const y0 = gate.top * TILE
+    const h = (gate.bottom - gate.top + 1) * TILE
+    ctx.save()
+    ctx.globalAlpha = 0.72
+    ctx.fillStyle = PAL.gold
+    ctx.fillRect(x, y0, w, h)
+    ctx.globalAlpha = 0.95
+    ctx.strokeStyle = PAL.goldDeep
+    ctx.lineWidth = 4
+    ctx.strokeRect(x, y0, w, h)
+    ctx.fillStyle = PAL.white
+    for (let i = 0; i < 3; i++) {
+      const px = x + 8 + i * ((w - 20) / 2)
+      const off = Math.sin(world.time * 4 + i * 1.7) * 7
+      ctx.fillRect(px, y0 + 12 + off, 3, h - 24)
+    }
+    ctx.restore()
+  }
 
+  // ------------------------------------------------------------------ background
   private drawBackground(theme: ThemeId, camX: number, camY: number, time: number, w: number, h: number) {
     const ctx = this.ctx
     const bg = BG[theme]
