@@ -39,6 +39,7 @@ import {
 import { FX, FX_CAP, FX_WINDOW, type FxEvent } from './fx'
 import { bodyScale } from './body-size'
 import { FAMILY_SLOTS } from './family-slots'
+import { GUARDIAN_BODY, overheadBoxes, type OverheadBox } from './overhead'
 import { LIFE_OUTCOMES, parentFarewell, type LifeDecision, type ParentReward } from './history'
 import { rankedCareer, type Career } from './careers'
 import {
@@ -84,17 +85,49 @@ export function raidReach(t: number) {
   return 1 - (t - RAID.back) / (1 - RAID.back)
 }
 const PLAYER_RADIUS = 14
-/** 過保護: how far a standing parent sits above (behind) the child, and how far apart two of them stand. */
-const GUARDIAN_STILL_LIFT = 5
-const GUARDIAN_STILL_SPREAD = 0.6
+/**
+ * 過保護: where the all-round reach of a parent guarding a standing child is centred, as it always was (her old place
+ * behind the child): this far above the child and `h·r·` this far across (see shieldTouches).
+ */
+const GUARDIAN_SHIELD_LIFT = 5
+const GUARDIAN_SHIELD_SPREAD = 0.6
+/**
+ * 過保護: where she stands beside a standing child: `GUARDIAN_REST_X + 14·size` px out to the side and `GUARDIAN_REST_Y`
+ * px from the child's centre, her face and figure clear of the child; each further parent on that side stands
+ * `GUARDIAN_REST_GAP` px further out.
+ */
+const GUARDIAN_REST_X = 10
+const GUARDIAN_REST_Y = -2
+const GUARDIAN_REST_GAP = 23
+/** How near (px) another player stands for the parents of a standing child to take the side away from them. */
+const GUARDIAN_NEIGHBOUR = 90
+/** How quickly (1/s) a standing child's parents move over to a new place beside her. */
+const GUARDIAN_REST_RATE = 8
+/**
+ * 過保護: while the child walks up the screen, her parents walk at her shoulders (`GUARDIAN_UP_Y`·size from her centre),
+ * just outside her name tag, buff rows and gamble badge (GUARDIAN_UP_CLEAR px to spare); a parent further out on a side
+ * stands `GUARDIAN_REST_GAP` px further on.
+ */
+const GUARDIAN_UP_Y = -18
+const GUARDIAN_UP_CLEAR = 4
+/**
+ * Moving over to the other shoulder, the share of the way (in Shot.guardianSide) a walking parent spends rising beside
+ * the boxes over the child's head before she crosses above them (and coming down on the other side).
+ */
+const GUARDIAN_RISE = 0.5
+/**
+ * How steeply (px down per px across) the line a walking parent keeps below rises as she nears the overhead boxes from
+ * the side, so she ducks below them smoothly rather than in one step (see guardianOverheadFloor).
+ */
+const GUARDIAN_FLOOR_SLOPE = 4
+/** The fastest (px/s) a gamble's copied 過保護親 moves around her child, so she glides rather than jumps. */
+const GUARDIAN_GLIDE = 900
 /** 過保護: the least distance between the centres of a gamble's copied parent and any other parent of the same child. */
 const GUARDIAN_COPY_GAP = 22
 /** How far (px) the push that keeps a copy clear leans toward her own side of the child. */
 const GUARDIAN_COPY_LEAN = 8
 /** How far (px) inside the gap a copy may stand before she is pushed again, so rounding never re-pushes her. */
 const GUARDIAN_COPY_SLACK = 0.01
-/** The fastest (px/s) a copy moves around her child, so she glides rather than jumps when the push changes side. */
-const GUARDIAN_COPY_GLIDE = 900
 /** Reach around the child within which a walking guardian can also bash enemies right behind. */
 const GUARDIAN_CLOSE_REACH = 26
 /** 生き物観察: the steepest angle above the horizon at which a creature appears in front of an upward-facing player. */
@@ -123,11 +156,20 @@ export const PET_SPOTS: readonly { x: number; y: number }[] = PET_SPOT_RADII.fla
 /**
  * Half-sizes (px) of the boxes round other companions where no resting pet may stand: a spot with |dx| < x and
  * |dy| < y from one is blocked. 過保護親 (where she stands and where she is heading) and モンスターペアレント, 生き物観察's creature,
- * and the family's places behind a married owner.
+ * and the family's places behind a married player (see Game.petObstacles).
  */
 const PET_CLEAR_GUARDIAN = { x: 22, y: 26 } as const
 const PET_CLEAR_CREATURE = { x: 22, y: 22 } as const
 const PET_CLEAR_FAMILY = { x: 20, y: 24 } as const
+/** About how far (px) a resting pet's figure reaches either way from its centre. */
+export const PET_HALF = { x: 12, y: 12 } as const
+/**
+ * Another living player's body (|dx| < 12, -30 < dy < 14 about her centre) with a pet's figure (PET_HALF) round it: the
+ * box's centre offset from hers and its half-size.
+ */
+const PET_CLEAR_PLAYER = { x: 0, y: -8, bx: 12 + PET_HALF.x, by: 22 + PET_HALF.y } as const
+/** Half-size (px) of the box round a resting spot taken by another player's pet, so the two never stand 17 px close. */
+const PET_CLEAR_PET = 17
 /** How much (px) wider every box is for a pet choosing a new spot, so it is not pushed off again straight away. */
 const PET_SPOT_SLACK = 8
 
@@ -189,57 +231,114 @@ export function petRestAngle(weapon: string, source: string, orbit: number, h: n
 }
 
 /**
- * 過保護親's offset (px) from her child while the child walks facing (`forwardX`, `forwardY`), before she tucks in
- * behind a standing child and before a copy is pushed clear of the others; and the way (`leanX`, `leanY`) a copy steps
- * clear. `side` is a lone parent's (h = 0) shoulder; `lone`, for a copy, the lone parent beside her (see
- * Game.loneGuardian) and her shoulder.
+ * The lowest point (px from the child's centre, so the greatest y) a 過保護親 at `x` must keep below to stay clear of
+ * `boxes` over the child's head (overheadBoxes): below every box her figure (GUARDIAN_BODY) overlaps across, and rising
+ * GUARDIAN_FLOOR_SLOPE px per px she stands clear of one to the side, so moving across she ducks below them smoothly.
+ */
+export function guardianOverheadFloor(x: number, boxes: readonly OverheadBox[]) {
+  let floor = -Infinity
+  for (const box of boxes) {
+    const into = Math.min(x + GUARDIAN_BODY.x - box.left, box.right - (x - GUARDIAN_BODY.x))
+    floor = Math.max(floor, box.bottom + GUARDIAN_BODY.y - GUARDIAN_FLOOR_SLOPE * Math.max(0, -into))
+  }
+  return floor
+}
+
+/**
+ * 過保護親's offset from her child of body size `size` part (`still`) of the way from where she walks (`walk`, from
+ * guardianWalkOffset) to her place beside the standing child (`rest`): while the child faces up she goes round below
+ * the boxes over the child's head (guardianOverheadFloor), until she is nearly there.
+ */
+export function guardianBlend(
+  walk: { x: number; y: number },
+  rest: { x: number; y: number },
+  still: number,
+  forwardY: number,
+  size: number
+) {
+  const x = walk.x + (rest.x - walk.x) * still
+  let y = walk.y + (rest.y - walk.y) * still
+  const duck = Math.min(1, Math.max(0, -forwardY / 0.15)) * Math.min(1, 2 * (1 - still))
+  if (still > 0 && duck > 0) y += Math.max(0, guardianOverheadFloor(x, overheadBoxes(size)) - y) * duck
+  return { x, y }
+}
+
+/** How far (px) out to the side of a child of body size `size` her parents walk while she walks up the screen. */
+export const guardianUpX = (size: number) =>
+  Math.max(...overheadBoxes(size).map((box) => Math.max(box.right, -box.left))) + GUARDIAN_BODY.x + GUARDIAN_UP_CLEAR
+
+/** 過保護親's offset from her child walking facing (`forwardX`, `forwardY`) in her place in the formation. */
+const guardianAhead = (forwardX: number, forwardY: number, guard: { h: number; orbit: number; r: number }) => {
+  const ahead = guard.orbit * 0.65
+  const across = guard.h * guard.r * 1.5
+  return { x: forwardX * ahead - forwardY * across, y: forwardY * ahead + forwardX * across }
+}
+
+/**
+ * The offset (px) of 過保護親 `guard`, `rank`th in her line (her child's parents and the gamble's copies in order, see
+ * Game.guardianLine), from her child of body size `size` walking facing (`forwardX`, `forwardY`), before she steps
+ * beside a standing child and before a copy is pushed clear of the others; and the way (`leanX`, `leanY`) a copy steps
+ * clear. `side` is the shoulder (+1 right, -1 left, eased between) the line walks at.
+ *
+ * Walking down or across they keep the formation ahead of the child (`h` slots across the way she faces). Walking up
+ * the screen they all go to the shoulder on the side she last faced, just outside her name tag, buff rows and gamble
+ * badge (guardianUpX): the first at shoulder height and each next one a step (GUARDIAN_REST_GAP) further out, leaving
+ * the other shoulder free for the badge. Moving over to the other shoulder the first goes round below the child; the
+ * others rise beside the boxes over her head, cross above them (each further out one higher) and come down on the other
+ * side. Facing up at all, none of them stands in those boxes: on her way from the formation to the shoulder she ducks
+ * below them (guardianOverheadFloor).
  */
 export function guardianWalkOffset(
   forwardX: number,
   forwardY: number,
   guard: { h: number; orbit: number; r: number },
+  rank: number,
   side: number,
-  lone?: { orbit: number; side: number }
+  size = 1
 ) {
-  let offsetX: number
-  let offsetY: number
-  if (guard.h === 0) {
-    // A lone parent (Lv1) walking up the screen steps beside her child's shoulder instead of standing on her hat. She
-    // keeps to the side she last faced and, while crossing over (less than 26 px to the side), ducks below the head.
-    const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
-    offsetX = forwardX * guard.orbit * 0.65 + 26 * up * side
-    const crossing = Math.min(1, Math.max(0, (26 - Math.abs(offsetX)) / 10))
-    offsetY = forwardY * guard.orbit * 0.65 * (1 - 0.7 * up * crossing)
-  } else {
-    const across = guard.h * guard.r * 1.5
-    offsetX = forwardX * guard.orbit * 0.65 - forwardY * across
-    offsetY = forwardY * guard.orbit * 0.65 + forwardX * across
-  }
-  // Which way a copy steps clear of the others: out to her own side of the child.
+  const formation = guardianAhead(forwardX, forwardY, guard)
+  // How far she has gone over to the shoulder: from 9° above the horizon, all the way from 40°.
+  const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
+  // Facing up at all, she keeps below the boxes over the child's head.
+  const duck = Math.min(1, Math.max(0, -forwardY / 0.15))
+  const boxes = overheadBoxes(size)
+  // Which way a copy steps clear of the others: out to her own side of the child, or out along the shoulder.
   const sign = guard.h < 0 ? -1 : 1
-  let leanX = -forwardY * sign
-  let leanY = forwardX * sign
-  if (lone) {
-    // The one copy beside a lone parent walking up stands a shoulder further out on her side, leaving the other
-    // shoulder free for the gamble badge. While her parent crosses over she passes below her, never through her.
-    const up = Math.min(1, Math.max(0, (-forwardY - 0.15) / 0.5))
-    const parentX = forwardX * lone.orbit * 0.65 + 26 * up * lone.side
-    const crossing = Math.min(1, Math.max(0, (26 - Math.abs(parentX)) / 10))
-    const parentY = forwardY * lone.orbit * 0.65 * (1 - 0.7 * up * crossing)
-    const below = 1 - Math.min(1, Math.abs(lone.side))
-    offsetX += (parentX + 26 * lone.side - offsetX) * up
-    offsetY += (parentY + GUARDIAN_COPY_GAP * below - offsetY) * up
-    // She steps clear of her parent outward, away from the child, so she rounds her parent rather than through her.
-    const reach = Math.hypot(parentX, parentY) || 1
-    leanX += (parentX / reach - leanX) * up
-    leanY += (parentY / reach - leanY) * up
+  const leanX = -forwardY * sign + (Math.sign(side) + forwardY * sign) * up
+  const leanY = forwardX * sign * (1 - up)
+  const shoulderX = guardianUpX(size) + GUARDIAN_REST_GAP * rank
+  const shoulderY = Math.max(GUARDIAN_UP_Y * size, guardianOverheadFloor(shoulderX, boxes))
+  let slotX = shoulderX * side
+  let slotY = shoulderY
+  const over = rank ? Math.min(1, (1 - Math.min(1, Math.abs(side))) / GUARDIAN_RISE) : 0
+  if (rank) {
+    const top = Math.min(...boxes.map((box) => box.top)) - GUARDIAN_BODY.y - GUARDIAN_UP_CLEAR
+    const across = 1 - Math.min(1, Math.abs(side)) <= GUARDIAN_RISE ? Math.sign(side) : side / (1 - GUARDIAN_RISE)
+    slotX = shoulderX * across
+    slotY = shoulderY + (top - GUARDIAN_REST_GAP * (rank - 1) - shoulderY) * over
   }
-  return { x: offsetX, y: offsetY, leanX, leanY }
+  const x = formation.x + (slotX - formation.x) * up
+  let y = formation.y + (slotY - formation.y) * up
+  // Going round to the shoulder she ducks below the boxes; crossing over above them she does not.
+  const below = duck * (1 - up * over)
+  if (below > 0) y += Math.max(0, guardianOverheadFloor(x, boxes) - y) * below
+  return { x, y, leanX, leanY }
 }
 
-/** The shoulder a lone 過保護親 (now on `side`) heads for while her child faces `forwardX` across. */
+/** The shoulder 過保護親 (now on `side`) head for while their child faces `forwardX` across. */
 const guardianTargetSide = (forwardX: number, side: number) =>
   forwardX > 0.25 ? 1 : forwardX < -0.25 ? -1 : Math.sign(side) || 1
+/** The fastest (1/s) the parents' shoulder (Shot.guardianSide) moves over, so going round below the child they glide. */
+const GUARDIAN_SIDE_RATE = 3
+/**
+ * The parents' shoulder `side` after easing the share `shift` (1 - e^(-10 t) after t seconds) of the way to the one the
+ * child facing `forwardX` across calls for, no faster than GUARDIAN_SIDE_RATE.
+ */
+function easeGuardianSide(side: number, forwardX: number, shift: number) {
+  const most = shift < 1 ? (GUARDIAN_SIDE_RATE * -Math.log(1 - shift)) / 10 : Infinity
+  const step = (guardianTargetSide(forwardX, side) - side) * shift
+  return side + Math.max(-most, Math.min(most, step))
+}
 const BASE_PASSIVE_COUNT = 12
 const BASE_SPEED = 135
 const STEP = 1 / 60
@@ -388,12 +487,14 @@ export interface Shot {
   r: number
   angle: number
   guardianHeading?: number
-  /** 過保護 Lv1: which shoulder (+1 right, -1 left, eased) she steps beside while her child walks up the screen. */
+  /** 過保護: which shoulder (+1 right, -1 left, eased) the child's parents step beside while she walks up the screen. */
   guardianSide?: number
-  /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (tucked behind them, guarding all round). */
+  /** 過保護: 0 while the owner walks (shield ahead), 1 once they stand still (beside them, guarding all round). */
   guardianStill?: number
   /** 過保護: where she stood relative to her owner when last moved, so a copy can keep clear of her before her turn. */
   guardianOffset?: { x: number; y: number }
+  /** 過保護: her place beside her standing owner (offset from them), eased toward Game.guardianRestSpot. */
+  guardianRest?: { x: number; y: number }
   orbit: number
   spin: number
   life: number
@@ -761,6 +862,8 @@ export class Game {
   private familyHands = new Map<string, string[]>()
   private nightcryStarted = false
   private pendingBosses: string[] = []
+  /** 過保護親 already moved this step (see keepCopyApart). */
+  private readonly guardiansMoved = new Set<Shot>()
   private careers = new Map<
     string,
     { studied?: boolean; employed?: boolean; path?: 'sports' | 'assets' | 'creative' | 'social'; settled?: boolean }
@@ -2134,6 +2237,11 @@ export class Game {
             angle: (i / n) * Math.PI * 2,
             guardianHeading: def.id === 'p_over' ? Math.atan2(player.fy, player.fx) : undefined,
             guardianStill: def.id === 'p_over' ? Number(player.still > 0) : undefined,
+            // A new 過保護親 joins her line on the shoulder it walks at.
+            guardianSide:
+              def.id === 'p_over'
+                ? this.state.shots.find((shot) => shot.owner === player.id && shot.weapon === 'p_over')?.guardianSide
+                : undefined,
             orbit: def.area * ws.area,
             spin: def.id === 'p_monster' ? 192 * ws.speed : def.id === 'p_over' ? 240 * ws.speed : speed,
             r: 20 * (def.id === 'p_over' ? ws.area : Math.sqrt(ws.area)),
@@ -2509,6 +2617,7 @@ export class Game {
     const state = this.state
     const players = new Map(state.players.map((player) => [player.id, player]))
     for (const player of state.players) this.assignPetSpots(player)
+    this.guardiansMoved.clear()
     const kept: Shot[] = []
     for (const shot of state.shots) {
       const owner = players.get(shot.owner)
@@ -2733,42 +2842,47 @@ export class Game {
       (shot.guardianStill ?? 0) + (Number(owner.still > 0) - (shot.guardianStill ?? 0)) * (1 - Math.exp(-12 * dt))
     shot.guardianStill = Math.abs(still - Math.round(still)) < 0.01 ? Math.round(still) : still
     const walking = 1 - shot.guardianStill
-    if (shot.h === 0) {
-      const side = shot.guardianSide ?? 1
-      shot.guardianSide = side + (guardianTargetSide(forwardX, side) - side) * (1 - Math.exp(-10 * dt))
-    }
-    const lone = shot.sourceWeapon !== 'p_over' ? this.loneGuardian(shot) : undefined
+    shot.guardianSide = easeGuardianSide(shot.guardianSide ?? 1, forwardX, 1 - Math.exp(-10 * dt))
     const {
       x: offsetX,
       y: offsetY,
       leanX,
       leanY
-    } = guardianWalkOffset(
-      forwardX,
+    } = this.guardianWalk(shot, owner, forwardX, forwardY, shot.guardianSide!)
+    // Her place beside the standing child: taken at once while the child walks, moved over smoothly while she stands.
+    const spot = this.guardianRestSpot(shot, owner)
+    const rest = shot.guardianStill > 0 && shot.guardianRest ? shot.guardianRest : spot
+    const ease = 1 - Math.exp(-GUARDIAN_REST_RATE * dt)
+    shot.guardianRest = { x: rest.x + (spot.x - rest.x) * ease, y: rest.y + (spot.y - rest.y) * ease }
+    // Standing, a copy steps clear outward along the row she stands in.
+    const restSide = Math.sign(shot.guardianRest.x) || (shot.h < 0 ? -1 : 1)
+    const at = guardianBlend(
+      { x: offsetX, y: offsetY },
+      shot.guardianRest,
+      shot.guardianStill,
       forwardY,
-      shot,
-      shot.guardianSide ?? 1,
-      lone && { orbit: lone.orbit, side: lone.guardianSide ?? 1 }
+      this.bodySize(owner)
     )
-    const sign = shot.h < 0 ? -1 : 1
-    shot.x = owner.x + offsetX * walking + shot.h * shot.r * GUARDIAN_STILL_SPREAD * shot.guardianStill
-    shot.y = owner.y + offsetY * walking - GUARDIAN_STILL_LIFT * shot.guardianStill
-    if (shot.sourceWeapon !== 'p_over') {
-      this.keepCopyApart(shot, owner, leanX * walking + sign * shot.guardianStill, leanY * walking)
-      // Where the push flips to the far side of a parent she glides round instead of jumping.
-      const last = shot.guardianOffset
-      if (last) {
+    shot.x = owner.x + at.x
+    shot.y = owner.y + at.y
+    // A copy keeps clear of the others; where her push flips to the far side of a parent she glides round instead of
+    // jumping, and held back by her glide she is pushed (and glides) once more.
+    const last = shot.guardianOffset
+    if (shot.sourceWeapon !== 'p_over')
+      for (let pass = 0; pass < 2; pass++) {
+        this.keepCopyApart(shot, owner, leanX * walking + restSide * shot.guardianStill, leanY * walking, dt)
+        if (!last) continue
         const dx = shot.x - owner.x - last.x
         const dy = shot.y - owner.y - last.y
         const moved = Math.hypot(dx, dy)
-        const most = GUARDIAN_COPY_GLIDE * dt
+        const most = GUARDIAN_GLIDE * dt
         if (moved > most) {
           shot.x = owner.x + last.x + (dx / moved) * most
           shot.y = owner.y + last.y + (dy / moved) * most
         }
       }
-    }
     shot.guardianOffset = { x: shot.x - owner.x, y: shot.y - owner.y }
+    this.guardiansMoved.add(shot)
     shot.aux = Math.max(0, shot.aux - dt)
     if (shot.aux > 0) return
     shot.angle = Math.atan2(owner.fy, owner.fx)
@@ -2913,53 +3027,102 @@ export class Game {
   /**
    * The other companions a resting pet of `owner` keeps clear of, as offsets from the owner: each 過保護親 where she
    * stands, where she will be in PET_GUARDIAN_LOOKAHEAD and where she is heading, モンスターペアレント, 生き物観察's
-   * creatures, and the spouse and child walking behind a married owner (FAMILY_SLOTS, whenever the renderer draws them).
+   * creatures, and the spouse and child walking behind a married player (FAMILY_SLOTS, whenever the renderer draws
+   * them) — the owner's own and every other living player's — and the other living players' bodies; the gamble badge
+   * over either side of the owner's head while she gambles; and the spots the pets of the players before her in
+   * `state.players` rest on (they never give way to hers, so no two keep pushing each other off).
    * `hold` blocks a pet's own spot; `avoid`, for a pet choosing a new one, adds points along each 過保護親's swing, so
-   * a pet moved on is not pushed off again by the same swing.
+   * a pet moved on is not pushed off again by the same swing; `now` is only where each of them stands now.
    */
   private petObstacles(owner: Player) {
     const hold: PetObstacle[] = []
     const avoid: PetObstacle[] = []
+    const now: PetObstacle[] = []
     const guardian = PET_CLEAR_GUARDIAN
     const creature = PET_CLEAR_CREATURE
-    const both = (x: number, y: number, bx: number, by: number) => {
-      hold.push({ x, y, bx, by })
-      avoid.push({ x, y, bx, by })
+    let baseX = 0
+    let baseY = 0
+    const both = (x: number, y: number, bx: number, by: number, current = true) => {
+      hold.push({ x: baseX + x, y: baseY + y, bx, by })
+      avoid.push({ x: baseX + x, y: baseY + y, bx, by })
+      if (current) now.push({ x: baseX + x, y: baseY + y, bx, by })
+    }
+    const players = new Map(this.state.players.map((player) => [player.id, player]))
+    let earlier = true
+    for (const player of this.state.players) {
+      if (player === owner) {
+        earlier = false
+        continue
+      }
+      if (player.downed) continue
+      const x = player.x - owner.x
+      const y = player.y - owner.y
+      both(x + PET_CLEAR_PLAYER.x, y + PET_CLEAR_PLAYER.y, PET_CLEAR_PLAYER.bx, PET_CLEAR_PLAYER.by)
+      // Pets of a player before her keep their spots; hers keep clear of them.
+      if (earlier)
+        for (const shot of this.state.shots)
+          if (shot.owner === player.id && shot.weapon === 'w_pet' && shot.delay <= 0 && shot.restSpot !== undefined) {
+            const spot = PET_SPOTS[shot.restSpot]
+            both(x + spot.x, y + spot.y, PET_CLEAR_PET, PET_CLEAR_PET)
+          }
     }
     for (const shot of this.state.shots) {
-      if (shot.owner !== owner.id || shot.delay > 0) continue
+      if (shot.delay > 0) continue
+      const of = shot.owner === owner.id ? owner : players.get(shot.owner)
+      if (!of || (of !== owner && of.downed)) continue
+      if (shot.weapon !== 'p_over' && shot.weapon !== 'p_monster' && shot.weapon !== 'w_observe') continue
+      baseX = of.x - owner.x
+      baseY = of.y - owner.y
       if (shot.weapon === 'p_over') {
-        const at = shot.guardianOffset ?? { x: shot.x - owner.x, y: shot.y - owner.y }
+        const at = shot.guardianOffset ?? { x: shot.x - of.x, y: shot.y - of.y }
         both(at.x, at.y, guardian.x, guardian.y)
         // A copy pushed clear of the others (keepCopyApart) stays pushed about as far while she swings.
-        const now = this.guardianOffsetAhead(shot, owner, 0, 0, 0)
+        const now = this.guardianOffsetAhead(shot, of, 0, 0, 0)
         const pushX = shot.sourceWeapon !== 'p_over' ? at.x - now.x : 0
         const pushY = shot.sourceWeapon !== 'p_over' ? at.y - now.y : 0
         const ahead = (turn: number, settle: number, shift: number) => {
-          const on = this.guardianOffsetAhead(shot, owner, turn, settle, shift)
+          const on = this.guardianOffsetAhead(shot, of, turn, settle, shift)
           return { x: on.x + pushX, y: on.y + pushY }
         }
-        // Where she will be over the next PET_GUARDIAN_LOOKAHEAD, eased as moveGuardian eases her.
+        // Where she will be over the next PET_GUARDIAN_LOOKAHEAD, eased as moveGuardian eases her (a copy no further
+        // than she glides).
         for (const seconds of PET_GUARDIAN_SOON) {
           const soon = ahead(1 - Math.exp(-8 * seconds), 1 - Math.exp(-12 * seconds), 1 - Math.exp(-10 * seconds))
-          both(soon.x, soon.y, guardian.x, guardian.y)
+          const moved = Math.hypot(soon.x - at.x, soon.y - at.y)
+          const most = shot.sourceWeapon !== 'p_over' ? GUARDIAN_GLIDE * seconds : Infinity
+          const share = moved > most ? most / moved : 1
+          both(at.x + (soon.x - at.x) * share, at.y + (soon.y - at.y) * share, guardian.x, guardian.y, false)
         }
         const heading = ahead(1, 1, 1)
-        both(heading.x, heading.y, guardian.x, guardian.y)
+        both(heading.x, heading.y, guardian.x, guardian.y, false)
         for (let j = 1; j < PET_GUARDIAN_PATH_SAMPLES; j++) {
           const t = j / PET_GUARDIAN_PATH_SAMPLES
           const on = ahead(t, t, t)
-          avoid.push({ x: on.x, y: on.y, bx: guardian.x, by: guardian.y })
+          avoid.push({ x: baseX + on.x, y: baseY + on.y, bx: guardian.x, by: guardian.y })
         }
-      } else if (shot.weapon === 'p_monster') both(shot.x - owner.x, shot.y - owner.y, guardian.x, guardian.y)
-      else if (shot.weapon === 'w_observe') both(shot.x - owner.x, shot.y - owner.y, creature.x, creature.y)
+      } else if (shot.weapon === 'p_monster') both(shot.x - of.x, shot.y - of.y, guardian.x, guardian.y)
+      else both(shot.x - of.x, shot.y - of.y, creature.x, creature.y)
     }
-    if (owner.married && !owner.downed && this.state.phase === 'playing') {
-      const back = owner.fx < 0 ? 1 : -1
-      for (const slot of FAMILY_SLOTS.slice(0, owner.hasChild ? 2 : 1))
+    for (const player of this.state.players) {
+      if (player !== owner && player.downed) continue
+      if (!this.familyOut(player)) continue
+      baseX = player.x - owner.x
+      baseY = player.y - owner.y
+      const back = player.fx < 0 ? 1 : -1
+      for (const slot of FAMILY_SLOTS.slice(0, player.hasChild ? 2 : 1))
         both(back * slot.dx, slot.dy, PET_CLEAR_FAMILY.x, PET_CLEAR_FAMILY.y)
     }
-    return { hold, avoid }
+    baseX = baseY = 0
+    // The gamble badge floats over one side of her head or the other, and may move over at any time.
+    if (owner.weapons.some((weapon) => weapon.id === 'w_gamble'))
+      for (const box of overheadBoxes(this.bodySize(owner), 0, true).slice(1))
+        both(
+          (box.left + box.right) / 2,
+          (box.top + box.bottom) / 2,
+          (box.right - box.left) / 2 + PET_HALF.x,
+          (box.bottom - box.top) / 2 + PET_HALF.y
+        )
+    return { hold, avoid, now }
   }
 
   /**
@@ -2976,19 +3139,12 @@ export class Game {
     const forwardY = Math.sin(along)
     const now = shot.guardianStill ?? Number(owner.still > 0)
     const still = now + (Number(owner.still > 0) - now) * settle
-    const eased = (side: number) => side + (guardianTargetSide(forwardX, side) - side) * shift
-    const lone = shot.sourceWeapon !== 'p_over' ? this.loneGuardian(shot) : undefined
-    const offset = guardianWalkOffset(
-      forwardX,
-      forwardY,
-      shot,
-      eased(shot.guardianSide ?? 1),
-      lone && { orbit: lone.orbit, side: eased(lone.guardianSide ?? 1) }
-    )
-    return {
-      x: offset.x * (1 - still) + shot.h * shot.r * GUARDIAN_STILL_SPREAD * still,
-      y: offset.y * (1 - still) - GUARDIAN_STILL_LIFT * still
-    }
+    const eased = (side: number) => easeGuardianSide(side, forwardX, shift)
+    const offset = this.guardianWalk(shot, owner, forwardX, forwardY, eased(shot.guardianSide ?? 1))
+    const spot = this.guardianRestSpot(shot, owner)
+    const rest = shot.guardianRest ?? spot
+    const place = { x: rest.x + (spot.x - rest.x) * settle, y: rest.y + (spot.y - rest.y) * settle }
+    return guardianBlend(offset, place, still, forwardY, this.bodySize(owner))
   }
 
   /**
@@ -3000,15 +3156,17 @@ export class Game {
     base: { x: number; y: number },
     used: ReadonlySet<number>,
     obstacles: readonly PetObstacle[],
-    from?: { x: number; y: number }
+    from?: { x: number; y: number },
+    now: readonly PetObstacle[] = obstacles
   ) {
     let best: number | undefined
     let cost = Infinity
-    // A pet already out first looks for a spot it can run to straight without crossing another companion.
-    for (const straight of from ? [true, false] : [false]) {
+    // A pet already out first looks for a spot it can run to straight without crossing another companion, where they
+    // are heading or failing that where they stand now.
+    for (const path of from ? [obstacles, now, undefined] : [undefined]) {
       for (let i = 0; i < PET_SPOTS.length; i++) {
         if (used.has(i) || petSpotBlocked(PET_SPOTS[i], obstacles, PET_SPOT_SLACK)) continue
-        if (straight && from && !petPathClear(from, PET_SPOTS[i], obstacles)) continue
+        if (path && from && !petPathClear(from, PET_SPOTS[i], path)) continue
         const d = Math.hypot(PET_SPOTS[i].x - base.x, PET_SPOTS[i].y - base.y)
         if (d < cost) {
           best = i
@@ -3037,8 +3195,9 @@ export class Game {
   /**
    * Hands out the resting spots (PET_SPOTS) among all of `owner`'s pets, oldest first, whatever their source, round or
    * kind and whether chasing or not. Each keeps its spot while no older pet holds it and no obstacle (petObstacles)
-   * blocks it; the others, oldest first, take the nearest free spot clear of the obstacles with room to spare — nearest
-   * to where a pet pushed off its spot stands now, or for a new one to its own way out (petRestAngle).
+   * blocks it (nor, for one on its way there, stands in its way); the others, oldest first, take the nearest free spot
+   * clear of the obstacles with room to spare — nearest to where a pet pushed off its spot stands now, or for a new one
+   * to its own way out (petRestAngle).
    */
   private assignPetSpots(owner: Player) {
     const pets = this.state.shots.filter(
@@ -3046,12 +3205,18 @@ export class Game {
     )
     if (!pets.length) return
     pets.sort((first, second) => first.id - second.id)
-    const { hold, avoid } = this.petObstacles(owner)
+    const { hold, avoid, now } = this.petObstacles(owner)
     const used = new Set<number>()
     const moving: Shot[] = []
     for (const pet of pets) {
       const spot = pet.restSpot
-      if (spot !== undefined && !used.has(spot) && !petSpotBlocked(PET_SPOTS[spot], hold)) used.add(spot)
+      // One on its way to a new spot also looks again once a companion steps into its way there.
+      const cut =
+        spot !== undefined &&
+        pet.relocating &&
+        !pet.target &&
+        !petPathClear({ x: pet.x - owner.x, y: pet.y - owner.y }, PET_SPOTS[spot], now)
+      if (spot !== undefined && !cut && !used.has(spot) && !petSpotBlocked(PET_SPOTS[spot], hold)) used.add(spot)
       else moving.push(pet)
     }
     for (const pet of moving) {
@@ -3059,7 +3224,7 @@ export class Game {
       const base = pushed
         ? { x: pet.x - owner.x, y: pet.y - owner.y }
         : this.petBase(pet.weapon, pet.sourceWeapon, pet.orbit, pet.h)
-      pet.restSpot = this.pickPetSpot(base, used, avoid, pushed ? base : undefined)
+      pet.restSpot = this.pickPetSpot(base, used, avoid, pushed ? base : undefined, now)
       if (pet.restSpot !== undefined) used.add(pet.restSpot)
       if (pushed && !pet.target) pet.relocating = true
     }
@@ -3090,40 +3255,109 @@ export class Game {
     this.emit(FX.BLAST, shot.x, shot.y, radius, WEAPON_INDEX.get(shot.weapon)!)
   }
 
+  /** A player's body size as drawn (body-size.ts): what she draws over her head moves with it. */
+  private bodySize(player: Player) {
+    return bodyScale(passiveLevel(player, 'p_large'), passiveLevel(player, 'p_small'))
+  }
+
+  /** Whether `player`'s spouse and child walk behind her now (the renderer draws them then; see FAMILY_SLOTS). */
+  private familyOut(player: Player) {
+    return player.married && !player.downed && this.state.phase === 'playing'
+  }
+
   /**
-   * The child's own parent beside a gamble's copy `shot` when each is the only one of her kind there: her lone
-   * 過保護親 (h = 0) and this one copy from its source. Undefined otherwise.
+   * Where 過保護親 `shot` stands beside her standing child `owner` (offset from her), her face and figure in view: in a
+   * row out from the child's side, the first `GUARDIAN_REST_X + 14·size` px out and each next one `GUARDIAN_REST_GAP`
+   * px further on. The child's own parents stand on the shoulder they walk at (their `guardianSide`) and the gamble's
+   * copies on the other; all of them in one row (in their line, guardianLine) on the side the child faces while her
+   * family walks behind her (FAMILY_SLOTS, on the other side), or on the side away from another player standing within
+   * GUARDIAN_NEIGHBOUR px of her.
    */
-  private loneGuardian(shot: Shot) {
-    let parent: Shot | undefined
-    let parents = 0
-    let copies = 0
-    for (const other of this.state.shots) {
-      if (other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
-      if (other.sourceWeapon === 'p_over') {
-        parent = other
-        parents++
-      } else if (other.sourceWeapon === shot.sourceWeapon) copies++
+  private guardianRestSpot(shot: Shot, owner: Player) {
+    const line = this.guardianLine(shot)
+    let side = Math.sign(line[0].guardianSide ?? 0) || (owner.fx < 0 ? -1 : 1)
+    let both = true
+    if (this.familyOut(owner)) {
+      side = owner.fx < 0 ? -1 : 1
+      both = false
+    } else {
+      let nearest = GUARDIAN_NEIGHBOUR
+      for (const other of this.state.players) {
+        if (other === owner || other.downed) continue
+        const dx = owner.x - other.x
+        const d = Math.hypot(dx, owner.y - other.y)
+        if (d <= nearest && Math.abs(dx) >= 1) {
+          nearest = d
+          side = Math.sign(dx)
+          both = false
+        }
+      }
     }
-    return parents === 1 && copies === 1 && parent!.h === 0 ? parent : undefined
+    const size = this.bodySize(owner)
+    const rank = line.length - 1
+    let step = rank
+    if (both && shot.sourceWeapon !== 'p_over') {
+      side = -side
+      step = line.filter((other) => other.sourceWeapon !== 'p_over').length - 1
+    }
+    return { x: side * (GUARDIAN_REST_X + 14 * size + GUARDIAN_REST_GAP * step), y: GUARDIAN_REST_Y }
+  }
+
+  /** guardianWalkOffset for 過保護親 `shot` of `owner` in her line, the line walking at shoulder `side`. */
+  private guardianWalk(shot: Shot, owner: Player, forwardX: number, forwardY: number, side: number) {
+    const rank = this.guardianLine(shot).length - 1
+    return guardianWalkOffset(forwardX, forwardY, shot, rank, side, this.bodySize(owner))
+  }
+
+  /**
+   * 過保護親 `shot`'s line: her child's parents and the gamble's copies out now, the child's own before the copies (by
+   * |h|, then h), up to and including her. Each stands a step further out from the one before (see guardianWalkOffset).
+   */
+  private guardianLine(shot: Shot) {
+    const line = this.state.shots.filter(
+      (other) => other.weapon === 'p_over' && other.owner === shot.owner && (other.delay <= 0 || other === shot)
+    )
+    line.sort((a, b) => Math.abs(a.h) - Math.abs(b.h) || a.h - b.h || a.id - b.id)
+    return line.slice(0, line.indexOf(shot) + 1)
   }
 
   /**
    * Pushes a gamble's copied 過保護親 away from her child's own parents and the other copies until their centres are
    * `GUARDIAN_COPY_GAP` apart, so no two stand drawn over each other. A parent not yet moved this step counts where she
-   * stood relative to the child last step. The push runs from the other parent to the copy, leaning a little along
-   * (`leanX`, `leanY`) toward the copy's own (outer) side, so a copy that starts right on top of a parent, or between
-   * two, steps outward; it follows the positions continuously.
+   * will be after it (guardianOffsetAhead over `dt`; a copy no further from where she stood than she glides in it).
+   * The push runs from the other parent to the copy, leaning a little along (`leanX`, `leanY`) toward the copy's own
+   * (outer) side, so a copy that starts right on top of a parent, or between two, steps outward; it follows the
+   * positions continuously.
    */
-  private keepCopyApart(shot: Shot, owner: Player, leanX: number, leanY: number) {
+  private keepCopyApart(shot: Shot, owner: Player, leanX: number, leanY: number, dt: number) {
     const lean = Math.hypot(leanX, leanY) || 1
     const outX = (leanX / lean) * GUARDIAN_COPY_LEAN
     const outY = (leanY / lean) * GUARDIAN_COPY_LEAN
+    const others = new Map<Shot, { x: number; y: number }>()
+    for (const other of this.state.shots) {
+      if (other === shot || other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
+      const last = other.guardianOffset
+      if (!last) others.set(other, { x: other.x, y: other.y })
+      else if (this.guardiansMoved.has(other) || dt <= 0)
+        others.set(other, { x: owner.x + last.x, y: owner.y + last.y })
+      else {
+        const next = this.guardianOffsetAhead(
+          other,
+          owner,
+          1 - Math.exp(-8 * dt),
+          1 - Math.exp(-12 * dt),
+          1 - Math.exp(-10 * dt)
+        )
+        const dx = next.x - last.x
+        const dy = next.y - last.y
+        const moved = Math.hypot(dx, dy)
+        const most = other.sourceWeapon !== 'p_over' ? GUARDIAN_GLIDE * dt : Infinity
+        const share = moved > most ? most / moved : 1
+        others.set(other, { x: owner.x + last.x + dx * share, y: owner.y + last.y + dy * share })
+      }
+    }
     for (let pass = 0; pass < 2; pass++)
-      for (const other of this.state.shots) {
-        if (other === shot || other.weapon !== 'p_over' || other.owner !== shot.owner || other.delay > 0) continue
-        const x = other.guardianOffset ? owner.x + other.guardianOffset.x : other.x
-        const y = other.guardianOffset ? owner.y + other.guardianOffset.y : other.y
+      for (const [, { x, y }] of others) {
         // A copy already pushed to the gap may land a rounding error inside it; pushing her again (with the lean) would
         // throw her back and forth between two spots from tick to tick.
         if (Math.hypot(shot.x - x, shot.y - y) >= GUARDIAN_COPY_GAP - GUARDIAN_COPY_SLACK) continue
@@ -3137,11 +3371,16 @@ export class Game {
 
   private shieldTouches(shot: Shot, x: number, y: number, radius: number) {
     const scale = shot.r / 20
-    // Standing still the parent stands right behind the child and covers every side.
-    if ((shot.guardianStill ?? 0) >= 0.5) {
+    // Standing still the parent covers every side, all round the child: the reach is centred where it always was,
+    // whatever place beside the child she has stepped to.
+    const still = shot.guardianStill ?? 0
+    if (still >= 0.5) {
       const reach = shot.orbit * 0.65 + 7 * scale + radius
-      const dx = x - (shot.x - shot.h * shot.r * GUARDIAN_STILL_SPREAD)
-      const dy = y - (shot.y + GUARDIAN_STILL_LIFT)
+      const legacyX = shot.h * shot.r * GUARDIAN_SHIELD_SPREAD
+      const legacyY = -GUARDIAN_SHIELD_LIFT
+      const rest = shot.guardianRest ?? { x: legacyX, y: legacyY }
+      const dx = x - (shot.x - rest.x * still + legacyX * (still - 1))
+      const dy = y - (shot.y - rest.y * still + legacyY * (still - 1))
       return dx * dx + dy * dy <= reach * reach
     }
     const thrust = shot.aux > 0 ? Math.sin(Math.PI * (1 - Math.min(1, shot.aux / shot.tick))) * 14 : 0

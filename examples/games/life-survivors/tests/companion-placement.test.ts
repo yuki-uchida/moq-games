@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { EVENTS, timeAtAge } from '../src/data'
 import { Game, PET_SPOTS, weaponStats } from '../src/game'
+import { GUARDIAN_BODY, overheadBoxes } from '../src/overhead'
 
 /** The fan straight above the owner (up ± 35°), where a companion would sit on their head, hat or name tag. */
 const overHead = (dx: number, dy: number) => dy < 0 && Math.abs(Math.atan2(dx, -dy)) < (35 * Math.PI) / 180
@@ -82,7 +83,9 @@ test('a lone 過保護親 keeps off the hat for every heading from 60° to 120°
   }
 })
 
-test('a lone 過保護親 turning round passes beside or below the head, never over the hat', () => {
+test('a lone 過保護親 turning round passes beside, below or high above the head, never over the hat', () => {
+  // Crossing over to the other shoulder she may pass right above everything drawn over the child's head.
+  const top = Math.min(...overheadBoxes(1).map((box) => box.top))
   const turns: [string, number[]][] = [
     ['down to up', [90, -90]],
     ['up-right to up-left', [-45, -135]],
@@ -98,9 +101,10 @@ test('a lone 過保護親 turning round passes beside or below the head, never o
         game.tick(1 / 60)
         const dx = guard.x - player.x
         const dy = guard.y - player.y
-        expect(Math.abs(dx) >= 16 || dy >= -14, `${name}, frame ${frame}: (${dx.toFixed(1)}, ${dy.toFixed(1)})`).toBe(
-          true
-        )
+        expect(
+          Math.abs(dx) >= 16 || dy >= -14 || dy + GUARDIAN_BODY.y <= top,
+          `${name}, frame ${frame}: (${dx.toFixed(1)}, ${dy.toFixed(1)})`
+        ).toBe(true)
       }
     }
   }
