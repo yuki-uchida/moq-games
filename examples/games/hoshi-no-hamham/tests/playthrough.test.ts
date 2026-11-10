@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TILE, World, emptyInput, type InputState } from '../src/game/sim'
+import { TILE, T, World, emptyInput, type InputState } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
 
 /**
@@ -56,13 +56,24 @@ function botInput(world: World, memory: { x: number; stuck: number; reverse: num
   const sign = target ? Math.sign(target.x - p.x) || moveDir : moveDir
   const footTy = Math.floor((p.y + p.h - 4) / TILE)
   const aheadTx = Math.floor((p.x + p.w / 2 + sign * (p.w / 2 + 8)) / TILE)
+  // Diggable walls and rock piles block the road: bite through them instead of jumping.
+  const dirtAhead = world.tileAt(aheadTx, footTy) === T.DIRT || world.tileAt(aheadTx, footTy - 1) === T.DIRT
+  const rockAhead = world
+    .props.filter((prop) => prop.kind === 'rock' && prop.state === 'idle')
+    .some((prop) => Math.abs(prop.x - p.x) < 76 && Math.abs(prop.y - p.y) < 60)
+  if (dirtAhead || rockAhead) {
+    input.bite = true
+    input.bitePressed = true
+    input[moveDir > 0 ? 'right' : 'left'] = true
+    return input
+  }
   const wallAhead = world.solidAt(aheadTx, footTy) || world.solidAt(aheadTx, footTy - 1)
   const belowTy = Math.floor((p.y + p.h + 16) / TILE)
   const pitAhead = !world.solidAt(aheadTx, belowTy) && !world.waterAt(aheadTx, belowTy)
   if ((wallAhead || pitAhead) && p.onGround) {
     input.jumpPressed = true
   }
-  if (wallAhead || pitAhead || (p.vy < 0 && p.vy > -400)) input.jump = true
+  if (wallAhead || pitAhead || p.vy < 0) input.jump = true
   return input
 }
 
@@ -100,8 +111,16 @@ describe('stage traversability', () => {
           }
           window.push(row.join(''))
         }
+        const charWindow: string[] = []
+        for (let y = Math.max(0, ty - 4); y <= Math.min(world.h - 1, ty + 4); y++) {
+          charWindow.push(
+            [...world.stage.map[y]]
+              .slice(Math.max(0, tx - 14), tx + 15)
+              .join('')
+          )
+        }
         throw new Error(
-          `bot stuck at ${Math.round(p.x)},${Math.round(p.y)} state=${world.state} hp=${p.hp}\n${window.join('\n')}`
+          `bot stuck at ${p.x.toFixed(1)},${p.y.toFixed(1)} box=${p.w}x${p.h} tile=${world.tileAt(tx, ty)} solid=${world.solidAt(tx, ty)} state=${world.state} hp=${p.hp} ground=${p.onGround}\n${window.join('\n')}\n${charWindow.join('\n')}`
         )
       }
       expect(world.state).toBe('clear')

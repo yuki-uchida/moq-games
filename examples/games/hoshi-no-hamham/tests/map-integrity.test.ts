@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAPS } from '../src/game/maps'
+import { MAPS, SURFACE } from '../src/game/maps'
 import { STAGES } from '../src/game/stages'
 
 const PROP_CHARS = new Set(['T', 'N', 'P', 'H', 'A', 'R', '1', '2', 'x', 'y', '*', 't', 'b', 's', 'G', 'n', '@', 'E', 'F', 'J', 'K', 'U', 'B'])
@@ -54,6 +54,44 @@ describe('map integrity', () => {
       }
       const x = goal.row.indexOf(goal.row.includes('G') ? 'G' : 'n')
       if (x < 2 || x > width - 3) problems.push(`${stage.id}: exit at ${x} is too close to a wall`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('gives every stage a gimmick the player must bite through', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      const digWall = map.some((row, y) => y <= SURFACE - 1 && row.includes('D'))
+      const switchDoor = map.some((row) => row.includes('1') || row.includes('2'))
+      const collect = stage.objective === 'collect'
+      if (!digWall && !switchDoor && !collect) problems.push(`${stage.id}: no diggable wall, switch or collection`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('puts the princess on screen in the stages where the story needs her', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      const present = map.some((row) => row.includes('h') || row.includes('c'))
+      const needed = ['stage-2', 'stage-3', 'stage-4', 'stage-6', 'stage-8', 'stage-10'].includes(stage.id)
+      if (needed && !present) problems.push(`${stage.id}: the princess never appears`)
+      if (!needed && present) problems.push(`${stage.id}: unexpected princess`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('cuts real pits into the surface of every stage', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      let pits = 0
+      for (let x = 0; x < map[0].length; x++) {
+        // A real pit is open at the surface and through the row below it.
+        if (map[SURFACE]?.[x] !== '#' && map[SURFACE + 1]?.[x] !== '#') pits++
+      }
+      if (pits < 2) problems.push(`${stage.id}: only ${pits} pit columns`)
     }
     expect(problems).toEqual([])
   })

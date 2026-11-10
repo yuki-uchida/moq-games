@@ -30,7 +30,8 @@ export class MapBuilder {
   readonly overwritten: string[] = []
   set(ch: string, x: number, y: number) {
     // Props never replace terrain or each other: they stack on top of the first free cell.
-    if (ch !== '#') while (y > 0 && this.get(x, y) !== '.') y -= 1
+    // Terrain writes ('#' and '.') are exact, so pits and ground always land where they were drawn.
+    if (ch !== '#' && ch !== '.') while (y > 0 && this.get(x, y) !== '.') y -= 1
     const existing = this.get(x, y)
     if (existing !== '.' && existing !== '#') this.overwritten.push(`${existing} -> ${ch} at ${x},${y}`)
     if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.grid[y][x] = ch
@@ -58,13 +59,45 @@ export class MapBuilder {
     return this.fill('#', x0, surface, x1, this.h - 1)
   }
 
-  /** A pit: clears everything from the surface down. */
+  /** A pit: opens the top two ground rows, leaving a floor the player can jump out of. */
   pit(x0: number, x1: number) {
-    return this.fill('.', x0, SURFACE, x1, this.h - 1)
+    return this.fill('.', x0, SURFACE, x1, this.h - 2)
   }
 
   platform(x0: number, x1: number, row: number) {
     return this.fill('=', x0, row, x1, row)
+  }
+
+  /** True when the column is part of a raised hill (ground surface above the default row). */
+  hill(x: number, hills: readonly (readonly [number, number])[]) {
+    return hills.some(([h0, h1]) => x >= h0 && x <= h1)
+  }
+
+  /**
+   * One-way platforms with head-room: row 13 over flat ground, row 12 over a hill, so the player can
+   * always stand underneath (or jump on top).
+   */
+  platforms(x0: number, x1: number, hills: readonly (readonly [number, number])[] = []) {
+    let start = -1
+    let onHill = false
+    const flush = (end: number) => {
+      if (start < 0) return
+      this.platform(start, end, onHill ? 12 : 13)
+      start = -1
+    }
+    for (let x = x0; x <= x1; x++) {
+      const hill = this.hill(x, hills)
+      if (start < 0) {
+        start = x
+        onHill = hill
+      } else if (hill !== onHill) {
+        flush(x - 1)
+        start = x
+        onHill = hill
+      }
+    }
+    flush(x1)
+    return this
   }
 
   spikes(x0: number, x1: number, row = SURFACE - 1) {
@@ -150,6 +183,10 @@ function stage1() {
 
 function stage2() {
   const m = new MapBuilder(120, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [44, 54],
+    [74, 84]
+  ]
   m.ground(0, 119)
   m.pit(28, 30)
   m.pit(58, 60)
@@ -159,14 +196,16 @@ function stage2() {
   m.platform(87, 91, 13)
   m.ground(44, 54, 14)
   m.ground(74, 84, 14)
+  // A diggable wall blocks the road: bite through it.
+  m.fill('D', 60, 12, 60, 14)
   m.dirt(14, 17, 1)
   m.dirt(38, 41, 1)
   m.dirt(68, 71, 2)
   m.dirt(98, 101, 1)
   m.platform(8, 20, 13)
   m.platform(30, 40, 13)
-  m.platform(52, 62, 13)
-  m.platform(74, 86, 13)
+  m.platforms(52, 62, HILLS)
+  m.platforms(74, 86, HILLS)
   m.set('T', 10, 14)
   m.set('T', 24, 14)
   m.set('T', 47, 13)
@@ -209,6 +248,7 @@ function stage2() {
   m.set('U', 106, 14)
   m.set('B', 112, 13)
   m.set('G', 117, 14)
+  m.set('h', 114, 14)
   m.set('@', 3, 14)
   m.border()
   return m
@@ -216,6 +256,11 @@ function stage2() {
 
 function stage3() {
   const m = new MapBuilder(130, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [34, 42],
+    [56, 64],
+    [78, 86]
+  ]
   m.ground(0, 129)
   m.pit(22, 24)
   m.pit(44, 46)
@@ -228,15 +273,16 @@ function stage3() {
   m.ground(34, 42, 14)
   m.ground(56, 64, 14)
   m.ground(78, 86, 14)
+  m.fill('D', 50, 12, 50, 14)
   m.dirt(12, 15, 1)
   m.dirt(30, 33, 2)
   m.dirt(52, 55, 1)
   m.dirt(74, 77, 2)
   m.dirt(96, 99, 1)
   m.platform(6, 18, 13)
-  m.platform(28, 40, 13)
-  m.platform(50, 62, 13)
-  m.platform(72, 84, 13)
+  m.platforms(28, 40, HILLS)
+  m.platforms(50, 62, HILLS)
+  m.platforms(72, 84, HILLS)
   m.platform(94, 106, 13)
   m.set('T', 8, 14)
   m.set('T', 18, 14)
@@ -287,6 +333,7 @@ function stage3() {
   m.set('J', 92, 14)
   m.set('K', 44, 14)
   m.set('K', 84, 14)
+  m.set('h', 6, 14)
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
@@ -306,6 +353,8 @@ function stage4() {
   m.ground(40, 50, 14)
   m.ground(70, 80, 14)
   m.fill('#', 0, 0, 119, 3)
+  m.fill('D', 30, 12, 30, 14)
+  m.fill('D', 74, 12, 74, 14)
   m.set('R', 12, 14)
   m.set('R', 13, 14)
   m.set('R', 12, 13)
@@ -348,6 +397,7 @@ function stage4() {
   m.set('K', 48, 14)
   m.set('K', 102, 14)
   m.set('U', 108, 14)
+  m.set('c', 110, 14)
   m.set('B', 112, 13)
   m.set('G', 117, 14)
   m.set('@', 3, 14)
@@ -357,6 +407,12 @@ function stage4() {
 
 function stage5() {
   const m = new MapBuilder(130, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [28, 36],
+    [48, 56],
+    [68, 76],
+    [88, 96]
+  ]
   m.ground(0, 129)
   m.pit(18, 20)
   m.pit(38, 40)
@@ -378,11 +434,15 @@ function stage5() {
   m.dirt(54, 57, 1)
   m.dirt(74, 77, 2)
   m.dirt(94, 97, 1)
+  m.fill('D', 44, 12, 44, 14)
+  m.set('R', 64, 14)
+  m.set('R', 64, 13)
+  m.set('R', 64, 12)
   m.platform(6, 18, 13)
-  m.platform(26, 38, 13)
-  m.platform(46, 58, 13)
-  m.platform(66, 78, 13)
-  m.platform(86, 98, 13)
+  m.platforms(26, 38, HILLS)
+  m.platforms(46, 58, HILLS)
+  m.platforms(66, 78, HILLS)
+  m.platforms(86, 98, HILLS)
   m.set('T', 8, 14)
   m.set('T', 16, 14)
   m.set('T', 31, 13)
@@ -447,6 +507,11 @@ function stage5() {
 
 function stage6() {
   const m = new MapBuilder(110, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [36, 46],
+    [66, 76],
+    [92, 100]
+  ]
   m.ground(0, 109)
   m.pit(26, 28)
   m.pit(56, 58)
@@ -463,10 +528,10 @@ function stage6() {
   m.dirt(70, 74, 1)
   m.dirt(90, 94, 2)
   m.platform(6, 18, 13)
-  m.platform(26, 40, 13)
-  m.platform(46, 60, 13)
-  m.platform(66, 80, 13)
-  m.platform(86, 100, 13)
+  m.platforms(26, 40, HILLS)
+  m.platforms(46, 60, HILLS)
+  m.platforms(66, 80, HILLS)
+  m.platforms(86, 100, HILLS)
   m.set('T', 8, 14)
   m.set('T', 18, 14)
   m.set('T', 33, 13)
@@ -520,6 +585,7 @@ function stage6() {
   m.set('K', 48, 14)
   m.set('K', 88, 14)
   m.set('n', 105, 14)
+  m.set('h', 103, 14)
   m.set('@', 3, 14)
   m.border()
   return m
@@ -527,6 +593,11 @@ function stage6() {
 
 function stage7() {
   const m = new MapBuilder(100, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [12, 24],
+    [44, 56],
+    [74, 88]
+  ]
   m.ground(0, 99)
   m.fill('#', 0, 0, 99, 3)
   m.fill('#', 0, 0, 3, 17)
@@ -560,11 +631,11 @@ function stage7() {
   m.set('H', 50, 11)
   m.set('H', 68, 11)
   m.set('H', 92, 11)
-  m.platform(4, 14, 13)
+  m.platforms(4, 14, HILLS)
   m.platform(26, 40, 13)
-  m.platform(46, 62, 13)
-  m.platform(66, 82, 13)
-  m.platform(86, 94, 13)
+  m.platforms(46, 62, HILLS)
+  m.platforms(66, 82, HILLS)
+  m.platforms(86, 94, HILLS)
   m.set('A', 14, 14)
   m.set('A', 40, 14)
   m.set('A', 58, 14)
@@ -672,6 +743,7 @@ function stage8() {
   m.set('K', 40, 14)
   m.set('K', 80, 14)
   m.set('U', 100, 14)
+  m.set('c', 102, 14)
   m.set('B', 100, 12)
   m.set('G', 102, 14)
   m.set('@', 8, 14)
@@ -681,6 +753,11 @@ function stage8() {
 
 function stage9() {
   const m = new MapBuilder(130, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [32, 44],
+    [62, 74],
+    [92, 100]
+  ]
   m.ground(0, 129)
   m.fill('#', 0, 0, 129, 3)
   m.pit(24, 26)
@@ -701,6 +778,10 @@ function stage9() {
   m.dirt(76, 78, 1)
   m.dirt(96, 98, 2)
   m.dirt(112, 116, 1)
+  m.fill('D', 60, 12, 60, 14)
+  m.set('R', 104, 14)
+  m.set('R', 104, 13)
+  m.set('R', 104, 12)
   m.set('R', 8, 14)
   m.set('R', 18, 14)
   m.set('R', 36, 14)
@@ -742,10 +823,10 @@ function stage9() {
   m.set('A', 94, 14)
   m.set('A', 116, 14)
   m.platform(4, 18, 13)
-  m.platform(28, 40, 13)
-  m.platform(48, 62, 13)
-  m.platform(68, 82, 13)
-  m.platform(88, 102, 13)
+  m.platforms(28, 40, HILLS)
+  m.platforms(48, 62, HILLS)
+  m.platforms(68, 82, HILLS)
+  m.platforms(88, 102, HILLS)
   m.platform(108, 122, 13)
   m.set('*', 20, 12)
   m.set('*', 44, 13)
@@ -780,6 +861,11 @@ function stage9() {
 
 function stage10() {
   const m = new MapBuilder(100, MAP_H)
+  const HILLS: readonly (readonly [number, number])[] = [
+    [28, 38],
+    [54, 64],
+    [80, 90]
+  ]
   m.ground(0, 99)
   m.fill('#', 0, 0, 99, 3)
   m.fill('#', 0, 0, 4, 17)
@@ -798,6 +884,8 @@ function stage10() {
   m.dirt(50, 52, 1)
   m.dirt(66, 68, 2)
   m.dirt(84, 88, 1)
+  m.fill('D', 30, 12, 30, 14)
+  m.fill('D', 64, 12, 64, 14)
   m.set('R', 8, 14)
   m.set('R', 18, 14)
   m.set('R', 40, 14)
@@ -831,10 +919,10 @@ function stage10() {
   m.set('A', 54, 14)
   m.set('A', 84, 14)
   m.platform(4, 16, 13)
-  m.platform(26, 40, 13)
-  m.platform(44, 58, 13)
-  m.platform(62, 78, 13)
-  m.platform(80, 92, 13)
+  m.platforms(26, 40, HILLS)
+  m.platforms(44, 58, HILLS)
+  m.platforms(62, 78, HILLS)
+  m.platforms(80, 92, HILLS)
   m.set('*', 14, 12)
   m.set('*', 40, 13)
   m.set('*', 64, 12)
@@ -855,6 +943,7 @@ function stage10() {
   m.set('K', 42, 14)
   m.set('K', 70, 14)
   m.set('U', 90, 14)
+  m.set('c', 92, 14)
   m.set('B', 90, 12)
   m.set('G', 94, 14)
   m.set('@', 6, 14)

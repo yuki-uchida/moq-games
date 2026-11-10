@@ -109,6 +109,7 @@ export class App {
     on('#dead-select', () => this.openSelect())
     on('#ending-select', () => this.openSelect())
     on('#ending-title-button', () => this.openTitle())
+    on('#ending-next', () => this.advanceEnding())
     on('#pause-resume', () => this.togglePause())
     on('#pause-retry', () => {
       this.togglePause()
@@ -239,10 +240,46 @@ export class App {
     this.hud.hide()
     this.audio.stopMusic()
     this.showOnly('ending-screen')
-    document.querySelector<HTMLElement>('#ending-pages')!.textContent = ENDING_PAGES.join('\n')
+    this.storyPages = [...ENDING_PAGES]
+    this.storyIndex = 0
     const totalTime = Object.values(this.save.best).reduce((sum, value) => sum + value, 0)
-    document.querySelector<HTMLElement>('#ending-stats')!.innerHTML =
+    const stats = document.querySelector<HTMLElement>('#ending-stats')!
+    stats.innerHTML =
       `<span>クリア ${this.save.cleared.length}/${STAGES.length}</span><span>合計タイム ${formatTime(totalTime)}</span><span>★ ありがとう！</span>`
+    stats.hidden = true
+    document.querySelector<HTMLButtonElement>('#ending-select')!.hidden = true
+    document.querySelector<HTMLButtonElement>('#ending-title-button')!.hidden = true
+    document.querySelector<HTMLButtonElement>('#ending-next')!.hidden = false
+    this.renderEndingPage()
+  }
+
+  private renderEndingPage() {
+    const box = document.querySelector<HTMLElement>('#ending-pages')!
+    box.replaceChildren()
+    const p = document.createElement('p')
+    p.textContent = this.storyPages[this.storyIndex]
+    box.appendChild(p)
+    const dots = document.querySelector<HTMLElement>('#ending-dots')!
+    dots.replaceChildren()
+    this.storyPages.forEach((_, index) => {
+      const dot = document.createElement('i')
+      if (index === this.storyIndex) dot.className = 'is-active'
+      dots.appendChild(dot)
+    })
+    document.querySelector<HTMLButtonElement>('#ending-next')!.textContent =
+      this.storyIndex >= this.storyPages.length - 1 ? 'おしまい' : 'つぎへ'
+  }
+
+  private advanceEnding() {
+    if (this.storyIndex < this.storyPages.length - 1) {
+      this.storyIndex += 1
+      this.renderEndingPage()
+      return
+    }
+    document.querySelector<HTMLElement>('#ending-stats')!.hidden = false
+    document.querySelector<HTMLButtonElement>('#ending-next')!.hidden = true
+    document.querySelector<HTMLButtonElement>('#ending-select')!.hidden = false
+    document.querySelector<HTMLButtonElement>('#ending-title-button')!.hidden = false
   }
 
   // ------------------------------------------------------------------ play
@@ -289,6 +326,7 @@ export class App {
     if (frame > 0.25) frame = 0.25
     if (this.input.mutePressed) this.toggleMute()
     if (this.input.confirmPressed && this.screen === 'story') this.advanceStory()
+    if (this.input.confirmPressed && this.screen === 'ending') this.advanceEnding()
     if (this.input.confirmPressed && this.helpOpen) this.closeHelp()
 
     if (this.screen === 'play' && this.world) {
@@ -308,6 +346,7 @@ export class App {
         if (this.world.boss && !this.world.boss.dead && !this.bossBarShown) {
           this.bossBarShown = true
           this.hud.showBoss(this.world.boss.def.name, this.world.boss.def.title)
+          if (this.world.boss.state !== 'tired') this.hud.showToast(`${this.world.boss.def.name} が現れた！`)
         }
         if (this.world.boss?.dead && this.bossBarShown) {
           this.bossBarShown = false
