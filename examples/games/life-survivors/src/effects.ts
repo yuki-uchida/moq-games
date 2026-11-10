@@ -13,6 +13,8 @@ export const PARTICLE_CAP = 700
 /** Lifetime of the gamble reel sprite, and how long the result banner / badge wait for the final frame. */
 export const GAMBLE_SPRITE_LIFE = 1.6
 export const GAMBLE_RESULT_DELAY = 0.8
+/** Where a gamble's reel sprite (x, -y) and result banner (x, +y) spawn from the gambling player's point. */
+export const GAMBLE_OFFSET = { x: 60, y: 55 }
 const GAMBLE_SPIN = 0.6
 /** The frame (and so the time) from which the pachinko / horse label appears. */
 const GAMBLE_LABEL_FRAME: Record<string, number> = { gamble_pachinko: 5, gamble_horse: 4 }
@@ -123,6 +125,13 @@ export interface Particle {
   fade: boolean
   /** Additive blending. */
   add: boolean
+  /**
+   * Gamble reel / result: id of the player it belongs to, resolved by the renderer ('' until then, '-' when nobody
+   * matched), so it follows them.
+   */
+  owner: string
+  /** Gamble reel: its eased height above the owner; result: 0 once it follows its owner (renderer state; NaN before). */
+  lift: number
 }
 
 const blank = (): Particle => ({
@@ -147,7 +156,9 @@ const blank = (): Particle => ({
   n: 1,
   once: false,
   fade: true,
-  add: false
+  add: false,
+  owner: '',
+  lift: NaN
 })
 
 /** A capped, recycling particle list. */
@@ -188,6 +199,8 @@ export class ParticlePool {
     p.once = false
     p.fade = true
     p.add = false
+    p.owner = ''
+    p.lift = NaN
     this.items.push(p)
     return p
   }
@@ -455,13 +468,19 @@ export class Effects {
     switch (type) {
       case FX.GAMBLE:
         if (GAMBLE_FORMS[a] && this.onScreen(x, y, v)) {
-          const particle = this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + 60, y - 55, {
+          const particle = this.sprite(`gamble_${GAMBLE_FORMS[a].key}`, x + GAMBLE_OFFSET.x, y - GAMBLE_OFFSET.y, {
             life: GAMBLE_SPRITE_LIFE,
             scale: 1.5,
             important: true
           })
           if (particle) particle.n = b
-          const result = this.pool.spawn(PK.gambleResult, x + 60, y + 55, GAMBLE_RESULT_DELAY + 3, true)
+          const result = this.pool.spawn(
+            PK.gambleResult,
+            x + GAMBLE_OFFSET.x,
+            y + GAMBLE_OFFSET.y,
+            GAMBLE_RESULT_DELAY + 3,
+            true
+          )
           if (result) result.n = b
         }
         break

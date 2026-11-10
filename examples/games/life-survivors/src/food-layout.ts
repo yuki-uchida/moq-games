@@ -45,6 +45,14 @@ export const LABEL_LINE = 15
 /** Clear space kept around every placed label block, so neighbouring blocks never read as one list. */
 export const BLOCK_GAP = 4
 
+/** A box grown by `by` on every side. */
+const grow = (box: Box, by: number): Box => ({
+  left: box.left - by,
+  top: box.top - by,
+  right: box.right + by,
+  bottom: box.bottom + by
+})
+
 /** A placed block grown by BLOCK_GAP on every side: what later blocks must keep clear of. */
 const spaced = (box: Box): Box => ({
   left: box.left - BLOCK_GAP,
@@ -227,9 +235,9 @@ export function foodSpriteBox(point: FoodPoint): Box {
 
 /** Measured widths of what a player draws above the body. */
 export interface PlayerTags {
-  /** Width of the name tag canvas. */
+  /** Drawn width of the name tag's text with its outline (not of the padded canvas it is drawn from). */
   name: number
-  /** Width of the drawn buff row (0 without buffs). */
+  /** Drawn width of the buff row's texts with their outlines, first to last (0 without buffs). */
   buffs: number
   /** Whether the gamble badge is drawn. */
   badge: boolean
@@ -238,7 +246,8 @@ export interface PlayerTags {
 }
 
 /**
- * Boxes a player covers: body, name tag, buff row and gamble badge. Food labels keep clear of all of them.
+ * Boxes a player covers as drawn: body, name tag text, buff row texts and gamble badge. Food labels keep clear of all
+ * of them.
  */
 export function playerBox(x: number, feet: number, size: number, tagLift: number, tags: PlayerTags): Box[] {
   const row = (width: number, y: number): Box => ({
@@ -661,6 +670,10 @@ const segmentBox = (s: Segment): Box => ({
  * read, then replaced by this frame's choices. `transient` boxes (the paths of banners and feed lines, which come and
  * go) take no part in choosing: blocks are placed as if they were absent, and a block that then overlaps one is marked
  * `hidden` (still placed, still blocking later blocks and remembered), so it comes back in the same spot afterwards.
+ * The `players` boxes are avoided grown by `clearance` (the width over which labelClearance fades a label), so a label
+ * next to a player standing still sits outside its fade and reads fully opaque; only when no candidate is that far
+ * does a block take one merely clear of them (drawn faded rather than left out). `onPlayer` is judged on the boxes
+ * themselves.
  */
 export function placeFoodLabels(
   piles: readonly FoodLabelPile[],
@@ -672,8 +685,10 @@ export function placeFoodLabels(
   occluders: readonly Box[] = [],
   players: readonly Box[] = [],
   now = 0,
-  transient: readonly Box[] = []
+  transient: readonly Box[] = [],
+  clearance = LABEL_CLEARANCE
 ): FoodLabelPlacement[] {
+  const roomy = clearance > 0 ? players.map((p) => grow(p, clearance)) : players
   const placed: FoodLabelPlacement[] = []
   const blocked = [...obstacles]
   const rawBoxes: Box[] = []
@@ -712,7 +727,10 @@ export function placeFoodLabels(
         if (!line) return namesPile(box, bounds, near.others)
         return !near.boxes.some((o) => segmentHitsBox(line, o)) && !near.lines.some((l) => segmentsCross(line, l))
       }
-      const spot = placeOne(block, blocked, viewport, recall(memory, pile.key), accept, players, now)
+      const remembered = recall(memory, pile.key)
+      const spot =
+        placeOne(block, blocked, viewport, remembered, accept, roomy, now) ??
+        (roomy === players ? undefined : placeOne(block, blocked, viewport, remembered, accept, players, now))
       if (!spot) continue
       const leader = leaderLine(bounds, spot.box)
       const placement: FoodLabelPlacement = leader
@@ -730,4 +748,25 @@ export function placeFoodLabels(
   })
   remember(memory, chosen)
   return placed
+}
+
+/** Clear space (world px) between a food label and the nearest player box over which the label fades out. */
+export const LABEL_CLEARANCE = 12
+
+/** Distance between two boxes (0 when they touch or overlap). */
+export function boxGap(a: Box, b: Box): number {
+  const dx = Math.max(0, a.left - b.right, b.left - a.right)
+  const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom)
+  return Math.hypot(dx, dy)
+}
+
+/**
+ * Opacity of a food label at `box` near the player boxes: 1 while every one is at least `reach` away, falling
+ * linearly to 0 as the nearest closes to touching, so a player walking up to a label fades it out before any of
+ * their tags reaches it, and walking away fades it back.
+ */
+export function labelClearance(box: Box, players: readonly Box[], reach = LABEL_CLEARANCE): number {
+  let gap = reach
+  for (const p of players) gap = Math.min(gap, boxGap(box, p))
+  return Math.max(0, Math.min(1, gap / reach))
 }
