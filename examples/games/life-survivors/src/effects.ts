@@ -656,13 +656,15 @@ export class Effects {
       case FX.ITEM: {
         if (a === 0 || a === 6) {
           this.glow(x, y, 50, 0.6, '#7be495', { alpha: 0.6 })
-          for (let i = 0; i < 5; i++)
-            this.sprite('heal', x + this.r(-14, 14), y + this.r(-6, 10), {
-              life: this.r(0.7, 1.1),
-              scale: 1.6,
-              vy: -this.r(35, 60),
+          // Small twinkles spread wide around the body (one per slice of the width, so they never bunch up) that
+          // drift slowly up and fade, one after another.
+          for (let i = 0; i < 6; i++)
+            this.sprite(i % 3 === 2 ? 'shine' : 'heal', x + (i - 2.5) * 10 + this.r(-4, 4), y + this.r(-14, 12), {
+              life: this.r(0.9, 1.3),
+              scale: 0.9,
+              vy: -this.r(18, 34),
               once: false,
-              delay: i * 0.06
+              delay: i * 0.09
             })
         } else if (a === 2) {
           this.ring(x, y, 12, 340, 0.7, '#6fd6ff', { width: 5, flat: 0.8 })

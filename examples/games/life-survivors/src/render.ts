@@ -1143,7 +1143,7 @@ export class Renderer {
   }
 
   /** One stage's ground over the visible area: painted tiles and props. */
-  private ground(stage: Stage, alpha: number, halfW: number, halfH: number) {
+  private ground(stage: Stage, alpha: number, halfW: number, halfH: number, underProps?: () => void) {
     const ctx = this.ctx
     const key = GROUNDS[stage.name]
     // Tiles: nearest-neighbour onto integer device rectangles so neighbours meet without seams.
@@ -1170,6 +1170,10 @@ export class Renderer {
       }
     ctx.imageSmoothingEnabled = true
     ctx.globalAlpha = 1
+    if (underProps) {
+      this.bedGround = key
+      underProps()
+    }
     const props = sheet(`props:${key}`)
     for (
       let cx = Math.floor((this.camera.x - halfW - 64) / PROP_CELL);
@@ -1669,6 +1673,128 @@ export class Renderer {
     return sh
   }
 
+  /** The ground whose props the beds were drawn under this frame (to find the props a flower stands near). */
+  private bedGround = ''
+
+  /**
+   * A garden bed in bloom. The bed itself (soil, rim and the flowers behind a standing prop) is drawn in the ground
+   * pass, under the props; the flowers in front of a prop, the sprout fading out, sparkles and pollen come afterwards.
+   */
+  private gardenBed(sh: ShotView, layer: 'under' | 'over') {
+    const ctx = this.ctx
+    const fx = sheet('fx')
+    const { x, y, r: radius, life, evolved } = sh
+    const alpha = Math.min(1, life * 4)
+    const art = sheet('weapon:w_garden')
+    // The bed grows in over ~0.35 s from when it is first seen blooming. A bed already well into its life when
+    // first seen (the page opened on it) is drawn fully grown.
+    const key = Math.round(x) * 1e6 + Math.round(y)
+    let bloom = this.blooms.get(key)
+    if (!bloom) {
+      bloom = { at: sh.age > 0.1 ? this.clock - 10 : this.clock, frame: this.frame }
+      this.blooms.set(key, bloom)
+    }
+    bloom.frame = this.frame
+    const since = this.clock - bloom.at
+    const grow = clamp01(since / 0.15)
+    const back = 1 + 2.70158 * Math.pow(grow - 1, 3) + 1.70158 * Math.pow(grow - 1, 2)
+    const bedScale = grow >= 1 ? 1 : 0.6 + 0.4 * back
+    const bedAlpha = alpha * (grow >= 1 ? 1 : clamp01(grow * 3))
+    const kinds = [art.bloom, art.tulip, art.daisy]
+    // Each bed is seeded by its fixed spot: neighbouring beds differ and never reshuffle as other shots expire.
+    const seed = hash(Math.round(x), Math.round(y))
+    const flowers = (front: boolean) =>
+      flowerSpots(radius, Math.floor(seed * 4)).forEach((spot, n) => {
+        if (this.flowerInFront(x + spot.x, y + spot.y) !== front) return
+        // Each flower shoots up from its stem base in turn: 0 -> 1.1 -> 1 tall.
+        const u = clamp01((since - Math.min(n * 0.045, 0.2)) / 0.15)
+        if (u <= 0.02) return
+        const frame = pick(kinds[spot.kind], this.clock + spot.phase)
+        if (u >= 1) {
+          // The sprite's stem base sits 14 px below its centre.
+          this.centred(frame, x + spot.x, y + spot.y - 14, evolved, alpha)
+        } else {
+          const tall = u < 0.6 ? (1.1 * u) / 0.6 : 1.1 - (0.1 * (u - 0.6)) / 0.4
+          const f = evolved ? evolve(frame) : frame
+          this.art(f, x + spot.x, y + spot.y, f.w / 2, f.h / 2 + 14, false, alpha, 1, tall)
+        }
+      })
+    if (layer === 'under') {
+      const bed = flowerBed(radius)
+      this.art(bed, x, y, bed.w / 2, bed.h / 2, false, bedAlpha * 0.96, bedScale)
+      if (evolved) {
+        this.world()
+        ctx.strokeStyle = `rgba(255,209,102,${0.55 * bedAlpha})`
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.arc(x, y, (radius - 1) * bedScale, 0, TAU)
+        ctx.stroke()
+      }
+      flowers(false)
+      // Soft rim (the harvest-green ring the bloom stage is known by).
+      this.world()
+      ctx.strokeStyle = `rgba(214,243,138,${0.4 * bedAlpha})`
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x, y, radius * bedScale, 0, TAU)
+      ctx.stroke()
+      return
+    }
+    if (since < 0.1) {
+      // The sprout it grew from fades out in place as the bed appears.
+      this.shadow(x, y + 10, 9, 0.2 * (1 - since * 10))
+      this.centred(pick(art.sprout, this.clock + sh.i * 0.1), x, y, evolved, 1 - since * 10)
+    }
+    flowers(true)
+    // A few sparkles scatter as it blooms.
+    if (since < 0.4) {
+      const t = since / 0.4
+      for (let k = 0; k < 5; k++) {
+        const a = k * 2.4 + seed * 6
+        const reach = radius * (0.25 + 0.65 * t) * (0.75 + 0.1 * (k % 3))
+        const sa = Math.sin(t * Math.PI) * 0.9 * alpha
+        this.art(
+          pick(fx.spark, this.clock * 6 + k),
+          x + Math.cos(a) * reach,
+          y + Math.sin(a) * reach * 0.6 - 8 - 10 * t,
+          6,
+          6,
+          false,
+          sa,
+          0.8
+        )
+      }
+    }
+    // Pollen and petals drifting up out of the bed.
+    this.world()
+    const dots = [R.yellow[0], R.pink[1], R.paper[0]]
+    for (let j = 0; j < 6; j++) {
+      const t = (this.clock * 0.45 + j / 6 + seed) % 1
+      const a = (j * 2.4 + seed * 7) * 1.7
+      const px = Math.round(x + Math.cos(a) * radius * 0.7 + Math.sin(t * 6 + j) * 3)
+      const py = Math.round(y + Math.sin(a) * radius * 0.5 - 6 - t * 26)
+      ctx.globalAlpha = Math.sin(t * Math.PI) * 0.9 * alpha
+      ctx.fillStyle = PALETTE[dots[j % 3]]
+      ctx.fillRect(px, py, 2, 2)
+    }
+    ctx.globalAlpha = 1
+  }
+
+  /** Whether a flower standing at (x, foot) is in front of a standing prop it overlaps (so it is drawn over the prop). */
+  private flowerInFront(x: number, foot: number) {
+    if (!this.bedGround) return false
+    const props = sheet(`props:${this.bedGround}`)
+    for (let cx = Math.floor((x - 64) / PROP_CELL); cx * PROP_CELL < x + 64; cx++)
+      for (let cy = Math.floor((foot - 64) / PROP_CELL); cy * PROP_CELL < foot + 128; cy++)
+        for (const prop of propsAt(this.bedGround, cx, cy)) {
+          if (FLAT_PROPS.has(prop.name)) continue
+          const frame = props[prop.name].frames[0]
+          const base = prop.y + 6
+          if (foot > base && Math.abs(x - prop.x) < frame.w / 2 + 8 && foot - 28 < base) return true
+        }
+    return false
+  }
+
   /** Ground-level weapon effects: auras, zones, shockwave rings, rings of song and drifting perfume. */
   private groundShot(view: View, sh: ShotView, def: (typeof WEAPONS)[number]) {
     const ctx = this.ctx
@@ -1725,93 +1851,7 @@ export class Renderer {
       }
       case 'garden': {
         if (sh.v === 0) this.seedShadow(view, sh, def)
-        if (sh.v !== 1) break
-        const alpha = Math.min(1, life * 4)
-        const art = sheet('weapon:w_garden')
-        // The bed grows in over ~0.35 s from when it is first seen blooming. A bed already well into its life when
-        // first seen (the page opened on it) is drawn fully grown.
-        const key = Math.round(x) * 1e6 + Math.round(y)
-        let bloom = this.blooms.get(key)
-        if (!bloom) {
-          bloom = { at: sh.age > 0.1 ? this.clock - 10 : this.clock, frame: this.frame }
-          this.blooms.set(key, bloom)
-        }
-        bloom.frame = this.frame
-        const since = this.clock - bloom.at
-        if (since < 0.1) {
-          // The sprout it grew from fades out in place as the bed appears.
-          this.shadow(x, y + 10, 9, 0.2 * (1 - since * 10))
-          this.centred(pick(art.sprout, this.clock + sh.i * 0.1), x, y, evolved, 1 - since * 10)
-        }
-        const grow = clamp01(since / 0.15)
-        const back = 1 + 2.70158 * Math.pow(grow - 1, 3) + 1.70158 * Math.pow(grow - 1, 2)
-        const bedScale = grow >= 1 ? 1 : 0.6 + 0.4 * back
-        const bedAlpha = alpha * (grow >= 1 ? 1 : clamp01(grow * 3))
-        const bed = flowerBed(radius)
-        this.art(bed, x, y, bed.w / 2, bed.h / 2, false, bedAlpha * 0.96, bedScale)
-        if (evolved) {
-          this.world()
-          ctx.strokeStyle = `rgba(255,209,102,${0.55 * bedAlpha})`
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          ctx.arc(x, y, (radius - 1) * bedScale, 0, TAU)
-          ctx.stroke()
-        }
-        const kinds = [art.bloom, art.tulip, art.daisy]
-        // Each bed is seeded by its fixed spot: neighbouring beds differ and never reshuffle as other shots expire.
-        const seed = hash(Math.round(x), Math.round(y))
-        flowerSpots(radius, Math.floor(seed * 4)).forEach((spot, n) => {
-          // Each flower shoots up from its stem base in turn: 0 -> 1.1 -> 1 tall.
-          const u = clamp01((since - Math.min(n * 0.045, 0.2)) / 0.15)
-          if (u <= 0.02) return
-          const frame = pick(kinds[spot.kind], this.clock + spot.phase)
-          if (u >= 1) {
-            // The sprite's stem base sits 14 px below its centre.
-            this.centred(frame, x + spot.x, y + spot.y - 14, evolved, alpha)
-          } else {
-            const tall = u < 0.6 ? (1.1 * u) / 0.6 : 1.1 - (0.1 * (u - 0.6)) / 0.4
-            const f = evolved ? evolve(frame) : frame
-            this.art(f, x + spot.x, y + spot.y, f.w / 2, f.h / 2 + 14, false, alpha, 1, tall)
-          }
-        })
-        // A few sparkles scatter as it blooms.
-        if (since < 0.4) {
-          const t = since / 0.4
-          for (let k = 0; k < 5; k++) {
-            const a = k * 2.4 + seed * 6
-            const reach = radius * (0.25 + 0.65 * t) * (0.75 + 0.1 * (k % 3))
-            const sa = Math.sin(t * Math.PI) * 0.9 * alpha
-            this.art(
-              pick(fx.spark, this.clock * 6 + k),
-              x + Math.cos(a) * reach,
-              y + Math.sin(a) * reach * 0.6 - 8 - 10 * t,
-              6,
-              6,
-              false,
-              sa,
-              0.8
-            )
-          }
-        }
-        // Pollen and petals drifting up out of the bed.
-        this.world()
-        const dots = [R.yellow[0], R.pink[1], R.paper[0]]
-        for (let j = 0; j < 6; j++) {
-          const t = (this.clock * 0.45 + j / 6 + seed) % 1
-          const a = (j * 2.4 + seed * 7) * 1.7
-          const px = Math.round(x + Math.cos(a) * radius * 0.7 + Math.sin(t * 6 + j) * 3)
-          const py = Math.round(y + Math.sin(a) * radius * 0.5 - 6 - t * 26)
-          ctx.globalAlpha = Math.sin(t * Math.PI) * 0.9 * alpha
-          ctx.fillStyle = PALETTE[dots[j % 3]]
-          ctx.fillRect(px, py, 2, 2)
-        }
-        ctx.globalAlpha = 1
-        // Soft rim (the harvest-green ring the bloom stage is known by).
-        ctx.strokeStyle = `rgba(214,243,138,${0.4 * bedAlpha})`
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.arc(x, y, radius * bedScale, 0, TAU)
-        ctx.stroke()
+        if (sh.v === 1) this.gardenBed(sh, 'over')
         break
       }
       case 'beam': {
@@ -3239,7 +3279,15 @@ export class Renderer {
     ctx.fillStyle = '#16121c'
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
     if (this.groundShown.from && fade < 1) this.ground(this.groundShown.from, 1, halfW, halfH)
-    this.ground(stage, this.groundShown.from ? fade : 1, halfW, halfH)
+    this.ground(stage, this.groundShown.from ? fade : 1, halfW, halfH, () => {
+      // Garden beds lie on the ground, under the standing props.
+      const shots = view.shots
+      for (let i = 0; i < shots.length; i += STRIDE.shots) {
+        if (WEAPONS[shots[i]].behavior !== 'garden') continue
+        const sh = this.load(view, origins, i)
+        if (sh.v === 1) this.gardenBed(sh, 'under')
+      }
+    })
     this.world()
 
     // Experience gems and pickups: pixel sprites with a gentle bob and a soft shadow.
