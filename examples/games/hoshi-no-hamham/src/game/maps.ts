@@ -7,7 +7,7 @@
  *  - pits are at most three tiles wide, and any three-tile pit has a platform two tiles above it;
  *  - platforms used by the main path sit at row 13 or 14, reachable from the ground.
  *
- * Legend: `#` ground  `D` diggable dirt  `=` one-way platform  `^` spikes  `T` tree  `N` pine
+ * Legend: `#` ground  `D` diggable dirt  `=` one-way platform  `^` spikes  `~` water  `T` tree  `N` pine
  * `P` pipe  `H` beehive  `A` sleeping animal  `R` rock  `1`/`2` switches  `x`/`y` doors
  * `*` fruit  `t` twig  `b` berry  `s` star  `G` goal  `n` nest  `@` player
  * `E` walker  `F` flyer  `J` jumper  `K` spitter  `U` tough  `B` boss
@@ -32,7 +32,7 @@ export class MapBuilder {
   set(ch: string, x: number, y: number) {
     // Props never replace terrain or each other: they stack on top of the first free cell.
     // Terrain writes ('#' and '.') are exact, so pits and ground always land where they were drawn.
-    if (ch !== '#' && ch !== '.') {
+    if (ch !== '#' && ch !== '.' && ch !== '~') {
       const target = y
       while (y > 0 && this.get(x, y) !== '.') y -= 1
       if (y !== target) this.shifted.push(`${ch} ${x},${target} -> ${x},${y}`)
@@ -152,7 +152,8 @@ function stage1() {
   m.platform(93, 97, 13)
   m.ground(58, 72, 14)
   m.dirt(18, 21, 1)
-  m.dirt(46, 50, 1)
+  // The first real wall on the escape: three tiles of dirt that only a bite can open.
+  m.dirt(46, 50, 3)
   m.dirt(80, 83, 1)
   m.platform(19, 25, 13)
   m.platform(44, 48, 13)
@@ -207,7 +208,8 @@ function stage2() {
   ]
   m.ground(0, 119)
   m.pit(28, 29)
-  m.pit(58, 59)
+  // A pond: shallow enough to wade through, and the platform above is the quick way across.
+  m.fill('~', 58, SURFACE, 59, SURFACE + 1)
   m.pit(88, 89)
   m.platform(27, 31, 13)
   m.platform(57, 61, 13)
@@ -222,6 +224,9 @@ function stage2() {
   m.platform(30, 40, 13)
   m.platforms(52, 62, HILLS)
   m.platforms(74, 86, HILLS)
+  // Sky garden: a high bridge over the first hill, with a star at the top.
+  m.platform(44, 54, 11)
+  m.set('s', 49, 10)
   m.set('T', 10, 14)
   m.set('T', 24, 14)
   m.set('T', 47, 13)
@@ -300,6 +305,9 @@ function stage3() {
   m.platforms(50, 62, HILLS)
   m.platforms(72, 84, HILLS)
   m.platform(94, 106, 13)
+  // Night lookout: a high bridge over the last hill with a star at the top.
+  m.platform(78, 86, 11)
+  m.set('s', 82, 10)
   m.set('T', 8, 14)
   m.set('T', 18, 14)
   m.set('T', 37, 13)
@@ -362,7 +370,8 @@ function stage4() {
   const m = new MapBuilder(120, MAP_H)
   m.ground(0, 119)
   m.pit(30, 31)
-  m.pit(60, 61)
+  // An underground pond in the hideout; the pipe at x=46 feeds it too.
+  m.fill('~', 60, SURFACE, 61, SURFACE + 1)
   m.pit(90, 91)
   m.platform(29, 33, 13)
   m.platform(59, 63, 13)
@@ -779,7 +788,8 @@ function stage9() {
   m.ground(0, 129)
   m.fill('#', 0, 0, 129, 3)
   m.pit(24, 25)
-  m.pit(52, 53)
+  // A castle moat: wade through it or take the platform above.
+  m.fill('~', 52, SURFACE, 53, SURFACE + 1)
   m.pit(80, 81)
   m.pit(104, 105)
   m.platform(23, 27, 13)
@@ -844,6 +854,10 @@ function stage9() {
   m.platforms(68, 82, HILLS)
   m.platforms(88, 102, HILLS)
   m.platform(108, 122, 13)
+  // The climb to the queen's roost, just before the boss arena.
+  m.platform(106, 108, 13)
+  m.platform(109, 111, 11)
+  m.set('s', 110, 10)
   m.set('*', 20, 12)
   m.set('*', 44, 13)
   m.set('*', 70, 12)
