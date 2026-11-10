@@ -6,6 +6,9 @@
  *   world.setInput, world.view() broadcast at 20 Hz with at most one send in flight.
  * - guest: snapshots buffered and interpolated ~0.1 s behind the host clock; the own hero is predicted with
  *   createPredictor and reported in NetInput at 30 Hz.
+ *
+ * Hidden tabs (liveness.ts): a hidden host keeps stepping from a worker pulse (`background`), a guest that stops
+ * hearing the host waits (never a fatal error), and a guest's input that stops arriving is let go on the host.
  */
 import { getPrimaryRelayUrl } from '../../../../../utils/relayPresets'
 import { CooperativeNetwork } from '../../../rabbiters/src/network'
@@ -21,13 +24,12 @@ import {
 import type { EventView, HeroReport, InputState, NetInput, StageInfo, View } from '../sim/types'
 import type { Job, StageId } from '../vocab'
 import { EventQueue, RENDER_DELAY, SnapshotBuffer } from './interp'
+import { BACKGROUND_BACKLOG, FRAME_BACKLOG, FixedStep, HOST_STALL, INPUT_EXPIRY, STEP, neutralInput } from './liveness'
 import { looksLikeView, validateNetInput } from './validate'
 
 export const APP_ID = 'mamono-jinkei-v1'
-const DT = 1 / 60
 const SNAPSHOT_INTERVAL = 1 / 20
 const INPUT_INTERVAL = 1 / 30
-const HOST_SILENCE = 8
 
 export type Role = 'solo' | 'host' | 'guest' | 'demo'
 
@@ -56,6 +58,10 @@ export interface Session {
   command(c: Command): void
   /** Number of humans connected (including me). */
   humans(): number
+  /** Guest: seconds since the host's last snapshot (0 while it is live). */
+  hostSilence?(): number
+  /** Guest: reports my input with everything let go at once (tab hidden or unfocused). */
+  sendNeutral?(input: InputState, extra: SessionExtra): void
   dispose(): void
 }
 
@@ -65,6 +71,8 @@ export interface SessionExtra {
   job?: Job
   name: string
   menu: boolean
+  /** Host tab hidden: stepped from the background clock, with a longer catch-up backlog. */
+  background?: boolean
 }
 
 export interface SessionCallbacks {
@@ -79,7 +87,11 @@ class LocalSession implements Session {
   status: SessionStatus = { kind: 'local', text: '' }
   info?: StageInfo
   private view?: View
-  private acc = 0
+  private readonly stepper = new FixedStep(STEP)
+  /** Session seconds (host input expiry). */
+  private clock = 0
+  /** Guests' latest inputs and when they arrived; `stale` once let go after INPUT_EXPIRY. */
+  private guests = new Map<string, { input: NetInput; at: number; stale: boolean }>()
   private readonly queue = new EventQueue<EventView>()
   private infoStage?: StageId
   network?: CooperativeNetwork
@@ -143,7 +155,19 @@ class LocalSession implements Session {
   guestInput(id: string, input: NetInput) {
     if (id === this.myId || !this.presence.includes(id)) return
     if (input.name && this.names.get(id) !== input.name) this.names.set(id, input.name)
+    this.guests.set(id, { input, at: this.clock, stale: false })
     this.world.setInput(id, input)
+  }
+
+  /** A guest whose inputs stopped (hidden tab, lost connection) lets go of everything; its counters stay. */
+  private expireGuests() {
+    for (const [id, g] of this.guests) {
+      if (!this.presence.includes(id)) this.guests.delete(id)
+      else if (!g.stale && this.clock - g.at > INPUT_EXPIRY) {
+        g.stale = true
+        this.world.setInput(id, neutralInput(g.input))
+      }
+    }
   }
 
   frame(dt: number, input: InputState, extra: SessionExtra): View | undefined {
@@ -154,12 +178,11 @@ class LocalSession implements Session {
     const net: NetInput = { ...input, menu: extra.menu, name: extra.name || undefined }
     if (extra.job) net.job = extra.job
     this.world.setInput(this.myId, net)
+    this.clock += dt
+    if (this.guests.size) this.expireGuests()
     if (!extra.paused) {
-      this.acc = Math.min(this.acc + dt, DT * 6)
-      while (this.acc >= DT) {
-        this.world.step(DT)
-        this.acc -= DT
-      }
+      const steps = this.stepper.advance(dt, extra.background ? BACKGROUND_BACKLOG : FRAME_BACKLOG)
+      for (let i = 0; i < steps; i++) this.world.step(STEP)
     }
     this.view = this.world.view()
     this.refreshInfo()
@@ -206,6 +229,7 @@ class GuestSession implements Session {
   private sendAcc = 0
   private inFlight = false
   private lastSnapshotAt = -1
+  private stalled = false
   private clock = 0
   private renderT = 0
   private presence = 1
@@ -232,6 +256,7 @@ class GuestSession implements Session {
     const now = this.clock
     if (!this.buffer.push(raw, now)) return
     this.lastSnapshotAt = now
+    this.stalled = false
     if (raw.stage !== this.infoStage) {
       try {
         this.info = stageInfo(raw.stage)
@@ -262,8 +287,10 @@ class GuestSession implements Session {
     this.clock += dt
     const latest = this.buffer.latest
     if (!latest) return undefined
-    if (this.lastSnapshotAt >= 0 && this.clock - this.lastSnapshotAt > HOST_SILENCE && this.status.kind !== 'error') {
-      this.status = { kind: 'error', text: 'ホストとの通信がとだえました。' }
+    // A quiet host (hidden tab, network hiccup) is waited for; snapshot() resumes. Real departures arrive as errors.
+    if (!this.stalled && this.silence() > HOST_STALL && this.status.kind !== 'error') {
+      this.stalled = true
+      this.status = { kind: 'waiting', text: 'ホストを待っています…' }
       this.callbacks.onStatus(this.status)
     }
     // Sub-step the prediction so slow frames still move the hero at full speed.
@@ -276,15 +303,10 @@ class GuestSession implements Session {
     } while (left > 1e-4)
     this.sendAcc += dt
     if (this.network && this.sendAcc >= INPUT_INTERVAL && !this.inFlight) {
-      this.sendAcc = 0
       const net: NetInput = { ...input, name: extra.name || undefined, menu: extra.menu }
       if (report) net.hero = report
       if (extra.job) net.job = extra.job
-      this.inFlight = true
-      this.network
-        .sendInput(net)
-        .catch(() => undefined)
-        .finally(() => (this.inFlight = false))
+      this.send(net)
     }
     this.renderT = this.buffer.hostTime(this.clock) - RENDER_DELAY
     const v = this.buffer.sample(this.renderT)
@@ -298,6 +320,30 @@ class GuestSession implements Session {
         h.slot === p.slot && h.state !== 'tech' ? { ...h, x: p.x, y: p.y, z: p.z, facing: p.facing } : h
       )
     }
+  }
+
+  private silence() {
+    return this.lastSnapshotAt >= 0 ? this.clock - this.lastSnapshotAt : 0
+  }
+
+  hostSilence() {
+    return this.stalled ? this.silence() : 0
+  }
+
+  sendNeutral(input: InputState, extra: SessionExtra) {
+    if (!this.network) return
+    const net: NetInput = neutralInput({ ...input, name: extra.name || undefined, menu: extra.menu })
+    this.send(net)
+  }
+
+  private send(net: NetInput) {
+    if (!this.network) return
+    this.sendAcc = 0
+    this.inFlight = true
+    this.network
+      .sendInput(net)
+      .catch(() => undefined)
+      .finally(() => (this.inFlight = false))
   }
 
   takeEvents(out: EventView[]) {

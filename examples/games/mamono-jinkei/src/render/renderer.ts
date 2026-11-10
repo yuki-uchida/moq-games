@@ -1265,6 +1265,20 @@ export class Renderer {
     ctx.restore()
   }
 
+  /** Boss hit flashes: a new hit starts a 0.1 s flash only if the last flash began at least 0.25 s ago. */
+  private readonly bossFlash = new Map<string, { seen: number; start: number }>()
+  private bossFlashOn(id: string, hitAt: number | undefined, t: number): boolean {
+    if (hitAt === undefined) return false
+    let f = this.bossFlash.get(id)
+    if (!f) this.bossFlash.set(id, (f = { seen: -99, start: -99 }))
+    if (t < f.start) f.start = -99
+    if (hitAt !== f.seen) {
+      f.seen = hitAt
+      if (t - f.start >= 0.25 && t >= hitAt && t - hitAt < 0.1) f.start = t
+    }
+    return t - f.start < 0.1 && t >= f.start
+  }
+
   private drawBoss(b: Omit<BossView, 'kind'>, sheetId: string, t: number) {
     const { dir, flip } = dirOf(b.facing)
     const name = pickName(sheetId, b.animKey ?? '', b.anim, `${b.anim}_${dir}`, `idle_${dir}`, 'idle_down')
@@ -1288,7 +1302,7 @@ export class Renderer {
       }
     }
     blitAnim(this.wctx, a, t - b.st, x, y, mirror)
-    if (b.hitAt !== undefined && t - b.hitAt < 0.1 && t >= b.hitAt) {
+    if (this.bossFlashOn(sheetId, b.hitAt, t)) {
       const fa = findFlash(sheetId, name)
       if (fa) blitAnim(this.wctx, fa, t - b.st, x, y, mirror, 0.8)
     }

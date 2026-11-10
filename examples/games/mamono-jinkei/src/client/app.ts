@@ -5,6 +5,7 @@
 import { createAudio, type GameAudio, type SfxName, type ThemeName } from '../audio/index'
 import { Controls } from '../input/controls'
 import { PadNav, firstGamepad } from '../input/padnav'
+import { hostSilence } from '../net/liveness'
 import { guestSession, hostSession, soloSession, type Session, type SessionStatus } from '../net/session'
 import { Renderer } from '../render/renderer'
 import type { Command } from '../sim/api'
@@ -14,12 +15,13 @@ import { el, show } from '../ui/dom'
 import { controlled } from '../ui/hints'
 import { Hud } from '../ui/hud'
 import { LobbyScreen, defaultLobbyStage } from '../ui/lobby'
-import { PauseMenu, PhaseOverlays } from '../ui/overlays'
+import { HostWait, PauseMenu, PhaseOverlays } from '../ui/overlays'
 import { modal } from '../ui/panels'
 import { escapeModal, navigate } from '../ui/padmenu'
 import { TitleScreen } from '../ui/title'
 import { JOBS, STAGES, TILE, type Job, type StageId } from '../vocab'
 import { Attract } from './attract'
+import { HostClock } from './host-clock'
 import { arenaRemaining, createMusicState, resetMusicState, selectMusicLayer } from './music-select'
 import { loadSave, storeSave, type SaveData, type Settings } from './save'
 
@@ -39,7 +41,11 @@ export class App {
   private readonly hud: Hud
   private readonly overlays: PhaseOverlays
   private readonly pause: PauseMenu
+  private readonly hostWait: HostWait
   private readonly layer: HTMLElement
+  /** Steps a hosted world while the tab is hidden (no animation frames then). */
+  private readonly hostClock = new HostClock((dt) => this.backgroundTick(dt))
+  private readonly scratch: EventView[] = []
   screen: Screen = 'title'
   session?: Session
   room?: string
@@ -106,6 +112,10 @@ export class App {
       title: () => void this.leave(false),
       sound
     })
+    this.hostWait = new HostWait(() => {
+      this.uiSound('menuBack')
+      this.toTitle()
+    })
     this.layer = el(
       'div.ui-layer',
       {},
@@ -113,7 +123,8 @@ export class App {
       this.lobby.root,
       this.hud.root,
       this.overlays.root,
-      this.pause.root
+      this.pause.root,
+      this.hostWait.root
     )
     root.append(this.layer)
     this.applySettings()
@@ -121,6 +132,10 @@ export class App {
       const t = e.target as HTMLElement | null
       if (e.code === 'KeyM' && !(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))) this.toggleMute()
     })
+    // Hidden tabs: a host keeps its room running; a guest lets go of its keys on the host at once.
+    // (Controls registered its own blur/visibility listeners first, so its keys are already released here.)
+    document.addEventListener('visibilitychange', () => this.visibilityChanged())
+    window.addEventListener('blur', () => this.releaseRemote())
     // Clicking a button anywhere counts as a gesture for the audio context.
     root.addEventListener('pointerdown', () => this.audio.unlock(), { capture: true })
     this.attract = new Attract()
@@ -198,6 +213,7 @@ export class App {
     this.renderer.reset()
     this.setScreen('session')
     this.hud.setStatus(s.role === 'solo' ? '' : s.status.text, s.status.kind)
+    this.visibilityChanged()
     requestAnimationFrame(() => this.lobby.focus())
   }
 
@@ -219,6 +235,8 @@ export class App {
 
   toTitle() {
     ++this.generation
+    this.hostClock.stop()
+    this.hostWait.update('live')
     this.session?.dispose()
     this.session = undefined
     this.view = undefined
@@ -334,10 +352,56 @@ export class App {
     this.audio.sfx(name)
   }
 
+  /* ------------------------------------------------------------------------------------- hidden tabs */
+
+  /**
+   * Visible: the rAF loop steps the session. Hidden host: the background clock steps it instead (never both, so
+   * there is no double stepping). Solo and guests simply pause while hidden, as before.
+   */
+  private visibilityChanged() {
+    if (document.hidden) {
+      this.releaseRemote()
+      if (this.session?.role === 'host') this.hostClock.start()
+    } else {
+      this.hostClock.stop()
+      // The next frame measures from now: hidden time was already stepped (host) or is skipped (solo, guest).
+      this.last = 0
+    }
+  }
+
+  /** A guest tells the host at once that nothing is held any more (keys were released by Controls). */
+  private releaseRemote() {
+    const s = this.session
+    if (s?.role !== 'guest') return
+    this.controls.releaseAll()
+    s.sendNeutral?.(this.controls.state, { paused: false, job: this.job, name: this.name(), menu: this.pause.open })
+  }
+
+  /** Hidden host: steps the world and broadcasts; nothing is drawn, and the effects of hidden time are skipped. */
+  private backgroundTick(dt: number) {
+    const s = this.session
+    if (s?.role !== 'host' || !document.hidden) return this.hostClock.stop()
+    try {
+      this.controls.releaseAll()
+      s.frame(dt, this.controls.state, {
+        paused: false,
+        job: this.job,
+        name: this.name(),
+        menu: this.pause.open,
+        background: true
+      })
+      s.takeEvents(this.scratch)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   /* -------------------------------------------------------------------------------------------- frame */
 
   private frame(now: number) {
     requestAnimationFrame((t) => this.frame(t))
+    // A hidden host is stepped by the background clock (a stray frame must not step it twice).
+    if (this.hostClock.running) return
     const dt = this.last ? Math.min(0.1, (now - this.last) / 1000) : 1 / 60
     this.last = now
     this.frames.push(dt * 1000)
@@ -434,6 +498,7 @@ export class App {
     show(this.hud.root, inGame)
     if (view && !inLobby) this.hud.update(view, info, s!.myId, now)
     this.overlays.update(inLobby ? undefined : view, s?.role === 'host' || s?.role === 'solo')
+    this.hostWait.update(s?.hostSilence ? hostSilence(s.hostSilence()) : 'live')
     if (phase && phase !== this.lastPhase) this.phaseChanged(phase)
     if (view && view.stage !== this.lastStage) this.lastStage = view.stage
     this.music(view, info, demo)
