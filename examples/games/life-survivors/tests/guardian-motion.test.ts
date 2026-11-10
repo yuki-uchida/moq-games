@@ -1,0 +1,237 @@
+import { describe, expect, test } from 'vitest'
+import { sheet } from '../src/art/index'
+import { EVENTS, timeAtAge } from '../src/data'
+import { FAMILY_SLOTS } from '../src/family-slots'
+import { CREATURE_BODY, GUARDIAN_CHILD, GUARDIAN_SHIELD_ART, Game, type Player, type Shot } from '../src/game'
+import { GUARDIAN_BODY, OVERHEAD, boxAbout, boxesOverlap, type OverheadBox } from '../src/overhead'
+
+const DT = 1 / 60
+const S = Math.SQRT1_2
+/** Nine ways to hold the stick: standing and the eight directions. */
+const STICKS: Record<string, { x: number; y: number }> = {
+  still: { x: 0, y: 0 },
+  R: { x: 1, y: 0 },
+  L: { x: -1, y: 0 },
+  U: { x: 0, y: -1 },
+  D: { x: 0, y: 1 },
+  UR: { x: S, y: -S },
+  UL: { x: -S, y: -S },
+  DR: { x: S, y: S },
+  DL: { x: -S, y: S }
+}
+
+type Copy = 'none' | 'guard' | 'observe'
+
+/** A child of `age` with 過保護親 Lv`level`, the gamble's copies of `copy` out for good, and `extra` weapons. */
+function setup(level: number, copy: Copy = 'none', extra: Player['weapons'] = [], age = 30) {
+  const game = new Game(7)
+  game.targetPopulation = () => 0
+  const player = game.addPlayer('a', 'p_over')!
+  player.birthPick = false
+  player.pending = 0
+  player.choices = []
+  player.weapons = [
+    { id: 'p_over', lv: level, cd: 0, held: 0, damage: 0 },
+    ...extra,
+    ...(copy === 'none'
+      ? []
+      : [
+          {
+            id: 'w_gamble',
+            lv: 5,
+            cd: 0,
+            held: 0,
+            damage: 0,
+            gambleWeapon: copy === 'guard' ? 'p_over' : 'w_observe',
+            gambleUntil: 1e9
+          }
+        ])
+  ]
+  game.state.time = timeAtAge(age) + 0.01
+  game.state.eventIndex = EVENTS.length
+  game.state.enemies = []
+  return { game, player }
+}
+
+const guardsOf = (game: Game, player: Player) =>
+  game.state.shots.filter((shot) => shot.owner === player.id && shot.weapon === 'p_over' && shot.delay <= 0)
+
+/** Ticks one frame, keeping the child unhurt and the gamble's copies out. */
+function frame(game: Game, player: Player) {
+  game.tick(DT)
+  player.hp = player.maxHp
+  for (const shot of game.state.shots) if (shot.sourceWeapon === 'w_gamble') shot.life = Math.max(shot.life, 1)
+}
+
+const offset = (shot: Shot, player: Player) => ({ x: shot.x - player.x, y: shot.y - player.y })
+
+describe('過保護親 glide round the child, never jumping, never through her nor on top of each other', () => {
+  const configs = [
+    { level: 1, copy: 'none' },
+    { level: 4, copy: 'none' },
+    { level: 8, copy: 'none' },
+    { level: 1, copy: 'guard' },
+    { level: 4, copy: 'guard' }
+  ] as const
+  for (const { level, copy } of configs)
+    test(`Lv${level}${copy === 'guard' ? ' with the gamble’s copies' : ''}: every switch of the stick, facing up or right before`, () => {
+      const faults: string[] = []
+      let frames = 0
+      for (const before of [STICKS.U, STICKS.R])
+        for (const [fromName, from] of Object.entries(STICKS))
+          for (const [toName, to] of Object.entries(STICKS)) {
+            const { game, player } = setup(level, copy)
+            const hold = (stick: { x: number; y: number }, count: number, check: boolean) => {
+              game.setInput(player.id, stick)
+              for (let f = 0; f < count; f++) {
+                const was = new Map(guardsOf(game, player).map((guard) => [guard, offset(guard, player)]))
+                frame(game, player)
+                if (!check) continue
+                frames++
+                const guards = guardsOf(game, player)
+                const label = `${before.x ? 'R' : 'U'} ${fromName}→${toName} frame ${f}`
+                for (const guard of guards) {
+                  const at = offset(guard, player)
+                  const last = was.get(guard)
+                  if (last && Math.hypot(at.x - last.x, at.y - last.y) > 12)
+                    faults.push(
+                      `${label}: #${guard.id} moved ${Math.hypot(at.x - last.x, at.y - last.y).toFixed(1)} px`
+                    )
+                  if (Math.abs(at.x) < GUARDIAN_CHILD.x && at.y > GUARDIAN_CHILD.top && at.y < GUARDIAN_CHILD.bottom)
+                    faults.push(`${label}: #${guard.id} in the child at (${at.x.toFixed(1)}, ${at.y.toFixed(1)})`)
+                }
+                for (let i = 0; i < guards.length; i++)
+                  for (let j = i + 1; j < guards.length; j++)
+                    if (Math.abs(guards[i].x - guards[j].x) < 12 && Math.abs(guards[i].y - guards[j].y) < 18)
+                      faults.push(`${label}: #${guards[i].id} and #${guards[j].id} on top of each other`)
+              }
+            }
+            hold(STICKS.R, 30, false)
+            hold(before, 60, false)
+            hold(from, 90, true)
+            hold(to, 90, true)
+          }
+      expect(frames).toBe(2 * 81 * 180)
+      expect(faults.slice(0, 10)).toEqual([])
+    }, 30_000)
+})
+
+/** A family member (FAMILY_SCALE 0.75 of a player's figure) on a family slot. */
+const familyBox = (x: number, y: number): OverheadBox => ({ left: x - 11, top: y - 28, right: x + 11, bottom: y + 21 })
+/** A child's body as drawn (food-layout.ts playerBox). */
+const childBox: OverheadBox = { left: -14, top: OVERHEAD.feet - 58, right: 14, bottom: OVERHEAD.feet + 6 }
+
+/** The share of 過保護親's figure at `at` (offset from her child) the child's body hides. */
+function hiddenByChild(at: { x: number; y: number }) {
+  const body = boxAbout(at.x, at.y, GUARDIAN_BODY)
+  const hidden =
+    Math.max(0, Math.min(body.right, childBox.right) - Math.max(body.left, childBox.left)) *
+    Math.max(0, Math.min(body.bottom, childBox.bottom) - Math.max(body.top, childBox.top))
+  return hidden / ((body.right - body.left) * (body.bottom - body.top))
+}
+
+describe('a standing child’s parents stand clear of 生き物観察’s creatures', () => {
+  for (const level of [4, 5, 6, 7, 8])
+    test(`Lv${level}, with and without the gamble’s copies of her or of the creature, child and adult, single and married`, () => {
+      const faults: string[] = []
+      let checked = 0
+      for (const copy of ['none', 'guard', 'observe'] as const)
+        for (const age of [9, 30])
+          for (const facing of [1, -1])
+            for (const married of age < 20 ? [false] : [false, true]) {
+              const { game, player } = setup(level, copy, [{ id: 'w_observe', lv: 5, cd: 0, held: 0, damage: 0 }], age)
+              player.married = married
+              player.hasChild = married
+              game.setInput(player.id, { x: facing, y: 0 })
+              for (let f = 0; f < 40; f++) frame(game, player)
+              game.setInput(player.id, STICKS.still)
+              const appeared = new Map<Shot, number>()
+              let seen = 0
+              for (let f = 0; f < 480; f++) {
+                frame(game, player)
+                const creatures = game.state.shots.filter((shot) => shot.weapon === 'w_observe')
+                for (const creature of creatures) if (!appeared.has(creature)) appeared.set(creature, game.state.time)
+                const label = `${copy} age ${age} facing ${facing}${married ? ' married' : ''} frame ${f}`
+                const guards = guardsOf(game, player)
+                for (const creature of creatures) {
+                  if (game.state.time - appeared.get(creature)! < 0.5) continue
+                  seen++
+                  for (const guard of guards) {
+                    checked++
+                    const body = boxAbout(guard.x, guard.y, GUARDIAN_BODY)
+                    if (boxesOverlap(body, boxAbout(creature.x, creature.y, CREATURE_BODY)))
+                      faults.push(
+                        `${label}: #${guard.id} at (${(guard.x - player.x).toFixed(0)}, ${(guard.y - player.y).toFixed(0)}) on the creature at (${(creature.x - player.x).toFixed(0)}, ${(creature.y - player.y).toFixed(0)})`
+                      )
+                  }
+                }
+                if (f < 120) continue
+                // Standing beside the child in view (as companion-overhead.test.ts asks), clear of the family.
+                const back = player.fx < 0 ? 1 : -1
+                const slots = married ? FAMILY_SLOTS.slice(0, 2) : []
+                for (const guard of guards) {
+                  const at = offset(guard, player)
+                  if (hiddenByChild(at) >= 0.3) faults.push(`${label}: #${guard.id} hidden by the child`)
+                  for (const slot of slots)
+                    if (boxesOverlap(boxAbout(at.x, at.y, GUARDIAN_BODY), familyBox(back * slot.dx, slot.dy)))
+                      faults.push(`${label}: #${guard.id} on the family`)
+                }
+              }
+              if (!seen) faults.push(`${copy} age ${age} facing ${facing}${married ? ' married' : ''}: no creature`)
+            }
+      expect(checked).toBeGreaterThan(0)
+      expect(faults.slice(0, 10)).toEqual([])
+    }, 30_000)
+})
+
+test('the shield art is where GUARDIAN_SHIELD_ART says', () => {
+  let left = Infinity
+  let right = -Infinity
+  let top = Infinity
+  let bottom = -Infinity
+  for (const art of sheet('weapon:p_over').guard.frames)
+    for (let y = 0; y < art.h; y++)
+      for (let x = 0; x < art.w; x++)
+        if (art.get(x, y)) {
+          left = Math.min(left, x - art.w / 2)
+          right = Math.max(right, x + 1 - art.w / 2)
+          top = Math.min(top, y - art.h / 2)
+          bottom = Math.max(bottom, y + 1 - art.h / 2)
+        }
+  expect({ near: left, far: right, top, bottom }).toEqual(GUARDIAN_SHIELD_ART)
+})
+
+describe('standing, no parent stands inside another’s shield', () => {
+  for (const level of [5, 6, 7, 8])
+    for (const copy of ['none', 'guard'] as const)
+      test(`Lv${level}${copy === 'guard' ? ' with the gamble’s copies' : ''}`, () => {
+        const { game, player } = setup(level, copy)
+        for (const facing of [0, 180, -90, 90, -45, 135]) {
+          const radians = (facing * Math.PI) / 180
+          game.setInput(player.id, { x: Math.cos(radians), y: Math.sin(radians) })
+          for (let f = 0; f < 45; f++) frame(game, player)
+          game.setInput(player.id, STICKS.still)
+          for (let f = 0; f < 90; f++) frame(game, player)
+          const guards = guardsOf(game, player)
+          expect(guards.length).toBeGreaterThan(1)
+          for (const guard of guards) {
+            // The shield faces the way she does (the child's way while nothing is near), scaled by r/20.
+            const scale = guard.r / 20
+            const side = Math.cos(guard.angle) < 0 ? -1 : 1
+            const xs = [side * GUARDIAN_SHIELD_ART.near * scale, side * GUARDIAN_SHIELD_ART.far * scale]
+            const shield = {
+              left: guard.x + Math.min(...xs),
+              right: guard.x + Math.max(...xs),
+              top: guard.y + GUARDIAN_SHIELD_ART.top * scale,
+              bottom: guard.y + GUARDIAN_SHIELD_ART.bottom * scale
+            }
+            for (const other of guards)
+              if (other !== guard)
+                expect(
+                  other.x > shield.left && other.x < shield.right && other.y > shield.top && other.y < shield.bottom,
+                  `facing ${facing}°: #${other.id} at (${(other.x - player.x).toFixed(1)}, ${(other.y - player.y).toFixed(1)}) in #${guard.id}'s shield`
+                ).toBe(false)
+          }
+        }
+      })
+})
