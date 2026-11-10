@@ -318,6 +318,10 @@ export class World {
         else if (ch === 'D') this.tiles[y * cols + x] = T.DIRT
         else if (ch === '=') this.tiles[y * cols + x] = T.PLATFORM
         else if (ch === '^') this.tiles[y * cols + x] = T.SPIKE
+        else if (ch === '~') {
+          this.water[y * cols + x] = 1
+          this.waterTotal += 1
+        }
         else if (ch === '@') {
           startX = px + 10
           startY = py + TILE - PLAYER_H

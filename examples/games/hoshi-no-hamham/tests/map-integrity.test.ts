@@ -144,8 +144,22 @@ describe('map integrity', () => {
     expect(problems).toEqual([])
   })
 
-  it('cuts real pits into the surface of every stage', () => {
+  it('gives every stage a signature piece of terrain', () => {
     const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      const kinds: string[] = []
+      if (map.some((row) => row.includes('~'))) kinds.push('water')
+      if (map.some((row, y) => y <= 11 && row.includes('='))) kinds.push('high route')
+      if (map.some((row) => row.includes('D'))) kinds.push('diggable wall')
+      if (map.some((row) => row.includes('x') || row.includes('y'))) kinds.push('door')
+      if (map.some((row) => row.includes('^'))) kinds.push('spikes')
+      if (kinds.length < 2) problems.push(`${stage.id}: only ${kinds.join(' and ') || 'flat ground'}`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('cuts real pits into the surface of every stage', () => {    const problems: string[] = []
     for (const stage of STAGES) {
       const map = stage.map
       let pits = 0
