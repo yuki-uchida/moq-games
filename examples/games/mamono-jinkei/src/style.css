@@ -20,6 +20,11 @@
   --font: 'Hiragino Maru Gothic ProN', 'BIZ UDPGothic', 'Yu Gothic UI', Meiryo, sans-serif;
   --u: clamp(13px, 0.62vw + 0.55vh + 4px, 22px);
   color-scheme: dark;
+  /* 8x8 pixel-art icons for pseudo-element content (no emoji or pictograph glyphs in the stylesheet). */
+  --px-cat: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%208%208%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%233a2412%27%20d%3D%27M0%200h1v1H0zM2%200h4v1H2zM7%200h1v1H7zM0%201h1v1H0zM7%201h1v1H7zM0%202h1v1H0zM7%202h1v1H7zM0%203h1v1H0zM7%203h1v1H7zM0%204h1v1H0zM7%204h1v1H7zM0%205h1v1H0zM7%205h1v1H7zM1%206h1v1H1zM6%206h1v1H6zM2%207h4v1H2z%27%2F%3E%3Cpath%20fill%3D%27%23ffb877%27%20d%3D%27M1%201h6v1H1zM1%202h6v1H1zM2%203h4v1H2zM1%204h6v1H1zM1%205h2v1H1zM5%205h2v1H5zM2%206h4v1H2z%27%2F%3E%3Cpath%20fill%3D%27%231a2440%27%20d%3D%27M1%203h1v1H1zM6%203h1v1H6z%27%2F%3E%3Cpath%20fill%3D%27%23e8788a%27%20d%3D%27M3%205h2v1H3z%27%2F%3E%3C%2Fsvg%3E');
+  --px-drake: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%208%208%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%2314301c%27%20d%3D%27M0%200h1v1H0zM7%200h1v1H7zM0%201h2v1H0zM6%201h2v1H6zM1%202h1v1H1zM6%202h1v1H6zM0%203h1v1H0zM7%203h1v1H7zM0%204h1v1H0zM7%204h1v1H7zM0%205h1v1H0zM7%205h1v1H7zM1%206h1v1H1zM6%206h1v1H6zM2%207h4v1H2z%27%2F%3E%3Cpath%20fill%3D%27%236fcf6f%27%20d%3D%27M2%202h4v1H2zM1%203h1v1H1zM3%203h2v1H3zM6%203h1v1H6zM1%204h6v1H1zM1%205h2v1H1zM5%205h2v1H5zM2%206h1v1H2zM5%206h1v1H5z%27%2F%3E%3Cpath%20fill%3D%27%23ffe066%27%20d%3D%27M2%203h1v1H2zM5%203h1v1H5z%27%2F%3E%3Cpath%20fill%3D%27%2314301c%27%20d%3D%27M3%205h2v1H3z%27%2F%3E%3Cpath%20fill%3D%27%23ffffff%27%20d%3D%27M3%206h2v1H3z%27%2F%3E%3C%2Fsvg%3E');
+  --px-spark: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%208%208%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%23f2c84a%27%20d%3D%27M3%200h2v1H3zM1%201h1v1H1zM3%201h2v1H3zM6%201h1v1H6zM2%202h1v1H2zM5%202h1v1H5zM0%203h2v1H0zM6%203h2v1H6zM0%204h2v1H0zM6%204h2v1H6zM2%205h1v1H2zM5%205h1v1H5zM1%206h1v1H1zM3%206h2v1H3zM6%206h1v1H6zM3%207h2v1H3z%27%2F%3E%3Cpath%20fill%3D%27%23fff8d0%27%20d%3D%27M3%202h2v1H3zM2%203h4v1H2zM2%204h4v1H2zM3%205h2v1H3z%27%2F%3E%3C%2Fsvg%3E');
+  --px-check: url('data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%208%208%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%23ffffff%27%20d%3D%27M6%201h2v1H6zM5%202h2v1H5zM0%203h1v1H0zM4%203h2v1H4zM0%204h2v1H0zM3%204h2v1H3zM1%205h3v1H1zM2%206h1v1H2z%27%2F%3E%3C%2Fsvg%3E');
 }
 
 * {
@@ -252,6 +257,7 @@ input:focus-visible,
 .title-screen {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   padding: max(3vh, 18px) 16px 2vh;
   background:
     linear-gradient(90deg, rgba(20, 14, 34, 0.78) 0%, rgba(20, 14, 34, 0.5) 34%, rgba(20, 14, 34, 0) 58%),
@@ -261,7 +267,7 @@ input:focus-visible,
 
 .title-col {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   justify-items: center;
   width: min(36em, 100%);
   height: 100%;
@@ -328,8 +334,10 @@ input:focus-visible,
   position: relative;
   display: grid;
   place-items: center;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
-  align-self: center;
+  min-height: 0;
+  align-self: stretch;
 }
 
 .title-menu {
@@ -417,12 +425,48 @@ input:focus-visible,
 }
 
 .title-panel.wide {
+  display: flex;
+  flex-direction: column;
   width: min(52em, 94vw);
-  max-height: 64vh;
-  overflow: auto;
+  max-height: 100%;
+}
+
+/* Scrolling region inside a panel: the title and action buttons stay pinned, the edges fade while more is hidden. */
+.scroll-area {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.7em 0.6em 0.5em;
+  margin: -0.7em -0.6em -0.5em;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    transparent 100%
+  );
+}
+
+.scroll-area[data-more-up] {
+  --fade-top: 2.2em;
+}
+
+.scroll-area[data-more-down] {
+  --fade-bottom: 2.2em;
 }
 
 .panel-actions {
+  flex: none;
   display: flex;
   justify-content: space-between;
   gap: 0.8em;
@@ -649,8 +693,9 @@ input:focus-visible,
 /* ------------------------------------------------------------------ lobby */
 
 .lobby-screen {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 2.5vh 16px;
   background: radial-gradient(ellipse at center, rgba(20, 14, 30, 0.3), rgba(20, 14, 30, 0.72));
   animation: fade-in 0.35s ease both;
@@ -658,13 +703,15 @@ input:focus-visible,
 
 .lobby-card {
   width: min(64em, 96vw);
-  max-height: 95vh;
-  overflow: auto;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 1.1em 1.5em 1.2em;
   animation: rise 0.3s ease both;
 }
 
 .lobby-head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -749,7 +796,9 @@ input:focus-visible,
 }
 
 .job-card.selected::after {
-  content: '✔';
+  content: '';
+  background: var(--px-check) center / 70% 70% no-repeat var(--job);
+  image-rendering: pixelated;
   position: absolute;
   top: -0.55em;
   right: -0.45em;
@@ -758,9 +807,6 @@ input:focus-visible,
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--job);
-  color: #fff;
-  font-weight: 900;
   box-shadow:
     0 0 0 0.14em #fff,
     0 0.15em 0 rgba(0, 0, 0, 0.4);
@@ -989,6 +1035,7 @@ input:focus-visible,
 }
 
 .lobby-foot {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1426,8 +1473,14 @@ input:focus-visible,
 }
 
 .banner.on.solve::before {
-  content: '✦ ';
-  color: var(--gold-deep);
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.3em;
+  vertical-align: -0.12em;
+  background: var(--px-spark) center / 100% 100% no-repeat;
+  image-rendering: pixelated;
 }
 
 .notices {
@@ -1965,7 +2018,14 @@ input:focus-visible,
   font-size: 0.85em;
 }
 
+.pause-howto:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(92vh - 2.4em);
+}
+
 .pause-howto .back {
+  flex: none;
   margin-top: 1em;
 }
 
@@ -2334,7 +2394,14 @@ input:focus-visible,
 }
 
 .boss-pet::before {
-  content: '🐈 ';
+  content: '';
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.35em;
+  vertical-align: -0.2em;
+  background: var(--px-cat) center / 100% 100% no-repeat;
+  image-rendering: pixelated;
 }
 
 .boss-pet.dizzy {
@@ -2345,7 +2412,7 @@ input:focus-visible,
 /* ------------------------------------------------------------------ stage 3 */
 
 .boss-pet[data-kind='valk']::before {
-  content: '🐉 ';
+  background-image: var(--px-drake);
 }
 
 .bell-chip {
@@ -2396,8 +2463,7 @@ input:focus-visible,
 }
 
 .boss-pet[data-kind='leon']::before {
-  content: '✦ ';
-  color: #fff1a8;
+  background-image: var(--px-spark);
 }
 
 /* ------------------------------------------------------------------ finale */

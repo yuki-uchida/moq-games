@@ -1,6 +1,6 @@
 /** The title screen: logo, emblem, main menu and its sub-panels (create/join room, how to play, settings). */
 import { cleanRoom, randomRoom, validRoom } from '../net/validate'
-import { el, focusables, menuKeys, show } from './dom'
+import { el, focusables, menuKeys, scrollArea, show } from './dom'
 import { emblem, howToPlay, settingsForm, type SettingsHandlers } from './panels'
 
 export interface TitleActions {
@@ -114,7 +114,7 @@ export class TitleScreen {
       'div.title-panel.parchment.wide',
       { 'data-menu': true },
       el('h2', { text: '遊び方' }),
-      howToPlay(),
+      scrollArea(howToPlay()),
       el('div.panel-actions', {}, back())
     )
     const settings = el(

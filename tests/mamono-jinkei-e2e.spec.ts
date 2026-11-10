@@ -469,6 +469,53 @@ test('lobby pre-selects the newest unlocked stage', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('small window: the solo lobby keeps 出発！ in view and starts stage 1', async ({ page }) => {
+  const errors: string[] = []
+  watchErrors(page, errors)
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.goto('/')
+  await page.getByRole('button', { name: /ひとりで遊ぶ/ }).click()
+  const start = page.getByRole('button', { name: '出発！' })
+  await expect(start).toBeInViewport({ ratio: 1 })
+  await expect(page.getByRole('button', { name: /タイトルへ/ })).toBeInViewport({ ratio: 1 })
+  // What does not fit scrolls inside the card, with a cue while more is below.
+  const area = page.locator('.lobby-scroll')
+  await expect.poll(() => area.evaluate((n) => n.scrollHeight > n.clientHeight)).toBe(true)
+  await expect(area).toHaveAttribute('data-more-down', '')
+  await start.click()
+  await expect(page.locator('.intro-name')).toHaveText('ぷるぷる草原と古城跡')
+  await expect.poll(() => page.evaluate(() => window.__mamono.view?.phase), { timeout: 6000 }).toBe('play')
+  expect(errors).toEqual([])
+})
+
+for (const size of [
+  { width: 1280, height: 720 },
+  { width: 1024, height: 600 }
+]) {
+  test(`how to play at ${size.width}x${size.height}: もどる stays in view and the content scrolls`, async ({
+    page
+  }) => {
+    const errors: string[] = []
+    watchErrors(page, errors)
+    await page.setViewportSize(size)
+    await page.goto('/')
+    await page.getByRole('button', { name: /遊び方/ }).click()
+    await expect(page.getByRole('heading', { name: '陣形をくもう' })).toBeVisible()
+    const back = page.locator('.title-panel.wide:visible .panel-actions .btn')
+    await expect(back).toBeInViewport({ ratio: 1 })
+    const area = page.locator('.title-panel.wide:visible .scroll-area')
+    await expect.poll(() => area.evaluate((n) => n.scrollHeight > n.clientHeight)).toBe(true)
+    await expect(area).toHaveAttribute('data-more-down', '')
+    await area.evaluate((n) => n.scrollTo(0, n.scrollHeight))
+    await expect(area).not.toHaveAttribute('data-more-down', '')
+    await expect(area).toHaveAttribute('data-more-up', '')
+    await expect(back).toBeInViewport({ ratio: 1 })
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: /ひとりで遊ぶ/ })).toBeVisible()
+    expect(errors).toEqual([])
+  })
+}
+
 test('Esc opens the menu, pauses solo and returns to the title', async ({ page }) => {
   const errors: string[] = []
   watchErrors(page, errors)

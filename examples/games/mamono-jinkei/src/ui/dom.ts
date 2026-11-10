@@ -45,6 +45,26 @@ export function show(node: HTMLElement, visible: boolean) {
   if (node.hidden === visible) node.hidden = !visible
 }
 
+/**
+ * Wraps `content` in a scrolling region that keeps its siblings (title, action buttons) pinned. While more content is
+ * hidden above/below it sets `data-more-up` / `data-more-down`, which the stylesheet turns into a soft edge fade.
+ */
+export function scrollArea(content: HTMLElement, className = ''): HTMLElement {
+  const area = el('div.scroll-area' + (className ? '.' + className : ''), {}, content)
+  const sync = () => {
+    const max = area.scrollHeight - area.clientHeight
+    area.toggleAttribute('data-more-up', max > 1 && area.scrollTop > 1)
+    area.toggleAttribute('data-more-down', max > 1 && area.scrollTop < max - 1)
+  }
+  area.addEventListener('scroll', sync, { passive: true })
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(sync)
+    ro.observe(area)
+    ro.observe(content)
+  }
+  return area
+}
+
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex="0"], select:not([disabled])'
 
 /** Visible focusable elements inside a container, in order. */
