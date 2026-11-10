@@ -18,7 +18,7 @@ import {
 import { Game, RAID, choiceText, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { GUARDIAN_BODY, boxAbout, boxesOverlap, overheadBoxes } from '../src/overhead'
-import { readView, toView } from '../src/view'
+import { GUARD_WALK, readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
@@ -248,8 +248,9 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(17)
-    expect(view.shots[7]).toBe(1)
+    expect(view.v).toBe(18)
+    // Spent (1), walking with her child (GUARD_WALK).
+    expect(view.shots[7]).toBe(1 + GUARD_WALK)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
     expect(game.state.bullets).toEqual([])
     expect(game.state.fx.some((event) => event.type === FX.HURT || event.type === FX.DOWN)).toBe(false)

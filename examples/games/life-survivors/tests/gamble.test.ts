@@ -278,7 +278,7 @@ test('copied 過保護親 keep 20 px clear of her own whatever the levels, walki
   expect(worst).toBeLessThan(23)
 }, 30_000)
 
-test('the one copy beside a lone 過保護親 walking up stands further out on her side, the other shoulder left free', () => {
+test('the one copy beside a lone 過保護親 walking up walks at the other shoulder, out past the badge there', () => {
   const step = 1 / 60
   for (let overLv = 1; overLv <= 3; overLv++)
     for (let gambleLv = 1; gambleLv <= 3; gambleLv++)
@@ -309,17 +309,18 @@ test('the one copy beside a lone 過保護親 walking up stands further out on h
           if (frame < 90) continue
           const parent = { x: mine.x - player.x, y: mine.y - player.y }
           const twin = { x: copy.x - player.x, y: copy.y - player.y }
-          // Both on the side she last faced, the copy further out.
+          // Her own on the side she last faced, the copy at the other shoulder (so no shoulder's row runs off a phone
+          // held upright).
           expect(Math.sign(parent.x), label).toBe(from)
-          expect(twin.x * from, label).toBeGreaterThan(parent.x * from)
+          expect(Math.sign(twin.x), label).toBe(-from)
           expect(Math.hypot(twin.x - parent.x, twin.y - parent.y), label).toBeGreaterThanOrEqual(20)
-          // The badge box over the other shoulder is clear of both.
-          const free = badgeBoxAt(-from, 1)
-          for (const at of [parent, twin]) {
-            const clear =
-              at.x + 12 <= free.left || at.x - 12 >= free.right || at.y + 12 <= free.top || at.y - 12 >= free.bottom
-            expect(clear, `${label}: ${at.x.toFixed(0)},${at.y.toFixed(0)}`).toBe(true)
-          }
+          // The badge box over either shoulder is clear of both: the copy walks out past it.
+          for (const free of [badgeBoxAt(-from, 1), badgeBoxAt(from, 1)])
+            for (const at of [parent, twin]) {
+              const clear =
+                at.x + 12 <= free.left || at.x - 12 >= free.right || at.y + 12 <= free.top || at.y - 12 >= free.bottom
+              expect(clear, `${label}: ${at.x.toFixed(0)},${at.y.toFixed(0)}`).toBe(true)
+            }
         }
         // Crossing over to the other shoulder (and on round to walking the other way) she moves without a jump.
         let last = { x: copy.x - player.x, y: copy.y - player.y }
@@ -374,11 +375,12 @@ describe('copied 過保護親 hold still beside a child walking steadily, wherev
             for (const copy of copies) copy.life = copy.maxLife = Infinity
             let last: { x: number; y: number }[] = []
             let worst = 0
-            for (let tick = 0; tick < 120; tick++) {
+            // (Over to their places at a walk, GUARDIAN_SPEED, they are settled within four seconds.)
+            for (let tick = 0; tick < 240; tick++) {
               game.setInput(player.id, stick)
               game.tick(step)
               const at = copies.map((copy) => ({ x: copy.x - player.x, y: copy.y - player.y }))
-              if (tick > 90)
+              if (tick > 210)
                 at.forEach((p, j) => (worst = Math.max(worst, Math.hypot(p.x - last[j].x, p.y - last[j].y))))
               last = at
             }

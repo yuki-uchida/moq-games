@@ -2,8 +2,16 @@ import { describe, expect, test } from 'vitest'
 import { sheet } from '../src/art/index'
 import { EVENTS, timeAtAge } from '../src/data'
 import { FAMILY_SLOTS } from '../src/family-slots'
-import { CREATURE_BODY, GUARDIAN_CHILD, GUARDIAN_SHIELD_ART, Game, type Player, type Shot } from '../src/game'
-import { GUARDIAN_BODY, OVERHEAD, boxAbout, boxesOverlap, type OverheadBox } from '../src/overhead'
+import {
+  CREATURE_BODY,
+  GUARDIAN_CHILD,
+  GUARDIAN_SHIELD_ART,
+  GUARDIAN_SPEED,
+  Game,
+  type Player,
+  type Shot
+} from '../src/game'
+import { GUARDIAN_BODY, OVERHEAD, boxAbout, boxesOverlap, overheadBoxes, type OverheadBox } from '../src/overhead'
 
 const DT = 1 / 60
 const S = Math.SQRT1_2
@@ -308,4 +316,153 @@ describe('過保護親 never cross what is drawn over the child’s head nor her
         expect(frames).toBeGreaterThan(0)
         expect(faults.slice(0, 10)).toEqual([])
       }, 30_000)
+})
+
+/** 過保護親's figure and shield as the renderer draws them, facing `guardianFace` (offsets from her child). */
+function drawn(guard: Shot, player: Player) {
+  const { x, y } = offset(guard, player)
+  const flip = Math.cos(guard.guardianFace ?? guard.angle) < 0
+  const scale = guard.r / 20
+  const body: OverheadBox = flip
+    ? { left: x - 6, top: y - 16, right: x + 14, bottom: y + 15 }
+    : { left: x - 14, top: y - 16, right: x + 6, bottom: y + 15 }
+  const near = GUARDIAN_SHIELD_ART.near * scale
+  const far = GUARDIAN_SHIELD_ART.far * scale
+  const shield: OverheadBox = {
+    left: flip ? x - far : x + near,
+    top: y + GUARDIAN_SHIELD_ART.top * scale,
+    right: flip ? x - near : x + far,
+    bottom: y + GUARDIAN_SHIELD_ART.bottom * scale
+  }
+  return { body, shield }
+}
+/** Frames after a married child turns that a parent standing where her family comes may take to step off them. */
+const FAMILY_TURN_GRACE = 20
+/** The family walking behind a married child, where the game keeps them (FAMILY_SLOTS, offsets from her). */
+const familyBoxes = (player: Player) => {
+  if (!player.married) return []
+  const back = player.fx < 0 ? 1 : -1
+  return FAMILY_SLOTS.slice(0, player.hasChild ? 2 : 1).map((slot) => familyBox(back * slot.dx, slot.dy))
+}
+const area = (a: OverheadBox, b: OverheadBox) =>
+  Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+  Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+
+describe('standing, 過保護親 face out with their shields off the child and each other; moving, they walk the way they go', () => {
+  const configs = [
+    { level: 1 },
+    { level: 4 },
+    { level: 8 },
+    { level: 4, gamble: 5 },
+    { level: 8, gamble: 8 },
+    { level: 8, gamble: 8, married: true },
+    { level: 8, neighbour: 70 }
+  ]
+  for (const { level, gamble, married, neighbour } of configs)
+    test(`Lv${level}${gamble ? ` with the gamble Lv${gamble}’s copies` : ''}${married ? ', married' : ''}${neighbour ? `, another player ${neighbour} px off` : ''}`, () => {
+      const { game, player } = setup(
+        level,
+        'none',
+        gamble
+          ? [{ id: 'w_gamble', lv: gamble, cd: 0, held: 0, damage: 0, gambleWeapon: 'p_over', gambleUntil: 1e9 }]
+          : []
+      )
+      player.married = player.hasChild = Boolean(married)
+      if (neighbour) {
+        const other = game.addPlayer('b', 'p_free')!
+        other.pending = 0
+        other.choices = []
+        other.weapons = []
+        other.x = player.x + neighbour
+        other.y = player.y
+      }
+      const child: OverheadBox = { left: -11, top: -30, right: 11, bottom: 16 }
+      const faults: string[] = []
+      let standing = 0
+      let walking = 0
+      let last = new Map<Shot, { x: number; y: number }>()
+      let turned = Infinity
+      // Walk, stop, turn on the spot (a three-frame tap), walk up and down.
+      const plan: [keyof typeof STICKS, number][] = [
+        ['L', 60],
+        ['still', 150],
+        ['R', 3],
+        ['still', 180],
+        ['U', 90],
+        ['D', 90],
+        ['still', 180],
+        ['DR', 50],
+        ['still', 180]
+      ]
+      for (const [way, frames] of plan) {
+        game.setInput(player.id, STICKS[way])
+        for (let f = 0; f < frames; f++) {
+          const before = { x: player.x, y: player.y }
+          const facing = Math.sign(player.fx)
+          frame(game, player)
+          turned = Math.sign(player.fx) === facing ? turned + 1 : 0
+          for (const other of game.state.players) if (other !== player) game.setInput(other.id, STICKS.still)
+          const guards = guardsOf(game, player)
+          const figures = new Map(guards.map((guard) => [guard, drawn(guard, player)]))
+          for (const guard of guards) {
+            const at = offset(guard, player)
+            const label = `${way} frame ${f} #${guard.id} (${at.x.toFixed(0)}, ${at.y.toFixed(0)})`
+            const was = last.get(guard)
+            if (was) {
+              const step = Math.hypot(at.x - was.x, at.y - was.y)
+              if (step > GUARDIAN_SPEED * DT + 1e-6 && step > 12) faults.push(`${label}: moved ${step.toFixed(1)} px`)
+              const gx = at.x + player.x - (was.x + before.x)
+              const gy = at.y + player.y - (was.y + before.y)
+              const ground = Math.hypot(gx, gy) / DT
+              if (ground > 60 && guard.aux <= 0) {
+                walking++
+                if (!guard.guardianWalking) faults.push(`${label}: moving ${ground.toFixed(0)} px/s, not walking`)
+                const face = guard.guardianFace ?? guard.angle
+                // (Standing by the child as she takes a step or two, she faces out: carried along, not walking. Right
+                // by the child, her shield held the way she goes would lie over the child, what is over her head or
+                // her family: she holds it the other way.)
+                const ahead = drawn({ ...guard, guardianFace: Math.atan2(gy, gx) } as Shot, player).shield
+                const over = [child, ...overheadBoxes(1, OVERHEAD.rows, true), ...familyBoxes(player)].some(
+                  (box) =>
+                    Math.min(ahead.right, box.right) - Math.max(ahead.left, box.left) >= 4 &&
+                    Math.min(ahead.bottom, box.bottom) - Math.max(ahead.top, box.top) >= 4
+                )
+                if (
+                  !over &&
+                  (guard.guardianStill ?? 0) < 0.5 &&
+                  gx * Math.cos(face) + gy * Math.sin(face) < -0.3 * Math.hypot(gx, gy)
+                )
+                  faults.push(`${label}: walking backwards`)
+              }
+            }
+            // At all times, her figure and shield as drawn keep off the child, what is over her head and her family.
+            {
+              const { body, shield } = figures.get(guard)!
+              // (As the child turns, her family comes round to her other side, where a parent may stand: she steps off
+              // them, GUARDIAN_DODGE px a step, within FAMILY_TURN_GRACE frames.)
+              const family = turned > FAMILY_TURN_GRACE ? familyBoxes(player) : []
+              for (const box of [child, ...overheadBoxes(1, OVERHEAD.rows, Boolean(gamble)), ...family])
+                for (const part of [body, shield])
+                  if (
+                    Math.min(part.right, box.right) - Math.max(part.left, box.left) >= 4 &&
+                    Math.min(part.bottom, box.bottom) - Math.max(part.top, box.top) >= 4
+                  )
+                    faults.push(`${label}: ${part === body ? 'figure' : 'shield'} over the child, her head or family`)
+            }
+            if (player.still < 1 || guard.guardianStill !== 1 || guard.guardianWalking) continue
+            standing++
+            const { body, shield } = figures.get(guard)!
+            if (area(shield, child) > 16) faults.push(`${label}: shield on the child`)
+            let hidden = 0
+            for (const [other, figure] of figures) if (other !== guard) hidden += area(body, figure.shield)
+            if (hidden > 0.3 * area(body, body))
+              faults.push(`${label}: ${((100 * hidden) / area(body, body)).toFixed(0)}% under shields`)
+          }
+          last = new Map(guards.map((guard) => [guard, offset(guard, player)]))
+        }
+      }
+      expect(standing).toBeGreaterThan(0)
+      expect(walking).toBeGreaterThan(0)
+      expect(faults.slice(0, 10)).toEqual([])
+    }, 30_000)
 })
