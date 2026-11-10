@@ -63,7 +63,7 @@ import {
   ENEMY_FLAG,
   GUARD_BASH_STEPS,
   GUARD_BACK,
-  GUARD_FAST,
+  GUARD_STEP,
   GUARD_WALK,
   ITEM_KINDS,
   PET_STILL,
@@ -494,6 +494,8 @@ interface ShotView {
   evolved: boolean
   /** Fired by the gamble as a copy of another weapon. */
   copied: boolean
+  /** 過保護親: the frame her walk is on (GUARD_STEP). */
+  step: number
 }
 
 const BOSS_AURA = '#a02850'
@@ -529,10 +531,6 @@ const GUARD_STRIKE_SLACK = 16
 const GUARD_RING_PER_R = 0.65 * 2.9 + 7 / 20
 const GUARD_RING_ARC = 0.45
 const GUARD_RING_SECONDS = 0.25
-const GUARD_WALK_RATE = 1
-/** Her walk, fast (GUARD_FAST: from 200 px/s over the ground) and stepping back (no faster than 90 px/s). */
-const GUARD_FAST_RATE = 2
-const GUARD_BACK_RATE = 2 / 3
 /** How long a food label takes to fade back in once no player covers it (s). */
 const FOOD_LABEL_FADE_IN = 0.15
 const GOLD = '#ffd75e'
@@ -692,7 +690,8 @@ export class Renderer {
     ox: 0,
     oy: 0,
     evolved: false,
-    copied: false
+    copied: false,
+    step: 0
   }
   private readonly beamWarm = new Set<number>()
   private halfW = 0
@@ -1692,7 +1691,9 @@ export class Renderer {
     sh.x = s[i + 1]
     sh.y = s[i + 2]
     sh.r = s[i + 3]
-    sh.angle = s[i + 4] / 100
+    // (過保護親's field carries the frame of her walk too: GUARD_STEP.)
+    sh.step = WEAPONS[s[i]]?.id === 'p_over' ? Math.round(s[i + 4] / GUARD_STEP) : 0
+    sh.angle = (s[i + 4] - sh.step * GUARD_STEP) / 100
     sh.life = s[i + 5] / 100
     sh.age = 1 - sh.life
     const copied = (s[i + 7] & SHOT_GAMBLE) !== 0
@@ -2319,14 +2320,11 @@ export class Renderer {
       puff = pop < 1 ? pop : fade > 0 ? fade : -1
       popping = pop < 1
     }
-    // (Her walk, while there is one in her sheet; her stepping in place until then.)
-    // (Her walk, twice as fast going fast; stepping back, backwards and slower, so her feet go back.)
+    // (Her walk, while there is one in her sheet; her stepping in place until then.) Walking, her walk is on the frame
+    // the game counts by how far she goes over the ground (GUARD_STEP), forwards, or backwards as she steps back.
     const walk = art.walk ?? art.fly
-    const body = !walking
-      ? pick(art.fly, time)
-      : pace === GUARD_BACK
-        ? walk.frames[walk.frames.length - 1 - frameIndex(walk, time * GUARD_BACK_RATE)]
-        : pick(walk, time * (pace === GUARD_FAST ? GUARD_FAST_RATE : GUARD_WALK_RATE))
+    const n = walk.frames.length
+    const body = !walking ? pick(art.fly, time) : walk.frames[pace === GUARD_BACK ? n - 1 - (sh.step % n) : sh.step % n]
     this.centred(body, x, y, sh.evolved, alpha, swell, flip)
     this.centred(
       pick(art.guard, time),

@@ -3,7 +3,7 @@ import { EVENTS, WEAPONS, timeAtAge } from '../src/data'
 import { FX, readGuardBits } from '../src/fx'
 import { GUARDIAN_SHIELD_ART, Game, type Player, type Shot } from '../src/game'
 import { childDrawnBox } from '../src/overhead'
-import { GUARD_BACK, SHOT_GAMBLE, STRIDE, readView, toView } from '../src/view'
+import { GUARD_BACK, GUARD_STEP, GUARD_STEPS, SHOT_GAMBLE, STRIDE, readView, toView } from '../src/view'
 
 const DT = 1 / 60
 const S = Math.SQRT1_2
@@ -256,4 +256,57 @@ describe('過保護親 step back slowly, playing her walk backwards', () => {
     view.shots[i * STRIDE.shots] = other
     expect(readView(view)).toBeUndefined()
   })
+})
+
+describe('過保護親 walk a frame every 14 px over the ground, and step off the family no faster than 360 px/s', () => {
+  test('her walk goes on as far as she goes, and the view carries its frame with her angle', () => {
+    const { game, player } = setup(8, 8)
+    for (let f = 0; f < 30; f++) game.tick(DT)
+    let checked = 0
+    for (const [way, frames] of plan) {
+      for (let f = 0; f < frames; f++) {
+        game.setInput(player.id, { x: DIRS[way][0], y: DIRS[way][1] })
+        const before = new Map(
+          guardsOf(game, player).map((g) => [g, { x: g.x, y: g.y, stride: g.guardianStride ?? 0 }])
+        )
+        game.tick(DT)
+        player.hp = player.maxHp
+        const live = game.state.shots.filter((shot) => shot.delay <= 0)
+        const view = toView(game.state)
+        for (const guard of guardsOf(game, player)) {
+          const was = before.get(guard)
+          if (!was || !guard.guardianWalking) continue
+          const went = (Math.hypot(guard.x - was.x, guard.y - was.y) / 14) % 60
+          expect(((guard.guardianStride ?? 0) - was.stride + 60) % 60).toBeCloseTo(went, 6)
+          const field = view.shots[live.indexOf(guard) * STRIDE.shots + 4]
+          const step = Math.round(field / GUARD_STEP) + 0
+          expect(step).toBe(Math.floor(guard.guardianStride ?? 0) % GUARD_STEPS)
+          const angle = (field - step * GUARD_STEP) / 100
+          const face = guard.guardianFace ?? guard.angle
+          expect(Math.abs(Math.atan2(Math.sin(angle - face), Math.cos(angle - face)))).toBeLessThan(0.01)
+          checked++
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100)
+  }, 30_000)
+
+  test('married, a parent standing where the family comes steps off them no faster than 360 px/s', () => {
+    const { game, player } = setup(4, 0, true)
+    for (let f = 0; f < 30; f++) game.tick(DT)
+    let fastest = 0
+    for (const [way, frames] of plan) {
+      for (let f = 0; f < frames; f++) {
+        game.setInput(player.id, { x: DIRS[way][0], y: DIRS[way][1] })
+        const before = new Map(guardsOf(game, player).map((g) => [g, { x: g.x - player.x, y: g.y - player.y }]))
+        game.tick(DT)
+        player.hp = player.maxHp
+        for (const guard of guardsOf(game, player)) {
+          const was = before.get(guard)
+          if (was) fastest = Math.max(fastest, Math.hypot(guard.x - player.x - was.x, guard.y - player.y - was.y) / DT)
+        }
+      }
+    }
+    expect(fastest).toBeLessThanOrEqual(360 + 1e-6)
+  }, 30_000)
 })

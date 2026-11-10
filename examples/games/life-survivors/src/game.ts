@@ -136,6 +136,12 @@ export const GUARDIAN_SPEED = 270
 const GUARDIAN_WALK_ON = 40
 const GUARDIAN_WALK_OFF = 25
 const GUARDIAN_WALK_HOLD = 0.12
+/**
+ * How far (px over the ground) 過保護親 goes for each frame of her walk (forwards, fast, or backwards as she steps
+ * back), and how many frames her count of them runs to before it starts again (a whole number of walks).
+ */
+const GUARDIAN_STRIDE = 14
+const GUARDIAN_STRIDE_LOOP = 60
 /** Walking mostly up or down the screen, she still faces this much (share of her speed) to her own side. */
 const GUARDIAN_FACE_SIDE = 0.25
 /** How far (0..1) her child has come to stand (Shot.guardianStill) for 過保護親 to head for her place beside her. */
@@ -209,6 +215,8 @@ const GUARDIAN_BELOW = 24
 const GUARDIAN_AROUND = 48
 /** How far (px, at most 12) a parent hemmed in by the child and another coming at her may dodge in a step. */
 const GUARDIAN_DODGE = 12
+/** How far (px a step at 60 fps, 360 px/s) a parent standing where the family comes to walk steps off them. */
+const GUARDIAN_FAMILY_DODGE = 6
 /**
  * A resting pet a parent goes round on her way, if it is within GUARDIAN_PET_NEAR px of her: her centre keeps this far
  * (px) to either side of the pet's, and up and down from it.
@@ -1277,6 +1285,8 @@ export interface Shot {
   guardianTurned?: number
   /** 過保護: the way (px/s) she has gone over the ground of late (see GUARDIAN_FACE_DRIFT). */
   guardianDrift?: { x: number; y: number }
+  /** 過保護: how far on her walk is (in frames of it, GUARDIAN_STRIDE px over the ground each). */
+  guardianStride?: number
   /** 過保護: how she walks, for the view (see Game.paceGuardian); none while she does not walk. */
   guardianPace?: 'walk' | 'fast' | 'back'
   /** 過保護: whether she walks (over the ground, see GUARDIAN_WALK_ON), how long she has been slow, and where she was. */
@@ -3718,7 +3728,7 @@ export class Game {
     // Standing where the family has just come to walk (the child turned), she steps off them as fast as she dodges.
     const dodging =
       last !== undefined && this.familyOut(owner) && guardianInBlock(last, blocks.slice(0, owner.hasChild ? 2 : 1))
-    if (dodging) most = Math.max(most, Math.min(GUARDIAN_DODGE, (GUARDIAN_DODGE / STEP) * dt) - 1e-6)
+    if (dodging) most = Math.max(most, Math.min(GUARDIAN_FAMILY_DODGE, (GUARDIAN_FAMILY_DODGE / STEP) * dt) - 1e-6)
     // While she gambles, the badge floats over either side of her head.
     const badge = owner.weapons.some((weapon) => weapon.id === 'w_gamble')
     // (The same as last time for the same aim, place, parents before her and obstacles.)
@@ -3896,6 +3906,9 @@ export class Game {
       shot.guardianSlow = (shot.guardianSlow ?? 0) + dt
       if (shot.guardianSlow >= GUARDIAN_WALK_HOLD) shot.guardianWalking = false
     }
+    // Walking, her walk goes on a frame every GUARDIAN_STRIDE px she goes over the ground.
+    if (shot.guardianWalking)
+      shot.guardianStride = ((shot.guardianStride ?? 0) + (speed * dt) / GUARDIAN_STRIDE) % GUARDIAN_STRIDE_LOOP
     // Bashing, she faces the enemy she bashes (see moveGuardian).
     if (shot.aux > 0 && shot.guardianFace === shot.angle && this.guardianBashClear(shot, owner, at)) return
     const boxes = this.guardianShieldBoxes(owner)

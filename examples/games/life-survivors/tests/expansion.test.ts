@@ -1011,7 +1011,7 @@ describe('fx channel', () => {
   })
 })
 
-describe('protocol v19', () => {
+describe('protocol v20', () => {
   const sample = () => {
     const { game, player } = arena(30, 'p_toxic')
     game.spawnEnemy('germ', player.x + 20, player.y)
@@ -1021,9 +1021,9 @@ describe('protocol v19', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v19 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v20 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(19)
+    expect(view.v).toBe(20)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
