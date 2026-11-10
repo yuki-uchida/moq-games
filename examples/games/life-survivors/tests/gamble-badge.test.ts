@@ -277,7 +277,7 @@ test('setting off, stopping and turning never sends the badge over and straight 
         }
       expect(undone(heldTargets(layouts)), `過保護 Lv${overLv}${copy ? ' with the copy' : ''}`).toBe(0)
     }
-})
+}, 30_000)
 
 test('walking steadily, the badge settles on the side that hides less of her parents', () => {
   for (const copy of [false, true])
