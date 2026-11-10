@@ -59,6 +59,19 @@ export function stick(x: number, y: number, dead = 0.22): { x: number; y: number
   return { x: x * k, y: y * k, m: Math.min(1, (m - dead) / (1 - dead)) }
 }
 
+/**
+ * Gamepad aim direction: the right stick when it is deflected, else the left stick's direction (so aiming follows
+ * where you walk), else undefined (keep the previous aim).
+ */
+export function padAimDir(
+  left: { x: number; y: number; m: number },
+  right: { x: number; y: number; m: number }
+): { x: number; y: number } | undefined {
+  if (right.m > 0) return { x: right.x, y: right.y }
+  if (left.m > 0) return { x: left.x, y: left.y }
+  return undefined
+}
+
 /** Standard-mapping gamepad buttons. */
 export const PAD = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, back: 8, start: 9 } as const
 

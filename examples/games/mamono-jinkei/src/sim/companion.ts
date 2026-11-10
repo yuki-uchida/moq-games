@@ -6,6 +6,7 @@ import { TILE } from '../vocab'
 import { angleDiff, dist, fx, heroBy, roomOf, sfx, tileOf, warpHero, freeSpotNear } from './core'
 import { tileCentre } from './stage-data'
 import { FLY_STEP, HOLE_STEP, inRoom } from './grid'
+import { CROW_FLIGHT } from './move'
 
 /** Tile index of a path step (walk, slime hop or mouse-hole exit). */
 const stepTile = (p: number) => (p <= FLY_STEP ? FLY_STEP - p : p <= HOLE_STEP ? HOLE_STEP - p : p < 0 ? -p - 1 : p)
@@ -225,6 +226,12 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
     .filter((c) => c !== owner)
     .sort((a, b) => a.slot - b.slot)
   const dOwner = dist(owner.body.x, owner.body.y, h.body.x, h.body.y)
+  // Crow formation flight: take off with the owner and hold the formation in the air.
+  const ownerAloft = owner.body.flying || (owner.accepted !== undefined && owner.reportAirborne)
+  if (W.species === 'crow' && ownerAloft && !rally && h.hold === undefined && dOwner < FLIGHT_FOLLOW) {
+    flyInFormation(owner, h, comps.indexOf(h), it)
+    return it
+  }
   // Regrouping from afar for a charge: the nearest way into the formation (just inside its reach, on this side).
   const { x: sx, y: sy } =
     rally && dOwner > 2 * TILE ? rallySpot(W, owner, h, comps.indexOf(h)) : followSpot(W, owner, comps, h)
@@ -277,6 +284,37 @@ export function companionIntent(W: WorldState, h: Hero, human: Human | undefined
   if (dSpot > 14) steer(W, h, sx, sy, it)
   if (Math.hypot(it.mx, it.my) < 0.1 && !it.press) it.aim = owner.aim
   return it
+}
+
+/** Companions this close to a flying owner fly with it in formation. */
+const FLIGHT_FOLLOW = 4 * TILE
+
+/**
+ * Formation flight (crow): the companion holds Space with its flying owner, aims for its open-sky formation spot
+ * moving with the owner (the owner's velocity plus a pull toward the spot, sped up to catch up when lagging), and
+ * drafts on the owner's wings (its stamina never drops below the owner's while they fly as one formation). The
+ * formation of 3+ stays together, so the whole party keeps resisting the wind.
+ */
+function flyInFormation(owner: Hero, h: Hero, i: number, it: Intent): void {
+  const b = h.body
+  const spot = openSpot(owner, Math.max(0, i))
+  it.actionHeld = true
+  it.aim = owner.aim
+  h.ai.path = undefined
+  h.ai.stuckT = 0
+  h.ai.lastX = b.x
+  h.ai.lastY = b.y
+  if (b.flying && owner.body.flying && h.form >= 0 && h.form === owner.form)
+    b.stamina = Math.max(b.stamina, owner.body.stamina)
+  const vx = owner.body.vx + (spot.x - b.x) * 4
+  const vy = owner.body.vy + (spot.y - b.y) * 4
+  const v = Math.hypot(vx, vy)
+  if (v < 4) return
+  const top = CROW_FLIGHT.speed
+  const k = Math.min(1, v / top)
+  it.mx = (vx / v) * k
+  it.my = (vy / v) * k
+  h.ai.boost = Math.min(1.45, Math.max(1, v / top))
 }
 
 /** Where a far companion heads while the owner charges: 60 px from the owner toward it (spread a little). */

@@ -158,8 +158,28 @@ export const TOWER: StageData = {
       objective: '竜騎士ヴァルクをたおせ！'
     },
     { id: 'G', name: '時計塔の内部', x: 43, y: 13, w: 27, h: 12, objective: 'カギを見つけて上へ' },
-    { id: 'F', name: '金の鐘', x: 40, y: 25, w: 31, h: 12, objective: '金の鐘をかけ金へはこぼう' },
-    { id: 'E', name: '四つの鐘楼', x: 7, y: 25, w: 33, h: 12, objective: '4つの鐘を同時に鳴らそう（せーの：F）' },
+    {
+      id: 'F',
+      name: '金の鐘',
+      x: 40,
+      y: 25,
+      w: 31,
+      h: 12,
+      objective: '金の鐘をかけ金へはこぼう',
+      done: { on: 'hookF' },
+      objectiveDone: '金の鐘がかかった！ 扉がひらいた、先へすすもう'
+    },
+    {
+      id: 'E',
+      name: '四つの鐘楼',
+      x: 7,
+      y: 25,
+      w: 33,
+      h: 12,
+      objective: '4つの鐘を同時に鳴らそう（せーの：F）',
+      done: { bells: 'E' },
+      objectiveDone: '鐘がそろった！ 扉がひらいた、先へすすもう'
+    },
     {
       id: 'D',
       name: '鷹匠の見張り台',
@@ -183,7 +203,17 @@ export const TOWER: StageData = {
         ]
       ]
     },
-    { id: 'C', name: '風車の谷', x: 37, y: 37, w: 35, h: 11, objective: '黒羽の大旋風で風車をまわそう' },
+    {
+      id: 'C',
+      name: '風車の谷',
+      x: 37,
+      y: 37,
+      w: 35,
+      h: 11,
+      objective: '黒羽の大旋風で風車をまわそう',
+      done: { on: 'windmillC' },
+      objectiveDone: '風車がまわった！ 橋がおりた、先へすすもう'
+    },
     { id: 'B', name: '雲海の飛び石', x: 25, y: 48, w: 47, h: 16, objective: 'ベントをつないで雲の海をわたろう' },
     { id: 'A', name: '風の崖の入口', x: 0, y: 48, w: 25, h: 16, objective: 'スペース長押しで飛んで、崖をわたろう' }
   ],

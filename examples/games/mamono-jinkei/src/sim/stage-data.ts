@@ -19,6 +19,8 @@ export type Cond =
   | { all: Cond[] }
   | { any: Cond[] }
   | { on: string }
+  /** A breakable part (crack rock, barricade) has been broken. */
+  | { broken: string }
   | { bells: string }
   | { clear: string }
   | { flag: string }
@@ -83,6 +85,9 @@ export interface RoomData {
   h: number
   zoom?: number
   objective: string
+  /** Puzzle room: when this holds the HUD shows `objectiveDone` instead of `objective`. */
+  done?: Cond
+  objectiveDone?: string
   /** Arena fight: waves spawn one after another while the room's lock gates are closed. */
   waves?: WaveSpawn[][]
   /** The checkpoint activates only when the arena is cleared. */

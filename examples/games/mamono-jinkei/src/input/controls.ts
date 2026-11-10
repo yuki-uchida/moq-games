@@ -3,7 +3,8 @@
  * press/release counters only grow (edge events survive merged network messages). Everything is released on blur.
  */
 import { NO_INPUT, type InputState } from '../sim/types'
-import { PAD, PREVENT, actionOf, aimFrom, edge, moveVector, stick, type Action } from './map'
+import { PAD, PREVENT, actionOf, aimFrom, edge, moveVector, padAimDir, stick, type Action } from './map'
+import { firstGamepad, type PadSample } from './padnav'
 
 /** Inputs that never take typed text, so Esc may close the menu around them. */
 const NON_TEXT_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'])
@@ -29,6 +30,8 @@ export class Controls {
   private readonly held = new Set<Action>()
   private mouseHeld = false
   private padHeld = false
+  /** A (attack) was held while the controls were off (menus): it must be released before it attacks again. */
+  private padAWaits = false
   private padPrev: boolean[] = []
   private padAim = { x: 0, y: 0 }
   private pointerId = -1
@@ -142,6 +145,15 @@ export class Controls {
     this.state.attackHeld = false
   }
 
+  /**
+   * Marks the pad's held buttons as already seen: menus use the pad, and resuming play must not replay what was
+   * pressed there (a menu A, or the Start that closed the pause menu).
+   */
+  swallowPad(sample: PadSample | undefined = firstGamepad()) {
+    this.padPrev = sample ? [...sample.buttons] : []
+    this.padAWaits = !!sample?.buttons[PAD.a]
+  }
+
   /** Polls the gamepad and refreshes movement and aim. `hero` is the controlled hero's CSS position. */
   update(hero: { x: number; y: number } | undefined, artPerCss: number): InputState & { aimDist?: number } {
     const s = this.state
@@ -152,18 +164,22 @@ export class Controls {
       this.held.has('right')
     )
     let actionHeld = this.held.has('action')
-    const pad = this.enabled ? this.gamepad() : undefined
+    const sample = firstGamepad()
+    if (!this.enabled) this.swallowPad(sample)
+    const pad = this.enabled ? sample : undefined
     if (pad) {
       const l = stick(pad.axes[0] ?? 0, pad.axes[1] ?? 0)
       if (l.m > 0) (mx = l.x), (my = l.y)
       const r = stick(pad.axes[2] ?? 0, pad.axes[3] ?? 0, 0.3)
-      if (r.m > 0) {
-        this.padAim = { x: r.x, y: r.y }
+      const dir = padAimDir(l, r)
+      if (dir) {
+        this.padAim = dir
         this.padAimAt = performance.now()
       }
-      const b = pad.buttons.map((x) => !!x?.pressed)
+      const b = pad.buttons
       const p = this.padPrev
-      if (b[PAD.a] && !this.padHeld) (this.padHeld = true), s.attackPresses++
+      if (!b[PAD.a]) this.padAWaits = false
+      if (b[PAD.a] && !this.padHeld && !this.padAWaits) (this.padHeld = true), s.attackPresses++
       else if (!b[PAD.a] && this.padHeld) (this.padHeld = false), s.attackReleases++
       s.actionPresses += edge(b[PAD.b], p[PAD.b])
       s.interactPresses += edge(b[PAD.x], p[PAD.x])
@@ -172,13 +188,13 @@ export class Controls {
       s.modePresses += edge(b[PAD.back], p[PAD.back])
       if (edge(b[PAD.start], p[PAD.start])) this.hooks.onMenu()
       actionHeld ||= b[PAD.b]
-      this.padPrev = b
+      this.padPrev = [...b]
     }
     if (!this.enabled) (mx = 0), (my = 0), (actionHeld = false)
     s.mx = mx
     s.my = my
     s.actionHeld = actionHeld
-    s.interactHeld = this.enabled && (this.held.has('interact') || (!!pad && !!pad.buttons[PAD.x]?.pressed))
+    s.interactHeld = this.enabled && (this.held.has('interact') || (!!pad && !!pad.buttons[PAD.x]))
     s.attackHeld = this.enabled && (this.mouseHeld || this.padHeld)
     const padAiming = this.padAimAt > this.mouseAt
     if (padAiming) {
@@ -190,15 +206,6 @@ export class Controls {
       s.aimDist = a.aimDist
     }
     return s
-  }
-
-  private gamepad(): Gamepad | undefined {
-    try {
-      for (const g of navigator.getGamepads?.() ?? []) if (g && g.connected) return g
-    } catch {
-      // Gamepads unavailable (permissions policy).
-    }
-    return undefined
   }
 
   /** A copy of the current state (for sending). */

@@ -155,8 +155,10 @@ function deadtree() {
   snowCap(b, 9, 2, 0.75)
   r.blit(b)
   const d = new Raster(128, 192)
-  drift(d, 48, 162, 14, 3.4)
-  drift(d, 82, 163, 11, 3)
+  // a snow hump around the foot, so the tree reads as frozen in even where it stands on bare ice
+  drift(d, 64, 164, 26, 5.5)
+  drift(d, 44, 163, 13, 3.4)
+  drift(d, 85, 164, 11, 3)
   outline(d)
   r.blit(d)
   return r

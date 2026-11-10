@@ -59,7 +59,7 @@ const MAP = [
   '#####ffff###########:####fffY###########ssssiiiiiiiiiiiii~ssL~iiiiiiiss#',
   '######:###:S:#######:#####:#############szssiiiiiiiiiiiii~sss~iiiiiiiss#',
   '###:::::::::::::::::::::::::::K::::::::cssssiiiiiiiiiiiii~~~~~iiiiiiiss#',
-  '################:#################:#####szssiiiiiiiiiiiiiiiiiiiiiiiiiTs#',
+  '################:#################:#####szssiiiiiiiiiiiiiiiiiiiiiiiiits#',
   '###############ffff##############fffY###ssssiiiiiiiikiiiiiiiiiiiiiiiiss#',
   '###############ffMf##############ffMf###sTssiiiiiiiiiiiiiiiiiiiiiiiiisD#',
   '###############Yfff##############ffff###ssssiiiiiiiiiiiiiiiiiiiiiiiiiss#',
@@ -93,6 +93,7 @@ export const FOREST: StageData = {
     _: { tile: 'floor' },
     ':': { tile: 'path' },
     T: { ent: { type: 'decor', kind: 'pine' } },
+    t: { tile: 'snow', ent: { type: 'decor', kind: 'pine' } },
     D: { ent: { type: 'decor', kind: 'deadtree' } },
     Y: { ent: { type: 'decor', kind: 'tent' } },
     z: { ent: { type: 'decor', kind: 'brazier' } },
@@ -153,9 +154,21 @@ export const FOREST: StageData = {
       y: 15,
       w: 41,
       h: 13,
-      objective: '氷の壁をくだき、大きな月石を共鳴させよう'
+      objective: '氷の壁をくだき、大きな月石を共鳴させよう',
+      done: { on: 'bigmoonG' },
+      objectiveDone: '大きな月石が共鳴した！ 扉がひらいた、先へすすもう'
     },
-    { id: 'F', name: '丸太の破城槌', x: 37, y: 28, w: 35, h: 11, objective: '丸太を4人で砦の門へはこぼう' },
+    {
+      id: 'F',
+      name: '丸太の破城槌',
+      x: 37,
+      y: 28,
+      w: 35,
+      h: 11,
+      objective: '丸太を4人で砦の門へはこぼう',
+      done: { on: 'ramslotF' },
+      objectiveDone: '丸太がはまった！ 門がひらいた、先へすすもう'
+    },
     {
       id: 'E',
       name: '狩人の野営地',
@@ -179,10 +192,30 @@ export const FOREST: StageData = {
         ]
       ]
     },
-    { id: 'D', name: '四つの月石', x: 0, y: 40, w: 39, h: 11, objective: '4つの月石を同時に光らせよう（せーの：F）' },
+    {
+      id: 'D',
+      name: '四つの月石',
+      x: 0,
+      y: 40,
+      w: 39,
+      h: 11,
+      objective: '4つの月石を同時に光らせよう（せーの：F）',
+      done: { flag: 'moons:D' },
+      objectiveDone: '月石がそろった！ 扉がひらいた、先へすすもう'
+    },
     { id: 'C', name: '凍った湖', x: 39, y: 40, w: 33, h: 12, objective: '氷のブロックをすべらせて島へわたろう' },
     { id: 'B', name: '雪の小道', x: 31, y: 52, w: 41, h: 12, objective: '月石の明かりをたどろう' },
-    { id: 'A', name: '月影の森の入口', x: 0, y: 52, w: 31, h: 12, objective: '遠吠え（スペース）で月石を光らせよう' }
+    {
+      id: 'A',
+      name: '月影の森の入口',
+      x: 0,
+      y: 52,
+      w: 31,
+      h: 12,
+      objective: '遠吠え（スペース）で月石を光らせよう',
+      done: { on: 'moonA' },
+      objectiveDone: '月石が灯った！ 扉がひらいた、先へすすもう'
+    }
   ],
   signs: [
     [

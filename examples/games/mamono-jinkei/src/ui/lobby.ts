@@ -29,6 +29,11 @@ const JOB_TEXT: Record<Job, [string, string]> = {
   cleric: ['杖でたたいて\u200b仲間を\u200b回復', 'ため：聖なる輪']
 }
 
+/** The stage the lobby pre-selects: the newest unlocked one (the next stage to play), else the first. */
+export function defaultLobbyStage(unlocked: readonly StageId[]): StageId {
+  return [...STAGES].reverse().find((s) => unlocked.includes(s)) ?? STAGES[0]
+}
+
 export class LobbyScreen {
   readonly root: HTMLElement
   private readonly roomBox: HTMLElement
