@@ -1,0 +1,421 @@
+/**
+ * The hero, enemies and bosses: clip selection (pure functions in clips.ts) plus the timers it needs, squash and
+ * stretch, hit flashes, invulnerability flicker, ghosts that play `defeat` after the sim removed an actor, status
+ * marks (dizzy, sweat) and soft ground shadows. Each actor's anchor sits on the centre-bottom of its physics box.
+ */
+import type { Anim } from '../art'
+import type { SimEvent } from '../game/events'
+import { BITE_TIME, INVULN, T, type Boss, type BossState, type Enemy, type World } from '../game/sim'
+import { TILE } from '../game/types'
+import { blit, clip, flashClip, frameIndex } from './bake'
+import {
+  HARD_LANDING,
+  RUN_CONTACT_FRAMES,
+  RUN_THRESHOLD,
+  bossClip,
+  enemyClip,
+  heroClip,
+  isSkidding,
+  specDuration,
+  type ClipChoice
+} from './clips'
+import type { FxPool } from './fx'
+import { ENEMY_SPEC, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
+
+/** Largest squash or stretch (DESIGN.md: ≤ 18 %). */
+export const MAX_SQUASH = 0.18
+
+interface Ghost {
+  sheet: string
+  x: number
+  y: number
+  vx: number
+  vy: number
+  gravity: number
+  age: number
+  life: number
+  flip: boolean
+  /** Height of the body, for the closing puff. */
+  h: number
+  end: 'puff' | 'boom' | 'none'
+  clip: string
+}
+
+interface EnemyTimers {
+  onGround: boolean
+  landAge: number
+}
+
+/** Squash/stretch scale factors for a value s in [−MAX, MAX] (s > 0 stretches); volume preserving. */
+export function squashScale(s: number) {
+  const c = Math.max(-MAX_SQUASH, Math.min(MAX_SQUASH, s))
+  return { sx: 1 / (1 + c), sy: 1 + c }
+}
+
+/** The y of the ground under (x, feetY), looking down at most `maxTiles`; null over a pit. */
+export function groundBelow(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feetY: number, maxTiles = 6) {
+  const tx = Math.floor(x / TILE)
+  const start = Math.max(0, Math.floor((feetY - 2) / TILE))
+  for (let ty = start; ty < Math.min(world.h, start + maxTiles); ty++) {
+    if (ty * TILE < feetY - 2) continue
+    if (world.solidAt(tx, ty) || world.tileAt(tx, ty) === T.PLATFORM) return ty * TILE
+  }
+  return null
+}
+
+export class ActorsView {
+  private time = 0
+  // hero timers
+  private squash = 0
+  private airTime = 0
+  private landAge = 99
+  private hardLanding = false
+  private distance = 0
+  private idleTime = 0
+  private blinkAge = 99
+  private nextBlink = 2.5
+  private skidAge: number | null = null
+  private cheerAt: number | null = null
+  private waterTime = 0
+  private lastRunFrame = -1
+  private wasGround = true
+  private death: Ghost | null = null
+  // enemies and bosses
+  private enemyTimers = new Map<number, EnemyTimers>()
+  private ghosts: Ghost[] = []
+  private bossPrev: BossState | null = null
+  private bossLast: BossState | null = null
+  private rageAt: number | null = null
+  /** The last hero clip, for tests and debugging. */
+  heroChoice: ClipChoice = { name: 'idle', t: 0 }
+
+  constructor(
+    private world: World,
+    private fx: FxPool,
+    /** Called on the run cycle's contact frames (footstep sound). */
+    private onFootstep: () => void = () => {}
+  ) {}
+
+  handle(event: SimEvent) {
+    const p = this.world.player
+    switch (event.type) {
+      case 'jump':
+        this.squash = 0.16
+        break
+      case 'land': {
+        const k = Math.min(1, event.speed / 900)
+        this.squash = -MAX_SQUASH * Math.max(0.35, k)
+        this.landAge = 0
+        this.hardLanding = event.speed > HARD_LANDING
+        break
+      }
+      case 'bite':
+        this.squash = -0.1
+        break
+      case 'clear':
+        this.cheerAt = this.time
+        break
+      case 'dead':
+        this.death = {
+          sheet: 'hero',
+          clip: 'die',
+          x: p.x + p.w / 2,
+          y: p.y + p.h,
+          vx: 0,
+          vy: 0,
+          gravity: 0,
+          age: 0,
+          life: 2.4,
+          flip: p.facing < 0,
+          h: p.h,
+          end: 'none'
+        }
+        break
+      case 'enemy-down': {
+        const enemy = this.world.enemies.find((e) => e.id === event.id)
+        const w = enemy?.w ?? 44
+        const h = enemy?.h ?? 40
+        this.ghosts.push({
+          sheet: event.kind,
+          clip: 'defeat',
+          x: enemy ? enemy.x + w / 2 : event.x,
+          y: enemy ? enemy.y + h : event.y + h / 2,
+          vx: event.dir * 90,
+          vy: -170,
+          gravity: 700,
+          age: 0,
+          life: specDuration(ENEMY_SPEC[event.kind].defeat),
+          flip: enemy ? enemy.facing < 0 : event.dir > 0,
+          h,
+          end: 'puff'
+        })
+        this.enemyTimers.delete(event.id)
+        break
+      }
+      case 'boss-down': {
+        const boss = this.world.boss
+        if (!boss) break
+        const spec = boss.def.kind === 'chaser' ? MOM_SPEC : bossSpec(boss.def.art as BossArt)
+        this.ghosts.push({
+          sheet: boss.def.art,
+          clip: 'defeat',
+          x: boss.x + boss.w / 2,
+          y: boss.y + boss.h,
+          vx: 0,
+          vy: 0,
+          gravity: 0,
+          age: 0,
+          life: specDuration(spec.defeat ?? spec.hurt) + 0.5,
+          flip: boss.facing < 0,
+          h: boss.h,
+          end: 'boom'
+        })
+        break
+      }
+      case 'boss-phase':
+        this.rageAt = this.time
+        break
+      default:
+        break
+    }
+  }
+
+  update(dt: number) {
+    this.time += dt
+    const world = this.world
+    const p = world.player
+    // hero timers
+    this.squash *= Math.exp(-dt * 12)
+    if (Math.abs(this.squash) < 0.004) this.squash = 0
+    if (p.onGround) {
+      this.airTime = 0
+      this.landAge += dt
+    } else {
+      this.airTime += this.wasGround ? 0 : dt
+    }
+    this.wasGround = p.onGround
+    if (p.onGround) this.distance += Math.abs(p.vx) * dt
+    const still = p.onGround && Math.abs(p.vx) <= RUN_THRESHOLD && p.biteTimer <= 0
+    this.idleTime = still ? this.idleTime + dt : 0
+    this.blinkAge += dt
+    this.nextBlink -= dt
+    if (this.nextBlink <= 0) {
+      this.blinkAge = 0
+      this.nextBlink = 2 + this.fx.rand() * 2
+    }
+    if (isSkidding({ onGround: p.onGround, vx: p.vx, facing: p.facing })) this.skidAge = (this.skidAge ?? -dt) + dt
+    else if (this.skidAge !== null) {
+      this.skidAge += dt
+      if (this.skidAge > 0.3) this.skidAge = null
+    }
+    this.waterTime = p.inWater ? this.waterTime + dt : 0
+    // enemies
+    for (const enemy of world.enemies) {
+      if (enemy.dead) continue
+      let timers = this.enemyTimers.get(enemy.id)
+      if (!timers) this.enemyTimers.set(enemy.id, (timers = { onGround: enemy.onGround, landAge: 99 }))
+      if (enemy.onGround && !timers.onGround) timers.landAge = 0
+      else timers.landAge += dt
+      timers.onGround = enemy.onGround
+    }
+    // boss state history
+    const boss = world.boss
+    if (boss && boss.state !== this.bossLast) {
+      this.bossPrev = this.bossLast
+      this.bossLast = boss.state
+    }
+    // ghosts
+    for (const g of this.ghosts) {
+      g.age += dt
+      g.vy += g.gravity * dt
+      g.x += g.vx * dt
+      g.y += g.vy * dt
+      if (g.age >= g.life) {
+        if (g.end === 'puff') this.fx.spawn('puff', g.x, g.y - g.h / 2, { layer: 'front' })
+        if (g.end === 'boom') {
+          this.fx.spawn('boom', g.x, g.y - g.h / 2, { layer: 'front' })
+          this.fx.burst('star', g.x, g.y - g.h / 2, 6, { speed: [80, 200], gravity: 300, life: [0.5, 0.9] })
+        }
+      }
+    }
+    this.ghosts = this.ghosts.filter((g) => g.age < g.life)
+    if (this.death) {
+      const d = this.death
+      d.age += dt
+      // The hero tumbles, then pops up and falls out of the view.
+      if (d.age > 0.6 && d.gravity === 0) {
+        d.vy = -420
+        d.gravity = 1300
+      }
+      d.vy += d.gravity * dt
+      d.y += d.vy * dt
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------- hero
+
+  private heroSnapshot() {
+    const p = this.world.player
+    const hurtFor = INVULN - p.invuln
+    return heroClip({
+      cheering: this.world.state === 'clear',
+      cheerAge: this.cheerAt === null ? 0 : this.time - this.cheerAt,
+      biteAge: p.biteTimer > 0 ? BITE_TIME - p.biteTimer : null,
+      hurt: p.invuln > 0 && hurtFor >= 0 && hurtFor < 0.3,
+      hurtAge: hurtFor,
+      inWater: p.inWater,
+      waterTime: this.waterTime,
+      onGround: p.onGround,
+      vx: p.vx,
+      vy: p.vy,
+      facing: p.facing,
+      airTime: this.airTime,
+      landAge: this.landAge,
+      hardLanding: this.hardLanding,
+      distance: this.distance,
+      idleTime: this.idleTime,
+      blinkAge: this.blinkAge,
+      skidAge: this.skidAge
+    })
+  }
+
+  drawHero(ctx: CanvasRenderingContext2D) {
+    const p = this.world.player
+    if (this.death) {
+      const d = this.death
+      const anim = clip('hero', 'die')
+      if (anim) blit(ctx, anim, d.age, d.x, d.y, { flip: d.flip })
+      return
+    }
+    if (p.dead) return
+    const choice = this.heroSnapshot()
+    this.heroChoice = choice
+    const anim = clip('hero', choice.name)
+    if (!anim) return
+    const x = p.x + p.w / 2
+    const y = p.y + p.h
+    if (choice.name === 'run') this.runContact(anim, choice, x, y)
+    else this.lastRunFrame = -1
+    this.drawShadow(ctx, x, y, p.w)
+    // Flicker while invulnerable, after the hurt reaction.
+    if (p.invuln > 0 && choice.name !== 'hurt' && Math.floor(this.time * 20) % 2 === 0) return
+    const { sx, sy } = squashScale(this.squash)
+    blit(ctx, anim, choice.t, x, y, { flip: p.facing < 0, sx, sy, frame: choice.frame })
+  }
+
+  private runContact(anim: Anim, choice: ClipChoice, x: number, y: number) {
+    const frame = frameIndex(anim, choice.t)
+    if (frame !== this.lastRunFrame && (RUN_CONTACT_FRAMES as readonly number[]).includes(frame)) {
+      const facing = this.world.player.facing
+      this.fx.spawn('dust', x - facing * 10, y - 6, { vx: -facing * 24, vy: -8, rate: 1.2 })
+      this.onFootstep()
+    }
+    this.lastRunFrame = frame
+  }
+
+  // ------------------------------------------------------------------------------------------- enemies
+
+  drawEnemies(ctx: CanvasRenderingContext2D) {
+    for (const enemy of this.world.enemies) {
+      if (enemy.dead) continue
+      this.drawEnemy(ctx, enemy)
+    }
+    for (const g of this.ghosts) {
+      if (g.end === 'boom') continue
+      const anim = clip(g.sheet, g.clip)
+      if (anim) blit(ctx, anim, g.age, g.x, g.y, { flip: g.flip, alpha: Math.min(1, (g.life - g.age) * 8 + 0.2) })
+    }
+  }
+
+  private drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy) {
+    const timers = this.enemyTimers.get(enemy.id)
+    const choice = enemyClip({
+      kind: enemy.kind,
+      vx: enemy.vx,
+      vy: enemy.vy,
+      onGround: enemy.onGround,
+      hitFlash: enemy.hitFlash,
+      shootTimer: enemy.shootTimer,
+      landAge: timers?.landAge ?? 99,
+      time: this.time + enemy.id * 0.13
+    })
+    const anim = clip(enemy.kind, choice.name)
+    if (!anim) return
+    const x = enemy.x + enemy.w / 2
+    const y = enemy.y + enemy.h
+    this.drawShadow(ctx, x, y, enemy.w)
+    const flip = enemy.facing < 0
+    blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
+    if (enemy.hitFlash > 0) {
+      const white = flashClip(enemy.kind, choice.name)
+      if (white) blit(ctx, white, choice.t, x, y, { flip, frame: choice.frame, alpha: Math.min(1, enemy.hitFlash * 7) })
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------- bosses
+
+  drawBoss(ctx: CanvasRenderingContext2D) {
+    const boss = this.world.boss
+    if (boss && !boss.dead) this.drawLiveBoss(ctx, boss)
+    for (const g of this.ghosts) {
+      if (g.end !== 'boom') continue
+      const anim = clip(g.sheet, g.clip)
+      if (anim) blit(ctx, anim, g.age, g.x, g.y, { flip: g.flip })
+    }
+  }
+
+  private drawLiveBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
+    const choice = bossClip(
+      {
+        kind: boss.def.kind,
+        state: boss.state,
+        prevState: this.bossPrev,
+        stateTime: boss.stateTime,
+        active: boss.active,
+        vx: boss.vx,
+        vy: boss.vy,
+        rageAge: this.rageAt === null ? null : this.time - this.rageAt,
+        time: this.time
+      },
+      boss.def.art
+    )
+    const sheet = boss.def.art
+    const anim = clip(sheet, choice.name)
+    if (!anim) return
+    const x = boss.x + boss.w / 2
+    const y = boss.y + boss.h
+    this.drawShadow(ctx, x, y, boss.w * 1.1)
+    const flip = boss.facing < 0
+    blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
+    if (boss.hitFlash > 0) {
+      const white = flashClip(sheet, choice.name)
+      if (white) blit(ctx, white, choice.t, x, y, { flip, frame: choice.frame, alpha: Math.min(1, boss.hitFlash * 7) })
+    }
+    if (boss.state === 'stunned' || boss.state === 'tired') {
+      const dizzy = clip('fx', 'dizzy')
+      if (dizzy) blit(ctx, dizzy, this.time, x, boss.y - 8)
+    }
+    if (boss.state === 'recover') {
+      const sweat = clip('fx', 'sweat')
+      if (sweat) blit(ctx, sweat, this.time, x + boss.facing * boss.w * 0.45, boss.y + 2)
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------- shadows
+
+  private drawShadow(ctx: CanvasRenderingContext2D, x: number, feetY: number, width: number) {
+    const ground = groundBelow(this.world, x, feetY)
+    if (ground === null) return
+    const height = Math.max(0, ground - feetY)
+    const k = Math.min(0.65, height / 240)
+    const rx = Math.round((width / 2) * (1 - k))
+    if (rx < 3) return
+    ctx.globalAlpha = 0.3 * (1 - k)
+    ctx.fillStyle = '#1a0c2c'
+    // A pixel ellipse: three stacked rows.
+    ctx.fillRect(Math.round(x - rx), ground - 2, rx * 2, 3)
+    ctx.fillRect(Math.round(x - rx + 3), ground - 3, rx * 2 - 6, 1)
+    ctx.fillRect(Math.round(x - rx + 3), ground + 1, rx * 2 - 6, 1)
+    ctx.globalAlpha = 1
+  }
+}

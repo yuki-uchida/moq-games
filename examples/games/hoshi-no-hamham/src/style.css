@@ -62,8 +62,8 @@ body {
   width: 100%;
   height: 100%;
   display: block;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  /* The backing store is already 640k × 360k (sharp art pixels); CSS only scales the remaining factor. */
+  image-rendering: auto;
   background: #0d0722;
 }
 
@@ -84,6 +84,17 @@ body {
 
 .screen[hidden] {
   display: none;
+}
+
+/* The title lets the self-playing demo show through. */
+.title-screen {
+  background: linear-gradient(
+    180deg,
+    rgba(18, 10, 38, 0.72) 0%,
+    rgba(18, 10, 38, 0.3) 55%,
+    rgba(18, 10, 38, 0.62) 100%
+  );
+  backdrop-filter: none;
 }
 
 .overline {

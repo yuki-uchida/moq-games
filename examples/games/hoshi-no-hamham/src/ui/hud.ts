@@ -1,8 +1,24 @@
 /** DOM HUD: hearts, boss bar, bite meter, banners and toasts. */
-import type { StageDef } from './types'
-import { BITE_COOLDOWN, type World } from './sim'
+import { BITE_COOLDOWN, type World } from '../game/sim'
+import type { StageDef } from '../game/types'
 
-export class Hud {
+/** What staging (the director) may show on the HUD. */
+export interface HudApi {
+  /** The stage title card. */
+  showBanner(title: string, sub?: string): void
+  /** A short hint or notice at the bottom. */
+  showToast(text: string): void
+  /** One big word in the middle of the screen (「スタート！」「クリア！」). */
+  showCall(text: string, tone?: 'gold' | 'pink' | 'red'): void
+  /** A boss's introduction: portrait (a `face_*` name of the `ui` sheet), name and title, for `seconds`. */
+  showNameplate(name: string, title: string, face: string, seconds?: number): void
+  showBoss(name: string, title: string): void
+  hideBoss(): void
+  /** Cut-scene mode: the bars, buttons and meters step aside while it is on. */
+  cinematic(on: boolean): void
+}
+
+export class Hud implements HudApi {
   private hearts = document.querySelector<HTMLElement>('#hearts')!
   private stageNo = document.querySelector<HTMLElement>('#hud-stage-no')!
   private stageName = document.querySelector<HTMLElement>('#hud-stage-name')!
@@ -98,5 +114,18 @@ export class Hud {
     this.toast.textContent = text
     this.toast.classList.add('is-visible')
     this.toastTimer = 2.2
+  }
+
+  // First versions: a call is a banner without a subtitle, a nameplate a banner with one.
+  showCall(text: string) {
+    this.showBanner(text)
+  }
+
+  showNameplate(name: string, title: string) {
+    this.showBanner(name, title)
+  }
+
+  cinematic(on: boolean) {
+    document.querySelector<HTMLElement>('#hud')!.classList.toggle('is-cinematic', on)
   }
 }

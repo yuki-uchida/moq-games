@@ -1,4 +1,8 @@
-/** Keyboard and touch input with per-frame press edges. */
+/**
+ * Keyboard and touch input. Jump and bite presses are kept until a simulation step consumes them
+ * (`consumePresses`), because hit-stop and slow motion mean the simulation is not stepped every frame.
+ * Pause, mute and confirm are per-frame edges cleared by `endFrame`.
+ */
 import { emptyInput, type InputState } from './sim'
 
 const KEY_MAP: Record<string, keyof InputState | undefined> = {
@@ -103,9 +107,13 @@ export class Input {
     return this.touchPressed.has(key)
   }
 
-  endFrame() {
+  /** A simulation step used the jump and bite presses. */
+  consumePresses() {
     this.pressedKeys.clear()
     this.touchPressed.clear()
+  }
+
+  endFrame() {
     this.pausePressed = false
     this.mutePressed = false
     this.confirmPressed = false

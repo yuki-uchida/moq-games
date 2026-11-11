@@ -56,6 +56,12 @@ export interface StageDef {
   hints: readonly string[]
 }
 
+export type VolumeKind = 'master' | 'music' | 'sfx'
+/** Volume settings, each 0..1. */
+export type Volumes = Record<VolumeKind, number>
+
+export const DEFAULT_VOLUMES: Volumes = { master: 1, music: 0.8, sfx: 1 }
+
 export interface SaveData {
   version: 1
   cleared: number[]
@@ -63,12 +69,31 @@ export interface SaveData {
   best: Record<string, number>
   muted: boolean
   seenOpening: boolean
+  volume: Volumes
 }
 
 export const SAVE_KEY = 'hoshi-no-hamham-v1'
 
 export function emptySave(): SaveData {
-  return { version: 1, cleared: [], unlocked: 1, best: {}, muted: false, seenOpening: false }
+  return {
+    version: 1,
+    cleared: [],
+    unlocked: 1,
+    best: {},
+    muted: false,
+    seenOpening: false,
+    volume: { ...DEFAULT_VOLUMES }
+  }
+}
+
+/** Saved volumes, with anything missing or out of range replaced by the default. */
+export function readVolumes(saved: Partial<Volumes> | undefined): Volumes {
+  const volumes = { ...DEFAULT_VOLUMES }
+  for (const kind of Object.keys(volumes) as VolumeKind[]) {
+    const value = saved?.[kind]
+    if (typeof value === 'number' && Number.isFinite(value)) volumes[kind] = Math.max(0, Math.min(1, value))
+  }
+  return volumes
 }
 
 export function loadSave(): SaveData {
@@ -78,7 +103,7 @@ export function loadSave(): SaveData {
     if (!raw) return emptySave()
     const parsed = JSON.parse(raw) as Partial<SaveData>
     if (parsed.version !== 1) return emptySave()
-    return { ...emptySave(), ...parsed, version: 1 }
+    return { ...emptySave(), ...parsed, version: 1, volume: readVolumes(parsed.volume) }
   } catch {
     return emptySave()
   }
