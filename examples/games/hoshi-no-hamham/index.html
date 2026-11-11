@@ -50,160 +50,164 @@
             </div>
           </div>
         </section>
-
         <section id="title-screen" class="screen title-screen" aria-labelledby="title-logo">
-          <div class="title-stars" aria-hidden="true"></div>
-          <p class="overline">64×64 MODERN PIXEL ACTION</p>
-          <h1 id="title-logo" class="logo">星の<span>ハムハム</span></h1>
-          <p class="tagline">かじって、掘って、倒して。ギミックだらけの10ステージ。</p>
-          <div class="menu">
-            <button id="start" class="button button-primary" type="button">はじめから</button>
-            <button id="continue" class="button" type="button" hidden>つづきから</button>
-            <button id="help-open" class="button" type="button">あそびかた</button>
+          <div class="title-shade" aria-hidden="true"></div>
+          <h1 id="title-logo" class="title-logo">
+            <span class="sr-only">星のハムハム</span>
+            <span class="logo-art" aria-hidden="true"
+              ><img id="logo-img" class="logo-img" alt="" /><i class="logo-shine"></i
+            ></span>
+          </h1>
+          <div class="title-bottom">
+            <div class="menu title-menu">
+              <button id="continue" class="pxbtn" type="button" hidden>つづきから</button>
+              <button id="start" class="pxbtn" type="button">はじめから</button>
+              <button id="help-open" class="pxbtn" type="button">あそびかた</button>
+            </div>
+            <p class="save-note" id="save-note" role="status"></p>
           </div>
-          <p class="save-note" id="save-note" role="status"></p>
-          <a class="home-link" href="../../../index.html">← ゲーム一覧</a>
+          <footer class="title-foot">
+            <a class="home-link" id="home-link" href="../../../index.html"><span>ゲーム一覧</span></a>
+            <small class="credit">ドット絵も音も、ぜんぶプログラムでかいたよ</small>
+          </footer>
         </section>
 
         <section id="select-screen" class="screen select-screen" aria-labelledby="select-title" hidden>
-          <h2 id="select-title">ステージをえらぶ</h2>
-          <p class="select-sub">全10ステージ。クリアすると次の星がひらく。</p>
-          <div id="stage-grid" class="stage-grid" role="list"></div>
-          <div class="row-center">
-            <button id="select-back" class="button" type="button">タイトルへ</button>
+          <header class="select-head">
+            <button id="select-back" class="pxbtn pxbtn-small" type="button">タイトル</button>
+            <h2 id="select-title" class="headline">ステージをえらぶ</h2>
+            <p class="select-progress" id="select-progress"></p>
+          </header>
+          <div class="select-scroll">
+            <div id="stage-grid" class="stage-grid" role="list"></div>
           </div>
         </section>
 
         <section id="story-screen" class="screen story-screen" aria-labelledby="story-title" hidden>
-          <div class="story-card">
-            <p class="overline" id="story-kicker">第1話</p>
-            <h2 id="story-title">おふくろの追撃</h2>
-            <div id="story-pages" class="story-pages"></div>
-            <button id="story-next" class="button button-primary" type="button">すすむ</button>
+          <div class="story-layout">
+            <div class="story-art">
+              <canvas
+                id="story-art"
+                class="diorama"
+                width="320"
+                height="160"
+                role="img"
+                aria-label="お話のさし絵"
+              ></canvas>
+            </div>
+            <div class="story-box" id="story-box">
+              <header class="story-head">
+                <p class="kicker" id="story-kicker">第1話</p>
+                <h2 id="story-title" class="story-title">おふくろの追撃</h2>
+              </header>
+              <div id="story-pages" class="story-pages" aria-live="polite"></div>
+              <div class="story-foot">
+                <div id="story-dots" class="dots" aria-hidden="true"></div>
+                <button id="story-skip" class="pxbtn pxbtn-small" type="button">スキップ</button>
+                <button id="story-next" class="pxbtn pxbtn-gold" type="button">つぎへ</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <section id="result-screen" class="screen result-screen" aria-labelledby="result-title" hidden>
-          <div class="result-card">
-            <p class="overline" id="result-kicker">STAGE CLEAR</p>
-            <h2 id="result-title">クリア！</h2>
+          <div class="result-card paper-card">
+            <p class="kicker" id="result-kicker">ステージ 1</p>
+            <h2 id="result-title" class="headline">ステージクリア！</h2>
+            <p class="result-stage" id="result-stage"></p>
+            <ul id="result-stats" class="tally"></ul>
+            <div id="result-stars" class="result-stars"></div>
             <p id="result-text" class="result-text"></p>
-            <div id="result-stats" class="result-stats"></div>
-            <div class="row-center">
-              <button id="result-next" class="button button-primary" type="button">次のステージへ</button>
-              <button id="result-retry" class="button" type="button">もういちど</button>
-              <button id="result-select" class="button" type="button">ステージ選択</button>
+            <div class="buttons">
+              <button id="result-next" class="pxbtn pxbtn-gold" type="button">つぎのステージへ</button>
+              <button id="result-retry" class="pxbtn" type="button">もういちど</button>
+              <button id="result-select" class="pxbtn" type="button">ステージ選択</button>
             </div>
           </div>
         </section>
 
         <section id="dead-screen" class="screen dead-screen" aria-labelledby="dead-title" hidden>
-          <div class="result-card">
-            <p class="overline">ゲームオーバー</p>
-            <h2 id="dead-title">たおれてしまった…</h2>
-            <p id="dead-text" class="result-text">ハム彦は巣にもどって少し休もう。</p>
-            <div class="row-center">
-              <button id="dead-retry" class="button button-primary" type="button">リトライ</button>
-              <button id="dead-select" class="button" type="button">ステージ選択</button>
+          <div class="dead-card night-panel">
+            <div class="dead-art" id="dead-art"></div>
+            <div class="dead-body">
+              <p class="kicker">ゲームオーバー</p>
+              <h2 id="dead-title" class="headline">やられちゃった…</h2>
+              <p id="dead-text" class="dead-text">ハム彦は巣にもどって少し休もう。</p>
+              <div class="buttons">
+                <button id="dead-retry" class="pxbtn pxbtn-gold" type="button">リトライ</button>
+                <button id="dead-select" class="pxbtn" type="button">ステージ選択</button>
+              </div>
             </div>
           </div>
         </section>
 
         <section id="ending-screen" class="screen ending-screen" aria-labelledby="ending-title" hidden>
-          <div class="ending-card">
-            <p class="overline">THE END</p>
-            <h2 id="ending-title">星の下の、あたたかい巣</h2>
-            <svg
-              class="ending-art"
-              viewBox="0 0 320 150"
-              role="img"
-              aria-label="星の下の巣で暮らすハム彦、ハム姫、ハム代"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <rect width="320" height="150" fill="#1b1035" />
-              <g fill="#fff3b8">
-                <circle cx="30" cy="24" r="2.5" />
-                <circle cx="70" cy="14" r="2" />
-                <circle cx="120" cy="30" r="2.5" />
-                <circle cx="200" cy="18" r="2" />
-                <circle cx="250" cy="34" r="2.5" />
-                <circle cx="290" cy="16" r="2" />
-              </g>
-              <path d="M160 22l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#ffd45e" />
-              <path d="M0 118q80-24 160-6t160-8v46H0z" fill="#2f6b4f" />
-              <ellipse cx="160" cy="112" rx="52" ry="20" fill="#8a5a34" />
-              <ellipse cx="160" cy="106" rx="52" ry="18" fill="#c98b4b" />
-              <ellipse cx="160" cy="102" rx="42" ry="13" fill="#e8c07a" />
-              <g>
-                <circle cx="118" cy="86" r="20" fill="#ffb3cf" />
-                <circle cx="104" cy="70" r="8" fill="#ff7fb0" />
-                <circle cx="132" cy="70" r="8" fill="#ff7fb0" />
-                <circle cx="112" cy="82" r="3" fill="#2a1230" />
-                <circle cx="124" cy="82" r="3" fill="#2a1230" />
-                <circle cx="118" cy="92" r="3" fill="#f2639f" />
-              </g>
-              <g>
-                <circle cx="204" cy="88" r="18" fill="#fff6fb" />
-                <circle cx="192" cy="74" r="7" fill="#ffb3cf" />
-                <circle cx="216" cy="74" r="7" fill="#ffb3cf" />
-                <path d="M196 62l6-10 6 10z" fill="#ffd45e" />
-                <circle cx="199" cy="84" r="2.6" fill="#2a1230" />
-                <circle cx="210" cy="84" r="2.6" fill="#2a1230" />
-              </g>
-              <g>
-                <circle cx="160" cy="66" r="21" fill="#ffab63" />
-                <circle cx="146" cy="50" r="8" fill="#e07f3c" />
-                <circle cx="174" cy="50" r="8" fill="#e07f3c" />
-                <circle cx="153" cy="62" r="3" fill="#2a1230" />
-                <circle cx="167" cy="62" r="3" fill="#2a1230" />
-                <path d="M154 74q6 5 12 0" fill="none" stroke="#2a1230" stroke-width="2.5" stroke-linecap="round" />
-              </g>
-            </svg>
-            <div id="ending-pages" class="story-pages"></div>
-            <div id="ending-dots" class="story-dots"></div>
-            <div id="ending-stats" class="result-stats" hidden></div>
-            <div class="row-center">
-              <button id="ending-next" class="button button-primary" type="button">つぎへ</button>
-              <button id="ending-select" class="button" type="button" hidden>ステージ選択へ</button>
-              <button id="ending-title-button" class="button" type="button" hidden>タイトルへ</button>
+          <div class="story-layout">
+            <div class="story-art">
+              <canvas
+                id="ending-art"
+                class="diorama"
+                width="320"
+                height="160"
+                role="img"
+                aria-label="ハム彦、ハム姫、ハム代のさし絵"
+              ></canvas>
+              <div id="ending-credits" class="credits" aria-label="スタッフ" hidden></div>
+            </div>
+            <div class="story-box" id="ending-box">
+              <header class="story-head">
+                <p class="kicker">エンディング</p>
+                <h2 id="ending-title" class="story-title">星の下の、あたたかい巣</h2>
+              </header>
+              <div id="ending-pages" class="story-pages" aria-live="polite"></div>
+              <ul id="ending-stats" class="tally ending-stats" hidden></ul>
+              <div class="story-foot">
+                <div id="ending-dots" class="dots" aria-hidden="true"></div>
+                <button id="ending-next" class="pxbtn pxbtn-gold" type="button">つぎへ</button>
+                <button id="ending-select" class="pxbtn pxbtn-gold" type="button" hidden>ステージ選択へ</button>
+                <button id="ending-title-button" class="pxbtn" type="button" hidden>タイトルへ</button>
+              </div>
             </div>
           </div>
         </section>
 
         <section id="pause-screen" class="screen pause-screen" aria-labelledby="pause-title" hidden>
-          <div class="result-card">
-            <h2 id="pause-title">一時停止</h2>
-            <div class="menu">
-              <button id="pause-resume" class="button button-primary" type="button">つづける</button>
-              <button id="pause-retry" class="button" type="button">はじめから</button>
-              <button id="pause-select" class="button" type="button">ステージ選択</button>
+          <div class="pause-card night-panel" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+            <div class="pause-main">
+              <h2 id="pause-title" class="headline">ポーズ</h2>
+              <div class="menu">
+                <button id="pause-resume" class="pxbtn pxbtn-gold" type="button">つづける</button>
+                <button id="pause-retry" class="pxbtn" type="button">やりなおす</button>
+                <button id="pause-select" class="pxbtn" type="button">ステージ選択</button>
+              </div>
+            </div>
+            <div class="pause-side">
+              <div class="volumes" id="volumes"></div>
+              <ul class="keys-mini" id="pause-keys"></ul>
             </div>
           </div>
         </section>
 
         <section id="help-screen" class="screen help-screen" aria-labelledby="help-title" hidden>
-          <div class="help-card">
-            <button id="help-close" class="close" type="button" aria-label="閉じる">×</button>
-            <h2 id="help-title">あそびかた</h2>
-            <ul class="help-list">
-              <li><b>←→ / AD</b><span>あるく</span></li>
-              <li><b>↑ / W / スペース</b><span>ジャンプ（2段はできません）</span></li>
-              <li><b>↓（プラットフォームで）</b><span>足場をすり抜ける</span></li>
-              <li><b>Z / J / X</b><span>かじる — 敵をたおし、ギミックを動かす</span></li>
-              <li><b>M</b><span>音のON/OFF</span></li>
-              <li><b>Esc / P</b><span>一時停止</span></li>
-            </ul>
-            <h3>ギミック</h3>
-            <ul class="help-list help-grid">
-              <li><b>木</b><span>2かいかじるとたおれる。橋や武器になる</span></li>
-              <li><b>土</b><span>かじって穴をあける。道がかわる</span></li>
-              <li><b>配管</b><span>穴をあけると水が噴出す</span></li>
-              <li><b>蜂の巣</b><span>怒らせると敵をさしにいく</span></li>
-              <li><b>眠る動物</b><span>起こすと突進する</span></li>
-              <li><b>スイッチ</b><span>かじると門がひらく</span></li>
-            </ul>
-            <p class="help-note">水に入ると浮くよ。蜂はハム彦もさすから注意！</p>
-            <button id="help-done" class="button button-primary" type="button">わかった</button>
+          <div class="help-card night-panel" role="dialog" aria-modal="true" aria-labelledby="help-title">
+            <header class="help-head">
+              <h2 id="help-title" class="headline">あそびかた</h2>
+              <button id="help-close" class="pxbtn pxbtn-small" type="button" aria-label="閉じる">とじる</button>
+            </header>
+            <div class="help-scroll">
+              <section class="help-section">
+                <h3>そうさ</h3>
+                <ul id="help-moves" class="help-moves"></ul>
+              </section>
+              <section class="help-section">
+                <h3>ギミック</h3>
+                <ul id="help-gimmicks" class="help-gimmicks"></ul>
+              </section>
+              <p class="help-note">水に入るとぷかぷか浮くよ。蜂はハム彦もさすから気をつけて！</p>
+            </div>
+            <div class="help-foot">
+              <button id="help-done" class="pxbtn pxbtn-gold" type="button">わかった！</button>
+            </div>
           </div>
         </section>
       </div>
