@@ -3,7 +3,8 @@ import { FX_SPEC } from '../src/art/contract'
 import { SIM_EVENT_TYPES, type SimEvent, type SimEventType } from '../src/game/events'
 import { FX_NAMES } from '../src/view/fx'
 import { FX_MAP, playFx, type FxApi } from '../src/view/fx-map'
-import { CUE_MAP, SOUND_MAP, SoundBoard, soundFor, type Sfx } from '../src/view/sound-map'
+import { SFX } from '../src/audio/api'
+import { SOUND_MAP, callsFor } from '../src/view/sound-map'
 
 /** One sample of every event type (the record type makes the compiler check the list is complete). */
 const SAMPLES: { [K in SimEventType]: Extract<SimEvent, { type: K }>[] } = {
@@ -162,34 +163,15 @@ describe('fx-map', () => {
 })
 
 describe('sound-map', () => {
-  it('has a sound for every event type', () => {
+  it('has an entry for every event type, and a sound for all but the two voiced by staging or music', () => {
     expect(Object.keys(SOUND_MAP).sort()).toEqual([...SIM_EVENT_TYPES].sort())
+    const silent = new Set<string>()
     for (const type of SIM_EVENT_TYPES) {
-      const sounds = (SAMPLES[type] as SimEvent[]).map((event) => soundFor(event))
-      expect(
-        sounds.some((sound) => sound !== null),
-        type
-      ).toBe(true)
+      const calls = (SAMPLES[type] as SimEvent[]).flatMap((event) => callsFor(event, 100))
+      for (const call of calls) expect(SFX, type).toContain(call.name)
+      if (calls.length === 0) silent.add(type)
     }
-  })
-
-  it('plays through a sink with a per-sound cooldown', () => {
-    const played: Sfx[] = []
-    let now = 0
-    const board = new SoundBoard({ play: (name) => played.push(name) }, () => now)
-    for (const type of SIM_EVENT_TYPES)
-      for (const event of SAMPLES[type] as SimEvent[]) {
-        now += 1
-        expect(() => board.event(event)).not.toThrow()
-      }
-    expect(played.length).toBeGreaterThan(SIM_EVENT_TYPES.length - 5)
-    played.length = 0
-    board.event({ type: 'jump', x: 0, y: 0 })
-    board.event({ type: 'jump', x: 0, y: 0 })
-    expect(played).toEqual(['jump'])
-    now += 1
-    board.cue('menu-select')
-    board.cue('footstep')
-    expect(played).toEqual(['jump', CUE_MAP['menu-select']])
+    // The clear jingle is music; the boss roar is a staging cue.
+    expect([...silent].sort()).toEqual(['boss-awake', 'clear'])
   })
 })
