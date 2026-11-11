@@ -12,7 +12,7 @@ npm ci --ignore-scripts
 npm run dev:rabbiters
 ```
 
-`http://127.0.0.1:5193/`を開きます。ソロならRelayは不要です。協力プレイでは「みんなではじめる」から参加者が同じルーム名を入力し、一人が「ルームを作る」、残りが「ルームに参加」を選びます。Relayは`https://relay.moqt.research.skyway.io`で、画面には表示しません。別のRelayを使う場合はURLに`?relayUrl=https://...`を付けます。RelayはMoQのnamespace watch・announce・publish・subscribeをサポートし、`anon/rabbiters-v1/<room>`を使用できる必要があります。WebTransportを使えるブラウザと、ブラウザが信頼するRelayのTLS証明書が必要です。ルーム名やプレイヤーIDは認証ではないため、信頼できるRelayと参加者で利用してください。
+`http://127.0.0.1:5193/`を開きます。ソロならRelayは不要です。協力プレイでは「みんなではじめる」から参加者が同じルーム名を入力し、一人が「ルームを作る」、残りが「ルームに参加」を選びます。Relayは`https://relay.moqt.research.skyway.io`で、画面には表示しません。別のRelayを使う場合はURLに`?relayUrl=https://...`を付けます。RelayはMoQのnamespace watch・announce・publish・subscribeをサポートし、`anon/rabbiters-v2/<room>`を使用できる必要があります。メッセージはdeflate-rawで圧縮したJSONです。WebTransportを使えるブラウザと、ブラウザが信頼するRelayのTLS証明書が必要です。ルーム名やプレイヤーIDは認証ではないため、信頼できるRelayと参加者で利用してください。
 
 別の端末から参加する場合は、ゲーム自体も各端末からアクセスできるHTTPSの配信先に配置してください。`127.0.0.1`は開いている端末自身を指します。
 

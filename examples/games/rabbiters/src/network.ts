@@ -1,6 +1,11 @@
 import { MoqSession, type MoqNamespaceWatch, type MoqSubscription, type TrackWriter, type Announcement } from 'moq-wasm'
 
+/** Largest object on the wire (compressed). */
 export const MAX_PAYLOAD_BYTES = 64 * 1024
+/** Largest message once inflated (JSON text); also caps how far a hostile object may inflate. */
+export const MAX_MESSAGE_BYTES = 1024 * 1024
+/** Every message is deflated JSON: snapshots shrink to about a third. */
+const COMPRESSION = 'deflate-raw'
 export const MAX_PLAYERS = 16
 const identifier = /^[a-zA-Z0-9_-]{1,64}$/
 const admissionTimeoutMs = 15_000
@@ -10,6 +15,33 @@ const hostProbeRetryMs = 1_500
 const hostProbeTimeoutMs = 3_000
 const encoder = new TextEncoder()
 const decoder = new TextDecoder('utf-8', { fatal: true })
+
+async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream(COMPRESSION))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
+/** Inflates up to `max` bytes; undefined for corrupt data or anything larger. */
+async function inflate(bytes: Uint8Array, max: number): Promise<Uint8Array | undefined> {
+  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream(COMPRESSION)).getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.length
+      if (size > max) {
+        void reader.cancel().catch(() => {})
+        return undefined
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return undefined
+  }
+  return new Uint8Array(await new Blob(chunks as BlobPart[]).arrayBuffer())
+}
 
 export type RabbitersSession = Pick<
   MoqSession,
@@ -71,7 +103,7 @@ export class CooperativeNetwork {
     if (!identifier.test(options.room) || !identifier.test(this.playerId) || !identifier.test(options.app ?? 'x'))
       throw new Error('Invalid room/player ID')
     if (this.playerId === 'host') throw new Error('Reserved player ID')
-    this.prefix = ['anon', options.app ?? 'rabbiters-v1', options.room]
+    this.prefix = ['anon', options.app ?? 'rabbiters-v2', options.room]
     this.publishing = [...this.prefix, options.role === 'host' ? 'host' : this.playerId]
     this.players.add(this.playerId)
   }
@@ -129,14 +161,14 @@ export class CooperativeNetwork {
     if (this.options.role === 'host') this.options.onInput(this.playerId, input)
     else {
       if (!this.hasSubscriber) return
-      await this.enqueue(this.encode('input', input))
+      await this.enqueue(await this.encode('input', input))
     }
   }
 
   async broadcastSnapshot(state: unknown): Promise<void> {
     if (this.options.role !== 'host') throw new Error('Only the host can broadcast snapshots')
     if (!this.active || !this.writer) throw new Error('Network is not ready')
-    const payload = this.encode('snapshot', state)
+    const payload = await this.encode('snapshot', state)
     this.snapshot = payload
     await this.enqueue(payload)
   }
@@ -273,7 +305,7 @@ export class CooperativeNetwork {
     })
     for await (const object of subscription) {
       if (!this.active || this.peers.get(peerId) !== peer) return
-      if (object.objectStatus === undefined) this.receive(peerId, peer, object.objectPayload)
+      if (object.objectStatus === undefined) await this.receive(peerId, peer, object.objectPayload)
     }
     if (this.active && this.peers.get(peerId) === peer) throw new Error(`Peer track ended: ${peerId}`)
   }
@@ -290,35 +322,39 @@ export class CooperativeNetwork {
     }
   }
 
-  private encode(type: string, data: unknown): Uint8Array {
+  private async encode(type: string, data: unknown): Promise<Uint8Array> {
     if (data === undefined) throw new Error('Payload must be JSON serializable')
-    const payload = encoder.encode(
-      JSON.stringify({ v: 1, type, sequence: this.sequence++, playerId: this.playerId, data })
+    const text = encoder.encode(
+      JSON.stringify({ v: 2, type, sequence: this.sequence++, playerId: this.playerId, data })
     )
+    if (text.length > MAX_MESSAGE_BYTES) throw new Error('Payload exceeds 1 MiB')
+    const payload = await deflate(text)
     if (payload.length > MAX_PAYLOAD_BYTES) throw new Error('Payload exceeds 64 KiB')
     return payload
   }
 
-  private sendHello(): Promise<void> {
+  private async sendHello(): Promise<void> {
     return this.enqueue(
-      this.encode(
+      await this.encode(
         this.options.role === 'host' ? 'presence' : 'hello',
         this.options.role === 'host' ? [...this.players] : null
       )
     )
   }
 
-  private receive(peerId: string, peer: Peer, payload: Uint8Array): void {
+  private async receive(peerId: string, peer: Peer, payload: Uint8Array): Promise<void> {
     if (!payload.length || payload.length > MAX_PAYLOAD_BYTES) return
+    const text = await inflate(payload, MAX_MESSAGE_BYTES)
+    if (!text || !this.active || this.peers.get(peerId) !== peer) return
     let message
     try {
-      message = JSON.parse(decoder.decode(payload))
+      message = JSON.parse(decoder.decode(text))
     } catch {
       return
     }
     if (
       !message ||
-      message.v !== 1 ||
+      message.v !== 2 ||
       !Number.isSafeInteger(message.sequence) ||
       message.sequence < 0 ||
       typeof message.playerId !== 'string' ||

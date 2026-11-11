@@ -3920,7 +3920,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v21',
+      app: 'life-survivors-v22',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -3939,9 +3939,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v22', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v22', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v23', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v23', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v22', 'version-isolation'])])
 })
 
 test('guests fly enemy bullets every frame between snapshots', async ({ context }) => {
@@ -4127,7 +4127,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v22', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v23', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])

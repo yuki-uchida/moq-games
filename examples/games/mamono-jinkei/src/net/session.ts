@@ -27,7 +27,7 @@ import { EventQueue, RENDER_DELAY, SnapshotBuffer } from './interp'
 import { BACKGROUND_BACKLOG, FRAME_BACKLOG, FixedStep, HOST_STALL, INPUT_EXPIRY, STEP, neutralInput } from './liveness'
 import { looksLikeView, validateNetInput } from './validate'
 
-export const APP_ID = 'mamono-jinkei-v1'
+export const APP_ID = 'mamono-jinkei-v2'
 const SNAPSHOT_INTERVAL = 1 / 20
 const INPUT_INTERVAL = 1 / 30
 

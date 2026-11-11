@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import type { NamespaceEvent, ReceivedObject } from 'moq-wasm'
-import { CooperativeNetwork, MAX_PAYLOAD_BYTES, MAX_PLAYERS, type RabbitersSession } from '../src/network'
+import {
+  CooperativeNetwork,
+  MAX_MESSAGE_BYTES,
+  MAX_PAYLOAD_BYTES,
+  MAX_PLAYERS,
+  type RabbitersSession
+} from '../src/network'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -42,13 +49,22 @@ class Queue<T> implements AsyncIterable<T> {
   }
 }
 
+// Messages are (de)compressed off the main thread, so flushing also yields to the event loop (with the real
+// setImmediate, which fake timers replace later).
+const immediate = setImmediate
 const flush = async () => {
-  for (let index = 0; index < 80; index++) await Promise.resolve()
+  for (let turn = 0; turn < 40; turn++) {
+    for (let index = 0; index < 80; index++) await Promise.resolve()
+    await new Promise((done) => immediate(done))
+  }
 }
+const deflated = (text: string) => new Uint8Array(deflateRawSync(text))
+/** The JSON message inside a written (deflated) object. */
+const message = (payload: Uint8Array) => JSON.parse(new TextDecoder().decode(inflateRawSync(payload)))
 afterEach(() => vi.useRealTimers())
-const prefix = ['anon', 'rabbiters-v1', 'room']
+const prefix = ['anon', 'rabbiters-v2', 'room']
 const packet = (type: string, playerId: string, sequence: number, data: unknown) =>
-  new TextEncoder().encode(JSON.stringify({ v: 1, type, playerId, sequence, data }))
+  new Uint8Array(deflateRawSync(JSON.stringify({ v: 2, type, playerId, sequence, data })))
 const object = (payload: Uint8Array): ReceivedObject => ({
   groupId: 0n,
   subgroupId: 0n,
@@ -184,7 +200,7 @@ describe('host authoritative cooperative MoQ transport', () => {
     host.writer.writeGroup.mockClear()
     host.subscribers.push(true)
     await flush()
-    const messages = host.writer.writeGroup.mock.calls.map(([payload]) => JSON.parse(new TextDecoder().decode(payload)))
+    const messages = host.writer.writeGroup.mock.calls.map(([payload]) => message(payload))
     expect(messages.map((message) => message.type)).toEqual(['presence', 'snapshot'])
     expect(messages[1].data).toEqual(state)
     await host.network.stop()
@@ -193,7 +209,7 @@ describe('host authoritative cooperative MoQ transport', () => {
   it('guest follows only the host and accepts cached snapshots older than presence sequence', async () => {
     const guest = await setup('guest')
     guest.watch.push({ kind: 'announced', namespace: [...prefix, 'eve'] })
-    guest.watch.push({ kind: 'announced', namespace: ['anon', 'rabbiters-v1', 'other', 'host'] })
+    guest.watch.push({ kind: 'announced', namespace: ['anon', 'rabbiters-v2', 'other', 'host'] })
     guest.watch.push({ kind: 'announced', namespace: [...prefix, 'host'] })
     await flush()
     expect(guest.session.subscribe).toHaveBeenCalledTimes(1)
@@ -210,7 +226,7 @@ describe('host authoritative cooperative MoQ transport', () => {
     guest.subscribers.push(true)
     await flush()
     await guest.network.sendInput({ move: 1 })
-    expect(JSON.parse(new TextDecoder().decode(guest.writer.writeGroup.mock.calls.at(-1)![0])).type).toBe('input')
+    expect(message(guest.writer.writeGroup.mock.calls.at(-1)![0]).type).toBe('input')
     await guest.network.stop()
   })
 
@@ -220,16 +236,21 @@ describe('host authoritative cooperative MoQ transport', () => {
     await flush()
     for (const payload of [
       new Uint8Array([255]),
-      new TextEncoder().encode('{'),
+      new TextEncoder().encode('{"v":2,"sequence":1,"type":"snapshot","playerId":"alice","data":{}}'),
+      deflated('{'),
       packet('presence', 'alice', 1, ['alice', 'alice']),
       packet('snapshot', 'alice', Number.MAX_SAFE_INTEGER + 1, {}),
       new Uint8Array(MAX_PAYLOAD_BYTES + 1),
-      new TextEncoder().encode('null'),
-      new TextEncoder().encode('{"v":1,"sequence":1,"type":"snapshot","playerId":{},"data":{}}')
+      deflated('null'),
+      deflated('{"v":2,"sequence":1,"type":"snapshot","playerId":{},"data":{}}'),
+      deflated('{"v":1,"sequence":1,"type":"snapshot","playerId":"alice","data":{}}'),
+      // A tiny object that would inflate past the message cap.
+      deflated(`{"v":2,"sequence":1,"type":"snapshot","playerId":"alice","data":"${'x'.repeat(MAX_MESSAGE_BYTES)}"}`)
     ])
       guest.subscription.push(object(payload))
     guest.subscription.push({ ...object(packet('snapshot', 'alice', 1, {})), objectStatus: 3 })
-    await flush()
+    // Inflating the would-be megabyte up to its cap takes a few more turns of the event loop.
+    for (let turn = 0; turn < 5; turn++) await flush()
     expect(guest.onSnapshot).not.toHaveBeenCalled()
     expect(guest.onPresence).not.toHaveBeenCalled()
     guest.subscription.push(object(packet('snapshot', 'alice', 1, { safe: true })))
@@ -240,11 +261,16 @@ describe('host authoritative cooperative MoQ transport', () => {
 
   it('bounds outbound payloads and send backlog', async () => {
     const host = await setup()
-    await expect(host.network.broadcastSnapshot('x'.repeat(MAX_PAYLOAD_BYTES))).rejects.toThrow('64 KiB')
+    // Repetitive state deflates far below the wire cap; noise does not.
+    await expect(host.network.broadcastSnapshot('x'.repeat(MAX_PAYLOAD_BYTES * 4))).resolves.toBeUndefined()
+    const noise = Array.from(crypto.getRandomValues(new Uint8Array(MAX_PAYLOAD_BYTES)), (n) => n.toString(16)).join('')
+    await expect(host.network.broadcastSnapshot(noise)).rejects.toThrow('64 KiB')
+    await expect(host.network.broadcastSnapshot('x'.repeat(MAX_MESSAGE_BYTES))).rejects.toThrow('1 MiB')
     await expect(host.network.broadcastSnapshot(undefined)).rejects.toThrow('JSON')
     const pending = deferred<bigint>()
     host.writer.writeGroup.mockImplementation(() => pending.promise)
     const sends = Array.from({ length: 32 }, () => host.network.broadcastSnapshot({}))
+    await flush()
     await expect(host.network.broadcastSnapshot({})).rejects.toThrow('queue is full')
     pending.resolve(1n)
     await Promise.all(sends)
