@@ -66,18 +66,18 @@ npm run test:hoshi-no-hamham
 npm run e2e:hoshi-no-hamham
 npm run art:hoshi-no-hamham      # .build/hoshi-no-hamham-art/ に絵を書き出す
 npm run audio:hoshi-no-hamham    # .build/hoshi-no-hamham-audio/ に音の計測レポートを書き出す
-npm run review:hoshi-no-hamham   # .build/hoshi-no-hamham-review/ にレビュー一式を書き出す
+node scripts/hoshi-no-hamham-review.mjs   # .build/hoshi-no-hamham-review/ にレビュー一式を書き出す
 ```
 
 ## レビュー用ツール
 
 出力はどれも `.build/`（Git管理外）に作られます。
 
-| コマンド                                                                                                     | 何をするか                                                                                                                                                                                                           | 出力                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `node scripts/hoshi-no-hamham-art.mjs [--scale N] [--out DIR] [--anim a,b] [prefix ...]`                     | ピクセルアートの全シート（アニメごとに1行のコンタクトシート）、地形・背景・ワールドごとの合成シーンを書き出す                                                                                                        | `.build/hoshi-no-hamham-art/<id>.png`、`<id>.txt`、`pending.txt`（仮絵の一覧）                                                 |
-| `node scripts/hoshi-no-hamham-audio.mjs [--songs] [--only name,name]`                                        | 全効果音をオフラインで鳴らして、長さ・音量・帯域・似かよりを測る（`--songs` は曲の先頭30秒も。数分かかる。`--write` は音量補正を書き換えるので通常は使わない）                                                       | `.build/hoshi-no-hamham-audio/report.md`、`sfx/*.wav`                                                                          |
-| `npm run review:hoshi-no-hamham -- [--only screens,staging,art,motion,audio,checks] [--no-checks] [--songs]` | 上の2つを含め、画面・演出・絵・動き・音・検査をまとめて測るレビューキット。自前のVite開発サーバーとヘッドレスChromiumで動き、サーバーは必ず止める。ページエラー／コンソールエラーが出るか、節が失敗すると終了コード1 | `.build/hoshi-no-hamham-review/index.md`（目次と全数値の表）、`screens/`、`staging/`、`art/`、`motion/`、`audio/`、`checks.md` |
+| コマンド                                                                                                           | 何をするか                                                                                                                                                                                                           | 出力                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `node scripts/hoshi-no-hamham-art.mjs [--scale N] [--out DIR] [--anim a,b] [prefix ...]`                           | ピクセルアートの全シート（アニメごとに1行のコンタクトシート）、地形・背景・ワールドごとの合成シーンを書き出す                                                                                                        | `.build/hoshi-no-hamham-art/<id>.png`、`<id>.txt`、`pending.txt`（仮絵の一覧）                                                 |
+| `node scripts/hoshi-no-hamham-audio.mjs [--songs] [--only name,name]`                                              | 全効果音をオフラインで鳴らして、長さ・音量・帯域・似かよりを測る（`--songs` は曲の先頭30秒も。数分かかる。`--write` は音量補正を書き換えるので通常は使わない）                                                       | `.build/hoshi-no-hamham-audio/report.md`、`sfx/*.wav`                                                                          |
+| `node scripts/hoshi-no-hamham-review.mjs [--only screens,staging,art,motion,audio,checks] [--no-checks] [--songs]` | 上の2つを含め、画面・演出・絵・動き・音・検査をまとめて測るレビューキット。自前のVite開発サーバーとヘッドレスChromiumで動き、サーバーは必ず止める。ページエラー／コンソールエラーが出るか、節が失敗すると終了コード1 | `.build/hoshi-no-hamham-review/index.md`（目次と全数値の表）、`screens/`、`staging/`、`art/`、`motion/`、`audio/`、`checks.md` |
 
 レビューキットの `index.md` は画像を開かなくても読めます。`--only` で一部の節だけ走らせても、前回走らせた他の節の結果は
 `index.md` に残ります。ブラウザ操作の全テスト（`npm run e2e:hoshi-no-hamham`）は遅いのでキットには含みません。

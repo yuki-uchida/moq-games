@@ -3,8 +3,8 @@
  * presentation (design, animation, sound effects, staging) without playing the game, and without necessarily
  * being able to look at images or listen.
  *
- * Usage: npm run review:hoshi-no-hamham -- [--only screens,staging,art,motion,audio,checks] [--no-checks]
- *                                          [--songs] [--out DIR]
+ * Usage: node scripts/hoshi-no-hamham-review.mjs [--only screens,staging,art,motion,audio,checks] [--no-checks]
+ *                                               [--songs] [--out DIR]
  *   --only      run just these sections (default: all). Every section is independent: a failure is written into
  *               index.md and the others still run.
  *   --no-checks leave out `checks.md` (typecheck, lint, unit tests, build; they take several minutes)
@@ -1589,7 +1589,7 @@ function writeIndex(started) {
   const parts = [
     '# 星のハムハム review kit',
     '',
-    `Generated ${new Date().toISOString()} by \`npm run review:hoshi-no-hamham\` (commit \`${tryGit()}\`), ${fmt((Date.now() - started) / 1000, 0)} s in total.`,
+    `Generated ${new Date().toISOString()} by \`node scripts/hoshi-no-hamham-review.mjs\` (commit \`${tryGit()}\`), ${fmt((Date.now() - started) / 1000, 0)} s in total.`,
     'Every number below was measured in the running game or taken from the code; no image needs to be opened to read this file.',
     '',
     '## Contents',
