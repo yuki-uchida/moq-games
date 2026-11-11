@@ -57,7 +57,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 22
+  v: 23
   time: number
   phase: GameState['phase']
   level: number
@@ -67,7 +67,7 @@ export interface View {
   players: ViewPlayer[]
   /** Flat: id, enemy index, x, y, hp %, flash, flags (ENEMY_FLAG bits) */
   enemies: number[]
-  /** Flat: weapon index, x, y, radius, angle×100, life %, owner index, variant */
+  /** Flat: weapon index, x, y, radius, angle×100, life %, owner index, variant, id */
   shots: number[]
   /**
    * Flat: id, BULLET_KINDS index, x, y, vx, vy (px/s) at `time` — the straight path of each bullet fired within the
@@ -89,7 +89,7 @@ export interface View {
   paused?: string[]
 }
 
-export const STRIDE = { enemies: 7, shots: 8, bullets: 6, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
+export const STRIDE = { enemies: 7, shots: 9, bullets: 6, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
 export const SHOT_GAMBLE = 64
 /** Added to a pet's variant while it stands (unmoved for PET_STILL_SECONDS and not biting): the renderer stands it. */
 export const PET_STILL = 16
@@ -168,7 +168,8 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
         (s.kind === 'pet'
           ? (s.petType ?? 0) * 2 + ((s.petStill ?? 0) >= PET_STILL_SECONDS && s.v !== 1 ? PET_STILL : 0)
           : 0) +
-        (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0)
+        (s.sourceWeapon === 'w_gamble' ? SHOT_GAMBLE : 0),
+      s.id
     )
   }
   const bullets: number[] = []
@@ -198,7 +199,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 22,
+    v: 23,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -380,7 +381,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 22) return undefined
+  if (!record(value) || value.v !== 23) return undefined
   if (
     Object.keys(value).some(
       (key) =>

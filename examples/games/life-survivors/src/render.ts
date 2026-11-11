@@ -543,7 +543,7 @@ export class Renderer {
   private readonly shownPlayers = new Map<string, { x: number; y: number }>()
   /** Enemy bullets in flight by id: a straight path (position at host time `t`, velocity), moved locally every frame. */
   private readonly flying = new Map<number, { kind: number; x: number; y: number; vx: number; vy: number; t: number }>()
-  private flyingView?: View
+  private flyingBullets?: number[]
   /** Seconds the guest has played on since the latest snapshot. */
   private sinceSnapshot = 0
   private readonly states = new Map<number, EnemyState>()
@@ -3394,6 +3394,16 @@ export class Renderer {
     const positions = new Map(view.players.map((p) => [p.id, this.playerPosition(p, k)]))
     for (const id of this.deaths.keys()) if (!positions.has(id)) this.deaths.delete(id)
     const origins = view.players.map((p) => positions.get(p.id)!)
+    // Guests ease every shot towards its snapshot spot once per frame; all later passes read the eased copy.
+    if (smooth && view.shots.length) {
+      const shots = view.shots.slice()
+      for (let i = 0; i < shots.length; i += STRIDE.shots) {
+        const pos = this.ease(shots[i + 8], shots[i + 1], shots[i + 2], k)
+        shots[i + 1] = pos.x
+        shots[i + 2] = pos.y
+      }
+      view = { ...view, shots }
+    }
     if (me) {
       const p = positions.get(me.id)!
       this.focus.x = p.x
@@ -3833,8 +3843,8 @@ export class Renderer {
     this.drawFoodLabels()
 
     // Enemy bullets: the animated sprite on a pulsing red danger halo (one baked image per bullet).
-    if (view !== this.flyingView) {
-      this.flyingView = view
+    if (view.bullets !== this.flyingBullets) {
+      this.flyingBullets = view.bullets
       this.sinceSnapshot = 0
       const b = view.bullets
       const live = new Set(view.bulletIds)

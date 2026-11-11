@@ -683,7 +683,7 @@ test('outdoor vehicles update across cards, HUD, status and both players’ shot
       view.enemies = []
       view.players.push({ ...structuredClone(player), id: 'guest' })
       const index = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_travel')
-      view.shots = [index, player.x, player.y, 16, 0, 50, 0, 0, index, player.x, player.y, 16, 314, 50, 1, 0]
+      view.shots = [index, player.x, player.y, 16, 0, 50, 0, 0, 101, index, player.x, player.y, 16, 314, 50, 1, 0, 102]
       const renderer = new Renderer(document.createElement('canvas'))
       const draws: { matches: boolean; flip: boolean }[] = []
       let inShot = false
@@ -744,7 +744,7 @@ test('ground vehicles sort with the characters by their wheels while the plane f
       const player = view.players[0]
       view.time = timeAtAge(age) + 0.01
       view.enemies = []
-      view.shots = [index, player.x, player.y + dy, 16, 0, 50, 0, 0]
+      view.shots = [index, player.x, player.y + dy, 16, 0, 50, 0, 0, 101]
       const renderer = new Renderer(document.createElement('canvas'))
       const events: string[] = []
       for (const [name, label] of [
@@ -789,7 +789,7 @@ test('a garden bed grows in after blooming instead of appearing fully open', asy
     const view = structuredClone(life.view) as unknown as View
     const player = view.players[0]
     view.enemies = []
-    view.shots = [index, player.x + 60, player.y, 24, 0, 95, 0, 1]
+    view.shots = [index, player.x + 60, player.y, 24, 0, 95, 0, 1, 101]
     const canvas = document.createElement('canvas')
     const renderer = new Renderer(canvas)
     const ctx = renderer.ctx
@@ -1546,7 +1546,8 @@ test('reading effects render behind local and co-op players', async ({ page }) =
       0,
       50,
       0,
-      0
+      0,
+      101
     ]
     return [false, true].map((evolved) => {
       player.weapons = [['w_reading', evolved ? 8 : 1, 0]]
@@ -1608,6 +1609,7 @@ test('overprotective parents swing and fade their shields for local and co-op vi
       100,
       0,
       0,
+      101,
       // The guest's parent, drawn at the guest's eased position.
       guardian,
       player.x + 40,
@@ -1616,7 +1618,8 @@ test('overprotective parents swing and fade their shields for local and co-op vi
       0,
       100,
       1,
-      17
+      17,
+      102
     ]
     const renderer = new Renderer(document.createElement('canvas'))
     const events: { x: number; y: number; alpha: number; scale: number; flip: boolean }[] = []
@@ -1658,7 +1661,7 @@ test('overprotective parents of a still child are drawn behind them at their eas
     const player = view.players[0]
     view.enemies = []
     const guardian = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'p_over')
-    view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0]
+    view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0, 101]
     const renderer = new Renderer(document.createElement('canvas'))
     const events: string[] = []
     let layer = ''
@@ -1704,7 +1707,7 @@ test('overprotective parents of a still child stay behind them while an enemy to
       const view = structuredClone(life.view) as unknown as View
       const player = view.players[0]
       view.enemies = [1, germ, player.x + ex, player.y + ey, 100, 0, 0]
-      view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0]
+      view.shots = [guardian, player.x + 6, player.y - 5, 20, 0, 100, 0, 0, 101]
       const renderer = new Renderer(document.createElement('canvas'))
       const events: string[] = []
       let layer = ''
@@ -1758,7 +1761,7 @@ test('overprotective parents walking ahead are drawn behind a child heading up a
       const view = structuredClone(life.view) as unknown as View
       const player = view.players[0]
       view.enemies = []
-      view.shots = [guardian, player.x, player.y + dy, 20, 0, 100, 0, 0]
+      view.shots = [guardian, player.x, player.y + dy, 20, 0, 100, 0, 0, 101]
       const renderer = new Renderer(document.createElement('canvas'))
       const events: string[] = []
       let layer = ''
@@ -1880,7 +1883,7 @@ test('the gamble badge glides over the other shoulder from an overprotective par
       // The badge waits for the reels to stop before it shows.
       renderer.draw(view, life.localId, 0.016, false)
       renderer.draw(view, life.localId, 1, false)
-      view.shots = [guardian, player.x + 26, player.y - 42, 20, -157, 100, 0, 0]
+      view.shots = [guardian, player.x + 26, player.y - 42, 20, -157, 100, 0, 0, 101]
       const frames: number[] = []
       for (let k = 0; k < 80; k++) {
         xs.length = 0
@@ -1938,7 +1941,7 @@ test('pets, observed creatures and sprouts further up than their owner are drawn
       ['w_pet', -34, 0],
       ['w_garden', -30, 2]
     ]
-    view.shots = placed.flatMap(([id, dy, v]) => [index(id), player.x, player.y + dy, 20, 0, 100, 0, v])
+    view.shots = placed.flatMap(([id, dy, v], i) => [index(id), player.x, player.y + dy, 20, 0, 100, 0, v, 101 + i])
     const renderer = new Renderer(document.createElement('canvas'))
     const events: string[] = []
     let topDraws = 0
@@ -1998,7 +2001,17 @@ test('a biting pet and a creature pulling an enemy in are drawn over that enemy;
       ['w_observe', -100, 0, 1],
       ['w_pet', 0, -34, 0]
     ]
-    view.shots = placed.flatMap(([id, dx, dy, v]) => [index(id), player.x + dx, player.y + dy, 20, 0, 100, 0, v])
+    view.shots = placed.flatMap(([id, dx, dy, v], i) => [
+      index(id),
+      player.x + dx,
+      player.y + dy,
+      20,
+      0,
+      100,
+      0,
+      v,
+      101 + i
+    ])
     const renderer = new Renderer(document.createElement('canvas'))
     const events: string[] = []
     const companion = renderer.companion.bind(renderer)
@@ -2044,7 +2057,26 @@ test('karaoke draws a forward soundwave for local and co-op views', async ({ pag
     view.players.push({ ...structuredClone(player), id: 'guest', x: player.x + 10 })
     view.enemies = []
     const karaoke = WEAPONS.findIndex((weapon: { id: string }) => weapon.id === 'w_karaoke')
-    view.shots = [karaoke, player.x, player.y, 100, 100, 50, 0, 0, karaoke, player.x + 10, player.y, 100, 100, 50, 1, 0]
+    view.shots = [
+      karaoke,
+      player.x,
+      player.y,
+      100,
+      100,
+      50,
+      0,
+      0,
+      101,
+      karaoke,
+      player.x + 10,
+      player.y,
+      100,
+      100,
+      50,
+      1,
+      0,
+      102
+    ]
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')!
     const original = context.arc.bind(context)
@@ -2703,7 +2735,7 @@ test('creature observation renders and syncs its bird and active field in co-op'
   const creature = (page: Page) =>
     page.evaluate((index) => {
       const view = (window as unknown as { __life: { view: View } }).__life.view
-      for (let offset = 0; offset < (view?.shots.length ?? 0); offset += 8)
+      for (let offset = 0; offset < (view?.shots.length ?? 0); offset += 9)
         if (view.shots[offset] === index) return view.shots[offset + 7]
       return -1
     }, weaponIndex)
@@ -3843,7 +3875,7 @@ test('guests receive forward-facing guards and their shield-bash motion', async 
       guestLife.evaluate((hook, index) => {
         const view = hook.view as unknown as View
         const guards = []
-        for (let offset = 0; offset < view.shots.length; offset += 8) {
+        for (let offset = 0; offset < view.shots.length; offset += 9) {
           if (view.shots[offset] !== index) continue
           const owner = view.players[view.shots[offset + 6]]
           guards.push({
@@ -3888,7 +3920,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v20',
+      app: 'life-survivors-v21',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -3907,9 +3939,9 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v22', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v22', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
 })
 
 test('guests fly enemy bullets every frame between snapshots', async ({ context }) => {
@@ -3975,6 +4007,79 @@ test('guests fly enemy bullets every frame between snapshots', async ({ context 
   expect(moved / (xs.length - 1)).toBeGreaterThan(0.6)
 })
 
+test('guests ease their attacks every frame between snapshots', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  for (const page of [host, guest]) {
+    await page.goto('/')
+    await page.locator('#room').fill('shot-room')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await expect(host.locator('#hud')).toBeVisible()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  await expect(guest.locator('#hud')).toBeVisible()
+  const hostLife = await life(host)
+  // The host throws one ball, then it glides sideways at 60 px/s through an otherwise still world.
+  await hostLife.evaluate(async (l) => {
+    const path = '/src/data.ts'
+    const { EVENTS, timeAtAge } = await import(path)
+    const game = l.game as unknown as Game
+    game.targetPopulation = () => 0
+    game.state.time = timeAtAge(6) + 0.01
+    game.state.eventIndex = EVENTS.length
+    game.state.players[0].weapons = [{ id: 'w_sports', lv: 1, cd: 0, held: 0, damage: 0 }]
+  })
+  const thrown = (l: Life) => (l.game as unknown as Game).state.shots.some((shot) => shot.weapon === 'w_sports')
+  await expect.poll(() => hostLife.evaluate(thrown)).toBe(true)
+  await hostLife.evaluate((l) => {
+    const state = (l.game as unknown as Game).state
+    const shot = { ...state.shots.find((s) => s.weapon === 'w_sports')!, life: 1e6, maxLife: 1e6 }
+    const { x, y } = state.players[1]
+    const start = performance.now()
+    setInterval(() => {
+      state.enemies = []
+      state.gems = []
+      state.bullets = []
+      for (const player of state.players) {
+        player.invuln = 99
+        player.weapons = []
+      }
+      shot.x = x - 150 + ((performance.now() - start) / 1000) * 60
+      shot.y = y - 60
+      state.shots = [shot]
+    }, 4)
+  })
+  await guest.waitForTimeout(500)
+  // Every world-space draw the guest makes in a frame; with the scene still, only the attack can move them.
+  const frames = await guest.evaluate(async () => {
+    const draws: string[] = []
+    let frame: number[] = []
+    const draw = CanvasRenderingContext2D.prototype.drawImage as (...args: unknown[]) => void
+    CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+      const t = this.getTransform()
+      if (this.canvas.isConnected)
+        frame.push(Math.round(t.e + (args.length === 3 || args.length === 5 ? (args[1] as number) : 0)))
+      return draw.apply(this, args)
+    }
+    await new Promise<void>((done) => {
+      const tick = () => {
+        draws.push(frame.join(','))
+        frame = []
+        if (draws.length < 60) requestAnimationFrame(tick)
+        else done()
+      }
+      requestAnimationFrame(tick)
+    })
+    CanvasRenderingContext2D.prototype.drawImage = draw
+    return draws
+  })
+  const changed = frames.slice(1).filter((f, i) => f !== frames[i]).length
+  expect(changed / (frames.length - 1)).toBeGreaterThan(0.6)
+})
+
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
   await context.route('**/rabbiters/src/network.ts*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
@@ -4022,7 +4127,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v21', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v22', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
