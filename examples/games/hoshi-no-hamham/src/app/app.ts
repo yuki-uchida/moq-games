@@ -1,5 +1,5 @@
 /** The app: the frame loop, save data and switching between the screens and play. */
-import { AudioEngine } from '../game/audio'
+import { createAudio } from '../audio'
 import { Input } from '../game/input'
 import type { World } from '../game/sim'
 import { ENDING_PAGES, OPENING_PAGES, STAGES, stageByNo } from '../game/stages'
@@ -7,7 +7,7 @@ import { loadSave, storeSave, type SaveData, type StageDef, type VolumeKind } fr
 import { Hud } from '../ui/hud'
 import { DomScreens, type Screens } from '../ui/screens'
 import { Renderer } from '../view/renderer'
-import { CUE_MAP, type SoundCue } from '../view/sound-map'
+import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
 import { PlaySession, STEP } from './play'
 
@@ -31,7 +31,9 @@ export class App {
   private renderer: Renderer
   private input = new Input()
   private hud = new Hud()
-  private audio = new AudioEngine()
+  private audio = createAudio()
+  /** Interface cues outside play (menus, results). */
+  private sounds = new SoundBoard(this.audio)
   private save: SaveData = loadSave()
   private session: PlaySession | null = null
   /** The self-playing stage behind the title screen. */
@@ -50,7 +52,11 @@ export class App {
     private screens: Screens = new DomScreens()
   ) {
     this.renderer = new Renderer(canvas)
-    this.audio.muted = this.save.muted
+    this.audio.setMuted(this.save.muted)
+    for (const kind of ['master', 'music', 'sfx'] as const) this.audio.setVolume(kind, this.save.volume[kind])
+    // Any first gesture unlocks the audio context, not only the menu buttons.
+    for (const type of ['pointerdown', 'keydown'] as const)
+      window.addEventListener(type, () => this.audio.unlock(), { capture: true })
     this.screens.bind({
       newGame: () => {
         this.save.seenOpening = false
@@ -96,6 +102,7 @@ export class App {
   }
 
   private leavePlay() {
+    this.session?.stopAudio()
     this.session = null
     this.demo = null
     this.paused = false
@@ -108,7 +115,7 @@ export class App {
   openTitle() {
     this.leavePlay()
     this.screen = 'title'
-    this.audio.stopMusic()
+    this.audio.setMusic('title')
     const hasSave = this.save.cleared.length > 0 || this.save.unlocked > 1
     this.screens.showTitle(hasSave, this.save.cleared.length, STAGES.length)
     this.startDemo()
@@ -136,7 +143,7 @@ export class App {
   openSelect() {
     this.leavePlay()
     this.screen = 'select'
-    this.audio.stopMusic()
+    this.audio.setMusic('select')
     this.screens.showSelect(STAGES, this.save)
   }
 
@@ -144,6 +151,7 @@ export class App {
     this.screen = 'story'
     this.storyStage = null
     this.demo = null
+    this.audio.setMusic('story')
     this.renderer.clear()
     this.screens.showStory({ kicker: 'プロローグ', title: '星のハムハム', pages: OPENING_PAGES, scene: 'opening' })
   }
@@ -153,13 +161,14 @@ export class App {
     this.screen = 'story'
     this.stage = stage
     this.storyStage = stage
+    this.audio.setMusic('story')
     this.screens.showStory({ kicker: `第${stage.no}話`, title: stage.name, pages: stage.intro, scene: stage.no })
   }
 
   openEnding() {
     this.leavePlay()
     this.screen = 'ending'
-    this.audio.stopMusic()
+    this.audio.setMusic('ending')
     const total = Object.values(this.save.best).reduce((sum, value) => sum + value, 0)
     this.screens.showEnding(ENDING_PAGES, [
       `クリア ${this.save.cleared.length}/${STAGES.length}`,
@@ -188,19 +197,19 @@ export class App {
     if (this.screen !== 'play') return
     this.paused = !this.paused
     this.screens.setPaused(this.paused)
+    this.session?.setPaused(this.paused)
     this.cue(this.paused ? 'pause' : 'resume')
   }
 
   private cue(cue: SoundCue) {
     this.audio.unlock()
-    const sfx = CUE_MAP[cue]
-    if (sfx) this.audio.play(sfx)
+    this.sounds.cue(cue)
   }
 
   private setVolume(kind: VolumeKind, value: number) {
     this.save.volume[kind] = Math.max(0, Math.min(1, value))
     storeSave(this.save)
-    // The first audio engine has no volume controls; the new one applies `this.save.volume` here.
+    this.audio.setVolume(kind, this.save.volume[kind])
   }
 
   private toggleMute() {
@@ -214,7 +223,7 @@ export class App {
     const { stage, world } = session
     this.leavePlay()
     this.screen = 'result'
-    this.audio.stopMusic()
+    this.audio.setMusic('clear')
     if (!this.save.cleared.includes(stage.no)) this.save.cleared.push(stage.no)
     this.save.unlocked = Math.max(this.save.unlocked, Math.min(STAGES.length, stage.no + 1))
     const best = this.save.best[stage.id]
@@ -238,7 +247,7 @@ export class App {
   private openDead() {
     this.leavePlay()
     this.screen = 'dead'
-    this.audio.stopMusic()
+    this.audio.setMusic('gameover')
     this.screens.showDead()
   }
 

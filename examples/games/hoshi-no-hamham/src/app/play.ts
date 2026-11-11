@@ -6,15 +6,16 @@
  * A session can also be the title screen's demo (`demo: true`): the bot plays, nothing sounds, the HUD is left
  * alone, and a plain director ends it after a while so the app can start the next one.
  */
-import type { AudioEngine } from '../game/audio'
+import type { GameAudio } from '../audio/api'
 import { botInput, type BotMemory } from '../game/bot'
 import type { Input } from '../game/input'
 import { World, emptyInput } from '../game/sim'
 import type { StageDef } from '../game/types'
 import type { Hud, HudApi } from '../ui/hud'
 import { BasicDirector, type Director, type DirectorHost, type Outcome } from '../view/director'
+import { VIEW_W } from '../art/contract'
 import type { Renderer } from '../view/renderer'
-import { SoundBoard } from '../view/sound-map'
+import { SILENT_AUDIO, SoundBoard } from '../view/sound-map'
 import { StageView } from '../view/stage-view'
 
 export const STEP = 1 / 60
@@ -25,7 +26,7 @@ export const DEMO_SECONDS = 40
 export interface PlayDeps {
   renderer: Renderer
   hud: Hud
-  audio: AudioEngine
+  audio: GameAudio
   input: Input
   reducedMotion: boolean
 }
@@ -91,7 +92,7 @@ export class PlaySession {
   ) {
     this.demo = Boolean(options.demo)
     this.world = new World(stage, { seed: stage.no * 7919 + 101 })
-    this.sounds = new SoundBoard(this.demo ? { play() {} } : deps.audio)
+    this.sounds = new SoundBoard(this.demo ? SILENT_AUDIO : deps.audio, { music: !this.demo })
     this.view = new StageView(this.world, deps.renderer, {
       reducedMotion: deps.reducedMotion,
       onFootstep: () => this.sounds.cue('footstep')
@@ -118,7 +119,7 @@ export class PlaySession {
     hud.show()
     hud.setStage(this.stage)
     audio.unlock()
-    audio.startMusic(this.stage.theme)
+    this.sounds.start(this.world)
   }
 
   get outcome(): Outcome | null {
@@ -148,6 +149,17 @@ export class PlaySession {
     view.update(dt, view.frozen ? 0 : dt * scale)
     if (!this.demo) this.deps.hud.update(world, dt)
     director.update(dt)
+    if (!this.demo) this.sounds.update(world, dt, view.camera.x + VIEW_W / 2)
+  }
+
+  /** The pause menu is open: duck the music and hush the loops. */
+  setPaused(paused: boolean) {
+    this.sounds.setPaused(paused)
+  }
+
+  /** The session is over: stop its loops and duck (the music carries on into the next screen). */
+  stopAudio() {
+    this.sounds.stop()
   }
 
   private drain() {
