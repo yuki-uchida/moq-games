@@ -17,7 +17,7 @@ import {
   ageAt
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
-import { BULLET_LIFE, type GameState, type Player } from './game'
+import { BULLET_LIFE, VIEW_HALF, type GameState, type Player } from './game'
 import { historyOk, LIFE_OUTCOMES, type LifeDecision } from './history'
 
 export { BULLET_KINDS, ITEM_KINDS }
@@ -118,12 +118,24 @@ export const VIEW_CAPS = { enemies: 600, shots: 600, bullets: 200, gems: 400, it
 const r = Math.round
 /** Seconds a fresh bullet's path is sent in every snapshot (several snapshots, so one lost on the way does not hide it). */
 const BULLET_RESEND = 0.5
+/**
+ * World px past the largest screen area (VIEW_HALF round each player) still sent, so what walks in is already there.
+ * Bosses (the boss bar and edge arrows follow them), bullets (a bullet's path is not resent at once) and items go
+ * wherever they are.
+ */
+export const SEND_MARGIN = 160
 
 export function toView(state: GameState, paused: readonly string[] = []): View {
   const over = state.phase === 'won' || state.phase === 'lost'
   const ownerIndex = new Map(state.players.map((player, index) => [player.id, index]))
+  const near = (x: number, y: number, r = 0) =>
+    !state.players.length ||
+    state.players.some(
+      (p) => Math.abs(x - p.x) < VIEW_HALF.x + SEND_MARGIN + r && Math.abs(y - p.y) < VIEW_HALF.y + SEND_MARGIN + r
+    )
   const enemies: number[] = []
   for (const e of state.enemies) {
+    if (!near(e.x, e.y) && ENEMY_BY_ID.get(e.kind)!.behavior !== 'boss') continue
     const flags =
       (e.elite ? ENEMY_FLAG.elite : 0) |
       (e.windup > 0 ? ENEMY_FLAG.windup : 0) |
@@ -142,7 +154,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
   const shots: number[] = []
   for (const s of state.shots) {
     // Staples waiting for their turn do not exist yet.
-    if (s.delay > 0) continue
+    if (s.delay > 0 || !near(s.x, s.y, s.r)) continue
     shots.push(
       WEAPON_INDEX.get(s.weapon)!,
       r(s.x),
@@ -184,20 +196,21 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
   const fx: number[] = []
   for (const e of state.fx) fx.push(e.seq, e.type, e.x, e.y, e.a, e.b)
   const gems: number[] = []
-  for (const g of state.gems) gems.push(r(g.x), r(g.y), r(g.v))
+  for (const g of state.gems) if (near(g.x, g.y)) gems.push(r(g.x), r(g.y), r(g.v))
   const items: number[] = []
   for (const i of state.items)
     items.push(ITEM_KINDS.indexOf(i.kind), r(i.x), r(i.y), 'owner' in i ? (ownerIndex.get(i.owner) ?? -1) : -1)
   const popups: number[] = []
   for (const p of state.popups)
-    popups.push(
-      r(p.x),
-      r(p.y),
-      p.v,
-      (p.strong ? POPUP_BIT.strong : 0) | (p.crit ? POPUP_BIT.crit : 0),
-      ownerIndex.get(p.owner) ?? 0,
-      r((p.life / 0.6) * 100)
-    )
+    if (near(p.x, p.y))
+      popups.push(
+        r(p.x),
+        r(p.y),
+        p.v,
+        (p.strong ? POPUP_BIT.strong : 0) | (p.crit ? POPUP_BIT.crit : 0),
+        ownerIndex.get(p.owner) ?? 0,
+        r((p.life / 0.6) * 100)
+      )
   return {
     v: 23,
     time: Math.round(state.time * 100) / 100,
