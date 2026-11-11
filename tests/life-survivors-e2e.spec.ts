@@ -3888,7 +3888,7 @@ test('current and legacy rooms remain separated while current guests receive sna
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
     const { CooperativeNetwork } = await import(url)
     const network = new CooperativeNetwork({
-      app: 'life-survivors-v19',
+      app: 'life-survivors-v20',
       room: 'version-isolation',
       role: 'guest',
       playerId: 'legacy-player',
@@ -3907,9 +3907,72 @@ test('current and legacy rooms remain separated while current guests receive sna
     'legacy-player'
   )
   const channels = (page: Page) => page.evaluate(() => (window as unknown as { lifeChannels: string[] }).lifeChannels)
-  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
-  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
-  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v19', 'version-isolation'])])
+  expect(await channels(host)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
+  expect(await channels(guest)).toEqual([JSON.stringify(['anon', 'life-survivors-v21', 'version-isolation'])])
+  expect(await channels(legacy)).toEqual([JSON.stringify(['anon', 'life-survivors-v20', 'version-isolation'])])
+})
+
+test('guests fly enemy bullets every frame between snapshots', async ({ context }) => {
+  await context.route('**/rabbiters/src/network.ts*', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: fakeNetwork })
+  )
+  const host = await context.newPage()
+  const guest = await context.newPage()
+  for (const page of [host, guest]) {
+    await page.goto('/')
+    await page.locator('#room').fill('bullet-room')
+  }
+  await host.getByRole('button', { name: 'ルームを作る' }).click()
+  await expect(host.locator('#hud')).toBeVisible()
+  await guest.getByRole('button', { name: 'ルームに参加' }).click()
+  await expect(guest.locator('#hud')).toBeVisible()
+  const hostLife = await life(host)
+  await expect.poll(() => hostLife.evaluate((l) => l.game.state.players.length)).toBe(2)
+  // One slow bullet passing beside the guest, nothing else in the air; it is re-fired whenever it fizzles.
+  await hostLife.evaluate((l) => {
+    const game = l.game as unknown as {
+      state: { enemies: unknown[]; bullets: { id?: number }[]; players: { x: number; y: number; invuln: number }[] }
+      addBullet(...args: unknown[]): void
+    }
+    const fire = () => {
+      const state = game.state
+      state.enemies = []
+      for (const player of state.players) player.invuln = 99
+      if (state.bullets.length) return
+      const { x, y } = state.players[1]
+      game.addBullet(x - 150, y - 60, 0, 60, 7, 0, 0, 'picky_eating')
+    }
+    setInterval(fire, 16)
+  })
+  // The guest's bullet draws: the 40-px halo sprite blitted with the identity transform.
+  const frames = await guest.evaluate(async () => {
+    const draws: { x: number; y: number }[][] = []
+    let frame: { x: number; y: number }[] = []
+    const draw = CanvasRenderingContext2D.prototype.drawImage as (...args: unknown[]) => void
+    CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+      const [image, x, y, w, h] = args as [HTMLCanvasElement, number, number, number, number]
+      const t = this.getTransform()
+      if (args.length === 5 && image.width % 40 === 0 && image.width === image.height && w === h && t.isIdentity)
+        frame.push({ x, y })
+      return draw.apply(this, args)
+    }
+    await new Promise<void>((done) => {
+      const tick = () => {
+        draws.push(frame)
+        frame = []
+        if (draws.length < 60) requestAnimationFrame(tick)
+        else done()
+      }
+      requestAnimationFrame(tick)
+    })
+    CanvasRenderingContext2D.prototype.drawImage = draw
+    return draws
+  })
+  const xs = frames.filter((f) => f.length === 1).map((f) => f[0].x)
+  expect(xs.length).toBeGreaterThan(40)
+  // 10 Hz snapshots would hold a bullet still for ~6 frames at a time; flown locally it moves nearly every frame.
+  const moved = xs.slice(1).filter((x, i) => x !== xs[i]).length
+  expect(moved / (xs.length - 1)).toBeGreaterThan(0.6)
 })
 
 test('co-op status screens stop the host clock for everyone and release it', async ({ context }) => {
@@ -3959,7 +4022,7 @@ test('co-op status screens stop the host clock for everyone and release it', asy
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
 
   await spectator.evaluate(() => {
-    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v20', 'pause-room']))
+    const channel = new BroadcastChannel(JSON.stringify(['anon', 'life-survivors-v21', 'pause-room']))
     channel.postMessage({ type: 'input', id: 'ghost', input: { x: 0, y: 0, pick: -1, pickSeq: -1, pause: true } })
   })
   expect(await hostLife.evaluate((l) => l.view?.paused)).toEqual([guestId])
