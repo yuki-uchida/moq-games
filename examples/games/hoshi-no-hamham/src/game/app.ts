@@ -4,7 +4,9 @@ import { AudioEngine } from './audio'
 import { Hud } from './hud'
 import { Input } from './input'
 import { Renderer } from './render'
-import { World, type SimEvent } from './sim'
+import { LegacyFx } from '../view/legacy-fx'
+import type { SimEventType } from './events'
+import { World } from './sim'
 import { ENDING_PAGES, OPENING_PAGES, STAGES, stageByNo } from './stages'
 import { loadSave, storeSave, type SaveData, type StageDef } from './types'
 
@@ -12,28 +14,55 @@ const STEP = 1 / 60
 
 type ScreenName = 'title' | 'select' | 'story' | 'play' | 'result' | 'dead' | 'ending'
 
-const EVENT_SFX: Record<SimEvent['type'], Parameters<AudioEngine['play']>[0]> = {
+type Sfx = Parameters<AudioEngine['play']>[0]
+
+/** The closest existing sound for every event type; null means the event is silent for now. */
+const EVENT_SFX: Record<SimEventType, Sfx | null> = {
   jump: 'jump',
   land: 'land',
+  drop: null,
   bite: 'bite',
-  dig: 'dig',
-  tree: 'tree',
-  pipe: 'pipe',
-  hive: 'hive',
-  animal: 'animal',
-  rock: 'rock',
-  switch: 'switch',
-  fruit: 'fruit',
-  hurt: 'hurt',
-  'enemy-down': 'enemy-down',
-  'boss-hit': 'boss-hit',
-  'boss-awake': 'shock',
-  'boss-down': 'boss-down',
-  clear: 'clear',
-  dead: 'dead',
   splash: 'pipe',
+  hurt: 'hurt',
+  respawn: null,
+  dead: 'dead',
+  pickup: 'pickup',
+  dig: 'dig',
+  chop: 'tree',
+  'tree-fall': null,
+  'tree-land': 'tree',
+  'pipe-burst': 'pipe',
+  'hive-break': 'hive',
+  sting: null,
+  'animal-wake': 'animal',
+  'animal-done': null,
+  'rock-crack': 'rock',
+  'rock-break': 'rock',
+  switch: 'switch',
+  'door-open': 'switch',
+  spawn: null,
+  'princess-free': 'switch',
+  'goal-open': null,
+  clear: 'clear',
+  'enemy-hit': 'enemy-down',
+  'enemy-down': 'enemy-down',
+  hop: null,
+  spit: 'land',
+  'shot-hit': null,
+  'boss-awake': 'shock',
+  'boss-state': null,
+  'boss-attack': 'shock',
+  'boss-shoot': null,
+  'boss-slam': 'shock',
   shock: 'shock',
-  pickup: 'pickup'
+  'boss-crash': null,
+  'boss-hit': 'boss-hit',
+  'boss-phase': 'boss-hit',
+  'boss-tired': null,
+  'boss-down': 'boss-down',
+  minion: null,
+  'gate-up': null,
+  'gate-down': null
 }
 
 export class App {
@@ -45,6 +74,7 @@ export class App {
   private audio: AudioEngine
   private save: SaveData
   private world: World | null = null
+  private fx: LegacyFx = new LegacyFx(1)
   private stage: StageDef = STAGES[0]
   private screen: ScreenName = 'title'
   private paused = false
@@ -245,8 +275,7 @@ export class App {
     this.storyIndex = 0
     const totalTime = Object.values(this.save.best).reduce((sum, value) => sum + value, 0)
     const stats = document.querySelector<HTMLElement>('#ending-stats')!
-    stats.innerHTML =
-      `<span>クリア ${this.save.cleared.length}/${STAGES.length}</span><span>合計タイム ${formatTime(totalTime)}</span><span>★ ありがとう！</span>`
+    stats.innerHTML = `<span>クリア ${this.save.cleared.length}/${STAGES.length}</span><span>合計タイム ${formatTime(totalTime)}</span><span>★ ありがとう！</span>`
     stats.hidden = true
     document.querySelector<HTMLButtonElement>('#ending-select')!.hidden = true
     document.querySelector<HTMLButtonElement>('#ending-title-button')!.hidden = true
@@ -288,6 +317,7 @@ export class App {
   private startStage(stage: StageDef) {
     this.stage = stage
     this.world = new World(stage, { seed: stage.no * 7919 + 101 })
+    this.fx = new LegacyFx(stage.no)
     this.screen = 'play'
     this.paused = false
     this.accumulator = 0
@@ -342,7 +372,8 @@ export class App {
         }
         if (steps === 4) this.accumulator = 0
         this.handleEvents()
-        this.renderer.draw(this.world, frame)
+        this.fx.update(frame, this.world)
+        this.renderer.draw(this.world, this.fx, frame)
         this.hud.update(this.world, frame)
         if (this.world.boss && !this.world.boss.dead && this.world.boss.active && !this.bossBarShown) {
           this.bossBarShown = true
@@ -373,13 +404,15 @@ export class App {
   private handleEvents() {
     const world = this.world!
     for (const event of world.events) {
-      this.audio.play(EVENT_SFX[event.type])
+      this.fx.handle(event, world)
+      const sfx: Sfx | null = event.type === 'pickup' && event.kind === 'fruit' ? 'fruit' : EVENT_SFX[event.type]
+      if (sfx) this.audio.play(sfx)
       if (event.type === 'boss-down') this.hud.showToast('ボスを倒した！ゴールが開くよ')
       if (event.type === 'hurt') this.hud.showToast('いたい！')
       if (event.type === 'switch') this.hud.showToast('スイッチ！門が開いた')
-      if (event.type === 'pipe') this.hud.showToast('水が噴き出した！')
-      if (event.type === 'hive') this.hud.showToast('蜂の巣を怒らせた！')
-      if (event.type === 'animal') this.hud.showToast('動物が起きた！')
+      if (event.type === 'pipe-burst') this.hud.showToast('水が噴き出した！')
+      if (event.type === 'hive-break') this.hud.showToast('蜂の巣を怒らせた！')
+      if (event.type === 'animal-wake') this.hud.showToast('動物が起きた！')
       if (event.type === 'clear') this.hud.showBanner('クリア！', this.stage.name)
       if (event.type === 'dead') this.hud.showBanner('ゲームオーバー', '')
     }
