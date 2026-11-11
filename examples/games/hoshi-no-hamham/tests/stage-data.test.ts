@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getArt } from '../src/art'
-import { isBlank } from '../src/art/legacy/pixel'
+import { sheetIds } from '../src/art'
 import { OPENING_PAGES, STAGES, ENDING_PAGES, stageByNo } from '../src/game/stages'
 import { MAPS } from '../src/game/maps'
 import type { StageDef } from '../src/game/types'
@@ -21,14 +20,14 @@ describe('stage catalogue', () => {
   })
 
   it('gives every stage a boss with valid stats and a known body', () => {
-    const art = getArt()
+    const sheets = sheetIds()
     for (const stage of STAGES) {
       const boss = stage.boss
       expect(boss.hp).toBeGreaterThan(0)
       expect(boss.speed).toBeGreaterThan(0)
       expect(boss.scale).toBeGreaterThan(0)
       expect(boss.art).toBeTruthy()
-      expect(art.characters[boss.art]).toBeDefined()
+      expect(sheets).toContain(boss.art)
       expect(['chaser', 'brute', 'flyer', 'tank', 'swarm', 'final']).toContain(boss.kind)
     }
   })
@@ -77,56 +76,5 @@ describe('stage catalogue', () => {
     expect(stageByNo(1).id).toBe('stage-1')
     expect(stageByNo(10).id).toBe('stage-10')
     expect(stageByNo(99).id).toBe('stage-1')
-  })
-})
-
-describe('art', () => {
-  it('builds non-blank sprites for every character frame', () => {
-    const art = getArt()
-    for (const [id, character] of Object.entries(art.characters)) {
-      const frames = [
-        ...character.idle,
-        ...character.walk,
-        character.jump,
-        character.fall,
-        ...character.bite,
-        character.hurt,
-        character.happy
-      ]
-      expect(frames.length, id).toBeGreaterThan(0)
-      for (const frame of frames) {
-        expect(frame.w, `${id} width`).toBeGreaterThan(0)
-        expect(frame.h, `${id} height`).toBeGreaterThan(0)
-        expect(frame.data.length, `${id} data`).toBe(frame.w * frame.h * 4)
-        expect(isBlank(frame), `${id} frame is blank`).toBe(false)
-      }
-    }
-  })
-
-  it('builds every theme tile set and prop', () => {
-    const art = getArt()
-    for (const theme of ['meadow', 'night', 'cave', 'forest', 'fortress', 'castle', 'star'] as const) {
-      const tiles = art.tiles[theme]
-      for (const [key, sprite] of Object.entries(tiles)) {
-        expect(isBlank(sprite as never), `${theme}.${key} is blank`).toBe(false)
-      }
-    }
-    for (const [key, value] of Object.entries(art.props)) {
-      if (Array.isArray(value)) {
-        for (const sprite of value) expect(isBlank(sprite), `${key} is blank`).toBe(false)
-      } else {
-        expect(isBlank(value as never), `${key} is blank`).toBe(false)
-      }
-    }
-    expect(isBlank(art.bee)).toBe(false)
-  })
-
-  it('keeps every sprite on its 64-unit grid', () => {
-    const art = getArt()
-    const sizes = new Set<number>()
-    for (const character of Object.values(art.characters)) {
-      for (const frame of [...character.idle, ...character.walk]) sizes.add(frame.w)
-    }
-    expect([...sizes].every((size) => size >= 32)).toBe(true)
   })
 })

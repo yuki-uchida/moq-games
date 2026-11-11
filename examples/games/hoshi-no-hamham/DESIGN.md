@@ -173,7 +173,7 @@ drawn. `prefers-reduced-motion` removes shake, flashes and parallax drift and sh
 
 ## 8. Quality gates
 
-- `tests/art-contract.test.ts`: every sheet matches the contract; no placeholder sheets, tiles or backdrops; no
+- `tests/art-contract.test.ts`: every sheet matches the contract; `tests/art-complete.test.ts`: nothing is pending (every sheet, terrain and backdrop is drawn; there are no stand-ins); no
   duplicated neighbouring frames inside a clip; per-sheet colour budget.
 - `tests/audio-*.test.ts`: scores compile, stay in key, close their loops; every effect renders offline within
   loudness and length limits.

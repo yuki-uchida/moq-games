@@ -9,7 +9,7 @@
 import type { SheetModule } from '../module'
 import { C, R } from '../palette'
 import { Painter, Raster, ball, bar, farRamp, shadeEdges, shadeIndex } from '../raster'
-import { anim } from '../sheet'
+import { lazyAnim, memo } from '../sheet'
 
 const PINK = R.hamPink
 const FAR = farRamp(PINK)
@@ -453,28 +453,34 @@ function stride(p: number): [number, number] {
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = frames(4, (i) => {
-  const b = [0, 0.55, 1, 0.55][i]
-  return heroPose({
-    squash: 0.5 - b * 1.4,
-    earLift: [0, 0, 0.6, 1][i],
-    scarfAngle: 34 + [0, 4, 0, -4][i],
-    scarfPhase: i * 1.4,
-    arm: [0, 11, 4, 15 - [0, 0.5, 1, 0.5][i] * 0.6]
+const idle = memo(() =>
+  frames(4, (i) => {
+    const b = [0, 0.55, 1, 0.55][i]
+    return heroPose({
+      squash: 0.5 - b * 1.4,
+      earLift: [0, 0, 0.6, 1][i],
+      scarfAngle: 34 + [0, 4, 0, -4][i],
+      scarfPhase: i * 1.4,
+      arm: [0, 11, 4, 15 - [0, 0.5, 1, 0.5][i] * 0.6]
+    })
   })
-})
+)
 
-const blink = [heroPose({ eyes: 'half', squash: 0.5 }), heroPose({ eyes: 'closed', squash: 0.5 })].map(drawHero)
+const blink = memo(() =>
+  [heroPose({ eyes: 'half', squash: 0.5 }), heroPose({ eyes: 'closed', squash: 0.5 })].map(drawHero)
+)
 
 /** Fidget: a paw rubs the cheek, eyes closed with pleasure. */
-const wait = [
-  heroPose({ squash: 0.3, lean: -1, arm: [-5, 10, -2, 8], earLift: 0.5 }),
-  heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
-  heroPose({ squash: 0, lean: -1, arm: [-5, 10, 3, 6.5], eyes: 'happy', mouth: 'grin', earTilt: 1.5 }),
-  heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1.5, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
-  heroPose({ squash: 0.6, arm: [-4, 10, 0, 11], eyes: 'half' }),
-  heroPose({ squash: -0.6, earLift: 1, scarfAngle: 38, scarfPhase: 1 })
-].map(drawHero)
+const wait = memo(() =>
+  [
+    heroPose({ squash: 0.3, lean: -1, arm: [-5, 10, -2, 8], earLift: 0.5 }),
+    heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
+    heroPose({ squash: 0, lean: -1, arm: [-5, 10, 3, 6.5], eyes: 'happy', mouth: 'grin', earTilt: 1.5 }),
+    heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1.5, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
+    heroPose({ squash: 0.6, arm: [-4, 10, 0, 11], eyes: 'half' }),
+    heroPose({ squash: -0.6, earLift: 1, scarfAngle: 38, scarfPhase: 1 })
+  ].map(drawHero)
+)
 
 /**
  * Run cycle, 8 frames: 0 contact (near foot planted ahead, far foot kicked up behind), 1 down, 2 passing (feet
@@ -494,289 +500,303 @@ const RUN_BOB = [4.5, 5, 7.5, 6.5]
 const RUN_SQUASH = [0.5, 0.2, -1, -0.4]
 /** Arm swing -1 (back) … 1 (front); the near arm moves against the near leg. */
 const RUN_SWING = [-1, -0.7, -0.15, 0.45, 1, 0.85, 0.1, -0.55]
-const run = frames(8, (i, t) => {
-  const near = RUN_TRACK[i]
-  const far = RUN_TRACK[(i + 4) % 8]
-  const k = i % 4
-  const sn = RUN_SWING[i]
-  const sf = RUN_SWING[(i + 4) % 8]
-  return heroPose({
-    bob: RUN_BOB[k],
-    squash: RUN_SQUASH[k],
-    dx: 3,
-    lean: 3,
-    earTilt: 5,
-    earLift: [-0.5, 0, -1, -0.5][k],
-    legs: true,
-    nearFoot: [near[0] + 6, near[1]],
-    nearTilt: near[2],
-    farFoot: [far[0] - 6, far[1]],
-    farTilt: far[2],
-    scarfAngle: -6 + Math.sin(t * TAU + 0.8) * 8,
-    scarfLen: 14,
-    scarfWave: 3,
-    scarfPhase: t * TAU,
-    arm: [-3, 9, -3 + sn * 10, 11 - Math.max(0, sn) * 5 - Math.max(0, -sn) * 1],
-    farArm: [12, 9, 14 + sf * 8, 11 - Math.max(0, sf) * 6],
-    mouth: 'open',
-    eyes: 'open'
+const run = memo(() =>
+  frames(8, (i, t) => {
+    const near = RUN_TRACK[i]
+    const far = RUN_TRACK[(i + 4) % 8]
+    const k = i % 4
+    const sn = RUN_SWING[i]
+    const sf = RUN_SWING[(i + 4) % 8]
+    return heroPose({
+      bob: RUN_BOB[k],
+      squash: RUN_SQUASH[k],
+      dx: 3,
+      lean: 3,
+      earTilt: 5,
+      earLift: [-0.5, 0, -1, -0.5][k],
+      legs: true,
+      nearFoot: [near[0] + 6, near[1]],
+      nearTilt: near[2],
+      farFoot: [far[0] - 6, far[1]],
+      farTilt: far[2],
+      scarfAngle: -6 + Math.sin(t * TAU + 0.8) * 8,
+      scarfLen: 14,
+      scarfWave: 3,
+      scarfPhase: t * TAU,
+      arm: [-3, 9, -3 + sn * 10, 11 - Math.max(0, sn) * 5 - Math.max(0, -sn) * 1],
+      farArm: [12, 9, 14 + sf * 8, 11 - Math.max(0, sf) * 6],
+      mouth: 'open',
+      eyes: 'open'
+    })
   })
-})
+)
 
-const skid = [
-  heroPose({
-    dx: -2,
-    lean: -3,
-    squash: 0.8,
-    earTilt: -2,
-    earLift: 1,
-    nearFoot: [8, 0],
-    farFoot: [4, 0],
-    scarfAngle: -100,
-    scarfLen: 12,
-    scarfWave: 1.5,
-    arm: [-3, 9, 9, 8],
-    farArm: [12, 8, 21, 3],
-    eyes: 'wide',
-    brow: 'up',
-    mouth: 'o'
-  }),
-  heroPose({
-    dx: -3,
-    lean: -3,
-    squash: 1.6,
-    bob: 0,
-    earTilt: -3,
-    earLift: 0,
-    nearFoot: [10, 0],
-    farFoot: [6, 1],
-    scarfAngle: -150,
-    scarfLen: 11,
-    scarfWave: 2,
-    scarfPhase: 1.5,
-    arm: [-10, 8, -16, 1],
-    farArm: [12, 8, 22, 5],
-    eyes: 'wide',
-    brow: 'worry',
-    mouth: 'o'
-  })
-].map(drawHero)
+const skid = memo(() =>
+  [
+    heroPose({
+      dx: -2,
+      lean: -3,
+      squash: 0.8,
+      earTilt: -2,
+      earLift: 1,
+      nearFoot: [8, 0],
+      farFoot: [4, 0],
+      scarfAngle: -100,
+      scarfLen: 12,
+      scarfWave: 1.5,
+      arm: [-3, 9, 9, 8],
+      farArm: [12, 8, 21, 3],
+      eyes: 'wide',
+      brow: 'up',
+      mouth: 'o'
+    }),
+    heroPose({
+      dx: -3,
+      lean: -3,
+      squash: 1.6,
+      bob: 0,
+      earTilt: -3,
+      earLift: 0,
+      nearFoot: [10, 0],
+      farFoot: [6, 1],
+      scarfAngle: -150,
+      scarfLen: 11,
+      scarfWave: 2,
+      scarfPhase: 1.5,
+      arm: [-10, 8, -16, 1],
+      farArm: [12, 8, 22, 5],
+      eyes: 'wide',
+      brow: 'worry',
+      mouth: 'o'
+    })
+  ].map(drawHero)
+)
 
-const jump = [
-  heroPose({
-    bob: 1,
-    squash: -3.2,
-    lean: 1,
-    earTilt: 1,
-    earLift: -1,
-    nearFoot: [-4, 0],
-    farFoot: [-1, 1],
-    scarfAngle: 75,
-    scarfLen: 11,
-    scarfWave: 1,
-    arm: armV(10),
-    farArm: farArmV(10),
-    eyes: 'open',
-    brow: 'up',
-    mouth: 'open'
-  }),
-  heroPose({
-    bob: 4,
-    squash: -1.6,
-    lean: 1,
-    earTilt: 0,
-    earLift: -0.5,
-    nearFoot: [-5, 4],
-    farFoot: [0, 6],
-    scarfAngle: 58,
-    scarfLen: 12,
-    scarfWave: 2,
-    scarfPhase: 2,
-    arm: armV(8, 1),
-    farArm: farArmV(7, 1),
-    eyes: 'open',
-    mouth: 'open'
-  })
-].map(drawHero)
+const jump = memo(() =>
+  [
+    heroPose({
+      bob: 1,
+      squash: -3.2,
+      lean: 1,
+      earTilt: 1,
+      earLift: -1,
+      nearFoot: [-4, 0],
+      farFoot: [-1, 1],
+      scarfAngle: 75,
+      scarfLen: 11,
+      scarfWave: 1,
+      arm: armV(10),
+      farArm: farArmV(10),
+      eyes: 'open',
+      brow: 'up',
+      mouth: 'open'
+    }),
+    heroPose({
+      bob: 4,
+      squash: -1.6,
+      lean: 1,
+      earTilt: 0,
+      earLift: -0.5,
+      nearFoot: [-5, 4],
+      farFoot: [0, 6],
+      scarfAngle: 58,
+      scarfLen: 12,
+      scarfWave: 2,
+      scarfPhase: 2,
+      arm: armV(8, 1),
+      farArm: farArmV(7, 1),
+      eyes: 'open',
+      mouth: 'open'
+    })
+  ].map(drawHero)
+)
 
-const fall = frames(2, (i) =>
-  heroPose({
-    bob: 6,
-    squash: i ? -1.2 : -0.5,
-    lean: 0,
-    earLift: i ? 1.5 : 3,
-    earTilt: i ? 0 : 1,
-    nearFoot: i ? [-2, 3] : [-1, 4],
-    farFoot: i ? [3, 4] : [2, 3],
-    scarfAngle: i ? -34 : -52,
-    scarfLen: 13,
-    scarfWave: 2.5,
-    scarfPhase: i * 2.6,
-    arm: armV(i ? 9 : 11, 1),
-    farArm: farArmV(i ? 9 : 11, 1),
-    eyes: 'wide',
-    brow: 'worry',
-    mouth: 'o'
-  })
-).map((f) => f)
+const fall = memo(() =>
+  frames(2, (i) =>
+    heroPose({
+      bob: 6,
+      squash: i ? -1.2 : -0.5,
+      lean: 0,
+      earLift: i ? 1.5 : 3,
+      earTilt: i ? 0 : 1,
+      nearFoot: i ? [-2, 3] : [-1, 4],
+      farFoot: i ? [3, 4] : [2, 3],
+      scarfAngle: i ? -34 : -52,
+      scarfLen: 13,
+      scarfWave: 2.5,
+      scarfPhase: i * 2.6,
+      arm: armV(i ? 9 : 11, 1),
+      farArm: farArmV(i ? 9 : 11, 1),
+      eyes: 'wide',
+      brow: 'worry',
+      mouth: 'o'
+    })
+  ).map((f) => f)
+)
 
-const land = [
-  heroPose({
-    squash: 3.6,
-    lean: 1,
-    earLift: -1,
-    nearFoot: [-6, 0],
-    farFoot: [6, 0],
-    scarfAngle: 80,
-    scarfLen: 10,
-    arm: [-11, 9, -19, 13],
-    farArm: [13, 9, 22, 13],
-    eyes: 'squint',
-    mouth: 'flat'
-  }),
-  heroPose({
-    bob: 1,
-    squash: -1.6,
-    earLift: 1.5,
-    nearFoot: [-2, 0.5],
-    farFoot: [2, 0.5],
-    scarfAngle: 8,
-    scarfLen: 12,
-    scarfPhase: 1,
-    arm: [-6, 8, -9, 10],
-    eyes: 'open',
-    mouth: 'smile'
-  }),
-  heroPose({ squash: 0.9, earLift: 0.4, scarfAngle: 40, scarfPhase: 2, arm: [0, 11, 4, 15.5] })
-].map(drawHero)
+const land = memo(() =>
+  [
+    heroPose({
+      squash: 3.6,
+      lean: 1,
+      earLift: -1,
+      nearFoot: [-6, 0],
+      farFoot: [6, 0],
+      scarfAngle: 80,
+      scarfLen: 10,
+      arm: [-11, 9, -19, 13],
+      farArm: [13, 9, 22, 13],
+      eyes: 'squint',
+      mouth: 'flat'
+    }),
+    heroPose({
+      bob: 1,
+      squash: -1.6,
+      earLift: 1.5,
+      nearFoot: [-2, 0.5],
+      farFoot: [2, 0.5],
+      scarfAngle: 8,
+      scarfLen: 12,
+      scarfPhase: 1,
+      arm: [-6, 8, -9, 10],
+      eyes: 'open',
+      mouth: 'smile'
+    }),
+    heroPose({ squash: 0.9, earLift: 0.4, scarfAngle: 40, scarfPhase: 2, arm: [0, 11, 4, 15.5] })
+  ].map(drawHero)
+)
 
-const bite = [
-  // 0 anticipation: the whole body pulled back and up, mouth already opening, eyes fierce
-  heroPose({
-    dx: -6,
-    bob: 3,
-    lean: -3,
-    squash: -2,
-    earTilt: -2,
-    earLift: 1.5,
-    nearFoot: [-2, 0],
-    farFoot: [-3, 0],
-    scarfAngle: 64,
-    scarfLen: 9,
-    arm: [-4, 9, -12, 7],
-    farArm: [12, 9, 15, 12],
-    eyes: 'open',
-    brow: 'hard',
-    mouth: 'gape'
-  }),
-  // 1 lunge: thrown forward and stretched, mouth wide open, the feet left behind
-  heroPose({
-    dx: 2,
-    bob: 1,
-    lean: 1,
-    squash: 2.8,
-    earTilt: 6,
-    earLift: -0.5,
-    nearFoot: [-9, 3],
-    farFoot: [-4, 1.5],
-    nearTilt: 30,
-    scarfAngle: -4,
-    scarfLen: 10,
-    scarfWave: 2.4,
-    arm: [-3, 9, -13, 5],
-    farArm: [13, 9, 22, 6],
-    eyes: 'wide',
-    brow: 'angry',
-    mouth: 'bite'
-  }),
-  // 2 CHOMP: furthest reach, squashed by the impact, jaws snapped shut on the teeth, ears flung forward
-  heroPose({
-    dx: 5,
-    lean: 1,
-    squash: -1.2,
-    earTilt: -5,
-    earLift: 2,
-    nearFoot: [-6, 0.5],
-    farFoot: [0, 0],
-    scarfAngle: -28,
-    scarfLen: 12,
-    scarfWave: 2,
-    scarfPhase: 1,
-    arm: [-3, 9, 5, 8],
-    farArm: [12, 9, 23, 10],
-    eyes: 'squint',
-    brow: 'hard',
-    mouth: 'chomp'
-  }),
-  // 3 follow-through: recoiling, chewing, the scarf and ears catch up
-  heroPose({
-    dx: 2,
-    lean: -1,
-    squash: 0.9,
-    earTilt: 3,
-    earLift: 2,
-    nearFoot: [-3, 0],
-    farFoot: [3, 0],
-    scarfAngle: -22,
-    scarfLen: 10,
-    scarfWave: 2.6,
-    scarfPhase: 2.4,
-    arm: [-3, 11, 0, 16],
-    eyes: 'happy',
-    mouth: 'grin',
-    puff: 0.6
-  }),
-  // 4 settling back to the idle pose
-  heroPose({
-    dx: 2,
-    squash: 0.3,
-    earTilt: 0,
-    earLift: 0.8,
-    scarfAngle: 38,
-    scarfPhase: 3,
-    arm: [0, 11, 4, 15],
-    eyes: 'open',
-    mouth: 'smile'
-  })
-].map(drawHero)
+const bite = memo(() =>
+  [
+    // 0 anticipation: the whole body pulled back and up, mouth already opening, eyes fierce
+    heroPose({
+      dx: -6,
+      bob: 3,
+      lean: -3,
+      squash: -2,
+      earTilt: -2,
+      earLift: 1.5,
+      nearFoot: [-2, 0],
+      farFoot: [-3, 0],
+      scarfAngle: 64,
+      scarfLen: 9,
+      arm: [-4, 9, -12, 7],
+      farArm: [12, 9, 15, 12],
+      eyes: 'open',
+      brow: 'hard',
+      mouth: 'gape'
+    }),
+    // 1 lunge: thrown forward and stretched, mouth wide open, the feet left behind
+    heroPose({
+      dx: 2,
+      bob: 1,
+      lean: 1,
+      squash: 2.8,
+      earTilt: 6,
+      earLift: -0.5,
+      nearFoot: [-9, 3],
+      farFoot: [-4, 1.5],
+      nearTilt: 30,
+      scarfAngle: -4,
+      scarfLen: 10,
+      scarfWave: 2.4,
+      arm: [-3, 9, -13, 5],
+      farArm: [13, 9, 22, 6],
+      eyes: 'wide',
+      brow: 'angry',
+      mouth: 'bite'
+    }),
+    // 2 CHOMP: furthest reach, squashed by the impact, jaws snapped shut on the teeth, ears flung forward
+    heroPose({
+      dx: 5,
+      lean: 1,
+      squash: -1.2,
+      earTilt: -5,
+      earLift: 2,
+      nearFoot: [-6, 0.5],
+      farFoot: [0, 0],
+      scarfAngle: -28,
+      scarfLen: 12,
+      scarfWave: 2,
+      scarfPhase: 1,
+      arm: [-3, 9, 5, 8],
+      farArm: [12, 9, 23, 10],
+      eyes: 'squint',
+      brow: 'hard',
+      mouth: 'chomp'
+    }),
+    // 3 follow-through: recoiling, chewing, the scarf and ears catch up
+    heroPose({
+      dx: 2,
+      lean: -1,
+      squash: 0.9,
+      earTilt: 3,
+      earLift: 2,
+      nearFoot: [-3, 0],
+      farFoot: [3, 0],
+      scarfAngle: -22,
+      scarfLen: 10,
+      scarfWave: 2.6,
+      scarfPhase: 2.4,
+      arm: [-3, 11, 0, 16],
+      eyes: 'happy',
+      mouth: 'grin',
+      puff: 0.6
+    }),
+    // 4 settling back to the idle() pose
+    heroPose({
+      dx: 2,
+      squash: 0.3,
+      earTilt: 0,
+      earLift: 0.8,
+      scarfAngle: 38,
+      scarfPhase: 3,
+      arm: [0, 11, 4, 15],
+      eyes: 'open',
+      mouth: 'smile'
+    })
+  ].map(drawHero)
+)
 
-const hurt = [
-  heroPose({
-    bob: 2,
-    dx: -3,
-    lean: -3,
-    squash: -1.2,
-    earTilt: -2,
-    earLift: 2,
-    nearFoot: [-6, 2],
-    farFoot: [7, 3],
-    scarfAngle: -110,
-    scarfLen: 12,
-    scarfWave: 2,
-    arm: armV(5),
-    farArm: farArmV(6),
-    eyes: 'hurt',
-    mouth: 'open'
-  }),
-  heroPose({
-    bob: 1,
-    dx: -4,
-    lean: -3,
-    squash: 1,
-    earTilt: -1,
-    earLift: 0.5,
-    nearFoot: [5, 0.5],
-    farFoot: [8, 1.5],
-    scarfAngle: -70,
-    scarfLen: 12,
-    scarfWave: 1.5,
-    scarfPhase: 2,
-    arm: [-12, 8, -19, 2],
-    farArm: [13, 8, 22, 4],
-    eyes: 'hurt',
-    mouth: 'o'
-  })
-].map(drawHero)
+const hurt = memo(() =>
+  [
+    heroPose({
+      bob: 2,
+      dx: -3,
+      lean: -3,
+      squash: -1.2,
+      earTilt: -2,
+      earLift: 2,
+      nearFoot: [-6, 2],
+      farFoot: [7, 3],
+      scarfAngle: -110,
+      scarfLen: 12,
+      scarfWave: 2,
+      arm: armV(5),
+      farArm: farArmV(6),
+      eyes: 'hurt',
+      mouth: 'open'
+    }),
+    heroPose({
+      bob: 1,
+      dx: -4,
+      lean: -3,
+      squash: 1,
+      earTilt: -1,
+      earLift: 0.5,
+      nearFoot: [5, 0.5],
+      farFoot: [8, 1.5],
+      scarfAngle: -70,
+      scarfLen: 12,
+      scarfWave: 1.5,
+      scarfPhase: 2,
+      arm: [-12, 8, -19, 2],
+      farArm: [13, 8, 22, 4],
+      eyes: 'hurt',
+      mouth: 'o'
+    })
+  ].map(drawHero)
+)
 
 // ------------------------------------------------------------------------------------------------ tumble
 
@@ -926,7 +946,7 @@ function drawTumble(t: Tumble): Raster {
   return g.render()
 }
 
-const die = [
+const die = memo(() => [
   // 0 the hit: knocked up and back, arms flung out
   drawHero(
     heroPose({
@@ -1014,134 +1034,138 @@ const die = [
     nearFoot: [24, -6, 70],
     farFoot: [23, -17, 55]
   })
-]
+])
 
-const cheer = [
-  // crouch
-  heroPose({
-    squash: 2.6,
-    earLift: -0.5,
-    nearFoot: [-4, 0],
-    farFoot: [4, 0],
-    scarfAngle: 45,
-    arm: [-6, 10, -9, 15],
-    farArm: [13, 10, 18, 15],
-    eyes: 'happy',
-    mouth: 'grin'
-  }),
-  // spring up
-  heroPose({
-    bob: 3,
-    squash: -3,
-    earLift: -1,
-    nearFoot: [-4, 2],
-    farFoot: [0, 3],
-    scarfAngle: 70,
-    scarfWave: 1.5,
-    arm: armV(10),
-    farArm: farArmV(10),
-    eyes: 'happy',
-    mouth: 'wide'
-  }),
-  // apex
-  heroPose({
-    bob: 7,
-    squash: -1.2,
-    earLift: 1.5,
-    nearFoot: [-3, 5],
-    farFoot: [3, 6],
-    scarfAngle: -25,
-    scarfLen: 13,
-    scarfWave: 2.2,
-    scarfPhase: 1.5,
-    arm: armV(12, 2),
-    farArm: farArmV(12, 2),
-    eyes: 'happy',
-    mouth: 'wide'
-  }),
-  // coming down
-  heroPose({
-    bob: 4,
-    squash: -1.8,
-    earLift: 2.5,
-    nearFoot: [-1, 3],
-    farFoot: [4, 2],
-    scarfAngle: -48,
-    scarfLen: 13,
-    scarfWave: 2.5,
-    scarfPhase: 3,
-    arm: armV(9, 1),
-    farArm: farArmV(9, 1),
-    eyes: 'happy',
-    mouth: 'wide'
-  }),
-  // landing squash
-  heroPose({
-    squash: 2.2,
-    earLift: 0,
-    nearFoot: [-5, 0],
-    farFoot: [5, 0],
-    scarfAngle: 60,
-    arm: armV(6, 1),
-    farArm: farArmV(6, 1),
-    eyes: 'happy',
-    mouth: 'wide'
-  }),
-  // rebound
-  heroPose({
-    bob: 1,
-    squash: -1,
-    earLift: 1.2,
-    nearFoot: [-2, 1],
-    farFoot: [2, 1],
-    scarfAngle: 5,
-    scarfWave: 1.8,
-    scarfPhase: 2,
-    arm: armV(8),
-    farArm: farArmV(8),
-    eyes: 'happy',
-    mouth: 'wide'
-  })
-].map(drawHero)
+const cheer = memo(() =>
+  [
+    // crouch
+    heroPose({
+      squash: 2.6,
+      earLift: -0.5,
+      nearFoot: [-4, 0],
+      farFoot: [4, 0],
+      scarfAngle: 45,
+      arm: [-6, 10, -9, 15],
+      farArm: [13, 10, 18, 15],
+      eyes: 'happy',
+      mouth: 'grin'
+    }),
+    // spring up
+    heroPose({
+      bob: 3,
+      squash: -3,
+      earLift: -1,
+      nearFoot: [-4, 2],
+      farFoot: [0, 3],
+      scarfAngle: 70,
+      scarfWave: 1.5,
+      arm: armV(10),
+      farArm: farArmV(10),
+      eyes: 'happy',
+      mouth: 'wide'
+    }),
+    // apex
+    heroPose({
+      bob: 7,
+      squash: -1.2,
+      earLift: 1.5,
+      nearFoot: [-3, 5],
+      farFoot: [3, 6],
+      scarfAngle: -25,
+      scarfLen: 13,
+      scarfWave: 2.2,
+      scarfPhase: 1.5,
+      arm: armV(12, 2),
+      farArm: farArmV(12, 2),
+      eyes: 'happy',
+      mouth: 'wide'
+    }),
+    // coming down
+    heroPose({
+      bob: 4,
+      squash: -1.8,
+      earLift: 2.5,
+      nearFoot: [-1, 3],
+      farFoot: [4, 2],
+      scarfAngle: -48,
+      scarfLen: 13,
+      scarfWave: 2.5,
+      scarfPhase: 3,
+      arm: armV(9, 1),
+      farArm: farArmV(9, 1),
+      eyes: 'happy',
+      mouth: 'wide'
+    }),
+    // landing squash
+    heroPose({
+      squash: 2.2,
+      earLift: 0,
+      nearFoot: [-5, 0],
+      farFoot: [5, 0],
+      scarfAngle: 60,
+      arm: armV(6, 1),
+      farArm: farArmV(6, 1),
+      eyes: 'happy',
+      mouth: 'wide'
+    }),
+    // rebound
+    heroPose({
+      bob: 1,
+      squash: -1,
+      earLift: 1.2,
+      nearFoot: [-2, 1],
+      farFoot: [2, 1],
+      scarfAngle: 5,
+      scarfWave: 1.8,
+      scarfPhase: 2,
+      arm: armV(8),
+      farArm: farArmV(8),
+      eyes: 'happy',
+      mouth: 'wide'
+    })
+  ].map(drawHero)
+)
 
-const swim = frames(4, (i, t) => {
-  const a = t * TAU
-  return heroPose({
-    bob: 2 + Math.sin(a) * 0.9,
-    squash: Math.cos(a) * 0.6,
-    dx: 1,
-    lean: 3,
-    earTilt: 2,
-    earLift: [0, 0.8, 0, -0.8][i],
-    nearFoot: [-8 + Math.cos(a) * 2.5, 2.5 + Math.sin(a) * 2.5 + 2],
-    farFoot: [-4 - Math.cos(a) * 2.5, 2.5 - Math.sin(a) * 2.5 + 2],
-    scarfAngle: 8 + Math.sin(a + 1) * 6,
-    scarfLen: 11,
-    scarfWave: 2,
-    scarfPhase: a,
-    arm: [-2, 10, 3 + Math.cos(a) * 4, 14 + Math.sin(a) * 2.5],
-    farArm: [12, 9, 17 - Math.cos(a) * 4, 13 - Math.sin(a) * 2.5],
-    eyes: 'open',
-    brow: 'none',
-    mouth: 'flat',
-    puff: 1.2
+const swim = memo(() =>
+  frames(4, (i, t) => {
+    const a = t * TAU
+    return heroPose({
+      bob: 2 + Math.sin(a) * 0.9,
+      squash: Math.cos(a) * 0.6,
+      dx: 1,
+      lean: 3,
+      earTilt: 2,
+      earLift: [0, 0.8, 0, -0.8][i],
+      nearFoot: [-8 + Math.cos(a) * 2.5, 2.5 + Math.sin(a) * 2.5 + 2],
+      farFoot: [-4 - Math.cos(a) * 2.5, 2.5 - Math.sin(a) * 2.5 + 2],
+      scarfAngle: 8 + Math.sin(a + 1) * 6,
+      scarfLen: 11,
+      scarfWave: 2,
+      scarfPhase: a,
+      arm: [-2, 10, 3 + Math.cos(a) * 4, 14 + Math.sin(a) * 2.5],
+      farArm: [12, 9, 17 - Math.cos(a) * 4, 13 - Math.sin(a) * 2.5],
+      eyes: 'open',
+      brow: 'none',
+      mouth: 'flat',
+      puff: 1.2
+    })
   })
-})
+)
 
 export const sheets: SheetModule = {
   hero: () => ({
-    idle: anim(idle, 6, true),
-    blink: anim(blink, 14, false),
-    wait: anim(wait, 6, false),
-    run: anim(run, 14, true),
-    skid: anim(skid, 12, false),
-    jump: anim(jump, 12, false),
-    fall: anim(fall, 10, true),
-    land: anim(land, 18, false),
-    bite: anim(bite, 24, false),
-    hurt: anim(hurt, 10, false),
-    die: anim(die, 10, false),
-    cheer: anim(cheer, 10, true),
-    swim: anim(swim, 8, true)
+    idle: lazyAnim(idle, 6, true),
+    blink: lazyAnim(blink, 14, false),
+    wait: lazyAnim(wait, 6, false),
+    run: lazyAnim(run, 14, true),
+    skid: lazyAnim(skid, 12, false),
+    jump: lazyAnim(jump, 12, false),
+    fall: lazyAnim(fall, 10, true),
+    land: lazyAnim(land, 18, false),
+    bite: lazyAnim(bite, 24, false),
+    hurt: lazyAnim(hurt, 10, false),
+    die: lazyAnim(die, 10, false),
+    cheer: lazyAnim(cheer, 10, true),
+    swim: lazyAnim(swim, 8, true)
   })
 }

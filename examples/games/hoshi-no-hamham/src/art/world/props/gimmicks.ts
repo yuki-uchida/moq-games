@@ -21,7 +21,7 @@ import {
   type Pt,
   type Ramp
 } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim } from '../../sheet'
 import { cyl, puff } from './trees'
 
 const PIPE = R.pipe
@@ -209,9 +209,9 @@ function sprayArt(l: Raster, phase: number, dx: number) {
 }
 
 const pipeClips = () => ({
-  idle: [drawPipe('idle', 0, 'bead', 0), drawPipe('idle', 0, 'fall', 0)],
-  burst: [0, 1, 2, 3].map((i) => drawPipe('burst', [1, -1, 1, -1][i], 'none', i)),
-  done: [drawPipe('done', 0, 'none', 0)]
+  idle: () => [drawPipe('idle', 0, 'bead', 0), drawPipe('idle', 0, 'fall', 0)],
+  burst: () => [0, 1, 2, 3].map((i) => drawPipe('burst', [1, -1, 1, -1][i], 'none', i)),
+  done: () => [drawPipe('done', 0, 'none', 0)]
 })
 
 // ------------------------------------------------------------------------------------------------------ hive
@@ -430,10 +430,10 @@ const hiveClips = () => {
   const drips = [2, 4, 1, 3]
   const falling = [0, 0, 5, 0]
   return {
-    idle: amounts.map((a, i) => drawHive(Math.round(a), drips[i], falling[i])),
-    broken: [drawBrokenHive()],
-    post: [drawPole(false)],
-    arm: [drawPole(true)]
+    idle: () => amounts.map((a, i) => drawHive(Math.round(a), drips[i], falling[i])),
+    broken: () => [drawBrokenHive()],
+    post: () => [drawPole(false)],
+    arm: () => [drawPole(true)]
   }
 }
 
@@ -758,9 +758,9 @@ const runPoses: BoarPose[] = [
 ]
 
 const animalClips = () => ({
-  sleep: [drawSleep(0, 0), drawSleep(0.5, 0), drawSleep(1, -2), drawSleep(0.5, -1)],
-  wake: wakePoses.map(drawBoar),
-  run: runPoses.map(drawBoar)
+  sleep: () => [drawSleep(0, 0), drawSleep(0.5, 0), drawSleep(1, -2), drawSleep(0.5, -1)],
+  wake: () => wakePoses.map(drawBoar),
+  run: () => runPoses.map(drawBoar)
 })
 
 // ------------------------------------------------------------------------------------------------------ rock
@@ -867,7 +867,7 @@ function drawRock(cracked: boolean): Raster {
   return outline(l)
 }
 
-const rockClips = () => ({ idle: [drawRock(false)], cracked: [drawRock(true)] })
+const rockClips = () => ({ idle: () => [drawRock(false)], cracked: () => [drawRock(true)] })
 
 // -------------------------------------------------------------------------------------------------- registry
 
@@ -875,31 +875,34 @@ export const sheets: SheetModule = {
   'prop:pipe': () => {
     const c = pipeClips()
     return {
-      idle: anim(c.idle, 2, true, { anchor: [0, 0] }),
-      burst: anim(c.burst, 12, true, { anchor: [0, 0] }),
-      done: anim(c.done, 1, false, { anchor: [0, 0] })
+      idle: lazyAnim(c.idle, 2, true, { anchor: [0, 0] }),
+      burst: lazyAnim(c.burst, 12, true, { anchor: [0, 0] }),
+      done: lazyAnim(c.done, 1, false, { anchor: [0, 0] })
     }
   },
   'prop:hive': () => {
     const c = hiveClips()
     return {
-      idle: anim(c.idle, 5, true, { anchor: [0, 0] }),
-      broken: anim(c.broken, 1, false, { anchor: [0, 0] }),
-      post: anim(c.post, 1, false, { anchor: [0, 0] }),
-      arm: anim(c.arm, 1, false, { anchor: [0, 0] })
+      idle: lazyAnim(c.idle, 5, true, { anchor: [0, 0] }),
+      broken: lazyAnim(c.broken, 1, false, { anchor: [0, 0] }),
+      post: lazyAnim(c.post, 1, false, { anchor: [0, 0] }),
+      arm: lazyAnim(c.arm, 1, false, { anchor: [0, 0] })
     }
   },
   'prop:animal': () => {
     const c = animalClips()
     return {
-      sleep: anim(c.sleep, 3, true, { anchor: [0, 0] }),
-      wake: anim(c.wake, 12, false, { anchor: [0, 0] }),
-      run: anim(c.run, 14, true, { anchor: [0, 0] })
+      sleep: lazyAnim(c.sleep, 3, true, { anchor: [0, 0] }),
+      wake: lazyAnim(c.wake, 12, false, { anchor: [0, 0] }),
+      run: lazyAnim(c.run, 14, true, { anchor: [0, 0] })
     }
   },
   'prop:rock': () => {
     const c = rockClips()
-    return { idle: anim(c.idle, 1, false, { anchor: [0, 0] }), cracked: anim(c.cracked, 1, false, { anchor: [0, 0] }) }
+    return {
+      idle: lazyAnim(c.idle, 1, false, { anchor: [0, 0] }),
+      cracked: lazyAnim(c.cracked, 1, false, { anchor: [0, 0] })
+    }
   }
 }
 

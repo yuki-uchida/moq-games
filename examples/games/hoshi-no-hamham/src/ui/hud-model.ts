@@ -73,8 +73,36 @@ export function padSide(x: number, left: number, width: number, dead = PAD_DEAD_
   return null
 }
 
+/**
+ * A hint as the player's input needs it: hints are written for the keyboard (「Z / X でかじる」), and a player
+ * on the touch controls has buttons instead of keys.
+ */
+export const hintForInput = (text: string, touch: boolean) =>
+  touch ? text.replace(/Z\s*\/\s*X\s*で/g, '「かじる」ボタンで') : text
+
 /** The collect counter's text (`3/8`). */
 export const collectText = (count: number, need: number) => `${Math.max(0, count)}/${need}`
 
 /** Whole-number art scale of the HUD for a stage `cssWidth` px wide (a 640-px-wide stage is 1). */
 export const hudScale = (cssWidth: number) => Math.max(1, Math.round(cssWidth / 640))
+
+/**
+ * Where the HUD's staging pieces sit, as fractions of the stage height. One set of rules for the HUD (CSS custom
+ * properties set from here) and for the staging that feeds it:
+ *  - the upper third holds exactly one thing at a time: the stage card or a call (「スタート！」「クリア！」「ファイト！」),
+ *    both anchored at `cardTop`; the director never shows a call before the card has gone;
+ *  - speech bubbles stay out of that slot (`cardTop`..`cardBottom`, see the overlay);
+ *  - the boss nameplate sits in the lower third, its bottom edge `plateBottom` above the stage bottom, i.e. just
+ *    above the letterbox bar (`barHeight`, the share of the view the cinematic bars cover), and the camera keeps
+ *    the boss above it;
+ *  - the toast sits `toastBottom` above the bottom edge, under the nameplate.
+ */
+export const ZONES = {
+  cardTop: 0.18,
+  cardBottom: 0.36,
+  plateBottom: 0.13,
+  /** The lowest the boss's feet may be on screen while his nameplate is up (the plate's top is below this). */
+  bossFeet: 0.66,
+  toastBottom: 0.04,
+  barHeight: 34 / 360
+} as const

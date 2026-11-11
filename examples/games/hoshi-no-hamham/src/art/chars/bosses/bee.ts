@@ -7,7 +7,7 @@
 import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { Raster, bar, outline, shadeIndex, type Pt, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const GOLD = R.gold
 const DARK = R.darkFur
@@ -520,171 +520,183 @@ function streak(r: Raster, shifts: number[]) {
   return out.blit(r)
 }
 
-const idle = [0, 1, 2, 3].map((i) => {
-  const t = i / 4
-  const s = Math.sin(t * TAU)
-  return drawBee(
-    beePose({
-      bob: 1.4 + s * 1.2,
-      lean: -s * 0.8,
-      wingNear: -2.1 + (i % 2 ? -0.28 : 0.2),
-      wingFar: -1.7 + (i % 2 ? 0.22 : -0.2),
-      blur: i % 2 ? 0.22 : 0,
-      sceptre: [15, 6 + s],
-      farHand: [-3, 12 - s],
-      curl: 0.04 + Math.max(0, s) * 0.06
-    })
-  )
-})
-
-const intro = [
-  beePose({ bob: 1, wingNear: -2.3, wingFar: -1.9, sceptre: [12, 2], eyes: 'bored', mouth: 'flat' }),
-  beePose({
-    bob: 3,
-    lean: -1,
-    wingNear: -2.7,
-    wingFar: -2.3,
-    blur: 0.3,
-    sceptre: [13, -14],
-    eyes: 'open',
-    mouth: 'smirk',
-    curl: 0.1
-  }),
-  beePose({
-    bob: 5,
-    lean: -2,
-    wingNear: -1.7,
-    wingFar: -1.3,
-    blur: -0.35,
-    sceptre: [14, -18],
-    eyes: 'happy',
-    mouth: 'laugh',
-    curl: 0.15
-  }),
-  beePose({
-    bob: 4,
-    lean: -1,
-    wingNear: -2.6,
-    wingFar: -2.2,
-    blur: 0.3,
-    sceptre: [14, -17],
-    eyes: 'happy',
-    mouth: 'laugh',
-    curl: 0.1
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) => {
+    const t = i / 4
+    const s = Math.sin(t * TAU)
+    return drawBee(
+      beePose({
+        bob: 1.4 + s * 1.2,
+        lean: -s * 0.8,
+        wingNear: -2.1 + (i % 2 ? -0.28 : 0.2),
+        wingFar: -1.7 + (i % 2 ? 0.22 : -0.2),
+        blur: i % 2 ? 0.22 : 0,
+        sceptre: [15, 6 + s],
+        farHand: [-3, 12 - s],
+        curl: 0.04 + Math.max(0, s) * 0.06
+      })
+    )
   })
-].map(drawBee)
+)
 
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const s = Math.sin(t * TAU)
-  return drawBee(
+const intro = memo(() =>
+  [
+    beePose({ bob: 1, wingNear: -2.3, wingFar: -1.9, sceptre: [12, 2], eyes: 'bored', mouth: 'flat' }),
     beePose({
-      bob: 3 + s * 1.8,
-      lean: 3,
-      pitch: 0.12,
-      curl: 0.3 + 0.05 * s,
-      wingNear: -2.3 + (i % 2 ? -0.5 : 0.35),
-      wingFar: -1.9 + (i % 2 ? 0.4 : -0.35),
-      blur: i % 2 ? 0.3 : -0.3,
-      sceptre: [14, 8 + s],
-      farHand: [-4, 11],
+      bob: 3,
+      lean: -1,
+      wingNear: -2.7,
+      wingFar: -2.3,
+      blur: 0.3,
+      sceptre: [13, -14],
       eyes: 'open',
       mouth: 'smirk',
-      legs: 0.5
+      curl: 0.1
+    }),
+    beePose({
+      bob: 5,
+      lean: -2,
+      wingNear: -1.7,
+      wingFar: -1.3,
+      blur: -0.35,
+      sceptre: [14, -18],
+      eyes: 'happy',
+      mouth: 'laugh',
+      curl: 0.15
+    }),
+    beePose({
+      bob: 4,
+      lean: -1,
+      wingNear: -2.6,
+      wingFar: -2.2,
+      blur: 0.3,
+      sceptre: [14, -17],
+      eyes: 'happy',
+      mouth: 'laugh',
+      curl: 0.1
     })
-  )
-})
+  ].map(drawBee)
+)
 
-const windup = [
-  beePose({
-    bob: 3,
-    lean: -2,
-    pitch: -0.05,
-    curl: 0.45,
-    wingNear: -2.6,
-    wingFar: -2.3,
-    sceptre: [10, 8],
-    eyes: 'glare',
-    mouth: 'flat'
-  }),
-  beePose({
-    bob: 2,
-    lean: -3,
-    pitch: -0.12,
-    curl: 0.8,
-    wingNear: -2.9,
-    wingFar: -2.6,
-    sceptre: [8, 10],
-    eyes: 'glare',
-    mouth: 'flat',
-    legs: 0
-  }),
-  beePose({
-    bob: 1,
-    lean: -4,
-    pitch: -0.2,
-    curl: 1,
-    wingNear: -3.05,
-    wingFar: -2.85,
-    sceptre: [6, 11],
-    eyes: 'glare',
-    mouth: 'flat',
-    legs: 0
-  })
-].map(drawBee)
-
-const attack = [0, 1, 2, 3].map((i) =>
-  streak(
-    drawBee(
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const s = Math.sin(t * TAU)
+    return drawBee(
       beePose({
-        bob: 4 + (i % 2),
-        lean: 4,
-        pitch: -0.36,
-        curl: 1,
-        wingNear: -2.95 + (i % 2 ? -0.18 : 0.15),
-        wingFar: -2.7 + (i % 2 ? 0.2 : -0.12),
-        blur: i % 2 ? 0.3 : -0.28,
-        sceptre: [4, 12],
-        eyes: 'glare',
-        mouth: 'laugh',
-        legs: 0,
-        shift: [-8, 4 - (i % 2)]
+        bob: 3 + s * 1.8,
+        lean: 3,
+        pitch: 0.12,
+        curl: 0.3 + 0.05 * s,
+        wingNear: -2.3 + (i % 2 ? -0.5 : 0.35),
+        wingFar: -1.9 + (i % 2 ? 0.4 : -0.35),
+        blur: i % 2 ? 0.3 : -0.3,
+        sceptre: [14, 8 + s],
+        farHand: [-4, 11],
+        eyes: 'open',
+        mouth: 'smirk',
+        legs: 0.5
       })
-    ),
-    [12 + i]
+    )
+  })
+)
+
+const windup = memo(() =>
+  [
+    beePose({
+      bob: 3,
+      lean: -2,
+      pitch: -0.05,
+      curl: 0.45,
+      wingNear: -2.6,
+      wingFar: -2.3,
+      sceptre: [10, 8],
+      eyes: 'glare',
+      mouth: 'flat'
+    }),
+    beePose({
+      bob: 2,
+      lean: -3,
+      pitch: -0.12,
+      curl: 0.8,
+      wingNear: -2.9,
+      wingFar: -2.6,
+      sceptre: [8, 10],
+      eyes: 'glare',
+      mouth: 'flat',
+      legs: 0
+    }),
+    beePose({
+      bob: 1,
+      lean: -4,
+      pitch: -0.2,
+      curl: 1,
+      wingNear: -3.05,
+      wingFar: -2.85,
+      sceptre: [6, 11],
+      eyes: 'glare',
+      mouth: 'flat',
+      legs: 0
+    })
+  ].map(drawBee)
+)
+
+const attack = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    streak(
+      drawBee(
+        beePose({
+          bob: 4 + (i % 2),
+          lean: 4,
+          pitch: -0.36,
+          curl: 1,
+          wingNear: -2.95 + (i % 2 ? -0.18 : 0.15),
+          wingFar: -2.7 + (i % 2 ? 0.2 : -0.12),
+          blur: i % 2 ? 0.3 : -0.28,
+          sceptre: [4, 12],
+          eyes: 'glare',
+          mouth: 'laugh',
+          legs: 0,
+          shift: [-8, 4 - (i % 2)]
+        })
+      ),
+      [12 + i]
+    )
   )
 )
 
-const recover = [
-  beePose({
-    bob: 1,
-    lean: -3,
-    wingNear: 2.5,
-    wingFar: 2.2,
-    wingLen: 0.8,
-    sceptre: [-2, 14],
-    farHand: [8, -4],
-    fan: true,
-    eyes: 'closed',
-    mouth: 'pant',
-    sweat: true,
-    curl: 0.15
-  }),
-  beePose({
-    bob: 0,
-    lean: -2,
-    wingNear: 2.65,
-    wingFar: 2.35,
-    wingLen: 0.8,
-    sceptre: [-2, 14],
-    farHand: [10, -9],
-    fan: true,
-    eyes: 'bored',
-    mouth: 'pant',
-    sweat: true,
-    curl: 0.2
-  })
-].map(drawBee)
+const recover = memo(() =>
+  [
+    beePose({
+      bob: 1,
+      lean: -3,
+      wingNear: 2.5,
+      wingFar: 2.2,
+      wingLen: 0.8,
+      sceptre: [-2, 14],
+      farHand: [8, -4],
+      fan: true,
+      eyes: 'closed',
+      mouth: 'pant',
+      sweat: true,
+      curl: 0.15
+    }),
+    beePose({
+      bob: 0,
+      lean: -2,
+      wingNear: 2.65,
+      wingFar: 2.35,
+      wingLen: 0.8,
+      sceptre: [-2, 14],
+      farHand: [10, -9],
+      fan: true,
+      eyes: 'bored',
+      mouth: 'pant',
+      sweat: true,
+      curl: 0.2
+    })
+  ].map(drawBee)
+)
 
 /** Nudges a frame so it keeps one empty pixel to every edge. */
 function fit(r: Raster) {
@@ -694,35 +706,37 @@ function fit(r: Raster) {
   return dx || dy ? r.shifted(dx, dy) : r
 }
 
-const hurt = [
-  beePose({
-    bob: 4,
-    lean: -5,
-    pitch: -0.18,
-    wingNear: -2.7,
-    wingFar: -2.4,
-    blur: 0.3,
-    sceptre: [8, -2],
-    eyes: 'hurt',
-    mouth: 'o',
-    sweat: true,
-    curl: 0.3
-  }),
-  beePose({
-    bob: 2,
-    lean: -3,
-    pitch: -0.08,
-    wingNear: -2.4,
-    wingFar: -2.1,
-    blur: -0.3,
-    sceptre: [10, 4],
-    eyes: 'hurt',
-    mouth: 'o',
-    sweat: true,
-    curl: 0.2,
-    crown: [-1, 1]
-  })
-].map((p) => fit(drawBee(p)))
+const hurt = memo(() =>
+  [
+    beePose({
+      bob: 4,
+      lean: -5,
+      pitch: -0.18,
+      wingNear: -2.7,
+      wingFar: -2.4,
+      blur: 0.3,
+      sceptre: [8, -2],
+      eyes: 'hurt',
+      mouth: 'o',
+      sweat: true,
+      curl: 0.3
+    }),
+    beePose({
+      bob: 2,
+      lean: -3,
+      pitch: -0.08,
+      wingNear: -2.4,
+      wingFar: -2.1,
+      blur: -0.3,
+      sceptre: [10, 4],
+      eyes: 'hurt',
+      mouth: 'o',
+      sweat: true,
+      curl: 0.2,
+      crown: [-1, 1]
+    })
+  ].map((p) => fit(drawBee(p)))
+)
 
 /** The fallen crown, dropped onto the finished frame so it stays whole. */
 function dropCrown(r: Raster, x: number, y: number) {
@@ -732,112 +746,114 @@ function dropCrown(r: Raster, x: number, y: number) {
   return r.blit(layer)
 }
 
-const defeat = [
-  beePose({
-    bob: 3,
-    lean: -3,
-    pitch: -0.15,
-    wingNear: -2.7,
-    wingFar: -2.4,
-    blur: 0.4,
-    sceptre: [8, 2],
-    eyes: 'swirl',
-    mouth: 'o',
-    crown: [-1, -3],
-    crownTilt: 0.3,
-    stars: 0.4,
-    curl: 0.3
-  }),
-  beePose({
-    bob: 1,
-    lean: -2,
-    pitch: 0.45,
-    wingNear: -2.9,
-    wingFar: -2.5,
-    blur: -0.5,
-    sceptre: [8, 6],
-    eyes: 'swirl',
-    mouth: 'o',
-    crown: null,
-    stars: 2.3,
-    curl: 0.4,
-    shift: [0, -4]
-  }),
-  beePose({
-    bob: 0,
-    lean: 0,
-    pitch: 1.1,
-    wingNear: -3.0,
-    wingFar: -2.7,
-    blur: 0.5,
-    wingLen: 0.8,
-    sceptre: null,
-    eyes: 'dead',
-    mouth: 'o',
-    crown: null,
-    curl: 0.5,
-    shift: [0, -6]
-  }),
-  beePose({
-    bob: 0,
-    lean: 0,
-    pitch: 1.85,
-    wingNear: -3.1,
-    wingFar: -2.9,
-    wingLen: 0.75,
-    sceptre: null,
-    eyes: 'dead',
-    mouth: 'tongue',
-    crown: null,
-    curl: 0.4,
-    shift: [4, -6]
-  }),
-  beePose({
-    bob: 0,
-    lean: 0,
-    pitch: 2.3,
-    wingNear: -3.0,
-    wingFar: -2.9,
-    wingLen: 0.7,
-    sceptre: null,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    crown: null,
-    curl: 0.4,
-    legs: 0,
-    shift: [8, -6]
-  }),
-  beePose({
-    bob: 0,
-    lean: 0,
-    pitch: Math.PI / 2 + 0.05,
-    wingNear: -2.8,
-    wingFar: -2.6,
-    wingLen: 0.7,
-    sceptre: null,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    crown: null,
-    curl: 0.3,
-    legs: 0,
-    shift: [14, -6]
+const defeat = memo(() =>
+  [
+    beePose({
+      bob: 3,
+      lean: -3,
+      pitch: -0.15,
+      wingNear: -2.7,
+      wingFar: -2.4,
+      blur: 0.4,
+      sceptre: [8, 2],
+      eyes: 'swirl',
+      mouth: 'o',
+      crown: [-1, -3],
+      crownTilt: 0.3,
+      stars: 0.4,
+      curl: 0.3
+    }),
+    beePose({
+      bob: 1,
+      lean: -2,
+      pitch: 0.45,
+      wingNear: -2.9,
+      wingFar: -2.5,
+      blur: -0.5,
+      sceptre: [8, 6],
+      eyes: 'swirl',
+      mouth: 'o',
+      crown: null,
+      stars: 2.3,
+      curl: 0.4,
+      shift: [0, -4]
+    }),
+    beePose({
+      bob: 0,
+      lean: 0,
+      pitch: 1.1,
+      wingNear: -3.0,
+      wingFar: -2.7,
+      blur: 0.5,
+      wingLen: 0.8,
+      sceptre: null,
+      eyes: 'dead',
+      mouth: 'o',
+      crown: null,
+      curl: 0.5,
+      shift: [0, -6]
+    }),
+    beePose({
+      bob: 0,
+      lean: 0,
+      pitch: 1.85,
+      wingNear: -3.1,
+      wingFar: -2.9,
+      wingLen: 0.75,
+      sceptre: null,
+      eyes: 'dead',
+      mouth: 'tongue',
+      crown: null,
+      curl: 0.4,
+      shift: [4, -6]
+    }),
+    beePose({
+      bob: 0,
+      lean: 0,
+      pitch: 2.3,
+      wingNear: -3.0,
+      wingFar: -2.9,
+      wingLen: 0.7,
+      sceptre: null,
+      eyes: 'swirl',
+      mouth: 'tongue',
+      crown: null,
+      curl: 0.4,
+      legs: 0,
+      shift: [8, -6]
+    }),
+    beePose({
+      bob: 0,
+      lean: 0,
+      pitch: Math.PI / 2 + 0.05,
+      wingNear: -2.8,
+      wingFar: -2.6,
+      wingLen: 0.7,
+      sceptre: null,
+      eyes: 'swirl',
+      mouth: 'tongue',
+      crown: null,
+      curl: 0.3,
+      legs: 0,
+      shift: [14, -6]
+    })
+  ].map((p, i) => {
+    const fx = [-1, 74, 88, 100, 100, 100][i]
+    const fy = [-1, 24, 62, 108, 114, 115][i]
+    const frame = i >= 3 ? settle(drawBee(p)) : drawBee(p)
+    return fx < 0 ? frame : dropCrown(frame, fx, fy)
   })
-].map((p, i) => {
-  const fx = [-1, 74, 88, 100, 100, 100][i]
-  const fy = [-1, 24, 62, 108, 114, 115][i]
-  const frame = i >= 3 ? settle(drawBee(p)) : drawBee(p)
-  return fx < 0 ? frame : dropCrown(frame, fx, fy)
-})
+)
 
 export const sheets: SheetModule = {
   beeBoss: () => ({
-    idle: anim(idle.map(fit), 6, true),
-    intro: anim(intro.map(fit), 8, false),
-    move: anim(move.map(fit), 12, true),
-    windup: anim(windup.map(fit), 12, false),
-    attack: anim(attack.map(fit), 16, true),
-    recover: anim(recover.map(fit), 8, true),
-    hurt: anim(hurt.map(fit), 12, false),
-    defeat: anim(defeat.map(fit), 8, false)
+    idle: lazyAnim(() => idle().map(fit), 6, true),
+    intro: lazyAnim(() => intro().map(fit), 8, false),
+    move: lazyAnim(() => move().map(fit), 12, true),
+    windup: lazyAnim(() => windup().map(fit), 12, false),
+    attack: lazyAnim(() => attack().map(fit), 16, true),
+    recover: lazyAnim(() => recover().map(fit), 8, true),
+    hurt: lazyAnim(() => hurt().map(fit), 12, false),
+    defeat: lazyAnim(() => defeat().map(fit), 8, false)
   })
 }

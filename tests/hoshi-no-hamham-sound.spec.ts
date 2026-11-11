@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
 
 /** The parts of the app these tests look inside (private at compile time, plain fields at run time). */
 interface HamAudio {
@@ -59,7 +60,7 @@ async function pageThroughStory(page: Page) {
 
 /** Opens a stage through the stage select with every stage unlocked and the sound on. */
 async function openStage(page: Page, no: number) {
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(() => {
     const save = {
       version: 1,
@@ -71,7 +72,7 @@ async function openStage(page: Page, no: number) {
     }
     localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
   })
-  await page.reload()
+  await reloadGame(page)
   await page.getByRole('button', { name: 'つづきから' }).click()
   await page
     .locator('.stage-card')
@@ -84,7 +85,7 @@ async function openStage(page: Page, no: number) {
 
 test('the first click unlocks the audio and the music follows the screens', async ({ page }) => {
   const errors = collectErrors(page)
-  await page.goto('/')
+  await openGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
   expect(await theme(page)).toBe('title')
 
@@ -109,9 +110,12 @@ test('the first click unlocks the audio and the music follows the screens', asyn
 
 test('any key unlocks the audio, and the title demo stays silent', async ({ page }) => {
   const errors = collectErrors(page)
-  await page.goto('/')
+  await openGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
-  expect(await page.evaluate(() => window.__hamham!.app.audio.ctx?.state ?? 'none')).not.toBe('running')
+  // Nothing may create the audio context before a gesture — not even the title's own `title-start` cue, which
+  // plays when the logo lands (well within this wait).
+  await page.waitForTimeout(700)
+  expect(await page.evaluate(() => window.__hamham?.app.audio.ctx ?? null)).toBeNull()
   await page.keyboard.press('ArrowDown')
   await page.waitForFunction(() => window.__hamham?.app.audio.ctx?.state === 'running')
   await countEffects(page)
@@ -149,7 +153,7 @@ test('muting silences the effects and survives a reload', async ({ page }) => {
   expect(await effects(page)).toBeGreaterThan(0)
 
   await page.keyboard.press('KeyM')
-  await expect(page.locator('#mute')).toHaveText('🔇')
+  await expect(page.locator('#mute')).toHaveAttribute('aria-pressed', 'true')
   expect(await page.evaluate(() => window.__hamham!.app.audio.muted)).toBe(true)
   await page.evaluate(() => ((window as unknown as { __sfx: number }).__sfx = 0))
   await page.keyboard.press('Space')
@@ -157,7 +161,7 @@ test('muting silences the effects and survives a reload', async ({ page }) => {
   // The engine is never asked for an effect while muted.
   expect(await effects(page)).toBe(0)
 
-  await page.reload()
+  await reloadGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
   expect(await page.evaluate(() => window.__hamham!.app.audio.muted)).toBe(true)
   expect(errors).toEqual([])

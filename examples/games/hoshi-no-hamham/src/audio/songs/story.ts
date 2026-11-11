@@ -28,7 +28,7 @@ export const SONG: SongDef = {
   key: 'G major',
   bpm: 76,
   barTicks: 36,
-  gain: 1.25,
+  gain: 1.8,
   parts: [
     { id: 'mb', inst: 'musicbox', role: 'melody', vol: 0.7, pan: 0.1, send: 0.45 },
     { id: 'fl', inst: 'flute', role: 'melody', vol: 0.5, pan: -0.15, send: 0.4 },

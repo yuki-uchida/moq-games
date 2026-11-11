@@ -48,7 +48,8 @@
     "test:hoshi-no-hamham": "vitest run examples/games/hoshi-no-hamham/tests --maxWorkers=1",
     "e2e:hoshi-no-hamham": "playwright test --config playwright.hoshi-no-hamham.config.ts",
     "art:hoshi-no-hamham": "node scripts/hoshi-no-hamham-art.mjs",
-    "audio:hoshi-no-hamham": "node scripts/hoshi-no-hamham-audio.mjs"
+    "audio:hoshi-no-hamham": "node scripts/hoshi-no-hamham-audio.mjs",
+    "review:hoshi-no-hamham": "node scripts/hoshi-no-hamham-review.mjs"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",

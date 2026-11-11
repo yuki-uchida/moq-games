@@ -6,10 +6,11 @@
 import { tile } from '../art'
 import type { SaveData, StageDef, VolumeKind, Volumes } from '../game/types'
 import { Diorama } from './diorama'
-import { icon, installPixelStyles, rasterImg, restartPlayers, spriteImg, spritePlayer, spriteUrl } from './pixel'
+import { anim, icon, installPixelStyles, rasterImg, restartPlayers, spriteImg, spritePlayer, spriteUrl } from './pixel'
 import { countValue, fitScale, formatClock, starRating, STAR_RULES } from './rules'
+import type { SoundCue } from '../view/cues'
 import { moveFocus, focusables, type Direction } from './spatial'
-import { CREDITS_SHOT, endingShot, shotFor } from './story-scenes'
+import { CREDITS_SHOT, endingShot, resultShot, shotFor } from './story-scenes'
 import { Typewriter } from './typewriter'
 
 /** What the screens report back to the app. */
@@ -29,8 +30,10 @@ export interface ScreenActions {
   resume(): void
   togglePause(): void
   toggleMute(): void
-  /** Any menu button was pressed (sound and audio unlock). */
+  /** Any menu button was pressed (unlocks the audio; the sound itself is a `cue`). */
   menuSound(): void
+  /** A screen sound: the interface cue to play now. */
+  cue(cue: SoundCue): void
   /** A volume slider moved (0..1); the app applies and saves it. */
   setVolume(kind: VolumeKind, value: number): void
 }
@@ -91,6 +94,12 @@ const TYPE_CPS = 32
 const LEAVE_MS = 240
 /** The app's confirm() for a key press the screens already handled arrives within a frame or two. */
 const CONFIRM_GUARD_MS = 250
+/** The title logo's drop lands at 27% of its 900 ms animation. */
+const LOGO_LAND_MS = 245
+/** The unlock chime waits until the card that opened the select has finished its own sound. */
+const UNLOCK_DELAY_MS = 360
+/** Count-up ticks are never closer than this (ms). */
+const TICK_MIN_GAP_MS = 45
 
 const DEAD_LINES = [
   'だいじょうぶ、ハム彦ならきっとできる！',
@@ -176,8 +185,15 @@ export class DomScreens implements Screens {
   private tallyFrame = 0
   private tallyDone = true
   private finishTally: (() => void) | null = null
+  /** The new-record fanfare has just played in this tally run (so the closing chime holds back on a skip). */
+  private recordSounded = false
   private storyArt: Diorama | null = null
   private endingArt: Diorama | null = null
+  private resultArt: Diorama | null = null
+  /** A delayed cue (the title logo landing, the unlock chime), dropped when the screen changes. */
+  private cueTimer = 0
+  /** The stage whose unlock chime has already played, so reopening the select stays quiet. */
+  private announcedUnlock = 0
   private sliders = new Map<VolumeKind, HTMLInputElement>()
   private returnFocus: HTMLElement | null = null
 
@@ -186,19 +202,22 @@ export class DomScreens implements Screens {
     installPixelStyles()
     this.storyArt = new Diorama($<HTMLCanvasElement>('#story-art'), reducedMotion)
     this.endingArt = new Diorama($<HTMLCanvasElement>('#ending-art'), reducedMotion)
+    this.resultArt = new Diorama($<HTMLCanvasElement>('#result-art'), reducedMotion)
 
-    const on = (selector: string, handler: () => void) =>
+    // One click is one sound: `sound` is what it plays (null: the handler or the app plays its own).
+    const on = (selector: string, handler: () => void, sound: SoundCue | null = 'menu-select') =>
       $(selector).addEventListener('click', () => {
         actions.menuSound()
+        if (sound) actions.cue(sound)
         handler()
       })
     on('#start', () => actions.newGame())
     on('#continue', () => actions.openSelect())
     on('#help-open', () => this.openHelp())
-    on('#help-close', () => this.closeHelp())
-    on('#help-done', () => this.closeHelp())
-    on('#select-back', () => actions.openTitle())
-    on('#story-next', () => this.advanceStory())
+    on('#help-close', () => this.closeHelp(), 'menu-back')
+    on('#help-done', () => this.closeHelp(), 'menu-back')
+    on('#select-back', () => actions.openTitle(), 'menu-back')
+    on('#story-next', () => this.advanceStory(), null)
     on('#story-skip', () => this.skipStory())
     on('#result-next', () => actions.next())
     on('#result-retry', () => actions.retry())
@@ -206,9 +225,10 @@ export class DomScreens implements Screens {
     on('#dead-retry', () => actions.retry())
     on('#dead-select', () => actions.openSelect())
     on('#ending-select', () => actions.openSelect())
-    on('#ending-title-button', () => actions.openTitle())
-    on('#ending-next', () => this.advanceEnding())
-    on('#pause-resume', () => actions.resume())
+    on('#ending-title-button', () => actions.openTitle(), 'menu-back')
+    on('#ending-next', () => this.advanceEnding(), null)
+    // The app plays the pause and resume sounds itself.
+    on('#pause-resume', () => actions.resume(), null)
     on('#pause-retry', () => actions.retry())
     on('#pause-select', () => actions.openSelect())
     // A click on the story text (not on its buttons) works like Enter: complete the page, then turn it.
@@ -283,7 +303,7 @@ export class DomScreens implements Screens {
         this.nudge(focused, dir === 'right' ? 1 : -1)
         return
       }
-      moveFocus(root, dir)
+      if (moveFocus(root, dir)) this.actions?.cue('menu-move')
       return
     }
     if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') {
@@ -332,17 +352,21 @@ export class DomScreens implements Screens {
     switch (root.id) {
       case 'help-screen':
         this.actions?.menuSound()
+        this.actions?.cue('menu-back')
         this.closeHelp()
         return true
       case 'pause-screen':
+        // The app plays the resume sound.
         this.actions?.resume()
         return true
       case 'select-screen':
         this.actions?.menuSound()
+        this.actions?.cue('menu-back')
         this.actions?.openTitle()
         return true
       case 'story-screen':
         if (this.mode !== 'story') return false
+        this.actions?.cue('menu-back')
         this.skipStory()
         return true
       default:
@@ -353,8 +377,10 @@ export class DomScreens implements Screens {
   confirm() {
     // The screens handle Enter/Space themselves; this only acts on presses they did not see.
     if (performance.now() - this.lastKeyAt < CONFIRM_GUARD_MS) return
-    if (this.helpOpen) this.closeHelp()
-    else if (this.mode === 'story') this.confirmStory()
+    if (this.helpOpen) {
+      this.actions?.cue('menu-back')
+      this.closeHelp()
+    } else if (this.mode === 'story') this.confirmStory()
     else if (this.mode === 'ending') this.confirmEnding()
     else if (this.current === 'result-screen' && !this.tallyDone) this.finishTally?.()
   }
@@ -376,7 +402,11 @@ export class DomScreens implements Screens {
       this.typer?.cancel()
       this.mode = null
     }
-    if (id !== 'result-screen') this.stopTally()
+    if (id !== 'result-screen') {
+      this.stopTally()
+      this.resultArt?.stop()
+    }
+    window.clearTimeout(this.cueTimer)
     this.current = id
     if (!id) {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -432,6 +462,14 @@ export class DomScreens implements Screens {
     } else note.append(el('span', '', 'かじって、掘って、逃げきろう！'))
     this.show('title-screen', hasSave ? cont : start)
     this.fitLogo()
+    // The logo's drop lands (at once under reduced motion, where it does not drop).
+    this.cueLater('title-start', reducedMotion() ? 0 : LOGO_LAND_MS)
+  }
+
+  /** Plays a cue after a delay unless another screen opens first. */
+  private cueLater(cue: SoundCue, ms: number) {
+    window.clearTimeout(this.cueTimer)
+    this.cueTimer = window.setTimeout(() => this.actions?.cue(cue), ms)
   }
 
   /** The logo at the largest whole-number device scale that fits the top of the stage. */
@@ -502,6 +540,7 @@ export class DomScreens implements Screens {
       if (unlocked)
         card.addEventListener('click', () => {
           this.actions?.menuSound()
+          this.actions?.cue('menu-select')
           this.actions?.pickStage(stage)
         })
       if (unlocked && (stage.no === newest || !focus)) focus = card
@@ -517,6 +556,12 @@ export class DomScreens implements Screens {
     )
     this.show('select-screen', focus)
     ;(focus as HTMLButtonElement | null)?.scrollIntoView?.({ block: 'nearest' })
+    // A stage that has just opened (not the very first one) is highlighted: chime once for it.
+    const fresh = stages.find((stage) => stage.no === newest && stage.no > 1 && !save.cleared.includes(stage.no))
+    if (fresh && fresh.no !== this.announcedUnlock) {
+      this.announcedUnlock = fresh.no
+      this.cueLater('unlock', UNLOCK_DELAY_MS)
+    }
   }
 
   // ------------------------------------------------------------------------------------------- story
@@ -549,7 +594,7 @@ export class DomScreens implements Screens {
     const p = el('p', 'page-text')
     box.replaceChildren(p)
     replay(p, 'is-turning')
-    this.typer = new Typewriter(p, text, TYPE_CPS, reducedMotion())
+    this.typer = new Typewriter(p, text, TYPE_CPS, reducedMotion(), undefined, () => this.actions?.cue('text-blip'))
     dots.replaceChildren(
       ...this.pages.map((_, index) => el('i', index === this.page ? 'is-active' : index < this.page ? 'is-read' : ''))
     )
@@ -568,10 +613,13 @@ export class DomScreens implements Screens {
   private advanceStory() {
     if (this.mode !== 'story') return
     if (this.page < this.pages.length - 1) {
+      this.actions?.cue('page-turn')
       this.page += 1
       this.renderStory()
       return
     }
+    // The last page: the story is over, the stage (or the select) takes it from here.
+    this.actions?.cue('menu-select')
     this.mode = null
     this.actions?.storyDone()
   }
@@ -617,6 +665,8 @@ export class DomScreens implements Screens {
       if (info.newRecord) {
         const badge = el('span', 'badge badge-pink', 'しんきろく！')
         row.append(badge)
+        this.actions?.cue('new-record')
+        this.recordSounded = true
         if (info.previousBest !== null)
           row.after(el('li', 'tally-sub', `まえのベスト ${formatClock(info.previousBest)}`))
       }
@@ -652,7 +702,10 @@ export class DomScreens implements Screens {
     stars.setAttribute('aria-label', `ほし ${earned} / 3`)
     stars.setAttribute('role', 'img')
 
+    // A quiet backdrop of the stage's own world (dimmed by the stylesheet) instead of the black canvas behind.
+    this.resultArt!.setShot(resultShot(stage.theme, stage.no), false)
     this.show('result-screen', $('#result-next'))
+    this.resultArt!.start()
     this.runTally(lines, starNodes)
   }
 
@@ -666,6 +719,7 @@ export class DomScreens implements Screens {
     card.classList.remove('is-tallied')
     const finish = () => {
       cancelAnimationFrame(this.tallyFrame)
+      this.recordSounded = false
       for (const l of lines) {
         l.row.classList.add('is-in')
         l.value.textContent = l.format(l.target)
@@ -678,6 +732,9 @@ export class DomScreens implements Screens {
       card.classList.add('is-tallied')
       this.tallyDone = true
       this.finishTally = null
+      // The closing chime; a skip that just revealed a new record lets that fanfare stand alone.
+      if (!this.recordSounded) this.actions?.cue('tally-done')
+      this.recordSounded = false
     }
     this.tallyDone = false
     this.finishTally = finish
@@ -686,6 +743,7 @@ export class DomScreens implements Screens {
       return
     }
     const t0 = performance.now()
+    let lastTick = -Infinity
     const step = (now: number) => {
       const t = now - t0
       lines.forEach((l, i) => {
@@ -693,7 +751,13 @@ export class DomScreens implements Screens {
         if (t < at) return
         l.row.classList.add('is-in')
         const p = Math.min(1, (t - at) / COUNT)
-        l.value.textContent = l.format(p >= 1 ? l.target : countValue(l.target, p))
+        const text = l.format(p >= 1 ? l.target : countValue(l.target, p))
+        // A tick whenever a counting number changes, never closer together than the floor.
+        if (text !== l.value.textContent && p < 1 && now - lastTick >= TICK_MIN_GAP_MS) {
+          lastTick = now
+          this.actions?.cue('tally-tick')
+        }
+        l.value.textContent = text
         if (p >= 1 && l.after && !l.row.dataset.after) {
           l.row.dataset.after = '1'
           l.after()
@@ -718,7 +782,15 @@ export class DomScreens implements Screens {
 
   showDead() {
     const art = $('#dead-art')
-    art.replaceChildren(spritePlayer('hero', 'die', { className: 'dead-hero', stillFrame: 5 }))
+    // The hero lies dazed: the last two frames of the fall (flat on his back, then eyes swirling), swapping gently.
+    const last = anim('hero', 'die').frames.length - 1
+    art.replaceChildren(
+      spritePlayer('hero', 'die', {
+        className: 'dead-hero',
+        stillFrame: last,
+        cycle: { frames: [last - 1, last], every: 0.6 }
+      })
+    )
     $('#dead-text').textContent = DEAD_LINES[Math.floor(Math.random() * DEAD_LINES.length)]
     this.show('dead-screen', $('#dead-retry'))
     restartPlayers(art)
@@ -775,6 +847,7 @@ export class DomScreens implements Screens {
 
   private advanceEnding() {
     if (this.mode !== 'ending') return
+    this.actions?.cue('page-turn')
     if (this.page < this.pages.length - 1) {
       this.page += 1
       this.renderEnding()
@@ -873,7 +946,10 @@ export class DomScreens implements Screens {
         sync()
         this.actions?.setVolume(row.kind, Number(input.value) / 100)
       })
-      input.addEventListener('change', () => this.actions?.menuSound())
+      input.addEventListener('change', () => {
+        this.actions?.menuSound()
+        this.actions?.cue('menu-select')
+      })
       label.append(icon(row.icon), el('span', 'volume-label', row.label), input, out)
       box.append(label)
       this.sliders.set(row.kind, input)
@@ -905,6 +981,7 @@ export class DomScreens implements Screens {
     const value = Math.max(0, Math.min(100, Number(input.value) + sign * Number(input.step || 5)))
     if (String(value) === input.value) return
     input.value = String(value)
+    this.actions?.cue('menu-move')
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
@@ -945,7 +1022,7 @@ export class DomScreens implements Screens {
   setMuted(muted: boolean) {
     const button = document.querySelector<HTMLButtonElement>('#mute')
     if (!button) return
-    button.textContent = muted ? '🔇' : '🔊'
+    // The HUD draws the speaker sprite from aria-pressed; the button carries no emoji of its own.
     button.setAttribute('aria-pressed', String(muted))
   }
 

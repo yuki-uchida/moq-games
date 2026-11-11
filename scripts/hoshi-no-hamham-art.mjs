@@ -255,7 +255,7 @@ for (const theme of contract.THEMES) {
       if (cellAnchored) draw(scene, f, tx * 64 - ax, ty * 64 - ay, 1, flip)
       else draw(scene, f, tx * 64 + 32 - ax, (ty + 1) * 64 - ay, 1, flip)
     }
-    place('prop:tree', 'idle', 0, 7, 6)
+    place(contract.themedProp('prop:tree', theme), 'idle', 0, 7, 6)
     place('prop:rock', 'idle', 0, 9, 6)
     place('prop:switch1', 'off', 0, 16, 7)
     place('prop:goal', 'open', 0, 20, 7)
@@ -284,4 +284,4 @@ const lines = [
   ...pending.backdrops.map((theme) => `backdrop:${theme}`)
 ]
 writeFileSync(resolve(out, 'pending.txt'), lines.length ? `${lines.join('\n')}\n` : 'nothing pending\n')
-console.log(`Wrote ${written.length} images to ${out}; ${lines.length} stand-ins listed in pending.txt`)
+console.log(`Wrote ${written.length} images to ${out}; ${lines.length} undrawn items listed in pending.txt`)

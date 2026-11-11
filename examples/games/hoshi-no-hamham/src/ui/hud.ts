@@ -11,10 +11,12 @@ import {
   bossRatio,
   collectText,
   heartStates,
+  hintForInput,
   hudScale,
   isLowHealth,
   newBossBar,
   settleHeart,
+  ZONES,
   stepBossBar,
   type BossBarState,
   type HeartState
@@ -24,13 +26,13 @@ import { buildTouchControls } from './touch'
 
 /** What staging (the director) may show on the HUD. */
 export interface HudApi {
-  /** The stage title card. */
-  showBanner(title: string, sub?: string): void
+  /** The stage title card, in the upper-third slot it shares with the calls; it slides out after `seconds`. */
+  showBanner(title: string, sub?: string, seconds?: number): void
   /** A short hint or notice at the bottom. */
   showToast(text: string): void
-  /** One big word in the middle of the screen (「スタート！」「クリア！」). */
+  /** One big word in the upper-third slot (「スタート！」「クリア！」); it replaces the stage card if that is still there. */
   showCall(text: string, tone?: 'gold' | 'pink' | 'red'): void
-  /** A boss's introduction: portrait (a `face_*` name of the `ui` sheet), name and title, for `seconds`. */
+  /** A boss's introduction in the lower third, above the letterbox bar: portrait (a `face_*` name of the `ui` sheet), name and title, for `seconds`. */
   showNameplate(name: string, title: string, face: string, seconds?: number): void
   showBoss(name: string, title: string): void
   hideBoss(): void
@@ -108,10 +110,14 @@ export class Hud implements HudApi {
     root.style.setProperty('--ico-on', rasterUrl(clipRaster('ui', 'soundOn')))
     root.style.setProperty('--ico-off', rasterUrl(clipRaster('ui', 'soundOff')))
     root.style.setProperty('--ico-pause', rasterUrl(clipRaster('ui', 'pause')))
+    const pct = (v: number) => `${(v * 100).toFixed(2)}%`
+    root.style.setProperty('--z-card', pct(ZONES.cardTop))
+    root.style.setProperty('--z-plate', pct(ZONES.plateBottom))
+    root.style.setProperty('--z-toast', pct(ZONES.toastBottom))
     root.style.setProperty('--plate', plateUrl('night', 22, 'square'))
     root.style.setProperty('--plate-down', plateUrl('nightDown', 22, 'square'))
 
-    // Top row: [hearts, tag, counters] [boss bar] [buttons]
+    // Top row: [hearts, tag, counters] [buttons]; the boss bar has its own strip (top centre, bottom in narrow stages)
     const top = el('div', 'hudx-top')
     const left = el('div', 'hudx-left')
     this.heartsEl = el('div', 'hudx-hearts hudx-frame')
@@ -181,7 +187,7 @@ export class Hud implements HudApi {
     pause.type = 'button'
     pause.setAttribute('aria-label', '一時停止')
     right.append(mute, pause)
-    top.append(left, center, right)
+    top.append(left, right)
 
     this.banner = el('div', 'hudx-banner')
     this.banner.setAttribute('aria-hidden', 'true')
@@ -212,7 +218,7 @@ export class Hud implements HudApi {
     touch.id = 'touch-controls'
     buildTouchControls(touch)
 
-    root.replaceChildren(top, this.banner, this.call, this.plate, this.toast, touch)
+    root.replaceChildren(top, center, this.banner, this.call, this.plate, this.toast, touch)
     for (const node of [this.banner, this.call, this.plate, this.toast])
       node.addEventListener('animationend', () => node.classList.remove('is-show'))
     this.bossBar.addEventListener('animationend', (event) => {
@@ -417,23 +423,26 @@ export class Hud implements HudApi {
 
   // ------------------------------------------------------------------------------------------------ staging
 
-  showBanner(title: string, sub = '') {
+  showBanner(title: string, sub = '', seconds = 1.1) {
     this.bannerTitle.textContent = title
     this.bannerSub.textContent = sub
     this.bannerSub.hidden = !sub
     this.drawEmblem(this.bannerEmblem)
-    this.banner.style.setProperty('--dur', '2.8s')
+    this.banner.style.setProperty('--dur', `${Math.max(0.6, seconds)}s`)
+    this.call.classList.remove('is-show')
     replay(this.banner, 'is-show')
   }
 
   showToast(text: string) {
-    this.toast.textContent = text
+    const touch = !document.querySelector<HTMLElement>('#touch-controls')?.hidden
+    this.toast.textContent = hintForInput(text, touch)
     replay(this.toast, 'is-show')
   }
 
   showCall(text: string, tone: 'gold' | 'pink' | 'red' = 'gold') {
     this.call.textContent = text
     this.call.dataset.tone = tone
+    this.banner.classList.remove('is-show')
     replay(this.call, 'is-show')
   }
 

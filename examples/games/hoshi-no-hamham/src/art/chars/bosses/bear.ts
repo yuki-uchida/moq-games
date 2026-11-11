@@ -11,7 +11,7 @@ import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { bossSpec } from '../../contract'
 import { Painter, Raster, bar, farRamp, shadeIndex, type Pt, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const PELT = R.bearViolet
 const FAR = farRamp(PELT)
@@ -543,396 +543,414 @@ function lie(
 
 const TAU = Math.PI * 2
 
-const idle = [0, 1, 2, 1].map((k, i) =>
-  drawBear(
-    stand({
-      squash: -k * 0.8,
-      head: [0, k * 0.8],
-      nearHand: [
-        [12, 24],
-        [9, 26],
-        [14, 23],
-        [10, 25]
-      ][i] as Pt,
-      nearBend: [-0.3, 1],
-      eyes: i === 2 ? 'closed' : 'sleepy',
-      gourd: [0, k * 0.5]
-    })
+const idle = memo(() =>
+  [0, 1, 2, 1].map((k, i) =>
+    drawBear(
+      stand({
+        squash: -k * 0.8,
+        head: [0, k * 0.8],
+        nearHand: [
+          [12, 24],
+          [9, 26],
+          [14, 23],
+          [10, 25]
+        ][i] as Pt,
+        nearBend: [-0.3, 1],
+        eyes: i === 2 ? 'closed' : 'sleepy',
+        gourd: [0, k * 0.5]
+      })
+    )
   )
 )
 
-const intro = [
-  stand({
-    sink: 3,
-    squash: 4,
-    head: [-2, 3],
-    pitch: -0.4,
-    nearHand: [-14, 22],
-    farHand: [2, 26],
-    eyes: 'angry',
-    mouth: 'grumble'
-  }),
-  stand({
-    squash: -1,
-    pitch: 0.6,
-    nearHand: [-14, -14],
-    farHand: [20, -10],
-    nearBend: [-1, -0.2],
-    farBend: [1, 0.4],
-    eyes: 'squint',
-    mouth: 'roar',
-    jaw: 0.5,
-    earBack: 2
-  }),
-  stand({
-    squash: -3,
-    bob: 1,
-    head: [-1, -2],
-    pitch: 1,
-    nearHand: [-14, -31],
-    farHand: [24, -22],
-    nearBend: [-1, -0.2],
-    farBend: [1, 0.4],
-    eyes: 'squint',
-    mouth: 'roar',
-    jaw: 1,
-    earBack: 3,
-    fx: { roar: 2 }
-  }),
-  stand({
-    squash: -2.4,
-    head: [0, -1],
-    pitch: 0.9,
-    nearHand: [-16, -29],
-    farHand: [26, -20],
-    nearBend: [-1, -0.2],
-    farBend: [1, 0.4],
-    eyes: 'squint',
-    mouth: 'roar',
-    jaw: 0.85,
-    earBack: 3,
-    gourd: [0, 1],
-    fx: { roar: 3 }
-  })
-].map(drawBear)
-
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const sw = Math.sin(t * TAU)
-  const cw = Math.cos(t * TAU)
-  const bob = ((1 + Math.cos(t * TAU * 2)) / 2) * 3
-  return drawBear(
+const intro = memo(() =>
+  [
     stand({
-      bob,
-      lean: 5,
-      head: [2, bob * 0.3 + 1],
-      pitch: -0.1,
-      nearFoot: [sw * 10, Math.max(0, cw) * 7],
-      farFoot: [-sw * 10, Math.max(0, -cw) * 7],
-      nearHand: [-2 - sw * 13, 30 - Math.abs(sw) * 4],
-      farHand: [5 + sw * 13, 29 - Math.abs(sw) * 4],
-      gourd: [-sw * 2, ((1 - Math.cos(t * TAU * 2 - 1.2)) / 2) * 4],
-      earBack: 1
-    })
-  )
-})
-
-const windup = [0, 1, 2].map((i) =>
-  drawBear(
-    stand({
-      sink: [2, 5, 6][i],
-      squash: [3, 7, 10][i],
-      lean: [-1, -2, -3][i],
-      head: [
-        [0, 2],
-        [-1, 4],
-        [-2, 5]
-      ][i] as Pt,
+      sink: 3,
+      squash: 4,
+      head: [-2, 3],
       pitch: -0.4,
-      splay: [3, 6, 8][i],
-      nearHand: [
-        [-20, 6],
-        [-22, -8],
-        [-23, -20]
-      ][i] as Pt,
-      farHand: [
-        [-10, 8],
-        [-16, -4],
-        [-20, -14]
-      ][i] as Pt,
-      nearBend: [-0.6, 0.5],
-      farBend: [-0.6, 0.5],
+      nearHand: [-14, 22],
+      farHand: [2, 26],
+      eyes: 'angry',
+      mouth: 'grumble'
+    }),
+    stand({
+      squash: -1,
+      pitch: 0.6,
+      nearHand: [-14, -14],
+      farHand: [20, -10],
+      nearBend: [-1, -0.2],
+      farBend: [1, 0.4],
+      eyes: 'squint',
+      mouth: 'roar',
+      jaw: 0.5,
+      earBack: 2
+    }),
+    stand({
+      squash: -3,
+      bob: 1,
+      head: [-1, -2],
+      pitch: 1,
+      nearHand: [-14, -31],
+      farHand: [24, -22],
+      nearBend: [-1, -0.2],
+      farBend: [1, 0.4],
+      eyes: 'squint',
+      mouth: 'roar',
+      jaw: 1,
+      earBack: 3,
+      fx: { roar: 2 }
+    }),
+    stand({
+      squash: -2.4,
+      head: [0, -1],
+      pitch: 0.9,
+      nearHand: [-16, -29],
+      farHand: [26, -20],
+      nearBend: [-1, -0.2],
+      farBend: [1, 0.4],
+      eyes: 'squint',
+      mouth: 'roar',
+      jaw: 0.85,
+      earBack: 3,
+      gourd: [0, 1],
+      fx: { roar: 3 }
+    })
+  ].map(drawBear)
+)
+
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const sw = Math.sin(t * TAU)
+    const cw = Math.cos(t * TAU)
+    const bob = ((1 + Math.cos(t * TAU * 2)) / 2) * 3
+    return drawBear(
+      stand({
+        bob,
+        lean: 5,
+        head: [2, bob * 0.3 + 1],
+        pitch: -0.1,
+        nearFoot: [sw * 10, Math.max(0, cw) * 7],
+        farFoot: [-sw * 10, Math.max(0, -cw) * 7],
+        nearHand: [-2 - sw * 13, 30 - Math.abs(sw) * 4],
+        farHand: [5 + sw * 13, 29 - Math.abs(sw) * 4],
+        gourd: [-sw * 2, ((1 - Math.cos(t * TAU * 2 - 1.2)) / 2) * 4],
+        earBack: 1
+      })
+    )
+  })
+)
+
+const windup = memo(() =>
+  [0, 1, 2].map((i) =>
+    drawBear(
+      stand({
+        sink: [2, 5, 6][i],
+        squash: [3, 7, 10][i],
+        lean: [-1, -2, -3][i],
+        head: [
+          [0, 2],
+          [-1, 4],
+          [-2, 5]
+        ][i] as Pt,
+        pitch: -0.4,
+        splay: [3, 6, 8][i],
+        nearHand: [
+          [-20, 6],
+          [-22, -8],
+          [-23, -20]
+        ][i] as Pt,
+        farHand: [
+          [-10, 8],
+          [-16, -4],
+          [-20, -14]
+        ][i] as Pt,
+        nearBend: [-0.6, 0.5],
+        farBend: [-0.6, 0.5],
+        eyes: 'angry',
+        mouth: 'grumble',
+        gourd: [0, [1, 2, 3][i]],
+        earBack: 2
+      })
+    )
+  )
+)
+
+const air = memo(() =>
+  [
+    stand({
+      bob: 12,
+      squash: -3,
+      head: [0, -1],
+      pitch: 0.5,
+      nearHand: [-14, -26],
+      farHand: [22, -20],
+      nearBend: [-1, -0.2],
+      farBend: [1, 0.4],
+      nearFoot: [-3, 12],
+      farFoot: [3, 10],
+      eyes: 'angry',
+      mouth: 'roar',
+      jaw: 0.4,
+      gourd: [0, 3],
+      earBack: 3
+    }),
+    stand({
+      bob: 24,
+      squash: 5,
+      head: [0, 1],
+      pitch: -0.2,
+      nearHand: [-30, -12],
+      farHand: [30, -12],
+      nearBend: [-0.4, 1],
+      farBend: [0.4, 1],
+      nearFoot: [-8, 20],
+      farFoot: [8, 18],
+      splay: 6,
+      eyes: 'wide',
+      mouth: 'gasp',
+      jaw: 0.6,
+      gourd: [0, -3],
+      earBack: 4
+    })
+  ].map(drawBear)
+)
+
+const land = memo(() =>
+  [
+    stand({
+      sink: 6,
+      squash: 10,
+      lean: 4,
+      head: [2, 6],
+      pitch: -0.2,
+      splay: 10,
+      nearHand: [-30, 26],
+      farHand: [28, 24],
+      nearBend: [-0.6, 1],
+      farBend: [0.6, 1],
+      eyes: 'squint',
+      mouth: 'gasp',
+      jaw: 0.4,
+      earBack: 3,
+      gourd: [0, 4],
+      fx: {
+        dust: [
+          [26, 114, 7],
+          [110, 114, 7]
+        ],
+        tufts: [
+          [101, 100, 13, -4],
+          [97, 92, 12, -9],
+          [93, 85, 8, -12]
+        ]
+      }
+    }),
+    stand({
+      sink: 5,
+      squash: 9,
+      lean: 2,
+      head: [1, 4],
+      splay: 8,
+      nearHand: [-26, 26],
+      farHand: [24, 25],
+      nearBend: [-0.6, 1],
+      farBend: [0.6, 1],
       eyes: 'angry',
       mouth: 'grumble',
-      gourd: [0, [1, 2, 3][i]],
-      earBack: 2
-    })
-  )
-)
-
-const air = [
-  stand({
-    bob: 12,
-    squash: -3,
-    head: [0, -1],
-    pitch: 0.5,
-    nearHand: [-14, -26],
-    farHand: [22, -20],
-    nearBend: [-1, -0.2],
-    farBend: [1, 0.4],
-    nearFoot: [-3, 12],
-    farFoot: [3, 10],
-    eyes: 'angry',
-    mouth: 'roar',
-    jaw: 0.4,
-    gourd: [0, 3],
-    earBack: 3
-  }),
-  stand({
-    bob: 24,
-    squash: 5,
-    head: [0, 1],
-    pitch: -0.2,
-    nearHand: [-30, -12],
-    farHand: [30, -12],
-    nearBend: [-0.4, 1],
-    farBend: [0.4, 1],
-    nearFoot: [-8, 20],
-    farFoot: [8, 18],
-    splay: 6,
-    eyes: 'wide',
-    mouth: 'gasp',
-    jaw: 0.6,
-    gourd: [0, -3],
-    earBack: 4
-  })
-].map(drawBear)
-
-const land = [
-  stand({
-    sink: 6,
-    squash: 10,
-    lean: 4,
-    head: [2, 6],
-    pitch: -0.2,
-    splay: 10,
-    nearHand: [-30, 26],
-    farHand: [28, 24],
-    nearBend: [-0.6, 1],
-    farBend: [0.6, 1],
-    eyes: 'squint',
-    mouth: 'gasp',
-    jaw: 0.4,
-    earBack: 3,
-    gourd: [0, 4],
-    fx: {
-      dust: [
-        [26, 114, 7],
-        [110, 114, 7]
-      ],
-      tufts: [
-        [101, 100, 13, -4],
-        [97, 92, 12, -9],
-        [93, 85, 8, -12]
-      ]
-    }
-  }),
-  stand({
-    sink: 5,
-    squash: 9,
-    lean: 2,
-    head: [1, 4],
-    splay: 8,
-    nearHand: [-26, 26],
-    farHand: [24, 25],
-    nearBend: [-0.6, 1],
-    farBend: [0.6, 1],
-    eyes: 'angry',
-    mouth: 'grumble',
-    earBack: 2,
-    gourd: [0, -2],
-    fx: {
-      dust: [
-        [22, 113, 8],
-        [112, 113, 8]
-      ]
-    }
-  }),
-  stand({
-    sink: 1,
-    squash: -1,
-    head: [0, -1],
-    splay: 2,
-    nearHand: [-10, 30],
-    farHand: [14, 29],
-    nearBend: [-0.6, 1],
-    farBend: [0.6, 1],
-    eyes: 'angry',
-    mouth: 'frown',
-    gourd: [0, 2],
-    earBack: 1,
-    fx: {
-      dust: [
-        [22, 118, 5],
-        [108, 118, 5]
-      ]
-    }
-  })
-].map(drawBear)
-
-const recover = [0, 1].map((i) =>
-  drawBear(
-    sit({
-      breath: i,
-      lean: -3,
-      head: [0, i * 1.5],
-      jaw: 0.5 + i * 0.3,
-      nearHand: [
-        [20, 34],
-        [18, 35]
-      ][i] as Pt,
+      earBack: 2,
+      gourd: [0, -2],
       fx: {
-        sweat: [
-          [
-            [46, 70],
-            [92, 54]
-          ],
-          [
-            [44, 78],
-            [94, 60]
-          ]
-        ][i] as Pt[]
+        dust: [
+          [22, 113, 8],
+          [112, 113, 8]
+        ]
+      }
+    }),
+    stand({
+      sink: 1,
+      squash: -1,
+      head: [0, -1],
+      splay: 2,
+      nearHand: [-10, 30],
+      farHand: [14, 29],
+      nearBend: [-0.6, 1],
+      farBend: [0.6, 1],
+      eyes: 'angry',
+      mouth: 'frown',
+      gourd: [0, 2],
+      earBack: 1,
+      fx: {
+        dust: [
+          [22, 118, 5],
+          [108, 118, 5]
+        ]
       }
     })
+  ].map(drawBear)
+)
+
+const recover = memo(() =>
+  [0, 1].map((i) =>
+    drawBear(
+      sit({
+        breath: i,
+        lean: -3,
+        head: [0, i * 1.5],
+        jaw: 0.5 + i * 0.3,
+        nearHand: [
+          [20, 34],
+          [18, 35]
+        ][i] as Pt,
+        fx: {
+          sweat: [
+            [
+              [46, 70],
+              [92, 54]
+            ],
+            [
+              [44, 78],
+              [94, 60]
+            ]
+          ][i] as Pt[]
+        }
+      })
+    )
   )
 )
 
-const hurt = [
-  stand({
-    lean: -8,
-    head: [-3, -1],
-    pitch: 0.8,
-    nearHand: [-26, -12],
-    farHand: [22, -10],
-    nearBend: [-1, 0],
-    farBend: [1, 0.2],
-    eyes: 'hurt',
-    mouth: 'gasp',
-    jaw: 0.7,
-    earBack: 4,
-    gourd: [-2, 3],
-    nearFoot: [-3, 0],
-    farFoot: [3, 3]
-  }),
-  stand({
-    lean: -4,
-    head: [-1, 1],
-    pitch: 0.3,
-    nearHand: [-20, 10],
-    farHand: [16, 12],
-    nearBend: [-1, 0.4],
-    farBend: [1, 0.4],
-    eyes: 'squint',
-    mouth: 'grumble',
-    earBack: 2,
-    gourd: [1, 1]
-  })
-].map(drawBear)
+const hurt = memo(() =>
+  [
+    stand({
+      lean: -8,
+      head: [-3, -1],
+      pitch: 0.8,
+      nearHand: [-26, -12],
+      farHand: [22, -10],
+      nearBend: [-1, 0],
+      farBend: [1, 0.2],
+      eyes: 'hurt',
+      mouth: 'gasp',
+      jaw: 0.7,
+      earBack: 4,
+      gourd: [-2, 3],
+      nearFoot: [-3, 0],
+      farFoot: [3, 3]
+    }),
+    stand({
+      lean: -4,
+      head: [-1, 1],
+      pitch: 0.3,
+      nearHand: [-20, 10],
+      farHand: [16, 12],
+      nearBend: [-1, 0.4],
+      farBend: [1, 0.4],
+      eyes: 'squint',
+      mouth: 'grumble',
+      earBack: 2,
+      gourd: [1, 1]
+    })
+  ].map(drawBear)
+)
 
-const defeat = [
-  stand({
-    lean: -9,
-    head: [-3, 0],
-    pitch: 0.9,
-    nearHand: [-28, -8],
-    farHand: [24, -10],
-    nearBend: [-1, 0],
-    farBend: [1, 0.2],
-    eyes: 'hurt',
-    mouth: 'gasp',
-    jaw: 0.8,
-    earBack: 4,
-    nearFoot: [-4, 0],
-    farFoot: [4, 4],
-    gourd: [-3, 3]
-  }),
-  stand({
-    lean: 6,
-    head: [3, 2],
-    pitch: -0.2,
-    nearHand: [-8, 28],
-    farHand: [12, 27],
-    eyes: 'swirl',
-    mouth: 'pant',
-    jaw: 0.4,
-    nearFoot: [5, 0],
-    farFoot: [-3, 3],
-    gourd: [2, 2],
-    fx: {
-      stars: [
-        [52, 18],
-        [96, 14]
-      ]
-    }
-  }),
-  stand({
-    sink: 4,
-    squash: 7,
-    lean: -3,
-    head: [0, 6],
-    pitch: -0.3,
-    nearHand: [-8, 29],
-    farHand: [10, 28],
-    splay: 5,
-    eyes: 'swirl',
-    mouth: 'pant',
-    jaw: 0.5,
-    gourd: [0, 3],
-    fx: {
-      stars: [
-        [50, 54],
-        [92, 50],
-        [70, 38]
-      ]
-    }
-  }),
-  sit({
-    lean: -10,
-    head: [-4, 2],
-    nearHand: [8, 36],
-    farHand: [2, 36],
-    jaw: 0.6,
-    fx: {
-      stars: [
-        [40, 52],
-        [86, 46]
-      ]
-    }
-  }),
-  lie({
-    lift: 5,
-    legs: 4,
-    arms: 3,
-    fx: {
-      dust: [
-        [18, 117, 8],
-        [112, 117, 7]
-      ]
-    }
-  }),
-  lie({
-    fx: {
-      stars: [
-        [96, 70],
-        [116, 78],
-        [78, 66]
-      ]
-    }
-  })
-].map(drawBear)
+const defeat = memo(() =>
+  [
+    stand({
+      lean: -9,
+      head: [-3, 0],
+      pitch: 0.9,
+      nearHand: [-28, -8],
+      farHand: [24, -10],
+      nearBend: [-1, 0],
+      farBend: [1, 0.2],
+      eyes: 'hurt',
+      mouth: 'gasp',
+      jaw: 0.8,
+      earBack: 4,
+      nearFoot: [-4, 0],
+      farFoot: [4, 4],
+      gourd: [-3, 3]
+    }),
+    stand({
+      lean: 6,
+      head: [3, 2],
+      pitch: -0.2,
+      nearHand: [-8, 28],
+      farHand: [12, 27],
+      eyes: 'swirl',
+      mouth: 'pant',
+      jaw: 0.4,
+      nearFoot: [5, 0],
+      farFoot: [-3, 3],
+      gourd: [2, 2],
+      fx: {
+        stars: [
+          [52, 18],
+          [96, 14]
+        ]
+      }
+    }),
+    stand({
+      sink: 4,
+      squash: 7,
+      lean: -3,
+      head: [0, 6],
+      pitch: -0.3,
+      nearHand: [-8, 29],
+      farHand: [10, 28],
+      splay: 5,
+      eyes: 'swirl',
+      mouth: 'pant',
+      jaw: 0.5,
+      gourd: [0, 3],
+      fx: {
+        stars: [
+          [50, 54],
+          [92, 50],
+          [70, 38]
+        ]
+      }
+    }),
+    sit({
+      lean: -10,
+      head: [-4, 2],
+      nearHand: [8, 36],
+      farHand: [2, 36],
+      jaw: 0.6,
+      fx: {
+        stars: [
+          [40, 52],
+          [86, 46]
+        ]
+      }
+    }),
+    lie({
+      lift: 5,
+      legs: 4,
+      arms: 3,
+      fx: {
+        dust: [
+          [18, 117, 8],
+          [112, 117, 7]
+        ]
+      }
+    }),
+    lie({
+      fx: {
+        stars: [
+          [96, 70],
+          [116, 78],
+          [78, 66]
+        ]
+      }
+    })
+  ].map(drawBear)
+)
 
 const spec = bossSpec('bearBoss')
-const clip = (name: keyof typeof spec, frames: Raster[]) => anim(frames, spec[name].fps, spec[name].loop)
+const clip = (name: keyof typeof spec, frames: () => Raster[]) => lazyAnim(frames, spec[name].fps, spec[name].loop)
 
 export const sheets: SheetModule = {
   bearBoss: () => ({

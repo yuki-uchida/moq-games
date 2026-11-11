@@ -28,7 +28,7 @@ import {
   shadeIndex,
   type Pt
 } from '../raster'
-import { anim } from '../sheet'
+import { lazyAnim, memo } from '../sheet'
 
 const S = 128
 /** Screen x of the body's centre line and the ground row the feet stand on (anchor row 120 is just below). */
@@ -829,19 +829,21 @@ const farHand = (rg: Rig, h: Hand) => handAt(rg, FAR_SHOULDER, h)
 
 // ------------------------------------------------------------------------------------------------------ clips
 
-const idle = [0, 0.5, 1, 0.5].map((b, i) =>
-  draw({
-    squash: 0.4 - b * 1.2,
-    earLift: b * 0.8,
-    faceDy: -b * 0.5,
-    nearArm: [6, 8 - b],
-    farArm: [7, 8 - b],
-    cape: capePose({ swing: [12, 14, 17, 15][i], len: 40 + b, phase: i * 0.5, billow: 3 + b }),
-    crown: { dx: 0, dy: 0, rot: 0, glint: [0, 1, 2, 1][i] }
-  })
+const idle = memo(() =>
+  [0, 0.5, 1, 0.5].map((b, i) =>
+    draw({
+      squash: 0.4 - b * 1.2,
+      earLift: b * 0.8,
+      faceDy: -b * 0.5,
+      nearArm: [6, 8 - b],
+      farArm: [7, 8 - b],
+      cape: capePose({ swing: [12, 14, 17, 15][i], len: 40 + b, phase: i * 0.5, billow: 3 + b }),
+      crown: { dx: 0, dy: 0, rot: 0, glint: [0, 1, 2, 1][i] }
+    })
+  )
 )
 
-const intro = [
+const intro = memo(() => [
   // wrapped in the cape, head low, eyes slitted
   draw({
     squash: 1.4,
@@ -905,28 +907,30 @@ const intro = [
       sparkStar(r, 118, 36, 3, C.white, DARK[1])
     }
   })
-]
+])
 
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const c = Math.cos(t * TAU)
-  const s = Math.sin(t * TAU)
-  return draw({
-    bob: Math.abs(s) * 2.2,
-    squash: 0.9 - Math.abs(s) * 1.3,
-    lean: 3,
-    faceDx: 1,
-    earTilt: 1 + Math.abs(s),
-    nearFoot: [c * 9, Math.max(0, s) * 5],
-    farFoot: [-c * 9, Math.max(0, -s) * 5],
-    nearArm: [10 - c * 6, 12 - Math.abs(c) * 2],
-    farArm: [9 + c * 6, 11 - Math.abs(c) * 2],
-    cape: capePose({ swing: 22 + 8 * Math.sin((t - 0.2) * TAU), len: 40, phase: t * TAU, wave: 2.5, lining: 0.35 }),
-    crown: { dx: 0, dy: Math.round(-Math.abs(s)), rot: 0.03 * c, glint: 0 }
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const c = Math.cos(t * TAU)
+    const s = Math.sin(t * TAU)
+    return draw({
+      bob: Math.abs(s) * 2.2,
+      squash: 0.9 - Math.abs(s) * 1.3,
+      lean: 3,
+      faceDx: 1,
+      earTilt: 1 + Math.abs(s),
+      nearFoot: [c * 9, Math.max(0, s) * 5],
+      farFoot: [-c * 9, Math.max(0, -s) * 5],
+      nearArm: [10 - c * 6, 12 - Math.abs(c) * 2],
+      farArm: [9 + c * 6, 11 - Math.abs(c) * 2],
+      cape: capePose({ swing: 22 + 8 * Math.sin((t - 0.2) * TAU), len: 40, phase: t * TAU, wave: 2.5, lining: 0.35 }),
+      crown: { dx: 0, dy: Math.round(-Math.abs(s)), rot: 0.03 * c, glint: 0 }
+    })
   })
-})
+)
 
-const windup = [
+const windup = memo(() => [
   draw({
     lean: -3,
     squash: 0.8,
@@ -987,51 +991,53 @@ const windup = [
       bolt(r, x - 8, y - 10, x + 2, y - 24, 78)
     }
   })
-]
+])
 
 const dustTrail = (seed: number) => (r: Raster) => {
   const rnd = rng(seed)
   for (let i = 0; i < 3; i++) puff(r, 22 - i * 8 + rnd() * 4, 114 + rnd() * 3 - i * 1.5, 3.6 + rnd() * 1.5 - i * 0.5)
 }
 
-const attack = [
-  [9, 0, -8, 3, 1.5],
-  [-1, 5, 3, 0, 0.5],
-  [-9, 0, 9, 0, 1],
-  [2, 5, -1, 4, 0]
-].map(([nf, nl, ff, fl, bob], i) =>
-  draw({
-    dx: 6,
-    lean: 14,
-    squash: 2.6,
-    bob,
-    faceDx: 3,
-    faceDy: 2,
-    earTilt: 5,
-    earLift: -2,
-    nearFoot: [nf, nl],
-    farFoot: [ff, fl],
-    nearArm: [20 + (i % 2) * 2, 2 - (i % 2) * 2],
-    farArm: [20 - (i % 2) * 2, 0 + (i % 2) * 2],
-    fist: true,
-    brow: 5,
-    mouth: 'grit',
-    cape: capePose({
-      swing: 82 + [0, 5, 0, -5][i],
-      len: 44,
-      w0: 18,
-      w1: 22,
-      billow: 3,
-      wave: 3,
-      phase: i * 1.6,
-      lining: 0.6
-    }),
-    crown: { dx: -1, dy: 1, rot: 0.04, glint: 0 },
-    fxBack: dustTrail(20 + i)
-  })
+const attack = memo(() =>
+  [
+    [9, 0, -8, 3, 1.5],
+    [-1, 5, 3, 0, 0.5],
+    [-9, 0, 9, 0, 1],
+    [2, 5, -1, 4, 0]
+  ].map(([nf, nl, ff, fl, bob], i) =>
+    draw({
+      dx: 6,
+      lean: 14,
+      squash: 2.6,
+      bob,
+      faceDx: 3,
+      faceDy: 2,
+      earTilt: 5,
+      earLift: -2,
+      nearFoot: [nf, nl],
+      farFoot: [ff, fl],
+      nearArm: [20 + (i % 2) * 2, 2 - (i % 2) * 2],
+      farArm: [20 - (i % 2) * 2, 0 + (i % 2) * 2],
+      fist: true,
+      brow: 5,
+      mouth: 'grit',
+      cape: capePose({
+        swing: 82 + [0, 5, 0, -5][i],
+        len: 44,
+        w0: 18,
+        w1: 22,
+        billow: 3,
+        wave: 3,
+        phase: i * 1.6,
+        lining: 0.6
+      }),
+      crown: { dx: -1, dy: 1, rot: 0.04, glint: 0 },
+      fxBack: dustTrail(20 + i)
+    })
+  )
 )
 
-const air = [
+const air = memo(() => [
   // rising: stretched, fists up, cape trailing straight down
   draw({
     bob: 3,
@@ -1066,7 +1072,7 @@ const air = [
     cape: capePose({ swing: 150, len: 40, w0: 22, w1: 60, billow: 8, wave: 3, phase: 1.1, lining: 0.9 }),
     crown: { dx: 0, dy: -2, rot: 0.08, glint: 0 }
   })
-]
+])
 
 const shock = (cx: number, wide: number, seed: number) => (r: Raster) => {
   const rnd = rng(seed)
@@ -1075,7 +1081,7 @@ const shock = (cx: number, wide: number, seed: number) => (r: Raster) => {
       puff(r, cx + side * (36 + i * 11 * wide) + rnd() * 3, 114 - i * 3 - rnd() * 2, 5 - i + wide)
 }
 
-const land = [
+const land = memo(() => [
   draw({
     squash: 7,
     faceDy: 3,
@@ -1117,9 +1123,9 @@ const land = [
     cape: capePose({ swing: 18, len: 41, phase: 3.3 }),
     crown: { dx: 0, dy: -1, rot: 0, glint: 1 }
   })
-]
+])
 
-const shoot = [
+const shoot = memo(() => [
   draw({
     lean: -2,
     squash: 0.6,
@@ -1187,31 +1193,33 @@ const shoot = [
       puff(r, 119, 66, 2)
     }
   })
-]
+])
 
-const recover = [0, 1].map((i) =>
-  draw({
-    lean: 4 + i,
-    squash: 1.6 * i,
-    faceDy: 3 + i,
-    earTilt: -1,
-    earLift: -1 - i,
-    nearFoot: [i, 0],
-    nearArm: [9 + i, 15 - i],
-    farArm: [8, 14 + i],
-    eyes: 'half',
-    brow: -1,
-    mouth: 'pant',
-    cape: capePose({ swing: 6 - i * 3, len: 40, w1: 34, billow: 1, wave: 1.5, phase: i * 2, lining: 0.1 }),
-    crown: { dx: 0, dy: 1 + i, rot: 0.04 * (i ? -1 : 1), glint: 0 },
-    fxFront: (r, rg) => {
-      const [x, y] = rg.E(26, -34)
-      sweat(r, Math.round(x) + 4 + i * 2, Math.round(y) + i * 4)
-    }
-  })
+const recover = memo(() =>
+  [0, 1].map((i) =>
+    draw({
+      lean: 4 + i,
+      squash: 1.6 * i,
+      faceDy: 3 + i,
+      earTilt: -1,
+      earLift: -1 - i,
+      nearFoot: [i, 0],
+      nearArm: [9 + i, 15 - i],
+      farArm: [8, 14 + i],
+      eyes: 'half',
+      brow: -1,
+      mouth: 'pant',
+      cape: capePose({ swing: 6 - i * 3, len: 40, w1: 34, billow: 1, wave: 1.5, phase: i * 2, lining: 0.1 }),
+      crown: { dx: 0, dy: 1 + i, rot: 0.04 * (i ? -1 : 1), glint: 0 },
+      fxFront: (r, rg) => {
+        const [x, y] = rg.E(26, -34)
+        sweat(r, Math.round(x) + 4 + i * 2, Math.round(y) + i * 4)
+      }
+    })
+  )
 )
 
-const rage = [
+const rage = memo(() => [
   // 0 hunched, clenching: the first wisps
   draw({
     squash: 2.2,
@@ -1274,9 +1282,9 @@ const rage = [
       crown: { dx: 0, dy: -1 - (k % 2), rot: 0, glint: k % 2 ? 2 : 1 }
     })
   )
-]
+])
 
-const hurt = [
+const hurt = memo(() => [
   draw({
     lean: -8,
     squash: 2,
@@ -1314,7 +1322,7 @@ const hurt = [
     cape: capePose({ swing: 6, len: 41, phase: 2 }),
     crown: { dx: 1, dy: -2, rot: 0.18, glint: 0 }
   })
-]
+])
 
 // ------------------------------------------------------------------------------------------------------ defeat
 
@@ -1366,7 +1374,7 @@ function dizzy(r: Raster, x: number, y: number, k: number) {
   }
 }
 
-const defeat = [
+const defeat = memo(() => [
   // 0 stagger: thrown back, crown jolted loose
   draw({
     lean: -9,
@@ -1500,21 +1508,21 @@ const defeat = [
     dizzy(r, b.x + 22, b.y + 4, 0.6 + k * 1.3)
     return trim(r)
   })
-]
+])
 
 export const sheets: SheetModule = {
   king: () => ({
-    idle: anim(idle, 6, true),
-    intro: anim(intro, 8, false),
-    move: anim(move, 10, true),
-    windup: anim(windup, 12, false),
-    attack: anim(attack, 14, true),
-    air: anim(air, 8, false),
-    land: anim(land, 14, false),
-    shoot: anim(shoot, 12, false),
-    recover: anim(recover, 6, true),
-    rage: anim(rage, 10, false),
-    hurt: anim(hurt, 12, false),
-    defeat: anim(defeat, 8, false)
+    idle: lazyAnim(idle, 6, true),
+    intro: lazyAnim(intro, 8, false),
+    move: lazyAnim(move, 10, true),
+    windup: lazyAnim(windup, 12, false),
+    attack: lazyAnim(attack, 14, true),
+    air: lazyAnim(air, 8, false),
+    land: lazyAnim(land, 14, false),
+    shoot: lazyAnim(shoot, 12, false),
+    recover: lazyAnim(recover, 6, true),
+    rage: lazyAnim(rage, 10, false),
+    hurt: lazyAnim(hurt, 12, false),
+    defeat: lazyAnim(defeat, 8, false)
   })
 }

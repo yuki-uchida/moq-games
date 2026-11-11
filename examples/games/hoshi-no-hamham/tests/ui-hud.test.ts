@@ -3,12 +3,14 @@ import {
   bossRatio,
   collectText,
   heartStates,
+  hintForInput,
   hudScale,
   isLowHealth,
   newBossBar,
   padSide,
   settleHeart,
-  stepBossBar
+  stepBossBar,
+  ZONES
 } from '../src/ui/hud-model'
 
 describe('heart states', () => {
@@ -104,5 +106,32 @@ describe('texts and scale', () => {
 
   it('scales the HUD by whole numbers from the stage width', () => {
     expect([320, 640, 844, 1280, 1920].map(hudScale)).toEqual([1, 1, 1, 2, 3])
+  })
+})
+
+describe('staging zones', () => {
+  it('keep the card slot, the nameplate and the toast in their own bands', () => {
+    // Upper third: the card slot; lower third: boss feet, nameplate and toast, above the letterbox bar.
+    expect(ZONES.cardTop).toBeLessThan(ZONES.cardBottom)
+    expect(ZONES.cardBottom).toBeLessThanOrEqual(0.4)
+    expect(ZONES.plateBottom).toBeGreaterThan(ZONES.barHeight)
+    expect(ZONES.toastBottom).toBeLessThan(ZONES.plateBottom)
+    expect(ZONES.bossFeet).toBeGreaterThan(ZONES.cardBottom)
+    expect(ZONES.bossFeet).toBeLessThan(1 - ZONES.plateBottom - 0.2)
+  })
+})
+
+describe('hints follow the input', () => {
+  it('keeps keyboard hints for keyboard players', () => {
+    expect(hintForInput('Z / X でかじる', false)).toBe('Z / X でかじる')
+  })
+
+  it('names the button instead of the keys for touch players', () => {
+    expect(hintForInput('Z / X でかじる', true)).toBe('「かじる」ボタンでかじる')
+    expect(hintForInput('Z/X でかじる', true)).toBe('「かじる」ボタンでかじる')
+  })
+
+  it('leaves hints without keys alone', () => {
+    expect(hintForInput('木は2回かじるとたおれる', true)).toBe('木は2回かじるとたおれる')
   })
 })

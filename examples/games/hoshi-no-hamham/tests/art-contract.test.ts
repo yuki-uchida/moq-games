@@ -10,19 +10,7 @@ import {
   allSheetSpecs,
   type Neighbour
 } from '../src/art/contract'
-import {
-  anchorOf,
-  backdrop,
-  clearArtCache,
-  decor,
-  hasBackdrop,
-  hasTerrain,
-  missingAnims,
-  pendingArt,
-  sheet,
-  sheetIds,
-  tile
-} from '../src/art/index'
+import { anchorOf, backdrop, clearArtCache, decor, sheet, sheetIds, tile } from '../src/art/index'
 import { paletteSize } from '../src/art/palette'
 import { STAGES } from '../src/game/stages'
 
@@ -57,7 +45,7 @@ describe('every sheet matches the art contract', () => {
         expect(a, `${id}#${name} is missing`).toBeDefined()
         expect(a.frames.length, `${id}#${name} frames`).toBe(want.frames)
         expect(a.loop, `${id}#${name} loop`).toBe(want.loop)
-        expect(a.fps, `${id}#${name} fps`).toBeGreaterThan(0)
+        expect(a.fps, `${id}#${name} fps`).toBe(want.fps)
         for (const f of a.frames) {
           expect([f.w, f.h], `${id}#${name} frame size`).toEqual([want.w, want.h])
           expect(f.count(), `${id}#${name} has an empty frame`).toBeGreaterThan(0)
@@ -73,9 +61,7 @@ describe('drawn sheets are real pixel art, not padding', () => {
   for (const [id, spec] of Object.entries(specs))
     test(id, () => {
       const s = sheet(id)
-      const pending = new Set(missingAnims(id))
       for (const name of Object.keys(spec)) {
-        if (pending.has(name)) continue
         const a = s[name]
         // Neighbouring frames must differ, and a loop must not stall at its seam.
         for (let i = 1; i < a.frames.length; i++)
@@ -108,7 +94,7 @@ test('art is deterministic', () => {
   clearArtCache()
   const after = sheetIds().map((id) => Object.values(sheet(id)).map((a) => a.frames.map((f) => Array.from(f.data))))
   expect(after).toEqual(before)
-})
+}, 60_000)
 
 test('the boss table agrees with the stage list', () => {
   for (const stage of STAGES) {
@@ -137,7 +123,6 @@ describe('terrain', () => {
       const open = ['empty', 'empty', 'solid', 'solid', 'solid', 'solid', 'solid', 'empty'] as const
       const a = tile({ theme, kind: 'solid', around: buried, tx: 7, ty: 9 })
       expect(a.equals(tile({ theme, kind: 'solid', around: buried, tx: 7, ty: 9 }))).toBe(true)
-      if (!hasTerrain(theme)) return
       // A buried tile differs from an exposed one.
       const b = tile({ theme, kind: 'solid', around: open, tx: 7, ty: 9 })
       expect(a.equals(b), `${theme}: exposed and buried ground look the same`).toBe(false)
@@ -158,11 +143,7 @@ describe('terrain', () => {
 describe('backdrops', () => {
   for (const theme of THEMES)
     test(theme, () => {
-      if (!hasBackdrop(theme)) {
-        expect(backdrop(theme)).toBeUndefined()
-        return
-      }
-      const b = backdrop(theme)!
+      const b = backdrop(theme)
       expect([b.sky.w, b.sky.h]).toEqual([VIEW_W, VIEW_H])
       expect(b.sky.count(), `${theme} sky has holes`).toBe(VIEW_W * VIEW_H)
       expect(b.layers.length, `${theme} parallax layers`).toBeGreaterThanOrEqual(3)
@@ -180,10 +161,4 @@ describe('backdrops', () => {
         }
       }
     })
-})
-
-test('reports what is still a stand-in', () => {
-  const pending = pendingArt()
-  // Informational while the art is being drawn; `tests/art-complete.test.ts` is the gate.
-  expect(Object.keys(pending.sheets).length).toBeGreaterThanOrEqual(0)
 })

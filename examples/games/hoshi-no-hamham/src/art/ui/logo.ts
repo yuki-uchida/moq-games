@@ -2,7 +2,7 @@ import { UI_SPEC } from '../contract'
 import type { SheetModule } from '../module'
 import { C, R, color } from '../palette'
 import { Raster } from '../raster'
-import { anim } from '../sheet'
+import { lazyAnim } from '../sheet'
 
 /**
  * `ui#logo`: the pixel logotype 「星のハムハム」, 384×128.
@@ -485,5 +485,5 @@ function drawLogo(): Raster {
 }
 
 export const sheets: SheetModule = {
-  ui: () => ({ logo: anim([drawLogo()], UI_SPEC.logo.fps, UI_SPEC.logo.loop) })
+  ui: () => ({ logo: lazyAnim(() => [drawLogo()], UI_SPEC.logo.fps, UI_SPEC.logo.loop) })
 }

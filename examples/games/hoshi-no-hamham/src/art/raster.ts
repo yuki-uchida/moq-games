@@ -8,12 +8,15 @@ export type { Ramp } from './palette'
 
 /** An indexed pixel buffer: each cell is a palette index, 0 = transparent. */
 export class Raster {
+  /** How many rasters have been created (the gate for lazy drawing: tests/art-lazy.test.ts). */
+  static created = 0
   readonly data: Uint16Array
   constructor(
     readonly w: number,
     readonly h: number,
     data?: Uint16Array
   ) {
+    Raster.created += 1
     this.data = data ?? new Uint16Array(w * h)
   }
 

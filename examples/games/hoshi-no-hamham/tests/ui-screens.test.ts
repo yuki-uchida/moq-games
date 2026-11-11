@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { allSheetSpecs, THEMES } from '../src/art/contract'
-import { STAGES } from '../src/game/stages'
+import { OPENING_PAGES, STAGES } from '../src/game/stages'
 import {
   backingScale,
   countValue,
@@ -13,6 +13,7 @@ import {
   STAR_RULES
 } from '../src/ui/rules'
 import { pickNeighbour } from '../src/ui/spatial'
+import { BLIP_EVERY, BLIP_MIN_GAP_MS, BlipGate } from '../src/ui/typewriter'
 import {
   CREDITS_SHOT,
   ENDING_SCENES,
@@ -47,7 +48,7 @@ function checkShot(shot: Shot, where: string) {
 
 describe('story scenes', () => {
   test('the opening and every stage intro have a shot for every page', () => {
-    expect(STORY_SCENES.opening.length).toBeGreaterThan(0)
+    expect(STORY_SCENES.opening.length, 'one shot per opening page').toBe(OPENING_PAGES.length)
     for (const stage of STAGES) {
       const shots = STORY_SCENES[String(stage.no)]
       expect(shots, `stage ${stage.no}`).toBeDefined()
@@ -62,6 +63,8 @@ describe('story scenes', () => {
   })
 
   test('each stage intro shows its own world, and a boss stage shows its boss', () => {
+    // Stage 6 is the nest-building stage: its intro never mentions the bear, so the picture does not show him.
+    const bossless = new Set([6])
     for (const stage of STAGES) {
       const shots = STORY_SCENES[String(stage.no)]
       expect(
@@ -71,13 +74,37 @@ describe('story scenes', () => {
       expect(
         shots.some((shot) => shot.figures.some((f) => f.sheet === stage.boss.art)),
         `stage ${stage.no} shows ${stage.boss.art}`
-      ).toBe(true)
+      ).toBe(!bossless.has(stage.no))
     }
   })
 
-  test('the opening shows the princess carried off by the king, stage 1 shows mom behind the hero', () => {
-    const first = STORY_SCENES.opening[0]
-    expect(first.figures.map((f) => f.sheet)).toEqual(expect.arrayContaining(['king', 'princess']))
+  test('the opening shows what its pages say: the hero alone, then the nest and mom, then the chase', () => {
+    const sheets = (page: number) => STORY_SCENES.opening[page].figures.map((f) => f.sheet)
+    // 「ハム彦という名前の子ハムスター」: only the hero.
+    expect(sheets(0)).toEqual(['hero'])
+    // 「ママと大げんかして、巣を飛び出しました」: the nest, mom and the hero running away from them.
+    expect(sheets(1)).toEqual(expect.arrayContaining(['prop:nest', 'mom', 'hero']))
+    // 「もう、かえってこなくっていいの！」 and the chase: mom and the hero, never the king or the princess.
+    for (const page of [2, 3]) expect(sheets(page).sort()).toEqual(['hero', 'mom'])
+    for (let page = 0; page < OPENING_PAGES.length; page++)
+      expect(sheets(page), `opening page ${page}`).not.toEqual(expect.arrayContaining(['king']))
+    // The hero runs away from mom on the chase page: mom behind (left), the hero in front.
+    const chase = STORY_SCENES.opening[3]
+    expect(chase.figures.find((f) => f.sheet === 'mom')!.x).toBeLessThan(
+      chase.figures.find((f) => f.sheet === 'hero')!.x
+    )
+  })
+
+  test('the kidnapping page keeps the weasel and the princess apart, the princess held clear above him', () => {
+    const [shot] = STORY_SCENES['3']
+    const weasel = shot.figures.find((f) => f.sheet === 'weaselBoss')!
+    const princess = shot.figures.find((f) => f.sheet === 'princess')!
+    expect(weasel.flip).toBe(false)
+    expect(princess.lift ?? 0).toBeGreaterThanOrEqual(64)
+    expect(Math.abs(princess.x - weasel.x)).toBeLessThan(40)
+  })
+
+  test('stage 1 shows mom behind the hero', () => {
     const one = STORY_SCENES['1'][0]
     const mom = one.figures.find((f) => f.sheet === 'mom')!
     const hero = one.figures.find((f) => f.sheet === 'hero')!
@@ -95,6 +122,48 @@ describe('story scenes', () => {
     )
     expect(nest, 'the nest with the three of them').toBeDefined()
     expect(SCENE_W / SCENE_H).toBe(2)
+  })
+})
+
+describe('typewriter blips', () => {
+  /** Feeds a text at `cps` characters per second and returns the times (ms) and characters that blipped. */
+  function run(text: string, cps: number) {
+    const gate = new BlipGate()
+    const blips: { at: number; char: string }[] = []
+    Array.from(text).forEach((char, index) => {
+      const at = (index * 1000) / cps
+      if (gate.next(char, at)) blips.push({ at, char })
+    })
+    return blips
+  }
+
+  test('about every third character blips, never a space or punctuation', () => {
+    const text = 'むかしむかし、星の丘に「ハム彦」という名前の子ハムスターがいました。'
+    const blips = run(text, 32)
+    expect(blips.length).toBeGreaterThan(Array.from(text).length / (BLIP_EVERY + 2))
+    expect(blips.length).toBeLessThanOrEqual(Math.ceil(Array.from(text).length / BLIP_EVERY))
+    for (const { char } of blips) expect(char).not.toMatch(/[\s\p{P}\p{S}]/u)
+    // The first two characters never blip; the third (a voiced one) does.
+    expect(blips[0].char).toBe('し')
+  })
+
+  test('punctuation holds the blip for the next voiced character', () => {
+    const gate = new BlipGate()
+    expect(gate.next('あ', 0)).toBe(false)
+    expect(gate.next('い', 100)).toBe(false)
+    expect(gate.next('、', 200)).toBe(false)
+    expect(gate.next(' ', 300)).toBe(false)
+    expect(gate.next('う', 400)).toBe(true)
+  })
+
+  test('blips are never closer than the floor, however fast the text prints', () => {
+    for (const cps of [32, 120, 400, 2000]) {
+      const blips = run('あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめも'.repeat(3), cps)
+      blips.forEach((blip, i) => {
+        if (i > 0) expect(blip.at - blips[i - 1].at, `${cps} cps`).toBeGreaterThanOrEqual(BLIP_MIN_GAP_MS)
+      })
+    }
+    expect(BLIP_MIN_GAP_MS).toBe(45)
   })
 })
 

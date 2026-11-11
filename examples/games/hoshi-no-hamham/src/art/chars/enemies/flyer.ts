@@ -5,7 +5,7 @@
  */
 import { C, R } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, shadeEdges, type Pt } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { BANDANA, bandanaTails, patch, tumble } from './gang'
 
 const CROW = R.crowBlue
@@ -184,22 +184,24 @@ export function drawFlyer(pose: FlyerPose): Raster {
 }
 
 const WING = [-72, -38, 14, 62, 28, -28]
-const flap = Array.from({ length: 6 }, (_, i) =>
-  drawFlyer(
-    flyerPose({
-      wing: WING[i],
-      farWing: WING[(i + 5) % 6] * 0.9,
-      bob: [0, 0.5, 1.5, 3, 2, 1][i],
-      squash: i === 3 ? -1 : i === 0 ? 1 : 0,
-      tail: [0, -1, -2, -1, 1, 2][i],
-      feet: [1, 0, -1, -1, 0, 1][i],
-      flutter: [0, 1, 2, 1, -1, -1][i],
-      beak: i === 2 ? 'open' : 'closed'
-    })
+const flap = memo(() =>
+  Array.from({ length: 6 }, (_, i) =>
+    drawFlyer(
+      flyerPose({
+        wing: WING[i],
+        farWing: WING[(i + 5) % 6] * 0.9,
+        bob: [0, 0.5, 1.5, 3, 2, 1][i],
+        squash: i === 3 ? -1 : i === 0 ? 1 : 0,
+        tail: [0, -1, -2, -1, 1, 2][i],
+        feet: [1, 0, -1, -1, 0, 1][i],
+        flutter: [0, 1, 2, 1, -1, -1][i],
+        beak: i === 2 ? 'open' : 'closed'
+      })
+    )
   )
 )
 
-const hurt = [
+const hurt = memo(() => [
   drawFlyer(
     flyerPose({ eyes: 'hurt', beak: 'open', wing: -60, farWing: -50, squash: 2, bob: 0, tail: 3, feet: 2, flutter: 2 })
   ),
@@ -216,20 +218,20 @@ const hurt = [
       flutter: -1
     })
   )
-]
+])
 
 const base = (o: Partial<FlyerPose>) =>
   flyerPose({ eyes: 'hurt', beak: 'open', wing: -50, farWing: -40, tail: 2, ...o })
-const defeat = [
+const defeat = memo(() => [
   drawFlyer(base({ squash: 1, bob: 1 })),
   tumble(drawFlyer(base({ bob: 2, eyes: 'dead', wing: -30 })), -1.2, 30, 30, -3, -5),
   tumble(drawFlyer(base({ bob: 2, eyes: 'dead', wing: 20 })), -3.0, 30, 30, -5, -4),
   tumble(drawFlyer(base({ bob: 0, eyes: 'dead', wing: 50, farWing: 40 })), -4.5, 30, 30, -6, 2),
   drawFlyer(base({ eyes: 'dead', beak: 'closed', puff: 1, wing: 55, farWing: 50, tail: 0 }))
-]
+])
 
 export const flyerSheet = () => ({
-  move: anim(flap, 14, true),
-  hurt: anim(hurt, 12, false),
-  defeat: anim(defeat, 12, false)
+  move: lazyAnim(flap, 14, true),
+  hurt: lazyAnim(hurt, 12, false),
+  defeat: lazyAnim(defeat, 12, false)
 })

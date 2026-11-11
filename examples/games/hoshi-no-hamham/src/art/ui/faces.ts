@@ -2,7 +2,7 @@ import { UI_SPEC } from '../contract'
 import type { SheetModule } from '../module'
 import { C, R, ramp, type Ramp } from '../palette'
 import { Painter, Raster, ball, bar, shadeEdges } from '../raster'
-import { anim, type Anim } from '../sheet'
+import { lazyAnim, memo, type Anim } from '../sheet'
 
 /**
  * `ui`: the twelve 32×32 character portraits (`face_*`) and the seven stage emblems (`theme_*`).
@@ -13,7 +13,8 @@ import { anim, type Anim } from '../sheet'
  * vignettes in one rounded-square frame.
  */
 
-const make = (name: string, frame: Raster): Anim => anim([frame], UI_SPEC[name].fps, UI_SPEC[name].loop)
+const make = (name: string, frame: () => Raster): Anim =>
+  lazyAnim(() => [frame()], UI_SPEC[name].fps, UI_SPEC[name].loop)
 const S = 32
 
 /** Keeps only the rows above the cut (the bust is sliced flat at the bottom). */
@@ -730,13 +731,13 @@ function insideMask(): Raster {
   return m
 }
 
-const INSIDE = insideMask()
+const inside = memo(insideMask)
 
 function frame(scene: Raster): Raster {
   const out = new Raster(S, S)
   for (let y = 0; y < S; y++)
     for (let x = 0; x < S; x++) {
-      if (INSIDE.get(x, y)) out.set(x, y, scene.get(x, y) || R.cosmos[3])
+      if (inside().get(x, y)) out.set(x, y, scene.get(x, y) || R.cosmos[3])
     }
   // rim: every empty pixel touching the inside
   const rim = new Raster(S, S)
@@ -759,8 +760,8 @@ function frame(scene: Raster): Raster {
     }
   out.blit(rim)
   // highlight line along the top-left inner edge
-  for (let x = 6; x <= 17; x++) if (INSIDE.get(x, 2)) out.set(x, 2, C.white)
-  for (let y = 6; y <= 12; y++) if (INSIDE.get(2, y)) out.set(2, y, C.white)
+  for (let x = 6; x <= 17; x++) if (inside().get(x, 2)) out.set(x, 2, C.white)
+  for (let y = 6; y <= 12; y++) if (inside().get(2, y)) out.set(2, y, C.white)
   out.set(4, 3, C.white)
   out.set(3, 4, C.white)
   return out
@@ -1063,7 +1064,7 @@ const EMBLEMS: Record<string, () => Raster> = {
 export const sheets: SheetModule = {
   ui: () => {
     const out: Record<string, Anim> = {}
-    for (const [name, draw] of Object.entries({ ...PORTRAITS, ...EMBLEMS })) out[name] = make(name, draw())
+    for (const [name, draw] of Object.entries({ ...PORTRAITS, ...EMBLEMS })) out[name] = make(name, draw)
     return out
   }
 }

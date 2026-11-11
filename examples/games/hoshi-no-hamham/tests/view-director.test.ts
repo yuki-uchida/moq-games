@@ -10,7 +10,7 @@ import { StageDirector, type DirectorHost } from '../src/view/director'
 import type { Renderer } from '../src/view/renderer'
 import { Sequence, mergeClaims } from '../src/view/sequence'
 import { SILENT_AUDIO } from '../src/view/sound-map'
-import { BOSS_INTRO_SECONDS, CLEAR_SECONDS, DEATH_SECONDS } from '../src/view/staging'
+import { BOSS_INTRO_SECONDS, CLEAR_SECONDS, DEATH_SECONDS, STAGE_START_SECONDS } from '../src/view/staging'
 
 // ------------------------------------------------------------------------------------------------- stubs
 
@@ -220,6 +220,9 @@ describe('stage start', () => {
     expect(took).toBeLessThanOrEqual(1.6)
     expect(rig.hud.texts('showCall')).toContain('スタート！')
     expect(rig.cues).toEqual(expect.arrayContaining(['iris-in', 'stage-start', 'ready']))
+    // The title card is told to leave before 「スタート！」 comes (one thing in the upper-third slot).
+    const banner = rig.hud.calls.find((c) => c.name === 'showBanner')!
+    expect(Number(banner.args[2])).toBeLessThan(STAGE_START_SECONDS - 0.22)
     expect(rig.hud.texts('showToast')).toContain(STAGES[3].hints[0])
     expectReleased(rig)
   })

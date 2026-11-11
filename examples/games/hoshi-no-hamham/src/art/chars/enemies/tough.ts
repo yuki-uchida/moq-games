@@ -6,7 +6,7 @@
  */
 import { C, R } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, outline, shadeEdges, type Pt } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { bandanaTails, neckerchief, patch, shaded, tumble } from './gang'
 
 const MOLE = R.moleBrown
@@ -245,43 +245,45 @@ export function drawTough(pose: ToughPose): Raster {
 }
 
 /** A heavy stomp: contact, down, lift, contact, down, lift; the body rocks over each planted foot. */
-const move = Array.from({ length: 6 }, (_, i) => {
-  const near: [number, number][] = [
-    [4, 0],
-    [1, 0],
-    [-4, 3],
-    [-4, 0],
-    [-1, 0],
-    [3, 4]
-  ]
-  const far: [number, number][] = [
-    [-4, 0],
-    [-1, 0],
-    [3, 0],
-    [4, 0],
-    [1, 0],
-    [-4, 0]
-  ]
-  const sway = [1.8, 0.9, -0.9, -1.8, -0.9, 0.9][i]
-  return drawTough(
-    toughPose({
-      bob: [-1, -0.5, 1, -1, -0.5, 1][i],
-      sway,
-      nearFoot: near[i],
-      farFoot: far[i],
-      hand: [9 - sway * 0.8, 10 + [0, 0.5, -1, 0, 0.5, -1][i]],
-      farHand: [8 - sway * 0.8, 11 + [0, 0.5, -1, 0, 0.5, -1][i]],
-      headDx: [1, 0, 0, 1, 0, 0][i],
-      headDy: [0.5, 0.5, 0, 0.5, 0.5, 0][i],
-      breathe: [0, -0.5, 0.5, 0, -0.5, 0.5][i],
-      open: [0.2, 0.5, 1, 0.2, 0.5, 1][i],
-      flutter: [0, 1, 2, 0, -1, -2][i],
-      mouth: i === 0 || i === 3 ? 'grit' : 'closed'
-    })
-  )
-})
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const near: [number, number][] = [
+      [4, 0],
+      [1, 0],
+      [-4, 3],
+      [-4, 0],
+      [-1, 0],
+      [3, 4]
+    ]
+    const far: [number, number][] = [
+      [-4, 0],
+      [-1, 0],
+      [3, 0],
+      [4, 0],
+      [1, 0],
+      [-4, 0]
+    ]
+    const sway = [1.8, 0.9, -0.9, -1.8, -0.9, 0.9][i]
+    return drawTough(
+      toughPose({
+        bob: [-1, -0.5, 1, -1, -0.5, 1][i],
+        sway,
+        nearFoot: near[i],
+        farFoot: far[i],
+        hand: [9 - sway * 0.8, 10 + [0, 0.5, -1, 0, 0.5, -1][i]],
+        farHand: [8 - sway * 0.8, 11 + [0, 0.5, -1, 0, 0.5, -1][i]],
+        headDx: [1, 0, 0, 1, 0, 0][i],
+        headDy: [0.5, 0.5, 0, 0.5, 0.5, 0][i],
+        breathe: [0, -0.5, 0.5, 0, -0.5, 0.5][i],
+        open: [0.2, 0.5, 1, 0.2, 0.5, 1][i],
+        flutter: [0, 1, 2, 0, -1, -2][i],
+        mouth: i === 0 || i === 3 ? 'grit' : 'closed'
+      })
+    )
+  })
+)
 
-const idle = [
+const idle = memo(() => [
   drawTough(toughPose({ breathe: 0, open: 0.1, flutter: 0 })),
   drawTough(
     toughPose({
@@ -295,9 +297,9 @@ const idle = [
       mouth: 'grit'
     })
   )
-]
+])
 
-const hurt = [
+const hurt = memo(() => [
   drawTough(
     toughPose({
       bob: -1,
@@ -333,7 +335,7 @@ const hurt = [
       flutter: -1
     })
   )
-]
+])
 
 const dizzy = (o: Partial<ToughPose>) =>
   toughPose({ eyes: 'hurt', mouth: 'open', open: 1, hand: [3, 8], farHand: [6, 4], helmet: null, ...o })
@@ -355,7 +357,7 @@ const flown = (
   p.add(1, (l) => l.blit(hm))
   return p.render()
 }
-const defeat = [
+const defeat = memo(() => [
   // hit: the helmet pops up off the head
   drawTough(dizzy({ bob: -1, sway: -2, headDx: -4, headDy: -1, flutter: 3, helmet: [-4, -9], helmetAngle: -0.8 })),
   // falling backwards, helmet spinning away
@@ -398,11 +400,11 @@ const defeat = [
     )
     .add(1, (l) => l.blit(helmetRaster(64, 64, 36, 26, [-20, 25], -4.9)))
     .render()
-]
+])
 
 export const toughSheet = () => ({
-  idle: anim(idle, 4, true),
-  move: anim(move, 8, true),
-  hurt: anim(hurt, 12, false),
-  defeat: anim(defeat, 12, false)
+  idle: lazyAnim(idle, 4, true),
+  move: lazyAnim(move, 8, true),
+  hurt: lazyAnim(hurt, 12, false),
+  defeat: lazyAnim(defeat, 12, false)
 })

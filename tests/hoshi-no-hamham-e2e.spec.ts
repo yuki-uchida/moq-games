@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
 
 interface HamWorld {
   player: { x: number; y: number; hp: number; maxHp: number; w: number; h: number; vx: number; vy: number }
@@ -33,7 +34,7 @@ declare global {
 test('title, story, stage select and the first stage play through the keyboard', async ({ page }, testInfo) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/')
+  await openGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
   await expect(page.locator('#game')).toBeVisible()
 
@@ -82,7 +83,7 @@ test('title, story, stage select and the first stage play through the keyboard',
 test('pause and mute controls respond', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/')
+  await openGame(page)
   await page.getByRole('button', { name: 'はじめから' }).click()
   for (let i = 0; i < 8; i++) {
     const next = page.locator('#story-next')
@@ -101,14 +102,14 @@ test('pause and mute controls respond', async ({ page }) => {
   await page.getByRole('button', { name: 'つづける' }).click()
   await expect(page.locator('#pause-screen')).toBeHidden()
   await page.keyboard.press('KeyM')
-  await expect(page.locator('#mute')).toHaveText('🔇')
+  await expect(page.locator('#mute')).toHaveAttribute('aria-pressed', 'true')
   expect(errors).toEqual([])
 })
 
 test('the ending pages through to the credits', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(() => {
     const raw = localStorage.getItem('hoshi-no-hamham-v1')
     const save = raw
@@ -118,7 +119,7 @@ test('the ending pages through to the credits', async ({ page }) => {
     save.unlocked = 10
     localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
   })
-  await page.reload()
+  await reloadGame(page)
   await page.waitForTimeout(400)
   await page.evaluate(() => (window as unknown as { __hamham: { openEnding(): void } }).__hamham.openEnding())
   await expect(page.locator('#ending-screen')).toBeVisible()
@@ -140,7 +141,7 @@ test('the ending pages through to the credits', async ({ page }) => {
 test('clearing the last stage leads from the result screen to the ending', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(() => {
     const raw = localStorage.getItem('hoshi-no-hamham-v1')
     const save = raw
@@ -150,7 +151,7 @@ test('clearing the last stage leads from the result screen to the ending', async
     save.unlocked = 10
     localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
   })
-  await page.reload()
+  await reloadGame(page)
   await page.waitForTimeout(400)
   await page.getByRole('button', { name: 'つづきから' }).click()
   await expect(page.locator('#select-screen')).toBeVisible()
@@ -214,7 +215,7 @@ test('clearing the last stage leads from the result screen to the ending', async
 
 /** Opens a stage through the stage select with every stage unlocked and the sound off. */
 async function openStage(page: Page, no: number) {
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(() => {
     const save = {
       version: 1,
@@ -226,7 +227,7 @@ async function openStage(page: Page, no: number) {
     }
     localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
   })
-  await page.reload()
+  await reloadGame(page)
   await page.getByRole('button', { name: 'つづきから' }).click()
   await page
     .locator('.stage-card')

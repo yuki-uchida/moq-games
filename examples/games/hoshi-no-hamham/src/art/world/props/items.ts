@@ -5,7 +5,7 @@
 import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { Raster, ball, bar, outline, shadeEdges, shadeIndex } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim } from '../../sheet'
 
 const GOLD = R.gold
 const LEAF = R.leaf
@@ -410,14 +410,14 @@ function drawBee(f: number): Raster {
 }
 
 export const sheets: SheetModule = {
-  'prop:fruit': () => ({ idle: anim([0, 1, 2, 3].map(drawFruit), 8, true) }),
-  'prop:star': () => ({ idle: anim([0, 1, 2, 3, 4, 5].map(drawStar), 10, true) }),
-  'prop:twig': () => ({ idle: anim([drawTwig(0), drawTwig(1)], 3, true) }),
-  'prop:berry': () => ({ idle: anim([drawBerry(0), drawBerry(1)], 3, true) }),
-  'prop:seed': () => ({ spin: anim([0, 1, 2, 3].map(drawSeed), 14, true) }),
-  'prop:feather': () => ({ spin: anim([0, 1, 2, 3].map(drawFeather), 14, true) }),
-  'prop:stinger': () => ({ fly: anim([drawStinger(0), drawStinger(1)], 14, true) }),
-  'prop:orb': () => ({ pulse: anim([0, 1, 2, 3].map(drawOrb), 12, true) }),
-  'prop:shock': () => ({ roll: anim([0, 1, 2, 3].map(drawShock), 14, true, { anchor: [24, 30] }) }),
-  'prop:bee': () => ({ fly: anim([drawBee(0), drawBee(1)], 24, true) })
+  'prop:fruit': () => ({ idle: lazyAnim(() => [0, 1, 2, 3].map(drawFruit), 8, true) }),
+  'prop:star': () => ({ idle: lazyAnim(() => [0, 1, 2, 3, 4, 5].map(drawStar), 10, true) }),
+  'prop:twig': () => ({ idle: lazyAnim(() => [drawTwig(0), drawTwig(1)], 3, true) }),
+  'prop:berry': () => ({ idle: lazyAnim(() => [drawBerry(0), drawBerry(1)], 3, true) }),
+  'prop:seed': () => ({ spin: lazyAnim(() => [0, 1, 2, 3].map(drawSeed), 14, true) }),
+  'prop:feather': () => ({ spin: lazyAnim(() => [0, 1, 2, 3].map(drawFeather), 14, true) }),
+  'prop:stinger': () => ({ fly: lazyAnim(() => [drawStinger(0), drawStinger(1)], 14, true) }),
+  'prop:orb': () => ({ pulse: lazyAnim(() => [0, 1, 2, 3].map(drawOrb), 12, true) }),
+  'prop:shock': () => ({ roll: lazyAnim(() => [0, 1, 2, 3].map(drawShock), 14, true, { anchor: [24, 30] }) }),
+  'prop:bee': () => ({ fly: lazyAnim(() => [drawBee(0), drawBee(1)], 24, true) })
 }

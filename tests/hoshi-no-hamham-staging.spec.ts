@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
 
 // Staging (演出): the stage-1 yell, a boss intro that holds the simulation and can be skipped, a boss falling
 // into an open goal, and the clear and death sequences ending on their screens. Driven through the test hook.
@@ -55,7 +56,7 @@ type Hook = {
 const hook = () => (window as unknown as { __hamham: Hook }).__hamham
 
 async function openStage(page: Page, no: number) {
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(() => {
     const save = {
       version: 1,
@@ -67,7 +68,7 @@ async function openStage(page: Page, no: number) {
     }
     localStorage.setItem('hoshi-no-hamham-v1', JSON.stringify(save))
   })
-  await page.reload()
+  await reloadGame(page)
   await page.getByRole('button', { name: 'つづきから' }).click()
   await page
     .locator('.stage-card')

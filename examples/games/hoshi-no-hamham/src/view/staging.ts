@@ -4,7 +4,9 @@
  * Timings are tuned to stay snappy; every moment longer than a second can be skipped. Under reduced motion the
  * moments keep their information (title card, nameplate, call) and drop pans, slow motion, shake and flashes.
  */
+import { VIEW_H } from '../art/contract'
 import type { SimEvent } from '../game/events'
+import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
 import { Sequence } from './sequence'
 
@@ -21,8 +23,11 @@ export const PRIORITY = {
 
 type At<K extends SimEvent['type']> = Extract<SimEvent, { type: K }>
 
-export const STAGE_START_SECONDS = 1.15
+export const STAGE_START_SECONDS = 1.45
 export const CHASE_START_SECONDS = 0.9
+/** 「スタート！」 comes this long before the moment ends; the title card is gone just before it (one thing in the slot). */
+const GO_LEAD = 0.22
+const CARD_GAP = 0.08
 export const BOSS_INTRO_SECONDS = 2.5
 export const CLEAR_SECONDS = 2.2
 export const DEATH_SECONDS = 1.8
@@ -107,11 +112,11 @@ export class Staging {
           sound.cue('iris-in')
         }
         sound.cue('stage-start')
-        hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle)
+        hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle, length - GO_LEAD - CARD_GAP)
       },
       true
     )
-    seq.at(length - 0.22, () => this.go(), true)
+    seq.at(length - GO_LEAD, () => this.go(), true)
     seq.onEnd(() => this.hint())
     return seq
   }
@@ -145,7 +150,7 @@ export class Staging {
           sound.cue('iris-in')
         }
         sound.cue('stage-start')
-        hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle)
+        hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle, length - 0.14 - CARD_GAP)
         view.actors.pose('hero', 'idle', 0.4)
         view.actors.pose('boss', 'idle', 0.2)
       },
@@ -209,7 +214,9 @@ export class Staging {
     const centre = () => ({ x: boss.x + boss.w / 2, y: boss.y + boss.h / 2 })
     seq.at(0, () => {
       const c = centre()
-      camera.panTo(c.x, c.y - 24, this.reduced ? 0 : pan)
+      // Frame him with his feet above the nameplate zone (the lower third), whatever his size.
+      const lowest = boss.y + boss.h - (ZONES.bossFeet - 0.5) * VIEW_H
+      camera.panTo(c.x, Math.max(c.y - 24, lowest), this.reduced ? 0 : pan)
       view.actors.pose('boss', 'idle', pan + 0.05)
     })
     seq.at(pan, () => {
@@ -430,6 +437,8 @@ export class Staging {
       0,
       () => {
         sound.cue('confetti')
+        // One thing at a time: the goal label is done, the call takes the upper third.
+        overlay.clearPopups('ゴール！')
         hud.showCall('クリア！', 'gold')
         view.actors.pose('hero', 'cheer', length + 0.5)
         const princess = world.props.find((p) => p.kind === 'princess' && p.data !== 1)

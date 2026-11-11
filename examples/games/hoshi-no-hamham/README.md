@@ -8,16 +8,17 @@
 
 ## あそびかた
 
-| 操作 | キー |
-| --- | --- |
-| あるく | ← → / A D |
-| ジャンプ | ↑ / W / スペース / K |
+| 操作             | キー                 |
+| ---------------- | -------------------- |
+| あるく           | ← → / A D            |
+| ジャンプ         | ↑ / W / スペース / K |
 | 足場をすり抜ける | プラットフォームで ↓ |
-| かじる | Z / X / J |
-| 一時停止 | Esc / P |
-| 音のON/OFF | M |
+| かじる           | Z / X / J            |
+| 一時停止         | Esc / P              |
+| 音のON/OFF       | M                    |
 
-タッチ端末では画面下のボタンが出ます。
+タッチ端末では、左右パッドと「ジャンプ」「かじる」のボタンが出ます（横持ちは画面の左右下、縦持ちはステージの下）。
+音量（おんがく・こうかおん・ぜんたい）はポーズ画面で変えられます。
 
 ## ギミック
 
@@ -44,6 +45,18 @@
 
 各ステージにボスがいます。10ステージクリアでエンディングです。
 
+## 見た目と音
+
+絵・曲・効果音はすべてプログラムで作っています（画像や音声のファイルはありません）。方針と決まりごとは
+[DESIGN.md](DESIGN.md) にまとめています。
+
+| 層     | 場所                               | 役割                                                                                           |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| ルール | `src/game/`                        | シミュレーション。起きたことを `SimEvent`（`events.ts`）として知らせるだけで、見た目は決めない |
+| 絵     | `src/art/`                         | ドット絵（キャラクター、7つの世界の地形と背景、しかけ、エフェクト、UI）。`contract.ts` が一覧  |
+| 音     | `src/audio/`                       | 全15曲と効果音77種。`api.ts` が一覧                                                            |
+| 表示   | `src/view/`、`src/ui/`、`src/app/` | カメラ、アニメ、エフェクト、演出（`director.ts`）、HUD、各画面、読み込み                       |
+
 ## 開発
 
 ```sh
@@ -52,16 +65,38 @@ npm run build:hoshi-no-hamham
 npm run test:hoshi-no-hamham
 npm run e2e:hoshi-no-hamham
 npm run art:hoshi-no-hamham      # .build/hoshi-no-hamham-art/ に絵を書き出す
+npm run audio:hoshi-no-hamham    # .build/hoshi-no-hamham-audio/ に音の計測レポートを書き出す
+npm run review:hoshi-no-hamham   # .build/hoshi-no-hamham-review/ にレビュー一式を書き出す
 ```
+
+## レビュー用ツール
+
+出力はどれも `.build/`（Git管理外）に作られます。
+
+| コマンド                                                                                                     | 何をするか                                                                                                                                                                                                           | 出力                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `node scripts/hoshi-no-hamham-art.mjs [--scale N] [--out DIR] [--anim a,b] [prefix ...]`                     | ピクセルアートの全シート（アニメごとに1行のコンタクトシート）、地形・背景・ワールドごとの合成シーンを書き出す                                                                                                        | `.build/hoshi-no-hamham-art/<id>.png`、`<id>.txt`、`pending.txt`（仮絵の一覧）                                                 |
+| `node scripts/hoshi-no-hamham-audio.mjs [--songs] [--only name,name]`                                        | 全効果音をオフラインで鳴らして、長さ・音量・帯域・似かよりを測る（`--songs` は曲の先頭30秒も。数分かかる。`--write` は音量補正を書き換えるので通常は使わない）                                                       | `.build/hoshi-no-hamham-audio/report.md`、`sfx/*.wav`                                                                          |
+| `npm run review:hoshi-no-hamham -- [--only screens,staging,art,motion,audio,checks] [--no-checks] [--songs]` | 上の2つを含め、画面・演出・絵・動き・音・検査をまとめて測るレビューキット。自前のVite開発サーバーとヘッドレスChromiumで動き、サーバーは必ず止める。ページエラー／コンソールエラーが出るか、節が失敗すると終了コード1 | `.build/hoshi-no-hamham-review/index.md`（目次と全数値の表）、`screens/`、`staging/`、`art/`、`motion/`、`audio/`、`checks.md` |
+
+レビューキットの `index.md` は画像を開かなくても読めます。`--only` で一部の節だけ走らせても、前回走らせた他の節の結果は
+`index.md` に残ります。ブラウザ操作の全テスト（`npm run e2e:hoshi-no-hamham`）は遅いのでキットには含みません。
 
 ## テスト
 
-- `tests/stage-data.test.ts` — 10ステージの構成、ギミック、ボス、物語データ
-- `tests/sim.test.ts` — 移動・かじり・各ギミック・目的・Determinism
-- `tests/story.test.ts` — 物語の流れとセーブ
-- `tests/hoshi-no-hamham-e2e.spec.ts` — 実機ブラウザでの操作確認
+単体テスト（`npm run test:hoshi-no-hamham`、`tests/` 以下）
+
+- `stage-data`・`sim`・`sim-events`・`bosses`・`playthrough`・`map-integrity`・`story` — ルール、10ステージの構成、出来事の通知、通しプレイ
+- `art-*` — 絵の決まり（コマ数・大きさ・色数・接地）、全シートがそろっていること、キャラクターごとの確認
+- `audio-*` — 曲の調・音域・ループのつなぎ目、効果音の長さ・大きさ・帯域・聞き分け
+- `view-*`・`ui-*`・`app-*` — カメラ、アニメの切り替え、出来事ごとの演出と音、演出の流れ、HUD、画面、読み込み
+
+ブラウザテスト（`npm run e2e:hoshi-no-hamham`、リポジトリ直下の `tests/hoshi-no-hamham-*.spec.ts`）
+
+- `e2e` — タイトルからエンディングまでの流れ、描画の確認
+- `screens`・`hud`・`staging`・`sound`・`loading` — 各画面、HUDとタッチ操作、演出、音、読み込み（スマホの縦横を含む）
 
 ## セーブ
 
-クリア状況・解放済みステージ・ベストタイム・ミュートは `localStorage` の
+クリア状況・解放済みステージ・ベストタイム・ミュート・音量は `localStorage` の
 `hoshi-no-hamham-v1` に保存されます。

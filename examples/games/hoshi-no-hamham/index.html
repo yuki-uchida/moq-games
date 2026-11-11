@@ -9,12 +9,227 @@
       content="星のハムハム — 64×64のモダンピクセルで描く、ステージギミック最重視の2Dアクション。歯で木を倒し、地面を掘り、配管を破き、蜂を怒らせよう。全10ステージ。"
     />
     <title>星のハムハム</title>
+    <!-- The hero's portrait (face_hero of the ui sheet), the same picture as on the splash; regenerate both with
+         scripts/hoshi-no-hamham-splash.mjs. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill='%231b1035' d='M0 0h16v16H0z'/%3E%3Cpath fill='%23ffd45e' d='M8 2l1.6 3.6L13 6l-2.6 2.8.8 3.9L8 11l-3.2 1.7.8-3.9L3 6l3.4-.4z'/%3E%3Cpath fill='%23ff9ecb' d='M3 11h10v3H3z'/%3E%3C/svg%3E"
+      type="image/png"
+      sizes="32x32"
+      href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAPoAAAD6AG1e1JrAAABtUlEQVRYw+1WoU4DQRCtRKAaBCENAomqruETalFV/Mf1A0gwBEH4gMpLMPwBdTVNEzSe0ArswkxvNnPD7Oxse4Bhk5e73u2+9+bd7F17vf+hjKfxNBB+nQcmh8dFxHl/GHYVL+Z5r2YhvL5tsYeJnXhSiwBwjxbzWCVKeOzIqjriZXyNCwEyVgkgJzOSwzTwjbhZCNdbFXEYRsgMQCtCNYGTmYFoShP/Agm01nFhVjEZSIrLFJJVM2FvAgR6NGYj0kSrck/8svEoifKtaIgfHhwhNFG6R+Jm96uPwSEOQzMh7xWZaO0GI24iTxngcBvI7fEuDLh3QYkJbw9kd0GpgVzXS/ycgfXKBBcnA6OTM0SZASJ1CsPbD78BzW/gV4WTr2OnkAebxQxhiqspcKKbegtGmhLEQsTRZYBSwLehUT1VZFWtiWcfATeAJgzx5/upK3YtflcvSAOcDMQBg+NhVtgdfRQf3QYPQJwfOe6uTlvzisSrh+DGxeVcvR6Wk3hOJlxGeDVAXgoQRnzU8ZxMZtPQotzLRCPOYZrowgAX5ufuftBMWODkuYZF7r6zD7qG+//gX4xPWVitaHuA0lkAAAAASUVORK5CYII="
     />
+    <style>
+      /* Instant splash: painted before any script runs. Only transform and opacity animate, so it keeps moving
+         while the main thread is busy; src/app/boot.ts moves the bar and removes it once the title is drawn. */
+      html,
+      body {
+        background: #0d0722;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        overflow: hidden;
+        background: linear-gradient(#0d0722 0%, #1b1035 55%, #2f2460 100%);
+        color: #fff1d6;
+        font-family: 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+        opacity: 1;
+        transition: opacity 0.4s ease-out;
+      }
+      #splash.is-leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash::before,
+      #splash::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        animation: splash-twinkle 2.4s ease-in-out infinite alternate;
+      }
+      #splash::before {
+        background:
+          linear-gradient(#fff6b0, #fff6b0) 25% 86% / 4px 4px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 61% 87% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 7% 81% / 3px 3px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 37% 7% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 9% 93% / 4px 4px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 95% 51% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 45% 52% / 3px 3px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 60% 74% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 77% 40% / 4px 4px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 48% 80% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 37% 46% / 3px 3px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 11% 71% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 82% 35% / 4px 4px no-repeat,
+          linear-gradient(#ffffff, #ffffff) 19% 92% / 3px 3px no-repeat;
+      }
+      #splash::after {
+        animation-delay: -1.2s;
+        background:
+          linear-gradient(#ffd9ea, #ffd9ea) 26% 10% / 4px 4px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 6% 77% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 6% 76% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 70% 6% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 29% 35% / 4px 4px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 85% 91% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 88% 38% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 10% 91% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 46% 74% / 4px 4px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 63% 14% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 93% 93% / 3px 3px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 19% 45% / 3px 3px no-repeat,
+          linear-gradient(#ffd9ea, #ffd9ea) 65% 90% / 4px 4px no-repeat,
+          linear-gradient(#fff6b0, #fff6b0) 56% 38% / 3px 3px no-repeat;
+      }
+      .splash-mark {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: flex-end;
+        gap: 14px;
+        animation: splash-bob 0.9s ease-in-out infinite alternate;
+      }
+      .splash-mark img {
+        display: block;
+        image-rendering: pixelated;
+        width: 128px;
+        height: 128px;
+      }
+      .splash-mark img.splash-star {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 20px;
+        animation: splash-pulse 0.9s ease-in-out infinite alternate;
+      }
+      .splash-mark img.splash-star + img + img.splash-star {
+        animation-direction: alternate-reverse;
+      }
+      .splash-text {
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-shadow:
+          -2px 0 0 #2a1230,
+          2px 0 0 #2a1230,
+          0 -2px 0 #2a1230,
+          0 2px 0 #2a1230,
+          0 4px 0 #2a1230;
+      }
+      .splash-bar {
+        position: relative;
+        z-index: 1;
+        width: min(62vw, 300px);
+        height: 16px;
+        padding: 4px;
+        background: #120a26;
+        box-shadow:
+          0 0 0 3px #e0a428,
+          0 0 0 6px #2a1230,
+          0 6px 0 6px #2a1230;
+      }
+      .splash-bar > i {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: repeating-linear-gradient(90deg, #ffd45e 0 8px, #e0a428 8px 10px);
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+        transition: transform 0.35s ease-out;
+      }
+      @keyframes splash-bob {
+        to {
+          transform: translateY(-12px);
+        }
+      }
+      @keyframes splash-pulse {
+        from {
+          opacity: 0.45;
+          transform: scale(0.8);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+      }
+      @keyframes splash-twinkle {
+        from {
+          opacity: 0.25;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @media (max-height: 420px) {
+        #splash {
+          gap: 10px;
+        }
+        .splash-mark img {
+          width: 80px;
+          height: 80px;
+        }
+        .splash-mark img.splash-star {
+          width: 32px;
+          height: 32px;
+          margin-bottom: 12px;
+        }
+        .splash-text {
+          font-size: 16px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash,
+        #splash::before,
+        #splash::after,
+        .splash-mark,
+        .splash-mark img,
+        .splash-bar > i {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
   </head>
   <body>
+    <!-- Instant splash (see the style in <head>). The pictures are the game's own art, baked as data-URL PNGs:
+         regenerate them with  node scripts/hoshi-no-hamham-splash.mjs  (face_hero, then starOn). -->
+    <div id="splash" role="status" aria-live="polite" aria-label="星のハムハム">
+      <div class="splash-mark" aria-hidden="true">
+        <img
+          class="splash-star"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAaElEQVQ4y2NgGNRAS8jgPwiTrfn/tw3/HyzRIM8Qkg2AOReGQZrB4Eoc3BBkjKEZpAisCYaBGlEwkhxWV8ENgWmA2o6O8XoJwxBSNKMHHlmaqWoASAM6Jsr5yIqRMUmGYFNEUbKmKQAATVvu8Uw2OlAAAAAASUVORK5CYII="
+        />
+        <img
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAPoAAAD6AG1e1JrAAABtUlEQVRYw+1WoU4DQRCtRKAaBCENAomqruETalFV/Mf1A0gwBEH4gMpLMPwBdTVNEzSe0ArswkxvNnPD7Oxse4Bhk5e73u2+9+bd7F17vf+hjKfxNBB+nQcmh8dFxHl/GHYVL+Z5r2YhvL5tsYeJnXhSiwBwjxbzWCVKeOzIqjriZXyNCwEyVgkgJzOSwzTwjbhZCNdbFXEYRsgMQCtCNYGTmYFoShP/Agm01nFhVjEZSIrLFJJVM2FvAgR6NGYj0kSrck/8svEoifKtaIgfHhwhNFG6R+Jm96uPwSEOQzMh7xWZaO0GI24iTxngcBvI7fEuDLh3QYkJbw9kd0GpgVzXS/ycgfXKBBcnA6OTM0SZASJ1CsPbD78BzW/gV4WTr2OnkAebxQxhiqspcKKbegtGmhLEQsTRZYBSwLehUT1VZFWtiWcfATeAJgzx5/upK3YtflcvSAOcDMQBg+NhVtgdfRQf3QYPQJwfOe6uTlvzisSrh+DGxeVcvR6Wk3hOJlxGeDVAXgoQRnzU8ZxMZtPQotzLRCPOYZrowgAX5ufuftBMWODkuYZF7r6zD7qG+//gX4xPWVitaHuA0lkAAAAASUVORK5CYII="
+        />
+        <img
+          class="splash-star"
+          alt=""
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAaElEQVQ4y2NgGNRAS8jgPwiTrfn/tw3/HyzRIM8Qkg2AOReGQZrB4Eoc3BBkjKEZpAisCYaBGlEwkhxWV8ENgWmA2o6O8XoJwxBSNKMHHlmaqWoASAM6Jsr5yIqRMUmGYFNEUbKmKQAATVvu8Uw2OlAAAAAASUVORK5CYII="
+        />
+      </div>
+      <p class="splash-text">よみこみちゅう…</p>
+      <div
+        class="splash-bar"
+        id="splash-bar"
+        role="progressbar"
+        aria-label="よみこみ"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      >
+        <i id="splash-fill"></i>
+      </div>
+    </div>
     <main id="app">
       <div id="stage-wrap">
         <canvas id="game" width="640" height="360" aria-label="星のハムハムのフィールド"></canvas>
@@ -111,6 +326,7 @@
         </section>
 
         <section id="result-screen" class="screen result-screen" aria-labelledby="result-title" hidden>
+          <canvas id="result-art" class="result-art" width="320" height="160" aria-hidden="true"></canvas>
           <div class="result-card paper-card">
             <p class="kicker" id="result-kicker">ステージ 1</p>
             <h2 id="result-title" class="headline">ステージクリア！</h2>

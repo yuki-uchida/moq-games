@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
 
 const SAVE_KEY = 'hoshi-no-hamham-v1'
 
@@ -25,7 +26,7 @@ function collectErrors(page: Page) {
 
 /** Loads the game with a given save (null: a fresh player). */
 async function boot(page: Page, save: Record<string, unknown> | null) {
-  await page.goto('/')
+  await openGame(page)
   await page.evaluate(
     ([key, data]) => {
       if (data) localStorage.setItem(key as string, JSON.stringify(data))
@@ -33,7 +34,7 @@ async function boot(page: Page, save: Record<string, unknown> | null) {
     },
     [SAVE_KEY, save] as const
   )
-  await page.reload()
+  await reloadGame(page)
   await expect(page.locator('#title-screen')).toBeVisible()
 }
 
@@ -64,9 +65,46 @@ async function countActions(page: Page) {
 
 const calls = (page: Page) => page.evaluate(() => ({ ...window.__calls }))
 
+interface CueLog {
+  cue: string
+  at: number
+}
+
+declare global {
+  interface Window {
+    __cueLog?: CueLog[]
+    __keyLog?: number[]
+  }
+}
+
+/** Wraps the app's cue board entry so every cue the screens ask for is logged with its time. */
+async function recordCues(page: Page) {
+  await page.evaluate(() => {
+    const app = (window as unknown as { __hamham: { app: { cue(cue: string): void } } }).__hamham.app
+    window.__cueLog = []
+    window.__keyLog = []
+    window.addEventListener('keydown', () => window.__keyLog!.push(performance.now()), true)
+    const original = app.cue.bind(app)
+    app.cue = (cue: string) => {
+      window.__cueLog!.push({ cue, at: performance.now() })
+      original(cue)
+    }
+  })
+}
+
+const cueLog = (page: Page) => page.evaluate(() => window.__cueLog!.slice())
+
+/** True when `wanted` appears in `log` in this order (other cues may lie between). */
+function inOrder(log: string[], wanted: string[]) {
+  let at = 0
+  for (const cue of log) if (cue === wanted[at]) at += 1
+  return at === wanted.length
+}
+
 const result = (damage: number) => ({
   stage: {
     no: 6,
+    theme: 'forest',
     name: '森の巣',
     clear: ['森の主を追い返し、巣を守り抜いた！'],
     collect: 8
@@ -292,6 +330,172 @@ test('the game over card shows the fallen hero and puts retry first', async ({ p
   expect(errors).toEqual([])
 })
 
+test('the game over card shows the hero lying dazed, swapping between the last two frames of the fall', async ({
+  page
+}) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await page.evaluate(() =>
+    (window as unknown as { __hamham: { app: { screens: ScreensHook } } }).__hamham.app.screens.showDead()
+  )
+  await expect(page.locator('#dead-screen')).toBeVisible()
+  const seen = await page.evaluate(async () => {
+    const pixel = await import('/src/ui/pixel.ts')
+    const canvas = document.querySelector<HTMLCanvasElement>('#dead-art canvas')!
+    const frames = [0, 1, 2, 3, 4, 5].map((i) => pixel.spriteUrl('hero', 'die', i))
+    const shown = new Set<number>()
+    for (let i = 0; i < 26; i++) {
+      shown.add(frames.indexOf(canvas.toDataURL()))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    return Array.from(shown).sort()
+  })
+  // Never a tumbling frame (and never an unknown picture): only 4 (flat on his back) and 5 (eyes swirling).
+  expect(seen).toEqual([4, 5])
+  expect(errors).toEqual([])
+})
+
+test('walking the menus by keyboard makes the interface sounds, one cue per key press', async ({ page }) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await recordCues(page)
+  // Title: move the focus right and back left, then continue.
+  await expect(page.locator('#continue')).toBeFocused()
+  await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#select-screen')).toBeVisible()
+  // The select opens with stage 4 newly unlocked: its chime follows shortly after, on its own.
+  await page.waitForTimeout(600)
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Space')
+  await expect(page.locator('#story-screen')).toBeVisible()
+  // Let the typewriter run for a while (blips), complete the page, then turn it.
+  await page.waitForTimeout(450)
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#story-dots i').nth(1)).toHaveClass(/is-active/)
+  await page.waitForTimeout(120)
+  // Esc skips the story into the stage.
+  await page.keyboard.press('Escape')
+  await page.waitForFunction(() => Boolean((window as unknown as { __hamham: { world: unknown } }).__hamham.world))
+
+  const log = await cueLog(page)
+  const names = log.map((entry) => entry.cue)
+  expect(
+    inOrder(names, ['menu-move', 'menu-move', 'menu-select', 'unlock', 'menu-move', 'menu-select', 'text-blip']),
+    names.join(' ')
+  ).toBe(true)
+  expect(inOrder(names, ['text-blip', 'page-turn', 'menu-back']), names.join(' ')).toBe(true)
+  // Never two cues for one key press (the timer-driven ones — text, unlock, title — are not key presses).
+  const keyed = log.filter((entry) => !['text-blip', 'unlock', 'title-start'].includes(entry.cue))
+  const keys = await page.evaluate(() => window.__keyLog!.slice())
+  for (const at of keys) {
+    const within = keyed.filter((entry) => entry.at >= at - 1 && entry.at < at + 30)
+    expect(
+      within.map((entry) => entry.cue),
+      `key at ${Math.round(at)} ms`
+    ).toHaveLength(Math.min(1, within.length))
+  }
+  // Blips are spaced by at least the floor.
+  const blips = log.filter((entry) => entry.cue === 'text-blip')
+  expect(blips.length).toBeGreaterThan(3)
+  blips.forEach((blip, i) => {
+    if (i > 0) expect(blip.at - blips[i - 1].at).toBeGreaterThanOrEqual(30)
+  })
+  expect(errors).toEqual([])
+})
+
+test('the title logo lands with its sound, once, and the sound is dropped if the screen changes first', async ({
+  page
+}) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await recordCues(page)
+  const app = () =>
+    page.evaluate(() => (window as unknown as { __hamham: { app: { openTitle(): void } } }).__hamham.app.openTitle())
+  await app()
+  await page.waitForTimeout(600)
+  expect((await cueLog(page)).map((entry) => entry.cue)).toEqual(['title-start'])
+  // Leaving before the logo lands: no late chime on the next screen.
+  await app()
+  await page.evaluate(() =>
+    (window as unknown as { __hamham: { app: { openSelect(): void } } }).__hamham.app.openSelect()
+  )
+  await page.waitForTimeout(700)
+  expect((await cueLog(page)).filter((entry) => entry.cue === 'title-start')).toHaveLength(1)
+  expect(errors).toEqual([])
+})
+
+test('the result tally ticks while counting, chimes the new record and ends with the done sound', async ({ page }) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await recordCues(page)
+  await showResult(page, 1)
+  await expect(page.locator('.result-card')).toHaveClass(/is-tallied/, { timeout: 8000 })
+  const log = await cueLog(page)
+  const names = log.map((entry) => entry.cue)
+  expect(inOrder(names, ['tally-tick', 'new-record', 'tally-tick', 'tally-done']), names.join(' ')).toBe(true)
+  expect(names.filter((cue) => cue === 'new-record')).toHaveLength(1)
+  expect(names.filter((cue) => cue === 'tally-done')).toHaveLength(1)
+  expect(names[names.length - 1]).toBe('tally-done')
+  const ticks = log.filter((entry) => entry.cue === 'tally-tick')
+  expect(ticks.length).toBeGreaterThan(4)
+  ticks.forEach((tick, i) => {
+    // The 45 ms floor is measured on frame times; the log uses the clock inside the frame, so allow its jitter.
+    if (i > 0) expect(tick.at - ticks[i - 1].at).toBeGreaterThanOrEqual(30)
+  })
+  expect(errors).toEqual([])
+})
+
+test('skipping the count-up does not stack the closing chime on a new record', async ({ page }) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await recordCues(page)
+  await showResult(page, 1)
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.result-card')).toHaveClass(/is-tallied/)
+  const names = (await cueLog(page)).map((entry) => entry.cue)
+  expect(names.filter((cue) => cue === 'new-record')).toHaveLength(1)
+  expect(names).not.toContain('tally-done')
+  expect(errors).toEqual([])
+})
+
+test('the result screen has a quiet backdrop of its own, never the black canvas', async ({ page }) => {
+  const errors = collectErrors(page)
+  await boot(page, saveWith())
+  await showResult(page, 0)
+  await page.waitForTimeout(300)
+  const backdrop = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('#result-art')!
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    let sum = 0
+    const colours = new Set<number>()
+    for (let i = 0; i < data.length; i += 4 * 5) {
+      sum += (data[i] + data[i + 1] + data[i + 2]) / 3
+      colours.add((data[i] << 16) | (data[i + 1] << 8) | data[i + 2])
+    }
+    const screen = document.querySelector('#result-screen')!.getBoundingClientRect()
+    const box = canvas.getBoundingClientRect()
+    return {
+      mean: sum / (data.length / 20),
+      colours: colours.size,
+      covers: Math.abs(box.width - screen.width) < 2 && Math.abs(box.height - screen.height) < 2,
+      dim: getComputedStyle(canvas).filter
+    }
+  })
+  expect(backdrop.covers).toBe(true)
+  expect(backdrop.colours).toBeGreaterThan(30)
+  // The world is dimmed by the stylesheet (about half), and what is left is still clearly not black.
+  expect(backdrop.dim).toContain('brightness')
+  expect(backdrop.mean * 0.5).toBeGreaterThan(25)
+  expect(errors).toEqual([])
+})
+
 test('the pause sliders call through and survive a reload', async ({ page }) => {
   const errors = collectErrors(page)
   await boot(page, saveWith({ volume: { master: 1, music: 0.8, sfx: 1 } }))
@@ -316,7 +520,7 @@ test('the pause sliders call through and survive a reload', async ({ page }) => 
   expect(saved.sfx).toBeCloseTo(0.4)
   // Still paused: the arrows moved the slider, not the hero.
   await expect(page.locator('#pause-screen')).toBeVisible()
-  await page.reload()
+  await reloadGame(page)
   await openPause()
   await expect(page.locator('#volume-music')).toHaveValue('70')
   await expect(page.locator('#volume-sfx')).toHaveValue('40')

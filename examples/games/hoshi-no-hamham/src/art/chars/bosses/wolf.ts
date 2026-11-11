@@ -10,7 +10,7 @@
 import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { Painter, Raster, farRamp, shadeIndex, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const FUR = R.wolfGray
 const FAR = farRamp(FUR)
@@ -381,23 +381,25 @@ export function drawWolf(p: Pose): Raster {
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = [0, 1, 2, 3].map((i) =>
-  pose({
-    hip: [0, [0, -1, 0, 1][i]],
-    head: [2, [3, 3, 4, 4][i]],
-    headAng: [0.1, 0.05, 0.12, 0.16][i],
-    nearF: [foot(NF), foot(NF + 5, 5), foot(NF + 8), foot(NF + 3)][i],
-    farF: [foot(FF), foot(FF), foot(FF - 3, 3), foot(FF)][i],
-    nearH: [foot(NH), foot(NH), foot(NH), foot(NH + 3, 3)][i],
-    farH: [foot(FH), foot(FH - 2), foot(FH), foot(FH)][i],
-    tail: [0, 1, 0, -1][i],
-    eyes: i === 3 ? 'narrow' : 'fierce',
-    snarl: i === 2 ? 0.6 : 0,
-    scarfPhase: i * 1.6
-  })
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    pose({
+      hip: [0, [0, -1, 0, 1][i]],
+      head: [2, [3, 3, 4, 4][i]],
+      headAng: [0.1, 0.05, 0.12, 0.16][i],
+      nearF: [foot(NF), foot(NF + 5, 5), foot(NF + 8), foot(NF + 3)][i],
+      farF: [foot(FF), foot(FF), foot(FF - 3, 3), foot(FF)][i],
+      nearH: [foot(NH), foot(NH), foot(NH), foot(NH + 3, 3)][i],
+      farH: [foot(FH), foot(FH - 2), foot(FH), foot(FH)][i],
+      tail: [0, 1, 0, -1][i],
+      eyes: i === 3 ? 'narrow' : 'fierce',
+      snarl: i === 2 ? 0.6 : 0,
+      scarfPhase: i * 1.6
+    })
+  )
 )
 
-const intro = [
+const intro = memo(() => [
   pose({ hip: [0, 3], ang: -0.1, head: [2, 6], headAng: 0.3, nearF: foot(NF + 2), eyes: 'fierce', scarfPhase: 0 }),
   pose({
     hip: [-2, 1],
@@ -438,9 +440,9 @@ const intro = [
     scarfAng: -0.6,
     scarfPhase: 4.5
   })
-]
+])
 
-const windup = [
+const windup = memo(() => [
   pose({
     hip: [-1, 3],
     ang: -0.12,
@@ -486,9 +488,9 @@ const windup = [
     scarfPhase: 3.6,
     scarfAmp: 3
   })
-]
+])
 
-const attack = [
+const attack = memo(() => [
   pose({
     hip: [2, -3],
     len: 8,
@@ -554,51 +556,57 @@ const attack = [
     scarfAng: -0.15,
     scarfPhase: 4.8
   })
-]
+])
 
-const stunned = [0, 1, 2, 3].map((i) =>
-  pose({
-    hip: [3, 19],
-    ang: 0.7,
-    head: [[-2, 0, 2, 0][i], [2, 3, 2, 3][i]],
-    headAng: [-0.1, 0.1, 0.2, 0.05][i],
-    jaw: 0.35,
-    tongue: true,
-    eyes: 'swirl',
-    ears: 0.8,
-    nearF: [foot(74), foot(75), foot(76), foot(75)][i].map((v, k) =>
-      k ? v - 16 + [0, 2, 3, 1][i] : v
-    ) as unknown as V,
-    farF: [foot(68), foot(69), foot(68), foot(67)][i].map((v, k) => (k ? v - 14 + [0, 1, 2, 1][i] : v)) as unknown as V,
-    nearH: foot(60),
-    farH: foot(50),
-    stars: i * 0.1,
-    tail: [0, 1, 0, -1][i],
-    scarfAng: 1.2,
-    scarfPhase: i * 1.2,
-    scarfAmp: 1.5
-  })
+const stunned = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    pose({
+      hip: [3, 19],
+      ang: 0.7,
+      head: [[-2, 0, 2, 0][i], [2, 3, 2, 3][i]],
+      headAng: [-0.1, 0.1, 0.2, 0.05][i],
+      jaw: 0.35,
+      tongue: true,
+      eyes: 'swirl',
+      ears: 0.8,
+      nearF: [foot(74), foot(75), foot(76), foot(75)][i].map((v, k) =>
+        k ? v - 16 + [0, 2, 3, 1][i] : v
+      ) as unknown as V,
+      farF: [foot(68), foot(69), foot(68), foot(67)][i].map((v, k) =>
+        k ? v - 14 + [0, 1, 2, 1][i] : v
+      ) as unknown as V,
+      nearH: foot(60),
+      farH: foot(50),
+      stars: i * 0.1,
+      tail: [0, 1, 0, -1][i],
+      scarfAng: 1.2,
+      scarfPhase: i * 1.2,
+      scarfAmp: 1.5
+    })
+  )
 )
 
-const recover = [0, 1].map((i) =>
-  pose({
-    hip: [0, 1 + i],
-    len: -i,
-    head: [0, 8 + i],
-    headAng: 0.5,
-    jaw: [0.5, 0.9][i],
-    tongue: true,
-    eyes: 'tired',
-    sweat: true,
-    ears: 0.6,
-    tail: [0, -1][i],
-    scarfAng: 0.9,
-    scarfPhase: i * 1.6,
-    scarfAmp: 1.5
-  })
+const recover = memo(() =>
+  [0, 1].map((i) =>
+    pose({
+      hip: [0, 1 + i],
+      len: -i,
+      head: [0, 8 + i],
+      headAng: 0.5,
+      jaw: [0.5, 0.9][i],
+      tongue: true,
+      eyes: 'tired',
+      sweat: true,
+      ears: 0.6,
+      tail: [0, -1][i],
+      scarfAng: 0.9,
+      scarfPhase: i * 1.6,
+      scarfAmp: 1.5
+    })
+  )
 )
 
-const hurt = [
+const hurt = memo(() => [
   pose({
     hip: [-4, 0],
     ang: 0.15,
@@ -626,9 +634,9 @@ const hurt = [
     scarfAng: 0.3,
     scarfPhase: 2.5
   })
-]
+])
 
-const defeat = [
+const defeat = memo(() => [
   pose({
     hip: [-3, 1],
     ang: 0.12,
@@ -727,19 +735,19 @@ const defeat = [
     scarfAng: 0.5,
     scarfPhase: 6
   })
-]
+])
 
 const draw = (poses: Pose[]) => poses.map(drawWolf)
 
 export const sheets: SheetModule = {
   wolfBoss: () => ({
-    idle: anim(draw(idle), 6, true),
-    intro: anim(draw(intro), 8, false),
-    windup: anim(draw(windup), 10, false),
-    attack: anim(draw(attack), 14, true),
-    stunned: anim(draw(stunned), 8, true),
-    recover: anim(draw(recover), 6, true),
-    hurt: anim(draw(hurt), 12, false),
-    defeat: anim(draw(defeat), 8, false)
+    idle: lazyAnim(() => draw(idle()), 6, true),
+    intro: lazyAnim(() => draw(intro()), 8, false),
+    windup: lazyAnim(() => draw(windup()), 10, false),
+    attack: lazyAnim(() => draw(attack()), 14, true),
+    stunned: lazyAnim(() => draw(stunned()), 8, true),
+    recover: lazyAnim(() => draw(recover()), 6, true),
+    hurt: lazyAnim(() => draw(hurt()), 12, false),
+    defeat: lazyAnim(() => draw(defeat()), 8, false)
   })
 }

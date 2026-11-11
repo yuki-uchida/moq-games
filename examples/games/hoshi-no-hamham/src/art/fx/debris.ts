@@ -437,17 +437,17 @@ function feather(): Raster[] {
 
 export const sheets: SheetModule = {
   fx: () => ({
-    leaf: make('leaf', leaf()),
-    needle: make('needle', needle()),
-    chip: make('chip', chip()),
-    clod: make('clod', clod()),
-    shard: make('shard', shard()),
-    drop: make('drop', drop()),
-    splash: make('splash', splash()),
-    bubble: make('bubble', bubble()),
-    gush: make('gush', gush()),
-    honey: make('honey', honey()),
-    feather: make('feather', feather())
+    leaf: make('leaf', leaf),
+    needle: make('needle', needle),
+    chip: make('chip', chip),
+    clod: make('clod', clod),
+    shard: make('shard', shard),
+    drop: make('drop', drop),
+    splash: make('splash', splash),
+    bubble: make('bubble', bubble),
+    gush: make('gush', gush),
+    honey: make('honey', honey),
+    feather: make('feather', feather)
   })
 }
 
