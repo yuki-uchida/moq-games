@@ -17,6 +17,9 @@ export const MAP_W = 120
 export const MAP_H = 18
 export const SURFACE = 15
 
+/** Terrain-like cells: they are written exactly where they are drawn, without prop stacking. */
+const TERRAIN_CHARS = new Set(['#', '.', '~'])
+
 export class MapBuilder {
   private grid: string[][]
   constructor(
@@ -31,8 +34,9 @@ export class MapBuilder {
   readonly shifted: string[] = []
   set(ch: string, x: number, y: number) {
     // Props never replace terrain or each other: they stack on top of the first free cell.
-    // Terrain writes ('#' and '.') are exact, so pits and ground always land where they were drawn.
-    if (ch !== '#' && ch !== '.' && ch !== '~') {
+    // Terrain writes ('#', '.', '~') are exact, so pits, ground and water always land where they
+    // were drawn. Platforms and dirt still stack, so a later call never buries a prop.
+    if (!TERRAIN_CHARS.has(ch)) {
       const target = y
       while (y > 0 && this.get(x, y) !== '.') y -= 1
       if (y !== target) this.shifted.push(`${ch} ${x},${target} -> ${x},${y}`)
@@ -156,7 +160,6 @@ function stage1() {
   m.dirt(46, 50, 3)
   m.dirt(80, 83, 1)
   m.platform(19, 25, 13)
-  m.platform(44, 48, 13)
   m.platform(74, 82, 13)
   m.set('T', 12, 14)
   m.set('T', 25, 14)
@@ -271,7 +274,7 @@ function stage2() {
   m.set('G', 117, 14)
   m.set('h', 114, 14)
   m.set('@', 3, 14)
-  m.forceFill('D', 66, 10, 66, 14)
+  m.forceFill('D', 66, 9, 66, 14)
   m.border()
   return m
 }
@@ -361,7 +364,7 @@ function stage3() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
-  m.forceFill('D', 66, 10, 66, 14)
+  m.forceFill('D', 66, 9, 66, 14)
   m.border()
   return m
 }
@@ -423,9 +426,9 @@ function stage4() {
   m.set('B', 112, 13)
   m.set('G', 117, 14)
   m.set('@', 3, 14)
-  m.forceFill('D', 35, 10, 35, 14)
+  m.forceFill('D', 35, 9, 35, 14)
   m.forceFill('x', 38, 8, 38, 14)
-  m.forceFill('D', 83, 10, 83, 14)
+  m.forceFill('D', 83, 9, 83, 14)
   m.forceFill('y', 82, 8, 82, 14)
   m.border()
   return m
@@ -529,8 +532,8 @@ function stage5() {
   m.set('B', 118, 13)
   m.set('G', 125, 14)
   m.set('@', 3, 14)
-  m.forceFill('D', 42, 10, 42, 14)
-  m.forceFill('D', 82, 10, 82, 14)
+  m.forceFill('D', 42, 9, 42, 14)
+  m.forceFill('D', 82, 9, 82, 14)
   m.border()
   return m
 }
@@ -594,6 +597,10 @@ function stage6() {
   m.set('t', 61, 13)
   m.set('t', 77, 13)
   m.set('t', 93, 13)
+  // The best materials sit on a high shelf, so the nest needs a climb to be built.
+  m.platform(94, 98, 11)
+  m.set('t', 95, 10)
+  m.set('b', 97, 10)
   m.set('b', 20, 13)
   m.set('b', 44, 13)
   m.set('b', 70, 13)
@@ -697,7 +704,7 @@ function stage7() {
   m.set('U', 92, 14)
   m.set('h', 94, 14)
   m.set('B', 90, 12)
-  m.set('G', 95, 14)
+  m.set('n', 95, 14)
   m.set('@', 6, 14)
   m.forceFill('x', 42, 8, 42, 14)
   m.forceFill('y', 64, 8, 64, 14)
@@ -724,6 +731,8 @@ function stage8() {
   m.pit(44, 45)
   m.pit(64, 65)
   m.pit(84, 85)
+  // A low corridor between the cells: the only way through the first block.
+  m.fill('#', 16, 10, 22, 11)
   m.platform(23, 27, 13)
   m.platform(43, 47, 13)
   m.platform(63, 67, 13)
@@ -744,7 +753,7 @@ function stage8() {
   m.set('P', 46, 14)
   m.set('P', 66, 14)
   m.set('P', 86, 14)
-  m.set('H', 18, 11)
+  m.set('H', 12, 11)
   m.set('H', 40, 11)
   m.set('H', 60, 11)
   m.set('H', 80, 11)
@@ -887,7 +896,7 @@ function stage9() {
   m.set('B', 122, 12)
   m.set('G', 127, 14)
   m.set('@', 3, 14)
-  m.forceFill('D', 84, 10, 84, 14)
+  m.forceFill('D', 84, 9, 84, 14)
   m.forceFill('x', 46, 8, 46, 14)
   m.forceFill('y', 104, 8, 104, 14)
   m.border()
@@ -978,8 +987,8 @@ function stage10() {
   m.set('B', 90, 12)
   m.set('G', 94, 14)
   m.set('@', 6, 14)
-  m.forceFill('D', 41, 10, 41, 14)
-  m.forceFill('D', 59, 10, 59, 14)
+  m.forceFill('D', 41, 9, 41, 14)
+  m.forceFill('D', 59, 9, 59, 14)
   m.forceFill('x', 68, 8, 68, 14)
   m.forceFill('y', 93, 8, 93, 14)
   m.border()

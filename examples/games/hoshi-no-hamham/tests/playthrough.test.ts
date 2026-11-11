@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TILE, World } from '../src/game/sim'
+import { T, TILE, World } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
 import { botInput } from './bot'
 
@@ -80,4 +80,39 @@ describe('biting is required', () => {
       expect(world.state, `${stageId} was cleared without a single bite`).not.toBe('clear')
     })
   }
+
+  it('stage-1 stops at the dirt wall instead of jumping over it', () => {
+    const stage = STAGES.find((entry) => entry.id === 'stage-1')!
+    const world = new World(stage, { seed: 11 })
+    for (const enemy of world.enemies) enemy.dead = true
+    if (world.boss) world.boss.dead = true
+    world.goalOpen = true
+    world.player.maxHp = 999
+    world.player.hp = 999
+    // Clear the low mounds and the rocks so the tall wall is the only thing that can stop the runner.
+    for (let x = 0; x < world.w; x++) {
+      if (x >= 46 && x <= 50) continue
+      for (let y = 0; y < world.h; y++) {
+        if (world.tileAt(x, y) === T.DIRT) world.tiles[y * world.w + x] = T.EMPTY
+      }
+    }
+    for (const prop of world.props) {
+      if (prop.kind !== 'rock') continue
+      prop.state = 'broken'
+      world.dynamic[(prop.y / TILE) * world.w + prop.x / TILE] = 0
+    }
+    const memory = { x: world.player.x, stuck: 0, reverse: 0 }
+    let frames = 0
+    let maxX = 0
+    while (frames++ < 60 * 120 && world.state === 'play') {
+      const input = botInput(world, memory)
+      input.bite = false
+      input.bitePressed = false
+      world.step(1 / 60, input)
+      maxX = Math.max(maxX, world.player.x)
+    }
+    // The wall sits at x=46-50: the runner has to reach it and has to stop there.
+    expect(maxX, 'the runner never reached the dirt wall').toBeGreaterThan(44 * TILE)
+    expect(maxX, 'the runner jumped over the dirt wall').toBeLessThan(50 * TILE)
+  })
 })
