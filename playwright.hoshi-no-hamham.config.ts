@@ -5,7 +5,8 @@ const port = Number(process.env.E2E_PORT || 5196)
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: 'hoshi-no-hamham-e2e.spec.ts',
+  // Every tests/hoshi-no-hamham-*.spec.ts: the main flow plus one file per area (screens, staging, sound).
+  testMatch: /hoshi-no-hamham-.*\.spec\.ts/,
   fullyParallel: true,
   workers: 1,
   timeout: 30_000,
