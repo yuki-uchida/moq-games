@@ -3855,7 +3855,7 @@ export class Renderer {
       for (const id of this.flying.keys()) if (!live.has(id)) this.flying.delete(id)
     } else if (!view.paused?.length) this.sinceSnapshot += dt
     // Guests draw bullets a little behind the snapshot clock, about where the eased crowd and players stand.
-    // ponytail: fixed lag tuned to ease()'s k=dt*14 at 10 Hz snapshots; retune if either changes.
+    // ponytail: fixed lag tuned to ease()'s k=dt*14 at 10–15 Hz snapshots; retune if either changes.
     const bulletTime = smooth ? view.time + Math.min(this.sinceSnapshot, 0.15) - 0.1 : view.time
     if (this.flying.size) {
       const sprites = sheet('bullets')

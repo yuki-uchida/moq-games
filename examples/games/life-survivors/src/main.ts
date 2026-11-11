@@ -76,9 +76,9 @@ const relayUrl = getPrimaryRelayUrl('https://relay.moqt.research.skyway.io')
 const room = element<HTMLInputElement>('#room')
 const feed = element<HTMLElement>('#feed')
 const buttons = ['#solo', '#host', '#join'].map((selector) => element<HTMLButtonElement>(selector))
-// Guests send input at ~15 Hz; the host's larger snapshots go at 10 Hz and guests ease between them.
+// Guests send input and the host sends snapshots at ~15 Hz; guests ease between snapshots.
 const SEND_MS = 66
-const SNAPSHOT_MS = 100
+const SNAPSHOT_MS = 66
 const APP = 'life-survivors-v23'
 /** 大往生: the haloed soul rises and the reaper bows before the result (well inside the reaper's 8 s budget). */
 const WON_DELAY_MS = 3000

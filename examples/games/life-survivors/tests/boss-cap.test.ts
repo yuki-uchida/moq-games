@@ -22,6 +22,9 @@ function arena(players: number) {
 }
 
 function expectView(game: Game) {
+  // The worst case: every enemy on screen (snapshots leave out the ones off every screen).
+  const { x, y } = game.state.players[0]
+  for (const enemy of game.state.enemies) Object.assign(enemy, { x: x + 300, y })
   const view = toView(game.state)
   expect(view.enemies.length / STRIDE.enemies).toBe(game.state.enemies.length)
   expect(game.state.enemies.length).toBeLessThanOrEqual(VIEW_CAPS.enemies)
