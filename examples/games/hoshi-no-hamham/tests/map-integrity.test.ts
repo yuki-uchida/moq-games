@@ -159,6 +159,30 @@ describe('map integrity', () => {
     expect(problems).toEqual([])
   })
 
+  it('never lets a player climb over a diggable wall instead of biting it', () => {
+    const problems: string[] = []
+    for (const stage of STAGES) {
+      const map = stage.map
+      const width = map[0].length
+      for (let x = 0; x < width; x++) {
+        if (map[SURFACE - 1]?.[x] !== 'D') continue
+        let top = SURFACE - 1
+        while (top > 0 && map[top - 1]?.[x] === 'D') top -= 1
+        // Mounds of one or two tiles can be jumped; taller walls have to be dug through.
+        if (top > SURFACE - 3) continue
+        // A one-way platform close enough would let a player jump over the wall instead of biting.
+        for (let dx = -3; dx <= 3; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= width) continue
+          for (let y = 0; y <= top + 2; y++) {
+            if (map[y]?.[nx] === '=') problems.push(`${stage.id}: the wall at x=${x} is jumpable from ${nx},${y}`)
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
   it('cuts real pits into the surface of every stage', () => {    const problems: string[] = []
     for (const stage of STAGES) {
       const map = stage.map
