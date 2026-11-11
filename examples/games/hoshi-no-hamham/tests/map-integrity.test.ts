@@ -76,7 +76,7 @@ describe('map integrity', () => {
     for (const stage of STAGES) {
       const map = stage.map
       const present = map.some((row) => row.includes('h') || row.includes('c'))
-      const needed = ['stage-2', 'stage-3', 'stage-4', 'stage-6', 'stage-8', 'stage-10'].includes(stage.id)
+      const needed = ['stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7', 'stage-8', 'stage-10'].includes(stage.id)
       if (needed && !present) problems.push(`${stage.id}: the princess never appears`)
       if (!needed && present) problems.push(`${stage.id}: unexpected princess`)
     }
