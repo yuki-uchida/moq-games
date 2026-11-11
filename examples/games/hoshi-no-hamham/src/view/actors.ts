@@ -41,6 +41,19 @@ interface Ghost {
   clip: string
 }
 
+/** Who staging can pose. */
+export type PoseTarget = 'hero' | 'boss'
+
+/** A staged clip: shown from its first frame for a while, on real time (it plays while the simulation is held). */
+interface Pose {
+  clip: string
+  start: number
+  until: number
+  /** Height of an optional hop (px) and its length (s). */
+  hop: number
+  hopSeconds: number
+}
+
 interface EnemyTimers {
   onGround: boolean
   landAge: number
@@ -86,6 +99,9 @@ export class ActorsView {
   private bossPrev: BossState | null = null
   private bossLast: BossState | null = null
   private rageAt: number | null = null
+  /** Real seconds (advances while the simulation is held or slowed; staged poses run on it). */
+  private realTime = 0
+  private poses: Partial<Record<PoseTarget, Pose>> = {}
   /** The last hero clip, for tests and debugging. */
   heroChoice: ClipChoice = { name: 'idle', t: 0 }
 
@@ -95,6 +111,63 @@ export class ActorsView {
     /** Called on the run cycle's contact frames (footstep sound). */
     private onFootstep: () => void = () => {}
   ) {}
+
+  // ------------------------------------------------------------------------------------------- staging hooks
+
+  /**
+   * Staging: `who` shows `clip` from its first frame for `seconds` of real time (a clip that does not loop holds
+   * its last frame). `hop` lifts the actor on a parabola of that height over `hopSeconds`. A clip the actor's
+   * sheet does not have is ignored when drawing.
+   */
+  pose(who: PoseTarget, clip: string, seconds: number, options: { hop?: number; hopSeconds?: number } = {}) {
+    this.poses[who] = {
+      clip,
+      start: this.realTime,
+      until: this.realTime + Math.max(0, seconds),
+      hop: options.hop ?? 0,
+      hopSeconds: options.hopSeconds ?? 0.35
+    }
+    // The phase-2 transformation is staged: the sim-time rage clip must not play a second time afterwards.
+    if (who === 'boss' && clip === 'rage') this.rageAt = null
+  }
+
+  /** Ends a staged pose early (or every pose). */
+  unpose(who?: PoseTarget) {
+    if (who) delete this.poses[who]
+    else this.poses = {}
+  }
+
+  /** The clip `who` is posed in right now, or null. */
+  posing(who: PoseTarget): string | null {
+    const pose = this.poses[who]
+    return pose && this.realTime < pose.until ? pose.clip : null
+  }
+
+  /** Advances real time (the stage view calls this with the frame's real dt). */
+  tickReal(dt: number) {
+    this.realTime += dt
+    for (const who of ['hero', 'boss'] as const) {
+      const pose = this.poses[who]
+      if (pose && this.realTime >= pose.until) delete this.poses[who]
+    }
+  }
+
+  /** The centre of the hero's falling body after death (null while he lives). */
+  deathPoint(): { x: number; y: number } | null {
+    const d = this.death
+    return d ? { x: d.x, y: d.y - d.h / 2 } : null
+  }
+
+  private activePose(who: PoseTarget, sheet: string) {
+    const pose = this.poses[who]
+    if (!pose || this.realTime >= pose.until) return null
+    const anim = clip(sheet, pose.clip)
+    if (!anim) return null
+    const age = this.realTime - pose.start
+    const k = pose.hop > 0 && age < pose.hopSeconds ? age / pose.hopSeconds : -1
+    const lift = k >= 0 ? Math.round(4 * pose.hop * k * (1 - k)) : 0
+    return { anim, age, lift }
+  }
 
   handle(event: SimEvent) {
     const p = this.world.player
@@ -288,12 +361,21 @@ export class ActorsView {
       return
     }
     if (p.dead) return
+    const x = p.x + p.w / 2
+    const y = p.y + p.h
+    const staged = this.activePose('hero', 'hero')
+    if (staged) {
+      this.heroChoice = { name: this.poses.hero!.clip, t: staged.age }
+      this.lastRunFrame = -1
+      this.drawShadow(ctx, x, y, p.w)
+      const { sx, sy } = squashScale(this.squash)
+      blit(ctx, staged.anim, staged.age, x, y - staged.lift, { flip: p.facing < 0, sx, sy })
+      return
+    }
     const choice = this.heroSnapshot()
     this.heroChoice = choice
     const anim = clip('hero', choice.name)
     if (!anim) return
-    const x = p.x + p.w / 2
-    const y = p.y + p.h
     if (choice.name === 'run') this.runContact(anim, choice, x, y)
     else this.lastRunFrame = -1
     this.drawShadow(ctx, x, y, p.w)
@@ -380,12 +462,18 @@ export class ActorsView {
       boss.def.art
     )
     const sheet = boss.def.art
-    const anim = clip(sheet, choice.name)
-    if (!anim) return
     const x = boss.x + boss.w / 2
     const y = boss.y + boss.h
-    this.drawShadow(ctx, x, y, boss.w * 1.1)
     const flip = boss.facing < 0
+    const staged = this.activePose('boss', sheet)
+    if (staged) {
+      this.drawShadow(ctx, x, y, boss.w * 1.1)
+      blit(ctx, staged.anim, staged.age, x, y - staged.lift, { flip })
+      return
+    }
+    const anim = clip(sheet, choice.name)
+    if (!anim) return
+    this.drawShadow(ctx, x, y, boss.w * 1.1)
     blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
     if (boss.hitFlash > 0) {
       const white = flashClip(sheet, choice.name)

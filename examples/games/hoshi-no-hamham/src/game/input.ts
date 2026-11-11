@@ -3,6 +3,7 @@
  * (`consumePresses`), because hit-stop and slow motion mean the simulation is not stepped every frame.
  * Pause, mute and confirm are per-frame edges cleared by `endFrame`.
  */
+import { padSide } from '../ui/hud-model'
 import { emptyInput, type InputState } from './sim'
 
 const KEY_MAP: Record<string, keyof InputState | undefined> = {
@@ -64,29 +65,106 @@ export class Input {
     })
   }
 
+  /**
+   * Binds the touch controls under `root`. A `[data-pad]` element is a slide pad: its `[data-key]` children are
+   * only pictures, and the pointer's x decides left or right, so a thumb can slide across without lifting.
+   * Any other `[data-key]` element is a button. Every pointer is captured and tracked by id, so pad and buttons
+   * work together (multi-touch) and a lost pointer (cancel, lost capture, hidden controls, blur) lets go.
+   */
   bindTouch(root: ParentNode) {
-    for (const button of Array.from(root.querySelectorAll<HTMLElement>('[data-key]'))) {
-      const key = button.dataset.key!
-      const down = (event: Event) => {
-        event.preventDefault()
-        this.touch.add(key)
-        this.touchPressed.add(key)
-      }
-      const up = (event: Event) => {
-        event.preventDefault()
-        this.touch.delete(key)
-      }
-      button.addEventListener('pointerdown', down)
-      button.addEventListener('pointerup', up)
-      button.addEventListener('pointercancel', up)
-      button.addEventListener('pointerleave', up)
-      this.disposers.push(() => {
-        button.removeEventListener('pointerdown', down)
-        button.removeEventListener('pointerup', up)
-        button.removeEventListener('pointercancel', up)
-        button.removeEventListener('pointerleave', up)
-      })
+    const pointers = new Map<number, string | null>()
+    const marked: HTMLElement[] = []
+    const refresh = () => {
+      const next = new Set<string>()
+      for (const key of pointers.values()) if (key) next.add(key)
+      for (const key of next) if (!this.touch.has(key)) this.touchPressed.add(key)
+      this.touch = next
+      for (const element of marked) element.classList.toggle('is-down', next.has(element.dataset.key!))
     }
+    const release = (id: number) => {
+      if (pointers.delete(id)) refresh()
+    }
+    const clearAll = () => {
+      pointers.clear()
+      refresh()
+    }
+    const listen = <K extends keyof HTMLElementEventMap>(
+      target: HTMLElement,
+      type: K,
+      handler: (event: HTMLElementEventMap[K]) => void
+    ) => {
+      target.addEventListener(type, handler)
+      this.disposers.push(() => target.removeEventListener(type, handler))
+    }
+    const capture = (target: HTMLElement, event: PointerEvent) => {
+      try {
+        target.setPointerCapture(event.pointerId)
+      } catch {
+        // A synthetic pointer cannot be captured; the events still reach the element they started on.
+      }
+    }
+    const lock = (target: HTMLElement) => {
+      listen(target, 'contextmenu', (event) => event.preventDefault())
+      listen(target, 'selectstart', (event) => event.preventDefault())
+      listen(target, 'dragstart', (event) => event.preventDefault())
+    }
+    const onEnd = (target: HTMLElement) => {
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const)
+        listen(target, type, (event) => release(event.pointerId))
+    }
+    const hiddenWatchers: MutationObserver[] = []
+
+    for (const pad of Array.from(root.querySelectorAll<HTMLElement>('[data-pad]'))) {
+      const keys = Array.from(pad.querySelectorAll<HTMLElement>('[data-key]'))
+      marked.push(...keys)
+      const side = (event: PointerEvent) => {
+        const rect = pad.getBoundingClientRect()
+        return padSide(event.clientX, rect.left, rect.width)
+      }
+      lock(pad)
+      listen(pad, 'pointerdown', (event) => {
+        event.preventDefault()
+        capture(pad, event)
+        pointers.set(event.pointerId, side(event))
+        refresh()
+      })
+      listen(pad, 'pointermove', (event) => {
+        if (!pointers.has(event.pointerId)) return
+        const next = side(event)
+        if (pointers.get(event.pointerId) === next) return
+        pointers.set(event.pointerId, next)
+        refresh()
+      })
+      onEnd(pad)
+    }
+    for (const button of Array.from(root.querySelectorAll<HTMLElement>('[data-key]'))) {
+      if (button.closest('[data-pad]')) continue
+      const key = button.dataset.key!
+      marked.push(button)
+      lock(button)
+      listen(button, 'pointerdown', (event) => {
+        event.preventDefault()
+        capture(button, event)
+        pointers.set(event.pointerId, key)
+        refresh()
+      })
+      onEnd(button)
+    }
+    // Hidden controls cannot send their own pointer-up: let go of everything when they are hidden.
+    for (const container of Array.from(root.querySelectorAll<HTMLElement>('[data-touch-root]'))) {
+      const watcher = new MutationObserver(() => {
+        if (container.hidden) clearAll()
+      })
+      watcher.observe(container, { attributes: true, attributeFilter: ['hidden'] })
+      hiddenWatchers.push(watcher)
+    }
+    window.addEventListener('blur', clearAll)
+    document.addEventListener('visibilitychange', clearAll)
+    this.disposers.push(() => {
+      for (const watcher of hiddenWatchers) watcher.disconnect()
+      window.removeEventListener('blur', clearAll)
+      document.removeEventListener('visibilitychange', clearAll)
+    })
   }
 
   poll(): InputState {

@@ -1,14 +1,53 @@
 /**
  * Screen-level effects drawn over the world: text popups (`+1`, `3/8`), full-screen flashes, the hurt pulse and
- * the low-health vignette, letterbox bars and an iris wipe. Staging drives the bars and the iris.
+ * the low-health vignette, letterbox bars and an iris wipe. Staging drives the bars and the iris, and adds speech
+ * bubbles over characters, a spotlight that darkens all but one point, and an edge arrow toward an off-screen goal.
  */
 import { VIEW_H, VIEW_W } from '../art/contract'
+import { blit, clip } from './bake'
 
 /** The rounded system gothic stack the game uses for all text. */
 export const ROUNDED_FONT =
   '"Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif'
 const INK = '#2a1230'
 const BAR = 34
+
+/** A point in world pixels, fixed or followed every frame (a character's head). */
+export type Anchor = { x: number; y: number } | (() => { x: number; y: number } | null)
+
+export type BubbleTone = 'say' | 'yell'
+
+interface Bubble {
+  text: string
+  anchor: Anchor
+  tone: BubbleTone
+  age: number
+  life: number
+  last: { x: number; y: number }
+}
+
+/** The edge arrow: a screen point near the border and the direction it points (radians, 0 = right). */
+export interface Pointer {
+  x: number
+  y: number
+  angle: number
+}
+
+/**
+ * Places the edge arrow for a world point (tx, ty) seen from the view at (viewX, viewY): on the line from the
+ * screen centre toward the point, `margin` px inside the border. Null while the point is on screen.
+ */
+export function edgePointer(tx: number, ty: number, viewX: number, viewY: number, margin = 28): Pointer | null {
+  const sx = tx - viewX
+  const sy = ty - viewY
+  if (sx >= 8 && sx <= VIEW_W - 8 && sy >= 8 && sy <= VIEW_H - 8) return null
+  const cx = VIEW_W / 2
+  const cy = VIEW_H / 2
+  const dx = sx - cx
+  const dy = sy - cy
+  const k = Math.min((cx - margin) / Math.max(1e-6, Math.abs(dx)), (cy - margin) / Math.max(1e-6, Math.abs(dy)))
+  return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dy, dx) }
+}
 
 interface Popup {
   text: string
@@ -42,6 +81,16 @@ export class Overlay {
   /** Iris centre in screen pixels. */
   irisX = VIEW_W / 2
   irisY = VIEW_H / 2
+  private bubbles: Bubble[] = []
+  private spot = 0
+  private spotTarget = 0
+  /** Spotlight centre in screen pixels (staging moves it with the hero). */
+  spotX = VIEW_W / 2
+  spotY = VIEW_H / 2
+  /** The edge arrow toward an off-screen goal, or null (set every frame by staging). */
+  pointer: Pointer | null = null
+  /** Flashes actually shown (none under reduced motion), for tests. */
+  flashes = 0
 
   constructor(reducedMotion = false) {
     this.reducedMotion = reducedMotion
@@ -56,6 +105,7 @@ export class Overlay {
   /** A full-screen flash that fades out (off under reduced motion). */
   flash(color = '#ffffff', alpha = 0.55, seconds = 0.22) {
     if (this.reducedMotion) return
+    this.flashes += 1
     this.flashColor = color
     this.flashPeak = alpha
     this.flashAlpha = alpha
@@ -81,8 +131,42 @@ export class Overlay {
     this.iris = { from: this.irisRadius, to: radius, t: 0, seconds: Math.max(0.01, seconds) }
   }
 
+  /** Sets the iris at once (no wipe), e.g. closed before an iris in. */
+  irisSnap(radius: number, x = this.irisX, y = this.irisY) {
+    this.irisX = x
+    this.irisY = y
+    this.iris = null
+    this.irisRadius = Math.max(0, Math.min(1, radius))
+  }
+
   get irisOpen() {
     return this.irisRadius
+  }
+
+  /** Where the iris is heading (its current radius when it is not moving). */
+  get irisTarget() {
+    return this.iris ? this.iris.to : this.irisRadius
+  }
+
+  /** A speech bubble over a world point (a character's head) for `seconds`. */
+  bubble(text: string, anchor: Anchor, seconds = 1.6, tone: BubbleTone = 'say') {
+    const at = typeof anchor === 'function' ? anchor() : anchor
+    this.bubbles.push({ text, anchor, tone, age: 0, life: seconds, last: at ?? { x: 0, y: 0 } })
+    if (this.bubbles.length > 4) this.bubbles.shift()
+  }
+
+  /** The texts of the bubbles on screen (for tests). */
+  get bubbleTexts(): string[] {
+    return this.bubbles.map((b) => b.text)
+  }
+
+  /** Darkens everything but a circle around (spotX, spotY) while on; fades in and out. */
+  spotlight(on: boolean) {
+    this.spotTarget = on ? 1 : 0
+  }
+
+  get spotlightAmount() {
+    return this.spot
   }
 
   get barsAmount() {
@@ -105,6 +189,15 @@ export class Overlay {
           ? Math.min(this.barsTarget, this.bars + step)
           : Math.max(this.barsTarget, this.bars - step)
     }
+    for (const b of this.bubbles) b.age += dt
+    this.bubbles = this.bubbles.filter((b) => b.age < b.life)
+    if (this.spot !== this.spotTarget) {
+      const step = dt * 4
+      this.spot =
+        this.spot < this.spotTarget
+          ? Math.min(this.spotTarget, this.spot + step)
+          : Math.max(this.spotTarget, this.spot - step)
+    }
     if (this.iris) {
       const iris = this.iris
       iris.t = Math.min(iris.seconds, iris.t + dt)
@@ -113,8 +206,9 @@ export class Overlay {
     }
   }
 
-  /** Popups, drawn in screen space (k× transform) relative to the view at (viewX, viewY). */
+  /** Popups and speech bubbles, drawn in screen space (k× transform) relative to the view at (viewX, viewY). */
   drawPopups(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
+    this.drawBubbles(ctx, viewX, viewY)
     if (!this.popups.length) return
     ctx.save()
     ctx.textAlign = 'center'
@@ -137,6 +231,109 @@ export class Overlay {
     ctx.restore()
   }
 
+  private drawBubbles(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
+    if (!this.bubbles.length) return
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineJoin = 'round'
+    for (const b of this.bubbles) {
+      const at = typeof b.anchor === 'function' ? b.anchor() : b.anchor
+      if (at) b.last = at
+      const yell = b.tone === 'yell'
+      const size = yell ? 15 : 13
+      ctx.font = `800 ${size}px ${ROUNDED_FONT}`
+      const w = Math.ceil(ctx.measureText(b.text).width) + 22
+      const h = size + 14
+      // Pop in with a little overshoot, fade out at the end.
+      const t = b.age
+      const pop = this.reducedMotion
+        ? 1
+        : t < 0.08
+          ? 0.6 + (t / 0.08) * 0.5
+          : t < 0.16
+            ? 1.1 - ((t - 0.08) / 0.08) * 0.1
+            : 1
+      const alpha = Math.max(0, Math.min(1, (b.life - t) / 0.2))
+      const shake = yell && !this.reducedMotion && t < 0.6 ? Math.round(Math.sin(t * 70) * 1.5) : 0
+      const ax = Math.round(b.last.x - viewX)
+      const ay = Math.round(b.last.y - viewY)
+      // Keep the box on screen; the tail still points at the speaker.
+      const edge = w / 2 + (yell ? 20 : 6)
+      const bx = Math.round(Math.max(edge, Math.min(VIEW_W - edge, ax))) + shake
+      const by = Math.round(Math.max(h / 2 + 4, ay - 12 - h / 2))
+      ctx.globalAlpha = alpha
+      ctx.save()
+      ctx.translate(bx, by + h / 2 + 8)
+      ctx.scale(pop, pop)
+      ctx.translate(0, -h / 2 - 8)
+      const x0 = -w / 2
+      const y0 = -h / 2
+      const tail = Math.max(x0 + 12, Math.min(x0 + w - 12, ax - bx))
+      ctx.beginPath()
+      ctx.roundRect(x0, y0, w, h, yell ? 5 : 10)
+      ctx.moveTo(tail - 6, y0 + h - 1)
+      ctx.lineTo(tail + Math.max(-8, Math.min(8, (ax - bx) * 0.2)), y0 + h + 9)
+      ctx.lineTo(tail + 6, y0 + h - 1)
+      ctx.fillStyle = yell ? '#fff1d8' : '#fff9f4'
+      ctx.strokeStyle = INK
+      ctx.lineWidth = 3
+      ctx.stroke()
+      ctx.fill()
+      ctx.fillStyle = yell ? '#c8283c' : INK
+      ctx.fillText(b.text, 0, 1)
+      ctx.restore()
+      if (yell && !this.reducedMotion && t < 0.9) {
+        // Shout marks either side of the box.
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        for (const side of [-1, 1]) {
+          const ex = bx + side * (w / 2 + 5)
+          ctx.moveTo(ex, by - 7)
+          ctx.lineTo(ex + side * 7, by - 12)
+          ctx.moveTo(ex + side, by)
+          ctx.lineTo(ex + side * 10, by)
+          ctx.moveTo(ex, by + 7)
+          ctx.lineTo(ex + side * 7, by + 12)
+        }
+        ctx.strokeStyle = INK
+        ctx.lineWidth = 4
+        ctx.stroke()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+    }
+    ctx.globalAlpha = 1
+    ctx.restore()
+  }
+
+  private drawSpotlight(ctx: CanvasRenderingContext2D) {
+    if (this.spot <= 0.001) return
+    // Two rings of darkness give the edge a stepped, pixel-art softness.
+    for (const [radius, alpha] of [
+      [96, 0.38],
+      [76, 0.4]
+    ] as const) {
+      ctx.fillStyle = `rgba(11,6,24,${(alpha * this.spot).toFixed(3)})`
+      ctx.beginPath()
+      ctx.rect(0, 0, VIEW_W, VIEW_H)
+      ctx.arc(this.spotX, this.spotY, radius, 0, Math.PI * 2, true)
+      ctx.fill('evenodd')
+    }
+  }
+
+  private drawPointer(ctx: CanvasRenderingContext2D) {
+    const p = this.pointer
+    if (!p) return
+    const anim = clip('fx', 'arrow')
+    if (!anim) return
+    const bob = this.reducedMotion ? 0 : Math.sin(this.time * 6) * 3
+    blit(ctx, anim, this.time, p.x + Math.cos(p.angle) * bob, p.y + Math.sin(p.angle) * bob, { angle: p.angle })
+  }
+
   /** Flash, vignettes, bars and iris, in screen space. */
   drawScreen(ctx: CanvasRenderingContext2D) {
     const pulse = this.lowHealth ? (this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.max(0, Math.sin(this.time * 7.5))) : 0
@@ -154,6 +351,7 @@ export class Overlay {
     vignette.addColorStop(1, 'rgba(20,8,40,0.26)')
     ctx.fillStyle = vignette
     ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    this.drawSpotlight(ctx)
     if (red > 0.01) {
       const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.32, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.92)
       g.addColorStop(0, 'rgba(220,30,60,0)')
@@ -167,6 +365,7 @@ export class Overlay {
       ctx.fillRect(0, 0, VIEW_W, VIEW_H)
       ctx.globalAlpha = 1
     }
+    if (this.bars <= 0) this.drawPointer(ctx)
     if (this.bars > 0) {
       const h = Math.round(BAR * ease(this.bars))
       ctx.fillStyle = '#0b0618'

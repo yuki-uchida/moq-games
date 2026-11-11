@@ -358,8 +358,8 @@ const TOOTH_PITCH = 8
 const TOOTH_H = 5.5
 
 /**
- * One jaw in the hinge's local frame: `u` along the jaw, `v` outward from the seam. The gum is a half ellipse,
- * the teeth are triangles that hang from the seam into the opposite jaw.
+ * One jaw in the hinge's local frame: `u` along the jaw, `v` outward from the seam. The jaw is a slim arc that
+ * tapers to both ends; the teeth are triangles that hang from the seam into the opposite jaw.
  */
 function jawLayer(w: number, h: number, sign: -1 | 1, s: JawShape, teethOnly = false) {
   const l = new Raster(w, h)
@@ -378,14 +378,11 @@ function jawLayer(w: number, h: number, sign: -1 | 1, s: JawShape, teethOnly = f
       const tv = v + (s.lift ?? 0)
       let c = 0
       const eu = (u - uc) / half
-      const ev = v / s.height
-      if (!teethOnly && v >= 0 && eu * eu + ev * ev <= 1) {
-        const q = v / s.height
-        c = q < 0.2 ? R.crimson[3] : R.crimson[1]
-        if (sign === -1 && q > 0.62 && u < s.length * 0.62) c = R.crimson[0]
-        else if (sign === 1 && q > 0.6) c = R.crimson[2]
-        else if (sign === -1 && q > 0.82) c = R.crimson[2]
-      }
+      // A slim golden arc along the seam holds the teeth together: the snap of a bite drawn as energy fangs. (A
+      // full red gum read as some creature's mouth floating in front of the hero.)
+      const band = (s.height / 3) * Math.sqrt(Math.max(0, 1 - eu * eu))
+      if (!teethOnly && v >= 0 && v <= band)
+        c = v < 1.1 ? R.gold[2] : v > band - 1.2 ? (sign === -1 ? C.white : R.gold[1]) : R.gold[0]
       // Teeth: root inside the gum, tip reaching toward the other jaw.
       const k = Math.round((u - 7 - phase) / TOOTH_PITCH)
       const tu = u - (7 + phase + k * TOOTH_PITCH)

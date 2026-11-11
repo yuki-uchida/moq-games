@@ -1,0 +1,856 @@
+/*
+ * The in-game HUD. Everything here is prefixed `hudx-` / `hudt-` so no other stylesheet reaches it.
+ * `--s` is the whole-number art scale (a 640-px-wide stage is 1, 1280 is 2) and `--u` the exact ratio; both are set
+ * on #hud by hud.ts. Sprites are canvases at their art size (`--w` × `--h` art px) scaled by whole numbers.
+ */
+#hud.hudx {
+  --s: 1;
+  --u: 1;
+  --bk: 2;
+  --ink: #2a1230;
+  --night: #1b1035;
+  --gold: #ffd45e;
+  --cream: #fff3b8;
+  --c: calc(var(--s) * 2px);
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  z-index: 10;
+  pointer-events: none;
+  font-family: 'Hiragino Maru Gothic ProN', 'Hiragino Sans', 'Yu Gothic UI', system-ui, sans-serif;
+  font-weight: 800;
+  color: #fff9f4;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#hud.hudx[hidden] {
+  display: none;
+}
+
+#hud.hudx * {
+  box-sizing: border-box;
+}
+
+#hud.hudx canvas {
+  display: block;
+  image-rendering: pixelated;
+  width: calc(var(--w, 16) * var(--s) * 1px);
+  height: calc(var(--h, 16) * var(--s) * 1px);
+}
+
+#hud.hudx [hidden] {
+  display: none !important;
+}
+
+/* A plate with stepped (pixel) corners and an optional rim: `--rim` outside, `--fill` inside. */
+.hudx-frame {
+  position: relative;
+  background: var(--rim, transparent);
+  clip-path: polygon(
+    0 var(--c),
+    var(--c) var(--c),
+    var(--c) 0,
+    calc(100% - var(--c)) 0,
+    calc(100% - var(--c)) var(--c),
+    100% var(--c),
+    100% calc(100% - var(--c)),
+    calc(100% - var(--c)) calc(100% - var(--c)),
+    calc(100% - var(--c)) 100%,
+    var(--c) 100%,
+    var(--c) calc(100% - var(--c)),
+    0 calc(100% - var(--c))
+  );
+}
+
+.hudx-frame::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--s) * 1px);
+  background: var(--fill, rgba(27, 16, 53, 0.72));
+  clip-path: polygon(
+    0 var(--c),
+    var(--c) var(--c),
+    var(--c) 0,
+    calc(100% - var(--c)) 0,
+    calc(100% - var(--c)) var(--c),
+    100% var(--c),
+    100% calc(100% - var(--c)),
+    calc(100% - var(--c)) calc(100% - var(--c)),
+    calc(100% - var(--c)) 100%,
+    var(--c) 100%,
+    var(--c) calc(100% - var(--c)),
+    0 calc(100% - var(--c))
+  );
+}
+
+.hudx-frame > * {
+  position: relative;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.hudx-top {
+  position: absolute;
+  inset: calc(var(--s) * 5px) calc(var(--s) * 5px) auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: calc(var(--s) * 6px);
+  transition: transform 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+#hud.hudx.is-narrow .hudx-top {
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+}
+
+.hudx-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--s) * 3px);
+  transition: transform 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+.hudx-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 3px);
+}
+
+.hudx-center {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+#hud.hudx.is-narrow .hudx-center {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.hudx-right {
+  display: flex;
+  gap: calc(var(--s) * 3px);
+  pointer-events: auto;
+  transition: transform 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+/* ------------------------------------------------------------------ hearts */
+
+#hearts.hudx-hearts {
+  --fill: rgba(27, 16, 53, 0.62);
+  display: flex;
+  gap: calc(var(--s) * 2px);
+  padding: calc(var(--s) * 4px) calc(var(--s) * 5px);
+  background: transparent;
+  border-radius: 0;
+}
+
+#hearts.hudx-hearts.is-hit {
+  animation: hudx-shake 0.3s steps(2) 1;
+}
+
+#hearts .heart {
+  position: relative;
+  /* The first stylesheet styles .heart too; this undoes it. */
+  background: none;
+  clip-path: none;
+  transform: none;
+  transform-origin: 50% 80%;
+  width: calc(var(--w, 16) * var(--s) * 1px);
+  height: calc(var(--h, 16) * var(--s) * 1px);
+}
+
+#hearts .heart.is-full {
+  background: none;
+}
+
+#hearts.is-low .heart.is-full {
+  animation: hudx-beat 0.8s steps(1) infinite;
+}
+
+@keyframes hudx-beat {
+  0%,
+  45%,
+  100% {
+    transform: scale(1);
+  }
+  15%,
+  30% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes hudx-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(calc(var(--s) * -3px), 0);
+  }
+  75% {
+    transform: translate(calc(var(--s) * 3px), 0);
+  }
+}
+
+/* ------------------------------------------------------------------ stage tag, counters */
+
+.hudx-tag {
+  --rim: #6b4fb0;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 3px);
+  padding: calc(var(--s) * 3px) calc(var(--s) * 6px) calc(var(--s) * 3px) calc(var(--s) * 3px);
+  font-size: max(10px, calc(var(--u) * 8px));
+  line-height: 1.1;
+  max-width: calc(var(--s) * 150px);
+}
+
+.hudx-tag canvas {
+  width: calc(16px * var(--s));
+  height: calc(16px * var(--s));
+  image-rendering: auto;
+  flex: none;
+}
+
+.hudx-tag b {
+  color: var(--gold);
+  font-size: 1.25em;
+}
+
+.hudx-tag span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hudx-collect,
+.hudx-bite {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 2px);
+  padding: calc(var(--s) * 2px) calc(var(--s) * 5px) calc(var(--s) * 2px) calc(var(--s) * 3px);
+  --fill: rgba(27, 16, 53, 0.62);
+  --rim: transparent;
+  font-size: max(11px, calc(var(--u) * 9px));
+}
+
+.hudx-collect canvas {
+  width: calc(16px * var(--s));
+  height: calc(16px * var(--s));
+  image-rendering: auto;
+}
+
+.hudx-collect b {
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke fill;
+  -webkit-text-stroke: calc(var(--s) * 2px) var(--ink);
+}
+
+.hudx-collect.is-pop b {
+  animation: hudx-pop 0.4s steps(4) 1;
+}
+
+@keyframes hudx-pop {
+  0% {
+    transform: scale(1.7);
+    color: var(--gold);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.hudx-bite {
+  padding: calc(var(--s) * 2px) calc(var(--s) * 3px);
+}
+
+.hudx-tooth {
+  position: relative;
+  width: calc(16px * var(--s));
+  height: calc(16px * var(--s));
+}
+
+.hudx-tooth canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.hudx-tooth .is-dim {
+  filter: brightness(0.38) saturate(0.6);
+}
+
+.hudx-tooth .is-lit {
+  clip-path: inset(calc((1 - var(--fill, 0)) * 100%) 0 0 0);
+}
+
+.hudx-bite.is-ready .hudx-tooth {
+  animation: hudx-ready 0.35s steps(5) 1;
+}
+
+@keyframes hudx-ready {
+  0% {
+    transform: scale(1.5);
+    filter: brightness(2);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+
+/* ------------------------------------------------------------------ boss bar */
+
+#boss-bar.hudx-boss {
+  --rim: #ffd45e;
+  --fill: rgba(27, 16, 53, 0.9);
+  --hi: #ffc2d6;
+  --base: #ff5f8f;
+  --lo: #c23a6a;
+  --trail: #fff3b8;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 4px);
+  width: min(100%, calc(var(--s) * 240px));
+  padding: calc(var(--s) * 4px) calc(var(--s) * 8px) calc(var(--s) * 4px) calc(var(--s) * 4px);
+}
+
+#boss-bar.hudx-boss.is-in {
+  animation: hudx-boss-in 0.5s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+
+#boss-bar.hudx-boss.is-stamina {
+  --rim: #7be0a0;
+  --hi: #d8fbff;
+  --base: #5fd0e8;
+  --lo: #2a8aa8;
+  --trail: #ffffff;
+}
+
+#boss-bar.hudx-boss.is-hit {
+  animation: hudx-shake 0.28s steps(2) 1;
+}
+
+#boss-bar.hudx-boss.is-breaking {
+  animation: hudx-boss-out 0.9s ease-in both;
+}
+
+#boss-bar .hudx-boss-face {
+  flex: none;
+  width: calc(32px * var(--s));
+  height: calc(32px * var(--s));
+  background: #120a26;
+}
+
+.hudx-boss-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: calc(var(--s) * 2px);
+}
+
+.hudx-boss-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: calc(var(--s) * 4px);
+  font-size: max(10px, calc(var(--u) * 8px));
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.hudx-boss-head b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hudx-boss-head small {
+  color: var(--gold);
+  font-size: 0.85em;
+  font-weight: 800;
+}
+
+#boss-bar.is-stamina .hudx-boss-head small {
+  color: #7be0a0;
+}
+
+#boss-bar.is-stamina .hudx-boss-head small::after {
+  content: ' スタミナ';
+}
+
+.hudx-track {
+  position: relative;
+  height: calc(var(--s) * 8px);
+  background: #120a26;
+  box-shadow: 0 0 0 calc(var(--s) * 1px) var(--ink);
+  overflow: hidden;
+}
+
+#boss-bar.is-stamina .hudx-track {
+  background: repeating-linear-gradient(
+    90deg,
+    #1c2a4a 0 calc(var(--s) * 2px),
+    #120a26 calc(var(--s) * 2px) calc(var(--s) * 4px)
+  );
+}
+
+.hudx-trail,
+.hudx-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+}
+
+.hudx-trail {
+  background: var(--trail);
+}
+
+.hudx-fill {
+  background: linear-gradient(var(--hi) 0 25%, var(--base) 25% 75%, var(--lo) 75%);
+}
+
+#boss-bar.is-hit .hudx-fill {
+  filter: brightness(1.9);
+}
+
+.hudx-ticks {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(10% - var(--s) * 1px),
+    rgba(42, 18, 48, 0.55) calc(10% - var(--s) * 1px) 10%
+  );
+}
+
+@keyframes hudx-boss-in {
+  0% {
+    transform: translateY(-200%);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes hudx-boss-out {
+  0% {
+    transform: translate(0, 0);
+  }
+  10%,
+  30%,
+  50% {
+    transform: translate(calc(var(--s) * -3px), 0);
+  }
+  20%,
+  40% {
+    transform: translate(calc(var(--s) * 3px), 0);
+  }
+  100% {
+    transform: translate(calc(var(--s) * 6px), calc(var(--s) * 120px)) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+#hud.hudx .hudx-btn {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  width: calc(22px * var(--bk));
+  height: calc(22px * var(--bk));
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+  pointer-events: auto;
+  font-size: 0;
+  color: transparent;
+  image-rendering: pixelated;
+  background-image: var(--icon), var(--plate);
+  background-repeat: no-repeat;
+  background-size:
+    calc(16px * var(--bk)) calc(16px * var(--bk)),
+    100% 100%;
+  background-position: center, center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#hud.hudx .hudx-btn:hover {
+  filter: brightness(1.15);
+}
+
+#hud.hudx .hudx-btn:active {
+  background-image: var(--icon), var(--plate-down);
+  background-position:
+    center calc(50% + var(--bk) * 1px),
+    center;
+}
+
+#hud.hudx .hudx-btn:focus-visible {
+  outline: calc(var(--s) * 2px) solid var(--gold);
+  outline-offset: 2px;
+}
+
+#mute.hudx-btn {
+  --icon: var(--ico-on);
+}
+
+#mute.hudx-btn[aria-pressed='true'] {
+  --icon: var(--ico-off);
+}
+
+#pause.hudx-btn {
+  --icon: var(--ico-pause);
+}
+
+/* ------------------------------------------------------------------ banner, call, nameplate, toast */
+
+.hudx-banner,
+.hudx-call,
+.hudx-plate,
+.hudx-toast {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hudx-banner {
+  left: 0;
+  right: 0;
+  top: 22%;
+  margin: 0 auto;
+  width: max-content;
+  max-width: 92%;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 6px);
+  padding: calc(var(--s) * 6px) calc(var(--s) * 14px) calc(var(--s) * 6px) calc(var(--s) * 8px);
+  border: calc(8px * var(--s)) solid transparent;
+  border-image: var(--panel) 8 fill / calc(8px * var(--s)) stretch;
+  image-rendering: pixelated;
+}
+
+.hudx-banner.is-show {
+  animation: hudx-banner var(--dur, 2.8s) both;
+}
+
+.hudx-banner canvas {
+  width: calc(32px * var(--s));
+  height: calc(32px * var(--s));
+  flex: none;
+}
+
+.hudx-banner div {
+  display: grid;
+  gap: calc(var(--s) * 2px);
+  min-width: 0;
+}
+
+.hudx-banner b {
+  font-size: max(18px, calc(var(--u) * 17px));
+  line-height: 1.15;
+  paint-order: stroke fill;
+  -webkit-text-stroke: calc(var(--s) * 2px) var(--ink);
+  text-shadow: 0 calc(var(--s) * 2px) 0 #f2639f;
+}
+
+.hudx-banner span {
+  font-size: max(11px, calc(var(--u) * 8px));
+  color: var(--gold);
+  letter-spacing: 0.08em;
+}
+
+@keyframes hudx-banner {
+  0% {
+    transform: translateX(-130%);
+    opacity: 1;
+  }
+  14% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  18% {
+    transform: translateX(calc(var(--s) * -4px));
+  }
+  22% {
+    transform: translateX(0);
+  }
+  84% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(130%);
+    opacity: 1;
+  }
+}
+
+.hudx-call {
+  left: 0;
+  right: 0;
+  top: 38%;
+  text-align: center;
+  font-size: max(32px, calc(var(--u) * 44px));
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  --c1: #ffd45e;
+  --c2: #e0a428;
+  color: var(--c1);
+  paint-order: stroke fill;
+  -webkit-text-stroke: calc(var(--s) * 4px) var(--ink);
+  text-shadow: 0 calc(var(--s) * 4px) 0 var(--c2);
+}
+
+.hudx-call[data-tone='pink'] {
+  --c1: #ff9ecb;
+  --c2: #f2639f;
+}
+
+.hudx-call[data-tone='red'] {
+  --c1: #ff7a7a;
+  --c2: #c83a3a;
+}
+
+.hudx-call.is-show {
+  animation: hudx-call 1.5s both;
+}
+
+@keyframes hudx-call {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  25% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  75% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.15) translateY(calc(var(--s) * -10px));
+    opacity: 0;
+  }
+}
+
+.hudx-plate {
+  left: 0;
+  right: 0;
+  top: 52%;
+  margin: 0 auto;
+  width: min(92%, calc(var(--s) * 300px));
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 8px);
+  padding: calc(var(--s) * 4px) calc(var(--s) * 10px) calc(var(--s) * 4px) calc(var(--s) * 4px);
+  border: calc(8px * var(--s)) solid transparent;
+  border-image: var(--panel) 8 fill / calc(8px * var(--s)) stretch;
+  image-rendering: pixelated;
+}
+
+.hudx-plate.is-show {
+  animation: hudx-plate var(--dur, 3s) both;
+}
+
+.hudx-plate canvas {
+  width: calc(32px * var(--s) * 2);
+  height: calc(32px * var(--s) * 2);
+  flex: none;
+  background: #120a26;
+}
+
+.hudx-plate div {
+  display: grid;
+  gap: calc(var(--s) * 3px);
+  min-width: 0;
+}
+
+.hudx-plate b {
+  font-size: max(20px, calc(var(--u) * 20px));
+  line-height: 1.1;
+  paint-order: stroke fill;
+  -webkit-text-stroke: calc(var(--s) * 2px) var(--ink);
+  text-shadow: 0 calc(var(--s) * 2px) 0 #c23a6a;
+}
+
+.hudx-plate span {
+  font-size: max(12px, calc(var(--u) * 9px));
+  color: var(--gold);
+  letter-spacing: 0.1em;
+}
+
+@keyframes hudx-plate {
+  0% {
+    transform: translateX(-120%);
+    opacity: 1;
+  }
+  12% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  16% {
+    transform: translateX(calc(var(--s) * 5px));
+  }
+  20% {
+    transform: translateX(0);
+  }
+  86% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 1;
+  }
+}
+
+.hudx-toast {
+  left: 0;
+  right: 0;
+  bottom: 8%;
+  margin: 0 auto;
+  width: max-content;
+  max-width: 46%;
+  padding: calc(var(--s) * 1px) calc(var(--s) * 4px);
+  border: calc(8px * var(--s)) solid transparent;
+  border-image: var(--paper) 8 fill / calc(8px * var(--s)) stretch;
+  image-rendering: pixelated;
+  color: var(--ink);
+  font-size: max(11px, calc(var(--u) * 8px));
+  line-height: 1.3;
+  text-align: center;
+}
+
+.hudx-toast.is-show {
+  animation: hudx-toast 2.4s both;
+}
+
+@keyframes hudx-toast {
+  0% {
+    transform: translateY(calc(var(--s) * 12px));
+    opacity: 0;
+  }
+  10% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  88% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(var(--s) * 6px));
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ cinematic mode */
+
+#hud.hudx.is-cinematic .hudx-left {
+  transform: translateX(-150%);
+}
+
+#hud.hudx.is-cinematic .hudx-right {
+  transform: translateX(150%);
+}
+
+#hud.hudx.is-cinematic .hudx-center {
+  transform: translateY(-300%);
+  transition: transform 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+#hud.hudx .hudx-center {
+  transition: transform 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+#hud.hudx.is-cinematic .hudt {
+  opacity: 0.25;
+}
+
+/* ------------------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  #hearts.is-low .heart.is-full,
+  #hearts.hudx-hearts.is-hit,
+  #boss-bar.hudx-boss.is-hit,
+  .hudx-bite.is-ready .hudx-tooth,
+  .hudx-collect.is-pop b {
+    animation: none;
+  }
+
+  #boss-bar.hudx-boss.is-in {
+    animation: hudx-fade 0.3s both;
+  }
+
+  #boss-bar.hudx-boss.is-breaking {
+    animation: hudx-fade-out 0.5s both;
+  }
+
+  .hudx-top,
+  .hudx-left,
+  .hudx-right,
+  .hudx-center {
+    transition: opacity 0.2s;
+  }
+
+  #hud.hudx.is-cinematic .hudx-left,
+  #hud.hudx.is-cinematic .hudx-right,
+  #hud.hudx.is-cinematic .hudx-center {
+    transform: none;
+    opacity: 0;
+  }
+
+  .hudx-banner.is-show,
+  .hudx-plate.is-show,
+  .hudx-toast.is-show {
+    animation-name: hudx-fade-hold;
+  }
+
+  .hudx-call.is-show {
+    animation-name: hudx-fade-hold;
+    animation-duration: 1.3s;
+  }
+}
+
+@keyframes hudx-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hudx-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes hudx-fade-hold {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

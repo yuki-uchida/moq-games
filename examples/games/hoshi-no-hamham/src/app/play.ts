@@ -12,8 +12,8 @@ import type { Input } from '../game/input'
 import { World, emptyInput } from '../game/sim'
 import type { StageDef } from '../game/types'
 import type { Hud, HudApi } from '../ui/hud'
-import { BasicDirector, type Director, type DirectorHost, type Outcome } from '../view/director'
 import { VIEW_W } from '../art/contract'
+import { StageDirector, type Director, type DirectorHost, type Outcome } from '../view/director'
 import type { Renderer } from '../view/renderer'
 import { SILENT_AUDIO, SoundBoard } from '../view/sound-map'
 import { StageView } from '../view/stage-view'
@@ -98,7 +98,8 @@ export class PlaySession {
       onFootstep: () => this.sounds.cue('footstep')
     })
     const makeDirector =
-      options.makeDirector ?? ((host: DirectorHost) => (this.demo ? new DemoDirector(host) : new BasicDirector(host)))
+      options.makeDirector ??
+      ((host: DirectorHost) => (this.demo ? new DemoDirector(host) : new StageDirector(host, this.deps.input)))
     this.director = makeDirector({
       world: this.world,
       stage,

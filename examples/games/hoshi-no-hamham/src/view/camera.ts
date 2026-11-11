@@ -86,6 +86,19 @@ export class Camera {
     this.y = goal.y
   }
 
+  /** The view centre the follow logic settles on for `target` (where staging pans back to before `release`). */
+  followCentre(target: CameraTarget) {
+    const goal = this.goal(target)
+    return { x: goal.x + VIEW_W / 2, y: goal.y + VIEW_H / 2 }
+  }
+
+  /** Whether a world point lies inside the current view (with `margin` px to spare). */
+  sees(x: number, y: number, margin = 0) {
+    return (
+      x >= this.x + margin && x <= this.x + VIEW_W - margin && y >= this.y + margin && y <= this.y + VIEW_H - margin
+    )
+  }
+
   private goal(target: CameraTarget) {
     return this.clamp(target.x + target.w / 2 + this.look - VIEW_W / 2, this.restingY(this.focusY))
   }
