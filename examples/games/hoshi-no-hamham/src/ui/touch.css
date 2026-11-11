@@ -1,0 +1,124 @@
+/*
+ * Touch controls. `--tk` is the whole-number pixel scale of the round plates (22 art px each): 4 → 88 px, 3 → 66 px.
+ * Landscape: the pad sits in the bottom-left corner, the buttons in the bottom-right. Portrait: the stage is
+ * pinned to the top, so the controls use the free area under it, bigger, with jump stacked above bite.
+ */
+.hudt {
+  --tk: 3;
+  --tb: calc(22px * var(--tk));
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0.82;
+  transition: opacity 0.3s;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hudt[hidden] {
+  display: none;
+}
+
+.hudt-pad,
+.hudt-actions {
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hudt-pad {
+  /* A wide invisible grab area around the arrows: the thumb does not have to stay inside them. */
+  padding: 12px 12px 0;
+  margin: 0 -12px;
+}
+
+.hudt-actions {
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.hudt-key {
+  flex: none;
+  width: var(--tb);
+  height: var(--tb);
+  image-rendering: pixelated;
+  background-image: var(--icon), var(--plate);
+  background-repeat: no-repeat;
+  background-size:
+    calc(16px * var(--tk)) calc(16px * var(--tk)),
+    100% 100%;
+  background-position: center, center;
+  touch-action: none;
+}
+
+.hudt-key.is-down {
+  background-image: var(--icon), var(--plate-down);
+  background-position:
+    center calc(50% + var(--tk) * 1px),
+    center;
+}
+
+.hudt-bite {
+  width: calc(26px * var(--tk));
+  height: calc(26px * var(--tk));
+  background-size:
+    calc(16px * var(--tk)) calc(16px * var(--tk)),
+    100% 100%;
+}
+
+@media (orientation: landscape) and (min-height: 420px) {
+  .hudt {
+    --tk: 4;
+  }
+}
+
+@media (orientation: landscape) and (min-height: 800px) {
+  .hudt {
+    --tk: 5;
+  }
+}
+
+@media (orientation: portrait) {
+  .hudt {
+    --tk: 4;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .hudt-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+}
+
+@media (orientation: portrait) and (min-width: 390px) {
+  .hudt {
+    --tk: 5;
+  }
+}
+
+@media (orientation: portrait) and (min-width: 600px) {
+  .hudt {
+    --tk: 6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hudt {
+    transition: none;
+  }
+}

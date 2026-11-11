@@ -122,6 +122,7 @@ export class StageView {
     this.water.update(dt)
     this.props.update(animDt)
     this.actors.update(animDt)
+    this.actors.tickReal(dt)
     this.fx.update(dt)
     this.overlay.lowHealth = !p.dead && p.hp <= 2
     this.overlay.update(dt)
