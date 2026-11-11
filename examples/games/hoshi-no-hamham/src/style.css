@@ -1393,11 +1393,24 @@ input {
 /* ------------------------------------------------------------------------------------------------ result */
 
 .result-screen {
-  background: rgba(18, 10, 38, 0.55);
+  background: var(--night-2, #1b1138);
   padding: 8px;
 }
 
+/* The stage's own world behind the card, dimmed to a quiet backdrop (never the black canvas). */
+.result-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 80%;
+  filter: brightness(0.5) saturate(0.8);
+  pointer-events: none;
+}
+
 .result-card {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   justify-items: center;
@@ -2293,5 +2306,63 @@ input {
 @media (orientation: portrait) {
   .ending-screen .story-layout {
     width: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------ loading card */
+
+/* Shown over the story screen when play has to wait for the stage's art (see src/app/app.ts). */
+.warm-note {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px;
+  transform: translateX(-50%);
+  color: var(--cream-hi);
+  font-size: clamp(12px, calc(var(--sw) * 0.026), 18px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-shadow: var(--outline-thin);
+  white-space: nowrap;
+}
+
+.warm-note[hidden] {
+  display: none;
+}
+
+.warm-note-star {
+  animation: warm-note-pulse 0.7s ease-in-out infinite alternate;
+}
+
+.warm-note-bar {
+  width: clamp(48px, calc(var(--sw) * 0.12), 96px);
+  height: 8px;
+  padding: 2px;
+  background: var(--night-2);
+  box-shadow: 0 0 0 2px var(--gold-deep);
+}
+
+.warm-note-bar > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, var(--gold) 0 6px, var(--gold-deep) 6px 8px);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.25s ease-out;
+}
+
+@keyframes warm-note-pulse {
+  from {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.1);
   }
 }

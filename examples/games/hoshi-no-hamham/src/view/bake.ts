@@ -2,7 +2,7 @@
  * Raster → canvas cache and frame lookup. Every picture the view draws goes through the art registry
  * (`sheet`, `flashSheet`, `tile`, `decor`, `backdrop`) and is baked here once per raster.
  */
-import { anchorOf, flashSheet, frameAt, sheet, type Anim } from '../art'
+import { anchorOf, flashSheet, frameAt, sheet, type Anim, type Backdrop } from '../art'
 import type { Raster } from '../art/raster'
 
 const baked = new WeakMap<Raster, HTMLCanvasElement>()
@@ -20,6 +20,40 @@ export function bake(r: Raster): HTMLCanvasElement {
   ctx.putImageData(image, 0, 0)
   baked.set(r, canvas)
   return canvas
+}
+
+/** Bakes every frame of every clip, so the first frame that draws them does not pay for it. */
+export function bakeAnims(anims: Record<string, Anim | undefined>): number {
+  let count = 0
+  for (const anim of Object.values(anims))
+    for (const frame of anim?.frames ?? []) {
+      bake(frame)
+      count += 1
+    }
+  return count
+}
+
+/** Bakes the sky and every layer of a backdrop. */
+export function bakeBackdrop(art: Backdrop | undefined): number {
+  if (!art) return 0
+  bake(art.sky)
+  for (const layer of art.layers) bake(layer.image)
+  return art.layers.length + 1
+}
+
+/** Builds a registered sheet (and optionally its hit-flash silhouettes) and bakes its frames. */
+export function warmSheet(id: string, flash = false): number {
+  let count = bakeAnims(sheet(id))
+  if (flash) count += bakeAnims(flashSheet(id))
+  return count
+}
+
+/** Builds one clip of a registered sheet (and optionally its hit-flash silhouette) and bakes its frames. */
+export function warmClip(id: string, name: string, flash = false): number {
+  const anims = { [name]: sheet(id)[name] }
+  let count = bakeAnims(anims)
+  if (flash) count += bakeAnims({ [name]: flashSheet(id)[name] })
+  return count
 }
 
 /** One clip of a registered sheet (undefined when the sheet has no such clip). */

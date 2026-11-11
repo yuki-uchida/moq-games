@@ -5,7 +5,7 @@
  */
 import { C, R, hexOf, ramp } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, type Pt } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { bandanaTails, limb, neckerchief, patch, tumble } from './gang'
 
 /** Leans toward teal so the frog does not melt into the meadow's grass green. */
@@ -219,13 +219,13 @@ export function drawJumper(pose: JumperPose): Raster {
   return g.render()
 }
 
-const idle = [
+const idle = memo(() => [
   drawJumper(jumperPose({ throat: 0.1, flutter: 0 })),
   drawJumper(jumperPose({ throat: 1, lift: 0.5, squash: -0.4, flutter: 1.5, lid: 0, head: [0.5, -0.5] }))
-]
+])
 
 // frame 0 rising: stretched, legs trailing behind; frame 1 falling: legs spread wide, eyes wide
-const air = [
+const air = memo(() => [
   drawJumper(
     jumperPose({
       lift: 14,
@@ -256,9 +256,9 @@ const air = [
       flutter: -2
     })
   )
-]
+])
 
-const land = [
+const land = memo(() => [
   drawJumper(
     jumperPose({
       squash: 3.2,
@@ -272,9 +272,9 @@ const land = [
     })
   ),
   drawJumper(jumperPose({ squash: 1.2, knee: [10, 2], ankle: [-8, 8], hand: [5, 8], throat: 0.5, flutter: 1, lid: 0 }))
-]
+])
 
-const hurt = [
+const hurt = memo(() => [
   drawJumper(
     jumperPose({
       lift: 3,
@@ -301,7 +301,7 @@ const hurt = [
       head: [-1, 1]
     })
   )
-]
+])
 
 const spin = (o: Partial<JumperPose>) =>
   jumperPose({
@@ -314,7 +314,7 @@ const spin = (o: Partial<JumperPose>) =>
     hand: [8, -3],
     ...o
   })
-const defeat = [
+const defeat = memo(() => [
   drawJumper(spin({ lift: 2, squash: -1, flutter: 3, head: [-2, -1] })),
   tumble(drawJumper(spin({ lift: 4, eyes: 'dead' })), -1.1, 30, 40, -3, -7),
   tumble(drawJumper(spin({ lift: 4, eyes: 'dead', flutter: -2 })), -3.1, 30, 40, 2, -8),
@@ -332,12 +332,12 @@ const defeat = [
       flutter: 1
     })
   ).shifted(0, -1)
-]
+])
 
 export const jumperSheet = () => ({
-  idle: anim(idle, 4, true),
-  air: anim(air, 8, false),
-  land: anim(land, 14, false),
-  hurt: anim(hurt, 12, false),
-  defeat: anim(defeat, 12, false)
+  idle: lazyAnim(idle, 4, true),
+  air: lazyAnim(air, 8, false),
+  land: lazyAnim(land, 14, false),
+  hurt: lazyAnim(hurt, 12, false),
+  defeat: lazyAnim(defeat, 12, false)
 })

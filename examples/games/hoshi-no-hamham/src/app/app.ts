@@ -5,17 +5,65 @@ import type { World } from '../game/sim'
 import { ENDING_PAGES, OPENING_PAGES, STAGES, stageByNo } from '../game/stages'
 import { loadSave, storeSave, type SaveData, type StageDef, type VolumeKind } from '../game/types'
 import { Hud } from '../ui/hud'
+import { spriteImg } from '../ui/pixel'
 import { DomScreens, type Screens } from '../ui/screens'
 import { Renderer } from '../view/renderer'
 import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
 import { PlaySession, STEP } from './play'
+import { isWarm, warmStage } from './warm'
 
 type ScreenName = 'title' | 'select' | 'story' | 'play' | 'result' | 'dead' | 'ending'
 
+export interface LoadingIndicator {
+  show(): void
+  hide(): void
+  progress(fraction: number): void
+}
+
+/** The small 「よみこみちゅう…」 card shown when play has to wait for the stage's art (night panel, star, bar). */
+class LoadingNote implements LoadingIndicator {
+  private root: HTMLElement | null = null
+  private fill: HTMLElement | null = null
+
+  constructor(private parent: HTMLElement) {}
+
+  private build() {
+    const root = document.createElement('div')
+    root.className = 'warm-note night-panel'
+    root.setAttribute('role', 'status')
+    root.hidden = true
+    const star = spriteImg('ui', 'starOn', { className: 'warm-note-star', scale: 2 })
+    const text = document.createElement('span')
+    text.textContent = 'よみこみちゅう…'
+    const bar = document.createElement('div')
+    bar.className = 'warm-note-bar'
+    const fill = document.createElement('i')
+    bar.append(fill)
+    root.append(star, text, bar)
+    this.parent.append(root)
+    this.root = root
+    this.fill = fill
+  }
+
+  show() {
+    if (!this.root) this.build()
+    this.progress(0)
+    this.root!.hidden = false
+  }
+
+  hide() {
+    if (this.root) this.root.hidden = true
+  }
+
+  progress(fraction: number) {
+    if (this.fill) this.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, fraction))})`
+  }
+}
+
 const MAX_FRAME = 0.25
 /** The stages the title screen's demo cycles through. */
-const DEMO_STAGES = [1, 5, 3, 7, 9, 4]
+export const DEMO_STAGES = [1, 5, 3, 7, 9, 4]
 /** Under reduced motion the demo is one still frame, taken after this many simulated seconds. */
 const DEMO_STILL_SECONDS = 2.5
 
@@ -46,12 +94,20 @@ export class App {
   private paused = false
   private touch = false
   private lastTime = performance.now() / 1000
+  private loading: LoadingIndicator
+  /** Bumped whenever play is left or restarted, so a stage waiting for its art can tell it was overtaken. */
+  private startToken = 0
+  private frames = 0
+  private resolveFirstFrame: () => void = () => {}
+  /** Resolves once the first frame of the loop (the title's first picture) has been drawn. */
+  readonly firstFrame = new Promise<void>((resolve) => (this.resolveFirstFrame = resolve))
 
   constructor(
     canvas: HTMLCanvasElement,
     private screens: Screens = new DomScreens()
   ) {
     this.renderer = new Renderer(canvas)
+    this.loading = new LoadingNote(canvas.parentElement ?? document.body)
     this.audio.setMuted(this.save.muted)
     for (const kind of ['master', 'music', 'sfx'] as const) this.audio.setVolume(kind, this.save.volume[kind])
     // Any first gesture unlocks the audio context, not only the menu buttons.
@@ -71,7 +127,9 @@ export class App {
       resume: () => this.togglePause(),
       togglePause: () => this.togglePause(),
       toggleMute: () => this.toggleMute(),
-      menuSound: () => this.cue('menu-select'),
+      // Only the audio unlock: the screens name the sound of each action with `cue`.
+      menuSound: () => this.audio.unlock(),
+      cue: (cue) => this.cue(cue),
       setVolume: (kind, value) => this.setVolume(kind, value)
     })
     this.screens.setMuted(this.save.muted)
@@ -102,6 +160,8 @@ export class App {
   }
 
   private leavePlay() {
+    this.startToken += 1
+    this.loading.hide()
     this.session?.stopAudio()
     this.session = null
     this.demo = null
@@ -154,6 +214,8 @@ export class App {
     this.audio.setMusic('story')
     this.renderer.clear()
     this.screens.showStory({ kicker: 'プロローグ', title: '星のハムハム', pages: OPENING_PAGES, scene: 'opening' })
+    // The first stage is next in line; build its art while the prologue is read.
+    void warmStage(STAGES[0]).catch(() => {})
   }
 
   private openStory(stage: StageDef) {
@@ -163,6 +225,8 @@ export class App {
     this.storyStage = stage
     this.audio.setMusic('story')
     this.screens.showStory({ kicker: `第${stage.no}話`, title: stage.name, pages: stage.intro, scene: stage.no })
+    // The player reads for a few seconds anyway: build the stage's art meanwhile.
+    void warmStage(stage).catch(() => {})
   }
 
   openEnding() {
@@ -177,7 +241,28 @@ export class App {
     ])
   }
 
+  /**
+   * Starts play once the stage's art is built. Normally it already is (the story screen warmed it, or the stage
+   * was played before); otherwise the screen the player came from stays up with a loading card until it is.
+   */
   private startStage(stage: StageDef) {
+    this.leavePlay()
+    this.stage = stage
+    if (isWarm(stage)) {
+      this.beginStage(stage)
+      return
+    }
+    const token = this.startToken
+    this.loading.show()
+    const done = () => {
+      if (token !== this.startToken) return
+      this.loading.hide()
+      this.beginStage(stage)
+    }
+    warmStage(stage, (fraction) => token === this.startToken && this.loading.progress(fraction)).then(done, done)
+  }
+
+  private beginStage(stage: StageDef) {
     this.leavePlay()
     this.stage = stage
     this.screen = 'play'
@@ -191,6 +276,7 @@ export class App {
       reducedMotion: reducedMotion()
     })
     this.session.start()
+    this.renderer.resetSampling()
   }
 
   private togglePause() {
@@ -201,8 +287,9 @@ export class App {
     this.cue(this.paused ? 'pause' : 'resume')
   }
 
+  // No unlock here: only a gesture may create or resume the audio context (see the listeners in the constructor).
+  // A cue before the first gesture, such as the title's own, is simply not heard.
   private cue(cue: SoundCue) {
-    this.audio.unlock()
     this.sounds.cue(cue)
   }
 
@@ -251,6 +338,13 @@ export class App {
     this.screens.showDead()
   }
 
+  /** Feeds the frame to the adaptive backing scale; a staged sequence that holds the simulation never rescales. */
+  private watchFrameRate(time: number, session: PlaySession) {
+    const { director, view } = session
+    const held = director.timeScale !== 1 || director.inputLocked || view.frozen
+    this.renderer.observeFrame(time, true, held)
+  }
+
   private loop = (time: number) => {
     requestAnimationFrame(this.loop)
     const now = time / 1000
@@ -271,10 +365,13 @@ export class App {
       if (!this.paused) {
         session.frame(dt)
         session.draw()
+        this.watchFrameRate(time, session)
         if (session.outcome === 'clear') this.finishStage(session)
         else if (session.outcome === 'dead') this.openDead()
       }
     }
+    if (this.screen !== 'play' || this.paused) this.renderer.observeFrame(time, false, false)
     input.endFrame()
+    if (++this.frames === 1) this.resolveFirstFrame()
   }
 }

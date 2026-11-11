@@ -9,7 +9,7 @@
 import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { Painter, Raster, shadeEdges, shadeIndex, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const TAN = R.weaselTan
 const FAR = [TAN[1], TAN[2], TAN[3], TAN[3], TAN[4]] as const
@@ -456,57 +456,61 @@ const curl = (phase: number): Pt[] => [
   [30, 85 - phase * 2]
 ]
 
-const idle = [0, 1, 2, 3].map((i) => {
-  const b = [0, 0.5, 1, 0.5][i]
-  const ph = [0, 1, 2, 1][i]
-  return drawWeasel(
-    weaselPose({
-      hip: [56, 94 + b * 0.5],
-      sh: [62, 66 + b * 0.8],
-      head: [68 + b * 0.4, 52 + b * 0.5],
-      pitch: [0, -2, -4, -2][i],
-      nearHand: [75 + [0, 1, 2, 1][i], 86],
-      tail: curl(ph),
-      fan: { show: true, ang: [40, 28, 16, 28][i], spread: [60, 74, 56, 74][i] },
-      cap: { dx: 0, dy: 0, tilt: 0, ribbon: rib([-13 + b, 8 + ph], [-11, 14 - ph]) }
-    })
-  )
-})
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) => {
+    const b = [0, 0.5, 1, 0.5][i]
+    const ph = [0, 1, 2, 1][i]
+    return drawWeasel(
+      weaselPose({
+        hip: [56, 94 + b * 0.5],
+        sh: [62, 66 + b * 0.8],
+        head: [68 + b * 0.4, 52 + b * 0.5],
+        pitch: [0, -2, -4, -2][i],
+        nearHand: [75 + [0, 1, 2, 1][i], 86],
+        tail: curl(ph),
+        fan: { show: true, ang: [40, 28, 16, 28][i], spread: [60, 74, 56, 74][i] },
+        cap: { dx: 0, dy: 0, tilt: 0, ribbon: rib([-13 + b, 8 + ph], [-11, 14 - ph]) }
+      })
+    )
+  })
+)
 
-const intro = frames([
-  { nearHand: [76, 86], fan: { show: true, ang: 30, spread: 74 }, tail: curl(1), head: [67, 52], pitch: -4 },
-  {
-    sh: [61, 66],
-    nearHand: [72, 76],
-    fan: { show: true, ang: 70, spread: 8 },
-    eyes: 'open',
-    mouth: 'flat',
-    tail: curl(2),
-    cap: { dx: 0, dy: -2, tilt: 0, ribbon: rib([-12, 12], [-10, 18]) }
-  },
-  {
-    sh: [66, 67],
-    head: [73, 52],
-    pitch: 4,
-    nearHand: [87, 70],
-    fan: { show: true, ang: 14, spread: 8 },
-    eyes: 'angry',
-    mouth: 'sneer',
-    tail: curl(0),
-    cap: { dx: 1, dy: 0, tilt: 3, ribbon: rib([-14, 6], [-12, 11]) }
-  },
-  {
-    sh: [66, 66],
-    head: [73, 51],
-    pitch: -6,
-    nearHand: [88, 70],
-    fan: { show: true, ang: 18, spread: 8 },
-    eyes: 'happy',
-    mouth: 'sneer',
-    tail: curl(2),
-    cap: { dx: 0, dy: 0, tilt: -3, ribbon: rib([-14, 9], [-12, 14]) }
-  }
-])
+const intro = memo(() =>
+  frames([
+    { nearHand: [76, 86], fan: { show: true, ang: 30, spread: 74 }, tail: curl(1), head: [67, 52], pitch: -4 },
+    {
+      sh: [61, 66],
+      nearHand: [72, 76],
+      fan: { show: true, ang: 70, spread: 8 },
+      eyes: 'open',
+      mouth: 'flat',
+      tail: curl(2),
+      cap: { dx: 0, dy: -2, tilt: 0, ribbon: rib([-12, 12], [-10, 18]) }
+    },
+    {
+      sh: [66, 67],
+      head: [73, 52],
+      pitch: 4,
+      nearHand: [87, 70],
+      fan: { show: true, ang: 14, spread: 8 },
+      eyes: 'angry',
+      mouth: 'sneer',
+      tail: curl(0),
+      cap: { dx: 1, dy: 0, tilt: 3, ribbon: rib([-14, 6], [-12, 11]) }
+    },
+    {
+      sh: [66, 66],
+      head: [73, 51],
+      pitch: -6,
+      nearHand: [88, 70],
+      fan: { show: true, ang: 18, spread: 8 },
+      eyes: 'happy',
+      mouth: 'sneer',
+      tail: curl(2),
+      cap: { dx: 0, dy: 0, tilt: -3, ribbon: rib([-14, 9], [-12, 14]) }
+    }
+  ])
+)
 
 /** Low, long poses on all fours. */
 const quadTail = (x: number, y: number, rise: number): Pt[] => [
@@ -524,116 +528,120 @@ const dashCap = (flutter: number) => ({
   ribbon: rib([-24, -3 + flutter], [-22, 4 - flutter])
 })
 
-const windup = fit(
-  frames([
-    {
-      ...dash,
-      mouth: 'smirk',
-      hip: [44, 90],
-      sh: [66, 78],
-      head: [80, 74],
-      pitch: 8,
-      nearHand: [84, 100],
-      farHand: [78, 104],
-      nearFoot: [52, 119],
-      farFoot: [42, 119],
-      tail: quadTail(38, 92, 8),
-      cap: { dx: 1, dy: 3, tilt: 6, ribbon: rib([-12, 12], [-10, 18]) }
-    },
-    {
-      ...dash,
-      hip: [34, 84],
-      sh: [72, 96],
-      head: [87, 96],
-      pitch: 12,
-      nearHand: [92, 119],
-      farHand: [80, 119],
-      nearFoot: [30, 119],
-      farFoot: [42, 114],
-      tail: quadTail(28, 84, 16),
-      cap: { dx: 2, dy: 3, tilt: 10, ribbon: rib([-10, 12], [-8, 18]) }
-    },
-    {
-      ...dash,
-      hip: [32, 80],
-      sh: [74, 100],
-      head: [88, 100],
-      pitch: 14,
-      nearHand: [96, 119],
-      farHand: [84, 119],
-      nearFoot: [22, 118],
-      farFoot: [40, 108],
-      tail: quadTail(26, 80, 22),
-      cap: { dx: 2, dy: 3, tilt: 12, ribbon: rib([-8, 14], [-6, 20]) }
-    }
-  ])
+const windup = memo(() =>
+  fit(
+    frames([
+      {
+        ...dash,
+        mouth: 'smirk',
+        hip: [44, 90],
+        sh: [66, 78],
+        head: [80, 74],
+        pitch: 8,
+        nearHand: [84, 100],
+        farHand: [78, 104],
+        nearFoot: [52, 119],
+        farFoot: [42, 119],
+        tail: quadTail(38, 92, 8),
+        cap: { dx: 1, dy: 3, tilt: 6, ribbon: rib([-12, 12], [-10, 18]) }
+      },
+      {
+        ...dash,
+        hip: [34, 84],
+        sh: [72, 96],
+        head: [87, 96],
+        pitch: 12,
+        nearHand: [92, 119],
+        farHand: [80, 119],
+        nearFoot: [30, 119],
+        farFoot: [42, 114],
+        tail: quadTail(28, 84, 16),
+        cap: { dx: 2, dy: 3, tilt: 10, ribbon: rib([-10, 12], [-8, 18]) }
+      },
+      {
+        ...dash,
+        hip: [32, 80],
+        sh: [74, 100],
+        head: [88, 100],
+        pitch: 14,
+        nearHand: [96, 119],
+        farHand: [84, 119],
+        nearFoot: [22, 118],
+        farFoot: [40, 108],
+        tail: quadTail(26, 80, 22),
+        cap: { dx: 2, dy: 3, tilt: 12, ribbon: rib([-8, 14], [-6, 20]) }
+      }
+    ])
+  )
 )
 
-const attack = fit(
-  frames([
-    // gather: back arched, all four feet bunched under the body
-    {
-      ...dash,
-      hip: [42, 90],
-      sh: [76, 96],
-      head: [91, 92],
-      pitch: 6,
-      nearHand: [84, 119],
-      farHand: [72, 118],
-      nearFoot: [52, 119],
-      farFoot: [40, 118],
-      tail: quadTail(34, 92, 4),
-      cap: dashCap(0),
-      dust: [[26, 120]]
-    },
-    // push off: hind legs drive, forelegs reach
-    {
-      ...dash,
-      hip: [32, 96],
-      sh: [80, 93],
-      head: [96, 89],
-      pitch: 8,
-      nearHand: [106, 108],
-      farHand: [98, 114],
-      nearFoot: [14, 117],
-      farFoot: [26, 119],
-      tail: quadTail(24, 98, 0),
-      cap: dashCap(3),
-      dust: [
-        [10, 120],
-        [20, 121]
-      ]
-    },
-    // extension: stretched out, airborne
-    {
-      ...dash,
-      hip: [28, 90],
-      sh: [84, 88],
-      head: [100, 84],
-      pitch: 6,
-      nearHand: [110, 104],
-      farHand: [106, 96],
-      nearFoot: [6, 104],
-      farFoot: [8, 112],
-      tail: quadTail(20, 92, -2),
-      cap: dashCap(-3)
-    },
-    // landing: forelegs plant, hips swing forward
-    {
-      ...dash,
-      hip: [38, 88],
-      sh: [78, 98],
-      head: [93, 95],
-      pitch: 10,
-      nearHand: [98, 119],
-      farHand: [88, 118],
-      nearFoot: [56, 116],
-      farFoot: [46, 119],
-      tail: quadTail(30, 90, 6),
-      cap: dashCap(2),
-      dust: [[100, 121]]
-    }
-  ])
+const attack = memo(() =>
+  fit(
+    frames([
+      // gather: back arched, all four feet bunched under the body
+      {
+        ...dash,
+        hip: [42, 90],
+        sh: [76, 96],
+        head: [91, 92],
+        pitch: 6,
+        nearHand: [84, 119],
+        farHand: [72, 118],
+        nearFoot: [52, 119],
+        farFoot: [40, 118],
+        tail: quadTail(34, 92, 4),
+        cap: dashCap(0),
+        dust: [[26, 120]]
+      },
+      // push off: hind legs drive, forelegs reach
+      {
+        ...dash,
+        hip: [32, 96],
+        sh: [80, 93],
+        head: [96, 89],
+        pitch: 8,
+        nearHand: [106, 108],
+        farHand: [98, 114],
+        nearFoot: [14, 117],
+        farFoot: [26, 119],
+        tail: quadTail(24, 98, 0),
+        cap: dashCap(3),
+        dust: [
+          [10, 120],
+          [20, 121]
+        ]
+      },
+      // extension: stretched out, airborne
+      {
+        ...dash,
+        hip: [28, 90],
+        sh: [84, 88],
+        head: [100, 84],
+        pitch: 6,
+        nearHand: [110, 104],
+        farHand: [106, 96],
+        nearFoot: [6, 104],
+        farFoot: [8, 112],
+        tail: quadTail(20, 92, -2),
+        cap: dashCap(-3)
+      },
+      // landing: forelegs plant, hips swing forward
+      {
+        ...dash,
+        hip: [38, 88],
+        sh: [78, 98],
+        head: [93, 95],
+        pitch: 10,
+        nearHand: [98, 119],
+        farHand: [88, 118],
+        nearFoot: [56, 116],
+        farFoot: [46, 119],
+        tail: quadTail(30, 90, 6),
+        cap: dashCap(2),
+        dust: [[100, 121]]
+      }
+    ])
+  )
 )
 
 const seated = (wob: number, ph: number, mouth: WeaselMouth): Partial<WeaselPose> => ({
@@ -660,58 +668,57 @@ const seated = (wob: number, ph: number, mouth: WeaselMouth): Partial<WeaselPose
   sash: 0.2,
   cap: { dx: wob * 2, dy: 2, tilt: 24 + wob * 3, ribbon: rib([-9, 14 + wob], [-7, 19]) }
 })
-const stunned = frames([
-  seated(-2, 0, 'open'),
-  seated(0, 0.25, 'flat'),
-  seated(2, 0.5, 'open'),
-  seated(0, 0.75, 'pant')
-])
+const stunned = memo(() =>
+  frames([seated(-2, 0, 'open'), seated(0, 0.25, 'flat'), seated(2, 0.5, 'open'), seated(0, 0.75, 'pant')])
+)
 
-const recover = frames([
-  {
-    hip: [54, 95],
-    sh: [65, 71],
-    head: [73, 60],
-    pitch: 10,
-    nearHand: [70, 96],
-    farHand: [60, 102],
-    nearFoot: [66, 118],
-    farFoot: [50, 118],
-    fan: { show: true, ang: -35, spread: 24 },
-    eyes: 'tired',
-    mouth: 'pant',
-    tail: [
-      [48, 98],
-      [38, 108],
-      [28, 112],
-      [20, 110],
-      [14, 104]
-    ],
-    cap: { dx: 1, dy: 2, tilt: 8, ribbon: rib([-11, 12], [-9, 18]) }
-  },
-  {
-    hip: [54, 96],
-    sh: [66, 74],
-    head: [74, 63],
-    pitch: 14,
-    nearHand: [70, 97],
-    farHand: [60, 103],
-    nearFoot: [66, 118],
-    farFoot: [50, 118],
-    fan: { show: true, ang: -28, spread: 30 },
-    eyes: 'tired',
-    mouth: 'pant',
-    sweat: 1,
-    tail: [
-      [48, 99],
-      [38, 109],
-      [28, 113],
-      [19, 112],
-      [12, 107]
-    ],
-    cap: { dx: 1, dy: 3, tilt: 10, ribbon: rib([-10, 14], [-8, 20]) }
-  }
-])
+const recover = memo(() =>
+  frames([
+    {
+      hip: [54, 95],
+      sh: [65, 71],
+      head: [73, 60],
+      pitch: 10,
+      nearHand: [70, 96],
+      farHand: [60, 102],
+      nearFoot: [66, 118],
+      farFoot: [50, 118],
+      fan: { show: true, ang: -35, spread: 24 },
+      eyes: 'tired',
+      mouth: 'pant',
+      tail: [
+        [48, 98],
+        [38, 108],
+        [28, 112],
+        [20, 110],
+        [14, 104]
+      ],
+      cap: { dx: 1, dy: 2, tilt: 8, ribbon: rib([-11, 12], [-9, 18]) }
+    },
+    {
+      hip: [54, 96],
+      sh: [66, 74],
+      head: [74, 63],
+      pitch: 14,
+      nearHand: [70, 97],
+      farHand: [60, 103],
+      nearFoot: [66, 118],
+      farFoot: [50, 118],
+      fan: { show: true, ang: -28, spread: 30 },
+      eyes: 'tired',
+      mouth: 'pant',
+      sweat: 1,
+      tail: [
+        [48, 99],
+        [38, 109],
+        [28, 113],
+        [19, 112],
+        [12, 107]
+      ],
+      cap: { dx: 1, dy: 3, tilt: 10, ribbon: rib([-10, 14], [-8, 20]) }
+    }
+  ])
+)
 
 const hit = {
   hip: [58, 94],
@@ -726,139 +733,143 @@ const hit = {
   cap: { dx: -3, dy: -2, tilt: -12, ribbon: rib([-14, 2], [-12, 8]) }
 } satisfies Partial<WeaselPose>
 
-const hurt = frames([
-  { ...hit, nearFoot: [64, 119], farFoot: [48, 119], tail: curl(2) },
-  {
-    ...hit,
-    hip: [56, 93],
-    sh: [48, 67],
-    head: [53, 54],
-    pitch: -20,
-    nearHand: [70, 54],
-    farHand: [62, 62],
-    nearFoot: [60, 114],
-    farFoot: [44, 119],
-    fan: noFan,
-    tail: curl(0),
-    cap: { dx: -6, dy: -4, tilt: -22, ribbon: rib([-15, -2], [-13, 4]) }
-  }
-])
-
-const defeat = fit(
+const hurt = memo(() =>
   frames([
-    { ...hit, tail: curl(1) },
+    { ...hit, nearFoot: [64, 119], farFoot: [48, 119], tail: curl(2) },
     {
-      hip: [60, 96],
-      sh: [46, 70],
-      head: [50, 58],
-      pitch: -24,
-      nearHand: [66, 56],
-      farHand: [44, 58],
-      nearFoot: [68, 114],
-      farFoot: [54, 119],
+      ...hit,
+      hip: [56, 93],
+      sh: [48, 67],
+      head: [53, 54],
+      pitch: -20,
+      nearHand: [70, 54],
+      farHand: [62, 62],
+      nearFoot: [60, 114],
+      farFoot: [44, 119],
       fan: noFan,
-      eyes: 'swirl',
-      mouth: 'open',
-      stars: 0.1,
-      tail: curl(2),
-      cap: { dx: -6, dy: -4, tilt: -26, ribbon: rib([-15, -2], [-13, 4]) }
-    },
-    {
-      hip: [70, 100],
-      sh: [38, 82],
-      head: [28, 72],
-      pitch: -50,
-      nearHand: [50, 60],
-      farHand: [28, 56],
-      nearFoot: [88, 104],
-      farFoot: [80, 110],
-      fan: noFan,
-      eyes: 'swirl',
-      mouth: 'open',
-      tail: [
-        [76, 103],
-        [88, 108],
-        [98, 104],
-        [104, 94],
-        [102, 84]
-      ],
-      cap: { dx: -8, dy: -2, tilt: -45, ribbon: rib([-14, -6], [-12, 0]) }
-    },
-    {
-      hip: [84, 108],
-      sh: [44, 100],
-      head: [30, 94],
-      pitch: -66,
-      nearHand: [58, 84],
-      farHand: [42, 88],
-      nearFoot: [98, 84],
-      farFoot: [90, 92],
-      fan: noFan,
-      eyes: 'swirl',
-      mouth: 'open',
-      tail: [
-        [90, 110],
-        [102, 112],
-        [110, 106],
-        [112, 96],
-        [108, 88]
-      ],
-      cap: { dx: -8, dy: 0, tilt: -52, ribbon: rib([-12, -4], [-10, 2]) }
-    },
-    {
-      hip: [84, 105],
-      sh: [43, 104],
-      head: [29, 99],
-      pitch: -72,
-      nearHand: [58, 92],
-      farHand: [42, 98],
-      nearFoot: [99, 92],
-      farFoot: [92, 100],
-      fan: noFan,
-      eyes: 'swirl',
-      mouth: 'pant',
-      tail: [
-        [90, 108],
-        [102, 111],
-        [110, 108],
-        [113, 100],
-        [111, 92]
-      ],
-      cap: { dx: -9, dy: 2, tilt: -55, ribbon: rib([-12, -2], [-10, 4]) }
-    },
-    {
-      hip: [84, 107],
-      sh: [43, 108],
-      head: [29, 104],
-      pitch: -78,
-      nearHand: [62, 100],
-      farHand: [46, 102],
-      nearFoot: [101, 100],
-      farFoot: [94, 104],
-      fan: noFan,
-      eyes: 'swirl',
-      mouth: 'pant',
-      tail: [
-        [90, 110],
-        [102, 113],
-        [110, 110],
-        [114, 104],
-        [113, 98]
-      ],
-      cap: { dx: -10, dy: 4, tilt: -58, ribbon: rib([-11, 2], [-9, 7]) }
+      tail: curl(0),
+      cap: { dx: -6, dy: -4, tilt: -22, ribbon: rib([-15, -2], [-13, 4]) }
     }
   ])
 )
 
+const defeat = memo(() =>
+  fit(
+    frames([
+      { ...hit, tail: curl(1) },
+      {
+        hip: [60, 96],
+        sh: [46, 70],
+        head: [50, 58],
+        pitch: -24,
+        nearHand: [66, 56],
+        farHand: [44, 58],
+        nearFoot: [68, 114],
+        farFoot: [54, 119],
+        fan: noFan,
+        eyes: 'swirl',
+        mouth: 'open',
+        stars: 0.1,
+        tail: curl(2),
+        cap: { dx: -6, dy: -4, tilt: -26, ribbon: rib([-15, -2], [-13, 4]) }
+      },
+      {
+        hip: [70, 100],
+        sh: [38, 82],
+        head: [28, 72],
+        pitch: -50,
+        nearHand: [50, 60],
+        farHand: [28, 56],
+        nearFoot: [88, 104],
+        farFoot: [80, 110],
+        fan: noFan,
+        eyes: 'swirl',
+        mouth: 'open',
+        tail: [
+          [76, 103],
+          [88, 108],
+          [98, 104],
+          [104, 94],
+          [102, 84]
+        ],
+        cap: { dx: -8, dy: -2, tilt: -45, ribbon: rib([-14, -6], [-12, 0]) }
+      },
+      {
+        hip: [84, 108],
+        sh: [44, 100],
+        head: [30, 94],
+        pitch: -66,
+        nearHand: [58, 84],
+        farHand: [42, 88],
+        nearFoot: [98, 84],
+        farFoot: [90, 92],
+        fan: noFan,
+        eyes: 'swirl',
+        mouth: 'open',
+        tail: [
+          [90, 110],
+          [102, 112],
+          [110, 106],
+          [112, 96],
+          [108, 88]
+        ],
+        cap: { dx: -8, dy: 0, tilt: -52, ribbon: rib([-12, -4], [-10, 2]) }
+      },
+      {
+        hip: [84, 105],
+        sh: [43, 104],
+        head: [29, 99],
+        pitch: -72,
+        nearHand: [58, 92],
+        farHand: [42, 98],
+        nearFoot: [99, 92],
+        farFoot: [92, 100],
+        fan: noFan,
+        eyes: 'swirl',
+        mouth: 'pant',
+        tail: [
+          [90, 108],
+          [102, 111],
+          [110, 108],
+          [113, 100],
+          [111, 92]
+        ],
+        cap: { dx: -9, dy: 2, tilt: -55, ribbon: rib([-12, -2], [-10, 4]) }
+      },
+      {
+        hip: [84, 107],
+        sh: [43, 108],
+        head: [29, 104],
+        pitch: -78,
+        nearHand: [62, 100],
+        farHand: [46, 102],
+        nearFoot: [101, 100],
+        farFoot: [94, 104],
+        fan: noFan,
+        eyes: 'swirl',
+        mouth: 'pant',
+        tail: [
+          [90, 110],
+          [102, 113],
+          [110, 110],
+          [114, 104],
+          [113, 98]
+        ],
+        cap: { dx: -10, dy: 4, tilt: -58, ribbon: rib([-11, 2], [-9, 7]) }
+      }
+    ])
+  )
+)
+
 export const sheets: SheetModule = {
   weaselBoss: () => ({
-    idle: anim(idle, 6, true),
-    intro: anim(intro, 8, false),
-    windup: anim(windup, 10, false),
-    attack: anim(attack, 14, true),
-    stunned: anim(stunned, 8, true),
-    recover: anim(recover, 6, true),
-    hurt: anim(hurt, 12, false),
-    defeat: anim(defeat, 8, false)
+    idle: lazyAnim(idle, 6, true),
+    intro: lazyAnim(intro, 8, false),
+    windup: lazyAnim(windup, 10, false),
+    attack: lazyAnim(attack, 14, true),
+    stunned: lazyAnim(stunned, 8, true),
+    recover: lazyAnim(recover, 6, true),
+    hurt: lazyAnim(hurt, 12, false),
+    defeat: lazyAnim(defeat, 8, false)
   })
 }

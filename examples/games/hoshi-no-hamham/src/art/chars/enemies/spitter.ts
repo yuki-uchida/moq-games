@@ -4,7 +4,7 @@
  */
 import { C, R } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, shadeEdges, type Pt } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { bandanaTails, neckerchief, patch, tumble } from './gang'
 
 const SQ = R.squirrelRed
@@ -223,14 +223,14 @@ export function drawSpitter(pose: SpitterPose): Raster {
   return g.render()
 }
 
-const idle = [
+const idle = memo(() => [
   drawSpitter(spitterPose({ cheek: 6.2, chew: 0, mouth: 'closed', sway: 0, bob: 0 })),
   drawSpitter(spitterPose({ cheek: 6.8, chew: 1, mouth: 'chew', sway: 0.6, bob: 0.5, flutter: 1, headDy: 0.5 })),
   drawSpitter(spitterPose({ cheek: 6, chew: 0, mouth: 'closed', sway: 1, bob: 0, flutter: 2, headDx: 0.5 })),
   drawSpitter(spitterPose({ cheek: 6.6, chew: -0.8, mouth: 'chew', sway: 0.3, bob: 0.5, flutter: 0, headDy: 0.5 }))
-]
+])
 
-const shoot = [
+const shoot = memo(() => [
   // inhale: lean back, cheeks start to fill
   drawSpitter(
     spitterPose({ dx: -2, headDx: -2, headDy: 1, cheek: 7.6, sway: -1, curl: 0.4, eyes: 'squeeze', arm: 1, flutter: 2 })
@@ -282,9 +282,9 @@ const shoot = [
       flutter: 1
     })
   )
-]
+])
 
-const hurt = [
+const hurt = memo(() => [
   drawSpitter(
     spitterPose({
       dx: -1,
@@ -315,21 +315,21 @@ const hurt = [
       flutter: -1
     })
   )
-]
+])
 
 const dizzy = (o: Partial<SpitterPose>) =>
   spitterPose({ eyes: 'hurt', mouth: 'open', cheek: 5, arm: 2, sway: -1, bob: 2, ...o })
-const defeat = [
+const defeat = memo(() => [
   drawSpitter(dizzy({ dx: 0, headDx: -3, headDy: -1, bob: 1 })),
   tumble(drawSpitter(dizzy({ eyes: 'dead' })), -1.0, 30, 38, -3, -8),
   tumble(drawSpitter(dizzy({ eyes: 'dead', sway: 1 })), -3.0, 30, 38, -3, -8),
   tumble(drawSpitter(dizzy({ eyes: 'dead', bob: 0 })), -4.6, 30, 38, 1, -2),
   drawSpitter(spitterPose({ flat: 1, eyes: 'dead', mouth: 'open', cheek: 4, arm: 2, sway: 1, curl: 1, flutter: 1 }))
-]
+])
 
 export const spitterSheet = () => ({
-  idle: anim(idle, 6, true),
-  shoot: anim(shoot, 12, false),
-  hurt: anim(hurt, 12, false),
-  defeat: anim(defeat, 12, false)
+  idle: lazyAnim(idle, 6, true),
+  shoot: lazyAnim(shoot, 12, false),
+  hurt: lazyAnim(hurt, 12, false),
+  defeat: lazyAnim(defeat, 12, false)
 })

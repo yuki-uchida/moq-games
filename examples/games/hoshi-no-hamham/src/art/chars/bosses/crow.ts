@@ -10,7 +10,7 @@
 import type { SheetModule } from '../../module'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, shadeIndex, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const NAVY = R.crowBlue
 const FAR = [NAVY[1], NAVY[2], NAVY[3], NAVY[3], NAVY[4]] as const
@@ -490,125 +490,157 @@ export function drawCrow(pose: CrowPose): Raster {
 const NW = (up: number, len?: number, fold?: number) => wing(180 - up, len, fold)
 const FW = (up: number, len?: number, fold?: number) => wing(up, len, fold)
 
-const idle = [
-  { up: 62, dy: 3, scarf: 2, tail: 6 },
-  { up: 4, dy: 1, scarf: 0, tail: 2 },
-  { up: -46, dy: -3, scarf: -2, tail: -6 },
-  { up: 8, dy: -1, scarf: 0, tail: -2 }
-].map((f) =>
-  drawCrow(
-    crowPose({
-      y: 82 + f.dy,
-      nw: NW(f.up),
-      fw: FW(f.up * 0.95),
-      scarf: f.scarf,
-      tail: f.tail,
-      head: -f.dy * 0.8,
-      legAng: 270 + f.dy * 3
-    })
+const idle = memo(() =>
+  [
+    { up: 62, dy: 3, scarf: 2, tail: 6 },
+    { up: 4, dy: 1, scarf: 0, tail: 2 },
+    { up: -46, dy: -3, scarf: -2, tail: -6 },
+    { up: 8, dy: -1, scarf: 0, tail: -2 }
+  ].map((f) =>
+    drawCrow(
+      crowPose({
+        y: 82 + f.dy,
+        nw: NW(f.up),
+        fw: FW(f.up * 0.95),
+        scarf: f.scarf,
+        tail: f.tail,
+        head: -f.dy * 0.8,
+        legAng: 270 + f.dy * 3
+      })
+    )
   )
 )
 
 const frames = (list: Partial<CrowPose>[]) => list.map((p) => drawCrow(crowPose(p)))
 
-const intro = frames([
-  { x: 54, y: 78, tilt: 26, nw: NW(40, 24, 0.7), fw: FW(30, 24, 0.7), scarf: 3, tail: 8 },
-  { y: 82, tilt: -8, nw: NW(78), fw: FW(78), beak: 16, scarf: -2, eye: 'open', legAng: 276 },
-  { y: 85, tilt: -8, head: -14, nw: NW(10), fw: FW(10), beak: 32, eye: 'wide', scarf: 2, tail: -5, puff: 0.4 },
-  { y: 84, tilt: -10, head: -18, nw: NW(34), fw: FW(34), beak: 36, eye: 'wide', scarf: -3, tail: 4, puff: 0.7 }
-])
+const intro = memo(() =>
+  frames([
+    { x: 54, y: 78, tilt: 26, nw: NW(40, 24, 0.7), fw: FW(30, 24, 0.7), scarf: 3, tail: 8 },
+    { y: 82, tilt: -8, nw: NW(78), fw: FW(78), beak: 16, scarf: -2, eye: 'open', legAng: 276 },
+    { y: 85, tilt: -8, head: -14, nw: NW(10), fw: FW(10), beak: 32, eye: 'wide', scarf: 2, tail: -5, puff: 0.4 },
+    { y: 84, tilt: -10, head: -18, nw: NW(34), fw: FW(34), beak: 36, eye: 'wide', scarf: -3, tail: 4, puff: 0.7 }
+  ])
+)
 
-const windup = frames([
-  { y: 80, tilt: -10, nw: NW(62), fw: FW(62), beak: 3, scarf: 3, tail: 6, legAng: 280 },
-  { y: 83, tilt: -20, head: -4, nw: NW(78), fw: FW(76), beak: 6, scarf: -3, tail: 10, legAng: 290, puff: 0.3 },
-  {
-    y: 85,
-    tilt: -27,
-    head: -6,
-    nw: NW(86),
-    fw: FW(84),
-    beak: 4,
-    eye: 'glint',
-    scarf: 4,
-    tail: 14,
-    legAng: 296,
-    puff: 0.5
-  }
-])
+const windup = memo(() =>
+  frames([
+    { y: 80, tilt: -10, nw: NW(62), fw: FW(62), beak: 3, scarf: 3, tail: 6, legAng: 280 },
+    { y: 83, tilt: -20, head: -4, nw: NW(78), fw: FW(76), beak: 6, scarf: -3, tail: 10, legAng: 290, puff: 0.3 },
+    {
+      y: 85,
+      tilt: -27,
+      head: -6,
+      nw: NW(86),
+      fw: FW(84),
+      beak: 4,
+      eye: 'glint',
+      scarf: 4,
+      tail: 14,
+      legAng: 296,
+      puff: 0.5
+    }
+  ])
+)
 
-const attack = frames([
-  { x: 58, y: 80, tilt: 50, nw: wing(138, 24, 0.9), fw: wing(150, 22, 0.9), beak: 10, scarf: 5, tail: -4, legAng: 250 },
-  { x: 58, y: 80, tilt: 46, nw: wing(150, 26, 0.85), fw: wing(160, 24, 0.85), beak: 4, scarf: -3, tail: 6, legAng: 256 }
-])
+const attack = memo(() =>
+  frames([
+    {
+      x: 58,
+      y: 80,
+      tilt: 50,
+      nw: wing(138, 24, 0.9),
+      fw: wing(150, 22, 0.9),
+      beak: 10,
+      scarf: 5,
+      tail: -4,
+      legAng: 250
+    },
+    {
+      x: 58,
+      y: 80,
+      tilt: 46,
+      nw: wing(150, 26, 0.85),
+      fw: wing(160, 24, 0.85),
+      beak: 4,
+      scarf: -3,
+      tail: 6,
+      legAng: 256
+    }
+  ])
+)
 
-const recover = frames([
-  {
-    y: 84,
-    tilt: 6,
-    nw: NW(54),
-    fw: FW(50),
-    beak: 14,
-    tongue: 1,
-    eye: 'tired',
-    puff: 1,
-    sweat: 0,
-    scarf: 3,
-    tail: 8,
-    legAng: 276,
-    head: 6
-  },
-  {
-    y: 88,
-    tilt: 4,
-    nw: NW(-34),
-    fw: FW(-30),
-    beak: 18,
-    tongue: 1,
-    eye: 'tired',
-    puff: 0.6,
-    sweat: 2,
-    scarf: -3,
-    tail: -6,
-    legAng: 262,
-    head: 8
-  }
-])
+const recover = memo(() =>
+  frames([
+    {
+      y: 84,
+      tilt: 6,
+      nw: NW(54),
+      fw: FW(50),
+      beak: 14,
+      tongue: 1,
+      eye: 'tired',
+      puff: 1,
+      sweat: 0,
+      scarf: 3,
+      tail: 8,
+      legAng: 276,
+      head: 6
+    },
+    {
+      y: 88,
+      tilt: 4,
+      nw: NW(-34),
+      fw: FW(-30),
+      beak: 18,
+      tongue: 1,
+      eye: 'tired',
+      puff: 0.6,
+      sweat: 2,
+      scarf: -3,
+      tail: -6,
+      legAng: 262,
+      head: 8
+    }
+  ])
+)
 
-const hurt = frames([
-  {
-    y: 82,
-    tilt: -16,
-    head: -8,
-    nw: NW(40),
-    fw: FW(72),
-    beak: 24,
-    eye: 'hurt',
-    puff: 1,
-    scarf: 4,
-    legAng: 290,
-    flies: [
-      [24, 60, 160],
-      [100, 50, 20]
-    ]
-  },
-  {
-    y: 84,
-    tilt: -24,
-    head: -10,
-    nw: NW(70),
-    fw: FW(30),
-    beak: 30,
-    eye: 'hurt',
-    puff: 1,
-    scarf: -4,
-    legAng: 296,
-    flies: [
-      [18, 52, 200],
-      [108, 66, -30],
-      [40, 36, 120]
-    ]
-  }
-])
+const hurt = memo(() =>
+  frames([
+    {
+      y: 82,
+      tilt: -16,
+      head: -8,
+      nw: NW(40),
+      fw: FW(72),
+      beak: 24,
+      eye: 'hurt',
+      puff: 1,
+      scarf: 4,
+      legAng: 290,
+      flies: [
+        [24, 60, 160],
+        [100, 50, 20]
+      ]
+    },
+    {
+      y: 84,
+      tilt: -24,
+      head: -10,
+      nw: NW(70),
+      fw: FW(30),
+      beak: 30,
+      eye: 'hurt',
+      puff: 1,
+      scarf: -4,
+      legAng: 296,
+      flies: [
+        [18, 52, 200],
+        [108, 66, -30],
+        [40, 36, 120]
+      ]
+    }
+  ])
+)
 
 /** Nudges a frame so it keeps two empty pixels to every edge. */
 function keepIn(r: Raster) {
@@ -618,124 +650,126 @@ function keepIn(r: Raster) {
   return dx || dy ? r.shifted(dx, dy) : r
 }
 
-const defeat = frames([
-  {
-    y: 84,
-    tilt: -22,
-    head: -8,
-    nw: NW(50),
-    fw: FW(60),
-    beak: 28,
-    eye: 'hurt',
-    puff: 1,
-    scarf: 4,
-    legAng: 292,
-    flies: [
-      [22, 52, 150],
-      [104, 56, 30]
-    ]
-  },
-  {
-    x: 60,
-    y: 76,
-    tilt: 60,
-    head: 4,
-    nw: NW(70),
-    fw: FW(-20),
-    beak: 24,
-    eye: 'swirl',
-    puff: 1,
-    scarf: 5,
-    legAng: 300,
-    flies: [
-      [24, 40, 120],
-      [100, 38, 40],
-      [92, 96, -30]
-    ]
-  },
-  {
-    x: 62,
-    y: 80,
-    tilt: 135,
-    head: 6,
-    nw: NW(-40),
-    fw: FW(40),
-    beak: 24,
-    eye: 'swirl',
-    puff: 1,
-    scarf: -5,
-    legAng: 320,
-    tail: 12,
-    flies: [
-      [20, 64, 180],
-      [108, 74, 10],
-      [30, 100, 240]
-    ]
-  },
-  {
-    x: 60,
-    y: 77,
-    tilt: 205,
-    head: 4,
-    nw: NW(30),
-    fw: FW(-50),
-    beak: 20,
-    eye: 'swirl',
-    puff: 1,
-    scarf: 5,
-    legAng: 330,
-    flies: [
-      [16, 84, 200],
-      [106, 90, -20]
-    ]
-  },
-  {
-    x: 62,
-    y: 86,
-    tilt: 252,
-    head: -50,
-    nw: NW(-6),
-    fw: FW(-4),
-    beak: 14,
-    eye: 'swirl',
-    puff: 1,
-    scarf: 3,
-    legAng: 350,
-    tail: 8,
-    flies: [
-      [14, 90, 210],
-      [112, 96, 0]
-    ]
-  },
-  {
-    x: 62,
-    y: 86,
-    tilt: 270,
-    head: -92,
-    nw: NW(-12),
-    fw: FW(-10),
-    beak: 5,
-    tongue: 1,
-    eye: 'swirl',
-    puff: 0.7,
-    scarf: 2,
-    legAng: 358,
-    tail: 6,
-    flies: [
-      [18, 102, 180],
-      [108, 104, 10]
-    ]
-  }
-]).map(keepIn)
+const defeat = memo(() =>
+  frames([
+    {
+      y: 84,
+      tilt: -22,
+      head: -8,
+      nw: NW(50),
+      fw: FW(60),
+      beak: 28,
+      eye: 'hurt',
+      puff: 1,
+      scarf: 4,
+      legAng: 292,
+      flies: [
+        [22, 52, 150],
+        [104, 56, 30]
+      ]
+    },
+    {
+      x: 60,
+      y: 76,
+      tilt: 60,
+      head: 4,
+      nw: NW(70),
+      fw: FW(-20),
+      beak: 24,
+      eye: 'swirl',
+      puff: 1,
+      scarf: 5,
+      legAng: 300,
+      flies: [
+        [24, 40, 120],
+        [100, 38, 40],
+        [92, 96, -30]
+      ]
+    },
+    {
+      x: 62,
+      y: 80,
+      tilt: 135,
+      head: 6,
+      nw: NW(-40),
+      fw: FW(40),
+      beak: 24,
+      eye: 'swirl',
+      puff: 1,
+      scarf: -5,
+      legAng: 320,
+      tail: 12,
+      flies: [
+        [20, 64, 180],
+        [108, 74, 10],
+        [30, 100, 240]
+      ]
+    },
+    {
+      x: 60,
+      y: 77,
+      tilt: 205,
+      head: 4,
+      nw: NW(30),
+      fw: FW(-50),
+      beak: 20,
+      eye: 'swirl',
+      puff: 1,
+      scarf: 5,
+      legAng: 330,
+      flies: [
+        [16, 84, 200],
+        [106, 90, -20]
+      ]
+    },
+    {
+      x: 62,
+      y: 86,
+      tilt: 252,
+      head: -50,
+      nw: NW(-6),
+      fw: FW(-4),
+      beak: 14,
+      eye: 'swirl',
+      puff: 1,
+      scarf: 3,
+      legAng: 350,
+      tail: 8,
+      flies: [
+        [14, 90, 210],
+        [112, 96, 0]
+      ]
+    },
+    {
+      x: 62,
+      y: 86,
+      tilt: 270,
+      head: -92,
+      nw: NW(-12),
+      fw: FW(-10),
+      beak: 5,
+      tongue: 1,
+      eye: 'swirl',
+      puff: 0.7,
+      scarf: 2,
+      legAng: 358,
+      tail: 6,
+      flies: [
+        [18, 102, 180],
+        [108, 104, 10]
+      ]
+    }
+  ]).map(keepIn)
+)
 
 export const sheets: SheetModule = {
   crowBoss: () => ({
-    idle: anim(idle, 6, true),
-    intro: anim(intro, 8, false),
-    windup: anim(windup, 10, false),
-    attack: anim(attack, 12, true),
-    recover: anim(recover, 8, true),
-    hurt: anim(hurt, 12, false),
-    defeat: anim(defeat, 8, false)
+    idle: lazyAnim(idle, 6, true),
+    intro: lazyAnim(intro, 8, false),
+    windup: lazyAnim(windup, 10, false),
+    attack: lazyAnim(attack, 12, true),
+    recover: lazyAnim(recover, 8, true),
+    hurt: lazyAnim(hurt, 12, false),
+    defeat: lazyAnim(defeat, 8, false)
   })
 }

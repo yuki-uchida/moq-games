@@ -12,7 +12,7 @@ import type { SheetModule } from '../../module'
 import { bossSpec } from '../../contract'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, hash, type Pt, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { puff } from './bear'
 
 const FUR = ramp('#8f89a6', '#4b455f', '#312d42', '#1e1b2b', '#15121f')
@@ -641,465 +641,483 @@ function lie(
 const TAU = Math.PI * 2
 
 // breathing, with a knuckle tapping the ground
-const idle = [0, 1, 2, 1].map((k, i) =>
-  drawApe(
-    knuckle({
-      sr: [25 + k * 0.4, 23 + k * 0.8],
-      sink: -k * 0.5,
-      head: [0, -k],
-      near: [0, [0, 0, 5, 0][i]],
-      cap: [0, -k * 0.6],
-      mouth: i === 2 ? 'grit' : 'closed'
-    })
+const idle = memo(() =>
+  [0, 1, 2, 1].map((k, i) =>
+    drawApe(
+      knuckle({
+        sr: [25 + k * 0.4, 23 + k * 0.8],
+        sink: -k * 0.5,
+        head: [0, -k],
+        near: [0, [0, 0, 5, 0][i]],
+        cap: [0, -k * 0.6],
+        mouth: i === 2 ? 'grit' : 'closed'
+      })
+    )
   )
 )
 
 // rears up, drums the chest with alternating fists, roars
-const intro = [
-  knuckle({
-    sink: -8,
-    lean: -3,
-    rump: [3, 0],
-    head: [1, -3],
-    tilt: -0.1,
-    nearAt: [86, 90],
-    farAt: [102, 92],
-    sr: [24, 22],
-    nearFoot: [2, 0],
-    farFoot: [2, 0],
-    eyes: 'stern',
-    mouth: 'grit'
-  }),
-  {
-    S: [52, 42],
-    sr: [24, 22],
-    R: [34, 82],
-    rr: [16, 15],
-    head: [76, 36],
-    tilt: -0.3,
-    nearHand: [72, 62],
-    farHand: [92, 54],
-    nearBend: [0.3, 1],
-    farBend: [0.6, 0.6],
-    nearFoot: [28, 117],
-    farFoot: [46, 117],
-    eyes: 'roar' as Eyes,
-    mouth: 'roar' as Mouth,
-    jaw: 0.8,
-    cap: [0, 0],
-    fx: { arcs: 2 }
-  },
-  {
-    S: [52, 41],
-    sr: [24, 22],
-    R: [34, 82],
-    rr: [16, 15],
-    head: [76, 34],
-    tilt: -0.4,
-    nearHand: [88, 52],
-    farHand: [76, 64],
-    nearBend: [0.6, 0.6],
-    farBend: [0.3, 1],
-    nearFoot: [28, 117],
-    farFoot: [46, 117],
-    eyes: 'roar' as Eyes,
-    mouth: 'roar' as Mouth,
-    jaw: 1,
-    cap: [0, -1],
-    fx: { arcs: 3 }
-  },
-  {
-    S: [52, 40],
-    sr: [25, 23],
-    R: [34, 82],
-    rr: [16, 15],
-    head: [76, 32],
-    tilt: -0.55,
-    nearHand: [44, 62],
-    farHand: [100, 62],
-    nearBend: [-0.8, 0.8],
-    farBend: [0.8, 0.8],
-    nearFoot: [28, 117],
-    farFoot: [46, 117],
-    eyes: 'roar' as Eyes,
-    mouth: 'roar' as Mouth,
-    jaw: 1,
-    cap: [0, -2],
-    fx: { arcs: 3 }
-  }
-].map((p) => drawApe(p as ApePose))
+const intro = memo(() =>
+  [
+    knuckle({
+      sink: -8,
+      lean: -3,
+      rump: [3, 0],
+      head: [1, -3],
+      tilt: -0.1,
+      nearAt: [86, 90],
+      farAt: [102, 92],
+      sr: [24, 22],
+      nearFoot: [2, 0],
+      farFoot: [2, 0],
+      eyes: 'stern',
+      mouth: 'grit'
+    }),
+    {
+      S: [52, 42],
+      sr: [24, 22],
+      R: [34, 82],
+      rr: [16, 15],
+      head: [76, 36],
+      tilt: -0.3,
+      nearHand: [72, 62],
+      farHand: [92, 54],
+      nearBend: [0.3, 1],
+      farBend: [0.6, 0.6],
+      nearFoot: [28, 117],
+      farFoot: [46, 117],
+      eyes: 'roar' as Eyes,
+      mouth: 'roar' as Mouth,
+      jaw: 0.8,
+      cap: [0, 0],
+      fx: { arcs: 2 }
+    },
+    {
+      S: [52, 41],
+      sr: [24, 22],
+      R: [34, 82],
+      rr: [16, 15],
+      head: [76, 34],
+      tilt: -0.4,
+      nearHand: [88, 52],
+      farHand: [76, 64],
+      nearBend: [0.6, 0.6],
+      farBend: [0.3, 1],
+      nearFoot: [28, 117],
+      farFoot: [46, 117],
+      eyes: 'roar' as Eyes,
+      mouth: 'roar' as Mouth,
+      jaw: 1,
+      cap: [0, -1],
+      fx: { arcs: 3 }
+    },
+    {
+      S: [52, 40],
+      sr: [25, 23],
+      R: [34, 82],
+      rr: [16, 15],
+      head: [76, 32],
+      tilt: -0.55,
+      nearHand: [44, 62],
+      farHand: [100, 62],
+      nearBend: [-0.8, 0.8],
+      farBend: [0.8, 0.8],
+      nearFoot: [28, 117],
+      farFoot: [46, 117],
+      eyes: 'roar' as Eyes,
+      mouth: 'roar' as Mouth,
+      jaw: 1,
+      cap: [0, -2],
+      fx: { arcs: 3 }
+    }
+  ].map((p) => drawApe(p as ApePose))
+)
 
 // knuckle-walk: arms swing forward, hind legs follow
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const sw = Math.sin(t * TAU)
-  const cw = Math.cos(t * TAU)
-  const bob = ((1 + Math.cos(t * TAU * 2)) / 2) * 2
-  return drawApe(
-    knuckle({
-      bob,
-      lean: 3 + sw * 2,
-      head: [1, 1 - bob * 0.3],
-      near: [sw * 9, Math.max(0, cw) * 8],
-      far: [-sw * 9, Math.max(0, -cw) * 8],
-      nearFoot: [-sw * 7, Math.max(0, -cw) * 5],
-      farFoot: [sw * 7, Math.max(0, cw) * 5],
-      cap: [0, bob * 0.4],
-      mouth: 'grit'
-    })
-  )
-})
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const sw = Math.sin(t * TAU)
+    const cw = Math.cos(t * TAU)
+    const bob = ((1 + Math.cos(t * TAU * 2)) / 2) * 2
+    return drawApe(
+      knuckle({
+        bob,
+        lean: 3 + sw * 2,
+        head: [1, 1 - bob * 0.3],
+        near: [sw * 9, Math.max(0, cw) * 8],
+        far: [-sw * 9, Math.max(0, -cw) * 8],
+        nearFoot: [-sw * 7, Math.max(0, -cw) * 5],
+        farFoot: [sw * 7, Math.max(0, cw) * 5],
+        cap: [0, bob * 0.4],
+        mouth: 'grit'
+      })
+    )
+  })
+)
 
 // crouches low, coiled to leap
-const windup = [0, 1, 2].map((i) =>
-  drawApe(
-    knuckle({
-      sink: [6, 13, 20][i],
-      lean: [-2, -5, -8][i],
-      rump: [
-        [0, 1],
-        [3, 3],
-        [6, 5]
-      ][i] as Pt,
-      head: [
-        [0, 2],
-        [-1, 4],
-        [-2, 6]
-      ][i] as Pt,
-      tilt: [0.05, 0.1, 0.15][i],
-      sr: [
-        [26, 22],
-        [27, 21],
-        [28, 20]
-      ][i] as Pt,
-      rr: [
-        [16, 14],
-        [17, 13],
-        [18, 12]
-      ][i] as Pt,
-      near: [
-        [-4, 0],
-        [-8, 0],
-        [-12, 0]
-      ][i] as Pt,
-      far: [
-        [-4, 0],
-        [-8, 0],
-        [-12, 0]
-      ][i] as Pt,
-      nearBend: [-1, -0.3],
-      farBend: [-1, -0.3],
-      nearFoot: [i * 2, 0],
-      farFoot: [i * 2, 0],
-      legBend: [1, -0.5],
-      eyes: 'stern',
-      mouth: 'grit',
-      cap: [0, [0, 1, 2][i]]
-    })
+const windup = memo(() =>
+  [0, 1, 2].map((i) =>
+    drawApe(
+      knuckle({
+        sink: [6, 13, 20][i],
+        lean: [-2, -5, -8][i],
+        rump: [
+          [0, 1],
+          [3, 3],
+          [6, 5]
+        ][i] as Pt,
+        head: [
+          [0, 2],
+          [-1, 4],
+          [-2, 6]
+        ][i] as Pt,
+        tilt: [0.05, 0.1, 0.15][i],
+        sr: [
+          [26, 22],
+          [27, 21],
+          [28, 20]
+        ][i] as Pt,
+        rr: [
+          [16, 14],
+          [17, 13],
+          [18, 12]
+        ][i] as Pt,
+        near: [
+          [-4, 0],
+          [-8, 0],
+          [-12, 0]
+        ][i] as Pt,
+        far: [
+          [-4, 0],
+          [-8, 0],
+          [-12, 0]
+        ][i] as Pt,
+        nearBend: [-1, -0.3],
+        farBend: [-1, -0.3],
+        nearFoot: [i * 2, 0],
+        farFoot: [i * 2, 0],
+        legBend: [1, -0.5],
+        eyes: 'stern',
+        mouth: 'grit',
+        cap: [0, [0, 1, 2][i]]
+      })
+    )
   )
 )
 
 // the leap: arms bent, both fists together above and behind the head
-const air = [
-  {
-    S: [54, 50],
-    sr: [25, 22],
-    R: [30, 76],
-    rr: [15, 14],
-    head: [80, 52],
-    tilt: -0.2,
-    nearHand: [66, 14],
-    farHand: [80, 12],
-    nearBend: [-1, 0.2],
-    farBend: [0.4, -1],
-    nearFoot: [30, 100],
-    farFoot: [44, 96],
-    legBend: [1, 0.3],
-    eyes: 'roar' as Eyes,
-    mouth: 'roar' as Mouth,
-    jaw: 0.5,
-    cap: [0, -2],
-    fx: {}
-  },
-  {
-    S: [60, 56],
-    sr: [25, 23],
-    R: [32, 80],
-    rr: [15, 14],
-    head: [88, 62],
-    tilt: 0.25,
-    nearHand: [90, 50],
-    farHand: [104, 54],
-    nearBend: [-0.6, -1],
-    farBend: [0.4, -1],
-    nearFoot: [32, 104],
-    farFoot: [48, 100],
-    legBend: [1, 0.2],
-    eyes: 'stern' as Eyes,
-    mouth: 'grit' as Mouth,
-    jaw: 0,
-    cap: [0, -3],
-    fx: {}
-  }
-].map((p) => drawApe(p as ApePose))
-
-// the fists slam the ground: dust, recoil
-const land = [
-  knuckle({
-    sink: 12,
-    lean: 5,
-    rump: [0, 2],
-    head: [2, 6],
-    tilt: 0.15,
-    sr: [27, 21],
-    rr: [17, 13],
-    nearAt: [97, 108],
-    farAt: [111, 107],
-    nearBend: [-0.3, 1],
-    farBend: [-0.3, 1],
-    nearFoot: [0, 0],
-    farFoot: [0, 0],
-    legBend: [1, -0.5],
-    eyes: 'roar',
-    mouth: 'gasp',
-    jaw: 0.4,
-    cap: [0, -5],
-    fx: {
-      dust: [
-        [18, 115, 8],
-        [112, 116, 7]
-      ],
-      lines: [
-        [116, 98, 6, -6],
-        [118, 104, 6, -1],
-        [10, 104, -6, -5]
-      ],
-      tufts: [[22, 92, -9, -3]]
+const air = memo(() =>
+  [
+    {
+      S: [54, 50],
+      sr: [25, 22],
+      R: [30, 76],
+      rr: [15, 14],
+      head: [80, 52],
+      tilt: -0.2,
+      nearHand: [66, 14],
+      farHand: [80, 12],
+      nearBend: [-1, 0.2],
+      farBend: [0.4, -1],
+      nearFoot: [30, 100],
+      farFoot: [44, 96],
+      legBend: [1, 0.3],
+      eyes: 'roar' as Eyes,
+      mouth: 'roar' as Mouth,
+      jaw: 0.5,
+      cap: [0, -2],
+      fx: {}
+    },
+    {
+      S: [60, 56],
+      sr: [25, 23],
+      R: [32, 80],
+      rr: [15, 14],
+      head: [88, 62],
+      tilt: 0.25,
+      nearHand: [90, 50],
+      farHand: [104, 54],
+      nearBend: [-0.6, -1],
+      farBend: [0.4, -1],
+      nearFoot: [32, 104],
+      farFoot: [48, 100],
+      legBend: [1, 0.2],
+      eyes: 'stern' as Eyes,
+      mouth: 'grit' as Mouth,
+      jaw: 0,
+      cap: [0, -3],
+      fx: {}
     }
-  }),
-  knuckle({
-    sink: 8,
-    lean: 3,
-    head: [1, 4],
-    sr: [26, 22],
-    rr: [16, 14],
-    nearAt: [95, 108],
-    farAt: [109, 107],
-    nearBend: [-0.3, 1],
-    farBend: [-0.3, 1],
-    legBend: [1, -0.4],
-    eyes: 'stern',
-    mouth: 'grit',
-    cap: [0, -1],
-    fx: {
-      dust: [
-        [16, 114, 8],
-        [112, 115, 8]
-      ]
-    }
-  }),
-  knuckle({
-    sink: 2,
-    lean: 1,
-    head: [1, 0],
-    nearAt: [93, 108],
-    farAt: [107, 107],
-    nearBend: [-0.3, 1],
-    farBend: [-0.3, 1],
-    eyes: 'stern',
-    mouth: 'closed',
-    cap: [0, 1],
-    fx: {
-      dust: [
-        [18, 118, 5],
-        [110, 118, 5]
-      ]
-    }
-  })
-].map(drawApe)
-
-// sits panting, cap askew, sweat
-const recover = [0, 1].map((i) =>
-  drawApe({
-    S: [50, 66 + i],
-    sr: [25, 22],
-    R: [34, 98],
-    rr: [17, 14],
-    head: [74, 76 + i * 2],
-    tilt: 0.2,
-    nearHand: [76, 108],
-    farHand: [92, 108],
-    nearBend: [-0.8, 0.6],
-    farBend: [-0.8, 0.6],
-    nearFoot: [54, 117],
-    farFoot: [68, 117],
-    legBend: [0.5, -1],
-    eyes: 'tired',
-    mouth: 'pant',
-    jaw: 0.4 + i * 0.3,
-    cap: [-5, 3 + i],
-    capTilt: 0.45,
-    fx: {
-      sweat: [
-        [
-          [92, 54],
-          [104, 64]
-        ],
-        [
-          [94, 60],
-          [106, 68]
-        ]
-      ][i] as Pt[]
-    }
-  } as ApePose)
+  ].map((p) => drawApe(p as ApePose))
 )
 
-const hurt = [
-  knuckle({
-    lean: -9,
-    bob: 6,
-    head: [-3, -2],
-    tilt: -0.4,
-    nearAt: [78, 84],
-    farAt: [100, 80],
-    nearBend: [-0.4, 1],
-    farBend: [0.4, 1],
-    nearFoot: [-2, 0],
-    farFoot: [0, 3],
-    eyes: 'hurt',
-    mouth: 'gasp',
-    jaw: 0.7,
-    cap: [-6, -10],
-    capTilt: -0.5
-  }),
-  knuckle({
-    lean: -5,
-    bob: 2,
-    head: [-1, 1],
-    tilt: -0.15,
-    near: [-3, 3],
-    far: [-3, 3],
-    eyes: 'tired',
-    mouth: 'grit',
-    cap: [-3, -3],
-    capTilt: -0.2
-  })
-].map(drawApe)
+// the fists slam the ground: dust, recoil
+const land = memo(() =>
+  [
+    knuckle({
+      sink: 12,
+      lean: 5,
+      rump: [0, 2],
+      head: [2, 6],
+      tilt: 0.15,
+      sr: [27, 21],
+      rr: [17, 13],
+      nearAt: [97, 108],
+      farAt: [111, 107],
+      nearBend: [-0.3, 1],
+      farBend: [-0.3, 1],
+      nearFoot: [0, 0],
+      farFoot: [0, 0],
+      legBend: [1, -0.5],
+      eyes: 'roar',
+      mouth: 'gasp',
+      jaw: 0.4,
+      cap: [0, -5],
+      fx: {
+        dust: [
+          [18, 115, 8],
+          [112, 116, 7]
+        ],
+        lines: [
+          [116, 98, 6, -6],
+          [118, 104, 6, -1],
+          [10, 104, -6, -5]
+        ],
+        tufts: [[22, 92, -9, -3]]
+      }
+    }),
+    knuckle({
+      sink: 8,
+      lean: 3,
+      head: [1, 4],
+      sr: [26, 22],
+      rr: [16, 14],
+      nearAt: [95, 108],
+      farAt: [109, 107],
+      nearBend: [-0.3, 1],
+      farBend: [-0.3, 1],
+      legBend: [1, -0.4],
+      eyes: 'stern',
+      mouth: 'grit',
+      cap: [0, -1],
+      fx: {
+        dust: [
+          [16, 114, 8],
+          [112, 115, 8]
+        ]
+      }
+    }),
+    knuckle({
+      sink: 2,
+      lean: 1,
+      head: [1, 0],
+      nearAt: [93, 108],
+      farAt: [107, 107],
+      nearBend: [-0.3, 1],
+      farBend: [-0.3, 1],
+      eyes: 'stern',
+      mouth: 'closed',
+      cap: [0, 1],
+      fx: {
+        dust: [
+          [18, 118, 5],
+          [110, 118, 5]
+        ]
+      }
+    })
+  ].map(drawApe)
+)
+
+// sits panting, cap askew, sweat
+const recover = memo(() =>
+  [0, 1].map((i) =>
+    drawApe({
+      S: [50, 66 + i],
+      sr: [25, 22],
+      R: [34, 98],
+      rr: [17, 14],
+      head: [74, 76 + i * 2],
+      tilt: 0.2,
+      nearHand: [76, 108],
+      farHand: [92, 108],
+      nearBend: [-0.8, 0.6],
+      farBend: [-0.8, 0.6],
+      nearFoot: [54, 117],
+      farFoot: [68, 117],
+      legBend: [0.5, -1],
+      eyes: 'tired',
+      mouth: 'pant',
+      jaw: 0.4 + i * 0.3,
+      cap: [-5, 3 + i],
+      capTilt: 0.45,
+      fx: {
+        sweat: [
+          [
+            [92, 54],
+            [104, 64]
+          ],
+          [
+            [94, 60],
+            [106, 68]
+          ]
+        ][i] as Pt[]
+      }
+    } as ApePose)
+  )
+)
+
+const hurt = memo(() =>
+  [
+    knuckle({
+      lean: -9,
+      bob: 6,
+      head: [-3, -2],
+      tilt: -0.4,
+      nearAt: [78, 84],
+      farAt: [100, 80],
+      nearBend: [-0.4, 1],
+      farBend: [0.4, 1],
+      nearFoot: [-2, 0],
+      farFoot: [0, 3],
+      eyes: 'hurt',
+      mouth: 'gasp',
+      jaw: 0.7,
+      cap: [-6, -10],
+      capTilt: -0.5
+    }),
+    knuckle({
+      lean: -5,
+      bob: 2,
+      head: [-1, 1],
+      tilt: -0.15,
+      near: [-3, 3],
+      far: [-3, 3],
+      eyes: 'tired',
+      mouth: 'grit',
+      cap: [-3, -3],
+      capTilt: -0.2
+    })
+  ].map(drawApe)
+)
 
 // the cap flies off, he topples onto his back, the cap lands beside him
-const defeat = [
-  knuckle({
-    lean: -10,
-    bob: 8,
-    head: [-3, -3],
-    tilt: -0.55,
-    nearAt: [74, 70],
-    farAt: [96, 62],
-    nearBend: [-0.3, 1],
-    farBend: [0.5, 0.8],
-    nearFoot: [-2, 0],
-    farFoot: [0, 0],
-    eyes: 'hurt',
-    mouth: 'gasp',
-    jaw: 0.8,
-    capAt: [36, 22],
-    capTilt: -0.9,
-    fx: { lines: [[40, 16, -6, -4]] }
-  }),
-  {
-    S: [46, 64],
-    sr: [25, 22],
-    R: [28, 92],
-    rr: [15, 14],
-    head: [58, 50],
-    tilt: -0.95,
-    nearHand: [76, 44],
-    farHand: [92, 66],
-    nearBend: [0.2, -1],
-    farBend: [0.4, 1],
-    nearFoot: [26, 117],
-    farFoot: [40, 108],
-    legBend: [1, -0.3],
-    eyes: 'swirl' as Eyes,
-    mouth: 'gasp' as Mouth,
-    jaw: 0.6,
-    cap: [0, 0],
-    capAt: [24, 30],
-    capTilt: -0.4,
-    fx: {
-      stars: [
-        [44, 22],
-        [76, 20]
-      ]
-    }
-  },
-  {
-    S: [46, 82],
-    sr: [24, 21],
-    R: [62, 99],
-    rr: [15, 13],
-    head: [24, 70],
-    tilt: -1.1,
-    nearHand: [74, 54],
-    farHand: [14, 104],
-    nearBend: [-1, 0.3],
-    farBend: [0.3, -1],
-    nearFoot: [84, 100],
-    farFoot: [96, 108],
-    legBend: [0.4, -1],
-    soles: true,
-    lying: true,
-    eyes: 'swirl' as Eyes,
-    mouth: 'pant' as Mouth,
-    jaw: 0.5,
-    cap: [0, 0],
-    capAt: [100, 110],
-    capTilt: 0.3,
-    fx: {
-      stars: [
-        [44, 36],
-        [86, 46]
-      ]
-    }
-  },
-  lie({
-    lift: 4,
-    arms: 2,
-    legs: 3,
-    capAt: [100, 110],
-    fx: {
-      dust: [
-        [20, 118, 6],
-        [116, 118, 3]
-      ]
-    }
-  }),
-  lie({
-    lift: 1,
-    arms: 1,
-    legs: 1,
-    capAt: [108, 111],
-    fx: {
-      stars: [
-        [20, 66],
-        [48, 58]
-      ]
-    }
-  }),
-  lie({
-    capAt: [108, 111],
-    fx: {
-      stars: [
-        [18, 62],
-        [44, 56],
-        [64, 66]
-      ]
-    }
-  })
-].map((p) => drawApe(p as ApePose))
+const defeat = memo(() =>
+  [
+    knuckle({
+      lean: -10,
+      bob: 8,
+      head: [-3, -3],
+      tilt: -0.55,
+      nearAt: [74, 70],
+      farAt: [96, 62],
+      nearBend: [-0.3, 1],
+      farBend: [0.5, 0.8],
+      nearFoot: [-2, 0],
+      farFoot: [0, 0],
+      eyes: 'hurt',
+      mouth: 'gasp',
+      jaw: 0.8,
+      capAt: [36, 22],
+      capTilt: -0.9,
+      fx: { lines: [[40, 16, -6, -4]] }
+    }),
+    {
+      S: [46, 64],
+      sr: [25, 22],
+      R: [28, 92],
+      rr: [15, 14],
+      head: [58, 50],
+      tilt: -0.95,
+      nearHand: [76, 44],
+      farHand: [92, 66],
+      nearBend: [0.2, -1],
+      farBend: [0.4, 1],
+      nearFoot: [26, 117],
+      farFoot: [40, 108],
+      legBend: [1, -0.3],
+      eyes: 'swirl' as Eyes,
+      mouth: 'gasp' as Mouth,
+      jaw: 0.6,
+      cap: [0, 0],
+      capAt: [24, 30],
+      capTilt: -0.4,
+      fx: {
+        stars: [
+          [44, 22],
+          [76, 20]
+        ]
+      }
+    },
+    {
+      S: [46, 82],
+      sr: [24, 21],
+      R: [62, 99],
+      rr: [15, 13],
+      head: [24, 70],
+      tilt: -1.1,
+      nearHand: [74, 54],
+      farHand: [14, 104],
+      nearBend: [-1, 0.3],
+      farBend: [0.3, -1],
+      nearFoot: [84, 100],
+      farFoot: [96, 108],
+      legBend: [0.4, -1],
+      soles: true,
+      lying: true,
+      eyes: 'swirl' as Eyes,
+      mouth: 'pant' as Mouth,
+      jaw: 0.5,
+      cap: [0, 0],
+      capAt: [100, 110],
+      capTilt: 0.3,
+      fx: {
+        stars: [
+          [44, 36],
+          [86, 46]
+        ]
+      }
+    },
+    lie({
+      lift: 4,
+      arms: 2,
+      legs: 3,
+      capAt: [100, 110],
+      fx: {
+        dust: [
+          [20, 118, 6],
+          [116, 118, 3]
+        ]
+      }
+    }),
+    lie({
+      lift: 1,
+      arms: 1,
+      legs: 1,
+      capAt: [108, 111],
+      fx: {
+        stars: [
+          [20, 66],
+          [48, 58]
+        ]
+      }
+    }),
+    lie({
+      capAt: [108, 111],
+      fx: {
+        stars: [
+          [18, 62],
+          [44, 56],
+          [64, 66]
+        ]
+      }
+    })
+  ].map((p) => drawApe(p as ApePose))
+)
 
 const spec = bossSpec('apeBoss')
-const clip = (name: keyof typeof spec, frames: Raster[]) => anim(frames, spec[name].fps, spec[name].loop)
+const clip = (name: keyof typeof spec, frames: () => Raster[]) => lazyAnim(frames, spec[name].fps, spec[name].loop)
 
 export const sheets: SheetModule = {
   apeBoss: () => ({

@@ -8,7 +8,7 @@
 import type { SheetModule } from '../module'
 import { C, R, ramp } from '../palette'
 import { Painter, Raster, ball, bar, farRamp, shadeEdges } from '../raster'
-import { anim } from '../sheet'
+import { lazyAnim, memo } from '../sheet'
 
 const WHITE = R.princessWhite
 const FAR = farRamp(WHITE)
@@ -353,111 +353,119 @@ function patch(l: Raster, cx: number, cy: number, rx: number, ry: number, c: num
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = [0, 1, 2, 1].map((k, i) =>
-  drawPrincess(
-    princessPose({
-      squash: -k * 0.35 + 0.35,
-      bob: k * 0.45,
-      ribbon: [0, 1, 0, -1][i],
-      earSway: [0, 0, 1, 0][i],
-      nearShoulder: [-10, 3],
-      nearHand: [-9, 9 + (i === 1 ? 0.5 : 0)],
-      twinkle: i === 2 ? 2 : i === 1 ? 1 : 0
-    })
+const idle = memo(() =>
+  [0, 1, 2, 1].map((k, i) =>
+    drawPrincess(
+      princessPose({
+        squash: -k * 0.35 + 0.35,
+        bob: k * 0.45,
+        ribbon: [0, 1, 0, -1][i],
+        earSway: [0, 0, 1, 0][i],
+        nearShoulder: [-10, 3],
+        nearHand: [-9, 9 + (i === 1 ? 0.5 : 0)],
+        twinkle: i === 2 ? 2 : i === 1 ? 1 : 0
+      })
+    )
   )
 )
 
 /** Sad: ears hang, paws meet in front of the chest, wet eyes, one tear running down the cheek over the loop. */
-const sad = [0, 1, 2, 3].map((i) =>
-  drawPrincess(
-    princessPose({
-      squash: 1.2,
-      jx: [-1, 1, -1, 1][i],
-      earNear: [0.9, 1, 1, 0.95][i],
-      earFar: [0.9, 1, 1, 0.95][i],
-      earSway: [0, 0.5, 0, -0.5][i],
-      tilt: -1,
-      ribbon: [0, 1, 0, -1][i],
-      ribbonDrop: 5,
-      nearShoulder: [-2, 6],
-      nearHand: [3, 10 + [0, 0.5, 0, -0.5][i]],
-      paw2: [8, 9 + [0.5, 0, -0.5, 0][i]],
-      eyes: 'sad',
-      mouth: 'frown',
-      brows: true,
-      glint: i % 2 === 0,
-      twinkle: 0,
-      tears: [
-        [[3.5, 2.2, 1]],
-        [[3.5, 3.8, 2]],
-        [[3.2, 6.2, 2]],
-        [
-          [3, 8.4, 1],
-          [3.6, 2.2, 1]
-        ]
-      ][i] as [number, number, number][]
-    })
+const sad = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    drawPrincess(
+      princessPose({
+        squash: 1.2,
+        jx: [-1, 1, -1, 1][i],
+        earNear: [0.9, 1, 1, 0.95][i],
+        earFar: [0.9, 1, 1, 0.95][i],
+        earSway: [0, 0.5, 0, -0.5][i],
+        tilt: -1,
+        ribbon: [0, 1, 0, -1][i],
+        ribbonDrop: 5,
+        nearShoulder: [-2, 6],
+        nearHand: [3, 10 + [0, 0.5, 0, -0.5][i]],
+        paw2: [8, 9 + [0.5, 0, -0.5, 0][i]],
+        eyes: 'sad',
+        mouth: 'frown',
+        brows: true,
+        glint: i % 2 === 0,
+        twinkle: 0,
+        tears: [
+          [[3.5, 2.2, 1]],
+          [[3.5, 3.8, 2]],
+          [[3.2, 6.2, 2]],
+          [
+            [3, 8.4, 1],
+            [3.6, 2.2, 1]
+          ]
+        ][i] as [number, number, number][]
+      })
+    )
   )
 )
 
-const hop = [
+const hop = memo(() => [
   { bob: 0, squash: 3, arms: 0 },
   { bob: 3, squash: -2, arms: 0.6 },
   { bob: 8, squash: -2, arms: 1 },
   { bob: 7, squash: -1, arms: 1 },
   { bob: 2, squash: -2, arms: 0.7 },
   { bob: 0, squash: 2, arms: 0.2 }
-]
+])
 /** Cheer: a hop with short chubby arms thrown up and round paws. */
-const cheer = hop.map((h, i) =>
-  drawPrincess(
-    princessPose({
-      bob: h.bob,
-      squash: h.squash,
-      earNear: 0,
-      earSway: [1, 0, -1, -1, 0, 1][i],
-      ribbon: [1, -1, -2, -1, 1, 2][i],
-      ribbonDrop: 6 + (h.bob > 5 ? -1 : 0),
-      nearShoulder: [-11, 3],
-      farShoulder: [12, 2],
-      nearHand: [-12 - h.arms * 3.5, 6 - h.arms * 14],
-      farHand: [13 + h.arms * 3.5, 5 - h.arms * 14],
-      nearFoot: [-1, h.bob > 1 ? h.bob - 1 : 0],
-      farFoot: [1, h.bob > 1 ? h.bob : 0],
-      eyes: 'happy',
-      mouth: 'open',
-      twinkle: [0, 1, 2, 2, 1, 0][i]
-    })
+const cheer = memo(() =>
+  hop().map((h, i) =>
+    drawPrincess(
+      princessPose({
+        bob: h.bob,
+        squash: h.squash,
+        earNear: 0,
+        earSway: [1, 0, -1, -1, 0, 1][i],
+        ribbon: [1, -1, -2, -1, 1, 2][i],
+        ribbonDrop: 6 + (h.bob > 5 ? -1 : 0),
+        nearShoulder: [-11, 3],
+        farShoulder: [12, 2],
+        nearHand: [-12 - h.arms * 3.5, 6 - h.arms * 14],
+        farHand: [13 + h.arms * 3.5, 5 - h.arms * 14],
+        nearFoot: [-1, h.bob > 1 ? h.bob - 1 : 0],
+        farFoot: [1, h.bob > 1 ? h.bob : 0],
+        eyes: 'happy',
+        mouth: 'open',
+        twinkle: [0, 1, 2, 2, 1, 0][i]
+      })
+    )
   )
 )
 
 /** Wave: the far arm swings through a wide arc from the shoulder while the head tilts with it. */
-const wave = [0, 1, 2, 3].map((i) => {
-  const a = (([82, 56, 28, 54][i] * Math.PI) / 180) as number
-  const reach = 11
-  const sh: [number, number] = [13, 1]
-  return drawPrincess(
-    princessPose({
-      squash: 0,
-      tilt: [2.2, 1, -0.4, 1][i],
-      earSway: [0, 1, 0, -1][i],
-      ribbon: [0, 1, 0, -1][i],
-      nearShoulder: [-10, 3],
-      nearHand: [-9, 9],
-      farShoulder: sh,
-      farHand: [sh[0] + Math.sin(a) * reach, sh[1] - Math.cos(a) * reach],
-      eyes: i === 2 ? 'happy' : 'open',
-      mouth: i === 2 ? 'open' : 'smile',
-      twinkle: i === 1 ? 1 : 0
-    })
-  )
-})
+const wave = memo(() =>
+  [0, 1, 2, 3].map((i) => {
+    const a = (([82, 56, 28, 54][i] * Math.PI) / 180) as number
+    const reach = 11
+    const sh: [number, number] = [13, 1]
+    return drawPrincess(
+      princessPose({
+        squash: 0,
+        tilt: [2.2, 1, -0.4, 1][i],
+        earSway: [0, 1, 0, -1][i],
+        ribbon: [0, 1, 0, -1][i],
+        nearShoulder: [-10, 3],
+        nearHand: [-9, 9],
+        farShoulder: sh,
+        farHand: [sh[0] + Math.sin(a) * reach, sh[1] - Math.cos(a) * reach],
+        eyes: i === 2 ? 'happy' : 'open',
+        mouth: i === 2 ? 'open' : 'smile',
+        twinkle: i === 1 ? 1 : 0
+      })
+    )
+  })
+)
 
 export const sheets: SheetModule = {
   princess: () => ({
-    idle: anim(idle, 6, true),
-    sad: anim(sad, 5, true),
-    cheer: anim(cheer, 10, true),
-    wave: anim(wave, 8, true)
+    idle: lazyAnim(idle, 6, true),
+    sad: lazyAnim(sad, 5, true),
+    cheer: lazyAnim(cheer, 10, true),
+    wave: lazyAnim(wave, 8, true)
   })
 }

@@ -235,15 +235,15 @@ function arrow(): Raster[] {
 
 export const sheets: SheetModule = {
   fx: () => ({
-    heart: make('heart', heart()),
-    confettiA: make('confettiA', confetti(R.hamEar, 'strip')),
-    confettiB: make('confettiB', confetti(R.gold, 'square')),
-    confettiC: make('confettiC', confetti(R.moon, 'ribbon')),
-    zzz: make('zzz', zzz()),
-    alert: make('alert', alert()),
-    anger: make('anger', anger()),
-    sweat: make('sweat', sweat()),
-    dizzy: make('dizzy', dizzy()),
-    arrow: make('arrow', arrow())
+    heart: make('heart', heart),
+    confettiA: make('confettiA', () => confetti(R.hamEar, 'strip')),
+    confettiB: make('confettiB', () => confetti(R.gold, 'square')),
+    confettiC: make('confettiC', () => confetti(R.moon, 'ribbon')),
+    zzz: make('zzz', zzz),
+    alert: make('alert', alert),
+    anger: make('anger', anger),
+    sweat: make('sweat', sweat),
+    dizzy: make('dizzy', dizzy),
+    arrow: make('arrow', arrow)
   })
 }

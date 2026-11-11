@@ -7,7 +7,7 @@
 import type { SheetModule } from '../../module'
 import { C, R } from '../../palette'
 import { Raster, ball, bar, farRamp, outline, shadeEdges, shadeIndex, type Pt, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const FOX = R.foxOrange
 const FAR = farRamp(FOX)
@@ -654,224 +654,236 @@ function fit(r: Raster) {
   return dx || dy ? r.shifted(dx, dy) : r
 }
 
-const idle = [0, 1, 2, 3].map((i) => {
-  const t = i / 4
-  const s = Math.sin(t * TAU)
-  const c = Math.cos(t * TAU)
-  return drawFox(
-    foxPose({
-      crouch: 1.2 - c * 1.2,
-      lean: s * 1.4,
-      nearFoot: [s * 0.6, 0],
-      farFoot: [-s * 0.6, 0],
-      nearHand: [13 + s * 1.5, 6 - c * 1.5],
-      farHand: [10 - s, 5 + c],
-      tailSwing: s,
-      bandPhase: t * TAU,
-      earBack: c > 0.5 ? 1 : 0
-    })
-  )
-})
-
-const intro = [
-  foxPose({
-    crouch: 5,
-    lean: -3,
-    nearHand: [4, 9],
-    farHand: [2, 10],
-    tailCurl: 0.25,
-    eyes: 'glare',
-    mouth: 'flat',
-    bandPhase: 0.4
-  }),
-  foxPose({ crouch: 2, lean: 2, nearHand: [14, -3], farHand: [13, -1], eyes: 'sly', mouth: 'smirk', bandPhase: 1.6 }),
-  foxPose({
-    crouch: 0,
-    lean: 1,
-    nearHand: [15, -4],
-    farHand: [13, -2],
-    puff: 1.28,
-    tailSwing: 0.8,
-    eyes: 'smirk',
-    mouth: 'grin',
-    bandPhase: 2.8
-  }),
-  foxPose({
-    crouch: 0,
-    lean: -1,
-    headDy: -1,
-    nearHand: [7, 8],
-    farHand: [9, 3],
-    puff: 1.28,
-    tailSwing: -0.4,
-    eyes: 'smirk',
-    mouth: 'grin',
-    bandPhase: 4
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) => {
+    const t = i / 4
+    const s = Math.sin(t * TAU)
+    const c = Math.cos(t * TAU)
+    return drawFox(
+      foxPose({
+        crouch: 1.2 - c * 1.2,
+        lean: s * 1.4,
+        nearFoot: [s * 0.6, 0],
+        farFoot: [-s * 0.6, 0],
+        nearHand: [13 + s * 1.5, 6 - c * 1.5],
+        farHand: [10 - s, 5 + c],
+        tailSwing: s,
+        bandPhase: t * TAU,
+        earBack: c > 0.5 ? 1 : 0
+      })
+    )
   })
-].map((p) => drawFox(p))
+)
 
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const s = Math.sin(t * TAU)
-  const c = Math.cos(t * TAU)
-  return drawFox(
+const intro = memo(() =>
+  [
     foxPose({
-      crouch: 6 + Math.abs(s) * -2,
-      lean: 15,
+      crouch: 5,
+      lean: -3,
+      nearHand: [4, 9],
+      farHand: [2, 10],
+      tailCurl: 0.25,
+      eyes: 'glare',
+      mouth: 'flat',
+      bandPhase: 0.4
+    }),
+    foxPose({ crouch: 2, lean: 2, nearHand: [14, -3], farHand: [13, -1], eyes: 'sly', mouth: 'smirk', bandPhase: 1.6 }),
+    foxPose({
+      crouch: 0,
+      lean: 1,
+      nearHand: [15, -4],
+      farHand: [13, -2],
+      puff: 1.28,
+      tailSwing: 0.8,
+      eyes: 'smirk',
+      mouth: 'grin',
+      bandPhase: 2.8
+    }),
+    foxPose({
+      crouch: 0,
+      lean: -1,
+      headDy: -1,
+      nearHand: [7, 8],
+      farHand: [9, 3],
+      puff: 1.28,
+      tailSwing: -0.4,
+      eyes: 'smirk',
+      mouth: 'grin',
+      bandPhase: 4
+    })
+  ].map((p) => drawFox(p))
+)
+
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const s = Math.sin(t * TAU)
+    const c = Math.cos(t * TAU)
+    return drawFox(
+      foxPose({
+        crouch: 6 + Math.abs(s) * -2,
+        lean: 15,
+        headDy: 4,
+        nearFoot: [s * 15 - 2, Math.max(0, -c) * 8],
+        farFoot: [-s * 15, Math.max(0, c) * 8],
+        nearHand: [-10 - s * 4, -2 + c * 3],
+        farHand: [-8 + s * 4, -1 - c * 3],
+        tailStream: 1,
+        tailSwing: c * 0.5,
+        bandPhase: t * TAU * 2,
+        bandStream: 1,
+        earBack: 5,
+        eyes: 'sly',
+        mouth: 'grin'
+      })
+    )
+  })
+)
+
+const windup = memo(() =>
+  [
+    foxPose({
+      crouch: 7,
+      lean: -5,
+      nearHand: [-4, 9],
+      farHand: [-6, 8],
+      tailPts: [
+        [0, 0],
+        [-22, 2],
+        [-30, -14],
+        [-16, -30]
+      ],
+      puff: 0.8,
+      earBack: 2,
+      eyes: 'glare',
+      mouth: 'flat',
+      bandPhase: 0.5,
+      nearFoot: [-3, 0],
+      farFoot: [4, 0]
+    }),
+    foxPose({
+      crouch: 12,
+      lean: -7,
+      headDy: 2,
+      nearHand: [-6, 12],
+      farHand: [-4, 11],
+      tailPts: [
+        [0, 0],
+        [-24, 2],
+        [-34, -20],
+        [-18, -40]
+      ],
+      puff: 0.75,
+      earBack: 3,
+      eyes: 'glare',
+      mouth: 'grin',
+      bandPhase: 1.5,
+      wind: 1,
+      nearFoot: [-4, 0],
+      farFoot: [6, 0]
+    }),
+    foxPose({
+      crouch: 15,
+      lean: 4,
       headDy: 4,
-      nearFoot: [s * 15 - 2, Math.max(0, -c) * 8],
-      farFoot: [-s * 15, Math.max(0, c) * 8],
-      nearHand: [-10 - s * 4, -2 + c * 3],
-      farHand: [-8 + s * 4, -1 - c * 3],
-      tailStream: 1,
-      tailSwing: c * 0.5,
-      bandPhase: t * TAU * 2,
-      bandStream: 1,
+      nearHand: [-9, 14],
+      farHand: [-7, 13],
+      tailPts: [
+        [0, 0],
+        [-24, 3],
+        [-36, -20],
+        [-22, -42]
+      ],
+      puff: 0.75,
       earBack: 5,
-      eyes: 'sly',
-      mouth: 'grin'
+      eyes: 'glare',
+      mouth: 'grin',
+      bandPhase: 2.4,
+      bandStream: 0.5,
+      wind: 2,
+      nearFoot: [-5, 0],
+      farFoot: [7, 0]
     })
-  )
-})
+  ].map((p) => drawFox(p))
+)
 
-const windup = [
-  foxPose({
-    crouch: 7,
-    lean: -5,
-    nearHand: [-4, 9],
-    farHand: [-6, 8],
-    tailPts: [
-      [0, 0],
-      [-22, 2],
-      [-30, -14],
-      [-16, -30]
-    ],
-    puff: 0.8,
-    earBack: 2,
-    eyes: 'glare',
-    mouth: 'flat',
-    bandPhase: 0.5,
-    nearFoot: [-3, 0],
-    farFoot: [4, 0]
-  }),
-  foxPose({
-    crouch: 12,
-    lean: -7,
-    headDy: 2,
-    nearHand: [-6, 12],
-    farHand: [-4, 11],
-    tailPts: [
-      [0, 0],
-      [-24, 2],
-      [-34, -20],
-      [-18, -40]
-    ],
-    puff: 0.75,
-    earBack: 3,
-    eyes: 'glare',
-    mouth: 'grin',
-    bandPhase: 1.5,
-    wind: 1,
-    nearFoot: [-4, 0],
-    farFoot: [6, 0]
-  }),
-  foxPose({
-    crouch: 15,
-    lean: 4,
-    headDy: 4,
-    nearHand: [-9, 14],
-    farHand: [-7, 13],
-    tailPts: [
-      [0, 0],
-      [-24, 3],
-      [-36, -20],
-      [-22, -42]
-    ],
-    puff: 0.75,
-    earBack: 5,
-    eyes: 'glare',
-    mouth: 'grin',
-    bandPhase: 2.4,
-    bandStream: 0.5,
-    wind: 2,
-    nearFoot: [-5, 0],
-    farFoot: [7, 0]
-  })
-].map((p) => drawFox(p))
+const attack = memo(() => [0, 1, 2, 3].map((i) => drawSpin(i * 1.4 + 0.3, i % 2)))
 
-const attack = [0, 1, 2, 3].map((i) => drawSpin(i * 1.4 + 0.3, i % 2))
+const recover = memo(() =>
+  [
+    foxPose({
+      crouch: 7,
+      lean: -3,
+      headDy: 3,
+      nearHand: [3, 15],
+      farHand: [-1, 14],
+      tailSwing: -0.7,
+      earBack: 4,
+      eyes: 'swirl',
+      mouth: 'tongue',
+      stars: 0.3,
+      bandPhase: 0.2,
+      bandDroop: 1.2,
+      angle: -0.07,
+      nearFoot: [-4, 0],
+      farFoot: [3, 0]
+    }),
+    foxPose({
+      crouch: 7,
+      lean: 3,
+      headDy: 3,
+      nearHand: [5, 15],
+      farHand: [1, 14],
+      tailSwing: 0.7,
+      earBack: 4,
+      eyes: 'swirl',
+      mouth: 'tongue',
+      stars: 2.4,
+      bandPhase: 2.2,
+      bandDroop: 1.2,
+      angle: 0.07,
+      nearFoot: [-2, 0],
+      farFoot: [5, 0]
+    })
+  ].map((p) => drawFox(p))
+)
 
-const recover = [
-  foxPose({
-    crouch: 7,
-    lean: -3,
-    headDy: 3,
-    nearHand: [3, 15],
-    farHand: [-1, 14],
-    tailSwing: -0.7,
-    earBack: 4,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    stars: 0.3,
-    bandPhase: 0.2,
-    bandDroop: 1.2,
-    angle: -0.07,
-    nearFoot: [-4, 0],
-    farFoot: [3, 0]
-  }),
-  foxPose({
-    crouch: 7,
-    lean: 3,
-    headDy: 3,
-    nearHand: [5, 15],
-    farHand: [1, 14],
-    tailSwing: 0.7,
-    earBack: 4,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    stars: 2.4,
-    bandPhase: 2.2,
-    bandDroop: 1.2,
-    angle: 0.07,
-    nearFoot: [-2, 0],
-    farFoot: [5, 0]
-  })
-].map((p) => drawFox(p))
-
-const hurt = [
-  foxPose({
-    crouch: 3,
-    lean: -8,
-    headDy: -2,
-    nearHand: [-6, -2],
-    farHand: [-4, -4],
-    puff: 1.15,
-    earBack: 5,
-    eyes: 'hurt',
-    mouth: 'o',
-    tailSwing: 1,
-    bandPhase: 1,
-    bandStream: 0.7,
-    angle: -0.12,
-    sweat: true
-  }),
-  foxPose({
-    crouch: 5,
-    lean: -5,
-    headDy: 0,
-    nearHand: [-2, 6],
-    farHand: [-3, 5],
-    puff: 1.1,
-    earBack: 4,
-    eyes: 'hurt',
-    mouth: 'o',
-    tailSwing: 0.5,
-    bandPhase: 2,
-    bandStream: 0.5,
-    angle: -0.05,
-    sweat: true
-  })
-].map((p) => drawFox(p))
+const hurt = memo(() =>
+  [
+    foxPose({
+      crouch: 3,
+      lean: -8,
+      headDy: -2,
+      nearHand: [-6, -2],
+      farHand: [-4, -4],
+      puff: 1.15,
+      earBack: 5,
+      eyes: 'hurt',
+      mouth: 'o',
+      tailSwing: 1,
+      bandPhase: 1,
+      bandStream: 0.7,
+      angle: -0.12,
+      sweat: true
+    }),
+    foxPose({
+      crouch: 5,
+      lean: -5,
+      headDy: 0,
+      nearHand: [-2, 6],
+      farHand: [-3, 5],
+      puff: 1.1,
+      earBack: 4,
+      eyes: 'hurt',
+      mouth: 'o',
+      tailSwing: 0.5,
+      bandPhase: 2,
+      bandStream: 0.5,
+      angle: -0.05,
+      sweat: true
+    })
+  ].map((p) => drawFox(p))
+)
 
 /** Lowers a lying frame onto the floor and keeps it inside the frame. */
 function settle(r: Raster) {
@@ -962,136 +974,140 @@ function drawDown(d: Down): Raster {
 const LONG: Partial<FoxPose> = { nearFoot: [0, -8], farFoot: [0, -8] }
 const downBase = { headTurn: 0.1, legOff: [-5, -8] as Pt }
 
-const defeatLate = [
-  // knocked back: thrown backwards, tail whipping behind, feet kicking up
-  drawDown({
-    ...downBase,
-    hip: [70, 98],
-    a: -0.75,
-    headTurn: -0.2,
-    nearLeg: -1.25,
-    farLeg: -1.65,
-    nearArm: -1.75,
-    farArm: -2.15,
-    face: { eyes: 'hurt', mouth: 'o', earBack: 6 },
-    tail: [
-      [0, 0],
-      [14, 4],
-      [30, -6],
-      [40, -26]
-    ],
-    band: { bandPhase: 1, bandStream: 1, bandDroop: 0 },
-    bandTurn: 0.5
-  }),
-  // lands on its back with a bounce
-  drawDown({
-    ...downBase,
-    hip: [70, 106],
-    a: -1.3,
-    headTurn: -0.1,
-    headOff: [-2, 4],
-    nearLeg: -1.2,
-    farLeg: -1.7,
-    nearArm: -0.3,
-    farArm: 0.5,
-    face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
-    tail: [
-      [4, 2],
-      [20, 6],
-      [40, 0],
-      [36, -20]
-    ],
-    band: { bandPhase: 2, bandStream: 0.8, bandDroop: 0.6 },
-    bandTurn: 0.3
-  }),
-  // settles on its back, legs up
-  drawDown({
-    ...downBase,
-    hip: [70, 108],
-    a: -1.5,
-    headTurn: -0.1,
-    headOff: [-2, 6],
-    nearLeg: -1.25,
-    farLeg: -1.7,
-    nearArm: 0.2,
-    farArm: 1.0,
-    face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
-    tail: [
-      [4, 2],
-      [20, 6],
-      [40, 0],
-      [36, -20]
-    ],
-    band: { bandPhase: 3, bandStream: 0.7, bandDroop: 1 },
-    bandTurn: 0.1
-  }),
-  // lies still, feet up, headband loose, dizzy
-  drawDown({
-    ...downBase,
-    hip: [70, 108],
-    a: -1.5,
-    headTurn: 0.05,
-    headOff: [-3, 7],
-    nearLeg: -1.45,
-    farLeg: -1.9,
-    nearArm: 0.3,
-    farArm: 1.1,
-    face: { eyes: 'swirl', mouth: 'tongue', earBack: 7, stars: 0.6 },
-    tail: [
-      [4, 2],
-      [20, 6],
-      [40, 0],
-      [36, -20]
-    ],
-    band: { bandPhase: 4, bandStream: 0.6, bandDroop: 1.6 },
-    bandTurn: 0
-  })
-].map(settle)
+const defeatLate = memo(() =>
+  [
+    // knocked back: thrown backwards, tail whipping behind, feet kicking up
+    drawDown({
+      ...downBase,
+      hip: [70, 98],
+      a: -0.75,
+      headTurn: -0.2,
+      nearLeg: -1.25,
+      farLeg: -1.65,
+      nearArm: -1.75,
+      farArm: -2.15,
+      face: { eyes: 'hurt', mouth: 'o', earBack: 6 },
+      tail: [
+        [0, 0],
+        [14, 4],
+        [30, -6],
+        [40, -26]
+      ],
+      band: { bandPhase: 1, bandStream: 1, bandDroop: 0 },
+      bandTurn: 0.5
+    }),
+    // lands on its back with a bounce
+    drawDown({
+      ...downBase,
+      hip: [70, 106],
+      a: -1.3,
+      headTurn: -0.1,
+      headOff: [-2, 4],
+      nearLeg: -1.2,
+      farLeg: -1.7,
+      nearArm: -0.3,
+      farArm: 0.5,
+      face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
+      tail: [
+        [4, 2],
+        [20, 6],
+        [40, 0],
+        [36, -20]
+      ],
+      band: { bandPhase: 2, bandStream: 0.8, bandDroop: 0.6 },
+      bandTurn: 0.3
+    }),
+    // settles on its back, legs up
+    drawDown({
+      ...downBase,
+      hip: [70, 108],
+      a: -1.5,
+      headTurn: -0.1,
+      headOff: [-2, 6],
+      nearLeg: -1.25,
+      farLeg: -1.7,
+      nearArm: 0.2,
+      farArm: 1.0,
+      face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
+      tail: [
+        [4, 2],
+        [20, 6],
+        [40, 0],
+        [36, -20]
+      ],
+      band: { bandPhase: 3, bandStream: 0.7, bandDroop: 1 },
+      bandTurn: 0.1
+    }),
+    // lies still, feet up, headband loose, dizzy
+    drawDown({
+      ...downBase,
+      hip: [70, 108],
+      a: -1.5,
+      headTurn: 0.05,
+      headOff: [-3, 7],
+      nearLeg: -1.45,
+      farLeg: -1.9,
+      nearArm: 0.3,
+      farArm: 1.1,
+      face: { eyes: 'swirl', mouth: 'tongue', earBack: 7, stars: 0.6 },
+      tail: [
+        [4, 2],
+        [20, 6],
+        [40, 0],
+        [36, -20]
+      ],
+      band: { bandPhase: 4, bandStream: 0.6, bandDroop: 1.6 },
+      bandTurn: 0
+    })
+  ].map(settle)
+)
 
-const defeat = [
-  foxPose({
-    crouch: 6,
-    lean: -6,
-    nearHand: [-3, 6],
-    farHand: [-4, 5],
-    earBack: 4,
-    eyes: 'swirl',
-    mouth: 'o',
-    tailSwing: 1,
-    angle: -0.1,
-    stars: 0.5,
-    nearFoot: [-4, 0],
-    farFoot: [4, 0]
-  }),
-  foxPose({
-    crouch: 9,
-    lean: -2,
-    headDy: 3,
-    nearHand: [2, 13],
-    farHand: [0, 12],
-    earBack: 5,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    tailSwing: -1,
-    angle: 0.08,
-    stars: 2.5,
-    nearFoot: [-3, 0],
-    farFoot: [5, 0],
-    bandDroop: 1
-  })
-]
-  .map((p) => drawFox(p))
-  .concat(defeatLate)
+const defeat = memo(() =>
+  [
+    foxPose({
+      crouch: 6,
+      lean: -6,
+      nearHand: [-3, 6],
+      farHand: [-4, 5],
+      earBack: 4,
+      eyes: 'swirl',
+      mouth: 'o',
+      tailSwing: 1,
+      angle: -0.1,
+      stars: 0.5,
+      nearFoot: [-4, 0],
+      farFoot: [4, 0]
+    }),
+    foxPose({
+      crouch: 9,
+      lean: -2,
+      headDy: 3,
+      nearHand: [2, 13],
+      farHand: [0, 12],
+      earBack: 5,
+      eyes: 'swirl',
+      mouth: 'tongue',
+      tailSwing: -1,
+      angle: 0.08,
+      stars: 2.5,
+      nearFoot: [-3, 0],
+      farFoot: [5, 0],
+      bandDroop: 1
+    })
+  ]
+    .map((p) => drawFox(p))
+    .concat(defeatLate())
+)
 
 export const sheets: SheetModule = {
   foxBoss: () => ({
-    idle: anim(idle.map(fit), 6, true),
-    intro: anim(intro.map(fit), 8, false),
-    move: anim(move.map(fit), 12, true),
-    windup: anim(windup.map(fit), 12, false),
-    attack: anim(attack.map(fit), 16, true),
-    recover: anim(recover.map(fit), 8, true),
-    hurt: anim(hurt.map(fit), 12, false),
-    defeat: anim(defeat.map(fit), 8, false)
+    idle: lazyAnim(() => idle().map(fit), 6, true),
+    intro: lazyAnim(() => intro().map(fit), 8, false),
+    move: lazyAnim(() => move().map(fit), 12, true),
+    windup: lazyAnim(() => windup().map(fit), 12, false),
+    attack: lazyAnim(() => attack().map(fit), 16, true),
+    recover: lazyAnim(() => recover().map(fit), 8, true),
+    hurt: lazyAnim(() => hurt().map(fit), 12, false),
+    defeat: lazyAnim(() => defeat().map(fit), 8, false)
   })
 }

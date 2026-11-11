@@ -4,6 +4,7 @@
  * bubbles over characters, a spotlight that darkens all but one point, and an edge arrow toward an off-screen goal.
  */
 import { VIEW_H, VIEW_W } from '../art/contract'
+import { ZONES } from '../ui/hud-model'
 import { blit, clip } from './bake'
 
 /** The rounded system gothic stack the game uses for all text. */
@@ -24,6 +25,8 @@ interface Bubble {
   age: number
   life: number
   last: { x: number; y: number }
+  /** Where the box was last drawn, in view pixels (box and tail). */
+  rect: { x: number; y: number; w: number; h: number } | null
 }
 
 /** The edge arrow: a screen point near the border and the direction it points (radians, 0 = right). */
@@ -148,11 +151,26 @@ export class Overlay {
     return this.iris ? this.iris.to : this.irisRadius
   }
 
+  /** Drops the popups showing `text` (the goal label when the stage is cleared). */
+  clearPopups(text: string) {
+    this.popups = this.popups.filter((p) => p.text !== text)
+  }
+
   /** A speech bubble over a world point (a character's head) for `seconds`. */
   bubble(text: string, anchor: Anchor, seconds = 1.6, tone: BubbleTone = 'say') {
     const at = typeof anchor === 'function' ? anchor() : anchor
-    this.bubbles.push({ text, anchor, tone, age: 0, life: seconds, last: at ?? { x: 0, y: 0 } })
+    this.bubbles.push({ text, anchor, tone, age: 0, life: seconds, last: at ?? { x: 0, y: 0 }, rect: null })
     if (this.bubbles.length > 4) this.bubbles.shift()
+  }
+
+  /** Where the bubbles on screen were last drawn, in view pixels (for tests and layout checks). */
+  get bubbleRects() {
+    return this.bubbles.flatMap((b) => (b.rect ? [{ text: b.text, ...b.rect }] : []))
+  }
+
+  /** The texts of the popups on screen (for tests). */
+  get popupTexts(): string[] {
+    return this.popups.map((p) => p.text)
   }
 
   /** The texts of the bubbles on screen (for tests). */
@@ -261,7 +279,12 @@ export class Overlay {
       // Keep the box on screen; the tail still points at the speaker.
       const edge = w / 2 + (yell ? 20 : 6)
       const bx = Math.round(Math.max(edge, Math.min(VIEW_W - edge, ax))) + shake
-      const by = Math.round(Math.max(h / 2 + 4, ay - 12 - h / 2))
+      let by = Math.round(Math.max(h / 2 + 4, ay - 12 - h / 2))
+      // The upper-third slot belongs to the stage card and the calls: a bubble never sits in it.
+      const slotTop = ZONES.cardTop * VIEW_H
+      const slotBottom = ZONES.cardBottom * VIEW_H
+      if (by - h / 2 < slotBottom && by + h / 2 + 9 > slotTop) by = Math.round(slotBottom + h / 2 + 2)
+      b.rect = { x: bx - w / 2, y: by - h / 2, w, h: h + 9 }
       ctx.globalAlpha = alpha
       ctx.save()
       ctx.translate(bx, by + h / 2 + 8)

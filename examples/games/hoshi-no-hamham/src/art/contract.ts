@@ -1,7 +1,7 @@
 /**
  * The art contract: every sheet id, animation name, frame count, frame size and anchor the game draws.
  * Art modules must produce exactly these (extra animations are allowed); `tests/art-contract.test.ts` checks every
- * registered sheet against this file, and the placeholders in placeholder.ts follow it too.
+ * registered sheet against this file, and `tests/art-complete.test.ts` fails while anything it lists is undrawn.
  *
  * Conventions
  * - Everything is lit from the top-left, uses the master palette and selective outlines, and faces **right**
@@ -177,7 +177,7 @@ export const bossSpec = (art: BossArt): Specs => ({ ...BOSS_COMMON, ...BOSS_BY_K
 
 // --------------------------------------------------------------------------------------------------- props
 
-export const PROP_SPEC: Record<string, Specs> = {
+const BASE_PROP_SPEC: Record<string, Specs> = {
   // The trunk stands on the middle of its cell; the frame reaches one tile above and half a tile to each side.
   'prop:tree': {
     idle: clip(128, 128, 4, 4, true, { anchor: [64, 124] }),
@@ -238,6 +238,38 @@ export const PROP_SPEC: Record<string, Specs> = {
   'prop:orb': { pulse: small(24, 4, 12, true) }, // きつね旋風 and 黒ハム王
   'prop:shock': { roll: clip(48, 32, 4, 14, true, { anchor: [24, 30] }) }, // ground shockwave
   'prop:bee': { fly: small(24, 2, 24, true) }
+}
+
+// ---------------------------------------------------------------------------------------------- tree worlds
+
+/**
+ * The bitable trees and their logs have their own drawings in the worlds that are not meadows. A variant sheet is
+ * called `<sheet>:<variant>` and has exactly the clips, sizes and anchors of the original, so the view only has
+ * to pick the sheet (`themedProp`).
+ */
+export const TREE_VARIANTS = ['cave', 'keep', 'star'] as const
+export type TreeVariant = (typeof TREE_VARIANTS)[number]
+const TREE_PROPS = ['prop:tree', 'prop:pine', 'prop:log'] as const
+
+/** Which variant a world uses (meadow, night and forest keep the original drawings). */
+const TREE_VARIANT_OF: Partial<Record<ThemeId, TreeVariant>> = {
+  cave: 'cave',
+  fortress: 'keep',
+  castle: 'keep',
+  star: 'star'
+}
+
+export const PROP_SPEC: Record<string, Specs> = {
+  ...BASE_PROP_SPEC,
+  ...Object.fromEntries(
+    TREE_PROPS.flatMap((id) => TREE_VARIANTS.map((v) => [`${id}:${v}`, BASE_PROP_SPEC[id]] as const))
+  )
+}
+
+/** The sheet to draw for a prop in a world: the world's own tree, pine or log, else the id itself. */
+export function themedProp(id: string, theme: ThemeId): string {
+  const variant = TREE_VARIANT_OF[theme]
+  return variant && (TREE_PROPS as readonly string[]).includes(id) ? `${id}:${variant}` : id
 }
 
 // ----------------------------------------------------------------------------------------------- effects

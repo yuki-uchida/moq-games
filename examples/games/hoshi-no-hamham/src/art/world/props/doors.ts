@@ -8,7 +8,7 @@
 import type { SheetModule } from '../../module'
 import { C, R, color, ramp, rgbOf, type Ramp } from '../../palette'
 import { Painter, Raster, ball, bar, outline, rng, shadeEdges, shadeIndex } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim } from '../../sheet'
 
 /** Cell props sit on the top-left of their map cell. */
 const ORIGIN = { anchor: [0, 0] } as const
@@ -205,9 +205,14 @@ function drawSwitch(kind: Kind, angleDeg: number, lit: number, glint: number): R
 
 function switchSheet(kind: Kind) {
   return () => ({
-    off: anim([drawSwitch(kind, -36, 0, 0), drawSwitch(kind, -35, 0, 1)], 3, true, ORIGIN),
-    flip: anim([drawSwitch(kind, -8, 1, 0), drawSwitch(kind, 24, 2, 0), drawSwitch(kind, 46, 2, 0)], 16, false, ORIGIN),
-    on: anim([drawSwitch(kind, 36, 1, 0), drawSwitch(kind, 35, 2, 0)], 3, true, ORIGIN)
+    off: lazyAnim(() => [drawSwitch(kind, -36, 0, 0), drawSwitch(kind, -35, 0, 1)], 3, true, ORIGIN),
+    flip: lazyAnim(
+      () => [drawSwitch(kind, -8, 1, 0), drawSwitch(kind, 24, 2, 0), drawSwitch(kind, 46, 2, 0)],
+      16,
+      false,
+      ORIGIN
+    ),
+    on: lazyAnim(() => [drawSwitch(kind, 36, 1, 0), drawSwitch(kind, 35, 2, 0)], 3, true, ORIGIN)
   })
 }
 
@@ -369,9 +374,9 @@ function doorBottom(kind: Kind): Raster {
 
 function doorSheet(kind: Kind) {
   return () => ({
-    top: anim([doorTop(kind)], 1, false, ORIGIN),
-    mid: anim([doorMid(kind)], 1, false, ORIGIN),
-    bottom: anim([doorBottom(kind)], 1, false, ORIGIN)
+    top: lazyAnim(() => [doorTop(kind)], 1, false, ORIGIN),
+    mid: lazyAnim(() => [doorMid(kind)], 1, false, ORIGIN),
+    bottom: lazyAnim(() => [doorBottom(kind)], 1, false, ORIGIN)
   })
 }
 
@@ -515,12 +520,7 @@ function gateFrame(part: 'top' | 'mid' | 'bottom', f: number): Raster {
 
 function gateSheet() {
   const frames = (part: 'top' | 'mid' | 'bottom') =>
-    anim(
-      [0, 1, 2, 3].map((f) => gateFrame(part, f)),
-      8,
-      true,
-      { anchor: [0, 0] }
-    )
+    lazyAnim(() => [0, 1, 2, 3].map((f) => gateFrame(part, f)), 8, true, { anchor: [0, 0] })
   return { top: frames('top'), mid: frames('mid'), bottom: frames('bottom') }
 }
 
@@ -1052,21 +1052,16 @@ export const sheets: SheetModule = {
   'prop:door2': doorSheet(2),
   'prop:gate': gateSheet,
   'prop:goal': () => ({
-    locked: anim([drawGoalLocked(0), drawGoalLocked(1)], 2, true, { anchor: [0, 64] }),
-    open: anim([0, 1, 2, 3, 4, 5].map(drawGoalOpen), 10, true, { anchor: [0, 64] })
+    locked: lazyAnim(() => [drawGoalLocked(0), drawGoalLocked(1)], 2, true, { anchor: [0, 64] }),
+    open: lazyAnim(() => [0, 1, 2, 3, 4, 5].map(drawGoalOpen), 10, true, { anchor: [0, 64] })
   }),
   'prop:cage': () => ({
-    back: anim([cageBack()], 1, false, { anchor: [16, 28] }),
-    front: anim([cageFront()], 1, false, { anchor: [16, 28] }),
-    break: anim([0, 1, 2, 3].map(cageBreak), 14, false, { anchor: [16, 28] })
+    back: lazyAnim(() => [cageBack()], 1, false, { anchor: [16, 28] }),
+    front: lazyAnim(() => [cageFront()], 1, false, { anchor: [16, 28] }),
+    break: lazyAnim(() => [0, 1, 2, 3].map(cageBreak), 14, false, { anchor: [16, 28] })
   }),
   'prop:nest': () => ({
-    locked: anim([drawNest(true, 0), drawNest(true, 1)], 2, true, { anchor: [32, 0] }),
-    open: anim(
-      [0, 1, 2, 3].map((f) => drawNest(false, f)),
-      6,
-      true,
-      { anchor: [32, 0] }
-    )
+    locked: lazyAnim(() => [drawNest(true, 0), drawNest(true, 1)], 2, true, { anchor: [32, 0] }),
+    open: lazyAnim(() => [0, 1, 2, 3].map((f) => drawNest(false, f)), 6, true, { anchor: [32, 0] })
   })
 }

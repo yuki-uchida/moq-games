@@ -11,6 +11,7 @@ import { sheets as doors } from './props/doors'
 import { sheets as gimmicks } from './props/gimmicks'
 import { sheets as items } from './props/items'
 import { sheets as trees } from './props/trees'
+import { sheets as worldTrees } from './props/trees-worlds'
 import { terrain as castleTerrain } from './terrain/castle'
 import { terrain as caveTerrain } from './terrain/cave'
 import { terrain as forestTerrain } from './terrain/forest'
@@ -22,7 +23,7 @@ import type { Backdrop, TerrainArt } from './types'
 
 export type { Backdrop, BackdropLayer, Decor, TerrainArt, TileProvider } from './types'
 
-export const propModules: SheetModule[] = [trees, gimmicks, doors, items]
+export const propModules: SheetModule[] = [trees, worldTrees, gimmicks, doors, items]
 
 export const terrains: Record<ThemeId, TerrainArt | undefined> = {
   meadow: meadowTerrain,

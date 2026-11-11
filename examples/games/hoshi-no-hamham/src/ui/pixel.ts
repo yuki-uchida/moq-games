@@ -97,6 +97,8 @@ interface Player {
   start: number
   /** Restart the clip after it ends (for one-shot clips shown on a loop). */
   repeatEvery?: number
+  /** Show these frames in turn instead of playing the clip: [frames, seconds per frame]. */
+  cycle?: { frames: readonly number[]; every: number }
 }
 
 const players = new Set<Player>()
@@ -106,9 +108,13 @@ const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-r
 
 function drawPlayer(player: Player, now: number) {
   const { canvas, anim: a } = player
-  let t = (now - player.start) / 1000
+  // A frame callback's timestamp can precede the moment a player restarted, hence the clamp.
+  let t = Math.max(0, now - player.start) / 1000
   if (player.repeatEvery) t %= player.repeatEvery
-  const frame = a.frames[frameAt(a, t)]
+  const { cycle } = player
+  const frame = cycle
+    ? a.frames[cycle.frames[Math.floor(t / cycle.every) % cycle.frames.length]]
+    : a.frames[frameAt(a, t)]
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   const [ax, ay] = anchorOf(a)
@@ -136,7 +142,15 @@ function tick(now: number) {
 export function spritePlayer(
   id: string,
   clip: string,
-  options: { scale?: number; className?: string; repeatEvery?: number; stillFrame?: number; label?: string } = {}
+  options: {
+    scale?: number
+    className?: string
+    repeatEvery?: number
+    stillFrame?: number
+    label?: string
+    /** Hold a pose by alternating between these frames, `every` seconds each. */
+    cycle?: { frames: readonly number[]; every: number }
+  } = {}
 ): HTMLCanvasElement {
   const a = anim(id, clip)
   const { w, h } = a.frames[0]
@@ -154,7 +168,13 @@ export function spritePlayer(
     canvas.setAttribute('role', 'img')
     canvas.setAttribute('aria-label', options.label)
   } else canvas.setAttribute('aria-hidden', 'true')
-  const player: Player = { canvas, anim: a, start: performance.now(), repeatEvery: options.repeatEvery }
+  const player: Player = {
+    canvas,
+    anim: a,
+    start: performance.now(),
+    repeatEvery: options.repeatEvery,
+    cycle: options.cycle
+  }
   if (reduced()) {
     const still = options.stillFrame ?? Math.floor(a.frames.length / 2)
     const frame = a.frames[Math.min(a.frames.length - 1, still)]

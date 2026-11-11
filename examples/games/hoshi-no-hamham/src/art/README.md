@@ -8,7 +8,7 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
 
 1. Find your sheet in `contract.ts`: clip names, frame counts, frame size, anchor, fps.
 2. Draw in your module and export `sheets` (or `terrain` / `backdrop`). The registry (`index.ts`) picks it up;
-   clips you have not drawn yet stay stand-ins.
+   a clip nobody draws makes `sheet(id)` throw, and `tests/art-complete.test.ts` fails.
 3. Export and **look at the picture**:
 
    ```sh
@@ -18,7 +18,7 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
    ```
 
    Output goes to `.build/hoshi-no-hamham-art/`: `<id>.png` (enlarged, anchor marked in magenta), `<id>@1.png`
-   (native size on the grounds of three worlds), `<id>.txt` (row index), `pending.txt` (what is still a stand-in).
+   (native size on the grounds of three worlds), `<id>.txt` (row index), `pending.txt` (what is still undrawn, or `nothing pending`).
    Open the PNGs and judge them as a player would. Nobody ships pixel art they have not looked at: expect five to
    ten rounds of draw → export → look → fix per character.
 

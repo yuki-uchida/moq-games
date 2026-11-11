@@ -94,59 +94,52 @@ const prop = (sheet: string, clip: string, x: number, lift = 64, extra: Partial<
 /** The opening (プロローグ), one shot per page. */
 const OPENING: Shot[] = [
   {
-    // A far-away omen: the black king carries the star princess off across the cosmos.
-    theme: 'star',
-    scroll: 120,
-    figures: [
-      boss('king', 'move', 196, { motion: 'pace' }),
-      princess('sad', 180, { lift: 70, flip: true, motion: 'float', front: true })
-    ],
+    // 「星の丘に、ハム彦という子ハムスターがいました」: one little hamster on the hill under the stars.
+    theme: 'night',
+    scroll: 60,
+    figures: [hero('idle', 160)],
     marks: [
-      { clip: 'sparkle', x: 120, lift: 110 },
-      { clip: 'sweat', x: 166, lift: 120 }
+      { clip: 'sparkle', x: 96, lift: 96 },
+      { clip: 'sparkle', x: 232, lift: 112 },
+      { clip: 'star', x: 200, lift: 84 }
     ]
   },
   {
+    // 「ママと大げんかして、思いきり巣を飛び出しました」: the nest and mom behind, the hero running off.
     theme: 'meadow',
-    scroll: 40,
-    figures: [hero('idle', 150)],
+    scroll: 20,
+    figures: [prop('prop:nest', 'open', 24), mom('yell', 136), hero('run', 236)],
     marks: [
-      { clip: 'sparkle', x: 104, lift: 70 },
-      { clip: 'heart', x: 160, lift: 66 }
+      { clip: 'anger', x: 164, lift: 104 },
+      { clip: 'sweat', x: 240, lift: 62 }
     ]
   },
   {
-    theme: 'meadow',
-    scroll: 200,
-    figures: [hero('hurt', 116, { motion: 'shake' }), mom('yell', 214, { flip: true })],
-    marks: [
-      { clip: 'anger', x: 140, lift: 60 },
-      { clip: 'anger', x: 236, lift: 104 }
-    ]
-  },
-  {
+    // 「もう、かえってこなくっていいの！」: mom shouts, the hero flinches.
     theme: 'meadow',
     scroll: 200,
-    figures: [mom('yell', 232, { flip: true }), hero('run', 92, { flip: true, motion: 'pace' })],
-    marks: [{ clip: 'anger', x: 254, lift: 104 }]
+    figures: [hero('hurt', 100, { motion: 'shake' }), mom('yell', 220, { flip: true })],
+    marks: [
+      { clip: 'sweat', x: 126, lift: 58 },
+      { clip: 'anger', x: 242, lift: 104 }
+    ]
   },
   {
+    // 「後ろでママの怒涛の足音が近づいています」: the hero runs right, mom thunders after him.
     theme: 'meadow',
     scroll: 320,
-    figures: [mom('move', 84, { motion: 'pace', phase: 0.2 }), hero('run', 214, { motion: 'pace' })],
+    figures: [mom('move', 78, { motion: 'pace', phase: 0.2 }), hero('run', 232, { motion: 'pace' })],
     marks: [
-      { clip: 'sweat', x: 230, lift: 58 },
-      { clip: 'anger', x: 108, lift: 100 }
+      { clip: 'sweat', x: 248, lift: 58 },
+      { clip: 'anger', x: 100, lift: 100 }
     ]
   },
   {
+    // 「あるく・ジャンプ・かじる。ギミックをぶちかまして逃げ切りましょう」: the hero bites a tree.
     theme: 'meadow',
     scroll: 80,
-    figures: [hero('cheer', 160, { motion: 'hop' })],
-    marks: [
-      { clip: 'star', x: 124, lift: 76 },
-      { clip: 'star', x: 196, lift: 82 }
-    ]
+    figures: [hero('bite', 152), prop('prop:tree', 'shake', 248, 0)],
+    marks: [{ clip: 'star', x: 206, lift: 36 }]
   }
 ]
 
@@ -165,8 +158,9 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'meadow',
       scroll: 260,
-      figures: [prop('prop:tree', 'shake', 210, 0), hero('bite', 170, { phase: 0.1 })],
-      marks: [{ clip: 'star', x: 196, lift: 30 }]
+      // 「木を倒し、蜂の巣を怒らせて…」: a hive on one side, the hero biting a tree on the other.
+      figures: [prop('prop:hive', 'idle', 36), hero('bite', 130, { phase: 0.1 }), prop('prop:tree', 'shake', 244, 0)],
+      marks: [{ clip: 'star', x: 170, lift: 44 }]
     },
     {
       theme: 'meadow',
@@ -206,8 +200,14 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'night',
       scroll: 60,
-      figures: [hero('hurt', 92), boss('weaselBoss', 'attack', 232), princess('sad', 214, { lift: 60, front: true })],
-      marks: [{ clip: 'alert', x: 94, lift: 64 }]
+      // 「ボスにさらわれてしまった！」: the weasel bolts away to the right holding the princess up over his head, the
+      // hero left behind. She hovers clear of the weasel's crown-line, so every figure reads on its own.
+      figures: [
+        hero('hurt', 80),
+        gang('weaselBoss', 'attack', 232, { flip: false }),
+        princess('sad', 226, { lift: 68, motion: 'float' })
+      ],
+      marks: [{ clip: 'alert', x: 84, lift: 70 }]
     },
     {
       theme: 'night',
@@ -238,14 +238,21 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'cave',
       scroll: 300,
-      figures: [prop('prop:switch1', 'flip', 176), hero('bite', 150)],
-      marks: [{ clip: 'shine', x: 210, lift: 40 }]
+      // 「かじってスイッチを押し、門をひらこう」: the hero bites the switch; the gate stands beyond it.
+      figures: [
+        hero('bite', 100),
+        prop('prop:switch1', 'flip', 150),
+        prop('prop:door1', 'bottom', 232),
+        prop('prop:door1', 'top', 232, 128)
+      ],
+      marks: [{ clip: 'shine', x: 176, lift: 60 }]
     },
     {
       theme: 'cave',
       scroll: 360,
-      figures: [prop('prop:pipe', 'burst', 190), hero('hurt', 120, { motion: 'shake' })],
-      marks: [{ clip: 'alert', x: 124, lift: 64 }]
+      // 「配管に穴をあけると水が噴出すぞ」: the pipe bursts beside the hero.
+      figures: [hero('bite', 108), prop('prop:pipe', 'burst', 188)],
+      marks: [{ clip: 'alert', x: 112, lift: 82 }]
     }
   ],
   5: [
@@ -257,21 +264,22 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'forest',
       scroll: 160,
-      figures: [hero('run', 112, { motion: 'pace' }), boss('wolfBoss', 'windup', 248)],
-      marks: [{ clip: 'sweat', x: 128, lift: 58 }]
+      // 「追っ手がすぐ後ろ！」: the wolf is right behind, the hero runs away from him.
+      figures: [gang('wolfBoss', 'windup', 82, { flip: false }), hero('run', 232, { motion: 'pace' })],
+      marks: [{ clip: 'sweat', x: 250, lift: 58 }]
     },
     {
       theme: 'forest',
       scroll: 260,
-      figures: [prop('prop:rock', 'cracked', 186), hero('bite', 160)],
-      marks: [{ clip: 'star', x: 196, lift: 40 }]
+      figures: [hero('bite', 128), prop('prop:rock', 'cracked', 188)],
+      marks: [{ clip: 'star', x: 172, lift: 40 }]
     }
   ],
   6: [
     {
       theme: 'forest',
       scroll: 320,
-      figures: [prop('prop:nest', 'locked', 168), hero('idle', 100), princess('wave', 250, { flip: true })]
+      figures: [hero('idle', 84), prop('prop:nest', 'locked', 146), princess('wave', 262, { flip: true })]
     },
     {
       theme: 'forest',
@@ -286,35 +294,57 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'forest',
       scroll: 420,
-      figures: [hero('idle', 96), boss('bearBoss', 'idle', 230)],
-      marks: [{ clip: 'alert', x: 98, lift: 64 }]
+      // 「木を倒しても、土を掘っても材料は見つかるはず」: a tree to bite and the first twig and berry to show for it.
+      figures: [
+        hero('bite', 108),
+        prop('prop:tree', 'cut', 214, 0),
+        prop('prop:twig', 'idle', 296, 24),
+        prop('prop:berry', 'idle', 52, 24)
+      ],
+      marks: [{ clip: 'sparkle', x: 296, lift: 60 }]
     }
   ],
   7: [
     {
       theme: 'fortress',
       scroll: 60,
+      // 「本隊が巣を囲みました」: the gang closes in on the nest from both sides.
       figures: [
-        prop('prop:nest', 'open', 76),
-        gang('walker', 'move', 200, { motion: 'pace' }),
-        gang('jumper', 'idle', 252),
-        gang('flyer', 'move', 290, { lift: 74, motion: 'float' })
+        gang('jumper', 'idle', 44, { flip: false }),
+        prop('prop:nest', 'open', 124),
+        gang('walker', 'move', 264, { motion: 'pace' }),
+        gang('flyer', 'move', 214, { lift: 84, motion: 'float' })
       ],
-      marks: [{ clip: 'anger', x: 220, lift: 52 }]
+      marks: [{ clip: 'anger', x: 246, lift: 60 }]
     },
     {
       theme: 'fortress',
       scroll: 200,
-      figures: [prop('prop:hive', 'idle', 70), hero('idle', 150), boss('foxBoss', 'windup', 248)],
-      marks: [{ clip: 'anger', x: 262, lift: 110 }]
+      // 「蜂の巣や動物たちを味方につけて」: a hive and a sleeping animal at the hero's side, the fox ahead.
+      figures: [
+        prop('prop:hive', 'idle', 30),
+        hero('idle', 122),
+        prop('prop:animal', 'sleep', 166),
+        boss('foxBoss', 'windup', 270)
+      ],
+      marks: [{ clip: 'anger', x: 286, lift: 112 }]
     }
   ],
   8: [
     {
       theme: 'fortress',
       scroll: 260,
-      figures: [prop('prop:cage', 'back', 168, 28), princess('sad', 200), prop('prop:cage', 'front', 168, 28)],
-      marks: [{ clip: 'sweat', x: 218, lift: 58 }]
+      // 「ハム姫が再びさらわれてしまいました」: she is already behind iron bars, the hero gasps.
+      figures: [
+        hero('hurt', 80, { motion: 'shake' }),
+        prop('prop:cage', 'back', 184, 28),
+        princess('sad', 216),
+        prop('prop:cage', 'front', 184, 28)
+      ],
+      marks: [
+        { clip: 'alert', x: 84, lift: 70 },
+        { clip: 'sweat', x: 234, lift: 58 }
+      ]
     },
     {
       theme: 'fortress',
@@ -325,14 +355,14 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'fortress',
       scroll: 400,
-      figures: [prop('prop:switch2', 'on', 110), prop('prop:pipe', 'burst', 190), hero('cheer', 160, { motion: 'hop' })]
+      figures: [prop('prop:switch2', 'on', 66), hero('cheer', 158, { motion: 'hop' }), prop('prop:pipe', 'burst', 230)]
     }
   ],
   9: [
     {
       theme: 'castle',
       scroll: 100,
-      figures: [hero('idle', 100), princess('idle', 60, { phase: 0.4 })],
+      figures: [princess('idle', 100, { phase: 0.4 }), hero('idle', 160)],
       marks: [{ clip: 'shine', x: 230, lift: 100 }]
     },
     {
@@ -471,3 +501,8 @@ export function endingShot(page: number): Shot {
 
 /** The ending's final picture under the credits: everyone cheering at the nest under the stars. */
 export const CREDITS_SHOT: Shot = ENDING[ENDING.length - 1]
+
+/** The result screen's backdrop: the stage's empty world (no one on it), a different stretch for each stage. */
+export function resultShot(theme: ThemeId, stageNo: number): Shot {
+  return { theme, scroll: (stageNo * 97) % 400, figures: [] }
+}

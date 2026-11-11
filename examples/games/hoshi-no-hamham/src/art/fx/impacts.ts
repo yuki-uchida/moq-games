@@ -9,7 +9,7 @@ import { FX_SPEC } from '../contract'
 import type { SheetModule } from '../module'
 import { C, R, ramp, type Ramp } from '../palette'
 import { Raster, bayer, outlineWith, part } from '../raster'
-import { anim, type Anim } from '../sheet'
+import { anim, lazyAnim, deferAnim, type Anim } from '../sheet'
 
 export const TAU = Math.PI * 2
 export const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
@@ -17,10 +17,11 @@ export const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 export const easeOut = (t: number) => 1 - (1 - t) * (1 - t)
 
 /** Builds an Anim from its contract entry (fps, loop, anchor), so the sheet cannot drift from the contract. */
-export function make(name: string, fr: Raster[], extra: Partial<Anim> = {}): Anim {
+export function make(name: string, fr: Raster[] | (() => Raster[]), extra: Partial<Anim> = {}): Anim {
   const s = FX_SPEC[name]
   if (!s) throw new Error(`fx: '${name}' is not in FX_SPEC`)
-  return anim(fr, s.fps, s.loop, { ...(s.anchor ? { anchor: s.anchor } : {}), ...extra })
+  const options = { ...(s.anchor ? { anchor: s.anchor } : {}), ...extra }
+  return typeof fr === 'function' ? lazyAnim(fr, s.fps, s.loop, options) : anim(fr, s.fps, s.loop, options)
 }
 
 /** `n` frames of a `w`×`h` canvas; `draw(raster, frameIndex, progress 0..1)`. */
@@ -641,16 +642,16 @@ function glow(): Anim {
 
 export const sheets: SheetModule = {
   fx: () => ({
-    dust: dust(),
-    puff: puff(),
-    smoke: smoke(),
-    spark: spark(),
-    star: star(),
-    shine: shine(),
-    sparkle: sparkle(),
-    chomp: chomp(),
-    ring: ring(),
-    boom: boom(),
-    glow: glow()
+    dust: deferAnim(dust),
+    puff: deferAnim(puff),
+    smoke: deferAnim(smoke),
+    spark: deferAnim(spark),
+    star: deferAnim(star),
+    shine: deferAnim(shine),
+    sparkle: deferAnim(sparkle),
+    chomp: deferAnim(chomp),
+    ring: deferAnim(ring),
+    boom: deferAnim(boom),
+    glow: deferAnim(glow)
   })
 }

@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
-import { PROP_SPEC } from '../src/art/contract'
+import { PROP_SPEC, THEMES, themedProp, type ThemeId } from '../src/art/contract'
 import { missingAnims, sheet } from '../src/art/index'
-import { R } from '../src/art/palette'
+import { OUTLINE_OF, R, paletteRgba } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const IDS = ['prop:tree', 'prop:pine', 'prop:log', 'prop:pipe', 'prop:hive', 'prop:animal', 'prop:rock']
@@ -126,4 +127,119 @@ describe('the boar piglet', () => {
       for (const [i, f] of sheet('prop:animal')[clip].frames.entries())
         expect(creamUp(f), `${clip} frame ${i}`).toBeGreaterThanOrEqual(20)
     })
+})
+
+// ----------------------------------------------------------------------------- trees of the other worlds
+
+const WORLD_VARIANTS = ['cave', 'keep', 'star'] as const
+const TREE_BASES = ['prop:tree', 'prop:pine', 'prop:log'] as const
+
+/** Hash of every frame's size and RGBA values (independent of palette indices, so palette growth keeps it). */
+function sheetHash(id: string) {
+  const rgba = paletteRgba()
+  const h = createHash('sha256')
+  const s = sheet(id)
+  for (const name of Object.keys(s).sort())
+    for (const f of s[name].frames) {
+      h.update(name + f.w + 'x' + f.h)
+      for (const c of f.data) h.update(Buffer.from(rgba.subarray(c * 4, c * 4 + 4)))
+    }
+  return h.digest('hex').slice(0, 16)
+}
+
+/** The three most frequent colours of a sheet's frames, outline colours left out. */
+function dominant(id: string) {
+  const count = new Map<number, number>()
+  for (const a of Object.values(sheet(id)))
+    for (const f of a.frames)
+      for (const c of f.data) if (c && OUTLINE_OF[c].line !== c) count.set(c, (count.get(c) ?? 0) + 1)
+  return [...count.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([c]) => c)
+}
+
+describe('the trees of the cave, the keep and the stars', () => {
+  for (const base of TREE_BASES)
+    for (const v of WORLD_VARIANTS) {
+      const id = `${base}:${v}`
+      test(`${id} has every clip of ${base} with the same frames, sizes and anchors`, () => {
+        expect(missingAnims(id)).toEqual([])
+        const s = sheet(id)
+        const o = sheet(base)
+        expect(Object.keys(s).sort()).toEqual(Object.keys(o).sort())
+        for (const name of Object.keys(o)) {
+          expect(s[name].frames.length, `${id}#${name} frames`).toBe(o[name].frames.length)
+          expect(s[name].fps).toBe(o[name].fps)
+          expect(s[name].loop).toBe(o[name].loop)
+          expect(s[name].anchor).toEqual(o[name].anchor)
+          for (const f of s[name].frames) expect([f.w, f.h]).toEqual([o[name].frames[0].w, o[name].frames[0].h])
+        }
+      })
+      test(`${id} differs from the meadow drawing in its dominant colours`, () => {
+        const mine = dominant(id)
+        const meadow = dominant(base)
+        expect(
+          mine.filter((c) => meadow.includes(c)),
+          'shared dominant colours'
+        ).toEqual([])
+      })
+    }
+
+  for (const base of TREE_BASES)
+    test(`the ${base} variants differ from each other`, () => {
+      const hashes = WORLD_VARIANTS.map((v) => sheetHash(`${base}:${v}`))
+      expect(new Set(hashes).size).toBe(WORLD_VARIANTS.length)
+      const tops = WORLD_VARIANTS.map((v) => dominant(`${base}:${v}`))
+      for (let i = 0; i < tops.length; i++)
+        for (let j = i + 1; j < tops.length; j++) expect(tops[i]).not.toEqual(tops[j])
+    })
+
+  for (const id of ['prop:tree', 'prop:pine'])
+    for (const v of WORLD_VARIANTS) {
+      test(`${id}:${v} keeps its crown below the platform line and cut differs only in the lower half`, () => {
+        const s = sheet(`${id}:${v}`)
+        for (const [name, a] of Object.entries(s))
+          for (const f of a.frames) {
+            const b = f.bounds()!
+            expect(b.y).toBeGreaterThanOrEqual(16)
+            expect(b.y + b.h - 1).toBeLessThanOrEqual(125)
+            expect(f.colors().size, `${name} colour budget`).toBeLessThanOrEqual(32)
+          }
+        for (let i = 0; i < s.idle.frames.length; i++) {
+          expect(differsIn(s.idle.frames[i], s.cut.frames[i], 0, 64)).toBe(false)
+          expect(differsIn(s.idle.frames[i], s.cut.frames[i], 64, 128)).toBe(true)
+        }
+      })
+    }
+
+  for (const v of WORLD_VARIANTS)
+    for (const kind of ['tree', 'pine'])
+      test(`the fallen ${v} ${kind} log is a solid, walkable block`, () => {
+        const f = sheet(`prop:log:${v}`)[kind].frames[0]
+        let flat = 0
+        for (let x = 0; x < f.w; x++)
+          for (let y = 0; y < 6; y++)
+            if (f.get(x, y)) {
+              flat++
+              break
+            }
+        expect(flat / f.w).toBeGreaterThanOrEqual(0.9)
+        expect(fill(f)).toBeGreaterThanOrEqual(0.7)
+      })
+
+  test('the meadow sheets are unchanged', () => {
+    expect(sheetHash('prop:tree')).toBe('b481a75beafef5fc')
+    expect(sheetHash('prop:pine')).toBe('74eed6ecef8d6043')
+    expect(sheetHash('prop:log')).toBe('c764abb3a51597cb')
+  })
+
+  test('themedProp picks the own sheet of each world', () => {
+    const own: Partial<Record<ThemeId, string>> = { cave: 'cave', fortress: 'keep', castle: 'keep', star: 'star' }
+    for (const theme of THEMES)
+      for (const base of TREE_BASES)
+        expect(themedProp(base, theme), `${base} in ${theme}`).toBe(own[theme] ? `${base}:${own[theme]}` : base)
+    expect(themedProp('prop:rock', 'cave')).toBe('prop:rock')
+    for (const id of TREE_BASES) for (const v of WORLD_VARIANTS) expect(PROP_SPEC[`${id}:${v}`]).toEqual(PROP_SPEC[id])
+  })
 })

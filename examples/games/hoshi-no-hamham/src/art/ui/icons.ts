@@ -2,7 +2,7 @@ import { UI_SPEC } from '../contract'
 import type { SheetModule } from '../module'
 import { C, R, type Ramp } from '../palette'
 import { Raster, outlineWith, shadeEdges } from '../raster'
-import { anim, type Anim } from '../sheet'
+import { lazyAnim, type Anim } from '../sheet'
 
 /**
  * `ui`: hearts, the 16×16 icons, and the nine-slice `panel` and `paper`.
@@ -12,7 +12,7 @@ import { anim, type Anim } from '../sheet'
  * on cream cards alike. Fills stay inside columns/rows 2..13 so the rim keeps a 1-px empty margin.
  */
 
-const make = (name: string, frames: Raster[]): Anim => anim(frames, UI_SPEC[name].fps, UI_SPEC[name].loop)
+const make = (name: string, frames: () => Raster[]): Anim => lazyAnim(frames, UI_SPEC[name].fps, UI_SPEC[name].loop)
 const blank = () => new Raster(16, 16)
 
 type Draw = (r: Raster, c: number) => void
@@ -491,14 +491,14 @@ const paper = () => {
 export const sheets: SheetModule = {
   ui: () => {
     const out: Record<string, Anim> = {
-      heartFull: make('heartFull', [heartFull()]),
-      heartEmpty: make('heartEmpty', [heartHollow()]),
-      heartGain: make('heartGain', heartGain()),
-      heartLose: make('heartLose', heartLose()),
-      panel: make('panel', [panel()]),
-      paper: make('paper', [paper()])
+      heartFull: make('heartFull', () => [heartFull()]),
+      heartEmpty: make('heartEmpty', () => [heartHollow()]),
+      heartGain: make('heartGain', heartGain),
+      heartLose: make('heartLose', heartLose),
+      panel: make('panel', () => [panel()]),
+      paper: make('paper', () => [paper()])
     }
-    for (const [name, draw] of Object.entries(ICONS)) out[name] = make(name, [draw()])
+    for (const [name, draw] of Object.entries(ICONS)) out[name] = make(name, () => [draw()])
     return out
   }
 }

@@ -1,6 +1,5 @@
 /**
  * Sky and parallax layers from `backdrop(theme)`, plus the theme's ambience particles and night twinkles.
- * While a theme has no backdrop yet, `drawFallbackSky` paints the first version's procedural sky and hills.
  */
 import { backdrop, type Backdrop, type BackdropLayer } from '../art'
 import { VIEW_H, VIEW_W, type Ambience, type ThemeId } from '../art/contract'
@@ -36,7 +35,7 @@ export function layerOffset(layer: BackdropLayer, viewX: number, viewY: number, 
 }
 
 export class BackdropView {
-  private art: Backdrop | undefined
+  private art: Backdrop
   private motes: Mote[] = []
   private twinkles: { x: number; y: number; phase: number }[] = []
   private time = 0
@@ -53,7 +52,7 @@ export class BackdropView {
       seed = (seed * 16807) % 2147483647
       return seed / 2147483647
     }
-    const ambience = this.art?.ambience ?? 'none'
+    const ambience = this.art.ambience
     for (let i = 0; i < AMBIENCE_COUNT[ambience]; i++)
       this.motes.push({
         x: r() * VIEW_W,
@@ -63,17 +62,13 @@ export class BackdropView {
         phase: r() * Math.PI * 2,
         size: r() < 0.3 ? 2 : 1
       })
-    if (this.art && NIGHT_SKIES.has(theme))
+    if (NIGHT_SKIES.has(theme))
       for (let i = 0; i < 7; i++) this.twinkles.push({ x: r() * VIEW_W, y: r() * VIEW_H * 0.42, phase: r() * 10 })
-  }
-
-  get hasArt() {
-    return Boolean(this.art)
   }
 
   update(dt: number) {
     this.time += dt
-    const ambience = this.art?.ambience ?? 'none'
+    const ambience = this.art.ambience
     for (const m of this.motes) {
       let vx = m.vx
       let vy = m.vy
@@ -106,10 +101,6 @@ export class BackdropView {
 
   /** Sky and back layers (screen space). */
   drawBack(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
-    if (!this.art) {
-      drawFallbackSky(ctx, this.theme, viewX, this.time)
-      return
-    }
     ctx.drawImage(bake(this.art.sky), 0, 0)
     for (const t of this.twinkles) {
       const a = Math.max(0, Math.sin(this.time * 2.2 + t.phase))
@@ -128,12 +119,11 @@ export class BackdropView {
 
   /** Foreground layers drawn after the world (screen space). */
   drawFront(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
-    if (!this.art) return
     for (const layer of this.art.layers) if (layer.front) this.drawLayer(ctx, layer, viewX, viewY)
   }
 
   private drawAmbience(ctx: CanvasRenderingContext2D) {
-    const ambience = this.art?.ambience ?? 'none'
+    const ambience = this.art.ambience
     if (ambience === 'none') return
     const leaf = ambience === 'leaves' ? clip('fx', 'leaf') : undefined
     for (const m of this.motes) {
@@ -168,54 +158,4 @@ export class BackdropView {
     }
     ctx.globalAlpha = 1
   }
-}
-
-// ---------------------------------------------------------------------------------------------------------
-// FALLBACK — the first version's procedural sky and hills, used only while `hasBackdrop(theme)` is false.
-// Delete this block once every theme has a backdrop.
-// ---------------------------------------------------------------------------------------------------------
-
-const FALLBACK: Record<ThemeId, { top: string; bottom: string; hills: [string, string, string]; stars: boolean }> = {
-  meadow: { top: '#6ec3ff', bottom: '#e6f8ff', hills: ['#a8d8a0', '#6fbf72', '#3f9450'], stars: false },
-  night: { top: '#150d38', bottom: '#4a3580', hills: ['#3a2a68', '#2a1f52', '#1b1440'], stars: true },
-  cave: { top: '#241a3d', bottom: '#5a4470', hills: ['#463560', '#352849', '#241a33'], stars: false },
-  forest: { top: '#2f7a52', bottom: '#b8e8c0', hills: ['#2a6b46', '#1f5236', '#123a26'], stars: false },
-  fortress: { top: '#3a3e52', bottom: '#9aa0b8', hills: ['#565b74', '#42465e', '#2c3042'], stars: false },
-  castle: { top: '#4a3f6a', bottom: '#b0a4d8', hills: ['#5d5486', '#463d68', '#2f2849'], stars: true },
-  star: { top: '#0d0722', bottom: '#4a2a7a', hills: ['#3a2566', '#2a1a50', '#1a1038'], stars: true }
-}
-
-export function drawFallbackSky(ctx: CanvasRenderingContext2D, theme: ThemeId, viewX: number, time: number) {
-  const bg = FALLBACK[theme]
-  const gradient = ctx.createLinearGradient(0, 0, 0, VIEW_H)
-  gradient.addColorStop(0, bg.top)
-  gradient.addColorStop(1, bg.bottom)
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H)
-  if (bg.stars) {
-    for (let i = 0; i < 48; i++) {
-      const x = ((i * 137.5) % (VIEW_W + 80)) - 40
-      const y = (i * 89.3) % (VIEW_H * 0.7)
-      ctx.globalAlpha = 0.35 + 0.3 * (1 + Math.sin(time * 2 + i))
-      ctx.fillStyle = i % 5 === 0 ? '#ffd45e' : '#ffffff'
-      const size = i % 7 === 0 ? 2 : 1
-      ctx.fillRect(Math.round(x), Math.round(y), size, size)
-    }
-    ctx.globalAlpha = 1
-  }
-  const hills = (color: string, offset: number, base: number, amp: number, step: number) => {
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.moveTo(0, VIEW_H)
-    for (let x = 0; x <= VIEW_W; x += 4) {
-      const t = (x + offset) / step
-      ctx.lineTo(x, Math.round(base - Math.abs(Math.sin(t) * amp)))
-    }
-    ctx.lineTo(VIEW_W, VIEW_H)
-    ctx.closePath()
-    ctx.fill()
-  }
-  hills(bg.hills[0], viewX * 0.15, VIEW_H * 0.62, 90, 26)
-  hills(bg.hills[1], viewX * 0.3, VIEW_H * 0.74, 120, 34)
-  hills(bg.hills[2], viewX * 0.5, VIEW_H * 0.9, 150, 40)
 }

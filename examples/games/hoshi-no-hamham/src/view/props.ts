@@ -9,7 +9,7 @@ import { T, type Prop, type World } from '../game/sim'
 import { TILE } from '../game/types'
 import { blit, clip, type BlitOptions } from './bake'
 import { princessClip, specDuration } from './clips'
-import { PROP_SPEC } from '../art/contract'
+import { PROP_SPEC, themedProp } from '../art/contract'
 import type { FxPool } from './fx'
 
 export interface Piece {
@@ -187,10 +187,11 @@ export class PropsView {
   /** Gimmicks, logs, doors and the gate (everything but pickups, ハム姫 and projectiles). */
   drawProps(ctx: CanvasRenderingContext2D) {
     const time = this.time
+    const logSheet = themedProp('prop:log', this.world.theme)
     for (const log of this.logs) {
       const at = logPieces(log, this.isGround)
-      for (const cell of at.under) this.draw(ctx, 'prop:log', 'under', 0, cell.x, cell.y)
-      this.draw(ctx, 'prop:log', log.kind, 0, at.x, at.y, { flip: at.flip, pivotX: (log.length * TILE) / 2 })
+      for (const cell of at.under) this.draw(ctx, logSheet, 'under', 0, cell.x, cell.y)
+      this.draw(ctx, logSheet, log.kind, 0, at.x, at.y, { flip: at.flip, pivotX: (log.length * TILE) / 2 })
     }
     for (const prop of this.world.props) {
       switch (prop.kind) {
@@ -243,7 +244,7 @@ export class PropsView {
 
   private drawTree(ctx: CanvasRenderingContext2D, prop: Prop) {
     if (prop.state === 'fallen') return
-    const sheet = `prop:${prop.kind}`
+    const sheet = themedProp(`prop:${prop.kind}`, this.world.theme)
     const x = prop.x + TILE / 2
     const y = prop.y + TILE
     if (prop.state === 'falling') {

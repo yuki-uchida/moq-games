@@ -9,7 +9,7 @@
 import type { SheetModule } from '../../module'
 import { R } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, noiseAt, rng, shadeIndex, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim } from '../../sheet'
 
 const TAU = Math.PI * 2
 const BARK = R.bark
@@ -54,7 +54,7 @@ export function puff(l: Raster, cx: number, cy: number, rx: number, ry: number, 
 }
 
 /** Scalloped lower edge: a bough tooth of period `p`; returns how far the edge droops (0..amp). */
-function tooth(x: number, p: number, amp: number, phase = 0) {
+export function tooth(x: number, p: number, amp: number, phase = 0) {
   const t = (((x + phase) % p) + p) % p
   const u = t / p
   return amp * (1 - Math.abs(u * 2 - 1) ** 1.6)
@@ -110,8 +110,7 @@ function drawTrunk(l: Raster, top: number, bitten: boolean) {
 }
 
 /** The bite: a scalloped bite out of the right edge (rows 102–118) with a pale cut face and teeth marks. */
-function bite(l: Raster) {
-  const cx = 80
+export function bite(l: Raster, cx = 80, cut: Ramp = WOOD) {
   const cy = 110
   const rx = 7.5
   const ry = 8.5
@@ -122,7 +121,7 @@ function bite(l: Raster) {
       if (!keep.get(x, y)) continue
       const d = q(x, y)
       if (d <= 1) l.set(x, y, 0)
-      else if (d < 3.1) l.set(x, y, y > cy + 3 || (x > cx - 7 && y > cy) ? WOOD[2] : d < 1.9 ? WOOD[0] : WOOD[1])
+      else if (d < 3.1) l.set(x, y, y > cy + 3 || (x > cx - 7 && y > cy) ? cut[2] : d < 1.9 ? cut[0] : cut[1])
     }
   // a second, smaller tooth print on the lower lip
   for (let y = cy + 4; y <= cy + 12; y++)
@@ -136,12 +135,11 @@ function bite(l: Raster) {
     [cx - 6, cy - 5, 3],
     [cx - 9, cy + 1, 3]
   ])
-    for (let k = 0; k < n; k++)
-      if (l.get(x, y0 + k) === WOOD[0] || l.get(x, y0 + k) === WOOD[1]) l.set(x, y0 + k, WOOD[3])
+    for (let k = 0; k < n; k++) if (l.get(x, y0 + k) === cut[0] || l.get(x, y0 + k) === cut[1]) l.set(x, y0 + k, cut[3])
 }
 
 /** Pale wood chips scattered at the foot after the first bite. */
-function chips(l: Raster) {
+export function chips(l: Raster, cut: Ramp = WOOD) {
   const spots: [number, number, number, number][] = [
     [86, 119, 5, 4],
     [94, 122, 4, 3],
@@ -151,15 +149,15 @@ function chips(l: Raster) {
     [29, 122, 3, 3]
   ]
   for (const [x, y, w, h] of spots) {
-    l.rect(x, y, w, h, WOOD[1])
-    l.rect(x, y, w - 1, 1, WOOD[0])
-    l.rect(x + w - 1, y + 1, 1, h - 1, WOOD[2])
-    l.rect(x, y + h - 1, w, 1, WOOD[2])
-    l.set(x, y, WOOD[0])
+    l.rect(x, y, w, h, cut[1])
+    l.rect(x, y, w - 1, 1, cut[0])
+    l.rect(x + w - 1, y + 1, 1, h - 1, cut[2])
+    l.rect(x, y + h - 1, w, 1, cut[2])
+    l.set(x, y, cut[0])
   }
 }
 
-interface CrownPose {
+export interface CrownPose {
   /** Horizontal shift of the top of the crown; lower parts follow in proportion to their height. */
   dx: number
   /** Vertical shift of the top (negative = up). */
@@ -170,7 +168,7 @@ interface CrownPose {
   whip: number
 }
 
-const calm = (p: Partial<CrownPose> = {}): CrownPose => ({ dx: 0, dy: 0, sx: 1, whip: 0, ...p })
+export const calm = (p: Partial<CrownPose> = {}): CrownPose => ({ dx: 0, dy: 0, sx: 1, whip: 0, ...p })
 
 // ------------------------------------------------------------------------------------------------ broadleaf
 
@@ -206,7 +204,7 @@ const PUFFS: Puff[] = [
   { x: 64, y: 73, rx: 16, ry: 11 }
 ]
 
-const heightOf = (y: number) => Math.max(0, Math.min(1, (88 - y) / 56))
+export const heightOf = (y: number) => Math.max(0, Math.min(1, (88 - y) / 56))
 
 function drawTree(pose: CrownPose, bitten: boolean, leaves: [number, number, number][] = []): Raster {
   const g = new Painter(128, 128)
@@ -226,7 +224,7 @@ function drawTree(pose: CrownPose, bitten: boolean, leaves: [number, number, num
 }
 
 /** A small tumbling leaf, three poses. */
-function fallingLeaf(l: Raster, x: number, y: number, k: number, ramp: Ramp) {
+export function fallingLeaf(l: Raster, x: number, y: number, k: number, ramp: Ramp) {
   const shapes = [
     ['.hh.', 'hbbs', '.ss.'],
     ['h.', 'bb', 'bs', '.s'],
@@ -236,7 +234,7 @@ function fallingLeaf(l: Raster, x: number, y: number, k: number, ramp: Ramp) {
 }
 
 /** A sway pose at phase t (0..1): the crown top drifts ±2.5 px, the lower crown follows a little behind. */
-const sway = (t: number): CrownPose => {
+export const sway = (t: number): CrownPose => {
   const a = TAU * t + 0.5
   return calm({
     dx: 2.6 * Math.sin(a),
@@ -247,9 +245,9 @@ const sway = (t: number): CrownPose => {
 }
 
 function treeClips() {
-  const idle = [0, 1, 2, 3].map((i) => drawTree(sway(i / 4), false))
-  const cut = [0, 1, 2, 3].map((i) => drawTree(sway(i / 4), true))
-  const shake = [
+  const idle = () => [0, 1, 2, 3].map((i) => drawTree(sway(i / 4), false))
+  const cut = () => [0, 1, 2, 3].map((i) => drawTree(sway(i / 4), true))
+  const shake = () => [
     drawTree(calm({ dx: -4, dy: 3, sx: 1.07, whip: -1 }), false, [[34, 66, 0]]),
     drawTree(calm({ dx: 5, dy: -2, sx: 0.95, whip: 3 }), false, [
       [28, 78, 1],
@@ -268,7 +266,7 @@ function treeClips() {
 
 // --------------------------------------------------------------------------------------------------- conifer
 
-interface Tier {
+export interface Tier {
   top: number
   bot: number
   hw: number
@@ -276,13 +274,13 @@ interface Tier {
   h: number
 }
 
-const TIERS: Tier[] = [
+export const TIERS: Tier[] = [
   { top: 54, bot: 104, hw: 47, h: 0.2 },
   { top: 34, bot: 80, hw: 36, h: 0.6 },
   { top: 18, bot: 56, hw: 25, h: 1 }
 ]
 
-function drawTier(l: Raster, cx: number, t: Tier, ramp: Ramp, seed: number) {
+export function drawTier(l: Raster, cx: number, t: Tier, ramp: Ramp, seed: number) {
   const hgt = t.bot - t.top
   const period = Math.max(10, Math.round(t.hw * 0.4))
   for (let y = t.top; y <= t.bot; y++) {
@@ -346,9 +344,9 @@ function drawPine(pose: CrownPose, bitten: boolean, needles: [number, number, nu
 }
 
 function pineClips() {
-  const idle = [0, 1, 2, 3].map((i) => drawPine(sway(i / 4), false))
-  const cut = [0, 1, 2, 3].map((i) => drawPine(sway(i / 4), true))
-  const shake = [
+  const idle = () => [0, 1, 2, 3].map((i) => drawPine(sway(i / 4), false))
+  const cut = () => [0, 1, 2, 3].map((i) => drawPine(sway(i / 4), true))
+  const shake = () => [
     drawPine(calm({ dx: -3, dy: 3, sx: 1, whip: -1 }), false, [[30, 98, 0]]),
     drawPine(calm({ dx: 4, dy: -1, sx: 1, whip: 3 }), false, [
       [22, 90, 1],
@@ -372,8 +370,25 @@ const LOG_BOT = 52
 const logTop = (x: number) => LOG_TOP + Math.round(Math.sin(x * 0.07) * 0.9 + Math.sin(x * 0.19 + 1) * 0.6)
 const logBot = (x: number) => LOG_BOT + Math.round(Math.sin(x * 0.05 + 1) * 1.2)
 
+/** The materials of a felled trunk. */
+export interface LogMat {
+  bark: Ramp
+  /** The pale chewed end. */
+  wood: Ramp
+  /** Lit growth on the walking surface; null for none. */
+  moss: Ramp | null
+  /** Draw the bark furrows and the knots (the original look). */
+  furrows: boolean
+  /** Extra detail painted over the finished trunk (rings, spots, cracks). */
+  extra?: (l: Raster) => void
+}
+
+const MEADOW_LOG: LogMat = { bark: BARK, wood: WOOD, moss: LEAF, furrows: true }
+
 /** The felled trunk lying right: bitten stump on the left, bark furrows, knots, moss on the walking surface. */
-function drawLogTrunk(l: Raster) {
+export function drawLogTrunk(l: Raster, m: LogMat = MEADOW_LOG) {
+  const BARK = m.bark
+  const WOOD = m.wood
   const x0 = 8
   const x1 = 214
   // ragged bitten end: bite scallops along the left edge
@@ -410,7 +425,7 @@ function drawLogTrunk(l: Raster) {
       l.set(x0 + 2 - k * 0.5 - (k > 5 ? 1 : 0), y + (k % 3 === 2 ? 1 : 0), k < 3 ? WOOD[1] : WOOD[0])
   // bark furrows
   const rnd = rng(31)
-  for (let k = 0; k < 16; k++) {
+  for (let k = 0; k < (m.furrows ? 16 : 0); k++) {
     const y0 = LOG_TOP + 5 + Math.floor(rnd() * (LOG_BOT - LOG_TOP - 10))
     const xs = 28 + Math.floor(rnd() * 170)
     const len = 12 + Math.floor(rnd() * 26)
@@ -431,11 +446,15 @@ function drawLogTrunk(l: Raster) {
     } else l.ellipse(cx, cy, 1.5, 1.2, BARK[2])
     l.rect(cx - 5, cy - 4, 3, 1, BARK[0])
   }
-  knot(58, 22, false)
-  knot(118, 30, true)
-  knot(170, 20, true)
+  if (m.furrows) {
+    knot(58, 22, false)
+    knot(118, 30, true)
+    knot(170, 20, true)
+  }
+  m.extra?.(l)
   // moss along the walking surface: patches of lit green with a lip, a few strands hanging over the side
-  for (let x = 16; x < x1; x++) {
+  const LEAF = m.moss ?? R.leaf
+  for (let x = 16; x < (m.moss ? x1 : 0); x++) {
     const n = noiseAt(Math.floor(x / 11), 5, 3)
     if (n < 0.45) continue
     const t = logTop(x)
@@ -446,7 +465,7 @@ function drawLogTrunk(l: Raster) {
 }
 
 /** A stub of a broken branch jutting below the trunk, with a pale snapped end. */
-function stub(l: Raster, x: number, y: number, dx: number, dy: number, w: number) {
+export function stub(l: Raster, x: number, y: number, dx: number, dy: number, w: number, BARK = R.bark, WOOD = R.wood) {
   bar(l, [x, y], [x + dx, y + dy], w, BARK[1])
   bar(l, [x + 1, y + 1], [x + dx + 1, y + dy], Math.max(1, w - 2), BARK[2])
   l.ellipse(x + dx, y + dy, w / 2, w / 2 - 0.3, WOOD[1])
@@ -454,7 +473,13 @@ function stub(l: Raster, x: number, y: number, dx: number, dy: number, w: number
 }
 
 /** The crushed crown of a felled broadleaf: flattened puffs piled over the right quarter. */
-function logCrown(g: Painter) {
+export function logCrown(
+  g: Painter,
+  LEAF: Ramp = R.leaf,
+  LEAF_FAR: Ramp = farRamp(R.leaf),
+  bark: Ramp = R.bark,
+  wood: Ramp = R.wood
+) {
   const back: [number, number, number, number][] = [
     [190, 30, 15, 20],
     [214, 28, 17, 22],
@@ -481,12 +506,19 @@ function logCrown(g: Painter) {
   ]
   front.forEach(([x, y, rx, ry], i) => g.add(3, (l) => puff(l, x, y, rx, ry, LEAF, 240 + i, 7)))
   // a snapped branch pokes out of the leaves toward the trunk
-  g.add(2, (l) => stub(l, 196, 30, -16, -8, 5))
+  g.add(2, (l) => stub(l, 196, 30, -16, -8, 5, bark, wood))
 }
 
 /** One drooping, layered bough band of a crushed conifer: scalloped lower edge, swept needle arcs, lit tips. */
-function boughBand(l: Raster, x0: number, top: number, bot: number, k: number, ragged: boolean) {
-  const ramp = PINE
+export function boughBand(
+  l: Raster,
+  x0: number,
+  top: number,
+  bot: number,
+  k: number,
+  ragged: boolean,
+  ramp: Ramp = PINE
+) {
   const edge = (x: number) => bot - 6 + tooth(x, 12, 8, k * 5) - (x < x0 + 10 ? (x0 + 10 - x) * 0.5 : 0)
   for (let x = x0; x < 256; x++) {
     const t = ragged ? top + Math.round(tooth(x, 10, 5, 3)) * -1 + 4 : top
@@ -507,19 +539,19 @@ function boughBand(l: Raster, x0: number, top: number, bot: number, k: number, r
 }
 
 /** Crushed conifer boughs: shingled bands, the top one ragged with sprigs. */
-function logBoughs(g: Painter) {
+export function logBoughs(g: Painter, ramp: Ramp = PINE, bark: Ramp = R.bark, wood: Ramp = R.wood) {
   const bands: [number, number, number][] = [
     [185, 1, 22],
     [187, 15, 36],
     [190, 29, 50],
     [193, 43, 66]
   ]
-  bands.forEach(([x0, top, bot], i) => g.add(4 - i, (l) => boughBand(l, x0, top, bot, i, i === 0)))
-  g.add(5, (l) => stub(l, 196, 26, -15, -9, 5))
+  bands.forEach(([x0, top, bot], i) => g.add(4 - i, (l) => boughBand(l, x0, top, bot, i, i === 0, ramp)))
+  g.add(5, (l) => stub(l, 196, 26, -15, -9, 5, bark, wood))
 }
 
 /** Little crushed leaf piles resting on the ground under the trunk. */
-function litter(g: Painter, ramp: Ramp, far: Ramp) {
+export function litter(g: Painter, ramp: Ramp, far: Ramp) {
   const piles: [number, number, number][] = [
     [34, 57, 6],
     [88, 58, 7],
@@ -550,8 +582,19 @@ function drawLog(kind: 'tree' | 'pine'): Raster {
   return g.render()
 }
 
+/** The materials of the roots and leaves under a bridging log. */
+export interface UnderMat {
+  bark: Ramp
+  wood: Ramp
+  leaf: Ramp
+  leafFar: Ramp
+}
+
+const MEADOW_UNDER: UnderMat = { bark: BARK, wood: WOOD, leaf: LEAF, leafFar: LEAF_FAR }
+
 /** Roots, branches and leaves hanging below a log that spans a pit; periodic in x so cells tile. */
-function drawUnder(): Raster {
+export function drawUnder(m: UnderMat = MEADOW_UNDER): Raster {
+  const { bark: BARK, wood: WOOD, leaf: LEAF, leafFar: LEAF_FAR } = m
   const g = new Painter(64, 64)
   const wrap = (draw: (l: Raster, ox: number) => void) => (l: Raster) => {
     for (const ox of [-64, 0, 64]) draw(l, ox)
@@ -638,22 +681,22 @@ export const sheets: SheetModule = {
   'prop:tree': () => {
     const c = treeClips()
     return {
-      idle: anim(c.idle, 4, true, { anchor: [64, 124] }),
-      cut: anim(c.cut, 4, true, { anchor: [64, 124] }),
-      shake: anim(c.shake, 18, false, { anchor: [64, 124] })
+      idle: lazyAnim(c.idle, 4, true, { anchor: [64, 124] }),
+      cut: lazyAnim(c.cut, 4, true, { anchor: [64, 124] }),
+      shake: lazyAnim(c.shake, 18, false, { anchor: [64, 124] })
     }
   },
   'prop:pine': () => {
     const c = pineClips()
     return {
-      idle: anim(c.idle, 4, true, { anchor: [64, 124] }),
-      cut: anim(c.cut, 4, true, { anchor: [64, 124] }),
-      shake: anim(c.shake, 18, false, { anchor: [64, 124] })
+      idle: lazyAnim(c.idle, 4, true, { anchor: [64, 124] }),
+      cut: lazyAnim(c.cut, 4, true, { anchor: [64, 124] }),
+      shake: lazyAnim(c.shake, 18, false, { anchor: [64, 124] })
     }
   },
   'prop:log': () => ({
-    tree: anim([drawLog('tree')], 1, false, { anchor: [0, 0] }),
-    pine: anim([drawLog('pine')], 1, false, { anchor: [0, 0] }),
-    under: anim([drawUnder()], 1, false, { anchor: [0, 0] })
+    tree: lazyAnim(() => [drawLog('tree')], 1, false, { anchor: [0, 0] }),
+    pine: lazyAnim(() => [drawLog('pine')], 1, false, { anchor: [0, 0] }),
+    under: lazyAnim(() => [drawUnder()], 1, false, { anchor: [0, 0] })
   })
 }

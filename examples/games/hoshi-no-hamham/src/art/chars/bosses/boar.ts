@@ -10,7 +10,7 @@
 import type { SheetModule } from '../../module'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, shadeIndex, type Ramp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 
 const BROWN = R.boarBrown
 const FAR = farRamp(BROWN)
@@ -433,22 +433,24 @@ export function drawBoar(p: Pose): Raster {
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = [0, 1, 2, 3].map((i) =>
-  pose({
-    hip: [0, [0, 0, 1, 0][i]],
-    head: [0, [0, 1, 2, 1][i]],
-    len: [0, 0, 1, 0][i],
-    quiffLift: [0, 1, 2, 1][i],
-    nearF: [foot(NF), foot(NF - 3, 4), foot(NF - 9, 1), foot(NF - 4, 0)][i],
-    steam: [0, 0, 1, 2][i],
-    eyes: i === 3 ? 'squint' : 'glare',
-    tail: [0, 1, 0, -1][i],
-    flutter: [0, 0.4, 0, -0.4][i],
-    stem: [0, 1, 0, -1][i]
-  })
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    pose({
+      hip: [0, [0, 0, 1, 0][i]],
+      head: [0, [0, 1, 2, 1][i]],
+      len: [0, 0, 1, 0][i],
+      quiffLift: [0, 1, 2, 1][i],
+      nearF: [foot(NF), foot(NF - 3, 4), foot(NF - 9, 1), foot(NF - 4, 0)][i],
+      steam: [0, 0, 1, 2][i],
+      eyes: i === 3 ? 'squint' : 'glare',
+      tail: [0, 1, 0, -1][i],
+      flutter: [0, 0.4, 0, -0.4][i],
+      stem: [0, 1, 0, -1][i]
+    })
+  )
 )
 
-const intro = [
+const intro = memo(() => [
   pose({
     hip: [-1, 3],
     ang: 0.16,
@@ -505,9 +507,9 @@ const intro = [
     flutter: 0.3,
     stem: -1
   })
-]
+])
 
-const windup = [
+const windup = memo(() => [
   pose({
     hip: [-2, 2],
     ang: -0.05,
@@ -549,9 +551,9 @@ const windup = [
     flutter: 0.9,
     tail: -1
   })
-]
+])
 
-const attack = [
+const attack = memo(() => [
   pose({
     hip: [2, -2],
     ang: -0.02,
@@ -610,50 +612,56 @@ const attack = [
     flutter: 0.2,
     tail: 0
   })
-]
+])
 
-const stunned = [0, 1, 2, 3].map((i) =>
-  pose({
-    hip: [4, 17],
-    ang: 0.84,
-    head: [[-2, 0, 2, 0][i], [0, 1, 0, 1][i]],
-    headAng: [-0.1, 0.1, 0.2, 0.05][i],
-    jaw: 0.2,
-    tongue: true,
-    quiff: -1,
-    flat: 1,
-    eyes: 'swirl',
-    nearF: [foot(74), foot(75), foot(76), foot(75)][i].map((v, k) =>
-      k ? v - 14 + [0, 2, 3, 1][i] : v
-    ) as unknown as V,
-    farF: [foot(68), foot(69), foot(68), foot(67)][i].map((v, k) => (k ? v - 12 + [0, 1, 2, 1][i] : v)) as unknown as V,
-    nearH: foot(64),
-    farH: foot(54),
-    stars: i * 0.1,
-    tail: [0, 1, 0, -1][i],
-    flutter: [0, 0.5, 0, -0.5][i]
-  })
+const stunned = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    pose({
+      hip: [4, 17],
+      ang: 0.84,
+      head: [[-2, 0, 2, 0][i], [0, 1, 0, 1][i]],
+      headAng: [-0.1, 0.1, 0.2, 0.05][i],
+      jaw: 0.2,
+      tongue: true,
+      quiff: -1,
+      flat: 1,
+      eyes: 'swirl',
+      nearF: [foot(74), foot(75), foot(76), foot(75)][i].map((v, k) =>
+        k ? v - 14 + [0, 2, 3, 1][i] : v
+      ) as unknown as V,
+      farF: [foot(68), foot(69), foot(68), foot(67)][i].map((v, k) =>
+        k ? v - 12 + [0, 1, 2, 1][i] : v
+      ) as unknown as V,
+      nearH: foot(64),
+      farH: foot(54),
+      stars: i * 0.1,
+      tail: [0, 1, 0, -1][i],
+      flutter: [0, 0.5, 0, -0.5][i]
+    })
+  )
 )
 
-const recover = [0, 1].map((i) =>
-  pose({
-    hip: [0, i],
-    len: -i,
-    head: [-2, 7 + i],
-    headAng: 0.6,
-    jaw: [0.5, 0.9][i],
-    tongue: true,
-    quiff: -0.6,
-    flat: 0.6,
-    eyes: 'tired',
-    sweat: true,
-    tail: [0, -1][i],
-    flutter: [0, 0.3][i],
-    steam: 0
-  })
+const recover = memo(() =>
+  [0, 1].map((i) =>
+    pose({
+      hip: [0, i],
+      len: -i,
+      head: [-2, 7 + i],
+      headAng: 0.6,
+      jaw: [0.5, 0.9][i],
+      tongue: true,
+      quiff: -0.6,
+      flat: 0.6,
+      eyes: 'tired',
+      sweat: true,
+      tail: [0, -1][i],
+      flutter: [0, 0.3][i],
+      steam: 0
+    })
+  )
 )
 
-const hurt = [
+const hurt = memo(() => [
   pose({
     hip: [-4, 0],
     ang: 0.12,
@@ -680,9 +688,9 @@ const hurt = [
     tail: -1,
     flutter: -0.6
   })
-]
+])
 
-const defeat = [
+const defeat = memo(() => [
   pose({
     hip: [-3, 1],
     ang: 0.1,
@@ -776,19 +784,19 @@ const defeat = [
     nearH: foot(NH - 14),
     farH: foot(FH - 10)
   })
-]
+])
 
 const draw = (poses: Pose[]) => poses.map(drawBoar)
 
 export const sheets: SheetModule = {
   boarBoss: () => ({
-    idle: anim(draw(idle), 6, true),
-    intro: anim(draw(intro), 8, false),
-    windup: anim(draw(windup), 10, false),
-    attack: anim(draw(attack), 14, true),
-    stunned: anim(draw(stunned), 8, true),
-    recover: anim(draw(recover), 6, true),
-    hurt: anim(draw(hurt), 12, false),
-    defeat: anim(draw(defeat), 8, false)
+    idle: lazyAnim(() => draw(idle()), 6, true),
+    intro: lazyAnim(() => draw(intro()), 8, false),
+    windup: lazyAnim(() => draw(windup()), 10, false),
+    attack: lazyAnim(() => draw(attack()), 14, true),
+    stunned: lazyAnim(() => draw(stunned()), 8, true),
+    recover: lazyAnim(() => draw(recover()), 6, true),
+    hurt: lazyAnim(() => draw(hurt()), 12, false),
+    defeat: lazyAnim(() => draw(defeat()), 8, false)
   })
 }

@@ -49,3 +49,57 @@ export const anim = (frames: Raster[], fps: number, loop: boolean, extra: Partia
   loop,
   ...extra
 })
+
+/** Runs `build` on the first call and returns the same result from then on. */
+export function memo<T>(build: () => T): () => T {
+  let value: T
+  let done = false
+  return () => {
+    if (!done) {
+      value = build()
+      done = true
+    }
+    return value
+  }
+}
+
+/**
+ * An Anim whose frames are drawn on first access (and kept). Readers see an ordinary `frames` array property;
+ * nothing is drawn while the module is imported or while the registry assembles a sheet.
+ */
+export function lazyAnim(build: () => Raster[], fps: number, loop: boolean, extra: Partial<Anim> = {}): Anim {
+  const frames = memo(build)
+  return {
+    get frames() {
+      return frames()
+    },
+    fps,
+    loop,
+    ...extra
+  }
+}
+
+/**
+ * An Anim drawn as a whole (frames and timing) on first access, for builders that already return an Anim and
+ * share intermediate results between frames. Like `lazyAnim`, nothing is drawn until a reader touches it.
+ */
+export function deferAnim(build: () => Anim): Anim {
+  const built = memo(build)
+  return {
+    get frames() {
+      return built().frames
+    },
+    get fps() {
+      return built().fps
+    },
+    get loop() {
+      return built().loop
+    },
+    get hold() {
+      return built().hold
+    },
+    get anchor() {
+      return built().anchor
+    }
+  }
+}

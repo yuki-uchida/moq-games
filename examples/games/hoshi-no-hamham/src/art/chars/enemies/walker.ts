@@ -4,7 +4,7 @@
  */
 import { C, R } from '../../palette'
 import { Painter, Raster, ball, farRamp } from '../../raster'
-import { anim } from '../../sheet'
+import { lazyAnim, memo } from '../../sheet'
 import { bandanaTails, limb, neckerchief, patch, tailCurve, tumble } from './gang'
 
 const RAT = R.ratGray
@@ -198,31 +198,33 @@ function scurry(t: number, reach = 6): [number, number][] {
   return [one(0), one(0.5), one(0.5), one(0)]
 }
 
-const idle = [
+const idle = memo(() => [
   drawWalker(walkerPose({ tailPhase: 0, tailUp: 0, eyes: 'squint', bob: 0 })),
   drawWalker(walkerPose({ tailPhase: 1.6, tailUp: 1, eyes: 'glance', bob: 0.6, ear: 1.5, stretch: -0.4, headDy: -0.6 }))
-]
+])
 
-const move = Array.from({ length: 6 }, (_, i) => {
-  const t = i / 6
-  const gallop = Math.cos(t * Math.PI * 4)
-  return drawWalker(
-    walkerPose({
-      bob: 1 + gallop * 1.2,
-      stretch: gallop * 1.8,
-      dx: 0,
-      legs: scurry(t),
-      tailPhase: t * Math.PI * 2 + 0.5,
-      tailUp: 0.5 + Math.sin(t * Math.PI * 2) * 0.5,
-      headDy: -gallop * 0.6,
-      ear: 1.4,
-      eyes: 'squint',
-      mouth: i % 3 === 0 ? 'snarl' : 'closed'
-    })
-  )
-})
+const move = memo(() =>
+  Array.from({ length: 6 }, (_, i) => {
+    const t = i / 6
+    const gallop = Math.cos(t * Math.PI * 4)
+    return drawWalker(
+      walkerPose({
+        bob: 1 + gallop * 1.2,
+        stretch: gallop * 1.8,
+        dx: 0,
+        legs: scurry(t),
+        tailPhase: t * Math.PI * 2 + 0.5,
+        tailUp: 0.5 + Math.sin(t * Math.PI * 2) * 0.5,
+        headDy: -gallop * 0.6,
+        ear: 1.4,
+        eyes: 'squint',
+        mouth: i % 3 === 0 ? 'snarl' : 'closed'
+      })
+    )
+  })
+)
 
-const hurt = [
+const hurt = memo(() => [
   drawWalker(
     walkerPose({
       bob: 1,
@@ -263,7 +265,7 @@ const hurt = [
       ]
     })
   )
-]
+])
 
 const air = (rest: Partial<WalkerPose>) =>
   walkerPose({
@@ -279,7 +281,7 @@ const air = (rest: Partial<WalkerPose>) =>
     ...rest
   })
 
-const defeat = [
+const defeat = memo(() => [
   drawWalker(air({ bob: 2, dx: 0, stretch: -1, headDx: -2, headDy: -2, tailPhase: 1, tailUp: 2 })),
   tumble(drawWalker(air({ bob: 3, dx: 0, tailPhase: 2 })), -0.9, 26, 43, -2, -9),
   tumble(drawWalker(air({ bob: 3, dx: 0, tailPhase: 3, eyes: 'dead' })), -2.7, 26, 43, 6, -10),
@@ -300,11 +302,11 @@ const defeat = [
       ]
     })
   )
-]
+])
 
 export const walkerSheet = () => ({
-  idle: anim(idle, 4, true),
-  move: anim(move, 10, true),
-  hurt: anim(hurt, 12, false),
-  defeat: anim(defeat, 12, false)
+  idle: lazyAnim(idle, 4, true),
+  move: lazyAnim(move, 10, true),
+  hurt: lazyAnim(hurt, 12, false),
+  defeat: lazyAnim(defeat, 12, false)
 })

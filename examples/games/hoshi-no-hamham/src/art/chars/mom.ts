@@ -8,7 +8,7 @@
 import type { SheetModule } from '../module'
 import { C, R } from '../palette'
 import { Painter, Raster, ball, bar, farRamp, shadeEdges } from '../raster'
-import { anim } from '../sheet'
+import { lazyAnim, memo } from '../sheet'
 
 const ORANGE = R.momOrange
 const FAR = farRamp(ORANGE)
@@ -436,42 +436,49 @@ const raisedArm = (dx: number, dy: number): Arm => ({
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = [0, 1, 2, 3].map((i) =>
-  drawMom(
-    momPose({
-      squash: [0, -0.5, -1, -0.5][i],
-      bob: [0, 0.3, 0.6, 0.3][i],
-      nearFoot: [0, [0, 3, 0, 2][i]],
-      ladle: { hand: 'near', a: -0.7 + [0, 0.04, 0, -0.04][i], len: 24 },
-      earSway: [0, 0, 1, 0][i],
-      flap: [0, 0.2, 0, -0.2][i]
-    })
+const idle = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    drawMom(
+      momPose({
+        squash: [0, -0.5, -1, -0.5][i],
+        bob: [0, 0.3, 0.6, 0.3][i],
+        nearFoot: [0, [0, 3, 0, 2][i]],
+        ladle: { hand: 'near', a: -0.7 + [0, 0.04, 0, -0.04][i], len: 24 },
+        earSway: [0, 0, 1, 0][i],
+        flap: [0, 0.2, 0, -0.2][i]
+      })
+    )
   )
 )
 
-const yellSteps = [
-  { lean: -3, headDy: -1, squash: -1.5, mouth: 'grit', a: -0.15, hand: [-12, -22], bob: 1 },
-  { lean: 4, headDy: 1, squash: 1.5, mouth: 'yell', a: 0.45, hand: [-9, -24], bob: 0 },
-  { lean: 5, headDy: 2, squash: 2, mouth: 'yell', a: -0.05, hand: [-11, -26], bob: 0 },
-  { lean: 4, headDy: 1, squash: 1.2, mouth: 'yell', a: 0.55, hand: [-9, -23], bob: 0 }
-] as const
-const yell = yellSteps.map((s, i) =>
-  drawMom(
-    momPose({
-      lean: s.lean,
-      headDy: s.headDy,
-      squash: s.squash,
-      bob: s.bob,
-      mouth: s.mouth,
-      nearArm: raisedArm(s.hand[0] + 10, s.hand[1] + 26),
-      ladle: { hand: 'near', a: s.a, len: 22 },
-      farArm: i === 0 ? { s: [12, -2], e: [28, 10], h: [19, 16] } : { s: [12, -2], e: [29, 8], h: [21, 14] },
-      jx: i >= 2 ? [0, 0, 1, -1][i] : 0,
-      brows: 'angry',
-      eyes: i === 0 ? 'angry' : 'squint',
-      flush: i > 0 ? 1 : 0,
-      earSway: [0, -1, 1, -1][i]
-    })
+const yellSteps = memo(
+  () =>
+    [
+      { lean: -3, headDy: -1, squash: -1.5, mouth: 'grit', a: -0.15, hand: [-12, -22], bob: 1 },
+      { lean: 4, headDy: 1, squash: 1.5, mouth: 'yell', a: 0.45, hand: [-9, -24], bob: 0 },
+      { lean: 5, headDy: 2, squash: 2, mouth: 'yell', a: -0.05, hand: [-11, -26], bob: 0 },
+      { lean: 4, headDy: 1, squash: 1.2, mouth: 'yell', a: 0.55, hand: [-9, -23], bob: 0 }
+    ] as const
+)
+const yell = memo(() =>
+  yellSteps().map((s, i) =>
+    drawMom(
+      momPose({
+        lean: s.lean,
+        headDy: s.headDy,
+        squash: s.squash,
+        bob: s.bob,
+        mouth: s.mouth,
+        nearArm: raisedArm(s.hand[0] + 10, s.hand[1] + 26),
+        ladle: { hand: 'near', a: s.a, len: 22 },
+        farArm: i === 0 ? { s: [12, -2], e: [28, 10], h: [19, 16] } : { s: [12, -2], e: [29, 8], h: [21, 14] },
+        jx: i >= 2 ? [0, 0, 1, -1][i] : 0,
+        brows: 'angry',
+        eyes: i === 0 ? 'angry' : 'squint',
+        flush: i > 0 ? 1 : 0,
+        earSway: [0, -1, 1, -1][i]
+      })
+    )
   )
 )
 
@@ -487,124 +494,132 @@ const stride = (p: number) => {
   const s = (q - 0.5) / 0.5
   return { x: Math.round(-STRIDE + 2 * STRIDE * s), lift: Math.round(10 * Math.sin(Math.PI * s)) }
 }
-const move = Array.from({ length: 8 }, (_, i) => {
-  const t = i / 8
-  const n = stride(t)
-  const f = stride(t + 0.5)
-  const step = (i / 4) * Math.PI * 2 // two steps per cycle
-  const rise = (1 - Math.cos(step)) / 2 // 0 on contact, 1 on passing
-  const riseLag = (1 - Math.cos(step - 1.2)) / 2
-  const bob = Math.round(rise * 3.5)
-  const phi = t * Math.PI * 2
-  const contact = 1 - rise
-  return drawMom(
-    momPose({
-      bob,
-      squash: contact * 1.6 - rise * 0.6,
-      lean: 4 + Math.round(contact * 2),
-      // the head lags: it sinks when the body rises and floats when the body drops
-      headDy: Math.round((rise - riseLag) * 3),
-      nearFoot: [n.x, n.lift],
-      farFoot: [f.x, f.lift],
-      nearArm: raisedArm(2 * Math.cos(phi), -2.5 * rise + 1.5 * Math.sin(phi)),
-      farArm: { s: [12, -2], e: [26 - 3 * Math.cos(phi), 8], h: [20, 14 + Math.round(2 * Math.sin(phi))] },
-      // the ladle head whips behind the arm
-      ladle: { hand: 'near', a: 0.3 + 0.55 * Math.sin(step - 0.9) + 0.3 * Math.sin(phi + 0.5), len: 21 },
-      mouth: i % 2 ? 'grit' : 'yell',
-      eyes: 'angry',
-      flush: 1,
-      // the apron streams back behind the motion and peaks a frame after the body
-      flap: 0.3 + 0.7 * Math.sin(((i - 3) / 4) * Math.PI * 2 + Math.PI / 2),
-      earSway: Math.round(-1.5 + 1.5 * Math.sin(step - 1.2))
-    })
-  )
-})
+const move = memo(() =>
+  Array.from({ length: 8 }, (_, i) => {
+    const t = i / 8
+    const n = stride(t)
+    const f = stride(t + 0.5)
+    const step = (i / 4) * Math.PI * 2 // two steps per cycle
+    const rise = (1 - Math.cos(step)) / 2 // 0 on contact, 1 on passing
+    const riseLag = (1 - Math.cos(step - 1.2)) / 2
+    const bob = Math.round(rise * 3.5)
+    const phi = t * Math.PI * 2
+    const contact = 1 - rise
+    return drawMom(
+      momPose({
+        bob,
+        squash: contact * 1.6 - rise * 0.6,
+        lean: 4 + Math.round(contact * 2),
+        // the head lags: it sinks when the body rises and floats when the body drops
+        headDy: Math.round((rise - riseLag) * 3),
+        nearFoot: [n.x, n.lift],
+        farFoot: [f.x, f.lift],
+        nearArm: raisedArm(2 * Math.cos(phi), -2.5 * rise + 1.5 * Math.sin(phi)),
+        farArm: { s: [12, -2], e: [26 - 3 * Math.cos(phi), 8], h: [20, 14 + Math.round(2 * Math.sin(phi))] },
+        // the ladle head whips behind the arm
+        ladle: { hand: 'near', a: 0.3 + 0.55 * Math.sin(step - 0.9) + 0.3 * Math.sin(phi + 0.5), len: 21 },
+        mouth: i % 2 ? 'grit' : 'yell',
+        eyes: 'angry',
+        flush: 1,
+        // the apron streams back behind the motion and peaks a frame after the body
+        flap: 0.3 + 0.7 * Math.sin(((i - 3) / 4) * Math.PI * 2 + Math.PI / 2),
+        earSway: Math.round(-1.5 + 1.5 * Math.sin(step - 1.2))
+      })
+    )
+  })
+)
 
-const stunned = [0, 1, 2, 3].map((i) =>
-  drawMom(
-    momPose({
-      jx: [-2, 0, 2, 0][i],
-      lean: [-1, 0, 1, 0][i],
-      squash: [1, 0, 1, 2][i],
-      headDy: [1, 0, 1, 2][i],
-      eyes: 'dizzy',
-      brows: 'raised',
-      mouth: 'wobble',
-      curlerTilt: [0.45, 0.55, 0.5, 0.6][i],
-      stars: (i * Math.PI) / 2,
-      nearArm: { s: [-6, -2], e: [-21, 6], h: [-22, 13] },
-      ladle: { hand: 'near', a: -1.75 + [0, 0.08, 0, -0.08][i], len: 12 },
-      earSway: [1, 0, -1, 0][i],
-      nearFoot: [[-2, 0, 2, 0][i], 0],
-      farFoot: [[2, 0, -2, 0][i], 0],
-      flap: [0.4, 0, -0.4, 0][i]
-    })
+const stunned = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    drawMom(
+      momPose({
+        jx: [-2, 0, 2, 0][i],
+        lean: [-1, 0, 1, 0][i],
+        squash: [1, 0, 1, 2][i],
+        headDy: [1, 0, 1, 2][i],
+        eyes: 'dizzy',
+        brows: 'raised',
+        mouth: 'wobble',
+        curlerTilt: [0.45, 0.55, 0.5, 0.6][i],
+        stars: (i * Math.PI) / 2,
+        nearArm: { s: [-6, -2], e: [-21, 6], h: [-22, 13] },
+        ladle: { hand: 'near', a: -1.75 + [0, 0.08, 0, -0.08][i], len: 12 },
+        earSway: [1, 0, -1, 0][i],
+        nearFoot: [[-2, 0, 2, 0][i], 0],
+        farFoot: [[2, 0, -2, 0][i], 0],
+        flap: [0.4, 0, -0.4, 0][i]
+      })
+    )
   )
 )
 
-const tired = [0, 1, 2, 3].map((i) =>
-  drawMom(
-    momPose({
-      squash: [2, 3.5, 2.5, 1.5][i],
-      lean: 3,
-      headDy: [3, 5, 4, 3][i],
-      jx: [0, 0, 1, 0][i],
-      eyes: 'tired',
-      brows: 'flat',
-      mouth: 'pant',
-      nearArm: { s: [-9, -2], e: [-27, 6 + [0, 1, 0, -1][i]], h: [-20 + [0, 1, 0, 1][i], 14 + [0, -1, 0, 1][i]] },
-      farArm: { s: [12, -2], e: [22, 6], h: [27, 8] },
-      ladle: { hand: 'far', a: 2.3 + [0, 0.1, 0, -0.1][i], len: 11 },
-      sweat: [
-        [
-          [28, -22],
-          [34, -14]
-        ],
-        [
-          [30, -17],
-          [35, -9]
-        ],
-        [
-          [33, -11],
-          [27, -24]
-        ],
-        [
-          [35, -6],
-          [29, -20]
-        ]
-      ][i] as unknown as Pt[],
-      flap: [0, 0.2, 0, -0.2][i],
-      earSway: [0, 1, 1, 0][i],
-      flush: 1
-    })
+const tired = memo(() =>
+  [0, 1, 2, 3].map((i) =>
+    drawMom(
+      momPose({
+        squash: [2, 3.5, 2.5, 1.5][i],
+        lean: 3,
+        headDy: [3, 5, 4, 3][i],
+        jx: [0, 0, 1, 0][i],
+        eyes: 'tired',
+        brows: 'flat',
+        mouth: 'pant',
+        nearArm: { s: [-9, -2], e: [-27, 6 + [0, 1, 0, -1][i]], h: [-20 + [0, 1, 0, 1][i], 14 + [0, -1, 0, 1][i]] },
+        farArm: { s: [12, -2], e: [22, 6], h: [27, 8] },
+        ladle: { hand: 'far', a: 2.3 + [0, 0.1, 0, -0.1][i], len: 11 },
+        sweat: [
+          [
+            [28, -22],
+            [34, -14]
+          ],
+          [
+            [30, -17],
+            [35, -9]
+          ],
+          [
+            [33, -11],
+            [27, -24]
+          ],
+          [
+            [35, -6],
+            [29, -20]
+          ]
+        ][i] as unknown as Pt[],
+        flap: [0, 0.2, 0, -0.2][i],
+        earSway: [0, 1, 1, 0][i],
+        flush: 1
+      })
+    )
   )
 )
 
-const hurt = [0, 1].map((i) =>
-  drawMom(
-    momPose({
-      lean: [-4, -2][i],
-      headDy: [-1, 1][i],
-      squash: [-2, 2][i],
-      jx: [-2, -1][i],
-      eyes: 'squint',
-      mouth: 'yelp',
-      nearArm: raisedArm([3, 0][i], [-3, 0][i]),
-      ladle: { hand: 'near', a: [-0.8, 0.5][i], len: 21 },
-      earSway: [-2, 1][i],
-      flap: [1, -0.5][i],
-      flush: 1
-    })
+const hurt = memo(() =>
+  [0, 1].map((i) =>
+    drawMom(
+      momPose({
+        lean: [-4, -2][i],
+        headDy: [-1, 1][i],
+        squash: [-2, 2][i],
+        jx: [-2, -1][i],
+        eyes: 'squint',
+        mouth: 'yelp',
+        nearArm: raisedArm([3, 0][i], [-3, 0][i]),
+        ladle: { hand: 'near', a: [-0.8, 0.5][i], len: 21 },
+        earSway: [-2, 1][i],
+        flap: [1, -0.5][i],
+        flush: 1
+      })
+    )
   )
 )
 
 export const sheets: SheetModule = {
   mom: () => ({
-    idle: anim(idle, 6, true),
-    yell: anim(yell, 10, false),
-    move: anim(move, 14, true),
-    stunned: anim(stunned, 8, true),
-    tired: anim(tired, 5, true),
-    hurt: anim(hurt, 10, false)
+    idle: lazyAnim(idle, 6, true),
+    yell: lazyAnim(yell, 10, false),
+    move: lazyAnim(move, 14, true),
+    stunned: lazyAnim(stunned, 8, true),
+    tired: lazyAnim(tired, 5, true),
+    hurt: lazyAnim(hurt, 10, false)
   })
 }

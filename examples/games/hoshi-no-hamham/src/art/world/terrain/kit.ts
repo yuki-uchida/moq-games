@@ -31,6 +31,7 @@
 import type { Neighbour, TileKind, TileQuery } from '../../contract'
 import type { Ramp } from '../../palette'
 import { Raster, ball, hash, outline, rng } from '../../raster'
+import { memo } from '../../sheet'
 import type { Decor } from '../types'
 
 export const TILE = 64
@@ -740,20 +741,32 @@ export function decor(
   draw: (r: Raster) => void,
   options: { outline?: boolean; sink?: number } = {}
 ): Decor {
-  const pad = 2
-  const canvas = new Raster(w + pad * 2, h + pad * 2)
-  draw(canvas)
-  if (options.outline !== false) outline(canvas)
-  const b = canvas.bounds()
-  if (!b) throw new Error('decoration is empty')
-  const image = canvas.crop(b.x, b.y, b.w, b.h)
-  if (image.w > 32) throw new Error(`decoration is ${image.w}px wide`)
-  const sink = options.sink ?? 1
-  // Anchor: horizontal centre of the painted pixels; vertical is the standing edge.
-  const ax = Math.floor(image.w / 2)
-  return where === 'top'
-    ? { where, weight, image, anchor: [ax, image.h - sink] }
-    : { where, weight, image, anchor: [ax, sink - 1] }
+  const built = memo(() => {
+    const pad = 2
+    const canvas = new Raster(w + pad * 2, h + pad * 2)
+    draw(canvas)
+    if (options.outline !== false) outline(canvas)
+    const b = canvas.bounds()
+    if (!b) throw new Error('decoration is empty')
+    const image = canvas.crop(b.x, b.y, b.w, b.h)
+    if (image.w > 32) throw new Error(`decoration is ${image.w}px wide`)
+    const sink = options.sink ?? 1
+    // Anchor: horizontal centre of the painted pixels; vertical is the standing edge.
+    const ax = Math.floor(image.w / 2)
+    const anchor: readonly [number, number] = where === 'top' ? [ax, image.h - sink] : [ax, sink - 1]
+    return { image, anchor }
+  })
+  // Drawn when the view first reads the picture, not when the world's module is imported.
+  return {
+    where,
+    weight,
+    get image() {
+      return built().image
+    },
+    get anchor() {
+      return built().anchor
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------- decoration pieces
