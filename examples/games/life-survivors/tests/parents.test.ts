@@ -18,7 +18,7 @@ import {
 import { Game, RAID, choiceText, playerStats, raidReach, weaponSlots, weaponStats } from '../src/game'
 import { FX } from '../src/fx'
 import { GUARDIAN_BODY, boxAbout, boxesOverlap, overheadBoxes } from '../src/overhead'
-import { GUARD_WALK, readView, toView } from '../src/view'
+import { GUARD_WALK, STRIDE, readView, toView } from '../src/view'
 import { botInput } from './bot'
 
 const early = new Set(TALENT_WEAPONS.filter((def) => def.minAge <= 6).map((def) => def.id))
@@ -248,7 +248,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(22)
+    expect(view.v).toBe(23)
     // Spent (1), walking with her child (GUARD_WALK).
     expect(view.shots[7]).toBe(1 + GUARD_WALK)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()
@@ -570,7 +570,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     copy.aux = copy.tick * 0.001
     copy.v = 1
     const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
-    expect(view.shots[game.state.shots.indexOf(copy) * 8 + 7]).toBe(95)
+    expect(view.shots[game.state.shots.indexOf(copy) * STRIDE.shots + 7]).toBe(95)
     const life = copy.life
     game.tick(0.1)
     expect(copy.life).toBeLessThan(life)
@@ -721,12 +721,12 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     }
     game.state.enemies = []
     const view = readView(JSON.parse(JSON.stringify(toView(game.state))))!
-    for (let index = 7; index < view.shots.length; index += 8) expect(view.shots[index] % 2).toBe(1)
+    for (let index = 7; index < view.shots.length; index += STRIDE.shots) expect(view.shots[index] % 2).toBe(1)
     game.tick(1.51)
     const ready = readView(JSON.parse(JSON.stringify(toView(game.state))))!
     for (const owner of [0, 1]) {
       const variants = []
-      for (let index = 0; index < ready.shots.length; index += 8)
+      for (let index = 0; index < ready.shots.length; index += STRIDE.shots)
         if (ready.shots[index + 6] === owner) variants.push(ready.shots[index + 7] % 2)
       expect(variants).toContain(0)
       expect(variants).toContain(1)

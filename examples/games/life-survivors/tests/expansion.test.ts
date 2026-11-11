@@ -1037,9 +1037,9 @@ describe('protocol v21', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v22 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v23 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(22)
+    expect(view.v).toBe(23)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -1067,6 +1067,7 @@ describe('protocol v21', () => {
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
     expect(readView({ ...view, v: 21 })).toBeUndefined()
+    expect(readView({ ...view, v: 22 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
     expect(readView(noBullets)).toBeUndefined()
     const { bulletIds: _i, ...noBulletIds } = view
@@ -1084,10 +1085,10 @@ describe('protocol v21', () => {
     expect(readView({ ...view, enemies: [1, 0, 0, 0, 100, 0, 16] })).toBeUndefined()
     expect(readView({ ...view, enemies: [1, 999, 0, 0, 100, 0, 0] })).toBeUndefined()
     expect(readView({ ...view, enemies: [1, 0, 0, 0, 100, 0, 0] })).toBeTruthy()
-    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0] })).toBeUndefined()
-    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0, 1000] })).toBeUndefined()
-    expect(readView({ ...view, shots: [999, 0, 0, 10, 0, 100, 0, 0] })).toBeUndefined()
-    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0, 0] })).toBeTruthy()
+    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0, 0] })).toBeUndefined()
+    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0, 1000, 1] })).toBeUndefined()
+    expect(readView({ ...view, shots: [999, 0, 0, 10, 0, 100, 0, 0, 1] })).toBeUndefined()
+    expect(readView({ ...view, shots: [0, 0, 0, 10, 0, 100, 0, 0, 1] })).toBeTruthy()
     expect(readView({ ...view, popups: [0, 0, 5, 4, 0, 50] })).toBeUndefined()
     expect(readView({ ...view, popups: [0, 0, 5, 3, 0, 50] })).toBeTruthy()
     expect(readView({ ...view, fx: [1, 99, 0, 0, 0, 0] })).toBeUndefined()
