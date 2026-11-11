@@ -10,6 +10,8 @@ declare global {
         biteProp(prop: { kind: string; state: string }, dir: 1 | -1): void
         state: string
         time: number
+        goalX: number
+        goalY: number
       }
       openEnding(): void
     }
@@ -179,6 +181,15 @@ test('clearing the last stage leads from the result screen to the ending', async
   }
   expect(await page.evaluate(() => window.__hamham!.world.boss!.dead)).toBe(true)
 
+  // The fight can end anywhere in the arena, with a rock or a straggler in the way: take the last steps to the
+  // exit from right beside it, so this test stays about the clear -> ending flow.
+  await page.evaluate(() => {
+    const world = window.__hamham!.world
+    world.player.x = world.goalX - world.player.w - 8
+    world.player.y = world.goalY + 64 - world.player.h
+    world.player.vx = 0
+    world.player.vy = 0
+  })
   await page.keyboard.down('ArrowRight')
   await expect(page.locator('#result-screen')).toBeVisible({ timeout: 10_000 })
   await page.keyboard.up('ArrowRight')

@@ -1,7 +1,8 @@
 /** Canvas renderer: parallax background, tiles, entities, water and effects. */
 import type { BakedArt } from '../art'
-import { PAL } from '../art/palette'
-import type { ThemeId } from '../art'
+import { PAL } from '../art/legacy/palette'
+import type { ThemeId } from '../art/contract'
+import type { LegacyFx } from '../view/legacy-fx'
 import { T, type Boss, type Enemy, type Prop, type World } from './sim'
 import { TILE } from './types'
 
@@ -109,14 +110,14 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false
   }
 
-  draw(world: World, dt: number) {
+  draw(world: World, fx: LegacyFx, dt: number) {
     const ctx = this.ctx
     const w = this.canvas.width
     const h = this.canvas.height
-    const shakeX = world.shake > 0 ? Math.sin(world.time * 70) * world.shake * 6 : 0
-    const shakeY = world.shake > 0 ? Math.cos(world.time * 63) * world.shake * 4 : 0
-    const camX = Math.round(world.cameraX + shakeX)
-    const camY = Math.round(world.cameraY + shakeY)
+    const shakeX = fx.shake > 0 ? Math.sin(world.time * 70) * fx.shake * 6 : 0
+    const shakeY = fx.shake > 0 ? Math.cos(world.time * 63) * fx.shake * 4 : 0
+    const camX = Math.round(fx.cameraX + shakeX)
+    const camY = Math.round(fx.cameraY + shakeY)
     this.drawBackground(world.theme, camX, camY, world.time, w, h)
     ctx.save()
     ctx.translate(-camX, -camY)
@@ -129,8 +130,8 @@ export class Renderer {
     if (world.boss) this.drawBoss(world.boss, world.time)
     this.drawPlayer(world)
     this.drawWater(world)
-    this.drawParticles(world)
-    this.drawFloaters(world)
+    this.drawParticles(fx)
+    this.drawFloaters(fx)
     ctx.restore()
     this.drawVignette(w, h)
     void dt
@@ -526,8 +527,8 @@ export class Renderer {
     ctx.globalAlpha = 1
   }
 
-  private drawParticles(world: World) {
-    for (const particle of world.particles) {
+  private drawParticles(fx: LegacyFx) {
+    for (const particle of fx.particles) {
       this.ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife)
       this.ctx.fillStyle = particle.color
       this.ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size)
@@ -535,12 +536,12 @@ export class Renderer {
     this.ctx.globalAlpha = 1
   }
 
-  private drawFloaters(world: World) {
+  private drawFloaters(fx: LegacyFx) {
     const ctx = this.ctx
     ctx.font = 'bold 18px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    for (const floater of world.floaters) {
+    for (const floater of fx.floaters) {
       ctx.globalAlpha = Math.min(1, floater.life * 1.6)
       ctx.lineWidth = 4
       ctx.strokeStyle = PAL.ink

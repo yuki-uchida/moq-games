@@ -1,6 +1,9 @@
 /** Deterministic stage simulation: physics, gimmicks, enemies and bosses. No DOM access. */
-import type { ThemeId } from '../art'
+import type { ThemeId } from '../art/contract'
+import type { BossAttack, Dir, HurtCause, SimEvent } from './events'
 import { TILE, type BossDef, type EnemyKind, type PropKind, type StageDef } from './types'
+
+export type { SimEvent, SimEventType } from './events'
 
 export const T = {
   EMPTY: 0,
@@ -166,56 +169,11 @@ export interface Bee {
 
 export interface Shot extends Body {
   kind: 'seed' | 'shock' | 'rock'
+  /** Which picture the view uses for the projectile. */
+  skin?: 'seed' | 'feather' | 'stinger' | 'orb'
   hostile: boolean
   life: number
   dead: boolean
-}
-
-export interface Particle {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  life: number
-  maxLife: number
-  color: string
-  size: number
-  gravity: number
-}
-
-export interface Floater {
-  x: number
-  y: number
-  text: string
-  life: number
-  color: string
-}
-
-export interface SimEvent {
-  type:
-    | 'jump'
-    | 'land'
-    | 'bite'
-    | 'dig'
-    | 'tree'
-    | 'pipe'
-    | 'hive'
-    | 'animal'
-    | 'rock'
-    | 'switch'
-    | 'fruit'
-    | 'hurt'
-    | 'enemy-down'
-    | 'boss-hit'
-    | 'boss-awake'
-    | 'boss-down'
-    | 'clear'
-    | 'dead'
-    | 'splash'
-    | 'shock'
-    | 'pickup'
-  x?: number
-  y?: number
 }
 
 export interface WorldOptions {
@@ -271,8 +229,6 @@ export class World {
   props: Prop[] = []
   bees: Bee[] = []
   shots: Shot[] = []
-  particles: Particle[] = []
-  floaters: Floater[] = []
   boss: Boss | null = null
   /** The temporary barrier that seals the boss arena while the fight is on. */
   bossGate: { x: number; top: number; bottom: number; cells: number[] } | null = null
@@ -284,10 +240,8 @@ export class World {
   goalOpen = false
   goalX = 0
   goalY = 0
+  /** Everything that happened since the view last drained this list. */
   events: SimEvent[] = []
-  shake = 0
-  cameraX = 0
-  cameraY = 0
   private rng: Rng
   private nextId = 1
   private waterTick = 0
@@ -321,8 +275,7 @@ export class World {
         else if (ch === '~') {
           this.water[y * cols + x] = 1
           this.waterTotal += 1
-        }
-        else if (ch === '@') {
+        } else if (ch === '@') {
           startX = px + 10
           startY = py + TILE - PLAYER_H
         } else if (ch === 'x' || ch === 'y') {
@@ -637,11 +590,9 @@ export class World {
   step(dt: number, input: InputState) {
     if (this.state !== 'play') {
       this.clearTimer += dt
-      this.updateParticles(dt)
       return
     }
     this.time += dt
-    this.shake = Math.max(0, this.shake - dt * 3)
     this.updatePlayer(dt, input)
     this.updateEnemies(dt)
     if (this.boss) this.updateBoss(dt)
@@ -649,10 +600,28 @@ export class World {
     this.updateBees(dt)
     this.updateShots(dt)
     this.updateWater(dt)
-    this.updateParticles(dt)
-    this.updateFloaters(dt)
-    this.updateCamera(dt)
     this.checkGoal()
+  }
+
+  private emit(event: SimEvent) {
+    this.events.push(event)
+  }
+
+  private centre(b: Rect) {
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+  }
+
+  private feet(b: Rect) {
+    return { x: b.x + b.w / 2, y: b.y + b.h }
+  }
+
+  /** Top edge (world px) of the highest water cell in the hero's column around the body. */
+  private waterSurfaceY(b: Rect): number {
+    const tx = Math.floor((b.x + b.w / 2) / TILE)
+    const from = Math.floor(b.y / TILE) - 1
+    const to = Math.floor((b.y + b.h) / TILE) + 2
+    for (let ty = Math.max(0, from); ty <= to; ty++) if (this.waterAt(tx, ty)) return ty * TILE
+    return b.y + b.h / 2
   }
 
   private updatePlayer(dt: number, input: InputState) {
@@ -672,15 +641,26 @@ export class World {
         p.dropTimer = 0.28
         p.y += 4
         p.onGround = false
+        this.emit({ type: 'drop', ...this.feet(p) })
       }
     }
     p.coyote = Math.max(0, p.coyote - dt)
     p.jumpBuffer = Math.max(0, p.jumpBuffer - dt)
 
     // water state
+    const wasInWater = p.inWater
     const feetTy = Math.floor((p.y + p.h * 0.6) / TILE)
     const midTx = Math.floor((p.x + p.w / 2) / TILE)
     p.inWater = this.waterAt(midTx, feetTy) || this.waterAt(midTx, feetTy + 1)
+    if (p.inWater !== wasInWater) {
+      this.emit({
+        type: 'splash',
+        x: p.x + p.w / 2,
+        y: this.waterSurfaceY(p),
+        enter: p.inWater,
+        speed: Math.abs(p.vy)
+      })
+    }
 
     // horizontal
     const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL
@@ -716,21 +696,18 @@ export class World {
       p.onGround = false
       p.coyote = 0
       p.jumpBuffer = 0
-      this.events.push({ type: 'jump', x: p.x, y: p.y })
-      this.burst(p.x + p.w / 2, p.y + p.h, 5, '#ffffff', 60, 0.3)
+      this.emit({ type: 'jump', ...this.feet(p) })
     }
 
     const wasGround = p.onGround
+    const fallSpeed = p.vy
     const move = this.moveBody(p, dt)
     p.onGround = move.grounded
     if (p.onGround) {
       p.coyote = COYOTE
       p.lastSafeX = p.x
       p.lastSafeY = p.y
-      if (!wasGround) {
-        this.events.push({ type: 'land', x: p.x, y: p.y })
-        this.burst(p.x + p.w / 2, p.y + p.h, 4, '#ffffff', 40, 0.25)
-      }
+      if (!wasGround) this.emit({ type: 'land', ...this.feet(p), speed: Math.max(0, fallSpeed) })
     }
 
     // bite
@@ -741,16 +718,17 @@ export class World {
     }
 
     // spikes
-    if (this.touchingTile(p, T.SPIKE)) this.hurtPlayer(1, p.x + (p.facing > 0 ? -40 : 40))
+    if (this.touchingTile(p, T.SPIKE)) this.hurtPlayer(1, p.x + (p.facing > 0 ? -40 : 40), 'spike')
 
     // pit fall: below the last ground row the player is out of the world
     if (p.y > (this.h - 1) * TILE) {
-      this.hurtPlayer(1, p.x)
+      this.hurtPlayer(1, p.x, 'pit')
       if (!p.dead) {
         p.x = p.lastSafeX
         p.y = p.lastSafeY - 4
         p.vx = 0
         p.vy = 0
+        this.emit({ type: 'respawn', ...this.feet(p) })
       }
     }
 
@@ -825,8 +803,7 @@ export class World {
       const ty = Math.floor((b.y + b.h) / TILE)
       for (let tx = left; tx <= right; tx++) {
         const solid = this.solidAt(tx, ty)
-        const platform =
-          this.tileAt(tx, ty) === T.PLATFORM && prevBottom <= ty * TILE + 1 && (b.dropTimer ?? 0) <= 0
+        const platform = this.tileAt(tx, ty) === T.PLATFORM && prevBottom <= ty * TILE + 1 && (b.dropTimer ?? 0) <= 0
         if (solid || platform) {
           b.y = ty * TILE - b.h
           b.vy = 0
@@ -848,7 +825,6 @@ export class World {
 
   private doBite() {
     const p = this.player
-    this.events.push({ type: 'bite', x: p.x, y: p.y })
     const box: Rect = {
       x: p.facing > 0 ? p.x + p.w - 4 : p.x - BITE_W + 4,
       y: p.y + 2,
@@ -885,18 +861,17 @@ export class World {
           hit = true
         }
       }
-    if (hit) this.shake = Math.max(this.shake, 0.12)
+    this.emit({ type: 'bite', ...this.centre(box), dir: p.facing, hit })
   }
 
   private digTile(tx: number, ty: number) {
     if (this.tileAt(tx, ty) !== T.DIRT) return
     this.tiles[ty * this.w + tx] = T.EMPTY
-    this.events.push({ type: 'dig', x: tx * TILE, y: ty * TILE })
-    this.burst(tx * TILE + 32, ty * TILE + 32, 8, '#c98b4b', 130, 0.5)
+    this.emit({ type: 'dig', tx, ty, primary: true })
     // Open the tile above too, so a dug tunnel is tall enough to jump out of.
     if (ty > 0 && this.tileAt(tx, ty - 1) === T.DIRT) {
       this.tiles[(ty - 1) * this.w + tx] = T.EMPTY
-      this.burst(tx * TILE + 32, (ty - 1) * TILE + 32, 6, '#c98b4b', 110, 0.45)
+      this.emit({ type: 'dig', tx, ty: ty - 1, primary: false })
       if (this.rng.next() > 0.5) this.dropMaterial(tx * TILE, (ty - 1) * TILE)
     }
     // collapse dirt directly below, up to a few tiles
@@ -904,7 +879,7 @@ export class World {
     let count = 0
     while (below < this.h && count < 4 && this.tileAt(tx, below) === T.DIRT) {
       this.tiles[below * this.w + tx] = T.EMPTY
-      this.burst(tx * TILE + 32, below * TILE + 32, 5, '#c98b4b', 110, 0.45)
+      this.emit({ type: 'dig', tx, ty: below, primary: false })
       below++
       count++
     }
@@ -917,21 +892,19 @@ export class World {
       case 'tree':
       case 'pine': {
         prop.hp -= 1
-        this.events.push({ type: 'tree', x: px, y: py })
-        this.burst(px, py, 6, '#4fbf67', 110, 0.4)
+        this.emit({ type: 'chop', kind: prop.kind, x: px, y: py, dir, left: prop.hp })
         if (prop.hp <= 0) this.fallTree(prop, dir)
         break
       }
       case 'pipe': {
         prop.state = 'broken'
         prop.timer = 6
-        this.events.push({ type: 'pipe', x: px, y: py })
-        this.burst(px, py, 10, '#57b8ff', 150, 0.5)
+        this.emit({ type: 'pipe-burst', x: px, y: py })
         break
       }
       case 'hive': {
         prop.state = 'broken'
-        this.events.push({ type: 'hive', x: px, y: py })
+        this.emit({ type: 'hive-break', x: px, y: py })
         this.releaseBees(px, py)
         break
       }
@@ -939,34 +912,29 @@ export class World {
         prop.state = 'awake'
         prop.dir = dir
         prop.timer = 3
-        this.events.push({ type: 'animal', x: px, y: py })
+        this.emit({ type: 'animal-wake', x: px, y: py, dir })
         break
       }
       case 'rock': {
         prop.hp -= 1
-        this.events.push({ type: 'rock', x: px, y: py })
-        this.burst(px, py, 6, '#a8a0b8', 110, 0.4)
         if (prop.hp <= 0) {
           prop.state = 'broken'
           this.dynamic[(prop.y / TILE) * this.w + prop.x / TILE] = 0
-          this.burst(px, py, 14, '#a8a0b8', 190, 0.6)
+          this.emit({ type: 'rock-break', x: px, y: py })
           if (this.rng.next() > 0.55) this.dropFruit(prop.x, prop.y)
-        }
+        } else this.emit({ type: 'rock-crack', x: px, y: py })
         break
       }
       case 'switch': {
         prop.state = 'done'
-        this.events.push({ type: 'switch', x: px, y: py })
+        this.emit({ type: 'switch', x: px, y: py, id: prop.data })
         this.openDoors(prop.data)
-        this.burst(px, py, 8, '#ffd45e', 130, 0.4)
         break
       }
       case 'princess':
         if (prop.data === 1) {
           prop.data = 0
-          this.events.push({ type: 'switch', x: px, y: py })
-          this.burst(px, py, 14, '#ffd45e', 180, 0.6)
-          this.floaters.push({ x: px, y: py - 20, text: 'ハム姫を救出！', life: 1.8, color: '#ffd45e' })
+          this.emit({ type: 'princess-free', x: px, y: py })
         }
         break
       case 'fruit':
@@ -984,7 +952,13 @@ export class World {
     prop.state = 'falling'
     prop.dir = dir
     prop.timer = 0.45
-    this.events.push({ type: 'tree', x: prop.x, y: prop.y })
+    this.emit({
+      type: 'tree-fall',
+      kind: prop.kind as 'tree' | 'pine',
+      x: prop.x + TILE / 2,
+      y: prop.y + TILE / 2,
+      dir
+    })
   }
 
   private dropFruit(x: number, y: number) {
@@ -1001,14 +975,17 @@ export class World {
       dir: 1,
       data: 0
     })
+    this.emit({ type: 'spawn', kind: 'fruit', x: x + 32, y: y + 32 })
   }
 
   /** On the nest stage, digging and felled trees also yield building material. */
   private dropMaterial(x: number, y: number) {
     if (this.stage.objective !== 'collect') return
+    const kind = this.rng.next() > 0.5 ? 'twig' : 'berry'
+    this.emit({ type: 'spawn', kind, x: x + 32, y: y + 32 })
     this.props.push({
       id: this.nextId++,
-      kind: this.rng.next() > 0.5 ? 'twig' : 'berry',
+      kind,
       x: x + 16,
       y: y + 16,
       w: 0.5,
@@ -1035,7 +1012,6 @@ export class World {
         cooldown: 0
       })
     }
-    this.burst(x, y, 10, '#ffd45e', 150, 0.4)
   }
 
   private openDoors(id: number) {
@@ -1044,8 +1020,7 @@ export class World {
         prop.state = 'open'
         for (let ty = 0; ty < prop.h; ty++)
           for (let tx = 0; tx < prop.w; tx++) this.dynamic[(prop.y / TILE + ty) * this.w + (prop.x / TILE + tx)] = 0
-        this.events.push({ type: 'switch', x: prop.x, y: prop.y })
-        this.burst(prop.x + (prop.w * TILE) / 2, prop.y + (prop.h * TILE) / 2, 16, '#ffd45e', 200, 0.6)
+        this.emit({ type: 'door-open', x: prop.x, y: prop.y, w: prop.w, h: prop.h, id: prop.data })
       }
     }
   }
@@ -1070,29 +1045,21 @@ export class World {
     }
     if (!cells.length) return
     this.bossGate = { x: tx, top, bottom, cells }
-    this.burst(tx * TILE + TILE / 2, top * TILE + TILE / 2, 18, '#ffd45e', 210, 0.6)
+    this.emit({ type: 'gate-up', tx, top, bottom })
   }
 
   private lowerBossGate() {
     const gate = this.bossGate
     if (!gate) return
     for (const i of gate.cells) this.dynamic[i] = 0
-    this.burst(gate.x * TILE + TILE / 2, (gate.top + 1) * TILE, 16, '#ffd45e', 220, 0.7)
+    this.emit({ type: 'gate-down', tx: gate.x, top: gate.top, bottom: gate.bottom })
     this.bossGate = null
   }
 
   private awakeBoss(boss: Boss) {
     boss.active = true
     this.raiseBossGate()
-    this.shake = Math.max(this.shake, 0.7)
-    this.floaters.push({
-      x: boss.x + boss.w / 2,
-      y: boss.y - 10,
-      text: `${boss.def.name} が たちはだかった！`,
-      life: 1.8,
-      color: '#ffd45e'
-    })
-    this.events.push({ type: 'boss-awake', x: boss.x, y: boss.y })
+    this.emit({ type: 'boss-awake', ...this.centre(boss) })
   }
 
   collect(prop: Prop) {
@@ -1101,18 +1068,22 @@ export class World {
     const y = prop.y + 32
     if (prop.kind === 'fruit') {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1)
-      this.floaters.push({ x, y, text: 'たいりょく+1', life: 1, color: '#ff9aa4' })
-      this.events.push({ type: 'fruit', x, y })
+      this.emit({ type: 'pickup', kind: 'fruit', x, y, hp: this.player.hp })
     } else if (prop.kind === 'star') {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + 2)
-      this.floaters.push({ x, y, text: 'きらきら+2', life: 1.1, color: '#ffd45e' })
-      this.events.push({ type: 'pickup', x, y })
+      this.emit({ type: 'pickup', kind: 'star', x, y, hp: this.player.hp })
     } else {
       this.collected += 1
-      this.floaters.push({ x, y, text: `${this.collected}/${this.stage.collect ?? 0}`, life: 1, color: '#a4f29a' })
-      this.events.push({ type: 'pickup', x, y })
+      this.emit({
+        type: 'pickup',
+        kind: prop.kind === 'berry' ? 'berry' : 'twig',
+        x,
+        y,
+        hp: this.player.hp,
+        count: this.collected,
+        need: this.stage.collect ?? 0
+      })
     }
-    this.burst(x, y, 8, prop.kind === 'berry' ? '#d06ae8' : '#ffd45e', 120, 0.4)
     if (this.stage.objective === 'collect' && this.collected >= (this.stage.collect ?? 0) && !this.bossSpawned()) {
       this.spawnBoss()
     }
@@ -1159,8 +1130,8 @@ export class World {
       invuln: 0
     }
     // The nest stage summoned the boss where the player stands, so seal the arena right away.
+    this.emit({ type: 'boss-awake', ...this.centre(this.boss) })
     this.raiseBossGate()
-    this.shake = 0.8
   }
 
   // ------------------------------------------------------------------ enemies
@@ -1189,7 +1160,7 @@ export class World {
         if (enemy.onGround) {
           enemy.vy = -520
           enemy.vx = dir * stats.speed
-          this.burst(enemy.x + enemy.w / 2, enemy.y + enemy.h, 3, '#ffffff', 40, 0.25)
+          this.emit({ type: 'hop', id: enemy.id, ...this.feet(enemy) })
         }
         this.moveEnemy(enemy, dt)
       } else if (enemy.kind === 'flyer') {
@@ -1217,14 +1188,21 @@ export class World {
             vy: -40,
             hostile: true,
             life: 4,
-            dead: false
+            dead: false,
+            skin: 'seed'
           })
-          this.events.push({ type: 'bite', x: enemy.x, y: enemy.y })
+          this.emit({
+            type: 'spit',
+            id: enemy.id,
+            x: enemy.x + enemy.w / 2,
+            y: enemy.y + enemy.h * 0.4,
+            dir
+          })
         }
       }
       if (enemy.y > this.h * TILE + 120) enemy.dead = true
       if (this.overlaps(this.player, enemy) && !this.player.dead) {
-        this.hurtPlayer(enemy.touchDamage, enemy.x + enemy.w / 2)
+        this.hurtPlayer(enemy.touchDamage, enemy.x + enemy.w / 2, 'enemy')
       }
       if (enemy.hp <= 0 && !enemy.dead) this.killEnemy(enemy)
     }
@@ -1248,17 +1226,28 @@ export class World {
     enemy.hitFlash = 0.16
     enemy.vx = dir * 220
     enemy.vy = -180
-    this.events.push({ type: 'enemy-down', x: enemy.x, y: enemy.y })
-    this.burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, 7, '#ffffff', 150, 0.4)
-    this.shake = Math.max(this.shake, 0.14)
+    if (enemy.hp > 0) {
+      this.emit({
+        type: 'enemy-hit',
+        id: enemy.id,
+        kind: enemy.kind,
+        ...this.centre(enemy),
+        dir
+      })
+    }
   }
 
   private killEnemy(enemy: Enemy) {
     enemy.dead = true
     enemy.hitFlash = 0.2
     this.kills += 1
-    this.burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, 14, '#ffd45e', 200, 0.6)
-    this.floaters.push({ x: enemy.x + enemy.w / 2, y: enemy.y, text: '100', life: 0.8, color: '#fff3b8' })
+    this.emit({
+      type: 'enemy-down',
+      id: enemy.id,
+      kind: enemy.kind,
+      ...this.centre(enemy),
+      dir: enemy.vx < 0 ? -1 : 1
+    })
   }
 
   // ------------------------------------------------------------------ boss
@@ -1305,16 +1294,15 @@ export class World {
     const move = this.moveBody(boss, dt)
     boss.onGround = move.grounded
     if (move.hitWall && boss.state === 'charge') {
+      this.emit({ type: 'boss-crash', ...this.centre(boss), dir: boss.facing })
       this.setBossState(boss, 'stunned')
-      this.shake = 0.5
-      this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 16, '#ffffff', 220, 0.6)
     }
     if (boss.y > this.h * TILE + 200) {
       boss.y = 0
       boss.vy = 0
     }
     if (this.overlaps(p, boss) && !p.dead && boss.state !== 'stunned' && boss.state !== 'tired') {
-      this.hurtPlayer(1, boss.x + boss.w / 2)
+      this.hurtPlayer(1, boss.x + boss.w / 2, 'boss')
     }
     if (boss.hp <= 0 && !boss.dead) this.defeatBoss()
   }
@@ -1334,8 +1322,7 @@ export class World {
     boss.stamina -= dt * 4
     if (boss.stamina <= 0) {
       boss.stamina = 0
-      boss.state = 'tired'
-      this.floaters.push({ x: boss.x, y: boss.y, text: 'ハム代はつかれた…', life: 1.6, color: '#ffd45e' })
+      this.setBossTired(boss)
       return
     }
     // She starts fast and visibly fades as her stamina runs out.
@@ -1380,7 +1367,7 @@ export class World {
         if (boss.stateTime > 0.45) {
           this.setBossState(boss, 'charge')
           boss.vx = dir * speed * 2.1
-          this.events.push({ type: 'shock', x: boss.x, y: boss.y })
+          this.emitBossAttack(boss, 'charge')
         }
         break
       case 'charge': {
@@ -1430,7 +1417,7 @@ export class World {
           this.setBossState(boss, 'dive')
           boss.vx = dir * boss.def.speed * 2.4
           boss.vy = 260
-          this.events.push({ type: 'shock', x: boss.x, y: boss.y })
+          this.emitBossAttack(boss, 'dive')
         }
         break
       case 'dive':
@@ -1448,6 +1435,7 @@ export class World {
     boss.shotTimer -= dt
     if (boss.def.projectiles && boss.shotTimer <= 0 && boss.state === 'idle') {
       boss.shotTimer = 1.7
+      this.emit({ type: 'boss-shoot', ...this.centre(boss), count: boss.def.projectiles })
       for (let i = 0; i < boss.def.projectiles; i++) {
         const spread = (i - (boss.def.projectiles - 1) / 2) * 0.35
         this.shots.push({
@@ -1460,7 +1448,8 @@ export class World {
           vy: Math.sin(spread) * 240 + 60,
           hostile: true,
           life: 4,
-          dead: false
+          dead: false,
+          skin: this.bossSkin(boss)
         })
       }
     }
@@ -1481,16 +1470,15 @@ export class World {
           this.setBossState(boss, 'slam')
           boss.vy = -620
           boss.vx = dir * boss.def.speed * 1.6
+          this.emitBossAttack(boss, 'leap')
         }
         break
       case 'slam':
         if (boss.onGround && boss.stateTime > 0.2) {
           this.setBossState(boss, 'recover')
-          this.shake = 0.7
-          this.events.push({ type: 'shock', x: boss.x, y: boss.y })
+          this.emit({ type: 'boss-slam', ...this.feet(boss) })
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, -1)
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, 1)
-          this.burst(boss.x + boss.w / 2, boss.y + boss.h, 18, '#a8a0b8', 240, 0.7)
         }
         break
       case 'recover':
@@ -1521,7 +1509,7 @@ export class World {
         if (boss.stateTime > 0.35) {
           this.setBossState(boss, 'charge')
           boss.vx = dir * boss.def.speed * 2.6
-          this.events.push({ type: 'shock', x: boss.x, y: boss.y })
+          this.emitBossAttack(boss, 'dash')
         }
         break
       case 'charge':
@@ -1544,6 +1532,7 @@ export class World {
     boss.shotTimer -= dt
     if (boss.def.projectiles && boss.shotTimer <= 0) {
       boss.shotTimer = 2.1
+      this.emit({ type: 'boss-shoot', ...this.centre(boss), count: boss.def.projectiles })
       for (let i = 0; i < boss.def.projectiles; i++) {
         const spread = (i - (boss.def.projectiles - 1) / 2) * 0.4
         this.shots.push({
@@ -1556,7 +1545,8 @@ export class World {
           vy: Math.sin(spread) * 220,
           hostile: true,
           life: 4,
-          dead: false
+          dead: false,
+          skin: this.bossSkin(boss)
         })
       }
     }
@@ -1567,9 +1557,7 @@ export class World {
     if (boss.phase === 1 && boss.hp <= boss.maxHp / 2) {
       boss.phase = 2
       boss.stateTime = 0
-      this.shake = 0.6
-      this.floaters.push({ x: boss.x, y: boss.y, text: '黒ハム王 第二形態！', life: 1.6, color: '#ff5f8f' })
-      this.events.push({ type: 'boss-hit', x: boss.x, y: boss.y })
+      this.emit({ type: 'boss-phase', phase: 2, ...this.centre(boss) })
     }
     const speed = boss.def.speed * (boss.phase === 2 ? 1.25 : 1)
     switch (boss.state) {
@@ -1586,13 +1574,15 @@ export class World {
             this.setBossState(boss, 'slam')
             boss.vy = -640
             boss.vx = dir * speed * 1.5
+            this.emitBossAttack(boss, 'leap')
           } else if (roll > 0.33 && boss.def.projectiles) {
             this.setBossState(boss, 'shoot')
+            this.emitBossAttack(boss, 'cast')
           } else {
             this.setBossState(boss, 'charge')
             boss.vx = dir * speed * 2.4
+            this.emitBossAttack(boss, 'charge')
           }
-          this.events.push({ type: 'shock', x: boss.x, y: boss.y })
         }
         break
       case 'charge':
@@ -1602,6 +1592,7 @@ export class World {
         boss.vx *= 0.6
         if (boss.stateTime > 0.5) {
           const count = boss.def.projectiles + boss.phase - 1
+          this.emit({ type: 'boss-shoot', ...this.centre(boss), count })
           for (let i = 0; i < count; i++) {
             const a = Math.PI * (0.15 + (i / Math.max(1, count - 1)) * 0.7)
             const dirX = this.player.x > boss.x ? 1 : -1
@@ -1615,7 +1606,8 @@ export class World {
               vy: -Math.sin(a) * 250,
               hostile: true,
               life: 5,
-              dead: false
+              dead: false,
+              skin: this.bossSkin(boss)
             })
           }
           this.setBossState(boss, 'recover')
@@ -1624,7 +1616,7 @@ export class World {
       case 'slam':
         if (boss.onGround && boss.stateTime > 0.2) {
           this.setBossState(boss, 'recover')
-          this.shake = 0.8
+          this.emit({ type: 'boss-slam', ...this.feet(boss) })
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, -1)
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, 1)
         }
@@ -1648,6 +1640,32 @@ export class World {
   private setBossState(boss: Boss, state: Boss['state']) {
     boss.state = state
     boss.stateTime = 0
+    this.emit({ type: 'boss-state', state, ...this.centre(boss), dir: boss.facing })
+  }
+
+  /** The chasing parent has no stamina left. */
+  private setBossTired(boss: Boss) {
+    boss.state = 'tired'
+    this.emit({ type: 'boss-state', state: 'tired', ...this.centre(boss), dir: boss.facing })
+    this.emit({ type: 'boss-tired', ...this.centre(boss) })
+  }
+
+  private emitBossAttack(boss: Boss, attack: BossAttack) {
+    this.emit({ type: 'boss-attack', attack, ...this.centre(boss), dir: boss.facing })
+  }
+
+  private bossSkin(boss: Boss): Shot['skin'] {
+    switch (boss.def.art) {
+      case 'crowBoss':
+        return 'feather'
+      case 'beeBoss':
+        return 'stinger'
+      case 'foxBoss':
+      case 'king':
+        return 'orb'
+      default:
+        return 'seed'
+    }
   }
 
   private spawnShock(x: number, y: number, dir: 1 | -1) {
@@ -1663,7 +1681,7 @@ export class World {
       life: 1.6,
       dead: false
     })
-    this.events.push({ type: 'shock', x, y })
+    this.emit({ type: 'shock', x, y, dir })
   }
 
   private spawnMinion(boss: Boss) {
@@ -1692,7 +1710,7 @@ export class World {
       anchor: boss.x,
       touchDamage: stats.touch
     })
-    this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 10, '#c9b8ff', 160, 0.5)
+    this.emit({ type: 'minion', kind, x: boss.x + boss.w / 2 + dir * 40, y: boss.y + boss.h - stats.h / 2 })
   }
 
   damageBoss(amount: number) {
@@ -1702,22 +1720,25 @@ export class World {
       // A chasing parent is never defeated: hits only tire her out faster.
       boss.stamina = Math.max(0, boss.stamina - amount * 9)
       boss.hitFlash = 0.18
-      this.events.push({ type: 'boss-hit', x: boss.x, y: boss.y })
-      this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 8, '#ffd45e', 170, 0.45)
-      this.shake = Math.max(this.shake, 0.16)
-      if (boss.stamina <= 0 && boss.state !== 'tired') {
-        boss.state = 'tired'
-        this.floaters.push({ x: boss.x, y: boss.y, text: 'ハム代はつかれた…', life: 1.6, color: '#ffd45e' })
-      }
+      this.emit({
+        type: 'boss-hit',
+        ...this.centre(boss),
+        ratio: Math.max(0, Math.min(1, boss.stamina / boss.maxStamina)),
+        weak: false
+      })
+      if (boss.stamina <= 0 && boss.state !== 'tired') this.setBossTired(boss)
       return
     }
     const bonus = boss.state === 'stunned' || boss.state === 'recover' ? 1 : 0
     boss.hp -= amount + bonus
     boss.hitFlash = 0.18
     boss.invuln = 0.12
-    this.events.push({ type: 'boss-hit', x: boss.x, y: boss.y })
-    this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 10, '#ffd45e', 190, 0.5)
-    this.shake = Math.max(this.shake, 0.2)
+    this.emit({
+      type: 'boss-hit',
+      ...this.centre(boss),
+      ratio: Math.max(0, Math.min(1, boss.hp / boss.maxHp)),
+      weak: bonus > 0
+    })
     if (boss.hp <= 0 && !boss.dead) this.defeatBoss()
   }
 
@@ -1725,19 +1746,17 @@ export class World {
     const boss = this.boss!
     boss.dead = true
     this.kills += 1
-    this.shake = 1
-    this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 40, '#ffd45e', 320, 1)
-    this.burst(boss.x + boss.w / 2, boss.y + boss.h / 2, 24, '#ff9ecb', 260, 0.9)
-    this.floaters.push({ x: boss.x + boss.w / 2, y: boss.y, text: 'ボス撃破！', life: 1.6, color: '#ffd45e' })
-    this.events.push({ type: 'boss-down', x: boss.x, y: boss.y })
+    this.emit({ type: 'boss-down', ...this.centre(boss) })
     this.lowerBossGate()
-    if (this.stage.objective === 'boss' || this.stage.objective === 'collect') this.goalOpen = true
+    if (this.stage.objective === 'boss' || this.stage.objective === 'collect') {
+      this.goalOpen = true
+      this.emit({ type: 'goal-open', x: this.goalX + TILE / 2, y: this.goalY + TILE / 2 })
+    }
     // Free every caged princess once her captor is down.
     for (const prop of this.props) {
       if (prop.kind === 'princess' && prop.data === 1) {
         prop.data = 0
-        this.burst(prop.x + 32, prop.y + 32, 16, '#ffd45e', 200, 0.7)
-        this.floaters.push({ x: prop.x + 32, y: prop.y, text: 'ハム姫を救出！', life: 1.8, color: '#ffd45e' })
+        this.emit({ type: 'princess-free', x: prop.x + TILE / 2, y: prop.y + TILE / 2 })
       }
     }
   }
@@ -1773,7 +1792,10 @@ export class World {
               if (!enemy.dead && this.overlaps(body, enemy)) this.damageEnemy(enemy, 2, prop.dir)
             }
             if (this.boss && !this.boss.dead && this.overlaps(body, this.boss)) this.damageBoss(2)
-            if (prop.timer <= 0 || prop.x < -200 || prop.x > this.w * TILE + 200) prop.state = 'done'
+            if (prop.timer <= 0 || prop.x < -200 || prop.x > this.w * TILE + 200) {
+              prop.state = 'done'
+              this.emit({ type: 'animal-done', x: prop.x + TILE / 2, y: prop.y + TILE / 2 })
+            }
           }
           break
         default:
@@ -1807,10 +1829,17 @@ export class World {
       Math.abs(this.player.x + this.player.w / 2 - cx) < 100 &&
       Math.abs(this.player.y + this.player.h - (cy + 40)) < 70
     )
-      this.hurtPlayer(1, cx)
-    this.events.push({ type: 'tree', x: cx, y: cy })
-    this.shake = Math.max(this.shake, 0.4)
-    this.burst(cx, cy + 40, 14, '#c98b4b', 220, 0.6)
+      this.hurtPlayer(1, cx, 'tree')
+    this.emit({
+      type: 'tree-land',
+      kind: prop.kind as 'tree' | 'pine',
+      x: (Math.min(baseTx, baseTx + prop.dir * 3) + 2) * TILE,
+      y: baseTy * TILE,
+      dir: prop.dir,
+      tx: Math.min(baseTx, baseTx + prop.dir * 3),
+      ty: baseTy,
+      length: 4
+    })
     if (this.rng.next() > 0.35) this.dropMaterial(prop.x * 1, prop.y)
     // Never leave the player buried under the fallen trunk: slide them out to the nearer side.
     const startTx = Math.min(baseTx, baseTx + prop.dir * 3)
@@ -1847,13 +1876,14 @@ export class World {
       bee.y += bee.vy * dt
       if (target && bee.cooldown <= 0 && this.overlaps({ x: bee.x - 8, y: bee.y - 8, w: 16, h: 16 }, target)) {
         bee.cooldown = 0.5
+        this.emit({ type: 'sting', x: bee.x, y: bee.y })
         if ('def' in target) this.damageBoss(1)
         else this.damageEnemy(target as Enemy, 1, bee.vx > 0 ? 1 : -1)
       }
       if (bee.life <= 0) continue
       const p = this.player
       if (!p.dead && this.overlaps({ x: bee.x - 8, y: bee.y - 8, w: 16, h: 16 }, p)) {
-        this.hurtPlayer(1, bee.x)
+        this.hurtPlayer(1, bee.x, 'bee')
         bee.life = 0
       }
     }
@@ -1892,11 +1922,11 @@ export class World {
       const ty = Math.floor((shot.y + shot.h / 2) / TILE)
       if (this.solidAt(tx, ty)) {
         shot.dead = true
-        this.burst(shot.x, shot.y, 5, shot.kind === 'shock' ? '#ffd45e' : '#c9b8ff', 120, 0.35)
+        this.emit({ type: 'shot-hit', kind: shot.kind, x: shot.x, y: shot.y })
         continue
       }
       if (shot.hostile && !this.player.dead && this.overlaps(shot, this.player)) {
-        this.hurtPlayer(1, shot.x)
+        this.hurtPlayer(1, shot.x, 'shot')
         shot.dead = true
       }
       if (shot.life <= 0) shot.dead = true
@@ -1972,53 +2002,6 @@ export class World {
     }
   }
 
-  // ------------------------------------------------------------------ effects
-
-  burst(x: number, y: number, count: number, color: string, speed = 120, life = 0.5) {
-    for (let i = 0; i < count; i++) {
-      const a = this.rng.range(0, Math.PI * 2)
-      const v = this.rng.range(speed * 0.3, speed)
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(a) * v,
-        vy: Math.sin(a) * v - 40,
-        life: this.rng.range(life * 0.5, life),
-        maxLife: life,
-        color,
-        size: this.rng.range(2, 5),
-        gravity: 500
-      })
-    }
-  }
-
-  private updateParticles(dt: number) {
-    for (const particle of this.particles) {
-      particle.life -= dt
-      particle.vy += particle.gravity * dt
-      particle.x += particle.vx * dt
-      particle.y += particle.vy * dt
-    }
-    this.particles = this.particles.filter((particle) => particle.life > 0)
-  }
-
-  private updateFloaters(dt: number) {
-    for (const floater of this.floaters) {
-      floater.life -= dt
-      floater.y -= 34 * dt
-    }
-    this.floaters = this.floaters.filter((floater) => floater.life > 0)
-  }
-
-  private updateCamera(dt: number) {
-    const targetX = this.player.x + this.player.w / 2 - 320 + this.player.facing * 40
-    const targetY = this.player.y + this.player.h / 2 - 200
-    this.cameraX += (targetX - this.cameraX) * Math.min(1, dt * 6)
-    this.cameraY += (targetY - this.cameraY) * Math.min(1, dt * 5)
-    this.cameraX = Math.max(0, Math.min(this.w * TILE - 640, this.cameraX))
-    this.cameraY = Math.max(-40, Math.min(this.h * TILE - 360, this.cameraY))
-  }
-
   private checkGoal() {
     if (this.state !== 'play') return
     const goal = this.props.find((prop) => (prop.kind === 'goal' || prop.kind === 'nest') && prop.state === 'idle')
@@ -2027,27 +2010,25 @@ export class World {
     if (!this.goalOpen) return
     this.state = 'clear'
     this.clearTimer = 0
-    this.events.push({ type: 'clear', x: goal.x, y: goal.y })
-    this.burst(goal.x + 32, goal.y + 32, 30, '#ffd45e', 260, 0.9)
+    this.emit({ type: 'clear', x: goal.x + TILE / 2, y: goal.y + TILE / 2 })
   }
 
   // ------------------------------------------------------------------ damage
 
-  hurtPlayer(amount: number, sourceX: number) {
+  hurtPlayer(amount: number, sourceX: number, cause: HurtCause = 'enemy') {
     const p = this.player
     if (p.dead || p.invuln > 0) return
     p.hp -= amount
     p.invuln = INVULN
-    p.knockX = (p.x + p.w / 2 < sourceX ? -1 : 1) * 260
+    const dir: Dir = p.x + p.w / 2 < sourceX ? -1 : 1
+    p.knockX = dir * 260
     p.vy = -260
-    this.events.push({ type: 'hurt', x: p.x, y: p.y })
-    this.burst(p.x + p.w / 2, p.y + p.h / 2, 12, '#ff5f6d', 200, 0.6)
-    this.shake = Math.max(this.shake, 0.4)
+    if (p.hp < 0) p.hp = 0
+    this.emit({ type: 'hurt', ...this.centre(p), dir, hp: p.hp, cause })
     if (p.hp <= 0) {
-      p.hp = 0
       p.dead = true
       this.state = 'dead'
-      this.events.push({ type: 'dead', x: p.x, y: p.y })
+      this.emit({ type: 'dead', ...this.centre(p) })
     }
   }
 
