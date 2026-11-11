@@ -1,17 +1,23 @@
 /**
- * Every SfxName as layered synthesis, plus the sustained LoopName sounds. Per-name voice limits, cooldowns and
- * loudness trims (`sfx-trim.ts`) keep the set consistent and stop it from stacking.
+ * Every SfxName as layered synthesis, plus the sustained LoopName sounds. The definitions live in `sfx/` by
+ * group; per-name voice limits, cooldowns and loudness trims (`sfx-trim.ts`) keep the set consistent and stop it
+ * from stacking.
  */
 import { SFX, type LoopName, type SfxName } from './api'
 import type { Mixer } from './mixer'
 import { D, SfxBuilder, type SfxDef } from './sfx-builder'
 import { SFX_TRIM } from './sfx-trim'
+import { defs as bosses } from './sfx/bosses'
+import { defs as enemies } from './sfx/enemies'
+import { defs as gimmicks } from './sfx/gimmicks'
+import { defs as hero } from './sfx/hero'
+import { defs as ui } from './sfx/ui'
 
 /** Stand-in used until an effect is designed: a short neutral blip. */
 const blip: SfxDef = D(3, 0.04, 0.6, (b) => b.tone('triangle', 620, 760, 0.07, 0.3))
 
 /** Effects that have a real design. Everything else falls back to `blip`. */
-const DESIGNED: Partial<Record<SfxName, SfxDef>> = {}
+const DESIGNED: Partial<Record<SfxName, SfxDef>> = { ...hero, ...gimmicks, ...enemies, ...bosses, ...ui }
 
 export const SFX_DEFS: Record<SfxName, SfxDef> = Object.fromEntries(
   SFX.map((name) => [name, DESIGNED[name] ?? blip])
@@ -88,6 +94,7 @@ export function startLoop(mixer: Mixer, noise: AudioBuffer, name: LoopName): Loo
   let progressFn: ((p: number) => void) | undefined
 
   if (name === 'bees') {
+    // An angry swarm: two detuned saws through a band-pass with a fast flutter; `progress` raises the pitch.
     level = 0.22
     const o = osc('sawtooth', 185)
     const o2 = osc('sawtooth', 196)
@@ -119,6 +126,7 @@ export function startLoop(mixer: Mixer, noise: AudioBuffer, name: LoopName): Loo
     lfo(0.11, 500, bp2.frequency)
     lfo(0.23, 0.15, g2.gain)
   } else {
+    // water: a rushing body with a bright trickle on top
     level = 0.4
     const n = nsrc()
     const lp = filt('lowpass', 1100, 0.6)
