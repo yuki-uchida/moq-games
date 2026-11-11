@@ -1,5 +1,5 @@
 /** Deterministic stage simulation: physics, gimmicks, enemies and bosses. No DOM access. */
-import type { ThemeId } from '../art'
+import type { ThemeId } from '../art/contract'
 import { TILE, type BossDef, type EnemyKind, type PropKind, type StageDef } from './types'
 
 export const T = {

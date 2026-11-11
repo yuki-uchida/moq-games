@@ -1,7 +1,7 @@
 /** Canvas renderer: parallax background, tiles, entities, water and effects. */
 import type { BakedArt } from '../art'
-import { PAL } from '../art/palette'
-import type { ThemeId } from '../art'
+import { PAL } from '../art/legacy/palette'
+import type { ThemeId } from '../art/contract'
 import { T, type Boss, type Enemy, type Prop, type World } from './sim'
 import { TILE } from './types'
 

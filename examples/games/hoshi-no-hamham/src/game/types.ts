@@ -1,5 +1,5 @@
 /** Shared game types and the stage-data contract. */
-import type { ThemeId } from '../art'
+import type { ThemeId } from '../art/contract'
 
 export const TILE = 64
 

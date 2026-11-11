@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getArt } from '../src/art'
-import { isBlank } from '../src/art/pixel'
+import { isBlank } from '../src/art/legacy/pixel'
 import { OPENING_PAGES, STAGES, ENDING_PAGES, stageByNo } from '../src/game/stages'
 import { MAPS } from '../src/game/maps'
 import type { StageDef } from '../src/game/types'
