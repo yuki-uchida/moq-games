@@ -541,6 +541,11 @@ export class Renderer {
   private readonly sprites = new Map<string, HTMLCanvasElement>()
   private readonly shown = new Map<number, { x: number; y: number; seen: number }>()
   private readonly shownPlayers = new Map<string, { x: number; y: number }>()
+  /** Enemy bullets in flight by id: a straight path (position at host time `t`, velocity), moved locally every frame. */
+  private readonly flying = new Map<number, { kind: number; x: number; y: number; vx: number; vy: number; t: number }>()
+  private flyingView?: View
+  /** Seconds the guest has played on since the latest snapshot. */
+  private sinceSnapshot = 0
   private readonly states = new Map<number, EnemyState>()
   /** Pending life bars: x, y, width, filled width, height, colour (0 normal, 1 boss, 2 elite). */
   private readonly bars: number[] = []
@@ -3828,19 +3833,35 @@ export class Renderer {
     this.drawFoodLabels()
 
     // Enemy bullets: the animated sprite on a pulsing red danger halo (one baked image per bullet).
-    const b = view.bullets
-    if (b.length) {
+    if (view !== this.flyingView) {
+      this.flyingView = view
+      this.sinceSnapshot = 0
+      const b = view.bullets
+      const live = new Set(view.bulletIds)
+      for (let i = 0; i < b.length; i += STRIDE.bullets) {
+        live.add(b[i])
+        this.flying.set(b[i], { kind: b[i + 1], x: b[i + 2], y: b[i + 3], vx: b[i + 4], vy: b[i + 5], t: view.time })
+      }
+      for (const id of this.flying.keys()) if (!live.has(id)) this.flying.delete(id)
+    } else if (!view.paused?.length) this.sinceSnapshot += dt
+    // Guests draw bullets a little behind the snapshot clock, about where the eased crowd and players stand.
+    // ponytail: fixed lag tuned to ease()'s k=dt*14 at 10 Hz snapshots; retune if either changes.
+    const bulletTime = smooth ? view.time + Math.min(this.sinceSnapshot, 0.15) - 0.1 : view.time
+    if (this.flying.size) {
       const sprites = sheet('bullets')
       const sc = this.scale
       const kk = Math.max(1, Math.ceil(sc - 0.01))
       const size = Math.round(40 * sc)
       ctx.setTransform(1, 0, 0, 1, 0, 0)
-      for (let i = 0; i < b.length; i += STRIDE.bullets) {
-        if (!visible(b[i], b[i + 1])) continue
-        const kind = b[i + 2]
+      for (const [id, path] of this.flying) {
+        const age = bulletTime - path.t
+        const x = path.x + path.vx * age
+        const y = path.y + path.vy * age
+        if (!visible(x, y)) continue
+        const kind = path.kind
         const anim = sprites[BULLET_KINDS[kind]]
-        const index = frameIndex(anim, this.clock + i * 0.05)
-        const hot = Math.sin(this.clock * 12 + i) > 0
+        const index = frameIndex(anim, this.clock + id * 0.05)
+        const hot = Math.sin(this.clock * 12 + id) > 0
         const image = this.sprite(
           `bullet:${kind}:${index}:${hot}:${kk}`,
           (g) => {
@@ -3861,8 +3882,8 @@ export class Renderer {
         )
         ctx.drawImage(
           image,
-          Math.round(this.canvas.width / 2 + (b[i] - this.camera.x) * sc - size / 2),
-          Math.round(this.canvas.height / 2 + (b[i + 1] - this.camera.y) * sc - size / 2),
+          Math.round(this.canvas.width / 2 + (x - this.camera.x) * sc - size / 2),
+          Math.round(this.canvas.height / 2 + (y - this.camera.y) * sc - size / 2),
           size,
           size
         )

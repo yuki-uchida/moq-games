@@ -248,7 +248,7 @@ describe('過保護: 攻撃と防御を兼ねる盾', () => {
     expect(game.state.shots.filter((shot) => shot.v === 0)).toHaveLength(1)
     expect(game.state.shots).toHaveLength(2)
     const view = toView(game.state)
-    expect(view.v).toBe(21)
+    expect(view.v).toBe(22)
     // Spent (1), walking with her child (GUARD_WALK).
     expect(view.shots[7]).toBe(1 + GUARD_WALK)
     expect(readView(JSON.parse(JSON.stringify(view)))).toBeTruthy()

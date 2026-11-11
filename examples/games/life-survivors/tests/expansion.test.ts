@@ -624,6 +624,22 @@ describe('enemies', () => {
     expect(ofType(collect(game), FX.ENEMY_SHOT).length).toBeGreaterThan(0)
     const view = toView(game.state)
     expect(view.bullets.length).toBe(game.state.bullets.length * STRIDE.bullets)
+    // Fresh bullets carry their path; once older only their id rides along (except on their resend turn).
+    const bullet = game.state.bullets[0]
+    expect(view.bullets.slice(0, STRIDE.bullets)).toEqual([
+      bullet.id,
+      bullet.kind,
+      Math.round(bullet.x),
+      Math.round(bullet.y),
+      Math.round(bullet.vx),
+      Math.round(bullet.vy)
+    ])
+    const older = { ...game.state, bullets: [{ ...bullet, life: 1 }] }
+    expect(toView({ ...older, time: (((bullet.id! % 10) + 1) % 10) / 10 })).toMatchObject({
+      bullets: [],
+      bulletIds: [bullet.id]
+    })
+    expect(toView({ ...older, time: (bullet.id! % 10) / 10 }).bulletIds).toEqual([])
     const hp = player.hp
     for (let i = 0; i < 120 && player.hp >= hp; i++) game.tick(1 / 60)
     expect(player.hp).toBeLessThan(hp)
@@ -1021,9 +1037,9 @@ describe('protocol v21', () => {
     return JSON.parse(JSON.stringify(toView(game.state)))
   }
 
-  test('a fresh snapshot is v21 with the new channels and passes validation', () => {
+  test('a fresh snapshot is v22 with the new channels and passes validation', () => {
     const view = sample()
-    expect(view.v).toBe(21)
+    expect(view.v).toBe(22)
     expect(view.enemies.length % STRIDE.enemies).toBe(0)
     expect(view.shots.length % STRIDE.shots).toBe(0)
     expect(view.bullets.length % STRIDE.bullets).toBe(0)
@@ -1050,15 +1066,20 @@ describe('protocol v21', () => {
     expect(readView({ ...view, v: 17 })).toBeUndefined()
     expect(readView({ ...view, v: 3 })).toBeUndefined()
     expect(readView({ ...view, v: 4 })).toBeUndefined()
+    expect(readView({ ...view, v: 21 })).toBeUndefined()
     const { bullets: _b, ...noBullets } = view
     expect(readView(noBullets)).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, 99, 0] })).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, -1, 0] })).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, 0.5, 0] })).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, 3] })).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, 0, NaN] })).toBeUndefined()
-    expect(readView({ ...view, bullets: [1, 2, 0, 0] })).toBeTruthy()
+    const { bulletIds: _i, ...noBulletIds } = view
+    expect(readView(noBulletIds)).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, 99, 0, 0, 0, 0] })).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, -1, 0, 0, 0, 0] })).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, 0.5, 0, 0, 0, 0] })).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, 0, 0, 0, 0] })).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, 0, 0, 0, 0, NaN] })).toBeUndefined()
+    expect(readView({ ...view, bullets: [1, 0, 0, 0, 150, -20] })).toBeTruthy()
     expect(readView({ ...view, bullets: new Array(STRIDE.bullets * (VIEW_CAPS.bullets + 1)).fill(0) })).toBeUndefined()
+    expect(readView({ ...view, bulletIds: [3, NaN] })).toBeUndefined()
+    expect(readView({ ...view, bulletIds: new Array(VIEW_CAPS.bullets + 1).fill(0) })).toBeUndefined()
     expect(readView({ ...view, enemies: [1, 0, 0, 0, 100, 0] })).toBeUndefined()
     expect(readView({ ...view, enemies: [1, 0, 0, 0, 100, 0, 16] })).toBeUndefined()
     expect(readView({ ...view, enemies: [1, 999, 0, 0, 100, 0, 0] })).toBeUndefined()

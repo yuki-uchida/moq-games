@@ -75,6 +75,8 @@ export const SPAWN_RADIUS = 780
 export const VIEW_HALF = { x: 640, y: 360 }
 export const REAPER_SECONDS = 4
 export const MAX_BULLETS = 140
+/** Seconds an enemy bullet flies before it fizzles. */
+export const BULLET_LIFE = 3.6
 const hasFixedInterval = (id: string) =>
   id === 'p_toxic' || id === 'p_over' || id === 'w_perfume' || id === 'w_observe' || id === 'w_cooking'
 /** A critical hit hits this much harder. */
@@ -1342,6 +1344,8 @@ export interface Shot {
 }
 
 export interface Bullet {
+  /** Unique per game (addBullet hands it out): snapshots name a bullet by it. */
+  id?: number
   x: number
   y: number
   vx: number
@@ -1704,6 +1708,7 @@ export class Game {
   >()
   private accumulator = 0
   private fxSeq = 0
+  private bulletSeq = 0
   private stageIndex = -1
   private tickHits = 0
   private tickShots = 0
@@ -2747,13 +2752,14 @@ export class Game {
   ) {
     if (this.state.bullets.length >= MAX_BULLETS) return
     this.state.bullets.push({
+      id: ++this.bulletSeq,
       x,
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       r,
       damage,
-      life: 3.6,
+      life: BULLET_LIFE,
       kind,
       src
     })

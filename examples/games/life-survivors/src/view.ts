@@ -17,7 +17,7 @@ import {
   ageAt
 } from './data'
 import { FX_STRIDE, FX_TYPES } from './fx'
-import type { GameState, Player } from './game'
+import { BULLET_LIFE, type GameState, type Player } from './game'
 import { historyOk, LIFE_OUTCOMES, type LifeDecision } from './history'
 
 export { BULLET_KINDS, ITEM_KINDS }
@@ -57,7 +57,7 @@ export interface ViewPlayer {
 }
 
 export interface View {
-  v: 21
+  v: 22
   time: number
   phase: GameState['phase']
   level: number
@@ -69,8 +69,13 @@ export interface View {
   enemies: number[]
   /** Flat: weapon index, x, y, radius, angle×100, life %, owner index, variant */
   shots: number[]
-  /** Flat: x, y, BULLET_KINDS index, angle×100 */
+  /**
+   * Flat: id, BULLET_KINDS index, x, y, vx, vy (px/s) at `time` — the straight path of each bullet fired within the
+   * last BULLET_RESEND s, plus a rotating tenth of the older ones (so a path lost on the way comes back within ~1 s).
+   */
   bullets: number[]
+  /** Ids of the other bullets still flying; their path came in an earlier snapshot. */
+  bulletIds: number[]
   /** Flat: x, y, value */
   gems: number[]
   /** Flat: kind index, x, y, owner index (-1 for shared items) */
@@ -84,7 +89,7 @@ export interface View {
   paused?: string[]
 }
 
-export const STRIDE = { enemies: 7, shots: 8, bullets: 4, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
+export const STRIDE = { enemies: 7, shots: 8, bullets: 6, gems: 3, items: 4, popups: 6, fx: FX_STRIDE } as const
 export const SHOT_GAMBLE = 64
 /** Added to a pet's variant while it stands (unmoved for PET_STILL_SECONDS and not biting): the renderer stands it. */
 export const PET_STILL = 16
@@ -111,6 +116,8 @@ export const POPUP_BIT = { strong: 1, crit: 2 } as const
 /** Upper bounds a snapshot may carry. */
 export const VIEW_CAPS = { enemies: 600, shots: 600, bullets: 200, gems: 400, items: 40, popups: 100, fx: 160 } as const
 const r = Math.round
+/** Seconds a fresh bullet's path is sent in every snapshot (several snapshots, so one lost on the way does not hide it). */
+const BULLET_RESEND = 0.5
 
 export function toView(state: GameState, paused: readonly string[] = []): View {
   const over = state.phase === 'won' || state.phase === 'lost'
@@ -165,7 +172,14 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
     )
   }
   const bullets: number[] = []
-  for (const b of state.bullets) bullets.push(r(b.x), r(b.y), b.kind, r(Math.atan2(b.vy, b.vx) * 100))
+  const bulletIds: number[] = []
+  const turn = Math.floor(state.time * 10) % 10
+  for (const b of state.bullets) {
+    const id = b.id ?? 0
+    if (b.life > BULLET_LIFE - BULLET_RESEND || id % 10 === turn)
+      bullets.push(id, b.kind, r(b.x), r(b.y), r(b.vx), r(b.vy))
+    else bulletIds.push(id)
+  }
   const fx: number[] = []
   for (const e of state.fx) fx.push(e.seq, e.type, e.x, e.y, e.a, e.b)
   const gems: number[] = []
@@ -184,7 +198,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
       r((p.life / 0.6) * 100)
     )
   return {
-    v: 21,
+    v: 22,
     time: Math.round(state.time * 100) / 100,
     phase: state.phase,
     level: state.level,
@@ -234,6 +248,7 @@ export function toView(state: GameState, paused: readonly string[] = []): View {
     enemies,
     shots,
     bullets,
+    bulletIds,
     gems,
     items,
     popups,
@@ -365,7 +380,7 @@ function playerOk(value: unknown): value is ViewPlayer {
 
 /** Validates an untrusted snapshot from the relay before anything reads it. */
 export function readView(value: unknown): View | undefined {
-  if (!record(value) || value.v !== 21) return undefined
+  if (!record(value) || value.v !== 22) return undefined
   if (
     Object.keys(value).some(
       (key) =>
@@ -381,6 +396,7 @@ export function readView(value: unknown): View | undefined {
           'enemies',
           'shots',
           'bullets',
+          'bulletIds',
           'gems',
           'items',
           'popups',
@@ -408,6 +424,7 @@ export function readView(value: unknown): View | undefined {
     flat(v.enemies, STRIDE.enemies, VIEW_CAPS.enemies) &&
     flat(v.shots, STRIDE.shots, VIEW_CAPS.shots) &&
     flat(v.bullets, STRIDE.bullets, VIEW_CAPS.bullets) &&
+    flat(v.bulletIds, 1, VIEW_CAPS.bullets) &&
     flat(v.gems, STRIDE.gems, VIEW_CAPS.gems) &&
     flat(v.items, STRIDE.items, VIEW_CAPS.items) &&
     flat(v.popups, STRIDE.popups, VIEW_CAPS.popups) &&
@@ -474,7 +491,7 @@ export function readView(value: unknown): View | undefined {
     )
       return undefined
   const bullets = v.bullets as number[]
-  for (let i = 0; i < bullets.length; i += STRIDE.bullets) if (!BULLET_KINDS[bullets[i + 2]]) return undefined
+  for (let i = 0; i < bullets.length; i += STRIDE.bullets) if (!BULLET_KINDS[bullets[i + 1]]) return undefined
   const popups = v.popups as number[]
   for (let i = 0; i < popups.length; i += STRIDE.popups)
     if (!Number.isInteger(popups[i + 3]) || popups[i + 3] < 0 || popups[i + 3] > 3) return undefined

@@ -180,7 +180,7 @@ test('an observed absence resets only the departed ID death outfit and clock', (
     const remaining = participant('remaining', 'w_study')
     departed.downed = remaining.downed = true
     const view: View = {
-      v: 21,
+      v: 22,
       time: timeAtAge(30),
       phase: 'playing',
       level: 1,
@@ -191,6 +191,7 @@ test('an observed absence resets only the departed ID death outfit and clock', (
       enemies: [],
       shots: [],
       bullets: [],
+      bulletIds: [],
       gems: [],
       items: [],
       popups: [],
