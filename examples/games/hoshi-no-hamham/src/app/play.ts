@@ -83,6 +83,8 @@ export class PlaySession {
   readonly demo: boolean
   /** How many hits the hero has taken. */
   damage = 0
+  /** The bot plays instead of the player, with sound and the HUD as in real play (performance checks). */
+  autopilot = false
   private sounds: SoundBoard
   private accumulator = 0
   private bot: BotMemory = { x: 0, stuck: 0, reverse: 0 }
@@ -138,7 +140,7 @@ export class PlaySession {
       let steps = 0
       while (this.accumulator >= STEP && steps < MAX_STEPS && !view.frozen) {
         const locked = director.inputLocked
-        if (this.demo) world.step(STEP, locked ? emptyInput() : botInput(world, this.bot))
+        if (this.demo || this.autopilot) world.step(STEP, locked ? emptyInput() : botInput(world, this.bot))
         else {
           world.step(STEP, locked ? emptyInput() : this.deps.input.poll())
           if (!locked) this.deps.input.consumePresses()

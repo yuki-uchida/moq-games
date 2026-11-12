@@ -8,6 +8,7 @@ import { createMixer, type Mixer } from './mixer'
 import { MusicPlayer } from './music'
 import { SFX_DEFS, playSfx, startLoop, type LoopHandle } from './sfx'
 import { SONGS } from './songs'
+import { sfxStats } from './stats'
 
 const MAX_SFX_VOICES = 36
 
@@ -120,6 +121,7 @@ export class AudioEngine {
     if (total >= MAX_SFX_VOICES) return
     const end = playSfx(this.mixer, this.noise, name, when, options)
     if (end === undefined) return
+    sfxStats.live += 1
     this.lastStart.set(name, when)
     list.push(end)
     this.active.set(name, list)

@@ -99,6 +99,8 @@ export class App {
   private loading: LoadingIndicator
   /** Bumped whenever play is left or restarted, so a stage waiting for its art can tell it was overtaken. */
   private startToken = 0
+  /** The bot plays the stages instead of the player (test hook for the performance checks). */
+  private autopilot = false
   private frames = 0
   private resolveFirstFrame: () => void = () => {}
   /** Resolves once the first frame of the loop (the title's first picture) has been drawn. */
@@ -160,6 +162,12 @@ export class App {
   /** The world of the title screen's demo, or null when no demo runs (test hook). */
   get demoWorld(): World | null {
     return this.demo?.world ?? null
+  }
+
+  /** Lets the bot play the stage that runs now and every stage started later (test hook). */
+  setAutopilot(on: boolean) {
+    this.autopilot = on
+    if (this.session) this.session.autopilot = on
   }
 
   private leavePlay() {
@@ -278,6 +286,7 @@ export class App {
       input: this.input,
       reducedMotion: reducedMotion()
     })
+    this.session.autopilot = this.autopilot
     this.session.start()
     this.renderer.resetSampling()
   }
