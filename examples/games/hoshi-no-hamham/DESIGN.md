@@ -189,7 +189,11 @@ Rules for all three, measured by the review kit and the browser tests at 1280×7
 - no screen leaves a stretch taller than a quarter of the height with nothing in it: a block that fits is centred
   and sized to the screen, one that does not fit starts at the top and scrolls;
 - headings stay on one line; a footer's buttons sit side by side at equal widths; a name wraps between words, never
-  inside one.
+  inside one;
+- nothing to read sits under a keyboard-focus frame. The frame of a focused button or stage card reaches 12 px
+  outside it (a little more below a raised button): text next to a control keeps that distance, and a tag that
+  belongs on a card's edge (「つぎはここ！」) is stacked above the frame;
+- while the game is paused the touch controls step aside.
 
 Upright phones:
 
@@ -221,11 +225,12 @@ are a list scrolled by hand with a button that closes it.
 - `tests/view-*.test.ts`: every `SimEvent` type has an effect and a sound; clip selection for every sim state.
 - `tests/hoshi-no-hamham-e2e.spec.ts`: title → story → select → play → boss intro → clear → result, death →
   retry, pause, mute, touch layout, reduced motion, no console errors.
-- `tests/hoshi-no-hamham-{screens,title,story,hud,staging}.spec.ts`: the rules of section 8 at every layout — the
+- `tests/hoshi-no-hamham-{screens,title,story,frame,hud,staging}.spec.ts`: the rules of section 8 at every layout — the
   screens fit, the title and the game-over card fill their screen, story pictures are not cropped, the credits take
   the frame and no line is cut, the deck holds the controls and the speech, the staged pieces do not overlap.
 - `npm run art:hoshi-no-hamham` writes review sheets to `.build/hoshi-no-hamham-art/`.
 - `node scripts/hoshi-no-hamham-review.mjs` writes the review kit to `.build/hoshi-no-hamham-review/`: every screen
-  at four viewports with its tallest empty band, wrapped headings and cut lines, the staged moments frame by frame
+  at four viewports with its tallest empty band, wrapped headings, text under a focus frame and cut lines, the
+  staged moments frame by frame
   on the desktop and on an upright phone, the art, the motion and the sound, as numbers that read without the
   images.

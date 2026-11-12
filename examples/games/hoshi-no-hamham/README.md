@@ -94,7 +94,7 @@ node scripts/hoshi-no-hamham-review.mjs   # .build/hoshi-no-hamham-review/ に�
 ブラウザテスト（`npm run e2e:hoshi-no-hamham`、リポジトリ直下の `tests/hoshi-no-hamham-*.spec.ts`）
 
 - `e2e` — タイトルからエンディングまでの流れ、描画の確認
-- `screens`・`title`・`story`・`hud`・`staging`・`sound`・`loading` — 各画面、タイトルとゲームオーバー、ものがたりの絵とクレジット、HUD・デッキ・タッチ操作、演出、音、読み込み（スマホの縦横を含む）
+- `screens`・`title`・`story`・`frame`・`hud`・`staging`・`sound`・`loading` — 各画面、タイトルとゲームオーバー、ものがたりの絵とクレジット、フォーカス枠と文字の重なり、HUD・デッキ・タッチ操作、演出、音、読み込み（スマホの縦横を含む）
 
 画面の決まり（3つのレイアウト、縦持ちのデッキ、空きを作らない、文字は12px以上など）は [DESIGN.md](DESIGN.md) の「Screens and phones」にあります。
 

@@ -632,6 +632,67 @@ function inspectPage({ kind, probes, canvasContent }) {
     if (lines > 1) wraps.push([tag(el), el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40), lines])
   }
 
+  // --- text under a keyboard-focus frame. A focused button or stage card draws a blinking frame around itself (its
+  // `::after`: 9 px outside the box, 9 px plus the button's lift below it, a 3 px border with a 3 px ink line on
+  // both sides). Any control can get the focus, so the frame of every one of them is checked, focused or not.
+  const crossed = []
+  const FRAME = { inset: 9, border: 3, ink: 3 }
+  const canFocus = (el) =>
+    !el.disabled &&
+    el.tabIndex >= 0 &&
+    !el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+    visible(el) &&
+    shown(el)
+  // A screen opened over another one (help over the title, pause over play) is the only place to look then.
+  const modal = Array.from(document.querySelectorAll('#help-screen, #pause-screen')).find((el) => shown(el)) ?? null
+  const inScope = (el) => !modal || modal.contains(el)
+  const texts = []
+  for (const el of document.body.querySelectorAll('*')) {
+    if (!inScope(el) || !visible(el) || !shown(el)) continue
+    // A label kept only for screen readers (a 1-px box) is not on screen.
+    const own = el.getBoundingClientRect()
+    if (own.width <= 2 || own.height <= 2) continue
+    for (const node of el.childNodes) {
+      if (node.nodeType !== 3 || !node.textContent.trim()) continue
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      for (const line of range.getClientRects()) {
+        if (line.width <= 2 || line.height <= 2) continue
+        const t = clip(line, el)
+        if (t) texts.push({ el, t, text: node.textContent.trim().replace(/s+/g, ' ').slice(0, 30) })
+      }
+    }
+  }
+  for (const control of document.querySelectorAll('.pxbtn, .stage-card')) {
+    if (!inScope(control) || !canFocus(control) || !clip(control.getBoundingClientRect(), control)) continue
+    const r = control.getBoundingClientRect()
+    const lift = parseFloat(styleOf(control).getPropertyValue('--lift')) || 0
+    const reach = FRAME.inset + FRAME.ink
+    const whole = { l: r.left - reach, t: r.top - reach, r: r.right + reach, b: r.bottom + reach + lift }
+    const thick = FRAME.ink * 2 + FRAME.border
+    const inner = { l: whole.l + thick, t: whole.t + thick, r: whole.r - thick, b: whole.b - thick }
+    // The frame is cut where the control is (a card scrolled under the screen's header shows no frame there).
+    const outer = clip({ left: whole.l, top: whole.t, right: whole.r, bottom: whole.b }, control)
+    if (!outer) continue
+    // Drawn above the frame (which has no z-index of its own): a z-index on the way up to what both share.
+    const raised = (el) => {
+      for (let n = el; n && !n.contains(control); n = n.parentElement) {
+        const s = styleOf(n)
+        if (s.position !== 'static' && Number(s.zIndex) > 0) return true
+      }
+      return false
+    }
+    const seen = new Set()
+    for (const { el, t, text } of texts) {
+      if (raised(el)) continue
+      const touches = t.l < outer.r && t.r > outer.l && t.t < outer.b && t.b > outer.t
+      const within = t.l >= inner.l && t.r <= inner.r && t.t >= inner.t && t.b <= inner.b
+      if (!touches || within || seen.has(text)) continue
+      seen.add(text)
+      crossed.push([`${tag(control)} "${control.textContent.trim().replace(/s+/g, ' ').slice(0, 16)}"`, tag(el), text])
+    }
+  }
+
   // --- the reviewer's own measurements
   const measures = []
   if (probes) {
@@ -931,6 +992,7 @@ function inspectPage({ kind, probes, canvasContent }) {
   return {
     band: { h: best.h, top: best.top, bottom: best.bottom, above: best.above, below: best.below, viewport: H },
     wraps,
+    crossed,
     measures
   }
 }
@@ -945,6 +1007,7 @@ const SCREEN_COLUMNS = [
   'smallest button (w×h px)',
   `tallest empty band (flag > ${EMPTY_FLAG_PERCENT} %)`,
   'wrapped headings / buttons',
+  'text under a focus frame',
   'game canvas seen by pixels',
   'note'
 ]
@@ -1138,7 +1201,7 @@ async function runScreens(dir) {
   mkdirSync(dir, { recursive: true })
 
   /** One lane per viewport: its rows, its measurements and its flags. Lanes run side by side. */
-  const newLane = () => ({ rows: [], measures: [], wraps: [], flags: [] })
+  const newLane = () => ({ rows: [], measures: [], wraps: [], crossed: [], flags: [] })
 
   /** A screenshot plus everything measured on the page at that moment (`kind` selects the reviewer's measurements). */
   const shot = async (lane, page, viewport, name, note = '', kind = '', probes = false) => {
@@ -1162,6 +1225,7 @@ async function runScreens(dir) {
     }
     let band = 'not measured'
     let wrapped = 'not measured'
+    let underFrame = 'not measured'
     if (found) {
       const percent = (100 * found.band.h) / found.band.viewport
       const text = `${fmt(found.band.h)} px = ${fmt(percent, 1)} % of the height, y ${fmt(found.band.top)}–${fmt(found.band.bottom)}, between ${found.band.above} and ${found.band.below}`
@@ -1171,6 +1235,8 @@ async function runScreens(dir) {
         lane.flags.push([link, size, `${fmt(percent, 1)} %`, `y ${fmt(found.band.top)}–${fmt(found.band.bottom)}`])
       wrapped = found.wraps.length ? `**${found.wraps.length}** (see the wrapped table)` : 'none'
       for (const [element, text, lines] of found.wraps) lane.wraps.push([link, size, element, text, lines])
+      underFrame = found.crossed.length ? `**${found.crossed.length}** (see the focus-frame table)` : 'none'
+      for (const [control, element, text] of found.crossed) lane.crossed.push([link, size, control, element, text])
       for (const [label, value] of found.measures) lane.measures.push([link, size, label, value])
     }
     lane.rows.push([
@@ -1181,6 +1247,7 @@ async function runScreens(dir) {
       m.minButton ? `${m.minButton.w}×${m.minButton.h} (${m.minButton.what})` : '–',
       band,
       wrapped,
+      underFrame,
       canvas.text,
       settled ? note : `${note} **(layout still moving after 3 s)**`.trim()
     ])
@@ -1445,6 +1512,7 @@ async function runScreens(dir) {
   const rows = lanes.flatMap((lane) => lane.rows)
   const measures = lanes.flatMap((lane) => lane.measures)
   const wraps = lanes.flatMap((lane) => lane.wraps)
+  const crossed = lanes.flatMap((lane) => lane.crossed)
   const flags = lanes.flatMap((lane) => lane.flags)
 
   const body = [
@@ -1490,6 +1558,16 @@ async function runScreens(dir) {
     '### Headings and buttons whose text wraps onto more than one line',
     '',
     wraps.length ? md.table(['file', 'viewport', 'element', 'text', 'lines'], wraps) : 'None.',
+    '',
+    '### Text under the keyboard-focus frame',
+    '',
+    'A focused button or stage card draws a blinking frame around itself (its `::after`, reaching 12 px outside its',
+    'box and a little more below a raised button). Any of them can get the focus, so the frame of every button and',
+    'card on screen is checked, focused or not: every visible line of text that the band of a frame would cross is',
+    'listed, unless the text is stacked above the frame (a z-index of its own, as the tag of the newest stage has).',
+    'With the help or the pause screen open, only that screen is checked (what lies under it cannot be focused).',
+    '',
+    crossed.length ? md.table(['file', 'viewport', 'control', 'element under its frame', 'text'], crossed) : 'None.',
     '',
     failures.length ? `Steps that failed:\n\n${md.table(['step', 'why'], failures)}` : 'Every step ran.'
   ].join('\n')
