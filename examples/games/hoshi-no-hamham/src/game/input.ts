@@ -117,14 +117,18 @@ export class Input {
     for (const pad of Array.from(root.querySelectorAll<HTMLElement>('[data-pad]'))) {
       const keys = Array.from(pad.querySelectorAll<HTMLElement>('[data-key]'))
       marked.push(...keys)
+      // The pad's place is read when a finger lands, not on every move: asking the layout while the HUD is
+      // changing it forces a layout pass for each pointer event.
+      let rect: { left: number; width: number } | null = null
       const side = (event: PointerEvent) => {
-        const rect = pad.getBoundingClientRect()
+        rect ??= pad.getBoundingClientRect()
         return padSide(event.clientX, rect.left, rect.width)
       }
       lock(pad)
       listen(pad, 'pointerdown', (event) => {
         event.preventDefault()
         capture(pad, event)
+        rect = pad.getBoundingClientRect()
         pointers.set(event.pointerId, side(event))
         refresh()
       })
