@@ -106,3 +106,59 @@ export const ZONES = {
   toastBottom: 0.04,
   barHeight: 34 / 360
 } as const
+
+// ---------------------------------------------------------------------------------------------- control deck
+
+/** What the deck's aim line says, and how it is coloured. */
+export type AimTone = 'go' | 'collect' | 'boss' | 'open' | 'clear'
+
+export interface AimLine {
+  text: string
+  tone: AimTone
+}
+
+/** The parts of the world the aim line follows. */
+export interface AimState {
+  objective: 'reach' | 'collect' | 'boss'
+  collected: number
+  /** Materials needed on a `collect` stage. */
+  need: number
+  goalOpen: boolean
+  state: 'play' | 'clear' | 'dead'
+  boss: { name: string; active: boolean; dead: boolean; stamina: boolean } | null
+}
+
+/** The current aim of the stage, in one short line for the deck under a portrait stage. */
+export function aimLine(s: AimState): AimLine {
+  if (s.state === 'clear') return { text: 'ステージクリア！', tone: 'clear' }
+  const boss = s.boss
+  if (boss && boss.active && !boss.dead)
+    return boss.stamina
+      ? { text: `${boss.name}から にげきれ！`, tone: 'boss' }
+      : { text: `${boss.name}を たおせ！`, tone: 'boss' }
+  if (s.objective === 'collect' && !s.goalOpen)
+    return { text: `ざいりょう ${collectText(s.collected, s.need)}`, tone: 'collect' }
+  if (s.objective !== 'reach' && s.goalOpen) return { text: 'ゴールがひらいた！', tone: 'open' }
+  if (boss && boss.dead) return { text: 'ボスをやっつけた！', tone: 'open' }
+  if (s.objective === 'boss') return { text: 'おくの ボスを めざせ！', tone: 'go' }
+  return { text: 'ゴールをめざせ！', tone: 'go' }
+}
+
+/** Seconds each stage hint stays on the deck's hint line. */
+export const HINT_SECONDS = 4.5
+
+/** Seconds a toast holds the hint line before the hints come back. */
+export const DECK_TOAST_SECONDS = 2.8
+
+/** Which of `count` hints shows `t` seconds into the cycle (it wraps around); -1 when there are none. */
+export const hintIndex = (t: number, count: number, period = HINT_SECONDS) =>
+  count > 0 ? Math.floor(Math.max(0, t) / period) % count : -1
+
+/** The hint line `t` seconds into the cycle, worded for the player's input. */
+export function hintLine(hints: readonly string[], t: number, touch: boolean, period = HINT_SECONDS): string {
+  const i = hintIndex(t, hints.length, period)
+  return i < 0 ? '' : hintForInput(hints[i], touch)
+}
+
+/** Where `x` (world px) lies along a stage `width` px wide, as 0..1 for the deck's progress track. */
+export const trackRatio = (x: number, width: number) => (width > 0 ? Math.max(0, Math.min(1, x / width)) : 0)

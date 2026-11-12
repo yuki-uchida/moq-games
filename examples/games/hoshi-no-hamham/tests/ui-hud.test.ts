@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aimLine,
   bossRatio,
+  DECK_TOAST_SECONDS,
+  HINT_SECONDS,
+  hintIndex,
+  hintLine,
+  trackRatio,
+  type AimState,
   collectText,
   heartStates,
   hintForInput,
@@ -133,5 +140,101 @@ describe('hints follow the input', () => {
 
   it('leaves hints without keys alone', () => {
     expect(hintForInput('木は2回かじるとたおれる', true)).toBe('木は2回かじるとたおれる')
+  })
+})
+
+describe('control deck: the aim line', () => {
+  const base: AimState = {
+    objective: 'reach',
+    collected: 0,
+    need: 0,
+    goalOpen: true,
+    state: 'play',
+    boss: null
+  }
+  const boss = { name: 'いのしし番長', active: false, dead: false, stamina: false }
+
+  it('points a plain stage at the goal', () => {
+    expect(aimLine(base)).toEqual({ text: 'ゴールをめざせ！', tone: 'go' })
+  })
+
+  it('sends a boss stage on to the boss before the fight', () => {
+    expect(aimLine({ ...base, objective: 'boss', goalOpen: false, boss })).toEqual({
+      text: 'おくの ボスを めざせ！',
+      tone: 'go'
+    })
+  })
+
+  it('counts the materials while collecting', () => {
+    const state: AimState = { ...base, objective: 'collect', need: 8, collected: 3, goalOpen: false, boss }
+    expect(aimLine(state)).toEqual({ text: 'ざいりょう 3/8', tone: 'collect' })
+    expect(aimLine({ ...state, collected: 0 }).text).toBe('ざいりょう 0/8')
+  })
+
+  it('names the boss while a fight is on, and says to run from a chaser', () => {
+    const fight: AimState = { ...base, objective: 'boss', goalOpen: false, boss: { ...boss, active: true } }
+    expect(aimLine(fight)).toEqual({ text: 'いのしし番長を たおせ！', tone: 'boss' })
+    const chase: AimState = {
+      ...base,
+      boss: { name: 'ママ・ハム代', active: true, dead: false, stamina: true }
+    }
+    expect(aimLine(chase)).toEqual({ text: 'ママ・ハム代から にげきれ！', tone: 'boss' })
+    // A boss that turns up on a collect stage takes over the line.
+    expect(aimLine({ ...fight, objective: 'collect', need: 8, collected: 8 }).tone).toBe('boss')
+  })
+
+  it('announces the open goal once the boss is down or the materials are in', () => {
+    const won: AimState = { ...base, objective: 'boss', goalOpen: true, boss: { ...boss, active: true, dead: true } }
+    expect(aimLine(won)).toEqual({ text: 'ゴールがひらいた！', tone: 'open' })
+    expect(aimLine({ ...won, goalOpen: false }).text).toBe('ボスをやっつけた！')
+    expect(aimLine({ ...base, objective: 'collect', need: 8, collected: 8, goalOpen: true }).text).toBe(
+      'ゴールがひらいた！'
+    )
+  })
+
+  it('says the stage is cleared', () => {
+    expect(aimLine({ ...base, state: 'clear', boss: { ...boss, active: true } })).toEqual({
+      text: 'ステージクリア！',
+      tone: 'clear'
+    })
+  })
+})
+
+describe('control deck: the hint cycle', () => {
+  const hints = ['Z / X でかじる', '木は2回かじるとたおれる', '蜂の巣は敵も味方もさす']
+
+  it('shows each hint in order for a few seconds and wraps around', () => {
+    expect(HINT_SECONDS).toBeGreaterThanOrEqual(3)
+    expect(HINT_SECONDS).toBeLessThanOrEqual(6)
+    const at = (i: number) => hintIndex(i * HINT_SECONDS + 0.01, hints.length)
+    expect([0, 1, 2, 3, 4, 5, 6].map(at)).toEqual([0, 1, 2, 0, 1, 2, 0])
+    expect(hintIndex(HINT_SECONDS - 0.01, 3)).toBe(0)
+    expect(hintIndex(-2, 3)).toBe(0)
+  })
+
+  it('has nothing to show without hints', () => {
+    expect(hintIndex(10, 0)).toBe(-1)
+    expect(hintLine([], 10, true)).toBe('')
+  })
+
+  it('words the hints for the input in use', () => {
+    expect(hintLine(hints, 0, false)).toBe('Z / X でかじる')
+    expect(hintLine(hints, 0, true)).toBe('「かじる」ボタンでかじる')
+    expect(hintLine(hints, HINT_SECONDS * 4 + 1, true)).toBe('木は2回かじるとたおれる')
+  })
+
+  it('lets a toast hold the line for a moment, shorter than two hints', () => {
+    expect(DECK_TOAST_SECONDS).toBeGreaterThan(1.5)
+    expect(DECK_TOAST_SECONDS).toBeLessThan(HINT_SECONDS * 2)
+  })
+})
+
+describe('control deck: the progress track', () => {
+  it('places a position along the stage, clamped to the ends', () => {
+    expect(trackRatio(0, 6400)).toBe(0)
+    expect(trackRatio(3200, 6400)).toBe(0.5)
+    expect(trackRatio(-40, 6400)).toBe(0)
+    expect(trackRatio(9000, 6400)).toBe(1)
+    expect(trackRatio(10, 0)).toBe(0)
   })
 })

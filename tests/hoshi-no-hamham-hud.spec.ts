@@ -754,3 +754,125 @@ for (const [width, height] of [
     await context.close()
   })
 }
+
+// ------------------------------------------------------------------------------------------------ the control deck
+// In portrait the area under the stage is one designed body with the stage: information right under it, the
+// controls (or, without touch, the key legend) in its lower part, reaching the bottom of the viewport.
+
+const PORTRAIT_SIZES: [number, number][] = [
+  [390, 844],
+  [414, 896],
+  [360, 640],
+  [320, 568]
+]
+
+const rectOf = async (page: Page, selector: string) => {
+  const box = (await page.locator(selector).boundingBox())!
+  return { x: box.x, y: box.y, w: box.width, h: box.height }
+}
+
+for (const [width, height] of PORTRAIT_SIZES) {
+  test(`portrait ${width}x${height}: the deck joins the stage, holds the aim, the hints and the controls`, async ({
+    browser
+  }) => {
+    test.setTimeout(60_000)
+    const { page, context, errors } = await open(browser, width, height, 2, true)
+    const stage = await rectOf(page, '#stage-wrap')
+    const deck = await rectOf(page, '.hudd')
+    const controls = await rectOf(page, '#touch-controls')
+    const stageBottom = stage.y + stage.h
+    // The deck starts where the stage ends and reaches the bottom of the viewport.
+    expect(Math.abs(deck.y - stageBottom)).toBeLessThanOrEqual(1)
+    expect(Math.abs(deck.y + deck.h - height)).toBeLessThanOrEqual(1)
+    expect(deck.x).toBeLessThanOrEqual(0.5)
+    expect(deck.x + deck.w).toBeGreaterThanOrEqual(width - 0.5)
+    // The controls follow the information directly: no gap of more than 100 px under the stage.
+    expect(controls.y - stageBottom).toBeGreaterThanOrEqual(-1)
+    expect(controls.y - stageBottom).toBeLessThanOrEqual(100)
+    expect(controls.y + controls.h).toBeLessThanOrEqual(height + 1)
+
+    const parts: Record<string, Box> = {
+      aim: await rectOf(page, '.hudd-aim'),
+      hint: await rectOf(page, '.hudd-hint'),
+      pad: await rectOf(page, '.hudt-pad'),
+      jump: await rectOf(page, '[data-key="jump"]'),
+      bite: await rectOf(page, '[data-key="bite"]')
+    }
+    const names = Object.keys(parts)
+    for (let i = 0; i < names.length; i++) {
+      const a = parts[names[i]]
+      expect(a.y, `${names[i]} is under the stage`).toBeGreaterThanOrEqual(stageBottom - 1)
+      expect(a.y + a.h, `${names[i]} is on screen`).toBeLessThanOrEqual(height + 1)
+      for (const n of names.slice(i + 1)) {
+        const b = parts[n]
+        const hit = a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5
+        expect(hit, `${names[i]} overlaps ${n}`).toBe(false)
+      }
+    }
+    for (const key of ['left', 'right', 'jump', 'bite']) {
+      const box = await rectOf(page, `[data-key="${key}"]`)
+      expect(box.w, `${key} width`).toBeGreaterThanOrEqual(64)
+      expect(box.h, `${key} height`).toBeGreaterThanOrEqual(64)
+    }
+    await expect(page.locator('.hudd-aim')).not.toHaveText('')
+
+    // The hint line cycles (after the stage's own opening toast has gone).
+    await page.waitForFunction(() => !document.querySelector('.hudd-hint')!.classList.contains('is-toast'), null, {
+      timeout: 10_000
+    })
+    const first = await page.locator('.hudd-hint').textContent()
+    await page.waitForFunction((text) => document.querySelector('.hudd-hint')!.textContent !== text, first, {
+      timeout: 10_000
+    })
+    // Touch players read button names, not keys.
+    expect(await page.locator('.hudd-hint').textContent()).not.toMatch(/Z\s*\/\s*X/)
+
+    // A toast appears in the hint line, not over the small stage.
+    await page.evaluate(() => hook().app.hud.showToast('Z / X でかじってみよう'))
+    await expect(page.locator('.hudd-hint')).toHaveText('「かじる」ボタンでかじってみよう')
+    await expect(page.locator('.hudd-hint')).toHaveClass(/is-toast/)
+    await expect(page.locator('.hudx-toast')).not.toHaveClass(/is-show/)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+}
+
+test('portrait without touch: the deck shows the key legend where the buttons would be', async ({ browser }) => {
+  const { page, context, errors } = await open(browser, 390, 844, 1)
+  await expect(page.locator('#touch-controls')).toBeHidden()
+  const legend = page.locator('.hudd-legend')
+  await expect(legend).toBeVisible()
+  await expect(legend.locator('.hudd-cap')).toHaveCount(5)
+  await expect(legend).toContainText('あるく')
+  await expect(legend).toContainText('ジャンプ')
+  await expect(legend).toContainText('かじる')
+  await expect(legend).toContainText('ポーズ')
+  const deck = await rectOf(page, '.hudd')
+  const box = await rectOf(page, '.hudd-legend')
+  const hint = await rectOf(page, '.hudd-hint')
+  expect(box.y).toBeGreaterThanOrEqual(hint.y + hint.h)
+  expect(box.y + box.h).toBeLessThanOrEqual(deck.y + deck.h)
+  // Keyboard players read the keys.
+  await page.evaluate(() => hook().app.hud.showToast('Z / X でかじってみよう'))
+  await expect(page.locator('.hudd-hint')).toHaveText('Z / X でかじってみよう')
+  expect(errors).toEqual([])
+  await context.close()
+})
+
+test('landscape has no deck: the controls stay in the lower corners of the stage', async ({ browser }) => {
+  const { page, context, errors } = await open(browser, 844, 390, 1, true)
+  expect(await page.locator('.hudd').evaluate((node) => getComputedStyle(node).display)).toBe('contents')
+  await expect(page.locator('.hudd-info')).toBeHidden()
+  await expect(page.locator('.hudd-legend')).toBeHidden()
+  const pad = await rectOf(page, '.hudt-pad')
+  const bite = await rectOf(page, '[data-key="bite"]')
+  expect(pad.x).toBeLessThan(40)
+  expect(pad.y + pad.h).toBeGreaterThan(390 - 40)
+  expect(bite.x + bite.w).toBeGreaterThan(844 - 40)
+  expect(bite.y + bite.h).toBeGreaterThan(390 - 40)
+  // Toasts still show on the stage.
+  await page.evaluate(() => hook().app.hud.showToast('かじってみよう'))
+  await expect(page.locator('.hudx-toast')).toHaveClass(/is-show/)
+  expect(errors).toEqual([])
+  await context.close()
+})
