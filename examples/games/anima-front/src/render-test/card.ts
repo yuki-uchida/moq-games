@@ -26,14 +26,14 @@ interface Member {
 }
 
 const SQUAD: Member[] = [
-  { species: 'shiba', r: ['orca'], l: ['bee'], passives: ['turtle'], at: [1.2, 0], turn: 0 },
-  { species: 'cat', r: ['claw'], l: ['puffer'], passives: [], at: [0.2, -2.1], turn: 0.35 },
+  { species: 'shiba', r: ['orca'], l: ['bee'], passives: ['turtle'], at: [1.1, 0], turn: 0 },
+  { species: 'cat', r: ['claw'], l: ['puffer'], passives: [], at: [0.1, -1.45], turn: 0.4 },
   {
     species: 'rabbit',
     r: ['owl'],
     l: ['gecko'],
     passives: ['jelly'],
-    at: [0, 2.1],
+    at: [-0.1, 1.45],
     act: ['charge', 'idle'],
     charge: 0.9,
     turn: -0.3
@@ -43,7 +43,7 @@ const SQUAD: Member[] = [
     r: ['mammoth'],
     l: ['armadillo'],
     passives: ['hedgehog'],
-    at: [-1.6, 0.9],
+    at: [-1.5, 0.55],
     act: ['idle', 'guard'],
     charge: 1,
     turn: -0.1
