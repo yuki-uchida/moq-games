@@ -31,35 +31,49 @@ type Wave = OscillatorType
 
 export class SfxBuilder {
   readonly bus: GainNode
-  private readonly pan: StereoPannerNode
-  private seed = Math.floor(Math.random() * 2 ** 31)
+  private seed: number
+  /** Random numbers drawn so far, and how many of them only picked where the noise buffer starts. */
+  draws = 0
+  noiseDraws = 0
 
+  /**
+   * With a mixer the effect is wired as it plays: bus -> panner -> mixer.sfx, and panner -> send -> mixer.sfxReverb.
+   * Without one it is built "dry": the bus goes straight to the destination (the bank renders it that way and adds
+   * the gain, panner and send when the buffer plays).
+   */
   constructor(
     readonly ctx: BaseAudioContext,
     private readonly noise: AudioBuffer,
-    mixer: Mixer,
+    mixer: Mixer | null,
     readonly t0: number,
     private readonly pm: number,
     vol: number,
     pan: number,
-    private readonly rev: number
+    private readonly rev: number,
+    seed = Math.floor(Math.random() * 2 ** 31)
   ) {
+    this.seed = seed
     this.bus = ctx.createGain()
     this.bus.gain.value = vol
-    this.pan = ctx.createStereoPanner()
-    this.pan.pan.value = Math.max(-1, Math.min(1, pan))
-    this.bus.connect(this.pan)
-    this.pan.connect(mixer.sfx)
+    if (!mixer) {
+      this.bus.connect(ctx.destination)
+      return
+    }
+    const panner = ctx.createStereoPanner()
+    panner.pan.value = Math.max(-1, Math.min(1, pan))
+    this.bus.connect(panner)
+    panner.connect(mixer.sfx)
     if (rev > 0) {
       const s = ctx.createGain()
       s.gain.value = rev
-      this.pan.connect(s)
+      panner.connect(s)
       s.connect(mixer.sfxReverb)
     }
   }
 
   /** Deterministic-ish random 0..1 (seeded per effect so layers are reproducible within one play). */
   rnd(): number {
+    this.draws += 1
     this.seed = (this.seed * 1664525 + 1013904223) >>> 0
     return this.seed / 0xffffffff
   }
@@ -157,6 +171,7 @@ export class SfxBuilder {
     const src = ctx.createBufferSource()
     src.buffer = this.noise
     src.loop = true
+    this.noiseDraws += 1
     src.start(t, this.rnd() * 1.4)
     src.stop(stop)
     const f = ctx.createBiquadFilter()

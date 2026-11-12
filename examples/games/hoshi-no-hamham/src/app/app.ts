@@ -389,6 +389,10 @@ export class App {
     }
     if (this.screen !== 'play' || this.paused) this.renderer.observeFrame(time, false, false)
     input.endFrame()
-    if (++this.frames === 1) this.resolveFirstFrame()
+    if (++this.frames === 1) {
+      this.resolveFirstFrame()
+      // The title is on screen: build the audio engine and render the sound effects before the first tap asks.
+      this.audio.prepare()
+    }
   }
 }

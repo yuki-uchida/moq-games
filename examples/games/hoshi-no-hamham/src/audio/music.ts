@@ -121,30 +121,42 @@ export class MusicPlayer {
     })
   }
 
-  /** Schedules every note that starts before `until` (context seconds). */
-  pump(until: number): void {
+  /**
+   * Schedules every note that starts before `until` (context seconds). With a budget it stops once that many
+   * milliseconds have been spent and returns true: the rest is still due and the caller should continue soon. A
+   * `silent` pump advances through the notes without building any voice.
+   */
+  pump(
+    until: number,
+    budgetMs = Infinity,
+    silent = false,
+    clock: () => number = performance.now.bind(performance)
+  ): boolean {
     const { events, tickSec, totalTicks, loopTick, def } = this.song
+    const deadline = budgetMs === Infinity ? Infinity : clock() + budgetMs
     for (let guard = 0; guard < 100000; guard++) {
       if (this.next >= events.length) {
         if (def.once) {
           this.finished = true
-          return
+          return false
         }
         // Wrap: the end of the song is `totalTicks`; resume at the loop point.
         this.origin += (totalTicks - this.tickBase) * tickSec
         this.tickBase = loopTick
         this.next = events.findIndex((e) => e.t >= loopTick)
-        if (this.next < 0) return
+        if (this.next < 0) return false
         continue
       }
       const e = events[this.next]
       const when = this.origin + (e.t - this.tickBase) * tickSec
-      if (when > until) return
+      if (when > until) return false
       this.next++
       const part = def.parts[e.part]
-      if (!this.active(part.layer, part.maxLayer)) continue
+      if (silent || !this.active(part.layer, part.maxLayer)) continue
       this.playEvent(e.part, when, e.len * tickSec, e.midi, e.vel)
+      if (deadline !== Infinity && clock() >= deadline) return true
     }
+    return false
   }
 
   private playEvent(pi: number, when: number, dur: number, midi: number, vel: number): void {
