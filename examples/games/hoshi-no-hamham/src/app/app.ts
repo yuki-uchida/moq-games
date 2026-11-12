@@ -88,6 +88,8 @@ export class App {
   private session: PlaySession | null = null
   /** The self-playing stage behind the title screen. */
   private demo: PlaySession | null = null
+  /** The stage the demo plays now (played again while the next one is not warm yet). */
+  private demoStage: StageDef | null = null
   private demoTurn = 0
   private stage: StageDef = STAGES[0]
   /** The stage whose story is showing (null for the opening). */
@@ -192,10 +194,19 @@ export class App {
     this.startDemo()
   }
 
-  /** Starts the next self-playing stage behind the title. */
+  /**
+   * Starts the next self-playing stage behind the title, if its art is ready; otherwise the current one plays again
+   * and the next one is tried when that ends. Meanwhile the stage after it is warmed in the background, so the demo
+   * never starts a stage cold.
+   */
   private startDemo() {
-    const stage = stageByNo(DEMO_STAGES[this.demoTurn % DEMO_STAGES.length])
-    this.demoTurn += 1
+    const next = stageByNo(DEMO_STAGES[this.demoTurn % DEMO_STAGES.length])
+    let stage = next
+    if (this.demoStage && !isWarm(next)) stage = this.demoStage
+    else this.demoTurn += 1
+    this.demoStage = stage
+    const upcoming = stageByNo(DEMO_STAGES[this.demoTurn % DEMO_STAGES.length])
+    if (!isWarm(upcoming)) void warmStage(upcoming).catch(() => {})
     const reduced = reducedMotion()
     const demo = new PlaySession(
       stage,
