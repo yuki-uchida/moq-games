@@ -616,11 +616,12 @@ input {
   animation-delay: 120ms;
 }
 
+/* The top margin keeps the note clear of the focus frame of the menu's buttons (it reaches 12 px below them). */
 .save-note {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin: 2px 0 0;
+  margin: 12px 0 0;
   font-size: 15px;
   font-weight: 900;
   color: var(--cream-hi);
@@ -1007,8 +1008,9 @@ input {
     font-size: 15px;
   }
 
+  /* Still clear of the focus frame of the first button, which reaches 12 px above it. */
   .title-bottom {
-    margin-top: 8px;
+    margin-top: 15px;
   }
 
   .title-menu {
@@ -1434,6 +1436,8 @@ input {
   position: absolute;
   top: -22px;
   right: -8px;
+  /* Above the card's focus frame (the newest card is focused when the screen opens), which would cross the tag. */
+  z-index: 2;
   padding: 3px 8px;
   background: var(--pink-deep);
   box-shadow: 0 0 0 3px var(--ink);
@@ -1536,6 +1540,8 @@ input {
   font-weight: 700;
   line-height: 1.75;
   color: var(--ink);
+  /* No stranded last line (the typewriter lays the whole text out from the start, so the lines never move). */
+  text-wrap: pretty;
 }
 
 .page-text.is-turning {
@@ -1961,6 +1967,41 @@ input {
   .credits-close {
     bottom: calc(10px + var(--safe-b));
   }
+
+  /* The roll's window ends above the skip hint, so no line ever passes beside or under it. */
+  .ending-screen.is-rolling .credits-window {
+    bottom: calc(40px + var(--safe-b));
+  }
+}
+
+/* Wide frames: the roll is a narrow column, so the sides close in like curtains with a few stars on them. */
+@media (orientation: landscape) {
+  .credits::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(2px 2px at 7% 18%, #fff3b8 99%, transparent),
+      radial-gradient(2px 2px at 13% 62%, #fff 99%, transparent),
+      radial-gradient(2px 2px at 19% 36%, var(--gold) 99%, transparent),
+      radial-gradient(2px 2px at 9% 84%, var(--pink-hi) 99%, transparent),
+      radial-gradient(2px 2px at 24% 76%, #fff3b8 99%, transparent),
+      radial-gradient(2px 2px at 93% 22%, #fff 99%, transparent),
+      radial-gradient(2px 2px at 86% 58%, #fff3b8 99%, transparent),
+      radial-gradient(2px 2px at 80% 30%, var(--pink-hi) 99%, transparent),
+      radial-gradient(2px 2px at 91% 80%, var(--gold) 99%, transparent),
+      radial-gradient(2px 2px at 76% 88%, #fff 99%, transparent),
+      linear-gradient(
+        90deg,
+        rgba(8, 4, 20, 0.92) 0,
+        rgba(8, 4, 20, 0.6) 18%,
+        rgba(8, 4, 20, 0) 34%,
+        rgba(8, 4, 20, 0) 66%,
+        rgba(8, 4, 20, 0.6) 82%,
+        rgba(8, 4, 20, 0.92) 100%
+      );
+  }
 }
 
 .ending-stats {
@@ -2139,6 +2180,20 @@ input {
   font-size: 14px;
   line-height: 1.6;
   color: var(--ink-warm);
+  /* Lines of even length: no single stranded word on the last one. */
+  text-wrap: balance;
+}
+
+/* Wide frames: the text keeps clear of the focus frame of the button under it (the frame reaches 12 px up). */
+@media (orientation: landscape) and (min-height: 541px) {
+  .result-text {
+    margin-bottom: 6px;
+  }
+}
+
+/* A row's label stays on one line; the dotted leader gives way instead. */
+.tally-label {
+  white-space: nowrap;
 }
 
 @media (orientation: landscape) and (max-height: 540px) {
@@ -2223,6 +2278,8 @@ input {
     flex-direction: column;
     align-items: stretch;
     width: 100%;
+    /* The focus frame of the first button reaches 12 px above it: the text over it stays clear of that. */
+    margin-top: 14px;
   }
 }
 
@@ -2491,8 +2548,9 @@ input {
   }
 }
 
+/* The bottom margin keeps the line clear of the focus frame of the buttons under it (it reaches 12 px up). */
 .dead-left {
-  margin: 4px 0 0;
+  margin: 4px 0 8px;
   font-size: 14px;
   font-weight: 900;
   color: var(--cream);
@@ -2579,7 +2637,7 @@ input {
   }
 
   .dead-left {
-    margin: 0;
+    margin: 0 0 8px;
     font-size: 13px;
   }
 }
@@ -2670,6 +2728,11 @@ input {
   padding: 8px;
 }
 
+/* While the game is paused the touch controls step aside: the panel is the only thing to press. */
+body:has(#pause-screen:not([hidden])) #touch-controls {
+  visibility: hidden;
+}
+
 .pause-card {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -2703,6 +2766,11 @@ input {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
+}
+
+/* The heading keeps clear of the focus frame of the first button, which reaches 12 px above it. */
+.pause-main .headline {
+  margin-bottom: 8px;
 }
 
 .pause-main .menu {
