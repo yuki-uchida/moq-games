@@ -184,10 +184,10 @@ const setLabel = (button: HTMLElement, text: string) => {
   else button.textContent = text
 }
 
-/** Restarts a CSS enter animation. */
+/** Restarts a CSS enter animation (a style flush, no layout). */
 function replay(node: HTMLElement, className = 'is-entering') {
   node.classList.remove(className)
-  void node.offsetWidth
+  void getComputedStyle(node).animationName
   node.classList.add(className)
 }
 

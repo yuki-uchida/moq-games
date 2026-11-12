@@ -99,10 +99,34 @@ interface Player {
   repeatEvery?: number
   /** Show these frames in turn instead of playing the clip: [frames, seconds per frame]. */
   cycle?: { frames: readonly number[]; every: number }
+  /** On screen, as far as the observer knows (true until it has reported). */
+  visible: boolean
 }
 
 const players = new Set<Player>()
+const byCanvas = new WeakMap<Element, Player>()
 let ticking = false
+
+/**
+ * Tells which sprites are on screen without asking the layout every frame. While none is (a stage is being played,
+ * every menu is hidden) the frame loop below stops; the observer starts it again.
+ */
+const watcher =
+  typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          const player = byCanvas.get(entry.target)
+          if (player) player.visible = entry.isIntersecting
+        }
+        wake()
+      })
+    : null
+
+function wake() {
+  if (ticking || !players.size) return
+  ticking = true
+  requestAnimationFrame(tick)
+}
 
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -123,15 +147,19 @@ function drawPlayer(player: Player, now: number) {
 }
 
 function tick(now: number) {
+  let showing = false
   for (const player of players) {
     if (!player.canvas.isConnected) {
       players.delete(player)
+      watcher?.unobserve(player.canvas)
       continue
     }
-    // Only visible sprites are redrawn.
-    if (player.canvas.offsetParent !== null) drawPlayer(player, now)
+    // Only visible sprites are redrawn. Without an observer the layout is asked, as it always was.
+    if (watcher ? !player.visible : player.canvas.offsetParent === null) continue
+    showing = true
+    drawPlayer(player, now)
   }
-  if (players.size) requestAnimationFrame(tick)
+  if (showing || (!watcher && players.size)) requestAnimationFrame(tick)
   else ticking = false
 }
 
@@ -173,7 +201,8 @@ export function spritePlayer(
     anim: a,
     start: performance.now(),
     repeatEvery: options.repeatEvery,
-    cycle: options.cycle
+    cycle: options.cycle,
+    visible: true
   }
   if (reduced()) {
     const still = options.stillFrame ?? Math.floor(a.frames.length / 2)
@@ -183,10 +212,9 @@ export function spritePlayer(
   }
   drawPlayer(player, player.start)
   players.add(player)
-  if (!ticking) {
-    ticking = true
-    requestAnimationFrame(tick)
-  }
+  byCanvas.set(canvas, player)
+  watcher?.observe(canvas)
+  wake()
   return canvas
 }
 
@@ -194,6 +222,7 @@ export function spritePlayer(
 export function restartPlayers(root: ParentNode) {
   const now = performance.now()
   for (const player of players) if (root.contains(player.canvas)) player.start = now
+  wake()
 }
 
 // ------------------------------------------------------------------------------------------- nine-slices
