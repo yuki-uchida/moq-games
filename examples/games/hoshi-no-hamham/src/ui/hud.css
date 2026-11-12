@@ -369,7 +369,8 @@
 
 .hudx-boss-head small {
   color: var(--gold);
-  font-size: 0.85em;
+  /* Never under the 12 px floor, also on a phone's small stage. */
+  font-size: max(12px, 0.85em);
   font-weight: 800;
 }
 
