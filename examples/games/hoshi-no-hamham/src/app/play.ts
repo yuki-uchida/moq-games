@@ -46,7 +46,9 @@ const SILENT_HUD: HudApi = {
   showNameplate() {},
   showBoss() {},
   hideBoss() {},
-  cinematic() {}
+  cinematic() {},
+  speak: () => false,
+  lights() {}
 }
 
 /** The director of a demo: no staging, and an outcome once the bot clears, dies or runs out of time. */

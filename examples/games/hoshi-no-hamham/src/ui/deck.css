@@ -64,6 +64,7 @@
   /* ------------------------------------------------------------------ information */
 
   .hudd-info {
+    position: relative;
     grid-row: 1;
     grid-column: 1;
     display: grid;
@@ -113,7 +114,7 @@
 
   .hudd-name b::before {
     content: 'ステージ ';
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .hudd-name span {
@@ -251,6 +252,132 @@
     }
   }
 
+  /* A speech line: for a moment the panel shows who speaks (face, name) and what they say, in a balloon. */
+  .hudd-say {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 2px;
+  }
+
+  /* (important: the emblem's visibility is set inline when the stage has no emblem art) */
+  .hudd.is-speaking .hudd-info > :not(.hudd-say) {
+    visibility: hidden !important;
+  }
+
+  .hudd-say.is-in {
+    animation: hudd-say-in 0.3s steps(3) 1;
+  }
+
+  @keyframes hudd-say-in {
+    0% {
+      transform: translateY(6px);
+      opacity: 0.5;
+    }
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+  }
+
+  .hudd-say-face {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    background: #120a26;
+    box-shadow:
+      0 0 0 2px var(--line),
+      inset 0 0 0 2px #e0a428;
+  }
+
+  .hudd-say-balloon {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+    padding: 4px 10px 5px;
+    background: #fff9f4;
+    color: var(--ink);
+    border-radius: 8px;
+    box-shadow:
+      0 0 0 2px var(--line),
+      inset 0 -2px 0 #e8cfa6;
+  }
+
+  /* The balloon's tail points at the face. */
+  .hudd-say-balloon::before,
+  .hudd-say-balloon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  }
+
+  .hudd-say-balloon::before {
+    left: -10px;
+    width: 10px;
+    height: 14px;
+    margin-top: -7px;
+    background: var(--line);
+  }
+
+  .hudd-say-balloon::after {
+    left: -5px;
+    width: 6px;
+    height: 8px;
+    margin-top: -4px;
+    background: #fff9f4;
+  }
+
+  .hudd-say-balloon small {
+    font-size: 12px;
+    line-height: 13px;
+    color: #c23a6a;
+    letter-spacing: 0.06em;
+  }
+
+  .hudd-say-balloon b {
+    font-size: 16px;
+    line-height: 19px;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hudd-say[data-tone='yell'] .hudd-say-balloon,
+  .hudd-say[data-tone='yell'] .hudd-say-balloon::after {
+    background: #fff1d8;
+  }
+
+  .hudd-say[data-tone='yell'] .hudd-say-balloon b {
+    color: #c8283c;
+    font-size: 17px;
+    animation: hudd-yell 0.6s steps(6) 1;
+  }
+
+  @keyframes hudd-yell {
+    0%,
+    33%,
+    66% {
+      transform: translateX(-1px);
+    }
+    16%,
+    50%,
+    83% {
+      transform: translateX(1px);
+    }
+    100% {
+      transform: none;
+    }
+  }
+
   /* ------------------------------------------------------------------ middle: the night-sky window */
 
   .hudd-mid {
@@ -382,7 +509,7 @@
   }
 
   .hudd-stat small {
-    font-size: 11px;
+    font-size: 12px;
     color: #c8b8f0;
   }
 
@@ -466,10 +593,20 @@
     z-index: 1;
   }
 
-  .hudd-brand {
+  /* The lower-left block over the pad: the engraved name, the sound and pause pills, the speaker grille. */
+  .hudd-block {
     position: absolute;
     left: 22px;
     top: 10px;
+    bottom: calc(22px * var(--tk) + max(20px, env(safe-area-inset-bottom, 0px)) + 28px);
+    width: calc(40px * var(--tk));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .hudd-brand {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -505,17 +642,105 @@
     min-height: calc(48px * var(--tk) + 8px + 12px + max(20px, env(safe-area-inset-bottom, 0px)));
   }
 
-  /* The speaker grille, above the pad. */
+  /* The speaker grille, above the pad: it takes what room the pills leave. */
   .hudd-grille {
-    position: absolute;
-    left: 22px;
-    bottom: calc(22px * var(--tk) + max(20px, env(safe-area-inset-bottom, 0px)) + 30px);
-    width: calc(22px * var(--tk) * 2 - 24px);
-    height: 50px;
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: 50px;
+    margin-right: 24px;
     background: repeating-linear-gradient(180deg, var(--line) 0 4px, var(--body-hi) 4px 5px, transparent 5px 10px);
     -webkit-mask: linear-gradient(90deg, transparent 0 4px, #000 4px calc(100% - 4px), transparent calc(100% - 4px));
     mask: linear-gradient(90deg, transparent 0 4px, #000 4px calc(100% - 4px), transparent calc(100% - 4px));
     opacity: 0.9;
+  }
+
+  /* The sound and pause buttons as the handheld's pills (hud.ts moves #mute and #pause here in portrait). */
+  .hudd-keys {
+    flex: none;
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+    transition: opacity 0.4s;
+  }
+
+  #hud.hudx .hudd-keys .hudx-btn {
+    all: unset;
+    box-sizing: border-box;
+    position: relative;
+    flex: 1 1 0;
+    min-width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 6px 4px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    color: #fff6b0;
+    white-space: nowrap;
+    cursor: pointer;
+    pointer-events: auto;
+    /* A lit top rim, the body, and a dark lip under it: the pill stands up from the deck. */
+    background: linear-gradient(#9a86e0 0 2px, #5d4aa8 2px 4px, #4b3590 4px calc(100% - 6px), #241544 calc(100% - 6px));
+    box-shadow:
+      0 0 0 2px var(--line),
+      0 3px 0 2px var(--line);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #hud.hudx .hudd-keys .hudx-btn:active {
+    transform: translateY(3px);
+    padding-bottom: 0;
+    background: linear-gradient(#5d4aa8 0 2px, #4b3590 2px calc(100% - 2px), #241544 calc(100% - 2px));
+    box-shadow: 0 0 0 2px var(--line);
+  }
+
+  #hud.hudx .hudd-keys .hudx-btn:focus-visible {
+    outline: 2px solid #ffd45e;
+    outline-offset: 3px;
+  }
+
+  #hud.hudx .hudd-keys .hudx-btn-icon {
+    flex: none;
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: var(--icon) center / 16px 16px no-repeat;
+    image-rendering: pixelated;
+  }
+
+  /* The sound pill's lamp: lit green while the sound is on, a dark red when it is off. */
+  #hud.hudx .hudd-keys .hudx-btn-lamp {
+    flex: none;
+    display: block;
+    width: 6px;
+    height: 6px;
+    background: #7be0a0;
+    box-shadow:
+      0 0 0 1px var(--line),
+      0 0 6px 1px rgba(123, 224, 160, 0.7);
+  }
+
+  #hud.hudx .hudd-keys #pause .hudx-btn-lamp {
+    display: none;
+  }
+
+  #hud.hudx .hudd-keys #mute[aria-pressed='true'] {
+    color: #b4a4e0;
+  }
+
+  #hud.hudx .hudd-keys #mute[aria-pressed='true'] .hudx-btn-lamp {
+    background: #6a2440;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+
+  #hud.hudx.is-cinematic .hudd-keys {
+    opacity: 0.2;
   }
 
   /* Without touch: the keys, where the buttons would be. */
@@ -635,6 +860,23 @@
   #hud.is-cinematic .hudd-legend {
     opacity: 0;
   }
+
+  /* The stage went black (an iris out): the deck's lit parts go dark with it, like a screen switched off. */
+  .hudd-info,
+  .hudd-mid {
+    transition: filter 0.6s steps(4);
+  }
+
+  #hud.hudx.is-dark .hudd-info,
+  #hud.hudx.is-dark .hudd-mid {
+    filter: brightness(0.32) saturate(0.4);
+  }
+
+  #hud.hudx.is-dark .hudd-window::after,
+  #hud.hudx.is-dark .hudd-window .hudd-shoot {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 @media (orientation: portrait) and (min-width: 390px) {
@@ -671,7 +913,9 @@
   .hudd-hint.is-swap .hudd-hint-mark,
   .hudd-goal.is-open,
   .hudd-window::after,
-  .hudd-window .hudd-shoot {
+  .hudd-window .hudd-shoot,
+  .hudd-say.is-in,
+  .hudd-say[data-tone='yell'] .hudd-say-balloon b {
     animation: none;
   }
 }

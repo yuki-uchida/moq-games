@@ -12,6 +12,8 @@ export const ROUNDED_FONT =
   '"Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif'
 const INK = '#2a1230'
 const BAR = 34
+/** How long a wordless balloon stays over a speaker. */
+export const EMOTE_SECONDS = 0.55
 
 /** A point in world pixels, fixed or followed every frame (a character's head). */
 export type Anchor = { x: number; y: number } | (() => { x: number; y: number } | null)
@@ -25,6 +27,8 @@ interface Bubble {
   age: number
   life: number
   last: { x: number; y: number }
+  /** The words are shown elsewhere (on the deck): only a small wordless balloon is drawn over the speaker. */
+  wordless: boolean
   /** Where the box was last drawn, in view pixels (box and tail). */
   rect: { x: number; y: number; w: number; h: number } | null
 }
@@ -156,16 +160,27 @@ export class Overlay {
     this.popups = this.popups.filter((p) => p.text !== text)
   }
 
-  /** A speech bubble over a world point (a character's head) for `seconds`. */
-  bubble(text: string, anchor: Anchor, seconds = 1.6, tone: BubbleTone = 'say') {
+  /**
+   * A speech bubble over a world point (a character's head) for `seconds`. With `wordless` the words are shown
+   * elsewhere (the deck under a portrait stage) and only a small balloon without text marks the speaker.
+   */
+  bubble(text: string, anchor: Anchor, seconds = 1.6, tone: BubbleTone = 'say', wordless = false) {
     const at = typeof anchor === 'function' ? anchor() : anchor
-    this.bubbles.push({ text, anchor, tone, age: 0, life: seconds, last: at ?? { x: 0, y: 0 }, rect: null })
+    // A wordless balloon only marks who speaks (their words and face are on the deck): it pops and goes quickly, so it
+    // never lingers under the calls that follow a line.
+    const life = wordless ? Math.min(seconds, EMOTE_SECONDS) : seconds
+    this.bubbles.push({ text, anchor, tone, age: 0, life, last: at ?? { x: 0, y: 0 }, wordless, rect: null })
     if (this.bubbles.length > 4) this.bubbles.shift()
   }
 
-  /** Where the bubbles on screen were last drawn, in view pixels (for tests and layout checks). */
+  /** Where the text bubbles on screen were last drawn, in view pixels (for tests and layout checks). */
   get bubbleRects() {
-    return this.bubbles.flatMap((b) => (b.rect ? [{ text: b.text, ...b.rect }] : []))
+    return this.bubbles.flatMap((b) => (b.rect && !b.wordless ? [{ text: b.text, ...b.rect }] : []))
+  }
+
+  /** Where the wordless balloons were last drawn, in view pixels (for tests and layout checks). */
+  get emoteRects() {
+    return this.bubbles.flatMap((b) => (b.rect && b.wordless ? [{ text: b.text, ...b.rect }] : []))
   }
 
   /** The texts of the popups on screen (for tests). */
@@ -258,6 +273,10 @@ export class Overlay {
     for (const b of this.bubbles) {
       const at = typeof b.anchor === 'function' ? b.anchor() : b.anchor
       if (at) b.last = at
+      if (b.wordless) {
+        this.drawEmote(ctx, b, viewX, viewY)
+        continue
+      }
       const yell = b.tone === 'yell'
       const size = yell ? 15 : 13
       ctx.font = `800 ${size}px ${ROUNDED_FONT}`
@@ -331,6 +350,63 @@ export class Overlay {
     }
     ctx.globalAlpha = 1
     ctx.restore()
+  }
+
+  /**
+   * A small balloon without words over a speaker whose line is on the deck: three dots when they talk, a red bang
+   * when they yell. Drawn in whole pixels with the bubbles' ink outline; it pops in and bobs once.
+   */
+  private drawEmote(ctx: CanvasRenderingContext2D, b: Bubble, viewX: number, viewY: number) {
+    const yell = b.tone === 'yell'
+    const w = yell ? 26 : 30
+    const h = 20
+    const t = b.age
+    const pop = this.reducedMotion
+      ? 1
+      : t < 0.08
+        ? 0.5 + (t / 0.08) * 0.6
+        : t < 0.16
+          ? 1.1 - ((t - 0.08) / 0.08) * 0.1
+          : 1
+    const shake = yell && !this.reducedMotion && t < 0.6 ? Math.round(Math.sin(t * 70) * 1.5) : 0
+    const ax = Math.round(b.last.x - viewX)
+    const ay = Math.round(b.last.y - viewY)
+    const bx = Math.round(Math.max(w / 2 + 4, Math.min(VIEW_W - w / 2 - 4, ax))) + shake
+    const by = Math.round(Math.max(h / 2 + 4, ay - 10 - h / 2))
+    b.rect = { x: bx - w / 2, y: by - h / 2, w, h: h + 7 }
+    ctx.globalAlpha = Math.max(0, Math.min(1, (b.life - t) / 0.2))
+    ctx.save()
+    ctx.translate(bx, by + h / 2 + 6)
+    ctx.scale(pop, pop)
+    ctx.translate(0, -h / 2 - 6)
+    const x0 = -w / 2
+    const y0 = -h / 2
+    const tail = Math.max(x0 + 8, Math.min(x0 + w - 8, ax - bx))
+    ctx.beginPath()
+    ctx.roundRect(x0, y0, w, h, yell ? 4 : 9)
+    ctx.moveTo(tail - 4, y0 + h - 1)
+    ctx.lineTo(tail, y0 + h + 6)
+    ctx.lineTo(tail + 4, y0 + h - 1)
+    ctx.fillStyle = yell ? '#fff1d8' : '#fff9f4'
+    ctx.strokeStyle = INK
+    ctx.lineWidth = 3
+    ctx.stroke()
+    ctx.fill()
+    if (yell) {
+      // A bang: a tall bar and a dot, in the yell red.
+      ctx.fillStyle = '#c8283c'
+      ctx.fillRect(-2, -7, 4, 9)
+      ctx.fillRect(-2, 4, 4, 3)
+    } else {
+      // Three dots that light up one after another.
+      for (let i = 0; i < 3; i++) {
+        const lit = this.reducedMotion || Math.floor(t * 6) % 3 >= i
+        ctx.fillStyle = lit ? INK : '#c8b8d8'
+        ctx.fillRect(-9 + i * 7, -1, 4, 4)
+      }
+    }
+    ctx.restore()
+    ctx.globalAlpha = 1
   }
 
   private drawSpotlight(ctx: CanvasRenderingContext2D) {

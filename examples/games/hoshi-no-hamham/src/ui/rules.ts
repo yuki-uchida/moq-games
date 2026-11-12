@@ -74,3 +74,28 @@ export function nineSlice(scale: number, size: number = NINE_SLICE.size, corner:
     minBox: corner * 2 * s
   }
 }
+
+/** One star of the title's star trail: a cleared stage, the next stage to play, or one still ahead. */
+export type TrailStar = 'lit' | 'next' | 'dim'
+
+/**
+ * The title's star trail: one star per stage, lit for the stages cleared so far (stages open one after another,
+ * so the cleared ones are the first `cleared`), the next one to play marked, the visible line and the line a
+ * screen reader hears.
+ */
+export function starTrail(cleared: number, total: number): { stars: TrailStar[]; text: string; label: string } {
+  const n = Math.max(0, Math.min(total, Math.floor(cleared)))
+  // A fresh player sees the whole way ahead, all dim; the pulse starts once there is a trail to follow.
+  const stars = Array.from({ length: total }, (_, i): TrailStar => (i < n ? 'lit' : i === n && n > 0 ? 'next' : 'dim'))
+  if (n === 0) return { stars, text: `ぜんぶで ${total}ステージ`, label: `ぜんぶで ${total}ステージ、まだ クリアなし` }
+  return { stars, text: `クリア ${n}/${total}`, label: `クリア ${n}/${total}` }
+}
+
+/**
+ * How far the hero got on the way to the goal, from the deck's track ratios (`trackRatio` of the hero and of the
+ * goal): 0 at the start, 1 at the goal, and the rest as a whole percentage for 「ゴールまで あと N%」.
+ */
+export function goalProgress(hero: number, goal: number): { progress: number; left: number } {
+  const progress = goal > 0 ? Math.max(0, Math.min(1, hero / goal)) : 0
+  return { progress, left: Math.max(0, Math.min(100, Math.round((1 - progress) * 100))) }
+}

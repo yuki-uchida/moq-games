@@ -15,6 +15,7 @@ interface HudHook {
       showBoss(name: string, title: string): void
       showToast(text: string): void
       cinematic(on: boolean): void
+      speak(text: string, who: string, face: string, seconds: number): boolean
     }
     input: { poll(): Record<string, boolean> }
   }
@@ -736,25 +737,6 @@ for (const [width, height] of LAYOUT_SIZES) {
   })
 }
 
-for (const [width, height] of [
-  [390, 844],
-  [320, 568]
-]) {
-  test(`portrait ${width}x${height}: mute and pause sit in the top-right corner of the stage`, async ({ browser }) => {
-    const { page, context, errors } = await open(browser, width, height, 1, true)
-    const stage = (await page.locator('#stage-wrap').boundingBox())!
-    const pause = (await page.locator('#pause').boundingBox())!
-    const mute = (await page.locator('#mute').boundingBox())!
-    expect(pause.x + pause.width / 2).toBeGreaterThanOrEqual(stage.x + stage.width * 0.75)
-    expect(mute.x + mute.width / 2).toBeGreaterThanOrEqual(stage.x + stage.width * 0.65)
-    expect(pause.y).toBeLessThanOrEqual(stage.y + 12)
-    expect(pause.x + pause.width).toBeLessThanOrEqual(stage.x + stage.width + 1)
-    expect(mute.x + mute.width).toBeLessThanOrEqual(pause.x + 1)
-    expect(errors).toEqual([])
-    await context.close()
-  })
-}
-
 // ------------------------------------------------------------------------------------------------ the control deck
 // In portrait the area under the stage is one designed body with the stage: information right under it, the
 // controls (or, without touch, the key legend) in its lower part, reaching the bottom of the viewport.
@@ -876,3 +858,152 @@ test('landscape has no deck: the controls stay in the lower corners of the stage
   expect(errors).toEqual([])
   await context.close()
 })
+
+// ------------------------------------------------------------------------------------------------ portrait: buttons and speech on the deck
+// On an upright phone the small stage carries only the game: the sound and pause buttons are pills on the deck,
+// characters' lines appear on the deck with their face, and no text on the deck is under 12 px.
+
+const intersects = (a: Box, b: Box) =>
+  a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5
+
+/** The smallest font size of any visible text on the deck (own text nodes and `::before` labels). */
+const smallestDeckText = (page: Page) =>
+  page.evaluate(() => {
+    let smallest = { size: 99, text: '' }
+    for (const node of Array.from(document.querySelectorAll<HTMLElement>('.hudd *'))) {
+      const r = node.getBoundingClientRect()
+      if (!r.width || !r.height || !node.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue
+      const own = Array.from(node.childNodes).some((c) => c.nodeType === 3 && c.textContent!.trim())
+      const before = getComputedStyle(node, '::before')
+      const label = before.content !== 'none' && before.content !== 'normal' && /[^"' ]/.test(before.content)
+      const sizes = [
+        ...(own ? [parseFloat(getComputedStyle(node).fontSize)] : []),
+        ...(label ? [parseFloat(before.fontSize)] : [])
+      ]
+      for (const size of sizes)
+        if (size < smallest.size) smallest = { size, text: (node.textContent ?? '').trim().slice(0, 16) }
+    }
+    return smallest
+  })
+
+for (const [width, height] of PORTRAIT_SIZES) {
+  test(`portrait ${width}x${height}: mute and pause are pills on the deck, clear of the controls`, async ({
+    browser
+  }) => {
+    test.setTimeout(60_000)
+    const { page, context, errors } = await open(browser, width, height, 1, true)
+    const stage = await rectOf(page, '#stage-wrap')
+    const deck = await rectOf(page, '.hudd')
+    const pause = await rectOf(page, '#pause')
+    const mute = await rectOf(page, '#mute')
+    const controls: Record<string, Box> = {
+      pad: await rectOf(page, '.hudt-pad'),
+      jump: await rectOf(page, '[data-key="jump"]'),
+      bite: await rectOf(page, '[data-key="bite"]')
+    }
+    for (const [name, b] of [
+      ['pause', pause],
+      ['mute', mute]
+    ] as const) {
+      expect(b.y, `${name} is below the stage`).toBeGreaterThanOrEqual(stage.y + stage.h)
+      expect(b.x, `${name} is inside the deck`).toBeGreaterThanOrEqual(deck.x)
+      expect(b.x + b.w, `${name} is inside the deck`).toBeLessThanOrEqual(deck.x + deck.w)
+      expect(b.y + b.h, `${name} is inside the deck`).toBeLessThanOrEqual(deck.y + deck.h)
+      expect(b.w, `${name} width`).toBeGreaterThanOrEqual(44)
+      expect(b.h, `${name} height`).toBeGreaterThanOrEqual(44)
+      for (const [n, c] of Object.entries(controls)) expect(intersects(b, c), `${name} touches ${n}`).toBe(false)
+    }
+    expect(intersects(pause, mute), 'pause touches mute').toBe(false)
+    await expect(page.locator('#pause .hudx-btn-text')).toHaveText('ポーズ')
+    await expect(page.locator('#mute .hudx-btn-text')).toHaveText('おと')
+    for (const id of ['#pause', '#mute'])
+      expect(
+        parseFloat(await page.locator(`${id} .hudx-btn-text`).evaluate((node) => getComputedStyle(node).fontSize))
+      ).toBeGreaterThanOrEqual(12)
+
+    // No text on the deck is under 12 px: with the hints, and with a speech line up.
+    expect((await smallestDeckText(page)).size).toBeGreaterThanOrEqual(12)
+    await page.evaluate(() => hook().app.hud.speak('ありがとう！', 'ハム姫', 'face_princess', 3))
+    await expect(page.locator('.hudd-say')).toBeVisible()
+    await page.waitForTimeout(400)
+    const withSpeech = await smallestDeckText(page)
+    expect(withSpeech.size, `smallest deck text 「${withSpeech.text}」`).toBeGreaterThanOrEqual(12)
+
+    // A tap on the sound pill toggles it; a tap on the pause pill opens the pause screen.
+    const pressed = await page.locator('#mute').getAttribute('aria-pressed')
+    await page.locator('#mute').tap()
+    await expect(page.locator('#mute')).not.toHaveAttribute('aria-pressed', pressed!)
+    await page.locator('#pause').tap()
+    await expect(page.locator('#pause-screen')).toBeVisible()
+    expect(errors).toEqual([])
+    await context.close()
+  })
+}
+
+test('landscape 844x390: mute and pause stay in the top-right corner of the stage', async ({ browser }) => {
+  const { page, context, errors } = await open(browser, 844, 390, 1, true)
+  const stage = await rectOf(page, '#stage-wrap')
+  const pause = await rectOf(page, '#pause')
+  const mute = await rectOf(page, '#mute')
+  expect(pause.x + pause.w / 2).toBeGreaterThanOrEqual(stage.x + stage.w * 0.75)
+  expect(mute.x + mute.w / 2).toBeGreaterThanOrEqual(stage.x + stage.w * 0.65)
+  expect(pause.y).toBeLessThanOrEqual(stage.y + 12)
+  expect(pause.y + pause.h).toBeLessThanOrEqual(stage.y + stage.h * 0.25)
+  expect(pause.x + pause.w).toBeLessThanOrEqual(stage.x + stage.w + 1)
+  expect(mute.x + mute.w).toBeLessThanOrEqual(pause.x + 1)
+  await expect(page.locator('#pause .hudx-btn-text')).toBeHidden()
+  expect(errors).toEqual([])
+  await context.close()
+})
+
+for (const [width, height] of [
+  [390, 844],
+  [320, 568]
+]) {
+  test(`portrait ${width}x${height}: stage 1 start puts ハム代's line on the deck and keeps the stage clear`, async ({
+    browser
+  }) => {
+    test.setTimeout(60_000)
+    const { page, context, errors } = await open(browser, width, height, 1, true, false)
+    const watch = page.waitForFunction(
+      () => {
+        const say = document.querySelector<HTMLElement>('.hudd-say')
+        const face = document.querySelector<HTMLCanvasElement>('.hudd-say-face canvas')
+        return (
+          say &&
+          !say.hidden &&
+          say.textContent!.includes('こらーっ！まちなさーい！') &&
+          face &&
+          face.width > 0 &&
+          getComputedStyle(face).visibility === 'visible'
+        )
+      },
+      null,
+      { timeout: 4000 }
+    )
+    const frames = await recordLayout(page, 2600)
+    await watch
+    expect(
+      parseFloat(await page.locator('.hudd-say b').evaluate((node) => getComputedStyle(node).fontSize))
+    ).toBeGreaterThanOrEqual(13)
+    for (const f of frames) {
+      expect(f.bubbles, 'no text bubble on the stage').toEqual([])
+      for (const name of ['banner', 'call'] as const) {
+        const p = f.pieces[name]
+        if (!p) continue
+        for (const part of ['hearts', 'bite', 'bossBar'] as const) {
+          const b = f.hud[part]
+          if (b) expect(intersects(p, b), `${name} overlaps ${part} (${JSON.stringify([p, b])})`).toBe(false)
+        }
+        expect(p.y + p.h, `${name} inside the stage`).toBeLessThanOrEqual(f.stage.y + f.stage.h)
+      }
+    }
+    const seen = new Set(frames.flatMap((f) => Object.keys(f.pieces)))
+    expect(seen.has('call')).toBe(true)
+    // The hints come back once the line is over.
+    await expect(page.locator('.hudd-say')).toBeHidden({ timeout: 4000 })
+    await expect(page.locator('.hudd-hint')).toBeVisible()
+    expect(errors).toEqual([])
+    await context.close()
+  })
+}

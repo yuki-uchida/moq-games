@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   aimLine,
+  arriveHold,
+  stepHold,
+  type DeckHold,
   bossRatio,
   DECK_TOAST_SECONDS,
   HINT_SECONDS,
@@ -236,5 +239,33 @@ describe('control deck: the progress track', () => {
     expect(trackRatio(-40, 6400)).toBe(0)
     expect(trackRatio(9000, 6400)).toBe(1)
     expect(trackRatio(10, 0)).toBe(0)
+  })
+})
+
+describe('control deck: speech lines and toasts share the line', () => {
+  const hints = ['Z / X でかじる', 'あなをとびこえよう']
+  const speech: DeckHold = { kind: 'speech', text: 'こらーっ！まちなさーい！', left: 2 }
+  const toast: DeckHold = { kind: 'toast', text: 'スイッチ！門が開いた', left: DECK_TOAST_SECONDS }
+
+  it('the newer one wins', () => {
+    expect(arriveHold(null, speech, hints)).toBe(speech)
+    expect(arriveHold(speech, toast, hints)).toBe(toast)
+    expect(arriveHold(toast, speech, hints)).toBe(speech)
+  })
+
+  it('a toast that repeats a stage hint waits for the speech line (the hints come back after it)', () => {
+    const hint: DeckHold = { kind: 'toast', text: hints[0], left: DECK_TOAST_SECONDS }
+    expect(arriveHold(speech, hint, hints)).toBe(speech)
+    expect(arriveHold(null, hint, hints)).toBe(hint)
+    expect(arriveHold({ ...speech, left: 0 }, hint, hints)).toBe(hint)
+  })
+
+  it('a hold runs out after its seconds', () => {
+    let hold: DeckHold | null = speech
+    hold = stepHold(hold, 1.5)
+    expect(hold?.left).toBeCloseTo(0.5)
+    hold = stepHold(hold, 0.6)
+    expect(hold).toBeNull()
+    expect(stepHold(null, 1)).toBeNull()
   })
 })

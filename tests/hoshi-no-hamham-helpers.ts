@@ -2,19 +2,45 @@ import type { Page } from '@playwright/test'
 
 /** Generous: the staged boot warms the title's art behind the splash, and CI machines can be slow. */
 const READY_TIMEOUT = 60_000
+/** A boot takes a second or two; one still on its splash after this long is worth describing. */
+const SLOW_BOOT_MS = 15_000
+
+/** What the boot has reached: its performance marks, the splash's bar and text, and whether the page is visible. */
+const bootState = (page: Page) =>
+  page.evaluate(() => ({
+    marks: performance.getEntriesByType('mark').map((mark) => `${mark.name}@${Math.round(mark.startTime)}`),
+    bar: document.querySelector('#splash-bar')?.getAttribute('aria-valuenow') ?? null,
+    text: document.querySelector('.splash-text')?.textContent ?? null,
+    visibility: document.visibilityState,
+    now: Math.round(performance.now())
+  }))
 
 /**
  * Waits until the game can be used: the test hook exists and the title screen is up. The window's load event says
  * nothing about this (the boot runs in stages after it), so every test that needs the game waits here.
+ *
+ * A boot that is still going after `SLOW_BOOT_MS` is written to the test output with what it had reached, so a test
+ * that then runs into its timeout shows whether the page was slow or stuck, and where.
  */
 export async function waitForGame(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      Boolean((window as unknown as { __hamham?: unknown }).__hamham) &&
-      Boolean(document.querySelector('#title-screen:not([hidden])')),
-    null,
-    { timeout: READY_TIMEOUT }
-  )
+  const slow = setTimeout(() => {
+    void bootState(page)
+      .then((state) =>
+        console.warn(`[hoshi-no-hamham] still booting after ${SLOW_BOOT_MS} ms: ${JSON.stringify(state)}`)
+      )
+      .catch(() => {})
+  }, SLOW_BOOT_MS)
+  try {
+    await page.waitForFunction(
+      () =>
+        Boolean((window as unknown as { __hamham?: unknown }).__hamham) &&
+        Boolean(document.querySelector('#title-screen:not([hidden])')),
+      null,
+      { timeout: READY_TIMEOUT }
+    )
+  } finally {
+    clearTimeout(slow)
+  }
 }
 
 /** Opens the game at `path` and waits until it can be used. */

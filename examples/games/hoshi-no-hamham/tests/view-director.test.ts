@@ -9,6 +9,7 @@ import { SOUND_CUES, type CueSink, type SoundCue } from '../src/view/cues'
 import { StageDirector, type DirectorHost } from '../src/view/director'
 import type { Renderer } from '../src/view/renderer'
 import { Sequence, mergeClaims } from '../src/view/sequence'
+import { EMOTE_SECONDS } from '../src/view/overlay'
 import { SILENT_AUDIO } from '../src/view/sound-map'
 import { BOSS_INTRO_SECONDS, CLEAR_SECONDS, DEATH_SECONDS, STAGE_START_SECONDS } from '../src/view/staging'
 
@@ -22,6 +23,8 @@ interface HudCall {
 function stubHud() {
   const calls: HudCall[] = []
   let cinematic = false
+  /** Whether the HUD takes speech lines itself (a portrait deck). */
+  let deck = false
   const record =
     (name: keyof HudApi) =>
     (...args: unknown[]) => {
@@ -36,6 +39,11 @@ function stubHud() {
     showBoss: record('showBoss'),
     hideBoss: record('hideBoss'),
     cinematic: record('cinematic'),
+    speak: (...args: unknown[]) => {
+      calls.push({ name: 'speak', args })
+      return deck
+    },
+    lights: record('lights'),
     show() {},
     hide() {},
     setStage() {},
@@ -46,6 +54,9 @@ function stubHud() {
     calls,
     get cinematic() {
       return cinematic
+    },
+    set deck(on: boolean) {
+      deck = on
     },
     texts: (name: keyof HudApi) => calls.filter((c) => c.name === name).map((c) => String(c.args[0]))
   }
@@ -239,6 +250,28 @@ describe('stage start', () => {
     expectReleased(rig)
   })
 
+  it('stage 1 with a deck: ハム代の line goes to the HUD with her face, the stage shows only a wordless balloon', () => {
+    const rig = setup(1)
+    rig.hud.deck = true
+    rig.session.start()
+    rig.run(0.5)
+    const speak = rig.hud.calls.find((c) => c.name === 'speak')!
+    expect(speak.args).toEqual(['こらーっ！まちなさーい！', 'ママ・ハム代', 'face_mom', 2, 'yell'])
+    expect(rig.view.overlay.bubbleTexts).toContain('こらーっ！まちなさーい！')
+    expect(rig.hud.calls.some((c) => c.name === 'lights' && c.args[0] === true)).toBe(true)
+    // The wordless balloon only marks the speaker for a moment.
+    rig.run(EMOTE_SECONDS)
+    expect(rig.view.overlay.bubbleTexts).not.toContain('こらーっ！まちなさーい！')
+  })
+
+  it('stage 1 without a deck: ハム代の line stays a bubble on the stage for its whole length', () => {
+    const rig = setup(1)
+    rig.session.start()
+    rig.run(1.2)
+    expect(rig.hud.calls.some((c) => c.name === 'speak')).toBe(true)
+    expect(rig.view.overlay.bubbleTexts).toContain('こらーっ！まちなさーい！')
+  })
+
   it('stage 1: ハム代 yells while the simulation is held, the hero jumps in fright, and he is unhurt', () => {
     const rig = setup(1)
     rig.session.start()
@@ -369,6 +402,7 @@ describe('endings', () => {
     expect(rig.director.outcome).toBe('clear')
     expect(rig.view.overlay.irisOpen).toBeLessThan(0.05)
     expect(rig.cues).toEqual(expect.arrayContaining(['confetti', 'iris-out']))
+    expect(rig.hud.calls.filter((c) => c.name === 'lights').map((c) => c.args[0])).toContain(false)
     expect(rig.director.inputLocked).toBe(false)
     expect(rig.hud.cinematic).toBe(false)
   })
@@ -391,6 +425,7 @@ describe('endings', () => {
     expect(outcomeAt).toBeLessThan(4)
     expect(rig.view.overlay.irisOpen).toBeLessThan(0.05)
     expect(rig.cues).toContain('iris-out')
+    expect(rig.hud.calls.filter((c) => c.name === 'lights').at(-1)!.args[0]).toBe(false)
   })
 
   it('skipping the clear still plays the iris out before the outcome', () => {

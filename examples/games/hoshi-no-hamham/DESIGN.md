@@ -155,7 +155,7 @@ outlined rounded font at `k×` resolution.
 
 | moment        | sequence                                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| title         | a live demo of the game plays behind the logo; the logo drops in with a shine; start prompt blinks                  |
+| title         | a live demo of the game plays behind the logo; the logo drops in with a shine; the menu and the star trail rise in  |
 | screen change | iris or star wipe out, then in; never a hard cut                                                                    |
 | story         | illustrated panel (stage backdrop + posed characters), typewriter text with blips, skippable                        |
 | stage start   | iris in on the hero, title card slides across, short "ready" beat with input locked (≤ 1.6 s)                       |
@@ -166,12 +166,53 @@ outlined rounded font at `k×` resolution.
 | goal          | hero cheers, flag rises, confetti, clear jingle, iris out to the result tally (count-up, new record)                |
 | hurt / low HP | hit-stop, red vignette pulse; at 2 hearts or fewer the hearts pulse with a heartbeat tick                           |
 | death         | freeze, the hero pops up and falls away, game-over jingle, iris out                                                 |
-| ending        | illustrated scenes, credits, final statistics                                                                       |
+| game over     | night backdrop; the card names the stage and shows on a track how far the hero got (the deck's own ratio)           |
+| ending        | illustrated scenes; credits roll over the whole frame and end on 「ありがとう！」; then the final statistics        |
 
 Staging never changes the simulation: it only decides when the app steps the sim, with what input, and what is
 drawn. `prefers-reduced-motion` removes shake, flashes and parallax drift and shortens sequences.
 
-## 8. Quality gates
+## 8. Screens and phones
+
+Three layouts, chosen by CSS media queries, and every screen is designed for each of them:
+
+| layout          | when                           | shape                                                                |
+| --------------- | ------------------------------ | -------------------------------------------------------------------- |
+| wide            | landscape, 541 px high or more | everything inside the 16:9 stage frame                               |
+| short landscape | landscape, 540 px high or less | the stage frame fills the height; denser cards, side-by-side panels  |
+| upright         | portrait                       | the stage (full width, 16:9) on top; the screens use the whole phone |
+
+Rules for all three, measured by the review kit and the browser tests at 1280×720, 844×390, 667×375, 414×896,
+390×844, 360×640 and 320×568:
+
+- no horizontal scroll; no text under 12 px; no button or link under 44×44 px;
+- no screen leaves a stretch taller than a quarter of the height with nothing in it: a block that fits is centred
+  and sized to the screen, one that does not fit starts at the top and scrolls;
+- headings stay on one line; a footer's buttons sit side by side at equal widths; a name wraps between words, never
+  inside one.
+
+Upright phones:
+
+- **Play** — under the stage sits the control deck (`src/ui/deck.ts`), the body of a handheld from the stage's edge
+  to the bottom of the phone: an information panel (the world's emblem, the stage name, the aim of the stage in one
+  line, a hint line that also carries the toasts), a night-sky window (time, defeated enemies, a track from start to
+  goal with the hero's and the boss's faces), the sound and pause pills, the pad and the action buttons. The small
+  stage carries only the game, the hearts and the bite meter: the stage card and the calls sit right under the
+  hearts, and what a character says appears on the deck with the speaker's face (the stage shows a short wordless
+  balloon). The deck dims with the stage at an iris-out.
+- **Title** — the demo and the logo (192×64) in the stage; under it a night scene in the deck's vocabulary: the
+  tagline, the menu, a trail of ten stars (one per stage; lit when cleared, the next one pulsing), the moon, hills,
+  a shooting star, the footer.
+- **Story and ending** — the picture takes the upper part and the text card the lower. The picture is never cropped:
+  the diorama draws the part of the scene that suits its panel (`src/ui/story-frame.ts`). A 2:1 panel shows the
+  classic picture; a taller panel keeps the ground at the bottom, grows upward into the backdrop and narrows around
+  the figures, so every character the wide picture shows is whole and as large as the panel allows.
+
+At every size the credits cover the whole frame over the dimmed picture, with soft fades at the top and the bottom
+so that no line is cut by a hard edge; a tap, a click, Enter, Space or Escape skips them; under reduced motion they
+are a list scrolled by hand with a button that closes it.
+
+## 9. Quality gates
 
 - `tests/art-contract.test.ts`: every sheet matches the contract; `tests/art-complete.test.ts`: nothing is pending (every sheet, terrain and backdrop is drawn; there are no stand-ins); no
   duplicated neighbouring frames inside a clip; per-sheet colour budget.
@@ -180,4 +221,11 @@ drawn. `prefers-reduced-motion` removes shake, flashes and parallax drift and sh
 - `tests/view-*.test.ts`: every `SimEvent` type has an effect and a sound; clip selection for every sim state.
 - `tests/hoshi-no-hamham-e2e.spec.ts`: title → story → select → play → boss intro → clear → result, death →
   retry, pause, mute, touch layout, reduced motion, no console errors.
+- `tests/hoshi-no-hamham-{screens,title,story,hud,staging}.spec.ts`: the rules of section 8 at every layout — the
+  screens fit, the title and the game-over card fill their screen, story pictures are not cropped, the credits take
+  the frame and no line is cut, the deck holds the controls and the speech, the staged pieces do not overlap.
 - `npm run art:hoshi-no-hamham` writes review sheets to `.build/hoshi-no-hamham-art/`.
+- `node scripts/hoshi-no-hamham-review.mjs` writes the review kit to `.build/hoshi-no-hamham-review/`: every screen
+  at four viewports with its tallest empty band, wrapped headings and cut lines, the staged moments frame by frame
+  on the desktop and on an upright phone, the art, the motion and the sound, as numbers that read without the
+  images.

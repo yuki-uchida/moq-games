@@ -613,6 +613,208 @@ for (const viewport of VIEWPORTS)
     expect(errors).toEqual([])
   })
 
+/** Upright phones: the screens around play use the whole height and keep their rows tidy. */
+const PHONES = [
+  { width: 390, height: 844 },
+  { width: 414, height: 896 },
+  { width: 360, height: 640 },
+  { width: 320, height: 568 }
+]
+
+interface Box {
+  top: number
+  bottom: number
+  left: number
+  right: number
+  width: number
+  height: number
+}
+
+const boxOf = (page: Page, selector: string) =>
+  page.evaluate((sel) => {
+    const r = document.querySelector(sel)!.getBoundingClientRect()
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height } as Box
+  }, selector)
+
+/** Opens the first story page of stage 2 (the save has stages 1-3 cleared). */
+async function openStory(page: Page) {
+  await boot(page, saveWith())
+  await page.getByRole('button', { name: 'つづきから' }).click()
+  await page.locator('#stage-grid .stage-card').nth(1).click()
+  await expect(page.locator('#story-screen')).toBeVisible()
+  await page.waitForTimeout(700)
+}
+
+/** Pages through the ending until the credits roll (the last page, then the statistics and the way back). */
+async function openEndingCredits(page: Page) {
+  for (let i = 0; i < 30; i++) {
+    if (await page.locator('#ending-credits').isVisible()) break
+    await page.locator('#ending-next').click()
+    await page.waitForTimeout(120)
+  }
+  await expect(page.locator('#ending-credits')).toBeVisible()
+  await page.waitForTimeout(500)
+}
+
+/** A layout that fits is centred and fills most of the screen; one that does not starts at the top and scrolls. */
+async function expectCentredOrScrolling(page: Page, screen: string, label: string) {
+  const state = await page.evaluate((sel) => {
+    const root = document.querySelector<HTMLElement>(sel)!
+    const r = root.querySelector('.story-layout')!.getBoundingClientRect()
+    return {
+      top: r.top,
+      bottom: r.bottom,
+      height: r.height,
+      viewport: window.innerHeight,
+      scrolls: root.scrollHeight > root.clientHeight + 1
+    }
+  }, screen)
+  if (state.height < state.viewport - 1 && !state.scrolls) {
+    expect(Math.abs(state.top - (state.viewport - state.bottom)), `${label} margins differ`).toBeLessThanOrEqual(24)
+    expect(state.height, `${label} fills the screen`).toBeGreaterThanOrEqual(state.viewport * 0.6)
+  } else {
+    expect(Math.abs(state.top), `${label} starts at the top`).toBeLessThanOrEqual(1)
+    expect(state.scrolls || state.height <= state.viewport + 1, `${label} scrolls`).toBe(true)
+  }
+}
+
+/** The two buttons of a footer share a row and are equally wide; the dots (if any) sit above them. */
+async function expectTwinButtons(page: Page, first: string, second: string, dots: string | null, label: string) {
+  const a = await boxOf(page, first)
+  const b = await boxOf(page, second)
+  expect(Math.abs(a.top - b.top), `${label} buttons share a row`).toBeLessThanOrEqual(2)
+  expect(Math.abs(a.width - b.width), `${label} buttons are equally wide`).toBeLessThanOrEqual(1)
+  expect(a.right, `${label} buttons do not overlap`).toBeLessThanOrEqual(b.left + 1)
+  if (dots) {
+    const d = await boxOf(page, dots)
+    expect(d.bottom, `${label} dots sit above the buttons`).toBeLessThanOrEqual(a.top + 1)
+  }
+}
+
+for (const phone of PHONES)
+  test.describe(`upright phone ${phone.width}×${phone.height}`, () => {
+    test.use({ viewport: phone, hasTouch: true, isMobile: true })
+    const label = `${phone.width}×${phone.height}`
+
+    test('the story uses the screen and keeps its footer tidy', async ({ page }) => {
+      test.setTimeout(60_000)
+      const errors = collectErrors(page)
+      await openStory(page)
+      await expectCentredOrScrolling(page, '#story-screen', `${label} story`)
+      await expectTwinButtons(page, '#story-skip', '#story-next', '#story-dots', `${label} story`)
+      expect(errors).toEqual([])
+    })
+
+    test('the stage select heading stays on one line beside the back button and the badge', async ({ page }) => {
+      test.setTimeout(60_000)
+      await boot(page, saveWith())
+      await page.getByRole('button', { name: 'つづきから' }).click()
+      await expect(page.locator('#select-screen')).toBeVisible()
+      await page.waitForTimeout(500)
+      const heading = await page.evaluate(() => {
+        const el = document.querySelector('#select-title')!
+        const style = getComputedStyle(el)
+        const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2
+        return { height: el.getBoundingClientRect().height, lineHeight }
+      })
+      expect(heading.height, `${label} heading wraps`).toBeLessThan(heading.lineHeight * 1.6)
+      const title = await boxOf(page, '#select-title')
+      for (const other of ['#select-back', '#select-progress']) {
+        const box = await boxOf(page, other)
+        const apart = title.right <= box.left + 0.5 || box.right <= title.left + 0.5
+        expect(apart, `${label} heading touches ${other}`).toBe(true)
+      }
+      // The back button keeps its name for screen readers whatever it shows.
+      await expect(page.getByRole('button', { name: 'タイトル' })).toBeVisible()
+    })
+
+    test('the ending credits take the screen and fade at both edges; the card follows', async ({ page }) => {
+      test.setTimeout(90_000)
+      const errors = collectErrors(page)
+      await boot(page, saveWith({ cleared: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], unlocked: 10 }))
+      await page.evaluate(() => (window as unknown as { __hamham: { openEnding(): void } }).__hamham.openEnding())
+      await expect(page.locator('#ending-screen')).toBeVisible()
+      await page.waitForTimeout(600)
+      // The pages before the credits: the layout is centred or scrolls, as on the story.
+      await expectCentredOrScrolling(page, '#ending-screen', `${label} ending`)
+      await openEndingCredits(page)
+      const credits = await boxOf(page, '#ending-credits')
+      expect(credits.height, `${label} credits area`).toBeGreaterThanOrEqual(phone.height * 0.6)
+      // Freeze the roll and walk through it: no line is ever cut by a hard edge.
+      const report = await page.evaluate(() => {
+        const win = document.querySelector<HTMLElement>('.credits-window')!
+        const roll = document.querySelector<HTMLElement>('.credits-roll')!
+        const mask = getComputedStyle(win).maskImage || getComputedStyle(win).webkitMaskImage
+        const animation = roll.getAnimations()[0]
+        animation.pause()
+        const duration = Number(animation.effect!.getComputedTiming().duration)
+        const view = win.getBoundingClientRect()
+        const fade = view.height * 0.15
+        const entries = Array.from(
+          roll.querySelectorAll<HTMLElement>('.credits-name, .credits-title, .credits-line, .credits-end')
+        )
+        const problems: string[] = []
+        const readable = new Set<HTMLElement>()
+        let fullyShown = 0
+        const STEPS = 160
+        for (let step = 0; step <= STEPS; step++) {
+          animation.currentTime = (duration * step) / STEPS
+          for (const entry of entries) {
+            const r = entry.getBoundingClientRect()
+            if (r.bottom <= view.top || r.top >= view.bottom) continue
+            const crossesTop = r.top < view.top - 0.5
+            const crossesBottom = r.bottom > view.bottom + 0.5
+            if (crossesTop && r.bottom - view.top > fade + 0.5) problems.push(`${entry.textContent} is cut at the top`)
+            if (crossesBottom && view.bottom - r.top > fade + 0.5)
+              problems.push(`${entry.textContent} is cut at the bottom`)
+            if (!crossesTop && !crossesBottom) fullyShown += 1
+            if (r.top >= view.top + fade * 0.5 && r.bottom <= view.bottom - fade * 0.5) readable.add(entry)
+          }
+        }
+        return {
+          mask,
+          problems: Array.from(new Set(problems)),
+          fullyShown,
+          unreadable: entries.filter((entry) => !readable.has(entry)).map((entry) => entry.textContent)
+        }
+      })
+      expect(report.mask, `${label} credits fade`).not.toBe('none')
+      expect(report.problems, `${label} credits cut`).toEqual([])
+      expect(report.fullyShown).toBeGreaterThan(0)
+      // Every entry is whole inside the window at some moment, so it can be read.
+      expect(report.unreadable, `${label} unreadable entries`).toEqual([])
+      // The statistics and the way back appear once the roll is over, and can be used.
+      await page.evaluate(() => {
+        for (const animation of document.querySelector('.credits-roll')!.getAnimations()) animation.finish()
+      })
+      await page.waitForTimeout(900)
+      await expect(page.locator('#ending-stats')).toBeVisible()
+      await expectTwinButtons(page, '#ending-select', '#ending-title-button', null, `${label} ending`)
+      await page.locator('#ending-select').click({ trial: true })
+      expect(errors).toEqual([])
+    })
+  })
+
+test.describe('the title on the shortest upright phone', () => {
+  test.use({ viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true })
+
+  test('the logo keeps its clean half scale high in the sky and leaves the demo visible', async ({ page }) => {
+    test.setTimeout(60_000)
+    await boot(page, saveWith())
+    await page.waitForTimeout(1500)
+    const logo = await boxOf(page, '.logo-art')
+    const stage = await boxOf(page, '#stage-wrap')
+    // 192×64 on every upright phone (one art pixel per device pixel on a 2× screen).
+    expect([logo.width, logo.height]).toEqual([192, 64])
+    // Rule: the logo's bottom edge is above 45 % of the stage's height, clear of the demo's ground.
+    expect(logo.bottom - stage.top).toBeLessThanOrEqual(stage.height * 0.45)
+    expect(logo.top).toBeGreaterThanOrEqual(stage.top)
+    // The tagline starts under the stage's frame.
+    const tagline = await boxOf(page, '.title-tagline')
+    expect(tagline.top).toBeGreaterThanOrEqual(stage.bottom)
+  })
+})
+
 test('reduced motion shows text, tallies and credits at once', async ({ page }) => {
   const errors = collectErrors(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })

@@ -1,13 +1,16 @@
 /**
  * The illustrated story panel: a small live scene on a canvas — a world backdrop, a strip of that world's
  * ground and posed, animated characters from the sheets (see story-scenes.ts). Drawn like the game itself: a
- * `SCENE_W × SCENE_H` logical picture through one whole-number transform, smoothing off.
+ * logical picture through one whole-number transform, smoothing off. The picture is the part of the scene that
+ * suits the canvas box's shape (`frameFor`, story-frame.ts): the classic `SCENE_W × SCENE_H` at 2:1, taller and
+ * narrower around the characters on an upright phone, so the backing store always has the box's aspect.
  */
 import { tile, type ThemeId } from '../art'
 import type { Neighbour } from '../art/contract'
 import { BackdropView } from '../view/backdrop'
 import { bake, blit, clip } from '../view/bake'
 import { backingScale } from './rules'
+import { CLASSIC_FRAME, frameFor, type Frame } from './story-frame'
 import { GROUND, SCENE_H, SCENE_W, type Figure, type Shot } from './story-scenes'
 
 /** Where the game's backdrops expect the main ground (view pixels), lined up with the scene's ground row. */
@@ -28,28 +31,48 @@ export class Diorama {
   private last = 0
   private running = false
   private k = 1
+  /** The part of the scene on the canvas now (scene pixels). */
+  private view: Frame = { ...CLASSIC_FRAME }
   private observer: ResizeObserver | null = null
 
+  /**
+   * `fit` draws the part of the scene that suits the box's shape; without it the canvas always holds the classic
+   * picture (the result screen's backdrop, which CSS covers its box with).
+   */
   constructor(
     readonly canvas: HTMLCanvasElement,
-    private reducedMotion: () => boolean
+    private reducedMotion: () => boolean,
+    private fit = true
   ) {
     canvas.width = SCENE_W
     canvas.height = SCENE_H
+    canvas.dataset.frame = `0 0 ${SCENE_W} ${SCENE_H}`
     if (typeof ResizeObserver === 'function') {
       this.observer = new ResizeObserver(() => this.resize())
       this.observer.observe(canvas)
     }
   }
 
+  /** The part of the scene on the canvas now (scene pixels; for tests and tools). */
+  get currentFrame(): Frame {
+    return { ...this.view }
+  }
+
+  /** Matches the backing store to the box: the frame for its shape, times a whole-number scale. */
   private resize() {
-    const css = this.canvas.clientWidth
-    if (!css) return
-    const k = backingScale(SCENE_W, css, window.devicePixelRatio || 1)
-    if (k === this.k && this.canvas.width === SCENE_W * k) return
+    const cssW = this.canvas.clientWidth
+    const cssH = this.canvas.clientHeight
+    if (!cssW || !cssH) return
+    const view = this.fit && this.shot ? frameFor(this.shot, cssW / cssH) : { ...CLASSIC_FRAME }
+    const k = backingScale(view.w, cssW, window.devicePixelRatio || 1)
+    const same = view.x === this.view.x && view.y === this.view.y && view.w === this.view.w && view.h === this.view.h
+    if (same && k === this.k && this.canvas.width === view.w * k && this.canvas.height === view.h * k) return
+    this.view = view
     this.k = k
-    this.canvas.width = SCENE_W * k
-    this.canvas.height = SCENE_H * k
+    this.canvas.width = view.w * k
+    this.canvas.height = view.h * k
+    // Tools and browser tests read the chosen frame here.
+    this.canvas.dataset.frame = `${view.x} ${view.y} ${view.w} ${view.h}`
     this.draw()
   }
 
@@ -101,14 +124,15 @@ export class Diorama {
     if (!shot) return
     const ctx = this.canvas.getContext('2d')
     if (!ctx) return
-    ctx.setTransform(this.k, 0, 0, this.k, 0, 0)
+    const { x, y, w, h } = this.view
+    ctx.setTransform(this.k, 0, 0, this.k, -x * this.k, -y * this.k)
     ctx.imageSmoothingEnabled = false
     this.paint(ctx, shot)
     if (this.since < CUT && !this.reducedMotion()) {
-      // Fade in from the night colour after a cut.
+      // Fade in from the night colour after a cut (it also hides the frame changing with the shot).
       ctx.globalAlpha = 1 - this.since / CUT
       ctx.fillStyle = '#120a26'
-      ctx.fillRect(0, 0, SCENE_W, SCENE_H)
+      ctx.fillRect(x, y, w, h)
       ctx.globalAlpha = 1
     }
   }
@@ -121,7 +145,7 @@ export class Diorama {
     ctx.translate(0, dy)
     view.drawBack(ctx, scroll, BACKDROP_GROUND)
     ctx.restore()
-    // The ground strip.
+    // The ground strip, under the whole width of any frame.
     for (let i = 0; i * 64 < SCENE_W + 64; i++) {
       const tx = i + Math.floor(scroll / 64)
       const image = tile({ theme: shot.theme, kind: 'solid', around: TOP, tx, ty: 9 })

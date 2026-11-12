@@ -3,8 +3,9 @@ import { createAudio } from '../audio'
 import { Input } from '../game/input'
 import type { World } from '../game/sim'
 import { ENDING_PAGES, OPENING_PAGES, STAGES, stageByNo } from '../game/stages'
-import { loadSave, storeSave, type SaveData, type StageDef, type VolumeKind } from '../game/types'
+import { loadSave, storeSave, TILE, type SaveData, type StageDef, type VolumeKind } from '../game/types'
 import { Hud } from '../ui/hud'
+import { trackRatio } from '../ui/hud-model'
 import { spriteImg } from '../ui/pixel'
 import { DomScreens, type Screens } from '../ui/screens'
 import { Renderer } from '../view/renderer'
@@ -331,11 +332,16 @@ export class App {
     })
   }
 
-  private openDead() {
+  private openDead(session: PlaySession) {
+    // Where the hero fell, on the same track the deck shows during play.
+    const { stage, world } = session
+    const width = world.w * TILE
+    const hero = trackRatio(world.player.x + world.player.w / 2, width)
+    const goal = trackRatio(world.goalX + TILE / 2, width)
     this.leavePlay()
     this.screen = 'dead'
     this.audio.setMusic('gameover')
-    this.screens.showDead()
+    this.screens.showDead({ stage, hero, goal })
   }
 
   /** Feeds the frame to the adaptive backing scale; a staged sequence that holds the simulation never rescales. */
@@ -367,7 +373,7 @@ export class App {
         session.draw()
         this.watchFrameRate(time, session)
         if (session.outcome === 'clear') this.finishStage(session)
-        else if (session.outcome === 'dead') this.openDead()
+        else if (session.outcome === 'dead') this.openDead(session)
       }
     }
     if (this.screen !== 'play' || this.paused) this.renderer.observeFrame(time, false, false)
