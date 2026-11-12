@@ -124,7 +124,12 @@ export interface SfxOptions {
 }
 
 export interface GameAudio {
-  /** Creates/resumes the AudioContext; call from a user gesture (click/keydown). */
+  /**
+   * Builds the audio engine in small slices ahead of the first gesture (the context starts suspended) and starts
+   * rendering the sound effects. Optional to call; `unlock()` finishes whatever is missing.
+   */
+  prepare(): void
+  /** Resumes the AudioContext (creating it if `prepare()` has not); call from a user gesture (click/keydown). */
   unlock(): void
   /**
    * What music should play. Repeating the same theme is a no-op; a change crossfades. `layer` 0..2 raises the

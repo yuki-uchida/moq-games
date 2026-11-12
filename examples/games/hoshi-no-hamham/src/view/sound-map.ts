@@ -189,6 +189,7 @@ export const soundFor = (event: SimEvent): SfxName | null =>
 
 /** An audio sink that does nothing: the title demo and tests without audio. */
 export const SILENT_AUDIO: GameAudio = {
+  prepare() {},
   unlock() {},
   setMusic() {},
   sfx() {},

@@ -7,6 +7,12 @@
  *   --write    also fit the loudness trims (src/audio/sfx-trim.ts) and write src/audio/sfx-metrics.json
  *   --songs    also render the first 30 s of every theme at layers 0-2 (music/<theme>-<layer>.wav) and report them
  *   --only     restrict the effect pass to the listed names (never combine with --write)
+ *   --no-bank  skip the bank pass (below)
+ *
+ * Bank pass (on by default, listed in the report). The game plays most effects from buffers rendered ahead of time
+ * (src/audio/bank.ts). For every effect this pass renders the stereo result twice through `AudioEngine`, once built
+ * live and once played from a bank buffer rendered with the same seed and pitch 1, and compares the two sample by
+ * sample. The largest absolute difference per effect must stay within BANK_TOLERANCE or the script fails.
  *
  * Environment: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the Chromium binary. Exits non-zero on any page error.
  *
@@ -50,11 +56,14 @@ const FP_EDGES = [150, 400, 1000, 2500, 6000]
 const FP_SLICES = 8
 const FLOOR = 0.001
 /** General limits flagged in the report (the per-effect limits live in tests/audio-sfx.test.ts). */
+/** Largest sample difference allowed between a live effect and the same effect played from the bank. */
+const BANK_TOLERANCE = 1e-6
 const LIMITS = { peak: 0.95, highShare: 0.6, normTolerance: 1.5, minFingerprintDistance: 0.2, maxSeconds: 1.8 }
 
 const args = process.argv.slice(2)
 const flag = (name) => args.includes(name)
 const write = flag('--write')
+const bankPass = !flag('--no-bank')
 const songs = flag('--songs')
 const onlyArg = args.indexOf('--only')
 const only = onlyArg >= 0 ? new Set(args[onlyArg + 1].split(',')) : null
@@ -328,12 +337,14 @@ function wavFile(bytes) {
 /** Runs in the page: loads the audio modules and exposes the renderers. */
 async function pageSetup() {
   Math.random = () => 0.5
-  const [api, engine, sfx, trim, hash] = await Promise.all([
+  const [api, engine, sfx, trim, hash, bankModule, stats] = await Promise.all([
     import('/src/audio/api.ts'),
     import('/src/audio/engine.ts'),
     import('/src/audio/sfx.ts'),
     import('/src/audio/sfx-trim.ts'),
-    import('/src/audio/sfx-hash.ts')
+    import('/src/audio/sfx-hash.ts'),
+    import('/src/audio/bank.ts'),
+    import('/src/audio/stats.ts')
   ])
   const toBase64 = (buf) => {
     const l = buf.getChannelData(0)
@@ -378,6 +389,39 @@ async function pageSetup() {
         if (had) trim.SFX_TRIM[name] = oldTrim
         else delete trim.SFX_TRIM[name]
       }
+    },
+    /** The same effect built live and played from a bank buffer (same seed, pitch 1); the largest sample difference. */
+    async compareBank(name, seconds) {
+      const frames = Math.round(seconds * 44100)
+      const seed = Math.floor(Math.random() * 2 ** 31)
+      const live = new OfflineAudioContext(2, frames, 44100)
+      new engine.AudioEngine(live, false).sfx(name, {}, 0)
+      const a = await live.startRendering()
+      const bank = new bankModule.SfxBank({ sampleRate: 44100 })
+      const made = await bank.render(name, 1, seed)
+      if (!made) return { failed: true }
+      bank.add(name, 1, [made])
+      const played = new OfflineAudioContext(2, frames, 44100)
+      const before = stats.sfxStats.buffered
+      new engine.AudioEngine(played, false, bank).sfx(name, {}, 0)
+      const buffered = stats.sfxStats.buffered - before === 1
+      const b = await played.startRendering()
+      let max = 0
+      let peak = 0
+      let at = 0
+      for (let c = 0; c < 2; c++) {
+        const x = a.getChannelData(c)
+        const y = b.getChannelData(c)
+        for (let i = 0; i < x.length; i++) {
+          const d = Math.abs(x[i] - y[i])
+          if (d > max) {
+            max = d
+            at = i
+          }
+          peak = Math.max(peak, Math.abs(x[i]))
+        }
+      }
+      return { failed: false, buffered, max, peak, at, length: made.buffer.length, variety: made.variety }
     },
     async renderSong(theme, layer, seconds) {
       const ctx = new OfflineAudioContext(2, Math.round(seconds * 44100), 44100)
@@ -531,6 +575,36 @@ async function main() {
       lines.push(
         `| ${name} | ${x.m.seconds.toFixed(2)} | ${x.m.peak.toFixed(2)} | ${x.m.rmsDb.toFixed(1)} | ${x.loud.toFixed(1)} | ${x.loudNorm.toFixed(1)} | ${Math.round(x.m.centroid)} | ${x.m.bands.map((v) => v.toFixed(2)).join(' | ')} | ${Math.round(x.m.attack * 1000)} | ${x.trim ?? ''} | ${x.g} | ${x.nearest ? `${x.nearest.name} ${x.nearest.d.toFixed(2)}` : ''} | ${f.join(', ')} |`
       )
+    }
+
+    let bankFailures = 0
+    if (bankPass) {
+      lines.push(
+        '',
+        '## Bank equivalence',
+        '',
+        `Each effect rendered live and from a bank buffer (same seed, pitch 1), stereo, ${SFX_SECONDS} s; largest absolute sample difference must be at most ${BANK_TOLERANCE}.`,
+        '',
+        '| effect | peak | max diff | at sample | buffer frames | result |',
+        '| --- | ---: | ---: | ---: | ---: | --- |'
+      )
+      let worst = { name: '', max: 0 }
+      for (const name of names) {
+        const r = await page.evaluate(([n, s]) => window.__audio.compareBank(n, s), [name, SFX_SECONDS])
+        const ok = !r.failed && r.buffered && r.max <= BANK_TOLERANCE
+        if (!ok) bankFailures++
+        if (!r.failed && r.max > worst.max) worst = { name, max: r.max }
+        lines.push(
+          r.failed
+            ? `| ${name} |  |  |  |  | FAILED to render |`
+            : `| ${name} | ${r.peak.toFixed(3)} | ${r.max.toExponential(2)} | ${r.at} | ${r.length} | ${ok ? 'same' : r.buffered ? 'DIFFERENT' : 'not played from the bank'} |`
+        )
+      }
+      lines.push('', `Largest difference over all effects: ${worst.max.toExponential(2)} (${worst.name}).`)
+      console.log(
+        `bank pass: ${names.length - bankFailures}/${names.length} effects match the live render within ${BANK_TOLERANCE}; largest difference ${worst.max.toExponential(2)} (${worst.name})`
+      )
+      if (bankFailures) errors.push(`bank pass: ${bankFailures} effect(s) differ from the live render, see the report`)
     }
 
     if (write) {
