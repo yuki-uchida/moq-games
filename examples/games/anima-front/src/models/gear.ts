@@ -8,7 +8,23 @@ import type { Quality } from './api'
 import type { BodyPlan } from './rig'
 import { bakeModel, type BakedModel } from './sdf/geometry'
 import { runSync } from './sdf/mesher'
-import { arc, capsule, cone, ellipsoid, plane, scaled, Sculpt, slab, sphere, torus, type Mask } from './sdf/sculpt'
+import {
+  arc,
+  box,
+  capsule,
+  cone,
+  ellipsoid,
+  plane,
+  scaled,
+  Sculpt,
+  shell,
+  slab,
+  sphere,
+  torus,
+  type Mask,
+  type Shape,
+  type Vec3
+} from './sdf/sculpt'
 
 export type GearId = 'turtle' | 'hedgehog' | 'momonga' | 'jelly' | 'membrane'
 export const GEAR_ITEMS: readonly ItemId[] = ['turtle', 'hedgehog', 'momonga', 'jelly']
@@ -16,27 +32,108 @@ export const GEAR_ITEMS: readonly ItemId[] = ['turtle', 'hedgehog', 'momonga', '
 const TRIM: Mask = [1, 0, 0, 0]
 const GLOW: Mask = [0, 1, 0, 0]
 
+/** Shell footprint (gear frame, metres at the 1.2 m reference): centre height, half extents, dome height. */
+const SHELL = { y: -0.02, rx: 0.172, ry: 0.192, h: 0.15 }
+/** Half width of the grooves between scutes (wide enough to read from the gameplay camera). */
+const GROOVE_W = 0.0052
+
+/**
+ * Shell markings are laid out in footprint coordinates (u across, v up; ±1 at the dome's rim) and drawn straight
+ * through the shell along Z, the gear's outward axis (the shader allows ≤ 4 shapes per marking).
+ */
+const fp = (u: number, v: number, z = 0.06): Vec3 => [u * SHELL.rx, SHELL.y + v * SHELL.ry, z]
+const column = (u: number, v: number, r: number, sx = 1): Shape => scaled(sphere(fp(u, v), r), [sx, 1, 40])
+const footprint = (k: number): Shape => ellipsoid(fp(0, 0), [SHELL.rx * k, SHELL.ry * k, 1])
+/** An elliptic ring band around the footprint (normalised radius k, half width w in metres). */
+const band = (k: number, w: number): Shape =>
+  scaled(torus(fp(0, 0), SHELL.rx * k, w, [Math.PI / 2, 0, 0]), [1, 40, SHELL.ry / SHELL.rx])
+
 function turtle(): Sculpt {
   const s = new Sculpt()
-  // A domed shell (flat side against the back) with raised scutes, glowing seams and a team-trim rim.
-  s.add(ellipsoid([0, 0, 0.0], [0.165, 0.18, 0.11]), { color: 0x4f9f4c })
-  s.sub(plane([0, 0, 0.004], [0, 0, -1]), { k: 0.01 })
-  const plates: [number, number][] = [
-    [0, 0.0],
-    [0, 0.1],
-    [0, -0.1],
-    [0.088, 0.05],
-    [-0.088, 0.05],
-    [0.088, -0.05],
-    [-0.088, -0.05]
-  ]
-  for (const [x, y] of plates) {
-    s.emboss(scaled(sphere([x, y, 0.1], 0.046), [1, 1, 2.2]), { amount: 0.008, soft: 0.006 })
-    s.paint(scaled(sphere([x, y, 0.1], 0.04), [1, 1, 2.4]), { color: 0x86cf62 })
+  const { y: cy, rx, ry, h } = SHELL
+  const MARGIN = 0x8aa64f
+  const COSTAL = 0xa6c464
+  const VERT = 0xb2cf6c
+  const PALE = 0xd3e7a0
+  const GROOVE = 0x3b5126
+  const g = GROOVE_W
+  // A tall dome whose underside hugs the round back, with a flared marginal rim that overhangs a little.
+  s.add(ellipsoid([0, cy, -0.02], [rx * 0.97, ry * 0.97, h + 0.02]), { color: MARGIN })
+  s.add(scaled(torus([0, cy, 0.004], rx * 1.0, 0.028, [Math.PI / 2, 0, 0]), [1, 0.6, ry / rx]), {
+    color: MARGIN,
+    k: 0.022
+  })
+  s.sub(ellipsoid([0, cy, -0.25], [0.29, 0.6, 0.25]), { k: 0.012 })
+  // Raised scutes: a keel of vertebral humps down the middle and softer costal plates on the flanks.
+  const at = (u: number, v: number, lift: number): Vec3 => {
+    const r2 = Math.min(u * u + v * v, 0.98)
+    return [u * rx, cy + v * ry, -0.02 + (h + 0.02) * Math.sqrt(1 - r2) + lift]
   }
-  s.paint(scaled(sphere([0, 0, 0.12], 0.025), [1, 1, 2]), { color: 0xc8f59a, mask: GLOW })
-  s.add(scaled(torus([0, 0, 0.012], 0.16, 0.02, [Math.PI / 2, 0, 0]), [1, 1.1, 1]), { color: 0xffffff, k: 0.012 })
-  s.paint(scaled(torus([0, 0, 0.012], 0.16, 0.024, [Math.PI / 2, 0, 0]), [1, 1.1, 1]), { color: 0xffffff, mask: TRIM })
+  for (const v of [0.53, 0, -0.53])
+    s.emboss(scaled(sphere(at(0, v, -0.012), 0.052), [1, 1.15, 0.7]), { amount: 0.012, soft: 0.014 })
+  for (const side of [1, -1])
+    for (const v of [0.66, 0.265, -0.265, -0.66])
+      s.emboss(scaled(sphere(at(0.5 * side, v, -0.01), 0.045), [1, 1.05, 0.7]), { amount: 0.006, soft: 0.012 })
+  // Groove colour under the whole scute field; costal rows painted over it leave the seams between them.
+  s.paint(footprint(0.85), { color: GROOVE })
+  const gv = g / ry
+  const rows: [number, number][] = [
+    [0.53 + gv, 1],
+    [gv, 0.53 - gv],
+    [-0.53 + gv, -gv],
+    [-1, -0.53 - gv]
+  ]
+  const rowBox = ([a, b]: [number, number]): Shape => box(fp(0, (a + b) / 2), [rx, ((b - a) / 2) * ry, 0.5])
+  s.paint(rowBox(rows[0]), { color: COSTAL, union: rows.slice(1).map(rowBox), within: footprint(0.85 - g / rx) })
+  // Pale growth centres of the costal scutes.
+  const costalC: Shape[] = []
+  for (const side of [1, -1])
+    for (const [u, v] of [
+      [0.46, 0.66],
+      [0.55, 0.265],
+      [0.55, -0.265],
+      [0.46, -0.66]
+    ])
+      costalC.push(column(u * side, v, 0.021, 1.25))
+  s.paint(costalC[0], { color: PALE, union: costalC.slice(1, 4), soft: 0.004 })
+  s.paint(costalC[4], { color: PALE, union: costalC.slice(5), soft: 0.004 })
+  // Hexagonal vertebral scutes: each is a rhombus (two crossed slabs) whose overlap with its neighbours is cut
+  // by the horizontal seams; a groove-coloured outline first, then the inset plate.
+  const a = 0.3 * rx,
+    b = 0.72 * ry
+  const nl = Math.hypot(1 / a, 1 / b)
+  const n1: Vec3 = [1 / a / nl, 1 / b / nl, 0],
+    n2: Vec3 = [1 / a / nl, -1 / b / nl, 0]
+  const w = 1 / nl
+  for (const [inset, color] of [
+    [-g, GROOVE],
+    [g, VERT]
+  ] as const)
+    for (const v of [0.53, 0, -0.53])
+      s.paint(slab(fp(0, v), n1, w - inset), { color, within: slab(fp(0, v), n2, w - inset) })
+  s.paint(scaled(capsule(fp(-0.2, 0.265), fp(0.2, 0.265), g), [1, 1, 40]), {
+    color: GROOVE,
+    union: [scaled(capsule(fp(-0.2, -0.265), fp(0.2, -0.265), g), [1, 1, 40])]
+  })
+  s.paint(column(0, 0.56, 0.02, 1.35), {
+    color: PALE,
+    union: [column(0, -0.56, 0.02, 1.35)],
+    soft: 0.004
+  })
+  s.paint(column(0, 0, 0.017, 1.35), { color: 0xeaffb8, mask: GLOW, soft: 0.004 })
+  // Marginal scutes on the rim, notched by radial grooves, with a team-trim lip on the outer edge.
+  const rim = band(1.03, 0.032)
+  s.paint(rim, { color: MARGIN })
+  const notches: Shape[] = []
+  for (let i = 0; i < 8; i++) {
+    const t = ((i + 0.5) / 16) * Math.PI * 2
+    const d = [Math.cos(t) * rx, Math.sin(t) * ry]
+    const l = Math.hypot(d[0], d[1])
+    notches.push(slab(fp(0, 0), [-d[1] / l, d[0] / l, 0], g * 0.85))
+  }
+  s.paint(notches[0], { color: GROOVE, union: notches.slice(1, 4), within: rim })
+  s.paint(notches[4], { color: GROOVE, union: notches.slice(5), within: rim })
+  s.paint(band(1.12, 0.013), { color: 0xffffff, mask: TRIM })
   return s
 }
 
@@ -44,7 +141,8 @@ function hedgehog(): Sculpt {
   const s = new Sculpt()
   // A soft pad with ten big quills fanning up and out, cream tips.
   s.add(ellipsoid([0, 0, 0.0], [0.12, 0.13, 0.05]), { color: 0x8a6b58 })
-  s.sub(plane([0, 0, 0.004], [0, 0, -1]), { k: 0.008 })
+  // Keep the outer half of the pad (the gear frame +Z points away from the back).
+  s.sub(plane([0, 0, 0.004], [0, 0, 1]), { k: 0.008 })
   const quills: [number, number][] = [
     [0, 0.07],
     [-0.06, 0.05],
@@ -118,7 +216,7 @@ const GEAR: Record<GearId, () => Sculpt> = { turtle, hedgehog, momonga, jelly, m
 /** The gear sculpt itself (the catalogue antique of the glider pack reuses it). */
 export const gearSculpt = (id: GearId): Sculpt => GEAR[id]()
 
-const GEAR_TRIS: Record<GearId, number> = { turtle: 520, hedgehog: 600, momonga: 420, jelly: 180, membrane: 110 }
+const GEAR_TRIS: Record<GearId, number> = { turtle: 680, hedgehog: 600, momonga: 420, jelly: 180, membrane: 110 }
 
 export function gearModel(id: GearId, quality: Quality): BakedModel {
   const cell = (quality === 'low' ? 0.009 : quality === 'medium' ? 0.0065 : 0.0045) * (id === 'membrane' ? 0.7 : 1)

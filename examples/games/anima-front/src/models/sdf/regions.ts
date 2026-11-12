@@ -194,3 +194,68 @@ void applyRegions(vec3 p, inout vec3 col, inout vec4 mask) {
   }
 }
 `
+
+/**
+ * Concatenates region tables (shape indices re-based) so pieces merged into one draw call keep their own
+ * markings: each piece's vertices carry their table's range [start, end) (see REGION_RANGE_GLSL).
+ */
+export function mergeRegionTables(tables: RegionTable[]): { table: RegionTable; ranges: [number, number][] } {
+  const count = tables.reduce((n, t) => n + t.count, 0)
+  const shapes = tables.reduce((n, t) => n + (t.width - t.shapeBase) / SHAPE_TEXELS, 0)
+  const shapeBase = count * REGION_TEXELS
+  const width = Math.max(1, shapeBase + shapes * SHAPE_TEXELS)
+  const data = new Float32Array(width * 4)
+  const ranges: [number, number][] = []
+  let r0 = 0
+  let s0 = 0
+  for (const t of tables) {
+    const nShapes = (t.width - t.shapeBase) / SHAPE_TEXELS
+    for (let r = 0; r < t.count; r++) {
+      const src = r * REGION_TEXELS * 4
+      const dst = (r0 + r) * REGION_TEXELS * 4
+      data.set(t.data.subarray(src, src + REGION_TEXELS * 4), dst)
+      data[dst + 4] += s0
+      if (data[dst + 6] >= 0) data[dst + 6] += s0
+    }
+    const src = t.shapeBase * 4
+    data.set(t.data.subarray(src, src + nShapes * SHAPE_TEXELS * 4), (shapeBase + s0 * SHAPE_TEXELS) * 4)
+    ranges.push([r0, r0 + t.count])
+    r0 += t.count
+    s0 += nShapes
+  }
+  const filters = tables.find((t) => t.filters.length)?.filters ?? []
+  return { table: { data, width, count, shapeBase, filters }, ranges }
+}
+
+/** GLSL (after REGION_GLSL): applies the regions [start, end) only (merged pieces). */
+export const REGION_RANGE_GLSL = /* glsl */ `
+void applyRegionRange(vec3 p, inout vec3 col, inout vec4 mask, int start, int end) {
+  for (int k = 0; k < 160; k++) {
+    int i = start + k;
+    if (i >= end) break;
+    int o = i * ${REGION_TEXELS};
+    vec4 h0 = rtex(o);
+    if (distance(p, h0.xyz) > h0.w) continue;
+    vec4 h1 = rtex(o + 1), h2 = rtex(o + 2), h3 = rtex(o + 3), h4 = rtex(o + 4);
+    int first = int(h1.x + 0.5), cnt = int(h1.y + 0.5), within = int(h1.z + 0.5 * sign(h1.z));
+    float d = 1e5;
+    for (int s = 0; s < 4; s++) {
+      if (s >= cnt) break;
+      d = min(d, shapeSdf(first + s, p));
+    }
+    if (within >= 0) d = max(d, shapeSdf(within, p));
+    float cov;
+    if (h1.w > 0.5) cov = 1.0 - smoothstep(-h4.x, h4.x, d);
+    else {
+      float fw = max(fwidth(d), 1e-5);
+      cov = clamp(0.5 - d / (fw * 1.25), 0.0, 1.0);
+    }
+    cov *= h2.w;
+    int slot = int(h4.y + 0.5 * sign(h4.y));
+    if (slot >= 0) cov *= smoothstep(0.35, 0.65, slot == 0 ? vFilter.x : slot == 1 ? vFilter.y : slot == 2 ? vFilter.z : vFilter.w);
+    if (cov <= 0.0) continue;
+    if (h4.z > 0.5) col = mix(col, h2.rgb, cov);
+    if (h4.w > 0.5) mask = mix(mask, h3, cov);
+  }
+}
+`

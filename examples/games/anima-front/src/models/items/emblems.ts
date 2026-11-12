@@ -122,19 +122,53 @@ export function rhino(): ItemRecipe {
   return charm(s, 0.14)
 }
 
-/** ナマケモノ: a sleepy sloth face hugging a branch. */
+/**
+ * ナマケモノ: a sleepy sloth hanging by its long arms from an arched branch over the medallion — cream face with
+ * the dark eye stripes, closed smiling eyes, hooked claws over the branch, two little leaves on the twig.
+ */
 export function sloth(): ItemRecipe {
   const s = base(0x5a7a4a)
-  s.add(capsule([-0.05, 0.05, 0], [0.05, 0.05, 0], 0.008), { color: 0x7a5a3a })
-  s.add(sphere([0, 0.065, 0.012], 0.032), { color: 0xa88a6a, k: 0.01 })
-  s.paint(ellipsoid([0, 0.062, 0.04], [0.026, 0.02, 0.01]), { color: 0xf0e2c8 })
+  const FUR = 0xc2a283
+  const FACE = 0xf6e8cf
+  const BARK = 0x5e4a3a
+  // The branch: a thin arch over the medallion (local +Z of the arc is up) with leaves.
+  const R = 0.058
+  s.add(arc([0, 0.032, 0], R, 0.0058, 1.85, [-Math.PI / 2, 0, 0]), { color: BARK, k: 0.004 })
+  for (const [a, z] of [
+    [0.62, 0.006],
+    [-0.78, -0.004],
+    [1.3, 0.004]
+  ])
+    s.add(scaled(sphere([(R + 0.007) * Math.sin(a), 0.032 + (R + 0.007) * Math.cos(a), z], 0.012), [1.3, 0.42, 0.85]), {
+      color: 0x7ccf6a,
+      k: 0.003
+    })
+  // Sloth: shaggy round body hanging under the arch, head in front, long arms hooked over the branch.
+  s.add(ellipsoid([0, 0.046, -0.008], [0.022, 0.024, 0.019]), { color: FUR, k: 0.006 })
+  s.add(sphere([0, 0.06, 0.012], 0.023), { color: FUR, k: 0.01 })
   for (const side of [1, -1]) {
-    s.paint(scaled(sphere([0.012 * side, 0.065, 0.042], 0.009), [1.4, 0.8, 1]), { color: 0x5a4030 })
-    s.paint(arc([0.012 * side, 0.068, 0.045], 0.005, 0.0015, 1.0, [-Math.PI / 2, 0, 0]), { color: INK })
-    s.add(capsule([0.025 * side, 0.05, 0.02], [0.04 * side, 0.052, 0.008], 0.007), { color: 0xa88a6a, k: 0.006 })
+    s.add(capsule([0.016 * side, 0.058, 0.0], [0.024 * side, 0.088, 0.002], 0.0068), { color: FUR, k: 0.005 })
+    s.add(cone([0.024 * side, 0.094, 0.004], [0.022 * side, 0.098, -0.01], 0.004, 0.0025), {
+      color: 0xf6ead2,
+      k: 0.002
+    })
+    // Legs dangling.
+    s.add(capsule([0.012 * side, 0.032, 0.002], [0.017 * side, 0.026, 0.014], 0.006), { color: FUR, k: 0.004 })
   }
-  s.paint(arc([0, 0.058, 0.045], 0.006, 0.0015, 0.9, [Math.PI / 2, 0, 0]), { color: INK })
-  return charm(s, 0.11)
+  // Face: cream mask, dark eye stripes with sleepy closed eyes, a smile and a little nose.
+  s.paint(ellipsoid([0, 0.057, 0.032], [0.02, 0.016, 0.012]), { color: FACE })
+  for (const side of [1, -1]) {
+    s.paint(ellipsoid([0.011 * side, 0.061, 0.033], [0.0085, 0.0045, 0.01], [0, 0, -0.45 * side]), { color: 0x5a3a28 })
+    // Closed sleepy eyes (arcs drawn through the face along Z).
+    s.paint(scaled(arc([0.0095 * side, 0.0638, 0.033], 0.0038, 0.0012, 1.0, [Math.PI / 2, 0, 0]), [1, 8, 1]), {
+      color: FACE
+    })
+  }
+  s.paint(sphere([0, 0.0565, 0.0345], 0.0036), { color: 0x3a2a24 })
+  s.paint(scaled(arc([0, 0.0545, 0.034], 0.005, 0.0013, 0.9, [Math.PI / 2, 0, 0]), [1, 8, 1]), { color: 0x3a2a24 })
+  // A glowing sap line along the branch top.
+  s.paint(arc([0, 0.032, 0], R + 0.0055, 0.0026, 1.5, [-Math.PI / 2, 0, 0]), { color: WHITE, mask: GLOW })
+  return charm(s, 0.115)
 }
 
 /** コアラ: a koala face with fluffy round ears and a big nose. */

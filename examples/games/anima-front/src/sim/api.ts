@@ -50,3 +50,4 @@ export interface SustainReport {
 export { createWorld } from './world'
 export { getMap, MAP_IDS } from './maps'
 export { sanitizeLoadout, loadoutErrors, handLists, sustainEstimate } from './loadout'
+export { createPredictor } from './predictor'

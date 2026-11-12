@@ -23,6 +23,7 @@ const dependents = [
   ],
   ['life-survivors', /^examples\/games\/rabbiters\/src\/network\.ts$/],
   ['mamono-jinkei', /^examples\/games\/rabbiters\/src\/network\.ts$/],
+  ['anima-front', /^examples\/games\/rabbiters\/src\/network\.ts$/],
   [
     'landing',
     /^(examples\/games\/tower_diffence_with_jev\/extra\.html|public\/tower-defense-art\/[^/]+\/portrait\.png)$/
@@ -138,7 +139,7 @@ function targetedShards(specs) {
 const sharedUsers = {
   'examples/games/shared/UiSound.ts': ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle'],
   'examples/games/shared/ImpactArt.ts': ['tower', 'ember-grid'],
-  'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei'],
+  'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei', 'anima-front'],
   'utils/media/objectStatus.ts': ['tower', 'yoru-no-yashiki'],
   'utils/moqJson.ts': ['tower'],
   'lib/moqt/moqtClient.ts': ['tower', 'yoru-no-yashiki']

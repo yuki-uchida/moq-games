@@ -12,6 +12,8 @@ const hardwareGl =
 export default defineConfig({
   testDir: './tests',
   testMatch: /anima-front-.*\.spec\.ts/,
+  // The real-relay test needs a local moq-relay and runs only with playwright.anima-front-real-moq.config.ts.
+  testIgnore: /real-moq/,
   fullyParallel: true,
   workers: 1,
   timeout: 90_000,

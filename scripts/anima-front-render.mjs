@@ -3,8 +3,12 @@
  * cache) and captures screenshots of the render harness (examples/games/anima-front/render-test.html) with
  * Playwright Chromium on the real GPU, plus a performance table of the stress scene at each quality.
  *
- * Usage: node scripts/anima-front-render.mjs [--only env,themes,combat,stress,events,actors,perf] [--size 1280x720]
- *                                             [--swiftshader] [--out DIR] [--map oldtown]
+ * Usage: node scripts/anima-front-render.mjs [--only env,themes,combat,stress,events,actors,perf,maps,mapperf]
+ *          [--size 1280x720] [--swiftshader] [--out DIR] [--map oldtown] [--maps oldtown,oldtown:night,…]
+ *          [--views spawn-squad,rooftop] [--quality medium,high]
+ * `maps` captures every real map/variant (src/sim/maps via getMap) from viewpoints derived from its spawns,
+ * objectives, rooftops and edges, plus the shoulder camera and a combat shot; `mapperf` measures the 12-player +
+ * 120-foe stress scene on each real map. Neither runs by default (they are slow); ask for them with --only.
  * Output: .build/anima-front/render/*.png and perf.json (ignored by Git).
  * Environment: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the Chromium binary.
  */
@@ -18,6 +22,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const valueOf = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
 const SECTIONS = ['env', 'themes', 'combat', 'stress', 'events', 'actors', 'perf']
+const REAL_MAPS = ['oldtown', 'oldtown:night', 'harbor', 'blight', 'blight:crater', 'arena', 'range']
+const mapList = (valueOf('--maps') ?? REAL_MAPS.join(',')).split(',').map((s) => s.trim())
+const viewFilter = valueOf('--views')?.split(',')
+const qualities = (valueOf('--quality') ?? 'medium,high').split(',')
+const mapQuery = (entry) => {
+  const [id, variant] = entry.split(':')
+  return `map=${id}${variant ? `&variant=${variant}` : ''}`
+}
 const only = new Set((valueOf('--only') ?? SECTIONS.join(',')).split(',').map((s) => s.trim()))
 const [W, H] = (valueOf('--size') ?? '1280x720').split('x').map(Number)
 const out = resolve(valueOf('--out') ?? join(root, '.build/anima-front/render'))
@@ -57,7 +69,7 @@ async function open(query, size = [W, H]) {
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(`${query}: ${m.text()}`)
   })
-  await page.goto(`${base}?${query}${mapArg ? `&map=${mapArg}` : ''}`)
+  await page.goto(`${base}?${query}${mapArg && !query.includes('map=') ? `&map=${mapArg}` : ''}`)
   await page.waitForFunction(() => window.__render?.ready, null, { timeout: 120_000 })
   return page
 }
@@ -65,6 +77,41 @@ async function open(query, size = [W, H]) {
 async function waitFrames(page, n) {
   const start = await page.evaluate(() => window.__render.frames)
   await page.waitForFunction((target) => window.__render.frames >= target, start + n, { timeout: 120_000 })
+}
+
+/** Frame-time measurement over `ms` of real time. */
+async function measure(page, ms = 5000) {
+  return page.evaluate(async (duration) => {
+    const times = []
+    let last = performance.now()
+    const end = last + duration
+    let draws = 0
+    let tris = 0
+    await new Promise((done) => {
+      const tick = () => {
+        const now = performance.now()
+        times.push(now - last)
+        last = now
+        const s = window.__render.stats()
+        draws = Math.max(draws, s.drawCalls)
+        tris = Math.max(tris, s.triangles)
+        if (now < end) requestAnimationFrame(tick)
+        else done()
+      }
+      requestAnimationFrame(tick)
+    })
+    times.sort((a, b) => a - b)
+    const avg = times.reduce((a, b) => a + b, 0) / times.length
+    return {
+      fps: 1000 / avg,
+      avgMs: avg,
+      p95Ms: times[Math.floor(times.length * 0.95)],
+      maxDraws: draws,
+      maxTris: tris,
+      counts: window.__render.counts(),
+      quality: window.__render.stats().quality
+    }
+  }, ms)
 }
 
 async function shot(query, name, frames = 30, size) {
@@ -163,6 +210,49 @@ try {
       await page.close()
     }
     writeFileSync(join(out, 'perf.json'), JSON.stringify({ size: '1920x1080', swiftshader, rows }, null, 2))
+  }
+  if (only.has('maps')) {
+    for (const entry of mapList) {
+      const tag = entry.replace(':', '-')
+      const page = await open(`scene=env&${mapQuery(entry)}&hud=0&fixed=1&view=0`)
+      const names = await page.evaluate(() => window.__render.views())
+      for (let i = 0; i < names.length; i++) {
+        if (viewFilter && !viewFilter.includes(names[i])) continue
+        await page.evaluate((v) => window.__render.setView(v), i)
+        await waitFrames(page, 12)
+        await page.screenshot({ path: join(out, `map-${tag}-${names[i]}.png`) })
+      }
+      await page.evaluate(() => window.__render.setView(null))
+      await waitFrames(page, 40)
+      await page.screenshot({ path: join(out, `map-${tag}-shoulder.png`) })
+      const stats = await page.evaluate(() => window.__render.stats())
+      const buildMs = await page.evaluate(() => window.__render.buildMs)
+      console.log(
+        `map ${entry}: ${names.length} views, ${stats.drawCalls} draws, ${Math.round(stats.triangles / 1000)}k tris, build ${buildMs.toFixed(0)} ms`
+      )
+      await page.close()
+      await shot(`scene=combat&${mapQuery(entry)}&hud=0&fixed=1`, `map-${tag}-combat`, 150)
+    }
+  }
+  if (only.has('mapperf')) {
+    const rows = []
+    for (const entry of mapList)
+      for (const q of qualities) {
+        const page = await open(`scene=stress&${mapQuery(entry)}&quality=${q}`, [1920, 1080])
+        await waitFrames(page, 120)
+        const result = await measure(page, 5000)
+        result.breakdown = await page.evaluate(() => window.__render.breakdown())
+        await page.screenshot({ path: join(out, `mapperf-${entry.replace(':', '-')}-${q}.png`) })
+        rows.push({ map: entry, quality: q, ...result })
+        console.log(
+          `mapperf ${entry} ${q}: ${result.fps.toFixed(1)} fps (avg ${result.avgMs.toFixed(2)} ms, p95 ${result.p95Ms.toFixed(2)} ms), ≤${result.maxDraws} draws, ≤${Math.round(result.maxTris / 1000)}k tris, ${result.counts.players}p ${result.counts.foes}f
+  ${Object.entries(result.breakdown)
+    .map(([k, v]) => `${k} ${v.main}+${v.shadow}`)
+    .join(', ')}`
+        )
+        await page.close()
+      }
+    writeFileSync(join(out, 'mapperf.json'), JSON.stringify({ size: '1920x1080', swiftshader, rows }, null, 2))
   }
 } finally {
   await cleanup()

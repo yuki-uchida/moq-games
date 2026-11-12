@@ -3,7 +3,8 @@ import { BOX_STYLES, DECOR_KINDS } from '../src/data/map-vocab'
 import { QUALITY_PRESETS } from '../src/render/core/quality'
 import { TILE_NAMES, tileRect } from '../src/render/env/atlas'
 import { planEnvironment } from '../src/render/env/plan'
-import { THEMES } from '../src/render/env/themes'
+import { THEMES, themeFor } from '../src/render/env/themes'
+import { getMap, MAP_IDS, MAP_VARIANTS } from '../src/sim/maps'
 import { buildTestMap } from '../src/render-test/testmap'
 import type { BoxKind, MapDef, MapTheme } from '../src/sim/types'
 
@@ -44,12 +45,17 @@ describe('environment planning', () => {
         expect(c.geo.vertexCount * 4).toBe(c.geo.tint.length)
         expect(c.geo.vertexCount * 4).toBe(c.geo.rect.length)
         expect(c.geo.vertexCount).toBe(c.geo.fx.length)
-        for (let i = 0; i < c.geo.pos.length; i++) expect(Number.isFinite(c.geo.pos[i])).toBe(true)
+        expect(c.geo.pos.every(Number.isFinite) && c.geo.nor.every(Number.isFinite), `${theme} ${c.mat}`).toBe(true)
       }
     }
   })
 
   it('every non-barrier box style produces geometry', { timeout: 60_000 }, () => {
+    // The same empty map (backdrop only) is the baseline for every style.
+    const empty = planEnvironment({ ...buildTestMap('day'), boxes: [], decor: [] }, THEMES.day, {
+      density: 1,
+      chunk: 64
+    })
     for (const [kind, styles] of Object.entries(BOX_STYLES)) {
       if (kind === 'barrier') continue
       for (const style of Object.keys(styles)) {
@@ -58,7 +64,6 @@ describe('environment planning', () => {
           boxes: [{ kind: kind as BoxKind, min: [0, 0, 0], max: [6, 8, 4], style: Number(style) }],
           decor: []
         }
-        const empty = planEnvironment({ ...map, boxes: [] }, THEMES.day, { density: 1, chunk: 64 })
         const plan = planEnvironment(map, THEMES.day, { density: 1, chunk: 64 })
         expect(plan.stats.triangles, `${kind} ${style}`).toBeGreaterThan(empty.stats.triangles)
       }
@@ -74,6 +79,25 @@ describe('environment planning', () => {
       expect(env + DYNAMIC_BUDGET, quality).toBeLessThanOrEqual(450)
       expect(plan.stats.triangles, quality).toBeLessThan(700_000)
     }
+  })
+
+  it('real maps and variants stay within the draw-call and triangle budgets', { timeout: 300_000 }, () => {
+    const rows: string[] = []
+    for (const id of MAP_IDS)
+      for (const variant of [undefined, ...MAP_VARIANTS[id]]) {
+        const map = getMap(id, variant)
+        const theme = themeFor(map, variant)
+        for (const quality of ['medium', 'high'] as const) {
+          const preset = QUALITY_PRESETS[quality]
+          const plan = planEnvironment(map, theme, { density: preset.decorDensity, chunk: preset.chunk })
+          expect(plan.skipped, `${id} ${variant}`).toEqual([])
+          const env = plan.stats.drawCalls + (preset.shadows ? plan.stats.shadowCasters : 0)
+          rows.push(`${id}${variant ? ':' + variant : ''} ${quality}: ${env} env draws, ${plan.stats.triangles} tris`)
+          expect(env + DYNAMIC_BUDGET, `${id} ${variant} ${quality}`).toBeLessThanOrEqual(450)
+          expect(plan.stats.triangles, `${id} ${variant} ${quality}`).toBeLessThan(700_000)
+        }
+      }
+    console.log(rows.join(' | '))
   })
 
   it('atlas tiles have distinct rects inside the unit square', () => {

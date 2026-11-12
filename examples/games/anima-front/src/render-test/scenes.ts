@@ -7,10 +7,13 @@ import type { ItemId } from '../data/items'
 import { SPECIES_IDS, type SpeciesId } from '../data/species'
 import type { MapDef, PropKind, SimEvent, V3 } from '../sim/types'
 import { FakeWorld, makePlayer } from './fake-world'
+import { cardScene } from './card'
+import { groundSampler, tourViews } from './tour'
 
 export interface DebugView {
   pos: V3
   target: V3
+  name?: string
 }
 
 export interface Scene {
@@ -52,8 +55,10 @@ const LOADOUTS: { species: SpeciesId; r: ItemId[]; l: ItemId[]; passives: ItemId
   { species: 'fox', r: ['swallow'], l: ['leaf'], passives: [] }
 ]
 
-export function buildScene(name: string, map: MapDef): Scene {
+export function buildScene(name: string, map: MapDef, real = false): Scene {
   const world = new FakeWorld(map, 7)
+  if (name === 'card') return cardScene(map, world)
+  if (real) return realScene(name, map, world)
   switch (name) {
     case 'combat': {
       for (let i = 0; i < 4; i++) {
@@ -97,6 +102,54 @@ export function buildScene(name: string, map: MapDef): Scene {
       return { world, me: 'p0', views: ENV_VIEWS }
     }
   }
+}
+
+/**
+ * Scenes on a real map (src/sim/maps): actors stand on the real spawns and fight foes in front of them; the review
+ * views come from the map's spawns, objectives, rooftops and edges.
+ */
+function realScene(name: string, map: MapDef, world: FakeWorld): Scene {
+  world.groundAt = groundSampler(map)
+  const views = tourViews(map)
+  const spawns = map.spawns.length ? map.spawns : [{ team: 'squad' as const, p: [0, 0, 0] as V3, yaw: 0 }]
+  const s0 = spawns[0]
+  const ahead: V3 = [s0.p[0] + Math.sin(s0.yaw) * 22, 0, s0.p[2] + Math.cos(s0.yaw) * 22]
+  ahead[1] = world.groundAt(ahead[0], ahead[2], s0.p[1] + 2)
+  const n = name === 'stress' ? 12 : name === 'combat' ? 4 : 1
+  for (let i = 0; i < n; i++) {
+    const s = spawns[i % spawns.length]
+    const ring = Math.floor(i / spawns.length)
+    const l = LOADOUTS[i % LOADOUTS.length]
+    // Spread squadmates sharing a spawn on a small grid in front of it (never inside the camera).
+    const fx = Math.sin(s.yaw)
+    const fz = Math.cos(s.yaw)
+    const lat = ((ring % 3) - 1) * 2.6
+    const fwd = 2 + Math.floor(ring / 3) * 2.6
+    const ax = s.p[0] + fx * fwd + fz * lat
+    const az = s.p[2] + fz * fwd - fx * lat
+    const anchor: V3 = i === 0 ? [...s.p] : [ax, world.groundAt(ax, az, s.p[1] + 1), az]
+    const team = typeof s.team === 'number' ? s.team : 0
+    const p = makePlayer(i, l.species, team, [...anchor], l.r, l.l, l.passives)
+    p.yaw = s.yaw
+    world.addPlayer(p, anchor, name === 'env' ? 0 : 2.5)
+  }
+  if (name === 'env') world.passive = true
+  if (name === 'stress' || name === 'combat') {
+    world.foeTarget = name === 'stress' ? 120 : 28
+    world.foeKinds = FOE_KINDS.filter((k) => !FOES[k].boss)
+    world.foeArea = { centre: ahead, radius: name === 'stress' ? 18 : 10 }
+  }
+  if (name === 'stress') {
+    world.addProp({ kind: 'ink', p: [ahead[0] - 6, ahead[1], ahead[2]], yaw: 0, team: 0, t: 0, r: 6, life: 300 })
+    world.addProp({ kind: 'honey', p: [s0.p[0], s0.p[1] + 0.05, s0.p[2]], yaw: 0, team: 0, t: 0, r: 4.5, life: 300 })
+  }
+  for (const [k, a] of Object.entries(map.anchors)) {
+    if (k === 'lighthouse')
+      world.addProp({ kind: 'lighthouse', p: [...a], yaw: 0, team: 0, t: 0, hp: 2000, maxHp: 2000 })
+    if (/^zone[ABC]$/.test(k))
+      world.addProp({ kind: 'zone', p: [...a], yaw: 0, team: -1, t: 0, r: 7, state: 0.3, label: k.slice(4) })
+  }
+  return { world, me: 'p0', views }
 }
 
 function actorsScene(world: FakeWorld): Scene {
@@ -355,4 +408,4 @@ function eventsScene(world: FakeWorld): Scene {
   }
 }
 
-export const SCENES = ['env', 'combat', 'stress', 'events', 'actors'] as const
+export const SCENES = ['env', 'combat', 'stress', 'events', 'actors', 'card'] as const

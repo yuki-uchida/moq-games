@@ -14,9 +14,12 @@ import { attachKeyboardMouse, type KeyboardMouse } from '../input/keyboard-mouse
 import { createTouchControls, type TouchControls } from '../input/touch'
 import { h, nodes, setClass } from '../ui/dom'
 import { focusInitial } from '../ui/focus'
+import { createGuideCard, guideSeen, markGuideSeen, type GuideDevice } from '../ui/hud/guide'
 import { createHud, type Hud } from '../ui/hud/hud'
 import { controlsHelp, createSettingsPanel } from '../ui/screens/settings'
+import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
+import { setMatchProbe } from './debug'
 import { musicFor, prepareRequestFor } from './match'
 import { recordMission, recordPvp, type Rank } from './saves'
 import type { Session } from './session'
@@ -34,7 +37,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   let km: KeyboardMouse | null = null
   let touch: TouchControls | null = null
   let view: View | null = null
-  let mode: 'loading' | 'play' | 'paused' | 'error' | 'done' = 'loading'
+  let mode: 'loading' | 'guide' | 'play' | 'paused' | 'error' | 'done' = 'loading'
   const isDone = () => mode === 'done'
   let appliedSettings: Settings | null = null
   let scoreboardOpen = false
@@ -45,18 +48,16 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
 
   // ---- overlays
   const loadFill = h('i')
+  const loadTitle = h('b', null, '出撃準備中…')
+  /** Guests keep the loading card until the host's first snapshot arrives. */
+  let awaitingFirstView = false
   const loading = h(
     'div',
     'game-card game-loading is-on',
-    h(
-      'div',
-      'panel game-card-inner',
-      h('small', null, 'DEPLOYING'),
-      h('b', null, '出撃準備中…'),
-      h('div', 'boot-bar', loadFill)
-    )
+    h('div', 'panel game-card-inner', h('small', null, 'DEPLOYING'), loadTitle, h('div', 'boot-bar', loadFill))
   )
   const errorText = h('p', 'game-error-text')
+  const errorTitle = h('b', { attrs: { id: 'game-error-title' } }, '任務を開始できませんでした')
   const errorCard = h(
     'div',
     'game-card game-error',
@@ -64,7 +65,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       'div',
       { class: 'panel game-card-inner', attrs: { role: 'alertdialog', 'aria-labelledby': 'game-error-title' } },
       h('small', null, 'SIGNAL LOST'),
-      h('b', { attrs: { id: 'game-error-title' } }, '任務を開始できませんでした'),
+      errorTitle,
       errorText,
       h(
         'div',
@@ -94,7 +95,9 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   )
   const clickToPlay = h('div', 'game-click', h('b', null, 'クリックで操作開始'), h('small', null, 'Esc でメニュー'))
 
-  const el = h('div', 'screen game', canvas, hud.el, clickToPlay, loading, errorCard, pause, rotate)
+  const guide = createGuideCard(() => closeGuide())
+
+  const el = h('div', 'screen game', canvas, hud.el, clickToPlay, loading, guide.el, errorCard, pause, rotate)
 
   // ---- input wiring
   const onUi = (a: UiAction) => {
@@ -206,15 +209,55 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   }
 
   function fail(err: unknown) {
-    console.warn('[anima-front] match failed to start', err)
+    console.warn('[anima-front] match failed', err)
+    const started = view !== null
+    const message = err instanceof Error ? err.message : ''
+    // Online sessions give their reason in Japanese (e.g. the host closed the room): show it as it is.
+    const japanese = /[぀-ヿ一-鿿]/.test(message)
     mode = 'error'
-    errorText.textContent =
-      'アニマ通信が確立できませんでした。時間をおいてもう一度お試しください。' +
-      (err instanceof Error && err.message ? `\n（詳細：${err.message}）` : '')
+    errorTitle.textContent = started ? '通信が途切れました' : '任務を開始できませんでした'
+    errorText.textContent = japanese
+      ? message
+      : (started
+          ? 'ホストとの通信が途切れました。ロビーからもう一度お試しください。'
+          : 'アニマ通信が確立できませんでした。時間をおいてもう一度お試しください。') +
+        (message ? `\n（詳細：${message}）` : '')
     setClass(loading, 'is-on', false)
     setClass(errorCard, 'is-on', true)
     touch?.setVisible(false)
     requestAnimationFrame(() => focusInitial(errorCard))
+  }
+
+  // ---- first match: the controls card (solo matches wait for it)
+  function guideDevice(): GuideDevice {
+    if (ctx.touch) return 'touch'
+    const pads = navigator.getGamepads?.() ?? []
+    return [...pads].some((p) => p?.connected) ? 'pad' : 'kbm'
+  }
+  function openGuide() {
+    mode = 'guide'
+    // one view first, so the HUD and the scene are drawn behind the card while the world waits
+    try {
+      view = session?.update(0) ?? view
+    } catch (err) {
+      console.warn('[anima-front] first view failed', err)
+    }
+    session?.setPaused(true)
+    touch?.setVisible(false)
+    guide.show(guideDevice())
+  }
+  function closeGuide() {
+    if (mode !== 'guide') return
+    markGuideSeen(ctx.store)
+    guide.hide()
+    mode = 'play'
+    session?.setPaused(false)
+    touch?.setVisible(true)
+    if (!ctx.touch) {
+      setClass(clickToPlay, 'is-on', true)
+      km?.requestLock()
+    }
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
   }
 
   // ---- results
@@ -323,10 +366,36 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     // a short beat so the loading card never flashes
     await new Promise((r) => setTimeout(r, Math.max(0, 450 - (performance.now() - t0))))
     if (isDone()) return
+    awaitingFirstView = session.kind === 'guest'
+    if (awaitingFirstView) loadTitle.textContent = 'ホストの出撃を待っています…'
+    else setClass(loading, 'is-on', false)
+    setMatchProbe(probe)
+    if (session.kind !== 'demo' && !selection.training?.tutorial && !guideSeen(ctx.store)) {
+      openGuide()
+      return
+    }
     mode = 'play'
-    setClass(loading, 'is-on', false)
     touch?.setVisible(true)
     if (!ctx.touch) setClass(clickToPlay, 'is-on', true)
+  }
+
+  // ---- debug hook (window.__anima, dev / ?debug only): lets E2E drive and observe the real match
+  const probe = {
+    me: start.me,
+    view: () => view,
+    stats: () => renderer?.stats() ?? null,
+    aimAt(p: readonly number[]) {
+      const me = view?.players.find((q) => q.id === start.me)
+      if (!me) return
+      const dx = p[0] - me.p[0]
+      const dy = p[1] - (me.p[1] + eyeHeight(SPECIES[me.species]))
+      const dz = p[2] - me.p[2]
+      builder.reset(Math.atan2(dx, dz), Math.atan2(dy, Math.hypot(dx, dz)))
+    },
+    hold(button: 'R' | 'L' | 'jump' | 'dash' | 'interact', on: boolean) {
+      if (on) state.press(button, 'debug')
+      else state.release(button, 'debug')
+    }
   }
 
   const onLockChange = () => {
@@ -389,6 +458,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     },
     leave() {
       mode = 'done'
+      setMatchProbe(null)
       window.removeEventListener('resize', resize)
       document.removeEventListener('pointerlockchange', onLockChange)
       km?.dispose()
@@ -398,7 +468,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       ctx.audio.setDuck(0)
     },
     back() {
-      if (mode === 'paused') {
+      if (mode === 'guide') closeGuide()
+      else if (mode === 'paused') {
         const inPanel = !pauseBody.querySelector('[data-pause="resume"]')
         if (inPanel) paintPauseMenu()
         else resume()
@@ -451,6 +522,10 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         return
       }
       if (!next) return
+      if (awaitingFirstView) {
+        awaitingFirstView = false
+        setClass(loading, 'is-on', false)
+      }
       view = next
       const me = next.players.find((p) => p.id === start.me)
       const follow = followTarget(next, me)

@@ -1282,6 +1282,122 @@
     transform: rotate(-90deg);
   }
 }
+/* ---- first match: controls card ---- */
+.game-guide {
+  background: radial-gradient(70% 60% at 50% 50%, rgba(10, 16, 36, 0.55), rgba(4, 8, 20, 0.82));
+}
+.guide-panel {
+  width: min(560px, 100%);
+  max-height: calc(100% - 8px);
+  overflow: auto;
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: guide-in 380ms var(--ease) both;
+}
+@keyframes guide-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+.guide-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.guide-head small {
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  font-weight: 800;
+  color: var(--anima-2);
+}
+.guide-head b {
+  font-size: 22px;
+}
+.guide-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.guide-tab {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.guide-tab.is-on {
+  background: var(--anima-2);
+  border-color: transparent;
+  color: #1a1206;
+}
+.guide-tab:focus-visible {
+  outline: 2px solid var(--anima-2);
+  outline-offset: 2px;
+}
+.guide-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 18px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.guide-rows dt {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.guide-rows dd {
+  margin: 0;
+  font-weight: 800;
+  font-size: 14px;
+  text-align: right;
+}
+.guide-tip {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+  padding-left: 12px;
+  border-left: 3px solid var(--anima-2);
+}
+.guide-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.guide-foot small {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-height: 520px) {
+  .guide-panel {
+    padding: 14px 18px;
+    gap: 8px;
+    width: min(680px, 100%);
+  }
+  .guide-rows {
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    padding: 8px 12px;
+    gap: 4px 14px;
+  }
+  .guide-rows dd {
+    font-size: 13px;
+    text-align: left;
+  }
+  .guide-tip {
+    font-size: 12px;
+  }
+}
+
 .game-click {
   position: absolute;
   left: 50%;

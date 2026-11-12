@@ -68,6 +68,11 @@ export class Environment {
     this.sun.castShadow = preset.shadows
     this.configureShadows(preset)
     this.group.add(this.hemi, this.sun, this.sun.target)
+    if (t.rim) {
+      const rim = new THREE.DirectionalLight(t.rim.color, t.rim.intensity)
+      rim.position.set(...t.rim.dir).normalize()
+      this.group.add(rim)
+    }
     this.sky = new SkyDome(t, this.sunDir)
     this.group.add(this.sky.mesh)
     this.fog = new THREE.Fog(t.fog.color, t.fog.near, Math.min(t.fog.far, preset.far * 0.95))

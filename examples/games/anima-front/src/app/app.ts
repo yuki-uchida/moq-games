@@ -25,7 +25,9 @@ import { createSettingsScreen } from '../ui/screens/settings'
 import { createCreditsScreen } from '../ui/screens/credits'
 import { createResultsScreen } from '../ui/screens/results'
 import { createGameScreen } from './game'
-import { createMenuBackdrop } from './backdrop'
+import { attractLevel } from './attract-plan'
+import { installDebugHook } from './debug'
+import { createScenery } from './scenery'
 import type { AppContext, Backdrop, RouteArgs, RouteName, Screen } from './context'
 import { createDefaultLobbyProvider, type LobbyProvider } from './lobby'
 import { loadArmory, loadProgress, saveArmory, saveProgress, type Armory, type Progress } from './saves'
@@ -67,6 +69,10 @@ export interface AppOptions {
   lobbies?: LobbyProvider
   /** Skip the title and open this route right after boot (dev pages). */
   initial?: { name: RouteName; args?: unknown }
+  /** Installs window.__anima (dev server / ?debug). */
+  debug?: boolean
+  /** false: never run the title's live demo (?attract=0). */
+  attract?: boolean
 }
 
 export function startApp(root: HTMLElement, options: AppOptions = {}): AppContext {
@@ -115,6 +121,7 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
       settings = withSetting(settings, key, value)
       saveSettings(store, settings)
       applySettings()
+      if (key === 'quality' || key === 'reducedMotion') backdrop?.refresh()
     },
     get progress() {
       return progress
@@ -360,6 +367,8 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
   }
   requestAnimationFrame(frame)
 
+  if (options.debug) installDebugHook({ screen: () => current?.id ?? '', backdrop: () => backdrop })
+
   // ---- boot ----
   const boot = createBootScreen()
   show(boot)
@@ -374,8 +383,11 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
     }
     boot.setProgress(1)
     try {
-      backdrop = createMenuBackdrop(kit)
-      backdropHost.append(backdrop.canvas)
+      backdrop = createScenery(kit, {
+        level: () => attractLevel(deviceHints(options.attract === false, settings.quality), settings.reducedMotion),
+        quality: () => (settings.quality === 'high' ? 'medium' : settings.quality === 'low' ? 'low' : 'medium')
+      })
+      backdropHost.append(backdrop.el)
       const squad = [armory.species, ...SPECIES_IDS.filter((s) => s !== armory.species)].slice(0, 4)
       backdrop.setSquad(squad)
     } catch (err) {
@@ -394,6 +406,19 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
   })()
 
   return ctx
+}
+
+/** What the browser tells us about the device (for the title's live demo). */
+function deviceHints(disabled: boolean, quality: string) {
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number }
+  return {
+    disabled,
+    saveData: nav.connection?.saveData === true,
+    cores: nav.hardwareConcurrency || undefined,
+    memoryGb: nav.deviceMemory,
+    lowQuality: quality === 'low',
+    webgl2: typeof WebGL2RenderingContext !== 'undefined'
+  }
 }
 
 function safeAudio(): GameAudio {

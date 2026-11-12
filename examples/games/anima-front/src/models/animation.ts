@@ -1,13 +1,29 @@
 /**
  * Procedural animation of the animals, driven only by CharacterPose. Layers (idle, run, air, dash, slide,
  * glide, hook, launch, down, revive, emotes, hurt, aim) add Euler offsets per bone with smoothed weights; paws
- * holding antiques are then placed by two-bone IK along the aim (ready poses, use tracks, recoil).
+ * holding antiques are then placed by two-bone IK along the aim (ready poses, melee stances, use tracks, recoil).
+ * Every change of the paw's source (a use starting or ending, guard/charge on or off) blends from the pose shown
+ * at that moment, so swings start and end cleanly on the stances.
  */
 import * as THREE from 'three'
 import type { ItemId } from '../data/items'
 import type { SpeciesId } from '../data/species'
 import type { CharacterPose, Emote } from './api'
-import { HOLD, RECOIL, readyKey, sampleTrack, useTrack, type Key, type Track } from './motion'
+import {
+  blendInto,
+  copyInto,
+  HOLD,
+  isMelee,
+  newKey,
+  pitchFollow,
+  RECOIL,
+  readyKey,
+  sampleTrack,
+  stanceMotion,
+  useTrack,
+  type Key,
+  type Track
+} from './motion'
 import { BONE_NAMES, type BodyPlan, type BoneName, type Rig } from './rig'
 
 export interface FaceState {
@@ -56,7 +72,18 @@ interface HandAnim {
   trackT: number
   recoil: number
   hold: number
+  /** Scratch key for track samples. */
   key: Key
+  /** What drives the paw (−1 none, −2 just swapped, 0 ready/stance, 1 guard/charge variant, ≥ 2 a use track). */
+  source: number
+  /** The pose shown when the source last changed, the blend from it and its duration (s). */
+  from: Key
+  blendT: number
+  blendDur: number
+  /** The pose applied this frame (always with an explicit up). */
+  out: Key
+  /** Smoothed share of the aim pitch the hold follows. */
+  follow: number
 }
 
 const TAIL_STYLE: Record<SpeciesId, { wag: number; speed: number; lag: number }> = {
@@ -148,7 +175,13 @@ export class Animator {
       trackT: 0,
       recoil: 0,
       hold: 0,
-      key: { t: 0, pos: [0, 0, 0], fwd: [0, 0, 1] }
+      key: { t: 0, pos: [0, 0, 0], fwd: [0, 0, 1] },
+      source: -1,
+      from: newKey(),
+      blendT: 1,
+      blendDur: 1,
+      out: newKey(),
+      follow: 1
     })
     this.hands = [mk(), mk()]
     this.tail = TAIL_STYLE[species]
@@ -537,6 +570,8 @@ export class Animator {
         ha.item = hp.item
         ha.uses = hp.uses
         ha.track = null
+        // A swap between two antiques blends the paw over to the new hold.
+        if (ha.source >= 0) ha.source = -2
       }
       if (hp.uses !== ha.uses) {
         ha.uses = hp.uses
@@ -551,17 +586,51 @@ export class Animator {
       }
       ha.recoil *= Math.exp(-dt * 11)
       ha.hold += ((hp.item && !down ? 1 : 0) * (1 - busy) - ha.hold) * k(10)
-      if (!hp.item) continue
+      if (!hp.item) {
+        ha.source = -1
+        continue
+      }
       const hold = HOLD[hp.item]
-      let key = readyKey(hold, hp.act, hp.charge, hp.item)
+      const melee = isMelee(hold)
+      ha.follow += (pitchFollow(hold) - ha.follow) * k(8)
+      let key: Key
+      let source: number
       if (ha.track) {
         ha.trackT += dt
         if (ha.trackT >= ha.track.dur) ha.track = null
-        else key = sampleTrack(ha.track, ha.trackT, ha.key)
+      }
+      if (ha.track) {
+        key = sampleTrack(ha.track, ha.trackT, ha.key)
+        // A new instance on the use's first frame (a combo restarting the track blends from mid-swing too).
+        source = ha.source >= 2 && ha.trackT > dt * 1.5 ? ha.source : Math.max(ha.source, 1) + 1
+      } else {
+        key = readyKey(hold, hp.act, hp.charge, hp.item)
+        source = hp.act === 'guard' || hp.act === 'charge' ? 1 : 0
+        if (melee && source === 0)
+          stanceMotion(hold, key, {
+            run: W.run,
+            swing: sp * W.run * (h === 0 ? 1 : -1),
+            bob: Math.cos(2 * ph) * W.run,
+            air: W.air * (1 - W.glide) * (1 - W.launch) * (1 - W.hook)
+          })
       }
       if (hp.act === 'beam') {
         key = { ...key, pos: [key.pos[0], key.pos[1] + 0.004 * Math.sin(t * 61), key.pos[2]], lean: -0.12 }
       }
+      // Blend from the shown pose whenever the source changes (quick into a use, slower back to the stance).
+      if (source !== ha.source) {
+        if (ha.source === -1) ha.blendT = ha.blendDur = 1
+        else {
+          copyInto(ha.from, ha.out)
+          ha.blendT = 0
+          ha.blendDur = source >= 2 ? (melee ? 0.07 : 0.05) : ha.source >= 2 ? 0.16 : ha.source === -2 ? 0.2 : 0.12
+        }
+        ha.source = source
+      }
+      ha.blendT += dt
+      if (ha.blendT >= ha.blendDur) copyInto(ha.out, key)
+      else blendInto(ha.out, ha.from, key, smooth(0, 1, ha.blendT / ha.blendDur))
+      key = ha.out
       keys[h] = key
       const side = h === 0 ? -1 : 1
       R.chest.y += (key.twist ?? 0) * -side * 0.55 * ha.hold
@@ -633,6 +702,8 @@ export class Animator {
     u: new THREE.Vector3(),
     pole: new THREE.Vector3(),
     f: new THREE.Vector3(),
+    hf: new THREE.Vector3(),
+    hu: new THREE.Vector3(),
     r: new THREE.Vector3(),
     up: new THREE.Vector3(),
     basis: new THREE.Matrix4(),
@@ -675,25 +746,29 @@ export class Animator {
       const upv = new THREE.Vector3(0, 1, 0)
       if (key && ha.hold > 0.001) {
         weight = ha.hold
+        // The hold's own frame: the aim yaw and its share of the aim pitch.
+        const pitchH = pitch * ha.follow
+        const hf = T.hf.set(Math.sin(yaw) * Math.cos(pitchH), Math.sin(pitchH), Math.cos(yaw) * Math.cos(pitchH))
+        const hu = T.hu.crossVectors(r, hf).normalize()
         const back = ha.recoil * 0.035
         target
           .copy(origin)
           .addScaledVector(r, key.pos[0] * side * H)
-          .addScaledVector(up, key.pos[1] * H)
-          .addScaledVector(f, (key.pos[2] - back) * H)
+          .addScaledVector(hu, key.pos[1] * H)
+          .addScaledVector(hf, (key.pos[2] - back) * H)
         fwd
           .set(0, 0, 0)
           .addScaledVector(r, key.fwd[0] * side)
-          .addScaledVector(up, key.fwd[1] + ha.recoil * 0.3)
-          .addScaledVector(f, key.fwd[2])
+          .addScaledVector(hu, key.fwd[1] + ha.recoil * 0.3)
+          .addScaledVector(hf, key.fwd[2])
           .normalize()
         if (key.up)
           upv
             .set(0, 0, 0)
             .addScaledVector(r, key.up[0] * side)
-            .addScaledVector(up, key.up[1])
-            .addScaledVector(f, key.up[2])
-        else upv.copy(up)
+            .addScaledVector(hu, key.up[1])
+            .addScaledVector(hf, key.up[2])
+        else upv.copy(hu)
       }
       // Hook: the paw holding the gecko (or the right paw) reaches along the aim.
       if (this.w.hook > 0.01) {

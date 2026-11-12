@@ -1,5 +1,18 @@
 /** Gadget antiques held in a paw (and the momonga glider pack shown in the catalogue). */
-import { arc, capsule, cone, cylinder, ellipsoid, plane, scaled, Sculpt, slab, sphere, torus } from '../sdf/sculpt'
+import {
+  arc,
+  capsule,
+  cone,
+  cylinder,
+  ellipsoid,
+  plane,
+  scaled,
+  Sculpt,
+  slab,
+  sphere,
+  torus,
+  type Vec3
+} from '../sdf/sculpt'
 import { gearSculpt } from '../gear'
 import type { ItemRecipe } from './item'
 import { beadEyes, GLOW, GLOW2, grip, INK, WHITE } from './kit'
@@ -54,31 +67,76 @@ export function momonga(): ItemRecipe {
   return { parts: [{ name: 'body', sculpt: gearSculpt('momonga') }], muzzle: [0, 0.12, 0.05], cell: 0.0045, tris: 2000 }
 }
 
-/** コノハムシ: a leaf-insect device — a broad pointed leaf with glowing veins, little legs and a tiny head. */
+/**
+ * コノハムシ: a leaf insect riding on a grip — its broad abdomen is a leaf (glowing midrib and side veins, a pointed
+ * tip at the back and a nibbled edge), leafy flaps on its little legs, a round head with big eyes at the front.
+ */
 export function leaf(): ItemRecipe {
   const s = new Sculpt()
-  const G = 0x9ccf5f
-  // Leaf body: two flattened cones meeting at the widest point.
-  s.add(scaled(cone([0, 0.04, 0.05], [0, 0.04, 0.17], 0.07, 0.006, [0, 1, 0]), [1, 1, 0.18]), { color: G, k: 0.01 })
-  s.add(scaled(cone([0, 0.04, 0.05], [0, 0.04, -0.06], 0.07, 0.01, [0, 1, 0]), [1, 1, 0.18]), { color: G, k: 0.01 })
-  s.add(ellipsoid([0, 0.05, 0.16], [0.016, 0.012, 0.018]), { color: 0x8dbf52, k: 0.008 })
+  const G = 0x8cca4c
+  const DEEP = 0x5f9e36
+  const EDGE = 0xcfe77e
+  grip(s, 0x5a7a3a, 0.05, 0.017)
+  // Leaf abdomen: two halves folded up along the midrib (so the leaf shows from the side too), wavy lobes on the
+  // edges, a pointed tip at the back and a nibbled notch.
+  for (const side of [1, -1])
+    s.add(ellipsoid([0.036 * side, 0.054, -0.005], [0.05, 0.013, 0.105], [0, 0, 0.42 * side]), { color: G, k: 0.012 })
+  s.add(scaled(cone([0, 0.052, -0.07], [0, 0.062, -0.185], 0.05, 0.004, [0, 1, 0]), [1, 1, 0.36]), {
+    color: G,
+    k: 0.02
+  })
+  for (const side of [1, -1])
+    for (const [x, y, z] of [
+      [0.07, 0.068, 0.035],
+      [0.068, 0.067, -0.06]
+    ])
+      s.add(scaled(sphere([x * side, y, z], 0.022), [1, 0.42, 1.2]), { color: G, k: 0.012 })
+  s.sub(sphere([0.09, 0.07, -0.012], 0.017), { k: 0.006 })
+  // Thorax with a leafy collar, then the head.
+  s.add(ellipsoid([0, 0.06, 0.105], [0.03, 0.02, 0.035]), { color: G, k: 0.015 })
+  s.add(ellipsoid([0, 0.062, 0.098], [0.048, 0.009, 0.024]), { color: G, k: 0.01 })
+  s.add(sphere([0, 0.074, 0.152], 0.036), { color: G, k: 0.012 })
+  // Legs with leaf flaps: two pairs out of the thorax, one from the abdomen.
   for (const side of [1, -1]) {
-    s.add(capsule([0.008 * side, 0.058, 0.172], [0.03 * side, 0.08, 0.22], 0.0025), { color: 0x6a9a3a, k: 0.003 })
-    for (const z of [0.0, 0.07])
-      s.add(capsule([0.045 * side, 0.03, z], [0.085 * side, 0.005, z + 0.015], 0.004), { color: 0x7fae46, k: 0.006 })
+    for (const [z0, z1, dz] of [
+      [0.115, 0.17, 0.02],
+      [0.09, 0.07, -0.01],
+      [0.0, -0.06, -0.02]
+    ]) {
+      const root: Vec3 = [0.03 * side, 0.05, z0]
+      const tip: Vec3 = [0.105 * side, 0.025, z1]
+      s.add(capsule(root, tip, 0.0055), { color: DEEP, k: 0.006 })
+      const f: Vec3 = [root[0] + (tip[0] - root[0]) * 0.75, 0.032, root[2] + (tip[2] - root[2]) * 0.75 + dz]
+      s.add(scaled(sphere(f, 0.016), [1.25, 0.38, 0.85]), { color: G, k: 0.006 })
+    }
+    // Antennae with leafy tips.
+    s.add(capsule([0.012 * side, 0.1, 0.165], [0.034 * side, 0.13, 0.2], 0.0048), { color: DEEP, k: 0.004 })
+    s.add(scaled(sphere([0.036 * side, 0.132, 0.204], 0.011), [1, 0.5, 1.2]), { color: EDGE, k: 0.003 })
   }
-  // Midrib and side veins glowing.
-  s.paint(slab([0, 0, 0], [1, 0, 0], 0.003), {
+  // Markings: pale rim, glowing midrib and veins, a dry spot, the face.
+  s.paint(ellipsoid([0, 0.06, -0.035], [0.1, 0.03, 0.165]), { color: EDGE })
+  s.paint(ellipsoid([0, 0.06, -0.025], [0.072, 0.05, 0.122]), { color: G })
+  const vein = (x0: number, z0: number, x1: number, z1: number, r: number) =>
+    scaled(capsule([x0, 0.05, z0], [x1, 0.05, z1], r, [0, 1, 0]), [1, 1, 8])
+  s.paint(vein(0, 0.07, 0, -0.15, 0.0048), {
     color: WHITE,
     mask: GLOW,
-    within: ellipsoid([0, 0.05, 0.05], [0.02, 0.03, 0.12])
+    union: [
+      vein(0, 0.04, 0.05, 0.0, 0.0036),
+      vein(0, -0.02, 0.05, -0.06, 0.0036),
+      vein(0, -0.075, 0.032, -0.11, 0.0036)
+    ]
   })
-  for (const z of [-0.02, 0.03, 0.08])
-    for (const side of [1, -1])
-      s.paint(capsule([0, 0.052, z], [0.05 * side, 0.052, z + 0.04], 0.0025), { color: WHITE, mask: GLOW })
-  beadEyes(s, [0, 0.058, 0.17], 0.01, 0.005)
-  grip(s, 0x5a7a3a, 0.05, 0.016)
-  return { parts: [{ name: 'body', sculpt: s }], muzzle: [0, 0.05, 0.19], cell: 0.004, tris: 2000 }
+  s.paint(vein(0, 0.04, -0.05, 0.0, 0.0036), {
+    color: WHITE,
+    mask: GLOW,
+    union: [vein(0, -0.02, -0.05, -0.06, 0.0036), vein(0, -0.075, -0.032, -0.11, 0.0036)]
+  })
+  s.paint(scaled(sphere([-0.045, 0.06, 0.03], 0.013), [1, 1, 1.3]), { color: 0xc9a25a })
+  beadEyes(s, [0, 0.083, 0.177], 0.022, 0.012)
+  s.paint(sphere([0, 0.062, 0.187], 0.006), { color: 0x4a6a2a })
+  for (const side of [1, -1]) s.paint(sphere([0.027 * side, 0.064, 0.178], 0.008), { color: 0xff9fb2, alpha: 0.6 })
+  return { parts: [{ name: 'body', sculpt: s }], muzzle: [0, 0.074, 0.19], cell: 0.0042, tris: 2400 }
 }
 
 /** コウモリ: a sonar dish shaped like a bat face with huge ears and folded wings. */

@@ -6,7 +6,8 @@
  */
 import * as THREE from 'three'
 import type { ModelKit, Quality } from '../models/api'
-import type { ActorRef, MapDef, SimEvent, V3, View } from '../sim/types'
+import { FOES } from '../data/enemies'
+import type { ActorRef, MapDef, PropView, SimEvent, V3, View } from '../sim/types'
 import { Characters } from './actors/characters'
 import { Foes } from './actors/foes'
 import { Props } from './actors/props'
@@ -23,6 +24,14 @@ import { SoundDirector, type SoundContext } from './sound'
 
 export const createGameRenderer: CreateGameRenderer = (canvas, kit, audio, options): GameRenderer =>
   new Renderer(canvas, kit, audio, options)
+
+/** Props the cinematic camera must not sit in or look through: [radius, height]. */
+const BIG_PROPS: Partial<Record<PropView['kind'], [number, number]>> = {
+  lighthouse: [3.2, 12],
+  node: [2.4, 4],
+  cart: [2, 2.5],
+  target: [0.8, 2]
+}
 
 class Renderer implements GameRenderer {
   readonly canvas: HTMLCanvasElement
@@ -223,6 +232,7 @@ class Renderer implements GameRenderer {
     this.gl.toneMappingExposure = this.env.theme.exposure
     this.grid = new BoxGrid(map)
     this.rig.setGrid(this.grid)
+    this.rig.setObstacles(this.env.plan.canopies)
     this.props.setMap(map)
     this.effects.setMap(this.env.theme, this.env.emitters)
     this.post?.setTheme(this.env.theme)
@@ -257,6 +267,7 @@ class Renderer implements GameRenderer {
     // Actors first (muzzles and head tops are needed by effects and markers).
     this.hitStop = Math.max(0, this.hitStop - dt)
     this.characters.animScale = this.hitStop > 0 ? 0.05 : 1
+    this.characters.shadowFocus.copy(this.focus)
     this.characters.update(view, input.me, dt)
     this.foes.update(view, dt)
     const mine = view.players.find((p) => p.id === input.me)
@@ -331,6 +342,52 @@ class Renderer implements GameRenderer {
     if (e.type === 'respawn') this.warpAt.delete(e.who)
   }
 
+  /**
+   * Dev harness only: approximate draw calls of the main pass per top-level group (meshes in the view frustum)
+   * and shadow casters inside the sun's shadow box, to see where the budget goes.
+   */
+  debugBreakdown(): Record<string, { main: number; shadow: number }> {
+    const cam = this.rig.camera
+    const frustum = new THREE.Frustum().setFromProjectionMatrix(
+      new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)
+    )
+    const sun = this.env?.sun
+    const shadowFrustum = new THREE.Frustum()
+    if (sun) {
+      sun.shadow.camera.updateMatrixWorld()
+      shadowFrustum.setFromProjectionMatrix(
+        new THREE.Matrix4().multiplyMatrices(sun.shadow.camera.projectionMatrix, sun.shadow.camera.matrixWorldInverse)
+      )
+    }
+    const out: Record<string, { main: number; shadow: number }> = {}
+    const groups: [string, THREE.Object3D | undefined][] = [
+      ['env', this.env?.group],
+      ['characters', this.characters.group],
+      ['foes', this.foes.group],
+      ['props', this.props.group],
+      ['shots', this.shots.group],
+      ['effects', this.effects.group]
+    ]
+    for (const [name, g] of groups) {
+      const row = { main: 0, shadow: 0 }
+      out[name] = row
+      if (!g) continue
+      const visit = (o: THREE.Object3D) => {
+        if (!o.visible) return
+        const m = o as THREE.Mesh
+        if (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) {
+          const mats = Array.isArray(m.material) ? m.material.length : 1
+          const inView = !o.frustumCulled || frustum.intersectsObject(o)
+          if (inView) row.main += mats
+          if (sun && o.castShadow && (!o.frustumCulled || shadowFrustum.intersectsObject(o))) row.shadow += mats
+        }
+        for (const c of o.children) visit(c)
+      }
+      visit(g)
+    }
+    return out
+  }
+
   /** Dev harness only (not part of the API): a fixed review camera, or null for the normal cameras. */
   setDebugCamera(pos: V3 | null, target?: V3) {
     this.debugCamera = pos && target ? { pos, target } : null
@@ -381,13 +438,22 @@ class Renderer implements GameRenderer {
   }
 
   private cinematic(view: View, dt: number) {
+    // Squad members lead the shots; foes (and, in PvP, everyone) are framed when they are near the hero.
     this.subjects.length = 0
-    for (const p of view.players) if (p.state === 'alive') this.subjects.push(p)
-    if (!this.subjects.length) for (const f of view.foes) if (this.subjects.length < 12) this.subjects.push(f)
-    if (!this.subjects.length) this.subjects.push({ p: [0, 0, 0] })
+    for (const p of view.players)
+      if (p.state === 'alive') this.subjects.push({ p: p.p, key: p.id, weight: 1, r: 0.8, h: 1.6 })
+    for (const f of view.foes)
+      if (f.state !== 'dying' && this.subjects.length < 64) {
+        const def = FOES[f.kind]
+        this.subjects.push({ p: f.p, key: `f${f.id}`, weight: 0.6, r: Math.max(0.6, def.height * 0.5), h: def.height })
+      }
+    for (const pr of view.props) {
+      const big = BIG_PROPS[pr.kind]
+      if (big) this.subjects.push({ p: pr.p, key: `pr${pr.id}`, weight: 0, r: big[0], h: big[1] })
+    }
+    if (!this.subjects.length) this.subjects.push({ p: [0, 0, 0], key: 'origin', weight: 1 })
     this.rig.cinematic(this.subjects, dt)
-    const c = this.subjects[0].p
-    this.focus.set(c[0], c[1], c[2])
+    this.focus.copy(this.rig.lastLook)
   }
 
   // ------------------------------------------------------------------------------------------ queries

@@ -9,7 +9,7 @@ import { browGeometry, eyeGeometry, layoutFace, mouthGeometries, type FaceLayout
 import { BONE_NAMES, type BodyPlan } from '../rig'
 import { compileField } from '../sdf/field'
 import { bakeModel, toGeometry, type BakedModel } from '../sdf/geometry'
-import { meshField, traceSurface } from '../sdf/mesher'
+import { meshField, traceSurface, type MeshData } from '../sdf/mesher'
 import { buildRegions, regionTexture, type RegionTable } from '../sdf/regions'
 import { simplify } from '../sdf/simplify'
 import type { Vec3 } from '../sdf/sculpt'
@@ -24,6 +24,8 @@ export interface SpeciesAsset {
   look: Look
   layout: FaceLayout
   body: THREE.BufferGeometry
+  /** Distance level of detail of the body (same regions and skinning). */
+  bodyLod: THREE.BufferGeometry
   /** Shader-drawn markings of the body (sdf/regions.ts) and their texture. */
   regions: RegionTable
   regionTexture: THREE.DataTexture
@@ -51,6 +53,9 @@ const PART_RES: Record<Quality, number> = { low: 110, medium: 150, high: 200 }
 const PART_TRIS: Record<Quality, number> = { low: 200, medium: 360, high: 700 }
 /** Body triangle budget after simplification. */
 export const CHARACTER_TRIS: Record<Quality, number> = { low: 4800, medium: 7200, high: 14000 }
+/** Body triangles of the distance level of detail. */
+export const CHARACTER_LOD_TRIS: Record<Quality, number> = { low: 1500, medium: 2200, high: 3600 }
+const PART_LOD_TRIS: Record<Quality, number> = { low: 90, medium: 120, high: 200 }
 
 export function* buildSpeciesAsset(id: SpeciesId, quality: Quality): Generator<void, SpeciesAsset, void> {
   const t0 = performance.now()
@@ -69,25 +74,30 @@ export function* buildSpeciesAsset(id: SpeciesId, quality: Quality): Generator<v
   yield
   const debug = (globalThis as { __animaModelsDebug?: { noSimplify?: boolean } }).__animaModelsDebug
   const reduced = simplify(mesh, debug?.noSimplify ? Infinity : CHARACTER_TRIS[quality])
-  const body = toGeometry(reduced)
   // Bone-filtered regions read the summed skin weight of their bones from the regionFilter attribute.
   const regions = buildRegions(field)
-  if (regions.filters.length && reduced.skinIndex && reduced.skinWeight) {
-    const attr = body.getAttribute('regionFilter') as THREE.BufferAttribute
-    const out = attr.array as Float32Array
-    for (let v = 0; v < reduced.vertexCount; v++)
-      regions.filters.forEach((bones, slot) => {
-        let w = 0
-        for (let c = 0; c < 4; c++)
-          if (bones.includes(reduced.skinIndex![v * 4 + c])) w += reduced.skinWeight![v * 4 + c]
-        out[v * 4 + slot] = w
-      })
+  const skinnedGeometry = (m: MeshData) => {
+    const g = toGeometry(m)
+    if (regions.filters.length && m.skinIndex && m.skinWeight) {
+      const out = (g.getAttribute('regionFilter') as THREE.BufferAttribute).array as Float32Array
+      for (let v = 0; v < m.vertexCount; v++)
+        regions.filters.forEach((bones, slot) => {
+          let w = 0
+          for (let c = 0; c < 4; c++) if (bones.includes(m.skinIndex![v * 4 + c])) w += m.skinWeight![v * 4 + c]
+          out[v * 4 + slot] = w
+        })
+    }
+    return g
   }
+  const body = skinnedGeometry(reduced)
+  yield
+  const bodyLod = skinnedGeometry(simplify(reduced, CHARACTER_LOD_TRIS[quality]))
   const parts: SpeciesAsset['parts'] = []
   for (const part of recipe.parts) {
     const model = yield* bakeModel(part.sculpt, {
       cell: H / PART_RES[quality],
       maxTris: PART_TRIS[quality],
+      lodTris: PART_LOD_TRIS[quality],
       ao: { reach: 0.02 * H, min: 0.7 }
     })
     parts.push({ bone: part.bone, model })
@@ -111,6 +121,7 @@ export function* buildSpeciesAsset(id: SpeciesId, quality: Quality): Generator<v
     look,
     layout,
     body,
+    bodyLod,
     regions,
     regionTexture: regionTexture(regions),
     parts,

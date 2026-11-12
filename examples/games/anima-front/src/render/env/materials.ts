@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import type { EnvMat } from './ctx'
 import type { AtlasTextures } from './paint'
+import { RELIEF_DEPTH } from './paint-depth'
 import type { ThemeDef } from './themes'
 
 export interface EnvMaterials {
@@ -59,14 +60,73 @@ uniform float uGlow;
 uniform float uTime;
 `
 
+/**
+ * Facade relief (fx < -0.5): parallax occlusion over the half-resolution depth atlas. The tangent frame comes
+ * from screen-space derivatives (no tangent attribute); the march fades out with distance where it would only
+ * shimmer. Recess depth darkens the albedo (cheap cavity occlusion).
+ */
+const RELIEF = /* glsl */ `
+vec2 tileUv = vTileUv;
+float relief = 0.0;
+#ifdef ENV_RELIEF
+if (vFx < -0.5) {
+  float dist = length(vViewPosition);
+  float fade = 1.0 - smoothstep(38.0, 70.0, dist);
+  if (fade > 0.0) {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewPosition);
+    vec3 dp1 = dFdx(-vViewPosition);
+    vec3 dp2 = dFdy(-vViewPosition);
+    vec2 duv1 = dFdx(vTileUv);
+    vec2 duv2 = dFdy(vTileUv);
+    vec3 dp2perp = cross(dp2, N);
+    vec3 dp1perp = cross(N, dp1);
+    float det = dot(dp1, dp2perp);
+    if (abs(det) > 1e-9) {
+      vec3 gU = (dp2perp * duv1.x + dp1perp * duv2.x) / det;
+      vec3 gV = (dp2perp * duv1.y + dp1perp * duv2.y) / det;
+      float nv = max(dot(V, N), 0.18);
+      vec2 dir = vec2(dot(gU, -V), dot(gV, -V)) / nv * fade;
+      vec2 g0 = duv1 * vRect.zw;
+      vec2 g1 = duv2 * vRect.zw;
+      const int STEPS = 12;
+      float stepH = RELIEF_DEPTH / float(STEPS);
+      float h = 0.0;
+      float prevH = 0.0;
+      float prevD = 0.0;
+      float hit = 0.0;
+      for (int i = 0; i <= STEPS; i++) {
+        vec2 uvi = vRect.xy + fract(vTileUv + dir * h) * vRect.zw;
+        float d = (1.0 - textureGrad(uDepthMap, uvi, g0, g1).r) * RELIEF_DEPTH;
+        if (h >= d) {
+          float a = prevD - prevH;
+          float b = d - h;
+          float t = i == 0 ? 0.0 : clamp(a / max(a - b, 1e-5), 0.0, 1.0);
+          hit = mix(prevH, h, t);
+          break;
+        }
+        prevH = h;
+        prevD = d;
+        h += stepH;
+        hit = h;
+      }
+      tileUv = vTileUv + dir * hit;
+      relief = hit / RELIEF_DEPTH * fade;
+    }
+  }
+}
+#endif
+`
+
 const MAP = /* glsl */ `
-vec2 atlasUv = vRect.xy + fract(vTileUv) * vRect.zw;
+${RELIEF}
+vec2 atlasUv = vRect.xy + fract(tileUv) * vRect.zw;
 vec2 atlasGrad = vTileUv * vRect.zw;
 #ifdef USE_MAP
   vec4 sampledDiffuseColor = textureGrad(map, atlasUv, dFdx(atlasGrad), dFdy(atlasGrad));
   diffuseColor *= sampledDiffuseColor;
 #endif
-diffuseColor.rgb *= vTint.rgb;
+diffuseColor.rgb *= vTint.rgb * (1.0 - 0.55 * relief);
 `
 
 const EMISSIVE = /* glsl */ `
@@ -76,21 +136,51 @@ const EMISSIVE = /* glsl */ `
 #endif
 `
 
-function patchAtlas(m: THREE.MeshStandardMaterial, shared: EnvMaterials['uniforms'], sway: boolean) {
+interface PatchOptions {
+  sway?: boolean
+  /** Depth atlas for facade relief. */
+  relief?: THREE.Texture
+  /** Extra aerial haze towards this colour for the distant backdrop. */
+  haze?: { color: THREE.Color; amount: number }
+}
+
+function patchAtlas(m: THREE.MeshStandardMaterial, shared: EnvMaterials['uniforms'], opts: PatchOptions = {}) {
+  const { sway = false, relief, haze } = opts
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = shared.uTime
     shader.uniforms.uWind = shared.uWind
     shader.uniforms.uGlow = shared.uGlow
     if (sway) shader.defines = { ...(shader.defines ?? {}), ENV_SWAY: '' }
+    if (relief) {
+      shader.defines = { ...(shader.defines ?? {}), ENV_RELIEF: '', RELIEF_DEPTH: RELIEF_DEPTH.toFixed(3) }
+      shader.uniforms.uDepthMap = { value: relief }
+    }
+    if (haze) {
+      shader.uniforms.uHazeColor = { value: haze.color }
+      shader.uniforms.uHaze = { value: haze.amount }
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${VERTEX_HEAD}`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\n${SWAY}`)
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
+      .replace(
+        '#include <common>',
+        `#include <common>
+${relief ? 'uniform sampler2D uDepthMap;' : ''}${haze ? 'uniform vec3 uHazeColor; uniform float uHaze;' : ''}`
+      )
       .replace('#include <map_fragment>', MAP)
       .replace('#include <emissivemap_fragment>', EMISSIVE)
+    if (haze)
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <fog_fragment>',
+        `#include <fog_fragment>
+#ifdef USE_FOG
+gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, uHaze * smoothstep(30.0, 240.0, vFogDepth));
+#endif`
+      )
   }
-  m.customProgramCacheKey = () => `env-atlas-${sway ? 1 : 0}`
+  m.customProgramCacheKey = () => `env-atlas-${sway ? 1 : 0}-${relief ? 1 : 0}-${haze ? 1 : 0}`
 }
 
 export function createEnvMaterials(tex: AtlasTextures, theme: ThemeDef): EnvMaterials {
@@ -102,7 +192,7 @@ export function createEnvMaterials(tex: AtlasTextures, theme: ThemeDef): EnvMate
     roughness: 0.88,
     metalness: 0
   })
-  patchAtlas(atlas, uniforms, false)
+  patchAtlas(atlas, uniforms, { relief: tex.depth })
   const foliage = new THREE.MeshStandardMaterial({
     map: tex.albedo,
     emissiveMap: tex.emissive,
@@ -110,7 +200,7 @@ export function createEnvMaterials(tex: AtlasTextures, theme: ThemeDef): EnvMate
     roughness: 0.95,
     metalness: 0
   })
-  patchAtlas(foliage, uniforms, true)
+  patchAtlas(foliage, uniforms, { sway: true })
   const cutout = new THREE.MeshStandardMaterial({
     map: tex.albedo,
     emissiveMap: tex.emissive,
@@ -120,7 +210,17 @@ export function createEnvMaterials(tex: AtlasTextures, theme: ThemeDef): EnvMate
     alphaTest: 0.5,
     side: THREE.DoubleSide
   })
-  patchAtlas(cutout, uniforms, true)
+  patchAtlas(cutout, uniforms, { sway: true })
+
+  // Distant backdrop: plain atlas with extra aerial haze so the skyline layers into the sky.
+  const far = new THREE.MeshStandardMaterial({
+    map: tex.albedo,
+    emissiveMap: tex.emissive,
+    emissive: 0xffffff,
+    roughness: 0.95,
+    metalness: 0
+  })
+  patchAtlas(far, uniforms, { haze: { color: new THREE.Color(theme.fog.color), amount: theme.farHaze ?? 0.45 } })
 
   const glow = new THREE.MeshBasicMaterial({ color: 0xffffff })
   glow.onBeforeCompile = (shader) => {
@@ -204,7 +304,7 @@ export function createEnvMaterials(tex: AtlasTextures, theme: ThemeDef): EnvMate
   }
   pool.customProgramCacheKey = () => 'env-pool'
 
-  const materials: Record<EnvMat, THREE.Material> = { atlas, foliage, cutout, glow, water, pool }
+  const materials: Record<EnvMat, THREE.Material> = { atlas, foliage, cutout, glow, water, pool, far }
   return {
     materials,
     uniforms,

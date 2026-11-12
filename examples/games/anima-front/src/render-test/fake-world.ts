@@ -142,6 +142,8 @@ export class FakeWorld {
   foeArea: { centre: V3; radius: number } = { centre: [0, 0, -20], radius: 20 }
   /** Players stand still (lineups) instead of fighting. */
   passive = false
+  /** Walkable height under (x, z) at or below `below` (real maps); flat 0 by default. */
+  groundAt: (x: number, z: number, below: number) => number = () => 0
   private rnd: () => number
 
   constructor(
@@ -179,7 +181,7 @@ export class FakeWorld {
       revealed: false,
       shielded: false
     }
-    if (def.flying) f.p = [p[0], (def.hover?.[0] ?? 4) + this.rnd() * 2, p[2]]
+    if (def.flying) f.p = [p[0], p[1] + (def.hover?.[0] ?? 4) + this.rnd() * 2, p[2]]
     if (kind === 'kurozume') {
       const squad = [
         { species: 'fox' as const, r: ['wood' as const], l: ['frog' as const] },
@@ -212,7 +214,9 @@ export class FakeWorld {
     const a = this.rnd() * 6.28
     const r = this.foeArea.radius * Math.sqrt(this.rnd())
     const c = this.foeArea.centre
-    this.addFoe(kind, [c[0] + Math.cos(a) * r, 0, c[2] + Math.sin(a) * r])
+    const x = c[0] + Math.cos(a) * r
+    const z = c[2] + Math.sin(a) * r
+    this.addFoe(kind, [x, this.groundAt(x, z, c[1] + 1), z])
   }
 
   private nearestFoe(p: V3): FoeView | undefined {
@@ -292,7 +296,7 @@ export class FakeWorld {
       vy = 9
       this.emit({ type: 'jump', who: p.id, air: false })
     }
-    const ground = 0
+    const ground = this.groundAt(p.p[0], p.p[2], p.p[1] + 1)
     vy = p.grounded && !jump ? 0 : ((p as unknown as { _vy?: number })._vy ?? vy)
     vy -= 26 * dt
     y += vy * dt
@@ -553,7 +557,8 @@ export class FakeWorld {
       const uz = (dx / d) * s + (dz / d) * c
       f.p = [
         f.p[0] + ux * sp * dt,
-        def.flying ? (def.hover?.[0] ?? 4) + Math.sin(this.time * 2 + f.id) : 0,
+        (def.flying ? (def.hover?.[0] ?? 4) + Math.sin(this.time * 2 + f.id) : 0) +
+          this.groundAt(f.p[0], f.p[2], f.p[1] + 1),
         f.p[2] + uz * sp * dt
       ]
     }

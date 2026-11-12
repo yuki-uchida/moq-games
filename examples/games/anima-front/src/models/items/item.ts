@@ -1,15 +1,20 @@
 /**
  * Antique models: each recipe is one or more rigid SDF parts (so details can move: jaws, wings, cheeks) plus a
- * muzzle/tip anchor and a small animation hook. Parts share one toon material per instance whose accent glow
- * uses ITEMS[id].color.
+ * muzzle/tip anchor and a small animation hook. All parts and the ink outline are ONE draw call: a single part
+ * is a plain mesh, moving parts are rigidly skinned to one bone each (the bones are the animated pivots); the
+ * paint regions of every part live in one merged table. The accent glow uses ITEMS[id].color. A lighter level of
+ * detail is baked alongside for distant characters.
  */
 import * as THREE from 'three'
 import { ITEMS, type ItemId } from '../../data/items'
 import type { HandAct } from '../../sim/types'
 import type { Quality } from '../api'
+import { mergePieces, type MergedGeometry } from '../assembly'
 import type { KitItemModel } from '../character'
-import { createOutlineMaterial, createToonMaterial, createUniforms, regionsOf } from '../materials'
+import { hullDepthMaterial } from '../hull'
+import { createToonMaterial, createUniforms } from '../materials'
 import { bakeModel, type BakedModel } from '../sdf/geometry'
+import { mergeRegionTables, regionTexture, type RegionTable } from '../sdf/regions'
 import type { Sculpt, Vec3 } from '../sdf/sculpt'
 
 export interface ItemAnimState {
@@ -49,6 +54,13 @@ export interface ItemAsset {
   glow2?: number
   triangles: number
   ms: number
+  /** Merged regions and geometries (built on first use, shared by every instance). */
+  merged?: {
+    table: RegionTable
+    ranges: [number, number][]
+    texture: THREE.DataTexture
+    geometry: Map<string, MergedGeometry>
+  }
 }
 
 const CELL_SCALE: Record<Quality, number> = { low: 1.45, medium: 1, high: 0.72 }
@@ -67,9 +79,11 @@ export function* buildItemAsset(id: ItemId, recipe: ItemRecipe, quality: Quality
   const budget = (recipe.tris ?? 2600) * TRI_SCALE[quality]
   for (let i = 0; i < recipe.parts.length; i++) {
     const p = recipe.parts[i]
+    const maxTris = Math.max(60, Math.round((budget * area[i]) / total))
     const model = yield* bakeModel(p.sculpt, {
       cell,
-      maxTris: Math.max(60, Math.round((budget * area[i]) / total)),
+      maxTris,
+      lodTris: Math.max(40, Math.round(maxTris * 0.28)),
       ao: { reach: cell * 6, min: 0.6 }
     })
     triangles += model.triangles
@@ -86,6 +100,51 @@ export function* buildItemAsset(id: ItemId, recipe: ItemRecipe, quality: Quality
   }
 }
 
+function mergedOf(asset: ItemAsset) {
+  if (!asset.merged) {
+    const { table, ranges } = mergeRegionTables(asset.parts.map((p) => p.model.regions))
+    asset.merged = { table, ranges, texture: regionTexture(table), geometry: new Map() }
+  }
+  return asset.merged
+}
+
+/** The merged geometry of an antique (cached per level of detail and outline). */
+export function itemGeometry(asset: ItemAsset, lod: 0 | 1, outline: boolean): MergedGeometry {
+  const merged = mergedOf(asset)
+  const key = `${lod}|${outline ? 1 : 0}`
+  let g = merged.geometry.get(key)
+  if (!g) {
+    const multi = asset.parts.length > 1
+    g = mergePieces(
+      asset.parts.map((p, i) => ({
+        geometry: lod === 1 && p.model.lod ? p.model.lod.geometry : p.model.geometry,
+        matrix: null,
+        bone: multi ? i : null,
+        range: i,
+        flags: 0,
+        outline: true
+      })),
+      merged.ranges,
+      { skinned: multi, hull: outline }
+    )
+    merged.geometry.set(key, g)
+  }
+  return g
+}
+
+export function disposeItemAsset(asset: ItemAsset): void {
+  for (const p of asset.parts) {
+    p.model.geometry.dispose()
+    if (p.model.lod && p.model.lod.geometry !== p.model.geometry) p.model.lod.geometry.dispose()
+    p.model.texture.dispose()
+  }
+  if (asset.merged) {
+    for (const g of asset.merged.geometry.values()) g.geometry.dispose()
+    asset.merged.texture.dispose()
+    asset.merged = undefined
+  }
+}
+
 export function createItemModel(asset: ItemAsset, outline: boolean): KitItemModel {
   const def = ITEMS[asset.id]
   const root = new THREE.Group()
@@ -97,28 +156,49 @@ export function createItemModel(asset: ItemAsset, outline: boolean): KitItemMode
   u.uGlow2.value = 0
   u.uRim.value = 0.3
   u.uOutline.value = 0.0045
-  const materials: THREE.MeshToonMaterial[] = []
-  const outlineMat = outline ? createOutlineMaterial(u) : null
+  const merged = mergedOf(asset)
+  const material = createToonMaterial(
+    u,
+    { texture: merged.texture, count: merged.table.count, shapeBase: merged.table.shapeBase },
+    { hull: outline, merged: true }
+  )
   const parts: Record<string, THREE.Object3D> = {}
-  for (const p of asset.parts) {
+  const multi = asset.parts.length > 1
+  let lod: 0 | 1 = 0
+  let mesh: THREE.Mesh
+  let skeleton: THREE.Skeleton | null = null
+  if (multi) {
+    // Moving parts: one bone per part at its pivot; the geometry stays in item space.
+    const bones = asset.parts.map((p) => {
+      const bone = new THREE.Bone()
+      bone.name = `part:${p.name}`
+      bone.position.set(p.pivot[0], p.pivot[1], p.pivot[2])
+      root.add(bone)
+      parts[p.name] = bone
+      return bone
+    })
+    const skinned = new THREE.SkinnedMesh(itemGeometry(asset, 0, outline).geometry, material)
+    root.add(skinned)
+    root.updateMatrixWorld(true)
+    skeleton = new THREE.Skeleton(bones)
+    skinned.bind(skeleton)
+    const bs = skinned.geometry.boundingSphere!
+    skinned.boundingSphere = new THREE.Sphere(bs.center.clone(), bs.radius * 1.5)
+    mesh = skinned
+  } else {
+    const p = asset.parts[0]
     const pivot = new THREE.Group()
-    pivot.name = p.name
+    pivot.name = `part:${p.name}`
     pivot.position.set(p.pivot[0], p.pivot[1], p.pivot[2])
-    // Geometry stays in item space (paint regions are item space): the mesh sits at −pivot inside its pivot.
-    const material = createToonMaterial(u, regionsOf(p.model))
-    materials.push(material)
-    const mesh = new THREE.Mesh(p.model.geometry, material)
+    mesh = new THREE.Mesh(itemGeometry(asset, 0, outline).geometry, material)
     mesh.position.set(-p.pivot[0], -p.pivot[1], -p.pivot[2])
-    mesh.castShadow = true
     pivot.add(mesh)
-    if (outlineMat) {
-      const ol = new THREE.Mesh(p.model.geometry, outlineMat)
-      ol.position.copy(mesh.position)
-      pivot.add(ol)
-    }
     root.add(pivot)
     parts[p.name] = pivot
   }
+  mesh.name = 'antique'
+  mesh.castShadow = true
+  mesh.customDepthMaterial = hullDepthMaterial()
   const state: ItemAnimState = { t: 0, dt: 0, act: 'idle', charge: 0, active: 0, sinceFire: 9 }
   let swapGlow = 0
   let glow2 = 0
@@ -151,16 +231,20 @@ export function createItemModel(asset: ItemAsset, outline: boolean): KitItemMode
     setCloak(amount: number) {
       u.uCloak.value = amount
       const transparent = amount > 0.001
-      for (const material of materials)
-        if (material.transparent !== transparent) {
-          material.transparent = transparent
-          material.needsUpdate = true
-        }
-      if (outlineMat) outlineMat.visible = amount < 0.35
+      if (material.transparent !== transparent) {
+        material.transparent = transparent
+        material.needsUpdate = true
+      }
+      u.uHullOn.value = amount < 0.35 ? 1 : 0
+    },
+    setLod(level: 0 | 1) {
+      if (level === lod) return
+      lod = level
+      mesh.geometry = itemGeometry(asset, lod, outline).geometry
     },
     dispose() {
-      for (const material of materials) material.dispose()
-      outlineMat?.dispose()
+      material.dispose()
+      skeleton?.dispose()
       root.removeFromParent()
     }
   }

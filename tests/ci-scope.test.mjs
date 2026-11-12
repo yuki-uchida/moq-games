@@ -1251,7 +1251,7 @@ test('shared code checks only the games that use the changed file', () => {
   const table = {
     'examples/games/shared/UiSound.ts': ['tower', 'rabbiters', 'life-survivors', 'ember-grid', 'lane-battle'],
     'examples/games/shared/ImpactArt.ts': ['tower', 'ember-grid'],
-    'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei'],
+    'utils/relayPresets.ts': ['tower', 'rabbiters', 'life-survivors', 'mamono-jinkei', 'anima-front'],
     'utils/media/objectStatus.ts': ['tower', 'yoru-no-yashiki'],
     'utils/moqJson.ts': ['tower'],
     'lib/moqt/moqtClient.ts': ['tower', 'yoru-no-yashiki']
@@ -1464,17 +1464,18 @@ test('games that use another game’s code or runtime assets are checked with it
     assert.deepEqual(classify(path), ['tower', 'ember-grid'], path)
     assert.equal(selectScope([path]).browser, 'tower- ember-grid-e2e.spec.ts', path)
   }
-  // life-survivors and mamono-jinkei play co-op over the rabbiters network session.
+  // life-survivors, mamono-jinkei and anima-front play co-op over the rabbiters network session.
   assert.deepEqual(classify('examples/games/rabbiters/src/network.ts'), [
     'rabbiters',
     'life-survivors',
     'mamono-jinkei',
+    'anima-front',
     'landing'
   ])
   const network = selectScope(['examples/games/rabbiters/src/network.ts'])
   assert.equal(
     network.unit,
-    'examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/mamono-jinkei/tests'
+    'examples/games/rabbiters/tests examples/games/life-survivors/tests examples/games/mamono-jinkei/tests examples/games/anima-front/tests'
   )
   assert.equal(network.life, true)
   assert.equal(

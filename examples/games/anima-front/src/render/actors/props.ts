@@ -28,7 +28,7 @@ void main() {
   float prog = step(ang, uProgress) * band;
   float dash = step(0.5, fract(ang * 24.0 - uTime * 0.2));
   float inner = (1.0 - smoothstep(0.0, uInner, r)) * 0.12 + smoothstep(uInner - 0.25, uInner, r) * 0.18;
-  vec3 col = uColor * (band * (0.35 + 0.35 * dash) + inner) + uFill * prog * 1.6;
+  vec3 col = uColor * (band * (0.3 + 0.3 * dash) + inner * 0.7) + uFill * prog * 0.85;
   float pulse = 0.85 + 0.15 * sin(uTime * 3.0 - r * 6.0);
   gl_FragColor = vec4(col * pulse, 1.0);
 }
@@ -165,6 +165,7 @@ export class Props {
       e.model.root.position.set(pr.p[0], pr.p[1], pr.p[2])
       e.model.root.rotation.y = pr.yaw
       e.model.update(dt, pr.t, pr.state ?? 0, pr.life)
+      if (pr.hp !== undefined && pr.maxHp) e.model.setHealth?.(Math.max(0, Math.min(1, pr.hp / pr.maxHp)))
     }
     for (const [id, e] of this.models) {
       if (e.seen === this.frameId) continue
@@ -201,11 +202,11 @@ export class Props {
           : pr.team === myTeam || myTeam === undefined
             ? 0x7af0a0
             : TEAM_HEX[pr.team as TeamId]
-    r.ringMat.uniforms.uColor.value.setHex(color).multiplyScalar(1.4)
+    r.ringMat.uniforms.uColor.value.setHex(color).multiplyScalar(1.1)
     r.ringMat.uniforms.uFill.value.setHex(0x7af0a0)
     r.ringMat.uniforms.uProgress.value = pr.kind === 'zone' ? (pr.state ?? 0) : 0
     r.ringMat.uniforms.uInner.value = pr.kind === 'zone' ? 0.86 : 0.92
-    r.curtainMat.uniforms.uColor.value.setHex(color).multiplyScalar(0.55)
+    r.curtainMat.uniforms.uColor.value.setHex(color).multiplyScalar(0.38)
   }
 
   dispose() {

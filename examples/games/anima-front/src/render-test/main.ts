@@ -86,7 +86,7 @@ async function main() {
   const t0 = performance.now()
   await renderer.setMap(map, variant)
   const buildMs = performance.now() - t0
-  const scene = buildScene(sceneName, map)
+  const scene = buildScene(sceneName, map, mapId !== 'test')
   const debug = renderer as unknown as { setDebugCamera(pos: unknown, target?: unknown): void }
   const applyView = (i: number | null) => {
     if (i === null || !scene.views.length) debug.setDebugCamera(null)
@@ -157,9 +157,12 @@ async function main() {
       label: () => scene.label?.() ?? '',
       steps: scene.steps ?? 0,
       setView: (i: number | null) => applyView(i),
+      views: () => scene.views.map((v, i) => v.name ?? `view${i}`),
       setPaused: (p: boolean) => (paused = p),
       setOptions: (o: Parameters<typeof renderer.setOptions>[0]) => renderer.setOptions(o),
-      counts: () => ({ players: scene.world.players.length, foes: scene.world.foes.length })
+      counts: () => ({ players: scene.world.players.length, foes: scene.world.foes.length }),
+      breakdown: () =>
+        (renderer as unknown as { debugBreakdown(): Record<string, { main: number; shadow: number }> }).debugBreakdown()
     }
   })
 }

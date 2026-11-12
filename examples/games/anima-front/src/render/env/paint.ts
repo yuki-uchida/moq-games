@@ -15,18 +15,22 @@ import {
   type TileName
 } from './atlas'
 import { FACADES, GROUND_FLOORS, ROOFS, type Painter } from './paint-facades'
+import { DEPTHS } from './paint-depth'
+import { FOLIAGE } from './paint-foliage'
 import { Brush } from './paint-kit'
 import { SURFACES } from './paint-surfaces'
 
-const PAINTERS: Record<string, Painter> = { ...FACADES, ...GROUND_FLOORS, ...ROOFS, ...SURFACES }
+const PAINTERS: Record<string, Painter> = { ...FACADES, ...GROUND_FLOORS, ...ROOFS, ...SURFACES, ...FOLIAGE }
 
 export interface AtlasTextures {
   albedo: THREE.DataTexture
   emissive: THREE.CanvasTexture
+  /** Half-resolution relief map of the facade tiles (paint-depth.ts); white = flush. */
+  depth: THREE.CanvasTexture
   dispose(): void
 }
 
-let cache: { albedo: Uint8Array; emissive: HTMLCanvasElement } | null = null
+let cache: { albedo: Uint8Array; emissive: HTMLCanvasElement; depth: HTMLCanvasElement } | null = null
 
 /** Paints (once per page) and wraps the atlas into textures. */
 export function paintAtlas(anisotropy = 4): AtlasTextures {
@@ -42,17 +46,23 @@ export function paintAtlas(anisotropy = 4): AtlasTextures {
   emissive.colorSpace = THREE.SRGBColorSpace
   emissive.anisotropy = anisotropy
   emissive.needsUpdate = true
+  const depth = new THREE.CanvasTexture(cache.depth)
+  depth.colorSpace = THREE.NoColorSpace
+  depth.anisotropy = anisotropy
+  depth.needsUpdate = true
   return {
     albedo,
     emissive,
+    depth,
     dispose() {
       albedo.dispose()
       emissive.dispose()
+      depth.dispose()
     }
   }
 }
 
-function paint(): { albedo: Uint8Array; emissive: HTMLCanvasElement } {
+function paint(): { albedo: Uint8Array; emissive: HTMLCanvasElement; depth: HTMLCanvasElement } {
   const atlas = canvas(ATLAS_WIDTH, ATLAS_HEIGHT)
   const glow = canvas(ATLAS_WIDTH, ATLAS_HEIGHT)
   const a = atlas.getContext('2d')!
@@ -78,13 +88,41 @@ function paint(): { albedo: Uint8Array; emissive: HTMLCanvasElement } {
     blit(a, tileA, name)
     blit(g, tileE, name)
   })
+  const depth = paintDepth()
   const data = a.getImageData(0, 0, ATLAS_WIDTH, ATLAS_HEIGHT).data
   dilate(data)
   // DataTexture rows start at the bottom (v = 0); flip so tile rects (computed for a flipped canvas) match.
   const out = new Uint8Array(data.length)
   const row = ATLAS_WIDTH * 4
   for (let y = 0; y < ATLAS_HEIGHT; y++) out.set(data.subarray(y * row, (y + 1) * row), (ATLAS_HEIGHT - 1 - y) * row)
-  return { albedo: out, emissive: glow }
+  return { albedo: out, emissive: glow, depth }
+}
+
+/** Relief atlas at half resolution: same tile rects, white everywhere but the facade recesses. */
+function paintDepth(): HTMLCanvasElement {
+  const atlas = canvas(ATLAS_WIDTH / 2, ATLAS_HEIGHT / 2)
+  const c = atlas.getContext('2d')!
+  c.fillStyle = '#fff'
+  c.fillRect(0, 0, atlas.width, atlas.height)
+  const tile = canvas(TILE_INNER, TILE_INNER)
+  const t = tile.getContext('2d')!
+  TILE_NAMES.forEach((name, i) => {
+    const painter = DEPTHS[name]
+    if (!painter) return
+    t.fillStyle = '#fff'
+    t.fillRect(0, 0, TILE_INNER, TILE_INNER)
+    painter(new Brush(t, TILE_INNER, 5000 + i * 31))
+    const [ox, oy] = tileOrigin(name)
+    c.save()
+    c.beginPath()
+    c.rect((ox - ATLAS_PAD) / 2, (oy - ATLAS_PAD) / 2, ATLAS_CELL / 2, ATLAS_CELL / 2)
+    c.clip()
+    for (const dx of [-TILE_INNER, 0, TILE_INNER])
+      for (const dy of [-TILE_INNER, 0, TILE_INNER])
+        c.drawImage(tile, (ox + dx) / 2, (oy + dy) / 2, TILE_INNER / 2, TILE_INNER / 2)
+    c.restore()
+  })
+  return atlas
 }
 
 /** Copies a tile into its cell with wrapped padding on every side (seamless mip levels). */

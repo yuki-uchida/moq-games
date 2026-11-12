@@ -289,15 +289,28 @@ export const DECOR: Record<DecorKind, DrawFn> = {
     if (style !== 1) prism(a, -0.1, 0, -0.06, 3.6, 0.6, 0.55, 0.09, s)
   },
   pod(b, _style, ctx) {
-    b('atlas').blob(0, 0.15, 0, 0.6, 0.35, 0.6, { tile: 'mFlesh', glow: 0.3 * ctx.accent }, 1, 0.25, 7)
+    // Dark chitin husk split open at the top, a pulsing core glowing through the slit.
+    b('atlas').blob(
+      0,
+      0.2,
+      0,
+      0.62,
+      0.42,
+      0.62,
+      { tile: 'mFlesh', color: 0x9a7aa8, glow: 0.25 * ctx.accent },
+      1,
+      0.25,
+      7
+    )
+    b('atlas').blob(0, 0.5, 0, 0.36, 0.22, 0.36, { tile: 'mFlesh', color: 0x6a4a7a, glow: 0.2 * ctx.accent }, 1, 0.3, 4)
     b('glow').blob(
       0,
-      0.55,
+      0.62,
       0,
-      0.36,
-      0.48,
-      0.36,
-      { tile: 'mWhite', color: 0xff6ad5, glow: 1.8 * ctx.accent, fx: 0.7 },
+      0.2,
+      0.14,
+      0.2,
+      { tile: 'mWhite', color: 0xd24ad8, glow: 1.5 * ctx.accent, fx: 0.7 },
       1,
       0.12,
       3
