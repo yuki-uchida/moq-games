@@ -31,7 +31,7 @@ const PINNED: Record<string, string> = {
   crowBoss: '50153f2fbbc52026',
   flyer: '49442ef57f74fe98',
   foxBoss: 'aa8193282e68d05a',
-  fx: '4887d8942a24a53d',
+  fx: '7b11d8c732e3f476',
   hero: '6fab6f9fd55bba6e',
   jumper: 'f1ce7dde39fc5b1c',
   king: '80735bb825f39a56',
@@ -73,7 +73,7 @@ const PINNED: Record<string, string> = {
   'prop:twig': 'd084c5dd023fae08',
   spitter: 'fed3768954873e19',
   tough: '540a4576cf9bd368',
-  ui: 'f46430ca88e8e436',
+  ui: 'acc9511e3b2c17f9',
   walker: '12c2c345ee93d6f7',
   weaselBoss: '134d7358fecf910e',
   wolfBoss: '8bd66c04db43be0d'

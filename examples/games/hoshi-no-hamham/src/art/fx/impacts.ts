@@ -36,6 +36,29 @@ export function frames(n: number, w: number, h: number, draw: (r: Raster, f: num
 /** Smoke: a cool violet-grey, darker than dust so it shows on bright ground and still lifts off dark rock. */
 export const SMOKE = ramp('#a69cb8', '#7c7292', '#574d6c', '#3a334c', '#1c1830')
 
+/**
+ * One soft mass of smoke: the union of the circles `[x, y, radius]`, outlined once around the whole mass (not per
+ * ball), with only two quiet value steps (a lighter body, a slightly darker underside on the bottom-right) and a few
+ * highlight pixels on the lit top-left. Lower contrast than a character: smoke is a backdrop for the action.
+ */
+export function smokeMass(r: Raster, circles: readonly (readonly [number, number, number])[], ramp: Ramp = SMOKE) {
+  const inside = (x: number, y: number, dx = 0, dy = 0) => {
+    for (const [cx, cy, rad] of circles) if (Math.hypot(x + 0.5 + dx - cx, y + 0.5 + dy - cy) < rad) return true
+    return false
+  }
+  const layer = new Raster(r.w, r.h)
+  for (let y = 0; y < r.h; y++)
+    for (let x = 0; x < r.w; x++) {
+      if (!inside(x, y)) continue
+      // Shade: pixels whose up-left neighbourhood (2 px) is still inside are in the lit body, the rest in the shade.
+      const lit = inside(x, y, -2, -2.5)
+      const bright = lit && inside(x, y, -3.5, -4) && !inside(x, y, 1.5, 2)
+      layer.set(x, y, bright ? ramp[0] : lit ? ramp[1] : ramp[2])
+    }
+  r.blit(outlineWith(layer, ramp[3]))
+  return r
+}
+
 /** A round, light-shaded blob with its own outline (so overlapping puffs keep inner contours). */
 export function blob(r: Raster, cx: number, cy: number, rx: number, ry: number, ramp: Ramp, spec = true) {
   if (rx < 1.2 || ry < 1.2) {
@@ -170,43 +193,41 @@ function puff(): Anim {
 
 // ---------------------------------------------------------------------------------------------------- smoke
 
+/** One merged mass per puff: it swells, lifts off the ground, tears into thin separate wisps and thins out. */
 const SMOKE_CLOUDS: readonly (readonly [number, number, number])[][] = [
   [
-    [16, 25, 5],
-    [10.5, 26, 3.5],
-    [21.5, 26, 3.5]
+    [16, 25, 5.5],
+    [11, 26, 4],
+    [21, 26, 4]
   ],
   [
-    [16, 21, 6],
-    [10, 24, 4],
-    [22, 24, 4],
-    [15, 27, 3]
+    [16, 21, 6.5],
+    [10, 24, 4.2],
+    [22, 24, 4.5],
+    [15, 26, 3.4]
   ],
   [
     [15, 16, 6],
-    [21.5, 20, 5],
-    [10, 21, 4.5],
-    [17, 25, 3.5]
+    [21, 20, 4.5],
+    [10, 21, 4],
+    [16, 24, 4]
   ],
   [
-    [16, 10.5, 5.5],
-    [10, 17, 4],
-    [22, 15, 4.5],
-    [15, 22, 3]
+    [16, 10, 4.8],
+    [11, 15, 3.4],
+    [21, 14, 3.4],
+    [15, 21, 2.6]
   ],
   [
-    [14, 6.5, 4],
-    [21, 10, 3.5],
-    [9, 14, 3],
-    [20, 17, 2.8],
-    [15, 23, 2]
+    [15, 6, 3.2],
+    [19, 10, 2.2],
+    [10, 15, 2],
+    [18, 20, 1.8]
   ],
   [
-    [13, 4.5, 2.5],
-    [20, 6, 2.2],
-    [9, 10, 1.8],
-    [22, 12.5, 1.6],
-    [17, 16, 1.3]
+    [14, 4, 1.8],
+    [20, 8, 1.4],
+    [10, 13, 1.2]
   ]
 ]
 
@@ -214,7 +235,7 @@ function smoke(): Anim {
   return make(
     'smoke',
     frames(6, 32, 32, (r, f) => {
-      for (const [x, y, rad] of [...SMOKE_CLOUDS[f]].sort((a, b) => a[1] - b[1])) blob(r, x, y, rad, rad * 0.92, SMOKE)
+      smokeMass(r, SMOKE_CLOUDS[f])
     })
   )
 }
@@ -348,27 +369,28 @@ interface JawShape {
   hingeX: number
   hingeY: number
   length: number
+  /** Thickness of one jaw at its widest. */
   height: number
+  /** Half of the opening angle in radians. */
   open: number
-  /** Marks mode: teeth are moved away from the seam by this much and every other tooth is skipped. */
-  lift?: number
+  /** Tooth length (default TOOTH_H). */
+  tooth?: number
 }
 
-/** Which tooth row a jaw uses: the upper and lower rows are offset by half a pitch so they interlock. */
-const TOOTH_PITCH = 8
+/** Teeth sit on a pitch of 7 px; the upper and lower rows are offset by half a pitch so they interlock. */
+const TOOTH_PITCH = 7
 const TOOTH_H = 5.5
 
 /**
- * One jaw in the hinge's local frame: `u` along the jaw, `v` outward from the seam. The jaw is a slim arc that
- * tapers to both ends; the teeth are triangles that hang from the seam into the opposite jaw.
+ * One jaw in the hinge's local frame: `u` along the jaw, `v` outward from the seam. The body is a solid crescent
+ * (straight seam, bulging outer edge, pointed tip) of dark plum with a lighter rim; the teeth hang from the seam.
  */
-function jawLayer(w: number, h: number, sign: -1 | 1, s: JawShape, teethOnly = false) {
+function jawLayer(w: number, h: number, sign: -1 | 1, s: JawShape, teeth: boolean) {
   const l = new Raster(w, h)
   const a = sign * s.open
   const ca = Math.cos(a)
   const sa = Math.sin(a)
-  const uc = s.length / 2 + 1
-  const half = s.length / 2 + 2
+  const th = s.tooth ?? TOOTH_H
   const phase = sign === -1 ? 0 : TOOTH_PITCH / 2
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
@@ -376,70 +398,93 @@ function jawLayer(w: number, h: number, sign: -1 | 1, s: JawShape, teethOnly = f
       const dy = y + 0.5 - s.hingeY
       const u = dx * ca + dy * sa
       const v = sign * (-dx * sa + dy * ca)
-      const tv = v + (s.lift ?? 0)
       let c = 0
-      const eu = (u - uc) / half
-      // A slim golden arc along the seam holds the teeth together: the snap of a bite drawn as energy fangs. (A
-      // full red gum read as some creature's mouth floating in front of the hero.)
-      const band = (s.height / 3) * Math.sqrt(Math.max(0, 1 - eu * eu))
-      if (!teethOnly && v >= 0 && v <= band)
-        c = v < 1.1 ? R.gold[2] : v > band - 1.2 ? (sign === -1 ? C.white : R.gold[1]) : R.gold[0]
-      // Teeth: root inside the gum, tip reaching toward the other jaw.
-      const k = Math.round((u - 7 - phase) / TOOTH_PITCH)
-      const tu = u - (7 + phase + k * TOOTH_PITCH)
-      const skip = s.lift !== undefined && k % 2 === 0
-      if (!skip && k >= 0 && 7 + phase + k * TOOTH_PITCH < s.length - 4 && tv >= -TOOTH_H && tv <= 1.6) {
-        const widthHere = 3.1 * clamp01(1 + Math.min(0, tv) / TOOTH_H)
-        if (Math.abs(tu) <= widthHere) c = tu > widthHere - 1.3 && tv > -TOOTH_H + 1 ? R.paper[2] : C.white
+      if (!teeth) {
+        const e = u / s.length
+        if (e >= -0.04 && e <= 1) {
+          // Fat near the hinge, a long taper to the tip.
+          const thick =
+            s.height * Math.pow(Math.max(0, 1 - Math.pow(e * 0.95, 2.2)), 0.8) * Math.sqrt(clamp01((u + 1.5) / 6))
+          if (v >= 0 && v < thick) {
+            const fromRim = thick - v
+            c = fromRim < 1.6 ? R.berry[1] : fromRim < 3.2 ? R.berry[2] : R.berry[3]
+            if (v < 1.2) c = R.berry[3]
+          }
+        }
+      } else {
+        const k = Math.round((u - 9 - phase) / TOOTH_PITCH)
+        const tu = u - (9 + phase + k * TOOTH_PITCH)
+        if (k >= 0 && 9 + phase + k * TOOTH_PITCH < s.length - 5 && v >= -th && v <= 0.8) {
+          const widthHere = 2.7 * clamp01(1 + Math.min(0, v) / th)
+          if (Math.abs(tu) <= widthHere) c = tu > widthHere - 1.2 && v > -th + 1.2 ? R.paper[2] : C.white
+        }
       }
       if (c) l.data[y * w + x] = c
     }
   return l
 }
 
-function jaws(r: Raster, s: JawShape, teethOnly = false) {
-  for (const sign of [1, -1] as const) {
-    const layer = jawLayer(r.w, r.h, sign, s, teethOnly)
-    if (!teethOnly) outlineWith(layer, C.ink)
-    r.blit(layer)
-  }
+/** Both jaws: the two plum crescents first (so the teeth of one can reach into the other), then all teeth on top. */
+function jaws(r: Raster, s: JawShape) {
+  for (const teeth of [false, true])
+    for (const sign of [1, -1] as const) r.blit(outlineWith(jawLayer(r.w, r.h, sign, s, teeth), C.ink))
 }
 
-/** The jaws that snap shut in front of the hero (facing right): open, closing, SNAP with a flash, marks, sparks. */
+/** Short impact lines radiating from a point: `[angle, from, to]`, white with a gold rim, round-capped. */
+function burstLines(r: Raster, cx: number, cy: number, lines: readonly (readonly [number, number, number])[]) {
+  const g = new Raster(r.w, r.h)
+  for (const [a, d0, d1] of lines)
+    g.thick(cx + Math.cos(a) * d0, cy + Math.sin(a) * d0, cx + Math.cos(a) * d1, cy + Math.sin(a) * d1, 1.6, C.white)
+  r.blit(outlineWith(g, R.fire[3]))
+}
+
+/** The jaws that snap shut in front of the hero (facing right): open, closing, SNAP with a flash, impact lines, sparks. */
 function chomp(): Anim {
   const fr = frames(5, 64, 64, (r, f) => {
-    const base = { hingeX: 6, hingeY: 32, length: 40 }
-    if (f === 0) jaws(r, { ...base, height: 10, open: 0.62 })
+    const base = { hingeX: 6, hingeY: 32, length: 42 }
+    if (f === 0) jaws(r, { ...base, height: 11, open: 0.6 })
     else if (f === 1) {
-      // Closing fast: the jaws stretch a little along the swing.
-      jaws(r, { ...base, hingeX: 7, height: 10.5, open: 0.26 })
+      // Closing fast: the jaws stretch a little along the swing, with speed lines behind the tips.
+      jaws(r, { ...base, hingeX: 7, height: 11.5, open: 0.24 })
       for (const [x, y, len] of [
-        [44, 14, 8],
-        [47, 50, 8],
-        [51, 19, 5]
-      ]) {
+        [46, 12, 8],
+        [50, 52, 8],
+        [53, 17, 5]
+      ])
         r.rect(x, y, len, 1, C.white)
-      }
     } else if (f === 2) {
-      jaws(r, { ...base, hingeX: 8, height: 11.5, open: 0.02 })
+      jaws(r, { ...base, hingeX: 8, height: 11.5, open: 0.02, tooth: 3.4 })
       // The impact flash at the bite point.
       const flash = new Raster(64, 64)
       flash.poly(
-        starPts(50, 32, (i) => (i % 2 ? 7 : 12), 4.4, 8, -Math.PI / 2),
+        starPts(51, 32, (i) => (i % 2 ? 7 : 12), 4.4, 8, -Math.PI / 2),
         R.gold[0]
       )
       flash.poly(
-        starPts(50, 32, (i) => (i % 2 ? 3.6 : 7), 2.4, 8, -Math.PI / 2),
+        starPts(51, 32, (i) => (i % 2 ? 3.6 : 7), 2.4, 8, -Math.PI / 2),
         C.white
       )
       outlineWith(flash, R.fire[2])
       r.blit(flash)
     } else if (f === 3) {
-      // Teeth marks left in the air, thinning out.
-      const marks = new Raster(64, 64)
-      jaws(marks, { ...base, hingeX: 9, height: 11, open: 0.07, lift: -3.5 }, true)
-      marks.map((c) => (c === R.paper[2] ? R.dust[2] : R.dust[1]))
-      r.blit(outlineWith(marks, R.dust[3]))
+      // Follow-through: the bite is over, only short impact lines and a few sparks remain.
+      burstLines(r, 43, 32, [
+        [-2.5, 9, 15],
+        [-1.9, 10, 17],
+        [-1.2, 10, 16],
+        [-0.5, 9, 15],
+        [0.5, 9, 15],
+        [1.2, 10, 16],
+        [1.9, 10, 17],
+        [2.5, 9, 15]
+      ])
+      for (const [x, y] of [
+        [34, 12],
+        [58, 22],
+        [59, 44],
+        [34, 52]
+      ])
+        r.rect(x, y, 2, 2, R.gold[0])
     } else {
       for (const [x, y, len] of [
         [47, 20, 4.2],
@@ -588,20 +633,21 @@ function boom(): Anim {
         r.ellipse(30, 30, 3.4, 3, C.white)
       } else if (f === 3) {
         fireball(r, 32, 32, 25, 8, 1.2, 12)
-        for (const [x, y, rad] of [
+        smokeMass(r, [
           [32, 32, 9],
+          [26, 35, 5.5],
+          [38, 29, 5.5],
           [14, 22, 5],
           [50, 40, 5.5]
         ])
-          blob(r, x, y, rad, rad * 0.92, SMOKE)
       } else if (f === 4) {
+        // A broken ring of smoke: one merged mass of overlapping, uneven puffs (not eight separate balls).
         const items: [number, number, number][] = []
         for (let k = 0; k < 8; k++) {
           const a = k * (TAU / 8) + 0.3
-          items.push([32 + Math.cos(a) * 21, 32 + Math.sin(a) * 21, k % 2 ? 6 : 7.5])
+          items.push([32 + Math.cos(a) * 19, 32 + Math.sin(a) * 19 - 1, [10, 8, 10.5, 7.5, 9.5, 8, 10.5, 7][k]])
         }
-        items.sort((a, b) => a[1] - b[1])
-        for (const [x, y, rad] of items) blob(r, x, y, rad, rad * 0.92, SMOKE)
+        smokeMass(r, items)
         for (const [x, y] of [
           [32, 24],
           [25, 36],
@@ -611,13 +657,14 @@ function boom(): Anim {
           r.set(x, y, R.fire[0])
         }
       } else {
-        for (let k = 0; k < 8; k++) {
-          const a = k * (TAU / 8) + 0.5
-          const d = 26 + (k % 2) * 2
-          blob(r, 32 + Math.cos(a) * d, 32 + Math.sin(a) * d, k % 2 ? 1.8 : 2.8, k % 2 ? 1.6 : 2.5, SMOKE)
+        // Thin wisps far out, each a small separate mass.
+        for (let k = 0; k < 5; k++) {
+          const a = k * (TAU / 5) + 0.5
+          const d = 25 + (k % 2) * 3
+          const x = 32 + Math.cos(a) * d
+          const y = 30 + Math.sin(a) * d
+          smokeMass(r, [[x, y, k % 2 ? 1.6 : 2.6], ...(k % 2 ? [] : ([[x + 2, y - 2, 1.5]] as const))])
         }
-        r.rect(32, 30, 1, 1, SMOKE[0])
-        r.rect(27, 35, 1, 1, SMOKE[0])
       }
     }),
     { anchor: [32, 32] }
