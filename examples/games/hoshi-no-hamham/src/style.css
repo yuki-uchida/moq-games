@@ -1661,9 +1661,10 @@ input {
     gap: 2px 8px;
   }
 
+  /* The dots keep clear of the focus frame of the buttons under them (it reaches 12 px up). */
   .story-foot .dots {
     grid-column: 1 / -1;
-    margin: 0 0 4px;
+    margin: 0 0 12px;
   }
 
   .story-foot .pxbtn,
@@ -2993,6 +2994,7 @@ body:has(#pause-screen:not([hidden])) #touch-controls {
   padding-bottom: 4px;
 }
 
+/* The list fades out at its bottom edge, which says there is more below; the padding keeps the last row clear of it. */
 .help-scroll {
   flex: 1;
   min-height: 0;
@@ -3001,7 +3003,9 @@ body:has(#pause-screen:not([hidden])) #touch-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
   gap: 10px 20px;
-  padding: 4px 4px 8px;
+  padding: 4px 4px 26px;
+  -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 
 .help-section h3 {
