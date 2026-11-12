@@ -137,6 +137,13 @@ export interface GameAudio {
    */
   playing(on: boolean): void
   /**
+   * True when a stage can start without building sound effects in its frames: every effect is rendered ahead,
+   * or none will be asked for (muted), or rendering ahead is not possible here.
+   */
+  readonly ahead: boolean
+  /** Resolves when `ahead` is true, or after `timeoutMs`, whichever comes first. */
+  whenAhead(timeoutMs: number): Promise<void>
+  /**
    * What music should play. Repeating the same theme is a no-op; a change crossfades. `layer` 0..2 raises the
    * arrangement's intensity (e.g. 1 when the boss gate closes) without restarting the song.
    */

@@ -11,10 +11,11 @@
  */
 import { backdrop, backdropReady, clipReady, decor, flashReady, hasTile, sheet, tile, type ThemeId } from '../art'
 import { themedProp } from '../art/contract'
-import { adopt, sharedArtSource, type ArtReply, type ArtRequest, type ArtSource } from '../art/remote'
+import { adopt, sharedArtSource, type ArtHurry, type ArtReply, type ArtRequest, type ArtSource } from '../art/remote'
 import { TILE, World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import { bake, bakeBackdrop, warmClip } from '../view/bake'
+import { warmOverlayText } from '../view/overlay'
 import { stageTileQueries } from '../view/terrain'
 
 /** What a stage draws: sheet ids, which of them also need hit-flash silhouettes, and the world's backdrop. */
@@ -149,6 +150,12 @@ export function stageWarmSteps(stage: StageDef): WarmStep[] {
       for (const d of decor(theme)) bake(d.image)
     }
   })
+  steps.push({
+    label: 'text',
+    weight: 1,
+    // The fonts of the popups and speech bubbles, so the first 「+1」 does not pay for them in the frame of a hit.
+    run: () => void warmOverlayText()
+  })
   const world = new World(stage, { seed: stage.no * 7919 + 101 })
   const queries = stageTileQueries(world, Math.floor(world.player.x / TILE))
   for (let from = 0; from < queries.length; from += TILES_PER_STEP) {
@@ -212,12 +219,13 @@ export async function runSteps(
   yielder: () => Promise<void> = yieldToBrowser,
   budgetMs = SLICE_BUDGET_MS,
   now: () => number = () => performance.now(),
-  source?: ArtSource
+  source?: ArtSource,
+  hurry?: ArtHurry
 ): Promise<void> {
   const total = steps.reduce((sum, step) => sum + step.weight, 0) || 1
   const asked = steps.map((step): Asked | undefined => {
     if (!source || !step.request || step.ready?.()) return undefined
-    const entry: Asked = { request: step.request, promise: source.request(step.request), settled: false }
+    const entry: Asked = { request: step.request, promise: source.request(step.request, hurry), settled: false }
     const settle = () => void (entry.settled = true)
     entry.promise.then(settle, settle)
     return entry
@@ -252,6 +260,9 @@ export async function runSteps(
 const warming = new Map<number, Promise<void>>()
 const listeners = new Map<number, Set<Progress>>()
 const finished = new Set<number>()
+/** Stages whose warm-up was started in the background and has not been asked for in earnest yet. */
+const waiting = new Set<number>()
+const groupOf = (stage: StageDef) => `stage:${stage.no}`
 
 /** True once the stage's warm-up has completed: everything it draws, terrain tiles included, is baked. */
 export const isWarm = (stage: StageDef) => finished.has(stage.no)
@@ -260,8 +271,12 @@ export const isWarm = (stage: StageDef) => finished.has(stage.no)
  * Warms everything a stage will draw, through the app's art source when the boot has made one. Safe to call again
  * for the same stage (a story screen and a retry may both ask): the running or finished warm-up is shared, and
  * every caller gets progress reports.
+ *
+ * `background` is for a stage nobody has asked for yet (the title demo's next one): its art waits behind every
+ * other request. Asking again without it (the player picked the stage) brings what is still waiting forward.
  */
-export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void> {
+export function warmStage(stage: StageDef, onProgress?: Progress, background = false): Promise<void> {
+  if (!background && waiting.delete(stage.no)) sharedArtSource()?.promote?.(groupOf(stage))
   const subscribers = listeners.get(stage.no) ?? new Set<Progress>()
   listeners.set(stage.no, subscribers)
   if (onProgress) {
@@ -271,6 +286,7 @@ export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void>
   let promise = warming.get(stage.no)
   if (!promise) {
     const source = sharedArtSource()
+    if (background) waiting.add(stage.no)
     promise = runSteps(
       stageWarmSteps(stage),
       (fraction) => {
@@ -279,10 +295,12 @@ export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void>
       yieldToBrowser,
       SLICE_BUDGET_MS,
       () => performance.now(),
-      source
+      source,
+      { background, group: groupOf(stage) }
     ).then(
       () => {
         finished.add(stage.no)
+        waiting.delete(stage.no)
         subscribers.clear()
         // The page holds everything now: the workers need not keep their copies.
         if (source?.remote) void source.request({ kind: 'trim' }).catch(() => {})
@@ -290,6 +308,7 @@ export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void>
       (error) => {
         // A failed warm-up can be asked for again; the stage still plays (art then builds on first use).
         warming.delete(stage.no)
+        waiting.delete(stage.no)
         subscribers.clear()
         throw error
       }

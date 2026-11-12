@@ -166,6 +166,7 @@ export function scatter(
  */
 export function memoTile(build: (q: TileQuery) => Raster) {
   const cache = new Map<string, Raster>()
+  memos.push(cache)
   return (q: TileQuery): Raster => {
     const key = tileKey(q)
     let tile = cache.get(key)
@@ -175,6 +176,13 @@ export function memoTile(build: (q: TileQuery) => Raster) {
     }
     return tile
   }
+}
+
+const memos: Map<string, Raster>[] = []
+
+/** Empties every theme's tile cache (a worker that has sent its tiles need not keep them). */
+export function clearTileMemos() {
+  for (const cache of memos) cache.clear()
 }
 
 /** The cache key of a tile within its theme: two queries with the same key get the same picture. */

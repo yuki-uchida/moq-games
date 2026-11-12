@@ -214,7 +214,8 @@ describe('a dig', () => {
     const before = drawn(view)
     dig(g, view, 5, 2)
     expect(view.pending(4, 2)).toBe(true)
-    for (let i = 0; i < 5 && view.pending(4, 2); i++) await settle()
+    // The page paints the tiles in slices of a few milliseconds: how many turns that takes depends on the machine.
+    for (let i = 0; i < 200 && view.pending(4, 2); i++) await settle()
     expect(view.pending(4, 2)).toBe(false)
     expect(drawn(view).get('4,2')).not.toBe(before.get('4,2'))
   })

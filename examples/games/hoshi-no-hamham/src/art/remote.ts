@@ -155,10 +155,19 @@ export function adopt(request: ArtRequest, reply: ArtReply) {
 
 // ---------------------------------------------------------------------------------------------------- the source
 
+/**
+ * How much of a hurry a request is in. `urgent` (also written `true`): before everything that waits (a dig).
+ * `background`: after everything else (art for something the player has not asked for yet). `group` names what
+ * the request belongs to, so that `promote` can find it later.
+ */
+export type ArtHurry = boolean | { urgent?: boolean; background?: boolean; group?: string }
+
 /** What the page talks to for art. */
 export interface ArtSource {
-  /** Answers a request; `urgent` ones overtake the queue (a dig), the rest run in order. */
-  request(request: ArtRequest, urgent?: boolean): Promise<ArtReply>
+  /** Answers a request; urgent ones overtake the queue, background ones wait for the rest, the others run in order. */
+  request(request: ArtRequest, hurry?: ArtHurry): Promise<ArtReply>
+  /** The background requests of a group are wanted now: they move in line with the ordinary ones. */
+  promote?(group: string): void
   /** True while workers do the painting. */
   readonly remote: boolean
 }
@@ -211,6 +220,7 @@ interface Job {
   request: ArtRequest
   resolve: (reply: ArtReply) => void
   reject: (error: unknown) => void
+  group?: string
 }
 
 interface Slot {
@@ -230,7 +240,10 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
   const budget = options.budgetMs ?? 8
   const make = options.makeWorker ?? defaultWorker
   const queue: Job[] = []
+  /** Background requests: taken only when `queue` is empty. */
+  const later: Job[] = []
   const local: Job[] = []
+  const localLater: Job[] = []
   const slots: Slot[] = []
   let nextId = 1
   let localRunning = false
@@ -269,9 +282,9 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
     if (localRunning) return
     localRunning = true
     try {
-      while (local.length) {
+      while (local.length || localLater.length) {
         await yielder()
-        const job = local.shift()!
+        const job = (local.shift() ?? localLater.shift())!
         try {
           job.resolve(await answerHere(job.request))
         } catch (error) {
@@ -283,8 +296,9 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
     }
   }
 
-  const answerLocally = (job: Job, urgent = false) => {
+  const answerLocally = (job: Job, urgent = false, background = false) => {
     if (urgent) local.unshift(job)
+    else if (background) localLater.push(job)
     else local.push(job)
     void runLocal()
   }
@@ -306,14 +320,17 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
     const job = slot.job
     slot.job = null
     if (job) queue.unshift(job)
-    if (!slots.length) while (queue.length) answerLocally(queue.shift()!)
-    else pump()
+    if (!slots.length) {
+      while (queue.length) answerLocally(queue.shift()!)
+      while (later.length) answerLocally(later.shift()!, false, true)
+    } else pump()
   }
 
   function pump() {
     for (const slot of slots) {
-      if (slot.job || !queue.length) continue
-      const job = queue.shift()!
+      if (slot.job) continue
+      const job = queue.shift() ?? later.shift()
+      if (!job) return
       slot.job = job
       slot.id = nextId++
       try {
@@ -363,7 +380,20 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
     get remote() {
       return slots.length > 0
     },
-    request(request, urgent = false) {
+    promote(group) {
+      const move = (from: Job[], to: Job[]) => {
+        for (let i = 0; i < from.length; ) {
+          if (from[i].group === group) to.push(...from.splice(i, 1))
+          else i += 1
+        }
+      }
+      move(later, queue)
+      move(localLater, local)
+    },
+    request(request, hurry = false) {
+      const urgent = hurry === true || (typeof hurry === 'object' && Boolean(hurry.urgent))
+      const background = typeof hurry === 'object' && Boolean(hurry.background) && !urgent
+      const group = typeof hurry === 'object' ? hurry.group : undefined
       return new Promise<ArtReply>((resolve, reject) => {
         if (request.kind === 'trim' && slots.length) {
           // Every worker keeps its own caches: each one is told past the queue (a worker reads its messages in
@@ -383,12 +413,13 @@ export function createArtSource(options: ArtSourceOptions = {}): ArtSource {
           void Promise.all(all).then(() => resolve({ kind: 'trim' }))
           return
         }
-        const job: Job = { request, resolve, reject }
+        const job: Job = { request, resolve, reject, group }
         if (!slots.length) {
-          answerLocally(job, urgent)
+          answerLocally(job, urgent, background)
           return
         }
         if (urgent) queue.unshift(job)
+        else if (background) later.push(job)
         else queue.push(job)
         pump()
       })

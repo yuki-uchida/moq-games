@@ -16,7 +16,7 @@ import { deferAnim, type Anim, type Sheet } from './sheet'
 import { artStats, counted } from './stats'
 import { uiModules } from './ui'
 import { backdrops, propModules, terrains, type Backdrop, type Decor } from './world'
-import { tileKey } from './world/terrain/kit'
+import { clearTileMemos, tileKey } from './world/terrain/kit'
 
 export { THEMES, type ThemeId } from './contract'
 export type { Anim, Sheet } from './sheet'
@@ -277,4 +277,5 @@ export function clearArtCache() {
   flashSlots.clear()
   backdropCache.clear()
   tiles.clear()
+  clearTileMemos()
 }

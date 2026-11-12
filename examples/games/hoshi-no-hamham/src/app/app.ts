@@ -64,6 +64,8 @@ class LoadingNote implements LoadingIndicator {
 }
 
 const MAX_FRAME = 0.25
+/** How long a stage's start may wait for the sound effects to be rendered ahead once its art is ready (ms). */
+const SOUND_WAIT_MS = 2500
 /** The stages the title screen's demo cycles through. */
 export const DEMO_STAGES = [1, 5, 3, 7, 9, 4]
 /** Under reduced motion the demo is one still frame, taken after this many simulated seconds. */
@@ -206,7 +208,7 @@ export class App {
     else this.demoTurn += 1
     this.demoStage = stage
     const upcoming = stageByNo(DEMO_STAGES[this.demoTurn % DEMO_STAGES.length])
-    if (!isWarm(upcoming)) void warmStage(upcoming).catch(() => {})
+    if (!isWarm(upcoming)) void warmStage(upcoming, undefined, true).catch(() => {})
     const reduced = reducedMotion()
     const demo = new PlaySession(
       stage,
@@ -270,7 +272,7 @@ export class App {
   private startStage(stage: StageDef) {
     this.leavePlay()
     this.stage = stage
-    if (isWarm(stage)) {
+    if (isWarm(stage) && this.audio.ahead) {
       this.beginStage(stage)
       return
     }
@@ -281,7 +283,13 @@ export class App {
       this.loading.hide()
       this.beginStage(stage)
     }
-    warmStage(stage, (fraction) => token === this.startToken && this.loading.progress(fraction)).then(done, done)
+    // The art must be there; the sound effects rendered ahead are worth a short wait, no more.
+    const art = warmStage(stage, (fraction) => token === this.startToken && this.loading.progress(fraction))
+    const settled = art.then(
+      () => this.audio.whenAhead(SOUND_WAIT_MS),
+      () => this.audio.whenAhead(SOUND_WAIT_MS)
+    )
+    settled.then(done, done)
   }
 
   private beginStage(stage: StageDef) {

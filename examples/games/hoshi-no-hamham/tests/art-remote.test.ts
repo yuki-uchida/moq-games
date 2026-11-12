@@ -219,6 +219,54 @@ describe('the art source', () => {
     expect(answered.map((r) => r.kind)).toEqual(['clip', 'clip', 'clip', 'clip'])
   })
 
+  it('keeps background requests behind the others until their group is promoted', async () => {
+    const worker = new FakeWorker()
+    const source = createArtSource({ workers: 1, makeWorker: () => worker })
+    const names = Object.keys(sheet('fx')).slice(0, 6)
+    const order: string[] = []
+    const ask = (name: string, hurry?: Parameters<typeof source.request>[1]) =>
+      source.request(clipRequest(name), hurry).then(() => void order.push(name))
+    // The first one goes straight to the idle worker; the rest wait.
+    const all = [
+      ask(names[0]),
+      ask(names[1], { background: true, group: 'stage:5' }),
+      ask(names[2], { background: true, group: 'stage:7' }),
+      ask(names[3]),
+      ask(names[4], { background: true, group: 'stage:5' })
+    ]
+    worker.reply()
+    await tick()
+    // An ordinary request overtakes the background ones that were asked before it.
+    expect((worker.inbox[0].request as { clip: string }).clip).toBe(names[3])
+    // The player picked stage 5: its requests move in line, the other background group stays behind.
+    source.promote?.('stage:5')
+    all.push(ask(names[5]))
+    for (let i = 0; i < 5; i++) {
+      worker.reply()
+      await tick()
+    }
+    await Promise.all(all)
+    expect(order).toEqual([names[0], names[3], names[1], names[4], names[5], names[2]])
+  })
+
+  it('keeps the same order when the page answers', async () => {
+    clearArtCache()
+    const source = createArtSource({ makeWorker: () => null, yielder: tick })
+    const names = Object.keys(sheet('fx')).slice(0, 4)
+    const order: string[] = []
+    const ask = (name: string, hurry?: Parameters<typeof source.request>[1]) =>
+      source.request(clipRequest(name), hurry).then(() => void order.push(name))
+    const all = [
+      ask(names[0], { background: true, group: 'a' }),
+      ask(names[1], { background: true, group: 'b' }),
+      ask(names[2]),
+      ask(names[3], true)
+    ]
+    source.promote?.('b')
+    await Promise.all(all)
+    expect(order).toEqual([names[3], names[2], names[1], names[0]])
+  })
+
   it('answers on the page when there are no workers', async () => {
     clearArtCache()
     const source = createArtSource({ makeWorker: () => null, yielder: tick })

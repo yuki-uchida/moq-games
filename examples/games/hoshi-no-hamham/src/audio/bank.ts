@@ -165,6 +165,9 @@ export class SfxBank {
   readonly sampleRate: number
   /** Nothing more is queued: every effect has been rendered or has failed. */
   done = false
+  /** Effects still without a buffer at their default pitch (the pitches and extra takes come after them). */
+  private baseLeft = 0
+  private baseWaiters: Array<() => void> = []
   /** The browser has no offline context or refuses to render; every effect plays live. */
   unavailable = false
   stopped = false
@@ -204,15 +207,41 @@ export class SfxBank {
     this.startedAt = this.now()
     const order: SfxName[] = [...FIRST, ...HERO]
     for (const name of Object.keys(SFX_DEFS) as SfxName[]) if (!order.includes(name)) order.push(name)
-    for (const name of order) this.enqueue({ name, pitch: 1 })
+    for (const name of order) if (this.enqueue({ name, pitch: 1 })) this.baseLeft += 1
     for (const [name, pitches] of KNOWN_PITCHES) for (const pitch of pitches) this.enqueue({ name, pitch })
     this.kick()
+  }
+
+  /** Every effect has a buffer at its default pitch (or never will: no offline rendering here, or stopped). */
+  get baseReady(): boolean {
+    return this.unavailable || this.stopped || this.done || (this.startedAt > 0 && this.baseLeft <= 0)
+  }
+
+  /** Resolves when `baseReady` is true, or after `timeoutMs`. */
+  whenBaseReady(timeoutMs: number): Promise<void> {
+    if (this.baseReady) return Promise.resolve()
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      this.baseWaiters.push(finish)
+      setTimeout(finish, Math.max(0, timeoutMs))
+    })
+  }
+
+  private settleBase() {
+    if (!this.baseReady || !this.baseWaiters.length) return
+    for (const finish of this.baseWaiters.splice(0)) finish()
   }
 
   stop(): void {
     this.stopped = true
     this.queue = []
     this.urgent = []
+    this.settleBase()
   }
 
   /** `urgent`: before everything else, and also while a stage is played. */
@@ -276,6 +305,7 @@ export class SfxBank {
       this.done = true
       this.running = false
       this.finishedAt = this.now()
+      this.settleBase()
       return
     }
     // One build per task, and a pause before the next so a frame is never squeezed between two of them.
@@ -298,6 +328,10 @@ export class SfxBank {
     const key = keyOf(job.name, job.pitch)
     const seed = job.seed ?? Math.floor(Math.random() * 2 ** 31)
     const made = await this.render(job.name, job.pitch, seed)
+    if (job.pitch === 1 && job.seed === undefined) {
+      this.baseLeft -= 1
+      this.settleBase()
+    }
     if (!made) {
       this.failed.add(key)
       return
@@ -342,6 +376,7 @@ export class SfxBank {
     this.unavailable = true
     this.queue = []
     this.urgent = []
+    this.settleBase()
     return null
   }
 

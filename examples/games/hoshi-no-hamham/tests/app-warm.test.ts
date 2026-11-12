@@ -92,6 +92,7 @@ describe('what a stage draws', () => {
           ...clips,
           `backdrop:${art.backdrop}`,
           `decor:${art.backdrop}`,
+          'text',
           ...batches
         ])
         // The tile slices ask for the picture of every non-empty cell of the map.
@@ -269,5 +270,28 @@ describe('runSteps through an art source', () => {
     await running
     // 5 + 5 ms of baking stays in one slice until the budget of 8 is used up.
     expect(log).toEqual(['a', 'b', 'yield'])
+  })
+
+  it('asks with the hurry it was given (a background warm-up waits behind everything else)', async () => {
+    const hurries: unknown[] = []
+    const source: ArtSource = {
+      remote: true,
+      request: (_request, hurry) => {
+        hurries.push(hurry)
+        return Promise.resolve({ kind: 'local' })
+      }
+    }
+    const steps: WarmStep[] = ['a', 'b'].map((name) => ({ label: name, weight: 1, request: request(name), run() {} }))
+    const hurry = { background: true, group: 'stage:5' }
+    await runSteps(
+      steps,
+      undefined,
+      async () => {},
+      8,
+      () => 0,
+      source,
+      hurry
+    )
+    expect(hurries).toEqual([hurry, hurry])
   })
 })

@@ -162,6 +162,42 @@ describe('the render queue', () => {
     expect(m.bank.done).toBe(true)
   })
 
+  test('says when every effect has a buffer at its default pitch, before the pitches and extra takes', async () => {
+    const m = manualBank()
+    expect(m.bank.baseReady).toBe(false)
+    let told = false
+    const waiting = m.bank.whenBaseReady(60_000).then(() => void (told = true))
+    m.bank.start()
+    // Every timer renders one effect.
+    for (let i = 0; i < SFX.length - 1; i++) await m.run()
+    expect(m.bank.size).toBe(SFX.length - 1)
+    expect(m.bank.baseReady).toBe(false)
+    expect(told).toBe(false)
+    await m.run()
+    expect(m.bank.baseReady).toBe(true)
+    await waiting
+    expect(told).toBe(true)
+    // The pitches and the extra takes are still to come.
+    expect(m.bank.done).toBe(false)
+    expect(m.bank.has('pickup', 1.7)).toBe(false)
+    for (const name of SFX) expect(m.bank.has(name), name).toBe(true)
+  })
+
+  test('a bank that cannot render, or is given too little time, does not hold a stage back', async () => {
+    const none = manualBank({ offline: () => null })
+    none.bank.start()
+    await none.drain()
+    expect(none.bank.unavailable).toBe(true)
+    expect(none.bank.baseReady).toBe(true)
+    await none.bank.whenBaseReady(60_000)
+    const slow = manualBank()
+    slow.bank.start()
+    const started = Date.now()
+    await slow.bank.whenBaseReady(20)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(slow.bank.baseReady).toBe(false)
+  })
+
   test('renders every effect, three takes of those with variety, and counts the buffers', async () => {
     const m = manualBank()
     m.bank.start()
