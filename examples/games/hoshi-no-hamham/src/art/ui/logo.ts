@@ -440,22 +440,11 @@ function drawLogo(): Raster {
   const star = starMask(sx, sy, 10, 5.4, -0.1)
   layers.splice(1, 0, { mask: star, band: blobBands(star, sx, sy, 10), bands: GOLD, line: 2 })
 
-  // Crumbs flung out sideways from the bite, level with it (not above the letter, where they would read as ゛).
-  for (const [dx, dy, r] of [
-    [19, 14, 2.8],
-    [25, 24, 2.1],
-    [27, 11, 1.5]
-  ] as const) {
-    const m = new Raster(W, H)
-    const cx = bite.cx + dx
-    const cy = bite.cy + dy
-    const k = r * 1.2
-    m.poly(
-      [cx - k, cy - r * 0.4, cx - r * 0.2, cy - k, cx + k, cy - r * 0.6, cx + r * 0.7, cy + k, cx - r * 0.5, cy + r],
-      1
-    )
-    layers.push({ mask: m, band: blobBands(m, cx, cy, r), bands: PINK_MU, line: 2 })
-  }
+  // One clean gold star flung out sideways from the bite, level with it (a pile of small crumbs read as a smudge).
+  const cx = bite.cx + 23
+  const cy = bite.cy + 12
+  const crumb = starMask(cx, cy, 8, 3.9, 0)
+  layers.push({ mask: crumb, band: blobBands(crumb, cx, cy, 8), bands: GOLD, line: 2 })
 
   // Sparkles.
   for (const [x, y, n] of [

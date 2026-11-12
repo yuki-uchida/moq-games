@@ -1,7 +1,7 @@
 /*
  * Touch controls. `--tk` is the whole-number pixel scale of the round plates (22 art px each): 4 → 88 px, 3 → 66 px.
- * Landscape: the pad sits in the bottom-left corner, the buttons in the bottom-right. Portrait: the stage is
- * pinned to the top, so the controls use the free area under it, bigger, with jump stacked above bite.
+ * Landscape: the pad sits in the bottom-left corner, the buttons in the bottom-right. Portrait: the controls are
+ * part of the control deck under the stage (deck.ts / deck.css), bigger, set into wells, jump stacked above bite.
  */
 .hudt {
   --tk: 3;
@@ -102,6 +102,55 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 8px;
+  }
+
+  /* In the deck: the controls fill its middle and lower rows, opaque, with the keys sitting in recessed wells. */
+  .hudd > .hudt {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    grid-row: 2 / 4;
+    grid-column: 1;
+    z-index: 1;
+    opacity: 1;
+  }
+
+  .hudd > .hudt .hudt-pad,
+  .hudd > .hudt .hudt-actions {
+    position: relative;
+    transition: opacity 0.4s;
+  }
+
+  .hudd > .hudt .hudt-pad::before,
+  .hudd > .hudt .hudt-actions::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    background: #160d2e;
+    box-shadow:
+      inset 3px 3px 0 #0a0518,
+      inset -2px -2px 0 #4b3590,
+      0 0 0 2px #0a0518;
+    border-radius: calc(var(--tk) * 6px);
+  }
+
+  .hudd > .hudt .hudt-pad::before {
+    inset: calc(12px - var(--tk) * 2px) calc(12px - var(--tk) * 2px) calc(var(--tk) * -2px);
+  }
+
+  .hudd > .hudt .hudt-actions::before {
+    inset: calc(var(--tk) * -2px);
+    border-radius: calc(var(--tk) * 13px);
+  }
+
+  #hud.hudx.is-cinematic .hudd > .hudt {
+    opacity: 1;
+  }
+
+  #hud.hudx.is-cinematic .hudd > .hudt .hudt-pad,
+  #hud.hudx.is-cinematic .hudd > .hudt .hudt-actions {
+    opacity: 0.2;
   }
 }
 

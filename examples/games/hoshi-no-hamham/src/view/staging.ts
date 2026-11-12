@@ -316,7 +316,8 @@ export class Staging {
         sound.cue('boss-boom')
         if (t > 0.8 || reduced) {
           this.fx.spawn('boom', x + (this.rand() - 0.5) * w * 1.1, y + (this.rand() - 0.5) * h, { layer: 'front' })
-          this.fx.burst('smoke', x, y, 1, { speed: [10, 40], life: [0.5, 0.8] })
+          // The boom clip already ends in smoke; a separate puff only every third blast keeps the explosions the star.
+          if (i % 3 === 0) this.fx.burst('smoke', x, y, 1, { speed: [10, 40], life: [0.5, 0.8] })
         }
         this.trauma(0.2 + (i % 2) * 0.08)
         camera.kick((this.rand() - 0.5) * 6, (this.rand() - 0.5) * 4)

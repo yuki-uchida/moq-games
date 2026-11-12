@@ -22,13 +22,14 @@ import {
   type HeartState
 } from './hud-model'
 import { clipRaster, drawRaster, makeSprite, plateUrl, rasterUrl } from './hud-sprites'
+import { Deck } from './deck'
 import { buildTouchControls } from './touch'
 
 /** What staging (the director) may show on the HUD. */
 export interface HudApi {
   /** The stage title card, in the upper-third slot it shares with the calls; it slides out after `seconds`. */
   showBanner(title: string, sub?: string, seconds?: number): void
-  /** A short hint or notice at the bottom. */
+  /** A short hint or notice at the bottom (in portrait: in the deck's hint line under the stage). */
   showToast(text: string): void
   /** One big word in the upper-third slot (「スタート！」「クリア！」); it replaces the stage card if that is still there. */
   showCall(text: string, tone?: 'gold' | 'pink' | 'red'): void
@@ -89,6 +90,8 @@ export class Hud implements HudApi {
   private plateName: HTMLElement
   private plateTitle: HTMLElement
   private toast: HTMLElement
+  /** The control deck under a portrait stage; it holds the touch controls. */
+  readonly deck: Deck
 
   private stage: StageDef | null = null
   private hp = -1
@@ -217,8 +220,9 @@ export class Hud implements HudApi {
     const touch = el('div', 'hudt')
     touch.id = 'touch-controls'
     buildTouchControls(touch)
+    this.deck = new Deck(touch)
 
-    root.replaceChildren(top, center, this.banner, this.call, this.plate, this.toast, touch)
+    root.replaceChildren(top, center, this.banner, this.call, this.plate, this.toast, this.deck.root)
     for (const node of [this.banner, this.call, this.plate, this.toast])
       node.addEventListener('animationend', () => node.classList.remove('is-show'))
     this.bossBar.addEventListener('animationend', (event) => {
@@ -281,6 +285,7 @@ export class Hud implements HudApi {
     this.collectEl.hidden = stage.objective !== 'collect'
     this.drawEmblem(this.tagEmblem)
     this.drawEmblem(this.bannerEmblem)
+    this.deck.setStage(stage)
   }
 
   private drawEmblem(canvas: HTMLCanvasElement) {
@@ -348,6 +353,7 @@ export class Hud implements HudApi {
   update(world: World, dt: number) {
     const p = world.player
     this.updateHearts(p.hp, p.maxHp, dt)
+    this.deck.update(world, dt)
 
     if (this.stage?.objective === 'collect' && world.collected !== this.lastCollected) {
       if (this.lastCollected >= 0) replay(this.collectEl, 'is-pop')
@@ -434,6 +440,12 @@ export class Hud implements HudApi {
   }
 
   showToast(text: string) {
+    // In portrait the stage is small: the toast goes to the deck's hint line instead.
+    if (this.deck.active) {
+      this.toast.classList.remove('is-show')
+      this.deck.toast(text)
+      return
+    }
     const touch = !document.querySelector<HTMLElement>('#touch-controls')?.hidden
     this.toast.textContent = hintForInput(text, touch)
     replay(this.toast, 'is-show')
