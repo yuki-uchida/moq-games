@@ -82,5 +82,16 @@ export const samples = [
     category: 'ACTION',
     tags: ['アクション', 'ギミック', 'ブラウザでプレイ'],
     art: 'hoshi-no-hamham'
+  },
+  {
+    id: 'anima-front',
+    title: 'アニマフロント',
+    subtitle: '3D ACTION SHOOTER',
+    description:
+      '人類が去った世界で、動物たちが動物の形をした兵装〈アンティーク〉で侵略者に挑む3Dシューター。4匹での防衛任務と、4匹×3チームの三つ巴演習。',
+    href: './examples/games/anima-front/index.html',
+    category: 'ACTION',
+    tags: ['3Dアクション', '協力プレイ', '対戦'],
+    art: 'anima-front'
   }
 ]
