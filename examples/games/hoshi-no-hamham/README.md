@@ -67,20 +67,40 @@ npm run e2e:hoshi-no-hamham
 npm run art:hoshi-no-hamham      # .build/hoshi-no-hamham-art/ に絵を書き出す
 npm run audio:hoshi-no-hamham    # .build/hoshi-no-hamham-audio/ に音の計測レポートを書き出す
 node scripts/hoshi-no-hamham-review.mjs   # .build/hoshi-no-hamham-review/ にレビュー一式を書き出す
+node scripts/hoshi-no-hamham-perf.mjs     # .build/hoshi-no-hamham-perf/ にスマホ相当の性能レポートを書き出す
 ```
 
 ## レビュー用ツール
 
 出力はどれも `.build/`（Git管理外）に作られます。
 
-| コマンド                                                                                                           | 何をするか                                                                                                                                                                                                           | 出力                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `node scripts/hoshi-no-hamham-art.mjs [--scale N] [--out DIR] [--anim a,b] [prefix ...]`                           | ピクセルアートの全シート（アニメごとに1行のコンタクトシート）、地形・背景・ワールドごとの合成シーンを書き出す                                                                                                        | `.build/hoshi-no-hamham-art/<id>.png`、`<id>.txt`、`pending.txt`（仮絵の一覧）                                                 |
-| `node scripts/hoshi-no-hamham-audio.mjs [--songs] [--only name,name]`                                              | 全効果音をオフラインで鳴らして、長さ・音量・帯域・似かよりを測る（`--songs` は曲の先頭30秒も。数分かかる。`--write` は音量補正を書き換えるので通常は使わない）                                                       | `.build/hoshi-no-hamham-audio/report.md`、`sfx/*.wav`                                                                          |
-| `node scripts/hoshi-no-hamham-review.mjs [--only screens,staging,art,motion,audio,checks] [--no-checks] [--songs]` | 上の2つを含め、画面・演出・絵・動き・音・検査をまとめて測るレビューキット。自前のVite開発サーバーとヘッドレスChromiumで動き、サーバーは必ず止める。ページエラー／コンソールエラーが出るか、節が失敗すると終了コード1 | `.build/hoshi-no-hamham-review/index.md`（目次と全数値の表）、`screens/`、`staging/`、`art/`、`motion/`、`audio/`、`checks.md` |
+| コマンド                                                                                                           | 何をするか                                                                                                                                                                                                                    | 出力                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `node scripts/hoshi-no-hamham-art.mjs [--scale N] [--out DIR] [--anim a,b] [prefix ...]`                           | ピクセルアートの全シート（アニメごとに1行のコンタクトシート）、地形・背景・ワールドごとの合成シーンを書き出す                                                                                                                 | `.build/hoshi-no-hamham-art/<id>.png`、`<id>.txt`、`pending.txt`（仮絵の一覧）                                                 |
+| `node scripts/hoshi-no-hamham-audio.mjs [--songs] [--only name,name]`                                              | 全効果音をオフラインで鳴らして、長さ・音量・帯域・似かよりを測る（`--songs` は曲の先頭30秒も。数分かかる。`--write` は音量補正を書き換えるので通常は使わない）                                                                | `.build/hoshi-no-hamham-audio/report.md`、`sfx/*.wav`                                                                          |
+| `node scripts/hoshi-no-hamham-review.mjs [--only screens,staging,art,motion,audio,checks] [--no-checks] [--songs]` | 上の2つを含め、画面・演出・絵・動き・音・検査をまとめて測るレビューキット。自前のVite開発サーバーとヘッドレスChromiumで動き、サーバーは必ず止める。ページエラー／コンソールエラーが出るか、節が失敗すると終了コード1          | `.build/hoshi-no-hamham-review/index.md`（目次と全数値の表）、`screens/`、`staging/`、`art/`、`motion/`、`audio/`、`checks.md` |
+| `node scripts/hoshi-no-hamham-perf.mjs [--only boot,menus,play,boss,pacing] [--gpu] [--check]`                     | スマホ相当（タッチ、画素比3、CPU 4倍遅く）でボットに実際のステージを遊ばせ、固まりの原因（1フレームのJS時間、ロングタスク、本スレッドで描いた絵、その場で作った効果音、ステップの間隔）を測って予算ごとに PASS／FAIL を付ける | `.build/hoshi-no-hamham-perf/report.md`（予算の一覧と節ごとの表）、`report.json`、`--raw` で `raw-*.json`                      |
 
 レビューキットの `index.md` は画像を開かなくても読めます。`--only` で一部の節だけ走らせても、前回走らせた他の節の結果は
 `index.md` に残ります。ブラウザ操作の全テスト（`npm run e2e:hoshi-no-hamham`）は遅いのでキットには含みません。
+
+### 性能キットの読みかた
+
+`node scripts/hoshi-no-hamham-perf.mjs` は本番ビルド（`--dev` なら開発サーバー）をヘッドレスChromiumで開き、メニューをタッチで通って、
+`window.__hamham.autopilot(true)` のボットにステージを遊ばせます。節は `boot`（起動）、`menus`（画面遷移の1手ごと）、`play`（ステージ×
+縦横）、`boss`（ステージ2のボス戦と倒れる場面）、`pacing`（60Hzのステップのそろい方）です。`--stages 1,3,5|all`、`--seconds 30`、
+`--profiles landscape,portrait`、`--throttle 4`（CPUを何倍遅くするか。表題に必ず出ます）で絞れます。
+
+- レポート先頭の予算表（P1〜P7、C1、M1、M2、B1）が結論です。値と上限を並べて PASS／FAIL を付けます。予算は `--throttle 4` を前提にしています。
+  `--check` を付けると、FAIL が1つでもあれば終了コード1になります（ページエラー、コンソールエラー、失敗したリクエスト、動かなかった節は常に1）。
+- 「ループJS」は、1回の表示フレームで `requestAnimationFrame` のコールバックが使った時間の合計です。ここが16.7msを超えると人は固まりを感じます。
+  `sim`、`viewHandle`、`draw` と `d.*` などの段階別の表、出来事ごとの表、いちばん重い10フレームも同じレポートに出ます。
+- 絵と音は `window.__hamham.stats` の差分です。遊んでいる間に本スレッドが描いた絵（`art`）と、バッファではなくその場で作った効果音（`sfx.live`）は、
+  どちらも0に近いほどよい数です。
+- 「ステップのそろい方」は、ヒットストップ中・スローモーション中ではないのに、1フレームのステップが0回または2回以上になった数です。
+- `--gpu` は、ヘッドレスシェルではなく通常のChromiumをGPU付きで起こします。付けないとキャンバスはソフトウェアで描かれ、
+  2560x1440の画面では1秒に数フレームしか出ないため、フレーム間隔（P7）は判定せず、ロングタスクを使う予算（P3、M1、B1）も実機より厳しく出ます。
+  ループJS（P1、P2）は付けなくても同じ意味ですが、フレーム数が少ないと百分位は粗くなります。実機に近い結果を見るときは `--gpu` を付けてください。
 
 ## テスト
 
