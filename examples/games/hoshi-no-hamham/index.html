@@ -267,20 +267,30 @@
         </section>
         <section id="title-screen" class="screen title-screen" aria-labelledby="title-logo">
           <div class="title-shade" aria-hidden="true"></div>
+          <!-- Upright phones: the night under the stage (stars, the moon, a shooting star, hills along the bottom). -->
+          <div class="title-night" aria-hidden="true">
+            <i class="title-sky"></i><i class="title-sky title-sky-twinkle"></i><i class="title-shoot"></i>
+            <i class="title-hills"></i><span class="title-sleeper" id="title-sleeper"></span>
+          </div>
           <h1 id="title-logo" class="title-logo">
             <span class="sr-only">星のハムハム</span>
             <span class="logo-art" aria-hidden="true"
               ><img id="logo-img" class="logo-img" alt="" /><i class="logo-shine"></i
             ></span>
           </h1>
+          <p class="title-tagline">かじって進め！ <span>ハム彦の大ぼうけん</span></p>
           <div class="title-bottom">
             <div class="menu title-menu">
               <button id="continue" class="pxbtn" type="button" hidden>つづきから</button>
               <button id="start" class="pxbtn" type="button">はじめから</button>
               <button id="help-open" class="pxbtn" type="button">あそびかた</button>
             </div>
-            <p class="save-note" id="save-note" role="status"></p>
+            <div class="save-note" id="save-note">
+              <span class="star-trail" id="star-trail" role="img"></span>
+              <span class="trail-text" id="trail-text" aria-hidden="true"></span>
+            </div>
           </div>
+          <div class="title-moon-row" aria-hidden="true"><i class="title-moon"></i></div>
           <footer class="title-foot">
             <a class="home-link" id="home-link" href="../../../index.html"><span>ゲーム一覧</span></a>
             <small class="credit">ドット絵も音も、ぜんぶプログラムでかいたよ</small>
@@ -343,12 +353,28 @@
         </section>
 
         <section id="dead-screen" class="screen dead-screen" aria-labelledby="dead-title" hidden>
+          <div class="dead-night" aria-hidden="true"><i class="dead-sky"></i><i class="dead-hills"></i></div>
           <div class="dead-card night-panel">
+            <header class="dead-head" id="dead-head" hidden>
+              <span class="dead-emblem" id="dead-emblem"></span>
+              <span class="dead-stage"
+                ><small id="dead-stage-no">ステージ 1</small><b id="dead-stage-name">おふくろの追撃</b></span
+              >
+            </header>
             <div class="dead-art" id="dead-art"></div>
             <div class="dead-body">
               <p class="kicker">ゲームオーバー</p>
               <h2 id="dead-title" class="headline">やられちゃった…</h2>
               <p id="dead-text" class="dead-text">ハム彦は巣にもどって少し休もう。</p>
+              <div class="dead-track" id="dead-track" hidden>
+                <div class="dead-rail" id="dead-rail" role="img">
+                  <i class="dead-groove"><i class="dead-fill" id="dead-fill"></i></i>
+                  <span class="dead-mark dead-start" id="dead-start"></span>
+                  <span class="dead-mark dead-goal" id="dead-goal"></span>
+                  <span class="dead-mark dead-face" id="dead-face"></span>
+                </div>
+                <p class="dead-left" id="dead-left">ゴールまで あと <b class="num">0%</b></p>
+              </div>
               <div class="buttons">
                 <button id="dead-retry" class="pxbtn pxbtn-gold" type="button">リトライ</button>
                 <button id="dead-select" class="pxbtn" type="button">ステージ選択</button>
@@ -368,7 +394,6 @@
                 role="img"
                 aria-label="ハム彦、ハム姫、ハム代のさし絵"
               ></canvas>
-              <div id="ending-credits" class="credits" aria-label="スタッフ" hidden></div>
             </div>
             <div class="story-box" id="ending-box">
               <header class="story-head">
@@ -385,6 +410,7 @@
               </div>
             </div>
           </div>
+          <div id="ending-credits" class="credits" role="region" aria-label="スタッフ" hidden></div>
         </section>
 
         <section id="pause-screen" class="screen pause-screen" aria-labelledby="pause-title" hidden>

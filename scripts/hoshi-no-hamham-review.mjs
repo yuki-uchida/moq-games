@@ -15,13 +15,16 @@
  *
  * Output (all under the output folder):
  *   index.md            table of contents and every measured number as Markdown tables (readable without images)
- *   screens/            screenshots of every screen at 1280x720 and of title, select, story, play, pause, result, game
- *                       over, an ending page and the credits (start, middle, end) at 844x390, 390x844 and 320x568
- *                       (touch). index.md adds, per screenshot, the tallest empty horizontal band (px, share of the
- *                       viewport, y range; flagged above 25 %), headings and buttons that wrap, and on the phone rows
- *                       the reviewer measurements (story layout margins, stage/touch-controls gap, credits window).
- *                       The four viewports run side by side.
+ *   screens/            screenshots of every screen at 1280x720 and of title (fresh save and with a save), select, story,
+ *                       play, pause, result, game over (lost in play), an ending page, the credits held at 20, 50 and
+ *                       80 % and the card after the roll at 844x390, 390x844 and 320x568 (touch). index.md adds, per
+ *                       screenshot, the tallest empty horizontal band (px, share of the viewport, y range; flagged
+ *                       above 25 %; the game canvas counts as content only when hiding it changes the stage's pixels),
+ *                       headings and buttons that wrap, and the reviewer measurements (story/ending layout and picture
+ *                       crop, play deck and pause/mute buttons, title rects, game-over card, pause overflow, credits
+ *                       coverage and entries cut). The four viewports run side by side.
  *   staging/<series>/   a frame every 150 ms of the stage starts, a boss intro, a boss defeat, a clear, a death
+ *   staging/phone/      the same moments on a 390x844 touch phone, with what the DOM shows in each frame
  *   art/                the sprite sheets (scripts/hoshi-no-hamham-art.mjs) and clips.md (every clip of every sheet)
  *   motion/             what the view adds on top of the sprites: squash/stretch, camera look-ahead, hit-stop
  *   audio/              the audio tool's report (scripts/hoshi-no-hamham-audio.mjs, no --write)
@@ -228,6 +231,20 @@ const gotoTitle = async (page) => {
   )
 }
 
+/**
+ * The game-over card shows one of several lines picked with Math.random, and its height follows the line count. The
+ * kit pins the draw to the first line while the player loses the last heart so that the card measures the same on
+ * every run (call `__unpinRandom` once the screen shows).
+ */
+const pinRandom = (page) =>
+  page.evaluate(() => {
+    const original = Math.random
+    Math.random = () => 0
+    window.__unpinRandom = () => {
+      Math.random = original
+    }
+  })
+
 const screenOf = (page) => page.evaluate(() => window.__hamham.app.screen)
 
 /** Click or tap, as the page's input kind. */
@@ -273,6 +290,25 @@ const waitStartDone = (page, timeout = 20_000) =>
         const director = session?.director
         return Boolean(session) && director.current === null && !director.inputLocked
       },
+      null,
+      { timeout, polling: 'raf' }
+    )
+    .catch(() => {})
+
+/**
+ * Waits until the stage card and the call of the moment before (「スタート！」, 「ファイト！」) have left the screen. The kit
+ * jumps straight to the next moment while a player needs many seconds to get there, so a call still on its way out
+ * would be the kit's own artefact in the frames.
+ */
+const waitCallGone = (page, timeout = 4000) =>
+  page
+    .waitForFunction(
+      () =>
+        ['.hudx-banner', '.hudx-call'].every((selector) => {
+          const el = document.querySelector(selector)
+          if (!el || !el.classList.contains('is-show')) return true
+          return el.getAnimations().every((animation) => animation.playState === 'finished')
+        }),
       null,
       { timeout, polling: 'raf' }
     )
@@ -411,7 +447,7 @@ const measure = (page) =>
  * It must be self-contained: it is serialised into the page. Every probe reads defensively: a missing element
  * becomes "not found" and never throws out of this function.
  */
-function inspectPage({ kind, probes }) {
+function inspectPage({ kind, probes, canvasContent }) {
   const W = innerWidth
   const H = innerHeight
   const styles = new Map()
@@ -519,7 +555,7 @@ function inspectPage({ kind, probes }) {
   const items = []
   const add = (rect, el, why) => {
     const c = clip(rect, el)
-    if (c) items.push({ ...c, what: `${tag(el)} (${why})` })
+    if (c) items.push({ ...c, what: `${tag(el)} (${why})`, inTitle: Boolean(el.closest('#title-screen')) })
   }
   const page = new Set(['HTML', 'BODY'])
   const isBackdrop = (el) => page.has(el.tagName) || el.matches('#app, #stage-wrap, .screen, .screen-ghost')
@@ -561,32 +597,29 @@ function inspectPage({ kind, probes }) {
     else if (alpha(s.backgroundColor) >= 0.5) add(rect, el, 'panel')
     else if (s.boxShadow !== 'none') add(rect, el, 'shadow frame')
   }
-  // The game canvas counts as the stage's rectangle, unless a screen with an opaque backdrop covers it.
+  // The game canvas counts as the stage's rectangle when the caller found by pixels that it shows through.
   const stage = document.querySelector('#stage-wrap')
   const game = document.querySelector('#game')
-  if (stage && game && visible(game)) {
-    const covered = Array.from(document.querySelectorAll('.screen')).some((screen) => {
-      if (!shown(screen) || opacityOf(screen) < 0.5) return false
-      const s = styleOf(screen)
-      return s.backgroundImage !== 'none' || alpha(s.backgroundColor) >= 0.9
-    })
-    if (!covered) add(stage.getBoundingClientRect(), game, 'game canvas = stage')
-  }
+  if (stage && game && visible(game) && canvasContent) add(stage.getBoundingClientRect(), game, 'game canvas = stage')
   // --- the tallest horizontal band no rectangle touches
-  items.sort((a, b) => a.t - b.t)
-  let best = { h: 0, top: 0, bottom: 0, above: 'top of the viewport', below: 'bottom of the viewport' }
-  let reach = 0
-  let reachWhat = 'top of the viewport'
-  for (const item of items) {
-    if (item.t - reach > best.h)
-      best = { h: item.t - reach, top: reach, bottom: item.t, above: reachWhat, below: item.what }
-    if (item.b > reach) {
-      reach = item.b
-      reachWhat = item.what
+  const bandOf = (list) => {
+    const sorted = list.slice().sort((a, b) => a.t - b.t)
+    let best = { h: 0, top: 0, bottom: 0, above: 'top of the viewport', below: 'bottom of the viewport' }
+    let reach = 0
+    let reachWhat = 'top of the viewport'
+    for (const item of sorted) {
+      if (item.t - reach > best.h)
+        best = { h: item.t - reach, top: reach, bottom: item.t, above: reachWhat, below: item.what }
+      if (item.b > reach) {
+        reach = item.b
+        reachWhat = item.what
+      }
     }
+    if (H - reach > best.h)
+      best = { h: H - reach, top: reach, bottom: H, above: reachWhat, below: 'bottom of the viewport' }
+    return best
   }
-  if (H - reach > best.h)
-    best = { h: H - reach, top: reach, bottom: H, above: reachWhat, below: 'bottom of the viewport' }
+  const best = bandOf(items)
 
   // --- headings and buttons that wrap
   const wraps = []
@@ -618,7 +651,16 @@ function inspectPage({ kind, probes }) {
       `x ${Math.round(r.left)}–${Math.round(r.right)}, y ${Math.round(r.top)}–${Math.round(r.bottom)} (${Math.round(r.width)}×${Math.round(r.height)})`
     const px = (n) => `${Math.round(n)} px`
     const firstShown = (selector) => Array.from(document.querySelectorAll(selector)).find(shown)
-    if (kind === 'story' || kind === 'ending' || kind === 'credits') {
+    const portrait = matchMedia('(orientation: portrait)').matches
+    /** The frame the game is laid out in: the stage in landscape, the viewport in portrait. */
+    const frameRect = () => {
+      if (portrait) return { left: 0, top: 0, right: W, bottom: H, width: W, height: H }
+      return need(document.querySelector('#stage-wrap')).getBoundingClientRect()
+    }
+    const pct = (n) => `${(100 * n).toFixed(1)} %`
+    const named = (el) =>
+      `${tag(el)}${el.textContent.trim() ? ` "${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 10)}"` : ''}`
+    if (kind === 'story' || kind === 'ending' || kind === 'credits' || kind === 'card') {
       const layout = firstShown('.story-layout')
       probe('.story-layout', () => {
         const r = need(layout).getBoundingClientRect()
@@ -626,13 +668,31 @@ function inspectPage({ kind, probes }) {
       })
       probe('footer buttons share a row', () => {
         const foot = need(layout).querySelector('.story-foot')
-        const buttons = Array.from(need(foot).querySelectorAll('button')).filter(shown)
+        const buttons = Array.from(need(foot).querySelectorAll('button')).filter((b) => shown(b) && visible(b))
         if (!buttons.length) return 'no visible button'
         const rects = buttons.map((b) => b.getBoundingClientRect())
         const tops = rects.map((r) => Math.round(r.top))
         const sameRow = Math.max(...rects.map((r) => r.top)) - Math.min(...rects.map((r) => r.top)) < 4
         const foots = foot.getBoundingClientRect()
         return `${sameRow ? 'yes' : '**NO**'}: ${buttons.length} button(s), tops ${tops.join('/')}; footer ${box(foots)}`
+      })
+    }
+    if (kind === 'story' || kind === 'ending') {
+      // The picture is cropped when its canvas box has another aspect than its backing store (object-fit cover/none).
+      probe('.story-art', () => {
+        const art = need(firstShown('.story-art'))
+        const canvas = need(Array.from(art.querySelectorAll('canvas.diorama')).find(shown))
+        const a = art.getBoundingClientRect()
+        const c = canvas.getBoundingClientRect()
+        const backing = canvas.width / canvas.height
+        const css = c.width / c.height
+        const apart = Math.abs(css / backing - 1)
+        const cropped = apart > 0.02
+        return (
+          `${box(a)}; canvas ${canvas.id} backing ${canvas.width}×${canvas.height} (${backing.toFixed(3)}), ` +
+          `CSS box ${Math.round(c.width)}×${Math.round(c.height)} (${css.toFixed(3)}), ${(apart * 100).toFixed(1)} % apart, ` +
+          `object-fit ${styleOf(canvas).objectFit}: ${cropped ? '**cropped**' : 'not cropped'}`
+        )
       })
     }
     if (kind === 'play') {
@@ -648,6 +708,99 @@ function inspectPage({ kind, probes }) {
         if (!shown(controls)) return 'not visible'
         return px(controls.getBoundingClientRect().top - need(wrap).getBoundingClientRect().bottom)
       })
+      probe('deck .hudd', () => {
+        const deck = need(document.querySelector('.hudd'))
+        if (styleOf(deck).display === 'contents') return 'display: contents (no box of its own in this orientation)'
+        const r = deck.getBoundingClientRect()
+        const stageBottom = need(wrap).getBoundingClientRect().bottom
+        return `${box(r)}; starts ${px(r.top - stageBottom)} below the stage bottom`
+      })
+      for (const [id, label] of [
+        ['#pause', 'pause button'],
+        ['#mute', 'mute button']
+      ]) {
+        probe(`${id} (${label})`, () => {
+          const el = need(document.querySelector(id))
+          if (!shown(el)) return 'not visible'
+          const r = el.getBoundingClientRect()
+          const s = need(wrap).getBoundingClientRect()
+          const inside =
+            r.left >= s.left - 0.5 && r.right <= s.right + 0.5 && r.top >= s.top - 0.5 && r.bottom <= s.bottom + 0.5
+          const where = inside
+            ? 'inside the stage'
+            : r.top >= s.bottom - 0.5
+              ? `under the stage (${px(r.top - s.bottom)} below its bottom edge)`
+              : 'partly outside the stage'
+          return `${box(r)}; ${where}`
+        })
+      }
+      probe('deck smallest text', () => {
+        const deck = need(document.querySelector('.hudd'))
+        let min = null
+        for (const el of deck.querySelectorAll('*')) {
+          if (!Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim())) continue
+          if (!visible(el) || !shown(el) || !clip(el.getBoundingClientRect(), el)) continue
+          const size = parseFloat(styleOf(el).fontSize)
+          if (size > 0 && (!min || size < min.size)) min = { size, el }
+        }
+        return min ? `${min.size.toFixed(1)} px (${named(min.el)})` : 'no visible text in the deck'
+      })
+    }
+    if (kind === 'title') {
+      probe('#stage-wrap', () => box(need(document.querySelector('#stage-wrap')).getBoundingClientRect()))
+      probe('.logo-art', () => box(need(firstShown('.logo-art')).getBoundingClientRect()))
+      probe('.title-menu', () => box(need(firstShown('.title-menu')).getBoundingClientRect()))
+      probe('progress (.title-trail, else #save-note)', () => {
+        const trail = document.querySelector('.title-trail')
+        const el = trail ?? need(document.querySelector('#save-note'))
+        const label = trail ? '.title-trail' : '#save-note'
+        if (!shown(el)) return `${label}: present but not shown (empty or hidden)`
+        return `${label}: ${box(el.getBoundingClientRect())} "${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 30)}"`
+      })
+      probe('.title-foot', () => box(need(firstShown('.title-foot')).getBoundingClientRect()))
+      // The demo plays in the stage behind the title: where it is really seen, it fills its part of the screen.
+      probe('tallest stretch neither a title element nor the demo touches', () => {
+        const mine = items.filter((item) => item.inTitle || item.what.includes('game canvas = stage'))
+        if (!mine.length) return 'no title element found'
+        const b = bandOf(mine)
+        return `${px(b.h)} = ${pct(b.h / H)} of the height, y ${Math.round(b.top)}–${Math.round(b.bottom)}, between ${b.above} and ${b.below}`
+      })
+    }
+    if (kind === 'dead') {
+      probe('.dead-card', () => {
+        const card = need(firstShown('.dead-card'))
+        const f = frameRect()
+        const r = card.getBoundingClientRect()
+        return `${box(r)}; ${pct(r.height / f.height)} of the frame height; margin above ${px(r.top - f.top)}, below ${px(f.bottom - r.bottom)} (frame = ${portrait ? 'viewport' : '#stage-wrap'})`
+      })
+    }
+    if (kind === 'pause') {
+      probe('.pause-card and what reaches outside its padding box', () => {
+        const card = need(firstShown('.pause-card'))
+        const r = card.getBoundingClientRect()
+        const s = styleOf(card)
+        const pad = {
+          left: r.left + parseFloat(s.borderLeftWidth),
+          top: r.top + parseFloat(s.borderTopWidth),
+          right: r.right - parseFloat(s.borderRightWidth),
+          bottom: r.bottom - parseFloat(s.borderBottomWidth)
+        }
+        const out = []
+        for (const el of card.querySelectorAll('*')) {
+          if (!visible(el)) continue
+          const e = el.getBoundingClientRect()
+          if (e.width <= 0 || e.height <= 0) continue
+          const over = []
+          if (e.left < pad.left - 0.5) over.push(`left ${Math.round(pad.left - e.left)}`)
+          if (e.right > pad.right + 0.5) over.push(`right ${Math.round(e.right - pad.right)}`)
+          if (e.top < pad.top - 0.5) over.push(`top ${Math.round(pad.top - e.top)}`)
+          if (e.bottom > pad.bottom + 0.5) over.push(`bottom ${Math.round(e.bottom - pad.bottom)}`)
+          if (over.length) out.push(`${named(el)} (${over.join(', ')} px)`)
+        }
+        const head = `panel ${box(r)}`
+        if (!out.length) return `${head}; nothing reaches outside the padding box`
+        return `${head}; **${out.length} reach outside**: ${out.slice(0, 6).join('; ')}${out.length > 6 ? `; … ${out.length - 6} more` : ''}`
+      })
     }
     if (kind === 'select') {
       probe('#select-title one line', () => {
@@ -659,34 +812,119 @@ function inspectPage({ kind, probes }) {
       })
     }
     if (kind === 'credits') {
-      probe('#ending-credits', () => {
+      probe('#ending-credits covers the frame', () => {
         const el = need(document.querySelector('#ending-credits'))
         if (!shown(el)) return 'not visible'
+        const f = frameRect()
         const r = el.getBoundingClientRect()
-        const share = (100 * r.height) / H
-        return `${box(r)}; ${share.toFixed(1)} % of the viewport height${share < 30 ? ' (**small window**)' : ''}`
+        const across = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0))
+        const h = across(r.top, r.bottom, f.top, f.bottom) / f.height
+        const w = across(r.left, r.right, f.left, f.right) / f.width
+        return `${box(r)}; covers ${pct(h)} of the frame height and ${pct(w)} of its width (frame = ${portrait ? 'viewport' : '#stage-wrap'} ${Math.round(f.width)}×${Math.round(f.height)})${h < 0.6 ? ' **(under 60 % of the height)**' : ''}`
       })
-      probe('credit entries cut by the area edge', () => {
+      probe('credit entries: whole / fading / cut by a hard edge', () => {
         const area = need(document.querySelector('#ending-credits'))
         if (!shown(area)) return 'not visible'
+        const win = area.querySelector('.credits-window') ?? area
+        const a = win.getBoundingClientRect()
+        // The fade comes from the computed mask: find where the vertical gradient is fully opaque.
+        const maskText = styleOf(win).maskImage !== 'none' ? styleOf(win).maskImage : styleOf(win).webkitMaskImage
+        let fadeTop = 0
+        let fadeBottom = 0
+        let maskNote = 'no mask'
+        const stops = []
+        if (maskText && maskText !== 'none') {
+          const inner = /linear-gradient\((.*)\)\s*$/.exec(maskText)?.[1]
+          if (inner) {
+            // split the stops at top-level commas
+            const parts = []
+            let depth = 0
+            let cur = ''
+            for (const ch of inner) {
+              if (ch === '(') depth++
+              if (ch === ')') depth--
+              if (ch === ',' && depth === 0) {
+                parts.push(cur.trim())
+                cur = ''
+              } else cur += ch
+            }
+            parts.push(cur.trim())
+            const length = (text) => {
+              // "12px", "15%", "calc(100% - 15%)", "calc(85%)" → px
+              const calc = /^calc\((.*)\)$/.exec(text)
+              const expr = calc ? calc[1] : text
+              const tokens = expr.split(/\s+/).filter(Boolean)
+              let total = 0
+              let sign = 1
+              for (const token of tokens) {
+                if (token === '+') sign = 1
+                else if (token === '-') sign = -1
+                else {
+                  const m = /^(-?[\d.]+)(%|px)$/.exec(token)
+                  if (!m) return NaN
+                  total += sign * (m[2] === '%' ? (Number(m[1]) / 100) * a.height : Number(m[1]))
+                }
+              }
+              return total
+            }
+            for (const part of parts) {
+              const color = /^(rgba?\([^)]*\)|transparent|#[0-9a-f]{3,8})\s*(.*)$/i.exec(part)
+              if (!color) continue
+              const pos = color[2] ? length(color[2]) : NaN
+              stops.push({ alpha: color[1] === 'transparent' ? 0 : alpha(color[1]), pos })
+            }
+            if (stops.length >= 2) {
+              if (stops.at(0).pos !== stops.at(0).pos) stops.at(0).pos = 0
+              if (stops.at(-1).pos !== stops.at(-1).pos) stops.at(-1).pos = a.height
+              if (stops.every((stop) => stop.pos === stop.pos)) {
+                const solid = stops.filter((stop) => stop.alpha >= 0.99)
+                if (solid.length) {
+                  fadeTop = stops[0].alpha >= 0.99 ? 0 : Math.max(0, solid[0].pos)
+                  fadeBottom = stops.at(-1).alpha >= 0.99 ? 0 : Math.max(0, a.height - solid.at(-1).pos)
+                  maskNote = `mask fades the top ${px(fadeTop)} and the bottom ${px(fadeBottom)} of the window`
+                } else maskNote = 'mask never fully opaque'
+              } else maskNote = 'mask stops could not be read (counted as no fade)'
+            } else maskNote = 'mask is not a readable gradient (counted as no fade)'
+          } else maskNote = 'mask is not a linear-gradient (counted as no fade)'
+        }
         let entries = Array.from(area.querySelectorAll('.credits-name, .credits-title, .credits-line, .credits-end'))
         if (!entries.length) entries = Array.from(area.querySelectorAll('p'))
         if (!entries.length) throw NOT_FOUND
-        const a = area.getBoundingClientRect()
+        let whole = 0
+        const fading = []
         const cut = []
-        let inside = 0
         for (const entry of entries) {
           const r = entry.getBoundingClientRect()
           if (r.height <= 0) continue
-          const overlap = Math.min(r.bottom, a.bottom) - Math.max(r.top, a.top)
-          if (overlap <= 0.5) continue
-          if (r.top < a.top - 0.5 || r.bottom > a.bottom + 0.5)
-            cut.push(
-              `"${entry.textContent.trim().slice(0, 12)}" ${Math.round(100 * (1 - overlap / r.height))} % outside`
-            )
-          else inside += 1
+          if (r.bottom <= a.top + 0.5 || r.top >= a.bottom - 0.5) continue // outside the window: not on screen
+          const crossTop = r.top < a.top - 0.5
+          const crossBottom = r.bottom > a.bottom + 0.5
+          const label = `"${entry.textContent.trim().slice(0, 12)}"`
+          if (crossTop || crossBottom) {
+            const hard = (crossTop && fadeTop <= 0) || (crossBottom && fadeBottom <= 0)
+            if (hard) cut.push(`${label} over the ${crossTop && fadeTop <= 0 ? 'top' : 'bottom'} edge`)
+            else fading.push(label)
+          } else if (r.top < a.top + fadeTop - 0.5 || r.bottom > a.bottom - fadeBottom + 0.5) fading.push(label)
+          else whole += 1
         }
-        return cut.length ? `**${cut.length} cut**: ${cut.join(', ')}; ${inside} whole` : `none cut; ${inside} whole`
+        const head = cut.length ? `**${cut.length} cut by a hard edge**: ${cut.join(', ')}` : '0 cut'
+        return `${head}; ${whole} wholly visible; ${fading.length} in the fade zone${fading.length ? ` (${fading.slice(0, 4).join(', ')}${fading.length > 4 ? ', …' : ''})` : ''}; ${maskNote}; window ${box(a)}`
+      })
+    }
+    if (kind === 'card') {
+      probe('card after the roll: buttons share a row', () => {
+        const select = need(document.querySelector('#ending-select'))
+        const title = need(document.querySelector('#ending-title-button'))
+        if (!shown(select) || !shown(title))
+          return `**not both shown** (#ending-select ${shown(select) ? 'shown' : 'hidden'}, #ending-title-button ${shown(title) ? 'shown' : 'hidden'})`
+        const a = select.getBoundingClientRect()
+        const b = title.getBoundingClientRect()
+        const same = Math.abs(a.top - b.top) < 4
+        return `${same ? 'yes' : '**NO**'}: #ending-select ${box(a)}; #ending-title-button ${box(b)}`
+      })
+      probe('#ending-stats', () => {
+        const el = need(document.querySelector('#ending-stats'))
+        return shown(el) ? box(el.getBoundingClientRect()) : 'not shown'
       })
     }
   }
@@ -707,27 +945,193 @@ const SCREEN_COLUMNS = [
   'smallest button (w×h px)',
   `tallest empty band (flag > ${EMPTY_FLAG_PERCENT} %)`,
   'wrapped headings / buttons',
+  'game canvas seen by pixels',
   'note'
 ]
 
-/** Moves every animation of the credits roll to `fraction` of its run and holds it there; returns what it did. */
+/** The canvas counts as content when hiding it changes at least this share of the stage's pixels more than they change on their own. */
+const CANVAS_SHARE_MIN = 0.08
+/** A pixel "changes" when any colour channel differs by more than this (0–255). */
+const CANVAS_CHANNEL_MIN = 40
+
+/**
+ * Waits until the boxes of the visible buttons and cards stop moving (two reads 150 ms apart are the same), so a
+ * card that is still dropping in or a button that is still growing is not measured mid-way. Gives up after 3 s.
+ */
+async function settleLayout(page) {
+  const read = () =>
+    page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll('button, .dead-card, .pause-card, .story-layout, .story-art, .credits-window, .tally')
+      )
+        .map((el) => {
+          const r = el.getBoundingClientRect()
+          return r.width > 0 && r.height > 0
+            ? [
+                el.id || el.className,
+                Math.round(r.left),
+                Math.round(r.top),
+                Math.round(r.width),
+                Math.round(r.height)
+              ].join(':')
+            : ''
+        })
+        .join('|')
+    )
+  let before = await read()
+  for (let i = 0; i < 20; i++) {
+    await sleep(150)
+    const now = await read()
+    if (now === before) return true
+    before = now
+  }
+  return false
+}
+
+/**
+ * Decides by pixels whether the game canvas is really seen: a clipped screenshot of the stage rectangle with `#game`
+ * visible against one with it hidden (`visibility: hidden`, restored afterwards). Returns { content, text }.
+ */
+async function canvasSeen(page) {
+  const rect = await page.evaluate(() => {
+    const game = document.querySelector('#game')
+    const stage = document.querySelector('#stage-wrap')
+    if (!game || !stage) return null
+    const s = getComputedStyle(game)
+    if (s.display === 'none' || s.visibility === 'hidden') return null
+    const r = stage.getBoundingClientRect()
+    const x = Math.max(0, Math.floor(r.left))
+    const y = Math.max(0, Math.floor(r.top))
+    const width = Math.min(innerWidth, Math.ceil(r.right)) - x
+    const height = Math.min(innerHeight, Math.ceil(r.bottom)) - y
+    return width > 4 && height > 4 ? { x, y, width, height } : null
+  })
+  if (!rect) return { content: false, text: 'canvas not shown: no' }
+  const before = await page.screenshot({ clip: rect })
+  const previous = await page.evaluate(() => {
+    const game = document.querySelector('#game')
+    const old = game.style.visibility
+    game.style.visibility = 'hidden'
+    return old
+  })
+  let hidden
+  let again
+  try {
+    hidden = await page.screenshot({ clip: rect })
+  } finally {
+    await page.evaluate((old) => {
+      document.querySelector('#game').style.visibility = old
+    }, previous)
+  }
+  // A second capture with the canvas visible again measures how much moves anyway (animated art, a live scene).
+  again = await page.screenshot({ clip: rect })
+  const [hide, motion] = await page.evaluate(
+    async ([a, b, c, limit]) => {
+      const decode = async (base64) => {
+        const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0))
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+        const canvas = document.createElement('canvas')
+        canvas.width = bitmap.width
+        canvas.height = bitmap.height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(bitmap, 0, 0)
+        return ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      }
+      const share = (x, y) => {
+        let changed = 0
+        for (let i = 0; i < x.length; i += 4)
+          if (
+            Math.abs(x[i] - y[i]) > limit ||
+            Math.abs(x[i + 1] - y[i + 1]) > limit ||
+            Math.abs(x[i + 2] - y[i + 2]) > limit
+          )
+            changed++
+        return changed / (x.length / 4)
+      }
+      const [x, y, z] = await Promise.all([decode(a), decode(b), decode(c)])
+      return [share(x, y), share(x, z)]
+    },
+    [before.toString('base64'), hidden.toString('base64'), again.toString('base64'), CANVAS_CHANNEL_MIN]
+  )
+  const net = hide - motion
+  const content = net >= CANVAS_SHARE_MIN
+  return {
+    content,
+    text: `${content ? 'yes' : 'no'}: ${(hide * 100).toFixed(1)} % change on hiding it, ${(motion * 100).toFixed(1)} % move anyway, net ${(net * 100).toFixed(1)} %`
+  }
+}
+
+/** Moves the credits roll (the longest animation under #ending-credits) to `fraction` of its run and holds it there. */
 const seekCredits = (page, fraction) =>
   page.evaluate((f) => {
     const area = document.querySelector('#ending-credits')
     if (!area) return 'no #ending-credits'
+    const endOf = (a) => {
+      const timing = a.effect.getComputedTiming()
+      return Number.isFinite(timing.endTime) ? timing.endTime : timing.duration
+    }
     const animations = document.getAnimations().filter((a) => {
       const target = a.effect?.target
       return target instanceof Element && area.contains(target)
     })
     if (!animations.length) return 'no animation on the credits'
-    for (const animation of animations) {
-      const timing = animation.effect.getComputedTiming()
-      const end = Number.isFinite(timing.endTime) ? timing.endTime : timing.duration
-      animation.pause()
-      animation.currentTime = Math.min(end * f, end - 1)
-    }
-    return `${animations.length} animation(s) held at ${Math.round(f * 100)} %`
+    const roll = animations.reduce((best, a) => (endOf(a) > endOf(best) ? a : best))
+    const end = endOf(roll)
+    roll.pause()
+    roll.currentTime = Math.min(end * f, end - 1)
+    return `roll of ${(end / 1000).toFixed(1)} s held at ${Math.round(f * 100)} %`
   }, fraction)
+
+/** Finishes the credits roll the way a skip would and waits for the card (#ending-stats); resolves with whether it came. */
+async function finishRoll(page) {
+  await page.evaluate(() => {
+    const area = document.querySelector('#ending-credits')
+    if (!area) return
+    for (const animation of document.getAnimations()) {
+      const target = animation.effect?.target
+      if (
+        target instanceof Element &&
+        area.contains(target) &&
+        Number.isFinite(animation.effect.getComputedTiming().endTime)
+      )
+        animation.finish()
+    }
+  })
+  const arrived = await page
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('#ending-stats')
+        return Boolean(el) && !el.hidden && el.getBoundingClientRect().height > 0
+      },
+      null,
+      { timeout: 10_000 }
+    )
+    .then(() => true)
+    .catch(() => false)
+  await page.waitForTimeout(1500)
+  return arrived
+}
+
+/** Holds the roll at 20, 50 and 80 % and captures each, then finishes it and captures the card. */
+async function creditsAndCard(page, snap, firstNumber, label) {
+  for (const f of [0.2, 0.5, 0.8]) {
+    const held = await seekCredits(page, f)
+    await page.waitForTimeout(200)
+    await snap(
+      page,
+      `${String(firstNumber + [0.2, 0.5, 0.8].indexOf(f)).padStart(2, '0')}-credits-${Math.round(f * 100)}`,
+      `${label}, ${held}`,
+      'credits'
+    )
+  }
+  const arrived = await finishRoll(page)
+  await snap(
+    page,
+    `${String(firstNumber + 3).padStart(2, '0')}-ending-card`,
+    `${label}, after the roll${arrived ? '' : ' (**#ending-stats did not appear within 10 s**)'}`,
+    'card'
+  )
+}
 
 async function runScreens(dir) {
   const failures = []
@@ -741,11 +1145,18 @@ async function runScreens(dir) {
     const file = join(dir, `${viewport.width}x${viewport.height}-${name}.png`)
     const link = `[${rel(file)}](${rel(file)})`
     const size = `${viewport.width}×${viewport.height}`
+    const settled = await settleLayout(page)
     await page.screenshot({ path: file })
     const m = await measure(page)
     let found = null
+    let canvas = { content: false, text: 'not measured' }
     try {
-      found = await page.evaluate(inspectPage, { kind, probes })
+      canvas = await canvasSeen(page)
+    } catch (error) {
+      failures.push([`${size} ${name}: canvas pixels`, String(error.message ?? error).split('\n')[0]])
+    }
+    try {
+      found = await page.evaluate(inspectPage, { kind, probes, canvasContent: canvas.content })
     } catch (error) {
       failures.push([`${size} ${name}: layout measurements`, String(error.message ?? error).split('\n')[0]])
     }
@@ -770,7 +1181,8 @@ async function runScreens(dir) {
       m.minButton ? `${m.minButton.w}×${m.minButton.h} (${m.minButton.what})` : '–',
       band,
       wrapped,
-      note
+      canvas.text,
+      settled ? note : `${note} **(layout still moving after 3 s)**`.trim()
     ])
   }
   /** One screenshot that cannot stop the others. */
@@ -787,16 +1199,16 @@ async function runScreens(dir) {
   const desktopLane = newLane()
   const runDesktop = async () => {
     const lane = desktopLane
-    const snap = (page, name, note, kind) => shot(lane, page, desktop, name, note, kind)
+    const snap = (page, name, note, kind) => shot(lane, page, desktop, name, note, kind, kind !== 'play')
     {
       const { context, page } = await openPage({ label: 'screens 1280x720 fresh', viewport: desktop })
       try {
         await step('title', async () => {
           await gotoTitle(page)
           await page.waitForTimeout(2000)
-          await snap(page, '01-title-2s', 'fresh save, demo running')
+          await snap(page, '01-title-2s', 'fresh save, demo running', 'title')
           await page.waitForTimeout(4000)
-          await snap(page, '02-title-6s', 'the demo has moved on')
+          await snap(page, '02-title-6s', 'the demo has moved on', 'title')
         })
         await step('help', async () => {
           await page.locator('#help-open').click()
@@ -812,7 +1224,7 @@ async function runScreens(dir) {
           const pages = await walkStory(page, false, {
             onPage: async (index) => snap(page, `04-opening-page${index + 1}`, 'text complete', 'story')
           })
-          lane.rows.push([`(opening story: ${pages} pages)`, '', '', '', '', '', '', ''])
+          lane.rows.push([`(opening story: ${pages} pages)`, '', '', '', '', '', '', '', ''])
         })
         await step('select fresh', async () => {
           await page.waitForFunction(() => window.__hamham.app.screen === 'select', null, { timeout: 10_000 })
@@ -833,7 +1245,7 @@ async function runScreens(dir) {
         await step('select unlocked', async () => {
           await gotoTitle(page)
           await page.waitForTimeout(500)
-          await snap(page, '06-title-continue', 'save with 9 stages cleared')
+          await snap(page, '06-title-continue', 'save with 9 stages cleared', 'title')
           await page.locator('#continue').click()
           await page.waitForSelector('.stage-card')
           await page.waitForTimeout(800)
@@ -864,7 +1276,7 @@ async function runScreens(dir) {
           await page.keyboard.press('Escape')
           await page.waitForSelector('#pause-screen:not([hidden])', { timeout: 5000 })
           await page.waitForTimeout(500)
-          await snap(page, '10-pause')
+          await snap(page, '10-pause', '', 'pause')
         })
         await step('result', async () => {
           await startStage(page, 2)
@@ -876,6 +1288,7 @@ async function runScreens(dir) {
         await step('game over', async () => {
           await startStage(page, 3)
           await waitStartDone(page)
+          await pinRandom(page)
           await page.evaluate(() => {
             const w = window.__hamham.world
             w.player.hp = 1
@@ -883,8 +1296,9 @@ async function runScreens(dir) {
             w.hurtPlayer(9, w.player.x - 10)
           })
           await page.waitForFunction(() => window.__hamham.app.screen === 'dead', null, { timeout: 15_000 })
+          await page.evaluate(() => window.__unpinRandom())
           await page.waitForTimeout(1500)
-          await snap(page, '12-game-over')
+          await snap(page, '12-game-over', 'lost the last heart in play (first of the random lines)', 'dead')
         })
         await step('ending', async () => {
           await gotoTitle(page)
@@ -901,10 +1315,8 @@ async function runScreens(dir) {
             await page.locator('#ending-next').click()
             await page.waitForTimeout(450)
           }
-          await page.waitForTimeout(3500)
-          await snap(page, '14-ending-credits', 'credits scrolling, 3.5 s in', 'credits')
-          await page.waitForTimeout(6000)
-          await snap(page, '15-ending-credits-later', 'credits, 9.5 s in', 'credits')
+          await page.waitForTimeout(500)
+          await creditsAndCard(page, snap, 14, 'credits')
         })
       } finally {
         await context.close()
@@ -922,6 +1334,23 @@ async function runScreens(dir) {
   const runTouch = async (viewport, lane) => {
     const tag = `touch ${viewport.width}x${viewport.height}`
     const snap = (page, name, note, kind) => shot(lane, page, viewport, name, note, kind, true)
+    {
+      // the title with a fresh save (the main page below carries a save)
+      const fresh = await openPage({
+        label: `screens ${viewport.width}x${viewport.height} touch fresh`,
+        viewport,
+        touch: true
+      })
+      try {
+        await step(`${tag} title fresh`, async () => {
+          await gotoTitle(fresh.page)
+          await fresh.page.waitForTimeout(2000)
+          await snap(fresh.page, '00-title-fresh', 'touch, fresh save', 'title')
+        })
+      } finally {
+        await fresh.context.close()
+      }
+    }
     const { context, page } = await openPage({
       label: `screens ${viewport.width}x${viewport.height} touch`,
       viewport,
@@ -932,7 +1361,7 @@ async function runScreens(dir) {
       await step(`${tag} title`, async () => {
         await gotoTitle(page)
         await page.waitForTimeout(2000)
-        await snap(page, '01-title', 'touch')
+        await snap(page, '01-title', 'touch, save with 9 stages cleared', 'title')
       })
       await step(`${tag} select`, async () => {
         await page.locator('#continue').tap()
@@ -960,7 +1389,7 @@ async function runScreens(dir) {
         await page.locator('#pause').tap()
         await page.waitForSelector('#pause-screen:not([hidden])', { timeout: 5000 })
         await page.waitForTimeout(500)
-        await snap(page, '05-pause', 'touch')
+        await snap(page, '05-pause', 'touch', 'pause')
         await page.locator('#pause-resume').tap()
         await page.waitForTimeout(300)
       })
@@ -973,6 +1402,7 @@ async function runScreens(dir) {
       await step(`${tag} game over`, async () => {
         await startStage(page, 3, { touch: true })
         await waitStartDone(page)
+        await pinRandom(page)
         await page.evaluate(() => {
           const w = window.__hamham.world
           w.player.hp = 1
@@ -980,8 +1410,9 @@ async function runScreens(dir) {
           w.hurtPlayer(9, w.player.x - 10)
         })
         await page.waitForFunction(() => window.__hamham.app.screen === 'dead', null, { timeout: 15_000 })
+        await page.evaluate(() => window.__unpinRandom())
         await page.waitForTimeout(1500)
-        await snap(page, '07-game-over', 'touch')
+        await snap(page, '07-game-over', 'touch, lost the last heart in play (first of the random lines)', 'dead')
       })
       await step(`${tag} ending`, async () => {
         await gotoTitle(page)
@@ -1001,15 +1432,7 @@ async function runScreens(dir) {
         }
         await page.waitForTimeout(500)
         // The roll is a CSS animation: hold it at fixed points instead of waiting for them.
-        for (const [name, label, fraction] of [
-          ['09-credits-start', 'start', 0.1],
-          ['10-credits-middle', 'middle', 0.5],
-          ['11-credits-end', 'end', 1]
-        ]) {
-          const held = await seekCredits(page, fraction)
-          await page.waitForTimeout(150)
-          await snap(page, name, `touch, credits ${label} (${held})`, 'credits')
-        }
+        await creditsAndCard(page, snap, 9, 'touch credits')
       })
     } finally {
       await context.close()
@@ -1029,8 +1452,13 @@ async function runScreens(dir) {
     'canvas. The button size is the smallest visible button-like element (buttons, links, inputs, touch pad).',
     '',
     '**Tallest empty band**: the visible text lines, buttons, images, canvases with painted pixels and elements with a',
-    'background image or a border (the game canvas counts as the stage rectangle; the page background, screen',
-    'backdrops and elements covering 90 % of the viewport do not) are projected on the vertical axis. The longest',
+    'background image or a border (the page background, screen backdrops and elements covering 90 % of the viewport',
+    'do not) are projected on the vertical axis. **The game canvas counts as the stage rectangle when it is really',
+    `seen: the stage rectangle is captured with \`#game\` visible, again with it \`visibility: hidden\` and once more`,
+    `with it visible. A pixel "differs" when any colour channel is more than ${CANVAS_CHANNEL_MIN} (of 255) apart. The canvas is content`,
+    `when the share of pixels that differ between the first two captures, minus the share that differ between the`,
+    `first and the third (what moves anyway: animated art, a live scene), is at least ${CANVAS_SHARE_MIN * 100} % (column "game canvas seen by`,
+    'pixels"); a black stage or one hidden under an opaque screen is not content.** The longest',
     'stretch no rectangle touches is reported in px, as a share of the viewport height, with its top and bottom y and',
     `the two things it lies between. A share above ${EMPTY_FLAG_PERCENT} % is flagged with ⚠.`,
     '',
@@ -1040,12 +1468,22 @@ async function runScreens(dir) {
     '',
     flags.length ? md.table(['file', 'viewport', 'empty share', 'where'], flags) : 'None.',
     '',
-    '### Layout measurements (touch viewports)',
+    '### Layout measurements',
     '',
-    'Story and ending pages: `.story-layout` and its margins to the viewport edges, and whether the footer buttons',
-    'share one row. Play: `#stage-wrap`, `#touch-controls` and the distance between the stage bottom and the',
-    'controls top. Stage select: whether the heading is one line. Credits: `#ending-credits`, its share of the',
-    'viewport height and the credit entries cut by its edge. "not found" means the element is not on the page.',
+    'Every viewport (the touch ones always, 1280×720 for all screens but play). Story and ending pages:',
+    '`.story-layout` margins, whether the footer buttons share a row, and `.story-art` with the canvas aspect check',
+    '(backing `width / height` against the aspect of its CSS box; more than 2 % apart is **cropped**). Play (touch):',
+    '`#stage-wrap`, `#touch-controls`, the deck `.hudd`, `#pause` and `#mute` (inside the stage or under it) and the',
+    'smallest deck text. Title: the rects of `#stage-wrap`, `.logo-art`, `.title-menu`, the progress element and',
+    '`.title-foot`, and the tallest stretch of the viewport that neither a visible title element nor the demo (the game',
+    'canvas, where it is really seen) touches. Game over: `.dead-card`,',
+    'its share of the frame height and the margins above and below. Pause: the panel and every descendant reaching',
+    'outside its padding box. Credits: the roll is held at 20, 50 and 80 %; `#ending-credits` coverage of the frame',
+    '(frame = `#stage-wrap` in landscape, the viewport in portrait; bold under 60 % of the height); credit entries',
+    'counted as wholly visible, in the fade zone or cut by a hard edge, where the fade is read from the computed',
+    '`mask-image` of `.credits-window` (an entry crossing an edge that fades is fading; with no mask every crossing',
+    'entry is cut). The card after the roll: whether `#ending-select` and `#ending-title-button` share a row. "not',
+    'found" means the element is not on the page.',
     '',
     md.table(['file', 'viewport', 'measurement', 'value'], measures),
     '',
@@ -1153,6 +1591,270 @@ function analyse(log) {
   }
 }
 
+// ------------------------------------------------------------------------------------- phone staging (390×844)
+
+/** Runs inside the page: what the staged pieces and the deck say right now, and which visible pieces overlap. */
+function describeStaging() {
+  const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '')
+  const opacityOf = (el) => {
+    let o = 1
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) o *= Number(getComputedStyle(n).opacity)
+    return o
+  }
+  const live = (el) => {
+    if (!el || el.closest('[hidden]')) return false
+    const s = getComputedStyle(el)
+    const r = el.getBoundingClientRect()
+    return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0 && opacityOf(el) > 0.15
+  }
+  const q = (selector) => document.querySelector(selector)
+  const banner = q('.hudx-banner')
+  const call = q('.hudx-call')
+  const plate = q('.hudx-plate')
+  const toast = q('.hudx-toast')
+  const showing = (el) => Boolean(el) && el.classList.contains('is-show') && live(el)
+  const pieces = [
+    ['card', banner, showing(banner)],
+    ['call', call, showing(call)],
+    ['nameplate', plate, showing(plate)],
+    ['hearts', q('#hearts'), live(q('#hearts'))],
+    ['boss bar', q('#boss-bar'), live(q('#boss-bar'))],
+    ['#pause', q('#pause'), live(q('#pause'))],
+    ['#mute', q('#mute'), live(q('#mute'))]
+  ]
+  const on = pieces.filter(([, , shown]) => shown)
+  const overlaps = []
+  for (let i = 0; i < on.length; i++)
+    for (let j = i + 1; j < on.length; j++) {
+      const a = on[i][1].getBoundingClientRect()
+      const b = on[j][1].getBoundingClientRect()
+      const w = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+      const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+      if (w > 1 && h > 1) overlaps.push(`${on[i][0]} × ${on[j][0]} (${Math.round(w)}×${Math.round(h)} px)`)
+    }
+  const hamham = window.__hamham
+  const view = hamham?.view ?? hamham?.app?.session?.view
+  const overlay = view?.overlay
+  // Bubbles that draw their words on the stage, and wordless balloons (their words are on the deck).
+  const worded = overlay?.bubbleRects
+  const wordless = overlay?.emoteRects
+  const bubbles = Array.isArray(worded)
+    ? [
+        ...worded.map((b) => b.text),
+        ...(Array.isArray(wordless) ? wordless.map(() => '(wordless balloon over the speaker)') : [])
+      ]
+    : overlay?.bubbleTexts
+  const aim = q('.hudd-aim')
+  const hint = q('.hudd-hint')
+  const say = q('.hudd-say')
+  const session = hamham?.app?.session
+  return {
+    screen: hamham?.app?.screen ?? null,
+    moment: session?.director?.current ?? null,
+    card: !banner
+      ? 'not found'
+      : showing(banner)
+        ? [text(banner.querySelector('b')), text(banner.querySelector('span'))].filter(Boolean).join(' / ')
+        : null,
+    call: !call ? 'not found' : showing(call) ? text(call) : null,
+    nameplate: !plate
+      ? 'not found'
+      : showing(plate)
+        ? [text(plate.querySelector('b')), text(plate.querySelector('span'))].filter(Boolean).join(' / ')
+        : null,
+    toast: !toast ? 'not found' : showing(toast) ? text(toast) : null,
+    aim: aim ? (live(aim) ? text(aim) : '(hidden)') : 'not found',
+    hint: hint
+      ? live(hint)
+        ? `${hint.classList.contains('is-toast') ? '(toast) ' : ''}${text(hint)}`
+        : '(hidden)'
+      : 'not found',
+    speech: !say
+      ? 'not found'
+      : live(say)
+        ? `${text(say.querySelector('small'))}: ${text(say.querySelector('b'))} (${Math.round(parseFloat(getComputedStyle(say.querySelector('b')).fontSize))} px${say.querySelector('canvas, img') ? ', with the face' : ''})`
+        : null,
+    bubbles: Array.isArray(bubbles) ? bubbles : null,
+    visible: on.map(([name]) => name),
+    overlaps
+  }
+}
+
+/** Milliseconds on the recorder's clock (since the last `__rk.start()`). */
+const rkNow = (page) => page.evaluate(() => performance.now() - window.__rk.mark)
+
+/** Waits until the recorder's clock reaches `ms`. */
+async function waitClock(page, ms) {
+  for (;;) {
+    const now = await rkNow(page)
+    if (now >= ms) return now
+    await sleep(Math.min(ms - now, 40))
+  }
+}
+
+/**
+ * Waits until the director's current moment is `moment` (or, with `leave`, the app left the play screen); resolves with
+ * the recorder's clock then, or null on timeout.
+ */
+async function waitMoment(page, moment, timeoutMs, leave = false) {
+  try {
+    const handle = await page.waitForFunction(
+      ([name, leaves]) => {
+        const app = window.__hamham.app
+        const hit = app.session?.director?.current === name || (leaves && app.screen !== 'play')
+        return hit ? performance.now() - window.__rk.mark : false
+      },
+      [moment, leave],
+      { timeout: timeoutMs, polling: 'raf' }
+    )
+    return await handle.jsonValue()
+  } catch {
+    return null
+  }
+}
+
+async function runPhoneStaging(dir, failures) {
+  const rows = []
+  const phone = { width: 390, height: 844 }
+  const base = join(dir, 'phone')
+  mkdirSync(base, { recursive: true })
+  /** One frame: the description first, the JPEG right after (it is up to ~0.1 s later than the description). */
+  const frame = async (page, series, label, reference) => {
+    const d = await page.evaluate(describeStaging)
+    const at = await rkNow(page)
+    const name = `${series}-${String(rows.filter((r) => r.series === series).length + 1).padStart(2, '0')}-${String(Math.round(at)).padStart(5, '0')}ms.jpg`
+    mkdirSync(join(base, series), { recursive: true })
+    await page.screenshot({ path: join(base, series, name), type: 'jpeg', quality: 85 })
+    rows.push({ series, name, label, since: reference === null ? null : at - reference, d })
+  }
+  const attempt = async (series, fn) => {
+    const { context, page } = await openPage({
+      label: `staging phone ${series}`,
+      viewport: phone,
+      touch: true,
+      save: UNLOCKED_SAVE
+    })
+    try {
+      await fn(page)
+    } catch (error) {
+      failures.push([`phone ${series}`, String(error.message ?? error).split('\n')[0]])
+    } finally {
+      await context.close()
+    }
+  }
+  const missed = (series, what) => failures.push([`phone ${series}`, `${what} never came`])
+
+  // stage 1 start: 0.2, 0.7, 1.3 and 2.0 s after the play screen appeared
+  await attempt('s1-start', async (page) => {
+    await startStage(page, 1, { touch: true, markStart: true })
+    const playAt = await page.evaluate(() => window.__rk.log.find((row) => row.screen === 'play')?.t ?? 0)
+    for (const seconds of [0.2, 0.7, 1.3, 2.0]) {
+      await waitClock(page, playAt + seconds * 1000)
+      await frame(page, 's1-start', `${seconds.toFixed(1)} s after play began`, playAt)
+    }
+  })
+
+  // stage 5: boss intro, defeat and goal reveal, clear
+  await attempt('s5', async (page) => {
+    await startStage(page, 5, { touch: true })
+    await waitStartDone(page)
+    await waitCallGone(page)
+    await makeSafe(page, 40)
+    await page.evaluate(() => window.__rk.start())
+    await nearBoss(page, 260)
+    await page.keyboard.down('ArrowRight')
+    const introAt = await waitMoment(page, 'boss-intro', 8000)
+    if (introAt === null) missed('s5-boss-intro', 'the boss-intro moment')
+    else
+      for (const seconds of [0.25, 1.0, 2.0]) {
+        await waitClock(page, introAt + seconds * 1000)
+        await frame(page, 's5-boss-intro', `${seconds.toFixed(2)} s into boss-intro`, introAt)
+      }
+    await page.keyboard.up('ArrowRight')
+    await waitStartDone(page, 10_000)
+    await makeSafe(page, 60)
+    await waitCallGone(page)
+    let fell = false
+    for (let tryNo = 0; tryNo < 16 && !fell; tryNo++) {
+      await page.evaluate(() => {
+        const w = window.__hamham.world
+        const b = w.boss
+        b.hp = 1
+        w.player.x = b.x - w.player.w - 6
+        w.player.y = b.y + b.h - w.player.h
+        w.player.facing = 1
+        w.player.invuln = 60
+        window.__rk.start()
+      })
+      await page.keyboard.press('KeyZ')
+      await page.waitForTimeout(160)
+      fell = await page.evaluate(() => Boolean(window.__hamham.world.boss?.dead))
+    }
+    if (!fell) failures.push(['phone s5-boss-defeat', 'the boss did not fall after 16 bites'])
+    else {
+      const deadAt = await rkNow(page)
+      await waitClock(page, deadAt + 300)
+      await frame(page, 's5-boss-defeat', '0.3 s after the boss fell', deadAt)
+      const revealAt = await waitMoment(page, 'goal-reveal', 10_000)
+      if (revealAt === null) {
+        await waitClock(page, deadAt + 2500)
+        await frame(page, 's5-boss-defeat', '2.5 s after the boss fell (goal-reveal never started)', deadAt)
+        await waitClock(page, deadAt + 3700)
+        await frame(page, 's5-boss-defeat', '3.7 s after the boss fell', deadAt)
+      } else {
+        await waitClock(page, revealAt + 400)
+        await frame(page, 's5-boss-defeat', '0.4 s into goal-reveal', revealAt)
+        await waitClock(page, revealAt + 1600)
+        await frame(page, 's5-boss-defeat', '1.6 s into goal-reveal', revealAt)
+      }
+    }
+    // clear
+    await waitStartDone(page, 15_000)
+    await page.waitForTimeout(500)
+    await page.evaluate(() => {
+      const w = window.__hamham.world
+      w.player.invuln = 600
+      w.player.x = w.goalX - 80
+      w.player.y = w.goalY + 60 - w.player.h
+      w.player.vx = 0
+      w.player.vy = 0
+      window.__rk.start()
+    })
+    await page.keyboard.down('ArrowRight')
+    try {
+      const clearAt = await waitMoment(page, 'clear', 14_000, true)
+      if (clearAt === null) missed('s5-clear', 'the clear moment')
+      else
+        for (const seconds of [0.3, 1.2, 2.4]) {
+          await waitClock(page, clearAt + seconds * 1000)
+          await frame(page, 's5-clear', `${seconds.toFixed(1)} s after the clear began`, clearAt)
+        }
+    } finally {
+      await page.keyboard.up('ArrowRight')
+    }
+  })
+
+  // death on stage 3: 0.3, 1.2 and 2.5 s after the last heart went
+  await attempt('s3-death', async (page) => {
+    await startStage(page, 3, { touch: true })
+    await waitStartDone(page)
+    await waitCallGone(page)
+    await page.waitForTimeout(600)
+    await page.evaluate(() => {
+      const w = window.__hamham.world
+      w.player.hp = 1
+      w.player.invuln = 0
+      window.__rk.start()
+      w.hurtPlayer(9, w.player.x - 10)
+    })
+    for (const seconds of [0.3, 1.2, 2.5]) {
+      await waitClock(page, seconds * 1000)
+      await frame(page, 's3-death', `${seconds.toFixed(1)} s after the last heart went`, 0)
+    }
+  })
+  return rows
+}
+
 async function runStaging(dir) {
   mkdirSync(dir, { recursive: true })
   const series = []
@@ -1258,6 +1960,13 @@ async function runStaging(dir) {
     }
   }
 
+  let phoneRows = []
+  try {
+    phoneRows = await runPhoneStaging(dir, failures)
+  } catch (error) {
+    failures.push(['phone staging', String(error.message ?? error).split('\n')[0]])
+  }
+
   const s = (ms) => (ms === null ? '–' : `${fmt(ms / 1000, 2)} s`)
   const rows = series.map(({ name, frames, a }) => [
     `[${name}/](${rel(join(dir, name))}) (${frames.length} frames)`,
@@ -1296,6 +2005,55 @@ async function runStaging(dir) {
       ],
       rows
     ),
+    '',
+    '### Phone 390×844 (touch)',
+    '',
+    'The same staged moments on an upright phone (touch, 390×844). The text columns are read from the DOM and the',
+    "game's own state in the instant before the JPEG is taken (the picture can be up to ~0.1 s later): the stage",
+    "card (`.hudx-banner`), the call (`.hudx-call`), the boss nameplate (`.hudx-plate`), the deck's aim line",
+    '(`.hudd-aim`) and hint line (`.hudd-hint`, "(toast)" when it carries a toast; both step aside, "(hidden)", while',
+    "a character speaks), the deck's speech line (`.hudd-say`: who speaks, the words, their size), the toast and the",
+    'bubbles on the stage (`view.overlay.bubbleRects` for bubbles with words, `emoteRects` for the wordless balloon',
+    'that marks the speaker while the words are on the deck); "–" means nothing is shown, "not found" that the element is missing. A',
+    'piece counts as visible when it is shown (`is-show` for card, call and nameplate), not hidden and above 15 %',
+    'opacity. **Overlaps** lists every pair of visible pieces (card, call, nameplate, hearts, boss bar, `#pause`,',
+    '`#mute`) whose boxes share more than 1×1 px. "since" is the time from the named reference (the start of the',
+    'play screen or of the named moment, the clear, the death).',
+    '',
+    phoneRows.length
+      ? md.table(
+          [
+            'frame',
+            'since',
+            'screen / moment',
+            'card',
+            'call',
+            'nameplate',
+            'deck aim',
+            'deck hint',
+            'deck speech',
+            'toast',
+            'bubbles on the stage',
+            'visible pieces',
+            'overlaps'
+          ],
+          phoneRows.map(({ series, name, label, since, d }) => [
+            `[${series}/${name}](${rel(join(dir, 'phone', series, name))}) ${label}`,
+            since === null ? '–' : `${fmt(since / 1000, 2)} s`,
+            `${d.screen}${d.moment ? ` / ${d.moment}` : ''}`,
+            d.card ?? '–',
+            d.call ?? '–',
+            d.nameplate ?? '–',
+            d.aim,
+            d.hint,
+            d.speech ?? '–',
+            d.toast ?? '–',
+            d.bubbles === null ? 'not exposed' : d.bubbles.length ? d.bubbles.join(' / ') : '–',
+            d.visible.join(', ') || '–',
+            d.overlaps.length ? `**${d.overlaps.join('; ')}**` : 'none'
+          ])
+        )
+      : 'No phone frames were taken.',
     '',
     failures.length ? `Series that failed:\n\n${md.table(['series', 'why'], failures)}` : 'Every series ran.'
   ].join('\n')

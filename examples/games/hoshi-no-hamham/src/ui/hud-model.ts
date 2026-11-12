@@ -162,3 +162,33 @@ export function hintLine(hints: readonly string[], t: number, touch: boolean, pe
 
 /** Where `x` (world px) lies along a stage `width` px wide, as 0..1 for the deck's progress track. */
 export const trackRatio = (x: number, width: number) => (width > 0 ? Math.max(0, Math.min(1, x / width)) : 0)
+
+// ---------------------------------------------------------------------------------------------- deck line
+
+/**
+ * What holds the deck's line for a moment instead of the cycling hints: a toast (a notice) or a speech line (a
+ * character's words, shown with their face). Only one shows at a time.
+ */
+export interface DeckHold {
+  kind: 'toast' | 'speech'
+  text: string
+  /** Seconds it still shows. */
+  left: number
+}
+
+/**
+ * Which hold shows after `incoming` arrives while `current` shows. The newer one wins, with one exception: a toast
+ * that only repeats one of the stage's hints is a hint, and hints wait for a speech line (they come back after it).
+ */
+export function arriveHold(current: DeckHold | null, incoming: DeckHold, hints: readonly string[]): DeckHold {
+  if (current?.kind === 'speech' && current.left > 0 && incoming.kind === 'toast' && hints.includes(incoming.text))
+    return current
+  return incoming
+}
+
+/** Advances a hold by `dt` seconds; null once it is over (the hints come back). */
+export function stepHold(hold: DeckHold | null, dt: number): DeckHold | null {
+  if (!hold) return null
+  const left = hold.left - dt
+  return left > 0 ? { ...hold, left } : null
+}

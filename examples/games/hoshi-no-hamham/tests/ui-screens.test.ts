@@ -7,9 +7,11 @@ import {
   fitScale,
   formatClock,
   formatTotal,
+  goalProgress,
   nineSlice,
   NINE_SLICE,
   starRating,
+  starTrail,
   STAR_RULES
 } from '../src/ui/rules'
 import { pickNeighbour } from '../src/ui/spatial'
@@ -233,5 +235,32 @@ describe('pixel maths', () => {
     expect(pickNeighbour(boxes, 4, 'right')).toBe(-1)
     expect(pickNeighbour(boxes, 5, 'left')).toBe(-1)
     expect(pickNeighbour(boxes, 9, 'left')).toBe(8)
+  })
+})
+
+describe('title and game-over rules', () => {
+  test('the star trail lights the cleared stages and marks the next one', () => {
+    const fresh = starTrail(0, 10)
+    expect(fresh.stars).toHaveLength(10)
+    expect(fresh.stars.every((s) => s === 'dim')).toBe(true)
+    expect(fresh.text).toBe('ぜんぶで 10ステージ')
+    expect(fresh.label).toContain('ぜんぶで 10ステージ')
+
+    const three = starTrail(3, 10)
+    expect(three.stars.filter((s) => s === 'lit')).toHaveLength(3)
+    expect(three.stars.indexOf('next')).toBe(3)
+    expect(three.text).toBe('クリア 3/10')
+    expect(three.label).toBe(three.text)
+
+    const all = starTrail(10, 10)
+    expect(all.stars.every((s) => s === 'lit')).toBe(true)
+    expect(starTrail(14, 10).stars.filter((s) => s === 'lit')).toHaveLength(10)
+  })
+
+  test('the progress toward the goal is a share of the way from the start to the goal', () => {
+    expect(goalProgress(0.31, 0.9)).toEqual({ progress: 0.31 / 0.9, left: 66 })
+    expect(goalProgress(0, 0.9)).toEqual({ progress: 0, left: 100 })
+    expect(goalProgress(0.95, 0.9)).toEqual({ progress: 1, left: 0 })
+    expect(goalProgress(0.5, 0)).toEqual({ progress: 0, left: 100 })
   })
 })

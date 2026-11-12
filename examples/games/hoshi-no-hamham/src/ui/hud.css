@@ -509,6 +509,11 @@
   --icon: var(--ico-pause);
 }
 
+/* The pill parts (icon, label, lamp) only show on the deck (deck.css); in the stage's corner the plate is the icon. */
+#hud.hudx .hudx-right .hudx-btn > * {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ banner, call, nameplate, toast */
 
 .hudx-banner,
@@ -817,6 +822,38 @@
   top: calc(var(--s) * 56px);
 }
 
+/* On the deck's stage (portrait) the buttons are on the deck: the corner is free, so the card and the calls start
+ * right under the hearts row. */
+#hud.hudx.is-narrow.is-decked .hudx-banner,
+#hud.hudx.is-narrow.is-decked .hudx-call {
+  top: calc(var(--s) * 34px);
+}
+
+/* There the card rises into place from below instead of dropping from above, so it never brushes the hearts. */
+#hud.hudx.is-narrow.is-decked .hudx-banner.is-show {
+  animation-name: hudx-banner-low;
+}
+
+@keyframes hudx-banner-low {
+  0% {
+    transform: translateY(calc(var(--s) * 8px));
+    opacity: 0;
+  }
+  14% {
+    transform: translateY(calc(var(--s) * -2px));
+    opacity: 1;
+  }
+  20%,
+  82% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(var(--s) * 4px));
+    opacity: 0;
+  }
+}
+
 #hud.hudx.is-narrow .hudx-banner {
   padding: calc(var(--s) * 2px) calc(var(--s) * 8px) calc(var(--s) * 2px) calc(var(--s) * 4px);
 }
@@ -894,6 +931,10 @@
   .hudx-banner.is-show,
   .hudx-plate.is-show,
   .hudx-toast.is-show {
+    animation-name: hudx-fade-hold;
+  }
+
+  #hud.hudx.is-narrow.is-decked .hudx-banner.is-show {
     animation-name: hudx-fade-hold;
   }
 

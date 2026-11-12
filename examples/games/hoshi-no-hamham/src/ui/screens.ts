@@ -6,8 +6,20 @@
 import { tile } from '../art'
 import type { SaveData, StageDef, VolumeKind, Volumes } from '../game/types'
 import { Diorama } from './diorama'
-import { anim, icon, installPixelStyles, rasterImg, restartPlayers, spriteImg, spritePlayer, spriteUrl } from './pixel'
-import { countValue, fitScale, formatClock, starRating, STAR_RULES } from './rules'
+import {
+  anim,
+  icon,
+  installPixelStyles,
+  nightHillsUrl,
+  nightMoonUrl,
+  nightSkyUrl,
+  rasterImg,
+  restartPlayers,
+  spriteImg,
+  spritePlayer,
+  spriteUrl
+} from './pixel'
+import { countValue, fitScale, formatClock, goalProgress, starRating, starTrail, STAR_RULES } from './rules'
 import type { SoundCue } from '../view/cues'
 import { moveFocus, focusables, type Direction } from './spatial'
 import { CREDITS_SHOT, endingShot, resultShot, shotFor } from './story-scenes'
@@ -63,6 +75,14 @@ export interface ResultInfo {
   collected: number | null
 }
 
+/** Where the run ended, for the game-over card. */
+export interface DeadInfo {
+  stage: StageDef
+  /** The hero's place on the deck's progress track and the goal's (`trackRatio`, 0..1 of the map's width). */
+  hero: number
+  goal: number
+}
+
 export interface Screens {
   bind(actions: ScreenActions): void
   showTitle(hasSave: boolean, cleared: number, total: number): void
@@ -72,7 +92,8 @@ export interface Screens {
   /** Hides every screen (play). */
   showPlay(): void
   showResult(info: ResultInfo): void
-  showDead(): void
+  /** The game over; without `info` (tests, review tools) the stage header and the progress track stay hidden. */
+  showDead(info?: DeadInfo): void
   /** The paged ending, then the statistics and the way back. */
   showEnding(pages: readonly string[], stats: readonly string[]): void
   setPaused(paused: boolean): void
@@ -98,6 +119,8 @@ const CONFIRM_GUARD_MS = 250
 const LOGO_LAND_MS = 245
 /** The unlock chime waits until the card that opened the select has finished its own sound. */
 const UNLOCK_DELAY_MS = 360
+/** The logo's size in CSS pixels on upright phones (half the 384×128 raster). */
+const PORTRAIT_LOGO = { w: 192, h: 64 }
 /** Count-up ticks are never closer than this (ms). */
 const TICK_MIN_GAP_MS = 45
 
@@ -127,6 +150,12 @@ const ARROWS: Record<string, Direction> = {
 }
 
 type Mode = 'story' | 'ending' | 'credits' | null
+
+/** The credits roll at about this speed (px/s), between these lengths, then hold 「ありがとう！」 in the middle. */
+const CREDITS_SPEED = 34
+const CREDITS_MIN_S = 24
+const CREDITS_MAX_S = 34
+const CREDITS_HOLD_S = 3
 
 /** Builds an element with a class and optional text. */
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text?: string) {
@@ -196,13 +225,19 @@ export class DomScreens implements Screens {
   private announcedUnlock = 0
   private sliders = new Map<VolumeKind, HTMLInputElement>()
   private returnFocus: HTMLElement | null = null
+  /** The credits cover the ending (rolling, or the hand-scrolled list under reduced motion). */
+  private rolling = false
+  /** Ends the credits now and shows the card (null when they are not up). */
+  private endCredits: (() => void) | null = null
+  private creditsAnimation: Animation | null = null
 
   bind(actions: ScreenActions) {
     this.actions = actions
     installPixelStyles()
     this.storyArt = new Diorama($<HTMLCanvasElement>('#story-art'), reducedMotion)
     this.endingArt = new Diorama($<HTMLCanvasElement>('#ending-art'), reducedMotion)
-    this.resultArt = new Diorama($<HTMLCanvasElement>('#result-art'), reducedMotion)
+    // The result backdrop always holds the classic picture; CSS covers its box with it.
+    this.resultArt = new Diorama($<HTMLCanvasElement>('#result-art'), reducedMotion, false)
 
     // One click is one sound: `sound` is what it plays (null: the handler or the app plays its own).
     const on = (selector: string, handler: () => void, sound: SoundCue | null = 'menu-select') =>
@@ -266,6 +301,14 @@ export class DomScreens implements Screens {
     decorate($('#help-close'), 'arrowLeft')
     decorate($('#help-done'), 'check')
     $('#home-link').prepend(icon('home'))
+    // The night of the title (upright phones) and of the game over: the same pixel sky, moon and hills as the deck.
+    const root = document.documentElement.style
+    root.setProperty('--night-sky', `url("${nightSkyUrl(0)}")`)
+    root.setProperty('--night-sky-2', `url("${nightSkyUrl(1)}")`)
+    root.setProperty('--night-hills', `url("${nightHillsUrl()}")`)
+    root.setProperty('--night-moon', `url("${nightMoonUrl()}")`)
+    // A うりぼう asleep on the title's hills (upright phones).
+    $('#title-sleeper').append(spritePlayer('prop:animal', 'sleep', { className: 'sleeper' }))
     $<HTMLImageElement>('#logo-img').src = spriteUrl('ui', 'logo')
     $('.logo-shine').style.setProperty('mask-image', `url("${spriteUrl('ui', 'logo')}")`)
     $('.logo-shine').style.setProperty('-webkit-mask-image', `url("${spriteUrl('ui', 'logo')}")`)
@@ -298,6 +341,12 @@ export class DomScreens implements Screens {
     const dir = ARROWS[code]
     if (dir) {
       handled()
+      if (this.rolling) {
+        // The hand-scrolled credits (reduced motion) scroll with the arrows; the roll ignores them.
+        const list = document.querySelector<HTMLElement>('#ending-credits .credits-window')
+        if (dir === 'up' || dir === 'down') list?.scrollBy({ top: dir === 'down' ? 60 : -60 })
+        return
+      }
       const focused = document.activeElement
       if (focused instanceof HTMLInputElement && focused.type === 'range' && (dir === 'left' || dir === 'right')) {
         this.nudge(focused, dir === 'right' ? 1 : -1)
@@ -329,6 +378,10 @@ export class DomScreens implements Screens {
     const focused = document.activeElement as HTMLElement | null
     const inside = focused && root.contains(focused) && focused !== root ? focused : null
     const id = root.id
+    if (id === 'ending-screen' && this.rolling) {
+      this.skipCredits()
+      return
+    }
     if (id === 'story-screen' && this.mode === 'story') {
       if (inside?.id === 'story-skip') inside.click()
       else this.confirmStory()
@@ -369,6 +422,10 @@ export class DomScreens implements Screens {
         this.actions?.cue('menu-back')
         this.skipStory()
         return true
+      case 'ending-screen':
+        if (!this.rolling) return false
+        this.skipCredits()
+        return true
       default:
         return false
     }
@@ -380,7 +437,8 @@ export class DomScreens implements Screens {
     if (this.helpOpen) {
       this.actions?.cue('menu-back')
       this.closeHelp()
-    } else if (this.mode === 'story') this.confirmStory()
+    } else if (this.rolling) this.skipCredits()
+    else if (this.mode === 'story') this.confirmStory()
     else if (this.mode === 'ending') this.confirmEnding()
     else if (this.current === 'result-screen' && !this.tallyDone) this.finishTally?.()
   }
@@ -397,7 +455,10 @@ export class DomScreens implements Screens {
       this.leave(screen)
     }
     if (this.current !== 'story-screen' || id !== 'story-screen') this.storyArt?.stop()
-    if (id !== 'ending-screen') this.endingArt?.stop()
+    if (id !== 'ending-screen') {
+      this.endingArt?.stop()
+      this.stopCredits()
+    }
     if (id !== 'story-screen' && id !== 'ending-screen') {
       this.typer?.cancel()
       this.mode = null
@@ -455,11 +516,18 @@ export class DomScreens implements Screens {
     cont.hidden = !hasSave
     cont.classList.toggle('pxbtn-gold', hasSave)
     start.classList.toggle('pxbtn-gold', !hasSave)
-    const note = $('#save-note')
-    note.replaceChildren()
-    if (hasSave) {
-      note.append(icon('starOn'), el('span', '', `クリア ${cleared}/${total}`))
-    } else note.append(el('span', '', 'かじって、掘って、逃げきろう！'))
+    // The star trail: one star per stage, gold for a cleared one, the next one pulsing.
+    const trail = starTrail(hasSave ? cleared : 0, total)
+    const stars = $('#star-trail')
+    stars.setAttribute('aria-label', trail.label)
+    stars.replaceChildren(
+      ...trail.stars.map((state, index) => {
+        const star = icon(state === 'dim' ? 'starOff' : 'starOn', { className: `trail-star is-${state}` })
+        star.style.setProperty('--i', String(index))
+        return star
+      })
+    )
+    $('#trail-text').textContent = trail.text
     this.show('title-screen', hasSave ? cont : start)
     this.fitLogo()
     // The logo's drop lands (at once under reduced motion, where it does not drop).
@@ -472,21 +540,28 @@ export class DomScreens implements Screens {
     this.cueTimer = window.setTimeout(() => this.actions?.cue(cue), ms)
   }
 
-  /** The logo at the largest whole-number device scale that fits the top of the stage. */
+  /**
+   * The logo at the largest whole-number device scale that fits the top of the stage. Upright phones always show
+   * it at half its art size (192×64, one art pixel per device pixel on a 2× screen), high in the stage's sky.
+   */
   private fitLogo() {
     const logo = document.querySelector<HTMLImageElement>('#logo-img')
     const stage = document.querySelector<HTMLElement>('#stage-wrap')
     if (!logo || !stage) return
     const rect = stage.getBoundingClientRect()
     if (!rect.width) return
+    const art = logo.parentElement!
+    if (window.innerHeight > window.innerWidth) {
+      art.style.width = `${PORTRAIT_LOGO.w}px`
+      art.style.height = `${PORTRAIT_LOGO.h}px`
+      return
+    }
     const dpr = window.devicePixelRatio || 1
-    const portrait = window.innerHeight > window.innerWidth
-    const maxW = rect.width * (portrait ? 0.86 : 0.62)
-    const maxH = rect.height * (portrait ? 0.62 : 0.38)
+    const maxW = rect.width * 0.62
+    const maxH = rect.height * 0.38
     const fit = fitScale(384, 128, maxW, maxH, dpr)
     // Below one device pixel per art pixel (a narrow screen at 1×) the logo can only shrink to fit.
     const shrink = Math.min(1, maxW / fit.cssW, maxH / fit.cssH)
-    const art = logo.parentElement!
     art.style.width = `${Math.floor(fit.cssW * shrink)}px`
     art.style.height = `${Math.floor(fit.cssH * shrink)}px`
   }
@@ -528,7 +603,13 @@ export class DomScreens implements Screens {
       const bossLine = el('span', 'card-boss')
       if (unlocked) {
         bossLine.append(spriteImg('ui', `face_${stage.boss.art}`, { className: 'face' }))
-        bossLine.append(el('span', 'card-boss-name', stage.boss.name))
+        // A boss's title and name are two units: the line may break between them, never inside one.
+        const bossName = el('span', 'card-boss-name')
+        stage.boss.name.split(/\s+/).forEach((part, index) => {
+          if (index) bossName.append(' ')
+          bossName.append(el('span', 'card-boss-part', part))
+        })
+        bossLine.append(bossName)
       } else bossLine.append(el('span', 'card-boss-name', 'まだひらかない'))
       body.append(bossLine)
       const foot = el('span', 'card-foot')
@@ -780,7 +861,24 @@ export class DomScreens implements Screens {
 
   // --------------------------------------------------------------------------------------- game over
 
-  showDead() {
+  showDead(info?: DeadInfo) {
+    const head = $('#dead-head')
+    const track = $('#dead-track')
+    head.hidden = !info
+    track.hidden = !info
+    if (info) {
+      const { stage } = info
+      $('#dead-emblem').replaceChildren(spriteImg('ui', `theme_${stage.theme}`, { className: 'emblem' }))
+      $('#dead-stage-no').textContent = `ステージ ${stage.no}`
+      $('#dead-stage-name').textContent = stage.name
+      const { progress, left } = goalProgress(info.hero, info.goal)
+      track.style.setProperty('--p', progress.toFixed(4))
+      $('#dead-start').replaceChildren(icon('paw'))
+      $('#dead-goal').replaceChildren(icon('starOn'))
+      $('#dead-face').replaceChildren(spriteImg('ui', 'face_hero', { className: 'face' }))
+      $('#dead-left').replaceChildren('ゴールまで あと ', el('b', 'num', `${left}%`))
+      $('#dead-rail').setAttribute('aria-label', `スタートから ゴールまでの ${Math.round(progress * 100)}% まで進んだ`)
+    }
     const art = $('#dead-art')
     // The hero lies dazed: the last two frames of the fall (flat on his back, then eyes swirling), swapping gently.
     const last = anim('hero', 'die').frames.length - 1
@@ -819,7 +917,10 @@ export class DomScreens implements Screens {
     box.hidden = true
     $('#ending-pages').hidden = false
     $('#ending-dots').hidden = false
+    this.stopCredits()
     $('#ending-credits').hidden = true
+    $('#ending-screen').classList.remove('is-rolling')
+    $('#ending-box').inert = false
     $('#ending-select').hidden = true
     $('#ending-title-button').hidden = true
     $('#ending-next').hidden = false
@@ -863,9 +964,25 @@ export class DomScreens implements Screens {
     $('#ending-next').hidden = true
     $('#ending-select').hidden = false
     $('#ending-title-button').hidden = false
-    $('#ending-select').focus({ preventScroll: true })
     this.endingArt?.setShot(CREDITS_SHOT)
+    // The card (closing line, statistics, buttons) waits behind the credits; it takes the focus when they end.
     this.rollCredits()
+  }
+
+  /** A tap, a click, Enter, Space or Esc during the credits: skip the rest and show the card. */
+  private skipCredits() {
+    if (!this.rolling) return
+    this.actions?.menuSound()
+    this.actions?.cue('menu-select')
+    this.endCredits?.()
+  }
+
+  /** Drops the credits' run without showing the card (the screen is changing or the ending restarts). */
+  private stopCredits() {
+    this.rolling = false
+    this.endCredits = null
+    this.creditsAnimation?.cancel()
+    this.creditsAnimation = null
   }
 
   private rollCredits() {
@@ -904,19 +1021,84 @@ export class DomScreens implements Screens {
     block('つくったひと', 'moq-games', 'ドット絵・おんがく・こうかおんは ぜんぶプログラムでかきました')
     block('そして', 'あそんでくれた あなた')
     roll.append(el('p', 'credits-end', 'ありがとう！'))
-    credits.replaceChildren(roll)
+    // The family under the last line: the picture the roll ends on.
+    const family = el('div', 'credits-family')
+    for (const face of ['face_hero', 'face_princess', 'face_mom'])
+      family.append(spriteImg('ui', face, { className: 'face' }))
+    roll.append(family)
+    const view = el('div', 'credits-window')
+    view.append(roll)
+    credits.replaceChildren(view)
+    credits.classList.remove('is-done')
     credits.hidden = false
     replay(credits)
-    // Roll from below the picture until the last line sits in the middle of it.
+    // The credits take the whole frame; the card waits behind them, hidden and inert.
+    const screen = $('#ending-screen')
+    const box = $('#ending-box')
+    const still = reducedMotion()
+    screen.scrollTop = 0
+    screen.classList.add('is-rolling')
+    box.inert = true
+    this.stopCredits()
+    this.rolling = true
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      this.rolling = false
+      this.endCredits = null
+      const animation = this.creditsAnimation
+      this.creditsAnimation = null
+      if (animation && animation.playState !== 'finished') animation.finish()
+      screen.classList.remove('is-rolling')
+      box.inert = false
+      credits.classList.add('is-done')
+      credits.onclick = null
+      replay($('#ending-stats'))
+      $('#ending-select').focus({ preventScroll: true })
+    }
+    this.endCredits = finish
+    if (still) {
+      // Reduced motion: no roll. The list scrolls by hand; 「つぎへ」 closes it.
+      const close = el('button', 'pxbtn pxbtn-gold credits-close', 'つぎへ')
+      close.type = 'button'
+      decorate(close, 'play', true)
+      close.addEventListener('click', (event) => {
+        event.stopPropagation()
+        this.skipCredits()
+      })
+      credits.append(close)
+      credits.onclick = null
+      close.focus({ preventScroll: true })
+      return
+    }
+    const touch = globalThis.matchMedia('(pointer: coarse)').matches
+    credits.append(el('p', 'credits-hint', touch ? 'タップでスキップ' : 'Enter でスキップ'))
+    credits.onclick = () => this.skipCredits()
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    // Start with the title already on screen, roll until 「ありがとう！」 sits in the middle (a little lower when the
+    // family under it would leave the bottom of the window empty), then hold it there.
     requestAnimationFrame(() => {
-      const box = credits.clientHeight
-      const height = roll.scrollHeight
-      const end = roll.lastElementChild as HTMLElement | null
-      const endMiddle = end ? end.offsetTop + end.offsetHeight / 2 : height
-      const to = box / 2 - endMiddle
-      roll.style.setProperty('--from', `${box}px`)
-      roll.style.setProperty('--to', `${to}px`)
-      roll.style.setProperty('--roll', `${Math.max(8, (box - to) / 28)}s`)
+      if (!this.rolling || this.endCredits !== finish) return
+      const height = view.clientHeight
+      const end = roll.querySelector<HTMLElement>('.credits-end')
+      const endMiddle = end ? end.offsetTop + end.offsetHeight / 2 : roll.scrollHeight
+      const below = family.offsetTop + family.offsetHeight - endMiddle
+      const middle = Math.max(height * 0.5, Math.min(height * 0.6, height * 0.78 - below))
+      const from = height * 0.3
+      const to = middle - endMiddle
+      const moving = Math.max(CREDITS_MIN_S, Math.min(CREDITS_MAX_S, (from - to) / CREDITS_SPEED))
+      const total = moving + CREDITS_HOLD_S
+      const animation = roll.animate(
+        [
+          { transform: `translateY(${from}px)` },
+          { transform: `translateY(${to}px)`, offset: moving / total },
+          { transform: `translateY(${to}px)` }
+        ],
+        { duration: total * 1000, fill: 'forwards', easing: 'linear' }
+      )
+      this.creditsAnimation = animation
+      animation.addEventListener('finish', finish)
     })
   }
 

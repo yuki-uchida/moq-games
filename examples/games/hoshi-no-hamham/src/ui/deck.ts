@@ -12,7 +12,10 @@ import type { World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import {
   aimLine,
+  arriveHold,
   DECK_TOAST_SECONDS,
+  stepHold,
+  type DeckHold,
   HINT_SECONDS,
   hintIndex,
   hintForInput,
@@ -181,7 +184,14 @@ export class Deck {
   private hintTime = 0
   private hintShown = -1
   private hintTouch = false
-  private toastLeft = 0
+  /** A toast or a speech line holding the line instead of the hints. */
+  private hold: DeckHold | null = null
+  private say: HTMLElement
+  private sayFace: HTMLCanvasElement
+  private sayWho: HTMLElement
+  private sayText: HTMLElement
+  /** The slot in the lower-left block where the HUD puts its sound and pause buttons in portrait. */
+  readonly keys: HTMLElement
   private bossArt = ''
   private goalOpen: boolean | null = null
 
@@ -214,7 +224,20 @@ export class Deck {
     drawRaster(mark, clipRaster('ui', 'paw'))
     this.hintText = el('span', '')
     this.hint.append(mark, this.hintText)
-    info.append(this.emblem, text, this.hint)
+    // A speech line: the speaker's face and their words in a balloon, over the information panel for a moment.
+    this.say = el('div', 'hudd-say')
+    this.say.setAttribute('role', 'status')
+    this.say.setAttribute('aria-live', 'polite')
+    this.say.hidden = true
+    const faceBox = el('div', 'hudd-say-face')
+    this.sayFace = makeSprite('')
+    faceBox.append(this.sayFace)
+    const balloon = el('div', 'hudd-say-balloon')
+    this.sayWho = el('small', '')
+    this.sayText = el('b', '')
+    balloon.append(this.sayWho, this.sayText)
+    this.say.append(faceBox, balloon)
+    info.append(this.emblem, text, this.hint, this.say)
 
     // The middle of the body: a night-sky window with the run's clock, the defeated count and the progress track.
     const mid = el('div', 'hudd-mid')
@@ -254,15 +277,17 @@ export class Deck {
 
     // The lower part: speaker grille, and the key legend for players without touch.
     const base = el('div', 'hudd-base')
-    base.setAttribute('aria-hidden', 'true')
     const brand = el('div', 'hudd-brand')
+    brand.setAttribute('aria-hidden', 'true')
     const starL = makeSprite('hudd-brand-star')
     const starR = makeSprite('hudd-brand-star')
     drawRaster(starL, clipRaster('ui', 'starOn'))
     drawRaster(starR, clipRaster('ui', 'starOn'))
     brand.append(starL, el('span', '', 'ほしのハムハム'), starR)
     const grille = el('div', 'hudd-grille')
+    grille.setAttribute('aria-hidden', 'true')
     const legend = el('div', 'hudd-legend')
+    legend.setAttribute('aria-hidden', 'true')
     const walk = el('div', 'hudd-legend-l')
     walk.append(cap(clipRaster('ui', 'arrowLeft')), cap(clipRaster('ui', 'arrowRight')), el('span', '', 'あるく'))
     const acts = el('div', 'hudd-legend-r')
@@ -277,7 +302,11 @@ export class Deck {
       row(cap('Esc', true), 'ポーズ')
     )
     legend.append(walk, acts)
-    base.append(brand, grille, legend)
+    // The lower-left block: the engraved name, the START / SELECT style pills (sound, pause) and the grille.
+    const block = el('div', 'hudd-block')
+    this.keys = el('div', 'hudd-keys')
+    block.append(brand, this.keys, grille)
+    base.append(block, legend)
 
     const screws = ['tl', 'tr', 'bl', 'br'].map((corner) => el('i', `hudd-screw is-${corner}`))
     root.append(info, mid, base, touch, ...screws)
@@ -298,21 +327,56 @@ export class Deck {
     this.aimKey = ''
     this.hintTime = 0
     this.hintShown = -1
-    this.toastLeft = 0
+    this.setHold(null)
     this.bossArt = ''
     this.goalOpen = null
     this.clockTenths = -1
     this.killCount = -1
-    this.hint.classList.remove('is-toast')
     this.showHint(0)
   }
 
   /** Puts a toast in the hint line; the hints come back after a moment. */
   toast(text: string) {
-    this.toastLeft = DECK_TOAST_SECONDS
+    const hold = arriveHold(this.hold, { kind: 'toast', text, left: DECK_TOAST_SECONDS }, this.stage?.hints ?? [])
+    if (hold.kind !== 'toast') return
+    this.setHold(hold)
     this.hint.classList.add('is-toast')
     this.hintText.textContent = hintForInput(text, this.touchShown())
     replay(this.hint, 'is-swap')
+  }
+
+  /** A character's line on the deck: `face` is a `face_*` name of the `ui` sheet, `who` the speaker's name. */
+  speak(text: string, who: string, face: string, seconds: number, tone: 'say' | 'yell' = 'say') {
+    this.setHold(arriveHold(this.hold, { kind: 'speech', text, left: seconds }, this.stage?.hints ?? []))
+    const art = face ? sheet('ui')[face] : undefined
+    this.sayFace.style.visibility = art ? 'visible' : 'hidden'
+    if (art) drawRaster(this.sayFace, art.frames[0])
+    this.sayWho.textContent = who
+    this.sayWho.hidden = !who
+    this.sayText.textContent = text
+    this.say.dataset.tone = tone
+    this.say.hidden = false
+    replay(this.say, 'is-in')
+  }
+
+  /** The line on show now: the speech line's text, a toast's text or the hint (for tests and tools). */
+  get line(): { kind: 'speech' | 'toast' | 'hint'; text: string } {
+    if (this.hold?.kind === 'speech') return { kind: 'speech', text: this.sayText.textContent ?? '' }
+    return { kind: this.hold ? 'toast' : 'hint', text: this.hintText.textContent ?? '' }
+  }
+
+  /** Changes what holds the line; with null (or a speech line) the hint line shows the stage's hints again. */
+  private setHold(hold: DeckHold | null) {
+    const was = this.hold
+    this.hold = hold
+    if (hold?.kind !== 'speech') this.say.hidden = true
+    this.root.classList.toggle('is-speaking', hold?.kind === 'speech')
+    if (hold?.kind !== 'toast' && was?.kind === 'toast') {
+      this.hint.classList.remove('is-toast')
+      this.hintTime = 0
+      this.hintShown = -1
+      this.showHint(0)
+    }
   }
 
   update(world: World, dt: number) {
@@ -340,14 +404,18 @@ export class Deck {
       replay(this.aim, 'is-pop')
     }
 
-    // The hint line: a toast holds it for a moment, then the stage's hints cycle.
-    if (this.toastLeft > 0) {
-      this.toastLeft -= dt
-      if (this.toastLeft <= 0) {
-        this.hint.classList.remove('is-toast')
-        this.hintTime = 0
-        this.hintShown = -1
-        this.showHint(0)
+    // The hint line: a toast or a speech line holds it for a moment, then the stage's hints cycle.
+    if (this.hold) {
+      const next = stepHold(this.hold, dt)
+      if (next) this.hold = next
+      else {
+        const speech = this.hold.kind === 'speech'
+        this.setHold(null)
+        if (speech) {
+          this.hintTime = 0
+          this.hintShown = -1
+          this.showHint(0)
+        }
       }
     } else {
       this.hintTime += dt

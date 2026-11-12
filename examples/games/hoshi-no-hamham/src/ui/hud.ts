@@ -39,6 +39,13 @@ export interface HudApi {
   hideBoss(): void
   /** Cut-scene mode: the bars, buttons and meters step aside while it is on. */
   cinematic(on: boolean): void
+  /**
+   * A character's line (`face` is a `face_*` name of the `ui` sheet). Returns true when the HUD shows it itself (on
+   * the deck under a portrait stage); then the stage draws only a wordless balloon over the speaker.
+   */
+  speak(text: string, who: string, face: string, seconds: number, tone?: 'say' | 'yell'): boolean
+  /** The stage went black (an iris out) or came back: the deck's lit parts dim with it. */
+  lights(on: boolean): void
 }
 
 interface HeartSlot {
@@ -104,6 +111,8 @@ export class Hud implements HudApi {
   private biteReady = true
   private timers: { left: number; run: () => void }[] = []
   private observer: ResizeObserver | null = null
+  private right: HTMLElement
+  private buttons: HTMLButtonElement[]
 
   constructor() {
     const root = this.root
@@ -180,15 +189,25 @@ export class Hud implements HudApi {
 
     const right = el('div', 'hudx-right')
     right.dataset.hudbox = ''
-    const mute = el('button', 'hudx-btn')
-    mute.id = 'mute'
-    mute.type = 'button'
-    mute.setAttribute('aria-label', '音をミュート')
+    this.right = right
+    // The sound and pause buttons. In the stage's corner they are icon plates; on the deck (portrait) they are the
+    // handheld's pills with an icon, a label and (sound) a lamp. They move between the two places, never cloned.
+    const button = (id: string, label: string, text: string) => {
+      const node = el('button', 'hudx-btn')
+      node.id = id
+      node.type = 'button'
+      node.setAttribute('aria-label', label)
+      const lamp = el('i', 'hudx-btn-lamp')
+      const icon = el('i', 'hudx-btn-icon')
+      const caption = el('span', 'hudx-btn-text', text)
+      for (const part of [lamp, icon, caption]) part.setAttribute('aria-hidden', 'true')
+      node.append(icon, caption, lamp)
+      return node
+    }
+    const mute = button('mute', '音をミュート', 'おと')
     mute.setAttribute('aria-pressed', 'false')
-    const pause = el('button', 'hudx-btn')
-    pause.id = 'pause'
-    pause.type = 'button'
-    pause.setAttribute('aria-label', '一時停止')
+    const pause = button('pause', '一時停止', 'ポーズ')
+    this.buttons = [mute, pause]
     right.append(mute, pause)
     top.append(left, right)
 
@@ -237,6 +256,8 @@ export class Hud implements HudApi {
       this.observer = new ResizeObserver(() => this.measure())
       this.observer.observe(root)
     }
+    if (typeof matchMedia === 'function')
+      matchMedia('(orientation: portrait)').addEventListener?.('change', () => this.placeButtons())
   }
 
   // ------------------------------------------------------------------------------------------------ layout
@@ -250,6 +271,17 @@ export class Hud implements HudApi {
     this.root.style.setProperty('--s', String(s))
     this.root.style.setProperty('--bk', s >= 2 ? '3' : '2')
     this.root.classList.toggle('is-narrow', width < 520)
+    this.placeButtons()
+  }
+
+  /** The buttons live on the deck while it is on screen (portrait), else in the stage's top-right corner. */
+  private placeButtons() {
+    const home = this.deck.active ? this.deck.keys : this.right
+    this.root.classList.toggle('is-decked', home === this.deck.keys)
+    if (this.buttons[0].parentElement === home) return
+    const focused = this.buttons.find((b) => b === document.activeElement)
+    home.append(...this.buttons)
+    focused?.focus({ preventScroll: true })
   }
 
   show() {
@@ -268,7 +300,7 @@ export class Hud implements HudApi {
     this.bossBar.hidden = true
     this.bossBar.classList.remove('is-breaking', 'is-hit')
     for (const node of [this.banner, this.call, this.plate, this.toast]) node.classList.remove('is-show')
-    this.root.classList.remove('is-cinematic')
+    this.root.classList.remove('is-cinematic', 'is-dark')
   }
 
   // ------------------------------------------------------------------------------------------------ state
@@ -280,6 +312,7 @@ export class Hud implements HudApi {
     this.lastCollected = -1
     this.bossBarState = null
     this.biteReady = true
+    this.root.classList.remove('is-dark')
     this.tagNo.textContent = String(stage.no)
     this.tagName.textContent = stage.name
     this.collectEl.hidden = stage.objective !== 'collect'
@@ -470,5 +503,16 @@ export class Hud implements HudApi {
 
   cinematic(on: boolean) {
     this.root.classList.toggle('is-cinematic', on)
+  }
+
+  speak(text: string, who: string, face: string, seconds: number, tone: 'say' | 'yell' = 'say'): boolean {
+    if (!this.deck.active || this.root.hidden) return false
+    this.toast.classList.remove('is-show')
+    this.deck.speak(text, who, face, seconds, tone)
+    return true
+  }
+
+  lights(on: boolean) {
+    this.root.classList.toggle('is-dark', !on)
   }
 }

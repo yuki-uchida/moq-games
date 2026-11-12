@@ -619,7 +619,7 @@ input {
 .save-note {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   margin: 2px 0 0;
   font-size: 15px;
   font-weight: 900;
@@ -627,8 +627,87 @@ input {
   text-shadow: var(--outline-thin);
 }
 
-.save-note .icon {
+/* The star trail: one star per stage on a dotted path, gold for a cleared stage, the next one pulsing. */
+.star-trail {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.star-trail::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: repeating-linear-gradient(90deg, rgba(255, 212, 94, 0.45) 0 2px, transparent 2px 6px);
+}
+
+.trail-star {
   --s: 1;
+  position: relative;
+}
+
+.trail-star.is-dim {
+  opacity: 0.8;
+}
+
+.trail-star.is-next {
+  animation: trail-pulse 1.3s ease-in-out infinite alternate;
+}
+
+.title-screen.is-entering .trail-star {
+  animation: pop-in 260ms calc(420ms + var(--i) * 45ms) ease-out both;
+}
+
+.title-screen.is-entering .trail-star.is-dim {
+  animation-name: pop-in-dim;
+}
+
+.title-screen.is-entering .trail-star.is-next {
+  animation:
+    pop-in 260ms calc(420ms + var(--i) * 45ms) ease-out both,
+    trail-pulse 1.3s calc(720ms + var(--i) * 45ms) ease-in-out infinite alternate;
+}
+
+@keyframes trail-pulse {
+  from {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes pop-in-dim {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 0.8;
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}
+
+.trail-text {
+  white-space: nowrap;
+}
+
+/* The tagline and the night scene belong to upright phones (below). */
+.title-tagline,
+.title-night,
+.title-moon-row {
+  display: none;
 }
 
 .title-foot {
@@ -673,16 +752,15 @@ input {
   text-align: right;
 }
 
+/*
+ * Upright phones: under the stage, the title is a night scene in the control deck's vocabulary (the same sky,
+ * moon and hills the deck shows during play): a tagline, the menu, the star trail, the moon over the hills, and
+ * the footer on the hills. The logo keeps a clean 192×64 in the stage's sky.
+ */
 @media (orientation: portrait) {
   .title-screen {
     justify-content: flex-start;
-    background: linear-gradient(
-      180deg,
-      transparent 0,
-      transparent calc(var(--safe-t) + var(--sh) * 0.7),
-      rgba(18, 10, 38, 0.92) calc(var(--safe-t) + var(--sh)),
-      var(--night-2) 100%
-    );
+    padding: calc(var(--safe-t) + var(--sh) + 9px) var(--safe-r) var(--safe-b) var(--safe-l);
   }
 
   .title-shade {
@@ -690,12 +768,122 @@ input {
   }
 
   .title-logo {
-    margin-top: calc(var(--sh) * 0.12);
+    position: absolute;
+    z-index: 1;
+    top: calc(var(--safe-t) + clamp(6px, var(--sh) * 0.1 - 8px, 24px));
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .title-night {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: calc(var(--safe-t) + var(--sh) + 9px);
+    overflow: hidden;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 36% at 50% 100%, rgba(242, 99, 159, 0.16), transparent 70%),
+      linear-gradient(180deg, #120a26 0%, #160d2e 40%, #1b1035 75%, #241a4d 100%);
+  }
+
+  .title-sky {
+    position: absolute;
+    inset: 0;
+    background: var(--night-sky) 0 0 / 128px 112px repeat;
+    image-rendering: pixelated;
+  }
+
+  .title-sky-twinkle {
+    background-image: var(--night-sky-2);
+    background-position: 40px 20px;
+    animation: title-twinkle 2.6s steps(1) infinite;
+  }
+
+  .title-hills {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--hills-h, 64px) + var(--safe-b));
+    background:
+      var(--night-hills) 0 0 / calc(var(--hills-h, 64px) * 4) var(--hills-h, 64px) repeat-x,
+      linear-gradient(transparent calc(var(--hills-h, 64px) - 1px), #1b1035 0);
+    image-rendering: pixelated;
+  }
+
+  .title-screen.is-entering .title-hills,
+  .title-screen.is-entering .title-sleeper {
+    animation: title-hills-in 520ms ease-out both;
+  }
+
+  /* A うりぼう asleep on the near hill, lit by the moon. */
+  .title-sleeper {
+    position: absolute;
+    left: 10%;
+    bottom: calc(var(--hills-h, 64px) * 0.5 - 6px);
+    filter: brightness(0.8) saturate(0.85);
+  }
+
+  .title-sleeper .sleeper {
+    --s: 1;
+  }
+
+  /* Now and then a shooting star crosses the open sky above the hills. */
+  .title-shoot {
+    position: absolute;
+    left: 12%;
+    top: 58%;
+    width: 32px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0 4px, #5d4aa8 4px 12px, #c8b8f0 12px 24px, #fff6b0 24px);
+    opacity: 0;
+    transform: rotate(-20deg);
+    animation: title-shoot 8s linear 2.4s infinite;
+  }
+
+  .title-tagline {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 16px 0;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1.3;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+    text-shadow: var(--outline-thin);
+    white-space: nowrap;
+  }
+
+  .title-tagline span {
+    color: var(--cream-hi);
+  }
+
+  .title-tagline::before,
+  .title-tagline::after {
+    content: '';
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: var(--ic-star) center / 16px 16px no-repeat;
+    image-rendering: pixelated;
+  }
+
+  .title-screen.is-entering .title-tagline {
+    animation: rise-in 320ms 160ms ease-out both;
   }
 
   .title-bottom {
-    margin: auto 0;
-    padding: calc(var(--sh) * 0.1) 16px 0;
+    z-index: 1;
+    margin: clamp(10px, 3vh, 36px) 0 0;
+    padding: 0 16px;
+    gap: 6px;
   }
 
   .title-menu {
@@ -705,15 +893,205 @@ input {
     gap: 6px;
   }
 
+  .title-screen.is-entering .title-menu .pxbtn {
+    animation-delay: 220ms;
+  }
+
+  .title-screen.is-entering .title-menu .pxbtn:nth-child(2) {
+    animation-delay: 280ms;
+  }
+
+  .title-screen.is-entering .title-menu .pxbtn:nth-child(3) {
+    animation-delay: 340ms;
+  }
+
+  .save-note {
+    flex-direction: column;
+    gap: 6px;
+    margin: 4px 0 0;
+    font-size: 14px;
+  }
+
+  .star-trail {
+    gap: 8px;
+    padding-bottom: 5px;
+  }
+
+  /* The trail winds: every other star sits a little lower. */
+  .trail-star:nth-child(even) {
+    top: 5px;
+  }
+
+  .title-screen.is-entering .trail-text {
+    animation: rise-in 320ms 780ms ease-out both;
+  }
+
+  .title-moon-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1 1 0;
+    align-self: stretch;
+    min-height: 56px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 16%;
+  }
+
+  .title-moon {
+    display: block;
+    width: var(--moon, 48px);
+    height: var(--moon, 48px);
+    background: var(--night-moon) center / 100% 100% no-repeat;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 0 12px rgba(255, 212, 94, 0.35));
+  }
+
+  .title-screen.is-entering .title-moon {
+    animation: rise-in 700ms 260ms ease-out both;
+  }
+
   .title-foot {
-    position: static;
+    position: relative;
+    z-index: 1;
     flex-direction: column;
     gap: 0;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+  }
+
+  .title-screen.is-entering .title-foot {
+    animation: screen-in 400ms 520ms ease-out both;
   }
 
   .credit {
     text-align: center;
+  }
+}
+
+/* Tall phones: roomier, larger buttons, a bigger moon and higher hills. */
+@media (orientation: portrait) and (min-height: 700px) {
+  .title-screen {
+    --moon: 72px;
+  }
+
+  .title-tagline {
+    margin-top: 16px;
+    font-size: 18px;
+  }
+
+  .title-menu {
+    gap: 12px;
+  }
+
+  .title-menu .pxbtn {
+    min-height: 58px;
+    font-size: 18px;
+  }
+
+  .save-note {
+    margin-top: 8px;
+    font-size: 16px;
+  }
+}
+
+@media (orientation: portrait) and (min-height: 800px) {
+  .title-screen {
+    --hills-h: 96px;
+  }
+}
+
+/* Short phones: tighter, so everything fits above the hills. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .title-tagline {
+    margin-top: 8px;
+    font-size: 15px;
+  }
+
+  .title-bottom {
+    margin-top: 8px;
+  }
+
+  .title-menu {
+    gap: 4px;
+  }
+
+  .title-moon-row {
+    min-height: 40px;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 600px) {
+  .title-screen {
+    --moon: 24px;
+  }
+
+  .title-moon-row {
+    min-height: 28px;
+  }
+}
+
+/* Narrow phones: the tagline gives up its two stars to stay on one line. */
+@media (orientation: portrait) and (max-width: 360px) {
+  .title-tagline::before,
+  .title-tagline::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-sky-twinkle {
+    animation: none !important;
+  }
+
+  /* The shooting star holds still, half way across. */
+  .title-shoot {
+    animation: none !important;
+    opacity: 0.85;
+    transform: rotate(-20deg) translateX(70px);
+  }
+}
+
+@keyframes title-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.3;
+  }
+  70% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes title-shoot {
+  0%,
+  86% {
+    opacity: 0;
+    transform: rotate(-20deg) translateX(0);
+  }
+  88% {
+    opacity: 1;
+  }
+  94% {
+    opacity: 1;
+    transform: rotate(-20deg) translateX(140px);
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: rotate(-20deg) translateX(170px);
+  }
+}
+
+@keyframes title-hills-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }
 
@@ -967,6 +1345,13 @@ input {
   text-overflow: ellipsis;
 }
 
+/* A boss's title and name are two units: the line breaks between them, never inside one (unless one is too wide). */
+.card-boss-part {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .card-foot {
   grid-area: foot;
   display: flex;
@@ -1097,7 +1482,7 @@ input {
 
 .story-screen.is-entering .story-art,
 .ending-screen.is-entering .story-art {
-  animation: art-wipe 240ms ease-out both;
+  animation: art-wipe 240ms ease-out backwards;
 }
 
 @keyframes art-wipe {
@@ -1111,7 +1496,7 @@ input {
 
 .story-screen.is-entering .story-box,
 .ending-screen.is-entering .story-box {
-  animation: rise-in 240ms 60ms ease-out both;
+  animation: rise-in 240ms 60ms ease-out backwards;
 }
 
 .story-box {
@@ -1211,23 +1596,41 @@ input {
   margin-top: 0;
 }
 
-/* Landscape phones: the picture on the left, the text on the right. */
+/*
+ * Landscape phones: a 4:3 picture on the left (about 55 % of the frame's width, three quarters of its height), the
+ * text card beside it. The diorama draws the part of the scene that suits the 4:3 box (see story-frame.ts).
+ */
 @media (orientation: landscape) and (max-height: 540px) {
   .story-layout {
-    grid-template-columns: 1.15fr 1fr;
-    align-items: center;
-    width: 96%;
+    --art-w: min(calc(var(--sh) * 0.76 * 4 / 3), calc(var(--sw) * 0.56));
+    grid-template-columns: var(--art-w) minmax(0, 1fr);
+    align-items: stretch;
+    width: calc(var(--sw) - 24px);
+    max-height: calc(var(--sh) - 12px);
+    padding: 0;
     gap: 8px;
   }
 
   .story-art {
+    width: var(--art-w);
+    aspect-ratio: 4 / 3;
+    align-self: center;
     border-width: var(--np-border-1);
+  }
+
+  .story-art .diorama {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
   }
 
   .story-box {
     border-width: var(--np-border-1);
     padding: 6px 8px;
-    align-self: stretch;
+    min-width: 0;
+    overflow: auto;
     justify-content: space-between;
   }
 
@@ -1245,12 +1648,34 @@ input {
     line-height: 1.6;
   }
 
+  /* The page dots on their own row, then the two buttons side by side at half the width each. */
   .story-foot {
-    gap: 4px 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
   }
 
-  .dots {
-    width: 100%;
+  .story-foot .dots {
+    grid-column: 1 / -1;
+    margin: 0 0 4px;
+  }
+
+  .story-foot .pxbtn,
+  .story-foot .pxbtn-small {
+    min-width: 0;
+    margin-inline: 0;
+    padding-inline: 6px;
+    font-size: 14px;
+  }
+
+  #ending-next {
+    grid-column: 1 / -1;
+  }
+
+  /* The two ending buttons share a narrow row, so they give up their icons to keep their labels whole. */
+  #ending-select .icon,
+  #ending-title-button .icon {
+    display: none;
   }
 }
 
@@ -1261,15 +1686,36 @@ input {
     overflow: auto;
   }
 
+  /*
+   * The layout fills most of the phone: a 4:3 picture over the text card, centred vertically when it fits
+   * (auto block margins centre it and still let a too-tall layout scroll from the top).
+   */
   .story-layout {
-    width: 100%;
+    --lw: min(100vw, 640px);
+    width: var(--lw);
     max-height: none;
-    padding: 0 0 12px;
+    margin-block: auto;
+    padding: 0;
     gap: 12px;
+    min-height: min(100%, calc(var(--lw) * 0.95 + 300px));
+    grid-template-rows: minmax(calc(var(--lw) * 0.62), 1fr) auto;
   }
 
+  /*
+   * The picture takes the row's height but never gets taller than it is wide; the diorama draws the part of the
+   * scene that suits the box (story-frame.ts), so nothing is cropped or stretched.
+   */
   .story-art {
+    max-height: var(--lw);
     border-width: var(--np-border-1);
+  }
+
+  .story-art .diorama {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
   }
 
   .story-box {
@@ -1283,26 +1729,67 @@ input {
   }
 
   .page-text {
-    font-size: 17px;
+    font-size: 18px;
     min-height: 5.4em;
+  }
+
+  /* The footer: the page dots on their own row, then the two buttons side by side at half the width each. */
+  .story-foot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+  }
+
+  .story-foot .dots {
+    grid-column: 1 / -1;
+    justify-content: center;
+    margin: 0 0 8px;
+    padding: 4px 0 0;
+  }
+
+  .story-foot .pxbtn,
+  .story-foot .pxbtn-small {
+    min-width: 0;
+    margin-inline: 0;
+    padding-inline: 8px;
+    font-size: 16px;
+  }
+
+  #ending-next {
+    grid-column: 1 / -1;
+  }
+
+  .story-foot {
+    margin-top: 12px;
   }
 }
 
-/* Ending credits roll over the picture. */
+/* Narrow phones: the two ending buttons share a row, so they give up their icons to keep their labels whole. */
+@media (orientation: portrait) and (max-width: 360px) {
+  #ending-select .icon,
+  #ending-title-button .icon {
+    display: none;
+  }
+}
+
+/*
+ * Ending credits: while they roll they take the whole frame (the stage frame on landscape and desktop, the screen on
+ * upright phones) over the dimmed picture; the card (closing line, statistics, buttons) waits behind them, inert.
+ */
 .credits {
   position: absolute;
   inset: 0;
+  z-index: 6;
   overflow: hidden;
-  background: linear-gradient(
-    90deg,
-    rgba(18, 10, 38, 0) 0%,
-    rgba(18, 10, 38, 0.78) 28%,
-    rgba(18, 10, 38, 0.78) 72%,
-    rgba(18, 10, 38, 0) 100%
-  );
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(14, 8, 30, 0.9), rgba(14, 8, 30, 0.78)), rgba(14, 8, 30, 0.3);
   line-height: 1.4;
   color: var(--cream-hi);
   text-shadow: var(--outline-thin);
+  cursor: pointer;
+  transition:
+    opacity 500ms ease-out,
+    visibility 0s linear 0s;
 }
 
 .credits[hidden] {
@@ -1310,9 +1797,36 @@ input {
 }
 
 .credits.is-entering {
-  animation: screen-in 400ms ease-out both;
+  animation: screen-in 400ms ease-out backwards;
 }
 
+/* After the roll the credits fade away and leave the card. */
+.credits.is-done {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 500ms ease-out,
+    visibility 0s linear 500ms;
+}
+
+/* The rolling text lives in a window whose top and bottom edges fade out, so no line is ever cut by a hard edge. */
+.credits-window {
+  --fade: 15%;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0,
+    #000 var(--fade),
+    #000 calc(100% - var(--fade)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(180deg, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+}
+
+/* The roll is moved by the Web Animations API (see rollCredits in screens.ts). */
 .credits-roll {
   position: absolute;
   left: 0;
@@ -1321,23 +1835,16 @@ input {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  animation: credits-roll var(--roll, 30s) linear forwards;
-}
-
-@keyframes credits-roll {
-  from {
-    transform: translateY(var(--from, 300px));
-  }
-  to {
-    transform: translateY(var(--to, -600px));
-  }
+  gap: clamp(14px, 3.4vmin, 28px);
+  padding: 0 12px;
+  will-change: transform;
 }
 
 .credits-name {
   margin: 0 0 8px;
-  font-size: 30px;
+  font-size: clamp(28px, 7vmin, 52px);
   font-weight: 900;
+  line-height: 1.2;
   color: var(--gold);
   text-shadow: var(--outline);
 }
@@ -1346,12 +1853,12 @@ input {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: clamp(4px, 0.9vmin, 8px);
 }
 
 .credits-title {
   margin: 0;
-  font-size: 13px;
+  font-size: clamp(13px, 2.4vmin, 18px);
   font-weight: 900;
   letter-spacing: 0.2em;
   color: var(--gold);
@@ -1359,7 +1866,7 @@ input {
 
 .credits-line {
   margin: 0;
-  font-size: 15px;
+  font-size: clamp(15px, 3.2vmin, 24px);
   font-weight: 900;
 }
 
@@ -1373,12 +1880,87 @@ input {
   --s: 1;
 }
 
+@media (min-height: 560px) and (min-width: 560px) {
+  .credits-cast .face {
+    --s: 2;
+  }
+}
+
 .credits-end {
   margin: 20px 0 0;
-  font-size: 26px;
+  font-size: clamp(26px, 6.4vmin, 48px);
   font-weight: 900;
+  line-height: 1.2;
   color: var(--pink-hi);
   text-shadow: var(--outline);
+}
+
+/* The family's faces under 「ありがとう！」. */
+.credits-family {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.credits-family .face {
+  --s: 2;
+}
+
+@media (min-height: 680px) {
+  .credits-family .face {
+    --s: 3;
+  }
+}
+
+/* 「タップでスキップ」: fades in at the bottom right corner after two seconds. */
+.credits-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 1;
+  margin: 0;
+  padding: 3px 8px;
+  background: rgba(14, 8, 30, 0.85);
+  box-shadow: 0 0 0 2px var(--night-line);
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--cream);
+  pointer-events: none;
+  animation: credits-hint 500ms ease-out 2s backwards;
+}
+
+@keyframes credits-hint {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: no roll; the list scrolls by hand and this button closes it. */
+.credits-close {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 1;
+}
+
+.ending-screen.is-rolling .story-box {
+  opacity: 0;
+}
+
+.ending-screen .story-box {
+  transition: opacity 400ms ease-out;
+}
+
+/* Upright phones: the screen scrolls only once the credits are over. */
+@media (orientation: portrait) {
+  .ending-screen.is-rolling {
+    overflow: hidden;
+  }
+
+  .credits-hint,
+  .credits-close {
+    bottom: calc(10px + var(--safe-b));
+  }
 }
 
 .ending-stats {
@@ -1594,7 +2176,10 @@ input {
   }
   .result-text {
     grid-area: text;
-    font-size: 12px;
+    margin: 8px 0 6px;
+    font-size: 13px;
+    line-height: 1.7;
+    text-wrap: balance;
   }
   .result-card > .buttons {
     grid-area: buttons;
@@ -1630,6 +2215,8 @@ input {
     width: calc(100% - 16px);
     max-height: none;
     overflow: visible;
+    /* Centred when it fits, scrolling from the top when it does not. */
+    margin-block: auto;
   }
 
   .result-card .buttons {
@@ -1639,31 +2226,161 @@ input {
   }
 }
 
+/* Short phones: tighter, so the whole result card (and its three buttons) fits. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .result-screen {
+    padding-top: calc(var(--safe-t) + 8px);
+    padding-bottom: calc(var(--safe-b) + 4px);
+  }
+
+  .result-card {
+    gap: 3px;
+  }
+
+  .star-cell .star-big {
+    --s: 2;
+  }
+
+  .result-card .buttons {
+    gap: 0;
+  }
+}
+
 /* --------------------------------------------------------------------------------------------- game over */
 
+/* A quiet night: stars kept away from the middle, hills along the bottom and a soft spotlight on the card. */
 .dead-screen {
-  background: radial-gradient(circle at 50% 50%, rgba(42, 18, 48, 0.6), rgba(10, 5, 24, 0.9));
   padding: 8px;
+  background:
+    radial-gradient(
+      ellipse 44% 50% at 50% 50%,
+      rgba(255, 212, 94, 0.14),
+      rgba(242, 99, 159, 0.06) 55%,
+      transparent 78%
+    ),
+    linear-gradient(180deg, #0d0722 0%, #120a26 55%, #1b1035 100%);
+}
+
+.dead-night {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dead-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    var(--night-sky-2) 40px 20px / 128px 112px repeat,
+    var(--night-sky) 0 0 / 128px 112px repeat;
+  image-rendering: pixelated;
+  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 40%, #000 75%);
+  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 40%, #000 75%);
+}
+
+.dead-hills {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  background: var(--night-hills) 0 0 / 256px 64px repeat-x;
+  image-rendering: pixelated;
+  opacity: 0.85;
 }
 
 .dead-card {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'head head'
+    'art body';
   align-items: center;
-  gap: 18px;
-  max-width: min(620px, 100%);
+  align-content: space-evenly;
+  column-gap: 22px;
+  row-gap: 8px;
+  width: min(760px, 100%);
+  min-height: 54%;
   max-height: 100%;
-  padding: 6px 14px;
+  overflow: auto;
+  padding: 6px 18px;
   border-width: var(--np-border-2);
 }
 
 .dead-screen.is-entering .dead-card {
-  animation: drop-in 250ms ease-out both;
+  animation: dead-drop 520ms cubic-bezier(0.3, 0, 0.3, 1) both;
+}
+
+@keyframes dead-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-64px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(8px);
+  }
+  78% {
+    transform: translateY(-3px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dead-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px dashed rgba(255, 241, 214, 0.25);
+}
+
+.dead-head[hidden],
+.dead-track[hidden] {
+  display: none;
+}
+
+.dead-emblem .emblem {
+  --s: 1;
+}
+
+.dead-stage {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  text-align: left;
+}
+
+.dead-stage small {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--pink);
+  white-space: nowrap;
+}
+
+.dead-stage b {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--cream-hi);
+  text-shadow: var(--outline-thin);
 }
 
 .dead-art {
-  flex: none;
-  padding: 6px;
-  background: radial-gradient(circle, rgba(242, 99, 159, 0.25), transparent 70%);
+  grid-area: art;
+  position: relative;
+  justify-self: center;
+  padding: 6px 10px 10px;
+  background:
+    radial-gradient(ellipse 40% 8% at 50% 92%, rgba(10, 5, 24, 0.55), transparent 100%),
+    radial-gradient(circle at 50% 55%, rgba(242, 99, 159, 0.28), transparent 68%);
 }
 
 .dead-hero {
@@ -1671,10 +2388,12 @@ input {
 }
 
 .dead-body {
+  grid-area: body;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .dead-text {
@@ -1682,24 +2401,264 @@ input {
   font-size: 15px;
   line-height: 1.6;
   color: var(--cream);
+  text-wrap: balance;
+}
+
+/* How far he got: the start (a paw), the goal (a star) and his face where he fell. */
+.dead-track {
+  --p: 0;
+  width: min(100%, 360px);
+  margin: 2px 0;
+}
+
+.dead-rail {
+  position: relative;
+  height: 44px;
+}
+
+.dead-groove {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 8px;
+  height: 8px;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, #2c1b56 0 6px, #1b1035 6px 8px);
+  box-shadow:
+    0 0 0 2px var(--night-line),
+    0 2px 0 2px #3a2a78;
+}
+
+.dead-fill {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, var(--gold) 0 6px, var(--gold-deep) 6px 8px);
+  transform: scaleX(var(--p));
+  transform-origin: 0 50%;
+}
+
+.dead-mark {
+  position: absolute;
+  bottom: 4px;
+  display: block;
+  transform: translateX(-50%);
+  line-height: 0;
+}
+
+.dead-start {
+  left: 16px;
+  bottom: 16px;
+}
+
+.dead-goal {
+  left: calc(100% - 16px);
+  bottom: 16px;
+}
+
+.dead-start .icon,
+.dead-goal .icon {
+  --s: 1;
+}
+
+.dead-face {
+  left: calc(16px + var(--p) * (100% - 32px));
+  bottom: 12px;
+  z-index: 1;
+}
+
+.dead-face .face {
+  --s: 1;
+  filter: drop-shadow(0 2px 0 var(--night-line));
+}
+
+.dead-screen.is-entering .dead-fill {
+  animation: dead-fill 900ms 420ms ease-out both;
+}
+
+.dead-screen.is-entering .dead-face {
+  animation: dead-run 900ms 420ms ease-out both;
+}
+
+@keyframes dead-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes dead-run {
+  from {
+    left: 16px;
+  }
+}
+
+.dead-left {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--cream);
+}
+
+.dead-left b {
+  font-size: 18px;
+  color: var(--gold);
 }
 
 @media (min-height: 560px) and (orientation: landscape) {
+  .dead-card {
+    min-height: 62%;
+  }
+
   .dead-hero {
     --s: 3;
+  }
+
+  .dead-emblem .emblem {
+    --s: 2;
+  }
+
+  .dead-stage b {
+    font-size: 22px;
+  }
+
+  .dead-stage small {
+    font-size: 15px;
+  }
+
+  .dead-body {
+    gap: 12px;
+  }
+
+  .dead-card .kicker {
+    font-size: 15px;
+  }
+
+  .dead-card .headline {
+    font-size: 36px;
+  }
+
+  .dead-text {
+    font-size: 17px;
+  }
+
+  .dead-track {
+    width: min(100%, 420px);
+  }
+
+  .dead-left {
+    font-size: 16px;
+  }
+
+  .dead-left b {
+    font-size: 22px;
+  }
+}
+
+/* Landscape phones: a slimmer frame so everything fits the short stage. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .dead-card {
+    row-gap: 4px;
+    padding: 4px 12px;
+    border-width: var(--np-border-1);
+  }
+
+  .dead-head {
+    padding-bottom: 4px;
+  }
+
+  .dead-body {
+    gap: 4px;
+  }
+
+  .dead-text {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .dead-rail {
+    height: 40px;
+  }
+
+  .dead-left {
+    margin: 0;
+    font-size: 13px;
   }
 }
 
 @media (orientation: portrait) {
+  .dead-screen {
+    overflow: auto;
+    padding: calc(var(--safe-t) + 8px) calc(var(--safe-r) + 8px) calc(var(--safe-b) + 8px) calc(var(--safe-l) + 8px);
+  }
+
   .dead-card {
-    flex-direction: column;
-    width: calc(100% - 24px);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'art'
+      'body';
+    justify-items: center;
+    width: min(460px, 100%);
+    min-height: 64%;
+    max-height: none;
+    overflow: visible;
+    padding: 8px 14px;
+    /* Centred when it fits, scrolling from the top when it does not. */
+    margin-block: auto;
+  }
+
+  .dead-head {
+    width: 100%;
+  }
+
+  .dead-body {
+    width: 100%;
   }
 
   .dead-card .buttons {
     flex-direction: column;
     align-items: stretch;
     width: 100%;
+  }
+}
+
+/* Tall phones: the hero larger, the type a step up. */
+@media (orientation: portrait) and (min-height: 700px) {
+  .dead-hero {
+    --s: 3;
+  }
+
+  .dead-card .headline {
+    font-size: 30px;
+  }
+
+  .dead-text {
+    font-size: 16px;
+  }
+}
+
+/* Short phones: a slimmer frame and tighter rows, so the whole card fits. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .dead-card {
+    row-gap: 2px;
+    padding: 4px 10px;
+    border-width: var(--np-border-1);
+  }
+
+  .dead-art {
+    padding: 0 8px 4px;
+  }
+
+  .dead-body {
+    gap: 4px;
+  }
+
+  .dead-text {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .dead-card .buttons {
+    gap: 0;
   }
 }
 
@@ -1894,9 +2853,35 @@ input {
   }
 
   .pause-card {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     width: calc(100% - 16px);
     max-height: none;
+    padding: 8px 12px;
+    /* Centred when it fits, scrolling from the top when it does not. */
+    margin-block: auto;
+  }
+}
+
+/* Narrow phones: a slimmer frame, and the sliders give way so the labels and values stay whole inside the panel. */
+@media (orientation: portrait) and (max-width: 380px) {
+  .pause-card {
+    padding: 8px 10px;
+    border-width: var(--np-border-1);
+  }
+
+  .volume {
+    grid-template-columns: auto 5em minmax(0, 1fr) 2.4em;
+    gap: 6px;
+  }
+
+  .pxrange {
+    min-width: 0;
+  }
+
+  .keys-mini {
+    grid-template-columns: max-content max-content;
+    justify-content: space-between;
+    column-gap: 8px;
   }
 }
 
@@ -2058,6 +3043,11 @@ input {
   margin-bottom: -6px;
 }
 
+/* Two pictures (the switch and its door) share the box: the door steps in over the switch frame's empty edge. */
+.gimmick-art > .px + .px {
+  margin-left: -28px;
+}
+
 .gimmick b {
   font-size: 15px;
   color: var(--cream-hi);
@@ -2122,6 +3112,12 @@ input {
 
   .help-gimmicks {
     grid-template-columns: 1fr;
+  }
+
+  /* Lines break after a comma, not inside a word. */
+  .gimmick span:last-child {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2211,6 +3207,7 @@ input {
 
   .select-head .headline {
     font-size: 18px;
+    white-space: nowrap;
   }
 
   .select-progress .progress-label {
@@ -2227,6 +3224,26 @@ input {
   }
 }
 
+/* Narrow phones: the back button keeps only its arrow (the label stays for screen readers) so the heading has room. */
+@media (orientation: portrait) and (max-width: 380px) {
+  #select-back {
+    padding-inline: 10px;
+  }
+
+  #select-back .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .select-head {
+    gap: 4px;
+  }
+}
+
 @media (orientation: portrait) and (max-width: 360px) {
   .stage-card {
     border-width: var(--np-border-1);
@@ -2239,6 +3256,7 @@ input {
 
   .select-head .headline {
     font-size: 17px;
+    letter-spacing: 0;
   }
 }
 
@@ -2268,13 +3286,18 @@ input {
 
   .credits-roll {
     position: static;
-    padding: 12px 0;
+    padding: 24px 12px;
     transform: none !important;
     animation: none !important;
   }
 
-  .credits {
+  /* The list stops above a strip that holds 「つぎへ」. */
+  .credits-window {
+    bottom: calc(68px + var(--safe-b));
     overflow: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+    overscroll-behavior: contain;
   }
 }
 
@@ -2299,13 +3322,13 @@ input {
 
 @media (orientation: landscape) and (max-height: 540px) {
   .ending-screen .story-layout {
-    width: 96%;
+    width: calc(var(--sw) - 24px);
   }
 }
 
 @media (orientation: portrait) {
   .ending-screen .story-layout {
-    width: 100%;
+    width: var(--lw);
   }
 }
 

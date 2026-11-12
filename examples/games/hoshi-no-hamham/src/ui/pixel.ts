@@ -222,3 +222,109 @@ export function installPixelStyles(root: HTMLElement = document.documentElement)
     root.style.setProperty(`--ic-${name}`, `url("${spriteUrl('ui', iconName)}")`)
   root.style.setProperty('--logo', `url("${spriteUrl('ui', 'logo')}")`)
 }
+
+// ------------------------------------------------------------------------------------------- night scene
+
+/**
+ * Pixel pieces of the night that the title (under the stage on upright phones) and the game over share with the
+ * control deck: a star tile in two layers (layer 1 holds the stars that twinkle), rolling hills and a crescent
+ * moon. Drawn once into small canvases and handed out as data URLs; the stylesheet shows them at 2×.
+ */
+function painted(key: string, w: number, h: number, paint: (dot: (x: number, y: number, c: string) => void) => void) {
+  const cached = urls.get(key)
+  if (cached) return cached
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  paint((x, y, c) => {
+    ctx.fillStyle = c
+    ctx.fillRect(x, y, 1, 1)
+  })
+  const url = canvas.toDataURL()
+  urls.set(key, url)
+  return url
+}
+
+/** A 64×56 tile of scattered stars. */
+export function nightSkyUrl(layer: 0 | 1): string {
+  return painted(`night/sky/${layer}`, 64, 56, (dot) => {
+    if (layer === 0) {
+      const quiet: [number, number, number][] = [
+        [3, 4, 0],
+        [17, 2, 1],
+        [29, 9, 0],
+        [11, 17, 1],
+        [41, 5, 1],
+        [52, 14, 0],
+        [36, 22, 0],
+        [60, 27, 1],
+        [22, 29, 1],
+        [6, 36, 0],
+        [47, 38, 1],
+        [15, 47, 1],
+        [33, 44, 0],
+        [56, 51, 0],
+        [27, 53, 1]
+      ]
+      for (const [x, y, c] of quiet) dot(x, y, c ? '#5d4aa8' : '#8a7ad8')
+      return
+    }
+    // Two four-point sparkles and a few bright dots.
+    for (const [cx, cy] of [
+      [26, 13],
+      [50, 40]
+    ]) {
+      for (const [dx, dy] of [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ])
+        dot(cx + dx, cy + dy, '#ffd45e')
+      dot(cx, cy, '#fff6b0')
+    }
+    dot(8, 25, '#ffffff')
+    dot(42, 30, '#fff6b0')
+    dot(19, 42, '#ffd9ea')
+    dot(58, 8, '#ffffff')
+  })
+}
+
+/** Two rows of rolling hills (a far, lighter one and a near, darker one) on a 128×32 tile repeated sideways. */
+export function nightHillsUrl(): string {
+  return painted('night/hills', 128, 32, (dot) => {
+    const w = 128
+    const h = 32
+    for (let x = 0; x < w; x++) {
+      const a = (x / w) * Math.PI * 2
+      const far = Math.round(9 - 4 * Math.sin(a * 2 + 0.6) - 2 * Math.sin(a * 3))
+      const near = Math.round(19 - 4 * Math.sin(a * 3 + 2) - 2 * Math.sin(a * 5 + 1))
+      for (let y = far; y < h; y++) dot(x, y, y === far ? '#4a3a80' : '#2f2460')
+      for (let y = near; y < h; y++) dot(x, y, y === near ? '#3a2a78' : '#1b1035')
+      // A few grass tufts on the near hills.
+      if (x % 23 === 5 || x % 37 === 11) dot(x, near - 1, '#3a2a78')
+    }
+  })
+}
+
+/** A 24-px crescent moon, lit from the top left like every other sprite. */
+export function nightMoonUrl(): string {
+  return painted('night/moon', 24, 24, (dot) => {
+    const n = 24
+    const c = (n - 1) / 2
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const d = Math.hypot(x - c, y - c)
+        if (d > n / 2 - 0.3) continue
+        // The bite of the crescent: a second disc offset to the lower right.
+        if (Math.hypot(x - c - 7, y - c + 3) < n / 2 - 2) continue
+        const rim = d > n / 2 - 1.6
+        dot(x, y, rim ? '#e0a428' : x + y < n - 4 ? '#fff6b0' : '#ffd45e')
+      }
+    // Two craters on the lit side.
+    dot(5, 10, '#ffd45e')
+    dot(6, 15, '#ffd45e')
+    dot(7, 15, '#ffd45e')
+  })
+}

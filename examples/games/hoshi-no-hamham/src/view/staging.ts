@@ -8,6 +8,7 @@ import { VIEW_H } from '../art/contract'
 import type { SimEvent } from '../game/events'
 import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
+import type { Anchor, BubbleTone } from './overlay'
 import { Sequence } from './sequence'
 
 /** Who interrupts whom: a higher priority cancels the moment playing, a lower one waits for it. */
@@ -31,6 +32,7 @@ const CARD_GAP = 0.08
 export const BOSS_INTRO_SECONDS = 2.5
 export const CLEAR_SECONDS = 2.2
 export const DEATH_SECONDS = 1.8
+const PRINCESS = { who: 'ハム姫', face: 'face_princess' }
 
 export class Staging {
   private readonly reduced: boolean
@@ -75,6 +77,27 @@ export class Staging {
     this.host.camera.addTrauma(amount)
   }
 
+  /**
+   * A character's line: on the deck under a portrait stage (with their face) and a wordless balloon over them, or
+   * a speech bubble on the stage when there is no deck.
+   */
+  private say(
+    text: string,
+    anchor: Anchor,
+    seconds: number,
+    speaker: { who: string; face: string },
+    tone?: BubbleTone
+  ) {
+    const onDeck = this.host.hud.speak(text, speaker.who, speaker.face, seconds, tone)
+    this.host.overlay.bubble(text, anchor, seconds, tone, onDeck)
+  }
+
+  /** The boss as a speaker (name and portrait). */
+  private bossSpeaker() {
+    const boss = this.host.world.boss
+    return { who: boss?.def.name ?? '', face: boss ? `face_${boss.def.art}` : '' }
+  }
+
   /** Confetti falling from the top of the view. */
   private confettiRain(count: number) {
     const { camera } = this.host
@@ -112,6 +135,7 @@ export class Staging {
           sound.cue('iris-in')
         }
         sound.cue('stage-start')
+        hud.lights(true)
         hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle, length - GO_LEAD - CARD_GAP)
       },
       true
@@ -150,6 +174,7 @@ export class Staging {
           sound.cue('iris-in')
         }
         sound.cue('stage-start')
+        hud.lights(true)
         hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle, length - 0.14 - CARD_GAP)
         view.actors.pose('hero', 'idle', 0.4)
         view.actors.pose('boss', 'idle', 0.2)
@@ -161,7 +186,7 @@ export class Staging {
       () => {
         const boss = world.boss
         view.actors.pose('boss', 'yell', 1)
-        overlay.bubble('こらーっ！まちなさーい！', momHead, 2, 'yell')
+        this.say('こらーっ！まちなさーい！', momHead, 2, this.bossSpeaker(), 'yell')
         sound.cue('mom-yell')
         this.trauma(0.28)
         if (boss) {
@@ -399,7 +424,7 @@ export class Staging {
       claims: this.reduced ? {} : { scale: 0.35, lock: true }
     })
     seq.at(0, () => {
-      overlay.bubble('ありがとう！', { x: event.x, y: event.y - 40 }, 1.5)
+      this.say('ありがとう！', { x: event.x, y: event.y - 40 }, 1.5, PRINCESS)
       this.fx.burst('heart', event.x, event.y - 30, 4, {
         speed: [30, 70],
         angle: [-Math.PI * 0.8, -Math.PI * 0.2],
@@ -414,11 +439,11 @@ export class Staging {
 
   /** ハム代 runs out of breath (stage 1). */
   momTired() {
-    const { overlay, sound, world } = this.host
+    const { sound, world } = this.host
     const boss = world.boss
     if (!boss) return
     sound.cue('mom-tired')
-    overlay.bubble('ぜぇ…ぜぇ…', () => ({ x: boss.x + boss.w / 2, y: boss.y - 14 }), 1.6)
+    this.say('ぜぇ…ぜぇ…', () => ({ x: boss.x + boss.w / 2, y: boss.y - 14 }), 1.6, this.bossSpeaker())
   }
 
   // ------------------------------------------------------------------------------------------- endings
@@ -444,7 +469,7 @@ export class Staging {
         view.actors.pose('hero', 'cheer', length + 0.5)
         const princess = world.props.find((p) => p.kind === 'princess' && p.data !== 1)
         if (princess && this.host.camera.sees(princess.x + 32, princess.y + 32))
-          overlay.bubble('やったね！', { x: princess.x + 32, y: princess.y + 24 }, 1.4)
+          this.say('やったね！', { x: princess.x + 32, y: princess.y + 24 }, 1.4, PRINCESS)
       },
       true
     )
@@ -463,6 +488,7 @@ export class Staging {
         const h = this.toScreen(this.heroCentre())
         overlay.irisTo(0, 0.7, h.x, h.y)
         sound.cue('iris-out')
+        hud.lights(false)
       },
       true
     )
@@ -472,7 +498,7 @@ export class Staging {
 
   /** The death: hit-stop, a spotlight on the hero while his `die` clip plays out, an iris out on him. */
   death(event: At<'dead'>): Sequence {
-    const { overlay, sound, view } = this.host
+    const { hud, overlay, sound, view } = this.host
     const length = this.reduced ? 1.3 : DEATH_SECONDS
     const irisAt = length - 0.8
     const seq = new Sequence('death', length, {
@@ -495,6 +521,7 @@ export class Staging {
         const s = this.toScreen(at)
         overlay.irisTo(0, 0.7, s.x, s.y)
         sound.cue('iris-out')
+        hud.lights(false)
       },
       true
     )

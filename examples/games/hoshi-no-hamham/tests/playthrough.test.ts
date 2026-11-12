@@ -39,11 +39,7 @@ describe('stage traversability', () => {
         }
         const charWindow: string[] = []
         for (let y = Math.max(0, ty - 4); y <= Math.min(world.h - 1, ty + 4); y++) {
-          charWindow.push(
-            [...world.stage.map[y]]
-              .slice(Math.max(0, tx - 14), tx + 15)
-              .join('')
-          )
+          charWindow.push([...world.stage.map[y]].slice(Math.max(0, tx - 14), tx + 15).join(''))
         }
         throw new Error(
           `bot stuck at ${p.x.toFixed(1)},${p.y.toFixed(1)} box=${p.w}x${p.h} tile=${world.tileAt(tx, ty)} solid=${world.solidAt(tx, ty)} state=${world.state} hp=${p.hp} ground=${p.onGround}\n${window.join('\n')}\n${charWindow.join('\n')}`
@@ -74,7 +70,18 @@ describe('biting is required', () => {
     return world
   }
 
-  for (const stageId of ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7', 'stage-8', 'stage-9', 'stage-10']) {
+  for (const stageId of [
+    'stage-1',
+    'stage-2',
+    'stage-3',
+    'stage-4',
+    'stage-5',
+    'stage-6',
+    'stage-7',
+    'stage-8',
+    'stage-9',
+    'stage-10'
+  ]) {
     it(`${stageId} cannot be cleared without biting`, () => {
       const world = playWithoutBiting(stageId)
       expect(world.state, `${stageId} was cleared without a single bite`).not.toBe('clear')
