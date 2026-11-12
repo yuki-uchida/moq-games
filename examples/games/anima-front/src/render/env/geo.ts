@@ -26,6 +26,9 @@ const _v = new THREE.Vector3()
 const _n = new THREE.Vector3()
 const _c = new THREE.Color()
 const _nm = new THREE.Matrix3()
+const _b = new THREE.Vector3()
+/** Matrix the cached normal matrix `_nm` was computed from (shared by all builders). */
+const _lastM = new Float64Array(16).fill(NaN)
 
 export class GeoBuilder {
   readonly pos: number[] = []
@@ -41,6 +44,11 @@ export class GeoBuilder {
   aoHeight = 0
   /** Extra per-vertex brightness multiplier (set by smooth blobs for a top-lit gradient). */
   private shadeK = 1
+  /**
+   * Bends every normal towards the direction from `c` (world space) by `k` (0..1): foliage clumps and leaf cards
+   * of one canopy then light as one soft volume instead of many small facets.
+   */
+  bend: { c: readonly [number, number, number]; k: number } | null = null
 
   get vertexCount() {
     return this.pos.length / 3
@@ -65,8 +73,26 @@ export class GeoBuilder {
 
   private vertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, v: number, s: Surf) {
     _v.set(x, y, z).applyMatrix4(this.matrix)
-    _nm.getNormalMatrix(this.matrix)
+    // The normal matrix needs an inverse: only recompute it when the transform changed.
+    const e = this.matrix.elements
+    let same = true
+    for (let i = 0; i < 16; i++)
+      if (e[i] !== _lastM[i]) {
+        same = false
+        break
+      }
+    if (!same) {
+      _nm.getNormalMatrix(this.matrix)
+      for (let i = 0; i < 16; i++) _lastM[i] = e[i]
+    }
     _n.set(nx, ny, nz).applyMatrix3(_nm).normalize()
+    if (this.bend) {
+      const c = this.bend.c
+      _b.set(_v.x - c[0], _v.y - c[1], _v.z - c[2]).normalize()
+      // Keep the face normal where the blend would cancel out (zero normals light as NaN).
+      _b.multiplyScalar(this.bend.k).addScaledVector(_n, 1 - this.bend.k)
+      if (_b.lengthSq() > 1e-6) _n.copy(_b).normalize()
+    }
     this.pos.push(_v.x, _v.y, _v.z)
     this.nor.push(_n.x, _n.y, _n.z)
     this.uv.push(u + (s.offset?.[0] ?? 0), v + (s.offset?.[1] ?? 0))
@@ -294,7 +320,36 @@ export class GeoBuilder {
     }
   }
 
-  private segment(a: number[], b: number[], r: number, s: Surf, seg: number) {
+  /** Tapered limb (trunk, branch) from radius r0 at a to r1 at b. */
+  limb(a: readonly number[], b: readonly number[], r0: number, r1: number, s: Surf, seg = 6) {
+    this.segment([a[0], a[1], a[2]], [b[0], b[1], b[2]], r0, s, seg, r1)
+  }
+
+  /**
+   * Camera-independent leaf card: a quad centred on (x, y, z) spanning `right` and `up` (half extents) with an
+   * explicit normal (usually pointing out of the canopy) so cards shade like the volume they belong to.
+   */
+  card(
+    x: number,
+    y: number,
+    z: number,
+    right: readonly [number, number, number],
+    up: readonly [number, number, number],
+    normal: readonly [number, number, number],
+    s: Surf,
+    uv: readonly [number, number, number, number] = [0.004, 0.004, 0.996, 0.996]
+  ) {
+    const base = this.vertexCount
+    const [nx, ny, nz] = normal
+    const [u0, v0, u1, v1] = uv
+    this.vertex(x - right[0] - up[0], y - right[1] - up[1], z - right[2] - up[2], nx, ny, nz, u0, v0, s)
+    this.vertex(x + right[0] - up[0], y + right[1] - up[1], z + right[2] - up[2], nx, ny, nz, u1, v0, s)
+    this.vertex(x + right[0] + up[0], y + right[1] + up[1], z + right[2] + up[2], nx, ny, nz, u1, v1, s)
+    this.vertex(x - right[0] + up[0], y - right[1] + up[1], z - right[2] + up[2], nx, ny, nz, u0, v1, s)
+    this.index.push(base, base + 1, base + 2, base, base + 2, base + 3)
+  }
+
+  private segment(a: number[], b: number[], r: number, s: Surf, seg: number, r1 = r) {
     const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2])
     const len = d.length()
     if (len < 1e-5) return
@@ -309,7 +364,7 @@ export class GeoBuilder {
       const ny = side.y * Math.cos(ang) + up2.y * Math.sin(ang)
       const nz = side.z * Math.cos(ang) + up2.z * Math.sin(ang)
       this.vertex(a[0] + nx * r, a[1] + ny * r, a[2] + nz * r, nx, ny, nz, i / seg, 0, s)
-      this.vertex(b[0] + nx * r, b[1] + ny * r, b[2] + nz * r, nx, ny, nz, i / seg, len / 2, s)
+      this.vertex(b[0] + nx * r1, b[1] + ny * r1, b[2] + nz * r1, nx, ny, nz, i / seg, len / 2, s)
     }
     for (let i = 0; i < seg; i++) {
       const k = base + i * 2

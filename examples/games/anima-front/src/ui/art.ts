@@ -6,6 +6,7 @@ import { ITEMS, type ItemCategory, type ItemId } from '../data/items'
 import type { Speaker } from '../data/missions'
 import type { SpeciesId } from '../data/species'
 import { hex } from './dom'
+import { genbuSvg, ruriSvg } from './portraits'
 
 interface Face {
   fur: string
@@ -152,41 +153,8 @@ ${face}${eyes}${id === 'penguin' ? '' : blush}</svg>`
 
 /** Radio / briefing portraits (viewBox 96×96, drawn inside a rounded frame by CSS). */
 export function portraitSvg(who: Speaker): string {
-  if (who === 'genbu') {
-    return `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-<defs><radialGradient id="gb-s" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#a7b48a"/><stop offset="1" stop-color="#6d7a58"/></radialGradient></defs>
-<path d="M6 96 Q10 70 48 66 Q86 70 90 96 Z" fill="#5a4b36"/>
-<path d="M18 96 L24 80 L40 76 L56 76 L72 80 L78 96 Z" fill="#7a6648" stroke="#4a3c28" stroke-width="2"/>
-<path d="M40 76 L48 88 L56 76" fill="none" stroke="#4a3c28" stroke-width="2"/>
-<ellipse cx="48" cy="52" rx="24" ry="22" fill="url(#gb-s)"/>
-<path d="M30 60 Q48 72 66 60" stroke="#55603f" stroke-width="2" fill="none"/>
-<path d="M34 46 Q38 50 44 47" stroke="#3b4230" stroke-width="3" fill="none" stroke-linecap="round"/>
-<path d="M52 47 Q58 50 62 46" stroke="#3b4230" stroke-width="3" fill="none" stroke-linecap="round"/>
-<ellipse cx="39" cy="51" rx="3" ry="2.6" fill="#1d1f17"/><ellipse cx="57" cy="51" rx="3" ry="2.6" fill="#1d1f17"/>
-<circle cx="40" cy="50" r="0.9" fill="#fff"/><circle cx="58" cy="50" r="0.9" fill="#fff"/>
-<path d="M44 60 Q48 62 52 60" stroke="#2c3123" stroke-width="2" fill="none" stroke-linecap="round"/>
-<path d="M22 36 Q48 14 74 36 L74 40 L22 40 Z" fill="#1f2a4a"/>
-<rect x="20" y="36" width="56" height="7" rx="3" fill="#2c3a63"/>
-<circle cx="48" cy="29" r="5" fill="#ff9a3c"/><circle cx="48" cy="29" r="2.2" fill="#ffe2b8"/>
-</svg>`
-  }
-  if (who === 'ruri') {
-    return `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-<path d="M10 96 Q14 72 48 68 Q82 72 86 96 Z" fill="#2c3a63"/>
-<path d="M36 70 L48 84 L60 70" fill="#ff9a3c"/>
-<ellipse cx="48" cy="50" rx="25" ry="25" fill="#3fb6d8"/>
-<path d="M26 44 Q30 22 48 22 Q66 22 70 44 Q62 34 48 34 Q34 34 26 44 Z" fill="#fff3a6"/>
-<path d="M28 30 Q48 18 68 30" stroke="#2a8fb0" stroke-width="2.4" fill="none" stroke-dasharray="3 4"/>
-<ellipse cx="38" cy="48" rx="4.2" ry="5" fill="#1a1f2e"/><ellipse cx="58" cy="48" rx="4.2" ry="5" fill="#1a1f2e"/>
-<circle cx="39.6" cy="46" r="1.6" fill="#fff"/><circle cx="59.6" cy="46" r="1.6" fill="#fff"/>
-<path d="M44 54 Q48 52 52 54 Q50 62 48 63 Q46 62 44 54 Z" fill="#f6c46a"/>
-<circle cx="40" cy="66" r="2" fill="#1a1f2e"/><circle cx="48" cy="68" r="2" fill="#1a1f2e"/><circle cx="56" cy="66" r="2" fill="#1a1f2e"/>
-<ellipse cx="30" cy="57" rx="4" ry="2.4" fill="#ff8fa3" opacity="0.6"/><ellipse cx="66" cy="57" rx="4" ry="2.4" fill="#ff8fa3" opacity="0.6"/>
-<path d="M22 46 Q22 20 48 18 Q74 20 74 46" stroke="#1f2a4a" stroke-width="4" fill="none"/>
-<rect x="17" y="42" width="9" height="14" rx="4" fill="#1f2a4a"/><rect x="70" y="42" width="9" height="14" rx="4" fill="#1f2a4a"/>
-<path d="M22 54 Q24 66 36 66" stroke="#1f2a4a" stroke-width="2.4" fill="none"/><circle cx="37" cy="66" r="3" fill="#ff9a3c"/>
-</svg>`
-  }
+  if (who === 'genbu') return genbuSvg()
+  if (who === 'ruri') return ruriSvg()
   if (who === 'kurozume') {
     return `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <path d="M10 96 Q14 72 48 68 Q82 72 86 96 Z" fill="#2a2a30"/>

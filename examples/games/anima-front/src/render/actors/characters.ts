@@ -29,7 +29,12 @@ interface Actor {
   last: THREE.Vector3
   vel: THREE.Vector3
   hasLast: boolean
+  /** The one mesh allowed to cast a shadow (the largest part). */
+  shadow: THREE.Mesh | null
 }
+
+/** Characters farther than this from the shadow focus cast no shadow (they are a few pixels tall there). */
+const SHADOW_RANGE = 34
 
 const STILL: readonly number[] = [0, 0, 0]
 
@@ -81,6 +86,7 @@ export class Characters {
       })
       if (biggest) (biggest as THREE.Mesh).castShadow = true
       a = {
+        shadow: biggest,
         key,
         model,
         species,
@@ -125,6 +131,9 @@ export class Characters {
     if (a) a.hurt++
   }
 
+  /** Where the sun's shadow box is centred (set by the renderer each frame). */
+  readonly shadowFocus = new THREE.Vector3()
+
   update(view: View, me: string | undefined, dt: number) {
     this.frameId++
     const animDt = dt * this.animScale
@@ -136,6 +145,16 @@ export class Characters {
     for (const pr of view.props)
       if ((pr.kind === 'decoy' || pr.kind === 'leafDecoy') && pr.species) this.decoy(pr, view, myTeam, pvp, dt, animDt)
     for (const a of this.actors.values()) if (a.seen !== this.frameId) this.remove(a)
+    // One shadow draw per nearby character: parts added later (antiques, passives) never cast, far ones neither.
+    let i = 0
+    for (const a of this.actors.values()) {
+      const near = a.model.root.position.distanceToSquared(this.shadowFocus) < SHADOW_RANGE * SHADOW_RANGE
+      if (a.shadow) a.shadow.castShadow = near
+      if ((this.frameId + i++) % 30 === 0)
+        a.model.root.traverse((o) => {
+          if (o !== a.shadow) o.castShadow = false
+        })
+    }
   }
 
   private player(p: PlayerView, view: View, myTeam: TeamId | undefined, pvp: boolean, dt: number, animDt: number) {

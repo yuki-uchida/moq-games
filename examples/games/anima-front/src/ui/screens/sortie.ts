@@ -7,6 +7,7 @@ import { resolveLoadout } from '../../app/saves'
 import { SPECIES } from '../../data/species'
 import { h } from '../dom'
 import { hintBar, screenHead } from '../widgets'
+import { cleanRoom, randomRoom, validRoom } from '../../app/online'
 
 export function localChoice(ctx: AppContext): LocalChoice {
   const species = ctx.armory.species
@@ -118,24 +119,8 @@ export function createRoomScreen(ctx: AppContext, args: { selection: MatchSelect
     const lobby = ctx.lobbies.solo(sel, localChoice(ctx))
     ctx.open('lobby', { selection: sel, lobby })
   }
-  const hostRoom = async () => {
-    try {
-      const lobby = await ctx.lobbies.host(sel, localChoice(ctx))
-      ctx.open('lobby', { selection: sel, lobby })
-    } catch (err) {
-      ctx.toast(err instanceof Error ? err.message : 'ルームを作れませんでした', 'error')
-    }
-  }
-  const joinRoom = async () => {
-    const code = window.prompt?.('ルームコードを入力してください') ?? ''
-    if (!code.trim()) return
-    try {
-      const lobby = await ctx.lobbies.join(code.trim(), localChoice(ctx))
-      ctx.open('lobby', { selection: lobby.state().selection, lobby })
-    } catch (err) {
-      ctx.toast(err instanceof Error ? err.message : 'ルームに参加できませんでした', 'error')
-    }
-  }
+  const hostRoom = () => openRoomDialog(ctx, el, 'host', sel)
+  const joinRoom = () => openRoomDialog(ctx, el, 'join', sel)
   const label = sel.mode === 'pve' ? MODE_LABELS.pve : MODE_LABELS.pvp
   const el = h(
     'div',
@@ -153,9 +138,9 @@ export function createRoomScreen(ctx: AppContext, args: { selection: MatchSelect
           'ルームを作る',
           sel.mode === 'pve' ? '最大4人の小隊を集めます。ルームコードを仲間に共有。' : '最大12人で演習します。',
           host,
-          () => void hostRoom()
+          hostRoom
         ),
-        option('join', 'ルームに参加', '仲間から聞いたルームコードで参加します。', join, () => void joinRoom())
+        option('join', 'ルームに参加', '仲間から聞いたルームコードで参加します。', join, joinRoom)
       )
     ),
     hintBar([
@@ -164,6 +149,143 @@ export function createRoomScreen(ctx: AppContext, args: { selection: MatchSelect
     ])
   )
   return { id: 'room', el, music: 'menu', back }
+}
+
+/**
+ * The room-code dialog of ルームを作る / ルームに参加: a friendly random code (editable) or the code a friend
+ * shared, validated as it is typed; connecting shows progress and Japanese errors (relay unreachable, room not
+ * found). Closing it while connecting leaves the room once the connection settles.
+ */
+function openRoomDialog(ctx: AppContext, screen: HTMLElement, kind: 'host' | 'join', sel: MatchSelection) {
+  let busy = false
+  let closed = false
+  const input = h('input', {
+    class: 'room-code-input',
+    attrs: {
+      type: 'text',
+      maxlength: 32,
+      autocomplete: 'off',
+      autocapitalize: 'off',
+      spellcheck: 'false',
+      inputmode: 'latin',
+      'aria-label': 'ルームコード',
+      'data-autofocus': true,
+      placeholder: kind === 'host' ? 'sakura-1234' : 'ルームコード'
+    },
+    style: {
+      width: '100%',
+      'box-sizing': 'border-box',
+      padding: '12px 14px',
+      'border-radius': '12px',
+      border: '1px solid var(--line)',
+      background: 'rgba(8, 14, 32, 0.7)',
+      'font-size': '20px',
+      'letter-spacing': '0.08em',
+      'margin-bottom': '10px'
+    },
+    on: {
+      input: () => validate(false),
+      keydown: (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          void submit()
+        }
+      }
+    }
+  })
+  if (kind === 'host') input.value = randomRoom()
+  const note = h('p', { class: 'room-dialog-note', attrs: { role: 'alert', 'aria-live': 'polite' } })
+  const go = h(
+    'button',
+    { class: 'btn btn-primary', attrs: { type: 'button', 'data-room-go': kind }, on: { click: () => void submit() } },
+    kind === 'host' ? 'ルームを作る' : '参加する'
+  )
+  const cancel = h(
+    'button',
+    { class: 'btn', attrs: { type: 'button', 'data-sfx': 'uiBack' }, on: { click: () => close() } },
+    'もどる'
+  )
+  const veil = h(
+    'div',
+    { class: 'modal-veil room-dialog', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'ルームコード' } },
+    h(
+      'div',
+      'panel modal',
+      h('h2', null, kind === 'host' ? 'ルームを作る' : 'ルームに参加'),
+      h(
+        'p',
+        null,
+        kind === 'host'
+          ? 'このルームコードを仲間に伝えてください。好きなコードに書きかえても構いません。'
+          : '仲間から聞いたルームコードを入力してください。'
+      ),
+      input,
+      note,
+      h('div', 'row', cancel, go)
+    )
+  )
+  ;(veil as HTMLElement & { __close?: () => void }).__close = () => close()
+  const setNote = (text: string, error = false) => {
+    note.textContent = text
+    note.style.setProperty('color', error ? 'var(--danger, #ff7a7a)' : 'var(--text-2)')
+  }
+  function validate(final: boolean): string | null {
+    const code = cleanRoom(input.value)
+    if (final && code !== input.value) input.value = code
+    if (!code) {
+      if (final) setNote('ルームコードを入力してください', true)
+      return null
+    }
+    if (!validRoom(code)) {
+      setNote('英小文字・数字・ハイフンで3〜32文字にしてください', true)
+      return null
+    }
+    setNote(final ? '' : `ルームコード：${code}`)
+    return code
+  }
+  function close() {
+    closed = true
+    veil.remove()
+    screen.querySelector<HTMLElement>(`[data-room="${kind}"]`)?.focus()
+  }
+  async function submit() {
+    if (busy) return
+    const code = validate(true)
+    if (!code) {
+      ctx.sfx('uiError')
+      return
+    }
+    busy = true
+    go.setAttribute('disabled', '')
+    input.setAttribute('disabled', '')
+    setNote(kind === 'host' ? 'リレーに接続しています…' : 'ルームをさがしています…')
+    try {
+      const lobby =
+        kind === 'host'
+          ? await ctx.lobbies.host(sel, localChoice(ctx), code)
+          : await ctx.lobbies.join(code, localChoice(ctx))
+      if (closed) {
+        lobby.leave()
+        return
+      }
+      veil.remove()
+      ctx.open('lobby', { selection: lobby.state().selection, lobby })
+    } catch (err) {
+      if (closed) return
+      ctx.sfx('uiError')
+      setNote(err instanceof Error ? err.message : 'ルームに接続できませんでした', true)
+      busy = false
+      go.removeAttribute('disabled')
+      input.removeAttribute('disabled')
+      input.focus()
+    }
+  }
+  screen.append(veil)
+  setNote(kind === 'host' ? '' : '例：sakura-1234')
+  requestAnimationFrame(() => {
+    input.focus()
+    input.select()
+  })
 }
 
 export function createTrainingScreen(ctx: AppContext): Screen {

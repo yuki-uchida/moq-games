@@ -1520,13 +1520,30 @@ button.room-card:hover,
   }
 }
 .res-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.res-main {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  min-width: 0;
+}
+/* the squad stands on the plaza behind this empty column; the MVP plate sits under the spotlight */
+.res-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 240px;
+  pointer-events: none;
 }
 .res-top {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .res-top > .panel {
@@ -1535,22 +1552,53 @@ button.room-card:hover,
 .res-rank {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 18px 24px;
+  gap: 22px;
+  padding: 16px 24px;
+  animation: panel-rise 520ms var(--ease) 150ms both;
+}
+.res-rank-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 112px;
+  padding: 6px 0 10px;
+  border-radius: 18px;
+  background: radial-gradient(70% 70% at 50% 50%, rgba(255, 255, 255, 0.06), transparent 70%);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.res-rank-slot small {
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  font-weight: 800;
+  color: var(--muted);
 }
 .res-rank-letter {
-  font-size: 92px;
+  font-size: 88px;
   font-weight: 900;
   line-height: 1;
-  width: 110px;
   text-align: center;
   text-shadow: 0 0 30px currentColor;
-  animation: rank-in 800ms var(--ease) 400ms both;
+  opacity: 0;
+  transform: scale(2.4) rotate(-12deg);
+}
+.res-rank-letter.is-in {
+  animation: rank-in 520ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 @keyframes rank-in {
   from {
     opacity: 0;
     transform: scale(2.4) rotate(-12deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
 }
 .res-rank-info {
@@ -1558,6 +1606,7 @@ button.room-card:hover,
   flex-direction: column;
   gap: 6px;
   align-items: flex-start;
+  min-width: 0;
 }
 .res-rank-info small {
   color: var(--muted);
@@ -1568,12 +1617,21 @@ button.room-card:hover,
   gap: 10px;
 }
 .res-score b {
-  font-size: 40px;
+  font-size: 42px;
   font-variant-numeric: tabular-nums;
+  min-width: 4ch;
 }
 .res-time {
   font-size: 13px;
   color: var(--text-2);
+}
+.res-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.res-chips:empty {
+  display: none;
 }
 .res-unlock {
   color: var(--ok);
@@ -1583,16 +1641,20 @@ button.room-card:hover,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 20px;
+  padding: 14px 18px;
 }
 .res-place {
   display: grid;
-  grid-template-columns: 52px 10px 1fr auto;
+  grid-template-columns: 52px 12px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 8px 14px 8px 10px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--team) 18%, transparent), rgba(255, 255, 255, 0.03) 70%);
+  animation: panel-rise 480ms var(--ease) calc(200ms + var(--i) * 140ms) both;
+}
+.res-place.place-1 {
+  padding-block: 12px;
 }
 .res-place.is-mine {
   box-shadow: inset 0 0 0 2px var(--team);
@@ -1600,32 +1662,103 @@ button.room-card:hover,
 .res-place-n {
   font-weight: 900;
   font-size: 20px;
+  text-align: center;
 }
-.res-place-bar {
-  height: 34px;
+.res-place.place-1 .res-place-n {
+  font-size: 26px;
+  color: #ffd76e;
+  text-shadow: 0 0 16px rgba(255, 215, 110, 0.6);
+}
+.res-place-flag {
+  align-self: stretch;
   border-radius: 5px;
   background-color: var(--team);
 }
-.res-place-score {
-  font-size: 28px;
-  font-weight: 900;
+.res-place-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.res-place-name b {
+  font-size: 17px;
+}
+.res-place-name small {
+  font-size: 11px;
+  font-weight: 800;
   color: var(--team);
 }
+.res-place-meter {
+  flex: 1 0 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.res-place-meter i {
+  display: block;
+  height: 100%;
+  width: var(--fill);
+  border-radius: inherit;
+  background: var(--team);
+  transform-origin: left;
+  animation: meter-in 900ms var(--ease) calc(400ms + var(--i) * 140ms) both;
+}
+@keyframes meter-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+.res-place-score {
+  font-size: 30px;
+  font-weight: 900;
+  color: var(--team);
+  font-variant-numeric: tabular-nums;
+}
+.res-place-score small {
+  font-size: 12px;
+  margin-left: 2px;
+  color: var(--text-2);
+}
 .res-mvp {
-  flex: 0 1 240px !important;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 16px;
-  text-align: center;
+  gap: 10px;
+  padding: 8px 18px 8px 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(60, 40, 8, 0.82), rgba(20, 22, 40, 0.82));
+  box-shadow:
+    0 0 0 2px #ffd76e,
+    0 10px 30px rgba(255, 190, 80, 0.25);
+  animation: panel-rise 520ms var(--ease) 900ms both;
 }
 .res-mvp small {
-  letter-spacing: 0.4em;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.05em;
   font-weight: 900;
+  font-size: 11px;
   color: #ffd76e;
 }
-.res-mvp span {
+.res-mvp-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.res-mvp-text b {
+  font-size: 17px;
+}
+.res-mvp-text b em {
+  font-style: normal;
+  font-size: 11px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #1a1206;
+  background: var(--anima-2);
+}
+.res-mvp-text span {
   font-size: 12px;
   color: var(--text-2);
 }
@@ -1700,8 +1833,33 @@ button.room-card:hover,
   padding-top: 12px;
 }
 .res-me {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
   color: var(--text-2);
   font-size: 13px;
+}
+.res-me b {
+  color: var(--anima-2);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+.res-table tbody tr {
+  animation: panel-rise 420ms var(--ease) calc(300ms + var(--i) * 70ms) both;
+}
+.res-table tr.is-mvp {
+  background: linear-gradient(90deg, rgba(255, 215, 110, 0.16), transparent 70%);
+}
+@media (max-width: 700px), (max-aspect-ratio: 1/1) {
+  .res-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .res-stage {
+    order: -1;
+    min-height: max(170px, 30vh);
+    flex: none;
+  }
 }
 
 /* ---- portrait phones and narrow screens ---- */

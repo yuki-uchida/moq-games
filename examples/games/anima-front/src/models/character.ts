@@ -1,37 +1,30 @@
 /**
- * CharacterModel: the skinned SDF body with outline, face parts on the head bone, antiques on the paws, passive
- * gear, looks (ARK / クロヅメ / hologram) and the procedural animator.
+ * CharacterModel: one skinned mesh for the body with its uniform parts, face lines, passive gear, クロヅメ scarf
+ * and ink outline (assembly.ts), one skinned mesh for both eyes, and the antiques on the paws — 4 draw calls
+ * with an antique in each paw. Looks (ARK / クロヅメ / team / hologram / cloak), the procedural animator, and a
+ * distance level of detail (the body and the antiques switch to lighter geometry beyond `LOD_DISTANCE`).
  */
 import * as THREE from 'three'
 import type { ItemId } from '../data/items'
-import type { CharacterModel, CharacterPose, ItemModel } from './api'
+import type { CharacterModel, CharacterPose, ItemModel, Quality } from './api'
 import { Animator } from './animation'
+import { EXTRA_BONES, type CharacterAssembly, type ExtraBone } from './assembly'
 import { GEAR_ITEMS, type GearId } from './gear'
-import {
-  createEyeMaterial,
-  createFlatMaterial,
-  createEyeUniforms,
-  createOutlineMaterial,
-  createToonMaterial,
-  createUniforms,
-  regionsOf
-} from './materials'
-import { buildRig, type BoneName } from './rig'
-import type { SpeciesAsset } from './species/asset'
-import type { BakedModel } from './sdf/geometry'
-import type { Vec3 } from './sdf/sculpt'
+import { hullDepthMaterial } from './hull'
+import { createEyeMaterial, createEyeUniforms, createToonMaterial, createUniforms } from './materials'
+import { buildRig } from './rig'
 
 /** Items created by the kit also expose their glow so the character can light them on swaps. */
 export interface KitItemModel extends ItemModel {
   setSwapGlow(amount: number): void
   setCloak(amount: number): void
+  /** 0 = full detail, 1 = distance level of detail. */
+  setLod(level: 0 | 1): void
 }
 
 export interface CharacterDeps {
   item(id: ItemId): KitItemModel
-  gear(id: GearId): BakedModel
-  scarf(): BakedModel
-  happyEye(): THREE.BufferGeometry
+  assembly(): CharacterAssembly
 }
 
 const ARK_TRIM = 0xffc861
@@ -40,111 +33,84 @@ const ARK_GLOW = 0xff9a3c
 const KUROZUME_GLOW = 0xff4a3a
 const NAVY_LINEAR = new THREE.Color(0x27355f)
 const CHARCOAL = new THREE.Color(0x3c3b42)
+/** Camera distance (m) beyond which a character uses its light level of detail (hysteresis ±12 %). */
+export const LOD_DISTANCE: Record<Quality, number> = { low: 7, medium: 12, high: 20 }
+const HIDDEN = 1e-4
 
 let instanceSeed = 1
 
 export function createCharacterModel(
-  asset: SpeciesAsset,
-  options: { look?: 'ark' | 'kurozume'; outline?: boolean },
+  assembly: CharacterAssembly,
+  options: { look?: 'ark' | 'kurozume'; outline?: boolean; quality?: Quality },
   deps: CharacterDeps
 ): CharacterModel {
+  const asset = assembly.asset
   const H = asset.plan.H
+  const outlineOn = options.outline !== false
+  const lodDistance = LOD_DISTANCE[options.quality ?? asset.quality]
   const root = new THREE.Group()
   root.name = `character:${asset.id}`
   const rig = buildRig(asset.plan.layout)
   root.add(rig.root)
+  // Extra bones for blinks, brows, mouths, happy eyes and glider membranes.
+  const extra = {} as Record<ExtraBone, THREE.Bone>
+  for (const name of EXTRA_BONES) {
+    const b = assembly.binds[name]
+    const bone = new THREE.Bone()
+    bone.name = name
+    const parent = asset.plan.layout[b.parent]
+    bone.position.set(b.p[0] - parent[0], b.p[1] - parent[1], b.p[2] - parent[2])
+    bone.quaternion.copy(b.q)
+    rig.byName[b.parent].add(bone)
+    extra[name] = bone
+  }
+  rig.root.updateMatrixWorld(true)
+  const skeleton = new THREE.Skeleton([...rig.bones, ...EXTRA_BONES.map((n) => extra[n])])
+
   const u = createUniforms()
-  const material = createToonMaterial(u, {
-    texture: asset.regionTexture,
-    count: asset.regions.count,
-    shapeBase: asset.regions.shapeBase
-  })
-  // Rigid uniform parts share the uniforms but have their own paint regions.
-  const partMaterials = asset.parts.map((p) => createToonMaterial(u, regionsOf(p.model)))
-  const body = new THREE.SkinnedMesh(asset.body, material)
+  u.uOutline.value = 0.0055 * H
+  const material = createToonMaterial(
+    u,
+    { texture: assembly.texture, count: assembly.table.count, shapeBase: assembly.table.shapeBase },
+    { hull: outlineOn, merged: true }
+  )
+  let gearSet: GearId[] = []
+  let gearKey = ''
+  let lod: 0 | 1 = 0
+  let look: 'ark' | 'kurozume' = options.look ?? 'ark'
+  const bodyGeometry = () => assembly.body(gearSet, look === 'kurozume', lod, outlineOn).geometry
+  const body = new THREE.SkinnedMesh(bodyGeometry(), material)
   body.name = 'body'
   root.add(body)
-  body.bind(rig.skeleton)
+  body.bind(skeleton)
   body.castShadow = true
   body.receiveShadow = true
+  body.customDepthMaterial = hullDepthMaterial()
   body.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, H * 0.55, 0), H * 1.3)
-  const outlineMat = createOutlineMaterial(u)
-  u.uOutline.value = 0.0055 * H
-  let outline: THREE.SkinnedMesh | null = null
-  const partOutlines: THREE.Mesh[] = []
-  if (options.outline !== false) {
-    outline = new THREE.SkinnedMesh(asset.body, outlineMat)
-    outline.name = 'outline'
-    root.add(outline)
-    outline.bind(rig.skeleton, body.bindMatrix)
-    outline.boundingSphere = body.boundingSphere
+  // Level of detail: the camera distance of the last rendered frame picks the geometry of the next one.
+  let camDist = 0
+  const camPos = new THREE.Vector3()
+  const selfPos = new THREE.Vector3()
+  const measure = (camera: THREE.Camera) => {
+    camPos.setFromMatrixPosition(camera.matrixWorld)
+    selfPos.setFromMatrixPosition(body.matrixWorld)
+    camDist = camPos.distanceTo(selfPos)
   }
-  asset.parts.forEach((part, pi) => {
-    const b = asset.plan.layout[part.bone]
-    const mesh = new THREE.Mesh(part.model.geometry, partMaterials[pi])
-    mesh.position.set(-b[0], -b[1], -b[2])
-    mesh.castShadow = true
-    rig.byName[part.bone].add(mesh)
-    if (outline) {
-      const ol = new THREE.Mesh(part.model.geometry, outlineMat)
-      ol.position.copy(mesh.position)
-      rig.byName[part.bone].add(ol)
-      partOutlines.push(ol)
-    }
-  })
-  const bindPos = (name: BoneName) => asset.plan.layout[name]
-  const attach = (bone: BoneName, obj: THREE.Object3D, p: Vec3) => {
-    const b = bindPos(bone)
-    obj.position.set(p[0] - b[0], p[1] - b[1], p[2] - b[2])
-    rig.byName[bone].add(obj)
-  }
+  body.onBeforeRender = (_r, _s, camera) => measure(camera)
+  // Shadow passes get the main camera too (characters outside the view still cast shadows).
+  body.onBeforeShadow = (_r, _o, camera) => measure(camera)
 
-  // ------------------------------------------------------------------------------------------------ face
+  // ------------------------------------------------------------------------------------------------ eyes
   const eu = createEyeUniforms(asset.face.iris, asset.face.irisDark, asset.face.pupil)
-  const eyeMat = createEyeMaterial(eu)
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0x2a1c24 })
-  const eyes: THREE.Mesh[] = []
-  const happyEyes: THREE.Mesh[] = []
-  const eyeScale: THREE.Vector3[] = []
-  for (const pl of asset.layout.eyes) {
-    const eye = new THREE.Mesh(asset.eye, eyeMat)
-    eye.quaternion.set(pl.q[0], pl.q[1], pl.q[2], pl.q[3])
-    eyeScale.push(new THREE.Vector3(pl.s[0], pl.s[1], pl.s[2]))
-    eye.scale.copy(eyeScale[eyeScale.length - 1])
-    attach('head', eye, pl.p)
-    eyes.push(eye)
-    const happy = new THREE.Mesh(deps.happyEye(), lineMat)
-    happy.quaternion.copy(eye.quaternion)
-    attach('head', happy, [pl.p[0], pl.p[1], pl.p[2]])
-    happy.position.add(new THREE.Vector3(0, 0, pl.s[2] * 0.55).applyQuaternion(eye.quaternion))
-    happy.scale.setScalar(pl.s[0] / (0.05 * 1.2))
-    happy.visible = false
-    happyEyes.push(happy)
-  }
-  const browMat = new THREE.MeshBasicMaterial({ color: asset.face.brow })
-  const brows: THREE.Mesh[] = []
-  const browBase: THREE.Quaternion[] = []
-  const browPos: THREE.Vector3[] = []
-  for (const pl of asset.layout.brows) {
-    const brow = new THREE.Mesh(asset.brow, browMat)
-    const q = new THREE.Quaternion(pl.q[0], pl.q[1], pl.q[2], pl.q[3])
-    brow.quaternion.copy(q)
-    attach('head', brow, pl.p)
-    browBase.push(q)
-    browPos.push(brow.position.clone())
-    brows.push(brow)
-  }
-  const mouthMat = createFlatMaterial()
-  const mouthClosed = new THREE.Mesh(asset.mouthClosed, mouthMat)
-  const mouthOpen = new THREE.Mesh(asset.mouthOpen, mouthMat)
-  for (const m of [mouthClosed, mouthOpen]) {
-    const pl = asset.layout.mouth
-    m.quaternion.set(pl.q[0], pl.q[1], pl.q[2], pl.q[3])
-    attach('head', m, pl.p)
-  }
+  const eyeMat = createEyeMaterial(eu, { skinned: true })
+  const eyes = new THREE.SkinnedMesh(assembly.eyes(0), eyeMat)
+  eyes.name = 'eyes'
+  root.add(eyes)
+  eyes.bind(skeleton, body.bindMatrix)
+  eyes.boundingSphere = body.boundingSphere
+  const browBase = [extra.browL.quaternion.clone(), extra.browR.quaternion.clone()]
+  const browPos = [extra.browL.position.clone(), extra.browR.position.clone()]
   const beaked = asset.face.mouth === 'beak'
-  mouthOpen.visible = false
-  mouthClosed.visible = !beaked
 
   // ------------------------------------------------------------------------------------------------ hands
   const itemScale = Math.min(Math.max(H / 1.2, 0.82), 1.25)
@@ -159,116 +125,21 @@ export function createCharacterModel(
   }
   const held: (KitItemModel | null)[] = [null, null]
 
-  // ------------------------------------------------------------------------------------------------ gear
-  const gearU = createUniforms()
-  gearU.uGlowColor.value.setHex(0xffffff)
-  gearU.uGlow.value = 0.4
-  gearU.uOutline.value = u.uOutline.value
-  const gearMats: THREE.MeshToonMaterial[] = []
-  const gearMatFor = (model: BakedModel) => {
-    const m = createToonMaterial(gearU, regionsOf(model))
-    gearMats.push(m)
-    return m
-  }
-  const gearOutline = createOutlineMaterial(gearU)
-  const gearScale = H / 1.2
-  const gear = new Map<string, THREE.Object3D>()
-  const membranes: THREE.Object3D[] = []
-  const back = asset.back
-  const backQ = new THREE.Quaternion().setFromUnitVectors(
-    new THREE.Vector3(0, 0, 1),
-    new THREE.Vector3(back.n[0], 0, back.n[2]).normalize()
-  )
-  const makeGear = (id: GearId) => {
-    const model = deps.gear(id)
-    const geo = model.geometry
-    const group = new THREE.Group()
-    const mesh = new THREE.Mesh(geo, gearMatFor(model))
-    mesh.castShadow = true
-    group.add(mesh)
-    if (options.outline !== false) group.add(new THREE.Mesh(geo, gearOutline))
-    group.scale.setScalar(gearScale)
-    return group
-  }
-  const placeGear = (id: string) => {
-    if (gear.has(id)) return
-    if (id === 'turtle') {
-      const g = makeGear('turtle')
-      g.quaternion.copy(backQ)
-      attach('chest', g, [back.p[0], back.p[1] + 0.01 * H, back.p[2] - 0.005 * H])
-      gear.set(id, g)
-    } else if (id === 'hedgehog') {
-      const g = makeGear('hedgehog')
-      g.quaternion.copy(backQ)
-      const lift = gear.has('turtle') ? 0.06 * H : 0
-      attach('chest', g, [back.p[0], back.p[1] + 0.02 * H, back.p[2] - lift])
-      gear.set(id, g)
-    } else if (id === 'momonga') {
-      const g = makeGear('momonga')
-      g.quaternion.copy(backQ)
-      const out = gear.has('turtle') || gear.has('hedgehog') ? 0.07 * H : 0
-      attach('chest', g, [back.p[0], back.p[1] - 0.09 * H, back.p[2] - out])
-      gear.set(id, g)
-      for (const S of ['L', 'R'] as const) {
-        const m = makeGear('membrane')
-        const side = S === 'L' ? 1 : -1
-        // The sail runs along the arm (shoulder → wrist) and spreads inwards to the flank; the right one is
-        // mirrored by flipping its width axis.
-        const sh = asset.plan.layout[`upperArm${S}`]
-        const wr = asset.plan.layout[`paw${S}`]
-        m.rotation.z = Math.atan2(wr[1] - sh[1], wr[0] - sh[0])
-        m.userData.flip = side
-        m.scale.set(gearScale, gearScale * side, gearScale)
-        // Start a third of the way down the arm so the sail shows past the shoulder blend.
-        const k = 0.35
-        attach(`upperArm${S}`, m, [
-          sh[0] + (wr[0] - sh[0]) * k,
-          sh[1] + (wr[1] - sh[1]) * k,
-          sh[2] + (wr[2] - sh[2]) * k - 0.012 * H
-        ])
-        m.visible = false
-        membranes.push(m)
-      }
-    } else if (id === 'jelly') {
-      const g = makeGear('jelly')
-      const p = asset.beltSide
-      attach('hips', g, [p[0] + 0.01 * H, p[1] - 0.02 * H, p[2] + 0.02 * H])
-      gear.set(id, g)
-    }
-  }
-  const clearGear = () => {
-    for (const g of gear.values()) g.removeFromParent()
-    for (const m of membranes) m.removeFromParent()
-    gear.clear()
-    membranes.length = 0
-  }
-
-  // ------------------------------------------------------------------------------------------------ scarf
-  let scarf: THREE.Group | null = null
-  const ensureScarf = () => {
-    if (scarf) return scarf
-    const model = deps.scarf()
-    const geo = model.geometry
-    scarf = new THREE.Group()
-    scarf.add(new THREE.Mesh(geo, gearMatFor(model)))
-    if (options.outline !== false) scarf.add(new THREE.Mesh(geo, gearOutline))
-    attach('chest', scarf, [0, 0, 0])
-    scarf.position.copy(new THREE.Vector3().fromArray(asset.plan.layout.chest).negate())
-    return scarf
-  }
-
   // ------------------------------------------------------------------------------------------------ state
   const anim = new Animator(rig, asset.plan, asset.id, instanceSeed++ * 7919, [
     new THREE.Vector3(...asset.grip[0]),
     new THREE.Vector3(...asset.grip[1])
   ])
-  let look: 'ark' | 'kurozume' = options.look ?? 'ark'
   let team: number | null = null
   let pattern: 0 | 1 | 2 | null = null
   let anima = 1
   let cloak = 0
   let holo = false
 
+  const refreshGeometry = () => {
+    const g = bodyGeometry()
+    if (body.geometry !== g) body.geometry = g
+  }
   const applyLook = () => {
     const kuro = look === 'kurozume'
     if (kuro)
@@ -279,23 +150,18 @@ export function createCharacterModel(
     u.uTeamOn.value = team === null ? 0 : 1
     if (team !== null) u.uTeam.value.setHex(team)
     u.uPattern.value = pattern ?? 0
-    if (kuro) ensureScarf().visible = true
-    else if (scarf) scarf.visible = false
+    refreshGeometry()
   }
   const applyTransparency = () => {
     const transparent = holo || cloak > 0.001
-    for (const m of [material, ...partMaterials, ...gearMats, eyeMat, browMat, mouthMat]) {
+    for (const m of [material, eyeMat]) {
       if (m.transparent !== transparent) {
         m.transparent = transparent
         m.needsUpdate = true
       }
       m.depthWrite = !holo
     }
-    browMat.opacity = mouthMat.opacity = 1 - cloak * 0.95
-    const showOutline = !holo && cloak < 0.35
-    if (outline) outline.visible = showOutline
-    for (const ol of partOutlines) ol.visible = showOutline
-    gearOutline.visible = showOutline
+    u.uHullOn.value = !holo && cloak < 0.35 ? 1 : 0
   }
   applyLook()
 
@@ -310,10 +176,13 @@ export function createCharacterModel(
     if (id) {
       const item = deps.item(id)
       item.root.scale.setScalar(itemScale)
+      item.setLod(lod)
+      if (cloak > 0) item.setCloak(cloak)
       grips[h].add(item.root)
       held[h] = item
     }
   }
+  const hide = (b: THREE.Bone, shown: boolean, s = 1) => b.scale.setScalar(shown ? s : HIDDEN)
 
   const tmpV = new THREE.Vector3()
   const model: CharacterModel = {
@@ -322,30 +191,36 @@ export function createCharacterModel(
     update(dt: number, pose: CharacterPose) {
       u.uTime.value += dt
       eu.uTime.value = u.uTime.value
+      // Level of detail with hysteresis.
+      const want: 0 | 1 = camDist > lodDistance * (lod === 1 ? 0.88 : 1.12) ? 1 : 0
+      if (want !== lod && camDist > 0) {
+        lod = want
+        refreshGeometry()
+        eyes.geometry = assembly.eyes(lod)
+        for (const item of held) item?.setLod(lod)
+      }
       setItem(0, pose.hands[0].item)
       setItem(1, pose.hands[1].item)
       anim.update(dt, pose)
       // Face.
       const F = anim.face
       const happy = F.happy > 0.5
+      const open = 1 - 0.92 * F.blink
       for (let i = 0; i < 2; i++) {
-        const s = eyeScale[i]
-        const open = 1 - 0.92 * F.blink
-        eyes[i].scale.set(s.x, s.y * Math.max(open, 0.05), s.z)
-        eyes[i].visible = !happy
-        happyEyes[i].visible = happy
+        const eye = i === 0 ? extra.eyeL : extra.eyeR
+        if (happy) eye.scale.setScalar(HIDDEN)
+        else eye.scale.set(1, Math.max(open, 0.05), 1)
+        hide(i === 0 ? extra.happyL : extra.happyR, happy)
         const side = i === 0 ? 1 : -1
-        const rot = F.brow * 0.42 * side
-        brows[i].quaternion.copy(browBase[i]).multiply(tmpQ.setFromAxisAngle(Z_AXIS, rot))
-        brows[i].position
+        const brow = i === 0 ? extra.browL : extra.browR
+        brow.quaternion.copy(browBase[i]).multiply(tmpQ.setFromAxisAngle(Z_AXIS, F.brow * 0.42 * side))
+        brow.position
           .copy(browPos[i])
           .add(tmpV.set(0, (F.browUp * 0.018 - Math.max(F.brow, 0) * 0.008) * H, 0).applyQuaternion(browBase[i]))
       }
-      const open = F.mouth > 0.35
-      mouthOpen.visible = open
-      mouthOpen.scale.setScalar(0.5 + 0.5 * Math.min(1, F.mouth))
-      mouthClosed.visible = !open && !beaked
-      if (beaked) mouthOpen.visible = open && F.mouth > 0.6
+      const mouthOpen = F.mouth > 0.35
+      hide(extra.mouthOpen, beaked ? mouthOpen && F.mouth > 0.6 : mouthOpen, 0.5 + 0.5 * Math.min(1, F.mouth))
+      hide(extra.mouthClosed, !mouthOpen && !beaked)
       // Antiques in the paws.
       for (const h of [0, 1] as const) {
         const item = held[h]
@@ -356,11 +231,10 @@ export function createCharacterModel(
         item.setSwapGlow(hv.glow)
         item.update(dt, pose.hands[h].act, pose.hands[h].charge)
       }
-      for (const m of membranes) {
-        const g = anim.glide
-        m.visible = g > 0.02
-        m.scale.set(gearScale * (0.55 + 0.45 * g), gearScale * g * m.userData.flip, gearScale)
-      }
+      const g = anim.glide
+      for (const m of [extra.membraneL, extra.membraneR])
+        if (g > 0.02) m.scale.set(0.55 + 0.45 * g, g, 1)
+        else m.scale.setScalar(HIDDEN)
       u.uGlow.value = (0.2 + 1.9 * anima) * anim.core * (holo ? 0.5 : 1)
     },
     muzzle(hand: 0 | 1, out: THREE.Vector3) {
@@ -387,19 +261,19 @@ export function createCharacterModel(
       applyLook()
     },
     setPassives(passives: ItemId[], online: boolean) {
-      const wanted = GEAR_ITEMS.filter((id) => passives.includes(id))
-      const have = [...gear.keys()]
-      if (wanted.length !== have.length || wanted.some((id) => !gear.has(id))) {
-        clearGear()
-        for (const id of wanted) placeGear(id)
+      const wanted = GEAR_ITEMS.filter((id) => passives.includes(id)) as GearId[]
+      const key = wanted.join(',')
+      if (key !== gearKey) {
+        gearKey = key
+        gearSet = wanted
+        refreshGeometry()
       }
-      gearU.uDim.value = online ? 0 : 1
-      gearU.uGlow.value = online ? 0.45 : 0
+      u.uGearDim.value = online ? 0 : 1
+      u.uGearGlow.value = online ? 0.45 : 0
     },
     setCloak(amount: number) {
       cloak = Math.min(Math.max(amount, 0), 1)
       u.uCloak.value = cloak
-      gearU.uCloak.value = cloak
       eu.uCloak.value = cloak
       for (const item of held) item?.setCloak(cloak)
       applyTransparency()
@@ -407,7 +281,6 @@ export function createCharacterModel(
     setFlash(amount: number) {
       const a = Math.min(Math.max(amount, 0), 1)
       u.uFlash.value = a
-      gearU.uFlash.value = a
       eu.uFlash.value = a
     },
     setAnima(fraction: number) {
@@ -415,25 +288,14 @@ export function createCharacterModel(
     },
     setHologram(on: boolean) {
       holo = on
-      u.uHolo.value = gearU.uHolo.value = eu.uHolo.value = on ? 1 : 0
+      u.uHolo.value = eu.uHolo.value = on ? 1 : 0
       applyTransparency()
     },
     dispose() {
       for (const h of [0, 1] as const) setItem(h, null)
-      clearGear()
-      for (const m of [
-        material,
-        ...partMaterials,
-        outlineMat,
-        eyeMat,
-        lineMat,
-        browMat,
-        mouthMat,
-        ...gearMats,
-        gearOutline
-      ])
-        m.dispose()
-      rig.skeleton.dispose()
+      material.dispose()
+      eyeMat.dispose()
+      skeleton.dispose()
       root.removeFromParent()
     }
   }

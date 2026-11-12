@@ -5,7 +5,8 @@
  * MeshToon/MeshBasic materials patched in onBeforeCompile, so they work with three's lights, fog and skinning.
  */
 import * as THREE from 'three'
-import { REGION_GLSL } from './sdf/regions'
+import { HULL_FRAGMENT_PARS, HULL_VERTEX_CLIP, HULL_VERTEX_EXTRUDE, HULL_VERTEX_PARS } from './hull'
+import { REGION_GLSL, REGION_RANGE_GLSL } from './sdf/regions'
 
 export interface AnimaUniforms {
   uTeam: { value: THREE.Color }
@@ -27,6 +28,12 @@ export interface AnimaUniforms {
   uRim: { value: number }
   uRimColor: { value: THREE.Color }
   uOutline: { value: number }
+  /** Single-draw outline hull on/off and its ink colour (merged meshes, see hull.ts). */
+  uHullOn: { value: number }
+  uOutlineColor: { value: THREE.Color }
+  /** Passive gear merged into the body: its white glow and offline dimming. */
+  uGearGlow: { value: number }
+  uGearDim: { value: number }
 }
 
 export function createUniforms(): AnimaUniforms {
@@ -47,7 +54,11 @@ export function createUniforms(): AnimaUniforms {
     uTime: { value: 0 },
     uRim: { value: 0.35 },
     uRimColor: { value: new THREE.Color(0xfff2e0) },
-    uOutline: { value: 0.006 }
+    uOutline: { value: 0.006 },
+    uHullOn: { value: 1 },
+    uOutlineColor: { value: new THREE.Color(0x3a2a32) },
+    uGearGlow: { value: 0.45 },
+    uGearDim: { value: 0 }
   }
 }
 
@@ -110,6 +121,23 @@ varying vec4 vMark;
 varying vec3 vBind;
 varying float vAO;
 varying vec4 vFilter;
+#ifdef USE_MERGED
+attribute vec4 pinfo;
+attribute vec3 rpos;
+varying vec4 vInfo;
+varying vec3 vRegP;
+#endif
+${HULL_VERTEX_PARS}
+`
+
+/** Merged pieces: per-vertex region range [x, y), flags z (1 = gear, 2 = unlit), piece-local region position. */
+const MERGED_FRAGMENT_PARS = /* glsl */ `
+#ifdef USE_MERGED
+varying vec4 vInfo;
+varying vec3 vRegP;
+#endif
+uniform float uGearGlow;
+uniform float uGearDim;
 `
 
 /** Shader paint regions of one model (see sdf/regions.ts); null = none. */
@@ -135,8 +163,16 @@ export const regionsOf = (b: {
  * Body/antique material. `regions` are the model's shader-drawn markings (bind-pose space); meshes sharing the
  * uniforms but not the regions (rigid parts, gear) get their own material instance without them.
  */
-export function createToonMaterial(u: AnimaUniforms, regions: RegionUniforms | null = null): THREE.MeshToonMaterial {
+export function createToonMaterial(
+  u: AnimaUniforms,
+  regions: RegionUniforms | null = null,
+  opts: { hull?: boolean; merged?: boolean } = {}
+): THREE.MeshToonMaterial {
   const m = new THREE.MeshToonMaterial({ vertexColors: true, color: 0xffffff })
+  const defines: Record<string, string> = {}
+  if (opts.hull) defines.USE_HULL = ''
+  if (opts.merged) defines.USE_MERGED = ''
+  ;(m as unknown as { defines: Record<string, string> }).defines = defines
   emptyRegions ??= new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType)
   const ru = {
     uRegions: { value: regions?.texture ?? emptyRegions },
@@ -149,15 +185,29 @@ export function createToonMaterial(u: AnimaUniforms, regions: RegionUniforms | n
       .replace('#include <common>', `#include <common>\n${TOON_VERTEX_PARS}`)
       .replace(
         '#include <color_vertex>',
-        '#include <color_vertex>\n\tvMask = animaMask;\n\tvMark = markColor;\n\tvBind = position;\n\tvAO = ao;\n\tvFilter = regionFilter;'
+        '#include <color_vertex>\n\tvMask = animaMask;\n\tvMark = markColor;\n\tvBind = position;\n\tvAO = ao;\n\tvFilter = regionFilter;\n#ifdef USE_MERGED\n\tvInfo = pinfo;\n\tvRegP = rpos;\n#endif'
       )
+      .replace('#include <skinning_vertex>', `#include <skinning_vertex>\n${HULL_VERTEX_EXTRUDE}`)
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${HULL_VERTEX_CLIP}`)
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <gradientmap_pars_fragment>', `${TOON_PARS}${REGION_GLSL}varying float vAO;\n`)
+      .replace(
+        '#include <gradientmap_pars_fragment>',
+        `${TOON_PARS}${REGION_GLSL}${REGION_RANGE_GLSL}${MERGED_FRAGMENT_PARS}${HULL_FRAGMENT_PARS}varying float vAO;\n`
+      )
       .replace(
         '#include <color_fragment>',
         /* glsl */ `vec4 animaMsk = vec4(crisp(vMask.x), crisp(vMask.y), crisp(vMask.z), crisp(vMask.w));
   vec3 paintCol = mix(vColor, vMark.rgb, crisp(vMark.a));
-  applyRegions(vBind, paintCol, animaMsk);
+  #ifdef USE_MERGED
+    applyRegionRange(vRegP, paintCol, animaMsk, int(vInfo.x + 0.5), int(vInfo.y + 0.5));
+    float pflags = floor(vInfo.z + 0.5);
+    float gearV = mod(pflags, 2.0);
+    float unlitV = step(1.5, mod(pflags, 4.0));
+  #else
+    applyRegions(vBind, paintCol, animaMsk);
+    float gearV = 0.0;
+    float unlitV = 0.0;
+  #endif
   diffuseColor.rgb *= paintCol * vAO;
   float trimW = animaMsk.x;
   if (trimW > 0.001) {
@@ -171,7 +221,7 @@ export function createToonMaterial(u: AnimaUniforms, regions: RegionUniforms | n
       .replace(
         '#include <emissivemap_fragment>',
         /* glsl */ `#include <emissivemap_fragment>
-  totalEmissiveRadiance += uGlowColor * (uGlow * animaMsk.y) + uGlow2Color * (uGlow2 * animaMsk.w);`
+  totalEmissiveRadiance += mix(uGlowColor * uGlow, vec3(uGearGlow), gearV) * animaMsk.y + uGlow2Color * (uGlow2 * animaMsk.w);`
       )
       .replace(
         '#include <opaque_fragment>',
@@ -180,8 +230,12 @@ export function createToonMaterial(u: AnimaUniforms, regions: RegionUniforms | n
     float ndv = clamp(dot(normal, V), 0.0, 1.0);
     float rim = smoothstep(0.5, 1.0, 1.0 - ndv);
     outgoingLight += uRimColor * (rim * uRim) * (0.35 + 0.65 * diffuseColor.rgb);
+    if (unlitV > 0.5) outgoingLight = diffuseColor.rgb;
     float grey = dot(outgoingLight, vec3(0.299, 0.587, 0.114));
-    outgoingLight = mix(outgoingLight, vec3(grey) * 0.55, uDim * 0.7);
+    outgoingLight = mix(outgoingLight, vec3(grey) * 0.55, max(uDim, gearV * uGearDim) * 0.7);
+    #ifdef USE_HULL
+      if (vHull > 0.5) outgoingLight = uOutlineColor * paintCol * 0.9 + vec3(0.02, 0.015, 0.03);
+    #endif
     outgoingLight = mix(outgoingLight, vec3(1.0, 0.98, 0.95), uFlash);
     if (uHolo > 0.5) {
       float scan = 0.6 + 0.4 * step(0.5, fract(vBind.y * 70.0 - uTime * 1.5));
@@ -198,7 +252,7 @@ export function createToonMaterial(u: AnimaUniforms, regions: RegionUniforms | n
   #include <opaque_fragment>`
       )
   }
-  m.customProgramCacheKey = () => 'anima-toon-2'
+  m.customProgramCacheKey = () => `anima-toon-3${opts.hull ? '-hull' : ''}${opts.merged ? '-merged' : ''}`
   return m
 }
 
@@ -265,11 +319,41 @@ export interface EyeUniforms {
  * Glossy chibi eye drawn in the fragment shader on a dome: dark rim, iris gradient (dark top, bright bottom),
  * big pupil and two highlights. The dome's local position (unit sphere, front = +Z) drives the pattern.
  */
-export function createEyeMaterial(e: EyeUniforms): THREE.ShaderMaterial {
+export function createEyeMaterial(
+  e: EyeUniforms,
+  opts: { skinned?: boolean; instanced?: boolean } = {}
+): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: { ...e },
     transparent: false,
-    vertexShader: /* glsl */ `
+    // Skinned: both eyes are one mesh on eye bones; the dome coordinates come from the `eyeLocal` attribute.
+    // Instanced: the same merged eyes drawn rigidly (statues, crowd rigs).
+    vertexShader: opts.instanced
+      ? /* glsl */ `
+      attribute vec3 eyeLocal;
+      varying vec3 vLocal;
+      void main() {
+        vLocal = eyeLocal;
+        vec4 p = vec4(position, 1.0);
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+        #endif
+        gl_Position = projectionMatrix * modelViewMatrix * p;
+      }`
+      : opts.skinned
+        ? /* glsl */ `
+      #include <common>
+      #include <skinning_pars_vertex>
+      attribute vec3 eyeLocal;
+      varying vec3 vLocal;
+      void main() {
+        vLocal = eyeLocal;
+        #include <skinbase_vertex>
+        #include <begin_vertex>
+        #include <skinning_vertex>
+        #include <project_vertex>
+      }`
+        : /* glsl */ `
       varying vec3 vLocal;
       void main() {
         vLocal = position;

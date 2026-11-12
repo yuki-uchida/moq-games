@@ -13,6 +13,26 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import type { ThemeDef } from '../env/themes'
 import type { QualityPreset } from './quality'
 
+/**
+ * Bloom blurs a pixel over a wide area, so a single NaN or ±Inf in the HDR scene (a degenerate normal, a sample
+ * past the half-float range in an MSAA resolve) would blacken the whole frame. The high-pass input is cleaned:
+ * NaN/Inf become 0 and bright values are capped well above the bloom threshold.
+ */
+const BLOOM_INPUT_CAP = 48.0
+export function sanitizeBloomInput(bloom: UnrealBloomPass): void {
+  const material = (bloom as unknown as { materialHighPassFilter?: THREE.ShaderMaterial }).materialHighPassFilter
+  if (!material) return
+  const from = 'vec4 texel = texture2D( tDiffuse, vUv );'
+  if (!material.fragmentShader.includes(from)) return
+  material.fragmentShader = material.fragmentShader.replace(
+    from,
+    `${from}
+			bvec3 bad = bvec3( isnan( texel.r ) || isinf( texel.r ), isnan( texel.g ) || isinf( texel.g ), isnan( texel.b ) || isinf( texel.b ) );
+			texel.rgb = mix( min( max( texel.rgb, vec3( 0.0 ) ), vec3( ${BLOOM_INPUT_CAP.toFixed(1)} ) ), vec3( 0.0 ), vec3( bad ) );`
+  )
+  material.needsUpdate = true
+}
+
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
@@ -45,6 +65,10 @@ const GradeShader = {
       float v = smoothstep(0.35, 1.15, length(p));
       col *= 1.0 - v * uVignette;
       col = mix(col, vec3(0.75, 0.08, 0.12), v * uHurt * 0.65);
+      // Triangular dither against 8-bit banding in sky and fog gradients.
+      float n1 = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      float n2 = fract(sin(dot(gl_FragCoord.xy, vec2(39.3468, 11.135))) * 24634.6345);
+      col += (n1 + n2 - 1.0) / 255.0;
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
     }
   `
@@ -78,6 +102,7 @@ export class PostChain {
     this.renderPass = new RenderPass(scene, camera)
     this.composer.addPass(this.renderPass)
     this.bloom = new UnrealBloomPass(new THREE.Vector2(this.width, this.height), 0.6, 0.5, 1.2)
+    sanitizeBloomInput(this.bloom)
     this.bloom.enabled = bloomOn
     this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())

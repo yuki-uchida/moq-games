@@ -6,6 +6,7 @@
  *   ?item=hippo&act=charge&charge=1&angle=35
  *   ?sheet=species|views|poses|items|held|looks|faces  (+ species=…, angle=…, pose=…)
  *   quality=low|medium|high, outline=0, holo=1, cloak=0.5, static=1, cell=WxH, bg=light|dark
+ *   foes, bosses, props and shots: see foes.ts, bosses.ts and props.ts
  * When everything is drawn, window.__review = { ready: true, stats, cells } (used by the screenshot script).
  */
 import * as THREE from 'three'
@@ -14,7 +15,11 @@ import { SPECIES, SPECIES_IDS, type SpeciesId } from '../data/species'
 import type { CharacterModel, ItemModel, Quality } from '../models/api'
 import { createModelKit } from '../models/index'
 import type { HandAct } from '../sim/types'
+import { bossCells } from './bosses'
+import { foeCells } from './foes'
 import { POSE_LABEL, POSE_TIME, POSES, poseAt, type PoseName } from './poses'
+import { propCells } from './props'
+import { fitCamera, stage, view, type Cell } from './stage'
 
 declare global {
   interface Window {
@@ -28,8 +33,15 @@ const quality = (q.get('quality') ?? 'medium') as Quality
 const sheet = q.get('sheet')
 const isStatic = q.get('static') === '1' || !!sheet
 const angleDeg = num('angle', sheet === 'items' ? 55 : 0)
-const [cellW, cellH] = (q.get('cell') ?? (sheet === 'items' ? '260x260' : '300x380')).split('x').map(Number)
+const [cellW, cellH] = (
+  q.get('cell') ?? (sheet === 'items' || sheet === 'shots' ? '260x260' : sheet === 'crowd' ? '1400x800' : '300x380')
+)
+  .split('x')
+  .map(Number)
 const dark = q.get('bg') === 'dark'
+view.cellW = cellW
+view.cellH = cellH
+view.dark = dark
 const TEAMS: [number, 0 | 1 | 2][] = [
   [0xe5484d, 0],
   [0x3e8ed0, 1],
@@ -39,49 +51,6 @@ const TEAMS: [number, 0 | 1 | 2][] = [
 const t0 = performance.now()
 if (q.get('nosimp') === '1') (globalThis as { __animaModelsDebug?: object }).__animaModelsDebug = { noSimplify: true }
 const kit = createModelKit({ quality })
-
-interface Cell {
-  scene: THREE.Scene
-  camera: THREE.PerspectiveCamera
-  label: string
-  sub?: string
-  step(dt: number): void
-}
-
-function stage(): THREE.Scene {
-  const scene = new THREE.Scene()
-  scene.add(new THREE.HemisphereLight(0xeef3ff, 0x8a7864, 1.25))
-  const sun = new THREE.DirectionalLight(0xfff0dc, 2.3)
-  sun.position.set(2.2, 4.2, 3.2)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(1024, 1024)
-  sun.shadow.camera.left = sun.shadow.camera.bottom = -1.6
-  sun.shadow.camera.right = sun.shadow.camera.top = 1.6
-  sun.shadow.bias = -0.0005
-  sun.shadow.normalBias = 0.02
-  scene.add(sun)
-  const fill = new THREE.DirectionalLight(0xc8dcff, 0.6)
-  fill.position.set(-3, 2, -2.5)
-  scene.add(fill)
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(1.5, 48),
-    new THREE.MeshStandardMaterial({ color: dark ? 0x3a4050 : 0xd8d0c4, roughness: 1 })
-  )
-  ground.rotation.x = -Math.PI / 2
-  ground.receiveShadow = true
-  scene.add(ground)
-  return scene
-}
-
-function fitCamera(height: number, centerY: number, extra = 1.12): THREE.PerspectiveCamera {
-  const camera = new THREE.PerspectiveCamera(26, cellW / cellH, 0.05, 60)
-  const fov = (camera.fov * Math.PI) / 180
-  const dist = ((height * extra) / 2 / Math.tan(fov / 2)) * Math.max(1, (cellH / cellW) * 0.75)
-  const el = 0.12
-  camera.position.set(0, centerY + Math.sin(el) * dist, Math.cos(el) * dist)
-  camera.lookAt(0, centerY, 0)
-  return camera
-}
 
 interface CharOpts {
   pose?: PoseName
@@ -159,6 +128,8 @@ const poseParam = (q.get('pose') ?? 'idle') as PoseName
 const ACTIVE = ITEM_IDS.filter((id) => ITEMS[id].active)
 
 function buildCells(): { cells: Cell[]; cols: number } {
+  const actors = foeCells(kit, sheet) ?? bossCells(kit, sheet) ?? propCells(kit, sheet)
+  if (actors) return actors
   const common = (): CharOpts => ({
     pose: poseParam,
     t: num('t', POSE_TIME[poseParam]),
@@ -346,6 +317,7 @@ if (isStatic) {
   })
   draw()
   window.__review = { ready: true, stats: kit.stats(), cells: cells.length, ms: performance.now() - t0 }
+  ;(window as unknown as { __cells: Cell[] }).__cells = cells
 } else {
   const panel = document.createElement('div')
   panel.className = 'panel'
@@ -396,4 +368,5 @@ if (isStatic) {
   }
   loop()
   window.__review = { ready: true, stats: kit.stats(), cells: cells.length, ms: performance.now() - t0 }
+  ;(window as unknown as { __cells: Cell[] }).__cells = cells
 }

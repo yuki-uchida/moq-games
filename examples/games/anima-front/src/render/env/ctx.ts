@@ -6,7 +6,7 @@ import type { GeoBuilder } from './geo'
 import type { ThemeDef } from './themes'
 
 /** Environment materials: one merged batch per material per chunk. */
-export const ENV_MATERIALS = ['atlas', 'foliage', 'cutout', 'glow', 'water', 'pool'] as const
+export const ENV_MATERIALS = ['atlas', 'foliage', 'cutout', 'glow', 'water', 'pool', 'far'] as const
 export type EnvMat = (typeof ENV_MATERIALS)[number]
 
 /** Materials whose batches cast shadows. */
@@ -37,6 +37,8 @@ export interface EnvCtx {
   /** Plants and moss (everything but the virtual arena). */
   overgrowth: boolean
   emit(e: Emitter): void
+  /** Records a soft visual volume (tree crown) the cinematic camera should not sit in or look through. */
+  canopy(c: V3, r: number): void
   /** True when another box covers (x, z) above height y (no grass through plazas, roads or buildings). */
   covered(x: number, z: number, y: number): boolean
 }

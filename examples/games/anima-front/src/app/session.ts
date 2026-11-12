@@ -4,6 +4,7 @@
  */
 import { createWorld, getMap, type World } from '../sim/api'
 import type { MapDef, MatchConfig, PlayerInput, View } from '../sim/types'
+import { SmoothedWorld } from '../net/smooth'
 
 /** Fixed simulation step (DESIGN §2). */
 export const STEP = 1 / 60
@@ -60,13 +61,17 @@ export interface Session {
   dispose(): void
 }
 
-/** Solo: the world runs in this tab; bots are inside the world. */
+/**
+ * Solo: the world runs in this tab; bots are inside the world. Views are presented between the last two steps
+ * at the render rate (smooth on 120/144 Hz displays); each event is handed out once.
+ */
 export function createLocalSession(
   config: MatchConfig,
   me: string,
   make: (config: MatchConfig) => World = createWorld
 ): Session {
   const world = make(config)
+  const smooth = new SmoothedWorld(world)
   const stepper = new FixedStepper()
   const inputs = new Map<string, PlayerInput>()
   let paused = false
@@ -87,8 +92,9 @@ export function createLocalSession(
     },
     update(dt) {
       if (paused) return last ? { ...last, events: [] } : null
-      stepper.advance(dt, () => world.step(inputs))
-      last = world.view()
+      if (!smooth.latest) smooth.prime()
+      stepper.advance(dt, () => smooth.step(inputs))
+      last = smooth.present(stepper.alpha)
       return last
     },
     setPaused(value) {

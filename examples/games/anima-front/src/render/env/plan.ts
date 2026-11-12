@@ -6,7 +6,9 @@
 import * as THREE from 'three'
 import type { DecorKind } from '../../data/map-vocab'
 import type { MapDef } from '../../sim/types'
+import { buildBackdrop, seaSides } from './backdrop'
 import { buildBox } from './boxes'
+import { buildDressing } from './dressing'
 import { ENV_MATERIALS, hash01, type Emitter, type EnvCtx, type EnvMat } from './ctx'
 import { DECOR, EMITTER_DECOR, INSTANCED_DECOR, isDecorKind } from './decor'
 import { GeoBuilder, rng } from './geo'
@@ -33,6 +35,8 @@ export interface EnvPlan {
   chunks: ChunkBatch[]
   instanced: InstancedBatch[]
   emitters: Emitter[]
+  /** Tree crowns as spheres [x, y, z, r] (camera obstacles that have no collision box). */
+  canopies: number[]
   /** Unknown decor kinds and box kinds that were skipped (for diagnostics). */
   skipped: string[]
   stats: { drawCalls: number; shadowCasters: number; triangles: number; vertices: number }
@@ -54,6 +58,7 @@ const BASE_TILE: Record<ThemeDef['id'], TileName> = {
 export function planEnvironment(map: MapDef, theme: ThemeDef, opts: PlanOptions): EnvPlan {
   const batches = new Map<string, ChunkBatch>()
   const emitters: Emitter[] = []
+  const canopies: number[] = []
   const skipped: string[] = []
   const chunk = opts.chunk
   const random = rng(hashString(map.id) ^ 0x5eed)
@@ -73,11 +78,12 @@ export function planEnvironment(map: MapDef, theme: ThemeDef, opts: PlanOptions)
     accent: theme.accentGlow,
     overgrowth: theme.id !== 'virtual',
     emit: (e) => emitters.push(e),
+    canopy: (c, r) => canopies.push(c[0], c[1], c[2], r),
     covered: coverage(map)
   }
 
   baseGround(map, theme, ctx, get)
-  backdrop(map, theme, ctx, (mat) => get(mat, 'far'))
+  buildBackdrop(map, theme, ctx, get, hashString)
 
   for (const box of map.boxes) {
     try {
@@ -86,6 +92,8 @@ export function planEnvironment(map: MapDef, theme: ThemeDef, opts: PlanOptions)
       skipped.push(`box:${box.kind}:${box.style ?? 0}:${(err as Error).message}`)
     }
   }
+
+  buildDressing(map, ctx)
 
   // Decor: merged unique pieces, instanced repeats.
   const protos = new Map<string, { kind: DecorKind; style: number; geos: Map<EnvMat, GeoBuilder>; m: number[] }>()
@@ -195,6 +203,7 @@ export function planEnvironment(map: MapDef, theme: ThemeDef, opts: PlanOptions)
     chunks,
     instanced,
     emitters,
+    canopies,
     skipped,
     stats: { drawCalls: chunks.length + instanced.length, shadowCasters, triangles, vertices }
   }
@@ -207,8 +216,17 @@ function baseGround(map: MapDef, theme: ThemeDef, ctx: EnvCtx, get: (mat: EnvMat
   const [bx1, bz1] = map.bounds.max
   const M = 160
   const step = 64
+  const sea = seaSides(map)
   for (let x = bx0 - M; x < bx1 + M; x += step)
     for (let z = bz0 - M; z < bz1 + M; z += step) {
+      // The open sea replaces the ground beyond water edges (backdrop.ts).
+      if (
+        (sea.has('e') && x >= bx1) ||
+        (sea.has('w') && x + step <= bx0) ||
+        (sea.has('n') && z >= bz1) ||
+        (sea.has('s') && z + step <= bz0)
+      )
+        continue
       const inside = x + step > bx0 && x < bx1 && z + step > bz0 && z < bz1
       const cell = inside ? `${Math.floor((x + step / 2) / 64)},${Math.floor((z + step / 2) / 64)}` : 'far'
       const g = inside ? ctx.at('atlas', x + step / 2, z + step / 2) : get('atlas', cell)
@@ -227,68 +245,6 @@ function baseGround(map: MapDef, theme: ThemeDef, ctx: EnvCtx, get: (mat: EnvMat
         [x / m, -(z + step) / m, (x + step) / m, -z / m]
       )
     }
-}
-
-/**
- * Distant skyline outside the playable bounds: ruined towers (or white blocks / crystal spires) that fade into
- * the fog and give depth. One batch, no collision.
- */
-function backdrop(map: MapDef, theme: ThemeDef, ctx: EnvCtx, get: (mat: EnvMat) => GeoBuilder) {
-  const g = get('atlas')
-  const glow = get('glow')
-  const [bx0, bz0] = map.bounds.min
-  const [bx1, bz1] = map.bounds.max
-  const cx = (bx0 + bx1) / 2
-  const cz = (bz0 + bz1) / 2
-  const rx = (bx1 - bx0) / 2
-  const rz = (bz1 - bz0) / 2
-  const r = rng(hashString(map.id + theme.id))
-  const n = 56
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + r() * 0.08
-    const dist = 1.15 + r() * 0.55
-    const x = cx + Math.sin(a) * (rx * dist + 25)
-    const z = cz + Math.cos(a) * (rz * dist + 25)
-    const w = 8 + r() * 14
-    const d = 8 + r() * 12
-    const h = theme.id === 'virtual' ? 12 + r() * 40 : 10 + r() * 38
-    if (theme.id === 'blight' && r() < 0.45) {
-      const len = 20 + r() * 40
-      g.cylinder(x, 0, z, 3 + r() * 3, 0.2, len, 6, { tile: 'mCrystal', glow: 1.2 * ctx.accent }, false)
-      continue
-    }
-    const tile: TileName =
-      theme.id === 'virtual' ? 'fVirtual' : theme.id === 'blight' ? 'fBlight' : r() < 0.5 ? 'fRuin' : 'fOffice'
-    const glowK = theme.id === 'virtual' ? 1.2 : theme.id === 'blight' ? 1 : 2.2 * ctx.night
-    g.box(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2, {
-      px: { tile, color: 0xc8c8c8, glow: glowK, offset: [r() * 4, 0] },
-      nx: { tile, color: 0xc8c8c8, glow: glowK },
-      pz: { tile, color: 0xc8c8c8, glow: glowK, offset: [r() * 4, 0] },
-      nz: { tile, color: 0xc8c8c8, glow: glowK },
-      py: { tile: 'rConcrete', color: 0xb0b0b0 }
-    })
-    if (theme.id === 'virtual') {
-      glow.box(x - w / 2 - 0.1, h - 0.1, z - d / 2 - 0.1, x + w / 2 + 0.1, h + 0.1, z + d / 2 + 0.1, {
-        tile: 'mWhite',
-        color: 0x4fe6ff,
-        glow: 1.8 * ctx.accent
-      })
-    } else if (r() < 0.35 && ctx.overgrowth) {
-      // A tree on the ruined roof.
-      get('foliage').blob(
-        x,
-        h + 2,
-        z,
-        3,
-        2.4,
-        3,
-        { tile: 'mLeaves', color: theme.id === 'blight' ? 0x7a4a9a : 0x6f9a4a, fx: 0.2 },
-        1,
-        0.2,
-        i
-      )
-    }
-  }
 }
 
 /** Coverage test over the map's boxes on an 8 m grid. */

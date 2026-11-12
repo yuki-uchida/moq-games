@@ -3,8 +3,11 @@
  * open the next route by name, so the flow has no import cycles.
  */
 import type { GameAudio, SfxName, ThemeName } from '../audio/api'
-import type { ModelKit } from '../models/api'
-import type { View } from '../sim/types'
+import type { ItemId } from '../data/items'
+import type { SpeciesId } from '../data/species'
+import type { Emote, ModelKit } from '../models/api'
+import type { TeamId, View } from '../sim/types'
+import type { AttractStatus } from './attract'
 import type { Lobby, LobbyProvider, MatchStart } from './lobby'
 import type { MatchSelection } from './match'
 import type { Armory, Progress } from './saves'
@@ -12,7 +15,7 @@ import type { Session } from './session'
 import type { SettingKey, Settings } from './settings'
 import type { KeyValueStore } from './storage'
 
-export type BackdropMode = 'title' | 'menu' | 'off'
+export type BackdropMode = 'title' | 'menu' | 'results' | 'off'
 
 export interface Screen {
   readonly id: string
@@ -67,12 +70,33 @@ export interface RouteArgs {
 }
 export type RouteName = keyof RouteArgs
 
-/** The 3D scene behind the menus. Swappable (the renderer's live attract demo can replace it). */
+/** One animal standing in the backdrop (results: the squad celebrating or slumping). */
+export interface CastMember {
+  species: SpeciesId
+  /** PvP team colour and pattern on the armour trim. */
+  team?: TeamId
+  emote?: Emote
+  /** Stands in front with a spotlight. */
+  mvp?: boolean
+  r?: ItemId | null
+  l?: ItemId | null
+}
+
+/**
+ * The 3D scene behind the menus: the live attract demo on the title, the plaza with the squad elsewhere, the
+ * squad doing emotes behind the results.
+ */
 export interface Backdrop {
-  readonly canvas: HTMLCanvasElement
+  readonly el: HTMLElement
   setMode(mode: BackdropMode): void
   /** The animals standing in the scene (the player's squad). */
   setSquad(species: readonly string[]): void
+  /** Results: who stands on the plaza and how they react (null = back to the squad). */
+  setCast(cast: readonly CastMember[] | null): void
+  /** Quality or reduced motion changed: the title demo is rebuilt with them on the next visit. */
+  refresh(): void
+  /** Debug/E2E: what the backdrop is doing. */
+  status(): { kind: 'attract' | 'plaza'; attract: AttractStatus | null }
   dispose(): void
 }
 

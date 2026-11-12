@@ -7,7 +7,7 @@ import { createModelKit, type ModelKitExt } from '../src/models'
 import { BONE_NAMES } from '../src/models/rig'
 import { geometryHash } from '../src/models/sdf/geometry'
 
-/** Triangles drawn by a model: every mesh instance except inverted-hull outlines. */
+/** Triangles drawn by a model: every mesh instance except inverted-hull outlines (separate or merged). */
 function drawnTriangles(root: THREE.Object3D): number {
   let tris = 0
   root.traverse((o) => {
@@ -16,8 +16,18 @@ function drawnTriangles(root: THREE.Object3D): number {
     const mats = Array.isArray(m.material) ? m.material : [m.material]
     if (mats.every((x) => x.side === THREE.BackSide)) return
     tris += (m.geometry.index?.count ?? m.geometry.getAttribute('position').count) / 3
+    tris -= (m.geometry.userData.hullTriangles as number | undefined) ?? 0
   })
   return tris
+}
+
+/** Draw calls of a model: visible meshes (an outline hull merged into a mesh is part of its draw call). */
+function drawCalls(root: THREE.Object3D): number {
+  let n = 0
+  root.traverseVisible((o) => {
+    if ((o as THREE.Mesh).isMesh) n++
+  })
+  return n
 }
 
 const finite = (a: ArrayLike<number>) => {
@@ -42,6 +52,43 @@ describe('model kit: characters', () => {
     }
   }, 60_000)
 
+  it('draws a fully equipped character in ≤ 4 draw calls and lightens it with distance', () => {
+    const camera = new THREE.PerspectiveCamera()
+    for (const id of SPECIES_IDS) {
+      const c = kit.createCharacter(id, { look: 'kurozume' })
+      c.setPassives(['turtle', 'hedgehog', 'momonga', 'jelly'], true)
+      const hand = (item: 'orca' | 'swallow') => ({ item, act: 'idle' as const, charge: 0, uses: 0, combo: 0, swap: 0 })
+      const pose = {
+        localVel: [0, 0] as [number, number],
+        grounded: true,
+        vy: 0,
+        move: 'idle' as const,
+        aimYaw: 0,
+        aimPitch: 0,
+        hands: [hand('orca'), hand('swallow')] as [ReturnType<typeof hand>, ReturnType<typeof hand>],
+        state: 'alive' as const,
+        revive: 0,
+        reviving: false,
+        hurt: 0
+      }
+      for (let i = 0; i < 30; i++) c.update(1 / 30, pose)
+      expect(drawCalls(c.root), id).toBeLessThanOrEqual(4)
+      const near = drawnTriangles(c.root)
+      // Distance level of detail: the body reads the camera distance in onBeforeRender.
+      const body = c.root.getObjectByName('body') as THREE.SkinnedMesh
+      camera.position.set(0, 1, 40)
+      camera.updateMatrixWorld()
+      c.root.updateMatrixWorld(true)
+      body.onBeforeRender(null as never, null as never, camera, null as never, null as never, null as never)
+      for (let i = 0; i < 3; i++) c.update(1 / 30, pose)
+      const far = drawnTriangles(c.root)
+      expect(far, id).toBeLessThan(near * 0.55)
+      // 12 players + 6 クロヅメ, mostly far away, stay well under the frame budget at medium (hulls included).
+      expect(far, id).toBeLessThan(6500)
+      c.dispose()
+    }
+  }, 60_000)
+
   it('generates each species in bounded time', () => {
     const fresh = createModelKit({ quality: 'medium' })
     fresh.speciesAsset('shiba')
@@ -58,7 +105,8 @@ describe('model kit: characters', () => {
       const c = kit.createCharacter(id)
       const body = c.root.getObjectByName('body') as THREE.SkinnedMesh
       expect(body.isSkinnedMesh).toBe(true)
-      expect(body.skeleton.bones.map((b) => b.name)).toEqual([...BONE_NAMES])
+      // The shared 24-bone skeleton first, then the face/gear bones of the merged mesh.
+      expect(body.skeleton.bones.map((b) => b.name).slice(0, BONE_NAMES.length)).toEqual([...BONE_NAMES])
       const g = body.geometry
       const idx = g.getAttribute('skinIndex').array
       const w = g.getAttribute('skinWeight').array
@@ -69,7 +117,7 @@ describe('model kit: characters', () => {
         const sum = w[v * 4] + w[v * 4 + 1] + w[v * 4 + 2] + w[v * 4 + 3]
         expect(Math.abs(sum - 1)).toBeLessThan(1e-4)
         for (let k = 0; k < 4; k++) {
-          expect(idx[v * 4 + k]).toBeLessThan(BONE_NAMES.length)
+          expect(idx[v * 4 + k]).toBeLessThan(body.skeleton.bones.length)
           expect(w[v * 4 + k]).toBeGreaterThanOrEqual(0)
         }
       }
@@ -116,7 +164,7 @@ describe('model kit: characters', () => {
     c.dispose()
   })
 
-  it('prepares requests with progress up to 1 and leaves placeholders working', async () => {
+  it('prepares requests with progress up to 1 and builds every foe, boss, prop and shot kind', async () => {
     const k = createModelKit({ quality: 'low' })
     const seen: number[] = []
     await k.prepare({ species: ['hamster'], items: ['bee', 'jelly'] }, (f) => seen.push(f))

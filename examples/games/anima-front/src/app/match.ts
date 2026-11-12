@@ -5,11 +5,12 @@
 import { KUROZUME_SQUADS, type Difficulty, type FoeKind } from '../data/enemies'
 import type { ItemId } from '../data/items'
 import type { PrepareRequest } from '../models/api'
-import { presetById, type Loadout } from '../data/loadout'
+import { PRESETS, presetById, type Loadout } from '../data/loadout'
 import { MISSIONS, type MissionId } from '../data/missions'
-import { SPECIES, SPECIES_IDS, type SpeciesId } from '../data/species'
+import type { SpeciesId } from '../data/species'
 import type { MapId, MatchConfig, ModeId, PlayerConfig, PropKind, TeamId } from '../sim/types'
 import { cloneLoadout } from './loadouts'
+import { hashString, pickName, pickPreset, pickTeamSpecies, seededRandom } from './roster'
 
 export interface MatchSelection {
   mode: ModeId
@@ -76,13 +77,15 @@ export function mapLabel(sel: MatchSelection): string {
 }
 
 /**
- * Fills the seats around the local player. Squad mates are the other ARK members (each animal once while
- * possible) with their default presets; PvP opponents too, so a 12-seat match uses every animal.
+ * Fills the seats around the local player with bots. Every team has four different animals (a different mix per
+ * team), each bot an individual name from its animal's pool and a preset that suits it. `variety` seeds the
+ * choice; by default it is derived from the selection and the local animal, so a lobby is stable while open.
  */
 export function buildSeats(
   sel: MatchSelection,
   me: { id: string; name: string; species: SpeciesId; loadout: Loadout; loadoutName: string; team?: TeamId },
-  humans: readonly Omit<Seat, 'bot' | 'local'>[] = []
+  humans: readonly Omit<Seat, 'bot' | 'local'>[] = [],
+  variety?: number
 ): Seat[] {
   const count = seatCount(sel.mode)
   const seats: Seat[] = []
@@ -90,29 +93,35 @@ export function buildSeats(
   seats.push({ ...me, loadout: cloneLoadout(me.loadout), team: myTeam, local: true, ready: true })
   for (const h of humans) if (seats.length < count) seats.push({ ...h, local: false })
   const skill = botSkill(sel)
-  const used = new Map<string, number>()
-  for (const s of seats) used.set(s.name, (used.get(s.name) ?? 0) + 1)
+  const rnd = seededRandom(variety ?? hashString(`${sel.mode}/${sel.mission ?? ''}/${me.species}`))
+  const names = new Set(seats.map((s) => s.name))
+  const speciesUse = new Map<SpeciesId, number>()
+  for (const s of seats) speciesUse.set(s.species, (speciesUse.get(s.species) ?? 0) + 1)
   // Teams in seat order: fill the local team first, then the others.
   const teamOrder: TeamId[] =
     sel.mode === 'pvp' ? [myTeam, ...([0, 1, 2] as TeamId[]).filter((t) => t !== myTeam)] : [0]
-  let pick = SPECIES_IDS.indexOf(me.species) + 1
+  const perTeam = sel.mode === 'pvp' ? SEATS_PER_TEAM : count
   let botIndex = 1
   for (const team of teamOrder) {
-    while (seats.filter((s) => s.team === team).length < (sel.mode === 'pvp' ? SEATS_PER_TEAM : count)) {
-      const taken = new Set(seats.filter((s) => s.team === team).map((s) => s.species))
-      let species = SPECIES_IDS[pick % SPECIES_IDS.length]
-      for (let k = 0; k < SPECIES_IDS.length && taken.has(species); k++) {
-        pick++
-        species = SPECIES_IDS[pick % SPECIES_IDS.length]
-      }
-      pick++
-      const def = SPECIES[species]
-      const preset = presetById(def.preset)
-      const n = (used.get(def.name) ?? 0) + 1
-      used.set(def.name, n)
+    const members = seats.filter((s) => s.team === team)
+    const missing = perTeam - members.length
+    if (missing <= 0) continue
+    const picks = pickTeamSpecies(
+      perTeam,
+      members.map((s) => s.species),
+      speciesUse,
+      rnd
+    ).slice(0, missing)
+    const presets = members.map((s) => PRESETS.find((p) => p.name === s.loadoutName)?.id ?? '')
+    for (const species of picks) {
+      const preset = presetById(pickPreset(species, presets, rnd))
+      presets.push(preset.id)
+      const name = pickName(species, names, rnd, team === myTeam)
+      names.add(name)
+      speciesUse.set(species, (speciesUse.get(species) ?? 0) + 1)
       seats.push({
         id: `bot${botIndex++}`,
-        name: n > 1 ? `${def.name}${['', '', 'Ⅱ', 'Ⅲ', 'Ⅳ'][n] ?? n}` : def.name,
+        name,
         species,
         loadout: cloneLoadout(preset.loadout),
         loadoutName: preset.name,

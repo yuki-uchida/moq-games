@@ -122,6 +122,43 @@ describe('render camera', () => {
     }
   })
 
+  it('cinematic camera frames the squad, never ends inside a building and keeps its line of sight', () => {
+    // A street canyon: two long buildings either side of the squad, foes up the street.
+    const boxes: MapDef['boxes'] = [
+      { kind: 'building', min: [-20, 0, 3], max: [20, 14, 12] },
+      { kind: 'building', min: [-20, 0, -12], max: [20, 14, -3] }
+    ]
+    const grid = new BoxGrid(emptyMap(boxes))
+    const rig = new CameraRig(16 / 9)
+    rig.setGrid(grid)
+    const subjects = [
+      { p: [0, 0, 0] as [number, number, number], key: 'p0', weight: 1 },
+      { p: [2, 0, 1] as [number, number, number], key: 'p1', weight: 1 },
+      { p: [9, 0, 0] as [number, number, number], key: 'f1', weight: 0.6 }
+    ]
+    const cam = rig.camera
+    const dir = new THREE.Vector3()
+    const fwd = new THREE.Vector3()
+    for (let i = 0; i < 60 * 40; i++) {
+      rig.cinematic(subjects, 1 / 60)
+      const p = cam.position
+      for (const b of boxes)
+        expect(
+          p.x > b.min[0] && p.x < b.max[0] && p.y < b.max[1] && p.z > b.min[2] && p.z < b.max[2],
+          `inside a box at frame ${i}`
+        ).toBe(false)
+      // The squad stays in front of the camera and nothing solid sits between them (after easing settles).
+      if (i % 30 === 29) {
+        cam.getWorldDirection(fwd)
+        dir.set(1, 1, 0.5).sub(p)
+        expect(dir.dot(fwd), `squad behind the camera at frame ${i}`).toBeGreaterThan(0)
+        const len = dir.length()
+        dir.divideScalar(len)
+        expect(grid.raycast(p.x, p.y, p.z, dir.x, dir.y, dir.z, len)).toBeGreaterThan(len - 1.5)
+      }
+    }
+  })
+
   it('FOV is Hor+ above 16:9 and keeps the horizontal FOV below', () => {
     const v169 = verticalFov(75, 16 / 9)
     expect(verticalFov(75, 21 / 9)).toBeCloseTo(v169, 6)

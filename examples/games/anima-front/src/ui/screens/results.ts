@@ -1,4 +1,8 @@
-/** Results (DESIGN §17.10): banner, rank count-up (PvE), team placings (PvP), per-player stats, MVP, next steps. */
+/**
+ * Results (DESIGN §17.10): the squad celebrating (or slumping) on the plaza behind the panels with the MVP in a
+ * spotlight, the banner, the PvE score count-up and rank stamp, PvP placings in team colours and patterns,
+ * per-player stats and the next steps.
+ */
 import type { AppContext, ResultsArgs, Screen } from '../../app/context'
 import { TEAMS } from '../../app/match'
 import { DIFFICULTIES } from '../../data/enemies'
@@ -7,27 +11,9 @@ import { SPECIES } from '../../data/species'
 import { h, setText } from '../dom'
 import { countUp, fallbackRank, formatClock, pickMvp, placings, statRows, type StatRow } from '../hud/model'
 import { hintBar, speciesBadge } from '../widgets'
+import { outcomeOf, RANK_STAMP_AT, resultsCast, SCORE_COUNT, type Outcome } from './results-model'
 
-export type Outcome = 'victory' | 'defeat' | 'draw'
-
-export function outcomeOf(args: Pick<ResultsArgs, 'view' | 'me'>): Outcome {
-  const { view, me } = args
-  if (view.mode === 'pvp') {
-    const myTeam = view.players.find((p) => p.id === me)?.team ?? 0
-    const w = view.pvp?.winner
-    if (w === undefined || w === -1) {
-      if (view.phase === 'draw' || w === -1) return 'draw'
-      const places = placings(view.pvp?.scores ?? [0, 0, 0])
-      const mine = places.find((p) => p.team === myTeam)
-      if (!mine || mine.place > 1) return 'defeat'
-      return places.filter((p) => p.place === 1).length > 1 ? 'draw' : 'victory'
-    }
-    return w === myTeam ? 'victory' : 'defeat'
-  }
-  if (view.phase === 'victory') return 'victory'
-  if (view.phase === 'draw') return 'draw'
-  return view.mode === 'training' ? 'victory' : 'defeat'
-}
+export { outcomeOf, type Outcome }
 
 const BANNER: Record<string, Record<Outcome, [string, string]>> = {
   pve: {
@@ -43,6 +29,8 @@ const BANNER: Record<string, Record<Outcome, [string, string]>> = {
   }
 }
 
+const PLACE_LABEL = ['', '1位', '2位', '3位']
+
 export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen {
   const { view, me, selection, lobby } = args
   const outcome = outcomeOf(args)
@@ -50,10 +38,12 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
   const rows = statRows(view)
   const mvp = pickMvp(view)
   const mine = rows.find((r) => r.id === me)
+  const myTeam = view.players.find((p) => p.id === me)?.team ?? 0
 
   const banner = h('div', `res-banner is-${outcome}`, h('small', null, en), h('h1', null, ja))
   const top: (Node | null)[] = []
   let scoreEl: HTMLElement | null = null
+  let rankEl: HTMLElement | null = null
   let scoreTarget = 0
   if (view.mode === 'pve') {
     const m = MISSIONS[view.pve?.mission ?? selection.mission ?? 'sakura']
@@ -64,63 +54,82 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
         outcome === 'victory',
         rows.reduce((a, b) => a + b.downs, 0)
       )
-    scoreTarget = r?.score ?? 0
+    scoreTarget = Math.round(r?.score ?? 0)
     scoreEl = h('b', 'res-score-num', '0')
+    rankEl = h('div', { class: `res-rank-letter rank-${rank}`, attrs: { 'aria-label': `ランク ${rank}` } }, rank)
     top.push(
       h(
         'div',
         'panel res-rank',
-        h('div', `res-rank-letter rank-${rank}`, rank),
+        h('div', 'res-rank-slot', h('small', null, 'RANK'), rankEl),
         h(
           'div',
           'res-rank-info',
           h('small', null, `${m.name}・${DIFFICULTIES[view.pve?.difficulty ?? selection.difficulty ?? 'normal'].name}`),
           h('div', 'res-score', h('span', null, 'スコア'), scoreEl),
           h('div', 'res-time', `クリアタイム ${formatClock(r?.time ?? view.clock)}`),
-          args.newBest ? h('span', 'chip chip-anima', '自己ベスト更新') : null,
-          args.unlocked
-            ? h(
-                'span',
-                'chip res-unlock',
-                `新しい任務「${MISSIONS[args.unlocked as keyof typeof MISSIONS]?.name ?? ''}」が解放されました`
-              )
-            : null
+          h(
+            'div',
+            'res-chips',
+            args.newBest ? h('span', 'chip chip-anima', '自己ベスト更新') : null,
+            args.unlocked
+              ? h(
+                  'span',
+                  'chip res-unlock',
+                  `新しい任務「${MISSIONS[args.unlocked as keyof typeof MISSIONS]?.name ?? ''}」が解放されました`
+                )
+              : null
+          )
         )
       )
     )
   } else if (view.mode === 'pvp') {
-    const myTeam = view.players.find((p) => p.id === me)?.team ?? 0
+    const places = placings(view.pvp?.scores ?? [0, 0, 0])
+    const best = Math.max(1, ...places.map((p) => p.score))
     top.push(
       h(
         'div',
         'panel res-places',
-        placings(view.pvp?.scores ?? [0, 0, 0]).map((p) => {
+        places.map((p, i) => {
           const t = TEAMS[p.team]
           return h(
             'div',
-            { class: `res-place ${p.team === myTeam ? 'is-mine' : ''}`, style: { '--team': t.color } },
-            h('span', 'res-place-n', `${p.place}位`),
-            h('span', `res-place-bar pat-${t.pattern}`),
-            h('b', null, t.name),
-            h('span', 'res-place-score', `${p.score}`)
+            {
+              class: `res-place place-${p.place} ${p.team === myTeam ? 'is-mine' : ''}`,
+              style: { '--team': t.color, '--i': String(i), '--fill': `${Math.round((p.score / best) * 100)}%` }
+            },
+            h('span', 'res-place-n', PLACE_LABEL[p.place] ?? `${p.place}位`),
+            h('span', `res-place-flag pat-${t.pattern}`),
+            h(
+              'span',
+              'res-place-name',
+              h('b', null, t.name),
+              p.team === myTeam ? h('small', null, 'あなたの隊') : null,
+              h('i', 'res-place-meter', h('i', null))
+            ),
+            h('span', 'res-place-score', `${p.score}`, h('small', null, '点'))
           )
         })
       )
     )
   }
+
   const mvpRow = rows.find((r) => r.id === mvp)
-  if (mvpRow) {
-    top.push(
-      h(
+  // the MVP's name plate sits under the spotlight on the plaza (and in a card on narrow screens)
+  const mvpPlate = mvpRow
+    ? h(
         'div',
-        'panel res-mvp',
+        { class: `res-mvp ${mvpRow.team === myTeam || view.mode !== 'pvp' ? 'is-squad' : ''}` },
         h('small', null, 'MVP'),
-        speciesBadge(mvpRow.species, 64),
-        h('b', null, mvpRow.name),
-        h('span', null, `${SPECIES[mvpRow.species].kind}・撃破 ${mvpRow.kos}・救助 ${mvpRow.revives}`)
+        h('span', 'res-mvp-badge', speciesBadge(mvpRow.species, 44)),
+        h(
+          'span',
+          'res-mvp-text',
+          h('b', null, mvpRow.name, mvpRow.id === me ? h('em', null, 'あなた') : null),
+          h('span', null, `${SPECIES[mvpRow.species].kind}・撃破 ${mvpRow.kos}・救助 ${mvpRow.revives}`)
+        )
       )
-    )
-  }
+    : null
 
   const cols: [keyof StatRow, string][] = [
     ['kos', '撃破'],
@@ -143,18 +152,18 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
         null,
         h('th', null, '隊員'),
         cols.map(([, l]) => h('th', null, l)),
-        h('th', null, 'よく使ったアンティーク')
+        h('th', 'res-fav', 'よく使ったアンティーク')
       )
     ),
     h(
       'tbody',
       null,
-      ordered.map((r) =>
+      ordered.map((r, i) =>
         h(
           'tr',
           {
             class: `${r.id === me ? 'is-me' : ''} ${r.id === mvp ? 'is-mvp' : ''}`,
-            style: view.mode === 'pvp' ? { '--team': TEAMS[r.team].color } : undefined
+            style: { '--i': String(i), ...(view.mode === 'pvp' ? { '--team': TEAMS[r.team].color } : {}) }
           },
           h(
             'th',
@@ -209,13 +218,20 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
 
   const el = h(
     'div',
-    `screen results is-${outcome}`,
+    `screen results is-${outcome} mode-${view.mode}`,
     banner,
-    h('div', 'screen-scroll res-body', h('div', 'res-top', top), h('div', 'panel res-table-wrap', table)),
+    h(
+      'div',
+      'screen-scroll res-body',
+      h('div', 'res-main', h('div', 'res-top', top), h('div', 'panel res-table-wrap', table)),
+      h('div', 'res-stage', mvpPlate)
+    ),
     h(
       'div',
       'res-actions',
-      mine ? h('span', 'res-me', `あなた：撃破 ${mine.kos}・ダメージ ${mine.damage}`) : null,
+      mine
+        ? h('span', 'res-me', h('b', null, 'あなた'), `撃破 ${mine.kos}・救助 ${mine.revives}・ダメージ ${mine.damage}`)
+        : null,
       h('div', 'grow'),
       toTitle,
       toLobby,
@@ -227,19 +243,26 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
     ])
   )
   let t = 0
+  let stamped = !rankEl
   return {
     id: 'results',
     el,
     music: outcome === 'victory' ? 'win' : outcome === 'defeat' ? 'lose' : 'menu',
-    backdrop: 'menu',
+    backdrop: 'results',
     back: () => ctx.open('title'),
     enter() {
       ctx.sfx(outcome === 'victory' ? 'victory' : outcome === 'defeat' ? 'defeat' : 'uiSelect')
+      ctx.backdrop?.setCast(resultsCast(view, me, outcome))
     },
     frame(dt) {
-      if (!scoreEl) return
       t += dt
-      setText(scoreEl, String(countUp(scoreTarget, Math.max(0, t - 0.5), 1.4)))
+      if (scoreEl)
+        setText(scoreEl, String(countUp(scoreTarget, Math.max(0, t - SCORE_COUNT.delay), SCORE_COUNT.duration)))
+      if (!stamped && t >= RANK_STAMP_AT && rankEl) {
+        stamped = true
+        rankEl.classList.add('is-in')
+        ctx.sfx('scoreUp')
+      }
     }
   }
 }

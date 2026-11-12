@@ -177,7 +177,14 @@ export function controlsHelp(): HTMLElement {
         'tbody',
         null,
         CONTROL_ROWS.map((r) =>
-          h('tr', null, h('th', null, r[0]), h('td', null, r[1]), h('td', null, r[2]), h('td', null, r[3]))
+          h(
+            'tr',
+            null,
+            h('th', null, r[0]),
+            h('td', { attrs: { 'data-label': 'キーボード・マウス' } }, r[1]),
+            h('td', { attrs: { 'data-label': 'ゲームパッド' } }, r[2]),
+            h('td', { attrs: { 'data-label': 'タッチ' } }, r[3])
+          )
         )
       )
     ),

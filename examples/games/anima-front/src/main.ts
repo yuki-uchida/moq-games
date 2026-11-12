@@ -4,11 +4,13 @@ import './ui/styles/screens.css'
 import './ui/styles/loadout.css'
 import './ui/styles/hud.css'
 import './ui/styles/touch.css'
+import './ui/styles/polish.css'
 import { startApp, type AppOptions } from './app/app'
 import { LOCAL_PLAYER_ID } from './app/lobby'
 import { buildSeats, matchConfig, type MatchSelection } from './app/match'
 import { resolveLoadout, loadArmory } from './app/saves'
 import { browserStore } from './app/storage'
+import { debugEnabled } from './app/debug'
 import { SPECIES } from './data/species'
 import type { ModeId } from './sim/types'
 
@@ -18,7 +20,10 @@ const isDev = Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).en
 async function main() {
   if (!root) return
   const params = new URLSearchParams(location.search)
-  const options: AppOptions = {}
+  const options: AppOptions = {
+    debug: debugEnabled(isDev, location.search),
+    attract: params.get('attract') !== '0'
+  }
   if (isDev && params.has('hud-demo')) {
     const { createDemoSession } = await import('./ui/hud/demo')
     const raw = params.get('hud-demo')

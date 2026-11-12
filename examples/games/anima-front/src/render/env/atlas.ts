@@ -79,7 +79,13 @@ export const TILE_NAMES = [
   'mCloth',
   'mHolo',
   'mFlesh',
-  'mShutter'
+  'mShutter',
+  // alpha-cut foliage cards and ground decals (paint-foliage.ts)
+  'mLeafCard',
+  'mBlossom',
+  'mNeedles',
+  'mDecal',
+  'mPetalScatter'
 ] as const
 export type TileName = (typeof TILE_NAMES)[number]
 

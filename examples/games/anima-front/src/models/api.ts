@@ -124,6 +124,8 @@ export interface PropModel {
   readonly kind: PropKind
   /** `state` and `life` as in PropView. */
   update(dt: number, t: number, state: number, life: number | undefined): void
+  /** 0..1 health for props with hp (lighthouse, hermit wall, nodes, cart): cracks, flicker. */
+  setHealth?(fraction: number): void
   dispose(): void
 }
 
