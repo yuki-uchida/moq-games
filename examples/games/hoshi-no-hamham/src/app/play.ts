@@ -3,6 +3,9 @@
  * simulation at a fixed rate (unless the view is frozen for hit-stop or staging holds it), feeds every event to
  * the view, the sound map and the director, and reports the outcome.
  *
+ * The steps follow the display (`Pacer`), and the picture is drawn between the last two simulation states
+ * (`Interpolator`): the positions are the interpolated ones only while a frame is being updated and drawn.
+ *
  * A session can also be the title screen's demo (`demo: true`): the bot plays, nothing sounds, the HUD is left
  * alone, and a plain director ends it after a while so the app can start the next one.
  */
@@ -17,9 +20,10 @@ import { StageDirector, type Director, type DirectorHost, type Outcome } from '.
 import type { Renderer } from '../view/renderer'
 import { SILENT_AUDIO, SoundBoard } from '../view/sound-map'
 import { StageView } from '../view/stage-view'
+import { Interpolator } from './interpolate'
+import { Pacer, STEP } from './pacer'
 
-export const STEP = 1 / 60
-const MAX_STEPS = 4
+export { STEP }
 /** A demo that neither clears nor dies moves on after this many seconds. */
 export const DEMO_SECONDS = 40
 
@@ -86,7 +90,8 @@ export class PlaySession {
   /** The bot plays instead of the player, with sound and the HUD as in real play (performance checks). */
   autopilot = false
   private sounds: SoundBoard
-  private accumulator = 0
+  private pacer = new Pacer()
+  private mover = new Interpolator()
   private bot: BotMemory = { x: 0, stuck: 0, reverse: 0 }
 
   constructor(
@@ -133,24 +138,26 @@ export class PlaySession {
 
   /** One display frame of `dt` real seconds. */
   frame(dt: number) {
-    const { view, director, world } = this
-    const scale = Math.max(0, director.timeScale)
-    if (!view.frozen) {
-      this.accumulator += dt * scale
-      let steps = 0
-      while (this.accumulator >= STEP && steps < MAX_STEPS && !view.frozen) {
+    const { view, director, world, pacer, mover } = this
+    mover.restore()
+    const scale = view.frozen ? 0 : Math.max(0, director.timeScale)
+    pacer.begin(dt, scale)
+    if (scale > 0) {
+      while (pacer.due() && !view.frozen) {
+        mover.remember(world)
         const locked = director.inputLocked
         if (this.demo || this.autopilot) world.step(STEP, locked ? emptyInput() : botInput(world, this.bot))
         else {
           world.step(STEP, locked ? emptyInput() : this.deps.input.poll())
           if (!locked) this.deps.input.consumePresses()
         }
-        this.accumulator -= STEP
-        steps += 1
+        pacer.stepped()
         this.drain()
       }
-      if (steps === MAX_STEPS || view.frozen) this.accumulator = Math.min(this.accumulator, STEP)
+      if (pacer.steps > 0) mover.settle()
     }
+    const alpha = pacer.finish(view.frozen || scale <= 0)
+    if (alpha < 1) mover.apply(alpha)
     view.update(dt, view.frozen ? 0 : dt * scale)
     if (!this.demo) this.deps.hud.update(world, dt)
     director.update(dt)
@@ -179,7 +186,12 @@ export class PlaySession {
     events.length = 0
   }
 
+  /** Draws the frame, then puts the simulation's own positions back. */
   draw() {
-    this.view.draw()
+    try {
+      this.view.draw()
+    } finally {
+      this.mover.restore()
+    }
   }
 }
