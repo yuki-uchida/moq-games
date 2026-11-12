@@ -24,6 +24,7 @@ import type { SoundCue } from '../view/cues'
 import { moveFocus, focusables, type Direction } from './spatial'
 import { CREDITS_SHOT, endingShot, resultShot, shotFor } from './story-scenes'
 import { Typewriter } from './typewriter'
+import { setZoomLock } from './zoom-guard'
 
 /** What the screens report back to the app. */
 export interface ScreenActions {
@@ -1211,6 +1212,7 @@ export class DomScreens implements Screens {
   setTouch(visible: boolean) {
     const controls = document.querySelector<HTMLElement>('#touch-controls')
     if (controls) controls.hidden = !visible
+    setZoomLock(visible)
   }
 
   // -------------------------------------------------------------------------------------------- help

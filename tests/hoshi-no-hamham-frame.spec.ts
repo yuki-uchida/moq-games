@@ -147,3 +147,48 @@ for (const size of [
       await expect(controls).toBeVisible()
     })
   })
+
+test.describe('pinch zoom on a phone at 844×390', () => {
+  test.use({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true })
+
+  test('holding the pad and pressing bite with a second thumb does not zoom the page', async ({ page }) => {
+    test.setTimeout(60_000)
+    await boot(page)
+    await page.locator('#continue').tap()
+    await page.locator('#stage-grid .stage-card').first().tap()
+    await page.locator('#story-skip').tap()
+    await page.waitForFunction(() => Boolean((window as unknown as { __hamham: Hamham }).__hamham.world))
+    await expect(page.locator('#touch-controls')).toBeVisible()
+    await expect(page.locator('html')).toHaveClass(/\bzoom-lock\b/)
+    expect(await page.evaluate(() => getComputedStyle(document.body).touchAction)).toBe('pan-x pan-y')
+
+    const pad = (await page.locator('[data-pad]').boundingBox())!
+    const bite = (await page.locator('.hudt-bite').boundingBox())!
+    // The second thumb lands just outside the bite plate, on the stage, and the two thumbs spread like a pinch.
+    const thumbA = { x: pad.x + pad.width * 0.8, y: pad.y + pad.height / 2 }
+    const thumbB = { x: bite.x - 6, y: bite.y + bite.height / 2 }
+    const cdp = await page.context().newCDPSession(page)
+    const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: { x: number; y: number }[]) =>
+      cdp.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: points.map((p, id) => ({ x: Math.round(p.x), y: Math.round(p.y), id }))
+      })
+    await touch('touchStart', [thumbA])
+    await touch('touchStart', [thumbA, thumbB])
+    for (let step = 1; step <= 8; step++)
+      await touch('touchMove', [
+        { x: thumbA.x - step * 12, y: thumbA.y - step * 6 },
+        { x: thumbB.x + step * 12, y: thumbB.y - step * 6 }
+      ])
+    await touch('touchEnd', [])
+    expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1)
+
+    // A plain two-thumb press still reaches the game: the pad and bite light up together.
+    const biteMid = { x: bite.x + bite.width / 2, y: bite.y + bite.height / 2 }
+    await touch('touchStart', [thumbA])
+    await touch('touchStart', [thumbA, biteMid])
+    await expect(page.locator('[data-pad] [data-key="right"]')).toHaveClass(/\bis-down\b/)
+    await expect(page.locator('.hudt-bite')).toHaveClass(/\bis-down\b/)
+    await touch('touchEnd', [])
+  })
+})
