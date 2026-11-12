@@ -171,3 +171,12 @@
     transition: none;
   }
 }
+
+/*
+ * While the touch controls are in play (zoom-guard.ts): no pinch or double-tap zoom anywhere on the page, so a
+ * thumb that lands between the buttons cannot zoom either. Panning stays, for the panels that scroll.
+ */
+html.zoom-lock,
+html.zoom-lock body {
+  touch-action: pan-x pan-y;
+}

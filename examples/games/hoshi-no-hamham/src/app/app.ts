@@ -8,6 +8,7 @@ import { Hud } from '../ui/hud'
 import { trackRatio } from '../ui/hud-model'
 import { spriteImg } from '../ui/pixel'
 import { DomScreens, type Screens } from '../ui/screens'
+import { installZoomGuard } from '../ui/zoom-guard'
 import { Renderer } from '../view/renderer'
 import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
@@ -141,6 +142,7 @@ export class App {
       if (this.screen === 'play') this.screens.setTouch(true)
     })
     this.input.bindTouch(document)
+    installZoomGuard()
     this.openTitle()
     requestAnimationFrame(this.loop)
   }
