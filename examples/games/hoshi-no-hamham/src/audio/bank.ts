@@ -20,11 +20,21 @@ const TAIL = 0.1
 const MAX_SECONDS = 8
 /** Pitches other than the default and the known ones that the bank will keep buffers for. */
 const MAX_EXTRA_PITCHES = 48
-/** Wait between two renders in the title and menus, and while sound effects are being asked for. */
+/** Wait between two renders in the title and menus, and between the few that are made while a stage is played. */
 const IDLE_GAP_MS = 30
-const BUSY_GAP_MS = 250
-/** How long after the last sound effect request the game counts as being played. */
-const BUSY_WINDOW_MS = 3000
+const PLAY_GAP_MS = 250
+/** A render waits for an idle moment of the page at most this long (where the browser can tell one). */
+const IDLE_TIMEOUT_MS = 60
+
+/** Runs `fn` after `ms`, and then in an idle moment of the page when the browser offers one. */
+function whenIdle(fn: () => void, ms: number): void {
+  setTimeout(() => {
+    const idle = (globalThis as { requestIdleCallback?: (run: () => void, o: { timeout: number }) => unknown })
+      .requestIdleCallback
+    if (typeof idle === 'function') idle(() => fn(), { timeout: IDLE_TIMEOUT_MS })
+    else fn()
+  }, ms)
+}
 
 /** Interface sounds first (the menus can be used at once), then the hero's, then the rest in the order of `SFX`. */
 const FIRST: SfxName[] = [
@@ -61,7 +71,8 @@ const HERO: SfxName[] = [
 ]
 /**
  * Pitches the sound board asks for (the nest-material ladder, the two footstep pitches, the boss spit); they are
- * rendered last. Any other pitch is played live once and rendered for the next time.
+ * rendered once every effect has its default pitch, and the extra takes of the varied effects come after them. Any
+ * other pitch is played live once and rendered for the next time.
  */
 const KNOWN_PITCHES: Array<[SfxName, number[]]> = [
   ['pickup', [1.07, 1.14, 1.21, 1.28, 1.35, 1.42, 1.49, 1.56, 1.63, 1.7]],
@@ -129,7 +140,7 @@ interface Job {
 export interface BankOptions {
   sampleRate?: number
   offline?: OfflineFactory
-  /** Milliseconds, for pacing and for the "game is being played" test. */
+  /** Milliseconds, for the start and finish times. */
   now?: () => number
   /** Schedules the next step; tests replace it. */
   wait?: (fn: () => void, ms: number) => void
@@ -141,11 +152,13 @@ export class SfxBank {
   private readonly queued = new Set<string>()
   private readonly extended = new Set<string>()
   private queue: Job[] = []
+  /** Effects that had to play live just now: rendered first, also while a stage is played. */
+  private urgent: Job[] = []
+  private playing = false
   private extraPitches = 0
   private noise: AudioBuffer | null = null
   private running = false
   private timer = false
-  private lastRequest = -Infinity
   private readonly offline: OfflineFactory
   private readonly now: () => number
   private readonly wait: (fn: () => void, ms: number) => void
@@ -164,7 +177,7 @@ export class SfxBank {
     this.sampleRate = options.sampleRate ?? 48000
     this.offline = options.offline ?? browserOffline
     this.now = options.now ?? (() => performance.now())
-    this.wait = options.wait ?? ((fn, ms) => void setTimeout(fn, ms))
+    this.wait = options.wait ?? whenIdle
   }
 
   /** Buffers held (every take counts). */
@@ -199,22 +212,29 @@ export class SfxBank {
   stop(): void {
     this.stopped = true
     this.queue = []
+    this.urgent = []
   }
 
-  private enqueue(job: Job, front = false): boolean {
+  /** `urgent`: before everything else, and also while a stage is played. */
+  private enqueue(job: Job, where: 'last' | 'urgent' = 'last'): boolean {
     const base = keyOf(job.name, job.pitch)
     const key = job.seed === undefined ? base : `${base}#${job.seed}`
     if (this.queued.has(key) || this.failed.has(base)) return false
     if (job.seed === undefined && this.takes.has(base)) return false
     this.queued.add(key)
-    if (front) this.queue.unshift(job)
+    if (where === 'urgent') this.urgent.unshift(job)
     else this.queue.push(job)
     return true
   }
 
-  /** Noted by the engine when an effect is asked for: the game is being played, so renders keep a longer gap. */
-  touch(): void {
-    this.lastRequest = this.now()
+  /**
+   * A stage is being played (or no longer is). While it is, building an effect for rendering would take time from
+   * the frames, so the queue rests; only effects that just had to play live are rendered, a few a second.
+   */
+  setPlaying(playing: boolean): void {
+    if (playing === this.playing) return
+    this.playing = playing
+    if (!playing && this.running) this.kick()
   }
 
   /** An effect that had to play live: render it for the next time (an explicit pitch, or one the queue has not reached). */
@@ -223,11 +243,16 @@ export class SfxBank {
     if (this.stopped || this.unavailable) return
     const p = bankPitch(pitch)
     if (this.has(name, p)) return
-    if (!KNOWN_PITCHES.some(([n, ps]) => n === name && ps.includes(p)) && p !== 1) {
-      if (this.extraPitches >= MAX_EXTRA_PITCHES) return
-      this.extraPitches += 1
+    const waiting = this.queue.findIndex((job) => job.seed === undefined && job.name === name && job.pitch === p)
+    if (waiting >= 0) {
+      // Already in the queue: bring it forward, past the rest that a stage being played holds back.
+      this.urgent.unshift(...this.queue.splice(waiting, 1))
+    } else {
+      const extra = p !== 1 && !KNOWN_PITCHES.some(([n, ps]) => n === name && ps.includes(p))
+      if (extra && this.extraPitches >= MAX_EXTRA_PITCHES) return
+      if (!this.enqueue({ name, pitch: p }, 'urgent')) return
+      if (extra) this.extraPitches += 1
     }
-    if (!this.enqueue({ name, pitch: p }, true)) return
     this.running = true
     this.done = false
     this.kick()
@@ -244,8 +269,10 @@ export class SfxBank {
 
   private step(): void {
     if (this.stopped) return
-    const job = this.queue.shift()
+    const job = this.urgent.shift() ?? (this.playing ? undefined : this.queue.shift())
     if (!job) {
+      // The queue rests while a stage is played; `setPlaying(false)` starts it again.
+      if (this.queue.length) return
       this.done = true
       this.running = false
       this.finishedAt = this.now()
@@ -255,13 +282,12 @@ export class SfxBank {
     const next = () => {
       if (this.stopped) return
       this.timer = true
-      const busy = this.now() - this.lastRequest < BUSY_WINDOW_MS
       this.wait(
         () => {
           this.timer = false
           this.step()
         },
-        busy ? BUSY_GAP_MS : IDLE_GAP_MS
+        this.playing ? PLAY_GAP_MS : IDLE_GAP_MS
       )
     }
     this.timer = true
@@ -285,7 +311,8 @@ export class SfxBank {
     if (made.variety && job.seed === undefined && !this.extended.has(key)) {
       this.extended.add(key)
       for (let i = 1; i < VARIETY_TAKES; i++)
-        this.enqueue({ name: job.name, pitch: job.pitch, seed: Math.floor(Math.random() * 2 ** 31) }, true)
+        // The other takes go to the end of the queue: one take of every effect matters more than variety.
+        this.enqueue({ name: job.name, pitch: job.pitch, seed: Math.floor(Math.random() * 2 ** 31) })
     }
   }
 
@@ -314,6 +341,7 @@ export class SfxBank {
   private giveUp(): null {
     this.unavailable = true
     this.queue = []
+    this.urgent = []
     return null
   }
 

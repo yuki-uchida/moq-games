@@ -44,6 +44,9 @@ class WebAudio implements GameAudio {
       this.prepTimer = undefined
       this.safe(() => {
         if (this.disposed || this.ctx || !this.createContext()) return
+        // Nothing sounds before the first gesture, also where the browser would allow it: `unlock()` resumes.
+        const made = this.ctx as AudioContext | null
+        void made?.suspend().catch(() => undefined)
         // Making the context is a task of its own.
         this.prepTimer = setTimeout(() => this.safe(() => this.runSlice()), 0)
       })
@@ -135,7 +138,7 @@ class WebAudio implements GameAudio {
       if (this.disposed) return
       if (!this.ctx && !this.createContext()) return
       if (!this.engine) this.finish()
-      if (this.ctx?.state === 'suspended') void this.ctx.resume().catch(() => undefined)
+      if (this.ctx && this.ctx.state !== 'running') void this.ctx.resume().catch(() => undefined)
     })
   }
 
@@ -167,6 +170,10 @@ class WebAudio implements GameAudio {
   setMuted(muted: boolean): void {
     this.muted = muted
     this.safe(() => this.engine?.setMuted(muted))
+  }
+
+  playing(on: boolean): void {
+    this.safe(() => this.bank?.setPlaying(on))
   }
 
   setDuck(amount: number): void {

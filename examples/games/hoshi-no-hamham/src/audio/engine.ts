@@ -167,7 +167,6 @@ export class AudioEngine {
     }
     if (total >= MAX_SFX_VOICES) return
     const bank = this.bank
-    bank?.touch()
     let end = bank?.play(this.mixer, name, when, options)
     if (end !== undefined) sfxStats.buffered += 1
     else {

@@ -191,6 +191,7 @@ export const soundFor = (event: SimEvent): SfxName | null =>
 export const SILENT_AUDIO: GameAudio = {
   prepare() {},
   unlock() {},
+  playing() {},
   setMusic() {},
   sfx() {},
   loop() {},
@@ -279,6 +280,7 @@ export class SoundBoard implements CueSink {
 
   /** Starts the stage's music and loops; call once the session begins. */
   start(world: World) {
+    this.audio.playing(true)
     this.music?.update(world, 0)
   }
 
@@ -375,6 +377,8 @@ export class SoundBoard implements CueSink {
     this.paused = paused
     if (paused) this.stopLoops()
     this.music?.setPaused(paused)
+    // The frames stand still under the pause menu, so the audio may catch up on its background work.
+    this.audio.playing(!paused)
   }
 
   get isPaused() {
@@ -386,5 +390,6 @@ export class SoundBoard implements CueSink {
     this.stopLoops()
     this.queue.length = 0
     this.music?.stop()
+    this.audio.playing(false)
   }
 }

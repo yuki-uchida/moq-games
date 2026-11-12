@@ -132,6 +132,11 @@ export interface GameAudio {
   /** Resumes the AudioContext (creating it if `prepare()` has not); call from a user gesture (click/keydown). */
   unlock(): void
   /**
+   * A stage is being played (true) or no longer is (false). While it is, the audio keeps its background work
+   * (rendering sound effects ahead of time) away from the frames.
+   */
+  playing(on: boolean): void
+  /**
    * What music should play. Repeating the same theme is a no-op; a change crossfades. `layer` 0..2 raises the
    * arrangement's intensity (e.g. 1 when the boss gate closes) without restarting the song.
    */

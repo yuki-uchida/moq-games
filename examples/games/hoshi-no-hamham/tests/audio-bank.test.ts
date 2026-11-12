@@ -112,9 +112,8 @@ describe('bank keys', () => {
 })
 
 describe('the render queue', () => {
-  test('renders one effect per task, interface sounds first, and keeps a longer gap while the game is played', async () => {
-    let now = 0
-    const m = manualBank({ now: () => now })
+  test('renders one effect per task, interface sounds first, and rests while a stage is played', async () => {
+    const m = manualBank()
     const order: string[] = []
     const render = m.bank.render.bind(m.bank)
     m.bank.render = (name, pitch, seed) => {
@@ -144,13 +143,23 @@ describe('the render queue', () => {
     ])
     expect(order[10]).toBe('jump')
     expect(new Set(waits)).toEqual(new Set([30]))
-    // While effects are being asked for the gap is longer.
-    m.bank.touch()
+    // While a stage is played the queue rests: the pending timer finds nothing it may render.
+    m.bank.setPlaying(true)
+    const held = m.bank.size
     await m.run()
-    expect(await m.run()).toBe(250)
-    now = 10_000
-    await m.run()
-    expect(await m.run()).toBe(30)
+    expect(m.bank.size).toBe(held)
+    expect(m.timers.length).toBe(0)
+    expect(m.bank.done).toBe(false)
+    // An effect that had to play live is still rendered, with the longer gap after it.
+    expect(m.bank.has('bossDown')).toBe(false)
+    m.bank.want('bossDown', 1)
+    expect(await m.run()).toBe(0)
+    expect(m.bank.has('bossDown')).toBe(true)
+    expect(m.timers.at(-1)?.ms).toBe(250)
+    // Play is over: the queue carries on where it stopped, at the short gap.
+    m.bank.setPlaying(false)
+    await m.drain()
+    expect(m.bank.done).toBe(true)
   })
 
   test('renders every effect, three takes of those with variety, and counts the buffers', async () => {

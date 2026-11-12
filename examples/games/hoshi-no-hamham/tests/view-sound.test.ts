@@ -35,13 +35,17 @@ interface Recorded {
   music: { theme: ThemeName | null; layer: number }[]
   loops: { id: string; name: LoopName | null; options?: SfxOptions }[]
   ducks: number[]
+  /** Every `playing(on)` call: the board tells the audio when a stage is being played. */
+  playing: boolean[]
 }
 
 /** A GameAudio that records every call. */
 function recorder() {
-  const rec: Recorded = { sfx: [], music: [], loops: [], ducks: [] }
+  const rec: Recorded = { sfx: [], music: [], loops: [], ducks: [], playing: [] }
   const audio: GameAudio = {
+    prepare() {},
     unlock() {},
+    playing: (on) => rec.playing.push(on),
     setMusic: (theme, layer = 0) => rec.music.push({ theme, layer }),
     sfx: (name, options) => rec.sfx.push({ name, options }),
     loop: (id, name, options) => rec.loops.push({ id, name, options }),
@@ -498,6 +502,8 @@ describe('music', () => {
     expect(rec.ducks.at(-1)).toBe(0.6)
     b.stop()
     expect(rec.ducks.at(-1)).toBe(0)
+    // The audio is told when the stage is being played: from the start, not under the pause menu, not after the end.
+    expect(rec.playing).toEqual([true, false, true, false])
   })
 
   it('a board without music (the app’s cue board, a demo) never changes the music', () => {
