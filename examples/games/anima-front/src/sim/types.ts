@@ -155,7 +155,7 @@ export interface PlayerView {
   anima: number
   maxAnima: number
   state: 'alive' | 'down' | 'away'
-  /** down: seconds until warp-out; away: seconds until respawn (Infinity → no tickets left). */
+  /** down: seconds until warp-out; away: seconds until respawn, or −1 when no tickets are left (stays away). */
   timer: number
   /** 0..1 while an ally revives this player. */
   revive: number
@@ -234,6 +234,8 @@ export type PropKind =
   | 'pad'
   | 'base'
   | 'tutorial'
+  /** Acid left by ハリガネ / クイツクシ: damages players standing in it (`r`, `life`). */
+  | 'puddle'
 
 export interface PropView {
   id: number
@@ -381,12 +383,13 @@ export type SimEvent = { id: number; t: number } & (
   | { type: 'shard'; who: string; amount: number; at: V3 }
   | { type: 'heal'; who: string; amount: number; source: 'honey' | 'base' }
   | { type: 'reveal'; who: string; at: V3; radius: number }
-  | { type: 'foeSpawn'; id: number; kind: FoeKind; at: V3 }
-  | { type: 'foeWindup'; id: number; attack: FoeAttack; at: V3; aim?: V3 }
-  | { type: 'foeAttack'; id: number; attack: FoeAttack; at: V3; aim?: V3 }
-  | { type: 'foeDie'; id: number; kind: FoeKind; at: V3; by?: ActorRef; weak?: boolean }
-  | { type: 'bossPhase'; id: number; kind: FoeKind; phase: number }
-  | { type: 'bossPart'; id: number; kind: FoeKind; part: number }
+  /** Foe events name the foe in `foe` (the event's own `id` is the sequence number). */
+  | { type: 'foeSpawn'; foe: number; kind: FoeKind; at: V3 }
+  | { type: 'foeWindup'; foe: number; attack: FoeAttack; at: V3; aim?: V3 }
+  | { type: 'foeAttack'; foe: number; attack: FoeAttack; at: V3; aim?: V3 }
+  | { type: 'foeDie'; foe: number; kind: FoeKind; at: V3; by?: ActorRef; weak?: boolean }
+  | { type: 'bossPhase'; foe: number; kind: FoeKind; phase: number }
+  | { type: 'bossPart'; foe: number; kind: FoeKind; part: number }
   | { type: 'wave'; wave: number; waves: number; boss?: boolean }
   | { type: 'waveClear'; wave: number }
   | {

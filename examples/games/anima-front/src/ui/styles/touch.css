@@ -1,0 +1,188 @@
+/* Touch controls (phones in landscape, DESIGN §8). */
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.touch-controls.is-hidden {
+  display: none;
+}
+.tc-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.tc-move {
+  left: 0;
+  width: 42%;
+}
+.tc-look {
+  left: 42%;
+  right: 0;
+}
+.tc-stick {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 16, 36, 0.35);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.tc-stick.is-on {
+  opacity: 1;
+}
+.tc-knob {
+  position: absolute;
+  left: 32px;
+  top: 32px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffe2b8, #ff9a3c);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.tc-btn {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(10, 16, 36, 0.5);
+  color: #fff;
+  font-weight: 900;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tc-btn.is-down {
+  background: rgba(255, 154, 60, 0.55);
+  border-color: var(--anima-2);
+  transform: scale(0.94);
+}
+.tc-label {
+  font-size: 12px;
+  pointer-events: none;
+}
+.tc-cluster {
+  position: absolute;
+  right: calc(18px + var(--safe-r));
+  bottom: calc(14px + var(--safe-b));
+  width: 250px;
+  height: 200px;
+}
+.tc-paw {
+  width: 84px;
+  height: 84px;
+}
+.tc-paw .tc-label {
+  position: absolute;
+  bottom: 6px;
+  font-size: 13px;
+}
+.tc-paw-icon {
+  width: 46px;
+  height: 46px;
+  margin-top: -10px;
+}
+.tc-paw-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.tc-r {
+  right: 0;
+  bottom: 52px;
+  border-color: rgba(255, 180, 100, 0.7);
+}
+.tc-l {
+  right: 96px;
+  bottom: 96px;
+  border-color: rgba(124, 200, 255, 0.7);
+}
+.tc-cycle {
+  width: 36px;
+  height: 36px;
+}
+.tc-cycle .tc-label {
+  font-size: 0;
+}
+.tc-cycle::before {
+  content: '↻';
+  font-size: 18px;
+}
+.tc-cycle-r {
+  right: 24px;
+  bottom: 146px;
+}
+.tc-cycle-l {
+  right: 120px;
+  bottom: 190px;
+}
+.tc-small {
+  width: 64px;
+  height: 64px;
+}
+.tc-jump {
+  right: 100px;
+  bottom: 0;
+}
+.tc-dash {
+  right: 176px;
+  bottom: 22px;
+}
+.tc-interact {
+  position: absolute;
+  left: 50%;
+  bottom: calc(110px + var(--safe-b));
+  transform: translateX(-50%);
+  width: 88px;
+  height: 88px;
+  display: none;
+  border-color: var(--ok);
+  background: rgba(30, 120, 80, 0.6);
+}
+.tc-interact.is-on {
+  display: grid;
+}
+.tc-interact .tc-label {
+  font-size: 15px;
+}
+.tc-menu,
+.tc-score {
+  position: absolute;
+  top: calc(10px + var(--safe-t));
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 16, 36, 0.6);
+  color: #fff;
+  font-size: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.tc-menu {
+  right: calc(12px + var(--safe-r));
+}
+.tc-menu i {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: #fff;
+}
+.tc-score {
+  right: calc(64px + var(--safe-r));
+}
+.touch .hud-feed {
+  right: calc(120px + var(--safe-r));
+}

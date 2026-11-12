@@ -1,124 +1,141 @@
 /**
- * Placeholder model kit (primitive stand-ins) until the SDF model kit is implemented (owned by the models
- * workstream, which replaces this file). Implements the full ModelKit contract so other layers can run.
+ * The procedural model kit (DESIGN §15): SDF-sculpted animals with skeletons and procedural animation, and every
+ * antique. Generated data is cached per kit (species, antiques, gear); `prepare` time-slices generation so a
+ * page stays responsive. Foes, bosses, props and shots are placeholders for now (placeholders.ts).
  */
-import * as THREE from 'three'
-import type { FoeKind } from '../data/enemies'
-import { FOES } from '../data/enemies'
-import { ITEMS, type ItemId } from '../data/items'
-import { SPECIES, type SpeciesId } from '../data/species'
-import type { PropKind, ShotKind } from '../sim/types'
-import type {
-  BossModel,
-  CharacterModel,
-  CharacterPose,
-  FoeAnim,
-  FoeRig,
-  ItemModel,
-  ModelKit,
-  PropModel,
-  Quality,
-  ShotLook
-} from './api'
+import type * as THREE from 'three'
+import type { ItemId } from '../data/items'
+import type { SpeciesId } from '../data/species'
+import type { ModelKit, Quality } from './api'
+import { createCharacterModel, type CharacterDeps } from './character'
+import { happyEyeGeometry } from './face'
+import { gearModel, scarfModel, type GearId } from './gear'
+import { itemRecipe } from './items'
+import { buildItemAsset, createItemModel, type ItemAsset } from './items/item'
+import type { BakedModel } from './sdf/geometry'
+import { runSliced, runSync } from './sdf/mesher'
+import { buildSpeciesAsset, type SpeciesAsset } from './species/asset'
+import { placeholderBoss, placeholderProp, placeholderRig, placeholderShot } from './placeholders'
 
-const mat = (color: number) => new THREE.MeshStandardMaterial({ color, roughness: 0.7 })
+export interface KitStats {
+  species: Partial<Record<SpeciesId, { ms: number; triangles: number }>>
+  items: Partial<Record<ItemId, { ms: number; triangles: number }>>
+}
 
-function placeholderCharacter(species: SpeciesId): CharacterModel {
-  const def = SPECIES[species]
-  const root = new THREE.Group()
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(def.radius * 0.8, def.height * 0.35, 6, 12), mat(def.color))
-  body.position.y = def.height * 0.35
-  const head = new THREE.Mesh(new THREE.SphereGeometry(def.headRadius * 1.25, 16, 12), mat(def.color))
-  head.position.y = def.height - def.headRadius
-  root.add(body, head)
-  return {
-    root,
-    species,
-    update(_dt: number, _pose: CharacterPose) {},
-    muzzle(hand, out) {
-      return root.localToWorld(out.set(hand === 0 ? -0.35 : 0.35, def.height * 0.55, 0.5))
-    },
-    headTop(out) {
-      return root.localToWorld(out.set(0, def.height + 0.2, 0))
-    },
-    setTeam() {},
-    setLook() {},
-    setPassives() {},
-    setCloak() {},
-    setFlash() {},
-    setAnima() {},
-    setHologram() {},
-    dispose() {
-      body.geometry.dispose()
-      head.geometry.dispose()
+export interface ModelKitExt extends ModelKit {
+  readonly quality: Quality
+  /** Generation times (ms) and triangle counts of everything generated so far. */
+  stats(): KitStats
+  speciesAsset(id: SpeciesId): SpeciesAsset
+  itemAsset(id: ItemId): ItemAsset
+}
+
+export function createModelKit(options: { quality: Quality } = { quality: 'medium' }): ModelKitExt {
+  const quality = options.quality
+  const species = new Map<SpeciesId, SpeciesAsset>()
+  const items = new Map<ItemId, ItemAsset>()
+  const gear = new Map<GearId, BakedModel>()
+  const scarves = new Map<SpeciesId, BakedModel>()
+  let happyEye: THREE.BufferGeometry | null = null
+
+  const speciesAsset = (id: SpeciesId) => {
+    let a = species.get(id)
+    if (!a) {
+      a = runSync(buildSpeciesAsset(id, quality))
+      species.set(id, a)
     }
+    return a
   }
-}
-
-function placeholderItem(id: ItemId): ItemModel {
-  const root = new THREE.Group()
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.5), mat(ITEMS[id].color))
-  mesh.position.z = 0.2
-  root.add(mesh)
-  return { root, id, muzzle: new THREE.Vector3(0, 0, 0.45), update() {}, dispose: () => mesh.geometry.dispose() }
-}
-
-function placeholderRig(kind: FoeKind): FoeRig {
-  const def = FOES[kind]
-  const geometry = new THREE.SphereGeometry(1, 12, 8)
-  const material = mat(def.faction === 'machine' ? 0xe8edf2 : 0x2a2340)
-  return {
-    kind,
-    parts: [{ name: 'body', geometry, material }],
-    pose(anim: FoeAnim, out: THREE.Matrix4[]) {
-      const r = def.radius
-      const bob = Math.sin(anim.time * 6 + anim.seed * 10) * 0.05
-      out[0].compose(
-        new THREE.Vector3(0, def.height * 0.5 + bob, 0),
-        new THREE.Quaternion(),
-        new THREE.Vector3(r, def.height * 0.5, r)
-      )
+  const itemAsset = (id: ItemId) => {
+    let a = items.get(id)
+    if (!a) {
+      a = runSync(buildItemAsset(id, itemRecipe(id), quality))
+      items.set(id, a)
     }
+    return a
   }
-}
-
-export function createModelKit(_options: { quality: Quality } = { quality: 'medium' }): ModelKit {
-  return {
-    async prepare(_request, onProgress) {
-      onProgress?.(1)
+  const outlineOn = (want: boolean | undefined) => want !== false && quality !== 'low'
+  const deps = (id: SpeciesId, outline: boolean): CharacterDeps => ({
+    item: (item) => createItemModel(itemAsset(item), outline),
+    gear: (g) => {
+      let geo = gear.get(g)
+      if (!geo) {
+        geo = gearModel(g, quality)
+        gear.set(g, geo)
+      }
+      return geo
     },
-    createCharacter: (species) => placeholderCharacter(species),
-    createItem: (item) => placeholderItem(item),
+    scarf: () => {
+      let geo = scarves.get(id)
+      if (!geo) {
+        geo = scarfModel(speciesAsset(id).plan, quality)
+        scarves.set(id, geo)
+      }
+      return geo
+    },
+    happyEye: () => (happyEye ??= happyEyeGeometry())
+  })
+
+  return {
+    quality,
+    async prepare(request, onProgress) {
+      const todo: (() => Promise<void>)[] = []
+      for (const id of request.species ?? [])
+        if (!species.has(id))
+          todo.push(async () => {
+            if (!species.has(id)) species.set(id, await runSliced(buildSpeciesAsset(id, quality)))
+          })
+      for (const id of request.items ?? [])
+        if (!items.has(id))
+          todo.push(async () => {
+            if (!items.has(id)) items.set(id, await runSliced(buildItemAsset(id, itemRecipe(id), quality)))
+          })
+      const total = todo.length
+      onProgress?.(total === 0 ? 1 : 0)
+      for (let i = 0; i < total; i++) {
+        await todo[i]()
+        onProgress?.((i + 1) / total)
+      }
+    },
+    createCharacter(id, opts = {}) {
+      const outline = outlineOn(opts.outline)
+      return createCharacterModel(speciesAsset(id), { look: opts.look, outline }, deps(id, outline))
+    },
+    createItem: (id) => createItemModel(itemAsset(id), quality !== 'low'),
     foeRig: (kind) => placeholderRig(kind),
-    createBoss(kind: 'kuitsukushi' | 'goutetsu'): BossModel {
-      const def = FOES[kind]
-      const root = new THREE.Group()
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(def.radius, def.radius, def.height, 16), mat(0x553366))
-      mesh.position.y = def.height / 2
-      root.add(mesh)
-      return {
-        root,
-        kind,
-        update() {},
-        weakPoint: (out) => root.localToWorld(out.set(0, def.height * 0.6, def.radius)),
-        dispose: () => mesh.geometry.dispose()
+    createBoss: (kind) => placeholderBoss(kind),
+    createProp: (kind) => placeholderProp(kind),
+    shotLook: (kind) => placeholderShot(kind),
+    stats() {
+      const s: KitStats = { species: {}, items: {} }
+      for (const [id, a] of species) s.species[id] = { ms: a.ms, triangles: a.triangles }
+      for (const [id, a] of items) s.items[id] = { ms: a.ms, triangles: a.triangles }
+      return s
+    },
+    speciesAsset,
+    itemAsset,
+    dispose() {
+      for (const a of species.values()) {
+        for (const g of [a.body, a.eye, a.brow, a.mouthClosed, a.mouthOpen, ...a.parts.map((p) => p.model.geometry)])
+          g.dispose()
+        a.regionTexture.dispose()
+        for (const p of a.parts) p.model.texture.dispose()
       }
-    },
-    createProp(kind: PropKind): PropModel {
-      const root = new THREE.Group()
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), mat(0x88aacc))
-      mesh.position.y = 0.4
-      root.add(mesh)
-      return { root, kind, update() {}, dispose: () => mesh.geometry.dispose() }
-    },
-    shotLook(kind: ShotKind): ShotLook {
-      const color = kind in ITEMS ? ITEMS[kind as ItemId].color : 0xb388ff
-      return {
-        geometry: new THREE.SphereGeometry(0.08, 8, 6),
-        material: new THREE.MeshBasicMaterial({ color }),
-        stretch: 4
+      for (const a of items.values())
+        for (const p of a.parts) {
+          p.model.geometry.dispose()
+          p.model.texture.dispose()
+        }
+      for (const g of [...gear.values(), ...scarves.values()]) {
+        g.geometry.dispose()
+        g.texture.dispose()
       }
-    },
-    dispose() {}
+      happyEye?.dispose()
+      species.clear()
+      items.clear()
+      gear.clear()
+      scarves.clear()
+      happyEye = null
+    }
   }
 }
