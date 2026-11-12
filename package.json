@@ -48,7 +48,11 @@
     "test:hoshi-no-hamham": "vitest run examples/games/hoshi-no-hamham/tests --maxWorkers=1",
     "e2e:hoshi-no-hamham": "playwright test --config playwright.hoshi-no-hamham.config.ts",
     "art:hoshi-no-hamham": "node scripts/hoshi-no-hamham-art.mjs",
-    "audio:hoshi-no-hamham": "node scripts/hoshi-no-hamham-audio.mjs"
+    "audio:hoshi-no-hamham": "node scripts/hoshi-no-hamham-audio.mjs",
+    "dev:anima-front": "vite --config vite.config.anima-front.mjs",
+    "build:anima-front": "vite build --config vite.config.anima-front.mjs",
+    "test:anima-front": "vitest run examples/games/anima-front/tests --maxWorkers=1",
+    "e2e:anima-front": "playwright test --config playwright.anima-front.config.ts"
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",

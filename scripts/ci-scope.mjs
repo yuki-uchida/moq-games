@@ -10,7 +10,8 @@ export const games = [
   'lane-battle',
   'yoru-no-yashiki',
   'mamono-jinkei',
-  'hoshi-no-hamham'
+  'hoshi-no-hamham',
+  'anima-front'
 ]
 
 // Files in another game's scope that a game imports or loads; tests/ci-scope.test.mjs walks every game's imports

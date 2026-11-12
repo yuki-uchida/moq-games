@@ -8,6 +8,7 @@ test('Pages includes Rabbiters and its release notices, but not its source artwo
   await access('dist/examples/games/yoru-no-yashiki/index.html')
   await access('dist/examples/games/mamono-jinkei/index.html')
   await access('dist/examples/games/hoshi-no-hamham/index.html')
+  await access('dist/examples/games/anima-front/index.html')
   await assert.rejects(access('dist/examples/games/rabbiters/art-source'))
   const assets = await readdir('dist/assets')
   assert.ok(assets.some((asset) => /^moqt_bg-.*\.wasm$/.test(asset)))

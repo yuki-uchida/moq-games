@@ -19,6 +19,7 @@
     "examples/games/yoru-no-yashiki/src/**/*.ts",
     "examples/games/mamono-jinkei/src/**/*.ts",
     "examples/games/hoshi-no-hamham/src/**/*.ts",
+    "examples/games/anima-front/src/**/*.ts",
     "utils/**/*.ts",
     "lib/**/*.ts"
   ],
