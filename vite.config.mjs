@@ -45,6 +45,7 @@ export default defineConfig({
         yoruNoYashiki: resolve(root, 'examples/games/yoru-no-yashiki/index.html'),
         mamonoJinkei: resolve(root, 'examples/games/mamono-jinkei/index.html'),
         hoshiNoHamham: resolve(root, 'examples/games/hoshi-no-hamham/index.html'),
+        animaFront: resolve(root, 'examples/games/anima-front/index.html'),
         game: resolve(root, 'examples/games/tower_diffence_with_jev/index.html'),
         modelReview: resolve(root, 'examples/games/tower_diffence_with_jev/model-review.html'),
         extra: resolve(root, 'examples/games/tower_diffence_with_jev/extra.html')
