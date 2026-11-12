@@ -49,13 +49,16 @@ class Queue<T> implements AsyncIterable<T> {
   }
 }
 
-// Messages are (de)compressed off the main thread, so flushing also yields to the event loop (with the real
-// setImmediate, which fake timers replace later).
+// Messages are (de)compressed off the main thread: that work ends after some real time, not after a number of
+// event-loop turns, and on a busy machine it takes longer. Flushing therefore waits on the real clock between its
+// turns (the real setImmediate and setTimeout, which fake timers replace later).
 const immediate = setImmediate
+const timeout = setTimeout
 const flush = async () => {
-  for (let turn = 0; turn < 40; turn++) {
+  for (let turn = 0; turn < 6; turn++) {
     for (let index = 0; index < 80; index++) await Promise.resolve()
     await new Promise((done) => immediate(done))
+    await new Promise((done) => timeout(done, 5))
   }
 }
 const deflated = (text: string) => new Uint8Array(deflateRawSync(text))
