@@ -86,8 +86,13 @@ export class Pacer {
    * current state.
    */
   finish(held: boolean): number {
-    if ((this.steps === MAX_STEPS || held) && this.accumulator > 0) this.accumulator = 0
-    if (held) return 1
+    if (held) {
+      // The hold shows the current state in full, so nothing is owed either way when it ends: the first frame
+      // after it steps at once instead of repeating the picture.
+      this.accumulator = 0
+      return 1
+    }
+    if (this.steps === MAX_STEPS && this.accumulator > 0) this.accumulator = 0
     return Math.min(1, Math.max(0, 1 + this.accumulator / STEP))
   }
 

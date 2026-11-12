@@ -89,6 +89,8 @@ export class PlaySession {
   damage = 0
   /** The bot plays instead of the player, with sound and the HUD as in real play (performance checks). */
   autopilot = false
+  /** Where between the last two simulation states the frame's picture is: 1 shows the current state. */
+  alpha = 1
   private sounds: SoundBoard
   private pacer = new Pacer()
   private mover = new Interpolator()
@@ -157,6 +159,7 @@ export class PlaySession {
       if (pacer.steps > 0) mover.settle()
     }
     const alpha = pacer.finish(view.frozen || scale <= 0)
+    this.alpha = alpha
     if (alpha < 1) mover.apply(alpha)
     view.update(dt, view.frozen ? 0 : dt * scale)
     if (!this.demo) this.deps.hud.update(world, dt)

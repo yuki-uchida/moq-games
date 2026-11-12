@@ -194,6 +194,25 @@ describe('Pacer hitches and time scale', () => {
     expect(pacer.accumulator).toBe(0)
   })
 
+  it('owes nothing after a hold: at 120 Hz the first frame after a hit-stop steps at once', () => {
+    const pacer = new Pacer()
+    const frame = (held: boolean) => {
+      pacer.begin(1 / 120, held ? 0 : 1)
+      let steps = 0
+      while (!held && pacer.due()) {
+        pacer.stepped()
+        steps += 1
+      }
+      return { steps, alpha: pacer.finish(held) }
+    }
+    for (let i = 0; i < 40; i++) frame(false)
+    // Find a frame that steps (alpha 0.5, the simulation half a step ahead), then hold from the next one.
+    while (frame(false).steps === 0);
+    for (let i = 0; i < 6; i++) expect(frame(true)).toEqual({ steps: 0, alpha: 1 })
+    expect(frame(false)).toEqual({ steps: 1, alpha: 0.5 })
+    expect(frame(false)).toEqual({ steps: 0, alpha: 1 })
+  })
+
   it('stops at MAX_STEPS in a frame and drops the rest of a long stall', () => {
     const pacer = new Pacer()
     pacer.begin(1, 1)
