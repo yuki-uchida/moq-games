@@ -15,7 +15,12 @@
  *
  * Output (all under the output folder):
  *   index.md            table of contents and every measured number as Markdown tables (readable without images)
- *   screens/            screenshots of every screen at 1280x720 and the main ones at 844x390 and 390x844 (touch)
+ *   screens/            screenshots of every screen at 1280x720 and of title, select, story, play, pause, result, game
+ *                       over, an ending page and the credits (start, middle, end) at 844x390, 390x844 and 320x568
+ *                       (touch). index.md adds, per screenshot, the tallest empty horizontal band (px, share of the
+ *                       viewport, y range; flagged above 25 %), headings and buttons that wrap, and on the phone rows
+ *                       the reviewer measurements (story layout margins, stage/touch-controls gap, credits window).
+ *                       The four viewports run side by side.
  *   staging/<series>/   a frame every 150 ms of the stage starts, a boss intro, a boss defeat, a clear, a death
  *   art/                the sprite sheets (scripts/hoshi-no-hamham-art.mjs) and clips.md (every clip of every sheet)
  *   motion/             what the view adds on top of the sprites: squash/stretch, camera look-ahead, hit-stop
@@ -341,80 +346,430 @@ const PLAY_WORLDS = [
   [10, 'star']
 ]
 
+/** Measures the visible page: horizontal scroll, smallest text, smallest button. */
+const measure = (page) =>
+  page.evaluate(() => {
+    const visible = (el, style, rect) =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      Number(style.opacity) > 0.01 &&
+      rect.right > 0 &&
+      rect.bottom > 0 &&
+      rect.left < innerWidth &&
+      rect.top < innerHeight
+    const scrollsX =
+      document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 ||
+      document.body.scrollWidth > innerWidth + 1
+    let minFont = Infinity
+    let minFontWhere = ''
+    for (const el of document.body.querySelectorAll('*')) {
+      if (['SCRIPT', 'STYLE', 'CANVAS'].includes(el.tagName)) continue
+      const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim())
+      if (!own) continue
+      const style = getComputedStyle(el)
+      if (!visible(el, style, el.getBoundingClientRect())) continue
+      const size = parseFloat(style.fontSize)
+      // font-size 0 is how icon-only buttons hide their text label
+      if (size > 0 && size < minFont) {
+        minFont = size
+        minFontWhere = `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''}: ${el.textContent.trim().slice(0, 14)}`
+      }
+    }
+    let minButton = null
+    for (const el of document.body.querySelectorAll(
+      'button, [role="button"], a[href], input, select, #touch-controls *'
+    )) {
+      const style = getComputedStyle(el)
+      const rect = el.getBoundingClientRect()
+      if (!visible(el, style, rect)) continue
+      if (el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) continue
+      // covered by something else (a screen on top of it): not clickable
+      const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      if (!top || !(el.contains(top) || top.contains(el))) continue
+      const side = Math.min(rect.width, rect.height)
+      if (!minButton || side < minButton.side)
+        minButton = {
+          side,
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+          what: `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''} ${el.textContent.trim().slice(0, 10)}`.trim()
+        }
+    }
+    return {
+      scrollsX,
+      minFont: minFont === Infinity ? null : minFont,
+      minFontWhere,
+      minButton
+    }
+  })
+
+/**
+ * Runs inside the page (page.evaluate): everything the screens section measures on the visible page.
+ * `kind` picks the reviewer's own measurements (story, ending, play, select, credits); `probes` switches them on.
+ * It must be self-contained: it is serialised into the page. Every probe reads defensively: a missing element
+ * becomes "not found" and never throws out of this function.
+ */
+function inspectPage({ kind, probes }) {
+  const W = innerWidth
+  const H = innerHeight
+  const styles = new Map()
+  const styleOf = (el) => {
+    let s = styles.get(el)
+    if (!s) styles.set(el, (s = getComputedStyle(el)))
+    return s
+  }
+  const tag = (el) =>
+    `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${
+      typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/)[0] : ''
+    }`
+  const opacityOf = (el) => {
+    let o = 1
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) o *= Number(styleOf(n).opacity)
+    return o
+  }
+  const shown = (el) => {
+    if (!el) return false
+    const r = el.getBoundingClientRect()
+    return r.width > 0 && r.height > 0 && styleOf(el).display !== 'none' && styleOf(el).visibility !== 'hidden'
+  }
+  const visible = (el) => {
+    const s = styleOf(el)
+    if (s.visibility === 'hidden' || s.display === 'none' || el.closest('[hidden]')) return false
+    return opacityOf(el) > 0.01
+  }
+  /** Intersects a rect with the viewport and with every ancestor that clips its overflow; null when nothing is left. */
+  const clip = (rect, el) => {
+    let l = Math.max(rect.left, 0)
+    let t = Math.max(rect.top, 0)
+    let r = Math.min(rect.right, W)
+    let b = Math.min(rect.bottom, H)
+    // An overflow clip only reaches the element when that ancestor is in its containing-block chain: a fixed or
+    // absolute element escapes the overflow of ancestors that do not contain it.
+    const transforms = (s) => s.transform !== 'none' || s.filter !== 'none' || s.perspective !== 'none'
+    let position = styleOf(el).position
+    for (let n = el.parentElement; n && n !== document.documentElement; n = n.parentElement) {
+      const s = styleOf(n)
+      const contains =
+        position === 'fixed' ? transforms(s) : position === 'absolute' ? s.position !== 'static' || transforms(s) : true
+      if (!contains) continue
+      position = s.position
+      if (s.overflowX === 'visible' && s.overflowY === 'visible') continue
+      const c = n.getBoundingClientRect()
+      if (s.overflowX !== 'visible') {
+        l = Math.max(l, c.left)
+        r = Math.min(r, c.right)
+      }
+      if (s.overflowY !== 'visible') {
+        t = Math.max(t, c.top)
+        b = Math.min(b, c.bottom)
+      }
+    }
+    return r - l > 0 && b - t > 0 ? { l, t, r, b } : null
+  }
+  const alpha = (color) => {
+    const m = /rgba?\(([^)]+)\)/.exec(color)
+    if (!m) return color === 'transparent' ? 0 : 1
+    const parts = m[1].split(/[ ,/]+/).filter(Boolean)
+    return parts.length > 3 ? Number(parts[3]) : 1
+  }
+  const painted = (canvas) => {
+    try {
+      const probe = document.createElement('canvas')
+      probe.width = 16
+      probe.height = 16
+      const ctx = probe.getContext('2d')
+      ctx.drawImage(canvas, 0, 0, 16, 16)
+      const data = ctx.getImageData(0, 0, 16, 16).data
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true
+      return false
+    } catch {
+      return true
+    }
+  }
+  /** Text nodes with something to read: not blank, not in a 1-px visually-hidden box. */
+  const readableTexts = (el) =>
+    Array.from(el.querySelectorAll('*'))
+      .concat(el)
+      .filter((n) => {
+        const r = n.getBoundingClientRect()
+        return r.width > 2 && r.height > 2
+      })
+      .flatMap((n) => Array.from(n.childNodes).filter((c) => c.nodeType === 3 && c.textContent.trim()))
+  /** Lines of one run of text (rectangles of the text node grouped by line). */
+  const linesOfNode = (node) => {
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rects = Array.from(range.getClientRects())
+      .filter((r) => r.width > 0 && r.height > 2)
+      .sort((a, b) => a.top - b.top)
+    let lines = 0
+    let bottom = -Infinity
+    for (const r of rects) {
+      if ((r.top + r.bottom) / 2 >= bottom) lines += 1
+      bottom = Math.max(bottom, r.bottom)
+    }
+    return lines
+  }
+  /** Most lines any single run of text inside the element takes (stacked child elements are not wrapping). */
+  const lineCount = (el) => Math.max(0, ...readableTexts(el).map(linesOfNode))
+
+  // --- everything visible that is content or decoration
+  const items = []
+  const add = (rect, el, why) => {
+    const c = clip(rect, el)
+    if (c) items.push({ ...c, what: `${tag(el)} (${why})` })
+  }
+  const page = new Set(['HTML', 'BODY'])
+  const isBackdrop = (el) => page.has(el.tagName) || el.matches('#app, #stage-wrap, .screen, .screen-ghost')
+  for (const el of document.body.querySelectorAll('*')) {
+    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(el.tagName)) continue
+    if (!visible(el)) continue
+    const s = styleOf(el)
+    const rect = el.getBoundingClientRect()
+    // visible text, one rectangle per line
+    if (parseFloat(s.fontSize) > 0 && alpha(s.color) > 0.05 && rect.width > 2 && rect.height > 2) {
+      for (const node of el.childNodes) {
+        if (node.nodeType !== 3 || !node.textContent.trim()) continue
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        for (const r of range.getClientRects())
+          if (r.width > 2 && r.height > 2) add(r, el, `text "${node.textContent.trim().slice(0, 12)}"`)
+      }
+    }
+    if (rect.width <= 0 || rect.height <= 0) continue
+    if (el.matches('button, input, select, textarea, [role="button"], a[href]')) add(rect, el, 'control')
+    else if (el.tagName === 'IMG') {
+      if (el.complete && el.naturalWidth > 0 && rect.width > 2 && rect.height > 2) add(rect, el, 'image')
+    } else if (el.tagName === 'CANVAS') {
+      if (el.id !== 'game' && painted(el)) add(rect, el, 'canvas')
+    } else if (['SVG', 'VIDEO'].includes(el.tagName.toUpperCase())) add(rect, el, 'media')
+    if (isBackdrop(el) || el.id === 'game' || rect.width * rect.height >= 0.9 * W * H) continue
+    const bordered =
+      s.borderImageSource !== 'none' ||
+      ['Top', 'Right', 'Bottom', 'Left'].some(
+        (side) =>
+          parseFloat(s[`border${side}Width`]) > 0 &&
+          s[`border${side}Style`] !== 'none' &&
+          alpha(s[`border${side}Color`]) > 0.05
+      )
+    const gradientOnly = s.backgroundImage !== 'none' && !s.backgroundImage.includes('url(')
+    const overlay = gradientOnly && el.getAttribute('aria-hidden') === 'true'
+    if (s.backgroundImage !== 'none' && !overlay) add(rect, el, 'background image')
+    else if (bordered) add(rect, el, 'border')
+    else if (alpha(s.backgroundColor) >= 0.5) add(rect, el, 'panel')
+    else if (s.boxShadow !== 'none') add(rect, el, 'shadow frame')
+  }
+  // The game canvas counts as the stage's rectangle, unless a screen with an opaque backdrop covers it.
+  const stage = document.querySelector('#stage-wrap')
+  const game = document.querySelector('#game')
+  if (stage && game && visible(game)) {
+    const covered = Array.from(document.querySelectorAll('.screen')).some((screen) => {
+      if (!shown(screen) || opacityOf(screen) < 0.5) return false
+      const s = styleOf(screen)
+      return s.backgroundImage !== 'none' || alpha(s.backgroundColor) >= 0.9
+    })
+    if (!covered) add(stage.getBoundingClientRect(), game, 'game canvas = stage')
+  }
+  // --- the tallest horizontal band no rectangle touches
+  items.sort((a, b) => a.t - b.t)
+  let best = { h: 0, top: 0, bottom: 0, above: 'top of the viewport', below: 'bottom of the viewport' }
+  let reach = 0
+  let reachWhat = 'top of the viewport'
+  for (const item of items) {
+    if (item.t - reach > best.h)
+      best = { h: item.t - reach, top: reach, bottom: item.t, above: reachWhat, below: item.what }
+    if (item.b > reach) {
+      reach = item.b
+      reachWhat = item.what
+    }
+  }
+  if (H - reach > best.h)
+    best = { h: H - reach, top: reach, bottom: H, above: reachWhat, below: 'bottom of the viewport' }
+
+  // --- headings and buttons that wrap
+  const wraps = []
+  const candidates = document.querySelectorAll(
+    'h1, h2, h3, h4, h5, h6, .headline, .story-title, button, [role="button"], .pxbtn, a.home-link'
+  )
+  for (const el of candidates) {
+    if (!visible(el) || !shown(el) || !clip(el.getBoundingClientRect(), el)) continue
+    const lines = lineCount(el)
+    if (lines > 1) wraps.push([tag(el), el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40), lines])
+  }
+
+  // --- the reviewer's own measurements
+  const measures = []
+  if (probes) {
+    const NOT_FOUND = 'not found'
+    const probe = (label, fn) => {
+      try {
+        measures.push([label, fn()])
+      } catch (error) {
+        measures.push([label, error === NOT_FOUND ? NOT_FOUND : `error: ${error?.message ?? error}`])
+      }
+    }
+    const need = (el) => {
+      if (!el) throw NOT_FOUND
+      return el
+    }
+    const box = (r) =>
+      `x ${Math.round(r.left)}–${Math.round(r.right)}, y ${Math.round(r.top)}–${Math.round(r.bottom)} (${Math.round(r.width)}×${Math.round(r.height)})`
+    const px = (n) => `${Math.round(n)} px`
+    const firstShown = (selector) => Array.from(document.querySelectorAll(selector)).find(shown)
+    if (kind === 'story' || kind === 'ending' || kind === 'credits') {
+      const layout = firstShown('.story-layout')
+      probe('.story-layout', () => {
+        const r = need(layout).getBoundingClientRect()
+        return `${box(r)}; top margin ${px(r.top)}, bottom margin ${px(H - r.bottom)}`
+      })
+      probe('footer buttons share a row', () => {
+        const foot = need(layout).querySelector('.story-foot')
+        const buttons = Array.from(need(foot).querySelectorAll('button')).filter(shown)
+        if (!buttons.length) return 'no visible button'
+        const rects = buttons.map((b) => b.getBoundingClientRect())
+        const tops = rects.map((r) => Math.round(r.top))
+        const sameRow = Math.max(...rects.map((r) => r.top)) - Math.min(...rects.map((r) => r.top)) < 4
+        const foots = foot.getBoundingClientRect()
+        return `${sameRow ? 'yes' : '**NO**'}: ${buttons.length} button(s), tops ${tops.join('/')}; footer ${box(foots)}`
+      })
+    }
+    if (kind === 'play') {
+      const wrap = document.querySelector('#stage-wrap')
+      const controls = document.querySelector('#touch-controls')
+      probe('#stage-wrap', () => box(need(wrap).getBoundingClientRect()))
+      probe('#touch-controls', () => {
+        const el = need(controls)
+        return shown(el) ? box(el.getBoundingClientRect()) : 'not visible (hidden)'
+      })
+      probe('stage bottom → controls top', () => {
+        need(controls)
+        if (!shown(controls)) return 'not visible'
+        return px(controls.getBoundingClientRect().top - need(wrap).getBoundingClientRect().bottom)
+      })
+    }
+    if (kind === 'select') {
+      probe('#select-title one line', () => {
+        const el = need(document.querySelector('#select-title'))
+        const r = el.getBoundingClientRect()
+        const lh = parseFloat(styleOf(el).lineHeight)
+        const lines = lineCount(el)
+        return `${lines === 1 ? 'yes' : '**NO**'}: ${lines} line(s), height ${px(r.height)} vs line height ${Number.isNaN(lh) ? 'normal' : px(lh)}`
+      })
+    }
+    if (kind === 'credits') {
+      probe('#ending-credits', () => {
+        const el = need(document.querySelector('#ending-credits'))
+        if (!shown(el)) return 'not visible'
+        const r = el.getBoundingClientRect()
+        const share = (100 * r.height) / H
+        return `${box(r)}; ${share.toFixed(1)} % of the viewport height${share < 30 ? ' (**small window**)' : ''}`
+      })
+      probe('credit entries cut by the area edge', () => {
+        const area = need(document.querySelector('#ending-credits'))
+        if (!shown(area)) return 'not visible'
+        let entries = Array.from(area.querySelectorAll('.credits-name, .credits-title, .credits-line, .credits-end'))
+        if (!entries.length) entries = Array.from(area.querySelectorAll('p'))
+        if (!entries.length) throw NOT_FOUND
+        const a = area.getBoundingClientRect()
+        const cut = []
+        let inside = 0
+        for (const entry of entries) {
+          const r = entry.getBoundingClientRect()
+          if (r.height <= 0) continue
+          const overlap = Math.min(r.bottom, a.bottom) - Math.max(r.top, a.top)
+          if (overlap <= 0.5) continue
+          if (r.top < a.top - 0.5 || r.bottom > a.bottom + 0.5)
+            cut.push(
+              `"${entry.textContent.trim().slice(0, 12)}" ${Math.round(100 * (1 - overlap / r.height))} % outside`
+            )
+          else inside += 1
+        }
+        return cut.length ? `**${cut.length} cut**: ${cut.join(', ')}; ${inside} whole` : `none cut; ${inside} whole`
+      })
+    }
+  }
+  return {
+    band: { h: best.h, top: best.top, bottom: best.bottom, above: best.above, below: best.below, viewport: H },
+    wraps,
+    measures
+  }
+}
+
+/** Share of the viewport height above which an empty band is flagged. */
+const EMPTY_FLAG_PERCENT = 25
+const SCREEN_COLUMNS = [
+  'file',
+  'viewport',
+  'scrolls sideways',
+  'smallest text',
+  'smallest button (w×h px)',
+  `tallest empty band (flag > ${EMPTY_FLAG_PERCENT} %)`,
+  'wrapped headings / buttons',
+  'note'
+]
+
+/** Moves every animation of the credits roll to `fraction` of its run and holds it there; returns what it did. */
+const seekCredits = (page, fraction) =>
+  page.evaluate((f) => {
+    const area = document.querySelector('#ending-credits')
+    if (!area) return 'no #ending-credits'
+    const animations = document.getAnimations().filter((a) => {
+      const target = a.effect?.target
+      return target instanceof Element && area.contains(target)
+    })
+    if (!animations.length) return 'no animation on the credits'
+    for (const animation of animations) {
+      const timing = animation.effect.getComputedTiming()
+      const end = Number.isFinite(timing.endTime) ? timing.endTime : timing.duration
+      animation.pause()
+      animation.currentTime = Math.min(end * f, end - 1)
+    }
+    return `${animations.length} animation(s) held at ${Math.round(f * 100)} %`
+  }, fraction)
+
 async function runScreens(dir) {
-  const rows = []
   const failures = []
   mkdirSync(dir, { recursive: true })
 
-  /** Measures the visible page: horizontal scroll, smallest text, smallest button. */
-  const measure = (page) =>
-    page.evaluate(() => {
-      const visible = (el, style, rect) =>
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.visibility !== 'hidden' &&
-        style.display !== 'none' &&
-        Number(style.opacity) > 0.01 &&
-        rect.right > 0 &&
-        rect.bottom > 0 &&
-        rect.left < innerWidth &&
-        rect.top < innerHeight
-      const scrollsX =
-        document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 ||
-        document.body.scrollWidth > innerWidth + 1
-      let minFont = Infinity
-      let minFontWhere = ''
-      for (const el of document.body.querySelectorAll('*')) {
-        if (['SCRIPT', 'STYLE', 'CANVAS'].includes(el.tagName)) continue
-        const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim())
-        if (!own) continue
-        const style = getComputedStyle(el)
-        if (!visible(el, style, el.getBoundingClientRect())) continue
-        const size = parseFloat(style.fontSize)
-        // font-size 0 is how icon-only buttons hide their text label
-        if (size > 0 && size < minFont) {
-          minFont = size
-          minFontWhere = `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''}: ${el.textContent.trim().slice(0, 14)}`
-        }
-      }
-      let minButton = null
-      for (const el of document.body.querySelectorAll(
-        'button, [role="button"], a[href], input, select, #touch-controls *'
-      )) {
-        const style = getComputedStyle(el)
-        const rect = el.getBoundingClientRect()
-        if (!visible(el, style, rect)) continue
-        if (el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) continue
-        // covered by something else (a screen on top of it): not clickable
-        const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
-        if (!top || !(el.contains(top) || top.contains(el))) continue
-        const side = Math.min(rect.width, rect.height)
-        if (!minButton || side < minButton.side)
-          minButton = {
-            side,
-            w: Math.round(rect.width),
-            h: Math.round(rect.height),
-            what: `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : ''} ${el.textContent.trim().slice(0, 10)}`.trim()
-          }
-      }
-      return {
-        scrollsX,
-        minFont: minFont === Infinity ? null : minFont,
-        minFontWhere,
-        minButton
-      }
-    })
+  /** One lane per viewport: its rows, its measurements and its flags. Lanes run side by side. */
+  const newLane = () => ({ rows: [], measures: [], wraps: [], flags: [] })
 
-  const shot = async (page, viewport, name, note = '') => {
+  /** A screenshot plus everything measured on the page at that moment (`kind` selects the reviewer's measurements). */
+  const shot = async (lane, page, viewport, name, note = '', kind = '', probes = false) => {
     const file = join(dir, `${viewport.width}x${viewport.height}-${name}.png`)
+    const link = `[${rel(file)}](${rel(file)})`
+    const size = `${viewport.width}×${viewport.height}`
     await page.screenshot({ path: file })
     const m = await measure(page)
-    rows.push([
-      `[${rel(file)}](${rel(file)})`,
-      `${viewport.width}×${viewport.height}`,
+    let found = null
+    try {
+      found = await page.evaluate(inspectPage, { kind, probes })
+    } catch (error) {
+      failures.push([`${size} ${name}: layout measurements`, String(error.message ?? error).split('\n')[0]])
+    }
+    let band = 'not measured'
+    let wrapped = 'not measured'
+    if (found) {
+      const percent = (100 * found.band.h) / found.band.viewport
+      const text = `${fmt(found.band.h)} px = ${fmt(percent, 1)} % of the height, y ${fmt(found.band.top)}–${fmt(found.band.bottom)}, between ${found.band.above} and ${found.band.below}`
+      const flagged = percent > EMPTY_FLAG_PERCENT
+      band = flagged ? `**⚠ ${text}**` : text
+      if (flagged)
+        lane.flags.push([link, size, `${fmt(percent, 1)} %`, `y ${fmt(found.band.top)}–${fmt(found.band.bottom)}`])
+      wrapped = found.wraps.length ? `**${found.wraps.length}** (see the wrapped table)` : 'none'
+      for (const [element, text, lines] of found.wraps) lane.wraps.push([link, size, element, text, lines])
+      for (const [label, value] of found.measures) lane.measures.push([link, size, label, value])
+    }
+    lane.rows.push([
+      link,
+      size,
       m.scrollsX ? '**yes**' : 'no',
       m.minFont === null ? '–' : `${fmt(m.minFont, 1)} px (${m.minFontWhere})`,
       m.minButton ? `${m.minButton.w}×${m.minButton.h} (${m.minButton.what})` : '–',
+      band,
+      wrapped,
       note
     ])
   }
@@ -429,91 +784,194 @@ async function runScreens(dir) {
 
   // --- desktop: fresh save, then everything unlocked
   const desktop = { width: 1280, height: 720 }
-  {
-    const { context, page } = await openPage({ label: 'screens 1280x720 fresh', viewport: desktop })
-    try {
-      await step('title', async () => {
-        await gotoTitle(page)
-        await page.waitForTimeout(2000)
-        await shot(page, desktop, '01-title-2s', 'fresh save, demo running')
-        await page.waitForTimeout(4000)
-        await shot(page, desktop, '02-title-6s', 'the demo has moved on')
-      })
-      await step('help', async () => {
-        await page.locator('#help-open').click()
-        await page.waitForTimeout(400)
-        await shot(page, desktop, '03-help')
-        await page.locator('#help-done').click()
-        await page.waitForTimeout(250)
-      })
-      await step('opening story', async () => {
-        await page.locator('#start').click()
-        await page.waitForFunction(() => window.__hamham.app.screen === 'story', null, { timeout: 10_000 })
-        await page.waitForTimeout(500)
-        const pages = await walkStory(page, false, {
-          onPage: async (index) => shot(page, desktop, `04-opening-page${index + 1}`, 'text complete')
+  const desktopLane = newLane()
+  const runDesktop = async () => {
+    const lane = desktopLane
+    const snap = (page, name, note, kind) => shot(lane, page, desktop, name, note, kind)
+    {
+      const { context, page } = await openPage({ label: 'screens 1280x720 fresh', viewport: desktop })
+      try {
+        await step('title', async () => {
+          await gotoTitle(page)
+          await page.waitForTimeout(2000)
+          await snap(page, '01-title-2s', 'fresh save, demo running')
+          await page.waitForTimeout(4000)
+          await snap(page, '02-title-6s', 'the demo has moved on')
         })
-        rows.push([`(opening story: ${pages} pages)`, '', '', '', '', ''])
+        await step('help', async () => {
+          await page.locator('#help-open').click()
+          await page.waitForTimeout(400)
+          await snap(page, '03-help')
+          await page.locator('#help-done').click()
+          await page.waitForTimeout(250)
+        })
+        await step('opening story', async () => {
+          await page.locator('#start').click()
+          await page.waitForFunction(() => window.__hamham.app.screen === 'story', null, { timeout: 10_000 })
+          await page.waitForTimeout(500)
+          const pages = await walkStory(page, false, {
+            onPage: async (index) => snap(page, `04-opening-page${index + 1}`, 'text complete', 'story')
+          })
+          lane.rows.push([`(opening story: ${pages} pages)`, '', '', '', '', '', '', ''])
+        })
+        await step('select fresh', async () => {
+          await page.waitForFunction(() => window.__hamham.app.screen === 'select', null, { timeout: 10_000 })
+          await page.waitForTimeout(700)
+          await snap(page, '05-select-fresh', 'only stage 1 open', 'select')
+        })
+      } finally {
+        await context.close()
+      }
+    }
+    {
+      const { context, page } = await openPage({
+        label: 'screens 1280x720 unlocked',
+        viewport: desktop,
+        save: UNLOCKED_SAVE
       })
-      await step('select fresh', async () => {
-        await page.waitForFunction(() => window.__hamham.app.screen === 'select', null, { timeout: 10_000 })
-        await page.waitForTimeout(700)
-        await shot(page, desktop, '05-select-fresh', 'only stage 1 open')
-      })
-    } finally {
-      await context.close()
+      try {
+        await step('select unlocked', async () => {
+          await gotoTitle(page)
+          await page.waitForTimeout(500)
+          await snap(page, '06-title-continue', 'save with 9 stages cleared')
+          await page.locator('#continue').click()
+          await page.waitForSelector('.stage-card')
+          await page.waitForTimeout(800)
+          await snap(page, '07-select-all', 'everything unlocked', 'select')
+        })
+        await step('stage story', async () => {
+          await page.locator('.stage-card').nth(0).click()
+          await page.waitForFunction(() => window.__hamham.app.screen === 'story', null, { timeout: 10_000 })
+          await page.waitForTimeout(400)
+          await walkStory(page, false, {
+            onPage: (index) => snap(page, `08-stage1-story-page${index + 1}`, '', 'story')
+          })
+        })
+        for (const [no, theme] of PLAY_WORLDS) {
+          await step(`play stage ${no}`, async () => {
+            await startStage(page, no)
+            await waitStartDone(page)
+            await makeSafe(page)
+            await page.keyboard.down('ArrowRight')
+            await page.waitForTimeout(1000)
+            await page.keyboard.up('ArrowRight')
+            await snap(page, `09-play-stage${String(no).padStart(2, '0')}-${theme}`, `world ${theme}`, 'play')
+          })
+        }
+        await step('pause', async () => {
+          await startStage(page, 1)
+          await waitStartDone(page)
+          await page.keyboard.press('Escape')
+          await page.waitForSelector('#pause-screen:not([hidden])', { timeout: 5000 })
+          await page.waitForTimeout(500)
+          await snap(page, '10-pause')
+        })
+        await step('result', async () => {
+          await startStage(page, 2)
+          await clearStage(page)
+          await page.waitForFunction(() => window.__hamham.app.screen === 'result', null, { timeout: 5000 })
+          await page.waitForTimeout(3500)
+          await snap(page, '11-result', 'stage 2, tally finished')
+        })
+        await step('game over', async () => {
+          await startStage(page, 3)
+          await waitStartDone(page)
+          await page.evaluate(() => {
+            const w = window.__hamham.world
+            w.player.hp = 1
+            w.player.invuln = 0
+            w.hurtPlayer(9, w.player.x - 10)
+          })
+          await page.waitForFunction(() => window.__hamham.app.screen === 'dead', null, { timeout: 15_000 })
+          await page.waitForTimeout(1500)
+          await snap(page, '12-game-over')
+        })
+        await step('ending', async () => {
+          await gotoTitle(page)
+          await page.evaluate(() => window.__hamham.openEnding())
+          await page.waitForTimeout(600)
+          for (let index = 0; index < 14; index++) {
+            await finishTyping(page)
+            const credits = await page.evaluate(() => {
+              const el = document.querySelector('#ending-credits')
+              return Boolean(el) && !el.hidden
+            })
+            if (credits) break
+            await snap(page, `13-ending-page${index + 1}`, '', 'ending')
+            await page.locator('#ending-next').click()
+            await page.waitForTimeout(450)
+          }
+          await page.waitForTimeout(3500)
+          await snap(page, '14-ending-credits', 'credits scrolling, 3.5 s in', 'credits')
+          await page.waitForTimeout(6000)
+          await snap(page, '15-ending-credits-later', 'credits, 9.5 s in', 'credits')
+        })
+      } finally {
+        await context.close()
+      }
     }
   }
-  {
+
+  // --- touch: title, select, story, play, pause, result, game over, ending and the credits
+  const touchViewports = [
+    { width: 844, height: 390 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 }
+  ]
+  const touchLanes = touchViewports.map(newLane)
+  const runTouch = async (viewport, lane) => {
+    const tag = `touch ${viewport.width}x${viewport.height}`
+    const snap = (page, name, note, kind) => shot(lane, page, viewport, name, note, kind, true)
     const { context, page } = await openPage({
-      label: 'screens 1280x720 unlocked',
-      viewport: desktop,
+      label: `screens ${viewport.width}x${viewport.height} touch`,
+      viewport,
+      touch: true,
       save: UNLOCKED_SAVE
     })
     try {
-      await step('select unlocked', async () => {
+      await step(`${tag} title`, async () => {
         await gotoTitle(page)
-        await page.waitForTimeout(500)
-        await shot(page, desktop, '06-title-continue', 'save with 9 stages cleared')
-        await page.locator('#continue').click()
+        await page.waitForTimeout(2000)
+        await snap(page, '01-title', 'touch')
+      })
+      await step(`${tag} select`, async () => {
+        await page.locator('#continue').tap()
         await page.waitForSelector('.stage-card')
         await page.waitForTimeout(800)
-        await shot(page, desktop, '07-select-all', 'everything unlocked')
+        await snap(page, '02-select', 'touch', 'select')
       })
-      await step('stage story', async () => {
-        await page.locator('.stage-card').nth(0).click()
+      await step(`${tag} story`, async () => {
+        await page.locator('.stage-card').nth(1).tap()
         await page.waitForFunction(() => window.__hamham.app.screen === 'story', null, { timeout: 10_000 })
         await page.waitForTimeout(400)
-        await walkStory(page, false, { onPage: (index) => shot(page, desktop, `08-stage1-story-page${index + 1}`) })
+        await finishTyping(page)
+        await snap(page, '03-story', 'touch, stage 2, page 1, text complete', 'story')
+        await walkStory(page, true)
+        await page.waitForFunction(() => window.__hamham.app.screen === 'play', null, { timeout: 10_000 })
       })
-      for (const [no, theme] of PLAY_WORLDS) {
-        await step(`play stage ${no}`, async () => {
-          await startStage(page, no)
-          await waitStartDone(page)
-          await makeSafe(page)
-          await page.keyboard.down('ArrowRight')
-          await page.waitForTimeout(1000)
-          await page.keyboard.up('ArrowRight')
-          await shot(page, desktop, `09-play-stage${String(no).padStart(2, '0')}-${theme}`, `world ${theme}`)
-        })
-      }
-      await step('pause', async () => {
-        await startStage(page, 1)
+      await step(`${tag} play`, async () => {
         await waitStartDone(page)
-        await page.keyboard.press('Escape')
+        await page.touchscreen.tap(viewport.width / 2, viewport.height / 3)
+        await makeSafe(page)
+        await page.waitForTimeout(700)
+        await snap(page, '04-play', 'touch controls visible after a tap', 'play')
+      })
+      await step(`${tag} pause`, async () => {
+        await page.locator('#pause').tap()
         await page.waitForSelector('#pause-screen:not([hidden])', { timeout: 5000 })
         await page.waitForTimeout(500)
-        await shot(page, desktop, '10-pause')
+        await snap(page, '05-pause', 'touch')
+        await page.locator('#pause-resume').tap()
+        await page.waitForTimeout(300)
       })
-      await step('result', async () => {
-        await startStage(page, 2)
+      await step(`${tag} result`, async () => {
         await clearStage(page)
         await page.waitForFunction(() => window.__hamham.app.screen === 'result', null, { timeout: 5000 })
         await page.waitForTimeout(3500)
-        await shot(page, desktop, '11-result', 'stage 2, tally finished')
+        await snap(page, '06-result', 'touch, stage 2, tally finished')
       })
-      await step('game over', async () => {
-        await startStage(page, 3)
+      await step(`${tag} game over`, async () => {
+        await startStage(page, 3, { touch: true })
         await waitStartDone(page)
         await page.evaluate(() => {
           const w = window.__hamham.world
@@ -523,94 +981,77 @@ async function runScreens(dir) {
         })
         await page.waitForFunction(() => window.__hamham.app.screen === 'dead', null, { timeout: 15_000 })
         await page.waitForTimeout(1500)
-        await shot(page, desktop, '12-game-over')
+        await snap(page, '07-game-over', 'touch')
       })
-      await step('ending', async () => {
+      await step(`${tag} ending`, async () => {
         await gotoTitle(page)
         await page.evaluate(() => window.__hamham.openEnding())
-        await page.waitForTimeout(600)
+        await page.waitForTimeout(700)
+        await finishTyping(page)
+        await snap(page, '08-ending-page', 'touch, first ending page, text complete', 'ending')
         for (let index = 0; index < 14; index++) {
-          await finishTyping(page)
           const credits = await page.evaluate(() => {
             const el = document.querySelector('#ending-credits')
             return Boolean(el) && !el.hidden
           })
           if (credits) break
-          await shot(page, desktop, `13-ending-page${index + 1}`)
-          await page.locator('#ending-next').click()
+          await finishTyping(page)
+          await page.locator('#ending-next').tap()
           await page.waitForTimeout(450)
         }
-        await page.waitForTimeout(3500)
-        await shot(page, desktop, '14-ending-credits', 'credits scrolling, 3.5 s in')
-        await page.waitForTimeout(6000)
-        await shot(page, desktop, '15-ending-credits-later', 'credits, 9.5 s in')
+        await page.waitForTimeout(500)
+        // The roll is a CSS animation: hold it at fixed points instead of waiting for them.
+        for (const [name, label, fraction] of [
+          ['09-credits-start', 'start', 0.1],
+          ['10-credits-middle', 'middle', 0.5],
+          ['11-credits-end', 'end', 1]
+        ]) {
+          const held = await seekCredits(page, fraction)
+          await page.waitForTimeout(150)
+          await snap(page, name, `touch, credits ${label} (${held})`, 'credits')
+        }
       })
     } finally {
       await context.close()
     }
   }
 
-  // --- touch: title, select, story, play, pause, result
-  for (const viewport of [
-    { width: 844, height: 390 },
-    { width: 390, height: 844 }
-  ]) {
-    const { context, page } = await openPage({
-      label: `screens ${viewport.width}x${viewport.height} touch`,
-      viewport,
-      touch: true,
-      save: UNLOCKED_SAVE
-    })
-    try {
-      await step(`touch ${viewport.width} title`, async () => {
-        await gotoTitle(page)
-        await page.waitForTimeout(2000)
-        await shot(page, viewport, '01-title', 'touch')
-        await page.locator('#continue').tap()
-        await page.waitForSelector('.stage-card')
-        await page.waitForTimeout(800)
-        await shot(page, viewport, '02-select', 'touch')
-      })
-      await step(`touch ${viewport.width} story`, async () => {
-        await page.locator('.stage-card').nth(1).tap()
-        await page.waitForFunction(() => window.__hamham.app.screen === 'story', null, { timeout: 10_000 })
-        await page.waitForTimeout(400)
-        await finishTyping(page)
-        await shot(page, viewport, '03-story', 'touch, stage 2, page 1')
-        await walkStory(page, true)
-        await page.waitForFunction(() => window.__hamham.app.screen === 'play', null, { timeout: 10_000 })
-      })
-      await step(`touch ${viewport.width} play`, async () => {
-        await waitStartDone(page)
-        await page.touchscreen.tap(viewport.width / 2, viewport.height / 3)
-        await makeSafe(page)
-        await page.waitForTimeout(700)
-        await shot(page, viewport, '04-play', 'touch controls visible after a tap')
-      })
-      await step(`touch ${viewport.width} pause`, async () => {
-        await page.locator('#pause').tap()
-        await page.waitForSelector('#pause-screen:not([hidden])', { timeout: 5000 })
-        await page.waitForTimeout(500)
-        await shot(page, viewport, '05-pause', 'touch')
-        await page.locator('#pause-resume').tap()
-        await page.waitForTimeout(300)
-      })
-      await step(`touch ${viewport.width} result`, async () => {
-        await clearStage(page)
-        await page.waitForFunction(() => window.__hamham.app.screen === 'result', null, { timeout: 5000 })
-        await page.waitForTimeout(3500)
-        await shot(page, viewport, '06-result', 'touch, stage 2, tally finished')
-      })
-    } finally {
-      await context.close()
-    }
-  }
+  await Promise.all([runDesktop(), ...touchViewports.map((viewport, index) => runTouch(viewport, touchLanes[index]))])
+
+  const lanes = [desktopLane, ...touchLanes]
+  const rows = lanes.flatMap((lane) => lane.rows)
+  const measures = lanes.flatMap((lane) => lane.measures)
+  const wraps = lanes.flatMap((lane) => lane.wraps)
+  const flags = lanes.flatMap((lane) => lane.flags)
 
   const body = [
     'Text size is the smallest computed `font-size` of any visible DOM text; it does not see text drawn on the',
     'canvas. The button size is the smallest visible button-like element (buttons, links, inputs, touch pad).',
     '',
-    md.table(['file', 'viewport', 'scrolls sideways', 'smallest text', 'smallest button (w×h px)', 'note'], rows),
+    '**Tallest empty band**: the visible text lines, buttons, images, canvases with painted pixels and elements with a',
+    'background image or a border (the game canvas counts as the stage rectangle; the page background, screen',
+    'backdrops and elements covering 90 % of the viewport do not) are projected on the vertical axis. The longest',
+    'stretch no rectangle touches is reported in px, as a share of the viewport height, with its top and bottom y and',
+    `the two things it lies between. A share above ${EMPTY_FLAG_PERCENT} % is flagged with ⚠.`,
+    '',
+    md.table(SCREEN_COLUMNS, rows),
+    '',
+    '### Empty bands above ' + EMPTY_FLAG_PERCENT + ' %',
+    '',
+    flags.length ? md.table(['file', 'viewport', 'empty share', 'where'], flags) : 'None.',
+    '',
+    '### Layout measurements (touch viewports)',
+    '',
+    'Story and ending pages: `.story-layout` and its margins to the viewport edges, and whether the footer buttons',
+    'share one row. Play: `#stage-wrap`, `#touch-controls` and the distance between the stage bottom and the',
+    'controls top. Stage select: whether the heading is one line. Credits: `#ending-credits`, its share of the',
+    'viewport height and the credit entries cut by its edge. "not found" means the element is not on the page.',
+    '',
+    md.table(['file', 'viewport', 'measurement', 'value'], measures),
+    '',
+    '### Headings and buttons whose text wraps onto more than one line',
+    '',
+    wraps.length ? md.table(['file', 'viewport', 'element', 'text', 'lines'], wraps) : 'None.',
     '',
     failures.length ? `Steps that failed:\n\n${md.table(['step', 'why'], failures)}` : 'Every step ran.'
   ].join('\n')
