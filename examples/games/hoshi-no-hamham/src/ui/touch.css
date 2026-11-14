@@ -30,6 +30,11 @@
   display: none;
 }
 
+/* The priming walk (hud-prime.ts) paints the controls too, so their first use in a stage compiles nothing. */
+#hud.is-priming .hudt[hidden] {
+  display: flex;
+}
+
 .hudt-pad,
 .hudt-actions {
   display: flex;

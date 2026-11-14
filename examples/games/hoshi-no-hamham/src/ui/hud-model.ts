@@ -69,6 +69,72 @@ export function stepBossBar(bar: BossBarState, target: number, dt: number): bool
   return hit
 }
 
+/** The continuous meters (markers, fills, the clock) are written together this often (seconds). */
+export const METER_TICK = 1 / 15
+
+/**
+ * Counts display frames toward the next write of the meters. Returns the time still waited and whether this frame
+ * is the one that writes them; a frame longer than a tick still writes only once.
+ */
+export function stepMeterClock(waited: number, dt: number): { waited: number; due: boolean } {
+  const total = waited + dt
+  if (total < METER_TICK - 1e-9) return { waited: total, due: false }
+  return { waited: Math.min(total - METER_TICK, METER_TICK / 2), due: true }
+}
+
+/** How many steps the bite gauge fills in: one per art row of the tooth, so the fill climbs row by row. */
+export const BITE_ROWS = 16
+
+/** The rows of the gauge that are lit with `cooldown` seconds left out of `total` (all of them once it is over). */
+export function biteRow(cooldown: number, total: number): number {
+  if (cooldown <= 0) return BITE_ROWS
+  return Math.min(BITE_ROWS - 1, Math.max(0, Math.floor((1 - cooldown / total) * BITE_ROWS)))
+}
+
+/**
+ * The deck's ambient motion as functions of a clock, so the page runs no CSS animation while nothing else moves
+ * (a running animation makes the browser recalculate style in every frame, whatever it animates).
+ */
+const cycle = (t: number, period: number) => (((t % period) + period) % period) / period
+
+/** The twinkling stars: 0 full, 1 dim, 2 half, over a 2.4 s cycle. */
+export function twinkleStep(t: number): 0 | 1 | 2 {
+  const p = cycle(t, 2.4)
+  return p < 0.4 ? 0 : p < 0.7 ? 1 : 2
+}
+
+/**
+ * The shooting star crosses the sky for 0.9 s of each 9 s, the first time 3 s after the start: null while it is away,
+ * else how far along its path it is (px) and how bright (0..1). It fades in, flies, and fades out at the far end.
+ */
+export function shootingStar(t: number): { x: number; opacity: number } | null {
+  if (t < 3) return null
+  const p = (cycle(t - 3, 9) - 0.86) / 0.1
+  if (p < 0 || p >= 1) return null
+  const x = p < 0.8 ? (p / 0.8) * 120 : 120 + ((p - 0.8) / 0.2) * 30
+  const opacity = p < 0.2 ? p / 0.2 : p < 0.8 ? 1 : 1 - (p - 0.8) / 0.2
+  return { x, opacity }
+}
+
+/** How far along the hint line's swap is after `age` seconds (0..1; it takes 0.42 s and eases out). */
+export const SWAP_SECONDS = 0.42
+export const swapProgress = (age: number) => {
+  const x = Math.max(0, Math.min(1, age / SWAP_SECONDS))
+  return 1 - (1 - x) * (1 - x)
+}
+
+/** How high the open goal's star is lifted, in quarter steps of 0.3 s over a 1.2 s cycle: 0, 1, 2, 1 px. */
+export function goalBob(t: number): 0 | 1 | 2 {
+  const step = Math.floor(cycle(t, 1.2) * 4)
+  return step === 0 ? 0 : step === 2 ? 2 : 1
+}
+
+/** The low-health hearts swell for 0.24 s of each 0.8 s. */
+export function heartBeat(t: number): boolean {
+  const p = cycle(t, 0.8)
+  return p >= 0.15 && p < 0.45
+}
+
 export type PadSide = 'left' | 'right' | null
 
 /** Fraction of the pad's width (centred) where neither side is pressed. */

@@ -37,6 +37,8 @@ interface Call {
 
 interface CostProbe {
   updates: number
+  /** The updates in which the HUD made at least one DOM call. */
+  busy: number
   calls: Call[]
 }
 
@@ -44,7 +46,7 @@ const hook = () => (window as unknown as { __hamham: CostHook }).__hamham
 
 /** Wraps the DOM entry points; calls made inside `hud.update` are recorded in `window.__cost`. */
 function installProbe() {
-  const cost: CostProbe & { inside: boolean } = { updates: 0, calls: [], inside: false }
+  const cost: CostProbe & { inside: boolean } = { updates: 0, busy: 0, calls: [], inside: false }
   ;(window as unknown as { __cost: unknown }).__cost = cost
   const ticking = (target: unknown) =>
     target instanceof Element && Boolean(target.closest('.hudd-hint, .hudd-stat, .hudd-say'))
@@ -129,10 +131,12 @@ function installProbe() {
   hud.update = (world, dt) => {
     cost.updates++
     cost.inside = true
+    const before = cost.calls.length
     try {
       update(world, dt)
     } finally {
       cost.inside = false
+      if (cost.calls.length > before) cost.busy++
     }
   }
 }
@@ -141,6 +145,7 @@ const resetProbe = (page: Page) =>
   page.evaluate(() => {
     const cost = (window as unknown as { __cost: CostProbe }).__cost
     cost.updates = 0
+    cost.busy = 0
     cost.calls = []
   })
 
@@ -237,7 +242,9 @@ for (const profile of PROFILES) {
       const run = await recordFrames(page, 120)
       expect(run.updates).toBeGreaterThanOrEqual(120)
       // The clock and the cycling hint show values that change by themselves; they are the only calls allowed.
-      const unexpected = run.calls.filter((call) => !call.ticking)
+      // So do the deck's ambient motions, written by the clock: the hint line's swap and the shooting star.
+      const ambient = new Set(['style.setProperty', 'style.removeProperty', 'style.transform', 'style.opacity'])
+      const unexpected = run.calls.filter((call) => !call.ticking && !ambient.has(call.name))
       expect(unexpected.map((call) => `${call.name} ${call.on}`)).toEqual([])
       expect(errors).toEqual([])
       await context.close()
@@ -270,6 +277,22 @@ for (const profile of PROFILES) {
       for (const name of ['left', 'top', 'width', 'height', 'right', 'bottom']) {
         expect(counts[`style.${name}`] ?? 0).toBe(0)
       }
+      expect(errors).toEqual([])
+      await context.close()
+    })
+
+    test('ten seconds of the bot playing: the HUD writes in at most twenty frames a second', async ({ browser }) => {
+      const { page, context, errors } = await open(browser, profile.width, profile.height, 1)
+      await page.evaluate(() => hook().autopilot(true))
+      await page.waitForTimeout(500)
+      await resetProbe(page)
+      const started = await page.evaluate(() => performance.now())
+      await page.waitForTimeout(10_000)
+      const run = await page.evaluate(() => (window as unknown as { __cost: CostProbe }).__cost)
+      const seconds = ((await page.evaluate(() => performance.now())) - started) / 1000
+      expect(run.updates).toBeGreaterThan(300)
+      // The continuous meters are written together fifteen times a second; events add to that, never every frame.
+      expect(run.busy / seconds).toBeLessThanOrEqual(20)
       expect(errors).toEqual([])
       await context.close()
     })

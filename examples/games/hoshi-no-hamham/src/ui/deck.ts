@@ -17,13 +17,18 @@ import {
   stepHold,
   type DeckHold,
   HINT_SECONDS,
+  goalBob,
   hintIndex,
+  shootingStar,
+  SWAP_SECONDS,
+  swapProgress,
+  twinkleStep,
   hintForInput,
   hintLine,
   trackRatio,
   type AimTone
 } from './hud-model'
-import { clipRaster, drawRaster, makeSprite, rasterUrl } from './hud-sprites'
+import { clipRaster, drawRaster, makeSprite, rasterUrl, type Tone } from './hud-sprites'
 import { replay } from './replay'
 import { formatClock } from './rules'
 import type { Raster } from '../art/raster'
@@ -141,6 +146,11 @@ function drawMoon(canvas: HTMLCanvasElement) {
   canvas.style.setProperty('--h', String(n * 2))
 }
 
+/** The boss's face on the track while it sleeps: darker and greyer. */
+const ASLEEP_TONE: Tone = { brightness: 0.55, saturate: 0.6 }
+
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
 const portrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches
 
 function cap(content: string | Raster, wide = false): HTMLElement {
@@ -195,6 +205,15 @@ export class Deck {
   private bossPx = Number.NaN
   private bossHidden: boolean | null = null
   private bossAsleep: boolean | null = null
+  /** The sky's window and what moves in it by the clock (see `hud-model.ts`). */
+  private sky: HTMLElement
+  private ambient = 0
+  private twinkle = 0
+  private shooting = false
+  private bob = 0
+  /** The star crossing the sky, and the clock time the hint line's swap began (negative: not swapping). */
+  private star: HTMLElement
+  private swapStart = -1
   /** What the aim line was last worked out from; it is worked out again only when one of these changes. */
   private aimSeen: AimSeen | null = null
 
@@ -262,6 +281,7 @@ export class Deck {
     const mid = el('div', 'hudd-mid')
     mid.setAttribute('aria-hidden', 'true')
     const sky = el('div', 'hudd-window')
+    this.sky = sky
     sky.style.setProperty('--sky', skyUrl(0))
     sky.style.setProperty('--sky-2', skyUrl(1))
     sky.style.setProperty('--hills', hillsUrl())
@@ -292,7 +312,8 @@ export class Deck {
     this.hero = makeSprite('hudd-hero')
     drawRaster(this.hero, sheet('ui').face_hero.frames[0])
     track.append(groove, start, this.goal, this.bossFace, this.hero)
-    sky.append(moon, el('i', 'hudd-shoot'), stats, track)
+    this.star = el('i', 'hudd-shoot')
+    sky.append(moon, this.star, stats, track)
     mid.append(sky)
 
     // The lower part: speaker grille, and the key legend for players without touch.
@@ -348,7 +369,7 @@ export class Deck {
   /**
    * Moves the markers and the groove's fill to where the hero, the goal and the boss are. A marker is moved by
    * `translate` (its share of the track's width, on a device pixel), never by `left`, so a moving marker costs no
-   * layout; it is written only on the step where it moves by a device pixel.
+   * layout; it is written only when it has moved by a device pixel.
    */
   private place() {
     const px = (at: number) => Math.round(at * this.trackWidth * this.dpr) / this.dpr
@@ -400,6 +421,7 @@ export class Deck {
     this.heroAt = this.goalAt = this.bossAt = Number.NaN
     this.bossHidden = null
     this.bossAsleep = null
+    this.ambient = 0
     this.showHint(0)
   }
 
@@ -410,7 +432,7 @@ export class Deck {
     this.setHold(hold)
     this.hint.classList.add('is-toast')
     this.hintText.textContent = hintForInput(text, this.touchShown())
-    replay(this.hint, 'is-swap')
+    this.startSwap()
   }
 
   /** A character's line on the deck: `face` is a `face_*` name of the `ui` sheet, `who` the speaker's name. */
@@ -447,7 +469,8 @@ export class Deck {
     }
   }
 
-  update(world: World, dt: number) {
+  /** `tick`: this frame also writes the meters (the clock, the markers and the groove's fill). */
+  update(world: World, dt: number, tick = true) {
     const stage = this.stage
     if (!stage) return
 
@@ -495,7 +518,7 @@ export class Deck {
 
     // The run's clock and the defeated count.
     const tenths = Math.floor(world.time * 10)
-    if (tenths !== this.clockTenths) {
+    if (tick && tenths !== this.clockTenths) {
       this.clockTenths = tenths
       this.clock.textContent = formatClock(tenths / 10)
     }
@@ -520,18 +543,59 @@ export class Deck {
       this.bossFace.hidden = hideBoss
     }
     if (boss && !hideBoss) {
-      if (boss.def.art !== this.bossArt) {
+      if (boss.def.art !== this.bossArt || !boss.active !== this.bossAsleep) {
         this.bossArt = boss.def.art
-        const face = sheet('ui')[`face_${boss.def.art}`]
-        if (face) drawRaster(this.bossFace, face.frames[0])
-      }
-      if (!boss.active !== this.bossAsleep) {
         this.bossAsleep = !boss.active
-        this.bossFace.classList.toggle('is-asleep', !boss.active)
+        const face = sheet('ui')[`face_${boss.def.art}`]
+        if (face) drawRaster(this.bossFace, face.frames[0], boss.active ? undefined : ASLEEP_TONE)
       }
       this.bossAt = trackRatio(boss.x + boss.w / 2, width)
     }
+    this.ambient += dt
+    if (!tick) return
     this.place()
+    this.moveAmbient()
+  }
+
+  /** The hint line's text slides up and fades in over 0.42 s: `--p` (0..1) is written on the ticks. */
+  private startSwap() {
+    if (reducedMotion()) return
+    this.swapStart = this.ambient
+    this.hint.style.setProperty('--p', '0')
+  }
+
+  private moveSwap() {
+    const age = this.ambient - this.swapStart
+    if (age >= SWAP_SECONDS) {
+      this.swapStart = -1
+      this.hint.style.removeProperty('--p')
+    } else this.hint.style.setProperty('--p', swapProgress(age).toFixed(2))
+  }
+
+  /** The sky's twinkle, the shooting star and the open goal's bob follow the clock, a step at a time. */
+  private moveAmbient() {
+    if (this.swapStart >= 0) this.moveSwap()
+    if (reducedMotion()) return
+    const twinkle = twinkleStep(this.ambient)
+    if (twinkle !== this.twinkle) {
+      this.twinkle = twinkle
+      this.sky.dataset.sky = String(twinkle)
+    }
+    const star = shootingStar(this.ambient)
+    if (star) {
+      this.shooting = true
+      this.star.style.transform = `rotate(-24deg) translateX(${star.x.toFixed(1)}px)`
+      this.star.style.opacity = star.opacity.toFixed(2)
+    } else if (this.shooting) {
+      this.shooting = false
+      this.star.style.removeProperty('transform')
+      this.star.style.removeProperty('opacity')
+    }
+    const bob = this.goalOpen ? goalBob(this.ambient) : 0
+    if (bob !== this.bob) {
+      this.bob = bob
+      this.goal.dataset.bob = String(bob)
+    }
   }
 
   /** Words the aim line again and, if it now says something else, shows it. */
@@ -570,6 +634,6 @@ export class Deck {
     this.hintShown = i
     this.hintTouch = touch
     this.hintText.textContent = hintLine(hints, t, touch, HINT_SECONDS)
-    if (changed) replay(this.hint, 'is-swap')
+    if (changed) this.startSwap()
   }
 }

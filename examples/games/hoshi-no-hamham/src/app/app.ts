@@ -184,6 +184,7 @@ export class App {
   ) {
     this.renderer = new Renderer(canvas)
     this.loading = new LoadingNote(canvas.parentElement ?? document.body)
+    void this.firstFrame.then(() => this.hud.primeWhenIdle())
     this.audio.setMuted(this.save.muted)
     for (const kind of ['master', 'music', 'sfx'] as const) this.audio.setVolume(kind, this.save.volume[kind])
     // Any first gesture unlocks the audio context, not only the menu buttons.

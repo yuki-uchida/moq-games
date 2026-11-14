@@ -33,13 +33,44 @@ export function makeSprite(className: string): HTMLCanvasElement {
   return canvas
 }
 
-/** Replaces the canvas content with the raster (resizing the backing store to the art size). */
-export function drawRaster(canvas: HTMLCanvasElement, raster: Raster) {
+/** A colour change a sprite is drawn with, in place of a CSS `filter` on its canvas (a filter costs the GPU a shader). */
+export interface Tone {
+  /** Every channel is multiplied by this (CSS `brightness()`), then clamped. */
+  brightness?: number
+  /** CSS `saturate()`: 1 leaves the colours, 0 is grey. */
+  saturate?: number
+}
+
+/** The pixels of `source` with `tone` applied (the rules of the CSS filter functions, in sRGB). */
+function toned(source: HTMLCanvasElement, tone: Tone): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = source.width
+  canvas.height = source.height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(source, 0, 0)
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const px = image.data
+  const b = tone.brightness ?? 1
+  const s = tone.saturate ?? 1
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i] * b
+    const g = px[i + 1] * b
+    const bl = px[i + 2] * b
+    px[i] = (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * bl
+    px[i + 1] = (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * bl
+    px[i + 2] = (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * bl
+  }
+  ctx.putImageData(image, 0, 0)
+  return canvas
+}
+
+/** Replaces the canvas content with the raster (resizing the backing store to the art size), in `tone` if given. */
+export function drawRaster(canvas: HTMLCanvasElement, raster: Raster, tone?: Tone) {
   if (canvas.width !== raster.w) canvas.width = raster.w
   if (canvas.height !== raster.h) canvas.height = raster.h
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, raster.w, raster.h)
-  ctx.drawImage(bake(raster), 0, 0)
+  ctx.drawImage(tone ? toned(bake(raster), tone) : bake(raster), 0, 0)
   canvas.style.setProperty('--w', String(raster.w))
   canvas.style.setProperty('--h', String(raster.h))
 }

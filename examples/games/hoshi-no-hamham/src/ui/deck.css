@@ -236,20 +236,23 @@
     font-weight: 900;
   }
 
-  .hudd-hint.is-swap span,
-  .hudd-hint.is-swap .hudd-hint-mark {
-    animation: hudd-swap 0.42s ease-out 1;
+  /* Each piece that animates or changes in play has its own layer, so it never makes its surroundings paint again. */
+  .hudd-aim,
+  .hudd-hint span,
+  .hudd-hint-mark,
+  .hudd-say {
+    will-change: transform, opacity;
   }
 
-  @keyframes hudd-swap {
-    0% {
-      transform: translateY(5px);
-      opacity: 0;
-    }
-    100% {
-      transform: none;
-      opacity: 1;
-    }
+  /* A swap of the hint line: deck.ts writes `--p` (0..1) on the ticks while it runs. */
+  .hudd-hint span {
+    transform: translateY(calc((1 - var(--p, 1)) * 5px));
+    opacity: var(--p, 1);
+  }
+
+  .hudd-hint .hudd-hint-mark {
+    transform: translateY(calc((1 - var(--p, 1)) * 5px));
+    opacity: calc(var(--p, 1) * 0.85);
   }
 
   /* A speech line: for a moment the panel shows who speaks (face, name) and what they say, in a balloon. */
@@ -381,6 +384,7 @@
   /* ------------------------------------------------------------------ middle: the night-sky window */
 
   .hudd-mid {
+    position: relative;
     grid-row: 2;
     grid-column: 1;
     container-type: size;
@@ -422,20 +426,16 @@
   .hudd-window::after {
     bottom: 28px;
     background: var(--sky-2) 0 0 / 96px 80px repeat;
-    animation: hudd-twinkle 2.4s steps(1) infinite;
+    will-change: opacity;
   }
 
-  @keyframes hudd-twinkle {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    40% {
-      opacity: 0.35;
-    }
-    70% {
-      opacity: 0.7;
-    }
+  /* The stars twinkle in three steps (deck.ts sets `data-sky` by the clock). */
+  .hudd-window[data-sky='1']::after {
+    opacity: 0.35;
+  }
+
+  .hudd-window[data-sky='2']::after {
+    opacity: 0.7;
   }
 
   .hudd-window > * {
@@ -461,27 +461,11 @@
     background: linear-gradient(90deg, transparent 0 4px, #5d4aa8 4px 10px, #c8b8f0 10px 18px, #fff6b0 18px);
     transform: rotate(-24deg) translateX(0);
     opacity: 0;
-    animation: hudd-shoot 9s linear infinite 3s;
   }
 
-  @keyframes hudd-shoot {
-    0%,
-    86% {
-      opacity: 0;
-      transform: rotate(-24deg) translateX(0);
-    }
-    88% {
-      opacity: 1;
-    }
-    94% {
-      opacity: 1;
-      transform: rotate(-24deg) translateX(120px);
-    }
-    96%,
-    100% {
-      opacity: 0;
-      transform: rotate(-24deg) translateX(150px);
-    }
+  /* Once in nine seconds it crosses the sky: deck.ts writes its transform and opacity on the ticks for 0.9 s. */
+  .hudd-window .hudd-shoot {
+    will-change: transform, opacity;
   }
 
   @container (max-height: 150px) {
@@ -514,6 +498,7 @@
   }
 
   .hudd-stat b {
+    will-change: transform;
     font-variant-numeric: tabular-nums;
     color: #fff6b0;
     min-width: 1.4em;
@@ -550,6 +535,7 @@
     inset: 0;
     transform-origin: 0 50%;
     transform: scaleX(0);
+    will-change: transform;
     background: linear-gradient(#fff6b0 0 2px, #ffd45e 2px 6px, #e0a428 6px);
   }
 
@@ -572,14 +558,13 @@
     z-index: 2;
   }
 
-  .hudd-goal.is-open {
-    animation: hudd-glint 1.2s steps(2) infinite;
+  /* The open goal's star bobs (deck.ts sets `data-bob` by the clock). */
+  #hud.hudx .hudd-goal[data-bob='1'] {
+    transform: translateX(-50%) translateY(-1px);
   }
 
-  @keyframes hudd-glint {
-    50% {
-      transform: translateX(-50%) translateY(-2px);
-    }
+  #hud.hudx .hudd-goal[data-bob='2'] {
+    transform: translateX(-50%) translateY(-2px);
   }
 
   .hudd-hero,
@@ -588,8 +573,11 @@
     bottom: 14px;
   }
 
-  .hudd-boss.is-asleep {
-    filter: brightness(0.55) saturate(0.6);
+  /* The markers move by `translate` (hud.ts writes it a few times a second): each has its own layer. */
+  .hudd-hero,
+  .hudd-boss,
+  .hudd-goal {
+    will-change: translate;
   }
 
   .hudd-hero {
@@ -864,15 +852,29 @@
     opacity: 0;
   }
 
-  /* The stage went black (an iris out): the deck's lit parts go dark with it, like a screen switched off. */
-  .hudd-info,
-  .hudd-mid {
-    transition: filter 0.6s steps(4);
+  /*
+   * The stage went black (an iris out): the deck's lit parts go dark with it, like a screen switched off. A black
+   * sheet over each part at 68 % does what `filter: brightness(0.32)` did, without asking the GPU for a filter.
+   */
+  .hudd-info::after,
+  .hudd-mid::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    z-index: 5;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s steps(4);
   }
 
-  #hud.hudx.is-dark .hudd-info,
-  #hud.hudx.is-dark .hudd-mid {
-    filter: brightness(0.32) saturate(0.4);
+  .hudd-mid::after {
+    inset: 0;
+  }
+
+  #hud.hudx.is-dark .hudd-info::after,
+  #hud.hudx.is-dark .hudd-mid::after {
+    opacity: 0.68;
   }
 
   #hud.hudx.is-dark .hudd-window::after,
@@ -912,11 +914,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hudd-aim.is-pop,
-  .hudd-hint.is-swap span,
-  .hudd-hint.is-swap .hudd-hint-mark,
-  .hudd-goal.is-open,
-  .hudd-window::after,
-  .hudd-window .hudd-shoot,
   .hudd-say.is-in,
   .hudd-say[data-tone='yell'] .hudd-say-balloon b {
     animation: none;
