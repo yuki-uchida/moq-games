@@ -18,8 +18,9 @@
  *   --trace     also write a Chromium trace of every recorded run to trace-<run>.json (large; what the main thread
  *               and the GPU process did in a slow frame: garbage collection, layout, paint, commits)
  *   --tries     how often a recorded run may be made (default 1). A run in which the game's thread was kept from
- *               running from outside (the machine was busy with something else; see `held` below) is set aside and
- *               made again, up to this many times; the report says how many were set aside
+ *               running from outside, or during which the machine was busy with something else (see `held` and
+ *               `busyLimit` below), is set aside and made again, up to this many times; the report says how
+ *               many were set aside
  *   --every     the page gets only every nth frame of the display (default 1: all of them). The monitor of the
  *               machine sets the display's rate; on a 120 Hz monitor `--every 2` gives the page the 60 frames a
  *               second of most phones, each with 16.7 ms to do its work in
@@ -40,6 +41,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
+import { cpus } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
@@ -97,6 +99,17 @@ if (!Number.isInteger(every) || every < 1) usage('--every must be a whole number
  */
 const HELD_MS = 8
 const HELD_SHARE = 0.4
+/**
+ * A recorded run was made on a busy machine when more than a third of the machine's processors (and never fewer
+ * than three: the kit's own browser keeps between one and two at work, 1.6 at the 4x throttle on the machine this
+ * was written on) were at work for more than a tenth of the run. From there on programs begin to share the two
+ * halves of one core, and each runs slower: the game's thread is never kept from running, and the trace shows
+ * nothing but longer work.
+ */
+const BUSY_PART = 1 / 3
+const BUSY_FLOOR = 3
+const BUSY_SHARE = 0.1
+const busyLimit = (processors) => Math.max(BUSY_FLOOR, processors * BUSY_PART)
 /**
  * What every recorded run is traced with, to count garbage collections, style and layout work and shader
  * compilation, and to see when the game's thread was busy: the timeline's own events, V8's, Skia's shader events,
@@ -288,6 +301,47 @@ const BUDGETS = [
 // -------------------------------------------------------------------------------------------------- helpers
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
+/**
+ * Measures how busy the machine is while a run is recorded: twice a second, how many of its processors' worth of
+ * work was done since the last look (the kit's own browser included). `stop()` returns the mean and the peak.
+ */
+function loadMeter() {
+  const look = () => {
+    let idle = 0
+    let all = 0
+    for (const cpu of cpus()) {
+      idle += cpu.times.idle
+      all += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq
+    }
+    return { idle, all }
+  }
+  const processors = cpus().length
+  const limit = busyLimit(processors)
+  const samples = []
+  let last = look()
+  const timer = setInterval(() => {
+    const now = look()
+    const all = now.all - last.all
+    if (all > 0) samples.push((1 - (now.idle - last.idle) / all) * processors)
+    last = now
+  }, 500)
+  return {
+    stop() {
+      clearInterval(timer)
+      const over = samples.filter((value) => value > limit).length
+      return {
+        processors,
+        /** How many processors at work make the machine busy. */
+        limit,
+        mean: mean(samples),
+        peak: Math.max(0, ...samples),
+        /** The share of the run during which more than `limit` were at work. */
+        over: samples.length ? over / samples.length : 0,
+        samples: samples.length
+      }
+    }
+  }
+}
 const num = (n, digits) => (n === null || n === undefined || Number.isNaN(n) ? '-' : n.toFixed(digits))
 const f0 = (n) => num(n, 0)
 const f1 = (n) => num(n, 1)
@@ -925,6 +979,7 @@ function analyze(data, { gpuRun = gpu } = {}) {
     remote: data.remote,
     sfx,
     audio: { ...nodes, perSecond: recorded ? (nodes.sources + nodes.others) / recorded : 0 },
+    machine: data.machine ?? null,
     ticks: { n: ticks.length, p95: percentile(ticks, 0.95), max: ticks.at(-1) ?? 0 },
     cadence: {
       eligible,
@@ -979,6 +1034,10 @@ function runMarkdown(name, m, notes = []) {
         : `- kept from running from outside: no (the game's thread ran whenever it had work)`
     )
   }
+  if (m.machine)
+    lines.push(
+      `- the machine while this was recorded: ${f1(m.machine.mean)} of its ${m.machine.processors} processors at work on average, ${f1(m.machine.peak)} at the most; more than ${f1(m.machine.limit)} for ${f0(m.machine.over * 100)} % of the time${busyMachine(m) ? `. **That is more than ${f0(BUSY_SHARE * 100)} %: something else was running beside the kit, and this run's durations are the machine's as much as the page's**` : ` (the kit's own browser is between one and two of them)`}`
+    )
   for (const p of m.painted.slice(0, 4))
     lines.push(
       `- painted on the main thread at ${f2(p.at)} s (${p.kind}), asked from: ${p.stack.map((s) => `\`${s}\``).join(' < ')}`
@@ -1367,6 +1426,7 @@ function traceStats(buffer, rate = throttle, data = null) {
 async function recordFor(page, ms, options, name = 'run', rate = throttle) {
   await browser.startTracing(page, { categories: trace ? TRACE_CATEGORIES : LIGHT_CATEGORIES })
   let buffer = null
+  const meter = loadMeter()
   try {
     const moved = await page.evaluate((o) => window.__perf.begin(o), options)
     if (!moved) {
@@ -1379,10 +1439,12 @@ async function recordFor(page, ms, options, name = 'run', rate = throttle) {
       if ((await screenOf(page)) !== 'play') break
     }
     const data = await page.evaluate(() => window.__perf.end())
+    data.machine = meter.stop()
     buffer = await browser.stopTracing()
     data.trace = traceStats(buffer, rate, data)
     return data
   } finally {
+    meter.stop()
     if (!buffer) buffer = await browser.stopTracing().catch(() => null)
     if (trace && buffer) {
       mkdirSync(out, { recursive: true })
@@ -1578,27 +1640,38 @@ async function sectionMenus() {
 
 /** The milliseconds a run's thread was kept from running from outside (0 for a run without a trace). */
 const heldMs = (m) => m.trace?.held?.ms ?? 0
+/** Was the machine busy with something else while the run was recorded? */
+const busyMachine = (m) => (m.machine?.over ?? 0) > BUSY_SHARE
+/** Why a recorded run says nothing sure about the page, as text; null when nothing disturbed it. */
+const disturbance = (m) => {
+  const why = []
+  if (heldMs(m) > 0) why.push(`the game's thread was kept from running from outside for ${f0(heldMs(m))} ms`)
+  if (busyMachine(m))
+    why.push(
+      `more than ${f1(m.machine.limit)} of the machine's ${m.machine.processors} processors were at work for ${f0(m.machine.over * 100)} % of the time (${f1(m.machine.mean)} on average)`
+    )
+  return why.length ? why.join(', and ') : null
+}
 
 /**
- * Makes a recorded run up to `--tries` times: a run whose thread was kept from running from outside says nothing
- * sure about the page, so it is set aside and made again. Returns the last one made, with a note for the report
- * when earlier ones were set aside. `make` returns the analysed run (or runs).
+ * Makes a recorded run up to `--tries` times: a run whose thread was kept from running from outside, or that was
+ * recorded while the machine was busy with something else, says nothing sure about the page, so it is set aside and
+ * made again. Returns the last one made, with a note for the report when earlier ones were set aside. `make`
+ * returns the analysed run (or runs).
  */
 async function undisturbed(label, make) {
   const aside = []
   for (let attempt = 1; ; attempt++) {
     const made = await make()
-    const ms = [made].flat().reduce((total, m) => total + heldMs(m), 0)
-    if (ms === 0 || attempt >= tries) {
+    const why = [made].flat().map(disturbance).filter(Boolean)
+    if (!why.length || attempt >= tries) {
       const note = aside.length
-        ? `attempt ${attempt} of at most ${tries}: ${aside.length} earlier one(s) were set aside because the game's thread was kept from running from outside (${aside.map((x) => `${f0(x)} ms`).join(', ')})`
+        ? `attempt ${attempt} of at most ${tries}: ${aside.length} earlier one(s) were set aside (${aside.join('; ')})`
         : null
       return { made, note }
     }
-    aside.push(ms)
-    console.log(
-      `[${label}] the game's thread was kept from running from outside for ${f0(ms)} ms: once more (${attempt + 1} of ${tries})`
-    )
+    aside.push(why.join('; '))
+    console.log(`[${label}] ${why.join('; ')}: once more (${attempt + 1} of ${tries})`)
   }
 }
 
@@ -1841,13 +1914,14 @@ async function main() {
   const failed = summary.filter((r) => r.ok === false)
   const failedSections = [...results.entries()].filter(([, r]) => r.error).map(([name]) => name)
   const command = `node scripts/hoshi-no-hamham-perf.mjs ${args.join(' ')}`.trim()
-  // The recorded runs that say nothing sure about the page: their thread was kept from running from outside.
+  // The recorded runs that say nothing sure about the page: their thread was kept from running from outside, or
+  // the machine was busy with something else.
   const disturbed = [...results.values()]
     .flatMap((r) =>
       r.json ? [...(r.json.runs ?? []), ...(r.json.run ? [{ name: 'pacing', ...r.json.run }] : [])] : []
     )
-    .filter((m) => heldMs(m) > 0)
-    .map((m) => `${m.name} (${f0(heldMs(m))} ms)`)
+    .filter((m) => disturbance(m))
+    .map((m) => `${m.name} (${disturbance(m)})`)
   const budgetTable = table(
     ['budget', 'section', 'run', 'value', 'limit', 'result'],
     summary.map((r) => {
@@ -1865,7 +1939,7 @@ async function main() {
     `- Chromium: ${environment.chromium}; renderer: ${environment.renderer || '(not read)'}; ${gpu ? 'GPU on (--gpu)' : 'headless shell, software rendering (frame intervals are not judged; use --gpu)'}`,
     `- ${throttleText} (the budgets are stated for 4); target: ${targetText}`,
     `- result: ${failed.length} of ${summary.filter((r) => r.ok !== null).length} budget checks failed${failedSections.length ? `; sections that failed to run: ${failedSections.join(', ')}` : ''}${problems.length ? `; ${problems.length} page or request problems` : ''}`,
-    `- runs in which the game's thread was kept from running from outside: ${disturbed.length ? `${disturbed.join(', ')}: their durations are the machine's as much as the page's (make them again on a quiet machine, or with --tries)` : 'none'}`,
+    `- runs disturbed from outside (the game's thread was kept from running, or the machine was busy with something else): ${disturbed.length ? `${disturbed.join('; ')}: their durations are the machine's as much as the page's (make them again on a quiet machine, or with --tries)` : 'none'}`,
     '',
     '## Budgets',
     '',
@@ -1909,7 +1983,7 @@ async function main() {
 
   console.log(`\n${budgetTable}\n`)
   if (problems.length) console.log(`Problems:\n${[...new Set(problems)].map((p) => `  ${p}`).join('\n')}\n`)
-  if (disturbed.length) console.log(`Kept from running from outside: ${disturbed.join(', ')}`)
+  if (disturbed.length) console.log(`Disturbed from outside: ${disturbed.join('; ')}`)
   console.log(`${failed.length} budget checks failed. Report: ${reportPath} (${f0((Date.now() - started) / 1000)} s)`)
 
   if (problems.length || failedSections.length || (check && failed.length)) process.exitCode = 1
