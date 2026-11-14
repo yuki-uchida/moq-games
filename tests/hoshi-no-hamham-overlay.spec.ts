@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 // The overlay lays its two screen gradients (the vignette, the red pulse of a hit) and its popup texts over the
 // stage as pictures that were drawn once. These tests draw the same frame with the pictures and with the direct
@@ -46,11 +46,7 @@ async function openPausedStage(page: Page, no: number) {
     .locator('.stage-card')
     .nth(no - 1)
     .click()
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await page.waitForFunction(
     () => {

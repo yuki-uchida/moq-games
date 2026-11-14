@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 // Pacing: the simulation steps follow the display (one step per frame at the headless browser's 60 Hz), the
 // picture is drawn between two steps without the world ever holding anything but the simulation's own state
@@ -47,11 +47,7 @@ async function openStage(page: Page, no: number) {
     .locator('.stage-card')
     .nth(no - 1)
     .click()
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await page.waitForFunction(() => Boolean(window.__hamham.view && window.__hamham.app.session))
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 interface HamWorld {
   player: { x: number; y: number; hp: number; maxHp: number; w: number; h: number; vx: number; vy: number }
@@ -40,22 +40,14 @@ test('title, story, stage select and the first stage play through the keyboard',
 
   await page.getByRole('button', { name: 'はじめから' }).click()
   await expect(page.locator('#story-screen')).toBeVisible()
-  for (let i = 0; i < 8; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 8)
   await expect(page.locator('#select-screen')).toBeVisible()
   await expect(page.locator('.stage-card')).toHaveCount(10)
   await expect(page.locator('.stage-card.is-locked')).toHaveCount(9)
 
   await page.locator('.stage-card').first().click()
   await expect(page.locator('#story-screen')).toBeVisible()
-  for (let i = 0; i < 6; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 6)
 
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#boss-bar')).toBeVisible()
@@ -85,17 +77,9 @@ test('pause and mute controls respond', async ({ page }) => {
   page.on('pageerror', (error) => errors.push(error.message))
   await openGame(page)
   await page.getByRole('button', { name: 'はじめから' }).click()
-  for (let i = 0; i < 8; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 8)
   await page.locator('.stage-card').first().click()
-  for (let i = 0; i < 6; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 6)
   await expect(page.locator('#hud')).toBeVisible()
   await page.locator('#pause').click()
   await expect(page.locator('#pause-screen')).toBeVisible()
@@ -156,11 +140,7 @@ test('clearing the last stage leads from the result screen to the ending', async
   await page.getByRole('button', { name: 'つづきから' }).click()
   await expect(page.locator('#select-screen')).toBeVisible()
   await page.locator('.stage-card').nth(9).click()
-  for (let i = 0; i < 8; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 8)
   await expect(page.locator('#hud')).toBeVisible()
   await expect(page.locator('#boss-bar')).toBeHidden()
 
@@ -233,11 +213,7 @@ async function openStage(page: Page, no: number) {
     .locator('.stage-card')
     .nth(no - 1)
     .click()
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await page.waitForFunction(() => Boolean(window.__hamham?.view))
 }

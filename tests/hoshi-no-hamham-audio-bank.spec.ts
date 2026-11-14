@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 /** The parts of the audio these tests look inside (private at compile time, plain fields at run time). */
 interface HamAudio {
@@ -208,11 +208,7 @@ test('in a stage the bot hits are played from buffers', async ({ page }) => {
   await page.locator('.stage-card').first().click()
   await page.waitForFunction(() => window.__hamham!.app.audio.bank?.done === true, null, { timeout: 100_000 })
   await page.evaluate(() => window.__hamham!.autopilot(true))
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await page.waitForFunction(() => Boolean(window.__hamham?.world))
 

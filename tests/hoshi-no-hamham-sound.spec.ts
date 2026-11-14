@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 /** The parts of the app these tests look inside (private at compile time, plain fields at run time). */
 interface HamAudio {
@@ -49,14 +49,6 @@ async function countEffects(page: Page) {
   })
 }
 const effects = (page: Page) => page.evaluate(() => (window as unknown as { __sfx: number }).__sfx)
-
-async function pageThroughStory(page: Page) {
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
-}
 
 /** Opens a stage through the stage select with every stage unlocked and the sound on. */
 async function openStage(page: Page, no: number) {
