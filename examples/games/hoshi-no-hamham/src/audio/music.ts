@@ -2,9 +2,12 @@
  * Music playback: one MusicPlayer per sounding theme. A look-ahead scheduler queues notes on the
  * AudioContext clock (so the beat holds when frames stutter), wraps at the loop point, and gates parts by
  * intensity layer. Parts have their own gain, pan, reverb and chorus sends.
+ *
+ * A live player keeps the gains, filters and panners of its voices and builds every later note on them (see `Rack`):
+ * a note then makes only its sources, a third of the nodes it would make otherwise.
  */
 import type { Idle } from './bank'
-import { LEGATO, VOICES, type VoiceEnv } from './instruments'
+import { LEGATO, Rack, VOICES, type VoiceEnv } from './instruments'
 import type { Mixer } from './mixer'
 import { compileSong, type CompiledSong, type InstName, type SongDef } from './notation'
 
@@ -72,10 +75,15 @@ const WIDTH: Partial<Record<InstName, { pan: number; chorus: number }>> = {
   brass: { pan: 1.7, chorus: 0.13 }
 }
 
+/** Seconds a rack is left alone after the sources of its note have stopped, while its filters ring out. */
+const RACK_REST = 0.05
+
 interface PartRuntime {
   gain: GainNode
   lastEnd: number
   lastMidi: number
+  /** The racks of the part's voice, by graph: one list for an instrument, one per drum for the kit. */
+  racks: Map<number, Rack[]>
 }
 
 export class MusicPlayer {
@@ -93,18 +101,25 @@ export class MusicPlayer {
   private layer: number
   finished = false
   private readonly humanise: boolean
+  private readonly kept: boolean
 
+  /**
+   * `humanise` loosens the timing of the notes a little (a live player). `kept` builds the notes on racks; it
+   * defaults to the same, because a render that schedules a whole song at once has no use for them.
+   */
   constructor(
     private readonly mixer: Mixer,
     noise: AudioBuffer,
     def: SongDef,
     layer: number,
     startTime: number,
-    humanise = true
+    humanise = true,
+    kept = humanise
   ) {
     this.song = compiledSong(def)
     this.layer = layer
     this.humanise = humanise
+    this.kept = kept
     const ctx = mixer.ctx
     this.env = { ctx, out: mixer.music, noise }
     this.out = ctx.createGain()
@@ -137,7 +152,7 @@ export class MusicPlayer {
         pan.connect(s)
         s.connect(this.choBus)
       }
-      this.parts.push({ gain: g, lastEnd: -1, lastMidi: -1 })
+      this.parts.push({ gain: g, lastEnd: -1, lastMidi: -1, racks: new Map() })
     }
     this.origin = startTime
     this.out.gain.value = def.gain
@@ -199,9 +214,10 @@ export class MusicPlayer {
   private playEvent(pi: number, when: number, dur: number, midi: number, vel: number): void {
     const part = this.song.def.parts[pi]
     const rt = this.parts[pi]
+    const now = this.mixer.ctx.currentTime
     let t = when
     if (this.humanise && !part.tight && part.role !== 'drum') t += (Math.random() - 0.5) * 0.008
-    t = Math.max(t, this.mixer.ctx.currentTime)
+    t = Math.max(t, now)
     let glide: number | undefined
     if (
       LEGATO.has(part.inst) &&
@@ -213,11 +229,40 @@ export class MusicPlayer {
       glide = rt.lastMidi
     rt.lastEnd = t + dur
     rt.lastMidi = midi
+    const env = this.env
+    env.out = rt.gain
+    // Every drum of the kit is a graph of its own; any other instrument builds the same graph for every note.
+    const key = part.inst === 'kit' ? midi : 0
+    const rack = this.kept ? this.rackOf(rt, key, now) : undefined
+    env.rack = rack
+    rack?.begin()
     try {
-      VOICES[part.inst]({ ...this.env, out: rt.gain }, t, dur, midi, vel, glide)
+      VOICES[part.inst](env, t, dur, midi, vel, glide)
+      rack?.end(RACK_REST)
     } catch {
-      // A failing voice must never take the game down.
+      // A failing voice must never take the game down. What it left on its rack is unknown: no note uses it again.
+      if (rack) {
+        const list = rt.racks.get(key)
+        list?.splice(list.indexOf(rack), 1)
+      }
     }
+  }
+
+  /** A rack of this graph whose last note has rung out, or a new one. */
+  private rackOf(rt: PartRuntime, key: number, now: number): Rack {
+    let list = rt.racks.get(key)
+    if (!list) rt.racks.set(key, (list = []))
+    for (let i = 0; i < list.length; i++) if (list[i].freeAt <= now) return list[i]
+    const rack = new Rack()
+    list.push(rack)
+    return rack
+  }
+
+  /** Nodes kept on the racks of all parts, for the tests and the measuring tools. */
+  get keptNodes(): number {
+    let n = 0
+    for (const rt of this.parts) for (const list of rt.racks.values()) for (const rack of list) n += rack.size
+    return n
   }
 
   /** Fades the player out and detaches it after the tail has rung out. */
