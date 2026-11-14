@@ -132,8 +132,8 @@ export interface GameAudio {
   /** Resumes the AudioContext (creating it if `prepare()` has not); call from a user gesture (click/keydown). */
   unlock(): void
   /**
-   * A stage is being played (true) or no longer is (false). While it is, the audio keeps its background work
-   * (rendering sound effects ahead of time) away from the frames.
+   * A stage is being played (true) or no longer is (false). While it is, the audio fits its background work
+   * (rendering sound effects ahead of time) into what the frames leave over.
    */
   playing(on: boolean): void
   /**

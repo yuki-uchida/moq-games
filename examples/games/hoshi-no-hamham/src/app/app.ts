@@ -65,7 +65,7 @@ class LoadingNote implements LoadingIndicator {
 
 const MAX_FRAME = 0.25
 /** How long a stage's start may wait for the sound effects to be rendered ahead once its art is ready (ms). */
-const SOUND_WAIT_MS = 2500
+const SOUND_WAIT_MS = 3000
 /** The stages the title screen's demo cycles through. */
 export const DEMO_STAGES = [1, 5, 3, 7, 9, 4]
 /** Under reduced motion the demo is one still frame, taken after this many simulated seconds. */

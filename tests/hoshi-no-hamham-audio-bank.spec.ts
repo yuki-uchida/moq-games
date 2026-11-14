@@ -6,7 +6,15 @@ interface HamAudio {
   muted: boolean
   ctx: { state: string; currentTime: number } | null
   engine: unknown
-  bank: { done: boolean; unavailable: boolean; size: number; samples: number; startedAt: number; finishedAt: number }
+  bank: {
+    done: boolean
+    unavailable: boolean
+    size: number
+    samples: number
+    batches: number
+    startedAt: number
+    finishedAt: number
+  }
   unlock(): void
   setMuted(muted: boolean): void
 }
@@ -94,6 +102,7 @@ test('the effects are rendered before any click, and the engine is ready for the
       unavailable: b.unavailable,
       size: b.size,
       samples: b.samples,
+      batches: b.batches,
       startedAt: b.startedAt,
       finishedAt: b.finishedAt
     }
@@ -102,9 +111,14 @@ test('the effects are rendered before any click, and the engine is ready for the
   expect(bank.unavailable).toBe(false)
   expect(rendered).toBe(bank.size)
   expect(rendered).toBeGreaterThan(77)
+  // Several effects share an offline context: far fewer contexts than buffers.
+  expect(bank.batches).toBeGreaterThan(0)
+  expect(bank.batches).toBeLessThan(rendered / 4)
   const seconds = (bank.finishedAt - bank.startedAt) / 1000
   const megabytes = (bank.samples * 4) / 1024 / 1024
-  console.log(`[bank] ${rendered} buffers rendered in ${seconds.toFixed(1)} s, ${megabytes.toFixed(1)} MB`)
+  console.log(
+    `[bank] ${rendered} buffers rendered in ${bank.batches} contexts in ${seconds.toFixed(1)} s, ${megabytes.toFixed(1)} MB`
+  )
   // The engine was built in slices before the click.
   expect(await page.evaluate(() => window.__hamham!.app.audio.engine !== null)).toBe(true)
   expect(errors).toEqual([])
