@@ -1,13 +1,15 @@
 /**
  * The staged moments of a stage (DESIGN.md §7), each built as a `Sequence`: stage start, the chase start of
  * stage 1, a boss waking, his phase 2 and his fall, the goal opening, ハム姫 freed, the clear and the death.
- * Timings are tuned to stay snappy; every moment longer than a second can be skipped. Under reduced motion the
+ * Timings are tuned to stay snappy; every moment longer than a second can be skipped, except the king's phase-2
+ * transformation, which is part of the fight. Under reduced motion the
  * moments keep their information (title card, nameplate, call) and drop pans, slow motion, shake and flashes.
  */
-import { VIEW_H } from '../art/contract'
+import { VIEW_H, VIEW_W } from '../art/contract'
 import type { SimEvent } from '../game/events'
 import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
+import { bossSheetSpec, clipLife, specDuration } from './clips'
 import type { Anchor, BubbleTone } from './overlay'
 import { Sequence } from './sequence'
 
@@ -32,6 +34,13 @@ const CARD_GAP = 0.08
 export const BOSS_INTRO_SECONDS = 2.5
 export const CLEAR_SECONDS = 2.2
 export const DEATH_SECONDS = 1.8
+/** The boss's roar is posed at least this long (s), and longer when his `intro` clip needs it. */
+export const BOSS_ROAR_SECONDS = 1.25
+/**
+ * Phase 2 holds the fight while the king transforms: the pose and the hold differ by this much (s), so the pose is
+ * still up when the simulation resumes.
+ */
+export const RAGE_POSE_MARGIN = 0.05
 const PRINCESS = { who: 'ハム姫', face: 'face_princess' }
 
 export class Staging {
@@ -244,9 +253,12 @@ export class Staging {
       camera.panTo(c.x, Math.max(c.y - 24, lowest), this.reduced ? 0 : pan)
       view.actors.pose('boss', 'idle', pan + 0.05)
     })
+    // The roar is posed for the whole `intro` clip and one pass of its sustained tail (holds included).
+    const intro = bossSheetSpec(boss.def.kind, boss.def.art).intro
+    const roar = Math.max(BOSS_ROAR_SECONDS, intro ? clipLife(intro) : 0)
     seq.at(pan, () => {
       const c = centre()
-      view.actors.pose('boss', 'intro', 1.25)
+      view.actors.pose('boss', 'intro', roar)
       sound.cue('boss-roar')
       this.trauma(0.55)
       this.fx.spawn('ring', c.x, c.y, { layer: 'front' })
@@ -278,18 +290,26 @@ export class Staging {
     return seq
   }
 
-  /** Phase 2: a short hold while he transforms (the flash and rings come with the event). */
+  /**
+   * Phase 2: the fight holds while he transforms (the flash and rings come with the event). The `rage` clip plays
+   * whole: the pose lasts the clip and one pass of its burning tail, the hold a hair less; under reduced motion the
+   * hold is the clip itself and the pose a hair longer. It is part of the fight, so it cannot be skipped: a player
+   * mashing bite would otherwise never see it.
+   */
   bossPhase(): Sequence | null {
     const { sound, view, world } = this.host
     const boss = world.boss
     if (!boss || boss.dead) return null
-    const length = this.reduced ? 0.3 : 0.55
+    const rage = bossSheetSpec(boss.def.kind, boss.def.art).rage
+    const clip = rage ? specDuration(rage) : 0
+    const pose = this.reduced ? clip + RAGE_POSE_MARGIN : rage ? clipLife(rage) : 0
+    const length = Math.max(0.3, this.reduced ? clip : pose - RAGE_POSE_MARGIN)
     const seq = new Sequence('boss-phase', length, {
       priority: PRIORITY.phase,
       claims: { scale: 0, lock: true }
     })
     seq.at(0, () => {
-      view.actors.pose('boss', 'rage', 0.62)
+      view.actors.pose('boss', 'rage', pose)
       sound.cue('boss-roar')
       this.trauma(0.3)
       const x = boss.x + boss.w / 2
@@ -324,10 +344,11 @@ export class Staging {
         scale: reduced ? (t < 0.45 ? 0 : 1) : t < last ? 0.3 : t < last + 0.35 ? 0.3 + (0.7 * (t - last)) / 0.35 : 1
       })
     })
-    const { x, y } = event
+    // The explosions follow the body: a boss knocked out in the air falls to the ground while they go off.
+    const body = () => view.actors.bossBodyPoint() ?? { x: event.x, y: event.y }
     seq.at(0, () => {
       view.freeze(0.45)
-      camera.panTo(x, y - 16, reduced ? 0 : 0.3)
+      camera.panTo(event.x, event.y - 16, reduced ? 0 : 0.3)
       sound.cue('boss-boom')
     })
     // The event's own explosions (fx-map) land in the first 0.8 s; give each its sound, then keep the chain going.
@@ -340,6 +361,7 @@ export class Staging {
       seq.at(t, () => {
         sound.cue('boss-boom')
         if (t > 0.8 || reduced) {
+          const { x, y } = body()
           this.fx.spawn('boom', x + (this.rand() - 0.5) * w * 1.1, y + (this.rand() - 0.5) * h, { layer: 'front' })
           // The boom clip already ends in smoke; a separate puff only every third blast keeps the explosions the star.
           if (i % 3 === 0) this.fx.burst('smoke', x, y, 1, { speed: [10, 40], life: [0.5, 0.8] })
@@ -349,6 +371,7 @@ export class Staging {
       })
     )
     seq.at(last, () => {
+      const { x, y } = body()
       sound.cue('boss-boom')
       for (let i = 0; i < (final ? 4 : 2); i++)
         this.fx.spawn('boom', x + (this.rand() - 0.5) * w * 0.6, y + (this.rand() - 0.5) * h * 0.6, {
@@ -507,18 +530,28 @@ export class Staging {
       skipTo: irisAt,
       claims: { lock: true, cinematic: true, iris: true, spotlight: true }
     })
-    let at = { x: event.x, y: event.y }
-    seq.at(0, () => {
-      view.freeze(0.3)
-      at = view.actors.deathPoint() ?? at
+    // The spotlight follows the body (it is knocked up and falls to the ground) and the iris closes on where it
+    // comes to lie; a body that fell out of the view through a pit is followed to the edge of the view.
+    const onScreen = (at: { x: number; y: number }) => {
       const s = this.toScreen(at)
+      return { x: Math.max(0, Math.min(VIEW_W, s.x)), y: Math.max(0, Math.min(VIEW_H, s.y)) }
+    }
+    const body = () => onScreen(view.actors.deathPoint() ?? { x: event.x, y: event.y })
+    const spot = () => {
+      const s = body()
       overlay.spotX = s.x
       overlay.spotY = s.y
+    }
+    seq.at(0, () => {
+      view.freeze(0.3)
+      spot()
     })
+    seq.during(0, irisAt, spot)
     seq.at(
       irisAt,
       () => {
-        const s = this.toScreen(at)
+        const rest = view.actors.deathRest()
+        const s = rest ? onScreen(rest) : body()
         overlay.irisTo(0, 0.7, s.x, s.y)
         sound.cue('iris-out')
         hud.lights(false)

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BOSS_ARTS,
+  BOSS_KIND,
   ENEMY_KINDS,
   ENEMY_SPEC,
   HERO_SPEC,
@@ -9,7 +11,7 @@ import {
   type BossArt
 } from '../src/art/contract'
 import { frameAt, type Anim } from '../src/art/sheet'
-import type { BossState } from '../src/game/sim'
+import { BITE_COOLDOWN, BITE_TIME, type BossState } from '../src/game/sim'
 import type { BossKind } from '../src/game/types'
 import {
   APEX_SPEED,
@@ -19,6 +21,9 @@ import {
   JUMPER_APEX_SPEED,
   JUMPER_FAST_SPEED,
   SPIT_INTERVAL,
+  SPIT_READY_DIP,
+  SPIT_READY_HOLD,
+  STAND_AFTER,
   airFrame,
   bossClip,
   bossSheetSpec,
@@ -34,13 +39,18 @@ import {
   type HeroSnapshot
 } from '../src/view/clips'
 
-const frameOf = (spec: AnimSpec, choice: ClipChoice) => {
-  if (choice.frame !== undefined) return choice.frame
-  const tick = Math.floor(choice.t * spec.fps)
-  if (spec.loop) return tick % spec.frames
-  if (spec.sustain && tick >= spec.frames) return spec.frames - spec.sustain + ((tick - spec.frames) % spec.sustain)
-  return Math.min(spec.frames - 1, tick)
-}
+/** A stand-in Anim with the timing of a contract clip (frames, fps, loop, hold, sustain) and no pixels. */
+const standIn = (spec: AnimSpec): Anim =>
+  ({
+    frames: Array.from({ length: spec.frames }, () => ({})),
+    fps: spec.fps,
+    loop: spec.loop,
+    sustain: spec.sustain,
+    hold: spec.hold && [...spec.hold]
+  }) as unknown as Anim
+
+/** The frame the sheet shows for a choice. */
+const frameOf = (spec: AnimSpec, choice: ClipChoice) => choice.frame ?? frameAt(standIn(spec), choice.t)
 
 const hero = (extra: Partial<HeroSnapshot> = {}): HeroSnapshot => ({
   cheering: false,
@@ -116,9 +126,62 @@ describe('hero clips', () => {
     expect(heroClip(hero({ landAge: 0.05, hardLanding: false })).name).toBe('idle')
   })
 
-  it('shows the bite hit frame the moment the simulation bites', () => {
+  it('shows the bite hit frame the moment the simulation bites, and that is the first frame', () => {
     const choice = heroClip(hero({ biteAge: 0 }), HERO_SPEC)
     expect(frameOf(HERO_SPEC.bite, choice)).toBe(HERO_SPEC.bite.hit)
+    expect(HERO_SPEC.bite.hit).toBe(0)
+    expect(specDuration(HERO_SPEC.bite)).toBeLessThanOrEqual(BITE_TIME)
+  })
+
+  describe('every bite plays from its first frame to its last', () => {
+    /**
+     * The bite frames drawn, one list per bite, for simulation steps of `STEP` with the bite pressed at the given
+     * step numbers. The timers follow sim.ts: the timer runs down first, then a press sets it to BITE_TIME. A
+     * hit-stop (`freezeAt`: step number → frames held) draws the same state again without stepping.
+     */
+    const bites = (presses: number[], steps: number, freezeAt: Record<number, number> = {}) => {
+      const STEP = 1 / 60
+      let biteTimer = 0
+      let cooldown = 0
+      const out: number[][] = []
+      for (let i = 0; i < steps; i++) {
+        biteTimer = biteTimer > STEP ? biteTimer - STEP : 0
+        cooldown = Math.max(0, cooldown - STEP)
+        if (presses.includes(i) && cooldown <= 0) {
+          biteTimer = BITE_TIME
+          cooldown = BITE_COOLDOWN
+          out.push([])
+        }
+        for (let k = 0; k <= (freezeAt[i] ?? 0); k++) {
+          const choice = heroClip(hero({ biteAge: biteTimer > 0 ? BITE_TIME - biteTimer : null }), HERO_SPEC)
+          if (choice.name === 'bite') out.at(-1)!.push(frameOf(HERO_SPEC.bite, choice))
+        }
+      }
+      return out
+    }
+    const whole = (frames: number[]) => {
+      expect(frames[0]).toBe(0)
+      for (let i = 1; i < frames.length; i++) expect(frames[i] - frames[i - 1]).toBeGreaterThanOrEqual(0)
+      expect([...new Set(frames)]).toEqual(Array.from({ length: HERO_SPEC.bite.frames }, (_, i) => i))
+    }
+
+    it('a whiff', () => {
+      const [frames] = bites([0], 40)
+      whole(frames)
+    })
+
+    it('a hit (the hit-stop holds the lunge)', () => {
+      const [frames] = bites([0], 40, { 0: 6 })
+      whole(frames)
+      expect(frames.slice(0, 7)).toEqual([0, 0, 0, 0, 0, 0, 0])
+    })
+
+    it('mashing: a new bite every BITE_COOLDOWN', () => {
+      const presses = Array.from({ length: 120 }, (_, i) => i)
+      const all = bites(presses, 120)
+      expect(all.length).toBeGreaterThanOrEqual(5)
+      for (const frames of all.slice(0, -1)) whole(frames)
+    })
   })
 
   it('advances the run cycle with distance, not time', () => {
@@ -229,7 +292,8 @@ describe('sustain', () => {
       frames: Array.from({ length: spec.frames }, () => ({})),
       fps: spec.fps,
       loop: spec.loop,
-      sustain: spec.sustain
+      sustain: spec.sustain,
+      hold: spec.hold && [...spec.hold]
     }) as unknown as Anim
 
   it('sustainCycle and clipLife follow the spec', () => {
@@ -241,6 +305,22 @@ describe('sustain', () => {
     // A short tail is lengthened to one pass of the sustained frames; a long one is kept.
     expect(clipLife(defeat, 0.01)).toBeCloseTo(specDuration(defeat) + 2 / defeat.fps)
     expect(clipLife(defeat, 0.5)).toBeCloseTo(specDuration(defeat) + 0.5)
+  })
+
+  it('specDuration, hitTime and sustainCycle count per-frame holds', () => {
+    // hero wait: 16 ticks at 8 fps; ape land: 6 ticks at 14 fps; weasel defeat: tail of 2 + 2 ticks at 10 fps.
+    expect(specDuration(HERO_SPEC.wait)).toBeCloseTo(2)
+    expect(specDuration(bossSpec('apeBoss').land)).toBeCloseTo(6 / 14)
+    expect(specDuration(bossSpec('apeBoss').intro)).toBeCloseTo(1.1)
+    expect(sustainCycle(bossSpec('weaselBoss').defeat)).toBeCloseTo(0.4)
+    expect(clipLife(bossSpec('weaselBoss').defeat)).toBeCloseTo(1.1 + 0.4)
+    const held: AnimSpec = { w: 64, h: 64, frames: 4, fps: 10, loop: false, hit: 2, hold: [3, 2, 1, 1] }
+    expect(hitTime(held)).toBeCloseTo(0.5)
+    expect(frameAt(anim(held), hitTime(held))).toBe(2)
+    expect(frameAt(anim(held), hitTime(held) - 0.01)).toBe(1)
+    // Each boss art gets one cached spec object (the view asks every frame); holds differ per boss.
+    expect(bossSpec('apeBoss')).toBe(bossSpec('apeBoss'))
+    expect(bossSpec('bearBoss').land.hold).toBeUndefined()
   })
 
   it('frameAt keeps cycling the sustained tail of a windup', () => {
@@ -259,15 +339,18 @@ const enemy = (kind: EnemySnapshot['kind'], extra: Partial<EnemySnapshot> = {}):
   hitFlash: 0,
   shootTimer: 1.5,
   landAge: 99,
+  stillTime: 0,
   time: 0.3,
   ...extra
 })
 
 describe('enemy clips', () => {
   const cases: [EnemySnapshot['kind'], Partial<EnemySnapshot>, string, number?][] = [
-    ['walker', {}, 'idle'],
+    ['walker', {}, 'move'],
+    ['walker', { stillTime: STAND_AFTER }, 'idle'],
     ['walker', { vx: 74 }, 'move'],
-    ['tough', {}, 'idle'],
+    ['tough', {}, 'move'],
+    ['tough', { stillTime: STAND_AFTER }, 'idle'],
     ['tough', { vx: -62 }, 'move'],
     ['flyer', {}, 'move'],
     ['jumper', {}, 'idle'],
@@ -288,6 +371,19 @@ describe('enemy clips', () => {
       expect(ENEMY_SPEC[kind][choice.name]).toBeDefined()
       if (frame !== undefined) expect(choice.frame).toBe(frame)
     })
+
+  it('the rat and the mole stand only after standing still a while; a single still step keeps the stride', () => {
+    expect(STAND_AFTER).toBe(0.15)
+    for (const kind of ['walker', 'tough'] as const) {
+      // Walking, then stopped by a wall for one step, then walking on: the stride's time base runs on.
+      const steps = [74, 74, 0, -74, -74].map((vx, i) => ({ vx, still: vx === 0 ? 1 / 60 : 0, time: 0.3 + i / 60 }))
+      const picks = steps.map((s) => enemyClip(enemy(kind, { vx: s.vx, stillTime: s.still, time: s.time })))
+      expect(picks.map((c) => c.name)).toEqual(['move', 'move', 'move', 'move', 'move'])
+      expect(picks.map((c) => c.t)).toEqual(steps.map((s) => s.time))
+      expect(enemyClip(enemy(kind, { stillTime: STAND_AFTER - 0.01 })).name).toBe('move')
+      expect(enemyClip(enemy(kind, { stillTime: STAND_AFTER })).name).toBe('idle')
+    }
+  })
 
   it('the jumper picks a five-frame hop by vertical speed', () => {
     const air = (vy: number, specs = ENEMY_SPEC.jumper) =>
@@ -317,6 +413,72 @@ describe('enemy clips', () => {
     expect(frameOf(spec, pick(SPIT_INTERVAL - tail + 0.001))).toBe(spec.frames - 1)
     expect(pick(SPIT_INTERVAL - tail - 0.001).name).toBe('idle')
   })
+
+  describe('the spitter waits loaded', () => {
+    const specs = ENEMY_SPEC.spitter
+    const spec = specs.shoot
+    const STEP = 1 / 60
+    /**
+     * The shoot frames shown, step by step, for a timer that starts at `from` and runs down as in sim.ts. The
+     * spitter fires (timer back to SPIT_INTERVAL) at the first step from `fireAt` on where it is loaded (the hero
+     * is in range from then); with `fireAt` null it never fires. Repeats are collapsed; it stops at the first idle
+     * after a shot.
+     */
+    const run = (from: number, fireAt: number | null, steps = 400) => {
+      let timer = from
+      let fired = false
+      const shown: number[] = []
+      for (let i = 0; i < steps; i++) {
+        timer -= STEP
+        if (timer <= 0 && fireAt !== null && i >= fireAt) {
+          timer = SPIT_INTERVAL
+          fired = true
+        }
+        const choice = enemyClip(enemy('spitter', { shootTimer: timer }), specs)
+        if (choice.name !== 'shoot') {
+          if (fired) break
+          continue
+        }
+        const f = frameOf(spec, choice)
+        if (shown.at(-1) !== f) shown.push(f)
+      }
+      return { shown, fired }
+    }
+
+    it('names its pulse constants', () => {
+      expect(SPIT_READY_HOLD).toBe(0.6)
+      expect(SPIT_READY_DIP).toBe(0.15)
+    })
+
+    it('a timer that runs out with nobody near shows frames 0, 1, 2, then stays on 2 and 1', () => {
+      const { shown } = run(1, null, 300)
+      expect(shown.slice(0, 3)).toEqual([0, 1, 2])
+      for (const f of shown.slice(3)) expect([spec.hit! - 1, spec.hit! - 2]).toContain(f)
+      // The pulse: it dips back to 1 and returns to 2.
+      expect(shown.slice(3, 5)).toEqual([1, 2])
+    })
+
+    it('while loaded the frame before `hit` shows 0.6 s, then the one before it 0.15 s', () => {
+      const at = (waited: number) => frameOf(spec, enemyClip(enemy('spitter', { shootTimer: -waited }), specs))
+      expect(at(0)).toBe(spec.hit! - 1)
+      expect(at(SPIT_READY_HOLD - 0.01)).toBe(spec.hit! - 1)
+      expect(at(SPIT_READY_HOLD + 0.01)).toBe(spec.hit! - 2)
+      expect(at(SPIT_READY_HOLD + SPIT_READY_DIP + 0.01)).toBe(spec.hit! - 1)
+    })
+
+    it('when the hero comes into range it fires: 3 (hit), 4, 5, then idle', () => {
+      const { shown, fired } = run(1, 200)
+      expect(fired).toBe(true)
+      const after = shown.slice(shown.lastIndexOf(spec.hit! - 1) + 1)
+      expect(after).toEqual([3, 4, 5])
+    })
+
+    it('a spitter that fires as its timer runs out shows 0 to 5 in order', () => {
+      const { shown, fired } = run(1, 0)
+      expect(fired).toBe(true)
+      expect(shown).toEqual([0, 1, 2, 3, 4, 5])
+    })
+  })
 })
 
 const ART: Record<BossKind, string> = {
@@ -338,6 +500,7 @@ const boss = (kind: BossKind, state: BossState, extra = {}) => ({
   vx: 0,
   vy: 0,
   rageAge: null,
+  hurtAge: null,
   time: 0.4,
   ...extra
 })
@@ -444,6 +607,65 @@ describe('boss clips', () => {
       expect(spec.windup.sustain).toBeGreaterThan(1)
       expect(bossClip(boss(kind, 'windup', { stateTime: 3 }), ART[kind], spec)).toEqual({ name: 'windup', t: 3 })
     }
+  })
+
+  describe('a hit makes the boss flinch outside a warning or an attack', () => {
+    const arts: [BossKind, string][] = [
+      ['chaser', 'mom'],
+      ...BOSS_ARTS.map((art) => [BOSS_KIND[art], art] as [BossKind, string])
+    ]
+    /** The frames a hit at `stateTime` shows over the hurt clip's length, then the clip after it. */
+    const sweep = (kind: BossKind, art: string, state: BossState, extra = {}) => {
+      const spec = bossSheetSpec(kind, art)
+      const hurt = spec.hurt
+      const frames = new Set<number>()
+      const names = new Set<string>()
+      for (let t = 0; t < specDuration(hurt); t += 0.005) {
+        const choice = bossClip(boss(kind, state, { hurtAge: t, ...extra }), art, spec)
+        names.add(choice.name)
+        if (choice.name === 'hurt') frames.add(frameOf(hurt, choice))
+      }
+      const after = bossClip(boss(kind, state, { hurtAge: specDuration(hurt), ...extra }), art, spec)
+      const unhurt = bossClip(boss(kind, state, extra), art, spec)
+      return { frames, names, after, unhurt, hurt }
+    }
+
+    for (const [kind, art] of arts) {
+      const calm: BossState[] = kind === 'chaser' ? ['idle', 'stunned', 'tired'] : ['idle', 'recover', 'stunned']
+      for (const state of calm)
+        it(`${art} hit in ${state}: hurt with every frame, then the state's clip`, () => {
+          const { frames, names, after, unhurt, hurt } = sweep(kind, art, state)
+          expect([...names]).toEqual(['hurt'])
+          expect([...frames].sort()).toEqual(Array.from({ length: hurt.frames }, (_, i) => i))
+          expect(after).toEqual(unhurt)
+        })
+      if (kind === 'chaser') continue
+      for (const state of ['windup', 'charge', 'dive', 'slam', 'shoot'] as BossState[])
+        it(`${art} hit in ${state}: keeps the state's clip`, () => {
+          const { names, unhurt } = sweep(kind, art, state, { vy: -300 })
+          expect([...names]).toEqual([unhurt.name])
+        })
+    }
+
+    it('a walking boss flinches too, and a new hit restarts the clip', () => {
+      const spec = bossSheetSpec('tank', 'bearBoss')
+      expect(bossClip(boss('tank', 'idle', { vx: 80, hurtAge: 0.01 }), 'bearBoss', spec).name).toBe('hurt')
+      expect(bossClip(boss('tank', 'idle', { hurtAge: 0 }), 'bearBoss', spec)).toEqual({ name: 'hurt', t: 0 })
+    })
+
+    it('the landing of a slam and the follow-through of a volley are kept', () => {
+      const spec = bossSheetSpec('final', 'king')
+      const pick = (extra: Record<string, unknown>) =>
+        bossClip(boss('final', 'recover', { hurtAge: 0.02, ...extra }), 'king', spec).name
+      expect(pick({ prevState: 'slam', stateTime: 0.05 })).toBe('land')
+      expect(pick({ prevState: 'shoot', stateTime: 0.02 })).toBe('shoot')
+      expect(pick({ prevState: 'slam', stateTime: 0.6 })).toBe('hurt')
+    })
+
+    it('the transformation comes before the flinch', () => {
+      const spec = bossSheetSpec('final', 'king')
+      expect(bossClip(boss('final', 'idle', { rageAge: 0.1, hurtAge: 0.01 }), 'king', spec).name).toBe('rage')
+    })
   })
 
   it('the rage clip plays once', () => {

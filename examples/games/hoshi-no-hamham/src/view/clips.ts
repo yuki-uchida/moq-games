@@ -15,12 +15,25 @@ export interface ClipChoice {
   frame?: number
 }
 
-/** Seconds of one pass of a contract clip. */
-export const specDuration = (spec: AnimSpec) => spec.frames / spec.fps
+/** Ticks of 1/fps the frames `from` (inclusive) to `to` (exclusive) of a clip are shown for, counting `hold`. */
+function ticksOf(spec: AnimSpec, from: number, to: number) {
+  const hold = spec.hold
+  if (!hold) return to - from
+  let ticks = 0
+  for (let i = from; i < to; i++) ticks += hold[i] ?? 1
+  return ticks
+}
+
+/** Seconds from the start of a clip to the start of its frame `frame` (holds included). */
+export const frameStart = (spec: AnimSpec, frame: number) => ticksOf(spec, 0, frame) / spec.fps
+
+/** Seconds of one pass of a contract clip (its holds included). */
+export const specDuration = (spec: AnimSpec) => ticksOf(spec, 0, spec.frames) / spec.fps
 /** Seconds from the clip start to its `hit` frame (a hair past the boundary, so rounding never lands a frame early). */
-export const hitTime = (spec: AnimSpec) => ((spec.hit ?? 0) + 1e-4) / spec.fps
+export const hitTime = (spec: AnimSpec) => (ticksOf(spec, 0, spec.hit ?? 0) + 1e-4) / spec.fps
 /** Seconds of one pass over the frames a `sustain` clip keeps cycling after it has played (0 without sustain). */
-export const sustainCycle = (spec: AnimSpec) => (spec.sustain ? spec.sustain / spec.fps : 0)
+export const sustainCycle = (spec: AnimSpec) =>
+  spec.sustain ? ticksOf(spec, spec.frames - spec.sustain, spec.frames) / spec.fps : 0
 /**
  * How long a ghost that plays `spec` must live so it is never cut early: one pass, plus `tail`, and at least one
  * pass of the sustained frames when the clip has `sustain` (so the clip's last moments animate before it ends).
@@ -128,6 +141,24 @@ export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_
   return { name: 'idle', t: s.idleTime }
 }
 
+/** Frames of the hero's `die`: 0 the hit, 1–3 the tumble in the air, 4 the bounce on the ground, then lying, dazed. */
+export const DIE_TUMBLE_FIRST = 1
+export const DIE_TUMBLE_FRAMES = 3
+export const DIE_BOUNCE = 4
+
+/**
+ * The hero's knock-out follows his body: the hit for one frame, the tumble while he is in the air (cycling for a
+ * long fall), and from touching the ground (`landedFor` seconds ago) the bounce, the lying pose and the dazed
+ * stars (sustained). Knocked down where he stood, it plays 0→7 at the clip's own speed.
+ */
+export function dieClip(age: number, landedFor: number | null, spec: AnimSpec = HERO_SPEC.die): ClipChoice {
+  if (landedFor !== null) return { name: 'die', t: (DIE_BOUNCE + 1e-4) / spec.fps + landedFor }
+  const tick = 1 / spec.fps
+  if (age < tick - 1e-6) return { name: 'die', t: age, frame: 0 }
+  const tumble = Math.max(0, Math.floor((age - tick) * spec.fps + 1e-6)) % DIE_TUMBLE_FRAMES
+  return { name: 'die', t: age, frame: DIE_TUMBLE_FIRST + tumble }
+}
+
 /** Run frames whose foot hits the ground (dust and a footstep). */
 export const RUN_CONTACT_FRAMES = [0, 4] as const
 
@@ -142,12 +173,28 @@ export interface EnemySnapshot {
   shootTimer: number
   /** Seconds since touching down (jumper). */
   landAge: number
+  /** Seconds standing still (|vx| ≤ `STILL_SPEED`), 0 while moving (walker, tough). */
+  stillTime: number
   /** Seconds alive (loop clips). */
   time: number
 }
 
+/** At or below this horizontal speed (px/s) a walking enemy counts as standing still. */
+export const STILL_SPEED = 8
+/**
+ * The rat and the mole show their standing pose only after standing still this long (s): they stop for a single
+ * step when a wall turns them round, and that must not pop the standing pose into the stride.
+ */
+export const STAND_AFTER = 0.15
+
 /** The spitter's shot timer resets to this after a shot (sim.ts). */
 export const SPIT_INTERVAL = 2.4
+/**
+ * A loaded spitter waiting for the hero to come into range holds the frame before `hit` (cheeks full, leaning in)
+ * for this long (s), then dips to the frame before that for `SPIT_READY_DIP` (s): a pulse of tension.
+ */
+export const SPIT_READY_HOLD = 0.6
+export const SPIT_READY_DIP = 0.15
 
 export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = ENEMY_SPEC[s.kind]): ClipChoice {
   if (s.hitFlash > 0) return { name: 'hurt', t: 0.16 - s.hitFlash }
@@ -164,12 +211,18 @@ export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = EN
       const lead = hitTime(spec)
       // Wind up so the `hit` frame shows the moment the acorn leaves, then finish the follow-through.
       if (s.shootTimer > 0 && s.shootTimer <= lead) return { name: 'shoot', t: lead - s.shootTimer }
+      // Loaded with nobody in range (the timer runs on below zero): stay at the end of the wind-up, pulsing.
+      if (s.shootTimer <= 0) {
+        const ready = Math.max(0, (spec.hit ?? 0) - 1)
+        const waited = -s.shootTimer % (SPIT_READY_HOLD + SPIT_READY_DIP)
+        return { name: 'shoot', t: lead, frame: waited < SPIT_READY_HOLD ? ready : Math.max(0, ready - 1) }
+      }
       const since = SPIT_INTERVAL - s.shootTimer
       if (since >= 0 && since < specDuration(spec) - lead) return { name: 'shoot', t: lead + since }
       return { name: 'idle', t: s.time }
     }
     default:
-      return Math.abs(s.vx) > 8 ? { name: 'move', t: s.time } : { name: 'idle', t: s.time }
+      return s.stillTime >= STAND_AFTER ? { name: 'idle', t: s.time } : { name: 'move', t: s.time }
   }
 }
 
@@ -186,11 +239,31 @@ export interface BossSnapshot {
   vy: number
   /** Seconds since the phase-2 transformation began, or null. */
   rageAge: number | null
+  /** Seconds since the boss was last hit (view time, so a hit-stop holds it), or null. */
+  hurtAge: number | null
   time: number
 }
 
 /** The sheet a boss is drawn from: the chasing parent uses ハム代's sheet. */
 export const bossSheetSpec = (kind: BossKind, art: string) => (kind === 'chaser' ? MOM_SPEC : bossSpec(art as BossArt))
+
+/**
+ * The first frame of each boss's `defeat` in which he lies on the ground: a boss knocked out in the air lands on
+ * it. The two fliers and the weasel tumble for three frames (1–3) and come down on frame 4; the others hit the
+ * ground already on frame 3 (the boar, the wolf and the fox slump, the bear rolls onto his back, the ape plants
+ * his face, the king falls flat on his cape) and bounce on frame 4.
+ */
+export const BOSS_DEFEAT_GROUND_FRAME: Record<BossArt, number> = {
+  crowBoss: 4,
+  beeBoss: 4,
+  weaselBoss: 4,
+  boarBoss: 3,
+  wolfBoss: 3,
+  bearBoss: 3,
+  foxBoss: 3,
+  apeBoss: 3,
+  king: 3
+}
 
 /** Seconds into the final boss's `shoot` state when the volley leaves (sim.ts). */
 export const FINAL_VOLLEY_AT = 0.5
@@ -207,15 +280,34 @@ export function bossClip(
   return { name: fallback, t: s.time }
 }
 
+/**
+ * Whether a hit in this state shows the `hurt` flinch. States that carry a warning or an attack (windup, charge,
+ * dive, slam, shoot) keep their own clip so they stay readable; there the hit shows as the white flash only. The
+ * landing of a slam and the follow-through of a volley (in `recover`) are part of their attack and are kept too.
+ */
+function flinches(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  if (s.hurtAge === null || !spec.hurt || s.hurtAge >= specDuration(spec.hurt)) return false
+  if (s.kind === 'chaser') return true
+  if (s.state === 'idle' || s.state === 'stunned') return true
+  if (s.state !== 'recover') return false
+  const leapsAndSlams = s.kind === 'tank' || s.kind === 'final'
+  if (leapsAndSlams && s.prevState === 'slam' && s.stateTime < specDuration(spec.land)) return false
+  if (s.kind === 'final' && s.prevState === 'shoot' && s.stateTime < specDuration(spec.shoot) - hitTime(spec.shoot))
+    return false
+  return true
+}
+
 function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoice {
   if (!s.active) return { name: 'idle', t: s.time }
+  // The transformation comes first, then the flinch of a hit (a new hit restarts it).
+  if (s.kind === 'final' && s.rageAge !== null && s.rageAge < specDuration(spec.rage))
+    return { name: 'rage', t: s.rageAge }
+  if (flinches(s, spec)) return { name: 'hurt', t: s.hurtAge! }
   if (s.kind === 'chaser') {
     if (s.state === 'tired') return { name: 'tired', t: s.stateTime }
     if (s.state === 'stunned') return { name: 'stunned', t: s.stateTime }
     return { name: 'move', t: s.time }
   }
-  if (s.kind === 'final' && s.rageAge !== null && s.rageAge < specDuration(spec.rage))
-    return { name: 'rage', t: s.rageAge }
   const leapsAndSlams = s.kind === 'tank' || s.kind === 'final'
   switch (s.state) {
     case 'windup':

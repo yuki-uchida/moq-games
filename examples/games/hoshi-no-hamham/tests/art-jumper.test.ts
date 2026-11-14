@@ -81,7 +81,8 @@ describe('jumper (カエル団員) on the rig', () => {
     expect(footSpan(sheet.air.frames[4])).toBeGreaterThanOrEqual(footSpan(sheet.air.frames[3]))
   })
 
-  test('the first landing frame is lower and wider than the sit', () => {
+  test('the landing (one frame: the frog hops again at once) is lower and wider than the sit', () => {
+    expect(sheet.land.frames).toHaveLength(1)
     const sit = sheet.idle.frames[0].bounds()!
     const squash = sheet.land.frames[0].bounds()!
     expect(squash.y).toBeGreaterThan(sit.y)

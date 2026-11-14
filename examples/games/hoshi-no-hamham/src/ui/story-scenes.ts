@@ -184,7 +184,8 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
       scroll: 140,
       figures: [
         princess('sad', 108, { motion: 'shake' }),
-        gang('walker', 'move', 214, { motion: 'pace' }),
+        // The rat stands guard on his hind legs, the look-out pose that is his signature.
+        gang('walker', 'idle', 214),
         gang('flyer', 'move', 262, { lift: 70, motion: 'float' })
       ],
       marks: [{ clip: 'sweat', x: 124, lift: 56 }]
@@ -310,7 +311,9 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
       scroll: 60,
       // 「本隊が巣を囲みました」: the gang closes in on the nest from both sides.
       figures: [
-        gang('jumper', 'idle', 44, { flip: false }),
+        gang('jumper', 'idle', 30, { flip: false }),
+        // The mole captain stands with the frog on the near side of the nest.
+        gang('tough', 'idle', 80, { flip: false }),
         prop('prop:nest', 'open', 124),
         gang('walker', 'move', 264, { motion: 'pace' }),
         gang('flyer', 'move', 214, { lift: 84, motion: 'float' })

@@ -514,7 +514,10 @@ const air = memo(() => {
   ].map(drawFrog)
 })
 
-/** The landing: the deep squash with the eyes squeezed, the rebound, the settle into the sit. */
+/**
+ * The landing: the deep squash with the eyes squeezed. One frame: the frog leaves the ground again on the next step
+ * of the simulation, so a rebound or a settle would never be seen.
+ */
 const land = memo(() =>
   [
     frogPose({
@@ -529,18 +532,7 @@ const land = memo(() =>
       throat: 1,
       eyes: 'squint',
       scarf: [80, 6, 1, 0]
-    }),
-    frogPose({
-      squash: -1.4,
-      sink: -1.5,
-      kneeN: [3, 3],
-      kneeF: [8, 2],
-      throat: 0.2,
-      lid: 0,
-      look: [1, -0.5],
-      scarf: [45, 7, 1.2, 1]
-    }),
-    frogPose({ squash: 0.5, sink: 0.5, throat: 0.4, lid: 1, scarf: [25, 7, 1, 2] })
+    })
   ].map(drawFrog)
 )
 

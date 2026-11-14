@@ -24,7 +24,8 @@
  *
  *   The visible body is about as wide as the box and may be up to 1.4× as tall; ears, tails, wings, capes and
  *   weapons may reach further.
- * - Frame 0 of an attack-like clip is the anticipation; `hit` is the frame of contact or release.
+ * - Frame 0 of an enemy's or a boss's attack-like clip is the anticipation; `hit` is the frame of contact or
+ *   release. The hero's `bite` has no wind-up (the simulation bites on the press): it opens on its `hit` frame.
  * - Cell props are 64×64 images placed on the top-left of their map cell (anchor [0, 0]).
  */
 
@@ -47,6 +48,12 @@ export interface AnimSpec {
    * the stars over a knocked-out boss.
    */
   sustain?: number
+  /**
+   * Ticks of 1/fps each frame is shown for (absent: one tick each). The art lingers on key poses with it, and the
+   * view times the clip by it (`specDuration`, `hitTime`, `sustainCycle` in view/clips.ts), so a clip drawn with a
+   * hold must list it here.
+   */
+  hold?: readonly number[]
 }
 
 type Specs = Record<string, AnimSpec>
@@ -77,7 +84,8 @@ export const HERO_SPEC: Specs = {
   // The same eight poses as `idle` with the eyes shut: the view swaps in the frame of the same index for the
   // length of a blink, so a blink never interrupts the breath.
   blink: cell(8, 8, true),
-  wait: cell(12, 8, false), // fidget after standing still: looks around, grooms a cheek with both paws, settles
+  // fidget after standing still: looks around (held), grooms a cheek with both paws, settles
+  wait: cell(12, 8, false, { hold: [1, 1, 4, 1, 1, 1, 1, 1, 2, 1, 1, 1] }),
   run: cell(8, 14, true), // contact frames 0 and 4
   turn: cell(2, 20, false), // facing the camera for a moment when he turns around on the spot
   skid: cell(3, 14, false, { sustain: 2 }), // braking when reversing at speed: heels dug in, scarf thrown forward
@@ -85,7 +93,9 @@ export const HERO_SPEC: Specs = {
   apex: cell(2, 10, false), // the top of the arc: frame 0 still rising (tucked), frame 1 tipping over (opening)
   fall: cell(3, 12, true), // arms up, fur and scarf fluttering
   land: cell(4, 18, false), // squash, rebound, overshoot, settle
-  bite: cell(6, 24, false, { hit: 2 }), // anticipation, lunge, CHOMP with the front teeth, recoil, chew, settle
+  // lunge (the contact frame, held by the hit-stop when the bite connects), CHOMP with the front teeth, recoil,
+  // chew, settle. A player's attack has no wind-up: the simulation bites on the frame of the press.
+  bite: cell(5, 24, false, { hit: 0 }),
   hurt: cell(3, 12, false),
   die: cell(8, 10, false, { sustain: 2 }), // hit, tumble ×3, bounce, flat on the back, then stars circling (sustain)
   cheer: cell(8, 12, true), // victory hop with both arms up
@@ -123,7 +133,9 @@ export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
     // it. The view picks the frame by vertical speed: 0 the launch (fully stretched), 1 rising, 2 the top of the
     // hop (tucked), 3 falling, 4 bracing for the ground (legs reaching down, body starting to squash).
     air: cell(5, 8, false),
-    land: cell(3, 14, false),
+    // One frame, the contact squash: the frog hops again on the very next step of the simulation, so it is on the
+    // ground for a single step and any further landing frame would never be seen.
+    land: cell(1, 14, false),
     hurt: HURT,
     defeat: DEFEAT
   },
@@ -195,8 +207,27 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
   }
 }
 
-/** The animation specs of a boss sheet: the clips every boss has plus those of its kind. */
-export const bossSpec = (art: BossArt): Specs => ({ ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] })
+/** Per-frame holds of the boss clips that linger on key poses (the clip lists come per kind, the holds per boss). */
+const BOSS_HOLD: Partial<Record<BossArt, Record<string, readonly number[]>>> = {
+  weaselBoss: { intro: [1, 1, 1, 3, 1, 2, 1, 1], defeat: [1, 2, 1, 1, 1, 1, 2, 2] },
+  apeBoss: { intro: [2, 1, 1, 1, 1, 3, 1, 1], land: [2, 1, 1, 2] }
+}
+
+const bossSpecs = new Map<BossArt, Specs>()
+
+/**
+ * The animation specs of a boss sheet: the clips every boss has plus those of its kind, with the boss's own holds.
+ * The view asks for it every frame, so each art gets one object.
+ */
+export function bossSpec(art: BossArt): Specs {
+  let specs = bossSpecs.get(art)
+  if (!specs) {
+    specs = { ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] }
+    for (const [name, hold] of Object.entries(BOSS_HOLD[art] ?? {})) specs[name] = { ...specs[name], hold }
+    bossSpecs.set(art, specs)
+  }
+  return specs
+}
 
 // --------------------------------------------------------------------------------------------------- props
 

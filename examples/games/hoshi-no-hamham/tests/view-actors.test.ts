@@ -18,8 +18,22 @@ vi.mock('../src/view/bake', () => ({
 }))
 
 import { HERO_SPEC, bossSpec } from '../src/art/contract'
-import { ActorsView, GHOST_SPEED, PositionTrail, TRAIL_AGES, TRAIL_ALPHAS } from '../src/view/actors'
-import { SKID_SPEED, clipLife, heroClip, specDuration } from '../src/view/clips'
+import {
+  ActorsView,
+  BOSS_JOLT_PX,
+  BOSS_JOLT_SECONDS,
+  GHOST_SPEED,
+  PositionTrail,
+  TRAIL_AGES,
+  TRAIL_ALPHAS,
+  DIE_GRAVITY,
+  DIE_HOP_SPEED,
+  bossJolt,
+  dieLandTime
+} from '../src/view/actors'
+import { BOSS_DEFEAT_GROUND_FRAME, SKID_SPEED, clipLife, frameStart, heroClip, specDuration } from '../src/view/clips'
+import { frameAt, type Anim } from '../src/art/sheet'
+import { TILE } from '../src/game/types'
 
 describe('PositionTrail', () => {
   it('returns the position pushed `age` pushes ago and knows how far its history reaches', () => {
@@ -255,6 +269,231 @@ describe('speed ghosts of a charging boss', () => {
     view.drawBoss(ctx)
     // Only one position is recorded since the charge began again: no after-images yet.
     expect(bodyBlits()).toHaveLength(1)
+  })
+})
+
+describe('a hit on the boss', () => {
+  const hit = (view: ActorsView) => view.handle({ type: 'boss-hit', x: 0, y: 0, ratio: 0.5, weak: false } as never)
+  const body = () => bodyBlits().at(-1)!
+
+  it('draws the hurt clip from its first frame, held by a hit-stop, then the state clip again', () => {
+    const { view } = setup()
+    view.update(1 / 60)
+    hit(view)
+    view.update(0)
+    view.drawBoss(ctx)
+    expect(body()).toMatchObject({ anim: 'boarBoss#hurt', t: 0 })
+    view.update(0.05)
+    view.drawBoss(ctx)
+    expect(body()).toMatchObject({ anim: 'boarBoss#hurt' })
+    expect(body().t).toBeCloseTo(0.05)
+    view.update(specDuration(bossSpec('boarBoss').hurt))
+    view.drawBoss(ctx)
+    expect(body().anim).toBe('boarBoss#idle')
+  })
+
+  it('keeps the windup and jolts the sprite away from the hero, easing back; the shadow stays', () => {
+    const { world, view } = setup()
+    world.boss = bossBody({ state: 'windup' })
+    view.update(1 / 60)
+    hit(view)
+    view.drawBoss(ctx)
+    const centre = 100 + 80 / 2
+    expect(body()).toMatchObject({ anim: 'boarBoss#windup', x: centre + BOSS_JOLT_PX })
+    const xs: number[] = []
+    for (let t = 0; t < BOSS_JOLT_SECONDS + 0.05; t += 0.01) {
+      view.update(0.01)
+      view.drawBoss(ctx)
+      xs.push(body().x - centre)
+    }
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeLessThanOrEqual(xs[i - 1])
+    expect(xs.at(-1)).toBe(0)
+    // From the other side, the jolt goes the other way.
+    world.player.x = 400
+    hit(view)
+    view.drawBoss(ctx)
+    expect(body().x).toBe(centre - BOSS_JOLT_PX)
+    expect(bossJolt(0, 1)).toBe(BOSS_JOLT_PX)
+    expect(bossJolt(BOSS_JOLT_SECONDS, 1)).toBe(0)
+  })
+
+  it('does not jolt under reduced motion or during a staged pose', () => {
+    const reduced = setup(true)
+    reduced.view.update(1 / 60)
+    hit(reduced.view)
+    reduced.view.drawBoss(ctx)
+    expect(body()).toMatchObject({ anim: 'boarBoss#hurt', x: 140 })
+    const staged = setup()
+    staged.view.pose('boss', 'intro', 1)
+    hit(staged.view)
+    staged.view.drawBoss(ctx)
+    expect(body()).toMatchObject({ anim: 'boarBoss#intro', x: 140 })
+  })
+})
+
+/** A world with solid ground from row `groundRow` down (or none). */
+function grounded(groundRow: number | null) {
+  const rig = setup()
+  const world = rig.world as unknown as { solidAt: (tx: number, ty: number) => boolean }
+  world.solidAt = (_tx, ty) => groundRow !== null && ty >= groundRow
+  return rig
+}
+
+const dieAnim = () =>
+  ({
+    frames: Array.from({ length: HERO_SPEC.die.frames }, () => ({})),
+    fps: HERO_SPEC.die.fps,
+    loop: false,
+    sustain: HERO_SPEC.die.sustain
+  }) as unknown as Anim
+
+describe("the hero's knock-out", () => {
+  const GROUND = 5 * TILE
+  /** Frames shown and the body's feet row, frame by frame, after a hit-stop of `hold` display frames. */
+  const knockOut = (feet: number, groundRow: number | null, seconds = 2.4, hold = 4) => {
+    const { world, view } = grounded(groundRow)
+    world.player.y = feet - world.player.h
+    world.player.dead = true
+    view.handle({ type: 'dead', x: 0, y: 0 } as never)
+    const out: { frame: number; feet: number }[] = []
+    const sample = () => {
+      const choice = view.selectHero()!
+      expect(choice.name).toBe('die')
+      out.push({ frame: choice.frame ?? frameAt(dieAnim(), choice.t), feet: view.deathPoint()!.y + world.player.h / 2 })
+    }
+    for (let i = 0; i < hold; i++) {
+      view.update(0)
+      sample()
+    }
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      view.update(1 / 60)
+      sample()
+    }
+    return out
+  }
+  const collapse = (frames: number[]) => frames.filter((f, i) => i === 0 || f !== frames[i - 1])
+
+  it('knocked down on the ground: 0..7 in order, then 6/7; up a hop of 26 px, then on the ground row for good', () => {
+    const run = knockOut(GROUND, 5)
+    expect(DIE_HOP_SPEED).toBe(260)
+    expect(DIE_GRAVITY).toBe(1300)
+    // The hit-stop holds the hit frame.
+    expect(run.slice(0, 4).map((r) => r.frame)).toEqual([0, 0, 0, 0])
+    const frames = collapse(run.map((r) => r.frame))
+    expect(frames.slice(0, 8)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    for (const f of frames.slice(8)) expect([6, 7]).toContain(f)
+    const top = GROUND - DIE_HOP_SPEED ** 2 / (2 * DIE_GRAVITY)
+    const landed = run.findIndex((r) => r.frame >= 4)
+    for (const [i, r] of run.entries()) {
+      expect(r.feet).toBeGreaterThanOrEqual(top - 1e-6)
+      expect(r.feet).toBeLessThanOrEqual(GROUND)
+      if (i >= landed) expect(r.feet).toBe(GROUND)
+    }
+    // It lands with the bounce frame, 0.4 s after the hit (the hit and the tumble).
+    expect(dieLandTime(GROUND, GROUND)).toBeCloseTo(0.4)
+  })
+
+  it('knocked out in mid-air: tumbling until the body lands, then 4, 5, 6/7 on the ground', () => {
+    const run = knockOut(GROUND - 200, 5)
+    const landed = run.findIndex((r) => r.feet === GROUND)
+    expect(landed).toBeGreaterThan(0)
+    const air = collapse(run.slice(0, landed).map((r) => r.frame))
+    expect(air[0]).toBe(0)
+    for (const f of air.slice(1)) expect([1, 2, 3]).toContain(f)
+    // A long fall cycles the tumble.
+    expect(air.length).toBeGreaterThan(4)
+    const ground = collapse(run.slice(landed).map((r) => r.frame))
+    expect(ground.slice(0, 2)).toEqual([4, 5])
+    for (const f of ground.slice(2)) expect([6, 7]).toContain(f)
+    for (const r of run.slice(landed)) expect(r.feet).toBe(GROUND)
+  })
+
+  it('over a pit: never the ground frames, and the body falls out of the view', () => {
+    const run = knockOut(GROUND, null)
+    for (const r of run) expect(r.frame).toBeLessThan(4)
+    expect(run.at(-1)!.feet).toBeGreaterThan(GROUND + 400)
+  })
+
+  it('deathPoint follows the body', () => {
+    const { world, view } = grounded(5)
+    world.player.y = GROUND - world.player.h
+    view.handle({ type: 'dead', x: 0, y: 0 } as never)
+    const at = () => view.deathPoint()!.y
+    const start = at()
+    view.update(0.2)
+    expect(at()).toBeLessThan(start - 20)
+    view.update(0.5)
+    expect(at()).toBe(start)
+  })
+})
+
+describe('a boss knocked out in the air comes down', () => {
+  const GROUND = 5 * TILE
+  /** The defeat ghost's feet row, frame by frame, for a boss whose feet are on `feet` when he falls. */
+  const fall = (art: string, kind: string, feet: number) => {
+    const { world, view } = grounded(5)
+    world.boss = bossBody({ y: feet - 80, def: { kind, art }, dead: true })
+    view.handle({ type: 'boss-down', x: 0, y: 0 } as never)
+    const out: { age: number; y: number }[] = []
+    let age = 0
+    for (let i = 0; i < 90; i++) {
+      blits.length = 0
+      view.drawBoss(ctx)
+      const ghost = blits.find((b) => b.anim === `${art}#defeat`)
+      if (ghost) out.push({ age, y: ghost.y })
+      view.update(1 / 60)
+      age += 1 / 60
+    }
+    return out
+  }
+
+  it('a flier knocked out 60 px above the ground lands on frame 4 and stays on the ground row', () => {
+    const spec = bossSpec('crowBoss').defeat
+    const at = frameStart(spec, BOSS_DEFEAT_GROUND_FRAME.crowBoss)
+    expect(BOSS_DEFEAT_GROUND_FRAME.crowBoss).toBe(4)
+    const run = fall('crowBoss', 'flyer', GROUND - 60)
+    expect(run.length).toBeGreaterThan(30)
+    for (const { age, y } of run) {
+      expect(y).toBeLessThanOrEqual(GROUND)
+      if (age >= at - 1e-9) expect(y).toBe(GROUND)
+      else expect(y).toBeLessThan(GROUND)
+    }
+  })
+
+  it('the weasel (frames held longer) lands on its own frame-4 time', () => {
+    const spec = bossSpec('weaselBoss').defeat
+    const at = frameStart(spec, BOSS_DEFEAT_GROUND_FRAME.weaselBoss)
+    expect(at).toBeCloseTo(0.5)
+    const run = fall('weaselBoss', 'brute', GROUND - 60)
+    const first = run.find((r) => r.y === GROUND)!
+    expect(first.age).toBeGreaterThanOrEqual(at - 1e-9)
+    expect(first.age).toBeLessThan(at + 1 / 60 + 1e-9)
+    for (const r of run) expect(r.y).toBeLessThanOrEqual(GROUND)
+  })
+
+  it('a boss knocked out on the ground does not move', () => {
+    const run = fall('boarBoss', 'brute', GROUND)
+    expect(run.length).toBeGreaterThan(30)
+    for (const { y } of run) expect(y).toBe(GROUND)
+  })
+})
+
+describe('the rat and the mole stand still only after a while', () => {
+  it('ActorsView counts the time an enemy stands still', () => {
+    const { world, view } = setup()
+    const rat = { id: 1, kind: 'walker', x: 0, y: 0, w: 44, h: 38, vx: 74, vy: 0, facing: 1, onGround: true }
+    const enemyOf = rat as never
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    view.update(1 / 60)
+    expect(view.selectEnemy(enemyOf).name).toBe('move')
+    rat.vx = 0
+    view.update(1 / 60)
+    expect(view.selectEnemy(enemyOf).name).toBe('move')
+    for (let i = 0; i < 10; i++) view.update(1 / 60)
+    expect(view.selectEnemy(enemyOf).name).toBe('idle')
+    rat.vx = -74
+    view.update(1 / 60)
+    expect(view.selectEnemy(enemyOf).name).toBe('move')
   })
 })
 

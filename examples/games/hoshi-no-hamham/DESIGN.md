@@ -126,10 +126,14 @@ emblem. Colour is never the only cue.
 
 Clips, frame counts, sizes and anchors are fixed by `src/art/contract.ts` and checked by
 `tests/art-contract.test.ts`; how a clip is animated (key poses, timing, overlap, weight) is in
-`src/art/CHARACTERS.md` §5. Looping idles and cycles have 6–8 frames; attacks have an anticipation, an action and
-a follow-through; a knock-out is drawn (the rig turned and re-lit, the lying pose designed by hand), never a
-turned picture. Three things in the contract serve the view:
+`src/art/CHARACTERS.md` §5. Looping idles and cycles have 6–8 frames; enemy and boss attacks have an anticipation,
+an action and a follow-through; the hero's `bite` opens on the lunge (a player's attack has no wind-up: the
+simulation bites on the press; enemies and bosses telegraph); a knock-out is drawn (the rig turned and re-lit, the
+lying pose designed by hand), never a turned picture. Four things in the contract serve the view:
 
+- `hold`: the ticks each frame of a clip is shown for, where the art lingers on a key pose. The view times every
+  clip from the contract (its length, its `hit` frame, its sustained tail), so a hold the art uses is listed there
+  and the contract test fails on one that is not;
 - `sustain`: a clip that does not loop keeps cycling its last frames for as long as it is shown (the tremble of
   a held wind-up, the flutter of a rise, the stars over a boss who is out cold) instead of freezing;
 - clips picked by state rather than time: the hero's `apex` (the top of a jump, by vertical speed), the frog's
@@ -145,10 +149,27 @@ The view adds, on top of the frames:
   hero is hurt, 450 ms plus slow motion when a boss falls;
 - defeated enemies play `defeat` as a ghost after the sim has removed them; the hero's death and cheer are
   view-driven sequences;
+- a knock-out falls to the ground and stays there: the hero is knocked up a little (26 px) and falls under gravity
+  to the ground below him, his `die` clip following the body (the hit, the tumble while he is in the air, the
+  bounce when he touches down, then lying dazed); a boss knocked out in the air falls to the ground below and
+  lands on the first frame drawn lying there (frame 4 for the fliers and the weasel, 3 for the others), its fall
+  timed from the clip; over a pit the hero falls out of the view and a boss stays where he is;
+- the frog's landing is a single frame (the contact squash): it hops again on the next step;
+- the rat and the mole show their standing pose only after standing still for 0.15 s (a chasing rat stopped by
+  a wall, a mole penned in), never for the single step a wall turns them round;
 - two after-images behind a boss that charges or dives faster than 260 px/s (off under reduced motion);
+- a boss hit outside a warning or an attack (standing, walking, recovering, stunned; the chasing parent in every
+  state) flinches: its `hurt` clip plays whole, from the first frame (a new hit restarts it). In a wind-up, a
+  charge, a dive, a leap or a volley (and the landing or follow-through of one) the state's clip stays readable and
+  the hit shows as the white flash. In every state the sprite jolts up to 3 px away from the hero and eases back
+  over 0.12 s (not under reduced motion, not in a staged pose; the shadow stays put);
+- a loaded リス団員 waiting for the hero to come into range holds the end of its wind-up (cheeks full, leaning in)
+  with a small pulse, so its shot never comes out of an idle pose;
 - ground shadows under every actor that shrink with height.
 
-Bosses telegraph every attack: `windup` is visible for the whole wind-up time, with a glint or dust cue.
+Bosses telegraph every attack: `windup` is visible for the whole wind-up time, with a glint or dust cue. Staged
+poses last as long as their clip: the boss's roar shows its whole `intro`, and the phase-2 hold lasts as long as
+the king's transformation (`rage` and one pass of its burning tail; under reduced motion the clip itself).
 
 ## 5. Effects
 

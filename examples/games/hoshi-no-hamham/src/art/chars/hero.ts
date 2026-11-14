@@ -540,27 +540,12 @@ const land = () =>
     hamPose({ squash: 0.3, earN: 3, earF: 2, scarf: [40, 12, 1, 3] })
   ])
 
-/** The bite: anticipation, lunge, CHOMP, recoil, chew, settle. */
+/**
+ * The bite: lunge (the contact frame), CHOMP, recoil, chew, settle. It opens on the lunge with no wind-up: the
+ * simulation bites on the frame of the press.
+ */
 const bite = () =>
   draw([
-    hamPose({
-      x: -2,
-      lean: -10,
-      squash: -1,
-      nod: -8,
-      armN: [-2, 4],
-      armF: [-4, 4],
-      footN: [-2, 0, 0],
-      footF: [2, 0, 0],
-      earN: 20,
-      earF: 16,
-      tuft: 'back',
-      scarf: [34, 12, 1, 0],
-      jaw: 0.6,
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'gape'
-    }),
     // the lunge: a smear frame, the body drawn out along its path, feet left behind, speed streaks trailing
     hamPose({
       x: 3,

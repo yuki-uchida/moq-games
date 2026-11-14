@@ -70,13 +70,16 @@ const run = bob.map((b, i) =>
 
 - Every frame of a clip differs from its neighbours, and a loop closes without a pop (the last frame leads into
   the first). The contract test rejects repeated frames.
-- **Anticipation → action → follow-through.** Frame 0 of an attack winds up the other way. Ears, tails, scarves,
-  capes and cheeks lag behind the body and settle a frame or two later.
+- **Anticipation → action → follow-through.** Frame 0 of an enemy's or a boss's attack winds up the other way. The
+  hero's `bite` is the exception: a player's attack lands on the press, so it opens on the lunge. Ears, tails,
+  scarves, capes and cheeks lag behind the body and settle a frame or two later.
 - **Squash and stretch** keep volume: wider when shorter, narrower when taller.
 - **Walk and run cycles** have contact, down, passing and up poses; the body bobs 1–2 px; feet alternate; arms
   swing against the legs. Four-legged runs gather and extend.
 - **Weight.** Big characters move fewer pixels per frame, sink on landing and recover slowly.
-- Use `hold` to linger on key poses instead of adding frames the contract does not have.
+- Use `hold` to linger on key poses instead of adding frames the contract does not have. A hold is timing the view
+  must know: list the same numbers as `hold` on the clip's spec in `contract.ts` (bosses: `BOSS_HOLD`), or the
+  contract test fails and the view cuts the clip short.
 - Wind-ups (`windup`) must be readable in one glance: the whole body commits to a direction.
 
 ## Terrain and backdrops
