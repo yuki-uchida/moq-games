@@ -78,7 +78,7 @@ describe('paw cards', () => {
       uses: 3,
       combo: 0
     })
-    expect(c).toMatchObject({ item: 'hippo', name: 'カバキャノン', cost: '11', cooldown: 0.5, charge: 0.4 })
+    expect(c).toMatchObject({ item: 'hippo', name: 'カバキャノン', cost: '4', cooldown: 0.5, charge: 0.4 })
     expect(c.list).toEqual([
       { item: 'bee', active: false },
       { item: 'hippo', active: true }

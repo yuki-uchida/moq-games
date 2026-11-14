@@ -275,6 +275,7 @@ class Renderer implements GameRenderer {
 
     this.updateCamera(input, dt)
     this.rig.camera.updateMatrixWorld()
+    if (!input.cinematic) this.characters.nearFade(input.follow ?? input.me, this.rig.camera.position)
     this.sound.setListener(this.rig.camera)
 
     // Events: each event object once (the app may hand the same view or events to several frames). Ids are not

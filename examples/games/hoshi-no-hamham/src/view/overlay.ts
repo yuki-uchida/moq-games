@@ -27,6 +27,8 @@ interface Bubble {
   age: number
   life: number
   last: { x: number; y: number }
+  /** The text's width in px at the bubble's font, measured the first time it is drawn (-1 until then). */
+  textWidth: number
   /** The words are shown elsewhere (on the deck): only a small wordless balloon is drawn over the speaker. */
   wordless: boolean
   /** Where the box was last drawn, in view pixels (box and tail). */
@@ -64,9 +66,160 @@ interface Popup {
   age: number
   life: number
   size: number
+  /** The text as a picture, made the first time the popup is drawn (null where no canvas can be made). */
+  picture?: TextPicture | null
+}
+
+/** A text drawn once into its own canvas: `w` × `h` view pixels, held at `k` device pixels per view pixel. */
+interface TextPicture {
+  image: CanvasImageSource
+  w: number
+  h: number
+}
+
+type Paint = (ctx: CanvasRenderingContext2D) => CanvasGradient
+
+/** The soft frame of shadow around the stage. */
+const vignetteGradient: Paint = (ctx) => {
+  const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.45, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.98)
+  g.addColorStop(0, 'rgba(20,8,40,0)')
+  g.addColorStop(1, 'rgba(20,8,40,0.26)')
+  return g
+}
+
+/** The red pulse at full strength (the overlay scales it with the alpha). */
+const hurtGradient: Paint = (ctx) => {
+  const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.32, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.92)
+  g.addColorStop(0, 'rgba(220,30,60,0)')
+  g.addColorStop(1, 'rgba(220,30,60,1)')
+  return g
+}
+
+/** Off: the overlay fills its gradients and draws its texts directly every frame (browser tests compare the two). */
+export const overlayPictures = { enabled: true }
+
+let pictures: { vignette: CanvasImageSource; hurt: CanvasImageSource } | null | undefined
+
+/**
+ * The two screen gradients as pictures of the view's size, painted once. Filling a gradient over the whole
+ * canvas every frame costs a phone far more than drawing a picture over it (canvases that draw pictures on the
+ * GPU still shade gradients pixel by pixel), and the red one is on screen exactly when the hero has been hit.
+ * Null where no canvas can be made (the unit tests): the overlay then fills the gradients as before.
+ */
+function screenPictures() {
+  if (!overlayPictures.enabled) return null
+  if (pictures !== undefined) return pictures
+  pictures = null
+  if (typeof document === 'undefined') return null
+  try {
+    const make = (paint: Paint) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = VIEW_W
+      canvas.height = VIEW_H
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('no 2d context')
+      ctx.fillStyle = paint(ctx)
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+      return canvas
+    }
+    pictures = { vignette: make(vignetteGradient), hurt: make(hurtGradient) }
+  } catch {
+    pictures = null
+  }
+  return pictures
+}
+
+const POPUP_LINE = 3.5
+
+/**
+ * A popup's text with its outline as a picture, so that the frames it is on screen draw one image instead of
+ * stroking and filling the text again. `k` is the canvas's device pixels per view pixel. Null without a canvas.
+ */
+function popupPicture(p: Popup, k: number): TextPicture | null {
+  if (!overlayPictures.enabled || typeof document === 'undefined') return null
+  try {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    const font = `800 ${p.size}px ${ROUNDED_FONT}`
+    ctx.font = font
+    const pad = POPUP_LINE + 2
+    const w = Math.ceil(ctx.measureText(p.text).width + pad * 2)
+    const h = Math.ceil(p.size * 1.5 + pad * 2)
+    canvas.width = Math.ceil(w * k)
+    canvas.height = Math.ceil(h * k)
+    // Sizing the canvas resets its state.
+    ctx.scale(k, k)
+    ctx.font = font
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = POPUP_LINE
+    ctx.strokeStyle = INK
+    ctx.strokeText(p.text, w / 2, h / 2)
+    ctx.fillStyle = p.color
+    ctx.fillText(p.text, w / 2, h / 2)
+    return { image: canvas, w, h }
+  } catch {
+    return null
+  }
 }
 
 const ease = (t: number) => 1 - (1 - t) ** 3
+
+/** Removes, in place, the items for which `gone` is true; returns whether any went (no array is built). */
+function dropWhere<T>(items: T[], gone: (item: T) => boolean): boolean {
+  let kept = 0
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (!gone(item)) items[kept++] = item
+  }
+  const dropped = kept < items.length
+  items.length = kept
+  return dropped
+}
+
+/** The lines a stage can put in a bubble, for `warmOverlayText` (they are said in `staging.ts`). */
+export const STAGED_LINES = ['こらーっ！まちなさーい！', 'ありがとう！', 'ぜぇ…ぜぇ…', 'やったね！'] as const
+
+/** The popups a stage can show: the pickup scores, the kill call, the goal call and the digits of the counters. */
+export const POPUP_TEXTS = ['+1', '+2', 'ナイス！', 'ゴール！', '0123456789/', '12/12'] as const
+
+/**
+ * Measures every string a stage can show in a popup or bubble, with the fonts and sizes the overlay uses, on a
+ * scratch canvas, so that the font and its glyphs are resolved before play instead of in the frame of the first
+ * hit. Returns how many strings were measured (0 when there is no canvas to measure on).
+ */
+export function warmOverlayText(extra: readonly string[] = []): number {
+  const ctx = scratchContext()
+  if (!ctx) return 0
+  let measured = 0
+  for (const size of [9, 10, 11, 12, 13, 14, 15]) {
+    ctx.font = `800 ${size}px ${ROUNDED_FONT}`
+    for (const text of [...POPUP_TEXTS, ...extra]) {
+      ctx.measureText(text)
+      measured += 1
+    }
+  }
+  for (const size of [13, 15]) {
+    ctx.font = `800 ${size}px ${ROUNDED_FONT}`
+    for (const text of [...STAGED_LINES, ...extra]) {
+      ctx.measureText(text)
+      measured += 1
+    }
+  }
+  return measured
+}
+
+function scratchContext(): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
+  try {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(8, 8).getContext('2d')
+    if (typeof document !== 'undefined') return document.createElement('canvas').getContext('2d')
+  } catch {
+    // No canvas here (tests without a DOM): nothing to warm.
+  }
+  return null
+}
 
 export class Overlay {
   reducedMotion: boolean
@@ -96,6 +249,7 @@ export class Overlay {
   spotY = VIEW_H / 2
   /** The edge arrow toward an off-screen goal, or null (set every frame by staging). */
   pointer: Pointer | null = null
+  private gradient: { ctx: CanvasRenderingContext2D; vignette: CanvasGradient; hurt: CanvasGradient } | null = null
   /** Flashes actually shown (none under reduced motion), for tests. */
   flashes = 0
 
@@ -157,7 +311,7 @@ export class Overlay {
 
   /** Drops the popups showing `text` (the goal label when the stage is cleared). */
   clearPopups(text: string) {
-    this.popups = this.popups.filter((p) => p.text !== text)
+    dropWhere(this.popups, (p) => p.text === text)
   }
 
   /**
@@ -169,7 +323,17 @@ export class Overlay {
     // A wordless balloon only marks who speaks (their words and face are on the deck): it pops and goes quickly, so it
     // never lingers under the calls that follow a line.
     const life = wordless ? Math.min(seconds, EMOTE_SECONDS) : seconds
-    this.bubbles.push({ text, anchor, tone, age: 0, life, last: at ?? { x: 0, y: 0 }, wordless, rect: null })
+    this.bubbles.push({
+      text,
+      anchor,
+      tone,
+      age: 0,
+      life,
+      last: at ?? { x: 0, y: 0 },
+      textWidth: -1,
+      wordless,
+      rect: null
+    })
     if (this.bubbles.length > 4) this.bubbles.shift()
   }
 
@@ -209,7 +373,7 @@ export class Overlay {
   update(dt: number) {
     this.time += dt
     for (const p of this.popups) p.age += dt
-    this.popups = this.popups.filter((p) => p.age < p.life)
+    dropWhere(this.popups, (p) => p.age >= p.life)
     if (this.flashAlpha > 0) {
       this.flashTime += dt
       this.flashAlpha = Math.max(0, this.flashPeak * (1 - this.flashTime / this.flashLength))
@@ -223,7 +387,7 @@ export class Overlay {
           : Math.max(this.barsTarget, this.bars - step)
     }
     for (const b of this.bubbles) b.age += dt
-    this.bubbles = this.bubbles.filter((b) => b.age < b.life)
+    dropWhere(this.bubbles, (b) => b.age >= b.life)
     if (this.spot !== this.spotTarget) {
       const step = dt * 4
       this.spot =
@@ -247,15 +411,27 @@ export class Overlay {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.lineJoin = 'round'
+    // Device pixels per view pixel, for the pictures of the texts (1 where the context cannot say).
+    const k = typeof ctx.getTransform === 'function' ? ctx.getTransform().a || 1 : 1
     for (const p of this.popups) {
       const t = p.age / p.life
       const rise = ease(Math.min(1, t * 1.6)) * 22
       const pop = t < 0.12 ? 0.7 + (t / 0.12) * 0.3 : 1
       ctx.globalAlpha = t > 0.7 ? Math.max(0, 1 - (t - 0.7) / 0.3) : 1
-      ctx.font = `800 ${Math.round(p.size * pop)}px ${ROUNDED_FONT}`
       const x = p.x - viewX
       const y = p.y - viewY - rise
-      ctx.lineWidth = 3.5
+      if (p.picture === undefined) p.picture = popupPicture(p, k)
+      const picture = p.picture
+      if (picture) {
+        // The text was drawn once; the pop is a scale of its picture, placed on whole device pixels.
+        const w = picture.w * pop
+        const h = picture.h * pop
+        ctx.imageSmoothingEnabled = true
+        ctx.drawImage(picture.image, Math.round((x - w / 2) * k) / k, Math.round((y - h / 2) * k) / k, w, h)
+        continue
+      }
+      ctx.font = `800 ${Math.round(p.size * pop)}px ${ROUNDED_FONT}`
+      ctx.lineWidth = POPUP_LINE
       ctx.strokeStyle = INK
       ctx.strokeText(p.text, x, y)
       ctx.fillStyle = p.color
@@ -280,7 +456,8 @@ export class Overlay {
       const yell = b.tone === 'yell'
       const size = yell ? 15 : 13
       ctx.font = `800 ${size}px ${ROUNDED_FONT}`
-      const w = Math.ceil(ctx.measureText(b.text).width) + 22
+      if (b.textWidth < 0) b.textWidth = Math.ceil(ctx.measureText(b.text).width)
+      const w = b.textWidth + 22
       const h = size + 14
       // Pop in with a little overshoot, fade out at the end.
       const t = b.age
@@ -433,30 +610,38 @@ export class Overlay {
     blit(ctx, anim, this.time, p.x + Math.cos(p.angle) * bob, p.y + Math.sin(p.angle) * bob, { angle: p.angle })
   }
 
+  /** The two screen gradients for a context that has no pictures of them, made once (they never change). */
+  private gradients(ctx: CanvasRenderingContext2D) {
+    if (this.gradient?.ctx === ctx) return this.gradient
+    this.gradient = { ctx, vignette: vignetteGradient(ctx), hurt: hurtGradient(ctx) }
+    return this.gradient
+  }
+
+  /** Lays one of the screen gradients over the view: its picture where there is one, a gradient fill otherwise. */
+  private wash(ctx: CanvasRenderingContext2D, which: 'vignette' | 'hurt') {
+    const made = screenPictures()
+    if (made) {
+      ctx.imageSmoothingEnabled = true
+      ctx.drawImage(made[which], 0, 0, VIEW_W, VIEW_H)
+      ctx.imageSmoothingEnabled = false
+      return
+    }
+    ctx.fillStyle = this.gradients(ctx)[which]
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+  }
+
   /** Flash, vignettes, bars and iris, in screen space. */
   drawScreen(ctx: CanvasRenderingContext2D) {
     const pulse = this.lowHealth ? (this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.max(0, Math.sin(this.time * 7.5))) : 0
     const red = Math.max(this.hurtPulse * 0.75, pulse * 0.45)
     // A soft frame of shadow so the world reads as a stage.
-    const vignette = ctx.createRadialGradient(
-      VIEW_W / 2,
-      VIEW_H / 2,
-      VIEW_H * 0.45,
-      VIEW_W / 2,
-      VIEW_H / 2,
-      VIEW_H * 0.98
-    )
-    vignette.addColorStop(0, 'rgba(20,8,40,0)')
-    vignette.addColorStop(1, 'rgba(20,8,40,0.26)')
-    ctx.fillStyle = vignette
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    this.wash(ctx, 'vignette')
     this.drawSpotlight(ctx)
     if (red > 0.01) {
-      const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.32, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.92)
-      g.addColorStop(0, 'rgba(220,30,60,0)')
-      g.addColorStop(1, `rgba(220,30,60,${(red * 0.6).toFixed(3)})`)
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+      // One full-strength gradient; the pulse's strength goes through the alpha.
+      ctx.globalAlpha = red * 0.6
+      this.wash(ctx, 'hurt')
+      ctx.globalAlpha = 1
     }
     if (this.flashAlpha > 0) {
       ctx.globalAlpha = this.flashAlpha

@@ -29,7 +29,7 @@ describe('melee', () => {
     }
     const sw = r.of('swing')
     expect(sw.map((e) => e.combo)).toEqual([0, 1, 2])
-    expect(1000 - (t.hp ?? 0)).toBeCloseTo(36, 3)
+    expect(1000 - (t.hp ?? 0)).toBeCloseTo(3 * 14, 3)
     r.step(60)
     r.press('R')
     expect(r.of('swing').at(-1)!.combo).toBe(0)
@@ -96,7 +96,7 @@ describe('melee', () => {
     r.step(15)
     expect(t.hp).toBe(1000)
     r.step(10)
-    expect(1000 - (t.hp ?? 0)).toBeCloseTo(48, 3)
+    expect(1000 - (t.hp ?? 0)).toBeCloseTo(42, 3)
   })
 })
 
@@ -124,7 +124,7 @@ describe('ranged', () => {
     const hit = r.of('hit').find((e) => e.target === 'foe')
     expect(hit).toBeTruthy()
     expect(hit!.head).toBe(true)
-    expect(hit!.amount).toBeCloseTo(15, 3)
+    expect(hit!.amount).toBeCloseTo(13.5, 3)
   })
 
   it('auto: fires at its rate while held; spread grows then recovers', () => {
@@ -234,8 +234,9 @@ describe('ranged', () => {
     aimAt(r, [me.p[0], 0.7, me.p[2] + 10])
     const a0 = me.anima
     r.press('R', 60)
-    expect(a0 - me.anima).toBeGreaterThan(5)
-    expect(a0 - me.anima).toBeLessThan(7.5)
+    // 1 s of beam at 2.5 anima/s.
+    expect(a0 - me.anima).toBeGreaterThan(2)
+    expect(a0 - me.anima).toBeLessThan(3.2)
     const d1 = r
       .of('hit')
       .filter((e) => e.target === 'e1')
@@ -244,12 +245,12 @@ describe('ranged', () => {
       .of('hit')
       .filter((e) => e.target === 'e2')
       .reduce((s, e) => s + e.amount, 0)
-    expect(d1).toBeGreaterThan(45)
+    expect(d1).toBeGreaterThan(40)
     expect(d2).toBeGreaterThan(d1 * 0.4)
     expect(d2).toBeLessThan(d1 * 0.6)
   })
 
-  it('charge: a tap charges 0.8 s then fires once; cost 11; explodes', () => {
+  it('charge: a tap charges 0.8 s then fires once; cost 4; explodes', () => {
     const r = rig({ r: ['hippo'] })
     r.step(2)
     const a0 = r.player().anima
@@ -258,14 +259,14 @@ describe('ranged', () => {
     expect(r.of('fire').length).toBe(0)
     r.step(12)
     expect(r.of('fire').length).toBe(1)
-    expect(a0 - r.player().anima).toBeCloseTo(11, 1)
+    expect(a0 - r.player().anima).toBeCloseTo(4, 1)
     r.step(120)
     expect(r.of('blast').length).toBe(1)
   })
 })
 
 describe('armour and gadgets', () => {
-  it('shield blocks the front (cost ×0.3), slows to 70 % and keeps its paw', () => {
+  it('shield blocks the front (cost ×0.65), slows to 70 % and keeps its paw', () => {
     const r = rig({ r: ['bee'], l: ['armadillo', 'frog'] })
     r.step(2)
     const p = r.player()
@@ -278,7 +279,7 @@ describe('armour and gadgets', () => {
     expect(p.hands[1].sel).toBe(0)
     const before = p.anima
     damagePlayer(r.sim, p, { amount: 30, kind: 'ranged', side: FOE_SIDE, at: front(r, 1, 1), from: front(r, 10) })
-    expect(before - p.anima).toBeCloseTo(9, 1)
+    expect(before - p.anima).toBeCloseTo(19.5, 1)
     r.input().mz = 1
     r.step(40)
     expect(Math.hypot(p.v[0], p.v[2])).toBeCloseTo(6.8 * 0.7, 1)
@@ -399,24 +400,24 @@ describe('armour and gadgets', () => {
     const p = r.player()
     p.anima = 50
     r.press('L')
-    expect(p.anima).toBeCloseTo(50 - 9, 0)
+    expect(p.anima).toBeCloseTo(50 - 7, 0)
     r.step(120)
-    expect(p.anima).toBeGreaterThan(41 + 7)
+    expect(p.anima).toBeGreaterThan(43 + 7)
     expect(r.of('heal').some((e) => e.source === 'honey')).toBe(true)
   })
 })
 
 describe('passives and mods', () => {
-  it('turtle reduces damage by 25 % (+30 % per rhino) and slows 4 %', () => {
+  it('turtle reduces damage by 20 % (+10 % per rhino) and slows 4 %', () => {
     const r = rig({ r: ['bee'], passive: ['turtle'] })
     r.step(2)
     const p = r.player()
     const got = damagePlayer(r.sim, p, { amount: 40, kind: 'ranged', side: FOE_SIDE, at: p.p, from: front(r, 5) })
-    expect(got).toBeCloseTo(30, 3)
+    expect(got).toBeCloseTo(32, 3)
     const r2 = rig({ r: ['bee'], passive: ['turtle', 'rhino'] })
     const p2 = r2.player()
     expect(damagePlayer(r2.sim, p2, { amount: 40, kind: 'ranged', side: FOE_SIDE, at: p2.p, from: p2.p })).toBeCloseTo(
-      40 * (1 - 0.325),
+      40 * (1 - 0.22),
       3
     )
     r.input().mz = 1
@@ -424,7 +425,7 @@ describe('passives and mods', () => {
     expect(Math.hypot(p.v[0], p.v[2])).toBeCloseTo(6.8 * 0.96, 2)
   })
 
-  it('jelly negates one hit every 5 s', () => {
+  it('jelly negates one hit every 6 s', () => {
     const r = rig({ r: ['bee'], passive: ['jelly'] })
     r.step(2)
     const p = r.player()
@@ -432,8 +433,10 @@ describe('passives and mods', () => {
     expect(hit()).toBe(0)
     expect(hit()).toBe(10)
     r.step(5 * 60)
+    expect(hit()).toBe(10)
+    r.step(60)
     expect(hit()).toBe(0)
-    expect(r.world.view().players[0].negateAt).toBeGreaterThan(5)
+    expect(r.world.view().players[0].negateAt).toBeGreaterThan(6)
   })
 
   it('momonga glides while falling with jump held (drains), owls glide for free', () => {
@@ -462,7 +465,7 @@ describe('passives and mods', () => {
     r.step(2)
     const a0 = r.player().anima
     r.press('R')
-    expect(1000 - (t.hp ?? 0)).toBeCloseTo(12 * 1.45, 3)
+    expect(1000 - (t.hp ?? 0)).toBeCloseTo(14 * 1.45, 3)
     expect(a0 - r.player().anima).toBeCloseTo(0.3 * 1.3, 3)
   })
 
@@ -471,7 +474,7 @@ describe('passives and mods', () => {
     const t = target(r, front(r, 1.8))
     r.step(2)
     r.press('R')
-    expect(1000 - (t.hp ?? 0)).toBeCloseTo(14.4, 3)
+    expect(1000 - (t.hp ?? 0)).toBeCloseTo(14 * 1.2, 3)
   })
 })
 

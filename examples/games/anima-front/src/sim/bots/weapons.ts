@@ -86,7 +86,8 @@ export function weaponStats(def: ItemDef): WeaponStats {
       s = {
         melee: false,
         reach: u.range,
-        pref: Math.min(16, u.range * 0.25),
+        // Wide sprays (ハチドリ) want to be closer.
+        pref: Math.min(16, u.range * 0.25, 25 / Math.max(0.1, u.spread)),
         dps: u.damage * u.rate,
         hit: u.damage,
         speed: u.speed
@@ -106,7 +107,7 @@ export function weaponStats(def: ItemDef): WeaponStats {
       s = {
         melee: false,
         reach: u.range,
-        pref: 40,
+        pref: 30,
         dps: u.damage / (u.interval + u.steady),
         hit: u.damage,
         speed: u.speed
@@ -163,7 +164,8 @@ function scoreWeapon(p: Player, def: ItemDef, d: number, targets: number, cluste
     if (u.kind === 'spread') score += d < 12 ? 5 : -4
   }
   const rate = p.foe ? 0 : weaponRate(def, p.build.mods)
-  score -= rate * (low ? 3 : 0.15)
+  // Expensive weapons lose value as anima runs low; skilled bots are thriftier all the time.
+  score -= rate * (low ? 3 : 0.15 + 0.35 * Math.max(0, (p.bot ?? 0.5) - 0.5))
   return score
 }
 
@@ -210,7 +212,16 @@ const holdBit = (p: Player, hi: 0 | 1) => {
 }
 
 /** Drives one paw: `fire` = wants to attack now, `aimOk` = the aim is on target. */
-export function pawControl(sim: Sim, p: Player, b: Brain, hi: 0 | 1, fire: boolean, aimOk: boolean, locksWanted = 1) {
+export function pawControl(
+  sim: Sim,
+  p: Player,
+  b: Brain,
+  hi: 0 | 1,
+  fire: boolean,
+  aimOk: boolean,
+  locksWanted = 1,
+  dist = 0
+) {
   const h = p.hands[hi]
   const ctl = b.paws[hi]
   if (h.swap > 0 || h.sel < 0 || h.sel !== b.sel[hi]) {
@@ -223,6 +234,9 @@ export function pawControl(sim: Sim, p: Player, b: Brain, hi: 0 | 1, fire: boole
   if (!kind) return
   if (PRESS_KINDS.has(kind)) {
     ctl.holding = false
+    // Melee only swings once the target is within reach (no anima wasted on air).
+    const st = weaponStats(def)
+    if (st.melee && dist > st.reach + 0.4) return
     if (fire && aimOk && ready) press(p, hi)
     return
   }
@@ -293,6 +307,8 @@ export interface GadgetCtx {
   alliesMean: number
   newContact: boolean
   goalHigh: boolean
+  /** Engaged with a close-range weapon preference and the target 10–30 m away. */
+  closeIn?: boolean
 }
 
 /** Starts a gadget use when a heuristic fires (one at a time). */
@@ -318,12 +334,14 @@ export function planGadget(sim: Sim, p: Player, b: Brain, ctx: GadgetCtx) {
   if (ctx.allies >= 2 && ctx.alliesMean < 0.6 && tryUse('jar', 16)) return
   if (ctx.engaged && ctx.taken > 18 && tryUse('wall', 12, -0.2)) return
   if (ctx.newContact && tryUse('pulse', 12)) return
+  // Close-range builds hook in toward a target out of reach (ヤモリフック along the aim line).
+  if (ctx.closeIn && tryUse('hook', 5)) return
   if (ctx.close >= 3 && tryUse('decoy', 8)) return
   if (frac < 0.35 && ctx.close >= 1 && tryUse('throw', 8)) return
   if (ctx.goalHigh && b.rng.chance(0.01) && tryUse('pad', 15, -1.25)) return
   const leaf = findKind(p, ['cloak'])
   if (leaf && (b.gadgetAt.leaf ?? -100) <= sim.time) {
-    const want = ctx.retreat && frac > 0.12 && ctx.close >= 1
+    const want = ctx.retreat && frac > 0.2 && ctx.close >= 1
     if (want !== p.cloakOn) {
       b.gadgetAt.leaf = sim.time + 3
       b.gadget = { hand: leaf.hand, idx: leaf.idx, pressed: false, until: sim.time + 2 }

@@ -14,6 +14,7 @@ import { h } from '../ui/dom'
 import { focusInitial, moveFocus, navRoot, type NavDir } from '../ui/focus'
 import { MenuPad, type MenuAction } from '../input/gamepad'
 import { createBootScreen } from '../ui/screens/boot'
+import { renderItemThumbs } from '../ui/thumbs'
 import { createTitleScreen } from '../ui/screens/title'
 import { createSortieScreen, createRoomScreen, createTrainingScreen } from '../ui/screens/sortie'
 import { createMissionsScreen } from '../ui/screens/missions'
@@ -400,7 +401,10 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
       if (options.initial) ctx.open(options.initial.name, options.initial.args as never)
       else ctx.open('title')
       setTimeout(() => {
-        kit.prepare({ items: ITEM_IDS }).catch((err) => console.warn('[anima-front] background prepare failed', err))
+        kit
+          .prepare({ items: ITEM_IDS })
+          .then(() => renderItemThumbs(kit, ITEM_IDS))
+          .catch((err) => console.warn('[anima-front] background prepare failed', err))
       }, 1200)
     }, wait)
   })()

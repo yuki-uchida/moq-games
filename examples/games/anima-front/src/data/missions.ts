@@ -93,7 +93,7 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     name: 'サクラ通り防衛線',
     summary: '北の結晶帯から南下する蝕獣の群れから、アニマの灯台を守り抜け。',
     map: 'oldtown',
-    objective: { kind: 'defend', anchor: 'lighthouse', hp: 2000, label: '灯台を守れ' },
+    objective: { kind: 'defend', anchor: 'lighthouse', hp: 1150, label: '灯台を守れ' },
     waves: [
       {
         groups: [g('tsubute', 8, 0), g('tsubute', 8, 9), g('harigane', 2, 14, 2, 1)],
@@ -194,7 +194,7 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
         radio: { who: 'ruri', text: '最後のポイントCです！ 通信塔まであと少し！' }
       },
       {
-        groups: [g('mitsume', 8, 6, 1.2, 2), g('korogashi', 8, 14, 1.5, 2), g('ashinaga', 2, 24, 6, 1)],
+        groups: [g('mitsume', 5, 6, 1.2, 2), g('korogashi', 5, 14, 1.5, 2), g('ashinaga', 2, 24, 6, 1)],
         radio: { who: 'ruri', text: '海から……何か上がってきます！ 識別名、ゴウテツ！' }
       }
     ],
@@ -231,22 +231,22 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     summary: '夜の旧市街に侵入したクロヅメ連合から、発掘したアンティークの荷車を守り抜け。',
     map: 'oldtown',
     variant: 'night',
-    objective: { kind: 'escort', path: 'cart', speed: 2.2, radius: 8, hp: 1600, label: '荷車を西門まで護衛せよ' },
+    objective: { kind: 'escort', path: 'cart', speed: 0.7, radius: 8, hp: 700, label: '荷車を西門まで護衛せよ' },
     waves: [
       {
-        groups: [g('kurozume', 3, 4, 1, 1), g('tsubute', 10, 10)],
+        groups: [g('kurozume', 3, 4, 1, 1), g('tsubute', 8, 10)],
         radio: { who: 'kurozume', text: 'いたぞ、ARKの荷車だ！ アンティークはいただく！' }
       },
       {
-        groups: [g('kurozume', 4, 0, 1.5, 2), g('tsubute', 14, 6), g('kagerou', 4, 12, 1, 2)],
+        groups: [g('kurozume', 4, 0, 1.5, 2), g('tsubute', 12, 6), g('kagerou', 4, 12, 1, 2)],
         radio: { who: 'ruri', text: 'クロヅメ兵、増援です！ 蝕獣まで連れてきています！' }
       },
       {
-        groups: [g('kurozume', 5, 0, 1.5, 2), g('tsubute', 18, 5), g('harigane', 4, 10, 1, 2)],
+        groups: [g('kurozume', 4, 0, 1.5, 2), g('tsubute', 14, 5), g('harigane', 4, 10, 1, 2)],
         radio: { who: 'genbu', text: '奴らは蝕を呼び込んでいる。……ためらうな。' }
       },
       {
-        groups: [g('kurozume', 6, 0, 1, 3), g('tsubute', 20, 6), g('oagos', 1, 14, 1, 1)],
+        groups: [g('kurozume', 4, 0, 1.5, 2), g('tsubute', 14, 6), g('oagos', 1, 14, 1, 1)],
         radio: { who: 'ruri', text: '西門が見えました！ あと少しです！' }
       }
     ],
@@ -283,7 +283,7 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     name: '侵蝕域突入',
     summary: '紫の結晶に呑まれた街へ踏み込み、蝕獣を産み続ける三つの巣核を破壊せよ。',
     map: 'blight',
-    objective: { kind: 'destroy', anchors: ['node1', 'node2', 'node3'], hp: 1500, label: '巣核を破壊せよ' },
+    objective: { kind: 'destroy', anchors: ['node1', 'node2', 'node3'], hp: 2400, label: '巣核を破壊せよ' },
     waves: [
       {
         groups: [g('tsubute', 10, 0), g('harigane', 2, 6, 2, 1), g('kagerou', 3, 10, 1, 3)],
@@ -332,9 +332,9 @@ export const MISSIONS: Record<MissionId, MissionDef> = {
     variant: 'crater',
     objective: { kind: 'boss', foe: 'kuitsukushi', anchor: 'crater', label: 'クイツクシを撃破せよ' },
     waves: [
-      { groups: [g('tsubute', 12, 4), g('kagerou', 4, 10, 1, 2)] },
-      { groups: [g('tsubute', 16, 0), g('harigane', 4, 6, 1, 2), g('kagerou', 6, 10, 1, 3)] },
-      { groups: [g('tsubute', 20, 0), g('oagos', 1, 8, 1, 1), g('kagerou', 8, 12, 1, 4)] }
+      { groups: [g('tsubute', 6, 4), g('kagerou', 4, 10, 1, 2)] },
+      { groups: [g('tsubute', 8, 0), g('harigane', 4, 6, 1, 2), g('kagerou', 6, 10, 1, 3)] },
+      { groups: [g('tsubute', 12, 0), g('oagos', 1, 8, 1, 1), g('kagerou', 8, 12, 1, 4)] }
     ],
     briefing: [
       { who: 'genbu', text: 'すべての侵蝕はあの穴から始まった。クレーターの底に〈クイツクシ〉がいる。' },

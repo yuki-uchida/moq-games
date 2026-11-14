@@ -1,5 +1,6 @@
 /** Damage pipeline, credit and scaling (DESIGN §10, §11). */
 import { describe, expect, it } from 'vitest'
+import { DIFFICULTIES, FOES } from '../src/data/enemies'
 import { blast, damageFoe, damagePlayer } from '../src/sim/combat'
 import { spawnFoe } from '../src/sim/foes/index'
 import { FOE_SIDE } from '../src/sim/state'
@@ -89,14 +90,15 @@ describe('damage pipeline', () => {
     for (const [d, k] of [
       ['easy', 0.7],
       ['normal', 1],
-      ['hard', 1.35]
+      ['hard', 1.1]
     ] as const) {
       const r = rig({ r: ['bee'], config: { difficulty: d } })
       const f = spawnFoe(r.sim, 'harigane', [0, 0, 20])
-      expect(f.maxHp).toBeCloseTo(45 * k, 6)
-      expect(f.dmgMul).toBeCloseTo(k === 1.35 ? 1.3 : k, 6)
+      expect(f.maxHp).toBeCloseTo(FOES.harigane.hp * k, 6)
+      expect(f.dmgMul).toBeCloseTo(DIFFICULTIES[d].damage, 6)
+      // Bosses take a quarter of the difficulty's hp offset.
       const boss = spawnFoe(r.sim, 'kuitsukushi', [0, 0, 30])
-      expect(boss.maxHp).toBeCloseTo(6000 * k * (0.55 + 0.15), 3)
+      expect(boss.maxHp).toBeCloseTo(FOES.kuitsukushi.hp * (1 + (k - 1) * 0.25) * (0.55 + 0.15), 3)
     }
   })
 

@@ -4,6 +4,7 @@
  * sees translucent), hit flash, anima glow and holograms. Models are pooled per key and disposed when unseen.
  */
 import * as THREE from 'three'
+import { SPECIES } from '../../data/species'
 import type { CharacterModel, CharacterPose, ModelKit } from '../../models/api'
 import type { ItemId } from '../../data/items'
 import type { SpeciesId } from '../../data/species'
@@ -24,7 +25,10 @@ interface Actor {
   passives: string
   online: boolean
   team: number
+  /** Last camouflage value handed to the model (gameplay cloak or the near-camera fade, whichever is stronger). */
   cloak: number
+  /** Near-camera fade of the local animal (0..1), measured after the camera moved last frame. */
+  near: number
   /** Previous position for velocity estimates (foe animals, decoys). */
   last: THREE.Vector3
   vel: THREE.Vector3
@@ -99,6 +103,7 @@ export class Characters {
         online: true,
         team: -2,
         cloak: -1,
+        near: 0,
         last: new THREE.Vector3(),
         vel: new THREE.Vector3(),
         hasLast: false
@@ -129,6 +134,22 @@ export class Characters {
   hurtFlinch(key: string) {
     const a = this.actors.get(key)
     if (a) a.hurt++
+  }
+
+  /**
+   * When a wall behind the animal or looking up pulls the camera in close, the local animal fades out so it never
+   * fills the screen or hides the crosshair (applied on the next update).
+   */
+  nearFade(me: string | undefined, eye: THREE.Vector3) {
+    if (!me) return
+    const a = this.actors.get(me)
+    if (!a) return
+    const root = a.model.root.position
+    const h = SPECIES[a.species].height
+    const d = Math.hypot(eye.x - root.x, eye.y - (root.y + h * 0.55), eye.z - root.z)
+    // Fully visible beyond ~1.5 body heights, mostly faded when the lens is inside the animal's reach.
+    const start = 0.7 + h * 0.75
+    a.near = Math.max(0, Math.min(0.8, (start - d) / (start * 0.6)))
   }
 
   /** Where the sun's shadow box is centred (set by the renderer each frame). */
@@ -173,7 +194,8 @@ export class Characters {
     }
     this.passives(a, p.passives, p.passivesOnline)
     const ally = myTeam === undefined || p.team === myTeam
-    const cloak = p.revealed ? Math.min(p.cloak, 0.3) : ally ? Math.min(p.cloak, 0.55) : p.cloak
+    const play = p.revealed ? Math.min(p.cloak, 0.3) : ally ? Math.min(p.cloak, 0.55) : p.cloak
+    const cloak = Math.max(play, a.near)
     if (Math.abs(cloak - a.cloak) > 0.01) {
       a.cloak = cloak
       m.setCloak(cloak)

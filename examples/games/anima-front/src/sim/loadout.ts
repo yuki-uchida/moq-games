@@ -2,12 +2,15 @@
  * Loadout rules (DESIGN §7): repair, validation messages, paw lists, the derived build (mods, armour, upkeep) and
  * the editor's sustain estimate.
  *
- * Sustain fight model (DESIGN §7, documented here because the editor shows it):
+ * Sustain fight model (DESIGN §7, documented here because the editor shows it). Calibrated against the bot
+ * economy drill of scripts/anima-front-balance.mjs (anima burnt per second of actual fighting in whole missions):
  *   burn = upkeep (online passives)
- *        + Σ per paw: cost rate of the paw's first weapon × 0.5 duty
- *        + 9 anima/s incoming damage (modelled as one 9-damage hit per second) × (1 − armour reduction)
+ *        + Σ per paw: mean cost rate of the paw's weapons × 0.15 duty (aiming, moving and switching take the rest)
+ *        + Σ active gadgets: cost per use / max(cooldown, 15 s)
+ *        + 0.6 anima/s incoming damage × (1 − armour reduction)
  *   armour reduction = 1 − (1 − passive armour %) × (1 − share of hits negated by クラゲヴェール (1 / every))
- *   net = burn − natural regeneration;  sustain = max anima / net  (Infinity when net ≤ 0).
+ *   net = burn − a third of natural regeneration (fights leave little quiet time; shards make up part of it);
+ *   sustain = max anima / net  (Infinity when net ≤ 0).
  * A weapon's cost rate is its per-use cost (with cost mods) divided by its cycle time (interval, charge, wind-up
  * or lock time, divided by the rate mod, plus the antique's cooldown); beams use their drain per second.
  * Raising any cost, upkeep or rate can only raise `burn`, so a more expensive build never reports a longer sustain.
@@ -253,8 +256,15 @@ export function weaponRate(def: ItemDef, m: Mods): number {
   return itemCost(m, def) / cycle(def, m)
 }
 
-const DUTY = 0.5
-const INCOMING = 9
+const DUTY = 0.15
+const INCOMING = 0.6
+/** Warning thresholds of the estimate (seconds of fighting). */
+const SUSTAIN_SHORT = 60
+const SUSTAIN_MEDIUM = 120
+/** Seconds between uses assumed for an active gadget (or its cooldown when longer). */
+const GADGET_GAP = 15
+/** Share of natural regeneration that happens during a fight. */
+const FIGHT_REGEN = 0.33
 
 export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainReport {
   const clean = sanitizeLoadout(loadout)
@@ -274,10 +284,13 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
       byCategory[def.category] += def.upkeep * (def.category === 'armor' ? 1 + m.armorUpkeep : 1) * costScale(m)
   }
   for (const list of [b.R, b.L]) {
-    const first = list.find((id) => isWeapon(id))
-    if (!first) continue
-    const def = ITEMS[first]
-    byCategory[def.category] += weaponRate(def, m) * DUTY
+    const weapons = list.filter((id) => isWeapon(id))
+    for (const id of weapons) byCategory[ITEMS[id].category] += (weaponRate(ITEMS[id], m) * DUTY) / weapons.length
+    for (const id of list) {
+      const def = ITEMS[id]
+      if (isWeapon(id) || def.category !== 'gadget' || !def.cost) continue
+      byCategory.gadget += itemCost(m, def) / Math.max(GADGET_GAP, def.cooldown ?? 0)
+    }
   }
   const negateShare = b.negateEvery > 0 ? Math.min(1, 1 / b.negateEvery) : 0
   const reduction = 1 - (1 - b.armorReduce) * (1 - negateShare)
@@ -285,7 +298,7 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
   const regen = Math.max(0, REGEN_RATE + m.regen)
   const burn =
     byCategory.melee + byCategory.ranged + byCategory.armor + byCategory.enhance + byCategory.gadget + byCategory.damage
-  const net = burn - regen
+  const net = burn - regen * FIGHT_REGEN
   const sustain = net <= 1e-9 ? Infinity : b.maxAnima / net
   let cheapest: { item: ItemId; cost: number } | undefined
   let priciest: { item: ItemId; cost: number } | undefined
@@ -300,8 +313,8 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
   if (!raw.some((s) => s && isItemId(s.item) && isWeapon(s.item) && (s.hand === 'R' || s.hand === 'L')))
     warnings.push('武器がありません')
   if (b.upkeep > regen) warnings.push('維持消費が自然回復を上回っています')
-  if (sustain < 20) warnings.push('消費が非常に激しい構成です')
-  else if (sustain < 40) warnings.push('消費が激しめの構成です。安いアンティークを混ぜましょう')
+  if (sustain < SUSTAIN_SHORT) warnings.push('消費が非常に激しい構成です')
+  else if (sustain < SUSTAIN_MEDIUM) warnings.push('消費が激しめの構成です。安いアンティークを混ぜましょう')
   const round = (x: number) => Math.round(x * 100) / 100
   for (const k of Object.keys(byCategory) as (keyof typeof byCategory)[]) byCategory[k] = round(byCategory[k])
   const report: SustainReport = {

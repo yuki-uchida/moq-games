@@ -18,35 +18,49 @@ export interface Anim {
 
 export type Sheet = Record<string, Anim>
 
+/** Ticks in one pass of the animation (the sum of `hold`, or one per frame without it). */
+function totalTicks(anim: Anim): number {
+  const hold = anim.hold
+  if (!hold) return anim.frames.length
+  let total = 0
+  for (let i = 0; i < hold.length; i++) total += hold[i]
+  return total
+}
+
 /**
  * Frame index at `t` seconds into the animation. A non-looping animation holds its last frame, or keeps cycling
  * its last `sustain` frames (each for its own hold).
  */
 export function frameAt(anim: Anim, t: number) {
-  const hold = anim.hold ?? anim.frames.map(() => 1)
-  const total = hold.reduce((a, b) => a + b, 0)
+  const hold = anim.hold
+  const total = totalTicks(anim)
+  const count = hold ? hold.length : anim.frames.length
   let tick = Math.floor(Math.max(0, t) * anim.fps)
   if (!anim.loop && tick >= total) {
+    const last = anim.frames.length - 1
     const tail = Math.min(anim.sustain ?? 0, anim.frames.length)
-    if (tail < 2) return anim.frames.length - 1
+    if (tail < 2) return last
     const first = anim.frames.length - tail
-    let rest = (tick - total) % hold.slice(first).reduce((a, b) => a + b, 0)
-    for (let i = first; i < hold.length; i++) {
-      rest -= hold[i]
+    let span = 0
+    for (let i = first; i < count; i++) span += hold ? hold[i] : 1
+    if (span <= 0) return last
+    let rest = (tick - total) % span
+    for (let i = first; i < count; i++) {
+      rest -= hold ? hold[i] : 1
       if (rest < 0) return i
     }
-    return anim.frames.length - 1
+    return last
   }
   tick %= total
-  for (let i = 0; i < hold.length; i++) {
-    tick -= hold[i]
+  for (let i = 0; i < count; i++) {
+    tick -= hold ? hold[i] : 1
     if (tick < 0) return i
   }
   return 0
 }
 
 /** Length of one pass of the animation in seconds. */
-export const duration = (anim: Anim) => (anim.hold ?? anim.frames.map(() => 1)).reduce((a, b) => a + b, 0) / anim.fps
+export const duration = (anim: Anim) => totalTicks(anim) / anim.fps
 
 /**
  * Default anchor of a frame: the feet of a character cell (64×64 → [32, 60], 96×96 → [48, 90],
@@ -59,7 +73,20 @@ export function defaultAnchor(w: number, h: number): readonly [number, number] {
   return [Math.floor(w / 2), Math.floor(h / 2)]
 }
 
-export const anchorOf = (anim: Anim) => anim.anchor ?? defaultAnchor(anim.frames[0].w, anim.frames[0].h)
+/** The default anchors already handed out, by frame size, so a frame drawn every tick does not allocate one. */
+const defaultAnchors = new Map<number, readonly [number, number]>()
+
+export const anchorOf = (anim: Anim) => {
+  if (anim.anchor) return anim.anchor
+  const { w, h } = anim.frames[0]
+  const key = w * 65536 + h
+  let anchor = defaultAnchors.get(key)
+  if (!anchor) {
+    anchor = defaultAnchor(w, h)
+    defaultAnchors.set(key, anchor)
+  }
+  return anchor
+}
 
 /** Builds an Anim from frames (helper for art modules). */
 export const anim = (frames: Raster[], fps: number, loop: boolean, extra: Partial<Anim> = {}): Anim => ({
