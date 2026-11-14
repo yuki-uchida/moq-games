@@ -5,7 +5,7 @@
  * Usage: node scripts/hoshi-no-hamham-perf.mjs [--only boot,menus,play,boss,pacing] [--stages 1,3,5 | all]
  *                                             [--seconds 30] [--profiles landscape,portrait] [--throttle 4]
  *                                             [--dev] [--gpu] [--check] [--raw] [--tries 3] [--every 2]
- *                                             [--out DIR]
+ *                                             [--dist DIR] [--out DIR]
  *   --only      sections to run (default: all five). A section that fails is reported and the others still run.
  *   --stages    stages of the play section (default 1,3,5; `all` is 1 to 10)
  *   --seconds   seconds recorded per stage and profile in the play section (default 30)
@@ -23,6 +23,8 @@
  *   --every     the page gets only every nth frame of the display (default 1: all of them). The monitor of the
  *               machine sets the display's rate; on a 120 Hz monitor `--every 2` gives the page the 60 frames a
  *               second of most phones, each with 16.7 ms to do its work in
+ *   --dist      measure the production build in this folder instead of building this checkout: the build of
+ *               another commit, made there with `vite build`, so that two commits are measured by one kit
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
  *
  * Output: report.md (command, environment, the budget summary, one part per section) and report.json (the same
@@ -36,7 +38,7 @@
  * port. Servers and browsers are closed on success, on failure and on Ctrl-C.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -125,6 +127,16 @@ const DRAWING_THREADS = ['CrGpuMain', 'VizCompositorThread', 'Compositor']
  */
 const FRAME_WORK_US = 300
 const out = resolve(valueOf('--out') ?? join(root, '.build/hoshi-no-hamham-perf'))
+const distArg = valueOf('--dist')
+const dist = distArg ? resolve(distArg) : null
+if (dist && dev) usage('--dist and --dev do not go together')
+if (dist && !existsSync(join(dist, 'index.html'))) usage(`--dist: there is no build in ${dist} (no index.html)`)
+/** What is measured, for the report. */
+const targetText = dev
+  ? 'Vite dev server'
+  : dist
+    ? `the production build in ${dist} (--dist)`
+    : 'production build made by the kit'
 
 // ------------------------------------------------------------------------------------------------- budgets
 
@@ -1029,9 +1041,12 @@ async function startTarget() {
     await server.listen()
     cleanups.push(() => server.close())
   } else {
-    const outDir = join(out, 'dist')
-    console.log('[perf] building the production bundle ...')
-    await viteBuild({ configFile: viteConfig, build: { outDir }, logLevel: 'error' })
+    const outDir = dist ?? join(out, 'dist')
+    if (dist) console.log(`[perf] serving the build in ${dist}`)
+    else {
+      console.log('[perf] building the production bundle ...')
+      await viteBuild({ configFile: viteConfig, build: { outDir }, logLevel: 'error' })
+    }
     const server = await preview({
       configFile: viteConfig,
       build: { outDir },
@@ -1846,9 +1861,9 @@ async function main() {
     '',
     `- command: \`${command}\``,
     `- date: ${new Date().toISOString()}`,
-    `- commit: ${gitHead()}`,
+    `- commit: ${dist ? `not this checkout's: the build in ${dist} (the kit is of ${gitHead()})` : gitHead()}`,
     `- Chromium: ${environment.chromium}; renderer: ${environment.renderer || '(not read)'}; ${gpu ? 'GPU on (--gpu)' : 'headless shell, software rendering (frame intervals are not judged; use --gpu)'}`,
-    `- ${throttleText} (the budgets are stated for 4); target: ${dev ? 'Vite dev server' : 'production build made by the kit'}`,
+    `- ${throttleText} (the budgets are stated for 4); target: ${targetText}`,
     `- result: ${failed.length} of ${summary.filter((r) => r.ok !== null).length} budget checks failed${failedSections.length ? `; sections that failed to run: ${failedSections.join(', ')}` : ''}${problems.length ? `; ${problems.length} page or request problems` : ''}`,
     `- runs in which the game's thread was kept from running from outside: ${disturbed.length ? `${disturbed.join(', ')}: their durations are the machine's as much as the page's (make them again on a quiet machine, or with --tries)` : 'none'}`,
     '',
@@ -1877,6 +1892,7 @@ async function main() {
         command,
         date: new Date().toISOString(),
         commit: gitHead(),
+        dist,
         environment,
         throttle,
         gpu,
