@@ -97,11 +97,25 @@ const HELD_MS = 8
 const HELD_SHARE = 0.4
 /**
  * What every recorded run is traced with, to count garbage collections, style and layout work and shader
- * compilation: the timeline's own events, V8's, Skia's shader events and the page's marks.
+ * compilation, and to see when the game's thread was busy: the timeline's own events, V8's, Skia's shader events,
+ * the page's marks and the top-level tasks of every thread.
  */
-const LIGHT_CATEGORIES = ['devtools.timeline', 'v8', 'blink.user_timing', 'disabled-by-default-skia.shaders']
-/** What --trace adds for reading by hand: the collector's phases, top-level tasks, the compositor and the GPU. */
-const TRACE_CATEGORIES = [...LIGHT_CATEGORIES, 'disabled-by-default-v8.gc', 'toplevel', 'cc', 'viz', 'gpu']
+const LIGHT_CATEGORIES = [
+  'devtools.timeline',
+  'v8',
+  'blink.user_timing',
+  'disabled-by-default-skia.shaders',
+  'toplevel'
+]
+/** What --trace adds for reading by hand: the collector's phases, the compositor and the GPU. */
+const TRACE_CATEGORIES = [...LIGHT_CATEGORIES, 'disabled-by-default-v8.gc', 'cc', 'viz', 'gpu']
+/**
+ * A frame is late when it waited this many display intervals or more, and the lateness is the page's doing when
+ * its main thread was busy for this share of the wait or more (an idle thread means the frame was left out by the
+ * display or the machine, which the page cannot help).
+ */
+const LATE_FACTOR = 1.5
+const LATE_BUSY_SHARE = 0.4
 const out = resolve(valueOf('--out') ?? join(root, '.build/hoshi-no-hamham-perf'))
 
 // ------------------------------------------------------------------------------------------------- budgets
@@ -904,6 +918,7 @@ function runMarkdown(name, m, notes = []) {
       `- garbage collection: ${t.gc.major} major (${f1(t.gc.majorPer1000)} per 1000 frames, longest ${f1(t.gc.majorLongest)} ms, ${f0(t.gc.majorMs)} ms in all), ${t.gc.minor} minor (longest ${f1(t.gc.minorLongest)} ms, ${f0(t.gc.minorMs)} ms in all)`,
       `- style and layout: ${t.style.count} style recalculations (${f2(t.style.perFrame)} per frame, ${f0(t.style.ms)} ms), ${t.layout.count} layouts (in ${f1(t.layout.share * 100)} % of the frames, ${f0(t.layout.ms)} ms)`,
       `- shaders compiled on first use${gpu ? '' : ' (software rendering, not judged without --gpu)'}: ${t.shaders.programs} programs${t.shaders.bursts.length ? `, ${t.shaders.bursts.map((b) => `${b.programs} at ${f2(b.at)} s (${f0(b.ms)} ms)`).join(', ')}` : ''}`,
+      `- late frames (they waited ${LATE_FACTOR} display intervals or more): ${t.late.count}; the game's thread was busy through ${t.late.page} of them (the page's doing; longest wait ${f0(t.late.pageLongest)} ms) and idle in ${t.late.elsewhere} (left out by the display or the machine; longest wait ${f0(t.late.elsewhereLongest)} ms)`,
       t.held.count
         ? `- **kept from running from outside: ${t.held.count} slices of the game's thread, ${f0(t.held.ms)} ms in all, longest ${f0(t.held.longest)} ms (${t.held.at.map((h) => `${f0(h.ms)} ms at ${f2(h.at)} s in ${h.name}`).join(', ')}${t.held.count > t.held.at.length ? ', ...' : ''}). The thread had work and did not run: this run's durations are the machine's as much as the page's**`
         : `- kept from running from outside: no (the game's thread ran whenever it had work)`
@@ -1099,9 +1114,10 @@ async function waitCalm(page) {
 /**
  * What a trace says about the stretch between the page's marks `perf:begin` and `perf:end`: the main thread's
  * garbage collections, its style and layout work, the shaders the GPU process compiled, and whether the thread was
- * kept from running from outside. `rate` is the CPU throttle of the run.
+ * kept from running from outside. `rate` is the CPU throttle of the run; `data` is the page's own record of
+ * the run (its frames' times), from which the late frames are found and sorted by whose doing they were.
  */
-function traceStats(buffer, rate = throttle) {
+function traceStats(buffer, rate = throttle, data = null) {
   let events
   try {
     const parsed = JSON.parse(buffer.toString('utf8'))
@@ -1169,9 +1185,49 @@ function traceStats(buffer, rate = throttle) {
     held.longest = Math.max(held.longest, lost)
     if (held.at.length < 5) held.at.push({ at: (e.ts - from) / 1e6, ms: lost, name: e.name })
   }
+  // Late frames: how busy the game's thread was between a late frame and the one before it. The page's clock and
+  // the trace's meet at the mark `perf:begin`, made at `data.t0`.
+  const late = { count: 0, page: 0, elsewhere: 0, pageLongest: 0, elsewhereLongest: 0, frames: [] }
+  const stamps = (data?.frames ?? []).map((f) => f.ts)
+  if (stamps.length > 2 && typeof data.t0 === 'number') {
+    const tasks = events
+      .filter(
+        (e) =>
+          e.ph === 'X' &&
+          key(e) === key(begin) &&
+          typeof e.dur === 'number' &&
+          (e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask')
+      )
+      .sort((a, b) => a.ts - b.ts)
+    const gaps = stamps.slice(1).map((t, i) => t - stamps[i])
+    const usual = [...gaps].sort((a, b) => a - b)[gaps.length >> 1]
+    let cursor = 0
+    for (let i = 1; i < stamps.length; i++) {
+      const waited = stamps[i] - stamps[i - 1]
+      if (waited < usual * LATE_FACTOR) continue
+      const fromTs = begin.ts + (stamps[i - 1] - data.t0) * 1000
+      const toTs = begin.ts + (stamps[i] - data.t0) * 1000
+      while (cursor < tasks.length && tasks[cursor].ts + tasks[cursor].dur < fromTs) cursor += 1
+      let busy = 0
+      for (let j = cursor; j < tasks.length && tasks[j].ts < toTs; j++)
+        busy += Math.max(0, Math.min(tasks[j].ts + tasks[j].dur, toTs) - Math.max(tasks[j].ts, fromTs))
+      busy = Math.min(waited, busy / 1000)
+      const page = tasks.length > 0 && busy >= waited * LATE_BUSY_SHARE
+      late.count += 1
+      if (page) {
+        late.page += 1
+        late.pageLongest = Math.max(late.pageLongest, waited)
+      } else {
+        late.elsewhere += 1
+        late.elsewhereLongest = Math.max(late.elsewhereLongest, waited)
+      }
+      if (late.frames.length < 400) late.frames.push({ at: (stamps[i] - data.t0) / 1000, waited, busy, page })
+    }
+  }
   return {
     frames,
     held,
+    late,
     gc: {
       major: major.count,
       majorMs: major.ms,
@@ -1211,7 +1267,7 @@ async function recordFor(page, ms, options, name = 'run', rate = throttle) {
     }
     const data = await page.evaluate(() => window.__perf.end())
     buffer = await browser.stopTracing()
-    data.trace = traceStats(buffer, rate)
+    data.trace = traceStats(buffer, rate, data)
     return data
   } finally {
     if (!buffer) buffer = await browser.stopTracing().catch(() => null)
